@@ -9,7 +9,7 @@
 // TRIGGER MODE C (explicit): posting a comment does NOT invoke the AI. Only a deliberate
 // "让 AI 处理" click forwards an instruction to chat (openDocForward). The two are decoupled.
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { canForwardToChat, openDocForward, t } from '../octoweb/index.ts'
 import { avatarUrlForUid } from './htmlAvatar.ts'
 import {
@@ -26,12 +26,16 @@ import { buildAgentInstruction, truncateAnchorText, type AgentInstructionDoc } f
 export interface HtmlDocCommentPanelProps {
   docId: string
   space: string
-  role?: string
-  /** Backend-authoritative authorship (window.__ODOC_CAP__.isAuthor). Read-only viewers must not
-   *  see the "让 AI 处理" entry at all — it is an author-only forward to chat, not a viewer action. */
-  isAuthor?: boolean
+  /** commenter+ may compose root comments, 划词评论 and replies. reader is strictly read-only:
+   *  the list still renders, but textarea / send / reply / selection-target controls are hidden. */
+  mayComment?: boolean
+  /** writer/admin may forward a thread to the AI (“让 AI 处理”). reader/commenter never see it. */
+  mayEdit?: boolean
   slug: string
-  version: string
+  /** Route selector used for listing comments (`latest` or `vN`). */
+  listVersion: string
+  /** Concrete version injected by the rendered document; required for mutations. */
+  mutationVersion?: number | null
   /**
    * A pending selection anchor lifted from HtmlDocView's selection watcher. When set, the
    * composer pre-targets it (划词评论); cleared once the comment posts. null = doc-level note.
@@ -48,8 +52,18 @@ export interface HtmlDocCommentPanelProps {
 /** Short human label for how a comment is anchored (element aid / selected text / doc-level). */
 function anchorLabel(anchor: Anchor | null | undefined): string {
   if (!anchor) return t('docs.comment.anchorDoc')
-  if (anchor.kind === 'element') return `<${anchor.label ?? 'el'}> #${anchor.aid}`
-  return `“${anchor.text}”`
+  switch (anchor.kind) {
+    case 'element':
+      return `<${anchor.label ?? 'el'}> #${anchor.aid}`
+    case 'text':
+      return `“${anchor.text}”`
+    case 'lost':
+      return anchor.label
+        ? t('docs.comment.anchorLostWithLabel', { values: { label: anchor.label } })
+        : t('docs.comment.anchorLost')
+    default:
+      return t('docs.comment.anchorUnknown')
+  }
 }
 
 function fallbackAnchorText(anchor: Anchor | null | undefined): string | null {
@@ -99,9 +113,11 @@ function CommentMeta({ author, createdAt }: { author?: OctoDocAuthor | null; cre
 export function HtmlDocCommentPanel({
   docId,
   space,
-  isAuthor,
+  mayComment = false,
+  mayEdit = false,
   slug,
-  version,
+  listVersion,
+  mutationVersion,
   pendingAnchor,
   resolveAnchorText,
   onClearPendingAnchor,
@@ -111,22 +127,45 @@ export function HtmlDocCommentPanel({
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Per-thread reply state (commenter+): only one open reply box at a time.
+  const [replyingToId, setReplyingToId] = useState<string | null>(null)
+  const [replyDraft, setReplyDraft] = useState('')
+  const [replyBusy, setReplyBusy] = useState(false)
+  const reloadSeq = useRef(0)
 
   const reload = useCallback(async () => {
+    const seq = ++reloadSeq.current
     try {
-      setThreads(await listComments(slug, version))
+      const next = await listComments(slug, listVersion)
+      if (seq !== reloadSeq.current) return
+      setThreads(next)
       setError(null)
     } catch {
+      if (seq !== reloadSeq.current) return
       setError(t('docs.state.error'))
     }
-  }, [slug, version])
+  }, [slug, listVersion])
 
   useEffect(() => {
     void reload()
+    return () => { reloadSeq.current += 1 }
   }, [reload])
 
+  // A concrete positive integer version is required for every mutation (PR #1096 contract:
+  // list may use `latest`, mutations must target a concrete version). Shared by root + reply.
+  function requireMutationVersion(): number | null {
+    const version = mutationVersion
+    if (typeof version !== 'number' || !Number.isInteger(version) || version <= 0) {
+      setError(t('docs.comment.errorVersion'))
+      return null
+    }
+    return version
+  }
+
   async function submit() {
-    if (draft.trim() === '') return
+    if (!mayComment || draft.trim() === '') return
+    const version = requireMutationVersion()
+    if (version == null) return
     setBusy(true)
     try {
       await createComment(slug, {
@@ -144,10 +183,42 @@ export function HtmlDocCommentPanel({
     }
   }
 
+  function startReply(threadId: string) {
+    setReplyingToId(threadId)
+    setReplyDraft('')
+  }
+
+  function cancelReply() {
+    setReplyingToId(null)
+    setReplyDraft('')
+  }
+
+  async function submitReply(thread: OctoDocCommentThread) {
+    if (!mayComment || replyDraft.trim() === '') return
+    const version = requireMutationVersion()
+    if (version == null) return
+    setReplyBusy(true)
+    try {
+      // A reply carries parentId and NO anchor (contract is exclusive; the data layer enforces it).
+      await createComment(slug, {
+        text: replyDraft.trim(),
+        version,
+        parentId: thread.id,
+      })
+      cancelReply()
+      await reload()
+    } catch {
+      // Keep the reply text so the user can retry.
+      setError(t('docs.state.error'))
+    } finally {
+      setReplyBusy(false)
+    }
+  }
+
   // "让 AI 处理" bridge availability (feature #511 seam). Gated: the standalone /d/ page has no
   // host IM surface, so we disable the control there instead of rendering a dead button.
   const canForward = canForwardToChat()
-  const instructionDoc: AgentInstructionDoc = { docId, slug, space, version }
+  const instructionDoc: AgentInstructionDoc = { docId, slug, space, version: listVersion }
 
   function handleWithAI(thread: OctoDocCommentThread) {
     if (!canForward) return
@@ -171,7 +242,8 @@ export function HtmlDocCommentPanel({
 
       <ul className="octo-html-doc-comments-list">
         {threads.map((thread) => {
-          const quoteText = resolveAnchorText?.(thread.anchor) ?? fallbackAnchorText(thread.anchor)
+          const canResolveAnchor = thread.anchor?.kind === 'element' || thread.anchor?.kind === 'text'
+          const quoteText = (canResolveAnchor ? resolveAnchorText?.(thread.anchor) : null) ?? fallbackAnchorText(thread.anchor)
           const label = anchorLabel(thread.anchor)
 
           return (
@@ -193,7 +265,41 @@ export function HtmlDocCommentPanel({
                   <p className="octo-html-doc-comment-reply-text">{r.text}</p>
                 </div>
               ))}
-              {isAuthor && (
+              {/* Reply (commenter+): inline composer under the thread. reader never sees it. */}
+              {mayComment && replyingToId === thread.id ? (
+                <div className="octo-html-doc-comment-reply-compose">
+                  <textarea
+                    className="octo-comment-input"
+                    value={replyDraft}
+                    placeholder={t('docs.comment.replyPlaceholder')}
+                    onChange={(e) => setReplyDraft(e.target.value)}
+                  />
+                  <div className="octo-html-doc-comment-reply-actions">
+                    <button
+                      type="button"
+                      className="octo-doc-primary-btn"
+                      disabled={replyBusy || replyDraft.trim() === ''}
+                      onClick={() => void submitReply(thread)}
+                    >
+                      {t('docs.comment.reply')}
+                    </button>
+                    <button type="button" className="octo-tb-btn" onClick={cancelReply}>
+                      {t('docs.comment.cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                mayComment && (
+                  <button
+                    type="button"
+                    className="octo-tb-btn octo-html-doc-comment-reply-btn"
+                    onClick={() => startReply(thread.id)}
+                  >
+                    {t('docs.comment.reply')}
+                  </button>
+                )
+              )}
+              {mayEdit && (
                 <button
                   type="button"
                   className="octo-html-doc-comment-ai octo-doc-primary-btn"
@@ -209,31 +315,39 @@ export function HtmlDocCommentPanel({
         })}
       </ul>
 
-      <div className="octo-html-doc-comments-compose">
-        <div className="octo-html-doc-comments-target" data-testid="pending-anchor">
-          {pendingAnchor ? (
-            <>
-              <span>
-                {t('docs.comment.targetAnchor')}: {anchorLabel(pendingAnchor)}
-              </span>
-              <button type="button" className="octo-tb-btn octo-html-doc-comments-clear" onClick={onClearPendingAnchor}>
-                {t('docs.comment.clearAnchor')}
-              </button>
-            </>
-          ) : (
-            <span>{t('docs.comment.targetDoc')}</span>
-          )}
+      {/* Composer (commenter+): reader is strictly read-only — the list above is enough, and the
+          textarea / send / selection-target block is hidden entirely. */}
+      {mayComment ? (
+        <div className="octo-html-doc-comments-compose">
+          <div className="octo-html-doc-comments-target" data-testid="pending-anchor">
+            {pendingAnchor ? (
+              <>
+                <span>
+                  {t('docs.comment.targetAnchor')}: {anchorLabel(pendingAnchor)}
+                </span>
+                <button type="button" className="octo-tb-btn octo-html-doc-comments-clear" onClick={onClearPendingAnchor}>
+                  {t('docs.comment.clearAnchor')}
+                </button>
+              </>
+            ) : (
+              <span>{t('docs.comment.targetDoc')}</span>
+            )}
+          </div>
+          <textarea
+            className="octo-comment-input"
+            value={draft}
+            placeholder={t('docs.comment.placeholder')}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button type="button" className="octo-doc-primary-btn" disabled={busy || draft.trim() === ''} onClick={submit}>
+            {t('docs.comment.send')}
+          </button>
         </div>
-        <textarea
-          className="octo-comment-input"
-          value={draft}
-          placeholder={t('docs.comment.placeholder')}
-          onChange={(e) => setDraft(e.target.value)}
-        />
-        <button type="button" className="octo-doc-primary-btn" disabled={busy || draft.trim() === ''} onClick={submit}>
-          {t('docs.comment.send')}
-        </button>
-      </div>
+      ) : (
+        <p className="octo-html-doc-comments-readonly" role="note">
+          {t('docs.comment.readOnlyHint')}
+        </p>
+      )}
     </aside>
   )
 }

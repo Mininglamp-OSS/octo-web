@@ -4,6 +4,7 @@ import { IconClose, IconLink } from '@douyinfe/semi-icons';
 import { listSummaries } from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
 import { I18nContext, type I18nCtx } from '@octo/base';
+import { summaryTestIds } from '../utils/testIds';
 import './SummaryReferencePicker.css';
 
 /**
@@ -117,6 +118,7 @@ export default class SummaryReferencePicker extends Component<
                 className="summary-reference-picker-modal"
             >
                 <Input
+                    data-testid={summaryTestIds.agentRefSearchInput}
                     prefix={<IconLink />}
                     value={keyword}
                     onChange={this.handleKeywordChange}

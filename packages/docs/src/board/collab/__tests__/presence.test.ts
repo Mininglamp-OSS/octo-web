@@ -13,6 +13,7 @@ import { Awareness, encodeAwarenessUpdate, applyAwarenessUpdate } from 'y-protoc
 import {
   setLocalPresenceUser,
   publishLocalPointer,
+  publishLocalSelection,
   clearLocalPointer,
   readBoardCollaborators,
   presenceDelta,
@@ -35,7 +36,8 @@ describe('board presence cross-peer sync (XIN-111 / case8)', () => {
 
     // Both peers publish identity + a live pointer (what BoardShell does on mount + onPointerUpdate).
     setLocalPresenceUser(a, { id: 'wbtest_a', name: 'Alice' })
-    publishLocalPointer(a, { x: 120, y: 80 }, 'down', ['el-1'])
+    publishLocalPointer(a, { x: 120, y: 80 }, 'down')
+    publishLocalSelection(a, ['el-1'])
     setLocalPresenceUser(b, { id: 'wbtest_b', name: 'Bob' })
     publishLocalPointer(b, { x: 300, y: 220 }, 'up')
 
@@ -64,6 +66,31 @@ describe('board presence cross-peer sync (XIN-111 / case8)', () => {
     expect(aAsSeenByB?.pointer).toEqual({ x: 120, y: 80 })
     expect(aAsSeenByB?.button).toBe('down')
     expect(aAsSeenByB?.selectedElementIds).toEqual({ 'el-1': true })
+  })
+
+  it('updates and clears selection without requiring another pointer movement', () => {
+    const a = new Awareness(new Y.Doc())
+    const b = new Awareness(new Y.Doc())
+    setLocalPresenceUser(a, { id: 'wbtest_a', name: 'Alice' })
+    publishLocalPointer(a, { x: 120, y: 80 }, 'up')
+    publishLocalSelection(a, ['shape-a'])
+    sync(a, b)
+
+    let seen = readBoardCollaborators(b).get(String(a.clientID))
+    expect(seen?.pointer).toEqual({ x: 120, y: 80 })
+    expect(seen?.selectedElementIds).toEqual({ 'shape-a': true })
+
+    publishLocalSelection(a, ['shape-b', 'shape-c'])
+    sync(a, b)
+    seen = readBoardCollaborators(b).get(String(a.clientID))
+    expect(seen?.pointer).toEqual({ x: 120, y: 80 })
+    expect(seen?.selectedElementIds).toEqual({ 'shape-b': true, 'shape-c': true })
+
+    publishLocalSelection(a, [])
+    sync(a, b)
+    seen = readBoardCollaborators(b).get(String(a.clientID))
+    expect(seen?.pointer).toEqual({ x: 120, y: 80 })
+    expect(seen?.selectedElementIds).toEqual({})
   })
 
   it('a peer with only identity (no pointer yet) still shows as online', () => {
@@ -98,6 +125,40 @@ describe('board presence cross-peer sync (XIN-111 / case8)', () => {
     const seen = readBoardCollaborators(b).get(String(a.clientID))
     expect(seen?.pointer).toBeUndefined() // cursor gone
     expect(seen?.username).toBe('Alice') // still online
+  })
+
+  it('deduplicates by viewer-observed connection order, independent of remote clocks', () => {
+    const viewer = new Awareness(new Y.Doc())
+    const oldPeer = new Awareness(new Y.Doc())
+    const newPeer = new Awareness(new Y.Doc())
+    setLocalPresenceUser(oldPeer, { id: 'same-user', name: 'Ada' })
+    publishLocalPointer(oldPeer, { x: 10, y: 20 })
+    // Extreme clock skew: the old device claims a future timestamp while the actual newer socket
+    // claims an old one. These untrusted fields must not affect the viewer's choice.
+    oldPeer.setLocalStateField('presenceSessionStartedAt', 9_999_999_999_999)
+    setLocalPresenceUser(newPeer, { id: 'same-user', name: 'Ada' })
+    newPeer.setLocalStateField('presenceSessionStartedAt', 1)
+
+    sync(oldPeer, viewer)
+    expect(readBoardCollaborators(viewer).has(String(oldPeer.clientID))).toBe(true)
+    sync(newPeer, viewer)
+
+    let seen = readBoardCollaborators(viewer)
+    expect(seen).toHaveLength(1)
+    expect(seen.has(String(oldPeer.clientID))).toBe(false)
+    expect(seen.get(String(newPeer.clientID))?.pointer).toBeUndefined()
+
+    // A later pointer update from the older socket must not promote it back above the newer one.
+    publishLocalPointer(oldPeer, { x: 90, y: 90 })
+    sync(oldPeer, viewer)
+    seen = readBoardCollaborators(viewer)
+    expect(seen.has(String(oldPeer.clientID))).toBe(false)
+    expect(seen.has(String(newPeer.clientID))).toBe(true)
+
+    publishLocalPointer(newPeer, { x: 30, y: 40 })
+    sync(newPeer, viewer)
+    seen = readBoardCollaborators(viewer)
+    expect(seen.get(String(newPeer.clientID))?.pointer).toEqual({ x: 30, y: 40 })
   })
 })
 

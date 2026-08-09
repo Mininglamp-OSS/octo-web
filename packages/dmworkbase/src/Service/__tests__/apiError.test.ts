@@ -20,7 +20,7 @@ describe("normalizeApiError", () => {
       raw,
       data: {
         error: {
-          code: "err.matter.title_required",
+          code: "err.task.title_required",
           message: "标题不能为空",
           details: { field: "title" },
           http_status: 422,
@@ -31,7 +31,7 @@ describe("normalizeApiError", () => {
     });
 
     expect(normalized).toEqual({
-      code: "err.matter.title_required",
+      code: "err.task.title_required",
       httpStatus: 422,
       message: "标题不能为空",
       backendMessage: "标题不能为空",

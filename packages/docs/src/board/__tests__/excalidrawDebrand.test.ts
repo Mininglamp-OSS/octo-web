@@ -352,4 +352,5 @@ describe('installExcalidrawDebrand', () => {
     expect(document.querySelector<HTMLElement>('.UserList__wrapper')?.style.display).toBe('none')
     dispose()
   })
+
 })

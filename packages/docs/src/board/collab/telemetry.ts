@@ -21,6 +21,8 @@ export interface BindingTelemetry {
   localWrites: number
   /** Remote Y.Doc updates applied to the canvas via updateScene. */
   remoteApplies: number
+  /** Remote appState updates applied to the canvas. */
+  remoteAppStateApplies: number
   /** Elements pushed into a remote updateScene. */
   remoteElements: number
   /** Writes skipped because the local diff was empty (guard 2). */
@@ -69,11 +71,19 @@ export interface BindingTelemetry {
   fileFetchErrors: number
 }
 
+export const DEFAULT_BINDING_TELEMETRY: Readonly<BindingTelemetry> = Object.freeze({
+    localChanges: 0, localWrites: 0, remoteApplies: 0, remoteAppStateApplies: 0, remoteElements: 0,
+    skippedEmptyDiff: 0, skippedApplyingRemote: 0, skippedOwnOrigin: 0, casRejected: 0,
+    skippedEmptyApply: 0, skippedReinitDrop: 0, reinitRepaints: 0, remoteApplyErrors: 0,
+    casResynced: 0, fileUploads: 0, fileUploadErrors: 0, fileRehydrates: 0, fileFetchErrors: 0,
+})
+
 export function emptyTelemetry(): BindingTelemetry {
   return {
     localChanges: 0,
     localWrites: 0,
     remoteApplies: 0,
+    remoteAppStateApplies: 0,
     remoteElements: 0,
     skippedEmptyDiff: 0,
     skippedApplyingRemote: 0,

@@ -90,14 +90,18 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
   }
 
   /**
-   * 决定预览区显内容还是占位：有权限(reader/writer)+取数就绪+有内容 → 显首屏预览；
+   * 决定预览区显内容还是占位：实时 ACL 确认可访问且有内容 → 显首屏预览；
    * 否则给占位（无权限→申请引导 / 失效 / 检查中 / 空文档），与 octo 原型一致，ACL-safe。
    */
   private buildPreviewOrPlaceholder(
     state: DocSharePermissionState,
   ): { preview?: DocSharePreview; placeholder?: DocSharePlaceholder } {
     const { t } = this.context;
-    if ((state === "reader" || state === "writer") && this.state.status === "ready" && this.state.preview) {
+    if (
+      (state === "reader" || state === "commenter" || state === "writer") &&
+      this.state.status === "ready" &&
+      this.state.preview
+    ) {
       return { preview: this.state.preview };
     }
     if (state === "no_access") {

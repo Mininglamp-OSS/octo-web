@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceBotNames, fetchMyBots } from './index.ts'
+import { setWKApp, getSpaceMembers, fetchAllSpaceMembers, fetchSpaceBotNames, fetchSpaceBotSnapshots, fetchMyBots, fetchMyOwnedBots } from './index.ts'
 import { createMockWKApp } from './mock.ts'
 
 // Seam spike acceptance (#7): prove the docs package can reach the host's space-member source
@@ -94,14 +94,98 @@ describe('octoweb fetchSpaceBotNames seam', () => {
     expect(bots).toEqual([{ uid: 'bot1', name: 'bot1' }])
   })
 
-  it('returns an empty list for a non-array body', async () => {
+  it('degrades a malformed non-array 200 to an empty list (cosmetic name backfill)', async () => {
     wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
     expect(await fetchSpaceBotNames('s_1')).toEqual([])
+  })
+
+  // Only the shape-degraded body is swallowed: a genuine request failure must still reject so
+  // callers keep deciding for themselves (they wrap it) instead of reading a silent empty list.
+  it('still rejects on a genuine request failure', async () => {
+    wk.apiClient.responder = () => {
+      throw new Error('boom')
+    }
+    await expect(fetchSpaceBotNames('s_1')).rejects.toThrow('boom')
   })
 
   it('returns an empty list for a blank space id without touching the host', async () => {
     expect(await fetchSpaceBotNames('')).toEqual([])
     expect(wk.apiClient.calls).toHaveLength(0)
+  })
+})
+
+// The grant snapshot picker needs the RICH bot shape (isBot + creatorUid) without changing the
+// name-only fetchSpaceBotNames contract above.
+describe('octoweb fetchSpaceBotSnapshots seam', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  it('maps {uid, name, isBot, creatorUid?} and reads the same space_bots request once', async () => {
+    wk.apiClient.responder = (_m, url) =>
+      url.startsWith('/robot/space_bots')
+        ? {
+            data: [
+              { uid: 'b_1', name: 'Writer', creator_uid: 'u_ada' },
+              { uid: 'b_2', name: 'Nameless creator' },
+            ],
+            status: 200,
+          }
+        : { data: {}, status: 200 }
+    const bots = await fetchSpaceBotSnapshots('s_1')
+    expect(bots).toEqual([
+      { uid: 'b_1', name: 'Writer', isBot: true, creatorUid: 'u_ada' },
+      { uid: 'b_2', name: 'Nameless creator', isBot: true },
+    ])
+    const calls = wk.apiClient.calls.filter((c) => c.url.startsWith('/robot/space_bots'))
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('/robot/space_bots?space_id=s_1')
+  })
+
+  it('does NOT alter the name-only fetchSpaceBotNames contract', async () => {
+    wk.apiClient.responder = () => ({
+      data: [{ uid: 'b_1', name: 'Writer', creator_uid: 'u_ada' }],
+      status: 200,
+    })
+    // Same source, but the name-only accessor still returns bare { uid, name } pairs.
+    expect(await fetchSpaceBotNames('s_1')).toEqual([{ uid: 'b_1', name: 'Writer' }])
+  })
+
+  it('falls back to the uid and skips entries without a uid', async () => {
+    wk.apiClient.responder = () => ({
+      data: [{ uid: 'b_1', name: '', creator_uid: 'u_ada' }, { name: 'ghost' }],
+      status: 200,
+    })
+    expect(await fetchSpaceBotSnapshots('s_1')).toEqual([
+      { uid: 'b_1', name: 'b_1', isBot: true, creatorUid: 'u_ada' },
+    ])
+  })
+
+  it('returns an empty list for a blank space id without touching the host', async () => {
+    expect(await fetchSpaceBotSnapshots('')).toEqual([])
+    expect(wk.apiClient.calls).toHaveLength(0)
+  })
+
+  // Grant-critical: a malformed 200 must stay an UNKNOWN Bot set, never read as zero Bots, so a
+  // caller that defaults to carrying Bots blocks + retries instead of silently submitting none.
+  it('rejects on a malformed non-array 200 instead of reading as zero Bots', async () => {
+    wk.apiClient.responder = () => ({ data: { items: [] }, status: 200 })
+    await expect(fetchSpaceBotSnapshots('s_1')).rejects.toThrow(/malformed non-array/)
+  })
+
+  // A numeric uid must not satisfy the row predicate: it would land in a string-typed field and go
+  // out in the POST body as a JSON number.
+  it('drops rows whose uid is not a string', async () => {
+    wk.apiClient.responder = () => ({
+      data: [{ uid: 7, name: 'Numeric' }, { uid: 'b_ok', name: 'Real' }],
+      status: 200,
+    })
+    expect(await fetchSpaceBotSnapshots('s_1')).toEqual([
+      { uid: 'b_ok', name: 'Real', isBot: true },
+    ])
   })
 })
 
@@ -121,6 +205,8 @@ describe('octoweb fetchMyBots seam', () => {
         ? { data: [{ uid: 'bot_friend', name: "Someone's Bot" }, { uid: 'bot_mine', name: 'My Bot' }], status: 200 }
         : { data: {}, status: 200 }
     const bots = await fetchMyBots('s_1')
+    // No `safeStandalone`: friendship is not a grant-trust provenance, so a friend Bot owned by
+    // someone else can never become an independently grantable standalone candidate.
     expect(bots).toEqual([
       { uid: 'bot_friend', name: "Someone's Bot", isBot: true },
       { uid: 'bot_mine', name: 'My Bot', isBot: true },
@@ -147,5 +233,52 @@ describe('octoweb fetchMyBots seam', () => {
   it('returns an empty list for a non-array body', async () => {
     wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
     expect(await fetchMyBots('s_1')).toEqual([])
+  })
+})
+
+// Boss ownership decision: the doc-grant picker sources standalone "My Bots" from the OWNER-scoped
+// GET /robot/owned_bots, stamping each with isBot + safeStandalone + creatorUid=currentUid so a
+// bot the current user created is grantable + attributable, and a merely befriended bot never rides
+// this seam.
+describe('octoweb fetchMyOwnedBots seam (owner-scoped picker provenance)', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  it('reads /robot/owned_bots and stamps isBot + safeStandalone + creatorUid=currentUid', async () => {
+    wk.apiClient.responder = (_m, url) =>
+      url.startsWith('/robot/owned_bots')
+        ? { data: [{ uid: 'b_mine', name: 'My Bot' }, { uid: 'b_2', name: '' }], status: 200 }
+        : { data: {}, status: 200 }
+    const bots = await fetchMyOwnedBots('s_1')
+    expect(bots).toEqual([
+      { uid: 'b_mine', name: 'My Bot', isBot: true, safeStandalone: true, creatorUid: 'u_self' },
+      { uid: 'b_2', name: 'b_2', isBot: true, safeStandalone: true, creatorUid: 'u_self' },
+    ])
+    const calls = wk.apiClient.calls.filter((c) => c.url.startsWith('/robot/owned_bots'))
+    expect(calls).toHaveLength(1)
+    expect(calls[0].url).toBe('/robot/owned_bots?space_id=s_1')
+    // It must NOT touch the friend-dimension endpoint.
+    expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/my_bots'))).toBe(false)
+  })
+
+  // Grant-critical: an owned-Bot set from a malformed 200 stays UNKNOWN (rejects) so a caller that
+  // defaults to carrying owned Bots blocks instead of silently reading zero.
+  it('rejects on a malformed non-array 200 and skips the request for a blank space id', async () => {
+    wk.apiClient.responder = () => ({ data: { nope: true }, status: 200 })
+    await expect(fetchMyOwnedBots('s_1')).rejects.toThrow(/malformed non-array/)
+    expect(await fetchMyOwnedBots('')).toEqual([])
+  })
+
+  // One shape further in: an array whose rows all fail validation (wrong key, numeric uid) is also a
+  // broken payload, not "this user owns nothing" — reading it as zero is the same fail-open.
+  it('rejects when every row fails uid validation, but not when the list is genuinely empty', async () => {
+    wk.apiClient.responder = () => ({ data: [{ id: 'b_1' }, { uid: 7 }], status: 200 })
+    await expect(fetchMyOwnedBots('s_1')).rejects.toThrow(/malformed/)
+    wk.apiClient.responder = () => ({ data: [], status: 200 })
+    expect(await fetchMyOwnedBots('s_1')).toEqual([])
   })
 })

@@ -1,8 +1,8 @@
 # <CaseId> <Short Name>
 
 <!-- 复制此模板起草新 case-spec:
-     cp e2e/case-specs/TEMPLATE.md e2e/case-specs/C7-my-feature.md
-     然后按 7 段填. 不写 spec 版本/commit hash, 修改历史用 e2e/_lib/spec-history.sh <CaseId> 查. -->
+     cp e2e-kit/case-specs/TEMPLATE.md e2e-kit/case-specs/C7-my-feature.md
+     然后按 7 段填. 不写 spec 版本/commit hash, 修改历史用 e2e-kit/_lib/spec-history.sh <CaseId> 查. -->
 
 ## Metadata
 
@@ -10,8 +10,8 @@
 - 目标模式: real-page seed | harness route
 - 登录状态: authed fixture | anonymous | 其它
 - 优先级: P0 (阻断) | P1 (回归守护) | P2 (nice-to-have)
-- Tag: `@<CaseId> @<p0|p1|p2> @<module> [@<submodule>] [@<consumer>]`
-  (例 `@S1 @p0 @summary @summary-create`; kit `.gitlab-ci.yml.template` 走 `--grep "@p0|@visual"` 命中门禁)
+- Tags: `@<CaseId> @<p0|p1|p2> @<module> [@<submodule>] [@<consumer>]`
+  (例 `@S1 @p0 @summary @summary-create`; kit `.gitlab-ci.yml.template` 走 `--grep "@p0|@visual"` 命中门禁. CaseId 前缀只是项目自定义 ID, 模块筛选靠 `@<module>` tag)
 
 ## 目标
 
@@ -21,7 +21,7 @@
 
 - fixture: `fixtures-authed` (E2E_TARGET=local, mock 默认装)
 - 需要覆盖的 baseline handler (auth guard 依赖的, 不装踢登录页): 通常 kit `_baseline/` 已装, 有额外需要在此列
-- Per-case MSW handler: `e2e/msw-handlers/<CaseId>-<name>.ts`
+- Per-case MSW handler: `e2e-kit/msw-handlers/<caseId-lowercase>-<name>.ts`
   - `GET/POST /path/to/endpoint` — 返回什么数据 / cursor 分页规则 / 边界返回
   - 用**实际**后端 shape (从 src/ grep 出的字段名, 别猜)
 - (可选) mock-im-runtime seed (`installMockImRuntime`):
@@ -59,9 +59,9 @@
 
 ## 视觉基准
 
-<默认: "不建 pixel baseline; 用 getByRole/getByText 断言结构". 只有强视觉断言 (theme / layout / illustration) 才建 baseline, 用 toHaveScreenshot() + 记录 baseline 路径.>
+<默认: "不建 pixel baseline; 用 getByRole/getByText 断言结构". 只有强视觉断言 (theme / layout / illustration) 才建 baseline。fork PR 暂不提交本地生成 PNG；需要 same-repo/CI baseline workflow 生成 canonical baseline 后再启用 @visual。>
 
-不建 pixel baseline; 用 `getByRole('article')` + `getByText` 断言结构.
+不建 pixel baseline; 用 `getByRole` + `getByText` 断言结构。若必须建 baseline, 记录 CI baseline workflow/路径。
 
 ## 摸清依据
 

@@ -4,6 +4,7 @@ import { ProviderListener } from "../../Service/Provider";
 
 export interface BotDetailState {
   loading: boolean;
+  channelInfo?: BotDetailChannelInfo;
   name: string;
   remark: string;
   username: string;
@@ -31,7 +32,10 @@ export interface BotDetailState {
 }
 
 export interface BotDetailChannelInfo {
+  channel?: { channelID?: string; channelType?: number };
   title?: string;
+  online?: boolean;
+  lastOffline?: number;
   orgData?: {
     remark?: string;
     bot_description?: string;
@@ -57,6 +61,7 @@ export type BotDetailActionResult = "ok" | "stale" | "failed";
 export function createInitialBotDetailState(): BotDetailState {
   return {
     loading: true,
+    channelInfo: undefined,
     name: "",
     remark: "",
     username: "",
@@ -142,6 +147,22 @@ export default class BotDetailVM extends ProviderListener {
     return !!creatorUid && !!loginUid && creatorUid === loginUid;
   }
 
+  updateChannelInfo(channelInfo: BotDetailChannelInfo | undefined) {
+    if (!channelInfo) return;
+    this.patchState({ channelInfo });
+  }
+
+  async loadChannelInfo(uid = this.uid, gen = this.generation) {
+    if (!uid) return;
+    try {
+      const channelInfo = await this.runtime.fetchChannelInfo(uid);
+      if (this.isStale(uid, gen)) return;
+      this.updateChannelInfo(channelInfo);
+    } catch {
+      // 在线态获取失败不阻塞资料详情，按 PRD 保持不展示状态行。
+    }
+  }
+
   resetTransientState() {
     this.patchState({
       avatarCropFile: null,
@@ -194,6 +215,7 @@ export default class BotDetailVM extends ProviderListener {
         isFriend: data.follow === 1,
         editingDescription: false,
       });
+      void this.loadChannelInfo(requestedUid, gen);
       if (this.isOwner()) {
         void this.loadReportStatus();
       }
@@ -394,6 +416,7 @@ export default class BotDetailVM extends ProviderListener {
       if (this.isStale(requestedUid, gen)) return;
       this.patchState({
         loading: false,
+        channelInfo,
         name: channelInfo?.title || requestedUid,
         remark: channelInfo?.orgData?.remark || "",
         username: requestedUid,

@@ -1,0 +1,75 @@
+/* Shared full-screen chrome for the drive share/invite landing pages. */
+
+.drive-landing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 24px;
+  box-sizing: border-box;
+  background: var(--wk-bg-base, #f5f6f7);
+}
+
+.drive-landing__card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--wk-bg-elevated, #fff);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+  padding: 32px 28px;
+}
+
+.drive-landing__center,
+.drive-landing__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.drive-landing__icon {
+  color: var(--wk-brand-primary, #7c5cfc);
+}
+
+.drive-landing__icon--warn {
+  color: var(--semi-color-warning, #fc8800);
+}
+
+.drive-landing__icon--ok {
+  color: var(--semi-color-success, #00b42a);
+}
+
+.drive-landing__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.drive-landing__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.drive-landing__muted {
+  margin: 0;
+  color: var(--wk-text-secondary, #86909c);
+  font-size: 13px;
+}
+
+.drive-landing__err {
+  margin: 0;
+  color: var(--semi-color-danger, #f53f3f);
+  font-size: 13px;
+}
+
+/* Semi <Input> and full-width buttons should span the card. */
+.drive-landing__body > * {
+  width: 100%;
+}

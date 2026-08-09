@@ -37,6 +37,19 @@ describe('useDocDelete (Problem 4 — delete contract, relocated)', () => {
     expect(result.current.error).toBeNull()
   })
 
+  it('passes an explicit spaceId to the delete request', async () => {
+    wk.apiClient.responder = () => ({ data: {}, status: 200 })
+    const { result } = renderHook(() =>
+      useDocDelete('d_1', undefined, { spaceId: 'space-doc' }),
+    )
+    await act(async () => {
+      await result.current.confirm()
+    })
+    const call = wk.apiClient.calls.at(-1)!
+    expect(call.method).toBe('delete')
+    expect(call.config?.headers?.['X-Space-Id']).toBe('space-doc')
+  })
+
   it('treats a 404 as already-gone (success, no error)', async () => {
     wk.apiClient.responder = () => {
       throw { response: { status: 404 } }
@@ -50,9 +63,13 @@ describe('useDocDelete (Problem 4 — delete contract, relocated)', () => {
     expect(result.current.error).toBeNull()
   })
 
-  it('surfaces the forbidden error on 403 and keeps the doc', async () => {
+  it.each([
+    [403, 'docs.doc.deleteForbidden'],
+    [409, 'docs.doc.deleteArchived'],
+    [500, 'docs.doc.deleteFailed'],
+  ])('surfaces the shared error on %i and keeps the doc', async (status, errorKey) => {
     wk.apiClient.responder = () => {
-      throw { response: { status: 403 } }
+      throw { response: { status } }
     }
     const onDeleted = vi.fn()
     const { result } = renderHook(() => useDocDelete('d_1', onDeleted))
@@ -60,17 +77,6 @@ describe('useDocDelete (Problem 4 — delete contract, relocated)', () => {
       await result.current.confirm()
     })
     expect(onDeleted).not.toHaveBeenCalled()
-    await waitFor(() => expect(result.current.error).toBe('docs.doc.deleteForbidden'))
-  })
-
-  it('surfaces the archived error on 409', async () => {
-    wk.apiClient.responder = () => {
-      throw { response: { status: 409 } }
-    }
-    const { result } = renderHook(() => useDocDelete('d_1'))
-    await act(async () => {
-      await result.current.confirm()
-    })
-    expect(result.current.error).toBe('docs.doc.deleteArchived')
+    await waitFor(() => expect(result.current.error).toBe(errorKey))
   })
 })

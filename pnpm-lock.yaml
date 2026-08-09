@@ -11,6 +11,11 @@ overrides:
   nanoid: ^3.3.11
   react-error-overlay: 6.0.9
 
+patchedDependencies:
+  '@excalidraw/excalidraw@0.18.1':
+    hash: eaa700535211a70fdc31564a90b584fd61323c3477f6d454ad12b53c7c122e24
+    path: patches/@excalidraw__excalidraw@0.18.1.patch
+
 importers:
 
   .:
@@ -188,18 +193,12 @@ importers:
       '@octo/docs':
         specifier: workspace:*
         version: link:../../packages/docs
+      '@octo/drive':
+        specifier: workspace:*
+        version: link:../../packages/dmworkdrive
       '@octo/login':
         specifier: workspace:*
         version: link:../../packages/dmworklogin
-      '@octo/loop':
-        specifier: workspace:*
-        version: link:../../packages/dmloop
-      '@octo/personal':
-        specifier: workspace:*
-        version: link:../../packages/dmpersonal
-      '@octo/todo':
-        specifier: workspace:*
-        version: link:../../packages/dmworktodo
       '@react-pdf-viewer/core':
         specifier: ^3.12.0
         version: 3.12.0(pdfjs-dist@3.11.174(encoding@0.1.13))(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -309,6 +308,9 @@ importers:
       concurrently:
         specifier: ^8.2.2
         version: 8.2.2
+      cross-env:
+        specifier: ^7.0.3
+        version: 7.0.3
       electron:
         specifier: 26.0.0
         version: 26.0.0
@@ -351,92 +353,9 @@ importers:
       vite-tsconfig-paths:
         specifier: ^6.1.1
         version: 6.1.1(typescript@5.9.3)(vite@8.0.7(@types/node@20.19.39)(esbuild@0.27.7)(jiti@2.6.1))
-
-  packages/dmloop:
-    dependencies:
-      '@douyinfe/semi-icons':
-        specifier: ^2.93.0
-        version: 2.93.0(react@17.0.2)
-      '@douyinfe/semi-ui':
-        specifier: ^2.93.0
-        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@emoji-mart/data':
-        specifier: ^1.2.1
-        version: 1.2.1
-      '@octo/base':
-        specifier: workspace:*
-        version: link:../dmworkbase
-      '@tiptap/core':
-        specifier: 3.22.2
-        version: 3.22.2(@tiptap/pm@3.22.2)
-      '@tiptap/extension-mention':
-        specifier: ^3.22.2
-        version: 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
-      '@tiptap/extension-placeholder':
-        specifier: ^3.22.4
-        version: 3.22.4(@tiptap/extensions@3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
-      '@tiptap/pm':
-        specifier: ^3.22.2
-        version: 3.22.2
-      '@tiptap/react':
-        specifier: ^3.22.2
-        version: 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@tiptap/starter-kit':
-        specifier: ^3.22.2
-        version: 3.22.2
-      '@tiptap/suggestion':
-        specifier: 3.22.2
-        version: 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
-      axios:
-        specifier: ^1.18.1
-        version: 1.18.1
-      emoji-mart:
-        specifier: ^5.6.0
-        version: 5.6.0
-      lucide-react:
-        specifier: ^0.577.0
-        version: 0.577.0(react@17.0.2)
-      react-markdown:
-        specifier: '8'
-        version: 8.0.7(@types/react@18.3.28)(react@17.0.2)
-      remark-gfm:
-        specifier: '3'
-        version: 3.0.1
-    devDependencies:
-      '@types/react':
-        specifier: ^18.3.28
-        version: 18.3.28
-      react:
-        specifier: ^17.0.2
-        version: 17.0.2
-      react-dom:
-        specifier: ^17.0.2
-        version: 17.0.2(react@17.0.2)
-      vitest:
-        specifier: ^4.1.5
-        version: 4.1.5(@types/node@25.9.5)(@vitest/browser-playwright@4.1.5)(jsdom@29.0.2(@noble/hashes@2.2.0))(msw@2.15.0(@types/node@25.9.5)(typescript@5.9.3))(vite@8.0.7(@types/node@25.9.5)(esbuild@0.27.7)(jiti@2.6.1))
-
-  packages/dmpersonal:
-    dependencies:
-      '@octo/base':
-        specifier: workspace:*
-        version: link:../dmworkbase
-      '@octo/loop':
-        specifier: workspace:*
-        version: link:../dmloop
-      lucide-react:
-        specifier: ^0.577.0
-        version: 0.577.0(react@17.0.2)
-    devDependencies:
-      '@types/react':
-        specifier: ^18.3.28
-        version: 18.3.28
-      react:
-        specifier: ^17.0.2
-        version: 17.0.2
-      react-dom:
-        specifier: ^17.0.2
-        version: 17.0.2(react@17.0.2)
+      wait-on:
+        specifier: ^8.0.3
+        version: 8.0.5
 
   packages/dmworkappbot:
     dependencies:
@@ -481,8 +400,8 @@ importers:
         specifier: ^1.5.5
         version: 1.7.1
       '@mlt-org/octo-card-profile-octo-chat':
-        specifier: 1.2.0-rc.1
-        version: 1.2.0-rc.1
+        specifier: 1.2.0-rc.2
+        version: 1.2.0-rc.2
       '@react-pdf-viewer/bookmark':
         specifier: ^3.12.0
         version: 3.12.0(pdfjs-dist@3.11.174(encoding@0.1.13))(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
@@ -655,6 +574,9 @@ importers:
       '@types/react-avatar-editor':
         specifier: ^13.0.0
         version: 13.0.4
+      fake-indexeddb:
+        specifier: 6.0.0
+        version: 6.0.0
       react-dom:
         specifier: ^17.0.2
         version: 17.0.2(react@17.0.2)
@@ -669,7 +591,7 @@ importers:
         version: 2.93.0
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
-        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
@@ -708,6 +630,34 @@ importers:
         specifier: ^1.3.5
         version: 1.3.5
 
+  packages/dmworkdrive:
+    dependencies:
+      '@douyinfe/semi-icons':
+        specifier: ^2.93.0
+        version: 2.93.0(react@17.0.2)
+      '@douyinfe/semi-ui':
+        specifier: ^2.93.0
+        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
+      axios:
+        specifier: ^1.18.1
+        version: 1.18.1
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@17.0.2)
+    devDependencies:
+      '@types/react':
+        specifier: ^18.3.28
+        version: 18.3.28
+      react:
+        specifier: ^17.0.2
+        version: 17.0.2
+      react-dom:
+        specifier: ^17.0.2
+        version: 17.0.2(react@17.0.2)
+
   packages/dmworklogin:
     dependencies:
       '@douyinfe/semi-icons':
@@ -715,7 +665,7 @@ importers:
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
-        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
@@ -758,7 +708,7 @@ importers:
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
-        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
@@ -838,7 +788,7 @@ importers:
         version: 2.93.0(react@17.0.2)
       '@douyinfe/semi-ui':
         specifier: ^2.93.0
-        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+        version: 2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
@@ -886,42 +836,11 @@ importers:
         specifier: ^17.0.2
         version: 17.0.2(react@17.0.2)
 
-  packages/dmworktodo:
-    dependencies:
-      '@douyinfe/semi-icons':
-        specifier: ^2.93.0
-        version: 2.93.0(react@17.0.2)
-      '@douyinfe/semi-ui':
-        specifier: ^2.93.0
-        version: 2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@octo/base':
-        specifier: workspace:*
-        version: link:../dmworkbase
-      axios:
-        specifier: ^0.25.0
-        version: 0.25.0
-      lucide-react:
-        specifier: ^0.577.0
-        version: 0.577.0(react@17.0.2)
-      wukongimjssdk:
-        specifier: ^1.2.11
-        version: 1.3.5
-    devDependencies:
-      '@types/react':
-        specifier: ^18.3.28
-        version: 18.3.28
-      react:
-        specifier: ^17.0.2
-        version: 17.0.2
-      react-dom:
-        specifier: ^17.0.2
-        version: 17.0.2(react@17.0.2)
-
   packages/docs:
     dependencies:
       '@excalidraw/excalidraw':
         specifier: 0.18.1
-        version: 0.18.1(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 0.18.1(patch_hash=eaa700535211a70fdc31564a90b584fd61323c3477f6d454ad12b53c7c122e24)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@hocuspocus/provider':
         specifier: 2.15.2
         version: 2.15.2(y-protocols@1.0.6(yjs@13.6.21))(yjs@13.6.21)
@@ -2075,9 +1994,6 @@ packages:
   '@emnapi/wasi-threads@1.2.0':
     resolution: {integrity: sha512-N10dEJNSsUx41Z6pZsXU8FjPjpBEplgH24sfkmITrBED1/U2Esum9F3lfLrMjKHHjmi557zQn7kR9R+XWXu5Rg==}
 
-  '@emoji-mart/data@1.2.1':
-    resolution: {integrity: sha512-no2pQMWiBy6gpBEiqGeU77/bFejDqUTRY7KX+0+iur13op3bqUsXdnwoZs6Xb1zbv0gAj5VvS1PWoUUckSr5Dw==}
-
   '@emotion/babel-plugin@11.13.5':
     resolution: {integrity: sha512-pxHCpT2ex+0q+HH91/zsdHkw/lXd468DIN2zvfvLtPKLLMo6gQj7oLObq8PhkrxOZb/gGCq03S3Z7PDhS8pduQ==}
 
@@ -2349,6 +2265,26 @@ packages:
     resolution: {integrity: sha512-wtF6h+DY6M3YaDBPAmvuuA6jV8Sif9MjtOI5euKFWRgCDl5PeDpPsHR9u2l6St5ceY8AZgoNDww5+HvEsXFsGg==}
     engines: {node: '>=6'}
     hasBin: true
+
+  '@hapi/address@5.1.1':
+    resolution: {integrity: sha512-A+po2d/dVoY7cYajycYI43ZbYMXukuopIsqCjh5QzsBCipDtdofHntljDlpccMjIfTy6UOkg+5KPriwYch2bXA==}
+    engines: {node: '>=14.0.0'}
+
+  '@hapi/formula@3.0.2':
+    resolution: {integrity: sha512-hY5YPNXzw1He7s0iqkRQi+uMGh383CGdyyIGYtB+W5N3KHPXoqychklvHhKCC9M3Xtv0OCs/IHw+r4dcHtBYWw==}
+
+  '@hapi/hoek@11.0.7':
+    resolution: {integrity: sha512-HV5undWkKzcB4RZUusqOpcgxOaq6VOAH7zhhIr2g3G8NF/MlFO75SjOr2NfuSx0Mh40+1FqCkagKLJRykUWoFQ==}
+
+  '@hapi/pinpoint@2.0.1':
+    resolution: {integrity: sha512-EKQmr16tM8s16vTT3cA5L0kZZcTMU5DUOZTuvpnY738m+jyP3JIUj+Mm1xc1rsLkGBQ/gVnfKYPwOmPg1tUR4Q==}
+
+  '@hapi/tlds@1.1.7':
+    resolution: {integrity: sha512-MgNjRwy9Ti92yVAixLmDc8dd1bJIKwO9qlWCfFQRwRmUEDPQHYn4G6hwPFvFGUTzAa0FsS+inMjLin7GnyBRhA==}
+    engines: {node: '>=14.0.0'}
+
+  '@hapi/topo@6.0.2':
+    resolution: {integrity: sha512-KR3rD5inZbGMrHmgPxsJ9dbi6zEK+C3ZwUwTa+eMwWLz7oijWUTWD2pMSNNYJAU6Qq+65NkxXjqHr/7LM2Xkqg==}
 
   '@hocuspocus/common@2.15.3':
     resolution: {integrity: sha512-Rzh1HF0a2o/tf90A3w2XNdXd9Ym3aQzMDfD3lAUONCX9B9QOdqdyiORrj6M25QEaJrEIbXFy8LtAFcL0wRdWzA==}
@@ -2651,8 +2587,8 @@ packages:
   '@mermaid-js/parser@1.2.0':
     resolution: {integrity: sha512-oYPyv8A4As1yH5Bx+04iQEQxXuIQDe0GKCNSRgao6z8AM9jixXIfP0vsppRLvGf+nKIOb9/LdpWA4YuJiVvESA==}
 
-  '@mlt-org/octo-card-profile-octo-chat@1.2.0-rc.1':
-    resolution: {integrity: sha512-rzaO97RpRgGStMKEVBOsxt1F2/v7MTQOZwN64vkPIgi37090ng125XNNfB9D9TD+pOF46I4OBmPo/rjrNcQl6A==}
+  '@mlt-org/octo-card-profile-octo-chat@1.2.0-rc.2':
+    resolution: {integrity: sha512-MZfEJOGuKj27kToreQBgk1tVvGtnMr01QaTqG7sesJJoPNd/7b6IQRqwG9ruwLi8O5bW2SrfOvH8jj24iC4Bcw==}
 
   '@mswjs/interceptors@0.41.9':
     resolution: {integrity: sha512-VVPPgHyQ6ShqnrmDWuxjmUIsO9gWyOZFmuOfLd9LfBGQJwZfy0gvv9pbHSJuoFNIYC7ZDX9aoFwowjcdSC4E8w==}
@@ -6294,9 +6230,6 @@ packages:
     engines: {node: '>= 12.20.55'}
     hasBin: true
 
-  emoji-mart@5.6.0:
-    resolution: {integrity: sha512-eJp3QRe79pjwa+duv+n7+5YsNhRcMl812EcFVwrnRvYKoNPoQb5qxU8DG6Bgwji0akHdp6D4Ln6tYLG58MFSow==}
-
   emoji-regex@10.6.0:
     resolution: {integrity: sha512-toUI84YS5YmxW219erniWD0CIVOo46xGKColeNQRgOzDorgBi1v4D71/OFzgD9GO2UGKIv1C3Sp8DAn0+j5w7A==}
 
@@ -7616,6 +7549,10 @@ packages:
   jiti@2.6.1:
     resolution: {integrity: sha512-ekilCSN1jwRvIbgeg/57YFh8qQDNbwDb9xT/qu2DAHbFFZUicIl4ygVaAvzveMhMVr3LnpSKTNnwt8PoOfmKhQ==}
     hasBin: true
+
+  joi@18.2.3:
+    resolution: {integrity: sha512-N5A3KTWQpPWT4ExxxPlUx7WmykGXRzhNidWhV41d6Abu9YfI2NyWCJuxdPnslJCPWtbRpSVOWSnSS6GakLM/Rg==}
+    engines: {node: '>= 20'}
 
   jotai-scope@0.7.2:
     resolution: {integrity: sha512-Gwed97f3dDObrO43++2lRcgOqw4O2sdr4JCjP/7eHK1oPACDJ7xKHGScpJX9XaflU+KBHXF+VhwECnzcaQiShg==}
@@ -10889,6 +10826,11 @@ packages:
     resolution: {integrity: sha512-o8qghlI8NZHU1lLPrpi2+Uq7abh4GGPpYANlalzWxyWteJOCsr/P+oPBA49TOLu5FTZO4d3F9MnWJfiMo4BkmA==}
     engines: {node: '>=18'}
 
+  wait-on@8.0.5:
+    resolution: {integrity: sha512-J3WlS0txVHkhLRb2FsmRg3dkMTCV1+M6Xra3Ho7HzZDHpE7DCOnoSoCJsZotrmW3uRMhvIJGSKUKrh/MeF4iag==}
+    engines: {node: '>=12.0.0'}
+    hasBin: true
+
   watchpack@2.4.4:
     resolution: {integrity: sha512-c5EGNOiyxxV5qmTtAB7rbiXxi1ooX1pQKMLX/MIabJjRA0SJBQOjKF+KSVfHkr9U1cADPon0mRiVe/riyaiDUA==}
     engines: {node: '>=10.13.0'}
@@ -12313,53 +12255,6 @@ snapshots:
 
   '@douyinfe/semi-theme-default@2.93.0': {}
 
-  '@douyinfe/semi-ui@2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
-    dependencies:
-      '@dnd-kit/core': 6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@dnd-kit/sortable': 7.0.2(@dnd-kit/core@6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2))(react@17.0.2)
-      '@dnd-kit/utilities': 3.2.2(react@17.0.2)
-      '@douyinfe/semi-animation': 2.93.0
-      '@douyinfe/semi-animation-react': 2.93.0
-      '@douyinfe/semi-foundation': 2.93.0
-      '@douyinfe/semi-icons': 2.93.0(react@17.0.2)
-      '@douyinfe/semi-illustrations': 2.93.0(react@17.0.2)
-      '@douyinfe/semi-theme-default': 2.93.0
-      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
-      '@tiptap/extension-document': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-hard-break': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-image': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-mention': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
-      '@tiptap/extension-paragraph': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-text': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-text-align': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extension-text-style': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
-      '@tiptap/extensions': 3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
-      '@tiptap/pm': 3.22.2
-      '@tiptap/react': 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      '@tiptap/starter-kit': 3.22.2
-      async-validator: 3.5.2
-      classnames: 2.5.1
-      copy-text-to-clipboard: 2.2.0
-      date-fns: 2.30.0
-      date-fns-tz: 1.3.8(date-fns@2.30.0)
-      fast-copy: 3.0.2
-      jsonc-parser: 3.3.1
-      lodash: 4.18.1
-      prop-types: 15.8.1
-      prosemirror-state: 1.4.4
-      react: 17.0.2
-      react-dom: 17.0.2(react@17.0.2)
-      react-resizable: 3.1.3(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      react-window: 1.8.11(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
-      scroll-into-view-if-needed: 2.2.31
-      utility-types: 3.11.0
-    transitivePeerDependencies:
-      - '@floating-ui/dom'
-      - '@tiptap/suggestion'
-      - '@types/react'
-      - '@types/react-dom'
-      - supports-color
-
   '@douyinfe/semi-ui@2.93.0(@floating-ui/dom@1.7.6)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
     dependencies:
       '@dnd-kit/core': 6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
@@ -12429,7 +12324,7 @@ snapshots:
       '@tiptap/extension-text-style': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
       '@tiptap/extensions': 3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
       '@tiptap/pm': 3.22.2
-      '@tiptap/react': 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@tiptap/react': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@tiptap/starter-kit': 3.22.2
       async-validator: 3.5.2
       classnames: 2.5.1
@@ -12445,6 +12340,100 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       react-resizable: 3.1.3(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       react-window: 1.8.11(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      scroll-into-view-if-needed: 2.2.31
+      utility-types: 3.11.0
+    transitivePeerDependencies:
+      - '@floating-ui/dom'
+      - '@tiptap/suggestion'
+      - '@types/react'
+      - '@types/react-dom'
+      - supports-color
+
+  '@douyinfe/semi-ui@2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+    dependencies:
+      '@dnd-kit/core': 6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@dnd-kit/sortable': 7.0.2(@dnd-kit/core@6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2))(react@17.0.2)
+      '@dnd-kit/utilities': 3.2.2(react@17.0.2)
+      '@douyinfe/semi-animation': 2.93.0
+      '@douyinfe/semi-animation-react': 2.93.0
+      '@douyinfe/semi-foundation': 2.93.0
+      '@douyinfe/semi-icons': 2.93.0(react@17.0.2)
+      '@douyinfe/semi-illustrations': 2.93.0(react@17.0.2)
+      '@douyinfe/semi-theme-default': 2.93.0
+      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
+      '@tiptap/extension-document': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-hard-break': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-image': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-mention': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
+      '@tiptap/extension-paragraph': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-text': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-text-align': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-text-style': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extensions': 3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
+      '@tiptap/pm': 3.22.2
+      '@tiptap/react': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@tiptap/starter-kit': 3.22.2
+      async-validator: 3.5.2
+      classnames: 2.5.1
+      copy-text-to-clipboard: 2.2.0
+      date-fns: 2.30.0
+      date-fns-tz: 1.3.8(date-fns@2.30.0)
+      fast-copy: 3.0.2
+      jsonc-parser: 3.3.1
+      lodash: 4.18.1
+      prop-types: 15.8.1
+      prosemirror-state: 1.4.4
+      react: 17.0.2
+      react-dom: 17.0.2(react@17.0.2)
+      react-resizable: 3.1.3(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      react-window: 1.8.11(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      scroll-into-view-if-needed: 2.2.31
+      utility-types: 3.11.0
+    transitivePeerDependencies:
+      - '@floating-ui/dom'
+      - '@tiptap/suggestion'
+      - '@types/react'
+      - '@types/react-dom'
+      - supports-color
+
+  '@douyinfe/semi-ui@2.93.0(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+    dependencies:
+      '@dnd-kit/core': 6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@dnd-kit/sortable': 7.0.2(@dnd-kit/core@6.3.1(react-dom@17.0.2(react@17.0.2))(react@17.0.2))(react@17.0.2)
+      '@dnd-kit/utilities': 3.2.2(react@17.0.2)
+      '@douyinfe/semi-animation': 2.93.0
+      '@douyinfe/semi-animation-react': 2.93.0
+      '@douyinfe/semi-foundation': 2.93.0
+      '@douyinfe/semi-icons': 2.93.0(react@17.0.2)
+      '@douyinfe/semi-illustrations': 2.93.0(react@17.0.2)
+      '@douyinfe/semi-theme-default': 2.93.0
+      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
+      '@tiptap/extension-document': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-hard-break': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-image': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-mention': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@tiptap/suggestion@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2))
+      '@tiptap/extension-paragraph': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-text': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-text-align': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extension-text-style': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))
+      '@tiptap/extensions': 3.22.4(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
+      '@tiptap/pm': 3.22.2
+      '@tiptap/react': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      '@tiptap/starter-kit': 3.22.2
+      async-validator: 3.5.2
+      classnames: 2.5.1
+      copy-text-to-clipboard: 2.2.0
+      date-fns: 2.30.0
+      date-fns-tz: 1.3.8(date-fns@2.30.0)
+      fast-copy: 3.0.2
+      jsonc-parser: 3.3.1
+      lodash: 4.18.1
+      prop-types: 15.8.1
+      prosemirror-state: 1.4.4
+      react: 17.0.2
+      react-dom: 17.0.2(react@17.0.2)
+      react-resizable: 3.1.3(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
+      react-window: 1.8.11(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
       scroll-into-view-if-needed: 2.2.31
       utility-types: 3.11.0
     transitivePeerDependencies:
@@ -12569,8 +12558,6 @@ snapshots:
     dependencies:
       tslib: 2.8.1
     optional: true
-
-  '@emoji-mart/data@1.2.1': {}
 
   '@emotion/babel-plugin@11.13.5':
     dependencies:
@@ -12735,7 +12722,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@excalidraw/excalidraw@0.18.1(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@excalidraw/excalidraw@0.18.1(patch_hash=eaa700535211a70fdc31564a90b584fd61323c3477f6d454ad12b53c7c122e24)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@braintree/sanitize-url': 6.0.2
       '@excalidraw/laser-pointer': 1.3.1
@@ -12841,6 +12828,22 @@ snapshots:
       long: 5.3.2
       protobufjs: 7.6.5
       yargs: 17.7.2
+
+  '@hapi/address@5.1.1':
+    dependencies:
+      '@hapi/hoek': 11.0.7
+
+  '@hapi/formula@3.0.2': {}
+
+  '@hapi/hoek@11.0.7': {}
+
+  '@hapi/pinpoint@2.0.1': {}
+
+  '@hapi/tlds@1.1.7': {}
+
+  '@hapi/topo@6.0.2':
+    dependencies:
+      '@hapi/hoek': 11.0.7
 
   '@hocuspocus/common@2.15.3':
     dependencies:
@@ -13190,7 +13193,7 @@ snapshots:
     dependencies:
       '@chevrotain/types': 11.1.2
 
-  '@mlt-org/octo-card-profile-octo-chat@1.2.0-rc.1': {}
+  '@mlt-org/octo-card-profile-octo-chat@1.2.0-rc.2': {}
 
   '@mswjs/interceptors@0.41.9':
     dependencies:
@@ -14731,7 +14734,41 @@ snapshots:
     transitivePeerDependencies:
       - '@floating-ui/dom'
 
-  '@tiptap/react@3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+  '@tiptap/react@3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+    dependencies:
+      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
+      '@tiptap/pm': 3.22.2
+      '@types/react': 19.2.14
+      '@types/react-dom': 19.2.3(@types/react@19.2.14)
+      '@types/use-sync-external-store': 0.0.6
+      fast-equals: 5.4.0
+      react: 17.0.2
+      react-dom: 17.0.2(react@17.0.2)
+      use-sync-external-store: 1.6.0(react@17.0.2)
+    optionalDependencies:
+      '@tiptap/extension-bubble-menu': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
+      '@tiptap/extension-floating-menu': 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
+    transitivePeerDependencies:
+      - '@floating-ui/dom'
+
+  '@tiptap/react@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
+      '@tiptap/pm': 3.22.2
+      '@types/react': 18.3.28
+      '@types/react-dom': 18.3.7(@types/react@18.3.28)
+      '@types/use-sync-external-store': 0.0.6
+      fast-equals: 5.4.0
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+      use-sync-external-store: 1.6.0(react@18.3.1)
+    optionalDependencies:
+      '@tiptap/extension-bubble-menu': 3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
+      '@tiptap/extension-floating-menu': 3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)
+    transitivePeerDependencies:
+      - '@floating-ui/dom'
+
+  '@tiptap/react@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
     dependencies:
       '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
       '@tiptap/pm': 3.22.2
@@ -14748,7 +14785,7 @@ snapshots:
     transitivePeerDependencies:
       - '@floating-ui/dom'
 
-  '@tiptap/react@3.22.2(@floating-ui/dom@1.7.6)(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
+  '@tiptap/react@3.22.2(@tiptap/core@3.22.2(@tiptap/pm@3.22.2))(@tiptap/pm@3.22.2)(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@17.0.2(react@17.0.2))(react@17.0.2)':
     dependencies:
       '@tiptap/core': 3.22.2(@tiptap/pm@3.22.2)
       '@tiptap/pm': 3.22.2
@@ -17562,8 +17599,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  emoji-mart@5.6.0: {}
-
   emoji-regex@10.6.0: {}
 
   emoji-regex@8.0.0: {}
@@ -19189,6 +19224,16 @@ snapshots:
       picocolors: 1.1.1
 
   jiti@2.6.1: {}
+
+  joi@18.2.3:
+    dependencies:
+      '@hapi/address': 5.1.1
+      '@hapi/formula': 3.0.2
+      '@hapi/hoek': 11.0.7
+      '@hapi/pinpoint': 2.0.1
+      '@hapi/tlds': 1.1.7
+      '@hapi/topo': 6.0.2
+      '@standard-schema/spec': 1.1.0
 
   jotai-scope@0.7.2(jotai@2.11.0(@types/react@18.3.28)(react@18.3.1))(react@18.3.1):
     dependencies:
@@ -23627,6 +23672,17 @@ snapshots:
   w3c-xmlserializer@5.0.0:
     dependencies:
       xml-name-validator: 5.0.0
+
+  wait-on@8.0.5:
+    dependencies:
+      axios: 1.18.1
+      joi: 18.2.3
+      lodash: 4.18.1
+      minimist: 1.2.8
+      rxjs: 7.8.2
+    transitivePeerDependencies:
+      - debug
+      - supports-color
 
   watchpack@2.4.4:
     dependencies:

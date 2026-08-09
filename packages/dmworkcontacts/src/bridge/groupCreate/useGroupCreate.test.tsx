@@ -55,17 +55,20 @@ afterEach(() => {
   container.remove();
 });
 
-function renderGroupCreateHook(options: ReturnType<typeof createOptions>) {
+function renderGroupCreateHook(initialOptions: ReturnType<typeof createOptions>) {
   let current: ReturnType<typeof useGroupCreate> | undefined;
-  function Harness() {
+  function Harness({ options }: { options: ReturnType<typeof createOptions> }) {
     current = useGroupCreate(options);
     return null;
   }
-  act(() => ReactDOM.render(<Harness />, container));
+  act(() => ReactDOM.render(<Harness options={initialOptions} />, container));
   return {
     get current() {
       if (!current) throw new Error("Hook did not render");
       return current;
+    },
+    rerender(options: ReturnType<typeof createOptions>) {
+      act(() => ReactDOM.render(<Harness options={options} />, container));
     },
   };
 }
@@ -85,6 +88,45 @@ describe("useGroupCreate", () => {
 
     expect(result.current.candidates.map((item) => item.uid)).toEqual([
       "weijiaoying",
+    ]);
+  });
+
+  it("clears add-member search state after closing and reopening", async () => {
+    const options = createOptions("addMember");
+    const result = renderGroupCreateHook(options);
+
+    await flushLoad();
+    act(() => {
+      result.current.setKeyword("weijiao");
+      result.current.toggleMember("weijiaoying");
+    });
+
+    expect(result.current.keyword).toBe("weijiao");
+    expect(result.current.candidates.map((item) => item.uid)).toEqual([
+      "weijiaoying",
+    ]);
+    expect(result.current.selected.map((item) => item.uid)).toEqual([
+      "weijiaoying",
+    ]);
+
+    result.rerender({ ...options, isOpen: false });
+
+    expect(result.current.keyword).toBe("");
+    expect(result.current.candidates.map((item) => item.uid)).toEqual([
+      "alice",
+      "weijiaoying",
+      "bot",
+    ]);
+    expect(result.current.selected).toEqual([]);
+
+    result.rerender({ ...options, isOpen: true });
+    await flushLoad();
+
+    expect(result.current.keyword).toBe("");
+    expect(result.current.candidates.map((item) => item.uid)).toEqual([
+      "alice",
+      "weijiaoying",
+      "bot",
     ]);
   });
 

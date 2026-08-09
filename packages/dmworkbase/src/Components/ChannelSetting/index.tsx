@@ -55,7 +55,7 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
                 memberCount = channelInfo.orgData.member_count
             }
            
-            return <RoutePage title={ vm.channel.channelType === ChannelTypeCustomerService
+            return <RoutePage className="wk-channelsetting" title={ vm.channel.channelType === ChannelTypeCustomerService
                 ? this.context.t("base.channelSetting.title")
                 : this.context.t("base.channelSetting.titleWithCount", { values: { count: memberCount } })
             } onClose={() => {

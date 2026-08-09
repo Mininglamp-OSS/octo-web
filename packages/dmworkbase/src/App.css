@@ -12,7 +12,7 @@
     /* --wk-height-chat-search: 65px; */
     --wk-height-chat-search: 64px;
     --wk-height-chat-conversation-header: 48px;  /* Figma: 48px */
-    --wk-wdith-chat-channelsetting: 380px;
+    --wk-wdith-chat-channelsetting: 28rem;
     --wk-width-chat-search-panel: 480px;
     --wk-width-thread-panel: 380px;
     --wk-layer-transition: 300ms cubic-bezier(0.33,1,0.68,1);
@@ -61,10 +61,6 @@
 
     --wk-message-item: #0F0F0F;
     --wk-message-color: white;
-
-    --semi-color-primary: var(--wk-color-theme, #1C1C23);
-    --semi-color-primary-hover: #2A2A33;
-
     /* Dark mode 适配变量 */
     --bg-primary: #1a1a1a;
     --bg-secondary: #242424;
@@ -124,6 +120,15 @@ html {
     --semi-color-primary-light-default: #F1F1F3;
     --semi-color-primary-light-hover: #E9E9EC;
     --semi-color-primary-light-active: #E1E1E5;
+  }
+
+  html body[theme-mode=dark] {
+    --semi-color-primary: var(--wk-brand-primary);
+    --semi-color-primary-hover: var(--wk-brand-primary-hover);
+    --semi-color-primary-active: var(--wk-purple-700);
+    --semi-color-primary-light-default: var(--wk-white-alpha-08);
+    --semi-color-primary-light-hover: var(--wk-white-alpha-12);
+    --semi-color-primary-light-active: var(--wk-white-alpha-12);
   }
 
   div {

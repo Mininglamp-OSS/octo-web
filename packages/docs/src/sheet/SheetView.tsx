@@ -12,7 +12,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CollabSheet, type CollabSheetOptions } from './CollabSheet.ts'
 import type { ConnState, TerminalState } from '../collab/createCollabEditor.ts'
-import { type Role, canManage } from '../auth/roles.ts'
+import { type Role, canComment, canManage } from '../auth/roles.ts'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { SheetVersionPanel } from './SheetVersionPanel.tsx'
 import { SheetCommentPanel, parseCell as parseCommentAnchor } from './SheetCommentPanel.tsx'
@@ -42,6 +42,7 @@ import {
   DeleteIcon,
   type DocMoreMenuItem,
 } from '../editor/DocMoreMenu.tsx'
+import { DocGuide } from '../editor/DocGuide.tsx'
 import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { useDocDelete } from '../editor/useDocDelete.ts'
 import { t, getCurrentUid, canForwardToChat } from '../octoweb/index.ts'
@@ -99,24 +100,24 @@ type CellAnchor = {
  */
 function SheetCommentComposer({
   anchor,
-  dark,
   onSubmit,
   onCancel,
   spaceId,
 }: {
   anchor: CellAnchor
-  dark: boolean
-  onSubmit: (body: string) => Promise<void>
+  onSubmit: (body: string) => Promise<string | null>
   onCancel: () => void
   spaceId?: string
 }) {
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const submit = async () => {
     if (busy || !body.trim()) return
     setBusy(true)
+    setSubmitError(null)
     try {
-      await onSubmit(body.trim())
+      setSubmitError(await onSubmit(body.trim()))
     } finally {
       setBusy(false)
     }
@@ -133,9 +134,6 @@ function SheetCommentComposer({
         width: 230,
         padding: 8,
         borderRadius: 6,
-        background: dark ? '#2a2a2a' : '#fff',
-        border: `1px solid ${dark ? '#444' : '#dadce0'}`,
-        boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
       }}
     >
       <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 4 }}>{t('docs.sheet.comment.menu')} {anchor.a1}</div>
@@ -147,6 +145,7 @@ function SheetCommentComposer({
         onSubmit={() => void submit()}
         onCancel={onCancel}
       />
+      {submitError && <p className="octo-member-error" role="alert">{submitError}</p>}
       <div className="octo-comment-compose-actions" style={{ marginTop: 6, display: 'flex', gap: 8 }}>
         <button type="button" className="octo-tb-btn" disabled={busy || !body.trim()} onClick={() => void submit()}>
           {t('docs.sheet.comment.menu')}
@@ -177,11 +176,6 @@ export function SheetView(props: SheetViewProps) {
   const [ownerId, setOwnerId] = useState<string | undefined>(undefined)
   const [createdAt, setCreatedAt] = useState<string | undefined>(undefined)
   const [creatorName, setCreatorName] = useState<string | undefined>(undefined)
-  // Track the APP theme (body[theme-mode], set by dmworkbase across web/desktop) with a
-  // fallback to the OS preference. The shared .octo-theme CSS only follows prefers-color-scheme,
-  // so we theme the sheet chrome ourselves from the app signal to stay consistent.
-  const [dark, setDark] = useState(false)
-
   const { uid, space, folder, doc, docId, disableOfflineCache, onTitleSaved, onDeleted, onOpenInNewPage, moreMenuLeadItems, creatorNicknameOnly } = props
   const userId = props.user.id
   const names = useMemberNames(space)
@@ -279,14 +273,25 @@ export function SheetView(props: SheetViewProps) {
 
   // Right-click "评论" menu item: open an inline compose bubble next to the cell (the
   // sheet counterpart of the doc editor's selection bubble), instead of the side panel.
+  // WRITE affordance — commenter+ only; reader may view markers/panel but never composes.
   useEffect(() => {
     if (!sheet) return
+    if (!canComment(role)) {
+      sheet.setCommentMenuHandler(null)
+      return
+    }
     sheet.setCommentMenuHandler(() => {
       const a = sheet.getActiveCellAnchor()
       if (a) setComposer(a)
     })
     return () => sheet.setCommentMenuHandler(null)
-  }, [sheet])
+  }, [sheet, role])
+
+  // Runtime downgrade (e.g. writer/commenter → reader via a stateless role frame) must close any
+  // open inline composer so a pre-opened bubble can't be used to write after the role dropped.
+  useEffect(() => {
+    if (!canComment(role)) setComposer(null)
+  }, [role])
 
   // Load the real title so it's editable (docs have an inline DocTitle; the sheet
   // reuses the same rename REST endpoint). Also lift ownerId + createdAt for the ≡ menu head.
@@ -333,24 +338,6 @@ export function SheetView(props: SheetViewProps) {
     const name = names.get(userId)
     if (sheet && name) sheet.updatePresenceName(name)
   }, [sheet, names, userId])
-
-  // Follow the app theme: react to body[theme-mode] changes and OS preference.
-  useEffect(() => {
-    const detect = () => {
-      const m = document.body.getAttribute('theme-mode')
-      return m ? m === 'dark' : !!window.matchMedia?.('(prefers-color-scheme: dark)').matches
-    }
-    setDark(detect())
-    const mo = new MutationObserver(() => setDark(detect()))
-    mo.observe(document.body, { attributes: true, attributeFilter: ['theme-mode'] })
-    const mq = window.matchMedia?.('(prefers-color-scheme: dark)')
-    const onMq = () => setDark(detect())
-    mq?.addEventListener?.('change', onMq)
-    return () => {
-      mo.disconnect()
-      mq?.removeEventListener?.('change', onMq)
-    }
-  }, [])
 
   const saveTitle = () => {
     if (!manage) return
@@ -728,8 +715,8 @@ export function SheetView(props: SheetViewProps) {
     creatorName || (ownerId ? ownerId.slice(0, 8) : t('docs.moreMenu.unknownCreator'))
 
   return (
-    <div className="octo-doc octo-doc--editor octo-theme" style={{ display: 'flex', flexDirection: 'column', height: '100%', background: dark ? '#1f1f1f' : undefined, color: dark ? '#e8eaed' : undefined }}>
-      <header className="octo-doc-header" style={dark ? { background: '#1f1f1f', color: '#e8eaed', borderBottom: '1px solid #333' } : undefined}>
+    <div className="octo-doc octo-doc--editor octo-theme">
+      <header className="octo-doc-header">
         <input
           className="octo-doc-title"
           value={title}
@@ -743,10 +730,14 @@ export function SheetView(props: SheetViewProps) {
             // gets duplicated ("test" → "testtest"). A real (non-composing) Enter still saves.
             if (e.key === 'Enter' && !e.nativeEvent.isComposing) e.currentTarget.blur()
           }}
-          style={{ border: 'none', background: 'transparent', outline: 'none', color: 'inherit', flex: '0 1 auto', minWidth: 0, maxWidth: '55%' }}
+          style={{ border: 'none', background: 'transparent', outline: 'none', color: 'inherit', flex: '1 1 auto', minWidth: 0 }}
         />
         <div className="octo-doc-header-right">
           {sheet && <PresenceBar provider={sheet.provider} connState={conn} synced={conn === 'connected'} names={names} />}
+          {/* Bot 操作指引: how to drive THIS surface from octo-cli, and where the bundled skill docs
+              live. Sits to the LEFT of 评论 with the other document actions (the ≡ menu was tried
+              and rejected as too hidden). Not role-gated: reading the guide needs no rights. */}
+          <DocGuide kind="sheet" space={space} docId={docId} title={title} />
           <button type="button" className={tb('comments')} aria-pressed={panel === 'comments'} onClick={() => toggle('comments')}>
             💬 {t('docs.toolbar.comments')}
           </button>
@@ -780,16 +771,16 @@ export function SheetView(props: SheetViewProps) {
 
       <div style={{ flex: '1 1 auto', position: 'relative', minHeight: 0 }}>
         <div ref={containerRef} className="octo-sheet-container" style={{ position: 'absolute', inset: 0 }} />
-        {composer && (
+        {composer && canComment(role) && (
           <SheetCommentComposer
             anchor={composer}
-            dark={dark}
             spaceId={space}
             onCancel={() => setComposer(null)}
             onSubmit={async (body) => {
               const enc = btoa(composer.key)
-              await comments.createRoot({ body, anchorStart: enc, anchorEnd: enc, anchorText: composer.a1 })
-              setComposer(null)
+              const result = await comments.createRoot({ body, anchorStart: enc, anchorEnd: enc, anchorText: composer.a1 })
+              if (result.ok) setComposer(null)
+              return result.error
             }}
           />
         )}

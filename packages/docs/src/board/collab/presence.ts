@@ -56,6 +56,28 @@ interface BoardAwarenessState {
   [k: string]: unknown
 }
 
+interface ObservedConnectionOrder {
+  next: number
+  firstSeen: Map<number, number>
+}
+
+// Assign connection generations in the order this viewer observes remote awareness client ids.
+// Unlike a timestamp supplied by another device, this order is local, monotonic and comparable.
+const observedConnectionOrders = new WeakMap<Awareness, ObservedConnectionOrder>()
+
+function connectionOrderFor(awareness: Awareness, clientId: number): number {
+  let observed = observedConnectionOrders.get(awareness)
+  if (!observed) {
+    observed = { next: 0, firstSeen: new Map() }
+    observedConnectionOrders.set(awareness, observed)
+  }
+  const known = observed.firstSeen.get(clientId)
+  if (known !== undefined) return known
+  const order = ++observed.next
+  observed.firstSeen.set(clientId, order)
+  return order
+}
+
 /** Publish the local peer's identity so remote peers can label and colour its cursor/avatar. */
 export function setLocalPresenceUser(awareness: Awareness, user: BoardPresenceUser): void {
   awareness.setLocalStateField('user', { id: user.id, name: user.name, avatar: user.avatar })
@@ -69,13 +91,21 @@ export function publishLocalPointer(
   awareness: Awareness,
   pointer: BoardPointer | null,
   button: 'down' | 'up' = 'up',
-  selectedElementIds?: readonly string[],
 ): void {
   awareness.setLocalStateField('pointer', pointer)
   awareness.setLocalStateField('button', button)
-  if (selectedElementIds) {
-    awareness.setLocalStateField('selectedElementIds', [...selectedElementIds])
-  }
+}
+
+/**
+ * Publish selection independently from pointer movement. Excalidraw can change selection through
+ * keyboard navigation, programmatic scene updates, or a stationary click; coupling this field to
+ * `onPointerUpdate` leaves peers showing a stale or missing remote selection until the mouse moves.
+ */
+export function publishLocalSelection(
+  awareness: Awareness,
+  selectedElementIds: readonly string[],
+): void {
+  awareness.setLocalStateField('selectedElementIds', [...selectedElementIds])
 }
 
 /** Drop the local pointer (on blur / unmount) so peers stop drawing a stale cursor for us. */
@@ -91,7 +121,11 @@ export function clearLocalPointer(awareness: Awareness): void {
  * collaborator. presence_delta>0 is exactly: this map is non-empty when a second peer is present.
  */
 export function readBoardCollaborators(awareness: Awareness): Map<string, BoardCollaborator> {
-  const map = new Map<string, BoardCollaborator>()
+  const candidates = new Map<string, {
+    clientId: number
+    collaborator: BoardCollaborator
+    observedOrder: number
+  }>()
   const localId = awareness.clientID
   for (const [clientId, raw] of awareness.getStates()) {
     if (clientId === localId) continue
@@ -117,6 +151,20 @@ export function readBoardCollaborators(awareness: Awareness): Map<string, BoardC
     const seed = user?.id || String(clientId)
     const color = colorFromId(seed)
     collaborator.color = { background: color, stroke: color }
+    // A fast close/reopen can leave the old socket's awareness state visible until its timeout is
+    // broadcast. Excalidraw keys collaborators by awareness client id, so without an identity-level
+    // collapse it draws the same business user twice. Prefer the connection observed later by this
+    // viewer. This is independent of remote wall clocks and stable across pointer updates.
+    // Anonymous peers cannot be safely identified and remain client-id keyed.
+    const identity = user?.id ? `user:${user.id}` : `client:${clientId}`
+    const observedOrder = connectionOrderFor(awareness, clientId)
+    const previous = candidates.get(identity)
+    if (!previous || observedOrder > previous.observedOrder) {
+      candidates.set(identity, { clientId, collaborator, observedOrder })
+    }
+  }
+  const map = new Map<string, BoardCollaborator>()
+  for (const { clientId, collaborator } of [...candidates.values()].sort((a, b) => a.clientId - b.clientId)) {
     map.set(String(clientId), collaborator)
   }
   return map

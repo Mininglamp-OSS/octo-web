@@ -19,6 +19,8 @@ vi.mock("wukongimjssdk", () => {
         addSubscriberChangeListener: vi.fn(),
         removeSubscriberChangeListener: vi.fn(),
         getChannelInfo: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
       },
     }),
   };
@@ -119,6 +121,27 @@ describe("UserInfoVM profile actions", () => {
       vercode: "vc-1",
       spaceId: "space-a",
     });
+  });
+
+  it("merges listener online status into profile channel info", () => {
+    const vm = new UserInfoVM("u1");
+    vm.channelInfo = {
+      title: "User One",
+      orgData: { remark: "Old" },
+    } as any;
+
+    vm.mergeChannelInfo({
+      channel: { channelID: "u1", channelType: 1 },
+      online: false,
+      lastOffline: 123,
+      orgData: { online: 0 },
+    } as any);
+
+    expect(vm.channelInfo?.title).toBe("User One");
+    expect(vm.channelInfo?.online).toBe(false);
+    expect(vm.channelInfo?.lastOffline).toBe(123);
+    expect(vm.channelInfo?.orgData?.remark).toBe("Old");
+    expect(vm.channelInfo?.orgData?.online).toBe(0);
   });
 
   it("uses parent group_no when loading profile from a thread", async () => {

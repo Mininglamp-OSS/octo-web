@@ -1,27 +1,42 @@
 // Read-only version list panel for html docs (header ≡ → 历史版本).
 //
-// Lightweight on purpose: it does NOT reuse the rich-text VersionHistoryPanel (that panel
-// carries restore/rename/delete/diff for the Yjs backend). HTML docs are read-only, so this
-// only lists version numbers + times; each row opens that published version in a new tab.
+// Lightweight on purpose: it does NOT reuse the rich-text VersionHistoryPanel (that panel carries
+// restore/rename/delete/diff for the Yjs backend). HTML docs are read-only, so this only lists
+// version numbers + times; each row exposes 查看 / 与上一版比较 / 与当前版比较. "查看" switches the
+// version IN PLACE (the parent re-points HtmlDocView), no longer a new-tab open. Compares open the
+// two-version HtmlDiffModal via the parent.
 
 import { formatCommentTime } from './htmlDocComments.ts'
-import { buildOctoDocUrl } from './HtmlDocView.tsx'
 import type { HtmlDocVersion } from './htmlDocVersions.ts'
 import { t } from '../octoweb/index.ts'
 
 export function HtmlVersionPanel({
-  slug,
   versions,
+  currentVersion,
   loading,
   error,
+  compareEnabled = true,
+  onView,
+  onCompare,
   onClose,
 }: {
-  slug: string
   versions: HtmlDocVersion[]
+  /** The version currently shown in the view; its row is marked + its "compare to current" is a no-op. */
+  currentVersion?: number | null
   loading?: boolean
   error?: string | null
+  /** Hide compare actions while the source/diff backend is unavailable. */
+  compareEnabled?: boolean
+  /** Switch the in-page view to this published version (page/code mode is preserved by the parent). */
+  onView: (version: number) => void
+  /** Open the diff modal for (from → to). */
+  onCompare: (from: number, to: number) => void
   onClose?: () => void
 }) {
+  const orderedVersions = [...versions].sort((a, b) => b.n - a.n)
+  const latest = orderedVersions.length ? orderedVersions[0].n : null
+  const current = currentVersion ?? latest
+
   return (
     <section className="octo-html-doc-versions" data-testid="html-doc-version-panel">
       <div className="octo-member-row">
@@ -38,18 +53,42 @@ export function HtmlVersionPanel({
         <p className="octo-member-empty">{t('docs.version.empty')}</p>
       )}
       <ul className="octo-html-doc-versions-list">
-        {versions.map((v) => {
+        {orderedVersions.map((v, i) => {
           const time = formatCommentTime(v.created_at)
+          // "与上一版比较": the numerically-previous published version (the next row down, older).
+          const prev = orderedVersions[i + 1]?.n
+          const isCurrent = current != null && v.n === current
           return (
-            <li key={v.n} className="octo-html-doc-version-row">
-              <button
-                type="button"
-                className="octo-tb-btn octo-html-doc-version-open"
-                onClick={() => window.open(buildOctoDocUrl(slug, String(v.n)), '_blank')}
-              >
+            <li key={v.n} className="octo-html-doc-version-row" aria-current={isCurrent || undefined}>
+              <span className="octo-html-doc-version-label">
                 v{v.n}
                 {time && <span className="octo-html-doc-version-time"> · {time}</span>}
-              </button>
+                {isCurrent && <span className="octo-html-doc-version-badge"> · {t('docs.version.currentBadge')}</span>}
+              </span>
+              <span className="octo-html-doc-version-actions">
+                <button
+                  type="button"
+                  className="octo-tb-btn"
+                  onClick={() => onView(v.n)}
+                  disabled={isCurrent}
+                >
+                  {t('docs.version.view')}
+                </button>
+                {compareEnabled && prev != null && (
+                  <button type="button" className="octo-tb-btn" onClick={() => onCompare(prev, v.n)}>
+                    {t('docs.version.comparePrev')}
+                  </button>
+                )}
+                {compareEnabled && current != null && v.n !== current && (
+                  <button
+                    type="button"
+                    className="octo-tb-btn"
+                    onClick={() => onCompare(Math.min(v.n, current), Math.max(v.n, current))}
+                  >
+                    {t('docs.version.compareCurrent')}
+                  </button>
+                )}
+              </span>
             </li>
           )
         })}

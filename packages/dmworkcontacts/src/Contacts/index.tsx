@@ -51,7 +51,7 @@ function OverflowTooltip({ text, children }: { text: string; children: React.Rea
 }
 
 const ITEM_HEIGHT = 44
-const LETTER_HEADER_HEIGHT = 24
+const LETTER_HEADER_HEIGHT = 28
 
 // 在线态 uid 归一化：Space 场景下列表持有的是带前缀 uid（s<spaceId>_<uid>），而
 // channelInfo 回包、onlineStatus WS 推送、channelInfoListener 回调用的都是去前缀 uid

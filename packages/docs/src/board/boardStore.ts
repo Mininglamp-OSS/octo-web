@@ -90,6 +90,14 @@ function pickAppState(appState: Record<string, unknown> | undefined): Record<str
   return Object.keys(out).length ? out : undefined
 }
 
+/** Whether persisted appState contains a complete scene viewport safe to restore verbatim. */
+export function hasSavedBoardViewport(appState: Record<string, unknown> | undefined): boolean {
+  const zoom = appState?.zoom as { value?: unknown } | undefined
+  return typeof zoom?.value === 'number' && Number.isFinite(zoom.value) &&
+    typeof appState?.scrollX === 'number' && Number.isFinite(appState.scrollX) &&
+    typeof appState?.scrollY === 'number' && Number.isFinite(appState.scrollY)
+}
+
 /** Read the persisted scene for a board, or null when absent/unreadable/malformed. */
 export function loadBoardScene(docId: string, uid?: string): BoardScene | null {
   const store = storage()

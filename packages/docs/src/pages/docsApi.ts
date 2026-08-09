@@ -14,8 +14,18 @@ import type { Role } from '../auth/roles.ts'
  * the type filter narrows the recent/mine feeds on them (`?type=doc&type=sheet`). Never mock a value
  * that the backend does not persist — a drifting enum is exactly the assumed-wire trap FEAT-B avoids.
  */
-export const DOC_TYPES = ['doc', 'sheet', 'board', 'html'] as const
+export const DOC_TYPES = ['doc', 'sheet', 'board', 'html', 'html_ppt'] as const
 export type DocType = (typeof DOC_TYPES)[number]
+
+/**
+ * The Bento-backed slide-deck kind (`html_ppt`) — a first-class B-owned document type, NOT a
+ * C-hosted HTML doc and NOT a Yjs/ProseMirror rich doc. Its collab/version/source paths live under
+ * `/api/v1/ppt/**` and it is an EXPLICIT sibling of `html` at every routing site (never a
+ * fall-through to the Tiptap editor or the Hocuspocus collab-token path). Named constant kept in
+ * lockstep with the backend wire value (octo-docs-backend `HTML_PPT_DOC_TYPE`) so no guard
+ * re-hardcodes the string.
+ */
+export const HTML_PPT_DOC_TYPE = 'html_ppt'
 
 export interface DocListItem {
   docId: string
@@ -340,8 +350,10 @@ export async function updateDocTitle(docId: string, title: string): Promise<DocM
  * not admin; 409 archived target. Callers map the ApiError status to the right message — this
  * helper just performs the request and lets the error propagate.
  */
-export async function deleteDoc(docId: string): Promise<void> {
-  await apiClient().delete(`/docs/${docId}`)
+export async function deleteDoc(docId: string, opts?: { spaceId?: string }): Promise<void> {
+  const config =
+    opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
+  await apiClient().delete(`/docs/${docId}`, config)
 }
 
 /** Downloadable rich-document formats served from the authoritative live Y.Doc. */

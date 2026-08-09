@@ -2,7 +2,7 @@
 //
 // Everything here is dependency-free and deterministic so the fixed message contract can be unit
 // tested without React, the host, or a live bot. The two exports are:
-//   - docsApiBaseUrl(origin): normalise the CURRENT origin to a same-origin `${origin}/api/`.
+//   - docsApiBaseUrl(origin): normalise the CURRENT origin to a same-origin `${origin}/api`.
 //   - buildHtmlCreationMessage(draft): render the fixed §1.3 task text.
 //
 // SECURITY (plan §5.5 / §5.6): the base_url is derived ONLY from the app origin here; it is NEVER
@@ -20,31 +20,31 @@ export interface HtmlCreationDraft {
   /** User reference material — staged File[] only; NOT uploaded here (plan §5.3). */
   files: File[]
   spaceId: string
-  /** `${origin}/api/`, computed by docsApiBaseUrl from window.location.origin. */
+  /** `${origin}/api`, computed by docsApiBaseUrl from window.location.origin. */
   baseUrl: string
 }
 
 /**
- * Normalise an origin to the unified API base: a same-origin URL ending in `/api/`.
+ * Normalise an origin to the unified API base: a same-origin URL ending in `/api` without a trailing slash.
  *
- * `https://octo.example/` and `https://octo.example` both → `https://octo.example/api/`.
+ * `https://octo.example/` and `https://octo.example` both → `https://octo.example/api`.
  * We parse with the URL API and rebuild from `url.origin`, so any stray path / query / hash on the
- * passed value is dropped — the base is authoritatively the origin plus the fixed `/api/`
- * segment (plan §1.3: base_url must be same-origin and trailing-slashed). A non-URL input falls
- * back to a trimmed string with a single trailing `/api/` so the caller still gets a stable
+ * passed value is dropped — the base is authoritatively the origin plus the fixed `/api`
+ * segment (plan §1.3: base_url must be same-origin without a trailing slash). A non-URL input falls
+ * back to a trimmed string with a single `/api` suffix so the caller still gets a stable
  * shape rather than throwing on first paint.
  */
 export function docsApiBaseUrl(origin: string): string {
   const raw = (origin ?? '').trim()
   try {
     // `new URL(raw)` keeps only scheme://host[:port] in `.origin`; rebuild from that so a value
-    // like `https://octo.example/some/path?x=1` still yields `https://octo.example/api/`.
+    // like `https://octo.example/some/path?x=1` still yields `https://octo.example/api`.
     const parsed = new URL(raw)
-    return `${parsed.origin}/api/`
+    return `${parsed.origin}/api`
   } catch {
     // Not a parseable absolute URL: strip trailing slashes and append the fixed segment.
     const trimmed = raw.replace(/\/+$/, '')
-    return `${trimmed}/api/`
+    return `${trimmed}/api`
   }
 }
 

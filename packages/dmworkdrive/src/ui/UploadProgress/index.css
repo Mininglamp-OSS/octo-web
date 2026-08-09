@@ -1,0 +1,70 @@
+/* Upload panel sits between the header and the list. Rows in this module render
+   directly on the page surface (as docs' list rows do), so the panel itself adds
+   no chrome — each item card carries the surface. */
+.drive-upload-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.drive-upload-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: var(--wk-r-sm, 6px);
+  background: var(--wk-bg-surface, #fff);
+  border: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+}
+
+.drive-upload-item__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.drive-upload-item__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--wk-text-primary, #1f2329);
+}
+
+.drive-upload-item__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--wk-text-tertiary, #6b7075);
+}
+
+.drive-upload-item__size {
+  color: var(--wk-text-tertiary, #6b7075);
+}
+
+.drive-upload-item__ok {
+  color: var(--wk-color-success, #41cd59);
+}
+
+.drive-upload-item__err {
+  color: var(--wk-color-error, #f54a45);
+}
+
+.drive-upload-item[data-status='error'] .drive-upload-item__meta {
+  color: var(--wk-color-error, #f54a45);
+}
+
+.drive-upload-item__ops {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}

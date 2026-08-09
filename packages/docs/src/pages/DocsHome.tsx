@@ -1,14 +1,21 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t, fetchSpaceBotNames } from '../octoweb/index.ts'
+import { AiBadge, titleContextStore } from '@octo/base'
+import { getWKApp, getRouteRight, onSpaceChanged, onNavMenuActivated, t, useI18n, fetchSpaceBotNames } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { parseXlsxToMatrix, pendingSheetImports } from '../sheet/xlsxImport.ts'
 import { BoardSession } from '../board/BoardSession.tsx'
 import { HtmlDocView } from '../html/HtmlDocView.tsx'
+import { PptDocView } from '../ppt/PptDocView.tsx'
+import { resolveSameOriginPath } from './StandaloneDocPage.tsx'
+import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import { CreateHtmlModal } from '../html-create/CreateHtmlModal.tsx'
+import { CreatePptModal } from '../ppt/CreatePptModal.tsx'
+import { withDeckSpace } from '../ppt/pptLink.ts'
 import { DocsBotConversation } from '../html-create/DocsBotConversation.tsx'
 import { docsApiBaseUrl, type HtmlCreationDraft } from '../html-create/createHtmlTask.ts'
-import { isBoardDoc, isBoardIdLocally, rememberBoard } from '../board/boardStore.ts'
+import { isBoardDoc, isBoardIdLocally, persistBoardScene, rememberBoard } from '../board/boardStore.ts'
+import { BoardImportSchemaError, BoardImportStorageError, importBoardScene } from '../board/boardImport.ts'
 import { runMarkdownImport, runDocxImport, ImportContentCorruptError } from '../editor/importFlow.ts'
 import '../editor/styles.css'
 import {
@@ -16,8 +23,10 @@ import {
   DEFAULT_DOC_FOLDER,
   DEFAULT_DOC_ID,
   DOC_TARGET_STORAGE_KEY,
+  PPT_CREATE_ENABLED,
+  PPT_ENTRY_ENABLED,
 } from '../config.ts'
-import { createDoc, getDoc, recordDocView, type DocListItem } from './docsApi.ts'
+import { createDoc, deleteDoc, getDoc, recordDocView, type DocListItem } from './docsApi.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { createInvite, buildInviteUrl } from '../invite/api.ts'
 import { canManage, type Role } from '../auth/roles.ts'
@@ -29,6 +38,7 @@ import { CreatorFilter, CreatorChips, creatorName } from './CreatorFilter.tsx'
 import { TypeFilter, TypeChips } from './TypeFilter.tsx'
 import { InfiniteList } from './InfiniteList.tsx'
 import { useDocsView, type DocsViewKind } from './useDocsView.ts'
+import { OnboardingHelp } from './OnboardingHelp.tsx'
 
 export interface DocTarget {
   space: string
@@ -39,6 +49,8 @@ export interface DocTarget {
   docType?: string
   /** Present only for html docs: octo-doc body slug; absent falls back to docId. */
   octoDocSlug?: string
+  /** Cached display title so a known-kind refresh does not need a metadata round-trip. */
+  title?: string
 }
 
 /**
@@ -72,6 +84,7 @@ function persistDocTarget(target: {
   doc: string
   docType?: string
   octoDocSlug?: string
+  title?: string
 }): void {
   if (typeof window === 'undefined') return
   try {
@@ -83,6 +96,7 @@ function persistDocTarget(target: {
         doc: target.doc,
         docType: target.docType,
         octoDocSlug: target.octoDocSlug,
+        title: target.title,
       }),
     )
   } catch {
@@ -127,6 +141,7 @@ function readDocTarget(uid?: string): DocTarget | null {
         typeof parsed.octoDocSlug === 'string' && parsed.octoDocSlug
           ? parsed.octoDocSlug
           : undefined,
+      title: typeof parsed.title === 'string' && parsed.title ? parsed.title : undefined,
     }
   } catch {
     return null
@@ -177,7 +192,15 @@ export function resolveDocTarget(search: string, uid?: string): DocTarget | null
     const docType =
       sameDoc && prev.docType ? prev.docType : isBoardIdLocally(queryDoc, uid) ? 'board' : undefined
     const octoDocSlug = sameDoc ? prev.octoDocSlug : undefined
-    const target: DocTarget = { space, folder, doc: queryDoc, docId: queryDoc, docType, octoDocSlug }
+    const target: DocTarget = {
+      space,
+      folder,
+      doc: queryDoc,
+      docId: queryDoc,
+      docType,
+      octoDocSlug,
+      title: sameDoc ? prev.title : undefined,
+    }
     persistDocTarget(target)
     return target
   }
@@ -348,6 +371,39 @@ function HtmlRowIcon(): React.ReactElement {
 }
 
 /**
+ * PPT (slide-deck) row glyph — a framed 16:9 slide with a play/present triangle, drawn in the same
+ * stroked style (no fill blocks) as the doc/board/sheet/html glyphs so an `html_ppt` row reads as a
+ * peer of the other four kinds rather than borrowing the plain-doc icon.
+ */
+function PptRowIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="8" rx="1" stroke="currentColor" strokeWidth="1" fill="none" />
+      <path d="M6.5 5.75 10 7.5 6.5 9.25V5.75Z" stroke="currentColor" strokeWidth="1" fill="none" strokeLinejoin="round" />
+      <path d="M6 13.5h4" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function WordImportIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path d="M4 1.5h5L12.5 5v9H3.5V2zM9 1.5V5h3.5" stroke="currentColor" />
+      <path d="m5.2 7 1.1 4 1.2-3 1.2 3 1.1-4" stroke="currentColor" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function MarkdownImportIcon(): React.ReactElement {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <rect x="1.5" y="3" width="13" height="10" rx="1" stroke="currentColor" />
+      <path d="M3.5 10V6.5L5.5 9l2-2.5V10M10 7.5l1.5 2 1.5-2M11.5 6v4" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/**
  * Layered empty states A–F (frontend-design §5.3). Each variant carries its OWN i18n title + CTA
  * keys — A ("看", browse) and B ("建", create) are deliberately NOT merged (product MF1). C/D/F cover
  * a single "condition matched nothing" (search / creator / type) and offer that one clear
@@ -460,6 +516,7 @@ function DocsList({
   selectedDocId,
   onSelect,
   onCreateHtml,
+  onCreatePpt,
   reloadToken,
   botUids,
 }: {
@@ -468,16 +525,29 @@ function DocsList({
   /** Authenticated uid — scopes the board-kind registry lookups/writes (P2). */
   uid: string
   selectedDocId: string | null
-  onSelect: (docId: string, docType?: string, octoDocSlug?: string) => void
+  onSelect: (docId: string, docType?: string, octoDocSlug?: string, title?: string) => void
   /** Open the "new HTML (embedded bot DM)" flow (plan Task 6). Menu-only; never calls createDoc. */
   onCreateHtml: () => void
+  /**
+   * Open the "new slides (html_ppt)" flow. Behind the R2 flag this opens the four-template picker
+   * (POST /api/v1/ppt/docs); with the flag off it opens the R1 "coming soon" notice. Menu-only;
+   * never calls createDoc (a Bento deck is not a rich-text doc). Receives the PERSISTENT caret button
+   * that opened the menu so the modal can restore focus to it on close (the menu item itself unmounts
+   * on click, so it is not a valid restore target — R2-F1).
+   */
+  onCreatePpt: (opener?: HTMLElement | null) => void
   reloadToken?: number
   /** uids of every bot in the space; a row whose ownerId is here shows a bot badge. */
   botUids: Set<string>
 }): React.ReactElement {
   const [creating, setCreating] = useState(false)
   const [newMenuAt, setNewMenuAt] = useState<{ left: number; top: number } | null>(null)
+  // The persistent "new" split-button caret. Handed to onCreatePpt so the picker restores focus HERE
+  // on close: the dropdown menu item that fires onCreatePpt unmounts the instant it is clicked, so it
+  // cannot be the restore target — the caret persists across the menu open/close and can (R2-F1).
+  const caretRef = useRef<HTMLButtonElement>(null)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const boardImportInputRef = useRef<HTMLInputElement>(null)
   // Client-side pin (置顶) — persisted in localStorage; pinned docs sort to the top. Pin is a
   // "我的文档" affordance ONLY: the recent tab renders the server's `viewed_at DESC` order verbatim
   // with no client re-sort and no pin menu item (frontend-design §5.4).
@@ -575,11 +645,57 @@ function DocsList({
       })
       if (docType === 'board') rememberBoard(created.docId, uid)
       // New docs land in the list; select it inline (right pane opens, list stays).
-      onSelect(created.docId, created.docType || docType)
+      onSelect(created.docId, created.docType || docType, undefined, created.title)
       reloadViews()
       setCreating(false)
     } catch {
       setCreateError(t('docs.state.error'))
+      setCreating(false)
+    }
+  }
+
+  const onImportBoard = async (file: File) => {
+    if (creating) return
+    // Match Excalidraw's own JSON file limit. Larger scenes cannot be reliably retained by the
+    // localStorage mirror and previously failed only after the server document had been created.
+    const MAX_IMPORT_BYTES = 4 * 1024 * 1024
+    if (file.size > MAX_IMPORT_BYTES) {
+      setCreateError(t('docs.board.importTooLarge'))
+      return
+    }
+    setCreating(true)
+    try {
+      const raw: unknown = JSON.parse(await file.text())
+      const title = file.name.replace(/\.excalidraw$/i, '').trim() || t('docs.board.untitled')
+      // Validate, serialize and perform a real localStorage write/read before createDoc. This makes
+      // quota/private-mode failures fail closed without leaving an empty server-side Board. The
+      // existing authenticated owner delete API rolls back the unlikely second-write failure.
+      const created = await importBoardScene(
+        raw,
+        () => createDoc({
+          title,
+          spaceId: space || undefined,
+          folderId: folder || undefined,
+          docType: 'board',
+        }),
+        (docId) => deleteDoc(docId, { spaceId: space || undefined }),
+        uid,
+      )
+      rememberBoard(created.docId, uid)
+      setCreateError(null)
+      onSelect(created.docId, 'board', undefined, title)
+      reloadViews()
+    } catch (error) {
+      setCreateError(
+        error instanceof SyntaxError
+          ? t('docs.board.importParseError')
+          : error instanceof BoardImportSchemaError
+            ? t('docs.board.importError')
+            : error instanceof BoardImportStorageError
+              ? t('docs.board.importStorageError')
+              : t('docs.state.error'),
+      )
+    } finally {
       setCreating(false)
     }
   }
@@ -614,7 +730,7 @@ function DocsList({
         docType: 'sheet',
       })
       pendingSheetImports.set(created.docId, parsed)
-      onSelect(created.docId, 'sheet')
+      onSelect(created.docId, 'sheet', undefined, title)
       reloadViews()
       // Every visible worksheet is imported now (multi-sheet), so the only remaining caveat
       // is per-sheet truncation of an oversized grid.
@@ -647,26 +763,30 @@ function DocsList({
     // so a known spreadsheet row opens straight into SheetView. When the list API omitted docType
     // AND we have no local board record — a NON-creator viewing a shared board — pass `undefined`
     // so openDoc resolves the authoritative kind via getDoc (the M2 routing bug).
-    const knownKind: 'board' | 'doc' | 'sheet' | 'html' | undefined = board
+    const knownKind: 'board' | 'doc' | 'sheet' | 'html' | 'html_ppt' | undefined = board
       ? 'board'
       : d.docType === 'sheet'
         ? 'sheet'
         : d.docType === 'html'
           ? 'html'
-          : d.docType === 'doc'
-            ? 'doc'
-            : undefined
+          : d.docType === 'html_ppt'
+            ? 'html_ppt'
+            : d.docType === 'doc'
+              ? 'doc'
+              : undefined
     // Row-icon kind (visual only, always concrete): a known board, then an explicit sheet, else a
     // plain doc — the three-way distinction so a spreadsheet never renders as a document icon
     // (XIN-1188). Independent of `knownKind` above, which stays `undefined` for an unresolved
     // shared row so openDoc can still resolve the authoritative shell via getDoc.
-    const iconKind: 'board' | 'sheet' | 'html' | 'doc' = board
+    const iconKind: 'board' | 'sheet' | 'html' | 'html_ppt' | 'doc' = board
       ? 'board'
       : d.docType === 'sheet'
         ? 'sheet'
         : d.docType === 'html'
           ? 'html'
-          : 'doc'
+          : d.docType === 'html_ppt'
+            ? 'html_ppt'
+            : 'doc'
     const kindLabel =
       iconKind === 'board'
         ? t('docs.list.kindBoard')
@@ -674,7 +794,9 @@ function DocsList({
           ? t('docs.list.kindSheet')
           : iconKind === 'html'
             ? t('docs.list.kindHtml')
-            : t('docs.list.kindDoc')
+            : iconKind === 'html_ppt'
+              ? t('docs.list.kindPpt')
+              : t('docs.list.kindDoc')
     // Recent rows put the creator on its OWN line, then a SINGLE merged time line reporting only
     // the LATEST event (XIN-1236 merged design). Mine rows keep the plain "updated" sub-line
     // (frontend-design §2.1 / §5.1).
@@ -714,7 +836,7 @@ function DocsList({
             e.preventDefault()
             setMenu({ docId: d.docId, role: d.role, x: e.clientX, y: e.clientY })
           }}
-          onClick={() => onSelect(d.docId, knownKind, d.octoDocSlug)}
+          onClick={() => onSelect(d.docId, knownKind, d.octoDocSlug, d.title)}
           aria-current={active ? 'true' : undefined}
         >
           <span
@@ -728,6 +850,8 @@ function DocsList({
               <SheetRowIcon />
             ) : iconKind === 'html' ? (
               <HtmlRowIcon />
+            ) : iconKind === 'html_ppt' ? (
+              <PptRowIcon />
             ) : (
               <DocRowIcon />
             )}
@@ -744,13 +868,14 @@ function DocsList({
                 {label}
               </span>
               {botUids.has(d.ownerId) && (
-                <span
+                <AiBadge
+                  size="small"
                   className="octo-docs-list-row-bot-badge"
                   title={t('docs.list.botBadge')}
                   aria-label={t('docs.list.botBadge')}
                 >
                   {t('docs.list.botBadge')}
-                </span>
+                </AiBadge>
               )}
             </span>
             {activeView === 'recent' ? (
@@ -803,7 +928,7 @@ function DocsList({
     setCreating(true)
     try {
       const result = await runMarkdownImport(space || undefined, folder || undefined, t)
-      onSelect(result.docId, 'doc')
+      onSelect(result.docId, 'doc', undefined, result.title)
       reloadViews()
     } catch (err) {
       // User-cancelled picker rejects with a benign error; only surface real failures.
@@ -830,7 +955,7 @@ function DocsList({
     setCreating(true)
     try {
       const result = await runDocxImport(space || undefined, folder || undefined, t)
-      onSelect(result.docId, 'doc')
+      onSelect(result.docId, 'doc', undefined, result.title)
       reloadViews()
     } catch (err) {
       if (err instanceof ImportContentCorruptError) {
@@ -865,61 +990,48 @@ function DocsList({
     <div className="octo-docs-list">
       <div className="octo-docs-list-header">
         <h2 className="octo-docs-list-title">{t('docs.menu.title')}</h2>
-        <span
-          className="octo-docs-list-new"
-          style={{ display: 'inline-flex', alignItems: 'stretch', padding: 0, overflow: 'hidden' }}
-        >
-          <button
-            type="button"
-            onClick={() => onCreate()}
-            disabled={creating}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 4,
-              background: 'transparent',
-              border: 'none',
-              color: 'inherit',
-              font: 'inherit',
-              padding: '6px 8px 6px 12px',
-              cursor: creating ? 'default' : 'pointer',
-            }}
-          >
-            <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
-            {t('docs.list.new')}
-          </button>
-          <button
-            type="button"
-            aria-label={t('docs.list.newMenu')}
-            title={t('docs.list.newMenu')}
-            disabled={creating}
-            onClick={(e) => {
-              const box = (e.currentTarget.closest('.octo-docs-list-new') as HTMLElement) ?? e.currentTarget
-              const r = box.getBoundingClientRect()
-              setNewMenuAt(newMenuAt ? null : { left: r.left, top: r.bottom + 6 })
-            }}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              background: 'transparent',
-              border: 'none',
-              borderLeft: '1px solid rgba(255,255,255,0.45)',
-              color: 'inherit',
-              padding: '0 12px',
-              fontSize: 11,
-              cursor: creating ? 'default' : 'pointer',
-            }}
-          >
-            ▾
-          </button>
-        </span>
+        {/* Right-hand action group: the permanent agent-CLI onboarding help
+            (Mininglamp-OSS/octo-docs-backend#125) sits directly beside the New-document control.
+            The header is `space-between`, so the help button must live INSIDE this group —
+            otherwise it gets pushed to the far left, away from the action it belongs with.
+            It stays list-state independent either way. */}
+        {/* A `<div>`, not a `<span>`: the help trigger's sibling content is flow content, and a
+            phrasing-content wrapper would trip React's DOM-nesting validation. */}
+        <div className="octo-docs-list-header-actions">
+          <OnboardingHelp />
+          <span className="octo-docs-list-new octo-docs-new-split">
+            <button
+              type="button"
+              className="octo-docs-new-primary"
+              onClick={() => onCreate()}
+              disabled={creating}
+            >
+              <span className="octo-docs-list-new-icon" aria-hidden="true">+</span>
+              {t('docs.list.new')}
+            </button>
+            <button
+              type="button"
+              ref={caretRef}
+              aria-label={t('docs.list.newMenu')}
+              title={t('docs.list.newMenu')}
+              disabled={creating}
+              onClick={(e) => {
+                const box = (e.currentTarget.closest('.octo-docs-list-new') as HTMLElement) ?? e.currentTarget
+                const r = box.getBoundingClientRect()
+                setNewMenuAt(newMenuAt ? null : { left: r.left, top: r.bottom + 6 })
+              }}
+              className="octo-docs-new-caret"
+            >
+              ▾
+            </button>
+          </span>
+        </div>
         {newMenuAt && (
           <PortalMenu at={newMenuAt} onClose={() => setNewMenuAt(null)}>
             <button
               type="button"
-              className="octo-tb-btn"
+              className="octo-docs-new-menu-item"
               disabled={creating}
-              style={{ display: 'block', width: '100%', textAlign: 'left' }}
               onClick={() => {
                 setNewMenuAt(null)
                 void onCreate('board')
@@ -930,23 +1042,22 @@ function DocsList({
             </button>
             <button
               type="button"
-              className="octo-tb-btn"
+              className="octo-docs-new-menu-item"
               disabled={creating}
-              style={{ display: 'block', width: '100%', textAlign: 'left' }}
               onClick={() => {
                 setNewMenuAt(null)
                 void onCreate('sheet')
               }}
             >
-              ▦ {t('docs.sheet.new')}
+              <span className="octo-docs-new-menu-icon" aria-hidden="true"><SheetRowIcon /></span>
+              {t('docs.sheet.new')}
             </button>
             {/* plan Task 6: "new HTML" launches the embedded bot-DM flow — it only closes the menu and
                 calls onCreateHtml; it NEVER calls createDoc (no placeholder doc is created up front). */}
             <button
               type="button"
-              className="octo-tb-btn"
+              className="octo-docs-new-menu-item"
               disabled={creating}
-              style={{ display: 'block', width: '100%', textAlign: 'left' }}
               onClick={() => {
                 setNewMenuAt(null)
                 onCreateHtml()
@@ -955,6 +1066,28 @@ function DocsList({
               <span className="octo-docs-new-menu-icon" aria-hidden="true"><HtmlRowIcon /></span>
               {t('docs.list.newHtml')}
             </button>
+            {/* New slides (html_ppt). Independent peer AFTER "HTML" — opens the four-template
+                picker (POST /api/v1/ppt/docs) behind the R2 flag, or the R1 coming-soon notice when
+                off. Like the HTML entry it only closes the menu + calls onCreatePpt; it NEVER
+                calls createDoc, so no empty deck is precreated.
+                Hidden by default (PPT_ENTRY_ENABLED, default OFF) while the html_ppt round is still
+                incomplete: the create wiring stays intact, only the entry is not offered here. */}
+            {PPT_ENTRY_ENABLED && (
+              <button
+                type="button"
+                className="octo-docs-new-menu-item"
+                disabled={creating}
+                onClick={() => {
+                  setNewMenuAt(null)
+                  // Hand the picker the PERSISTENT caret (not this menu item, which unmounts as the menu
+                  // closes on the line above) as its focus-restore target — R2-F1.
+                  onCreatePpt(caretRef.current)
+                }}
+              >
+                <span className="octo-docs-new-menu-icon" aria-hidden="true"><PptRowIcon /></span>
+                {t('docs.list.newPpt')}
+              </button>
+            )}
             {/* Import entries merged into the "New" dropdown (was a standalone "Import" button).
                 Flag ON; formal owner sign-off still PENDING, gated by needs-human-review (was hidden
                 in #583). Toggle via IMPORT_ENABLED. Handlers unchanged — this only moves the entry. */}
@@ -963,48 +1096,71 @@ function DocsList({
                 <div
                   role="separator"
                   aria-hidden="true"
-                  style={{ borderTop: '1px solid #ebebeb', margin: '6px 0' }}
+                  className="octo-docs-new-menu-separator"
                 />
                 <button
                   type="button"
-                  className="octo-tb-btn"
+                  className="octo-docs-new-menu-item"
                   disabled={creating}
-                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
                   onClick={() => {
                     setNewMenuAt(null)
                     importInputRef.current?.click()
                   }}
                 >
-                  📄 {t('docs.sheet.importExcel')}
+                  <span className="octo-docs-new-menu-icon" aria-hidden="true"><SheetRowIcon /></span>
+                  {t('docs.sheet.importExcel')}
                 </button>
                 <button
                   type="button"
-                  className="octo-tb-btn"
+                  className="octo-docs-new-menu-item"
                   disabled={creating}
-                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
                   onClick={() => {
                     setNewMenuAt(null)
                     void onImportWord()
                   }}
                 >
-                  📃 {t('docs.import.word')}
+                  <span className="octo-docs-new-menu-icon" aria-hidden="true"><WordImportIcon /></span>
+                  {t('docs.import.word')}
                 </button>
                 <button
                   type="button"
-                  className="octo-tb-btn"
+                  className="octo-docs-new-menu-item"
                   disabled={creating}
-                  style={{ display: 'block', width: '100%', textAlign: 'left' }}
                   onClick={() => {
                     setNewMenuAt(null)
                     void onImportMarkdown()
                   }}
                 >
-                  📝 {t('docs.import.markdown')}
+                  <span className="octo-docs-new-menu-icon" aria-hidden="true"><MarkdownImportIcon /></span>
+                  {t('docs.import.markdown')}
+                </button>
+                <button
+                  type="button"
+                  className="octo-docs-new-menu-item"
+                  disabled={creating}
+                  onClick={() => {
+                    setNewMenuAt(null)
+                    boardImportInputRef.current?.click()
+                  }}
+                >
+                  <span className="octo-docs-new-menu-icon" aria-hidden="true"><BoardRowIcon /></span>
+                  {t('docs.board.importFile')}
                 </button>
               </>
             )}
           </PortalMenu>
         )}
+        <input
+          ref={boardImportInputRef}
+          type="file"
+          accept=".excalidraw,application/json"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) void onImportBoard(file)
+            e.currentTarget.value = ''
+          }}
+        />
         <input
           ref={importInputRef}
           type="file"
@@ -1170,12 +1326,14 @@ function DocsList({
  *
  * Selecting a list item opens the editor INLINE in the right pane via state (selectedDocId),
  * NOT a full navigation — so the left list never disappears, matching the
- * octo-smart-summary / matter list+detail layout. The selection is mirrored to `?doc=` +
+ * octo-smart-summary list+detail layout. The selection is mirrored to `?doc=` +
  * sessionStorage (mirrorDocToUrl + persistDocTarget) for shareable/deep-link/refresh, using
  * history.replaceState (no host re-push) so `?doc=` is no longer wiped.
  */
 export function DocsHome() {
   const wk = getWKApp()
+  const { locale } = useI18n()
+  const titleContextOwner = useRef(Symbol('docs-title-context'))
   // Guard the session reads: a render throw here would only trade the silent hang for an
   // error-boundary screen, so default to '' and let the editor/list resolve identity from
   // the collab-token round-trip instead of crashing first paint.
@@ -1219,16 +1377,18 @@ export function DocsHome() {
   // persisted/deep-link target that already carries one of them opens straight into the right
   // shell on first paint — no getDoc detour, and (for html) no risk of falling back to the
   // rich-text editor. Only a docId with an UNKNOWN kind still defers to getDoc on mount.
-  const initialKnownKind: 'board' | 'doc' | 'sheet' | 'html' | undefined =
+  const initialKnownKind: 'board' | 'doc' | 'sheet' | 'html' | 'html_ppt' | undefined =
     initialTarget.current?.docType === 'board'
       ? 'board'
       : initialTarget.current?.docType === 'sheet'
         ? 'sheet'
         : initialTarget.current?.docType === 'html'
           ? 'html'
-          : initialTarget.current?.docType === 'doc'
-            ? 'doc'
-            : undefined
+          : initialTarget.current?.docType === 'html_ppt'
+            ? 'html_ppt'
+            : initialTarget.current?.docType === 'doc'
+              ? 'doc'
+              : undefined
   const [selectedDocId, setSelectedDocId] = useState<string | null>(
     () => (initialKnownKind ? (initialTarget.current?.docId ?? null) : null),
   )
@@ -1241,6 +1401,9 @@ export function DocsHome() {
   )
   const [selectedOctoDocSlug, setSelectedOctoDocSlug] = useState<string | undefined>(
     () => initialTarget.current?.octoDocSlug,
+  )
+  const [selectedDocTitle, setSelectedDocTitle] = useState<string | undefined>(
+    () => initialTarget.current?.title,
   )
 
   // Live mirror of selectedDocId for callbacks pushed imperatively into the host route pane. The
@@ -1255,6 +1418,24 @@ export function DocsHome() {
   useEffect(() => {
     selectedDocIdRef.current = selectedDocId
   }, [selectedDocId])
+  useEffect(() => {
+    const primaryTitle = selectedDocTitle?.trim()
+    if (!selectedDocId || !primaryTitle) {
+      titleContextStore.clear('docs', titleContextOwner.current)
+      return
+    }
+    titleContextStore.set(
+      'docs',
+      {
+        primaryTitle,
+        moduleTitle: t('docs.menu.title'),
+      },
+      titleContextOwner.current,
+    )
+  }, [locale, selectedDocId, selectedDocTitle])
+  useEffect(() => {
+    return () => titleContextStore.clear('docs', titleContextOwner.current)
+  }, [])
   // Companion live mirror of the open doc's KIND, read by the nav-reactivation handler below so it
   // re-pushes the right shell (editor vs board vs sheet) without a stale closure — same reason
   // selectedDocIdRef exists.
@@ -1272,21 +1453,52 @@ export function DocsHome() {
 
   // The host's right (main) route pane. When present (production), the editor is pushed there
   // so it fills the main content area while the list stays in the left route slot — the same
-  // full-width list+detail layout Matter/Summary use. When absent (tests / standalone), we
+  // full-width list+detail layout Summary uses. When absent (tests / standalone), we
   // fall back to rendering the editor inline in a CSS split pane.
   const routeRight = getRouteRight()
 
   // Bumped after a successful rename so the resident list refreshes its titles.
   const [listReloadToken, setListReloadToken] = useState(0)
-  const onTitleSaved = useCallback(() => {
-    setListReloadToken((n) => n + 1)
-  }, [])
+  const onTitleSaved = useCallback(
+    (docId: string, title: string) => {
+      setListReloadToken((n) => n + 1)
+      if (docId === selectedDocIdRef.current && title.trim()) {
+        const nextTitle = title.trim()
+        setSelectedDocTitle(nextTitle)
+        persistDocTarget({
+          space,
+          folder,
+          doc: docId,
+          docType: selectedDocTypeRef.current,
+          octoDocSlug: selectedOctoDocSlugRef.current,
+          title: nextTitle,
+        })
+        titleContextStore.set(
+          'docs',
+          {
+            primaryTitle: nextTitle,
+            moduleTitle: t('docs.menu.title'),
+          },
+          titleContextOwner.current,
+        )
+      }
+    },
+    [folder, locale, space],
+  )
 
   // plan Task 6: the "new HTML" flow. `htmlModalOpen` drives the create dialog; `htmlChatDraft`
   // holds the active embedded-bot-DM task (mutually exclusive with a selected doc — opening one
   // closes the other). A ref mirrors the draft so the NavRail re-entry handler can re-mount the
   // SAME chat (same requestId) without a stale closure and without re-sending (§5 risk 1).
   const [htmlModalOpen, setHtmlModalOpen] = useState(false)
+  // "New slides" (html_ppt) entry. When the R2 flag is ON this opens the real four-template picker
+  // (POST /api/v1/ppt/docs); when OFF it falls back to the R1 "coming soon" notice (no regression).
+  // Either way it NEVER calls createDoc — a Bento deck is never mis-minted as a rich-text placeholder.
+  const [pptModalOpen, setPptModalOpen] = useState(false)
+  // The persistent element that opened the PPT picker (the DocsList caret button), handed in via
+  // onCreatePpt and forwarded to CreatePptModal as its focus-restore target (R2-F1). A ref, not state:
+  // it only needs to be readable inside the modal's open/close effects, and must not trigger a render.
+  const pptOpenerRef = useRef<HTMLElement | null>(null)
   const [htmlChatDraft, setHtmlChatDraft] = useState<HtmlCreationDraft | null>(null)
   const htmlChatDraftRef = useRef<HtmlCreationDraft | null>(null)
   useEffect(() => {
@@ -1444,10 +1656,43 @@ export function DocsHome() {
     [openHtmlChat],
   )
 
+  // "New slides" create succeeded: navigate to the PPT editor route the BACKEND returned, and
+  // NOWHERE else. We deliberately do NOT build a route, open the doc through openDoc, or fall
+  // through to any editor shell — trusting the backend route verbatim preserves the R1
+  // no-fallthrough contract (a Bento deck never reaches the Tiptap editor / Hocuspocus path).
+  //
+  // Open-redirect guard (P1-1) + same-origin NORMALISE (P2-1): the route is attacker-influenceable
+  // (a compromised/misbehaving backend could return a `javascript:` or cross-origin `editorUrl`), and
+  // it is fed straight to window.location.assign. resolveSameOriginPath resolves it against the
+  // current origin and returns a clean rooted path for a same-origin ABSOLUTE or relative url — so a
+  // backend that returns `http://<origin>/ppt/d/x` (or `d/x`) is accepted instead of dead-ending —
+  // while cross-origin / scheme-relative / `javascript:` still return null. On null we do NOT navigate
+  // and do NOT close the picker; returning false lets the modal surface its non-retriable message.
+  //
+  // Ordering (P2-2): navigate FIRST, close AFTER. If assign throws (e.g. a sandboxed embed forbids
+  // top-level navigation), the exception propagates into onSubmit's catch and the still-OPEN modal can
+  // show it. Closing first would setError on an unmounted modal — a silent no-op / soft-lock.
+  //
+  // Space carrier (P1-1, XIN-1621): the created deck lives in the active DocsHome space, so we stamp
+  // that space onto the forwarded editor link as `?sp=` (withDeckSpace) — the same carrier the PPT
+  // routes read first (resolveDeckSpace). Without it the peer editor link carried no space and a
+  // cross-space cold open fell to the recipient's last-visited space (backend cross-space guard →
+  // not-found). We read spaceRef (the authoritative current space id) so the callback stays deps-free,
+  // exactly like onOpenInNewPage. A backend editorUrl that already carries `?sp=` is left intact.
+  const onPptCreated = useCallback((editorUrl: string): boolean => {
+    if (typeof window === 'undefined') return false
+    const target = resolveSameOriginPath(editorUrl)
+    if (target === null) return false
+    window.location.assign(withDeckSpace(target, spaceRef.current))
+    setPptModalOpen(false)
+    return true
+  }, [])
+
   const backToList = useCallback(() => {
     setSelectedDocId(null)
     setSelectedDocType(undefined)
     setSelectedOctoDocSlug(undefined)
+    setSelectedDocTitle(undefined)
     // Also drop any active html chat + its refresh timers. backToList is the onSpaceChanged
     // reconciler, so a Space switch must discard the old Space's draft/File[] and never send it
     // into the new Space (§5.7).
@@ -1455,6 +1700,7 @@ export function DocsHome() {
     setHtmlChatDraft(null)
     htmlChatDraftRef.current = null
     setHtmlModalOpen(false)
+    setPptModalOpen(false)
     // Invalidate any in-flight unknown-kind open (openDoc → getDoc still pending). Without this,
     // a Space switch (this is also the onSpaceChanged reconciler) leaves latestOpenRef pointing at
     // the previous Space's docId, so a late getDoc resolve would pass the `latestOpenRef === docId`
@@ -1592,8 +1838,10 @@ export function DocsHome() {
 
   // Choose the right-pane renderer by doc type: a spreadsheet ('sheet') mounts the collaborative
   // Univer SheetView; a whiteboard ('board') mounts the Excalidraw shell; an agent-authored
-  // read-only HTML doc ('html') mounts the view-only HtmlDocView; everything else (incl.
-  // unknown/absent kind) uses the Tiptap EditorShell — the safe default for legacy docs.
+  // read-only HTML doc ('html') mounts the view-only HtmlDocView; a Bento slide-deck ('html_ppt')
+  // mounts the read-only PptDocView — an EXPLICIT peer branch so PPT NEVER falls through to the
+  // Tiptap EditorShell / Hocuspocus collab-token path (no-fallback contract, XIN-1501). Everything
+  // else (incl. unknown/absent kind) uses the Tiptap EditorShell — the safe default for legacy docs.
   const buildRightPane = useCallback(
     (
       docId: string,
@@ -1604,6 +1852,11 @@ export function DocsHome() {
       // Read-only HTML: NO editor/collab wiring — a human may only view it (comments arrive in 2b).
       if (docType === 'html') {
         return <HtmlDocView key={docId} docId={docId} slug={octoDocSlug} space={space} onDeleted={onDocDeleted} />
+      }
+      // Bento slide-deck: read-only PPT surface (R1 placeholder). NO editor/collab wiring and NO
+      // Hocuspocus token — the live editor/preview/present surfaces land in R2+.
+      if (docType === 'html_ppt') {
+        return <PptDocView key={docId} docId={docId} slug={octoDocSlug} space={space} />
       }
       if (docType === 'sheet') {
         return (
@@ -1633,7 +1886,7 @@ export function DocsHome() {
   // (durable sessionStorage + shareable `?doc=` URL), and push the matching shell into the host's
   // right pane. Split out from openDoc so the kind can be resolved asynchronously first.
   const commitOpen = useCallback(
-    (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html', octoDocSlug?: string) => {
+    (docId: string, docType: 'board' | 'doc' | 'sheet' | 'html' | 'html_ppt', octoDocSlug?: string, title?: string) => {
       // Opening a doc closes any active html chat (mutually exclusive right-pane modes, §8). Clear
       // the draft + its refresh timers here; the doc shell is pushed below, so no empty-state flash.
       if (htmlChatDraftRef.current) {
@@ -1649,6 +1902,7 @@ export function DocsHome() {
       setSelectedDocId(docId)
       setSelectedDocType(docType)
       setSelectedOctoDocSlug(htmlSlug)
+      setSelectedDocTitle(title)
       // View ingest (frontend-design §3.4 / XIN-1098 API 1): record that this doc was opened so it
       // surfaces in "最近查看". Fire-and-forget on the open success path — read-only opens count too,
       // the call is idempotent (server UPSERTs on (uid,docId)), and a failure never blocks the open.
@@ -1656,7 +1910,14 @@ export function DocsHome() {
       // Durable mirror (survives the host's query-wiping re-push) + shareable URL. On a first open
       // we push a doc entry over a normalised list entry so a browser Back returns to the list, not
       // the tab's initial about:blank (XIN-1172).
-      persistDocTarget({ space, folder, doc: docId, docType, octoDocSlug: htmlSlug })
+      persistDocTarget({
+        space,
+        folder,
+        doc: docId,
+        docType,
+        octoDocSlug: htmlSlug,
+        title,
+      })
       mirrorDocToUrl(docId, space, folder, !wasOpen)
       const push = (dt: string | undefined) => {
         setSelectedDocType(dt)
@@ -1678,14 +1939,21 @@ export function DocsHome() {
   )
 
   const openDoc = useCallback(
-    (docId: string, docType?: string, octoDocSlug?: string) => {
+    (docId: string, docType?: string, octoDocSlug?: string, title?: string) => {
       latestOpenRef.current = docId
       // Known kind — the creator's own board (API `docType` or the local registry, both surfaced
       // by isBoardDoc at the call site), an explicit `'doc'`, a `'sheet'` (created / imported /
-      // known list row), or an agent-authored read-only `'html'` doc: open the right shell
-      // immediately without a round-trip.
-      if (docType === 'board' || docType === 'doc' || docType === 'sheet' || docType === 'html') {
-        commitOpen(docId, docType, octoDocSlug)
+      // known list row), an agent-authored read-only `'html'` doc, or a Bento `'html_ppt'`
+      // slide-deck: open the right shell immediately without a round-trip. `html_ppt` is listed
+      // explicitly so it reaches the read-only PptDocView and never the rich-text editor.
+      if (
+        docType === 'board' ||
+        docType === 'doc' ||
+        docType === 'sheet' ||
+        docType === 'html' ||
+        docType === 'html_ppt'
+      ) {
+        commitOpen(docId, docType, octoDocSlug, title)
         return
       }
       // Unknown kind: the list API omitted `docType` AND this client has no local board record.
@@ -1707,8 +1975,8 @@ export function DocsHome() {
         .then((meta) => {
           if (superseded()) return // superseded by a newer open or a Space switch
           // Preserve the resolved kind verbatim: a real 'sheet' must reach SheetView, a 'board'
-          // the whiteboard shell, an 'html' the read-only view; everything else falls back to the
-          // rich-text editor.
+          // the whiteboard shell, an 'html' the read-only view, an 'html_ppt' the read-only PPT
+          // surface (never the rich-text editor); everything else falls back to the rich-text editor.
           commitOpen(
             docId,
             meta?.docType === 'board'
@@ -1717,13 +1985,16 @@ export function DocsHome() {
                 ? 'sheet'
                 : meta?.docType === 'html'
                   ? 'html'
-                  : 'doc',
+                  : meta?.docType === 'html_ppt'
+                    ? 'html_ppt'
+                    : 'doc',
             meta?.octoDocSlug,
+            meta?.title,
           )
         })
         .catch(() => {
           if (superseded()) return
-          commitOpen(docId, 'doc')
+          commitOpen(docId, 'doc', undefined, title)
         })
     },
     [commitOpen],
@@ -1863,9 +2134,33 @@ export function DocsHome() {
   // Production (routeRight present): the editor lives in the host's main pane; this route
   // slot renders ONLY the resident list (left). Tests / standalone (no routeRight): render
   // the inline CSS split-pane (left list + right editor) so the layout still works.
+  //
+  // The "New slides" modal is built once and reused across both layouts (only one renders at a
+  // time). Behind the R2 flag it is the live four-template picker; with the flag off it is the R1
+  // "coming soon" notice, so an OFF build never regresses the R1 entry.
+  const pptModal = PPT_CREATE_ENABLED ? (
+    <CreatePptModal
+      open={pptModalOpen}
+      spaceId={space}
+      folderId={folder}
+      triggerRef={pptOpenerRef}
+      onClose={() => setPptModalOpen(false)}
+      onCreated={onPptCreated}
+    />
+  ) : (
+    <ConfirmModal
+      open={pptModalOpen}
+      title={t('docs.ppt.createTitle')}
+      message={t('docs.ppt.createComingSoon')}
+      confirmLabel={t('docs.ppt.createComingSoonOk')}
+      cancelLabel={t('docs.ppt.createComingSoonOk')}
+      onConfirm={() => setPptModalOpen(false)}
+      onCancel={() => setPptModalOpen(false)}
+    />
+  )
   if (routeRight) {
     return (
-      <div className="octo-doc octo-docs-list-only">
+      <div className="octo-doc octo-docs-list-only octo-theme">
         <DocsList
           space={space}
           folder={folder}
@@ -1873,6 +2168,10 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           onCreateHtml={() => setHtmlModalOpen(true)}
+          onCreatePpt={(opener) => {
+            pptOpenerRef.current = opener ?? null
+            setPptModalOpen(true)
+          }}
           reloadToken={listReloadToken}
           botUids={botUids}
         />
@@ -1883,12 +2182,13 @@ export function DocsHome() {
           onClose={() => setHtmlModalOpen(false)}
           onSubmit={onSubmitHtml}
         />
+        {pptModal}
       </div>
     )
   }
 
   return (
-    <div className="octo-doc octo-docs-split">
+    <div className="octo-doc octo-docs-split octo-theme">
       <aside className="octo-docs-split-left">
         <DocsList
           space={space}
@@ -1897,6 +2197,10 @@ export function DocsHome() {
           selectedDocId={selectedDocId}
           onSelect={openDoc}
           onCreateHtml={() => setHtmlModalOpen(true)}
+          onCreatePpt={(opener) => {
+            pptOpenerRef.current = opener ?? null
+            setPptModalOpen(true)
+          }}
           reloadToken={listReloadToken}
           botUids={botUids}
         />
@@ -1919,6 +2223,7 @@ export function DocsHome() {
         onClose={() => setHtmlModalOpen(false)}
         onSubmit={onSubmitHtml}
       />
+      {pptModal}
     </div>
   )
 }

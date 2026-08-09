@@ -17,12 +17,15 @@ import {
   getCurrentImChannelInfo,
 } from "../../im-runtime/currentChannelRuntime";
 import { t } from "../../i18n";
-import { ChannelSettingInfoRow } from "../../ui/ChannelSettingRows";
+import {
+  ChannelSettingInfoRow,
+  ChannelSettingInlineEditRow,
+} from "../../ui/ChannelSettingRows";
 import { ChannelSettingInputEditPush } from "./types";
 
 export function buildThreadInfoSection(
   context: RouteContext<ChannelSettingRouteData>,
-  inputEditPush: ChannelSettingInputEditPush
+  _inputEditPush: ChannelSettingInputEditPush
 ) {
   const data = context.routeData() as ChannelSettingRouteData;
   const { channel, channelInfo } = data;
@@ -52,38 +55,36 @@ export function buildThreadInfoSection(
       : "green";
   const rows: Row[] = [
     new Row({
-      cell: ChannelSettingInfoRow,
+      cell: ChannelSettingInlineEditRow,
       properties: {
         title: t("base.module.thread.name"),
-        value: threadName,
-        onClick: () => {
-          if (!threadInfo) return;
-          // 服务端放开后任何父群活跃人类成员都可改名，前端只挡龙虾/非成员；
-          // 失败提示以服务端返回错误为准（下方 Toast.error）。
+        value: threadName || "",
+        placeholder: t("base.module.thread.name"),
+        maxCount: THREAD_NAME_MAX_LENGTH,
+        onStartEdit: () => {
+          if (!threadInfo) return false;
+          // 服务端放开后（octo-server #542）任何父群活跃人类成员都可改子区名，
+          // 前端只挡龙虾/非成员（canRenameThread 粗过滤）；失败提示以服务端返回
+          // 错误为准（下方 Toast.error），不做前置 Toast 拒绝。
           if (!canEdit) {
-            return;
+            return false;
           }
-          inputEditPush(
-            context,
-            threadName || "",
-            async (value) => {
-              try {
-                await updateChannelSettingThreadName({
-                  channel,
-                  groupNo: threadInfo.groupNo,
-                  shortId: threadInfo.shortId,
-                  name: value,
-                });
-                data.refresh();
-              } catch (error: any) {
-                Toast.error(
-                  error?.msg || t("base.module.thread.saveFailedRetry")
-                );
-              }
-            },
-            t("base.module.thread.name"),
-            THREAD_NAME_MAX_LENGTH
-          );
+          return true;
+        },
+        onSave: async (value: string) => {
+          if (!threadInfo) return;
+          try {
+            await updateChannelSettingThreadName({
+              channel,
+              groupNo: threadInfo.groupNo,
+              shortId: threadInfo.shortId,
+              name: value,
+            });
+            data.refresh();
+          } catch (error: any) {
+            Toast.error(error?.msg || t("base.module.thread.saveFailedRetry"));
+            return false;
+          }
         },
       },
     }),

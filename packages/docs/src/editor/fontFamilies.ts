@@ -49,3 +49,122 @@ export const FONT_FAMILIES = [
   { labelKey: 'docs.toolbar.font.comicSans', value: '"Comic Sans MS", cursive' },
   { labelKey: 'docs.toolbar.font.impact', value: 'Impact, sans-serif' },
 ] as const
+
+/**
+ * Extract the primary (first) family name from a CSS font-family stack, stripping any surrounding
+ * quotes — e.g. `'SimSun, "宋体", serif'` → `SimSun`, `'"PingFang SC", sans-serif'` → `PingFang SC`.
+ * This is the bare family name that Univer's Sheet stores in a cell, so it MUST match how the native
+ * face is named.
+ */
+export function primaryFontName(value: string): string {
+  const first = value.split(',')[0]?.trim() ?? ''
+  return first.replace(/^['"]|['"]$/g, '')
+}
+
+const GENERIC_FONT_FAMILIES = new Set([
+  'serif',
+  'sans-serif',
+  'monospace',
+  'cursive',
+  'fantasy',
+  'system-ui',
+  'ui-serif',
+  'ui-sans-serif',
+  'ui-monospace',
+  'ui-rounded',
+  'emoji',
+  'math',
+])
+
+/** Concrete local faces intentionally named by a stack, excluding CSS generic fallbacks. */
+function localFontNames(value: string): string[] {
+  return value
+    .split(',')
+    .map((family) => family.trim().replace(/^['"]|['"]$/g, ''))
+    .filter((family) => family !== '' && !GENERIC_FONT_FAMILIES.has(family.toLowerCase()))
+}
+
+/**
+ * Whether the browser can render the given font family from a locally-installed face.
+ *
+ * This is the shared availability probe for the two surfaces that render text through this package:
+ * the Doc toolbar and the Board text controls (which re-export it as `isBoardFontSupported`). It is
+ * modelled on Univer's `IFontService.isFontSupported` — canvas glyph-width measurement, never a
+ * download — but it is NOT the probe the Sheet uses: this refactor only changes which fonts the Sheet
+ * *registers* (see `SHEET_FONT_ADDITIONS`); the Sheet still decides availability through Univer's own
+ * `FontService`. The two implementations also differ in their degenerate branch — Univer returns
+ * `false` when no 2D context is available, whereas we return `true` (below) to avoid a false
+ * "unavailable" warning — so their verdicts are not guaranteed identical in that edge case.
+ *
+ * It compares the glyph width of a probe string rendered in each intended concrete face against each
+ * generic fallback: if a face is missing, the browser substitutes the fallback and the widths match.
+ * A stack is supported when any named local face is available (for example either Calibri or Carlito
+ * in `Calibri, Carlito, sans-serif`). CSS generic families are deliberately excluded from probing, so
+ * the terminal `serif`/`sans-serif` fallback cannot make every stack appear supported. It ONLY
+ * inspects already-installed local faces — it never downloads or `@font-face`-loads a font.
+ *
+ * Returns `true` when detection is impossible (SSR, or a canvas 2D context is unavailable) so callers
+ * never surface a false "unavailable" warning.
+ */
+export function isFontFamilySupported(value: string): boolean {
+  if (typeof document === 'undefined') return true
+  const context = document.createElement('canvas').getContext('2d')
+  if (!context) return true
+  const fonts = localFontNames(value)
+  if (fonts.length === 0) return true
+  const text = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  const size = '72px'
+  return fonts.some((font) =>
+    ['monospace', 'serif', 'sans-serif'].some((base) => {
+      context.font = `${size} ${base}`
+      const fallbackWidth = context.measureText(text).width
+      context.font = `${size} "${font}", ${base}`
+      return context.measureText(text).width !== fallbackWidth
+    }),
+  )
+}
+
+export type FontCategory = 'sans-serif' | 'serif' | 'monospace' | 'handwriting' | 'display'
+
+/**
+ * Univer's picker category for the fonts the Sheet adds on top of its built-in DEFAULT_FONT_LIST.
+ * Keyed by the SHARED catalogue `labelKey`, so the Sheet's extra fonts, their display labels and the
+ * Doc/Board catalogue can never drift apart. Entries absent here are the Windows-named faces Univer
+ * already ships (Arial/Times New Roman/Tahoma/Verdana + the SimSun/SimHei/… CJK set), so re-adding
+ * them would only produce duplicate picker rows.
+ */
+const SHEET_ADDITION_CATEGORIES: Partial<
+  Record<(typeof FONT_FAMILIES)[number]['labelKey'], FontCategory>
+> = {
+  'docs.toolbar.font.calibri': 'sans-serif',
+  'docs.toolbar.font.pingfang': 'sans-serif',
+  'docs.toolbar.font.hiraginoSansGB': 'sans-serif',
+  'docs.toolbar.font.stxihei': 'sans-serif',
+  'docs.toolbar.font.yuanti': 'sans-serif',
+  'docs.toolbar.font.hannotate': 'handwriting',
+  'docs.toolbar.font.hanzipen': 'handwriting',
+  'docs.toolbar.font.wawati': 'handwriting',
+  'docs.toolbar.font.georgia': 'serif',
+  'docs.toolbar.font.palatino': 'serif',
+  'docs.toolbar.font.courierNew': 'monospace',
+  'docs.toolbar.font.trebuchet': 'sans-serif',
+  'docs.toolbar.font.comicSans': 'handwriting',
+  'docs.toolbar.font.impact': 'display',
+}
+
+/**
+ * The fonts the Sheet picker registers beyond Univer's DEFAULT_FONT_LIST, derived from the shared
+ * catalogue so Doc/Board/Sheet expose the same faces under the same localized names. `value` is the
+ * bare family name a cell stores/exports; `labelKey` is the SHARED i18n key (there is no separate
+ * sheet label set); `category` groups the option in Univer's native picker.
+ */
+export const SHEET_FONT_ADDITIONS: ReadonlyArray<{
+  value: string
+  labelKey: string
+  category: FontCategory
+}> = FONT_FAMILIES.filter((f) => f.labelKey in SHEET_ADDITION_CATEGORIES).map((f) => ({
+  value: primaryFontName(f.value),
+  labelKey: f.labelKey,
+  // The `filter` above guarantees the key is present, so the `Partial` lookup is non-null here.
+  category: SHEET_ADDITION_CATEGORIES[f.labelKey]!,
+}))

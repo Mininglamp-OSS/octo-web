@@ -43,7 +43,6 @@ import {
   ChannelTypeCommunityTopic,
 } from "../../Service/Const";
 import ConversationContext from "./context";
-import { subscriberDisplayName } from "../../Utils/displayName";
 import {
   buildMessageMentions as buildMentionRenderInfo,
   readMentionFlags,
@@ -78,6 +77,7 @@ import {
 } from "./foldSessionSummary";
 import {
   getScrollAnchorOffsetY,
+  shouldShowScrollToBottom,
   shouldPulldownOnWheel,
   TOP_HISTORY_TRIGGER_OFFSET,
 } from "./historyScroll";
@@ -98,6 +98,11 @@ import {
 } from "../../Messages/RichText/RichTextContent";
 import { formatMessageTimestamp } from "../../Utils/time";
 import { isSafeUrl } from "../../Utils/security";
+import {
+  isConversationViewportVisible,
+  isOwnedConversationSingleton,
+  shouldMarkConversationRead,
+} from "../../features/notifications";
 import { imageBlockToPasteFile } from "../MessageInput/richTextPaste";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
@@ -140,7 +145,6 @@ import {
   addImChannelInfoListener,
   fetchImChannelInfo,
   getImChannelInfo,
-  getImChannelSubscribers,
 } from "../../im-runtime/channelRuntime";
 import {
   SummaryCardContent,
@@ -188,92 +192,6 @@ function getEffectiveContent(message: Message): MessageContent {
     throw new SummaryCardForwardBlockedError();
   }
   return content;
-}
-
-/**
- * 从消息 content 里提取附件信息 (file_name + file_url), 供
- * POST /matters/extract 和 POST /matters/:id/timeline 使用。
- *
- * 覆盖的 content type (对齐 Service/Const.ts MessageContentTypeConst):
- *   - 文件 (8): FileContent { name, url, extension }
- *   - 图片 (2): ImageContent { name?, url } — 没 name 时合成 'image.{ext}'
- *   - 语音 (4): VoiceContent { url } — 合成 'voice.amr'
- *   - 小视频 (5): VideoContent { url } — 合成 'video.mp4'
- * 其它类型 (文本/卡片/gif/合并转发/系统消息等) 不返回附件, 因为它们要么没有
- * 文件 URL, 要么语义上不是 "消息附件"。
- *
- * 返回空数组, 不返回 null/undefined — 让调用方可以直接传给后端
- * (后端 json binding 接受空数组)。
- */
-function extractMessageAttachments(
-  m: Message | undefined | null
-): { file_name: string; file_url: string }[] {
-  if (!m || !m.content) return [];
-  const contentType = (m.content as { contentType?: number }).contentType;
-  const anyContent = m.content as Record<string, unknown>;
-  const url =
-    typeof anyContent.url === "string" ? (anyContent.url as string) : "";
-  // remoteUrl 是 MediaMessageContent 在 decode 后设置的真实 CDN URL, 优先用
-  const remoteUrl =
-    typeof anyContent.remoteUrl === "string"
-      ? (anyContent.remoteUrl as string)
-      : "";
-  const effectiveUrl = remoteUrl || url;
-  if (!effectiveUrl) return [];
-
-  const explicitName =
-    typeof anyContent.name === "string" ? (anyContent.name as string) : "";
-
-  switch (contentType) {
-    case MessageContentTypeConst.file: {
-      // 文件: 用真实文件名; 兜底合成
-      const ext =
-        typeof anyContent.extension === "string"
-          ? (anyContent.extension as string)
-          : "";
-      const fallback = ext ? `file.${ext}` : "file";
-      return [{ file_name: explicitName || fallback, file_url: effectiveUrl }];
-    }
-    case MessageContentTypeConst.image: {
-      // 图片一般没 name, 用 URL 末尾的文件名, 失败就合成 image.jpg
-      return [
-        {
-          file_name:
-            explicitName || guessFileNameFromUrl(effectiveUrl, "image.jpg"),
-          file_url: effectiveUrl,
-        },
-      ];
-    }
-    case MessageContentTypeConst.voice:
-      return [
-        {
-          file_name: guessFileNameFromUrl(effectiveUrl, "voice.amr"),
-          file_url: effectiveUrl,
-        },
-      ];
-    case MessageContentTypeConst.smallVideo:
-      return [
-        {
-          file_name: guessFileNameFromUrl(effectiveUrl, "video.mp4"),
-          file_url: effectiveUrl,
-        },
-      ];
-    default:
-      return [];
-  }
-}
-
-function guessFileNameFromUrl(url: string, fallback: string): string {
-  try {
-    const u = new URL(url, "http://x"); // 允许相对路径
-    const parts = u.pathname.split("/");
-    const last = parts[parts.length - 1];
-    // 必须有真正的文件名 (带扩展名), 否则用 fallback
-    if (last && last.includes(".")) return last;
-  } catch {
-    // ignore
-  }
-  return fallback;
 }
 
 /**
@@ -327,63 +245,6 @@ function offsetMentionEntities(
     }));
 }
 
-/**
- * 从 WuKongIM Message 对象解析发送人的展示名。
- *
- * WuKongIM SDK 的 Message 只带 fromUID, 不带 fromName; name 必须前端自己解析。
- * 参考 useMessageRow.ts + Messages/Base/index.tsx 的群成员名字解析路径:
- *
- *   1. 群消息: 从 channel runtime 拉群成员列表,
- *      按 uid 匹配后用 subscriberDisplayName (real_name(verified) > remark > name)
- *      — 群内用户大概率没开过 1v1, Person channelInfo 缓存常 miss,
- *      群成员列表缓存命中率高得多, 是主路径
- *   2. fallback: Person channelInfo.title (用户真开过 1v1 时才有)
- *   3. 最终兜底: 空串 (后端 from_uname optional)
- *
- * 注意: 这是同步函数, 不做 fetch; 拿不到就返回空。
- * 后端 LLM 接收到空 from_uname 时会用 from_uid 代替, 不会致命。
- */
-function resolveFromUName(m: Message | undefined | null): string {
-  if (!m || !m.fromUID) return "";
-  const fromUID = m.fromUID;
-
-  // 1. 优先从群成员列表拿 (群聊场景命中率最高)
-  try {
-    const ch = m.channel;
-    if (ch && ch.channelType === ChannelTypeGroup) {
-      const subs = getImChannelSubscribers(WKSDK.shared(), ch) as
-        | {
-            uid?: string;
-            name?: string;
-            remark?: string;
-            orgData?: Record<string, unknown>;
-          }[]
-        | null
-        | undefined;
-      const member = subs?.find((s) => s && s.uid === fromUID);
-      if (member) {
-        const name = subscriberDisplayName(member);
-        if (name) return name;
-      }
-    }
-  } catch {
-    // channelManager 未初始化 / 缓存 miss, 降级
-  }
-
-  // 2. Person channelInfo 兜底
-  try {
-    const info = getImChannelInfo(
-      WKSDK.shared(),
-      new Channel(fromUID, ChannelTypePerson)
-    );
-    if (info?.title) return info.title;
-  } catch {
-    // ignore
-  }
-
-  return "";
-}
-
 const foldSessionAvatarIcon = new URL(
   "./fold-session-avatar.svg",
   import.meta.url
@@ -409,6 +270,8 @@ const FoldImage: React.FC<{ src: string }> = ({ src }) => {
 
 export interface ConversationProps {
   channel: Channel;
+  /** 辅助会话（例如侧边 Thread）不占用主会话的全局单例。 */
+  isAuxiliary?: boolean;
   chatBg?: string; // 聊天背景
   shouldShowHistorySplit?: boolean;
   initLocateMessageSeq?: number;
@@ -463,6 +326,7 @@ export class Conversation
   static contextType = I18nContext;
   declare context: React.ContextType<typeof I18nContext>;
 
+  private static openChannelOwner?: symbol;
   // 缓存各会话的引用/回复状态，切换会话时保留
   private static replyStateCache: Map<
     string,
@@ -480,10 +344,6 @@ export class Conversation
   private _dragFileCallback?: (file: File) => void;
   private _cachedSelectedText: string | null = null;
   private _beforeUnloadHandler: () => void;
-  private _matterSendMessageHandler?: (data: {
-    channelId: string;
-    channelType: number;
-  }) => void;
   private _guardId: symbol = Symbol("pendingAttachmentGuard");
   // 监听 channelInfo 变化：群解散时 status 翻转为 2，需重渲染以隐藏成员栏/置灰发送框
   private _channelInfoListener?: (channelInfo: ChannelInfo) => void;
@@ -499,6 +359,21 @@ export class Conversation
   private _consumedComposeIds: Set<string> = new Set();
   private _initialComposeGeneration = 0;
   private _initialComposeMounted = false;
+  private readonly _openChannelOwner = Symbol("openChannelOwner");
+  private _ownedOpenChannel?: Channel;
+  private _lastAttentionCheckedMessageSeq = 0;
+  private _unsubscribeVmAttentionListener?: () => void;
+  private _attentionRefreshHandler = () => {
+    const run = () => this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+    else window.setTimeout(run, 0);
+  };
+  private _vmAttentionListener = () => {
+    const latestMessageSeq = this.vm.lastMessage?.messageSeq || 0;
+    if (latestMessageSeq <= this._lastAttentionCheckedMessageSeq) return;
+    this._lastAttentionCheckedMessageSeq = latestMessageSeq;
+    this._attentionRefreshHandler();
+  };
   private onOpenThreadPanel?: (
     threadChannelId: string,
     threadName: string
@@ -1476,12 +1351,19 @@ export class Conversation
     if (onContext) {
       onContext(this);
     }
-    WKApp.shared.openChannel = channel;
+    if (!this.props.isAuxiliary) {
+      WKApp.shared.openChannel = channel;
+      this._ownedOpenChannel = channel;
+      Conversation.openChannelOwner = this._openChannelOwner;
+    }
 
-    // 注册附件发送守卫：返回 false 表示有未发送附件，需弹确认
-    WKApp.shared.pendingAttachmentGuard = () =>
-      this.getPendingAttachments().length === 0;
-    WKApp.shared.pendingAttachmentGuardId = this._guardId;
+    // 辅助 Thread 不覆盖主会话的全局附件守卫；否则开关侧栏会让主会话
+    // 的待发送附件失去离开确认，或被侧栏草稿反向阻塞。
+    if (!this.props.isAuxiliary) {
+      WKApp.shared.pendingAttachmentGuard = () =>
+        this.getPendingAttachments().length === 0;
+      WKApp.shared.pendingAttachmentGuardId = this._guardId;
+    }
 
     if (this.vm.hasDraft()) {
       this.restoreDraft(this.vm.draft());
@@ -1495,30 +1377,17 @@ export class Conversation
       Conversation.replyStateCache.delete(channelKey);
     }
 
-    // Listen for matter-send-and-create: send current editor content (with mention), then clear
-    this._matterSendMessageHandler = (data: {
-      channelId: string;
-      channelType: number;
-    }) => {
-      const { channel } = this.props;
-      if (
-        data.channelId === channel.channelID &&
-        data.channelType === channel.channelType
-      ) {
-        this._messageInputContext?.send();
-      }
-    };
-    WKApp.mittBus.on(
-      "wk:matter-created-from-input",
-      this._matterSendMessageHandler
-    );
-
     this._exitMultipleModeHandler = () => {
       this.vm.editOn = false;
       this.vm.unCheckAllMessages();
       this.forceUpdate();
     };
     WKApp.mittBus.on("wk:exit-multiple-mode", this._exitMultipleModeHandler);
+    WKApp.mittBus.on("wk:app-foreground", this._attentionRefreshHandler);
+    WKApp.mittBus.on("wk:active-menu-changed", this._attentionRefreshHandler);
+    this._unsubscribeVmAttentionListener = this.vm.addListener(
+      this._vmAttentionListener
+    );
 
     window.addEventListener("beforeunload", this._beforeUnloadHandler);
 
@@ -1585,22 +1454,20 @@ export class Conversation
     if (next && next !== prev) {
       this.tryConsumeInitialCompose();
     }
+    this._vmAttentionListener();
   }
 
   componentWillUnmount() {
     this._initialComposeMounted = false;
     this._initialComposeGeneration += 1;
-    if (this._matterSendMessageHandler) {
-      WKApp.mittBus.off(
-        "wk:matter-created-from-input",
-        this._matterSendMessageHandler
-      );
-      this._matterSendMessageHandler = undefined;
-    }
     if (this._exitMultipleModeHandler) {
       WKApp.mittBus.off("wk:exit-multiple-mode", this._exitMultipleModeHandler);
       this._exitMultipleModeHandler = undefined;
     }
+    WKApp.mittBus.off("wk:app-foreground", this._attentionRefreshHandler);
+    WKApp.mittBus.off("wk:active-menu-changed", this._attentionRefreshHandler);
+    this._unsubscribeVmAttentionListener?.();
+    this._unsubscribeVmAttentionListener = undefined;
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
     if (this._channelInfoListener) {
       this._unsubscribeChannelInfoListener?.();
@@ -1642,8 +1509,19 @@ export class Conversation
     }
     this.vm.markUnread();
     this.markConversationExtra();
-    WKApp.shared.openChannel = undefined;
-    WKSDK.shared().conversationManager.openConversation = undefined;
+    if (Conversation.openChannelOwner === this._openChannelOwner) {
+      if (
+        isOwnedConversationSingleton(
+          WKApp.shared.openChannel,
+          this._ownedOpenChannel
+        )
+      ) {
+        WKApp.shared.openChannel = undefined;
+      }
+      Conversation.openChannelOwner = undefined;
+    }
+    this._ownedOpenChannel = undefined;
+    this.vm.releaseOpenConversationOwnership();
   }
 
   markConversationExtra() {
@@ -1702,12 +1580,14 @@ export class Conversation
 
   async clearDraftAfterSend(
     sendDraftGeneration: number,
-    remoteDraftAtSend: string
+    remoteDraftAtSend: string,
+    draftAtSend: string
   ) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
     if (
       !shouldClearDraftAfterSend({
         liveDraft: this.messageInputContext()?.text() || "",
+        draftAtSend,
         remoteDraft: remoteExtra?.draft || "",
         remoteDraftAtSend,
         draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
@@ -2088,6 +1968,11 @@ export class Conversation
       <div
         key={session.sessionId}
         id={session.anchorId}
+        data-message-seq={
+          !session.isExpanded && session.lastMessage.messageSeq > 0
+            ? session.lastMessage.messageSeq
+            : undefined
+        }
         className={classNames(
           "wk-message-item",
           "wk-message-item-fold-session",
@@ -2305,20 +2190,10 @@ export class Conversation
       this.vm.lastLocalMessageElement = this.getMessageElement(
         this.vm.lastMessage
       ); // 最新消息
-      if (this.vm.lastLocalMessageElement) {
-        // 如果有最新消息的dom则判断是否在可见范围内
-        if (
-          scrollOffsetTop >
-          this.vm.lastLocalMessageElement.clientHeight + 20
-        ) {
-          // 如果滚动距离超过了第一个元素则显示“滚动到底部”
-          this.vm.showScrollToBottomBtn = true;
-        } else {
-          this.vm.showScrollToBottomBtn = false;
-        }
-      } else {
-        this.vm.showScrollToBottomBtn = true;
-      }
+      this.vm.showScrollToBottomBtn = shouldShowScrollToBottom(
+        scrollOffsetTop,
+        this.vm.lastLocalMessageElement?.clientHeight
+      );
     }
 
     this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
@@ -2355,6 +2230,7 @@ export class Conversation
   // 上传已读数据
   uploadReadedIfNeed() {
     const viewport = document.getElementById(this.vm.messageContainerId);
+    if (!this.canRecordReadAttention(viewport)) return;
     const visiableMessages = this.allVisiableMessages(viewport);
     if (visiableMessages && visiableMessages.length > 0) {
       const unreadMessages = new Array<Message>();
@@ -2377,13 +2253,27 @@ export class Conversation
   // 更新已读位置和提醒项
   updateBrowseToMessageSeqAndReminderDoneIfNeed() {
     const viewport = document.getElementById(this.vm.messageContainerId);
+    if (!this.canRecordReadAttention(viewport)) return;
 
     this.updateBrowseToMessageSeq(viewport); // 更新已读位置
 
     this.updateReminderDoneIfNeed(viewport); // 更新提醒项
+    WKApp.mittBus.emit("wk:message-attention-state-changed");
   }
 
   // 更新已预览的位置
+  private canRecordReadAttention(viewport: HTMLElement | null): boolean {
+    const viewportVisible = isConversationViewportVisible(viewport, document);
+    return shouldMarkConversationRead({
+      chatModuleActive: WKApp.currentMenuId === "chat",
+      documentVisible: document.visibilityState === "visible",
+      windowFocused: document.hasFocus(),
+      currentConversation: viewport !== null,
+      // Callers below still select the actual visible messages within this viewport.
+      newMessageVisible: viewportVisible,
+    });
+  }
+
   updateBrowseToMessageSeq(viewport: HTMLElement | null) {
     const lastVisiableMessage = this.lastVisiableMessage(viewport); // 当前UI显示的最后一条可见的消息
     if (
@@ -2545,11 +2435,15 @@ export class Conversation
     }
 
     const targetScrollTop = viewport.scrollTop;
+    const viewportBottom = targetScrollTop + viewport.clientHeight;
     for (let index = 0; index < this.vm.messages.length; index++) {
       const message = this.vm.messages[index];
       const element = this.getMessageElement(message);
       if (element) {
-        if (element.offsetTop + element.clientHeight / 2 > targetScrollTop) {
+        if (
+          element.offsetTop < viewportBottom &&
+          element.offsetTop + element.clientHeight / 2 > targetScrollTop
+        ) {
           // message 要漏出来一半才算可见
           visiableMessages.push(message);
         }
@@ -2672,7 +2566,9 @@ export class Conversation
     return (
       <Provider
         create={() => {
-          this.vm = new ConversationVM(channel, initLocateMessageSeq);
+          this.vm = new ConversationVM(channel, initLocateMessageSeq, {
+            registerAsOpenConversation: !this.props.isAuxiliary,
+          });
           return this.vm;
         }}
         render={(vm: ConversationVM) => {
@@ -2715,6 +2611,8 @@ export class Conversation
                   <div
                     className="wk-conversation-messages"
                     id={vm.messageContainerId}
+                    data-conversation-channel-id={channel.channelID}
+                    data-conversation-channel-type={channel.channelType}
                     onScroll={this.handleScroll.bind(this)}
                     onWheel={this.handleWheel.bind(this)}
                   >
@@ -2867,60 +2765,6 @@ export class Conversation
                         },
                       });
                     }}
-                    onAddToMatter={(anchor) => {
-                      const checkedMsgs = vm.getCheckedMessages();
-                      if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error(
-                          t("base.conversation.selection.selectMessageFirst")
-                        );
-                        return;
-                      }
-                      // 传 channel 信息给 MatterLinkMenu，用于按 channel 查询关联的 Matter
-                      const ch = this.props.channel;
-                      WKApp.mittBus.emit("wk:open-matter-link-menu", {
-                        anchor,
-                        channelId: ch.channelID,
-                        channelType: ch.channelType,
-                        messages: checkedMsgs.map((m: any) => ({
-                          messageSeq: m.messageSeq,
-                          messageID: m.messageID,
-                          fromUID: m.fromUID,
-                          fromUName: resolveFromUName(m),
-                          content:
-                            m.content?.conversationDigest ||
-                            m.content?.text ||
-                            "",
-                          timestamp: m.message?.timestamp || m.timestamp,
-                          attachments: extractMessageAttachments(m),
-                        })),
-                      });
-                    }}
-                    onCreateMatter={() => {
-                      const checkedMsgs = vm.getCheckedMessages();
-                      if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error(
-                          t("base.conversation.selection.selectMessageFirst")
-                        );
-                        return;
-                      }
-                      const ch = this.props.channel;
-                      WKApp.mittBus.emit("wk:open-smart-create-modal", {
-                        channelId: ch.channelID,
-                        channelType: ch.channelType,
-                        messages: checkedMsgs.map((m: any) => ({
-                          messageSeq: m.messageSeq,
-                          messageID: m.messageID,
-                          fromUID: m.fromUID,
-                          fromUName: resolveFromUName(m),
-                          content:
-                            m.content?.conversationDigest ||
-                            m.content?.text ||
-                            "",
-                          timestamp: m.message?.timestamp,
-                          attachments: extractMessageAttachments(m),
-                        })),
-                      });
-                    }}
                   ></MultiplePanel>
                 </div>
                 <div
@@ -2997,31 +2841,6 @@ export class Conversation
                           />
                         ) : undefined
                       }
-                      onAltEnter={() => {
-                        const { channel } = this.props;
-                        // Alt+Enter creates task only in group and topic channels
-                        if (
-                          channel.channelType !== ChannelTypeGroup &&
-                          channel.channelType !== ChannelTypeCommunityTopic
-                        )
-                          return;
-                        const channelInfo = getImChannelInfo(
-                          WKSDK.shared(),
-                          channel
-                        );
-                        // 传原始文本（含 @[uid:name] 占位符），由 GlobalMatterModal 先 parse 再截断
-                        // 避免 slice 截断位置落在占位符中间导致 mention 残留乱码
-                        const rawText = (
-                          this._messageInputContext?.text() ?? ""
-                        ).trim();
-                        WKApp.mittBus.emit("wk:open-create-matter-modal", {
-                          channelId: channel.channelID,
-                          channelType: channel.channelType,
-                          channelName: channelInfo?.title,
-                          prefillTitle: rawText,
-                          clearOnConfirm: true,
-                        });
-                      }}
                       onExpandChange={(expanded) => {
                         this.setState({ inputExpanded: expanded });
                       }}
@@ -3111,6 +2930,8 @@ export class Conversation
                         const sendDraftGeneration = this.draftSaveGeneration;
                         const remoteDraftAtSend =
                           this.vm.currentConversation?.remoteExtra?.draft || "";
+                        const draftAtSend =
+                          this.messageInputContext()?.text() || "";
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
@@ -3370,7 +3191,8 @@ export class Conversation
                           if (mixedSent) {
                             await this.clearDraftAfterSend(
                               sendDraftGeneration,
-                              remoteDraftAtSend
+                              remoteDraftAtSend,
+                              draftAtSend
                             );
                           }
                           return finishRichTextMixedSend(
@@ -3449,7 +3271,8 @@ export class Conversation
                             if (mixedSent) {
                               await this.clearDraftAfterSend(
                                 sendDraftGeneration,
-                                remoteDraftAtSend
+                                remoteDraftAtSend,
+                                draftAtSend
                               );
                             }
                             // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
@@ -3530,7 +3353,8 @@ export class Conversation
                         if (anyMessageSent) {
                           await this.clearDraftAfterSend(
                             sendDraftGeneration,
-                            remoteDraftAtSend
+                            remoteDraftAtSend,
+                            draftAtSend
                           );
                         }
                         if (anyMessageSent) this.props.onMessageSent?.();
@@ -3844,20 +3668,14 @@ interface MultiplePanelProps {
   onForward?: () => void; // 逐条转发
   onMergeForward?: () => void; // 合并转发
   onDelete?: () => void; // 删除
-  onAddToMatter?: (anchor: HTMLElement) => void; // 添加到事项（传出按钮 DOM 给菜单定位）
-  onCreateMatter?: () => void; // 创建新事项
 }
 class MultiplePanel extends Component<MultiplePanelProps> {
-  private matterBtnRef = React.createRef<HTMLButtonElement>();
-
   render(): React.ReactNode {
     const {
       onClose,
       onForward,
       onMergeForward,
       onDelete,
-      onAddToMatter,
-      onCreateMatter,
     } = this.props;
     return (
       <div className="wk-multiplepanel">
@@ -3867,31 +3685,6 @@ class MultiplePanel extends Component<MultiplePanelProps> {
         <div className="wk-multiplepanel-sep" />
         <button className="wk-multiplepanel-btn" onClick={onMergeForward}>
           {t("base.conversation.multiplePanel.mergeForward")}
-        </button>
-        <div className="wk-multiplepanel-sep" />
-        {/* 创建新事项 — 从多选消息智能创建（PRD §3） */}
-        <button
-          className="wk-multiplepanel-btn wk-multiplepanel-btn--matter"
-          onClick={() => {
-            if (onCreateMatter) onCreateMatter();
-          }}
-          title={t("base.conversation.multiplePanel.createMatter")}
-        >
-          {t("base.conversation.multiplePanel.createMatter")}
-        </button>
-        <div className="wk-multiplepanel-sep" />
-        {/* 同步到事项 — 点击由调用方弹出菜单（dmworktodo 模块接管） */}
-        <button
-          ref={this.matterBtnRef}
-          className="wk-multiplepanel-btn wk-multiplepanel-btn--matter"
-          onClick={() => {
-            if (onAddToMatter && this.matterBtnRef.current) {
-              onAddToMatter(this.matterBtnRef.current);
-            }
-          }}
-          title={t("base.conversation.multiplePanel.syncToMatter")}
-        >
-          {t("base.conversation.multiplePanel.syncToMatter")}
         </button>
         <div className="wk-multiplepanel-sep" />
         <button

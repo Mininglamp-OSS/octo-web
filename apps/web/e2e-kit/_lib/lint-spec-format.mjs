@@ -2,25 +2,26 @@
 /**
  * _lib/lint-spec-format.mjs — spec 格式 lint (kit-provided).
  *
- * 校验 e2e/case-specs/**​/*.md 合规:
+ * 校验 e2e-kit/case-specs/**​/*.md 合规:
  *   - 必需段: Metadata / 目标 / 前置条件 / 用户操作步骤 / 预期结果 / 反例
  *     (视觉基准 / 摸清依据可选)
- *   - Metadata 段有 "Case 类型" / "目标模式" / "优先级"
+ *   - Metadata 段有 "Case 类型" / "目标模式" / "优先级" / "Tags"
+ *   - Tags 至少含 `@<CaseId>` / `@p0|@p1|@p2` / `@<module>`
  *   - 反例段非空 (>= 20 字符, 避免只写 "无" 应付)
  *   - 无残留 "**待补**" marker (scaffolder 骨架填完应删)
  *
  * **接入方需改的占位** (脚本顶部 config):
- *   - SPECS_DIR    — case-spec md 目录 (默认 "e2e/case-specs")
+ *   - SPECS_DIR    — case-spec md 目录 (默认 "e2e-kit/case-specs")
  *
  * 用法:
- *   node e2e/_lib/lint-spec-format.mjs                 # 全部 spec, 不合规 exit 1
- *   node e2e/_lib/lint-spec-format.mjs --files a.md b.md   # 指定文件 (pre-commit)
- *   node e2e/_lib/lint-spec-format.mjs --diff-mode     # 只校验 git 里新加/改的 spec
+ *   node e2e-kit/_lib/lint-spec-format.mjs                 # 全部 spec, 不合规 exit 1
+ *   node e2e-kit/_lib/lint-spec-format.mjs --files a.md b.md   # 指定文件 (pre-commit)
+ *   node e2e-kit/_lib/lint-spec-format.mjs --diff-mode     # 只校验 git 里新加/改的 spec
  *                                                     # (存量老格式豁免, 只挡漂移)
  *
  * 建议 package.json 加脚本:
- *   "check:spec-format": "node e2e/_lib/lint-spec-format.mjs"
- *   "check:spec-format:diff": "node e2e/_lib/lint-spec-format.mjs --diff-mode"
+ *   "check:spec-format": "node e2e-kit/_lib/lint-spec-format.mjs"
+ *   "check:spec-format:diff": "node e2e-kit/_lib/lint-spec-format.mjs --diff-mode"
  *
  * CI: quality stage, MR 里 case-specs/ 有变更时触发 --diff-mode
  * pre-commit: .husky/pre-commit 里 staged 涉及 case-specs/ 时跑一次 --files
@@ -32,7 +33,7 @@ import { execSync } from "node:child_process";
 // ---------- config (接入方按需改) ----------
 
 const REPO_ROOT = process.cwd();
-const SPECS_DIR = join(REPO_ROOT, "e2e/case-specs");
+const SPECS_DIR = join(REPO_ROOT, "e2e-kit/case-specs");
 const EXCLUDE_FILENAMES = new Set(["README.md", "COVERAGE.md", "BACKLOG.md", "TEMPLATE.md"]);
 
 // 必需段落. 允许小变体 (中英文冒号 / 前后空格 / heading 级别 2 或 3).
@@ -47,9 +48,9 @@ const REQUIRED_SECTIONS = [
 
 // Metadata 段内必需字段
 const REQUIRED_METADATA_FIELDS = [
-  { name: "Case 类型", pattern: /^-\s*Case\s*类型\s*[::]/im },
-  { name: "目标模式", pattern: /^-\s*目标模式\s*[::]/im },
-  { name: "优先级", pattern: /^-\s*优先级\s*[::]/im },
+  { name: "Case 类型", pattern: /^-\s*Case\s*类型\s*[：:]/im },
+  { name: "目标模式", pattern: /^-\s*目标模式\s*[：:]/im },
+  { name: "优先级", pattern: /^-\s*优先级\s*[：:]/im },
 ];
 
 // ---------- helpers ----------
@@ -83,6 +84,29 @@ function extractSection(text, sectionRegex) {
     }
   }
   return lines.slice(start, end).join("\n").trim();
+}
+
+function caseIdFromFilename(filePath) {
+  const base = filePath.split("/").pop() || filePath;
+  return base.replace(/\.md$/, "").split("-")[0];
+}
+
+function parseTags(metadata) {
+  const line = metadata
+    .split("\n")
+    .find((l) => /^-\s*Tags?\s*[：:]/i.test(l));
+  if (!line) return null;
+  const raw = line.replace(/^-\s*Tags?\s*[：:]/i, "").replace(/`/g, "").trim();
+  return new Set(raw.split(/\s+/).filter((t) => t.startsWith("@")));
+}
+
+function isModuleLikeTag(tag, caseId) {
+  return (
+    tag.startsWith("@") &&
+    tag !== `@${caseId}` &&
+    !["@p0", "@p1", "@p2", "@visual"].includes(tag) &&
+    !/^@p[0-2]-/.test(tag)
+  );
 }
 
 // diff-mode: 从 git 拿新加/改的 spec 文件.
@@ -178,6 +202,23 @@ for (const f of files) {
         errors.push(`${relF}: Metadata 段缺 "${name}" 字段`);
       }
     }
+
+    const tags = parseTags(metadata);
+    const caseId = caseIdFromFilename(relF);
+    if (!tags) {
+      errors.push(`${relF}: Metadata 段缺 "Tags" 字段 (需含 @${caseId} @p0|@p1|@p2 @<module>)`);
+    } else {
+      if (!tags.has(`@${caseId}`)) {
+        errors.push(`${relF}: Tags 缺 @${caseId} (CaseId tag)`);
+      }
+      if (!["@p0", "@p1", "@p2"].some((p) => tags.has(p))) {
+        errors.push(`${relF}: Tags 缺优先级 tag (@p0 / @p1 / @p2)`);
+      }
+      const hasModuleTag = [...tags].some((t) => isModuleLikeTag(t, caseId));
+      if (!hasModuleTag) {
+        errors.push(`${relF}: Tags 缺 module tag (例如 @matter / @chat / @smoke; CaseId 前缀不是模块)`);
+      }
+    }
   }
 
   const counterexamples = extractSection(text, /^##+\s*反例\s*$/im);
@@ -214,6 +255,6 @@ console.error(`[lint-spec-format] ✘ 发现 ${errors.length} 个格式问题:\n
 for (const e of errors) console.error(`  - ${e}`);
 console.error("");
 console.error("  必需段: Metadata / 目标 / 前置条件 / 用户操作步骤 / 预期结果 / 反例");
-console.error("  Metadata 字段: Case 类型 / 目标模式 / 优先级");
-console.error("  格式规约见 e2e/case-specs/TEMPLATE.md");
+console.error("  Metadata 字段: Case 类型 / 目标模式 / 优先级 / Tags");
+console.error("  格式规约见 e2e-kit/case-specs/TEMPLATE.md");
 process.exit(1);

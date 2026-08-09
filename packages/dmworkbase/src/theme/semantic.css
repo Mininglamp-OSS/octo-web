@@ -96,6 +96,7 @@
   --wk-shadow-dropdown: 0 12px 32px var(--wk-black-alpha-12); /* 弹窗阴影 */
 
   /* ── Brand tint（主色半透明，基于 #1C1C23） ── */
+  --wk-brand-tint-02: rgba(28, 28, 35, 0.02);
   --wk-brand-tint-03: rgba(28, 28, 35, 0.03);
   --wk-brand-tint-04: rgba(28, 28, 35, 0.04);
   --wk-brand-tint-06: rgba(28, 28, 35, 0.06);
@@ -105,6 +106,50 @@
   --wk-brand-tint-15: rgba(28, 28, 35, 0.15);
   --wk-brand-tint-35: rgba(28, 28, 35, 0.35);
   --wk-brand-accent: var(--wk-brand-black);
+
+  /* ── Legacy chat/message values（light 保持旧视觉，dark 在主题块重映射） ── */
+  --wk-bg-legacy-card: rgba(28, 28, 35, 0.04);
+  --wk-bg-legacy-card-hover: rgba(28, 28, 35, 0.06);
+  --wk-bg-legacy-surface: #ffffff;
+  --wk-bg-legacy-hover-subtle: var(--wk-brand-tint-02);
+  --wk-bg-legacy-press: var(--wk-brand-tint-12);
+  --wk-border-legacy-default: rgba(46, 50, 56, 0.09);
+  --wk-border-legacy-subtle: var(--wk-brand-tint-10);
+  --wk-border-legacy-strong: rgba(28, 28, 35, 0.8);
+  --wk-border-legacy-medium: rgba(28, 28, 35, 0.4);
+  --wk-text-legacy-title: var(--wk-brand-black);
+  --wk-text-legacy-absolute: #000000;
+  --wk-text-legacy-primary: rgba(28, 28, 35, 0.8);
+  --wk-text-legacy-secondary: rgba(28, 28, 35, 0.6);
+  --wk-text-legacy-tertiary: rgba(28, 28, 35, 0.4);
+  --wk-text-legacy-quaternary: var(--wk-brand-tint-35);
+  --wk-file-card-bg: rgba(28, 28, 35, 0.05);
+  --wk-file-card-hover-bg: var(--wk-brand-tint-08);
+  --wk-file-card-active-bg: var(--wk-brand-tint-12);
+  --wk-file-ext-bg: rgba(99, 102, 241, 0.1);
+  --wk-file-send-tint-08: rgba(0, 180, 148, 0.08);
+  --wk-file-send-tint-10: rgba(0, 180, 148, 0.1);
+  --wk-file-send-tint-15: rgba(0, 180, 148, 0.15);
+  --wk-history-split-text: rgba(9, 30, 66, 0.74);
+  --wk-history-split-line: rgba(9, 30, 66, 0.12);
+  --wk-summary-card-bg: #ffffff;
+  --wk-summary-card-hover-bg: #fcfbff;
+  --wk-summary-card-active-bg: linear-gradient(
+    180deg,
+    rgba(252, 243, 255, 0.8) 0%,
+    rgba(255, 255, 255, 0.8) 90%,
+    rgba(255, 255, 255, 0.8) 100%
+  );
+  --wk-summary-card-active-border: #ffffff;
+  --wk-summary-content-text: #1c1f23;
+  --wk-summary-meta-text: rgba(28, 31, 35, 0.6);
+  --wk-summary-chip-bg: rgba(28, 31, 35, 0.06);
+  --wk-summary-progress-muted: rgba(0, 0, 0, 0.4);
+  --wk-summary-progress-active: rgba(0, 0, 0, 0.8);
+  --wk-summary-danger-hover: #e03a32;
+  --wk-summary-dark-button-hover: #333333;
+  --wk-overlay-scrim: var(--wk-black-alpha-30);
+  --wk-chat-selector-shadow: 0 8px 24px var(--wk-black-alpha-12), 0 0 0 1px var(--wk-black-alpha-06);
 
   /* ── Icon & Text opacity（基于主色的不同透明度） ── */
   --wk-icon-muted: rgba(28, 28, 35, 0.4); /* 40% icon/三角 */
@@ -208,6 +253,7 @@
   --wk-r-md: 8px; /* Figma: 消息气泡, 图片 */
   --wk-r-lg: 16px; /* Figma: 头像 */
   --wk-r-xl: 20px;
+  --wk-r-mention-entity: 4px; /* 已发布普通成员 mention 胶囊圆角 */
   --wk-r-full: 9999px;
   --wk-r-circle: 50%; /* circle — for avatars; distinct from --wk-r-full (9999px pill shape) */
   --wk-avatar-radius: var(--wk-r-circle);
@@ -270,6 +316,7 @@
   --wk-text-accent: var(
     --wk-purple-500
   ); /* Figma: #7F3BF5 AI链接/Thread（紫色点缀） */
+  --wk-text-mention-entity: #6B3DD8; /* 已发布普通成员 mention 胶囊文字色 */
   --wk-text-inverse: var(--wk-neutral-0);
 
   /* 边框 */
@@ -296,6 +343,13 @@
   --wk-space-color-4: #4facfe;
   --wk-space-color-5: #43e97b;
   --wk-space-color-6: #fa709a;
+
+  /* 云文档 doc_type 徽标底色（全局搜索云文档 tab）。这 4 组品牌色与现有
+     primitive palette 不完全一致，无法直接复用，故单列语义 token。 */
+  --wk-doc-accent-doc: #3370ff;
+  --wk-doc-accent-sheet: #00b42a;
+  --wk-doc-accent-board: #f7734b;
+  --wk-doc-accent-html: #7a5af5;
 
   /* AI 专属 */
   --wk-ai-surface: rgba(127, 59, 245, 0.03);
@@ -331,10 +385,80 @@
 /* ============================================================
    Dark Theme — body[theme-mode=dark]
 
-   ⚠️ 暗黑模式当前已关闭（App.tsx 强制 ThemeMode.light），设置面板无切换入口
-   保留以下 CSS 变量定义以备后续重启暗黑模式功能
+   由 WKApp.config.themeMode 控制 body[theme-mode=dark]。
    ============================================================ */
 body[theme-mode="dark"] {
+  /* Legacy aliases still used by the chat shell and conversation list. */
+  --wk-color-theme: var(--wk-brand-primary);
+  --wk-brand-primary: var(--wk-color-accent);
+  --wk-brand-primary-hover: var(--wk-color-accent-hover);
+  --wk-brand-from: var(--wk-brand-primary);
+  --wk-brand-to: var(--wk-brand-primary);
+  --wk-brand-gradient: var(--wk-brand-primary);
+  --wk-brand-gradient-hover: var(--wk-brand-primary-hover);
+  --wk-brand-gradient-subtle: var(--wk-white-alpha-08);
+  --wk-brand-primary-ring: var(--wk-white-alpha-12);
+  --wk-brand-glow: var(--wk-white-alpha-12);
+  --wk-brand-tint-03: var(--wk-white-alpha-04);
+  --wk-brand-tint-04: var(--wk-white-alpha-04);
+  --wk-brand-tint-06: var(--wk-white-alpha-06);
+  --wk-brand-tint-08: var(--wk-white-alpha-08);
+  --wk-brand-tint-10: var(--wk-white-alpha-08);
+  --wk-brand-tint-12: var(--wk-white-alpha-12);
+  --wk-brand-tint-15: var(--wk-white-alpha-12);
+  --wk-brand-tint-35: var(--wk-white-alpha-40);
+  --wk-brand-accent: var(--wk-color-accent);
+  --wk-brand-tint-02: var(--wk-white-alpha-04);
+  --wk-bg-legacy-card: var(--wk-bg-elevated);
+  --wk-bg-legacy-card-hover: var(--wk-bg-hover);
+  --wk-bg-legacy-surface: var(--wk-bg-elevated);
+  --wk-bg-legacy-hover-subtle: var(--wk-white-alpha-04);
+  --wk-bg-legacy-press: var(--wk-white-alpha-12);
+  --wk-border-legacy-default: var(--wk-border-default);
+  --wk-border-legacy-subtle: var(--wk-border-default);
+  --wk-border-legacy-strong: var(--wk-white-alpha-40);
+  --wk-border-legacy-medium: var(--wk-white-alpha-40);
+  --wk-text-legacy-title: var(--wk-text-primary);
+  --wk-text-legacy-absolute: var(--wk-text-primary);
+  --wk-text-legacy-primary: var(--wk-text-primary);
+  --wk-text-legacy-secondary: var(--wk-text-secondary);
+  --wk-text-legacy-tertiary: var(--wk-text-tertiary);
+  --wk-text-legacy-quaternary: var(--wk-white-alpha-40);
+  --wk-file-card-bg: var(--wk-bg-elevated);
+  --wk-file-card-hover-bg: var(--wk-bg-hover);
+  --wk-file-card-active-bg: var(--wk-bg-active);
+  --wk-file-ext-bg: var(--wk-brand-tint-08);
+  --wk-file-send-tint-08: var(--wk-teal-alpha-08);
+  --wk-file-send-tint-10: var(--wk-teal-alpha-10);
+  --wk-file-send-tint-15: rgba(11, 134, 125, 0.15);
+  --wk-history-split-text: var(--wk-text-secondary);
+  --wk-history-split-line: var(--wk-border-strong);
+  --wk-summary-card-bg: var(--wk-bg-elevated);
+  --wk-summary-card-hover-bg: var(--wk-bg-hover);
+  --wk-summary-card-active-bg: var(--wk-bg-selected);
+  --wk-summary-card-active-border: var(--wk-border-glow);
+  --wk-summary-content-text: var(--wk-text-primary);
+  --wk-summary-meta-text: var(--wk-text-secondary);
+  --wk-summary-chip-bg: var(--wk-bg-elevated);
+  --wk-summary-progress-muted: var(--wk-text-tertiary);
+  --wk-summary-progress-active: var(--wk-text-primary);
+  --wk-summary-danger-hover: var(--wk-color-danger-hover);
+  --wk-summary-dark-button-hover: var(--wk-brand-primary-hover);
+  --wk-overlay-scrim: var(--wk-black-alpha-50);
+  --wk-chat-selector-shadow: var(--wk-shadow-lg);
+  --wk-icon-muted: var(--wk-white-alpha-40);
+  --wk-icon-default: var(--wk-white-alpha-80);
+  --wk-icon-hover: var(--wk-color-white);
+  --wk-text-strong: var(--wk-color-white);
+  --wk-bg-item-hover: var(--wk-white-alpha-08);
+  --wk-bg-tab: var(--wk-white-alpha-06);
+  --wk-shadow-dropdown: 0 12px 32px var(--wk-black-alpha-50);
+
+  --wk-accent-tint-06: rgba(127, 59, 245, 0.1);
+  --wk-accent-tint-08: rgba(127, 59, 245, 0.12);
+  --wk-accent-tint-10: rgba(127, 59, 245, 0.16);
+  --wk-accent-tint-12: rgba(127, 59, 245, 0.2);
+
   /* 背景层 */
   --wk-bg-deep: var(--wk-neutral-900);
   --wk-bg-base: var(--wk-neutral-850);
@@ -393,6 +517,7 @@ body[theme-mode="dark"] {
   --wk-text-tertiary: #7a7f96;
   --wk-text-disabled: var(--wk-neutral-500); /* 暗色禁用态文字 */
   --wk-text-accent: var(--wk-purple-400); /* 暗色下用浅紫 */
+  --wk-text-mention-entity: var(--wk-purple-400);
   --wk-text-inverse: var(--wk-neutral-900);
 
   /* 边框 */
@@ -428,6 +553,12 @@ body[theme-mode="dark"] {
   --wk-bg-self: #1a2e2a; /* 自己的消息 — 暗色淡青 */
   --wk-bg-bubble: #1a1a2e; /* 他人 & AI 消息 — 暗色微紫 */
 
+  /* 云文档 doc_type 徽标底色（暗色，压暗以贴合 item-file 暗色约定） */
+  --wk-doc-accent-doc: #2b5fd9;
+  --wk-doc-accent-sheet: #009a24;
+  --wk-doc-accent-board: #d9603c;
+  --wk-doc-accent-html: #5f45c9;
+
   /* Shadow */
   --wk-shadow-sm: 0 1px 2px var(--wk-black-alpha-30);
   --wk-shadow-md: 0 4px 12px var(--wk-black-alpha-40);
@@ -438,9 +569,9 @@ body[theme-mode="dark"] {
   --wk-code-bg: var(--wk-neutral-900);
   --wk-code-border: var(--wk-white-alpha-07);
 
-  /* Semi Design token 覆盖 */
-  --semi-color-primary: var(--wk-brand-primary);
-  --semi-color-primary-hover: var(--wk-brand-primary-hover);
+}
+
+html body[theme-mode="dark"] {
   --semi-color-bg-0: var(--wk-bg-surface);
   --semi-color-bg-1: var(--wk-bg-elevated);
   --semi-color-text-0: var(--wk-text-primary);

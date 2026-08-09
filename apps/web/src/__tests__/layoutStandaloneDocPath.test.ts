@@ -103,11 +103,20 @@ describe('Layout — standalone /s/:taskNo summary clean cold-load path', () => 
     expect(renderIdx).toBeGreaterThan(recoverIdx)
   })
 
-  it('renders summary detail only with a token, passing the raw task_no string through', () => {
-    expect(layout).toMatch(/if\s*\(\s*WKApp\.loginInfo\.token\s*\)\s*\{[\s\S]*?<SummaryDetailPage/)
-    expect(layout).toMatch(/const\s+standaloneTaskNo\s*=\s*parseStandaloneSummaryTaskNo\(window\.location\.pathname\)/)
-    expect(layout).toMatch(/<SummaryDetailPage\s+taskId=\{standaloneTaskNo\s*\?\?\s*undefined\}/)
-  })
+  it("renders summary detail only with a token, passing the raw task_no string through", () => {
+    expect(layout).toMatch(
+      /if\s*\(\s*WKApp\.loginInfo\.token\s*\)\s*\{[\s\S]*?<SummaryDetailPage/
+    );
+    expect(layout).toMatch(
+      /const\s+standaloneTaskNo\s*=\s*parseStandaloneSummaryTaskNo\(\s*window\.location\.pathname\s*\)/
+    );
+    expect(layout).toMatch(
+      /<SummaryDetailPage\s+taskId=\{standaloneTaskNo\s*\?\?\s*undefined\}/
+    );
+    expect(layout).toMatch(
+      /<SummaryDetailPage\s+taskId=\{standaloneTaskNo\s*\?\?\s*undefined\}\s+emitSelection/
+    );
+  });
 
   it('stashes anonymous /s targets and carries sp through post-login return', () => {
     const branchIdx = layout.indexOf('Standalone summary deep-link')
@@ -118,7 +127,7 @@ describe('Layout — standalone /s/:taskNo summary clean cold-load path', () => 
     expect(stashIdx).toBeGreaterThan(nsIdx)
     expect(layout).toMatch(/const\s+forwardSp\s*=\s*getQueryParam\("sp"\)\s*\|\|\s*""/)
     expect(layout).toMatch(/redirectQuery\.set\("sp",\s*forwardSp\)/)
-    expect(layout).toMatch(/consumeStandaloneReturn\(\)/)
+    expect(layout).toMatch(/consumeStandaloneReturn\(getEnterpriseStandaloneHandlers\(\)\)/)
     // sid-clean path (PR #851 decision): cache the sid in SessionScope then
     // navigate to the sid-less return URL. `withReturnSid(...)` was the
     // sid-in-URL alternative that this test previously assumed; the fork

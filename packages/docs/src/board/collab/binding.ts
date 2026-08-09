@@ -19,12 +19,19 @@
 //                         XIN-16 §4.2 calls out.
 //
 // Files: image binaries never enter the Y.Doc. Only reference metadata (fileId → {mimeType,…},
-// dataURL stripped) is mirrored into Y.Map('files') (XIN-16 §2.2). appState is not bound at all.
+// dataURL stripped) is mirrored into Y.Map('files') (XIN-16 §2.2). Of appState, only the canvas
+// background colour is bound — through its own flat Y.Map('appState') (canvas background sync contract); all other appState
+// (selection, scroll, zoom, dialogs, collaborators) stays local and unsynced.
 
 import * as Y from 'yjs'
 import {
   ELEMENTS_FIELD,
   FILES_FIELD,
+  APPSTATE_FIELD,
+  VIEW_BACKGROUND_COLOR_KEY,
+  DEFAULT_VIEW_BACKGROUND_COLOR,
+  BOARD_RESTORE_META_FIELD,
+  BOARD_RESTORE_EPOCH_KEY,
   REPAIR_ORIGIN,
   buildFileRef,
   normalizeFileRef,
@@ -153,6 +160,10 @@ export class ExcalidrawYjsBinding {
   readonly ydoc: Y.Doc
   readonly elements: Y.Map<Y.Map<unknown>>
   readonly files: Y.Map<Y.Map<unknown>>
+  /** Flat scene-level appState container (canvas background sync contract). Today holds only `viewBackgroundColor`. */
+  readonly appState: Y.Map<unknown>
+  /** Monotonic backend marker for authoritative version restores. */
+  readonly restoreMeta: Y.Map<unknown>
   readonly undoManager: Y.UndoManager | null
   readonly __awareness = new AwarenessSurface()
 
@@ -194,16 +205,44 @@ export class ExcalidrawYjsBinding {
    * purely-local element — authored here and never seen from the doc — may be tombstoned by absence.
    */
   private readonly remoteOrigin = new Set<string>()
+  /**
+   * Exact pre-restore element snapshots that may arrive in one delayed onChange after updateScene.
+   * The guard is value-based and one-shot: it covers both removed elements and surviving elements
+   * rolled back to an older version, but cannot permanently block a later intentional recreate or
+   * edit that happens to reuse the same id.
+   */
+  private readonly pendingRestoreStaleElements = new Map<string, ExcalidrawElement>()
   /** Guard 3 flag: a remote apply is in flight. */
   private applyingRemote = false
+  /**
+   * Provider sync state — the canvas-background authority gate (canvas background authority contract). The
+   * background is mirrored to the shared doc ONLY once this is true: a client whose canvas mounts
+   * before its provider has synced fires an onChange on Excalidraw's `#ffffff` default, and writing
+   * that pre-sync default could clobber an authoritative colour for every peer. BoardShell drives it
+   * from the provider `synced` signal via {@link setSynced}. Defaults false → fail closed (never
+   * write a background until sync has established the authoritative baseline).
+   */
+  private synced = false
+  /**
+   * Last canvas background colour this binding knows the canvas + doc to hold (canvas background sync contract). The
+   * appState twin of `lastKnown` for elements: a local onChange whose colour equals this produces no
+   * write (guard 2), and a remote apply equal to this is skipped, so the two never ping-pong.
+   */
+  private lastKnownBg: string | null = null
   private destroyed = false
   private readonly onElements: (events: Y.YEvent<Y.Map<unknown>>[], txn: Y.Transaction) => void
   private readonly onFiles: (events: Y.YEvent<Y.Map<unknown>>[], txn: Y.Transaction) => void
+  private readonly onAppState: (event: Y.YMapEvent<unknown>, txn: Y.Transaction) => void
+  private readonly onRestoreMeta: (event: Y.YMapEvent<unknown>, txn: Y.Transaction) => void
+  /** Last restore epoch actually painted onto an attached canvas. */
+  private lastAppliedRestoreEpoch = 0
 
   constructor(ydoc: Y.Doc, opts: WhiteboardBindingOptions = {}) {
     this.ydoc = ydoc
     this.elements = ydoc.getMap<Y.Map<unknown>>(ELEMENTS_FIELD)
     this.files = ydoc.getMap<Y.Map<unknown>>(FILES_FIELD)
+    this.appState = ydoc.getMap<unknown>(APPSTATE_FIELD)
+    this.restoreMeta = ydoc.getMap<unknown>(BOARD_RESTORE_META_FIELD)
     this.api = opts.api ?? null
 
     // M-9: undo manager tracks ONLY local edits, so a remote peer's change or a server repair
@@ -235,6 +274,26 @@ export class ExcalidrawYjsBinding {
       this.rehydrateFiles()
     }
     this.files.observeDeep(this.onFiles)
+
+    // appState observer (canvas background sync contract): a remote / repair write to the canvas background colour must
+    // reach the canvas. Its own flat Y.Map is watched shallowly — our own writes are LOCAL_ORIGIN
+    // (guard 1) and re-applying them would loop; any other change repaints the background.
+    this.onAppState = (_events, txn) => {
+      if (this.destroyed || txn.origin === LOCAL_ORIGIN) return
+      this.applyRemoteAppState()
+    }
+    this.appState.observe(this.onAppState)
+
+    // A version restore replaces the scene authoritatively, even when historical
+    // elements have LOWER Excalidraw versions than the current canvas. The marker
+    // is written atomically with the backend map reconcile. The element observer
+    // handles non-empty scenes; this dedicated observer also handles restore-to-
+    // empty (where no element deep event is guaranteed).
+    this.onRestoreMeta = (_event, txn) => {
+      if (this.destroyed || txn.origin === LOCAL_ORIGIN) return
+      this.applyAuthoritativeRestore()
+    }
+    this.restoreMeta.observe(this.onRestoreMeta)
   }
 
   /** Read-only telemetry snapshot (frontend-design §5.7.4). */
@@ -251,9 +310,40 @@ export class ExcalidrawYjsBinding {
     // no-op (`this.api?.updateScene`), and guard 4 then resynced the snapshot to that state, so no
     // later observe event will re-push it. Replay the current doc onto the freshly-attached canvas
     // so B catches up the state it received before it had somewhere to draw it (XIN-85). Guarded on
-    // a non-empty doc so a fresh board that only holds local `initialData` is not wiped to empty
-    // before its first onChange seeds the doc.
-    if (api && !this.destroyed && this.elements.size > 0) this.applyRemote()
+    // a non-empty doc for ordinary replay so a fresh board that only holds local `initialData` is
+    // not wiped before its first onChange seeds the doc. A positive restore epoch is different: it
+    // makes even an empty element map authoritative and must clear stale local canvas content.
+    if (
+      api
+      && !this.destroyed
+      && this.currentRestoreEpoch() > this.lastAppliedRestoreEpoch
+    ) {
+      this.applyAuthoritativeRestore()
+    } else if (api && !this.destroyed && this.elements.size > 0) {
+      this.applyRemote()
+    }
+    // Replay the synced canvas background too (canvas background sync contract): like elements, an appState value the
+    // provider synced while `api` was null never reached a canvas. Independent of the element guard
+    // above — a board may carry a background colour with no elements yet.
+    if (api && !this.destroyed) this.applyRemoteAppState()
+  }
+
+  /**
+   * Update the provider sync state — the canvas-background authority gate (canvas background authority contract).
+   * BoardShell drives this from the collab provider's `synced` signal. While false, the onChange
+   * background mirror ({@link mirrorLocalBackgroundColor}) writes nothing, so a client whose canvas
+   * mounted on Excalidraw's `#ffffff` default before its provider synced cannot push that default
+   * into the shared doc and clobber an authoritative colour. On the false→true transition we replay
+   * the doc's background onto the canvas ({@link applyRemoteAppState}) so `lastKnownBg` is seeded to
+   * the AUTHORITATIVE value before the first synced onChange is allowed to mirror — otherwise that
+   * first onChange, carrying the stale mount colour, could diff against a null baseline and overwrite
+   * the synced colour. Remote-direction replay, so it is itself unaffected by the gate.
+   */
+  setSynced(synced: boolean): void {
+    if (this.destroyed) return
+    const was = this.synced
+    this.synced = synced
+    if (synced && !was) this.applyRemoteAppState(true)
   }
 
   /**
@@ -286,10 +376,7 @@ export class ExcalidrawYjsBinding {
 
   // ── local → Y.Doc ──────────────────────────────────────────────────────────────────────────
 
-  /**
-   * Feed an Excalidraw `onChange` into the Y.Doc. Pass the elements (and optional files) exactly
-   * as Excalidraw hands them. Wire this from BoardShell's `onChange`.
-   */
+  /** Feed Excalidraw elements and optional files into the Y.Doc. Wire from BoardShell's `onChange`. */
   handleLocalChange(
     elements: readonly ExcalidrawElement[],
     files?: Record<string, BinaryFileData> | null,
@@ -306,6 +393,19 @@ export class ExcalidrawYjsBinding {
     const changed: ExcalidrawElement[] = []
     const nextSnapshot = new Map<string, ExcalidrawElement>()
     for (const el of elements) {
+      // updateScene can race with one already-queued onChange carrying the exact pre-restore scene.
+      // Consume that snapshot once, including surviving elements whose historical version is lower;
+      // otherwise their stale higher version would win the normal CAS and undo the restore for peers.
+      const staleBeforeRestore = this.pendingRestoreStaleElements.get(el.id)
+      if (staleBeforeRestore && jsonEqual(staleBeforeRestore, el)) {
+        this.pendingRestoreStaleElements.delete(el.id)
+        const authoritative = this.lastKnown.get(el.id)
+        if (authoritative) nextSnapshot.set(el.id, cloneElement(authoritative))
+        continue
+      }
+      // Any different value is a real post-restore user change, so this id no longer needs the
+      // delayed-event guard. This also ensures the guard cannot suppress a later undo/recreate.
+      if (staleBeforeRestore) this.pendingRestoreStaleElements.delete(el.id)
       // Snapshot BY VALUE: Excalidraw mutates element objects in place and re-emits the same
       // references, so holding the live `el` would make the next onChange diff the mutated object
       // against itself (jsonEqual short-circuits on `a === b`) and silently drop the geometry
@@ -320,6 +420,10 @@ export class ExcalidrawYjsBinding {
         this.locallyAuthored.add(el.id)
       }
     }
+    // Excalidraw onChange always carries the full scene, so the first post-restore callback consumes
+    // the complete delayed-event allowance. Keeping unmatched entries longer would risk suppressing
+    // a later intentional undo/recreate that exactly matches a pre-restore value.
+    this.pendingRestoreStaleElements.clear()
     // Elements that vanished from the scene. CRUCIAL (XIN-96): Excalidraw's onChange always carries
     // `getElementsIncludingDeleted()`, so a real user delete arrives as a PRESENT element flagged
     // `isDeleted: true` (handled by the diff loop above) — it is never simply absent. An element is
@@ -435,6 +539,56 @@ export class ExcalidrawYjsBinding {
     // remote elements. Repaint after the snapshot is set so the dropped-but-preserved elements come
     // back on the canvas (the write above already covers the user's own edits).
     this.repaintAfterReinitDrop(reinitDropped)
+  }
+
+  /**
+   * Mirror canvas background state into the Y.Doc (canvas background sync contract). BoardShell calls this from both the
+   * generic Excalidraw onChange and the explicit picker after checking the live provider sync state.
+   * Today only `viewBackgroundColor` is bound.
+   *
+   * Version-history capture is intentionally not claimed for this container until the backend
+   * serializer adopts these names (see collab/schema.ts).
+   */
+  handleLocalAppState(appState: { viewBackgroundColor?: unknown } | null | undefined): void {
+    this.mirrorLocalBackgroundColor(appState?.viewBackgroundColor)
+  }
+
+  /**
+   * The single canvas-background write path into the Y.Doc (canvas background authority contract). THE AUTHORITY
+   * GATE: a write only happens once
+   * the provider has synced (`this.synced`) AND the canvas is wired (`this.api`). Before either, a
+   * client whose canvas mounted on Excalidraw's `#ffffff` default fires onChange carrying that
+   * default; writing it could let a passive peer silently overwrite an authoritative background for
+   * everyone (`Y.Map` resolves the concurrent key conflict by client id). `setSynced(true)` seeds
+   * `lastKnownBg` from the doc before the gate opens, so the first synced onChange diffs against the
+   * AUTHORITATIVE colour, not a null baseline.
+   *
+   * Guards mirror the element path: guard 3 (`applyingRemote`) drops a write during a remote apply;
+   * guard 2 short-circuits when the colour already equals `lastKnownBg` or the effective
+   * authoritative doc value (an unset key counts as {@link DEFAULT_VIEW_BACKGROUND_COLOR}, so a fresh
+   * board's `#ffffff` default never writes a spurious explicit default, while a reset FROM a non-
+   * default colour BACK to the default does write so peers converge). Written under LOCAL_ORIGIN so
+   * our own observer ignores it.
+   */
+  private mirrorLocalBackgroundColor(color: unknown): void {
+    if (this.destroyed || this.applyingRemote) return
+    // Authority gate: never write a background until synced AND the canvas is attached.
+    if (!this.synced || !this.api) return
+    if (typeof color !== 'string' || color.length === 0) return
+    if (color === this.lastKnownBg) return
+    const docColor = this.appState.get(VIEW_BACKGROUND_COLOR_KEY)
+    const effective =
+      typeof docColor === 'string' && docColor.length > 0 ? docColor : DEFAULT_VIEW_BACKGROUND_COLOR
+    // Already the effective authoritative value (the first onChange echoing a doc-seeded
+    // initialData, or a fresh board's #ffffff against an unset key): record it and write nothing, so
+    // we never emit an empty/no-op LOCAL transaction.
+    if (color === effective) {
+      this.lastKnownBg = color
+      return
+    }
+    this.lastKnownBg = color
+    this.ydoc.transact(() => this.appState.set(VIEW_BACKGROUND_COLOR_KEY, color), LOCAL_ORIGIN)
+    this.telemetry.localWrites++
   }
 
   /**
@@ -561,7 +715,71 @@ export class ExcalidrawYjsBinding {
       this.telemetry.skippedOwnOrigin++
       return
     }
-    this.applyRemote()
+    // The restore marker shares this transaction with the element replacement.
+    // Bypass ordinary version reconcile or a newer live element would defeat the
+    // historical rollback. The marker observer may call this again; epoch gating
+    // makes the second callback a no-op.
+    if (this.currentRestoreEpoch() > this.lastAppliedRestoreEpoch) this.applyAuthoritativeRestore()
+    else this.applyRemote()
+  }
+
+  private currentRestoreEpoch(): number {
+    const value = this.restoreMeta.get(BOARD_RESTORE_EPOCH_KEY)
+    return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : 0
+  }
+
+  /** Paint the exact restored Y.Doc scene without ordinary version reconcile. */
+  private applyAuthoritativeRestore(): void {
+    const epoch = this.currentRestoreEpoch()
+    if (epoch <= this.lastAppliedRestoreEpoch || !this.api || this.destroyed) return
+
+    let elements: ExcalidrawElement[]
+    try {
+      const fileIds = new Set<string>(this.files.keys() as Iterable<string>)
+      const repaired = repairForRender(readAllElements(this.elements), fileIds)
+      elements = this.renderAdapter ? this.renderAdapter.restore(repaired) : repaired
+    } catch {
+      this.telemetry.remoteApplyErrors++
+      return
+    }
+
+    // Install the authoritative baseline before updateScene. applyingRemote covers
+    // a synchronous callback; lastKnown makes a later onChange diff empty. Roll the
+    // baseline back if painting fails, otherwise the old canvas could be diffed against
+    // a restore it never rendered and write stale elements back into the Y.Doc.
+    const snap = new Map<string, ExcalidrawElement>()
+    for (const el of elements) snap.set(el.id, cloneElement(el))
+    const previousLastKnown = this.lastKnown
+    const canvasBeforeRestore = this.api.getSceneElementsIncludingDeleted?.() ?? []
+    const preRestoreCandidates = new Map(previousLastKnown)
+    for (const el of canvasBeforeRestore) preRestoreCandidates.set(el.id, cloneElement(el))
+    const nextPendingRestoreStaleElements = new Map<string, ExcalidrawElement>()
+    for (const [id, el] of preRestoreCandidates) {
+      const restored = snap.get(id)
+      if (!restored || !jsonEqual(restored, el)) {
+        nextPendingRestoreStaleElements.set(id, cloneElement(el))
+      }
+    }
+    this.lastKnown = snap
+    this.applyingRemote = true
+    try {
+      this.api.updateScene({ elements, captureUpdate: 'NEVER' })
+      for (const el of elements) this.remoteOrigin.add(el.id)
+      this.pendingRestoreStaleElements.clear()
+      for (const [id, stale] of nextPendingRestoreStaleElements) {
+        this.pendingRestoreStaleElements.set(id, stale)
+      }
+      this.lastAppliedRestoreEpoch = epoch
+    } catch {
+      this.lastKnown = previousLastKnown
+      this.telemetry.remoteApplyErrors++
+      return
+    } finally {
+      this.applyingRemote = false
+    }
+    this.telemetry.remoteApplies++
+    this.telemetry.remoteElements += elements.length
+    this.rehydrateFiles()
   }
 
   /** Rebuild the scene from the authoritative Y.Doc state and resync the snapshot (guard 4). */
@@ -642,6 +860,61 @@ export class ExcalidrawYjsBinding {
   }
 
   /**
+   * Apply the authoritative canvas background colour from the Y.Doc onto the canvas (canvas background sync contract).
+   * Runs from the appState observer on a remote/repair write and from `setApi` replay. Skips when it
+   * already matches `lastKnownBg` (nothing to repaint) and, like `applyRemote`, sets `applyingRemote`
+   * so the onChange this updateScene triggers is dropped (guard 3) instead of written straight back.
+   *
+   * Key CLEAR handling: an authoritative transaction that deletes / empties the key (a remote peer
+   * resetting the canvas back to the default background) must repaint the Excalidraw default, not
+   * leave the stale colour painting. This makes NO claim about version-history restore — the backend
+   * serializer does not yet model this appState container (collab/schema.ts), so a version restore
+   * cannot clear the key today; this handles the live remote-clear path only. But a doc that simply
+   * NEVER carried a colour is not a clear — a fresh mount must be left on whatever `initialData`
+   * seeded — so we only reset-to-default when we were previously tracking an explicit, non-default
+   * colour. A clear that arrives while the api is DETACHED (`this.api` null — access not yet
+   * confirmed, or torn down) is not lost: the deletion lands in the Y.Doc regardless, and `setApi`
+   * replays `applyRemoteAppState` on reattach, which then observes the unset key against the tracked
+   * non-default `lastKnownBg` and repaints the default.
+   */
+  private applyRemoteAppState(force = false): void {
+    if (!this.api || this.destroyed) return
+    const raw = this.appState.get(VIEW_BACKGROUND_COLOR_KEY)
+    const hasColor = typeof raw === 'string' && raw.length > 0
+    const next = hasColor
+      ? (raw as string)
+      : this.lastKnownBg !== null && this.lastKnownBg !== DEFAULT_VIEW_BACKGROUND_COLOR
+        ? DEFAULT_VIEW_BACKGROUND_COLOR
+        : null
+    if (next === null) return
+    if (!force && next === this.lastKnownBg) return
+    const previous = this.lastKnownBg
+    this.lastKnownBg = next
+    this.applyingRemote = true
+    try {
+      this.api.updateScene({ appState: { viewBackgroundColor: next }, captureUpdate: 'NEVER' })
+      this.telemetry.remoteAppStateApplies++
+    } catch {
+      // Keep the tracker retryable: setApi/next remote transaction must repaint after a failed API.
+      this.lastKnownBg = previous
+      this.telemetry.remoteApplyErrors++
+    } finally {
+      this.applyingRemote = false
+    }
+  }
+
+  /**
+   * Current authoritative canvas background colour from the Y.Doc, or null when none is set. BoardShell
+   * seeds Excalidraw's `initialData.appState.viewBackgroundColor` from this on a cold reopen so the
+   * canvas mounts with the synced colour rather than the Excalidraw default — the appState twin of
+   * `snapshotElements` (canvas background sync contract).
+   */
+  snapshotViewBackgroundColor(): string | null {
+    const color = this.appState.get(VIEW_BACKGROUND_COLOR_KEY)
+    return typeof color === 'string' && color.length > 0 ? color : null
+  }
+
+  /**
    * Current raw Y.Doc elements, by value. BoardShell seeds Excalidraw's `initialData` from this on
    * a cold reopen (XIN-96): a fresh client's local mirror is empty, but the provider has usually
    * synced the board into the Y.Doc before the heavy Excalidraw chunk loads. Mounting the canvas
@@ -655,6 +928,7 @@ export class ExcalidrawYjsBinding {
   /** For the Agent / external write path (XIN-16 §5): force a re-read into the canvas. */
   refreshFromDoc(): void {
     this.applyRemote()
+    this.applyRemoteAppState()
   }
 
   destroy(): void {
@@ -662,6 +936,8 @@ export class ExcalidrawYjsBinding {
     this.destroyed = true
     this.elements.unobserveDeep(this.onElements)
     this.files.unobserveDeep(this.onFiles)
+    this.appState.unobserve(this.onAppState)
+    this.restoreMeta.unobserve(this.onRestoreMeta)
     this.undoManager?.destroy()
   }
 }

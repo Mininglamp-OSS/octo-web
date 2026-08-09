@@ -21,6 +21,7 @@ const hoisted = vi.hoisted(() => ({
   setChannleInfoForCache: vi.fn(),
   notifyListeners: vi.fn(),
   emit: vi.fn(),
+  renderConversation: vi.fn(),
 }));
 
 vi.mock("../../../App", () => ({
@@ -95,7 +96,12 @@ vi.mock("wukongimjssdk", () => {
 });
 
 // Heavy sub-trees not needed for list-view interaction tests.
-vi.mock("../../Conversation", () => ({ Conversation: () => null }));
+vi.mock("../../Conversation", () => ({
+  Conversation: (props: any) => {
+    hoisted.renderConversation(props);
+    return React.createElement("div", { "data-testid": "thread-conversation" });
+  },
+}));
 vi.mock("../../FilePreviewPanel/FileListPanel", () => ({ FileListPanel: () => null }));
 vi.mock("../../FilePreviewPanel/FilePreviewHeader", () => ({ __esModule: true, default: () => null }));
 vi.mock("../../FilePreviewPanel/registry", () => ({ fileRendererRegistry: { getRenderer: () => ({ renderer: () => null }) } }));
@@ -187,6 +193,31 @@ afterEach(() => {
 });
 
 describe("ThreadPanel inline archive button", () => {
+  it("marks the side-panel Thread conversation as auxiliary", async () => {
+    hoisted.threadGet.mockResolvedValue(ACTIVE_THREAD);
+    hoisted.threadList.mockResolvedValue([ACTIVE_THREAD]);
+    hoisted.getSubscribes.mockReturnValue([{ uid: "owner-uid", role: 1 }]);
+
+    render(
+      React.createElement(ThreadPanel, {
+        groupNo: "g1",
+        thread: ACTIVE_THREAD,
+        onClose: vi.fn(),
+        onThreadSelect: vi.fn(),
+      })
+    );
+
+    await waitFor(() => expect(hoisted.renderConversation).toHaveBeenCalled());
+    const conversationProps = hoisted.renderConversation.mock.calls.at(-1)?.[0];
+    expect(conversationProps).toMatchObject({
+      isAuxiliary: true,
+      shouldShowHistorySplit: false,
+    });
+    expect(conversationProps.channel).toMatchObject({
+      channelID: ACTIVE_THREAD.channel_id,
+    });
+  });
+
   it("点击归档按钮调用 threadArchive 参数正确，并弹出撤销 Toast", async () => {
     await renderPanel([ACTIVE_THREAD]);
     const btn = archiveButton();

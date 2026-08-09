@@ -105,6 +105,8 @@ export interface TeamCitationItem {
 /** 总结结果 */
 export interface SummaryResult {
     content: string;
+    /** Short AI-generated abstract (see backend Option-B generation). Empty → hide the callout. */
+    abstract?: string;
     total_msg_count: number;
     total_token_used: number;
     model_version: string;
@@ -149,6 +151,8 @@ export interface PersonalResult {
     worker_status: 0 | 1 | 2 | 3;
     workflow_stage?: WorkflowStage | "";
     content: string;
+    /** Short AI-generated abstract (Option-B). Empty → hide the callout. */
+    abstract?: string;
     citations?: CitationItem[];
     submitted_at: string | null;
     generated_at: string | null;

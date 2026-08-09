@@ -8,7 +8,7 @@
 
 import { WKApp, i18n, t, useI18n, Menus, SpaceService } from '@octo/base'
 import { VoiceInputButton } from '@octo/base'
-import { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH } from '@octo/base'
+import { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH, forwardPlainText } from '@octo/base'
 import type { ReplaceMode, SelectionRange } from '@octo/base'
 import type {
   APIClient,
@@ -44,7 +44,7 @@ export function getWKApp(): WKAppShape {
 
 /**
  * The host's RIGHT (main) route pane manager. Production: the real static WKApp.routeRight
- * (a ContextRouteManager) — the same one Matter/Summary push their detail panel into so it
+ * (a ContextRouteManager) — the same one Summary pushes its detail panel into so it
  * fills the main content area while the list stays in the left route slot. Tests: the
  * override's routeRight stub if provided, else null (DocsHome falls back to inline render).
  */
@@ -197,6 +197,38 @@ export async function fetchAllSpaceMembers(spaceId: string): Promise<SpaceMember
 interface HostSpaceBot {
   uid: string
   name?: string
+  creator_uid?: string
+}
+
+/** A `/robot/space_bots` 200 whose body is not an array — a broken response, not an empty space. */
+class MalformedSpaceBotsError extends Error {
+  constructor() {
+    super('space_bots: malformed non-array response')
+    this.name = 'MalformedSpaceBotsError'
+  }
+}
+
+/**
+ * One page fetch of the space bots, filtered to entries with a uid. Shared by fetchSpaceBotNames
+ * (name-only) and fetchSpaceBotSnapshots (name + creatorUid) so both read the same endpoint once.
+ *
+ * FAILS CLOSED on a shape-degraded 200: a non-array body is a broken response, NOT "this space has
+ * no Bots". Coercing it to `[]` would resolve a KNOWN-empty Bot set off a malformed payload, and a
+ * grant-critical caller (the access request defaults to carrying every owned Bot) would then submit
+ * humans-only with no signal. Throwing lets such callers surface a recoverable error + retry, and
+ * matches the base-side loader. Cosmetic name-backfill swallows it explicitly (fetchSpaceBotNames).
+ *
+ * `uid` is validated as a STRING (not merely truthy): a numeric uid would satisfy a truthiness check
+ * and flow into a string-typed field and into a POST body as a JSON number. Mirrors the base-side
+ * `SpaceBotService`.
+ */
+async function getSpaceBots(spaceId: string): Promise<HostSpaceBot[]> {
+  if (!spaceId) return []
+  const { data } = await apiClient().get<HostSpaceBot[]>(
+    `/robot/space_bots?space_id=${encodeURIComponent(spaceId)}`,
+  )
+  if (!Array.isArray(data)) throw new MalformedSpaceBotsError()
+  return data.filter((b): b is HostSpaceBot => !!b && typeof b.uid === 'string' && !!b.uid)
 }
 
 /**
@@ -209,18 +241,38 @@ interface HostSpaceBot {
  * so one request per space backfills those names with no per-uid fanout and no extra permission.
  *
  * Returns `{ uid, name }` pairs (name falls back to the uid so a bot with no display name is never
- * blank). Resolves to an EMPTY list on any failure or non-array body so callers can merge safely and
- * fall back to the uid — this must never break the human-member name path.
+ * blank). Name backfill is COSMETIC, so a malformed (non-array) 200 degrades to an EMPTY list here
+ * and the uid fallback stands — unlike the grant-critical snapshot path, which fails closed. Request
+ * failures still reject; callers wrap them so the human-member name path never breaks.
  */
 export async function fetchSpaceBotNames(spaceId: string): Promise<SpaceMemberLite[]> {
-  if (!spaceId) return []
-  const { data } = await apiClient().get<HostSpaceBot[]>(
-    `/robot/space_bots?space_id=${encodeURIComponent(spaceId)}`,
-  )
-  const bots = Array.isArray(data) ? data : []
-  return bots
-    .filter((b): b is HostSpaceBot => !!b && !!b.uid)
-    .map((b) => ({ uid: b.uid, name: b.name || b.uid }))
+  const bots = await getSpaceBots(spaceId).catch((e: unknown) => {
+    if (e instanceof MalformedSpaceBotsError) return [] as HostSpaceBot[]
+    throw e
+  })
+  return bots.map((b) => ({ uid: b.uid, name: b.name || b.uid }))
+}
+
+/**
+ * Same `/robot/space_bots` source as fetchSpaceBotNames, but returns the RICH snapshot shape the
+ * grant picker needs: `{ uid, name, isBot: true, creatorUid? }`. Kept separate from
+ * fetchSpaceBotNames so the name-only callers (member-name backfill, badge uids) keep their
+ * `{ uid, name }` contract untouched — the creatorUid is only meaningful to the grant snapshot UI,
+ * which nests each Bot beneath its creator.
+ *
+ * Fails CLOSED on a malformed (non-array) 200: the Bot set stays UNKNOWN (rejects) instead of
+ * reading as zero Bots, so a grant-critical caller blocks + offers retry rather than silently
+ * dropping the Bot dimension. Roster callers that merely widen a candidate list still wrap this in
+ * `.catch(() => [])`, where a missing candidate cannot be submitted unseen.
+ */
+export async function fetchSpaceBotSnapshots(spaceId: string): Promise<SpaceMemberLite[]> {
+  const bots = await getSpaceBots(spaceId)
+  return bots.map((b) => ({
+    uid: b.uid,
+    name: b.name || b.uid,
+    isBot: true,
+    ...(b.creator_uid ? { creatorUid: b.creator_uid } : {}),
+  }))
 }
 
 /** Minimal view of a `/robot/my_bots` entry the docs seam reads (uid + display name). */
@@ -233,22 +285,21 @@ interface HostMyBot {
  * Fetch the current user's friend-added agents via `GET /robot/my_bots` (octo-server
  * modules/robot/api.go myBots) and map them to the lite member shape, flagged `isBot`.
  *
- * WHY: the doc-authorize candidate roster is sourced from `queryMembers`
- * (GET /space/{id}/members), whose WHERE clause drops bots the caller did NOT create
- * (`r.robot_id IS NULL OR r.creator_uid = loginUID`, octo-web #839). So an agent owned by
- * someone else but added as a friend by the current user never reaches the picker and can
- * never be authorized, even though the doc write path (PUT /docs/:docId/members) accepts any
- * uid. `my_bots` is a pure friend-dimension query (`FROM friend WHERE f.uid = loginUID`), so
- * it returns exactly the caller's friend-added agents and NEVER a non-friend agent owned by
- * others — merging it into the roster satisfies the security boundary by construction.
+ * NOTE (Boss ownership decision): this friend-dimension list is NO LONGER the doc-grant candidate
+ * provenance — the MemberPicker now sources standalone "My Bots" from the OWNER-scoped
+ * `fetchMyOwnedBots` (/robot/owned_bots) so a bot merely befriended (owned by someone else) is not
+ * a standalone candidate nor default-selected as "mine". `fetchMyBots` remains for callers that
+ * genuinely need the friend dimension.
  *
  * `spaceId`, when supplied, scopes the result to friend agents that are also members of that
  * space (the backend's optional `space_id` filter), keeping the candidate list relevant to the
  * doc's space; omit it to list all friend agents.
  *
  * Returns `{ uid, name, isBot: true }` triples (name falls back to the uid so an agent with no
- * display name is never blank). Resolves to an EMPTY list on a non-array body; callers wrap the
- * call in `.catch(() => [])` so a my_bots failure never breaks the human-member roster path.
+ * display name is never blank). It deliberately does NOT stamp `safeStandalone`: friendship is not a
+ * grant-trust provenance, so a friend Bot owned by someone else must never be independently
+ * grantable off this list. Resolves to an EMPTY list on a non-array body; callers wrap the call in
+ * `.catch(() => [])` so a my_bots failure never breaks the human-member roster path.
  */
 export async function fetchMyBots(spaceId?: string): Promise<SpaceMemberLite[]> {
   const path = spaceId
@@ -268,6 +319,14 @@ interface HostOwnedBot {
   description?: string
 }
 
+/** A `/robot/owned_bots` 200 whose body is not an array — broken, not "this user owns no bots". */
+class MalformedOwnedBotsError extends Error {
+  constructor() {
+    super('owned_bots: malformed non-array response')
+    this.name = 'MalformedOwnedBotsError'
+  }
+}
+
 /**
  * Fetch the bots the CURRENT user owns in a Space via `GET /robot/owned_bots?space_id=<encoded>`
  * (octo-server modules/robot ownedBots) for the docs "new HTML" picker.
@@ -283,20 +342,66 @@ interface HostOwnedBot {
  * EMPTY list on a non-array body, and drops entries with no uid — so the caller can render an
  * "empty"/"error" state without a broken row.
  */
-export async function fetchOwnedBots(spaceId: string): Promise<import('./types.ts').OwnedBotLite[]> {
-  if (!spaceId) return []
+/**
+ * One `/robot/owned_bots` read, filtered to entries with a STRING uid (a numeric uid must not flow
+ * into a string-typed field or a POST body as a JSON number). `strict` FAILS CLOSED on a
+ * shape-degraded 200 for grant-critical callers (an UNKNOWN owned-Bot set must never read as zero):
+ * a non-array body, and also rows that ALL fail validation — otherwise a payload keyed `id` instead
+ * of `uid` would filter to `[]` and read as "this user owns nothing". The non-strict form keeps the
+ * picker's tolerant "render empty" behaviour.
+ */
+async function getOwnedBots(spaceId: string, strict: boolean): Promise<HostOwnedBot[]> {
   const { data } = await apiClient().get<HostOwnedBot[]>(
     `/robot/owned_bots?space_id=${encodeURIComponent(spaceId)}`,
   )
-  const bots = Array.isArray(data) ? data : []
+  if (!Array.isArray(data)) {
+    if (strict) throw new MalformedOwnedBotsError()
+    return []
+  }
+  const bots = data.filter((b): b is HostOwnedBot => !!b && typeof b.uid === 'string' && !!b.uid)
+  if (strict && bots.length === 0 && data.length > 0) throw new MalformedOwnedBotsError()
   return bots
-    .filter((b): b is HostOwnedBot => !!b && !!b.uid)
+}
+
+export async function fetchOwnedBots(spaceId: string): Promise<import('./types.ts').OwnedBotLite[]> {
+  if (!spaceId) return []
+  const bots = await getOwnedBots(spaceId, false)
+  return bots
     .map((b) => {
       const lite: import('./types.ts').OwnedBotLite = { uid: b.uid, name: b.name || b.uid }
       // Carry description only when the server actually sent one — no `description: undefined` noise.
       if (b.description) lite.description = b.description
       return lite
     })
+}
+
+/**
+ * Fetch the current user's OWNED agents in a Space as grant-picker candidates (Boss decision:
+ * "My Bots" = bots the current user CREATED, not merely befriended). Sourced from the owner-scoped
+ * `GET /robot/owned_bots?space_id=` (server enforces owner + Space + active), so a friend-added bot
+ * owned by someone else is EXCLUDED by construction — it never becomes a standalone candidate and is
+ * never default-selected as "mine".
+ *
+ * Maps each owned bot to the lite member shape flagged `isBot` + `safeStandalone` (a viewer-scoped,
+ * caller-owned provenance the picker may grant standalone) and stamps `creatorUid = currentUid` so
+ * the picker attributes it to its true owner (the current user) rather than treating it as
+ * creator-less.
+ *
+ * Fails CLOSED on a malformed (non-array) 200 so a grant-critical caller (the access request, which
+ * defaults to carrying every owned Bot) blocks + retries instead of silently reading zero Bots.
+ * Roster callers that merely widen a candidate list still wrap this in `.catch(() => [])`.
+ */
+export async function fetchMyOwnedBots(spaceId?: string): Promise<SpaceMemberLite[]> {
+  if (!spaceId) return []
+  const owned = await getOwnedBots(spaceId, true)
+  const creatorUid = getCurrentUid()
+  return owned.map((b) => ({
+    uid: b.uid,
+    name: b.name || b.uid,
+    isBot: true as const,
+    safeStandalone: true as const,
+    ...(creatorUid ? { creatorUid } : {}),
+  }))
 }
 
 /**
@@ -471,7 +576,7 @@ export type { ReplaceMode, SelectionRange }
  * and renders `<Conversation initialCompose=... />` — all via @octo/base so docs never imports
  * wukongimjssdk directly and tests/typecheck resolve them through the single seam boundary.
  */
-export { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH }
+export { Conversation, Channel, ChannelTypePerson, MAX_MESSAGE_LENGTH, forwardPlainText }
 export type { InitialCompose, InitialComposeState, ConversationProps } from '@octo/base'
 
 export * from './types.ts'

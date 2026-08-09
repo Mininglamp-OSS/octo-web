@@ -4,11 +4,12 @@ import { canManage } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
 import { MemberPicker } from '../members/MemberPicker.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
-import { listGrants, addGrant, removeGrant, type HtmlGrant } from './htmlGrantsApi.ts'
+import { listGrants, addGrant, removeGrant, type HtmlGrant, type HtmlGrantRole } from './htmlGrantsApi.ts'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
 import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
 import { PendingRequests } from '../access-request/PendingRequests.tsx'
+import { settleWithConcurrency } from '../members/batchGrant.ts'
 
 // Member panel for HTML docs. Two backends live behind one modal:
 //   1. Legacy octo-doc grants (author-only) — the existing "reader" member list, kept intact so
@@ -93,16 +94,38 @@ export function HtmlMemberPanel({
   const localAccessRequests = useAccessRequests(docId, sharedAccessRequests ? false : canManageBackend)
   const accessRequests = sharedAccessRequests ?? localAccessRequests
 
-  // reader is the only grantable role today; MemberPicker returns a Role but we
-  // pin it to reader before calling the backend.
-  async function onAdd(uids: string[]) {
+  // Grantable roles on the HTML grants path: reader/commenter/writer. admin is NOT grantable here
+  // (backend AddGrant refuses admin — admin identity is owned by creator_uid), matching the
+  // docs-backend forward/access contract. The picker returns the chosen role per add.
+  async function onAdd(
+    uids: string[],
+    role: Role,
+    snapshot?: { humanUids: string[]; botUids: string[] },
+  ) {
+    if (role === 'admin') return
+    const grantRole: HtmlGrantRole = role
     setError(null)
     setBusy(true)
     try {
-      for (const uid of uids) await addGrant(slug, uid.trim(), 'reader')
-      await refresh()
-    } catch {
-      setError(t('docs.member.errorAdd'))
+      // Grant each picked uid (+ any snapshot Bots) independently (bounded concurrency) so one
+      // failure never aborts the rest. Compute the partial-failure detail FIRST, then refresh
+      // independently — a refresh failure must never overwrite the precise partial-failure message.
+      const results = await settleWithConcurrency(uids, (uid) => addGrant(slug, uid.trim(), grantRole))
+      const botSet = new Set(snapshot?.botUids ?? [])
+      const failed = results.flatMap((result, index) => (result.status === 'rejected' ? [uids[index]] : []))
+      let addError: string | null = null
+      if (failed.length > 0) {
+        addError = t('docs.member.errorAddSnapshot', { values: {
+          people: failed.filter((uid) => !botSet.has(uid)).map((uid) => names.get(uid) || uid).join(', ') || '-',
+          bots: failed.filter((uid) => botSet.has(uid)).map((uid) => names.get(uid) || uid).join(', ') || '-',
+        } })
+      }
+      try {
+        await refresh()
+      } catch {
+        if (!addError) addError = t('docs.member.errorRefresh')
+      }
+      if (addError) setError(addError)
     } finally {
       setBusy(false)
     }
@@ -170,8 +193,9 @@ export function HtmlMemberPanel({
             space={space}
             existingUids={existingUids}
             hideUids={new Set([creatorUid].filter(Boolean) as string[])}
-            roles={['reader']}
-            onAdd={(uids: string[], _role: Role) => onAdd(uids)}
+            roles={['reader', 'commenter', 'writer']}
+            defaultRole="reader"
+            onAdd={onAdd}
             busy={busy}
           />
           {error && <p className="octo-member-error">{error}</p>}
@@ -182,7 +206,12 @@ export function HtmlMemberPanel({
       {role != null && canManageBackend && (
         <div className="octo-member-section">
           <h4 className="octo-member-subtitle">{t('docs.member.inviteTitle')}</h4>
-          <InvitePanel docId={docId} role={role} allowedRoles={['reader']} />
+          <InvitePanel
+            docId={docId}
+            role={role}
+            allowedRoles={['reader', 'commenter', 'writer']}
+            defaultRole="reader"
+          />
         </div>
       )}
 
@@ -195,7 +224,7 @@ export function HtmlMemberPanel({
           approve={accessRequests.approve}
           deny={accessRequests.deny}
           displayName={(uid) => names.get(uid) || uid}
-          allowedRoles={['reader']}
+          allowedRoles={['reader', 'commenter', 'writer']}
         />
       )}
 
@@ -209,12 +238,15 @@ export function HtmlMemberPanel({
           )}
           {rows.map((m) => {
             const isOwner = m.source === 'owner'
+            // Non-owner rows render their actual granted role label (reader/commenter/writer);
+            // the owner row uses the fixed owner badge and carries the 'author' sentinel role.
+            const roleLabel = m.role !== 'author' ? t(`docs.role.${m.role}`) : ''
             return (
               <div className="octo-member-row" key={m.uid}>
                 <span className="octo-uid">
                   {names.get(m.uid) || m.uid}{' '}
                   {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
-                  {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {t('docs.role.reader')}</small>}
+                  {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {roleLabel}</small>}
                 </span>
                 {!isOwner && (
                   <button

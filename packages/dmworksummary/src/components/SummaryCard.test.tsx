@@ -22,6 +22,26 @@ vi.mock('@douyinfe/semi-ui', () => ({
         </span>
     ),
     Tag: ({ children }: any) => <span data-testid="ai-tag">{children}</span>,
+    // Round-10 P2-4: SummaryCard now uses <Tooltip>, <Dropdown> (with
+    // <Dropdown.Menu>/<Dropdown.Item> sub-components) and <Modal> for the
+    // source label and per-card menu. yujiawei re-review at 87c7574 flagged
+    // Tooltip/Modal missing from this mock — Dropdown.Menu / Dropdown.Item
+    // are the additional sub-component sites that need pass-through stubs
+    // so the 18 tests can render (was 18/18 red at both merge-base and
+    // this head). Modal.confirm keeps a callable for handlers that spawn a
+    // confirm dialog; the tests never exercise it directly.
+    Tooltip: ({ children }: any) => <>{children}</>,
+    Modal: Object.assign(({ children }: any) => <>{children}</>, {
+        confirm: () => null,
+        info: () => null,
+        error: () => null,
+    }),
+    Dropdown: Object.assign(({ children }: any) => <>{children}</>, {
+        Menu: ({ children }: any) => <>{children}</>,
+        Item: ({ children, onClick }: any) => (
+            <button onClick={onClick as any}>{children}</button>
+        ),
+    }),
 }));
 
 vi.mock('@douyinfe/semi-icons', () => ({

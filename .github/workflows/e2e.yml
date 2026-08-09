@@ -13,6 +13,8 @@ on:
       - "packages/**"
       - "package.json"
       - "pnpm-lock.yaml"
+      - "patches/**"
+      - "scripts/verify-excalidraw-patch.mjs"
       - ".github/workflows/e2e.yml"
       - ".github/workflows/e2e-nightly.yml"
       - ".github/workflows/e2e-baseline-bootstrap.yml"
@@ -37,6 +39,8 @@ jobs:
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
+      - name: Verify Excalidraw package patch
+        run: pnpm verify:excalidraw-patch
       - name: Build e2e bundle (tree-shakes MSW into build-e2e/)
         working-directory: apps/web
         run: pnpm build:e2e
@@ -125,15 +129,15 @@ jobs:
           #  6. PW_EXIT!=0 但 junit 无 business fail → playwright 本身 crash/OOM/timeout, block
           #  7. 仅视觉 fail (无 @p0 交叉) 且 playwright 干净退出 → allow
           #  8. 全绿 → success
-          EXPECTED_P0=29
-          EXPECTED_VISUAL=2
+          EXPECTED_P0=5
+          EXPECTED_VISUAL=0
           EXPECTED_TOTAL=$((EXPECTED_P0 + EXPECTED_VISUAL))
           if [[ "$TOTAL_TESTS" -eq 0 ]]; then
             echo "❌ tests=0 (playwright 没跑起 test, 通常是 preview server timeout), block PR"
             exit 1
           elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_TOTAL" ]]; then
             echo "❌ tests=$TOTAL_TESTS < EXPECTED_TOTAL=$EXPECTED_TOTAL (有 case 掉了 @p0/@visual tag 或 grep 漂了), block PR"
-            echo "   若确认减 case, 请同步下调 EXPECTED_P0 / EXPECTED_VISUAL."
+            echo "   若确认增减 gated case, 请同步调整 EXPECTED_P0 / EXPECTED_VISUAL."
             exit 1
           elif [[ "$SKIPPED" -gt 0 ]]; then
             echo "❌ skipped=$SKIPPED (有 case 没真执行), block PR"

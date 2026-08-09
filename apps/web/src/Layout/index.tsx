@@ -4,6 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { MainPage } from "../Pages/Main";
 import SpaceGate from "../Components/SpaceGate";
 import { Notification as NotificationUI, Button } from '@douyinfe/semi-ui';
+import { IconInfoCircle } from '@douyinfe/semi-icons';
 import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/updater'
 import { relaunch } from '@tauri-apps/api/process'
 import { os } from "@tauri-apps/api";
@@ -13,11 +14,20 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
+import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, PptEditorPage, PptPresentPage, parsePptEditorDocId, isPptEditorPath, parsePptPresentDocId, isPptPresentPath, parsePresentVersion } from "@octo/docs";
+import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules";
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
-import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
+import { consumeStandaloneReturn, persistStandaloneReturn, prepareDriveLandingReturn, clearStandaloneReturn } from "./standaloneReturn";
+import {
+  ShareLandingPage,
+  InviteLandingPage,
+  shareTokenFromPath,
+  inviteTokenFromPath,
+  isDriveSharePath,
+  isDriveInvitePath,
+} from "@octo/drive";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -50,6 +60,15 @@ interface AppLayoutState {
 function recoverOctoSessionFromStorage(persist: boolean): void {
     if (WKApp.loginInfo.token) return;
     adoptStoredSession(WKApp.loginInfo, localStorage, { persist });
+}
+
+/**
+ * Leave a drive share/invite landing page for the main drive view. The landing pages render
+ * standalone (outside the app shell), so a full navigation to `/drive` is the clean handoff:
+ * it boots the shell, and if the viewer is anonymous the login gate takes over.
+ */
+function enterDriveHome(): void {
+    if (typeof window !== "undefined") window.location.assign("/drive");
 }
 
 /**
@@ -179,7 +198,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 // the URL clean: store the known bucket sid in SessionScope, then navigate to the
                 // sid-less return path. The reloaded page still hits the right sid-keyed session
                 // bucket, without exposing `?sid=` in the address bar.
-                const standaloneReturn = consumeStandaloneReturn();
+                const standaloneReturn = consumeStandaloneReturn(getEnterpriseStandaloneHandlers());
                 if (standaloneReturn) {
                     const sessionSid = findSidForToken(localStorage, WKApp.loginInfo.token || "");
                     if (sessionSid) setSessionSid(sessionSid);
@@ -318,26 +337,28 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
 
     showUpdateUI(manifest: UpdateManifest) {
       const notifyID =  NotificationUI.info({
-            title: t("app.layout.update.newVersion", { values: { version: manifest.version } }),
+            className: "wk-octo-notification",
+            icon: <IconInfoCircle className="wk-octo-notification__icon" />,
+            title: <span className="wk-octo-notification__title">{t("app.layout.update.newVersion", { values: { version: manifest.version } })}</span>,
             duration: 0,
             content: (
-                <>
-                    <div>{manifest.body}</div>
-                    <div style={{ marginTop: 8 }}>
-                        <Button onClick={ async () => {
+                <div className="wk-octo-notification__content">
+                    <div className="wk-octo-notification__body">{manifest.body}</div>
+                    <div className="wk-octo-notification__actions">
+                        <Button className="wk-octo-notification__action" onClick={ async () => {
                            // install complete, restart app
                            if(await os.platform() !== "darwin") {
                                 await installUpdate()
                             }
                           await relaunch()
                         }}>{t("base.common.update")}</Button>
-                        <Button onClick={()=>{
+                        <Button className="wk-octo-notification__action" onClick={()=>{
                             NotificationUI.close(notifyID)
-                        }} type="secondary" style={{ marginLeft: 20 }}>
+                        }} type="secondary">
                             {t("app.layout.update.later")}
                         </Button>
                     </div>
-                </>
+                </div>
             ),
         })
     }
@@ -388,22 +409,30 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
         }
 
-        // The CLI authorization deep-link is a full-page flow outside the normal app shell.
-        // Reuse a single stored Octo session when the clean URL carries no sid-specific token.
-        if (isLoopCliAuthorizePath(window.location.pathname)) {
-            if (!WKApp.loginInfo.token) {
-                WKApp.loginInfo.load();
-            }
-            if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage(true);
-            }
+        // Enterprise full-page deep-links live outside the normal app shell. The host only owns
+        // the generic lifecycle (recover a clean sid-less session, hand over the expired-session
+        // callback, and optionally stash an anonymous return target). Concrete routes are owned by
+        // private modules, so adding a new enterprise module does not require another host branch.
+        const enterpriseStandaloneHandlers = getEnterpriseStandaloneHandlers();
+        const enterpriseStandaloneHandler = enterpriseStandaloneHandlers.find((handler) =>
+            handler.match(window.location.pathname)
+        );
+        if (enterpriseStandaloneHandler) {
+            if (!WKApp.loginInfo.token) WKApp.loginInfo.load();
+            if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
             if (WKApp.loginInfo.token) {
                 if (!WKApp.shared.currentSpaceId) {
                     const cachedSpaceId = localStorage.getItem("currentSpaceId") || "";
                     if (cachedSpaceId) WKApp.shared.currentSpaceId = cachedSpaceId;
                 }
-                const cliAuthorizeComponent = WKApp.route.get(LOOP_CLI_AUTHORIZE_PATH);
-                if (cliAuthorizeComponent) return cliAuthorizeComponent;
+                const enterpriseStandalonePage = enterpriseStandaloneHandler.render({
+                    pathname: window.location.pathname,
+                    search: window.location.search,
+                    onSessionExpired: clearExpiredStandaloneSessionAndReload,
+                });
+                if (enterpriseStandalonePage) return enterpriseStandalonePage;
+            } else if (enterpriseStandaloneHandler.persistReturnOnAnonymous) {
+                persistStandaloneReturn();
             }
         }
 
@@ -443,6 +472,85 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             // Anonymous: fall through to the login screen (below) without navigating away.
         }
 
+        // html_ppt peer surfaces (R3-F1, XIN-1495): two full-window Bento routes that live OUTSIDE
+        // the app shell and are intercepted exactly like `/d/:docId` above — so a PPT deep link
+        // lands on the PPT surface and NEVER falls through to the rich-text editor / app-shell list
+        // (the R1 no-fallthrough contract). Both consume live backend source, so the pages keep that
+        // behind PPT_SOURCE_ENABLED (default OFF until backend R3-B1 merges) and show a gated shell
+        // meanwhile; the host still routes to them. Session handling mirrors the standalone branch:
+        // load/recover the octo session, render when signed in, else stash the return target and fall
+        // through to login so the user bounces back after sign-in.
+        //
+        //   - `/ppt/d/:docId`         → peer editor route (namespace-claimed; a malformed id renders
+        //                               the PPT not-found shell, not the app shell).
+        //   - `/docs/:docId/present`  → present route (`?version=latest|N`); only this exact shape is
+        //                               claimed, so every other `/docs...` path keeps the app shell.
+        const isPptEditor = isPptEditorPath(window.location.pathname);
+        const isPptPresent = isPptPresentPath(window.location.pathname);
+        if (isPptEditor || isPptPresent) {
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                recoverOctoSessionFromStorage(true);
+            }
+            if (WKApp.loginInfo.token) {
+                if (isPptEditor) {
+                    const pptDocId = parsePptEditorDocId(window.location.pathname);
+                    return <PptEditorPage docId={pptDocId} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
+                }
+                const presentDocId = parsePptPresentDocId(window.location.pathname);
+                const presentVersion = parsePresentVersion(window.location.search);
+                return <PptPresentPage docId={presentDocId} version={presentVersion} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
+            }
+            // Anonymous: stash the exact target so the post-login flow bounces the user back to the
+            // PPT surface, then fall through to the login screen without navigating away.
+            persistStandaloneReturn();
+        }
+
+        // Drive share landing (`/drive/s/:token`, PR#1146 N2). Access requires a
+        // valid Octo session — any signed-in Octo user may open a share (they need
+        // not belong to the file's Space), but external/anonymous visitors may not.
+        // Mirror the `/d/:docId` flow: recover the session, render when signed in,
+        // else stash the exact return target and fall through to login so the user
+        // bounces back to the share after sign-in (isSafeReturnPath whitelists the
+        // drive landing shapes). The drive module no longer rewrites the URL at
+        // boot, so the pathname survives for this interception.
+        //
+        // R8 P1: stash the return target BEFORE the token gate (prepareDriveLandingReturn),
+        // not only in the anonymous fall-through. An expired stored token passes the token
+        // check and renders the landing, whose API 401s → global logout → hard redirect to
+        // login; stashing only when anonymous lost the deep-link for that expired-session
+        // chain. resolveDriveLandingSession runs the same load→recover the doc branch uses.
+        const resolveDriveLandingSession = (): boolean => {
+            if (!WKApp.loginInfo.token) {
+                WKApp.loginInfo.load();
+            }
+            if (!WKApp.loginInfo.token) {
+                recoverOctoSessionFromStorage(true);
+            }
+            return !!WKApp.loginInfo.token;
+        };
+        if (isDriveSharePath(window.location.pathname)) {
+            if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
+                return <ShareLandingPage token={shareTokenFromPath()} onExit={enterDriveHome} onClearReturn={clearStandaloneReturn} />;
+            }
+            // Anonymous/expired: return target already stashed; fall through to the login screen.
+        }
+
+        // Space-invite landing (`/drive/invite/:token`, PR#1146 N2). acceptInvite IS
+        // authenticated, so mirror the `/d/:docId` flow: recover the octo session, render
+        // the accept page when signed in, else stash the exact return target and fall
+        // through to the login screen so the user bounces back to the invite after
+        // sign-in (isSafeReturnPath whitelists the drive landing shapes). Same R8 P1
+        // up-front stash as the share branch above.
+        if (isDriveInvitePath(window.location.pathname)) {
+            if (prepareDriveLandingReturn(resolveDriveLandingSession)) {
+                return <InviteLandingPage token={inviteTokenFromPath()} onExit={enterDriveHome} onClearReturn={clearStandaloneReturn} />;
+            }
+            // Anonymous/expired: return target already stashed; fall through to the login screen.
+        }
+
         // Read-only shared summary deep-link (`/s/share/:shareId`). It uses the same
         // clean cold-load session recovery as task summary deep-links.
         const standaloneShareId = parseStandaloneSummaryShareId(window.location.pathname);
@@ -468,8 +576,15 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
             if (WKApp.loginInfo.token) {
                 applyStandaloneSummarySpaceFromQuery();
-                const standaloneTaskNo = parseStandaloneSummaryTaskNo(window.location.pathname);
-                return <SummaryDetailPage taskId={standaloneTaskNo ?? undefined} />;
+                const standaloneTaskNo = parseStandaloneSummaryTaskNo(
+                    window.location.pathname
+                );
+                return (
+                    <SummaryDetailPage
+                        taskId={standaloneTaskNo ?? undefined}
+                        emitSelection
+                    />
+                );
             }
             persistStandaloneReturn();
             // Anonymous: fall through to the login screen (below) without navigating away.

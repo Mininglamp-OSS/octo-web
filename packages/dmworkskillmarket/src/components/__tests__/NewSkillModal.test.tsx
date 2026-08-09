@@ -24,7 +24,7 @@ vi.mock("react-avatar-editor", async () => {
   return { default: AvatarEditor };
 });
 
-const selectZipLabel = /选择 Skill 包文件|skillMarket\.upload\.selectFileAriaLabel/;
+const selectZipLabel = /选择技能包文件|skillMarket\.upload\.selectFileAriaLabel/;
 const displayNamePlaceholder = /请输入展示名称，最多20个字符|skillMarket\.form\.displayNamePlaceholder/;
 const categoryLabel = /分类|skillMarket\.form\.category/;
 const tagPlaceholder = /输入或选择标签|skillMarket\.form\.tagPlaceholder/;
@@ -32,7 +32,7 @@ const createButton = /创建|skillMarket\.common\.create/;
 const cancelButton = /取消|skillMarket\.common\.cancel/;
 const invalidFormat = /文件格式不正确|skillMarket\.upload\.invalidFormat/;
 const uploadProgress = /上传进度|skillMarket\.upload\.uploadProgress/;
-const busyMessage = /确定离开？Skill 包正在上传\/解析中，离开后当前进度将丢失，需要重新上传。|skillMarket\.confirm\.busyMessage/;
+const busyMessage = /确定离开？技能包正在上传\/解析中，离开后当前进度将丢失，需要重新上传。|skillMarket\.confirm\.busyMessage/;
 const keepUploading = /继续上传|skillMarket\.confirm\.keepUploading/;
 const leaveButton = /确认离开|skillMarket\.confirm\.leave/;
 const tagLimit = /最多添加 10 个标签|skillMarket\.form\.tagLimit/;

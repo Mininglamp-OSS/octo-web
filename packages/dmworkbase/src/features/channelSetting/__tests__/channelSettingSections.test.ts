@@ -1,3 +1,4 @@
+import { Toast } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { describe, expect, it, vi } from "vitest";
 
@@ -5,19 +6,42 @@ import { ChannelTypeCommunityTopic } from "../../../Service/Const";
 import { ThreadStatus } from "../../../Service/Thread";
 import { GroupStatusDisband } from "../../../Utils/groupDisband";
 import { updateChannelSettingMyGroupNickname } from "../../../bridge/channelSetting/channelSettingActions";
+import { t } from "../../../i18n";
 import { buildChannelGroupInfoSection } from "../channelSettingGroupInfoSection";
 import {
   buildChannelDangerSection,
   buildChannelPreferenceSection,
   buildMyGroupNicknameSection,
 } from "../channelSettingSections";
-import { buildChannelMembersSection } from "../channelSettingMemberSection";
+import {
+  buildChannelMembersSection,
+  canRemoveChannelSettingSubscriber,
+} from "../channelSettingMemberSection";
 import {
   buildThreadActionsSection,
   buildThreadInfoSection,
   buildThreadMdSection,
+  buildThreadOverviewSection,
   buildThreadWebhookSection,
 } from "../channelSettingThreadSections";
+
+vi.mock("@douyinfe/semi-ui", () => ({
+  Button: vi.fn(),
+  Input: vi.fn(),
+  Switch: vi.fn(),
+  Tag: vi.fn(),
+  TextArea: vi.fn(),
+  Toast: {
+    error: vi.fn(),
+    warning: vi.fn(),
+  },
+}));
+
+vi.mock("@douyinfe/semi-icons", () => ({
+  IconAlertTriangle: vi.fn(),
+  IconLink: vi.fn(),
+  IconPlus: vi.fn(),
+}));
 
 vi.mock("../../../App", () => ({
   default: {
@@ -32,6 +56,7 @@ vi.mock("../../../App", () => ({
     },
     endpoints: {
       showConversation: vi.fn(),
+      organizationalTool: vi.fn((channel, render) => render),
     },
   },
 }));
@@ -48,11 +73,14 @@ vi.mock("../../../Service/threadPermission", () => ({
 }));
 
 vi.mock("../../../bridge/channelSetting/channelSettingActions", () => ({
+  addChannelSettingSubscribers: vi.fn(),
   clearChannelSettingMessages: vi.fn(),
+  createGroupFromChannelSettingPrivateChat: vi.fn(),
   exitChannelSettingGroup: vi.fn(),
   leaveChannelSettingThread: vi.fn(),
   muteChannelSetting: vi.fn(),
   remarkChannelSetting: vi.fn(),
+  removeChannelSettingSubscribers: vi.fn(() => Promise.resolve()),
   saveChannelSetting: vi.fn(),
   topChannelSetting: vi.fn(),
   transferChannelSettingOwner: vi.fn(),
@@ -128,6 +156,84 @@ describe("channel setting section builders", () => {
     expect(disbanded).toBeUndefined();
   });
 
+  it("opens v2-style member management instead of the old multi-select finish flow", () => {
+    const context = createContext({
+      channelInfo: {
+        orgData: {
+          member_count: 3,
+        },
+      },
+      subscriberOfMe: {
+        uid: "alice",
+        role: 1,
+      },
+      subscribers: [
+        { uid: "alice", role: 1 },
+        { uid: "bob", role: 0 },
+        { uid: "carol", role: 0 },
+      ],
+    });
+    const section = buildChannelMembersSection(context);
+
+    section?.rows?.[0].properties.onRemove();
+
+    expect(context.push).toHaveBeenCalledTimes(1);
+    const [view, config] = context.push.mock.calls[0];
+    expect(view.props.canSelect).toBeUndefined();
+    expect(view.props.removeAction).toBeTruthy();
+    expect(config.title).toBeTruthy();
+    expect(config.showFinishButton).toBeUndefined();
+  });
+
+  it("keeps member removal permissions scoped to the current manager role", () => {
+    const owner = { uid: "owner", role: 1 } as any;
+    const manager = { uid: "manager", role: 2 } as any;
+    const normal = { uid: "normal", role: 0 } as any;
+
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "owner",
+        viewerRole: 1,
+        subscriber: normal,
+      })
+    ).toBe(true);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "owner",
+        viewerRole: 1,
+        subscriber: manager,
+      })
+    ).toBe(true);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "owner",
+        viewerRole: 1,
+        subscriber: owner,
+      })
+    ).toBe(false);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "manager",
+        viewerRole: 2,
+        subscriber: normal,
+      })
+    ).toBe(true);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "manager",
+        viewerRole: 2,
+        subscriber: owner,
+      })
+    ).toBe(false);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "manager",
+        viewerRole: 2,
+        subscriber: manager,
+      })
+    ).toBe(false);
+  });
+
   it("hides preference rows for thread channels", () => {
     const context = createContext({
       channel: new Channel("group-1@thread", ChannelTypeCommunityTopic),
@@ -178,9 +284,7 @@ describe("channel setting section builders", () => {
     const inputEditPush = vi.fn();
     const section = buildMyGroupNicknameSection(context, inputEditPush);
 
-    section?.rows?.[0].properties.onClick();
-    const onFinish = inputEditPush.mock.calls[0][2];
-    await onFinish("Alice Updated");
+    await section?.rows?.[0].properties.onSave("Alice Updated");
 
     expect(updateChannelSettingMyGroupNickname).toHaveBeenCalledWith({
       channel: context.routeData().channel,
@@ -188,6 +292,44 @@ describe("channel setting section builders", () => {
     });
     expect(context.routeData().subscriberOfMe.remark).toBe("Alice Updated");
     expect(context.routeData().refresh).toHaveBeenCalled();
+  });
+
+  it("keeps a cleared group nickname empty instead of falling back to the member name", async () => {
+    const context = createContext();
+    const inputEditPush = vi.fn();
+    const section = buildMyGroupNicknameSection(context, inputEditPush);
+
+    await section?.rows?.[0].properties.onSave("");
+
+    expect(updateChannelSettingMyGroupNickname).toHaveBeenCalledWith({
+      channel: context.routeData().channel,
+      remark: "",
+    });
+    expect(context.routeData().subscriberOfMe.remark).toBe("");
+
+    const refreshedSection = buildMyGroupNicknameSection(
+      context,
+      inputEditPush
+    );
+    expect(refreshedSection?.rows?.[0].properties.value).toBe("");
+    expect(refreshedSection?.rows?.[0].properties.displayValue).toBe(
+      t("base.common.notSet")
+    );
+  });
+
+  it("keeps the group nickname unchanged and reports a failed save", async () => {
+    vi.mocked(updateChannelSettingMyGroupNickname).mockRejectedValueOnce({
+      msg: "Nickname save failed",
+    });
+    const context = createContext();
+    const section = buildMyGroupNicknameSection(context, vi.fn());
+
+    const saved = await section?.rows?.[0].properties.onSave("New nickname");
+
+    expect(saved).toBe(false);
+    expect(Toast.error).toHaveBeenCalledWith("Nickname save failed");
+    expect(context.routeData().subscriberOfMe.remark).toBe("Ali");
+    expect(context.routeData().refresh).not.toHaveBeenCalled();
   });
 
   it("builds danger rows only for active groups", () => {
@@ -245,6 +387,9 @@ describe("channel setting section builders", () => {
     );
     expect(buildThreadMdSection(context)?.rows).toHaveLength(1);
     expect(buildThreadWebhookSection(context)?.rows).toHaveLength(1);
+    expect(
+      buildThreadOverviewSection(context, inputEditPush)?.rows
+    ).toHaveLength(5);
     expect(buildThreadActionsSection(context)?.rows).toHaveLength(2);
   });
 
@@ -255,6 +400,7 @@ describe("channel setting section builders", () => {
     expect(buildThreadInfoSection(context, inputEditPush)).toBeUndefined();
     expect(buildThreadMdSection(context)).toBeUndefined();
     expect(buildThreadWebhookSection(context)).toBeUndefined();
+    expect(buildThreadOverviewSection(context, inputEditPush)).toBeUndefined();
     expect(buildThreadActionsSection(context)).toBeUndefined();
   });
 });

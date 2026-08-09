@@ -11,7 +11,7 @@
 
 ## File Map
 
-- `packages/dmworkbase/package.json`：固定安装 npm 发布的 Forge `1.2.0-rc.1` 制品。
+- `packages/dmworkbase/package.json`：固定安装 npm 发布的 Forge `1.2.0-rc.2` 制品。
 - `Messages/InteractiveCard/InteractiveCardContent.ts`：容忍解析/编码可选 `render_profile`。
 - `Messages/InteractiveCard/renderDecision.ts`：在原 Wire Profile 协商之外选择 legacy/Forge 渲染档位。
 - `Messages/InteractiveCard/sdk/renderOctoCard.ts`：按档位选择现有 HostConfig 或制品 HostConfig。

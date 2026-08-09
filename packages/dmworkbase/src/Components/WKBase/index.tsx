@@ -258,6 +258,7 @@ export default class WKBase
             canGrant: forward.canGrant,
             disabledReason: forward.disabledReason,
             defaultRole: forward.defaultRole ?? "reader",
+            spaceId: forward.spaceId,
           }
         : undefined,
       // 每次打开递增 key，强制 ConversationSelect 重新挂载，
@@ -273,6 +274,8 @@ export default class WKBase
    * Expand the selected target channels into a de-duplicated uid snapshot at forward time
    * (contract 2): a group → its current subscriber uids (syncSubscribes → getSubscribes),
    * a person channel → the peer uid (channelID). Failures on one channel are skipped, never fatal.
+   * Bots are NOT attached here — the forwarder picks them explicitly in the 授权区 Bot expander and
+   * they arrive via `grant.botUids`, so nothing is granted silently.
    */
   private async collectForwardUids(channels: Channel[]): Promise<string[]> {
     const uids = new Set<string>();
@@ -302,23 +305,28 @@ export default class WKBase
   ): Promise<void> {
     const { t } = this.context;
     let grantFailures: string[] | undefined;
+    let grantRejections: string[] | undefined;
 
     // 0) disband guard 提前一次，仅为 grant 阶段决定是否有可授权目标。真正的 send 阶段
     // disband 计入交给 ForwardService（它同样过滤 disband 并计入 failedTargets）。
     const sendable = channels.filter((ch) => !isConversationDisbanded(ch));
     if (sendable.length === 0) {
       Toast.error(t("base.forwardModal.grant.sendFailed"));
-      forward.onResult?.({ sent: 0, failed: channels.length, grantFailures: undefined });
+      forward.onResult?.({ sent: 0, failed: channels.length, grantFailures: undefined, grantRejections: undefined });
       return;
     }
 
     // 1) grant first (先授权后发). Only when the switch is on AND docs injected an executor.
     if (grant && forward.grantAccess) {
       try {
-        const uids = await this.collectForwardUids(sendable);
+        const humanUids = await this.collectForwardUids(sendable);
+        // Merge the explicitly-kept Bot uids from the 授权区 expander onto the human snapshot.
+        // Bots the forwarder cancelled are absent from grant.botUids, so nothing is granted silently.
+        const uids = [...new Set([...humanUids, ...(grant.botUids ?? [])])];
         if (uids.length > 0) {
           const res = await forward.grantAccess(uids, grant.role);
           if (res.failed > 0) grantFailures = res.failures;
+          if (res.rejected && res.rejected.length > 0) grantRejections = res.rejected;
         }
       } catch {
         // A grant failure must not block sending the message — the receiver can still
@@ -347,7 +355,7 @@ export default class WKBase
           card.ownerName = forward.ownerName ?? "";
           card.updatedAt = forward.updatedAt ?? "";
           card.url = forward.link;
-          card.permission = (grant?.role ?? forward.defaultRole ?? "reader") === "writer" ? "writer" : "reader";
+          card.permission = grant?.role ?? forward.defaultRole ?? "reader";
           return card;
         }
       : () => new MessageText(buildForwardMessageText(forward.messageTitle, forward.link));
@@ -368,6 +376,12 @@ export default class WKBase
           values: { failed: state.failed, total: state.total },
         })
       );
+    } else if (grantRejections && grantRejections.length > 0) {
+      Toast.warning(
+        t("base.forwardModal.grant.grantRejected", {
+          values: { failed: grantRejections.length },
+        })
+      );
     } else if (grantFailures && grantFailures.length > 0) {
       Toast.warning(
         t("base.forwardModal.grant.partialGrantFailed", {
@@ -379,7 +393,7 @@ export default class WKBase
     }
 
     const sent = state.total - state.failed;
-    forward.onResult?.({ sent, failed: state.failed, grantFailures });
+    forward.onResult?.({ sent, failed: state.failed, grantFailures, grantRejections });
   }
 
   hideUserInfo() {

@@ -33,6 +33,9 @@ vi.mock("../APIClient", () => ({
 
 vi.mock("../SpacePrefix", () => ({
   hasSpacePrefix: vi.fn((id: string) => id.startsWith("s123_")),
+  stripSpacePrefix: vi.fn((id: string) =>
+    id.startsWith("s123_") ? id.substring(id.indexOf("_") + 1) : id
+  ),
 }));
 
 const apiDelete = APIClient.shared.delete as unknown as ReturnType<typeof vi.fn>;

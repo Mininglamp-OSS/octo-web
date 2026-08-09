@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import { clearMemberNameCache } from './memberNames.ts'
@@ -78,6 +78,17 @@ describe('MemberPanel — display names (#7)', () => {
     expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy()
   })
 
+  it('offers the four roles (incl. commenter) on member rows and keeps the owner row non-downgradeable', async () => {
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_named" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    // Member-row role dropdowns now offer commenter alongside reader/writer/admin.
+    const selects = Array.from(document.querySelectorAll('.octo-member-section select')) as HTMLSelectElement[]
+    const memberSelect = selects.find((s) => !s.disabled)!
+    expect(Array.from(memberSelect.options).map((o) => o.value)).toEqual(['reader', 'commenter', 'writer', 'admin'])
+    // The owner row's select is disabled — an admin cannot mis-downgrade the owner (fail closed).
+    expect(selects.some((s) => s.disabled)).toBe(true)
+  })
+
   it('synthesizes a pinned owner row when the owner is absent from the members API (#A1/#A3)', async () => {
     // Backend members API excludes the owner (owner lives in doc_meta, not doc_member). With an
     // ownerId that is NOT in the returned members, the panel still shows an owner row + badge.
@@ -98,5 +109,75 @@ describe('MemberPanel — display names (#7)', () => {
     render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
     await waitFor(() => expect(screen.getByText('docs.member.currentMembers')).toBeTruthy())
     expect(screen.getByText('docs.member.empty')).toBeTruthy()
+  })
+
+  it('offers reader/commenter/writer on a pending access-request row (DEFAULT_REQUEST_ROLES)', async () => {
+    // Access-request approve supports commenter (Backend #147); the rich-doc path passes no
+    // allowedRoles, so PendingRequests falls back to DEFAULT_REQUEST_ROLES = reader|commenter|writer.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) return { data: { items: [] }, status: 200 }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (method === 'get' && url.includes('/access-requests')) {
+        return { data: { items: [{ requestId: 'r_1', uid: 'u_req' }] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
+    await waitFor(() => expect(screen.getByText('docs.forward.approve')).toBeTruthy())
+    const selects = Array.from(document.querySelectorAll('select')) as HTMLSelectElement[]
+    const requestSelect = selects.find(
+      (s) => Array.from(s.options).map((o) => o.value).join(',') === 'reader,commenter,writer',
+    )
+    expect(requestSelect).toBeTruthy()
+  })
+})
+
+describe('MemberPanel add: partial-failure detail survives a refresh failure (task #5)', () => {
+  it('keeps the partial-failure message when the post-add refresh also fails', async () => {
+    wk.spaceMembers.push({ uid: 'u_ada', name: 'Ada Lovelace' })
+    let addAttempted = false
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        // The FIRST list (initial mount) succeeds; the refresh AFTER the add throws.
+        if (addAttempted) throw { response: { status: 500 } }
+        return { data: { items: [] }, status: 200 }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (method === 'put' && url.endsWith('/members')) {
+        addAttempted = true
+        throw { response: { status: 500 } } // the grant itself fails
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    // The partial-failure (grant) message is shown, NOT the generic refresh error.
+    await waitFor(() => expect(screen.getByText('docs.member.errorAddSnapshot')).toBeTruthy())
+    expect(screen.queryByText('docs.member.errorRefresh')).toBeNull()
+  })
+
+  it('surfaces the refresh error only when every add succeeded but the refresh failed', async () => {
+    wk.spaceMembers.push({ uid: 'u_ada', name: 'Ada Lovelace' })
+    let addAttempted = false
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        if (addAttempted) throw { response: { status: 500 } }
+        return { data: { items: [] }, status: 200 }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (method === 'put' && url.endsWith('/members')) {
+        addAttempted = true
+        return { data: {}, status: 200 } // grant succeeds
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.click(screen.getByText('Ada Lovelace'))
+    fireEvent.click(screen.getByText('docs.member.add').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(screen.getByText('docs.member.errorRefresh')).toBeTruthy())
+    expect(screen.queryByText('docs.member.errorAddSnapshot')).toBeNull()
   })
 })

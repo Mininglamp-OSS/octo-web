@@ -5,11 +5,15 @@ import {
   deleteImChannelInfo,
   fetchImChannelInfo,
   getImChannelInfo,
+  getImChannelSubscribersCacheRaw,
   getImChannelSubscriberOfMe,
   getImChannelSubscribers,
+  getImChannelLocallyRemovedSubscriberUids,
   getImSubscribeCacheMap,
+  clearImChannelSubscribersLocallyRemoved,
   notifyImChannelInfoListeners,
   notifyImSubscriberChangeListeners,
+  markImChannelSubscribersLocallyRemoved,
   patchImChannelInfoOrgData,
   setImChannelSubscribersCache,
   setImChannelInfoCache,
@@ -100,7 +104,9 @@ describe("channelRuntime", () => {
 
     notifyImChannelInfoListeners(sdk, channelInfo);
 
-    expect(sdk.channelManager.notifyListeners).toHaveBeenCalledWith(channelInfo);
+    expect(sdk.channelManager.notifyListeners).toHaveBeenCalledWith(
+      channelInfo
+    );
   });
 
   it("returns an unsubscribe when adding a channel info listener", () => {
@@ -181,6 +187,61 @@ describe("channelRuntime", () => {
     setImChannelSubscribersCache(sdk, channel, subscribers);
 
     expect(sdk.channelManager.subscribeCacheMap.get("2@g1")).toBe(subscribers);
+  });
+
+  it("filters locally removed subscribers from reads while keeping raw cache writes authoritative", () => {
+    const sdk = createSdk();
+    const channel = {
+      channelID: "g-local-remove",
+      channelType: 2,
+      getChannelKey: () => "2@g-local-remove",
+    };
+    const subscribers = [{ uid: "owner" }, { uid: "removed" }];
+
+    markImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+    sdk.channelManager.getSubscribes.mockReturnValue(subscribers);
+
+    expect(getImChannelSubscribers(sdk, channel)).toEqual([{ uid: "owner" }]);
+    expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([
+      "removed",
+    ]);
+
+    setImChannelSubscribersCache(sdk, channel, subscribers);
+    expect(
+      sdk.channelManager.subscribeCacheMap.get("2@g-local-remove")
+    ).toEqual(subscribers);
+    expect(getImChannelSubscribersCacheRaw(sdk, channel)).toBe(subscribers);
+
+    setImChannelSubscribersCache(sdk, channel, [{ uid: "owner" }]);
+    expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([
+      "removed",
+    ]);
+    clearImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+    expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
+  });
+
+  it("expires local removal filters after the stale-response window", () => {
+    vi.useFakeTimers();
+    try {
+      const sdk = createSdk();
+      const channel = {
+        channelID: "g-local-remove-ttl",
+        channelType: 2,
+        getChannelKey: () => "2@g-local-remove-ttl",
+      };
+      const subscribers = [{ uid: "owner" }, { uid: "removed" }];
+      sdk.channelManager.getSubscribes.mockReturnValue(subscribers);
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      markImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+      expect(getImChannelSubscribers(sdk, channel)).toEqual([{ uid: "owner" }]);
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:30.001Z"));
+      expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
+      expect(getImChannelSubscribers(sdk, channel)).toBe(subscribers);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns an unsubscribe when adding a subscriber change listener", () => {

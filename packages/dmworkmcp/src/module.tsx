@@ -9,7 +9,7 @@ import zhCN from "./i18n/zh-CN.json";
 import "./index.css";
 
 /**
- * NavRail 顶层菜单图标（MCP 市场）。与 dmworksummary / dmworktodo 的菜单图标同构：
+ * NavRail 顶层菜单图标（MCP 市场）。与 dmworksummary 的菜单图标同构：
  * 纯 SVG、随 active 变色，不引入额外依赖。图标语义：插件 / 拼装块（MCP = 可插拔工具）。
  */
 function McpMarketIcon({ active }: { active?: boolean }) {

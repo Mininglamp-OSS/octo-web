@@ -1,8 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
-import { setWKApp } from '../octoweb/index.ts'
-import { createMockWKApp } from '../octoweb/mock.ts'
-import type { DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  fireEvent,
+} from "@testing-library/react";
+import { setWKApp } from "../octoweb/index.ts";
+import { createMockWKApp } from "../octoweb/mock.ts";
+import type { DocMoreMenuItem } from "../editor/DocMoreMenu.tsx";
+import { titleContextStore } from "@octo/base";
 
 // Replace the heavy collaborative editor with a lightweight marker. This is the crux of the
 // AC-12 acceptance: the standalone page's boundary states are driven entirely by the GET
@@ -70,6 +77,7 @@ import {
   persistStandaloneReturn,
   consumeStandaloneReturn,
   withReturnSid,
+  resolveSameOriginPath,
   STANDALONE_RETURN_KEY,
 } from './StandaloneDocPage.tsx'
 
@@ -81,8 +89,9 @@ function apiError(status: number) {
 let wk: ReturnType<typeof createMockWKApp>
 
 beforeEach(() => {
-  window.sessionStorage.clear()
-  window.localStorage.clear()
+  titleContextStore.clear("docs");
+  window.sessionStorage.clear();
+  window.localStorage.clear();
   // Reset the URL between tests so a `?sid=`/`?sp=` pushed by one test (Copy-link / return-target /
   // space-resolution cases) cannot leak into the next, which reads the link's `?sp=` (standaloneLinkSpace).
   window.history.pushState({}, '', '/')
@@ -184,6 +193,10 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // in-shell RequestAccessButton so the receiver can request access without leaving the page.
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d_forbidden') throw apiError(403)
+      // The owned-Bot lookup must return a LEGAL empty list: this case asserts the requester can ask
+      // for access, which is orthogonal to the Bot dimension. The catch-all `{}` reaches the strict
+      // loader as a malformed body and blocks submission, which would test the wrong thing.
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
       return { data: {}, status: 200 }
     }
 
@@ -192,8 +205,9 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     await waitFor(() =>
       expect(screen.getByText('docs.error.permission.forbidden')).toBeTruthy(),
     )
-    // The reused RequestAccessButton (its hint + action) is present on the forbidden landing.
-    expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy()
+    // The reused RequestAccessButton (its hint + action) is present on the forbidden landing. Awaited
+    // because the button now resolves the owned-Bot lookup before it can offer the action.
+    await waitFor(() => expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy())
     // XIN-505 redesign: the landing shows a non-misleading heading instead of a fake "Untitled
     // document" title, and offers no "back to all documents" link (a share page has no list to
     // return to). The reason line is still shown.
@@ -294,8 +308,16 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
 
     render(<StandaloneDocPage docId="d_ok" />)
 
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(screen.getByTestId('editor-doc').textContent).toBe('d_ok')
+    await waitFor(() =>
+      expect(screen.getByTestId("editor-shell")).toBeTruthy()
+    );
+    await waitFor(() =>
+      expect(titleContextStore.get("docs")).toEqual({
+        primaryTitle: "Shared Doc",
+        moduleTitle: "docs.menu.title",
+      })
+    );
+    expect(screen.getByTestId("editor-doc").textContent).toBe("d_ok");
 
     // XIN-416 (boss real-device acceptance): the standalone editor view no longer shows a
     // "← 全部文档" return link. A standalone `/d/:docId` share page is a pure, self-contained
@@ -317,6 +339,20 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // The reverse "Open in App" exit was removed (boss change): standalone links are opened from
     // an external chat, not from inside the shell, so there is nothing to return to.
     expect(lead.textContent).not.toContain('docs.standalone.openInApp')
+  })
+
+  it('falls back to the module title when the document title is empty', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_untitled') {
+        return { data: { docId: 'd_untitled', title: '   ', ownerId: 'u_owner' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_untitled" />)
+
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    expect(titleContextStore.get('docs')).toBeUndefined()
   })
 
   it('AC-3: clicking the Copy link menu row copies the CANONICAL /d/:docId link, stripping ?sid', async () => {
@@ -768,6 +804,65 @@ describe('XIN-501 — preflight addresses the doc space from the link ?sp, never
     expect(wk.shared.currentSpaceId).toBe('space-doc')
     const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
     expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+  })
+})
+
+describe('resolveSameOriginPath — PPT editorUrl normalise (P2-1)', () => {
+  const origin = window.location.origin
+
+  it('normalises a same-origin ABSOLUTE url to a rooted path (the P2-1 accept case)', () => {
+    expect(resolveSameOriginPath(`${origin}/ppt/d/abc`)).toBe('/ppt/d/abc')
+    // query + hash are preserved.
+    expect(resolveSameOriginPath(`${origin}/ppt/d/abc?sp=1#s2`)).toBe('/ppt/d/abc?sp=1#s2')
+  })
+
+  it('accepts a rooted-relative path and a bare-relative path (resolved against origin root)', () => {
+    expect(resolveSameOriginPath('/ppt/d/abc?sp=1')).toBe('/ppt/d/abc?sp=1')
+    // A bare-relative value that isSameOriginPath would REJECT is normalised to a rooted path here.
+    expect(resolveSameOriginPath('d/abc')).toBe('/d/abc')
+  })
+
+  it('rejects cross-origin / scheme-relative / javascript / control-char / empty values', () => {
+    for (const bad of [
+      'https://evil.example.com/steal', // cross-origin absolute
+      '//evil.example.com', // scheme-relative → off-origin
+      'javascript:alert(1)', // script payload (opaque origin)
+      '/\n/evil.example.com', // newline smuggles //host past the URL parser
+      '/\t/evil.example.com', // tab → same
+      '', // empty
+    ]) {
+      expect(resolveSameOriginPath(bad)).toBeNull()
+    }
+    expect(resolveSameOriginPath(null)).toBeNull()
+    expect(resolveSameOriginPath(undefined)).toBeNull()
+  })
+
+  it('collapses leading-slash runs so a normalised path can never be scheme-relative (P1-1)', () => {
+    // Each input parses same-origin, but its pathname begins with `//` (or resolves to one via
+    // dot-segments / backslash smuggling). Handing that back verbatim lets location.assign()
+    // re-parse it as SCHEME-RELATIVE and bounce cross-origin. The guard must return a single-rooted
+    // path that stays same-origin when re-parsed.
+    const rows = [
+      `${origin}//evil.example.com/steal`, // absolute same-origin, pathname `//evil…`
+      `${origin}/\\/evil.example.com/steal`, // backslash → `/` in special schemes → `//evil…`
+      '/..//evil.example.com/steal', // rooted; `/..` clamps to root, leaving `//evil…`
+      '/a/../..//evil.example.com', // rooted; dot-segments collapse to `//evil…`
+    ]
+    for (const raw of rows) {
+      const result = resolveSameOriginPath(raw)
+      expect(result).not.toBeNull()
+      // Exactly one leading slash — not scheme-relative.
+      expect(result!.startsWith('//')).toBe(false)
+      expect(result!.startsWith('/')).toBe(true)
+      // Re-parsing the returned value (as location.assign would) stays on the current origin.
+      expect(new URL(result!, origin).origin).toBe(origin)
+    }
+  })
+
+  it('rejects non-http(s) same-origin protocols (e.g. blob:) whose pathname is not a real page path', () => {
+    // blob:<origin>/… reports a matching origin, but its pathname is the whole inner URL, so it is
+    // not a navigable rooted path. Only http/https page schemes are accepted.
+    expect(resolveSameOriginPath(`blob:${origin}/550e8400-e29b-41d4-a716-446655440000`)).toBeNull()
   })
 })
 

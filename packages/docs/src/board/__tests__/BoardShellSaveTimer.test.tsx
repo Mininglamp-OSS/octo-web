@@ -29,15 +29,19 @@ vi.mock('@excalidraw/excalidraw', () => {
   const MainMenu = (() => null) as unknown as { DefaultItems: Record<string, unknown> }
   MainMenu.DefaultItems = {}
   return {
+    FONT_FAMILY: {},
     Excalidraw,
     MainMenu,
     restoreElements: (els: readonly unknown[] | null | undefined) => (els ? [...els] : []),
     reconcileElements: (local: readonly unknown[]) => [...local],
+    redrawTextBoundingBox: () => {},
+    mutateElement: (element: Record<string, unknown>, updates: Record<string, unknown>) => Object.assign(element, updates),
     // The shell captures this off the same dynamic import to power the library import button; vitest
     // module mocks throw on access to an undeclared export, so it must be present even though this
     // suite never exercises the import path.
     loadLibraryFromBlob: async () => [],
     serializeLibraryAsJSON: () => '[]',
+    serializeAsJSON: () => '{}',
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
@@ -46,6 +50,7 @@ vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
 // followed by a re-persist. The clearBoardScene / persistBoardScene names mirror the real module.
 const store = vi.hoisted(() => ({ calls: [] as string[] }))
 vi.mock('../boardStore.ts', () => ({
+  hasSavedBoardViewport: () => false,
   loadBoardScene: () => null,
   persistBoardScene: (..._args: unknown[]) => {
     store.calls.push('persist')

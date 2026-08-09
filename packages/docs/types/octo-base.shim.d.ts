@@ -12,7 +12,7 @@
 //
 // The host monorepo's real quality gate is `vite build` (rolldown) + lint + i18n,
 // NOT a cross-package `tsc` (apps/web has no tsc typecheck job; sibling feature
-// packages like @octo/todo have no typecheck script at all). So docs typecheck must
+// packages have no typecheck script at all). So docs typecheck must
 // likewise stop at the `@octo/base` boundary instead of auditing the host's source.
 //
 // This file declares ONLY the exact surface octoweb/index.ts imports from
@@ -22,6 +22,17 @@
 // already re-declares the structural WKApp/APIClient/RouteManager interfaces in
 // octoweb/types.ts, and getWKApp() casts the real WKApp to WKAppShape explicitly.
 declare module '@octo/base' {
+  export interface PageTitleContext {
+    primaryTitle: string
+    parentTitle?: string
+    moduleTitle?: string
+  }
+  export const titleContextStore: {
+    get(menuId: string): PageTitleContext | undefined
+    set(menuId: string, context: PageTitleContext, owner?: symbol): void
+    clear(menuId: string, owner?: symbol): void
+  }
+
   // WKApp is cast through `unknown` to WKAppShape in octoweb/index.ts, so its precise
   // shape is irrelevant to docs typecheck; declare it as `unknown`-ish to avoid
   // re-importing the host class type.
@@ -37,11 +48,28 @@ declare module '@octo/base' {
     init(): void
   }
 
+  // Shared host feedback and semantic AI badge used by Board/Docs surfaces.
+  export const OctoToast: {
+    success(message: string): void
+    error(message: string): void
+  }
+  export interface AiBadgeProps {
+    size?: 'default' | 'small'
+    className?: string
+    children?: unknown
+    title?: string
+    'aria-label'?: string
+  }
+  export function AiBadge(props: AiBadgeProps): any
+
   // Synchronous one-shot translation (non-component reads).
   export function t(key: string, values?: Record<string, unknown>): string
 
   // React hook returning a `t` bound to the current locale via I18nProvider context.
-  export function useI18n(): { t: (key: string, values?: Record<string, unknown>) => string }
+  export function useI18n(): {
+    t: (key: string, values?: Record<string, unknown>) => string
+    locale: string
+  }
 
   // NavRail menu entry class. DocsModule.init() constructs `new Menus(id, routePath,
   // title, icon, selectedIcon)` and registers it via WKApp.menus.register. Only the
@@ -120,6 +148,20 @@ declare module '@octo/base' {
   // WuKongIM Channel primitives (plan Task 5), re-exported from @octo/base (which re-exports them
   // from wukongimjssdk). The docs embedded-bot-DM shell constructs `new Channel(botUid,
   // ChannelTypePerson)` and reads getChannelKey() for the React key.
+  /**
+   * Forward one plain-text message to each channel (dmworkbase Service/ForwardService).
+   *
+   * The docs package cannot construct a `MessageText` itself (only `@octo/base` may import
+   * wukongimjssdk), so the host exposes this thin seam: it builds the content and delegates to
+   * ForwardService.send, which owns disband-skip, per-channel accounting, `space_id` injection and
+   * the partial-failure result shape.
+   */
+  export function forwardPlainText(
+    channels: Channel[],
+    text: string,
+    opts?: { spaceId?: string | null; channelMode?: 'parallel' | 'serial' },
+  ): Promise<{ targets: number; failedTargets: number; messageAttempts: number; failedMessages: number }>
+
   export const ChannelTypePerson: number
   export const MAX_MESSAGE_LENGTH: number
   export class Channel {

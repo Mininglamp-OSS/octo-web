@@ -31,6 +31,12 @@ describe("DocumentShareCardContent — encode/decode round-trip", () => {
     expect(dst.updatedAt).toBe("今天 14:06");
     expect(dst.permission).toBe("writer");
   });
+
+  it("preserves commenter permission", () => {
+    const content = new DocumentShareCardContent();
+    content.decodeJSON({ doc_id: "d_1", permission: "commenter" });
+    expect(content.permission).toBe("commenter");
+  });
 });
 
 describe("DocumentShareCardContent.decodeJSON — untrusted-wire narrowing", () => {

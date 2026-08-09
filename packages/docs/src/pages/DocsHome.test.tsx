@@ -1,10 +1,40 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup, fireEvent, act } from '@testing-library/react'
-import type { ReactNode } from 'react'
-import { setWKApp } from '../octoweb/index.ts'
-import { createMockWKApp } from '../octoweb/mock.ts'
-import { resolveDocTarget, clearDocTarget, readDocFromHistory, DocsHome } from './DocsHome.tsx'
-import { captureDocTargetDeepLink } from '../config.ts'
+import {
+  render,
+  screen,
+  waitFor,
+  cleanup,
+  fireEvent,
+  act,
+  createEvent,
+} from "@testing-library/react";
+import type { ReactNode } from "react";
+import { setWKApp } from "../octoweb/index.ts";
+import { createMockWKApp } from "../octoweb/mock.ts";
+import {
+  resolveDocTarget,
+  clearDocTarget,
+  readDocFromHistory,
+  DocsHome,
+} from "./DocsHome.tsx";
+import {
+  captureDocTargetDeepLink,
+  CLI_REFERENCE_URL,
+  httpUrlOr,
+} from "../config.ts";
+import zhLocale from "../i18n/zh-CN.json";
+import enLocale from "../i18n/en-US.json";
+import { titleContextStore } from "@octo/base";
+
+// The caret-menu "New slides" entry is hidden by default now (PPT_ENTRY_ENABLED, default OFF), but
+// the html_ppt create wiring it drives is still shipped and must stay covered. This file pins the
+// ENTRY on — keeping every other config export real via importActual — so the picker / focus-restore
+// / open-redirect assertions below keep exercising the real menu path. The default-OFF behaviour
+// (entry absent from the dropdown) is covered in DocsHome.pptEntryOff.test.tsx.
+vi.mock('../config.ts', async () => {
+  const actual = await vi.importActual<typeof import('../config.ts')>('../config.ts')
+  return { ...actual, PPT_ENTRY_ENABLED: true }
+})
 
 // Replace the heavy editor shell (Tiptap + Yjs + Hocuspocus) with a marker so the DocsHome
 // render tests exercise target-resolution / navigation without mounting the real editor.
@@ -33,10 +63,11 @@ vi.mock('../editor/EditorShell.tsx', () => ({
   ),
 }))
 
-// Replace the whiteboard shell (which lazy-loads the heavy Excalidraw chunk + a canvas) with a
-// marker so the board-create / board-open flows are testable in jsdom without Excalidraw.
-vi.mock('../board/BoardShell.tsx', () => ({
-  BoardShell: (props: { docId: string }) => (
+// Replace the whole board session boundary, not only BoardShell. BoardSession owns the
+// HocuspocusProvider, so mocking the leaf still opens a real undici WebSocket before rendering the
+// marker and leaves asynchronous Event errors after the assertions finish.
+vi.mock('../board/BoardSession.tsx', () => ({
+  BoardSession: (props: { docId: string }) => (
     <div data-testid="board-shell">
       <span data-testid="board-doc">{props.docId}</span>
     </div>
@@ -62,6 +93,17 @@ vi.mock('../html/HtmlDocView.tsx', () => ({
     <div data-testid="html-doc-view">
       <span data-testid="html-doc">{props.docId}</span>
       <span data-testid="html-slug">{props.slug ?? ''}</span>
+    </div>
+  ),
+}))
+
+// Bento slide-deck (html_ppt) read-only surface. Mocked so a routing test can assert an html_ppt
+// row/target lands here and NEVER on the Tiptap editor-shell (the no-fallback contract, XIN-1501).
+vi.mock('../ppt/PptDocView.tsx', () => ({
+  PptDocView: (props: { docId: string; slug?: string }) => (
+    <div data-testid="ppt-doc-view">
+      <span data-testid="ppt-doc">{props.docId}</span>
+      <span data-testid="ppt-slug">{props.slug ?? ''}</span>
     </div>
   ),
 }))
@@ -103,8 +145,9 @@ let pushStateSpy: ReturnType<typeof vi.fn>
 const realLocation = window.location
 
 beforeEach(() => {
-  window.sessionStorage.clear()
-  window.localStorage.clear()
+  titleContextStore.clear("docs");
+  window.sessionStorage.clear();
+  window.localStorage.clear();
   // jsdom's window.location.assign is non-configurable and throws "Not implemented" on call.
   // Swap in a minimal stub exposing only what DocsHome touches (search + assign) so the
   // open / back navigations are observable without a real page load.
@@ -404,7 +447,7 @@ describe('DocsHome navigation (split-pane)', () => {
     })
   })
 
-  it('exposes the three import entries inside the "New" dropdown and drops the standalone import button', async () => {
+  it('exposes all four import entries inside the "New" dropdown and drops the standalone import button', async () => {
     const wk = createMockWKApp()
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
@@ -422,13 +465,150 @@ describe('DocsHome navigation (split-pane)', () => {
     // Import entries are not rendered until the "New" dropdown is opened.
     expect(screen.queryByText('docs.sheet.importExcel', { exact: false })).toBeNull()
 
-    // Opening the single "New" dropdown surfaces both the create entries and the three import entries.
+    // Opening the single "New" dropdown surfaces both create entries and all four import entries.
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
     expect(screen.getByText('docs.list.newBoard')).toBeTruthy()
     expect(screen.getByText('docs.sheet.new', { exact: false })).toBeTruthy()
     expect(screen.getByText('docs.sheet.importExcel', { exact: false })).toBeTruthy()
     expect(screen.getByText('docs.import.word', { exact: false })).toBeTruthy()
     expect(screen.getByText('docs.import.markdown', { exact: false })).toBeTruthy()
+    expect(screen.getByText('docs.board.importFile', { exact: false })).toBeTruthy()
+  })
+
+  it('imports an Excalidraw file from the homepage and opens the new board', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string; body?: unknown }> = []
+    wk.apiClient.responder = (method, url, body) => {
+      calls.push({ method, url, body })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      if (method === 'post' && url === '/docs') {
+        return {
+          data: {
+            docId: 'b_imported',
+            documentName: 'doc:b_imported',
+            title: 'Imported board',
+            spaceId: 'demo',
+            folderId: 'f_default',
+            ownerId: 'u_self',
+            role: 'admin',
+            docType: 'board',
+          },
+          status: 201,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { container } = render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+    const input = container.querySelector<HTMLInputElement>('input[accept*=".excalidraw"]')
+    expect(input).toBeTruthy()
+    const file = new File(['board'], 'Imported board.excalidraw', { type: 'application/json' })
+    Object.defineProperty(file, 'text', {
+      value: async () => JSON.stringify({
+        type: 'excalidraw',
+        elements: [{
+          id: 'shape-1', type: 'rectangle', x: 1, y: 2, width: 100, height: 80, angle: 0,
+          version: 1, versionNonce: 1,
+        }],
+        appState: { viewBackgroundColor: '#fafafa' },
+        files: {},
+      }),
+    })
+    fireEvent.change(input!, { target: { files: [file] } })
+
+    await waitFor(() => expect(screen.getByTestId('board-shell')).toBeTruthy())
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_imported')
+    const create = calls.find((call) => call.method === 'post' && call.url === '/docs')
+    expect(create?.body).toMatchObject({ title: 'Imported board', docType: 'board' })
+    const sceneKey = Object.keys(window.localStorage).find((key) =>
+      key.startsWith('octo.board.scene.') && key.endsWith('.b_imported'),
+    )
+    expect(sceneKey).toBeTruthy()
+    expect(JSON.parse(window.localStorage.getItem(sceneKey!)!)).toMatchObject({
+      elements: [{
+        id: 'shape-1', type: 'rectangle', x: 1, y: 2, width: 100, height: 80, angle: 0,
+        version: 1, versionNonce: 1,
+      }],
+      appState: { viewBackgroundColor: '#fafafa' },
+    })
+  })
+
+  it('distinguishes malformed JSON from an invalid board schema', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => method === 'get' && url.startsWith('/docs')
+      ? { data: { total: 0, items: [] }, status: 200 }
+      : { data: {}, status: 200 }
+    const { container } = render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+    const input = container.querySelector<HTMLInputElement>('input[accept*=".excalidraw"]')!
+    const file = new File(['{'], 'broken.excalidraw', { type: 'application/json' })
+    Object.defineProperty(file, 'text', { value: async () => '{' })
+    fireEvent.change(input, { target: { files: [file] } })
+    await waitFor(() => expect(screen.getByText('docs.board.importParseError')).toBeTruthy())
+  })
+
+  it('shows the storage-specific error without creating a server board when staging fails', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: string[] = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push(`${method} ${url}`)
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    const { container } = render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+    const input = container.querySelector<HTMLInputElement>('input[accept*=".excalidraw"]')!
+    const file = new File(['board'], 'stored.excalidraw', { type: 'application/json' })
+    Object.defineProperty(file, 'text', {
+      value: async () => JSON.stringify({
+        type: 'excalidraw',
+        elements: [{
+          id: 'shape-1', type: 'rectangle', x: 1, y: 2, width: 100, height: 80, angle: 0,
+          version: 1, versionNonce: 1,
+        }],
+        appState: {},
+        files: {},
+      }),
+    })
+    const storageSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('quota', 'QuotaExceededError')
+    })
+    try {
+      fireEvent.change(input, { target: { files: [file] } })
+      await waitFor(() => expect(screen.getByText('docs.board.importStorageError')).toBeTruthy())
+      expect(calls).not.toContain('post /docs')
+    } finally {
+      storageSpy.mockRestore()
+    }
+  })
+
+  it('rejects JSON with an elements array that is not an Excalidraw scene', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: string[] = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push(`${method} ${url}`)
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    const { container } = render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
+    const input = container.querySelector<HTMLInputElement>('input[accept*=".excalidraw"]')!
+    const file = new File(['{}'], 'fake.excalidraw', { type: 'application/json' })
+    Object.defineProperty(file, 'text', { value: async () => JSON.stringify({ elements: [] }) })
+    fireEvent.change(input, { target: { files: [file] } })
+    await waitFor(() => expect(screen.getByText('docs.board.importError')).toBeTruthy())
+    expect(calls).not.toContain('post /docs')
   })
 
   it('opens an existing document inline in the right pane and marks it active', async () => {
@@ -662,6 +842,33 @@ describe('DocsHome navigation (split-pane)', () => {
     expect(screen.queryByTestId('editor-shell')).toBeNull()
     // No per-doc getDoc round-trip was needed.
     expect(calls.some((c) => c.method === 'get' && c.url === '/docs/h_known')).toBe(false)
+  })
+
+  it('opens a persisted html_ppt doc directly into PptDocView on refresh (NO Tiptap editor fallback, NO getDoc round-trip)', async () => {
+    // No-fallback contract (XIN-1501): a stored docType='html_ppt' must open the read-only
+    // PptDocView on first paint. It must NEVER fall through to the collab EditorShell (a Bento
+    // deck has no Yjs payload) and must not take a getDoc detour that could default it to 'doc'.
+    window.sessionStorage.setItem(
+      TARGET_KEY,
+      JSON.stringify({ space: 'sp', folder: 'fd', doc: 'p_known', docType: 'html_ppt' }),
+    )
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    // PptDocView mounts immediately from the stored kind — never the rich-text editor.
+    expect(screen.getByTestId('ppt-doc-view')).toBeTruthy()
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    // No per-doc getDoc round-trip (which could have defaulted an unknown kind to the editor).
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/p_known')).toBe(false)
   })
 
   it('opens a persisted sheet doc directly into SheetView on refresh (no getDoc round-trip)', async () => {
@@ -1014,11 +1221,21 @@ describe('DocsHome — list-open shell selection by docType (XIN-58)', () => {
 
     fireEvent.click(screen.getByText('Shared X'))
 
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(screen.getByTestId('editor-doc').textContent).toBe('d_x')
-    expect(screen.queryByTestId('board-shell')).toBeNull()
-    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/d_x')).toBe(false)
-  })
+    await waitFor(() =>
+      expect(screen.getByTestId("editor-shell")).toBeTruthy()
+    );
+    expect(screen.getByTestId("editor-doc").textContent).toBe("d_x");
+    expect(screen.queryByTestId("board-shell")).toBeNull();
+    expect(calls.some((c) => c.method === "get" && c.url === "/docs/d_x")).toBe(
+      false
+    );
+    await waitFor(() =>
+      expect(titleContextStore.get("docs")).toEqual({
+        primaryTitle: "Shared X",
+        moduleTitle: "docs.menu.title",
+      })
+    );
+  });
 
   it('unknown kind (list omits docType, non-creator) resolves a board via getDoc → board shell', async () => {
     // The core regression: registry is empty (non-creator) and the list row has no docType, yet
@@ -1155,6 +1372,286 @@ describe('DocsHome — sheet open path restored (XIN-520)', () => {
       docType: 'html',
       octoDocSlug: 'octo-html-report',
     })
+  })
+
+  it('opens an existing html_ppt row into the read-only PptDocView (never the editor, no per-doc lookup)', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: {
+            total: 1,
+            items: [
+              {
+                docId: 'ppt_row',
+                title: 'Quarterly Deck',
+                ownerId: 'u_owner',
+                role: 'admin',
+                docType: 'html_ppt',
+              },
+            ],
+          },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Quarterly Deck')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Quarterly Deck'))
+
+    await waitFor(() => expect(screen.getByTestId('ppt-doc-view')).toBeTruthy())
+    expect(screen.getByTestId('ppt-doc').textContent).toBe('ppt_row')
+    // Bento slide-deck: it must NOT open the rich-text editor / sheet (no-fallback contract).
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(screen.queryByTestId('sheet-view')).toBeNull()
+    // The list row already carried docType='html_ppt' — no authoritative getDoc round-trip.
+    expect(calls.some((c) => c.method === 'get' && c.url === '/docs/ppt_row')).toBe(false)
+    expect(JSON.parse(window.sessionStorage.getItem(TARGET_KEY)!)).toMatchObject({
+      doc: 'ppt_row',
+      docType: 'html_ppt',
+    })
+  })
+
+  it('resolves an unknown-kind row to PptDocView via getDoc when the backend reports html_ppt (no editor fallback)', async () => {
+    // The list API omitted docType, so the row opens with an UNKNOWN kind and defers to getDoc.
+    // A backend docType='html_ppt' must resolve to PptDocView, NOT default to the Tiptap editor.
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/ppt_shared') {
+        return { data: { docId: 'ppt_shared', title: 'Shared Deck', role: 'admin', docType: 'html_ppt' }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs')) {
+        return {
+          data: { total: 1, items: [{ docId: 'ppt_shared', title: 'Shared Deck', ownerId: 'u_owner', role: 'admin' }] },
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('Shared Deck')).toBeTruthy())
+
+    fireEvent.click(screen.getByText('Shared Deck'))
+
+    // getDoc resolved html_ppt → the read-only PPT surface, never the rich-text editor.
+    await waitFor(() => expect(screen.getByTestId('ppt-doc-view')).toBeTruthy())
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+  })
+
+  it('shows the "new slides" caret-menu entry that opens the R2 template picker without precreating a doc', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    const calls: Array<{ method: string; url: string }> = []
+    wk.apiClient.responder = (method, url) => {
+      calls.push({ method, url })
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    render(<DocsHome />)
+
+    // Open the split "New" dropdown and choose "New slides".
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newPpt'))
+
+    // R2 (flag ON): the four-template picker opens — no doc is created and no editor/PPT surface
+    // opens (the deck is minted only on submit, via POST /api/v1/ppt/docs, never here).
+    await waitFor(() => expect(screen.getByRole('radiogroup')).toBeTruthy())
+    expect(screen.getAllByRole('radio')).toHaveLength(4)
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
+    expect(screen.queryByTestId('ppt-doc-view')).toBeNull()
+    // Opening the picker must NOT call createDoc or the ppt create endpoint — nothing is precreated.
+    expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
+    expect(calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(false)
+  })
+
+  // ── R2-F1: focus returns to the PERSISTENT caret after the picker closes ───
+  // Drives the REAL wiring — DocsList caret → dropdown menu → 新建幻灯片 menu item → CreatePptModal →
+  // close — not a hand-focused trigger. This is the path the previous CreatePptModal unit tests never
+  // exercised: they mounted a persistent trigger and focused it directly, so restore always "worked",
+  // while the real app captured `document.activeElement` — the dropdown menu item, which UNMOUNTS the
+  // instant it is clicked (the menu closes as it opens the modal). Restoring to that detached node
+  // silently no-ops and focus is stranded on <body>. The fix hands the modal the persistent caret to
+  // restore to instead; these tests assert focus lands back on that caret after Esc and after Cancel.
+  async function openPickerFromCaretMenu(): Promise<HTMLElement> {
+    const caret = screen.getByLabelText('docs.list.newMenu')
+    caret.focus() // the real user/AT focuses the caret before it is activated
+    fireEvent.click(caret)
+    // The dropdown menu item takes focus when activated (real browsers focus a clicked button); mirror
+    // that so document.activeElement is the menu item at click time — the exact pre-condition of the
+    // R2-F1 defect. jsdom's fireEvent.click does NOT move focus, so we set it explicitly.
+    const item = screen.getByRole('button', { name: 'docs.list.newPpt' })
+    item.focus()
+    expect(document.activeElement).toBe(item)
+    fireEvent.click(item)
+    await waitFor(() => expect(screen.getByRole('radiogroup')).toBeTruthy())
+    // The menu item that opened the modal is now gone — it can never be a valid restore target, and
+    // (with it detached) document.activeElement has fallen back to <body>.
+    expect(screen.queryByText('docs.list.newPpt')).toBeNull()
+    expect(item.isConnected).toBe(false)
+    return caret
+  }
+
+  const pptListResponder = (method: string, url: string) => {
+    if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+    return { data: {}, status: 200 }
+  }
+
+  it('R2-F1: restores focus to the persistent caret after the picker is closed with Esc', async () => {
+    const wk = createMockWKApp()
+    wk.apiClient.responder = pptListResponder
+    setWKApp(wk)
+
+    const { container } = render(<DocsHome />)
+    const caret = await openPickerFromCaretMenu()
+
+    // Esc on the native <dialog> fires a cancel event, routed to onClose (modal closes).
+    const dialogEl = container.querySelector('dialog') as HTMLDialogElement
+    fireEvent(dialogEl, new Event('cancel', { bubbles: false, cancelable: true }))
+    // Reproduce the real-browser race: focus falls to <body> after the close, before the restore lands.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).not.toBe(caret)
+
+    // The post-close restore lands on the PERSISTENT caret — not the detached menu item, not <body>.
+    await waitFor(() => expect(document.activeElement).toBe(caret))
+  })
+
+  it('R2-F1: restores focus to the persistent caret after the picker is closed with Cancel', async () => {
+    const wk = createMockWKApp()
+    wk.apiClient.responder = pptListResponder
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    const caret = await openPickerFromCaretMenu()
+
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.cancel' }))
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).not.toBe(caret)
+
+    await waitFor(() => expect(document.activeElement).toBe(caret))
+  })
+
+  // ── R2-F1 P1-1: open-redirect — a backend editorUrl is gated before navigation ─────────────
+  // onPptCreated fed window.location.assign the backend editorUrl after only an emptiness check, so
+  // a compromised/misbehaving backend could bounce the user to a `javascript:` or cross-origin URL.
+  // The create flow now runs the returned route through the repo's same-origin guard before assign.
+  it('R2-F1 P1-1: does NOT navigate when the backend returns an unsafe (cross-origin) editorUrl', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      // A hostile absolute cross-origin route — must be rejected, never navigated to.
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: 'https://evil.example.com/steal' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    // The create round-trip completes, but the unsafe route is refused: no navigation happens and
+    // the picker stays open. Because the cross-origin route is NON-retriable (a retry reuses the same
+    // Idempotency-Key → the backend returns the same refused route), the modal shows its distinct
+    // non-retriable message and DISABLES Create — not the generic retriable error (P2-1).
+    await waitFor(() =>
+      expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/ppt/docs')).toBe(true),
+    )
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.unavailable')).toBeTruthy())
+    expect(assignSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled,
+    ).toBe(true)
+  })
+
+  it('R2-F1 P1-1: navigates for a safe same-origin editorUrl (happy path preserved)', async () => {
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: assignSpy },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: '/ppt/d/new_deck' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    await waitFor(() => expect(assignSpy).toHaveBeenCalledWith('/ppt/d/new_deck?sp=demo'))
+  })
+
+  // ── R2-F1 P2-2: navigate BEFORE closing the picker ─────────────────────────
+  // onPptCreated used to setPptModalOpen(false) and THEN window.location.assign(editorUrl). When
+  // assign throws (a sandboxed embed can forbid top-level navigation), the exception propagates into
+  // CreatePptModal.onSubmit's catch, which calls setError — but on an ALREADY-CLOSED modal, so the
+  // error never renders and the user is soft-locked on a silent no-op. Assigning FIRST keeps the
+  // modal open when assign throws, so the failure surfaces and the create stays retriable.
+  it('R2-F1 P2-2: keeps the picker open and surfaces the error when navigation throws (assign before close)', async () => {
+    const throwingAssign = vi.fn(() => {
+      throw new Error('navigation blocked (sandboxed embed)')
+    })
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      writable: true,
+      value: { origin: 'https://app.example.com', search: '', assign: throwingAssign },
+    })
+    const wk = createMockWKApp()
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      // A perfectly safe same-origin route — the only failure here is that assign itself throws.
+      if (method === 'post' && url === '/ppt/docs') {
+        return { data: { data: { editorUrl: '/ppt/d/new_deck' } }, status: 201 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await openPickerFromCaretMenu()
+    fireEvent.change(screen.getByLabelText('docs.ppt.create.titleLabel'), {
+      target: { value: 'My deck' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'docs.ppt.create.submit' }))
+
+    // assign was attempted (navigate-first), but it threw…
+    await waitFor(() => expect(throwingAssign).toHaveBeenCalledWith('/ppt/d/new_deck?sp=demo'))
+    // …and because the close runs only AFTER a successful assign, the picker is still open and the
+    // error is visible + retriable — not a silently-closed soft-lock.
+    await waitFor(() => expect(screen.getByText('docs.ppt.create.error')).toBeTruthy())
+    expect(screen.getByRole('dialog')).toBeTruthy()
+    expect(
+      (screen.getByRole('button', { name: 'docs.ppt.create.submit' }) as HTMLButtonElement).disabled,
+    ).toBe(false)
   })
 
   it('re-pushes an open html doc WITH its slug when the docs nav menu is re-activated', async () => {
@@ -1720,6 +2217,7 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     { docId: 'd_sheet', title: 'A Sheet', ownerId: 'u_o', role: 'admin', docType: 'sheet', viewedAt: '2026-07-15T05:00:00.000Z' },
     { docId: 'd_board', title: 'A Board', ownerId: 'u_o', role: 'admin', docType: 'board', viewedAt: '2026-07-15T04:00:00.000Z' },
     { docId: 'd_html', title: 'A Web Page', ownerId: 'u_o', role: 'admin', docType: 'html', octoDocSlug: 'sp/fd/html-slug', viewedAt: '2026-07-15T03:00:00.000Z' },
+    { docId: 'd_ppt', title: 'A Slide Deck', ownerId: 'u_o', role: 'admin', docType: 'html_ppt', viewedAt: '2026-07-15T02:30:00.000Z' },
   ]
 
   function mountList() {
@@ -1756,6 +2254,13 @@ describe('DocsHome — type distinction + filter (XIN-1188)', () => {
     await waitFor(() => expect(screen.getByText('A Web Page')).toBeTruthy())
     // The html row carries its own aria-label/title on the row icon (HtmlRowIcon).
     expect(screen.getByLabelText('docs.list.kindHtml')).toBeTruthy()
+  })
+
+  it('renders the html_ppt row with its own kindPpt icon (distinct from doc/sheet/board/html)', async () => {
+    mountList()
+    await waitFor(() => expect(screen.getByText('A Slide Deck')).toBeTruthy())
+    // The slide-deck row carries its own aria-label/title on the row icon (PptRowIcon).
+    expect(screen.getByLabelText('docs.list.kindPpt')).toBeTruthy()
   })
 
   it('shows the type filter on both tabs and drives a multi-select OR request', async () => {
@@ -1956,6 +2461,42 @@ describe('DocsHome — recent row merges viewed/updated into the latest event (X
 // bumps the reload token, which re-runs useDocsView's fetch effect (re-sending each tab's remembered
 // q/creators/types, so search/filter survives). These guard that refetch — and that it does NOT fire
 // for an unrelated menu (no over-refetch).
+describe('DocsHome — bot-created documents reuse the conversation AI badge', () => {
+  it('renders the robot label inside the real shared badge without duplicate text', async () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/robot/space_bots')) {
+        return { data: [{ uid: 'bot_1', name: 'Publisher' }], status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent/creators')) {
+        return { data: { creators: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/docs/recent')) {
+        return {
+          data: {
+            total: 1,
+            items: [{ docId: 'd_bot', title: 'AI Document', ownerId: 'bot_1', role: 'admin' }],
+            nextCursor: null,
+          },
+          status: 200,
+        }
+      }
+      return { data: { total: 0, items: [], nextCursor: null }, status: 200 }
+    }
+
+    render(<DocsHome />)
+
+    await waitFor(() => expect(screen.getByText('AI Document')).toBeTruthy())
+    const label = await screen.findByText('docs.list.botBadge')
+    expect(label.classList.contains('ai-badge')).toBe(true)
+    expect(label.classList.contains('ai-badge-small')).toBe(true)
+    expect(label.classList.contains('octo-docs-list-row-bot-badge')).toBe(true)
+    expect(label.textContent).toBe('docs.list.botBadge')
+    expect(screen.getAllByText('docs.list.botBadge')).toHaveLength(1)
+  })
+})
+
 describe('DocsHome — re-activating the docs nav entry refetches the recent list (XIN-1307)', () => {
   // Count only the paged recent-list GETs, not the sibling /docs/recent/creators lookups.
   const recentListGets = (wk: ReturnType<typeof createMockWKApp>) =>
@@ -2174,5 +2715,520 @@ describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
         | undefined
       expect(last?.props?.draft).toBeUndefined()
     })
+  })
+})
+
+// "?" agent-CLI onboarding help (Mininglamp-OSS/octo-docs-backend#125). Root cause: the docs list changed from a global view
+// to "owned / recently viewed", so the old onboarding entry stopped being discoverable for a
+// brand-new agent. The fix is a permanent header "?" button (list-state independent) that opens a
+// dialog with a copyable self-bind prompt. The i18n mock returns the key verbatim, so we assert the
+// wiring (button → dialog → copy the prompt string / reference link), not the localized copy.
+describe('DocsHome — "?" agent CLI onboarding help (Mininglamp-OSS/octo-docs-backend#125)', () => {
+  // These cases stub `navigator.clipboard`; restore the original descriptor so the mock cannot leak
+  // into any block appended after this one (review finding: test hygiene).
+  const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard')
+  afterEach(() => {
+    if (clipboardDescriptor) Object.defineProperty(navigator, 'clipboard', clipboardDescriptor)
+    else delete (navigator as unknown as { clipboard?: unknown }).clipboard
+  })
+
+  const mountDocs = () => {
+    const wk = createMockWKApp()
+    setWKApp(wk)
+    wk.apiClient.responder = (method: string, url: string) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<DocsHome />)
+    return wk
+  }
+
+  it('always shows the help button in the Docs header (empty list)', async () => {
+    mountDocs()
+    // Present even with an empty list — it does not depend on any list/ownership/recent state.
+    expect(await screen.findByTestId('onboarding-help-btn')).toBeTruthy()
+    await waitFor(() => expect(screen.getByText('docs.empty.recentNone')).toBeTruthy())
+    expect(screen.getByTestId('onboarding-help-btn')).toBeTruthy()
+  })
+
+  it('opens a dialog exposing the copyable self-bind prompt', async () => {
+    mountDocs()
+    fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    expect(screen.getByTestId('onboarding-help-overlay')).toBeTruthy()
+    const prompt = screen.getByTestId('onboarding-help-prompt') as HTMLTextAreaElement
+    expect(prompt.readOnly).toBe(true)
+    // The textarea is populated from the prompt i18n key (verbatim under the test mock).
+    expect(prompt.value).toBe('docs.onboarding.prompt')
+    // The modal semantics several other tests take for granted are asserted HERE, once. Without
+    // this, deleting role="dialog" / aria-modal="true" outright left the whole suite green while
+    // two test titles still claimed to cover the contract. getByRole throws if the role is gone.
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+    expect(dialog.getAttribute('aria-label')).toBe('docs.onboarding.dialogTitle')
+    expect(dialog.contains(prompt)).toBe(true)
+  })
+
+  it('selects the whole prompt when the textarea takes focus', async () => {
+    // The manual-copy fallback focuses this textarea so the user is one Ctrl/Cmd+C away. Without the
+    // onFocus self-select it focuses an UNSELECTED textarea and that keystroke copies nothing, so
+    // the fallback is silently dead — and deleting the handler was previously invisible to the suite.
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const prompt = screen.getByTestId('onboarding-help-prompt') as HTMLTextAreaElement
+    prompt.setSelectionRange(0, 0)
+    await act(async () => {
+      prompt.focus()
+      fireEvent.focus(prompt)
+    })
+    expect(prompt.selectionStart).toBe(0)
+    expect(prompt.selectionEnd).toBe(prompt.value.length)
+    expect(prompt.selectionEnd).toBeGreaterThan(0)
+  })
+
+  it('copies the self-bind prompt to the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    })
+    mountDocs()
+    fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('docs.onboarding.prompt'))
+  })
+
+  it('links to the canonical CLI reference and closes on a backdrop press', async () => {
+    mountDocs()
+    fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    const ref = screen.getByTestId('onboarding-help-reference') as HTMLAnchorElement
+    // Defaults to the octo-cli repo (config.CLI_REFERENCE_URL) — a real location, not a guess.
+    expect(ref.getAttribute('href')).toBe('https://github.com/Mininglamp-OSS/octo-cli')
+    expect(ref.getAttribute('target')).toBe('_blank')
+    // target="_blank" without this hands the opened page a window.opener handle back into the app.
+    // Deleting the attribute was previously invisible to the suite.
+    expect(ref.getAttribute('rel')).toBe('noopener noreferrer')
+    // Pressing the backdrop dismisses the dialog. Keyed on mousedown, not click, so a drag-selection
+    // that ends on the scrim is not a dismiss — see the dedicated test below.
+    fireEvent.mouseDown(screen.getByTestId('onboarding-help-overlay'))
+    expect(screen.queryByTestId('onboarding-help-prompt')).toBeNull()
+  })
+
+  it('ships a self-bind prompt that teaches read-modify-write and never materializes the token', () => {
+    // Locale-level assertions on the shipped JSON (not the i18n mock), so this locks the CONTENT
+    // contract, not just formatting.
+    for (const prompt of [zhLocale.onboarding.prompt, enLocale.onboarding.prompt]) {
+      expect((prompt.match(/"/g) || []).length % 2).toBe(0) // balanced double quotes
+      // Shell assignments carrying a `<placeholder>`: the round-3 form (`'="<'`) only matched a
+      // QUOTED placeholder, which the shipped prompts never used, so it passed vacuously the moment
+      // the prompt started needing it. Widened, and turned into an explicit
+      // allow-list decision: only NON-SECRET vars may be assigned a placeholder. `OCTO_BOT_ID` is a
+      // profile selector and `OCTO_API_BASE_URL` is an endpoint — neither is a credential.
+      const ASSIGNABLE_NON_SECRETS = ['OCTO_BOT_ID', 'OCTO_API_BASE_URL']
+      const placeholderAssignments = [...prompt.matchAll(/(\w+)=\s*["']?</g)].map((m) => m[1])
+      expect(placeholderAssignments.length).toBeGreaterThan(0) // guard is not vacuous
+      for (const name of placeholderAssignments) {
+        expect(ASSIGNABLE_NON_SECRETS).toContain(name)
+      }
+
+      // ── Credential handling ───────────────────────────────────────────────────────────────────
+      // The rule is about the ASSIGNMENT, not the identifier: what leaks a secret is an agent
+      // running `export OCTO_BOT_TOKEN=<value>`, which writes it into the transcript and shell
+      // history. Forbidding the *name* outright (an earlier over-broad guard) also forbade telling
+      // the agent "do not set OCTO_BOT_TOKEN yourself" — i.e. it blocked the steering that keeps
+      // the agent off that path. Guard the assignment only.
+      expect(prompt).not.toMatch(/OCTO_BOT_TOKEN\s*=/)
+      expect(prompt).not.toMatch(/export\s+OCTO_BOT_TOKEN/)
+      // ORDERING is the round-4 blocker, not mere presence: `OCTO_BOT_ID` is a selector against the
+      // on-disk profile store, and exporting it with no matching profile is a terminal auth error
+      // that deliberately refuses to fall back to `OCTO_BOT_TOKEN` (octo-cli
+      // internal/authstore/authstore.go `case botID != ""` is evaluated BEFORE the zero-profile
+      // check; internal/credential/file_provider.go turns StatusMissing into a hard ErrAuth). So the
+      // diagnostic must come FIRST and the export must be conditional on it.
+      expect(prompt.indexOf('octo-cli auth status')).toBeLessThan(prompt.indexOf('export OCTO_BOT_ID'))
+      // ...and it must branch on the four outcomes `auth status` actually documents, so an agent on
+      // an env-token deployment is told to change nothing rather than to set a selector.
+      expect(prompt).toContain('profile_count')
+      expect(prompt).toContain('env_token_set')
+      // The auth step must be ACTIONABLE, not merely a prohibition: it names the
+      // provisioning mechanism (`auth login`, whose token never touches argv), the non-secret
+      // runtime selector (robot id), the required base URL, and the identity check.
+      expect(prompt).toContain('octo-cli auth login')
+      expect(prompt).toContain('OCTO_BOT_ID')
+      expect(prompt).toContain('OCTO_API_BASE_URL')
+      expect(prompt).toContain('octo-cli auth status')
+      // Masked verification stays part of the auth check.
+      expect(prompt).toContain('octo-cli config show')
+      // `auth login` must be taught as the operator/provisioning step reading the token from a
+      // hidden prompt / stdin / --token-file — never as anything that puts a token on a command
+      // line. The guard deliberately does NOT also require a literal token prefix on the line: with
+      // that clause it only fired on `--with-token app_...` and happily allowed
+      // `auth login --with-token <your token>`, i.e. exactly the shape it exists to forbid.
+      expect(prompt).not.toMatch(/auth login[^\n]*--with-token/)
+      // No token value may ever appear as an argument, under any flag spelling.
+      expect(prompt).not.toMatch(/--(token|bot-token|with-token)[= ]+['"]?(app_|bf_|uk_)/)
+
+      // ── No remote-execution one-liner in first-party UI ───────────────────────────────────────
+      // Cover every downloader and every shell, plus an interposed `sudo`: the previous
+      // /curl[^\n]*\|\s*sh/ matched none of `| bash`, `| zsh`, `| sudo sh`, or `wget -qO- ... | sh`.
+      expect(prompt).not.toMatch(/(curl|wget|fetch)[^\n]*\|[^\n]*\b(sh|bash|zsh|dash|ksh|fish|python3?|node|perl|ruby)\b/)
+      // And the install step stays an explicit-tag package-manager install. `@latest` (not a pinned
+      // minor) is the deliberate product decision: this guide's whole contract is "don't duplicate
+      // version-sensitive detail — read the CLI's own bundled skill doc" (step 5), and a pinned
+      // minor would freeze agents on an old CLI whose bundled docs then drift from the backend.
+      // The security intent of this guard is unchanged: an explicit registry tag, never `curl | sh`.
+      expect(prompt).toMatch(/npm install -g @mininglamp-oss\/octo-cli@(latest|\d)/)
+
+      // ── The real, executable octo-cli steps ARE present (grounded in octo-cli/README + skills) ─
+      expect(prompt).toContain('npm install -g @mininglamp-oss/octo-cli')
+      expect(prompt).toContain('octo-cli docs list')
+      expect(prompt).toContain('octo-cli docs create')
+      // The promised "update" workflow must actually be taught, as read-modify-write: `content get`
+      // yields the base-version token that `content edit` requires.
+      expect(prompt).toContain('octo-cli docs content get')
+      expect(prompt).toContain('octo-cli docs content edit')
+      expect(prompt).toContain('--base-version')
+      expect(prompt).toContain('octo-cli docs members set')
+      expect(prompt).toContain('octo-cli docs comments add')
+      // Points bots at the version-accurate bundled skill doc rather than only a README URL.
+      expect(prompt).toContain('octo-cli skills octo-docs')
+
+      // ── Step 2 must be self-driving (product decision, owner 2026-07-28) ──────────────────────
+      // The audience pasting this prompt is non-technical, so the agent resolves the auth outcome
+      // ITSELF (pick an identity, correct a bad selector) and interrupts the human in exactly ONE
+      // case: no credential exists at all. Guard the shape, so a later round of edge-case warnings
+      // cannot quietly turn step 2 back into a decision table the human has to arbitrate.
+      const stopMarkers = prompt.match(/(唯一需要问我的情况|The only case that needs me)/g) || []
+      expect(stopMarkers).toHaveLength(1)
+      // ...and that one case is the genuinely-blocked one: no profile AND no env token.
+      expect(prompt).toMatch(/(profile_count 为 0 且 env_token_set 为 false|profile_count is 0 AND\s*\n?\s*env_token_set is false)/)
+    }
+  })
+
+  it('does NOT claim "copied" when the Clipboard API is unavailable', async () => {
+    // `navigator.clipboard?.writeText(...)` resolves to undefined when the API is missing (insecure
+    // context), so awaiting it would flag a successful copy that never happened.
+    // The assertion must be made AFTER the async copy handler has settled, with a plain expect.
+    // `await waitFor(() => expect(label).toBe('copy'))` cannot fail here: waitFor probes once
+    // synchronously on entry and returns on the first success, and at that first probe the label is
+    // still 'copy' whatever the handler goes on to do. Flush with act(), then assert plainly.
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const btn = screen.getByTestId('onboarding-help-copy')
+    expect(btn.textContent).toBe('docs.onboarding.copy')
+    await act(async () => {
+      fireEvent.click(btn)
+    })
+    // Label must stay "copy" — never flip to "copied" without a real clipboard write.
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copy')
+  })
+
+  it('does NOT claim "copied" when the clipboard write is rejected', async () => {
+    // The other half of the same contract: the API exists but the browser denies permission. A
+    // rejected write must surface the manual fallback, never the success label.
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    })
+    expect(writeText).toHaveBeenCalledTimes(1)
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copy')
+    expect(screen.getByTestId('onboarding-help-manual-hint').textContent).not.toBe('')
+  })
+
+  it('ignores a clipboard write that resolves after the dialog was closed', async () => {
+    // A promise cannot be cancelled, so close() bumps a session epoch and the handler drops any
+    // resolve that lands afterwards. Without the guard, a slow write flips "Copied" on for a copy
+    // the user never saw and arms a fresh 2s timer past close, so reopening shows stale success.
+    let release: (() => void) | undefined
+    const writeText = vi.fn(() => new Promise<void>((resolve) => { release = resolve }))
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    mountDocs()
+    const trigger = await screen.findByTestId('onboarding-help-btn')
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    })
+    // Close while the write is still in flight, THEN let it resolve.
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    await waitFor(() => expect(screen.queryByTestId('onboarding-help-overlay')).toBeNull())
+    await act(async () => {
+      release?.()
+    })
+    // Reopening must show a clean control, not "Copied" inherited from the abandoned session.
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copy')
+  })
+
+  it('renders the dialog in a body portal, NOT inside the container-type list subtree', async () => {
+    // `.octo-docs-list` sets `container-type: inline-size`; layout containment makes it the
+    // containing block for `position: fixed` descendants, so an inline overlay would be confined to
+    // (and clipped by) the list pane — a ~280px sidebar in split view.
+    mountDocs()
+    fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    const overlay = screen.getByTestId('onboarding-help-overlay')
+    expect(overlay.parentElement).toBe(document.body)
+    expect(overlay.closest('.octo-docs-list')).toBeNull()
+  })
+
+  it('keeps Tab inside the dialog (aria-modal focus trap)', async () => {
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const closeBtn = screen.getByLabelText('docs.onboarding.close')
+    const link = screen.getByTestId('onboarding-help-reference')
+    expect(document.activeElement).toBe(closeBtn)
+    // Moving focus is only HALF the contract: the handler must also cancel the event. jsdom does not
+    // implement native Tab focus movement, so `activeElement` looks identical whether or not
+    // preventDefault ran — dropping it would leave a real browser doing BOTH our wrap and its own
+    // native step, landing focus one control further on. Dispatch explicitly and assert defaultPrevented.
+    const shiftTab = createEvent.keyDown(document, { key: 'Tab', shiftKey: true })
+    fireEvent(document, shiftTab)
+    expect(document.activeElement).toBe(link)
+    expect(shiftTab.defaultPrevented).toBe(true)
+    // Tab off the last focusable wraps back to the first, likewise cancelled.
+    const tab = createEvent.keyDown(document, { key: 'Tab' })
+    fireEvent(document, tab)
+    expect(document.activeElement).toBe(closeBtn)
+    expect(tab.defaultPrevented).toBe(true)
+  })
+
+  it('falls back to the default reference URL for a non-http scheme', () => {
+    // CLI_REFERENCE_URL is build-arg driven and lands in an href, so a `javascript:`/`data:` value
+    // would produce a trusted-looking link inside the modal.
+    // Assert the GUARD with hostile input, not just the resolved default — the old form only
+    // checked the already-imported default and would have passed with httpUrlOr deleted.
+    const fb = 'https://github.com/Mininglamp-OSS/octo-cli'
+    expect(httpUrlOr('javascript:alert(1)', fb)).toBe(fb)
+    expect(httpUrlOr('data:text/html,<script>1</script>', fb)).toBe(fb)
+    expect(httpUrlOr('  ', fb)).toBe(fb)
+    expect(httpUrlOr(undefined, fb)).toBe(fb)
+    expect(httpUrlOr(42, fb)).toBe(fb)
+    // ...and that a legitimate override IS honoured, so the guard is not vacuously "always default".
+    expect(httpUrlOr('https://docs.example.com/octo-cli', fb)).toBe('https://docs.example.com/octo-cli')
+    expect(httpUrlOr('  http://intranet/cli  ', fb)).toBe('http://intranet/cli')
+    // The shipped value still satisfies the guard.
+    expect(CLI_REFERENCE_URL).toMatch(/^https?:\/\//)
+  })
+
+  it('pulls Tab back into the dialog when focus has fallen out of the cycle', async () => {
+    // Clicking a non-focusable part of the dialog (title / intro / padding) drops focus to <body>,
+    // which is NEITHER trap endpoint. An endpoint-only trap lets the native sequence resume from the
+    // top of the document and walk into the list controls *behind* the scrim, since the portaled
+    // dialog is the last body child. Containment-based check required.
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const closeBtn = screen.getByLabelText('docs.onboarding.close')
+    // Simulate focus landing outside the cycle.
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).toBe(document.body)
+    const tab = createEvent.keyDown(document, { key: 'Tab' })
+    fireEvent(document, tab)
+    expect(document.activeElement).toBe(closeBtn)
+    // Cancelled too, for the same reason as the endpoint wraps.
+    expect(tab.defaultPrevented).toBe(true)
+  })
+
+  it('does not dismiss when a drag that started inside the dialog ends on the scrim', async () => {
+    // The click event of such a drag targets the nearest common ancestor (the overlay), so an
+    // overlay `onClick` + descendant `stopPropagation` would close the dialog and discard the
+    // user's selection. Dismissal must key on the mousedown target.
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const overlay = screen.getByTestId('onboarding-help-overlay')
+    const textarea = screen.getByTestId('onboarding-help-prompt')
+    fireEvent.mouseDown(textarea)
+    fireEvent.mouseUp(overlay)
+    fireEvent.click(overlay)
+    expect(screen.queryByTestId('onboarding-help-overlay')).not.toBeNull()
+    // A press that genuinely lands on the scrim still dismisses.
+    fireEvent.mouseDown(overlay)
+    await waitFor(() => expect(screen.queryByTestId('onboarding-help-overlay')).toBeNull())
+  })
+
+  it('offers a manual-copy hint when the Clipboard API is unavailable', async () => {
+    // The honest "no success claim" path must not leave a dead control.
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    // The live region is MOUNTED before it has content and its text is toggled, so screen readers
+    // announce reliably. Assert it exists-but-silent, not absent. Crucially it must NOT be hidden
+    // with the `hidden` attribute (or display/visibility): that removes it from the a11y tree, so
+    // while idle it would not be a present live region at all. Idle = mounted + sr-only + empty.
+    const hint = screen.getByTestId('onboarding-help-manual-hint')
+    expect(hint.getAttribute('role')).toBe('status')
+    expect(hint.getAttribute('aria-live')).toBe('polite')
+    expect(hint.hasAttribute('hidden')).toBe(false)
+    expect(hint.className).toContain('octo-docs-help-manual-hint-idle')
+    expect(hint.textContent).toBe('')
+    fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    await waitFor(() =>
+      expect(screen.getByTestId('onboarding-help-manual-hint').textContent).toBe(
+        'docs.onboarding.copyManualHint',
+      ),
+    )
+    const activeHint = screen.getByTestId('onboarding-help-manual-hint')
+    expect(activeHint.hasAttribute('hidden')).toBe(false)
+    // Same node, still a live region — only the sr-only class and the text changed.
+    expect(activeHint).toBe(hint)
+    expect(activeHint.className).not.toContain('octo-docs-help-manual-hint-idle')
+    // Focus moves to the textarea, which self-selects, so Ctrl/Cmd+C is enough.
+    expect(document.activeElement).toBe(screen.getByTestId('onboarding-help-prompt'))
+  })
+
+  it('makes aria-modal true by marking the background inert, and restores it on close', async () => {
+    // Trapping Tab is not enough to justify `aria-modal="true"`: the dialog is portaled to <body>,
+    // so it is a SIBLING of the Docs list and SR virtual navigation / programmatic .focus() can
+    // still reach the list behind the scrim.
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    const overlay = screen.getByTestId('onboarding-help-overlay')
+    const others = Array.from(document.body.children).filter((c) => !c.contains(overlay))
+    expect(others.length).toBeGreaterThan(0) // the assertion below is not vacuous
+    for (const el of others) {
+      expect(el.hasAttribute('inert')).toBe(true)
+      expect(el.getAttribute('aria-hidden')).toBe('true')
+    }
+    // The dialog's own branch must NOT be inert, or we would have disabled what we just opened.
+    expect(overlay.closest('[inert]')).toBeNull()
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    await waitFor(() => expect(screen.queryByTestId('onboarding-help-overlay')).toBeNull())
+    for (const el of others) {
+      expect(el.hasAttribute('inert')).toBe(false)
+      expect(el.hasAttribute('aria-hidden')).toBe(false)
+    }
+  })
+
+  it('un-inerts the background before restoring focus, on every close path', async () => {
+    // Regression guard. The inert effect's cleanup does not run until the `open=false` commit lands,
+    // i.e. AFTER close() returns. The trigger button lives inside one of the body children that the
+    // effect marks `inert`, so if close() focused it before un-inerting, engines that implement
+    // `inert` would ignore the .focus() and keyboard users would be dropped on <body>.
+    //
+    // Two things this test must NOT do, both of which make it vacuous:
+    //  - assert `document.activeElement` alone: jsdom does not implement inert focusability
+    //    suppression, so focus lands on the trigger whatever the ordering was;
+    //  - sample `closest('[inert]')` after `waitFor`: by then the effect cleanup has already run on
+    //    the `open=false` commit and un-inerted everything, so it reads clean even if close() never
+    //    called the restore at all.
+    // So sample at the only instant that discriminates: inside the .focus() call itself. The spy
+    // records whether the trigger still had an `[inert]` ancestor at the moment focus was restored,
+    // which is exactly the property that decides whether a real browser honours it.
+    // The spy calls through, so real focus behaviour is unchanged; it only samples on the way past.
+    const nativeFocus = HTMLElement.prototype.focus
+    let watched: HTMLElement | null = null
+    let inertAtFocus: Array<Element | null> = []
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function (this: HTMLElement, ...args: unknown[]) {
+        if (watched && this === watched) inertAtFocus.push(this.closest('[inert]'))
+        return (nativeFocus as (...a: unknown[]) => void).apply(this, args)
+      })
+    const paths: Array<[string, () => void]> = [
+      ['escape', () => fireEvent.keyDown(document, { key: 'Escape' })],
+      ['close-button', () => fireEvent.click(screen.getByTestId('onboarding-help-overlay')
+        .querySelector('.octo-docs-help-dialog-close') as HTMLElement)],
+      ['backdrop', () => fireEvent.mouseDown(screen.getByTestId('onboarding-help-overlay'))],
+    ]
+    try {
+      mountDocs()
+      for (const [path, dismiss] of paths) {
+        const trigger = await screen.findByTestId('onboarding-help-btn')
+        watched = null // do not sample the open transition, only the dismissal
+        await act(async () => {
+          fireEvent.click(trigger)
+        })
+        // Precondition: the trigger really is inside an inert subtree while the dialog is open,
+        // otherwise the ordering this test guards would be trivially satisfied.
+        expect(trigger.closest('[inert]')).not.toBeNull()
+
+        inertAtFocus = []
+        watched = trigger
+        await act(async () => {
+          dismiss()
+        })
+        watched = null
+        await waitFor(() => expect(screen.queryByTestId('onboarding-help-overlay')).toBeNull())
+
+        // Focus WAS restored to the trigger on this path...
+        expect(inertAtFocus.length, `${path}: trigger.focus() was never called`).toBeGreaterThan(0)
+        // ...and at that instant nothing inert stood between it and the document root. Deleting
+        // `restoreBackgroundRef.current()` from close() makes this fail on all three paths.
+        for (const ancestor of inertAtFocus) {
+          expect(ancestor, `${path}: focus restored while still inside an inert subtree`).toBeNull()
+        }
+        expect(document.activeElement).toBe(trigger)
+        // And the background is fully restored once the close commit has settled.
+        expect(trigger.closest('[inert]')).toBeNull()
+      }
+    } finally {
+      focusSpy.mockRestore()
+    }
+  })
+
+  it('resets the copied label when the dialog is closed and reopened', async () => {
+    // close() must clear both `copied` and its pending 2s timer, else a reopen inside the window
+    // shows "Copied" for a copy that did not happen in this session.
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    mountDocs()
+    await act(async () => {
+      fireEvent.click(await screen.findByTestId('onboarding-help-btn'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-help-copy'))
+    })
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copied')
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('onboarding-help-btn'))
+    })
+    expect(screen.getByTestId('onboarding-help-copy').textContent).toBe('docs.onboarding.copy')
+  })
+
+  it('closes on Escape and returns focus to the help button', async () => {
+    mountDocs()
+    const trigger = await screen.findByTestId('onboarding-help-btn')
+    // act() so the open effect (which moves focus into the dialog) is flushed before asserting.
+    await act(async () => {
+      fireEvent.click(trigger)
+    })
+    // Focus moves into the dialog on open (role="dialog" + aria-modal contract).
+    expect(document.activeElement).toBe(screen.getByLabelText('docs.onboarding.close'))
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'Escape' })
+    })
+    // Dialog closes and focus is restored to the trigger (no keyboard dead-end).
+    expect(screen.queryByTestId('onboarding-help-prompt')).toBeNull()
+    expect(document.activeElement).toBe(screen.getByTestId('onboarding-help-btn'))
   })
 })

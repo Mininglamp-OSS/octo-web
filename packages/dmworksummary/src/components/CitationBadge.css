@@ -92,6 +92,17 @@
     color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.45));
 }
 
+.citation-reference-tag {
+    flex: none;
+    padding: 1px var(--wk-sp-1-5);
+    border-radius: var(--wk-r-full);
+    background: var(--wk-bg-selected);
+    color: var(--wk-color-accent);
+    font-size: var(--wk-text-size-xs);
+    font-weight: var(--wk-font-medium);
+    line-height: 18px;
+}
+
 .citation-msg-source {
     font-size: var(--wk-text-size-sm);
     color: var(--wk-text-tertiary, rgba(28, 28, 35, 0.55));

@@ -111,6 +111,42 @@ export function resolveBoardWsUrl(collabWsUrl?: string): string {
 export const TOKEN_REFRESH_LEEWAY_MS = 30_000
 
 /**
+ * Canonical Octo Docs CLI reference URL, surfaced by the "?" onboarding help (Mininglamp-OSS/octo-docs-backend#125).
+ *
+ * The onboarding help shows a self-bind prompt an agent can paste to configure and use octo-cli;
+ * that prompt LINKS here for the full, version-sensitive command reference instead of duplicating
+ * it.
+ *
+ * Canonical location + maintenance owner (issue #125 acceptance criterion): the canonical reference
+ * IS the `octo-cli` repository (`Mininglamp-OSS/octo-cli`), whose README and `skills/octo-docs/*`
+ * ship with the CLI binary and are therefore version-accurate by construction; its maintainer is
+ * the octo-cli repo's CODEOWNERS group, which already owns every command-shape change. Deployments
+ * that host a mirrored docs site can repoint this at build time via `VITE_DOCS_CLI_REFERENCE_URL`
+ * without a code change — the default is not a placeholder.
+ *
+ * The value is scheme-guarded: only `http(s):` is accepted, so a mistyped/hostile build arg cannot
+ * turn this into a `javascript:`/`data:` link inside a trusted-looking modal (`rel="noopener
+ * noreferrer"` validates the opener, never the destination).
+ */
+const CLI_REFERENCE_URL_DEFAULT = 'https://github.com/Mininglamp-OSS/octo-cli'
+
+/**
+ * Exported for direct unit testing: `CLI_REFERENCE_URL` is resolved once at module load from a
+ * build arg, so a test can only assert the default through it and would still pass if this guard
+ * were deleted. Test the guard itself with hostile values instead.
+ */
+export function httpUrlOr(value: unknown, fallback: string): string {
+  const s = typeof value === 'string' ? value.trim() : ''
+  if (s.length === 0) return fallback
+  return /^https?:\/\//i.test(s) ? s : fallback
+}
+
+export const CLI_REFERENCE_URL = httpUrlOr(
+  import.meta.env?.VITE_DOCS_CLI_REFERENCE_URL,
+  CLI_REFERENCE_URL_DEFAULT,
+)
+
+/**
  * Feature flag for the body-font (fontFamily) toolbar entry (SCHEMA_VERSION 16).
  *
  * DEFAULT ON (boss decision 2026-07-14). This gates ONLY the toolbar's font-family selector —
@@ -141,6 +177,60 @@ export const FONT_FAMILY_ENABLED = envOr(import.meta.env?.VITE_DOCS_FONT_FAMILY,
  * and there is no toolbar regression; documents that already carry the attrs still render and sync.
  */
 export const LINE_SPACING_ENABLED = envOr(import.meta.env?.VITE_DOCS_LINE_SPACING, 'true') === 'true'
+
+/**
+ * Feature flag for the live "New slides" create + four-template picker (R2-F1, XIN-1495).
+ *
+ * R1 (XIN-1501) shipped the html_ppt entry + routing shell only; the caret-menu "New slides" item
+ * opened a "coming soon" notice. R2-F1 replaces that notice with the real template picker that
+ * POSTs to `/api/v1/ppt/docs`. This flag gates ONLY that upgrade — it never touches the html_ppt
+ * routing / read-only view, so an OFF build cleanly falls back to the R1 coming-soon notice with no
+ * regression to the R1 entry, filter, or no-fallthrough routing. DEFAULT ON now that the R2-B1
+ * backend (`POST /api/v1/ppt/docs` + 4 templates + atomic idempotent create) is merged upstream; an
+ * explicit `VITE_DOCS_PPT_CREATE=false` build restores the coming-soon behaviour (rollback intact).
+ */
+export const PPT_CREATE_ENABLED = envOr(import.meta.env?.VITE_DOCS_PPT_CREATE, 'true') === 'true'
+
+/**
+ * Exposure gate for the caret-menu "New slides" ENTRY itself.
+ *
+ * The html_ppt create flow is still incomplete end to end (the R3 source/bootstrap layer is gated
+ * OFF by default — see PPT_SOURCE_ENABLED), so a user who creates a deck from the dropdown lands on
+ * a surface that cannot load its own content yet. Until that round ships, the entry is not offered:
+ * this flag DEFAULTS OFF and the "New slides" item is not rendered at all in the "+ 新建文档"
+ * dropdown (invisible and unreachable, so no deck can be minted from the docs list).
+ *
+ * This gate is deliberately SEPARATE from PPT_CREATE_ENABLED (which picks WHICH dialog the entry
+ * opens — the live template picker or the R1 coming-soon notice): removing the entry must not delete
+ * the create wiring, so a deployment that wants it back only needs `VITE_DOCS_PPT_ENTRY=true`. It
+ * touches nothing else — html_ppt routing, the read-only PptDocView, the type filter and existing
+ * decks are unaffected; only the create entry point in the dropdown disappears.
+ */
+export const PPT_ENTRY_ENABLED = envOr(import.meta.env?.VITE_DOCS_PPT_ENTRY, 'false') === 'true'
+
+/**
+ * Exposure gate for the html_ppt viewer / editor / present surfaces that consume LIVE backend
+ * source (R3-F1, XIN-1495 / XIN-1583).
+ *
+ * R3-F1 builds the static shell and wires the routes (read-only PptDocView preview, the peer
+ * `/ppt/d/:docId` editor route with its isolated opaque-origin Bento container, and the
+ * `/docs/:docId/present` present route), but the payloads those surfaces load — the rendered
+ * published/live HTML — are produced by the backend R3-B1 source layer
+ * (`feature/xin-1495-ppt-r3-source-bootstrap`), which is NOT yet merged to main. Wiring the
+ * frontend to consume live source against an unmerged / mock contract would let a reader or
+ * commenter reach draft/live HTML before the backend enforces published-only access — the exact
+ * thing R3-B1 exists to prevent. So this flag DEFAULTS OFF: every live-source consumer renders a
+ * gated "not yet available" shell (fetching nothing, opening no frame, requesting no token) until a
+ * deployment whose backend carries R3-B1 flips `VITE_DOCS_PPT_SOURCE=true`.
+ *
+ * This gate is deliberately SEPARATE from PPT_CREATE_ENABLED: create (R2, backend merged) is already
+ * live, while source/bootstrap (R3-B1) is not. It never touches the R1 entry / filter /
+ * no-fallthrough routing or the R2 create picker — an OFF build leaves the placeholder behaviour and
+ * the create flow exactly as they are on main, so there is no regression to the shipped rounds. When
+ * OFF, the routes still exist (so a deep link lands on the PPT shell, never the rich-text editor),
+ * they simply show the gated state instead of loading source.
+ */
+export const PPT_SOURCE_ENABLED = envOr(import.meta.env?.VITE_DOCS_PPT_SOURCE, 'false') === 'true'
 
 // ── Default document addressing (frontend-design §7.2) ───────────────────────
 //

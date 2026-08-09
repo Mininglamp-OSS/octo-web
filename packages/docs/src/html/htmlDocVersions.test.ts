@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { listVersions } from './htmlDocVersions.ts'
-import { deleteDoc } from './htmlDocAdmin.ts'
 
-// octo-doc versions/admin live in the SAME separate backend as comments — reached by raw
-// credentialed fetch. Stub the global fetch and assert URL (PATH slug) / credentials / method.
+// octo-doc versions live in the same separate backend as comments — reached by raw credentialed
+// fetch. Stub the global fetch and assert URL (PATH slug) / credentials.
 function stubFetch(impl: (url: string, init?: RequestInit) => unknown) {
   const spy = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
     Promise.resolve(impl(String(input), init)),
@@ -32,15 +31,15 @@ describe('listVersions (octo-doc backend)', () => {
           slug: 'my-slug',
           title: 'Doc',
           versions: [
-            { n: 3, created_at: '2026-07-15T04:00:00Z' },
+            { n: 1, created_at: '2026-07-13T04:00:00Z' },
             { n: 2, created_at: '2026-07-14T04:00:00Z' },
+            { n: 3, created_at: '2026-07-15T04:00:00Z' },
           ],
         },
       }),
     )
     const versions = await listVersions('my-slug')
-    expect(versions).toHaveLength(2)
-    expect(versions[0]).toMatchObject({ n: 3 })
+    expect(versions.map((version) => version.n)).toEqual([1, 2, 3])
     // PATH slug, not a query param; credentialed.
     expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/my-slug/versions')
     expect(spy.mock.calls[0][1]).toMatchObject({ credentials: 'include' })
@@ -60,21 +59,5 @@ describe('listVersions (octo-doc backend)', () => {
   it('throws on a non-ok response', async () => {
     stubFetch(() => jsonResponse(null, false, 403))
     await expect(listVersions('s')).rejects.toThrow()
-  })
-})
-
-describe('deleteDoc (octo-doc backend)', () => {
-  it('DELETEs <base>/v1/docs/{slug} with credentials', async () => {
-    const spy = stubFetch(() => jsonResponse({}, true, 204))
-    await deleteDoc('my-slug')
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/docs/my-slug')
-    const init = spy.mock.calls[0][1] as RequestInit
-    expect(init.method).toBe('DELETE')
-    expect(init.credentials).toBe('include')
-  })
-
-  it('throws on a non-ok response', async () => {
-    stubFetch(() => jsonResponse(null, false, 500))
-    await expect(deleteDoc('s')).rejects.toThrow()
   })
 })

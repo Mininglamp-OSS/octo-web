@@ -30,7 +30,13 @@ describe('forward grant API (contract 1 — distinct forward-grant endpoint, per
     })
   })
 
-  it('maps 404 → not_found and 403 → forbidden (per-uid), other errors → error', async () => {
+  it('passes commenter through to the forward-grant API', async () => {
+    api.responder = () => ({ data: {}, status: 200 })
+    expect(await grantForward('d_1', 'u_a', 'commenter')).toBe('ok')
+    expect(api.calls[0]).toMatchObject({ body: { uid: 'u_a', role: 'commenter' } })
+  })
+
+  it('maps 404/403/400 distinctly and keeps server errors retryable', async () => {
     api.responder = () => {
       throw { response: { status: 404 } }
     }
@@ -40,9 +46,29 @@ describe('forward grant API (contract 1 — distinct forward-grant endpoint, per
     }
     expect(await grantForward('d', 'x', 'writer')).toBe('forbidden')
     api.responder = () => {
+      throw { response: { status: 400 } }
+    }
+    expect(await grantForward('d', 'invalid', 'reader')).toBe('rejected')
+    api.responder = () => {
       throw { response: { status: 500 } }
     }
     expect(await grantForward('d', 'y', 'reader')).toBe('error')
+  })
+
+  it('reports permanent 400 rejections separately from other failures', async () => {
+    api.responder = (_m, _u, body) => {
+      const uid = (body as { uid: string }).uid
+      if (uid === 'u_bad') throw { response: { status: 400 } }
+      if (uid === 'u_missing') throw { response: { status: 404 } }
+      return { data: {}, status: 200 }
+    }
+    const res = await grantForwardMany('d_1', ['u_ok', 'u_bad', 'u_missing'], 'commenter')
+    expect(res).toEqual({
+      granted: 1,
+      failed: 2,
+      failures: ['u_bad', 'u_missing'],
+      rejected: ['u_bad'],
+    })
   })
 
   it('grantForwardMany aggregates N/M, de-dupes uids, and reports failures (contract 2)', async () => {
@@ -58,6 +84,36 @@ describe('forward grant API (contract 1 — distinct forward-grant endpoint, per
     expect(res.failures).toEqual(['u_b'])
     // De-duped: u_a called once, so 3 unique calls total.
     expect(api.calls.filter((c) => c.url === '/docs/d_1/forward-grant')).toHaveLength(3)
+  })
+
+  it('bounds fan-out concurrency at ≤ 8 in flight for a large uid snapshot', async () => {
+    let inFlight = 0
+    let peak = 0
+    let pending: Array<() => void> = []
+    api.responder = () =>
+      new Promise<{ data: object; status: number }>((resolve) => {
+        inFlight++
+        peak = Math.max(peak, inFlight)
+        pending.push(() => {
+          inFlight--
+          resolve({ data: {}, status: 200 })
+        })
+      })
+    const uids = Array.from({ length: 25 }, (_, i) => `u_${i}`)
+    const promise = grantForwardMany('d_big', uids, 'reader')
+    // Repeatedly let the current in-flight wave settle so workers pull the next items, until done.
+    let done = false
+    void promise.then(() => (done = true))
+    for (let guard = 0; !done && guard < 100; guard++) {
+      await Promise.resolve()
+      const wave = pending
+      pending = []
+      wave.forEach((fire) => fire())
+      await Promise.resolve()
+    }
+    const res = await promise
+    expect(peak).toBeLessThanOrEqual(8)
+    expect(res.granted).toBe(25)
   })
 })
 

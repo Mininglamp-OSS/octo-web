@@ -39,11 +39,12 @@
     "electron:build:all": "electron-builder -mw -c",
     "test": "vitest run",
     "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test --config=e2e-kit/playwright.config.ts",
+    "test:e2e:loop-bridge": "../../node_modules/.bin/playwright test --config=e2e-kit/playwright.bridge.config.ts",
+    "test:e2e:docs-bridge": "E2E_MODULE_NAME=docs E2E_PORT=3002 E2E_BASE_URL=http://localhost:3002 VITE_DISABLE_BUILTIN_DOCS=1 ../../node_modules/.bin/playwright test --config=e2e-kit/playwright.bridge.config.ts",
     "test:e2e:bind": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test --config=e2e-kit/playwright.config.ts e2e-kit/tests/bind/bind.spec.ts",
     "test:e2e:bind:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
     "test:e2e:standalone": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test --config=e2e-kit/playwright.config.ts e2e-kit/tests/standalone-doc/standalone-doc.spec.ts",
     "test:e2e:standalone:install": "PLAYWRIGHT_BROWSERS_PATH=0 playwright install chromium",
-    "test:e2e:loop": "PLAYWRIGHT_BROWSERS_PATH=0 playwright test --config=e2e-kit/playwright.config.ts --grep '@C[0-9]+'",
     "test:arch-builds": "./scripts/test-arch-builds.sh",
     "debug:build-structure": "./scripts/debug-build-structure.sh",
     "test:arch-specific": "./scripts/test-arch-specific-builds.sh",
@@ -68,10 +69,8 @@
     "@octo/contacts": "workspace:*",
     "@octo/datasource": "workspace:*",
     "@octo/docs": "workspace:*",
+    "@octo/drive": "workspace:*",
     "@octo/login": "workspace:*",
-    "@octo/loop": "workspace:*",
-    "@octo/personal": "workspace:*",
-    "@octo/todo": "workspace:*",
     "@react-pdf-viewer/core": "^3.12.0",
     "@react-pdf-viewer/page-navigation": "^3.12.0",
     "@react-pdf-viewer/thumbnail": "^3.12.0",
@@ -110,6 +109,7 @@
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
     "electron": "26.0.0",
     "electron-builder": "^26.0.12",
     "eslint-config-react-app": "^7.0.1",
@@ -123,7 +123,8 @@
     "typescript": "^5.3.3",
     "vite": "^8.0.3",
     "vite-plugin-commonjs": "^0.10.4",
-    "vite-tsconfig-paths": "^6.1.1"
+    "vite-tsconfig-paths": "^6.1.1",
+    "wait-on": "^8.0.3"
   },
   "eslintConfig": {
     "extends": "react-app"

@@ -66,9 +66,11 @@ async function waitForFrame(container: HTMLElement): Promise<HTMLIFrameElement> 
 
 beforeEach(() => {
   delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
+  ;(window as unknown as { __OCTO_HTML_SOURCE_DIFF_ENABLED__?: boolean }).__OCTO_HTML_SOURCE_DIFF_ENABLED__ = true
 })
 
 afterEach(() => {
+  delete (window as unknown as { __OCTO_HTML_SOURCE_DIFF_ENABLED__?: unknown }).__OCTO_HTML_SOURCE_DIFF_ENABLED__
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
@@ -413,6 +415,13 @@ describe('HtmlDocView — read-only rendering', () => {
   })
 
   it('keeps a selected anchor locked when selection collapses after focusing the comment input', async () => {
+    // commenter+ so the composer + selection watcher are active (reader is read-only, no anchor).
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
     stubFetch((url) => {
       if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p data-odoc-aid="a1">selected words</p>')
@@ -433,7 +442,77 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(screen.getByTestId('pending-anchor').textContent).toContain('#a1')
   })
 
+  it('binds selection before async role resolution and uses the latest permission without reloading the iframe', async () => {
+    let resolveDoc!: (value: { data: unknown; status: number }) => void
+    const docResult = new Promise<{ data: unknown; status: number }>((resolve) => { resolveDoc = resolve })
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1' ? docResult : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse('<p data-odoc-aid="late">late role</p>'))
+
+    const { container } = render(<HtmlDocView docId="d1" space="sp" />)
+    const frame = await waitForFrame(container)
+    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="late">late role</p>')
+
+    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('p')!.firstChild!)
+    expect(screen.queryByTestId('pending-anchor')).toBeNull()
+
+    resolveDoc({ data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 })
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('p')!.firstChild!)
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#late'))
+    expect(container.querySelector('iframe.octo-html-doc-frame')).toBe(frame)
+  })
+
+  it('reconciles one selection listener across permission and mode transitions', async () => {
+    let currentRole: 'commenter' | 'reader' = 'commenter'
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: currentRole }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
+    stubFetch((url) => url.includes('/comments') ? jsonResponse({ data: [] }) : htmlResponse('<p data-odoc-aid="a1">one</p>'))
+
+    const { container, rerender } = render(<HtmlDocView docId="d1" space="sp1" />)
+    const frame = await waitForFrame(container)
+    const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a1">one</p><p data-odoc-aid="a2">two</p>')
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    const addSpy = vi.spyOn(frameDoc, 'addEventListener')
+    const removeSpy = vi.spyOn(frameDoc, 'removeEventListener')
+
+    currentRole = 'reader'
+    rerender(<HtmlDocView docId="d1" space="sp2" />)
+    await waitFor(() => expect(screen.queryByPlaceholderText('docs.comment.placeholder')).toBeNull())
+    expect(removeSpy.mock.calls.filter(([type]) => type === 'selectionchange')).toHaveLength(1)
+    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('[data-odoc-aid="a1"]')!.firstChild!)
+    expect(screen.queryByTestId('pending-anchor')).toBeNull()
+
+    currentRole = 'commenter'
+    rerender(<HtmlDocView docId="d1" space="sp3" />)
+    await waitFor(() => expect(screen.getByPlaceholderText('docs.comment.placeholder')).toBeTruthy())
+    expect(container.querySelector('iframe.octo-html-doc-frame')).toBe(frame)
+    expect(addSpy.mock.calls.filter(([type]) => type === 'selectionchange')).toHaveLength(1)
+    selectNodeTextInDocument(frameDoc, frameDoc.querySelector('[data-odoc-aid="a2"]')!.firstChild!)
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a2'))
+
+    fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.code' }))
+    expect(screen.queryByTestId('pending-anchor')).toBeNull()
+    fireEvent.click(screen.getByRole('tab', { name: 'docs.mode.page' }))
+    const nextFrame = await waitForFrame(container)
+    const nextDoc = writeIframeBody(nextFrame, '<p data-odoc-aid="a3">three</p>')
+    selectNodeTextInDocument(nextDoc, nextDoc.querySelector('p')!.firstChild!)
+    await waitFor(() => expect(screen.getByTestId('pending-anchor').textContent).toContain('#a3'))
+  })
+
   it('clears the locked anchor only through the explicit target cancel action', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
     stubFetch((url) => {
       if (url.includes('/comments')) return jsonResponse({ data: [] })
       return htmlResponse('<p data-odoc-aid="a2">clearable words</p>')
@@ -452,13 +531,21 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a2')
   })
 
-  it('submits a comment with the locked anchor after the selection collapses', async () => {
+  it('uses the rendered numeric version when posting from the latest route with an element anchor', async () => {
+    const wk = createMockWKApp({ uid: 'u_viewer', token: 't' })
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    setWKApp(wk)
     const spy = stubFetch((url, init) => {
       if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
       if (url.includes('/comments')) return jsonResponse({ data: [] })
-      return htmlResponse('<p data-odoc-aid="a3">post anchored words</p>')
+      return htmlResponse(
+        '<script>window.__ODOC__ = {"version":4};</script><p data-odoc-aid="a3">post anchored words</p>'
+      )
     })
-    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" version="v4" />)
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" />)
     const frame = await waitForFrame(container)
     const frameDoc = writeIframeBody(frame, '<p data-odoc-aid="a3">post anchored words</p>')
     const anchored = frameDoc.querySelector('p') as HTMLElement
@@ -482,6 +569,12 @@ describe('HtmlDocView — read-only rendering', () => {
       RequestInit
     ]
     const body = JSON.parse(String(post[1].body))
+    expect(
+      spy.mock.calls.some(([url, init]) =>
+        (init?.method ?? 'GET') === 'GET' && String(url).includes('/v1/comments?slug=slug-1&version=latest')
+      )
+    ).toBe(true)
+    expect(body.version).toBe(4)
     expect(body.anchor).toMatchObject({ kind: 'element', aid: 'a3' })
   })
 })
@@ -615,6 +708,45 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(screen.queryByTestId('html-doc-comment-panel')).toBeNull()
     fireEvent.click(screen.getByTitle('docs.toolbar.comments'))
     expect(screen.getByTestId('html-doc-comment-panel')).toBeTruthy()
+  })
+
+  it('lists comments for the in-page history version while mutating the rendered version', async () => {
+    // commenter+ so the composer renders (four-role redesign: reader is read-only).
+    wk.apiClient.responder = (method, url) =>
+      method === 'get' && url === '/docs/d1'
+        ? { data: { docId: 'd1', ownerId: 'u_owner', role: 'commenter' }, status: 200 }
+        : { data: {}, status: 200 }
+    const spy = stubFetch((url, init) => {
+      if ((init?.method ?? 'GET') === 'POST') return jsonResponse({ id: 'new1' })
+      if (url.endsWith('/v1/docs/slug-1/versions')) {
+        return jsonResponse({ data: { versions: [{ n: 4 }, { n: 3 }] } })
+      }
+      if (url.includes('/comments')) return jsonResponse({ data: [] })
+      const renderedVersion = url.endsWith('/v/3') ? 3 : 4
+      return htmlResponse(`<script>window.__ODOC__ = {"version":${renderedVersion}};</script><p>body</p>`)
+    })
+    const { container } = render(<HtmlDocView docId="d1" space="sp" slug="slug-1" />)
+    await waitForFrame(container)
+
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    fireEvent.click(screen.getByText('docs.toolbar.history'))
+    await waitFor(() => expect(screen.getAllByText('docs.version.view')).toHaveLength(2))
+    fireEvent.click(screen.getAllByText('docs.version.view')[1])
+
+    await waitFor(() => {
+      expect(
+        spy.mock.calls.some(([url, init]) =>
+          (init?.method ?? 'GET') === 'GET' && String(url).includes('/v1/comments?slug=slug-1&version=3')
+        )
+      ).toBe(true)
+    })
+
+    fireEvent.change(screen.getByPlaceholderText('docs.comment.placeholder'), { target: { value: 'version note' } })
+    fireEvent.click(screen.getByText('docs.comment.send'))
+
+    await waitFor(() => expect(spy.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true))
+    const post = spy.mock.calls.find(([, init]) => init?.method === 'POST') as unknown as [string, RequestInit]
+    expect(JSON.parse(String(post[1].body)).version).toBe(3)
   })
 
   it('hides the member button entirely for a non-author viewer', async () => {
@@ -866,12 +998,68 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     expect(screen.getByText('docs.doc.deleteEntry')).toBeTruthy()
   })
 
-  it('hides the delete affordance from an admin-not-author viewer (author-only, matches htmlDocAdmin.deleteDoc backend)', async () => {
-    // Delete is author-only both at the octo-doc backend (see htmlDocAdmin.ts header comment) and
-    // symmetrically at the UI gate. A docs-backend admin who is NOT the author must never see the
-    // Delete entry — otherwise clicking it hits the octo-doc 403 ("guaranteed-fail entry").
-    // Symmetric with OCT-216 grants-side hiding of Add member / Current Members from the same
-    // admin-not-author viewer.
+  it.each([200, 404])('soft-deletes the HTML doc through /docs/{docId} on %i', async (status) => {
+    wk.apiClient.responder = (method) => {
+      if (method === 'delete' && status === 404) throw { response: { status } }
+      return { data: {}, status: 200 }
+    }
+    const rawFetch = serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: true })
+    const onDeleted = vi.fn()
+    const { container } = render(
+      <HtmlDocView docId="d_html" space="sp" slug="published-slug" onDeleted={onDeleted} />,
+    )
+    await waitForFrame(container)
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    fireEvent.click(screen.getByText('docs.doc.deleteEntry'))
+    fireEvent.click(screen.getByRole('button', { name: 'docs.comment.delete' }))
+
+    await waitFor(() => expect(onDeleted).toHaveBeenCalledWith('d_html'))
+    expect(wk.apiClient.calls).toContainEqual(
+      expect.objectContaining({
+        method: 'delete',
+        url: '/docs/d_html',
+        config: expect.objectContaining({
+          headers: expect.objectContaining({ 'X-Space-Id': 'sp' }),
+        }),
+      }),
+    )
+    expect(
+      rawFetch.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE'),
+    ).toBe(false)
+  })
+
+  it.each([
+    [403, 'docs.doc.deleteForbidden'],
+    [409, 'docs.doc.deleteArchived'],
+    [500, 'docs.doc.deleteFailed'],
+  ])('shows the shared delete error after the confirm closes on %i', async (status, errorKey) => {
+    wk.apiClient.responder = (method) => {
+      if (method === 'delete') throw { response: { status } }
+      return { data: {}, status: 200 }
+    }
+    const rawFetch = serveDoc('<p>body</p>', { creator_uid: 'u_owner' }, { isAuthor: true })
+    const onDeleted = vi.fn()
+    const { container } = render(
+      <HtmlDocView docId="d_html" space="sp" slug="published-slug" onDeleted={onDeleted} />,
+    )
+    await waitForFrame(container)
+    fireEvent.click(container.querySelector('.octo-doc-more-btn') as HTMLElement)
+    fireEvent.click(screen.getByText('docs.doc.deleteEntry'))
+    fireEvent.click(screen.getByRole('button', { name: 'docs.comment.delete' }))
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe(errorKey))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(onDeleted).not.toHaveBeenCalled()
+    expect(wk.apiClient.calls).toContainEqual(
+      expect.objectContaining({ method: 'delete', url: '/docs/d_html' }),
+    )
+    expect(
+      rawFetch.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'DELETE'),
+    ).toBe(false)
+  })
+
+  it('hides the delete affordance from an admin-not-author viewer', async () => {
+    // The existing HTML author gate remains independent from the docs-backend role.
     wk.apiClient.responder = (method, url) => {
       if (method === 'get' && url === '/docs/d1') {
         return { data: { docId: 'd1', ownerId: 'u_owner', role: 'admin' }, status: 200 }

@@ -4,6 +4,7 @@ import { I18nContext } from '@octo/base';
 import SummaryContent from './SummaryContent';
 import { getSummaryDetail, getPersonalResult } from '../api/summaryApi';
 import type { SummaryDetail, PersonalResult } from '../types/summary';
+import { summaryTestIds } from '../utils/testIds';
 import './SummaryReferenceSidePanel.css';
 
 /**
@@ -114,12 +115,13 @@ class SummaryReferenceSidePanel extends Component<
             : personalResult?.content || '';
 
         return (
-            <div className="summary-workbench-ref-side">
+            <div data-testid={summaryTestIds.agentRefSidePanel} className="summary-workbench-ref-side">
                 <div className="summary-workbench-ref-side-header">
-                    <span className="summary-workbench-ref-side-title" title={title}>
+                    <span data-testid={summaryTestIds.agentRefSideTitle} className="summary-workbench-ref-side-title" title={title}>
                         {title}
                     </span>
                     <span
+                        data-testid={summaryTestIds.agentRefSideCloseBtn}
                         className="summary-workbench-ref-side-close"
                         onClick={onClose}
                         title={t('summary.chatReference.remove')}
@@ -130,7 +132,7 @@ class SummaryReferenceSidePanel extends Component<
                 <div className="summary-workbench-ref-side-hint">
                     {t('summary.chatReference.previewLatestHint')}
                 </div>
-                <div className="summary-workbench-ref-side-body">
+                <div data-testid={summaryTestIds.agentRefSideBody} className="summary-workbench-ref-side-body">
                     {loading && (
                         <div className="summary-workbench-ref-side-loading">
                             <Spin />

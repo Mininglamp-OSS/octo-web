@@ -10,6 +10,8 @@
     flex-direction: column;
     padding: 16px 16px 12px;
     overflow: auto;
+    color: var(--wk-text-primary);
+    background: var(--wk-bg-surface);
 }
 
 .chat-summary-modal-embedded .chat-summary-modal-header {
@@ -76,8 +78,8 @@
     flex-shrink: 0;
     margin: auto -16px -12px;
     padding: 10px 16px 12px;
-    background: var(--semi-color-bg-0);
-    border-top: 1px solid var(--semi-color-border);
+    background: var(--wk-bg-surface);
+    border-top: 1px solid var(--wk-border-default);
     z-index: 1;
 }
 
@@ -96,7 +98,7 @@
 .chat-summary-modal-title {
     font-size: 18px;
     font-weight: 600;
-    color: var(--wk-text-primary, #1C1F23);
+    color: var(--wk-text-primary);
 }
 
 .chat-summary-modal-ai-badge {
@@ -104,19 +106,20 @@
     font-weight: 500;
     padding: 2px 6px;
     border-radius: 4px;
-    background-color: var(--wk-color-primary, #3370FF);
-    color: #fff;
+    background-color: var(--wk-color-accent);
+    color: var(--wk-text-on-brand);
 }
 
 .chat-summary-modal-desc {
     font-size: 13px;
-    color: var(--wk-text-tertiary, #8F959E);
+    color: var(--wk-text-tertiary);
     line-height: 20px;
     margin-bottom: 16px;
 }
 
 .chat-summary-modal-input-area {
-    border: 1px solid var(--wk-border-default, #E5E6EB);
+    border: 1px solid var(--wk-border-default);
+    background: var(--wk-bg-surface);
     border-radius: 8px;
     margin-bottom: 16px;
     min-height: 200px;
@@ -126,7 +129,7 @@
 }
 
 .chat-summary-modal-input-area:focus-within {
-    border-color: var(--wk-border-default, #E5E6EB);
+    border-color: var(--wk-border-strong);
 }
 
 .chat-summary-modal-input-wrap {
@@ -145,7 +148,7 @@
     border-radius: 0;
     outline: none;
     background-color: transparent;
-    color: var(--wk-text-primary, #1C1F23);
+    color: var(--wk-text-primary);
     box-sizing: border-box;
     flex: 1;
     min-height: 40px;
@@ -164,7 +167,7 @@
 
 .chat-summary-modal-templates-label {
     font-size: 13px;
-    color: var(--wk-text-secondary, #646A73);
+    color: var(--wk-text-secondary);
     margin-bottom: 12px;
     padding: 0 12px;
 }

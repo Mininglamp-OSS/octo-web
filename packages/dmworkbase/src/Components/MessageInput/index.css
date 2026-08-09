@@ -451,11 +451,20 @@
 
 /* Mention 样式 */
 .wk-messageinput-editor .mention {
-  color: var(--wk-color-theme);
-  font-weight: 600;
+  color: var(--wk-text-mention-entity);
+  font-weight: 500;
+  background-color: var(--wk-accent-tint-08);
+  border-radius: var(--wk-r-mention-entity);
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
+}
+
+.wk-messageinput-editor .mention[data-id="-1"],
+.wk-messageinput-editor .mention[data-id="-2"],
+.wk-messageinput-editor .mention[data-id="-3"] {
+  color: var(--wk-text-accent, var(--wk-color-theme));
+  font-weight: 400;
   background-color: transparent;
-  border-radius: 0.25rem;
-  padding: 0 0.125rem;
+  padding: 0 var(--wk-sp-0-5);
 }
 
 /* Placeholder - Tiptap Placeholder 扩展 */

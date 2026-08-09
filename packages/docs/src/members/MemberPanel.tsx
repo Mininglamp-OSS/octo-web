@@ -13,13 +13,14 @@ import {
 import { useMemberNames } from './useMemberNames.ts'
 import { MemberPicker } from './MemberPicker.tsx'
 import { sortMembersForDisplay, withSyntheticOwner } from './sort.ts'
+import { settleWithConcurrency } from './batchGrant.ts'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
 import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
 import { PendingRequests } from '../access-request/PendingRequests.tsx'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
 import type { ShareSeed, ShareSettings } from '../share/shareScope.ts'
 
-const ROLES: Role[] = ['reader', 'writer', 'admin']
+const ROLES: Role[] = ['reader', 'commenter', 'writer', 'admin']
 
 /**
  * Admin-only member management panel (frontend-design §12.1). Hidden when role is not admin.
@@ -97,19 +98,48 @@ export function MemberPanel({
   /** Display name for a uid (space member name), falling back to the raw uid (#7/#8). */
   const displayName = (uid: string) => names.get(uid) || uid
 
-  async function onAdd(uids: string[], r: Role) {
+  async function onAdd(
+    uids: string[],
+    r: Role,
+    snapshot?: { humanUids: string[]; botUids: string[] },
+  ) {
     setError(null)
     setAdding(true)
     try {
-      // #A2: add every picked member with the one chosen role in a single action.
-      for (const uid of uids) await addOrUpdateMember(docId, uid.trim(), r)
-      await refresh()
-    } catch (e) {
-      if (e instanceof UserNotFoundError) {
-        setError(t('docs.member.errorUserNotFound'))
-        return
+      // #A2: add every picked member (+ any snapshot Bots) with the one chosen role, each
+      // independently (bounded concurrency) so one failure never aborts the rest. Compute the
+      // partial-failure detail FIRST, then refresh independently — a refresh failure must never
+      // overwrite the precise partial-failure message.
+      const results = await settleWithConcurrency(uids, (uid) =>
+        addOrUpdateMember(docId, uid.trim(), r),
+      )
+      const failedIdx = results.flatMap((result, index) => (result.status === 'rejected' ? [index] : []))
+      let addError: string | null = null
+      if (failedIdx.length > 0) {
+        // A single failed add whose only cause is a missing user keeps its precise message.
+        const allUserNotFound = failedIdx.every(
+          (i) => (results[i] as PromiseRejectedResult).reason instanceof UserNotFoundError,
+        )
+        if (allUserNotFound && !snapshot?.botUids.length) {
+          addError = t('docs.member.errorUserNotFound')
+        } else {
+          const botSet = new Set(snapshot?.botUids ?? [])
+          const failed = failedIdx.map((i) => uids[i])
+          const humans = failed.filter((uid) => !botSet.has(uid)).map(displayName)
+          const bots = failed.filter((uid) => botSet.has(uid)).map(displayName)
+          addError = t('docs.member.errorAddSnapshot', {
+            values: { people: humans.join(', ') || '-', bots: bots.join(', ') || '-' },
+          })
+        }
       }
-      setError(t('docs.member.errorAdd'))
+      // Independent refresh: its failure surfaces its own message only when the adds all succeeded,
+      // so a partial-add failure detail is preserved over a refresh glitch.
+      try {
+        await refresh()
+      } catch {
+        if (!addError) addError = t('docs.member.errorRefresh')
+      }
+      if (addError) setError(addError)
     } finally {
       setAdding(false)
     }

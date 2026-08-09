@@ -11,6 +11,7 @@ import * as api from "../api/summaryApi";
 import WKApp from "@octo/base/src/App";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
+import { summaryTestIds } from "../utils/testIds";
 
 interface MemberCandidate {
     uid: string;
@@ -493,7 +494,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
         if (!visible) return null;
 
         return (
-            <div className="chat-selector-overlay" onClick={onCancel}>
+            <div data-testid={summaryTestIds.chatSelectorModal} className="chat-selector-overlay" onClick={onCancel}>
                 <div className="chat-selector-modal" onClick={(e) => e.stopPropagation()}>
                     {/* Header */}
                     <div className="chat-selector-header">
@@ -510,6 +511,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                             <div className="chat-selector-search">
                                 <IconSearch className="chat-selector-search-icon" />
                                 <input
+                                    data-testid={summaryTestIds.chatSelectorSearchInput}
                                     className="chat-selector-search-input"
                                     placeholder={t("summary.chatSelector.searchPlaceholder")}
                                     value={keyword}
@@ -521,6 +523,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     {currentTabs.map((tab) => (
                                         <button
                                             key={tab.key}
+                                            data-testid={tab.key === "group" ? summaryTestIds.chatSelectorAllGroupsTab : undefined}
                                             className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
                                             onClick={() => this.handleTabChange(tab.key)}
                                         >
@@ -611,7 +614,12 @@ export default class ChatSelectorModal extends Component<Props, State> {
                         <button type="button" className="chat-selector-btn chat-selector-btn--cancel" onClick={onCancel}>
                             {t("summary.common.cancel")}
                         </button>
-                        <button type="button" className="chat-selector-btn chat-selector-btn--confirm" onClick={this.handleConfirm}>
+                        <button
+                            type="button"
+                            data-testid={mode === "members" ? summaryTestIds.memberSelectorConfirmBtn : summaryTestIds.chatSelectorConfirmBtn}
+                            className="chat-selector-btn chat-selector-btn--confirm"
+                            onClick={this.handleConfirm}
+                        >
                             {t("summary.common.confirm")}
                         </button>
                     </div>

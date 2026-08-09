@@ -10,7 +10,7 @@
 // completely different scheme from the Yjs RelativePosition anchors in ../comments/anchor.ts.
 // That module is NOT reusable here.
 
-import { resolveOctoDocBase } from './HtmlDocView.tsx'
+import { resolveOctoDocBase } from './htmlDocFrameHelpers.ts'
 import { getWKApp } from '../octoweb/index.ts'
 
 // octo-doc verifies identity via the `token` header (octo convention, not Authorization).
@@ -45,7 +45,25 @@ export interface ElementAnchor {
   label?: string
 }
 
-export type Anchor = TextAnchor | ElementAnchor
+export interface AnchorFingerprint {
+  tag?: string
+}
+
+export interface AnchorFallback {
+  nearestHeading?: { text: string }
+  ratio?: number
+}
+
+/** An element anchor that octo-doc could no longer reconcile in the current version. */
+export interface LostAnchor {
+  kind: 'lost'
+  reason?: string
+  label?: string
+  fingerprint?: AnchorFingerprint
+  fallback?: AnchorFallback
+}
+
+export type Anchor = TextAnchor | ElementAnchor | LostAnchor
 
 /**
  * Author object as returned by octo-doc (mirrors backend core.Author). Comments carry the
@@ -126,7 +144,7 @@ export async function listComments(
 
 export interface CreateCommentInput {
   text: string
-  version: string
+  version: number
   /** Selection anchor for a NEW root comment; omit for a doc-level note or a reply. */
   anchor?: Anchor | null
   /** Set when replying under an existing comment (replies carry no anchor). */

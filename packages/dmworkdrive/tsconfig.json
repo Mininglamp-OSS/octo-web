@@ -1,0 +1,6 @@
+{
+  "extends": "../../packages/tsconfig/react-library.json",
+  "include": ["."],
+  "comment": "*.stories.tsx are type-checked by apps/web/.storybook/tsconfig.json (moduleResolution: bundler, which reads @storybook/react's exports map); this package's classic resolution can't, so they're scoped out here.",
+  "exclude": ["dist", "build", "node_modules", "**/*.stories.tsx"]
+}

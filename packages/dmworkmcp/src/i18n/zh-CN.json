@@ -4,8 +4,8 @@
   },
   "sidebar": {
     "header": "市场",
-    "mcp": "MCP",
-    "skills": "Skills"
+    "mcp": "连接器",
+    "skills": "技能"
   },
   "common": {
     "loadFailed": "加载失败"
@@ -14,8 +14,8 @@
     "nameTaken": "此名称已被占用",
     "slugTaken": "此服务标识 (slug) 在当前空间已被占用",
     "slugInvalid": "服务标识 (slug) 只能包含小写字母、数字与连字符，且 1-64 位",
-    "forbidden": "无权操作该 MCP",
-    "notFound": "MCP 不存在或已被删除",
+    "forbidden": "无权操作该连接器",
+    "notFound": "连接器不存在或已被删除",
     "invalidVisibility": "可见范围只能是「公开」或「仅自己」",
     "invalidTransport": "传输方式不支持",
     "invalidRequest": "请求参数不合法",
@@ -36,24 +36,24 @@
     "bot": "Bot 创建"
   },
   "list": {
-    "desc": "浏览并接入 MCP 服务，为你的智能体扩展工具能力。",
-    "create": "上架 MCP",
+    "desc": "浏览并接入连接器，为你的智能体扩展工具能力。",
+    "create": "上架连接器",
     "searchPlaceholder": "搜索名称、描述...",
     "searchClear": "清除",
-    "errorTitle": "加载 MCP 失败",
+    "errorTitle": "加载连接器失败",
     "retry": "重试",
     "error": {
       "auth": "登录已失效，请重新登录后重试",
-      "forbidden": "你没有访问 MCP 市场的权限",
+      "forbidden": "你没有访问连接器市场的权限",
       "network": "网络连接失败，请检查网络后重试",
       "server": "服务暂时不可用，请稍后重试",
       "unknown": "加载失败，请稍后重试"
     },
-    "empty": "没有匹配的 MCP 服务",
+    "empty": "没有匹配的连接器",
     "loadMore": "向下滚动加载更多",
     "reachedEnd": "已经到底了",
-    "total": "共 {{count}} 个 MCP",
-    "navLabel": "MCP 市场导航",
+    "total": "共 {{count}} 个连接器",
+    "navLabel": "连接器市场导航",
     "mode": {
       "all": "全部",
       "mine": "我的"
@@ -63,7 +63,7 @@
     "botTitle": "Bot 上架",
     "botHint": "复制提示词给 Agent",
     "manualTitle": "手动上架",
-    "manualHint": "填写表单创建 MCP"
+    "manualHint": "填写表单创建连接器"
   },
   "botPublish": {
     "title": "Bot 上架",
@@ -105,7 +105,7 @@
     "delete": "删除"
   },
   "detail": {
-    "title": "MCP 详情",
+    "title": "连接器详情",
     "updatedAt": "{{time}}更新",
     "quickAccess": "快速接入",
     "qsTab": {
@@ -131,13 +131,13 @@
     "delete": "删除"
   },
   "edit": {
-    "title": "编辑 MCP",
+    "title": "编辑连接器",
     "submit": "保存修改",
     "success": "已保存",
     "failed": "保存失败"
   },
   "delete": {
-    "confirmTitle": "删除该 MCP？",
+    "confirmTitle": "删除该连接器？",
     "confirmBody": "删除后将无法在市场中被找到，已复制的接入配置仍可使用。",
     "ok": "删除",
     "cancel": "取消",
@@ -145,11 +145,11 @@
     "failed": "删除失败"
   },
   "create": {
-    "title": "上架 MCP",
+    "title": "上架连接器",
     "sectionBasics": "基本信息",
     "sectionBasicsDesc": "展示在市场卡片和详情页顶部",
     "sectionConnect": "接入方式",
-    "sectionConnectDesc": "MCP 服务器如何被启动和调用",
+    "sectionConnectDesc": "连接器服务如何被启动和调用",
     "sectionTools": "工具清单",
     "sectionToolsDesc": "接入后智能体可用的工具集",
     "sectionExamples": "使用示例",
@@ -189,7 +189,7 @@
       "sse": "远程 SSE (sse)"
     },
     "slogan": "简介",
-    "sloganPlaceholder": "一句话描述这个 MCP 能做什么",
+    "sloganPlaceholder": "一句话描述这个连接器能做什么",
     "url": "服务地址",
     "urlPlaceholder": "例如 https://mcp.example.com/xxx/mcp",
     "command": "启动命令",
@@ -223,7 +223,7 @@
     "usageExamples": "使用示例",
     "usageExampleAdd": "新增一条",
     "usageExampleRemove": "删除",
-    "usageExamplePlaceholder": "示范用户会怎么调用这个 MCP",
+    "usageExamplePlaceholder": "示范用户会怎么调用这个连接器",
     "faqs": "常见问题",
     "faqAdd": "新增一条",
     "faqRemove": "删除",
@@ -248,7 +248,7 @@
       "command_not_found": "找不到启动命令，请检查命令是否正确。",
       "timeout": "探测超时，请稍后重试。",
       "init_failed": "连接配置不完整，无法探测工具列表。",
-      "no_tools_capability": "该 MCP 未提供工具列表能力。"
+      "no_tools_capability": "该连接器未提供工具列表能力。"
     },
     "toolsEmpty": "尚未获取工具，可点击「试连 / 获取工具列表」自动探测，或手动补充。",
     "toolsHint": "点击「试连 / 获取工具列表」，探测远端服务并同步工具清单。",

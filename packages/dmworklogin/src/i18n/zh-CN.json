@@ -121,6 +121,9 @@
     "languageShortZh": "中文",
     "scanLogin": "扫码登录",
     "ssoButton": "Octo 登录",
+    "ssoConfigFallback": "登录配置暂时不可用，你仍可先使用账号密码登录。",
+    "ssoConfigLoadingSub": "请稍候，完成后将显示可用的登录方式",
+    "ssoConfigLoadingTitle": "正在加载登录配置",
     "ssoFlowHint": "登录和注册将在统一认证页面完成",
     "ssoStartFailed": "无法启动 {{provider}} 登录",
     "welcome": "欢迎回来"

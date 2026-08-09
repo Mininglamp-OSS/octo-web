@@ -10,7 +10,7 @@ vi.mock("@octo/base", () => ({
   DEFAULT_REQUEST_TIMEOUT_MS: 20000,
 }));
 
-import { serializeMcpParams } from "./mcpService";
+import { buildMcpCategoryParams, serializeMcpParams } from "./mcpService";
 
 describe("serializeMcpParams — axios paramsSerializer wire contract", () => {
   it("emits `?a=1&a=2` for arrays (never `?a[]=1&a[]=2`)", () => {
@@ -60,5 +60,30 @@ describe("serializeMcpParams — axios paramsSerializer wire contract", () => {
 
   it("stringifies non-string primitives (limit, offset)", () => {
     expect(serializeMcpParams({ limit: 50, offset: 0 })).toBe("limit=50&offset=0");
+  });
+});
+
+describe("buildMcpCategoryParams", () => {
+  it("passes keyword and tags to category counts without the active category filter", () => {
+    const params = buildMcpCategoryParams(
+      "all",
+      {
+        tags: ["official", "v1.0,beta"],
+        createdByType: "bot",
+      },
+      "github"
+    );
+
+    expect(params).toEqual({
+      keyword: "github",
+      tag: ["official", "v1.0,beta"],
+      created_by_type: "bot",
+    });
+    expect(params).not.toHaveProperty("category");
+  });
+
+  it("adds mine mode only for the owned list", () => {
+    expect(buildMcpCategoryParams("mine", {}, "")).toEqual({ mode: "mine" });
+    expect(buildMcpCategoryParams("all", {}, "")).toEqual({});
   });
 });

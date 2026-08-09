@@ -1,3 +1,5 @@
+import { isEffectivelyMuted } from "../../Service/Thread"
+
 interface ThreadUnreadSource {
   unread?: number
   channelInfo?: {
@@ -13,8 +15,11 @@ export function isThreadUnreadMuted(
   thread: ThreadUnreadSource,
   parentMuted: boolean
 ): boolean {
-  const rawMute = thread.channelInfo?.orgData?.thread?.mute
-  return rawMute != null ? rawMute === 1 : parentMuted
+  return isEffectivelyMuted({
+    isThread: true,
+    channelInfo: thread.channelInfo,
+    parentChannelInfo: { mute: parentMuted ? 1 : 0 },
+  })
 }
 
 export function collapsedThreadUnread(

@@ -9,12 +9,21 @@
 // This file is NEVER part of the production build: apps/web builds docs against the real
 // `@octo/base`. It exists purely so `pnpm --filter @octo/docs dev:standalone` can run.
 
-export { WKApp, Menus, SpaceService, VoiceInputButton } from '../src/__mocks__/octoBase.ts'
-export type { SpaceMember } from '../src/__mocks__/octoBase.ts'
+import { useSyncExternalStore } from 'react'
+
+export {
+  WKApp,
+  Menus,
+  SpaceService,
+  VoiceInputButton,
+  titleContextStore,
+} from "../src/__mocks__/octoBase.ts";
+export type { SpaceMember } from "../src/__mocks__/octoBase.ts";
 
 type Tree = Record<string, unknown>
 
 const namespaces = new Map<string, Tree>()
+const localeListeners = new Set<() => void>()
 let locale = (() => {
   try {
     return window.localStorage.getItem('octo.dev.locale') || 'zh-CN'
@@ -47,12 +56,14 @@ export const i18n = {
     return locale
   },
   setLocale(next: string): void {
+    if (next === locale) return
     locale = next
     try {
       window.localStorage.setItem('octo.dev.locale', next)
     } catch {
       /* ignore */
     }
+    for (const listener of localeListeners) listener()
   },
 }
 
@@ -64,6 +75,17 @@ export function t(key: string, values?: Record<string, unknown>): string {
   return hit != null ? interpolate(hit, values) : key
 }
 
-export function useI18n(): { t: (key: string, values?: Record<string, unknown>) => string } {
-  return { t }
+export function useI18n(): {
+  t: (key: string, values?: Record<string, unknown>) => string
+  locale: string
+} {
+  const currentLocale = useSyncExternalStore(
+    (listener) => {
+      localeListeners.add(listener)
+      return () => localeListeners.delete(listener)
+    },
+    () => locale,
+    () => locale,
+  )
+  return { t, locale: currentLocale }
 }

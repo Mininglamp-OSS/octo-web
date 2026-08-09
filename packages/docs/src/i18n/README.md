@@ -2,7 +2,7 @@
 
 The `docs` namespace is registered in `DocsModule.init()`
 (`packages/docs/src/module.tsx`) via `i18n.registerNamespace("docs", { "zh-CN", "en-US" })`,
-matching the pattern used by `dmworktodo`. Locale files live here:
+matching the pattern used by `dmworksummary`. Locale files live here:
 
 - `zh-CN.json` — Chinese (default app locale)
 - `en-US.json` — English

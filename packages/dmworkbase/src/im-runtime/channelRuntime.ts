@@ -64,7 +64,7 @@ export type ImSubscriberChangeListener = (event: any) => void;
 
 export interface ImChannelSubscribersRuntimeSdk<
   TChannel extends ImChannelLike = ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 > {
   channelManager: {
     getSubscribes: (channel: TChannel) => TSubscriber[] | undefined | null;
@@ -79,11 +79,56 @@ export interface ImChannelSubscribersRuntimeSdk<
 }
 
 export interface ImSubscribeCacheRuntimeSdk<
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 > {
   channelManager: {
     subscribeCacheMap: Map<string, TSubscriber[]>;
   };
+}
+
+const LOCALLY_REMOVED_SUBSCRIBER_TTL_MS = 30 * 1000;
+const locallyRemovedSubscriberUids = new Map<string, Map<string, number>>();
+
+function channelKey(channel: ImChannelLike) {
+  const maybeCacheKey = channel as Partial<ImChannelCacheKeyLike>;
+  return maybeCacheKey.getChannelKey
+    ? maybeCacheKey.getChannelKey()
+    : `${channel.channelType}@${channel.channelID}`;
+}
+
+function validUids(uids: Array<string | undefined>) {
+  return uids.filter((uid): uid is string => !!uid);
+}
+
+function removedUidSet(channel: ImChannelLike) {
+  const key = channelKey(channel);
+  const removed = locallyRemovedSubscriberUids.get(key);
+  if (!removed || removed.size === 0) return undefined;
+
+  const now = Date.now();
+  removed.forEach((expiresAt, uid) => {
+    if (expiresAt <= now) {
+      removed.delete(uid);
+    }
+  });
+  if (removed.size === 0) {
+    locallyRemovedSubscriberUids.delete(key);
+    return undefined;
+  }
+  return new Set(removed.keys());
+}
+
+function filterLocallyRemovedSubscribers<
+  TChannel extends ImChannelLike,
+  TSubscriber extends ImSubscriberLike
+>(channel: TChannel, subscribers: TSubscriber[]) {
+  const removed = removedUidSet(channel);
+  if (!removed || removed.size === 0) return subscribers;
+
+  const filtered = subscribers.filter(
+    (subscriber) => !removed.has(subscriber?.uid || "")
+  );
+  return filtered.length === subscribers.length ? subscribers : filtered;
 }
 
 export function getImChannelInfo<
@@ -140,17 +185,20 @@ export function deleteImChannelInfo<TChannel extends ImChannelLike>(
 
 export function getImChannelSubscribers<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
   channel: TChannel
 ) {
-  return sdk.channelManager.getSubscribes(channel) || [];
+  return filterLocallyRemovedSubscribers(
+    channel,
+    sdk.channelManager.getSubscribes(channel) || []
+  );
 }
 
 export function getImChannelSubscriberOfMe<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
   channel: TChannel
@@ -160,7 +208,7 @@ export function getImChannelSubscriberOfMe<
 
 export function syncImChannelSubscribers<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
   channel: TChannel
@@ -168,26 +216,66 @@ export function syncImChannelSubscribers<
   return Promise.resolve(sdk.channelManager.syncSubscribes(channel));
 }
 
-export function getImSubscribeCacheMap<TSubscriber = ImSubscriberLike>(
-  sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>
-) {
+export function getImSubscribeCacheMap<
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
+>(sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>) {
   return sdk.channelManager.subscribeCacheMap;
+}
+
+export function getImChannelSubscribersCacheRaw<
+  TChannel extends ImChannelCacheKeyLike,
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
+>(sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>, channel: TChannel) {
+  return sdk.channelManager.subscribeCacheMap.get(channel.getChannelKey());
 }
 
 export function setImChannelSubscribersCache<
   TChannel extends ImChannelCacheKeyLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>,
   channel: TChannel,
   subscribers: TSubscriber[]
 ) {
-  sdk.channelManager.subscribeCacheMap.set(channel.getChannelKey(), subscribers);
+  sdk.channelManager.subscribeCacheMap.set(
+    channel.getChannelKey(),
+    subscribers
+  );
+}
+
+export function markImChannelSubscribersLocallyRemoved<
+  TChannel extends ImChannelLike
+>(channel: TChannel, uids: string[]) {
+  const nextUids = validUids(uids);
+  if (nextUids.length === 0) return;
+  const key = channelKey(channel);
+  const expiresAt = Date.now() + LOCALLY_REMOVED_SUBSCRIBER_TTL_MS;
+  const removed =
+    locallyRemovedSubscriberUids.get(key) || new Map<string, number>();
+  nextUids.forEach((uid) => removed.set(uid, expiresAt));
+  locallyRemovedSubscriberUids.set(key, removed);
+}
+
+export function clearImChannelSubscribersLocallyRemoved<
+  TChannel extends ImChannelLike
+>(channel: TChannel, uids: string[]) {
+  const removed = locallyRemovedSubscriberUids.get(channelKey(channel));
+  if (!removed) return;
+  validUids(uids).forEach((uid) => removed.delete(uid));
+  if (removed.size === 0) {
+    locallyRemovedSubscriberUids.delete(channelKey(channel));
+  }
+}
+
+export function getImChannelLocallyRemovedSubscriberUids<
+  TChannel extends ImChannelLike
+>(channel: TChannel) {
+  return Array.from(removedUidSet(channel) || []);
 }
 
 export function addImSubscriberChangeListener<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
   listener: ImSubscriberChangeListener
@@ -200,17 +288,17 @@ export function addImSubscriberChangeListener<
 
 export function notifyImSubscriberChangeListeners<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
->(sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>, channel: TChannel) {
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
+>(
+  sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
+  channel: TChannel
+) {
   sdk.channelManager.notifySubscribeChangeListeners(channel);
 }
 
 export function patchImChannelInfoOrgData<
   TChannelInfo extends ImChannelInfoLike
->(
-  channelInfo: TChannelInfo,
-  patch: Record<string, any>
-) {
+>(channelInfo: TChannelInfo, patch: Record<string, any>) {
   channelInfo.orgData = {
     ...(channelInfo.orgData || {}),
     ...patch,

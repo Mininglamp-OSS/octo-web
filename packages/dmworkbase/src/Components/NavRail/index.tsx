@@ -50,6 +50,8 @@ export interface NavRailVMProps {
 export interface NavRailProps extends NavRailVMProps {}
 
 export default class NavRail extends Component<NavRailProps> {
+    private settingsButtonRef = React.createRef<HTMLButtonElement>();
+
     render() {
         const {
             menusList,
@@ -80,6 +82,7 @@ export default class NavRail extends Component<NavRailProps> {
             canManageSpace = false,
         } = this.props;
         const userChannel = new Channel(WKApp.loginInfo.uid || "", ChannelTypePerson);
+        const userName = WKApp.loginInfo.name || WKApp.loginInfo.uid || t("base.navRail.me");
 
         return (
             <>
@@ -87,16 +90,19 @@ export default class NavRail extends Component<NavRailProps> {
                     {/* 顶部：用户头像（含在线状态点） */}
                     <div className="wk-navrail__top">
                         <div className="wk-navrail__user-wrap">
-                            <button
-                                type="button"
-                                className="wk-navrail__user-avatar"
-                                title={t("base.navRail.me")}
-                                aria-label={t("base.navRail.me")}
-                                onClick={onAvatarClick}
-                            >
-                                <WKAvatar channel={userChannel} />
-                            </button>
-                            {isOnline && <div className="wk-navrail__user-status" />}
+                            <div className="wk-navrail__user-avatar-wrap">
+                                <button
+                                    type="button"
+                                    className="wk-navrail__user-avatar"
+                                    title={t("base.navRail.me")}
+                                    aria-label={t("base.navRail.me")}
+                                    onClick={onAvatarClick}
+                                >
+                                    <WKAvatar channel={userChannel} />
+                                </button>
+                                {isOnline && <div className="wk-navrail__user-status" />}
+                            </div>
+                            <span className="wk-navrail__user-name">{userName}</span>
                         </div>
                     </div>
 
@@ -119,6 +125,7 @@ export default class NavRail extends Component<NavRailProps> {
                     {/* 底部：分割线 + 设置 + Space */}
                     <NavBottom
                         settingSelected={settingSelected}
+                        settingsButtonRef={this.settingsButtonRef}
                         hasNewVersion={hasNewVersion}
                         onSettingsClick={onToggleSetting}
                         onDismissNewVersion={onDismissNewVersion}
@@ -133,6 +140,7 @@ export default class NavRail extends Component<NavRailProps> {
                 {/* 设置面板 + Modals（挂在 nav 外，避免 overflow 裁剪） */}
                 <NavSettingsPanel
                     settingSelected={settingSelected}
+                    triggerRef={this.settingsButtonRef}
                     hasNewVersion={hasNewVersion}
                     canManageSpace={canManageSpace}
                     showNewVersion={showNewVersion}

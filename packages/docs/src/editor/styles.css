@@ -1,23 +1,23 @@
 /* Theme tokens (frontend-design §3.6) — light/dark via CSS variables, .octo-prose namespace. */
 .octo-theme {
-  --octo-bg: #ffffff;
-  --octo-fg: #1f2329;
-  --octo-muted: #8a919e;
-  --octo-accent: #3370ff;
-  --octo-border: #e5e6eb;
-  --octo-hover: #f2f3f5;
+  --octo-bg: var(--wk-bg-surface);
+  --octo-fg: var(--wk-text-primary);
+  --octo-muted: var(--wk-text-tertiary);
+  --octo-accent: var(--wk-brand-primary);
+  --octo-border: var(--wk-border-default);
+  --octo-hover: var(--wk-bg-hover);
   /* Shared elevation for overlay-anchored cards (preview/diff modal + destructive confirm). */
   --octo-modal-shadow: 0 12px 48px rgba(0, 0, 0, 0.24);
 }
 
 @media (prefers-color-scheme: dark) {
   .octo-theme {
-    --octo-bg: #1b1c1e;
-    --octo-fg: #e8e9eb;
-    --octo-muted: #8a919e;
-    --octo-accent: #5b86ff;
-    --octo-border: #2e2f33;
-    --octo-hover: #2a2b2e;
+    --octo-bg: var(--wk-bg-surface);
+    --octo-fg: var(--wk-text-primary);
+    --octo-muted: var(--wk-text-tertiary);
+    --octo-accent: var(--wk-brand-primary);
+    --octo-border: var(--wk-border-default);
+    --octo-hover: var(--wk-bg-hover);
   }
 }
 
@@ -80,21 +80,34 @@
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  flex-wrap: nowrap;
   gap: 16px;
   /* Fixed at the top of the editor column (no longer inside the scroll container), so it needs its
      own horizontal padding — the scroll container's padding used to cover it. */
   flex: 0 0 auto;
+  min-width: 0;
   padding: 24px 32px 0;
 }
 .octo-doc-header-right {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 12px;
+  white-space: nowrap;
+}
+.octo-doc-header-right > * {
+  flex: 0 0 auto;
 }
 .octo-doc-title {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
   font-size: 28px;
   font-weight: 600;
   margin: 0 0 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* Editable title (BUG3): hint affordance on hover, inline input matches the heading. */
 .octo-doc-title-editable {
@@ -190,23 +203,26 @@
      so the ribbon fits the pane. */
   overflow: visible;
 }
-/* Square off the @univerjs/design controls in the toolbar to match the sheet's rectangular controls
-   (the design-system default renders more rounded / pill-like on short controls). Scoped to the
-   toolbar row, so the dropdown popups — which portal to document.body, outside .octo-toolbar — keep
-   their own radius, and nothing outside the toolbar is affected. The `.octo-toolbar [class^=…]`
-   descendant selector (specificity 0,2,0) outranks the design system's single utility class
-   (0,1,0), so it wins without needing !important. */
-.octo-toolbar [class^="univer-"],
-.octo-toolbar [class*=" univer-"] {
+/* Font-family and font-size use Univer's borderless toolbar treatment, matching Sheet's native
+   selector: no persistent border/ring in default, focus, or open states; feedback is the shared
+   gray toolbar hover surface. Keep this scoped to the two typography controls so block/alignment
+   selects retain their existing document-specific appearance. */
+.octo-tb-sel--font .octo-tb-sheet-select,
+.octo-tb-sel--size .octo-tb-sheet-select {
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
   border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
 }
-/* …but the squaring rule above also flattens the Univer ColorPicker's ROUND preset swatches (and its
-   circular preview / slider handles, all `univer-rounded-full`) into 4px squares. The sheet keeps
-   them round because it has no such squaring override. Restore the circle radius for rounded-full
-   elements inside the picker popover so docs matches the sheet's round swatches. Same descendant
-   specificity (0,2,0) as the squaring rule but later in source, so it wins without !important. */
-.octo-color-popover--picker [class*="univer-rounded-full"] {
-  border-radius: 9999px;
+.octo-tb-sel--font .octo-tb-sheet-select:hover,
+.octo-tb-sel--size .octo-tb-sheet-select:hover,
+.octo-tb-sel--font .octo-tb-sheet-select[data-state="open"],
+.octo-tb-sel--size .octo-tb-sheet-select[data-state="open"] {
+  border-color: transparent;
+  background: var(--univer-gray-100, #f3f4f6);
+  box-shadow: none;
 }
 /* Size the @univerjs/design <Select> triggers (font / size / block-type) to their content instead
    of the design system's fixed wide box — the sheet's font-size box is only a few chars wide. These
@@ -241,6 +257,21 @@
   align-items: center;
   gap: 6px;
 }
+/* Font-family option row: the face name, plus a trailing "font not installed" marker pushed to the
+   far edge (parity with the board text controls' font picker). */
+.octo-tb-font-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.octo-tb-font-warning {
+  display: inline-flex;
+  align-items: center;
+  margin-left: auto;
+  color: var(--octo-muted, #8a919e);
+  font-size: 14px;
+}
 /* Compact icon-triggered dropdown (line-spacing / paragraph-spacing): a fixed icon + tiny caret,
    so the control stays narrow instead of showing the value as wide text. */
 .octo-tb-iconselect {
@@ -274,8 +305,10 @@
    so defining the vars ON it lets its own bg/text classes resolve → the dark pill returns. Values
    are Univer's own default palette, so sheet tooltips (same role) resolve identically — no change. */
 .octo-theme,
-[data-radix-popper-content-wrapper],
-[role="tooltip"] {
+#octo-univer-portal,
+.octo-univer-color-dialog,
+[data-radix-popper-content-wrapper]:has([class*="univer-"]),
+[role="tooltip"][class*="univer-"] {
   --univer-white: #ffffff;
   --univer-black: #000000;
   --univer-gray-50: #f9fafb;
@@ -288,6 +321,9 @@
   --univer-gray-700: #374151;
   --univer-gray-800: #1f2937;
   --univer-gray-900: #111827;
+  /* Univer's default primary ramp (blue). Rebranding this to octo black #1C1C23 per UI-SPEC §2.1
+     is a separate, product-wide change — tracked outside this PR, which is scoped to sheet
+     protection. */
   --univer-primary-50: #eef2ff;
   --univer-primary-100: #e0e7ff;
   --univer-primary-200: #c7d2fe;
@@ -1301,6 +1337,12 @@ body.octo-row-resizing {
   padding: 12px 16px;
   overflow-x: auto;
 }
+/* Base code-block text colour: pinned to the unified foreground variable so plain code and any
+   untokenised spans render in a defined, theme-aware colour (following light/dark) rather than
+   inheriting a stray text-colour mark from surrounding prose. Syntax tokens override per-class below. */
+.octo-prose pre code {
+  color: var(--octo-fg);
+}
 /* Code-block syntax highlighting (lowlight / highlight.js token classes).
    Compact, theme-variable-driven palette so it follows light/dark automatically. */
 .octo-prose pre code .hljs-comment,
@@ -1586,6 +1628,82 @@ body.octo-row-resizing {
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 8px;
   padding: 4px;
+}
+
+.octo-member-picker-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.octo-member-picker-expand {
+  align-self: flex-start;
+  margin-left: var(--wk-sp-8, 32px);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  border: 0;
+  border-radius: var(--wk-r-full, 9999px);
+  background: transparent;
+  color: var(--octo-muted);
+  font-size: 12px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
+  cursor: pointer;
+}
+
+.octo-member-picker-expand:hover {
+  background: var(--wk-brand-alpha-06, rgba(28, 28, 35, 0.06));
+  color: var(--octo-text, #1c1c23);
+}
+
+.octo-member-picker-expand:focus-visible {
+  outline: 2px solid var(--wk-brand-alpha-20, rgba(28, 28, 35, 0.2));
+  outline-offset: 1px;
+}
+
+/* Decorative chevron for the Bot expander (no functional emoji; rotates on expand). */
+.octo-member-picker-chevron {
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 0.15s ease;
+}
+.octo-member-picker-expand[aria-expanded='true'] .octo-member-picker-chevron {
+  transform: rotate(180deg);
+}
+
+.octo-member-picker-bot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px) var(--wk-sp-1, 4px) var(--wk-sp-8, 32px);
+  border-radius: var(--wk-r-xs, 3px);
+  font-size: 13px;
+}
+
+.octo-member-picker-bot:not(.is-preview):hover {
+  background: var(--wk-brand-alpha-04, rgba(28, 28, 35, 0.04));
+}
+
+.octo-member-picker-bot input:focus-visible {
+  outline: 2px solid var(--wk-brand-alpha-20, rgba(28, 28, 35, 0.2));
+  outline-offset: 1px;
+}
+
+/* Read-only Bot preview under an unselected person: muted, non-interactive. */
+.octo-member-picker-bot.is-preview {
+  color: var(--octo-muted);
+  cursor: default;
+}
+.octo-member-picker-bot.is-preview input {
+  cursor: not-allowed;
+}
+
+.octo-member-picker-bot-creator {
+  color: var(--octo-muted);
+  font-size: 12px;
 }
 .octo-member-picker-empty {
   color: var(--octo-muted, #8a919e);
@@ -1911,12 +2029,15 @@ body.octo-row-resizing {
 /* ── Right-side drawer (#4/#5): history / comments / members open here, one at a time ──
    Anchored to the right of the editor pane, above content, scrollable, with a width
    transition. The panels it hosts drop their own card chrome so they fill the drawer. */
+.octo-doc {
+  --octo-doc-drawer-width: 360px;
+}
 .octo-doc-drawer {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: 360px;
+  width: var(--octo-doc-drawer-width);
   max-width: 92vw;
   background: var(--octo-bg, #fff);
   border-left: 1px solid var(--octo-border, #e5e6eb);
@@ -2058,9 +2179,8 @@ body.octo-row-resizing {
   background: #d64545;
 }
 
-/* Header "more" (≡) menu (#512 title-bar tidy-up). A relatively-positioned anchor holds the ≡
-   trigger and an absolutely-positioned dropdown so the panel opens flush under the icon at the
-   far right of the header. */
+/* Header "more" (≡) menu (#512 title-bar tidy-up). The dropdown is portalled to document.body so
+   narrow standalone headers can scroll horizontally without clipping the menu. */
 .octo-doc-more {
   position: relative;
   flex: 0 0 auto;
@@ -2096,16 +2216,15 @@ body.octo-row-resizing {
 }
 /* Dropdown panel: 248px, 8px radius, soft shadow, white — anchored top-right under the trigger. */
 .octo-doc-more-panel {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 20;
+  position: fixed;
+  z-index: 1000;
   width: 248px;
   background: #fff;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   padding: 6px 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 /* Info head: light-grey band with the creator (avatar + name) and the created-on line. */
 .octo-doc-more-head {
@@ -2727,6 +2846,18 @@ body.octo-row-resizing {
   border: 1px solid var(--octo-border, #e5e6eb);
   border-radius: 6px;
 }
+/* The comment composer is a NESTED tiptap instance (mentions/MentionComposer.tsx) that renders
+   inside the document editor, so its content element also carries `.ProseMirror` and was matched by
+   `.octo-prose .ProseMirror` above — a rule whose `min-height: 320px` exists to reserve clickable
+   empty space for the MAIN document body. That stretched the little comment box to 320px once #909
+   replaced the plain <textarea> with this editor (the sheet's copy of the same component looked
+   right only because it sits outside `.octo-prose`).
+   Specificity is 0,2,0 on both selectors, so this reset MUST stay after that rule to win. The
+   wrapper's own `min-height: 56px` above still sets the box's floor — the same floor the textarea
+   had — so the composer keeps its original size instead of collapsing to one line. */
+.octo-comment-input .ProseMirror {
+  min-height: 0;
+}
 .octo-comment-panel {
   margin-top: 24px;
   border: 1px solid var(--octo-border, #e5e6eb);
@@ -2819,7 +2950,7 @@ body.octo-row-resizing {
 }
 
 /* ── Split-pane docs layout (left list resident + right editor) ──────────────
-   Mirrors the octo-smart-summary / matter list+detail layout: the document list
+   Mirrors the octo-smart-summary list+detail layout: the document list
    stays resident on the left; selecting an item opens the editor inline on the
    right (state-driven, no full navigation), so the list never disappears. */
 .octo-docs-split {
@@ -2872,7 +3003,7 @@ body.octo-row-resizing {
 }
 
 /* Production path: the docs route slot renders ONLY the resident list (the editor is pushed
-   to the host's main/right pane via WKApp.routeRight, like Matter/Summary). Let the list fill
+   to the host's main/right pane via WKApp.routeRight, like Summary). Let the list fill
    the route slot. */
 .octo-docs-list-only {
   max-width: none;
@@ -2912,6 +3043,12 @@ body.octo-row-resizing {
   font-size: 15px;
   font-weight: 600;
   color: var(--octo-fg, #1f2329);
+  /* The header gained a ~32px "?" action; in the 280px split pane the title must yield instead of
+     pushing the action group out of the row. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* "New document" reads as a clear primary action, visually distinct from rows. */
 .octo-docs-list-new {
@@ -2925,11 +3062,11 @@ body.octo-row-resizing {
   font-weight: 500;
   cursor: pointer;
   color: #fff;
-  background: var(--octo-active-fg, #1664ff);
+  background: var(--wk-brand-primary, #1c1c23);
   transition: background 0.15s ease;
 }
 .octo-docs-list-new:hover:not(:disabled) {
-  background: var(--octo-active-fg-hover, #0e4fd6);
+  background: var(--wk-brand-primary-hover, #303039);
 }
 .octo-docs-list-new:disabled {
   opacity: 0.6;
@@ -2999,11 +3136,32 @@ body.octo-row-resizing {
   cursor: default;
 }
 .octo-docs-new-menu-icon {
-  flex: 0 0 auto;
+  flex: 0 0 16px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--octo-fg-3, #86909c);
+}
+.octo-docs-new-menu-separator {
+  height: 1px;
+  margin: 6px 8px;
+  background: var(--wk-border-subtle, #e5e6eb);
+}
+.octo-portal-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wk-z-dropdown, 1000);
+}
+.octo-portal-menu {
+  position: fixed;
+  z-index: calc(var(--wk-z-dropdown, 1000) + 1);
+  padding: 4px;
+  border: 1px solid var(--wk-border-subtle, #e5e6eb);
+  border-radius: var(--wk-r-overlay, 12px);
+  background: var(--wk-bg-surface, #fff);
+  color: var(--wk-text-primary, #1f2329);
+  box-shadow: var(--wk-shadow-lg, 0 12px 32px rgba(0, 0, 0, 0.16));
+  white-space: nowrap;
 }
 .octo-docs-new-menu-soon {
   margin-left: auto;
@@ -3039,11 +3197,11 @@ body.octo-row-resizing {
 .octo-docs-list-row:hover {
   background: var(--octo-hover-bg, #f2f3f5);
 }
-/* Selected: light background bar + left accent bar (no harsh outline). */
+/* Selected: shared Octo semantic treatment, with no legacy blue accent. */
 .octo-docs-list-item-active > .octo-docs-list-row,
 .octo-docs-list-row[aria-current='true'] {
-  background: var(--octo-active-bg, #e8f3ff);
-  border-left-color: var(--octo-active-fg, #1664ff);
+  background: var(--wk-bg-selected, rgb(127 59 245 / 6%));
+  border-left-color: transparent;
 }
 .octo-docs-list-row-icon {
   flex: 0 0 auto;
@@ -3054,7 +3212,7 @@ body.octo-row-resizing {
 }
 .octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-icon,
 .octo-docs-list-row[aria-current='true'] .octo-docs-list-row-icon {
-  color: var(--octo-active-fg, #1664ff);
+  color: var(--wk-icon-default, rgb(28 28 35 / 60%));
 }
 .octo-docs-list-row-text {
   display: flex;
@@ -3072,17 +3230,18 @@ body.octo-row-resizing {
 .octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-title,
 .octo-docs-list-row[aria-current='true'] .octo-docs-list-row-title {
   font-weight: 600;
-  color: var(--octo-active-fg, #1664ff);
+  color: var(--wk-text-primary, #1f2329);
 }
 /* Untitled placeholder shows muted/grey so real titles stand out. */
 .octo-docs-list-row-title-untitled {
   color: var(--octo-fg-3, #86909c);
 }
-/* Bot badge: a small capsule after a bot-created doc's title so it's easy to tell apart. */
+/* Keep the real conversation AI badge visible after a truncated title. */
 .octo-docs-list-row-title-line {
   display: flex;
   align-items: center;
-  min-width: 0; /* let the title ellipsis, keep the badge fully visible */
+  min-width: 0;
+  gap: 6px;
 }
 .octo-docs-list-row-title-line .octo-docs-list-row-title {
   min-width: 0;
@@ -3090,14 +3249,6 @@ body.octo-row-resizing {
 }
 .octo-docs-list-row-bot-badge {
   flex: none;
-  margin-left: 6px;
-  padding: 0 6px;
-  font-size: 11px;
-  line-height: 16px;
-  font-weight: 500;
-  color: var(--octo-active-fg, #1664ff);
-  background: var(--octo-active-bg, rgba(22, 100, 255, 0.1));
-  border-radius: 8px;
   white-space: nowrap;
 }
 .octo-docs-list-row-sub {
@@ -3133,28 +3284,32 @@ body.octo-row-resizing {
    control library is introduced (frontend-design §4 / §5). */
 .octo-docs-tabs {
   display: flex;
+  align-items: stretch;
   gap: 4px;
+  height: 48px;
   padding: 0 4px;
   margin-bottom: 8px;
 }
 .octo-docs-tab {
+  height: 48px;
   border: none;
   background: transparent;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 13px;
+  padding: 0 12px;
+  font-size: 14px;
+  line-height: 21px;
   font-weight: 500;
   cursor: pointer;
-  color: var(--octo-fg-3, #86909c);
+  color: var(--wk-text-secondary, rgb(28 28 35 / 60%));
   border-bottom: 2px solid transparent;
   transition: color 0.12s ease, border-color 0.12s ease;
 }
 .octo-docs-tab:hover {
-  color: var(--octo-fg, #1f2329);
+  color: var(--wk-text-primary, #1c1c23);
 }
 .octo-docs-tab-active {
-  color: var(--octo-active-fg, #1664ff);
-  border-bottom-color: var(--octo-active-fg, #1664ff);
+  color: var(--wk-text-primary, #1c1c23);
+  font-weight: 600;
+  border-bottom-color: var(--wk-brand-primary, #1c1c23);
 }
 
 .octo-docs-toolbar {
@@ -3228,8 +3383,8 @@ body.octo-row-resizing {
   background: var(--octo-hover-bg, #f2f3f5);
 }
 .octo-docs-filter-btn-active {
-  border-color: var(--octo-active-fg, #1664ff);
-  color: var(--octo-active-fg, #1664ff);
+  border-color: var(--wk-border-strong, rgb(28 28 35 / 24%));
+  color: var(--wk-text-primary, #1c1c23);
 }
 /* Narrow tier: tighten the filter buttons so search + both filters hold one
    more width step before the filter group wraps to a second row. */
@@ -3278,8 +3433,8 @@ body.octo-row-resizing {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  background: var(--octo-active-bg, #e8f3ff);
-  color: var(--octo-active-fg, #1664ff);
+  background: var(--wk-brand-tint-04, rgb(28 28 35 / 4%));
+  color: var(--wk-text-primary, #1c1c23);
   border-radius: 12px;
   padding: 2px 6px 2px 10px;
   font-size: 12px;
@@ -3334,16 +3489,16 @@ body.octo-row-resizing {
   font-size: 14px;
 }
 .octo-docs-empty-cta {
-  border: 1px solid var(--octo-active-fg, #1664ff);
+  border: 1px solid var(--wk-border-strong, rgb(28 28 35 / 24%));
   background: transparent;
-  color: var(--octo-active-fg, #1664ff);
+  color: var(--wk-text-primary, #1c1c23);
   border-radius: 6px;
   padding: 6px 16px;
   font-size: 13px;
   cursor: pointer;
 }
 .octo-docs-empty-cta:hover {
-  background: var(--octo-active-bg, #e8f3ff);
+  background: var(--wk-bg-hover, rgb(28 28 35 / 6%));
 }
 .octo-docs-empty-actions {
   display: flex;
@@ -3351,6 +3506,193 @@ body.octo-row-resizing {
   gap: 8px;
 }
 
+/* "?" agent-CLI onboarding help (Mininglamp-OSS/octo-docs-backend#125): a permanent header button + a copy-prompt dialog.
+   The docs `--octo-*` color tokens are defined ONLY under `.octo-theme` (top of this file), but the
+   docs list / modals render under `.octo-doc` (outside that scope) — so, exactly like
+   `.octo-confirm-modal` and `.octo-docs-empty-*`, every `--octo-*` color MUST carry its fallback
+   hex or it resolves to nothing (a transparent dialog). Spacing / radius / type use the `--wk-*`
+   scale with px fallbacks so the standalone harness (no theme entry) still renders. */
+/* Right-hand header action group: onboarding help "?" sits directly beside the New control.
+   Without this wrapper the `space-between` header strands the help button on the far left. */
+.octo-docs-list-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1, 4px);
+  flex: 0 0 auto;
+}
+.octo-docs-help-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-8, 32px);
+  height: var(--wk-sp-8, 32px);
+  padding: 0;
+  border: none;
+  border-radius: var(--wk-r-sm, 6px);
+  background: transparent;
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.octo-docs-help-btn:hover {
+  background: var(--octo-hover, #f2f3f5);
+  color: var(--octo-fg, #1f2329);
+}
+/* SVG icon styling — mirrors .octo-doc-more-glyph so the help/close icons render as the same
+   stroked line-icons the rest of the docs header uses (no emoji / glyph characters). */
+.octo-docs-help-glyph {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.octo-docs-help-overlay {
+  position: fixed;
+  inset: 0;
+  /* The real hazard was NOT the token: `.octo-docs-list` sets `container-type: inline-size`, whose
+     layout containment makes the list the containing block for `position: fixed` descendants and
+     scopes their z-index — so this overlay is portaled to <body> (OnboardingHelp.tsx, mirroring
+     PortalMenu) and only then do `inset: 0` and this z-index mean anything.
+     Hard 1300, matching .octo-confirm-overlay — deliberately NOT `--wk-z-modal`, which resolves to
+     200 in the production host (dmworkbase/theme/semantic.css) and would place this overlay BELOW
+     this package's own layers: .octo-modal-overlay (1200), .octo-confirm-overlay (1300) and the
+     new-document dropdown (1000) in this very header. */
+  z-index: 1300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* Same modal scrim as .octo-confirm-overlay so the dialog reads as a real modal (not a floating,
+     see-through panel). Matches the existing docs confirm/modal backdrop exactly. */
+  background: rgba(0, 0, 0, 0.4);
+  padding: var(--wk-sp-4, 16px);
+}
+.octo-docs-help-dialog {
+  width: 100%;
+  max-width: 560px;
+  max-height: 82vh;
+  overflow-y: auto;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  /* 12px modal radius — matches .octo-confirm-modal / UI-SPEC modal rounding. */
+  border-radius: 12px;
+  box-shadow: var(--octo-modal-shadow, 0 12px 48px rgba(0, 0, 0, 0.24));
+  padding: var(--wk-sp-5, 20px);
+  /* Re-anchor the face: the dialog is portaled to <body>, so it inherits nothing from the Docs
+     subtree. Anchor to the CHROME stack, not `.octo-doc`'s Arial — that Arial is documented in
+     place as "the sheet's default cell font", i.e. a document-CONTENT face, and it only wins in
+     `.octo-doc.octo-docs-list-only`. In `.octo-docs-split` the list chrome declares this system
+     stack at equal specificity and later in the file, so anchoring to Arial would have made the
+     dialog mismatch its own surroundings in split view — the very bug this rule fixes, relocated
+     Keep in sync with `.octo-docs-split` / the other chrome rules.
+     The prompt textarea overrides this with an explicit monospace stack. */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+.octo-docs-help-manual-hint {
+  /* Clipboard-blocked fallback notice. Advisory, not an error: neutral secondary text, no red. */
+  margin: var(--wk-sp-2, 8px) 0 0;
+  font-size: var(--wk-text-size-sm, 12px);
+  line-height: 1.5;
+  /* `--octo-muted` is the defined, dark-aware token for secondary text (`.octo-theme`) and is what
+     the sibling `.octo-docs-help-dialog-intro` already uses. An invented `--octo-fg-secondary` is
+     defined nowhere, so its literal would always apply — unthemeable, and a second grey for one
+     semantic role inside one dialog. */
+  color: var(--octo-muted, #8a919e);
+}
+/* Idle state of the live region above. It must stay in the a11y tree (see the JSX comment) so it
+   cannot use `display: none` / `visibility: hidden` / the `hidden` attribute — all three remove it.
+   This is the standard sr-only clip: zero-area, clipped, no layout contribution, still rendered. */
+.octo-docs-help-manual-hint-idle {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.octo-docs-help-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2, 8px);
+}
+.octo-docs-help-dialog-title {
+  margin: 0;
+  font-size: var(--wk-text-size-xl, 16px);
+  font-weight: 600;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-help-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-8, 32px);
+  height: var(--wk-sp-8, 32px);
+  padding: 0;
+  border: none;
+  border-radius: var(--wk-r-sm, 6px);
+  background: transparent;
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.octo-docs-help-dialog-close:hover {
+  background: var(--octo-hover, #f2f3f5);
+  color: var(--octo-fg, #1f2329);
+}
+.octo-docs-help-dialog-intro {
+  margin: var(--wk-sp-2, 8px) 0 var(--wk-sp-3, 12px);
+  font-size: var(--wk-text-size-base, 13px);
+  color: var(--octo-muted, #8a919e);
+}
+.octo-docs-help-prompt {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--wk-text-size-sm, 12px);
+  line-height: 1.5;
+  color: var(--octo-fg, #1f2329);
+  background: var(--octo-hover, #f2f3f5);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: var(--wk-r-md, 8px);
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+}
+.octo-docs-help-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3, 12px);
+  margin-top: var(--wk-sp-3, 12px);
+}
+.octo-docs-help-copy {
+  border: none;
+  /* UI-SPEC §2: product primary is the deep black `#1C1C23` and Primary buttons are black-on-white
+     text — the legacy blue must NOT be used for a primary action. */
+  background: var(--wk-brand-primary, #1c1c23);
+  color: var(--wk-text-on-brand, #fff);
+  border-radius: var(--wk-r-full, 9999px);
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-4, 16px);
+  font-size: var(--wk-text-size-base, 13px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.octo-docs-help-copy:hover {
+  background: var(--wk-brand-primary-hover, #2a2a33);
+}
+/* Secondary/ghost link — neutral, not the legacy blue (UI-SPEC: blue is not a brand/action color;
+   purple is reserved for AI/Thread). */
+.octo-docs-help-reference {
+  font-size: var(--wk-text-size-base, 13px);
+  color: var(--octo-fg, #1f2329);
+  text-decoration: underline;
+}
+.octo-docs-help-reference:hover {
+  color: var(--wk-brand-primary, #1c1c23);
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
    Batch-3 schema toolbar items (SCHEMA_VERSION 5–13)
@@ -3738,18 +4080,20 @@ body.octo-row-resizing {
   pointer-events: none;
 }
 
-/* Responsive, 3 tiers (prototype v2):
-   ≥1024  — full labels everywhere (default).
-   768–1024 — the built-in secondary buttons collapse to their icons to reclaim width.
-   <1024  — the header may wrap and the toolbar scrolls horizontally rather than overflowing;
-            the prose column stays full-width and the title never collapses to zero width.
-   Back is never hidden. */
+/* On narrow standalone pages the title still truncates first, while the fixed action cluster stays
+   reachable through horizontal scrolling instead of being clipped by the full-window wrapper. */
 @media (max-width: 1024px) {
   .octo-doc-standalone .octo-doc-header {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
   }
   .octo-doc-standalone .octo-doc-title {
-    min-width: 8ch;
+    min-width: 0;
+  }
+  .octo-doc-standalone .octo-doc-header-right {
+    position: sticky;
+    right: 0;
+    background: var(--octo-bg, #fff);
   }
   .octo-doc-standalone .octo-toolbar {
     flex-wrap: nowrap;
@@ -3789,6 +4133,25 @@ body.octo-row-resizing {
 
 .octo-access-request-hint {
   color: var(--octo-muted, #86909c);
+  font-size: 13px;
+}
+
+.octo-access-request-bots {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-self: stretch;
+}
+
+.octo-access-request-bots-label {
+  color: var(--octo-muted);
+  font-size: 12px;
+}
+
+.octo-access-request-bot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 13px;
 }
 
@@ -3880,6 +4243,25 @@ body.octo-row-resizing {
   opacity: 0.6;
   cursor: default;
   background: var(--octo-accent, #3370ff);
+}
+
+/* Secondary escape hatch next to Retry when the owned-Bot set is unknown: subordinate to the primary
+   (one primary per action group) but still a real, focusable button. */
+.octo-access-request-self-only {
+  align-self: flex-start;
+  padding: 4px 8px;
+  font-size: 12px;
+  color: var(--octo-accent);
+  background: transparent;
+  border: none;
+}
+.octo-access-request-self-only:hover:not(:disabled) {
+  color: var(--octo-active-fg-hover);
+  text-decoration: underline;
+}
+.octo-access-request-self-only:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 /* Sheet toolbar: left-align the Univer ribbon toolbar (the icon row) instead of
@@ -4397,4 +4779,768 @@ div:has(> .octo-link-bubble) {
 }
 .octo-docs-bot-chat-status[data-state='failed'] {
   color: var(--wk-color-danger);
+}
+
+/* Document-home New menu — approved prototype treatment. Kept after legacy rules so the
+   split button and menu consistently use the shared brand/theme tokens. */
+.octo-docs-list-new {
+  min-height: 32px;
+  overflow: hidden;
+  padding: 0;
+  border-radius: var(--wk-r-full, 9999px);
+  background: var(--wk-brand-primary, #1c1c23);
+  color: var(--wk-text-inverse, #fff);
+  box-shadow: var(--wk-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.08));
+}
+.octo-docs-list-new:hover:not(:disabled) {
+  background: var(--wk-brand-primary-hover, #303039);
+}
+.octo-docs-new-primary,
+.octo-docs-new-caret {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.octo-docs-new-primary {
+  gap: 4px;
+  padding: 4px 8px 4px 12px;
+}
+.octo-docs-new-caret {
+  padding: 0 10px;
+  border-left: 1px solid var(--wk-white-alpha-40, rgba(255, 255, 255, 0.4));
+  font-size: 11px;
+}
+.octo-docs-new-primary:disabled,
+.octo-docs-new-caret:disabled {
+  cursor: default;
+}
+.octo-docs-new-menu-item {
+  gap: 0;
+  min-height: 36px;
+  padding: 6px 10px;
+  border-radius: var(--wk-r-md, 8px);
+  color: var(--wk-text-primary, #1f2329);
+}
+.octo-docs-new-menu-item:hover:not(:disabled) {
+  background: var(--wk-bg-hover, #dfe0e2);
+}
+.octo-docs-new-menu-item:disabled {
+  color: var(--wk-text-disabled, #c9cdd4);
+}
+
+/* ── Docs + Sheet semantic theme restoration ────────────────────────────────
+   Keep authored document/cell colours untouched. These rules only migrate application chrome
+   onto the host's semantic layer, including app-owned Sheet surfaces around Univer. */
+.octo-theme {
+  --octo-bg: var(--wk-bg-surface);
+  --octo-bg-2: var(--wk-bg-base);
+  --octo-surface: var(--wk-bg-surface);
+  --octo-fg: var(--wk-text-primary);
+  --octo-fg-2: var(--wk-text-secondary);
+  --octo-fg-3: var(--wk-text-tertiary);
+  --octo-muted: var(--wk-text-tertiary);
+  --octo-accent: var(--wk-brand-primary);
+  --octo-active-fg: var(--wk-brand-primary);
+  --octo-active-fg-hover: var(--wk-brand-primary-hover);
+  --octo-active-bg: var(--wk-bg-selected);
+  --octo-accent-weak: var(--wk-bg-selected);
+  --octo-border: var(--wk-border-default);
+  --octo-hover: var(--wk-bg-hover);
+  --octo-hover-bg: var(--wk-bg-hover);
+  --octo-modal-shadow: var(--wk-shadow-lg);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  font-family: var(--wk-font-sans);
+}
+
+/* Univer's standalone controls portal outside the themed root. Scope its palette only to known
+   Univer portal surfaces; never theme every ARIA dialog/tooltip on the page. */
+#octo-univer-portal,
+.octo-univer-color-dialog,
+[data-radix-popper-content-wrapper]:has([class*="univer-"]),
+[role="tooltip"][class*="univer-"] {
+  --univer-white: var(--wk-bg-surface);
+  --univer-black: var(--wk-text-primary);
+  --univer-gray-50: var(--wk-bg-base);
+  --univer-gray-100: var(--wk-bg-hover);
+  --univer-gray-200: var(--wk-border-subtle);
+  --univer-gray-300: var(--wk-border-default);
+  --univer-gray-400: var(--wk-icon-muted);
+  --univer-gray-500: var(--wk-text-tertiary);
+  --univer-gray-600: var(--wk-text-secondary);
+  --univer-gray-700: var(--wk-text-primary);
+  --univer-gray-800: var(--wk-bg-elevated);
+  --univer-gray-900: var(--wk-text-primary);
+  --univer-primary-50: var(--wk-brand-tint-03);
+  --univer-primary-100: var(--wk-brand-tint-04);
+  --univer-primary-200: var(--wk-brand-tint-08);
+  --univer-primary-300: var(--wk-brand-tint-12);
+  --univer-primary-500: var(--wk-brand-primary);
+  --univer-primary-600: var(--wk-brand-primary-hover);
+  --univer-primary-700: var(--wk-brand-primary);
+  --univer-primary-900: var(--wk-brand-primary);
+}
+.octo-univer-color-dialog {
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+/* Shell, header and scrolling body. */
+.octo-doc,
+.octo-doc-standalone,
+.octo-docs-split-right,
+.octo-doc-body {
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+}
+.octo-doc--editor {
+  padding: 0;
+  font-family: var(--wk-font-sans);
+}
+.octo-doc-header {
+  min-height: 56px;
+  padding: 12px 24px;
+  align-items: center;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+}
+.octo-doc-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  margin: 0;
+  overflow: hidden;
+  color: var(--wk-text-primary);
+  font: var(--wk-text-h2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-doc-title-input {
+  border-color: var(--wk-border-strong);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  box-shadow: 0 0 0 2px var(--wk-brand-primary-ring);
+}
+.octo-doc-back,
+.octo-doc-more-btn {
+  color: var(--wk-icon-default);
+}
+.octo-doc-title-editable:hover,
+.octo-doc-back:hover,
+.octo-doc-more-btn:hover,
+.octo-doc-more-btn.is-active {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+.octo-doc-scroll {
+  padding: 0 24px 24px;
+  scrollbar-color: var(--wk-border-strong) transparent;
+}
+
+/* Toolbar and editor chrome. */
+.octo-toolbar-wrap {
+  margin: 0 -24px;
+  padding: 0 24px 8px;
+  transform: none;
+  background: var(--wk-bg-surface);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  box-shadow: var(--wk-shadow-sm);
+}
+.octo-tb-tab {
+  color: var(--wk-text-secondary);
+  border-radius: var(--wk-r-full);
+}
+.octo-tb-tab:hover,
+.octo-tb-tab.is-active {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+.octo-toolbar {
+  border-top-color: var(--wk-border-subtle);
+  border-bottom: 0;
+  background: var(--wk-bg-surface);
+}
+.octo-tb-btn {
+  color: var(--wk-icon-default);
+  border-radius: var(--wk-r-full);
+}
+.octo-tb-btn:hover,
+.octo-color-caret-btn.is-active {
+  color: var(--wk-icon-hover);
+  background: var(--wk-bg-hover);
+}
+.octo-tb-btn.is-active {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-selected);
+  box-shadow: none;
+}
+.octo-tb-btn:focus-visible,
+.octo-tb-tab:focus-visible,
+.octo-doc-back:focus-visible,
+.octo-doc-more-btn:focus-visible {
+  outline: 2px solid var(--wk-brand-primary-ring);
+  outline-offset: 1px;
+}
+.octo-tb-sep { background: var(--wk-border-default); }
+.octo-editor-region { padding-top: 24px; }
+.octo-editor-main,
+.octo-prose .ProseMirror { color: var(--wk-text-primary); }
+.octo-drag-handle,
+.octo-insert-handle { color: var(--wk-icon-muted); }
+.octo-drag-handle:hover,
+.octo-insert-handle:hover {
+  color: var(--wk-icon-hover);
+  background: var(--wk-bg-hover);
+}
+
+/* Drawers, menus, dialogs and app-owned Sheet overlays. */
+.octo-doc-drawer {
+  background: var(--wk-bg-surface);
+  border-left-color: var(--wk-border-default);
+  box-shadow: var(--wk-shadow-lg);
+}
+.octo-color-popover,
+.octo-bubble-menu,
+.octo-floating-menu,
+.octo-link-bubble,
+.octo-doc-more-panel,
+.octo-docs-list-row-menu,
+.octo-slash-menu,
+.octo-suggest-menu,
+.octo-emoji-popover {
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-border-subtle);
+  box-shadow: var(--wk-shadow-lg);
+}
+.octo-doc-more-head,
+.octo-doc-more-sublist { background: var(--wk-bg-base); }
+.octo-doc-more-name,
+.octo-doc-more-item { color: var(--wk-text-primary); }
+.octo-doc-more-item:hover { background: var(--wk-bg-hover); }
+.octo-doc-more-sep { background: var(--wk-border-subtle); }
+.octo-modal-overlay,
+.octo-confirm-overlay { background: var(--wk-black-alpha-40); }
+.octo-modal,
+.octo-confirm-modal,
+.octo-modal-overlay .octo-version-confirm {
+  border-color: var(--wk-border-subtle);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  box-shadow: var(--wk-shadow-lg);
+}
+.octo-sheet-comment-composer {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-elevated);
+  border: 1px solid var(--wk-border-default);
+  box-shadow: var(--wk-shadow-lg);
+}
+.octo-sheet-terminal {
+  color: var(--wk-text-tertiary);
+  background: var(--wk-bg-surface);
+}
+
+/* Docs Home list. Ordinary tabs intentionally remain the current black 48px contract. */
+.octo-docs-list-only,
+.octo-docs-split {
+  --octo-active-fg: var(--wk-brand-primary);
+  --octo-active-fg-hover: var(--wk-brand-primary-hover);
+  --octo-active-bg: var(--wk-bg-selected);
+  background: var(--wk-bg-base);
+  color: var(--wk-text-primary);
+  font-family: var(--wk-font-sans);
+}
+.octo-docs-split-left {
+  background: var(--wk-bg-base);
+  border-right-color: var(--wk-border-default);
+}
+.octo-docs-list-header { border-bottom-color: var(--wk-border-subtle); }
+.octo-docs-list-title { color: var(--wk-text-primary); }
+.octo-docs-list-new {
+  background: var(--wk-brand-primary);
+  color: var(--wk-text-inverse);
+}
+.octo-docs-list-new:hover:not(:disabled) { background: var(--wk-brand-primary-hover); }
+.octo-docs-new-menu-item { color: var(--wk-text-primary); }
+.octo-docs-new-menu-item:hover:not(:disabled) { background: var(--wk-bg-hover); }
+.octo-docs-tabs {
+  height: 48px;
+  border-bottom-color: var(--wk-border-divider);
+}
+.octo-docs-tab {
+  height: 48px;
+  color: var(--wk-text-secondary);
+}
+.octo-docs-tab:hover,
+.octo-docs-tab-active { color: var(--wk-text-primary); }
+.octo-docs-tab-active {
+  border-bottom-color: var(--wk-brand-primary);
+  font-weight: 600;
+}
+.octo-docs-search,
+.octo-docs-filter-btn {
+  border-color: var(--wk-border-default);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+}
+.octo-docs-search:focus-within {
+  border-color: var(--wk-border-strong);
+  box-shadow: 0 0 0 2px var(--wk-brand-primary-ring);
+}
+.octo-docs-filter-btn-active,
+.octo-docs-filter-chip {
+  border-color: var(--wk-border-strong);
+  color: var(--wk-text-primary);
+  background: var(--wk-brand-tint-04);
+}
+.octo-docs-list-row { color: var(--wk-text-primary); }
+.octo-docs-list-row:hover { background: var(--wk-bg-hover); }
+.octo-docs-list-item-active > .octo-docs-list-row,
+.octo-docs-list-row[aria-current='true'] {
+  background: var(--wk-bg-selected);
+  border-left-color: transparent;
+}
+.octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-icon,
+.octo-docs-list-row[aria-current='true'] .octo-docs-list-row-icon,
+.octo-docs-list-item-active > .octo-docs-list-row .octo-docs-list-row-title,
+.octo-docs-list-row[aria-current='true'] .octo-docs-list-row-title {
+  color: var(--wk-text-primary);
+}
+.octo-docs-empty-cta {
+  border-color: var(--wk-border-strong);
+  color: var(--wk-text-primary);
+}
+.octo-docs-empty-cta:hover { background: var(--wk-bg-hover); }
+
+/* ── Sheet protection people-picker (ProtectionUserPart) ──────────────────────
+   Our replacement for Univer's empty stock "user part". Styled with the octo black ramp rather
+   than Univer's utility classes, so it does not depend on their internal class names surviving a
+   version bump. Lives in the 保护行列 side panel, which is narrow — hence the compact rows. */
+.octo-prot-user {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #1c1c23;
+}
+.octo-prot-label {
+  margin-top: 6px;
+  font-weight: 600;
+  color: #1c1c23;
+}
+.octo-prot-radio,
+.octo-prot-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  line-height: 22px;
+}
+.octo-prot-radio input,
+.octo-prot-member input {
+  /* Black controls, not the browser/Univer blue — see the primary-ramp note above. */
+  accent-color: #1c1c23;
+  cursor: pointer;
+}
+.octo-prot-radio input:disabled,
+.octo-prot-member input:disabled {
+  cursor: not-allowed;
+}
+/* Bounded so a large doc roster scrolls inside the panel instead of pushing the
+   查看权限 radios out of reach. */
+.octo-prot-members {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 4px 0 4px 4px;
+  border: 1px solid rgba(28, 28, 35, 0.08);
+  border-radius: 4px;
+}
+.octo-prot-member-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.octo-prot-empty {
+  padding: 8px 4px;
+  color: rgba(28, 28, 35, 0.5);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Usage guide (使用指导) — labelled header button + centred modal.
+   Shared by all four editor shells (doc / sheet / board / html). The trigger is labelled like its
+   siblings (评论 / 转发到聊天 / 成员) rather than a bare glyph, and the panel is a CENTRED MODAL
+   matching .octo-docs-help-dialog (the "?" onboarding dialog) so the two help surfaces read as one
+   system. Colours use the docs `--octo-*` tokens WITH literal fallbacks (they are only defined under
+   `.octo-theme`, and these shells render outside it); spacing / radius / type come from the shared
+   `--wk-*` scale with px fallbacks so the standalone harness renders too.
+   ───────────────────────────────────────────────────────────────────────── */
+.octo-doc-guide-btn {
+  display: inline-flex;
+  align-items: center;
+  /* UI-SPEC §: icon precedes the label with an 8px gap. */
+  gap: var(--wk-sp-2, 8px);
+}
+.octo-doc-guide-glyph {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.octo-doc-guide-overlay {
+  position: fixed;
+  inset: 0;
+  /* Portaled to <body> (see DocGuide.tsx) so `inset` / z-index are not scoped by an ancestor's
+     layout containment. Hard 1350 — above this package's own layers (.octo-modal-overlay 1200,
+     .octo-confirm-overlay 1300) and deliberately NOT `--wk-z-modal`, which is 200 in the host. */
+  z-index: 1350;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  padding: var(--wk-sp-4, 16px);
+}
+/* Centred modal card — mirrors .octo-docs-help-dialog so both help surfaces look identical. */
+.octo-doc-guide-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 640px;
+  max-height: 82vh;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 12px;
+  box-shadow: var(--octo-modal-shadow, 0 12px 48px rgba(0, 0, 0, 0.24));
+  overflow: hidden;
+}
+.octo-doc-guide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2, 8px);
+  padding: var(--wk-sp-4, 16px) var(--wk-sp-5, 20px);
+  border-bottom: 1px solid var(--octo-border, #e5e6eb);
+  flex: 0 0 auto;
+}
+.octo-doc-guide-title {
+  margin: 0;
+  font-size: var(--wk-text-size-xl, 16px);
+  font-weight: 600;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-doc-guide-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--wk-sp-8, 32px);
+  height: var(--wk-sp-8, 32px);
+  padding: 0;
+  border: none;
+  border-radius: var(--wk-r-sm, 6px);
+  background: transparent;
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  flex: none;
+}
+.octo-doc-guide-close:hover {
+  background: var(--octo-hover, #f2f3f5);
+  color: var(--octo-fg, #1f2329);
+}
+.octo-doc-guide-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--wk-sp-5, 20px);
+}
+.octo-doc-guide-section + .octo-doc-guide-section {
+  margin-top: var(--wk-sp-5, 20px);
+  padding-top: var(--wk-sp-5, 20px);
+  border-top: 1px solid var(--octo-border, #e5e6eb);
+}
+.octo-doc-guide-section h3 {
+  margin: 0 0 var(--wk-sp-2, 8px);
+  font-size: var(--wk-text-size-md, 14px);
+  font-weight: 600;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-doc-guide-section p {
+  margin: 0 0 var(--wk-sp-2, 8px);
+  font-size: var(--wk-text-size-base, 13px);
+  line-height: 1.6;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-doc-guide-code {
+  margin: 0;
+  padding: var(--wk-sp-3, 12px);
+  /* Wrap instead of scrolling sideways: a long `--data '{...}'` line was clipped mid-JSON, so the
+     command the panel exists to teach could not be read. `pre-wrap` + break-word keeps every
+     character visible at any panel width; the 2ch hanging indent keeps a wrapped continuation
+     visually subordinate to the command that owns it. */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  padding-left: calc(var(--wk-sp-3, 12px) + 2ch);
+  text-indent: -2ch;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--wk-text-size-sm, 12px);
+  line-height: 1.6;
+  color: var(--octo-fg, #1f2329);
+  background: var(--octo-hover, #f2f3f5);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: var(--wk-r-md, 8px);
+}
+.octo-doc-guide-list {
+  margin: 0;
+  padding-left: var(--wk-sp-4, 16px);
+}
+.octo-doc-guide-list li {
+  margin: 0 0 var(--wk-sp-2, 8px);
+  font-size: var(--wk-text-size-base, 13px);
+  line-height: 1.6;
+  color: var(--octo-fg, #1f2329);
+}
+/* The "which skill file applies to THIS surface" line — the panel's single emphasised takeaway.
+   Scoped under .octo-doc-guide-section so it reaches 0,2,0 + the element and beats the
+   `.octo-doc-guide-section p` margin above WITHOUT `!important` (DEVELOPMENT.md §13). */
+.octo-doc-guide-section p.octo-doc-guide-callout {
+  margin: var(--wk-sp-2, 8px) 0;
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+  border-left: 3px solid var(--wk-brand-primary, #1c1c23);
+  background: var(--octo-hover, #f2f3f5);
+  border-radius: var(--wk-r-sm, 6px);
+  font-weight: 600;
+}
+
+/* Guide modal footer: secondary copy + primary forward, mirroring the "new HTML" modal footer. */
+.octo-doc-guide-footer {
+  flex: 0 0 auto;
+  padding: var(--wk-sp-3, 12px) var(--wk-sp-5, 20px) var(--wk-sp-4, 16px);
+  border-top: 1px solid var(--octo-border, #e5e6eb);
+}
+.octo-doc-guide-footer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2, 8px);
+}
+/* Primary action — brand black per UI-SPEC (one Primary per action group), never the legacy blue.
+   `.octo-tb-btn` is declared twice in this file (:339 and the later semantic-theme block), so a
+   bare single-class rule loses. Nesting under the footer-actions row lifts this to 0,2,0 and wins
+   on specificity instead of `!important` (DEVELOPMENT.md §13). */
+.octo-doc-guide-footer-actions .octo-doc-guide-forward {
+  background: var(--wk-brand-primary, #1c1c23);
+  border-color: var(--wk-brand-primary, #1c1c23);
+  color: var(--wk-text-on-brand, #fff);
+  font-weight: 600;
+}
+.octo-doc-guide-footer-actions .octo-doc-guide-forward:hover {
+  background: var(--wk-brand-primary-hover, #2a2a33);
+}
+.octo-doc-guide-footer p.octo-doc-guide-footer-hint {
+  margin: var(--wk-sp-2, 8px) 0 0;
+  font-size: var(--wk-text-size-sm, 12px);
+  color: var(--octo-muted, #8a919e);
+  text-align: right;
+}
+
+/* Bot picker modal — mirrors the host "forward to chat" dialog: titled header, search, rows with
+   avatar + name + AI tag, Cancel/Confirm footer. Replaces an earlier row of bare text buttons. */
+.octo-doc-guide-picker-overlay {
+  position: fixed;
+  inset: 0;
+  /* Above the guide modal (1350) — it is opened FROM it. */
+  z-index: 1360;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.4);
+  padding: var(--wk-sp-4, 16px);
+}
+.octo-doc-guide-picker {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 420px;
+  max-height: 70vh;
+  background: var(--octo-bg, #fff);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 12px;
+  box-shadow: var(--octo-modal-shadow, 0 12px 48px rgba(0, 0, 0, 0.24));
+  overflow: hidden;
+}
+.octo-doc-guide-picker-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--wk-sp-3, 12px) var(--wk-sp-4, 16px);
+  border-bottom: 1px solid var(--octo-border, #e5e6eb);
+}
+.octo-doc-guide-picker-title {
+  margin: 0;
+  font-size: var(--wk-text-size-md, 14px);
+  font-weight: 600;
+  color: var(--octo-fg, #1f2329);
+}
+.octo-doc-guide-picker-search {
+  padding: var(--wk-sp-3, 12px) var(--wk-sp-4, 16px) var(--wk-sp-2, 8px);
+}
+.octo-doc-guide-picker-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 var(--wk-sp-3, 12px);
+  /* Search inputs are fully rounded per UI-SPEC. */
+  border-radius: var(--wk-r-full, 9999px);
+  border: 1px solid var(--octo-border, #e5e6eb);
+  background: var(--octo-hover, #f2f3f5);
+  color: var(--octo-fg, #1f2329);
+  font-size: var(--wk-text-size-base, 13px);
+}
+.octo-doc-guide-picker-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px) var(--wk-sp-2, 8px);
+}
+.octo-doc-guide-picker-row {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2, 8px);
+  width: 100%;
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-2, 8px);
+  border: none;
+  border-radius: var(--wk-r-md, 8px);
+  background: transparent;
+  color: var(--octo-fg, #1f2329);
+  font-size: var(--wk-text-size-base, 13px);
+  text-align: left;
+  cursor: pointer;
+}
+.octo-doc-guide-picker-row:hover {
+  background: var(--octo-hover, #f2f3f5);
+}
+.octo-doc-guide-picker-row.is-selected {
+  background: var(--octo-hover, #f2f3f5);
+  box-shadow: inset 0 0 0 1px var(--wk-brand-primary, #1c1c23);
+}
+.octo-doc-guide-picker-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--wk-brand-primary, #1c1c23);
+  color: var(--wk-text-on-brand, #fff);
+  font-size: var(--wk-text-size-sm, 12px);
+  font-weight: 600;
+}
+.octo-doc-guide-picker-name {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.octo-doc-guide-picker-tag {
+  flex: none;
+  padding: 1px var(--wk-sp-1, 4px);
+  border-radius: var(--wk-r-xs, 3px);
+  background: var(--octo-hover, #f2f3f5);
+  color: var(--octo-muted, #8a919e);
+  font-size: var(--wk-text-size-tiny, 10px);
+  font-weight: 600;
+}
+.octo-doc-guide-picker p.octo-doc-guide-picker-empty {
+  margin: var(--wk-sp-4, 16px) 0;
+  text-align: center;
+  font-size: var(--wk-text-size-base, 13px);
+  color: var(--octo-muted, #8a919e);
+}
+.octo-doc-guide-picker-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2, 8px);
+  padding: var(--wk-sp-3, 12px) var(--wk-sp-4, 16px);
+  border-top: 1px solid var(--octo-border, #e5e6eb);
+}
+.octo-doc-guide-forward:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Send outcome, shown in the footer area instead of a composer. */
+.octo-doc-guide-dialog p.octo-doc-guide-sendstatus {
+  margin: 0 var(--wk-sp-5, 20px) var(--wk-sp-2, 8px);
+  padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+  border-radius: var(--wk-r-md, 8px);
+  background: var(--octo-hover, #f2f3f5);
+  font-size: var(--wk-text-size-base, 13px);
+  color: var(--octo-fg, #1f2329);
+}
+.octo-doc-guide-sendstatus[data-state='failed'] {
+  color: #eb5757;
+}
+
+/* "This document" block: the identifying fields (docId / title / kind / space) the forwarded prompt
+   embeds, shown so the user can read them off the panel too. */
+.octo-doc-guide-meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--wk-sp-1, 4px) var(--wk-sp-3, 12px);
+  margin: 0 0 var(--wk-sp-2, 8px);
+  font-size: var(--wk-text-size-base, 13px);
+}
+.octo-doc-guide-meta dt {
+  color: var(--octo-muted, #8a919e);
+}
+.octo-doc-guide-meta dd {
+  margin: 0;
+  color: var(--octo-fg, #1f2329);
+  overflow-wrap: anywhere;
+}
+.octo-doc-guide-meta code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--wk-text-size-sm, 12px);
+}
+
+/* Per-section copy: each block of the guide is independently useful (just the install commands, just
+   this document's ids…), so its heading carries its own copy button instead of forcing an
+   all-or-nothing copy of the whole prompt. */
+.octo-doc-guide-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2, 8px);
+}
+.octo-doc-guide-section-head h3 {
+  margin: 0 0 var(--wk-sp-2, 8px);
+}
+.octo-doc-guide-section-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--wk-sp-6, 24px);
+  height: var(--wk-sp-6, 24px);
+  margin-bottom: var(--wk-sp-2, 8px);
+  padding: 0;
+  border: none;
+  border-radius: var(--wk-r-sm, 6px);
+  background: transparent;
+  /* Muted until hover: six of these must not compete with the section titles for attention. */
+  color: var(--octo-muted, #8a919e);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.octo-doc-guide-section-copy:hover {
+  background: var(--octo-hover, #f2f3f5);
+  color: var(--octo-fg, #1f2329);
 }

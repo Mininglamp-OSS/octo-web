@@ -1,3 +1,5 @@
+import { createElement } from 'react'
+
 // Test stub for `@octo/base`, wired via the vitest alias in vitest.config.ts.
 //
 // Importing the real `@octo/base` would pull the whole app (WKSDK, semi-ui, the full
@@ -9,7 +11,11 @@
 // buildDocLink is a pure, dependency-free util (only reads window.location.origin), so the stub
 // re-exports the REAL implementation from base — docs tests exercise the same canonical builder as
 // production rather than a divergent copy.
-export { buildDocLink, type DocLinkTarget } from '../../../dmworkbase/src/Utils/docLink.ts'
+export {
+  buildDocLink,
+  type DocLinkTarget,
+} from "../../../dmworkbase/src/Utils/docLink.ts";
+export { titleContextStore } from "../../../dmworkbase/src/features/documentTitle";
 
 export const WKApp = {
   shared: {
@@ -49,6 +55,28 @@ export function t(key: string) {
 // useI18n stub: mirrors the I18nProvider context shape the real hook returns.
 export function useI18n() {
   return { t: (key: string) => key, locale: 'en-US' as const }
+}
+
+export const OctoToast = {
+  success: () => undefined,
+  error: () => undefined,
+  warning: () => undefined,
+}
+
+export function AiBadge({
+  size = 'default',
+  className,
+  children = 'AI',
+}: {
+  size?: 'default' | 'small'
+  className?: string
+  children?: React.ReactNode
+}) {
+  return createElement(
+    'span',
+    { className: `ai-badge ai-badge-${size}${className ? ` ${className}` : ''}` },
+    children,
+  )
 }
 
 // NavRail menu entry stub mirroring packages/dmworkbase/src/Service/Menus.ts. DocsModule
@@ -133,3 +161,30 @@ export function Conversation() {
 }
 
 export const MAX_MESSAGE_LENGTH = 5000
+
+/**
+ * `forwardPlainText` stub. Tests assert the CALL (channels + text + spaceId) rather than a real
+ * send; `forwardPlainTextCalls` records each invocation so a case can check what would have gone
+ * out. Resolves to an all-delivered result by default; a test may push a rejection via
+ * `forwardPlainTextImpl`.
+ */
+export const forwardPlainTextCalls: Array<{
+  channels: Array<{ channelID: string; channelType: number }>
+  text: string
+  opts?: { spaceId?: string | null }
+}> = []
+export let forwardPlainTextImpl:
+  | ((text: string) => Promise<{ targets: number; failedTargets: number }>)
+  | null = null
+export function setForwardPlainTextImpl(fn: typeof forwardPlainTextImpl) {
+  forwardPlainTextImpl = fn
+}
+export async function forwardPlainText(
+  channels: Array<{ channelID: string; channelType: number }>,
+  text: string,
+  opts?: { spaceId?: string | null },
+) {
+  forwardPlainTextCalls.push({ channels, text, opts })
+  if (forwardPlainTextImpl) return forwardPlainTextImpl(text)
+  return { targets: channels.length, failedTargets: 0, messageAttempts: channels.length, failedMessages: 0 }
+}

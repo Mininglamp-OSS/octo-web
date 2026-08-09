@@ -7,6 +7,7 @@ import {
   forgetBoard,
   isBoardIdLocally,
   isBoardDoc,
+  hasSavedBoardViewport,
 } from './boardStore.ts'
 
 describe('boardStore — scene persistence', () => {
@@ -38,6 +39,18 @@ describe('boardStore — scene persistence', () => {
     expect(loaded?.appState).toEqual({ viewBackgroundColor: '#ffffff' })
     expect(loaded?.appState).not.toHaveProperty('collaborators')
     expect(loaded?.appState).not.toHaveProperty('selectedElementIds')
+  })
+
+  it('round-trips a complete viewport and only treats complete finite zoom/scroll as saved', () => {
+    persistBoardScene('viewport', {
+      elements: [],
+      appState: { zoom: { value: 1.1 }, scrollX: 25, scrollY: -40 },
+    })
+    const appState = loadBoardScene('viewport')?.appState
+    expect(appState).toEqual({ zoom: { value: 1.1 }, scrollX: 25, scrollY: -40 })
+    expect(hasSavedBoardViewport(appState)).toBe(true)
+    expect(hasSavedBoardViewport({ zoom: { value: 1.1 }, scrollX: 25 })).toBe(false)
+    expect(hasSavedBoardViewport({ zoom: { value: Number.NaN }, scrollX: 25, scrollY: -40 })).toBe(false)
   })
 
   it('returns null for an absent or malformed scene', () => {

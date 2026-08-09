@@ -6,12 +6,12 @@
 // under SSR, so it is loaded with the same client-only dynamic `import()` BoardShell uses; the chunk
 // is shared with the live board, so opening a preview after the board has mounted costs nothing.
 //
-// The canvas is `viewModeEnabled` (no editing affordances) and its hamburger is the same de-branded
-// BoardMainMenu the live board uses, so the preview never leaks upstream Excalidraw branding.
+// The canvas is `viewModeEnabled` (no editing affordances). It deliberately does not compose the
+// live board's host menu: save/export/clear/theme actions are not meaningful in an ephemeral
+// historical preview, and a hidden/unreachable hamburger is a misleading affordance.
 
-import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ComponentType, type ReactElement } from 'react'
 import { i18n, t } from '../octoweb/index.ts'
-import { BoardMainMenu, type ExcalidrawMainMenu } from './BoardMainMenu.tsx'
 import { normalizeFileRef, sanitizeFractionalIndices, type BinaryFileData, type FileFetchRef } from './collab/index.ts'
 import { fetchBoardFileBinaries } from './boardFiles.ts'
 import type { BoardVersionScene } from './boardVersions.ts'
@@ -24,7 +24,6 @@ interface ExcalidrawPreviewProps {
   viewModeEnabled?: boolean
   theme?: 'light' | 'dark'
   langCode?: string
-  children?: ReactNode
 }
 type ExcalidrawComponent = ComponentType<ExcalidrawPreviewProps>
 type RestoreElementsFn = (elements: readonly unknown[] | null | undefined, local: unknown) => unknown[]
@@ -36,7 +35,6 @@ function toExcalidrawLang(locale: string): string {
 
 export function BoardScenePreview({ scene, dark, docId }: { scene: BoardVersionScene; dark?: boolean; docId: string }): ReactElement {
   const [Excalidraw, setExcalidraw] = useState<ExcalidrawComponent | null>(null)
-  const [MainMenu, setMainMenu] = useState<ExcalidrawMainMenu | null>(null)
   const [failed, setFailed] = useState(false)
   const restoreElementsRef = useRef<RestoreElementsFn | null>(null)
 
@@ -47,7 +45,6 @@ export function BoardScenePreview({ scene, dark, docId }: { scene: BoardVersionS
         if (!active) return
         const m = mod as unknown as { restoreElements?: RestoreElementsFn }
         restoreElementsRef.current = m.restoreElements ?? null
-        setMainMenu(() => mod.MainMenu as unknown as ExcalidrawMainMenu)
         setExcalidraw(() => mod.Excalidraw as unknown as ExcalidrawComponent)
       })
       .catch((err) => {
@@ -143,9 +140,7 @@ export function BoardScenePreview({ scene, dark, docId }: { scene: BoardVersionS
         viewModeEnabled
         theme={dark ? 'dark' : 'light'}
         langCode={langCode}
-      >
-        {MainMenu && <BoardMainMenu MainMenu={MainMenu} />}
-      </Excalidraw>
+      />
     </div>
   )
 }

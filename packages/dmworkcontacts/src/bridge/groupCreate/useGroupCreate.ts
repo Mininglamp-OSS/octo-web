@@ -56,11 +56,18 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
   const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
   const [isSubmitting, setSubmitting] = useState(false);
   const loadSequence = useRef(0);
+  const candidatesRef = useRef<GroupCreateCandidateContact[]>([]);
   const searchIndex = useRef(createEmptyGroupCreateSearchIndex());
+
+  const resetSearch = useCallback(() => {
+    setKeyword("");
+    setVisibleCandidates(candidatesRef.current);
+  }, []);
 
   useEffect(() => {
     if (!options.isOpen) {
       setSelected([]);
+      resetSearch();
       setGroupName("");
       setAvatarText("");
       setAvatarColorIndex(undefined);
@@ -69,6 +76,8 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
     }
 
     const sequence = ++loadSequence.current;
+    setSelected([]);
+    resetSearch();
     setGroupName("");
     setAvatarText("");
     setAvatarColorIndex(undefined);
@@ -77,6 +86,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
     void loadGroupCreateCandidates({ channel: options.channel }).then(
       (next) => {
         if (loadSequence.current === sequence) {
+          candidatesRef.current = next;
           searchIndex.current = buildGroupCreateSearchIndex(next);
           setCandidates(next);
           setVisibleCandidates(next);
@@ -87,7 +97,12 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
     return () => {
       loadSequence.current += 1;
     };
-  }, [options.channel.channelID, options.channel.channelType, options.isOpen]);
+  }, [
+    options.channel.channelID,
+    options.channel.channelType,
+    options.isOpen,
+    resetSearch,
+  ]);
 
   const selectedUidSet = useMemo(
     () => new Set(selected.map((member) => member.uid)),

@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
 import { InvitePanel } from './InvitePanel.tsx'
+import type { Role } from '../auth/roles.ts'
 
 let api: MockApiClient
 
@@ -86,8 +87,81 @@ describe('InvitePanel — allowedRoles narrows the role selector (OCT-195)', () 
     render(<InvitePanel docId="d_1" role="admin" />)
     await waitFor(() => {
       const opts = Array.from(document.querySelectorAll('select option')) as HTMLOptionElement[]
-      const roleOpts = opts.filter((o) => ['reader', 'writer', 'admin'].includes(o.value))
-      expect(roleOpts.map((o) => o.value).sort()).toEqual(['admin', 'reader', 'writer'])
+      const roleOpts = opts.filter((o) => ['reader', 'commenter', 'writer', 'admin'].includes(o.value))
+      expect(roleOpts.map((o) => o.value).sort()).toEqual(['admin', 'commenter', 'reader', 'writer'])
     })
+  })
+
+  it('uses a scoped reader default while preserving the caller role options', async () => {
+    api.responder = () => ({ data: { items: [] }, status: 200 })
+    render(<InvitePanel docId="d_1" role="admin" allowedRoles={['reader', 'commenter', 'writer']} defaultRole="reader" />)
+    await waitFor(() => expect((document.querySelector('select') as HTMLSelectElement).value).toBe('reader'))
+  })
+
+  it('reconciles writer to reader-only and never submits the stale role', async () => {
+    const posts: unknown[] = []
+    api.responder = (method, _url, body) => {
+      if (method === 'post') posts.push(body)
+      return method === 'get'
+        ? { data: { items: [] }, status: 200 }
+        : { data: { inviteToken: 't1', role: 'reader' }, status: 200 }
+    }
+    const { rerender } = render(<InvitePanel docId="d_1" role="admin" allowedRoles={['reader', 'writer']} />)
+    await waitFor(() => expect((document.querySelector('select') as HTMLSelectElement).value).toBe('writer'))
+    rerender(<InvitePanel docId="d_1" role="admin" allowedRoles={['reader']} />)
+    expect((document.querySelector('select') as HTMLSelectElement).value).toBe('reader')
+    fireEvent.click(document.querySelector('.octo-invite-generate') as HTMLButtonElement)
+    await waitFor(() => expect(posts).toContainEqual({ role: 'reader', expiresInDays: 3 }))
+  })
+
+  it('uses a changed valid default, then the first role for an invalid default', async () => {
+    api.responder = () => ({ data: { items: [] }, status: 200 })
+    const { rerender } = render(<InvitePanel docId="d_1" role="admin" allowedRoles={['writer']} />)
+    await waitFor(() => expect((document.querySelector('select') as HTMLSelectElement).value).toBe('writer'))
+    rerender(<InvitePanel docId="d_1" role="admin" allowedRoles={['reader', 'commenter']} defaultRole="commenter" />)
+    expect((document.querySelector('select') as HTMLSelectElement).value).toBe('commenter')
+    rerender(<InvitePanel docId="d_1" role="admin" allowedRoles={['reader']} defaultRole="admin" />)
+    expect((document.querySelector('select') as HTMLSelectElement).value).toBe('reader')
+  })
+
+  it('follows a changed valid default even when the current role remains allowed', async () => {
+    const posts: unknown[] = []
+    api.responder = (method, _url, body) => {
+      if (method === 'post') posts.push(body)
+      return method === 'get'
+        ? { data: { items: [] }, status: 200 }
+        : { data: { inviteToken: 't1', role: 'commenter' }, status: 200 }
+    }
+    const props = {
+      docId: 'd_1',
+      role: 'admin' as Role,
+      allowedRoles: ['reader', 'commenter'] as Role[],
+    }
+    const { rerender } = render(<InvitePanel {...props} defaultRole="reader" />)
+    await waitFor(() => expect((document.querySelector('select') as HTMLSelectElement).value).toBe('reader'))
+
+    rerender(<InvitePanel {...props} defaultRole="commenter" />)
+
+    expect((document.querySelector('select') as HTMLSelectElement).value).toBe('commenter')
+    fireEvent.click(document.querySelector('.octo-invite-generate') as HTMLButtonElement)
+    await waitFor(() => expect(posts).toContainEqual({ role: 'commenter', expiresInDays: 3 }))
+  })
+
+  it('preserves a user-selected allowed role when the default is unchanged', async () => {
+    api.responder = () => ({ data: { items: [] }, status: 200 })
+    const props = {
+      docId: 'd_1',
+      role: 'admin' as Role,
+      allowedRoles: ['reader', 'commenter'] as Role[],
+      defaultRole: 'reader' as Role,
+    }
+    const { rerender } = render(<InvitePanel {...props} />)
+    const select = document.querySelector('select') as HTMLSelectElement
+    await waitFor(() => expect(select.value).toBe('reader'))
+    fireEvent.change(select, { target: { value: 'commenter' } })
+
+    rerender(<InvitePanel {...props} allowedRoles={[...props.allowedRoles]} />)
+
+    expect(select.value).toBe('commenter')
   })
 })

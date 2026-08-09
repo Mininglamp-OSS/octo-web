@@ -28,7 +28,8 @@ export interface Thread {
   group_name?: string
   last_message_at?: string
   // 当前用户子区免打扰状态，仅 GetThread 填充（tri-state）：
-  // null/undefined = 未设置，前端应继承父群组 mute；0 = 显式不静音；1 = 显式静音
+  // null/undefined = 未设置，前端应继承父群组 mute；
+  // 0 = 子区自身不静音（不能覆盖父群组静音）；1 = 子区自身静音
   mute?: number | null
 }
 
@@ -70,10 +71,10 @@ export function buildThreadStub(shortId: string, groupNo: string, channelId: str
 }
 
 /**
- * 计算「有效勿扰」状态。子区采用 tri-state，覆盖优先于继承：
- *   - channelInfo.orgData.thread.mute === 1 → 显式静音（覆盖父群组）
- *   - channelInfo.orgData.thread.mute === 0 → 显式不静音（覆盖父群组）
- *   - channelInfo.orgData.thread.mute null/undefined → 继承父群组 mute
+ * 计算「有效勿扰」状态。父群组静音优先于子区自身设置：
+ *   - parentChannelInfo.mute 为真 → 子区始终静音
+ *   - 父群组未静音且 channelInfo.orgData.thread.mute === 1 → 子区静音
+ *   - 父群组未静音且 channelInfo.orgData.thread.mute 为 0/null/undefined → 子区不静音
  * 非子区：直接看 channelInfo.mute。
  *
  * 角标 / 列表 / 分组未读 这三处必须共用同一份逻辑，否则 badge 和列表渲染会错位
@@ -87,6 +88,5 @@ export function isEffectivelyMuted(args: {
   const { isThread, channelInfo, parentChannelInfo } = args
   if (!isThread) return !!channelInfo?.mute
   const raw = channelInfo?.orgData?.thread?.mute as number | null | undefined
-  if (raw != null) return raw === 1
-  return !!parentChannelInfo?.mute
+  return !!parentChannelInfo?.mute || raw === 1
 }

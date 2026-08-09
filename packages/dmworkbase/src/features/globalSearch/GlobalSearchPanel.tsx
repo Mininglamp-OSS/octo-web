@@ -9,7 +9,10 @@ import TabGroup from "../../Components/GlobalSearch/tab-group";
 import TabFile from "../../Components/GlobalSearch/tab-file";
 import { Channel } from "wukongimjssdk";
 import GlobalContentSearchPanel from "../../Components/GlobalSearch/GlobalContentSearchPanel";
-import GlobalSearchFilterPanel from "../../Components/GlobalSearch/GlobalSearchFilterPanel";
+import DocSearchPanel from "../../Components/GlobalSearch/DocSearchPanel";
+import GlobalSearchFilterPanel, {
+  type GlobalSearchFilterApplyMeta,
+} from "../../Components/GlobalSearch/GlobalSearchFilterPanel";
 import GlobalChatSearchPanel from "../globalChatSearch/GlobalChatSearchPanel";
 import { createGlobalSearchApiDataSource } from "../../bridge/globalSearch/createGlobalSearchDataSource";
 import { selectedGlobalSearchFilterValueCount } from "../../bridge/globalSearch/filterState";
@@ -19,7 +22,10 @@ import {
   type GlobalSearchDataSource,
   type GlobalSearchFilters,
 } from "../../Service/SearchTypes";
-import type { ChannelSearchItem } from "../../Service/SearchTypes";
+import type {
+  ChannelSearchItem,
+  DocSearchItem,
+} from "../../Service/SearchTypes";
 import { canLocateChannelSearchItem } from "../../bridge/channelSearch/locate";
 import WKApp from "../../App";
 import { t as translate } from "../../i18n";
@@ -46,12 +52,17 @@ export interface GlobalSearchProps {
   dataSource?: GlobalSearchDataSource;
   contentSearchEnabled?: boolean;
   onLocateContentItem?: (item: ChannelSearchItem) => void;
+  // Host-provided opener for a cloud-docs search hit (docs tab). Route/endpoint
+  // is a deployment concern; when omitted the docs tab still searches but the
+  // click is a no-op (see handleOpenDoc).
+  onOpenDoc?: (item: DocSearchItem) => void;
   initialState?: Partial<GlobalSearchState>;
 }
 
 export interface GlobalSearchState {
   filterOpen: boolean;
   filters: GlobalSearchFilters;
+  fileTypeCategoryKeys: string[];
   searchValue: string;
 }
 
@@ -73,6 +84,7 @@ export default class GlobalSearch extends Component<
     this.state = {
       filterOpen: false,
       filters: defaultGlobalSearchFilters(),
+      fileTypeCategoryKeys: [],
       searchValue: "",
       ...props.initialState,
     };
@@ -111,6 +123,39 @@ export default class GlobalSearch extends Component<
     this._removeConfigListener = undefined;
   }
 
+  private handleApplyFilters = (
+    filters: GlobalSearchFilters,
+    meta?: GlobalSearchFilterApplyMeta
+  ) => {
+    this.setState((prev) => ({
+      filters,
+      fileTypeCategoryKeys:
+        meta?.fileTypeCategoryKeys ??
+        (filters.fileExts.length > 0 ? prev.fileTypeCategoryKeys : []),
+    }));
+  };
+
+  private handleTabChange = (key: string) => {
+    const currentKey = this.vm.selectedTabKey;
+    const contentTabInvolved =
+      currentKey !== key &&
+      (currentKey === "messages" ||
+        currentKey === "files" ||
+        key === "messages" ||
+        key === "files");
+    if (!contentTabInvolved) {
+      this.vm.onTabClick(key);
+      return;
+    }
+    this.setState(
+      {
+        filters: defaultGlobalSearchFilters(),
+        fileTypeCategoryKeys: [],
+      },
+      () => this.vm.onTabClick(key)
+    );
+  };
+
   handleLocate = (item: ChannelSearchItem) => {
     // Guard: backend v10 always fills channel_id/channel_type on hits
     // (§9); if either is missing we can't build a Channel — no-op rather
@@ -141,6 +186,25 @@ export default class GlobalSearch extends Component<
       console.warn("[GlobalSearch] showConversation failed", err);
     }
     this.props.hideModal?.();
+  };
+
+  // Cloud-docs tab: open the clicked doc via the host `onOpenDoc`, which the Chat
+  // host wires to buildDocLink -> window.open in a new browser tab. We keep this
+  // search modal open (the current page is untouched) so the user can open more
+  // results in a row. When the prop is unwired (future reuse) this is a no-op
+  // plus a dev-only console hint rather than a bogus navigation.
+  handleOpenDoc = (item: DocSearchItem) => {
+    if (this.props.onOpenDoc) {
+      this.props.onOpenDoc(item);
+      return;
+    }
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[GlobalSearch] onOpenDoc not wired; cannot open cloud doc",
+        item.docId
+      );
+    }
   };
 
   // 同时挂载所有 tab 组件，通过 display 切换可见性。
@@ -243,6 +307,25 @@ export default class GlobalSearch extends Component<
             />
           )}
         </div>
+        <div className="wk-search-tabs__panel" style={panelStyle("docs")}>
+          <DocSearchPanel
+            keyword={vm.keyword}
+            dataSource={this.globalDataSource}
+            // Gate the panel on docsOn && docsSearchOn as well as the selected
+            // tab: the tab LIST is gated in GlobalSearchVM, but selectedTabKey
+            // can stay "docs" if either flag is revoked mid-session (remote-config
+            // refresh). Without this the tab button disappears while the panel
+            // keeps querying a now-disabled feature. remoteConfig is an
+            // always-fresh singleton and the config listener force-updates
+            // this component, so the panel deactivates on the same refresh.
+            isActive={
+              currentKey === "docs" &&
+              WKApp.remoteConfig.docsOn &&
+              WKApp.remoteConfig.docsSearchOn
+            }
+            onOpenDoc={this.handleOpenDoc}
+          />
+        </div>
         {showSharedFilter && (
           <aside className="wk-search-tabs__shared-filter">
             <GlobalSearchFilterPanel
@@ -251,7 +334,8 @@ export default class GlobalSearch extends Component<
               keyword={vm.keyword}
               filters={this.state.filters}
               dataSource={this.globalDataSource}
-              onApply={(filters) => this.setState({ filters })}
+              fileTypeCategoryKeys={this.state.fileTypeCategoryKeys}
+              onApply={this.handleApplyFilters}
             />
           </aside>
         )}
@@ -273,7 +357,8 @@ export default class GlobalSearch extends Component<
         }}
         render={(vm: GlobalSearchVM) => {
           const filterCount = selectedGlobalSearchFilterValueCount(
-            this.state.filters
+            this.state.filters,
+            { fileTypeCategoryCount: this.state.fileTypeCategoryKeys.length }
           );
           const isGlobalContentTab =
             vm.selectedTabKey === "messages" || vm.selectedTabKey === "files";
@@ -322,7 +407,7 @@ export default class GlobalSearch extends Component<
                     label: tab.tab,
                   }))}
                   activeTab={vm.selectedTabKey}
-                  onTabChange={(key) => vm.onTabClick(key)}
+                  onTabChange={this.handleTabChange}
                   error={vm.searchError}
                   actions={
                     this.contentSearchEnabled && isGlobalContentTab ? (
@@ -334,6 +419,7 @@ export default class GlobalSearch extends Component<
                             onClick={() =>
                               this.setState({
                                 filters: defaultGlobalSearchFilters(),
+                                fileTypeCategoryKeys: [],
                               })
                             }
                           >

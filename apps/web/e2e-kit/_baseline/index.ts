@@ -60,7 +60,7 @@ import type { Page } from "@playwright/test";
  * `register<CaseId><PascalCase>(page: Page): Promise<void>`
  *
  * 例:
- * - 文件: `e2e/msw-handlers/C7-create-category.ts`
+ * - 文件: `e2e/msw-handlers/c7-create-category.ts`
  * - export: `export async function registerC7CreateCategory(page: Page)`
  *
  * 该函数无副作用 (不修改 module 状态), 幂等可反复调.

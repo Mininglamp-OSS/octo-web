@@ -59,7 +59,7 @@ describe("buildDocNavUrl — locally rebuilt safe nav URL (P1-b)", () => {
   });
 });
 
-describe("permissionState — badge driven only by live ACL, wire claim neutralized (P2-3)", () => {
+describe("permissionState — only live ACL controls the effective badge", () => {
   it("denied → no_access, unavailable → unavailable", () => {
     expect(permissionState("denied")).toBe("no_access");
     expect(permissionState("unavailable")).toBe("unavailable");

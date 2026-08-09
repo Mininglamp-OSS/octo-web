@@ -65,6 +65,9 @@ export { NotificationUtil, notificationUtil } from './Utils/NotificationUtil'
 export * from './Utils/NotificationUtil'
 export * from './Utils/clipboard'
 export * from './Utils/docLink'
+export * from './Utils/asyncCache'
+export * from './features/documentTitle'
+export * from './features/notifications'
 
 export { default as MessageBase } from "./Messages/Base"
 export  * from "./Messages/Image"
@@ -82,6 +85,7 @@ export * from "./Components/MeInfo";
 export * from "./Service/Context";
 export * from "./Components/SmallTableEdit";
 export * from "./Service/Convert";
+export * from "./Service/Model";
 
 export * from "./Utils/search"
 
@@ -132,6 +136,8 @@ export { resolveExternalForViewer } from './Utils/externalViewer'
 export type { ExternalViewerInput, ExternalViewerResult } from './Utils/externalViewer'
 export { default as VoiceInputButton } from './Components/VoiceInputButton'
 export type { ReplaceMode, SelectionRange } from './Components/VoiceInputButton'
+export { default as AiBadge } from './Components/AiBadge'
+export { Toast as OctoToast } from '@douyinfe/semi-ui'
 
 // Claw components
 export { default as ClawOverviewTab } from './Components/ClawOverviewTab'
@@ -147,3 +153,8 @@ export type { AgentCardData, FileGroup, FileItem, FileContent, FileContentRespon
 // package can construct `new Channel(botUid, ChannelTypePerson)` through the @octo/base boundary
 // without taking a direct wukongimjssdk dependency (only @octo/base imports the SDK).
 export { Channel, ChannelTypePerson } from 'wukongimjssdk'
+
+// Drive-transfer Space-prefix + supported-channel helpers used by both
+// dmworkbase (FileCell) and dmworkdrive (module.tsx). Single source of truth
+// for the channel-normalisation contract (#1261 review round 6).
+export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel } from './Service/SpacePrefix'

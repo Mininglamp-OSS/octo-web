@@ -6,7 +6,7 @@
 // contract {data:{slug,title,versions:[{n,created_at}]}}, distinct from the query-param
 // /comments endpoint.
 
-import { resolveOctoDocBase } from './HtmlDocView.tsx'
+import { resolveOctoDocBase } from './htmlDocFrameHelpers.ts'
 import { getWKApp } from '../octoweb/index.ts'
 
 // octo-doc verifies identity via the `token` header (octo convention, not Authorization);
@@ -21,7 +21,7 @@ export interface HtmlDocVersion {
   created_at?: string | null
 }
 
-/** GET <base>/v1/docs/{slug}/versions → published version numbers (newest-first per backend). */
+/** GET <base>/v1/docs/{slug}/versions → published version numbers. */
 export async function listVersions(slug: string): Promise<HtmlDocVersion[]> {
   const url = `${resolveOctoDocBase()}/v1/docs/${encodeURIComponent(slug)}/versions`
   const res = await fetch(url, {

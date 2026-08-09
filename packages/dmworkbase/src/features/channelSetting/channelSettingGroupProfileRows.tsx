@@ -1,4 +1,5 @@
 import { Tag, Toast } from "@douyinfe/semi-ui";
+import { QrCode } from "lucide-react";
 import React from "react";
 
 import WKApp from "../../App";
@@ -14,7 +15,7 @@ import { updateChannelSettingField } from "../../bridge/channelSetting/channelSe
 import { t } from "../../i18n";
 import {
   ChannelSettingIconRow,
-  ChannelSettingInfoRow,
+  ChannelSettingInlineEditRow,
 } from "../../ui/ChannelSettingRows";
 import { ChannelSettingInputEditPush } from "./types";
 
@@ -28,7 +29,6 @@ interface BuildGroupProfileRowsOptions {
 export function buildGroupProfileRows({
   context,
   data,
-  inputEditPush,
   disbanded,
 }: BuildGroupProfileRowsOptions): Row[] {
   if (disbanded) return [];
@@ -48,32 +48,31 @@ export function buildGroupProfileRows({
 
   return [
     new Row({
-      cell: ChannelSettingInfoRow,
+      cell: ChannelSettingInlineEditRow,
       properties: {
         title: t("base.module.channelSettings.groupName"),
-        value: groupName,
-        onClick: () => {
+        value: channelInfo?.title || "",
+        displayValue: groupName,
+        placeholder: t("base.module.channelSettings.groupNamePlaceholder"),
+        maxCount: GROUP_NAME_MAX_LENGTH,
+        onStartEdit: () => {
           // 服务端放开后（octo-server #542）任何活跃人类成员都可改群名，
           // 前端只挡龙虾（canRenameGroup 粗过滤），外部/黑名单成员放到弹窗
           // 后由服务端裁决、经下方 Toast.error(err.msg) 呈现。
           if (!canRenameGroup(data.subscriberOfMe)) {
-            return;
+            return false;
           }
-          inputEditPush(
-            context,
-            channelInfo?.title || "",
-            (value) =>
-              updateChannelSettingField({
-                channel,
-                field: ChannelField.channelName,
-                value,
-              }).catch((error) => {
-                Toast.error(error.msg);
-              }),
-            t("base.module.channelSettings.groupNamePlaceholder"),
-            GROUP_NAME_MAX_LENGTH
-          );
+          return true;
         },
+        onSave: (value: string) =>
+          updateChannelSettingField({
+            channel,
+            field: ChannelField.channelName,
+            value,
+          }).catch((error) => {
+            Toast.error(error.msg);
+            return false;
+          }),
       },
     }),
     new Row({
@@ -106,13 +105,7 @@ export function buildGroupProfileRows({
       cell: ChannelSettingIconRow,
       properties: {
         title: t("base.module.channelSettings.groupQrCode"),
-        icon: (
-          <img
-            style={{ width: "24px", height: "24px" }}
-            src={require("../../assets/icon_qrcode.png")}
-            alt=""
-          />
-        ),
+        icon: <QrCode className="wk-channelsetting-qrcode-icon" aria-hidden />,
         onClick: () => {
           context.push(
             <ChannelQRCode channel={channel} />,
@@ -124,35 +117,32 @@ export function buildGroupProfileRows({
       },
     }),
     new Row({
-      cell: ChannelSettingInfoRow,
+      cell: ChannelSettingInlineEditRow,
       properties: {
         title: t("base.module.channelSettings.groupNotice"),
         value: channelInfo?.orgData?.notice,
         multiline: true,
-        onClick: () => {
+        placeholder: t("base.module.channelSettings.groupNotice"),
+        maxCount: 400,
+        allowEmpty: true,
+        onStartEdit: () => {
           if (!data.isManagerOrCreatorOfMe) {
             Toast.warning(
               t("base.module.channelSettings.groupNoticeOnlyManager")
             );
-            return;
+            return false;
           }
-          inputEditPush(
-            context,
-            channelInfo?.orgData?.notice || "",
-            (value) =>
-              updateChannelSettingField({
-                channel,
-                field: ChannelField.notice,
-                value,
-              }).catch((error) => {
-                Toast.error(error.msg);
-              }),
-            t("base.module.channelSettings.groupNotice"),
-            400,
-            true,
-            true
-          );
+          return true;
         },
+        onSave: (value: string) =>
+          updateChannelSettingField({
+            channel,
+            field: ChannelField.notice,
+            value,
+          }).catch((error) => {
+            Toast.error(error.msg);
+            return false;
+          }),
       },
     }),
   ];

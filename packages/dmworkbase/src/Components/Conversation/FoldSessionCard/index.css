@@ -2,7 +2,7 @@
   position: relative;
   width: 100%;
   max-width: min(680px, calc(100vw - 120px));
-  background: rgba(28, 28, 35, 0.04);
+  background: var(--wk-bg-legacy-card);
   border: none;
   border-radius: 8px;
   padding: 12px;
@@ -183,13 +183,13 @@
 .wk-fold-session-divider-line {
   flex: 1;
   height: 1px;
-  background: rgba(28, 28, 35, 0.1);
+  background: var(--wk-border-legacy-subtle);
 }
 
 .wk-fold-session-divider-text {
   font-size: 12px;
   font-weight: 500;
-  color: rgba(28, 28, 35, 0.4);
+  color: var(--wk-text-legacy-tertiary);
   white-space: nowrap;
 }
 
@@ -302,7 +302,7 @@
   font-size: 14px;
   font-weight: 400;
   line-height: 1.6;
-  color: rgba(28, 28, 35, 0.8);
+  color: var(--wk-text-legacy-primary);
 }
 
 /* 隐藏表情图标,折叠状态显示为普通消息 */

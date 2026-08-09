@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
-import { getWKApp, t } from '../octoweb/index.ts'
+import { titleContextStore } from '@octo/base'
+import { getWKApp, t, useI18n } from '../octoweb/index.ts'
 import { EditorShell } from '../editor/EditorShell.tsx'
 import { SheetView } from '../sheet/SheetView.tsx'
 import { BoardSession } from '../board/BoardSession.tsx'
 import { HtmlDocView } from '../html/HtmlDocView.tsx'
+import { PptDocView } from '../ppt/PptDocView.tsx'
 import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
@@ -69,11 +71,10 @@ export function persistStandaloneReturn(): void {
 }
 
 /**
- * Whether a stashed return target is a SAFE same-origin standalone link.
+ * Whether `path` is a SAFE same-origin absolute path — the reusable open-redirect core.
  *
- * Open-redirect guard (hardened, XIN-392). The value lives in sessionStorage, so it is
- * attacker-influenceable, and it is later fed to `window.location.assign` — it must clear three
- * gates, in order:
+ * Open-redirect guard (hardened, XIN-392). A value that will later be fed to
+ * `window.location.assign` must clear these gates, in order:
  *
  *   1. No control characters. The WHATWG URL parser SILENTLY STRIPS tab / newline / CR mid-string,
  *      so a value like `/` + "\n" + `/evil.example.com` parses to the scheme-relative
@@ -81,31 +82,94 @@ export function persistStandaloneReturn(): void {
  *      (only path[0]/path[1]) never saw the smuggled `//host` because the control char sat between
  *      them. Rejecting any C0 control char (and DEL) up front closes that whole class of bypass
  *      before parsing can mask it.
- *   2. Same origin. Resolve against the current origin and require `url.origin === origin`. This
+ *   2. Rooted absolute path. Rejecting relative values (`d/relative`) up front stops them from
+ *      resolving against whatever the current document URL happens to be when the assign runs
+ *      (e.g. `/login/` → `/login/d/relative`) instead of a clean `/…` route.
+ *   3. Same origin. Resolve against the current origin and require `url.origin === origin`. This
  *      rejects absolute (`https://evil`), scheme-relative (`//host`), and backslash-smuggled
- *      (`/\host`) targets structurally, instead of hand-checking leading characters.
- *   3. Standalone target only (P2-2). Even a same-origin path must resolve to `/d/:docId` or the
- *      summary notification target `/s/:taskNo`, so a tampered value can't bounce the user to another
- *      same-origin page (`/settings`, `/oidc/bind`, …) after login.
+ *      (`/\host`) targets structurally, instead of hand-checking leading characters. A `javascript:`
+ *      value fails gate 2 (no leading `/`) and never reaches parsing.
+ *
+ * This is the shared same-origin check reused by both the post-login return-path guard
+ * (isSafeReturnPath, which adds a stricter standalone-target gate on top) and the live PPT-create
+ * navigation guard (DocsHome onPptCreated) — a backend-returned editor route is trusted only when it
+ * resolves same-origin.
  */
-function isSafeReturnPath(path: string | null): path is string {
+export function isSameOriginPath(path: string | null | undefined): path is string {
   if (typeof path !== 'string' || path.length === 0) return false
-  // A return target must be a rooted absolute path. Rejecting relative values (`d/relative`) up
-  // front stops them from resolving against whatever the current document URL happens to be when
-  // window.location.assign runs (e.g. `/login/` → `/login/d/relative`) instead of a clean `/d/:id`.
   if (path[0] !== '/') return false
   // Reject ANY control character before parsing — see gate 1 above.
   // eslint-disable-next-line no-control-regex
   if (/[\x00-\x1f\x7f]/.test(path)) return false
   if (typeof window === 'undefined') return false
   const origin = window.location.origin
+  if (!origin) return false
   let url: URL
   try {
     url = new URL(path, origin)
   } catch {
     return false
   }
-  if (url.origin !== origin) return false
+  return url.origin === origin
+}
+
+/**
+ * Resolve `raw` to a same-origin path to navigate to, or `null` when it is not same-origin (P2-1).
+ *
+ * The difference from `isSameOriginPath` is deliberate: that guard REJECTS anything that is not a
+ * rooted RELATIVE path — correct for the post-login return target, where the value is user-tamperable
+ * and must be a bare `/…` path. But a backend-supplied PPT `editorUrl` may legitimately arrive as a
+ * same-origin ABSOLUTE url (`http://localhost:3000/ppt/d/abc`) or a bare-relative (`d/abc`), and
+ * rejecting those makes the whole create flow a dead-end: the deck exists server-side, the frontend
+ * refuses to navigate, and an unedited retry reuses the same Idempotency-Key so the backend returns
+ * the same refused url — the user can never reach a deck the server already made.
+ *
+ * So for the trusted-route path we NORMALISE instead of reject: resolve against the current origin
+ * and, when the resolved origin matches AND the scheme is http(s), hand back a single-rooted
+ * `pathname + search + hash` (leading slash runs collapsed to one, so the value can never be re-read
+ * as scheme-relative). Cross-origin, scheme-relative (`//host`), backslash-smuggled, and non-http(s)
+ * (`javascript:`, `blob:`) values still resolve off-origin, fail the scheme gate, or fail to parse,
+ * and return `null` — the open-redirect protection is intact; only same-origin http(s)
+ * absolute/relative inputs are additionally accepted. Control chars are rejected up front for the
+ * same reason as gate 1 above (the URL parser silently strips tab/newline/CR, smuggling `//host`).
+ */
+export function resolveSameOriginPath(raw: string | null | undefined): string | null {
+  if (typeof raw !== 'string' || raw.length === 0) return null
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(raw)) return null
+  if (typeof window === 'undefined') return null
+  const origin = window.location.origin
+  if (!origin) return null
+  let url: URL
+  try {
+    url = new URL(raw, origin)
+  } catch {
+    return null
+  }
+  if (url.origin !== origin) return null
+  // Only real page schemes: blob:<origin>/… also reports a matching origin, but its pathname is the
+  // whole inner URL, so it would be handed back as a non-navigable, non-rooted value.
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null
+  // url.pathname can itself begin with `//` — from an absolute input (`https://<origin>//evil…`),
+  // a backslash-smuggled one, or a rooted `/..//evil…` whose dot-segments clamp to the root and
+  // leave a doubled slash. location.assign() re-parses `//host…` as SCHEME-RELATIVE and bounces
+  // cross-origin, re-opening the redirect this guard closes. Collapse the leading slash run so the
+  // result is a single rooted path.
+  return url.pathname.replace(/^\/+/, '/') + url.search + url.hash
+}
+
+/**
+ * Whether a stashed return target is a SAFE same-origin STANDALONE link.
+ *
+ * Layers the standalone-target gate (P2-2) on top of the shared same-origin core: even a same-origin
+ * path must resolve to `/d/:docId` or the summary notification target `/s/:taskNo`, so a tampered
+ * value can't bounce the user to another same-origin page (`/settings`, `/oidc/bind`, …) after login.
+ */
+function isSafeReturnPath(path: string | null): path is string {
+  if (!isSameOriginPath(path)) return false
+  // Same-origin already proven; re-parse to inspect the pathname. `path` is a rooted same-origin
+  // value here, so this parse cannot throw.
+  const url = new URL(path, window.location.origin)
   return parseStandaloneDocId(url.pathname) !== null || STANDALONE_SUMMARY_PATH.test(url.pathname)
 }
 
@@ -323,10 +387,29 @@ export function StandaloneDocPage({
   onSessionExpired?: () => void
 }): ReactElement {
   const wk = getWKApp()
+  const { locale } = useI18n()
   const uid = wk.loginInfo?.uid ?? ''
   const [phase, setPhase] = useState<Phase>({ status: 'loading' })
   const [copied, setCopied] = useState(false)
   const copiedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleContextOwner = useRef(Symbol('standalone-doc-title-context'))
+
+  useEffect(() => {
+    const primaryTitle = phase.status === 'ready' ? phase.meta.title?.trim() : ''
+    if (!primaryTitle) {
+      titleContextStore.clear('docs', titleContextOwner.current)
+      return
+    }
+    titleContextStore.set(
+      'docs',
+      {
+        primaryTitle,
+        moduleTitle: t('docs.menu.title'),
+      },
+      titleContextOwner.current,
+    )
+    return () => titleContextStore.clear('docs', titleContextOwner.current)
+  }, [locale, phase])
 
   // Resolve the standalone space ONCE, and address BOTH the preflight's explicit X-Space-Id header
   // and the EditorShell room fallback from it, so preflight and room can never target different
@@ -605,6 +688,24 @@ export function StandaloneDocPage({
           slug={meta.octoDocSlug}
           space={addressing.space}
           creatorNicknameOnly
+        />
+      </div>
+    )
+  }
+  // Bento slide-deck ('html_ppt'): render the read-only PptDocView (R1 placeholder), mirroring
+  // DocsHome.buildRightPane. This is an EXPLICIT peer branch so a shared /d/<docId> PPT link does
+  // NOT fall through to the collab EditorShell below — a Bento deck has no Yjs data and would 404
+  // there, and the standalone editor would otherwise try to open a Hocuspocus room for it. The
+  // preflight reader gate already ran and recordDocView logged the view, same as every other kind.
+  if (meta.docType === 'html_ppt') {
+    return (
+      <div className="octo-doc-standalone">
+        <PptDocView
+          key={editorDocId}
+          docId={editorDocId}
+          slug={meta.octoDocSlug}
+          space={addressing.space}
+          title={meta.title}
         />
       </div>
     )

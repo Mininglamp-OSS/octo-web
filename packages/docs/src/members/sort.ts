@@ -6,7 +6,7 @@ import type { Role } from '../auth/roles.ts'
 import type { SpaceMemberLite } from '../octoweb/index.ts'
 
 /** Role precedence for the document member list (owner is handled separately, above all). */
-const ROLE_RANK: Record<Role, number> = { admin: 0, writer: 1, reader: 2 }
+const ROLE_RANK: Record<Role, number> = { admin: 0, writer: 1, commenter: 2, reader: 3 }
 
 /**
  * Ensure the document owner appears in the member list (#A1/#A3, Option A — front-end synthesis).
@@ -23,7 +23,7 @@ const ROLE_RANK: Record<Role, number> = { admin: 0, writer: 1, reader: 2 }
 export function withSyntheticOwner(members: Member[], ownerId?: string): Member[] {
   if (!ownerId) return members
   if (members.some((m) => m.uid === ownerId)) return members
-  const ownerRow: Member = { uid: ownerId, role: 'admin', source: 'owner' }
+  const ownerRow: Member = { uid: ownerId, role: 'admin', source: 'owner', grantedBy: '' }
   return [ownerRow, ...members]
 }
 
