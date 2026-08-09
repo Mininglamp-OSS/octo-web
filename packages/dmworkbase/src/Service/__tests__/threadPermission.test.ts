@@ -1,12 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// 内存版父群成员缓存，测试通过它驱动 getSubscribes 返回值
-const subscribesByKey = new Map<string, Array<{ uid: string; role: number }>>();
+// 内存版父群成员缓存，测试通过它同时驱动 getSubscribes 与 subscribeCacheMap
+// （生产里两者是同一份存储），从而覆盖 ensureRenameMemberResolved 的 wiring。
+const subscribesByKey = new Map<string, any[]>();
+const notifySubscribeChangeListeners = vi.fn();
+// 单成员接口（GET groups/{id}/members/{uid}）的 mock，按测试注入返回值。
+const subscriberFn = vi.fn();
 
 const sharedSdk = {
   channelManager: {
+    subscribeCacheMap: subscribesByKey,
     getSubscribes: (channel: { getChannelKey: () => string }) =>
       subscribesByKey.get(channel.getChannelKey()),
+    notifySubscribeChangeListeners,
   },
 };
 
@@ -34,14 +40,27 @@ vi.mock("wukongimjssdk", () => ({
 vi.mock("../../App", () => ({
   default: {
     loginInfo: { uid: "me" },
+    dataSource: {
+      channelDataSource: {
+        // 惰性转发到 subscriberFn，避免在 mock 工厂构造期（const 初始化前）触发 TDZ。
+        subscriber: (channel: any, uid: string) => subscriberFn(channel, uid),
+      },
+    },
   },
 }));
 
-import { canManageThread, canRenameGroup, canRenameThread } from "../threadPermission";
+import {
+  canManageThread,
+  canRenameGroup,
+  canRenameThread,
+  ensureRenameMemberResolved,
+} from "../threadPermission";
 import { GroupRole, SubscriberStatus } from "../Const";
 
 const GROUP_NO = "g1";
 const GROUP_KEY = `${GROUP_NO}-2`;
+const flushMicrotasks = () =>
+  new Promise((resolve) => setTimeout(resolve, 0));
 
 function setGroupMembers(
   members: Array<{
@@ -207,5 +226,67 @@ describe("canRenameThread (thread rename gate, WS-23)", () => {
   it("fails closed when groupNo is undefined", () => {
     setGroupMembers([{ uid: "me", role: GroupRole.owner }]);
     expect(canRenameThread(undefined)).toBe(false);
+  });
+});
+
+// 生产 wiring 回归（Octo-Q review 4891675677）：supergroup 父群成员缓存可能不含当前用户，
+// 渲染侧调用 ensureRenameMemberResolved 应通过单成员接口补齐当前用户记录并入共享缓存，
+// 使后续 canRenameThread 看到该记录——仅靠手喂 cache mock 的纯函数测试挡不住这类 wiring 回归。
+describe("ensureRenameMemberResolved (cold-cache wiring, WS-23)", () => {
+  beforeEach(() => {
+    subscribesByKey.clear();
+    subscriberFn.mockReset();
+    notifySubscribeChangeListeners.mockClear();
+  });
+
+  it("resolves the current user on demand when absent from the parent-group cache, so the gate then passes", async () => {
+    const WGROUP = "gw-resolve";
+    const WKEY = `${WGROUP}-2`;
+    // 冷缓存：父群里没有当前用户，且当前用户不是创建者 → 初始 false
+    subscribesByKey.set(WKEY, [{ uid: "someone-else", role: GroupRole.normal }]);
+    expect(canRenameThread(WGROUP)).toBe(false);
+
+    // 单成员接口返回当前用户的成员记录
+    subscriberFn.mockResolvedValue({ uid: "me", orgData: { robot: 0 } });
+
+    ensureRenameMemberResolved(WGROUP);
+    await flushMicrotasks();
+
+    // 已按需拉取、并入共享缓存、并通知订阅变更以触发重渲染
+    expect(subscriberFn).toHaveBeenCalledTimes(1);
+    expect(
+      (subscribesByKey.get(WKEY) || []).some((s: any) => s.uid === "me")
+    ).toBe(true);
+    expect(notifySubscribeChangeListeners).toHaveBeenCalled();
+    // 后续 gate 看到当前用户记录 → 放行
+    expect(canRenameThread(WGROUP)).toBe(true);
+  });
+
+  it("stays fail-closed and does not merge when the user is not a parent-group member", async () => {
+    const WGROUP = "gw-nonmember";
+    const WKEY = `${WGROUP}-2`;
+    subscribesByKey.set(WKEY, [{ uid: "someone-else", role: GroupRole.owner }]);
+    // 单成员接口命中不到当前用户
+    subscriberFn.mockResolvedValue(undefined);
+
+    ensureRenameMemberResolved(WGROUP);
+    await flushMicrotasks();
+
+    expect(subscriberFn).toHaveBeenCalledTimes(1);
+    expect(
+      (subscribesByKey.get(WKEY) || []).some((s: any) => s.uid === "me")
+    ).toBe(false);
+    expect(canRenameThread(WGROUP)).toBe(false);
+  });
+
+  it("skips the lookup entirely when the current user is already cached", async () => {
+    const WGROUP = "gw-cached";
+    const WKEY = `${WGROUP}-2`;
+    subscribesByKey.set(WKEY, [{ uid: "me", role: GroupRole.normal }]);
+
+    ensureRenameMemberResolved(WGROUP);
+    await flushMicrotasks();
+
+    expect(subscriberFn).not.toHaveBeenCalled();
   });
 });
