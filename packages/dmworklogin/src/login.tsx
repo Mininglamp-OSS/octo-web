@@ -24,6 +24,25 @@ const ENTERPRISE_SSO_ENABLED =
 // 错误的 IdP 环境。若后续接入新的 OIDC provider 或非 Aegis 登录方式，入口配置
 // 应改为由 appconfig 下发。
 
+/**
+ * 扫码登录入口是否可见。
+ *
+ * 两个条件都要满足，因为它们是两条不同的信息源：
+ *   - `remoteConfig.scanLoginEnabled` 来自 /v1/common/appconfig 的 scan_login_enabled
+ *     (JSON boolean)。默认 false，appconfig 还没到 / 拉取失败时同样是 false —— 与
+ *     服务端 fail-closed 对齐，不要在不确定的时候放出一个必然失败的入口。注意这里
+ *     不能改用 local_login_off 反推：本地密码登录的开关与扫码开关互不代表。
+ *   - `vm.scanLoginDisabled` 是链路刚刚明确拒绝过的事实（loginstatus 回 disabled，或
+ *     某个入口回 err.server.user.scan_login_disabled）。运行时改开关在多副本间最多
+ *     60 秒收敛，这段时间里 appconfig 可能还说 true，而请求已经在被拒。
+ *
+ * `scanLoginDisabled` 一旦置位就不再自动复位：重新开放扫码是一次运维动作，让用户刷新
+ * 页面拿到新的 appconfig 比在前端猜「现在是不是又能用了」更可靠。
+ */
+function scanLoginEntryVisible(vm: LoginVM): boolean {
+    return WKApp.remoteConfig.scanLoginEnabled && !vm.scanLoginDisabled
+}
+
 function getNextLocale(locale: Locale): Locale {
     return locale === "zh-CN" ? "en-US" : "zh-CN";
 }
@@ -274,12 +293,14 @@ const LegacyPasswordSection: React.FC<{
                     </div>
                 )}
                 <div className="wk-login-content-form-others">
-                    <div
-                        className="wk-login-content-form-scanlogin"
-                        onClick={() => { vm.loginType = LoginType.qrcode }}
-                    >
-                        {t('login.scanLogin')}
-                    </div>
+                    {scanLoginEntryVisible(vm) && (
+                        <div
+                            className="wk-login-content-form-scanlogin"
+                            onClick={() => { vm.loginType = LoginType.qrcode }}
+                        >
+                            {t('login.scanLogin')}
+                        </div>
+                    )}
                     <div
                         className="wk-login-content-form-switch"
                         onClick={() => { vm.loginType = LoginType.forgetPassword }}
@@ -458,11 +479,13 @@ class Login extends Component<any, LoginState> {
                             onClick={handleLogin}>{t('login.button')}</Button>
                     </div>
                     <div className="wk-login-content-form-others">
-                        <div className="wk-login-content-form-scanlogin" onClick={() => {
-                            vm.loginType = LoginType.qrcode
-                        }}>
-                            {t('login.scanLogin')}
-                        </div>
+                        {scanLoginEntryVisible(vm) && (
+                            <div className="wk-login-content-form-scanlogin" onClick={() => {
+                                vm.loginType = LoginType.qrcode
+                            }}>
+                                {t('login.scanLogin')}
+                            </div>
+                        )}
                         <div className="wk-login-content-form-switch" onClick={() => {
                             vm.loginType = LoginType.register
                         }}>
