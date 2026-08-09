@@ -265,4 +265,50 @@ describe("login page presentation", () => {
     expect(buttonRule).not.toContain("!important");
     expect(buttonRule).not.toContain("#1C1C23");
   });
+
+  it("gates every scan-login entry on the deployment switch", () => {
+    const source = readRepoFile("packages/dmworklogin/src/login.tsx");
+    const appSource = readRepoFile("packages/dmworkbase/src/App.tsx");
+
+    // One predicate for all layouts: the appconfig switch plus the "the chain just
+    // rejected us" fact. Nothing may show the entry on its own authority.
+    expect(source).toContain("function scanLoginEntryVisible(vm: LoginVM): boolean");
+    expect(source).toContain(
+      "return WKApp.remoteConfig.scanLoginEnabled && !vm.scanLoginDisabled"
+    );
+    expect(appSource).toContain(
+      'this.scanLoginEnabled = parseRemoteBool(result["scan_login_enabled"]);'
+    );
+    // scan_login_enabled is a JSON boolean, unlike the 0/1 integers beside it —
+    // parseRemoteBool accepts both, a `=== 1` comparison would silently never fire.
+    expect(source).not.toMatch(/scanLoginEnabled\s*===?\s*1/);
+
+    // Every entry site is gated, none forgotten.
+    const gatedSites = source.match(/\{scanLoginEntryVisible\(vm\) && \(/g) ?? [];
+    expect(gatedSites).toHaveLength(3);
+  });
+
+  it("offers the scan-login entry outside the local password card", () => {
+    const source = readRepoFile("packages/dmworklogin/src/login.tsx");
+    const styles = readRepoFile("packages/dmworklogin/src/login.css");
+
+    // With an OIDC provider configured the password card is not rendered at all
+    // (SsoLoginPanel wins the branch, and its LegacyPasswordSection sits behind
+    // `false &&`), so the two entries inside it are unreachable. Without an entry
+    // in the SSO panel itself, flipping login.scan_enabled on would change nothing
+    // in exactly the deployment shape production runs.
+    const ssoPanel = source.match(
+      /const SsoLoginPanel: React\.FC<\{[\s\S]*?\n\}\n/
+    )?.[0];
+    expect(ssoPanel).toBeTruthy();
+    expect(ssoPanel).toContain("scanLoginEntryVisible(vm) && (");
+    expect(ssoPanel).toContain("wk-login-content-sso-scanlogin-entry");
+    expect(styles).toContain(".wk-login-content-sso-scanlogin-entry {");
+
+    // Leaving the QR panel goes back to loginType=phone, which under SSO holds no
+    // password form — the label must not promise one.
+    expect(source).toContain(
+      "showSsoLogin ? t('common.backLogin') : t('qr.accountPassword')"
+    );
+  });
 });

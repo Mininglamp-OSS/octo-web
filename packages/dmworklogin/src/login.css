@@ -1175,6 +1175,21 @@
     text-align: center;
 }
 
+/* 扫码登录入口: 与注册入口同级的次级链接。注册入口在场时贴着它排，
+   缺省时自己承担与 SSO 主按钮之间的间距。 */
+.wk-login-content-sso-scanlogin-entry {
+    margin-top: var(--wk-sp-2);
+    text-align: center;
+}
+
+.wk-login-content-sso-register-entry + .wk-login-content-sso-scanlogin-entry {
+    margin-top: 0;
+}
+
+.wk-login-content-sso-primary + .wk-login-content-sso-scanlogin-entry {
+    margin-top: var(--wk-sp-5);
+}
+
 .wk-login-content-sso-flow-hint {
     margin-top: var(--wk-sp-2);
     text-align: center;

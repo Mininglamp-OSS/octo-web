@@ -201,6 +201,24 @@ const SsoLoginPanel: React.FC<{
                     </Button>
                 </div>
             )}
+            {/* 扫码登录入口必须独立于本地密码登录区存在。
+                另外两处入口都在本地密码登录的 DOM 里（LegacyPasswordSection 与
+                renderLocalPasswordLogin），而 OIDC 部署下前者被下面的 `false &&` 关着、
+                后者根本不渲染 —— 也就是说没有这一处，扫码入口在 SSO 部署里完全够不到，
+                运维把 login.scan_enabled 打开也不会有任何变化。二维码面板本身是页面级
+                兄弟节点（按 loginType 切换），与 SSO 面板不冲突。 */}
+            {scanLoginEntryVisible(vm) && (
+                <div className="wk-login-content-sso-scanlogin-entry">
+                    <Button
+                        theme="borderless"
+                        size="small"
+                        disabled={vm.oidcLoading || vm.oidcResuming}
+                        onClick={() => { vm.loginType = LoginType.qrcode }}
+                    >
+                        {t('login.scanLogin')}
+                    </Button>
+                </div>
+            )}
             <div className="wk-login-content-sso-flow-hint">
                 {t('login.ssoFlowHint')}
             </div>
@@ -864,7 +882,12 @@ class Login extends Component<any, LoginState> {
                             </div>
 
                             <div className="wk-login-footer-buttons">
-                                <button onClick={() => { vm.loginType = LoginType.phone }}>{t('qr.accountPassword')}</button>
+                                {/* 退出扫码时回到 loginType=phone，也就是主登录区。SSO 部署下那里
+                                    没有密码表单，"使用账号密码登录"会指向一个不存在的东西，所以按
+                                    当前主登录区的形态选文案（两个 key 都已有译文，不新增文案）。 */}
+                                <button onClick={() => { vm.loginType = LoginType.phone }}>
+                                    {showSsoLogin ? t('common.backLogin') : t('qr.accountPassword')}
+                                </button>
                             </div>
                         </div>
                     </div>
