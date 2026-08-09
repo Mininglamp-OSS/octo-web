@@ -22,6 +22,7 @@ const T = {
   challenge: '输入会议密码',
   locked: '会议已锁定',
   ended: '会议已结束',
+  leave: '离开',
 };
 
 const httpErr = (status: number, code?: string, extra: Record<string, unknown> = {}) => ({
@@ -40,6 +41,8 @@ describe('JoinFlow orchestration (§7)', () => {
     fireEvent.click(await screen.findByText(T.join));
     await waitFor(() => expect(MeetingApiClient.finalize).toHaveBeenCalled());
     expect(asMock(MeetingApiClient.finalize).mock.calls[0][1]).toMatchObject({ idempotencyKey: 'test-key' });
+    // finalize success renders the room (leave control present), not a placeholder.
+    expect(await screen.findByText(T.leave)).toBeInTheDocument();
   });
 
   it('eligible with password → challenge shown (never before evaluate says so)', async () => {

@@ -97,7 +97,7 @@ function buildQuery(params?: Record<string, unknown>): string {
 async function request<T>(
   method: Method,
   path: string,
-  opts: { body?: unknown; params?: Record<string, unknown>; write?: WriteOpts } = {},
+  opts: { body?: unknown; params?: Record<string, unknown>; write?: WriteOpts; signal?: AbortSignal } = {},
 ): Promise<T> {
   const base = resolveMeetingBaseURL(WKApp.apiClient?.config?.apiURL);
   const url = `${base}${MEETING_API_BASE}${path}${buildQuery(opts.params)}`;
@@ -116,7 +116,7 @@ async function request<T>(
     method,
     headers,
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
-    signal: opts.write?.signal ?? (opts.params as { signal?: AbortSignal } | undefined)?.signal,
+    signal: opts.signal ?? opts.write?.signal,
   });
 
   const raw = await resp.text();
@@ -155,13 +155,14 @@ export const MeetingApiClient = {
     opts?: { pageSize?: number; pageToken?: string; signal?: AbortSignal },
   ): Promise<MeetingListResult> {
     const data = await request<unknown>('GET', MeetingEndpoint.list, {
-      params: { view, page_size: opts?.pageSize, page_token: opts?.pageToken, signal: opts?.signal },
+      params: { view, page_size: opts?.pageSize, page_token: opts?.pageToken },
+      signal: opts?.signal,
     });
     return decodeList(data as never);
   },
 
   async getMeeting(id: string, signal?: AbortSignal): Promise<Meeting> {
-    return decodeMeeting((await request<unknown>('GET', MeetingEndpoint.get(id), { params: { signal } })) as never);
+    return decodeMeeting((await request<unknown>('GET', MeetingEndpoint.get(id), { signal })) as never);
   },
 
   async quickCreate(req: QuickCreateRequest, opts: WriteOpts): Promise<Meeting> {

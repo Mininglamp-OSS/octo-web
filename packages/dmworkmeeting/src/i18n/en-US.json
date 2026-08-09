@@ -35,7 +35,9 @@
     "share": "Share screen",
     "stopShare": "Stop sharing",
     "reconnecting": "Reconnecting…",
-    "participants": "Participants"
+    "participants": "Participants",
+    "role": { "host": "Host", "cohost": "Co-host", "member": "Member" },
+    "promoteCohost": "Make co-host"
   },
   "terminal": {
     "ended": "This meeting has ended",

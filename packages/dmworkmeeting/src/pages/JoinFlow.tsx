@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { t } from '@octo/base';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { t, WKApp } from '@octo/base';
 import { MeetingApiClient, newIdempotencyKey } from '../service/MeetingApiClient';
-import type { AdmissionSource } from '../service/contracts';
+import type { AdmissionSource, AdmissionFinalizeResult, Participant } from '../service/contracts';
 import { nextMeetingState, type MeetingUiState } from '../logic/stateMachine';
 import {
   initialCooldownState,
@@ -16,6 +16,8 @@ import DevicePreview from '../components/DevicePreview';
 import Terminal, { reasonForCode } from '../components/Terminal';
 import Blocked from '../components/Blocked';
 import ServiceUnavailable from '../components/ServiceUnavailable';
+import RoomView from './RoomView';
+import { connectRoom, type LiveKitRoomHandle } from '../state/livekitRoom';
 import { useCooldownClock } from '../state/useCooldownClock';
 import { backToHome } from '../state/nav';
 
@@ -54,6 +56,9 @@ export default function JoinFlow(props: JoinFlowProps) {
   // ONE explicit Idempotency-Key reused across finalize retries; rotated on
   // success so a later finalize is a fresh operation (#6, N3, FD-11).
   const finalizeKeyRef = useRef<string>(newIdempotencyKey());
+  // LiveKit media handle + the finalize result that seeds the room.
+  const [room, setRoom] = useState<AdmissionFinalizeResult | undefined>();
+  const roomHandleRef = useRef<LiveKitRoomHandle | null>(null);
 
   const dispatch = useCallback((event: Parameters<typeof nextMeetingState>[1]) => {
     setState((prev: MeetingUiState) => nextMeetingState(prev, event));
@@ -167,7 +172,7 @@ export default function JoinFlow(props: JoinFlowProps) {
     if (!meetingId) return;
     dispatch({ type: 'START_FINALIZE' });
     try {
-      await MeetingApiClient.finalize(
+      const result = await MeetingApiClient.finalize(
         {
           meetingId,
           source: props.source,
@@ -178,6 +183,7 @@ export default function JoinFlow(props: JoinFlowProps) {
       );
       passTokenRef.current = undefined; // consumed exactly once on success
       finalizeKeyRef.current = newIdempotencyKey(); // rotate after success
+      setRoom(result); // carries livekit_url / token / segment_id / role
       dispatch({ type: 'FINALIZE_SUCCESS' });
     } catch (err) {
       const code = classifyFailure(err).code;
@@ -197,16 +203,47 @@ export default function JoinFlow(props: JoinFlowProps) {
     }
   }, [dispatch, handleFailure, meetingId, props.deviceIdHash, props.source]);
 
-  useCooldownClock(cooldown, () => {
+  const { remainingSeconds: cooldownSeconds } = useCooldownClock(cooldown, () => {
     setCooldown(clearedCooldownState());
     setLastInvalid(false);
     dispatch({ type: 'COOLDOWN_EXPIRED' });
   });
 
-  const cooldownSeconds = useMemo(
-    () => (cooldown.retryAtMs ? Math.max(0, Math.ceil((cooldown.retryAtMs - Date.now()) / 1000)) : 0),
-    [cooldown],
-  );
+  // Connect the media room once finalize succeeds (media layer is a lazy,
+  // React-17-safe seam; connectRoom resolves null if the SDK is absent, so the
+  // room still renders). Disconnect on leave/unmount to release tracks.
+  useEffect(() => {
+    if (!room) return undefined;
+    let handle: LiveKitRoomHandle | null = null;
+    let cancelled = false;
+    void connectRoom({ url: room.livekitUrl, token: room.livekitToken }).then((h) => {
+      if (cancelled) {
+        void h?.disconnect();
+        return;
+      }
+      handle = h;
+      roomHandleRef.current = h;
+    });
+    return () => {
+      cancelled = true;
+      void handle?.disconnect();
+      roomHandleRef.current = null;
+    };
+  }, [room]);
+
+  const leaveRoom = useCallback(async () => {
+    const handle = roomHandleRef.current;
+    roomHandleRef.current = null;
+    void handle?.disconnect();
+    if (meetingId) {
+      try {
+        await MeetingApiClient.leave(meetingId, { idempotencyKey: newIdempotencyKey() });
+      } catch {
+        // Leaving is best-effort; the server reconciles via segment/leave_at.
+      }
+    }
+    dispatch({ type: 'LEFT' });
+  }, [dispatch, meetingId]);
 
   // ── Render by state ──
   if (state === 'idle') {
@@ -268,6 +305,24 @@ export default function JoinFlow(props: JoinFlowProps) {
       </div>
     );
   }
-  // room / reconnecting are owned by RoomView once finalize succeeds.
-  return <div className="meeting-room-placeholder">{t('meeting.room.participants')}</div>;
+  // room / reconnecting: render the LiveKit room view once finalize succeeded.
+  if ((state === 'room' || state === 'reconnecting') && room) {
+    const selfUid = (WKApp as unknown as { loginInfo?: { uid?: string } }).loginInfo?.uid ?? 'me';
+    const self: Participant = { uid: selfUid, role: room.role };
+    return (
+      <RoomView
+        participants={[self]}
+        viewerRole={room.role}
+        reconnecting={state === 'reconnecting'}
+        serviceAvailable
+        canShare={room.role !== 'member'}
+        onLeave={() => void leaveRoom()}
+      />
+    );
+  }
+  return (
+    <div className="meeting-join-flow" role="status" aria-live="polite" aria-busy="true">
+      {t('meeting.room.reconnecting')}
+    </div>
+  );
 }

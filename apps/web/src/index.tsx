@@ -62,6 +62,9 @@ WKApp.apiClient.config.spaceIdCallback = () => {
 }
 WKApp.config.appVersion = import.meta.env.VITE_VERSION || pkgVersion
 WKApp.config.appName = "Octo"
+// MEETING_FEATURE_ENABLED — fail-safe/default-off. The Meeting module registers
+// its menu and routes only when this is explicitly "true".
+WKApp.config.meetingFeatureEnabled = import.meta.env.VITE_MEETING_FEATURE_ENABLED === "true"
 
 WKApp.loginInfo.load() // 加载登录信息
 i18n.registerNamespace("app", {

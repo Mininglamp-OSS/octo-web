@@ -31,7 +31,7 @@ export default function ParticipantList({ participants, capabilities, onMute, on
         return (
           <li key={p.uid} className="meeting-participant">
             <span className="meeting-participant-name">{p.displayName ?? p.uid}</span>
-            <span className="meeting-participant-role">{p.role}</span>
+            <span className="meeting-participant-role">{t(`meeting.room.role.${p.role}`)}</span>
             {onMute && (
               <button type="button" disabled={!actionable} aria-disabled={!actionable} onClick={() => onMute(p.uid)}>
                 {t('meeting.room.muteAll')}
@@ -44,7 +44,7 @@ export default function ParticipantList({ participants, capabilities, onMute, on
             )}
             {onSetRole && capabilities.viewerRole === 'host' && p.role === 'member' && (
               <button type="button" onClick={() => onSetRole(p.uid, 'cohost')}>
-                → cohost
+                {t('meeting.room.promoteCohost')}
               </button>
             )}
           </li>

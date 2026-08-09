@@ -35,7 +35,9 @@
     "share": "共享屏幕",
     "stopShare": "停止共享",
     "reconnecting": "重新连接中…",
-    "participants": "成员"
+    "participants": "成员",
+    "role": { "host": "主持人", "cohost": "联席主持", "member": "成员" },
+    "promoteCohost": "设为联席主持"
   },
   "terminal": {
     "ended": "会议已结束",
