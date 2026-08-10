@@ -55,10 +55,14 @@ const SCAN_LOGIN_DISABLED_CODE = 'err.server.user.scan_login_disabled'
 const SCAN_LOGIN_CONFIRM_WINDOW_MS = 5 * 60 * 1000
 
 /**
- * 兑换时上报的设备标识（octo-lib config.DeviceFlag: 0=APP, 1=Web, 2=PC）。
+ * 兑换时上报的设备标识。
  *
- * 与 requestLoginWithUsernameAndPwd 里的 flag 取值保持一致。服务端在 flag 缺省/为 0
- * 时也会回落到 Web，显式带上只是让链路里的设备语义不依赖那条回落分支。
+ * 值来自 octo-lib `config/msg.go` 的 `const ( APP DeviceFlag = iota; Web; PC )`
+ * —— 即 0=APP、1=Web、2=PC（同文件 device_flag 字段注释「0. APP 1.web」佐证）。
+ * 与 requestLoginWithUsernameAndPwd 里内联的 flag 取值一致。
+ *
+ * 服务端在 flag 缺省/为 0 时也会回落到 Web（modules/user/api.go loginWithAuthCode），
+ * 所以显式带上与省略等价；带上只是让链路里的设备语义不依赖那条回落分支。
  */
 const WEB_DEVICE_FLAG = 1
 
