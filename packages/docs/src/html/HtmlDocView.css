@@ -28,6 +28,30 @@
   overflow: hidden;
 }
 
+.octo-html-doc-modify-prompt {
+  flex: 0 0 auto;
+  padding: 12px 32px;
+  border-bottom: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+  background: var(--octo-doc-bg, var(--semi-color-bg-0, #fff));
+}
+
+.octo-html-doc-modify-prompt-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.octo-html-doc-modify-prompt-text {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  color: inherit;
+  background: var(--semi-color-fill-0, transparent);
+  border: 1px solid var(--octo-doc-border, var(--semi-color-border, #e5e7eb));
+}
+
 /* Loading / error / empty placeholders: centered, muted, matching the docs empty state. */
 .octo-html-doc-state {
   padding: 32px 24px;

@@ -2543,178 +2543,40 @@ describe('DocsHome — re-activating the docs nav entry refetches the recent lis
   })
 })
 
-// plan Task 6: the "new HTML" entry launches an embedded bot DM in the right pane. The left
-// DocsList stays resident; no placeholder doc is created; the global Chat is never entered; the
-// same requestId is never re-sent on NavRail re-entry; opening a doc / switching Space closes it.
-describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
-  function ownedBotsResponder(
-    calls: Array<{ method: string; url: string; body?: unknown }>,
-    bots: Array<{ uid: string; name: string }> = [{ uid: 'bot_1', name: 'Publisher' }],
-  ) {
-    return (method: string, url: string, body?: unknown) => {
-      calls.push({ method, url, body })
-      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: bots, status: 200 }
-      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
-      return { data: {}, status: 200 }
-    }
-  }
-
-  it('shows "New HTML" in the New dropdown and opens the modal WITHOUT creating a doc', async () => {
-    const wk = createMockWKApp()
-    setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
-    render(<DocsHome />)
-    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
-
-    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
-    expect(screen.getByText('docs.list.newHtml')).toBeTruthy()
-    fireEvent.click(screen.getByText('docs.list.newHtml'))
-
-    // Modal opened + owned bots loaded; NO POST /docs was made.
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
-    expect(calls.some((c) => c.url.startsWith('/robot/owned_bots'))).toBe(true)
-  })
-
-  it('submits the modal → pushes the bot chat into routeRight, DocsList still resident, no global Chat', async () => {
-    const wk = createMockWKApp()
-    const replaceToRoot = vi.fn()
-    const switchToMenuById = vi.fn()
-    const showConversation = vi.fn()
-    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
-    ;(wk as { switchToMenuById?: unknown }).switchToMenuById = switchToMenuById
-    ;(wk as { endpoints?: unknown }).endpoints = { showConversation }
-    setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
-
-    render(<DocsHome />)
-    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
-    fireEvent.click(screen.getByText('docs.list.newHtml'))
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'A launch page' },
-    })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
-
-    // The bot chat element was pushed into the host right pane.
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: { botUid?: string } } }
-        | undefined
-      expect(last?.props?.draft?.botUid).toBe('bot_1')
-    })
-    // Left DocsList is still mounted (production resident-list path).
-    expect(screen.getByLabelText('docs.list.newMenu')).toBeTruthy()
-    // Never entered the global Chat.
-    expect(switchToMenuById).not.toHaveBeenCalled()
-    expect(showConversation).not.toHaveBeenCalled()
-    // No placeholder doc.
-    expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
-  })
-
-  it('re-entering after an unconfirmed send retains the SAME auto-send compose', async () => {
+describe('DocsHome — direct blank HTML creation', () => {
+  it('publishes once, refreshes the list, and opens the returned doc id and slug', async () => {
     const wk = createMockWKApp()
     const replaceToRoot = vi.fn()
     ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    wk.shared.currentSpaceId = 'space-current'
+    wk.apiClient.responder = (method, url) => method === 'get' && url.startsWith('/docs')
+      ? { data: { total: 0, items: [] }, status: 200 }
+      : { data: {}, status: 200 }
     setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { slug: 'html-new', version: 1, registered: true, status: 'published', doc_id: 'd-new' } }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
 
     render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.empty.recentNone')).toBeTruthy())
+    const getsBefore = wk.apiClient.calls.filter((call) => call.method === 'get' && call.url.startsWith('/docs')).length
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
     fireEvent.click(screen.getByText('docs.list.newHtml'))
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'Landing' },
-    })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.nameLabel'), { target: { value: 'Blank page' } })
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.requirementsLabel'), { target: { value: 'Add content later' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
 
-    let requestId: string | undefined
     await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: { requestId?: string }; autoSend?: boolean } }
-        | undefined
-      requestId = last?.props?.draft?.requestId
-      expect(requestId).toBeTruthy()
-      // First open is the one allowed auto-send.
-      expect(last?.props?.autoSend).toBe(true)
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string; slug?: string } }
+      expect(last?.props).toMatchObject({ docId: 'd-new', slug: 'html-new' })
     })
-
-    // No onMessageSent confirmation happened, so remounting must retain the compose for retry.
-    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: { requestId?: string }; autoSend?: boolean } }
-        | undefined
-      expect(last?.props?.draft?.requestId).toBe(requestId)
-      expect(last?.props?.autoSend).toBe(true)
-    })
-  })
-
-  it('re-entering after a confirmed send omits the initial auto-send compose', async () => {
-    const wk = createMockWKApp()
-    const replaceToRoot = vi.fn()
-    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
-    setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
-
-    render(<DocsHome />)
-    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
-    fireEvent.click(screen.getByText('docs.list.newHtml'))
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Landing' } })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
-
-    const first = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { onMessageSent?: () => void } }
-    act(() => first.props?.onMessageSent?.())
-    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
-      expect(last.props?.autoSend).toBe(false)
-    })
-  })
-
-  it('a Space switch closes the html chat and returns the right pane to the empty state', async () => {
-    const wk = createMockWKApp()
-    const replaceToRoot = vi.fn()
-    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
-    wk.shared.currentSpaceId = 's_1'
-    setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
-
-    render(<DocsHome />)
-    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
-    fireEvent.click(screen.getByText('docs.list.newHtml'))
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'Landing' },
-    })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: { botUid?: string } } }
-        | undefined
-      expect(last?.props?.draft?.botUid).toBe('bot_1')
-    })
-
-    // Switch Space → the reconciler closes the chat; the LAST push is no longer a bot chat.
-    wk.shared.currentSpaceId = 's_2'
-    act(() => wk.mockMittBus.emitSpaceChanged())
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: unknown } }
-        | undefined
-      expect(last?.props?.draft).toBeUndefined()
-    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ space_id: 'space-current' })
+    await waitFor(() => expect(
+      wk.apiClient.calls.filter((call) => call.method === 'get' && call.url.startsWith('/docs')).length,
+    ).toBeGreaterThan(getsBefore))
   })
 })
 

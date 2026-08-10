@@ -29,6 +29,13 @@
     "retry": "Retry",
     "htmlCreate": {
       "title": "New HTML",
+      "nameLabel": "HTML name",
+      "requirementsLabel": "Requirements",
+      "requirementsPlaceholder": "Describe what you want to add or change after the blank HTML is created.",
+      "create": "Create HTML",
+      "creating": "Creating…",
+      "publishFailed": "Couldn't publish the HTML. Your form is preserved; try again.",
+      "registrationFailed": "HTML v1 was published, but it could not be registered in Docs. Do not submit again, because that would create v2.",
       "descLabel": "HTML description",
       "descPlaceholder": "Describe the HTML you want (e.g. a launch landing page with a title, highlights and a sign-up button).",
       "descTooLong": "Description is too long — keep it under 8000 characters.",
@@ -59,6 +66,12 @@
       "draftConflict": "This conversation already has a draft or pending attachments; clear it first, then retry",
       "messageTooLong": "The final message exceeds the {{max}} character send limit. Shorten the description."
     }
+  },
+  "htmlModifyPrompt": {
+    "label": "Prompt for modifying this HTML",
+    "copy": "Copy prompt",
+    "copied": "Prompt copied",
+    "failed": "Couldn't copy the prompt. Select and copy it manually."
   },
   "board": {
     "readOnly": "Read-only",

@@ -29,6 +29,13 @@
     "retry": "重试",
     "htmlCreate": {
       "title": "新建 HTML",
+      "nameLabel": "HTML 名称",
+      "requirementsLabel": "需求",
+      "requirementsPlaceholder": "描述空白 HTML 创建后要添加或修改的内容。",
+      "create": "创建 HTML",
+      "creating": "创建中…",
+      "publishFailed": "HTML 发布失败，表单内容已保留，请重试。",
+      "registrationFailed": "HTML v1 已发布，但未能登记到文档列表。请勿再次提交，否则会创建 v2。",
       "descLabel": "HTML 描述",
       "descPlaceholder": "描述你想生成的 HTML 内容与用途（例如：为发布会做一个落地页，含标题、亮点和报名按钮）。",
       "descTooLong": "描述过长，请控制在 8000 字以内。",
@@ -59,6 +66,12 @@
       "draftConflict": "当前会话已有草稿或待发送附件，请先处理后再试",
       "messageTooLong": "最终消息超过 {{max}} 字发送上限，请缩短描述。"
     }
+  },
+  "htmlModifyPrompt": {
+    "label": "修改当前 HTML 提示词",
+    "copy": "复制提示词",
+    "copied": "提示词已复制",
+    "failed": "复制失败，请手动选择并复制提示词。"
   },
   "board": {
     "readOnly": "只读",
