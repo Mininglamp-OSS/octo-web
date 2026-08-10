@@ -20,6 +20,9 @@ import logo, { getNoMessageTrayIcon } from "./logo";
 import { IPC_CONVERSATION_UNREAD_COUNT } from "../shared/ipc-channels";
 import OCTO_CONFIG from "./config";
 import {
+  MIGRATION_BREADCRUMB,
+  actualBreadcrumbFile,
+  decideLockLostAction,
   executeUserDataMigration,
   planUserDataMigration,
   recordMigrationNotice,
@@ -656,11 +659,11 @@ const MIGRATION_DIALOGS: Record<MigrationDialogKind, { zh: MigrationDialogCopy; 
   "retry-exhausted": {
     zh: (dirs) => ({
       title: "OCTO 数据迁移已暂停",
-      message: `数据迁移多次失败，已暂停自动重试。本次继续使用旧版数据（DMWork）。如需重新尝试，请删除 ${dirs?.oldDir}/.migration-failed.json 后重启。`,
+      message: `数据迁移多次失败，已暂停自动重试。本次继续使用旧版数据（DMWork）。如需重新尝试，请删除 ${dirs ? actualBreadcrumbFile(dirs.oldDir) : MIGRATION_BREADCRUMB} 后重启。`,
     }),
     en: (dirs) => ({
       title: "OCTO data migration paused",
-      message: `The migration failed repeatedly and automatic retries are paused. This session continues on the legacy data (DMWork). To retry, delete ${dirs?.oldDir}/.migration-failed.json and restart.`,
+      message: `The migration failed repeatedly and automatic retries are paused. This session continues on the legacy data (DMWork). To retry, delete ${dirs ? actualBreadcrumbFile(dirs.oldDir) : MIGRATION_BREADCRUMB} and restart.`,
     }),
   },
   occupied: {
@@ -754,6 +757,10 @@ function runStartupMigration(userDataPlan: MigrationPlan): void {
 
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
+  // Round-8 P1-1: the losing process may still receive app events between
+  // `ready` and its async quit — onDeepLink dereferences mainWindow, which
+  // never exists here.
+  if (!gotTheLock) return;
   onDeepLink(url);
 });
 
@@ -786,10 +793,10 @@ app.on("ready", () => {
   // initialization — this guard runs before createMainWindow() below and is
   // the single place the lock-failure path terminates.
   if (!gotTheLock) {
-    // Round-6 P2-3: only "migrate" is a migration-related path; a lock
-    // failure under "legacy"/"none" is the ordinary focus-the-running-
+    // decideLockLostAction: only "migrate" is a migration-related path; a
+    // lock failure under "legacy"/"none" is the ordinary focus-the-running-
     // instance flow and stays silent.
-    if (userDataPlan.action === "migrate") {
+    if (decideLockLostAction(userDataPlan) === "dialog-then-quit") {
       const { title, message } = migrationDialogCopy("lock");
       dialog.showErrorBox(title, message);
     }
@@ -883,6 +890,11 @@ app.on("ready", () => {
 });
 
 app.on("activate", () => {
+  // Round-8 P1-1: same guard as open-url — macOS fires `activate` right after
+  // `ready`; a losing process must never create a window against the legacy
+  // profile (it would break the single-instance mutex mid-migration).
+  if (!gotTheLock) return;
+
   if (!mainWindow) {
     return createMainWindow();
   }

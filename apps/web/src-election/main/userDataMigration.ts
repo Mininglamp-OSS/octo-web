@@ -35,12 +35,15 @@ import path from "path";
 //   The allowlist has no such window: an unknown entry is never deleted.
 // - Completion marker + residual data: a migration is "complete" when the
 //   marker coexists with residual destination data, OR when the legacy profile
-//   itself carries no sentinel (regenerable caches only — re-copying would
-//   publish nothing and loop forever). A bare marker over an EMPTY destination
-//   with a data-bearing legacy is torn and re-migrated. The marker is written
-//   into the staging dir BEFORE the rename so profile+marker publish
-//   atomically. A marker-bearing destination that later loses Preferences
-//   (e.g. a user reset) is trusted via its residual data and NEVER
+//   has nothing copyable left (regenerable caches / singleton artifacts only —
+//   re-copying would publish nothing and loop forever). "Nothing copyable" is
+//   judged with the SAME rule as the copy filter (round-8 P1-2): a legacy
+//   holding only IndexedDB / Local Storage / Cookies still carries real data
+//   and a bare marker over it is torn, re-migrated. A bare marker over an
+//   EMPTY destination with a data-bearing legacy is torn and re-migrated. The
+//   marker is written into the staging dir BEFORE the rename so profile+marker
+//   publish atomically. A marker-bearing destination that later loses
+//   Preferences (e.g. a user reset) is trusted via its residual data and NEVER
 //   re-migrated over (round-6 P1-1, failure scenario A).
 // - Occupied destination (round-6 P1-2): plan() returns action "legacy" with
 //   reason "destination-occupied"; the session stays on the established DMWork
@@ -64,14 +67,10 @@ export const MIGRATION_BREADCRUMB = ".migration-failed.json";
 export const MIGRATION_NOTICES = ".octo-migration-notices.json";
 export const MAX_MIGRATION_ATTEMPTS = 3;
 
-// A "real profile" is recognized by these sentinel files (Chromium always
-// writes them into userData before any app-level data). NOTE: only used for
-// the LEGACY dir — never as the sole guard for deleting the destination
-// (Chromium can run ~10 s without Preferences; see the allowlist below).
-const PROFILE_SENTINELS = ["Preferences", "Local State"];
-
-// Files Electron/Chromium's ProcessSingleton creates in userData. Never
-// migrated (round-1 F3). Stored lower-case; matched case-insensitively.
+// A "real profile" is recognized by Chromium's userData layout; the copy
+// filter (see execute()) prunes regenerable caches and singleton artifacts,
+// so "does this dir carry data the migration would actually copy" is the rule
+// used for the legacy side of the completion check (round-8 P1-2).
 const ELECTRON_LOCK_FILES = new Set([
   "singletonlock",
   "singletoncookie",
@@ -97,25 +96,68 @@ const SKIP_DIRS = new Set([
 // Round-6 P1-1: the destination-decision ALLOWLIST. Deleting the destination
 // is permitted only when every top-level entry is one of these; anything else
 // is user data we do not own and must never be deleted.
+// Round-8 P2-4: ProcessSingleton artifacts (SingletonLock/SingletonCookie/
+// SingletonSocket) and Crashpad are NOT cleanable — a lock on the OCTO path
+// can never be ours (we hold the legacy lock), so a live instance's lock files
+// are treated as occupied and block the delete. Crashpad is excluded with them
+// (a crash-reporting process may still hold it).
 const DESTINATION_CLEANABLE = (() => {
   const set = new Set<string>();
-  ELECTRON_LOCK_FILES.forEach((e) => set.add(e));
-  SKIP_DIRS.forEach((e) => set.add(e));
+  ELECTRON_LOCK_FILES.forEach((e) => {
+    if (e !== "singletonlock" && e !== "singletoncookie" && e !== "singletonsocket") {
+      set.add(e);
+    }
+  });
+  SKIP_DIRS.forEach((e) => {
+    if (e !== "crashpad") set.add(e);
+  });
   set.add(MIGRATION_MARKER);
   set.add("dictionaries");
   set.add("network persistent state");
+  // Round-8 P2-2: OS/Finder metadata is regenerable noise, not user data —
+  // a single .DS_Store must not permanently block a migration. Note the
+  // leading dot: `.DS_Store`.toLowerCase() is ".ds_store".
+  set.add(".ds_store");
+  set.add("thumbs.db");
+  set.add("desktop.ini");
   return set;
 })();
 
-// Top-level entries of `dir` that are NOT known-cleanable. A non-empty result
-// means "occupied". Fail-closed: an unreadable dir reports a fake residual.
-function residualEntries(dir: string): string[] {
+// Top-level entries of `dir` that are NOT known-cleanable, tri-state
+// (round-8 P2-3): { unreadable: true } means the dir cannot be inspected and
+// must be treated as occupied — never mistaken for empty. Fail-closed.
+type ResidualEntries = { unreadable: boolean; entries: string[] };
+function residualEntries(dir: string): ResidualEntries {
   try {
-    return fs
-      .readdirSync(dir)
-      .filter((entry) => !DESTINATION_CLEANABLE.has(entry.toLowerCase()));
+    return {
+      unreadable: false,
+      entries: fs
+        .readdirSync(dir)
+        .filter((entry) => !DESTINATION_CLEANABLE.has(entry.toLowerCase())),
+    };
   } catch {
-    return ["<unreadable>"];
+    return { unreadable: true, entries: [] };
+  }
+}
+
+// Does `dir` carry any data the migration would actually copy? Mirrors the
+// copy filter in execute() exactly (round-8 P1-2): singleton artifacts,
+// regenerable caches and the breadcrumb are pruned, so a profile holding ONLY
+// those has nothing to migrate. Fail-closed: an unreadable dir reports
+// copyable data — a marker-only completion must never strand a legacy profile
+// that still holds IndexedDB / Local Storage / Cookies.
+function hasCopyableData(dir: string): boolean {
+  try {
+    return fs.readdirSync(dir).some((entry) => {
+      const lower = entry.toLowerCase();
+      return (
+        lower !== MIGRATION_BREADCRUMB &&
+        !SKIP_DIRS.has(lower) &&
+        !ELECTRON_LOCK_FILES.has(lower)
+      );
+    });
+  } catch {
+    return true;
   }
 }
 
@@ -127,6 +169,26 @@ export type MigrationPlan = {
   reason?: "destination-occupied" | "too-many-failures";
 };
 
+export type LockLostAction = "quit-now" | "dialog-then-quit";
+
+/**
+ * What should a process that LOST the single-instance lock do?
+ *
+ * The lock is taken on the legacy path whenever a migration is planned, so a
+ * lock failure means another instance already holds that path:
+ * - "migrate" plan -> a migration-relevant conflict (the other instance may be
+ *   migrating right now): say so, then quit.
+ * - anything else   -> the ordinary second-instance flow (the running instance
+ *   focuses itself): quit silently.
+ *
+ * The caller must also guarantee that a losing process never runs normal
+ * startup — the quit has to happen before any window is created, or a second
+ * process briefly opens on the same profile (round-7 review).
+ */
+export function decideLockLostAction(plan: MigrationPlan): LockLostAction {
+  return plan.action === "migrate" ? "dialog-then-quit" : "quit-now";
+}
+
 export type MigrationResult = "done" | "failed" | "skipped";
 
 export type MigrationRuntime = {
@@ -136,10 +198,6 @@ export type MigrationRuntime = {
     error(msg: string, err: unknown): void;
   };
 };
-
-function hasProfileSentinel(dir: string): boolean {
-  return PROFILE_SENTINELS.some((name) => fs.existsSync(path.join(dir, name)));
-}
 
 // The breadcrumb lives in the legacy dir; when that dir is unwritable
 // (read-only / full volume) it falls back to appData — otherwise a write
@@ -169,6 +227,16 @@ function readBreadcrumb(
   return readBreadcrumbFile(primary) ?? readBreadcrumbFile(fallback);
 }
 
+// Round-8 P2-1: the retry-exhausted dialog must point the user at the file
+// that actually exists — the breadcrumb may have fallen back to appData when
+// the legacy dir is unwritable (round-6 P2-1).
+export function actualBreadcrumbFile(oldDir: string): string {
+  const [primary, fallback] = breadcrumbPaths(oldDir);
+  if (fs.existsSync(primary)) return primary;
+  if (fs.existsSync(fallback)) return fallback;
+  return primary; // nothing recorded yet; the primary is where it would land
+}
+
 function writeBreadcrumb(oldDir: string, err: unknown): void {
   const prev = readBreadcrumb(oldDir) ?? { attempts: 0 };
   const payload = JSON.stringify({
@@ -193,6 +261,14 @@ function removeBreadcrumb(oldDir: string): void {
     } catch {
       // best-effort
     }
+  }
+  // Round-8 P2-7: a successful migration also clears the one-shot notice
+  // bookkeeping — the "already shown" records are stale once the migration is
+  // done (the dialogs they gate can never fire again).
+  try {
+    fs.rmSync(path.join(path.dirname(oldDir), MIGRATION_NOTICES), { force: true });
+  } catch {
+    // best-effort
   }
 }
 
@@ -259,11 +335,21 @@ export function planUserDataMigration(
     // carries residual data (a live profile grew after the publish — e.g. the
     // user deleted Preferences to reset UI state; re-migrating would destroy
     // every byte written since, round-6 P1-1 scenario A), or when the legacy
-    // profile has no sentinel either (regenerable caches only — re-copying
-    // would publish nothing and loop forever). Only a bare marker over an
-    // EMPTY destination with a data-bearing legacy is torn and re-migrated.
+    // profile has nothing copyable left (regenerable caches / singleton
+    // artifacts only — re-copying would publish nothing and loop forever;
+    // judged by the copy filter's own rule, round-8 P1-2). Only a bare marker
+    // over an EMPTY destination with a data-bearing legacy is torn and
+    // re-migrated. A destination that cannot be inspected is never assumed
+    // complete — stay on the legacy profile (round-8 P2-3 tri-state).
     if (fs.existsSync(path.join(newDir, MIGRATION_MARKER))) {
-      if (residualEntries(newDir).length > 0 || !hasProfileSentinel(oldDir)) {
+      const residual = residualEntries(newDir);
+      if (residual.unreadable) {
+        log.warn(
+          `[userData] ${newDir} holds a migration marker but cannot be inspected; keeping the legacy profile this session.`
+        );
+        return { action: "legacy", oldDir, newDir, stagingDir };
+      }
+      if (residual.entries.length > 0 || !hasCopyableData(oldDir)) {
         return { action: "none", oldDir, newDir, stagingDir };
       }
       log.warn(
@@ -274,12 +360,13 @@ export function planUserDataMigration(
     // known-cleanable is occupied by data we do not own. Stay on the
     // established legacy profile and let index.ts say so (reason consumed
     // there). A sentinel probe alone would miss a live profile in its first
-    // ~10 s (Local Storage present, Preferences not written yet).
+    // ~10 s (Local Storage present, Preferences not written yet). An
+    // unreadable destination is occupied, never deletable (round-8 P2-3).
     if (fs.existsSync(newDir)) {
       const residual = residualEntries(newDir);
-      if (residual.length > 0) {
+      if (residual.unreadable || residual.entries.length > 0) {
         log.warn(
-          `[userData] ${newDir} already holds data without a migration marker (entries: ${residual.join(", ")}); keeping both profiles and NOT migrating (legacy data stays in ${oldDir}).`
+          `[userData] ${newDir} already holds data without a migration marker (entries: ${residual.unreadable ? "<unreadable>" : residual.entries.join(", ")}); keeping both profiles and NOT migrating (legacy data stays in ${oldDir}).`
         );
         return { action: "legacy", oldDir, newDir, stagingDir, reason: "destination-occupied" };
       }
@@ -323,11 +410,11 @@ export function executeUserDataMigration(
     // never deleted.
     if (fs.existsSync(plan.newDir)) {
       const residual = residualEntries(plan.newDir);
-      if (residual.length > 0) {
+      if (residual.unreadable || residual.entries.length > 0) {
         // A skip is NOT a success — the caller must not relaunch onto the
         // non-ours destination; this session stays on the legacy path.
         runtime.log.warn(
-          `[userData] ${plan.newDir} holds unexpected entries (${residual.join(", ")}); not migrating (both profiles kept).`
+          `[userData] ${plan.newDir} holds unexpected entries (${residual.unreadable ? "<unreadable>" : residual.entries.join(", ")}); not migrating (both profiles kept).`
         );
         return "skipped";
       }

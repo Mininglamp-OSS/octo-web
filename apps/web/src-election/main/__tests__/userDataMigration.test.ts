@@ -6,6 +6,9 @@ import {
   MAX_MIGRATION_ATTEMPTS,
   MIGRATION_BREADCRUMB,
   MIGRATION_MARKER,
+  MIGRATION_NOTICES,
+  actualBreadcrumbFile,
+  decideLockLostAction,
   executeUserDataMigration,
   planUserDataMigration,
   recordMigrationNotice,
@@ -91,6 +94,53 @@ describe("planUserDataMigration", () => {
     expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
   });
 
+  it("re-migrates a torn publish when the legacy holds IndexedDB but no sentinel (round-8 P1-2)", () => {
+    // hasProfileSentinel (Preferences/Local State only) missed this legacy:
+    // the copy filter copies IndexedDB, so a marker-only destination over it
+    // would strand the message store. hasCopyableData uses the copy rule.
+    const profile = path.join(appDataDir, "DMWork");
+    fs.mkdirSync(path.join(profile, "IndexedDB"), { recursive: true });
+    fs.writeFileSync(path.join(profile, "IndexedDB", "data"), "message-store-bytes");
+    const newDir = path.join(appDataDir, BRAND);
+    fs.mkdirSync(newDir, { recursive: true });
+    fs.writeFileSync(path.join(newDir, MIGRATION_MARKER), "2026-08-06T00:00:00Z");
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    expect(plan.action).toBe("migrate");
+  });
+
+  it("marker-only counts as migrated when the legacy holds ONLY non-copyable artifacts (round-8 P1-2)", () => {
+    // Singleton artifacts are pruned by the copy filter, so a legacy with only
+    // a stale lock has nothing to migrate — marker-only must plan "none" (no
+    // relaunch loop), even though no Preferences/Local State exist either way.
+    const profile = path.join(appDataDir, "DMWork");
+    fs.mkdirSync(profile, { recursive: true });
+    fs.writeFileSync(path.join(profile, "SingletonLock"), "hostname-pid");
+    const newDir = path.join(appDataDir, BRAND);
+    fs.mkdirSync(newDir, { recursive: true });
+    fs.writeFileSync(path.join(newDir, MIGRATION_MARKER), "2026-08-06T00:00:00Z");
+    expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
+  });
+
+  it("keeps the legacy profile when the marker destination cannot be inspected (round-8 P2-3 tri-state)", () => {
+    // Fail-closed: an unreadable destination is neither "complete" (none) nor
+    // safely re-migratable — never start a session on an unverified OCTO dir.
+    makeLegacyProfile(appDataDir);
+    const newDir = path.join(appDataDir, BRAND);
+    fs.mkdirSync(newDir, { recursive: true });
+    fs.writeFileSync(path.join(newDir, MIGRATION_MARKER), "2026-08-06T00:00:00Z");
+    const readdirSpy = vi.spyOn(fs, "readdirSync").mockImplementationOnce(() => {
+      const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+      err.code = "EACCES";
+      throw err;
+    });
+    try {
+      const plan = planUserDataMigration(appDataDir, BRAND);
+      expect(plan.action).toBe("legacy");
+    } finally {
+      readdirSpy.mockRestore();
+    }
+  });
+
   it("round-trip invariant: a marker-only destination with a data-less legacy counts as migrated (P0-1, no relaunch loop)", () => {
     // Legacy profile with ONLY regenerable caches (no sentinel): the copy
     // prunes everything, so re-migrating would loop forever. The marker-only
@@ -144,16 +194,41 @@ describe("planUserDataMigration", () => {
     expect(plan.reason).toBe("destination-occupied");
   });
 
-  it("a destination with only lock/crash files does NOT block migration (allowlist polarity)", () => {
+  it("a destination with only regenerable/OS-metadata files does NOT block migration (allowlist polarity)", () => {
     makeLegacyProfile(appDataDir);
     const newDir = path.join(appDataDir, BRAND);
     fs.mkdirSync(newDir, { recursive: true });
-    fs.writeFileSync(path.join(newDir, "SingletonLock"), "");
-    fs.mkdirSync(path.join(newDir, "Crashpad"), { recursive: true });
     fs.writeFileSync(path.join(newDir, "Dictionaries"), "dict");
     fs.writeFileSync(path.join(newDir, "Network Persistent State"), "{}");
+    // Round-8 P2-2: OS/Finder metadata is noise, not user data.
+    fs.writeFileSync(path.join(newDir, ".DS_Store"), "x");
+    fs.writeFileSync(path.join(newDir, "Thumbs.db"), "x");
+    fs.writeFileSync(path.join(newDir, "desktop.ini"), "x");
     const plan = planUserDataMigration(appDataDir, BRAND);
     expect(plan.action).toBe("migrate");
+  });
+
+  it("a destination holding a live singleton lock is occupied, never deleted (round-8 P2-4)", () => {
+    makeLegacyProfile(appDataDir);
+    const newDir = path.join(appDataDir, BRAND);
+    fs.mkdirSync(newDir, { recursive: true });
+    // ProcessSingleton artifacts can be a LIVE instance's fingerprint. We hold
+    // the legacy lock, so a lock on the OCTO path is never ours — deleting it
+    // could break the other instance's mutex.
+    fs.writeFileSync(path.join(newDir, "SingletonLock"), "hostname-pid");
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    expect(plan.action).toBe("legacy");
+    expect(plan.reason).toBe("destination-occupied");
+  });
+
+  it("a destination with only a Crashpad dir is occupied (round-8 P2-4)", () => {
+    makeLegacyProfile(appDataDir);
+    const newDir = path.join(appDataDir, BRAND);
+    fs.mkdirSync(path.join(newDir, "Crashpad"), { recursive: true });
+    fs.writeFileSync(path.join(newDir, "Crashpad", "reports"), "x");
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    expect(plan.action).toBe("legacy");
+    expect(plan.reason).toBe("destination-occupied");
   });
 
   it("plans legacy (too-many-failures) when the breadcrumb budget is exhausted (P1-1)", () => {
@@ -380,20 +455,55 @@ describe("executeUserDataMigration", () => {
     expect(fs.existsSync(stale)).toBe(false);
   });
 
-  it("clears a destination with only lock files before the rename lands", () => {
+  it("refuses to clear a destination with singleton lock artifacts — skipped, lock files untouched (round-8 P2-4)", () => {
     makeLegacyProfile();
     const newDir = path.join(appDataDir, BRAND);
     fs.mkdirSync(newDir, { recursive: true });
-    fs.writeFileSync(path.join(newDir, "SingletonLock"), "");
-    fs.writeFileSync(path.join(newDir, "SingletonCookie"), "");
-    fs.writeFileSync(path.join(newDir, "SingletonSocket"), "");
+    fs.writeFileSync(path.join(newDir, "SingletonLock"), "hostname-pid");
+    fs.writeFileSync(path.join(newDir, "SingletonCookie"), "cookie");
+    fs.writeFileSync(path.join(newDir, "SingletonSocket"), "socket");
 
     const plan = planUserDataMigration(appDataDir, BRAND);
+    plan.action = "migrate"; // force the execute-side re-check path
+    const result = executeUserDataMigration(plan, runtime);
+
+    expect(result).toBe("skipped");
+    // The lock artifacts (possibly a live instance's) are never deleted.
+    expect(fs.existsSync(path.join(newDir, "SingletonLock"))).toBe(true);
+    expect(fs.existsSync(path.join(newDir, "SingletonCookie"))).toBe(true);
+    expect(fs.existsSync(path.join(newDir, "SingletonSocket"))).toBe(true);
+    expect(fs.existsSync(path.join(appDataDir, "DMWork", "Preferences"))).toBe(true);
+  });
+
+  it("clears a destination holding only OS metadata (round-8 P2-2)", () => {
+    makeLegacyProfile();
+    const newDir = path.join(appDataDir, BRAND);
+    fs.mkdirSync(newDir, { recursive: true });
+    fs.writeFileSync(path.join(newDir, ".DS_Store"), "x");
+
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    plan.action = "migrate"; // force the execute-side re-check path
     const result = executeUserDataMigration(plan, runtime);
 
     expect(result).toBe("done");
     expect(fs.existsSync(path.join(newDir, "Preferences"))).toBe(true);
-    expect(fs.existsSync(path.join(newDir, "SingletonLock"))).toBe(false);
+    expect(fs.existsSync(path.join(newDir, ".DS_Store"))).toBe(false);
+    expect(fs.existsSync(path.join(newDir, MIGRATION_MARKER))).toBe(true);
+  });
+
+  it("a successful migration clears the one-shot notice bookkeeping (round-8 P2-7)", () => {
+    makeLegacyProfile();
+    // A previous session told the user about a paused migration.
+    fs.writeFileSync(
+      path.join(appDataDir, MIGRATION_NOTICES),
+      JSON.stringify({ shown: ["retry-exhausted"] })
+    );
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    const result = executeUserDataMigration(plan, runtime);
+
+    expect(result).toBe("done");
+    // The "already shown" records are stale once the migration is done.
+    expect(fs.existsSync(path.join(appDataDir, MIGRATION_NOTICES))).toBe(false);
   });
 
   it("returns skipped (not done) when the destination gained a real profile since planning", () => {
@@ -496,5 +606,60 @@ describe("migration notices", () => {
     // Recording is idempotent.
     recordMigrationNotice(appDataDir, "retry-exhausted");
     expect(shouldShowMigrationNotice(appDataDir, "retry-exhausted")).toBe(false);
+  });
+});
+
+describe("decideLockLostAction", () => {
+  const plan = (action: "migrate" | "legacy" | "none") =>
+    ({
+      action,
+      oldDir: path.join("C:", "appData", "DMWork"),
+      newDir: path.join("C:", "appData", "OCTO"),
+      stagingDir: path.join("C:", "appData", ".octo-migrate-staging"),
+    }) as const;
+
+  it("migrate plan: the losing process says so before quitting (dialog-then-quit)", () => {
+    expect(decideLockLostAction(plan("migrate"))).toBe("dialog-then-quit");
+  });
+
+  it("legacy plan: ordinary second-instance flow, quit silently", () => {
+    expect(decideLockLostAction(plan("legacy"))).toBe("quit-now");
+  });
+
+  it("none plan: steady state, quit silently", () => {
+    expect(decideLockLostAction(plan("none"))).toBe("quit-now");
+  });
+});
+
+describe("actualBreadcrumbFile", () => {
+  let appDataDir: string;
+
+  beforeEach(() => {
+    appDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-mig-bc-"));
+    fs.mkdirSync(path.join(appDataDir, "DMWork"), { recursive: true });
+  });
+
+  afterEach(() => {
+    fs.rmSync(appDataDir, { recursive: true, force: true });
+  });
+
+  it("points at the primary when it exists (round-8 P2-1)", () => {
+    const primary = path.join(appDataDir, "DMWork", MIGRATION_BREADCRUMB);
+    fs.writeFileSync(primary, "{}");
+    expect(actualBreadcrumbFile(path.join(appDataDir, "DMWork"))).toBe(primary);
+  });
+
+  it("points at the appData fallback when the legacy dir was unwritable (round-8 P2-1)", () => {
+    // Fallback only (as after a failed write with a read-only legacy dir) —
+    // the retry-exhausted dialog must name THIS file, not a non-existent one.
+    const fallback = path.join(appDataDir, MIGRATION_BREADCRUMB);
+    fs.writeFileSync(fallback, "{}");
+    expect(actualBreadcrumbFile(path.join(appDataDir, "DMWork"))).toBe(fallback);
+  });
+
+  it("falls back to the primary path when nothing exists yet", () => {
+    expect(actualBreadcrumbFile(path.join(appDataDir, "DMWork"))).toBe(
+      path.join(appDataDir, "DMWork", MIGRATION_BREADCRUMB)
+    );
   });
 });
