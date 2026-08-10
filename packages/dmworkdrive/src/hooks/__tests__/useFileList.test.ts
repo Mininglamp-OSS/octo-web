@@ -359,14 +359,16 @@ describe('useFileList', () => {
       expect(result.current.entries.map((e) => e.id)).toEqual([1, 3]);
     });
 
-    it('reload() after loadMore() refetches the FULL span, not just page 1 (P1-1)', async () => {
-      // Bot review yujiawei P1-1 + Q4: a paged-through folder used to
-      // collapse to page-1 rows after any reload(), silently pruning
-      // selections that lived on later pages. Fix: reload() refetches
-      // pages 1..pageIndex SEQUENTIALLY through the normal append path.
-      // (An earlier attempt used a jumbo page_size, but a server cap
-      // would then be indistinguishable from a real tail → hasMore
-      // stuck false. Bounded pages per request dodges that.)
+    it('reload() after loadMore() refreshes with page 1 only (server sorts newest-first)', async () => {
+      // With octo-drive's ORDER BY is_folder DESC, updated_at DESC, id DESC,
+      // freshly-mutated rows always land on page 1 — so reload() is
+      // a single page-1 fetch, race-free by construction (subsequent
+      // reload calls overwrite entries; there is no cross-request
+      // append that could interleave). Earlier rounds tried a
+      // sequential span-refetch (pages 1..N) and hit a concurrent-
+      // reload race under multi-file drops; that architecture was
+      // reverted after the server sort landed. Keep this test so
+      // regressions to a multi-page reload path fail loudly.
       const page1 = Array.from({ length: 50 }, (_, i) =>
         entry(i + 1, `f${i + 1}.pdf`, 'blob'),
       );
@@ -376,15 +378,16 @@ describe('useFileList', () => {
       const page3Partial = Array.from({ length: 30 }, (_, i) =>
         entry(i + 101, `f${i + 101}.pdf`, 'blob'),
       );
-      // Reload: three more sequential PAGE_SIZE-bounded calls covering
-      // the same span. Same rows come back (refresh is idempotent here).
+      const refreshedPage1 = [
+        entry(999, 'new.pdf', 'blob'),
+        ...page1.slice(0, 49),
+      ];
       vi.mocked(api.browse)
         .mockResolvedValueOnce(resp(page1, 130))
         .mockResolvedValueOnce(resp(page2, 130))
         .mockResolvedValueOnce(resp(page3Partial, 130))
-        .mockResolvedValueOnce(resp(page1, 130))
-        .mockResolvedValueOnce(resp(page2, 130))
-        .mockResolvedValueOnce(resp(page3Partial, 130));
+        // reload = one page-1 request; the just-uploaded row is at the top.
+        .mockResolvedValueOnce(resp(refreshedPage1, 131));
 
       const { result } = renderHook(() => useFileList('sp', 0));
       await waitFor(() => expect(result.current.loading).toBe(false));
@@ -403,18 +406,21 @@ describe('useFileList', () => {
       await waitFor(() => expect(result.current.entries).toHaveLength(130));
       expect(result.current.hasMore).toBe(false);
 
-      // Now reload — MUST NOT collapse the 130-row view to 50.
+      // Reload — server returns the fresh page 1 with the new row at
+      // top. Entries collapse to 50 (page 1 only); the user can page
+      // back in for the older rows if needed.
       await act(async () => {
         result.current.reload();
       });
-      await waitFor(() => expect(result.current.entries).toHaveLength(130));
-      expect(result.current.hasMore).toBe(false);
-      // And each request was PAGE_SIZE-bounded (no jumbo page_size).
+      await waitFor(() => expect(result.current.entries).toHaveLength(50));
+      expect(result.current.entries[0].id).toBe(999); // new upload
+      // Exactly one browse call was made for the reload.
       const calls = vi.mocked(api.browse).mock.calls;
-      for (const c of calls) {
-        const params = c[0] as { page_size: number };
-        expect(params.page_size).toBe(50);
-      }
+      expect(calls).toHaveLength(4); // initial + 2 loadMore + 1 reload
+      const reloadCall = calls[calls.length - 1]!;
+      const params = reloadCall[0] as { page_index: number; page_size: number };
+      expect(params.page_index).toBe(1);
+      expect(params.page_size).toBe(50);
     });
 
     it('stale reload() from a previous space cannot overwrite the current view (P1-2)', async () => {

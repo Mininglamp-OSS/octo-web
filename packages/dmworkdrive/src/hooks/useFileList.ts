@@ -97,10 +97,6 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   // synchronously alongside setEntries so the next runFetch call sees an
   // up-to-date total.
   const loadedCountRef = useRef(0);
-  // pageIndexRef mirrors pageIndex so imperative handlers (Modal onOk,
-  // upload finish) captured earlier still refetch the CURRENT span,
-  // not the span as of capture time (bot review Q6).
-  const pageIndexRef = useRef(1);
 
   const runFetch = useCallback(
     async (opts: {
@@ -209,7 +205,6 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
           nextTotal !== null && loadedCountRef.current >= nextTotal;
         setHasMore(!short && !reachedTotal);
         setPageIndex(opts.page);
-        pageIndexRef.current = opts.page;
       } catch (err: unknown) {
         if ((err as Error)?.name === 'AbortError' || seq !== seqRef.current) return;
         const msg = (err as Error)?.message ?? 'load failed';
@@ -230,48 +225,21 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   );
 
   const reload = useCallback(() => {
-    // Same-context refresh (delete / rename / upload / etc). Refetch the
-    // ENTIRE span the user has already paged through so a same-context
-    // reload doesn't collapse the accumulated pages back to page-1 rows.
+    // Same-context refresh (delete / rename / upload / etc). Single
+    // page-1 fetch — since octo-drive now orders folders first + then
+    // by updated_at DESC (see octo-drive MR "list-order-updated-at"),
+    // a fresh upload / edit surfaces at the TOP of the listing. Page 1
+    // therefore always contains the just-mutated file, and a single
+    // request suffices.
     //
-    // Bot review yujiawei P1-1 / Q4: an earlier attempt used a jumbo
-    // page_size = pageIndex * PAGE_SIZE, but octo-drive caps page_size
-    // server-side. A clamped response would be indistinguishable from a
-    // real tail → hasMore flips false → paging permanently disabled.
-    // Fix: refetch pages 1..pageIndex sequentially through the normal
-    // append path. Each request is PAGE_SIZE-bounded, so the cap can't
-    // truncate the span or falsely terminate paging.
-    //
-    // pageIndexRef, not the closure-captured pageIndex, so a captured
-    // reload() from a Modal onOk that saw pageIndex=2 doesn't
-    // under-refetch after the user has since paged deeper (Q6).
-    const pagesToLoad = Math.max(pageIndexRef.current, 1);
-    // Kick off page 1 as a reset (clears loadMoreError, keeps entries
-    // visible during the fetch — the existing !resetView branch), then
-    // chain-append the remaining pages one at a time so runFetch's own
-    // guard/abort/seq machinery serialises them correctly.
-    //
-    // We can't Promise.all — each append reads entries from setEntries's
-    // callback, and we need them in order to preserve stable pagination.
-    // A sequential chain is simpler and matches the original scroll-in
-    // ordering.
-    (async () => {
-      await runFetch({ page: 1, append: false });
-      for (let p = 2; p <= pagesToLoad; p++) {
-        // If a later runFetch aborted us (context change, or the user
-        // manually navigated), stop — no point re-fetching pages that
-        // belong to a stale view.
-        if (
-          contextRef.current.spaceId !== spaceId ||
-          contextRef.current.parentId !== parentId ||
-          contextRef.current.filter !== filter
-        ) {
-          return;
-        }
-        await runFetch({ page: p, append: true });
-      }
-    })();
-  }, [runFetch, spaceId, parentId, filter]);
+    // This replaces the earlier sequential span-refetch (pages 1..N)
+    // which introduced a concurrent-reload race — see bot review round
+    // 9 for the reproduction: 4 concurrent upload confirms → 4 reload
+    // chains interleaved via abortRef, producing duplicate rows and a
+    // stale page 1. Single-request reload is race-free by design:
+    // subsequent reload calls simply overwrite entries.
+    void runFetch({ page: 1, append: false });
+  }, [runFetch]);
 
   const loadMore = useCallback(() => {
     if (!hasMore) return;
