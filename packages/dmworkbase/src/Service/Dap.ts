@@ -1,5 +1,5 @@
 /**
- * Tracker —— octo-dap 前端采集「蒙版底座」(外挂式)
+ * Dap —— octo-dap 前端采集「蒙版底座」(外挂式)
  * =====================================================
  * 设计依据:`octo-dap 前端采集方案 · 蒙版优先` §2。
  *
@@ -184,7 +184,7 @@ function statusBucket(status: number): string {
     return '2xx'
 }
 
-class TrackerImpl {
+class DapImpl {
     /** 会话内唯一;仅作为埋点事件 envelope 的 session_id 随上报发出(采集启用时才发)。纯内存,不落盘。 */
     readonly sessionId: string = genId()
     /**
@@ -680,9 +680,9 @@ class TrackerImpl {
     }
 }
 
-/** 蒙版单例(唯一上报出口)。`Tracker.shared` 供极少数破例点(如消息补点)引用。 */
-export const Tracker = {
-    shared: new TrackerImpl(),
+/** 蒙版单例(唯一上报出口)。`Dap.shared` 供极少数破例点(如消息补点)引用。 */
+export const Dap = {
+    shared: new DapImpl(),
 }
 
 export type { TrackEnvelope }
@@ -691,4 +691,4 @@ export type { TrackEnvelope }
  * 仅供单元测试引用的隐私关键纯函数(不属于运行时公共 API)。normalizePath / isFirstParty
  * 是 §8 隐私边界的核心,单测直接断言其脱敏 / 同源判定,避免只靠集成路径覆盖。
  */
-export const __trackerInternals = { normalizePath, isFirstParty, isSupportedRuntime }
+export const __dapInternals = { normalizePath, isFirstParty, isSupportedRuntime }

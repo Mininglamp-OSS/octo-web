@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 /**
- * Tracker 安全契约单测(对应 PR #1320 review 的 P0 项):
+ * Dap 安全契约单测(对应 PR #1320 review 的 P0 项):
  *   - fail-closed:未启用时不落盘设备标识、不发任何请求(P0-1)。
  *   - kill switch:setEnabled(false) 后连"停采前已捕获、排入重试的批次"也不再 POST(P0-2)。
  *   - 隐私边界:normalizePath 收窄脱敏文件名 / percent-encoded 段;HTTP 只采第一方同源(P0-3)。
@@ -16,7 +16,7 @@ type FetchMock = ReturnType<typeof vi.fn>
 
 async function freshTracker() {
     vi.resetModules()
-    const mod = await import('../Tracker')
+    const mod = await import('../Dap')
     return mod
 }
 
@@ -24,7 +24,7 @@ function okFetch(): FetchMock {
     return vi.fn(() => Promise.resolve({ ok: true, status: 200 } as Response))
 }
 
-describe('Tracker — fail-closed (P0-1)', () => {
+describe('Dap — fail-closed (P0-1)', () => {
     let fetchMock: FetchMock
     beforeEach(() => {
         localStorage.clear()
@@ -34,21 +34,21 @@ describe('Tracker — fail-closed (P0-1)', () => {
     })
 
     it('disabled: emits nothing and never persists a device id', async () => {
-        const { Tracker } = await freshTracker()
+        const { Dap } = await freshTracker()
         // 默认 disabled
-        Tracker.shared.track('some_event', { a: 1 })
-        Tracker.shared.pageView('page-x')
-        Tracker.shared.flush()
+        Dap.shared.track('some_event', { a: 1 })
+        Dap.shared.pageView('page-x')
+        Dap.shared.flush()
         expect(fetchMock).not.toHaveBeenCalled()
         expect(localStorage.getItem(DEVICE_ID_KEY)).toBeNull()
     })
 
     it('enabled: sends to the same-origin relative /track/batch and only then creates the device id', async () => {
-        const { Tracker } = await freshTracker()
+        const { Dap } = await freshTracker()
         expect(localStorage.getItem(DEVICE_ID_KEY)).toBeNull() // 构造后、启用前不落盘
-        Tracker.shared.setEnabled(true)
-        Tracker.shared.track('evt', { k: 'v' })
-        Tracker.shared.flush()
+        Dap.shared.setEnabled(true)
+        Dap.shared.track('evt', { k: 'v' })
+        Dap.shared.flush()
         expect(fetchMock).toHaveBeenCalledTimes(1)
         const [url, init] = fetchMock.mock.calls[0]
         expect(url).toBe(BATCH_PATH) // 相对路径,恒同源(P0-4)
@@ -57,7 +57,7 @@ describe('Tracker — fail-closed (P0-1)', () => {
     })
 })
 
-describe('Tracker — kill switch cancels in-flight retries (P0-2)', () => {
+describe('Dap — kill switch cancels in-flight retries (P0-2)', () => {
     let fetchMock: FetchMock
     beforeEach(() => {
         localStorage.clear()
@@ -68,24 +68,24 @@ describe('Tracker — kill switch cancels in-flight retries (P0-2)', () => {
     })
 
     it('a failed batch does NOT retry once tracking is disabled before the retry timer fires', async () => {
-        const { Tracker } = await freshTracker()
+        const { Dap } = await freshTracker()
         fetchMock = vi.fn(() => Promise.reject(new Error('network')))
         // @ts-expect-error test stub
         globalThis.fetch = fetchMock
 
-        Tracker.shared.setEnabled(true)
-        Tracker.shared.track('evt', {})
-        Tracker.shared.flush() // send #1 → rejects → schedules retry at 500ms
+        Dap.shared.setEnabled(true)
+        Dap.shared.track('evt', {})
+        Dap.shared.flush() // send #1 → rejects → schedules retry at 500ms
         await vi.advanceTimersByTimeAsync(0) // 跑完 .catch 微任务,重试定时器已登记
         expect(fetchMock).toHaveBeenCalledTimes(1)
 
-        Tracker.shared.setEnabled(false) // kill switch:应清掉在途重试定时器
+        Dap.shared.setEnabled(false) // kill switch:应清掉在途重试定时器
         await vi.advanceTimersByTimeAsync(5000) // 越过所有退避窗口
         expect(fetchMock).toHaveBeenCalledTimes(1) // 没有再发生重试
     })
 
     it('control: a failed batch DOES retry while still enabled (proves the guard is real)', async () => {
-        const { Tracker } = await freshTracker()
+        const { Dap } = await freshTracker()
         fetchMock = vi
             .fn()
             .mockReturnValueOnce(Promise.reject(new Error('network')))
@@ -93,9 +93,9 @@ describe('Tracker — kill switch cancels in-flight retries (P0-2)', () => {
         // @ts-expect-error test stub
         globalThis.fetch = fetchMock
 
-        Tracker.shared.setEnabled(true)
-        Tracker.shared.track('evt', {})
-        Tracker.shared.flush()
+        Dap.shared.setEnabled(true)
+        Dap.shared.track('evt', {})
+        Dap.shared.flush()
         await vi.advanceTimersByTimeAsync(0)
         expect(fetchMock).toHaveBeenCalledTimes(1)
         await vi.advanceTimersByTimeAsync(500) // 第一次退避
@@ -103,7 +103,7 @@ describe('Tracker — kill switch cancels in-flight retries (P0-2)', () => {
     })
 })
 
-describe('Tracker — HTTP wrapper is first-party only and self-excludes (P0-3)', () => {
+describe('Dap — HTTP wrapper is first-party only and self-excludes (P0-3)', () => {
     let fetchMock: FetchMock
     beforeEach(() => {
         localStorage.clear()
@@ -113,14 +113,14 @@ describe('Tracker — HTTP wrapper is first-party only and self-excludes (P0-3)'
     })
 
     it('captures same-origin requests (path redacted) but skips cross-origin, and never re-tracks its own batch', async () => {
-        const { Tracker } = await freshTracker()
-        Tracker.shared.setEnabled(true)
-        Tracker.shared.init() // 安装 fetch/XHR 包裹(包裹当前的 fetchMock 为 orig)
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init() // 安装 fetch/XHR 包裹(包裹当前的 fetchMock 为 orig)
 
         const origin = location.origin
         await globalThis.fetch(`${origin}/api/things/report-2024.pdf`) // 同源 → 采
         await globalThis.fetch('https://cdn.example.com/bucket/secret.pdf') // 跨域 → 不采
-        Tracker.shared.flush()
+        Dap.shared.flush()
         await Promise.resolve()
 
         // 找到上报批次(自身通道),解析其中的事件
@@ -139,10 +139,10 @@ describe('Tracker — HTTP wrapper is first-party only and self-excludes (P0-3)'
     })
 })
 
-describe('Tracker.normalizePath / isFirstParty (P0-3 helpers)', () => {
+describe('Dap.normalizePath / isFirstParty (P0-3 helpers)', () => {
     it('redacts filenames, percent-encoded segments, ids; keeps plain route tokens', async () => {
-        const { __trackerInternals } = await freshTracker()
-        const { normalizePath } = __trackerInternals
+        const { __dapInternals } = await freshTracker()
+        const { normalizePath } = __dapInternals
         expect(normalizePath('/v1/common/appconfig')).toBe('/v1/common/appconfig')
         expect(normalizePath('/agent-cards/9987/files/report-2024.pdf')).toBe('/agent-cards/:id/files/:seg')
         expect(normalizePath('/x/memory%2F2026-05-07.md')).toBe('/x/:seg')
@@ -152,15 +152,15 @@ describe('Tracker.normalizePath / isFirstParty (P0-3 helpers)', () => {
     })
 
     it('treats relative and same-origin as first-party, foreign origins as not', async () => {
-        const { __trackerInternals } = await freshTracker()
-        const { isFirstParty } = __trackerInternals
+        const { __dapInternals } = await freshTracker()
+        const { isFirstParty } = __dapInternals
         expect(isFirstParty('/api/x')).toBe(true)
         expect(isFirstParty(`${location.origin}/api/x`)).toBe(true)
         expect(isFirstParty('https://cdn.example.com/x')).toBe(false)
     })
 })
 
-describe('Tracker — unsupported runtime stays disabled (desktop/file://)', () => {
+describe('Dap — unsupported runtime stays disabled (desktop/file://)', () => {
     let fetchMock: FetchMock
     beforeEach(() => {
         localStorage.clear()
@@ -174,18 +174,18 @@ describe('Tracker — unsupported runtime stays disabled (desktop/file://)', () 
 
     it('does not enable, send, or persist a device id under a file:// runtime', async () => {
         vi.stubGlobal('location', { protocol: 'file:', origin: 'null', href: 'file:///app/index.html' })
-        const { Tracker } = await freshTracker()
-        Tracker.shared.setEnabled(true) // 桌面下发也应被吞掉
-        Tracker.shared.track('evt', { k: 'v' })
-        Tracker.shared.flush()
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true) // 桌面下发也应被吞掉
+        Dap.shared.track('evt', { k: 'v' })
+        Dap.shared.flush()
         expect(fetchMock).not.toHaveBeenCalled()
         expect(localStorage.getItem(DEVICE_ID_KEY)).toBeNull()
     })
 
     it('isSupportedRuntime: true for http(s), false for file:', async () => {
-        const { __trackerInternals } = await freshTracker()
-        expect(__trackerInternals.isSupportedRuntime()).toBe(true) // jsdom 默认 http:
+        const { __dapInternals } = await freshTracker()
+        expect(__dapInternals.isSupportedRuntime()).toBe(true) // jsdom 默认 http:
         vi.stubGlobal('location', { protocol: 'file:', origin: 'null' })
-        expect(__trackerInternals.isSupportedRuntime()).toBe(false)
+        expect(__dapInternals.isSupportedRuntime()).toBe(false)
     })
 })

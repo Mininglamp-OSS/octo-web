@@ -98,7 +98,7 @@ export type MittEvents = {
 };
 import { EndpointCommon } from "./EndpointCommon";
 import APIClient from "./Service/APIClient";
-import { Tracker } from "./Service/Tracker";
+import { Dap } from "./Service/Dap";
 import MenusManager from "./Service/Menus";
 import { EndpointManager, IModule, ModuleManager } from "./Service/Module";
 import { ProviderListener } from "./Service/Provider";
@@ -463,7 +463,7 @@ export class WKRemoteConfig {
       );
       // 埋点采集 ship dark(fail-closed):采集 iff appconfig 下发 tracking_enabled 为真
       this.trackingEnabled = parseRemoteBool(result["tracking_enabled"]);
-      Tracker.shared.setEnabled(this.trackingEnabled);
+      Dap.shared.setEnabled(this.trackingEnabled);
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );

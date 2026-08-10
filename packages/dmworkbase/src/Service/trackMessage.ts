@@ -2,7 +2,7 @@
  * 消息类破例补点(octo-dap 采集方案 §5 / §5.4)
  * =================================================
  * 消息发送走 wukongimjssdk 二进制帧(不进 HTTP),蒙版的事件委托 / fetch 包裹都覆盖不到语义。
- * 必须在业务层 sendMessage / sendack / revoke 处极小破例,调 Tracker 补点。
+ * 必须在业务层 sendMessage / sendack / revoke 处极小破例,调 Dap 补点。
  *
  * 关键口径:
  *   - `message_sent` / `ai_mentioned` 质量只到 `submitted`(IM 服务端已受理入队),不冒充投递/已读。
@@ -12,7 +12,7 @@
  *     绝不采集正文,只 emit 事件 + entry。
  *   - 一律不写 actor(user_id / actor_type),后端按凭证归一。
  */
-import { Tracker } from './Tracker'
+import { Dap } from './Dap'
 
 /** channelType → chat_type 枚举(§ Const.ts:ChannelTypePerson=1/Group=2/CommunityTopic=5/CustomerService=3) */
 function chatTypeOf(channelType: number): string {
@@ -63,31 +63,31 @@ export function trackMessageSent(clientSeq: number | undefined): void {
         chat_type: chatType,
         object_id: String(clientSeq), // client_seq 作 object_id
     }
-    Tracker.shared.track('message_sent', base)
+    Dap.shared.track('message_sent', base)
     const bots = intent.mentionedBots || []
     if (intent.mentionAis || bots.length > 0) {
         if (bots.length > 0) {
             // 每个被 @ 的 AI bot 一条,带 bot_id/bot_type(§B: 多AI协作/系统内置 vs 自建分布)
             for (const b of bots) {
-                Tracker.shared.track('ai_mentioned', {
+                Dap.shared.track('ai_mentioned', {
                     channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id,
                     bot_id: b.id, bot_type: b.type,
                 })
             }
         } else {
             // @所有AI 但订阅列表未解析出具体 bot:退化为一条无 bot_id 的
-            Tracker.shared.track('ai_mentioned', { channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id })
+            Dap.shared.track('ai_mentioned', { channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id })
         }
     }
     if (intent.botCreateEntry) {
         // §5.4:started 语义,quality=submitted;进不了「创建成功」分母
-        Tracker.shared.track('bot_create_started', { entry: intent.botCreateEntry, object_id: base.object_id })
+        Dap.shared.track('bot_create_started', { entry: intent.botCreateEntry, object_id: base.object_id })
     }
 }
 
 /** revoke 成功后调:message_revoked(ui_action)。 */
 export function trackMessageRevoked(clientSeq: number | undefined, channelType: number): void {
-    Tracker.shared.track('message_revoked', {
+    Dap.shared.track('message_revoked', {
         channel_type: channelType,
         object_id: clientSeq ? String(clientSeq) : null,
     })

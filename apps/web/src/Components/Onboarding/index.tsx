@@ -8,7 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { useI18n } from "@octo/base";
-import { Tracker } from "@octo/base";
+import { Dap } from "@octo/base";
 import {
   defaultOnboardingConfig,
   markOnboardingSeen,
@@ -271,7 +271,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     }
     // activeId 变了:给上一章 emit completed,再翻到当前章
     if (prevChapterRef.current !== activeId) {
-      Tracker.shared.track("onboarding_chapter", {
+      Dap.shared.track("onboarding_chapter", {
         chapter_id: prevChapterRef.current,
         outcome: "completed",
         duration_ms: Date.now() - chapterEnterAtRef.current,
@@ -306,7 +306,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     // 仅当已真正进入章节视图(chapterEnterAtRef 已初始化)才 emit——否则从 intro 屏直接
     // 关闭时 chapterEnterAtRef 仍为 0,会算出跨年的假 duration_ms(见 PR #1320 review)。
     if (prevChapterRef.current !== null) {
-      Tracker.shared.track("onboarding_chapter", {
+      Dap.shared.track("onboarding_chapter", {
         chapter_id: activeId,
         outcome: "exited",
         duration_ms: Date.now() - chapterEnterAtRef.current,
@@ -321,7 +321,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
 
     completionStartedRef.current = true;
     // 完成:当前(最后一)章视为 completed
-    Tracker.shared.track("onboarding_chapter", {
+    Dap.shared.track("onboarding_chapter", {
       chapter_id: activeId,
       outcome: "completed",
       duration_ms: Date.now() - chapterEnterAtRef.current,
