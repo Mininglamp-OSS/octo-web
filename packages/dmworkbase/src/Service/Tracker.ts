@@ -136,6 +136,30 @@ function isFirstParty(rawUrl: string): boolean {
     }
 }
 
+/**
+ * 当前 runtime 是否支持采集。埋点恒发同源相对路径 /track/batch(P0-4 同源锁),
+ * 只在标准 http(s) Web 运行时成立。桌面 / Electron / Tauri 打包后页面跑在 `file://`
+ * (或自定义协议),API 走的是 apiURL.ts 解析出的**绝对后端域名**——此时相对 /track/batch
+ * 既发不出去、也不该把跨域后端流量当第一方采,故在这些 runtime 里直接不启用 tracker
+ * (见 PR #1320 review:desktop/file:// 上报打到错误 origin)。判据:protocol 必须是
+ * http/https,且无桌面运行时标记。拿不到 location(SSR/测试无 DOM)时保守判为不支持。
+ */
+function isSupportedRuntime(): boolean {
+    try {
+        const loc = (globalThis as { location?: Location }).location
+        if (!loc || (loc.protocol !== 'http:' && loc.protocol !== 'https:')) return false
+        const w = globalThis as {
+            __TAURI_IPC__?: unknown
+            __POWERED_ELECTRON__?: unknown
+        }
+        if (w.__TAURI_IPC__ || w.__POWERED_ELECTRON__) return false
+        if (import.meta.env.VITE_ELECTRON_BUILD === 'true') return false
+        return true
+    } catch {
+        return false
+    }
+}
+
 /** 从请求路径提取 object_id(§2.4:如 /thread/{id})。拿不到返回 undefined。 */
 function extractObjectId(rawUrl: string): string | undefined {
     try {
@@ -219,6 +243,9 @@ class TrackerImpl {
      * 见 PR review P1-7)。
      */
     setEnabled(v: boolean): void {
+        // 桌面 / file:// 等不支持的 runtime:即便远端下发 tracking_enabled 也保持停采,
+        // 不向 file 相对路径发上报、不误采绝对后端域名流量(见 PR #1320 review)。
+        if (v && !isSupportedRuntime()) v = false
         const was = this.enabled
         this.enabled = v
         if (!v) {
@@ -664,4 +691,4 @@ export type { TrackEnvelope }
  * 仅供单元测试引用的隐私关键纯函数(不属于运行时公共 API)。normalizePath / isFirstParty
  * 是 §8 隐私边界的核心,单测直接断言其脱敏 / 同源判定,避免只靠集成路径覆盖。
  */
-export const __trackerInternals = { normalizePath, isFirstParty }
+export const __trackerInternals = { normalizePath, isFirstParty, isSupportedRuntime }

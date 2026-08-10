@@ -159,3 +159,33 @@ describe('Tracker.normalizePath / isFirstParty (P0-3 helpers)', () => {
         expect(isFirstParty('https://cdn.example.com/x')).toBe(false)
     })
 })
+
+describe('Tracker — unsupported runtime stays disabled (desktop/file://)', () => {
+    let fetchMock: FetchMock
+    beforeEach(() => {
+        localStorage.clear()
+        fetchMock = okFetch()
+        // @ts-expect-error test stub
+        globalThis.fetch = fetchMock
+    })
+    afterEach(() => {
+        vi.unstubAllGlobals()
+    })
+
+    it('does not enable, send, or persist a device id under a file:// runtime', async () => {
+        vi.stubGlobal('location', { protocol: 'file:', origin: 'null', href: 'file:///app/index.html' })
+        const { Tracker } = await freshTracker()
+        Tracker.shared.setEnabled(true) // 桌面下发也应被吞掉
+        Tracker.shared.track('evt', { k: 'v' })
+        Tracker.shared.flush()
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(localStorage.getItem(DEVICE_ID_KEY)).toBeNull()
+    })
+
+    it('isSupportedRuntime: true for http(s), false for file:', async () => {
+        const { __trackerInternals } = await freshTracker()
+        expect(__trackerInternals.isSupportedRuntime()).toBe(true) // jsdom 默认 http:
+        vi.stubGlobal('location', { protocol: 'file:', origin: 'null' })
+        expect(__trackerInternals.isSupportedRuntime()).toBe(false)
+    })
+})

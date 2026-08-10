@@ -302,12 +302,16 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       return;
     }
 
-    // 非 final 分支关闭:当前章视为「退出」
-    Tracker.shared.track("onboarding_chapter", {
-      chapter_id: activeId,
-      outcome: "exited",
-      duration_ms: Date.now() - chapterEnterAtRef.current,
-    });
+    // 非 final 分支关闭:当前章视为「退出」。
+    // 仅当已真正进入章节视图(chapterEnterAtRef 已初始化)才 emit——否则从 intro 屏直接
+    // 关闭时 chapterEnterAtRef 仍为 0,会算出跨年的假 duration_ms(见 PR #1320 review)。
+    if (prevChapterRef.current !== null) {
+      Tracker.shared.track("onboarding_chapter", {
+        chapter_id: activeId,
+        outcome: "exited",
+        duration_ms: Date.now() - chapterEnterAtRef.current,
+      });
+    }
     persistDismissed();
     hideOnboarding();
   };
