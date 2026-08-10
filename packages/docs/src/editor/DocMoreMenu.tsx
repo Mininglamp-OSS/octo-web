@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { t } from '../octoweb/index.ts'
 
 /**
@@ -201,35 +202,75 @@ function CreatorAvatar({ name, url }: { name: string; url?: string | null }) {
  * actions (open in new page / version history / export / delete) behind a single ≡ affordance at
  * the far right of the header, and shows a light info head (creator + created date) above them.
  *
- * Self-contained plain-React popover (no antd, no portal): a relatively-positioned wrapper anchors
- * an absolutely-positioned panel below the trigger. Closes on outside pointer-down and on Escape.
+ * Self-contained plain-React popover (no antd). The panel is portalled to document.body and fixed
+ * to the trigger so narrow, horizontally-scrollable headers cannot clip it. Closes on outside
+ * pointer-down and on Escape.
  */
 export function DocMoreMenu({ creatorName, creatorAvatarUrl, createdAt, items, dangerItem }: DocMoreMenuProps) {
   const [open, setOpen] = useState(false)
+  const [panelStyle, setPanelStyle] = useState<CSSProperties>({ visibility: 'hidden' })
   const wrapRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const close = () => setOpen(false)
+
+  const positionPanel = useCallback(() => {
+    const trigger = triggerRef.current
+    if (!trigger) return
+    const triggerRect = trigger.getBoundingClientRect()
+    const panelWidth = panelRef.current?.offsetWidth || 248
+    const panelHeight = panelRef.current?.offsetHeight || 0
+    const viewportPadding = 8
+    const gap = 6
+    const left = Math.min(
+      window.innerWidth - panelWidth - viewportPadding,
+      Math.max(viewportPadding, triggerRect.right - panelWidth),
+    )
+    const spaceBelow = window.innerHeight - triggerRect.bottom - gap - viewportPadding
+    const openAbove = panelHeight > 0 && panelHeight > spaceBelow && triggerRect.top > spaceBelow
+    const top = openAbove
+      ? Math.max(viewportPadding, triggerRect.top - panelHeight - gap)
+      : triggerRect.bottom + gap
+    setPanelStyle({
+      left,
+      top,
+      maxHeight: Math.max(120, window.innerHeight - viewportPadding - top),
+      visibility: 'visible',
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (open) positionPanel()
+  }, [open, positionPanel])
 
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+      const target = e.target as Node
+      if (!wrapRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false)
     }
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
+    const onViewportChange = () => positionPanel()
     document.addEventListener('mousedown', onDown, true)
     document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', onViewportChange)
+    window.addEventListener('scroll', onViewportChange, true)
     return () => {
       document.removeEventListener('mousedown', onDown, true)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', onViewportChange)
+      window.removeEventListener('scroll', onViewportChange, true)
     }
-  }, [open])
+  }, [open, positionPanel])
 
   const createdOn = formatCreatedDate(createdAt)
 
   return (
     <div className="octo-doc-more" ref={wrapRef}>
       <button
+        ref={triggerRef}
         type="button"
         className={open ? 'octo-doc-more-btn is-active' : 'octo-doc-more-btn'}
         title={t('docs.toolbar.more')}
@@ -240,8 +281,8 @@ export function DocMoreMenu({ creatorName, creatorAvatarUrl, createdAt, items, d
       >
         <HamburgerIcon />
       </button>
-      {open && (
-        <div className="octo-doc-more-panel" role="menu">
+      {open && createPortal(
+        <div ref={panelRef} className="octo-theme octo-doc-more-panel" role="menu" style={panelStyle}>
           <div className="octo-doc-more-head">
             <div className="octo-doc-more-creator">
               <CreatorAvatar name={creatorName} url={creatorAvatarUrl} />
@@ -268,7 +309,8 @@ export function DocMoreMenu({ creatorName, creatorAvatarUrl, createdAt, items, d
               </ul>
             </>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   )

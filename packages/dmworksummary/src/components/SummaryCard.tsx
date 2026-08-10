@@ -7,6 +7,7 @@ import type { SummaryListItem } from "../types/summary";
 import { ParticipantStatus, TaskStatus, TriggerType } from "../types/summary";
 import { getStatusLabel } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
+import { summaryTestIds } from "../utils/testIds";
 
 interface SummaryCardProps {
     task: SummaryListItem;
@@ -122,6 +123,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
 
     return (
         <div
+            data-testid={summaryTestIds.card(task.task_id)}
             className={`summary-card${active ? " summary-card--active" : ""}`}
             onClick={() => onClick(task.task_id)}
         >
@@ -235,6 +237,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                         }
                     >
                         <button
+                            data-testid={summaryTestIds.cardMenu(task.task_id)}
                             type="button"
                             className="summary-card-more"
                             onClick={(e) => e.stopPropagation()}
@@ -253,12 +256,14 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                     onClick={(e) => e.stopPropagation()}
                 >
                     <button
+                        data-testid={summaryTestIds.cardAcceptBtn(task.task_id)}
                         className="summary-card-respond-btn summary-card-respond-btn--accept"
                         onClick={() => onRespond(task.task_id, "accept")}
                     >
                         {t("summary.action.accept")}
                     </button>
                     <button
+                        data-testid={summaryTestIds.cardRejectBtn(task.task_id)}
                         className="summary-card-respond-btn summary-card-respond-btn--reject"
                         onClick={() => onRespond(task.task_id, "reject")}
                     >

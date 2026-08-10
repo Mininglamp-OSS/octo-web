@@ -104,7 +104,7 @@ export class TextCell extends MessageCell {
             // 自定义表情（[xxx]）单发时放大显示。优先用服务端清单驱动的 isCustomEmoji；
             // 旧 mock/实现未提供时回退到历史的本地 custom_ 图路径判断。
             const emojiUrl = WKApp.emojiService.getImage(token)
-            return WKApp.emojiService.isCustomEmoji?.(token) ?? !!(emojiUrl && emojiUrl.includes("/emoji/custom_"))
+            return WKApp.emojiService.isCustomEmoji?.(token) ?? !!(emojiUrl && emojiUrl.includes("emoji/custom_"))
         }
         return false
     }
@@ -156,7 +156,7 @@ export class TextCell extends MessageCell {
             const token = emojiParts[0].text
             const emojiUrl = WKApp.emojiService.getImage(token)
             // 自定义表情按清单判定(对服务端 CDN/绝对 url 同样生效),回退到旧的本地路径子串。
-            const isCustom = WKApp.emojiService.isCustomEmoji?.(token) ?? !!(emojiUrl && emojiUrl.includes("/emoji/custom_"))
+            const isCustom = WKApp.emojiService.isCustomEmoji?.(token) ?? !!(emojiUrl && emojiUrl.includes("emoji/custom_"))
             if (isCustom && emojiUrl) {
                 return (
                     <span className="wk-message-text-richemoji wk-message-text-richemoji--large">

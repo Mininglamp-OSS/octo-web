@@ -69,7 +69,7 @@ export default function ConversationSelect({
   // 授权区 Bot 展开器（feature: user+Bot grants）：把选中人员创建的 Bot 按人归组，
   // 默认全选、逐个可取消；仅当授权开关开启且确有 Bot 时渲染。失败/无 Bot 时为空快照。
   const resolveName = React.useCallback(
-    (uid: string) => allItems.find((it) => it.channelID === uid)?.displayName || uid,
+    (uid: string) => allItems.find((it) => it.channelID === uid)?.displayName || "",
     [allItems],
   )
   // The hook owns the confirm-time getter: readLatestSelectedBotUids() reads the freshest selected

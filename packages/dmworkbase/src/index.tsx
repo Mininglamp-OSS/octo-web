@@ -153,3 +153,8 @@ export type { AgentCardData, FileGroup, FileItem, FileContent, FileContentRespon
 // package can construct `new Channel(botUid, ChannelTypePerson)` through the @octo/base boundary
 // without taking a direct wukongimjssdk dependency (only @octo/base imports the SDK).
 export { Channel, ChannelTypePerson } from 'wukongimjssdk'
+
+// Drive-transfer Space-prefix + supported-channel helpers used by both
+// dmworkbase (FileCell) and dmworkdrive (module.tsx). Single source of truth
+// for the channel-normalisation contract (#1261 review round 6).
+export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel } from './Service/SpacePrefix'

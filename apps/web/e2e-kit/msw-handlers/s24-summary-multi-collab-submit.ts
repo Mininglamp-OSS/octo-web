@@ -2,9 +2,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- msw resolver types */
 import type { Page } from "@playwright/test";
 
+/** S24 task ID. */
+export const S24_TASK_ID = 24024;
+/** S24 logged-in user ID (the submitter). */
+export const S24_MY_USER_ID = "e2e-user-1";
+/** S24 other participant user ID. */
+export const S24_OTHER_USER_ID = "s24-member-a";
+
 /** S24: 多人 BY_PERSON 个人报告提交. */
 export async function registerS24SummaryMultiCollabSubmit(page: Page): Promise<void> {
-  await page.evaluate(() => {
+  await page.evaluate(([TASK_ID, MY_USER_ID, OTHER_USER_ID]) => {
     type MSW = {
       worker: { use: (...h: unknown[]) => void };
       http: {
@@ -17,12 +24,12 @@ export async function registerS24SummaryMultiCollabSubmit(page: Page): Promise<v
     if (!msw) throw new Error("[S24] MSW worker 未就绪 (等 __MSW_READY__).");
     const { worker, http, HttpResponse } = msw;
     const env = (data: unknown) => HttpResponse.json({ code: 0, message: "ok", data });
-    const taskId = 24024;
+    const taskId = TASK_ID;
     const now = "2026-08-06T23:10:00Z";
     const source = { source_type: 1, source_id: "s24-multi-group", source_name: "S24 多人项目群" };
     const participants = [
-      { user_id: "e2e-user-1", user_name: "E2E Tester", status: 1, confirmed_at: now },
-      { user_id: "s24-member-a", user_name: "S24 Alice", status: 1, confirmed_at: now },
+      { user_id: MY_USER_ID, user_name: "E2E Tester", status: 1, confirmed_at: now },
+      { user_id: OTHER_USER_ID, user_name: "S24 Alice", status: 1, confirmed_at: now },
     ];
     const listItem = {
       task_id: taskId,
@@ -102,7 +109,7 @@ export async function registerS24SummaryMultiCollabSubmit(page: Page): Promise<v
     const makeMembers = (submitted: boolean) => ({
       members: [
         {
-          user_id: "e2e-user-1",
+          user_id: MY_USER_ID,
           user_name: "E2E Tester",
           status: submitted ? "submitted" : "completed",
           submitted_at: submitted ? "2026-08-06T23:18:00Z" : null,
@@ -110,7 +117,7 @@ export async function registerS24SummaryMultiCollabSubmit(page: Page): Promise<v
           citations: [],
         },
         {
-          user_id: "s24-member-a",
+          user_id: OTHER_USER_ID,
           user_name: "S24 Alice",
           status: "submitted",
           submitted_at: "2026-08-06T23:11:00Z",
@@ -124,25 +131,25 @@ export async function registerS24SummaryMultiCollabSubmit(page: Page): Promise<v
 
     worker.use(
       http.get("*/summary/api/v1/summaries", () => env({ items: [listItem], total: 1, attention_count: 1, unread_count: 1, pending_invitation_count: 0 })),
-      http.get("*/summary/api/v1/summaries/24024", () => {
+      http.get(`*/summary/api/v1/summaries/${TASK_ID}`, () => {
         const state = (window as unknown as { __s24State__: { submitted: boolean } }).__s24State__;
         return env(makeDetail(state.submitted));
       }),
-      http.get("*/summary/api/v1/summaries/24024/personal", () => {
+      http.get(`*/summary/api/v1/summaries/${TASK_ID}/personal`, () => {
         const state = (window as unknown as { __s24State__: { submitted: boolean } }).__s24State__;
         return env(makePersonal(state.submitted));
       }),
-      http.get("*/summary/api/v1/summaries/24024/members", () => {
+      http.get(`*/summary/api/v1/summaries/${TASK_ID}/members`, () => {
         const state = (window as unknown as { __s24State__: { submitted: boolean } }).__s24State__;
         return env(makeMembers(state.submitted));
       }),
-      http.post("*/summary/api/v1/summaries/24024/submit", () => {
+      http.post(`*/summary/api/v1/summaries/${TASK_ID}/submit`, () => {
         const state = (window as unknown as { __s24State__: { submitted: boolean } }).__s24State__;
         state.submitted = true;
         return env({});
       }),
-      http.post("*/summary/api/v1/summaries/24024/read", () => env({ is_unread: false, has_pending_invitation: false, needs_attention: false })),
-      http.get("*/summary/api/v1/summaries/24024/versions", () => env({ versions: [], keep_limit: 3 }))
+      http.post(`*/summary/api/v1/summaries/${TASK_ID}/read`, () => env({ is_unread: false, has_pending_invitation: false, needs_attention: false })),
+      http.get(`*/summary/api/v1/summaries/${TASK_ID}/versions`, () => env({ versions: [], keep_limit: 3 }))
     );
-  });
+  }, [S24_TASK_ID, S24_MY_USER_ID, S24_OTHER_USER_ID]);
 }

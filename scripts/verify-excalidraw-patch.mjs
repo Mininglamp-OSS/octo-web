@@ -12,22 +12,22 @@ const work = await mkdtemp(join(tmpdir(), 'octo-excalidraw-patch-'))
 
 const expected = {
   tarball: 'b280d4b364b65cba264c5aa4e7435cc2ce6421eabbbef9765a56997a0fadf534',
-  patch: '5fd160bf71554a5dbaba5c13664244dd7e3b3e8f3daf085aad15367783c879ec',
+  patch: 'eaa700535211a70fdc31564a90b584fd61323c3477f6d454ad12b53c7c122e24',
   files: {
-    'dist/dev/chunk-4FTI6OG3.js': '04d6b886763bc10224fc2ea122188d1c9744259a09960a80872f55f33b825437',
+    'dist/dev/chunk-4FTI6OG3.js': '4ac8f3fbe42404296e6eb541f561a736d0a51cfbcc220d3ee3412be693a32a08',
     'dist/dev/index.css': '220a92d978570eb64115d422b172c4d81700e56086eb366a8bf089fd7e994eb5',
-    'dist/dev/index.js': 'fa8a29e9040c6aaceed330f24827b5bbb16b40fb89ce8e67d77d2e76513cf48d',
-    'dist/dev/locales/zh-CN-4MXUOFTH.js': '96f6f2a9152fc9d24bb998fc2c7b55e93c7040e48eb284678f38d2566bfb044b',
-    'dist/dev/octo-native-shapes.js': '176ff08f2bbe45c49c407edd8660b77de4e96eaa9edb07a8f92a8119bd151abc',
-    'dist/prod/chunk-K2UTITRG.js': '44f57f5be274461d1854ab42f7a471091f596abdf402eb62ab541e40ae9b422d',
+    'dist/dev/index.js': 'd27286aa3308a5da9a3698f10c6ccc478cd645da7ed07e4494b6458ac35faa7d',
+    'dist/dev/locales/zh-CN-4MXUOFTH.js': 'c1ecb260c1de1648d47e99b288b385eacb4d587c047c3083b7ba3eff9433dae9',
+    'dist/dev/octo-native-shapes.js': 'b8bf27db85e29aa34f4015d081dabe4cfcd0df2d3889bb646cdbd1229c72c338',
+    'dist/prod/chunk-K2UTITRG.js': '82c308c6bf3a299a927e4c5441144bfb39e3fdfc88b0b696a453daa8933dff73',
     'dist/prod/index.css': 'e72092760bae272ebe075bdadaff7f82909d318c5d819313185b19e99be31e49',
-    'dist/prod/index.js': '9c7808d4fffd62e27f6a32a4fab0b4bdaeb5c7176d0e9b5d1b0e878b841421c9',
-    'dist/prod/locales/zh-CN-LNUGB5OW.js': '8ae4ef60f98fe7c7b1dde78de29f225492b2da44851e12a02218eaffae19a85a',
-    'dist/prod/octo-native-shapes.js': 'bd2eb479a5333c3b66289e8231a2c309d0d607076b6ebf8446ce0ef2415a0cbd',
+    'dist/prod/index.js': '9a4b91c632f48f36af24e797ca89e5144b5adc60191201a9e37d3fe48846a6c3',
+    'dist/prod/locales/zh-CN-LNUGB5OW.js': '7035380ea7dd08b036fdea381f2814a8364a39178d604d3379ea2e1949a68b0d',
+    'dist/prod/octo-native-shapes.js': 'b8bf27db85e29aa34f4015d081dabe4cfcd0df2d3889bb646cdbd1229c72c338',
     'dist/prod/data/image-GAAHSSAO.js': 'a855f8d02347910bcebfc136d1fa947d5543f6922233017c80c9a7bb037ed6b9',
     'dist/types/excalidraw/types.d.ts': 'e66dae06e8d7cb7839eb3ba3278aaa142aa7e0017e4f13f260be8ab7337aa65e',
     'dist/types/excalidraw/index.d.ts': 'db0682ff91c3fcea460ad070501164c96bd846af14e55aa87d97aef2cd9b7b1b',
-    'dist/types/octo-native-shapes.d.ts': '7b82fa390cc9191fc5e1e77f9db605585de5e22fc5ddaf80ad9f9566559b3626',
+    'dist/types/octo-native-shapes.d.ts': '1bb260d42fc12fe2cd87bfe7d9da0899426a39cb5bc3eacfab9effc7206e84ed',
     'package.json': 'a07cc9c861da050cafa04b080d7022191735ee41af0e6eefdadb139b6fd97939',
   },
 }
@@ -71,8 +71,12 @@ try {
     assertHash(file, await sha256(join(work, 'package', file)), hash)
   }
   const devIndex = await readFile(join(work, 'package/dist/dev/index.js'), 'utf8')
+  const devChunk = await readFile(join(work, 'package/dist/dev/chunk-4FTI6OG3.js'), 'utf8')
   const prodIndex = await readFile(join(work, 'package/dist/prod/index.js'), 'utf8')
   const prodChunk = await readFile(join(work, 'package/dist/prod/chunk-K2UTITRG.js'), 'utf8')
+  const devNativeShapes = await readFile(join(work, 'package/dist/dev/octo-native-shapes.js'), 'utf8')
+  const prodNativeShapes = await readFile(join(work, 'package/dist/prod/octo-native-shapes.js'), 'utf8')
+  const nativeShapeTypes = await readFile(join(work, 'package/dist/types/octo-native-shapes.d.ts'), 'utf8')
   if (!devIndex.includes('new window.ResizeObserver(updateWysiwygStyle)') ||
       !devIndex.includes('window.addEventListener("resize", updateWysiwygStyle)')) {
     throw new Error('dev WYSIWYG resize observer/fallback contract missing')
@@ -163,8 +167,80 @@ try {
       throw new Error(`${label} clipboard export feedback must omit the light/dark color scheme suffix`)
     }
   }
-  if (!prodChunk.includes('o==="triangle"||o==="inverted-triangle"||o==="parallelogram"')) {
-    throw new Error('prod native-shape kind guard missing')
+  if (!devChunk.includes('getOctoNativeShapePoints(element.customData?.nativeShapeKind, width, height, x, y, element.customData)')) {
+    throw new Error('dev native-shape collision geometry must receive customData')
+  }
+  if (!devChunk.includes('const drawables = Array.isArray(shape) ? shape : [shape]') ||
+      !prodChunk.includes('Array.isArray(x)?(()=>{')) {
+    throw new Error('dev/prod SVG export must render every drawable of compound native shapes')
+  }
+  for (const [label, source] of [["dev", devIndex], ["prod", prodIndex]]) {
+    if (!source.includes('__octoBasicShapeStyle') ||
+        source.includes('currentItemStrokeWidth: 1, currentItemStrokeStyle: "solid", currentItemRoughness: 0')) {
+      throw new Error(`${label} native shape basic style must be transient and element-scoped`)
+    }
+    const clearsStyleOnToolSwitch = label === 'dev'
+      ? source.includes('this.__octoShapeVariant = null; this.__octoBasicShapeStyle = false;')
+      : source.includes('this.__octoShapeVariant=null,this.__octoBasicShapeStyle=!1')
+    if (!clearsStyleOnToolSwitch) {
+      throw new Error(`${label} native shape basic style must clear when switching away before drawing`)
+    }
+  }
+  const devBasicStyleDeclaration = 'const useOctoBasicShapeStyle = !!this.__octoBasicShapeStyle;'
+  const devBasicStyleUse = 'strokeWidth: useOctoBasicShapeStyle ? 1 : this.state.currentItemStrokeWidth,'
+  if (devIndex.split(devBasicStyleDeclaration).length - 1 !== 1 ||
+      devIndex.split(devBasicStyleUse).length - 1 !== 1 ||
+      devIndex.indexOf(devBasicStyleDeclaration) > devIndex.indexOf(devBasicStyleUse)) {
+    throw new Error('dev basic-shape style must be declared in createGenericElementOnPointerDown before its only use')
+  }
+  const readRuntimeKinds = (source, label) => {
+    const match = source.match(/OCTO_NATIVE_SHAPE_KINDS\s*=\s*\[([\s\S]*?)\];/)
+    if (!match) throw new Error(`${label} native shape kind list missing`)
+    return [...match[1].matchAll(/["']([^"']+)["']/g)].map((item) => item[1])
+  }
+  const typeMatch = nativeShapeTypes.match(/export type OctoNativeShapeKind\s*=\s*([^;]+);/)
+  if (!typeMatch) throw new Error('native shape type union missing')
+  const typeKinds = [...typeMatch[1].matchAll(/'([^']+)'/g)].map((item) => item[1])
+  const devKinds = readRuntimeKinds(devNativeShapes, 'dev')
+  const prodKinds = readRuntimeKinds(prodNativeShapes, 'prod')
+  if (JSON.stringify(devKinds) !== JSON.stringify(prodKinds) ||
+      JSON.stringify(devKinds) !== JSON.stringify(typeKinds) ||
+      !devKinds.includes('inverted-triangle')) {
+    throw new Error(`native shape runtime/type kinds differ: dev=${devKinds} prod=${prodKinds} types=${typeKinds}`)
+  }
+  if (!prodChunk.includes('getOctoNativeShapeStrokePaths as __octoNativeShapeStrokePaths') ||
+      !prodChunk.includes('getOctoNativeShapePath as __octoNativeShapePath') ||
+      !prodChunk.includes('getOctoNativeShapePoints as __octoNativeShapePoints') ||
+      !prodChunk.includes('__octoNativeShapePath(e.customData?.nativeShapeKind,e.width,e.height,e.customData)') ||
+      !prodChunk.includes('__octoNativeShapePoints(e.customData?.nativeShapeKind,e.width,e.height,0,0,e.customData)') ||
+      !prodChunk.includes('__octoNativeShapePoints(e.customData?.nativeShapeKind,a,r,n,i,e.customData)') ||
+      !prodChunk.includes('__octoNativeShapeStrokePaths(e.customData?.nativeShapeKind,e.width,e.height,e.customData)')) {
+    throw new Error('prod native-shape geometry integration missing')
+  }
+  const devZhCN = await readFile(join(work, 'package/dist/dev/locales/zh-CN-4MXUOFTH.js'), 'utf8')
+  const prodZhCN = await readFile(join(work, 'package/dist/prod/locales/zh-CN-LNUGB5OW.js'), 'utf8')
+  for (const [label, source, zhCN] of [["dev", devIndex, devZhCN], ["prod", prodIndex, prodZhCN]]) {
+    if (!/excalidrawLib:\s*["']\\u7D20\\u6750\\u5E93["']/.test(zhCN) ||
+        /excalidrawLib:\s*["']Excalidraw/.test(zhCN)) {
+      throw new Error(`${label} zh-CN library heading must be exactly 素材库`)
+    }
+    const gridContract = label === 'dev'
+      ? 'gridTemplateColumns: grid ? "repeat(7, 36px)"'
+      : 'gridTemplateColumns:b?"repeat(7, 36px)"'
+    const centeredRoundedBubbleIcon = 'M7 4h10a4 4 0 0 1 4 4v5a4 4 0 0 1-4 4h-3l-2 4-2-4H7a4 4 0 0 1-4-4V8a4 4 0 0 1 4-4Z'
+    if (!source.includes(gridContract) ||
+        !source.includes(centeredRoundedBubbleIcon) ||
+        !source.includes('toolbar-shapes-flyout') ||
+        !source.includes('shapeFlyout.map') ||
+        !source.includes('bidirectional-arrow') ||
+        source.includes('toolbar-shapes-expand') ||
+        source.includes('toolbar-shapes-collapse') ||
+        source.includes('shapeExpanded') ||
+        source.includes('compactShapeSlots') ||
+        source.includes('data-expanded') ||
+        source.includes('shapes-more')) {
+      throw new Error(`${label} direct 21-preset seven-column shape flyout missing or still has expansion UI`)
+    }
   }
   console.log('Excalidraw dev/prod geometry and WYSIWYG resize contracts verified.')
   console.log('Excalidraw 0.18.1 patch replay is byte-for-byte reproducible.')

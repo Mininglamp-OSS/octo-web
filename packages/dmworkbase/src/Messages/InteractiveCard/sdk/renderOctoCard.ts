@@ -80,7 +80,7 @@ export function renderOctoCard(options: RenderOctoCardOptions): void {
   const ac = new AdaptiveCard();
   ac.hostConfig = createCardHostConfig(target, renderProfile);
   ac.onExecuteAction = (action) => onAction(action, ac);
-  // 图片类 URL 消毒（https-only），在 parse 前——SDK 自身不做 scheme 检查。
+  // 图片类 URL 消毒（https 或受限内联 SVG data URL），在 parse 前——SDK 自身不做 scheme 检查。
   ac.parse(sanitizeCardTree(card), createOctoSerializationContext());
   const rendered = ac.render();
   target.textContent = "";

@@ -44,6 +44,7 @@ import { SummaryMode, SourceType } from "../types/summary";
 import { Channel, WKSDK } from "wukongimjssdk";
 import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
+import { summaryTestIds } from "../utils/testIds";
 
 const { Text } = Typography;
 
@@ -848,6 +849,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (referencedTask) {
             return (
                 <div
+                    data-testid={summaryTestIds.agentRefCard}
                     className="summary-workbench-ref-card"
                     onClick={() => this.setState((prev) => ({ sidePanelOpen: !prev.sidePanelOpen }))}
                     style={{ cursor: 'pointer' }}
@@ -860,6 +862,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         {referencedTask.title || `task_id=${referencedTask.task_id}`}
                     </span>
                     <span
+                        data-testid={summaryTestIds.agentRefRemoveBtn}
                         className="summary-workbench-ref-card-remove"
                         onClick={(e) => {
                             // 阻止事件冒泡触发卡片 onClick (toggle SidePanel)
@@ -878,6 +881,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         return (
             <span
+                data-testid={summaryTestIds.agentRefEntry}
                 className="summary-workbench-ref-btn"
                 onClick={() => this.setState({ showReferencePicker: true })}
                 title={translate('summary.chatReference.buttonTip')}
@@ -1022,7 +1026,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         const templateEditorVisible = creatingCustomTemplate || !!editingTemplate;
 
         return (
-            <div className={`summary-workbench${this.props.embedded ? " summary-workbench--panel" : ""}`}>
+            <div data-testid={summaryTestIds.create} className={`summary-workbench${this.props.embedded ? " summary-workbench--panel" : ""}`}>
                 {/* Header */}
                 <div className="summary-workbench-header">
                     <span className="summary-workbench-header-emoji">🚀</span>
@@ -1030,6 +1034,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     <div className="summary-workbench-mode-switch">
                         <button
                             type="button"
+                            data-testid={summaryTestIds.createNormalTab}
                             className={`summary-workbench-mode-btn${mode === 'normal' ? ' summary-workbench-mode-btn--active' : ''}`}
                             onClick={() => this.handleSelectMode('normal')}
                         >
@@ -1037,6 +1042,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         </button>
                         <button
                             type="button"
+                            data-testid={summaryTestIds.createAgentTab}
                             className={`summary-workbench-mode-btn${mode === 'agent' ? ' summary-workbench-mode-btn--active' : ''}`}
                             onClick={() => this.handleSelectMode('agent')}
                         >
@@ -1116,6 +1122,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         <>
                     <div className="summary-workbench-input-wrap">
                         <textarea
+                            data-testid={summaryTestIds.createTopic}
                             ref={this.textareaRef}
                             className="summary-workbench-textarea"
                             value={topic}
@@ -1183,6 +1190,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                         {translate("summary.templates.custom.myTemplatesTitleWithCount", { values: { count: customTemplates.length, limit: customTemplateLimit } })}
                                     </div>
                                     <Button
+                                        className="summary-template-create-btn"
                                         theme="borderless"
                                         size="small"
                                         icon={<Plus size={14} />}
@@ -1293,6 +1301,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 </div>
                             ) : (
                                 <button
+                                    data-testid={summaryTestIds.createSelectChat}
                                     type="button"
                                     className="summary-workbench-add-chat"
                                     onClick={() => this.setState({ showChatSelector: true })}
@@ -1339,6 +1348,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     </div>
                                 )}
                                 <button
+                                    data-testid={summaryTestIds.createSelectMembers}
                                     type="button"
                                     className="summary-workbench-add-chat"
                                     onClick={this.handleOpenMemberSelector}
@@ -1349,6 +1359,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             </div>
                         </div>
                         <Button
+                            data-testid={summaryTestIds.createSubmit}
                             theme="solid"
                             className="summary-workbench-start-btn"
                             loading={submitting}

@@ -6,6 +6,7 @@ import {
   syncCurrentImChannelSubscribers,
 } from "../../../im-runtime/currentChannelRuntime"
 import SpaceBotService from "../../../Service/SpaceBotService"
+import { subscriberDisplayName } from "../../../Utils/displayName"
 import type { ForwardBotCreatorGroup, ForwardBotSnapshot } from "../grant"
 
 /** Injectable name lookup so the panel can show a display name instead of a raw uid. */
@@ -13,6 +14,7 @@ export type ForwardNameResolver = (uid: string) => string
 
 interface ResolvedModel {
   peopleUids: string[]
+  peopleNames: Map<string, string>
   botsByCreator: Map<string, Array<{ uid: string; name: string }>>
 }
 
@@ -106,6 +108,7 @@ export function useForwardBotSnapshot(
     void (async () => {
       // 1) expand targets → distinct people uids (person peer + group members).
       const people = new Set<string>()
+      const peopleNames = new Map<string, string>()
       for (const ch of selectedChannels) {
         if (ch.channelType === ChannelTypePerson) {
           if (ch.channelID) people.add(ch.channelID)
@@ -119,7 +122,16 @@ export function useForwardBotSnapshot(
         }
         if (generation.current !== gen) return
         const subs = getCurrentImChannelSubscribers<Channel, ImSubscriberLike>(ch)
-        for (const s of subs) if (typeof s?.uid === "string" && s.uid) people.add(s.uid)
+        for (const s of subs) {
+          if (typeof s?.uid !== "string" || !s.uid) continue
+          people.add(s.uid)
+          const name = subscriberDisplayName({
+            name: s.name,
+            remark: s.remark,
+            orgData: s.orgData,
+          }).trim()
+          if (name && !peopleNames.has(s.uid)) peopleNames.set(s.uid, name)
+        }
       }
 
       // 2) fetch Space Bots and group by creator — only creators present in the people snapshot.
@@ -142,7 +154,7 @@ export function useForwardBotSnapshot(
         byCreator.set(bot.creator_uid, list)
       }
 
-      commit({ peopleUids: [...people], botsByCreator: byCreator })
+      commit({ peopleUids: [...people], peopleNames, botsByCreator: byCreator })
     })()
 
     return () => {
@@ -198,7 +210,7 @@ export function useForwardBotSnapshot(
       })
       groups.push({
         uid: creatorUid,
-        name: resolveName?.(creatorUid) || creatorUid,
+        name: resolveName?.(creatorUid) || resolved.peopleNames.get(creatorUid) || creatorUid,
         bots,
       })
     }

@@ -5,7 +5,12 @@ import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
 
 const hoisted = vi.hoisted(() => ({
-  subscribers: new Map<string, Array<{ uid?: string }>>(),
+  subscribers: new Map<string, Array<{
+    uid?: string
+    remark?: string
+    name?: string
+    orgData?: { real_name?: string; realname_verified?: boolean }
+  }>>(),
   syncCurrentImChannelSubscribers: vi.fn(async () => undefined),
   listBots: vi.fn(async (_spaceId: string) => [] as Array<{ uid?: string; name?: string; creator_uid?: string }>),
 }))
@@ -41,6 +46,7 @@ function Probe({
   selectedChannels,
   spaceId,
   enabled,
+  resolveName = (uid) => `name:${uid}`,
   onValue,
   onGetter,
 }: {
@@ -48,6 +54,7 @@ function Probe({
   selectedChannels: Channel[]
   spaceId?: string
   enabled: boolean
+  resolveName?: (uid: string) => string
   onValue: (value: ForwardBotSnapshot | undefined) => void
   onGetter?: (read: () => string[]) => void
 }) {
@@ -56,7 +63,7 @@ function Probe({
     selectedChannels,
     spaceId,
     enabled,
-    (uid) => `name:${uid}`,
+    resolveName,
   )
   onValue(snapshot)
   onGetter?.(readLatestSelectedBotUids)
@@ -95,6 +102,7 @@ describe("useForwardBotSnapshot", () => {
     selectedChannels: Channel[]
     spaceId?: string
     enabled: boolean
+    resolveName?: (uid: string) => string
   }) {
     act(() => {
       ReactDOM.render(
@@ -108,6 +116,7 @@ describe("useForwardBotSnapshot", () => {
     selectedChannels: Channel[]
     spaceId?: string
     enabled: boolean
+    resolveName?: (uid: string) => string
   }) {
     await act(async () => {
       ReactDOM.render(
@@ -203,6 +212,61 @@ describe("useForwardBotSnapshot", () => {
     // Re-selecting flips it back on.
     act(() => { latest?.toggleBot("b_2") })
     expect(selectedBotUids(latest)).toEqual(["b_1", "b_2"])
+  })
+
+  it("uses the group member display name when the Bot creator is absent from forward candidates", async () => {
+    hoisted.subscribers.set("g_1", [
+      { uid: "u_hidden", remark: "群内备注", name: "成员昵称" },
+    ])
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_1", name: "Hidden Bot", creator_uid: "u_hidden" },
+    ])
+    await render({
+      selectedIDs: ["g_1"],
+      selectedChannels: [new Channel("g_1", 2)],
+      spaceId: "s_1",
+      enabled: true,
+      resolveName: () => "",
+    })
+
+    expect(latest?.groups[0]).toMatchObject({ uid: "u_hidden", name: "群内备注" })
+  })
+
+  it("prefers the candidate display name when both candidate and group member names exist", async () => {
+    hoisted.subscribers.set("g_1", [{ uid: "u_ada", name: "群内昵称" }])
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_1", name: "Ada Bot", creator_uid: "u_ada" },
+    ])
+    await render({
+      selectedIDs: ["g_1"],
+      selectedChannels: [new Channel("g_1", 2)],
+      spaceId: "s_1",
+      enabled: true,
+      resolveName: () => "候选显示名",
+    })
+
+    expect(latest?.groups[0]).toMatchObject({ uid: "u_ada", name: "候选显示名" })
+  })
+
+  it("uses the canonical verified real name from the group subscriber fallback", async () => {
+    hoisted.subscribers.set("g_1", [{
+      uid: "u_verified",
+      remark: "群内备注",
+      name: "成员昵称",
+      orgData: { real_name: "认证实名", realname_verified: true },
+    }])
+    hoisted.listBots.mockResolvedValue([
+      { uid: "b_1", name: "Verified Bot", creator_uid: "u_verified" },
+    ])
+    await render({
+      selectedIDs: ["g_1"],
+      selectedChannels: [new Channel("g_1", 2)],
+      spaceId: "s_1",
+      enabled: true,
+      resolveName: () => "",
+    })
+
+    expect(latest?.groups[0]).toMatchObject({ uid: "u_verified", name: "认证实名" })
   })
 
   it("expands group members and de-duplicates people across group + person targets", async () => {

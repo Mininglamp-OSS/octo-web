@@ -2,9 +2,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- msw resolver types */
 import type { Page } from "@playwright/test";
 
+/** S19 task ID (in-progress, cancellable). */
+export const S19_TASK_ID = 19019;
+
 /** S19: Summary 列表生成中任务取消. */
 export async function registerS19SummaryListCancelTask(page: Page): Promise<void> {
-  await page.evaluate(() => {
+  await page.evaluate(([TASK_ID]) => {
     type MSW = {
       worker: { use: (...h: unknown[]) => void };
       http: {
@@ -17,7 +20,7 @@ export async function registerS19SummaryListCancelTask(page: Page): Promise<void
     if (!msw) throw new Error("[S19] MSW worker 未就绪 (等 __MSW_READY__).");
     const { worker, http, HttpResponse } = msw;
     const env = (data: unknown) => HttpResponse.json({ code: 0, message: "ok", data });
-    const taskId = 19019;
+    const taskId = TASK_ID;
     const now = "2026-08-06T19:10:00Z";
     const makeItem = (status: number) => ({
       task_id: taskId,
@@ -54,7 +57,7 @@ export async function registerS19SummaryListCancelTask(page: Page): Promise<void
         const state = (window as unknown as { __s19State__: { cancelled: boolean } }).__s19State__;
         return env({ items: [makeItem(state.cancelled ? 5 : 2)], total: 1, attention_count: 0, unread_count: 0, pending_invitation_count: 0 });
       }),
-      http.post("*/summary/api/v1/summaries/19019/cancel", () => {
+      http.post(`*/summary/api/v1/summaries/${TASK_ID}/cancel`, () => {
         const state = (window as unknown as { __s19State__: { cancelled: boolean } }).__s19State__;
         state.cancelled = true;
         return env({});
@@ -64,5 +67,5 @@ export async function registerS19SummaryListCancelTask(page: Page): Promise<void
         return env({ tasks: [{ id: taskId, status: state.cancelled ? 5 : 2 }] });
       })
     );
-  });
+  }, [S19_TASK_ID]);
 }

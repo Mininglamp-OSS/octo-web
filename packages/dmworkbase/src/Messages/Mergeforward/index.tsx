@@ -461,7 +461,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               <p>{this.context.t("base.mergeForward.chatHistory")}</p>
               <p>
                 {" "}
-                <MessageTrail message={message} timeStyle={{ color: "#999" }} />
+                <MessageTrail message={message} timeStyle={{ color: "var(--wk-text-tertiary)" }} />
               </p>
             </div>
           </div>

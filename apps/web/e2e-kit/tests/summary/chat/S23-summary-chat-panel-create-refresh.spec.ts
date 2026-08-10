@@ -8,6 +8,7 @@ import { test, expect } from "../../../fixtures-authed";
 import { installMockImRuntime } from "../../../_kit/mock-im-runtime";
 import { registerS23SummaryChatPanelCreateRefresh } from "../../../msw-handlers/s23-summary-chat-panel-create-refresh";
 import { startRequestMonitor, sanityCheck } from "../../../_lib/sanity";
+import { T } from "../_testids";
 
 const sanityConfig = {
   realHosts: ["127.0.0.1:9", "mock.e2e.local"],
@@ -48,14 +49,12 @@ test.describe("@S23 @p2 @summary @chat @summary-panel @summary-create S23 — �
       authedPage.locator(".wk-chat-conversation-header-channel-info-name", { hasText: "S23 项目群" })
     ).toBeVisible({ timeout: 15_000 });
 
-    await authedPage.locator('.wk-chat-conversation-header-right [title="智能总结"]').click();
-    const panel = authedPage.locator(".wk-summary-panel");
+    await authedPage.getByTestId(T.chatPanelHeaderBtn).click();
+    const panel = authedPage.getByTestId(T.chatPanel);
     await expect(panel.getByText("邀请同事一起总结信息")).toBeVisible({ timeout: 15_000 });
 
-    await panel
-      .getByPlaceholder("请输入你想总结的主题，例如：总结本周项目进展、整理客户反馈要点")
-      .fill("S23 聊天内新建总结");
-    await panel.locator(".summary-workbench-start-btn").click();
+    await panel.getByTestId(T.createTopic).fill("S23 聊天内新建总结");
+    await panel.getByTestId(T.createSubmit).click();
 
     await expect(authedPage.getByText("总结任务已创建")).toBeVisible({ timeout: 15_000 });
     await expect(panel.getByRole("heading", { name: "聊天内的智能总结" })).toBeVisible({ timeout: 15_000 });

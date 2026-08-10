@@ -9,7 +9,7 @@
 }
 
 .wk-message-split-content {
-    color: rgba(9,30,66,.74);
+    color: var(--wk-history-split-text);
     padding: 5px 8px 0;
     white-space: nowrap;
     width: auto;
@@ -18,14 +18,9 @@
 }
 
 .wk-message-split-line1 {
-    background-image: -webkit-gradient(linear,0 0,0 100%,from(transparent),to(rgba(9,30,66,.12)));
-    background-image: -webkit-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-image: -moz-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-image: -o-linear-gradient(360deg,transparent,rgba(9,30,66,.12));
-    background-image: linear-gradient(360deg,transparent,rgba(9,30,66,.12));
+    background-image: linear-gradient(360deg, transparent, var(--wk-history-split-line));
     background-position: 0 0,0 100%;
     background-repeat: no-repeat;
-    -moz-background-size: 100% 1px;
     background-size: 100% 1px;
     top: 13px;
     width: 50%;
@@ -34,14 +29,9 @@
 }
 
 .wk-message-split-line2 {
-    background-image: -webkit-gradient(linear,0 0,0 100%,from(#c5d0d5),to(transparent));
-    background-image: -webkit-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-image: -moz-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-image: -o-linear-gradient(360deg,rgba(9,30,66,.12),transparent);
-    background-image: linear-gradient(360deg,rgba(9,30,66,.12),transparent);
+    background-image: linear-gradient(360deg, var(--wk-history-split-line), transparent);
     background-position: 0 0,0 100%;
     background-repeat: no-repeat;
-    -moz-background-size: 100% 1px;
     background-size: 100% 1px;
     top: 13px;
     width: 50%;

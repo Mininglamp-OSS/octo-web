@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const css = fs.readFileSync(path.resolve(__dirname, "styles.css"), "utf8");
 const docsHome = fs.readFileSync(path.resolve(__dirname, "../pages/DocsHome.tsx"), "utf8");
 const sheetView = fs.readFileSync(path.resolve(__dirname, "../sheet/SheetView.tsx"), "utf8");
+const docMoreMenu = fs.readFileSync(path.resolve(__dirname, "DocMoreMenu.tsx"), "utf8");
 
 function headingRule(level: number): string {
   const matches = [
@@ -61,6 +62,37 @@ describe("document scroll container overflow (XIN-1048 #5)", () => {
     // Without overflow-x:hidden the sticky toolbar bleeds into a document-level horizontal
     // scroll and the right-side buttons drift out of view.
     expect(rule).toMatch(/overflow-x:\s*hidden/);
+  });
+});
+
+describe("shared document header overflow", () => {
+  it("truncates only the title while preserving the right-side action cluster", () => {
+    const header = classRule(".octo-doc-header");
+    const title = classRule(".octo-doc-title");
+    const actions = classRule(".octo-doc-header-right");
+    const actionItems = classRule(".octo-doc-header-right > *");
+
+    expect(header).toMatch(/flex-wrap:\s*nowrap/);
+    expect(header).toMatch(/min-width:\s*0/);
+    expect(title).toMatch(/flex:\s*1\s+1\s+0/);
+    expect(title).toMatch(/min-width:\s*0/);
+    expect(title).toMatch(/overflow:\s*hidden/);
+    expect(title).toMatch(/text-overflow:\s*ellipsis/);
+    expect(title).toMatch(/white-space:\s*nowrap/);
+    expect(actions).toMatch(/flex:\s*0\s+0\s+auto/);
+    expect(actions).toMatch(/flex-wrap:\s*nowrap/);
+    expect(actions).toMatch(/white-space:\s*nowrap/);
+    expect(actionItems).toMatch(/flex:\s*0\s+0\s+auto/);
+  });
+});
+
+describe("standalone header overflow", () => {
+  it("keeps narrow-page actions reachable and portals the menu outside the scroll container", () => {
+    expect(css).toMatch(/@media \(max-width:\s*1024px\)[\s\S]*?\.octo-doc-standalone \.octo-doc-header\s*\{[^}]*flex-wrap:\s*nowrap[^}]*overflow-x:\s*auto/);
+    expect(css).toMatch(/\.octo-doc-standalone \.octo-doc-header-right\s*\{[^}]*position:\s*sticky[^}]*right:\s*0/);
+    expect(classRule(".octo-doc-more-panel")).toMatch(/position:\s*fixed/);
+    expect(docMoreMenu).toMatch(/createPortal\([\s\S]*document\.body/);
+    expect(docMoreMenu).toMatch(/!panelRef\.current\?\.contains\(target\)/);
   });
 });
 

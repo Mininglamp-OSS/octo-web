@@ -7,6 +7,7 @@
 import { test, expect } from "../../../fixtures-authed";
 import { registerS6SummaryDetailFailed } from "../../../msw-handlers/s6-summary-detail-failed";
 import { startRequestMonitor, sanityCheck } from "../../../_lib/sanity";
+import { T } from "../_testids";
 
 const sanityConfig = {
   // CI leak target plus legacy mock host marker; workflow proxy-error grep remains the fail-closed guard.
@@ -28,9 +29,8 @@ test.describe("@S6 @p1 @summary @detail @summary-detail S6 — Summary 失败详
 
     await authedPage.getByText("S6 失败总结").click();
 
-    await expect(
-      authedPage.getByRole("heading", { name: "S6 失败总结", level: 2 })
-    ).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByTestId(T.detailTitle)).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByTestId(T.detailTitle)).toContainText("S6 失败总结");
     await expect(authedPage.getByRole("heading", { name: "总结生成失败", level: 3 })).toBeVisible();
     await expect(authedPage.getByText("S6 模拟生成失败：模型服务暂不可用")).toBeVisible();
     await expect(authedPage.getByText("📝 总结内容")).toHaveCount(0);

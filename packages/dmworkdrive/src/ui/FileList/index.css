@@ -155,3 +155,14 @@
   outline: 2px solid var(--wk-text-accent, #7f3bf5);
   outline-offset: 1px;
 }
+
+/* Flash highlight for the "view in drive" jump from the chat file card.
+   Pulses the row's selected tint a few times so the user's eye finds it. */
+@keyframes drive-file-row-flash {
+  0%, 100% { background: transparent; }
+  20%, 60% { background: var(--wk-bg-selected, rgba(127, 59, 245, 0.12)); }
+}
+
+.drive-file-row--flash {
+  animation: drive-file-row-flash 0.7s ease-in-out 3;
+}

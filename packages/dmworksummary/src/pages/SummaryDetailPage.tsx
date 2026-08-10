@@ -56,6 +56,7 @@ import {
     formatScheduleSummary,
     shouldReactivateOnSave,
 } from "../utils/summaryHelpers";
+import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
@@ -2832,6 +2833,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </div>
                 {canEdit && (
                     <Button
+                        data-testid={summaryTestIds.detailEditBtn}
                         className="summary-detail-inline-edit"
                         size="small"
                         theme="borderless"
@@ -3196,7 +3198,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         if (membersLoading) {
             return (
-                <div className="summary-detail-members">
+                <div data-testid={summaryTestIds.detailMembersSection} className="summary-detail-members">
                     {this.renderMemberStatusHeader()}
                     <Spin size="small" />
                 </div>
@@ -3215,7 +3217,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         };
 
         return (
-            <div className="summary-detail-members">
+            <div data-testid={summaryTestIds.detailMembersSection} className="summary-detail-members">
                 {this.renderMemberStatusHeader()}
                 <div className="summary-detail-members-list">
                     {members.map((m) => {
@@ -3227,7 +3229,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             !isMe &&
                             m.user_id !== detail?.creator_id;
                         return (
-                            <div key={m.user_id} className="summary-detail-member-item">
+                            <div key={m.user_id} data-testid={summaryTestIds.detailMemberRow(m.user_id)} className="summary-detail-member-item">
                                 <span className="summary-detail-member-name">{m.user_name}</span>
                                 <Tag color={st.type} prefixIcon={st.icon} size="small">
                                     {st.label}
@@ -3448,6 +3450,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             return (
                 <div
                     key="__my_pending_submit_editing__"
+                    data-testid={summaryTestIds.detailMyPendingRow}
                     className="summary-detail-participant-report-item summary-detail-my-pending-row"
                 >
                     <div className="summary-detail-participant-report-header">
@@ -3468,12 +3471,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div
                 key="__my_pending_submit__"
+                data-testid={summaryTestIds.detailMyPendingRow}
                 className="summary-detail-participant-report-item summary-detail-my-pending-row"
             >
                 <div className="summary-detail-participant-report-header">
                     <span>{t("summary.detail.mySubmitRowName")}</span>
                     {/* OCT-21：提交前编辑入口。文案复用 summary.common.edit；按钮放在「提交给全部」左侧。 */}
                     <Button
+                        data-testid={summaryTestIds.detailMyDraftEditBtn}
                         size="small"
                         theme="borderless"
                         icon={<IconEdit />}
@@ -3483,6 +3488,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {t("summary.common.edit")}
                     </Button>
                     <Button
+                        data-testid={summaryTestIds.detailSubmitMyBtn}
                         size="small"
                         theme="solid"
                         style={{ marginLeft: 8 }}
@@ -3907,7 +3913,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <>
             <div className="summary-detail-title-row">
                 <div className="summary-detail-header-title-wrap">
-                    <OverflowTooltip as="h2" className="summary-detail-title" title={displayTitle}>
+                    <OverflowTooltip as="h2" data-testid={summaryTestIds.detailTitle} className="summary-detail-title" title={displayTitle}>
                         {displayTitle}
                     </OverflowTooltip>
                     {this.renderScheduleSummary()}
@@ -3915,6 +3921,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 <div className="summary-detail-header-actions">
                     {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
                         <Button
+                            data-testid={summaryTestIds.detailContinueRefineBtn}
                             theme="solid"
                             type="primary"
                             onClick={this.handleContinueRefine}
@@ -3928,6 +3935,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         const versionPanelActive = this.state.versionPanelOpen;
                         return (
                             <Button
+                                data-testid={summaryTestIds.detailVersionTrigger}
                                 className={`summary-version-trigger${versionPanelActive ? " is-active" : ""}`}
                                 theme="borderless"
                                 type="tertiary"
@@ -3976,6 +3984,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                     {showRegenerate && !showRetry && (
                         <Button
+                            data-testid={summaryTestIds.detailRegenerateBtn}
                             className="summary-detail-header-btn"
                             theme="borderless"
                             type="tertiary"
@@ -3987,6 +3996,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                     {showRetry && (
                         <Button
+                            data-testid={summaryTestIds.detailRetryBtn}
                             className="summary-detail-header-btn"
                             theme="borderless"
                             type="tertiary"
@@ -3998,6 +4008,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                     {showDelete && (
                         <Button
+                            data-testid={summaryTestIds.detailDeleteBtn}
                             className="summary-detail-header-btn summary-detail-header-btn--danger"
                             theme="borderless"
                             type="danger"
@@ -4007,6 +4018,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 title: t("summary.summaryCard.deleteTitle"),
                                 content: t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } }),
                                 onOk: this.handleDeleteTask,
+                                okButtonProps: { 'data-testid': summaryTestIds.deleteConfirmOkBtn } as any,
                             })}
                         />
                     )}
@@ -4066,7 +4078,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const hasToc = this.shouldShowToc();
 
         return (
-            <div className="summary-detail-page">
+            <div data-testid={summaryTestIds.detailPage} className="summary-detail-page">
                 <div
                     ref={this.layoutRef}
                     className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}${this.state.layoutWidth != null && this.state.layoutWidth > 0 && this.state.layoutWidth < SummaryDetailPage.TOC_MIN_LAYOUT_WIDTH ? " version-panel-overlay" : ""}`}
@@ -4241,6 +4253,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-footer">
                         <button
                             type="button"
+                            data-testid={summaryTestIds.editorCancelBtn}
                             className="summary-detail-footer-btn summary-detail-footer-btn--cancel"
                             onClick={() => {
                                 if (this.state.editingTeamSummary) {
@@ -4258,6 +4271,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </button>
                         <button
                             type="button"
+                            data-testid={summaryTestIds.editorSaveBtn}
                             className="summary-detail-footer-btn summary-detail-footer-btn--save"
                             onClick={() => {
                                 if (this.editorSaveFn) {
@@ -4297,6 +4311,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     centered
                     maskClosable
                     onCancel={this.handleRegenerateCancel}
+                    modalRender={(node) => (
+                        <div data-testid={summaryTestIds.regenerateModal}>{node}</div>
+                    )}
                 >
                     <div className="summary-confirm-body">
                         <div className="summary-confirm-main">
@@ -4348,6 +4365,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-regenerate-textarea-wrap">
                             <textarea
                                 id="summary-regenerate-input"
+                                data-testid={summaryTestIds.regenerateInput}
                                 ref={this.regenerateTopicRef}
                                 className="summary-regenerate-textarea"
                                 rows={3}
@@ -4381,11 +4399,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </div>
                     </div>
                     <div className="summary-confirm-footer">
-                        <button type="button" className="summary-confirm-btn summary-confirm-btn--cancel" onClick={this.handleRegenerateCancel}>
+                        <button data-testid={summaryTestIds.regenerateCancelBtn} type="button" className="summary-confirm-btn summary-confirm-btn--cancel" onClick={this.handleRegenerateCancel}>
                             {t("summary.common.cancel")}
                         </button>
                         <button
                             type="button"
+                            data-testid={summaryTestIds.regenerateSubmitBtn}
                             className="summary-confirm-btn summary-confirm-btn--dark"
                             disabled={this.state.regenerateSubmitting || (this.state.regenerateMode === "refine" && !this.hasRegenerateRefineBaseResult()) || !(this.state.regenerateMode === "refine"
                                 ? this.state.refineFeedback.trim()

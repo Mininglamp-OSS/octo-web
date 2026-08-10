@@ -2,9 +2,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- msw resolver types */
 import type { Page } from "@playwright/test";
 
+/** S25 accept-invite task ID. */
+export const S25_ACCEPT_TASK_ID = 250251;
+/** S25 reject-invite task ID. */
+export const S25_REJECT_TASK_ID = 250252;
+
 /** S25: Summary 列表待确认邀请同意 / 拒绝. */
 export async function registerS25SummaryInviteRespond(page: Page): Promise<void> {
-  await page.evaluate(() => {
+  await page.evaluate(({ ACCEPT_TASK_ID, REJECT_TASK_ID }) => {
     type MSW = {
       worker: { use: (...h: unknown[]) => void };
       http: {
@@ -62,26 +67,26 @@ export async function registerS25SummaryInviteRespond(page: Page): Promise<void>
     worker.use(
       http.get("*/summary/api/v1/summaries", () => {
         const state = (window as unknown as { __s25State__: { accepted: boolean; rejected: boolean } }).__s25State__;
-        const acceptedItem = makeItem(250251, "S25 同意邀请总结", state.accepted ? "accepted" : undefined);
-        const rejectedItem = makeItem(250252, "S25 拒绝邀请总结", state.rejected ? "rejected" : undefined);
+        const acceptedItem = makeItem(ACCEPT_TASK_ID, "S25 同意邀请总结", state.accepted ? "accepted" : undefined);
+        const rejectedItem = makeItem(REJECT_TASK_ID, "S25 拒绝邀请总结", state.rejected ? "rejected" : undefined);
         return env({ items: [acceptedItem, rejectedItem], total: 2, attention_count: state.accepted && state.rejected ? 0 : 2, unread_count: 0, pending_invitation_count: state.accepted && state.rejected ? 0 : 2 });
       }),
       http.post("*/summary/api/v1/summaries/:taskId/respond", async ({ params, request }: any) => {
         const state = (window as unknown as { __s25State__: { accepted: boolean; rejected: boolean } }).__s25State__;
         const body = await request.json();
-        if (String(params.taskId) === "250251" && body.action === "accept") state.accepted = true;
-        if (String(params.taskId) === "250252" && body.action === "reject") state.rejected = true;
+        if (String(params.taskId) === String(ACCEPT_TASK_ID) && body.action === "accept") state.accepted = true;
+        if (String(params.taskId) === String(REJECT_TASK_ID) && body.action === "reject") state.rejected = true;
         return env({});
       }),
       http.post("*/summary/api/v1/summaries/batch-status", () => {
         const state = (window as unknown as { __s25State__: { accepted: boolean; rejected: boolean } }).__s25State__;
         return env({
           tasks: [
-            { id: 250251, status: state.accepted ? 2 : 1 },
-            { id: 250252, status: state.rejected ? 5 : 1 },
+            { id: ACCEPT_TASK_ID, status: state.accepted ? 2 : 1 },
+            { id: REJECT_TASK_ID, status: state.rejected ? 5 : 1 },
           ],
         });
       })
     );
-  });
+  }, { ACCEPT_TASK_ID: S25_ACCEPT_TASK_ID, REJECT_TASK_ID: S25_REJECT_TASK_ID });
 }

@@ -110,6 +110,10 @@
   border: 1px solid var(--wk-border-subtle);
 }
 
+body[theme-mode="dark"] .wk-markdown-pre-wrapper {
+  border-color: var(--wk-border-strong);
+}
+
 .wk-markdown pre {
   margin: 0;
   padding: var(--wk-sp-3) calc(var(--wk-sp-4) + 36px) var(--wk-sp-3)

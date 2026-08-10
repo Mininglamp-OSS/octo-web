@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react";
 import { useI18n } from "@octo/base";
 import type { SummaryVersionItem } from "../types/summary";
 import { formatDate } from "../utils/summaryHelpers";
+import { summaryTestIds } from "../utils/testIds";
 
 interface SummaryVersionPanelProps {
     open: boolean;
@@ -93,7 +94,7 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
                 aria-label={t("summary.detail.versionPanelClose")}
                 onClick={onClose}
             />
-            <aside className="version-panel" aria-label={t("summary.detail.versionRecords")}>
+            <aside data-testid={summaryTestIds.versionPanel} className="version-panel" aria-label={t("summary.detail.versionRecords")}>
                 <header className="version-panel__header">
                     <span className="version-panel__icon" aria-hidden>
                         <IconHistory />
@@ -123,6 +124,7 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
                             <button
                                 key={version.result_id}
                                 type="button"
+                                data-testid={summaryTestIds.versionCard(version.version)}
                                 className={`version-card${isCurrent ? " is-current" : ""}${isSelected ? " is-selected" : ""}`}
                                 aria-pressed={isSelected}
                                 onClick={() => onSelect(version)}
@@ -162,6 +164,7 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
                 {showRestore && (
                     <footer className="version-panel__footer">
                         <Button
+                            data-testid={summaryTestIds.versionRestoreBtn}
                             className="version-panel__restore"
                             theme="solid"
                             type="primary"

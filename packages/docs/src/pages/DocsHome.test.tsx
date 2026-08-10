@@ -26,6 +26,16 @@ import zhLocale from "../i18n/zh-CN.json";
 import enLocale from "../i18n/en-US.json";
 import { titleContextStore } from "@octo/base";
 
+// The caret-menu "New slides" entry is hidden by default now (PPT_ENTRY_ENABLED, default OFF), but
+// the html_ppt create wiring it drives is still shipped and must stay covered. This file pins the
+// ENTRY on — keeping every other config export real via importActual — so the picker / focus-restore
+// / open-redirect assertions below keep exercising the real menu path. The default-OFF behaviour
+// (entry absent from the dropdown) is covered in DocsHome.pptEntryOff.test.tsx.
+vi.mock('../config.ts', async () => {
+  const actual = await vi.importActual<typeof import('../config.ts')>('../config.ts')
+  return { ...actual, PPT_ENTRY_ENABLED: true }
+})
+
 // Replace the heavy editor shell (Tiptap + Yjs + Hocuspocus) with a marker so the DocsHome
 // render tests exercise target-resolution / navigation without mounting the real editor.
 // The marker surfaces the docId it was addressed with and the onBack affordance.

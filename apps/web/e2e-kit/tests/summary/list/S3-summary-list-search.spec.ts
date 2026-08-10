@@ -7,6 +7,7 @@
 import { test, expect } from "../../../fixtures-authed";
 import { registerS3SummaryListSearch } from "../../../msw-handlers/s3-summary-list-search";
 import { startRequestMonitor, sanityCheck } from "../../../_lib/sanity";
+import { T } from "../_testids";
 
 const sanityConfig = {
   // CI leak target plus legacy mock host marker; workflow proxy-error grep remains the fail-closed guard.
@@ -25,7 +26,7 @@ test.describe("@S3 @p1 @summary @list @summary-list @summary-search S3 — Summa
     await expect(authedPage.getByText("S3 周报总结")).toBeVisible({ timeout: 15_000 });
     await expect(authedPage.getByText("S3 客户反馈总结")).toBeVisible();
 
-    await authedPage.getByPlaceholder("搜索总结...").fill("客户");
+    await authedPage.getByTestId(T.listSearch).fill("客户");
 
     await expect(authedPage.getByText("S3 客户反馈总结")).toBeVisible({ timeout: 15_000 });
     await expect(authedPage.getByText("S3 周报总结")).toHaveCount(0);

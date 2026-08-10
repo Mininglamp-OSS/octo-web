@@ -11,7 +11,9 @@ import { createMockWKApp } from '../octoweb/mock.ts'
 // OFF build without disturbing the flag-ON assertions in DocsHome.test.tsx.
 vi.mock('../config.ts', async () => {
   const actual = await vi.importActual<typeof import('../config.ts')>('../config.ts')
-  return { ...actual, PPT_CREATE_ENABLED: false }
+  // PPT_ENTRY_ENABLED is pinned ON so the caret-menu entry exists to click; this file is about the
+  // PPT_CREATE_ENABLED rollback branch, which is a different gate (see config.ts).
+  return { ...actual, PPT_CREATE_ENABLED: false, PPT_ENTRY_ENABLED: true }
 })
 
 // Heavy child boundaries replaced with markers (same rationale as DocsHome.test.tsx): the editor /

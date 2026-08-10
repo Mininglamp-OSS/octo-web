@@ -7,6 +7,7 @@
 import { test, expect } from "../../../fixtures-authed";
 import { registerS14SummaryDetailVersionRestore } from "../../../msw-handlers/s14-summary-detail-version-restore";
 import { startRequestMonitor, sanityCheck } from "../../../_lib/sanity";
+import { T } from "../_testids";
 
 const sanityConfig = {
   realHosts: ["127.0.0.1:9", "mock.e2e.local"],
@@ -23,28 +24,32 @@ test.describe("@S14 @p1 @summary @detail @summary-detail @summary-version S14 �
     await expect(authedPage.getByText("S14 版本总结")).toBeVisible({ timeout: 15_000 });
     await authedPage.getByText("S14 版本总结").click();
 
-    await expect(authedPage.locator(".summary-detail-title", { hasText: "S14 版本总结" })).toBeVisible({
+    await expect(authedPage.getByTestId(T.detailTitle)).toBeVisible({
       timeout: 15_000,
     });
+    await expect(authedPage.getByTestId(T.detailTitle)).toContainText("S14 版本总结");
     await expect(authedPage.getByText("S14 当前版本内容")).toBeVisible();
-    await expect(authedPage.getByRole("button", { name: /版本记录\s*2/ })).toBeVisible({
+    await expect(authedPage.getByTestId(T.detailVersionTrigger)).toBeVisible({
       timeout: 15_000,
     });
+    await expect(authedPage.getByTestId(T.detailVersionTrigger)).toContainText("版本记录");
+    await expect(authedPage.getByTestId(T.detailVersionTrigger)).toContainText("2");
 
-    await authedPage.getByRole("button", { name: /版本记录\s*2/ }).click();
-    const versionPanel = authedPage.locator(".version-panel");
+    await authedPage.getByTestId(T.detailVersionTrigger).click();
+    const versionPanel = authedPage.getByTestId(T.versionPanel);
     await expect(versionPanel.getByRole("heading", { name: "版本记录" })).toBeVisible();
     await expect(versionPanel.getByText("保留最近 3 个版本")).toBeVisible();
-    await expect(versionPanel.getByText("V2")).toBeVisible();
-    await expect(versionPanel.locator(".version-card", { hasText: "V2" }).getByText("当前版本").first()).toBeVisible();
-    await expect(versionPanel.getByText("V1")).toBeVisible();
+    await expect(versionPanel.getByTestId(T.versionCard(2))).toContainText("V2");
+    await expect(versionPanel.getByTestId(T.versionCard(2))).toContainText("当前版本");
+    await expect(versionPanel.getByTestId(T.versionCard(1))).toContainText("V1");
 
-    await versionPanel.locator(".version-card", { hasText: "V1" }).click();
+    await versionPanel.getByTestId(T.versionCard(1)).click();
     await expect(authedPage.getByText("正在查看 V1 历史版本")).toBeVisible({ timeout: 15_000 });
     await expect(authedPage.getByText("S14 历史版本内容")).toBeVisible();
-    await expect(versionPanel.getByRole("button", { name: "恢复此版本" })).toBeVisible();
+    await expect(versionPanel.getByTestId(T.versionRestoreBtn)).toBeVisible();
+    await expect(versionPanel.getByTestId(T.versionRestoreBtn)).toContainText("恢复此版本");
 
-    await versionPanel.getByRole("button", { name: "恢复此版本" }).click();
+    await versionPanel.getByTestId(T.versionRestoreBtn).click();
     await expect(authedPage.getByText("已恢复到所选版本")).toBeVisible({ timeout: 15_000 });
     await expect(authedPage.getByText("S14 历史版本已恢复")).toBeVisible({ timeout: 15_000 });
     await expect(authedPage.getByText("S14 当前版本内容")).toHaveCount(0);

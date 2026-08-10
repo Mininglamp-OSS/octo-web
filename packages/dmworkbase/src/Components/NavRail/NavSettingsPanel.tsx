@@ -151,7 +151,6 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             </button>
                         </div>
                     )}
-                    {/* 暗黑模式入口已关闭 */}
                     {showAccountCenter && (
                         <NavFlyoutMenuItem onSelect={() => {
                             onToggleSetting();

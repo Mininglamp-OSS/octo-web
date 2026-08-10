@@ -7,6 +7,7 @@
 import { test, expect } from "../../../fixtures-authed";
 import { registerS15SummaryDetailEditSave } from "../../../msw-handlers/s15-summary-detail-edit-save";
 import { startRequestMonitor, sanityCheck } from "../../../_lib/sanity";
+import { T } from "../_testids";
 
 const sanityConfig = {
   realHosts: ["127.0.0.1:9", "mock.e2e.local"],
@@ -23,22 +24,24 @@ test.describe("@S15 @p1 @summary @detail @summary-detail @summary-edit S15 — S
     await expect(authedPage.getByText("S15 可编辑总结")).toBeVisible({ timeout: 15_000 });
     await authedPage.getByText("S15 可编辑总结").click();
 
-    await expect(authedPage.locator(".summary-detail-title", { hasText: "S15 可编辑总结" })).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByTestId(T.detailTitle)).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByTestId(T.detailTitle)).toContainText("S15 可编辑总结");
     await expect(authedPage.getByText("S15 原始正文内容")).toBeVisible();
 
-    await authedPage.locator(".summary-detail-inline-edit", { hasText: "编辑" }).click();
-    const editor = authedPage.locator(".summary-editor-textarea");
+    await authedPage.getByTestId(T.detailEditBtn).click();
+    const editor = authedPage.getByTestId(T.editorTextarea);
     await expect(editor).toBeVisible();
+    await expect(editor).toHaveAttribute("placeholder", "编辑总结内容...");
     await editor.fill("## S15 可编辑总结\n\n- S15 草稿取消内容\n");
-    await authedPage.locator(".summary-detail-footer-btn--cancel").click();
+    await authedPage.getByTestId(T.editorCancelBtn).click();
 
     await expect(authedPage.getByText("S15 原始正文内容")).toBeVisible();
     await expect(authedPage.getByText("S15 草稿取消内容")).toHaveCount(0);
 
-    await authedPage.locator(".summary-detail-inline-edit", { hasText: "编辑" }).click();
+    await authedPage.getByTestId(T.detailEditBtn).click();
     await expect(editor).toBeVisible();
     await editor.fill("## S15 可编辑总结\n\n- S15 已保存正文内容\n");
-    await authedPage.locator(".summary-detail-footer-btn--save").click();
+    await authedPage.getByTestId(T.editorSaveBtn).click();
 
     await expect(authedPage.getByText("保存成功", { exact: true })).toBeVisible({ timeout: 15_000 });
     await expect(authedPage.getByText("S15 已保存正文内容")).toBeVisible({ timeout: 15_000 });

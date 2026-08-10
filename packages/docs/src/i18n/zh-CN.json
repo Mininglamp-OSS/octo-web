@@ -83,6 +83,8 @@
     "saveLibrary": "导出到文件",
     "resetLibrary": "清空素材库",
     "resetLibraryConfirm": "确认清空素材库？此操作不可恢复。",
+    "databaseRimHandleLabel": "调整圆柱弧度",
+    "databaseRimHandleTitle": "拖动调整圆柱弧度",
     "comment": {
       "add": "添加评论",
       "addHere": "在此处添加评论",

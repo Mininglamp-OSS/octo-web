@@ -8,6 +8,7 @@ import { test, expect } from "../../../fixtures-authed";
 import { installMockImRuntime } from "../../../_kit/mock-im-runtime";
 import { registerS22SummaryChatPanelHistoryDetail } from "../../../msw-handlers/s22-summary-chat-panel-history-detail";
 import { startRequestMonitor, sanityCheck } from "../../../_lib/sanity";
+import { T } from "../_testids";
 
 const sanityConfig = {
   realHosts: ["127.0.0.1:9", "mock.e2e.local"],
@@ -48,15 +49,16 @@ test.describe("@S22 @p1 @summary @chat @summary-panel @summary-detail S22 — �
       authedPage.locator(".wk-chat-conversation-header-channel-info-name", { hasText: "S22 项目群" })
     ).toBeVisible({ timeout: 15_000 });
 
-    await authedPage.locator('.wk-chat-conversation-header-right [title="智能总结"]').click();
-    const panel = authedPage.locator(".wk-summary-panel");
+    await authedPage.getByTestId(T.chatPanelHeaderBtn).click();
+    const panel = authedPage.getByTestId(T.chatPanel);
     await expect(panel.getByRole("heading", { name: "聊天内的智能总结" })).toBeVisible({ timeout: 15_000 });
     await expect(panel.getByText("S22 聊天内总结", { exact: true })).toBeVisible();
     await expect(panel.getByText("已完成", { exact: true })).toBeVisible();
 
     await panel.getByText("S22 聊天内总结", { exact: true }).click();
-    await expect(panel.getByText("返回")).toBeVisible({ timeout: 15_000 });
-    await expect(panel.locator(".summary-detail-page")).toBeVisible();
+    await expect(panel.getByTestId(T.chatPanelBackBtn)).toBeVisible({ timeout: 15_000 });
+    await expect(panel.getByTestId(T.chatPanelBackBtn)).toContainText("返回");
+    await expect(panel.getByTestId(T.detailPage)).toBeVisible();
     await expect(panel.getByText("AI 摘要")).toBeVisible();
     await expect(panel.getByText("S22 聊天内详情正文")).toBeVisible();
     await expect(panel.getByText("加载失败")).toHaveCount(0);

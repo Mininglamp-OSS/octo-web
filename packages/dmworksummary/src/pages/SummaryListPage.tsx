@@ -18,6 +18,7 @@ import type {
 } from "../types/summary";
 import { TaskStatus } from "../types/summary";
 import { getStatusLabel, isTerminalStatus } from "../utils/summaryHelpers";
+import { summaryTestIds } from "../utils/testIds";
 import SummaryCard from "../components/SummaryCard";
 import SummaryCreatePage from "./SummaryCreatePage";
 import SummaryDetailPage from "./SummaryDetailPage";
@@ -560,7 +561,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         const isPanel = Boolean(channelId);
 
         return (
-            <div className={`summary-list-page${isPanel ? " summary-list-page--panel" : ""}`}>
+            <div data-testid={summaryTestIds.list} className={`summary-list-page${isPanel ? " summary-list-page--panel" : ""}`}>
                 <div className="summary-list-header">
                     <h2 className="summary-list-title">
                         {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
@@ -569,6 +570,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         {isPanel && (
                             <Tooltip content={translate("summary.chatSummary.createNew")} position="bottom">
                                 <Button
+                                    className="summary-list-create-icon-btn"
                                     icon={<IconPlus />}
                                     theme="borderless"
                                     onClick={this.handleCreate}
@@ -585,6 +587,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         ) : (
                             <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
                                 <Button
+                                    data-testid={summaryTestIds.listCreate}
+                                    className="summary-list-create-icon-btn"
                                     icon={<IconPlus />}
                                     theme="borderless"
                                     onClick={this.handleCreate}
@@ -598,6 +602,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                     <div className="summary-list-search-wrap">
                         <IconSearch className="summary-list-search-icon" />
                         <input
+                            data-testid={summaryTestIds.listSearch}
                             className="summary-list-search-input"
                             placeholder={translate("summary.list.searchPlaceholder")}
                             value={keyword}
@@ -621,7 +626,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             </Dropdown.Menu>
                         }
                     >
-                        <div className="summary-list-status-trigger">
+                        <div data-testid={summaryTestIds.listStatusFilter} className="summary-list-status-trigger">
                             <span>{statusOptions.find((o) => o.value === (statusFilter ?? ""))?.label ?? statusOptions[0]?.label}</span>
                             <ChevronDown size={14} />
                         </div>
@@ -655,7 +660,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             <>
                                 <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
                                 <div className="summary-list-empty-desc">{translate("summary.chatSummary.emptyDescription")}</div>
-                                <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
                                     {translate("summary.chatSummary.createNew")}
                                 </Button>
                             </>
@@ -666,7 +671,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 <div className="summary-list-empty-desc">
                                     {translate("summary.list.emptyDesc")}
                                 </div>
-                                <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
                                     {translate("summary.list.createFirst")}
                                 </Button>
                             </>
@@ -675,7 +680,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 )}
 
                 {!loading && items.length > 0 && (
-                    <div className="summary-list-content" onScroll={this.handleScroll}>
+                    <div data-testid={summaryTestIds.listContent} className="summary-list-content" onScroll={this.handleScroll}>
                         {items.map((item) => (
                             <SummaryCard
                                 key={item.task_id}

@@ -425,6 +425,28 @@ export async function transferFromIm(req: TransferFromImReq): Promise<TransferRe
   return post<TransferResult>('/blobs/transfer-from-im', req);
 }
 
+// Wire types for the IM -> drive transferred-state check now live in
+// bridge/types.ts alongside the other octo-drive Go DTO mirrors. Re-exported
+// here so existing importers of driveApi keep working, and so the source_key
+// contract stays visible at the API call-site too.
+export type { ImTransferredEntry, ImTransferredItem } from '../bridge/types';
+import type { ImTransferredEntry, ImTransferredItem } from '../bridge/types';
+
+/** Batch-query whether a set of IM files (identified by
+ *  (channelType, channelID, msgID) triples) have already been transferred into
+ *  the caller's personal space. The backend derives a source_key
+ *  `${channelType}#${channelID}#${msgID}` and returns a map keyed by it; missing
+ *  keys mean "not yet transferred". */
+export async function checkImTransferredBatch(
+  items: ImTransferredItem[],
+): Promise<Record<string, ImTransferredEntry>> {
+  const resp = await post<{ results: Record<string, ImTransferredEntry> }>(
+    '/blobs/im-transferred/batch',
+    { items },
+  );
+  return resp.results ?? {};
+}
+
 // ─── Type-2 blobs — two-phase direct upload ─────────────────────────────────
 
 export async function prepareUpload(req: PrepareUploadReq): Promise<PrepareUploadResp> {

@@ -7,6 +7,7 @@
 import { test, expect } from "../../../fixtures-authed";
 import { registerS18SummaryListPollCompleted } from "../../../msw-handlers/s18-summary-list-poll-completed";
 import { startRequestMonitor, sanityCheck } from "../../../_lib/sanity";
+import { T } from "../_testids";
 
 const sanityConfig = {
   realHosts: ["127.0.0.1:9", "mock.e2e.local"],
@@ -26,7 +27,8 @@ test.describe("@S18 @p1 @summary @list @summary-list @summary-poll S18 — Summa
     await expect(authedPage.getByText("已完成", { exact: true })).toBeVisible({ timeout: 8_000 });
     await authedPage.getByText("S18 轮询总结").click();
 
-    await expect(authedPage.locator(".summary-detail-title", { hasText: "S18 轮询总结" })).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByTestId(T.detailTitle)).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByTestId(T.detailTitle)).toContainText("S18 轮询总结");
     await expect(authedPage.getByText("AI 摘要")).toBeVisible();
     await expect(authedPage.getByText("S18 轮询后已完成", { exact: true })).toBeVisible();
     await expect(authedPage.getByText("加载失败")).toHaveCount(0);

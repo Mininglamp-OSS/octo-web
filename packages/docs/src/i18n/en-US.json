@@ -83,6 +83,8 @@
     "saveLibrary": "Save to file",
     "resetLibrary": "Reset library",
     "resetLibraryConfirm": "Reset the library? This will clear all saved items and can't be undone.",
+    "databaseRimHandleLabel": "Adjust cylinder rim depth",
+    "databaseRimHandleTitle": "Drag to adjust cylinder rim depth",
     "comment": {
       "add": "Add comment",
       "addHere": "Add comment here",

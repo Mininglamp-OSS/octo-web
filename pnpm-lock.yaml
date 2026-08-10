@@ -13,7 +13,7 @@ overrides:
 
 patchedDependencies:
   '@excalidraw/excalidraw@0.18.1':
-    hash: 5fd160bf71554a5dbaba5c13664244dd7e3b3e8f3daf085aad15367783c879ec
+    hash: eaa700535211a70fdc31564a90b584fd61323c3477f6d454ad12b53c7c122e24
     path: patches/@excalidraw__excalidraw@0.18.1.patch
   app-builder-lib@26.8.1:
     hash: f4c5cc1107b3fb4d290bf53ec94722129cbdc4a3e52d5adf2370ff99bec88837
@@ -403,8 +403,8 @@ importers:
         specifier: ^1.5.5
         version: 1.7.1
       '@mlt-org/octo-card-profile-octo-chat':
-        specifier: 1.2.0-rc.1
-        version: 1.2.0-rc.1
+        specifier: 1.2.0-rc.2
+        version: 1.2.0-rc.2
       '@react-pdf-viewer/bookmark':
         specifier: ^3.12.0
         version: 3.12.0(pdfjs-dist@3.11.174(encoding@0.1.13))(react-dom@17.0.2(react@17.0.2))(react@17.0.2)
@@ -843,7 +843,7 @@ importers:
     dependencies:
       '@excalidraw/excalidraw':
         specifier: 0.18.1
-        version: 0.18.1(patch_hash=5fd160bf71554a5dbaba5c13664244dd7e3b3e8f3daf085aad15367783c879ec)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        version: 0.18.1(patch_hash=eaa700535211a70fdc31564a90b584fd61323c3477f6d454ad12b53c7c122e24)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@hocuspocus/provider':
         specifier: 2.15.2
         version: 2.15.2(y-protocols@1.0.6(yjs@13.6.21))(yjs@13.6.21)
@@ -2590,8 +2590,8 @@ packages:
   '@mermaid-js/parser@1.2.0':
     resolution: {integrity: sha512-oYPyv8A4As1yH5Bx+04iQEQxXuIQDe0GKCNSRgao6z8AM9jixXIfP0vsppRLvGf+nKIOb9/LdpWA4YuJiVvESA==}
 
-  '@mlt-org/octo-card-profile-octo-chat@1.2.0-rc.1':
-    resolution: {integrity: sha512-rzaO97RpRgGStMKEVBOsxt1F2/v7MTQOZwN64vkPIgi37090ng125XNNfB9D9TD+pOF46I4OBmPo/rjrNcQl6A==}
+  '@mlt-org/octo-card-profile-octo-chat@1.2.0-rc.2':
+    resolution: {integrity: sha512-MZfEJOGuKj27kToreQBgk1tVvGtnMr01QaTqG7sesJJoPNd/7b6IQRqwG9ruwLi8O5bW2SrfOvH8jj24iC4Bcw==}
 
   '@mswjs/interceptors@0.41.9':
     resolution: {integrity: sha512-VVPPgHyQ6ShqnrmDWuxjmUIsO9gWyOZFmuOfLd9LfBGQJwZfy0gvv9pbHSJuoFNIYC7ZDX9aoFwowjcdSC4E8w==}
@@ -12725,7 +12725,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@excalidraw/excalidraw@0.18.1(patch_hash=5fd160bf71554a5dbaba5c13664244dd7e3b3e8f3daf085aad15367783c879ec)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+  '@excalidraw/excalidraw@0.18.1(patch_hash=eaa700535211a70fdc31564a90b584fd61323c3477f6d454ad12b53c7c122e24)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
     dependencies:
       '@braintree/sanitize-url': 6.0.2
       '@excalidraw/laser-pointer': 1.3.1
@@ -13196,7 +13196,7 @@ snapshots:
     dependencies:
       '@chevrotain/types': 11.1.2
 
-  '@mlt-org/octo-card-profile-octo-chat@1.2.0-rc.1': {}
+  '@mlt-org/octo-card-profile-octo-chat@1.2.0-rc.2': {}
 
   '@mswjs/interceptors@0.41.9':
     dependencies:

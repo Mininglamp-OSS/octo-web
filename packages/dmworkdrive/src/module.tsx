@@ -11,6 +11,9 @@ import { HardDrive } from 'lucide-react';
 import DriveSidebar from './pages/DriveSidebar';
 import DriveContent from './pages/DriveContent';
 import { DriveVM } from './pages/DriveVM';
+import { transferFromIm, checkImTransferredBatch } from './api/driveApi';
+import type { ImTransferredEntry } from './api/driveApi';
+import { imTransferredSourceKey, normaliseImChannelID } from './bridge/types';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -104,6 +107,112 @@ export default class DriveModule implements IModule {
       'zh-CN': zhCN,
       'en-US': enUS,
     });
+
+    // Bridge for the chat file card's "save to Drive" action. Backend accepts
+    // an empty target_space_id and defaults to the caller's personal space,
+    // so we don't pre-resolve it (one fewer round-trip). Person channelIDs
+    // are Space-prefixed in Space deployments (`s<32-hex>_<peer_uid>`) while
+    // the drive/octo-server keys on the bare uid — `normaliseImChannelID`
+    // strips the prefix for Person and no-ops for Group / CommunityTopic.
+    // Callers hand raw `message.channel.channelID`; this is the single
+    // normalisation point for the drive-transfer path (see bridge/types).
+    WKApp.saveMessageToDrive = async ({ im_group_no, im_channel_type, im_msg_id }: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => {
+      const result = await transferFromIm({
+        im_group_no: normaliseImChannelID(im_channel_type, im_group_no),
+        im_channel_type,
+        im_msg_id,
+        target_space_id: '',
+        target_parent_id: 0,
+      });
+      return { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
+    };
+
+    // Chat file card mount-time check: has this IM file already been transferred?
+    // Coalesces the calls that fire from every visible file card into a single
+    // batch request. A microtask (not a timer) flushes the batch: React runs a
+    // list's file-card componentDidMounts in one synchronous stack, so every
+    // triple is enqueued in the same tick and the microtask fires the instant
+    // that stack unwinds — one backend hit for the whole screen, no perceptible
+    // delay. Returns the drive entry when found, or null when the sourceKey
+    // wasn't in the batch response (= not transferred). The sourceKey used to
+    // both dedupe pending waiters and read results back mirrors the backend's
+    // storage key `${channelType}#${channelID}#${msgID}`.
+    let pendingBatch: Map<string, {
+      item: { im_group_no: string; im_channel_type: number; im_msg_id: string };
+      waiters: Array<{
+        resolve: (v: ImTransferredEntry | null) => void;
+        reject: (err: unknown) => void;
+      }>;
+    }> | null = null;
+    let flushScheduled = false;
+    const flushBatch = (): void => {
+      const batch = pendingBatch;
+      pendingBatch = null;
+      flushScheduled = false;
+      if (!batch || batch.size === 0) return;
+      const items = Array.from(batch.values()).map((e) => e.item);
+      checkImTransferredBatch(items)
+        .then((results) => {
+          for (const [key, entry] of batch) {
+            const found = results[key] ?? null;
+            for (const w of entry.waiters) w.resolve(found);
+          }
+        })
+        .catch((err) => {
+          for (const entry of batch.values()) {
+            for (const w of entry.waiters) w.reject(err);
+          }
+        });
+    };
+    WKApp.checkDriveTransferred = (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) =>
+      new Promise<ImTransferredEntry | null>((resolve, reject) => {
+        // Defensive filter: an empty im_msg_id means the message hasn't been
+        // ack'd yet (server messageID is written in vm.ts:updateMessageStatus-
+        // BySendAck) — the drive backend has nothing to look up and one bad
+        // item would fail the whole batch. Return null (= "not transferred")
+        // synchronously without enqueueing. FileCell also gates the caller
+        // side (isMessagePersisted); this is a second line of defense for
+        // any future caller. Same for im_group_no.
+        if (!msg.im_group_no || !msg.im_msg_id) {
+          resolve(null);
+          return;
+        }
+        // Normalise Space-prefixed Person channelIDs to bare peer uid before
+        // building the source_key + sending the wire — the drive backend and
+        // octo-server both key on the unprefixed form. See saveMessageToDrive
+        // comment and bridge/types.ts `normaliseImChannelID`.
+        const item = {
+          im_group_no: normaliseImChannelID(msg.im_channel_type, msg.im_group_no),
+          im_channel_type: msg.im_channel_type,
+          im_msg_id: msg.im_msg_id,
+        };
+        if (!pendingBatch) pendingBatch = new Map();
+        const sourceKey = imTransferredSourceKey(item);
+        const existing = pendingBatch.get(sourceKey);
+        if (existing) {
+          existing.waiters.push({ resolve, reject });
+        } else {
+          pendingBatch.set(sourceKey, { item, waiters: [{ resolve, reject }] });
+        }
+        if (!flushScheduled) {
+          flushScheduled = true;
+          queueMicrotask(flushBatch);
+        }
+      });
+
+    // Chat file card "view in drive": switch the NavRail to the drive menu
+    // (this is what mounts the LEFT space rail + highlights the entry — the
+    // missing piece that left the sidebar on the conversation list), then
+    // mount the RIGHT file view and let the VM focus/flash the target file.
+    // switchToMenuById intentionally does not popToRoot (shared left stack),
+    // and only syncs the route — it does not mount contentRight, so we still
+    // call mountDriveContent explicitly. IM-transfer callers only produce files
+    // at the personal-space root, so no parent_id is threaded through.
+    WKApp.openDriveFile = ({ space_id, file_id }: { space_id: string; file_id: number }) => {
+      WKApp.switchToMenuById?.('drive');
+      mountDriveContent();
+      vm.focusFile(space_id, file_id);
+    };
 
     // `/drive` renders the space rail into contentLeft. hostShell keeps
     // URL-driven renders mounting the full shell (see above). The share/invite

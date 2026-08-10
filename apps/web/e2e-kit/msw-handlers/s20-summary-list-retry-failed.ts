@@ -2,9 +2,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- msw resolver types */
 import type { Page } from "@playwright/test";
 
+/** S20 task ID (failed, retryable). */
+export const S20_TASK_ID = 20020;
+
 /** S20: Summary 列表失败任务重试. */
 export async function registerS20SummaryListRetryFailed(page: Page): Promise<void> {
-  await page.evaluate(() => {
+  await page.evaluate(([TASK_ID]) => {
     type MSW = {
       worker: { use: (...h: unknown[]) => void };
       http: {
@@ -17,7 +20,7 @@ export async function registerS20SummaryListRetryFailed(page: Page): Promise<voi
     if (!msw) throw new Error("[S20] MSW worker 未就绪 (等 __MSW_READY__).");
     const { worker, http, HttpResponse } = msw;
     const env = (data: unknown) => HttpResponse.json({ code: 0, message: "ok", data });
-    const taskId = 20020;
+    const taskId = TASK_ID;
     const now = "2026-08-06T20:10:00Z";
     const makeItem = (status: number) => ({
       task_id: taskId,
@@ -54,7 +57,7 @@ export async function registerS20SummaryListRetryFailed(page: Page): Promise<voi
         const state = (window as unknown as { __s20State__: { retried: boolean } }).__s20State__;
         return env({ items: [makeItem(state.retried ? 2 : 4)], total: 1, attention_count: state.retried ? 0 : 1, unread_count: 0, pending_invitation_count: 0 });
       }),
-      http.post("*/summary/api/v1/summaries/20020/regenerate", () => {
+      http.post(`*/summary/api/v1/summaries/${TASK_ID}/regenerate`, () => {
         const state = (window as unknown as { __s20State__: { retried: boolean } }).__s20State__;
         state.retried = true;
         return env({ task_id: taskId });
@@ -64,5 +67,5 @@ export async function registerS20SummaryListRetryFailed(page: Page): Promise<voi
         return env({ tasks: [{ id: taskId, status: state.retried ? 2 : 4 }] });
       })
     );
-  });
+  }, [S20_TASK_ID]);
 }

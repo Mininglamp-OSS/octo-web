@@ -7,6 +7,7 @@
 import { test, expect } from "../../../fixtures-authed";
 import { registerS17SummaryDetailDelete } from "../../../msw-handlers/s17-summary-detail-delete";
 import { startRequestMonitor, sanityCheck } from "../../../_lib/sanity";
+import { T } from "../_testids";
 
 const sanityConfig = {
   realHosts: ["127.0.0.1:9", "mock.e2e.local"],
@@ -23,18 +24,18 @@ test.describe("@S17 @p1 @summary @detail @summary-detail @summary-delete S17 —
     await expect(authedPage.getByText("S17 待删除总结")).toBeVisible({ timeout: 15_000 });
     await authedPage.getByText("S17 待删除总结").click();
 
-    await expect(authedPage.locator(".summary-detail-title", { hasText: "S17 待删除总结" })).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByTestId(T.detailTitle)).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByTestId(T.detailTitle)).toContainText("S17 待删除总结");
     await expect(authedPage.getByText("S17 删除前正文内容")).toBeVisible();
 
-    await authedPage.getByRole("button", { name: "删除" }).click();
-    const confirmDialog = authedPage.getByRole("dialog", { name: "确认删除" });
-    await expect(confirmDialog).toBeVisible();
-    await confirmDialog.getByText("确定", { exact: true }).click();
+    await authedPage.getByTestId(T.detailDeleteBtn).click();
+    await expect(authedPage.getByRole("dialog", { name: "确认删除" })).toBeVisible();
+    await authedPage.getByTestId(T.deleteConfirmOkBtn).click();
 
     await expect(authedPage.getByText("删除成功")).toBeVisible({ timeout: 15_000 });
     await expect(authedPage.getByText("暂无总结记录")).toBeVisible({ timeout: 15_000 });
     await expect(authedPage.getByText("S17 待删除总结")).toHaveCount(0);
-    await expect(authedPage.locator(".summary-detail-title", { hasText: "S17 待删除总结" })).toHaveCount(0);
+    await expect(authedPage.getByTestId(T.detailTitle)).toHaveCount(0);
 
     await sanityCheck(authedPage, ctx);
   });
