@@ -27,7 +27,9 @@ type ExpertKind = "agent" | "squad" | "mine";
 type ExpertSort = "latest" | "name";
 
 const TOAST_DURATION = 3000;
-const ALL_CATEGORY = "全部";
+// The localized "all" chip / sentinel. Sourced from the shared category list
+// (not a re-typed literal) so it stays in one place and out of the i18n scan.
+const ALL_CATEGORY = EXPERT_CATEGORIES[0];
 // Catalog lists are fetched with page_size=100 (expertService default); when the
 // true total exceeds this the catalog is truncated and we surface a notice.
 const LIST_PAGE_SIZE = 100;

@@ -77,6 +77,18 @@
       "reason": "Agent prompt template for the MCP marketplace publish flow. Same rationale as dmworkskillmarket/src/utils/botPublishPrompt.ts — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
     },
     {
+      "path": "packages/dmworkmcp/src/mock/expertMock.ts",
+      "reason": "Expert Marketplace demo fixtures (squad/expert names, summaries, roles, strategies, category names). Sample content data returned by the mock service layer, replaced wholesale by the real backend response later; not translatable UI chrome. Same category as dmworkmcp/src/mock/mcpMock.ts."
+    },
+    {
+      "path": "packages/dmworkmcp/src/utils/buildExpertPrompt.ts",
+      "reason": "Agent prompt template for the expert/squad install flow. Generated prompt content pasted into an agent client, must byte-match (Space ID / API 地址 labels + octo-cli/octo-daemon steps); not translatable UI chrome. Same category as mcpBotPublishPrompt.ts."
+    },
+    {
+      "path": "packages/dmworkmcp/src/utils/expertBotPublishPrompt.ts",
+      "reason": "Agent prompt template for the expert/squad marketplace publish + update flow. Generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome. Same category as mcpBotPublishPrompt.ts."
+    },
+    {
       "path": "packages/dmworksummary/src/__mocks__/handlers.ts",
       "reason": "MSW test fixture data with sample user names, titles, and message bodies; not UI copy."
     },

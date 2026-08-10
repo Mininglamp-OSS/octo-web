@@ -82,9 +82,10 @@ export interface ExpertCategoryCount {
   count: number;
 }
 
-// The "all" sentinels that disable the category filter — the frontend's
-// localized "全部" chip and the backend's reserved CATEGORY_KEY_ALL ("all").
-const ALL_CATEGORY = "全部";
+// The "all" sentinel that disables the category filter — the frontend's
+// localized chip (EXPERT_CATEGORIES[0]) and the backend's reserved
+// CATEGORY_KEY_ALL ("all"). Sourced from the shared list, not re-typed.
+const ALL_CATEGORY = EXPERT_CATEGORIES[0];
 
 // ─── Request plumbing (mirrors mcpService.ts) ───────────────────────────────
 
@@ -450,7 +451,7 @@ export function getExpertSkillContent(
   index: number
 ): Promise<string> {
   return USE_MOCK
-    ? delay(`（示例）技能 #${index} 内容占位。`)
+    ? delay(`(sample) skill #${index} content placeholder`)
     : getExpertSkillContentReal(expertId, index);
 }
 
@@ -461,7 +462,7 @@ export function getSquadSkillContent(
   index: number
 ): Promise<string> {
   return USE_MOCK
-    ? delay(`（示例）成员技能 #${index} 内容占位。`)
+    ? delay(`(sample) member skill #${index} content placeholder`)
     : getSquadSkillContentReal(squadId, memberKey, index);
 }
 
