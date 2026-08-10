@@ -161,16 +161,17 @@ export async function sendGroupSummaryNotifyImpl(
             state.sentThisInstance.add(memoryKey);
         } catch (error) {
             warn("[summaryNotify] send failed", { channelId: sourceId, error });
-            // No markSummaryNotifySent on failure — recovery relies on either
-            // a later observed → COMPLETED edge on this task (rare in
-            // production: both triggers advance lastKnownStatus BEFORE the
-            // fan-out, so only manual regenerate re-fires) OR a page reload
-            // that re-reads localStorage (finds this source unmarked) OR the
-            // creator navigating back to the same task from a card. Best-
-            // effort tip; a transient IM 5xx can still lose the tip for
-            // that single completion window and only console.warn records
-            // it. Accepted trade-off — the alternative is retrying inside
-            // this method against a client we do not control the ordering of.
+            // No markSummaryNotifySent on failure — the source stays unmarked
+            // in both persistence layers so a LATER observed → COMPLETED edge
+            // can retry. In production that edge only comes from manual
+            // regenerate: both trigger sites advance `lastKnownStatus` before
+            // the fan-out, and both `loadDetail` and revisit-from-card seed
+            // `lastKnownStatus = detail.status`, so a straight reload does
+            // NOT itself produce an edge (round-11 P2 @mochashanyao — the
+            // round-11 comment overstated recovery via reload / return-nav).
+            // A transient IM 5xx can therefore lose the tip for that single
+            // completion window; the trade-off is documented in the PR body
+            // and matches the shipped screenshot-tip posture.
         } finally {
             state.inFlight.delete(memoryKey);
         }

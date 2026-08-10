@@ -25,4 +25,12 @@ describe("isMessageSelectable", () => {
     expect(isMessageSelectable(undefined)).toBe(false)
     expect(isMessageSelectable({})).toBe(false)
   })
+
+  // #1283 round-11 P2 (@mochashanyao): pin summaryNotify (21) as
+  // non-selectable — passive grey tips carry no user content to select /
+  // forward / reply against, matching how the sibling module.tsx guards
+  // (forward, reply, create-thread) route through the classifier.
+  it("rejects summaryNotify (21) — passive tip is not user-selectable content", () => {
+    expect(isMessageSelectable({ contentType: MessageContentTypeConst.summaryNotify })).toBe(false)
+  })
 })

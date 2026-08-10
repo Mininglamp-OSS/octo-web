@@ -61,4 +61,20 @@ describe("isMessageContinuation", () => {
             msg("u1", 1_030, { contentType: MessageContentTypeConst.screenshot }),
         )).toBe(false)
     })
+
+    // #1283 round-11 P2 (@mochashanyao): pin the summaryNotify (21) parity
+    // with screenshot (20). Both are passive centred grey tips that must not
+    // hide the next avatar even when their `fromUID` matches the next
+    // message's sender.
+    it("breaks on summaryNotify system message (parity with screenshot)", () => {
+        expect(isMessageContinuation(
+            msg("u1", 1_000, { contentType: MessageContentTypeConst.summaryNotify }),
+            msg("u1", 1_030),
+        )).toBe(false)
+
+        expect(isMessageContinuation(
+            msg("u1", 1_000),
+            msg("u1", 1_030, { contentType: MessageContentTypeConst.summaryNotify }),
+        )).toBe(false)
+    })
 })

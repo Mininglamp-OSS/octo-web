@@ -32,6 +32,7 @@ import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
 import { sendGroupSummaryNotifyImpl, newSummaryNotifySendState, type SummaryNotifySendState } from "../utils/summaryNotifySender";
+import { shouldEmitOnStatusTransition } from "../utils/summaryNotifyHelpers";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -1010,38 +1011,48 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.stopFallbackPoll();
 
         try {
-            // 续修3：await 前捕获 requestTaskId。task A 状态事件触发后、await 未返回前切到
-            // task B，A 的 detail（含 result.team_citations）不得 setState 到 B 页面（A detail +
-            // B members/personal 混搭串台）。迟到直接 return，后续 prevStatus 判断 / 成对
-            // reload 都在这道守卫之后。
+            // 续修3 + round-12 P1 (@mochashanyao on ed87de25):
+            // await 前捕获 requestTaskId AND prevStatus，task A 状态事件触发后、
+            // await 未返回前切到 task B——
+            //   * A 的 detail 不得 setState 到 B 页面(A detail + B members/personal
+            //     混搭串台);
+            //   * 但 A 的 →COMPLETED transition edge 是有效观察 · silent-drop 会永久
+            //     丢 tip(revisit A 时 loadDetail seed lastKnownStatus=COMPLETED ·
+            //     无 edge 可 fire · 只能靠 manual regenerate 恢复)。
+            // 修法:capture prevStatus BEFORE await;stale-taskId 时依然对 captured
+            // task 跑 transition 决策 · **不 setState**(UI 已换到 B)· 只发 tip。
             const requestTaskId = this.taskId;
+            const capturedPrevStatus = this.state.lastKnownStatus;
             const detail = await api.getSummaryDetail(this.taskId);
-            if (this.taskId !== requestTaskId) return;
-            const prevStatus = this.state.lastKnownStatus;
             const newStatus = detail.status;
-            this.setState({ detail, lastKnownStatus: newStatus });
+            const staleAfterAwait = this.taskId !== requestTaskId;
+            if (!staleAfterAwait) {
+                this.setState({ detail, lastKnownStatus: newStatus });
+            }
 
-            if (prevStatus !== undefined && prevStatus !== newStatus) {
+            if (shouldEmitOnStatusTransition(capturedPrevStatus, newStatus, TaskStatus.COMPLETED)) {
+                // #289 群内总结 tip: fires against the CAPTURED detail (task A)
+                // even when the user has switched to task B mid-await. The
+                // dedup layer is task-scoped (round-11), so posting for
+                // captured task A does not interfere with task B's own
+                // eventual send decision.
+                void this.sendGroupSummaryNotify(detail);
+            }
+            if (staleAfterAwait) return; // skip the non-tip transition side effects for the stale task
+
+            if (capturedPrevStatus !== undefined && capturedPrevStatus !== newStatus) {
                 if (
                     newStatus === TaskStatus.COMPLETED ||
                     newStatus === TaskStatus.FAILED ||
                     newStatus === TaskStatus.CANCELLED
                 ) {
                     if (detail.summary_mode === SummaryMode.BY_PERSON) {
-                        // 续修1：一个刷新周期共用一个 seq，避免成对调用各自
-                        // nextScheduleSeq() 互相作废（第二个把第一个的 reqSeq 作废，
-                        // 导致第一个响应被守卫丢弃 / personalLoading 卡 true）。
+                        // 续修1:一个刷新周期共用一个 seq,避免成对调用各自
+                        // nextScheduleSeq() 互相作废(第二个把第一个的 reqSeq 作废,
+                        // 导致第一个响应被守卫丢弃 / personalLoading 卡 true)。
                         const seq = this.nextScheduleSeq();
                         this.loadPersonalResult(seq);
                         this.loadMembers(seq);
-                    }
-                    if (newStatus === TaskStatus.COMPLETED) {
-                        // #289 群内总结 tip：仅在 "非终态 → COMPLETED" 迁移触发,
-                        // 抄截屏 tip 的姿势(见 octo-ios WKConversationView.userDidTakeScreenshot):
-                        // creator client 用自己的 IM connection 直接 send · 天然带 group
-                        // send permission(creator 已在群里)。极简 dedup: 仅内存单飞,
-                        // 接受 multi-tab 罕见重复(与截屏 tip 同等 accepted trade-off)。
-                        void this.sendGroupSummaryNotify(detail);
                     }
                 }
             }
@@ -1084,45 +1095,55 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
 
     private async doFallbackPollOnce() {
         if (this.taskId == null) return;
-        // 续修4：tick 开始处捕获 requestTaskId，整个 tick 内 batchStatus / getSummaryDetail
-        // 及 await 后所有 setState 都用这一个 requestTaskId 守卫：兑底轮询 await 期间切
-        // task，旧 task 的 team result/citations 不得写进新 task 页。
+        // 续修4 + round-12 P1 (@mochashanyao on ed87de25):
+        // tick 开始处 capture requestTaskId AND prevStatus。fallback poll 里两次 await
+        // 都可能夹一次 task switch —— batchStatus / getSummaryDetail 均可能 await 期间
+        // 换到 task B。语义与 status-event 路径一致:stale-taskId 时不 setState / 不 reload,
+        // 但 A 的 →COMPLETED transition edge 依然发 tip(单一路径 dedup 由 sender + 持久
+        // marker 保证)。
         const requestTaskId = this.taskId;
+        const capturedPrevStatus = this.state.lastKnownStatus;
         try {
             const updates = await api.batchStatus([this.taskId]);
-            if (this.taskId !== requestTaskId) return;
+            const staleAfterBatch = this.taskId !== requestTaskId;
             const update = updates.find(u => u.id === requestTaskId);
             if (!update) return;
 
-            const prevStatus = this.state.lastKnownStatus;
             const newStatus = update.status;
 
-            if (prevStatus !== undefined && prevStatus !== newStatus) {
+            if (capturedPrevStatus !== undefined && capturedPrevStatus !== newStatus) {
                 try {
-                    const detail = await api.getSummaryDetail(this.taskId);
-                    if (this.taskId !== requestTaskId) return;
-                    this.setState({ detail, lastKnownStatus: newStatus });
+                    const detail = await api.getSummaryDetail(requestTaskId);
+                    const staleAfterDetail = staleAfterBatch || this.taskId !== requestTaskId;
+                    if (!staleAfterDetail) {
+                        this.setState({ detail, lastKnownStatus: newStatus });
+                    }
                     if (
                         newStatus === TaskStatus.COMPLETED ||
                         newStatus === TaskStatus.FAILED ||
                         newStatus === TaskStatus.CANCELLED
                     ) {
-                        this.stopFallbackPoll();
-                        // 续修1：本轮刷新共用一个 seq，传给所有子加载（personal/members/schedule），
-                        // 避免多次 nextScheduleSeq() 互相作废。
-                        const seq = this.nextScheduleSeq();
-                        if (detail.summary_mode === SummaryMode.BY_PERSON) {
-                            this.loadPersonalResult(seq);
-                            this.loadMembers(seq);
+                        if (!staleAfterDetail) {
+                            this.stopFallbackPoll();
+                            // 续修1:本轮刷新共用一个 seq,传给所有子加载(personal/members/schedule),
+                            // 避免多次 nextScheduleSeq() 互相作废。
+                            const seq = this.nextScheduleSeq();
+                            if (detail.summary_mode === SummaryMode.BY_PERSON) {
+                                this.loadPersonalResult(seq);
+                                this.loadMembers(seq);
+                            }
+                            if (detail.schedule_id && detail.schedule_id > 0) {
+                                this.loadSchedule(detail.schedule_id, seq);
+                            }
                         }
-                        if (detail.schedule_id && detail.schedule_id > 0) {
-                            this.loadSchedule(detail.schedule_id, seq);
-                        }
-                        if (newStatus === TaskStatus.COMPLETED) {
+                        if (shouldEmitOnStatusTransition(capturedPrevStatus, newStatus, TaskStatus.COMPLETED)) {
                             // #289 群内总结 tip · fallback poll 路径同样触发一次
                             // (与 status-event 路径二选一 · dedup semantics live
                             //  in summaryNotifySender — see summaryNotifySendState
-                            //  field doc + summaryNotifySender.test.ts).
+                            //  field doc + summaryNotifySender.test.ts). Fires
+                            //  against the CAPTURED detail even when a task
+                            //  switch raced the second await — round-12 P1
+                            //  (@mochashanyao) makes this explicit.
                             void this.sendGroupSummaryNotify(detail);
                         }
                     }
