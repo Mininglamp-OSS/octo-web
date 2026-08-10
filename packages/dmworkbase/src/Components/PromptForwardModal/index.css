@@ -1,0 +1,55 @@
+/* Shared prompt-forward modal (PromptForwardModal). Owns the split-layout box
+ * and header; the split columns themselves live in PromptForwardActions. */
+
+.wk-prompt-forward-modal__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.wk-prompt-forward-modal__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  border-radius: 10px;
+  color: var(--wk-brand-primary, #6d5cfb);
+  background: var(--wk-brand-soft, rgba(109, 92, 251, 0.12));
+}
+
+.wk-prompt-forward-modal__heading {
+  min-width: 0;
+}
+
+.wk-prompt-forward-modal__heading h2 {
+  margin: 0;
+  font-size: 16px;
+  line-height: 22px;
+  color: var(--wk-text-primary, #111827);
+}
+
+.wk-prompt-forward-modal__heading p {
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--wk-text-tertiary, #6b7280);
+}
+
+/* Fixed-height framed box the split grid fills; both columns scroll internally. */
+.wk-prompt-forward-modal__box {
+  height: min(62vh, 520px);
+  overflow: hidden;
+  border: 1px solid var(--wk-border, #e5e7eb);
+  border-radius: 10px;
+  background: var(--wk-bg-surface, #fff);
+}
+
+@media (max-width: 719px) {
+  .wk-prompt-forward-modal__box {
+    height: auto;
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+  }
+}

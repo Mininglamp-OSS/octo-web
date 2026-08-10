@@ -1,17 +1,14 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Bot,
-  Check,
-  Copy,
   Route,
   UserRound,
   Users,
 } from "lucide-react";
-import { t, useI18n, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKModal } from "@octo/base";
 import type { ExpertItem, ExpertMember } from "../mock/expertMock";
 import { DEFAULT_STRATEGIES } from "../mock/expertMock";
 import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, openDownloadUrl } from "../api/expertService";
-import { buildExpertPrompt } from "../utils/buildExpertPrompt";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
 import ExpertSpecView from "./ExpertSpecView";
@@ -19,8 +16,6 @@ import ExpertSpecView from "./ExpertSpecView";
 interface ExpertDetailModalProps {
   item: ExpertItem | null;
   onClose: () => void;
-  /** Copy the install prompt; returns whether the copy succeeded. */
-  onCopy: (item: ExpertItem) => void | Promise<void>;
 }
 
 function memberInitial(name: string): string {
@@ -29,41 +24,26 @@ function memberInitial(name: string): string {
 
 /**
  * Expert / expert-squad detail modal. Shows the dispatch strategy, members,
- * dependencies, permission and the copyable install prompt. Agents render a
- * simplified intro (no members/strategy). Squad members can be drilled into
- * (in-place) to view their own spec (指令 / MCP / Skills).
+ * dependencies and permission. Agents render a simplified intro (no
+ * members/strategy). Squad members can be drilled into (in-place) to view their
+ * own spec (指令 / MCP / Skills). Installing is handled by the separate 安装
+ * prompt modal, not here.
  */
-export default function ExpertDetailModal({ item, onClose, onCopy }: ExpertDetailModalProps) {
+export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalProps) {
   useI18n();
-  const [copied, setCopied] = useState(false);
   // A drilled-into squad member; null shows the squad overview.
   const [drillMember, setDrillMember] = useState<ExpertMember | null>(null);
 
-  // Reset copied feedback + member drill-in whenever a different item is opened.
+  // Reset the member drill-in whenever a different item is opened.
   useEffect(() => {
-    if (item) {
-      setCopied(false);
-      setDrillMember(null);
-    }
+    if (item) setDrillMember(null);
   }, [item?.id]);
-
-  const prompt = useMemo(() => (item ? buildExpertPrompt(item) : ""), [item]);
 
   if (!item) return null;
 
   const isSquad = item.kind === "squad";
   const strategies = isSquad ? item.strategies ?? DEFAULT_STRATEGIES : [];
   const owner = resolveExpertOwner(item);
-
-  const handleCopy = async () => {
-    await onCopy(item);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
-  };
-
-  // Drilled into a squad member: no standalone install prompt for a member.
-  const showPrompt = !(isSquad && drillMember);
-  const twoColumn = isSquad && !drillMember;
 
   const header = (
     <div className="wk-mcp-expert-detail__header">
@@ -112,26 +92,6 @@ export default function ExpertDetailModal({ item, onClose, onCopy }: ExpertDetai
     </div>
   );
 
-  const promptPanel = (
-    <aside className="wk-mcp-expert-prompt">
-      <div className="wk-mcp-expert-prompt__header">
-        <h3>{t("mcp.expert.installPromptTitle")}</h3>
-        <p>{t("mcp.expert.installPromptHint")}</p>
-      </div>
-      <pre className="wk-mcp-expert-prompt__preview">{prompt}</pre>
-      <div className="wk-mcp-expert-prompt__footer">
-        <WKButton
-          variant="primary"
-          className="wk-mcp-expert-prompt__copy"
-          icon={copied ? <Check size={15} /> : <Copy size={15} />}
-          onClick={handleCopy}
-        >
-          {copied ? t("mcp.expert.copied") : t("mcp.expert.copyPrompt")}
-        </WKButton>
-      </div>
-    </aside>
-  );
-
   return (
     <WKModal
       visible={Boolean(item)}
@@ -141,13 +101,7 @@ export default function ExpertDetailModal({ item, onClose, onCopy }: ExpertDetai
       className="wk-mcp-expert-modal"
       header={header}
     >
-      <div
-        className={
-          twoColumn
-            ? "wk-mcp-expert-detail__layout"
-            : "wk-mcp-expert-detail__layout wk-mcp-expert-detail__layout--agent"
-        }
-      >
+      <div className="wk-mcp-expert-detail__layout wk-mcp-expert-detail__layout--agent">
         <div className="wk-mcp-expert-detail__overview">
             {isSquad && drillMember && (
               <>
@@ -264,8 +218,6 @@ export default function ExpertDetailModal({ item, onClose, onCopy }: ExpertDetai
               />
             )}
           </div>
-
-          {showPrompt && promptPanel}
       </div>
     </WKModal>
   );

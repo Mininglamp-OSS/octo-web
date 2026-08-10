@@ -2034,7 +2034,7 @@
 }
 
 .wk-mcp-expert-tabs button.is-active {
-  color: var(--wk-text-primary);
+  color: var(--wk-brand-primary);
   font-weight: var(--wk-font-semibold);
 }
 
@@ -3093,6 +3093,10 @@
   min-width: 0;
   margin: 0;
   padding: var(--wk-sp-4);
+  /* The install prompt is long (multi-step marketplace→loop bridge), and the
+   * bot picker + actions render below it — cap the preview and scroll it so the
+   * modal stays short enough to reach the buttons without scrolling the page. */
+  max-height: min(42vh, 340px);
   overflow: auto;
   color: var(--wk-text-primary);
   background: var(--wk-bg-base);

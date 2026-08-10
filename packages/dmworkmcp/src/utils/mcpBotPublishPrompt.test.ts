@@ -18,22 +18,25 @@ describe("isValidMcpSpaceId — server space id gate", () => {
   it("accepts uppercase / mixed-case hex", () => {
     expect(isValidMcpSpaceId("AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")).toBe(true);
   });
+  it("accepts a readable slug like the production `minglue_default`", () => {
+    // Regression guard: production space ids are slugs (letters + `_`), not
+    // hex/UUID. The old hex-only gate silently fell back to `<space-id>`, so
+    // the bot prompt shipped a placeholder instead of the real space id.
+    expect(isValidMcpSpaceId("minglue_default")).toBe(true);
+  });
   it("trims surrounding whitespace before checking", () => {
     expect(isValidMcpSpaceId("  11111111-2222-3333-4444-555555555555  ")).toBe(true);
   });
   it.each([
     "",
-    "not-a-uuid",
     "11111111-2222-3333-4444-555555555555;rm -rf /",
     "9f5fda183d94482cb49bca5024439105;rm -rf /",
     "$(whoami)",
-    "..",
-    "11111111-2222-3333-4444",
-    // 31 hex chars — one short of the compact form
-    "9f5fda183d94482cb49bca502443910",
-    // 33 hex chars — one over
-    "9f5fda183d94482cb49bca50244391055",
-  ])("rejects malformed value %j", (bad) => {
+    "`whoami`",
+    "a b",
+    "id|cat",
+    "x&y",
+  ])("rejects shell-unsafe value %j", (bad) => {
     expect(isValidMcpSpaceId(bad)).toBe(false);
   });
 });
@@ -55,12 +58,20 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     expect(p).toContain(`--space ${compactId}`);
   });
 
+  it("embeds a readable slug spaceId (minglue_default) verbatim", () => {
+    // Production space ids are slugs. Regression guard for the hex-only gate
+    // that used to replace them with the `<space-id>` placeholder.
+    const slug = "minglue_default";
+    const p = getMcpBotPublishPrompt({ spaceId: slug, apiBaseUrl: "https://example.com" });
+    expect(p).toContain(`--profile space-${slug}`);
+    expect(p).toContain(`--space ${slug}`);
+  });
+
   it.each([
     "$(whoami)",
     "; rm -rf /",
     "`whoami`",
     "|| cat /etc/passwd",
-    "not-a-uuid",
     "",
   ])("substitutes the <space-id> placeholder for injection payload %j (never lets it reach a shell example)", (payload) => {
     const p = getMcpBotPublishPrompt({ spaceId: payload, apiBaseUrl: "https://example.com" });

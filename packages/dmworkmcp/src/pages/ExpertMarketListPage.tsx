@@ -1,12 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Check, ChevronDown, PackageOpen, Pencil, Search, SlidersHorizontal, Upload, X } from "lucide-react";
-import { copyToClipboard, t, useI18n, WKApp, WKButton } from "@octo/base";
+import { Bot, Check, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
+import { t, useI18n, WKApp, WKButton } from "@octo/base";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
-import type { ExpertAgent, ExpertItem, ExpertSquad } from "../mock/expertMock";
+import type { ExpertItem } from "../mock/expertMock";
 import {
-  createExpert,
-  createSquad,
   deleteExpert,
   deleteSquad,
   getExpert,
@@ -16,16 +14,11 @@ import {
   listMyExperts,
   listMySquads,
   listSquads,
-  updateExpert,
-  updateSquad,
 } from "../api/expertService";
 import type { ExpertCategoryCount } from "../api/expertService";
-import { buildExpertPrompt } from "../utils/buildExpertPrompt";
 import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
 import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
-import ExpertPublishModal from "../components/ExpertPublishModal";
-import ExpertAgentPublishModal from "../components/ExpertAgentPublishModal";
 import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
 import ExpertInstallPromptModal from "../components/ExpertInstallPromptModal";
 
@@ -82,12 +75,11 @@ export default function ExpertMarketListPage() {
   const [sort, setSort] = useState<ExpertSort>("latest");
   const [selected, setSelected] = useState<ExpertItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [publishMenuOpen, setPublishMenuOpen] = useState(false);
   const [botPublishOpen, setBotPublishOpen] = useState(false);
-  const [manualPublishOpen, setManualPublishOpen] = useState(false);
-  const [agentPublishOpen, setAgentPublishOpen] = useState(false);
-  const [editingSquad, setEditingSquad] = useState<ExpertSquad | null>(null);
-  const [editingAgent, setEditingAgent] = useState<ExpertAgent | null>(null);
+  // The 我的-tab record being edited via the Bot update prompt (id + kind only).
+  const [editTarget, setEditTarget] = useState<
+    { id: string; kind: "agent" | "squad" } | null
+  >(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
   const [installTarget, setInstallTarget] = useState<ExpertItem | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -108,7 +100,6 @@ export default function ExpertMarketListPage() {
   const [error, setError] = useState(false);
 
   const toastTimerRef = useRef<number | null>(null);
-  const publishMenuRef = useRef<HTMLDivElement | null>(null);
   const tagFilterRef = useRef<HTMLDivElement | null>(null);
   // Monotonic request counter: each load() captures its version and bails after
   // every await if a newer load (kind switch / space-change reload) has started,
@@ -186,12 +177,8 @@ export default function ExpertMarketListPage() {
   useEffect(() => {
     const handleSpaceChanged = () => {
       setSelected(null);
-      setPublishMenuOpen(false);
       setBotPublishOpen(false);
-      setManualPublishOpen(false);
-      setAgentPublishOpen(false);
-      setEditingSquad(null);
-      setEditingAgent(null);
+      setEditTarget(null);
       setDeleteTarget(null);
       setInstallTarget(null);
       setQuery("");
@@ -213,25 +200,6 @@ export default function ExpertMarketListPage() {
     setTagQuery("");
   }, [kind]);
 
-  // Dismiss the publish dropdown on outside click / Escape.
-  useEffect(() => {
-    if (!publishMenuOpen) return undefined;
-    const onPointerDown = (event: PointerEvent) => {
-      if (!publishMenuRef.current?.contains(event.target as Node)) {
-        setPublishMenuOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPublishMenuOpen(false);
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [publishMenuOpen]);
-
   // Dismiss the tag-filter popover on outside click / Escape.
   useEffect(() => {
     if (!tagFilterOpen) return undefined;
@@ -250,13 +218,6 @@ export default function ExpertMarketListPage() {
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [tagFilterOpen]);
-
-  // Category NAMEs from the backend, for the publish modals' picker. Falls back
-  // to the static list (minus 全部) when the fetch hasn't landed / failed.
-  const categoryNames = useMemo(() => {
-    if (categories.length) return categories.map((c) => c.name);
-    return EXPERT_CATEGORIES.filter((c) => c !== ALL_CATEGORY);
-  }, [categories]);
 
   // Category chips: 全部 sentinel first, then the fetched category set (or the
   // static fallback, which already includes 全部).
@@ -345,11 +306,6 @@ export default function ExpertMarketListPage() {
   const loadedCount = kind === "squad" ? squadsData.length : agentsData.length;
   const isTruncated = loadedCount < activeTotal;
 
-  const handleCopy = async (item: ExpertItem) => {
-    const ok = await copyToClipboard(buildExpertPrompt(item));
-    showToast(ok ? t("mcp.expert.copied") : t("mcp.expert.copyFailed"));
-  };
-
   // List items are projections — fetch the full detail before opening the
   // detail modal / install prompt / editor so members, instruction, mcpConfig
   // and skills are present.
@@ -384,73 +340,16 @@ export default function ExpertMarketListPage() {
     }
   };
 
-  const handlePublished = async (squad: ExpertSquad) => {
-    try {
-      if (editingSquad) {
-        await updateSquad(editingSquad.id, squad);
-        setEditingSquad(null);
-        setManualPublishOpen(false);
-        await reload();
-        showToast(t("mcp.expert.editSuccess"));
-        return;
-      }
-      await createSquad(squad);
-      setManualPublishOpen(false);
-      setCategory(ALL_CATEGORY);
-      if (kind === "squad") {
-        await reload();
-      } else {
-        setKind("squad"); // triggers a load via the kind effect
-      }
-      showToast(t("mcp.expert.publishSuccess"));
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
-    }
-  };
-
-  const handleAgentPublished = async (agent: ExpertAgent) => {
-    try {
-      if (editingAgent) {
-        await updateExpert(editingAgent.id, agent);
-        setEditingAgent(null);
-        setAgentPublishOpen(false);
-        await reload();
-        showToast(t("mcp.expert.editSuccess"));
-        return;
-      }
-      await createExpert(agent);
-      setAgentPublishOpen(false);
-      setCategory(ALL_CATEGORY);
-      if (kind === "agent") {
-        await reload();
-      } else {
-        setKind("agent"); // triggers a load via the kind effect
-      }
-      showToast(t("mcp.expert.publishSuccess"));
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
-    }
-  };
-
   // -------- 我的 tab manage actions (edit / delete) --------
-  // Fetch the full record first so the editor is seeded with members /
-  // instruction / mcpConfig / skills (list items drop those).
-  const handleEdit = async (item: ExpertItem) => {
-    setPublishMenuOpen(false);
-    try {
-      const full = await hydrate(item);
-      if (full.kind === "squad") {
-        setEditingAgent(null);
-        setEditingSquad(full);
-        setManualPublishOpen(true);
-      } else {
-        setEditingSquad(null);
-        setEditingAgent(full);
-        setAgentPublishOpen(true);
-      }
-    } catch {
-      showToast(t("mcp.expert.loadError"));
-    }
+  // Edit hands a Bot the marketplace "update" prompt for this listing (carrying
+  // its id); the Bot performs the update via octo-cli. Only id + kind are
+  // needed here — the Bot reads the current record and asks the user for the
+  // fields to change, so no hydrate is required.
+  const handleEdit = (item: ExpertItem) => {
+    setEditTarget({
+      id: item.id,
+      kind: item.kind === "squad" ? "squad" : "agent",
+    });
   };
 
   const handleConfirmDelete = async (id: string) => {
@@ -466,16 +365,6 @@ export default function ExpertMarketListPage() {
     } catch (err) {
       showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
     }
-  };
-
-  const closeSquadModal = () => {
-    setManualPublishOpen(false);
-    setEditingSquad(null);
-  };
-
-  const closeAgentModal = () => {
-    setAgentPublishOpen(false);
-    setEditingAgent(null);
   };
 
   const searchPlaceholder =
@@ -622,66 +511,19 @@ export default function ExpertMarketListPage() {
               </div>
             )}
           </div>
-          <div className="wk-mcp-expert-publish" ref={publishMenuRef}>
-            <WKButton
-              variant="primary"
-              icon={<Upload size={15} />}
-              aria-haspopup="menu"
-              aria-expanded={publishMenuOpen}
-              onClick={() => setPublishMenuOpen((open) => !open)}
-            >
-              {kind === "squad"
-                ? t("mcp.expert.publish")
-                : t("mcp.expert.publishAgent")}
-              <ChevronDown size={14} />
-            </WKButton>
-            {publishMenuOpen && (
-              <div className="wk-mcp-expert-publish__menu" role="menu">
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setPublishMenuOpen(false);
-                    setBotPublishOpen(true);
-                  }}
-                >
-                  <span className="wk-mcp-expert-publish__icon wk-mcp-expert-publish__icon--bot">
-                    <Bot size={16} />
-                  </span>
-                  <span>
-                    <strong>{t("mcp.expert.publishBot")}</strong>
-                    <small>{t("mcp.expert.publishBotHint")}</small>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setPublishMenuOpen(false);
-                    if (kind === "squad") {
-                      setEditingSquad(null);
-                      setManualPublishOpen(true);
-                    } else {
-                      setEditingAgent(null);
-                      setAgentPublishOpen(true);
-                    }
-                  }}
-                >
-                  <span className="wk-mcp-expert-publish__icon">
-                    <Pencil size={16} />
-                  </span>
-                  <span>
-                    <strong>{t("mcp.expert.publishManual")}</strong>
-                    <small>
-                      {kind === "squad"
-                        ? t("mcp.expert.publishManualHint")
-                        : t("mcp.expert.publishManualHintAgent")}
-                    </small>
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
+          {kind !== "mine" && (
+            <div className="wk-mcp-expert-publish">
+              <WKButton
+                variant="primary"
+                icon={<Upload size={15} />}
+                onClick={() => setBotPublishOpen(true)}
+              >
+                {kind === "squad"
+                  ? t("mcp.expert.publish")
+                  : t("mcp.expert.publishAgent")}
+              </WKButton>
+            </div>
+          )}
         </div>
       </header>
 
@@ -723,29 +565,6 @@ export default function ExpertMarketListPage() {
           <div className="wk-mcp-expert-mine">
             <section className="wk-mcp-expert-mine-section">
               <h2 className="wk-mcp-expert-mine-title">
-                <span>{t("mcp.expert.mineAgentsTitle")}</span>
-              </h2>
-              {myAgents.length > 0 ? (
-                <div className="wk-mcp-expert-grid">
-                  {myAgents.map((item) => (
-                    <ExpertCard
-                      key={item.id}
-                      item={item}
-                      onOpen={openDetail}
-                      onInstall={openInstall}
-                      onEdit={handleEdit}
-                      onDelete={setDeleteTarget}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <p className="wk-mcp-expert-mine-empty">
-                  {t("mcp.expert.mineAgentsEmpty")}
-                </p>
-              )}
-            </section>
-            <section className="wk-mcp-expert-mine-section">
-              <h2 className="wk-mcp-expert-mine-title">
                 <span>{t("mcp.expert.mineSquadsTitle")}</span>
               </h2>
               {mySquads.length > 0 ? (
@@ -764,6 +583,29 @@ export default function ExpertMarketListPage() {
               ) : (
                 <p className="wk-mcp-expert-mine-empty">
                   {t("mcp.expert.mineSquadsEmpty")}
+                </p>
+              )}
+            </section>
+            <section className="wk-mcp-expert-mine-section">
+              <h2 className="wk-mcp-expert-mine-title">
+                <span>{t("mcp.expert.mineAgentsTitle")}</span>
+              </h2>
+              {myAgents.length > 0 ? (
+                <div className="wk-mcp-expert-grid">
+                  {myAgents.map((item) => (
+                    <ExpertCard
+                      key={item.id}
+                      item={item}
+                      onOpen={openDetail}
+                      onInstall={openInstall}
+                      onEdit={handleEdit}
+                      onDelete={setDeleteTarget}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <p className="wk-mcp-expert-mine-empty">
+                  {t("mcp.expert.mineAgentsEmpty")}
                 </p>
               )}
             </section>
@@ -833,30 +675,21 @@ export default function ExpertMarketListPage() {
       <ExpertDetailModal
         item={selected}
         onClose={() => setSelected(null)}
-        onCopy={handleCopy}
       />
       <ExpertBotPublishModal
         visible={botPublishOpen}
         kind={kind === "squad" ? "squad" : "agent"}
+        mode="create"
         onClose={() => setBotPublishOpen(false)}
         onToast={showToast}
       />
-      <ExpertPublishModal
-        visible={manualPublishOpen}
-        editing={editingSquad}
-        categories={categoryNames}
-        library={agentsData.filter(
-          (item): item is ExpertAgent => item.kind === "agent"
-        )}
-        onClose={closeSquadModal}
-        onPublish={handlePublished}
-      />
-      <ExpertAgentPublishModal
-        visible={agentPublishOpen}
-        editing={editingAgent}
-        categories={categoryNames}
-        onClose={closeAgentModal}
-        onPublish={handleAgentPublished}
+      <ExpertBotPublishModal
+        visible={Boolean(editTarget)}
+        kind={editTarget?.kind ?? "agent"}
+        mode="update"
+        editingId={editTarget?.id}
+        onClose={() => setEditTarget(null)}
+        onToast={showToast}
       />
       <ExpertDeleteConfirmModal
         item={deleteTarget}
@@ -866,7 +699,6 @@ export default function ExpertMarketListPage() {
       <ExpertInstallPromptModal
         item={installTarget}
         onClose={() => setInstallTarget(null)}
-        onCopy={handleCopy}
       />
 
       {toast &&
