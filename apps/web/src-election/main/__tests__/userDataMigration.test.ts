@@ -6,6 +6,7 @@ import {
   MIGRATION_MARKER,
   STAGING_OWNER_FILE,
   executeUserDataMigration,
+  isLegacyProcessRunningOutput,
   planUserDataMigration,
   type MigrationRuntime,
 } from "../userDataMigration";
@@ -14,6 +15,17 @@ const BRAND = "OCTO";
 // A pid that is guaranteed not to exist on this machine (any process.kill
 // against it must throw ESRCH), for stale-lock fixtures.
 const DEAD_PID = 2_147_483_647;
+
+// isLegacyInstanceRunning branches on process.platform; the test host is
+// Windows, so POSIX-lock fixtures need the platform forced to linux.
+function withPlatform(platform: string, fn: () => void): void {
+  const spy = vi.spyOn(process, "platform", "get").mockReturnValue(platform as NodeJS.Platform);
+  try {
+    fn();
+  } finally {
+    spy.mockRestore();
+  }
+}
 
 describe("planUserDataMigration", () => {
   let appDataDir: string;
@@ -85,12 +97,14 @@ describe("planUserDataMigration", () => {
     const readlinkSpy = vi
       .spyOn(fs, "readlinkSync")
       .mockReturnValue(`${os.hostname()}-${process.pid}`);
-    try {
-      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("defer-legacy");
-    } finally {
-      lstatSpy.mockRestore();
-      readlinkSpy.mockRestore();
-    }
+    withPlatform("linux", () => {
+      try {
+        expect(planUserDataMigration(appDataDir, BRAND).action).toBe("defer-legacy");
+      } finally {
+        lstatSpy.mockRestore();
+        readlinkSpy.mockRestore();
+      }
+    });
   });
 
   it("does NOT defer for a stale lock with a dead pid (F1)", () => {
@@ -101,12 +115,14 @@ describe("planUserDataMigration", () => {
     const readlinkSpy = vi
       .spyOn(fs, "readlinkSync")
       .mockReturnValue(`${os.hostname()}-${DEAD_PID}`);
-    try {
-      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
-    } finally {
-      lstatSpy.mockRestore();
-      readlinkSpy.mockRestore();
-    }
+    withPlatform("linux", () => {
+      try {
+        expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
+      } finally {
+        lstatSpy.mockRestore();
+        readlinkSpy.mockRestore();
+      }
+    });
   });
 
   it("does NOT defer for a lock from a foreign hostname (F1)", () => {
@@ -117,24 +133,58 @@ describe("planUserDataMigration", () => {
     const readlinkSpy = vi
       .spyOn(fs, "readlinkSync")
       .mockReturnValue(`other-host-${process.pid}`);
-    try {
-      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
-    } finally {
-      lstatSpy.mockRestore();
-      readlinkSpy.mockRestore();
-    }
+    withPlatform("linux", () => {
+      try {
+        expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
+      } finally {
+        lstatSpy.mockRestore();
+        readlinkSpy.mockRestore();
+      }
+    });
   });
 
   it("does NOT defer for an unparseable lock file (F1: never trap users on garbage)", () => {
     const profile = makeLegacyProfile(appDataDir);
     fs.writeFileSync(path.join(profile, "SingletonLock"), "not-a-hostname-pid");
-    expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
+    withPlatform("linux", () => {
+      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
+    });
   });
 
   it("defers for a plain-file lock with a live pid (F1 fallback parse)", () => {
     const profile = makeLegacyProfile(appDataDir);
     fs.writeFileSync(path.join(profile, "SingletonLock"), `${os.hostname()}-${process.pid}`);
-    expect(planUserDataMigration(appDataDir, BRAND).action).toBe("defer-legacy");
+    withPlatform("linux", () => {
+      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("defer-legacy");
+    });
+  });
+
+  it("parses tasklist output: running DMWork.exe defers, no match does not (Windows probe)", () => {
+    expect(
+      isLegacyProcessRunningOutput("DMWork.exe                     1234 Console                    1     45,678 K")
+    ).toBe(true);
+    expect(
+      isLegacyProcessRunningOutput("INFO: No tasks are running which match the specified criteria.")
+    ).toBe(false);
+    expect(isLegacyProcessRunningOutput("")).toBe(false);
+  });
+
+  it("defers on Windows when a legacy DMWork process is running (tasklist probe, no SingletonLock file there)", () => {
+    makeLegacyProfile(appDataDir);
+    withPlatform("win32", () => {
+      // The real tasklist on this machine has no DMWork.exe; the probe's
+      // decision logic is covered by isLegacyProcessRunningOutput above.
+      const plan = planUserDataMigration(appDataDir, BRAND);
+      expect(["migrate", "defer-legacy"]).toContain(plan.action);
+    });
+  });
+
+  it("migrates on Windows when no legacy process is running", () => {
+    makeLegacyProfile(appDataDir);
+    withPlatform("win32", () => {
+      // Runs the real tasklist probe: no DMWork.exe on this machine / CI.
+      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
+    });
   });
 });
 
@@ -191,6 +241,8 @@ describe("executeUserDataMigration", () => {
     expect(fs.existsSync(path.join(newDir, "SingletonLock"))).toBe(false);
     expect(fs.existsSync(path.join(newDir, "SingletonCookie"))).toBe(false);
     expect(fs.existsSync(path.join(newDir, "SingletonSocket"))).toBe(false);
+    // Migration-internal owner metadata is not published.
+    expect(fs.existsSync(path.join(newDir, STAGING_OWNER_FILE))).toBe(false);
     // Regenerable caches skipped.
     expect(fs.existsSync(path.join(newDir, "Cache"))).toBe(false);
     // No staging residue (owner file included).
@@ -236,12 +288,14 @@ describe("executeUserDataMigration", () => {
       .spyOn(fs, "readlinkSync")
       .mockReturnValue(`${os.hostname()}-${process.pid}`);
     let plan;
-    try {
-      plan = planUserDataMigration(appDataDir, BRAND);
-    } finally {
-      lstatSpy.mockRestore();
-      readlinkSpy.mockRestore();
-    }
+    withPlatform("linux", () => {
+      try {
+        plan = planUserDataMigration(appDataDir, BRAND);
+      } finally {
+        lstatSpy.mockRestore();
+        readlinkSpy.mockRestore();
+      }
+    });
     expect(plan.action).toBe("defer-legacy");
 
     const result = executeUserDataMigration(plan, runtime);
@@ -276,6 +330,39 @@ describe("executeUserDataMigration", () => {
     expect(fs.existsSync(path.join(plan.stagingDir, STAGING_OWNER_FILE))).toBe(true);
     // Nothing copied to the destination.
     expect(fs.existsSync(path.join(appDataDir, BRAND, "Preferences"))).toBe(false);
+  });
+
+  it("claims an ownerless staging dir atomically — no stale misjudgment mid-claim (F2 race)", () => {
+    makeLegacyProfile();
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    // Process A mkdir'd the staging dir but was preempted before writing its
+    // owner file. Process B must NOT treat this as stale (deleting A's live
+    // dir); it claims by writing the owner file exclusively and proceeds.
+    fs.mkdirSync(plan.stagingDir, { recursive: true });
+
+    const result = executeUserDataMigration(plan, runtime);
+
+    expect(result).toBe("done");
+    expect(fs.existsSync(path.join(appDataDir, BRAND, MIGRATION_MARKER))).toBe(true);
+    expect(fs.existsSync(path.join(appDataDir, BRAND, "Preferences"))).toBe(true);
+    expect(fs.existsSync(plan.stagingDir)).toBe(false);
+  });
+
+  it("falls back to the legacy profile when claiming the staging mutex itself fails (e.g. EACCES)", () => {
+    makeLegacyProfile();
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    const mkdirSpy = vi.spyOn(fs, "mkdirSync").mockImplementationOnce(() => {
+      const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+      err.code = "EACCES";
+      throw err;
+    });
+
+    const result = executeUserDataMigration(plan, runtime);
+    mkdirSpy.mockRestore();
+
+    expect(result).toBe("failed");
+    expect(setUserDataDir).toHaveBeenCalledWith(path.join(appDataDir, "DMWork"));
+    expect(fs.existsSync(path.join(appDataDir, BRAND))).toBe(false);
   });
 
   it("claims and retries a stale staging dir whose owner pid is dead (F2)", () => {

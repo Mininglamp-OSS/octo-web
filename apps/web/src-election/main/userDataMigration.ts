@@ -1,6 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { execFileSync } from "child_process";
 
 // ---------------------------------------------------------------------------
 // One-time userData migration from the legacy DMWork profile to OCTO.
@@ -23,25 +24,27 @@ import path from "path";
 //   staging dir BEFORE the rename (F5), so profile+marker publish atomically
 //   and a post-rename marker failure can no longer strand a markerless
 //   destination.
-// - Cross-launch mutex (F2): the staging dir itself is the mutex.
-//   fs.mkdirSync is atomic — EEXIST means another launch is mid-migration,
-//   so this launch defers to the legacy profile. A stale staging dir (owner
-//   pid dead, or no owner file from a pre-upgrade crash) is claimed and
-//   retried. The migration therefore runs BEFORE requestSingleInstanceLock()
-//   and never has to delete a lock it holds; the fallback also happens before
-//   the lock, so the fallback session's lock is created in the legacy dir it
-//   writes (F4) — no double writer anywhere.
+// - Cross-launch mutex (F2): the staging dir is the mutex, claimed atomically
+//   by exclusive-creating the owner file ({ flag: "wx" }) — whoever writes
+//   .migration-owner.json first is the migrator. A launcher that loses the
+//   claim either defers (owner pid alive) or reclaims (owner dead / crash
+//   residue). mkdir is only a directory bootstrap, never the claim itself, so
+//   a process preempted between mkdir and owner-write cannot be misjudged as
+//   stale. The migration runs BEFORE requestSingleInstanceLock() and never
+//   has to delete a lock it holds; the fallback also happens before the lock,
+//   so the fallback session's lock is created in the legacy dir it writes
+//   (F4) — no double writer anywhere.
 // - Legacy instance guard (F1): a running DMWork-branded process holds
 //   <appData>/DMWork/SingletonLock. On POSIX Chromium writes that file as a
 //   symlink to a deliberately non-existent target "<hostname>-<pid>", so
-//   existsSync (which follows links) can never see it; Windows has no such
-//   file at all (ProcessSingleton uses OS primitives). We lstat the link,
+//   existsSync (which follows links) can never see it; we lstat the link,
 //   parse the target, confirm the hostname and that the pid is alive, and
 //   only then defer. A stale lock (dead pid / foreign hostname / unparseable)
 //   is treated as not held so a crash can never permanently trap users. On
-//   Windows the guard is a no-op by design: a live legacy process keeps its
-//   profile files open, so the copy/rename fails and the catch falls back to
-//   the legacy profile — same outcome, no data loss.
+//   Windows there is no SingletonLock file (ProcessSingleton uses named
+//   mutexes), so we probe running processes by the legacy image name
+//   (DMWork.exe) instead — deferring is required there, not best-effort,
+//   because Windows allows copying files that are open by another process.
 // - Fallback on failure: if the copy/rename fails, this session keeps using
 //   the legacy profile via setUserDataDir(oldDir) — the user keeps their data
 //   and the migration retries on the next launch (marker still absent).
@@ -99,9 +102,15 @@ export type MigrationRuntime = {
 
 // F1: detect a live legacy DMWork instance.
 // POSIX: SingletonLock is a symlink to "<hostname>-<pid>" whose target does
-// not exist, so lstat (no follow) is required. Windows: no SingletonLock
-// file — the guard intentionally returns false; see header comment.
+// not exist, so lstat (no follow) is required. Windows: no SingletonLock file
+// (ProcessSingleton uses OS primitives) — instead probe running processes by
+// the legacy image name; a live legacy process keeps its profile files open
+// and copying it would produce a torn snapshot, so deferring is required, not
+// just best-effort.
 export function isLegacyInstanceRunning(oldDir: string): boolean {
+  if (process.platform === "win32") {
+    return isLegacyProcessRunning();
+  }
   const lockPath = path.join(oldDir, "SingletonLock");
   let raw: string;
   try {
@@ -124,6 +133,27 @@ export function isLegacyInstanceRunning(oldDir: string): boolean {
   } catch (err) {
     // EPERM: the pid exists but is owned by another user -> still running.
     return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+// Windows: no SingletonLock file exists; Chromium's ProcessSingleton there
+// uses named mutexes. Probe the legacy executable by image name instead.
+// The pre-rebrand (DMWork) executable name is "DMWork.exe" (the post-rebrand
+// productName "OCTO" landed in #1258); tasklist returns non-zero when the
+// filter matches nothing, which we treat as "not running".
+export function isLegacyProcessRunningOutput(output: string): boolean {
+  return /DMWork\.exe/i.test(output);
+}
+
+function isLegacyProcessRunning(): boolean {
+  try {
+    const out = execFileSync("tasklist", ["/FI", "IMAGENAME eq DMWork.exe", "/NH"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return isLegacyProcessRunningOutput(out);
+  } catch {
+    return false;
   }
 }
 
@@ -171,17 +201,6 @@ function isStagingOwnedByLiveProcess(stagingDir: string): boolean {
   }
 }
 
-function writeOwnerFile(stagingDir: string): void {
-  fs.writeFileSync(
-    path.join(stagingDir, STAGING_OWNER_FILE),
-    JSON.stringify({
-      hostname: os.hostname(),
-      pid: process.pid,
-      startedAt: new Date().toISOString(),
-    })
-  );
-}
-
 export function executeUserDataMigration(
   plan: MigrationPlan,
   runtime: MigrationRuntime
@@ -203,24 +222,49 @@ export function executeUserDataMigration(
     return "deferred";
   }
   // action === "migrate"
-  // F2: acquire the staging dir as the cross-launch mutex BEFORE any copy.
+  // F2: the staging dir is the cross-launch mutex. mkdir is not the claim —
+  // the OWNER FILE is, via atomic exclusive create ({ flag: "wx" }). This
+  // closes the owner-file race: a process that mkdir'd but was preempted
+  // before writing its owner loses the claim to whoever writes the owner
+  // file first; a process that sees EEXIST on the owner file either defers
+  // (live owner) or reclaims (dead owner / crash residue).
+  let claimed = false;
   try {
-    fs.mkdirSync(plan.stagingDir);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-    if (isStagingOwnedByLiveProcess(plan.stagingDir)) {
-      runtime.log.warn(
-        `[userData] another launch is mid-migration (${plan.stagingDir}); using the legacy profile for this session.`
-      );
-      runtime.setUserDataDir(plan.oldDir);
-      return "deferred";
+    try {
+      fs.mkdirSync(plan.stagingDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
     }
-    // Stale staging from a crashed/interrupted attempt: claim it and retry.
-    fs.rmSync(plan.stagingDir, { recursive: true, force: true });
-    fs.mkdirSync(plan.stagingDir);
-  }
-  writeOwnerFile(plan.stagingDir);
-  try {
+    const ownerJson = JSON.stringify({
+      hostname: os.hostname(),
+      pid: process.pid,
+      startedAt: new Date().toISOString(),
+    });
+    try {
+      fs.writeFileSync(path.join(plan.stagingDir, STAGING_OWNER_FILE), ownerJson, { flag: "wx" });
+      claimed = true;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
+      if (isStagingOwnedByLiveProcess(plan.stagingDir)) {
+        runtime.log.warn(
+          `[userData] another launch is mid-migration (${plan.stagingDir}); using the legacy profile for this session.`
+        );
+        runtime.setUserDataDir(plan.oldDir);
+        return "deferred";
+      }
+      // Claimer is dead (crash / interrupted attempt): reclaim.
+      fs.rmSync(plan.stagingDir, { recursive: true, force: true });
+      fs.mkdirSync(plan.stagingDir);
+      fs.writeFileSync(path.join(plan.stagingDir, STAGING_OWNER_FILE), ownerJson, { flag: "wx" });
+      claimed = true;
+    }
+    // We hold the claim. Drop anything left in the dir by a crashed attempt
+    // (our owner file stays).
+    for (const entry of fs.readdirSync(plan.stagingDir)) {
+      if (entry !== STAGING_OWNER_FILE) {
+        fs.rmSync(path.join(plan.stagingDir, entry), { recursive: true, force: true });
+      }
+    }
     // F3: never copy Chromium singleton artifacts or locks into the new profile.
     fs.cpSync(plan.oldDir, plan.stagingDir, {
       recursive: true,
@@ -244,6 +288,9 @@ export function executeUserDataMigration(
     } catch {
       // best-effort; not all platforms support fsync on every fd type
     }
+    // The owner file is migration-internal metadata; never publish it into
+    // the final profile.
+    fs.rmSync(path.join(plan.stagingDir, STAGING_OWNER_FILE));
     // plan() already refused to migrate when newDir holds real data; if it
     // exists here it contains only lock files (F2/F10), which at this point
     // belong to no live process: we run before our own single-instance lock
@@ -256,10 +303,13 @@ export function executeUserDataMigration(
     runtime.log.info(`[userData] migrated legacy DMWork profile to ${plan.newDir}`);
     return "done";
   } catch (err) {
-    try {
-      fs.rmSync(plan.stagingDir, { recursive: true, force: true });
-    } catch {
-      // best-effort cleanup; the next launch retries anyway
+    // Only clean up a staging dir we actually claimed — never a live one.
+    if (claimed) {
+      try {
+        fs.rmSync(plan.stagingDir, { recursive: true, force: true });
+      } catch {
+        // best-effort cleanup; the next launch retries anyway
+      }
     }
     runtime.setUserDataDir(plan.oldDir);
     runtime.log.error(
