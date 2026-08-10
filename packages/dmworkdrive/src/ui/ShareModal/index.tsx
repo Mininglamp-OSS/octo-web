@@ -6,7 +6,7 @@ import { useShare } from '../../hooks/useShare';
 import type { DriveEntry } from '../../bridge/types';
 import { buildShareLink } from '../../utils/links';
 import { Toast } from '../../utils/toast';
-import { writeToClipboard } from '../../utils/clipboard';
+import { copyToClipboard } from '@octo/base';
 import './index.css';
 
 export interface ShareModalProps {
@@ -69,7 +69,7 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
       // that falls back to execCommand over plain-HTTP LAN deployments where
       // navigator.clipboard is unavailable. Failure is quiet — the user can
       // still hit the Copy button (same helper) or select the input manually.
-      const ok = await writeToClipboard(url);
+      const ok = await copyToClipboard(url);
       if (!cancelled && ok) setCopied(true);
     })();
 
@@ -85,7 +85,7 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
 
   const handleCopy = async () => {
     if (!link) return;
-    const ok = await writeToClipboard(link);
+    const ok = await copyToClipboard(link);
     if (ok) {
       setCopied(true);
       Toast.success(t('drive.share.copied'));

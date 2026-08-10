@@ -9,7 +9,7 @@ import { ROLE_LABEL_KEY } from '../../utils/roleLabel';
 import { buildInviteLink } from '../../utils/links';
 import { formatTime } from '../../utils/format';
 import { Toast } from '../../utils/toast';
-import { writeToClipboard } from '../../utils/clipboard';
+import { copyToClipboard } from '@octo/base';
 import './index.css';
 
 export interface InviteModalProps {
@@ -21,7 +21,7 @@ export interface InviteModalProps {
 const DAY = 86400;
 
 async function copy(text: string, okMsg: string, failMsg: string) {
-  const ok = await writeToClipboard(text);
+  const ok = await copyToClipboard(text);
   if (ok) Toast.success(okMsg);
   else Toast.error(failMsg);
 }

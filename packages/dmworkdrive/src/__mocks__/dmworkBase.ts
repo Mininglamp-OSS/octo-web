@@ -57,6 +57,40 @@ export const buildDocLink = ({ docId }: { docId: string; space?: string; folder?
 export const t = (key: string) => key;
 export const useI18n = () => ({ t: (key: string) => key });
 
+// Mirror @octo/base's real copyToClipboard: prefer navigator.clipboard,
+// then fall back to a textarea + execCommand copy. Test-only shim,
+// small enough that a full port is easier than pulling the real one.
+export async function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      /* fall through */
+    }
+  }
+  let ta: HTMLTextAreaElement | null = null;
+  try {
+    ta = document.createElement('textarea');
+    ta.value = text;
+    ta.readOnly = true;
+    ta.style.position = 'fixed';
+    ta.style.top = '0';
+    ta.style.left = '0';
+    ta.style.opacity = '0';
+    ta.style.fontSize = '16px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    return document.execCommand('copy');
+  } catch {
+    return false;
+  } finally {
+    if (ta && ta.parentNode) ta.parentNode.removeChild(ta);
+  }
+}
+
 // Drive-transfer helpers (real ones live in `@octo/base` `Service/SpacePrefix.ts`);
 // duplicated here as identical minimal impls so vitest can resolve the aliased
 // `@octo/base` import without pulling the full app runtime. Kept in lock-step

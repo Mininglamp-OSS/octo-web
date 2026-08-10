@@ -1,11 +1,25 @@
 /* Full-body overlay that lights up when the user drags OS files over the
-   drive list. Positioned absolutely inside .drive-main__body — the parent
-   sets position: relative for the anchor. Pointer-events are kept off so
-   the underlying drop zone still receives the dragover/drop events. */
+   drive list. Uses `position: sticky` so it stays inside the visible
+   viewport even after the list is scrolled — `absolute; inset: 0` (which
+   we used before) is anchored to the padding box at the scroll origin,
+   so once the user paged in a few pages the overlay sat above the
+   viewport and the user got no drop feedback at all (bot review yujiawei
+   P2-2). Pointer-events are kept off so the underlying drop zone still
+   receives the dragover/drop events. */
 
 .drive-dropzone-overlay {
-  position: absolute;
-  inset: 0;
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 100%;
+  /* Fill the visible height of the scroll container. 100% works because
+     the parent is display: flex and the overlay is inserted between
+     scroll-content and the flex-basis expansion. */
+  height: 100%;
+  /* Zero-height at rest so the overlay doesn't consume layout space
+     when it's not showing (the scroll container still measures normal
+     content height). --active flips this on. */
+  margin-bottom: -100%;
   display: flex;
   align-items: center;
   justify-content: center;

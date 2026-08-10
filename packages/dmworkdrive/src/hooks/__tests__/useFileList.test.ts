@@ -358,5 +358,119 @@ describe('useFileList', () => {
       expect(result.current.entries).toHaveLength(2);
       expect(result.current.entries.map((e) => e.id)).toEqual([1, 3]);
     });
+
+    it('reload() after loadMore() refetches the FULL span, not just page 1 (P1-1)', async () => {
+      // Bot review yujiawei P1-1: a paged-through folder collapsed to
+      // page-1 rows after any reload(), silently pruning selections that
+      // lived on later pages. Fix: reload() must span the pages the user
+      // has already loaded — page_size = pageIndex * PAGE_SIZE — so a
+      // single response covers everything.
+      const page1 = Array.from({ length: 50 }, (_, i) =>
+        entry(i + 1, `f${i + 1}.pdf`, 'blob'),
+      );
+      const page2 = Array.from({ length: 50 }, (_, i) =>
+        entry(i + 51, `f${i + 51}.pdf`, 'blob'),
+      );
+      const page3Partial = Array.from({ length: 30 }, (_, i) =>
+        entry(i + 101, `f${i + 101}.pdf`, 'blob'),
+      );
+      const refreshedSpan = [...page1, ...page2, ...page3Partial]; // 130 rows
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp(page1, 130))
+        .mockResolvedValueOnce(resp(page2, 130))
+        .mockResolvedValueOnce(resp(page3Partial, 130))
+        // reload() should be ONE call with a wide page_size that returns
+        // the whole span in one shot.
+        .mockResolvedValueOnce(resp(refreshedSpan, 130));
+
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(50);
+
+      // Page in to 100 rows.
+      await act(async () => {
+        result.current.loadMore();
+      });
+      await waitFor(() => expect(result.current.entries).toHaveLength(100));
+
+      // Page in to 130 rows (short page — hasMore should flip false).
+      await act(async () => {
+        result.current.loadMore();
+      });
+      await waitFor(() => expect(result.current.entries).toHaveLength(130));
+      expect(result.current.hasMore).toBe(false);
+
+      // Now reload — MUST NOT collapse the 130-row view to 50.
+      await act(async () => {
+        result.current.reload();
+      });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries).toHaveLength(130);
+      // And the fourth browse call was made with a wide page_size (3
+      // pages worth = 150), not the default PAGE_SIZE.
+      const calls = vi.mocked(api.browse).mock.calls;
+      const reloadCall = calls[calls.length - 1]!;
+      const params = reloadCall[0] as { page_size: number; page_index: number };
+      expect(params.page_index).toBe(1);
+      expect(params.page_size).toBeGreaterThan(50);
+    });
+
+    it('stale reload() from a previous space cannot overwrite the current view (P1-2)', async () => {
+      // Bot review yujiawei P1-2: a reload() closure captured while the
+      // user was in space A, invoked AFTER the user has switched to
+      // space B (e.g. from a batch delete's onOk running after a
+      // sidebar click), would abort space B's browse, pass the seq gate
+      // with its own fresh sequence, and write A's entries into B's
+      // view. Fix: post-await contextRef guard.
+      let resolveAReload: (v: ReturnType<typeof resp>) => void = () => {};
+      const aReloadResp = new Promise<ReturnType<typeof resp>>((r) => {
+        resolveAReload = r;
+      });
+      vi.mocked(api.browse).mockImplementation((params) => {
+        // Space A: initial load returns 1 row instantly; A's reload is
+        // held on aReloadResp so we can resolve it after the switch.
+        if (params.space_id === 'sp-A') {
+          const calls = vi.mocked(api.browse).mock.calls;
+          const aCalls = calls.filter(
+            (c) => (c[0] as { space_id: string }).space_id === 'sp-A',
+          ).length;
+          if (aCalls === 1) return Promise.resolve(resp([entry(1, 'a1.pdf', 'blob')]));
+          return aReloadResp;
+        }
+        // Space B: instant load.
+        return Promise.resolve(resp([entry(101, 'b1.pdf', 'blob')]));
+      });
+
+      // Start in space A.
+      const { result, rerender } = renderHook(
+        ({ spaceId }: { spaceId: string }) => useFileList(spaceId, 0),
+        { spaceId: 'sp-A' },
+      );
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries[0]?.id).toBe(1);
+
+      // Capture the A-bound reload BEFORE the switch, then invoke it.
+      // Its browse is stalled on aReloadResp.
+      const aReload = result.current.reload;
+      act(() => aReload());
+
+      // While A's reload is in flight, switch to space B. useEffect
+      // fires a fresh browse for B, which resolves quickly.
+      rerender({ spaceId: 'sp-B' });
+      await waitFor(() => expect(result.current.loading).toBe(false));
+      expect(result.current.entries[0]?.id).toBe(101);
+
+      // Now let A's reload resolve. Its captured closure has spaceId
+      // === 'sp-A', but contextRef.current.spaceId === 'sp-B'. Guard
+      // must bail before setEntries.
+      await act(async () => {
+        resolveAReload(resp([entry(2, 'a2.pdf', 'blob')]));
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+      // View must STILL be space B's rows, not space A's.
+      expect(result.current.entries[0]?.id).toBe(101);
+      expect(result.current.entries).toHaveLength(1);
+    });
   });
 });
