@@ -25,7 +25,7 @@ interface TrackEnvelope {
     event_name: string
     /** 去重键:事件产生时生成,重试 / beacon 兜底复用同一 id(§2.5) */
     client_event_id: string
-    /** 登录会话内生成一次;后沉淀 flow 主关联键之一,亦作方案 A 注入头 */
+    /** 登录会话内生成一次;后沉淀 flow 主关联键之一 */
     session_id: string
     /** 持久化设备标识,非身份凭据 */
     device_id: string
@@ -41,16 +41,13 @@ const DEVICE_ID_KEY = 'octo_track_device_id'
 /**
  * 独立上报通道,不复用业务 axios(§2.1)。
  *
- * 采集端 base URL 由构建期 env `VITE_DAP_COLLECT_BASE_URL` 控制:
- *   - 缺省(未设/空):BATCH_URL = '/track/batch' 相对路径,经业务域名内部转发到采集端。
- *   - 设为绝对地址(如 https://dap.example.com):直连外部采集域名,支持 octo-dap
- *     采集端独立部署 / 外部域名而非内部转发(此时需采集端配好 CORS 放行 token 头)。
- * BATCH_PATH(路径后缀)保留用于 fetch/XHR 包裹里识别"上报请求自身"以排除自采环——
- * 绝对 URL 里同样含该子串,indexOf 仍能命中。
+ * 采集端**恒为同源相对路径** `/track/batch`:上报(及其携带的业务 token 头)只发给
+ * 页面自身 origin,绝不出跨域。octo-dap 采集端如需独立部署 / 外部域名,由运维层在业务
+ * 域名下反代 `/track/*` 转发实现,前端不感知——从而避免"业务 token 被发往可配置任意
+ * 外域"的凭据外泄风险(见 PR review P0-4)。BATCH_PATH 同时用于 fetch/XHR 包裹里识别
+ * "上报请求自身"以排除自采环。
  */
-const COLLECT_BASE_URL = (import.meta.env.VITE_DAP_COLLECT_BASE_URL ?? '').replace(/\/+$/, '')
 const BATCH_PATH = '/track/batch'
-const BATCH_URL = COLLECT_BASE_URL + BATCH_PATH
 const FLUSH_SIZE = 20
 const FLUSH_INTERVAL_MS = 5000
 const MAX_RETRY = 3
@@ -95,7 +92,13 @@ function loadOrCreateDeviceId(): string {
     return genId()
 }
 
-/** 请求路径归一:去 query、把 id 段(数字 / uuid / 长 hash)替换为 `:id`,避免泄对象内容(§8)。 */
+/**
+ * 请求路径归一(§8 隐私边界:绝不泄文件名 / 对象键 / 正文)。策略是**白名单式收窄**而非
+ * 黑名单式脱敏:每段只有"看起来是固定路由词"(纯小写字母打头、仅含小写字母/数字/-/_、
+ * 无点无编码无大写、长度≤40)才原样保留;其余(带扩展名的文件名、percent-encoded 段、
+ * 大写/混合串、长 hex/uuid、纯数字 id)一律替换为占位符。这样即使上游 URL 里塞进
+ * `report-2024.pdf` / `memory%2F2026-05-07.md` / 对象存储 key,也不会进 telemetry。
+ */
 function normalizePath(rawUrl: string): string {
     try {
         // 相对/绝对都能解析;base 仅用于补全,不进结果
@@ -104,14 +107,32 @@ function normalizePath(rawUrl: string): string {
             .split('/')
             .map((seg) => {
                 if (!seg) return seg
+                // 先按 id 形态强制脱敏(纯数字 / 长 hex / uuid)
                 if (/^\d+$/.test(seg)) return ':id'
                 if (/^[0-9a-fA-F-]{16,}$/.test(seg)) return ':id'
                 if (/^[0-9a-fA-F]{24,}$/.test(seg)) return ':id'
-                return seg
+                // 其余只保留"纯小写路由词",文件名 / 编码 / 大写混合串等一律占位
+                if (/^[a-z][a-z0-9_-]{0,39}$/.test(seg)) return seg
+                return ':seg'
             })
             .join('/')
     } catch {
-        return rawUrl.split('?')[0] || rawUrl
+        return ':seg'
+    }
+}
+
+/**
+ * 是否第一方(同源)请求。HTTP 包裹**只采第一方 API**:跨域请求(预签名对象存储上传/下载、
+ * 第三方服务)路径里常含对象键 / 文件名,且归一后与第一方路径混在同一维度无法区分,故一律不采
+ * (见 PR review P0-3)。相对 URL 天然同源;拿不到 location(SSR/测试无 DOM)时保守判为非第一方。
+ */
+function isFirstParty(rawUrl: string): boolean {
+    try {
+        const loc = (globalThis as { location?: Location }).location
+        if (!loc || !loc.origin || loc.origin === 'null') return false
+        return new URL(rawUrl, loc.origin).origin === loc.origin
+    } catch {
+        return false
     }
 }
 
@@ -140,14 +161,29 @@ function statusBucket(status: number): string {
 }
 
 class TrackerImpl {
-    /** 会话内唯一;仅作为埋点事件 envelope 的 session_id 随上报发出(采集启用时才发) */
+    /** 会话内唯一;仅作为埋点事件 envelope 的 session_id 随上报发出(采集启用时才发)。纯内存,不落盘。 */
     readonly sessionId: string = genId()
-    /** 持久设备标识;仅作为埋点事件 envelope 的 device_id 随上报发出(采集启用时才发) */
-    readonly deviceId: string = loadOrCreateDeviceId()
+    /**
+     * 持久设备标识,仅作 envelope 的 device_id。**懒创建**:只有真正产出事件(即采集已启用)
+     * 时才 loadOrCreateDeviceId() 并写 localStorage——fail-closed 下开关未开就绝不落盘标识
+     * (见 PR review P0-1)。
+     */
+    private _deviceId: string | null = null
+    private deviceId(): string {
+        if (this._deviceId == null) this._deviceId = loadOrCreateDeviceId()
+        return this._deviceId
+    }
 
     // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
     private enabled = false
     private started = false
+    /**
+     * 采集代次。每次 setEnabled(false) 自增,使"停采前已捕获、尚在重试队列里的批次"整体作废,
+     * 配合 retryTimers 清理,实现 kill switch 立即生效、不再有滞后上报(见 PR review P0-2)。
+     */
+    private generation = 0
+    /** 在途重试定时器;停采时全部 clearTimeout,杜绝停采后仍 POST。 */
+    private retryTimers = new Set<ReturnType<typeof setTimeout>>()
     /** 业务 token 取值回调(index.tsx 注入,避免 import WKApp 造成循环依赖)。上报带 token 头供后端鉴权。 */
     private tokenProvider: (() => string | undefined) | null = null
     private queue: TrackEnvelope[] = []
@@ -176,12 +212,23 @@ class TrackerImpl {
         })
     }
 
-    /** 远程 kill switch(§2.6):false 时立即停采、清空队列,业务零影响。由 index.tsx 依 remoteConfig 注入。 */
+    /**
+     * 远程 kill switch(§2.6)。关:立即停采——清队列、作废采集代次、清掉所有在途重试定时器,
+     * 停采后不再有任何 POST(见 PR review P0-2)。开:补扫当前 DOM,把开关到位前就已渲染的
+     * 首个 page_view 与已存在的曝光元素补采一次(启用是 remoteConfig 异步到达,通常晚于首屏,
+     * 见 PR review P1-7)。
+     */
     setEnabled(v: boolean): void {
+        const was = this.enabled
         this.enabled = v
         if (!v) {
+            this.generation++
             this.queue = []
             this.lastPage = null
+            for (const t of this.retryTimers) clearTimeout(t)
+            this.retryTimers.clear()
+        } else if (!was) {
+            this.rescanCurrent()
         }
     }
 
@@ -237,7 +284,7 @@ class TrackerImpl {
         if (this.queue.length === 0) return
         const batch = this.queue
         this.queue = []
-        this.sendBatch(batch, 0)
+        this.sendBatch(batch, 0, this.generation)
     }
 
     // ---------------------------------------------------------------- 内部
@@ -251,7 +298,7 @@ class TrackerImpl {
             event_name: eventName,
             client_event_id: genId(),
             session_id: this.sessionId,
-            device_id: this.deviceId,
+            device_id: this.deviceId(),
             client_ts: Date.now(),
         }
         if (this.lastPage) env.page_id = this.lastPage.pageId
@@ -298,15 +345,21 @@ class TrackerImpl {
         }
     }
 
-    /** 独立通道上报:带业务 token 头供后端鉴权;指数退避重试,最多 3 次;仍失败丢弃 + 计数,绝不外抛。 */
-    private sendBatch(batch: TrackEnvelope[], attempt: number): void {
+    /**
+     * 独立通道上报:带业务 token 头供后端鉴权;指数退避重试,最多 3 次;仍失败丢弃 + 计数,绝不外抛。
+     * gen 为发起时的采集代次:每次发送/重试前都要 enabled 且 gen 未过期,否则整批丢弃——保证
+     * kill switch 关闭后停采前捕获的批次不再 POST(见 PR review P0-2)。
+     */
+    private sendBatch(batch: TrackEnvelope[], attempt: number, gen: number): void {
         if (batch.length === 0) return
+        // kill switch:已停采或本批所属采集代次已作废,直接丢弃不发
+        if (!this.enabled || gen !== this.generation) return
         this.safe(() => {
             const headers: Record<string, string> = { 'Content-Type': 'application/json' }
             const token = this.currentToken()
             if (token) headers['token'] = token // 与业务同名头,后端按 token 鉴权并归一 actor
             const body = JSON.stringify({ events: batch })
-            void fetch(BATCH_URL, {
+            void fetch(BATCH_PATH, {
                 method: 'POST',
                 headers,
                 body,
@@ -318,9 +371,14 @@ class TrackerImpl {
                     if (!resp.ok) throw new Error('track batch http ' + resp.status)
                 })
                 .catch(() => {
-                    if (attempt < MAX_RETRY) {
+                    // 重试前再次确认未停采且代次未过期;定时器登记后可被 setEnabled(false) 统一取消
+                    if (attempt < MAX_RETRY && this.enabled && gen === this.generation) {
                         const delay = 500 * Math.pow(2, attempt) // 500 / 1000 / 2000ms
-                        setTimeout(() => this.sendBatch(batch, attempt + 1), delay)
+                        const timer = setTimeout(() => {
+                            this.retryTimers.delete(timer)
+                            this.sendBatch(batch, attempt + 1, gen)
+                        }, delay)
+                        this.retryTimers.add(timer)
                     } else {
                         this.droppedCount += batch.length // 丢弃,只内部计数,不外抛
                     }
@@ -335,6 +393,7 @@ class TrackerImpl {
      */
     private unloadFlush(): void {
         this.safe(() => {
+            if (!this.enabled) return // 停采后不发残留
             if (this.queue.length === 0) return
             const batch = this.queue
             this.queue = []
@@ -347,7 +406,7 @@ class TrackerImpl {
             const headers: Record<string, string> = { 'Content-Type': 'application/json' }
             const token = this.currentToken()
             if (token) headers['token'] = token
-            void fetch(BATCH_URL, {
+            void fetch(BATCH_PATH, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ events: batch }),
@@ -418,6 +477,12 @@ class TrackerImpl {
                 })
             })
             obs.observe(root, { subtree: true, attributes: true, attributeFilter: ['style'] })
+            // 挂载即补扫当前已可见页,避免观测器只响应后续 style 翻转而漏掉首屏 page_view(P1-7)
+            root.querySelectorAll<HTMLElement>('[data-page-id]').forEach((el) => {
+                if (el.style && el.style.display === 'block' && el.dataset && el.dataset.pageId) {
+                    this.pageView(el.dataset.pageId)
+                }
+            })
         }
         const found = document.querySelector('.wk-layout-content-left')
         if (found) {
@@ -441,20 +506,43 @@ class TrackerImpl {
     // ----------------------------------------------- 机制②b MutationObserver(曝光)
 
     /**
+     * 触发一次元素曝光。**未启用时不标记 seen 也不触发**——否则开关到位前渲染的元素会被
+     * 永久标记已见,启用后再也不补采(见 PR review P1-7)。每个元素实例只触发一次(WeakSet 去重)。
+     */
+    private fireExposure(el: HTMLElement): void {
+        if (!el.dataset || !el.dataset.trackView) return
+        if (!this.enabled) return
+        if (this.seenViews.has(el)) return
+        this.seenViews.add(el)
+        this.track(el.dataset.trackView, this.collectDatasetProps(el))
+    }
+
+    /**
+     * 补扫当前 DOM(setEnabled(true) 时调):把开关到位前就已可见的首个 page_view 与已存在的
+     * 曝光元素补采一次。启用是 remoteConfig 异步到达、通常晚于首屏,不补扫会永久漏掉首屏(P1-7)。
+     */
+    private rescanCurrent(): void {
+        this.safe(() => {
+            const d = (globalThis as { document?: Document }).document
+            if (!d) return
+            d.querySelectorAll<HTMLElement>('[data-page-id]').forEach((el) => {
+                if (el.style && el.style.display === 'block' && el.dataset && el.dataset.pageId) {
+                    this.pageView(el.dataset.pageId)
+                }
+            })
+            d.querySelectorAll<HTMLElement>('[data-track-view]').forEach((el) => this.fireExposure(el))
+        })
+    }
+
+    /**
      * 曝光观测器:新挂载(或初始已存在)的元素若带 `data-track-view`,触发一次曝光事件。
-     * 每个元素实例只触发一次(WeakSet 去重)。props 复用 collectDatasetProps(已跳过 trackView 键)。
+     * props 复用 collectDatasetProps(已跳过 trackView 键)。
      */
     private installExposureObserver(): void {
-        const fire = (el: HTMLElement) => {
-            if (!el.dataset || !el.dataset.trackView) return
-            if (this.seenViews.has(el)) return
-            this.seenViews.add(el)
-            this.track(el.dataset.trackView, this.collectDatasetProps(el))
-        }
         const scan = (node: Element) => {
-            if ((node as HTMLElement).dataset && (node as HTMLElement).dataset.trackView) fire(node as HTMLElement)
+            if ((node as HTMLElement).dataset && (node as HTMLElement).dataset.trackView) this.fireExposure(node as HTMLElement)
             if (typeof node.querySelectorAll === 'function') {
-                node.querySelectorAll<HTMLElement>('[data-track-view]').forEach(fire)
+                node.querySelectorAll<HTMLElement>('[data-track-view]').forEach((el) => this.fireExposure(el))
             }
         }
         const obs = new MutationObserver((mutations) => {
@@ -475,7 +563,9 @@ class TrackerImpl {
         const emit = (rawUrl: string, method: string, status: number, durationMs: number) => {
             this.safe(() => {
                 if (!rawUrl) return
-                // 只采本层可归一的路径 telemetry:量/错误率/延迟,不带 query、不带正文
+                // 只采第一方(同源)API telemetry:跨域(预签名对象存储/第三方)路径含对象键/文件名,一律不采
+                if (!isFirstParty(rawUrl)) return
+                // 量/错误率/延迟,不带 query、不带正文;路径按白名单收窄脱敏
                 const objectId = extractObjectId(rawUrl)
                 this.track('http_request', {
                     method: (method || 'GET').toUpperCase(),
@@ -563,9 +653,15 @@ class TrackerImpl {
     }
 }
 
-/** 蒙版单例(唯一上报出口)。`Tracker.shared` 供极少数破例点 / 方案 A 拦截器引用。 */
+/** 蒙版单例(唯一上报出口)。`Tracker.shared` 供极少数破例点(如消息补点)引用。 */
 export const Tracker = {
     shared: new TrackerImpl(),
 }
 
 export type { TrackEnvelope }
+
+/**
+ * 仅供单元测试引用的隐私关键纯函数(不属于运行时公共 API)。normalizePath / isFirstParty
+ * 是 §8 隐私边界的核心,单测直接断言其脱敏 / 同源判定,避免只靠集成路径覆盖。
+ */
+export const __trackerInternals = { normalizePath, isFirstParty }
