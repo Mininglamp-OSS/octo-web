@@ -33,6 +33,8 @@ export interface GroupAvatarEditModalProps {
   initialAvatarText?: string
   /** 初始色板下标 */
   initialColorIndex?: number
+  /** 保存中：禁用关闭并让确认按钮展示 loading */
+  saving?: boolean
   /** 保存：回传清洗后的文字与色板下标 */
   onSave: (result: GroupAvatarEditResult) => void
   onCancel: () => void
@@ -49,6 +51,7 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
   nameAsFallback = false,
   initialAvatarText = "",
   initialColorIndex,
+  saving = false,
   onSave,
   onCancel,
 }) => {
@@ -86,8 +89,11 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
     setTextChanged(true)
   }
 
-  const handleSave = () =>
+  const handleSave = () => {
+    if (saving) return
+
     onSave({ avatarText: cleanAvatarText(avatarText), textChanged, colorIndex, colorChanged })
+  }
 
   const selectColor = (index: number) => {
     setColorIndex(index)
@@ -108,8 +114,13 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
       onCancel={onCancel}
       footerConfig={{
         onOk: handleSave,
+        isOkLoading: saving,
         okText: t("base.common.ok"),
         cancelText: t("base.common.cancel"),
+      }}
+      options={{
+        maskClosable: !saving,
+        closeOnEsc: !saving,
       }}
     >
       <div className="wk-group-avatar-edit-preview-row">

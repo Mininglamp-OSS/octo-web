@@ -49,6 +49,18 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         customAvatarColorIndex: this.props.initialColorIndex,
     }
 
+    componentDidUpdate(prevProps: ChannelAvatarProps) {
+        if (
+            prevProps.initialAvatarText !== this.props.initialAvatarText ||
+            prevProps.initialColorIndex !== this.props.initialColorIndex
+        ) {
+            this.setState({
+                customAvatarText: this.props.initialAvatarText || "",
+                customAvatarColorIndex: this.props.initialColorIndex,
+            })
+        }
+    }
+
     uploadAvatar(file: File) {
         const { channel } = this.props
         const param = new FormData();
@@ -153,7 +165,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
     }
     render() {
         const { channel,showUpload,groupName } = this.props
-        const { cropFile, uploading, customAvatarVisible, customAvatarText, customAvatarColorIndex } = this.state
+        const { cropFile, uploading, customAvatarVisible, customAvatarSaving, customAvatarText, customAvatarColorIndex } = this.state
         return <>
             <div className="wk-channelavatar">
                 <div className="wk-channelavatar-avatar">
@@ -171,6 +183,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 nameAsFallback
                 initialAvatarText={customAvatarText}
                 initialColorIndex={customAvatarColorIndex}
+                saving={customAvatarSaving}
                 onSave={this.saveCustomAvatar}
                 onCancel={this.cancelCustomAvatar}
             />

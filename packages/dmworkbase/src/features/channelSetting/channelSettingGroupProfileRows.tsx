@@ -16,6 +16,7 @@ import {
   ChannelSettingIconRow,
   ChannelSettingInlineEditRow,
 } from "../../ui/ChannelSettingRows";
+import { parseAvatarColorIndex } from "./channelSettingAvatarColor";
 import { ChannelSettingInputEditPush } from "./types";
 
 interface BuildGroupProfileRowsOptions {
@@ -34,7 +35,7 @@ export function buildGroupProfileRows({
 
   const { channel, channelInfo } = data;
   const isExternalGroup = channelInfo?.orgData?.is_external_group === 1;
-  const avatarColor = Number(channelInfo?.orgData?.avatar_color);
+  const avatarColor = parseAvatarColorIndex(channelInfo?.orgData?.avatar_color);
   const groupName = isExternalGroup ? (
     <span>
       {channelInfo?.title}
@@ -97,11 +98,7 @@ export function buildGroupProfileRows({
               channel={channel}
               groupName={channelInfo?.title || ""}
               initialAvatarText={channelInfo?.orgData?.avatar_text || ""}
-              initialColorIndex={
-                Number.isInteger(avatarColor) && avatarColor >= 0
-                  ? avatarColor
-                  : undefined
-              }
+              initialColorIndex={avatarColor}
             />,
             { title: t("base.module.channelSettings.groupAvatar") }
           );
