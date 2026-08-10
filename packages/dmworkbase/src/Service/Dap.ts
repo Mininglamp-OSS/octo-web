@@ -333,6 +333,15 @@ class DapImpl {
         this.sendBatch(batch, 0, this.generation)
     }
 
+    /**
+     * 运维可读的采集健康快照。`dropped` 是「重试耗尽后被丢弃的事件数」——此前是私有
+     * 计数,运维无从得知丢批(如某环境 /track/* 未配路由时会静默累积)。可在控制台
+     * `Dap.shared.getStats()` 读取。(见 PR #1320 review 的可观测性缺口。)
+     */
+    getStats(): { enabled: boolean; queued: number; dropped: number } {
+        return { enabled: this.enabled, queued: this.queue.length, dropped: this.droppedCount }
+    }
+
     // ---------------------------------------------------------------- 内部
 
     private envelope(
@@ -511,24 +520,38 @@ class DapImpl {
     // ----------------------------------------------- 机制② MutationObserver(切页)
 
     private installPageObserver(): void {
+        // 命中一个「可见的 [data-page-id]」元素 → page_view(内部按 pageId 去重)。
+        const visit = (el: HTMLElement | null) => {
+            if (el && el.style && el.style.display === 'block' && el.dataset && el.dataset.pageId) {
+                this.pageView(el.dataset.pageId)
+            }
+        }
+        // 扫一个新插入节点及其子树里所有已可见的页节点。
+        const scan = (node: Node) => {
+            if (!(node instanceof HTMLElement)) return
+            visit(node)
+            node.querySelectorAll<HTMLElement>('[data-page-id]').forEach(visit)
+        }
         const attach = (root: Element) => {
             const obs = new MutationObserver((mutations) => {
                 this.safe(() => {
                     for (const m of mutations) {
-                        const el = m.target as HTMLElement
-                        if (el && el.style && el.style.display === 'block' && el.dataset && el.dataset.pageId) {
-                            this.pageView(el.dataset.pageId)
+                        if (m.type === 'attributes') {
+                            // 已存在节点的 display 翻转(切页)
+                            visit(m.target as HTMLElement)
+                        } else {
+                            // 路由首次访问:页节点是「新插入」而非 style 翻转。只监听 style
+                            // 会整条漏掉首访 page_view,并使后续 page_leave 的 duration_ms
+                            // 错误累计到别的页(看着对、其实错的数据,见 PR #1320 review)。
+                            // 故一并监听 childList,对新增子树补扫。
+                            m.addedNodes.forEach(scan)
                         }
                     }
                 })
             })
-            obs.observe(root, { subtree: true, attributes: true, attributeFilter: ['style'] })
-            // 挂载即补扫当前已可见页,避免观测器只响应后续 style 翻转而漏掉首屏 page_view(P1-7)
-            root.querySelectorAll<HTMLElement>('[data-page-id]').forEach((el) => {
-                if (el.style && el.style.display === 'block' && el.dataset && el.dataset.pageId) {
-                    this.pageView(el.dataset.pageId)
-                }
-            })
+            obs.observe(root, { subtree: true, attributes: true, attributeFilter: ['style'], childList: true })
+            // 挂载即补扫当前已可见页,避免漏掉挂载那一刻的首屏 page_view(P1-7)
+            root.querySelectorAll<HTMLElement>('[data-page-id]').forEach(visit)
         }
         const found = document.querySelector('.wk-layout-content-left')
         if (found) {
@@ -668,11 +691,18 @@ class DapImpl {
             }
             proto.send = function (this: Tracked, ...args: unknown[]) {
                 const start = Date.now()
+                this.__trackStart = start
                 const url = this.__trackUrl || ''
+                const method = this.__trackMethod || 'GET'
                 if (url && url.indexOf(BATCH_PATH) === -1) {
-                    this.addEventListener('loadend', () => {
-                        emit(url, this.__trackMethod || 'GET', this.status, Date.now() - start)
-                    })
+                    // 在闭包里定住 url/method/start(不在 loadend 时读实例字段,避免复用/
+                    // 重 open 后读到串味的路径);once:true 保证复用实例多次 send 不累积监听
+                    // (否则一个 loadend 会补发历史请求的 http_request,见 review P2)。
+                    this.addEventListener(
+                        'loadend',
+                        () => emit(url, method, this.status, Date.now() - start),
+                        { once: true },
+                    )
                 }
                 // @ts-expect-error 透传原始参数
                 return origSend.apply(this, args)

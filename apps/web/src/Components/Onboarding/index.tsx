@@ -320,12 +320,15 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     if (completionStartedRef.current) return;
 
     completionStartedRef.current = true;
-    // 完成:当前(最后一)章视为 completed
-    Dap.shared.track("onboarding_chapter", {
-      chapter_id: activeId,
-      outcome: "completed",
-      duration_ms: Date.now() - chapterEnterAtRef.current,
-    });
+    // 完成:当前(最后一)章视为 completed。与 handleClose 对齐——仅在已真正进入章节视图
+    // (prevChapterRef 已初始化)才 emit,防两条路径漂移出跨年假 duration_ms(见 review)。
+    if (prevChapterRef.current !== null) {
+      Dap.shared.track("onboarding_chapter", {
+        chapter_id: activeId,
+        outcome: "completed",
+        duration_ms: Date.now() - chapterEnterAtRef.current,
+      });
+    }
     setCompletionOrigin(getCompletionOrigin(event, finishButtonRef.current));
     persistDismissed();
     setIsCompleting(true);
