@@ -890,6 +890,13 @@ export default class WKApp extends ProviderListener {
     ) {
       this.isPC = true;
     }
+    // Keep the IM CONNECT device slot aligned with the login API's flag.
+    // WuKongIM JS SDK defaults to web (1), including inside Electron.
+    // Values mirror OIDC_FLAG_WEB / OIDC_FLAG_PC in dmworklogin:
+    //   1 = web, 2 = pc (desktop / Electron)
+    const IM_DEVICE_FLAG_WEB = 1
+    const IM_DEVICE_FLAG_PC = 2
+    WKSDK.shared().config.deviceFlag = this.isPC ? IM_DEVICE_FLAG_PC : IM_DEVICE_FLAG_WEB;
     this.deviceId = this.getDeviceIdFromStorage();
     this.deviceName = this.getOSAndVersion();
     this.deviceModel = this.getBrandsFromUserAgent();

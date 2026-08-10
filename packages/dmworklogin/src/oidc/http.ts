@@ -62,10 +62,16 @@ async function parseErrorMsg(resp: Response): Promise<string | undefined> {
  * Each request is wrapped in a 10s timeout, ORed with an optional caller
  * signal so cancellation aborts the in-flight request immediately.
  */
-export const fetchHttpClient: OidcHttpClient = {
+function resolveOidcUrl(url: string, baseURL?: string): string {
+  if (!baseURL || /^[a-z][a-z\d+.-]*:/i.test(url)) return url
+  return new URL(url, baseURL.endsWith('/') ? baseURL : `${baseURL}/`).toString()
+}
+
+export function createFetchHttpClient(baseURL?: string): OidcHttpClient {
+  return {
   async get<T>(url: string, init?: { signal?: AbortSignal }): Promise<T> {
     const signal = combineSignals(init?.signal, DEFAULT_REQUEST_TIMEOUT_MS)
-    const resp = await fetch(url, {
+    const resp = await fetch(resolveOidcUrl(url, baseURL), {
       method: 'GET',
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
@@ -82,7 +88,7 @@ export const fetchHttpClient: OidcHttpClient = {
     init?: { signal?: AbortSignal },
   ): Promise<T> {
     const signal = combineSignals(init?.signal, DEFAULT_REQUEST_TIMEOUT_MS)
-    const resp = await fetch(url, {
+    const resp = await fetch(resolveOidcUrl(url, baseURL), {
       method: 'POST',
       credentials: 'same-origin',
       headers: {
@@ -97,4 +103,7 @@ export const fetchHttpClient: OidcHttpClient = {
     }
     return (await resp.json()) as T
   },
+  }
 }
+
+export const fetchHttpClient: OidcHttpClient = createFetchHttpClient()

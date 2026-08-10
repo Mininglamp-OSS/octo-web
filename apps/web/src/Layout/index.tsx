@@ -163,7 +163,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 .replace(/\/index\.html$/, '') || '/'
             const basePath = rawPath
                 .replace(/^\/api(?:\/v\d+)?(?=\/|$)/, '')
-                .replace(/\/+$/, '')
+                .replace(/^\/+|\/+$/g, '')
             // #511 problem 2 (附带必修): a forwarded-doc link is `/docs?...&doc=<id>&sid=<space>`.
             // A first-time recipient logs in, then the post-login redirect used to keep only ?sid=
             // and drop ?doc=, landing them on the empty document list instead of the document they
@@ -212,7 +212,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 window.location.href = buildPostLoginRedirectUrl(
                     window.location.href,
                     window.location.origin,
-                    basePath,
+                    basePath ? `/${basePath}` : '',
                     redirectSearch
                 )
             }

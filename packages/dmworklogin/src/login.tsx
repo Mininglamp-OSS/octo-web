@@ -20,6 +20,20 @@ import loginLogo from "./assets/login-logo.png";
 
 const ENTERPRISE_SSO_ENABLED =
     import.meta.env.VITE_ENABLE_ENTERPRISE_SSO === 'true'
+// Local development uses the legacy password flow because the shared backend
+// does not allow localhost as an OIDC return_to. Packaged Electron and
+// production Web builds continue to use OIDC.
+//
+// OIDC_BUTTON_ENABLED: controls the SSO login button and related UI.
+//   Disabled in local dev — the shared dev backend does not whitelist
+//   localhost return_to values, so the button would never complete.
+// OIDC_RESUME_ENABLED: controls the OIDC callback-resume effect.
+//   Kept on in dev so that testing the resume flow against a production
+//   backend (via VITE_API_URL) still works without changing the flag.
+const OIDC_BUTTON_ENABLED = ENTERPRISE_SSO_ENABLED && !import.meta.env.DEV
+const OIDC_RESUME_ENABLED = ENTERPRISE_SSO_ENABLED
+// Backward-compat alias used throughout this file for the button/UI path.
+const OIDC_LOGIN_ENABLED = OIDC_BUTTON_ENABLED
 // Register URL 从当前 provider 的 accountUrl 派生，避免把 test/prod 用户带到
 // 错误的 IdP 环境。若后续接入新的 OIDC provider 或非 Aegis 登录方式，入口配置
 // 应改为由 appconfig 下发。
@@ -440,9 +454,9 @@ class Login extends Component<any, LoginState> {
             // 按 loginInfo.loginProvider 路由各自的 reset URL, 同步检查 login.tsx:513。
             const ssoProvider = getSSOProviders()[0]
             const hasSsoProvider = !!ssoProvider
-            const ssoConfigPending = ENTERPRISE_SSO_ENABLED && !WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed
-            const ssoConfigFallback = ENTERPRISE_SSO_ENABLED && WKApp.remoteConfig.requestFailed
-            const showSsoLogin = ENTERPRISE_SSO_ENABLED && !ssoConfigPending && !ssoConfigFallback && hasSsoProvider
+            const ssoConfigPending = OIDC_LOGIN_ENABLED && !WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed
+            const ssoConfigFallback = OIDC_LOGIN_ENABLED && WKApp.remoteConfig.requestFailed
+            const showSsoLogin = OIDC_LOGIN_ENABLED && !ssoConfigPending && !ssoConfigFallback && hasSsoProvider
             const showDefaultSloganSub = !showSsoLogin
             const renderLocalPasswordLogin = () => (
                 <div className="wk-login-content-form">
@@ -551,8 +565,8 @@ class Login extends Component<any, LoginState> {
 
                 {/* Right form panel */}
                 <div className="wk-login-panel">
-                    {ENTERPRISE_SSO_ENABLED && <OidcResumeEffect vm={vm} />}
-                    {ENTERPRISE_SSO_ENABLED && <OidcResumingOverlay vm={vm} />}
+                    {OIDC_RESUME_ENABLED && <OidcResumeEffect vm={vm} />}
+                    {OIDC_RESUME_ENABLED && <OidcResumingOverlay vm={vm} />}
                     {/* 顶部小面包屑: 紫色圆点 + 当前登录目标. 给到达 /login 的人一个
                         "我在哪 / 这个表单会把我送去哪" 的轻确认, 不抢主标题视觉权重. */}
                     <div className="wk-login-panel-breadcrumb">
@@ -698,7 +712,7 @@ class Login extends Component<any, LoginState> {
                         <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.forgetPassword ? "block" : "none" }}>
                             <div className="wk-login-content-slogan">{t('reset.title')}</div>
                             <div className="wk-login-content-slogan-sub">{t('reset.sub')}</div>
-                            {ENTERPRISE_SSO_ENABLED && ssoProvider?.resetPasswordUrl && (
+                            {OIDC_BUTTON_ENABLED && ssoProvider?.resetPasswordUrl && (
                                 <div className="wk-login-content-form-oidc-hint">
                                     {t('reset.oidcHintPrefix')}
                                     <a

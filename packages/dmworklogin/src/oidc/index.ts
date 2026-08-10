@@ -6,7 +6,8 @@ export type {
 export { OIDC_AUTH_STATUS, OIDC_AUTHCODE_TTL_MS } from './types'
 
 export { getSSOProviders, getProviderById } from './providers'
-export { buildAuthorizeURL, parseOidcUrlState } from './url'
+export { buildAuthorizeURL, parseOidcUrlState, OIDC_FLAG_WEB, OIDC_FLAG_PC } from './url'
+export { createFetchHttpClient } from './http'
 export type { OidcUrlState } from './url'
 export {
   savePendingOidcLogin,

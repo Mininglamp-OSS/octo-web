@@ -26,4 +26,15 @@ describe("buildPostLoginRedirectUrl", () => {
       )
     ).toBe("https://octo.example.com/?doc=d_1");
   });
+
+  it("does not generate a double slash when the login path normalizes to /", () => {
+    expect(
+      buildPostLoginRedirectUrl(
+        "https://octo.example.com/login",
+        "https://octo.example.com",
+        "/",
+        ""
+      )
+    ).toBe("https://octo.example.com/");
+  });
 });

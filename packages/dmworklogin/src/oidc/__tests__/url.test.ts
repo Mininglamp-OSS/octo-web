@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildAuthorizeURL, parseOidcUrlState } from '../url'
+import { buildAuthorizeURL, parseOidcUrlState, OIDC_FLAG_WEB, OIDC_FLAG_PC } from '../url'
 import type { SSOProvider } from '../types'
 
 const acmeSso: SSOProvider = {
@@ -30,6 +30,34 @@ describe('buildAuthorizeURL', () => {
   it('encodes special characters in authcode', () => {
     const url = buildAuthorizeURL(acmeSso, 'a b&c')
     expect(url).toContain('authcode=a+b%26c')
+  })
+
+  it('uses flag=2 (pc) for Electron desktop when explicitly passed', () => {
+    const url = buildAuthorizeURL(
+      acmeSso,
+      'AC-pc',
+      'https://api.example.com/login',
+      OIDC_FLAG_PC,
+    )
+    const qs = new URLSearchParams(url.split('?')[1])
+    expect(qs.get('flag')).toBe('2')
+    expect(qs.get('return_to')).toBe('https://api.example.com/login')
+  })
+
+  it('resolves the server-relative authorize path against an Electron API origin', () => {
+    const url = buildAuthorizeURL(
+      acmeSso,
+      'AC-pc',
+      '/login',
+      OIDC_FLAG_PC,
+      'https://api.example.com/v1/',
+    )
+    expect(url).toMatch(/^https:\/\/api\.example\.com\/v1\/auth\/oidc\/acme-sso\/authorize\?/)
+  })
+
+  it('OIDC_FLAG_WEB is "1" and OIDC_FLAG_PC is "2"', () => {
+    expect(OIDC_FLAG_WEB).toBe('1')
+    expect(OIDC_FLAG_PC).toBe('2')
   })
 })
 

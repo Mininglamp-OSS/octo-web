@@ -8,6 +8,8 @@ import {
     getPendingOidcLogin,
     getProviderById,
     isPendingExpired,
+    OIDC_FLAG_PC,
+    OIDC_FLAG_WEB,
     OidcPollCancelledError,
     OidcPollNetworkError,
     OidcPollTimeoutError,
@@ -15,8 +17,17 @@ import {
     parseOidcUrlState,
     pollAuthStatus,
     savePendingOidcLogin,
+    createFetchHttpClient,
 } from "./oidc";
 import { loginT as t } from "./i18n";
+
+function getOidcHttpClient() {
+    const apiURL = WKApp.apiClient.config.apiURL
+    if (window.location.protocol === 'file:' && /^https?:\/\//i.test(apiURL)) {
+        return createFetchHttpClient(apiURL)
+    }
+    return fetchHttpClient
+}
 
 
 export class LoginStatus {
@@ -252,11 +263,7 @@ export class LoginVM extends ProviderListener {
         this.loginLoading = true
         this.notifyListener()
         const device = this.getDevice()
-        let deviceFlag = 1 // web
-        // if(WKApp.shared.isPC) {
-        //     deviceFlag = 2 // pc
-
-        // }
+        const deviceFlag = WKApp.shared.isPC ? Number(OIDC_FLAG_PC) : Number(OIDC_FLAG_WEB)
         return WKApp.apiClient.post(`user/login`, { "username": username, "password": password, "flag": deviceFlag,"device":device }).then((result)=>{
             this.loginSuccess(result)
         }).finally(()=>{
@@ -273,7 +280,7 @@ export class LoginVM extends ProviderListener {
             "username": username,
             "name": name,
             "password": password,
-            "flag": 1,
+            "flag": Number(WKApp.shared.isPC ? OIDC_FLAG_PC : OIDC_FLAG_WEB),
             "device": device,
         }).then((result) => {
             this.loginSuccess(result)
@@ -331,7 +338,7 @@ export class LoginVM extends ProviderListener {
         this.notifyListener()
         const device = this.getDevice()
         return WKApp.apiClient.post('user/emailregister', {
-            email, password, name, code, flag: 1, device,
+            email, password, name, code, flag: Number(WKApp.shared.isPC ? OIDC_FLAG_PC : OIDC_FLAG_WEB), device,
         }).then((result) => {
             // emailregister wraps response in {data: ...}
             this.loginSuccess(result)
@@ -346,7 +353,7 @@ export class LoginVM extends ProviderListener {
         this.notifyListener()
         const device = this.getDevice()
         return WKApp.apiClient.post('user/emaillogin', {
-            email, password, flag: 1, device,
+            email, password, flag: Number(WKApp.shared.isPC ? OIDC_FLAG_PC : OIDC_FLAG_WEB), device,
         }).then((result) => {
             // emaillogin wraps response in {data: ...}
             this.loginSuccess(result)
@@ -580,13 +587,31 @@ export class LoginVM extends ProviderListener {
         this.oidcLoading = true
         this.notifyListener()
         try {
-            const authcode = await fetchAuthcode(fetchHttpClient)
+            const authcode = await fetchAuthcode(getOidcHttpClient())
             savePendingOidcLogin({
                 providerId,
                 authcode,
                 savedAt: Date.now(),
             })
-            const returnTo = `${window.location.origin}/login`
+
+            // Local development intentionally uses the backend-relative callback.
+            // The shared dev backend does not whitelist localhost return_to
+            // values, so it resolves `/login` to the production login page.
+            // This preserves the existing local-debug flow. Packaged Electron
+            // also uses this callback; main/index.ts intercepts the production
+            // callback and reloads the packaged app while preserving its query.
+            const isDesktop = WKApp.shared.isPC
+            const flag = isDesktop ? OIDC_FLAG_PC : OIDC_FLAG_WEB
+            const returnTo = '/login'
+            // Electron production pages use file://, so a server-relative
+            // authorize path would resolve to file:///v1/... instead of the
+            // configured backend. Dev Electron still uses the Vite proxy and
+            // intentionally keeps the relative URL.
+            const apiURL = WKApp.apiClient.config.apiURL
+            const authorizeBaseURL = isDesktop && /^https?:\/\//i.test(apiURL)
+                ? apiURL
+                : undefined
+
             // Schedule a fallback reset before navigating so a blocked redirect
             // does not leave the SSO button stuck in a loading state forever.
             if (this._oidcLoadingResetTimer) clearTimeout(this._oidcLoadingResetTimer)
@@ -597,7 +622,13 @@ export class LoginVM extends ProviderListener {
                     this.notifyListener()
                 }
             }, LoginVM.OIDC_LOADING_RESET_MS)
-            window.location.href = buildAuthorizeURL(provider, authcode, returnTo)
+            window.location.href = buildAuthorizeURL(
+                provider,
+                authcode,
+                returnTo,
+                flag,
+                authorizeBaseURL,
+            )
         } catch (e) {
             this.oidcLoading = false
             this.notifyListener()
@@ -636,7 +667,7 @@ export class LoginVM extends ProviderListener {
         this.notifyListener()
         try {
             const result = await pollAuthStatus({
-                client: fetchHttpClient,
+                client: getOidcHttpClient(),
                 authcode: pending.authcode,
                 intervalMs: 2000,
                 maxAttempts: 150,

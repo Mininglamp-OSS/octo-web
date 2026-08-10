@@ -44,6 +44,34 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000
 const APP_EXIT_DELAY_MS = 1000;
 const TRAY_FLASH_INTERVAL_MS = 1000;
 
+function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: string) {
+  if (!isDevelopment) {
+    win.webContents.on("will-redirect", (event, url) => {
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        return;
+      }
+      if (parsed.pathname !== "/login") return;
+
+      // The OIDC backend accepts the server-relative `/login` return target,
+      // but Electron production pages are hosted from file://. Bring the
+      // renderer back to the packaged app while preserving oidc_error (and
+      // any future callback query parameters) for the pending-login handler.
+      event.preventDefault();
+      // Reuse the sid captured when this window was created. At this point
+      // webContents may already be on the IdP/API redirect URL, so reading
+      // sid from getURL() would lose the original file:// page's sid.
+      const query: Record<string, string> = { sid };
+      parsed.searchParams.forEach((value, key) => {
+        query[key] = value;
+      });
+      win.loadFile(webUrl, { query });
+    });
+  }
+}
+
 const registerWindowFocusHandler = () => {
   if (isWindowFocusHandlerRegistered) return;
 
@@ -410,7 +438,9 @@ const createNewWindow = () => {
   } else {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
-    newWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+    const sid = getRandomSid();
+    registerOidcReturnRedirect(newWindow, WEB_URL, sid);
+    newWindow.loadFile(WEB_URL, { query: { sid } });
   }
 
   // 为新窗口设置菜单（Windows 需要）
@@ -449,7 +479,9 @@ const createMainWindow = async () => {
   if (NODE_ENV !== "development") {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
-    mainWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+    const sid = getRandomSid();
+    registerOidcReturnRedirect(mainWindow, WEB_URL, sid);
+    mainWindow.loadFile(WEB_URL, { query: { sid } });
   }
 
   ipcMain.on("screenshots-start", (event, args) => {

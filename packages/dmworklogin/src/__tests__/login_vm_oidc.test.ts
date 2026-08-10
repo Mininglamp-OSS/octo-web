@@ -18,6 +18,7 @@ vi.mock('@octo/base', () => {
       save: vi.fn(),
     },
     apiClient: {
+      config: { apiURL: 'https://api.example.com/v1/' },
       get: vi.fn().mockResolvedValue([]),
       post: vi.fn().mockResolvedValue({}),
     },
@@ -26,6 +27,7 @@ vi.mock('@octo/base', () => {
       onNeedJoinSpace: vi.fn(),
     },
     shared: {
+      isPC: false,
       deviceId: 'd',
       deviceName: 'n',
       deviceModel: 'm',
@@ -71,6 +73,8 @@ vi.mock('../oidc', async () => {
 })
 
 import { LoginVM } from '../login_vm'
+import { WKApp } from '@octo/base'
+import { OIDC_FLAG_WEB, OIDC_FLAG_PC } from '../oidc'
 import {
   clearPendingOidcLogin,
   getPendingOidcLogin,
@@ -82,7 +86,7 @@ import {
 
 const ORIGINAL_LOCATION = window.location
 
-function stubLocation() {
+function stubLocation(overrides: Partial<typeof window.location> = {}) {
   // Replace window.location with a plain object so .href assignments don't
   // actually navigate jsdom (which would terminate the test).
   Object.defineProperty(window, 'location', {
@@ -92,6 +96,7 @@ function stubLocation() {
       origin: 'http://localhost',
       href: 'http://localhost/login',
       search: '',
+      ...overrides,
     },
   })
 }
@@ -111,14 +116,17 @@ beforeEach(() => {
   pollAuthStatusMock.mockReset()
   vi.useFakeTimers()
   stubLocation()
+  // Ensure Electron flag is off by default
+  delete (window as any).__POWERED_ELECTRON__
 })
 
 afterEach(() => {
   vi.useRealTimers()
   restoreLocation()
+  delete (window as any).__POWERED_ELECTRON__
 })
 
-describe('LoginVM.startOidcLogin', () => {
+describe('LoginVM.startOidcLogin (web)', () => {
   it('fetches authcode, persists pending, and redirects to authorize URL', async () => {
     fetchAuthcodeMock.mockResolvedValue('AC-123')
     const vm = new LoginVM()
@@ -129,6 +137,16 @@ describe('LoginVM.startOidcLogin', () => {
     expect(window.location.href).toContain('/v1/auth/oidc/acme-sso/authorize')
     expect(window.location.href).toContain('authcode=AC-123')
     expect(vm.oidcLoading).toBe(true)
+  })
+
+  it('uses the backend-relative returnTo for the local-debug production-login flow', async () => {
+    fetchAuthcodeMock.mockResolvedValue('AC-web')
+    stubLocation({ origin: 'https://app.example.com', href: 'https://app.example.com/login', search: '' })
+    const vm = new LoginVM()
+    await vm.startOidcLogin('acme-sso')
+    const qs = new URLSearchParams(window.location.href.split('?')[1])
+    expect(qs.get('flag')).toBe(OIDC_FLAG_WEB)
+    expect(qs.get('return_to')).toBe('/login')
   })
 
   it('flips oidcLoading off via the fallback timer if redirect is intercepted', async () => {
@@ -161,6 +179,46 @@ describe('LoginVM.startOidcLogin', () => {
     vm.oidcLoading = true
     await vm.startOidcLogin('acme-sso')
     expect(fetchAuthcodeMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('LoginVM.startOidcLogin (Electron desktop)', () => {
+  beforeEach(() => {
+    // Simulate Electron preload injection
+    ;(window as any).__POWERED_ELECTRON__ = true
+    ;(WKApp.shared as any).isPC = true
+    // Simulate file:// origin that Electron prod build exposes
+    stubLocation({ origin: 'file://', href: 'file:///login', search: '' })
+  })
+
+  afterEach(() => {
+    ;(WKApp.shared as any).isPC = false
+  })
+
+  it('uses flag=2 (pc) in Electron', async () => {
+    fetchAuthcodeMock.mockResolvedValue('AC-pc')
+    const vm = new LoginVM()
+    await vm.startOidcLogin('acme-sso')
+    const qs = new URLSearchParams(window.location.href.split('?')[1])
+    expect(qs.get('flag')).toBe(OIDC_FLAG_PC)
+  })
+
+  it('uses relative /login as returnTo in packaged Electron', async () => {
+    fetchAuthcodeMock.mockResolvedValue('AC-pc')
+    const vm = new LoginVM()
+    await vm.startOidcLogin('acme-sso')
+    const qs = new URLSearchParams(window.location.href.split('?')[1])
+
+    expect(qs.get('return_to')).toBe('/login')
+  })
+
+  it('still persists pending and redirects', async () => {
+    fetchAuthcodeMock.mockResolvedValue('AC-pc2')
+    const vm = new LoginVM()
+    await vm.startOidcLogin('acme-sso')
+    const pending = getPendingOidcLogin()
+    expect(pending?.authcode).toBe('AC-pc2')
+    expect(window.location.href).toContain('https://api.example.com/v1/auth/oidc/acme-sso/authorize')
   })
 })
 

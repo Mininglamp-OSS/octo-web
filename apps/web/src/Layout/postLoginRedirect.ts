@@ -12,5 +12,6 @@ export function buildPostLoginRedirectUrl(
     return currentUrl.toString();
   }
 
-  return `${origin}${basePath}/${query}`;
+  const normalizedBasePath = basePath ? `/${basePath.replace(/^\/+|\/+$/g, "")}` : "";
+  return `${origin}${normalizedBasePath || "/"}${query}`;
 }
