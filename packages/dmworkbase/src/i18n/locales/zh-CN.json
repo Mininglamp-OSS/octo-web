@@ -870,6 +870,8 @@
   "forwardModal.grant.roleWriter": "可编辑",
   "forwardModal.grant.targetMembers": "将授权给群当前 {{count}} 名成员",
   "forwardModal.grant.botSummary": "共 {{people}} 人 / {{bots}} Bot",
+  "forwardModal.grant.botListExpand": "查看 {{people}} 人的 {{bots}} 个 Bot",
+  "forwardModal.grant.botListCollapse": "收起 Bot 列表",
   "forwardModal.grant.botLoading": "正在加载 Bot…",
   "forwardModal.grant.botError": "Bot 加载失败，请重试后再转发。",
   "forwardModal.grant.botRetry": "重试",

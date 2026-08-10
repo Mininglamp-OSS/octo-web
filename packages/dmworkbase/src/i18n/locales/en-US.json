@@ -870,6 +870,8 @@
   "forwardModal.grant.roleWriter": "Can edit",
   "forwardModal.grant.targetMembers": "Will grant access to the group's current {{count}} member(s)",
   "forwardModal.grant.botSummary": "{{people}} people / {{bots}} Bots",
+  "forwardModal.grant.botListExpand": "Review {{bots}} Bots from {{people}} people",
+  "forwardModal.grant.botListCollapse": "Hide Bot list",
   "forwardModal.grant.botLoading": "Loading Bots…",
   "forwardModal.grant.botError": "Could not load Bots. Try again before forwarding.",
   "forwardModal.grant.botRetry": "Retry",

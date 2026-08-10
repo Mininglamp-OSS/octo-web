@@ -35,6 +35,9 @@
 .wk-fm-content {
   display: flex;
   flex: 1;
+  /* 授权区（Bot 列表）内容再多也不能把两列列表压成 0 高度：保底 240px，
+     配合 .wk-fm-grant 的 max-height 上限，三段（内容 / 授权 / Footer）总高不超过弹窗。 */
+  min-height: 240px;
   overflow: hidden;
 }
 
@@ -412,6 +415,11 @@
   gap: var(--wk-sp-1, 4px);
   padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
   border-top: 1px solid var(--wk-border-color, #ebedf0);
+  /* 选中人数多时授权区曾无限增高 → 顶掉 Footer 的转发按钮并压塌两列列表。
+     固定不被压缩 + 总高上限 + 自身滚动，保证 Footer 永远可见。 */
+  flex-shrink: 0;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .wk-fm-grant-row {
@@ -455,6 +463,43 @@
   flex-direction: column;
   gap: var(--wk-sp-1, 4px);
   margin-top: var(--wk-sp-2, 8px);
+  min-height: 0;
+}
+
+.wk-fm-grant-bots-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2, 8px);
+}
+
+/* 逐人 Bot 列表：默认折叠；展开后限高自滚，不再撑爆授权区。 */
+.wk-fm-grant-bot-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1, 4px);
+  max-height: 112px;
+  overflow-y: auto;
+}
+
+.wk-fm-grant-bots-toggle {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-2, 8px);
+  border-radius: var(--wk-r-xs, 4px);
+  color: var(--wk-brand-primary, #1c1c23);
+  cursor: pointer;
+  font-size: var(--wk-text-size-tiny, 12px);
+}
+
+.wk-fm-grant-bots-toggle:hover {
+  background: var(--wk-brand-alpha-06, rgba(28, 28, 35, 0.06));
+}
+
+.wk-fm-grant-bots-toggle:focus-visible {
+  outline: 2px solid var(--wk-brand-alpha-20, rgba(28, 28, 35, 0.2));
+  outline-offset: 1px;
 }
 
 .wk-fm-grant-bots-summary {
