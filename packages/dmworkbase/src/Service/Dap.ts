@@ -93,11 +93,45 @@ function loadOrCreateDeviceId(): string {
 }
 
 /**
- * 请求路径归一(§8 隐私边界:绝不泄文件名 / 对象键 / 正文)。策略是**白名单式收窄**而非
- * 黑名单式脱敏:每段只有"看起来是固定路由词"(纯小写字母打头、仅含小写字母/数字/-/_、
- * 无点无编码无大写、长度≤40)才原样保留;其余(带扩展名的文件名、percent-encoded 段、
- * 大写/混合串、长 hex/uuid、纯数字 id)一律替换为占位符。这样即使上游 URL 里塞进
- * `report-2024.pdf` / `memory%2F2026-05-07.md` / 对象存储 key,也不会进 telemetry。
+ * 第一方 API 的**静态路由词白名单**。normalizePath 只放行这些"固定路由词",其余任何段
+ * (用户名 / 一次性登录码 / 邀请码 / token / 文件名 / 日期 / 对象键 / id)一律占位符化。
+ *
+ * >>> 新增第一方路由时,若希望它在埋点 path 里可辨识,把新的静态词补进此表即可。 <<<
+ * 不补的后果仅是该段被并成 :seg(分析粒度变粗),**绝不会泄露数据**——默认分支即 mask。
+ * 这也是相对旧实现的关键修正:旧版按"字符形状"(纯小写串)放行,凭证/用户名会原样漏出;
+ * 现在反转为"只采声明过的",凭证这类高熵随机串永远不可能等于字典式路由词,结构上漏不了
+ * (见 PR #1320 review:normalizePath 需从"黑名单形状脱敏"改为"白名单路由模板")。
+ *
+ * 词表来源:扫描生产源码里 API 路径字面量的静态段(见提交说明),而非手工臆造。
+ */
+const ROUTE_WORDS = new Set<string>([
+    'accept', 'access', 'access-requests', 'action', 'agent', 'agent-cards', 'api', 'app_bot',
+    'appbot', 'appconfig', 'apply', 'attachments', 'avatar', 'batch', 'batch-status', 'bind',
+    'blacklist', 'blobs', 'bot_admin', 'cancel', 'card', 'categories', 'channel', 'chat',
+    'collab-token', 'comments', 'common', 'config', 'confirm', 'contacts', 'conversation', 'conversations',
+    'copy', 'create', 'current', 'decline', 'disband', 'dm', 'docs', 'download',
+    'drawings', 'drive', 'edit', 'email', 'emoji', 'emojis', 'entrypoints', 'exit',
+    'extra', 'file', 'files', 'folders', 'follow', 'friend', 'global', 'grants',
+    'group', 'groups', 'im', 'imtransfer', 'incoming-webhooks', 'internal', 'invite', 'invites',
+    'join', 'leave', 'local-config', 'login', 'login_authcode', 'loginuuid', 'managers', 'market',
+    'mcp', 'mcp_categories', 'mcp-market', 'mcps', 'mcp_tags', 'me', 'members', 'mention_pref',
+    'message', 'messages', 'migrations', 'mine', 'move', 'my_bots', 'obo', 'octo',
+    'oidc', 'org', 'organizations', 'otp', 'owned_bots', 'participants', 'personal', 'personal-draft',
+    'personal-edit', 'personal-refine', 'personal-versions', 'plugins', 'ppt', 'present', 'preview', 'qrcode',
+    'reddot', 'refine', 'regenerate', 'reminder', 'rename', 'respond', 'restore', 'robot',
+    'scopes', 'screenshots', 'search', 'sendcode', 'setting', 'settings', 'share', 'shares',
+    'skills', 'sort', 'space', 'space_bots', 'spaces', 'sticker', 'submit', 'summaries',
+    'summary', 'summary-chat-candidates', 'summary-infer', 'summary-member-candidates', 'summary-schedules', 'summary-templates', 'sync', 'thirdlogin',
+    'thread', 'threads', 'toggle', 'track', 'transcribe', 'transfer', 'upload', 'user',
+    'users', 'v1', 'v2', 'v3', 'verify', 'versions', 'voice', 'webhooks',
+    'worksheets',
+])
+
+/**
+ * 请求路径归一(§8 隐私边界:绝不泄文件名 / 对象键 / 用户名 / 凭证 / 正文)。**白名单路由词式**:
+ * 每段只有命中 ROUTE_WORDS(声明过的静态路由词)才原样保留;其余一切一律占位符化——纯数字 /
+ * 长 hex / uuid 记作 :id(仅为可读性,安全上等价),其余记作 :seg。默认即 mask,故用户名、
+ * 一次性 login_authcode、邀请码、invite token、文件名、percent-encoded 段等都不可能进 telemetry。
  */
 function normalizePath(rawUrl: string): string {
     try {
@@ -107,12 +141,12 @@ function normalizePath(rawUrl: string): string {
             .split('/')
             .map((seg) => {
                 if (!seg) return seg
-                // 先按 id 形态强制脱敏(纯数字 / 长 hex / uuid)
+                // 只放行声明过的静态路由词
+                if (ROUTE_WORDS.has(seg)) return seg
+                // 其余全部占位:id 形态(纯数字 / 长 hex / uuid)记 :id,纯为可读性
                 if (/^\d+$/.test(seg)) return ':id'
                 if (/^[0-9a-fA-F-]{16,}$/.test(seg)) return ':id'
-                if (/^[0-9a-fA-F]{24,}$/.test(seg)) return ':id'
-                // 其余只保留"纯小写路由词",文件名 / 编码 / 大写混合串等一律占位
-                if (/^[a-z][a-z0-9_-]{0,39}$/.test(seg)) return seg
+                // 兜底:用户名 / 凭证 / 邀请码 / 文件名 / 编码段 / 短随机串 …… 一律 :seg
                 return ':seg'
             })
             .join('/')

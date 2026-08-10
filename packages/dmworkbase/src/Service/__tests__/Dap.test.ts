@@ -118,7 +118,7 @@ describe('Dap — HTTP wrapper is first-party only and self-excludes (P0-3)', ()
         Dap.shared.init() // 安装 fetch/XHR 包裹(包裹当前的 fetchMock 为 orig)
 
         const origin = location.origin
-        await globalThis.fetch(`${origin}/api/things/report-2024.pdf`) // 同源 → 采
+        await globalThis.fetch(`${origin}/api/users/alice/files/report-2024.pdf`) // 同源 → 采
         await globalThis.fetch('https://cdn.example.com/bucket/secret.pdf') // 跨域 → 不采
         Dap.shared.flush()
         await Promise.resolve()
@@ -132,23 +132,34 @@ describe('Dap — HTTP wrapper is first-party only and self-excludes (P0-3)', ()
         )
         // 只应有 1 条 http_request(同源那条),跨域被跳过
         expect(httpEvents).toHaveLength(1)
-        // 文件名段被脱敏,绝不出现原始文件名
-        expect(httpEvents[0].props?.path).toBe('/api/things/:seg')
+        // 路由骨架保留(api/users/files),但用户名与文件名段被脱敏,绝不出现原始值
+        expect(httpEvents[0].props?.path).toBe('/api/users/:seg/files/:seg')
         // 自身上报通道 /track/batch 不被再次 track
         expect(httpEvents.some((e) => String(e.props?.path).includes('track/batch'))).toBe(false)
     })
 })
 
 describe('Dap.normalizePath / isFirstParty (P0-3 helpers)', () => {
-    it('redacts filenames, percent-encoded segments, ids; keeps plain route tokens', async () => {
+    it('keeps whitelisted route words but masks ids, filenames, usernames and credentials', async () => {
         const { __dapInternals } = await freshTracker()
         const { normalizePath } = __dapInternals
+        // 静态路由词原样保留
         expect(normalizePath('/v1/common/appconfig')).toBe('/v1/common/appconfig')
+        // id → :id;文件名 / percent-encoded 段 → :seg
         expect(normalizePath('/agent-cards/9987/files/report-2024.pdf')).toBe('/agent-cards/:id/files/:seg')
-        expect(normalizePath('/x/memory%2F2026-05-07.md')).toBe('/x/:seg')
+        expect(normalizePath('/x/memory%2F2026-05-07.md')).toBe('/:seg/:seg') // 'x' 非路由词 → :seg
         expect(normalizePath('/thread/550e8400-e29b-41d4-a716-446655440000')).toBe('/thread/:id')
-        // 带 query 也不泄:query 不进结果
+        // 带 query 不泄:query 不进结果
         expect(normalizePath('/search?q=secret').includes('secret')).toBe(false)
+
+        // 凭证 / 邀请码 / 用户名 一律不得穿过(reviewer P0):路由词留骨架,动态段全 :seg
+        expect(normalizePath('/user/login_authcode/k3mq7z1x9v2p')).toBe('/user/login_authcode/:seg')
+        expect(normalizePath('/space/invite/j7kq2mz9')).toBe('/space/invite/:seg')
+        expect(normalizePath('/docs/invites/tq9mz3kx7v/accept')).toBe('/docs/invites/:seg/accept')
+        expect(normalizePath('/groups/g-eng/transfer/uid_admin')).toBe('/groups/:seg/transfer/:seg')
+        expect(normalizePath('/users/alice')).toBe('/users/:seg')
+        // 未登记的新路由词只会塌成 :seg(丢粒度),不泄露
+        expect(normalizePath('/workflows/abc/runs')).toBe('/:seg/:seg/:seg')
     })
 
     it('treats relative and same-origin as first-party, foreign origins as not', async () => {
