@@ -760,18 +760,14 @@ app.on("open-url", (event, url) => {
 // 单例模式启动
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  // Round-6 P2-3: only "migrate" is a migration-related path — a lock failure
-  // under a "legacy"/"none" plan is the ordinary focus-the-running-instance
-  // flow and must stay silent.
-  if (userDataPlan.action === "migrate") {
-    app.whenReady().then(() => {
-      const { title, message } = migrationDialogCopy("lock");
-      dialog.showErrorBox(title, message);
-      app.quit();
-    });
-  } else {
-    app.quit();
-  }
+  // Round-7 blocking (Jerry-Xin): DO NOT quit here and DO NOT defer to
+  // whenReady().then — both allow the unconditional app.on("ready") handler
+  // below to run createMainWindow() first (ready listeners run before the
+  // whenReady microtask), opening a second Electron process/window against
+  // the legacy profile and breaking the migration mutex. Instead, do nothing
+  // here: the ready handler guards on gotTheLock, shows the lock dialog
+  // (migration paths only, ready so Linux renders it) and quits before any
+  // window or renderer initialization.
 } else {
   runStartupMigration(userDataPlan);
   app.on("second-instance", (event, argv) => {
@@ -786,6 +782,20 @@ if (!gotTheLock) {
 }
 
 app.on("ready", () => {
+  // Round-7: the losing process must quit before ANY window/renderer
+  // initialization — this guard runs before createMainWindow() below and is
+  // the single place the lock-failure path terminates.
+  if (!gotTheLock) {
+    // Round-6 P2-3: only "migrate" is a migration-related path; a lock
+    // failure under "legacy"/"none" is the ordinary focus-the-running-
+    // instance flow and stays silent.
+    if (userDataPlan.action === "migrate") {
+      const { title, message } = migrationDialogCopy("lock");
+      dialog.showErrorBox(title, message);
+    }
+    app.quit();
+    return;
+  }
   regShortcut();
   registerWindowFocusHandler();
   createMainWindow(); // 创建窗口
