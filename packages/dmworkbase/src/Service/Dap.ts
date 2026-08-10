@@ -233,7 +233,7 @@ class DapImpl {
     private tokenProvider: (() => string | undefined) | null = null
     private queue: TrackEnvelope[] = []
     private flushTimer: ReturnType<typeof setInterval> | null = null
-    private lastPage: { pageId: string; enteredAt: number } | null = null
+    private lastPage: { pageId: string; enteredAt: number; settled: boolean } | null = null
     private pageBootObserver: MutationObserver | null = null
     /** 曝光去重:每个元素实例只触发一次 data-track-view */
     private seenViews = new WeakSet<Element>()
@@ -260,14 +260,19 @@ class DapImpl {
     /**
      * 惰性装采集机制:点击委托 + 切页/曝光 observer + fetch·XHR 包裹。幂等。
      * 只在特性真正启用时装,dark 态(默认)不给 prod 用户加任何常驻开销。
+     * 全程 safe() 包裹:setEnabled 在 App remoteConfig 回调里内联调用,采集安装抛错
+     * 绝不能中断后续业务逻辑。collectorsInstalled 在四项全装成功后才置位——中途失败
+     * 保持 false,下次 setEnabled(true) 会重试,不会留下「装了一半」的永久残缺态。
      */
     private installCollectors(): void {
         if (this.collectorsInstalled) return
-        this.collectorsInstalled = true
-        this.installClickDelegation()
-        this.installPageObserver()
-        this.installExposureObserver()
-        this.installHttpWrap()
+        this.safe(() => {
+            this.installClickDelegation()
+            this.installPageObserver()
+            this.installExposureObserver()
+            this.installHttpWrap()
+            this.collectorsInstalled = true
+        })
     }
 
     /**
@@ -326,20 +331,29 @@ class DapImpl {
             // 同页重复触发(菜单 setter + syncPath + mittBus 多次)只忽略,不重复计数(§3.2)
             if (this.lastPage && this.lastPage.pageId === pageId) return
             const now = Date.now()
-            // 结算上一页停留:给上一页发带 duration_ms 的结束事件
-            if (this.lastPage) {
-                const durEnv = this.envelope('page_leave', {
-                    duration_ms: now - this.lastPage.enteredAt,
-                })
-                durEnv.page_id = this.lastPage.pageId
-                this.enqueue(durEnv, /* priority */ true)
-            }
-            this.lastPage = { pageId, enteredAt: now }
+            // 结算上一页停留(若尚未在切后台时结算过)
+            this.settleLastPage(now)
+            this.lastPage = { pageId, enteredAt: now, settled: false }
             const clean = this.sanitizeProps(extra)
             const env = this.envelope('page_view', clean.props)
             env.page_id = pageId
             this.enqueue(env)
         })
+    }
+
+    /**
+     * 结算当前页停留:给上一页发带 duration_ms 的 page_leave(优先入队,便于随卸载/切后台
+     * 的 keepalive 批次一起送)。幂等——已结算过则不再发,避免「切后台结算 + 随后切页」双记。
+     * 由 pageView(切页)与 visibilitychange→hidden(切后台/卸载)共同调用。
+     */
+    private settleLastPage(now: number): void {
+        if (!this.lastPage || this.lastPage.settled) return
+        const durEnv = this.envelope('page_leave', {
+            duration_ms: now - this.lastPage.enteredAt,
+        })
+        durEnv.page_id = this.lastPage.pageId
+        this.enqueue(durEnv, /* priority */ true)
+        this.lastPage.settled = true
     }
 
     /** 手动刷新,调试用。 */
@@ -497,6 +511,12 @@ class DapImpl {
                 if (!target || typeof target.closest !== 'function') return
                 const el = target.closest<HTMLElement>('[data-track]')
                 if (!el) return
+                // 落在被显式标记「本次交互不代表该 data-track 动作」的子控件里则跳过:
+                // 如会话行(channel_opened)内的拖拽柄、展开线程标签——它们 stopPropagation
+                // 表示「不打开会话」,但捕获阶段先于 stopPropagation 执行,故改用 data-track-ignore
+                // 显式排除(ignore 须是被点元素到 tracked 元素之间的一层)。
+                const ignore = target.closest<HTMLElement>('[data-track-ignore]')
+                if (ignore && el !== ignore && el.contains(ignore)) return
                 const name = el.dataset.track
                 if (!name) return
                 this.track(name, this.collectDatasetProps(el))
@@ -704,7 +724,7 @@ class DapImpl {
             const proto = XHR.prototype
             const origOpen = proto.open
             const origSend = proto.send
-            type Tracked = XMLHttpRequest & { __trackMethod?: string; __trackUrl?: string; __trackStart?: number }
+            type Tracked = XMLHttpRequest & { __trackMethod?: string; __trackUrl?: string }
             proto.open = function (this: Tracked, method: string, url: string | URL, ...rest: unknown[]) {
                 this.__trackMethod = method
                 this.__trackUrl = typeof url === 'string' ? url : url.toString()
@@ -713,7 +733,6 @@ class DapImpl {
             }
             proto.send = function (this: Tracked, ...args: unknown[]) {
                 const start = Date.now()
-                this.__trackStart = start
                 const url = this.__trackUrl || ''
                 const method = this.__trackMethod || 'GET'
                 if (url && url.indexOf(BATCH_PATH) === -1) {
@@ -737,7 +756,19 @@ class DapImpl {
     private installUnloadFlush(): void {
         const onHide = () => this.unloadFlush()
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') onHide()
+            this.safe(() => {
+                if (document.visibilityState === 'hidden') {
+                    // 切后台/即将卸载:先结算当前页停留(duration 截到隐藏这一刻),再随
+                    // keepalive 批次一起送。否则最后一页永无 page_leave,且后台挂机时长会被
+                    // 错记进「下一次切页」的停留里(看着像一次超长阅读,实为无人在看)。
+                    this.settleLastPage(Date.now())
+                    onHide()
+                } else if (document.visibilityState === 'visible' && this.lastPage) {
+                    // 回到前台:重置停留起点并允许再次结算,后台时长不计入本页停留。
+                    this.lastPage.enteredAt = Date.now()
+                    this.lastPage.settled = false
+                }
+            })
         })
         window.addEventListener('pagehide', onHide)
     }

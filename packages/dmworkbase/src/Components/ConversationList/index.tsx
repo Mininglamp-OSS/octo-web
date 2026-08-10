@@ -198,6 +198,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
       {!isThread && (
         <span
           className="wk-conv-compact-drag-handle"
+          data-track-ignore
           {...attributes}
           {...listeners}
           onClick={(e) => e.stopPropagation()}
@@ -278,6 +279,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
       {hasThreads && (
         <span
           className="wk-conv-compact-thread-tag"
+          data-track-ignore
           aria-label={t("base.conversationList.toggleThreads")}
           onClick={(e) => {
             e.stopPropagation();

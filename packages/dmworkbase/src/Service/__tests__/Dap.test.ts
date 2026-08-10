@@ -115,7 +115,7 @@ describe('Dap — HTTP wrapper is first-party only and self-excludes (P0-3)', ()
     it('captures same-origin requests (path redacted) but skips cross-origin, and never re-tracks its own batch', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.setEnabled(true)
-        Dap.shared.init() // 安装 fetch/XHR 包裹(包裹当前的 fetchMock 为 orig)
+        Dap.shared.init() // 首次 setEnabled(true) 已装采集机制;init 幂等,只补定时器/卸载兜底
 
         const origin = location.origin
         await globalThis.fetch(`${origin}/api/users/alice/files/report-2024.pdf`) // 同源 → 采

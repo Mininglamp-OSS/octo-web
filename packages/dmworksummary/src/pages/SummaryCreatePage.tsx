@@ -8,7 +8,7 @@ import {
     Tooltip,
     Modal,
 } from "@douyinfe/semi-ui";
-import { I18nContext, t } from "@octo/base";
+import { I18nContext, t, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -416,6 +416,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (creatingCustomTemplate) {
                 const template = await api.createCustomTopicTemplate({ label, description });
                 this.appendTemplateToState(template);
+                // 真创建成功后才 emit(§started-vs-created):挂在 Save 按钮点击上会把
+                // 被服务端拒绝/取消的尝试也计一次创建,虚高成功率。带 object_id 供归因。
+                Dap.shared.track("template_created", {
+                    object_id: template.id,
+                    template_type: "summary_topic",
+                });
                 Toast.success(t("summary.templates.custom.createSuccess"));
             } else if (editingTemplate?.is_custom) {
                 const template = await api.updateCustomTopicTemplate(editingTemplate.id, { label, description });
@@ -1474,8 +1480,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             loading={savingTemplate}
                             disabled={!editingTemplateLabel.trim() || !editingTemplateDescription.trim() || savingTemplate}
                             onClick={this.handleTemplateSave}
-                            data-track={this.state.creatingCustomTemplate ? "template_created" : undefined}
-                            data-track-template-type="summary_topic"
                         >
                             {translate("summary.common.save")}
                         </Button>
