@@ -5,6 +5,7 @@ import {
     readSummaryNotifySentSources,
     markSummaryNotifySent,
     summaryNotifySentKey,
+    shouldEmitOnStatusTransition,
 } from '../summaryNotifyHelpers';
 import type { SummaryDetail } from '../../types/summary';
 
@@ -233,10 +234,43 @@ describe('localStorage sent-marker helpers (first-completion-only persistence)',
     //   1. Regenerate on the same page instance,
     //   2. Reload between first-completion and regenerate,
     //   3. A second tab observing the same task.
-    it('survives simulated regenerate on the same instance (round-8 P1-A)', () => {
+    it('survives simulated regenerate on the same instance (round-8 P1-A)', async () => {
         // First completion writes the marker.
         markSummaryNotifySent(42, 'group-a');
         // Regenerate on the same instance reads it and sees "already sent".
         expect(readSummaryNotifySentSources(42).has('group-a')).toBe(true);
+    });
+});
+
+// #1283 round-11 P1 (@mochashanyao on `ed87de25`): both trigger paths drop
+// the observed → COMPLETED edge when a `this.taskId !== requestTaskId` guard
+// returns after the await. The fix captures prevStatus BEFORE the await and
+// consults this predicate on the captured snapshot; if the fix is to be
+// safe, the predicate itself must never fire on the first-load "already
+// COMPLETED" case (prevStatus === undefined) and must not double-fire when
+// the status did not change.
+describe('shouldEmitOnStatusTransition (round-11 P1 · @mochashanyao)', () => {
+    const PROCESSING = 2;
+    const COMPLETED = 3;
+    const FAILED = 4;
+
+    it('does NOT fire on first load (no previous status observed)', () => {
+        expect(shouldEmitOnStatusTransition(undefined, COMPLETED, COMPLETED)).toBe(false);
+    });
+
+    it('fires on PROCESSING → COMPLETED', () => {
+        expect(shouldEmitOnStatusTransition(PROCESSING, COMPLETED, COMPLETED)).toBe(true);
+    });
+
+    it('does NOT fire on COMPLETED → COMPLETED (no transition)', () => {
+        expect(shouldEmitOnStatusTransition(COMPLETED, COMPLETED, COMPLETED)).toBe(false);
+    });
+
+    it('does NOT fire on PROCESSING → FAILED (not COMPLETED)', () => {
+        expect(shouldEmitOnStatusTransition(PROCESSING, FAILED, COMPLETED)).toBe(false);
+    });
+
+    it('does NOT fire on PROCESSING → PROCESSING (defensive)', () => {
+        expect(shouldEmitOnStatusTransition(PROCESSING, PROCESSING, COMPLETED)).toBe(false);
     });
 });

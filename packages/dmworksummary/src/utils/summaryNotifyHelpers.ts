@@ -188,3 +188,36 @@ export function markSummaryNotifySent(taskId: number | string, sourceId: string)
         // duplicate on a future load rather than fail the current send.
     }
 }
+
+/**
+ * Should this observation of `newStatus` count as a transition edge that
+ * fires the group summary notify?
+ *
+ * The rule is exactly what both trigger sites in SummaryDetailPage encode
+ * today, extracted so a test can drive it and so the "late-return after a
+ * task switch mid-await" fix can reuse it against a captured snapshot
+ * rather than the live `this.state.lastKnownStatus` (which by then reflects
+ * the new task and would silently drop the old task's completion edge).
+ *
+ * Fires when:
+ *   - a previous status has been observed (`prevStatus !== undefined`) — the
+ *     first load of an already-COMPLETED task must NOT re-fire the tip,
+ *   - the status actually changed (`prevStatus !== newStatus`),
+ *   - the destination is `COMPLETED` (`FAILED` / `CANCELLED` transitions do
+ *     not warrant a group tip — those are private to the creator).
+ *
+ * #1283 round-11 P1 (@mochashanyao): both trigger paths currently drop the
+ * observed edge when `this.taskId !== requestTaskId` returns before the
+ * transition decision runs. The fix captures the value BEFORE the await and
+ * calls this predicate on the captured pair, so the tip fires for the
+ * originally-observed task even when the user has clicked away.
+ */
+export function shouldEmitOnStatusTransition(
+    prevStatus: number | undefined,
+    newStatus: number,
+    completedStatus: number,
+): boolean {
+    if (prevStatus === undefined) return false;
+    if (prevStatus === newStatus) return false;
+    return newStatus === completedStatus;
+}
