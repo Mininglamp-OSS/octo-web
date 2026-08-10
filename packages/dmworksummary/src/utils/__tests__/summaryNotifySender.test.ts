@@ -118,8 +118,9 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
         expect(sentSourceIds(deps.sendToChannel)).toEqual(['g1', 'g2', 'g3']);
         // Persisted for all three.
         expect(readSummaryNotifySentSources(1)).toEqual(new Set(['g1', 'g2', 'g3']));
-        // In-memory also holds them (belt-and-braces).
-        expect([...state.sentThisInstance]).toEqual(['g1', 'g2', 'g3']);
+        // In-memory also holds them (belt-and-braces). Round-11: keyed by
+        // `${task_id}:${sourceId}` — @yujiawei P1 fix (4-reviewer consensus).
+        expect([...state.sentThisInstance]).toEqual(['1:g1', '1:g2', '1:g3']);
         // in-flight cleared.
         expect(state.inFlight.size).toBe(0);
     });
@@ -243,7 +244,8 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
         expect(g2Count).toBe(1);
         // Persistence and in-memory both consistent.
         expect(readSummaryNotifySentSources(1)).toEqual(new Set(['g1', 'g2']));
-        expect(state.sentThisInstance).toEqual(new Set(['g1', 'g2']));
+        // In-memory keyed by `${task_id}:${sourceId}` (round-11).
+        expect(state.sentThisInstance).toEqual(new Set(['1:g1', '1:g2']));
     });
 
     // --- SHAPE 4 · Successful send + failed localStorage write ----------------
@@ -276,8 +278,9 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
             // Storage did NOT persist (write threw), so localStorage stays empty.
             expect(readSummaryNotifySentSources(1).size).toBe(0);
             // But `sentThisInstance` DID accept the success — this is the
-            // hole yujiawei called out closing.
-            expect(state.sentThisInstance.has('g1')).toBe(true);
+            // hole yujiawei called out closing. Round-11: keyed by
+            // `${task_id}:${sourceId}`.
+            expect(state.sentThisInstance.has('1:g1')).toBe(true);
 
             // Next trigger on same instance: memory guard blocks re-send.
             (deps.sendToChannel as any).mockClear();
@@ -409,7 +412,8 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
         await invoke(detail, state, deps);
         expect(deps.sendToChannel).toHaveBeenCalledTimes(2);
         expect(readSummaryNotifySentSources(1)).toEqual(new Set(['g1']));
-        expect(state.sentThisInstance).toEqual(new Set(['g1']));
+        // Round-11: keyed by `${task_id}:${sourceId}`.
+        expect(state.sentThisInstance).toEqual(new Set(['1:g1']));
     });
 
     // --- Per-group failure isolation -----------------------------------------
@@ -426,9 +430,10 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
 
         // All three attempted, only g2 failed.
         expect(sentSourceIds(deps.sendToChannel)).toEqual(['g1', 'g2', 'g3']);
-        // g1 + g3 persisted; g2 did not.
+        // g1 + g3 persisted; g2 did not. Round-11: in-memory keyed by
+        // `${task_id}:${sourceId}`.
         expect(readSummaryNotifySentSources(1)).toEqual(new Set(['g1', 'g3']));
-        expect(state.sentThisInstance).toEqual(new Set(['g1', 'g3']));
+        expect(state.sentThisInstance).toEqual(new Set(['1:g1', '1:g3']));
         expect(deps.warn).toHaveBeenCalledOnce();
     });
 
@@ -446,7 +451,8 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
 
         // B arrives while A is still awaiting.
         await Promise.resolve();
-        expect(state.inFlight.has('g1')).toBe(true);
+        // Round-11: keyed by `${task_id}:${sourceId}`.
+        expect(state.inFlight.has('1:g1')).toBe(true);
         const B = invoke(detail, state, deps);
         await Promise.resolve();
 

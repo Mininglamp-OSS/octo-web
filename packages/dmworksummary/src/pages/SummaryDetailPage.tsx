@@ -31,7 +31,6 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
-import { shouldEmitGroupSummaryNotify, collectGroupSourceIds } from "../utils/summaryNotifyHelpers";
 import { sendGroupSummaryNotifyImpl, newSummaryNotifySendState, type SummaryNotifySendState } from "../utils/summaryNotifySender";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
@@ -297,9 +296,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     //
     // Holds `{ inFlight, sentThisInstance }` — see
     // `summaryNotifySender.SummaryNotifySendState` for the full contract.
-    // Two overlapping triggers on this page (status-event handler +
-    // fallback-poll) share this state so the dedup guarantee is same-tab
-    // atomic. Cross-tab / cross-reload dedup lives in localStorage (see
+    // Two overlapping triggers on this instance (status-event handler +
+    // fallback-poll) share this state so the dedup guarantee is
+    // same-INSTANCE atomic (round-10 P2-3 @yujiawei: two SummaryDetailPage
+    // instances of the same task in ONE tab — e.g. routeLeft keeping the
+    // detail alive across menu switches while ChatSummaryPanel mounts its
+    // own — each own an independent `state`, so cross-instance dedup falls
+    // through to the persistent localStorage layer, and BOTH instances can
+    // emit before either one's storage write is observed by the other.
+    // Cross-tab / cross-reload dedup lives in localStorage (see
     // `summaryNotifyHelpers.readSummaryNotifySentSources`).
     //
     // Round-10 change (#1283 @yujiawei on `5cff6246`): the previous version

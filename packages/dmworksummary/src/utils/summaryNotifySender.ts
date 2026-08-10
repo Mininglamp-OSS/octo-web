@@ -51,14 +51,25 @@ export interface SummaryNotifySendDeps {
  * and the "read-once snapshot → concurrent fan-out re-sends the second
  * group" hole. Both were called out by @yujiawei on `5cff6246`.
  *
- * Both fields are Sets keyed by `sourceId` (the group channel id). They are
- * scoped to a single task within one page instance — a new task fan-out
- * starts fresh, but two triggers on the same task fan-out share state.
+ * Both fields are Sets keyed by `${task_id}:${sourceId}` — round-11 change
+ * (4-reviewer consensus @Jerry-Xin @mochashanyao @yujiawei @lml2468 on
+ * `f748026d`). SummaryDetailPage can serve multiple task_ids on the same
+ * instance (componentDidUpdate task-switch branch reloads detail without
+ * remounting the component). With sourceId-only keys, task A's send to group
+ * G silently blocked task B's send to the same G. Compound keying keeps the
+ * dedup guarantee INTRA-task while allowing cross-task fan-outs to the same
+ * group to proceed independently. The persistent localStorage layer is
+ * already scoped per task (`summary-notify-sent:<taskId>`), so the three
+ * dedup layers now agree on scope.
+ *
+ * Two triggers on the same (task, source) fan-out share state; a task change
+ * on the same page instance starts every source fresh (though the persistent
+ * layer still applies its own once-per-task gate).
  */
 export interface SummaryNotifySendState {
-    /** Sources whose send is currently in flight. */
+    /** Sends currently in flight, keyed by `${task_id}:${sourceId}`. */
     inFlight: Set<string>;
-    /** Sources whose send resolved successfully in THIS page instance. */
+    /** Sends that resolved successfully in THIS page instance, keyed by `${task_id}:${sourceId}`. */
     sentThisInstance: Set<string>;
 }
 
@@ -123,9 +134,15 @@ export async function sendGroupSummaryNotifyImpl(
         const alreadySentPersisted = readSummaryNotifySentSources(detail.task_id);
 
         if (alreadySentPersisted.has(sourceId)) continue;
-        // Belt-and-braces: in-memory set survives storage-write failure.
-        if (state.sentThisInstance.has(sourceId)) continue;
-        if (state.inFlight.has(sourceId)) continue;
+        // Round-11 (4-reviewer consensus on `f748026d`): key by
+        // `${task_id}:${sourceId}` so task A's send to group G does not
+        // silently suppress task B's send to the same G on a page instance
+        // reused via componentDidUpdate task switch.
+        const memoryKey = `${detail.task_id}:${sourceId}`;
+        // Belt-and-braces: in-memory set survives storage-write failure
+        // (SHAPE-4) but stays intra-task via the task-scoped key.
+        if (state.sentThisInstance.has(memoryKey)) continue;
+        if (state.inFlight.has(memoryKey)) continue;
 
         const ch = new Channel(sourceId, channelTypeGroup);
         // isConversationDisbanded is a cache lookup by (channelID, channelType);
@@ -133,7 +150,7 @@ export async function sendGroupSummaryNotifyImpl(
         // miss (Utils/groupDisband:38-46) — matches every other group send path.
         if (deps.isDisbanded(ch)) continue;
 
-        state.inFlight.add(sourceId);
+        state.inFlight.add(memoryKey);
         try {
             await deps.sendToChannel(ch, myUid);
             // Write to persistent storage first, so a fast follow-up trigger
@@ -141,15 +158,21 @@ export async function sendGroupSummaryNotifyImpl(
             // in-instance memory set — the belt-and-braces guarantees dedup
             // even if the storage write silently dropped.
             markSummaryNotifySent(detail.task_id, sourceId);
-            state.sentThisInstance.add(sourceId);
+            state.sentThisInstance.add(memoryKey);
         } catch (error) {
             warn("[summaryNotify] send failed", { channelId: sourceId, error });
-            // No markSummaryNotifySent on failure — the next observed
-            // → COMPLETED for this (task, source) CAN retry. That is how a
-            // transient IM 5xx recovers rather than becoming permanent silent
-            // failure.
+            // No markSummaryNotifySent on failure — recovery relies on either
+            // a later observed → COMPLETED edge on this task (rare in
+            // production: both triggers advance lastKnownStatus BEFORE the
+            // fan-out, so only manual regenerate re-fires) OR a page reload
+            // that re-reads localStorage (finds this source unmarked) OR the
+            // creator navigating back to the same task from a card. Best-
+            // effort tip; a transient IM 5xx can still lose the tip for
+            // that single completion window and only console.warn records
+            // it. Accepted trade-off — the alternative is retrying inside
+            // this method against a client we do not control the ordering of.
         } finally {
-            state.inFlight.delete(sourceId);
+            state.inFlight.delete(memoryKey);
         }
     }
 }

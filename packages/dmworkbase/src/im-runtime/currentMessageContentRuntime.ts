@@ -1,4 +1,5 @@
 import WKSDK from "wukongimjssdk";
+import { MessageContentTypeConst } from "../Service/Const";
 
 import {
   isImSystemMessage,
@@ -38,6 +39,6 @@ export function isCurrentImSystemMessage(contentType: number) {
   //   3. stop its lone-unread badge.
   // Any of those may be desirable but each needs product sign-off and its
   // own PR — not a side effect of adding a summary tip.
-  if (contentType === 21) return true;
+  if (contentType === MessageContentTypeConst.summaryNotify) return true;
   return isImSystemMessage(currentImMessageContentRuntime(), contentType);
 }
