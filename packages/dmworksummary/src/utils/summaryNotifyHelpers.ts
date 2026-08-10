@@ -5,27 +5,35 @@ import type { SummaryDetail } from '../types/summary';
  * mirrors the screenshot-tip pattern (octo-ios WKConversationView
  * .userDidTakeScreenshot: `sendMessage(WKScreenshotContent.new)`).
  *
- * The actual send is done in-class in SummaryDetailPage.sendGroupSummaryNotify
- * so it can reference this.summaryNotifyInFlight, WKApp / WKSDK singletons,
- * and the `Channel` / `SummaryNotifyContent` types without dragging every
- * dependency into a pure-helper unit test. The two functions here are the
- * decisions that are easy to test AND easy to get wrong; the class method
- * exists to combine them with the singleton-heavy IM call.
+ * The actual send is wired in `utils/summaryNotifySender.ts` (integration
+ * tested there) and orchestrated from `pages/SummaryDetailPage.tsx`. This
+ * file holds:
  *
- * Reviewer context: PR #1234 round-6 (@yujiawei) recommended retiring the
- * persistent localStorage / Web-Lock dedup and accepting rare duplicates on
- * multi-tab as a best-effort trade-off (parity with screenshot-tip). These
- * helpers reflect that decision: no persistent state, no cross-tab locking,
- * only the two decisions that must always hold:
+ *   1. Two pure decision gates — `shouldEmitGroupSummaryNotify` and
+ *      `collectGroupSourceIds` — that the sender consults. Kept side-effect
+ *      free so a unit test can drive them without pulling the singleton
+ *      dependency graph in.
  *
- *   1. shouldEmitGroupSummaryNotify — a viewer that is not the creator, or a
- *      task that is not COMPLETED, must never trigger a send even if the
- *      caller forgets to guard;
+ *   2. Three localStorage helpers — `readSummaryNotifySentSources`,
+ *      `markSummaryNotifySent`, `summaryNotifySentKey` — that persist
+ *      the first-completion-only dedup marker across reload / navigation /
+ *      concurrent tabs. See the "First-completion-only persistence" section
+ *      below for the full contract.
  *
- *   2. collectGroupSourceIds — DM / thread sources must never be treated as a
- *      group channel (would fail server-side and leak intent to the wrong
- *      channel type), and duplicate source_ids in the sources array must
- *      collapse to one send.
+ * Reviewer context:
+ *
+ *   - PR #1234 round-6 (@yujiawei) asked to retire an earlier persistent
+ *     dedup design that stored a whole `runs` array with generation
+ *     counters for exactly-once semantics. The design below is narrower
+ *     (one boolean per group per task) and shipped in round-9 to close
+ *     the "regenerate posts a tip depending on whether the creator
+ *     refreshed" defect from round-8.
+ *
+ *   - Multi-tab / cross-device dedup is best-effort, not exactly-once:
+ *     localStorage is same-origin-same-profile shared, so two tabs on
+ *     the same machine dedupe correctly; two devices do not, and the
+ *     shipped design accepts that (parity with the screenshot tip). A
+ *     server-side exactly-once sender is the parked architecture question.
  */
 
 // Source-type constants mirror `packages/dmworksummary/src/types/summary.ts`
@@ -149,9 +157,18 @@ export function readSummaryNotifySentSources(taskId: number | string): Set<strin
 }
 
 /**
- * Record that `sourceId` has now received a tip for `taskId`. Read-modify-write
- * merges the current set from storage so a concurrent tab that added a
- * different sourceId in between our read and write does not lose its entry.
+ * Record that `sourceId` has now received a tip for `taskId`.
+ *
+ * Reads the current set and re-writes with the union of `{sourceId}` and the
+ * read result. This narrows — but does not fully close — the lost-update
+ * window against another tab that writes to the same key: `getItem` +
+ * `setItem` is not atomic, so a concurrent tab that computes the union
+ * against a slightly earlier snapshot can clobber. The consequence in the
+ * worst case is one duplicate tip on a future page load; still inside the
+ * "best-effort, not exactly-once" trade-off this design accepts.
+ * `SummaryNotifySendState.sentThisInstance` (in `summaryNotifySender.ts`) is
+ * the belt-and-braces for the same-instance case, so within one page instance
+ * the property holds even if this write silently drops.
  *
  * ONLY called after the SDK send resolves — a transient IM error must not
  * poison the record and turn "retry on next observed → COMPLETED" into a

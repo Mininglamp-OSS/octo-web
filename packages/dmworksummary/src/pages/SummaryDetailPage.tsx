@@ -31,7 +31,8 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
-import { shouldEmitGroupSummaryNotify, collectGroupSourceIds, readSummaryNotifySentSources, markSummaryNotifySent } from "../utils/summaryNotifyHelpers";
+import { shouldEmitGroupSummaryNotify, collectGroupSourceIds } from "../utils/summaryNotifyHelpers";
+import { sendGroupSummaryNotifyImpl, newSummaryNotifySendState, type SummaryNotifySendState } from "../utils/summaryNotifySender";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -292,27 +293,27 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
-    // #289 群内总结 tip · same-tab in-flight guard.
+    // #289 群内总结 tip · per-page-instance send state.
     //
-    // Coalesces the two triggers (status-event handler + fallback poll) inside
-    // ONE page instance. Cross-tab / cross-reload dedup lives in localStorage
-    // (see summaryNotifyHelpers.readSummaryNotifySentSources) — a persistent
-    // "already sent for this task" record survives remount and unblocks the
-    // reviewer-flagged "regenerate posts a tip depending on whether the
-    // creator refreshed" defect (round-8 P1-A).
+    // Holds `{ inFlight, sentThisInstance }` — see
+    // `summaryNotifySender.SummaryNotifySendState` for the full contract.
+    // Two overlapping triggers on this page (status-event handler +
+    // fallback-poll) share this state so the dedup guarantee is same-tab
+    // atomic. Cross-tab / cross-reload dedup lives in localStorage (see
+    // `summaryNotifyHelpers.readSummaryNotifySentSources`).
     //
-    // Semantics of THIS Set: a `(task_id, source_id)` key is inserted before
-    // the send and removed on failure. On success the persistent marker takes
-    // over — we intentionally also remove the in-flight key so the Set does
-    // not grow unboundedly across many distinct completions on the same page.
-    // A duplicate second observation of the same → COMPLETED transition still
-    // hits `readSummaryNotifySentSources` and skips.
-    //
-    // On failure we remove the key so the next trigger (regenerate after a
-    // 5xx, or a manual reload) can retry: because we did NOT mark the source
-    // as "sent" (only successful sends call `markSummaryNotifySent`), retry
-    // is safe and does not double-post.
-    private summaryNotifyInFlight = new Set<string>();
+    // Round-10 change (#1283 @yujiawei on `5cff6246`): the previous version
+    // of this field was just an `inFlight` Set, and the fan-out snapshotted
+    // localStorage once. That let two concurrent fan-outs read a stale
+    // "not-yet-sent" snapshot for the second group. The current shape adds
+    // a `sentThisInstance` Set that is written on every SDK-send success
+    // (even when the storage write silently drops in private mode / quota
+    // exhaustion) — an in-memory belt-and-braces that guarantees the
+    // invariant holds within one page instance regardless of storage state.
+    // The whole fan-out ALSO re-reads localStorage per source so the
+    // window between "another fan-out marked the source" and "this fan-out
+    // gets to the source" is closed.
+    private summaryNotifySendState: SummaryNotifySendState = newSummaryNotifySendState();
     // Blocking 5（跨 task 串台 / async race）：单调递增的「调度加载序列号」。
     // 每次发起一轮 detail+schedule 加载（loadDetail / 状态切换补拉 / 重新加载）都 bump，
     // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
@@ -1114,8 +1115,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         }
                         if (newStatus === TaskStatus.COMPLETED) {
                             // #289 群内总结 tip · fallback poll 路径同样触发一次
-                            // (与 status-event 路径二选一 · 由 summaryNotifyInFlight
-                            //  内存单飞保证不双发)。
+                            // (与 status-event 路径二选一 · dedup semantics live
+                            //  in summaryNotifySender — see summaryNotifySendState
+                            //  field doc + summaryNotifySender.test.ts).
                             void this.sendGroupSummaryNotify(detail);
                         }
                     }
@@ -1140,123 +1142,42 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     /**
-     * 群内总结 tip · 参考截屏 tip(contentType=20)的姿势:
-     *   octo-ios WKConversationView.userDidTakeScreenshot:
-     *     [self.conversationContext sendMessage:WKScreenshotContent.new];
-     *   —— client 用自己的 IM connection 直接投 · 天然带 group send permission。
+     * 群内总结 tip · client-side fan-out.
      *
-     * 只由 status 事件 / fallback poll 检测到的 "非终态 → COMPLETED" 迁移触发
-     * (真正「刚完成」)· 刻意不在 loadDetail「首次载入即 COMPLETED」补发:那条
-     * 无迁移语义 · 会把「打开历史 / 跨端已完成总结」误当成刚完成而误发过时 tip。
+     * Implementation is delegated to `sendGroupSummaryNotifyImpl` in
+     * `utils/summaryNotifySender.ts`, which is where the invariants documented
+     * in the round-8 / round-9 / round-10 reviews are asserted by
+     * `summaryNotifySender.test.ts`. Keep this method thin — the doc block
+     * lives on the impl / on the state field.
      *
-     * 极简 dedup:
-     *   1. Creator gate — 只有发起人自己 send · 非 creator 视角不触发
-     *   2. Non-COMPLETED skip
-     *   3. **BY_GROUP-only** — BY_PERSON 是按人产出个人总结,没有群级"总结"可宣告,
-     *      对群发 tip 是 scope violation (#1283 round-7 P1)。positive check
-     *      SummaryMode.BY_GROUP,future 新模式默认不宣告。
-     *   4. Group-source filter — 仅 SourceType=GROUP_CHAT
-     *   5. **First-completion-only** (round-8 P1-A · product decision):
-     *      每个 (task_id, source_id) 只发一次 tip。重新生成是 creator 内部的
-     *      质量优化 · 不应该向群里刷屏。持久化标记走 localStorage
-     *      (readSummaryNotifySentSources / markSummaryNotifySent) · 跨
-     *      reload / 跨 tab / 跨 regenerate 生效。**仅成功后落标记** ·
-     *      transient IM error 不 poison record · 下次 → COMPLETED 可正常
-     *      retry(best-effort tip 不能变成永久静默漏发)。
-     *   6. summaryNotifyInFlight 内存单飞 — same-tab 两条触发路径并发时保护;
-     *      成功 / 失败都清 · 因为持久标记接管 dedup 语义。
-     *   7. Disbanded group skip — 沿用 isConversationDisbanded 既有不变量
+     * Injects the two module-singleton side effects (chatManager.send and
+     * isConversationDisbanded) so the impl stays testable without a full
+     * WKSDK harness. See `SummaryNotifySendDeps` for the contract.
      *
-     * Multi-tab / cross-device 语义: 主控 tab 成功发 + 标记 · 其他 tab 读到
-     * 持久标记后 skip。localStorage 是同 origin 同 profile 共享 · 主人多开
-     * tab 不会重发。多设备(手机 + web)不共享 localStorage · 各自独立发一次;
-     * 与截屏 tip 同等 accepted trade-off · 需要 exactly-once 时靠 server 兜底
-     * (超出本 PR 范围)。
-     *
-     * Round-8 P1-A 决策 (Jerry-Xin + yujiawei): first-completion-only · **不采纳
-     * 截屏 tip 的每次都发姿势** — 总结 tip 语义是「主人做过一次总结」这一 event ·
-     * regenerate 是内部质量调优 · 反复发是 UX 缺陷。round-8 前的
-     * "task_id-scoped in-flight" 无 remount survival · 表现取决于主人是否 F5 ·
-     * 是明确 defect。
-     *
-     * Per-group failure isolation: 单群 send 抛错只 console.warn + 从 inFlight 删除
-     * (下次 trigger 可重试 · 因未落 sent 标记) · 不影响后续群。
+     * @param detail  freshly fetched task detail carrying the → COMPLETED edge.
      */
     private async sendGroupSummaryNotify(detail: SummaryDetail) {
-        const myUid = WKApp.loginInfo.uid;
-        if (!shouldEmitGroupSummaryNotify(detail, myUid, TaskStatus.COMPLETED, SummaryMode.BY_GROUP)) return;
-        // Narrow: shouldEmit's `if (!myUid) return false` gate guarantees a
-        // non-empty string here; TS does not see through predicate + external
-        // helper, so restate it locally.
-        if (!myUid) return;
-
-        const groupSourceIds = collectGroupSourceIds(detail.sources);
-        if (groupSourceIds.length === 0) return;
-
-        // Persistent "already sent" record for this task. Read once per fan-out
-        // so we do not re-parse localStorage per source.
-        const alreadySent = readSummaryNotifySentSources(detail.task_id);
-
-        for (const sourceId of groupSourceIds) {
-            // First-completion-only gate (round-8 P1-A): persistent skip if
-            // we ever succeeded before for this (task, source). Survives
-            // reload / regenerate / new page instance.
-            if (alreadySent.has(sourceId)) continue;
-
-            const inFlightKey = `${detail.task_id}:${sourceId}`;
-            // Same-instance overlap guard: two triggers observing → COMPLETED
-            // concurrently must not both send. Success AND failure both remove
-            // this key (persistence handles the dedup after success; retry is
-            // safe after failure because no persistent marker was written).
-            if (this.summaryNotifyInFlight.has(inFlightKey)) continue;
-
-            const ch = new Channel(sourceId, ChannelTypeGroup);
-            // 已解散群不发(与既有发送不变量一致)。
-            if (isConversationDisbanded(ch)) continue;
-
-            this.summaryNotifyInFlight.add(inFlightKey);
-            try {
-                const msg = new SummaryNotifyContent();
-                // Non-null: narrowed above with `if (!myUid) return`, but TS
-                // does not carry that narrowing across the async-loop boundary.
-                msg.fromUID = myUid!;
-                // from_name is deliberately NOT set: the renderer resolves
-                // display names from the authenticated envelope + local
-                // channel-info cache, never trusting sender-controlled
-                // payload. Leaving it undefined keeps the wire payload
-                // minimal (round-8 P2 nit).
-                // Deliberately calls chatManager.send directly rather than
-                // ConversationVM.sendMessage: for this system tip we do NOT want
-                // the wrapper's space_id injection (group destination, so it
-                // no-ops anyway), receipt-request (a system tip shouldn't
-                // request read receipts), or external-source-badge fallback
-                // (this is not an external forward). If future changes to the
-                // shared wrapper add machinery that IS relevant here (e.g.
-                // outbound rate-limit / auditing), audit this call site.
-                await WKSDK.shared().chatManager.send(msg, ch);
-                // Success: persist the sent marker BEFORE clearing the
-                // in-flight key so a fast follow-up trigger reading the
-                // storage sees the record.
-                markSummaryNotifySent(detail.task_id, sourceId);
-                // Fall through to finally to clear in-flight; persistence
-                // now owns dedup for this (task, source).
-            } catch (error) {
-                // 单群失败不影响其他群 · 但保留 channel + error 的可观测性
-                // (调试线上问题时能立刻定位是哪个 source 出问题)。
-                console.warn("[summaryNotify] send failed", { channelId: sourceId, error });
-                // No markSummaryNotifySent on failure — the next observed
-                // → COMPLETED for this (task, source) CAN retry. That's how a
-                // transient IM 5xx recovers rather than turning into a
-                // permanent silent hole for the tip.
-            } finally {
-                // Clear in-flight regardless: on success the persistent marker
-                // has taken over dedup responsibility; on failure clearing the
-                // key is what makes retry reachable. This is the only way to
-                // avoid unbounded in-flight-Set growth across many distinct
-                // task completions viewed in the same page instance.
-                this.summaryNotifyInFlight.delete(inFlightKey);
-            }
-        }
+        await sendGroupSummaryNotifyImpl(
+            detail,
+            WKApp.loginInfo.uid,
+            this.summaryNotifySendState,
+            {
+                sendToChannel: async (ch, fromUID) => {
+                    const msg = new SummaryNotifyContent();
+                    msg.fromUID = fromUID;
+                    // from_name deliberately NOT set — renderer identity comes
+                    // from the authenticated message envelope, never payload.
+                    // Deliberately bypasses ConversationVM.sendMessage: no
+                    // space_id injection (group target), no receipt-request
+                    // (system tip), no external-source-badge fallback.
+                    await WKSDK.shared().chatManager.send(msg, ch);
+                },
+                isDisbanded: (ch) => isConversationDisbanded(ch),
+            },
+            TaskStatus.COMPLETED,
+            SummaryMode.BY_GROUP,
+            ChannelTypeGroup,
+        );
     }
 
 
