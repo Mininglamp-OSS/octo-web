@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Bot, Check, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
+import { Check, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
 import { t, useI18n, WKApp, WKButton } from "@octo/base";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
 import type { ExpertItem } from "../mock/expertMock";
@@ -16,6 +16,7 @@ import {
   listSquads,
 } from "../api/expertService";
 import type { ExpertCategoryCount } from "../api/expertService";
+import { expertListErrorI18nKey } from "../api/expertListError";
 import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
 import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
@@ -97,7 +98,10 @@ export default function ExpertMarketListPage() {
   const [squadsTotal, setSquadsTotal] = useState(0);
   const [categories, setCategories] = useState<ExpertCategoryCount[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(false);
+  // Holds the i18n key for the specific load failure (auth / forbidden /
+  // network / server / unknown), or null when the load succeeded. Lets the
+  // error state show an actionable message instead of a single generic one.
+  const [errorKey, setErrorKey] = useState<string | null>(null);
 
   const toastTimerRef = useRef<number | null>(null);
   const tagFilterRef = useRef<HTMLDivElement | null>(null);
@@ -131,7 +135,7 @@ export default function ExpertMarketListPage() {
   const load = useCallback(async (activeKind: ExpertKind) => {
     const v = ++reqVer.current;
     setLoading(true);
-    setError(false);
+    setErrorKey(null);
     try {
       if (activeKind === "mine") {
         const [mine, minesq] = await Promise.all([listMyExperts(), listMySquads()]);
@@ -157,9 +161,9 @@ export default function ExpertMarketListPage() {
         setAgentsTotal(list.total);
         setCategories(cats);
       }
-    } catch {
+    } catch (err) {
       if (v !== reqVer.current) return;
-      setError(true);
+      setErrorKey(expertListErrorI18nKey(err));
     } finally {
       if (v === reqVer.current) setLoading(false);
     }
@@ -305,6 +309,15 @@ export default function ExpertMarketListPage() {
   const activeTotal = kind === "squad" ? squadsTotal : agentsTotal;
   const loadedCount = kind === "squad" ? squadsData.length : agentsData.length;
   const isTruncated = loadedCount < activeTotal;
+
+  // The header count must not contradict the visible grid. Filtering is
+  // client-side, so once a keyword / category / tag filter is active show how
+  // many results are actually rendered (items.length); with no filter show the
+  // backend catalog total (which may exceed the loaded slice — see the
+  // truncation notice above).
+  const hasActiveFilter =
+    Boolean(query.trim()) || category !== ALL_CATEGORY || selectedTags.length > 0;
+  const summaryCount = hasActiveFilter ? items.length : activeTotal;
 
   // List items are projections — fetch the full detail before opening the
   // detail modal / install prompt / editor so members, instruction, mcpConfig
@@ -553,12 +566,12 @@ export default function ExpertMarketListPage() {
           <div className="wk-mcp-expert-empty">
             <strong>{t("mcp.expert.loading")}</strong>
           </div>
-        ) : error ? (
+        ) : errorKey ? (
           <div className="wk-mcp-expert-empty">
             <PackageOpen size={48} aria-hidden="true" />
-            <strong>{t("mcp.expert.loadError")}</strong>
+            <strong>{t(errorKey)}</strong>
             <WKButton variant="primary" onClick={() => reload()}>
-              {t("mcp.expert.resetFilters")}
+              {t("mcp.list.retry")}
             </WKButton>
           </div>
         ) : kind === "mine" ? (
@@ -614,7 +627,7 @@ export default function ExpertMarketListPage() {
           <>
             <div className="wk-mcp-expert-result-summary">
               <span aria-live="polite">
-                {t("mcp.expert.totalCount", { values: { count: activeTotal } })}
+                {t("mcp.expert.totalCount", { values: { count: summaryCount } })}
               </span>
               <div className="wk-mcp-expert-sort" aria-label={t("mcp.expert.sortAriaLabel")}>
                 {SORT_OPTIONS.map((option) => (

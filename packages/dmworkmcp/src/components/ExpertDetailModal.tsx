@@ -42,7 +42,14 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
   if (!item) return null;
 
   const isSquad = item.kind === "squad";
-  const strategies = isSquad ? item.strategies ?? DEFAULT_STRATEGIES : [];
+  // mapSquadDetail normalises a missing `strategies` to `[]` (not undefined), so
+  // `?? DEFAULT_STRATEGIES` alone never fires — guard on length so a squad that
+  // declares no dispatch rules still shows the sensible defaults.
+  const strategies = isSquad
+    ? item.strategies && item.strategies.length
+      ? item.strategies
+      : DEFAULT_STRATEGIES
+    : [];
   const owner = resolveExpertOwner(item);
 
   const header = (

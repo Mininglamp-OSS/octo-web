@@ -53,6 +53,12 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onInstall }
         onOpen(item);
       }}
       onKeyDown={(event) => {
+        // Mirror the pointerdown guard: a keyboard activation on a footer
+        // button (install / edit / delete) must run only that button's
+        // handler, not also open the detail modal via bubbling.
+        if (event.target instanceof HTMLElement && event.target.closest("button")) {
+          return;
+        }
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
           onOpen(item);
