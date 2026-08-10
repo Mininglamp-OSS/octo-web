@@ -288,7 +288,102 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
         }
     });
 
-    // --- Transient failure → retry -------------------------------------------
+    // --- SHAPE 5 · Cross-task same-group (round-10 P1 · 4-reviewer consensus) ---
+
+    // Reproduces the round-10 P1: SummaryDetailPage supports switching taskId
+    // on the same component instance (componentDidUpdate resets 16+ task-local
+    // fields via loadDetail) while summaryNotifySendState is declared at
+    // field-init and never reset. If the in-memory Sets are keyed by bare
+    // sourceId, task 101's send poisons task 202's send to the same group —
+    // the persistent layer is per-task and correctly says "not yet sent for
+    // 202", but the in-memory `sentThisInstance.has('g1')` short-circuits
+    // before the persistent check even matters.
+    //
+    // Independently reproduced by @Jerry-Xin / @mochashanyao / @yujiawei /
+    // @lml2468 on `f748026d` — all four ran the same probe (two invoke() calls
+    // with different task_id sharing one state object) and got 1 send instead
+    // of 2. The fix is to key both Sets by (task_id, source_id).
+    it('SHAPE-5 cross-task same-group: task 202 into the same group must NOT be blocked by task 101', async () => {
+        const state = newSummaryNotifySendState();
+        const deps = makeDeps();
+
+        // Task 101 posts to g1.
+        await invoke(taskWithSources(101, ['g1']), state, deps);
+        expect(sentSourceIds(deps.sendToChannel)).toEqual(['g1']);
+        expect(readSummaryNotifySentSources(101)).toEqual(new Set(['g1']));
+
+        // Same page instance switches to task 202 (same group, different task_id).
+        // The persistent marker for 202 is empty; the send MUST fire.
+        (deps.sendToChannel as any).mockClear();
+        await invoke(taskWithSources(202, ['g1']), state, deps);
+
+        expect(sentSourceIds(deps.sendToChannel)).toEqual(['g1']);
+        expect(readSummaryNotifySentSources(202)).toEqual(new Set(['g1']));
+
+        // Round-11 fix: cross-task isolation. task 101's sent-marker must not
+        // leak into task 202's send decision even when the group is the same.
+        // At the same time, task 101 must remain marked in localStorage — the
+        // per-task persistent layer is untouched.
+        expect(readSummaryNotifySentSources(101)).toEqual(new Set(['g1']));
+    });
+
+    it('SHAPE-5b cross-task same-group: regenerate on task 202 is still first-completion-only', async () => {
+        // Layered assertion: after SHAPE-5's cross-task fix, the first-completion-only
+        // property must still hold WITHIN each task. Task 202 completes once →
+        // second → COMPLETED on task 202 posts zero more.
+        const state = newSummaryNotifySendState();
+        const deps = makeDeps();
+
+        await invoke(taskWithSources(101, ['g1']), state, deps);
+        await invoke(taskWithSources(202, ['g1']), state, deps);
+        expect(deps.sendToChannel).toHaveBeenCalledTimes(2);
+
+        // Regenerate task 202 → no third send.
+        (deps.sendToChannel as any).mockClear();
+        await invoke(taskWithSources(202, ['g1']), state, deps);
+        expect(deps.sendToChannel).not.toHaveBeenCalled();
+    });
+
+    it('SHAPE-5c cross-task concurrent overlap: two tasks whose fan-outs interleave', async () => {
+        // Extends SHAPE-3's concurrent guarantee to the cross-task shape.
+        // Task A and task B for the same group must each send exactly once
+        // regardless of ack ordering. Before the round-11 fix, `inFlight`
+        // (bare sourceId) blocks task B while task A is mid-send.
+        const state = newSummaryNotifySendState();
+        const callLog: Array<{ channelId: string; taskId: number; def: ReturnType<typeof deferred<void>> }> = [];
+
+        // Route each call through a deferred we can settle deterministically.
+        // We identify the call's task via the marker localStorage would leave —
+        // but we do not have access to the task_id at the sender injection
+        // point. Instead, we drive task 101 first, let it start, then start
+        // task 202 while 101 is still in flight, then settle both.
+        const deps = makeDeps({
+            sendToChannel: vi.fn(async (ch) => {
+                const def = deferred<void>();
+                callLog.push({ channelId: ch.channelID, taskId: -1, def });
+                await def.promise;
+            }),
+        });
+
+        // Kick off task 101's send but do not await.
+        const A = invoke(taskWithSources(101, ['g1']), state, deps);
+        await Promise.resolve();
+        await Promise.resolve();
+        // task 101 is now in flight for g1. Kick off task 202 for the same group.
+        const B = invoke(taskWithSources(202, ['g1']), state, deps);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        // Settle in order.
+        for (const entry of callLog) entry.def.resolve();
+        await A;
+        await B;
+
+        // Both must have sent — the two tasks are independent for dedup.
+        expect(callLog.length).toBe(2);
+        expect(readSummaryNotifySentSources(101)).toEqual(new Set(['g1']));
+        expect(readSummaryNotifySentSources(202)).toEqual(new Set(['g1']));
+    });
 
     it('transient IM error clears in-flight and does NOT poison persistence — retry on next trigger', async () => {
         const state = newSummaryNotifySendState();
