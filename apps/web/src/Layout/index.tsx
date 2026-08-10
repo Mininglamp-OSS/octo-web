@@ -21,7 +21,6 @@ import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
 import { consumeStandaloneReturn, persistStandaloneReturn, prepareDriveLandingReturn, clearStandaloneReturn } from "./standaloneReturn";
-import { registerDeepLinkHandler } from "./deepLink";
 import {
   ShareLandingPage,
   InviteLandingPage,
@@ -134,7 +133,6 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
     onNeedJoinSpace!: () => void
     onJoinApproval!: (status: JoinApprovalStatus, inviteCode: string) => void
     private _spaceChecked = false; // 冷启动 Space 检测只跑一次
-    private _deepLinkDispose?: () => void
 
     componentDidMount() {
         // Wave 2: 无 Space 时触发 JoinSpacePage 覆盖层
@@ -142,11 +140,6 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             this.setState({ showJoinSpace: true });
         };
         WKApp.endpoints.addOnNeedJoinSpace(this.onNeedJoinSpace);
-
-        // Electron custom-scheme (dmwork://) inbound URLs — see Layout/deepLink.ts.
-        // Attaches once per Layout mount; main-process buffers cold-boot URLs
-        // until this listener is live via did-finish-load.
-        this._deepLinkDispose = registerDeepLinkHandler();
 
         // 审批结果统一渲染：任何入口 join 返回 NEED_APPROVAL/PENDING 都走这里
         this.onJoinApproval = (status, inviteCode) => {
@@ -294,7 +287,6 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         WKApp.endpoints.removeOnLogin(this.onLogin);
         WKApp.endpoints.removeOnNeedJoinSpace(this.onNeedJoinSpace);
         WKApp.endpoints.removeOnJoinApproval(this.onJoinApproval);
-        this._deepLinkDispose?.();
     }
 
     /**

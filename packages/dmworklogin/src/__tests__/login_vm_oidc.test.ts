@@ -225,6 +225,7 @@ describe('LoginVM.startOidcLogin (Electron desktop)', () => {
       'https://api.example.com/v1/',
       'AC-ipc',
       'acme-sso',
+      undefined,
     )
   })
 

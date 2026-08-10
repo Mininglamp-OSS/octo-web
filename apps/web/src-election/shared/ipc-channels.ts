@@ -15,9 +15,5 @@ export const IPC_OIDC_AUTHORIZE_START = "oidc-authorize-start";
 /** Renderer → Main: arm the OIDC navigation boundary before leaving the shell. */
 export const IPC_OIDC_AUTHORIZE_START_INVOKE = "oidc-authorize-start-invoke";
 
-/**
- * Renderer → Main: the deep-link IPC listener has attached and any buffered
- * URLs may be flushed. The main process resets its readiness flag on every
- * navigation, so the renderer must re-announce after each shell load.
- */
-export const IPC_DEEP_LINK_READY = "deep-link-ready";
+/** Renderer → Main: cancel an armed OIDC navigation flow. */
+export const IPC_OIDC_AUTHORIZE_CANCEL = "oidc-authorize-cancel";

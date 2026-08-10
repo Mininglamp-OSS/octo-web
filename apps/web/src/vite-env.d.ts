@@ -11,6 +11,8 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_ENTERPRISE_SSO?: string
   // Dev-only override for OIDC logout callback when using a remote backend from localhost.
   readonly VITE_OIDC_POST_LOGOUT_REDIRECT_URI?: string
+  /** Origin used by the server for Electron OIDC callback redirects. */
+  readonly VITE_OIDC_CALLBACK_ORIGIN?: string
   readonly VITE_DISABLE_BUILTIN_DOCS?: string
 }
 

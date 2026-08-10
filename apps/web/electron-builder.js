@@ -41,12 +41,6 @@ module.exports = {
       NSMicrophoneUsageDescription: "授权访问麦克风",
       NSCameraUsageDescription: "授权访问摄像头",
     },
-    protocols: [
-      {
-        name: "OCTO",
-        schemes: ["dmwork"],
-      },
-    ],
     hardenedRuntime: true,
     entitlements: "resources/mac/entitlements.mac.plist",
     entitlementsInherit: "resources/mac/entitlements.mac.plist",
@@ -80,12 +74,6 @@ module.exports = {
     icon: "resources/icons/icon.ico",
     verifyUpdateCodeSignature: false,
     target: ["nsis", "zip"],
-    protocols: [
-      {
-        name: "OCTO",
-        schemes: ["dmwork"],
-      },
-    ],
     // eslint-disable-next-line no-template-curly-in-string
     artifactName: "${productName}-Setup-${version}.${ext}"
   },
@@ -104,14 +92,6 @@ module.exports = {
     target: ["AppImage", "deb"],
     icon: "resources/icons/512x512.png",
     category: "Network;InstantMessaging;",
-    // Registers `x-scheme-handler/dmwork` in the .desktop file so xdg-open
-    // dispatches dmwork:// links to the packaged binary. Mirrors the
-    // mac.protocols / win.protocols entries above.
-    desktop: {
-      entry: {
-        MimeType: "x-scheme-handler/dmwork",
-      },
-    },
     // eslint-disable-next-line no-template-curly-in-string
     artifactName: '${productName}-${version}-linux-${arch}.${ext}',
   },

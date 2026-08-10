@@ -43,7 +43,7 @@ describe('Electron OIDC callback redirect', () => {
     )!
     const forwarded = withTrustedSessionSid(callback, 'window-sid')
     expect(forwarded.__octo_route).toBeUndefined()
-    expect(forwarded.token).toBe('attacker')
+    expect(forwarded.token).toBeUndefined()
     expect(forwarded.sid).toBe('window-sid')
   })
 
@@ -55,5 +55,19 @@ describe('Electron OIDC callback redirect', () => {
     const forwarded = withTrustedSessionSid(callback, 'window-sid')
     expect(forwarded).toEqual({ sid: 'window-sid', oidc_error: '1' })
     expect(forwarded.extra).toBeUndefined()
+  })
+
+  it('uses a bind-specific allowlist and never forwards login-only errors', () => {
+    const callback = parseOidcCallback(
+      'https://api.example.com/oidc/bind?token=t&authcode=a&provider=p&oidc_error=1&code=secret',
+      'https://api.example.com',
+    )!
+    expect(withTrustedSessionSid(callback, 'window-sid')).toEqual({
+      __octo_route: '/oidc/bind',
+      token: 't',
+      authcode: 'a',
+      provider: 'p',
+      sid: 'window-sid',
+    })
   })
 })

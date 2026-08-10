@@ -30,6 +30,12 @@ function clearPendingOidcState(): void {
     // leave the `dmwork://oidc/bind` gate open longer than intended.
     clearPendingOidcLogin()
     clearPendingOidcBind()
+    try {
+        const ipc = (window as any).ipc
+        if (typeof ipc?.send === 'function') ipc.send('oidc-authorize-cancel')
+    } catch {
+        // Web and non-Electron runtimes do not expose the native bridge.
+    }
 }
 
 function getOidcHttpClient() {
@@ -637,7 +643,8 @@ export class LoginVM extends ProviderListener {
             if (isDesktop) {
                 const ipc = (window as any).ipc
                 if (typeof ipc?.invoke !== 'function') throw new Error('Electron OIDC IPC is unavailable')
-                await ipc.invoke('oidc-authorize-start-invoke', apiURL, authcode, providerId)
+                const callbackOrigin = (import.meta.env.VITE_OIDC_CALLBACK_ORIGIN as string | undefined)
+                await ipc.invoke('oidc-authorize-start-invoke', apiURL, authcode, providerId, callbackOrigin)
             }
 
             // Schedule a fallback reset before navigating so a blocked redirect

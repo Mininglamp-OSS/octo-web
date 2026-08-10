@@ -10,7 +10,7 @@ import { contextBridge, ipcRenderer } from "electron";
 const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count";
 const IPC_OIDC_AUTHORIZE_START = "oidc-authorize-start";
 const IPC_OIDC_AUTHORIZE_START_INVOKE = "oidc-authorize-start-invoke";
-const IPC_DEEP_LINK_READY = "deep-link-ready";
+const IPC_OIDC_AUTHORIZE_CANCEL = "oidc-authorize-cancel";
 
 function subscribeDisposable<T = any>(
   renderer: Pick<typeof ipcRenderer, "on" | "removeListener">,
@@ -34,7 +34,7 @@ const ALLOWED_SEND_CHANNELS = [
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_OIDC_AUTHORIZE_START,
   IPC_OIDC_AUTHORIZE_START_INVOKE,
-  IPC_DEEP_LINK_READY,
+  IPC_OIDC_AUTHORIZE_CANCEL,
   "screenshots-start",
   "restart-app",
 ];
@@ -52,7 +52,6 @@ const ALLOWED_RECEIVE_CHANNELS = [
   "notification-clicked",
   "notification-action-clicked",
   "screenshots-ok",
-  "deep-link",
   "show-conversations",
   "update-error",
   "update-available",
