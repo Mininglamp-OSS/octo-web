@@ -15,8 +15,6 @@ import {
   mapAgentListItem,
   mapSquadDetail,
   mapSquadListItem,
-  toAgentWire,
-  toSquadWire,
 } from "./expertWire";
 import type {
   ExpertAgentDetailWire,
@@ -202,26 +200,6 @@ async function get<T>(
   }
 }
 
-async function post<T>(path: string, data?: unknown): Promise<T> {
-  try {
-    const resp = await expertAxios.post(`${BASE}${path}`, data);
-    return resp.data.data as T;
-  } catch (err) {
-    if (axios.isCancel(err)) throw err;
-    throw new Error(extractErrorMessage(err));
-  }
-}
-
-async function patch<T>(path: string, data?: unknown): Promise<T> {
-  try {
-    const resp = await expertAxios.patch(`${BASE}${path}`, data);
-    return resp.data.data as T;
-  } catch (err) {
-    if (axios.isCancel(err)) throw err;
-    throw new Error(extractErrorMessage(err));
-  }
-}
-
 async function del(path: string): Promise<void> {
   try {
     await expertAxios.delete(`${BASE}${path}`);
@@ -283,22 +261,7 @@ const getExpertReal = (id: string) =>
 const getSquadReal = (id: string) =>
   get<ExpertSquadDetailWire>(`/squads/${encodeURIComponent(id)}`).then(mapSquadDetail);
 
-const createExpertReal = (agent: ExpertAgent) =>
-  post<ExpertAgentDetailWire>("/experts", toAgentWire(agent)).then(mapAgentDetail);
-const updateExpertReal = (id: string, agent: ExpertAgent) =>
-  patch<ExpertAgentDetailWire>(
-    `/experts/${encodeURIComponent(id)}`,
-    toAgentWire(agent)
-  ).then(mapAgentDetail);
 const deleteExpertReal = (id: string) => del(`/experts/${encodeURIComponent(id)}`);
-
-const createSquadReal = (squad: ExpertSquad) =>
-  post<ExpertSquadDetailWire>("/squads", toSquadWire(squad)).then(mapSquadDetail);
-const updateSquadReal = (id: string, squad: ExpertSquad) =>
-  patch<ExpertSquadDetailWire>(
-    `/squads/${encodeURIComponent(id)}`,
-    toSquadWire(squad)
-  ).then(mapSquadDetail);
 const deleteSquadReal = (id: string) => del(`/squads/${encodeURIComponent(id)}`);
 
 async function listExpertTagsReal(kind: ExpertKindParam): Promise<string[]> {
@@ -384,34 +347,12 @@ const getSquadMock = (id: string): Promise<ExpertSquad> => {
   return delay({ ...found });
 };
 
-const createExpertMock = (agent: ExpertAgent): Promise<ExpertAgent> => {
-  const next = { ...agent };
-  mockAgents.unshift(next);
-  return delay(next);
-};
-const updateExpertMock = (id: string, agent: ExpertAgent): Promise<ExpertAgent> => {
-  const idx = mockAgents.findIndex((a) => a.id === id);
-  const next = { ...agent, id };
-  if (idx !== -1) mockAgents[idx] = next;
-  return delay(next);
-};
 const deleteExpertMock = (id: string): Promise<void> => {
   const idx = mockAgents.findIndex((a) => a.id === id);
   if (idx !== -1) mockAgents.splice(idx, 1);
   return delay(undefined);
 };
 
-const createSquadMock = (squad: ExpertSquad): Promise<ExpertSquad> => {
-  const next = { ...squad };
-  mockSquads.unshift(next);
-  return delay(next);
-};
-const updateSquadMock = (id: string, squad: ExpertSquad): Promise<ExpertSquad> => {
-  const idx = mockSquads.findIndex((s) => s.id === id);
-  const next = { ...squad, id };
-  if (idx !== -1) mockSquads[idx] = next;
-  return delay(next);
-};
 const deleteSquadMock = (id: string): Promise<void> => {
   const idx = mockSquads.findIndex((s) => s.id === id);
   if (idx !== -1) mockSquads.splice(idx, 1);
@@ -466,22 +407,10 @@ export function getSquad(id: string): Promise<ExpertSquad> {
   return USE_MOCK ? getSquadMock(id) : getSquadReal(id);
 }
 
-export function createExpert(agent: ExpertAgent): Promise<ExpertAgent> {
-  return USE_MOCK ? createExpertMock(agent) : createExpertReal(agent);
-}
-export function updateExpert(id: string, agent: ExpertAgent): Promise<ExpertAgent> {
-  return USE_MOCK ? updateExpertMock(id, agent) : updateExpertReal(id, agent);
-}
 export function deleteExpert(id: string): Promise<void> {
   return USE_MOCK ? deleteExpertMock(id) : deleteExpertReal(id);
 }
 
-export function createSquad(squad: ExpertSquad): Promise<ExpertSquad> {
-  return USE_MOCK ? createSquadMock(squad) : createSquadReal(squad);
-}
-export function updateSquad(id: string, squad: ExpertSquad): Promise<ExpertSquad> {
-  return USE_MOCK ? updateSquadMock(id, squad) : updateSquadReal(id, squad);
-}
 export function deleteSquad(id: string): Promise<void> {
   return USE_MOCK ? deleteSquadMock(id) : deleteSquadReal(id);
 }
@@ -536,42 +465,9 @@ export function getSquadSkillContent(
     : getSquadSkillContentReal(squadId, memberKey, index);
 }
 
-// ─── Skill package upload / download (whole .zip/.skill, doc §3.1) ───────────
-// The publish modal uploads the raw package straight to object storage via a
-// presigned PUT, then sends the returned object key on create/update. The detail
-// view resolves a short-lived presigned GET URL to download the package.
-
-interface SkillUploadInitWire {
-  upload_object_key: string;
-  presigned_url: string;
-  method?: string;
-  headers?: Record<string, string>;
-  expires_in?: number;
-}
-
-export interface SkillUploadInit {
-  uploadObjectKey: string;
-  presignedUrl: string;
-  method: string;
-  headers: Record<string, string>;
-}
-
-/** POST /expert_skill_uploads — presign a PUT for a .zip/.skill package. */
-export async function initExpertSkillUpload(
-  fileName: string,
-  fileSize: number
-): Promise<SkillUploadInit> {
-  const w = await post<SkillUploadInitWire>("/expert_skill_uploads", {
-    file_name: fileName,
-    file_size: fileSize,
-  });
-  return {
-    uploadObjectKey: w.upload_object_key,
-    presignedUrl: w.presigned_url,
-    method: w.method || "PUT",
-    headers: w.headers ?? {},
-  };
-}
+// ─── Skill package download (whole .zip/.skill, doc §3.1) ────────────────────
+// The detail view resolves a short-lived presigned GET URL to download the
+// package (and to fetch + unzip it client-side for the file browser).
 
 /** Reject presigned URLs whose scheme isn't http(s); http only for localhost.
  *  Scheme-level guard mirroring the skills market's assertSafeExternalURL. */
@@ -587,39 +483,6 @@ function assertSafeExternalURL(raw: string): void {
     return;
   }
   throw new Error("unsupported upload URL scheme");
-}
-
-/** PUT the raw package to the presigned URL via XHR (bare — no app interceptors
- *  or auth token on the external OSS URL), reporting 0–100% upload progress.
- *  Content-Type is forced to application/zip so it matches the presigned
- *  signature (init-returned headers win over the default). */
-export function uploadSkillFile(
-  presignedUrl: string,
-  file: File,
-  headers: Record<string, string> = {},
-  onProgress?: (percent: number) => void
-): Promise<void> {
-  assertSafeExternalURL(presignedUrl);
-  const finalHeaders = { "Content-Type": "application/zip", ...headers };
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", presignedUrl);
-    xhr.timeout = DEFAULT_REQUEST_TIMEOUT_MS;
-    for (const [k, v] of Object.entries(finalHeaders)) xhr.setRequestHeader(k, v);
-    xhr.upload.addEventListener("progress", (event) => {
-      if (onProgress && event.lengthComputable) {
-        onProgress(Math.round((event.loaded / event.total) * 100));
-      }
-    });
-    xhr.addEventListener("load", () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`upload failed: ${xhr.status}`));
-    });
-    xhr.addEventListener("error", () => reject(new Error("upload failed")));
-    xhr.addEventListener("timeout", () => reject(new Error("upload timed out")));
-    xhr.addEventListener("abort", () => reject(new Error("upload aborted")));
-    xhr.send(file);
-  });
 }
 
 /** Fetch the raw bytes of a skill package from its presigned URL, for the

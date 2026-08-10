@@ -1,27 +1,19 @@
-// Static fixtures for the Expert Marketplace (专家市场), ported verbatim from
-// the standalone HTML prototype (Octo-Marketplace-专家团-可分享原型). This is a
-// STATIC-first implementation: there is no expert API yet, so the list page
-// reads directly from these arrays. When a real backend lands, introduce a
-// service seam (mirroring mcpService.ts / skillApi.ts) and keep this file as
-// the USE_MOCK fixture source.
+// Type definitions + static fixtures for the Expert Marketplace (专家市场). The
+// TS shapes (ExpertItem / ExpertAgent / ExpertSquad / …) are the frontend's
+// canonical model; expertWire.ts maps the octo-marketplace wire onto them. The
+// fixture arrays at the bottom are only the USE_MOCK fallback in
+// expertService.ts — the live path fetches from the expert catalog backend.
 
 /**
- * A skill attached to an expert / squad member.
- *
- * A skill is a whole Agent-Skill package (a .zip/.skill containing SKILL.md).
- * The name is always present. The other fields split across the wire:
- *  READ side (detail projection):
+ * A skill attached to an expert / squad member — a whole Agent-Skill package
+ * (a .zip/.skill containing SKILL.md). `name` is always present; the rest is the
+ * read / detail projection:
  *   - `hasContent` — a stored SKILL.md exists (drives the markdown viewer).
  *   - `canDownload` — the raw package is stored (drives the download button).
  *   - `fileName` / `fileSize` — the uploaded package's original name/size.
  *   - `files` — manifest of paths inside the package (bundled-file list).
- *  WRITE side (publish):
- *   - `uploadObjectKey` — key of the just-uploaded package (presigned upload);
- *     the server extracts SKILL.md + stores the package. Preferred form.
- *   - `content` — legacy inline SKILL.md text (name-only skills omit both).
- * Read never populates `content`/`uploadObjectKey`; write never populates the
- * read-only flags. Content/package bytes are fetched lazily via the skill_md /
- * skill_download endpoints.
+ * Content/package bytes are fetched lazily via the skill_md / skill_download
+ * endpoints; they are never carried inline on this shape.
  */
 export interface ExpertSkill {
   name: string;
@@ -30,8 +22,6 @@ export interface ExpertSkill {
   fileName?: string;
   fileSize?: number;
   files?: string[];
-  content?: string;
-  uploadObjectKey?: string;
 }
 
 /** A single member inside an expert squad. */

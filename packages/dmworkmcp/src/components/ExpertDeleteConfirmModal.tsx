@@ -11,9 +11,8 @@ interface ExpertDeleteConfirmModalProps {
 
 /**
  * Delete confirmation for an owned expert / squad in the 我的 tab. Mirrors
- * McpDeleteConfirmModal's layout, but STATIC-first: there is no expert API, so
- * confirming just hands the id back to the page, which drops it from the
- * in-memory catalog (records a deleted id / removes a locally-published entry).
+ * McpDeleteConfirmModal's layout. Confirming hands the id back to the page,
+ * which calls the expert / squad DELETE endpoint and reloads the list.
  */
 export default function ExpertDeleteConfirmModal({
   item,

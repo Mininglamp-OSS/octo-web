@@ -6,8 +6,7 @@
 // TS shapes (expert-v1.md §0). These mappers translate the wire projections
 // (list items) and full details into the camelCase shapes the UI already reads,
 // applying `?? []` / `?? ""` fallbacks so a partial/legacy record never crashes
-// a renderer that calls `.toLowerCase()` / `.map()` downstream. The reverse
-// mappers (`toAgentWire` / `toSquadWire`) build the flat create/update bodies.
+// a renderer that calls `.toLowerCase()` / `.map()` downstream.
 
 import type {
   ExpertAgent,
@@ -106,23 +105,6 @@ function fromSkillWire(s: SkillWire): import("../mock/expertMock").ExpertSkill {
   };
 }
 
-/** Write: project a TS ExpertSkill onto the wire. A skill uploaded as a package
- *  carries `upload_object_key` + file meta; otherwise it falls back to inline
- *  `content` (legacy / name-only). The two forms are mutually exclusive. */
-function toSkillWire(
-  s: import("../mock/expertMock").ExpertSkill
-): SkillWire {
-  if (s.uploadObjectKey) {
-    return {
-      name: s.name,
-      upload_object_key: s.uploadObjectKey,
-      file_name: s.fileName,
-      file_size: s.fileSize,
-    };
-  }
-  return { name: s.name, content: s.content ?? "" };
-}
-
 // ─── Read mappers (wire → TS) ───────────────────────────────────────────────
 
 export function mapAgentListItem(raw: ExpertAgentListItemWire): ExpertAgent {
@@ -203,54 +185,5 @@ export function mapSquadDetail(raw: ExpertSquadDetailWire): ExpertSquad {
     },
     permission: raw.permission ?? "",
     checkResult: "supported",
-  };
-}
-
-// ─── Write mappers (TS → flat wire body) ────────────────────────────────────
-
-/** Flat create/update body for an expert (expert-v1.md §4.1). `category` is the
- *  NAME; `tags` are names. Server-owned fields are never sent. */
-export function toAgentWire(agent: ExpertAgent) {
-  return {
-    name: agent.name,
-    summary: agent.summary,
-    category: agent.category,
-    tags: agent.tags,
-    instruction: agent.instruction ?? "",
-    mcp_config: agent.mcpConfig ?? "",
-    skills: (agent.skills ?? []).map(toSkillWire),
-    publisher: agent.publisher || undefined,
-  };
-}
-
-function toMemberWire(member: ExpertMember): SquadMemberWire {
-  return {
-    member_key: member.key,
-    template_id: member.templateId,
-    name: member.name,
-    role: member.role,
-    is_leader: Boolean(member.leader),
-    instruction: member.instruction ?? "",
-    mcp_config: member.mcpConfig || undefined,
-    skills: (member.skills ?? []).map(toSkillWire),
-  };
-}
-
-/** Flat create/update body for a squad (expert-v1.md §4.7). `members` replaces
- *  the whole roster on update (full-replace, not merge). */
-export function toSquadWire(squad: ExpertSquad) {
-  return {
-    name: squad.name,
-    summary: squad.summary,
-    category: squad.category,
-    tags: squad.tags,
-    leader: squad.leader,
-    strategies: squad.strategies ?? [],
-    dependencies: {
-      blocking: squad.dependencies?.blocking ?? [],
-      recommended: squad.dependencies?.recommended ?? [],
-    },
-    permission: squad.permission,
-    members: squad.members.map(toMemberWire),
   };
 }
