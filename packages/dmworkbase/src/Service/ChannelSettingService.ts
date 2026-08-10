@@ -19,6 +19,11 @@ export interface CreateChannelOptions {
   spaceId?: string;
 }
 
+export interface UpdateChannelAvatarCustomOptions {
+  avatarText?: string;
+  avatarColor?: number | "";
+}
+
 function isPersonChannel(channel: Channel) {
   return channel.channelType === ChannelTypePerson;
 }
@@ -101,6 +106,20 @@ export function updateChannelField(
   return APIClient.shared.put(`groups/${channel.channelID}`, {
     [field]: value,
   });
+}
+
+export function updateChannelAvatarCustom(
+  channel: Channel,
+  options: UpdateChannelAvatarCustomOptions
+): Promise<void> {
+  const body: Record<string, any> = {};
+  if (typeof options.avatarText === "string") {
+    body.avatar_text = options.avatarText;
+  }
+  if (typeof options.avatarColor === "number" || options.avatarColor === "") {
+    body.avatar_color = options.avatarColor;
+  }
+  return APIClient.shared.put(`groups/${channel.channelID}`, body);
 }
 
 export function transferChannelOwner(

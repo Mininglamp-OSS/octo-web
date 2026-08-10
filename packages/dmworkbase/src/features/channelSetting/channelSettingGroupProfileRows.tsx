@@ -34,6 +34,7 @@ export function buildGroupProfileRows({
 
   const { channel, channelInfo } = data;
   const isExternalGroup = channelInfo?.orgData?.is_external_group === 1;
+  const avatarColor = Number(channelInfo?.orgData?.avatar_color);
   const groupName = isExternalGroup ? (
     <span>
       {channelInfo?.title}
@@ -94,6 +95,13 @@ export function buildGroupProfileRows({
             <ChannelAvatar
               showUpload={data.isManagerOrCreatorOfMe}
               channel={channel}
+              groupName={channelInfo?.title || ""}
+              initialAvatarText={channelInfo?.orgData?.avatar_text || ""}
+              initialColorIndex={
+                Number.isInteger(avatarColor) && avatarColor >= 0
+                  ? avatarColor
+                  : undefined
+              }
             />,
             { title: t("base.module.channelSettings.groupAvatar") }
           );

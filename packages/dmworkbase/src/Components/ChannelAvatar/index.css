@@ -16,6 +16,8 @@
 
 .wk-channelavatar-upload {
     margin-top: 20px;
+    display: flex;
+    gap: 12px;
 }
 
 .wk-channelavatar-crop-editor {

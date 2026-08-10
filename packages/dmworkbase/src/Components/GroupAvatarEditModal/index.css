@@ -28,3 +28,9 @@
   padding: 0;
   box-sizing: border-box;
 }
+
+.wk-group-avatar-edit-color-default {
+  background: var(--semi-color-fill-0);
+  border-color: var(--semi-color-border);
+  color: var(--semi-color-text-2);
+}

@@ -15,6 +15,7 @@ import {
   leaveThread,
   removeChannelSubscribers,
   transferChannelOwner,
+  updateChannelAvatarCustom,
   updateChannelField,
   updateChannelSetting,
   updateChannelSubscriberAttr,
@@ -142,6 +143,40 @@ describe("ChannelSettingService", () => {
     });
     expect(apiPut).toHaveBeenCalledWith("groups/group-1/members/alice", {
       remark: "A",
+    });
+  });
+
+  it("updates group avatar text and optional color", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    await updateChannelAvatarCustom(channel, {
+      avatarText: "Team",
+      avatarColor: 3,
+    });
+    await updateChannelAvatarCustom(channel, {
+      avatarText: "",
+      avatarColor: "",
+    });
+    await updateChannelAvatarCustom(channel, {
+      avatarText: "Only",
+    });
+    await updateChannelAvatarCustom(channel, {
+      avatarColor: 4,
+    });
+
+    expect(apiPut).toHaveBeenNthCalledWith(1, "groups/group-1", {
+      avatar_text: "Team",
+      avatar_color: 3,
+    });
+    expect(apiPut).toHaveBeenNthCalledWith(2, "groups/group-1", {
+      avatar_text: "",
+      avatar_color: "",
+    });
+    expect(apiPut).toHaveBeenNthCalledWith(3, "groups/group-1", {
+      avatar_text: "Only",
+    });
+    expect(apiPut).toHaveBeenNthCalledWith(4, "groups/group-1", {
+      avatar_color: 4,
     });
   });
 

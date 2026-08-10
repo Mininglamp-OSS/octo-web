@@ -15,8 +15,12 @@ import "./index.css"
 export interface GroupAvatarEditResult {
   /** 清洗后的自定义头像文字（≤4 可见字符；空串表示回退双人图标） */
   avatarText: string
+  /** 头像文字是否被用户操作过：修改或清除 */
+  textChanged?: boolean
   /** 用户显式选中的色板下标；undefined 表示未选色 → 由服务端按 group_no 派生默认色 */
   colorIndex?: number
+  /** 色板是否被用户操作过：选择颜色或清除为默认色 */
+  colorChanged?: boolean
 }
 
 export interface GroupAvatarEditModalProps {
@@ -50,9 +54,11 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
 }) => {
   const [palette, setPalette] = useState<GroupColorHex[]>(getCachedPalette())
   const [avatarText, setAvatarText] = useState<string>(initialAvatarText)
+  const [textChanged, setTextChanged] = useState(false)
   // undefined = 用户未显式选色：预览按群名派生、不下发 avatar_color（服务端按 group_no
   // 派生默认色）。只有点击色圈才落定一个下标，避免「打开弹窗即静默锁死某个颜色」。
   const [colorIndex, setColorIndex] = useState<number | undefined>(initialColorIndex)
+  const [colorChanged, setColorChanged] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -68,17 +74,30 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
   useEffect(() => {
     if (visible) {
       setAvatarText(initialAvatarText)
+      setTextChanged(false)
       setColorIndex(initialColorIndex)
+      setColorChanged(false)
     }
   }, [visible, initialAvatarText, initialColorIndex])
 
   const onTextChange = (v: string) => {
     // 限制可见字符 ≤4（与服务端一致），超出即截断。
     setAvatarText(visibleCount(v) > MAX_VISIBLE ? cleanAvatarText(v) : v)
+    setTextChanged(true)
   }
 
   const handleSave = () =>
-    onSave({ avatarText: cleanAvatarText(avatarText), colorIndex })
+    onSave({ avatarText: cleanAvatarText(avatarText), textChanged, colorIndex, colorChanged })
+
+  const selectColor = (index: number) => {
+    setColorIndex(index)
+    setColorChanged(true)
+  }
+
+  const clearColor = () => {
+    setColorIndex(undefined)
+    setColorChanged(true)
+  }
 
   return (
     <WKModal
@@ -116,6 +135,18 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
         {t("base.groupAvatarEdit.color")}
       </div>
       <div className="wk-group-avatar-edit-colors">
+        <button
+          type="button"
+          className={
+            "wk-group-avatar-edit-color wk-group-avatar-edit-color-default" +
+            (colorIndex == null ? " selected" : "")
+          }
+          onClick={clearColor}
+          aria-label="avatar-color-default"
+          title={t("base.groupAvatarEdit.defaultColor")}
+        >
+          {colorIndex == null && <IconTick />}
+        </button>
         {palette.map((c) => (
           <button
             type="button"
@@ -128,7 +159,7 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
               background: c.fill,
               borderColor: c.index === colorIndex ? c.main : "transparent",
             }}
-            onClick={() => setColorIndex(c.index)}
+            onClick={() => selectColor(c.index)}
             aria-label={`avatar-color-${c.index}`}
           >
             {c.index === colorIndex && <IconTick style={{ color: c.main }} />}
