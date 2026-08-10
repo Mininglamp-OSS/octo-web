@@ -1,7 +1,6 @@
 import axios, { AxiosResponse } from "axios";
 import { buildAcceptLanguage } from "./apiLanguage";
 import { isAuthExpiredApiError, normalizeApiError, NormalizedApiError } from "./apiError";
-import { Tracker } from "./Tracker";
 
 export interface APIClientRejectedError {
     error: unknown;
@@ -100,10 +99,6 @@ export default class APIClient {
                     config.headers!["X-Space-Id"] = spaceId;
                 }
             }
-            // 埋点关联头(方案 A,octo-dap 采集方案 §6):注入 Tracker 的 session/device,
-            // 供后端 access-log 与前端蒙版事件离线 join。非 flow、非业务逻辑,取值零成本。
-            config.headers!["X-Octo-Session-Id"] = Tracker.shared.sessionId;
-            config.headers!["X-Octo-Device-Id"] = Tracker.shared.deviceId;
             return config;
         });
 

@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import { WKApp, buildAcceptLanguage, Tracker } from '@octo/base';
+import { WKApp, buildAcceptLanguage } from '@octo/base';
 import type {
     AgentChatHistory,
     AgentChatParams,
@@ -69,9 +69,6 @@ summaryAxios.interceptors.request.use((config) => {
     if (spaceId) {
         config.headers['X-Space-Id'] = spaceId;
     }
-    // 埋点关联头(方案 A,octo-dap §6):session/device 供离线 join,非 flow、非业务。
-    config.headers['X-Octo-Session-Id'] = Tracker.shared.sessionId;
-    config.headers['X-Octo-Device-Id'] = Tracker.shared.deviceId;
     return config;
 });
 

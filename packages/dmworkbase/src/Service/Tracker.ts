@@ -140,9 +140,9 @@ function statusBucket(status: number): string {
 }
 
 class TrackerImpl {
-    /** 会话内唯一;方案 A 注入 `X-Octo-Session-Id` 时读它 */
+    /** 会话内唯一;仅作为埋点事件 envelope 的 session_id 随上报发出(采集启用时才发) */
     readonly sessionId: string = genId()
-    /** 持久设备标识;方案 A 注入 `X-Octo-Device-Id` 时读它 */
+    /** 持久设备标识;仅作为埋点事件 envelope 的 device_id 随上报发出(采集启用时才发) */
     readonly deviceId: string = loadOrCreateDeviceId()
 
     // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
