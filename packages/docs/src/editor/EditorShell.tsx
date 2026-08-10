@@ -153,12 +153,15 @@ export function waitForExportSync(
  */
 export function DocTitle({
   docId,
+  spaceId,
   initialTitle,
   canEdit,
   onSaved,
   onTitleLoaded,
 }: {
   docId: string
+  /** Explicit document home Space for standalone mounts where the shell interceptor is empty. */
+  spaceId?: string
   initialTitle: string
   canEdit: boolean
   onSaved?: (docId: string, title: string) => void
@@ -183,7 +186,7 @@ export function DocTitle({
   // like the export filename.
   useEffect(() => {
     let cancelled = false
-    getDoc(docId)
+    getDoc(docId, spaceId ? { spaceId } : undefined)
       .then((meta) => {
         if (!cancelled && typeof meta?.title === 'string') {
           setTitle(meta.title)
@@ -196,7 +199,7 @@ export function DocTitle({
     return () => {
       cancelled = true
     }
-  }, [docId])
+  }, [docId, spaceId])
 
   useEffect(() => {
     if (editing) inputRef.current?.focus()
@@ -226,7 +229,7 @@ export function DocTitle({
     committingRef.current = true
     setSaving(true)
     try {
-      await updateDocTitle(docId, next)
+      await updateDocTitle(docId, next, spaceId ? { spaceId } : undefined)
       doneRef.current = true
       setTitle(next)
       setDraft(next)
@@ -349,7 +352,7 @@ export function EditorShell(props: EditorShellProps) {
     // The page-load read is authoritative only while no commit has bumped the version past this
     // snapshot; a commit landing mid-flight makes this getDoc stale and it must not write.
     const versionAtLoad = shareSeedVersionRef.current
-    getDoc(docId)
+    getDoc(docId, collabOpts.space ? { spaceId: collabOpts.space } : undefined)
       .then((meta) => {
         if (cancelled) return
         if (typeof meta?.ownerId === 'string' && meta.ownerId) setOwnerId(meta.ownerId)
@@ -368,7 +371,7 @@ export function EditorShell(props: EditorShellProps) {
     return () => {
       cancelled = true
     }
-  }, [docId])
+  }, [docId, collabOpts.space])
 
   // Import injection (#import): when a doc was just created by a Markdown/Word import in DocsHome,
   // the parsed ProseMirror document is stashed in sessionStorage keyed by docId. Once the editor
@@ -511,7 +514,7 @@ export function EditorShell(props: EditorShellProps) {
     },
     [onDeleted, returnToList],
   )
-  const del = useDocDelete(docId, handleDeleted)
+  const del = useDocDelete(docId, handleDeleted, collabOpts.space ? { spaceId: collabOpts.space } : undefined)
 
   // All downloadable document formats come from one authenticated backend
   // endpoint. The backend reads the authoritative live Y.Doc; the browser does
@@ -525,7 +528,7 @@ export function EditorShell(props: EditorShellProps) {
     try {
       if (!instance) throw new Error('document_not_ready')
       await waitForExportSync(instance.provider, connState)
-      const bytes = await exportDocFile(docId, format)
+      const bytes = await exportDocFile(docId, format, collabOpts.space ? { spaceId: collabOpts.space } : undefined)
       const mime = format === 'md'
         ? 'text/markdown;charset=utf-8'
         : format === 'docx'
@@ -690,6 +693,7 @@ export function EditorShell(props: EditorShellProps) {
         )}
         <DocTitle
           docId={docId}
+          spaceId={collabOpts.space}
           initialTitle={title}
           canEdit={manage}
           onSaved={(id, t) => {

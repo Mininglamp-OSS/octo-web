@@ -13,31 +13,27 @@
 //     re-issues rather than reusing an unexpired token with the old role/epoch.
 
 import { canEdit, isRole, type Role } from '../auth/roles.ts'
-import { disposeToken as defaultDisposeToken } from '../auth/collabToken.ts'
-
 export interface RoleControllerOptions {
-  documentName: string
   initialRole: Role
   initialEpoch: number
   /** Called whenever the effective role changes (re-arm editable / banners / manage UI). */
   onRole: (role: Role) => void
-  /** Injectable for tests; defaults to the real token disposer. */
-  disposeToken?: (documentName: string) => void
+  /** Required, already-scoped invalidation closure. Binding the docId at construction prevents
+   * docId-first tokens from accidentally being disposed through the legacy cache slot. */
+  disposeToken: () => void
 }
 
 export class RoleController {
   private role: Role
   private epoch: number
-  private readonly documentName: string
   private readonly onRole: (role: Role) => void
-  private readonly disposeToken: (documentName: string) => void
+  private readonly disposeToken: () => void
 
   constructor(opts: RoleControllerOptions) {
     this.role = opts.initialRole
     this.epoch = opts.initialEpoch
-    this.documentName = opts.documentName
     this.onRole = opts.onRole
-    this.disposeToken = opts.disposeToken ?? defaultDisposeToken
+    this.disposeToken = opts.disposeToken
   }
 
   getRole(): Role {
@@ -73,7 +69,7 @@ export class RoleController {
 
     // Downgrade -> invalidate cached token so reconnect re-issues with current role/epoch.
     if (!canEdit(nextRole)) {
-      this.disposeToken(this.documentName)
+      this.disposeToken()
     }
 
     this.onRole(nextRole)

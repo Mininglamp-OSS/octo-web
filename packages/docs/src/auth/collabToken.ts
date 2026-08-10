@@ -5,7 +5,7 @@
 // octo token is never attached to the WS — the function-style provider getter holds the
 // collab token.
 //
-// Cache/in-flight key is `${uid}::${documentName}` (NOT documentName alone): keying by
+// Cache/in-flight key includes uid, canonical documentName, and issuance endpoint identity:
 // documentName only would let a previous uid's token pollute a new session's slot after an
 // account switch (P1-6). Concurrent issuance is coalesced via an in-flight promise; the
 // AbortController cancels in-flight issuance on dispose; on resolve we re-check uid and drop
@@ -45,8 +45,8 @@ const tokenCache = new Map<string, TokenEntry>()
 const inflight = new Map<string, { promise: Promise<TokenEntry>; ac: AbortController }>()
 
 // Named distinctly from the IndexedDB cacheKey (§6) to avoid shadowing.
-export function tokenCacheKey(uid: string, documentName: string): string {
-  return `${uid}::${documentName}`
+export function tokenCacheKey(uid: string, documentName: string, docId?: string): string {
+  return `${uid}::${documentName}::${docId ? `doc:${docId}` : 'legacy'}`
 }
 
 function isExpiringSoon(expiresAt: number): boolean {
@@ -63,13 +63,16 @@ async function issueCollabToken(
   documentName: string,
   uid: string,
   signal: AbortSignal,
+  docId?: string,
 ): Promise<TokenEntry> {
-  // Bare-relative -> /api/v1/docs/collab-token. The interceptor injects the octo `token` header.
-  const { data } = await apiClient().post<CollabTokenResponse>(
-    COLLAB_TOKEN_PATH,
-    { documentName },
-    { signal },
-  )
+  // docId-first issuance (Phase-1 remove-`sp` design §7.1): when the caller knows the stable docId,
+  // the path is the complete locator and the backend derives canonical documentName + home Space from
+  // doc_meta. Do not send a redundant client documentName that could be mistaken for authoritative.
+  // The legacy endpoint still needs `{ documentName }` during its compatibility window.
+  const path = docId ? `/docs/${encodeURIComponent(docId)}/collab-token` : COLLAB_TOKEN_PATH
+  const body = docId ? {} : { documentName }
+  const config = docId ? { signal, suppressSpaceId: true } : { signal }
+  const { data } = await apiClient().post<CollabTokenResponse>(path, body, config)
   if (!isRole(data.role)) {
     throw new Error(`collab-token returned an invalid role: ${String(data.role)}`)
   }
@@ -88,10 +91,17 @@ async function issueCollabToken(
 /**
  * Return a fresh collab token entry, coalescing concurrent issuance and isolating by uid.
  * Used both by the provider token getter and to set the initial editable state before connect.
+ *
+ * The cache identity includes endpoint mode so a legacy token can never satisfy a docId-first
+ * request for the same canonical name. `docId`, when supplied, routes issuance to
+ * `/docs/:docId/collab-token`; omit it for the legacy documentName-only endpoint.
  */
-export async function getCollabTokenEntry(documentName: string): Promise<TokenEntry> {
+export async function getCollabTokenEntry(
+  documentName: string,
+  docId?: string,
+): Promise<TokenEntry> {
   const uid = getCurrentUid()
-  const key = tokenCacheKey(uid, documentName)
+  const key = tokenCacheKey(uid, documentName, docId)
 
   const hit = tokenCache.get(key)
   if (hit && !isExpiringSoon(hit.expiresAt)) return hit
@@ -99,14 +109,20 @@ export async function getCollabTokenEntry(documentName: string): Promise<TokenEn
   let f = inflight.get(key)
   if (!f) {
     const ac = new AbortController()
-    const promise = issueCollabToken(documentName, uid, ac.signal).finally(() => {
-      inflight.delete(key)
+    let promise: Promise<TokenEntry>
+    promise = issueCollabToken(documentName, uid, ac.signal, docId).finally(() => {
+      // A disposed request may settle after a replacement issuance has occupied the same key.
+      // Only remove our own record; otherwise the stale finally would de-coalesce the replacement.
+      if (inflight.get(key)?.promise === promise) inflight.delete(key)
     })
     f = { promise, ac }
     inflight.set(key, f)
   }
 
   const fresh = await f.promise
+  // Some API adapters/mocks do not reject when AbortSignal fires. Disposal is still authoritative:
+  // never let such a late response repopulate the slot that was explicitly invalidated.
+  if (f.ac.signal.aborted) throw new Error('collab-token issuance was disposed')
   // Re-check uid before writing back: if the account switched while issuance was in flight,
   // dropping the stale token prevents cross-uid pollution of the new session's slot.
   if (getCurrentUid() !== uid) {
@@ -117,8 +133,8 @@ export async function getCollabTokenEntry(documentName: string): Promise<TokenEn
 }
 
 /** Provider token getter form — returns only the token string. */
-export async function getCollabToken(documentName: string): Promise<string> {
-  return (await getCollabTokenEntry(documentName)).token
+export async function getCollabToken(documentName: string, docId?: string): Promise<string> {
+  return (await getCollabTokenEntry(documentName, docId)).token
 }
 
 /**
@@ -126,8 +142,14 @@ export async function getCollabToken(documentName: string): Promise<string> {
  * Called on document destroy, account switch, and on downgrade (so the next reconnect
  * re-issues rather than reusing an unexpired token carrying the old role/epoch — P1-5).
  */
-export function disposeToken(documentName: string, uid: string = getCurrentUid()): void {
-  const key = tokenCacheKey(uid, documentName)
+export interface DisposeTokenOptions {
+  uid?: string
+  /** Must match the issuance mode; docId-first tokens live in a distinct cache slot. */
+  docId?: string
+}
+
+export function disposeToken(documentName: string, opts: DisposeTokenOptions = {}): void {
+  const key = tokenCacheKey(opts.uid ?? getCurrentUid(), documentName, opts.docId)
   tokenCache.delete(key)
   const f = inflight.get(key)
   if (f) {

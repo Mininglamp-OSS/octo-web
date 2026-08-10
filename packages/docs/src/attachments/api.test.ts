@@ -120,6 +120,19 @@ describe('uploadImage — end-to-end flow yields attachId + signed src, never ba
     api.calls.length = 0
   })
 
+  it('preserves SVG metadata headers when a compatibility Space header is present', async () => {
+    api.responder = () => ({ data: { attachId: 'att_svg', url: null }, status: 200 })
+    const file = new File(['<svg/>'], 'space diagram.svg', { type: 'image/svg+xml' })
+
+    await uploadImage('d_1', file, { spaceId: 's_home' })
+
+    expect(api.calls[0].config?.headers).toMatchObject({
+      'Content-Type': 'image/svg+xml',
+      'X-File-Name': 'space%20diagram.svg',
+      'X-Space-Id': 's_home',
+    })
+  })
+
   it('does not route a non-SVG MIME to the SVG endpoint merely because the name ends in .svg', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })))
     api.responder = (method, url) => {

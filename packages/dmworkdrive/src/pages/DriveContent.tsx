@@ -58,10 +58,9 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   );
 
   // Type-1 doc: jump to the standalone docs page (preview/editor). The mounted
-  // entry carries the doc id in ref_id; buildDocLink is the same /d/:docId form
-  // used by forwarded-doc links (@octo/base). Carry the doc's OWN space as ?sp=
-  // so cross-space recipients hit the right doc; when absent, omit sp (do NOT
-  // fall back to entry.space_id — that is drive's mount space, wrong across tenants).
+  // entry carries the doc id in ref_id; buildDocLink emits the same bare /d/:docId
+  // form used by forwarded-doc links (@octo/base). The reader resolves canonical
+  // addressing through authenticated open-context, never from the Drive mount Space.
   const handleOpenDoc = useCallback(
     (entry: DriveEntry) => {
       if (!entry.ref_id) {

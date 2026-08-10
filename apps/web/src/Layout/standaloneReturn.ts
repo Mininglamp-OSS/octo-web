@@ -71,7 +71,7 @@ export function persistStandaloneReturn(): void {
     try {
         window.sessionStorage.setItem(
             STANDALONE_RETURN_KEY,
-            window.location.pathname + window.location.search
+            window.location.pathname + window.location.search + window.location.hash
         );
     } catch {
         // sessionStorage unavailable: the deep-link still stays on the login page, but cannot

@@ -676,30 +676,29 @@ describe('DocsHome navigation (split-pane)', () => {
     const entry = await waitFor(() => screen.getByTestId('editor-open-new-page'))
     fireEvent.click(entry)
 
-    // It opens the clean standalone deep-link in a new tab — no in-app navigation. The link carries
-    // the doc's real space as `?sp` (XIN-519 blocker 1); with no active space the shell falls back to
-    // the default doc space ('demo'). No `?sid` — the opener's session is recovered from storage.
-    expect(openSpy).toHaveBeenCalledWith('/d/d_a?sp=demo', '_blank', 'noopener,noreferrer')
+    // It opens the clean canonical standalone deep-link in a new tab — no in-app navigation. Phase-1
+    // (design §5.3): the link is the bare `/d/:docId` with NO query — no `?sp` (the reader resolves
+    // the doc's Space server-side from the docId) and no `?sid` (the opener's session is recovered
+    // from storage).
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a', '_blank', 'noopener,noreferrer')
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
-  it('XIN-513/519: the standalone link opens with `?sp` (doc space) but no `?sid`, even when the in-shell URL carries a sid', async () => {
+  it('XIN-513/519 + §5.3: the standalone link opens with NO query — neither `?sp` nor `?sid` — even when the in-shell URL carries a sid', async () => {
     const openSpy = vi.fn()
     Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
     // In-shell URL carries the active session's sid (the host's RouteManager re-push collapses the
     // docs route to `/docs?sid=…`). The opened standalone link must NOT copy that sid forward: an
-    // already-logged-in user's session is recovered from storage independently of the URL (XIN-513),
-    // so a sid-less `/d/:docId` opens the document directly. It MUST, however, carry `?sp` (the doc's
-    // real space) so the recipient's standalone preflight can address the doc's own space — dropping
-    // it (XIN-519 blocker 1) sent the login-return path into the cross-space not_found terminal.
+    // already-logged-in user's session is recovered from storage independently of the URL (XIN-513).
+    // Phase-1 (design §5.3) also drops `?sp`: the standalone reader resolves the doc's Space
+    // server-side from the docId via open-context, so the active DocsHome space no longer rides along.
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
       value: { origin: 'https://app.example.com', search: '?sid=s_active', assign: assignSpy },
     })
     const wk = createMockWKApp()
-    // Give the shell an active space so DocsHome's space (spaceRef) resolves to a real doc space id,
-    // which the opened standalone link must carry as `?sp`.
+    // An active space is present, but it must NOT be stamped onto the standalone link anymore.
     wk.shared.currentSpaceId = '105d4a60d0fc4d55a5cfc3c2d0501361'
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
@@ -721,14 +720,9 @@ describe('DocsHome navigation (split-pane)', () => {
     // The list item carries no docType, so the editor mounts only after the async open resolves.
     fireEvent.click(await waitFor(() => screen.getByTestId('editor-open-new-page')))
 
-    // The standalone link carries `?sp` (the doc's real space) so the recipient's preflight addresses
-    // the doc's own space — but NO `?sid`; the opener's session is recovered from storage (XIN-513).
-    // (The multi-session wrong-space-session recovery edge is tracked separately as octo-web #551.)
-    expect(openSpy).toHaveBeenCalledWith(
-      '/d/d_a?sp=105d4a60d0fc4d55a5cfc3c2d0501361',
-      '_blank',
-      'noopener,noreferrer',
-    )
+    // Bare canonical link: no `?sp` (Space resolved from docId server-side, §5.3) and no `?sid`
+    // (session recovered from storage, XIN-513).
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a', '_blank', 'noopener,noreferrer')
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
@@ -3328,10 +3322,10 @@ describe('DocsHome — row context menu: 复制文档链接 / 转发', () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalled())
     const copied = writeText.mock.calls[0][0] as string
-    // The doc's own address (buildDocLink), not an invite token.
+    // The doc's canonical address (buildDocLink), not an invite token. Ordinary
+    // document URLs no longer expose or depend on the home Space query.
     expect(copied).toContain('/d/d_b')
-    // Pin the Space query too — without this the case would still pass if `space` were dropped.
-    expect(copied).toContain('sp=')
+    expect(copied).not.toContain('sp=')
     expect(copied).not.toContain('invite')
     // And no request was made: minting an invite is what the old entry did.
     expect(

@@ -54,11 +54,12 @@ export class AttachmentRejectedError extends Error {
 }
 
 /** POST /docs/{docId}/attachments/presign (needs writer). 400 -> AttachmentRejectedError. */
-export async function presignUpload(docId: string, req: PresignRequest): Promise<PresignResult> {
+export async function presignUpload(docId: string, req: PresignRequest, opts?: { spaceId?: string }): Promise<PresignResult> {
   try {
     const { data } = await apiClient().post<PresignResult>(
       `/docs/${docId}/attachments/presign`,
       req,
+      opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined,
     )
     return data
   } catch (e) {
@@ -87,8 +88,9 @@ export async function uploadBinary(presign: PresignResult, file: Blob): Promise<
 }
 
 /** GET /docs/{docId}/attachments/{attachId} (needs reader) -> freshly signed GET url. */
-export async function getReadUrl(docId: string, attachId: string): Promise<ReadResult> {
-  const { data } = await apiClient().get<ReadResult>(`/docs/${docId}/attachments/${attachId}`)
+export async function getReadUrl(docId: string, attachId: string, opts?: { spaceId?: string }): Promise<ReadResult> {
+  const config = opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
+  const { data } = await apiClient().get<ReadResult>(`/docs/${docId}/attachments/${attachId}`, config)
   return data
 }
 
@@ -118,11 +120,13 @@ export interface ResolveResult {
 export async function resolveAttachments(
   docId: string,
   attachIds: string[],
+  opts?: { spaceId?: string },
 ): Promise<ResolveResult> {
   try {
     const { data } = await apiClient().post<ResolveResult>(
       `/docs/${docId}/attachments/resolve`,
       { attachIds },
+      opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined,
     )
     return { items: data.items ?? [], notFound: data.notFound ?? [] }
   } catch (e) {
@@ -146,7 +150,7 @@ export interface UploadedImage {
  * (null if the read endpoint is briefly unavailable — the NodeView re-resolves it
  * from attachId at render time). Never emits base64 (constraint §2).
  */
-export async function uploadImage(docId: string, file: File): Promise<UploadedImage> {
+export async function uploadImage(docId: string, file: File, opts?: { spaceId?: string }): Promise<UploadedImage> {
   const declaredType = file.type.trim().toLowerCase()
   // Some platforms leave SVG's File.type empty; use the extension only in that
   // case. Never let a misleading .svg name override a non-SVG declared MIME.
@@ -163,6 +167,7 @@ export async function uploadImage(docId: string, file: File): Promise<UploadedIm
         headers: {
           'Content-Type': 'image/svg+xml',
           'X-File-Name': encodeURIComponent(file.name || 'image.svg'),
+          ...(opts?.spaceId ? { 'X-Space-Id': opts.spaceId } : {}),
         },
       },
     )
@@ -172,11 +177,11 @@ export async function uploadImage(docId: string, file: File): Promise<UploadedIm
     fileName: file.name || 'image',
     mime: file.type,
     sizeBytes: file.size,
-  })
+  }, opts)
   await uploadBinary(presign, file)
   let src: string | null = null
   try {
-    src = (await getReadUrl(docId, presign.attachId)).url
+    src = (await getReadUrl(docId, presign.attachId, opts)).url
   } catch {
     src = null
   }

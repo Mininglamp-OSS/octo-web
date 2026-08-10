@@ -113,11 +113,11 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     expect(created[1]!.opts.board).toBe('d_board2')
   })
 
-  it('token getter exchanges the whiteboard documentName via POST /docs/collab-token', async () => {
+  it('token getter exchanges the whiteboard documentName via POST /docs/:docId/collab-token', async () => {
     const useWhiteboardSession = await importHook()
     let seen: { url: string; body: any } | null = null
     wk.apiClient.responder = (method, url, body) => {
-      if (method === 'post' && url === '/docs/collab-token') {
+      if (method === 'post' && url === '/docs/d_board1/collab-token') {
         seen = { url, body }
         return { data: { token: 'wb-jwt', expiresAt: Date.now() + 60_000, role: 'writer', permission_epoch: 1 }, status: 200 }
       }
@@ -130,13 +130,13 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     const token = await created[0]!.opts.token()
     expect(token).toBe('wb-jwt')
     expect(seen).not.toBeNull()
-    expect(seen!.body).toEqual({ documentName: 'octo:demo:f_default:wb:d_board1' })
+    expect(seen!.body).toEqual({})
   })
 
   it('sources the WS origin + initial role/epoch from the primed collab-token (P1-3 / P1-4)', async () => {
     const useWhiteboardSession = await importHook()
     wk.apiClient.responder = (method, url) => {
-      if (method === 'post' && url === '/docs/collab-token') {
+      if (method === 'post' && url === '/docs/d_board1/collab-token') {
         return {
           data: {
             token: 'wb-jwt',
@@ -163,7 +163,7 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
   it('falls back to WS_ENDPOINT with no pre-connect role when the token prime fails', async () => {
     const useWhiteboardSession = await importHook()
     wk.apiClient.responder = (method, url) => {
-      if (method === 'post' && url === '/docs/collab-token') {
+      if (method === 'post' && url === '/docs/d_board1/collab-token') {
         // Invalid role → getCollabTokenEntry throws → prime fails → origin-derived fallback.
         return { data: { token: 't', expiresAt: Date.now() + 60_000, role: 'nope', permission_epoch: 0 }, status: 200 }
       }
@@ -183,7 +183,7 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
   it('P1-3: a 403 prime builds a terminal, cache-disabled session — no hydration for a denied user', async () => {
     const useWhiteboardSession = await importHook()
     wk.apiClient.responder = (method, url) => {
-      if (method === 'post' && url === '/docs/collab-token') {
+      if (method === 'post' && url === '/docs/d_board1/collab-token') {
         // Backend DENIES (revoked / forbidden). getCollabTokenEntry rejects with an HTTP 403.
         throw Object.assign(new Error('forbidden'), { response: { status: 403 } })
       }
@@ -203,7 +203,7 @@ describe('useWhiteboardSession — board collab wiring (XIN-55)', () => {
     const opts = { uid: 'u_race', space: 'demo', folder: 'f_default', board: 'd_race' }
     const tokenResolvers: Array<(value: { data: unknown; status: number }) => void> = []
     wk.apiClient.responder = (method, url) => {
-      if (method === 'post' && url === '/docs/collab-token') {
+      if (method === 'post' && url === '/docs/d_race/collab-token') {
         return new Promise((resolve) => tokenResolvers.push(resolve))
       }
       return { data: {}, status: 200 }

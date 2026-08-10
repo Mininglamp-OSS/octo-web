@@ -220,7 +220,7 @@ describe('DriveContent — reset modals on space switch (Q8)', () => {
   });
 });
 
-describe('DriveContent — open doc carries the doc\'s real space (Round-12)', () => {
+describe('DriveContent — open doc builds the canonical no-sp link (Phase-1 remove-`sp`, design §5.3)', () => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function docEntry(over: Record<string, unknown>): any {
     return {
@@ -240,7 +240,7 @@ describe('DriveContent — open doc carries the doc\'s real space (Round-12)', (
     };
   }
 
-  it('opens /d/:docId?sp=<doc_space_id> when the doc carries its real space', async () => {
+  it('opens the bare /d/:docId (no ?sp) even when the doc carries its real space', async () => {
     stubMembers({ canDownload: true });
     const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
     render(<DriveContent vm={vmWith(space('mountSpace', 'shared'))} />);
@@ -248,11 +248,16 @@ describe('DriveContent — open doc carries the doc\'s real space (Round-12)', (
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (fileListRef.current!.onOpenDoc as any)(docEntry({ doc_space_id: 'realDocSpace' }));
+    // Phase-1: the doc's Space is resolved server-side from the docId by the open-context reader, so
+    // the link carries no `?sp` — doc_space_id is accepted-but-ignored by buildDocLink.
     expect(openSpy).toHaveBeenCalledWith(
-      'https://test.local/d/doc-9?sp=realDocSpace',
+      'https://test.local/d/doc-9',
       '_blank',
       'noopener,noreferrer',
     );
+    const url = openSpy.mock.calls[0][0] as string;
+    expect(url).not.toContain('sp=');
+    expect(url).not.toContain('realDocSpace');
     openSpy.mockRestore();
   });
 

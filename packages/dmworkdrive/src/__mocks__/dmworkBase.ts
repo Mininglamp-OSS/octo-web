@@ -48,10 +48,10 @@ export const buildAcceptLanguage = () => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7';
  *  isolated-axios timeout hardening is exercised under test. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000;
 
-export const buildDocLink = ({ docId, space }: { docId: string; space?: string }) => {
-  const sp = (space || '').trim();
-  const query = sp ? `?sp=${encodeURIComponent(sp)}` : '';
-  return `https://test.local/d/${encodeURIComponent(docId)}${query}`;
+export const buildDocLink = ({ docId }: { docId: string; space?: string; folder?: string }) => {
+  // Phase-1 remove-`sp`: ordinary doc links carry only the docId path (space is accepted-but-ignored,
+  // mirroring the real @octo/base buildDocLink).
+  return `https://test.local/d/${encodeURIComponent(docId)}`;
 };
 
 export const t = (key: string) => key;

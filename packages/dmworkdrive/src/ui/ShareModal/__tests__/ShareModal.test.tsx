@@ -123,7 +123,7 @@ describe('ShareModal (WeCom one-shot)', () => {
     unmount();
   });
 
-  it('doc: carries the real doc space as ?sp= when doc_space_id is present', async () => {
+  it('doc: never emits ?sp= even when doc_space_id is present (Phase-1 remove-`sp`, design §5.3)', async () => {
     const { getByText, container, unmount } = render(
       <ShareModal
         visible
@@ -134,7 +134,10 @@ describe('ShareModal (WeCom one-shot)', () => {
     await waitFor(() => getByText('drive.share.docGenerated'));
     const input = container.querySelector('input') as HTMLInputElement;
     expect(input.value).toContain('/d/doc-9');
-    expect(input.value).toContain('?sp=realDocSpace');
+    // The doc's Space is now resolved server-side from the docId by the open-context reader, so the
+    // ordinary link carries no `?sp` — the doc_space_id is accepted-but-ignored by buildDocLink.
+    expect(input.value).not.toContain('sp=');
+    expect(input.value).not.toContain('realDocSpace');
     unmount();
   });
 

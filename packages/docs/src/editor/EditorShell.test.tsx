@@ -156,7 +156,7 @@ describe('EditorShell — export filename uses the live title, not the stale pro
     fireEvent.click(screen.getByText('docs.toolbar.export'))
     fireEvent.click(screen.getByText('docs.toolbar.exportMarkdown'))
 
-    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md'))
+    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md', { spaceId: 's_1' }))
     await waitFor(() => expect(createdAnchors.length).toBeGreaterThan(0))
     const a = createdAnchors[createdAnchors.length - 1]
     expect(a.download).toBe('Live Title.md')
@@ -185,7 +185,7 @@ describe('EditorShell — export filename uses the live title, not the stale pro
 
     fakeProvider.hasUnsyncedChanges = false
     fakeProvider.emit('unsyncedChanges', 0)
-    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md'))
+    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md', { spaceId: 's_1' }))
   })
 })
 

@@ -2,6 +2,13 @@ import axios, { AxiosResponse } from "axios";
 import { buildAcceptLanguage } from "./apiLanguage";
 import { isAuthExpiredApiError, normalizeApiError, NormalizedApiError } from "./apiError";
 
+declare module "axios" {
+    interface AxiosRequestConfig {
+        /** Internal host-client flag; never serialized as an HTTP header. */
+        suppressSpaceId?: boolean;
+    }
+}
+
 export interface APIClientRejectedError {
     error: unknown;
     msg: string;
@@ -93,7 +100,7 @@ export default class APIClient {
             // X-Space-Id（如 standalone /d/:docId 冷启动 preflight），拦截器不覆盖它；
             // 仅在显式头缺省时用 currentSpaceId 兜底注入。这样显式头与拦截器头永远一致
             // （显式为准/拦截器兜底），不会互相冲突。
-            if (self.config.spaceIdCallback && !config.headers!["X-Space-Id"]) {
+            if (!config.suppressSpaceId && self.config.spaceIdCallback && !config.headers!["X-Space-Id"]) {
                 const spaceId = self.config.spaceIdCallback()
                 if (spaceId && spaceId !== "") {
                     config.headers!["X-Space-Id"] = spaceId;
@@ -133,6 +140,7 @@ export default class APIClient {
         responseType: config?.responseType,
         timeout: config?.timeout,
         signal: config?.signal,
+        suppressSpaceId: config?.suppressSpaceId,
     }), config)
     }
     post(path: string, data?: any, config?: RequestConfig) {
@@ -141,6 +149,7 @@ export default class APIClient {
             responseType: config?.responseType,
             timeout: config?.timeout,
             signal: config?.signal,
+            suppressSpaceId: config?.suppressSpaceId,
         }), config)
     }
 
@@ -148,6 +157,7 @@ export default class APIClient {
         return this.wrapResult(axios.put(path, data, {
             params: config?.param,
             headers: config?.headers,
+            suppressSpaceId: config?.suppressSpaceId,
         }), config)
     }
 
@@ -155,6 +165,7 @@ export default class APIClient {
         return this.wrapResult(axios.patch(path, data, {
             params: config?.param,
             headers: config?.headers,
+            suppressSpaceId: config?.suppressSpaceId,
         }), config)
     }
 
@@ -163,6 +174,7 @@ export default class APIClient {
             params: config?.param,
             data: config?.data,
             headers: config?.headers,
+            suppressSpaceId: config?.suppressSpaceId,
         }), config)
     }
 
@@ -208,6 +220,8 @@ export class RequestConfig {
      * 保持既有无显式头行为。
      */
     headers?: Record<string, string>
+    /** Suppress the global X-Space-Id injector for docId-global endpoints. */
+    suppressSpaceId?: boolean
     /**
      * Per-request axios responseType passthrough. Defaults to axios' `'json'`.
      * `'arraybuffer'` is required for binary endpoints (e.g. server-side PDF
