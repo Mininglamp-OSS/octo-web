@@ -116,6 +116,10 @@ jobs:
           src/comments
           src/sheet/SheetCommentPanel.test.ts
           src/board/boardImport.test.ts
+      - name: Electron main-process unit tests
+        run: pnpm --filter @octo/web exec vitest run src-election
+      - name: Type-check Electron main-process tests
+        run: pnpm --filter @octo/web exec tsc -p tsconfig.e.tests.json
       - name: Build
         run: pnpm build
       - name: Verify Excalidraw production bundle

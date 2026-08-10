@@ -27,6 +27,8 @@
     "end": "No more documents",
     "loadMoreFailed": "Couldn't load more",
     "retry": "Retry",
+    "copyDocLink": "Copy link",
+    "copyLinkFailed": "Copy failed. Try again.",
     "htmlCreate": {
       "title": "New HTML",
       "descLabel": "HTML description",

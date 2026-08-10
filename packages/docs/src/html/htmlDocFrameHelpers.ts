@@ -56,6 +56,51 @@ function neutralizeEditableControls(doc: Document) {
   doc.querySelectorAll('input, textarea, select, button').forEach((el) => el.setAttribute('disabled', ''))
 }
 
+// srcDoc documents live at about:srcdoc. Address of the rendered doc — an in-page fragment must be
+// spelled against THIS, not the <base>.
+export const SRCDOC_URL = 'about:srcdoc'
+
+// A bare `#frag` is resolved against the <base> we inject, producing an http URL that differs from
+// about:srcdoc — the browser then treats the click as cross-document and replaces the whole frame.
+// Re-spelling it as `about:srcdoc#frag` restores same-document identity, so the browser scrolls
+// natively. The <base> stays untouched, so every asset (CSS url(), srcset, <source>, svg) keeps
+// resolving exactly as before.
+function rewriteInPageFragmentHrefs(doc: Document, absoluteDocUrl: string) {
+  // An effective target (own attr, or inherited from any <base target>) means the author wants a
+  // different browsing context; leave those to the browser.
+  const baseTarget = Array.from(doc.getElementsByTagName('base')).some((b) => !!b.getAttribute('target'))
+  const docNoFragment = (() => {
+    try {
+      const u = new URL(absoluteDocUrl)
+      return `${u.origin}${u.pathname}${u.search}`
+    } catch {
+      return null
+    }
+  })()
+  doc.querySelectorAll('a[href], area[href]').forEach((el) => {
+    const href = el.getAttribute('href')
+    if (href == null) return
+    if (baseTarget || el.getAttribute('target')) return
+    if (href.startsWith('#')) {
+      el.setAttribute('href', `${SRCDOC_URL}${href}`)
+      return
+    }
+    // A fully-qualified self-link (…/d/{slug}/v/{ver}#frag) is the same document too. Relative
+    // hrefs are NOT touched: the browser resolves them against the injected <base>, which is not
+    // this docUrl, so we cannot decide same-document identity for them here.
+    if (!docNoFragment || !/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(href)) return
+    let resolved: URL
+    try {
+      resolved = new URL(href)
+    } catch {
+      return
+    }
+    if (!resolved.hash) return
+    if (`${resolved.origin}${resolved.pathname}${resolved.search}` !== docNoFragment) return
+    el.setAttribute('href', `${SRCDOC_URL}${resolved.hash}`)
+  })
+}
+
 export function absolutizeDocAssetUrls(html: string, docUrl = resolveAbsoluteOctoDocBase()): string {
   if (typeof DOMParser === 'undefined') return html
   const absoluteDocUrl = resolveAbsoluteUrl(docUrl)
@@ -64,6 +109,7 @@ export function absolutizeDocAssetUrls(html: string, docUrl = resolveAbsoluteOct
   const doc = new DOMParser().parseFromString(html, 'text/html')
   doc.querySelectorAll('img[src]').forEach((el) => absolutizeAssetAttr(el, 'src', absoluteDocUrl, basePrefix))
   doc.querySelectorAll('link[href]').forEach((el) => absolutizeAssetAttr(el, 'href', absoluteDocUrl, basePrefix))
+  rewriteInPageFragmentHrefs(doc, absoluteDocUrl)
   neutralizeEditableControls(doc)
   const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>` : ''
   return `${doctype}${doc.documentElement.outerHTML}`

@@ -14,6 +14,8 @@
  *   - USE_SANITY       — 是否装 sanity helper (默认 true, 无 sanity 关掉)
  *   - FMT_CMD          — 生成后自动 fmt 命令 (默认 null, 项目要用 prettier 之类改这里)
  *
+ * **Browser context boundary**: `page.evaluate` 回调只使用浏览器全局变量和显式传入参数;
+ * spec/handler 的 Node 模块变量必须通过 evaluate 第二参数传入, 不要依赖闭包.
  * **不追加 index.ts**: case-specific handler 由 test.spec.ts 显式
  * `registerXxx(page)` 调 (骨架已经 import + register), 避免污染 baseline
  * (曾在 octo-web-2 上把 case-specific static handler 全局注册, 覆盖了
@@ -54,13 +56,13 @@ import { spawnSync } from "node:child_process";
 
 // ---------- config (接入方按需改) ----------
 //
-// **默认值对齐 kit v0.4 sync 产物的扁平布局**:
+// **octo-web 当前布局**:
 //   e2e-kit/fixtures-authed.ts        (template 落根)
 //   e2e-kit/_kit/mock-im-runtime/     (overwrite 落 _kit/)
 //   e2e-kit/_lib/sanity.ts            (overwrite 落 _lib/)
 //   e2e-kit/msw-handlers/             (hands_off 目录, kit 首次落 README 占位)
 //
-// 若接入方项目采用其他布局 (例如 e2e-research 的 shared/), 改下面常量即可.
+// 其他接入方可按自身布局修改下面常量.
 
 const REPO_ROOT = process.cwd();
 const CASE_SPECS_DIR = resolve(REPO_ROOT, "e2e-kit/case-specs");
@@ -274,21 +276,22 @@ const testTemplate = `/* eslint-disable no-undef -- e2e code runs in Node */
  * ${caseId}: **待补** 一句话主线 + 反例守护点.
  */
 import { test, expect } from "${sharedRoot}${FIXTURES_IMPORT_PATH}";
-${withHttpMock ? `import { ${registerFnName} } from "${sharedRoot}${HANDLERS_IMPORT_ROOT}/${caseId.toLowerCase()}-${slug}";\n` : ""}${withImSeed ? `import { installMockImRuntime } from "${sharedRoot}${MOCK_IM_IMPORT_PATH}";\n` : ""}${USE_SANITY ? `import { startRequestMonitor, sanityCheck } from "${sharedRoot}${SANITY_IMPORT_PATH}";\n` : ""}
-${USE_SANITY ? `
-const sanityConfig = {
+${withHttpMock ? `import { ${registerFnName} } from "${sharedRoot}${HANDLERS_IMPORT_ROOT}/${caseId.toLowerCase()}-${slug}";\n` : ""}${withImSeed ? `import { installMockImRuntime } from "${sharedRoot}${MOCK_IM_IMPORT_PATH}";\n` : ""}${USE_SANITY ? `import { startRequestMonitor, sanityCheck, type SanityConfig } from "${sharedRoot}${SANITY_IMPORT_PATH}";\n` : ""}
+${USE_SANITY ? `const sanityConfig: SanityConfig = {
   realHosts: ["127.0.0.1:9", "mock.e2e.local"],
   apiPrefixRe: /^\\/(api|summary\\/api)(\\/|$)/,
   loginPathRe: /\\/login(\\?|$)/,
 };
 ` : ""}
+
 test.describe("${tags} ${caseId} — **待补** case 描述", () => {
   test("**待补** 一句话操作 + 预期", async ({ authedPage }) => {
     // scaffolder 骨架 fixme 保护: 作者填完真实操作 + 断言后删掉这行.
     // 若忘删, batch 跑 (--grep @p0 等) 会 skip 而不是假绿.
     test.fixme(true, "scaffolder 骨架, 待作者补真实操作步骤 + UI 断言");
 
-${USE_SANITY ? `    const ctx = startRequestMonitor(authedPage, sanityConfig);\n` : ""}${withHttpMock ? `\n    await ${registerFnName}(authedPage);\n` : ""}${withImSeed ? `
+${USE_SANITY ? `    const ctx = startRequestMonitor(authedPage, sanityConfig);
+` : ""}${withHttpMock ? `\n    await ${registerFnName}(authedPage);\n` : ""}${withImSeed ? `
     await installMockImRuntime(authedPage, {
       currentUid: "e2e-user-1",
       spaceId: "e2e-space-001",
@@ -324,36 +327,41 @@ import type { Page } from "@playwright/test";
  */
 
 export async function ${registerFnName}(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    type MSW = {
-      worker: { use: (...h: unknown[]) => void };
-      http: {
-        get: (path: string, resolver: (info: any) => unknown) => unknown;
-        post: (path: string, resolver: (info: any) => unknown) => unknown;
+  // Browser context boundary: only explicit data and window globals cross evaluate.
+  await page.evaluate(
+    () => {
+      // 这里只使用显式传入参数和浏览器全局变量, 不引用 Node 模块变量.
+      const msw = (window as unknown as {
+        __msw?: {
+          worker: { use: (...h: unknown[]) => void };
+          http: {
+            get: (path: string, resolver: (info: any) => unknown) => unknown;
+            post: (path: string, resolver: (info: any) => unknown) => unknown;
+          };
+          HttpResponse: { json: (body: unknown, init?: unknown) => unknown };
+        };
+      }).__msw;
+      if (!msw) {
+        throw new Error("[${caseId}] MSW worker 未就绪 (等 __MSW_READY__).");
+      }
+      const { worker: w, http, HttpResponse } = msw;
+
+      // module-scope state 每 install 重置, 避免 --repeat-each=3 相互泄漏.
+      (window as unknown as { ${stateKey}: { calls: number } }).${stateKey} = {
+        calls: 0,
       };
-      HttpResponse: { json: (body: unknown, init?: unknown) => unknown };
-    };
-    const msw = (window as unknown as { __msw?: MSW }).__msw;
-    if (!msw) {
-      throw new Error("[${caseId}] MSW worker 未就绪 (等 __MSW_READY__).");
+
+      w.use(
+        // **待补** 本 case 的 endpoint handler
+        // http.post("*​/v1/matter/xxx", async (info: any) => {
+        //   const state = (window as unknown as { ${stateKey}: { calls: number } }).${stateKey};
+        //   state.calls += 1;
+        //   const body = await info.request.json();
+        //   return HttpResponse.json({ code: 0, message: "ok", data: {} });
+        // }),
+      );
     }
-    const { worker, http, HttpResponse } = msw;
-
-    // module-scope state 每 install 重置, 避免 --repeat-each=3 相互泄漏.
-    (window as unknown as { ${stateKey}: { calls: number } }).${stateKey} = {
-      calls: 0,
-    };
-
-    worker.use(
-      // **待补** 本 case 的 endpoint handler
-      // http.post("*​/v1/matter/xxx", async (info: any) => {
-      //   const state = (window as unknown as { ${stateKey}: { calls: number } }).${stateKey};
-      //   state.calls += 1;
-      //   const body = await info.request.json();
-      //   return HttpResponse.json({ code: 0, message: "ok", data: {} });
-      // }),
-    );
-  });
+  );
 }
 `;
 
