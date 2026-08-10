@@ -550,26 +550,23 @@ function onDeepLink(url: string) {
 app.setName(OCTO_CONFIG.name);
 
 // One-time userData migration from the legacy DMWork profile (see
-// userDataMigration.ts for the full design). It runs BEFORE the single-instance
-// lock: the staging dir itself is the cross-launch mutex (atomic mkdir, EEXIST
-// = another launch is mid-migration), so we never have to delete a lock we
-// hold, and both the defer-legacy and the failure fallback set the userData
-// path before requestSingleInstanceLock() — the fallback session's lock is
-// created in the legacy dir it writes, never desynchronized (F2/F4).
+// userDataMigration.ts for the full design). The single-instance lock is the
+// cross-launch mutex, keyed off the userData path on every platform: point
+// userData at the legacy dir BEFORE requestSingleInstanceLock(), so
+//   - a running legacy DMWork instance already holds that lock -> this launch
+//     fails the lock and quits (the legacy-instance guard, no hand-written
+//     probe needed, works on Windows too);
+//   - a concurrent launch during the migration hits the same held lock and
+//     quits — exactly one process is ever the migrator, no second window can
+//     appear mid-copy (round-2 P0-1 closed).
+// On success we relaunch so the next process takes the OCTO lock; on
+// deferral/failure this session keeps the legacy path and retries next launch.
 // This supersedes the temporary setPath('userData', <appData>/DMWork) fallback
-// that #1258 carries until this PR lands: the migration now owns the path
-// decision (OCTO after a successful migration, legacy on deferral/failure).
-executeUserDataMigration(
-  planUserDataMigration(app.getPath("appData"), OCTO_CONFIG.name),
-  {
-    setUserDataDir: (dir) => app.setPath("userData", dir),
-    log: {
-      info: (msg) => console.log(msg),
-      warn: (msg) => console.warn(msg),
-      error: (msg, err) => console.error(msg, err),
-    },
-  }
-);
+// that #1258 carries until this PR lands.
+const userDataPlan = planUserDataMigration(app.getPath("appData"), OCTO_CONFIG.name);
+if (userDataPlan.action !== "none") {
+  app.setPath("userData", userDataPlan.oldDir);
+}
 
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
@@ -581,8 +578,38 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  // The migration itself already ran before the lock (staging-dir mutex);
-  // only a lock holder reaches this point, so window/show behavior is safe.
+  // The migration runs under the single-instance lock we just took on the
+  // legacy path. Exactly one writer, and no other process can be using the
+  // legacy profile (its lock is ours).
+  if (userDataPlan.action === "migrate") {
+    try {
+      const migrationResult = executeUserDataMigration(userDataPlan, {
+        log: {
+          info: (msg) => console.log(msg),
+          warn: (msg) => console.warn(msg),
+          error: (msg, err) => console.error(msg, err),
+        },
+      });
+      if (migrationResult === "done") {
+        // Success: restart so the next process takes the <appData>/OCTO lock
+        // and runs on the migrated profile. This process's lock is on the
+        // legacy path (set before requestSingleInstanceLock above) and is
+        // released on exit; the relaunched process plans "none" (marker
+        // present) and locks OCTO normally.
+        app.relaunch();
+        app.exit(0);
+      }
+      // "deferred"/"failed": keep the legacy profile this session (userData
+      // was already pointed at DMWork before the lock) and retry next launch.
+    } catch (err) {
+      // Defensive backstop (round-2 P0-2): the migration must never take the
+      // app down — fall back to the legacy profile and continue.
+      console.error(
+        "[userData] unexpected migration error; continuing on the legacy profile:",
+        err
+      );
+    }
+  }
   app.on("second-instance", (event, argv) => {
     if (mainWindow) {
       mainWindow.show();

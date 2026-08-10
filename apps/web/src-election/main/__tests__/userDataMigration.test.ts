@@ -4,28 +4,12 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   MIGRATION_MARKER,
-  STAGING_OWNER_FILE,
   executeUserDataMigration,
-  isLegacyProcessRunningOutput,
   planUserDataMigration,
   type MigrationRuntime,
 } from "../userDataMigration";
 
 const BRAND = "OCTO";
-// A pid that is guaranteed not to exist on this machine (any process.kill
-// against it must throw ESRCH), for stale-lock fixtures.
-const DEAD_PID = 2_147_483_647;
-
-// isLegacyInstanceRunning branches on process.platform; the test host is
-// Windows, so POSIX-lock fixtures need the platform forced to linux.
-function withPlatform(platform: string, fn: () => void): void {
-  const spy = vi.spyOn(process, "platform", "get").mockReturnValue(platform as NodeJS.Platform);
-  try {
-    fn();
-  } finally {
-    spy.mockRestore();
-  }
-}
 
 describe("planUserDataMigration", () => {
   let appDataDir: string;
@@ -80,124 +64,50 @@ describe("planUserDataMigration", () => {
     const newDir = path.join(appDataDir, BRAND);
     fs.mkdirSync(newDir, { recursive: true });
     fs.writeFileSync(path.join(newDir, "Preferences"), '{"account":"someone-else"}');
-    // First decision: keep both profiles.
-    expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
-    // Re-running must NOT flip back to migrate: the decision is idempotent,
-    // no per-launch re-decision loop.
-    expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
+      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
+      // The skip is surfaced loudly (P2-1).
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("keeping both profiles"));
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
-  it("defers when a live legacy SingletonLock symlink exists (F1: POSIX dangling symlink, pid alive)", () => {
+  it("never throws: a plan-time I/O failure degrades to legacy, not an exception (P0-2)", () => {
     makeLegacyProfile(appDataDir);
-    // Chromium's POSIX SingletonLock is a symlink to a non-existent target
-    // "<hostname>-<pid>"; existsSync follows links and would never see it.
-    const lstatSpy = vi
-      .spyOn(fs, "lstatSync")
-      .mockReturnValue({ isSymbolicLink: () => true } as fs.Stats);
-    const readlinkSpy = vi
-      .spyOn(fs, "readlinkSync")
-      .mockReturnValue(`${os.hostname()}-${process.pid}`);
-    withPlatform("linux", () => {
-      try {
-        expect(planUserDataMigration(appDataDir, BRAND).action).toBe("defer-legacy");
-      } finally {
-        lstatSpy.mockRestore();
-        readlinkSpy.mockRestore();
-      }
+    // Make the destination inspection reachable (plan reads <newDir> only
+    // when it exists), then force that read to fail (e.g. unreadable dir).
+    const newDir = path.join(appDataDir, BRAND);
+    fs.mkdirSync(newDir, { recursive: true });
+    const readdirSpy = vi.spyOn(fs, "readdirSync").mockImplementationOnce(() => {
+      const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+      err.code = "EACCES";
+      throw err;
     });
-  });
-
-  it("does NOT defer for a stale lock with a dead pid (F1)", () => {
-    makeLegacyProfile(appDataDir);
-    const lstatSpy = vi
-      .spyOn(fs, "lstatSync")
-      .mockReturnValue({ isSymbolicLink: () => true } as fs.Stats);
-    const readlinkSpy = vi
-      .spyOn(fs, "readlinkSync")
-      .mockReturnValue(`${os.hostname()}-${DEAD_PID}`);
-    withPlatform("linux", () => {
-      try {
-        expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
-      } finally {
-        lstatSpy.mockRestore();
-        readlinkSpy.mockRestore();
-      }
-    });
-  });
-
-  it("does NOT defer for a lock from a foreign hostname (F1)", () => {
-    makeLegacyProfile(appDataDir);
-    const lstatSpy = vi
-      .spyOn(fs, "lstatSync")
-      .mockReturnValue({ isSymbolicLink: () => true } as fs.Stats);
-    const readlinkSpy = vi
-      .spyOn(fs, "readlinkSync")
-      .mockReturnValue(`other-host-${process.pid}`);
-    withPlatform("linux", () => {
-      try {
-        expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
-      } finally {
-        lstatSpy.mockRestore();
-        readlinkSpy.mockRestore();
-      }
-    });
-  });
-
-  it("does NOT defer for an unparseable lock file (F1: never trap users on garbage)", () => {
-    const profile = makeLegacyProfile(appDataDir);
-    fs.writeFileSync(path.join(profile, "SingletonLock"), "not-a-hostname-pid");
-    withPlatform("linux", () => {
-      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
-    });
-  });
-
-  it("defers for a plain-file lock with a live pid (F1 fallback parse)", () => {
-    const profile = makeLegacyProfile(appDataDir);
-    fs.writeFileSync(path.join(profile, "SingletonLock"), `${os.hostname()}-${process.pid}`);
-    withPlatform("linux", () => {
-      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("defer-legacy");
-    });
-  });
-
-  it("parses tasklist output: running DMWork.exe defers, no match does not (Windows probe)", () => {
-    expect(
-      isLegacyProcessRunningOutput("DMWork.exe                     1234 Console                    1     45,678 K")
-    ).toBe(true);
-    expect(
-      isLegacyProcessRunningOutput("INFO: No tasks are running which match the specified criteria.")
-    ).toBe(false);
-    expect(isLegacyProcessRunningOutput("")).toBe(false);
-  });
-
-  it("defers on Windows when a legacy DMWork process is running (tasklist probe, no SingletonLock file there)", () => {
-    makeLegacyProfile(appDataDir);
-    withPlatform("win32", () => {
-      // The real tasklist on this machine has no DMWork.exe; the probe's
-      // decision logic is covered by isLegacyProcessRunningOutput above.
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
       const plan = planUserDataMigration(appDataDir, BRAND);
-      expect(["migrate", "defer-legacy"]).toContain(plan.action);
-    });
-  });
-
-  it("migrates on Windows when no legacy process is running", () => {
-    makeLegacyProfile(appDataDir);
-    withPlatform("win32", () => {
-      // Runs the real tasklist probe: no DMWork.exe on this machine / CI.
-      expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
-    });
+      expect(plan.action).toBe("legacy");
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.stringContaining("planUserDataMigration failed"),
+        expect.anything()
+      );
+    } finally {
+      readdirSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
   });
 });
 
 describe("executeUserDataMigration", () => {
   let appDataDir: string;
-  let setUserDataDir: ReturnType<typeof vi.fn<(dir: string) => void>>;
   let runtime: MigrationRuntime;
 
   beforeEach(() => {
     appDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-mig-exec-"));
-    setUserDataDir = vi.fn<(dir: string) => void>();
     runtime = {
-      setUserDataDir,
       log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     };
   });
@@ -217,13 +127,19 @@ describe("executeUserDataMigration", () => {
     fs.writeFileSync(path.join(profile, "IndexedDB"), "indexed-db-content");
     // A stale legacy instance's singleton artifacts must never leak into the
     // new profile (F3).
-    fs.writeFileSync(path.join(profile, "SingletonLock"), `${os.hostname()}-${DEAD_PID}`);
+    fs.writeFileSync(path.join(profile, "SingletonLock"), "hostname-pid");
     fs.writeFileSync(path.join(profile, "SingletonCookie"), "cookie");
     fs.writeFileSync(path.join(profile, "SingletonSocket"), "socket");
+    // Nested dirs whose names collide with the top-level skip sets must NOT
+    // be pruned (P2-3: the filter is anchored to top-level entries).
+    fs.mkdirSync(path.join(profile, "Partitions", "persist_octo", "Cache"), { recursive: true });
+    fs.writeFileSync(path.join(profile, "Partitions", "persist_octo", "Cache", "nested-cache"), "keep");
+    fs.mkdirSync(path.join(profile, "Sync Data", "Cache"), { recursive: true });
+    fs.writeFileSync(path.join(profile, "Sync Data", "Cache", "keep-me"), "keep");
     return profile;
   };
 
-  it("(a) migrates atomically via staging, keeps the source, writes the marker, leaks no Singleton artifacts (F3)", () => {
+  it("(a) migrates atomically via staging, keeps the source, writes the marker, leaks no Singleton artifacts (F3), prunes only top-level caches (P2-3)", () => {
     makeLegacyProfile();
     const plan = planUserDataMigration(appDataDir, BRAND);
     expect(plan.action).toBe("migrate");
@@ -231,7 +147,6 @@ describe("executeUserDataMigration", () => {
     const result = executeUserDataMigration(plan, runtime);
 
     expect(result).toBe("done");
-    expect(setUserDataDir).not.toHaveBeenCalled();
     const newDir = path.join(appDataDir, BRAND);
     expect(fs.existsSync(path.join(newDir, "Preferences"))).toBe(true);
     expect(fs.readFileSync(path.join(newDir, "Preferences"), "utf8")).toBe('{"account":"user"}');
@@ -241,11 +156,12 @@ describe("executeUserDataMigration", () => {
     expect(fs.existsSync(path.join(newDir, "SingletonLock"))).toBe(false);
     expect(fs.existsSync(path.join(newDir, "SingletonCookie"))).toBe(false);
     expect(fs.existsSync(path.join(newDir, "SingletonSocket"))).toBe(false);
-    // Migration-internal owner metadata is not published.
-    expect(fs.existsSync(path.join(newDir, STAGING_OWNER_FILE))).toBe(false);
-    // Regenerable caches skipped.
+    // Top-level regenerable caches skipped.
     expect(fs.existsSync(path.join(newDir, "Cache"))).toBe(false);
-    // No staging residue (owner file included).
+    // P2-3: nested dirs named like caches are preserved.
+    expect(fs.existsSync(path.join(newDir, "Partitions", "persist_octo", "Cache", "nested-cache"))).toBe(true);
+    expect(fs.existsSync(path.join(newDir, "Sync Data", "Cache", "keep-me"))).toBe(true);
+    // No staging residue.
     expect(fs.existsSync(path.join(appDataDir, `${BRAND}.migrating`))).toBe(false);
     // Source kept (rollback safety / retryability).
     expect(fs.existsSync(path.join(appDataDir, "DMWork", "Preferences"))).toBe(true);
@@ -253,7 +169,7 @@ describe("executeUserDataMigration", () => {
     expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
   });
 
-  it("(b) falls back to the legacy profile when the rename fails, then succeeds on retry", () => {
+  it("(b) fails and keeps the legacy profile when the rename fails, then succeeds on retry", () => {
     makeLegacyProfile();
     const plan = planUserDataMigration(appDataDir, BRAND);
 
@@ -267,7 +183,10 @@ describe("executeUserDataMigration", () => {
     renameSpy.mockRestore();
 
     expect(first).toBe("failed");
-    expect(setUserDataDir).toHaveBeenCalledWith(path.join(appDataDir, "DMWork"));
+    expect(runtime.log.error).toHaveBeenCalledWith(
+      expect.stringContaining("migration failed"),
+      expect.anything()
+    );
     expect(fs.existsSync(path.join(appDataDir, `${BRAND}.migrating`))).toBe(false);
     expect(fs.existsSync(path.join(appDataDir, "DMWork", "Preferences"))).toBe(true);
 
@@ -279,144 +198,20 @@ describe("executeUserDataMigration", () => {
     expect(fs.existsSync(path.join(appDataDir, BRAND, "Preferences"))).toBe(true);
   });
 
-  it("(c) defer-legacy is reachable through execute and emits the user-actionable message (F7)", () => {
+  it("clears a stale staging dir from an interrupted previous attempt and retries", () => {
     makeLegacyProfile();
-    const lstatSpy = vi
-      .spyOn(fs, "lstatSync")
-      .mockReturnValue({ isSymbolicLink: () => true } as fs.Stats);
-    const readlinkSpy = vi
-      .spyOn(fs, "readlinkSync")
-      .mockReturnValue(`${os.hostname()}-${process.pid}`);
-    let plan;
-    withPlatform("linux", () => {
-      try {
-        plan = planUserDataMigration(appDataDir, BRAND);
-      } finally {
-        lstatSpy.mockRestore();
-        readlinkSpy.mockRestore();
-      }
-    });
-    expect(plan.action).toBe("defer-legacy");
+    const stale = path.join(appDataDir, `${BRAND}.migrating`);
+    fs.mkdirSync(path.join(stale, "Local Storage", "leveldb"), { recursive: true });
+    fs.writeFileSync(path.join(stale, "Local Storage", "leveldb", "CURRENT"), "partial");
 
-    const result = executeUserDataMigration(plan, runtime);
-
-    expect(result).toBe("deferred");
-    expect(setUserDataDir).toHaveBeenCalledWith(path.join(appDataDir, "DMWork"));
-    expect(runtime.log.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Quit the old app and relaunch to migrate")
-    );
-    // Nothing was copied.
-    expect(fs.existsSync(path.join(appDataDir, BRAND))).toBe(false);
-    expect(fs.existsSync(path.join(appDataDir, `${BRAND}.migrating`))).toBe(false);
-  });
-
-  it("defers when another launch is mid-migration (live staging owner, F2) and leaves its staging alone", () => {
-    makeLegacyProfile();
     const plan = planUserDataMigration(appDataDir, BRAND);
     expect(plan.action).toBe("migrate");
-
-    // Simulate a concurrent launch that claimed the staging mutex first.
-    fs.mkdirSync(plan.stagingDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(plan.stagingDir, STAGING_OWNER_FILE),
-      JSON.stringify({ hostname: os.hostname(), pid: process.pid, startedAt: "x" })
-    );
-
-    const result = executeUserDataMigration(plan, runtime);
-
-    expect(result).toBe("deferred");
-    expect(setUserDataDir).toHaveBeenCalledWith(path.join(appDataDir, "DMWork"));
-    // The concurrent migration's staging dir is untouched.
-    expect(fs.existsSync(path.join(plan.stagingDir, STAGING_OWNER_FILE))).toBe(true);
-    // Nothing copied to the destination.
-    expect(fs.existsSync(path.join(appDataDir, BRAND, "Preferences"))).toBe(false);
-  });
-
-  it("claims an ownerless staging dir atomically — no stale misjudgment mid-claim (F2 race)", () => {
-    makeLegacyProfile();
-    const plan = planUserDataMigration(appDataDir, BRAND);
-    // Process A mkdir'd the staging dir but was preempted before writing its
-    // owner file. Process B must NOT treat this as stale (deleting A's live
-    // dir); it claims by writing the owner file exclusively and proceeds.
-    fs.mkdirSync(plan.stagingDir, { recursive: true });
-
     const result = executeUserDataMigration(plan, runtime);
 
     expect(result).toBe("done");
     expect(fs.existsSync(path.join(appDataDir, BRAND, MIGRATION_MARKER))).toBe(true);
     expect(fs.existsSync(path.join(appDataDir, BRAND, "Preferences"))).toBe(true);
-    expect(fs.existsSync(plan.stagingDir)).toBe(false);
-  });
-
-  it("falls back to the legacy profile when claiming the staging mutex itself fails (e.g. EACCES)", () => {
-    makeLegacyProfile();
-    const plan = planUserDataMigration(appDataDir, BRAND);
-    const mkdirSpy = vi.spyOn(fs, "mkdirSync").mockImplementationOnce(() => {
-      const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
-      err.code = "EACCES";
-      throw err;
-    });
-
-    const result = executeUserDataMigration(plan, runtime);
-    mkdirSpy.mockRestore();
-
-    expect(result).toBe("failed");
-    expect(setUserDataDir).toHaveBeenCalledWith(path.join(appDataDir, "DMWork"));
-    expect(fs.existsSync(path.join(appDataDir, BRAND))).toBe(false);
-  });
-
-  it("claims and retries a stale staging dir whose owner pid is dead (F2)", () => {
-    makeLegacyProfile();
-    const plan = planUserDataMigration(appDataDir, BRAND);
-
-    fs.mkdirSync(plan.stagingDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(plan.stagingDir, STAGING_OWNER_FILE),
-      JSON.stringify({ hostname: os.hostname(), pid: DEAD_PID, startedAt: "x" })
-    );
-
-    const result = executeUserDataMigration(plan, runtime);
-
-    expect(result).toBe("done");
-    expect(fs.existsSync(path.join(appDataDir, BRAND, MIGRATION_MARKER))).toBe(true);
-    expect(fs.existsSync(path.join(appDataDir, BRAND, "Preferences"))).toBe(true);
-    expect(fs.existsSync(plan.stagingDir)).toBe(false);
-  });
-
-  it("claims a stale staging dir with no owner file (pre-upgrade crash residue, F2)", () => {
-    makeLegacyProfile();
-    const plan = planUserDataMigration(appDataDir, BRAND);
-
-    fs.mkdirSync(path.join(plan.stagingDir, "Local Storage", "leveldb"), { recursive: true });
-    fs.writeFileSync(path.join(plan.stagingDir, "Local Storage", "leveldb", "CURRENT"), "partial");
-
-    const result = executeUserDataMigration(plan, runtime);
-
-    expect(result).toBe("done");
-    expect(fs.existsSync(path.join(appDataDir, BRAND, MIGRATION_MARKER))).toBe(true);
-    expect(fs.existsSync(path.join(appDataDir, BRAND, "Preferences"))).toBe(true);
-  });
-
-  it("a marker-write failure fails the migration BEFORE the rename publishes anything (F5)", () => {
-    makeLegacyProfile();
-    const plan = planUserDataMigration(appDataDir, BRAND);
-    const originalWriteFileSync = fs.writeFileSync.bind(fs);
-    const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(((p: fs.PathOrFileDescriptor, ...args: unknown[]) => {
-      if (String(p).endsWith(MIGRATION_MARKER)) {
-        throw new Error("ENOSPC: simulated marker write failure");
-      }
-      return (originalWriteFileSync as (p: fs.PathOrFileDescriptor, ...a: unknown[]) => unknown)(p, ...args);
-    }) as never);
-
-    const result = executeUserDataMigration(plan, runtime);
-    writeSpy.mockRestore();
-
-    expect(result).toBe("failed");
-    expect(setUserDataDir).toHaveBeenCalledWith(path.join(appDataDir, "DMWork"));
-    // The rename never ran, so a markerless destination can never exist:
-    // profile+marker publish as one atomic step.
-    expect(fs.existsSync(path.join(appDataDir, BRAND))).toBe(false);
-    expect(fs.existsSync(plan.stagingDir)).toBe(false);
+    expect(fs.existsSync(stale)).toBe(false);
   });
 
   it("clears a destination that contains only lock files before the rename lands", () => {
@@ -437,20 +232,65 @@ describe("executeUserDataMigration", () => {
     expect(fs.existsSync(path.join(newDir, "SingletonLock"))).toBe(false);
   });
 
-  it("does not clobber a destination with non-lock data (plan already returned none, F6)", () => {
+  it("re-asserts the lock-only invariant before deleting the destination (P2-6)", () => {
     makeLegacyProfile();
     const newDir = path.join(appDataDir, BRAND);
     fs.mkdirSync(newDir, { recursive: true });
     fs.writeFileSync(path.join(newDir, "Preferences"), '{"account":"someone-else"}');
 
+    // plan() would return "none" for this state; drive execute() directly to
+    // prove the re-check protects against the plan→execute gap.
     const plan = planUserDataMigration(appDataDir, BRAND);
-    expect(plan.action).toBe("none");
+    plan.action = "migrate";
     const result = executeUserDataMigration(plan, runtime);
 
     expect(result).toBe("done");
+    expect(runtime.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("gained non-lock data")
+    );
     expect(fs.readFileSync(path.join(newDir, "Preferences"), "utf8")).toBe('{"account":"someone-else"}');
-    expect(fs.existsSync(path.join(appDataDir, "DMWork", "Preferences"))).toBe(true);
     expect(fs.existsSync(path.join(newDir, MIGRATION_MARKER))).toBe(false);
+  });
+
+  it("a marker-write failure fails the migration BEFORE the rename publishes anything (F5)", () => {
+    makeLegacyProfile();
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    const originalWriteFileSync = fs.writeFileSync.bind(fs);
+    const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(((p: fs.PathOrFileDescriptor, ...args: unknown[]) => {
+      if (String(p).endsWith(MIGRATION_MARKER)) {
+        throw new Error("ENOSPC: simulated marker write failure");
+      }
+      return (originalWriteFileSync as (p: fs.PathOrFileDescriptor, ...a: unknown[]) => unknown)(p, ...args);
+    }) as never);
+
+    const result = executeUserDataMigration(plan, runtime);
+    writeSpy.mockRestore();
+
+    expect(result).toBe("failed");
+    expect(runtime.log.error).toHaveBeenCalled();
+    // The rename never ran, so a markerless destination can never exist.
+    expect(fs.existsSync(path.join(appDataDir, BRAND))).toBe(false);
+    expect(fs.existsSync(plan.stagingDir)).toBe(false);
+  });
+
+  it("never throws: an execution-phase I/O failure degrades to failed, not an exception (P0-2)", () => {
+    makeLegacyProfile();
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    const mkdirSpy = vi.spyOn(fs, "mkdirSync").mockImplementationOnce(() => {
+      const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
+      err.code = "EACCES";
+      throw err;
+    });
+
+    const result = executeUserDataMigration(plan, runtime);
+    mkdirSpy.mockRestore();
+
+    expect(result).toBe("failed");
+    expect(runtime.log.error).toHaveBeenCalledWith(
+      expect.stringContaining("migration failed"),
+      expect.anything()
+    );
+    expect(fs.existsSync(path.join(appDataDir, BRAND))).toBe(false);
   });
 
   it("no-op for a none plan (no side effects)", () => {
@@ -458,6 +298,15 @@ describe("executeUserDataMigration", () => {
     expect(plan.action).toBe("none");
     const result = executeUserDataMigration(plan, runtime);
     expect(result).toBe("done");
-    expect(setUserDataDir).not.toHaveBeenCalled();
+    expect(runtime.log.info).not.toHaveBeenCalled();
+    expect(fs.existsSync(path.join(appDataDir, BRAND))).toBe(false);
+  });
+
+  it("legacy plan defers (caller already pointed userData at DMWork before the lock)", () => {
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    plan.action = "legacy";
+    const result = executeUserDataMigration(plan, runtime);
+    expect(result).toBe("deferred");
+    expect(runtime.log.warn).not.toHaveBeenCalled();
   });
 });

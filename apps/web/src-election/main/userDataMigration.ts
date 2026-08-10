@@ -1,7 +1,5 @@
 import fs from "fs";
-import os from "os";
 import path from "path";
-import { execFileSync } from "child_process";
 
 // ---------------------------------------------------------------------------
 // One-time userData migration from the legacy DMWork profile to OCTO.
@@ -11,57 +9,50 @@ import { execFileSync } from "child_process";
 // every existing user would silently start with a fresh empty profile (lost
 // session, localStorage, IndexedDB message stores, drafts).
 //
-// Design (each point maps to a review finding on PR #1265):
+// Design (round 3 — structural, per review P0-1/P1-1/P1-2/P2-2/P2-5/P2-11):
+// - Mutual exclusion comes from Electron's OWN single-instance lock, keyed
+//   off the userData path on every platform. index.ts points userData at the
+//   legacy dir BEFORE requestSingleInstanceLock(), so the lock is taken on
+//   the legacy path:
+//     * a running legacy DMWork instance already holds that lock  -> this
+//       launch's requestSingleInstanceLock() fails and it quits (the legacy
+//       guard, cross-platform, no hand-written probe needed);
+//     * a concurrent launch during the migration hits the same held lock and
+//       quits — exactly one process can ever be the migrator, and no second
+//       window can appear mid-copy (the old deferral race that discarded a
+//       user's session is gone).
+//   On success index.ts relaunches so the next process takes the OCTO lock.
 // - Staging copy + atomic rename: copy into <appData>/OCTO.migrating, then
 //   renameSync into place. renameSync is atomic, so <appData>/OCTO only ever
-//   appears as a COMPLETE profile — a torn LevelDB can never be mistaken for a
-//   finished one. DMWork is never mutated, so a failed attempt simply retries
-//   on the next launch and a release rollback keeps the legacy profile.
+//   appears as a COMPLETE profile. DMWork is never mutated, so a failed
+//   attempt simply retries on the next launch and a release rollback keeps
+//   the legacy profile.
 // - Completion marker: the sentinel is <appData>/OCTO/.migrated-from-dmwork,
-//   NOT the existence of <appData>/OCTO — startup itself (the single-instance
-//   lock, then Chromium) creates that directory, so destination-existence
-//   would latch a failed migration forever. The marker is written into the
-//   staging dir BEFORE the rename (F5), so profile+marker publish atomically
-//   and a post-rename marker failure can no longer strand a markerless
-//   destination.
-// - Cross-launch mutex (F2): the staging dir is the mutex, claimed atomically
-//   by exclusive-creating the owner file ({ flag: "wx" }) — whoever writes
-//   .migration-owner.json first is the migrator. A launcher that loses the
-//   claim either defers (owner pid alive) or reclaims (owner dead / crash
-//   residue). mkdir is only a directory bootstrap, never the claim itself, so
-//   a process preempted between mkdir and owner-write cannot be misjudged as
-//   stale. The migration runs BEFORE requestSingleInstanceLock() and never
-//   has to delete a lock it holds; the fallback also happens before the lock,
-//   so the fallback session's lock is created in the legacy dir it writes
-//   (F4) — no double writer anywhere.
-// - Legacy instance guard (F1): a running DMWork-branded process holds
-//   <appData>/DMWork/SingletonLock. On POSIX Chromium writes that file as a
-//   symlink to a deliberately non-existent target "<hostname>-<pid>", so
-//   existsSync (which follows links) can never see it; we lstat the link,
-//   parse the target, confirm the hostname and that the pid is alive, and
-//   only then defer. A stale lock (dead pid / foreign hostname / unparseable)
-//   is treated as not held so a crash can never permanently trap users. On
-//   Windows there is no SingletonLock file (ProcessSingleton uses named
-//   mutexes), so we probe running processes by the legacy image name
-//   (DMWork.exe) instead — deferring is required there, not best-effort,
-//   because Windows allows copying files that are open by another process.
-// - Fallback on failure: if the copy/rename fails, this session keeps using
-//   the legacy profile via setUserDataDir(oldDir) — the user keeps their data
-//   and the migration retries on the next launch (marker still absent).
-// - Destination with real data (F6/F10): if <appData>/OCTO already exists
-//   with non-lock content and no marker, plan() returns "none" — permanently
-//   (not a per-launch re-decision), both profiles are kept, and the skip is
-//   surfaced through the log. Correctness never depends on enumerating every
-//   future file Chromium might create early.
+//   NOT the existence of <appData>/OCTO. The marker is written into the
+//   staging dir BEFORE the rename (round-1 F5), so profile+marker publish
+//   atomically and a post-rename marker failure can no longer strand a
+//   markerless destination.
+// - Failure containment ("never throws", round-2 P0-2): every I/O statement
+//   in both plan() and execute() is inside a try/catch. No input state may
+//   make them throw — plan() degrades to "legacy" (this session keeps the
+//   DMWork path, retried next launch), execute() degrades to "failed" with
+//   the legacy profile, and index.ts adds a defensive try/catch backstop.
+// - Destination with real data (round-1 F6/F10): if <appData>/OCTO already
+//   exists with non-lock content and no marker, plan() returns "none"
+//   permanently (idempotent, no per-launch re-decision), both profiles are
+//   kept, and the skip is logged loudly. execute() re-asserts the lock-only
+//   invariant immediately before deleting the destination (round-2 P2-6).
+// - Copy filter is anchored to top-level entries only (round-2 P2-3): nested
+//   dirs named like caches (e.g. Partitions/*/Cache) are NOT pruned — only a
+//   top-level entry in SKIP_DIRS / ELECTRON_LOCK_FILES is skipped.
 // ---------------------------------------------------------------------------
 
 export const LEGACY_USER_DATA_DIR = "DMWork";
 export const MIGRATION_MARKER = ".migrated-from-dmwork";
-export const STAGING_OWNER_FILE = ".migration-owner.json";
 
-// Files Electron/Chromium's ProcessSingleton creates in userData. They are
-// never migrated (F3) and are the only entries a pre-existing destination is
-// allowed to contain for the migration to proceed (F2/F10).
+// Files Electron/Chromium's ProcessSingleton creates in userData. Never
+// migrated (round-1 F3) and the only entries a pre-existing destination is
+// allowed to contain for the migration to proceed (round-1 F2/F10).
 const ELECTRON_LOCK_FILES = new Set([
   "SingletonLock",
   "SingletonCookie",
@@ -69,7 +60,7 @@ const ELECTRON_LOCK_FILES = new Set([
   "lockfile",
 ]);
 
-// Regenerable Chromium caches, intentionally not migrated.
+// Regenerable Chromium caches, intentionally not migrated (top-level only).
 export const SKIP_DIRS = new Set([
   "Cache",
   "Code Cache",
@@ -83,7 +74,7 @@ export const SKIP_DIRS = new Set([
 ]);
 
 export type MigrationPlan = {
-  action: "migrate" | "defer-legacy" | "none";
+  action: "migrate" | "legacy" | "none";
   oldDir: string;
   newDir: string;
   stagingDir: string;
@@ -92,7 +83,6 @@ export type MigrationPlan = {
 export type MigrationResult = "done" | "deferred" | "failed";
 
 export type MigrationRuntime = {
-  setUserDataDir: (dir: string) => void;
   log: {
     info(msg: string): void;
     warn(msg: string): void;
@@ -100,104 +90,39 @@ export type MigrationRuntime = {
   };
 };
 
-// F1: detect a live legacy DMWork instance.
-// POSIX: SingletonLock is a symlink to "<hostname>-<pid>" whose target does
-// not exist, so lstat (no follow) is required. Windows: no SingletonLock file
-// (ProcessSingleton uses OS primitives) — instead probe running processes by
-// the legacy image name; a live legacy process keeps its profile files open
-// and copying it would produce a torn snapshot, so deferring is required, not
-// just best-effort.
-export function isLegacyInstanceRunning(oldDir: string): boolean {
-  if (process.platform === "win32") {
-    return isLegacyProcessRunning();
-  }
-  const lockPath = path.join(oldDir, "SingletonLock");
-  let raw: string;
-  try {
-    const st = fs.lstatSync(lockPath);
-    raw = st.isSymbolicLink()
-      ? fs.readlinkSync(lockPath)
-      : fs.readFileSync(lockPath, "utf8").trim();
-  } catch {
-    return false; // ENOENT or unreadable -> not running; never trap on a stale lock
-  }
-  const match = /^(.+)-(\d+)$/.exec(raw);
-  if (!match) return false; // unparseable -> treat as stale, do not defer forever
-  const [, hostname, pidStr] = match;
-  if (hostname !== os.hostname()) return false; // lock from another machine -> stale
-  const pid = Number(pidStr);
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0); // liveness probe, no signal
-    return true;
-  } catch (err) {
-    // EPERM: the pid exists but is owned by another user -> still running.
-    return (err as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
-// Windows: no SingletonLock file exists; Chromium's ProcessSingleton there
-// uses named mutexes. Probe the legacy executable by image name instead.
-// The pre-rebrand (DMWork) executable name is "DMWork.exe" (the post-rebrand
-// productName "OCTO" landed in #1258); tasklist returns non-zero when the
-// filter matches nothing, which we treat as "not running".
-export function isLegacyProcessRunningOutput(output: string): boolean {
-  return /DMWork\.exe/i.test(output);
-}
-
-function isLegacyProcessRunning(): boolean {
-  try {
-    const out = execFileSync("tasklist", ["/FI", "IMAGENAME eq DMWork.exe", "/NH"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    return isLegacyProcessRunningOutput(out);
-  } catch {
-    return false;
-  }
-}
-
 export function planUserDataMigration(appDataDir: string, brandName: string): MigrationPlan {
   const oldDir = path.join(appDataDir, LEGACY_USER_DATA_DIR);
   const newDir = path.join(appDataDir, brandName);
   const stagingDir = `${newDir}.migrating`;
-  if (!fs.existsSync(oldDir) || fs.existsSync(path.join(newDir, MIGRATION_MARKER))) {
-    return { action: "none", oldDir, newDir, stagingDir };
-  }
-  // F6/F10: a destination that already holds real data (no marker) wins.
-  // Deciding here — not in execute() — makes the decision idempotent across
-  // launches: plan() returns "none" forever, no per-launch re-decision loop.
-  if (fs.existsSync(newDir)) {
-    const nonLock = fs
-      .readdirSync(newDir)
-      .filter((name) => !ELECTRON_LOCK_FILES.has(name) && name !== MIGRATION_MARKER);
-    if (nonLock.length > 0) {
+  try {
+    if (!fs.existsSync(oldDir) || fs.existsSync(path.join(newDir, MIGRATION_MARKER))) {
       return { action: "none", oldDir, newDir, stagingDir };
     }
-  }
-  if (isLegacyInstanceRunning(oldDir)) {
-    return { action: "defer-legacy", oldDir, newDir, stagingDir };
-  }
-  return { action: "migrate", oldDir, newDir, stagingDir };
-}
-
-function isStagingOwnedByLiveProcess(stagingDir: string): boolean {
-  try {
-    const owner = JSON.parse(
-      fs.readFileSync(path.join(stagingDir, STAGING_OWNER_FILE), "utf8")
-    ) as { hostname?: unknown; pid?: unknown };
-    if (typeof owner.hostname !== "string" || typeof owner.pid !== "number") {
-      return false; // unparseable owner -> stale
+    // round-1 F6/F10: a destination that already holds real data (no marker)
+    // wins. Deciding here — not in execute() — makes the decision idempotent
+    // across launches: plan() returns "none" forever, no re-decision loop.
+    // The skip is surfaced loudly (round-2 P2-1).
+    if (fs.existsSync(newDir)) {
+      const nonLock = fs
+        .readdirSync(newDir)
+        .filter((name) => !ELECTRON_LOCK_FILES.has(name) && name !== MIGRATION_MARKER);
+      if (nonLock.length > 0) {
+        console.warn(
+          `[userData] ${newDir} already contains data but no migration marker; keeping both profiles and NOT migrating (legacy data stays in ${oldDir}).`
+        );
+        return { action: "none", oldDir, newDir, stagingDir };
+      }
     }
-    if (owner.hostname !== os.hostname()) return false; // from another machine
-    try {
-      process.kill(owner.pid, 0);
-      return true;
-    } catch (err) {
-      return (err as NodeJS.ErrnoException).code === "EPERM";
-    }
-  } catch {
-    return false; // no owner file (pre-upgrade crash residue) -> stale, claim it
+    return { action: "migrate", oldDir, newDir, stagingDir };
+  } catch (err) {
+    // round-2 P0-2: never throw out of plan(). Degrade to "legacy" — the
+    // caller points userData at DMWork for this session and retries next
+    // launch. Safer than guessing "none" (which would use an empty OCTO).
+    console.error(
+      `[userData] planUserDataMigration failed; using the legacy profile this session (will retry on next launch):`,
+      err
+    );
+    return { action: "legacy", oldDir, newDir, stagingDir };
   }
 }
 
@@ -205,113 +130,60 @@ export function executeUserDataMigration(
   plan: MigrationPlan,
   runtime: MigrationRuntime
 ): MigrationResult {
-  if (plan.action === "none") {
-    return "done";
-  }
-  if (plan.action === "defer-legacy") {
-    // F7: this branch is reachable because index.ts routes defer-legacy
-    // through executeUserDataMigration; the user-actionable message below is
-    // the only signal that a running legacy instance deferred the migration.
-    runtime.setUserDataDir(plan.oldDir);
-    runtime.log.warn(
-      `[userData] a legacy DMWork instance is still running (${path.join(
-        plan.oldDir,
-        "SingletonLock"
-      )} is held); using the legacy profile for this session. Quit the old app and relaunch to migrate.`
-    );
-    return "deferred";
+  if (plan.action !== "migrate") {
+    // "none": nothing to do. "legacy": the caller already pointed userData
+    // at the legacy dir before the single-instance lock; this session simply
+    // runs there and retries the migration next launch.
+    return plan.action === "legacy" ? "deferred" : "done";
   }
   // action === "migrate"
-  // F2: the staging dir is the cross-launch mutex. mkdir is not the claim —
-  // the OWNER FILE is, via atomic exclusive create ({ flag: "wx" }). This
-  // closes the owner-file race: a process that mkdir'd but was preempted
-  // before writing its owner loses the claim to whoever writes the owner
-  // file first; a process that sees EEXIST on the owner file either defers
-  // (live owner) or reclaims (dead owner / crash residue).
-  let claimed = false;
   try {
-    try {
-      fs.mkdirSync(plan.stagingDir);
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-    }
-    const ownerJson = JSON.stringify({
-      hostname: os.hostname(),
-      pid: process.pid,
-      startedAt: new Date().toISOString(),
-    });
-    try {
-      fs.writeFileSync(path.join(plan.stagingDir, STAGING_OWNER_FILE), ownerJson, { flag: "wx" });
-      claimed = true;
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") throw err;
-      if (isStagingOwnedByLiveProcess(plan.stagingDir)) {
+    // round-2 P2-6: re-assert the lock-only invariant immediately before
+    // deleting the destination — plan() may have run minutes ago (the copy
+    // below can be slow on multi-GB profiles).
+    if (fs.existsSync(plan.newDir)) {
+      const nonLock = fs
+        .readdirSync(plan.newDir)
+        .filter((name) => !ELECTRON_LOCK_FILES.has(name));
+      if (nonLock.length > 0) {
         runtime.log.warn(
-          `[userData] another launch is mid-migration (${plan.stagingDir}); using the legacy profile for this session.`
+          `[userData] ${plan.newDir} gained non-lock data since planning; not migrating (both profiles kept).`
         );
-        runtime.setUserDataDir(plan.oldDir);
-        return "deferred";
+        return "done";
       }
-      // Claimer is dead (crash / interrupted attempt): reclaim.
+      fs.rmSync(plan.newDir, { recursive: true, force: true });
+    }
+    // Crash residue from an interrupted previous attempt: with the
+    // single-instance lock as the mutex there is never a concurrent writer,
+    // so a leftover staging dir is always stale — clear it.
+    if (fs.existsSync(plan.stagingDir)) {
       fs.rmSync(plan.stagingDir, { recursive: true, force: true });
-      fs.mkdirSync(plan.stagingDir);
-      fs.writeFileSync(path.join(plan.stagingDir, STAGING_OWNER_FILE), ownerJson, { flag: "wx" });
-      claimed = true;
     }
-    // We hold the claim. Drop anything left in the dir by a crashed attempt
-    // (our owner file stays).
-    for (const entry of fs.readdirSync(plan.stagingDir)) {
-      if (entry !== STAGING_OWNER_FILE) {
-        fs.rmSync(path.join(plan.stagingDir, entry), { recursive: true, force: true });
-      }
-    }
-    // F3: never copy Chromium singleton artifacts or locks into the new profile.
+    fs.mkdirSync(plan.stagingDir);
+    // round-1 F3 + round-2 P2-3: never copy singleton artifacts / locks, and
+    // anchor the filter to top-level entries (nested dirs are left alone).
     fs.cpSync(plan.oldDir, plan.stagingDir, {
       recursive: true,
       filter: (src) => {
-        const name = path.basename(src);
-        return !SKIP_DIRS.has(name) && !ELECTRON_LOCK_FILES.has(name);
+        const rel = path.relative(plan.oldDir, src);
+        if (rel.includes(path.sep)) return true; // nested: never prune
+        return !SKIP_DIRS.has(rel) && !ELECTRON_LOCK_FILES.has(rel);
       },
     });
-    // F5: marker lands in staging BEFORE the rename, so profile+marker
-    // publish as one atomic step. A marker can no longer be missing after a
-    // successful rename (the old post-rename marker-failure window is gone).
+    // round-1 F5: marker lands in staging BEFORE the rename, so profile+marker
+    // publish as one atomic step. (No fsync: a marker is only ever written
+    // before the rename now, and claiming power-loss durability would require
+    // flushing the whole copied tree, which is out of scope — round-2 P2-4.)
     fs.writeFileSync(path.join(plan.stagingDir, MIGRATION_MARKER), new Date().toISOString());
-    // F8 (durability, best-effort): flush the marker before publishing.
-    try {
-      const fd = fs.openSync(path.join(plan.stagingDir, MIGRATION_MARKER), "a");
-      try {
-        fs.fsyncSync(fd);
-      } finally {
-        fs.closeSync(fd); // always close — a leaked handle blocks rename on Windows
-      }
-    } catch {
-      // best-effort; not all platforms support fsync on every fd type
-    }
-    // The owner file is migration-internal metadata; never publish it into
-    // the final profile.
-    fs.rmSync(path.join(plan.stagingDir, STAGING_OWNER_FILE));
-    // plan() already refused to migrate when newDir holds real data; if it
-    // exists here it contains only lock files (F2/F10), which at this point
-    // belong to no live process: we run before our own single-instance lock
-    // exists, and any concurrent launch that reached the lock already deferred
-    // (its lock lives in <oldDir>).
-    if (fs.existsSync(plan.newDir)) {
-      fs.rmSync(plan.newDir, { recursive: true, force: true });
-    }
     fs.renameSync(plan.stagingDir, plan.newDir);
     runtime.log.info(`[userData] migrated legacy DMWork profile to ${plan.newDir}`);
     return "done";
   } catch (err) {
-    // Only clean up a staging dir we actually claimed — never a live one.
-    if (claimed) {
-      try {
-        fs.rmSync(plan.stagingDir, { recursive: true, force: true });
-      } catch {
-        // best-effort cleanup; the next launch retries anyway
-      }
+    try {
+      fs.rmSync(plan.stagingDir, { recursive: true, force: true });
+    } catch {
+      // best-effort cleanup; the next launch retries anyway
     }
-    runtime.setUserDataDir(plan.oldDir);
     runtime.log.error(
       "[userData] DMWork -> OCTO migration failed; keeping the legacy profile for this session (will retry on next launch):",
       err
