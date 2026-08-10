@@ -499,6 +499,36 @@ export type MessageDeleteListener = (
   preMessage?: Message
 ) => void;
 
+/**
+ * Single predicate for "this document is a desktop shell". Callers that must
+ * treat desktop the same way — startup() setting `isPC`, LoginInfo.save()
+ * writing the device flag, and LoginInfo.load()'s forced-clean-login guard —
+ * must all see the same answer, otherwise a packaging edge case can flip
+ * one path and not the other and leave a slot-1 token reused under a
+ * slot-2 CONNECT (silent IM auth failure).
+ *
+ * Signals:
+ *  - `__POWERED_ELECTRON__` — preload-injected marker; primary source of truth.
+ *  - `__TAURI_IPC__` — same shape for the Tauri variant of the desktop shell.
+ *  - `file:` protocol — defensive backstop: if a packaging regression makes
+ *    preload throw before `contextBridge.exposeInMainWorld` runs, we still
+ *    detect the desktop shell. Web (http/https) never runs on file://, and
+ *    only the packaged desktop shell loads via file://.
+ */
+export function isDesktopRuntime(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as unknown as {
+    __POWERED_ELECTRON__?: unknown;
+    __TAURI_IPC__?: unknown;
+  };
+  if (w.__POWERED_ELECTRON__ || w.__TAURI_IPC__) return true;
+  try {
+    return window.location.protocol === "file:";
+  } catch {
+    return false;
+  }
+}
+
 export class LoginInfo {
   private static readonly DEVICE_FLAG_KEY = "im_device_flag";
   appID!: string;
@@ -555,7 +585,7 @@ export class LoginInfo {
     this.setStorageItemForSID("is_work", this.isWork ? "1" : "0");
     this.setStorageItemForSID("sex", this.sex === 1 ? "1" : "0");
     this.setStorageItemForSID("login_provider", this.loginProvider ?? "");
-    this.setStorageItemForSID(LoginInfo.DEVICE_FLAG_KEY, WKApp.shared.isPC ? "2" : "1");
+    this.setStorageItemForSID(LoginInfo.DEVICE_FLAG_KEY, isDesktopRuntime() ? "2" : "1");
     // 实名认证状态 — 严格 tri-state 持久化。
     //   undefined → 删除 key（区别于「明确未实名」）
     //   true      → "1"
@@ -636,8 +666,7 @@ export class LoginInfo {
     // minted in slot 1 and cannot be safely reused, so force one clean login
     // after this migration instead of silently losing the IM connection.
     const storedDeviceFlag = this.getStorageItemForSID(LoginInfo.DEVICE_FLAG_KEY);
-    const isDesktop = Boolean((window as any)?.__POWERED_ELECTRON__ || (window as any)?.__TAURI_IPC__);
-    if (isDesktop && this.token && storedDeviceFlag !== "2") {
+    if (isDesktopRuntime() && this.token && storedDeviceFlag !== "2") {
       this.logout();
       return;
     }
@@ -900,11 +929,12 @@ export default class WKApp extends ProviderListener {
     // runs, we still detect the desktop shell — otherwise isPC=false silently
     // routes OIDC login through the Web branch and produces `file:///v1/...`
     // URLs (white screen). Web (http/https) never runs on file://.
-    if (
-      (window as any)?.__POWERED_ELECTRON__ ||
-      (window as any).__TAURI_IPC__ ||
-      (typeof window !== "undefined" && window.location.protocol === "file:")
-    ) {
+    //
+    // All three "is desktop?" call sites (this startup(), LoginInfo.save(),
+    // LoginInfo.load()) route through `isDesktopRuntime()` so the answer is
+    // consistent — a mismatch here vs there is what previously left a slot-1
+    // token reused under a slot-2 CONNECT.
+    if (isDesktopRuntime()) {
       this.isPC = true;
     }
     WKApp.loginInfo.load(); // 加载登录信息

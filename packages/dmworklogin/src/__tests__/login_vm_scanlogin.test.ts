@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 
 // Stub @octo/base so LoginVM can be instantiated in jsdom without the real
 // WKApp / apiClient. Mirrors login_vm_oidc.test.ts — only the surface LoginVM
@@ -53,6 +53,14 @@ beforeEach(() => {
   apiPost.mockReset()
 })
 
+// The scan-login flag test toggles WKApp.shared.isPC. Reset in afterEach so a
+// failing assertion inside the it() block does not leak the mutation into
+// later tests in this file (previously the reset lived on the last line and
+// never ran on failure, turning one real failure into a confusing cascade).
+afterEach(() => {
+  ;(WKApp.shared as any).isPC = false
+})
+
 describe('scan-login poll credential', () => {
   it('sends the matching device flag when redeeming a QR login', async () => {
     const vm = newQRCodeVM()
@@ -61,8 +69,7 @@ describe('scan-login poll credential', () => {
 
     await vm.requestLogin('auth-code')
 
-    expect(apiPost).toHaveBeenCalledWith('user/login_authcode/auth-code', { flag: 2 })
-    ;(WKApp.shared as any).isPC = false
+    expect(apiPost).toHaveBeenCalledWith('user/login_authcode/auth-code?flag=2')
   })
 
   it('sends poll_secret on the status poll', async () => {

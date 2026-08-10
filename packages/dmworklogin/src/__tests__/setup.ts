@@ -6,6 +6,28 @@ if (typeof ResizeObserver === 'undefined') {
   }
 }
 
+// vitest 4.x + Node.js 22 native storage: `localStorage` is gated behind
+// `--localstorage-file`, so bare `localStorage` in production code (invite
+// codes, pending-bind marker) reads as undefined and every branch that
+// touches it throws instead of returning null. Provide a minimal in-memory
+// polyfill so tests exercise the real code path. sessionStorage is already
+// wired by jsdom.
+if (typeof (globalThis as unknown as { localStorage?: Storage }).localStorage === 'undefined') {
+  const store = new Map<string, string>()
+  const localStorage: Storage = {
+    get length() { return store.size },
+    key(i) { return Array.from(store.keys())[i] ?? null },
+    getItem(k) { return store.has(k) ? store.get(k)! : null },
+    setItem(k, v) { store.set(String(k), String(v)) },
+    removeItem(k) { store.delete(k) },
+    clear() { store.clear() },
+  }
+  Object.defineProperty(globalThis, 'localStorage', { value: localStorage, configurable: true })
+  if (typeof window !== 'undefined') {
+    Object.defineProperty(window, 'localStorage', { value: localStorage, configurable: true })
+  }
+}
+
 if (typeof HTMLCanvasElement !== 'undefined') {
   const proto = HTMLCanvasElement.prototype as unknown as {
     getContext: (...args: unknown[]) => unknown

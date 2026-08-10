@@ -95,6 +95,7 @@ function stubLocation(overrides: Partial<typeof window.location> = {}) {
     value: {
       origin: 'http://localhost',
       href: 'http://localhost/login',
+      protocol: 'http:',
       search: '',
       ...overrides,
     },
@@ -188,7 +189,7 @@ describe('LoginVM.startOidcLogin (Electron desktop)', () => {
     ;(window as any).__POWERED_ELECTRON__ = true
     ;(WKApp.shared as any).isPC = true
     // Simulate file:// origin that Electron prod build exposes
-    stubLocation({ origin: 'file://', href: 'file:///login', search: '' })
+    stubLocation({ origin: 'file://', href: 'file:///login', protocol: 'file:', search: '' })
   })
 
   afterEach(() => {
@@ -219,6 +220,31 @@ describe('LoginVM.startOidcLogin (Electron desktop)', () => {
     const pending = getPendingOidcLogin()
     expect(pending?.authcode).toBe('AC-pc2')
     expect(window.location.href).toContain('https://api.example.com/v1/auth/oidc/acme-sso/authorize')
+  })
+
+  it('uses the absolute API base for the file:// OIDC client', async () => {
+    const originalFetch = globalThis.fetch
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    })
+    globalThis.fetch = fetchMock as never
+    fetchAuthcodeMock.mockResolvedValue('AC-file')
+
+    try {
+      const vm = new LoginVM()
+      await vm.startOidcLogin('acme-sso')
+      const client = fetchAuthcodeMock.mock.calls[0][0] as {
+        get: (path: string) => Promise<unknown>
+      }
+      await client.get('/v1/auth/oidc/acme-sso/authcode')
+      expect(fetchMock.mock.calls[0][0]).toBe(
+        'https://api.example.com/v1/auth/oidc/acme-sso/authcode',
+      )
+    } finally {
+      globalThis.fetch = originalFetch
+    }
   })
 })
 

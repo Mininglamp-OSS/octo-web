@@ -50,6 +50,13 @@ function setResourcesPath(value: string | undefined): void {
   })
 }
 
+function setDefaultApp(value: boolean): void {
+  Object.defineProperty(process, 'defaultApp', {
+    configurable: true,
+    value,
+  })
+}
+
 async function loadPreloadFresh() {
   exposed.clear()
   sendMock.mockClear()
@@ -76,6 +83,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('allows ipc.send from packaged file:// shell', async () => {
+    setDefaultApp(false)
     setResourcesPath(packagedResourcesPath)
     setLocation('file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html')
     const { ipc } = await loadPreloadFresh()
@@ -86,6 +94,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('allows ipc.send from dev localhost shell', async () => {
+    setDefaultApp(true)
     setResourcesPath(undefined)
     setLocation('http://localhost:3000/')
     const { ipc } = await loadPreloadFresh()

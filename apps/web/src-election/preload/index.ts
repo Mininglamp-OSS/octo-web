@@ -9,6 +9,7 @@ import { contextBridge, ipcRenderer } from "electron";
 // here and keep them in sync with apps/web/src-election/shared/ipc-channels.ts.
 const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count";
 const IPC_OIDC_AUTHORIZE_START = "oidc-authorize-start";
+const IPC_DEEP_LINK_READY = "deep-link-ready";
 
 function subscribeDisposable<T = any>(
   renderer: Pick<typeof ipcRenderer, "on" | "removeListener">,
@@ -31,6 +32,7 @@ const ALLOWED_SEND_CHANNELS = [
   "update-app",
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_OIDC_AUTHORIZE_START,
+  IPC_DEEP_LINK_READY,
   "screenshots-start",
   "restart-app",
 ];
@@ -67,13 +69,19 @@ const ALLOWED_RECEIVE_CHANNELS = [
 // interceptor). Gate every renderer→main IPC call on the current document's
 // origin so only the packaged shell (file://) and the dev server can reach it.
 //
-// The dev server port is configurable in main/index.ts. Keep the default as a
-// fallback, but do not trust every localhost port: another local process may
-// be serving attacker-controlled HTML.
+// In a PACKAGED build, no legitimate document is served from a dev-server
+// origin — any http://localhost:3000 document there is either an accidentally
+// running local server or an attacker-controlled page. Gate the dev-origin
+// allowlist on `process.defaultApp` (Electron's dev-mode flag) so production
+// trusts only the packaged file:// shell.
 const DEFAULT_DEV_ORIGIN = "http://localhost:3000";
+const IS_DEV_RUNTIME = Boolean((process as unknown as { defaultApp?: boolean }).defaultApp);
 
 function configuredDevOrigins(): Set<string> {
-  const origins = new Set([DEFAULT_DEV_ORIGIN]);
+  const origins = new Set<string>();
+  // Dev origins are meaningless — and dangerous — in packaged builds.
+  if (!IS_DEV_RUNTIME) return origins;
+  origins.add(DEFAULT_DEV_ORIGIN);
   const configured = process.env.VITE_DEV_SERVER_URL;
   if (configured) {
     try {

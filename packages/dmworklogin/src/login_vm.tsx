@@ -2,6 +2,7 @@ import { WKApp, ProviderListener } from "@octo/base";
 import { applyLoginResp } from "./loginSession";
 import {
     buildAuthorizeURL,
+    clearPendingOidcBind,
     clearPendingOidcLogin,
     fetchAuthcode,
     fetchHttpClient,
@@ -16,10 +17,20 @@ import {
     OIDC_AUTH_STATUS,
     parseOidcUrlState,
     pollAuthStatus,
+    savePendingOidcBind,
     savePendingOidcLogin,
     createFetchHttpClient,
 } from "./oidc";
 import { loginT as t } from "./i18n";
+
+function clearPendingOidcState(): void {
+    // Clear both the in-flight login poll marker and the deep-link bind
+    // allowlist. They are minted together in startOidcLogin() and should
+    // decay together — a stray bind marker after login concludes would
+    // leave the `dmwork://oidc/bind` gate open longer than intended.
+    clearPendingOidcLogin()
+    clearPendingOidcBind()
+}
 
 function getOidcHttpClient() {
     const apiURL = WKApp.apiClient.config.apiURL
@@ -248,7 +259,11 @@ export class LoginVM extends ProviderListener {
         this.notifyListener()
         try {
             const flag = WKApp.shared.isPC ? Number(OIDC_FLAG_PC) : Number(OIDC_FLAG_WEB)
-            const resp = await WKApp.apiClient.post(`user/login_authcode/${authCode}`, { flag });
+            // login_authcode reads `flag` from the query string (unlike the
+            // password/register endpoints, which read it from JSON). Keep
+            // the client and server contracts aligned so desktop QR login
+            // mints the same device-slot token that Electron uses to CONNECT.
+            const resp = await WKApp.apiClient.post(`user/login_authcode/${authCode}?flag=${flag}`);
             if (resp) {
                 this.loginSuccess(resp)
             }
@@ -594,6 +609,17 @@ export class LoginVM extends ProviderListener {
                 authcode,
                 savedAt: Date.now(),
             })
+            // Mark that this client legitimately started an OIDC flow. Read
+            // by the packaged-Electron deep-link handler to reject
+            // `dmwork://oidc/bind` links that were not triggered from
+            // inside this app (see Layout/deepLink.ts and pendingBind.ts).
+            // Stored in localStorage so it survives a cold restart if the
+            // SSO round trip involves an external browser.
+            savePendingOidcBind({
+                providerId,
+                authcode,
+                savedAt: Date.now(),
+            })
 
             const isDesktop = WKApp.shared.isPC
             const flag = isDesktop ? OIDC_FLAG_PC : OIDC_FLAG_WEB
@@ -609,7 +635,7 @@ export class LoginVM extends ProviderListener {
                 ? apiURL
                 : undefined
             if (isDesktop) {
-                ;(window as any).ipc?.send?.('oidc-authorize-start', apiURL)
+                ;(window as any).ipc?.send?.('oidc-authorize-start', apiURL, authcode, provider)
             }
 
             // Schedule a fallback reset before navigating so a blocked redirect
@@ -651,12 +677,12 @@ export class LoginVM extends ProviderListener {
         // Otherwise an external link could clear another flow or fake-toast a user.
         if (urlState.error && pending) {
             const name = getProviderById(pending.providerId)?.name || 'SSO'
-            clearPendingOidcLogin()
+            clearPendingOidcState()
             return { handled: true, success: false, error: t('oidc.failedWithProvider', { values: { provider: name } }) }
         }
         if (!pending) return { handled: false }
         if (isPendingExpired(pending)) {
-            clearPendingOidcLogin()
+            clearPendingOidcState()
             return { handled: true, success: false, error: t('oidc.timeout') }
         }
         const providerName = getProviderById(pending.providerId)?.name || 'SSO'
@@ -676,16 +702,16 @@ export class LoginVM extends ProviderListener {
                 signal: this._oidcAbort.signal,
             })
             if (result.status === OIDC_AUTH_STATUS.SUCCESS && result.result) {
-                clearPendingOidcLogin()
+                clearPendingOidcState()
                 this._resetOidcResume()
                 this.loginSuccess(result.result, pending.providerId)
                 return { handled: true, success: true }
             }
-            clearPendingOidcLogin()
+            clearPendingOidcState()
             this._resetOidcResume()
             return { handled: true, success: false, error: result.msg || t('oidc.failedWithProvider', { values: { provider: providerName } }) }
         } catch (e) {
-            clearPendingOidcLogin()
+            clearPendingOidcState()
             this._resetOidcResume()
             if (e instanceof OidcPollTimeoutError) {
                 return { handled: true, success: false, error: t('oidc.timeout') }
@@ -704,7 +730,7 @@ export class LoginVM extends ProviderListener {
         this._oidcCancelled = true
         // Clear pending up front so a refresh during the sleep window does not
         // resume the just-cancelled session.
-        clearPendingOidcLogin()
+        clearPendingOidcState()
         // Abort any in-flight fetch so cancel propagates without waiting for
         // the next sleep tick. (If the poll is currently inside `sleep`, cancel
         // is still felt one interval later — the sleep itself isn't abortable.)

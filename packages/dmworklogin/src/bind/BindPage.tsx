@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
 import { WKApp } from '@octo/base'
 import {
+  clearPendingOidcBind,
   clearPendingOidcLogin,
   createFetchHttpClient,
   fetchHttpClient,
@@ -307,6 +308,9 @@ const BindPage = ({ initialSearch, initialHref }: BindPageProps) => {
   // a safe slug. Anything else falls through to the plain returnTo navigation.
   function finalizeBindSuccess(returnTo: string): void {
     setStage({ kind: 'success' })
+    // The bind flow is concluding — retire the deep-link allowlist marker
+    // so the next `dmwork://oidc/bind` requires a fresh startOidcLogin().
+    clearPendingOidcBind()
 
     let pendingInvite: string | null = null
     try {
@@ -417,6 +421,10 @@ const BindPage = ({ initialSearch, initialHref }: BindPageProps) => {
 
   function goBackToLogin(): void {
     entryRef.current = null
+    // User is abandoning the bind flow — retire the deep-link marker so a
+    // stray `dmwork://oidc/bind` cannot silently re-enter this page after
+    // they return to login.
+    clearPendingOidcBind()
     window.location.replace(resolveBindNavigationUrl('/login', navigationBaseHref))
   }
 

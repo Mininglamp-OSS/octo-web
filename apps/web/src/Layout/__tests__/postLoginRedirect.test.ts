@@ -37,4 +37,15 @@ describe("buildPostLoginRedirectUrl", () => {
       )
     ).toBe("https://octo.example.com/");
   });
+
+  it("preserves a sub-path deployment when appending the post-login query", () => {
+    expect(
+      buildPostLoginRedirectUrl(
+        "https://octo.example.com/foo/login",
+        "https://octo.example.com",
+        "foo",
+        "?doc=d_1"
+      )
+    ).toBe("https://octo.example.com/foo?doc=d_1");
+  });
 });

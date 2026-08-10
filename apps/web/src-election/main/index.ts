@@ -19,6 +19,7 @@ import { join, dirname } from "path";
 import logo, { getNoMessageTrayIcon } from "./logo";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
+  IPC_DEEP_LINK_READY,
   IPC_OIDC_AUTHORIZE_START,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG from "./config";
@@ -63,7 +64,14 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000
 const APP_EXIT_DELAY_MS = 1000;
 const TRAY_FLASH_INTERVAL_MS = 1000;
 
-const oidcExpectedOrigins = new WeakMap<BrowserWindow, string>();
+interface OidcFlowContext {
+  apiOrigin: string;
+  authcode: string;
+  providerId: string;
+}
+
+const oidcExpectedOrigins = new WeakMap<BrowserWindow, OidcFlowContext>();
+const oidcProviderOrigins = new WeakMap<BrowserWindow, string>();
 
 function parseHttpOrigin(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -77,19 +85,71 @@ function parseHttpOrigin(value: unknown): string | undefined {
   }
 }
 
-ipcMain.on(IPC_OIDC_AUTHORIZE_START, (event, apiURL: unknown) => {
-  const win = BrowserWindow.fromWebContents(event.sender);
-  const origin = parseHttpOrigin(apiURL);
-  if (win && origin) oidcExpectedOrigins.set(win, origin);
-});
+ipcMain.on(
+  IPC_OIDC_AUTHORIZE_START,
+  (event, apiURL: unknown, authcode: unknown, providerId: unknown) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    const origin = parseHttpOrigin(apiURL);
+    if (!win || !origin || typeof authcode !== "string" || !authcode) return;
+    if (typeof providerId !== "string" || !providerId) return;
+    oidcExpectedOrigins.set(win, { apiOrigin: origin, authcode, providerId });
+    oidcProviderOrigins.delete(win);
+  },
+);
 
 function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: string) {
+  // The OIDC provider is loaded in this window for compatibility with the
+  // existing polling flow. Do not let that remote document open another
+  // privileged Electron window, and reject arbitrary non-HTTPS top-level
+  // navigations while the flow is not armed. The preload still gates IPC by
+  // origin; this is the main-process navigation boundary complement.
+  win.webContents.setWindowOpenHandler(() => ({
+    // Preserve the app's existing popup behavior outside OIDC, but prevent a
+    // remote IdP document from opening another privileged window while the
+    // flow is armed.
+    action: oidcExpectedOrigins.has(win) ? "deny" : "allow",
+  }));
+  win.webContents.on("will-navigate", (event, url) => {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      event.preventDefault();
+      return;
+    }
+    const isShell = parsed.protocol === "file:" && url.includes("/build/index.html");
+    const devOrigin = parseHttpOrigin(DEV_SERVER_URL);
+    const isDevShell = isDevelopment && devOrigin === parsed.origin;
+    const flow = oidcExpectedOrigins.get(win);
+    const isExpectedApi = flow !== undefined && parsed.origin === flow.apiOrigin;
+    let providerOrigin = oidcProviderOrigins.get(win);
+    if (
+      !providerOrigin &&
+      flow &&
+      parsed.protocol === "https:" &&
+      parsed.origin !== flow.apiOrigin
+    ) {
+      providerOrigin = parsed.origin;
+      oidcProviderOrigins.set(win, providerOrigin);
+    }
+    const isOidcProviderHop = flow !== undefined && parsed.origin === providerOrigin;
+    if (!isShell && !isDevShell && !isExpectedApi && !isOidcProviderHop) {
+      event.preventDefault();
+    }
+  });
   if (!isDevelopment) {
     const handleReturnNavigation = (event: Electron.Event, url: string) => {
-      const expectedOrigin = oidcExpectedOrigins.get(win);
-      if (!expectedOrigin) return;
-      const callback = parseOidcCallback(url, expectedOrigin);
+      const flow = oidcExpectedOrigins.get(win);
+      if (!flow) return;
+      const callback = parseOidcCallback(url, flow.apiOrigin);
       if (!callback) return;
+      if (callback.path === "/oidc/bind") {
+        const hasAuthcode = Boolean(callback.query.authcode);
+        const hasProvider = Boolean(callback.query.provider);
+        if (!hasAuthcode && !hasProvider) return;
+        if (hasAuthcode && callback.query.authcode !== flow.authcode) return;
+        if (hasProvider && callback.query.provider !== flow.providerId) return;
+      }
 
       // The OIDC backend accepts the server-relative `/login` return target,
       // but Electron production pages are hosted from file://. Bring the
@@ -101,6 +161,7 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
       // sid from getURL() would lose the original file:// page's sid.
       const query = withTrustedSessionSid(callback, sid);
       oidcExpectedOrigins.delete(win);
+      oidcProviderOrigins.delete(win);
       win.loadFile(webUrl, { query });
     };
 
@@ -503,18 +564,29 @@ const createMainWindow = async () => {
     mainWindow.focus();
   });
 
-  // Flush any buffered deep-link URL after every navigation completes. The
-  // renderer's `ipc.on("deep-link", ...)` listener needs the React tree to
-  // mount first, so URLs delivered before then (cold-boot via process.argv,
-  // second-instance argv, macOS open-url before did-finish-load) get held in
-  // `pendingDeepLinkUrl` and dispatched here.
+  // Flush any buffered deep-link URLs after navigation completes. The renderer
+  // gates its own `deep-link-ready` on the React tree mounting (see
+  // Layout/deepLink.ts), which is the authoritative signal — `did-finish-load`
+  // by itself is not, because React 18's async root can leave
+  // componentDidMount pending when this fires. We still listen here as a
+  // safety net after the ready handshake has already occurred at least once.
   mainWindow.webContents.on("did-finish-load", () => {
     dispatchPendingDeepLink();
+  });
+  // Every navigation invalidates the previous renderer's listener. Force the
+  // next shell to re-announce readiness before we flush the queue, otherwise
+  // an IdP-side navigation followed by a shell reload could try to dispatch
+  // to a listener that has not attached yet.
+  mainWindow.webContents.on("did-start-loading", () => {
+    rendererDeepLinkReady = false;
   });
 
   mainWindow.on("close", (e: any) => {
     if (forceQuit || !tray) {
       mainWindow = null;
+      // A new mainWindow will start fresh: its renderer has not yet attached
+      // a deep-link listener, so the readiness flag must not carry over.
+      rendererDeepLinkReady = false;
     } else {
       e.preventDefault();
       if (mainWindow.isFullScreen()) {
@@ -616,6 +688,10 @@ const DEEP_LINK_SCHEME = "dmwork";
 function isShellWebContentsUrl(url: string): boolean {
   if (!url) return false;
   if (url.startsWith("file://")) return url.includes("/build/index.html");
+  // In a packaged build there is no legitimate dev-server document. Refuse to
+  // treat any http(s) origin as a shell URL so a malicious page cannot pose
+  // as the shell to receive buffered deep-link URLs.
+  if (!isDevelopment) return false;
   try {
     const parsed = new URL(url);
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
@@ -629,10 +705,26 @@ function isShellWebContentsUrl(url: string): boolean {
 // mounts (see Layout/deepLink.ts). At cold-boot the main process may already
 // have a URL from `process.argv` / `open-url` / `second-instance` before the
 // renderer preload has parsed, so a naive `webContents.send` there is dropped
-// on the floor. Buffer the most recent URL and flush it once the renderer's
-// `did-finish-load` fires — by then the preload has run and the React root
-// has had a tick to attach its listener.
-let pendingDeepLinkUrl: string | null = null;
+// on the floor. Buffer pending URLs and flush them once the renderer signals
+// readiness via `deep-link-ready` (or as a safety net when `did-finish-load`
+// fires on a shell URL).
+//
+// A small queue rather than a single slot: on macOS a second `dmwork://` can
+// arrive via `open-url` while the previous callback is still in flight, and
+// the callback that would be lost with a single slot is usually the one the
+// user just completed, not the stale one.
+const DEEP_LINK_QUEUE_MAX = 8;
+let pendingDeepLinkQueue: string[] = [];
+let rendererDeepLinkReady = false;
+
+function enqueueDeepLink(url: string): void {
+  if (pendingDeepLinkQueue.length >= DEEP_LINK_QUEUE_MAX) {
+    // Drop the OLDEST — a stale IdP redirect is less valuable than the most
+    // recent user-initiated callback.
+    pendingDeepLinkQueue.shift();
+  }
+  pendingDeepLinkQueue.push(url);
+}
 
 function isValidDeepLink(url: string): boolean {
   try {
@@ -651,14 +743,22 @@ function isValidDeepLink(url: string): boolean {
 }
 
 function dispatchPendingDeepLink() {
-  if (!pendingDeepLinkUrl) return;
+  if (pendingDeepLinkQueue.length === 0) return;
   if (!mainWindow || mainWindow.isDestroyed()) return;
   // Keep buffering while the renderer sits on the IdP / any non-shell page.
   // The next shell load will fire did-finish-load again and flush then.
   if (!isShellWebContentsUrl(mainWindow.webContents.getURL())) return;
-  const url = pendingDeepLinkUrl;
-  pendingDeepLinkUrl = null;
-  mainWindow.webContents.send("deep-link", url);
+  // Require an explicit renderer readiness signal so we do not clear the
+  // buffer before the React listener has actually attached. `did-finish-load`
+  // fires before componentDidMount under React 18's async root, which would
+  // otherwise silently drop the URL on cold boot.
+  if (!rendererDeepLinkReady) return;
+
+  const urls = pendingDeepLinkQueue;
+  pendingDeepLinkQueue = [];
+  for (const url of urls) {
+    mainWindow.webContents.send("deep-link", url);
+  }
 }
 
 function onDeepLink(url: string) {
@@ -667,21 +767,29 @@ function onDeepLink(url: string) {
     return;
   }
   console.log("onOpenDeepLink", url);
-  // macOS can deliver open-url before `ready` / createMainWindow. Do not
-  // dereference webContents in that case; the ready handler will process
-  // initial argv links once the window exists.
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    console.warn("Deep link dropped: main window not ready:", url);
-    return;
-  }
-  pendingDeepLinkUrl = url;
-  if (!mainWindow.webContents.isLoading()) {
-    // dispatchPendingDeepLink still gates on the current URL being a shell URL,
-    // so this is safe to call mid-OIDC — it will re-buffer until the file://
-    // shell reload completes.
+  // Buffer FIRST, then attempt to flush. macOS `open-url` can arrive before
+  // `ready` / createMainWindow, and the app can also legitimately have no
+  // main window when the user closed it while tray is disabled — in both
+  // cases we must retain the URL so the eventual (re)mount can consume it.
+  // The argv fallback does NOT cover this: on macOS scheme launches deliver
+  // via `open-url`, not `process.argv`.
+  enqueueDeepLink(url);
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoading()) {
+    // dispatchPendingDeepLink still gates on the current URL being a shell URL
+    // AND rendererDeepLinkReady, so this is safe to call mid-OIDC — the
+    // queue is preserved until the file:// shell reload completes and the
+    // renderer re-announces readiness.
     dispatchPendingDeepLink();
   }
 }
+
+// Renderer announces readiness after its `deep-link` IPC listener attaches
+// (Layout/deepLink.ts). Only the trusted shell origin can reach this channel
+// — the preload gates every send on `isTrustedShellOrigin`.
+ipcMain.on(IPC_DEEP_LINK_READY, () => {
+  rendererDeepLinkReady = true;
+  dispatchPendingDeepLink();
+});
 
 app.setName(OCTO_CONFIG.name);
 

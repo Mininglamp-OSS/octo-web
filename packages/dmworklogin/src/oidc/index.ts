@@ -16,6 +16,16 @@ export {
   isPendingExpired,
 } from './pending'
 
+export {
+  savePendingOidcBind,
+  getPendingOidcBind,
+  clearPendingOidcBind,
+  isPendingBindExpired,
+  hasValidPendingBind,
+  consumePendingBindIfMatches,
+} from './pendingBind'
+export type { PendingOidcBind } from './pendingBind'
+
 export { fetchAuthcode, fetchAuthStatus } from './api'
 export type {
   AuthcodeResponse,
