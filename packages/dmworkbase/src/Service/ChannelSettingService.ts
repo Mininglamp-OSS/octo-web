@@ -112,6 +112,10 @@ export function updateChannelAvatarCustom(
   channel: Channel,
   options: UpdateChannelAvatarCustomOptions
 ): Promise<void> {
+  if (isPersonChannel(channel)) {
+    return Promise.resolve();
+  }
+
   const body: Record<string, any> = {};
   if (typeof options.avatarText === "string") {
     body.avatar_text = options.avatarText;

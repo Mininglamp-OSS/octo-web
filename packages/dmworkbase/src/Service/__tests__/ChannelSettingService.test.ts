@@ -185,6 +185,7 @@ describe("ChannelSettingService", () => {
 
     await transferChannelOwner(channel, "bob");
     await updateChannelSubscriberAttr(channel, "alice", { remark: "A" });
+    await updateChannelAvatarCustom(channel, { avatarText: "Team" });
     await exitChannel(channel);
 
     expect(apiPost).not.toHaveBeenCalled();

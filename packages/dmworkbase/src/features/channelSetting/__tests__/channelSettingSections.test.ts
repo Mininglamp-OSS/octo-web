@@ -19,6 +19,7 @@ import {
   ChannelSettingToggleRow,
 } from "../../../ui/ChannelSettingRows";
 import { buildChannelGroupInfoSection } from "../channelSettingGroupInfoSection";
+import { buildGroupProfileRows } from "../channelSettingGroupProfileRows";
 import {
   buildChannelDangerSection,
   buildChannelPreferenceSection,
@@ -543,6 +544,62 @@ describe("channel setting section builders", () => {
     expect(activeOwner?.rows).toHaveLength(9);
     expect(disbanded?.rows).toHaveLength(1);
     expect(disbanded?.rows?.[0].properties.value).toBe("remark");
+  });
+
+  it("passes persisted avatar custom fields into the avatar editor route", () => {
+    const context = createContext({
+      isManagerOrCreatorOfMe: true,
+      channelInfo: {
+        title: "Avatar Group",
+        orgData: {
+          avatar_text: "研发",
+          avatar_color: "5",
+          is_named: 1,
+        },
+      },
+    });
+    const rows = buildGroupProfileRows({
+      context,
+      data: context.routeData(),
+      inputEditPush: vi.fn(),
+      disbanded: false,
+    });
+
+    rows[1].properties.onClick();
+
+    const [view] = context.push.mock.calls[0];
+    expect(view.props.initialAvatarText).toBe("研发");
+    expect(view.props.initialColorIndex).toBe(5);
+    expect(view.props.isNamedGroup).toBe(true);
+    expect(view.props.showUpload).toBe(true);
+  });
+
+  it("treats cleared avatar color and new groups as default fallback", () => {
+    const context = createContext({
+      isManagerOrCreatorOfMe: false,
+      channelInfo: {
+        title: "New Group",
+        orgData: {
+          avatar_text: "",
+          avatar_color: "",
+          is_named: 0,
+        },
+      },
+    });
+    const rows = buildGroupProfileRows({
+      context,
+      data: context.routeData(),
+      inputEditPush: vi.fn(),
+      disbanded: false,
+    });
+
+    rows[1].properties.onClick();
+
+    const [view] = context.push.mock.calls[0];
+    expect(view.props.initialAvatarText).toBe("");
+    expect(view.props.initialColorIndex).toBeUndefined();
+    expect(view.props.isNamedGroup).toBe(false);
+    expect(view.props.showUpload).toBe(false);
   });
 
   it("builds thread setting sections for active thread channels", () => {

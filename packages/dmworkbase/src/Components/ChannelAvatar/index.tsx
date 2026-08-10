@@ -18,6 +18,7 @@ export interface ChannelAvatarProps {
     channel:Channel
     showUpload?:boolean
     groupName?: string
+    isNamedGroup?: boolean
     initialAvatarText?: string
     initialColorIndex?: number
     /** @deprecated 头像裁剪已由独立弹窗承载，不再使用父级路由上下文。 */
@@ -164,7 +165,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         }
     }
     render() {
-        const { channel,showUpload,groupName } = this.props
+        const { channel,showUpload,groupName,isNamedGroup } = this.props
         const { cropFile, uploading, customAvatarVisible, customAvatarSaving, customAvatarText, customAvatarColorIndex } = this.state
         return <>
             <div className="wk-channelavatar">
@@ -180,7 +181,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             <GroupAvatarEditModal
                 visible={customAvatarVisible}
                 name={groupName || ""}
-                nameAsFallback
+                nameAsFallback={isNamedGroup === true}
                 initialAvatarText={customAvatarText}
                 initialColorIndex={customAvatarColorIndex}
                 saving={customAvatarSaving}
