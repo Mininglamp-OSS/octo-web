@@ -180,4 +180,35 @@ describe('SaveToDriveModal', () => {
     q<HTMLButtonElement>(container, '[data-testid="cancel"]').click();
     expect(onClose).toHaveBeenCalled();
   });
+
+  // Regression: cold-start right-click "存到云盘…" before the user has opened
+  // Drive this session. `saveMessageToDriveAt` renders the modal with
+  // spacesLoading=true while it waits for vm.spaces to arrive; the modal must
+  // (a) render (visible), (b) keep Cancel clickable, (c) keep Confirm
+  // disabled, (d) NOT render the space Select — that would look like a broken
+  // dropdown when spaces=[]. See Jerry-Xin review PR #1322 blocking finding.
+  it('renders a loading shell (spacesLoading=true) with Cancel enabled and Confirm disabled', () => {
+    const onClose = vi.fn();
+    const { container } = render(
+      <SaveToDriveModal
+        visible
+        spaces={[]}
+        spacesLoading
+        onConfirm={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+    // Modal itself is rendered.
+    expect(container.querySelector('[data-testid="modal"]')).not.toBeNull();
+    // Space Select is NOT rendered in the loading shell.
+    expect(container.querySelector('[data-testid="space-select"]')).toBeNull();
+    // Spinner is rendered.
+    expect(container.querySelector('[data-testid="spin"]')).not.toBeNull();
+    // Confirm disabled.
+    const ok = q<HTMLButtonElement>(container, '[data-testid="ok"]');
+    expect(ok.disabled).toBe(true);
+    // Cancel still fires onClose.
+    q<HTMLButtonElement>(container, '[data-testid="cancel"]').click();
+    expect(onClose).toHaveBeenCalled();
+  });
 });

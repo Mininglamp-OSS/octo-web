@@ -12,11 +12,12 @@ import {
 import type { IModule } from '@octo/base';
 import DriveSidebar from './pages/DriveSidebar';
 import DriveContent from './pages/DriveContent';
-import { DriveVM } from './pages/DriveVM';
+import { DriveVM, useDriveVM } from './pages/DriveVM';
 import { transferFromIm, checkImTransferredBatch, getAncestors } from './api/driveApi';
 import type { ImTransferredEntry } from './api/driveApi';
 import { imTransferredSourceKey, normaliseImChannelID } from './bridge/types';
 import SaveToDriveModal from './ui/SaveToDriveModal';
+import { Toast } from './utils/toast';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -25,6 +26,12 @@ import zhCN from './i18n/zh-CN.json';
 let _initialized = false;
 /** `space-changed` subscription, kept for HMR teardown. */
 let _spaceChangedHandler: (() => void) | null = null;
+/** `wk:auth-state-changed` subscription, kept for HMR teardown. Bound alongside
+ *  `space-changed` so both flush the drive-transferred cache on tenant/user
+ *  swaps (see review PR #1322 non-blocking finding: the cache used to survive
+ *  identity changes and could feed stale synchronous state to the right-click
+ *  menu until the next backend batch overwrote it). */
+let _authStateChangedHandler: (() => void) | null = null;
 /** remoteConfig (drive_on) listeners, kept so a repeat init drops them before rebinding. */
 let _configUnsubscribers: Array<() => void> = [];
 
@@ -34,6 +41,10 @@ if (import.meta.hot) {
     if (_spaceChangedHandler) {
       WKApp.mittBus.off('space-changed', _spaceChangedHandler);
       _spaceChangedHandler = null;
+    }
+    if (_authStateChangedHandler) {
+      WKApp.mittBus.off('wk:auth-state-changed', _authStateChangedHandler);
+      _authStateChangedHandler = null;
     }
     for (const unsub of _configUnsubscribers) unsub();
     _configUnsubscribers = [];
@@ -110,6 +121,63 @@ function seedDriveCache(sourceKey: string, entry: ImTransferredEntry | null): vo
   } else {
     driveTransferredCache.set(sourceKey, { status: 'notfound' });
   }
+}
+
+// ---------------------------------------------------------------------------
+// SaveToDriveModalHost — subscribes to DriveVM so the picker survives cold
+// start (user never opened Drive this session → vm.spaces starts empty and
+// arrives asynchronously after `loadSpaces()` resolves). Without this
+// wrapper the one-shot ReactDOM.render used to snapshot vm.spaces at portal-
+// creation time, and post-load list updates never re-rendered the picker —
+// the space dropdown stayed empty and Confirm stayed disabled forever
+// (Jerry-Xin review 2026-08-10 blocking finding on PR #1322).
+//
+// Behaviour:
+//   - `useDriveVM(vm)` triggers `vm.ensureLoaded()` on mount AND re-renders
+//     the host whenever the VM notifies.
+//   - Before spaces have arrived, render a small centred spinner in a
+//     `<Modal>` shell so the user can still cancel; do NOT render the real
+//     picker yet — its Confirm button would be disabled with no explanation.
+//   - Once spaces are present, render the real picker with the current
+//     activeSpaceId as default (matches vm.ensureLoaded's post-load state).
+//
+// The host receives the callbacks unchanged from saveMessageToDriveAt; it
+// does not know about the race guard, the cache, or the transfer POST.
+// ---------------------------------------------------------------------------
+interface SaveToDriveModalHostProps {
+  vm: DriveVM;
+  onClose: () => void;
+  onConfirm: (targetSpaceId: string, targetParentId: number) => Promise<boolean>;
+}
+function SaveToDriveModalHost({ vm, onClose, onConfirm }: SaveToDriveModalHostProps): JSX.Element {
+  const live = useDriveVM(vm);
+  if (live.spaces.length === 0) {
+    // Loading state: use the SAME modal shell (visible + onClose) so the
+    // user can cancel out of the picker while spaces are still loading.
+    // Empty spaces + our own loading marker keeps SaveToDriveModal's
+    // existing "waiting" branch (Confirm disabled) from ever being shown
+    // — that branch is only reachable via tests that mock spaces=[] AND
+    // don't wire the VM, which the wrapper now prevents in prod.
+    return (
+      <SaveToDriveModal
+        visible
+        spaces={[]}
+        defaultSpaceId={null}
+        spacesLoading
+        onClose={onClose}
+        onConfirm={onConfirm}
+      />
+    );
+  }
+  return (
+    <SaveToDriveModal
+      visible
+      spaces={live.spaces}
+      defaultSpaceId={live.activeSpaceId}
+      onClose={onClose}
+      onConfirm={onConfirm}
+    />
+  );
 }
 
 // NOTE: the share (`/drive/s/:token`) and invite (`/drive/invite/:token`)
@@ -289,11 +357,7 @@ export default class DriveModule implements IModule {
     // transfer POST returns, rejects on cancel or backend failure.
     WKApp.saveMessageToDriveAt = ({ im_group_no, im_channel_type, im_msg_id }: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => {
       return new Promise<{ file_id: number; space_id: string; parent_id: number }>((resolve, reject) => {
-        // Ensure vm.spaces is loaded before the picker opens — the modal
-        // takes the space list as a prop and expects it non-empty. The
-        // picker also gates rank on viewer_role, which only exists on the
-        // list response; a stale vm.spaces would gate wrong.
-        vm.ensureLoaded();
+        // The host wrapper does its own ensureLoaded via useDriveVM.
         const host = document.createElement('div');
         host.setAttribute('data-role', 'drive-save-modal-host');
         document.body.appendChild(host);
@@ -329,10 +393,8 @@ export default class DriveModule implements IModule {
           return;
         }
         ReactDOM.render(
-          <SaveToDriveModal
-            visible
-            spaces={vm.spaces}
-            defaultSpaceId={vm.activeSpaceId}
+          <SaveToDriveModalHost
+            vm={vm}
             onClose={() => done(() => reject(new Error('save-to-drive cancelled')))}
             onConfirm={async (targetSpaceId, targetParentId) => {
               // Second race check — the picker was open long enough for
@@ -356,13 +418,16 @@ export default class DriveModule implements IModule {
                 done(() => resolve(entry));
                 return true;
               } catch (err) {
-                // Leave the modal open so the user can retry / choose a
-                // different target — a 403 here means they picked a space
-                // the backend refused (rank changed between listSpaces and
-                // the POST); the picker still shows the same list. The
-                // caller's outer .catch swallows the reject, so surfacing
-                // it here doesn't spam the console.
-                reject(err);
+                // Deliberately do NOT reject the outer promise here — the
+                // modal stays open for the user to retry (a 403 typically
+                // means the picked space's rank changed between listSpaces
+                // and the POST). If we rejected, a later successful retry
+                // could not fulfil an already-settled promise. Only cancel
+                // (onClose above) rejects. Surface the failure inline via
+                // toast so the click isn't silent (Jerry-Xin review non-
+                // blocking finding on PR #1322).
+                const msg = (err as Error)?.message || translate('drive.toast.opFailed');
+                Toast.error(msg);
                 return false;
               }
             }}
@@ -535,8 +600,26 @@ export default class DriveModule implements IModule {
     // showing the previous tenant's spaces/breadcrumb while requests already
     // carry the new X-Space-Id. Reset + reload the shared VM. Mirrors the
     // sister modules' `space-changed` subscription (dmworksummary/module.tsx).
-    _spaceChangedHandler = () => vm.reset();
+    // Also flush the drive-transferred cache — the right-click menu factory
+    // reads this synchronously; leaving stale entries survives a tenant
+    // swap and can show "在云盘中查看" for a file the new identity does not
+    // own. Backend batches will refill on the next FileCell mount.
+    // (Jerry-Xin review 2026-08-10 non-blocking finding on PR #1322.)
+    _spaceChangedHandler = () => {
+      driveTransferredCache.clear();
+      vm.reset();
+    };
     WKApp.mittBus.on('space-changed', _spaceChangedHandler);
+
+    // Same cache-flush contract, tighter trigger: login/logout/account
+    // replacement (`wk:auth-state-changed`). This runs alongside the
+    // space-changed handler because the events don't fully overlap — a
+    // pure re-auth on the same tenant fires wk:auth-state-changed without
+    // space-changed, and we still need a clean cache.
+    _authStateChangedHandler = () => {
+      driveTransferredCache.clear();
+    };
+    WKApp.mittBus.on('wk:auth-state-changed', _authStateChangedHandler);
 
     // appconfig is fetched asynchronously, so at init() driveOn is usually still
     // the default false. Refresh the NavRail whenever drive_on resolves/changes

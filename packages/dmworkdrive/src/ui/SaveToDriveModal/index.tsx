@@ -29,6 +29,13 @@ export interface SaveToDriveModalProps {
   /** Return true on success to close the modal; false leaves it open. */
   onConfirm: (targetSpaceId: string, targetParentId: number) => Promise<boolean>;
   onClose: () => void;
+  /** When true, the picker is being kept open while the caller resolves its
+   *  data prerequisites (spaces list, viewer_role, etc.). Body renders a
+   *  loading placeholder in the modal shell instead of the picker controls
+   *  so the user sees progress and can still Cancel. Confirm is disabled.
+   *  Set by SaveToDriveModalHost in module.tsx during cold-start (user has
+   *  never opened Drive this session and vm.spaces has not arrived yet). */
+  spacesLoading?: boolean;
 }
 
 /**
@@ -52,6 +59,7 @@ export default function SaveToDriveModal({
   defaultSpaceId,
   onConfirm,
   onClose,
+  spacesLoading = false,
 }: SaveToDriveModalProps) {
   const { t: ti } = useI18n();
 
@@ -138,7 +146,7 @@ export default function SaveToDriveModal({
     return (ROLE_RANK[s.viewer_role as keyof typeof ROLE_RANK] ?? 0) >= UPLOADER_RANK;
   };
 
-  const okDisabled = !spaceId || (activeSpace ? !spaceUploadable(activeSpace) : true);
+  const okDisabled = spacesLoading || !spaceId || (activeSpace ? !spaceUploadable(activeSpace) : true);
 
   return (
     <Modal
@@ -152,7 +160,18 @@ export default function SaveToDriveModal({
       okButtonProps={{ disabled: okDisabled }}
       maskClosable={false}
     >
-      <div className="drive-save">
+      {spacesLoading ? (
+        // Cold-start body: user right-clicked without having opened Drive
+        // this session. Show a compact centred spinner so the click is
+        // acknowledged and Cancel stays clickable; the host wrapper flips
+        // this off the moment vm.spaces arrives.
+        <div className="drive-save drive-save--loading">
+          <div className="drive-save__center">
+            <Spin size="middle" />
+          </div>
+        </div>
+      ) : (
+        <div className="drive-save">
         <div className="drive-save__space">
           <label className="drive-save__label">{ti('drive.saveModal.selectSpace')}</label>
           <Select
@@ -195,7 +214,8 @@ export default function SaveToDriveModal({
             )}
           </div>
         </div>
-      </div>
+        </div>
+      )}
     </Modal>
   );
 }
