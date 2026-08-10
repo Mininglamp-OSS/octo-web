@@ -18,7 +18,7 @@ vi.mock('@octo/base', () => {
       post: (...args: unknown[]) => apiPost(...args),
     },
     endpoints: { callOnLogin: vi.fn(), onNeedJoinSpace: vi.fn() },
-    shared: { deviceId: 'd', deviceName: 'n', deviceModel: 'm' },
+    shared: { isPC: false, deviceId: 'd', deviceName: 'n', deviceModel: 'm' },
     config: { themeColor: '#000', appName: 'Test' },
     remoteConfig: { oidcProviders: [] },
   }
@@ -31,6 +31,7 @@ vi.mock('@octo/base', () => {
 })
 
 import { LoginVM, LoginStatus, LoginType } from '../login_vm'
+import { WKApp } from '@octo/base'
 
 /** Put the VM in QR mode without letting didMount kick off real polling. */
 function newQRCodeVM(): LoginVM {
@@ -53,6 +54,17 @@ beforeEach(() => {
 })
 
 describe('scan-login poll credential', () => {
+  it('sends the matching device flag when redeeming a QR login', async () => {
+    const vm = newQRCodeVM()
+    apiPost.mockResolvedValue({ uid: 'u', token: 't' })
+    ;(WKApp.shared as any).isPC = true
+
+    await vm.requestLogin('auth-code')
+
+    expect(apiPost).toHaveBeenCalledWith('user/login_authcode/auth-code', { flag: 2 })
+    ;(WKApp.shared as any).isPC = false
+  })
+
   it('sends poll_secret on the status poll', async () => {
     const vm = newQRCodeVM()
     apiGet.mockResolvedValue(INERT)

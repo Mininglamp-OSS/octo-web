@@ -3,6 +3,7 @@ import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
 import { WKApp } from '@octo/base'
 import {
   clearPendingOidcLogin,
+  createFetchHttpClient,
   fetchHttpClient,
   OidcBindHttpError,
 } from '../oidc'
@@ -84,6 +85,13 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
   const [busy, setBusy] = useState(false)
   const [inlineError, setInlineError] = useState<string | null>(null)
 
+  const bindHttpClient =
+    typeof window !== 'undefined' &&
+    window.location.protocol === 'file:' &&
+    /^https?:\/\//i.test(WKApp.apiClient.config.apiURL)
+      ? createFetchHttpClient(WKApp.apiClient.config.apiURL)
+      : fetchHttpClient
+
   useEffect(() => {
     if (initRanRef.current) return
     initRanRef.current = true
@@ -124,7 +132,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     setStage({ kind: 'loading_info' })
     setInlineError(null)
     try {
-      const info = await fetchBindInfo(fetchHttpClient, params.token, apiOpts())
+      const info = await fetchBindInfo(bindHttpClient, params.token, apiOpts())
       const createState = deriveCreateState(info)
       // 用户能进入选择阶段的条件: 至少有一个可用的 verify method OR create 可点.
       // create 被 block 但仍渲染原因文字时, 只要还有 verify methods 也能进 choose_method;
@@ -172,7 +180,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     try {
       const token = entryRef.current?.token
       if (!token) return
-      await sendBindOtp(fetchHttpClient, token, apiOpts())
+      await sendBindOtp(bindHttpClient, token, apiOpts())
       setStage({ kind: 'verify_otp', info: stage.info, sent: true, sending: false })
       Toast.success(t('bind.otp.sent'))
     } catch (err) {
@@ -188,7 +196,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     setBusy(true)
     setInlineError(null)
     try {
-      await sendBindOtp(fetchHttpClient, token, apiOpts())
+      await sendBindOtp(bindHttpClient, token, apiOpts())
       Toast.success(t('bind.otp.resent'))
       setStage({ ...stage, sent: true })
     } catch (err) {
@@ -217,7 +225,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     setBusy(true)
     setInlineError(null)
     try {
-      await verifyBindPassword(fetchHttpClient, token, identifier, password, apiOpts())
+      await verifyBindPassword(bindHttpClient, token, identifier, password, apiOpts())
       // verify 通过后立即清密码, 不留在 React state 里
       setPassword('')
       await runConfirm(stage.info)
@@ -246,7 +254,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     setBusy(true)
     setInlineError(null)
     try {
-      await checkBindOtp(fetchHttpClient, token, otp, apiOpts())
+      await checkBindOtp(bindHttpClient, token, otp, apiOpts())
       setOtp('')
       await runConfirm(stage.info)
     } catch (err) {
@@ -327,7 +335,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     }
     setStage({ kind: 'confirming', info })
     try {
-      const resp = await confirmBind(fetchHttpClient, token, apiOpts())
+      const resp = await confirmBind(bindHttpClient, token, apiOpts())
       // login_resp 是 JSON-encoded string, JSON.parse 后与老 OIDC authstatus.result 同 schema.
       const data = parseLoginResp(resp.login_resp)
       // loginProvider 必须落到真实 IdP id, 下游 NavSettingsPanel /
@@ -361,7 +369,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     }
     setStage({ kind: 'creating', info })
     try {
-      const resp = await createBind(fetchHttpClient, token, apiOpts())
+      const resp = await createBind(bindHttpClient, token, apiOpts())
       // 与 confirm 同 schema 同 builder, login_resp 直接 parseLoginResp + applyLoginResp.
       const data = parseLoginResp(resp.login_resp)
       // 同 runConfirm — loginProvider 必须是真实 IdP id, 不是

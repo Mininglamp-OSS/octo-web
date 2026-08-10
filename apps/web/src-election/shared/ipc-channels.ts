@@ -8,3 +8,6 @@
 
 /** Renderer → Main: sync the current unread-message count to the tray. */
 export const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count";
+
+/** Renderer → Main: register the API origin expected for the OIDC callback. */
+export const IPC_OIDC_AUTHORIZE_START = "oidc-authorize-start";

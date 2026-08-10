@@ -1,12 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { subscribeDisposable } from "./notificationListeners";
-import { IPC_CONVERSATION_UNREAD_COUNT } from "../shared/ipc-channels";
+import {
+  IPC_CONVERSATION_UNREAD_COUNT,
+  IPC_OIDC_AUTHORIZE_START,
+} from "../shared/ipc-channels";
 
 const ALLOWED_SEND_CHANNELS = [
   "check-update",
   "install-update",
   "update-app",
   IPC_CONVERSATION_UNREAD_COUNT,
+  IPC_OIDC_AUTHORIZE_START,
   "screenshots-start",
   "restart-app",
 ];

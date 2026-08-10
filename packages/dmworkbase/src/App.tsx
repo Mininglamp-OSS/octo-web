@@ -500,6 +500,7 @@ export type MessageDeleteListener = (
 ) => void;
 
 export class LoginInfo {
+  private static readonly DEVICE_FLAG_KEY = "im_device_flag";
   appID!: string;
   shortNo!: string; // 短号
   token?: string;
@@ -554,6 +555,7 @@ export class LoginInfo {
     this.setStorageItemForSID("is_work", this.isWork ? "1" : "0");
     this.setStorageItemForSID("sex", this.sex === 1 ? "1" : "0");
     this.setStorageItemForSID("login_provider", this.loginProvider ?? "");
+    this.setStorageItemForSID(LoginInfo.DEVICE_FLAG_KEY, WKApp.shared.isPC ? "2" : "1");
     // 实名认证状态 — 严格 tri-state 持久化。
     //   undefined → 删除 key（区别于「明确未实名」）
     //   true      → "1"
@@ -630,6 +632,15 @@ export class LoginInfo {
     this.uid = this.getStorageItemForSID("uid") || "";
     this.shortNo = this.getStorageItemForSID("short_no") || "";
     this.token = this.getStorageItemForSID("token") || "";
+    // Desktop CONNECT now uses device_flag=2. Existing desktop tokens were
+    // minted in slot 1 and cannot be safely reused, so force one clean login
+    // after this migration instead of silently losing the IM connection.
+    const storedDeviceFlag = this.getStorageItemForSID(LoginInfo.DEVICE_FLAG_KEY);
+    const isDesktop = Boolean((window as any)?.__POWERED_ELECTRON__ || (window as any)?.__TAURI_IPC__);
+    if (isDesktop && this.token && storedDeviceFlag !== "2") {
+      this.logout();
+      return;
+    }
     this.name = this.getStorageItemForSID("name") || "";
     this.appID = this.getStorageItemForSID("app_id") || "";
     this.role = this.getStorageItemForSID("role") || "";
@@ -700,6 +711,7 @@ export class LoginInfo {
     this.removeStorageItemForSID("name");
     this.removeStorageItemForSID("sex");
     this.removeStorageItemForSID("login_provider");
+    this.removeStorageItemForSID(LoginInfo.DEVICE_FLAG_KEY);
     // 清除实名认证缓存
     this.realnameVerified = undefined;
     this.realName = undefined;
@@ -881,8 +893,6 @@ export default class WKApp extends ProviderListener {
     if (consumeOidcPostLogoutCleanup()) {
       this.clearLocalLoginState();
     }
-    WKApp.loginInfo.load(); // 加载登录信息
-
     // 是否是PC端
     if (
       (window as any)?.__POWERED_ELECTRON__ ||
@@ -890,6 +900,7 @@ export default class WKApp extends ProviderListener {
     ) {
       this.isPC = true;
     }
+    WKApp.loginInfo.load(); // 加载登录信息
     // Keep the IM CONNECT device slot aligned with the login API's flag.
     // WuKongIM JS SDK defaults to web (1), including inside Electron.
     // Values mirror OIDC_FLAG_WEB / OIDC_FLAG_PC in dmworklogin:

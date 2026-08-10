@@ -139,14 +139,14 @@ describe('LoginVM.startOidcLogin (web)', () => {
     expect(vm.oidcLoading).toBe(true)
   })
 
-  it('uses the backend-relative returnTo for the local-debug production-login flow', async () => {
+  it('keeps the web returnTo on the current deployment origin', async () => {
     fetchAuthcodeMock.mockResolvedValue('AC-web')
     stubLocation({ origin: 'https://app.example.com', href: 'https://app.example.com/login', search: '' })
     const vm = new LoginVM()
     await vm.startOidcLogin('acme-sso')
     const qs = new URLSearchParams(window.location.href.split('?')[1])
     expect(qs.get('flag')).toBe(OIDC_FLAG_WEB)
-    expect(qs.get('return_to')).toBe('/login')
+    expect(qs.get('return_to')).toBe('https://app.example.com/login')
   })
 
   it('flips oidcLoading off via the fallback timer if redirect is intercepted', async () => {

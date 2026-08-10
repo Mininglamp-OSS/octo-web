@@ -16,11 +16,15 @@ import Screenshots from "electron-screenshots";
 import { join } from "path";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import { IPC_CONVERSATION_UNREAD_COUNT } from "../shared/ipc-channels";
+import {
+  IPC_CONVERSATION_UNREAD_COUNT,
+  IPC_OIDC_AUTHORIZE_START,
+} from "../shared/ipc-channels";
 import OCTO_CONFIG from "./config";
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
+import { parseOidcCallback, withTrustedSessionSid } from "./oidcRedirect";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -44,16 +48,33 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000
 const APP_EXIT_DELAY_MS = 1000;
 const TRAY_FLASH_INTERVAL_MS = 1000;
 
+const oidcExpectedOrigins = new WeakMap<BrowserWindow, string>();
+
+function parseHttpOrigin(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.origin
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+ipcMain.on(IPC_OIDC_AUTHORIZE_START, (event, apiURL: unknown) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const origin = parseHttpOrigin(apiURL);
+  if (win && origin) oidcExpectedOrigins.set(win, origin);
+});
+
 function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: string) {
   if (!isDevelopment) {
     win.webContents.on("will-redirect", (event, url) => {
-      let parsed: URL;
-      try {
-        parsed = new URL(url);
-      } catch {
-        return;
-      }
-      if (parsed.pathname !== "/login") return;
+      const expectedOrigin = oidcExpectedOrigins.get(win);
+      if (!expectedOrigin) return;
+      const callback = parseOidcCallback(url, expectedOrigin);
+      if (!callback) return;
 
       // The OIDC backend accepts the server-relative `/login` return target,
       // but Electron production pages are hosted from file://. Bring the
@@ -63,10 +84,8 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
       // Reuse the sid captured when this window was created. At this point
       // webContents may already be on the IdP/API redirect URL, so reading
       // sid from getURL() would lose the original file:// page's sid.
-      const query: Record<string, string> = { sid };
-      parsed.searchParams.forEach((value, key) => {
-        query[key] = value;
-      });
+      const query = withTrustedSessionSid(callback, sid);
+      oidcExpectedOrigins.delete(win);
       win.loadFile(webUrl, { query });
     });
   }

@@ -69,40 +69,40 @@ function resolveOidcUrl(url: string, baseURL?: string): string {
 
 export function createFetchHttpClient(baseURL?: string): OidcHttpClient {
   return {
-  async get<T>(url: string, init?: { signal?: AbortSignal }): Promise<T> {
-    const signal = combineSignals(init?.signal, DEFAULT_REQUEST_TIMEOUT_MS)
-    const resp = await fetch(resolveOidcUrl(url, baseURL), {
-      method: 'GET',
-      credentials: 'same-origin',
-      headers: { Accept: 'application/json' },
-      signal,
-    })
-    if (!resp.ok) {
-      throw new OidcBindHttpError(resp.status, await parseErrorMsg(resp))
-    }
-    return (await resp.json()) as T
-  },
-  async post<T>(
-    url: string,
-    body: unknown,
-    init?: { signal?: AbortSignal },
-  ): Promise<T> {
-    const signal = combineSignals(init?.signal, DEFAULT_REQUEST_TIMEOUT_MS)
-    const resp = await fetch(resolveOidcUrl(url, baseURL), {
-      method: 'POST',
-      credentials: 'same-origin',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body ?? {}),
-      signal,
-    })
-    if (!resp.ok) {
-      throw new OidcBindHttpError(resp.status, await parseErrorMsg(resp))
-    }
-    return (await resp.json()) as T
-  },
+    async get<T>(url: string, init?: { signal?: AbortSignal }): Promise<T> {
+      const signal = combineSignals(init?.signal, DEFAULT_REQUEST_TIMEOUT_MS)
+      const resp = await fetch(resolveOidcUrl(url, baseURL), {
+        method: 'GET',
+        credentials: 'same-origin',
+        headers: { Accept: 'application/json' },
+        signal,
+      })
+      if (!resp.ok) {
+        throw new OidcBindHttpError(resp.status, await parseErrorMsg(resp))
+      }
+      return (await resp.json()) as T
+    },
+    async post<T>(
+      url: string,
+      body: unknown,
+      init?: { signal?: AbortSignal },
+    ): Promise<T> {
+      const signal = combineSignals(init?.signal, DEFAULT_REQUEST_TIMEOUT_MS)
+      const resp = await fetch(resolveOidcUrl(url, baseURL), {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body ?? {}),
+        signal,
+      })
+      if (!resp.ok) {
+        throw new OidcBindHttpError(resp.status, await parseErrorMsg(resp))
+      }
+      return (await resp.json()) as T
+    },
   }
 }
 

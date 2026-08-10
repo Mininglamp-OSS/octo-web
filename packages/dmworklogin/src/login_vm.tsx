@@ -247,7 +247,8 @@ export class LoginVM extends ProviderListener {
         this.loginLoading = true
         this.notifyListener()
         try {
-            const resp = await WKApp.apiClient.post(`user/login_authcode/${authCode}`);
+            const flag = WKApp.shared.isPC ? Number(OIDC_FLAG_PC) : Number(OIDC_FLAG_WEB)
+            const resp = await WKApp.apiClient.post(`user/login_authcode/${authCode}`, { flag });
             if (resp) {
                 this.loginSuccess(resp)
             }
@@ -594,15 +595,11 @@ export class LoginVM extends ProviderListener {
                 savedAt: Date.now(),
             })
 
-            // Local development intentionally uses the backend-relative callback.
-            // The shared dev backend does not whitelist localhost return_to
-            // values, so it resolves `/login` to the production login page.
-            // This preserves the existing local-debug flow. Packaged Electron
-            // also uses this callback; main/index.ts intercepts the production
-            // callback and reloads the packaged app while preserving its query.
             const isDesktop = WKApp.shared.isPC
             const flag = isDesktop ? OIDC_FLAG_PC : OIDC_FLAG_WEB
-            const returnTo = '/login'
+            const returnTo = isDesktop
+                ? '/login'
+                : `${window.location.origin}/login`
             // Electron production pages use file://, so a server-relative
             // authorize path would resolve to file:///v1/... instead of the
             // configured backend. Dev Electron still uses the Vite proxy and
@@ -611,6 +608,9 @@ export class LoginVM extends ProviderListener {
             const authorizeBaseURL = isDesktop && /^https?:\/\//i.test(apiURL)
                 ? apiURL
                 : undefined
+            if (isDesktop) {
+                ;(window as any).ipc?.send?.('oidc-authorize-start', apiURL)
+            }
 
             // Schedule a fallback reset before navigating so a blocked redirect
             // does not leave the SSO button stuck in a loading state forever.
