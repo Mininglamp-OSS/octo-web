@@ -1,0 +1,78 @@
+.drive-save {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.drive-save__space {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drive-save__label {
+  font-size: 13px;
+  color: var(--semi-color-text-1, #4e5969);
+}
+
+.drive-save__folder {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.drive-save__list {
+  min-height: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--semi-color-border, #e5e6eb);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.drive-save__center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+}
+
+.drive-save__empty {
+  color: var(--semi-color-text-2, #86909c);
+  font-size: 13px;
+}
+
+.drive-save__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  text-align: left;
+}
+
+.drive-save__item:hover {
+  background: var(--semi-color-fill-0, #f2f3f5);
+}
+
+.drive-save__item-icon {
+  color: var(--wk-brand-primary, #1c1c23);
+  flex-shrink: 0;
+}
+
+.drive-save__item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drive-save__item-arrow {
+  color: var(--semi-color-text-2, #c9cdd4);
+  flex-shrink: 0;
+}

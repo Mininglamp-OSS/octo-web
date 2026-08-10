@@ -5,6 +5,8 @@ import {
   Menus,
   i18n,
   t as translate,
+  MessageContentTypeConst,
+  isDriveTransferSupportedChannel,
 } from '@octo/base';
 import type { IModule } from '@octo/base';
 import DriveSidebar from './pages/DriveSidebar';
@@ -13,6 +15,7 @@ import { DriveVM } from './pages/DriveVM';
 import { transferFromIm, checkImTransferredBatch, getAncestors } from './api/driveApi';
 import type { ImTransferredEntry } from './api/driveApi';
 import { imTransferredSourceKey, normaliseImChannelID } from './bridge/types';
+import SaveToDriveModal from './ui/SaveToDriveModal';
 
 import enUS from './i18n/en-US.json';
 import zhCN from './i18n/zh-CN.json';
@@ -110,6 +113,50 @@ export default class DriveModule implements IModule {
       'en-US': enUS,
     });
 
+    // Right-click on a supported chat file message → "存到云盘…" / "在云盘中查看".
+    // Same visibility gate as the file card's icon (see Messages/File): driveOn
+    // remoteConfig ON, message is a File, channel type supports drive transfer.
+    // The registered handler runs on EVERY registered message type, so an
+    // early type-guard return keeps the menu list from getting a spurious
+    // entry for text/image/reply messages. There's a small window between
+    // mount and the transferred-state batch resolving where imTransferred is
+    // unknown — the message class holds that state, not this factory, so
+    // this handler defaults to the "存到云盘…" label + saveMessageToDriveAt
+    // path when it can't see the resolved state; the icon path continues to
+    // paint the two-state resolution in the message body regardless. In
+    // practice the user right-clicking a file they SAVED already went via
+    // the icon at least once — clicking the menu item's "存到云盘…" is a
+    // deliberate "save AGAIN into a different space", which is legal
+    // (drive dedupes per space) and consistent with the picker's semantics.
+    WKApp.endpoints.registerMessageContextMenus(
+      'contextmenus.driveSave',
+      (message) => {
+        if (!WKApp.remoteConfig?.driveOn) return null;
+        if (message.contentType !== MessageContentTypeConst.file) return null;
+        if (!isDriveTransferSupportedChannel(message.channel.channelType)) return null;
+        if (!message.messageID) return null; // unsent / send-ack pending
+        return {
+          title: translate('drive.contextMenus.saveToDrive'),
+          onClick: () => {
+            const save = WKApp.saveMessageToDriveAt;
+            if (!save) return;
+            void save({
+              im_group_no: message.channel.channelID,
+              im_channel_type: message.channel.channelType,
+              im_msg_id: message.messageID,
+            }).catch(() => {
+              // Cancel or backend failure: swallow — the picker's inner catch
+              // already left the modal open on failure; a plain cancel is a
+              // no-op. Toasts on success live inside the modal's onConfirm
+              // path (FileCell's existing success path also toasts when the
+              // icon triggers save, but the picker owns its own UX).
+            });
+          },
+        };
+      },
+      1500,
+    );
+
     // Bridge for the chat file card's "save to Drive" action. Backend accepts
     // an empty target_space_id and defaults to the caller's personal space,
     // so we don't pre-resolve it (one fewer round-trip). Person channelIDs
@@ -127,6 +174,75 @@ export default class DriveModule implements IModule {
         target_parent_id: 0,
       });
       return { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
+    };
+
+    // Save-with-picker: same trigger, but the caller wants to choose target
+    // space + folder rather than the default personal-space-root fallback.
+    // Opens SaveToDriveModal via the global-modal singleton so it renders
+    // outside the message list (WKBase.showGlobalModal is the shared modal
+    // slot used by summary-share preview + confirmation flows). Resolves
+    // when the user confirms and the transfer POST returns, or rejects if
+    // they cancel. The returned shape matches saveMessageToDrive so both
+    // callers can reuse the same "flip icon + open drive" post-processing.
+    WKApp.saveMessageToDriveAt = ({ im_group_no, im_channel_type, im_msg_id }: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => {
+      return new Promise<{ file_id: number; space_id: string; parent_id: number }>((resolve, reject) => {
+        // Ensure vm.spaces is loaded before the picker opens — the modal
+        // takes the space list as a prop and expects it non-empty. The
+        // picker also gates rank on viewer_role, which only exists on the
+        // list response; a stale vm.spaces would gate wrong.
+        vm.ensureLoaded();
+        const close = (): void => WKApp.shared.baseContext.hideGlobalModal();
+        let settled = false;
+        WKApp.shared.baseContext.showGlobalModal({
+          width: '480px',
+          closable: false,
+          footer: null,
+          onCancel: () => {
+            if (settled) return;
+            settled = true;
+            close();
+            reject(new Error('save-to-drive cancelled'));
+          },
+          body: (
+            <SaveToDriveModal
+              visible
+              spaces={vm.spaces}
+              defaultSpaceId={vm.activeSpaceId}
+              onClose={() => {
+                if (settled) return;
+                settled = true;
+                close();
+                reject(new Error('save-to-drive cancelled'));
+              }}
+              onConfirm={async (targetSpaceId, targetParentId) => {
+                try {
+                  const result = await transferFromIm({
+                    im_group_no: normaliseImChannelID(im_channel_type, im_group_no),
+                    im_channel_type,
+                    im_msg_id,
+                    target_space_id: targetSpaceId,
+                    target_parent_id: targetParentId,
+                  });
+                  settled = true;
+                  resolve({
+                    file_id: result.id,
+                    space_id: result.space_id,
+                    parent_id: result.parent_id,
+                  });
+                  return true;
+                } catch (err) {
+                  // Leave the modal open so the user can retry / choose a
+                  // different target — a 403 here means they picked a space
+                  // the backend refused (rank changed between listSpaces and
+                  // the POST); the picker still shows the same list.
+                  reject(err);
+                  return false;
+                }
+              }}
+            />
+          ),
+        });
+      });
     };
 
     // Chat file card mount-time check: has this IM file already been transferred?

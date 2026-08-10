@@ -42,6 +42,15 @@
   "copy": {
     "title": "复制到"
   },
+  "saveModal": {
+    "title": "存到云盘",
+    "selectSpace": "选择目标空间",
+    "noSubfolder": "该文件夹下没有子文件夹"
+  },
+  "contextMenus": {
+    "saveToDrive": "存到云盘…",
+    "viewInDrive": "在云盘中查看"
+  },
   "delete": {
     "title": "确认删除",
     "content": "确定删除"

@@ -772,6 +772,10 @@ export default class WKApp extends ProviderListener {
   // Returns the resulting drive file coordinates so the caller can flip its UI
   // state to "view in drive" without a follow-up query.
   static saveMessageToDrive?: (params: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
+  // Save-to-drive with a target picker. Opens a modal where the caller
+  // chooses target space + folder; resolves after the transfer POST returns.
+  // Rejects on cancel or backend failure (the picker stays open on failure).
+  static saveMessageToDriveAt?: (params: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
   // Query whether an IM file (identified by the (channelType, channelID, msgID)
   // triple the backend uses to derive its source_key) is already transferred
   // into the caller's personal drive space. Registered by DriveModule; the chat

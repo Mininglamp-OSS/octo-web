@@ -42,6 +42,15 @@
   "copy": {
     "title": "Copy to"
   },
+  "saveModal": {
+    "title": "Save to drive",
+    "selectSpace": "Choose target space",
+    "noSubfolder": "No subfolders here"
+  },
+  "contextMenus": {
+    "saveToDrive": "Save to drive…",
+    "viewInDrive": "View in drive"
+  },
   "delete": {
     "title": "Confirm deletion",
     "content": "Delete"
