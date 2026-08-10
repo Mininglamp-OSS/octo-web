@@ -578,12 +578,15 @@ app.on("open-url", (event, url) => {
 // 单例模式启动
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  // P1-1: never quit silently — the user needs to know why nothing happened
-  // (a legacy DMWork instance is still running, or a concurrent launch won).
-  dialog.showErrorBox(
-    "OCTO 已在运行",
-    "检测到另一个实例正在运行（可能是旧版 DMWork 尚未退出）。请退出旧应用后重新启动，以完成数据迁移。"
-  );
+  // P1-2 (round-5): the dialog must only appear on the migration-related
+  // paths — in steady state (plan "none") a second launch is the normal
+  // "focus the running instance" flow and must stay silent.
+  if (userDataPlan.action !== "none") {
+    dialog.showErrorBox(
+      "OCTO 无法启动（数据迁移中）",
+      "另一个实例正在运行（可能是旧版 DMWork 尚未退出，或迁移正在进行）。请退出旧应用后重新启动。"
+    );
+  }
   app.quit();
 } else {
   // The migration runs under the single-instance lock we just took on the
@@ -607,14 +610,20 @@ if (!gotTheLock) {
         app.relaunch();
         app.exit(0);
       } else if (migrationResult === "failed") {
-        // P1-1: make the failure visible (ENOSPC / rename refusal etc.).
+        // P1-1 (round-4): make the failure visible (ENOSPC / rename refusal).
         dialog.showErrorBox(
           "OCTO 数据迁移未完成",
           "本次启动继续使用旧版数据（DMWork），下次启动会自动重试。若持续失败，请检查磁盘空间后重试。"
         );
+      } else if (migrationResult === "skipped") {
+        // Round-5 P2: "skipped" means the destination gained a real profile
+        // since planning — staying on the legacy path silently would let the
+        // next launch flip profiles without the user knowing. Say it.
+        dialog.showErrorBox(
+          "OCTO 数据迁移已跳过",
+          "目标目录（OCTO）出现了真实数据，本次启动继续使用旧版数据（DMWork），两个数据目录均保留。"
+        );
       }
-      // "skipped": the destination gained a real profile since planning —
-      // stay on the legacy path this session, no relaunch (P2-2).
     } catch (err) {
       // Defensive backstop (round-2 P0-2): the migration must never take the
       // app down — fall back to the legacy profile and continue.
@@ -624,12 +633,13 @@ if (!gotTheLock) {
       );
     }
   } else if (userDataPlan.action === "legacy") {
-    // P1-1: plan-time failure or retry budget exhausted — say so instead of
-    // silently running on the legacy profile.
+    // P1-1 (round-4): plan-time failure or retry budget exhausted — say so
+    // instead of silently running on the legacy profile. Include the
+    // breadcrumb path so the user knows how to re-enable (round-5 P2).
     dialog.showErrorBox(
       "OCTO 数据迁移暂缓",
       userDataPlan.reason === "too-many-failures"
-        ? "数据迁移多次失败，已暂停自动重试。本次继续使用旧版数据（DMWork）。如需重新尝试，请删除 DMWork 目录下的 .migration-failed.json 后重启。"
+        ? `数据迁移多次失败，已暂停自动重试。本次继续使用旧版数据（DMWork）。如需重新尝试，请删除 ${userDataPlan.oldDir}/.migration-failed.json 后重启。`
         : "数据迁移准备失败，本次继续使用旧版数据（DMWork），下次启动会自动重试。"
     );
   }

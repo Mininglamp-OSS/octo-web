@@ -60,12 +60,12 @@ describe("planUserDataMigration", () => {
     expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
   });
 
-  it("re-migrates a torn publish: marker present but no profile sentinel (P1-2)", () => {
-    makeLegacyProfile(appDataDir);
+  it("re-migrates a torn publish: marker present but no profile sentinel, legacy had data (P1-2/P0-1)", () => {
+    makeLegacyProfile(appDataDir); // has Preferences -> real data to carry
     const newDir = path.join(appDataDir, BRAND);
     fs.mkdirSync(newDir, { recursive: true });
     // Power loss between rename and any data flush: a bare marker with no
-    // real profile files must NOT be trusted.
+    // real profile files must NOT be trusted when the legacy had data.
     fs.writeFileSync(path.join(newDir, MIGRATION_MARKER), "2026-08-06T00:00:00Z");
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     try {
@@ -75,6 +75,28 @@ describe("planUserDataMigration", () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+
+  it("round-trip invariant: a marker-only destination with a data-less legacy counts as migrated (P0-1, no relaunch loop)", () => {
+    // Legacy profile with ONLY regenerable caches (no sentinel): the copy
+    // prunes everything, so re-migrating would loop forever. The marker-only
+    // result must plan "none" on the next launch.
+    const profile = path.join(appDataDir, "DMWork");
+    fs.mkdirSync(path.join(profile, "Cache"), { recursive: true });
+    fs.writeFileSync(path.join(profile, "Cache", "data"), "x");
+
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    expect(plan.action).toBe("migrate");
+
+    // Simulate execute()'s publish: staging -> newDir with only a marker.
+    const newDir = path.join(appDataDir, BRAND);
+    const staging = path.join(appDataDir, `${BRAND}.migrating`);
+    fs.mkdirSync(staging, { recursive: true });
+    fs.writeFileSync(path.join(staging, MIGRATION_MARKER), new Date().toISOString());
+    fs.renameSync(staging, newDir);
+
+    // Next launch: marker present, no sentinel anywhere -> "none", loop broken.
+    expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
   });
 
   it("plans none (occupied) when the destination has a real profile without a marker — permanent, loud (P2-1)", () => {
@@ -136,20 +158,37 @@ describe("planUserDataMigration", () => {
     expect(plan.action).toBe("none");
   });
 
-  it("never throws: an unstatable legacy path degrades to none, not an exception (P0-2)", () => {
+  it("plans none when the legacy path does not exist (ENOENT -> none, normal fresh install)", () => {
+    const statSpy = vi.spyOn(fs, "statSync").mockImplementationOnce(() => {
+      const err = new Error("ENOENT: no such file or directory") as NodeJS.ErrnoException;
+      err.code = "ENOENT";
+      throw err;
+    });
+    try {
+      const plan = planUserDataMigration(appDataDir, BRAND);
+      expect(plan.action).toBe("none");
+    } finally {
+      statSpy.mockRestore();
+    }
+  });
+
+  it("plans legacy (not none) when the legacy path cannot be inspected for other reasons (P1-1 round-5)", () => {
     makeLegacyProfile(appDataDir);
     const statSpy = vi.spyOn(fs, "statSync").mockImplementationOnce(() => {
       const err = new Error("EACCES: permission denied") as NodeJS.ErrnoException;
       err.code = "EACCES";
       throw err;
     });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
-      // Cannot stat the legacy path -> treated as "no legacy profile":
-      // no exception escapes plan() (the internal guard swallows it).
+      // EACCES must NOT degrade to "none" (which would silently start a fresh
+      // OCTO profile and strand DMWork forever via destination-occupied).
       const plan = planUserDataMigration(appDataDir, BRAND);
-      expect(plan.action).toBe("none");
+      expect(plan.action).toBe("legacy");
+      expect(errorSpy).toHaveBeenCalled();
     } finally {
       statSpy.mockRestore();
+      errorSpy.mockRestore();
     }
   });
 });
@@ -193,8 +232,13 @@ describe("executeUserDataMigration", () => {
     return profile;
   };
 
-  it("(a) migrates atomically, keeps source, writes marker, leaks no Singleton artifacts (F3), prunes top-level caches case-insensitively (P2-3)", () => {
+  it("(a) migrates atomically, keeps source, writes marker, leaks no Singleton artifacts (F3), prunes top-level caches case-insensitively (P2-3), leaves the breadcrumb behind (round-5 P2)", () => {
     makeLegacyProfile();
+    // Migration bookkeeping must stay behind (never copied).
+    fs.writeFileSync(
+      path.join(appDataDir, "DMWork", ".migration-failed.json"),
+      JSON.stringify({ attempts: 2, lastError: "x" })
+    );
     const plan = planUserDataMigration(appDataDir, BRAND);
     expect(plan.action).toBe("migrate");
 
@@ -209,6 +253,8 @@ describe("executeUserDataMigration", () => {
     expect(fs.existsSync(path.join(newDir, "SingletonLock"))).toBe(false);
     expect(fs.existsSync(path.join(newDir, "SingletonCookie"))).toBe(false);
     expect(fs.existsSync(path.join(newDir, "SingletonSocket"))).toBe(false);
+    // Round-5 P2: the breadcrumb is migration bookkeeping, never copied.
+    expect(fs.existsSync(path.join(newDir, ".migration-failed.json"))).toBe(false);
     // Top-level caches skipped, including the lowercase variant.
     expect(fs.existsSync(path.join(newDir, "Cache"))).toBe(false);
     expect(fs.existsSync(path.join(newDir, "cache"))).toBe(false);
