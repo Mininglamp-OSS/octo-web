@@ -65,10 +65,10 @@ export default function ShareModal({ visible, entry, onClose }: ShareModalProps)
         return;
       }
       setLink(url);
-      // Best-effort auto-copy on open. Uses the shared writeToClipboard helper
-      // that falls back to execCommand over plain-HTTP LAN deployments where
-      // navigator.clipboard is unavailable. Failure is quiet — the user can
-      // still hit the Copy button (same helper) or select the input manually.
+      // Best-effort auto-copy on open. Uses the shared @octo/base
+      // copyToClipboard helper (iOS-safe + execCommand fallback for
+      // plain-HTTP LAN deployments). Failure is quiet — the user can
+      // still hit the Copy button (same helper) or select the input.
       const ok = await copyToClipboard(url);
       if (!cancelled && ok) setCopied(true);
     })();

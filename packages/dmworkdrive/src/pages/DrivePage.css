@@ -139,12 +139,22 @@ body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button:not
   color: var(--wk-text-inverse, #111318);
 }
 
+/* Wrapper around the scrolling list body. Non-scrolling itself; hosts
+   the dropzone overlay as an out-of-flow sibling of the actual scroll
+   container (.drive-main__body) so the overlay covers the visible
+   viewport regardless of scroll position (bot review Q1). */
+.drive-main__body-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
 .drive-main__body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* Anchor for the drag-drop overlay (absolute inset:0 inside). */
-  position: relative;
 }
 
 /* Bottom-of-list sentinel for IntersectionObserver-driven infinite scroll.

@@ -97,15 +97,32 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   // synchronously alongside setEntries so the next runFetch call sees an
   // up-to-date total.
   const loadedCountRef = useRef(0);
+  // pageIndexRef mirrors pageIndex so imperative handlers (Modal onOk,
+  // upload finish) captured earlier still refetch the CURRENT span,
+  // not the span as of capture time (bot review Q6).
+  const pageIndexRef = useRef(1);
 
   const runFetch = useCallback(
     async (opts: {
       page: number;
-      /** How many rows to fetch this round. Defaults to PAGE_SIZE. */
-      pageSize?: number;
       append: boolean;
       resetView?: boolean;
     }) => {
+      // Pre-abort context guard: if the (spaceId, parentId, filter)
+      // captured in this closure no longer matches the LIVE context
+      // (contextRef, updated every render), a stale reload() from a
+      // previous space is firing. Bail BEFORE touching abortRef or
+      // seqRef — otherwise we'd cancel the current context's own
+      // in-flight browse and leave the view empty (bot review yujiawei
+      // Q2: this produced a misleading "folder is empty" state for a
+      // folder that has files).
+      if (
+        contextRef.current.spaceId !== spaceId ||
+        contextRef.current.parentId !== parentId ||
+        contextRef.current.filter !== filter
+      ) {
+        return;
+      }
       // Abort any in-flight browse FIRST — including on the transition to
       // no-space (DriveVM.reset() sets spaceId null). If we cleared +
       // returned before aborting, the previous space's browse could resolve
@@ -156,7 +173,6 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
         // paging is re-armed, but keep entries visible during the fetch.
         setLoadMoreError(null);
       }
-      const pageSize = opts.pageSize ?? PAGE_SIZE;
       try {
         const res = await api.browse(
           {
@@ -164,24 +180,11 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
             parent_id: parentId,
             type: filter === 'all' ? undefined : filter,
             page_index: opts.page,
-            page_size: pageSize,
+            page_size: PAGE_SIZE,
           },
           ctrl.signal,
         );
         if (ctrl.signal.aborted || seq !== seqRef.current) return;
-        // Post-await context guard: if the (spaceId, parentId, filter)
-        // captured in this closure no longer matches the LIVE context
-        // (contextRef, updated every render), a stale reload() from a
-        // previous space is finishing. Do NOT setEntries — that would
-        // write the old space's rows over the current space's view.
-        // Bot review yujiawei P1-2.
-        if (
-          contextRef.current.spaceId !== spaceId ||
-          contextRef.current.parentId !== parentId ||
-          contextRef.current.filter !== filter
-        ) {
-          return;
-        }
         const list = res.entries ?? [];
         // Update entries AND the cumulative count in lock-step. Read from
         // the ref, not from `entries` state — the closure captured the
@@ -201,28 +204,12 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
         // the deterministic terminator; the total gate protects against
         // one wasted round-trip when total is a clean multiple of
         // PAGE_SIZE.
-        //
-        // NOTE the ratio here uses `pageSize`, not `PAGE_SIZE`, so a
-        // multi-page reload() (span-refetch) that hits the exact tail
-        // is still classified as short and terminates paging cleanly.
-        const short = list.length < pageSize;
+        const short = list.length < PAGE_SIZE;
         const reachedTotal =
           nextTotal !== null && loadedCountRef.current >= nextTotal;
         setHasMore(!short && !reachedTotal);
-        // pageIndex tracks how many PAGE_SIZE-sized pages have been
-        // consumed. On a normal append or a page-1 first fetch this is
-        // just `opts.page`. On a SPAN refetch (reload with a jumbo
-        // pageSize covering multiple pages of history), map the actual
-        // received rows back to page count so loadMore() picks up from
-        // the right page number. For a partial tail the ceiling gives
-        // the last-partial page; that page number is fine — hasMore is
-        // already false by then, so it won't refetch anyway.
-        if (opts.pageSize && opts.pageSize > PAGE_SIZE && !opts.append) {
-          const pagesCovered = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
-          setPageIndex(pagesCovered);
-        } else {
-          setPageIndex(opts.page);
-        }
+        setPageIndex(opts.page);
+        pageIndexRef.current = opts.page;
       } catch (err: unknown) {
         if ((err as Error)?.name === 'AbortError' || seq !== seqRef.current) return;
         const msg = (err as Error)?.message ?? 'load failed';
@@ -244,26 +231,47 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
 
   const reload = useCallback(() => {
     // Same-context refresh (delete / rename / upload / etc). Refetch the
-    // ENTIRE span the user has already paged through, in one round-trip,
-    // so a `loadMore()`-then-`reload()` doesn't collapse the accumulated
-    // pages back to page-1 rows.
+    // ENTIRE span the user has already paged through so a same-context
+    // reload doesn't collapse the accumulated pages back to page-1 rows.
     //
-    // Bot review yujiawei P1-1: without this a paged-through 180-row
-    // folder collapses to 50 after any mutation. useSelection then prunes
-    // every id past 50 (visibleEntries dropped 130 rows), silently
-    // dropping user selections that were on pages 2-4.
+    // Bot review yujiawei P1-1 / Q4: an earlier attempt used a jumbo
+    // page_size = pageIndex * PAGE_SIZE, but octo-drive caps page_size
+    // server-side. A clamped response would be indistinguishable from a
+    // real tail → hasMore flips false → paging permanently disabled.
+    // Fix: refetch pages 1..pageIndex sequentially through the normal
+    // append path. Each request is PAGE_SIZE-bounded, so the cap can't
+    // truncate the span or falsely terminate paging.
     //
-    // Implementation: fetch page 1 with page_size = pageIndex * PAGE_SIZE,
-    // so a single response covers everything that was loaded. The server
-    // caps `page_size` internally; if it comes back short we still hit
-    // the terminator path in runFetch and hasMore flips false correctly.
-    const span = Math.max(pageIndex, 1) * PAGE_SIZE;
-    void runFetch({ page: 1, pageSize: span, append: false });
-    // After the refetch runFetch sets pageIndex to 1 (page: 1). Re-align
-    // pageIndex to reflect the multi-page span we just re-loaded so a
-    // subsequent loadMore() picks up from the correct page number.
-    // (No effect if the span didn't fill; hasMore will be false.)
-  }, [runFetch, pageIndex]);
+    // pageIndexRef, not the closure-captured pageIndex, so a captured
+    // reload() from a Modal onOk that saw pageIndex=2 doesn't
+    // under-refetch after the user has since paged deeper (Q6).
+    const pagesToLoad = Math.max(pageIndexRef.current, 1);
+    // Kick off page 1 as a reset (clears loadMoreError, keeps entries
+    // visible during the fetch — the existing !resetView branch), then
+    // chain-append the remaining pages one at a time so runFetch's own
+    // guard/abort/seq machinery serialises them correctly.
+    //
+    // We can't Promise.all — each append reads entries from setEntries's
+    // callback, and we need them in order to preserve stable pagination.
+    // A sequential chain is simpler and matches the original scroll-in
+    // ordering.
+    (async () => {
+      await runFetch({ page: 1, append: false });
+      for (let p = 2; p <= pagesToLoad; p++) {
+        // If a later runFetch aborted us (context change, or the user
+        // manually navigated), stop — no point re-fetching pages that
+        // belong to a stale view.
+        if (
+          contextRef.current.spaceId !== spaceId ||
+          contextRef.current.parentId !== parentId ||
+          contextRef.current.filter !== filter
+        ) {
+          return;
+        }
+        await runFetch({ page: p, append: true });
+      }
+    })();
+  }, [runFetch, spaceId, parentId, filter]);
 
   const loadMore = useCallback(() => {
     if (!hasMore) return;

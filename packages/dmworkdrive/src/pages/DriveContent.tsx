@@ -617,13 +617,14 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
 
       <UploadProgress items={upload.items} onRetry={upload.retry} onDismiss={upload.dismiss} />
 
-      <div className="drive-main__body" {...dropzone.bind}>
+      <div className="drive-main__body-wrap" {...dropzone.bind}>
         {canUpload && (
           <DropzoneOverlay
             active={dropzone.isDraggingOver}
             targetName={vm.path[vm.path.length - 1]?.name}
           />
         )}
+        <div className="drive-main__body">
         {!hasSpace && vm.spacesLoading ? (
           <div className="drive-main__center">
             <Spin />
@@ -718,6 +719,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             {t('drive.file.truncated', { values: { loaded: String(entries.length), total: String(total) } })}
           </p>
         )}
+        </div>
       </div>
 
       <NameInputModal

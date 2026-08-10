@@ -1,25 +1,22 @@
 /* Full-body overlay that lights up when the user drags OS files over the
-   drive list. Uses `position: sticky` so it stays inside the visible
-   viewport even after the list is scrolled — `absolute; inset: 0` (which
-   we used before) is anchored to the padding box at the scroll origin,
-   so once the user paged in a few pages the overlay sat above the
-   viewport and the user got no drop feedback at all (bot review yujiawei
-   P2-2). Pointer-events are kept off so the underlying drop zone still
-   receives the dragover/drop events. */
+   drive list. Positioned absolutely inside `.drive-main__body-wrap` — the
+   wrapper is a `position: relative` NON-scrolling anchor sitting outside
+   `.drive-main__body` (the actual scroll container). Because the wrapper
+   doesn't scroll, `inset: 0` on the overlay tracks the visible viewport
+   correctly no matter how deep into the list the user has scrolled.
+   Pointer-events are kept off so the underlying drop zone still receives
+   the dragover/drop events.
+
+   Earlier attempts (bot review yujiawei Q1): `position: sticky` inside
+   the scroll container with `margin-bottom: -100%` broke the layout —
+   percentage margins resolve against the containing block's width, not
+   height, so the "zero height at rest" reasoning was wrong and pushed
+   the file list ~14 rows above the scroll origin. Reverted to the
+   original out-of-flow approach with a proper anchor. */
 
 .drive-dropzone-overlay {
-  position: sticky;
-  top: 0;
-  left: 0;
-  width: 100%;
-  /* Fill the visible height of the scroll container. 100% works because
-     the parent is display: flex and the overlay is inserted between
-     scroll-content and the flex-basis expansion. */
-  height: 100%;
-  /* Zero-height at rest so the overlay doesn't consume layout space
-     when it's not showing (the scroll container still measures normal
-     content height). --active flips this on. */
-  margin-bottom: -100%;
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;

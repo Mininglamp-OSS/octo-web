@@ -360,11 +360,13 @@ describe('useFileList', () => {
     });
 
     it('reload() after loadMore() refetches the FULL span, not just page 1 (P1-1)', async () => {
-      // Bot review yujiawei P1-1: a paged-through folder collapsed to
-      // page-1 rows after any reload(), silently pruning selections that
-      // lived on later pages. Fix: reload() must span the pages the user
-      // has already loaded — page_size = pageIndex * PAGE_SIZE — so a
-      // single response covers everything.
+      // Bot review yujiawei P1-1 + Q4: a paged-through folder used to
+      // collapse to page-1 rows after any reload(), silently pruning
+      // selections that lived on later pages. Fix: reload() refetches
+      // pages 1..pageIndex SEQUENTIALLY through the normal append path.
+      // (An earlier attempt used a jumbo page_size, but a server cap
+      // would then be indistinguishable from a real tail → hasMore
+      // stuck false. Bounded pages per request dodges that.)
       const page1 = Array.from({ length: 50 }, (_, i) =>
         entry(i + 1, `f${i + 1}.pdf`, 'blob'),
       );
@@ -374,14 +376,15 @@ describe('useFileList', () => {
       const page3Partial = Array.from({ length: 30 }, (_, i) =>
         entry(i + 101, `f${i + 101}.pdf`, 'blob'),
       );
-      const refreshedSpan = [...page1, ...page2, ...page3Partial]; // 130 rows
+      // Reload: three more sequential PAGE_SIZE-bounded calls covering
+      // the same span. Same rows come back (refresh is idempotent here).
       vi.mocked(api.browse)
         .mockResolvedValueOnce(resp(page1, 130))
         .mockResolvedValueOnce(resp(page2, 130))
         .mockResolvedValueOnce(resp(page3Partial, 130))
-        // reload() should be ONE call with a wide page_size that returns
-        // the whole span in one shot.
-        .mockResolvedValueOnce(resp(refreshedSpan, 130));
+        .mockResolvedValueOnce(resp(page1, 130))
+        .mockResolvedValueOnce(resp(page2, 130))
+        .mockResolvedValueOnce(resp(page3Partial, 130));
 
       const { result } = renderHook(() => useFileList('sp', 0));
       await waitFor(() => expect(result.current.loading).toBe(false));
@@ -404,44 +407,41 @@ describe('useFileList', () => {
       await act(async () => {
         result.current.reload();
       });
-      await waitFor(() => expect(result.current.loading).toBe(false));
-      expect(result.current.entries).toHaveLength(130);
-      // And the fourth browse call was made with a wide page_size (3
-      // pages worth = 150), not the default PAGE_SIZE.
+      await waitFor(() => expect(result.current.entries).toHaveLength(130));
+      expect(result.current.hasMore).toBe(false);
+      // And each request was PAGE_SIZE-bounded (no jumbo page_size).
       const calls = vi.mocked(api.browse).mock.calls;
-      const reloadCall = calls[calls.length - 1]!;
-      const params = reloadCall[0] as { page_size: number; page_index: number };
-      expect(params.page_index).toBe(1);
-      expect(params.page_size).toBeGreaterThan(50);
+      for (const c of calls) {
+        const params = c[0] as { page_size: number };
+        expect(params.page_size).toBe(50);
+      }
     });
 
     it('stale reload() from a previous space cannot overwrite the current view (P1-2)', async () => {
-      // Bot review yujiawei P1-2: a reload() closure captured while the
-      // user was in space A, invoked AFTER the user has switched to
-      // space B (e.g. from a batch delete's onOk running after a
-      // sidebar click), would abort space B's browse, pass the seq gate
-      // with its own fresh sequence, and write A's entries into B's
-      // view. Fix: post-await contextRef guard.
-      let resolveAReload: (v: ReturnType<typeof resp>) => void = () => {};
-      const aReloadResp = new Promise<ReturnType<typeof resp>>((r) => {
-        resolveAReload = r;
+      // Bot review yujiawei Q2/Q3: the earlier version of this test called
+      // aReload() BEFORE rerender, so switching to B ran the effect cleanup
+      // and aborted A's controller — A's promise then exited at the
+      // pre-existing signal.aborted check, never reaching the new guard.
+      // Fix: invoke aReload AFTER the rerender with B's browse still in
+      // flight. That's also the real-world ordering — a batch onOk firing
+      // after the user has already picked a new space.
+      //
+      // With the pre-abort guard in place, aReload's browse should
+      // (a) never be issued and (b) never cancel B's controller. B's
+      // rows must remain visible.
+      let resolveB: (v: ReturnType<typeof resp>) => void = () => {};
+      const bResp = new Promise<ReturnType<typeof resp>>((r) => {
+        resolveB = r;
       });
       vi.mocked(api.browse).mockImplementation((params) => {
-        // Space A: initial load returns 1 row instantly; A's reload is
-        // held on aReloadResp so we can resolve it after the switch.
         if (params.space_id === 'sp-A') {
-          const calls = vi.mocked(api.browse).mock.calls;
-          const aCalls = calls.filter(
-            (c) => (c[0] as { space_id: string }).space_id === 'sp-A',
-          ).length;
-          if (aCalls === 1) return Promise.resolve(resp([entry(1, 'a1.pdf', 'blob')]));
-          return aReloadResp;
+          return Promise.resolve(resp([entry(1, 'a1.pdf', 'blob')]));
         }
-        // Space B: instant load.
-        return Promise.resolve(resp([entry(101, 'b1.pdf', 'blob')]));
+        // Space B: HELD open so we can call the stale A-reload while
+        // B's browse is in flight.
+        return bResp;
       });
 
-      // Start in space A.
       const { result, rerender } = renderHook(
         ({ spaceId }: { spaceId: string }) => useFileList(spaceId, 0),
         { spaceId: 'sp-A' },
@@ -449,28 +449,38 @@ describe('useFileList', () => {
       await waitFor(() => expect(result.current.loading).toBe(false));
       expect(result.current.entries[0]?.id).toBe(1);
 
-      // Capture the A-bound reload BEFORE the switch, then invoke it.
-      // Its browse is stalled on aReloadResp.
+      // Capture A's reload BEFORE the switch — this is the exact shape
+      // Modal.confirm's imperative onOk holds after runBatch settles.
       const aReload = result.current.reload;
+
+      // Switch to space B. Its browse is stalled on bResp.
+      rerender({ spaceId: 'sp-B' });
+      // loading is now true, B's fetch in flight.
+      expect(result.current.loading).toBe(true);
+
+      // Invoke the STALE aReload while B's browse is still in flight.
+      // Without the pre-abort guard this would abort B's controller,
+      // fire browse(A), and — even with the post-await guard rejecting
+      // A's response — leave B stranded with entries=[] loading=false.
       act(() => aReload());
 
-      // While A's reload is in flight, switch to space B. useEffect
-      // fires a fresh browse for B, which resolves quickly.
-      rerender({ spaceId: 'sp-B' });
-      await waitFor(() => expect(result.current.loading).toBe(false));
-      expect(result.current.entries[0]?.id).toBe(101);
-
-      // Now let A's reload resolve. Its captured closure has spaceId
-      // === 'sp-A', but contextRef.current.spaceId === 'sp-B'. Guard
-      // must bail before setEntries.
+      // Now resolve B's browse. B's rows must have landed.
       await act(async () => {
-        resolveAReload(resp([entry(2, 'a2.pdf', 'blob')]));
+        resolveB(resp([entry(101, 'b1.pdf', 'blob')]));
         await Promise.resolve();
         await Promise.resolve();
       });
-      // View must STILL be space B's rows, not space A's.
+      await waitFor(() => expect(result.current.loading).toBe(false));
       expect(result.current.entries[0]?.id).toBe(101);
       expect(result.current.entries).toHaveLength(1);
+
+      // Sanity: exactly TWO browse calls happened (A initial, B initial),
+      // never a third from the stale reload — because the guard blocked
+      // it before abortRef/seqRef were touched.
+      const browseCalls = vi.mocked(api.browse).mock.calls;
+      expect(browseCalls).toHaveLength(2);
+      expect((browseCalls[0]![0] as { space_id: string }).space_id).toBe('sp-A');
+      expect((browseCalls[1]![0] as { space_id: string }).space_id).toBe('sp-B');
     });
   });
 });
