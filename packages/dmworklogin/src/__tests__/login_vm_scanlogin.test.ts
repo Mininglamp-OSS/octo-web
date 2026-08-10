@@ -26,6 +26,13 @@ vi.mock('@octo/base', () => {
     WKApp,
     ProviderListener,
     i18n: { setLocale: vi.fn() },
+    // Mirrors @octo/base's extractErrorCode (Service/APIClient.ts): reads the
+    // interceptor's reject shape { code, msg, ... }. Stubbed because the real
+    // module graph is mocked out wholesale here.
+    extractErrorCode: (err: unknown) =>
+      err && typeof err === 'object' && 'code' in err && typeof (err as { code: unknown }).code === 'string'
+        ? (err as { code: string }).code
+        : undefined,
     normalizeLocale: vi.fn(() => undefined),
   }
 })
@@ -212,15 +219,15 @@ describe('auth_code redemption', () => {
     // Without poll_secret the server rejects with err.server.user.auth_code_not_found
     // and burns the scan — the whole flow is dead on arrival once the deployment
     // switch is flipped on.
-    const url = String(apiPost.mock.calls[0][0])
-    expect(url).toContain('user/login_authcode/code-1')
-    expect(url).toContain('poll_secret=secret-1')
-    expect(url).toContain('flag=1')
+    const [path, body, config] = apiPost.mock.calls[0] as [string, unknown, { param: Record<string, unknown> }]
+    expect(path).toBe('user/login_authcode/code-1')
+    expect(body).toBeUndefined()
+    expect(config.param).toEqual({ poll_secret: 'secret-1', flag: 1 })
     // No re-mint: a successful redemption must not restart the scan flow.
     expect(getUrls()).not.toContain('user/loginuuid')
   })
 
-  it('url-encodes the auth code and the secret', async () => {
+  it('url-encodes the auth code in the path and leaves the secret to axios', async () => {
     const vm = newQRCodeVM()
     apiPost.mockResolvedValue({ uid: 'u1', token: 't1' })
     apiGet.mockResolvedValue([{ space_id: 's1' }])
@@ -229,9 +236,47 @@ describe('auth_code redemption', () => {
 
     await vm.requestLogin('a b&c')
 
-    const url = String(apiPost.mock.calls[0][0])
-    expect(url).toContain('user/login_authcode/a%20b%26c')
-    expect(url).toContain('poll_secret=x%20y%26z')
+    const [path, , config] = apiPost.mock.calls[0] as [string, unknown, { param: Record<string, unknown> }]
+    // The code is a path segment, so it must be encoded here; the secret rides in
+    // params, where axios owns serialisation (double-encoding it would break it).
+    expect(path).toBe('user/login_authcode/a%20b%26c')
+    expect(config.param.poll_secret).toBe('x y&z')
+  })
+
+  it('recovers instead of freezing when another login holds loginLoading', async () => {
+    const vm = newQRCodeVM()
+    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
+    vm.uuid = 'uuid-1'
+    vm.pollSecret = 'secret-1'
+    vm.loginLoading = true // e.g. a password login is still in flight
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await vm.requestLogin('code-1')
+
+    // Returning silently would strand an auth code the phone has already
+    // confirmed: the authed branch schedules no further poll, so the page would
+    // sit on the QR forever while the phone says "authorized".
+    expect(apiPost).not.toHaveBeenCalled()
+    expect(getUrls()).toContain('user/loginuuid')
+  })
+
+  it('does not restart the scan flow when post-login handling throws', async () => {
+    const vm = newQRCodeVM()
+    apiPost.mockResolvedValue({ uid: 'u1', token: 't1' })
+    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
+    vm.uuid = 'uuid-1'
+    vm.pollSecret = 'secret-1'
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // Malformed login payload, or blocked DOM storage in an embedded build.
+    vi.spyOn(vm, 'loginSuccess').mockImplementation(() => { throw new Error('boom') })
+
+    await vm.requestLogin('code-1')
+
+    // The redemption itself succeeded and the token is already applied. Treating
+    // this as a redemption failure would leave a half-logged-in session while the
+    // page mints a fresh QR.
+    expect(getUrls()).not.toContain('user/loginuuid')
   })
 
   it('does not spend the auth code when there is no poll_secret', async () => {
@@ -383,7 +428,108 @@ describe('scanned confirmation window', () => {
   })
 })
 
+describe('restart over an unsettled mint', () => {
+  it('can still mint while an abandoned mint is in flight', async () => {
+    const vm = newQRCodeVM()
+    let resolveFirst: (v: unknown) => void = () => {}
+    apiGet.mockReturnValueOnce(new Promise((res) => { resolveFirst = res }))
+    vm.requestUUID()
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
+    expect(vm.qrcodeLoading).toBe(true)
+    const callsBefore = apiGet.mock.calls.length
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    // Something abandons the session while that first mint is still open.
+    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
+    vm.loginStatus = LoginStatus.authed
+    vm.advance({ status: LoginStatus.authed })
+
+    // requestUUID opens with `if (this.qrcodeLoading) return`, and the abandoned
+    // mint bails at its session guard *before* clearing that flag — so unless
+    // abandoning hands the flag back, this recovery mint is swallowed and the panel
+    // is wedged on a spinner with no QR that not even "click to refresh" can clear.
+    expect(apiGet.mock.calls.length).toBe(callsBefore + 1)
+    await vi.waitFor(() => expect(vm.uuid).toBe('uuid-2'))
+    expect(vm.qrcodeLoading).toBe(false)
+
+    // The abandoned mint lands late: it must not install its uuid or touch the flag
+    // now owned by the session that replaced it.
+    resolveFirst({ uuid: 'uuid-stale', poll_secret: 'secret-stale', qrcode: 'qr-stale' })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(vm.uuid).toBe('uuid-2')
+    expect(vm.pollSecret).toBe('secret-2')
+  })
+})
+
+describe('confirmation deadline lifetime', () => {
+  it('does not carry a stale deadline into a naturally re-minted QR', async () => {
+    const vm = newQRCodeVM()
+    apiGet.mockResolvedValue(INERT)
+    vm.uuid = 'uuid-1'
+    vm.pollSecret = 'secret-1'
+
+    // A scan that is never confirmed arms the local deadline...
+    vm.loginStatus = LoginStatus.scanned
+    vm.advance({ status: LoginStatus.scanned })
+    ;(vm as unknown as { _scannedDeadline?: number })._scannedDeadline = Date.now() - 1
+
+    // ...then the server's QR TTL expires first, and advance() re-mints straight
+    // through getUUID — a path that never touches resetQRCodeState.
+    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
+    vm.loginStatus = LoginStatus.expired
+    vm.advance({ status: LoginStatus.expired })
+    await vi.waitFor(() => expect(vm.uuid).toBe('uuid-2'))
+    expect((vm as unknown as { _scannedDeadline?: number })._scannedDeadline).toBeUndefined()
+
+    // The user scans the brand-new QR: it must not be judged against the old window.
+    apiGet.mockReset()
+    apiGet.mockResolvedValue(INERT)
+    vm.loginStatus = LoginStatus.scanned
+    vm.advance({ status: LoginStatus.scanned })
+    await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
+    expect(getUrls()).not.toContain('user/loginuuid')
+    expect(getUrls()[0]).toContain('user/loginstatus')
+  })
+})
+
 describe('abandoned-session cap', () => {
+  it('does not spend the budget on ordinary QR expiry', async () => {
+    const vm = newQRCodeVM()
+    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
+    vm.expireMaxTryCount = 2
+
+    // A user idling on the QR panel burns one natural expiry per minute (60s TTL).
+    for (let i = 0; i < 2; i++) {
+      vm.loginStatus = LoginStatus.expired
+      vm.advance({ status: LoginStatus.expired })
+      await vi.waitFor(() => expect(vm.uuid).toBe('uuid-2'))
+    }
+
+    // Their first real failure must still get a fresh QR, not a dead-end overlay:
+    // idling and abandoning are different failure classes with separate budgets.
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vm.loginStatus = LoginStatus.authed
+    vm.advance({ status: LoginStatus.authed })
+    expect(vm.autoRefresh).toBe(true)
+    expect(vm.loginStatus).toBe(LoginStatus.getUUID)
+  })
+
+  it('gives a manual refresh a fresh budget', () => {
+    const vm = newQRCodeVM()
+    apiGet.mockResolvedValue(INERT)
+    vm.expireMaxTryCount = 0
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vm.loginStatus = LoginStatus.authed
+    vm.advance({ status: LoginStatus.authed })
+    expect(vm.autoRefresh).toBe(false)
+
+    // Clicking "QR expired, click to refresh" is an explicit ask for a new start.
+    vm.reStartAdvance()
+    expect(vm.autoRefresh).toBe(true)
+    expect(getUrls()).toContain('user/loginuuid')
+  })
+
   it('surfaces the refresh affordance instead of re-minting forever', () => {
     const vm = newQRCodeVM()
     apiGet.mockResolvedValue(INERT)

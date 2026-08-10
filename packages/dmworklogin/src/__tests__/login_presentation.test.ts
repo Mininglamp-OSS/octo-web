@@ -283,9 +283,14 @@ describe("login page presentation", () => {
     // parseRemoteBool accepts both, a `=== 1` comparison would silently never fire.
     expect(source).not.toMatch(/scanLoginEnabled\s*===?\s*1/);
 
-    // Every entry site is gated, none forgotten.
-    const gatedSites = source.match(/\{scanLoginEntryVisible\(vm\) && \(/g) ?? [];
-    expect(gatedSites).toHaveLength(3);
+    // The invariant is "every entry is gated", not "there are exactly N entries":
+    // one switch-to-QR click handler per entry, one gate per entry. Asserting a
+    // literal count would fail on a legitimately-gated new entry while saying
+    // nothing about which site is missing a gate.
+    const entrySites = source.match(/vm\.loginType = LoginType\.qrcode/g) ?? [];
+    const gatedSites = source.match(/scanLoginEntryVisible\(vm\) && \(/g) ?? [];
+    expect(entrySites.length).toBeGreaterThanOrEqual(2);
+    expect(gatedSites).toHaveLength(entrySites.length);
   });
 
   it("offers the scan-login entry outside the local password card", () => {
@@ -297,10 +302,14 @@ describe("login page presentation", () => {
     // `false &&`), so the two entries inside it are unreachable. Without an entry
     // in the SSO panel itself, flipping login.scan_enabled on would change nothing
     // in exactly the deployment shape production runs.
-    const ssoPanel = source.match(
-      /const SsoLoginPanel: React\.FC<\{[\s\S]*?\n\}\n/
-    )?.[0];
-    expect(ssoPanel).toBeTruthy();
+    // Slice between two top-level declarations rather than lazy-matching to the
+    // first column-0 `}` — that regex silently shrinks the window if any nested
+    // construct ever closes at column 0, quietly weakening the assertions below.
+    const panelStart = source.indexOf("const SsoLoginPanel: React.FC<{");
+    const panelEnd = source.indexOf("const LegacyPasswordSection", panelStart);
+    expect(panelStart).toBeGreaterThan(-1);
+    expect(panelEnd).toBeGreaterThan(panelStart);
+    const ssoPanel = source.slice(panelStart, panelEnd);
     expect(ssoPanel).toContain("scanLoginEntryVisible(vm) && (");
     expect(ssoPanel).toContain("wk-login-content-sso-scanlogin-entry");
     expect(styles).toContain(".wk-login-content-sso-scanlogin-entry {");

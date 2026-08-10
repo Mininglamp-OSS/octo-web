@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import axios from "axios"
-import APIClient from "../APIClient"
+import APIClient, { extractErrorCode } from "../APIClient"
 import { i18n } from "../../i18n/instance"
 
 describe("APIClient backend i18n contract", () => {
@@ -133,5 +133,41 @@ describe("APIClient backend i18n contract", () => {
             msg: "不支持的文件类型",
             status: 400,
         })
+    })
+
+    it("forwards config.param on post like every other verb", async () => {
+        axios.defaults.adapter = async (config) => {
+            captured = config
+            return { data: {}, status: 200, statusText: "OK", headers: {}, config, request: {} } as any
+        }
+
+        await client.post("/redeem/code-1", undefined, { param: { poll_secret: "s 1&2", flag: 1 } })
+
+        // post used to drop config.param silently: the request still came back 2xx,
+        // just without the parameters. Credential-bearing params taking that path is
+        // the hardest failure shape to diagnose, so keep the verbs consistent.
+        expect(captured.params).toEqual({ poll_secret: "s 1&2", flag: 1 })
+        // axios owns the serialisation — callers must not pre-encode.
+        expect(captured.url).toBe("/redeem/code-1")
+    })
+
+    it("extractErrorCode reads the business code off the rejected error", async () => {
+        axios.defaults.adapter = async () => {
+            const err: any = new Error("Request failed with status code 400")
+            err.response = {
+                status: 400,
+                data: { error: { code: "err.server.user.auth_code_not_found", message: "nope", http_status: 400 } },
+                headers: {},
+            }
+            throw err
+        }
+
+        const rejected = await client.get("/redeem").catch((e) => e)
+        // Callers branch on this instead of hand-rolling a `"code" in err` narrowing
+        // (login_vm's scan-login disabled check is one such caller).
+        expect(extractErrorCode(rejected)).toBe("err.server.user.auth_code_not_found")
+        expect(extractErrorCode({ msg: "no code here" })).toBeUndefined()
+        expect(extractErrorCode(new Error("plain"))).toBeUndefined()
+        expect(extractErrorCode(undefined)).toBeUndefined()
     })
 })
