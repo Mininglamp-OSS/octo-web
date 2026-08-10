@@ -9,11 +9,15 @@ export interface CreateHtmlModalProps {
   publishBaseUrl?: string
   onClose(): void
   onCreated(result: Extract<BlankHtmlResult, { kind: 'published' }>): void
-  onSubmit?(draft: Omit<HtmlCreationDraft, 'requestId' | 'baseUrl'>): void
+  onSubmit?(draft: Omit<HtmlCreationDraft, 'baseUrl'>): void
 }
 
 type BotsState = { kind: 'loading' } | { kind: 'error' } | { kind: 'ready'; bots: OwnedBotLite[] }
 type DirectError = 'publish' | 'uncertain' | 'registration' | null
+
+function createRequestId(): string {
+  return typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : createUnpredictableSlug()
+}
 
 function humanSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -57,10 +61,14 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
   const [files, setFiles] = useState<File[]>([])
   const [botPhase, setBotPhase] = useState<'edit' | 'preview'>('edit')
   const [botSubmitted, setBotSubmitted] = useState(false)
+  const [botRequestId, setBotRequestId] = useState('')
   const [copyNotice, setCopyNotice] = useState<string | null>(null)
+  const [openingPublished, setOpeningPublished] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const copyGenerationRef = useRef(0)
   const botSubmittedRef = useRef(false)
+  const directSubmittingRef = useRef(false)
+  const openingPublishedRef = useRef(false)
   const requestRef = useRef<{ generation: number; controller: AbortController | null }>({ generation: 0, controller: null })
   const dialogRef = useRef<HTMLDialogElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -73,30 +81,33 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
 
   useEffect(() => {
     requestRef.current.generation += 1
+    copyGenerationRef.current += 1
     requestRef.current.controller?.abort()
     requestRef.current.controller = null
     if (open) {
       setMode('direct'); setName(''); setRequirements(''); setSlug(createUnpredictableSlug())
       setLoading(false); setDirectError(null); setPublished(null); setDescription(''); setFiles([])
+      directSubmittingRef.current = false
+      openingPublishedRef.current = false
       botSubmittedRef.current = false
-      setBotPhase('edit'); setBotSubmitted(false); setCopyNotice(null); setSelectedBot(null)
+      setBotPhase('edit'); setBotSubmitted(false); setBotRequestId(''); setCopyNotice(null); setOpeningPublished(false); setSelectedBot(null)
     }
     return () => { requestRef.current.generation += 1; requestRef.current.controller?.abort() }
   }, [open, spaceId])
 
   useEffect(() => {
-    if (!open || mode !== 'bot') return
+    if (!open) return
     let active = true
     setBots({ kind: 'loading' })
-    setSelectedBot(null)
+
     if (!spaceId) { setBots({ kind: 'ready', bots: [] }); return }
     void fetchOwnedBots(spaceId).then((list) => {
       if (!active) return
       setBots({ kind: 'ready', bots: list })
-      setSelectedBot(list[0]?.uid ?? null)
+      setSelectedBot((current) => current && list.some((bot) => bot.uid === current) ? current : list[0]?.uid ?? null)
     }).catch(() => { if (active) setBots({ kind: 'error' }) })
     return () => { active = false }
-  }, [open, mode, spaceId, reloadKey])
+  }, [open, spaceId, reloadKey])
 
   useEffect(() => {
     copyGenerationRef.current += 1
@@ -126,7 +137,8 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
   const canCreate = !!spaceId && !!name.trim() && !!requirements.trim() && !loading && !directLocked && !published
 
   const submitDirect = async () => {
-    if (!canCreate) return
+    if (!canCreate || directSubmittingRef.current) return
+    directSubmittingRef.current = true
     const controller = new AbortController()
     requestRef.current.controller?.abort()
     const generation = ++requestRef.current.generation
@@ -142,12 +154,12 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
         setDirectError(error instanceof HtmlPublishError && error.outcome === 'not_published' ? 'publish' : 'uncertain')
       }
     } finally {
-      if (requestRef.current.generation === generation) { requestRef.current.controller = null; setLoading(false) }
+      if (requestRef.current.generation === generation) { requestRef.current.controller = null; directSubmittingRef.current = false; setLoading(false) }
     }
   }
 
   const trimmed = description.trim()
-  const candidate = buildHtmlCreationMessage({ requestId: '', botUid: selectedBot ?? '', botName: '', description, files: [], spaceId, baseUrl: publishBaseUrl })
+  const candidate = buildHtmlCreationMessage({ requestId: botRequestId, botUid: selectedBot ?? '', botName: '', description, files: [], spaceId, baseUrl: publishBaseUrl })
   const tooLong = description.length > HTML_DESCRIPTION_MAX
   const messageTooLong = !!trimmed && candidate.length > MAX_MESSAGE_LENGTH
   const ready = bots.kind === 'ready'
@@ -156,9 +168,9 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
   const botDraft = canBotSubmit && selectedBot ? {
     botUid: selectedBot,
     botName: ready ? bots.bots.find((bot) => bot.uid === selectedBot)?.name || selectedBot : selectedBot,
-    description, files, spaceId,
+    requestId: botRequestId, description, files, spaceId,
   } : null
-  const botPrompt = botDraft ? buildHtmlCreationMessage({ ...botDraft, requestId: '', baseUrl: publishBaseUrl }) : ''
+  const botPrompt = botDraft ? buildHtmlCreationMessage({ ...botDraft, baseUrl: publishBaseUrl }) : ''
   const copy = async (value: string, withFiles = false) => {
     const generation = copyGenerationRef.current
     try {
@@ -171,6 +183,23 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
       setCopyNotice(t('docs.list.htmlCreate.copyFailed'))
       return false
     }
+  }
+  const copyPromptAndOpen = async () => {
+    if (!published || openingPublishedRef.current) return
+    openingPublishedRef.current = true
+    setOpeningPublished(true)
+    const copied = await copy(directPrompt)
+    if (copied) onCreated(published)
+    else if (openingPublishedRef.current) {
+      openingPublishedRef.current = false
+      setOpeningPublished(false)
+    }
+  }
+  const openPublishedDirectly = () => {
+    if (!published || openingPublishedRef.current) return
+    openingPublishedRef.current = true
+    setOpeningPublished(true)
+    onCreated(published)
   }
 
   return (
@@ -198,7 +227,7 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
                 value={choice}
                 checked={mode === choice}
                 disabled={loading}
-                onChange={() => setMode(choice)}
+                onChange={() => { setMode(choice); if (choice === 'bot' && !botRequestId) setBotRequestId(createRequestId()) }}
               />
               <span className="octo-html-create-mode-indicator" aria-hidden="true">{mode === choice ? '✓' : ''}</span>
               <span className="octo-html-create-mode-copy">
@@ -212,8 +241,8 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
           <form className="octo-html-create-body" onSubmit={(event) => { event.preventDefault(); void submitDirect() }}>
             {published && <p role="status" className="octo-html-create-hint">{t('docs.list.htmlCreate.directSuccess')}</p>}
             {!published && <>
-              <div className="octo-html-create-field"><label className="octo-html-create-label" htmlFor={nameId}>{t('docs.list.htmlCreate.nameLabel')}</label><input id={nameId} className="octo-html-create-textarea octo-html-create-input" value={name} disabled={loading || directLocked} onChange={(event) => setName(event.target.value)} /></div>
-              <div className="octo-html-create-field"><label className="octo-html-create-label" htmlFor={requirementsId}>{t('docs.list.htmlCreate.requirementsLabel')}</label><textarea id={requirementsId} className="octo-html-create-textarea" rows={5} value={requirements} disabled={loading || directLocked} onChange={(event) => setRequirements(event.target.value)} placeholder={t('docs.list.htmlCreate.requirementsPlaceholder')} /></div>
+              <div className="octo-html-create-field"><label className="octo-html-create-label" htmlFor={nameId}>{t('docs.list.htmlCreate.nameLabel')}</label><input id={nameId} className="octo-html-create-textarea octo-html-create-input" value={name} maxLength={512} disabled={loading || directLocked} onChange={(event) => setName(event.target.value)} /><p className="octo-html-create-hint">{t('docs.list.htmlCreate.nameLimit')}</p></div>
+              <div className="octo-html-create-field"><label className="octo-html-create-label" htmlFor={requirementsId}>{t('docs.list.htmlCreate.requirementsLabel')}</label><textarea id={requirementsId} className="octo-html-create-textarea" rows={5} value={requirements} maxLength={HTML_DESCRIPTION_MAX} disabled={loading || directLocked} onChange={(event) => setRequirements(event.target.value)} placeholder={t('docs.list.htmlCreate.requirementsPlaceholder')} /><p className="octo-html-create-hint">{t('docs.list.htmlCreate.requirementsLimit')}</p></div>
             </>}
             <div className="octo-html-create-field">
               <label className="octo-html-create-label" htmlFor={promptId}>{t('docs.list.htmlCreate.promptLabel')}</label>
@@ -225,8 +254,8 @@ export function CreateHtmlModal({ open, spaceId, publishBaseUrl = '', onClose, o
             <footer className="octo-html-create-footer"><div className="octo-html-create-footer-actions">
               <button type="button" className="octo-tb-btn" disabled={loading} onClick={onClose}>{t('docs.list.htmlCreate.cancel')}</button>
               {published ? <>
-                <button type="button" className="octo-tb-btn octo-html-create-submit" onClick={() => void copy(directPrompt).then((copied) => { if (copied) onCreated(published) })}>{t('docs.list.htmlCreate.copyPromptAndOpen')}</button>
-                <button type="button" className="octo-tb-btn" onClick={() => onCreated(published)}>{t('docs.list.htmlCreate.openDirectly')}</button>
+                <button type="button" className="octo-tb-btn octo-html-create-submit" disabled={openingPublished} onClick={() => void copyPromptAndOpen()}>{t('docs.list.htmlCreate.copyPromptAndOpen')}</button>
+                <button type="button" className="octo-tb-btn" disabled={openingPublished} onClick={openPublishedDirectly}>{t('docs.list.htmlCreate.openDirectly')}</button>
               </> : <button type="submit" className="octo-tb-btn octo-html-create-submit" disabled={!canCreate}>{t(loading ? 'docs.list.htmlCreate.creating' : 'docs.list.htmlCreate.create')}</button>}
             </div></footer>
           </form>

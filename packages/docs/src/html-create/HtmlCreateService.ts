@@ -15,6 +15,8 @@ export type BlankHtmlResult =
 
 export type HtmlPublishOutcome = 'not_published' | 'uncertain'
 
+const DEFINITELY_NOT_PUBLISHED_STATUSES = new Set([400, 401, 403, 413, 422])
+
 /** Distinguishes a safe-to-retry HTTP rejection from a POST whose result is unknown. */
 export class HtmlPublishError extends Error {
   readonly outcome: HtmlPublishOutcome
@@ -88,7 +90,10 @@ export async function createBlankHtml(input: BlankHtmlInput): Promise<BlankHtmlR
   } catch {
     throw new HtmlPublishError('uncertain', 'publish request result is uncertain')
   }
-  if (!res.ok) throw new HtmlPublishError('not_published', `publish failed: ${res.status}`)
+  if (!res.ok) {
+    const outcome: HtmlPublishOutcome = DEFINITELY_NOT_PUBLISHED_STATUSES.has(res.status) ? 'not_published' : 'uncertain'
+    throw new HtmlPublishError(outcome, `publish failed: ${res.status}`)
+  }
   let payload: unknown
   try {
     payload = await res.json()

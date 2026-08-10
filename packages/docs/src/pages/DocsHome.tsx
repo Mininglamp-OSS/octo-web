@@ -1640,19 +1640,14 @@ export function DocsHome() {
     [routeRight, buildBotChat],
   )
 
-  // Modal submit → finalise the draft (requestId + front-end-derived base_url) and open the chat.
-  // crypto.randomUUID() is the one-shot idempotency id; base_url comes ONLY from the app origin
-  // (docsApiBaseUrl), never from user text/attachments (§5.6).
+  // Modal submit → finalise the draft with the front-end-derived base_url and open the chat.
+  // The modal has already assigned the one-shot crypto.randomUUID() requestId so preview, copy and
+  // Conversation handoff share exactly one id; base_url comes ONLY from the app origin (§5.6).
   const onSubmitHtml = useCallback(
-    (partial: Omit<HtmlCreationDraft, 'requestId' | 'baseUrl'>) => {
-      const requestId =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    (partial: Omit<HtmlCreationDraft, 'baseUrl'>) => {
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
       const draft: HtmlCreationDraft = {
         ...partial,
-        requestId,
         baseUrl: docsApiBaseUrl(origin),
       }
       setHtmlModalOpen(false)

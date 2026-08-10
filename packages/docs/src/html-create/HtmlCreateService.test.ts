@@ -49,11 +49,18 @@ describe('HtmlCreateService helpers', () => {
 })
 
 describe('createBlankHtml', () => {
-  it('classifies an HTTP non-success as definitely not published', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }))
+  it.each([400, 401, 403, 413, 422])('classifies explicit HTTP %s rejection as definitely not published', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status }))
     vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
     await expect(createBlankHtml({ name: 'Name', requirements: '', spaceId: 'space' }))
       .rejects.toMatchObject({ name: 'HtmlPublishError', outcome: 'not_published' })
+  })
+
+  it.each([408, 409, 425, 429, 500, 502, 503, 504])('classifies HTTP %s as uncertain', async (status) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status }))
+    vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
+    await expect(createBlankHtml({ name: 'Name', requirements: '', spaceId: 'space' }))
+      .rejects.toMatchObject({ name: 'HtmlPublishError', outcome: 'uncertain' })
   })
 
   it('classifies a network rejection as an uncertain publish result', async () => {
