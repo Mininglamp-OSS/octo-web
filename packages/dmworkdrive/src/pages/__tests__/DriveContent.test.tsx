@@ -128,14 +128,9 @@ beforeEach(() => {
   vi.mocked(useFileList).mockReturnValue({
     entries: [],
     loading: false,
-    loadingMore: false,
     error: null,
-    total: null,
-    hasMore: false,
+    truncatedTotal: null,
     reload: vi.fn(),
-    loadMore: vi.fn(),
-    loadMoreError: null,
-    retryLoadMore: vi.fn(),
     filter: 'all',
     setFilter: vi.fn(),
   });
@@ -261,14 +256,9 @@ describe('DriveContent — open doc builds the canonical no-sp link (Phase-1 rem
     vi.mocked(useFileList).mockReturnValue({
       entries: [{ id: 999 } as unknown as never],
       loading: false,
-      loadingMore: false,
       error: null,
-      total: 1,
-      hasMore: false,
+      truncatedTotal: null,
       reload: vi.fn(),
-      loadMore: vi.fn(),
-      loadMoreError: null,
-      retryLoadMore: vi.fn(),
       filter: 'all',
       setFilter: vi.fn(),
     });
@@ -297,14 +287,9 @@ describe('DriveContent — open doc builds the canonical no-sp link (Phase-1 rem
     vi.mocked(useFileList).mockReturnValue({
       entries: [{ id: 999 } as unknown as never],
       loading: false,
-      loadingMore: false,
       error: null,
-      total: 1,
-      hasMore: false,
+      truncatedTotal: null,
       reload: vi.fn(),
-      loadMore: vi.fn(),
-      loadMoreError: null,
-      retryLoadMore: vi.fn(),
       filter: 'all',
       setFilter: vi.fn(),
     });

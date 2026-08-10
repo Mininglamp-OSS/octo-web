@@ -8,7 +8,6 @@ import { useUpload } from '../hooks/useUpload';
 import { useMembers } from '../hooks/useMembers';
 import { useSelection } from '../hooks/useSelection';
 import { useDropzone } from '../hooks/useDropzone';
-import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { runBatch } from '../hooks/runBatch';
 import type { DriveEntry } from '../bridge/types';
 import * as api from '../api/driveApi';
@@ -71,14 +70,9 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
   const {
     entries,
     loading: filesLoading,
-    loadingMore,
-    total,
-    hasMore,
+    truncatedTotal,
     reload,
-    loadMore,
-    loadMoreError,
     error: filesError,
-    retryLoadMore,
     filter: typeFilter,
     setFilter: setTypeFilter,
   } = useFileList(activeSpaceId, currentParentId);
@@ -116,6 +110,23 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     // loop infinitely as the effect would re-fire on its own setState.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entries]);
+
+  // Rollback removingIds if the post-op reload FAILED (bot review P1-3).
+  // Without this, a successful bulk delete + failed reload leaves rows in
+  // the removingIds set forever: the fade-out animation ends at
+  // opacity:0/height:0 with `forwards`, so those rows are invisible but
+  // still counted in `entries`. They stay selectable (via the header
+  // checkbox), suppress the empty state (`entries.length !== 0`), and
+  // suppress the error banner (also gated on `entries.length === 0`),
+  // producing a blank pane with no CTA. A following batch delete then
+  // issues a request for the already-deleted id and reports a spurious
+  // failure. Roll the rows back so at least the retry banner shows.
+  useEffect(() => {
+    if (filesError && removingIds.size > 0) {
+      setRemovingIds(new Set());
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filesError]);
 
   // Drag-drop upload target. Reuses useUpload.addFiles so dropped files
   // flow through the exact same presigned-URL / progress pipeline as
@@ -244,21 +255,6 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
     },
     [ops, reload, t],
   );
-
-  // Infinite scroll: as the sentinel scrolls into view (200px rootMargin so
-  // the next page is landing as the user approaches the bottom), fire
-  // loadMore(). loadMore() itself is a no-op when !hasMore or already
-  // loading, so double-triggers are cheap.
-  //
-  // Loading gate ALSO covers loadMoreError: if the last append failed we
-  // hide the sentinel below AND keep the observer suppressed here, so a
-  // still-visible sentinel can't retrigger onLoadMore in a tight loop. The
-  // user recovers via the explicit "重试" button (retryLoadMore()).
-  const sentinelRef = useInfiniteScroll<HTMLDivElement>({
-    hasMore: hasMore && !loadMoreError,
-    loading: filesLoading || loadingMore,
-    onLoadMore: loadMore,
-  });
 
   // ── Batch ops ────────────────────────────────────────────────────────────
   // Content shape for the batch-delete confirm. Three shapes:
@@ -640,7 +636,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
           <div className="drive-main__load-error" role="alert">
             <span>{t('drive.file.loadFailed')}</span>
             <Button theme="borderless" type="primary" size="small" onClick={reload}>
-              {t('drive.file.loadMoreRetry')}
+              {t('drive.file.retry')}
             </Button>
           </div>
         ) : !filesLoading && entries.length === 0 ? (
@@ -688,35 +684,9 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             removingIds={removingIds}
           />
         )}
-        {hasMore && !loadMoreError && (
-          <>
-            {loadingMore && (
-              <div className="drive-main__loading-more">
-                <Spin size="small" />
-              </div>
-            )}
-            <div ref={sentinelRef} className="drive-main__sentinel" aria-hidden="true" />
-          </>
-        )}
-        {hasMore && loadMoreError && (
-          // Latched error: the observer is suppressed above, sentinel is
-          // gone — user needs to explicitly retry. Styled as a banner so it
-          // reads as a stopped-state, not "still loading".
-          <div className="drive-main__load-more-error" role="alert">
-            <span>{t('drive.file.loadMoreFailed')}</span>
-            <Button
-              theme="borderless"
-              type="primary"
-              size="small"
-              onClick={retryLoadMore}
-            >
-              {t('drive.file.loadMoreRetry')}
-            </Button>
-          </div>
-        )}
-        {total !== null && !hasMore && entries.length > 0 && total > entries.length && (
+        {truncatedTotal !== null && entries.length > 0 && (
           <p className="drive-main__truncated">
-            {t('drive.file.truncated', { values: { loaded: String(entries.length), total: String(total) } })}
+            {t('drive.file.truncated', { values: { loaded: String(entries.length), total: String(truncatedTotal) } })}
           </p>
         )}
         </div>

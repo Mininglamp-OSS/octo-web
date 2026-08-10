@@ -157,22 +157,6 @@ body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button:not
   overflow-y: auto;
 }
 
-/* Bottom-of-list sentinel for IntersectionObserver-driven infinite scroll.
-   Zero-height and invisible; positioned after the truncated notice would
-   have been, so passing rootMargin: 200px still fires ~one row early. */
-.drive-main__sentinel {
-  height: 1px;
-  width: 100%;
-}
-
-.drive-main__loading-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 12px 0;
-  color: var(--wk-text-tertiary, #6b7075);
-}
-
 /* Full-page error banner: shown when a fresh page-1 fetch rejects and
    leaves the listing empty. Distinct from EmptyState — that would say
    "the folder is empty", which is a wrong assertion on network failure. */
@@ -183,20 +167,6 @@ body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button:not
   gap: 12px;
   padding: 48px 0;
   color: var(--wk-text-secondary, #4a4d51);
-}
-
-/* Latched-error banner for a failed loadMore. The sentinel + spinner are
-   both hidden while this is shown so IntersectionObserver can't re-fire
-   in a tight loop against a broken page-N request; the user pushes the
-   retry Button to clear the error and try again. */
-.drive-main__load-more-error {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px 0;
-  font-size: 13px;
-  color: var(--wk-text-tertiary, #6b7075);
 }
 
 .drive-main__center {

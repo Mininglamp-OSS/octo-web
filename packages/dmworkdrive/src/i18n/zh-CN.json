@@ -35,10 +35,9 @@
     "colUpdated": "修改时间",
     "truncated": "已显示 {{loaded}}/{{total}} 项",
     "loadFailed": "加载失败",
-    "loadMoreFailed": "加载更多失败",
-    "loadMoreRetry": "重试",
     "selectAll": "全选",
-    "selectRow": "选择此项"
+    "selectRow": "选择此项",
+    "retry": "重试"
   },
   "filter": {
     "aria": "按类型筛选",

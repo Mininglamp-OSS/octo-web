@@ -35,10 +35,9 @@
     "colUpdated": "Modified",
     "truncated": "Showing {{loaded}} of {{total}}",
     "loadFailed": "Failed to load",
-    "loadMoreFailed": "Failed to load more",
-    "loadMoreRetry": "Retry",
     "selectAll": "Select all",
-    "selectRow": "Select item"
+    "selectRow": "Select item",
+    "retry": "Retry"
   },
   "filter": {
     "aria": "Filter by type",
