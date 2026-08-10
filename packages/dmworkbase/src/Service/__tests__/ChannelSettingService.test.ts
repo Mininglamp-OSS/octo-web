@@ -166,7 +166,7 @@ describe("ChannelSettingService", () => {
 
     expect(apiPut).toHaveBeenNthCalledWith(1, "groups/group-1", {
       avatar_text: "Team",
-      avatar_color: 3,
+      avatar_color: "3",
     });
     expect(apiPut).toHaveBeenNthCalledWith(2, "groups/group-1", {
       avatar_text: "",
@@ -176,7 +176,7 @@ describe("ChannelSettingService", () => {
       avatar_text: "Only",
     });
     expect(apiPut).toHaveBeenNthCalledWith(4, "groups/group-1", {
-      avatar_color: 4,
+      avatar_color: "4",
     });
   });
 

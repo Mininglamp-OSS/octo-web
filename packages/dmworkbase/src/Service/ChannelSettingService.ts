@@ -116,8 +116,11 @@ export function updateChannelAvatarCustom(
   if (typeof options.avatarText === "string") {
     body.avatar_text = options.avatarText;
   }
-  if (typeof options.avatarColor === "number" || options.avatarColor === "") {
-    body.avatar_color = options.avatarColor;
+  if (typeof options.avatarColor === "number" && Number.isInteger(options.avatarColor)) {
+    body.avatar_color = String(options.avatarColor);
+  } else if (options.avatarColor === "") {
+    // 后端约定空串表示清除自定义色（回退按 group_no 派生）。
+    body.avatar_color = "";
   }
   return APIClient.shared.put(`groups/${channel.channelID}`, body);
 }
