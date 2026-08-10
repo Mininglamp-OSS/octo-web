@@ -1,4 +1,4 @@
-import { WKApp, ProviderListener, extractErrorCode } from "@octo/base";
+import { WKApp, ProviderListener, extractErrorCode, extractErrorMsg } from "@octo/base";
 import { applyLoginResp } from "./loginSession";
 import {
     buildAuthorizeURL,
@@ -68,6 +68,30 @@ const WEB_DEVICE_FLAG = 1
 
 function isScanLoginDisabledError(err: unknown): boolean {
     return extractErrorCode(err) === SCAN_LOGIN_DISABLED_CODE
+}
+
+/**
+ * 把一个请求失败压成一行**不含凭据**的可诊断标签。
+ *
+ * 绝不能直接把 reject 对象丢给 console：APIClient 的拦截器会把原始 axios error 挂在
+ * `error` 字段上（Service/APIClient.ts），而它带着 `config.params = { poll_secret, flag }`
+ * 和 `config.url = "user/login_authcode/<auth_code>"` —— 凭据的两半会出现在同一行日志里。
+ * 对接文档明确要求 poll_secret / auth_code / token 不得进入埋点与崩溃日志，服务端也专门
+ * 在 access log 里脱敏了同一对参数（octo-server pkg/accesslog/accesslog.go）。
+ *
+ * 不能只用 code：`normalizeApiError` 只在 v2 error envelope 分支里赋 code，网关返回
+ * HTML 的 502、超时、网络中断走的是 legacy/网络分支，code 恒为 undefined —— 那正是
+ * 「`?? error`」会把整个对象打出来的时候。message 由 normalizeApiError 归类产出
+ * （i18n 文案或后端 message），不含 URL 与参数，可以安全落日志。
+ */
+function redactedErrorLabel(err: unknown): string {
+    const code = extractErrorCode(err)
+    if (code) return code
+    if (err && typeof err === 'object' && 'status' in err) {
+        const status = (err as { status: unknown }).status
+        if (typeof status === 'number') return `http_status=${status}`
+    }
+    return extractErrorMsg(err) || 'unknown error'
 }
 
 export enum LoginType {
@@ -296,7 +320,19 @@ export class LoginVM extends ProviderListener {
                     this.loginStatus = LoginStatus.getUUID
                     this.advance()
                 }
-
+                break
+            default:
+                // 未知或缺失的 status。没有这条分支时它落进 switch 无人处理：轮询就此停摆，
+                // 而 login.tsx 继续渲染一张活二维码，且 autoRefresh 仍为 true —— 连「点击
+                // 刷新」覆盖层都不显示，只能整页刷新。那正是本次改动要消灭的冻结形态，
+                // `disabled` 只是它已知的一个实例；服务端的响应字段走白名单过滤，将来多一个
+                // 状态、或者某条路径漏掉 status，都会走到这里。
+                //
+                // 重铸而不是继续轮询：拿不到能推进的状态时，一张新码是唯一确定有效的动作。
+                // 它受 _abandonTryCount 上限约束，所以不会变成铸码风暴，计满后交给
+                // 「点击刷新」覆盖层。
+                console.warn('[login] scan-login got an unhandled status; restarting scan flow', this.loginStatus)
+                this.restartScanLogin()
         }
     }
 
@@ -380,8 +416,12 @@ export class LoginVM extends ProviderListener {
         }
         // 兑换必须同时出示 auth_code 与申请这张二维码时拿到的 poll_secret。缺少或不匹配
         // 时服务端一律折叠成 err.server.user.auth_code_not_found —— 与「授权码不存在」
-        // 完全同形，无法从响应上区分。所以没有密钥时不要把这枚一次性授权码浪费在必然
-        // 失败的请求上，直接重来。
+        // 完全同形，无法从响应上区分。所以没有密钥时就别发这个只可能 404 的请求，直接重来。
+        //
+        // 注意：密钥不对**不会**消费掉授权码 —— 服务端的密钥校验排在 Consume 之前就 return
+        // 了（octo-server modules/user/api.go:2407 vs :2413），对接文档也写明「poll_secret
+        // 错误或缺失不会消费有效授权码」。所以这里的收益不是「保住授权码」，而是省掉一次
+        // 必然失败的往返、并让流程立刻进入可恢复状态。
         const pollSecret = this.pollSecret
         if (!pollSecret) {
             console.warn('[login] scan-login redeem without poll_secret; re-minting QR')
@@ -406,7 +446,7 @@ export class LoginVM extends ProviderListener {
             // 匹配、网络超时后结果未知）之后必须丢掉整套 uuid / poll_secret / auth_code
             // 重新扫码，既不能重试同一码，也不能静默停在二维码页 —— 那样手机端显示
             // 「已授权」而页面永远不动，用户只能自己刷新。
-            console.warn('[login] scan-login redeem failed; restarting scan flow', extractErrorCode(error) ?? error)
+            console.warn('[login] scan-login redeem failed; restarting scan flow', redactedErrorLabel(error))
             this.restartScanLogin()
             return
         }
@@ -420,13 +460,36 @@ export class LoginVM extends ProviderListener {
         }
         // loginSuccess 刻意在 try 之外：它内部会写 token/loginInfo，再碰 localStorage、
         // 起 space/my 预检。一旦它抛（响应字段不合契约、嵌入环境里 storage 被禁），放在
-        // 同一个 try 里就会被当成「兑换失败」去重铸二维码 —— 那时 token 已经写进去了，
-        // 用户落在一个半登录态上，而页面在铸新码。兑换本身已经成功，这里的失败不该
-        // 回滚扫码流程，只记录。
+        // 同一个 try 里就会被当成「兑换失败」去重铸二维码 —— 那时 token 可能已经写进去了，
+        // 用户落在一个半登录态上，而页面在铸新码。
         try {
             this.loginSuccess(resp)
         } catch (error) {
-            console.error('[login] scan-login redeemed but post-login handling failed', error)
+            // 只打日志是不够的：走到这里时 loginStatus 还是 authed、uuid/qrcode 都还在、
+            // autoRefresh 仍为 true，于是页面显示一张看起来正常的二维码，没有报错也没有
+            // 「点击刷新」覆盖层，而轮询早已停止 —— 又一个只能整页刷新的冻结页。
+            //
+            // 用「这次响应里的 token 有没有真的写进 loginInfo」来区分两种情况，比看
+            // loginInfo 里有没有 token 更准（避免把上一段会话的残留 token 误判成成功）：
+            //   - 没写进去 → applyLoginResp 的字段校验没过，登录根本没发生。旧授权码已被
+            //     消费，唯一出路是重新扫码。
+            //   - 写进去了 → 登录已经生效，失败发生在后续步骤（storage 被禁、space 预检）。
+            //     此时回滚扫码流程会把一个已登录会话变成半登录态，只能继续往前走。
+            console.error('[login] scan-login redeemed but post-login handling failed',
+                error instanceof Error ? error.message : redactedErrorLabel(error))
+            const respToken = (resp as { token?: unknown }).token
+            const tokenApplied = typeof respToken === 'string' && respToken !== ''
+                && WKApp.loginInfo?.token === respToken
+            if (!tokenApplied) {
+                this.restartScanLogin()
+                return
+            }
+            try {
+                WKApp.endpoints.callOnLogin()
+            } catch (e) {
+                console.error('[login] callOnLogin after failed post-login handling also failed',
+                    e instanceof Error ? e.message : 'unknown error')
+            }
         }
         this.notifyListener()
     }

@@ -33,10 +33,16 @@ vi.mock('@octo/base', () => {
       err && typeof err === 'object' && 'code' in err && typeof (err as { code: unknown }).code === 'string'
         ? (err as { code: string }).code
         : undefined,
+    // Mirrors @octo/base's extractErrorMsg (Service/APIClient.ts).
+    extractErrorMsg: (err: unknown) =>
+      err && typeof err === 'object' && 'msg' in err && typeof (err as { msg: unknown }).msg === 'string'
+        ? (err as { msg: string }).msg
+        : '',
     normalizeLocale: vi.fn(() => undefined),
   }
 })
 
+import { WKApp } from '@octo/base'
 import { LoginVM, LoginStatus, LoginType } from '../login_vm'
 
 /** Put the VM in QR mode without letting didMount kick off real polling. */
@@ -48,21 +54,57 @@ function newQRCodeVM(): LoginVM {
   return vm
 }
 
-// A status the state machine has no case for. Resolving the poll with `waitScan`
-// would make advance() immediately re-poll, and that chain keeps firing across
-// test boundaries — which looks exactly like mock state leaking between tests.
-const INERT = { status: 'inert-for-test' }
+// A request that never settles.
+//
+// There is no longer such a thing as an "inert" status: advance() has a default arm,
+// so any payload the machine does not recognise now re-mints instead of standing
+// still (that silent stand-still was the frozen-page bug). When a test only cares
+// about what went out on the wire, hang the request instead of resolving it — and
+// nothing keeps firing across test boundaries either.
+function pending(): Promise<never> {
+  return new Promise(() => {})
+}
+
+/**
+ * Route the mocked GET by path.
+ *
+ * One blanket `mockResolvedValue` cannot serve this flow any more: a mint-shaped
+ * `{uuid, poll_secret, qrcode}` would also answer the follow-up status poll, where it
+ * carries no `status` — and advance()'s default arm now (correctly) treats an
+ * unrecognised status as "re-mint" instead of standing still. Answering each endpoint
+ * with its own shape keeps the tests about the behaviour under test.
+ *
+ * `mint`/`poll` default to a request that never settles. `mint` may be a function to
+ * vary per call.
+ */
+function routeGet(opts: { mint?: unknown; poll?: unknown }) {
+  apiGet.mockImplementation((url: string) => {
+    const target = String(url)
+    if (target.includes('user/loginuuid')) {
+      const mint = typeof opts.mint === 'function' ? (opts.mint as () => unknown)() : opts.mint
+      return mint === undefined ? pending() : Promise.resolve(mint)
+    }
+    if (target.includes('user/loginstatus')) {
+      return opts.poll === undefined ? pending() : Promise.resolve(opts.poll)
+    }
+    return Promise.resolve({})
+  })
+}
 
 beforeEach(() => {
   vi.restoreAllMocks()
   apiGet.mockReset()
   apiPost.mockReset()
+  // Shared singletons in the @octo/base stub: a token or a call count left behind
+  // would make the post-login-throw tests read each other's state.
+  WKApp.loginInfo.token = ''
+  ;(WKApp.endpoints.callOnLogin as unknown as { mockClear(): void }).mockClear()
 })
 
 describe('scan-login poll credential', () => {
   it('sends poll_secret on the status poll', async () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.uuid = 'uuid-1'
     vm.pollSecret = 'secret-1'
 
@@ -78,7 +120,7 @@ describe('scan-login poll credential', () => {
 
   it('url-encodes uuid and poll_secret', async () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.uuid = 'a b&c'
     vm.pollSecret = 'x y&z'
 
@@ -92,7 +134,7 @@ describe('scan-login poll credential', () => {
 
   it('omits poll_secret when there is none rather than sending "undefined"', async () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.uuid = 'uuid-1'
     vm.pollSecret = undefined
 
@@ -260,7 +302,7 @@ describe('auth_code redemption', () => {
     expect(getUrls()).toContain('user/loginuuid')
   })
 
-  it('does not restart the scan flow when post-login handling throws', async () => {
+  it('carries on without re-minting when post-login handling throws after the token landed', async () => {
     const vm = newQRCodeVM()
     apiPost.mockResolvedValue({ uid: 'u1', token: 't1' })
     apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
@@ -268,28 +310,54 @@ describe('auth_code redemption', () => {
     vm.pollSecret = 'secret-1'
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.spyOn(console, 'warn').mockImplementation(() => {})
-    // Malformed login payload, or blocked DOM storage in an embedded build.
-    vi.spyOn(vm, 'loginSuccess').mockImplementation(() => { throw new Error('boom') })
+    // The token is applied, then something later blows up — blocked DOM storage in
+    // an embedded build, or the space pre-flight.
+    vi.spyOn(vm, 'loginSuccess').mockImplementation(() => {
+      WKApp.loginInfo.token = 't1'
+      throw new Error('boom')
+    })
 
     await vm.requestLogin('code-1')
 
-    // The redemption itself succeeded and the token is already applied. Treating
-    // this as a redemption failure would leave a half-logged-in session while the
-    // page mints a fresh QR.
+    // Re-minting here would turn a logged-in session into a half-logged-in one, so
+    // the flow must go forward, not back.
     expect(getUrls()).not.toContain('user/loginuuid')
+    expect(WKApp.endpoints.callOnLogin).toHaveBeenCalled()
+  })
+
+  it('restarts when post-login handling throws before the token landed', async () => {
+    const vm = newQRCodeVM()
+    apiPost.mockResolvedValue({ uid: 'u1', token: 't1' })
+    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
+    vm.uuid = 'uuid-1'
+    vm.pollSecret = 'secret-1'
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    // applyLoginResp rejects a payload missing uid/token: no login happened at all.
+    vi.spyOn(vm, 'loginSuccess').mockImplementation(() => { throw new Error('invalid login response') })
+
+    await vm.requestLogin('code-1')
+
+    // Nothing was applied and the old code is spent, so a fresh scan is the only
+    // way out — leaving the page on a live-looking QR with polling stopped is the
+    // frozen-page shape this work exists to remove.
+    expect(getUrls()).toContain('user/loginuuid')
+    expect(WKApp.endpoints.callOnLogin).not.toHaveBeenCalled()
   })
 
   it('does not spend the auth code when there is no poll_secret', async () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.uuid = 'uuid-1'
     vm.pollSecret = undefined
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     await vm.requestLogin('code-1')
 
-    // The request could only ever come back as auth_code_not_found, and it would
-    // consume the scan on the way — re-mint instead of burning it.
+    // The request could only ever come back as auth_code_not_found — the server
+    // checks poll_secret before consuming the code (api.go:2407 vs :2413), so this
+    // is about skipping a guaranteed-404 round trip and getting to a recoverable
+    // state, not about saving the code from being burnt.
     expect(apiPost).not.toHaveBeenCalled()
     expect(getUrls()).toContain('user/loginuuid')
   })
@@ -330,7 +398,7 @@ describe('auth_code redemption', () => {
   it('stops for good when redemption reports the feature is disabled', async () => {
     const vm = newQRCodeVM()
     apiPost.mockRejectedValue({ code: SCAN_LOGIN_DISABLED, msg: 'disabled' })
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.uuid = 'uuid-1'
     vm.pollSecret = 'secret-1'
 
@@ -378,10 +446,36 @@ describe('disabled deployment switch', () => {
   })
 })
 
+describe('unhandled status', () => {
+  it.each([
+    ['a status the machine has no case for', { status: 'someFutureStatus' }],
+    ['a payload with no status at all', { app_id: 'wukongchat' }],
+  ])('recovers from %s instead of freezing, and does not storm', async (_label, poll) => {
+    const vm = newQRCodeVM()
+    routeGet({ mint: { uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' }, poll })
+    vm.expireMaxTryCount = 2 // keep the bounded loop short
+    vm.uuid = 'uuid-1'
+    vm.pollSecret = 'secret-1'
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    vm.pullLoginStatus('uuid-1')
+
+    // Two properties at once. Without a default arm the status matches nothing, the
+    // poll chain stops, and login.tsx keeps rendering a live QR with autoRefresh
+    // still true — no error, no refresh affordance, only a page reload recovers.
+    // With one, recovery must also stay bounded rather than minting forever.
+    await vi.waitFor(() => expect(vm.autoRefresh).toBe(false))
+    expect(vm.loginStatus).toBe(LoginStatus.expired)
+    const mints = getUrls().filter((u) => u.includes('user/loginuuid')).length
+    expect(mints).toBeGreaterThan(0)
+    expect(mints).toBeLessThanOrEqual(vm.expireMaxTryCount + 1)
+  })
+})
+
 describe('scanned confirmation window', () => {
   it('keeps polling on first entry and arms a local deadline', async () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.uuid = 'uuid-1'
     vm.pollSecret = 'secret-1'
     vm.loginStatus = LoginStatus.scanned
@@ -413,7 +507,7 @@ describe('scanned confirmation window', () => {
 
   it('advances on a scanned payload that carries no uid', async () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.uuid = 'uuid-1'
     vm.pollSecret = 'secret-1'
     vm.loginStatus = LoginStatus.scanned
@@ -432,7 +526,14 @@ describe('restart over an unsettled mint', () => {
   it('can still mint while an abandoned mint is in flight', async () => {
     const vm = newQRCodeVM()
     let resolveFirst: (v: unknown) => void = () => {}
-    apiGet.mockReturnValueOnce(new Promise((res) => { resolveFirst = res }))
+    let mints = 0
+    // First mint hangs, the recovery mint resolves; the status poll never answers with
+    // a mint payload.
+    routeGet({
+      mint: () => (++mints === 1
+        ? new Promise((res) => { resolveFirst = res })
+        : { uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' }),
+    })
     vm.requestUUID()
     await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
     expect(vm.qrcodeLoading).toBe(true)
@@ -440,7 +541,6 @@ describe('restart over an unsettled mint', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     // Something abandons the session while that first mint is still open.
-    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
     vm.loginStatus = LoginStatus.authed
     vm.advance({ status: LoginStatus.authed })
 
@@ -465,7 +565,7 @@ describe('restart over an unsettled mint', () => {
 describe('confirmation deadline lifetime', () => {
   it('does not carry a stale deadline into a naturally re-minted QR', async () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue(INERT)
+    routeGet({ mint: { uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' } })
     vm.uuid = 'uuid-1'
     vm.pollSecret = 'secret-1'
 
@@ -476,27 +576,26 @@ describe('confirmation deadline lifetime', () => {
 
     // ...then the server's QR TTL expires first, and advance() re-mints straight
     // through getUUID — a path that never touches resetQRCodeState.
-    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
     vm.loginStatus = LoginStatus.expired
     vm.advance({ status: LoginStatus.expired })
     await vi.waitFor(() => expect(vm.uuid).toBe('uuid-2'))
     expect((vm as unknown as { _scannedDeadline?: number })._scannedDeadline).toBeUndefined()
 
     // The user scans the brand-new QR: it must not be judged against the old window.
-    apiGet.mockReset()
-    apiGet.mockResolvedValue(INERT)
+    const before = apiGet.mock.calls.length
     vm.loginStatus = LoginStatus.scanned
     vm.advance({ status: LoginStatus.scanned })
-    await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
-    expect(getUrls()).not.toContain('user/loginuuid')
-    expect(getUrls()[0]).toContain('user/loginstatus')
+    await vi.waitFor(() => expect(apiGet.mock.calls.length).toBeGreaterThan(before))
+    const after = getUrls().slice(before)
+    expect(after).not.toContain('user/loginuuid')
+    expect(after[0]).toContain('user/loginstatus')
   })
 })
 
 describe('abandoned-session cap', () => {
   it('does not spend the budget on ordinary QR expiry', async () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
+    routeGet({ mint: { uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' } })
     vm.expireMaxTryCount = 2
 
     // A user idling on the QR panel burns one natural expiry per minute (60s TTL).
@@ -517,7 +616,7 @@ describe('abandoned-session cap', () => {
 
   it('gives a manual refresh a fresh budget', () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.expireMaxTryCount = 0
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     vm.loginStatus = LoginStatus.authed
@@ -532,7 +631,7 @@ describe('abandoned-session cap', () => {
 
   it('surfaces the refresh affordance instead of re-minting forever', () => {
     const vm = newQRCodeVM()
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.expireMaxTryCount = 0
     vm.loginStatus = LoginStatus.authed
     vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -567,7 +666,7 @@ describe('credential lifetime', () => {
     // a torn-down VM and re-presenting the secret.
     expect(vm.uuid).toBeUndefined()
     expect(vm.pollSecret).toBeUndefined()
-    apiGet.mockResolvedValue(INERT)
+    apiGet.mockReturnValue(pending())
     vm.pullLoginStatus('uuid-1')
     expect(apiGet).not.toHaveBeenCalled()
   })
@@ -623,13 +722,17 @@ describe('unmount race', () => {
   it('a superseded mint does not clobber the QR that replaced it', async () => {
     const vm = newQRCodeVM()
     let resolveFirst: (v: unknown) => void = () => {}
-    apiGet.mockReturnValueOnce(new Promise((res) => { resolveFirst = res }))
+    let mints = 0
+    routeGet({
+      mint: () => (++mints === 1
+        ? new Promise((res) => { resolveFirst = res })
+        : { uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' }),
+    })
 
     vm.requestUUID()
     await vi.waitFor(() => expect(apiGet).toHaveBeenCalled())
 
     // A manual refresh discards the pending session and mints again.
-    apiGet.mockResolvedValue({ uuid: 'uuid-2', poll_secret: 'secret-2', qrcode: 'qr-2' })
     vm.qrcodeLoading = false
     ;(vm as unknown as { resetQRCodeState(): void }).resetQRCodeState()
     vm.requestUUID()

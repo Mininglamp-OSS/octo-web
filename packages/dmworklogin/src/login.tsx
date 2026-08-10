@@ -828,7 +828,10 @@ class Login extends Component<any, LoginState> {
                                         <div className="wk-login-content-scanlogin-qrcode">
                                             {vm.qrcodeLoading || !vm.qrcode ? undefined : <QRCodeSVG value={vm.qrcode} size={176} fgColor={WKApp.config.themeColor}></QRCodeSVG>}
                                             <div className={classNames("wk-login-content-scanlogin-qrcode-avatar", vm.showAvatar() ? "wk-login-content-scanlogin-qrcode-avatar-show" : undefined)}>
-                                                {vm.showAvatar() ? <img src={WKApp.shared.avatarUser(vm.uid!)}></img> : undefined}
+                                                {/* 用 vm.uid 收窄而不是 vm.uid!：服务端的 scanned 载荷已不含 uid，
+                                                    showAvatar() 恒为 falsy，非空断言等于对一个只能是 undefined 的值
+                                                    打包票，而编译器无法把它和这个 helper 关联起来。 */}
+                                                {vm.showAvatar() && vm.uid ? <img src={WKApp.shared.avatarUser(vm.uid)}></img> : undefined}
                                             </div>
                                             {!vm.autoRefresh ? <div className="wk-login-content-scanlogin-qrcode-expire">
                                                 <p>{t('qr.expired')}</p>

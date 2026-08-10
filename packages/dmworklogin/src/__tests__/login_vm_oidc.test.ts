@@ -57,6 +57,11 @@ vi.mock('@octo/base', () => {
       err && typeof err === 'object' && 'code' in err && typeof (err as { code: unknown }).code === 'string'
         ? (err as { code: string }).code
         : undefined,
+    // Mirrors @octo/base's extractErrorMsg (Service/APIClient.ts).
+    extractErrorMsg: (err: unknown) =>
+      err && typeof err === 'object' && 'msg' in err && typeof (err as { msg: unknown }).msg === 'string'
+        ? (err as { msg: string }).msg
+        : '',
     normalizeLocale: vi.fn((value: string | null | undefined) => {
       if (value === 'zh-CN' || value === 'en-US') return value
       return undefined
