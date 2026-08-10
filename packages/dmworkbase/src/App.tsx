@@ -778,8 +778,10 @@ export default class WKApp extends ProviderListener {
   // file card uses it to switch its icon action between "save" and "view".
   static checkDriveTransferred?: (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number } | null>;
   // Open the drive UI and focus/flash a specific file. Registered by DriveModule.
-  // Only the space root is entered — the caller does not thread parent_id.
-  static openDriveFile?: (params: { space_id: string; file_id: number }) => void;
+  // parent_id is optional — when the file lives at the space root pass 0 or omit;
+  // when the file is buried in nested folders pass the immediate parent so the
+  // drive VM can rebuild the breadcrumb via GET /files/:id/ancestors.
+  static openDriveFile?: (params: { space_id: string; file_id: number; parent_id?: number }) => void;
   // Id of the currently active sidebar menu (kept in sync by Main page)
   static currentMenuId?: string;
   static apiClient = APIClient.shared; // api客户端

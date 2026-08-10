@@ -554,6 +554,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
       WKApp.openDriveFile?.({
         space_id: known.space_id,
         file_id: known.file_id,
+        parent_id: known.parent_id,
       });
       return;
     }

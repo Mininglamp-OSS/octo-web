@@ -177,6 +177,7 @@
     "renamed": "重命名成功",
     "moved": "移动成功",
     "copied": "复制成功",
-    "deleted": "删除成功"
+    "deleted": "删除成功",
+    "spaceNotFound": "该空间不存在或已无访问权限"
   }
 }

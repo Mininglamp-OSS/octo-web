@@ -31,6 +31,7 @@ import type {
   PrepareUploadReq,
   ConfirmUploadReq,
   TransferFromImReq,
+  DriveAncestor,
   CreateShareReq,
   CreateInviteReq,
   DriveRole,
@@ -78,6 +79,11 @@ function resolveBaseURL(): string {
 }
 
 // Inject auth headers at request time (so the token stays fresh after refresh).
+// X-Space-Id defaults to WKApp.shared.currentSpaceId (the host tab's space).
+// Callers may pre-set config.headers['X-Space-Id'] to override for a single
+// request when acting on a space other than the host tab — e.g. save-to-drive
+// posting into a chosen target space; the interceptor preserves that override
+// instead of clobbering it back to the host space.
 driveAxios.interceptors.request.use((config) => {
   config.baseURL = resolveBaseURL();
   config.headers = config.headers ?? {};
@@ -86,9 +92,11 @@ driveAxios.interceptors.request.use((config) => {
   if (token) {
     config.headers['token'] = token;
   }
-  const spaceId = WKApp.shared.currentSpaceId;
-  if (spaceId) {
-    config.headers['X-Space-Id'] = spaceId;
+  if (config.headers['X-Space-Id'] == null || config.headers['X-Space-Id'] === '') {
+    const spaceId = WKApp.shared.currentSpaceId;
+    if (spaceId) {
+      config.headers['X-Space-Id'] = spaceId;
+    }
   }
   return config;
 });
@@ -237,6 +245,23 @@ async function get<T>(
 async function post<T>(path: string, data?: unknown): Promise<T> {
   try {
     const resp = await driveAxios.post<T>(`${BASE}${path}`, data);
+    return resp.data;
+  } catch (err) {
+    throw extractApiError(err);
+  }
+}
+
+// postWithSpace is the single-request X-Space-Id override path. Used by
+// save-to-drive when the caller targets a space different from the host tab's
+// current space: transfer's RequireSpace middleware reverse-checks the header
+// against octo-server's MySpaces, so the request must carry the TARGET space,
+// not the host space. See driveAxios request interceptor for the "preserve
+// pre-set header" behavior this depends on.
+async function postWithSpace<T>(path: string, spaceId: string, data?: unknown): Promise<T> {
+  try {
+    const resp = await driveAxios.post<T>(`${BASE}${path}`, data, {
+      headers: { 'X-Space-Id': spaceId },
+    });
     return resp.data;
   } catch (err) {
     throw extractApiError(err);
@@ -422,7 +447,23 @@ export async function deleteBlob(blobId: number): Promise<void> {
 }
 
 export async function transferFromIm(req: TransferFromImReq): Promise<TransferResult> {
+  // When target_space_id is a non-current space, the request must carry that
+  // target as X-Space-Id (see postWithSpace / driveAxios interceptor comments).
+  // Empty target_space_id falls back to the host space via the interceptor's
+  // default, which is what the personal-space fallback path needs.
+  if (req.target_space_id) {
+    return postWithSpace<TransferResult>('/blobs/transfer-from-im', req.target_space_id, req);
+  }
   return post<TransferResult>('/blobs/transfer-from-im', req);
+}
+
+/** Root-first folder path from a target file's owning space root to its
+ *  immediate parent — powers the "在云盘中查看" jump when the file lives
+ *  in a deep folder in any space. Empty array when parent_id=0 (root).
+ *  See DriveAncestor doc. */
+export async function getAncestors(fileId: number): Promise<DriveAncestor[]> {
+  const data = await get<{ ancestors: DriveAncestor[] }>(`/files/${fileId}/ancestors`);
+  return data.ancestors ?? [];
 }
 
 // Wire types for the IM -> drive transferred-state check now live in

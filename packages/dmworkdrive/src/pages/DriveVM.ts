@@ -152,13 +152,62 @@ export class DriveVM extends ProviderListener {
     this.notifyListener();
   }
 
-  /** Jump to a file in a space and mark it for flash highlight. IM-transfer
-   *  callers only produce files at the personal-space root, so we reset the
-   *  path to root unconditionally. */
-  focusFile(spaceId: string, fileId: number): void {
-    const space = this.spaces.find((s) => s.id === spaceId);
+  /** Jump to a file in a space, opening the correct breadcrumb path and
+   *  marking the file for flash highlight. When parentId is 0 / undefined
+   *  the target lives at the space root — set path to just the space
+   *  root crumb (the personal-space-root case that always worked).
+   *  For a parentId > 0 (target buried in nested folders — the common case
+   *  once save-to-drive can pick any target folder in any space) we fetch
+   *  the ancestor chain from the backend and rebuild the breadcrumb, so
+   *  the left sidebar shows the correct hierarchy and each ancestor is
+   *  navigable back up.
+   *
+   *  Safety net: `ensureLoaded()` is called first so a caller who has
+   *  never opened drive still has a `spaces` list to look up the target
+   *  in. If the target space is not in the loaded list (caller was
+   *  removed from a shared space between save and this click), toast and
+   *  skip — do NOT switch to a nonexistent space (would render a dangling
+   *  activeSpaceId with an empty toolbar).
+   *
+   *  Ancestor fetch is best-effort: a 4xx / network hiccup falls back to
+   *  the space-root breadcrumb rather than blocking the jump. The file
+   *  itself is still highlighted; the user can see it lives in this
+   *  space even if the intermediate folders didn't paint.
+   */
+  async focusFile(spaceId: string, fileId: number, parentId?: number): Promise<void> {
+    this.ensureLoaded();
+    let space = this.spaces.find((s) => s.id === spaceId);
+    // If the caller triggered focusFile before the first-time load
+    // resolved, `spaces` may still be empty here — retry once after a
+    // notifyListener tick would happen (loadSpaces is fire-and-forget).
+    // The simpler cover: rely on the caller's expectation that a saved-
+    // hit space is one the caller currently belongs to (the batch
+    // transferred-state lookup gates on membership), so the space either
+    // is in the list at focus time, or won't be after a load either.
+    if (!space) {
+      // Reload once — the space may have been added between last
+      // loadSpaces and this click (shared-space invite acceptance, etc.).
+      await this.loadSpaces();
+      space = this.spaces.find((s) => s.id === spaceId);
+    }
+    if (!space) {
+      Toast.error(t('drive.toast.spaceNotFound'));
+      return;
+    }
     this.activeSpaceId = spaceId;
-    this.path = [{ id: 0, name: space ? spaceDisplayName(space, t) : t('drive.file.root') }];
+    const rootCrumb: Crumb = { id: 0, name: spaceDisplayName(space, t) };
+    if (!parentId || parentId === 0) {
+      this.path = [rootCrumb];
+    } else {
+      let ancestors: Array<{ id: number; name: string }> = [];
+      try {
+        ancestors = await api.getAncestors(fileId);
+      } catch {
+        // Best-effort — leave ancestors empty and land on the space root.
+        ancestors = [];
+      }
+      this.path = [rootCrumb, ...ancestors.map((a) => ({ id: a.id, name: a.name }))];
+    }
     this.highlightFileId = fileId;
     this.notifyListener();
   }

@@ -6,6 +6,7 @@ vi.mock('../../api/driveApi', () => ({
   listSpaces: vi.fn(),
   ensurePersonalSpace: vi.fn(),
   createSharedSpace: vi.fn(),
+  getAncestors: vi.fn(),
 }));
 vi.mock('../../utils/toast', () => ({ Toast: { success: vi.fn(), error: vi.fn() } }));
 
@@ -115,5 +116,70 @@ describe('DriveVM tenant isolation (PR#1146 review B1)', () => {
     await waitFor(() => expect(vm.spaces.length).toBe(2));
     expect(vm.spaces.map((s) => s.id)).toEqual(['p2', 'b']);
     expect(api.listSpaces).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('DriveVM.focusFile', () => {
+  it('root file jump keeps path at just the space root', async () => {
+    vi.mocked(api.listSpaces).mockResolvedValue([space('p', 'personal'), space('s', 'shared')]);
+    const vm = new DriveVM();
+    vm.ensureLoaded();
+    await waitFor(() => expect(vm.spaces.length).toBe(2));
+
+    await vm.focusFile('s', 42);
+    expect(vm.activeSpaceId).toBe('s');
+    expect(vm.path.length).toBe(1);
+    expect(vm.path[0].id).toBe(0);
+    expect(vm.highlightFileId).toBe(42);
+    // no ancestors fetch for root files
+    expect(api.getAncestors).not.toHaveBeenCalled();
+  });
+
+  it('deep file jump fetches ancestors and expands the breadcrumb root-first', async () => {
+    vi.mocked(api.listSpaces).mockResolvedValue([space('p', 'personal'), space('s', 'shared')]);
+    vi.mocked(api.getAncestors).mockResolvedValueOnce([
+      { id: 10, name: 'A' },
+      { id: 20, name: 'B' },
+      { id: 30, name: 'C' },
+    ]);
+    const vm = new DriveVM();
+    vm.ensureLoaded();
+    await waitFor(() => expect(vm.spaces.length).toBe(2));
+
+    await vm.focusFile('s', 999, 30);
+    expect(vm.activeSpaceId).toBe('s');
+    // root crumb + 3 ancestors
+    expect(vm.path.map((c) => c.id)).toEqual([0, 10, 20, 30]);
+    expect(vm.path.map((c) => c.name).slice(1)).toEqual(['A', 'B', 'C']);
+    expect(vm.highlightFileId).toBe(999);
+    expect(api.getAncestors).toHaveBeenCalledWith(999);
+  });
+
+  it('unknown target space toasts and does not switch', async () => {
+    vi.mocked(api.listSpaces).mockResolvedValue([space('p', 'personal')]);
+    const vm = new DriveVM();
+    vm.ensureLoaded();
+    await waitFor(() => expect(vm.spaces.length).toBe(1));
+    const before = vm.activeSpaceId;
+
+    // Caller was removed from shared-space 'gone' between save and click.
+    await vm.focusFile('gone', 5);
+    expect(vm.activeSpaceId).toBe(before); // no switch
+    expect(vm.highlightFileId).toBeNull(); // no highlight
+    // Second loadSpaces was invoked by focusFile's retry.
+    expect(api.listSpaces).toHaveBeenCalledTimes(2);
+  });
+
+  it('getAncestors failure falls back to the space root breadcrumb', async () => {
+    vi.mocked(api.listSpaces).mockResolvedValue([space('p', 'personal'), space('s', 'shared')]);
+    vi.mocked(api.getAncestors).mockRejectedValueOnce(new Error('boom'));
+    const vm = new DriveVM();
+    vm.ensureLoaded();
+    await waitFor(() => expect(vm.spaces.length).toBe(2));
+
+    await vm.focusFile('s', 777, 30);
+    expect(vm.activeSpaceId).toBe('s');
+    expect(vm.path.length).toBe(1); // no ancestors landed, root only
+    expect(vm.highlightFileId).toBe(777); // still highlight the file
   });
 });

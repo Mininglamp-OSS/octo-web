@@ -44,6 +44,12 @@ export interface Space {
   super_admin_uid: string;
   created_at: string;
   updated_at: string;
+  /** Caller's own role in this space. Present only on member-scoped list
+   *  responses (GET /v1/drive/spaces); empty string on single-space reads
+   *  (GET /v1/drive/spaces/:id). Front-end save-to-drive picker disables
+   *  target spaces whose viewer_role rank is below uploader_downloader.
+   *  Empty string means "unknown" — the caller should not gate on it. */
+  viewer_role?: DriveRole | '';
 }
 
 export interface Member {
@@ -318,6 +324,15 @@ export interface TransferFromImReq {
   target_space_id: string;
   target_parent_id: number;
   name_override?: string;
+}
+
+/** One folder on the root-to-parent path returned by GET /v1/drive/files/:id/ancestors.
+ *  Root-first ordering; the target file itself is not included; parent_id=0 root
+ *  means an empty array. Front-end save-to-drive "在云盘中查看" uses this to
+ *  rebuild the breadcrumb when jumping into a deep folder in any space. */
+export interface DriveAncestor {
+  id: number;
+  name: string;
 }
 
 export interface CreateShareReq {

@@ -321,6 +321,23 @@ describe('auth-header interceptor', () => {
     }
   });
 
+  it('preserves a pre-set X-Space-Id header instead of clobbering it with the host tab (postWithSpace path)', () => {
+    // save-to-drive posts into an arbitrary target space and passes the target
+    // as a per-request X-Space-Id override. The interceptor must NOT overwrite
+    // it with WKApp.shared.currentSpaceId, or the transfer's RequireSpace
+    // middleware would reverse-check the wrong space and 403.
+    const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
+    const onRequest = requestUse.mock.calls[0][0];
+    const original = WKApp.shared.currentSpaceId;
+    try {
+      WKApp.shared.currentSpaceId = 'host-space';
+      const config = onRequest({ headers: { 'X-Space-Id': 'target-space' } });
+      expect(config.headers['X-Space-Id']).toBe('target-space');
+    } finally {
+      WKApp.shared.currentSpaceId = original;
+    }
+  });
+
   it('logs out on a 401 from a normal drive API', async () => {
     const logout = vi.spyOn(WKApp.shared, 'logout');
     const responseUse = inst.interceptors.response.use as ReturnType<typeof vi.fn>;
@@ -542,8 +559,8 @@ describe('IM -> drive transferred-state wire contract (source_key)', () => {
       target_parent_id: 0,
     };
     await driveApi.transferFromIm(req);
-    // Full body pin: any field rename / drop / added-required field on either
-    // side must update both — that is the point of this assertion.
+    // Empty target_space_id → plain post (2-arg call); the request interceptor
+    // fills X-Space-Id with the host tab's current space by default.
     expect(inst.post).toHaveBeenCalledWith('/v1/drive/blobs/transfer-from-im', {
       im_group_no: 'group_abc',
       im_channel_type: 2,
@@ -551,6 +568,42 @@ describe('IM -> drive transferred-state wire contract (source_key)', () => {
       target_space_id: '',
       target_parent_id: 0,
     });
+    // No per-request config → no X-Space-Id override was set.
+    const call = inst.post.mock.calls[0];
+    expect(call.length).toBe(2);
+  });
+
+  it('transferFromIm passes target_space_id as an X-Space-Id header override', async () => {
+    inst.post.mockResolvedValue(ok({ id: 99, space_id: 'sp_shared', parent_id: 0 }));
+    const req = {
+      im_group_no: 'group_abc',
+      im_channel_type: 2,
+      im_msg_id: '17012345678901234',
+      target_space_id: 'sp_shared',
+      target_parent_id: 42,
+    };
+    await driveApi.transferFromIm(req);
+    // Non-empty target_space_id → the request must carry that target as
+    // X-Space-Id so RequireSpace reverse-checks against MySpaces for the
+    // TARGET space, not the host tab's current space. The interceptor is
+    // configured to preserve a pre-set X-Space-Id header (see driveApi.ts).
+    expect(inst.post).toHaveBeenCalledWith(
+      '/v1/drive/blobs/transfer-from-im',
+      req,
+      { headers: { 'X-Space-Id': 'sp_shared' } },
+    );
+  });
+
+  it('getAncestors GETs /files/:id/ancestors and unwraps .ancestors', async () => {
+    inst.get.mockResolvedValue(ok({ ancestors: [{ id: 10, name: 'A' }, { id: 20, name: 'B' }] }));
+    const res = await driveApi.getAncestors(42);
+    expect(inst.get).toHaveBeenCalledWith('/v1/drive/files/42/ancestors', { params: {} });
+    expect(res).toEqual([{ id: 10, name: 'A' }, { id: 20, name: 'B' }]);
+  });
+
+  it('getAncestors returns [] for a root file (empty ancestors response)', async () => {
+    inst.get.mockResolvedValue(ok({ ancestors: [] }));
+    expect(await driveApi.getAncestors(1)).toEqual([]);
   });
 
   it('checkImTransferredBatch POSTs /blobs/im-transferred/batch with items[] triples', async () => {

@@ -177,6 +177,7 @@
     "renamed": "Renamed",
     "moved": "Moved",
     "copied": "Copied",
-    "deleted": "Deleted"
+    "deleted": "Deleted",
+    "spaceNotFound": "Space no longer exists or you lost access"
   }
 }

@@ -10,7 +10,7 @@ import type { IModule } from '@octo/base';
 import DriveSidebar from './pages/DriveSidebar';
 import DriveContent from './pages/DriveContent';
 import { DriveVM } from './pages/DriveVM';
-import { transferFromIm, checkImTransferredBatch } from './api/driveApi';
+import { transferFromIm, checkImTransferredBatch, getAncestors } from './api/driveApi';
 import type { ImTransferredEntry } from './api/driveApi';
 import { imTransferredSourceKey, normaliseImChannelID } from './bridge/types';
 
@@ -208,12 +208,15 @@ export default class DriveModule implements IModule {
     // mount the RIGHT file view and let the VM focus/flash the target file.
     // switchToMenuById intentionally does not popToRoot (shared left stack),
     // and only syncs the route — it does not mount contentRight, so we still
-    // call mountDriveContent explicitly. IM-transfer callers only produce files
-    // at the personal-space root, so no parent_id is threaded through.
-    WKApp.openDriveFile = ({ space_id, file_id }: { space_id: string; file_id: number }) => {
+    // call mountDriveContent explicitly. When the file lives in a nested
+    // folder (any space, including a shared one — cross-space save-to-drive
+    // saves the file at any depth), pass parent_id so DriveVM.focusFile can
+    // pull the ancestor chain and rebuild the breadcrumb; parent_id=0/undefined
+    // = space root (the personal-space-root case that always worked).
+    WKApp.openDriveFile = ({ space_id, file_id, parent_id }: { space_id: string; file_id: number; parent_id?: number }) => {
       WKApp.switchToMenuById?.('drive');
       mountDriveContent();
-      vm.focusFile(space_id, file_id);
+      void vm.focusFile(space_id, file_id, parent_id);
     };
 
     // `/drive` renders the space rail into contentLeft. hostShell keeps
