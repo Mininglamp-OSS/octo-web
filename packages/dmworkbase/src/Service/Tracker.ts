@@ -38,8 +38,19 @@ interface TrackEnvelope {
 }
 
 const DEVICE_ID_KEY = 'octo_track_device_id'
-/** 独立上报通道,不复用业务 axios(§2.1) */
+/**
+ * 独立上报通道,不复用业务 axios(§2.1)。
+ *
+ * 采集端 base URL 由构建期 env `VITE_DAP_COLLECT_BASE_URL` 控制:
+ *   - 缺省(未设/空):BATCH_URL = '/track/batch' 相对路径,经业务域名内部转发到采集端。
+ *   - 设为绝对地址(如 https://dap.example.com):直连外部采集域名,支持 octo-dap
+ *     采集端独立部署 / 外部域名而非内部转发(此时需采集端配好 CORS 放行 token 头)。
+ * BATCH_PATH(路径后缀)保留用于 fetch/XHR 包裹里识别"上报请求自身"以排除自采环——
+ * 绝对 URL 里同样含该子串,indexOf 仍能命中。
+ */
+const COLLECT_BASE_URL = (import.meta.env.VITE_DAP_COLLECT_BASE_URL ?? '').replace(/\/+$/, '')
 const BATCH_PATH = '/track/batch'
+const BATCH_URL = COLLECT_BASE_URL + BATCH_PATH
 const FLUSH_SIZE = 20
 const FLUSH_INTERVAL_MS = 5000
 const MAX_RETRY = 3
@@ -295,7 +306,7 @@ class TrackerImpl {
             const token = this.currentToken()
             if (token) headers['token'] = token // 与业务同名头,后端按 token 鉴权并归一 actor
             const body = JSON.stringify({ events: batch })
-            void fetch(BATCH_PATH, {
+            void fetch(BATCH_URL, {
                 method: 'POST',
                 headers,
                 body,
@@ -336,7 +347,7 @@ class TrackerImpl {
             const headers: Record<string, string> = { 'Content-Type': 'application/json' }
             const token = this.currentToken()
             if (token) headers['token'] = token
-            void fetch(BATCH_PATH, {
+            void fetch(BATCH_URL, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ events: batch }),

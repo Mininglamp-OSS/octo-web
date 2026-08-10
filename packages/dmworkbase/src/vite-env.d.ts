@@ -12,6 +12,12 @@ interface ImportMetaEnv {
   readonly DEV: boolean
   readonly PROD: boolean
   readonly MODE: string
+  /**
+   * octo-dap 采集端 base URL。缺省(未设/空) = 相对路径，埋点走业务域名内部转发到
+   * 采集端；设为绝对地址(如 https://dap.example.com) = 直连外部采集域名，支持
+   * octo-dap 采集端独立部署 / 外部域名而非内部转发。构建期由 CI 注入。
+   */
+  readonly VITE_DAP_COLLECT_BASE_URL?: string
   readonly [key: `VITE_${string}`]: string | undefined
 }
 
