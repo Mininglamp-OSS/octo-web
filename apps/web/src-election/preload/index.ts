@@ -9,6 +9,7 @@ import { contextBridge, ipcRenderer } from "electron";
 // here and keep them in sync with apps/web/src-election/shared/ipc-channels.ts.
 const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count";
 const IPC_OIDC_AUTHORIZE_START = "oidc-authorize-start";
+const IPC_OIDC_AUTHORIZE_START_INVOKE = "oidc-authorize-start-invoke";
 const IPC_DEEP_LINK_READY = "deep-link-ready";
 
 function subscribeDisposable<T = any>(
@@ -32,6 +33,7 @@ const ALLOWED_SEND_CHANNELS = [
   "update-app",
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_OIDC_AUTHORIZE_START,
+  IPC_OIDC_AUTHORIZE_START_INVOKE,
   IPC_DEEP_LINK_READY,
   "screenshots-start",
   "restart-app",
@@ -72,10 +74,15 @@ const ALLOWED_RECEIVE_CHANNELS = [
 // In a PACKAGED build, no legitimate document is served from a dev-server
 // origin — any http://localhost:3000 document there is either an accidentally
 // running local server or an attacker-controlled page. Gate the dev-origin
-// allowlist on `process.defaultApp` (Electron's dev-mode flag) so production
-// trusts only the packaged file:// shell.
+// allowlist on a main-process-provided runtime argument so production trusts
+// only the packaged file:// shell, including sandboxed preloads.
 const DEFAULT_DEV_ORIGIN = "http://localhost:3000";
-const IS_DEV_RUNTIME = Boolean((process as unknown as { defaultApp?: boolean }).defaultApp);
+function getArgValue(prefix: string): string | undefined {
+  const arg = process.argv.find((value) => value.startsWith(prefix));
+  return arg ? arg.slice(prefix.length) : undefined;
+}
+
+const IS_DEV_RUNTIME = getArgValue("--octo-dev=") === "true";
 
 function configuredDevOrigins(): Set<string> {
   const origins = new Set<string>();
@@ -111,12 +118,9 @@ function normalizeFilePath(value: string): string {
 
 function isPackagedShellFile(): boolean {
   try {
-    const resourcesPath = process.resourcesPath;
-    if (typeof resourcesPath !== "string" || !resourcesPath) return false;
-
     const pathname = normalizeFilePath(window.location.pathname);
-    const resources = normalizeFilePath(resourcesPath);
-    return pathname === `${resources}/app.asar/build/index.html`;
+    const shellPath = getArgValue("--octo-shell-path=");
+    return typeof shellPath === "string" && pathname === normalizeFilePath(shellPath);
   } catch {
     return false;
   }

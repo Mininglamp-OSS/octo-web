@@ -11,7 +11,10 @@
 // This works uniformly under file:// (packaged) and http(s):// (dev) —
 // changing pathname directly would fail on file:// with SecurityError.
 
-import { consumePendingBindIfMatches } from "@octo/login";
+// Import the small bridge directly. The login barrel also exports React UI and
+// react-virtuoso, which makes this route helper untestable in the lightweight
+// jsdom environment and needlessly pulls the whole login surface into Layout.
+import { consumePendingBindIfMatches } from "@octo/login/src/oidc/pendingBind";
 
 const CALLBACK_SCHEME = "dmwork:";
 const IPC_DEEP_LINK_READY = "deep-link-ready";

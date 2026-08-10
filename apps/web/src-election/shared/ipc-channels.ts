@@ -12,6 +12,9 @@ export const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count"
 /** Renderer → Main: register the API origin expected for the OIDC callback. */
 export const IPC_OIDC_AUTHORIZE_START = "oidc-authorize-start";
 
+/** Renderer → Main: arm the OIDC navigation boundary before leaving the shell. */
+export const IPC_OIDC_AUTHORIZE_START_INVOKE = "oidc-authorize-start-invoke";
+
 /**
  * Renderer → Main: the deep-link IPC listener has attached and any buffered
  * URLs may be flushed. The main process resets its readiness flag on every

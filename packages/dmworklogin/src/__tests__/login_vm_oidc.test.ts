@@ -187,7 +187,7 @@ describe('LoginVM.startOidcLogin (Electron desktop)', () => {
   beforeEach(() => {
     // Simulate Electron preload injection
     ;(window as any).__POWERED_ELECTRON__ = true
-    ;(window as any).ipc = { send: vi.fn() }
+    ;(window as any).ipc = { invoke: vi.fn().mockResolvedValue(true) }
     ;(WKApp.shared as any).isPC = true
     // Simulate file:// origin that Electron prod build exposes
     stubLocation({ origin: 'file://', href: 'file:///login', protocol: 'file:', search: '' })
@@ -220,8 +220,8 @@ describe('LoginVM.startOidcLogin (Electron desktop)', () => {
     const vm = new LoginVM()
     await vm.startOidcLogin('acme-sso')
 
-    expect((window as any).ipc.send).toHaveBeenCalledWith(
-      'oidc-authorize-start',
+    expect((window as any).ipc.invoke).toHaveBeenCalledWith(
+      'oidc-authorize-start-invoke',
       'https://api.example.com/v1/',
       'AC-ipc',
       'acme-sso',

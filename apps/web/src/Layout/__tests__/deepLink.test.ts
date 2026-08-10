@@ -1,6 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { buildShellUrlForDeepLink } from '../deepLink'
 
+// Node 25 can disable jsdom's storage when no --localstorage-file is passed.
+// Keep this focused helper runnable in CI without changing the app's storage
+// contract or requiring a persistent test file.
+if (typeof globalThis.localStorage === 'undefined') {
+  const values = new Map<string, string>()
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+      clear: () => values.clear(),
+    },
+  })
+}
+
 // Every non-null assertion below needs a valid pending-bind marker to survive
 // the P1-2 correlation check. `dmwork://oidc/bind` is rejected outright
 // without one — see the dedicated block at the bottom of this file.
@@ -51,7 +67,7 @@ describe('buildShellUrlForDeepLink', () => {
 
   it('refuses to overwrite the route derived from the deep-link path', () => {
     const out = buildShellUrlForDeepLink(
-      'dmwork://oidc/bind?token=abc&__octo_route=/login',
+      'dmwork://oidc/bind?token=abc&provider=aegis&authcode=auth-code&__octo_route=/login',
       shell,
     )
     expect(out).not.toBeNull()
@@ -87,6 +103,7 @@ describe('buildShellUrlForDeepLink', () => {
     // any WHATWG-compliant runtime, so downstream handling is identical.
     // Documenting the invariant here catches future parser changes.
     const slashed = buildShellUrlForDeepLink('dmwork://oidc/bind?token=abc&provider=aegis&authcode=auth-code', shell)
+    seedPendingBind()
     const bare = buildShellUrlForDeepLink('dmwork:oidc/bind?token=abc&provider=aegis&authcode=auth-code', shell)
     expect(slashed).not.toBeNull()
     expect(bare).not.toBeNull()
@@ -165,15 +182,15 @@ describe('buildShellUrlForDeepLink — bind correlation check (P1-2)', () => {
     expect(new URL(out!).searchParams.get('token')).toBe('LEGITIMATE_TOKEN')
   })
 
-  it('accepts a bind callback when only provider is returned', () => {
+  it('rejects a bind callback when authcode is missing', () => {
     localStorage.setItem(
       'pending_oidc_bind',
-      JSON.stringify({ providerId: 'aegis', savedAt: Date.now() }),
+      JSON.stringify({ providerId: 'aegis', authcode: 'auth-code', savedAt: Date.now() }),
     )
     const out = buildShellUrlForDeepLink(
       'dmwork://oidc/bind?token=LEGITIMATE_TOKEN&provider=aegis',
       shell,
     )
-    expect(out).not.toBeNull()
+    expect(out).toBeNull()
   })
 })

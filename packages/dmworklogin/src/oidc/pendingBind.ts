@@ -109,9 +109,9 @@ export function consumePendingBindIfMatches(
   }
   const hasProvider = typeof expected.providerId === 'string' && expected.providerId !== ''
   const hasAuthcode = typeof expected.authcode === 'string' && expected.authcode !== ''
-  if (!hasProvider && !hasAuthcode) return false
-  if (hasProvider && expected.providerId !== pending.providerId) return false
-  if (hasAuthcode && expected.authcode !== pending.authcode) return false
+  if (!hasProvider || !hasAuthcode) return false
+  if (expected.providerId !== pending.providerId) return false
+  if (expected.authcode !== pending.authcode) return false
   clearPendingOidcBind()
   return true
 }

@@ -75,12 +75,11 @@ describe('pendingOidcBind', () => {
     expect(getPendingOidcBind()).toBeNull()
   })
 
-  it('accepts a callback when the backend supplies either correlation field', () => {
-    savePendingOidcBind({ providerId: 'aegis', savedAt: Date.now() })
-    expect(consumePendingBindIfMatches({ providerId: 'aegis' })).toBe(true)
-
+  it('requires both provider and authcode correlation fields', () => {
     savePendingOidcBind({ providerId: 'aegis', authcode: 'auth-code', savedAt: Date.now() })
-    expect(consumePendingBindIfMatches({ authcode: 'auth-code' })).toBe(true)
+    expect(consumePendingBindIfMatches({ providerId: 'aegis' })).toBe(false)
+    expect(consumePendingBindIfMatches({ authcode: 'auth-code' })).toBe(false)
+    expect(consumePendingBindIfMatches({ providerId: 'aegis', authcode: 'auth-code' })).toBe(true)
   })
 
 })

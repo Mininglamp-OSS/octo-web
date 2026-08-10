@@ -635,7 +635,9 @@ export class LoginVM extends ProviderListener {
                 ? apiURL
                 : undefined
             if (isDesktop) {
-                ;(window as any).ipc?.send?.('oidc-authorize-start', apiURL, authcode, providerId)
+                const ipc = (window as any).ipc
+                if (typeof ipc?.invoke !== 'function') throw new Error('Electron OIDC IPC is unavailable')
+                await ipc.invoke('oidc-authorize-start-invoke', apiURL, authcode, providerId)
             }
 
             // Schedule a fallback reset before navigating so a blocked redirect

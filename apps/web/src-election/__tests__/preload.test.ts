@@ -43,17 +43,10 @@ function setLocation(url: string): void {
   })
 }
 
-function setResourcesPath(value: string | undefined): void {
-  Object.defineProperty(process, 'resourcesPath', {
+function setRuntimeArgs(...args: string[]): void {
+  Object.defineProperty(process, 'argv', {
     configurable: true,
-    value,
-  })
-}
-
-function setDefaultApp(value: boolean): void {
-  Object.defineProperty(process, 'defaultApp', {
-    configurable: true,
-    value,
+    value: ['electron', 'app', ...args],
   })
 }
 
@@ -83,8 +76,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('allows ipc.send from packaged file:// shell', async () => {
-    setDefaultApp(false)
-    setResourcesPath(packagedResourcesPath)
+    setRuntimeArgs('--octo-dev=false', `--octo-shell-path=${packagedResourcesPath}/app.asar/build/index.html`)
     setLocation('file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html')
     const { ipc } = await loadPreloadFresh()
 
@@ -94,8 +86,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('allows ipc.send from dev localhost shell', async () => {
-    setDefaultApp(true)
-    setResourcesPath(undefined)
+    setRuntimeArgs('--octo-dev=true', '--octo-shell-path=')
     setLocation('http://localhost:3000/')
     const { ipc } = await loadPreloadFresh()
 
@@ -105,7 +96,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('blocks ipc.send from a third-party IdP origin', async () => {
-    setResourcesPath(undefined)
+    setRuntimeArgs('--octo-dev=false', '--octo-shell-path=')
     setLocation('https://idp.example.com/authorize?client_id=octo')
     const { ipc } = await loadPreloadFresh()
 
@@ -118,7 +109,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('blocks ipc.invoke from a third-party IdP origin', async () => {
-    setResourcesPath(undefined)
+    setRuntimeArgs('--octo-dev=false', '--octo-shell-path=')
     setLocation('https://idp.example.com/authorize')
     const { ipc } = await loadPreloadFresh()
 
@@ -127,7 +118,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('blocks ipc.on subscription from a third-party origin', async () => {
-    setResourcesPath(undefined)
+    setRuntimeArgs('--octo-dev=false', '--octo-shell-path=')
     setLocation('https://idp.example.com/authorize')
     const { ipc } = await loadPreloadFresh()
 
@@ -139,7 +130,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('blocks electronNotification invocations from a third-party origin', async () => {
-    setResourcesPath(undefined)
+    setRuntimeArgs('--octo-dev=false', '--octo-shell-path=')
     setLocation('https://idp.example.com/authorize')
     const { notif } = await loadPreloadFresh()
 
@@ -150,7 +141,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('blocks an arbitrary local file even though it uses file://', async () => {
-    setResourcesPath(packagedResourcesPath)
+    setRuntimeArgs('--octo-dev=false', `--octo-shell-path=${packagedResourcesPath}/app.asar/build/index.html`)
     setLocation('file:///tmp/attacker.html')
     const { ipc } = await loadPreloadFresh()
 
@@ -160,7 +151,7 @@ describe('preload IPC origin gate', () => {
   })
 
   it('blocks a non-configured localhost port', async () => {
-    setResourcesPath(undefined)
+    setRuntimeArgs('--octo-dev=false', '--octo-shell-path=')
     setLocation('http://localhost:4173/')
     const { ipc } = await loadPreloadFresh()
 
@@ -170,12 +161,12 @@ describe('preload IPC origin gate', () => {
   })
 
   it('exposes __POWERED_ELECTRON__ only on trusted shell origins', async () => {
-    setResourcesPath(packagedResourcesPath)
+    setRuntimeArgs('--octo-dev=false', `--octo-shell-path=${packagedResourcesPath}/app.asar/build/index.html`)
     setLocation('file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html')
     await loadPreloadFresh()
     expect(exposed.get('__POWERED_ELECTRON__')).toBe(true)
 
-    setResourcesPath(undefined)
+    setRuntimeArgs('--octo-dev=false', '--octo-shell-path=')
     setLocation('https://im.deepminer.com.cn/login')
     await loadPreloadFresh()
     // Remote octo-web bundle served by the API host must NOT see the flag,

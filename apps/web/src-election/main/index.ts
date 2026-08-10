@@ -21,6 +21,7 @@ import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_DEEP_LINK_READY,
   IPC_OIDC_AUTHORIZE_START,
+  IPC_OIDC_AUTHORIZE_START_INVOKE,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG from "./config";
 import {
@@ -71,7 +72,6 @@ interface OidcFlowContext {
 }
 
 const oidcExpectedOrigins = new WeakMap<BrowserWindow, OidcFlowContext>();
-const oidcProviderOrigins = new WeakMap<BrowserWindow, string>();
 
 function parseHttpOrigin(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -85,17 +85,34 @@ function parseHttpOrigin(value: unknown): string | undefined {
   }
 }
 
-ipcMain.on(
-  IPC_OIDC_AUTHORIZE_START,
-  (event, apiURL: unknown, authcode: unknown, providerId: unknown) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    const origin = parseHttpOrigin(apiURL);
-    if (!win || !origin || typeof authcode !== "string" || !authcode) return;
-    if (typeof providerId !== "string" || !providerId) return;
-    oidcExpectedOrigins.set(win, { apiOrigin: origin, authcode, providerId });
-    oidcProviderOrigins.delete(win);
-  },
-);
+function normalizeFilePath(value: string): string {
+  try {
+    return decodeURIComponent(value).replace(/\\/g, "/").replace(/\/+$/, "");
+  } catch {
+    return value.replace(/\\/g, "/").replace(/\/+$/, "");
+  }
+}
+
+function armOidcFlow(
+  event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent,
+  apiURL: unknown,
+  authcode: unknown,
+  providerId: unknown,
+): boolean {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const origin = parseHttpOrigin(apiURL);
+  if (!win || !origin || typeof authcode !== "string" || !authcode) return false;
+  if (typeof providerId !== "string" || !providerId) return false;
+  oidcExpectedOrigins.set(win, { apiOrigin: origin, authcode, providerId });
+  return true;
+}
+
+ipcMain.on(IPC_OIDC_AUTHORIZE_START, (event, ...args: unknown[]) => {
+  armOidcFlow(event, args[0], args[1], args[2]);
+});
+ipcMain.handle(IPC_OIDC_AUTHORIZE_START_INVOKE, (event, ...args: unknown[]) => {
+  return armOidcFlow(event, args[0], args[1], args[2]);
+});
 
 function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: string) {
   // The OIDC provider is loaded in this window for compatibility with the
@@ -117,22 +134,12 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
       event.preventDefault();
       return;
     }
-    const isShell = parsed.protocol === "file:" && url.includes("/build/index.html");
+    const isShell = parsed.protocol === "file:" && normalizeFilePath(parsed.pathname) === normalizeFilePath(webUrl);
     const devOrigin = parseHttpOrigin(DEV_SERVER_URL);
     const isDevShell = isDevelopment && devOrigin === parsed.origin;
     const flow = oidcExpectedOrigins.get(win);
     const isExpectedApi = flow !== undefined && parsed.origin === flow.apiOrigin;
-    let providerOrigin = oidcProviderOrigins.get(win);
-    if (
-      !providerOrigin &&
-      flow &&
-      parsed.protocol === "https:" &&
-      parsed.origin !== flow.apiOrigin
-    ) {
-      providerOrigin = parsed.origin;
-      oidcProviderOrigins.set(win, providerOrigin);
-    }
-    const isOidcProviderHop = flow !== undefined && parsed.origin === providerOrigin;
+    const isOidcProviderHop = flow !== undefined && parsed.protocol === "https:" && parsed.origin !== flow.apiOrigin;
     if (!isShell && !isDevShell && !isExpectedApi && !isOidcProviderHop) {
       event.preventDefault();
     }
@@ -144,11 +151,12 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
       const callback = parseOidcCallback(url, flow.apiOrigin);
       if (!callback) return;
       if (callback.path === "/oidc/bind") {
-        const hasAuthcode = Boolean(callback.query.authcode);
-        const hasProvider = Boolean(callback.query.provider);
-        if (!hasAuthcode && !hasProvider) return;
-        if (hasAuthcode && callback.query.authcode !== flow.authcode) return;
-        if (hasProvider && callback.query.provider !== flow.providerId) return;
+        if (callback.query.authcode !== flow.authcode || callback.query.provider !== flow.providerId) {
+          event.preventDefault();
+          oidcExpectedOrigins.delete(win);
+          win.loadFile(webUrl, { query: { sid, oidc_error: "1" } });
+          return;
+        }
       }
 
       // The OIDC backend accepts the server-relative `/login` return target,
@@ -161,7 +169,6 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
       // sid from getURL() would lose the original file:// page's sid.
       const query = withTrustedSessionSid(callback, sid);
       oidcExpectedOrigins.delete(win);
-      oidcProviderOrigins.delete(win);
       win.loadFile(webUrl, { query });
     };
 
@@ -515,6 +522,10 @@ const getWindowConfig = () => {
       nodeIntegration: false,
       contextIsolation: true,
       devTools: isDevelopment,
+      additionalArguments: [
+        `--octo-dev=${String(isDevelopment)}`,
+        `--octo-shell-path=${join(__dirname, "../build/index.html")}`,
+      ],
     },
     // frame: !isWin,
   };
@@ -687,7 +698,13 @@ const DEEP_LINK_SCHEME = "dmwork";
 // the configured dev-server origin).
 function isShellWebContentsUrl(url: string): boolean {
   if (!url) return false;
-  if (url.startsWith("file://")) return url.includes("/build/index.html");
+  if (url.startsWith("file://")) {
+    try {
+      return normalizeFilePath(new URL(url).pathname) === normalizeFilePath(join(__dirname, "../build/index.html"));
+    } catch {
+      return false;
+    }
+  }
   // In a packaged build there is no legitimate dev-server document. Refuse to
   // treat any http(s) origin as a shell URL so a malicious page cannot pose
   // as the shell to receive buffered deep-link URLs.
