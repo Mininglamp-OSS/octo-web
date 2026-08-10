@@ -9,6 +9,7 @@ import {
   Menu,
   Tray,
   nativeImage,
+  dialog,
 } from "electron";
 import fs from "fs";
 import tmp from 'tmp';
@@ -550,17 +551,18 @@ function onDeepLink(url: string) {
 app.setName(OCTO_CONFIG.name);
 
 // One-time userData migration from the legacy DMWork profile (see
-// userDataMigration.ts for the full design). The single-instance lock is the
-// cross-launch mutex, keyed off the userData path on every platform: point
-// userData at the legacy dir BEFORE requestSingleInstanceLock(), so
+// userDataMigration.ts for the full design). Electron's single-instance lock
+// is process-global, and the primary-instance lookup keys off the userData
+// path — so pointing userData at the legacy dir BEFORE requestSingleInstanceLock()
+// makes the lock contend with a legacy instance or a concurrent launch:
 //   - a running legacy DMWork instance already holds that lock -> this launch
-//     fails the lock and quits (the legacy-instance guard, no hand-written
-//     probe needed, works on Windows too);
+//     fails the lock and quits (with a dialog, round-4 P1-1);
 //   - a concurrent launch during the migration hits the same held lock and
 //     quits — exactly one process is ever the migrator, no second window can
-//     appear mid-copy (round-2 P0-1 closed).
+//     appear mid-copy.
 // On success we relaunch so the next process takes the OCTO lock; on
-// deferral/failure this session keeps the legacy path and retries next launch.
+// deferral/failure this session keeps the legacy path and retries next launch
+// (bounded by breadcrumbs, round-4 P1-1).
 // This supersedes the temporary setPath('userData', <appData>/DMWork) fallback
 // that #1258 carries until this PR lands.
 const userDataPlan = planUserDataMigration(app.getPath("appData"), OCTO_CONFIG.name);
@@ -576,6 +578,12 @@ app.on("open-url", (event, url) => {
 // 单例模式启动
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
+  // P1-1: never quit silently — the user needs to know why nothing happened
+  // (a legacy DMWork instance is still running, or a concurrent launch won).
+  dialog.showErrorBox(
+    "OCTO 已在运行",
+    "检测到另一个实例正在运行（可能是旧版 DMWork 尚未退出）。请退出旧应用后重新启动，以完成数据迁移。"
+  );
   app.quit();
 } else {
   // The migration runs under the single-instance lock we just took on the
@@ -598,9 +606,15 @@ if (!gotTheLock) {
         // present) and locks OCTO normally.
         app.relaunch();
         app.exit(0);
+      } else if (migrationResult === "failed") {
+        // P1-1: make the failure visible (ENOSPC / rename refusal etc.).
+        dialog.showErrorBox(
+          "OCTO 数据迁移未完成",
+          "本次启动继续使用旧版数据（DMWork），下次启动会自动重试。若持续失败，请检查磁盘空间后重试。"
+        );
       }
-      // "deferred"/"failed": keep the legacy profile this session (userData
-      // was already pointed at DMWork before the lock) and retry next launch.
+      // "skipped": the destination gained a real profile since planning —
+      // stay on the legacy path this session, no relaunch (P2-2).
     } catch (err) {
       // Defensive backstop (round-2 P0-2): the migration must never take the
       // app down — fall back to the legacy profile and continue.
@@ -609,6 +623,15 @@ if (!gotTheLock) {
         err
       );
     }
+  } else if (userDataPlan.action === "legacy") {
+    // P1-1: plan-time failure or retry budget exhausted — say so instead of
+    // silently running on the legacy profile.
+    dialog.showErrorBox(
+      "OCTO 数据迁移暂缓",
+      userDataPlan.reason === "too-many-failures"
+        ? "数据迁移多次失败，已暂停自动重试。本次继续使用旧版数据（DMWork）。如需重新尝试，请删除 DMWork 目录下的 .migration-failed.json 后重启。"
+        : "数据迁移准备失败，本次继续使用旧版数据（DMWork），下次启动会自动重试。"
+    );
   }
   app.on("second-instance", (event, argv) => {
     if (mainWindow) {
