@@ -554,6 +554,14 @@ function onDeepLink(url: string) {
     return;
   }
   console.log("onOpenDeepLink", url);
+  // Octo-Q Appendix D-1: macOS can deliver open-url before `ready` /
+  // createMainWindow — dereferencing webContents would crash the process
+  // instead of dropping the link. Guarded (the losing process is already
+  // barred by the open-url handler's gotTheLock check).
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    console.warn("Deep link dropped: main window not ready:", url);
+    return;
+  }
   mainWindow.webContents.send("deep-link", url);
 }
 
