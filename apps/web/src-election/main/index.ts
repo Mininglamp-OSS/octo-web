@@ -549,24 +549,27 @@ function onDeepLink(url: string) {
 
 app.setName(OCTO_CONFIG.name);
 
-app.setName(OCTO_CONFIG.name);
-
 // One-time userData migration from the legacy DMWork profile (see
-// userDataMigration.ts for the full design). It must be DECIDED before the
-// single-instance lock: when a legacy DMWork instance is still running (its
-// SingletonLock is held), we point userData at the legacy dir so that
-// requestSingleInstanceLock() below fails against the running instance and
-// this launch simply quits — no live-profile copy, no double writer.
+// userDataMigration.ts for the full design). It runs BEFORE the single-instance
+// lock: the staging dir itself is the cross-launch mutex (atomic mkdir, EEXIST
+// = another launch is mid-migration), so we never have to delete a lock we
+// hold, and both the defer-legacy and the failure fallback set the userData
+// path before requestSingleInstanceLock() — the fallback session's lock is
+// created in the legacy dir it writes, never desynchronized (F2/F4).
 // This supersedes the temporary setPath('userData', <appData>/DMWork) fallback
 // that #1258 carries until this PR lands: the migration now owns the path
 // decision (OCTO after a successful migration, legacy on deferral/failure).
-const userDataMigration = planUserDataMigration(
-  app.getPath("appData"),
-  OCTO_CONFIG.name
+executeUserDataMigration(
+  planUserDataMigration(app.getPath("appData"), OCTO_CONFIG.name),
+  {
+    setUserDataDir: (dir) => app.setPath("userData", dir),
+    log: {
+      info: (msg) => console.log(msg),
+      warn: (msg) => console.warn(msg),
+      error: (msg, err) => console.error(msg, err),
+    },
+  }
 );
-if (userDataMigration.action === "defer-legacy") {
-  app.setPath("userData", userDataMigration.oldDir);
-}
 
 // isDevelopment && app.dock && app.dock.setIcon(logo);
 app.on("open-url", (event, url) => {
@@ -578,19 +581,8 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  // Only the lock holder migrates — any concurrent launch has already quit, so
-  // there is exactly one writer. A failure falls back to the legacy profile
-  // (setUserDataDir) and retries on the next launch.
-  if (userDataMigration.action === "migrate") {
-    executeUserDataMigration(userDataMigration, {
-      setUserDataDir: (dir) => app.setPath("userData", dir),
-      log: {
-        info: (msg) => console.log(msg),
-        warn: (msg) => console.warn(msg),
-        error: (msg, err) => console.error(msg, err),
-      },
-    });
-  }
+  // The migration itself already ran before the lock (staging-dir mutex);
+  // only a lock holder reaches this point, so window/show behavior is safe.
   app.on("second-instance", (event, argv) => {
     if (mainWindow) {
       mainWindow.show();
