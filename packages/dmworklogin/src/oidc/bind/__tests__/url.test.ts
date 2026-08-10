@@ -167,6 +167,26 @@ describe('clearBindUrl', () => {
     expect(replaceState).not.toHaveBeenCalled()
   })
 
+  // Packaged Electron loads the shell from file:// where any replaceState
+  // that touches pathname throws SecurityError. clearBindUrl edits only the
+  // search string so it is safe under file:// — this invariant guards the
+  // Electron bind path.
+  it('preserves the shell pathname under file:// (packaged Electron)', () => {
+    const { win, replaceState } = makeWin(
+      '/Applications/OCTO.app/Contents/Resources/app.asar/build/index.html',
+      '?__octo_route=/oidc/bind&token=tok&sid=window-sid',
+    )
+    clearBindUrl(win)
+    expect(replaceState).toHaveBeenCalledTimes(1)
+    const newUrl = replaceState.mock.calls[0][2] as string
+    expect(newUrl.startsWith('/Applications/OCTO.app/Contents/Resources/app.asar/build/index.html'))
+      .toBe(true)
+    const search = new URLSearchParams(newUrl.split('?')[1] ?? '')
+    expect(search.has('__octo_route')).toBe(false)
+    expect(search.has('token')).toBe(false)
+    expect(search.get('sid')).toBe('window-sid')
+  })
+
   it('does not throw when history is unavailable', () => {
     const win = {
       history: {

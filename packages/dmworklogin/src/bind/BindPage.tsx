@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
 import { WKApp } from '@octo/base'
 import {
@@ -26,6 +26,7 @@ import { applyLoginResp, parseLoginResp } from '../loginSession'
 import { mapBindError, type BindEndpoint, type BindErrorDisplay } from './errorMessages'
 import { loginT as t } from '../i18n'
 import { resolveBindNavigationUrl } from './navigation'
+import { resetBindEntry } from './bindModule'
 import './bind.css'
 
 type Stage =
@@ -71,13 +72,25 @@ interface BindPageProps {
   // RouteManager 会在 pageshow 时 push 一个带 sid= 的 URL, 把 bind 入口参数
   // 全部丢掉.
   initialSearch: string
+  // BindModule.init() captures the real packaged index.html URL before the
+  // Electron route scrub changes window.location.href to file:///oidc/bind.
+  // Navigation must keep using that shell URL after the scrub.
+  initialHref: string
 }
 
-const BindPage = ({ initialSearch }: BindPageProps) => {
+const BindPage = ({ initialSearch, initialHref }: BindPageProps) => {
   // bind_token 与 entry 参数全程只在 useRef 持有, 不进 React state, 不进任何 store.
   // 见 oidc-bind-frontend.md §2.2 — 这是 bind_token-in-URL 已知 limitation 的核心缓解.
   const entryRef = useRef<BindEntryParams | null>(null)
   const initRanRef = useRef(false)
+  // Memoise so the string identity is stable across renders and avoids a
+  // fresh URL parse per render inside resolveBindNavigationUrl. The
+  // fallback is intentionally captured once at mount; if BindPage remounts
+  // (Layout re-mount) the module-level initialHref is refreshed by init().
+  const navigationBaseHref = useMemo(
+    () => initialHref || (typeof window !== 'undefined' ? window.location.href : ''),
+    [initialHref],
+  )
 
   const [stage, setStage] = useState<Stage>({ kind: 'init' })
   const [identifier, setIdentifier] = useState('')
@@ -111,6 +124,17 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     }
 
     void loadInfo(params)
+  }, [])
+
+  // Clear the module-level bind-entry latch on unmount so the app layout
+  // stops force-rendering BindPage after the flow ends. The OIDC exit
+  // paths (resolveBindNavigationUrl().replace) trigger a full-page reload
+  // that would reset the latch anyway; this covers SPA-only exits where
+  // the document survives (e.g. future navigation flows or dev HMR).
+  useEffect(() => {
+    return () => {
+      resetBindEntry()
+    }
   }, [])
 
   const apiOpts = (): BindApiOptions => ({
@@ -302,7 +326,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
         window.history.replaceState(
           {},
           '',
-          resolveBindNavigationUrl('/', window.location.href),
+          resolveBindNavigationUrl('/', navigationBaseHref),
         )
       } catch {
         /* noop: SSR / legacy host */
@@ -312,7 +336,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       } catch (e) {
         console.warn('callOnLogin error suppressed:', e)
         // Last-resort fallback so the user isn't stranded on the success stage.
-        window.location.replace(resolveBindNavigationUrl('/', window.location.href))
+        window.location.replace(resolveBindNavigationUrl('/', navigationBaseHref))
       }
       return
     }
@@ -320,7 +344,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     // No invite — keep the original behaviour: short paint window then navigate
     // to the originally-requested return_to.
     window.setTimeout(() => {
-      const safeReturnTo = resolveBindNavigationUrl(returnTo, window.location.href)
+      const safeReturnTo = resolveBindNavigationUrl(returnTo, navigationBaseHref)
       try {
         window.location.replace(safeReturnTo)
       } catch {
@@ -393,7 +417,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
 
   function goBackToLogin(): void {
     entryRef.current = null
-    window.location.replace(resolveBindNavigationUrl('/login', window.location.href))
+    window.location.replace(resolveBindNavigationUrl('/login', navigationBaseHref))
   }
 
   // ---- render ------------------------------------------------------------

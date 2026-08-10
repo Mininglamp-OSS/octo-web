@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import { WKApp, WKBase, Provider, ErrorBoundary, t } from "@octo/base"
+import { isBindEntry } from "@octo/login"
 import { listen } from '@tauri-apps/api/event'
 import { MainPage } from "../Pages/Main";
 import SpaceGate from "../Components/SpaceGate";
@@ -20,6 +21,7 @@ import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
 import { consumeStandaloneReturn, persistStandaloneReturn, prepareDriveLandingReturn, clearStandaloneReturn } from "./standaloneReturn";
+import { registerDeepLinkHandler } from "./deepLink";
 import {
   ShareLandingPage,
   InviteLandingPage,
@@ -132,6 +134,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
     onNeedJoinSpace!: () => void
     onJoinApproval!: (status: JoinApprovalStatus, inviteCode: string) => void
     private _spaceChecked = false; // 冷启动 Space 检测只跑一次
+    private _deepLinkDispose?: () => void
 
     componentDidMount() {
         // Wave 2: 无 Space 时触发 JoinSpacePage 覆盖层
@@ -139,6 +142,11 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             this.setState({ showJoinSpace: true });
         };
         WKApp.endpoints.addOnNeedJoinSpace(this.onNeedJoinSpace);
+
+        // Electron custom-scheme (dmwork://) inbound URLs — see Layout/deepLink.ts.
+        // Attaches once per Layout mount; main-process buffers cold-boot URLs
+        // until this listener is live via did-finish-load.
+        this._deepLinkDispose = registerDeepLinkHandler();
 
         // 审批结果统一渲染：任何入口 join 返回 NEED_APPROVAL/PENDING 都走这里
         this.onJoinApproval = (status, inviteCode) => {
@@ -286,6 +294,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         WKApp.endpoints.removeOnLogin(this.onLogin);
         WKApp.endpoints.removeOnNeedJoinSpace(this.onNeedJoinSpace);
         WKApp.endpoints.removeOnJoinApproval(this.onJoinApproval);
+        this._deepLinkDispose?.();
     }
 
     /**
@@ -402,7 +411,14 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         // otherwise the bind token gets silently dropped on the floor. Defense
         // in depth even though no documented flow constructs such a URL today.
         // PR #72 review yujiawei #2.
-        if (window.location.pathname === '/oidc/bind') {
+        //
+        // The isBindEntry() latch is the packaged-Electron path: under file://
+        // Chromium rejects any history.replaceState() that changes the path, so
+        // pathname stays as .../build/index.html even when the callback arrived
+        // via __octo_route=/oidc/bind. bindModule sets the latch synchronously
+        // on init based on the raw entry URL, so this gate renders BindPage
+        // regardless of what the address bar looks like.
+        if (window.location.pathname === '/oidc/bind' || isBindEntry()) {
             const bindComponent = WKApp.route.get('/oidc/bind')
             if (bindComponent) {
                 return bindComponent

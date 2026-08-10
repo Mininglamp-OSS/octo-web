@@ -894,9 +894,16 @@ export default class WKApp extends ProviderListener {
       this.clearLocalLoginState();
     }
     // 是否是PC端
+    // Primary signal is the preload-injected __POWERED_ELECTRON__ / Tauri
+    // marker. The file:// fallback is a defensive backstop: if a packaging
+    // regression makes preload throw before contextBridge.exposeInMainWorld
+    // runs, we still detect the desktop shell — otherwise isPC=false silently
+    // routes OIDC login through the Web branch and produces `file:///v1/...`
+    // URLs (white screen). Web (http/https) never runs on file://.
     if (
       (window as any)?.__POWERED_ELECTRON__ ||
-      (window as any).__TAURI_IPC__
+      (window as any).__TAURI_IPC__ ||
+      (typeof window !== "undefined" && window.location.protocol === "file:")
     ) {
       this.isPC = true;
     }

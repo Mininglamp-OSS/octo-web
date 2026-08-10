@@ -40,7 +40,11 @@ let isOsx = process.platform === "darwin";
 let isWin = process.platform === "win32";
 let isWindowFocusHandlerRegistered = false;
 
-const isDevelopment = process.env.NODE_ENV !== "production";
+// `NODE_ENV` is not guaranteed to be set when an installed Electron app is
+// launched from Finder/Explorer. Use Electron's authoritative packaging flag
+// so production builds always load the bundled file:// shell and install the
+// OIDC callback interceptor.
+const isDevelopment = !app.isPackaged && process.env.NODE_ENV !== "production";
 // dev 模式下渲染层 dev server 地址。端口需与 vite dev server 一致，
 // 默认 3000（对齐旧 dev-ele 脚本）；可用 VITE_DEV_SERVER_URL 覆盖，
 // 避免与机器上其它占用 3000 的进程（如 e2e vite）冲突。
@@ -70,7 +74,7 @@ ipcMain.on(IPC_OIDC_AUTHORIZE_START, (event, apiURL: unknown) => {
 
 function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: string) {
   if (!isDevelopment) {
-    win.webContents.on("will-redirect", (event, url) => {
+    const handleReturnNavigation = (event: Electron.Event, url: string) => {
       const expectedOrigin = oidcExpectedOrigins.get(win);
       if (!expectedOrigin) return;
       const callback = parseOidcCallback(url, expectedOrigin);
@@ -87,7 +91,16 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
       const query = withTrustedSessionSid(callback, sid);
       oidcExpectedOrigins.delete(win);
       win.loadFile(webUrl, { query });
-    });
+    };
+
+    // Depending on whether the IdP returns through an HTTP 30x or a browser
+    // navigation, Electron reports the callback as will-redirect or
+    // will-navigate. Handle both so the packaged file:// renderer never lands
+    // on the backend's server-relative /login page. If both events fire for
+    // the same navigation, the first invocation deletes the expected-origin
+    // entry, causing the second to return early — that's the dedupe guard.
+    win.webContents.on("will-redirect", handleReturnNavigation);
+    win.webContents.on("will-navigate", handleReturnNavigation);
   }
 }
 
@@ -437,7 +450,6 @@ const getWindowConfig = () => {
 
 // 创建新窗口
 const createNewWindow = () => {
-  const NODE_ENV = process.env.NODE_ENV;
   const newWindow = new BrowserWindow(getWindowConfig());
 
   newWindow.center();
@@ -452,7 +464,7 @@ const createNewWindow = () => {
   });
 
   // 加载相同的页面
-  if (NODE_ENV == "development") {
+  if (isDevelopment) {
     newWindow.loadURL(`${DEV_SERVER_URL}?sid=${getRandomSid()}`);
   } else {
     process.env.DIST_ELECTRON = join(__dirname, "../");
@@ -472,13 +484,21 @@ const createNewWindow = () => {
 };
 
 const createMainWindow = async () => {
-  const NODE_ENV = process.env.NODE_ENV;
   mainWindow = new BrowserWindow(getWindowConfig());
   mainWindow.center();
   mainWindow.once("ready-to-show", () => {
     mainWindow.setTitle(OCTO_CONFIG.name);
     mainWindow.show(); // 显示窗口
     mainWindow.focus();
+  });
+
+  // Flush any buffered deep-link URL after every navigation completes. The
+  // renderer's `ipc.on("deep-link", ...)` listener needs the React tree to
+  // mount first, so URLs delivered before then (cold-boot via process.argv,
+  // second-instance argv, macOS open-url before did-finish-load) get held in
+  // `pendingDeepLinkUrl` and dispatched here.
+  mainWindow.webContents.on("did-finish-load", () => {
+    dispatchPendingDeepLink();
   });
 
   mainWindow.on("close", (e: any) => {
@@ -494,8 +514,8 @@ const createMainWindow = async () => {
       }
     }
   });
-  if (NODE_ENV === "development") mainWindow.loadURL(DEV_SERVER_URL);
-  if (NODE_ENV !== "development") {
+  if (isDevelopment) mainWindow.loadURL(DEV_SERVER_URL);
+  if (!isDevelopment) {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
     const sid = getRandomSid();
@@ -571,6 +591,37 @@ function restartApp() {
 }
 
 const ALLOWED_DEEP_LINK_SCHEMES = ["dmwork:"];
+const DEEP_LINK_SCHEME = "dmwork";
+
+// A deep link is meaningful only inside our own renderer document. During the
+// OIDC login flow the main BrowserWindow transiently navigates to the IdP
+// origin and back — every one of those transitions fires did-finish-load.
+// If we naively flush pendingDeepLinkUrl there, `webContents.send("deep-link")`
+// dispatches to the IdP page whose preload never attached our listener
+// (isTrustedShellOrigin() blocks it), the buffer is cleared, and the URL is
+// gone by the time the file:// shell reloads. Gate the flush on the current
+// webContents URL matching our shell (packaged file:// build/index.html, or
+// the configured dev-server origin).
+function isShellWebContentsUrl(url: string): boolean {
+  if (!url) return false;
+  if (url.startsWith("file://")) return url.includes("/build/index.html");
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+    return parsed.origin === new URL(DEV_SERVER_URL).origin;
+  } catch {
+    return false;
+  }
+}
+
+// The renderer's `deep-link` IPC listener only attaches after the React tree
+// mounts (see Layout/deepLink.ts). At cold-boot the main process may already
+// have a URL from `process.argv` / `open-url` / `second-instance` before the
+// renderer preload has parsed, so a naive `webContents.send` there is dropped
+// on the floor. Buffer the most recent URL and flush it once the renderer's
+// `did-finish-load` fires — by then the preload has run and the React root
+// has had a tick to attach its listener.
+let pendingDeepLinkUrl: string | null = null;
 
 function isValidDeepLink(url: string): boolean {
   try {
@@ -588,16 +639,40 @@ function isValidDeepLink(url: string): boolean {
   }
 }
 
+function dispatchPendingDeepLink() {
+  if (!pendingDeepLinkUrl) return;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  // Keep buffering while the renderer sits on the IdP / any non-shell page.
+  // The next shell load will fire did-finish-load again and flush then.
+  if (!isShellWebContentsUrl(mainWindow.webContents.getURL())) return;
+  const url = pendingDeepLinkUrl;
+  pendingDeepLinkUrl = null;
+  mainWindow.webContents.send("deep-link", url);
+}
+
 function onDeepLink(url: string) {
   if (!isValidDeepLink(url)) {
     console.warn("Rejected invalid deep link:", url);
     return;
   }
   console.log("onOpenDeepLink", url);
-  mainWindow.webContents.send("deep-link", url);
+  pendingDeepLinkUrl = url;
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isLoading()) {
+    // dispatchPendingDeepLink still gates on the current URL being a shell URL,
+    // so this is safe to call mid-OIDC — it will re-buffer until the file://
+    // shell reload completes.
+    dispatchPendingDeepLink();
+  }
 }
 
 app.setName(OCTO_CONFIG.name);
+
+// Register the callback scheme used by the web SSO hand-off. The packaged
+// electron-builder config declares the scheme via mac.protocols / win.protocols
+// / linux mimeType. This runtime call registers the current binary as the
+// default handler regardless of platform, which also covers development
+// (unsigned) runs and already-installed packaged clients across upgrades.
+app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
 
 // NOTE: the one-time userData migration from the legacy <appData>/DMWork profile
 // to <appData>/OCTO is intentionally NOT part of this PR. It lives in the
@@ -624,6 +699,8 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on("second-instance", (event, argv) => {
+    const deepLink = argv.find((arg) => isValidDeepLink(arg));
+    if (deepLink) onDeepLink(deepLink);
     if (mainWindow) {
       mainWindow.show();
       if (mainWindow.isMinimized()) {
@@ -638,6 +715,9 @@ app.on("ready", () => {
   regShortcut();
   registerWindowFocusHandler();
   createMainWindow(); // 创建窗口
+
+  const initialDeepLink = process.argv.find((arg) => isValidDeepLink(arg));
+  if (initialDeepLink) onDeepLink(initialDeepLink);
 
   if (isWin) {
     app.setAppUserModelId(OCTO_CONFIG.appId);

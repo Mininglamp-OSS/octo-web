@@ -16,6 +16,15 @@ describe('resolveBindNavigationUrl', () => {
     )
   })
 
+  it('does not use the scrubbed Electron route as the navigation base', () => {
+    const scrubbed = 'file:///oidc/bind'
+
+    expect(resolveBindNavigationUrl('/', shell)).toBe(
+      'file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html'
+    )
+    expect(resolveBindNavigationUrl('/', scrubbed)).toBe('file:///oidc/bind')
+  })
+
   it('does not change normal web navigation', () => {
     expect(resolveBindNavigationUrl('/space', 'https://octo.example.com/oidc/bind')).toBe('/space')
   })
