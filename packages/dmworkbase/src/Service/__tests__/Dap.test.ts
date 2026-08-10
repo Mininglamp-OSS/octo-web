@@ -137,6 +137,81 @@ describe('Dap — HTTP wrapper is first-party only and self-excludes (P0-3)', ()
         // 自身上报通道 /track/batch 不被再次 track
         expect(httpEvents.some((e) => String(e.props?.path).includes('track/batch'))).toBe(false)
     })
+
+    it('never derives object_id from a URL path, and masks credential-shaped segments (P1)', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        const origin = location.origin
+        // 一次性登录码拼在 path 里:既不能进 path,也不能被当成 object_id 取出
+        await globalThis.fetch(`${origin}/user/login_authcode/k3mq7z1x9v2p`)
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
+        const body = JSON.parse((batchCall![1] as RequestInit).body as string)
+        const httpEvents = (
+            body.events as Array<{ event_name: string; object_id?: string; props?: Record<string, unknown> }>
+        ).filter((e) => e.event_name === 'http_request')
+        expect(httpEvents).toHaveLength(1)
+        // 路由词保留、凭证段脱敏
+        expect(httpEvents[0].props?.path).toBe('/user/login_authcode/:seg')
+        // http_request 不再单列 object_id —— 凭证不可能借这个字段外泄
+        expect('object_id' in httpEvents[0]).toBe(false)
+        // 兜底:整条事件里任何位置都不得出现原始凭证
+        expect(JSON.stringify(httpEvents[0]).includes('k3mq7z1x9v2p')).toBe(false)
+    })
+})
+
+describe('Dap — object_id join key is actually emitted (P1)', () => {
+    let fetchMock: FetchMock
+    beforeEach(() => {
+        localStorage.clear()
+        fetchMock = okFetch()
+        // @ts-expect-error test stub
+        globalThis.fetch = fetchMock
+    })
+
+    it('emits top-level object_id and strips it from props for explicit events', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.track('message_sent', { object_id: 'seq-123', channel_id: 'c1', chat_type: 'group' })
+        Dap.shared.flush()
+
+        const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
+        expect(batchCall).toBeTruthy()
+        const body = JSON.parse((batchCall![1] as RequestInit).body as string)
+        const evt = (
+            body.events as Array<{ event_name: string; object_id?: string; props?: Record<string, unknown> }>
+        ).find((e) => e.event_name === 'message_sent')!
+        // 关键:join key 真被 emit(此前 sanitizeProps 丢掉了它,导致所有声明式埋点无 object_id)
+        expect(evt.object_id).toBe('seq-123')
+        // object_id 提到 envelope 顶层,不重复留在 props 里
+        expect(evt.props?.object_id).toBeUndefined()
+        expect(evt.props?.channel_id).toBe('c1')
+    })
+
+    it('emits object_id from a declarative data-object-id click', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        const btn = document.createElement('button')
+        btn.setAttribute('data-track', 'channel_opened')
+        btn.setAttribute('data-object-id', 'ch-987')
+        document.body.appendChild(btn)
+        btn.click()
+        Dap.shared.flush()
+
+        const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
+        const body = JSON.parse((batchCall![1] as RequestInit).body as string)
+        const evt = (body.events as Array<{ event_name: string; object_id?: string }>).find(
+            (e) => e.event_name === 'channel_opened',
+        )!
+        expect(evt.object_id).toBe('ch-987')
+        btn.remove()
+    })
 })
 
 describe('Dap.normalizePath / isFirstParty (P0-3 helpers)', () => {

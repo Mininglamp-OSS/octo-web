@@ -194,21 +194,6 @@ function isSupportedRuntime(): boolean {
     }
 }
 
-/** 从请求路径提取 object_id(§2.4:如 /thread/{id})。拿不到返回 undefined。 */
-function extractObjectId(rawUrl: string): string | undefined {
-    try {
-        const u = new URL(rawUrl, 'http://x')
-        const segs = u.pathname.split('/').filter(Boolean)
-        for (let i = segs.length - 1; i >= 0; i--) {
-            const s = segs[i]
-            if (/^\d{2,}$/.test(s) || /^[0-9a-fA-F-]{16,}$/.test(s)) return s
-        }
-    } catch {
-        /* ignore */
-    }
-    return undefined
-}
-
 /** 状态码分桶:不报精确 code,只报量级(2xx/4xx/5xx/err)。 */
 function statusBucket(status: number): string {
     if (status <= 0) return 'err'
@@ -390,7 +375,7 @@ class DapImpl {
             }
             // 复杂对象 / undefined 一律丢,不做序列化(避免夹带正文)
         }
-        return { props }
+        return { props, objectId }
     }
 
     private pickObjectId(clean: { props: Record<string, TrackPrimitive>; objectId?: string }): string | undefined {
@@ -626,14 +611,15 @@ class DapImpl {
                 if (!rawUrl) return
                 // 只采第一方(同源)API telemetry:跨域(预签名对象存储/第三方)路径含对象键/文件名,一律不采
                 if (!isFirstParty(rawUrl)) return
-                // 量/错误率/延迟,不带 query、不带正文;路径按白名单收窄脱敏
-                const objectId = extractObjectId(rawUrl)
+                // 量/错误率/延迟,不带 query、不带正文;路径按白名单收窄脱敏。
+                // **不从 URL 路径提取 object_id**:路径末段可能是一次性登录码 / 邀请 token / 对象键
+                // (见 PR #1320 review),原样取出即等于把凭证放进 telemetry。http_request 只保留
+                // 已脱敏的 path 维度,不再单列 object_id(path 已覆盖其可分析的信息)。
                 this.track('http_request', {
                     method: (method || 'GET').toUpperCase(),
                     path: normalizePath(rawUrl),
                     status_bucket: statusBucket(status),
                     duration_ms: Math.round(durationMs),
-                    object_id: objectId,
                 })
             })
         }
