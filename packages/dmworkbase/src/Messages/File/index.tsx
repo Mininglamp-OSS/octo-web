@@ -13,7 +13,8 @@ import MessageRow from "../../ui/message/MessageRow";
 import { getFileMessageUI } from "../../bridge/message/useFileMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { isSafeUrl } from "../../Utils/security";
-import { isDriveTransferSupportedChannel } from "../../Service/SpacePrefix";
+import { isDriveTransferSupportedChannel, stripSpacePrefix, hasSpacePrefix } from "../../Service/SpacePrefix";
+import { ChannelTypePerson } from "wukongimjssdk";
 import { I18nContext } from "../../i18n";
 
 export { FileContent } from "./FileContent";
@@ -362,6 +363,12 @@ export class FileCell extends MessageCell<any, FileCellState> {
   private _task?: RestartableTask;
   private _mounted = false;
   private _unsubscribeConfig?: () => void;
+  // mittBus listener for cross-path drive-transferred flip. Held so
+  // componentWillUnmount can detach.
+  private _driveTransferredListener?: (payload: {
+    sourceKey: string;
+    entry: { file_id: number; space_id: string; parent_id: number };
+  }) => void;
   private _checkInFlight = false;
 
   private _taskListener = (task: Task) => {
@@ -429,6 +436,44 @@ export class FileCell extends MessageCell<any, FileCellState> {
     this._unsubscribeConfig = WKApp.remoteConfig.addConfigChangeListener(() => {
       if (this._mounted) this.forceUpdate();
     });
+
+    // 单向对齐：任何路径(图标/右键 picker/其他 tab 的 batch 查询)成功后，
+    // dmworkdrive 会在 mittBus 广播 sourceKey + entry。凡是匹配本 FileCell
+    // 的消息就 setState，让图标(以及右键菜单下次打开时通过 cache 查)一起切
+    // "已存"。核心目的:两个入口共享一份 saved-state，杜绝"图标不切"和"右键
+    // 与图标状态不一致"这两种漂移。
+    this._driveTransferredListener = (payload: {
+      sourceKey: string;
+      entry: { file_id: number; space_id: string; parent_id: number };
+    }) => {
+      if (!this._mounted) return;
+      if (payload.sourceKey !== this.driveSourceKey()) return;
+      if (this.state.imTransferred?.exists === true) return; // already saved, no-op
+      this.setState({
+        imTransferred: {
+          exists: true,
+          file_id: payload.entry.file_id,
+          space_id: payload.entry.space_id,
+          parent_id: payload.entry.parent_id,
+        },
+      });
+    };
+    WKApp.mittBus.on("wk:drive-transferred-changed", this._driveTransferredListener);
+  }
+
+  // sourceKey = `${channelType}#${normalisedChannelID}#${msgID}` — same formula
+  // as dmworkdrive/bridge/types.ts `imTransferredSourceKey` after
+  // `normaliseImChannelID`. Kept inline here so dmworkbase does not depend on
+  // dmworkdrive (dmworkdrive is a plugin on top). If either side ever
+  // changes the format, ALL sourceKey producers must move together.
+  private driveSourceKey(): string {
+    const { message } = this.props;
+    const ct = message.channel.channelType;
+    let cid = message.channel.channelID;
+    if (ct === ChannelTypePerson && hasSpacePrefix(cid)) {
+      cid = stripSpacePrefix(cid);
+    }
+    return `${ct}#${cid}#${message.messageID}`;
   }
 
   componentDidUpdate() {
@@ -512,6 +557,10 @@ export class FileCell extends MessageCell<any, FileCellState> {
     if (this._unsubscribeConfig) {
       this._unsubscribeConfig();
       this._unsubscribeConfig = undefined;
+    }
+    if (this._driveTransferredListener) {
+      WKApp.mittBus.off("wk:drive-transferred-changed", this._driveTransferredListener);
+      this._driveTransferredListener = undefined;
     }
   }
 

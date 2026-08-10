@@ -67,6 +67,21 @@ export type MittEvents = {
   /** Login, logout or account replacement changed the identity that owns page-level state. */
   'wk:auth-state-changed': undefined;
   /**
+   * A chat file's drive-transferred state flipped (unsaved → saved) — either
+   * via the icon (quick-save personal root) or the right-click picker (chosen
+   * space + folder). The payload carries the `source_key`
+   * (channelType#channelID#msgID, the IM identity used as the drive cache key)
+   * plus the resulting drive coordinates so listeners can update in place
+   * without a follow-up backend call. FileCell subscribes and setState on a
+   * matching source_key so its icon flips the moment ANY save path wins,
+   * regardless of which entry the user used. See dmworkdrive/module.tsx
+   * driveTransferredCache.
+   */
+  'wk:drive-transferred-changed': {
+    sourceKey: string;
+    entry: { file_id: number; space_id: string; parent_id: number };
+  };
+  /**
    * dmloop 派单(quick-create)后的看板补刷协议。派单是异步的(agent 稍后建 issue,dmloop 暂无 WS 推送):
    * NewLoopPage 派单成功发 `wk:loop-issues-dispatched`;常驻的 LoopPage 据此有界补发 `wk:loop-issues-refresh`,
    * 当前挂载的看板(IssuePage)订阅后重取,使新回路自动出现——统一覆盖看板内/侧栏两个建单入口。
@@ -781,6 +796,13 @@ export default class WKApp extends ProviderListener {
   // into the caller's personal drive space. Registered by DriveModule; the chat
   // file card uses it to switch its icon action between "save" and "view".
   static checkDriveTransferred?: (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number } | null>;
+  // Synchronous cache probe of the drive-transferred state — returns the
+  // known entry, `null` for confirmed-not-transferred, or `undefined` when
+  // the cache has no answer yet. Registered by DriveModule; the right-click
+  // menu factory uses this because it runs synchronously (can't await the
+  // async checkDriveTransferred) and needs the current answer, if any, to
+  // decide between "存到云盘…" and "在云盘中查看" at menu open time.
+  static getDriveTransferred?: (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => { file_id: number; space_id: string; parent_id: number } | null | undefined;
   // Open the drive UI and focus/flash a specific file. Registered by DriveModule.
   // parent_id is optional — when the file lives at the space root pass 0 or omit;
   // when the file is buried in nested folders pass the immediate parent so the

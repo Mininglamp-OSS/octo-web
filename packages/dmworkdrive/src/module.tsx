@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import {
   WKApp,
   ChatPage,
@@ -43,6 +44,73 @@ if (import.meta.hot) {
 // per module load; the `/drive` route factory and the menu's onPress both close
 // over it so the two WKViewQueue subtrees stay in sync.
 const vm = new DriveVM();
+
+// ---------------------------------------------------------------------------
+// Drive-transferred cache (module-scope singleton, spans FileCell lifetimes).
+// ---------------------------------------------------------------------------
+// Single source of truth for "has THIS IM file been saved to any drive space
+// I can see?" across every entry point (file-card icon, right-click menu,
+// picker modal). Keyed by the wire `source_key`
+// (channelType#channelID#msgID) so the key matches the backend storage key and
+// the request payload without an extra translation step.
+//
+// Why a module singleton, not React state:
+//   - Icon lives inside a FileCell (component state) — one per rendered
+//     message. Right-click menu is registered via WKApp.endpoints as a plain
+//     factory with no component instance to read state from. Both entry
+//     points must agree, and the agreement must survive scroll-out unmounts
+//     (the same file scrolls back into view later — the cache prevents a
+//     re-batch and prevents a stale "unsaved" flicker on the second mount
+//     before the async check resolves).
+//   - Cross-cutting event bus (WKApp.mittBus 'wk:drive-transferred-changed')
+//     is the fan-out: any write to this cache emits, subscribers (FileCell)
+//     setState so their icons and dropdowns update in place.
+//
+// Design choice: NO "list of locations". Product decision — a chat file is
+// either saved (any single canonical winner returned by backend
+// LookupBatchAcrossMySpaces' tie-break: personal > freshest shared) or not.
+// Existing entry points do not offer "save AGAIN elsewhere" once saved;
+// moving/copying is a drive-app concern, not IM's. Simplification comes from
+// that product invariant, not a tech shortcut.
+type DriveTransferredEntry = { file_id: number; space_id: string; parent_id: number };
+type DriveTransferredState =
+  | { status: 'unknown' } // never checked or check failed — treat as unsaved for UI
+  | { status: 'notfound' } // backend confirmed no drive row
+  | { status: 'saved'; entry: DriveTransferredEntry };
+const driveTransferredCache = new Map<string, DriveTransferredState>();
+
+function readDriveCache(sourceKey: string): DriveTransferredState {
+  return driveTransferredCache.get(sourceKey) ?? { status: 'unknown' };
+}
+
+/** Write a `saved` entry into the cache and broadcast the flip. Used by every
+ *  save path (icon quick-save, picker save) and by the batch-lookup response
+ *  handler. Idempotent: repeated writes with the same entry stay 'saved' and
+ *  still emit — a FileCell that mounted after the last emission wouldn't have
+ *  received it, so we don't dedupe. */
+function markDriveSaved(sourceKey: string, entry: DriveTransferredEntry): void {
+  driveTransferredCache.set(sourceKey, { status: 'saved', entry });
+  WKApp.mittBus.emit('wk:drive-transferred-changed', { sourceKey, entry });
+}
+
+/** Store the batch-lookup result: `saved` for hits, `notfound` for misses.
+ *  Called from flushBatch AFTER the API response — the batch is the primary
+ *  cache filler on first render of a chat file list. Emits on a `saved` seed
+ *  so any FileCell whose async check landed after another card's cache-hit
+ *  render still picks up the answer. */
+function seedDriveCache(sourceKey: string, entry: ImTransferredEntry | null): void {
+  if (entry) {
+    const compact: DriveTransferredEntry = {
+      file_id: entry.file_id,
+      space_id: entry.space_id,
+      parent_id: entry.parent_id,
+    };
+    driveTransferredCache.set(sourceKey, { status: 'saved', entry: compact });
+    WKApp.mittBus.emit('wk:drive-transferred-changed', { sourceKey, entry: compact });
+  } else {
+    driveTransferredCache.set(sourceKey, { status: 'notfound' });
+  }
+}
 
 // NOTE: the share (`/drive/s/:token`) and invite (`/drive/invite/:token`)
 // landing pages are intercepted by the host Layout (apps/web) as standalone
@@ -135,6 +203,28 @@ export default class DriveModule implements IModule {
         if (message.contentType !== MessageContentTypeConst.file) return null;
         if (!isDriveTransferSupportedChannel(message.channel.channelType)) return null;
         if (!message.messageID) return null; // unsent / send-ack pending
+        // Two-state menu: mirror the icon. If the cache says the file is
+        // already saved somewhere the caller can reach, offer "在云盘中查看"
+        // that jumps to the winner. Otherwise (notfound / unknown) offer
+        // the picker. Unknown is treated as "may not be saved" — safer
+        // default: never hide the save entry when we don't know.
+        const known = WKApp.getDriveTransferred?.({
+          im_group_no: message.channel.channelID,
+          im_channel_type: message.channel.channelType,
+          im_msg_id: message.messageID,
+        });
+        if (known) {
+          return {
+            title: translate('drive.contextMenus.viewInDrive'),
+            onClick: () => {
+              WKApp.openDriveFile?.({
+                space_id: known.space_id,
+                file_id: known.file_id,
+                parent_id: known.parent_id,
+              });
+            },
+          };
+        }
         return {
           title: translate('drive.contextMenus.saveToDrive'),
           onClick: () => {
@@ -154,7 +244,7 @@ export default class DriveModule implements IModule {
           },
         };
       },
-      1500,
+      100000, // put the entry LAST — dmworkbase uses up to 99999
     );
 
     // Bridge for the chat file card's "save to Drive" action. Backend accepts
@@ -166,24 +256,37 @@ export default class DriveModule implements IModule {
     // Callers hand raw `message.channel.channelID`; this is the single
     // normalisation point for the drive-transfer path (see bridge/types).
     WKApp.saveMessageToDrive = async ({ im_group_no, im_channel_type, im_msg_id }: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => {
+      const normalised = normaliseImChannelID(im_channel_type, im_group_no);
       const result = await transferFromIm({
-        im_group_no: normaliseImChannelID(im_channel_type, im_group_no),
+        im_group_no: normalised,
         im_channel_type,
         im_msg_id,
         target_space_id: '',
         target_parent_id: 0,
       });
-      return { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
+      const entry = { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
+      // Fan out to the cache + mittBus so the message's own FileCell icon
+      // and any other subscribers (e.g. the right-click menu factory next
+      // time it opens) all see the saved state without a round-trip.
+      const sourceKey = imTransferredSourceKey({
+        im_channel_type,
+        im_group_no: normalised,
+        im_msg_id,
+      });
+      markDriveSaved(sourceKey, entry);
+      return entry;
     };
 
     // Save-with-picker: same trigger, but the caller wants to choose target
     // space + folder rather than the default personal-space-root fallback.
-    // Opens SaveToDriveModal via the global-modal singleton so it renders
-    // outside the message list (WKBase.showGlobalModal is the shared modal
-    // slot used by summary-share preview + confirmation flows). Resolves
-    // when the user confirms and the transfer POST returns, or rejects if
-    // they cancel. The returned shape matches saveMessageToDrive so both
-    // callers can reuse the same "flip icon + open drive" post-processing.
+    // Renders SaveToDriveModal into its own detached DOM node so its inner
+    // Semi `<Modal>` is the ONLY modal in the tree — do NOT use
+    // WKBase.showGlobalModal here: that helper wraps `body` in another
+    // Semi `<Modal>`, and stacking our own Modal inside it produced the
+    // "two boxes stacked" bug the owner reported. The picker is a full
+    // modal already, so it gets its own portal mount and cleans up on
+    // resolve/reject/cancel. Resolves when the user confirms and the
+    // transfer POST returns, rejects on cancel or backend failure.
     WKApp.saveMessageToDriveAt = ({ im_group_no, im_channel_type, im_msg_id }: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => {
       return new Promise<{ file_id: number; space_id: string; parent_id: number }>((resolve, reject) => {
         // Ensure vm.spaces is loaded before the picker opens — the modal
@@ -191,58 +294,97 @@ export default class DriveModule implements IModule {
         // picker also gates rank on viewer_role, which only exists on the
         // list response; a stale vm.spaces would gate wrong.
         vm.ensureLoaded();
-        const close = (): void => WKApp.shared.baseContext.hideGlobalModal();
+        const host = document.createElement('div');
+        host.setAttribute('data-role', 'drive-save-modal-host');
+        document.body.appendChild(host);
         let settled = false;
-        WKApp.shared.baseContext.showGlobalModal({
-          width: '480px',
-          closable: false,
-          footer: null,
-          onCancel: () => {
-            if (settled) return;
-            settled = true;
-            close();
-            reject(new Error('save-to-drive cancelled'));
-          },
-          body: (
-            <SaveToDriveModal
-              visible
-              spaces={vm.spaces}
-              defaultSpaceId={vm.activeSpaceId}
-              onClose={() => {
-                if (settled) return;
-                settled = true;
-                close();
-                reject(new Error('save-to-drive cancelled'));
-              }}
-              onConfirm={async (targetSpaceId, targetParentId) => {
-                try {
-                  const result = await transferFromIm({
-                    im_group_no: normaliseImChannelID(im_channel_type, im_group_no),
-                    im_channel_type,
-                    im_msg_id,
-                    target_space_id: targetSpaceId,
-                    target_parent_id: targetParentId,
-                  });
-                  settled = true;
-                  resolve({
-                    file_id: result.id,
-                    space_id: result.space_id,
-                    parent_id: result.parent_id,
-                  });
-                  return true;
-                } catch (err) {
-                  // Leave the modal open so the user can retry / choose a
-                  // different target — a 403 here means they picked a space
-                  // the backend refused (rank changed between listSpaces and
-                  // the POST); the picker still shows the same list.
-                  reject(err);
-                  return false;
-                }
-              }}
-            />
-          ),
+        const cleanup = (): void => {
+          try {
+            ReactDOM.unmountComponentAtNode(host);
+          } catch {
+            // ignore — component may have already unmounted
+          }
+          host.remove();
+        };
+        const done = (fn: () => void): void => {
+          if (settled) return;
+          settled = true;
+          fn();
+          cleanup();
+        };
+        const normalised = normaliseImChannelID(im_channel_type, im_group_no);
+        const sourceKey = imTransferredSourceKey({
+          im_channel_type,
+          im_group_no: normalised,
+          im_msg_id,
         });
+        // Race guard: if the file was saved via ANOTHER path (icon quick-save
+        // in a different tab, or a batch-lookup that just resolved) while
+        // this picker was open, don't fire a second transfer. Skip
+        // straight to resolve with the cached entry so the caller's happy-
+        // path (icon flip + open-drive jump) still runs.
+        const cached = readDriveCache(sourceKey);
+        if (cached.status === 'saved') {
+          done(() => resolve(cached.entry));
+          return;
+        }
+        ReactDOM.render(
+          <SaveToDriveModal
+            visible
+            spaces={vm.spaces}
+            defaultSpaceId={vm.activeSpaceId}
+            onClose={() => done(() => reject(new Error('save-to-drive cancelled')))}
+            onConfirm={async (targetSpaceId, targetParentId) => {
+              // Second race check — the picker was open long enough for
+              // another path to win. Behaves like the pre-open guard: use
+              // the cached entry, close the modal, don't POST.
+              const now = readDriveCache(sourceKey);
+              if (now.status === 'saved') {
+                done(() => resolve(now.entry));
+                return true;
+              }
+              try {
+                const result = await transferFromIm({
+                  im_group_no: normalised,
+                  im_channel_type,
+                  im_msg_id,
+                  target_space_id: targetSpaceId,
+                  target_parent_id: targetParentId,
+                });
+                const entry = { file_id: result.id, space_id: result.space_id, parent_id: result.parent_id };
+                markDriveSaved(sourceKey, entry);
+                done(() => resolve(entry));
+                return true;
+              } catch (err) {
+                // Leave the modal open so the user can retry / choose a
+                // different target — a 403 here means they picked a space
+                // the backend refused (rank changed between listSpaces and
+                // the POST); the picker still shows the same list. The
+                // caller's outer .catch swallows the reject, so surfacing
+                // it here doesn't spam the console.
+                reject(err);
+                return false;
+              }
+            }}
+          />,
+          host,
+        );
       });
+    };
+
+    // Synchronous cache probe — see WKApp.getDriveTransferred JSDoc. Right-
+    // click menu factory needs a "known-so-far" answer at menu-open time.
+    WKApp.getDriveTransferred = ({ im_group_no, im_channel_type, im_msg_id }) => {
+      if (!im_group_no || !im_msg_id) return undefined;
+      const sourceKey = imTransferredSourceKey({
+        im_channel_type,
+        im_group_no: normaliseImChannelID(im_channel_type, im_group_no),
+        im_msg_id,
+      });
+      const state = readDriveCache(sourceKey);
+      if (state.status === 'saved') return state.entry;
+      if (state.status === 'notfound') return null;
+      return undefined;
     };
 
     // Chat file card mount-time check: has this IM file already been transferred?
@@ -273,6 +415,10 @@ export default class DriveModule implements IModule {
         .then((results) => {
           for (const [key, entry] of batch) {
             const found = results[key] ?? null;
+            // Fill the module-level cache BEFORE resolving waiters: FileCell
+            // resolvers will call readDriveCache to decide setState, so the
+            // seed must land first. Emits on 'saved' via seedDriveCache.
+            seedDriveCache(key, found);
             for (const w of entry.waiters) w.resolve(found);
           }
         })
@@ -304,8 +450,22 @@ export default class DriveModule implements IModule {
           im_channel_type: msg.im_channel_type,
           im_msg_id: msg.im_msg_id,
         };
-        if (!pendingBatch) pendingBatch = new Map();
         const sourceKey = imTransferredSourceKey(item);
+        // Cache short-circuit: an earlier batch/save already gave us the
+        // answer. Re-resolve synchronously (well, next microtask via the
+        // Promise) without hitting the backend or enqueueing. This is what
+        // keeps FileCell re-mounts (scroll-out → scroll-in) from spending a
+        // round-trip per re-appearance.
+        const cached = readDriveCache(sourceKey);
+        if (cached.status === 'saved') {
+          resolve({ ...cached.entry } as ImTransferredEntry);
+          return;
+        }
+        if (cached.status === 'notfound') {
+          resolve(null);
+          return;
+        }
+        if (!pendingBatch) pendingBatch = new Map();
         const existing = pendingBatch.get(sourceKey);
         if (existing) {
           existing.waiters.push({ resolve, reject });

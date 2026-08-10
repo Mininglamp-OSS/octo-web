@@ -321,18 +321,21 @@ describe('auth-header interceptor', () => {
     }
   });
 
-  it('preserves a pre-set X-Space-Id header instead of clobbering it with the host tab (postWithSpace path)', () => {
-    // save-to-drive posts into an arbitrary target space and passes the target
-    // as a per-request X-Space-Id override. The interceptor must NOT overwrite
-    // it with WKApp.shared.currentSpaceId, or the transfer's RequireSpace
-    // middleware would reverse-check the wrong space and 403.
+  it('always overwrites the X-Space-Id header with the host tab, even when a caller pre-sets a different value', () => {
+    // X-Space-Id identifies the TENANT space to the drive RequireSpace middleware,
+    // NOT the drive-space uuid a body payload targets. If a caller pre-set the
+    // header (an older save-to-drive path did), the interceptor MUST still
+    // clobber it back to the host tab, or RequireSpace would reverse-check the
+    // wrong tenant space against octo-server's MySpaces and 403 the whole
+    // request. Drive space uuids travel in the body; the backend service layer
+    // resolves them itself.
     const requestUse = inst.interceptors.request.use as ReturnType<typeof vi.fn>;
     const onRequest = requestUse.mock.calls[0][0];
     const original = WKApp.shared.currentSpaceId;
     try {
       WKApp.shared.currentSpaceId = 'host-space';
-      const config = onRequest({ headers: { 'X-Space-Id': 'target-space' } });
-      expect(config.headers['X-Space-Id']).toBe('target-space');
+      const config = onRequest({ headers: { 'X-Space-Id': 'looks-like-a-drive-uuid' } });
+      expect(config.headers['X-Space-Id']).toBe('host-space');
     } finally {
       WKApp.shared.currentSpaceId = original;
     }
@@ -573,7 +576,7 @@ describe('IM -> drive transferred-state wire contract (source_key)', () => {
     expect(call.length).toBe(2);
   });
 
-  it('transferFromIm passes target_space_id as an X-Space-Id header override', async () => {
+  it('transferFromIm passes target_space_id in the request body only — no X-Space-Id override', async () => {
     inst.post.mockResolvedValue(ok({ id: 99, space_id: 'sp_shared', parent_id: 0 }));
     const req = {
       im_group_no: 'group_abc',
@@ -583,15 +586,15 @@ describe('IM -> drive transferred-state wire contract (source_key)', () => {
       target_parent_id: 42,
     };
     await driveApi.transferFromIm(req);
-    // Non-empty target_space_id → the request must carry that target as
-    // X-Space-Id so RequireSpace reverse-checks against MySpaces for the
-    // TARGET space, not the host tab's current space. The interceptor is
-    // configured to preserve a pre-set X-Space-Id header (see driveApi.ts).
-    expect(inst.post).toHaveBeenCalledWith(
-      '/v1/drive/blobs/transfer-from-im',
-      req,
-      { headers: { 'X-Space-Id': 'sp_shared' } },
-    );
+    // target_space_id (a DRIVE space uuid) travels in the body — the drive
+    // service resolves it in its own space table via assertUploader. It must
+    // NOT be threaded into X-Space-Id: RequireSpace would then reverse-check
+    // the drive uuid against octo-server's MySpaces (tenant spaces) and 403.
+    // Callsite is a plain 2-arg post; the interceptor fills X-Space-Id with
+    // the host tab's tenant space, same as any other body-scoped drive call.
+    expect(inst.post).toHaveBeenCalledWith('/v1/drive/blobs/transfer-from-im', req);
+    const call = inst.post.mock.calls[0];
+    expect(call.length).toBe(2);
   });
 
   it('getAncestors GETs /files/:id/ancestors and unwraps .ancestors', async () => {
