@@ -451,20 +451,14 @@ export default class DriveModule implements IModule {
           im_msg_id: msg.im_msg_id,
         };
         const sourceKey = imTransferredSourceKey(item);
-        // Cache short-circuit: an earlier batch/save already gave us the
-        // answer. Re-resolve synchronously (well, next microtask via the
-        // Promise) without hitting the backend or enqueueing. This is what
-        // keeps FileCell re-mounts (scroll-out → scroll-in) from spending a
-        // round-trip per re-appearance.
-        const cached = readDriveCache(sourceKey);
-        if (cached.status === 'saved') {
-          resolve({ ...cached.entry } as ImTransferredEntry);
-          return;
-        }
-        if (cached.status === 'notfound') {
-          resolve(null);
-          return;
-        }
+        // Deliberately NO cache short-circuit here — every FileCell mount
+        // must hit the backend so a drive-side delete (or any other tab's
+        // save/delete) is reflected on the next entry into a chat window.
+        // The cache is a WRITE-THROUGH sink for cross-component broadcast
+        // (mittBus + right-click menu's synchronous read), not a read-side
+        // freshness gate. Batch coalescing (queueMicrotask below) still
+        // dedupes concurrent same-key checks so a screen of messages
+        // resolves in one HTTP round-trip.
         if (!pendingBatch) pendingBatch = new Map();
         const existing = pendingBatch.get(sourceKey);
         if (existing) {
