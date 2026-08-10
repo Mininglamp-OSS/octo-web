@@ -635,7 +635,7 @@ export class LoginVM extends ProviderListener {
                 ? apiURL
                 : undefined
             if (isDesktop) {
-                ;(window as any).ipc?.send?.('oidc-authorize-start', apiURL, authcode, provider)
+                ;(window as any).ipc?.send?.('oidc-authorize-start', apiURL, authcode, providerId)
             }
 
             // Schedule a fallback reset before navigating so a blocked redirect

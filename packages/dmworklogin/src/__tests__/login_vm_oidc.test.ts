@@ -187,6 +187,7 @@ describe('LoginVM.startOidcLogin (Electron desktop)', () => {
   beforeEach(() => {
     // Simulate Electron preload injection
     ;(window as any).__POWERED_ELECTRON__ = true
+    ;(window as any).ipc = { send: vi.fn() }
     ;(WKApp.shared as any).isPC = true
     // Simulate file:// origin that Electron prod build exposes
     stubLocation({ origin: 'file://', href: 'file:///login', protocol: 'file:', search: '' })
@@ -194,6 +195,7 @@ describe('LoginVM.startOidcLogin (Electron desktop)', () => {
 
   afterEach(() => {
     ;(WKApp.shared as any).isPC = false
+    delete (window as any).ipc
   })
 
   it('uses flag=2 (pc) in Electron', async () => {
@@ -211,6 +213,19 @@ describe('LoginVM.startOidcLogin (Electron desktop)', () => {
     const qs = new URLSearchParams(window.location.href.split('?')[1])
 
     expect(qs.get('return_to')).toBe('/login')
+  })
+
+  it('arms the main process with the provider id string', async () => {
+    fetchAuthcodeMock.mockResolvedValue('AC-ipc')
+    const vm = new LoginVM()
+    await vm.startOidcLogin('acme-sso')
+
+    expect((window as any).ipc.send).toHaveBeenCalledWith(
+      'oidc-authorize-start',
+      'https://api.example.com/v1/',
+      'AC-ipc',
+      'acme-sso',
+    )
   })
 
   it('still persists pending and redirects', async () => {
