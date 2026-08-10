@@ -25,6 +25,7 @@ import {
 import { applyLoginResp, parseLoginResp } from '../loginSession'
 import { mapBindError, type BindEndpoint, type BindErrorDisplay } from './errorMessages'
 import { loginT as t } from '../i18n'
+import { resolveBindNavigationUrl } from './navigation'
 import './bind.css'
 
 type Stage =
@@ -298,7 +299,11 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       // We replaceState pathname to '/' so basePath resolves to '/' instead of
       // '/oidc/bind' (which would loop the user back to BindPage).
       try {
-        window.history.replaceState({}, '', '/')
+        window.history.replaceState(
+          {},
+          '',
+          resolveBindNavigationUrl('/', window.location.href),
+        )
       } catch {
         /* noop: SSR / legacy host */
       }
@@ -307,7 +312,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       } catch (e) {
         console.warn('callOnLogin error suppressed:', e)
         // Last-resort fallback so the user isn't stranded on the success stage.
-        window.location.replace('/')
+        window.location.replace(resolveBindNavigationUrl('/', window.location.href))
       }
       return
     }
@@ -315,10 +320,11 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     // No invite — keep the original behaviour: short paint window then navigate
     // to the originally-requested return_to.
     window.setTimeout(() => {
+      const safeReturnTo = resolveBindNavigationUrl(returnTo, window.location.href)
       try {
-        window.location.replace(returnTo)
+        window.location.replace(safeReturnTo)
       } catch {
-        window.location.href = returnTo
+        window.location.href = safeReturnTo
       }
     }, 200)
   }
@@ -387,7 +393,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
 
   function goBackToLogin(): void {
     entryRef.current = null
-    window.location.replace('/login')
+    window.location.replace(resolveBindNavigationUrl('/login', window.location.href))
   }
 
   // ---- render ------------------------------------------------------------
