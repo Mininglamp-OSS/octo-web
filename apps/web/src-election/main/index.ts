@@ -14,12 +14,18 @@ import {
 import fs from "fs";
 import tmp from 'tmp';
 import Screenshots from "electron-screenshots";
-import { join } from "path";
+import { join, dirname } from "path";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
 import { IPC_CONVERSATION_UNREAD_COUNT } from "../shared/ipc-channels";
 import OCTO_CONFIG from "./config";
-import { executeUserDataMigration, planUserDataMigration } from "./userDataMigration";
+import {
+  executeUserDataMigration,
+  planUserDataMigration,
+  recordMigrationNotice,
+  shouldShowMigrationNotice,
+  type MigrationPlan,
+} from "./userDataMigration";
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
@@ -550,24 +556,200 @@ function onDeepLink(url: string) {
 
 app.setName(OCTO_CONFIG.name);
 
+// Shared console-based logger for migration plan/execute diagnostics
+// (round-6 nit: plan-time diagnostics must go through the injected log, not
+// bare console.*, so they can be captured by tests and routed).
+const migrationLog = {
+  info: (msg: string) => console.log(msg),
+  warn: (msg: string) => console.warn(msg),
+  error: (msg: string, err: unknown) => console.error(msg, err),
+};
+
 // One-time userData migration from the legacy DMWork profile (see
 // userDataMigration.ts for the full design). Electron's single-instance lock
 // is process-global, and the primary-instance lookup keys off the userData
 // path — so pointing userData at the legacy dir BEFORE requestSingleInstanceLock()
 // makes the lock contend with a legacy instance or a concurrent launch:
 //   - a running legacy DMWork instance already holds that lock -> this launch
-//     fails the lock and quits (with a dialog, round-4 P1-1);
+//     fails the lock and quits (with a dialog when we were about to migrate);
 //   - a concurrent launch during the migration hits the same held lock and
 //     quits — exactly one process is ever the migrator, no second window can
 //     appear mid-copy.
 // On success we relaunch so the next process takes the OCTO lock; on
 // deferral/failure this session keeps the legacy path and retries next launch
-// (bounded by breadcrumbs, round-4 P1-1).
+// (bounded by breadcrumbs).
 // This supersedes the temporary setPath('userData', <appData>/DMWork) fallback
 // that #1258 carries until this PR lands.
-const userDataPlan = planUserDataMigration(app.getPath("appData"), OCTO_CONFIG.name);
+const userDataPlan = planUserDataMigration(
+  app.getPath("appData"),
+  OCTO_CONFIG.name,
+  migrationLog
+);
 if (userDataPlan.action !== "none") {
   app.setPath("userData", userDataPlan.oldDir);
+}
+
+// Migration dialogs. Round-6 P2-2: dialog.showErrorBox called before `ready`
+// degrades to stderr on Linux (documented in electron.d.ts), so every dialog
+// is deferred behind app.whenReady(). Copy is bilingual via app.getLocale()
+// (safe inside whenReady; a pre-ready main-process dialog cannot reach the
+// renderer i18n bundle).
+type MigrationDialogKind =
+  | "lock"
+  | "failed"
+  | "skipped"
+  | "plan-failed"
+  | "retry-exhausted"
+  | "occupied";
+
+type MigrationDirs = { oldDir: string; newDir: string };
+type MigrationDialogCopy = (dirs?: MigrationDirs) => { title: string; message: string };
+
+const MIGRATION_DIALOGS: Record<MigrationDialogKind, { zh: MigrationDialogCopy; en: MigrationDialogCopy }> = {
+  lock: {
+    zh: () => ({
+      title: "OCTO 无法启动（数据迁移中）",
+      message:
+        "另一个实例正在运行（可能是旧版 DMWork 尚未退出，或迁移正在进行）。请退出旧应用后重新启动。",
+    }),
+    en: () => ({
+      title: "OCTO cannot start (data migration in progress)",
+      message:
+        "Another instance is running (the old DMWork app may not have quit, or a migration is in progress). Quit the old app and start again.",
+    }),
+  },
+  failed: {
+    zh: () => ({
+      title: "OCTO 数据迁移未完成",
+      message:
+        "本次启动继续使用旧版数据（DMWork），下次启动会自动重试。若持续失败，请检查磁盘空间后重试。",
+    }),
+    en: () => ({
+      title: "OCTO data migration incomplete",
+      message:
+        "This session continues on the legacy data (DMWork); the next launch will retry automatically. If it keeps failing, check your disk space.",
+    }),
+  },
+  skipped: {
+    zh: () => ({
+      title: "OCTO 数据迁移已跳过",
+      message:
+        "目标目录（OCTO）出现了不属于迁移的数据，本次启动继续使用旧版数据（DMWork），两个数据目录均保留。",
+    }),
+    en: () => ({
+      title: "OCTO data migration skipped",
+      message:
+        "The destination folder (OCTO) contains data the migration does not own. This session continues on the legacy data (DMWork); both folders are kept.",
+    }),
+  },
+  "plan-failed": {
+    zh: () => ({
+      title: "OCTO 数据迁移暂缓",
+      message: "数据迁移准备失败，本次继续使用旧版数据（DMWork），下次启动会自动重试。",
+    }),
+    en: () => ({
+      title: "OCTO data migration deferred",
+      message:
+        "Migration preparation failed; this session continues on the legacy data (DMWork) and the next launch will retry.",
+    }),
+  },
+  "retry-exhausted": {
+    zh: (dirs) => ({
+      title: "OCTO 数据迁移已暂停",
+      message: `数据迁移多次失败，已暂停自动重试。本次继续使用旧版数据（DMWork）。如需重新尝试，请删除 ${dirs?.oldDir}/.migration-failed.json 后重启。`,
+    }),
+    en: (dirs) => ({
+      title: "OCTO data migration paused",
+      message: `The migration failed repeatedly and automatic retries are paused. This session continues on the legacy data (DMWork). To retry, delete ${dirs?.oldDir}/.migration-failed.json and restart.`,
+    }),
+  },
+  occupied: {
+    zh: (dirs) => ({
+      title: "OCTO 数据迁移未执行",
+      message: `目标目录（${dirs?.newDir}）已存在其他数据，为避免覆盖，迁移未执行。本次继续使用旧版数据（${dirs?.oldDir}），两个目录均保留。如需迁移，请先备份并移除其中一个目录。`,
+    }),
+    en: (dirs) => ({
+      title: "OCTO data migration not performed",
+      message: `The destination folder (${dirs?.newDir}) already contains other data, so the migration was not performed to avoid overwriting it. This session continues on the legacy data (${dirs?.oldDir}); both folders are kept. To migrate, back up and remove one of them first.`,
+    }),
+  },
+};
+
+function migrationDialogCopy(kind: MigrationDialogKind, dirs?: MigrationDirs) {
+  const zh = app.getLocale().toLowerCase().startsWith("zh");
+  return MIGRATION_DIALOGS[kind][zh ? "zh" : "en"](dirs);
+}
+
+function showMigrationDialog(kind: MigrationDialogKind, dirs?: MigrationDirs): void {
+  app.whenReady().then(() => {
+    const { title, message } = migrationDialogCopy(kind, dirs);
+    dialog.showErrorBox(title, message);
+  });
+}
+
+// Runs under the single-instance lock taken on the legacy path: exactly one
+// writer, and no other process can be using the legacy profile (its lock is
+// ours). Extracted as a function so the success path can `return` after
+// app.exit(0) (rounds 4-6 ask).
+function runStartupMigration(userDataPlan: MigrationPlan): void {
+  if (userDataPlan.action === "migrate") {
+    try {
+      const migrationResult = executeUserDataMigration(userDataPlan, { log: migrationLog });
+      if (migrationResult === "done") {
+        // Success: restart so the next process takes the <appData>/OCTO lock
+        // and runs on the migrated profile. This process's lock is on the
+        // legacy path (set before requestSingleInstanceLock above) and is
+        // released on exit; the relaunched process plans "none" (marker
+        // present) and locks OCTO normally.
+        restartApp();
+        return; // app.exit(0) terminates the process; nothing below may run
+      }
+      if (migrationResult === "failed") {
+        // Make the failure visible (ENOSPC / rename refusal).
+        showMigrationDialog("failed");
+      } else if (migrationResult === "skipped") {
+        // "skipped" means the destination holds data we do not own — staying
+        // on the legacy path silently would let the next launch flip profiles
+        // without the user knowing. Say it.
+        showMigrationDialog("skipped");
+      }
+    } catch (err) {
+      // Defensive backstop (round-2 P0-2): the migration must never take the
+      // app down — fall back to the legacy profile and continue.
+      console.error(
+        "[userData] unexpected migration error; continuing on the legacy profile:",
+        err
+      );
+    }
+    return;
+  }
+  if (userDataPlan.action !== "legacy") {
+    return; // "none": steady state, nothing to say
+  }
+  // Plan-time failure or retry budget exhausted — say so instead of silently
+  // running on the legacy profile. Round-6 P1-2: destination-occupied names
+  // both directories. Round-6 P2: retry-exhausted and occupied are one-shot
+  // (notice bookkeeping lives in appData).
+  const appDataDir = dirname(userDataPlan.oldDir);
+  if (userDataPlan.reason === "too-many-failures") {
+    if (shouldShowMigrationNotice(appDataDir, "retry-exhausted")) {
+      recordMigrationNotice(appDataDir, "retry-exhausted");
+      showMigrationDialog("retry-exhausted", {
+        oldDir: userDataPlan.oldDir,
+        newDir: userDataPlan.newDir,
+      });
+    }
+  } else if (userDataPlan.reason === "destination-occupied") {
+    if (shouldShowMigrationNotice(appDataDir, "destination-occupied")) {
+      recordMigrationNotice(appDataDir, "destination-occupied");
+      showMigrationDialog("occupied", {
+        oldDir: userDataPlan.oldDir,
+        newDir: userDataPlan.newDir,
+      });
+    }
+  } else {
+    showMigrationDialog("plan-failed");
+  }
 }
 
 // isDevelopment && app.dock && app.dock.setIcon(logo);
@@ -578,71 +760,20 @@ app.on("open-url", (event, url) => {
 // 单例模式启动
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
-  // P1-2 (round-5): the dialog must only appear on the migration-related
-  // paths — in steady state (plan "none") a second launch is the normal
-  // "focus the running instance" flow and must stay silent.
-  if (userDataPlan.action !== "none") {
-    dialog.showErrorBox(
-      "OCTO 无法启动（数据迁移中）",
-      "另一个实例正在运行（可能是旧版 DMWork 尚未退出，或迁移正在进行）。请退出旧应用后重新启动。"
-    );
-  }
-  app.quit();
-} else {
-  // The migration runs under the single-instance lock we just took on the
-  // legacy path. Exactly one writer, and no other process can be using the
-  // legacy profile (its lock is ours).
+  // Round-6 P2-3: only "migrate" is a migration-related path — a lock failure
+  // under a "legacy"/"none" plan is the ordinary focus-the-running-instance
+  // flow and must stay silent.
   if (userDataPlan.action === "migrate") {
-    try {
-      const migrationResult = executeUserDataMigration(userDataPlan, {
-        log: {
-          info: (msg) => console.log(msg),
-          warn: (msg) => console.warn(msg),
-          error: (msg, err) => console.error(msg, err),
-        },
-      });
-      if (migrationResult === "done") {
-        // Success: restart so the next process takes the <appData>/OCTO lock
-        // and runs on the migrated profile. This process's lock is on the
-        // legacy path (set before requestSingleInstanceLock above) and is
-        // released on exit; the relaunched process plans "none" (marker
-        // present) and locks OCTO normally.
-        app.relaunch();
-        app.exit(0);
-      } else if (migrationResult === "failed") {
-        // P1-1 (round-4): make the failure visible (ENOSPC / rename refusal).
-        dialog.showErrorBox(
-          "OCTO 数据迁移未完成",
-          "本次启动继续使用旧版数据（DMWork），下次启动会自动重试。若持续失败，请检查磁盘空间后重试。"
-        );
-      } else if (migrationResult === "skipped") {
-        // Round-5 P2: "skipped" means the destination gained a real profile
-        // since planning — staying on the legacy path silently would let the
-        // next launch flip profiles without the user knowing. Say it.
-        dialog.showErrorBox(
-          "OCTO 数据迁移已跳过",
-          "目标目录（OCTO）出现了真实数据，本次启动继续使用旧版数据（DMWork），两个数据目录均保留。"
-        );
-      }
-    } catch (err) {
-      // Defensive backstop (round-2 P0-2): the migration must never take the
-      // app down — fall back to the legacy profile and continue.
-      console.error(
-        "[userData] unexpected migration error; continuing on the legacy profile:",
-        err
-      );
-    }
-  } else if (userDataPlan.action === "legacy") {
-    // P1-1 (round-4): plan-time failure or retry budget exhausted — say so
-    // instead of silently running on the legacy profile. Include the
-    // breadcrumb path so the user knows how to re-enable (round-5 P2).
-    dialog.showErrorBox(
-      "OCTO 数据迁移暂缓",
-      userDataPlan.reason === "too-many-failures"
-        ? `数据迁移多次失败，已暂停自动重试。本次继续使用旧版数据（DMWork）。如需重新尝试，请删除 ${userDataPlan.oldDir}/.migration-failed.json 后重启。`
-        : "数据迁移准备失败，本次继续使用旧版数据（DMWork），下次启动会自动重试。"
-    );
+    app.whenReady().then(() => {
+      const { title, message } = migrationDialogCopy("lock");
+      dialog.showErrorBox(title, message);
+      app.quit();
+    });
+  } else {
+    app.quit();
   }
+} else {
+  runStartupMigration(userDataPlan);
   app.on("second-instance", (event, argv) => {
     if (mainWindow) {
       mainWindow.show();
