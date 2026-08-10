@@ -220,6 +220,8 @@ class DapImpl {
     // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
     private enabled = false
     private started = false
+    /** 采集机制(observer + fetch/XHR 包裹)是否已装:首次 enable 才装,幂等,dark 态零开销 */
+    private collectorsInstalled = false
     /**
      * 采集代次。每次 setEnabled(false) 自增,使"停采前已捕获、尚在重试队列里的批次"整体作废,
      * 配合 retryTimers 清理,实现 kill switch 立即生效、不再有滞后上报(见 PR review P0-2)。
@@ -239,20 +241,33 @@ class DapImpl {
     private droppedCount = 0
 
     /**
-     * 启动蒙版:装三大采集机制 + 卸载兜底。幂等,只装一次。
+     * 启动蒙版:登记卸载兜底 + 定时 flush。幂等,只装一次。
+     * **不在此装采集机制**(observer / fetch·XHR 包裹)——那些改会给所有用户加常驻开销,
+     * 而本特性默认 dark 上线;改到首次 setEnabled(true) 时惰性装(见 installCollectors)。
      * 由 app 启动处调用一次(见 apps/web/src/index.tsx),不由业务组件调用。
      */
     init(): void {
         if (this.started) return
         this.started = true
         this.safe(() => {
-            this.installClickDelegation()
-            this.installPageObserver()
-            this.installExposureObserver()
-            this.installHttpWrap()
             this.installUnloadFlush()
             this.flushTimer = setInterval(() => this.safe(() => this.flush()), FLUSH_INTERVAL_MS)
+            // 极少数情况:enable 早于 init(如同步下发)。此时补装采集机制。
+            if (this.enabled) this.installCollectors()
         })
+    }
+
+    /**
+     * 惰性装采集机制:点击委托 + 切页/曝光 observer + fetch·XHR 包裹。幂等。
+     * 只在特性真正启用时装,dark 态(默认)不给 prod 用户加任何常驻开销。
+     */
+    private installCollectors(): void {
+        if (this.collectorsInstalled) return
+        this.collectorsInstalled = true
+        this.installClickDelegation()
+        this.installPageObserver()
+        this.installExposureObserver()
+        this.installHttpWrap()
     }
 
     /**
@@ -274,6 +289,8 @@ class DapImpl {
             for (const t of this.retryTimers) clearTimeout(t)
             this.retryTimers.clear()
         } else if (!was) {
+            // 首次启用:惰性装采集机制(dark 态从未装过),再补扫当前 DOM。
+            this.installCollectors()
             this.rescanCurrent()
         }
     }
@@ -485,9 +502,14 @@ class DapImpl {
                 this.track(name, this.collectDatasetProps(el))
             })
         }
-        // 捕获阶段:即使业务层 stopPropagation 也能采到
+        // 捕获阶段:即使业务层 stopPropagation 也能采到。
+        // 只听 click(不听 change):Semi Switch / 原生 checkbox 一次切换会同时冒泡
+        // click 和 change,两者都命中同一个 [data-track] wrapper → 声明式事件被记两遍
+        // (如 group_setting_toggled)。click 已覆盖指针点击与键盘 Space 激活(原生
+        // 控件被 Space 激活时也派发 click),故去掉 change 订阅即可去重且不漏采。
+        // 注:当前无任何 data-track 挂在只靠 change 的控件(<select>/radio)上;
+        // 若将来需要,应针对该控件单独加一条 guard 过的 change 监听,而非全局恢复。
         document.addEventListener('click', handler, true)
-        document.addEventListener('change', handler, true)
         document.addEventListener('submit', handler, true)
     }
 

@@ -23,6 +23,10 @@ server {
         # so an unset/unresolvable host 503s its own route instead of aborting the
         # whole container at startup (same pattern as the doc/backend hosts below).
         set $drive_api_url "${DRIVE_API_URL}";
+        # octo-dap telemetry collector (TRACK_API_URL) upstream, as a runtime nginx
+        # variable so an unset/unresolvable host 503s its own /track route instead of
+        # aborting the whole container at startup (same pattern as the hosts below).
+        set $track_api_url "${TRACK_API_URL}";
         # octo-doc (DOC_APP_URL) + octo-docs-backend (DOCS_BACKEND_URL) upstreams, as
         # runtime nginx variables so the doc/backend hosts resolve per-request (with a
         # resolver) instead of at config load — an unset/unresolvable host then 503s its
@@ -212,6 +216,31 @@ server {
         # forward /v1/* without the strip-then-prepend dance the /api/ rule does.
         location /v1/ {
             proxy_pass  ${API_URL}/v1/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size 10m;
+        }
+
+        # octo-dap telemetry collector — the fail-closed frontend tracker always
+        # POSTs to the same-origin relative path /track/batch. This block routes the
+        # /track/* surface to the collector so those reports never fall through to the
+        # SPA catch-all below (a POST to index.html would otherwise return a bogus
+        # non-JSON body the tracker cannot recognise as failure). Set TRACK_API_URL
+        # (e.g. http://octo-dap:8080) at container start; blank yields a JSON 503 so a
+        # deployment without the collector still boots AND the tracker sees an explicit
+        # !ok response (its retry/drop path) instead of a silent false success.
+        # resolver + runtime-variable proxy_pass: the collector host resolves per-request.
+        # Path+query forwarded verbatim ($request_uri) — the collector owns /track/*.
+        location /track/ {
+            default_type application/json;
+            if ($track_api_url = "") {
+                return 503 '{"status":503,"msg":"telemetry collector is not configured"}';
+            }
+            resolver 127.0.0.11 ipv6=off valid=30s;
+            proxy_pass $track_api_url$request_uri;
+            proxy_set_header token $http_token;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
