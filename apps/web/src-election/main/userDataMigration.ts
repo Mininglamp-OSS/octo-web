@@ -97,6 +97,33 @@ const SKIP_DIRS = new Set([
   "crashpad",
 ]);
 
+// Round-10 P0-1: ONE classification for "never migrates", shared by every
+// consumer so they can never disagree:
+//   - the copy filter (what gets published to the destination),
+//   - hasCopyableData (does the legacy still hold anything worth publishing),
+//   - DESTINATION_CLEANABLE (is a destination entry ours to delete).
+// Previously the first two used SKIP_DIRS+LOCKS+breadcrumb while the allowlist
+// ALSO listed dictionaries / network persistent state / OS metadata — a legacy
+// holding only e.g. .DS_Store planned "migrate", published it, and re-planned
+// "migrate" forever (relaunch boot loop, reproduced by round-10 review).
+const MIGRATION_NOISE = (() => {
+  const set = new Set<string>();
+  ELECTRON_LOCK_FILES.forEach((e) => set.add(e));
+  SKIP_DIRS.forEach((e) => set.add(e));
+  set.add(MIGRATION_BREADCRUMB);
+  // Regenerable, not user data (round-6 allowlist members): spelling
+  // dictionaries re-downloaded by Chromium; network-stack state.
+  set.add("dictionaries");
+  set.add("network persistent state");
+  // Round-8 P2-2 OS/Finder metadata. Leading dot matters:
+  // `.DS_Store`.toLowerCase() === ".ds_store".
+  set.add(".ds_store");
+  set.add("thumbs.db");
+  set.add("desktop.ini");
+  set.add(".localized");
+  return set;
+})();
+
 // Round-6 P1-1: the destination-decision ALLOWLIST. Deleting the destination
 // is permitted only when every top-level entry is one of these; anything else
 // is user data we do not own and must never be deleted.
@@ -107,24 +134,17 @@ const SKIP_DIRS = new Set([
 // (a crash-reporting process may still hold it).
 const DESTINATION_CLEANABLE = (() => {
   const set = new Set<string>();
-  ELECTRON_LOCK_FILES.forEach((e) => {
-    if (e !== "singletonlock" && e !== "singletoncookie" && e !== "singletonsocket") {
+  MIGRATION_NOISE.forEach((e) => {
+    if (
+      e !== "singletonlock" &&
+      e !== "singletoncookie" &&
+      e !== "singletonsocket" &&
+      e !== "crashpad"
+    ) {
       set.add(e);
     }
   });
-  SKIP_DIRS.forEach((e) => {
-    if (e !== "crashpad") set.add(e);
-  });
   set.add(MIGRATION_MARKER);
-  set.add("dictionaries");
-  set.add("network persistent state");
-  // Round-8 P2-2: OS/Finder metadata is regenerable noise, not user data —
-  // a single .DS_Store must not permanently block a migration. Note the
-  // leading dot: `.DS_Store`.toLowerCase() is ".ds_store".
-  set.add(".ds_store");
-  set.add("thumbs.db");
-  set.add("desktop.ini");
-  set.add(".localized");
   return set;
 })();
 
@@ -145,22 +165,15 @@ function residualEntries(dir: string): ResidualEntries {
   }
 }
 
-// Does `dir` carry any data the migration would actually copy? Mirrors the
-// copy filter in execute() exactly (round-8 P1-2): singleton artifacts,
-// regenerable caches and the breadcrumb are pruned, so a profile holding ONLY
-// those has nothing to migrate. Fail-closed: an unreadable dir reports
-// copyable data — a marker-only completion must never strand a legacy profile
-// that still holds IndexedDB / Local Storage / Cookies.
+// Does `dir` carry any data the migration would actually copy? Same rule as
+// the copy filter — MIGRATION_NOISE (round-10 P0-1: one classification for
+// "never migrates", so this predicate and the publish step can never
+// disagree). Fail-closed: an unreadable dir reports copyable data — a
+// marker-only completion must never strand a legacy profile that still holds
+// IndexedDB / Local Storage / Cookies.
 function hasCopyableData(dir: string): boolean {
   try {
-    return fs.readdirSync(dir).some((entry) => {
-      const lower = entry.toLowerCase();
-      return (
-        lower !== MIGRATION_BREADCRUMB &&
-        !SKIP_DIRS.has(lower) &&
-        !ELECTRON_LOCK_FILES.has(lower)
-      );
-    });
+    return fs.readdirSync(dir).some((entry) => !MIGRATION_NOISE.has(entry.toLowerCase()));
   } catch {
     return true;
   }
@@ -171,7 +184,7 @@ export type MigrationPlan = {
   oldDir: string;
   newDir: string;
   stagingDir: string;
-  reason?: "destination-occupied" | "too-many-failures";
+  reason?: "destination-occupied" | "too-many-failures" | "destination-unreadable";
 };
 
 export type LockLostAction = "quit-now" | "dialog-then-quit";
@@ -229,7 +242,14 @@ function readBreadcrumb(
   oldDir: string
 ): { attempts: number; lastError?: string; lastAttemptAt?: string } | null {
   const [primary, fallback] = breadcrumbPaths(oldDir);
-  return readBreadcrumbFile(primary) ?? readBreadcrumbFile(fallback);
+  const p = readBreadcrumbFile(primary);
+  const f = readBreadcrumbFile(fallback);
+  if (!p) return f;
+  if (!f) return p;
+  // Round-10 P1-1: a stale-but-readable primary (e.g. legacy dir became
+  // read-only after the breadcrumb was written there) must not shadow the
+  // newer fallback — take the max so the retry bound can never regress.
+  return p.attempts >= f.attempts ? p : f;
 }
 
 // Round-8 P2-1: the retry-exhausted dialog must point the user at the file
@@ -242,10 +262,35 @@ export function actualBreadcrumbFile(oldDir: string): string {
   return primary; // nothing recorded yet; the primary is where it would land
 }
 
-function writeBreadcrumb(oldDir: string, err: unknown): void {
+// Bump the attempt counter (and optionally refresh lastError). Round-10 P1-1:
+// execute() records the attempt BEFORE the copy starts — the failure modes
+// this bound exists for (ENOSPC and friends) can also make a post-failure
+// write fail, which would silently disable the retry bound.
+function bumpBreadcrumb(oldDir: string, err?: unknown): void {
   const prev = readBreadcrumb(oldDir) ?? { attempts: 0 };
   const payload = JSON.stringify({
     attempts: prev.attempts + 1,
+    lastError: err ? (err instanceof Error ? err.message : String(err)) : prev.lastError,
+    lastAttemptAt: new Date().toISOString(),
+  });
+  for (const file of breadcrumbPaths(oldDir)) {
+    try {
+      fs.writeFileSync(file, payload);
+      return;
+    } catch {
+      // try the next location; never throw from the failure path
+    }
+  }
+}
+
+// Round-10 P1-1: after a failed attempt, annotate the already-bumped record
+// with the failure detail WITHOUT incrementing again. No-op when even the
+// pre-copy bump could not be written (volume completely full).
+function annotateBreadcrumb(oldDir: string, err: unknown): void {
+  const prev = readBreadcrumb(oldDir);
+  if (!prev) return;
+  const payload = JSON.stringify({
+    ...prev,
     lastError: err instanceof Error ? err.message : String(err),
     lastAttemptAt: new Date().toISOString(),
   });
@@ -352,7 +397,15 @@ export function planUserDataMigration(
         log.warn(
           `[userData] ${newDir} holds a migration marker but cannot be inspected; keeping the legacy profile this session.`
         );
-        return { action: "legacy", oldDir, newDir, stagingDir };
+        // Round-10 P2-6: distinct reason so index.ts shows the right copy
+        // instead of the generic "plan failed" text.
+        return {
+          action: "legacy",
+          oldDir,
+          newDir,
+          stagingDir,
+          reason: "destination-unreadable",
+        };
       }
       if (residual.entries.length > 0 || !hasCopyableData(oldDir)) {
         return { action: "none", oldDir, newDir, stagingDir };
@@ -373,7 +426,15 @@ export function planUserDataMigration(
         log.warn(
           `[userData] ${newDir} already holds data without a migration marker (entries: ${residual.unreadable ? "<unreadable>" : residual.entries.join(", ")}); keeping both profiles and NOT migrating (legacy data stays in ${oldDir}).`
         );
-        return { action: "legacy", oldDir, newDir, stagingDir, reason: "destination-occupied" };
+        return {
+          action: "legacy",
+          oldDir,
+          newDir,
+          stagingDir,
+          // Round-10 P2-6: an uninspectable destination is not "occupied by
+          // known data" — distinct reason for the right dialog copy.
+          reason: residual.unreadable ? "destination-unreadable" : "destination-occupied",
+        };
       }
     }
     // P1-1: bound retries — after N consecutive failures the migration stops
@@ -406,6 +467,17 @@ export function planUserDataMigration(
   }
 }
 
+// Round-10 P2-3: special files (FIFOs/sockets) make cpSync abort the whole
+// migration with ERR_FS_CP_FIFO_PIPE; they are never profile data. Pure so it
+// is testable. `rel` is the path relative to the legacy root ("" never used).
+export function isCopyableSource(
+  rel: string,
+  stat: { isFIFO(): boolean; isSocket(): boolean }
+): boolean {
+  if (!rel.includes(path.sep) && MIGRATION_NOISE.has(rel.toLowerCase())) return false;
+  return !stat.isFIFO() && !stat.isSocket();
+}
+
 export function executeUserDataMigration(
   plan: MigrationPlan,
   runtime: MigrationRuntime
@@ -418,6 +490,11 @@ export function executeUserDataMigration(
   }
   // action === "migrate"
   try {
+    // Round-10 P1-1: record the attempt BEFORE any copy/rename I/O — the
+    // failure modes this bound exists for (ENOSPC etc.) can also make the
+    // post-failure write fail, silently disabling MAX_MIGRATION_ATTEMPTS.
+    // Success clears it via removeBreadcrumb below.
+    bumpBreadcrumb(plan.oldDir);
     // Round-6 P1-1: re-assert the destination is cleanable immediately before
     // deleting it — plan() may have run minutes ago. Polarity is an allowlist:
     // delete only if every top-level entry is known-cleanable; any unknown
@@ -444,19 +521,20 @@ export function executeUserDataMigration(
     fs.mkdirSync(plan.stagingDir, { mode: 0o700 });
     // F3 + P2-3: never copy singleton artifacts / locks; anchor the filter to
     // top-level entries (nested dirs are left alone), case-insensitive. The
-    // breadcrumb is migration bookkeeping, never copied (round-5 P2).
+    // breadcrumb is migration bookkeeping, never copied (round-5 P2). Noise
+    // classification is MIGRATION_NOISE (round-10 P0-1, shared with
+    // hasCopyableData / DESTINATION_CLEANABLE).
     fs.cpSync(plan.oldDir, plan.stagingDir, {
       recursive: true,
       preserveTimestamps: true,
       filter: (src) => {
-        const rel = path.relative(plan.oldDir, src);
-        if (rel.includes(path.sep)) return true; // nested: never prune
-        const lower = rel.toLowerCase();
-        return (
-          lower !== MIGRATION_BREADCRUMB &&
-          !SKIP_DIRS.has(lower) &&
-          !ELECTRON_LOCK_FILES.has(lower)
-        );
+        let st: fs.Stats;
+        try {
+          st = fs.lstatSync(src);
+        } catch {
+          return true; // vanished mid-copy; let cpSync report it
+        }
+        return isCopyableSource(path.relative(plan.oldDir, src), st);
       },
     });
     // F5: marker lands in staging BEFORE the rename, so profile+marker publish
@@ -473,11 +551,34 @@ export function executeUserDataMigration(
     } catch {
       // best-effort cleanup; the next launch retries anyway
     }
-    writeBreadcrumb(plan.oldDir, err);
+    // Round-10 P1-1: the attempt count was bumped up-front; only annotate the
+    // failure detail here (no double increment).
+    annotateBreadcrumb(plan.oldDir, err);
     runtime.log.error(
       "[userData] DMWork -> OCTO migration failed; keeping the legacy profile for this session (will retry on next launch):",
       err
     );
     return "failed";
+  }
+}
+
+// Round-10 P2-1: a leftover staging dir can hold credentials (Cookies /
+// IndexedDB were copied into it) until the publish. execute() cleans its own
+// staging, but none/legacy sessions never run execute — so the lock winner in
+// index.ts calls this on every startup. Single-instance-lock scoped: there is
+// never a concurrent writer.
+export function cleanupStaleStaging(
+  stagingDir: string,
+  log: MigrationRuntime["log"] = console
+): void {
+  try {
+    if (fs.existsSync(stagingDir)) {
+      fs.rmSync(stagingDir, { recursive: true, force: true });
+      log.warn(`[userData] removed stale staging dir ${stagingDir}`);
+    }
+  } catch (err) {
+    log.warn(
+      `[userData] could not remove stale staging dir ${stagingDir}: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
 }

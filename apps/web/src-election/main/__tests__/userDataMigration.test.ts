@@ -8,8 +8,10 @@ import {
   MIGRATION_MARKER,
   MIGRATION_NOTICES,
   actualBreadcrumbFile,
+  cleanupStaleStaging,
   decideLockLostAction,
   executeUserDataMigration,
+  isCopyableSource,
   planUserDataMigration,
   recordMigrationNotice,
   shouldShowMigrationNotice,
@@ -124,6 +126,7 @@ describe("planUserDataMigration", () => {
   it("keeps the legacy profile when the marker destination cannot be inspected (round-8 P2-3 tri-state)", () => {
     // Fail-closed: an unreadable destination is neither "complete" (none) nor
     // safely re-migratable — never start a session on an unverified OCTO dir.
+    // Round-10 P2-6: the plan carries a distinct reason for the right dialog.
     makeLegacyProfile(appDataDir);
     const newDir = path.join(appDataDir, BRAND);
     fs.mkdirSync(newDir, { recursive: true });
@@ -136,6 +139,7 @@ describe("planUserDataMigration", () => {
     try {
       const plan = planUserDataMigration(appDataDir, BRAND);
       expect(plan.action).toBe("legacy");
+      expect(plan.reason).toBe("destination-unreadable");
     } finally {
       readdirSpy.mockRestore();
     }
@@ -166,6 +170,69 @@ describe("planUserDataMigration", () => {
 
   it("an EMPTY legacy dir plans none (round-8 nit: nothing to copy)", () => {
     fs.mkdirSync(path.join(appDataDir, "DMWork"), { recursive: true });
+    expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
+  });
+
+  // Round-10 P0-1: the boot-loop regression. Each of these top-level names is
+  // "noise" — never copied, and cleanable at the destination. A legacy holding
+  // ONLY such entries must plan "none"; previously .DS_Store etc. planned
+  // "migrate" (hasCopyableData used a smaller prune set than the allowlist),
+  // published a marker-only destination, and re-planned "migrate" forever
+  // (relaunch loop, reproduced by the round-10 review harness).
+  const NOISE_ONLY_ENTRIES: Array<[string, string]> = [
+    [".DS_Store", "x"],
+    ["Thumbs.db", "x"],
+    ["desktop.ini", "x"],
+    [".localized", "x"],
+    ["Network Persistent State", "{}"],
+    ["Dictionaries", "x"],
+    ["Cache", "x"],
+    ["Crashpad", "x"],
+    ["SingletonLock", "x"],
+    ["SingletonCookie", "x"],
+    ["SingletonSocket", "x"],
+    ["LockFile", "x"],
+    ["Service Worker", "x"],
+    [MIGRATION_BREADCRUMB, "{}"],
+  ];
+  it.each(NOISE_ONLY_ENTRIES)(
+    "round-trip: a legacy holding only %s plans none — no boot loop (round-10 P0-1)",
+    (name, content) => {
+      const profile = path.join(appDataDir, "DMWork");
+      fs.mkdirSync(path.join(profile, name), { recursive: true });
+      fs.writeFileSync(path.join(profile, name, "data"), content);
+      const plan = planUserDataMigration(appDataDir, BRAND);
+      expect(plan.action).toBe("none");
+    }
+  );
+
+  it("mixed noise-only legacy (Cache + .DS_Store + Crashpad) plans none (round-10 P0-1)", () => {
+    const profile = path.join(appDataDir, "DMWork");
+    for (const name of ["Cache", ".DS_Store", "Crashpad"]) {
+      fs.mkdirSync(path.join(profile, name), { recursive: true });
+      fs.writeFileSync(path.join(profile, name, "data"), "x");
+    }
+    expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
+  });
+
+  it("a real profile beside noise still migrates, and the noise is NOT published (round-10 P0-1)", () => {
+    makeLegacyProfile(appDataDir);
+    const profile = path.join(appDataDir, "DMWork");
+    fs.writeFileSync(path.join(profile, ".DS_Store"), "x");
+    fs.writeFileSync(path.join(profile, "Dictionaries"), "dict");
+
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    expect(plan.action).toBe("migrate");
+
+    const result = executeUserDataMigration(plan, {
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    });
+    expect(result).toBe("done");
+    const newDir = path.join(appDataDir, BRAND);
+    expect(fs.existsSync(path.join(newDir, ".DS_Store"))).toBe(false);
+    expect(fs.existsSync(path.join(newDir, "Dictionaries"))).toBe(false);
+    expect(fs.existsSync(path.join(newDir, "Preferences"))).toBe(true);
+    // Round-trip: next launch plans none (Preferences is residual data).
     expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
   });
 
@@ -262,6 +329,24 @@ describe("planUserDataMigration", () => {
       JSON.stringify({ attempts: MAX_MIGRATION_ATTEMPTS - 1, lastError: "ENOSPC" })
     );
     expect(planUserDataMigration(appDataDir, BRAND).action).toBe("migrate");
+  });
+
+  it("retry bound reads the MAX of primary and fallback — a stale readable primary cannot shadow the newer fallback (round-10 P1-1)", () => {
+    // Primary became readable-but-unwritable after the breadcrumb was written
+    // there; the fallback holds the real (newer) count. Old logic (primary ??
+    // fallback) would read 1 and keep retrying past the bound.
+    const profile = makeLegacyProfile(appDataDir);
+    fs.writeFileSync(
+      path.join(profile, MIGRATION_BREADCRUMB),
+      JSON.stringify({ attempts: 1, lastError: "stale" })
+    );
+    fs.writeFileSync(
+      path.join(appDataDir, MIGRATION_BREADCRUMB),
+      JSON.stringify({ attempts: MAX_MIGRATION_ATTEMPTS, lastError: "EACCES" })
+    );
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    expect(plan.action).toBe("legacy");
+    expect(plan.reason).toBe("too-many-failures");
   });
 
   it("plans none when the legacy path is a regular file, not a directory (P2-6)", () => {
@@ -413,6 +498,39 @@ describe("executeUserDataMigration", () => {
     expect(fs.existsSync(path.join(appDataDir, BRAND, "Preferences"))).toBe(true);
     // Success clears the breadcrumb.
     expect(fs.existsSync(path.join(appDataDir, "DMWork", MIGRATION_BREADCRUMB))).toBe(false);
+  });
+
+  it("records the attempt BEFORE the copy starts — ENOSPC-class failures still count toward the retry bound (round-10 P1-1)", () => {
+    makeLegacyProfile();
+    const plan = planUserDataMigration(appDataDir, BRAND);
+    expect(plan.action).toBe("migrate");
+
+    const order: string[] = [];
+    const originalWriteFileSync = fs.writeFileSync.bind(fs);
+    const writeSpy = vi.spyOn(fs, "writeFileSync").mockImplementation(((p: fs.PathOrFileDescriptor, ...args: unknown[]) => {
+      if (String(p).endsWith(MIGRATION_BREADCRUMB)) order.push("breadcrumb");
+      return (originalWriteFileSync as (p: fs.PathOrFileDescriptor, ...a: unknown[]) => unknown)(p, ...args);
+    }) as never);
+    const cpSpy = vi.spyOn(fs, "cpSync").mockImplementation(((..._args: unknown[]) => {
+      order.push("cpSync");
+      const err = new Error("ENOSPC: no space left on device") as NodeJS.ErrnoException;
+      err.code = "ENOSPC";
+      throw err;
+    }) as never);
+
+    const result = executeUserDataMigration(plan, runtime);
+    writeSpy.mockRestore();
+    cpSpy.mockRestore();
+
+    expect(result).toBe("failed");
+    // The attempt counter was bumped before the copy that then failed on a
+    // full volume — the retry bound works for the failure mode it exists for.
+    expect(order.indexOf("breadcrumb")).toBeLessThan(order.indexOf("cpSync"));
+    const breadcrumb = JSON.parse(
+      fs.readFileSync(path.join(appDataDir, "DMWork", MIGRATION_BREADCRUMB), "utf8")
+    );
+    expect(breadcrumb.attempts).toBe(1);
+    expect(breadcrumb.lastError).toContain("ENOSPC");
   });
 
   it("falls back to the appData breadcrumb when the legacy dir is unwritable, and plan() reads it (round-6 P2-1)", () => {
@@ -668,5 +786,60 @@ describe("actualBreadcrumbFile", () => {
     expect(actualBreadcrumbFile(path.join(appDataDir, "DMWork"))).toBe(
       path.join(appDataDir, "DMWork", MIGRATION_BREADCRUMB)
     );
+  });
+});
+
+describe("cleanupStaleStaging", () => {
+  let appDataDir: string;
+
+  beforeEach(() => {
+    appDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "octo-mig-stage-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(appDataDir, { recursive: true, force: true });
+  });
+
+  it("removes a leftover staging dir holding copied credentials (round-10 P2-1)", () => {
+    const staging = path.join(appDataDir, `${BRAND}.migrating`);
+    fs.mkdirSync(path.join(staging, "Cookies"), { recursive: true });
+    fs.writeFileSync(path.join(staging, "Cookies", "data"), "creds");
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      cleanupStaleStaging(staging);
+      expect(fs.existsSync(staging)).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  it("is a no-op when no staging dir exists", () => {
+    cleanupStaleStaging(path.join(appDataDir, `${BRAND}.migrating`));
+    expect(fs.existsSync(path.join(appDataDir, `${BRAND}.migrating`))).toBe(false);
+  });
+});
+
+describe("isCopyableSource", () => {
+  const stat = (o: { fifo?: boolean; socket?: boolean }) => ({
+    isFIFO: () => !!o.fifo,
+    isSocket: () => !!o.socket,
+  });
+
+  it("prunes top-level noise (round-10 P0-1)", () => {
+    expect(isCopyableSource(".DS_Store", stat({}))).toBe(false);
+    expect(isCopyableSource("Cache", stat({}))).toBe(false);
+    expect(isCopyableSource("SingletonLock", stat({}))).toBe(false);
+    expect(isCopyableSource("Preferences", stat({}))).toBe(true);
+    expect(isCopyableSource("IndexedDB", stat({}))).toBe(true);
+  });
+
+  it("keeps nested entries even when their name matches noise (round-4 P2-3)", () => {
+    expect(isCopyableSource(path.join("Partitions", "persist", "Cache"), stat({}))).toBe(true);
+  });
+
+  it("skips FIFOs and sockets at any depth (round-10 P2-3)", () => {
+    expect(isCopyableSource("fifo", stat({ fifo: true }))).toBe(false);
+    expect(isCopyableSource(path.join("a", "b", "sock"), stat({ socket: true }))).toBe(false);
+    expect(isCopyableSource(path.join("a", "b", "file"), stat({}))).toBe(true);
   });
 });

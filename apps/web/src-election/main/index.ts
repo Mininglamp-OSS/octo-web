@@ -20,8 +20,8 @@ import logo, { getNoMessageTrayIcon } from "./logo";
 import { IPC_CONVERSATION_UNREAD_COUNT } from "../shared/ipc-channels";
 import OCTO_CONFIG from "./config";
 import {
-  MIGRATION_BREADCRUMB,
   actualBreadcrumbFile,
+  cleanupStaleStaging,
   decideLockLostAction,
   executeUserDataMigration,
   planUserDataMigration,
@@ -611,7 +611,8 @@ type MigrationDialogKind =
   | "skipped"
   | "plan-failed"
   | "retry-exhausted"
-  | "occupied";
+  | "occupied"
+  | "destination-unreadable";
 
 type MigrationDirs = { oldDir: string; newDir: string };
 type MigrationDialogCopy = (dirs?: MigrationDirs) => { title: string; message: string };
@@ -667,11 +668,11 @@ const MIGRATION_DIALOGS: Record<MigrationDialogKind, { zh: MigrationDialogCopy; 
   "retry-exhausted": {
     zh: (dirs) => ({
       title: "OCTO 数据迁移已暂停",
-      message: `数据迁移多次失败，已暂停自动重试。本次继续使用旧版数据（DMWork）。如需重新尝试，请删除 ${dirs ? actualBreadcrumbFile(dirs.oldDir) : MIGRATION_BREADCRUMB} 后重启。`,
+      message: `数据迁移多次失败，已暂停自动重试。本次继续使用旧版数据（DMWork）。如需重新尝试，请删除 ${actualBreadcrumbFile(dirs!.oldDir)} 后重启。`,
     }),
     en: (dirs) => ({
       title: "OCTO data migration paused",
-      message: `The migration failed repeatedly and automatic retries are paused. This session continues on the legacy data (DMWork). To retry, delete ${dirs ? actualBreadcrumbFile(dirs.oldDir) : MIGRATION_BREADCRUMB} and restart.`,
+      message: `The migration failed repeatedly and automatic retries are paused. This session continues on the legacy data (DMWork). To retry, delete ${actualBreadcrumbFile(dirs!.oldDir)} and restart.`,
     }),
   },
   occupied: {
@@ -684,6 +685,16 @@ const MIGRATION_DIALOGS: Record<MigrationDialogKind, { zh: MigrationDialogCopy; 
       message: `The destination folder (${dirs?.newDir}) already contains other data, so the migration was not performed to avoid overwriting it. This session continues on the legacy data (${dirs?.oldDir}); both folders are kept. To migrate, back up and remove one of them first.`,
     }),
   },
+  "destination-unreadable": {
+    zh: (dirs) => ({
+      title: "OCTO 数据迁移暂缓（目标不可访问）",
+      message: `目标目录（${dirs?.newDir}）无法访问，无法确认迁移状态，本次继续使用旧版数据（${dirs?.oldDir}）。请检查目录权限后重启。`,
+    }),
+    en: (dirs) => ({
+      title: "OCTO data migration deferred (destination unreadable)",
+      message: `The destination folder (${dirs?.newDir}) cannot be inspected, so the migration state cannot be confirmed. This session continues on the legacy data (${dirs?.oldDir}). Check the folder permissions and restart.`,
+    }),
+  },
 };
 
 function migrationDialogCopy(kind: MigrationDialogKind, dirs?: MigrationDirs) {
@@ -691,10 +702,20 @@ function migrationDialogCopy(kind: MigrationDialogKind, dirs?: MigrationDirs) {
   return MIGRATION_DIALOGS[kind][zh ? "zh" : "en"](dirs);
 }
 
-function showMigrationDialog(kind: MigrationDialogKind, dirs?: MigrationDirs): void {
+// Round-10 P2-5: the one-shot notice is recorded only AFTER the dialog has
+// actually displayed (showErrorBox is synchronous) — recording before showing
+// would hide the message forever if the process dies with the dialog up.
+function showMigrationDialog(
+  kind: MigrationDialogKind,
+  dirs?: MigrationDirs,
+  notice?: { appDataDir: string; key: string }
+): void {
   app.whenReady().then(() => {
     const { title, message } = migrationDialogCopy(kind, dirs);
     dialog.showErrorBox(title, message);
+    if (notice) {
+      recordMigrationNotice(notice.appDataDir, notice.key);
+    }
   });
 }
 
@@ -703,6 +724,10 @@ function showMigrationDialog(kind: MigrationDialogKind, dirs?: MigrationDirs): v
 // ours). Extracted as a function so the success path can `return` after
 // app.exit(0) (rounds 4-6 ask).
 function runStartupMigration(userDataPlan: MigrationPlan): void {
+  // Round-10 P2-1: a stale staging dir (credentials may have been copied into
+  // it) must not linger when this session plans none/legacy — execute() only
+  // cleans it on the migrate path. Lock-winner-scoped, so never concurrent.
+  cleanupStaleStaging(userDataPlan.stagingDir, migrationLog);
   if (userDataPlan.action === "migrate") {
     try {
       const migrationResult = executeUserDataMigration(userDataPlan, { log: migrationLog });
@@ -744,19 +769,29 @@ function runStartupMigration(userDataPlan: MigrationPlan): void {
   const appDataDir = dirname(userDataPlan.oldDir);
   if (userDataPlan.reason === "too-many-failures") {
     if (shouldShowMigrationNotice(appDataDir, "retry-exhausted")) {
-      recordMigrationNotice(appDataDir, "retry-exhausted");
-      showMigrationDialog("retry-exhausted", {
-        oldDir: userDataPlan.oldDir,
-        newDir: userDataPlan.newDir,
-      });
+      showMigrationDialog(
+        "retry-exhausted",
+        { oldDir: userDataPlan.oldDir, newDir: userDataPlan.newDir },
+        { appDataDir, key: "retry-exhausted" }
+      );
     }
   } else if (userDataPlan.reason === "destination-occupied") {
     if (shouldShowMigrationNotice(appDataDir, "destination-occupied")) {
-      recordMigrationNotice(appDataDir, "destination-occupied");
-      showMigrationDialog("occupied", {
-        oldDir: userDataPlan.oldDir,
-        newDir: userDataPlan.newDir,
-      });
+      showMigrationDialog(
+        "occupied",
+        { oldDir: userDataPlan.oldDir, newDir: userDataPlan.newDir },
+        { appDataDir, key: "destination-occupied" }
+      );
+    }
+  } else if (userDataPlan.reason === "destination-unreadable") {
+    // Round-10 P2-6: distinct copy for an uninspectable destination; one-shot
+    // like the other terminal reasons.
+    if (shouldShowMigrationNotice(appDataDir, "destination-unreadable")) {
+      showMigrationDialog(
+        "destination-unreadable",
+        { oldDir: userDataPlan.oldDir, newDir: userDataPlan.newDir },
+        { appDataDir, key: "destination-unreadable" }
+      );
     }
   } else {
     // "plan-failed" is intentionally NOT one-shot, unlike the two reasons
