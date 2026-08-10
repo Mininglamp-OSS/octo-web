@@ -265,17 +265,14 @@ export class WKRemoteConfig {
   docsSearchOn: boolean = false; // 云文档全文搜索开关，默认关闭；与 docsOn(模块入口)解耦，独立灰度
   disableUserCreateSpace: boolean = false; // 是否关闭普通用户创建 Space 入口
   /**
-   * 埋点采集启用位(ship dark)。后端采集端(/track/batch)就绪后,remoteConfig 下发
-   * tracking_enabled=true 才开采;fail-closed:字段缺失=不采,前端一个请求都不发。
-   * 与 tracking_disabled 急停位是「与」关系:采集 iff tracking_enabled && !tracking_disabled。
+   * 埋点采集总开关(ship dark, fail-closed)。经 GET common/appconfig
+   * (生产即 https://im.deepminer.com.cn/api/v1/common/appconfig)下发的
+   * tracking_enabled 控制:true 才开采;字段缺失/false = 不采,前端一个请求都不发。
+   * 采集端(octo-dap /track/batch)就绪前保持缺省关闭;要停采只需把此位置 false
+   * (远程配置即时生效、无需回滚前端),故不再单设 kill switch。一期全量开/关,
+   * 按 event 粒度放二期。
    */
   trackingEnabled: boolean = false;
-  /**
-   * 埋点蒙版远程 kill switch(octo-dap 采集方案 §2.6)。后端字段 tracking_disabled 为 true 时,
-   * 前端 Tracker 立即停采、清空队列,业务 UI 零影响。字段缺失 fail-open(默认 false),
-   * 作紧急急停,覆盖 tracking_enabled。一期只做全量开/关,按 event 粒度放二期。
-   */
-  trackingDisabled: boolean = false;
   /**
    * 自定义贴纸管理入口开关。后端字段 sticker_custom_enabled 为 true 时，前端展示
    * 「我的贴纸」tab 及上传/删除入口；false 或字段缺失时隐藏。
@@ -464,10 +461,9 @@ export class WKRemoteConfig {
       this.disableUserCreateSpace = parseRemoteBool(
         result["disable_user_create_space"]
       );
-      // 埋点采集 ship dark(fail-closed)+ kill switch(fail-open 急停):采集 iff 启用 && 未急停
+      // 埋点采集 ship dark(fail-closed):采集 iff appconfig 下发 tracking_enabled 为真
       this.trackingEnabled = parseRemoteBool(result["tracking_enabled"]);
-      this.trackingDisabled = parseRemoteBool(result["tracking_disabled"]);
-      Tracker.shared.setEnabled(this.trackingEnabled && !this.trackingDisabled);
+      Tracker.shared.setEnabled(this.trackingEnabled);
       this.stickerCustomEnabled = parseRemoteBool(
         result["sticker_custom_enabled"]
       );
