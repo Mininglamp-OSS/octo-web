@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import { I18nContext, t, WKApp } from "@octo/base";
 import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "../pages/McpMarketListPage";
+import ExpertMarketListPage from "../pages/ExpertMarketListPage";
 
 interface MarketItem {
   id: string;
@@ -27,6 +28,12 @@ const MARKET_ITEMS: MarketItem[] = [
     routePath: "/mcp-market/skills",
     label: () => t("mcp.sidebar.skills"),
     render: () => <SkillListPage />,
+  },
+  {
+    id: "experts",
+    routePath: "/mcp-market/experts",
+    label: () => t("mcp.sidebar.experts"),
+    render: () => <ExpertMarketListPage />,
   },
 ];
 
