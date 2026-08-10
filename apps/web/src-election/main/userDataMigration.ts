@@ -80,6 +80,10 @@ const ELECTRON_LOCK_FILES = new Set([
 
 // Regenerable Chromium caches / crash artifacts, intentionally not migrated
 // (top-level only, matched case-insensitively). Stored lower-case.
+// Reviewed (round-8): Service Worker/ and blob_storage are safe to prune —
+// the renderer has no caches.open/match or serviceWorker.register call sites
+// anywhere in apps/web or packages (the only SW shipped is the MSW test
+// harness). If a future Cache Storage feature lands, revisit this entry.
 const SKIP_DIRS = new Set([
   "cache",
   "code cache",
@@ -120,6 +124,7 @@ const DESTINATION_CLEANABLE = (() => {
   set.add(".ds_store");
   set.add("thumbs.db");
   set.add("desktop.ini");
+  set.add(".localized");
   return set;
 })();
 
@@ -377,9 +382,19 @@ export function planUserDataMigration(
     const breadcrumb = readBreadcrumb(oldDir);
     if (breadcrumb && breadcrumb.attempts >= MAX_MIGRATION_ATTEMPTS) {
       log.warn(
-        `[userData] migration failed ${breadcrumb.attempts} times (last: ${breadcrumb.lastError ?? "unknown"}); disabling auto-retry. Delete ${oldDir}/${MIGRATION_BREADCRUMB} to re-enable.`
+        `[userData] migration failed ${breadcrumb.attempts} times (last: ${breadcrumb.lastError ?? "unknown"}); disabling auto-retry. Delete ${actualBreadcrumbFile(oldDir)} to re-enable.`
       );
       return { action: "legacy", oldDir, newDir, stagingDir, reason: "too-many-failures" };
+    }
+    // Round-8 nit (P2-1 review): a legacy profile holding NOTHING the copy
+    // would publish (empty dir, or caches/singleton artifacts only) plans
+    // "none" instead of a marker-only migrate+relaunch that accomplishes
+    // nothing visible. Same rule as the marker branch above (hasCopyableData).
+    if (!hasCopyableData(oldDir)) {
+      log.warn(
+        `[userData] ${oldDir} holds nothing the migration would copy; skipping (no marker published).`
+      );
+      return { action: "none", oldDir, newDir, stagingDir };
     }
     return { action: "migrate", oldDir, newDir, stagingDir };
   } catch (err) {

@@ -1,18 +1,12 @@
 {
+  "extends": "./tsconfig.e.json",
   "compilerOptions": {
-    "module": "commonjs",
-    "moduleResolution": "node",
-    "target": "es2020",
-    "resolveJsonModule": true,
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
     "noEmit": true,
-    "baseUrl": "./",
-    "skipLibCheck": true,
     "types": ["node"]
   },
   "include": [
     "src-election/main/userDataMigration.ts",
     "src-election/**/__tests__/**/*.ts"
-  ]
+  ],
+  "exclude": ["node_modules", "src"]
 }

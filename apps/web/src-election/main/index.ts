@@ -751,6 +751,10 @@ function runStartupMigration(userDataPlan: MigrationPlan): void {
       });
     }
   } else {
+    // "plan-failed" is intentionally NOT one-shot, unlike the two reasons
+    // above: it is transient (a flaky volume / permission hiccup) and the
+    // user should see it on every affected launch, whereas retry-exhausted
+    // and destination-occupied are terminal states that only need one telling.
     showMigrationDialog("plan-failed");
   }
 }

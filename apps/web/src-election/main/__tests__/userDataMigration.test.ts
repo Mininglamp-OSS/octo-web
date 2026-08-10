@@ -141,25 +141,31 @@ describe("planUserDataMigration", () => {
     }
   });
 
-  it("round-trip invariant: a marker-only destination with a data-less legacy counts as migrated (P0-1, no relaunch loop)", () => {
-    // Legacy profile with ONLY regenerable caches (no sentinel): the copy
-    // prunes everything, so re-migrating would loop forever. The marker-only
-    // result must plan "none" on the next launch.
+  it("round-trip invariant: a legacy with nothing copyable plans none — no useless marker-only migrate+relaunch (P0-1 / round-8 nit)", () => {
+    // Legacy profile with ONLY regenerable caches: the copy would prune
+    // everything, so migrating would publish nothing and loop forever. The
+    // short-circuit (same hasCopyableData rule as the marker branch) plans
+    // "none" directly, and a marker-only destination from a previous version
+    // still plans "none" on the next launch (marker branch).
     const profile = path.join(appDataDir, "DMWork");
     fs.mkdirSync(path.join(profile, "Cache"), { recursive: true });
     fs.writeFileSync(path.join(profile, "Cache", "data"), "x");
 
     const plan = planUserDataMigration(appDataDir, BRAND);
-    expect(plan.action).toBe("migrate");
+    expect(plan.action).toBe("none");
 
-    // Simulate execute()'s publish: staging -> newDir with only a marker.
+    // Legacy marker-only publish (e.g. produced by an older build): still none.
     const newDir = path.join(appDataDir, BRAND);
     const staging = path.join(appDataDir, `${BRAND}.migrating`);
     fs.mkdirSync(staging, { recursive: true });
     fs.writeFileSync(path.join(staging, MIGRATION_MARKER), new Date().toISOString());
     fs.renameSync(staging, newDir);
 
-    // Next launch: marker present, no residual data anywhere -> "none", loop broken.
+    expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
+  });
+
+  it("an EMPTY legacy dir plans none (round-8 nit: nothing to copy)", () => {
+    fs.mkdirSync(path.join(appDataDir, "DMWork"), { recursive: true });
     expect(planUserDataMigration(appDataDir, BRAND).action).toBe("none");
   });
 
@@ -204,6 +210,7 @@ describe("planUserDataMigration", () => {
     fs.writeFileSync(path.join(newDir, ".DS_Store"), "x");
     fs.writeFileSync(path.join(newDir, "Thumbs.db"), "x");
     fs.writeFileSync(path.join(newDir, "desktop.ini"), "x");
+    fs.writeFileSync(path.join(newDir, ".localized"), "x");
     const plan = planUserDataMigration(appDataDir, BRAND);
     expect(plan.action).toBe("migrate");
   });
