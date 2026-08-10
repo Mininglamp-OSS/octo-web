@@ -29,12 +29,23 @@
     "retry": "Retry",
     "htmlCreate": {
       "title": "New HTML",
+      "modeLabel": "Choose an HTML creation workflow",
+      "modeDirect": "Create first, then let a Bot modify it",
+      "modeDirectDescription": "Create a blank HTML now, then paste the prompt into a document comment and select a Bot to modify it.",
+      "modeBot": "Create directly with a Bot",
+      "modeBotDescription": "Choose a Bot and send your requirements; the Bot will create a new HTML.",
       "nameLabel": "HTML name",
       "requirementsLabel": "Requirements",
       "requirementsPlaceholder": "Describe what you want to add or change after the blank HTML is created.",
+      "precreatePrompt": "Comment task: Based on the current HTML, use the octo-html skill to make the changes below. Keep using the current document; do not create a new HTML.\nHTML name: {{name}}\nRequirements: {{requirements}}",
+      "followUpRequirements": "Apply the instructions that follow.",
       "create": "Create HTML",
       "creating": "Creating…",
+      "directSuccess": "HTML created. Copy the comment prompt and open the document, then paste it into a comment and select a Bot to modify the current document.",
+      "copyPromptAndOpen": "Copy prompt and open",
+      "openDirectly": "Open directly",
       "publishFailed": "Couldn't publish the HTML. Your form is preserved; try again.",
+      "publishUncertain": "We couldn't confirm whether the HTML was created. To avoid creating a duplicate version, do not submit again. Close this dialog and refresh the document list to check.",
       "registrationFailed": "HTML v1 was published, but it could not be registered in Docs. Do not submit again, because that would create v2.",
       "descLabel": "HTML description",
       "descPlaceholder": "Describe the HTML you want (e.g. a launch landing page with a title, highlights and a sign-up button).",
@@ -48,7 +59,9 @@
       "removeFile": "Remove file",
       "cancel": "Cancel",
       "generatePrompt": "Generate prompt",
-      "promptLabel": "Full prompt",
+      "promptLabel": "Modification prompt for a Bot comment",
+      "botPromptLabel": "Full prompt",
+      "directPromptHelp": "After creation, open the HTML, paste this prompt into a comment, and select a Bot to modify the current document.",
       "backToEdit": "Back to edit",
       "copyPrompt": "Copy prompt",
       "forwardToBot": "Forward to Bot",
@@ -67,12 +80,7 @@
       "messageTooLong": "The final message exceeds the {{max}} character send limit. Shorten the description."
     }
   },
-  "htmlModifyPrompt": {
-    "label": "Prompt for modifying this HTML",
-    "copy": "Copy prompt",
-    "copied": "Prompt copied",
-    "failed": "Couldn't copy the prompt. Select and copy it manually."
-  },
+
   "board": {
     "readOnly": "Read-only",
     "saveFailed": "Not saved — local storage is full or unavailable",

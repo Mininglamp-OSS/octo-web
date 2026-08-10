@@ -58,6 +58,29 @@ describe('docs i18n', () => {
     expect(enUS.member.source.direct).toBe('Direct')
     expect(enUS.member.source.invite).toBe('Invite')
   })
+
+  it('describes direct HTML creation as a comment-based modification workflow', () => {
+    expect(zhCN.list.htmlCreate.modeDirect).toBe('先创建，再让 Bot 修改')
+    expect(zhCN.list.htmlCreate.modeBot).toBe('由 Bot 直接创建')
+    expect(zhCN.list.htmlCreate.precreatePrompt).toContain('请基于当前 HTML，使用 octo-html skill')
+    expect(zhCN.list.htmlCreate.precreatePrompt).toContain('评论')
+    expect(zhCN.list.htmlCreate.precreatePrompt).toContain('沿用当前文档')
+    expect(zhCN.list.htmlCreate.precreatePrompt).not.toContain('请先创建空白 HTML')
+    expect(zhCN.list.htmlCreate.precreatePrompt).not.toContain('请先创建一个空白 HTML')
+    expect(zhCN.list.htmlCreate.promptLabel).toBe('评论给 Bot 的修改提示词')
+    expect(zhCN.list.htmlCreate.botPromptLabel).toBe('完整提示词')
+    expect(enUS.list.htmlCreate.modeDirectDescription).toBeTruthy()
+    expect(enUS.list.htmlCreate.modeBotDescription).toBeTruthy()
+  })
+
+  it('warns both locales not to resubmit when a direct publish result is uncertain', () => {
+    expect(zhCN.list.htmlCreate.publishUncertain).toContain('无法确认 HTML 是否已创建')
+    expect(zhCN.list.htmlCreate.publishUncertain).toContain('请勿再次提交')
+    expect(zhCN.list.htmlCreate.publishUncertain).toContain('刷新文档列表')
+    expect(enUS.list.htmlCreate.publishUncertain).toContain("couldn't confirm whether the HTML was created")
+    expect(enUS.list.htmlCreate.publishUncertain).toContain('do not submit again')
+    expect(enUS.list.htmlCreate.publishUncertain).toContain('refresh the document list')
+  })
 })
 
 describe('DocsModule i18n registration', () => {

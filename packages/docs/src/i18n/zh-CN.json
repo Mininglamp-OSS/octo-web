@@ -29,12 +29,23 @@
     "retry": "重试",
     "htmlCreate": {
       "title": "新建 HTML",
+      "modeLabel": "选择 HTML 创建方式",
+      "modeDirect": "先创建，再让 Bot 修改",
+      "modeDirectDescription": "立即创建空白 HTML，之后将提示词粘贴到文档评论并选择 Bot 修改。",
+      "modeBot": "由 Bot 直接创建",
+      "modeBotDescription": "选择 Bot 并发送需求，由 Bot 创建新的 HTML。",
       "nameLabel": "HTML 名称",
       "requirementsLabel": "需求",
       "requirementsPlaceholder": "描述空白 HTML 创建后要添加或修改的内容。",
+      "precreatePrompt": "评论任务：请基于当前 HTML，使用 octo-html skill 按以下需求修改。请沿用当前文档，不要新建 HTML。\nHTML 名称：{{name}}\n修改需求：{{requirements}}",
+      "followUpRequirements": "请根据后续指令修改。",
       "create": "创建 HTML",
       "creating": "创建中…",
+      "directSuccess": "HTML 已创建。复制评论提示词并打开文档后，将提示词粘贴到评论中并选择 Bot，即可修改当前文档。",
+      "copyPromptAndOpen": "复制提示词并打开",
+      "openDirectly": "直接打开",
       "publishFailed": "HTML 发布失败，表单内容已保留，请重试。",
+      "publishUncertain": "无法确认 HTML 是否已创建。为避免生成重复版本，请勿再次提交；可关闭此窗口并刷新文档列表确认。",
       "registrationFailed": "HTML v1 已发布，但未能登记到文档列表。请勿再次提交，否则会创建 v2。",
       "descLabel": "HTML 描述",
       "descPlaceholder": "描述你想生成的 HTML 内容与用途（例如：为发布会做一个落地页，含标题、亮点和报名按钮）。",
@@ -48,7 +59,9 @@
       "removeFile": "移除文件",
       "cancel": "取消",
       "generatePrompt": "生成提示词",
-      "promptLabel": "完整提示词",
+      "promptLabel": "评论给 Bot 的修改提示词",
+      "botPromptLabel": "完整提示词",
+      "directPromptHelp": "创建完成后，打开 HTML，将此提示词粘贴到评论中并选择 Bot，即可让 Bot 修改当前文档。",
       "backToEdit": "返回修改",
       "copyPrompt": "复制提示词",
       "forwardToBot": "转发给 Bot",
@@ -67,12 +80,7 @@
       "messageTooLong": "最终消息超过 {{max}} 字发送上限，请缩短描述。"
     }
   },
-  "htmlModifyPrompt": {
-    "label": "修改当前 HTML 提示词",
-    "copy": "复制提示词",
-    "copied": "提示词已复制",
-    "failed": "复制失败，请手动选择并复制提示词。"
-  },
+
   "board": {
     "readOnly": "只读",
     "saveFailed": "未保存 — 本地存储已满或不可用",

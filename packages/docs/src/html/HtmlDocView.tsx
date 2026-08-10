@@ -39,7 +39,6 @@ import { useDocDelete } from '../editor/useDocDelete.ts'
 import { DocMoreMenu, OpenNewPageIcon, LinkIcon, DeleteIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { DocGuide } from '../editor/DocGuide.tsx'
 import { buildAnchorFromSelection, truncateAnchorText } from './htmlDocAnchor.ts'
-import { readModifyHtmlPrompt } from '../html-create/HtmlCreateService.ts'
 import type { Anchor } from './htmlDocComments.ts'
 import {
   absolutizeDocAssetUrls,
@@ -201,8 +200,6 @@ export function HtmlDocView({
   useEffect(() => setViewVersion(version), [version])
   const [state, setState] = useState<LoadState>({ status: 'loading' })
   const effectiveSlug = slug ?? docId
-  const modifyPrompt = readModifyHtmlPrompt(space, docId)
-  const [promptCopyState, setPromptCopyState] = useState<'copied' | 'failed' | null>(null)
   // 划词评论: the anchor lifted from the last non-collapsed selection inside the read-only
   // content. Overlay state only — the content itself is never mutated / made editable.
   const [pendingAnchor, setPendingAnchor] = useState<Anchor | null>(null)
@@ -659,26 +656,6 @@ export function HtmlDocView({
           />
         </div>
       </header>
-      {modifyPrompt && (
-        <section className="octo-html-doc-modify-prompt" aria-label={t('docs.htmlModifyPrompt.label')}>
-          <div className="octo-html-doc-modify-prompt-head">
-            <strong>{t('docs.htmlModifyPrompt.label')}</strong>
-            <button
-              type="button"
-              className="octo-tb-btn"
-              onClick={() => {
-                void navigator.clipboard.writeText(modifyPrompt)
-                  .then(() => setPromptCopyState('copied'))
-                  .catch(() => setPromptCopyState('failed'))
-              }}
-            >
-              {t('docs.htmlModifyPrompt.copy')}
-            </button>
-          </div>
-          <textarea className="octo-html-doc-modify-prompt-text" readOnly rows={6} value={modifyPrompt} />
-          {promptCopyState && <span role="status">{t(`docs.htmlModifyPrompt.${promptCopyState}`)}</span>}
-        </section>
-      )}
       <ConfirmModal
         open={del.confirming}
         title={t('docs.doc.deleteEntry')}

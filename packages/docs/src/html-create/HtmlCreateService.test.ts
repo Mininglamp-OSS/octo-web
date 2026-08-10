@@ -6,8 +6,7 @@ import {
   buildModifyHtmlPrompt,
   createBlankHtml,
   createUnpredictableSlug,
-  persistModifyHtmlPrompt,
-  readModifyHtmlPrompt,
+  HtmlPublishError,
 } from './HtmlCreateService.ts'
 
 describe('HtmlCreateService helpers', () => {
@@ -32,26 +31,50 @@ describe('HtmlCreateService helpers', () => {
 
   it('generates a copyable prompt with the real identifiers and user request', () => {
     const prompt = buildModifyHtmlPrompt({ docId: 'doc-real', name: 'Launch', requirements: 'Add a signup button', slug: 'html-abc' })
-    expect(prompt).toContain('修改当前 HTML')
+    expect(prompt).toContain('评论任务')
+    expect(prompt).toContain('请基于当前 HTML，使用 octo-html skill')
     expect(prompt).toContain('doc_id：doc-real')
     expect(prompt).toContain('HTML 名称：Launch')
     expect(prompt).toContain('slug：html-abc')
     expect(prompt).toContain('Add a signup button')
+    expect(prompt).toContain('沿用当前文档')
+    expect(prompt).toContain('不要新建 HTML')
+    expect(prompt).not.toContain('请新建 HTML')
+    expect(prompt).not.toContain('请先创建')
     expect(prompt).not.toContain('私聊')
     expect(prompt).not.toContain('Bot')
   })
 
-  it('isolates persisted prompts by account', () => {
-    const wk = createMockWKApp({ uid: 'u1', token: 'tok' })
-    setWKApp(wk)
-    persistModifyHtmlPrompt('space-1', 'doc-1', 'private prompt')
-    expect(readModifyHtmlPrompt('space-1', 'doc-1')).toBe('private prompt')
-    wk.loginInfo.uid = 'u2'
-    expect(readModifyHtmlPrompt('space-1', 'doc-1')).toBeNull()
-  })
+
 })
 
 describe('createBlankHtml', () => {
+  it('classifies an HTTP non-success as definitely not published', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 503 }))
+    vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
+    await expect(createBlankHtml({ name: 'Name', requirements: '', spaceId: 'space' }))
+      .rejects.toMatchObject({ name: 'HtmlPublishError', outcome: 'not_published' })
+  })
+
+  it('classifies a network rejection as an uncertain publish result', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('network unavailable')))
+    vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
+    const error = await createBlankHtml({ name: 'Name', requirements: '', spaceId: 'space' }).catch((caught) => caught)
+    expect(error).toBeInstanceOf(HtmlPublishError)
+    expect(error).toMatchObject({ outcome: 'uncertain' })
+  })
+
+  it('classifies unreadable JSON from a 2xx response as an uncertain publish result', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => { throw new SyntaxError('invalid JSON') },
+    }))
+    vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
+    await expect(createBlankHtml({ name: 'Name', requirements: '', spaceId: 'space' }))
+      .rejects.toMatchObject({ name: 'HtmlPublishError', outcome: 'uncertain' })
+  })
+
   it('POSTs the current space and blank v1 through the module Service boundary', async () => {
     const wk = createMockWKApp()
     wk.loginInfo = { uid: 'u1', token: 'tok' }

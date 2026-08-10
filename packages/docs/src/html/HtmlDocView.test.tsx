@@ -9,7 +9,7 @@ import {
   resolveHtmlDocAnchorText,
   injectBaseHref,
 } from './HtmlDocView.tsx'
-import { getCurrentUid, setWKApp } from '../octoweb/index.ts'
+import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 
 // HtmlDocView fetches the published octo-doc HTML from a SEPARATE backend, so we stub the
@@ -261,26 +261,6 @@ describe('HtmlDocView — read-only rendering', () => {
     expect(String(spy.mock.calls[0][0])).toBe('/docs-html/d/published-slug/v/v7')
   })
 
-  it('shows and copies the complete post-create modify prompt', async () => {
-    const prompt = 'doc_id：d1\nHTML 名称：Launch\nslug：published-slug\n修改需求：Add chart'
-    sessionStorage.setItem(`octo.docs.htmlModifyPrompt:${getCurrentUid()}:sp:d1`, prompt)
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: vi.fn().mockResolvedValue(undefined) },
-    })
-    stubFetch((url) => {
-      if (url.includes('/comments')) return jsonResponse({ data: [] })
-      return htmlResponse('<p>ok</p>')
-    })
-
-    render(<HtmlDocView docId="d1" space="sp" slug="published-slug" />)
-    const promptArea = document.querySelector('.octo-html-doc-modify-prompt-text') as HTMLTextAreaElement
-    expect(promptArea.value).toBe(prompt)
-    expect(promptArea.readOnly).toBe(true)
-    fireEvent.click(screen.getByText('docs.htmlModifyPrompt.copy'))
-    await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith(prompt))
-    expect(screen.getByText('docs.htmlModifyPrompt.copied')).toBeTruthy()
-  })
 
   it('shows a loading state before the fetch resolves', async () => {
     let resolve!: (r: Response) => void

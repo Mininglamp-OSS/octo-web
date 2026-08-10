@@ -115,6 +115,7 @@ vi.mock('../html-create/DocsBotConversation.tsx', () => ({
   DocsBotConversation: (props: {
     draft: { botUid: string; requestId: string; spaceId: string; description: string }
     autoSend?: boolean
+    onInitialComposeHandoff?: () => void
     onClose?: () => void
     onMessageSent?: () => void
   }) => (
@@ -2567,6 +2568,8 @@ describe('DocsHome — direct blank HTML creation', () => {
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.nameLabel'), { target: { value: 'Blank page' } })
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.requirementsLabel'), { target: { value: 'Add content later' } })
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.directSuccess')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.openDirectly'))
 
     await waitFor(() => {
       const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string; slug?: string } }
@@ -2577,6 +2580,82 @@ describe('DocsHome — direct blank HTML creation', () => {
     await waitFor(() => expect(
       wk.apiClient.calls.filter((call) => call.method === 'get' && call.url.startsWith('/docs')).length,
     ).toBeGreaterThan(getsBefore))
+  })
+})
+
+describe('DocsHome — Bot HTML auto-send handoff', () => {
+  it('does not auto-send again when re-entering Docs before the first send ACK', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    wk.shared.currentSpaceId = 'space-current'
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
+        return { data: [{ uid: 'bot-1', name: 'Builder' }], status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.empty.recentNone')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.modeBot'))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: 'Build a launch page' },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
+
+    await waitFor(() => {
+      const first = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+      expect(first?.props?.autoSend).toBe(true)
+    })
+    // No bot-chat-sent click / onMessageSent ACK occurs before this re-entry.
+    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
+    const restored = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+    expect(restored?.props?.autoSend).toBe(false)
+  })
+
+  it('restores auto-send after the imperative handoff throws', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn((view: { props?: { autoSend?: boolean } }) => {
+      if (view?.props?.autoSend === true) throw new Error('right pane unavailable')
+    })
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    wk.shared.currentSpaceId = 'space-current'
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
+        return { data: [{ uid: 'bot-1', name: 'Builder' }], status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    setWKApp(wk)
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.empty.recentNone')).toBeTruthy())
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.modeBot'))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
+      target: { value: 'Build a launch page' },
+    })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
+
+    const failedHandoff = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+    expect(failedHandoff?.props?.autoSend).toBe(true)
+    replaceToRoot.mockImplementation(() => undefined)
+    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
+    const restored = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+    expect(restored?.props?.autoSend).toBe(true)
   })
 })
 
