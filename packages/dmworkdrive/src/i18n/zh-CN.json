@@ -4,7 +4,8 @@
   },
   "common": {
     "confirm": "确定",
-    "cancel": "取消"
+    "cancel": "取消",
+    "retry": "重试"
   },
   "space": {
     "personal": "个人空间",
@@ -45,7 +46,8 @@
   "saveModal": {
     "title": "存到云盘",
     "selectSpace": "选择目标空间",
-    "noSubfolder": "该文件夹下没有子文件夹"
+    "noSubfolder": "该文件夹下没有子文件夹",
+    "folderTruncated": "仅显示前 200 个文件夹，进入子文件夹继续浏览"
   },
   "contextMenus": {
     "saveToDrive": "存到云盘…",
@@ -187,6 +189,7 @@
     "moved": "移动成功",
     "copied": "复制成功",
     "deleted": "删除成功",
+    "saveToDriveSuccess": "已存到云盘",
     "spaceNotFound": "该空间不存在或已无访问权限"
   }
 }

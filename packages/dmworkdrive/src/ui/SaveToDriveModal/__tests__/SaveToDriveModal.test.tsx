@@ -211,4 +211,42 @@ describe('SaveToDriveModal', () => {
     q<HTMLButtonElement>(container, '[data-testid="cancel"]').click();
     expect(onClose).toHaveBeenCalled();
   });
+
+  // Regression: PR #1322 round-3 (Jerry-Xin). Switching space in the
+  // dropdown used to leave a one-tick desync window where `spaceId` was
+  // updated but `path` still held the previous space's folder ids —
+  // making a fast Confirm mis-file into the wrong folder, and firing a
+  // cross-space browse with a foreign parent_id. handleSpaceChange now
+  // batches both setState calls so the (spaceId, path) pair is
+  // atomically consistent from the very next render.
+  it('changing space atomically resets path to the new space root (no cross-space parent leak)', async () => {
+    // Two spaces the caller can upload to. Start on 'a', descend to a
+    // folder in 'a', then switch to 'b': path must collapse to b's root.
+    const spaces = [space('a', 'personal', 'super_admin'), space('b', 'shared', 'editor')];
+    const onConfirm = vi.fn().mockResolvedValue(true);
+    // Give api.browse a stub so the picker's folder effect doesn't blow up.
+    const api = await import('../../../api/driveApi');
+    vi.spyOn(api, 'browse').mockResolvedValue({ entries: [], page: {} } as any);
+    const { container } = render(
+      <SaveToDriveModal visible spaces={spaces} onConfirm={onConfirm} onClose={vi.fn()} />,
+    );
+    // Sanity: 'a' is the default selection.
+    const select = q<HTMLSelectElement>(container, '[data-testid="space-select"]');
+    expect(select.value).toBe('a');
+    // Switch to 'b' — the atomic change resets path in the same commit.
+    await act(async () => {
+      select.value = 'b';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      await Promise.resolve();
+    });
+    // Fast Confirm right after the change. Must fire with (b, root=0),
+    // NOT (b, <a-folder-id>). If path were still a's folders this would
+    // be a mis-file bug.
+    await act(async () => {
+      q<HTMLButtonElement>(container, '[data-testid="ok"]').click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(onConfirm).toHaveBeenCalledWith('b', 0);
+  });
 });

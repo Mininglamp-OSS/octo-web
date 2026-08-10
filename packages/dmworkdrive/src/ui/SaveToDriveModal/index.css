@@ -80,3 +80,9 @@
   color: var(--semi-color-text-2);
   flex-shrink: 0;
 }
+
+.drive-save__truncated {
+  font-size: var(--wk-text-size-sm);
+  color: var(--semi-color-text-2);
+  padding: var(--wk-sp-1) var(--wk-sp-1);
+}

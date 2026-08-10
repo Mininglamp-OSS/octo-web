@@ -13,8 +13,7 @@ import MessageRow from "../../ui/message/MessageRow";
 import { getFileMessageUI } from "../../bridge/message/useFileMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { isSafeUrl } from "../../Utils/security";
-import { isDriveTransferSupportedChannel, stripSpacePrefix, hasSpacePrefix } from "../../Service/SpacePrefix";
-import { ChannelTypePerson } from "wukongimjssdk";
+import { isDriveTransferSupportedChannel, imDriveTransferSourceKey } from "../../Service/SpacePrefix";
 import { I18nContext } from "../../i18n";
 
 export { FileContent } from "./FileContent";
@@ -461,19 +460,20 @@ export class FileCell extends MessageCell<any, FileCellState> {
     WKApp.mittBus.on("wk:drive-transferred-changed", this._driveTransferredListener);
   }
 
-  // sourceKey = `${channelType}#${normalisedChannelID}#${msgID}` — same formula
-  // as dmworkdrive/bridge/types.ts `imTransferredSourceKey` after
-  // `normaliseImChannelID`. Kept inline here so dmworkbase does not depend on
-  // dmworkdrive (dmworkdrive is a plugin on top). If either side ever
-  // changes the format, ALL sourceKey producers must move together.
+  // sourceKey is derived by @octo/base's `imDriveTransferSourceKey` — the
+  // SAME implementation dmworkdrive uses to construct the wire source_key
+  // and to key the mittBus 'wk:drive-transferred-changed' fan-out. Hosting
+  // both derivations in one place makes it impossible for FileCell's
+  // subscriber-side key to drift from the emitter-side key (Octo-Q /
+  // yujiawei review PR #1322 P2-6 — the earlier local inline version was
+  // an obvious silent-drift trap).
   private driveSourceKey(): string {
     const { message } = this.props;
-    const ct = message.channel.channelType;
-    let cid = message.channel.channelID;
-    if (ct === ChannelTypePerson && hasSpacePrefix(cid)) {
-      cid = stripSpacePrefix(cid);
-    }
-    return `${ct}#${cid}#${message.messageID}`;
+    return imDriveTransferSourceKey(
+      message.channel.channelType,
+      message.channel.channelID,
+      message.messageID,
+    );
   }
 
   componentDidUpdate() {

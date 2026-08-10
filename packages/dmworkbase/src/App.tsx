@@ -788,13 +788,19 @@ export default class WKApp extends ProviderListener {
   // state to "view in drive" without a follow-up query.
   static saveMessageToDrive?: (params: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
   // Save-to-drive with a target picker. Opens a modal where the caller
-  // chooses target space + folder; resolves after the transfer POST returns.
-  // Rejects on cancel or backend failure (the picker stays open on failure).
+  // chooses target space + folder; resolves after the transfer POST
+  // returns. Rejects ONLY on cancel — a backend failure surfaces via
+  // Toast.error and leaves the modal open for retry (a later successful
+  // retry then resolves the same promise). This inversion vs the earlier
+  // "reject on any failure" contract matches how the picker actually
+  // stays interactive; see PR #1322 review discussion.
   static saveMessageToDriveAt?: (params: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
   // Query whether an IM file (identified by the (channelType, channelID, msgID)
   // triple the backend uses to derive its source_key) is already transferred
-  // into the caller's personal drive space. Registered by DriveModule; the chat
-  // file card uses it to switch its icon action between "save" and "view".
+  // into ANY drive space the caller can see. Cross-space evolution of the
+  // earlier personal-only lookup: personal wins the tie-break, then the
+  // freshest shared save. Registered by DriveModule; the chat file card
+  // uses it to switch its icon action between "save" and "view".
   static checkDriveTransferred?: (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number } | null>;
   // Synchronous cache probe of the drive-transferred state — returns the
   // known entry, `null` for confirmed-not-transferred, or `undefined` when

@@ -68,6 +68,23 @@ export const stripSpacePrefix = (id: string) =>
 export const isDriveTransferSupportedChannel = (t: number) =>
   t === 1 || t === 2 || t === 5;
 
+// Mirror the real @octo/base helpers for the drive-transfer source_key.
+// Kept in sync with `packages/dmworkbase/src/Service/SpacePrefix.ts` — the
+// tests in driveApi.test.ts pin the format, so if the real helper drifts
+// these mocks must move too (that is exactly the drift-catching property
+// the parity test exists for).
+export const normaliseImDriveChannelID = (channelType: number, channelID: string): string => {
+  if (channelType !== 1) return channelID;
+  if (!hasSpacePrefix(channelID)) return channelID;
+  const bare = stripSpacePrefix(channelID);
+  return bare === '' ? channelID : bare;
+};
+export const imDriveTransferSourceKey = (
+  channelType: number,
+  channelID: string,
+  msgID: string,
+): string => `${channelType}#${normaliseImDriveChannelID(channelType, channelID)}#${msgID}`;
+
 export class Menus {
   constructor(
     public id: string,

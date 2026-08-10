@@ -45,6 +45,15 @@ export class DriveVM extends ProviderListener {
    */
   private loadSeq = 0;
 
+  /**
+   * Monotonic focus generation, same rationale as `loadSeq`: two quick
+   * "view in drive" clicks race across `getAncestors`, and the slower
+   * request MUST NOT overwrite state the newer click already committed.
+   * Every focusFile call claims the next value and every state write
+   * checks it's still the newest before touching the VM.
+   */
+  private focusSeq = 0;
+
   get personalSpace(): Space | null {
     return this.spaces.find((s) => s.type === 'personal') ?? null;
   }
@@ -87,6 +96,19 @@ export class DriveVM extends ProviderListener {
    */
   reset(): void {
     if (!this.loadStarted) return;
+    // Bump both generation counters so any in-flight loadSpaces AND any
+    // in-flight focusFile that started under the previous tenant will fail
+    // their post-await guards and refuse to commit to the freshly-reset
+    // VM. Without the focusSeq bump, a "view in drive" jump that was
+    // awaiting getAncestors when a host tenant switch fires reset() will
+    // still pass its `seq === this.focusSeq` check and write the previous
+    // tenant's activeSpaceId/path/highlight into the new tenant's VM,
+    // leaving a dangling activeSpaceId that DriveContent then browses
+    // under the wrong X-Space-Id. Reviewer Jerry-Xin / yujiawei / Octo-Q
+    // round-4 P1 on PR #1322: focusSeq alone serializes focus-vs-focus
+    // but does NOT cover focus-vs-reset.
+    this.loadSeq++;
+    this.focusSeq++;
     this.spaces = [];
     this.spacesError = null;
     this.activeSpaceId = null;
@@ -175,39 +197,71 @@ export class DriveVM extends ProviderListener {
    *  space even if the intermediate folders didn't paint.
    */
   async focusFile(spaceId: string, fileId: number, parentId?: number): Promise<void> {
-    this.ensureLoaded();
+    // Claim the newest focus generation. Any await point below re-checks this
+    // before touching state: two quick "view in drive" clicks (from a
+    // stack of message cards, or a click-into-drive followed by another
+    // click before ancestors resolve) must not see the slower resolution
+    // overwrite the newer one. Same discipline as loadSeq in loadSpaces.
+    const seq = ++this.focusSeq;
+
+    // Kick the first-time load if it hasn't started yet, then AWAIT its
+    // outcome — the previous version called both ensureLoaded (fire-and-
+    // forget) AND await loadSpaces (a fresh load) whenever the space
+    // wasn't found, so the cold path always paid for two listSpaces
+    // round-trips. Now: if loadStarted is false we ensure + await the
+    // already-in-flight load; if loadStarted is true we don't re-fetch
+    // unless we still don't know about the space.
+    if (!this.loadStarted) {
+      this.ensureLoaded();
+    }
+    if (this.spacesLoading) {
+      // Wait for the current load to settle via a listener-driven yield.
+      await new Promise<void>((resolve) => {
+        const off = this.addListener(() => {
+          if (!this.spacesLoading) {
+            off();
+            resolve();
+          }
+        });
+      });
+    }
+    if (seq !== this.focusSeq) return;
     let space = this.spaces.find((s) => s.id === spaceId);
-    // If the caller triggered focusFile before the first-time load
-    // resolved, `spaces` may still be empty here — retry once after a
-    // notifyListener tick would happen (loadSpaces is fire-and-forget).
-    // The simpler cover: rely on the caller's expectation that a saved-
-    // hit space is one the caller currently belongs to (the batch
-    // transferred-state lookup gates on membership), so the space either
-    // is in the list at focus time, or won't be after a load either.
     if (!space) {
-      // Reload once — the space may have been added between last
+      // Reload once — the space may have been added between the last
       // loadSpaces and this click (shared-space invite acceptance, etc.).
       await this.loadSpaces();
+      if (seq !== this.focusSeq) return;
       space = this.spaces.find((s) => s.id === spaceId);
     }
     if (!space) {
       Toast.error(t('drive.toast.spaceNotFound'));
       return;
     }
-    this.activeSpaceId = spaceId;
-    const rootCrumb: Crumb = { id: 0, name: spaceDisplayName(space, t) };
-    if (!parentId || parentId === 0) {
-      this.path = [rootCrumb];
-    } else {
-      let ancestors: Array<{ id: number; name: string }> = [];
+    // Resolve ancestors FIRST, then commit activeSpaceId / path /
+    // highlightFileId / notifyListener in one atomic block. The earlier
+    // version split the transition across the await: activeSpaceId
+    // updated synchronously → DriveContent's useFileList observed the
+    // new space with the previous space's path (currentParentId was a
+    // folder id from another space) → issued a cross-space
+    // `browse({space_id: <new>, parent_id: <old space's folder>})` that
+    // 404/403'd during the ancestors round-trip. Reviewer flagged this
+    // as the deep-jump race (Jerry-Xin / yujiawei / Octo-Q PR #1322).
+    let ancestors: Array<{ id: number; name: string }> = [];
+    if (parentId && parentId !== 0) {
       try {
         ancestors = await api.getAncestors(fileId);
       } catch {
         // Best-effort — leave ancestors empty and land on the space root.
         ancestors = [];
       }
-      this.path = [rootCrumb, ...ancestors.map((a) => ({ id: a.id, name: a.name }))];
+      if (seq !== this.focusSeq) return;
     }
+    const rootCrumb: Crumb = { id: 0, name: spaceDisplayName(space, t) };
+    this.activeSpaceId = spaceId;
+    this.path = ancestors.length === 0
+      ? [rootCrumb]
+      : [rootCrumb, ...ancestors.map((a) => ({ id: a.id, name: a.name }))];
     this.highlightFileId = fileId;
     this.notifyListener();
   }

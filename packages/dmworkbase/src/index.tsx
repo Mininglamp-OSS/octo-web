@@ -157,4 +157,4 @@ export { Channel, ChannelTypePerson } from 'wukongimjssdk'
 // Drive-transfer Space-prefix + supported-channel helpers used by both
 // dmworkbase (FileCell) and dmworkdrive (module.tsx). Single source of truth
 // for the channel-normalisation contract (#1261 review round 6).
-export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel } from './Service/SpacePrefix'
+export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel, normaliseImDriveChannelID, imDriveTransferSourceKey } from './Service/SpacePrefix'

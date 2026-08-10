@@ -454,49 +454,40 @@ export interface ImTransferredItem {
 // wukongimjssdk ChannelType numeric enum, duplicated here to avoid dragging
 // the runtime `wukongimjssdk` dependency into a pure-type wire-contract file.
 // Any drift would fail the source_key format test in driveApi.test.ts.
-const CHANNEL_TYPE_PERSON = 1;
+// (`isDriveTransferSupportedChannel` moved to `@octo/base` `Service/SpacePrefix.ts`
+// long ago; the normalise + source_key helpers below now delegate there so
+// there is a single authoritative implementation shared by dmworkbase and
+// dmworkdrive. See Octo-Q / yujiawei review PR #1322 P2-6: duplicating the
+// formula reintroduces the icon/menu divergence this feature exists to fix.)
 
-// Note: `isDriveTransferSupportedChannel` lives in `@octo/base`
-// (`Service/SpacePrefix.ts`) and is the single source of truth for the
-// supported channel set. Kept out of this file deliberately: bridge/types.ts
-// stays free of runtime imports from `@octo/base`, so the wire-contract tests
-// exercise this module without pulling the base package's mock surface into
-// scope (see #1261 review round 7 P0-3).
+import { normaliseImDriveChannelID, imDriveTransferSourceKey } from '@octo/base';
 
 /**
- * Normalise `channelID` to the shape octo-drive / octo-server key on. See
- * `ImTransferredItem` doc block for the per-channelType contract. This is the
- * ONE authoritative normalisation entry point for the drive-transfer path;
- * callers must not hand-strip.
+ * @deprecated Thin re-export of `@octo/base` `normaliseImDriveChannelID`. Kept
+ * under the original name so existing dmworkdrive call sites don't churn; new
+ * code should import from `@octo/base` directly. The two producers of a
+ * source_key (FileCell in dmworkbase, module.tsx save/check in dmworkdrive)
+ * MUST agree on this normalisation — hosting it in `@octo/base` makes that
+ * impossible to violate.
  */
 export function normaliseImChannelID(channelType: number, channelID: string): string {
-  if (channelType === CHANNEL_TYPE_PERSON) {
-    // Person only: strip `s<32-hex>_` Space prefix if present. No-op otherwise.
-    // Inlined against the SpacePrefix regex so `bridge/types.ts` stays free of
-    // runtime imports from `dmworkbase`.
-    const m = channelID.match(/^s[0-9a-f]{32}_(.+)$/);
-    return m ? m[1] : channelID;
-  }
-  return channelID;
+  return normaliseImDriveChannelID(channelType, channelID);
 }
 
 /**
- * Materialize the source_key string exactly as octo-drive's `buildSourceKey`
- * does: `${im_channel_type}#${im_group_no}#${im_msg_id}`.
- *
- * ⚠️  This is the ONLY place in octo-web that constructs a source_key. Callers
- * (module.tsx's batch dedupe / results read-back) MUST route through this
- * function so any future backend format change is localized to one edit
- * instead of drifting across call sites. Do not inline `${...}#${...}#${...}`
- * elsewhere.
- *
- * The Person path expects a **normalised** (unprefixed) `im_group_no`. Callers
- * building an ImTransferredItem from a `Channel` should use `normaliseImChannelID`
- * to strip the Space prefix on Person; #1261 review round 6 P1-1.
- *
- * Backend anchor: octo-drive `internal/modules/imtransfer/service.go`
- * `buildSourceKey`, migration `db/migrations/007_add_file_source_key.up.sql`.
+ * @deprecated Thin re-export of `@octo/base` `imDriveTransferSourceKey`.
+ * Same rationale as `normaliseImChannelID` above. Keeps this module's API
+ * stable while making it structurally impossible for the formula to drift
+ * between dmworkbase and dmworkdrive. Callers in this package should keep
+ * using this shape (it takes an `ImTransferredItem` for wire-parity with
+ * the batch request payload); the underlying key derivation is the single
+ * `@octo/base` implementation.
  */
 export function imTransferredSourceKey(item: ImTransferredItem): string {
-  return `${item.im_channel_type}#${item.im_group_no}#${item.im_msg_id}`;
+  // Callers hand this an ALREADY-normalised `im_group_no` (they pass through
+  // `normaliseImChannelID` upstream). `imDriveTransferSourceKey` normalises
+  // again defensively, which is a no-op for an already-bare id — so the
+  // resulting key is identical for well-formed callers, and safer for any
+  // future caller that forgets the pre-normalisation.
+  return imDriveTransferSourceKey(item.im_channel_type, item.im_group_no, item.im_msg_id);
 }
