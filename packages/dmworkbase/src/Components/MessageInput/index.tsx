@@ -269,7 +269,7 @@ interface MessageInputProps {
    */
   onCaptureSendTarget?: () => SendTargetSnapshot | undefined;
   /** Capture draft state before this send enters the serial queue. */
-  onCaptureSendDraft?: () => SendDraftSnapshot;
+  onCaptureSendDraft?: () => Omit<SendDraftSnapshot, "text">;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
@@ -398,6 +398,8 @@ export interface MessageInputContext {
    * two states is a possible refinement (#1333 review, non-blocking).
    */
   pendingSendCount: () => number;
+  /** Plain text of unsettled composes in consumption order, including empties. */
+  pendingSendDrafts: () => string[];
   /** Plain text of every unsettled compose, newest last. */
   pendingSendText: () => string;
 }
@@ -1072,7 +1074,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 结果编排在 sendFlow.ts 的 runSendWithConsumedCompose。
     // reply/edit 目标必须与 compose 同步取走（见 SendTargetSnapshot 注释）。
     const sendTarget = props.onCaptureSendTarget?.();
-    const sendDraft = props.onCaptureSendDraft?.();
+    const sendDraftBaseline = props.onCaptureSendDraft?.();
     // 本次消费会清空编辑器与本次附件，之前失败还原留下的偏移随之失效。
     restoreOffsetsRef.current = { blocks: 0, topAttachments: 0 };
     const expandedAtSend = expanded;
@@ -1138,6 +1140,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         });
       },
     });
+    const composeText = composeSnapshotText(handle.snapshot);
+    const sendDraft = sendDraftBaseline
+      ? { ...sendDraftBaseline, text: composeText }
+      : undefined;
 
     if (expanded) {
       setExpanded(false);
@@ -1152,7 +1158,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 丢失窗口），也包含「气泡已出现但仍在上传/等 ack」。后者保留是有意的：这些
     // 调用方要判断此刻能否安全拆掉会话，仍在排序的消息也算未完成的活。
     const pendingId = ++pendingSendSeqRef.current;
-    registerPendingSend(pendingId, composeSnapshotText(handle.snapshot));
+    registerPendingSend(pendingId, composeText);
     return getSendQueue()
       .enqueue(() =>
         runSendWithConsumedCompose(
@@ -1202,6 +1208,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         focus: () => editor?.commands.focus(),
         send: () => invokeReadySend(sendRef.current),
         pendingSendCount: () => pendingSendsRef.current.size,
+        pendingSendDrafts: () => Array.from(pendingSendsRef.current.values()),
         pendingSendText: () =>
           Array.from(pendingSendsRef.current.values())
             .filter((text) => text.trim() !== "")

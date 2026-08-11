@@ -118,8 +118,9 @@ import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
 import {
+  DraftPersistenceSource,
+  resolveDraftAfterSend,
   resolveDraftToPersist,
-  shouldClearDraftAfterSend,
 } from "../../Utils/draftLifecycle";
 import {
   isSuccessfulSendAck,
@@ -362,6 +363,7 @@ export class Conversation
   private _unsubscribeChannelInfoListener?: () => void;
   private draftSaveGeneration = 0;
   private latestSavedDraft = "";
+  private latestSavedDraftSource: DraftPersistenceSource = "empty";
   private _addAttachmentFn?: (
     files: File[],
     source?: "paste" | "upload"
@@ -1580,16 +1582,20 @@ export class Conversation
     return this.messageInputContext()?.pendingSendText?.() ?? "";
   }
 
+  private pendingSendDrafts(): string[] {
+    return this.messageInputContext()?.pendingSendDrafts?.() ?? [];
+  }
+
   markConversationExtra() {
     // 不要用空草稿覆盖「已消费但还没入队」的内容 (octo-web#1280 review)：
     // 输入框在发送开始时就被清空，离开会话时这里读到的是空串。
-    const draft = resolveDraftToPersist({
+    const { draft, source } = resolveDraftToPersist({
       liveDraft: this.messageInputContext()?.text() || "",
       pendingSendText: this.pendingSendText(),
-      existingDraft: this.vm.currentConversation?.remoteExtra?.draft || "",
     });
     this.draftSaveGeneration += 1;
     this.latestSavedDraft = draft;
+    this.latestSavedDraftSource = source;
     void this.updateConversationExtra(draft);
   }
 
@@ -1642,26 +1648,29 @@ export class Conversation
 
   async clearDraftAfterSend(
     sendDraftGeneration: number,
-    remoteDraftAtSend: string
+    remoteDraftAtSend: string,
+    sentDraft: string
   ) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
-    if (
-      !shouldClearDraftAfterSend({
-        liveDraft: this.messageInputContext()?.text() || "",
-        remoteDraft: remoteExtra?.draft || "",
-        remoteDraftAtSend,
-        draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
-        latestSavedDraft: this.latestSavedDraft,
-      })
-    ) {
+    const pendingDrafts = this.pendingSendDrafts();
+    const nextDraft = resolveDraftAfterSend({
+      liveDraft: this.messageInputContext()?.text() || "",
+      remoteDraft: remoteExtra?.draft || "",
+      remoteDraftAtSend,
+      draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
+      latestSavedDraft: this.latestSavedDraft,
+      latestSavedDraftSource: this.latestSavedDraftSource,
+      sentDraft,
+      pendingDrafts: pendingDrafts.length > 0 ? pendingDrafts : [sentDraft],
+    });
+    if (nextDraft === undefined) {
       return;
     }
 
-    if (remoteExtra) {
-      remoteExtra.draft = "";
-    }
+    this.latestSavedDraft = nextDraft;
+    this.latestSavedDraftSource = nextDraft ? "pending" : "empty";
     try {
-      await this.updateConversationExtra("");
+      await this.updateConversationExtra(nextDraft);
     } catch (err) {
       console.warn("[Conversation] clear draft after send failed", err);
     }
@@ -3299,7 +3308,8 @@ export class Conversation
                           if (mixedSent) {
                             await this.clearDraftAfterSend(
                               sendDraftGeneration,
-                              remoteDraftAtSend
+                              remoteDraftAtSend,
+                              sendDraft?.text ?? text
                             );
                           }
                           return finishRichTextMixedSend(
@@ -3379,7 +3389,8 @@ export class Conversation
                             if (mixedSent) {
                               await this.clearDraftAfterSend(
                                 sendDraftGeneration,
-                                remoteDraftAtSend
+                                remoteDraftAtSend,
+                                sendDraft?.text ?? text
                               );
                             }
                             // 返回部分结果 (octo-web#227 → #1280)：
@@ -3514,7 +3525,8 @@ export class Conversation
                         if (anyMessageSent) {
                           await this.clearDraftAfterSend(
                             sendDraftGeneration,
-                            remoteDraftAtSend
+                            remoteDraftAtSend,
+                            sendDraft?.text ?? text
                           );
                         }
                         if (anyMessageSent) this.props.onMessageSent?.();

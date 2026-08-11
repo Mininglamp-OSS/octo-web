@@ -1,31 +1,57 @@
-export interface ShouldClearDraftAfterSendOptions {
+export type DraftPersistenceSource = "live" | "pending" | "empty"
+
+export interface ResolveDraftAfterSendOptions {
     liveDraft?: string
     remoteDraft?: string
     remoteDraftAtSend?: string
     draftSavedAfterSend: boolean
     latestSavedDraft?: string
+    latestSavedDraftSource?: DraftPersistenceSource
+    sentDraft: string
+    pendingDrafts: string[]
 }
 
 /**
- * Decide whether the remote draft may be cleared after a send.
+ * Decide whether a successful send owns the persisted draft and, if it does,
+ * what should remain after that send settles.
  *
- * Since octo-web#1280 the composer is consumed synchronously. Any non-empty live
- * draft after that point is newer input, even if it happens to equal the sent
- * text. The generation and remote snapshot must be captured at consume time so a
- * queued send cannot mistake a draft saved while it waited for its own snapshot.
+ * `pendingDrafts` is ordered by send consumption. The currently executing send
+ * is first; later queued sends remain behind it. A persisted pending draft is
+ * therefore reduced from `A\nB` to `B` when A succeeds, then cleared when B
+ * succeeds. A live draft is never owned by the send, even when its text happens
+ * to be identical.
  */
-export function shouldClearDraftAfterSend({
+export function resolveDraftAfterSend({
     liveDraft,
     remoteDraft,
     remoteDraftAtSend,
     draftSavedAfterSend,
     latestSavedDraft,
-}: ShouldClearDraftAfterSendOptions): boolean {
-    if (liveDraft) return false
-    if (draftSavedAfterSend && latestSavedDraft) return false
-    if ((remoteDraft || "") !== (remoteDraftAtSend || "")) return false
+    latestSavedDraftSource,
+    sentDraft,
+    pendingDrafts,
+}: ResolveDraftAfterSendOptions): string | undefined {
+    if (liveDraft) return undefined
 
-    return true
+    const [currentPending = "", ...remainingPending] = pendingDrafts
+    if (currentPending !== sentDraft) return undefined
+
+    const pendingDraft = pendingDrafts.filter((draft) => draft.trim() !== "").join("\n")
+    const remainingDraft = remainingPending
+        .filter((draft) => draft.trim() !== "")
+        .join("\n")
+
+    if (draftSavedAfterSend) {
+        const ownsPersistedPendingDraft =
+            latestSavedDraftSource === "pending" &&
+            (latestSavedDraft || "") === pendingDraft &&
+            (remoteDraft || "") === pendingDraft
+        return ownsPersistedPendingDraft ? remainingDraft : undefined
+    }
+
+    if ((remoteDraft || "") !== (remoteDraftAtSend || "")) return undefined
+
+    return ""
 }
 
 export interface ResolveDraftToPersistOptions {
@@ -33,8 +59,11 @@ export interface ResolveDraftToPersistOptions {
     liveDraft: string
     /** Plain text of composes handed to a send that has not settled yet. */
     pendingSendText: string
-    /** The draft currently stored for this conversation. */
-    existingDraft: string
+}
+
+export interface ResolvedDraftPersistence {
+    draft: string
+    source: DraftPersistenceSource
 }
 
 /**
@@ -47,18 +76,17 @@ export interface ResolveDraftToPersistOptions {
  *
  * Rules:
  *   - the live composer content always wins (the user's newest intent);
- *   - while a send is in flight and the composer is empty, keep the stored draft
- *     as-is instead of clearing it — the in-flight content is not a draft (it is
- *     about to become a message, and its bubble owns retry from then on), but it
- *     must not destroy an older draft either;
+ *   - while a send is in flight and the composer is empty, persist its text as a
+ *     provisional draft so a pre-enqueue failure can survive editor teardown;
  *   - otherwise persist the (possibly empty) live value as before.
  */
 export function resolveDraftToPersist({
     liveDraft,
     pendingSendText,
-    existingDraft,
-}: ResolveDraftToPersistOptions): string {
-    if (liveDraft.trim() !== "") return liveDraft
-    if (pendingSendText.trim() !== "") return existingDraft
-    return liveDraft
+}: ResolveDraftToPersistOptions): ResolvedDraftPersistence {
+    if (liveDraft.trim() !== "") return { draft: liveDraft, source: "live" }
+    if (pendingSendText.trim() !== "") {
+        return { draft: pendingSendText, source: "pending" }
+    }
+    return { draft: liveDraft, source: "empty" }
 }

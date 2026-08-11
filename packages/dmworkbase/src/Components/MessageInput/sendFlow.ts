@@ -119,6 +119,8 @@ export interface SendTargetSnapshot {
 export interface SendDraftSnapshot {
   generation: number;
   remoteDraft: string;
+  /** Plain text synchronously consumed by this send. */
+  text: string;
 }
 
 /**
