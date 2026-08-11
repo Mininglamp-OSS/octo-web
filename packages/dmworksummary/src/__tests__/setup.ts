@@ -1,6 +1,15 @@
 import '@testing-library/jest-dom';
 import { server } from '../__mocks__/server';
 
+// ResizeObserver polyfill for jsdom (Semi UI + SummaryCreatePage chipResizeObserver trigger this)
+if (typeof ResizeObserver === 'undefined') {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 // Enable MSW before all tests
 beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
 afterEach(() => server.resetHandlers());

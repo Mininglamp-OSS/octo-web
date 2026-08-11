@@ -41,10 +41,19 @@ const DEVICE_ID_KEY = 'octo_track_device_id'
 /**
  * 独立上报通道,不复用业务 axios(§2.1)。
  *
- * 采集端**恒为同源相对路径** `/v1/e/b`:上报(及其携带的业务 token 头)只发给
- * 页面自身 origin,绝不出跨域。octo-dap 采集端如需独立部署 / 外部域名,由运维层在业务
- * 域名下反代该路径、定向到后端真实 collector 端点(`/v1/dap/collect`)实现,前端不感知——
- * 从而避免"业务 token 被发往可配置任意外域"的凭据外泄风险(见 PR review P0-4)。
+ * **浏览器侧恒为同源相对路径** `/v1/e/b`:上报请求(及其携带的业务 token 头)从浏览器发出时
+ * 只打到页面自身 origin,绝不由前端直连任何外域。这道同源锁把"前端可被配置成把 token 发往
+ * 任意外部域名"的风险从结构上消除(见 PR review P0-4)。
+ *
+ * 边界要如实说清:同源只约束**浏览器这一跳**。请求到达业务 origin 后,由 nginx 的
+ * `location = /v1/e/b` 反代到运维配置的 collector(TRACK_API_URL,rewrite 到 `/v1/dap/collect`),
+ * 并透传 `token` 头供后端按凭证鉴权归一 actor——也就是说 token 确实会被中转给 TRACK_API_URL
+ * 所指的后端,目的地由**运维配置**决定,而非前端写死。故安全性依赖两条**运维前置**
+ * (见 nginx.conf.template 同名 location 注释):
+ *   ① TRACK_API_URL 必须指向集群内 / 受信 collector,绝不可配成不受信的外部地址;
+ *   ② collector 不得记录 / 落盘 `token` 头(它是会话业务凭据,仅供即时鉴权)。
+ * 前端能保证的仅是浏览器这一跳的同源;越过该跳之后的信任由部署拓扑与 collector 承担。
+ *
  * 路径刻意取中性名(不含 track/collect/analytics/beacon/telemetry/pixel 等词):这些词全在
  * EasyPrivacy / uBlock Origin 默认过滤表里,装了隐私插件的浏览器(企业内网常见)会直接
  * 掐掉该请求 → 前端拿到 blocked、走 retry→drop,静默丢数据且难排查(见 PR #1330 review)。
@@ -258,6 +267,12 @@ class DapImpl {
     private seenViews = new WeakSet<Element>()
     /** 内部计数:上报最终失败丢弃数,只自增不外抛 */
     private droppedCount = 0
+    /**
+     * 停采钩子:setEnabled(false) 时逐个调用。给「模块级持有缓存」的破例点(如消息补点的
+     * intents Map)一个在 kill switch 触发时清空自身的入口——否则停采后这些缓存会继续常驻。
+     * 幂等注册由调用方保证(如 ensureGlobalAckListener 只注册一次)。
+     */
+    private disableHooks: Array<() => void> = []
 
     /**
      * 启动蒙版:登记卸载兜底 + 定时 flush。幂等,只装一次。
@@ -318,6 +333,8 @@ class DapImpl {
             this.lastPage = null
             for (const t of this.retryTimers) clearTimeout(t)
             this.retryTimers.clear()
+            // 通知破例点清空各自的模块级缓存(如消息补点 intents),使停采后零常驻残留。
+            for (const cb of this.disableHooks) this.safe(cb)
         } else if (!was) {
             // 首次启用:惰性装采集机制(dark 态从未装过),再补扫当前 DOM。
             this.installCollectors()
@@ -398,6 +415,22 @@ class DapImpl {
         return { enabled: this.enabled, queued: this.queue.length, dropped: this.droppedCount }
     }
 
+    /**
+     * 采集是否启用。供极少数破例点(如消息补点 trackMessage.ts)做 **fail-closed 前置判断**:
+     * dark 态(默认未启用)下这些点应彻底不工作——不绑监听、不建缓存,真正零常驻开销。
+     */
+    isEnabled(): boolean {
+        return this.enabled
+    }
+
+    /**
+     * 注册停采钩子:setEnabled(false) 时被调用一次。破例点若持有模块级缓存,应在此清空,
+     * 使 kill switch 关闭后不留任何常驻状态。调用方须保证只注册一次(见 trackMessage.ts)。
+     */
+    onDisabled(cb: () => void): void {
+        this.disableHooks.push(cb)
+    }
+
     // ---------------------------------------------------------------- 内部
 
     private envelope(
@@ -470,11 +503,14 @@ class DapImpl {
             const token = this.currentToken()
             if (token) headers['token'] = token // 与业务同名头,后端按 token 鉴权并归一 actor
             const body = JSON.stringify({ events: batch })
+            // 常规批次用普通 fetch,**不加 keepalive**:keepalive 请求共享一个很小的配额
+            // (整页所有 keepalive 请求 body 合计上限约 64KB),且语义是为「文档卸载中仍要发出」
+            // 而设——常规运行期的批次不需要它,滥用会挤占真正卸载兜底(unloadFlush)的配额
+            // (见 PR review P2)。卸载期才用 keepalive,见 unloadFlush。
             void fetch(BATCH_PATH, {
                 method: 'POST',
                 headers,
                 body,
-                keepalive: true,
                 // 鉴权走 token 头,不依赖 cookie;仍用裸 fetch 不走业务拦截器,401 不触发登出重定向
                 credentials: 'omit',
             })
@@ -609,7 +645,7 @@ class DapImpl {
                 continue
             }
             if (key.startsWith('track') && key.length > 5) {
-                // dataset.trackTabName -> track_tab_name
+                // dataset.trackTabName -> tab_name(去掉 track 前缀后转 snake_case)
                 const rest = key.slice(5)
                 const snake = rest.replace(/([A-Z])/g, (m, c: string, i: number) =>
                     (i === 0 ? '' : '_') + c.toLowerCase(),
@@ -827,11 +863,17 @@ class DapImpl {
                     // (否则一个 loadend 会补发历史请求的 http_request,见 review P2)。
                     // abort 与 loadend 都会在取消时触发,且 abort 先于 loadend;命中 abort 就
                     // 标记跳过,不把用户主动取消记成 status 0→'err'(见 PR review P1-2)。
+                    // 正常完成(无 abort)时在 loadend 里主动摘掉 abort 监听:once 的 abort 监听
+                    // 若一直不触发就不会自动摘,复用实例多次正常完成会累积一串死监听(见 review P2)。
                     let aborted = false
-                    this.addEventListener('abort', () => { aborted = true }, { once: true })
+                    const onAbort = () => { aborted = true }
+                    this.addEventListener('abort', onAbort, { once: true })
                     this.addEventListener(
                         'loadend',
-                        () => { if (!aborted) emit(url, method, this.status, Date.now() - start) },
+                        () => {
+                            this.removeEventListener('abort', onAbort)
+                            if (!aborted) emit(url, method, this.status, Date.now() - start)
+                        },
                         { once: true },
                     )
                 }

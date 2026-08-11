@@ -1,7 +1,7 @@
 import React, { Component, createRef } from 'react';
 import { Modal, Toast, Tag, Button, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
 import { IconPlus, IconClock, IconChevronDown } from '@douyinfe/semi-icons';
-import { WKApp, I18nContext, Dap } from '@octo/base';
+import { WKApp, I18nContext } from '@octo/base';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
 import type { ReplaceMode, SelectionRange } from '@octo/base/src/Components/VoiceInputButton';
 import type { TopicTemplate, ChatCandidate, ScheduleConfig, CreateAgentSummaryParams, ChatMessage } from '../types/summary';
@@ -387,12 +387,6 @@ export default class ChatSummaryNewModal extends Component<
 
         const sourceType = getSourceType(channel);
         if (sourceType === null) return;
-
-        // smart_summary_started 从「开始」按钮的 data-track 挪到这里:该按钮点击(handlePrimaryClick)
-        // 与输入框 Enter 提交(见 render onKeyDown)两条入口都汇入 handleSubmit,声明式 data-track
-        // 只挂在按钮上会漏掉 Enter 提交(PR #1320 review P1-4)。在通过前置校验、真正发起创建的
-        // 唯一收口点补发,两条入口都覆盖且不会因禁用态误发。
-        Dap.shared.track('smart_summary_started', { object_id: channel?.channelID });
 
         this.setState({ submitting: true });
         try {

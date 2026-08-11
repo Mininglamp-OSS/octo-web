@@ -3,6 +3,7 @@ import { render as rtlRender, screen, fireEvent, act } from '@testing-library/re
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SummaryCreatePage from '../SummaryCreatePage';
 import * as api from '../../api/summaryApi';
+import { Dap } from '@octo/base';
 
 import * as summaryHelpers from '../../utils/summaryHelpers';
 vi.mock('@douyinfe/semi-ui', () => ({
@@ -746,5 +747,36 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         const arg = (api.createAgentSummary as any).mock.calls[0][0];
         expect(arg.origin_channel_id).toBeUndefined();
         expect(arg.origin_channel_type).toBeUndefined();
+    });
+});
+
+describe('SummaryCreatePage — smart_summary_started 收口 (PR #1330 blocker②)', () => {
+    // 事件已从「开始」按钮的声明式 data-track 挪进 handleSubmit(真正发起创建的收口点):
+    //   - agent 模式点主按钮 handlePrimaryClick 短路、不提交 → 不应记幻影 started;
+    //   - normal 模式提交(点按钮 / Enter 都汇入 handleSubmit)→ 恰一条 started,带 trigger_mode。
+    // 若把 data-track 退回按钮上,agent 模式点击就会误发一条 → 下面第一个断言变红(delete-the-fix)。
+    it('fires once from handleSubmit(normal) but NOT from an agent-mode primary click', async () => {
+        const spy = vi.spyOn(Dap.shared, 'track');
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} embedded onSubmit={vi.fn()} source="summary_home" />);
+            await flushPromises();
+        });
+        const instance = ref.current as any;
+
+        // agent 模式:主按钮短路,不发 started
+        await act(async () => { instance.setState({ mode: 'agent', topic: 'hi' }); });
+        spy.mockClear();
+        instance.handlePrimaryClick();
+        expect(spy.mock.calls.some((c: any[]) => c[0] === 'smart_summary_started')).toBe(false);
+
+        // normal 模式:真正提交,收口点补发恰一条(带 trigger_mode / source)
+        await act(async () => { instance.setState({ mode: 'normal', topic: 'hi' }); });
+        spy.mockClear();
+        await act(async () => { await instance.handleSubmit(); });
+        const started = spy.mock.calls.filter((c: any[]) => c[0] === 'smart_summary_started');
+        expect(started).toHaveLength(1);
+        expect(started[0][1]).toMatchObject({ trigger_mode: 'normal', source: 'summary_home' });
+        spy.mockRestore();
     });
 });

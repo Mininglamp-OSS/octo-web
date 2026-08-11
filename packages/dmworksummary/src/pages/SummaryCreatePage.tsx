@@ -585,6 +585,18 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (!this.canSubmit()) return;
         const summaryTitle = deriveSummaryTitle(topic);
 
+        // smart_summary_started 收口在这里,而非「开始」按钮的声明式 data-track。按钮 onClick
+        // 是 handlePrimaryClick——agent 模式下它**不提交**(短路 return),但捕获阶段的 data-track
+        // 委托照样会触发,给 agent 模式记一条根本没发起的幻影 started(见 PR #1330 review blocker②)。
+        // 挪到通过 canSubmit、真正发起创建的唯一收口点:normal 模式两条入口(点按钮 / Enter)都覆盖,
+        // agent 模式(不经 handleSubmit)天然不误发。
+        Dap.shared.track('smart_summary_started', {
+            object_id: this.props.channel?.channelID,
+            source: this.props.source,
+            entry_point: this.props.source,
+            trigger_mode: this.state.mode,
+        });
+
         this.setState({ submitting: true, error: null });
         try {
             const params: CreateSummaryParams = {
@@ -1373,11 +1385,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             loading={submitting}
                             disabled={!this.canSubmit() || submitting}
                             onClick={this.handlePrimaryClick}
-                            data-track="smart_summary_started"
-                            data-object-id={this.props.channel?.channelID}
-                            data-track-source={this.props.source}
-                            data-track-entry-point={this.props.source}
-                            data-track-trigger-mode={this.state.mode}
                         >
                             <Sparkles size={16} />
                             {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}

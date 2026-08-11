@@ -43,6 +43,9 @@ const MAX_INTENTS = 500
 
 export function rememberSendIntent(clientSeq: number | undefined, intent: SendIntent): void {
     if (!clientSeq) return
+    // fail-closed:采集未启用(默认 dark 态)时彻底不工作——不绑常驻 sendack 监听、不建 intents,
+    // 真正零常驻开销。启用后才惰性绑定,停采时 onDisabled 钩子清空 intents(见 ensureGlobalAckListener)。
+    if (!Dap.shared.isEnabled()) return
     // sendack 到达前用户可能已切走频道,发送 VM 卸载、其 messageStatusListener 被摘,
     // 故消费 sendack 的监听必须**独立于任何 VM**。见 ensureGlobalAckListener。
     ensureGlobalAckListener()
@@ -54,7 +57,9 @@ export function rememberSendIntent(clientSeq: number | undefined, intent: SendIn
 }
 
 /**
- * 常驻(与任何 ConversationVM 无关)的 sendack 监听:纯按 clientSeq 消费 intents。
+ * VM 无关的 sendack 监听:纯按 clientSeq 消费 intents。**惰性绑定**——只在采集启用后、
+ * 首次 rememberSendIntent 时才注册(dark 态从不绑,零常驻开销);一旦绑定即随会话存活
+ * (WKSDK 监听无从摘除),但停采后其回调 fail-closed 直接 no-op、intents 也被 onDisabled 清空。
  *
  * 此前 message_sent / ai_mentioned / bot_create_started 只在**发送会话自己**的 VM 的
  * sendack 回调里补点(updateMessageStatusBySendAck → findMessageWithClientSeq 需命中本 VM
@@ -62,9 +67,9 @@ export function rememberSendIntent(clientSeq: number | undefined, intent: SendIn
  * 新挂载 VM 找不到该 clientSeq,message_sent 被静默丢弃——系统性少计"快速切频道 / 慢网"
  * 用户的旗舰事件(见 PR #1320 review P1-3)。
  *
- * intents 本就是模块级、跨 VM 存活;把消费点搬到一个常驻 chatManager 监听后,切频道再也
- * 吞不掉事件。trackMessageSent 消费即 delete,故即便与旧 VM 路径并存也天然去重、绝不双记;
- * 无 intent(如转发)则直接 no-op。幂等,仅注册一次。
+ * intents 本就是模块级、跨 VM 存活;把消费点搬到一个 VM 无关的监听后,切频道再也吞不掉事件。
+ * trackMessageSent 消费即 delete,故即便与旧 VM 路径并存也天然去重、绝不双记;无 intent
+ * (如转发)则直接 no-op。幂等,仅注册一次。
  */
 let ackListenerBound = false
 function ensureGlobalAckListener(): void {
@@ -75,6 +80,9 @@ function ensureGlobalAckListener(): void {
             if (p && p.reasonCode === 1) trackMessageSent(p.clientSeq)
         })
         ackListenerBound = true
+        // 停采时清空 intents,使 kill switch 关闭后不留常驻缓存。监听本身无法从 WKSDK 摘除,
+        // 但其回调 trackMessageSent 已 fail-closed(见下),停采后即便触发也 no-op。
+        Dap.shared.onDisabled(() => intents.clear())
     } catch {
         /* WKSDK 尚未就绪等异常一律吞掉,不影响业务发送 */
     }
@@ -83,6 +91,8 @@ function ensureGlobalAckListener(): void {
 /** sendack Normal(reasonCode===1)时调:发 message_sent(+ ai_mentioned / bot_create_started)。 */
 export function trackMessageSent(clientSeq: number | undefined): void {
     if (!clientSeq) return
+    // fail-closed:停采后即便常驻监听仍在、intents 已被清空,这里也直接 no-op(双保险)。
+    if (!Dap.shared.isEnabled()) return
     const intent = intents.get(clientSeq)
     if (!intent) return // 无意图(非本 vm 发送路径,如转发)不补点,避免歧义
     intents.delete(clientSeq)

@@ -62,13 +62,14 @@ export MARKET_API_URL
 DRIVE_API_URL="${DRIVE_API_URL%/}"
 export DRIVE_API_URL
 
-# octo-dap telemetry collector upstream for the /track location. Blank by
-# default (503 when unset) — same shape as the hosts above. Trailing slash
-# stripped: proxy_pass uses `$track_api_url$request_uri`, so a trailing slash
-# would produce a double-slash upstream. Must be in the envsubst allowlist or
-# the literal `${TRACK_API_URL}` would survive into the generated config and
-# defeat the blank-value guard (`if ($track_api_url = "")`), so the /track route
-# would 503 regardless of what the operator configures.
+# octo-dap telemetry collector upstream for the `location = /v1/e/b` block. Blank
+# by default (503 when unset) — same shape as the hosts above. Trailing slash
+# stripped: that block rewrites to a fixed `/v1/dap/collect` and proxy_passes
+# `$track_api_url` (no URI), so a trailing slash on the host would produce a
+# double-slash upstream. Must be in the envsubst allowlist or the literal
+# `${TRACK_API_URL}` would survive into the generated config and defeat the
+# blank-value guard (`if ($track_api_url = "")`), so the telemetry route would
+# 503 regardless of what the operator configures.
 : "${TRACK_API_URL:=}"
 TRACK_API_URL="${TRACK_API_URL%/}"
 export TRACK_API_URL

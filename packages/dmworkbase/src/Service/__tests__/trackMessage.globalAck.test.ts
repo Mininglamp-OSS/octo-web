@@ -15,12 +15,18 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const trackCalls: Array<{ name: string; props: Record<string, unknown> }> = []
 let ackCb: ((p: { reasonCode: number; clientSeq: number }) => void) | null = null
+let enabled = true
+let disableHook: (() => void) | null = null
 
 vi.mock('../Dap', () => ({
     Dap: {
         shared: {
             track: (name: string, props: Record<string, unknown>) => {
                 trackCalls.push({ name, props })
+            },
+            isEnabled: () => enabled,
+            onDisabled: (cb: () => void) => {
+                disableHook = cb
             },
         },
     },
@@ -49,6 +55,8 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
     beforeEach(() => {
         trackCalls.length = 0
         ackCb = null
+        enabled = true
+        disableHook = null
     })
 
     function named(name: string) {
@@ -111,5 +119,37 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
         const mentioned = named('ai_mentioned')
         expect(mentioned).toHaveLength(2)
         expect(mentioned.map((m) => m.props.bot_id)).toEqual(['bot-a', 'bot-b'])
+    })
+
+    // ---- fail-closed(对应 PR #1330 review 的 blocker①):dark 态零常驻,停采清缓存 ----
+
+    it('disabled: binds NO sendack listener and remembers no intent (fail-closed, zero resident)', async () => {
+        const { rememberSendIntent } = await freshTrack()
+        enabled = false // 采集未启用(默认 dark 态)
+
+        rememberSendIntent(200, { channelId: 'g9', channelType: 2, mentionAis: false })
+        // 去掉 rememberSendIntent 顶部的 isEnabled 门,这里就会绑定常驻监听 → 断言变红(delete-the-fix)
+        expect(ackCb, '未启用时不得绑定常驻 sendack 监听').toBeNull()
+
+        // 即便此后有人手动触发(不会发生,监听没绑),也不应补点
+        enabled = true
+        expect(named('message_sent')).toHaveLength(0)
+    })
+
+    it('kill switch: setEnabled(false) clears buffered intents so a late sendack emits nothing', async () => {
+        const { rememberSendIntent } = await freshTrack()
+
+        // 启用态记下意图并绑定监听 + 停采钩子
+        rememberSendIntent(201, { channelId: 'g10', channelType: 2, mentionAis: false })
+        expect(ackCb).toBeTruthy()
+        expect(disableHook, '绑定监听时应同时注册停采钩子').toBeTruthy()
+
+        // 停采:钩子清空 intents;之后 sendack 才到达
+        enabled = false
+        disableHook!()
+        ackCb!({ reasonCode: 1, clientSeq: 201 })
+
+        // intents 被清 + trackMessageSent 的 isEnabled 门,双保险:一条都不发
+        expect(named('message_sent')).toHaveLength(0)
     })
 })

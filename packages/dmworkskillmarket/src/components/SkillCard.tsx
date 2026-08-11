@@ -177,7 +177,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       aria-label={ariaLabel}
       onClick={() => onOpen(skill)}
       onKeyDown={handleKeyDown}
-      data-track="market_card_viewed"
+      data-track="market_card_opened"
       data-object-id={skill.id}
       data-track-item-type="skill"
     >
@@ -268,7 +268,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       <div
         className="skill-market-card__footer"
         onClick={(event) => event.stopPropagation()}
-        // The <article> root carries data-track="market_card_viewed"; the global
+        // The <article> root carries data-track="market_card_opened"; the global
         // click delegate runs in capture phase, BEFORE this stopPropagation, so an
         // owner edit/delete click here would still resolve closest('[data-track]')
         // to the card and emit a false view. data-track-ignore makes the delegate

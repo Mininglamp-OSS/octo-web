@@ -24,7 +24,7 @@ server {
         # whole container at startup (same pattern as the doc/backend hosts below).
         set $drive_api_url "${DRIVE_API_URL}";
         # octo-dap telemetry collector (TRACK_API_URL) upstream, as a runtime nginx
-        # variable so an unset/unresolvable host 503s its own /track route instead of
+        # variable so an unset/unresolvable host 503s its own /v1/e/b route instead of
         # aborting the whole container at startup (same pattern as the hosts below).
         set $track_api_url "${TRACK_API_URL}";
         # octo-doc (DOC_APP_URL) + octo-docs-backend (DOCS_BACKEND_URL) upstreams, as
@@ -241,6 +241,14 @@ server {
         # rewrite to that fixed upstream URI and proxy_pass WITHOUT a URI (same
         # variable-in-proxy_pass caveat as /summary/ and /market/) — $request_uri is
         # NOT forwarded, so renaming the public path never touches the backend contract.
+        #
+        # SECURITY PRECONDITION (see Dap.ts BATCH_PATH comment): this block relays the
+        # session `token` header to $track_api_url. The frontend's same-origin lock only
+        # guarantees the browser hop; from here the token travels to whatever TRACK_API_URL
+        # resolves to. Therefore, by deployment contract: (1) TRACK_API_URL MUST point at an
+        # in-cluster / trusted collector, never an untrusted external host; (2) the collector
+        # MUST NOT log or persist the `token` header (it is a live business credential used
+        # only for request-time auth). Do not point this at an arbitrary third-party endpoint.
         location = /v1/e/b {
             default_type application/json;
             if ($track_api_url = "") {

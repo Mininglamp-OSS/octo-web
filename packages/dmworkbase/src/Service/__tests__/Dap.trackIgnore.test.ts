@@ -75,16 +75,16 @@ describe('Dap — declarative click skips data-track-ignore children (P1-A4) in 
         expect(events('channel_opened')).toHaveLength(1)
     })
 
-    it('market card: a click inside the data-track-ignore footer does NOT emit market_card_viewed, but the install button keeps its own event (P1-2)', async () => {
+    it('market card: a click inside the data-track-ignore footer does NOT emit market_card_opened, but the install button keeps its own event (P1-2)', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.init()
         Dap.shared.setEnabled(true)
 
-        // 市场卡片形状(McpCard/SkillCard):卡根 data-track=market_card_viewed;
+        // 市场卡片形状(McpCard/SkillCard):卡根 data-track=market_card_opened;
         // footer 用 data-track-ignore 罩住编辑/删除,但 install 按钮自带 data-track。
         const card = document.createElement('div')
         card.setAttribute('role', 'button')
-        card.setAttribute('data-track', 'market_card_viewed')
+        card.setAttribute('data-track', 'market_card_opened')
         card.setAttribute('data-object-id', 'card-1')
 
         const body = document.createElement('div') // 卡片主体,点它=打开详情
@@ -105,7 +105,7 @@ describe('Dap — declarative click skips data-track-ignore children (P1-A4) in 
         installBtn.dispatchEvent(new Event('click', { bubbles: true })) // 记 install,不记 view
 
         Dap.shared.flush()
-        expect(events('market_card_viewed')).toHaveLength(1)
+        expect(events('market_card_opened')).toHaveLength(1)
         expect(events('skill_install_clicked')).toHaveLength(1)
     })
 })

@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
  * 键盘激活补采契约(对应 PR #1320 review 的 P1-4 blocking):
  *   市场卡片(McpCard/SkillCard)是 div/article + role="button" + 自定义 onKeyDown 的
  *   **非原生**控件。Enter/Space 激活时浏览器**不派发 click**,只靠 click 委托会整条漏采
- *   键盘用户的 market_card_viewed。委托必须另听 keydown,对非原生可激活元素补发;而原生
+ *   键盘用户的 market_card_opened。委托必须另听 keydown,对非原生可激活元素补发;而原生
  *   button/a[href]/input 等会自行合成 click(click 委托已覆盖),keydown 必须显式跳过它们,
  *   否则一次键盘激活记两遍。
  *
@@ -54,7 +54,7 @@ describe('Dap — keyboard activation of non-native role=button emits, native do
         el.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
     }
 
-    it('emits market_card_viewed on Enter/Space over a non-native role=button card', async () => {
+    it('emits market_card_opened on Enter/Space over a non-native role=button card', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.init()
         Dap.shared.setEnabled(true)
@@ -63,7 +63,7 @@ describe('Dap — keyboard activation of non-native role=button emits, native do
         const card = document.createElement('div')
         card.setAttribute('role', 'button')
         card.setAttribute('tabindex', '0')
-        card.setAttribute('data-track', 'market_card_viewed')
+        card.setAttribute('data-track', 'market_card_opened')
         card.setAttribute('data-object-id', 'card-1')
         document.body.appendChild(card)
 
@@ -72,7 +72,7 @@ describe('Dap — keyboard activation of non-native role=button emits, native do
 
         Dap.shared.flush()
         // 两次键盘激活各补发一次(旧实现只听 click → 0 条,delete-the-fix 立即变红)
-        expect(events('market_card_viewed')).toHaveLength(2)
+        expect(events('market_card_opened')).toHaveLength(2)
     })
 
     it('does NOT emit on non-activation keys', async () => {
@@ -82,7 +82,7 @@ describe('Dap — keyboard activation of non-native role=button emits, native do
 
         const card = document.createElement('div')
         card.setAttribute('role', 'button')
-        card.setAttribute('data-track', 'market_card_viewed')
+        card.setAttribute('data-track', 'market_card_opened')
         document.body.appendChild(card)
 
         keydown(card, 'a')
@@ -90,7 +90,7 @@ describe('Dap — keyboard activation of non-native role=button emits, native do
         keydown(card, 'ArrowDown')
 
         Dap.shared.flush()
-        expect(events('market_card_viewed')).toHaveLength(0)
+        expect(events('market_card_opened')).toHaveLength(0)
     })
 
     it('does NOT double-count a native <button data-track>: keydown skips it, click covers it', async () => {
@@ -121,7 +121,7 @@ describe('Dap — keyboard activation of non-native role=button emits, native do
         // 时浏览器合成的是「按钮的 click」,不应被 keydown 误当成「打开卡片」。
         const card = document.createElement('div')
         card.setAttribute('role', 'button')
-        card.setAttribute('data-track', 'market_card_viewed')
+        card.setAttribute('data-track', 'market_card_opened')
         const editBtn = document.createElement('button')
         card.appendChild(editBtn)
         document.body.appendChild(card)
@@ -129,6 +129,6 @@ describe('Dap — keyboard activation of non-native role=button emits, native do
         keydown(editBtn, 'Enter')
 
         Dap.shared.flush()
-        expect(events('market_card_viewed')).toHaveLength(0)
+        expect(events('market_card_opened')).toHaveLength(0)
     })
 })
