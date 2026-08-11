@@ -3573,7 +3573,7 @@
 .wk-mcp-expert-pub__member-role {
   flex: 1 1 auto;
   min-width: 0;
-  gap: var(--wk-sp-1) !important;
+  gap: var(--wk-sp-1);
 }
 
 .wk-mcp-expert-pub__member-role > span {
@@ -3590,7 +3590,7 @@
 
 .wk-mcp-expert-pub__member-leader {
   flex: 0 0 auto;
-  flex-direction: row !important;
+  flex-direction: row;
   align-items: center;
   gap: var(--wk-sp-1);
   height: 30px;
@@ -4122,4 +4122,3 @@
     align-items: stretch;
   }
 }
-
