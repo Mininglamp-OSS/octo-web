@@ -391,6 +391,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.clearAllTimers();
             // Blocking 5：切 task 立即清空上一 task 的 schedule 状态，避免在新 detail
             // 返回前闪现旧定时（bump seq 由 loadDetail 内部完成，令旧 loadSchedule 作废）。
+            // round-13 P1（@yujiawei addendum P1-2 / @mochashanyao P1）：
+            // 同时 reset lastKnownStatus —— 它是 status-transition tip 的 baseline，
+            // 三处 write / 零处 reset，若不在此处清空,上一 task 的 status 会污染新 task
+            // 的 shouldEmitOnStatusTransition 判定(fabricated / suppressed 双向都可能)。
+            // Reset 到 undefined 后,shouldEmit(undefined, *, *) 短路返回 false,
+            // 变成"首次观察 terminal task 不 fire"的既有契约 —— silence over wrong
+            // announcement,acceptable trade(reviewer 明确)。
             this.setState({
                 scheduleItem: null,
                 scheduleLoading: false,
@@ -410,6 +417,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 teamStreamingContent: "",
                 teamStreamError: null,
                 teamStreaming: false,
+                lastKnownStatus: undefined,
             });
             this.streamClosedTaskId = null;
             this.teamStreamClosedTaskId = null;
