@@ -94,6 +94,7 @@ vi.mock('../ppt/PptDocView.tsx', () => ({
 
 import {
   StandaloneDocPage,
+  forbiddenTitleFrom,
   parseStandaloneDocId,
   isStandaloneDocPath,
   viewerCurrentSpace,
@@ -106,8 +107,8 @@ import {
 } from './StandaloneDocPage.tsx'
 
 /** Axios-style rejection shape the docs error handlers read (`err.response.status`). */
-function apiError(status: number) {
-  return { response: { status } }
+function apiError(status: number, data?: unknown) {
+  return { response: { status, ...(data === undefined ? {} : { data }) } }
 }
 
 let wk: ReturnType<typeof createMockWKApp>
@@ -270,6 +271,150 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(post.body).toBeUndefined()
     expect(post.config?.headers?.['X-Space-Id']).toBeUndefined()
     expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/owned_bots'))).toBe(false)
+  })
+
+  // Naming the document on the no-access landing (product decision, leader). Asking someone to
+  // 申请访问 a document the page will not name is a dead end: the viewer cannot tell WHICH document
+  // they are requesting, and the chat share card already showed them the title before they clicked.
+  // The backend discloses the title in the 403 body of the open-context preflight. Be accurate about
+  // the bound: open-context locates by docId ALONE and has NO same-space gate, so a 403 can reach a
+  // caller from any Space or none — what bounds it is holding the docId plus having already learned
+  // the doc exists from getting 403 rather than 404.
+  describe('forbidden landing — the document name', () => {
+    const forbiddenWith = (data?: unknown) => {
+      wk.apiClient.responder = (method, url) => {
+        if (method === 'get' && url === '/docs/d_forbidden/open-context') throw apiError(403, data)
+        if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
+        return { data: {}, status: 200 }
+      }
+      render(<StandaloneDocPage docId="d_forbidden" />)
+      return waitFor(() =>
+        expect(screen.getByText('docs.error.permission.forbidden')).toBeTruthy(),
+      )
+    }
+
+    it('shows the title the 403 disclosed', async () => {
+      await forbiddenWith({ error: 'forbidden', title: 'Q3 规划' })
+
+      const name = await screen.findByText('Q3 规划')
+      expect(name).toBeTruthy()
+      // Full text on hover, and the heading still leads — the name identifies which document, the
+      // heading says what happened.
+      expect(name.getAttribute('title')).toBe('Q3 规划')
+      expect(screen.getByText('docs.forward.forbiddenTitle')).toBeTruthy()
+    })
+
+    it('renders exactly as before when the body carries no title', async () => {
+      // A backend that predates the disclosure. The page must degrade to its previous form, NOT
+      // substitute a placeholder: the original screen omitted the title precisely to avoid showing a
+      // fake 无标题 as though it were the document's name.
+      await forbiddenWith({ error: 'forbidden' })
+
+      expect(screen.getByText('docs.forward.forbiddenTitle')).toBeTruthy()
+      expect(screen.queryByText('docs.state.untitled')).toBeNull()
+      expect(document.querySelector('.octo-standalone-forbidden-doc')).toBeNull()
+      // The request-access path still works without a name.
+      await waitFor(() => expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy())
+    })
+
+    it.each([
+      ['a blank title', { error: 'forbidden', title: '   ' }],
+      ['a non-string title', { error: 'forbidden', title: 42 }],
+      ['a null body', null],
+    ])('renders no name line for %s', async (_label, data) => {
+      // An error body is untrusted input; anything that is not a non-empty string must not reach the
+      // DOM as the document's name.
+      await forbiddenWith(data)
+
+      expect(document.querySelector('.octo-standalone-forbidden-doc')).toBeNull()
+      expect(screen.getByText('docs.forward.forbiddenTitle')).toBeTruthy()
+    })
+
+    // The status gate lives in forbiddenTitleFrom and is tested there, NOT here: a 404 renders
+    // DocTerminal, which never reads phase.title, so a page-level "404 shows no name" assertion
+    // passes with the gate deleted and would pin nothing. Kept as a page-level smoke check that the
+    // not-found terminal is unchanged, with the real gate assertion in the unit block below.
+    it('leaves the not-found terminal untouched', async () => {
+      wk.apiClient.responder = (method, url) => {
+        if (method === 'get' && url === '/docs/d_missing') {
+          throw apiError(404, { error: 'not_found', title: 'Leaked Title' })
+        }
+        return { data: {}, status: 200 }
+      }
+
+      render(<StandaloneDocPage docId="d_missing" />)
+
+      await waitFor(() =>
+        expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy(),
+      )
+      expect(screen.queryByText('Leaked Title')).toBeNull()
+      expect(document.querySelector('.octo-standalone-forbidden-doc')).toBeNull()
+    })
+
+    it('keeps a pathological title inside the card instead of stretching it', async () => {
+      // Titles are capped at 512 chars server-side. Display is bounded by CSS (2-line clamp +
+      // overflow-wrap), so the full string is kept for the tooltip — assert it is not silently cut,
+      // since a truncated tooltip would be worse than none.
+      const long = '长'.repeat(400)
+      await forbiddenWith({ error: 'forbidden', title: long })
+
+      const name = document.querySelector('.octo-standalone-forbidden-doc')
+      expect(name).not.toBeNull()
+      expect(name!.getAttribute('title')).toBe(long)
+    })
+
+    // The status gate, held at the function level because the page cannot observe it (see the
+    // exported helper's comment). A title must be readable ONLY from a 403: the 404 is the response
+    // that makes a doc outside the caller's space indistinguishable from one that does not exist, so
+    // reading a title off it would leak straight across that boundary.
+    describe('forbiddenTitleFrom', () => {
+      it('reads the title from a 403', () => {
+        expect(forbiddenTitleFrom({ response: { status: 403, data: { title: 'Q3 规划' } } })).toBe(
+          'Q3 规划',
+        )
+      })
+
+      it.each([404, 401, 409, 423, 500])('refuses to read a title from a %i', (status) => {
+        expect(
+          forbiddenTitleFrom({ response: { status, data: { title: 'Leaked Title' } } }),
+        ).toBeUndefined()
+      })
+
+      it.each([
+        ['blank', '   '],
+        ['empty', ''],
+      ])('treats a %s title as absent', (_label, title) => {
+        expect(forbiddenTitleFrom({ response: { status: 403, data: { title } } })).toBeUndefined()
+      })
+
+      it.each([
+        ['a number', 42],
+        ['an object', { nested: 'x' }],
+        ['an array', ['x']],
+        ['null', null],
+        ['a boolean', true],
+      ])('rejects %s as a title — an error body is untrusted input', (_label, title) => {
+        expect(forbiddenTitleFrom({ response: { status: 403, data: { title } } })).toBeUndefined()
+      })
+
+      it.each([
+        ['no data', { response: { status: 403 } }],
+        ['no response', {}],
+        ['null', null],
+        ['undefined', undefined],
+        ['a string', 'boom'],
+      ])('returns undefined for %s instead of throwing', (_label, err) => {
+        expect(() => forbiddenTitleFrom(err)).not.toThrow()
+        expect(forbiddenTitleFrom(err)).toBeUndefined()
+      })
+
+      it('trims surrounding whitespace but keeps the title intact', () => {
+        const long = '长'.repeat(400)
+        expect(
+          forbiddenTitleFrom({ response: { status: 403, data: { title: `  ${long}  ` } } }),
+        ).toBe(long)
+      })
+    })
   })
 
   it('AC-10: a GET 404 renders the not-found terminal, editor not mounted', async () => {

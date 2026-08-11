@@ -4223,6 +4223,26 @@ body.octo-row-resizing {
   line-height: 1.5;
   color: var(--octo-muted, #8a919e);
 }
+/* The refused document's own name, under the heading and above the reason. Between the two in
+   emphasis: darker than the reason line so it reads as the subject, lighter than the heading so it
+   does not compete with it. Literal fallbacks are required — this package renders under `.octo-doc`,
+   where no `--octo-*` custom property is defined, so a bare var() would resolve to nothing.
+   Clamped to two lines: a title may be up to 512 chars server-side (already truncated for display),
+   and an unbounded one would push the CTA off a short viewport. */
+.octo-standalone-forbidden-doc {
+  margin: 0;
+  max-width: 100%;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--octo-fg, #1f2329);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* Long unbroken titles (URLs, CJK without spaces) must wrap rather than widen the card. */
+  overflow-wrap: anywhere;
+}
 
 /* Prominent primary CTA for the forbidden landing's "Request access" (shared with the in-shell
    EditorShell forbidden branch, so both surfaces get the same accent action button). Placed after

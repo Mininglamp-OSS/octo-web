@@ -308,10 +308,47 @@ export function viewerCurrentSpace(currentSpaceId: string | undefined): string {
   return ''
 }
 
+/**
+ * The document title a 403 disclosed, or undefined. Read ONLY from a 403: the open-context preflight
+ * carries `title` there and on no other status. A 404 must never yield one — that is the response
+ * that hides a doc's existence, so reading a name off it would defeat the point.
+ *
+ * Note what the disclosure does and does not rest on. open-context locates by `docId` alone and has
+ * NO same-space gate, so a 403 can reach a caller from any Space or none: the title goes to whoever
+ * holds the docId and already learned the doc exists from getting 403 rather than 404. That is the
+ * product decision (leader) this page implements — the chat share card already shows the same title
+ * to the same link holder.
+ *
+ * Deliberately strict, because an error body is untrusted input: anything that is not a non-empty
+ * string after trimming yields undefined, so the caller renders the page exactly as it did before
+ * rather than showing "undefined" or an empty heading. Not truncated here — the full string is kept
+ * so the element's `title` tooltip can show all of it, and display is bounded by CSS
+ * (`-webkit-line-clamp: 2` on `.octo-standalone-forbidden-doc`) instead.
+ *
+ * Exported for its own unit test. The status gate cannot be observed through the rendered page — a
+ * 404 renders DocTerminal, which never reads this value — so a page-level test of "a 404 shows no
+ * name" passes with the gate removed and pins nothing. Testing the function directly is the only way
+ * to hold it.
+ */
+export function forbiddenTitleFrom(err: unknown): string | undefined {
+  const response = (err as { response?: { status?: number; data?: unknown } } | undefined)?.response
+  if (response?.status !== 403) return undefined
+  const raw = (response.data as { title?: unknown } | undefined)?.title
+  if (typeof raw !== 'string') return undefined
+  return raw.trim() || undefined
+}
+
 type Phase =
   | { status: 'loading' }
   | { status: 'ready'; ctx: DocRequestContext }
-  | { status: 'terminal'; kind: TerminalKind }
+  /**
+   * `title` is only ever set for `kind: 'forbidden'`, read from the 403 body of the open-context
+   * preflight — the backend discloses it there so this page can name the document the viewer is
+   * being asked to request access to. Optional on purpose: a backend that predates that disclosure,
+   * or a doc whose stored title is blank, omits the field, and the page must then render exactly as
+   * it did before rather than substituting a placeholder.
+   */
+  | { status: 'terminal'; kind: TerminalKind; title?: string }
 
 /**
  * Standalone document page (octo-web #512) — the full-window view a shared `/d/:docId` link opens,
@@ -442,7 +479,7 @@ export function StandaloneDocPage({
           setPhase({ status: 'terminal', kind })
           return
         }
-        setPhase({ status: 'terminal', kind })
+        setPhase({ status: 'terminal', kind, title: forbiddenTitleFrom(err) })
       })
     return () => {
       cancelled = true
@@ -554,12 +591,25 @@ export function StandaloneDocPage({
     // The in-shell EditorShell renders its OWN inline terminal markup and is untouched by this
     // branch, so this redesign cannot affect the in-shell scenario.
     if (phase.kind === 'forbidden' && docId) {
-      // Forbidden landing (feature #511 screen 4c): a lock glyph, a non-misleading heading — NOT a
-      // fake "Untitled document" title, since a recipient without permission cannot know the real
-      // title — the reason line, and the reused RequestAccessButton whose action is the centered
-      // primary CTA. docId is guaranteed non-null here: a null id short-circuits to the not-found
-      // terminal before any preflight runs, so it can never reach a forbidden terminal.
+      // Forbidden landing (feature #511 screen 4c): a lock glyph, the heading, the document's own
+      // name when the backend disclosed it, the reason line, and the reused RequestAccessButton whose
+      // action is the centered primary CTA. docId is guaranteed non-null here: a null id
+      // short-circuits to the not-found terminal before any preflight runs, so it can never reach a
+      // forbidden terminal.
       //
+      // The name sits under the heading rather than replacing it: the heading answers "what
+      // happened", the name answers "which document", and leading with a name the viewer cannot open
+      // would read like a broken document page. It was originally omitted altogether on the grounds
+      // that a recipient without permission cannot know the real title. Product decision (leader)
+      // reverses that: the page must name the document it is asking the viewer to request access to.
+      // Be precise about the basis — open-context locates by docId ALONE and has no same-space gate,
+      // so this screen is reachable by a caller from any Space or none; what bounds the disclosure is
+      // that they already hold the docId and already learned the doc exists from getting 403 rather
+      // than 404, and the chat share card that carried the link shows them the same title anyway.
+      //
+      // Still NEVER a placeholder: with no title in the body — an older backend, or a doc whose
+      // stored title is blank — the line is omitted entirely rather than rendering 无标题 as though
+      // that were the document's name.
       return (
         <div className="octo-doc-standalone octo-doc-standalone--terminal">
           <div className="octo-standalone-card octo-standalone-forbidden" role="alert">
@@ -567,6 +617,11 @@ export function StandaloneDocPage({
               <LockIcon />
             </span>
             <h1 className="octo-standalone-card-title">{t('docs.forward.forbiddenTitle')}</h1>
+            {phase.title && (
+              <p className="octo-standalone-forbidden-doc" title={phase.title}>
+                {phase.title}
+              </p>
+            )}
             <p className="octo-standalone-card-msg">{t('docs.error.permission.forbidden')}</p>
             {/* A forbidden response does not reveal the document's home Space. Keep this request
                 human-only: the backend validates owned Bots against doc_meta.space_id, so a viewer
