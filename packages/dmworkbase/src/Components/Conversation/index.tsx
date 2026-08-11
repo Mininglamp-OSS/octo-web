@@ -55,6 +55,7 @@ import MessageInput, {
 import {
   SendResultDetail,
   SendDraftSnapshot,
+  SendProgressSnapshot,
   SendTargetSnapshot,
   UnsentEditorBlock,
 } from "../MessageInput/sendFlow";
@@ -655,14 +656,15 @@ export class Conversation
    */
   private async sendMediaAndWait(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
+    onEnqueued?: () => void
   ): Promise<boolean> {
     // 非媒体消息（或无文件需上传）无需等待上传，直接发送并等 ack
     if (
       !(content instanceof MediaMessageContent) ||
       !(content as MediaMessageContent).file
     ) {
-      return this.sendTextAndWaitAck(content, channel);
+      return this.sendTextAndWaitAck(content, channel, onEnqueued);
     }
 
     const TIMEOUT = 30_000;
@@ -752,6 +754,7 @@ export class Conversation
     // 已入队：本地气泡已经出现在消息列表里，之后无论上传/ack 成功与否，
     // 用户都能在气泡上重发，输入框不应再把这条内容拿回来 (octo-web#1280)。
     enqueued = true;
+    onEnqueued?.();
     clientSeq = message.clientSeq;
 
     // sendMessage 返回后主动检查
@@ -822,7 +825,8 @@ export class Conversation
    */
   private async sendTextAndWaitAck(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
+    onEnqueued?: () => void
   ): Promise<boolean> {
     const TIMEOUT = 10_000;
     let settled = false;
@@ -874,6 +878,7 @@ export class Conversation
     }
     // 已入队：气泡已在消息列表，ack 结果只影响气泡状态，不影响输入框 (#1280)。
     enqueued = true;
+    onEnqueued?.();
     clientSeq = message.clientSeq;
 
     // fallback：检查暂存的 ack 或已处理的 status
@@ -927,7 +932,8 @@ export class Conversation
    */
   private async sendRichTextMixed(
     editorBlocks: EditorContentBlock[],
-    reply?: Reply
+    reply?: Reply,
+    onEnqueued?: () => void
   ): Promise<boolean> {
     const channel = this.channel();
     const contentBlocks: RichTextBlock[] = [];
@@ -1040,7 +1046,7 @@ export class Conversation
       if (mentionEntities.length > 0) (mn as any).entities = mentionEntities;
       content.mention = mn;
     }
-    return this.sendTextAndWaitAck(content);
+    return this.sendTextAndWaitAck(content, undefined, onEnqueued);
   }
 
   scrollToBottom(animate?: boolean): void {
@@ -1405,12 +1411,11 @@ export class Conversation
     // 辅助 Thread 不覆盖主会话的全局附件守卫；否则开关侧栏会让主会话
     // 的待发送附件失去离开确认，或被侧栏草稿反向阻塞。
     if (!this.props.isAuxiliary) {
-      // in-flight 发送也算「有待发送内容」(octo-web#1280 review)：compose 已被
-      // 清出输入框，未入队时切走会让内容彻底消失；已入队但还在上传/等 ack 的也
-      // 一并保护（拆掉会话期间没人能还原失败内容），因此这里取整个 onSend 窗口。
+      // 只保护「compose 已清空但本地气泡还没出现」的数据丢失窗口。消息一旦入队，
+      // 即使仍在等 upload/ack，也已有气泡承载失败与重试，不应再弹“未发送附件”确认。
       WKApp.shared.pendingAttachmentGuard = () =>
         this.getPendingAttachments().length === 0 &&
-        this.pendingSendCount() === 0;
+        this.pendingPreEnqueueCount() === 0;
       WKApp.shared.pendingAttachmentGuardId = this._guardId;
     }
 
@@ -1573,9 +1578,8 @@ export class Conversation
     this.vm.releaseOpenConversationOwnership();
   }
 
-  /** Composes handed to a send that has not settled yet (octo-web#1280). */
-  private pendingSendCount(): number {
-    return this.messageInputContext()?.pendingSendCount?.() ?? 0;
+  private pendingPreEnqueueCount(): number {
+    return this.messageInputContext()?.pendingPreEnqueueCount?.() ?? 0;
   }
 
   private pendingSendText(): string {
@@ -3010,7 +3014,8 @@ export class Conversation
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[],
                         sendTarget?: SendTargetSnapshot,
-                        sendDraft?: SendDraftSnapshot
+                        sendDraft?: SendDraftSnapshot,
+                        sendProgress?: SendProgressSnapshot
                       ): Promise<boolean | SendResultDetail> => {
                         // 返回值告诉 MessageInput「已消费的 compose 是否保持消费」：
                         //   true  → 消息已入队（本地气泡已在列表），输入框保持清空；
@@ -3027,6 +3032,8 @@ export class Conversation
                           sendDraft?.remoteDraft ??
                           this.vm.currentConversation?.remoteExtra?.draft ??
                           "";
+                        const markEnqueued = () =>
+                          sendProgress?.markEnqueued();
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
@@ -3064,6 +3071,7 @@ export class Conversation
                               targetMessage.channel.channelType,
                               JSON.stringify(json)
                             );
+                            markEnqueued();
                             // 编辑消息已提交，编辑器应清空。
                             return true;
                           }
@@ -3142,7 +3150,9 @@ export class Conversation
                             img.src = previewUrl;
                           });
                           return this.sendMediaAndWait(
-                            new ImageContent(file, previewUrl, width, height)
+                            new ImageContent(file, previewUrl, width, height),
+                            undefined,
+                            markEnqueued
                           );
                         };
 
@@ -3173,7 +3183,9 @@ export class Conversation
                             return false;
                           }
                           return this.sendMediaAndWait(
-                            new FileContent(file, name, ext, file.size)
+                            new FileContent(file, name, ext, file.size),
+                            undefined,
+                            markEnqueued
                           );
                         };
 
@@ -3284,7 +3296,8 @@ export class Conversation
                             if (
                               await this.sendRichTextMixed(
                                 mixedCandidate.blocks as EditorContentBlock[],
-                                reply
+                                reply,
+                                markEnqueued
                               )
                             ) {
                               mixedSent = true;
@@ -3365,7 +3378,8 @@ export class Conversation
                               if (
                                 await this.sendRichTextMixed(
                                   editorBlocks,
-                                  reply
+                                  reply,
+                                  markEnqueued
                                 )
                               ) {
                                 mixedSent = true;
@@ -3421,7 +3435,13 @@ export class Conversation
                                   carriesReply = true;
                                 }
                                 isFirstTextBlock = false;
-                                if (await this.sendTextAndWaitAck(msgContent)) {
+                                if (
+                                  await this.sendTextAndWaitAck(
+                                    msgContent,
+                                    undefined,
+                                    markEnqueued
+                                  )
+                                ) {
                                   anyMessageSent = true;
                                   if (carriesReply) reply = undefined;
                                 } else {
@@ -3478,7 +3498,13 @@ export class Conversation
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
                             try {
-                              if (await this.sendTextAndWaitAck(emptyContent)) {
+                              if (
+                                await this.sendTextAndWaitAck(
+                                  emptyContent,
+                                  undefined,
+                                  markEnqueued
+                                )
+                              ) {
                                 reply = undefined;
                               }
                             } catch (err) {
@@ -3499,7 +3525,13 @@ export class Conversation
                             if (reply) {
                               msgContent.reply = reply;
                             }
-                            if (await this.sendTextAndWaitAck(msgContent)) {
+                            if (
+                              await this.sendTextAndWaitAck(
+                                msgContent,
+                                undefined,
+                                markEnqueued
+                              )
+                            ) {
                               anyMessageSent = true;
                             }
                           } else if (reply && anyMessageSent) {
@@ -3507,7 +3539,13 @@ export class Conversation
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
                             try {
-                              if (await this.sendTextAndWaitAck(emptyContent)) {
+                              if (
+                                await this.sendTextAndWaitAck(
+                                  emptyContent,
+                                  undefined,
+                                  markEnqueued
+                                )
+                              ) {
                                 reply = undefined;
                               }
                             } catch (err) {

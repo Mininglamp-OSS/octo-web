@@ -42,12 +42,14 @@ import {
 import { t as translate, useI18n } from "../../i18n";
 import {
   announceContextAfterSendReady,
+  createPendingSendTracker,
   createSendQueue,
   invokeReadySend,
   runSendWithConsumedCompose,
   SendQueue,
   SendResultDetail,
   SendDraftSnapshot,
+  SendProgressSnapshot,
   SendTargetSnapshot,
 } from "./sendFlow";
 import {
@@ -261,7 +263,8 @@ interface MessageInputProps {
      * 快照而不是实时读取，否则可能回复错的消息、甚至编辑到无关消息。
      */
     sendTarget?: SendTargetSnapshot,
-    sendDraft?: SendDraftSnapshot
+    sendDraft?: SendDraftSnapshot,
+    sendProgress?: SendProgressSnapshot
   ) => void | boolean | SendResultDetail | Promise<void | boolean | SendResultDetail>;
   /**
    * 同步取走并清除 reply/edit 目标（横幅同时收起），返回的快照会被透传给
@@ -389,15 +392,12 @@ export interface MessageInputContext {
    * Number of composes that were handed to `onSend` and have not settled yet
    * (octo-web#1280).
    *
-   * Scope, deliberately conservative: this covers the whole `onSend` lifetime —
-   * "consumed but no bubble yet" (mixed compose still uploading, so the content
-   * exists nowhere visible) AND "bubble created, still uploading / waiting for
-   * ack". The first part is the data-loss window; the second is kept in because
-   * callers use this to decide whether it is safe to tear the conversation down,
-   * and a message that is still ordering is still work in progress. Splitting the
-   * two states is a possible refinement (#1333 review, non-blocking).
+   * This covers both pre-enqueue and post-enqueue work so draft persistence and
+   * the visible pending preview retain each compose until `onSend` settles.
    */
   pendingSendCount: () => number;
+  /** Composes that have been consumed but do not have a local bubble yet. */
+  pendingPreEnqueueCount: () => number;
   /** Plain text of unsettled composes in consumption order, including empties. */
   pendingSendDrafts: () => string[];
   /** Plain text of every unsettled compose, newest last. */
@@ -455,6 +455,20 @@ interface TopAttachmentItem {
   size: number;
   type: string;
   previewUrl?: string;
+}
+
+interface PendingSendAttachmentPreview {
+  id: string;
+  name: string;
+  type: string;
+  previewUrl?: string;
+}
+
+interface PendingSendItem {
+  id: number;
+  text: string;
+  attachments: PendingSendAttachmentPreview[];
+  enqueued: boolean;
 }
 
 // 判断是否为图片类型（模块级别函数）
@@ -557,22 +571,28 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     }
     return sendQueueRef.current;
   }, []);
-  // in-flight compose 登记表：这段时间内容既不在输入框、也还没有消息气泡，
-  // 切会话守卫 / 草稿保存 / 「发送中」提示都要能看到它 (octo-web#1280 review)。
-  const pendingSendsRef = useRef<Map<number, string>>(new Map());
+  // in-flight compose 登记表：内容预览保留到任务 settle；enqueued 单独标记本地
+  // 气泡是否已经出现，让切会话守卫只覆盖真正的数据丢失窗口。
+  const pendingSendsRef = useRef(createPendingSendTracker<PendingSendItem>());
   const pendingSendSeqRef = useRef(0);
   // 连续失败还原时的插入位置：已被更早的失败 send 放回的块数 / 附件数，
   // 保证 A、B 依次失败后顺序仍是 A、B、<新草稿> 而不是倒过来 (#1280 review)。
   const restoreOffsetsRef = useRef({ blocks: 0, topAttachments: 0 });
-  const [pendingSendCount, setPendingSendCount] = useState(0);
-  const registerPendingSend = useCallback((id: number, text: string) => {
-    pendingSendsRef.current.set(id, text);
-    setPendingSendCount(pendingSendsRef.current.size);
+  const [pendingSendItems, setPendingSendItems] = useState<PendingSendItem[]>([]);
+  const publishPendingSends = useCallback(() => {
+    setPendingSendItems(pendingSendsRef.current.values());
   }, []);
+  const registerPendingSend = useCallback((item: PendingSendItem) => {
+    pendingSendsRef.current.register(item);
+    publishPendingSends();
+  }, [publishPendingSends]);
+  const markPendingSendEnqueued = useCallback((id: number) => {
+    if (pendingSendsRef.current.markEnqueued(id)) publishPendingSends();
+  }, [publishPendingSends]);
   const releasePendingSend = useCallback((id: number) => {
-    pendingSendsRef.current.delete(id);
-    setPendingSendCount(pendingSendsRef.current.size);
-  }, []);
+    pendingSendsRef.current.release(id);
+    publishPendingSends();
+  }, [publishPendingSends]);
   const mentionActiveRef = useRef(false);
   // 表情前缀联想下拉激活标志，激活时 Enter 用于选中而非发送
   const emojiSuggestionActiveRef = useRef(false);
@@ -1037,6 +1057,20 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
     // 兼容旧 allAttachments（保留向后兼容）
     const allAttachments = [...editorAttachments, ...topAttachmentFiles];
+    const pendingAttachmentPreviews: PendingSendAttachmentPreview[] = [
+      ...attachmentAttrs.map(({ id, name, type, previewUrl }) => ({
+        id,
+        name,
+        type,
+        previewUrl,
+      })),
+      ...topAttachmentsRef.current.map(({ id, name, type, previewUrl }) => ({
+        id,
+        name,
+        type,
+        previewUrl,
+      })),
+    ];
 
     const hasText = text.trim() !== "";
     const hasAttachments = allAttachments.length > 0;
@@ -1141,9 +1175,19 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       },
     });
     const composeText = composeSnapshotText(handle.snapshot);
+    const pendingId = ++pendingSendSeqRef.current;
+    registerPendingSend({
+      id: pendingId,
+      text: composeText,
+      attachments: pendingAttachmentPreviews,
+      enqueued: false,
+    });
     const sendDraft = sendDraftBaseline
       ? { ...sendDraftBaseline, text: composeText }
       : undefined;
+    const sendProgress: SendProgressSnapshot = {
+      markEnqueued: () => markPendingSendEnqueued(pendingId),
+    };
 
     if (expanded) {
       setExpanded(false);
@@ -1152,13 +1196,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
     // 串行队列取代旧的重入保护：pending 期间的 Enter 不再被静默丢弃（#1280 的
     // 「连点没反应」），而是排在前一条之后执行，消息顺序仍由 Conversation 等 ack
-    // 保证。onSend 未 settle 前把 compose 文本登记到 pendingSendsRef，供切会话
-    // 守卫、草稿保存和「发送中」提示使用。登记覆盖整个 onSend 生命周期：既包含
-    // 「已消费但还没有气泡」（混排上传中，内容此刻不在任何可见位置——这是真正的
-    // 丢失窗口），也包含「气泡已出现但仍在上传/等 ack」。后者保留是有意的：这些
-    // 调用方要判断此刻能否安全拆掉会话，仍在排序的消息也算未完成的活。
-    const pendingId = ++pendingSendSeqRef.current;
-    registerPendingSend(pendingId, composeText);
+    // 保证。onSend 未 settle 前把 compose 内容登记到 pendingSendsRef，供草稿
+    // 保存和「发送中」预览使用。切会话守卫另外只查看尚未产生本地
+    // 气泡的条目；已入队的消息虽然继续显示预览，但不再阻塞会话切换。
     return getSendQueue()
       .enqueue(() =>
         runSendWithConsumedCompose(
@@ -1170,7 +1210,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
               orderedBlocks.length > 0 ? orderedBlocks : undefined,
               sendTarget,
-              sendDraft
+              sendDraft,
+              sendProgress
             ),
           handle.ids,
           handle.compose
@@ -1186,6 +1227,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     props.onExpandChange,
     getSendQueue,
     registerPendingSend,
+    markPendingSendEnqueued,
     releasePendingSend,
     t,
   ]);
@@ -1207,10 +1249,14 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
         focus: () => editor?.commands.focus(),
         send: () => invokeReadySend(sendRef.current),
-        pendingSendCount: () => pendingSendsRef.current.size,
-        pendingSendDrafts: () => Array.from(pendingSendsRef.current.values()),
+        pendingSendCount: () => pendingSendsRef.current.values().length,
+        pendingPreEnqueueCount: () =>
+          pendingSendsRef.current.preEnqueueCount(),
+        pendingSendDrafts: () =>
+          pendingSendsRef.current.values().map((item) => item.text),
         pendingSendText: () =>
-          Array.from(pendingSendsRef.current.values())
+          pendingSendsRef.current.values()
+            .map((item) => item.text)
             .filter((text) => text.trim() !== "")
             .join("\n"),
         clear: () => {
@@ -1371,13 +1417,51 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         {/* 引用/编辑条在卡片内部 */}
         {topView && <div className="wk-messageinput-topview">{topView}</div>}
 
-        {/* 发送中提示 (octo-web#1280)：输入框在发送开始时就被清空，这里给用户一个
-            「还在发」的信号，避免以为没发出去而重复操作。覆盖到 onSend settle
-            （上传 + ack 结束）为止，与 pendingSendCount 同口径。 */}
-        {pendingSendCount > 0 && (
+        {/* 发送中内容预览 (octo-web#1280)：输入框在发送开始时就被清空，队列中的
+            实际文本与附件必须保持可见，直到对应 onSend settle。 */}
+        {pendingSendItems.length > 0 && (
           <div className="wk-messageinput-sending" aria-live="polite">
-            {t("base.message.sending")}
-            {pendingSendCount > 1 ? ` (${pendingSendCount})` : ""}
+            {pendingSendItems.map((item) => (
+              <div className="wk-messageinput-sending-item" key={item.id}>
+                <span className="wk-messageinput-sending-label">
+                  {t("base.message.sending")}
+                </span>
+                {item.text && (
+                  <span
+                    className="wk-messageinput-sending-text"
+                    title={item.text}
+                  >
+                    {item.text}
+                  </span>
+                )}
+                {item.attachments.length > 0 && (
+                  <span className="wk-messageinput-sending-attachments">
+                    {item.attachments.map((attachment) =>
+                      attachment.previewUrl ? (
+                        <img
+                          key={attachment.id}
+                          className="wk-messageinput-sending-thumbnail"
+                          src={attachment.previewUrl}
+                          alt={attachment.name}
+                        />
+                      ) : (
+                        <span
+                          key={attachment.id}
+                          className="wk-messageinput-sending-file"
+                          title={attachment.name}
+                        >
+                          <img
+                            src={getFileIcon(attachment.name, attachment.type)}
+                            alt=""
+                          />
+                          <span>{attachment.name}</span>
+                        </span>
+                      )
+                    )}
+                  </span>
+                )}
+              </div>
+            ))}
           </div>
         )}
 

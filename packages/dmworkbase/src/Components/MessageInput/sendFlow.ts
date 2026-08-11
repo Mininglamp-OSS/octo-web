@@ -123,6 +123,52 @@ export interface SendDraftSnapshot {
   text: string;
 }
 
+/** Per-send progress reported while `onSend` is still awaiting upload / ack. */
+export interface SendProgressSnapshot {
+  /** The compose now has at least one local message bubble or completed edit. */
+  markEnqueued: () => void;
+}
+
+export interface PendingSendTrackable {
+  id: number;
+  enqueued: boolean;
+}
+
+/** Ordered pending-send state used by the preview and pre-enqueue guard. */
+export interface PendingSendTracker<T extends PendingSendTrackable> {
+  register: (item: T) => void;
+  markEnqueued: (id: number) => boolean;
+  release: (id: number) => void;
+  values: () => T[];
+  preEnqueueCount: () => number;
+}
+
+export function createPendingSendTracker<
+  T extends PendingSendTrackable
+>(): PendingSendTracker<T> {
+  const items = new Map<number, T>();
+  return {
+    register(item) {
+      items.set(item.id, item);
+    },
+    markEnqueued(id) {
+      const item = items.get(id);
+      if (!item || item.enqueued) return false;
+      items.set(id, { ...item, enqueued: true });
+      return true;
+    },
+    release(id) {
+      items.delete(id);
+    },
+    values() {
+      return Array.from(items.values());
+    },
+    preEnqueueCount() {
+      return Array.from(items.values()).filter((item) => !item.enqueued).length;
+    },
+  };
+}
+
 /**
  * Publish a composer context only after its imperative send callback is wired.
  * React runs effects in declaration order; keeping these two operations atomic

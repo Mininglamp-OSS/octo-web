@@ -31,6 +31,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   announceContextAfterSendReady,
+  createPendingSendTracker,
   createSendQueue,
   invokeReadySend,
   restoreComposeSnapshot,
@@ -38,6 +39,39 @@ import {
   ConsumedCompose,
   ComposeRestoreTarget,
 } from "../sendFlow";
+
+describe("createPendingSendTracker", () => {
+  it("keeps queued content visible while removing enqueued sends from the guard", () => {
+    const tracker = createPendingSendTracker<{
+      id: number;
+      text: string;
+      enqueued: boolean;
+    }>();
+
+    tracker.register({ id: 1, text: "A", enqueued: false });
+    tracker.register({ id: 2, text: "B", enqueued: false });
+    expect(tracker.values().map((item) => item.text)).toEqual(["A", "B"]);
+    expect(tracker.preEnqueueCount()).toBe(2);
+
+    expect(tracker.markEnqueued(1)).toBe(true);
+    expect(tracker.values().map((item) => item.text)).toEqual(["A", "B"]);
+    expect(tracker.preEnqueueCount()).toBe(1);
+
+    tracker.release(1);
+    expect(tracker.values().map((item) => item.text)).toEqual(["B"]);
+    expect(tracker.preEnqueueCount()).toBe(1);
+  });
+
+  it("ignores duplicate or stale enqueue signals", () => {
+    const tracker = createPendingSendTracker();
+    tracker.register({ id: 1, enqueued: false });
+
+    expect(tracker.markEnqueued(1)).toBe(true);
+    expect(tracker.markEnqueued(1)).toBe(false);
+    expect(tracker.markEnqueued(99)).toBe(false);
+    expect(tracker.preEnqueueCount()).toBe(0);
+  });
+});
 
 describe("announceContextAfterSendReady", () => {
   it("wires the send handler before announcing context readiness", async () => {

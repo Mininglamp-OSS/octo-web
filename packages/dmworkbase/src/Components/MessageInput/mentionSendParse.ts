@@ -321,7 +321,13 @@ export function parseDraftToContent(text: string): DraftDoc {
   return parseTextToContent(text, false);
 }
 
-/** Restore text serialized directly from consumed editor nodes. */
+/**
+ * Restore text serialized directly from trusted live editor nodes.
+ *
+ * This parser may rebuild trust-marked broadcast mention nodes, so callers must
+ * never pass persisted drafts, remote content, clipboard text, or other
+ * user-controlled strings. Unmarked broadcast markers still fail closed.
+ */
 export function parseConsumedTextToContent(text: string): DraftDoc {
   return parseTextToContent(text, true);
 }
