@@ -125,19 +125,22 @@ export interface SendDraftSnapshot {
 
 /** Per-send progress reported while `onSend` is still awaiting upload / ack. */
 export interface SendProgressSnapshot {
-  /** The compose now has at least one local message bubble or completed edit. */
-  markEnqueued: () => void;
+  /** Declare how many consumed parts must gain a local bubble before switching is safe. */
+  setExpectedParts: (count: number) => void;
+  /** One consumed part now has a local message bubble or completed edit. */
+  markPartEnqueued: () => void;
 }
 
 export interface PendingSendTrackable {
   id: number;
-  enqueued: boolean;
+  remainingPreEnqueueParts: number;
 }
 
 /** Ordered pending-send state used by the preview and pre-enqueue guard. */
 export interface PendingSendTracker<T extends PendingSendTrackable> {
   register: (item: T) => void;
-  markEnqueued: (id: number) => boolean;
+  setExpectedParts: (id: number, count: number) => boolean;
+  markPartEnqueued: (id: number) => boolean;
   release: (id: number) => void;
   values: () => T[];
   preEnqueueCount: () => number;
@@ -151,10 +154,23 @@ export function createPendingSendTracker<
     register(item) {
       items.set(item.id, item);
     },
-    markEnqueued(id) {
+    setExpectedParts(id, count) {
       const item = items.get(id);
-      if (!item || item.enqueued) return false;
-      items.set(id, { ...item, enqueued: true });
+      if (!item) return false;
+      const remainingPreEnqueueParts = Math.max(1, count);
+      if (item.remainingPreEnqueueParts === remainingPreEnqueueParts) {
+        return false;
+      }
+      items.set(id, { ...item, remainingPreEnqueueParts });
+      return true;
+    },
+    markPartEnqueued(id) {
+      const item = items.get(id);
+      if (!item || item.remainingPreEnqueueParts === 0) return false;
+      items.set(id, {
+        ...item,
+        remainingPreEnqueueParts: item.remainingPreEnqueueParts - 1,
+      });
       return true;
     },
     release(id) {
@@ -164,7 +180,9 @@ export function createPendingSendTracker<
       return Array.from(items.values());
     },
     preEnqueueCount() {
-      return Array.from(items.values()).filter((item) => !item.enqueued).length;
+      return Array.from(items.values()).filter(
+        (item) => item.remainingPreEnqueueParts > 0
+      ).length;
     },
   };
 }

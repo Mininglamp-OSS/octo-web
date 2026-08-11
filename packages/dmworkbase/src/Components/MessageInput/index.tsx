@@ -468,7 +468,7 @@ interface PendingSendItem {
   id: number;
   text: string;
   attachments: PendingSendAttachmentPreview[];
-  enqueued: boolean;
+  remainingPreEnqueueParts: number;
 }
 
 // 判断是否为图片类型（模块级别函数）
@@ -586,8 +586,16 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     pendingSendsRef.current.register(item);
     publishPendingSends();
   }, [publishPendingSends]);
-  const markPendingSendEnqueued = useCallback((id: number) => {
-    if (pendingSendsRef.current.markEnqueued(id)) publishPendingSends();
+  const setPendingSendExpectedParts = useCallback(
+    (id: number, count: number) => {
+      if (pendingSendsRef.current.setExpectedParts(id, count)) {
+        publishPendingSends();
+      }
+    },
+    [publishPendingSends]
+  );
+  const markPendingSendPartEnqueued = useCallback((id: number) => {
+    if (pendingSendsRef.current.markPartEnqueued(id)) publishPendingSends();
   }, [publishPendingSends]);
   const releasePendingSend = useCallback((id: number) => {
     pendingSendsRef.current.release(id);
@@ -1180,13 +1188,16 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       id: pendingId,
       text: composeText,
       attachments: pendingAttachmentPreviews,
-      enqueued: false,
+      // Keep the guard closed until Conversation declares the real send plan.
+      remainingPreEnqueueParts: 1,
     });
     const sendDraft = sendDraftBaseline
       ? { ...sendDraftBaseline, text: composeText }
       : undefined;
     const sendProgress: SendProgressSnapshot = {
-      markEnqueued: () => markPendingSendEnqueued(pendingId),
+      setExpectedParts: (count) =>
+        setPendingSendExpectedParts(pendingId, count),
+      markPartEnqueued: () => markPendingSendPartEnqueued(pendingId),
     };
 
     if (expanded) {
@@ -1227,7 +1238,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     props.onExpandChange,
     getSendQueue,
     registerPendingSend,
-    markPendingSendEnqueued,
+    setPendingSendExpectedParts,
+    markPendingSendPartEnqueued,
     releasePendingSend,
     t,
   ]);

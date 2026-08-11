@@ -41,20 +41,34 @@ import {
 } from "../sendFlow";
 
 describe("createPendingSendTracker", () => {
-  it("keeps queued content visible while removing enqueued sends from the guard", () => {
+  it("keeps a multi-part compose guarded until every part is enqueued", () => {
     const tracker = createPendingSendTracker<{
       id: number;
       text: string;
-      enqueued: boolean;
+      remainingPreEnqueueParts: number;
     }>();
 
-    tracker.register({ id: 1, text: "A", enqueued: false });
-    tracker.register({ id: 2, text: "B", enqueued: false });
-    expect(tracker.values().map((item) => item.text)).toEqual(["A", "B"]);
+    tracker.register({
+      id: 1,
+      text: "file + text",
+      remainingPreEnqueueParts: 1,
+    });
+    tracker.register({ id: 2, text: "B", remainingPreEnqueueParts: 1 });
+    expect(tracker.values().map((item) => item.text)).toEqual([
+      "file + text",
+      "B",
+    ]);
     expect(tracker.preEnqueueCount()).toBe(2);
 
-    expect(tracker.markEnqueued(1)).toBe(true);
-    expect(tracker.values().map((item) => item.text)).toEqual(["A", "B"]);
+    expect(tracker.setExpectedParts(1, 2)).toBe(true);
+    expect(tracker.markPartEnqueued(1)).toBe(true);
+    expect(tracker.values().map((item) => item.text)).toEqual([
+      "file + text",
+      "B",
+    ]);
+    expect(tracker.preEnqueueCount()).toBe(2);
+
+    expect(tracker.markPartEnqueued(1)).toBe(true);
     expect(tracker.preEnqueueCount()).toBe(1);
 
     tracker.release(1);
@@ -64,11 +78,11 @@ describe("createPendingSendTracker", () => {
 
   it("ignores duplicate or stale enqueue signals", () => {
     const tracker = createPendingSendTracker();
-    tracker.register({ id: 1, enqueued: false });
+    tracker.register({ id: 1, remainingPreEnqueueParts: 1 });
 
-    expect(tracker.markEnqueued(1)).toBe(true);
-    expect(tracker.markEnqueued(1)).toBe(false);
-    expect(tracker.markEnqueued(99)).toBe(false);
+    expect(tracker.markPartEnqueued(1)).toBe(true);
+    expect(tracker.markPartEnqueued(1)).toBe(false);
+    expect(tracker.markPartEnqueued(99)).toBe(false);
     expect(tracker.preEnqueueCount()).toBe(0);
   });
 });

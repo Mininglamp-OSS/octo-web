@@ -142,6 +142,7 @@ import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPrev
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
+  countSendPlanParts,
   finishRichTextMixedSend,
   isImageFileForRichTextMixed,
 } from "./richTextMixedSend";
@@ -3033,7 +3034,7 @@ export class Conversation
                           this.vm.currentConversation?.remoteExtra?.draft ??
                           "";
                         const markEnqueued = () =>
-                          sendProgress?.markEnqueued();
+                          sendProgress?.markPartEnqueued();
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
@@ -3059,6 +3060,7 @@ export class Conversation
                         let reply: Reply | undefined;
                         if (targetMessage) {
                           if (target.handlerType === 2) {
+                            sendProgress?.setExpectedParts(1);
                             // 编辑消息。失败时抛出，让 MessageInput 把 compose 与
                             // 编辑目标一起还原，用户重试仍是「编辑」而不是发新消息。
                             const editContent = new MessageText(text);
@@ -3289,6 +3291,20 @@ export class Conversation
                         const mixedCandidate = buildRichTextMixedCandidate(
                           topFilesToSend,
                           editorBlocks
+                        );
+                        const replyNeedsOwnBubble =
+                          !!reply &&
+                          !mixedCandidate &&
+                          !editorBlocks?.some((block) => block.type === "text") &&
+                          text.trim() === "";
+                        sendProgress?.setExpectedParts(
+                          countSendPlanParts(
+                            topFilesToSend,
+                            editorBlocks,
+                            text,
+                            mixedCandidate,
+                            replyNeedsOwnBubble
+                          )
                         );
                         if (mixedCandidate) {
                           let mixedSent = false;
