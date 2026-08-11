@@ -77,13 +77,13 @@
    idiom used elsewhere. Border stays quiet so the button doesn't scream
    before the user actually presses it. */
 .drive-bulk-bar__btn--danger.semi-button {
-  color: var(--wk-danger, #d64545);
+  color: var(--wk-color-danger, #d64545);
 }
 
 .drive-bulk-bar__btn--danger.semi-button:not(:disabled):hover {
-  background: var(--wk-danger-bg, rgba(214, 69, 69, 0.08));
-  border-color: var(--wk-danger, #d64545);
-  color: var(--wk-danger, #d64545);
+  background: var(--wk-color-danger-bg, rgba(214, 69, 69, 0.08));
+  border-color: var(--wk-color-danger, #d64545);
+  color: var(--wk-color-danger, #d64545);
 }
 
 /* Dismiss (×) has no label, so it's icon-only and slightly narrower. */

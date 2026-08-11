@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@octo/base';
 import * as api from '../api/driveApi';
 import type { DriveEntry, FileType } from '../bridge/types';
@@ -127,21 +127,25 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
     }
   }, [spaceId, parentId, filter]);
 
-  useEffect(() => {
-    // Sync contextRef synchronously on every render — the load()
-    // closure captured earlier in this render sees the LATEST context
-    // via this ref, not the closure-time values (round-10 P1-1).
+  useLayoutEffect(() => {
+    // Sync contextRef BEFORE paint so stale reload() closures fired
+    // during the render/effect phase read the LATEST context via the
+    // ref. useEffect would run after paint, opening a one-frame window
+    // where the old context is still live (bot review round-10 P2-2).
     contextRef.current = { spaceId, parentId, filter };
   });
 
-  useEffect(() => {
-    // Context change (space / folder / filter): clear entries
-    // SYNCHRONOUSLY so a listing from the previous context can't stay
-    // on screen — even fully actionable — while the new browse is in
-    // flight. If we relied on load() to overwrite entries only on
-    // success, a rejected new-context browse would leave the previous
-    // context's rows visible with the new context's breadcrumb and
-    // permission gates (round-10 P1-2).
+  useLayoutEffect(() => {
+    // Context change (space / folder / filter): clear entries BEFORE
+    // paint so a listing from the previous context can't be
+    // paint-visible even for a single frame under the new context's
+    // breadcrumb + permission gates. useEffect would allow one
+    // rendered frame where old rows sit under the new header, which
+    // was flagged as a P2-2 residual in round-10 review.
+    //
+    // If we relied on load() to overwrite entries only on success, a
+    // rejected new-context browse would leave the previous context's
+    // rows visible with the new context's UI (round-10 P1-2).
     //
     // Same-context reload() (delete / rename / upload finish) does NOT
     // go through this effect — it calls load() directly, which keeps

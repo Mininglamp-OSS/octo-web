@@ -169,21 +169,27 @@ body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button:not
   color: var(--wk-text-secondary, #4a4d51);
 }
 
-/* Inline error strip shown ABOVE a non-empty list when a same-context
-   reload() fails. Non-blocking: user can still see the last-known list
-   below, and clicking Retry re-triggers the same reload(). Positioned
-   with the truncated notice so both live in the same "list footer"
-   region of the pane. */
+/* Inline error strip shown when a same-context reload() fails and
+   entries are still visible from before the failure. Sticky to the top
+   of the scroll container so it stays in view even if the user has
+   scrolled deep into a long list — otherwise the very case this strip
+   was written for (bulk delete followed by a failed refresh on a
+   folder large enough to want batch operations) would render the strip
+   below the fold. Non-blocking: the user can still see the last-known
+   list below, and clicking Retry re-triggers reload(). */
 .drive-main__load-error-inline {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   padding: 8px 12px;
-  margin: 8px 0;
+  margin-bottom: 8px;
   font-size: 13px;
-  color: var(--wk-danger, #d64545);
-  background: var(--wk-danger-bg, #fef2f2);
+  color: var(--wk-color-danger, #d64545);
+  background: var(--wk-color-danger-bg, #fef2f2);
   border-radius: var(--wk-r-sm, 6px);
 }
 

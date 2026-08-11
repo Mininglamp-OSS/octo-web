@@ -231,7 +231,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             // reads naturally in both locales.
             <span>
               {t('drive.delete.folderConfirmPrefix')}
-              <span style={{ color: 'var(--wk-danger)', fontWeight: 500 }}>
+              <span style={{ color: 'var(--wk-color-danger, #f5222d)', fontWeight: 500 }}>
                 {' '}{t('drive.delete.folderWord')}{' '}
               </span>
               {`"${entry.name}"`}
@@ -243,7 +243,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
       Modal.confirm({
         title: isFolder ? t('drive.delete.folderTitle') : t('drive.delete.title'),
         content,
-        icon: <AlertTriangle size={20} color="var(--wk-danger, #f5222d)" />,
+        icon: <AlertTriangle size={20} color="var(--wk-color-danger, #f5222d)" />,
         okText: t('drive.file.delete'),
         cancelText: t('drive.common.cancel'),
         okButtonProps: { type: 'danger' },
@@ -268,7 +268,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
         return t('drive.bulk.deleteContentFiles', { values: { count: String(total) } });
       }
       const danger = (text: string) => (
-        <span style={{ color: 'var(--wk-danger)', fontWeight: 500 }}>{text}</span>
+        <span style={{ color: 'var(--wk-color-danger, #f5222d)', fontWeight: 500 }}>{text}</span>
       );
       if (files.length === 0) {
         return (
@@ -330,11 +330,11 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
         content: (
           <div>
             {succeeded.length > 0 && (
-              <div style={{ color: 'var(--wk-ok)', marginBottom: 8 }}>
+              <div style={{ color: 'var(--wk-color-success, #41cd59)', marginBottom: 8 }}>
                 ✓ {t(successKey, { values: { count: String(succeeded.length) } })}
               </div>
             )}
-            <div style={{ color: 'var(--wk-danger)', marginBottom: 6, fontWeight: 500 }}>
+            <div style={{ color: 'var(--wk-color-danger, #f5222d)', marginBottom: 6, fontWeight: 500 }}>
               ✕ {t('drive.bulk.resultSummaryFailed', { values: { count: String(failed.length) } })} · {actionLabel}
             </div>
             <ul style={{ margin: 0, paddingLeft: 18, maxHeight: 220, overflowY: 'auto', fontSize: 13 }}>
@@ -373,7 +373,7 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             ? t('drive.bulk.deleteTitleFolders')
             : t('drive.bulk.deleteTitleFiles'),
       content: buildBatchDeleteContent(files, folders),
-      icon: <AlertTriangle size={20} color="var(--wk-danger, #f5222d)" />,
+      icon: <AlertTriangle size={20} color="var(--wk-color-danger, #f5222d)" />,
       okText: t('drive.file.delete'),
       cancelText: t('drive.common.cancel'),
       okButtonProps: { type: 'danger' },
@@ -654,7 +654,31 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             onClearFilter={typeFilter !== 'all' ? () => setTypeFilter('all') : undefined}
           />
         ) : (
-          <FileList
+          <>
+            {filesError && entries.length > 0 && (
+              // Inline error strip: shown when a same-context reload()
+              // (post-delete / rename / upload / move) fails but entries
+              // from BEFORE the failed reload are still on screen. The
+              // full-page banner above only renders when the list is
+              // empty; without this strip a user who successfully deleted
+              // rows and then saw the refresh fail would have NO visible
+              // indication that the delete succeeded server-side +
+              // refresh failed, and would attempt to delete already-
+              // deleted ids on the next batch (round-10 P1-3).
+              //
+              // Rendered ABOVE the list and made position:sticky (see
+              // DrivePage.css) so it stays in view even when the user
+              // has scrolled deep into a long list — otherwise on
+              // exactly the folder sizes that want batch operations
+              // this strip would be below the fold.
+              <div className="drive-main__load-error-inline" role="alert">
+                <span>{t('drive.file.loadFailed')}</span>
+                <Button theme="borderless" type="primary" size="small" onClick={reload}>
+                  {t('drive.file.retry')}
+                </Button>
+              </div>
+            )}
+            <FileList
             entries={entries}
             loading={filesLoading}
             onOpenFolder={openFolder}
@@ -683,28 +707,12 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             pendingIds={pendingIds}
             removingIds={removingIds}
           />
+          </>
         )}
         {truncatedTotal !== null && entries.length > 0 && (
           <p className="drive-main__truncated">
             {t('drive.file.truncated', { values: { loaded: String(entries.length), total: String(truncatedTotal) } })}
           </p>
-        )}
-        {filesError && entries.length > 0 && (
-          // Inline error strip: shown when a same-context reload() (post-
-          // delete / rename / upload / move) fails but entries from
-          // BEFORE the failed reload are still on screen. The full-page
-          // banner above only renders when the list is empty; without
-          // this strip a user who successfully deleted rows and then
-          // saw the refresh fail would have NO visible indication that
-          // the delete succeeded server-side + refresh failed, and
-          // would attempt to delete already-deleted ids on the next
-          // batch (round-10 P1-3).
-          <div className="drive-main__load-error-inline" role="alert">
-            <span>{t('drive.file.loadFailed')}</span>
-            <Button theme="borderless" type="primary" size="small" onClick={reload}>
-              {t('drive.file.retry')}
-            </Button>
-          </div>
         )}
         </div>
       </div>
