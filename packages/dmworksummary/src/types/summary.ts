@@ -204,6 +204,12 @@ export interface SummaryListItem {
     current_result_id?: number | null;
     current_personal_version_id?: number | null;
     activity_at?: string | null;
+    /** 后端权威字段：该总结是否可被 Agent 引用 */
+    referenceable?: boolean;
+    /** 引用产物类型：team_result | personal_result | null */
+    reference_artifact_type?: string | null;
+    /** 不可引用原因（referenceable=false 时后端返回） */
+    reference_unavailable_reason?: string | null;
 }
 
 /** 详情 */
@@ -235,6 +241,12 @@ export interface SummaryDetail {
     result_id?: number;
     result_edited_at?: string | null;
     result_is_edited?: boolean;
+    /** 后端权威字段：该总结是否可被 Agent 引用 */
+    referenceable?: boolean;
+    /** 引用产物类型：team_result | personal_result | null */
+    reference_artifact_type?: string | null;
+    /** 不可引用原因（referenceable=false 时后端返回） */
+    reference_unavailable_reason?: string | null;
     permissions?: {
         /** 旧字段，语义已迁移到 can_edit_team；前端勿用。 */
         can_edit: boolean;

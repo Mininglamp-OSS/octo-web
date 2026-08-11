@@ -565,7 +565,9 @@
         "confirmDeleteTitle": "Delete?",
         "confirmDeleteDesc": "This cannot be undone.",
         "confirmLeaveTitle": "Leave?",
-        "confirmLeaveDesc": "You will no longer participate in this summary."
+        "confirmLeaveDesc": "You will no longer participate in this summary.",
+        "scheduledType": "Scheduled summary",
+        "multiPersonType": "Multi-person summary"
     },
     "editor": {
         "saveSuccess": "Saved",

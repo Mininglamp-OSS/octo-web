@@ -3,6 +3,7 @@ import { Modal, Input, List, Empty, Spin, Toast } from '@douyinfe/semi-ui';
 import { IconClose, IconLink } from '@douyinfe/semi-icons';
 import { listSummaries } from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
+import { TriggerType } from '../types/summary';
 import { I18nContext, type I18nCtx } from '@octo/base';
 import { summaryTestIds } from '../utils/testIds';
 import './SummaryReferencePicker.css';
@@ -61,21 +62,20 @@ export default class SummaryReferencePicker extends Component<
     private fetchList = async (keyword: string) => {
         this.setState({ loading: true, error: '' });
         try {
-            // listSummaries 返回按更新时间倒序的当前 space 总结列表
+            // 列出当前 space 所有总结（不再固定 trigger_type=3）。
+            // 后端在列表项中返回 referenceable/reference_artifact_type/reference_unavailable_reason，
+            // 前端据此筛选可引用候选并展示类型标签/不可用原因。
             const resp = await listSummaries({
                 page: 1,
                 page_size: 50,
                 keyword: keyword.trim() || undefined,
-                // 只列 agent 生成的总结:传统总结 refine 效果差(无 snapshot、无 tool_summary)
-                trigger_type: 3, // TriggerType.AGENT
             });
-            // 只保留有 origin_channel_id 的项(agent 保存流程需要 origin 才能落库)
-            // 老 agent 总结如 task_id=32 那种 origin 为空的直接过滤,避免用户选了却挂
+            // 只保留已完成且后端声明 referenceable=true 的项
             const items = (resp?.items || []).filter(
                 (t: SummaryListItem) =>
                     t.task_id != null && t.title != null &&
-                    // 状态必须是 COMPLETED(未完成的没内容可引用)
-                    t.status === 3,
+                    t.status === 3 &&
+                    t.referenceable === true,
             );
             this.setState({ items, loading: false });
         } catch (err: any) {
@@ -98,6 +98,22 @@ export default class SummaryReferencePicker extends Component<
     };
 
     private debounceTimer: number | null = null;
+
+    private getTypeLabel = (item: SummaryListItem): string => {
+        const { t } = this.context;
+        switch (item.trigger_type) {
+            case TriggerType.AGENT:
+                return t('summary.summaryCard.agentType');
+            case TriggerType.SCHEDULED:
+                return t('summary.summaryCard.scheduledType');
+            case TriggerType.MANUAL:
+                return item.summary_mode === 2
+                    ? t('summary.summaryCard.multiPersonType')
+                    : t('summary.summaryCard.quickType');
+            default:
+                return '';
+        }
+    };
 
     private handleSelect = (task: SummaryListItem) => {
         this.props.onSelect(task);
@@ -147,11 +163,19 @@ export default class SummaryReferencePicker extends Component<
                                     }`}
                                     onClick={() => this.handleSelect(item)}
                                 >
-                                    <div className="summary-reference-picker-item-title">
-                                        {item.title || t('summary.common.untitled')}
-                                    </div>
-                                    <div className="summary-reference-picker-item-meta">
-                                        {item.task_no} · {item.completed_at ? new Date(item.completed_at).toLocaleDateString() : t('summary.common.inProgress')}
+                                    <div className="summary-reference-picker-item-main">
+                                        <div className="summary-reference-picker-item-title">
+                                            {item.title || t('summary.common.untitled')}
+                                        </div>
+                                        <div className="summary-reference-picker-item-meta">
+                                            <span className="summary-reference-picker-item-type">
+                                                {this.getTypeLabel(item)}
+                                            </span>
+                                            <span className="summary-reference-picker-item-sep">·</span>
+                                            <span>{item.task_no}</span>
+                                            <span className="summary-reference-picker-item-sep">·</span>
+                                            <span>{item.completed_at ? new Date(item.completed_at).toLocaleDateString() : t('summary.common.inProgress')}</span>
+                                        </div>
                                     </div>
                                 </List.Item>
                             )}

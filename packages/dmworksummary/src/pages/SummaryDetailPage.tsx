@@ -2192,7 +2192,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      */
     handleContinueRefine = () => {
         const { detail } = this.state;
-        if (!detail || detail.trigger_type !== TriggerType.AGENT) return;
+        if (!detail || detail.referenceable !== true) return;
         const event = new CustomEvent('summary-open-chat-with-reference', {
             detail: {
                 task_id: detail.task_id,
@@ -3938,7 +3938,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                 </div>
                 <div className="summary-detail-header-actions">
-                    {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
+                    {detail && detail.status === TaskStatus.COMPLETED && detail.referenceable === true && (
                         <Button
                             data-testid={summaryTestIds.detailContinueRefineBtn}
                             theme="solid"

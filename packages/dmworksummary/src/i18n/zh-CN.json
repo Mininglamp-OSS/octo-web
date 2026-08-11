@@ -565,7 +565,9 @@
         "confirmDeleteTitle": "确认删除？",
         "confirmDeleteDesc": "删除后无法恢复",
         "confirmLeaveTitle": "确认退出？",
-        "confirmLeaveDesc": "退出后将不再参与该总结"
+        "confirmLeaveDesc": "退出后将不再参与该总结",
+        "scheduledType": "定时总结",
+        "multiPersonType": "多人总结"
     },
     "editor": {
         "saveSuccess": "保存成功",
