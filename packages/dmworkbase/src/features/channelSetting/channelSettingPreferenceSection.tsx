@@ -17,6 +17,7 @@ import {
 } from "../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../i18n";
 import { ChannelSettingToggleRow } from "../../ui/ChannelSettingRows";
+import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
 export function buildChannelPreferenceSection(
   context: RouteContext<ChannelSettingRouteData>
@@ -26,11 +27,36 @@ export function buildChannelPreferenceSection(
   const channel = data.channel;
   const rows = new Array<Row>();
 
-  if (
-    channel.channelType === ChannelTypeCustomerService ||
-    channel.channelType === ChannelTypeCommunityTopic
-  ) {
+  if (channel.channelType === ChannelTypeCustomerService) {
     return undefined;
+  }
+
+  if (channel.channelType === ChannelTypeCommunityTopic) {
+    const thread = channelInfo?.orgData?.thread;
+    const threadMuted = thread?.mute === 1;
+
+    return new Section({
+      rows: [
+        new Row({
+          cell: ChannelSettingToggleRow,
+          properties: {
+            title: t("base.module.channelSettings.mute"),
+            subTitle: t("base.module.thread.muteInheritHint"),
+            checked: threadMuted,
+            onChange: (value: boolean, row: ListItemSwitchContext) => {
+              row.loading = true;
+              muteChannelSetting({ channel, mute: value })
+                .then(() => fetchCurrentImChannelInfo(channel))
+                .then(() => data.refresh())
+                .catch((error) => Toast.error(error?.msg))
+                .finally(() => {
+                  row.loading = false;
+                });
+            },
+          },
+        }),
+      ],
+    });
   }
 
   if (!isGroupDisbanded(channelInfo)) {

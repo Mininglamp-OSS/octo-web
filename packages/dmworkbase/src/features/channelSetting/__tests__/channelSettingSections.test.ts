@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import { ChannelTypeCommunityTopic } from "../../../Service/Const";
 import { ThreadStatus } from "../../../Service/Thread";
 import { GroupStatusDisband } from "../../../Utils/groupDisband";
-import { updateChannelSettingMyGroupNickname } from "../../../bridge/channelSetting/channelSettingActions";
+import {
+  muteChannelSetting,
+  updateChannelSettingMyGroupNickname,
+} from "../../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../../i18n";
 import { buildChannelGroupInfoSection } from "../channelSettingGroupInfoSection";
 import {
@@ -78,7 +81,7 @@ vi.mock("../../../bridge/channelSetting/channelSettingActions", () => ({
   createGroupFromChannelSettingPrivateChat: vi.fn(),
   exitChannelSettingGroup: vi.fn(),
   leaveChannelSettingThread: vi.fn(),
-  muteChannelSetting: vi.fn(),
+  muteChannelSetting: vi.fn(() => Promise.resolve()),
   remarkChannelSetting: vi.fn(),
   removeChannelSettingSubscribers: vi.fn(() => Promise.resolve()),
   saveChannelSetting: vi.fn(),
@@ -234,12 +237,35 @@ describe("channel setting section builders", () => {
     ).toBe(false);
   });
 
-  it("hides preference rows for thread channels", () => {
-    const context = createContext({
-      channel: new Channel("group-1@thread", ChannelTypeCommunityTopic),
+  it("builds thread mute rows without adding group-only preferences", async () => {
+    const context = createThreadContext({
+      channelInfo: {
+        title: "Thread 1",
+        orgData: { thread: { mute: 1 } },
+      },
     });
+    const section = buildChannelPreferenceSection(context);
 
-    expect(buildChannelPreferenceSection(context)).toBeUndefined();
+    expect(section?.rows).toHaveLength(1);
+    expect(section?.rows?.[0].properties.checked).toBe(true);
+    expect(section?.rows?.[0].properties.title).toBe(
+      t("base.module.channelSettings.mute")
+    );
+    expect(section?.rows?.[0].properties.subTitle).toBe(
+      t("base.module.thread.muteInheritHint")
+    );
+
+    const row = { loading: false } as any;
+    section?.rows?.[0].properties.onChange(false, row);
+
+    expect(muteChannelSetting).toHaveBeenCalledWith({
+      channel: context.routeData().channel,
+      mute: false,
+    });
+    await vi.waitFor(() => {
+      expect(context.routeData().refresh).toHaveBeenCalled();
+      expect(row.loading).toBe(false);
+    });
   });
 
   it("builds group preference rows and hides mute after disband", () => {
@@ -382,15 +408,47 @@ describe("channel setting section builders", () => {
     const inputEditPush = vi.fn();
     const context = createThreadContext();
 
-    expect(buildThreadInfoSection(context, inputEditPush)?.rows).toHaveLength(
-      3
-    );
+    const infoRows = buildThreadInfoSection(context, inputEditPush)?.rows;
+    expect(infoRows).toHaveLength(3);
     expect(buildThreadMdSection(context)?.rows).toHaveLength(1);
     expect(buildThreadWebhookSection(context)?.rows).toHaveLength(1);
-    expect(
-      buildThreadOverviewSection(context, inputEditPush)?.rows
-    ).toHaveLength(5);
+    const overviewRows = buildThreadOverviewSection(
+      context,
+      inputEditPush
+    )?.rows;
+    expect(overviewRows).toHaveLength(5);
+    expect(overviewRows?.[3].properties.title).toBe("GROUP.md");
+    expect(overviewRows?.[4].properties.title).toBe(
+      t("base.threadPanel.webhook")
+    );
     expect(buildThreadActionsSection(context)?.rows).toHaveLength(2);
+  });
+
+  it("uses only reliable thread participation data", () => {
+    const context = createThreadContext({
+      channelInfo: {
+        title: "Thread 1",
+        orgData: {
+          member_count: 99,
+          thread: {
+            status: ThreadStatus.Active,
+            name: "Thread 1",
+            creator_uid: "alice",
+            member_count: 6,
+            is_member: false,
+          },
+        },
+      },
+    });
+    const rows = buildThreadInfoSection(context, vi.fn())?.rows;
+
+    expect(rows).toHaveLength(5);
+    expect(rows?.[3].properties.value).toBe(
+      t("base.module.thread.participantCountValue", { values: { count: 6 } })
+    );
+    expect(rows?.[4].properties.value).toBe(
+      t("base.module.thread.participationStatusNotJoined")
+    );
   });
 
   it("hides thread sections for group channels", () => {

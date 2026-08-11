@@ -101,15 +101,20 @@ export class ListItemSwitch extends Component<ListItemSwitchProps, ListItemSwitc
     }
 
     render() {
-        const { style, title, checked, onCheck } = this.props
+        const { style, title, subTitle, checked, onCheck } = this.props
         const { loading } = this.state
         return <div className="wk-list-item wk-list-item-ripple" style={style} onClick={() => {
             if (onCheck) {
                 onCheck(!checked,this)
             }
         }}>
-            <div className="wk-list-item-title">
-                {title}
+            <div className={subTitle ? "wk-list-item-switch-copy" : undefined}>
+                <div className="wk-list-item-title">
+                    {title}
+                </div>
+                {subTitle ? <div className="wk-list-item-switch-subtitle">
+                    {subTitle}
+                </div> : null}
             </div>
             <div className="wk-list-item-action">
                 <Switch checked={checked} loading={loading}></Switch>

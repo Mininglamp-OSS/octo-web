@@ -1840,7 +1840,6 @@ export default class BaseModule implements IModule {
     );
 
     // 子区信息行沿用各自既有 builder 和权限/点击逻辑，只在展示层合并为同一信息卡。
-    // 当前未注册的免打扰、查找聊天内容等入口不得因 UI 参考图而补回。
     WKApp.shared.channelSettingRegister(
       "thread.overview",
       (context) => {
@@ -1852,9 +1851,7 @@ export default class BaseModule implements IModule {
       500
     );
 
-    // 子区设置说明：
-    // - 消息免打扰/聊天置顶：子区继承父群组设置，暂不支持单独配置
-    // - 成员管理：子区成员通过加入/离开操作，不支持手动添加
+    // 子区成员通过加入/离开操作，不支持手动添加。
     WKApp.shared.channelSettingRegister(
       "thread.actions",
       (context) => {

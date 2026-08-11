@@ -49,18 +49,21 @@ export function ChannelSettingIconRow({
 
 export interface ChannelSettingToggleRowProps {
   title: string;
+  subTitle?: React.ReactNode;
   checked?: boolean;
   onChange?: (checked: boolean, context?: ListItemSwitchContext) => void;
 }
 
 export function ChannelSettingToggleRow({
   title,
+  subTitle,
   checked,
   onChange,
 }: ChannelSettingToggleRowProps) {
   return (
     <ListItemSwitch
       title={title}
+      subTitle={subTitle}
       checked={checked}
       onCheck={onChange}
       style={{}}
