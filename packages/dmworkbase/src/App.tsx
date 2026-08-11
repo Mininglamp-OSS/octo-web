@@ -1152,7 +1152,12 @@ export default class WKApp extends ProviderListener {
           const isElectronShell = window.location.protocol === "file:" &&
             typeof ipc?.invoke === "function";
           if (isElectronShell) {
-            await ipc.invoke(IPC_OIDC_OPEN_EXTERNAL, endSessionUrl);
+            const opened = await ipc.invoke(IPC_OIDC_OPEN_EXTERNAL, endSessionUrl);
+            if (opened?.ok !== true) throw new Error("OIDC logout browser launch failed");
+            // The IdP logout runs outside the app window. Reload the trusted
+            // file:// shell so the cleared credentials render the login UI
+            // immediately instead of leaving authenticated content mounted.
+            window.location.reload();
           } else {
             markOidcPostLogoutCleanup();
             window.location.href = endSessionUrl;

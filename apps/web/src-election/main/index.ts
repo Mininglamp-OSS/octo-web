@@ -158,7 +158,7 @@ ipcMain.handle(IPC_OIDC_AUTHORIZE_END, (event) => {
   return { ok: !!win };
 });
 
-ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, (event, url: unknown) => {
+ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
   const win = resolveTrustedOidcSender(event);
   if (!win || typeof url !== "string") return { ok: false as const };
   let parsed: URL;
@@ -166,8 +166,12 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, (event, url: unknown) => {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     return { ok: false as const };
   }
-  void shell.openExternal(parsed.toString());
-  return { ok: true as const };
+  try {
+    await shell.openExternal(parsed.toString());
+    return { ok: true as const };
+  } catch {
+    return { ok: false as const };
+  }
 });
 
 // Packaged renderer pages use file://, which is not an allowed CORS origin on

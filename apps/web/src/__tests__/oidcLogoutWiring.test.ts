@@ -31,6 +31,8 @@ describe("OIDC logout wiring", () => {
     expect(appSource).toContain("requestOidcLogout(providerId, token, fetcher || fetch)");
     expect(appSource).toContain("safeEndSessionUrl(resp.end_session_url)");
     expect(appSource).toContain("ipc.invoke(IPC_OIDC_OPEN_EXTERNAL, endSessionUrl)");
+    expect(appSource).toContain("if (opened?.ok !== true)");
+    expect(appSource).toContain("window.location.reload()");
     expect(appSource).toContain("window.location.href = endSessionUrl");
   });
 
