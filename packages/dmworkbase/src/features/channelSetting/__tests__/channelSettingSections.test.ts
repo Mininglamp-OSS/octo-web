@@ -604,6 +604,34 @@ describe("channel setting section builders", () => {
     expect(context.push).not.toHaveBeenCalled();
   });
 
+  it("does not expose generated editor to managers while uploaded avatar is active", () => {
+    const context = createContext({
+      isManagerOrCreatorOfMe: true,
+      channelInfo: {
+        title: "Uploaded Group",
+        orgData: {
+          avatar_text: "研发",
+          avatar_color: "5",
+          is_upload_avatar: 1,
+          is_named: 1,
+        },
+      },
+      subscriberOfMe: {
+        role: GroupRole.manager,
+      },
+    });
+    const rows = buildGroupProfileRows({
+      context,
+      data: context.routeData(),
+      inputEditPush: vi.fn(),
+      disbanded: false,
+    });
+
+    expect(rows[1].properties.showUpload).toBe(false);
+    expect(rows[1].properties.isUploadedAvatar).toBe(true);
+    expect(rows[1].properties.canClearUploadedAvatar).toBe(false);
+  });
+
   it("builds thread setting sections for active thread channels", () => {
     const inputEditPush = vi.fn();
     const context = createThreadContext();

@@ -83,6 +83,7 @@ export function buildGroupProfileRows({
   const isNamedGroup = channelInfo?.orgData?.is_named === 1;
   const isUploadedAvatar = channelInfo?.orgData?.is_upload_avatar === 1;
   const canClearUploadedAvatar = data.subscriberOfMe?.role === GroupRole.owner;
+  const canEditAvatar = data.isManagerOrCreatorOfMe && (!isUploadedAvatar || canClearUploadedAvatar);
   const avatarColor = parseAvatarColorIndex(channelInfo?.orgData?.avatar_color);
   const groupName = isExternalGroup ? (
     <span>
@@ -139,7 +140,7 @@ export function buildGroupProfileRows({
             alt=""
           />
         ),
-        showUpload: data.isManagerOrCreatorOfMe,
+        showUpload: canEditAvatar,
         channel,
         groupName: channelInfo?.title || "",
         isNamedGroup,

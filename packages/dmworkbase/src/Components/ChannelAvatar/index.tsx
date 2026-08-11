@@ -144,11 +144,14 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         const { channel } = this.props
         const { customAvatarText, customAvatarColorIndex, textChanged, colorChanged, draftMode } = this.state
         if (this.state.customAvatarSaving || this.state.uploading) return
+        const shouldClearUploadedAvatar =
+            this.props.isUploadedAvatar === true &&
+            this.props.canClearUploadedAvatar === true
         if (draftMode === "uploaded") {
             await this.saveUploadedAvatar()
             return
         }
-        if (!textChanged && !colorChanged) {
+        if (!textChanged && !colorChanged && !shouldClearUploadedAvatar) {
             this.closePage()
             return
         }
@@ -159,9 +162,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 avatarColor: colorChanged
                     ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
                     : undefined,
-                clearUploadedAvatar:
-                    this.props.isUploadedAvatar === true &&
-                    this.props.canClearUploadedAvatar === true,
+                clearUploadedAvatar: shouldClearUploadedAvatar,
             })
             WKApp.shared.changeChannelAvatarTag(channel)
             void fetchCurrentImChannelInfo(channel)

@@ -175,7 +175,7 @@ describe("ChannelAvatar save intent", () => {
     expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
   });
 
-  it("closes without PUT when generated save has no text/color edits", async () => {
+  it("closes without PUT when generated save has no text/color edits and no uploaded avatar clear", async () => {
     const channel = renderChannelAvatar({ initialAvatarText: "研发", initialColorIndex: 5 });
 
     await act(async () => {
@@ -184,6 +184,28 @@ describe("ChannelAvatar save intent", () => {
 
     expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
     expect(mocks.changeChannelAvatarTag).not.toHaveBeenCalledWith(channel);
+  });
+
+  it("sends clear_uploaded_avatar when owner saves uploaded avatar as generated without edits", async () => {
+    const channel = renderChannelAvatar({
+      initialAvatarText: "研发",
+      initialColorIndex: 5,
+      isUploadedAvatar: true,
+      canClearUploadedAvatar: true,
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("base.common.save"));
+    });
+
+    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledTimes(1);
+    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
+      avatarText: undefined,
+      avatarColor: undefined,
+      clearUploadedAvatar: true,
+    });
+    expect(mocks.changeChannelAvatarTag).toHaveBeenCalledWith(channel);
+    expect(mocks.fetchCurrentImChannelInfo).toHaveBeenCalledWith(channel);
   });
 
   it("sends clear_uploaded_avatar only when creator edits an uploaded avatar", async () => {
