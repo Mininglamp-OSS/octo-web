@@ -108,14 +108,16 @@ export class ListItemSwitch extends Component<ListItemSwitchProps, ListItemSwitc
                 onCheck(!checked,this)
             }
         }}>
-            <div className={subTitle ? "wk-list-item-switch-copy" : undefined}>
+            {subTitle ? <div className="wk-list-item-switch-copy">
                 <div className="wk-list-item-title">
                     {title}
                 </div>
-                {subTitle ? <div className="wk-list-item-switch-subtitle">
+                <div className="wk-list-item-switch-subtitle">
                     {subTitle}
-                </div> : null}
-            </div>
+                </div>
+            </div> : <div className="wk-list-item-title">
+                {title}
+            </div>}
             <div className="wk-list-item-action">
                 <Switch checked={checked} loading={loading}></Switch>
             </div>

@@ -1,5 +1,5 @@
 import { Toast } from "@douyinfe/semi-ui";
-import { ChannelTypeGroup } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypeGroup } from "wukongimjssdk";
 
 import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context";
 import { ListItemSwitchContext } from "../../Components/ListItem";
@@ -9,6 +9,11 @@ import {
 } from "../../Service/Const";
 import RouteContext from "../../Service/Context";
 import { Row, Section } from "../../Service/Section";
+import {
+  isEffectivelyMuted,
+  parseThreadChannelId,
+  ThreadStatus,
+} from "../../Service/Thread";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import {
   muteChannelSetting,
@@ -16,8 +21,14 @@ import {
   topChannelSetting,
 } from "../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../i18n";
-import { ChannelSettingToggleRow } from "../../ui/ChannelSettingRows";
-import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
+import {
+  ChannelSettingInfoRow,
+  ChannelSettingToggleRow,
+} from "../../ui/ChannelSettingRows";
+import {
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+} from "../../im-runtime/currentChannelRuntime";
 
 export function buildChannelPreferenceSection(
   context: RouteContext<ChannelSettingRouteData>
@@ -32,8 +43,41 @@ export function buildChannelPreferenceSection(
   }
 
   if (channel.channelType === ChannelTypeCommunityTopic) {
+    const threadInfo = parseThreadChannelId(channel.channelID);
     const thread = channelInfo?.orgData?.thread;
-    const threadMuted = thread?.mute === 1;
+    if (!threadInfo || thread?.status !== ThreadStatus.Active) {
+      return undefined;
+    }
+
+    const parentChannel = new Channel(threadInfo.groupNo, ChannelTypeGroup);
+    const parentChannelInfo = getCurrentImChannelInfo<Channel, ChannelInfo>(
+      parentChannel
+    );
+    if (!parentChannelInfo) {
+      return undefined;
+    }
+    if (isGroupDisbanded(parentChannelInfo)) {
+      return undefined;
+    }
+
+    const threadMuted = isEffectivelyMuted({
+      isThread: true,
+      channelInfo,
+      parentChannelInfo,
+    });
+    if (parentChannelInfo.mute) {
+      return new Section({
+        rows: [
+          new Row({
+            cell: ChannelSettingInfoRow,
+            properties: {
+              title: t("base.module.channelSettings.mute"),
+              value: t("base.module.thread.muteInheritedOn"),
+            },
+          }),
+        ],
+      });
+    }
 
     return new Section({
       rows: [
@@ -48,7 +92,11 @@ export function buildChannelPreferenceSection(
               muteChannelSetting({ channel, mute: value })
                 .then(() => fetchCurrentImChannelInfo(channel))
                 .then(() => data.refresh())
-                .catch((error) => Toast.error(error?.msg))
+                .catch((error) =>
+                  Toast.error(
+                    error?.msg || t("base.channelSetting.toggleFailed")
+                  )
+                )
                 .finally(() => {
                   row.loading = false;
                 });

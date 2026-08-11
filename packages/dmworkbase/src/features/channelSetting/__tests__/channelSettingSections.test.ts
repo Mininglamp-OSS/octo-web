@@ -1,6 +1,6 @@
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChannelTypeCommunityTopic } from "../../../Service/Const";
 import { ThreadStatus } from "../../../Service/Thread";
@@ -9,7 +9,15 @@ import {
   muteChannelSetting,
   updateChannelSettingMyGroupNickname,
 } from "../../../bridge/channelSetting/channelSettingActions";
+import {
+  fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+} from "../../../im-runtime/currentChannelRuntime";
 import { t } from "../../../i18n";
+import {
+  ChannelSettingInfoRow,
+  ChannelSettingToggleRow,
+} from "../../../ui/ChannelSettingRows";
 import { buildChannelGroupInfoSection } from "../channelSettingGroupInfoSection";
 import {
   buildChannelDangerSection,
@@ -137,6 +145,17 @@ function createThreadContext(overrides: Record<string, any> = {}) {
 }
 
 describe("channel setting section builders", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(getCurrentImChannelInfo).mockReturnValue({
+      title: "Parent Group",
+      mute: false,
+      orgData: { status: 1 },
+    } as any);
+    vi.mocked(fetchCurrentImChannelInfo).mockResolvedValue(undefined);
+    vi.mocked(muteChannelSetting).mockResolvedValue(undefined);
+  });
+
   it("builds member section only for active supported channels", () => {
     const normal = buildChannelMembersSection(createContext());
     const thread = buildChannelMembersSection(
@@ -241,7 +260,9 @@ describe("channel setting section builders", () => {
     const context = createThreadContext({
       channelInfo: {
         title: "Thread 1",
-        orgData: { thread: { mute: 1 } },
+        orgData: {
+          thread: { status: ThreadStatus.Active, mute: 1 },
+        },
       },
     });
     const section = buildChannelPreferenceSection(context);
@@ -266,6 +287,100 @@ describe("channel setting section builders", () => {
       expect(context.routeData().refresh).toHaveBeenCalled();
       expect(row.loading).toBe(false);
     });
+  });
+
+  it.each([
+    { threadMute: null, parentMuted: false, checked: false },
+    { threadMute: 0, parentMuted: false, checked: false },
+    { threadMute: 1, parentMuted: false, checked: true },
+    { threadMute: null, parentMuted: true, checked: true },
+    { threadMute: 0, parentMuted: true, checked: true },
+    { threadMute: 1, parentMuted: true, checked: true },
+  ])(
+    "represents thread mute=$threadMute with parent muted=$parentMuted",
+    ({ threadMute, parentMuted, checked }) => {
+      vi.mocked(getCurrentImChannelInfo).mockReturnValue({
+        title: "Parent Group",
+        mute: parentMuted,
+        orgData: { status: 1 },
+      } as any);
+      const context = createThreadContext({
+        channelInfo: {
+          title: "Thread 1",
+          orgData: {
+            thread: {
+              status: ThreadStatus.Active,
+              mute: threadMute,
+            },
+          },
+        },
+      });
+
+      const row = buildChannelPreferenceSection(context)?.rows?.[0];
+
+      if (parentMuted) {
+        expect(row?.cell).toBe(ChannelSettingInfoRow);
+        expect(row?.properties.value).toBe(
+          t("base.module.thread.muteInheritedOn")
+        );
+        expect(row?.properties.onChange).toBeUndefined();
+      } else {
+        expect(row?.cell).toBe(ChannelSettingToggleRow);
+        expect(row?.properties.checked).toBe(checked);
+      }
+    }
+  );
+
+  it("waits for authoritative parent info before building thread mute rows", () => {
+    vi.mocked(getCurrentImChannelInfo).mockReturnValue(undefined);
+    const context = createThreadContext();
+
+    expect(buildChannelPreferenceSection(context)).toBeUndefined();
+    expect(fetchCurrentImChannelInfo).not.toHaveBeenCalled();
+    expect(context.routeData().refresh).not.toHaveBeenCalled();
+  });
+
+  it.each([ThreadStatus.Archived, ThreadStatus.Deleted])(
+    "hides thread mute rows for non-active status %s",
+    (status) => {
+      const context = createThreadContext({
+        channelInfo: {
+          title: "Thread 1",
+          orgData: { thread: { status, mute: 0 } },
+        },
+      });
+
+      expect(buildChannelPreferenceSection(context)).toBeUndefined();
+    }
+  );
+
+  it("hides thread mute rows when the parent group is disbanded", () => {
+    vi.mocked(getCurrentImChannelInfo).mockReturnValue({
+      title: "Parent Group",
+      mute: false,
+      orgData: { status: GroupStatusDisband },
+    } as any);
+
+    expect(
+      buildChannelPreferenceSection(createThreadContext())
+    ).toBeUndefined();
+  });
+
+  it("restores loading and shows a fallback when thread mute fails", async () => {
+    vi.mocked(muteChannelSetting).mockRejectedValueOnce({});
+    const context = createThreadContext();
+    const row = { loading: false } as any;
+    const preferenceRow = buildChannelPreferenceSection(context)?.rows?.[0];
+
+    preferenceRow?.properties.onChange(true, row);
+
+    await vi.waitFor(() => {
+      expect(row.loading).toBe(false);
+      expect(Toast.error).toHaveBeenCalledWith(
+        t("base.channelSetting.toggleFailed")
+      );
+    });
+    expect(context.routeData().refresh).not.toHaveBeenCalled();
   });
 
   it("builds group preference rows and hides mute after disband", () => {

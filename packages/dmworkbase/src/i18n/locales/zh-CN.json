@@ -745,6 +745,7 @@
   "module.thread.leaveFailed": "离开失败",
   "module.thread.management": "子区管理",
   "module.thread.muteInheritHint": "默认跟随所属群聊状态",
+  "module.thread.muteInheritedOn": "继承所属群聊（已开启）",
   "module.thread.name": "子区名称",
   "module.thread.nameOnlyCreatorOrManager": "只有子区创建者或群管理者才能修改名称",
   "module.thread.parentGroup": "所属群聊",

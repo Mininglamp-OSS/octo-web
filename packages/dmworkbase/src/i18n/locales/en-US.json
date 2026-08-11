@@ -745,6 +745,7 @@
   "module.thread.leaveFailed": "Failed to leave",
   "module.thread.management": "Thread management",
   "module.thread.muteInheritHint": "Follows the parent group by default",
+  "module.thread.muteInheritedOn": "Inherited from the parent group (on)",
   "module.thread.name": "Thread name",
   "module.thread.nameOnlyCreatorOrManager": "Only the thread creator or a group manager can change the name.",
   "module.thread.parentGroup": "Parent group chat",
