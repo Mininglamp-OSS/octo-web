@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildOidcLogoutPath,
   clearAuthStorage,
+  createOidcLogoutFetcher,
   consumeOidcPostLogoutCleanup,
   isOidcLoginProvider,
   markOidcPostLogoutCleanup,
@@ -60,6 +61,27 @@ describe("oidcLogout helpers", () => {
     expect(resp.end_session_url).toBe(
       "https://accounts.example.com/end_session?id_token_hint=jwt"
     );
+  });
+
+  it("resolves Electron logout through the absolute API IPC proxy", async () => {
+    const invoke = vi.fn(async (channel: string) => channel === "oidc-api-origin-start"
+      ? { ok: true }
+      : {
+          status: 200,
+          end_session_url: "https://accounts.example.com/end_session",
+        });
+    const fetcher = createOidcLogoutFetcher("https://api.example.com/v1/", { invoke });
+    expect(fetcher).toBeDefined();
+    await requestOidcLogout("corp/sso", "octo-token", fetcher);
+    // The fetcher registers the API origin first so logout also works after
+    // an Electron restart, when no authorize flow is armed.
+    expect(invoke).toHaveBeenCalledWith("oidc-api-origin-start", "https://api.example.com/v1/");
+    expect(invoke).toHaveBeenCalledWith("oidc-http-request", {
+      url: "https://api.example.com/v1/auth/oidc/corp%2Fsso/logout",
+      method: "POST",
+      body: undefined,
+      headers: { Accept: "application/json", token: "octo-token" },
+    });
   });
 
   it("rejects failed backend logout responses", async () => {

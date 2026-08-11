@@ -154,7 +154,11 @@ import {
   overridePostLogoutRedirectUri,
   requestOidcLogout,
   safeEndSessionUrl,
+  createOidcLogoutFetcher,
 } from "./Service/oidcLogout";
+
+export const IM_DEVICE_FLAG_WEB = 1;
+export const IM_DEVICE_FLAG_PC = 2;
 
 export enum ThemeMode {
   light,
@@ -514,6 +518,7 @@ export class LoginInfo {
    * 用于 UI 区分入口（如 OIDC 用户跳转对应 IdP 的账户中心修改密码）。
    */
   loginProvider?: string;
+  deviceFlag?: number;
 
   /**
    * OCTO 实名认证状态缓存（GH #1121）。
@@ -554,6 +559,7 @@ export class LoginInfo {
     this.setStorageItemForSID("is_work", this.isWork ? "1" : "0");
     this.setStorageItemForSID("sex", this.sex === 1 ? "1" : "0");
     this.setStorageItemForSID("login_provider", this.loginProvider ?? "");
+    this.setStorageItemForSID("device_flag", this.deviceFlag ? String(this.deviceFlag) : "");
     // 实名认证状态 — 严格 tri-state 持久化。
     //   undefined → 删除 key（区别于「明确未实名」）
     //   true      → "1"
@@ -648,6 +654,8 @@ export class LoginInfo {
     }
     const provider = this.getStorageItemForSID("login_provider");
     this.loginProvider = provider ? provider : undefined;
+    const deviceFlag = this.getStorageItemForSID("device_flag");
+    this.deviceFlag = deviceFlag ? Number(deviceFlag) : undefined;
     // 恢复实名认证状态缓存 — 严格 tri-state。
     //   key 缺失（getStorageItemForSID 返回 null） → undefined（未知，保持空白）
     //   "1" → true
@@ -690,6 +698,7 @@ export class LoginInfo {
     this.isWork = false;
     this.sex = 0;
     this.loginProvider = undefined;
+    this.deviceFlag = undefined;
     this.removeStorageItemForSID("token");
     this.removeStorageItemForSID("app_id");
     this.removeStorageItemForSID("role");
@@ -700,6 +709,7 @@ export class LoginInfo {
     this.removeStorageItemForSID("name");
     this.removeStorageItemForSID("sex");
     this.removeStorageItemForSID("login_provider");
+    this.removeStorageItemForSID("device_flag");
     // 清除实名认证缓存
     this.realnameVerified = undefined;
     this.realName = undefined;
@@ -889,6 +899,14 @@ export default class WKApp extends ProviderListener {
       (window as any).__TAURI_IPC__
     ) {
       this.isPC = true;
+    }
+    const expectedDeviceFlag = this.isPC ? IM_DEVICE_FLAG_PC : IM_DEVICE_FLAG_WEB;
+    WKSDK.shared().config.deviceFlag = expectedDeviceFlag;
+    // Tokens issued before the desktop device-slot migration do not carry a
+    // marker. Re-authenticate once instead of reconnecting with an ambiguous
+    // token/device tuple and silently losing the IM connection.
+    if (this.isPC && WKApp.loginInfo.isLogined() && WKApp.loginInfo.deviceFlag !== expectedDeviceFlag) {
+      WKApp.loginInfo.logout();
     }
     this.deviceId = this.getDeviceIdFromStorage();
     this.deviceName = this.getOSAndVersion();
@@ -1115,7 +1133,11 @@ export default class WKApp extends ProviderListener {
     const token = WKApp.loginInfo.token || "";
     if (isOidcLoginProvider(providerId) && token) {
       try {
-        const resp = await requestOidcLogout(providerId, token);
+        const ipc = (window as any).ipc;
+        const fetcher = this.isPC
+          ? createOidcLogoutFetcher(WKApp.apiClient.config.apiURL || "", ipc)
+          : undefined;
+        const resp = await requestOidcLogout(providerId, token, fetcher || fetch);
         const rawEndSessionUrl = safeEndSessionUrl(resp.end_session_url);
         const endSessionUrl =
           rawEndSessionUrl && import.meta.env.DEV

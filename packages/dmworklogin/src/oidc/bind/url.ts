@@ -86,6 +86,7 @@ const BIND_QUERY_KEYS: ReadonlySet<string> = new Set([
   'authcode',
   'return_to',
   'provider',
+  '__octo_route',
 ])
 
 /**

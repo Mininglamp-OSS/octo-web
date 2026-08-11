@@ -12,7 +12,20 @@ describe("buildPostLoginRedirectUrl", () => {
         "?doc=d_1"
       )
     ).toBe(
-      "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html?doc=d_1"
+      "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html?doc=d_1&sid=old"
+    );
+  });
+
+  it("preserves the callback sid when there is no post-login query", () => {
+    expect(
+      buildPostLoginRedirectUrl(
+        "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html?sid=callback",
+        "null",
+        "/Applications/OCTO.app/Contents/Resources/app.asar/build",
+        ""
+      )
+    ).toBe(
+      "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html?sid=callback"
     );
   });
 

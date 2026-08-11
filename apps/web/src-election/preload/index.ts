@@ -1,6 +1,68 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { subscribeDisposable } from "./notificationListeners";
-import { IPC_CONVERSATION_UNREAD_COUNT } from "../shared/ipc-channels";
+import {
+  IPC_CONVERSATION_UNREAD_COUNT,
+  IPC_OIDC_AUTHORIZE_START,
+  IPC_OIDC_AUTHORIZE_END,
+  IPC_OIDC_API_ORIGIN_START,
+  IPC_OIDC_HTTP_REQUEST,
+} from "../shared/ipc-channels";
+
+// Keep the preload entry self-contained. Electron runs sandboxed preloads in
+// a restricted loader where relative CommonJS imports can fail even when the
+// imported file is present in app.asar. A failed preload means the whole IPC
+// bridge is missing, which makes packaged OIDC login look like a login error.
+function subscribeDisposable<T>(
+  ipc: typeof ipcRenderer,
+  channel: string,
+  callback: (data: T) => void,
+): () => void {
+  const handler = (_event: Electron.IpcRendererEvent, data: T) => callback(data);
+  ipc.on(channel, handler);
+  return () => ipc.removeListener(channel, handler);
+}
+
+// Dev server origin is injected by the main process via `additionalArguments`
+// (see main/index.ts getWindowConfig). We refuse to hard-code
+// `http://localhost:3000` here because VITE_DEV_SERVER_URL can override the
+// port on the main-process side — a mismatch would silently disable ALL IPC
+// in dev mode. The value is main-process-controlled, so a compromised
+// renderer cannot inject its own `--octo-dev-origin=` flag.
+const DEV_ORIGIN_FLAG = "--octo-dev-origin=";
+const SHELL_FILE_FLAG = "--octo-shell-file=";
+const devOrigin: string | null = (() => {
+  const arg = process.argv.find((a) => a.startsWith(DEV_ORIGIN_FLAG));
+  if (!arg) return null;
+  const raw = arg.slice(DEV_ORIGIN_FLAG.length);
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
+})();
+
+const trustedShellFileURL = (() => {
+  const arg = process.argv.find((a) => a.startsWith(SHELL_FILE_FLAG));
+  return arg ? arg.slice(SHELL_FILE_FLAG.length) : null;
+})();
+
+const isTrustedShell = () => {
+  if (window.location.protocol === "file:" && trustedShellFileURL) {
+    try {
+      const current = new URL(window.location.href);
+      const trusted = new URL(trustedShellFileURL);
+      if (current.protocol === trusted.protocol && current.pathname === trusted.pathname) return true;
+    } catch {
+      return false;
+    }
+  }
+  // In packaged builds `devOrigin` is null → dev-server access is denied,
+  // which is exactly what we want (packaged app should only ever load
+  // build/index.html via file://).
+  if (devOrigin && window.location.origin === devOrigin) return true;
+  return false;
+};
 
 const ALLOWED_SEND_CHANNELS = [
   "check-update",
@@ -18,6 +80,10 @@ const ALLOWED_INVOKE_CHANNELS = [
   "close-all-native-notifications",
   "test-notification-icon",
   "is-window-focused",
+  IPC_OIDC_AUTHORIZE_START,
+  IPC_OIDC_AUTHORIZE_END,
+  IPC_OIDC_API_ORIGIN_START,
+  IPC_OIDC_HTTP_REQUEST,
 ];
 
 const ALLOWED_RECEIVE_CHANNELS = [
@@ -37,6 +103,7 @@ contextBridge.exposeInMainWorld("__POWERED_ELECTRON__", true);
 
 contextBridge.exposeInMainWorld("ipc", {
   send: (channel: string, ...args: any[]) => {
+    if (!isTrustedShell()) return;
     if (ALLOWED_SEND_CHANNELS.includes(channel)) {
       ipcRenderer.send(channel, ...args);
     } else {
@@ -44,6 +111,7 @@ contextBridge.exposeInMainWorld("ipc", {
     }
   },
   invoke: (channel: string, ...args: any[]): Promise<any> => {
+    if (!isTrustedShell()) return Promise.reject(new Error("IPC unavailable outside app shell"));
     if (ALLOWED_INVOKE_CHANNELS.includes(channel)) {
       return ipcRenderer.invoke(channel, ...args);
     }
@@ -54,6 +122,7 @@ contextBridge.exposeInMainWorld("ipc", {
     channel: string,
     listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
   ) => {
+    if (!isTrustedShell()) return;
     if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
       ipcRenderer.on(channel, listener);
     } else {
@@ -64,6 +133,7 @@ contextBridge.exposeInMainWorld("ipc", {
     channel: string,
     listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
   ) => {
+    if (!isTrustedShell()) return;
     if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
       ipcRenderer.once(channel, listener);
     } else {
@@ -74,6 +144,7 @@ contextBridge.exposeInMainWorld("ipc", {
     channel: string,
     listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
   ) => {
+    if (!isTrustedShell()) return;
     if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
       ipcRenderer.removeListener(channel, listener);
     } else {
@@ -85,15 +156,33 @@ contextBridge.exposeInMainWorld("ipc", {
 // Expose native notification API
 contextBridge.exposeInMainWorld("electronNotification", {
   show: (options: any) =>
-    ipcRenderer.invoke("show-native-notification", options),
-  close: (tag: string) => ipcRenderer.invoke("close-native-notification", tag),
-  closeAll: () => ipcRenderer.invoke("close-all-native-notifications"),
+    isTrustedShell()
+      ? ipcRenderer.invoke("show-native-notification", options)
+      : Promise.reject(new Error("IPC unavailable outside app shell")),
+  close: (tag: string) =>
+    isTrustedShell()
+      ? ipcRenderer.invoke("close-native-notification", tag)
+      : Promise.reject(new Error("IPC unavailable outside app shell")),
+  closeAll: () =>
+    isTrustedShell()
+      ? ipcRenderer.invoke("close-all-native-notifications")
+      : Promise.reject(new Error("IPC unavailable outside app shell")),
   onClicked: (callback: (data: any) => void) =>
-    subscribeDisposable(ipcRenderer, "notification-clicked", callback),
+    isTrustedShell()
+      ? subscribeDisposable(ipcRenderer, "notification-clicked", callback)
+      : () => {},
   onActionClicked: (callback: (data: any) => void) =>
-    subscribeDisposable(ipcRenderer, "notification-action-clicked", callback),
+    isTrustedShell()
+      ? subscribeDisposable(ipcRenderer, "notification-action-clicked", callback)
+      : () => {},
   // Test notification icon
-  testNotificationIcon: () => ipcRenderer.invoke("test-notification-icon"),
+  testNotificationIcon: () =>
+    isTrustedShell()
+      ? ipcRenderer.invoke("test-notification-icon")
+      : Promise.reject(new Error("IPC unavailable outside app shell")),
   // Query real window focus state from main process
-  isWindowFocused: () => ipcRenderer.invoke("is-window-focused"),
+  isWindowFocused: () =>
+    isTrustedShell()
+      ? ipcRenderer.invoke("is-window-focused")
+      : Promise.reject(new Error("IPC unavailable outside app shell")),
 });

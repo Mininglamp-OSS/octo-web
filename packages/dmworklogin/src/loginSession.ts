@@ -57,6 +57,7 @@ export function applyLoginResp(data: LoginRespFields, provider: string): void {
   loginInfo.name = typeof data.name === 'string' ? data.name : ''
   loginInfo.sex = typeof data.sex === 'number' ? data.sex : 0
   loginInfo.loginProvider = provider
+  loginInfo.deviceFlag = WKApp.shared.isPC ? 2 : 1
 
   // 实名 tri-state: undefined 表示"未知" (老后端字段缺失场景), 不能塌缩为 false.
   // 原由保留在 login_vm.tsx 旧实现的注释里 (memory 627798ef): 后续 /v1/users/:uid

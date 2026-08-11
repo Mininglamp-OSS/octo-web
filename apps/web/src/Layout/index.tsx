@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import { WKApp, WKBase, Provider, ErrorBoundary, t } from "@octo/base"
+import { isBindEntry } from "@octo/login"
 import { listen } from '@tauri-apps/api/event'
 import { MainPage } from "../Pages/Main";
 import SpaceGate from "../Components/SpaceGate";
@@ -402,7 +403,14 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         // otherwise the bind token gets silently dropped on the floor. Defense
         // in depth even though no documented flow constructs such a URL today.
         // PR #72 review yujiawei #2.
-        if (window.location.pathname === '/oidc/bind') {
+        // Two independent triggers on purpose:
+        //   - `pathname === '/oidc/bind'` covers browser flows where the URL
+        //     really lives on that path.
+        //   - `isBindEntry()` covers the Electron packaged shell, where the
+        //     bind callback is rewritten to `build/index.html?__octo_route=/oidc/bind&...`
+        //     by main/oidcRedirect, so `pathname` no longer matches.
+        // Either signal is authoritative on its own; both must render bind.
+        if (window.location.pathname === '/oidc/bind' || isBindEntry()) {
             const bindComponent = WKApp.route.get('/oidc/bind')
             if (bindComponent) {
                 return bindComponent

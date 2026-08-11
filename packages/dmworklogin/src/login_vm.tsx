@@ -4,9 +4,13 @@ import {
     buildAuthorizeURL,
     clearPendingOidcLogin,
     fetchAuthcode,
-    fetchHttpClient,
+    getOidcClient,
     getPendingOidcLogin,
     getProviderById,
+    beginOidcAuthorize,
+    endOidcAuthorize,
+    registerOidcApiOrigin,
+    isElectronDesktop,
     isPendingExpired,
     OidcPollCancelledError,
     OidcPollNetworkError,
@@ -236,7 +240,9 @@ export class LoginVM extends ProviderListener {
         this.loginLoading = true
         this.notifyListener()
         try {
-            const resp = await WKApp.apiClient.post(`user/login_authcode/${authCode}`);
+            const resp = await WKApp.apiClient.post(`user/login_authcode/${authCode}`, {
+                flag: WKApp.shared.isPC ? 2 : 1,
+            });
             if (resp) {
                 this.loginSuccess(resp)
             }
@@ -252,11 +258,7 @@ export class LoginVM extends ProviderListener {
         this.loginLoading = true
         this.notifyListener()
         const device = this.getDevice()
-        let deviceFlag = 1 // web
-        // if(WKApp.shared.isPC) {
-        //     deviceFlag = 2 // pc
-
-        // }
+        const deviceFlag = WKApp.shared.isPC ? 2 : 1
         return WKApp.apiClient.post(`user/login`, { "username": username, "password": password, "flag": deviceFlag,"device":device }).then((result)=>{
             this.loginSuccess(result)
         }).finally(()=>{
@@ -273,7 +275,7 @@ export class LoginVM extends ProviderListener {
             "username": username,
             "name": name,
             "password": password,
-            "flag": 1,
+            "flag": WKApp.shared.isPC ? 2 : 1,
             "device": device,
         }).then((result) => {
             this.loginSuccess(result)
@@ -331,7 +333,7 @@ export class LoginVM extends ProviderListener {
         this.notifyListener()
         const device = this.getDevice()
         return WKApp.apiClient.post('user/emailregister', {
-            email, password, name, code, flag: 1, device,
+            email, password, name, code, flag: WKApp.shared.isPC ? 2 : 1, device,
         }).then((result) => {
             // emailregister wraps response in {data: ...}
             this.loginSuccess(result)
@@ -346,7 +348,7 @@ export class LoginVM extends ProviderListener {
         this.notifyListener()
         const device = this.getDevice()
         return WKApp.apiClient.post('user/emaillogin', {
-            email, password, flag: 1, device,
+            email, password, flag: WKApp.shared.isPC ? 2 : 1, device,
         }).then((result) => {
             // emaillogin wraps response in {data: ...}
             this.loginSuccess(result)
@@ -580,13 +582,32 @@ export class LoginVM extends ProviderListener {
         this.oidcLoading = true
         this.notifyListener()
         try {
-            const authcode = await fetchAuthcode(fetchHttpClient)
+            const apiURL = WKApp.apiClient?.config?.apiURL ?? ''
+            const isDesktop = isElectronDesktop()
+            // Electron packaged shell requires an absolute API origin: relative
+            // paths would resolve against file:// and every fetch would fail.
+            // Bail out early with a user-facing message instead of letting the
+            // fetch layer surface a cryptic protocol error.
+            if (isDesktop && !/^https?:\/\//i.test(apiURL)) {
+                throw new Error(t('oidc.failed'))
+            }
+            if (isDesktop) {
+                const registeredApi = await registerOidcApiOrigin(apiURL)
+                if (!registeredApi) throw new Error(t('oidc.failed'))
+            }
+            const oidcClient = getOidcClient(apiURL)
+            const authcode = await fetchAuthcode(oidcClient)
             savePendingOidcLogin({
                 providerId,
                 authcode,
                 savedAt: Date.now(),
             })
-            const returnTo = `${window.location.origin}/login`
+            const returnTo = isDesktop ? '/login' : `${window.location.origin}/login`
+            const authorizeBaseURL = isDesktop ? apiURL : undefined
+            if (isDesktop) {
+                const registered = await beginOidcAuthorize(apiURL, authcode, providerId)
+                if (!registered?.ok) throw new Error(t('oidc.failed'))
+            }
             // Schedule a fallback reset before navigating so a blocked redirect
             // does not leave the SSO button stuck in a loading state forever.
             if (this._oidcLoadingResetTimer) clearTimeout(this._oidcLoadingResetTimer)
@@ -597,8 +618,9 @@ export class LoginVM extends ProviderListener {
                     this.notifyListener()
                 }
             }, LoginVM.OIDC_LOADING_RESET_MS)
-            window.location.href = buildAuthorizeURL(provider, authcode, returnTo)
+            window.location.href = buildAuthorizeURL(provider, authcode, returnTo, authorizeBaseURL, isDesktop ? '2' : '1')
         } catch (e) {
+            await endOidcAuthorize()
             this.oidcLoading = false
             this.notifyListener()
             throw e
@@ -621,11 +643,13 @@ export class LoginVM extends ProviderListener {
         if (urlState.error && pending) {
             const name = getProviderById(pending.providerId)?.name || 'SSO'
             clearPendingOidcLogin()
+            await endOidcAuthorize()
             return { handled: true, success: false, error: t('oidc.failedWithProvider', { values: { provider: name } }) }
         }
         if (!pending) return { handled: false }
         if (isPendingExpired(pending)) {
             clearPendingOidcLogin()
+            await endOidcAuthorize()
             return { handled: true, success: false, error: t('oidc.timeout') }
         }
         const providerName = getProviderById(pending.providerId)?.name || 'SSO'
@@ -636,7 +660,7 @@ export class LoginVM extends ProviderListener {
         this.notifyListener()
         try {
             const result = await pollAuthStatus({
-                client: fetchHttpClient,
+                client: getOidcClient(WKApp.apiClient?.config?.apiURL ?? ''),
                 authcode: pending.authcode,
                 intervalMs: 2000,
                 maxAttempts: 150,
@@ -647,15 +671,18 @@ export class LoginVM extends ProviderListener {
             if (result.status === OIDC_AUTH_STATUS.SUCCESS && result.result) {
                 clearPendingOidcLogin()
                 this._resetOidcResume()
+                await endOidcAuthorize()
                 this.loginSuccess(result.result, pending.providerId)
                 return { handled: true, success: true }
             }
             clearPendingOidcLogin()
             this._resetOidcResume()
+            await endOidcAuthorize()
             return { handled: true, success: false, error: result.msg || t('oidc.failedWithProvider', { values: { provider: providerName } }) }
         } catch (e) {
             clearPendingOidcLogin()
             this._resetOidcResume()
+            await endOidcAuthorize()
             if (e instanceof OidcPollTimeoutError) {
                 return { handled: true, success: false, error: t('oidc.timeout') }
             }
@@ -671,6 +698,7 @@ export class LoginVM extends ProviderListener {
 
     cancelOidcLogin(): void {
         this._oidcCancelled = true
+        void endOidcAuthorize()
         // Clear pending up front so a refresh during the sleep window does not
         // resume the just-cancelled session.
         clearPendingOidcLogin()

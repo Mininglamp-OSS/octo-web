@@ -27,6 +27,7 @@ const loginInfoStub = vi.hoisted(() => ({
   realnameVerified: undefined as boolean | undefined,
   realName: undefined as string | undefined,
   realnameVerifiedAt: undefined as number | undefined,
+  deviceFlag: undefined as number | undefined,
   save: vi.fn(),
 }))
 
@@ -45,6 +46,7 @@ vi.mock('@octo/base', () => {
       onNeedJoinSpace: vi.fn(),
     },
     shared: {
+      isPC: false,
       deviceId: 'd',
       deviceName: 'n',
       deviceModel: 'm',
@@ -76,6 +78,7 @@ function resetLoginInfo() {
   loginInfoStub.realnameVerified = undefined
   loginInfoStub.realName = undefined
   loginInfoStub.realnameVerifiedAt = undefined
+  loginInfoStub.deviceFlag = undefined
   loginInfoStub.save.mockClear()
 }
 

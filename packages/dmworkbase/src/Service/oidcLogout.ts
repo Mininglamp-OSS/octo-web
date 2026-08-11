@@ -10,12 +10,15 @@ const AUTH_STORAGE_PREFIXES = [
   "is_work",
   "sex",
   "login_provider",
+  "device_flag",
   "realname_verified",
   "real_name",
   "realname_verified_at",
 ];
 
 const AUTH_STORAGE_KEYS = ["currentSpaceId", "pending_oidc_login"];
+const IPC_OIDC_API_ORIGIN_START = "oidc-api-origin-start";
+const IPC_OIDC_HTTP_REQUEST = "oidc-http-request";
 
 export interface OidcLogoutResponse {
   status?: number;
@@ -83,6 +86,34 @@ export async function requestOidcLogout(
   const text = await resp.text();
   if (!text) return {};
   return JSON.parse(text) as OidcLogoutResponse;
+}
+
+export function createOidcLogoutFetcher(
+  apiURL: string,
+  ipc: { invoke?: (channel: string, request: unknown) => Promise<unknown> } | undefined,
+): typeof fetch | undefined {
+  if (!/^https?:\/\//i.test(apiURL) || typeof ipc?.invoke !== "function") return undefined;
+  return async (input, init) => {
+    const registered = await ipc.invoke(IPC_OIDC_API_ORIGIN_START, apiURL) as { ok?: boolean };
+    if (registered?.ok !== true) throw new Error("OIDC API origin registration failed");
+    const path = typeof input === "string" ? input : input.toString();
+    const url = new URL(path, apiURL.endsWith("/") ? apiURL : `${apiURL}/`).toString();
+    const body = init?.body == null ? undefined : JSON.parse(String(init.body));
+    const result = await ipc.invoke(IPC_OIDC_HTTP_REQUEST, {
+      url,
+      method: init?.method || "POST",
+      body,
+      headers: init?.headers,
+    });
+    const envelope = result && typeof result === "object" &&
+      (result as Record<string, unknown>).__octoOidcHttpResponse === true
+      ? result as { ok: boolean; status: number; body?: unknown }
+      : undefined;
+    return new Response(JSON.stringify(envelope ? envelope.body ?? {} : result ?? {}), {
+      status: envelope?.status ?? 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  };
 }
 
 export function markOidcPostLogoutCleanup(): boolean {

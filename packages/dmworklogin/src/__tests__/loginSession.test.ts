@@ -14,8 +14,10 @@ vi.mock('@octo/base', () => ({
       realnameVerified: undefined,
       realName: undefined,
       realnameVerifiedAt: undefined,
+      deviceFlag: undefined,
       save: vi.fn(),
     },
+    shared: { isPC: false },
   },
   i18n: {
     setLocale: vi.fn(),
@@ -41,6 +43,7 @@ beforeEach(() => {
     realnameVerified: undefined,
     realName: undefined,
     realnameVerifiedAt: undefined,
+    deviceFlag: undefined,
   })
   ;(WKApp.loginInfo.save as ReturnType<typeof vi.fn>).mockClear()
   ;(i18n.setLocale as ReturnType<typeof vi.fn>).mockClear()
@@ -58,6 +61,7 @@ describe('applyLoginResp', () => {
     expect(WKApp.loginInfo.appID).toBe('a')
     expect(WKApp.loginInfo.name).toBe('Alice')
     expect(WKApp.loginInfo.loginProvider).toBe('aegis')
+    expect(WKApp.loginInfo.deviceFlag).toBe(1)
     expect(WKApp.loginInfo.save).toHaveBeenCalledOnce()
   })
 

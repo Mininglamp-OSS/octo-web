@@ -202,6 +202,18 @@ describe('LoginVM.resumeOidcLoginIfPending', () => {
     expect(getPendingOidcLogin()).toBeNull()
   })
 
+  it('clears pending and does not poll for a standard OAuth error callback', async () => {
+    savePendingOidcLogin({ providerId: 'acme-sso', authcode: 'AC', savedAt: Date.now() })
+    const vm = new LoginVM()
+    const result = await vm.resumeOidcLoginIfPending(
+      '?error=access_denied&error_description=user%20cancelled',
+    )
+    expect(result.handled).toBe(true)
+    expect(result.success).toBe(false)
+    expect(getPendingOidcLogin()).toBeNull()
+    expect(pollAuthStatusMock).not.toHaveBeenCalled()
+  })
+
   it('ignores ?oidc_error=1 when no pending session (anti-spoof)', async () => {
     const vm = new LoginVM()
     const result = await vm.resumeOidcLoginIfPending('?oidc_error=1')

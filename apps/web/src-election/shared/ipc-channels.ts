@@ -8,3 +8,15 @@
 
 /** Renderer → Main: sync the current unread-message count to the tray. */
 export const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count";
+
+/** Renderer → Main: register the API origin expected for the OIDC callback. */
+export const IPC_OIDC_AUTHORIZE_START = "oidc-authorize-start";
+
+/** Renderer → Main: finish the current OIDC flow and clear its origin lease. */
+export const IPC_OIDC_AUTHORIZE_END = "oidc-authorize-end";
+
+/** Renderer → Main: register an OIDC API origin without arming a redirect. */
+export const IPC_OIDC_API_ORIGIN_START = "oidc-api-origin-start";
+
+/** Renderer → Main: perform a CORS-free OIDC API request in the main process. */
+export const IPC_OIDC_HTTP_REQUEST = "oidc-http-request";

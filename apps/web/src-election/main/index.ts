@@ -10,14 +10,22 @@ import {
   Tray,
   nativeImage,
   dialog,
+  net,
 } from "electron";
 import fs from "fs";
 import tmp from 'tmp';
 import Screenshots from "electron-screenshots";
 import { join, dirname } from "path";
+import { pathToFileURL } from "url";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import { IPC_CONVERSATION_UNREAD_COUNT } from "../shared/ipc-channels";
+import {
+  IPC_CONVERSATION_UNREAD_COUNT,
+  IPC_OIDC_AUTHORIZE_START,
+  IPC_OIDC_AUTHORIZE_END,
+  IPC_OIDC_API_ORIGIN_START,
+  IPC_OIDC_HTTP_REQUEST,
+} from "../shared/ipc-channels";
 import OCTO_CONFIG from "./config";
 import {
   actualBreadcrumbFile,
@@ -32,6 +40,7 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
+import { isMatchingOidcCallback, isTrustedSenderUrl, parseHttpOrigin, parseOidcCallback, withTrustedSessionSid } from "./oidcRedirect";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -46,14 +55,211 @@ let isFullScreen = false;
 let isOsx = process.platform === "darwin";
 let isWin = process.platform === "win32";
 let isWindowFocusHandlerRegistered = false;
+type OidcFlow = {
+  origin: string;
+  authcode: string;
+  providerId: string;
+  expiresAt: number;
+};
+const oidcExpectedFlows = new WeakMap<BrowserWindow, OidcFlow>();
+const oidcApiOrigins = new WeakMap<BrowserWindow, string>();
+const OIDC_FLOW_TTL_MS = 5 * 60 * 1000;
 
-const isDevelopment = process.env.NODE_ENV !== "production";
+const isDevelopment = !app.isPackaged && process.env.NODE_ENV !== "production";
 // dev 模式下渲染层 dev server 地址。端口需与 vite dev server 一致，
 // 默认 3000（对齐旧 dev-ele 脚本）；可用 VITE_DEV_SERVER_URL 覆盖，
 // 避免与机器上其它占用 3000 的进程（如 e2e vite）冲突。
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:3000";
 const APP_EXIT_DELAY_MS = 1000;
 const TRAY_FLASH_INTERVAL_MS = 1000;
+
+// The renderer origin considered "our app shell" from the main process side.
+// Mirrors preload's `isTrustedShell` decision so both boundaries agree.
+//   - packaged build (`app.isPackaged`): shell loads build/index.html via
+//     `loadFile`, so file:// is the only trusted protocol.
+//   - dev build: the exact origin main pushed into `--octo-dev-origin=` (see
+//     `getWindowConfig().webPreferences.additionalArguments`); a mismatched
+//     VITE_DEV_SERVER_URL correctly disables OIDC IPC in dev.
+const TRUSTED_SHELL_DEV_ORIGIN = isDevelopment
+  ? new URL(DEV_SERVER_URL).origin
+  : undefined;
+const TRUSTED_SHELL_FILE_URL = pathToFileURL(join(__dirname, "../../build/index.html")).href;
+
+// Guards every OIDC IPC handler against callers that are not our own
+// renderer top-frame. Runs BEFORE any argument parsing so a malformed or
+// hostile payload from an untrusted origin never reaches the URL / origin
+// checks below.
+//
+// Returns the owning BrowserWindow on success. Returns `undefined` when the
+// caller should be rejected; the caller decides whether that becomes a
+// structured `{ ok: false, code: ... }` or a thrown error, matching each
+// channel's existing contract.
+function resolveTrustedOidcSender(
+  event: Electron.IpcMainInvokeEvent,
+): BrowserWindow | undefined {
+  // Reject subframes outright. `senderFrame` is undefined when the frame has
+  // already been destroyed between invoke() and dispatch — treat it as
+  // untrusted rather than falling back to `event.sender.getURL()` because
+  // that would let a navigated-away renderer keep talking to us.
+  const frame = event.senderFrame;
+  if (!frame) return undefined;
+  // `frame.top` is the frame itself for the main frame. A subframe (iframe
+  // hosting an IdP page mid-flow, a future <webview>, etc.) must not reach
+  // this handler even if its URL happens to be file://.
+  if (frame.top !== frame) return undefined;
+  if (!isTrustedSenderUrl(frame.url, TRUSTED_SHELL_DEV_ORIGIN, TRUSTED_SHELL_FILE_URL)) return undefined;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win || win.isDestroyed()) return undefined;
+  return win;
+}
+
+
+// Returns a discriminated result rather than throwing so the renderer can
+// map `code` to a localized message. Throwing would leak a raw English
+// `Error.message` across the IPC boundary (Electron rejects `invoke` with it
+// verbatim), which the login page cannot i18n.
+ipcMain.handle(IPC_OIDC_AUTHORIZE_START, (event, apiURL: unknown, authcode: unknown, providerId: unknown) => {
+  // Sender check first: any renderer that is not our top-frame shell must
+  // not be able to seed the expected callback flow — otherwise a compromised
+  // renderer could register an attacker-controlled origin and then have
+  // main-process `will-redirect` intercept a forged callback to it.
+  const win = resolveTrustedOidcSender(event);
+  if (!win) return { ok: false as const, code: "untrusted-sender" as const };
+  const origin = parseHttpOrigin(apiURL);
+  if (!origin) return { ok: false as const, code: "invalid-origin" as const };
+  if (typeof authcode !== "string" || authcode === "" || typeof providerId !== "string" || providerId === "") {
+    return { ok: false as const, code: "invalid-flow" as const };
+  }
+  oidcApiOrigins.set(win, origin);
+  oidcExpectedFlows.set(win, {
+    origin,
+    authcode,
+    providerId,
+    expiresAt: Date.now() + OIDC_FLOW_TTL_MS,
+  });
+  return { ok: true as const };
+});
+
+ipcMain.handle(IPC_OIDC_API_ORIGIN_START, (event, apiURL: unknown) => {
+  const win = resolveTrustedOidcSender(event);
+  const origin = parseHttpOrigin(apiURL);
+  if (!win || !origin) return { ok: false as const, code: "invalid-origin" as const };
+  oidcApiOrigins.set(win, origin);
+  return { ok: true as const };
+});
+
+ipcMain.handle(IPC_OIDC_AUTHORIZE_END, (event) => {
+  const win = resolveTrustedOidcSender(event);
+  if (win) oidcExpectedFlows.delete(win);
+  return { ok: !!win };
+});
+
+// Packaged renderer pages use file://, which is not an allowed CORS origin on
+// the OIDC API. Keep the request in the main process instead of weakening
+// BrowserWindow.webSecurity for the whole application. Only the two fixed
+// OIDC endpoints are accepted; arbitrary URLs must never become an IPC proxy.
+ipcMain.handle(IPC_OIDC_HTTP_REQUEST, async (event, request: unknown) => {
+  // Sender check first — see resolveTrustedOidcSender. `net.fetch` uses the
+  // default session and therefore carries the shell's cookies; without this
+  // gate, any non-shell renderer could borrow those credentials to hit the
+  // two whitelisted OIDC endpoints.
+  const win = resolveTrustedOidcSender(event);
+  if (!win) throw new Error("Untrusted OIDC sender");
+  if (!request || typeof request !== "object") throw new Error("Invalid OIDC request");
+  const { url, method, body: requestBody, headers: requestHeaders } = request as {
+    url?: unknown; method?: unknown; body?: unknown; headers?: unknown;
+  };
+  if (typeof url !== "string" || (method !== "GET" && method !== "POST")) {
+    throw new Error("Invalid OIDC request");
+  }
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { throw new Error("Invalid OIDC URL"); }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("Invalid OIDC URL");
+  }
+  const isLoginEndpoint = parsed.pathname === "/v1/user/thirdlogin/authcode" ||
+    parsed.pathname === "/v1/user/thirdlogin/authstatus";
+  const isOidcEndpoint = /^\/v1\/auth\/oidc\/[a-z0-9_%.-]+\/(?:bind\/(?:info|verify\/password|verify\/otp\/send|verify\/otp\/check|confirm|create)|logout)$/i.test(parsed.pathname);
+  if (!isLoginEndpoint && !isOidcEndpoint) {
+    throw new Error("OIDC endpoint is not allowed");
+  }
+  if (isLoginEndpoint && method !== "GET") throw new Error("Invalid OIDC method");
+  const isBindInfoEndpoint = isOidcEndpoint && parsed.pathname.endsWith("/info");
+  const isOidcPostEndpoint = isOidcEndpoint && !isBindInfoEndpoint;
+  if (isBindInfoEndpoint && method !== "GET") {
+    throw new Error("Invalid OIDC method");
+  }
+  if (isOidcPostEndpoint && method !== "POST") {
+    throw new Error("Invalid OIDC method");
+  }
+  // Origin whitelist: only allow the API origin that this window already
+// registered via the trusted-shell API-origin handshake. This prevents the
+// proxy from being used as a generic SSRF primitive against arbitrary hosts
+// (even for the two path-whitelisted endpoints).
+  const expectedOrigin = oidcApiOrigins.get(win);
+  if (!expectedOrigin || parsed.origin !== expectedOrigin) {
+    throw new Error("OIDC origin is not allowed");
+  }
+  const token = requestHeaders && typeof requestHeaders === "object"
+    ? (requestHeaders as Record<string, unknown>).token
+    : undefined;
+  if (token !== undefined && typeof token !== "string") throw new Error("Invalid OIDC headers");
+  const response = await net.fetch(parsed.toString(), {
+    method,
+    headers: {
+      Accept: "application/json",
+      ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+      ...(typeof token === "string" && token !== "" ? { token } : {}),
+    },
+    ...(method === "POST" ? { body: JSON.stringify(requestBody ?? {}) } : {}),
+  });
+  const responseText = await response.text().catch(() => "");
+  let responseBody: unknown = undefined;
+  if (responseText !== "") {
+    try {
+      responseBody = JSON.parse(responseText);
+    } catch {
+      responseBody = responseText;
+    }
+  }
+  // Keep the HTTP boundary lossless across Electron IPC. The renderer needs
+  // the status to preserve bind semantics (401/409/410/429), while callers
+  // such as logout still need the original response body and status.
+  return {
+    __octoOidcHttpResponse: true as const,
+    ok: response.ok,
+    status: response.status,
+    body: responseBody,
+  };
+});
+
+// The `will-redirect` / `will-navigate` listeners registered here are
+// intentionally long-lived — they live for the entire BrowserWindow lifetime
+// so a user can retry SSO multiple times in the same window. Each retry
+// re-arms the interceptor via the expected-flow WeakMap (renderer
+// calls `oidc-authorize-start` before every authorize navigation).
+//
+// The origin is kept through the callback reload because the renderer still
+// needs it for authstatus polling and bind API calls. The renderer explicitly
+// ends the flow after that work is complete.
+function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: string) {
+  const handleCallback = (event: Electron.Event, url: string) => {
+    const flow = oidcExpectedFlows.get(win);
+    if (!flow || flow.expiresAt <= Date.now()) {
+      oidcExpectedFlows.delete(win);
+      return;
+    }
+    const callback = parseOidcCallback(url, flow.origin);
+    if (!callback) return;
+    if (!isMatchingOidcCallback(callback, flow.authcode, flow.providerId)) return;
+
+    event.preventDefault();
+    win.loadFile(webUrl, { query: withTrustedSessionSid(callback, sid) });
+  };
+
+  win.webContents.on("will-redirect", handleCallback);
+  win.webContents.on("will-navigate", handleCallback);
+}
 
 const registerWindowFocusHandler = () => {
   if (isWindowFocusHandlerRegistered) return;
@@ -393,7 +599,23 @@ const getWindowConfig = () => {
       preload: join(__dirname, "..", "preload", "index.js"),
       nodeIntegration: false,
       contextIsolation: true,
+      // The preload is a CommonJS entry compiled by tsc. Electron 26's
+      // sandboxed preload loader does not reliably expose this bridge in the
+      // packaged app; without it, window.ipc is absent and OIDC always fails
+      // before the authorize request starts. Node integration remains off and
+      // context isolation stays enabled, so the renderer still cannot access
+      // Node APIs directly.
+      sandbox: false,
       devTools: isDevelopment,
+      // Pass the dev server origin to preload via `process.argv`. Preload
+      // needs it to whitelist IPC calls in dev mode (see preload/index.ts
+      // `isTrustedShell`). Hard-coding `http://localhost:3000` there would
+      // break whenever VITE_DEV_SERVER_URL is overridden. The value is
+      // main-process-controlled, so the renderer cannot spoof it.
+      additionalArguments: [
+        `--octo-shell-file=${TRUSTED_SHELL_FILE_URL}`,
+        ...(isDevelopment ? [`--octo-dev-origin=${new URL(DEV_SERVER_URL).origin}`] : []),
+      ],
     },
     // frame: !isWin,
   };
@@ -401,7 +623,6 @@ const getWindowConfig = () => {
 
 // 创建新窗口
 const createNewWindow = () => {
-  const NODE_ENV = process.env.NODE_ENV;
   const newWindow = new BrowserWindow(getWindowConfig());
 
   newWindow.center();
@@ -416,12 +637,14 @@ const createNewWindow = () => {
   });
 
   // 加载相同的页面
-  if (NODE_ENV == "development") {
+  if (isDevelopment) {
     newWindow.loadURL(`${DEV_SERVER_URL}?sid=${getRandomSid()}`);
   } else {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
-    newWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+    const sid = getRandomSid();
+    registerOidcReturnRedirect(newWindow, WEB_URL, sid);
+    newWindow.loadFile(WEB_URL, { query: { sid } });
   }
 
   // 为新窗口设置菜单（Windows 需要）
@@ -434,7 +657,6 @@ const createNewWindow = () => {
 };
 
 const createMainWindow = async () => {
-  const NODE_ENV = process.env.NODE_ENV;
   mainWindow = new BrowserWindow(getWindowConfig());
   mainWindow.center();
   mainWindow.once("ready-to-show", () => {
@@ -456,11 +678,13 @@ const createMainWindow = async () => {
       }
     }
   });
-  if (NODE_ENV === "development") mainWindow.loadURL(DEV_SERVER_URL);
-  if (NODE_ENV !== "development") {
+  if (isDevelopment) mainWindow.loadURL(DEV_SERVER_URL);
+  if (!isDevelopment) {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
-    mainWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+    const sid = getRandomSid();
+    registerOidcReturnRedirect(mainWindow, WEB_URL, sid);
+    mainWindow.loadFile(WEB_URL, { query: { sid } });
   }
 
   ipcMain.on("screenshots-start", (event, args) => {
