@@ -1,38 +1,42 @@
 /**
- * Regression tests for the two send-side data-loss bugs (octo-web#227).
+ * Regression tests for the send-side compose bugs (octo-web#227 → #1280).
  *
- * Round 1 — mixed text+image send failure wiped the draft:
+ * Round 1 (#227) — mixed text+image send failure wiped the draft:
  *   MessageInput cleared the editor / deleted pasted-image File refs / revoked
  *   preview URLs synchronously, BEFORE the awaited async send (mixed RichText)
  *   could report failure. A failed image upload therefore destroyed the user's
  *   whole text+image compose with no message and nothing to retry.
  *
- * Round 2 — await-cleanup race wiped the NEXT draft (Jerry-Xin P1):
- *   Once the send was awaited, the editor stayed editable during the wait. If
- *   the user finished one message and started typing the next while upload/ack
- *   was still pending, the older send's success cleared the live (newer) editor
- *   and top-attachment list. The cleanup must be snapshot-aware: clear the
- *   editor only if it still holds exactly what was sent, and remove only the
- *   top attachments that were actually consumed.
+ * Round 2 (#227) — await-cleanup race wiped the NEXT draft:
+ *   The editor stayed editable during the wait, so the older send's success
+ *   cleared the live (newer) editor and top-attachment list.
  *
- * The contract these tests lock in:
- *   - send resolves false  → editor preserved; no top attachment removed.
- *   - send throws          → same as false.
- *   - send resolves true / void → success; consumed top ids = all; editor
- *     cleared IFF unchanged.
- *   - send resolves a detail object → partial: editor cleared per
- *     editorConsumed, top attachments removed per consumedTopIds.
- *   - editor changed during await → editor NEVER cleared (round-2 fix), even on
- *     success; consumed top attachments are still removed by id.
- *   - cleanup never runs before the send settles (ordering guarantee).
+ * Round 3 (#1280) — the round-2 "snapshot-aware" cleanup was all-or-nothing:
+ *   whenever the document changed mid-flight the ALREADY SENT content stayed in
+ *   the composer (visible in history + still in the input box, re-sendable by a
+ *   second Enter). Consecutive image/text sends hit this constantly.
+ *
+ * Current contract (consume-first / restore-on-failure) locked in below:
+ *   - the caller consumes the compose synchronously before calling;
+ *   - send resolves true / void → consumed stays consumed; File refs + preview
+ *     URLs are disposed; nothing is restored (so no leftovers, no duplicates);
+ *   - send resolves false / throws → the compose is restored (editor content
+ *     re-inserted, top attachments re-added) and nothing is disposed;
+ *   - detail result → editor restored per editorConsumed, only the top ids NOT
+ *     in consumedTopIds are restored (already-sent files never come back);
+ *   - restore/dispose never run before the send settles (ordering guarantee);
+ *   - createSendQueue serializes sends instead of dropping them.
  */
 
 import { describe, it, expect, vi } from "vitest";
 import {
   announceContextAfterSendReady,
+  createSendQueue,
   invokeReadySend,
-  runSendWithCleanup,
-  SendCleanup,
+  restoreComposeSnapshot,
+  runSendWithConsumedCompose,
+  ConsumedCompose,
+  ComposeRestoreTarget,
 } from "../sendFlow";
 
 describe("announceContextAfterSendReady", () => {
@@ -62,219 +66,265 @@ describe("invokeReadySend", () => {
   });
 });
 
-interface RecordingCleanup extends SendCleanup {
+interface RecordingCompose extends ConsumedCompose {
   calls: string[];
-  removedIds: string[];
-  editorUnchanged: boolean;
+  restoredTopIds: string[];
+  disposedTopIds: string[];
 }
 
-function makeCleanup(opts?: { editorUnchanged?: boolean }): RecordingCleanup {
+function makeCompose(): RecordingCompose {
   const calls: string[] = [];
-  const removedIds: string[] = [];
+  const restoredTopIds: string[] = [];
+  const disposedTopIds: string[] = [];
   const state = {
     calls,
-    removedIds,
-    editorUnchanged: opts?.editorUnchanged ?? true,
-    isEditorUnchanged: vi.fn(() => state.editorUnchanged),
-    deleteEditorAttachmentRefs: vi.fn(() => calls.push("deleteEditorAttachmentRefs")),
-    revokeEditorPreviewUrls: vi.fn(() => calls.push("revokeEditorPreviewUrls")),
-    clearEditor: vi.fn(() => calls.push("clearEditor")),
-    removeTopAttachments: vi.fn((ids: string[]) => {
-      calls.push("removeTopAttachments");
-      removedIds.push(...ids);
+    restoredTopIds,
+    disposedTopIds,
+    restoreEditor: vi.fn(() => calls.push("restoreEditor")),
+    disposeEditorAttachments: vi.fn(() => calls.push("disposeEditorAttachments")),
+    disposeTopAttachments: vi.fn((ids: string[]) => {
+      calls.push("disposeTopAttachments");
+      disposedTopIds.push(...ids);
     }),
-    collapseExpanded: vi.fn(() => calls.push("collapseExpanded")),
+    restoreTopAttachments: vi.fn((ids: string[]) => {
+      calls.push("restoreTopAttachments");
+      restoredTopIds.push(...ids);
+    }),
   };
-  return state as unknown as RecordingCleanup;
+  return state as unknown as RecordingCompose;
 }
 
-describe("runSendWithCleanup — round 1: mixed send failure preserves draft", () => {
-  it("does NOT clear editor / refs / urls and removes no top attachment when send resolves false", async () => {
-    const cleanup = makeCleanup();
-    const send = vi.fn().mockResolvedValue(false);
-
-    const ok = await runSendWithCleanup(send, ["t1", "t2"], cleanup);
-
-    expect(ok).toBe(false);
-    expect(cleanup.clearEditor).not.toHaveBeenCalled();
-    expect(cleanup.deleteEditorAttachmentRefs).not.toHaveBeenCalled();
-    expect(cleanup.revokeEditorPreviewUrls).not.toHaveBeenCalled();
-    expect(cleanup.removeTopAttachments).not.toHaveBeenCalled();
-    expect(cleanup.collapseExpanded).not.toHaveBeenCalled();
-    expect(cleanup.calls).toEqual([]);
-  });
-
-  it("preserves draft when send throws (image prepare/upload error)", async () => {
-    const cleanup = makeCleanup();
-    const send = vi.fn().mockRejectedValue(new Error("upload failed"));
-
-    const ok = await runSendWithCleanup(send, ["t1"], cleanup);
-
-    expect(ok).toBe(false);
-    expect(cleanup.calls).toEqual([]);
-  });
-
-  it("clears compose state and removes all top attachments when send resolves true", async () => {
-    const cleanup = makeCleanup();
+describe("runSendWithConsumedCompose — success keeps the composer empty (#1280)", () => {
+  it("disposes refs/urls and restores nothing when the send succeeds", async () => {
+    const compose = makeCompose();
     const send = vi.fn().mockResolvedValue(true);
 
-    const ok = await runSendWithCleanup(send, ["t1", "t2"], cleanup);
+    const ok = await runSendWithConsumedCompose(send, ["t1", "t2"], compose);
 
     expect(ok).toBe(true);
-    expect(cleanup.removeTopAttachments).toHaveBeenCalledTimes(1);
-    expect(cleanup.removedIds).toEqual(["t1", "t2"]);
-    expect(cleanup.deleteEditorAttachmentRefs).toHaveBeenCalledTimes(1);
-    expect(cleanup.revokeEditorPreviewUrls).toHaveBeenCalledTimes(1);
-    expect(cleanup.clearEditor).toHaveBeenCalledTimes(1);
-    expect(cleanup.collapseExpanded).toHaveBeenCalledTimes(1);
+    expect(compose.restoreEditor).not.toHaveBeenCalled();
+    expect(compose.restoreTopAttachments).not.toHaveBeenCalled();
+    expect(compose.disposeEditorAttachments).toHaveBeenCalledTimes(1);
+    expect(compose.disposedTopIds).toEqual(["t1", "t2"]);
   });
 
   it("treats void/undefined return as success (back-compat with legacy onSend)", async () => {
-    const cleanup = makeCleanup();
-    const send = vi.fn().mockResolvedValue(undefined);
+    const compose = makeCompose();
 
-    const ok = await runSendWithCleanup(send, ["t1"], cleanup);
+    const ok = await runSendWithConsumedCompose(
+      vi.fn().mockResolvedValue(undefined),
+      ["t1"],
+      compose,
+    );
 
     expect(ok).toBe(true);
-    expect(cleanup.clearEditor).toHaveBeenCalledTimes(1);
-    expect(cleanup.removedIds).toEqual(["t1"]);
+    expect(compose.restoreEditor).not.toHaveBeenCalled();
+    expect(compose.disposedTopIds).toEqual(["t1"]);
   });
 
   it("treats a synchronous void return as success", async () => {
-    const cleanup = makeCleanup();
+    const compose = makeCompose();
     const send = vi.fn(() => {
       /* legacy void onSend */
     });
 
-    const ok = await runSendWithCleanup(send, [], cleanup);
+    const ok = await runSendWithConsumedCompose(send, [], compose);
 
     expect(ok).toBe(true);
-    expect(cleanup.clearEditor).toHaveBeenCalledTimes(1);
+    expect(compose.restoreEditor).not.toHaveBeenCalled();
+    expect(compose.disposeEditorAttachments).toHaveBeenCalledTimes(1);
   });
 
-  it("never runs cleanup before the async send settles (ordering guarantee)", async () => {
-    const cleanup = makeCleanup();
+  it("does NOT restore already-sent content even when the user typed during the await", async () => {
+    // The #1280 bug: a mid-flight document change used to leave the sent content
+    // in the composer. Consume-first makes it structurally impossible — success
+    // simply never touches the live document.
+    const compose = makeCompose();
     let resolveSend!: (v: boolean) => void;
-    const send = vi.fn(
-      () =>
-        new Promise<boolean>((res) => {
-          resolveSend = res;
-        }),
-    );
+    const send = vi.fn(() => new Promise<boolean>((res) => (resolveSend = res)));
 
-    const p = runSendWithCleanup(send, ["t1"], cleanup);
+    const p = runSendWithConsumedCompose(send, ["t1"], compose);
+    // ...user pastes another image / types the next line here...
+    resolveSend(true);
+
+    await expect(p).resolves.toBe(true);
+    expect(compose.restoreEditor).not.toHaveBeenCalled();
+    expect(compose.restoreTopAttachments).not.toHaveBeenCalled();
+  });
+});
+
+describe("runSendWithConsumedCompose — round 1: failure restores the whole draft", () => {
+  it("restores editor + top attachments when the send resolves false", async () => {
+    const compose = makeCompose();
+    const send = vi.fn().mockResolvedValue(false);
+
+    const ok = await runSendWithConsumedCompose(send, ["t1", "t2"], compose);
+
+    expect(ok).toBe(false);
+    expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
+    expect(compose.restoredTopIds).toEqual(["t1", "t2"]);
+    // Nothing disposed → the restored pasted images still resolve to their File.
+    expect(compose.disposeEditorAttachments).not.toHaveBeenCalled();
+    expect(compose.disposeTopAttachments).not.toHaveBeenCalled();
+  });
+
+  it("restores the draft when the send throws (image prepare/upload error)", async () => {
+    const compose = makeCompose();
+    const send = vi.fn().mockRejectedValue(new Error("upload failed"));
+
+    const ok = await runSendWithConsumedCompose(send, ["t1"], compose);
+
+    expect(ok).toBe(false);
+    expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
+    expect(compose.restoredTopIds).toEqual(["t1"]);
+    expect(compose.disposeEditorAttachments).not.toHaveBeenCalled();
+  });
+
+  it("never restores or disposes before the async send settles (ordering guarantee)", async () => {
+    const compose = makeCompose();
+    let resolveSend!: (v: boolean) => void;
+    const send = vi.fn(() => new Promise<boolean>((res) => (resolveSend = res)));
+
+    const p = runSendWithConsumedCompose(send, ["t1"], compose);
 
     await Promise.resolve();
-    expect(cleanup.clearEditor).not.toHaveBeenCalled();
-    expect(cleanup.deleteEditorAttachmentRefs).not.toHaveBeenCalled();
-    expect(cleanup.removeTopAttachments).not.toHaveBeenCalled();
+    expect(compose.calls).toEqual([]);
 
-    resolveSend(true);
+    resolveSend(false);
     await p;
 
-    expect(cleanup.clearEditor).toHaveBeenCalledTimes(1);
-    expect(cleanup.removeTopAttachments).toHaveBeenCalledTimes(1);
+    expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
   });
 });
 
-describe("runSendWithCleanup — round 2: snapshot-aware cleanup preserves the NEXT draft", () => {
-  it("does NOT clear the editor when the user started a new draft during the await, even on success", async () => {
-    // editor changed during the await → isEditorUnchanged() returns false.
-    const cleanup = makeCleanup({ editorUnchanged: false });
-    const send = vi.fn().mockResolvedValue(true);
-
-    const ok = await runSendWithCleanup(send, [], cleanup);
-
-    // Send still reported success...
-    expect(ok).toBe(true);
-    // ...but the live (newer) editor draft must survive untouched.
-    expect(cleanup.clearEditor).not.toHaveBeenCalled();
-    expect(cleanup.deleteEditorAttachmentRefs).not.toHaveBeenCalled();
-    expect(cleanup.revokeEditorPreviewUrls).not.toHaveBeenCalled();
-    expect(cleanup.collapseExpanded).not.toHaveBeenCalled();
-  });
-
-  it("still removes consumed top attachments by id even when the editor changed mid-flight", async () => {
-    const cleanup = makeCleanup({ editorUnchanged: false });
-    const send = vi.fn().mockResolvedValue(true);
-
-    await runSendWithCleanup(send, ["t1", "t2"], cleanup);
-
-    // Consumed top attachments are id-scoped, so removing them never touches a
-    // newly queued attachment — safe regardless of editor changes.
-    expect(cleanup.removeTopAttachments).toHaveBeenCalledTimes(1);
-    expect(cleanup.removedIds).toEqual(["t1", "t2"]);
-    // Editor itself preserved.
-    expect(cleanup.clearEditor).not.toHaveBeenCalled();
-  });
-
-  it("clears the editor on success when it still holds exactly what was sent", async () => {
-    const cleanup = makeCleanup({ editorUnchanged: true });
-    const send = vi.fn().mockResolvedValue(true);
-
-    await runSendWithCleanup(send, [], cleanup);
-
-    expect(cleanup.clearEditor).toHaveBeenCalledTimes(1);
-  });
-
-  it("pure-text send: a new draft typed during ack wait is not wiped by the old send", async () => {
-    // Pure text now also awaits sendTextAndWaitAck; simulate ack landing after
-    // the user started a new line.
-    const cleanup = makeCleanup({ editorUnchanged: false });
-    let resolveSend!: (v: boolean) => void;
-    const send = vi.fn(
-      () => new Promise<boolean>((res) => (resolveSend = res)),
-    );
-
-    const p = runSendWithCleanup(send, [], cleanup);
-    // user types the next message while ack is pending → editor now differs.
-    resolveSend(true);
-    const ok = await p;
-
-    expect(ok).toBe(true);
-    expect(cleanup.clearEditor).not.toHaveBeenCalled();
-  });
-});
-
-describe("runSendWithCleanup — partial result (top attachments sent, editor failed)", () => {
-  it("preserves the editor but drops only the consumed top attachments (no retry duplication)", async () => {
-    const cleanup = makeCleanup({ editorUnchanged: true });
+describe("runSendWithConsumedCompose — partial result (top attachments sent, editor failed)", () => {
+  it("restores the editor but keeps the already-sent top attachments consumed", async () => {
+    const compose = makeCompose();
     // Top attachments t1,t2 were sent first; the mixed editor send then failed.
     const send = vi
       .fn()
       .mockResolvedValue({ editorConsumed: false, consumedTopIds: ["t1", "t2"] });
 
-    const ok = await runSendWithCleanup(send, ["t1", "t2"], cleanup);
+    const ok = await runSendWithConsumedCompose(send, ["t1", "t2"], compose);
 
-    // editorConsumed=false → return false so MessageInput keeps the editor.
     expect(ok).toBe(false);
-    expect(cleanup.clearEditor).not.toHaveBeenCalled();
-    expect(cleanup.deleteEditorAttachmentRefs).not.toHaveBeenCalled();
-    // But the already-sent top attachments are removed so retry won't resend.
-    expect(cleanup.removeTopAttachments).toHaveBeenCalledTimes(1);
-    expect(cleanup.removedIds).toEqual(["t1", "t2"]);
+    expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
+    // Already-sent files must NOT come back, otherwise a retry duplicates them.
+    expect(compose.restoreTopAttachments).not.toHaveBeenCalled();
+    expect(compose.disposedTopIds).toEqual(["t1", "t2"]);
   });
 
-  it("detail with editorConsumed=true clears editor and removes the listed top ids", async () => {
-    const cleanup = makeCleanup({ editorUnchanged: true });
+  it("restores only the top attachments that were not sent", async () => {
+    const compose = makeCompose();
     const send = vi
       .fn()
       .mockResolvedValue({ editorConsumed: true, consumedTopIds: ["t1"] });
 
-    const ok = await runSendWithCleanup(send, ["t1", "t2"], cleanup);
+    const ok = await runSendWithConsumedCompose(send, ["t1", "t2"], compose);
 
     expect(ok).toBe(true);
-    expect(cleanup.clearEditor).toHaveBeenCalledTimes(1);
-    // Only the explicitly-consumed id is removed, not the whole allTopIds list.
-    expect(cleanup.removedIds).toEqual(["t1"]);
+    expect(compose.disposedTopIds).toEqual(["t1"]);
+    expect(compose.restoredTopIds).toEqual(["t2"]);
   });
 
   it("detail editorConsumed=true with no consumedTopIds falls back to all top ids", async () => {
-    const cleanup = makeCleanup({ editorUnchanged: true });
-    const send = vi.fn().mockResolvedValue({ editorConsumed: true });
+    const compose = makeCompose();
 
-    await runSendWithCleanup(send, ["t1", "t2"], cleanup);
+    await runSendWithConsumedCompose(
+      vi.fn().mockResolvedValue({ editorConsumed: true }),
+      ["t1", "t2"],
+      compose,
+    );
 
-    expect(cleanup.removedIds).toEqual(["t1", "t2"]);
+    expect(compose.disposedTopIds).toEqual(["t1", "t2"]);
+    expect(compose.restoreTopAttachments).not.toHaveBeenCalled();
+  });
+});
+
+describe("createSendQueue — consecutive sends are serialized, never dropped (#1280)", () => {
+  it("runs queued sends in order instead of rejecting them while one is pending", async () => {
+    const queue = createSendQueue();
+    const order: string[] = [];
+    const resolvers: Array<() => void> = [];
+    const task = (name: string) => () =>
+      new Promise<string>((res) => {
+        order.push(`start:${name}`);
+        resolvers.push(() => {
+          order.push(`end:${name}`);
+          res(name);
+        });
+      });
+
+    const first = queue.enqueue(task("a"));
+    const second = queue.enqueue(task("b"));
+
+    await Promise.resolve();
+    // b must not start before a finished (message ordering).
+    expect(order).toEqual(["start:a"]);
+    expect(queue.pending).toBe(2);
+
+    resolvers[0]();
+    await expect(first).resolves.toBe("a");
+    await Promise.resolve();
+    resolvers[1]();
+    await expect(second).resolves.toBe("b");
+
+    expect(order).toEqual(["start:a", "end:a", "start:b", "end:b"]);
+    expect(queue.pending).toBe(0);
+  });
+
+  it("keeps draining after a failed send", async () => {
+    const queue = createSendQueue();
+    const failing = queue.enqueue(() => Promise.reject(new Error("boom")));
+    const following = queue.enqueue(() => Promise.resolve("ok"));
+
+    await expect(failing).rejects.toThrow("boom");
+    await expect(following).resolves.toBe("ok");
+    expect(queue.pending).toBe(0);
+  });
+});
+
+describe("restoreComposeSnapshot — a failed send never loses or overwrites content", () => {
+  function makeTarget(isEmpty: boolean, throwOnStart = false) {
+    const calls: string[] = [];
+    const target: ComposeRestoreTarget = {
+      isEmpty: () => isEmpty,
+      setContent: () => calls.push("setContent"),
+      focusEnd: () => calls.push("focusEnd"),
+      insertContentAtStart: () => {
+        calls.push("insertContentAtStart");
+        if (throwOnStart) throw new Error("bad position");
+      },
+      appendContent: () => calls.push("appendContent"),
+    };
+    return { target, calls };
+  }
+
+  const snapshot = { content: [{ type: "paragraph" }] };
+
+  it("restores the snapshot as-is when the composer is still empty", () => {
+    const { target, calls } = makeTarget(true);
+    restoreComposeSnapshot(snapshot, target);
+    expect(calls).toEqual(["setContent", "focusEnd"]);
+  });
+
+  it("prepends the failed content before a draft typed during the await", () => {
+    const { target, calls } = makeTarget(false);
+    restoreComposeSnapshot(snapshot, target);
+    // Never setContent here — that was the #227 round-2 data loss.
+    expect(calls).toEqual(["insertContentAtStart"]);
+  });
+
+  it("falls back to appending when the start position is rejected", () => {
+    const { target, calls } = makeTarget(false, true);
+    restoreComposeSnapshot(snapshot, target);
+    expect(calls).toEqual(["insertContentAtStart", "appendContent"]);
+  });
+
+  it("does nothing for an empty snapshot", () => {
+    const { target, calls } = makeTarget(true);
+    restoreComposeSnapshot({ content: [] }, target);
+    restoreComposeSnapshot(undefined, target);
+    expect(calls).toEqual([]);
   });
 });

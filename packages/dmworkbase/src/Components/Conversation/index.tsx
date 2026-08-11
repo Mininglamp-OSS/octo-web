@@ -633,6 +633,11 @@ export class Conversation
    * 发送媒体消息并等待上传完成 + 服务端 ack 后才返回。
    * 保证多条消息严格顺序发送，且本地回显排序正确（每条消息的 messageSeq 确定后再发下一条）。
    * 超时 30s 自动 resolve（避免网络断开时永久阻塞）。
+   *
+   * 返回值语义 (octo-web#1280)：**是否已入队**（本地气泡已出现在消息列表），
+   * 不是「服务端已确认」。等待 ack 只为排序；ack 失败/超时的消息会带失败标记与
+   * 重发入口（Messages/Base + MediaMessageUploadTask.restart），若把它当失败上报，
+   * MessageInput 会把已经可见的内容塞回输入框（#1280 的主要投诉）。
    */
   private async sendMediaAndWait(
     content: MessageContent,
@@ -721,13 +726,18 @@ export class Conversation
     WKSDK.shared().chatManager.addMessageStatusListener(ackListener);
 
     // 发送消息（内部会 addTask → task.start()，所有 listener 已就绪）
+    let enqueued = false;
     let message: Message;
     try {
       message = await this.sendMessage(content, channel);
     } catch (err) {
+      // 未入队：调用方据此保留草稿供重试。
       done(false);
       throw err;
     }
+    // 已入队：本地气泡已经出现在消息列表里，之后无论上传/ack 成功与否，
+    // 用户都能在气泡上重发，输入框不应再把这条内容拿回来 (octo-web#1280)。
+    enqueued = true;
     clientSeq = message.clientSeq;
 
     // sendMessage 返回后主动检查
@@ -777,7 +787,14 @@ export class Conversation
       }
     }
 
-    return promise;
+    // 等 upload+ack 结果（或超时）只为保证发送顺序；对外只告知「是否已入队」。
+    const delivered = await promise;
+    if (!delivered) {
+      console.warn(
+        "[Conversation] media message not confirmed (upload/ack failed or timed out); the bubble keeps its failure state and can be resent"
+      );
+    }
+    return enqueued;
   }
 
   /**
@@ -785,6 +802,9 @@ export class Conversation
    * 用于连续发送多条消息时保证本地回显顺序与服务端一致：
    * 每条消息拿到 messageSeq 后 order 被正确设置，再发下一条时 fillOrder 不会乱。
    * 超时 10s 自动 resolve（文本消息不需要上传，ack 应该很快回来）。
+   *
+   * 返回值语义同 sendMediaAndWait (octo-web#1280)：**是否已入队**。ack 超时
+   * （慢网/丢 ack）不再上报失败，否则已经发出去的文字会被塞回输入框。
    */
   private async sendTextAndWaitAck(
     content: MessageContent,
@@ -829,13 +849,17 @@ export class Conversation
     };
     WKSDK.shared().chatManager.addMessageStatusListener(statusListener);
 
+    let enqueued = false;
     let message: Message;
     try {
       message = await this.sendMessage(content, channel);
     } catch (err) {
+      // 未入队（例如发送前编码抛错）→ 调用方保留草稿供重试。
       done(false);
       throw err;
     }
+    // 已入队：气泡已在消息列表，ack 结果只影响气泡状态，不影响输入框 (#1280)。
+    enqueued = true;
     clientSeq = message.clientSeq;
 
     // fallback：检查暂存的 ack 或已处理的 status
@@ -856,7 +880,14 @@ export class Conversation
       }
     }
 
-    return promise;
+    // 等 ack（或超时）只为保证发送顺序；对外只告知「是否已入队」。
+    const delivered = await promise;
+    if (!delivered) {
+      console.warn(
+        "[Conversation] text message not acked (failed or timed out); the bubble keeps its failure state and can be resent"
+      );
+    }
+    return enqueued;
   }
 
   /**
@@ -2922,14 +2953,19 @@ export class Conversation
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[]
                       ): Promise<boolean | SendResultDetail> => {
-                        // 返回值告诉 MessageInput 是否清空编辑器/附件：
-                        //   true  → 发送成功(或已消费)，清空草稿+附件；
-                        //   false → 发送失败，保留编辑器内容+图片引用供重试。
-                        // 关键：混排 (text+image) 上传失败时必须返回 false，否则
-                        // 用户整条消息会被同步清空丢失 (octo-web#227 Jerry-Xin P1)。
+                        // 返回值告诉 MessageInput「已消费的 compose 是否保持消费」：
+                        //   true  → 消息已入队（本地气泡已在列表），输入框保持清空；
+                        //   false → 未入队，把内容还给输入框供重试。
+                        // 关键：混排 (text+image) 在入队前上传失败时必须返回 false，
+                        // 否则整条消息会丢 (octo-web#227)；反之，**已入队但 ack 失败/
+                        // 超时绝不能返回 false**，否则已经可见的内容会被塞回输入框
+                        // (octo-web#1280)。
                         const sendDraftGeneration = this.draftSaveGeneration;
                         const remoteDraftAtSend =
                           this.vm.currentConversation?.remoteExtra?.draft || "";
+                        // #1280 起编辑器在进入这里之前已被同步消费（清空），所以这里
+                        // 取到的是空串；它与 liveDraft 的比对语义因此变成「等待期间用户
+                        // 是否写了新草稿」——写了就不清远端草稿，恰好是需要的保护。
                         const draftAtSend =
                           this.messageInputContext()?.text() || "";
                         VoiceFeedback.shared()?.submitAll(text);
@@ -3275,13 +3311,12 @@ export class Conversation
                                 draftAtSend
                               );
                             }
-                            // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
-                            // 第二轮)：
-                            //   • editorConsumed=mixedSent：混排失败时保留编辑器
-                            //     文本+图片，用户可整条重试；
+                            // 返回部分结果 (octo-web#227 → #1280)：
+                            //   • editorConsumed=mixedSent：混排未入队时把文本+图片
+                            //     还给编辑器，用户可整条重试；
                             //   • consumedTopIds：本次已发出的顶部附件 id。即使
-                            //     混排失败，这些文件也已发出，让 MessageInput 只
-                            //     清掉它们、不随编辑器草稿一起保留，避免重试重复。
+                            //     混排失败，这些文件也已发出，MessageInput 不会把
+                            //     它们放回附件区，避免重试重复发送。
                             return finishRichTextMixedSend(
                               anyMessageSent,
                               mixedSent,

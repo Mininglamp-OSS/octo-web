@@ -1,55 +1,80 @@
 /**
- * Send-flow orchestration helper (octo-web#227, Jerry-Xin P1).
+ * Send-flow orchestration helper (octo-web#227 → octo-web#1280).
  *
- * Background — two data-loss bugs this guards against:
+ * ## History — three rounds of send-side bugs
  *
- * 1. (round 1) `MessageInput.send()` used to call `props.onSend(...)` (typed
+ * 1. (#227 round 1) `MessageInput.send()` called `props.onSend(...)` (typed
  *    `=> void`, never awaited) and then, in the *same synchronous frame*,
  *    unconditionally cleared the editor, deleted pasted-image `File` refs,
  *    revoked preview URLs and cleared the top-attachment area. For the mixed
- *    text+image RichText path `onSend` is async and only fails after an upload,
- *    so the compose state was destroyed before the failure was known — one
- *    failed upload wiped the whole draft with nothing to retry.
- *    Fix: make the contract awaitable and clean up ONLY after a successful send.
+ *    text+image path `onSend` is async and only fails after an upload, so the
+ *    compose state was destroyed before the failure was known — one failed
+ *    upload wiped the whole draft with nothing to retry.
+ *    Fix: make the contract awaitable and clean up only after the send settles.
  *
- * 2. (round 2 — this file's reason for being snapshot-aware) Once the send was
- *    awaited, the editor stayed editable during the wait. `Conversation.onSend`
- *    can take seconds (image upload + message ack). If the user finished one
- *    message and started typing the next while the first was still pending, the
- *    successful completion of the *older* send cleared the *current* (newer)
- *    editor document and top-attachment list — wiping the new draft. Pure text
- *    is affected too, because the callback now awaits `sendTextAndWaitAck`.
- *    Fix: cleanup is snapshot-aware. The editor is only cleared if it still
- *    holds exactly the content that was sent (`isEditorUnchanged`); otherwise
- *    the user's newer draft is left untouched. Top attachments are removed by
- *    the specific ids that were consumed, never with a blanket reset, so items
- *    queued during the wait survive.
- *    Residual follow-up: when the editor changed mid-flight we leave the live
- *    doc untouched, so the already-sent snapshot blocks stay alongside the new
- *    draft and could be re-sent on the next send (duplicate). Accepted over the
- *    worse "draft wiped" failure; a precise per-range removal is deferred — see
- *    the `!isEditorUnchanged()` branch below.
+ * 2. (#227 round 2) Awaiting the send left the editor editable during the wait.
+ *    `Conversation.onSend` can take seconds (upload + ack). If the user started
+ *    the next message while the first was pending, the older send's success
+ *    cleared the *current* (newer) editor — wiping the new draft.
+ *    Fix at the time: snapshot-aware cleanup — clear the editor only when it
+ *    still held exactly what was sent, otherwise leave everything alone.
  *
- * `onSend` return-value contract (back-compatible):
- *   - `undefined` / `void` → success: editor consumed, all consumed top
- *     attachments cleared (legacy void-returning callers keep working);
+ * 3. (#1280 — this round) The round-2 fix was all-or-nothing, and its own
+ *    "known residual edge case" became the top user complaint: when the user
+ *    keeps typing / pasting while a send is in flight (the normal "send several
+ *    images in a row" flow), the *already sent* content is left in the composer
+ *    forever. The message is visible in the history, so the composer looks
+ *    broken ("nothing was sent"), and pressing send again re-sends it.
+ *    Two other defects piled onto the same symptom:
+ *      • `MessageInput` had a re-entrancy guard that silently dropped any send
+ *        issued while another was pending — the 2nd/3rd Enter did nothing;
+ *      • `Conversation` reported an ack timeout as *failure*, so a slow network
+ *        pushed already-delivered content back into the composer.
+ *
+ * ## Current model: consume-first, restore-on-failure
+ *
+ * The composer is consumed **synchronously** when the send starts (editor
+ * cleared, consumed top attachments removed) and the compose payload is
+ * captured. Nothing about the composer is decided after the await, so the whole
+ * "did the document change while we waited?" race disappears:
+ *
+ *   - success → nothing to clean in the UI; only in-memory `File` refs and
+ *     preview object URLs of the consumed compose are disposed;
+ *   - failure → the captured compose is restored (editor content re-inserted
+ *     *before* whatever the user typed meanwhile, top attachments re-added), so
+ *     the round-1 "failed upload wiped the draft" protection is preserved and
+ *     the round-2 "newer draft wiped" protection holds by construction.
+ *
+ * Sends are serialized through {@link createSendQueue} instead of being dropped:
+ * each send captures its payload immediately and runs after the previous one, so
+ * message ordering (which `Conversation` guarantees by awaiting ack) is kept
+ * while rapid consecutive sends all go out.
+ *
+ * `onSend` return-value contract (unchanged, back-compatible):
+ *   - `undefined` / `void` → success: compose consumed;
  *   - `true`               → success: same as void;
- *   - `false`              → failure / nothing sent: PRESERVE everything so the
+ *   - `false`              → failure / nothing sent: RESTORE everything so the
  *     user can retry;
- *   - `{ editorConsumed, consumedTopIds }` → partial result. Lets a caller say
- *     "the editor compose failed and must be preserved, but these top
- *     attachments were already sent — drop just those so a retry does not
- *     duplicate them" (octo-web#227 non-blocking note by Jerry-Xin);
- *   - throws               → treated as failure → preserve everything.
+ *   - `{ editorConsumed, consumedTopIds }` → partial result: "the editor compose
+ *     failed and must be restored, but these top attachments were already sent —
+ *     keep them consumed so a retry does not duplicate them";
+ *   - throws               → treated as failure → restore everything.
+ *
+ * NOTE for `onSend` implementors: "consumed" means *the message was enqueued and
+ * is visible in the message list* — not "the server acked it". A message that is
+ * enqueued and later fails renders a failure marker with resend, so it must NOT
+ * be reported as `false`; reporting `false` would push already-visible content
+ * back into the composer (defect 3c above).
  */
 
 /** Partial send outcome — see contract above. */
 export interface SendResultDetail {
   /** Whether the editor compose (text + pasted images / ordered blocks) was
-   *  sent. `true` → the editor may be cleared; `false` → preserve it. */
+   *  sent. `true` → the consumed editor content stays consumed; `false` → it is
+   *  restored into the live editor. */
   editorConsumed: boolean;
-  /** Ids of top attachments that were actually sent. Only these are removed
-   *  from the top-attachment area. Omit to derive from `editorConsumed`. */
+  /** Ids of top attachments that were actually sent. Only these stay consumed;
+   *  the rest are restored. Omit to derive from `editorConsumed`. */
   consumedTopIds?: string[];
 }
 
@@ -76,28 +101,113 @@ export async function invokeReadySend(
   return send ? send() : false;
 }
 
-/** Snapshot-aware cleanup steps, run after the send settles. */
-export interface SendCleanup {
+/**
+ * Serial task queue for sends.
+ *
+ * Rapid consecutive sends used to be dropped by a re-entrancy guard (#1280):
+ * while one send awaited upload+ack, every following Enter returned `false`
+ * without feedback. Since the compose is now captured synchronously, a pending
+ * send no longer has to block the next one — it only has to run *before* it, so
+ * the messages keep their order.
+ *
+ * Failures never break the chain: a rejected task still lets the queue continue.
+ */
+export interface SendQueue {
+  enqueue<T>(task: () => Promise<T>): Promise<T>;
+  /** Number of tasks queued or running. Exposed for a "sending" UI state/tests. */
+  readonly pending: number;
+}
+
+export function createSendQueue(): SendQueue {
+  let tail: Promise<unknown> = Promise.resolve();
+  let pending = 0;
+  return {
+    enqueue<T>(task: () => Promise<T>): Promise<T> {
+      pending += 1;
+      const run = () => task();
+      // Run after the previous task settles, regardless of its outcome.
+      const result = tail.then(run, run);
+      tail = result.then(
+        () => undefined,
+        () => undefined,
+      );
+      return result.finally(() => {
+        pending -= 1;
+      });
+    },
+    get pending() {
+      return pending;
+    },
+  };
+}
+
+/**
+ * Restore / dispose hooks for a compose that was already consumed synchronously
+ * by the caller before the send started.
+ */
+export interface ConsumedCompose {
   /**
-   * True iff the editor still holds exactly the document that was sent, i.e. the
-   * user has NOT started a new draft during the await. Editor-scoped cleanup is
-   * skipped when this returns false so a newer draft is never wiped by an older
-   * send.
+   * Put the consumed editor compose back (failure path). Implementations must
+   * re-insert it *before* any draft the user typed during the await, and must
+   * keep the pasted-image node ids so their `File` refs still resolve.
    */
-  isEditorUnchanged: () => boolean;
-  /** Delete in-memory pasted-image File refs consumed by this send. */
-  deleteEditorAttachmentRefs: () => void;
-  /** Revoke object URLs for the editor's pasted-image previews. */
-  revokeEditorPreviewUrls: () => void;
-  /** Clear the editor document. */
-  clearEditor: () => void;
-  /**
-   * Remove the given top attachments (by id) and revoke their preview URLs.
-   * Id-scoped so attachments queued during the await are preserved.
-   */
-  removeTopAttachments: (ids: string[]) => void;
-  /** Optional: collapse the expanded composer (only when the editor is cleared). */
-  collapseExpanded?: () => void;
+  restoreEditor: () => void;
+  /** Drop in-memory pasted-image `File` refs + revoke their preview URLs. */
+  disposeEditorAttachments: () => void;
+  /** Revoke preview URLs of top attachments that stay consumed. */
+  disposeTopAttachments: (ids: string[]) => void;
+  /** Put back the top attachments that were not actually sent (failure path). */
+  restoreTopAttachments: (ids: string[]) => void;
+}
+
+/**
+ * Editor operations needed to put a consumed compose back after a failed send.
+ * Structural so the restore policy can be unit-tested without a real editor.
+ */
+export interface ComposeRestoreTarget {
+  /** Whether the live document is currently empty. */
+  isEmpty: () => boolean;
+  /** Replace the whole document with the snapshot (empty-document case). */
+  setContent: (snapshot: unknown) => void;
+  /** Put the caret at the end of the document. */
+  focusEnd: () => void;
+  /** Insert the snapshot blocks BEFORE the live content. */
+  insertContentAtStart: (blocks: unknown[]) => void;
+  /** Fallback: append the snapshot blocks at the end. */
+  appendContent: (blocks: unknown[]) => void;
+}
+
+/**
+ * Restore policy for a failed send (#1280 consume-first model).
+ *
+ * - empty document (nothing typed during the await) → the snapshot is restored
+ *   as-is and the caret goes to the end, i.e. "your failed message is still
+ *   there";
+ * - non-empty document (the user already started the next message) → the failed
+ *   content is inserted BEFORE the new draft, so nothing is overwritten (this is
+ *   what #227 round 2 protected, now without leaving sent content behind);
+ * - a position error never loses content: fall back to appending.
+ */
+export function restoreComposeSnapshot(
+  snapshot: { content?: unknown[] } | undefined,
+  target: ComposeRestoreTarget,
+): void {
+  const blocks = snapshot?.content;
+  if (!blocks || blocks.length === 0) return;
+  if (target.isEmpty()) {
+    target.setContent(snapshot);
+    target.focusEnd();
+    return;
+  }
+  try {
+    target.insertContentAtStart(blocks);
+  } catch (err) {
+    console.error(
+      "[MessageInput] restoring the draft at the document start failed, appending instead",
+      err,
+    );
+    target.appendContent(blocks);
+  }
 }
 
 /** Normalize the loose `SendResult` union into an explicit decision. */
@@ -121,67 +231,46 @@ function normalizeResult(
 }
 
 /**
- * Await `send()` and apply snapshot-aware compose cleanup.
- *
- * - Consumed top attachments are removed by id (safe even if the user queued
- *   more during the wait).
- * - The editor is cleared only if its compose was consumed AND it still holds
- *   exactly what was sent; if the user typed a new draft meanwhile it is left
- *   intact.
+ * Await `send()` for a compose the caller already consumed, then either dispose
+ * the consumed resources (success) or restore the compose (failure).
  *
  * @param allTopIds Ids of every top attachment handed to this send attempt;
- *   used to expand a `true`/`void` result into "all consumed".
- * @returns `true` if the editor compose was consumed (and cleanup considered
- *   clearing it); `false` if the editor compose was preserved for retry.
+ *   used to expand a `true`/`void` result into "all consumed" and to compute
+ *   which ones must be restored on a partial result.
+ * @returns `true` if the editor compose was consumed; `false` if it was
+ *   restored for retry.
  */
-export async function runSendWithCleanup(
+export async function runSendWithConsumedCompose(
   send: () => SendResult | Promise<SendResult>,
   allTopIds: string[],
-  cleanup: SendCleanup,
+  compose: ConsumedCompose,
 ): Promise<boolean> {
   let decision: { editorConsumed: boolean; consumedTopIds: string[] };
   try {
     decision = normalizeResult(await send(), allTopIds);
   } catch (err) {
-    // onSend should surface its own error toast; we just preserve the draft.
-    console.error("[MessageInput] send failed, preserving draft", err);
+    // onSend should surface its own error toast; we just restore the draft.
+    console.error("[MessageInput] send failed, restoring draft", err);
     decision = { editorConsumed: false, consumedTopIds: [] };
   }
 
-  // Top attachments: drop only the ones actually sent. Always safe — id-scoped,
-  // so anything queued during the await stays. This runs even when the editor
-  // compose failed, so a retry of the editor does not re-send these files
-  // (octo-web#227 non-blocking note).
+  if (decision.editorConsumed) {
+    compose.disposeEditorAttachments();
+  } else {
+    // Nothing was sent (or the mixed compose failed before enqueue) → give the
+    // content back. Refs/URLs are intentionally NOT disposed here so the
+    // restored pasted images still resolve to their `File` objects.
+    compose.restoreEditor();
+  }
+
+  const consumed = new Set(decision.consumedTopIds);
+  const restoredTopIds = allTopIds.filter((id) => !consumed.has(id));
   if (decision.consumedTopIds.length > 0) {
-    cleanup.removeTopAttachments(decision.consumedTopIds);
+    compose.disposeTopAttachments(decision.consumedTopIds);
+  }
+  if (restoredTopIds.length > 0) {
+    compose.restoreTopAttachments(restoredTopIds);
   }
 
-  if (!decision.editorConsumed) {
-    // Editor compose not sent → keep its content, refs and preview URLs.
-    return false;
-  }
-
-  if (!cleanup.isEditorUnchanged()) {
-    // The user started a new draft while the older send was in flight. We must
-    // NOT clear the editor — doing so would wipe the newly typed draft (the
-    // round-2 data-loss bug). We deliberately leave the live document as-is.
-    //
-    // Known residual edge case (octo-web#227, tracked as a follow-up): the live
-    // editor now holds [already-sent snapshot blocks] + [new draft]. The
-    // already-sent blocks are NOT auto-removed here, so if the user presses send
-    // again those blocks are re-sent → a duplicate of the previous message. The
-    // message was delivered and the leftover content is visible to the user, so
-    // per the team's severity call this is accepted for now over the worse
-    // "draft wiped" failure. A precise fix (remove only the submitted snapshot
-    // range from the live doc, mirroring the by-id removeTopAttachments path)
-    // is deferred to a dedicated PR with its own ProseMirror-position tests.
-    return true;
-  }
-
-  // Editor still holds exactly what was sent → safe to clear it.
-  cleanup.deleteEditorAttachmentRefs();
-  cleanup.revokeEditorPreviewUrls();
-  cleanup.clearEditor();
-  cleanup.collapseExpanded?.();
-  return true;
+  return decision.editorConsumed;
 }

@@ -42,8 +42,10 @@ import {
 import { t as translate, useI18n } from "../../i18n";
 import {
   announceContextAfterSendReady,
+  createSendQueue,
   invokeReadySend,
-  runSendWithCleanup,
+  restoreComposeSnapshot,
+  runSendWithConsumedCompose,
   SendResultDetail,
 } from "./sendFlow";
 import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
@@ -222,17 +224,20 @@ export interface AttachmentFile {
 interface MessageInputProps {
   context: ConversationContext;
   /**
-   * 发送回调。返回值决定是否清空编辑器/附件：
-   *   - resolve `true`（或 `undefined`/`void`，向后兼容）→ 发送成功，清空编辑器
-   *     草稿与全部本次附件；
-   *   - resolve `false` → 发送失败/未发送，保留编辑器内容、附件引用与预览 URL；
+   * 发送回调。返回值决定「已消费的 compose 是否保持消费」：
+   *   - resolve `true`（或 `undefined`/`void`，向后兼容）→ 已入队，编辑器保持清空；
+   *   - resolve `false` → 未入队（预检拒绝 / 混排上传失败等），把 compose 还原
+   *     回编辑器与顶部附件区，供用户重试；
    *   - resolve `{ editorConsumed, consumedTopIds }` → 部分成功：可表达「顶部
-   *     附件已发出但编辑器混排失败需保留」，仅清掉已消费的 top 附件，避免重试
+   *     附件已发出但编辑器混排失败需还原」，只还原未发出的 top 附件，避免重试
    *     重复发送 (octo-web#227 Jerry-Xin non-blocking)。
-   * 必须在 send 内被 `await`，否则同步清理会先于异步发送结果丢掉混排草稿。
-   * 注意 (第二轮 octo-web#227)：清理是 snapshot-aware 的——onSend 返回成功后，
-   * 仅当编辑器内容仍等于发送时的快照才会清空；用户在 await 期间输入的新草稿
-   * 不会被旧 send 误删。
+   *
+   * 语义约定 (octo-web#1280)：`true` = **消息已入队并出现在消息列表**，不是
+   * 「服务端已 ack」。已入队但 ack 失败/超时的消息会带失败标记 + 重发入口，因此
+   * 绝不能返回 `false`——否则已经可见的内容会被塞回输入框（#1280 的现象之一）。
+   *
+   * compose 在 send 开始时就被同步消费（清空编辑器 + 移除本次顶部附件），失败
+   * 才还原，所以 await 期间用户新输入的草稿不会被旧 send 干扰。
    */
   onSend?: (
     text: string,
@@ -488,8 +493,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     props.context.channel().channelType === ChannelTypePerson,
   );
   const sendRef = useRef<(() => Promise<boolean>) | null>(null);
-  // 发送进行中标志：onSend 现在被 await，发送窗口内防止重复触发 (octo-web#227)。
-  const sendingRef = useRef(false);
+  // 串行发送队列 (octo-web#1280)：compose 在 send 开始时就被同步消费，因此
+  // pending 期间的新发送不再被丢弃，只需排在前一条之后执行以保持消息顺序。
+  const sendQueueRef = useRef(createSendQueue());
   const mentionActiveRef = useRef(false);
   // 表情前缀联想下拉激活标志，激活时 Enter 用于选中而非发送
   const emojiSuggestionActiveRef = useRef(false);
@@ -924,9 +930,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
   const send = useCallback(async (): Promise<boolean> => {
     if (!editor) return false;
-    // 重入保护：onSend 现在被 await，发送期间可能再次触发 Enter/快捷键，
-    // 避免同一份草稿被发送两次 (octo-web#227)。
-    if (sendingRef.current) return false;
 
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
@@ -975,28 +978,75 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
     const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
 
-    // ⚠️ 关键修复 (octo-web#227, Jerry-Xin P1 第二轮)：
-    // round 1 已把同步清理改成「await onSend、仅成功才清」，避免混排上传失败
-    // 丢整条草稿。但 await 期间编辑器仍可编辑，onSend 可能耗时数秒（上传图片 +
-    // 等 ack），用户趁发送 pending 时打的下一条草稿，会被上一条 send 成功后的
-    // 清理误删。本轮改为 snapshot-aware：
-    //   • 发送前对编辑器文档拍 JSON 快照 (editorSnapshot)；成功回来时只有当
-    //     编辑器内容仍 === 快照（用户没开始新草稿）才 clearContent，否则保留。
-    //   • 顶部附件按本次实际消费的 id 精确移除，绝不 setTopAttachments([])
-    //     全清，等待期间新加的附件因此不丢。
-    //   • onSend 可返回 { editorConsumed, consumedTopIds } 表达「顶部附件已发、
-    //     但编辑器混排失败」，让已发文件不被重试重复 (Jerry-Xin non-blocking)。
-    // 编排逻辑在纯函数 runSendWithCleanup，便于单测覆盖各竞态场景。
-    const editorSnapshot = JSON.stringify(editor.getJSON());
+    // ⚠️ 关键修复 (octo-web#1280，承接 #227 两轮)：consume-first / restore-on-failure。
+    //
+    // #227 round 1 把同步清理改成「await onSend、仅成功才清」；round 2 再加
+    // snapshot 判定，避免旧 send 清掉用户在等待期间写的新草稿。但 round 2 是
+    // 「全清或全不清」：只要 await 期间文档变了，**已经发出去的内容也留在输入框**
+    // ——这正是 #1280 报的现象（消息已在聊天记录里，输入框还挂着缩略图/文字，
+    // 再按一次 Enter 还会重复发送）。
+    //
+    // 本轮改为：发送开始时就**同步消费** compose（拍快照 → 清空编辑器 → 移除
+    // 本次顶部附件），await 之后不再对「当前文档」做任何判定：
+    //   • 成功 → UI 无需再动，只回收 File 引用与预览 URL；
+    //   • 失败（预检拒绝 / 混排上传失败等未入队情形）→ 把快照插回文档最前面、
+    //     未发出的顶部附件放回附件区，round-1 的「失败不丢草稿」保护仍然成立；
+    //     用户在等待期间新写的草稿天然完整保留（round-2 保护）。
+    // 编排逻辑在纯函数 runSendWithConsumedCompose，便于单测覆盖各竞态场景。
+    const editorSnapshot = editor.getJSON() as JSONContent;
     const consumedAttachmentAttrs = attachmentAttrs;
     const topItemsAtSend = topAttachmentsRef.current;
     const allTopIds = topItemsAtSend.map((item) => item.id);
-    sendingRef.current = true;
-    try {
-      // runSendWithCleanup 返回 editor 是否被消费（true=发送成功，false=保留草稿/发送失败）。
-      // 把真实结果 return 出去，供 initialCompose 编排器区分 sent / failed；
-      // 键盘/Enter 发送路径忽略返回值，行为不变。
-      const editorConsumed = await runSendWithCleanup(
+
+    // ── 同步消费：编辑器 + 本次顶部附件 ──────────────
+    editor.commands.clearContent();
+    if (allTopIds.length > 0) {
+      const consumedIds = new Set(allTopIds);
+      topAttachmentsRef.current = topAttachmentsRef.current.filter(
+        (a: TopAttachmentItem) => !consumedIds.has(a.id)
+      );
+      setTopAttachments(topAttachmentsRef.current);
+    }
+    if (expanded) {
+      setExpanded(false);
+      props.onExpandChange?.(false);
+    }
+
+    /** 失败回滚：把本次发送的内容插回编辑器，新草稿排在其后（策略见 sendFlow）。 */
+    const restoreEditorSnapshot = () =>
+      restoreComposeSnapshot(editorSnapshot, {
+        isEmpty: () => editor.isEmpty,
+        setContent: (snapshot) => editor.commands.setContent(snapshot as JSONContent),
+        focusEnd: () => editor.commands.focus("end"),
+        insertContentAtStart: (blocks) =>
+          editor.commands.insertContentAt(0, blocks as JSONContent[]),
+        appendContent: (blocks) =>
+          editor.commands.insertContent(blocks as JSONContent[]),
+      });
+
+    /** 失败回滚：把未真正发出的顶部附件放回附件区（预览 URL 未被 revoke）。 */
+    const restoreTopItems = (ids: string[]) => {
+      const idSet = new Set(ids);
+      const restored = topItemsAtSend.filter((item: TopAttachmentItem) =>
+        idSet.has(item.id)
+      );
+      if (restored.length === 0) return;
+      const live = new Set(
+        topAttachmentsRef.current.map((a: TopAttachmentItem) => a.id)
+      );
+      topAttachmentsRef.current = [
+        ...restored.filter((item: TopAttachmentItem) => !live.has(item.id)),
+        ...topAttachmentsRef.current,
+      ];
+      setTopAttachments(topAttachmentsRef.current);
+    };
+
+    // 串行队列取代旧的重入保护：pending 期间的 Enter 不再被静默丢弃（#1280 的
+    // 「连点没反应」），而是排在前一条之后执行，消息顺序仍由 Conversation 等 ack
+    // 保证。返回真实结果供 initialCompose 编排器区分 sent / failed；
+    // 键盘/Enter 路径忽略返回值，行为不变。
+    return sendQueueRef.current.enqueue(() =>
+      runSendWithConsumedCompose(
         () =>
           props.onSend!(
             content,
@@ -1007,47 +1057,27 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
           ),
         allTopIds,
         {
-          isEditorUnchanged: () =>
-            JSON.stringify(editor.getJSON()) === editorSnapshot,
-          deleteEditorAttachmentRefs: () => {
+          restoreEditor: restoreEditorSnapshot,
+          restoreTopAttachments: restoreTopItems,
+          disposeEditorAttachments: () => {
             consumedAttachmentAttrs.forEach((attr) => {
               attachmentFilesRef.current.delete(attr.id);
-            });
-          },
-          revokeEditorPreviewUrls: () => {
-            consumedAttachmentAttrs.forEach((attr) => {
               if (attr.previewUrl) {
                 URL.revokeObjectURL(attr.previewUrl);
               }
             });
           },
-          clearEditor: () => editor.commands.clearContent(),
-          removeTopAttachments: (ids: string[]) => {
+          disposeTopAttachments: (ids: string[]) => {
             const idSet = new Set(ids);
-            // 先 revoke 被消费项的预览 URL（避免内存泄漏），用拍快照时的列表
-            // 取 previewUrl，再按 id 过滤当前 state——保留等待期间新加的附件。
             topItemsAtSend.forEach((item: TopAttachmentItem) => {
               if (idSet.has(item.id) && item.previewUrl) {
                 URL.revokeObjectURL(item.previewUrl);
               }
             });
-            topAttachmentsRef.current = topAttachmentsRef.current.filter(
-              (a: TopAttachmentItem) => !idSet.has(a.id)
-            );
-            setTopAttachments(topAttachmentsRef.current);
-          },
-          collapseExpanded: () => {
-            if (expanded) {
-              setExpanded(false);
-              props.onExpandChange?.(false);
-            }
           },
         }
-      );
-      return editorConsumed;
-    } finally {
-      sendingRef.current = false;
-    }
+      )
+    );
   }, [editor, expanded, props.onSend, props.onExpandChange, t]);
 
   // 先接好 sendRef，再导出 context。Conversation 会在 onContext 回调里同步消费
