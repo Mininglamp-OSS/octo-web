@@ -511,6 +511,29 @@ describe("validateCardForOcto — 真实预算上限（MAX_NODES=200 / MAX_DEPTH
     }));
     expect(validateCardForOcto(AC(many)).ok).toBe(true);
   });
+  it("targetElements 是引用，不计入节点预算（199 个元素 + 1 个 action）", () => {
+    const targetIds = Array.from(
+      { length: 199 },
+      (_, index) => `section-${index}`
+    );
+    const body = targetIds.map((id) => ({
+      type: "Container",
+      id,
+      items: [],
+    }));
+    expect(
+      validateCardForOcto(
+        AC(body, {
+          actions: [
+            {
+              type: "Action.ToggleVisibility",
+              targetElements: targetIds,
+            },
+          ],
+        })
+      ).ok
+    ).toBe(true);
+  });
   it("嵌套深度 17 层 → 越界降级", () => {
     let node: Record<string, unknown> = { type: "TextBlock", text: "deep" };
     for (let i = 0; i < 17; i++) node = { type: "Container", items: [node] };
