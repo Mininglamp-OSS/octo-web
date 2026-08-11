@@ -60,6 +60,11 @@ describe('parseOidcProviders', () => {
       '//evil.example.com/authorize',         // protocol-relative
       '/\\evil.example.com/authorize',        // URL normalizes backslash to a host
       'v1/auth/oidc/x/authorize',             // 不以 / 开头
+      '/\tevil.example.com/authorize',       // URL 解析会移除 tab
+      '/\nevil.example.com/authorize',       // URL 解析会移除 LF
+      '/\revil.example.com/authorize',       // URL 解析会移除 CR
+      '/v1/auth/oidc/x/authorize?tenant=x',   // 会吞掉拼接的 authcode 查询参数
+      '/v1/auth/oidc/x/authorize#fragment',   // 会把拼接的 authcode 放入 fragment
       '',                                     // 空字符串
     ]
     for (const path of malicious) {
