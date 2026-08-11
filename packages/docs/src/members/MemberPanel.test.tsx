@@ -584,6 +584,37 @@ describe('MemberPanel — bots nested under their creator (PR C bot-nesting chan
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot One'))).toBe(true))
     expect(visibleUids().some((r) => r.includes('Bot Two'))).toBe(true)
   })
+
+  it('indents a bot revealed under its creator (octo-member-row--nested); creator + owner are not indented', async () => {
+    wk.spaceMembers.push({ uid: 'u_owner', name: 'Owner Person' }, { uid: 'u_human', name: 'Human One' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [{ uid: 'b_1', name: 'Bot One', creator_uid: 'u_human' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    fireEvent.click(rowFor('Human One').parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot One'))).toBe(true))
+    // The revealed bot row carries the nested modifier (indented under its creator)…
+    expect(rowFor('Bot One').classList.contains('octo-member-row--nested')).toBe(true)
+    // …while the creator row and the owner row (both top-level) do NOT.
+    expect(rowFor('Human One').classList.contains('octo-member-row--nested')).toBe(false)
+    const ownerRow = screen.getByText('docs.member.ownerBadge').closest('.octo-member-row') as HTMLElement
+    expect(ownerRow.classList.contains('octo-member-row--nested')).toBe(false)
+  })
+
+  it('indents orphan bots revealed in the bottom fold (octo-member-row--nested)', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [{ uid: 'b_orphan', name: 'Orphan Bot', creator_uid: 'u_stranger' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    fireEvent.click(within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Orphan Bot'))).toBe(true))
+    expect(rowFor('Orphan Bot').classList.contains('octo-member-row--nested')).toBe(true)
+  })
 })
 
 describe('MemberPanel add: partial-failure detail survives a refresh failure (task #5)', () => {

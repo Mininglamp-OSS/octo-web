@@ -206,7 +206,7 @@ export function CurrentMembersList({
     }
   }
 
-  function renderRow(sm: Member) {
+  function renderRow(sm: Member, nested = false) {
     const isOwner = ownerUid != null && sm.uid === ownerUid
     const isBotRow = !isOwner && bots.has(sm.uid)
     // Resolve back to the display row; the synthetic owner has no display row, so fall back to
@@ -219,7 +219,7 @@ export function CurrentMembersList({
     const effectiveRole = row.role
     const roleGrantable = roles.includes(effectiveRole as Role)
     return (
-      <div className="octo-member-row" key={sm.uid}>
+      <div className={'octo-member-row' + (nested ? ' octo-member-row--nested' : '')} key={sm.uid}>
         <span className="octo-uid">
           {displayName(sm.uid)}{' '}
           {isBotRow && <span className="octo-member-picker-badge">{t('docs.member.aiTag')}</span>}
@@ -300,7 +300,7 @@ export function CurrentMembersList({
                     values: { count: ownBots.length },
                   })}
                 </button>
-                {open && ownBots.map(renderRow)}
+                {open && ownBots.map((b) => renderRow(b, true))}
               </>
             )}
           </div>
@@ -321,7 +321,7 @@ export function CurrentMembersList({
               values: { count: orphanBots.length },
             })}
           </button>
-          {orphanOpen && orphanBots.map(renderRow)}
+          {orphanOpen && orphanBots.map((b) => renderRow(b, true))}
         </>
       )}
     </div>

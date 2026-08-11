@@ -1576,6 +1576,11 @@ body.octo-row-resizing {
   gap: 10px;
   padding: 6px 0;
 }
+/* Bot rows revealed by a disclosure are indented to show they belong to the row above
+   (matches .octo-member-picker-bot's 32px indent in the picker list). */
+.octo-member-row--nested {
+  padding-left: var(--wk-sp-8, 32px);
+}
 .octo-member-row .octo-uid {
   flex: 1;
 }
