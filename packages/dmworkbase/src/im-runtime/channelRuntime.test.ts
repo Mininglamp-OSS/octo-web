@@ -107,6 +107,39 @@ describe("channelRuntime", () => {
     expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
   });
 
+  it("keeps the first in-flight fetch as the repair handle when later fetches are not SDK-deduped", async () => {
+    const sdk = createSdk();
+    const channel = { channelID: "g1", channelType: 2 };
+    let resolveFirst!: (value: ImChannelInfoLike) => void;
+    let resolveSecond!: (value: ImChannelInfoLike) => void;
+    const firstResult = new Promise<ImChannelInfoLike>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResult = new Promise<ImChannelInfoLike>((resolve) => {
+      resolveSecond = resolve;
+    });
+    sdk.channelManager.fetchChannelInfo
+      .mockReturnValueOnce(firstResult)
+      .mockReturnValueOnce(secondResult);
+
+    const firstFetch = fetchImChannelInfo(sdk, channel);
+    const secondFetch = fetchImChannelInfo(sdk, channel);
+
+    expect(getPendingImChannelInfoFetch(sdk, channel)).toBe(firstFetch);
+
+    resolveSecond({ channel, title: "Newer" });
+    await secondFetch;
+    await Promise.resolve();
+
+    expect(getPendingImChannelInfoFetch(sdk, channel)).toBe(firstFetch);
+
+    resolveFirst({ channel, title: "Older" });
+    await firstFetch;
+    await Promise.resolve();
+
+    expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
+  });
+
   it("writes channel info to the SDK channel cache", () => {
     const sdk = createSdk();
     const channelInfo = {
