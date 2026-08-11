@@ -24,7 +24,6 @@ import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_OIDC_AUTHORIZE_START,
   IPC_OIDC_AUTHORIZE_END,
-  IPC_OIDC_API_ORIGIN_START,
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
 } from "../shared/ipc-channels";
@@ -42,7 +41,7 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
-import { isMatchingOidcCallback, isOidcAuthorizeNavigation, isTrustedSenderUrl, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, withTrustedSessionSid } from "./oidcRedirect";
+import { isMatchingOidcCallback, isOidcAuthorizeNavigation, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -61,6 +60,13 @@ type OidcFlow = {
   origin: string;
   authcode: string;
   providerId: string;
+  // Canonical authorize URL the renderer built to start this flow. Stored
+  // verbatim so the interceptor can compare navigations by literal string
+  // (canonicalized through WHATWG URL) instead of rebuilding the URL from
+  // (origin + provider id) — see isOidcAuthorizeNavigation and P1-1 in the
+  // review notes. It is required so the interceptor never guesses a backend
+  // authorize path from provider metadata.
+  authorizeUrl: string;
   expiresAt: number;
 };
 const oidcExpectedFlows = new WeakMap<BrowserWindow, OidcFlow>();
@@ -115,11 +121,72 @@ function resolveTrustedOidcSender(
 }
 
 
+// Stream-read a fetch Response and cap the byte total. Discriminated result
+// so the caller can distinguish an overflow from a timeout — the two share
+// the same "body read never finished" symptom otherwise. UTF-8 is assumed
+// because every OIDC endpoint on the allowlist emits JSON.
+//
+// `signal` must be the same AbortController that fired the fetch: net.fetch
+// resolves the headers as soon as they arrive, so without the signal wired
+// into the body read there is no watchdog covering a slow-body IdP response
+// and the ipcMain.handle promise can hang forever.
+type CappedRead =
+  | { kind: "ok"; text: string }
+  | { kind: "overflow" }
+  | { kind: "aborted" };
+async function readCappedResponseText(
+  response: Response,
+  maxBytes: number,
+  signal: AbortSignal,
+): Promise<CappedRead> {
+  if (signal.aborted) return { kind: "aborted" };
+  const body = response.body;
+  if (!body) {
+    // No stream (e.g. 204). Fall back to text() but keep the cap; text() also
+    // observes the AbortSignal that was on the fetch, so a slow no-stream
+    // response still gets watchdogged.
+    let text: string;
+    try {
+      text = await response.text();
+    } catch {
+      return signal.aborted ? { kind: "aborted" } : { kind: "ok", text: "" };
+    }
+    return text.length > maxBytes ? { kind: "overflow" } : { kind: "ok", text };
+  }
+  const reader = body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let total = 0;
+  let out = "";
+  // Wire the top-level timeout into the reader: if the AbortController fires
+  // mid-body, cancel the reader promptly so we do not sit forever inside
+  // reader.read().
+  const onAbort = () => { try { void reader.cancel(); } catch { /* noop */ } };
+  signal.addEventListener("abort", onAbort, { once: true });
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch { /* noop */ }
+        return { kind: "overflow" };
+      }
+      out += decoder.decode(value, { stream: true });
+    }
+    out += decoder.decode();
+    return { kind: "ok", text: out };
+  } catch {
+    return signal.aborted ? { kind: "aborted" } : { kind: "ok", text: "" };
+  } finally {
+    signal.removeEventListener("abort", onAbort);
+  }
+}
+
 // Returns a discriminated result rather than throwing so the renderer can
 // map `code` to a localized message. Throwing would leak a raw English
 // `Error.message` across the IPC boundary (Electron rejects `invoke` with it
 // verbatim), which the login page cannot i18n.
-ipcMain.handle(IPC_OIDC_AUTHORIZE_START, (event, apiURL: unknown, authcode: unknown, providerId: unknown) => {
+ipcMain.handle(IPC_OIDC_AUTHORIZE_START, (event, apiURL: unknown, authcode: unknown, providerId: unknown, authorizeUrl: unknown) => {
   // Sender check first: any renderer that is not our top-frame shell must
   // not be able to seed the expected callback flow — otherwise a compromised
   // renderer could register an attacker-controlled origin and then have
@@ -133,22 +200,24 @@ ipcMain.handle(IPC_OIDC_AUTHORIZE_START, (event, apiURL: unknown, authcode: unkn
   if (typeof authcode !== "string" || authcode === "" || typeof providerId !== "string" || providerId === "") {
     return { ok: false as const, code: "invalid-flow" as const };
   }
+  if (typeof authorizeUrl !== "string" || authorizeUrl === "") {
+    return { ok: false as const, code: "invalid-flow" as const };
+  }
+  const authorizeOrigin = parseHttpOrigin(authorizeUrl);
+  if (authorizeOrigin !== OIDC_API_ORIGIN) {
+    return { ok: false as const, code: "invalid-flow" as const };
+  }
+  let normalizedAuthorizeUrl: string;
+  try { normalizedAuthorizeUrl = new URL(authorizeUrl).toString(); } catch {
+    return { ok: false as const, code: "invalid-flow" as const };
+  }
   oidcExpectedFlows.set(win, {
     origin: OIDC_API_ORIGIN,
     authcode,
     providerId,
+    authorizeUrl: normalizedAuthorizeUrl,
     expiresAt: Date.now() + OIDC_FLOW_TTL_MS,
   });
-  return { ok: true as const };
-});
-
-ipcMain.handle(IPC_OIDC_API_ORIGIN_START, (event, apiURL: unknown) => {
-  const win = resolveTrustedOidcSender(event);
-  if (!win) return { ok: false as const, code: "untrusted-sender" as const };
-  const origin = parseHttpOrigin(apiURL);
-  if (!origin || !OIDC_API_ORIGIN || origin !== OIDC_API_ORIGIN) {
-    return { ok: false as const, code: "invalid-origin" as const };
-  }
   return { ok: true as const };
 });
 
@@ -160,14 +229,13 @@ ipcMain.handle(IPC_OIDC_AUTHORIZE_END, (event) => {
 
 ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
   const win = resolveTrustedOidcSender(event);
-  if (!win || typeof url !== "string") return { ok: false as const };
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { return { ok: false as const }; }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    return { ok: false as const };
-  }
+  if (!win) return { ok: false as const };
+  // Validation lives in oidcRedirect.ts so the URL/scheme allowlist is
+  // covered by pure-function tests alongside the redirect helpers.
+  const validated = validateOpenExternalUrl(url);
+  if (validated.ok === false) return { ok: false as const };
   try {
-    await shell.openExternal(parsed.toString());
+    await shell.openExternal(validated.value);
     return { ok: true as const };
   } catch {
     return { ok: false as const };
@@ -188,25 +256,46 @@ ipcMain.handle(IPC_OIDC_HTTP_REQUEST, async (event, request: unknown) => {
   const validated = validateOidcHttpRequest(request, OIDC_API_ORIGIN);
   if (validated.ok === false) throw new Error(validated.error);
   const { url, method, body: requestBody, token } = validated.value;
+  // Single watchdog covering BOTH headers and body — net.fetch resolves as
+  // soon as the response head is available, so if `clearTimeout` fired in a
+  // fetch-only `finally`, a slow-body IdP would hang ipcMain.handle
+  // indefinitely (P1-4). Keep the timer live until the body has been
+  // consumed (or overflow / abort has ended the read).
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   let response: Response;
+  let read: CappedRead;
   try {
-    response = await net.fetch(url, {
-      method,
-      redirect: "error",
-      signal: controller.signal,
-      headers: {
-        Accept: "application/json",
-        ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
-        ...(token !== undefined && token !== "" ? { token } : {}),
-      },
-      ...(method === "POST" ? { body: JSON.stringify(requestBody ?? {}) } : {}),
-    });
+    try {
+      response = await net.fetch(url, {
+        method,
+        redirect: "error",
+        signal: controller.signal,
+        headers: {
+          Accept: "application/json",
+          ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+          ...(token !== undefined && token !== "" ? { token } : {}),
+        },
+        ...(method === "POST" ? { body: JSON.stringify(requestBody ?? {}) } : {}),
+      });
+    } catch (err) {
+      // AbortError surfaces as a plain fetch rejection; surface a stable
+      // message the renderer can map (bind/logout callers already treat any
+      // thrown error as a transport failure).
+      if (controller.signal.aborted) throw new Error("OIDC request timed out");
+      throw err;
+    }
+    // Cap the response body so a hostile or misconfigured endpoint cannot
+    // inflate main-process memory. The OIDC endpoints on the allowlist all
+    // return small JSON objects; anything above OIDC_HTTP_MAX_RESPONSE_BYTES
+    // is a signal to abort rather than surface to the renderer.
+    read = await readCappedResponseText(response, OIDC_HTTP_MAX_RESPONSE_BYTES, controller.signal);
   } finally {
     clearTimeout(timeout);
   }
-  const responseText = await response.text().catch(() => "");
+  if (read.kind === "aborted") throw new Error("OIDC request timed out");
+  if (read.kind === "overflow") throw new Error("OIDC response too large");
+  const responseText = read.text;
   let responseBody: unknown = undefined;
   if (responseText !== "") {
     try {
@@ -242,18 +331,39 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
 
   const handleCallback = (event: Electron.Event, url: string) => {
     const flow = oidcExpectedFlows.get(win);
-    if (!flow || flow.expiresAt <= Date.now()) {
+    // No armed flow ⇒ the interceptor has no business touching this
+    // navigation. Previously we tore the window back to the shell whenever a
+    // flow was armed-but-expired; that also intercepted every non-OIDC
+    // navigation the packaged app tries to perform between flows (e.g. a
+    // support page opened from settings). Bail out and let Electron follow
+    // the navigation normally — the TTL watchdog below still clears expired
+    // flow state without touching unrelated navigations.
+    if (!flow) return;
+    if (flow.expiresAt <= Date.now()) {
+      // Flow expired mid-navigation. Clear the stale entry, then decide
+      // whether to prevent the navigation based on the URL itself:
+      //   - if the URL parses as a real OIDC callback, we must NOT let the
+      //     packaged window follow it (it would strand on a stale remote
+      //     API page whose one-time code is already expired); restore the
+      //     shell instead.
+      //   - otherwise (authorize URL, unrelated support page, arbitrary
+      //     navigation) let Electron follow it — preventing an unrelated
+      //     navigation would be a worse UX than a stale OIDC state entry.
       oidcExpectedFlows.delete(win);
-      event.preventDefault();
-      restoreShell();
+      const staleCallback = parseOidcCallback(url, flow.origin);
+      if (staleCallback) {
+        event.preventDefault();
+        restoreShell();
+      }
       return;
     }
     const callback = parseOidcCallback(url, flow.origin);
     if (!callback) {
-      // The authorize URL is the start of the flow, not a callback. Let
-      // Electron follow it to the IdP; the listener only owns the return
-      // navigation back to /login or /oidc/bind.
-      if (isOidcAuthorizeNavigation(url, flow.origin, flow.providerId)) return;
+      // The authorize URL is the start of the flow, not a callback. Prefer
+      // literal comparison against the URL the renderer registered — see
+      // isOidcAuthorizeNavigation's doc comment and P1-1 in the review
+      // notes for why rebuilding the URL from provider id is fragile.
+      if (isOidcAuthorizeNavigation(url, flow.origin, flow.providerId, flow.authorizeUrl)) return;
       // A navigation back to the API origin is a callback attempt, even when
       // its path/query is invalid. Do not leave a packaged window stranded on
       // an arbitrary remote API error page.
@@ -284,17 +394,30 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
     if (flow && flow.expiresAt > Date.now()) restoreShell();
   });
 
-  const checkExpiry = () => {
-    const flow = oidcExpectedFlows.get(win);
-    if (!flow) return;
-    if (flow.expiresAt <= Date.now()) {
-      oidcExpectedFlows.delete(win);
-      restoreShell();
+  // Continuous TTL watchdog. The previous implementation was one-shot: it
+  // scheduled a single check `OIDC_FLOW_TTL_MS + 50` in the future, so if a
+  // second flow was armed in the same window before that timer fired the
+  // watchdog would either skip the new flow's expiry (fires early and finds
+  // nothing to clean up) or take a full TTL to fire again. Poll on a fixed
+  // cadence instead — the check itself is O(1) (single WeakMap lookup) so
+  // the cost is negligible, and it also survives the wall clock jumping
+  // backwards (e.g. NTP correction) without needing timer bookkeeping.
+  const TTL_WATCHDOG_INTERVAL_MS = 30_000;
+  const watchdog = setInterval(() => {
+    if (win.isDestroyed()) {
+      clearInterval(watchdog);
       return;
     }
-    setTimeout(checkExpiry, Math.max(1000, flow.expiresAt - Date.now()));
-  };
-  setTimeout(checkExpiry, OIDC_FLOW_TTL_MS + 50);
+    const flow = oidcExpectedFlows.get(win);
+    if (flow && flow.expiresAt <= Date.now()) {
+      oidcExpectedFlows.delete(win);
+      restoreShell();
+    }
+  }, TTL_WATCHDOG_INTERVAL_MS);
+  // Node timers keep the event loop alive; unref so a stale window with an
+  // expired flow does not block app quit.
+  if (typeof watchdog.unref === "function") watchdog.unref();
+  win.on("closed", () => clearInterval(watchdog));
 }
 
 const registerWindowFocusHandler = () => {

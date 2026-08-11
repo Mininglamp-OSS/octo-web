@@ -68,6 +68,24 @@ export default defineConfig(({ mode }) => {
         ? [{
             name: "emit-electron-config",
             generateBundle() {
+              // Fail loud when the packaged renderer would ship without a
+              // trustable OIDC API origin. The main process reads this file
+              // to seed OIDC_API_ORIGIN — shipping a build with
+              // oidcApiOrigin=null used to silently disable every OIDC IPC
+              // handler at runtime (P2-1). Refuse to emit an unusable build
+              // instead: reviewers, CI, and release pipelines get a hard
+              // stop right at `vite build` and cannot accidentally publish
+              // a broken installer.
+              if (!apiUrl) {
+                this.error(
+                  "[vite] Refusing to emit electron-config.json without VITE_API_URL. "
+                  + "Packaged Electron builds require an absolute API origin so main "
+                  + "can trust the OIDC endpoint without accepting one nominated by "
+                  + "the renderer. Set VITE_API_URL (e.g. https://api.example.com) "
+                  + "and rerun the build.",
+                );
+                return;
+              }
               this.emitFile({
                 type: "asset",
                 fileName: "electron-config.json",
@@ -75,7 +93,7 @@ export default defineConfig(({ mode }) => {
                   // Keep this value in the generated build artifact so the
                   // tsc-compiled Electron main process can trust it without
                   // accepting an origin nominated by the renderer.
-                  oidcApiOrigin: apiUrl ? apiOrigin : null,
+                  oidcApiOrigin: apiOrigin,
                 }, null, 2),
               });
             },

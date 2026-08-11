@@ -36,9 +36,7 @@ export { fetchHttpClient, createFetchHttpClient, OidcBindHttpError } from './htt
 export {
   IPC_OIDC_AUTHORIZE_START,
   IPC_OIDC_AUTHORIZE_END,
-  IPC_OIDC_API_ORIGIN_START,
   beginOidcAuthorize,
-  registerOidcApiOrigin,
   endOidcAuthorize,
   getOidcClient,
   isElectronDesktop,

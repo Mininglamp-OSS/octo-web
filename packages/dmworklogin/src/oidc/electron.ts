@@ -1,4 +1,4 @@
-import type { OidcHttpClient } from './api'
+import type { OidcHttpClient, OidcRequestInit } from './api'
 import { createFetchHttpClient, fetchHttpClient, OidcBindHttpError } from './http'
 
 interface OidcIpcHttpResponse {
@@ -27,8 +27,20 @@ function errorMessage(body: unknown): string | undefined {
 async function invokeOidcHttp<T>(
   ipc: { invoke(channel: string, request: unknown): Promise<unknown> },
   request: unknown,
+  signal?: AbortSignal,
 ): Promise<T> {
-  const result = await ipc.invoke(IPC_OIDC_HTTP_REQUEST, request)
+  if (signal?.aborted) throw new DOMException('The operation was aborted', 'AbortError')
+  const pending = ipc.invoke(IPC_OIDC_HTTP_REQUEST, request)
+  const result = signal
+    ? await new Promise<unknown>((resolve, reject) => {
+        const onAbort = () => reject(new DOMException('The operation was aborted', 'AbortError'))
+        signal.addEventListener('abort', onAbort, { once: true })
+        pending.then(
+          (value) => { signal.removeEventListener('abort', onAbort); resolve(value) },
+          (error) => { signal.removeEventListener('abort', onAbort); reject(error) },
+        )
+      })
+    : await pending
   // Accept the old raw-body shape for compatibility with older preload/main
   // pairs during staged desktop upgrades.
   if (!isOidcIpcHttpResponse(result)) return result as T
@@ -46,7 +58,6 @@ async function invokeOidcHttp<T>(
  */
 export const IPC_OIDC_AUTHORIZE_START = 'oidc-authorize-start'
 export const IPC_OIDC_AUTHORIZE_END = 'oidc-authorize-end'
-export const IPC_OIDC_API_ORIGIN_START = 'oidc-api-origin-start'
 export const IPC_OIDC_HTTP_REQUEST = 'oidc-http-request'
 
 export interface OidcAuthorizeStartResult {
@@ -72,17 +83,16 @@ export async function beginOidcAuthorize(
   apiURL: string,
   authcode: string,
   providerId: string,
+  // Literal authorize URL the renderer is about to navigate to.
+  // Supplying it lets main-process compare the incoming navigation by
+  // canonicalized string equality instead of rebuilding the URL from
+  // (origin + provider id) — see main/oidcRedirect.ts::isOidcAuthorizeNavigation
+  // and P1-1 in the review notes for the rationale.
+  authorizeUrl: string,
 ): Promise<OidcAuthorizeStartResult> {
   const ipc = typeof window !== 'undefined' ? (window as any).ipc : undefined
   if (typeof ipc?.invoke !== 'function') return { ok: false, code: 'no-window' }
-  return ipc.invoke(IPC_OIDC_AUTHORIZE_START, apiURL, authcode, providerId) as Promise<OidcAuthorizeStartResult>
-}
-
-export async function registerOidcApiOrigin(apiURL: string): Promise<boolean> {
-  const ipc = typeof window !== 'undefined' ? (window as any).ipc : undefined
-  if (typeof ipc?.invoke !== 'function') return false
-  const result = await ipc.invoke(IPC_OIDC_API_ORIGIN_START, apiURL) as { ok?: boolean }
-  return result?.ok === true
+  return ipc.invoke(IPC_OIDC_AUTHORIZE_START, apiURL, authcode, providerId, authorizeUrl) as Promise<OidcAuthorizeStartResult>
 }
 
 export async function endOidcAuthorize(): Promise<void> {
@@ -106,17 +116,17 @@ export function getOidcClient(apiURL: string): OidcHttpClient {
     const ipc = (window as any).ipc
     if (typeof ipc?.invoke === 'function') {
       return {
-        async get<T>(url: string): Promise<T> {
+        async get<T>(url: string, init?: OidcRequestInit): Promise<T> {
           const absoluteURL = new URL(url, apiURL.endsWith('/') ? apiURL : `${apiURL}/`).toString()
-          return invokeOidcHttp<T>(ipc, { url: absoluteURL, method: 'GET' })
+          return invokeOidcHttp<T>(ipc, { url: absoluteURL, method: 'GET' }, init?.signal)
         },
-        async post<T>(url: string, body: unknown): Promise<T> {
+        async post<T>(url: string, body: unknown, init?: OidcRequestInit): Promise<T> {
           const absoluteURL = new URL(url, apiURL.endsWith('/') ? apiURL : `${apiURL}/`).toString()
           return invokeOidcHttp<T>(ipc, {
             url: absoluteURL,
             method: 'POST',
             body,
-          })
+          }, init?.signal)
         },
       }
     }

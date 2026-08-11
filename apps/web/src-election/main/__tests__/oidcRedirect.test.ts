@@ -6,6 +6,7 @@ import {
   parseHttpOrigin,
   parseOidcCallback,
   validateOidcHttpRequest,
+  validateOpenExternalUrl,
   withTrustedSessionSid,
 } from '../oidcRedirect'
 
@@ -111,6 +112,17 @@ describe('parseOidcCallback', () => {
     })
   })
 
+  it('forwards login correlation fields so the interceptor can verify them', () => {
+    const cb = parseOidcCallback(
+      'https://api.example.com/login?authcode=expected&provider=acme&error=access_denied',
+      API,
+    )
+    expect(cb).toEqual({
+      path: '/login',
+      query: { authcode: 'expected', provider: 'acme', error: 'access_denied' },
+    })
+  })
+
   it('drops bind-only params on /login', () => {
     const cb = parseOidcCallback(
       'https://api.example.com/login?token=leak&oidc_error=1',
@@ -124,17 +136,30 @@ describe('isOidcAuthorizeNavigation', () => {
   const API = 'https://api.example.com'
 
   it('allows the matching provider authorize endpoint', () => {
+    const authorizeUrl = `${API}/api/v1/auth/oidc/acme-sso/authorize?authcode=abc&return_to=%2Flogin`
     expect(isOidcAuthorizeNavigation(
-      `${API}/v1/auth/oidc/acme-sso/authorize?authcode=abc`,
+      authorizeUrl,
       API,
       'acme-sso',
+      authorizeUrl,
     )).toBe(true)
   })
 
   it('rejects callbacks, other providers, and other origins', () => {
-    expect(isOidcAuthorizeNavigation(`${API}/login`, API, 'acme-sso')).toBe(false)
-    expect(isOidcAuthorizeNavigation(`${API}/v1/auth/oidc/other/authorize`, API, 'acme-sso')).toBe(false)
-    expect(isOidcAuthorizeNavigation('https://evil.example/v1/auth/oidc/acme-sso/authorize', API, 'acme-sso')).toBe(false)
+    const authorizeUrl = `${API}/api/v1/auth/oidc/acme-sso/authorize?authcode=abc`
+    expect(isOidcAuthorizeNavigation(`${API}/login`, API, 'acme-sso', authorizeUrl)).toBe(false)
+    expect(isOidcAuthorizeNavigation(`${API}/api/v1/auth/oidc/other/authorize?authcode=abc`, API, 'acme-sso', authorizeUrl)).toBe(false)
+    expect(isOidcAuthorizeNavigation('https://evil.example/api/v1/auth/oidc/acme-sso/authorize?authcode=abc', API, 'acme-sso', authorizeUrl)).toBe(false)
+  })
+
+  it('rejects an authorize URL that differs only by path or query', () => {
+    const authorizeUrl = `${API}/api/v1/auth/oidc/acme-sso/authorize?authcode=abc&flag=2`
+    expect(isOidcAuthorizeNavigation(
+      `${API}/v1/auth/oidc/acme-sso/authorize?authcode=abc&flag=2`,
+      API,
+      'acme-sso',
+      authorizeUrl,
+    )).toBe(false)
   })
 })
 
@@ -309,5 +334,120 @@ describe('isTrustedSenderUrl', () => {
     expect(isTrustedSenderUrl(undefined, 'http://localhost:3000')).toBe(false)
     expect(isTrustedSenderUrl('', 'http://localhost:3000')).toBe(false)
     expect(isTrustedSenderUrl('not a url', 'http://localhost:3000')).toBe(false)
+  })
+})
+
+describe('validateOpenExternalUrl', () => {
+  it('accepts end-session-shaped https URLs across common IdPs', () => {
+    // Real end_session URLs we've observed in production integrations. Each
+    // vendor's path shape and standard query params must go through.
+    for (const url of [
+      // Keycloak (RP-initiated logout 1.0)
+      'https://idp.example.com/realms/octo/protocol/openid-connect/logout?id_token_hint=jwt&post_logout_redirect_uri=https%3A%2F%2Fapp.example.com%2Flogin&state=abc',
+      // Auth0
+      'https://tenant.auth0.com/v2/logout?client_id=abc&returnTo=https%3A%2F%2Fapp.example.com',
+      // Azure AD
+      'https://login.microsoftonline.com/tenant/oauth2/v2.0/logout?post_logout_redirect_uri=https%3A%2F%2Fapp.example.com',
+      // Bare end_session with trailing slash (common with reverse proxies).
+      'https://idp.example.com/oauth2/end_session/?id_token_hint=jwt',
+    ]) {
+      const result = validateOpenExternalUrl(url)
+      expect(result.ok, url).toBe(true)
+    }
+  })
+
+  it('rejects http (RFC 8252 §8.10 requires TLS on the end-session leg)', () => {
+    expect(validateOpenExternalUrl('http://idp.example.com/oauth2/end_session').ok).toBe(false)
+    expect(validateOpenExternalUrl('http://idp.example.com/logout').ok).toBe(false)
+  })
+
+  it('rejects non-http(s) schemes forwarded to the OS handler', () => {
+    // file:/javascript:/data: to shell.openExternal would let a compromised
+    // renderer launch arbitrary local documents or scripts via the user's
+    // default handler. All must be rejected before we hit shell.openExternal.
+    expect(validateOpenExternalUrl('file:///etc/passwd').ok).toBe(false)
+    expect(validateOpenExternalUrl('javascript:alert(1)').ok).toBe(false)
+    expect(validateOpenExternalUrl('data:text/html,<script>alert(1)</script>').ok).toBe(false)
+    expect(validateOpenExternalUrl('vbscript:msgbox').ok).toBe(false)
+    expect(validateOpenExternalUrl('ftp://example.com/end_session').ok).toBe(false)
+    // Custom protocol handlers registered by third-party apps (Slack, Zoom,
+    // etc.) must not be reachable from this channel either.
+    expect(validateOpenExternalUrl('slack://open').ok).toBe(false)
+  })
+
+  it('rejects arbitrary https URLs that do not match the end-session shape', () => {
+    // Even https:// is not a free pass: a compromised renderer must not be
+    // able to smuggle a marketing page, a phishing site, or an arbitrary
+    // Google Docs URL through shell.openExternal by wrapping it in a
+    // legitimate scheme. Path shape gates this.
+    expect(validateOpenExternalUrl('https://evil.example.com/').ok).toBe(false)
+    expect(validateOpenExternalUrl('https://idp.example.com/authorize').ok).toBe(false)
+    expect(validateOpenExternalUrl('https://idp.example.com/oauth2/token').ok).toBe(false)
+  })
+
+  it('rejects userinfo, fragments, and unknown query params', () => {
+    // Embedded credentials would be leaked into the OS URL handler + logs.
+    expect(validateOpenExternalUrl('https://user:pass@idp.example.com/oauth2/end_session').ok).toBe(false)
+    // Fragments are not used by RP-initiated logout; disallow them so a
+    // renderer cannot smuggle client-side navigation state.
+    expect(validateOpenExternalUrl('https://idp.example.com/oauth2/end_session#/login').ok).toBe(false)
+    // Unknown query params fail closed — extending the allowlist is a
+    // deliberate action, not something a caller can do at runtime.
+    expect(validateOpenExternalUrl('https://idp.example.com/oauth2/end_session?exec=curl').ok).toBe(false)
+  })
+
+  it('rejects non-string / malformed inputs', () => {
+    expect(validateOpenExternalUrl(undefined).ok).toBe(false)
+    expect(validateOpenExternalUrl(null).ok).toBe(false)
+    expect(validateOpenExternalUrl(42).ok).toBe(false)
+    expect(validateOpenExternalUrl({}).ok).toBe(false)
+    expect(validateOpenExternalUrl('').ok).toBe(false)
+    expect(validateOpenExternalUrl('not a url').ok).toBe(false)
+  })
+})
+
+describe('validateOidcHttpRequest provider path allowlist', () => {
+  const API = 'https://api.example.com'
+  it('accepts realistic slug provider ids', () => {
+    const ok = validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/aegis/bind/info`, method: 'GET' },
+      API,
+    )
+    expect(ok.ok).toBe(true)
+    const dotted = validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/corp.sso-eu_1/logout`, method: 'POST' },
+      API,
+    )
+    expect(dotted.ok).toBe(true)
+    const encodedAt = validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/corp%40sso/logout`, method: 'POST' },
+      API,
+    )
+    expect(encodedAt.ok).toBe(true)
+  })
+
+  it('rejects percent-encoded traversal in the provider segment', () => {
+    // Regression for review P2-6: [a-z0-9_%.-]+ used to accept %2e%2e / %2f,
+    // widening the allowlist beyond `encodeURIComponent(providerId)` output.
+    // The tightened class refuses `%` entirely.
+    expect(validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/%2e%2e/logout`, method: 'POST' },
+      API,
+    ).ok).toBe(false)
+    expect(validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/aegis%2f..%2fadmin/logout`, method: 'POST' },
+      API,
+    ).ok).toBe(false)
+  })
+
+  it('rejects provider segments containing unsupported characters', () => {
+    expect(validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/aegis@corp/logout`, method: 'POST' },
+      API,
+    ).ok).toBe(false)
+    expect(validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/aegis:1/logout`, method: 'POST' },
+      API,
+    ).ok).toBe(false)
   })
 })

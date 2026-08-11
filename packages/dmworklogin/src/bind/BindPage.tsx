@@ -4,8 +4,6 @@ import { WKApp } from '@octo/base'
 import { clearBindEntry } from './bindEntryState'
 import {
   clearPendingOidcLogin,
-  beginOidcAuthorize,
-  registerOidcApiOrigin,
   getOidcClient as getSharedOidcClient,
   isElectronDesktop,
   OidcBindHttpError,
@@ -84,18 +82,16 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
   // 见 oidc-bind-frontend.md §2.2 — 这是 bind_token-in-URL 已知 limitation 的核心缓解.
   const entryRef = useRef<BindEntryParams | null>(null)
   const initRanRef = useRef(false)
-  const desktopReadyRef = useRef<Promise<void> | null>(null)
 
   async function getOidcClient() {
+    // Main-process validates the API origin inline on every IPC round-trip
+    // (see main/oidcRedirect.ts::validateOidcHttpRequest), so the separate
+    // "register origin" preflight has been removed. Keep the http(s) sanity
+    // check here so a bare `file://` API URL fails fast client-side rather
+    // than surfacing as an opaque IPC rejection later.
     const apiURL = WKApp.apiClient.config.apiURL ?? ''
-    if (isElectronDesktop()) {
-      if (!/^https?:\/\//i.test(apiURL)) throw new Error('Invalid OIDC API URL')
-      if (!desktopReadyRef.current) {
-        desktopReadyRef.current = registerOidcApiOrigin(apiURL).then((ok) => {
-          if (!ok) throw new Error('OIDC API origin registration failed')
-        })
-      }
-      await desktopReadyRef.current
+    if (isElectronDesktop() && !/^https?:\/\//i.test(apiURL)) {
+      throw new Error('Invalid OIDC API URL')
     }
     return getSharedOidcClient(apiURL)
   }

@@ -149,13 +149,8 @@ import { registerImConnectStatusListener } from "./im-runtime/connectStatus";
 import {
   clearAuthStorage,
   consumeOidcPostLogoutCleanup,
-  isOidcLoginProvider,
   markOidcPostLogoutCleanup,
-  overridePostLogoutRedirectUri,
-  requestOidcLogout,
-  safeEndSessionUrl,
-  createOidcLogoutFetcher,
-  IPC_OIDC_OPEN_EXTERNAL,
+  performOidcUserInitiatedLogout,
 } from "./Service/oidcLogout";
 
 export const IM_DEVICE_FLAG_WEB = 1;
@@ -1126,49 +1121,47 @@ export default class WKApp extends ProviderListener {
     if (this._loggingOut) return;
     this._loggingOut = true;
     this.clearLocalLoginState();
+    // Packaged Electron shell loads via `file://` and has no `/login` route
+    // on disk, so `location.replace("/login")` navigates to
+    // `file:///login` and hangs on ERR_FILE_NOT_FOUND — the interceptor's
+    // will-navigate hook then no longer runs because there's no armed flow.
+    // Reload the trusted shell instead; the renderer boot decides which
+    // login UI to render based on the cleared credentials.
+    //
+    // Web (http[s]) keeps the original behavior because the login route
+    // *is* served by the SPA host and a reload would drop deep-link state
+    // that the login page may still want to consume (e.g. `?returnTo=`).
+    if (window.location.protocol === "file:") {
+      window.location.reload();
+      return;
+    }
     window.location.replace("/login");
   }
 
   async logoutUserInitiated() {
-    const providerId = WKApp.loginInfo.loginProvider;
-    const token = WKApp.loginInfo.token || "";
-    if (isOidcLoginProvider(providerId) && token) {
-      try {
-        const ipc = (window as any).ipc;
-        const fetcher = this.isPC
-          ? createOidcLogoutFetcher(WKApp.apiClient.config.apiURL || "", ipc)
-          : undefined;
-        const resp = await requestOidcLogout(providerId, token, fetcher || fetch);
-        const rawEndSessionUrl = safeEndSessionUrl(resp.end_session_url);
-        const endSessionUrl =
-          rawEndSessionUrl && import.meta.env.DEV
-            ? overridePostLogoutRedirectUri(
-                rawEndSessionUrl,
-                import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI
-              )
-            : rawEndSessionUrl;
-        if (endSessionUrl) {
-          this.clearLocalLoginState();
-          const isElectronShell = window.location.protocol === "file:" &&
-            typeof ipc?.invoke === "function";
-          if (isElectronShell) {
-            const opened = await ipc.invoke(IPC_OIDC_OPEN_EXTERNAL, endSessionUrl);
-            if (opened?.ok !== true) throw new Error("OIDC logout browser launch failed");
-            // The IdP logout runs outside the app window. Reload the trusted
-            // file:// shell so the cleared credentials render the login UI
-            // immediately instead of leaving authenticated content mounted.
-            window.location.reload();
-          } else {
-            markOidcPostLogoutCleanup();
-            window.location.href = endSessionUrl;
-          }
-          return;
-        }
-      } catch (e) {
-        console.warn("OIDC logout failed, falling back to local logout", e);
-      }
-    }
-    this.logout();
+    // Thin wrapper around performOidcUserInitiatedLogout so the packaged
+    // desktop / web branching and end-session URL policy can be exercised
+    // by unit tests without booting WKApp. All side-effects on WKApp state
+    // are done through the injected callbacks below.
+    await performOidcUserInitiatedLogout({
+      loginProvider: WKApp.loginInfo.loginProvider,
+      token: WKApp.loginInfo.token || "",
+      apiURL: WKApp.apiClient.config.apiURL || "",
+      ipc: (window as any).ipc,
+      env: window.location.protocol === "file:" ? "desktop-shell" : "web",
+      // Only forward the dev override when actually in a dev build; in
+      // production `import.meta.env.DEV` is false and we must not read the
+      // VITE_ env var (it may leak into production bundles as `undefined`
+      // and cause spurious overridePostLogoutRedirectUri no-ops).
+      devPostLogoutRedirectUriOverride: import.meta.env.DEV
+        ? import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI
+        : undefined,
+      clearLocalLoginState: () => this.clearLocalLoginState(),
+      reloadShell: () => window.location.reload(),
+      navigateExternal: (url) => { window.location.href = url; },
+      markPostLogoutCleanup: () => { markOidcPostLogoutCleanup(); },
+      fallbackLogout: () => this.logout(),
+    });
   }
 
   avatarChannel(channel: Channel) {

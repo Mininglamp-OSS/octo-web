@@ -9,7 +9,6 @@ import {
     getProviderById,
     beginOidcAuthorize,
     endOidcAuthorize,
-    registerOidcApiOrigin,
     isElectronDesktop,
     isPendingExpired,
     OidcPollCancelledError,
@@ -591,10 +590,10 @@ export class LoginVM extends ProviderListener {
             if (isDesktop && !/^https?:\/\//i.test(apiURL)) {
                 throw new Error(t('oidc.failed'))
             }
-            if (isDesktop) {
-                const registeredApi = await registerOidcApiOrigin(apiURL)
-                if (!registeredApi) throw new Error(t('oidc.failed'))
-            }
+            // Main-process now validates the API origin inline on every IPC
+            // round-trip (see main/oidcRedirect.ts::validateOidcHttpRequest), so
+            // the separate "register API origin" preflight has been removed —
+            // it duplicated the check and existed only for legacy reasons.
             const oidcClient = getOidcClient(apiURL)
             const authcode = await fetchAuthcode(oidcClient)
             savePendingOidcLogin({
@@ -604,8 +603,14 @@ export class LoginVM extends ProviderListener {
             })
             const returnTo = isDesktop ? '/login' : `${window.location.origin}/login`
             const authorizeBaseURL = isDesktop ? apiURL : undefined
+            // Build the authorize URL *before* arming the flow so main can
+            // store it verbatim and compare the will-navigate URL by literal
+            // string (P1-1). Rebuilding the URL on the main side from
+            // (origin + provider id) had encoding drift; the renderer already
+            // knows the exact URL it is about to load.
+            const authorizeUrl = buildAuthorizeURL(provider, authcode, returnTo, authorizeBaseURL, isDesktop ? '2' : '1')
             if (isDesktop) {
-                const registered = await beginOidcAuthorize(apiURL, authcode, providerId)
+                const registered = await beginOidcAuthorize(apiURL, authcode, providerId, authorizeUrl)
                 if (!registered?.ok) throw new Error(t('oidc.failed'))
             }
             // Schedule a fallback reset before navigating so a blocked redirect
@@ -618,7 +623,7 @@ export class LoginVM extends ProviderListener {
                     this.notifyListener()
                 }
             }, LoginVM.OIDC_LOADING_RESET_MS)
-            window.location.href = buildAuthorizeURL(provider, authcode, returnTo, authorizeBaseURL, isDesktop ? '2' : '1')
+            window.location.href = authorizeUrl
         } catch (e) {
             await endOidcAuthorize()
             this.oidcLoading = false

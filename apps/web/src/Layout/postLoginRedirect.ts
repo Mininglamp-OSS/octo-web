@@ -13,9 +13,8 @@ export function buildPostLoginRedirectUrl(
     // callback reload carries the freshly authenticated sid, so dropping it
     // here makes the next renderer load appear logged out (and can leave a
     // blank shell after the login redirect).
-    const currentSid = originalSid;
-    if (currentSid && !currentUrl.searchParams.has("sid")) {
-      currentUrl.searchParams.set("sid", currentSid);
+    if (originalSid && !currentUrl.searchParams.has("sid")) {
+      currentUrl.searchParams.set("sid", originalSid);
     }
     currentUrl.hash = "";
     return currentUrl.toString();

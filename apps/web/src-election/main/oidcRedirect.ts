@@ -15,7 +15,7 @@ const CALLBACK_QUERY_KEYS: Record<OidcCallbackPath, ReadonlySet<string>> = {
   // `error` / `error_description` are OIDC/OAuth2 standard fields; forward them
   // so the login page can surface real backend messages instead of a generic
   // "oidc_error=1" fallback.
-  '/login': new Set(['oidc_error', 'error', 'error_description']),
+  '/login': new Set(['oidc_error', 'error', 'error_description', 'authcode', 'provider']),
   '/oidc/bind': new Set(['token', 'authcode', 'return_to', 'provider']),
 }
 
@@ -61,7 +61,22 @@ export function validateOidcHttpRequest(
   }
   const isLoginEndpoint = parsed.pathname === '/v1/user/thirdlogin/authcode' ||
     parsed.pathname === '/v1/user/thirdlogin/authstatus'
-  const isOidcEndpoint = /^\/v1\/auth\/oidc\/[a-z0-9_%.-]+\/(?:bind\/(?:info|verify\/password|verify\/otp\/send|verify\/otp\/check|confirm|create)|logout)$/i.test(parsed.pathname)
+  const oidcEndpointMatch = parsed.pathname.match(/^\/v1\/auth\/oidc\/((?:[a-zA-Z0-9_.!~*'()-]|%[0-9a-f]{2})+)\/(?:bind\/(?:info|verify\/password|verify\/otp\/send|verify\/otp\/check|confirm|create)|logout)$/i)
+  let safeProviderSegment = false
+  if (oidcEndpointMatch) {
+    try {
+      const decodedProviderId = decodeURIComponent(oidcEndpointMatch[1])
+      // Provider IDs are one URL path segment. Encoded separators and dot
+      // segments must not become valid after decoding.
+      safeProviderSegment = decodedProviderId !== '' &&
+        decodedProviderId !== '.' &&
+        decodedProviderId !== '..' &&
+        !/[\\/]/.test(decodedProviderId)
+    } catch {
+      safeProviderSegment = false
+    }
+  }
+  const isOidcEndpoint = safeProviderSegment && oidcEndpointMatch !== null
   if (!isLoginEndpoint && !isOidcEndpoint) return { ok: false, error: 'OIDC endpoint is not allowed' }
   const method = input.method as 'GET' | 'POST'
   const isBindInfoEndpoint = isOidcEndpoint && parsed.pathname.endsWith('/info')
@@ -99,18 +114,32 @@ export function parseOidcCallback(url: string, expectedOrigin: string): {
  * The first desktop navigation is the API authorize endpoint itself. It must
  * be allowed to continue to the identity provider; only the API callback
  * paths are handled by the redirect interceptor.
+ *
+ * Literal comparison against the exact URL the renderer registered when
+ *      it armed the flow. This is the preferred mode — the renderer built
+ *      the URL and can hand it back verbatim, so we do not have to guess at
+ *      encoding of `state`/`return_to`/`flag` query parameters or worry
+ *      about backend-issued paths that differ from our client-side
+ *      assumption. Both URLs are canonicalized through the WHATWG URL
+ *      parser so a `+` vs `%20` in state does not spuriously fail.
  */
 export function isOidcAuthorizeNavigation(
   url: string,
   expectedOrigin: string,
   providerId: string,
+  authorizeUrl: string,
 ): boolean {
   let parsed: URL
   const normalizedExpected = parseHttpOrigin(expectedOrigin)
   if (!normalizedExpected || typeof providerId !== 'string' || providerId === '') return false
   try { parsed = new URL(url) } catch { return false }
-  return parsed.origin === normalizedExpected &&
-    parsed.pathname === `/v1/auth/oidc/${encodeURIComponent(providerId)}/authorize`
+  if (parsed.origin !== normalizedExpected) return false
+  let expected: URL
+  try { expected = new URL(authorizeUrl) } catch { return false }
+  if (expected.origin !== normalizedExpected) return false
+  // Canonicalize both sides — `URL.toString()` handles percent-encoding
+  // normalization identically for both inputs.
+  return parsed.toString() === expected.toString()
 }
 
 /**
@@ -194,9 +223,16 @@ export function isTrustedSenderUrl(
       // window sid and, during OIDC, callback parameters. Those are expected
       // renderer state rather than a different local document, so compare the
       // canonical file identity and deliberately ignore search/hash.
+      //
+      // Windows exposes NTFS pathnames case-insensitively. Electron may
+      // hand us a drive letter in either case (see file URLs like
+      // `file:///C:/...` vs `file:///c:/...`), so a strict `===` mismatch
+      // would spuriously reject the shell. Fold to lowercase for the
+      // filesystem-identity check; hostname is already normalized by the
+      // WHATWG URL parser.
       return parsed.protocol === trusted.protocol &&
         parsed.hostname === trusted.hostname &&
-        parsed.pathname === trusted.pathname
+        parsed.pathname.toLowerCase() === trusted.pathname.toLowerCase()
     } catch {
       return false
     }
@@ -205,3 +241,96 @@ export function isTrustedSenderUrl(
   if (!devOrigin) return false
   return parsed.origin === devOrigin
 }
+
+/**
+ * Validate a URL passed to `IPC_OIDC_OPEN_EXTERNAL`.
+ *
+ * This IPC has exactly one caller: `logoutUserInitiated` in App.tsx forwards
+ * the backend-issued `end_session_url` returned by our own `/logout` endpoint.
+ * A compromised renderer must NOT be able to smuggle arbitrary browser
+ * navigations (data:, javascript:, custom protocol handlers, or even
+ * arbitrary http(s) URLs) through `shell.openExternal`, so validation goes
+ * beyond scheme checks and enforces the *shape* of an OIDC end-session URL:
+ *
+ *   - https only (RFC 8252 §8.10 disallows plaintext for the end-session
+ *     endpoint; anyone deploying an OIDC IdP over http:// is misconfigured
+ *     and we refuse to relay to the OS handler for them either way);
+ *   - no userinfo, no fragment (both are common obfuscation vectors that
+ *     shell.openExternal will happily forward);
+ *   - path segment ending in `end_session`, `endsession`, `logout`, or
+ *     `signout` (case-insensitive) — matches every real OIDC IdP we
+ *     integrate with (Keycloak, Auth0, Azure AD, Okta, ForgeRock);
+ *   - query params limited to the standard OIDC end-session set (see
+ *     https://openid.net/specs/openid-connect-rpinitiated-1_0.html): any
+ *     unexpected parameter is treated as smuggling and rejected.
+ *
+ * Kept as a pure function so the URL-shape allowlist is covered by tests
+ * without spinning up Electron. If a new IdP integration needs a different
+ * end-session path suffix or query parameter, extend the allowlist here
+ * and add a test case — do NOT loosen the scheme, userinfo, or fragment
+ * checks.
+ */
+const OIDC_END_SESSION_PATH_SUFFIXES = [
+  'end_session',
+  'endsession',
+  'end-session',
+  'logout',
+  'signout',
+  'sign-out',
+] as const
+const OIDC_END_SESSION_QUERY_ALLOWLIST = new Set([
+  // RFC 8252 / RP-initiated logout 1.0 standard fields.
+  'id_token_hint',
+  'logout_hint',
+  'client_id',
+  'post_logout_redirect_uri',
+  'state',
+  'ui_locales',
+  // Widely deployed vendor extensions we've observed in production. Keep
+  // this list conservative: unknown params must fail closed.
+  'redirect_uri',
+  'returnTo',
+  'return_to',
+  'return_url',
+  'returnUrl',
+])
+export function validateOpenExternalUrl(value: unknown): { ok: true; value: string } | { ok: false } {
+  if (typeof value !== 'string' || value === '') return { ok: false }
+  let parsed: URL
+  try { parsed = new URL(value) } catch { return { ok: false } }
+  // https only. See doc comment above for why http:// is refused.
+  if (parsed.protocol !== 'https:') return { ok: false }
+  // Reject embedded credentials — shell.openExternal would leak them into
+  // the OS handler and system logs.
+  if (parsed.username !== '' || parsed.password !== '') return { ok: false }
+  // Fragments are never used by RP-initiated logout; disallow them so a
+  // renderer cannot smuggle a client-side URL (e.g. `#/login`) into the
+  // launched browser.
+  if (parsed.hash !== '') return { ok: false }
+  // Path shape: must end in a known end-session segment. `URL.pathname` is
+  // already normalized (no `..`, no double slashes), so a case-insensitive
+  // suffix match after stripping the trailing slash is safe.
+  const path = parsed.pathname.replace(/\/$/, '').toLowerCase()
+  const segments = path.split('/')
+  const lastSegment = segments[segments.length - 1] ?? ''
+  if (!OIDC_END_SESSION_PATH_SUFFIXES.some((s) => lastSegment === s)) return { ok: false }
+  // Query allowlist. Unknown parameters fail closed — see doc comment.
+  // Materialize the iterator to an array so tsconfig.e.json (which targets
+  // an older ES version without downlevelIteration) can consume it.
+  const searchKeys: string[] = []
+  parsed.searchParams.forEach((_v, key) => { searchKeys.push(key) })
+  for (const key of searchKeys) {
+    if (!OIDC_END_SESSION_QUERY_ALLOWLIST.has(key)) return { ok: false }
+  }
+  return { ok: true, value: parsed.toString() }
+}
+
+/**
+ * Cap the OIDC HTTP proxy response body size. OIDC responses are small JSON
+ * objects (a few KB); anything materially larger is either a misconfigured
+ * endpoint or a hostile server trying to inflate main-process memory. 2 MiB
+ * is well above every real response we expect and below anything that would
+ * threaten the process. Kept as a constant so tests can reference the same
+ * bound without hardcoding the number.
+ */
+export const OIDC_HTTP_MAX_RESPONSE_BYTES = 2 * 1024 * 1024

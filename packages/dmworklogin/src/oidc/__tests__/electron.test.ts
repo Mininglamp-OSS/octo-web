@@ -70,6 +70,20 @@ describe('electron runtime helpers', () => {
       })
   })
 
+  it('stops awaiting an in-flight IPC request when the caller aborts', async () => {
+    setProtocol('file:')
+    const invoke = vi.fn().mockImplementation(() => new Promise(() => {}))
+    Object.defineProperty(window, 'ipc', { configurable: true, value: { invoke } })
+    const client = getOidcClient('https://api.example.com')
+    const controller = new AbortController()
+    const pending = client.get('/v1/user/thirdlogin/authstatus', { signal: controller.signal })
+
+    controller.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    expect(invoke).toHaveBeenCalledOnce()
+  })
+
   it('falls back to the apiClient-relative client under browser protocols', () => {
     setProtocol('https:')
     expect(getOidcClient('https://api.example.com')).toBe(fetchHttpClient)
