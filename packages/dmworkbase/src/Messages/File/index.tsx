@@ -437,7 +437,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
     });
 
     // 单向对齐：任何路径(图标/右键 picker/其他 tab 的 batch 查询)成功后，
-    // dmworkdrive 会在 mittBus 广播 sourceKey + entry。凡是匹配本 FileCell
+    // private Drive module 会在 mittBus 广播 sourceKey + entry。凡是匹配本 FileCell
     // 的消息就 setState，让图标(以及右键菜单下次打开时通过 cache 查)一起切
     // "已存"。核心目的:两个入口共享一份 saved-state，杜绝"图标不切"和"右键
     // 与图标状态不一致"这两种漂移。
@@ -461,7 +461,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
   }
 
   // sourceKey is derived by @octo/base's `imDriveTransferSourceKey` — the
-  // SAME implementation dmworkdrive uses to construct the wire source_key
+  // SAME implementation the private Drive module uses to construct the wire source_key
   // and to key the mittBus 'wk:drive-transferred-changed' fan-out. Hosting
   // both derivations in one place makes it impossible for FileCell's
   // subscriber-side key to drift from the emitter-side key (Octo-Q /

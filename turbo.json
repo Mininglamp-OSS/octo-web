@@ -28,7 +28,6 @@
         "../../packages/dmworkbase/**",
         "../../packages/dmworkcontacts/**",
         "../../packages/dmworkdatasource/**",
-        "../../packages/dmworkdrive/**",
         "../../packages/dmworklogin/**",
         "../../packages/dmworkmcp/**",
         "../../packages/dmworkskillmarket/**",
