@@ -134,8 +134,9 @@ function validateToggleVisibilityAction(
     throw new OctoInvalidCard("ToggleVisibility targetElements required");
   }
   for (const target of targets) {
-    // targetElements 是对已存在元素的引用，不是卡片树节点。服务端 walker
-    // 仅将其收集为 targetRefs 并校验存在性，只对 action 本身计一个节点。
+    // targetElements 是对已存在元素的引用，不是卡片树节点。服务端权威：
+    // octo-server/pkg/cardmsg/validate.go 的 walker.action() 只对 action bump，
+    // walker.toggleVisibility() 仅收集 targetRefs，由 resolveTargetRefs() 校验存在性。
     validateToggleTargetElement(target, ctx);
   }
 }
