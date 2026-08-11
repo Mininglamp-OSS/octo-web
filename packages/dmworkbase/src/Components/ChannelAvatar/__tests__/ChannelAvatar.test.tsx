@@ -62,7 +62,22 @@ vi.mock("../../WKAvatarEditor", () => ({
 }));
 
 vi.mock("../../WKModal", () => ({
-  default: ({ visible, children }: any) => (visible ? <div>{children}</div> : null),
+  default: ({ visible, children, footerConfig, onCancel }: any) =>
+    visible ? (
+      <div>
+        {children}
+        {footerConfig?.onOk && (
+          <div>
+            <button type="button" onClick={onCancel}>
+              {footerConfig.cancelText}
+            </button>
+            <button type="button" onClick={footerConfig.onOk}>
+              {footerConfig.okText}
+            </button>
+          </div>
+        )}
+      </div>
+    ) : null,
 }));
 
 import { I18nContext } from "../../../i18n";
