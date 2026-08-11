@@ -26,7 +26,7 @@ export type ImChannelInfoFetchResult<TChannelInfo> =
 
 const pendingChannelInfoFetches = new WeakMap<
   object,
-  Map<string, Promise<ImChannelInfoFetchResult<ImChannelInfoLike>>>
+  Map<string, Set<Promise<ImChannelInfoFetchResult<ImChannelInfoLike>>>>
 >();
 
 export interface ImChannelManagerRuntime<
@@ -153,9 +153,8 @@ export function fetchImChannelInfo<
     return channelInfo || sdk.channelManager.getChannelInfo(channel);
   });
 
-  // The SDK dedupes by channelKey but gives later callers no handle to the
-  // original request. Keep the first promise observable without changing any
-  // caller's return timing, so successful writes can repair a late stale read.
+  // Keep pending fetches observable without changing any caller's return timing,
+  // so successful writes can repair late stale reads after all current fetches settle.
   const manager = sdk.channelManager as object;
   let pendingByChannel = pendingChannelInfoFetches.get(manager);
   if (!pendingByChannel) {
@@ -164,19 +163,23 @@ export function fetchImChannelInfo<
   }
 
   const key = channelKey(channel);
-  if (!pendingByChannel.has(key)) {
-    pendingByChannel.set(
-      key,
-      promise as Promise<ImChannelInfoFetchResult<ImChannelInfoLike>>
-    );
-    void promise
-      .finally(() => {
-        if (pendingByChannel?.get(key) === promise) {
-          pendingByChannel.delete(key);
-        }
-      })
-      .catch(() => undefined);
+  let pendingFetches = pendingByChannel.get(key);
+  if (!pendingFetches) {
+    pendingFetches = new Set();
+    pendingByChannel.set(key, pendingFetches);
   }
+  const trackedPromise =
+    promise as Promise<ImChannelInfoFetchResult<ImChannelInfoLike>>;
+  pendingFetches.add(trackedPromise);
+  void promise
+    .finally(() => {
+      const currentFetches = pendingByChannel?.get(key);
+      currentFetches?.delete(trackedPromise);
+      if (currentFetches?.size === 0) {
+        pendingByChannel.delete(key);
+      }
+    })
+    .catch(() => undefined);
 
   return promise;
 }
@@ -185,11 +188,15 @@ export function getPendingImChannelInfoFetch<
   TChannel extends ImChannelLike,
   TChannelInfo extends ImChannelInfoLike
 >(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channel: TChannel) {
-  return pendingChannelInfoFetches
+  const pendingFetches = pendingChannelInfoFetches
     .get(sdk.channelManager as object)
-    ?.get(channelKey(channel)) as
-    | Promise<ImChannelInfoFetchResult<TChannelInfo>>
-    | undefined;
+    ?.get(channelKey(channel));
+  if (!pendingFetches || pendingFetches.size === 0) return undefined;
+
+  const pendingSnapshot = Array.from(pendingFetches) as Array<
+    Promise<ImChannelInfoFetchResult<TChannelInfo>>
+  >;
+  return Promise.allSettled(pendingSnapshot).then(() => undefined);
 }
 
 export function setImChannelInfoCache<

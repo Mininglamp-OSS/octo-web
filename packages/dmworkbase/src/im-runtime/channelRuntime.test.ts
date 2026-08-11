@@ -82,7 +82,7 @@ describe("channelRuntime", () => {
     expect(sdk.channelManager.getChannelInfo).toHaveBeenCalledWith(channel);
   });
 
-  it("keeps the original in-flight channel fetch visible across SDK-deduped calls", async () => {
+  it("keeps SDK-deduped in-flight channel fetches visible until the original request settles", async () => {
     const sdk = createSdk();
     const channel = { channelID: "g1", channelType: 2 };
     let resolveFirst!: (value: ImChannelInfoLike) => void;
@@ -96,18 +96,24 @@ describe("channelRuntime", () => {
     const firstFetch = fetchImChannelInfo(sdk, channel);
     const dedupedFetch = fetchImChannelInfo(sdk, channel);
 
-    expect(getPendingImChannelInfoFetch(sdk, channel)).toBe(firstFetch);
+    const pendingFetches = getPendingImChannelInfoFetch(sdk, channel);
+    let pendingSettled = false;
+    void pendingFetches?.then(() => {
+      pendingSettled = true;
+    });
+
     await expect(dedupedFetch).resolves.toBeUndefined();
-    expect(getPendingImChannelInfoFetch(sdk, channel)).toBe(firstFetch);
+    await Promise.resolve();
+    expect(pendingSettled).toBe(false);
 
     resolveFirst({ channel, title: "Group" });
     await firstFetch;
-    await Promise.resolve();
+    await pendingFetches;
 
     expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
   });
 
-  it("keeps the first in-flight fetch as the repair handle when later fetches are not SDK-deduped", async () => {
+  it("keeps every in-flight channel fetch visible when later fetches are not SDK-deduped", async () => {
     const sdk = createSdk();
     const channel = { channelID: "g1", channelType: 2 };
     let resolveFirst!: (value: ImChannelInfoLike) => void;
@@ -125,17 +131,21 @@ describe("channelRuntime", () => {
     const firstFetch = fetchImChannelInfo(sdk, channel);
     const secondFetch = fetchImChannelInfo(sdk, channel);
 
-    expect(getPendingImChannelInfoFetch(sdk, channel)).toBe(firstFetch);
-
-    resolveSecond({ channel, title: "Newer" });
-    await secondFetch;
-    await Promise.resolve();
-
-    expect(getPendingImChannelInfoFetch(sdk, channel)).toBe(firstFetch);
+    const pendingFetches = getPendingImChannelInfoFetch(sdk, channel);
+    let pendingSettled = false;
+    void pendingFetches?.then(() => {
+      pendingSettled = true;
+    });
 
     resolveFirst({ channel, title: "Older" });
     await firstFetch;
     await Promise.resolve();
+
+    expect(pendingSettled).toBe(false);
+
+    resolveSecond({ channel, title: "Newer" });
+    await secondFetch;
+    await pendingFetches;
 
     expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
   });

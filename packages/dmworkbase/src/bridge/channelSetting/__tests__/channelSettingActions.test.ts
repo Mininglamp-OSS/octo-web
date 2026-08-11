@@ -483,6 +483,59 @@ describe("channel setting actions", () => {
     expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledTimes(2);
   });
 
+  it("waits for every older thread info fetch before clearing the mute repair", async () => {
+    const firstOldFetch = deferred();
+    const secondOldFetch = deferred();
+    const pendingFetches = Promise.allSettled([
+      firstOldFetch.promise,
+      secondOldFetch.promise,
+    ]);
+    const channel = new Channel(
+      "group-1____thread-1",
+      ChannelTypeCommunityTopic
+    );
+    let cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    const runtime = createRuntime({
+      getCurrentChannelInfo: vi.fn(() => cachedChannelInfo),
+      getPendingChannelInfoFetch: vi.fn(() => pendingFetches),
+    });
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
+
+    cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    firstOldFetch.resolve();
+    await firstOldFetch.promise;
+    await Promise.resolve();
+
+    expect(cachedChannelInfo.mute).toBe(false);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
+
+    cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    secondOldFetch.resolve();
+    await secondOldFetch.promise;
+    await pendingFetches;
+    await Promise.resolve();
+
+    expect(cachedChannelInfo.mute).toBe(true);
+    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(2);
+    expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledTimes(2);
+  });
+
   it("transfers owner and refreshes subscriber and channel caches", async () => {
     const runtime = createRuntime();
     const channel = new Channel("group-1", ChannelTypeGroup);
