@@ -45,6 +45,7 @@ interface ChannelAvatarState {
     draftMode: ChannelAvatarDraftMode
     pendingUploadFile: File | null
     uploadPreviewUrl?: string
+    clearUploadedAvatarRequested: boolean
 }
 
 export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarState>{
@@ -63,6 +64,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         colorChanged: false,
         draftMode: "generated",
         pendingUploadFile: null,
+        clearUploadedAvatarRequested: false,
     }
 
     componentDidUpdate(prevProps: ChannelAvatarProps) {
@@ -121,6 +123,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             draftMode: "generated",
             pendingUploadFile: null,
             uploadPreviewUrl: undefined,
+            clearUploadedAvatarRequested: false,
         })
     }
     cancelCustomAvatar = () => {
@@ -128,7 +131,11 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         this.closePage()
     }
     onGeneratedAvatarChange = (result: GroupAvatarEditResult) => {
-        if (this.state.uploadPreviewUrl) {
+        const preserveUpload =
+            this.state.draftMode === "uploaded" &&
+            result.textChanged !== true &&
+            result.colorChanged !== true
+        if (!preserveUpload && this.state.uploadPreviewUrl) {
             URL.revokeObjectURL(this.state.uploadPreviewUrl)
         }
         this.setState({
@@ -136,9 +143,21 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             customAvatarColorIndex: result.colorIndex,
             textChanged: result.textChanged === true,
             colorChanged: result.colorChanged === true,
+            draftMode: preserveUpload ? "uploaded" : "generated",
+            pendingUploadFile: preserveUpload ? this.state.pendingUploadFile : null,
+            uploadPreviewUrl: preserveUpload ? this.state.uploadPreviewUrl : undefined,
+        })
+    }
+    useGeneratedAvatar = () => {
+        if (!this.props.canClearUploadedAvatar || this.state.customAvatarSaving || this.state.uploading) return
+        if (this.state.uploadPreviewUrl) {
+            URL.revokeObjectURL(this.state.uploadPreviewUrl)
+        }
+        this.setState({
             draftMode: "generated",
             pendingUploadFile: null,
             uploadPreviewUrl: undefined,
+            clearUploadedAvatarRequested: true,
         })
     }
     saveCustomAvatar = async () => {
@@ -148,7 +167,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         const shouldClearUploadedAvatar =
             this.props.isUploadedAvatar === true &&
             this.props.canClearUploadedAvatar === true &&
-            (textChanged || colorChanged)
+            this.state.clearUploadedAvatarRequested
         if (draftMode === "uploaded") {
             await this.saveUploadedAvatar()
             return
@@ -164,7 +183,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 avatarColor: colorChanged
                     ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
                     : undefined,
-                clearUploadedAvatar: shouldClearUploadedAvatar,
+            clearUploadedAvatar: shouldClearUploadedAvatar,
             })
             WKApp.shared.changeChannelAvatarTag(channel)
             void fetchCurrentImChannelInfo(channel)
@@ -286,6 +305,16 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                             <IconCamera />
                         </button>
                     </div>
+                    {showUpload && this.props.isUploadedAvatar === true && this.props.canClearUploadedAvatar === true && (
+                        <Button
+                            theme="borderless"
+                            className="wk-channelavatar-use-generated"
+                            onClick={this.useGeneratedAvatar}
+                            disabled={editingDisabled}
+                        >
+                            {this.context.t('base.channelAvatar.useGeneratedAvatar')}
+                        </Button>
+                    )}
                 </div>
                 <div className="wk-channelavatar-editor-panel">
                     {showUpload && <div className="wk-channelavatar-editor-title">

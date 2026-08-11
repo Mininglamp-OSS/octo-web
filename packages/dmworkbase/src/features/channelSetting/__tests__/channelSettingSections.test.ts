@@ -604,7 +604,7 @@ describe("channel setting section builders", () => {
     expect(context.push).not.toHaveBeenCalled();
   });
 
-  it("does not expose generated editor to managers while uploaded avatar is active", () => {
+  it("keeps avatar editing available to managers while uploaded avatar is active", () => {
     const context = createContext({
       isManagerOrCreatorOfMe: true,
       channelInfo: {
@@ -627,7 +627,7 @@ describe("channel setting section builders", () => {
       disbanded: false,
     });
 
-    expect(rows[1].properties.showUpload).toBe(false);
+    expect(rows[1].properties.showUpload).toBe(true);
     expect(rows[1].properties.isUploadedAvatar).toBe(true);
     expect(rows[1].properties.canClearUploadedAvatar).toBe(false);
   });

@@ -1212,6 +1212,7 @@
   "categorySection.noGroups": "暂无群聊",
   "channelAvatar.changeAvatar": "更换头像",
   "channelAvatar.changeTextColorAvatar": "文字/颜色头像",
+  "channelAvatar.useGeneratedAvatar": "使用文字/颜色头像",
   "channelAvatar.cropAvatar": "裁剪头像",
   "channelAvatar.fileTooLarge": "头像文件不能超过 5 MB",
   "channelAvatar.previewAvatar": "预览头像",

@@ -211,6 +211,9 @@ describe("ChannelAvatar save intent", () => {
         target: { value: "研发" },
       });
     });
+    act(() => {
+      fireEvent.click(screen.getByText("base.channelAvatar.useGeneratedAvatar"));
+    });
     await act(async () => {
       fireEvent.click(screen.getByText("base.common.save"));
     });
@@ -241,6 +244,26 @@ describe("ChannelAvatar save intent", () => {
 
     expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
     expect(mocks.changeChannelAvatarTag).not.toHaveBeenCalledWith(channel);
+  });
+
+  it("preserves a cropped upload when generated editing returns to its initial values", () => {
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    const component = createComponent({ isUploadedAvatar: true });
+    component.setState({
+      draftMode: "uploaded",
+      pendingUploadFile: file,
+      uploadPreviewUrl: "blob:preview",
+    } as any);
+    component.onGeneratedAvatarChange({
+      avatarText: "",
+      colorIndex: undefined,
+      textChanged: false,
+      colorChanged: false,
+    });
+
+    expect(component.state.draftMode).toBe("uploaded");
+    expect(component.state.pendingUploadFile).toBe(file);
+    expect(component.state.uploadPreviewUrl).toBe("blob:preview");
   });
 
   it("updates the large preview immediately when generated text changes", async () => {
