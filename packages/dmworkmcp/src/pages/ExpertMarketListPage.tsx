@@ -553,7 +553,7 @@ export default function ExpertMarketListPage() {
                 aria-pressed={category === cat}
                 onClick={() => setCategory(cat)}
               >
-                {cat}
+                {cat === ALL_CATEGORY ? t("mcp.expert.categoryAll") : cat}
                 <span className="wk-mcp-expert-category__count">
                   {categoryCounts[cat] ?? 0}
                 </span>

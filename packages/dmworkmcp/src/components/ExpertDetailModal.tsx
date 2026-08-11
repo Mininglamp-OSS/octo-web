@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { t, useI18n, WKModal } from "@octo/base";
 import type { ExpertItem, ExpertMember } from "../mock/expertMock";
-import { DEFAULT_STRATEGIES } from "../mock/expertMock";
 import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, openDownloadUrl } from "../api/expertService";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
@@ -43,12 +42,18 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
 
   const isSquad = item.kind === "squad";
   // mapSquadDetail normalises a missing `strategies` to `[]` (not undefined), so
-  // `?? DEFAULT_STRATEGIES` alone never fires — guard on length so a squad that
-  // declares no dispatch rules still shows the sensible defaults.
+  // `?? DEFAULT` alone never fires — guard on length. The default rules are
+  // localized (t()) so an en-US user doesn't see the Chinese fallback.
+  const defaultStrategies = [
+    t("mcp.expert.defaultStrategy1"),
+    t("mcp.expert.defaultStrategy2"),
+    t("mcp.expert.defaultStrategy3"),
+    t("mcp.expert.defaultStrategy4"),
+  ];
   const strategies = isSquad
     ? item.strategies && item.strategies.length
       ? item.strategies
-      : DEFAULT_STRATEGIES
+      : defaultStrategies
     : [];
   const owner = resolveExpertOwner(item);
 
