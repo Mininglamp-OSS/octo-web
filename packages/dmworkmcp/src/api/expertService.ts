@@ -486,9 +486,15 @@ function assertSafeExternalURL(raw: string): void {
   throw new Error("unsupported upload URL scheme");
 }
 
+/** Ceiling for a fetched skill package (matches the backend upload cap). Guards
+ *  the browser preview from a crafted/huge package before it's buffered. */
+export const MAX_SKILL_PACKAGE_FETCH_BYTES = 20 * 1024 * 1024;
+
 /** Fetch the raw bytes of a skill package from its presigned URL, for the
  *  client-side file browser. Scheme-guards the URL (rejecting "" and unsafe
- *  schemes), and honours the caller's AbortSignal for timeout/unmount. */
+ *  schemes), honours the caller's AbortSignal, and rejects a package larger than
+ *  MAX_SKILL_PACKAGE_FETCH_BYTES (by Content-Length up front, then by the
+ *  buffered length) so a marketplace package can't OOM the tab. */
 export async function fetchSkillPackage(
   url: string,
   signal?: AbortSignal
@@ -496,7 +502,15 @@ export async function fetchSkillPackage(
   assertSafeExternalURL(url); // throws on empty/unsafe URL
   const resp = await fetch(url, { signal });
   if (!resp.ok) throw new Error(`package fetch failed: ${resp.status}`);
-  return resp.arrayBuffer();
+  const declared = Number(resp.headers.get("content-length") ?? "");
+  if (Number.isFinite(declared) && declared > MAX_SKILL_PACKAGE_FETCH_BYTES) {
+    throw new Error("package too large");
+  }
+  const buf = await resp.arrayBuffer();
+  if (buf.byteLength > MAX_SKILL_PACKAGE_FETCH_BYTES) {
+    throw new Error("package too large");
+  }
+  return buf;
 }
 
 const getExpertSkillDownloadUrlReal = (id: string, index: number) =>

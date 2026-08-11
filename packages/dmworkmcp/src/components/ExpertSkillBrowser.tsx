@@ -27,6 +27,9 @@ type FileView =
 
 // Don't decompress a single entry larger than this into the previewer.
 const MAX_PREVIEW_BYTES = 512 * 1024;
+// Cap how many entries we enumerate from a package, so a pathological archive
+// with a huge entry count can't bloat the file list / state.
+const MAX_PACKAGE_ENTRIES = 500;
 // Fetch timeout for the whole package (mirrors the app request ceiling).
 const PACKAGE_FETCH_TIMEOUT_MS = 30000;
 
@@ -93,6 +96,16 @@ export default function ExpertSkillBrowser({
       setViews((v) => ({ ...v, [path]: { kind: "notice", body: t("mcp.expert.skillEmpty") } }));
       return;
     }
+    // Skip decompression entirely when the entry's DECLARED uncompressed size is
+    // already over the preview cap — a high-ratio entry must not be expanded
+    // into memory just to measure it. (Falls through to the post-check below for
+    // entries whose declared size is missing/understated.)
+    const declared = (entry as unknown as { _data?: { uncompressedSize?: number } })._data
+      ?.uncompressedSize;
+    if (typeof declared === "number" && declared > MAX_PREVIEW_BYTES) {
+      setViews((v) => ({ ...v, [path]: { kind: "notice", body: t("mcp.expert.skillFileTooLarge") } }));
+      return;
+    }
     const bytes = await entry.async("uint8array");
     let view: FileView;
     if (bytes.length > MAX_PREVIEW_BYTES) {
@@ -126,7 +139,9 @@ export default function ExpertSkillBrowser({
           zipRef.current = zip;
           const entries: string[] = [];
           zip.forEach((path, entry) => {
-            if (!entry.dir) entries.push(path);
+            if (entry.dir) return;
+            if (entries.length >= MAX_PACKAGE_ENTRIES) return;
+            entries.push(path);
           });
           const sorted = sortPaths(entries);
           setPaths(sorted);
