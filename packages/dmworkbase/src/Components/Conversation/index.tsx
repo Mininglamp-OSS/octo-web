@@ -55,6 +55,7 @@ import MessageInput, {
 import {
   SendResultDetail,
   SendTargetSnapshot,
+  UnsentEditorBlock,
 } from "../MessageInput/sendFlow";
 import {
   captureSendTarget,
@@ -3256,10 +3257,13 @@ export class Conversation
                         // 清掉这些已发文件、保留编辑器草稿，重试不会重复发送
                         // (octo-web#227 Jerry-Xin non-blocking)。
                         const consumedTopIds: string[] = [];
-                        // 编辑器内粘贴附件中「未入队」的 id：整条 compose 已被
-                        // MessageInput 同步消费，只有精确回报这些 id 才能把它们放回
+                        // 编辑器 compose 里「未入队」的块（按文档顺序）：整条 compose
+                        // 已被 MessageInput 同步消费，只有精确回报这些块才能把它们放回
                         // 编辑器，而不是连同已发出的内容一起丢掉 (octo-web#1280 review)。
-                        const unsentEditorAttachmentIds: string[] = [];
+                        // 文本块也必须登记：sendTextAndWaitAck 在入队前失败会抛错，
+                        // 若此前已有块发出（anyMessageSent=true），异常被 per-block
+                        // catch 吞掉后这段文字既没发出、也不会被整体还原。
+                        const unsentEditorBlocks: UnsentEditorBlock[] = [];
                         const topFilesToSend = topFiles || [];
                         const mixedCandidate = buildRichTextMixedCandidate(
                           topFilesToSend,
@@ -3408,21 +3412,32 @@ export class Conversation
                                 isFirstTextBlock = false;
                                 if (await this.sendTextAndWaitAck(msgContent)) {
                                   anyMessageSent = true;
+                                } else {
+                                  unsentEditorBlocks.push({
+                                    type: "text",
+                                    text: block.text,
+                                  });
                                 }
                               } else if (block.type === "image") {
                                 if (await sendImageFile(block.file)) {
                                   anyMessageSent = true;
                                 } else {
-                                  // 预检拒绝等未入队情形：记下 id，让 MessageInput
-                                  // 只把这张图放回编辑器，其余已发内容保持消费
+                                  // 预检拒绝等未入队情形：记下这一块，让 MessageInput
+                                  // 只把它放回编辑器，其余已发内容保持消费
                                   // (octo-web#1280 review)。
-                                  unsentEditorAttachmentIds.push(block.id);
+                                  unsentEditorBlocks.push({
+                                    type: "attachment",
+                                    id: block.id,
+                                  });
                                 }
                               } else if (block.type === "file") {
                                 if (await sendFileAttachment(block.file)) {
                                   anyMessageSent = true;
                                 } else {
-                                  unsentEditorAttachmentIds.push(block.id);
+                                  unsentEditorBlocks.push({
+                                    type: "attachment",
+                                    id: block.id,
+                                  });
                                 }
                               }
                             } catch (err) {
@@ -3430,9 +3445,13 @@ export class Conversation
                                 "[Conversation] editorBlock send failed:",
                                 err
                               );
-                              if (block.type !== "text") {
-                                unsentEditorAttachmentIds.push(block.id);
-                              }
+                              // 入队前抛错（解散守卫 / sendMessage 失败等）：文本块
+                              // 也要登记，否则它既没发出又不会被还原，内容直接消失。
+                              unsentEditorBlocks.push(
+                                block.type === "text"
+                                  ? { type: "text", text: block.text }
+                                  : { type: "attachment", id: block.id }
+                              );
                               Toast.error(
                                 t("base.conversation.message.sendFailed")
                               );
@@ -3476,13 +3495,13 @@ export class Conversation
                         //     还给输入框可重试；
                         //   • consumedTopIds：只有真正发出的顶部附件保持消费，被预检
                         //     拒绝的会回到附件区（裸 true 会被当成「全部已消费」而丢掉）；
-                        //   • unsentEditorAttachmentIds：编辑器内被拒的粘贴附件单独回到
-                        //     编辑器。文本块失败无法单独回滚（失败即整条 send 抛错，
-                        //     anyMessageSent 保持 false 走整体还原）。
+                        //   • unsentEditorBlocks：编辑器内未入队的块（被拒的粘贴附件、
+                        //     入队前抛错的文本）按原顺序单独回到编辑器；已发出的块保持
+                        //     消费，所以重试不会重复发送。
                         return {
                           editorConsumed: anyMessageSent,
                           consumedTopIds,
-                          unsentEditorAttachmentIds,
+                          unsentEditorBlocks,
                         };
                       }}
                     ></MessageInput>

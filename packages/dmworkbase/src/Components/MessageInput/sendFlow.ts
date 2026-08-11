@@ -77,14 +77,24 @@ export interface SendResultDetail {
    *  the rest are restored. Omit to derive from `editorConsumed`. */
   consumedTopIds?: string[];
   /**
-   * Ids of pasted (in-editor) attachments that were NOT sent even though other
-   * blocks of the same compose were — e.g. one of two pasted images is rejected
-   * by the upload pre-check. Only these attachment nodes are restored into the
-   * editor; their `File` refs and preview URLs are kept alive so the user can
-   * retry just that image instead of silently losing it (#1280 review).
+   * The parts of the editor compose that were NOT sent even though other parts
+   * were — e.g. one of two pasted images rejected by the upload pre-check, or a
+   * text block whose send threw before enqueue after an earlier block had already
+   * gone out. Listed in document order; only these are restored into the editor,
+   * and the `File` refs / preview URLs of the listed attachments are kept alive so
+   * the user can retry exactly what did not make it (#1280 review).
    */
-  unsentEditorAttachmentIds?: string[];
+  unsentEditorBlocks?: UnsentEditorBlock[];
 }
+
+/**
+ * A piece of the editor compose that did not make it out. Attachments are
+ * addressed by node id; text carries its send-format string (with `@[uid:label]`
+ * markers) because text blocks have no stable id.
+ */
+export type UnsentEditorBlock =
+  | { type: "attachment"; id: string }
+  | { type: "text"; text: string };
 
 export type SendResult = void | boolean | SendResultDetail;
 
@@ -178,11 +188,10 @@ export interface ConsumedCompose {
    */
   restoreEditor: () => void;
   /**
-   * Put back only these pasted-attachment nodes (the rest of the compose *was*
-   * sent). Used for `unsentEditorAttachmentIds`, e.g. one of two pasted images
-   * rejected by the upload pre-check.
+   * Put back only these parts of the compose, in document order (the rest *was*
+   * sent). Used for `unsentEditorBlocks`.
    */
-  restoreEditorAttachments: (ids: string[]) => void;
+  restoreEditorBlocks: (blocks: UnsentEditorBlock[]) => void;
   /** Drop in-memory `File` refs + revoke preview URLs of these pasted images. */
   disposeEditorAttachments: (ids: string[]) => void;
   /** Revoke preview URLs of top attachments that stay consumed. */
@@ -271,7 +280,7 @@ export function restoreComposeSnapshot(
 interface SendDecision {
   editorConsumed: boolean;
   consumedTopIds: string[];
-  unsentEditorAttachmentIds: string[];
+  unsentEditorBlocks: UnsentEditorBlock[];
 }
 
 /** Normalize the loose `SendResult` union into an explicit decision. */
@@ -280,28 +289,25 @@ function normalizeResult(
   ids: ConsumedComposeIds,
 ): SendDecision {
   if (result === false) {
-    return {
-      editorConsumed: false,
-      consumedTopIds: [],
-      unsentEditorAttachmentIds: ids.editorAttachmentIds,
-    };
+    return { editorConsumed: false, consumedTopIds: [], unsentEditorBlocks: [] };
   }
   if (result === true || result == null) {
     // void / undefined / true → full success.
     return {
       editorConsumed: true,
       consumedTopIds: ids.topIds,
-      unsentEditorAttachmentIds: [],
+      unsentEditorBlocks: [],
     };
   }
-  // Detailed partial result.
+  // Detailed partial result. When the editor compose was not consumed the whole
+  // snapshot is restored, so a per-block list would be redundant.
   return {
     editorConsumed: result.editorConsumed,
     consumedTopIds:
       result.consumedTopIds ?? (result.editorConsumed ? ids.topIds : []),
-    unsentEditorAttachmentIds: result.editorConsumed
-      ? result.unsentEditorAttachmentIds ?? []
-      : ids.editorAttachmentIds,
+    unsentEditorBlocks: result.editorConsumed
+      ? result.unsentEditorBlocks ?? []
+      : [],
   };
 }
 
@@ -333,11 +339,7 @@ export async function runSendWithConsumedCompose(
   } catch (err) {
     // onSend should surface its own error toast; we just restore the draft.
     console.error("[MessageInput] send failed, restoring draft", err);
-    decision = {
-      editorConsumed: false,
-      consumedTopIds: [],
-      unsentEditorAttachmentIds: ids.editorAttachmentIds,
-    };
+    decision = { editorConsumed: false, consumedTopIds: [], unsentEditorBlocks: [] };
   }
 
   const step = (label: string, run: () => void) => {
@@ -371,20 +373,26 @@ export async function runSendWithConsumedCompose(
     return false;
   }
 
-  // The editor compose was sent, but individual pasted attachments may have been
-  // rejected before enqueue — keep those alive and put just them back.
-  const unsent = new Set(decision.unsentEditorAttachmentIds);
+  // The editor compose went out, but individual blocks may have failed before
+  // enqueue (a rejected pasted image, or a text block whose send threw after an
+  // earlier block had already been sent). Keep those alive and put just them back
+  // — everything else stays consumed so nothing is sent twice.
+  const unsentAttachmentIds = new Set(
+    decision.unsentEditorBlocks
+      .filter((block) => block.type === "attachment")
+      .map((block) => (block as { id: string }).id),
+  );
   const disposableEditorIds = ids.editorAttachmentIds.filter(
-    (id) => !unsent.has(id),
+    (id) => !unsentAttachmentIds.has(id),
   );
   if (disposableEditorIds.length > 0) {
     step("disposeEditorAttachments", () =>
       compose.disposeEditorAttachments(disposableEditorIds),
     );
   }
-  if (unsent.size > 0) {
-    step("restoreEditorAttachments", () =>
-      compose.restoreEditorAttachments(Array.from(unsent)),
+  if (decision.unsentEditorBlocks.length > 0) {
+    step("restoreEditorBlocks", () =>
+      compose.restoreEditorBlocks(decision.unsentEditorBlocks),
     );
   }
 

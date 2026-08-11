@@ -11,7 +11,11 @@
  * Nothing in this module touches React.
  */
 
-import type { ConsumedCompose, ConsumedComposeIds } from "./sendFlow";
+import type {
+  ConsumedCompose,
+  ConsumedComposeIds,
+  UnsentEditorBlock,
+} from "./sendFlow";
 import { restoreComposeSnapshot } from "./sendFlow";
 
 /** Minimal document node shape we need from the editor JSON. */
@@ -67,6 +71,11 @@ export interface ConsumeComposeOptions {
   setTopAttachments: (items: TopAttachmentLike[]) => void;
   /** Injectable for tests / non-browser environments. */
   revokeObjectURL?: (url: string) => void;
+  /**
+   * Turn a send-format text block back into document nodes when only part of the
+   * compose is restored (mentions come back as nodes). Defaults to plain text.
+   */
+  parseTextToNodes?: (text: string) => ComposeNode[];
   /** Extra side effects to undo when the whole compose is restored. */
   onRestoreCompose?: () => void;
   /**
@@ -121,6 +130,11 @@ export function consumeCompose(
     onRestoreCompose,
     onRestoreError,
   } = opts;
+  const parseTextToNodes =
+    opts.parseTextToNodes ??
+    ((value: string) => [
+      { type: "paragraph", content: [{ type: "text", text: value }] },
+    ]);
   const revokeObjectURL =
     opts.revokeObjectURL ??
     ((url: string) => {
@@ -187,18 +201,35 @@ export function consumeCompose(
       assertRestorable();
       restoreDoc(snapshot);
     },
-    restoreEditorAttachments: (ids: string[]) => {
+    restoreEditorBlocks: (blocks: UnsentEditorBlock[]) => {
       assertRestorable();
-      const wanted = new Set(ids);
-      const nodes = attachmentNodes.filter(
-        (node) => node.attrs?.id && wanted.has(node.attrs.id),
-      );
-      if (nodes.length === 0) return;
-      // Attachment nodes are inline atoms, so they need a block wrapper.
-      restoreDoc({
-        type: "doc",
-        content: [{ type: "paragraph", content: nodes }],
+      const nodeById = new Map<string, ComposeNode>();
+      attachmentNodes.forEach((node) => {
+        if (node.attrs?.id) nodeById.set(node.attrs.id, node);
       });
+
+      const content: ComposeNode[] = [];
+      let inline: ComposeNode[] = [];
+      const flushInline = () => {
+        if (inline.length === 0) return;
+        // Attachment nodes are inline atoms, so they need a block wrapper.
+        content.push({ type: "paragraph", content: inline });
+        inline = [];
+      };
+      blocks.forEach((block) => {
+        if (block.type === "attachment") {
+          const node = nodeById.get(block.id);
+          if (node) inline.push(node);
+          return;
+        }
+        if (block.text.trim() === "") return;
+        flushInline();
+        content.push(...parseTextToNodes(block.text));
+      });
+      flushInline();
+
+      if (content.length === 0) return;
+      restoreDoc({ type: "doc", content });
     },
     disposeEditorAttachments: (ids: string[]) => {
       ids.forEach((id) => {

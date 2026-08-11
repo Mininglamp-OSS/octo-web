@@ -1092,6 +1092,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         focusEnd: () => editor.commands.focus("end"),
       },
       attachmentFiles: attachmentFilesRef.current,
+      // 部分还原时把 @[uid:label] 还原成 mention 节点（与草稿恢复同一套解析）。
+      parseTextToNodes: (value) =>
+        (parseDraftToContent(value).content ?? []) as ComposeDoc["content"] as never,
       getTopAttachments: () => topAttachmentsRef.current,
       setTopAttachments: (items) => {
         topAttachmentsRef.current = items as TopAttachmentItem[];

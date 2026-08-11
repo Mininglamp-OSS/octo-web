@@ -286,7 +286,7 @@ describe("consumeCompose — partial pasted-attachment failure", () => {
       () => ({
         editorConsumed: true,
         consumedTopIds: [],
-        unsentEditorAttachmentIds: ["img-2"],
+        unsentEditorBlocks: [{ type: "attachment" as const, id: "img-2" }],
       }),
       handle.ids,
       handle.compose,
@@ -502,5 +502,90 @@ describe("consumeCompose — two queued sends that both fail keep their order", 
       "t2",
       "t3-added-later",
     ]);
+  });
+});
+
+describe("consumeCompose — text that failed before enqueue comes back (#1333 review)", () => {
+  it("restores the unsent text while the block that was sent stays consumed", async () => {
+    // Repro shape: a top attachment enqueues (anyMessageSent = true), then the
+    // text block's send throws before enqueue. Reporting only
+    // `editorConsumed: true` used to drop that text: the editor was already
+    // cleared, so it existed nowhere.
+    const h = harness(doc(para(text("this text must survive"))), [
+      { id: "t1", previewUrl: "blob:t1" },
+    ]);
+    const handle = consume(h);
+
+    const ok = await runSendWithConsumedCompose(
+      () => ({
+        editorConsumed: true,
+        consumedTopIds: ["t1"],
+        unsentEditorBlocks: [
+          { type: "text" as const, text: "this text must survive" },
+        ],
+      }),
+      handle.ids,
+      handle.compose,
+    );
+
+    expect(ok).toBe(true);
+    expect(h.editor.getText()).toBe("this text must survive");
+    // The attachment that did go out is not restored → retry cannot duplicate it.
+    expect(h.top).toEqual([]);
+    expect(h.revoked).toEqual(["blob:t1"]);
+    expect(h.errors).toEqual([]);
+  });
+
+  it("restores mixed unsent text and attachments in document order", async () => {
+    const h = harness(
+      doc(
+        para(text("caption")),
+        para(attachment("img-1", "blob:1"), attachment("img-2", "blob:2")),
+        para(text("tail")),
+      ),
+    );
+    h.files.set("img-1", new File(["1"], "img-1.png", { type: "image/png" }));
+    h.files.set("img-2", new File(["2"], "img-2.png", { type: "image/png" }));
+    const handle = consume(h);
+
+    // img-1 went out; the caption, img-2 and the tail did not.
+    await runSendWithConsumedCompose(
+      () => ({
+        editorConsumed: true,
+        unsentEditorBlocks: [
+          { type: "text" as const, text: "caption" },
+          { type: "attachment" as const, id: "img-2" },
+          { type: "text" as const, text: "tail" },
+        ],
+      }),
+      handle.ids,
+      handle.compose,
+    );
+
+    const value = h.editor.getText();
+    expect(value).toContain("caption");
+    expect(value).toContain("tail");
+    expect(value.indexOf("caption")).toBeLessThan(value.indexOf("tail"));
+    const json = JSON.stringify(h.editor.getJSON());
+    expect(json).toContain("img-2");
+    expect(json).not.toContain("img-1");
+    expect(h.files.has("img-2")).toBe(true);
+    expect(h.files.has("img-1")).toBe(false);
+  });
+
+  it("does not restore empty text blocks", async () => {
+    const h = harness(doc(para(text("x"))));
+    const handle = consume(h);
+
+    await runSendWithConsumedCompose(
+      () => ({
+        editorConsumed: true,
+        unsentEditorBlocks: [{ type: "text" as const, text: "   " }],
+      }),
+      handle.ids,
+      handle.compose,
+    );
+
+    expect(h.editor.getText()).toBe("");
   });
 });
