@@ -18,10 +18,7 @@ import { copyToClipboard } from "../../Utils/clipboard";
 import { t } from "../../i18n";
 import { ImagePreviewLightbox } from "../Image/ImagePreview";
 import { getMentionRenderState } from "./mentionRenderState";
-import {
-  isForwardDocCard,
-  type ParagraphChildKind,
-} from "./forwardClamp";
+import { isForwardDocCard, type ParagraphChildKind } from "./forwardClamp";
 
 export interface MentionInfo {
   name: string; // "@张三"（含@符号）
@@ -144,6 +141,8 @@ const baseRehypePlugins: any[] = [
   [rehypeSanitize, sanitizeSchema],
 ];
 
+const remarkGfmOptions = { singleTilde: false };
+
 /** 含 KaTeX 的 rehype 插件 */
 const mathRehypePlugins: any[] = [
   [rehypeHighlight, { aliases: { json5: "json" }, ignoreMissing: true }],
@@ -154,14 +153,14 @@ const mathRehypePlugins: any[] = [
 /** 基础 remark 插件（不含 math） */
 const baseRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
-  remarkGfm,
+  [remarkGfm, remarkGfmOptions],
   remarkBreaks,
 ];
 
 /** 含 math 的 remark 插件 */
 const mathRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
-  remarkGfm,
+  [remarkGfm, remarkGfmOptions],
   remarkBreaks,
   remarkMath,
 ];
@@ -371,7 +370,8 @@ const baseComponents: any = {
       </a>
     );
   },
-  p: ({ node: _node, children, ...props }: any) => renderParagraph(children, props),
+  p: ({ node: _node, children, ...props }: any) =>
+    renderParagraph(children, props),
   pre: ({ children, ...props }: any) => (
     <MarkdownCodeBlock preProps={props}>{children}</MarkdownCodeBlock>
   ),
@@ -407,7 +407,10 @@ function plainText(children: React.ReactNode): string {
  * message's bold text is affected. The full title lives in the `title` attribute so PC hover /
  * mobile tap still reveals it in full while the visible text is clamped to 2 lines.
  */
-function renderParagraph(children: React.ReactNode, props: any): React.ReactElement {
+function renderParagraph(
+  children: React.ReactNode,
+  props: any
+): React.ReactElement {
   const arr = React.Children.toArray(children);
   const kinds: ParagraphChildKind[] = arr.map((c) => {
     if (typeof c === "string") return { text: c };
@@ -416,9 +419,11 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
       const cprops = (c.props ?? {}) as any;
       // Carry the visible text of bold/link runs so the detector can require the link label to
       // equal the bold title (the forward card duplicates the title as its anchor text).
-      if (type === "strong" || type === "b") return { isStrong: true, content: plainText(cprops.children) };
+      if (type === "strong" || type === "b")
+        return { isStrong: true, content: plainText(cprops.children) };
       if (type === "br") return { isBreak: true };
-      if (cprops.href != null || type === baseComponents.a) return { isLink: true, content: plainText(cprops.children) };
+      if (cprops.href != null || type === baseComponents.a)
+        return { isLink: true, content: plainText(cprops.children) };
     }
     return {};
   });
@@ -427,7 +432,10 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
   }
   // Clone the leading <strong> to carry the full-title tooltip + clamp class.
   const clamped = arr.map((c, i) => {
-    if (React.isValidElement(c) && ((c.type as any) === "strong" || (c.type as any) === "b")) {
+    if (
+      React.isValidElement(c) &&
+      ((c.type as any) === "strong" || (c.type as any) === "b")
+    ) {
       const cprops = c.props as any;
       // Read the title text array-safely: react-markdown 8.x always hands `strong` an ARRAY of
       // children (e.g. ["Quarterly plan"]), never a bare string, so the old
@@ -438,14 +446,19 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
       const full = plainText(cprops?.children) || undefined;
       return React.cloneElement(c as React.ReactElement<any>, {
         key: i,
-        className: `${cprops?.className ?? ""} wk-markdown-forward-title`.trim(),
+        className: `${
+          cprops?.className ?? ""
+        } wk-markdown-forward-title`.trim(),
         title: full,
       });
     }
     return c;
   });
   return (
-    <p {...props} className={`${props?.className ?? ""} wk-markdown-forward-card`.trim()}>
+    <p
+      {...props}
+      className={`${props?.className ?? ""} wk-markdown-forward-card`.trim()}
+    >
       {clamped}
     </p>
   );
@@ -617,7 +630,15 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
       );
     const wrap =
       (Tag: string) =>
-      ({ node, children, ordered, checked, index, siblingCount, ...props }: any) =>
+      ({
+        node,
+        children,
+        ordered,
+        checked,
+        index,
+        siblingCount,
+        ...props
+      }: any) =>
         React.createElement(Tag, props, process(children));
     return {
       ...activeBaseComponents,
