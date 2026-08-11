@@ -14,6 +14,13 @@ import type { Member } from './api.ts'
  * fixed owner badge, a disabled role select, and no remove button. Non-owner rows show ` · source`
  * and an editable role select limited to `roles` (the caller narrows the surface — html omits admin
  * so it can never be minted through /grants).
+ *
+ * Any row whose effective role has no matching option in `roles` (e.g. the html owner's `'author'`
+ * sentinel, or a historical `admin` grant surfaced on the html reader/commenter/writer surface)
+ * renders the role as STATIC text instead of a select. Rendering a select there would leave React
+ * with no matching <option>, silently snapping the shown value to option 0 (reader) — which both
+ * misrepresents the row's real role and, on change, would downgrade it. Fail closed: no editable
+ * control for a role this surface can't grant. This is one uniform rule, not a caller branch.
  */
 
 /** A row's role may be a real Role or the owner sentinel `'author'` (never a doc_member role). */
@@ -77,6 +84,11 @@ export function CurrentMembersList({
         // the sort member (its uid is all the owner row renders beyond the badge).
         const row = byUid.get(sm.uid) ?? { uid: sm.uid, role: sm.role, source: sm.source }
         const removable = !isOwner && (canRemove ? canRemove(row) : true)
+        // The row's effective (display) role is `row.role` — the owner sentinel `'author'` for the
+        // html owner, or the real/mapped role otherwise. Editable only when that role has a matching
+        // option in `roles`; otherwise show static text (see the file header for why).
+        const effectiveRole = row.role
+        const roleGrantable = roles.includes(effectiveRole as Role)
         return (
           <div className="octo-member-row" key={sm.uid}>
             <span className="octo-uid">
@@ -86,19 +98,26 @@ export function CurrentMembersList({
                 <small style={{ color: 'var(--octo-muted)' }}> · {t(`docs.member.source.${row.source}`)}</small>
               )}
             </span>
-            <select
-              // Owner is disabled; use the ranking role (admin) as its shown value so it maps to a
-              // real option where admin is grantable (rich) and stays inert otherwise (html).
-              value={isOwner ? (sm.role as Role) : (row.role as Role)}
-              disabled={isOwner}
-              onChange={(e) => onChangeRole(sm.uid, e.target.value as Role)}
-            >
-              {roles.map((r) => (
-                <option key={r} value={r}>
-                  {t(`docs.role.${r}`)}
-                </option>
-              ))}
-            </select>
+            {roleGrantable ? (
+              <select
+                // The effective role has a matching option; the owner row is inert (disabled) but
+                // still shows its real role (admin where admin is grantable, i.e. rich).
+                value={effectiveRole as Role}
+                disabled={isOwner}
+                onChange={(e) => onChangeRole(sm.uid, e.target.value as Role)}
+              >
+                {roles.map((r) => (
+                  <option key={r} value={r}>
+                    {t(`docs.role.${r}`)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              // Role not in this surface's grantable set: render it read-only (no select) so we
+              // neither misrepresent it as reader nor allow a silent downgrade on change. The html
+              // owner ('author') has no docs.role.* text — it's already covered by the owner badge.
+              !isOwner && <span>{t(`docs.role.${effectiveRole}`)}</span>
+            )}
             {/* The owner row is synthetic (owner lives outside doc_member) — not a removable grant,
                 so it shows no remove button. */}
             {!isOwner && (

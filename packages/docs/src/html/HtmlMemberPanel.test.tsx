@@ -207,17 +207,22 @@ describe('HtmlMemberPanel — shared current-members list (author gate)', () => 
     await waitFor(() => expect(screen.getByText('docs.member.errorRole')).toBeTruthy())
   })
 
-  it('locks the creator/owner row: no remove button, role select disabled', async () => {
+  it('locks the creator/owner row: no remove button, no editable role select', async () => {
     listGrants.mockResolvedValue([{ uid: 'u_reader', role: 'reader', source: 'direct' }])
     render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" />)
     await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
     // Exactly one removable member (u_reader) → one remove button; the owner row has none.
     expect(screen.getAllByText('docs.member.remove')).toHaveLength(1)
+    // The owner row carries NO role select on the html surface (its 'author' role is not
+    // grantable here, so it renders name + badge only — never a reader-looking select).
+    const ownerRow = screen
+      .getByText('docs.member.ownerBadge')
+      .closest('.octo-member-row') as HTMLElement
+    expect(ownerRow.querySelector('select')).toBeNull()
+    // The one member row (u_reader) still has an enabled select.
     const selects = Array.from(
       document.querySelectorAll('.octo-member-section select'),
     ) as HTMLSelectElement[]
-    // Owner row select is disabled (locked); the member row select is enabled.
-    expect(selects.some((s) => s.disabled)).toBe(true)
     expect(selects.some((s) => !s.disabled)).toBe(true)
   })
 
@@ -234,5 +239,40 @@ describe('HtmlMemberPanel — shared current-members list (author gate)', () => 
       'writer',
     ])
     expect(Array.from(memberSelect.options).map((o) => o.value)).not.toContain('admin')
+  })
+
+  // The owner's synthetic role ('author', mapped to 'admin' for ranking) is NOT in the html
+  // grantable set (reader/commenter/writer). Rendering a select there left React with no matching
+  // <option>, snapping selectedIndex to 0 → the doc AUTHOR was shown as "reader" (misleading UI).
+  // The owner row must carry the owner badge + name only, with NO role select and NO role text.
+  it('owner row shows no role select and is not mislabeled as reader (P1)', async () => {
+    listGrants.mockResolvedValue([{ uid: 'u_reader', role: 'reader', source: 'direct' }])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    const ownerRow = screen
+      .getByText('docs.member.ownerBadge')
+      .closest('.octo-member-row') as HTMLElement
+    // No editable/inert role select on the owner row at all.
+    expect(ownerRow.querySelector('select')).toBeNull()
+    // And crucially it is NOT displayed as reader (the fail-before symptom) or any role text.
+    expect(ownerRow.textContent).not.toContain('docs.role.reader')
+    expect(ownerRow.textContent).not.toContain('docs.role.commenter')
+    expect(ownerRow.textContent).not.toContain('docs.role.writer')
+  })
+
+  // Safety: a historical `admin` grant returned by the backend is NOT grantable on the html surface
+  // (reader/commenter/writer). Previously it rendered a select with no admin option → shown as
+  // reader, and a single change would have silently downgraded a real admin. It must render as
+  // static `docs.role.admin` text with no editable select.
+  it('renders a non-grantable admin grant as static text, never a downgradeable select (safety)', async () => {
+    listGrants.mockResolvedValue([{ uid: 'u_admin', role: 'admin', source: 'direct' }])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" />)
+    await waitFor(() => expect(screen.getByText(/u_admin/)).toBeTruthy())
+    const adminRow = screen.getByText(/u_admin/).closest('.octo-member-row') as HTMLElement
+    // No editable select for a role this surface can't grant → cannot be silently downgraded.
+    expect(adminRow.querySelector('select')).toBeNull()
+    // The real role is shown as static text, not misrepresented as reader.
+    expect(adminRow.textContent).toContain('docs.role.admin')
+    expect(adminRow.textContent).not.toContain('docs.role.reader')
   })
 })
