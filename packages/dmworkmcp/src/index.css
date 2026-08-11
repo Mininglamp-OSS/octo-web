@@ -1312,7 +1312,10 @@
 
 .wk-mcp-sidebar__item {
   width: 100%;
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
   text-align: left;
   padding: var(--wk-sp-3) var(--wk-sp-3);
   border: none;
@@ -1322,6 +1325,16 @@
   color: var(--wk-text-primary);
   cursor: pointer;
   transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-sidebar__badge {
+  flex: 0 0 auto;
+  padding: 1px var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--wk-brand-primary);
+  background: var(--wk-brand-tint-15);
 }
 
 .wk-mcp-sidebar__item:hover {
@@ -2274,6 +2287,38 @@
   background: var(--wk-brand-tint-06);
 }
 
+/* Tab row + the Loop-explainer help icon sitting just right of 我的. */
+.wk-mcp-expert-topbar__left {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-expert-help {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-r-full);
+  color: var(--wk-text-tertiary);
+  background: transparent;
+  cursor: pointer;
+}
+
+.wk-mcp-expert-help:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.wk-mcp-expert-help:focus-visible {
+  outline: none;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
 .wk-mcp-expert-filter-bar {
   display: flex;
   align-items: center;
@@ -2415,6 +2460,58 @@
 .wk-mcp-expert-card__install:focus-visible {
   outline: none;
   border-color: var(--wk-border-strong);
+}
+
+/* 添加到回路 — dark primary pill (matches the skill market's 安装 button). */
+.wk-mcp-expert-card__add-loop {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 26px;
+  min-width: 76px;
+  padding: 0 var(--wk-sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-full);
+  background: var(--wk-text-strong);
+  color: var(--wk-bg-base);
+  font: 500 12px/1 var(--wk-font-sans);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.wk-mcp-expert-card__add-loop:hover {
+  background: var(--wk-text-primary);
+}
+
+.wk-mcp-expert-card__add-loop:focus-visible {
+  outline: none;
+  border-color: var(--wk-border-strong);
+}
+
+/* -------- 添加到回路 dialog -------- */
+.wk-mcp-add-to-loop__target {
+  margin: 0 0 var(--wk-sp-4);
+  font-weight: var(--wk-font-semibold);
+  color: var(--wk-text-strong);
+}
+
+.wk-mcp-add-to-loop__label {
+  display: block;
+  margin: var(--wk-sp-4) 0 var(--wk-sp-2);
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-secondary);
+}
+
+.wk-mcp-add-to-loop__label:first-of-type {
+  margin-top: 0;
+}
+
+.wk-mcp-add-to-loop__note {
+  margin: var(--wk-sp-4) 0 0;
+  font-size: var(--wk-text-size-sm);
+  color: var(--wk-text-tertiary);
+  line-height: 1.5;
 }
 
 /* -------- 我的 tab: sectioned owned lists -------- */

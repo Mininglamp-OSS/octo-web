@@ -8,6 +8,9 @@ interface MarketItem {
   id: string;
   routePath: string;
   label: () => string;
+  /** Optional pill shown to the right of the label (e.g. "回路" on experts,
+   *  signalling the catalog feeds the Loop module). */
+  badge?: () => string;
   render: () => React.ReactElement;
 }
 
@@ -33,6 +36,7 @@ const MARKET_ITEMS: MarketItem[] = [
     id: "experts",
     routePath: "/mcp-market/experts",
     label: () => t("mcp.sidebar.experts"),
+    badge: () => t("mcp.sidebar.expertsBadge"),
     render: () => <ExpertMarketListPage />,
   },
 ];
@@ -152,7 +156,10 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
                 }
                 onClick={() => this.handleClick(item)}
               >
-                {item.label()}
+                <span className="wk-mcp-sidebar__item-label">{item.label()}</span>
+                {item.badge && (
+                  <span className="wk-mcp-sidebar__badge">{item.badge()}</span>
+                )}
               </button>
             </li>
           ))}

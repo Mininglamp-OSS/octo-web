@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
+import { Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
+import { Tooltip } from "@douyinfe/semi-ui";
 import { t, useI18n, WKApp, WKButton } from "@octo/base";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
 import type { ExpertItem } from "../mock/expertMock";
@@ -22,6 +23,7 @@ import ExpertDetailModal from "../components/ExpertDetailModal";
 import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
 import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
 import ExpertInstallPromptModal from "../components/ExpertInstallPromptModal";
+import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
 
 type ExpertKind = "agent" | "squad" | "mine";
 type ExpertSort = "latest" | "name";
@@ -85,6 +87,7 @@ export default function ExpertMarketListPage() {
   >(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
   const [installTarget, setInstallTarget] = useState<ExpertItem | null>(null);
+  const [addToLoopTarget, setAddToLoopTarget] = useState<ExpertItem | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
@@ -187,6 +190,7 @@ export default function ExpertMarketListPage() {
       setEditTarget(null);
       setDeleteTarget(null);
       setInstallTarget(null);
+      setAddToLoopTarget(null);
       setQuery("");
       setCategory(ALL_CATEGORY);
       setSelectedTags([]);
@@ -355,6 +359,13 @@ export default function ExpertMarketListPage() {
     }
   };
 
+  // Add-to-Loop (experts only): the marketplace backend reads the full spec by
+  // id, so no client-side hydrate is needed — we only need the id + name to
+  // display and to fire the install call.
+  const openAddToLoop = (item: ExpertItem) => {
+    setAddToLoopTarget(item);
+  };
+
   // -------- 我的 tab manage actions (edit / delete) --------
   // Edit hands a Bot the marketplace "update" prompt for this listing (carrying
   // its id); the Bot performs the update via octo-cli. Only id + kind are
@@ -392,29 +403,45 @@ export default function ExpertMarketListPage() {
   return (
     <div className="wk-mcp-expert-page">
       <header className="wk-mcp-expert-topbar">
-        <nav className="wk-mcp-expert-tabs" aria-label={t("mcp.expert.navAriaLabel")}>
-          <button
-            type="button"
-            className={kind === "agent" ? "is-active" : ""}
-            onClick={() => setKind("agent")}
+        <div className="wk-mcp-expert-topbar__left">
+          <nav className="wk-mcp-expert-tabs" aria-label={t("mcp.expert.navAriaLabel")}>
+            <button
+              type="button"
+              className={kind === "agent" ? "is-active" : ""}
+              onClick={() => setKind("agent")}
+            >
+              {t("mcp.expert.typeAgent")}
+            </button>
+            <button
+              type="button"
+              className={kind === "squad" ? "is-active" : ""}
+              onClick={() => setKind("squad")}
+            >
+              {t("mcp.expert.typeSquad")}
+            </button>
+            <button
+              type="button"
+              className={kind === "mine" ? "is-active" : ""}
+              onClick={() => setKind("mine")}
+            >
+              {t("mcp.expert.typeMine")}
+            </button>
+          </nav>
+          <Tooltip
+            content={t("mcp.expert.loopIntro")}
+            className="wk-mcp-tooltip-light"
+            mouseEnterDelay={100}
+            position="bottomLeft"
           >
-            {t("mcp.expert.typeAgent")}
-          </button>
-          <button
-            type="button"
-            className={kind === "squad" ? "is-active" : ""}
-            onClick={() => setKind("squad")}
-          >
-            {t("mcp.expert.typeSquad")}
-          </button>
-          <button
-            type="button"
-            className={kind === "mine" ? "is-active" : ""}
-            onClick={() => setKind("mine")}
-          >
-            {t("mcp.expert.typeMine")}
-          </button>
-        </nav>
+            <button
+              type="button"
+              className="wk-mcp-expert-help"
+              aria-label={t("mcp.expert.loopIntro")}
+            >
+              <HelpCircle size={16} aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </div>
         <div className="wk-mcp-expert-topbar__actions">
           <div className="wk-mcp-expert-search">
             <Search size={16} aria-hidden="true" />
@@ -612,7 +639,7 @@ export default function ExpertMarketListPage() {
                       key={item.id}
                       item={item}
                       onOpen={openDetail}
-                      onInstall={openInstall}
+                      onAddToLoop={openAddToLoop}
                       onEdit={handleEdit}
                       onDelete={setDeleteTarget}
                     />
@@ -661,7 +688,7 @@ export default function ExpertMarketListPage() {
                     key={item.id}
                     item={item}
                     onOpen={openDetail}
-                    onInstall={openInstall}
+                    onAddToLoop={openAddToLoop}
                   />
                 ))}
               </div>
@@ -714,6 +741,11 @@ export default function ExpertMarketListPage() {
       <ExpertInstallPromptModal
         item={installTarget}
         onClose={() => setInstallTarget(null)}
+      />
+      <ExpertAddToLoopModal
+        key={addToLoopTarget?.id ?? "none"}
+        item={addToLoopTarget}
+        onClose={() => setAddToLoopTarget(null)}
       />
 
       {toast &&

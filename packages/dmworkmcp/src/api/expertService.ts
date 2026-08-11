@@ -121,6 +121,11 @@ const expertAxios = axios.create({
 });
 
 const BASE = "/market/api/v1";
+// Loop workspaces/runtimes are served by the fleet service (octo-fleet), NOT
+// marketplace. In dev the vite proxy forwards /fleet/api/* to the fleet gateway;
+// in prod nginx routes it. Same-origin like BASE — the request interceptor
+// above attaches token + X-Space-Id, which fleet's auth middleware also reads.
+const FLEET_BASE = "/fleet/api";
 
 expertAxios.interceptors.request.use((config) => {
   // Same-origin: leave baseURL empty so /market/api/v1/* is a relative path
@@ -204,6 +209,22 @@ async function get<T>(
 async function del(path: string): Promise<void> {
   try {
     await expertAxios.delete(`${BASE}${path}`);
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
+/** GET against the fleet service. Unlike the marketplace helpers, fleet returns
+ *  the payload bare at `resp.data` (no `{data:...}` envelope), so we do NOT
+ *  unwrap `.data`. */
+async function fleetGet<T>(
+  path: string,
+  params?: Record<string, unknown>
+): Promise<T> {
+  try {
+    const resp = await expertAxios.get(`${FLEET_BASE}${path}`, { params });
+    return resp.data as T;
   } catch (err) {
     if (axios.isCancel(err)) throw err;
     throw new Error(extractErrorMessage(err));
@@ -575,4 +596,94 @@ export function openDownloadUrl(url: string): void {
   document.body.appendChild(anchor);
   anchor.click();
   anchor.remove();
+}
+
+// ─── Add-to-Loop: install an expert into a Loop workspace ───────────────────
+// The marketplace backend orchestrates the install server-side (reads the
+// expert spec, creates the agent + skills in the chosen workspace/runtime via
+// octo-fleet, forwarding the user token). The frontend only picks a
+// workspace + runtime and fires one install call. See the plan / expert-v1 doc.
+
+/** A Loop workspace the current user can install into (picker option). */
+export interface LoopWorkspace {
+  id: string;
+  name: string;
+}
+
+/** An agent runtime within a workspace (picker option). */
+export interface LoopRuntime {
+  id: string;
+  name: string;
+  status?: string;
+}
+
+// fleet wire shapes: WorkspaceResponse / AgentRuntimeResponse both key the
+// identifier as `id` (NOT workspace_id/runtime_id — that was the marketplace
+// guess). See octo-fleet internal/handler/{workspace,runtime}.go.
+interface LoopWorkspaceWire {
+  id: string;
+  name?: string;
+}
+interface LoopRuntimeWire {
+  id: string;
+  name?: string;
+  status?: string;
+}
+
+/** GET /fleet/api/workspaces — Loop workspaces the user belongs to (workspace picker). */
+export async function listLoopWorkspaces(): Promise<LoopWorkspace[]> {
+  const data = await fleetGet<LoopWorkspaceWire[] | null>("/workspaces");
+  return Array.isArray(data)
+    ? data.map((w) => ({ id: w.id, name: w.name ?? w.id }))
+    : [];
+}
+
+/** GET /fleet/api/runtimes?workspace_id= — runtimes in the chosen workspace (runtime picker). */
+export async function listLoopRuntimes(
+  workspaceId: string
+): Promise<LoopRuntime[]> {
+  const data = await fleetGet<LoopRuntimeWire[] | null>("/runtimes", {
+    workspace_id: workspaceId,
+  });
+  return Array.isArray(data)
+    ? data.map((rt) => ({
+        id: rt.id,
+        name: rt.name ?? rt.id,
+        status: rt.status,
+      }))
+    : [];
+}
+
+/** POST /experts/{id}/install — create the agent (+ its skills) in the chosen
+ *  workspace/runtime. The marketplace backend orchestrates the fleet calls
+ *  server-side (create agent → create skills → bind) and rolls back on partial
+ *  failure, returning the new agent's id. */
+export async function installExpertToLoop(
+  expertId: string,
+  opts: { workspaceId: string; runtimeId: string }
+): Promise<{ agentId: string }> {
+  try {
+    const resp = await expertAxios.post(
+      `${BASE}/experts/${encodeURIComponent(expertId)}/install`,
+      { workspace_id: opts.workspaceId, runtime_id: opts.runtimeId }
+    );
+    const data = resp.data.data as { agent_id?: string } | null;
+    return { agentId: data?.agent_id ?? "" };
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(installErrorMessage(err));
+  }
+}
+
+/** Install-specific error copy. A CONFLICT here is fleet rejecting a duplicate
+ *  agent name in the workspace (not the generic catalog name-taken), so it gets
+ *  a dedicated friendly message; everything else falls back to the shared map. */
+function installErrorMessage(err: unknown): string {
+  const code = (
+    err as { response?: { data?: { error?: { code?: string } } } }
+  )?.response?.data?.error?.code;
+  if (code === "CONFLICT") {
+    return t("mcp.expert.installConflict");
+  }
+  return extractErrorMessage(err);
 }

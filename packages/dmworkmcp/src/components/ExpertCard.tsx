@@ -14,6 +14,10 @@ interface ExpertCardProps {
   onDelete?: (item: ExpertItem) => void;
   /** When provided, renders the 安装 action that pops the install prompt. */
   onInstall?: (item: ExpertItem) => void;
+  /** When provided (experts only), renders the 添加到回路 action that opens the
+   *  workspace/runtime picker and installs the agent directly. Squad items
+   *  ignore it — squad install is not supported in this flow. */
+  onAddToLoop?: (item: ExpertItem) => void;
 }
 
 const MAX_TAGS = 3;
@@ -25,12 +29,15 @@ const MAX_TAGS = 3;
  * tag pills, and a footer stat. The whole card is one click target (no inline
  * action button competing for the click); copying lives in the detail modal.
  */
-export default function ExpertCard({ item, onOpen, onEdit, onDelete, onInstall }: ExpertCardProps) {
+export default function ExpertCard({ item, onOpen, onEdit, onDelete, onInstall, onAddToLoop }: ExpertCardProps) {
   const isSquad = item.kind === "squad";
   const owner = resolveExpertOwner(item);
   const visibleTags = item.tags.slice(0, MAX_TAGS);
   const overflowTags = item.tags.slice(MAX_TAGS);
-  const hasActions = Boolean(onEdit || onDelete || onInstall);
+  // 添加到回路 is experts-only; squad cards never show it even if the handler
+  // is passed from a shared call site.
+  const showAddToLoop = Boolean(onAddToLoop) && !isSquad;
+  const hasActions = Boolean(onEdit || onDelete || onInstall || showAddToLoop);
 
   return (
     <div
@@ -137,6 +144,18 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onInstall }
               className="wk-mcp-card__footer-actions"
               onPointerDown={(event) => event.stopPropagation()}
             >
+              {showAddToLoop && (
+                <button
+                  type="button"
+                  className="wk-mcp-expert-card__add-loop"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onAddToLoop?.(item);
+                  }}
+                >
+                  {t("mcp.expert.addToLoop")}
+                </button>
+              )}
               {onInstall && (
                 <button
                   type="button"

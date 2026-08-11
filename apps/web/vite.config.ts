@@ -182,11 +182,12 @@ export default defineConfig(({ mode }) => {
         // 无需逐个路径列举。必须在 /api/ catch-all 之前 (vite first-match)。
         // Note: bot feed (/bots/:uid/feed) 由 matter service 直供;
         // daemon 客户端直连 OCTO_FLEET_URL + /v1/...，不经此代理。
+        // 默认指向 apiOrigin(测试环境网关),网关按完整 /fleet/api/... 路径路由,
+        // 故不 strip 前缀;需本地裸 fleet 时用 /fleet/api/v1 规则(→8091)。
         "/fleet/api/": {
-          target: env.VITE_FLEET_API_URL || "http://127.0.0.1:8092",
+          target: env.VITE_FLEET_API_URL || apiOrigin,
           changeOrigin: true,
           secure: false,
-          rewrite: (path: string) => path.replace(/^\/fleet\/api/, ""),
         },
         "/api/": {
           target: apiOrigin,
