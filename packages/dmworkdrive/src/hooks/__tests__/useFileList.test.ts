@@ -169,5 +169,67 @@ describe('useFileList', () => {
         ),
       );
     });
+
+    it('clears stale entries synchronously on context change even when the new fetch rejects (P1-2)', async () => {
+      // Bot review round-10 P1-2: switching filter/space/folder while
+      // a previous listing is on screen used to keep the previous
+      // listing visible if the new fetch rejected — same file rows
+      // under a different filter/breadcrumb, fully actionable. Guard:
+      // the useEffect keyed on load clears entries SYNCHRONOUSLY on
+      // context change, so a rejected new-context browse yields an
+      // empty list + error, not a mixed view.
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp([entry(1, 'a.pdf', 'blob')]))
+        .mockRejectedValueOnce(new Error('boom'));
+      const { result } = renderHook(() => useFileList('sp', 0));
+      await waitFor(() => expect(result.current.entries).toHaveLength(1));
+
+      act(() => result.current.setFilter('folder'));
+      // Between the setFilter call and the reject, entries MUST clear
+      // synchronously so the caller can't wire delete/move handlers
+      // to the previous filter's rows under the new filter's UI.
+      await waitFor(() => expect(result.current.error).toBe('boom'));
+      expect(result.current.entries).toEqual([]);
+    });
+
+    it('a stale reload() bound to a previous context is dropped without touching abortRef (P1-1)', async () => {
+      // Bot review round-10 P1-1: a batch-delete onOk (or MoveModal
+      // onConfirm) captures reload() bound to the CURRENT context. If
+      // the user switches space while the batch runs, the captured
+      // reload() fires against space A after space B's browse has
+      // started. Without the pre-abort contextRef guard, A's reload
+      // would abort B's in-flight browse and claim the newest seq,
+      // then A's response would land under B's breadcrumb.
+      //
+      // Test: capture a reload() in space A, switch to B, invoke the
+      // captured reload — assert that B's second browse call is NOT
+      // aborted (i.e. no extra browse fires from the stale reload,
+      // and B's entries land intact).
+      vi.mocked(api.browse)
+        .mockResolvedValueOnce(resp([entry(1, 'a-file', 'blob')])) // A initial
+        .mockResolvedValueOnce(resp([entry(2, 'b-file', 'blob')])); // B initial after switch
+
+      const { result, rerender } = renderHook(
+        (props: { sp: string }) => useFileList(props.sp, 0),
+        { sp: 'A' },
+      );
+      await waitFor(() => expect(result.current.entries[0]?.id).toBe(1));
+
+      // Capture reload() from A (equivalent to what a modal onOk closure
+      // would hold).
+      const staleReloadFromA = result.current.reload;
+
+      // Switch to B.
+      rerender({ sp: 'B' });
+      await waitFor(() => expect(result.current.entries[0]?.id).toBe(2));
+
+      // Now the stale A reload fires. It MUST no-op — no third browse
+      // call, entries stay as B's.
+      act(() => staleReloadFromA());
+      await new Promise((r) => setTimeout(r, 10));
+
+      expect(vi.mocked(api.browse)).toHaveBeenCalledTimes(2);
+      expect(result.current.entries[0]?.id).toBe(2);
+    });
   });
 });

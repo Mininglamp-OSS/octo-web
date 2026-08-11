@@ -49,8 +49,35 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   const [filter, setFilter] = useState<FileTypeFilter>('all');
   const abortRef = useRef<AbortController | null>(null);
   const seqRef = useRef(0);
+  // Live-context ref: kept in sync with the current (spaceId, parentId,
+  // filter) every render. Read at the TOP of load() so a stale reload()
+  // — one whose closure was bound to a previous context (Modal.confirm's
+  // onOk, batch-delete completion, MoveModal onConfirm) — can be
+  // detected and dropped BEFORE it touches abortRef or seqRef. Otherwise
+  // it would abort the current context's in-flight browse and claim a
+  // fresh seq, then write its own (stale) rows into the current view.
+  //
+  // Bot review round-10 P1-1: batch delete in space A, user switches to
+  // space B while the batch runs; the batch onOk fires reload() bound
+  // to A after B's browse has started. Without this guard, A's response
+  // lands under B's breadcrumb + permission gates, with its rows still
+  // fully actionable.
+  const contextRef = useRef({ spaceId, parentId, filter: 'all' as FileTypeFilter });
 
   const load = useCallback(async () => {
+    // Pre-abort context guard: if the (spaceId, parentId, filter)
+    // captured in this closure no longer matches the LIVE context
+    // (contextRef, updated every render below), a stale reload() from
+    // a previous context is firing. Bail BEFORE touching abortRef or
+    // seqRef — otherwise we'd cancel the current context's own
+    // in-flight browse and leave the view empty (round-10 P1-1).
+    if (
+      contextRef.current.spaceId !== spaceId ||
+      contextRef.current.parentId !== parentId ||
+      contextRef.current.filter !== filter
+    ) {
+      return;
+    }
     // Abort any in-flight browse FIRST — including on the transition to
     // no-space (DriveVM.reset() sets spaceId null). If we cleared +
     // returned before aborting, the previous space's browse could
@@ -101,6 +128,27 @@ export function useFileList(spaceId: string | null, parentId: number): UseFileLi
   }, [spaceId, parentId, filter]);
 
   useEffect(() => {
+    // Sync contextRef synchronously on every render — the load()
+    // closure captured earlier in this render sees the LATEST context
+    // via this ref, not the closure-time values (round-10 P1-1).
+    contextRef.current = { spaceId, parentId, filter };
+  });
+
+  useEffect(() => {
+    // Context change (space / folder / filter): clear entries
+    // SYNCHRONOUSLY so a listing from the previous context can't stay
+    // on screen — even fully actionable — while the new browse is in
+    // flight. If we relied on load() to overwrite entries only on
+    // success, a rejected new-context browse would leave the previous
+    // context's rows visible with the new context's breadcrumb and
+    // permission gates (round-10 P1-2).
+    //
+    // Same-context reload() (delete / rename / upload finish) does NOT
+    // go through this effect — it calls load() directly, which keeps
+    // entries during the fetch to avoid a spinner flash on refresh.
+    setEntries([]);
+    setTruncatedTotal(null);
+    setError(null);
     void load();
     return () => {
       abortRef.current?.abort();

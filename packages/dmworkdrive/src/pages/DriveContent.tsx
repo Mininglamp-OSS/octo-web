@@ -689,6 +689,23 @@ export default function DriveContent({ vm }: { vm: DriveVM }) {
             {t('drive.file.truncated', { values: { loaded: String(entries.length), total: String(truncatedTotal) } })}
           </p>
         )}
+        {filesError && entries.length > 0 && (
+          // Inline error strip: shown when a same-context reload() (post-
+          // delete / rename / upload / move) fails but entries from
+          // BEFORE the failed reload are still on screen. The full-page
+          // banner above only renders when the list is empty; without
+          // this strip a user who successfully deleted rows and then
+          // saw the refresh fail would have NO visible indication that
+          // the delete succeeded server-side + refresh failed, and
+          // would attempt to delete already-deleted ids on the next
+          // batch (round-10 P1-3).
+          <div className="drive-main__load-error-inline" role="alert">
+            <span>{t('drive.file.loadFailed')}</span>
+            <Button theme="borderless" type="primary" size="small" onClick={reload}>
+              {t('drive.file.retry')}
+            </Button>
+          </div>
+        )}
         </div>
       </div>
 

@@ -169,6 +169,24 @@ body[theme-mode='dark'] .drive-main__actions .drive-btn--primary.semi-button:not
   color: var(--wk-text-secondary, #4a4d51);
 }
 
+/* Inline error strip shown ABOVE a non-empty list when a same-context
+   reload() fails. Non-blocking: user can still see the last-known list
+   below, and clicking Retry re-triggers the same reload(). Positioned
+   with the truncated notice so both live in the same "list footer"
+   region of the pane. */
+.drive-main__load-error-inline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+  font-size: 13px;
+  color: var(--wk-danger, #d64545);
+  background: var(--wk-danger-bg, #fef2f2);
+  border-radius: var(--wk-r-sm, 6px);
+}
+
 .drive-main__center {
   display: flex;
   align-items: center;
