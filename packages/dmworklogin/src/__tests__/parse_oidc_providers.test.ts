@@ -58,6 +58,7 @@ describe('parseOidcProviders', () => {
       'data:text/html,<script>alert(1)</script>',
       'https://evil.example.com/authorize', // 绝对 URL 也拒绝, 防绕过同源
       '//evil.example.com/authorize',         // protocol-relative
+      '/\\evil.example.com/authorize',        // URL normalizes backslash to a host
       'v1/auth/oidc/x/authorize',             // 不以 / 开头
       '',                                     // 空字符串
     ]

@@ -42,7 +42,8 @@ function isSafeAuthorizePath(value: unknown): value is string {
     typeof value === "string" &&
     value.length >= 2 &&
     value.startsWith("/") &&
-    !value.startsWith("//")
+    !value.startsWith("//") &&
+    !value.includes("\\")
   );
 }
 

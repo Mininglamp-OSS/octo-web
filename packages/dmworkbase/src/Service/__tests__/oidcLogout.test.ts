@@ -62,6 +62,18 @@ describe("oidcLogout helpers", () => {
     );
   });
 
+  it("treats a non-JSON success body as an empty logout response", async () => {
+    const fetcher = vi.fn(
+      async () => new Response("logged out", { status: 200 })
+    );
+    const resp = await requestOidcLogout(
+      "aegis",
+      "octo-token",
+      fetcher as typeof fetch
+    );
+    expect(resp).toEqual({});
+  });
+
   it("rejects failed backend logout responses", async () => {
     const fetcher = vi.fn(
       async () => new Response("login required", { status: 401 })
