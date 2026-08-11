@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, cleanup } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 
@@ -42,6 +42,7 @@ vi.mock('../members/MemberPicker.tsx', () => ({
 }))
 
 import { HtmlMemberPanel } from './HtmlMemberPanel.tsx'
+import * as htmlGrantsApi from './htmlGrantsApi.ts'
 
 // Ordered heading text (h3 + h4), so we can compare against the rich-doc MemberPanel section
 // order literally. Explicit sequence beats a snapshot: i18n text may shift, but the ordering
@@ -139,5 +140,99 @@ describe('HtmlMemberPanel — section order (OCT-195)', () => {
     expect(screen.queryByTestId('pending-requests-stub')).toBeNull()
     expect(screen.queryByText('docs.member.addMember')).toBeNull()
     expect(screen.queryByText('docs.member.currentMembers')).toBeNull()
+  })
+})
+
+// Current-members list is now the shared CurrentMembersList (rich/html parity). These tests exercise
+// the real list behavior: role ordering, role-change → PUT /grants + refresh, error path, the
+// locked owner/creator row, and the reader/commenter/writer role surface (admin never grantable).
+describe('HtmlMemberPanel — shared current-members list (author gate)', () => {
+  const listGrants = vi.mocked(htmlGrantsApi.listGrants)
+  const addGrant = vi.mocked(htmlGrantsApi.addGrant)
+
+  beforeEach(() => {
+    listGrants.mockReset()
+    addGrant.mockReset().mockResolvedValue(undefined)
+  })
+
+  function memberRowUids(): string[] {
+    return Array.from(
+      document.querySelectorAll('.octo-member-section .octo-member-row .octo-uid'),
+    ).map((el) => el.textContent ?? '')
+  }
+
+  it('orders members by role: owner pinned, admin before reader (sort.ts parity)', async () => {
+    // Backend returns rows out of role order; the shared list must re-sort them. admin appears here
+    // only to prove ordering (a stray admin grant); owner/creator is pinned above all.
+    listGrants.mockResolvedValue([
+      { uid: 'u_reader', role: 'reader', source: 'direct' },
+      { uid: 'u_admin', role: 'admin', source: 'direct' },
+      { uid: 'u_writer', role: 'writer', source: 'direct' },
+    ])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    const rows = memberRowUids()
+    const idx = (u: string) => rows.findIndex((r) => r.includes(u))
+    expect(idx('u_owner')).toBe(0) // owner/creator pinned first
+    expect(idx('u_admin')).toBeLessThan(idx('u_writer'))
+    expect(idx('u_writer')).toBeLessThan(idx('u_reader')) // admin < writer < reader
+  })
+
+  it('changing a member role issues PUT /grants with the new role and refreshes', async () => {
+    listGrants
+      .mockResolvedValueOnce([{ uid: 'u_reader', role: 'reader', source: 'direct' }])
+      // refresh after the change: reflect the upsert so the list is consistent.
+      .mockResolvedValueOnce([{ uid: 'u_reader', role: 'writer', source: 'direct' }])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" />)
+    await waitFor(() => expect(screen.getByText(/u_reader/)).toBeTruthy())
+    const selects = Array.from(
+      document.querySelectorAll('.octo-member-section select'),
+    ) as HTMLSelectElement[]
+    const memberSelect = selects.find((s) => !s.disabled)!
+    fireEvent.change(memberSelect, { target: { value: 'writer' } })
+    await waitFor(() => expect(addGrant).toHaveBeenCalledWith('s1', 'u_reader', 'writer'))
+    // refresh() called again after the change → listGrants hit a second time.
+    await waitFor(() => expect(listGrants).toHaveBeenCalledTimes(2))
+  })
+
+  it('shows the role error text when the role change PUT fails', async () => {
+    listGrants.mockResolvedValue([{ uid: 'u_reader', role: 'reader', source: 'direct' }])
+    addGrant.mockRejectedValue(new Error('boom'))
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" />)
+    await waitFor(() => expect(screen.getByText(/u_reader/)).toBeTruthy())
+    const memberSelect = (Array.from(
+      document.querySelectorAll('.octo-member-section select'),
+    ) as HTMLSelectElement[]).find((s) => !s.disabled)!
+    fireEvent.change(memberSelect, { target: { value: 'commenter' } })
+    await waitFor(() => expect(screen.getByText('docs.member.errorRole')).toBeTruthy())
+  })
+
+  it('locks the creator/owner row: no remove button, role select disabled', async () => {
+    listGrants.mockResolvedValue([{ uid: 'u_reader', role: 'reader', source: 'direct' }])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    // Exactly one removable member (u_reader) → one remove button; the owner row has none.
+    expect(screen.getAllByText('docs.member.remove')).toHaveLength(1)
+    const selects = Array.from(
+      document.querySelectorAll('.octo-member-section select'),
+    ) as HTMLSelectElement[]
+    // Owner row select is disabled (locked); the member row select is enabled.
+    expect(selects.some((s) => s.disabled)).toBe(true)
+    expect(selects.some((s) => !s.disabled)).toBe(true)
+  })
+
+  it('offers only reader/commenter/writer on member rows — admin is never grantable', async () => {
+    listGrants.mockResolvedValue([{ uid: 'u_reader', role: 'reader', source: 'direct' }])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" />)
+    await waitFor(() => expect(screen.getByText(/u_reader/)).toBeTruthy())
+    const memberSelect = (Array.from(
+      document.querySelectorAll('.octo-member-section select'),
+    ) as HTMLSelectElement[]).find((s) => !s.disabled)!
+    expect(Array.from(memberSelect.options).map((o) => o.value)).toEqual([
+      'reader',
+      'commenter',
+      'writer',
+    ])
+    expect(Array.from(memberSelect.options).map((o) => o.value)).not.toContain('admin')
   })
 })

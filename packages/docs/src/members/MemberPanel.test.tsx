@@ -130,6 +130,43 @@ describe('MemberPanel — display names (#7)', () => {
     )
     expect(requestSelect).toBeTruthy()
   })
+  it('still sorts the current-members list by role after migrating to the shared component (#A3)', async () => {
+    // Members arrive in a deliberately unsorted order; the shared CurrentMembersList must still
+    // apply sort.ts ordering (owner pinned → admin → writer → commenter → reader). This locks the
+    // post-migration ordering contract: fail-before if the shared list dropped the sort call.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        return {
+          data: {
+            items: [
+              { uid: 'u_reader', role: 'reader', source: 'direct', grantedBy: 'u_admin' },
+              { uid: 'u_writer', role: 'writer', source: 'direct', grantedBy: 'u_admin' },
+              { uid: 'u_commenter', role: 'commenter', source: 'direct', grantedBy: 'u_admin' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    // Scope to the Current Members section (the one carrying the owner badge); other sections
+    // (the picker roster) also render `.octo-uid` rows and would pollute the ordering read.
+    const currentSection = screen.getByText('docs.member.ownerBadge').closest('.octo-member-section')!
+    const rows = Array.from(
+      currentSection.querySelectorAll('.octo-member-row .octo-uid'),
+    ).map((el) => el.textContent ?? '')
+    // owner first (synthetic), then writer → commenter → reader.
+    const idxOwner = rows.findIndex((r) => r.includes('u_owner'))
+    const idxWriter = rows.findIndex((r) => r.includes('u_writer'))
+    const idxCommenter = rows.findIndex((r) => r.includes('u_commenter'))
+    const idxReader = rows.findIndex((r) => r.includes('u_reader'))
+    expect(idxOwner).toBe(0)
+    expect(idxWriter).toBeLessThan(idxCommenter)
+    expect(idxCommenter).toBeLessThan(idxReader)
+  })
 })
 
 describe('MemberPanel add: partial-failure detail survives a refresh failure (task #5)', () => {
