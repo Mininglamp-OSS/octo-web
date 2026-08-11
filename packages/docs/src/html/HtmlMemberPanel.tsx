@@ -4,7 +4,7 @@ import { canManage } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
 import { MemberPicker } from '../members/MemberPicker.tsx'
 import { CurrentMembersList } from '../members/CurrentMembersList.tsx'
-import { useMemberNames } from '../members/useMemberNames.ts'
+import { useMemberDirectory } from '../members/useMemberNames.ts'
 import { listGrants, addGrant, removeGrant, type HtmlGrant, type HtmlGrantRole } from './htmlGrantsApi.ts'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
@@ -59,8 +59,10 @@ export function HtmlMemberPanel({
   isAuthor: boolean
   accessRequests?: UseAccessRequestsResult
 }) {
-  // uid → display name for member rows (falls back to uid until the roster resolves).
-  const names = useMemberNames(space ?? '')
+  // uid → display name + bot uids for member rows (falls back to uid until the roster resolves).
+  // html `space` is optional: when undefined the directory is empty (empty botUids) so every row
+  // renders as a human — the fail-soft direction (never hide a real person in the bot fold).
+  const { names, botUids } = useMemberDirectory(space ?? '')
   const [grants, setGrants] = useState<HtmlGrant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -255,6 +257,7 @@ export function HtmlMemberPanel({
           loading={loading}
           onChangeRole={onChangeRole}
           onRemove={onRemove}
+          botUids={botUids}
         />
       )}
     </section>

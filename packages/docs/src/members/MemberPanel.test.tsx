@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, cleanup, fireEvent, within } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import { clearMemberNameCache } from './memberNames.ts'
@@ -184,6 +184,213 @@ describe('MemberPanel — display names (#7)', () => {
     expect(idxOwner).toBe(0)
     expect(idxWriter).toBeLessThan(idxCommenter)
     expect(idxCommenter).toBeLessThan(idxReader)
+  })
+})
+
+describe('MemberPanel — bot section + AI tag + frozen order (PR C #3/#4)', () => {
+  // Members list (grants) comes from the /members API; bot classification comes from the space
+  // directory (spaceMembers isBot flag + /robot/space_bots). Helper to wire both together.
+  function wireMembers(members: Array<{ uid: string; role: string; source?: string }>): void {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        return {
+          data: {
+            items: members.map((m) => ({
+              uid: m.uid,
+              role: m.role,
+              source: m.source ?? 'direct',
+              grantedBy: 'u_admin',
+            })),
+          },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      return { data: {}, status: 200 }
+    }
+  }
+
+  function currentSection(): HTMLElement {
+    return screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+  }
+  function currentSectionRows(): string[] {
+    return Array.from(currentSection().querySelectorAll('.octo-member-row .octo-uid')).map((el) => el.textContent ?? '')
+  }
+
+  it('groups bots below all humans, default-collapsed (hidden until expanded)', async () => {
+    // u_bot is a bot (space-member isBot flag); u_human is a person.
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'u_bot', name: 'Bot One', isBot: true })
+    wireMembers([
+      { uid: 'u_human', role: 'writer' },
+      { uid: 'u_bot', role: 'writer' },
+    ])
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Human One'))).toBe(true))
+    // Collapsed by default: the bot row is NOT rendered, and the expander (showBots) is present.
+    expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(false)
+    const toggle = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
+    expect(toggle).toBeTruthy()
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    // Expand → bot row appears, and it sits AFTER the human row.
+    fireEvent.click(toggle)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true))
+    const rows = currentSectionRows()
+    expect(rows.findIndex((r) => r.includes('Human One'))).toBeLessThan(
+      rows.findIndex((r) => r.includes('Bot One')),
+    )
+    // aria-expanded flips to true after expanding.
+    expect(within(currentSection()).getByText('docs.member.hideBots').closest('button')!.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('tags bot rows with the AI badge; human rows have none', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'u_bot', name: 'Bot One', isBot: true })
+    wireMembers([
+      { uid: 'u_human', role: 'writer' },
+      { uid: 'u_bot', role: 'writer' },
+    ])
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Human One'))).toBe(true))
+    fireEvent.click(within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true))
+    const section = currentSection()
+    const botRow = Array.from(section.querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes('Bot One'),
+    ) as HTMLElement
+    const humanRow = Array.from(section.querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes('Human One'),
+    ) as HTMLElement
+    expect(botRow.querySelector('.octo-member-picker-badge')).toBeTruthy()
+    expect(botRow.textContent).toContain('docs.member.aiTag')
+    expect(humanRow.querySelector('.octo-member-picker-badge')).toBeNull()
+  })
+
+  it('pins a bot OWNER at the top and never folds it into the bot section', async () => {
+    // The owner itself is a bot; it must still be pinned first and stay out of the fold.
+    wk.spaceMembers.push({ uid: 'u_owner', name: 'Bot Owner', isBot: true }, { uid: 'u_human', name: 'Human One' })
+    wireMembers([{ uid: 'u_human', role: 'writer' }])
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    const section = currentSection()
+    const ownerRow = screen.getByText('docs.member.ownerBadge').closest('.octo-member-row') as HTMLElement
+    // Owner row is the FIRST row in the section.
+    const firstRow = section.querySelector('.octo-member-row')
+    expect(firstRow).toBe(ownerRow)
+    // A single (bot) owner + one human, zero foldable bots → no expander at all.
+    expect(within(section).queryByText('docs.member.showBots')).toBeNull()
+  })
+
+  it('fail-soft: empty bot directory renders every row tiled, no AI tag, no expander', async () => {
+    // No isBot flags, no space_bots rows → botUids empty → all rows are humans.
+    wk.spaceMembers.push({ uid: 'u_a', name: 'Aaa' }, { uid: 'u_b', name: 'Bbb' })
+    wireMembers([
+      { uid: 'u_a', role: 'writer' },
+      { uid: 'u_b', role: 'reader' },
+    ])
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Aaa'))).toBe(true))
+    const section = currentSection()
+    expect(within(section).queryByText('docs.member.showBots')).toBeNull()
+    expect(within(section).queryByText('docs.member.hideBots')).toBeNull()
+    expect(section.querySelector('.octo-member-picker-badge')).toBeNull()
+  })
+
+  it('does not render a bot expander when there are zero bots', async () => {
+    wk.spaceMembers.push({ uid: 'u_a', name: 'Aaa' })
+    wireMembers([{ uid: 'u_a', role: 'writer' }])
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Aaa'))).toBe(true))
+    expect(within(currentSection()).queryByText('docs.member.showBots')).toBeNull()
+  })
+
+  it('freezes member order across a role change until the panel is reopened (need #4)', async () => {
+    // u_a starts as commenter, u_z as reader → u_a sorts ABOVE u_z. We then promote u_z to admin;
+    // a raw re-sort would jump u_z to the TOP (admin rank), so the frozen snapshot is the only
+    // thing that can keep u_a above u_z (fail-before: without the snapshot u_z leads).
+    let zRole = 'reader'
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        return {
+          data: {
+            items: [
+              { uid: 'u_a', role: 'commenter', source: 'direct', grantedBy: 'u_admin' },
+              { uid: 'u_z', role: zRole, source: 'direct', grantedBy: 'u_admin' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (method === 'put' && url.endsWith('/members')) {
+        zRole = 'admin' // upsert reflected on the next refresh — would out-rank u_a under raw sort
+        return { data: {}, status: 200 }
+      }
+      if (url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      return { data: {}, status: 200 }
+    }
+    const { unmount } = render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('u_z'))).toBe(true))
+    // Initial frozen order: u_a (commenter) before u_z (reader).
+    let rows = currentSectionRows()
+    expect(rows.findIndex((r) => r.includes('u_a'))).toBeLessThan(rows.findIndex((r) => r.includes('u_z')))
+    // Promote u_z reader → admin via its row select (scoped to the current section).
+    const zRow = Array.from(currentSection().querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes('u_z'),
+    ) as HTMLElement
+    fireEvent.change(zRow.querySelector('select') as HTMLSelectElement, { target: { value: 'admin' } })
+    // After the refresh u_z's role updates to admin, but its POSITION is frozen (still after u_a).
+    await waitFor(() => {
+      const s = (Array.from(currentSection().querySelectorAll('.octo-member-row')).find((r) =>
+        (r.textContent ?? '').includes('u_z'),
+      ) as HTMLElement).querySelector('select') as HTMLSelectElement
+      expect(s.value).toBe('admin')
+    })
+    rows = currentSectionRows()
+    expect(rows.findIndex((r) => r.includes('u_a'))).toBeLessThan(rows.findIndex((r) => r.includes('u_z')))
+
+    // Reopen (unmount + remount): the fresh mount re-seeds the snapshot from the NEW roles — u_z is
+    // now admin, so it out-ranks u_a and leads. This proves reopen recomputes order from scratch.
+    unmount()
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('u_z'))).toBe(true))
+    const reopened = currentSectionRows()
+    expect(reopened.findIndex((r) => r.includes('u_z'))).toBeLessThan(reopened.findIndex((r) => r.includes('u_a')))
+  })
+
+  it('appends a newly added member to the end of the frozen order (need #4)', async () => {
+    let includeNew = false
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        const items = [
+          { uid: 'u_a', role: 'writer', source: 'direct', grantedBy: 'u_admin' },
+          { uid: 'u_b', role: 'reader', source: 'direct', grantedBy: 'u_admin' },
+        ]
+        // A new admin member arrives on refresh; by raw sort it would jump to the TOP (admin rank),
+        // but the frozen snapshot must append it at the END.
+        if (includeNew) items.push({ uid: 'u_new', role: 'admin', source: 'direct', grantedBy: 'u_admin' })
+        return { data: { items }, status: 200 }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (method === 'put' && url.endsWith('/members')) {
+        includeNew = true
+        return { data: {}, status: 200 }
+      }
+      if (url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('u_b'))).toBe(true))
+    // Trigger a refresh that surfaces the new admin member (change u_b's role to force the PUT+refresh).
+    const bRow = Array.from(currentSection().querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes('u_b'),
+    ) as HTMLElement
+    fireEvent.change(bRow.querySelector('select') as HTMLSelectElement, { target: { value: 'commenter' } })
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('u_new'))).toBe(true))
+    const rows = currentSectionRows()
+    // Despite being an admin (top rank), the new member is appended LAST (after u_a and u_b).
+    expect(rows.findIndex((r) => r.includes('u_new'))).toBeGreaterThan(rows.findIndex((r) => r.includes('u_a')))
+    expect(rows.findIndex((r) => r.includes('u_new'))).toBeGreaterThan(rows.findIndex((r) => r.includes('u_b')))
   })
 })
 

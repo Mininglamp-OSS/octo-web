@@ -37,6 +37,7 @@ vi.mock('../members/useMemberNames.ts', () => ({
   // Real shape: Map<uid, name>. Empty here — displayName() falls back to the uid, which is exactly
   // the "names have not arrived" state this test is about.
   useMemberNames: () => new Map<string, string>(),
+  useMemberDirectory: () => ({ names: new Map<string, string>(), botUids: new Set<string>() }),
 }))
 
 vi.mock('../octoweb/index.ts', () => ({ t: (k: string) => k }))

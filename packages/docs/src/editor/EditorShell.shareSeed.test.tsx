@@ -45,7 +45,7 @@ vi.mock('../comments/useDocComments.ts', () => ({
   useRefreshCommentsOnOpen: () => undefined,
 }))
 vi.mock('../comments/useCommentHighlights.ts', () => ({ useCommentHighlights: () => undefined }))
-vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>() }))
+vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>(), useMemberDirectory: () => ({ names: new Map<string, string>(), botUids: new Set<string>() }) }))
 vi.mock('../access-request/useAccessRequests.ts', () => ({ useAccessRequests: () => 0 }))
 vi.mock('./useDocDelete.ts', () => ({
   useDocDelete: () => ({

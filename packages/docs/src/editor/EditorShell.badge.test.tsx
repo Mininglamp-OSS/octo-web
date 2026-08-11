@@ -41,7 +41,12 @@ vi.mock('../comments/useDocComments.ts', () => ({
   useRefreshCommentsOnOpen: () => undefined,
 }))
 vi.mock('../comments/useCommentHighlights.ts', () => ({ useCommentHighlights: () => undefined }))
-vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>() }))
+vi.mock('../members/useMemberNames.ts', () => ({
+  useMemberNames: () => new Map<string, string>(),
+  // MemberPanel now reads the directory (names + bot uids); stub an empty directory so no bot
+  // grouping kicks in and the badge/panel wiring under test stays unaffected.
+  useMemberDirectory: () => ({ names: new Map<string, string>(), botUids: new Set<string>() }),
+}))
 vi.mock('./useDocDelete.ts', () => ({
   useDocDelete: () => ({
     confirming: false,

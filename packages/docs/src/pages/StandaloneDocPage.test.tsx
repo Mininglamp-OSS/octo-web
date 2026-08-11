@@ -65,6 +65,7 @@ vi.mock('../board/BoardSession.tsx', () => ({
 // focused on the preflight gate and chrome.
 vi.mock('../members/useMemberNames.ts', () => ({
   useMemberNames: () => new Map<string, string>(),
+  useMemberDirectory: () => ({ names: new Map<string, string>(), botUids: new Set<string>() }),
 }))
 
 // Replace the collaborative spreadsheet host (Univer + Yjs + Hocuspocus) with a marker so a

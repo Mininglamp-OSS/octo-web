@@ -70,7 +70,7 @@ vi.mock('../comments/useCommentHighlights.ts', () => ({ useCommentHighlights: ()
 const { useMemberNamesMock } = vi.hoisted(() => ({
   useMemberNamesMock: vi.fn(() => new Map<string, string>()),
 }))
-vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: useMemberNamesMock }))
+vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: useMemberNamesMock, useMemberDirectory: () => ({ names: new Map<string, string>(), botUids: new Set<string>() }) }))
 vi.mock('./useDocDelete.ts', () => ({
   useDocDelete: () => ({
     confirming: false,

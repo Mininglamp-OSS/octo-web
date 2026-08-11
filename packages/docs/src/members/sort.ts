@@ -47,6 +47,40 @@ export function sortMembersForDisplay(members: Member[], ownerId?: string): Memb
 }
 
 /**
+ * Apply a frozen order snapshot to a set of rows (need #4). Given `snapshot` mapping uid → a fixed
+ * index, rows are ordered by that index so a role change (which would otherwise re-rank a row via
+ * sortMembersForDisplay) does NOT move the row. Behavior:
+ *   - a uid present in the snapshot keeps its snapshot index (stable regardless of its new role);
+ *   - a uid absent from the snapshot (newly added since the snapshot was taken) is appended AFTER
+ *     all snapshot rows, preserving the relative order in which such new uids arrive in `rows`;
+ *   - a uid that has disappeared from `rows` simply does not appear (nothing to place).
+ *
+ * Pure + side-effect free (independent of sortMembersForDisplay / withSyntheticOwner). Callers seed
+ * the snapshot once from the normal sorted order, then keep using this so the visible order is
+ * frozen until the snapshot is discarded (panel reopen / doc switch).
+ */
+export function applyOrderSnapshot<T extends { uid: string }>(
+  rows: T[],
+  snapshot: Map<string, number>,
+): T[] {
+  return rows
+    .map((row, i) => [row, i] as const)
+    .sort((a, b) => {
+      const ai = snapshot.get(a[0].uid)
+      const bi = snapshot.get(b[0].uid)
+      const aKnown = ai !== undefined
+      const bKnown = bi !== undefined
+      // Snapshot rows come before any brand-new (unsnapshotted) rows.
+      if (aKnown !== bKnown) return aKnown ? -1 : 1
+      // Both in the snapshot: order by the frozen index.
+      if (aKnown && bKnown) return ai - bi
+      // Both new: keep their incoming relative order (stable append).
+      return a[1] - b[1]
+    })
+    .map(([row]) => row)
+}
+
+/**
  * Order the picker roster (#A3): members already on the document are pinned at the top (they are
  * shown disabled/marked) so the admin can see who is already in, with the original order preserved
  * within each group.

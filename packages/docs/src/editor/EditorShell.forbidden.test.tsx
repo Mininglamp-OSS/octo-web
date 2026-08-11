@@ -18,7 +18,7 @@ vi.mock('../collab/useCollabEditor.ts', () => ({
   }),
 }))
 vi.mock('@tiptap/react', () => ({ EditorContent: () => null }))
-vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>() }))
+vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>(), useMemberDirectory: () => ({ names: new Map<string, string>(), botUids: new Set<string>() }) }))
 
 import { EditorShell } from './EditorShell.tsx'
 
