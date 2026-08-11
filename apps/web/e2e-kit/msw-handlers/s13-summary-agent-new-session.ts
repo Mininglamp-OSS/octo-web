@@ -49,6 +49,7 @@ export async function registerS13SummaryAgentNewSession(page: Page): Promise<voi
       current_result_id: 130131,
       current_personal_version_id: null,
       activity_at: "2026-08-06T13:12:00Z",
+      referenceable: true,
     };
     const detail = {
       ...listItem,
@@ -83,12 +84,10 @@ export async function registerS13SummaryAgentNewSession(page: Page): Promise<voi
     };
 
     worker.use(
-      http.get("*/summary/api/v1/summaries", ({ request }: any) => {
-        const url = new URL(request.url);
-        const isReferencePicker = url.searchParams.get("trigger_type") === "3";
+      http.get("*/summary/api/v1/summaries", () => {
         return env({
-          items: isReferencePicker ? [listItem] : [],
-          total: isReferencePicker ? 1 : 0,
+          items: [listItem],
+          total: 1,
           attention_count: 0,
           unread_count: 0,
           pending_invitation_count: 0,

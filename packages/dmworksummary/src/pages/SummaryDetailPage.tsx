@@ -2192,7 +2192,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      */
     handleContinueRefine = () => {
         const { detail } = this.state;
-        if (!detail || detail.referenceable !== true) return;
+        // 兼容：后端已部署 referenceable 时以后端值为准；
+        // 字段缺失时回退到 legacy trigger_type === AGENT 判定
+        if (!detail) return;
+        const canRefine = detail.referenceable !== undefined
+            ? detail.referenceable === true
+            : detail.trigger_type === TriggerType.AGENT;
+        if (!canRefine) return;
         const event = new CustomEvent('summary-open-chat-with-reference', {
             detail: {
                 task_id: detail.task_id,
@@ -3938,7 +3944,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                 </div>
                 <div className="summary-detail-header-actions">
-                    {detail && detail.status === TaskStatus.COMPLETED && detail.referenceable === true && (
+                    {detail && detail.status === TaskStatus.COMPLETED && (() => {
+                        const canRefine = detail.referenceable !== undefined
+                            ? detail.referenceable === true
+                            : detail.trigger_type === TriggerType.AGENT;
+                        return canRefine;
+                    })() && (
                         <Button
                             data-testid={summaryTestIds.detailContinueRefineBtn}
                             theme="solid"

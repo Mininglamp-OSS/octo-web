@@ -42,7 +42,7 @@
 
 ## 反例
 
-- 如果详情页 `trigger_type` 不是 Agent，页面不应显示「继续优化」；本 case 会因找不到按钮失败。
+- 如果详情页 `referenceable` 不为 `true`（且非兼容回退的 Agent 类型），页面不应显示「继续优化」；本 case 会因找不到按钮失败。
 - 如果继续优化没有把当前 task 作为 `derivedFromTask` 传给创建页，Agent 工作台不会显示「已引用」卡片，case 应失败。
 - 如果引用侧栏漏 mock 详情接口，右侧面板会显示「加载失败」或 sanityCheck 报 401。
 
