@@ -41,7 +41,7 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
-import { isMatchingOidcCallback, isOidcAuthorizeNavigation, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
+import { classifyOidcNavigation, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -133,7 +133,8 @@ function resolveTrustedOidcSender(
 type CappedRead =
   | { kind: "ok"; text: string }
   | { kind: "overflow" }
-  | { kind: "aborted" };
+  | { kind: "aborted" }
+  | { kind: "error" };
 async function readCappedResponseText(
   response: Response,
   maxBytes: number,
@@ -149,8 +150,9 @@ async function readCappedResponseText(
     try {
       text = await response.text();
     } catch {
-      return signal.aborted ? { kind: "aborted" } : { kind: "ok", text: "" };
+      return signal.aborted ? { kind: "aborted" } : { kind: "error" };
     }
+    if (signal.aborted) return { kind: "aborted" };
     return text.length > maxBytes ? { kind: "overflow" } : { kind: "ok", text };
   }
   const reader = body.getReader();
@@ -173,10 +175,11 @@ async function readCappedResponseText(
       }
       out += decoder.decode(value, { stream: true });
     }
+    if (signal.aborted) return { kind: "aborted" };
     out += decoder.decode();
     return { kind: "ok", text: out };
   } catch {
-    return signal.aborted ? { kind: "aborted" } : { kind: "ok", text: "" };
+    return signal.aborted ? { kind: "aborted" } : { kind: "error" };
   } finally {
     signal.removeEventListener("abort", onAbort);
   }
@@ -295,6 +298,7 @@ ipcMain.handle(IPC_OIDC_HTTP_REQUEST, async (event, request: unknown) => {
   }
   if (read.kind === "aborted") throw new Error("OIDC request timed out");
   if (read.kind === "overflow") throw new Error("OIDC response too large");
+  if (read.kind === "error") throw new Error("OIDC response could not be read");
   const responseText = read.text;
   let responseBody: unknown = undefined;
   if (responseText !== "") {
@@ -329,53 +333,35 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
     if (!win.isDestroyed()) win.loadFile(webUrl, { query: { sid } });
   };
 
-  const handleCallback = (event: Electron.Event, url: string) => {
+  const handleNavigation = (event: Electron.Event, url: string, isMainFrame: boolean) => {
+    if (!isMainFrame) return;
     const flow = oidcExpectedFlows.get(win);
     // No armed flow ⇒ the interceptor has no business touching this
     // navigation. Previously we tore the window back to the shell whenever a
     // flow was armed-but-expired; that also intercepted every non-OIDC
     // navigation the packaged app tries to perform between flows (e.g. a
-    // support page opened from settings). Bail out and let Electron follow
-    // the navigation normally — the TTL watchdog below still clears expired
-    // flow state without touching unrelated navigations.
+    // support page opened from settings). With no armed flow, bail out and
+    // let Electron follow the navigation normally.
     if (!flow) return;
-    if (flow.expiresAt <= Date.now()) {
-      // Flow expired mid-navigation. Clear the stale entry, then decide
-      // whether to prevent the navigation based on the URL itself:
-      //   - if the URL parses as a real OIDC callback, we must NOT let the
-      //     packaged window follow it (it would strand on a stale remote
-      //     API page whose one-time code is already expired); restore the
-      //     shell instead.
-      //   - otherwise (authorize URL, unrelated support page, arbitrary
-      //     navigation) let Electron follow it — preventing an unrelated
-      //     navigation would be a worse UX than a stale OIDC state entry.
+    const decision = classifyOidcNavigation({
+      url,
+      origin: flow.origin,
+      providerId: flow.providerId,
+      authorizeUrl: flow.authorizeUrl,
+      authcode: flow.authcode,
+      expiresAt: flow.expiresAt,
+    });
+    if (decision === "expired") {
+      // Once a flow expires, the only safe recovery is to return to the local
+      // shell. Leaving the current navigation alive can strand the sole
+      // BrowserWindow on an IdP/API page with no address bar or back button.
       oidcExpectedFlows.delete(win);
-      const staleCallback = parseOidcCallback(url, flow.origin);
-      if (staleCallback) {
-        event.preventDefault();
-        restoreShell();
-      }
+      event.preventDefault();
+      restoreShell();
       return;
     }
-    const callback = parseOidcCallback(url, flow.origin);
-    if (!callback) {
-      // The authorize URL is the start of the flow, not a callback. Prefer
-      // literal comparison against the URL the renderer registered — see
-      // isOidcAuthorizeNavigation's doc comment and P1-1 in the review
-      // notes for why rebuilding the URL from provider id is fragile.
-      if (isOidcAuthorizeNavigation(url, flow.origin, flow.providerId, flow.authorizeUrl)) return;
-      // A navigation back to the API origin is a callback attempt, even when
-      // its path/query is invalid. Do not leave a packaged window stranded on
-      // an arbitrary remote API error page.
-      try {
-        if (new URL(url).origin === flow.origin) {
-          event.preventDefault();
-          restoreShell();
-        }
-      } catch { /* malformed navigation is left to Electron */ }
-      return;
-    }
-    if (!isMatchingOidcCallback(callback, flow.authcode, flow.providerId)) {
+    if (decision === "authorize" || decision === "same-origin" || decision === "external") return;
+    if (decision === "invalid-callback") {
       event.preventDefault();
       restoreShell();
       return;
@@ -383,11 +369,23 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
 
     event.preventDefault();
     oidcExpectedFlows.delete(win);
-    win.loadFile(webUrl, { query: withTrustedSessionSid(callback, sid) });
+    // `decision === "callback"` is only returned after the parser and
+    // correlation checks pass. Parse again here to retain the typed callback
+    // payload used to construct the trusted shell query.
+    const parsedCallback = parseOidcCallback(url, flow.origin);
+    if (!parsedCallback) {
+      restoreShell();
+      return;
+    }
+    win.loadFile(webUrl, { query: withTrustedSessionSid(parsedCallback, sid) });
   };
 
-  win.webContents.on("will-redirect", handleCallback);
-  win.webContents.on("will-navigate", handleCallback);
+  win.webContents.on("will-redirect", (_event, url, _isInPlace, isMainFrame) => {
+    handleNavigation(_event, url, isMainFrame);
+  });
+  win.webContents.on("will-navigate", (event, url) => {
+    handleNavigation(event, url, true);
+  });
   win.webContents.on("did-fail-load", (_event, errorCode, _errorDescription, _validatedURL, isMainFrame) => {
     if (!isMainFrame || errorCode === -3) return;
     const flow = oidcExpectedFlows.get(win);

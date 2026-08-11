@@ -54,7 +54,7 @@ const isTrustedShell = () => {
       const trusted = new URL(trustedShellFileURL);
       if (current.protocol === trusted.protocol &&
         current.hostname === trusted.hostname &&
-        current.pathname === trusted.pathname) return true;
+        current.pathname.toLowerCase() === trusted.pathname.toLowerCase()) return true;
     } catch {
       return false;
     }

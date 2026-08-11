@@ -142,6 +142,51 @@ export function isOidcAuthorizeNavigation(
   return parsed.toString() === expected.toString()
 }
 
+export type OidcNavigationDecision =
+  | 'expired'
+  | 'authorize'
+  | 'same-origin'
+  | 'external'
+  | 'callback'
+  | 'invalid-callback'
+
+/**
+ * Classify a top-level navigation while an Electron OIDC flow is armed.
+ *
+ * The API origin can legitimately appear more than once in a flow: the
+ * authorize endpoint may redirect to the IdP and the IdP may then redirect
+ * back to an API callback endpoint before the backend sends the browser to
+ * `/login` or `/oidc/bind`. Only the final frontend callback belongs to the
+ * renderer; intermediate same-origin API navigations must be allowed through.
+ */
+export function classifyOidcNavigation(input: {
+  url: string
+  origin: string
+  providerId: string
+  authorizeUrl: string
+  authcode: string
+  expiresAt: number
+  now?: number
+}): OidcNavigationDecision {
+  if ((input.now ?? Date.now()) >= input.expiresAt) return 'expired'
+  const callback = parseOidcCallback(input.url, input.origin)
+  if (callback) {
+    return isMatchingOidcCallback(callback, input.authcode, input.providerId)
+      ? 'callback'
+      : 'invalid-callback'
+  }
+  if (isOidcAuthorizeNavigation(input.url, input.origin, input.providerId, input.authorizeUrl)) {
+    return 'authorize'
+  }
+  try {
+    return new URL(input.url).origin === parseHttpOrigin(input.origin)
+      ? 'same-origin'
+      : 'external'
+  } catch {
+    return 'external'
+  }
+}
+
 /**
  * The API callback may return to /login without echoing authcode. In that
  * mode the renderer resumes the pending flow from sessionStorage and polls

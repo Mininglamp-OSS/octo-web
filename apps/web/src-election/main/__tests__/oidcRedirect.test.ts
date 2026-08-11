@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isTrustedSenderUrl,
+  classifyOidcNavigation,
   isOidcAuthorizeNavigation,
   isMatchingOidcCallback,
   parseHttpOrigin,
@@ -163,6 +164,45 @@ describe('isOidcAuthorizeNavigation', () => {
   })
 })
 
+describe('classifyOidcNavigation', () => {
+  const origin = 'https://api.example.com'
+  const authorizeUrl = `${origin}/v1/auth/oidc/acme/authorize?authcode=ac&return_to=%2Flogin&flag=2`
+  const base = {
+    origin,
+    providerId: 'acme',
+    authorizeUrl,
+    authcode: 'ac',
+    expiresAt: 2_000,
+    now: 1_000,
+  }
+
+  it('allows the API callback hop before the terminal frontend callback', () => {
+    expect(classifyOidcNavigation({
+      ...base,
+      url: `${origin}/v1/auth/oidc/acme/callback?code=code&state=state`,
+    })).toBe('same-origin')
+  })
+
+  it('only classifies a correlated /login callback as terminal', () => {
+    expect(classifyOidcNavigation({
+      ...base,
+      url: `${origin}/login?authcode=ac&provider=acme`,
+    })).toBe('callback')
+    expect(classifyOidcNavigation({
+      ...base,
+      url: `${origin}/login?authcode=other&provider=acme`,
+    })).toBe('invalid-callback')
+  })
+
+  it('marks an expired flow for local-shell recovery', () => {
+    expect(classifyOidcNavigation({
+      ...base,
+      now: 2_000,
+      url: 'https://idp.example.com/authorize',
+    })).toBe('expired')
+  })
+})
+
 describe('validateOidcHttpRequest', () => {
   const API = 'https://api.example.com'
 
@@ -285,6 +325,14 @@ describe('isTrustedSenderUrl', () => {
       'file:///Applications/OCTO.app/build/index.html?sid=window-sid&__octo_route=%2Foidc%2Fbind#callback',
       undefined,
       'file:///Applications/OCTO.app/build/index.html',
+    )).toBe(true)
+  })
+
+  it('accepts Windows drive-letter case differences in the trusted file path', () => {
+    expect(isTrustedSenderUrl(
+      'file:///c:/Applications/OCTO.app/build/index.html',
+      undefined,
+      'file:///C:/Applications/OCTO.app/build/index.html',
     )).toBe(true)
   })
 
