@@ -159,4 +159,19 @@ describe("ChannelAvatar save intent", () => {
     expect(mocks.uploadFile).toHaveBeenCalledWith(file);
     expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
   });
+
+  it("sends clear_uploaded_avatar when generated save has no text/color edits", async () => {
+    const channel = renderChannelAvatar({ initialAvatarText: "研发", initialColorIndex: 5 });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("base.common.save"));
+    });
+
+    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledTimes(1);
+    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
+      avatarText: undefined,
+      avatarColor: undefined,
+      clearUploadedAvatar: true,
+    });
+  });
 });

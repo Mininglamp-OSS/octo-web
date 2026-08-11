@@ -135,10 +135,6 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             await this.saveUploadedAvatar()
             return
         }
-        if (!textChanged && !colorChanged) {
-            this.closePage()
-            return
-        }
         this.setState({ customAvatarSaving: true })
         try {
             await updateChannelAvatarCustom(channel, {
