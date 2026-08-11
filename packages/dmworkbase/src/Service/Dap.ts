@@ -262,6 +262,9 @@ class DapImpl {
     private queue: TrackEnvelope[] = []
     private flushTimer: ReturnType<typeof setInterval> | null = null
     private lastPage: { pageId: string; enteredAt: number; settled: boolean } | null = null
+    /** 卸载期标记:置真时 enqueue 不再走普通 flush,残留统一由 unloadFlush 的单个 keepalive 批次送出。
+     *  切后台(hidden)时置真、回前台(visible)复位;真实关页时不复位(页已走)。 */
+    private unloading = false
     private pageBootObserver: MutationObserver | null = null
     /** 曝光去重:每个元素实例只触发一次 data-track-view */
     private seenViews = new WeakSet<Element>()
@@ -386,7 +389,7 @@ class DapImpl {
     /**
      * 结算当前页停留:给上一页发带 duration_ms 的 page_leave(优先入队,便于随卸载/切后台
      * 的 keepalive 批次一起送)。幂等——已结算过则不再发,避免「切后台结算 + 随后切页」双记。
-     * 由 pageView(切页)与 visibilitychange→hidden(切后台/卸载)共同调用。
+     * 由 pageView(切页)与 unloadFlush(切后台/卸载)共同调用。
      */
     private settleLastPage(now: number): void {
         if (!this.lastPage || this.lastPage.settled) return
@@ -483,6 +486,9 @@ class DapImpl {
     private enqueue(env: TrackEnvelope, priority = false): void {
         if (!this.enabled) return
         this.queue.push(env)
+        // 卸载期:不走普通 fetch flush(会被浏览器随页面卸载取消),残留一律留给
+        // unloadFlush 的单个 keepalive 批次统一送出(见 unloadFlush / installUnloadFlush)。
+        if (this.unloading) return
         // 带 duration_ms 的结束事件优先 flush(§2.1)
         if (priority || this.queue.length >= FLUSH_SIZE) {
             this.flush()
@@ -535,12 +541,18 @@ class DapImpl {
 
     /**
      * 卸载兜底(§2.1):visibilitychange(hidden)+ pagehide 一次性发残留。
+     * 先置 `unloading` 抑制普通 flush,再**结算当前页**(settleLastPage 幂等,截到此刻),
+     * 使最后一页的 page_leave 与队列残留一并进入这**唯一一个 keepalive 批次**——普通 fetch
+     * 会随页面卸载被浏览器取消,只有 keepalive 请求能在卸载中发完(见 P1 回归修复)。
      * 用 **keepalive fetch** 而非 sendBeacon —— sendBeacon 设不了 `token` 头、过不了后端 header 鉴权;
      * keepalive fetch 是其现代替代,能带头,鉴权与常规上报统一。不重试。
      */
     private unloadFlush(): void {
         this.safe(() => {
             if (!this.enabled) return // 停采后不发残留
+            // 卸载期:后续 enqueue(含下面的 page_leave 结算)不再各自 flush,统一进本批次
+            this.unloading = true
+            this.settleLastPage(Date.now())
             if (this.queue.length === 0) return
             const batch = this.queue
             this.queue = []
@@ -890,15 +902,19 @@ class DapImpl {
         document.addEventListener('visibilitychange', () => {
             this.safe(() => {
                 if (document.visibilityState === 'hidden') {
-                    // 切后台/即将卸载:先结算当前页停留(duration 截到隐藏这一刻),再随
-                    // keepalive 批次一起送。否则最后一页永无 page_leave,且后台挂机时长会被
-                    // 错记进「下一次切页」的停留里(看着像一次超长阅读,实为无人在看)。
-                    this.settleLastPage(Date.now())
+                    // 切后台/即将卸载:交给 unloadFlush 统一处理——它会先结算当前页停留
+                    // (duration 截到隐藏这一刻),再随唯一的 keepalive 批次一起送。否则最后一页
+                    // 永无 page_leave,且后台挂机时长会被错记进「下一次切页」的停留里(看着像
+                    // 一次超长阅读,实为无人在看)。
                     onHide()
-                } else if (document.visibilityState === 'visible' && this.lastPage) {
-                    // 回到前台:重置停留起点并允许再次结算,后台时长不计入本页停留。
-                    this.lastPage.enteredAt = Date.now()
-                    this.lastPage.settled = false
+                } else if (document.visibilityState === 'visible') {
+                    // 回到前台:退出卸载期,允许普通 flush 恢复;并重置停留起点 + 允许再次结算,
+                    // 后台时长不计入本页停留。
+                    this.unloading = false
+                    if (this.lastPage) {
+                        this.lastPage.enteredAt = Date.now()
+                        this.lastPage.settled = false
+                    }
                 }
             })
         })

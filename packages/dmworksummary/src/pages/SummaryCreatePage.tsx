@@ -588,8 +588,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         // smart_summary_started 收口在这里,而非「开始」按钮的声明式 data-track。按钮 onClick
         // 是 handlePrimaryClick——agent 模式下它**不提交**(短路 return),但捕获阶段的 data-track
         // 委托照样会触发,给 agent 模式记一条根本没发起的幻影 started(见 PR #1330 review blocker②)。
-        // 挪到通过 canSubmit、真正发起创建的唯一收口点:normal 模式两条入口(点按钮 / Enter)都覆盖,
-        // agent 模式(不经 handleSubmit)天然不误发。
+        // 挪到通过 canSubmit、真正发起创建的唯一收口点(handleSubmit 目前仅由 handlePrimaryClick
+        // 的 normal 分支调用;无 Enter 提交路径),agent 模式(不经 handleSubmit)天然不误发。
+        // trigger_mode 恒为 'normal'(agent 分支永不到此),保留字段仅为口径显式、便于日后扩展。
         Dap.shared.track('smart_summary_started', {
             object_id: this.props.channel?.channelID,
             source: this.props.source,

@@ -60,6 +60,18 @@ describe('Dap — page_leave settles on hide and never charges background time (
         return out
     }
 
+    // 返回携带 page_leave 的那次 fetch 的 RequestInit(用于断言卸载批次带 keepalive)
+    function leaveRequests(): RequestInit[] {
+        const out: RequestInit[] = []
+        for (const c of fetchMock.mock.calls) {
+            if (c[0] !== BATCH_PATH) continue
+            const init = c[1] as RequestInit
+            const body = JSON.parse(init.body as string)
+            if ((body.events as Array<{ event_name: string }>).some((e) => e.event_name === 'page_leave')) out.push(init)
+        }
+        return out
+    }
+
     it('emits page_leave for the last page on hide, and splits active time without counting 8h of background', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.init()
@@ -75,6 +87,9 @@ describe('Dap — page_leave settles on hide and never charges background time (
         expect(afterHide).toHaveLength(1)
         expect(afterHide[0].page_id).toBe('/chat')
         expect(afterHide[0].props?.duration_ms).toBe(1000)
+        // 卸载批次必须走 keepalive——普通 fetch 会随真实关页被浏览器取消,最后一页 page_leave 就丢了
+        // (这是 keepalive 从常规批次挪走后引入过的回归,断言钉死不得再退)
+        expect(leaveRequests()[0]?.keepalive).toBe(true)
 
         // 后台挂机 8h,再回到前台(重置停留起点)
         vi.advanceTimersByTime(8 * HOUR)
