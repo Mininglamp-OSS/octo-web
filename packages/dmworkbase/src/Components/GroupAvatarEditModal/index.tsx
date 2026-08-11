@@ -49,6 +49,8 @@ export interface GroupAvatarEditFormProps {
   initialAvatarText?: string
   /** 初始色板下标 */
   initialColorIndex?: number
+  /** 保存/上传中：禁止继续编辑，避免保存中的输入被丢弃。 */
+  disabled?: boolean
   /** 编辑态变化：用于父组件维护本地 draft mode */
   onChange?: (result: GroupAvatarEditResult) => void
 }
@@ -63,6 +65,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
   nameAsFallback = false,
   initialAvatarText = "",
   initialColorIndex,
+  disabled = false,
   onChange,
 }) => {
   const [palette, setPalette] = useState<GroupColorHex[]>(getCachedPalette())
@@ -106,6 +109,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
   }
 
   const onTextChange = (v: string) => {
+    if (disabled) return
     // 限制可见字符 ≤4（与服务端一致），超出即截断。
     const nextText = visibleCount(v) > MAX_VISIBLE ? cleanAvatarText(v) : v
     setAvatarText(nextText)
@@ -114,12 +118,14 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
   }
 
   const selectColor = (index: number) => {
+    if (disabled) return
     setColorIndex(index)
     setColorChanged(true)
     emitChange({ colorIndex: index, colorChanged: true })
   }
 
   const clearColor = () => {
+    if (disabled) return
     setColorIndex(undefined)
     setColorChanged(true)
     emitChange({ colorIndex: undefined, colorChanged: true })
@@ -144,6 +150,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
         value={avatarText}
         placeholder={t("base.groupAvatarEdit.customTextPlaceholder")}
         onChange={onTextChange}
+        disabled={disabled}
       />
 
       <div className="wk-group-avatar-edit-label">
@@ -157,6 +164,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
             (colorIndex == null ? " selected" : "")
           }
           onClick={clearColor}
+          disabled={disabled}
           aria-label="avatar-color-default"
           title={t("base.groupAvatarEdit.defaultColor")}
         >
@@ -175,6 +183,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
               borderColor: c.index === colorIndex ? c.main : "transparent",
             }}
             onClick={() => selectColor(c.index)}
+            disabled={disabled}
             aria-label={`avatar-color-${c.index}`}
           >
             {c.index === colorIndex && <IconTick style={{ color: c.main }} />}
@@ -235,6 +244,7 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
         nameAsFallback={nameAsFallback}
         initialAvatarText={initialAvatarText}
         initialColorIndex={initialColorIndex}
+        disabled={saving}
         onChange={setDraft}
       />
     </WKModal>

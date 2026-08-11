@@ -65,12 +65,17 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             prevProps.initialAvatarText !== this.props.initialAvatarText ||
             prevProps.initialColorIndex !== this.props.initialColorIndex
         ) {
+            if (this.state.uploadPreviewUrl) {
+                URL.revokeObjectURL(this.state.uploadPreviewUrl)
+            }
             this.setState({
                 customAvatarText: this.props.initialAvatarText || "",
                 customAvatarColorIndex: this.props.initialColorIndex,
                 textChanged: false,
                 colorChanged: false,
                 draftMode: "generated",
+                pendingUploadFile: null,
+                uploadPreviewUrl: undefined,
             })
         }
     }
@@ -218,7 +223,8 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
     }
     render() {
         const { channel,showUpload,groupName,isNamedGroup } = this.props
-        const { cropFile, uploading, customAvatarSaving, customAvatarText, customAvatarColorIndex, uploadPreviewUrl } = this.state
+        const { cropFile, uploading, customAvatarSaving, uploadPreviewUrl } = this.state
+        const editingDisabled = customAvatarSaving || uploading
         return <>
             <div className="wk-channelavatar">
                 <div className="wk-channelavatar-avatar-wrap">
@@ -228,6 +234,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                         className="wk-channelavatar-camera"
                         style={{display:showUpload?"flex":"none"}}
                         onClick={this.chooseFile}
+                        disabled={editingDisabled}
                         aria-label="change-avatar-image"
                     >
                         <IconCamera />
@@ -236,8 +243,9 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 {showUpload && <GroupAvatarEditForm
                     name={groupName || ""}
                     nameAsFallback={isNamedGroup === true}
-                    initialAvatarText={customAvatarText}
-                    initialColorIndex={customAvatarColorIndex}
+                    initialAvatarText={this.props.initialAvatarText || ""}
+                    initialColorIndex={this.props.initialColorIndex}
+                    disabled={editingDisabled}
                     onChange={this.onGeneratedAvatarChange}
                 />}
                 <input  onClick={this.onFileClick.bind(this)}  type="file" multiple={false} accept="image/*" style={{ display: 'none' }} ref={(ref) => { this.$fileInput = ref }}  onChange={this.onFileChange.bind(this)}></input>
