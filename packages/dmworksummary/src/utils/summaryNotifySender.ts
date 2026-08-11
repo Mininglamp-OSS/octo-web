@@ -17,11 +17,11 @@ import {
  * invariants directly.
  *
  * IM_SEND is called ONLY for a channel this function has decided to post to
- * (after all gates: creator, status, BY_GROUP, persistent-marker, in-flight,
- * disbanded). Its throw is caught locally, so per-group failure isolation
- * does not depend on the caller. Successful returns cause a persistent
- * markSummaryNotifySent — a failed storage write is tolerated (fail-open,
- * see notes below) and the same-instance memory set below closes that gap.
+ * (after all gates: creator, status, persistent-marker, in-flight, disbanded).
+ * Its throw is caught locally, so per-group failure isolation does not depend
+ * on the caller. Successful returns cause a persistent markSummaryNotifySent
+ * — a failed storage write is tolerated (fail-open, see notes below) and the
+ * same-instance memory set below closes that gap.
  *
  * IS_DISBANDED is a per-source predicate consulted after in-flight but
  * before send, matching the invariant every other group send path in the
@@ -92,8 +92,8 @@ export function newSummaryNotifySendState(): SummaryNotifySendState {
  *
  * Contract (in order):
  *   1. Emit-gate — shouldEmitGroupSummaryNotify + collectGroupSourceIds; the
- *      creator / non-empty myUid / status / BY_GROUP checks live in the
- *      helpers so a caller that forgets to guard cannot leak.
+ *      creator / non-empty myUid / status checks live in the helpers so a
+ *      caller that forgets to guard cannot leak.
  *   2. Per-source dedup — check FRESH localStorage read AND the in-memory
  *      `sentThisInstance` AND the `inFlight` set. A stale snapshot is a
  *      correctness bug (yujiawei reproduced it on `5cff6246`), so we re-read
