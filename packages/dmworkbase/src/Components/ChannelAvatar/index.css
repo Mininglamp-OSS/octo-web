@@ -54,8 +54,23 @@
     width: 100%;
 }
 
+.wk-channelavatar-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.wk-channelavatar-preview-panel,
+.wk-channelavatar-editor-panel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
 .wk-channelavatar-setting-modal .wk-modal-body {
-    padding: 0 32px 24px;
+    padding: 0 28px 24px;
 }
 
 .wk-channelavatar-setting-modal .wk-channelavatar {
@@ -64,16 +79,41 @@
     overflow: visible;
 }
 
+.wk-channelavatar-setting-modal .wk-channelavatar-main {
+    display: grid;
+    grid-template-columns: 176px minmax(0, 1fr);
+    align-items: center;
+    column-gap: 28px;
+    width: 100%;
+}
+
+.wk-channelavatar-setting-modal .wk-channelavatar-preview-panel {
+    align-items: center;
+    justify-content: center;
+    min-height: 176px;
+    padding: 20px;
+    border: 1px solid var(--semi-color-border);
+    border-radius: var(--semi-border-radius-large);
+    background: var(--semi-color-fill-0);
+    box-sizing: border-box;
+}
+
+.wk-channelavatar-setting-modal .wk-channelavatar-editor-panel {
+    align-items: stretch;
+    width: 100%;
+    min-width: 0;
+}
+
 .wk-channelavatar-setting-modal .wk-channelavatar-avatar-wrap {
-    width: 112px;
-    height: 112px;
-    margin: 4px auto 24px;
+    width: 128px;
+    height: 128px;
+    margin: 0;
     filter: drop-shadow(0 8px 18px rgba(15, 23, 42, 0.12));
 }
 
 .wk-channelavatar-setting-modal .wk-channelavatar-avatar-img {
-    width: 112px;
-    height: 112px;
+    width: 128px;
+    height: 128px;
     border: 2px solid var(--semi-color-bg-0);
 }
 
@@ -96,11 +136,15 @@
 }
 
 .wk-channelavatar-setting-modal .wk-group-avatar-edit-label {
-    margin: 18px 0 10px;
+    margin: 0 0 10px;
     color: var(--semi-color-text-1);
     font-size: 13px;
     font-weight: 600;
     text-align: left;
+}
+
+.wk-channelavatar-setting-modal .wk-group-avatar-edit-label + .semi-input-wrapper {
+    margin-bottom: 18px;
 }
 
 .wk-channelavatar-setting-modal .semi-input-wrapper {
@@ -109,12 +153,12 @@
 
 .wk-channelavatar-setting-modal .wk-group-avatar-edit-colors {
     display: grid;
-    grid-template-columns: repeat(8, 32px);
-    justify-content: space-between;
-    row-gap: 14px;
-    column-gap: 10px;
+    grid-template-columns: repeat(5, 32px);
+    justify-content: start;
+    row-gap: 12px;
+    column-gap: 12px;
     width: 100%;
-    padding: 14px;
+    padding: 12px;
     border: 1px solid var(--semi-color-border);
     border-radius: var(--semi-border-radius-medium);
     background: var(--semi-color-fill-0);
@@ -145,6 +189,22 @@
     margin-top: 24px;
     padding-top: 16px;
     border-top: 1px solid var(--semi-color-border);
+}
+
+@media (max-width: 640px) {
+    .wk-channelavatar-setting-modal .wk-channelavatar-main {
+        grid-template-columns: 1fr;
+        row-gap: 20px;
+    }
+
+    .wk-channelavatar-setting-modal .wk-channelavatar-preview-panel {
+        min-height: auto;
+    }
+
+    .wk-channelavatar-setting-modal .wk-group-avatar-edit-colors {
+        grid-template-columns: repeat(5, 32px);
+        justify-content: space-between;
+    }
 }
 
 .wk-channelavatar-crop-editor {
