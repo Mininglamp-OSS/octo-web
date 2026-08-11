@@ -1,4 +1,5 @@
 import { Button, Toast } from "@douyinfe/semi-ui";
+import { IconCamera } from "@douyinfe/semi-icons";
 import axios from "axios";
 import { Channel } from "wukongimjssdk";
 import React from "react";
@@ -10,9 +11,11 @@ import { WKAvatarEditor } from "../WKAvatarEditor";
 import { I18nContext } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge } from "../avatarUpload";
 import WKModal from "../WKModal";
-import GroupAvatarEditModal, { GroupAvatarEditResult } from "../GroupAvatarEditModal";
+import { GroupAvatarEditForm, GroupAvatarEditResult } from "../GroupAvatarEditModal";
 import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import "./index.css"
+
+type ChannelAvatarDraftMode = "generated" | "uploaded"
 
 export interface ChannelAvatarProps {
     channel:Channel
@@ -21,7 +24,7 @@ export interface ChannelAvatarProps {
     isNamedGroup?: boolean
     initialAvatarText?: string
     initialColorIndex?: number
-    /** @deprecated 头像裁剪已由独立弹窗承载，不再使用父级路由上下文。 */
+    /** 路由上下文：保存/取消成功后关闭当前「群头像」页。 */
     context?: RouteContext<any>
     onFileUpload?:(f:File)=>Promise<void>
 }
@@ -29,10 +32,14 @@ export interface ChannelAvatarProps {
 interface ChannelAvatarState {
     cropFile: File | null
     uploading: boolean
-    customAvatarVisible: boolean
     customAvatarSaving: boolean
     customAvatarText: string
     customAvatarColorIndex?: number
+    textChanged: boolean
+    colorChanged: boolean
+    draftMode: ChannelAvatarDraftMode
+    pendingUploadFile: File | null
+    uploadPreviewUrl?: string
 }
 
 export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarState>{
@@ -44,10 +51,13 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
     state: ChannelAvatarState = {
         cropFile: null,
         uploading: false,
-        customAvatarVisible: false,
         customAvatarSaving: false,
         customAvatarText: this.props.initialAvatarText || "",
         customAvatarColorIndex: this.props.initialColorIndex,
+        textChanged: false,
+        colorChanged: false,
+        draftMode: "generated",
+        pendingUploadFile: null,
     }
 
     componentDidUpdate(prevProps: ChannelAvatarProps) {
@@ -58,7 +68,16 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             this.setState({
                 customAvatarText: this.props.initialAvatarText || "",
                 customAvatarColorIndex: this.props.initialColorIndex,
+                textChanged: false,
+                colorChanged: false,
+                draftMode: "generated",
             })
+        }
+    }
+
+    componentWillUnmount() {
+        if (this.state.uploadPreviewUrl) {
+            URL.revokeObjectURL(this.state.uploadPreviewUrl)
         }
     }
 
@@ -82,35 +101,51 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
     chooseFile = () => {
         this.$fileInput.click();
     }
-    showCustomAvatar = () => {
-        this.setState({ customAvatarVisible: true })
+    closePage = () => {
+        this.props.context?.pop()
     }
     cancelCustomAvatar = () => {
-        if (this.state.customAvatarSaving) return
-        this.setState({ customAvatarVisible: false })
+        if (this.state.customAvatarSaving || this.state.uploading) return
+        this.closePage()
     }
-    saveCustomAvatar = async (result: GroupAvatarEditResult) => {
+    onGeneratedAvatarChange = (result: GroupAvatarEditResult) => {
+        if (this.state.uploadPreviewUrl) {
+            URL.revokeObjectURL(this.state.uploadPreviewUrl)
+        }
+        this.setState({
+            customAvatarText: result.avatarText,
+            customAvatarColorIndex: result.colorIndex,
+            textChanged: result.textChanged === true,
+            colorChanged: result.colorChanged === true,
+            draftMode: "generated",
+            pendingUploadFile: null,
+            uploadPreviewUrl: undefined,
+        })
+    }
+    saveCustomAvatar = async () => {
         const { channel } = this.props
-        if (this.state.customAvatarSaving) return
-        if (!result.textChanged && !result.colorChanged) {
-            this.setState({ customAvatarVisible: false })
+        const { customAvatarText, customAvatarColorIndex, textChanged, colorChanged, draftMode } = this.state
+        if (this.state.customAvatarSaving || this.state.uploading) return
+        if (draftMode === "uploaded") {
+            await this.saveUploadedAvatar()
+            return
+        }
+        if (!textChanged && !colorChanged) {
+            this.closePage()
             return
         }
         this.setState({ customAvatarSaving: true })
         try {
             await updateChannelAvatarCustom(channel, {
-                avatarText: result.textChanged ? result.avatarText : undefined,
-                avatarColor: result.colorChanged
-                    ? (typeof result.colorIndex === "number" ? result.colorIndex : "")
+                avatarText: textChanged ? customAvatarText : undefined,
+                avatarColor: colorChanged
+                    ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
                     : undefined,
+                clearUploadedAvatar: true,
             })
             WKApp.shared.changeChannelAvatarTag(channel)
             void fetchCurrentImChannelInfo(channel)
-            this.setState((state) => ({
-                customAvatarVisible: false,
-                customAvatarText: result.textChanged ? result.avatarText : state.customAvatarText,
-                customAvatarColorIndex: result.colorChanged ? result.colorIndex : state.customAvatarColorIndex,
-            }))
+            this.closePage()
         } catch (error) {
             console.error('Custom avatar update failed:', error);
             Toast.error(this.context.t('base.channelAvatar.updateFailedRetry'))
@@ -144,6 +179,23 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             return
         }
 
+        this.setState((state) => {
+            if (state.uploadPreviewUrl) {
+                URL.revokeObjectURL(state.uploadPreviewUrl)
+            }
+            return {
+                cropFile: null,
+                pendingUploadFile: file,
+                uploadPreviewUrl: URL.createObjectURL(file),
+                draftMode: "uploaded",
+            }
+        })
+    }
+
+    saveUploadedAvatar = async () => {
+        const file = this.state.pendingUploadFile
+        if (!file || this.state.uploading) return
+
         const { onFileUpload, channel } = this.props
         this.setState({ uploading: true })
         try {
@@ -155,7 +207,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 // 触发 channelInfoListener，通知 Chat 等组件刷新头像
                 void fetchCurrentImChannelInfo(channel)
             }
-            this.setState({ cropFile: null })
+            this.closePage()
         } catch {
             if (onFileUpload) {
                 Toast.error(this.context.t('base.channelAvatar.uploadFailedRetry'))
@@ -166,28 +218,34 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
     }
     render() {
         const { channel,showUpload,groupName,isNamedGroup } = this.props
-        const { cropFile, uploading, customAvatarVisible, customAvatarSaving, customAvatarText, customAvatarColorIndex } = this.state
+        const { cropFile, uploading, customAvatarSaving, customAvatarText, customAvatarColorIndex, uploadPreviewUrl } = this.state
         return <>
             <div className="wk-channelavatar">
-                <div className="wk-channelavatar-avatar">
-                    <img style={{"width":"200px","height":"200px"}} src={WKApp.shared.avatarChannel(channel)}></img>
+                <div className="wk-channelavatar-avatar-wrap">
+                    <img className="wk-channelavatar-avatar-img" src={uploadPreviewUrl || WKApp.shared.avatarChannel(channel)}></img>
+                    <button
+                        type="button"
+                        className="wk-channelavatar-camera"
+                        style={{display:showUpload?"flex":"none"}}
+                        onClick={this.chooseFile}
+                        aria-label="change-avatar-image"
+                    >
+                        <IconCamera />
+                    </button>
                 </div>
-                <div className="wk-channelavatar-upload" style={{display:showUpload?"flex":"none"}}>
-                    <Button onClick={this.chooseFile}>{this.context.t('base.channelAvatar.changeAvatar')}</Button>
-                    <Button onClick={this.showCustomAvatar}>{this.context.t('base.channelAvatar.changeTextColorAvatar')}</Button>
-                    <input  onClick={this.onFileClick.bind(this)}  type="file" multiple={false} accept="image/*" style={{ display: 'none' }} ref={(ref) => { this.$fileInput = ref }}  onChange={this.onFileChange.bind(this)}></input>
-                </div>
+                {showUpload && <GroupAvatarEditForm
+                    name={groupName || ""}
+                    nameAsFallback={isNamedGroup === true}
+                    initialAvatarText={customAvatarText}
+                    initialColorIndex={customAvatarColorIndex}
+                    onChange={this.onGeneratedAvatarChange}
+                />}
+                <input  onClick={this.onFileClick.bind(this)}  type="file" multiple={false} accept="image/*" style={{ display: 'none' }} ref={(ref) => { this.$fileInput = ref }}  onChange={this.onFileChange.bind(this)}></input>
+                {showUpload && <div className="wk-channelavatar-actions">
+                    <Button onClick={this.cancelCustomAvatar}>{this.context.t('base.common.cancel')}</Button>
+                    <Button loading={customAvatarSaving || uploading} onClick={this.saveCustomAvatar}>{this.context.t('base.common.save')}</Button>
+                </div>}
             </div>
-            <GroupAvatarEditModal
-                visible={customAvatarVisible}
-                name={groupName || ""}
-                nameAsFallback={isNamedGroup === true}
-                initialAvatarText={customAvatarText}
-                initialColorIndex={customAvatarColorIndex}
-                saving={customAvatarSaving}
-                onSave={this.saveCustomAvatar}
-                onCancel={this.cancelCustomAvatar}
-            />
             <WKModal
                 title={this.context.t('base.channelAvatar.cropAvatar')}
                 visible={!!cropFile}

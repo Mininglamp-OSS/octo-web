@@ -22,6 +22,7 @@ export interface CreateChannelOptions {
 export interface UpdateChannelAvatarCustomOptions {
   avatarText?: string;
   avatarColor?: number | "";
+  clearUploadedAvatar?: boolean;
 }
 
 function isPersonChannel(channel: Channel) {
@@ -125,6 +126,9 @@ export function updateChannelAvatarCustom(
   } else if (options.avatarColor === "") {
     // 后端约定空串表示清除自定义色（回退按 group_no 派生）。
     body.avatar_color = "";
+  }
+  if (options.clearUploadedAvatar) {
+    body.clear_uploaded_avatar = "1";
   }
   return APIClient.shared.put(`groups/${channel.channelID}`, body);
 }

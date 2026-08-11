@@ -97,6 +97,7 @@ export function buildGroupProfileRows({
             <ChannelAvatar
               showUpload={data.isManagerOrCreatorOfMe}
               channel={channel}
+              context={context}
               groupName={channelInfo?.title || ""}
               isNamedGroup={isNamedGroup}
               initialAvatarText={channelInfo?.orgData?.avatar_text || ""}

@@ -152,6 +152,7 @@ describe("ChannelSettingService", () => {
     await updateChannelAvatarCustom(channel, {
       avatarText: "Team",
       avatarColor: 3,
+      clearUploadedAvatar: true,
     });
     await updateChannelAvatarCustom(channel, {
       avatarText: "",
@@ -167,6 +168,7 @@ describe("ChannelSettingService", () => {
     expect(apiPut).toHaveBeenNthCalledWith(1, "groups/group-1", {
       avatar_text: "Team",
       avatar_color: "3",
+      clear_uploaded_avatar: "1",
     });
     expect(apiPut).toHaveBeenNthCalledWith(2, "groups/group-1", {
       avatar_text: "",
