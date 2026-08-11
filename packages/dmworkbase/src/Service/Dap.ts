@@ -203,6 +203,11 @@ function statusBucket(status: number): string {
     return '2xx'
 }
 
+/** fetch reject 是否为「被取消」而非真实失败:AbortController.abort() 抛 name==='AbortError' 的 DOMException。 */
+function isAbortError(err: unknown): boolean {
+    return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError'
+}
+
 class DapImpl {
     /** 会话内唯一;仅作为埋点事件 envelope 的 session_id 随上报发出(采集启用时才发)。纯内存,不落盘。 */
     readonly sessionId: string = genId()
@@ -682,9 +687,25 @@ class DapImpl {
     private fireExposure(el: HTMLElement): void {
         if (!el.dataset || !el.dataset.trackView) return
         if (!this.enabled) return
+        // 只在元素**真正可见**时算一次曝光。shell(MainContentLeft)把访问过的路由全留在
+        // DOM 里用 inline `display:none` 藏着,隐藏子树里的节点重渲染 / setEnabled 补扫都会
+        // 触发 childList,若不判可见性就会给用户没看到的页面记 impression(见 PR review P1-1)。
+        // 与 page 路径的 `display==='block'` 闸对齐:任一祖先 inline display:none 即视为不可见,
+        // 此时不标 seen,留待其真正可见时再采。
+        if (this.isHiddenByDisplay(el)) return
         if (this.seenViews.has(el)) return
         this.seenViews.add(el)
         this.track(el.dataset.trackView, this.collectDatasetProps(el))
+    }
+
+    /** 沿 parentElement 链上溯,任一祖先(含自身)inline `display:none` → 判为不可见。 */
+    private isHiddenByDisplay(el: HTMLElement): boolean {
+        let node: HTMLElement | null = el
+        while (node) {
+            if (node.style && node.style.display === 'none') return true
+            node = node.parentElement
+        }
+        return false
     }
 
     /**
@@ -771,7 +792,10 @@ class DapImpl {
                         return resp
                     })
                     .catch((err) => {
-                        emit(url, method || 'GET', 0, Date.now() - start)
+                        // 被取消的请求不是失败:搜索每次按键都会 abort 在途请求(APIClient 的
+                        // AbortSignal 即为此),记成 status 0→'err' 会把 http_request 错误率打爆
+                        // (见 PR review P1-2)。仅真实网络失败才记 err。
+                        if (!isAbortError(err)) emit(url, method || 'GET', 0, Date.now() - start)
                         throw err
                     })
             }
@@ -798,9 +822,13 @@ class DapImpl {
                     // 在闭包里定住 url/method/start(不在 loadend 时读实例字段,避免复用/
                     // 重 open 后读到串味的路径);once:true 保证复用实例多次 send 不累积监听
                     // (否则一个 loadend 会补发历史请求的 http_request,见 review P2)。
+                    // abort 与 loadend 都会在取消时触发,且 abort 先于 loadend;命中 abort 就
+                    // 标记跳过,不把用户主动取消记成 status 0→'err'(见 PR review P1-2)。
+                    let aborted = false
+                    this.addEventListener('abort', () => { aborted = true }, { once: true })
                     this.addEventListener(
                         'loadend',
-                        () => emit(url, method, this.status, Date.now() - start),
+                        () => { if (!aborted) emit(url, method, this.status, Date.now() - start) },
                         { once: true },
                     )
                 }
