@@ -4,6 +4,7 @@ import {
   isMatchingOidcCallback,
   parseHttpOrigin,
   parseOidcCallback,
+  validateOidcHttpRequest,
   withTrustedSessionSid,
 } from '../oidcRedirect'
 
@@ -118,6 +119,35 @@ describe('parseOidcCallback', () => {
   })
 })
 
+describe('validateOidcHttpRequest', () => {
+  const API = 'https://api.example.com'
+
+  it('allows only the configured origin and endpoint/method pairs', () => {
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/auth/oidc/acme/bind/info`, method: 'GET',
+    }, API).ok).toBe(true)
+    expect(validateOidcHttpRequest({
+      url: 'https://attacker.example/v1/user/thirdlogin/authstatus', method: 'GET',
+    }, API)).toEqual({ ok: false, error: 'OIDC origin is not allowed' })
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/auth/oidc/acme/bind/info`, method: 'POST',
+    }, undefined)).toEqual({ ok: false, error: 'OIDC origin is not allowed' })
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/auth/oidc/acme/bind/info`, method: 'POST',
+    }, API)).toEqual({ ok: false, error: 'Invalid OIDC method' })
+  })
+
+  it('does not accept arbitrary paths or non-string token headers', () => {
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/secrets`, method: 'GET',
+    }, API).ok).toBe(false)
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/user/thirdlogin/authstatus`, method: 'GET',
+      headers: { token: 123 },
+    }, API)).toEqual({ ok: false, error: 'Invalid OIDC headers' })
+  })
+})
+
 describe('withTrustedSessionSid', () => {
   it('injects sid and preserves /login query as-is', () => {
     expect(
@@ -180,6 +210,19 @@ describe('isMatchingOidcCallback', () => {
       'aegis',
     )).toBe(false)
   })
+
+  it('requires both correlation fields for bind callbacks', () => {
+    expect(isMatchingOidcCallback(
+      { path: '/oidc/bind', query: { token: 'attacker-token' } },
+      'pending-authcode',
+      'aegis',
+    )).toBe(false)
+    expect(isMatchingOidcCallback(
+      { path: '/oidc/bind', query: { token: 't', authcode: 'pending-authcode', provider: 'aegis' } },
+      'pending-authcode',
+      'aegis',
+    )).toBe(true)
+  })
 })
 
 describe('isTrustedSenderUrl', () => {
@@ -206,6 +249,14 @@ describe('isTrustedSenderUrl', () => {
       'file:///tmp/attacker.html',
       undefined,
       'file:///Applications/OCTO.app/build/index.html',
+    )).toBe(false)
+  })
+
+  it('rejects a different file host even when the path matches', () => {
+    expect(isTrustedSenderUrl(
+      'file://attacker/build/index.html',
+      undefined,
+      'file:///build/index.html',
     )).toBe(false)
   })
 

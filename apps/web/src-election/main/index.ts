@@ -11,6 +11,7 @@ import {
   nativeImage,
   dialog,
   net,
+  shell,
 } from "electron";
 import fs from "fs";
 import tmp from 'tmp';
@@ -25,8 +26,9 @@ import {
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_API_ORIGIN_START,
   IPC_OIDC_HTTP_REQUEST,
+  IPC_OIDC_OPEN_EXTERNAL,
 } from "../shared/ipc-channels";
-import OCTO_CONFIG from "./config";
+import OCTO_CONFIG, { OIDC_API_ORIGIN } from "./config";
 import {
   actualBreadcrumbFile,
   cleanupStaleStaging,
@@ -40,7 +42,7 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
-import { isMatchingOidcCallback, isTrustedSenderUrl, parseHttpOrigin, parseOidcCallback, withTrustedSessionSid } from "./oidcRedirect";
+import { isMatchingOidcCallback, isTrustedSenderUrl, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, withTrustedSessionSid } from "./oidcRedirect";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -62,7 +64,6 @@ type OidcFlow = {
   expiresAt: number;
 };
 const oidcExpectedFlows = new WeakMap<BrowserWindow, OidcFlow>();
-const oidcApiOrigins = new WeakMap<BrowserWindow, string>();
 const OIDC_FLOW_TTL_MS = 5 * 60 * 1000;
 
 const isDevelopment = !app.isPackaged && process.env.NODE_ENV !== "production";
@@ -126,13 +127,14 @@ ipcMain.handle(IPC_OIDC_AUTHORIZE_START, (event, apiURL: unknown, authcode: unkn
   const win = resolveTrustedOidcSender(event);
   if (!win) return { ok: false as const, code: "untrusted-sender" as const };
   const origin = parseHttpOrigin(apiURL);
-  if (!origin) return { ok: false as const, code: "invalid-origin" as const };
+  if (!origin || !OIDC_API_ORIGIN || origin !== OIDC_API_ORIGIN) {
+    return { ok: false as const, code: "invalid-origin" as const };
+  }
   if (typeof authcode !== "string" || authcode === "" || typeof providerId !== "string" || providerId === "") {
     return { ok: false as const, code: "invalid-flow" as const };
   }
-  oidcApiOrigins.set(win, origin);
   oidcExpectedFlows.set(win, {
-    origin,
+    origin: OIDC_API_ORIGIN,
     authcode,
     providerId,
     expiresAt: Date.now() + OIDC_FLOW_TTL_MS,
@@ -142,9 +144,11 @@ ipcMain.handle(IPC_OIDC_AUTHORIZE_START, (event, apiURL: unknown, authcode: unkn
 
 ipcMain.handle(IPC_OIDC_API_ORIGIN_START, (event, apiURL: unknown) => {
   const win = resolveTrustedOidcSender(event);
+  if (!win) return { ok: false as const, code: "untrusted-sender" as const };
   const origin = parseHttpOrigin(apiURL);
-  if (!win || !origin) return { ok: false as const, code: "invalid-origin" as const };
-  oidcApiOrigins.set(win, origin);
+  if (!origin || !OIDC_API_ORIGIN || origin !== OIDC_API_ORIGIN) {
+    return { ok: false as const, code: "invalid-origin" as const };
+  }
   return { ok: true as const };
 });
 
@@ -152,6 +156,18 @@ ipcMain.handle(IPC_OIDC_AUTHORIZE_END, (event) => {
   const win = resolveTrustedOidcSender(event);
   if (win) oidcExpectedFlows.delete(win);
   return { ok: !!win };
+});
+
+ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, (event, url: unknown) => {
+  const win = resolveTrustedOidcSender(event);
+  if (!win || typeof url !== "string") return { ok: false as const };
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return { ok: false as const }; }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { ok: false as const };
+  }
+  void shell.openExternal(parsed.toString());
+  return { ok: true as const };
 });
 
 // Packaged renderer pages use file://, which is not an allowed CORS origin on
@@ -165,54 +181,27 @@ ipcMain.handle(IPC_OIDC_HTTP_REQUEST, async (event, request: unknown) => {
   // two whitelisted OIDC endpoints.
   const win = resolveTrustedOidcSender(event);
   if (!win) throw new Error("Untrusted OIDC sender");
-  if (!request || typeof request !== "object") throw new Error("Invalid OIDC request");
-  const { url, method, body: requestBody, headers: requestHeaders } = request as {
-    url?: unknown; method?: unknown; body?: unknown; headers?: unknown;
-  };
-  if (typeof url !== "string" || (method !== "GET" && method !== "POST")) {
-    throw new Error("Invalid OIDC request");
+  const validated = validateOidcHttpRequest(request, OIDC_API_ORIGIN);
+  if (validated.ok === false) throw new Error(validated.error);
+  const { url, method, body: requestBody, token } = validated.value;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  let response: Response;
+  try {
+    response = await net.fetch(url, {
+      method,
+      redirect: "error",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+        ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
+        ...(token !== undefined && token !== "" ? { token } : {}),
+      },
+      ...(method === "POST" ? { body: JSON.stringify(requestBody ?? {}) } : {}),
+    });
+  } finally {
+    clearTimeout(timeout);
   }
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { throw new Error("Invalid OIDC URL"); }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-    throw new Error("Invalid OIDC URL");
-  }
-  const isLoginEndpoint = parsed.pathname === "/v1/user/thirdlogin/authcode" ||
-    parsed.pathname === "/v1/user/thirdlogin/authstatus";
-  const isOidcEndpoint = /^\/v1\/auth\/oidc\/[a-z0-9_%.-]+\/(?:bind\/(?:info|verify\/password|verify\/otp\/send|verify\/otp\/check|confirm|create)|logout)$/i.test(parsed.pathname);
-  if (!isLoginEndpoint && !isOidcEndpoint) {
-    throw new Error("OIDC endpoint is not allowed");
-  }
-  if (isLoginEndpoint && method !== "GET") throw new Error("Invalid OIDC method");
-  const isBindInfoEndpoint = isOidcEndpoint && parsed.pathname.endsWith("/info");
-  const isOidcPostEndpoint = isOidcEndpoint && !isBindInfoEndpoint;
-  if (isBindInfoEndpoint && method !== "GET") {
-    throw new Error("Invalid OIDC method");
-  }
-  if (isOidcPostEndpoint && method !== "POST") {
-    throw new Error("Invalid OIDC method");
-  }
-  // Origin whitelist: only allow the API origin that this window already
-// registered via the trusted-shell API-origin handshake. This prevents the
-// proxy from being used as a generic SSRF primitive against arbitrary hosts
-// (even for the two path-whitelisted endpoints).
-  const expectedOrigin = oidcApiOrigins.get(win);
-  if (!expectedOrigin || parsed.origin !== expectedOrigin) {
-    throw new Error("OIDC origin is not allowed");
-  }
-  const token = requestHeaders && typeof requestHeaders === "object"
-    ? (requestHeaders as Record<string, unknown>).token
-    : undefined;
-  if (token !== undefined && typeof token !== "string") throw new Error("Invalid OIDC headers");
-  const response = await net.fetch(parsed.toString(), {
-    method,
-    headers: {
-      Accept: "application/json",
-      ...(method === "POST" ? { "Content-Type": "application/json" } : {}),
-      ...(typeof token === "string" && token !== "" ? { token } : {}),
-    },
-    ...(method === "POST" ? { body: JSON.stringify(requestBody ?? {}) } : {}),
-  });
   const responseText = await response.text().catch(() => "");
   let responseBody: unknown = undefined;
   if (responseText !== "") {
@@ -243,22 +232,61 @@ ipcMain.handle(IPC_OIDC_HTTP_REQUEST, async (event, request: unknown) => {
 // needs it for authstatus polling and bind API calls. The renderer explicitly
 // ends the flow after that work is complete.
 function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: string) {
+  const restoreShell = () => {
+    if (!win.isDestroyed()) win.loadFile(webUrl, { query: { sid } });
+  };
+
   const handleCallback = (event: Electron.Event, url: string) => {
     const flow = oidcExpectedFlows.get(win);
     if (!flow || flow.expiresAt <= Date.now()) {
       oidcExpectedFlows.delete(win);
+      event.preventDefault();
+      restoreShell();
       return;
     }
     const callback = parseOidcCallback(url, flow.origin);
-    if (!callback) return;
-    if (!isMatchingOidcCallback(callback, flow.authcode, flow.providerId)) return;
+    if (!callback) {
+      // A navigation back to the API origin is a callback attempt, even when
+      // its path/query is invalid. Do not leave a packaged window stranded on
+      // an arbitrary remote API error page.
+      try {
+        if (new URL(url).origin === flow.origin) {
+          event.preventDefault();
+          restoreShell();
+        }
+      } catch { /* malformed navigation is left to Electron */ }
+      return;
+    }
+    if (!isMatchingOidcCallback(callback, flow.authcode, flow.providerId)) {
+      event.preventDefault();
+      restoreShell();
+      return;
+    }
 
     event.preventDefault();
+    oidcExpectedFlows.delete(win);
     win.loadFile(webUrl, { query: withTrustedSessionSid(callback, sid) });
   };
 
   win.webContents.on("will-redirect", handleCallback);
   win.webContents.on("will-navigate", handleCallback);
+  win.webContents.on("did-fail-load", (_event, errorCode, _errorDescription, _validatedURL, isMainFrame) => {
+    if (!isMainFrame || errorCode === -3) return;
+    const flow = oidcExpectedFlows.get(win);
+    if (flow && flow.expiresAt > Date.now()) restoreShell();
+  });
+
+  const checkExpiry = () => {
+    const flow = oidcExpectedFlows.get(win);
+    if (!flow) return;
+    if (flow.expiresAt <= Date.now()) {
+      oidcExpectedFlows.delete(win);
+      restoreShell();
+      return;
+    }
+    setTimeout(checkExpiry, Math.max(1000, flow.expiresAt - Date.now()));
+  };
+  setTimeout(checkExpiry, OIDC_FLOW_TTL_MS + 50);
 }
 
 const registerWindowFocusHandler = () => {
@@ -599,13 +627,8 @@ const getWindowConfig = () => {
       preload: join(__dirname, "..", "preload", "index.js"),
       nodeIntegration: false,
       contextIsolation: true,
-      // The preload is a CommonJS entry compiled by tsc. Electron 26's
-      // sandboxed preload loader does not reliably expose this bridge in the
-      // packaged app; without it, window.ipc is absent and OIDC always fails
-      // before the authorize request starts. Node integration remains off and
-      // context isolation stays enabled, so the renderer still cannot access
-      // Node APIs directly.
-      sandbox: false,
+      // Keep the renderer OS-sandboxed while it displays IdP content.
+      sandbox: true,
       devTools: isDevelopment,
       // Pass the dev server origin to preload via `process.argv`. Preload
       // needs it to whitelist IPC calls in dev mode (see preload/index.ts

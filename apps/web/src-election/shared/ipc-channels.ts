@@ -20,3 +20,6 @@ export const IPC_OIDC_API_ORIGIN_START = "oidc-api-origin-start";
 
 /** Renderer → Main: perform a CORS-free OIDC API request in the main process. */
 export const IPC_OIDC_HTTP_REQUEST = "oidc-http-request";
+
+/** Renderer → Main: open an IdP URL outside the embedded application window. */
+export const IPC_OIDC_OPEN_EXTERNAL = "oidc-open-external";

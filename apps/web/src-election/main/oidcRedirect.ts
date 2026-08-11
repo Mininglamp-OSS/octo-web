@@ -1,5 +1,12 @@
 export type OidcCallbackPath = '/login' | '/oidc/bind'
 
+export type OidcHttpRequest = {
+  url: string
+  method: 'GET' | 'POST'
+  body?: unknown
+  token?: string
+}
+
 // Note: `__octo_route` is intentionally NOT in this allow-list. It is injected
 // by `withTrustedSessionSid` after the IdP callback has been validated, and
 // must never be sourced from the IdP-controlled redirect URL — otherwise an
@@ -28,6 +35,45 @@ export function parseHttpOrigin(value: unknown): string | undefined {
   } catch {
     return undefined
   }
+}
+
+/**
+ * Validate the renderer-to-main OIDC HTTP request without touching Electron.
+ * Keeping this pure makes the security boundary testable without importing the
+ * main process and accidentally registering real ipcMain handlers.
+ */
+export function validateOidcHttpRequest(
+  request: unknown,
+  expectedOrigin: string | undefined,
+): { ok: true; value: OidcHttpRequest } | { ok: false; error: string } {
+  if (!request || typeof request !== 'object') return { ok: false, error: 'Invalid OIDC request' }
+  const input = request as Record<string, unknown>
+  if (typeof input.url !== 'string' || (input.method !== 'GET' && input.method !== 'POST')) {
+    return { ok: false, error: 'Invalid OIDC request' }
+  }
+  let parsed: URL
+  try { parsed = new URL(input.url) } catch { return { ok: false, error: 'Invalid OIDC URL' } }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return { ok: false, error: 'Invalid OIDC URL' }
+  }
+  if (!expectedOrigin || parsed.origin !== expectedOrigin) {
+    return { ok: false, error: 'OIDC origin is not allowed' }
+  }
+  const isLoginEndpoint = parsed.pathname === '/v1/user/thirdlogin/authcode' ||
+    parsed.pathname === '/v1/user/thirdlogin/authstatus'
+  const isOidcEndpoint = /^\/v1\/auth\/oidc\/[a-z0-9_%.-]+\/(?:bind\/(?:info|verify\/password|verify\/otp\/send|verify\/otp\/check|confirm|create)|logout)$/i.test(parsed.pathname)
+  if (!isLoginEndpoint && !isOidcEndpoint) return { ok: false, error: 'OIDC endpoint is not allowed' }
+  const method = input.method as 'GET' | 'POST'
+  const isBindInfoEndpoint = isOidcEndpoint && parsed.pathname.endsWith('/info')
+  if ((isLoginEndpoint || isBindInfoEndpoint) !== (method === 'GET')) {
+    return { ok: false, error: 'Invalid OIDC method' }
+  }
+  const headers = input.headers && typeof input.headers === 'object'
+    ? input.headers as Record<string, unknown>
+    : undefined
+  const token = headers?.token
+  if (token !== undefined && typeof token !== 'string') return { ok: false, error: 'Invalid OIDC headers' }
+  return { ok: true, value: { url: parsed.toString(), method, body: input.body, token: token as string | undefined } }
 }
 
 export function parseOidcCallback(url: string, expectedOrigin: string): {
@@ -61,6 +107,13 @@ export function isMatchingOidcCallback(
   expectedAuthcode: string,
   expectedProviderId: string,
 ): boolean {
+  if (callback.path === '/oidc/bind') {
+    // Bind callbacks carry all correlation fields. Unlike /login, accepting
+    // an omitted authcode/provider would let any token URL enter the trusted
+    // local bind UI while a flow is armed.
+    return callback.query.authcode === expectedAuthcode &&
+      callback.query.provider === expectedProviderId
+  }
   const isErrorCallback = callback.path === '/login' &&
     (callback.query.oidc_error === '1' || callback.query.error !== undefined)
   if (!isErrorCallback && callback.query.authcode !== undefined && callback.query.authcode !== expectedAuthcode) {

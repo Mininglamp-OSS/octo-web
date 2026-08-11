@@ -28,8 +28,9 @@ describe("OIDC logout wiring", () => {
     expect(navSource).toContain("logoutUserInitiated");
     expect(spaceGateSource).toContain("logoutUserInitiated");
     expect(joinSpaceSource).toContain("logoutUserInitiated");
-    expect(appSource).toContain("requestOidcLogout(providerId, token)");
+    expect(appSource).toContain("requestOidcLogout(providerId, token, fetcher || fetch)");
     expect(appSource).toContain("safeEndSessionUrl(resp.end_session_url)");
+    expect(appSource).toContain("ipc.invoke(IPC_OIDC_OPEN_EXTERNAL, endSessionUrl)");
     expect(appSource).toContain("window.location.href = endSessionUrl");
   });
 
@@ -44,5 +45,6 @@ describe("OIDC logout wiring", () => {
     expect(clearIdx).toBeGreaterThan(redirectBlockIdx);
     expect(markIdx).toBeGreaterThan(clearIdx);
     expect(redirectIdx).toBeGreaterThan(markIdx);
+    expect(source).toContain("ipc.invoke(IPC_OIDC_OPEN_EXTERNAL, endSessionUrl)");
   });
 });

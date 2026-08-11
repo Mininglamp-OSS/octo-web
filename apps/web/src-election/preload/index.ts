@@ -5,6 +5,7 @@ import {
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_API_ORIGIN_START,
   IPC_OIDC_HTTP_REQUEST,
+  IPC_OIDC_OPEN_EXTERNAL,
 } from "../shared/ipc-channels";
 
 // Keep the preload entry self-contained. Electron runs sandboxed preloads in
@@ -52,7 +53,9 @@ const isTrustedShell = () => {
     try {
       const current = new URL(window.location.href);
       const trusted = new URL(trustedShellFileURL);
-      if (current.protocol === trusted.protocol && current.pathname === trusted.pathname) return true;
+      if (current.protocol === trusted.protocol &&
+        current.hostname === trusted.hostname &&
+        current.pathname === trusted.pathname) return true;
     } catch {
       return false;
     }
@@ -84,6 +87,7 @@ const ALLOWED_INVOKE_CHANNELS = [
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_API_ORIGIN_START,
   IPC_OIDC_HTTP_REQUEST,
+  IPC_OIDC_OPEN_EXTERNAL,
 ];
 
 const ALLOWED_RECEIVE_CHANNELS = [

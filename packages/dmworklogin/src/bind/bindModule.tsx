@@ -20,7 +20,8 @@ export default class BindModule implements IModule {
     // documented flow.
     if (typeof window !== 'undefined' && (
       window.location.pathname === '/oidc/bind' ||
-      new URLSearchParams(window.location.search).get('__octo_route') === '/oidc/bind'
+      (window.location.protocol === 'file:' &&
+        new URLSearchParams(window.location.search).get('__octo_route') === '/oidc/bind')
     )) {
       markBindEntry(window.location.search)
       // Scrub the live URL *synchronously* here, before RouteManager's

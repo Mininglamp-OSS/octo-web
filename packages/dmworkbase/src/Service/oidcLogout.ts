@@ -19,6 +19,7 @@ const AUTH_STORAGE_PREFIXES = [
 const AUTH_STORAGE_KEYS = ["currentSpaceId", "pending_oidc_login"];
 const IPC_OIDC_API_ORIGIN_START = "oidc-api-origin-start";
 const IPC_OIDC_HTTP_REQUEST = "oidc-http-request";
+export const IPC_OIDC_OPEN_EXTERNAL = "oidc-open-external";
 
 export interface OidcLogoutResponse {
   status?: number;
@@ -98,7 +99,10 @@ export function createOidcLogoutFetcher(
     if (registered?.ok !== true) throw new Error("OIDC API origin registration failed");
     const path = typeof input === "string" ? input : input.toString();
     const url = new URL(path, apiURL.endsWith("/") ? apiURL : `${apiURL}/`).toString();
-    const body = init?.body == null ? undefined : JSON.parse(String(init.body));
+    let body: unknown = undefined
+    if (init?.body != null) {
+      try { body = JSON.parse(String(init.body)) } catch { body = init.body }
+    }
     const result = await ipc.invoke(IPC_OIDC_HTTP_REQUEST, {
       url,
       method: init?.method || "POST",

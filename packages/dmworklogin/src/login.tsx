@@ -20,9 +20,14 @@ import loginLogo from "./assets/login-logo.png";
 
 const ENTERPRISE_SSO_ENABLED =
     import.meta.env.VITE_ENABLE_ENTERPRISE_SSO === 'true'
-// Local Electron development keeps the password-login workflow. OIDC is
-// exposed only in production web builds and packaged Electron builds.
-const OIDC_ENABLED = ENTERPRISE_SSO_ENABLED && !import.meta.env.DEV
+// Local Electron development keeps the password-login workflow, while plain
+// web development should still exercise the enterprise SSO entry point.
+const isElectronRuntime = typeof window !== 'undefined' && (
+    Boolean((window as any).__POWERED_ELECTRON__) ||
+    Boolean((window as any).__TAURI_IPC__) ||
+    import.meta.env.VITE_ELECTRON_BUILD === 'true'
+)
+const OIDC_ENABLED = ENTERPRISE_SSO_ENABLED && (!import.meta.env.DEV || !isElectronRuntime)
 // Register URL 从当前 provider 的 accountUrl 派生，避免把 test/prod 用户带到
 // 错误的 IdP 环境。若后续接入新的 OIDC provider 或非 Aegis 登录方式，入口配置
 // 应改为由 appconfig 下发。

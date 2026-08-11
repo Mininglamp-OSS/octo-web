@@ -155,6 +155,7 @@ import {
   requestOidcLogout,
   safeEndSessionUrl,
   createOidcLogoutFetcher,
+  IPC_OIDC_OPEN_EXTERNAL,
 } from "./Service/oidcLogout";
 
 export const IM_DEVICE_FLAG_WEB = 1;
@@ -1148,8 +1149,14 @@ export default class WKApp extends ProviderListener {
             : rawEndSessionUrl;
         if (endSessionUrl) {
           this.clearLocalLoginState();
-          markOidcPostLogoutCleanup();
-          window.location.href = endSessionUrl;
+          const isElectronShell = window.location.protocol === "file:" &&
+            typeof ipc?.invoke === "function";
+          if (isElectronShell) {
+            await ipc.invoke(IPC_OIDC_OPEN_EXTERNAL, endSessionUrl);
+          } else {
+            markOidcPostLogoutCleanup();
+            window.location.href = endSessionUrl;
+          }
           return;
         }
       } catch (e) {
