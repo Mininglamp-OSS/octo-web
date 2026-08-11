@@ -534,6 +534,29 @@ describe("validateCardForOcto — 真实预算上限（MAX_NODES=200 / MAX_DEPTH
       ).ok
     ).toBe(true);
   });
+  it("ToggleVisibility action 自身仍计 1 个节点（200 个元素 + 1 个 action）", () => {
+    const targetIds = Array.from(
+      { length: 200 },
+      (_, index) => `section-${index}`
+    );
+    const body = targetIds.map((id) => ({
+      type: "Container",
+      id,
+      items: [],
+    }));
+    expect(
+      validateCardForOcto(
+        AC(body, {
+          actions: [
+            {
+              type: "Action.ToggleVisibility",
+              targetElements: targetIds,
+            },
+          ],
+        })
+      ).ok
+    ).toBe(false);
+  });
   it("嵌套深度 17 层 → 越界降级", () => {
     let node: Record<string, unknown> = { type: "TextBlock", text: "deep" };
     for (let i = 0; i < 17; i++) node = { type: "Container", items: [node] };
