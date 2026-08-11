@@ -145,13 +145,20 @@ describe('octoweb fetchSpaceBotSnapshots seam', () => {
     expect(calls[0].url).toBe('/robot/space_bots?space_id=s_1')
   })
 
-  it('does NOT alter the name-only fetchSpaceBotNames contract', async () => {
+  it('carries creatorUid on fetchSpaceBotNames but keeps it isBot-free (name-backfill contract)', async () => {
     wk.apiClient.responder = () => ({
-      data: [{ uid: 'b_1', name: 'Writer', creator_uid: 'u_ada' }],
+      data: [
+        { uid: 'b_1', name: 'Writer', creator_uid: 'u_ada' },
+        { uid: 'b_2', name: 'Nameless creator' },
+      ],
       status: 200,
     })
-    // Same source, but the name-only accessor still returns bare { uid, name } pairs.
-    expect(await fetchSpaceBotNames('s_1')).toEqual([{ uid: 'b_1', name: 'Writer' }])
+    // Same source as the snapshot path; the name-only accessor now surfaces creatorUid (used to
+    // nest a bot under its creator) but still omits isBot — a bot with no creator_uid stays bare.
+    expect(await fetchSpaceBotNames('s_1')).toEqual([
+      { uid: 'b_1', name: 'Writer', creatorUid: 'u_ada' },
+      { uid: 'b_2', name: 'Nameless creator' },
+    ])
   })
 
   it('falls back to the uid and skips entries without a uid', async () => {

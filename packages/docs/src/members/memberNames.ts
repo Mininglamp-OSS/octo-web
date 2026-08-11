@@ -34,6 +34,12 @@ import { fetchAllSpaceMembers, fetchSpaceBotNames } from '../octoweb/index.ts'
 export interface SpaceMemberDirectory {
   names: Map<string, string>
   botUids: Set<string>
+  /**
+   * botUid → creatorUid, populated ONLY from `/robot/space_bots` rows that carried a `creator_uid`.
+   * The panel nests each bot beneath its creator's row; a bot with no known creator (absent here)
+   * falls into the shared "ownerless bots" fold. No extra request — same Promise.all as `botUids`.
+   */
+  botCreators: Map<string, string>
 }
 
 const cache = new Map<string, Promise<SpaceMemberDirectory>>()
@@ -48,7 +54,7 @@ const namesProjection = new WeakMap<Promise<SpaceMemberDirectory>, Promise<Map<s
  * from data we already fetch, not a new call.
  */
 export function getSpaceMemberDirectory(spaceId: string): Promise<SpaceMemberDirectory> {
-  if (!spaceId) return Promise.resolve({ names: new Map<string, string>(), botUids: new Set<string>() })
+  if (!spaceId) return Promise.resolve({ names: new Map<string, string>(), botUids: new Set<string>(), botCreators: new Map<string, string>() })
   const cached = cache.get(spaceId)
   if (cached) return cached
   const pending = Promise.all([
@@ -66,6 +72,7 @@ export function getSpaceMemberDirectory(spaceId: string): Promise<SpaceMemberDir
     if (members === null) cache.delete(spaceId)
     const map = new Map<string, string>()
     const botUids = new Set<string>()
+    const botCreators = new Map<string, string>()
     for (const m of members ?? []) {
       if (!m.uid) continue
       map.set(m.uid, m.name || m.uid)
@@ -78,10 +85,13 @@ export function getSpaceMemberDirectory(spaceId: string): Promise<SpaceMemberDir
     for (const b of bots) {
       if (!b.uid) continue
       botUids.add(b.uid)
+      // Nest under the creator only when the endpoint carried one; a bot with no creator_uid stays
+      // out of this map and lands in the ownerless fold.
+      if (b.creatorUid) botCreators.set(b.uid, b.creatorUid)
       const existing = map.get(b.uid)
       if (!existing || existing === b.uid) map.set(b.uid, b.name || b.uid)
     }
-    return { names: map, botUids }
+    return { names: map, botUids, botCreators }
   })
   cache.set(spaceId, pending)
   return pending

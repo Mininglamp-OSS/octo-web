@@ -68,7 +68,7 @@ export function MemberPanel({
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
-  const { names, botUids } = useMemberDirectory(space ?? '')
+  const { names, botUids, botCreators } = useMemberDirectory(space ?? '')
   // Screen 4c admin side: prefer the shared instance from EditorShell so the toolbar badge and this
   // panel read/mutate the SAME pending-request state; only fall back to a local hook when rendered
   // standalone (no shared instance passed). The fallback is kept INERT (enabled=false) whenever a
@@ -220,6 +220,7 @@ export function MemberPanel({
         onChangeRole={onChangeRole}
         onRemove={onRemove}
         botUids={botUids}
+        botCreators={botCreators}
         canRemove={(m) => (resolvedOwner ? canRemoveMember({ ...m, grantedBy: '' } as Member, resolvedOwner) : true)}
       />
     </section>

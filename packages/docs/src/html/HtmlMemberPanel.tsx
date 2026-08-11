@@ -62,7 +62,7 @@ export function HtmlMemberPanel({
   // uid → display name + bot uids for member rows (falls back to uid until the roster resolves).
   // html `space` is optional: when undefined the directory is empty (empty botUids) so every row
   // renders as a human — the fail-soft direction (never hide a real person in the bot fold).
-  const { names, botUids } = useMemberDirectory(space ?? '')
+  const { names, botUids, botCreators } = useMemberDirectory(space ?? '')
   const [grants, setGrants] = useState<HtmlGrant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -258,6 +258,7 @@ export function HtmlMemberPanel({
           onChangeRole={onChangeRole}
           onRemove={onRemove}
           botUids={botUids}
+          botCreators={botCreators}
         />
       )}
     </section>

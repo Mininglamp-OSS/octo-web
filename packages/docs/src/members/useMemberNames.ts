@@ -21,7 +21,7 @@ export function useMemberNames(spaceId: string): Map<string, string> {
   return names
 }
 
-const EMPTY_DIRECTORY: SpaceMemberDirectory = { names: new Map(), botUids: new Set() }
+const EMPTY_DIRECTORY: SpaceMemberDirectory = { names: new Map(), botUids: new Set(), botCreators: new Map() }
 
 /**
  * Subscribe a component to the space's full directory (names + bot uids). Shares the SAME cached

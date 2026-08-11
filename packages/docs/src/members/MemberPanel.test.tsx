@@ -394,6 +394,198 @@ describe('MemberPanel — bot section + AI tag + frozen order (PR C #3/#4)', () 
   })
 })
 
+describe('MemberPanel — bots nested under their creator (PR C bot-nesting change)', () => {
+  // space_bots now carries creator_uid; the panel nests each bot under its creator row (per-creator
+  // default-collapsed expander) and drops ownerless bots into a single bottom fold.
+  function wireMembers(
+    members: Array<{ uid: string; role: string; source?: string }>,
+    bots: Array<{ uid: string; name?: string; creator_uid?: string }>,
+  ): void {
+    // The list only renders actual doc-member grants; a bot must therefore be BOTH a grant row AND
+    // a space_bots entry (its creator_uid) to show. Auto-grant each bot as a member (reader).
+    const memberItems = [
+      ...members.map((m) => ({ uid: m.uid, role: m.role, source: m.source ?? 'direct', grantedBy: 'u_admin' })),
+      ...bots.map((b) => ({ uid: b.uid, role: 'reader', source: 'direct', grantedBy: 'u_admin' })),
+    ]
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        return { data: { items: memberItems }, status: 200 }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (url.startsWith('/robot/space_bots')) return { data: bots, status: 200 }
+      return { data: {}, status: 200 }
+    }
+  }
+  function currentSection(): HTMLElement {
+    return screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+  }
+  function rowFor(text: string): HTMLElement {
+    return Array.from(currentSection().querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes(text),
+    ) as HTMLElement
+  }
+  function visibleUids(): string[] {
+    return Array.from(currentSection().querySelectorAll('.octo-member-row .octo-uid')).map((el) => el.textContent ?? '')
+  }
+
+  it('renders a bot directly below its creator row, collapsed by default (new #1/#2)', async () => {
+    // u_human owns Bot One (creator_uid = u_human). Bot must nest under u_human, hidden until the
+    // creator's own expander is clicked.
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [{ uid: 'b_1', name: 'Bot One', creator_uid: 'u_human' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    // Collapsed by default: Bot One not visible; a per-creator expander sits right after the human.
+    expect(visibleUids().some((r) => r.includes('Bot One'))).toBe(false)
+    const humanRow = rowFor('Human One')
+    const expander = humanRow.parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement
+    expect(expander).toBeTruthy()
+    expect(expander.getAttribute('aria-expanded')).toBe('false')
+    fireEvent.click(expander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot One'))).toBe(true))
+    // The bot renders inside the SAME wrapper as its creator (nested, not the bottom fold).
+    expect((humanRow.parentElement!.textContent ?? '').includes('Bot One')).toBe(true)
+  })
+
+  it('gives each creator an INDEPENDENT expander (expanding A leaves B collapsed)', async () => {
+    wk.spaceMembers.push({ uid: 'u_a', name: 'Alpha' }, { uid: 'u_b', name: 'Beta' })
+    wireMembers(
+      [
+        { uid: 'u_a', role: 'writer' },
+        { uid: 'u_b', role: 'writer' },
+      ],
+      [
+        { uid: 'b_a', name: 'BotA', creator_uid: 'u_a' },
+        { uid: 'b_b', name: 'BotB', creator_uid: 'u_b' },
+      ],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Alpha'))).toBe(true))
+    const expanders = Array.from(currentSection().querySelectorAll('.octo-member-picker-expand')) as HTMLButtonElement[]
+    expect(expanders.length).toBe(2)
+    const alphaExpander = rowFor('Alpha').parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement
+    fireEvent.click(alphaExpander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('BotA'))).toBe(true))
+    // Beta's bot is STILL hidden — independent expansion state.
+    expect(visibleUids().some((r) => r.includes('BotB'))).toBe(false)
+  })
+
+  it('drops a bot whose creator is not a member into the bottom ownerless fold (new #3)', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [{ uid: 'b_orphan', name: 'Orphan Bot', creator_uid: 'u_stranger' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    // The human has no bots → no expander in its wrapper.
+    expect(rowFor('Human One').parentElement!.querySelector('.octo-member-picker-expand')).toBeNull()
+    const expander = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
+    fireEvent.click(expander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Orphan Bot'))).toBe(true))
+  })
+
+  it('does not render the bottom ownerless fold when there are zero orphan bots (new #4)', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [{ uid: 'b_1', name: 'Bot One', creator_uid: 'u_human' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    const expanders = Array.from(currentSection().querySelectorAll('.octo-member-picker-expand')) as HTMLButtonElement[]
+    expect(expanders.length).toBe(1)
+    // That single expander lives inside the creator's wrapper (nested), not a bottom sibling.
+    expect(rowFor('Human One').parentElement!.contains(expanders[0])).toBe(true)
+  })
+
+  it('renders no expander for a creator that owns zero bots (new #5)', async () => {
+    wk.spaceMembers.push({ uid: 'u_a', name: 'Alpha' }, { uid: 'u_b', name: 'Beta' })
+    wireMembers(
+      [
+        { uid: 'u_a', role: 'writer' },
+        { uid: 'u_b', role: 'writer' },
+      ],
+      [{ uid: 'b_a', name: 'BotA', creator_uid: 'u_a' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Beta'))).toBe(true))
+    expect(rowFor('Alpha').parentElement!.querySelector('.octo-member-picker-expand')).toBeTruthy()
+    expect(rowFor('Beta').parentElement!.querySelector('.octo-member-picker-expand')).toBeNull()
+  })
+
+  it('lets the OWNER be a bot creator (owner keeps pinned + carries its dropdown) (new #6)', async () => {
+    wk.spaceMembers.push({ uid: 'u_owner', name: 'Owner Person' }, { uid: 'u_human', name: 'Human One' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [{ uid: 'b_owned', name: 'Owner Bot', creator_uid: 'u_owner' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    const ownerRow = screen.getByText('docs.member.ownerBadge').closest('.octo-member-row') as HTMLElement
+    // Owner is the FIRST row.
+    expect(currentSection().querySelector('.octo-member-row')).toBe(ownerRow)
+    const ownerExpander = ownerRow.parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement
+    expect(ownerExpander).toBeTruthy()
+    fireEvent.click(ownerExpander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Owner Bot'))).toBe(true))
+  })
+
+  it('tags EVERY bot row (nested + orphan) with the AI badge; humans have none (new #7)', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [
+        { uid: 'b_nested', name: 'Nested Bot', creator_uid: 'u_human' },
+        { uid: 'b_orphan', name: 'Orphan Bot', creator_uid: 'u_stranger' },
+      ],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    fireEvent.click(rowFor('Human One').parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement)
+    fireEvent.click(within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Orphan Bot'))).toBe(true))
+    expect(rowFor('Nested Bot').querySelector('.octo-member-picker-badge')).toBeTruthy()
+    expect(rowFor('Orphan Bot').querySelector('.octo-member-picker-badge')).toBeTruthy()
+    expect(rowFor('Human One').querySelector('.octo-member-picker-badge')).toBeNull()
+  })
+
+  it('fail-soft: no bot directory → all rows tiled, no AI tag, no expander (new #8)', async () => {
+    wk.spaceMembers.push({ uid: 'u_a', name: 'Aaa' }, { uid: 'u_b', name: 'Bbb' })
+    wireMembers(
+      [
+        { uid: 'u_a', role: 'writer' },
+        { uid: 'u_b', role: 'reader' },
+      ],
+      [],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Aaa'))).toBe(true))
+    expect(currentSection().querySelector('.octo-member-picker-expand')).toBeNull()
+    expect(currentSection().querySelector('.octo-member-picker-badge')).toBeNull()
+  })
+
+  it('empty botCreators (bots but no creator_uid) → all bots land in the bottom fold (new #9)', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [
+        { uid: 'b_1', name: 'Bot One' },
+        { uid: 'b_2', name: 'Bot Two' },
+      ],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    expect(rowFor('Human One').parentElement!.querySelector('.octo-member-picker-expand')).toBeNull()
+    fireEvent.click(within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot One'))).toBe(true))
+    expect(visibleUids().some((r) => r.includes('Bot Two'))).toBe(true)
+  })
+})
+
 describe('MemberPanel add: partial-failure detail survives a refresh failure (task #5)', () => {
   it('keeps the partial-failure message when the post-add refresh also fails', async () => {
     wk.spaceMembers.push({ uid: 'u_ada', name: 'Ada Lovelace' })

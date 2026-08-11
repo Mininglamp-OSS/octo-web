@@ -161,3 +161,46 @@ describe('getSpaceMemberDirectory — bot uid set (PR C need #3)', () => {
     await first
   })
 })
+
+describe('getSpaceMemberDirectory — botCreators from /robot/space_bots creator_uid (PR C nesting)', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    clearMemberNameCache()
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  function respondBots(bots: unknown): void {
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) return { data: bots, status: 200 }
+      return { data: {}, status: 200 }
+    }
+  }
+
+  it('maps botUid → creatorUid straight from the endpoint creator_uid', async () => {
+    respondBots([
+      { uid: 'bot1', name: 'Bot One', creator_uid: 'u_human' },
+      { uid: 'bot2', name: 'Bot Two', creator_uid: 'u_owner' },
+    ])
+    const dir = await getSpaceMemberDirectory('s_1')
+    expect(dir.botCreators.get('bot1')).toBe('u_human')
+    expect(dir.botCreators.get('bot2')).toBe('u_owner')
+    // Both bots are still in the bot set + name map (no behavior lost).
+    expect(dir.botUids.has('bot1')).toBe(true)
+    expect(dir.names.get('bot1')).toBe('Bot One')
+  })
+
+  it('leaves a bot with NO creator_uid out of botCreators (still a bot, just ownerless)', async () => {
+    respondBots([{ uid: 'bot1', name: 'Bot One' }])
+    const dir = await getSpaceMemberDirectory('s_1')
+    expect(dir.botCreators.has('bot1')).toBe(false)
+    // It is still classified as a bot (space_bots endpoint returns bots only).
+    expect(dir.botUids.has('bot1')).toBe(true)
+  })
+
+  it('fail-soft: blank space / empty directory yields an empty botCreators map', async () => {
+    const dir = await getSpaceMemberDirectory('')
+    expect(dir.botCreators.size).toBe(0)
+  })
+})

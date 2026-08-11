@@ -320,16 +320,55 @@ describe('HtmlMemberPanel — bot section + AI tag + fail-soft (PR C #3)', () =>
     expect(botRow.querySelector('.octo-member-picker-badge')).toBeTruthy()
   })
 
-  it('fail-soft: undefined space (no directory) renders every grant as a human, no expander', async () => {
+  it('nests a bot grant under its creator row (collapsed) when creator_uid points at a member', async () => {
+    // space_bots now carries creator_uid; u_bot is created by u_human (a grant row) → nest under it.
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'u_bot', name: 'Bot One', isBot: true })
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) {
+        return { data: [{ uid: 'u_bot', name: 'Bot One', creator_uid: 'u_human' }], status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
     listGrants.mockResolvedValue([
-      { uid: 'u_a', role: 'writer', source: 'direct' },
-      { uid: 'u_b', role: 'reader', source: 'direct' },
+      { uid: 'u_human', role: 'writer', source: 'direct' },
+      { uid: 'u_bot', role: 'reader', source: 'direct' },
     ])
-    // No `space` prop → directory is empty → botUids empty → all rows tiled as humans.
-    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" />)
-    await waitFor(() => expect(screen.getByText(/u_a/)).toBeTruthy())
-    expect(screen.queryByText('docs.member.showBots')).toBeNull()
-    const section = screen.getByText('docs.member.currentMembers').closest('.octo-member-section')!
-    expect(section.querySelector('.octo-member-picker-badge')).toBeNull()
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" space="s_1" />)
+    await waitFor(() => expect(screen.getByText(/Human One/)).toBeTruthy())
+    const section = screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+    const humanRow = Array.from(section.querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes('Human One'),
+    ) as HTMLElement
+    // Collapsed by default; the expander lives inside the creator's wrapper (nested, not bottom).
+    expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(false)
+    const expander = humanRow.parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement
+    expect(expander).toBeTruthy()
+    fireEvent.click(expander)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true))
+    expect((humanRow.parentElement!.textContent ?? '').includes('Bot One')).toBe(true)
+  })
+
+  it('drops a bot whose creator is not a grant row into the bottom ownerless fold', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'u_bot', name: 'Bot One', isBot: true })
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) {
+        return { data: [{ uid: 'u_bot', name: 'Bot One', creator_uid: 'u_stranger' }], status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    listGrants.mockResolvedValue([
+      { uid: 'u_human', role: 'writer', source: 'direct' },
+      { uid: 'u_bot', role: 'reader', source: 'direct' },
+    ])
+    render(<HtmlMemberPanel slug="s1" docId="d1" role="reader" isAuthor={true} creatorUid="u_owner" space="s_1" />)
+    await waitFor(() => expect(screen.getByText(/Human One/)).toBeTruthy())
+    const section = screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+    const humanRow = Array.from(section.querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes('Human One'),
+    ) as HTMLElement
+    // Human owns no bots → no nested expander; the single bottom fold carries the orphan bot.
+    expect(humanRow.parentElement!.querySelector('.octo-member-picker-expand')).toBeNull()
+    fireEvent.click(screen.getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true))
   })
 })
