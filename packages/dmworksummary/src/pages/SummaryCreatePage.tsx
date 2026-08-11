@@ -8,7 +8,7 @@ import {
     Tooltip,
     Modal,
 } from "@douyinfe/semi-ui";
-import { I18nContext, t } from "@octo/base";
+import { I18nContext, t, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -65,6 +65,8 @@ interface SummaryCreatePageProps {
     onClose?: () => void;
     /** 面板模式创建成功回调（替代 routeRight.push 详情页）。 */
     onSubmit?: (taskId: number) => void;
+    /** 打开总结创建的来源入口(埋点 source/entry_point,枚举值,非正文)。 */
+    source?: string;
 }
 
 interface SummaryCreatePageState {
@@ -414,6 +416,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (creatingCustomTemplate) {
                 const template = await api.createCustomTopicTemplate({ label, description });
                 this.appendTemplateToState(template);
+                // 真创建成功后才 emit(§started-vs-created):挂在 Save 按钮点击上会把
+                // 被服务端拒绝/取消的尝试也计一次创建,虚高成功率。带 object_id 供归因。
+                Dap.shared.track("template_created", {
+                    object_id: template.id,
+                    template_type: "summary_topic",
+                });
                 Toast.success(t("summary.templates.custom.createSuccess"));
             } else if (editingTemplate?.is_custom) {
                 const template = await api.updateCustomTopicTemplate(editingTemplate.id, { label, description });
@@ -1365,6 +1373,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             loading={submitting}
                             disabled={!this.canSubmit() || submitting}
                             onClick={this.handlePrimaryClick}
+                            data-track="smart_summary_started"
+                            data-object-id={this.props.channel?.channelID}
+                            data-track-source={this.props.source}
+                            data-track-entry-point={this.props.source}
+                            data-track-trigger-mode={this.state.mode}
                         >
                             <Sparkles size={16} />
                             {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}

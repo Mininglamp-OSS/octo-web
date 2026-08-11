@@ -62,7 +62,18 @@ export MARKET_API_URL
 DRIVE_API_URL="${DRIVE_API_URL%/}"
 export DRIVE_API_URL
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+# octo-dap telemetry collector upstream for the /track location. Blank by
+# default (503 when unset) — same shape as the hosts above. Trailing slash
+# stripped: proxy_pass uses `$track_api_url$request_uri`, so a trailing slash
+# would produce a double-slash upstream. Must be in the envsubst allowlist or
+# the literal `${TRACK_API_URL}` would survive into the generated config and
+# defeat the blank-value guard (`if ($track_api_url = "")`), so the /track route
+# would 503 regardless of what the operator configures.
+: "${TRACK_API_URL:=}"
+TRACK_API_URL="${TRACK_API_URL%/}"
+export TRACK_API_URL
+
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${TRACK_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"

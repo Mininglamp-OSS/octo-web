@@ -193,6 +193,15 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        // Telemetry collector (octo-dap). Prod nginx reverse-proxies /track/* to
+        // the collection backend; dev proxies it to the API origin so the
+        // fail-closed tracker is exercisable locally (otherwise POST /track/batch
+        // falls through to the SPA and dev collection is non-functional).
+        "/track": {
+          target: env.VITE_TRACK_API_URL || apiOrigin,
+          changeOrigin: true,
+          secure: false,
+        },
         // Drive service API — drive serves /v1/drive/* natively; route it to
         // the drive service. MUST precede the general /v1/ rule below (vite
         // matches proxy keys in insertion order, first prefix wins).

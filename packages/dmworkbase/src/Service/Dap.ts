@@ -1,0 +1,856 @@
+/**
+ * Dap —— octo-dap 前端采集「蒙版底座」(外挂式)
+ * =====================================================
+ * 设计依据:`octo-dap 前端采集方案 · 蒙版优先` §2。
+ *
+ * 一句话:整套前端采集是**一层 bootstrap 注入的蒙版脚本**,不逐点插桩业务组件。
+ * 采集主体全在本文件内,靠三大机制拿数据:
+ *   ① 全局事件委托(document 捕获阶段)—— B/C/E 控件点击/开关/筛选(读 `data-track`)
+ *   ② MutationObserver —— A 页面浏览/切页(观测 display 翻转,依赖 `data-page-id`)
+ *   ③ fetch / XHR 包裹 —— HTTP 量 / 错误率 / 延迟(路径归一,不带 query,不泄正文)
+ *
+ * 硬约束(务必守住,见 §2.1 / §8):
+ *   - 全程 try/catch 自吞异常:埋点崩溃**绝不**波及业务渲染,不弹 toast、不 console.error。
+ *   - 上报走**独立裸 fetch(卸载期用 keepalive fetch)**,不复用业务 axios 拦截器(避免其 401 重定向等副作用),
+ *     但**携带业务 `token` 头**,后端据 token 鉴权并归一 actor。(不用 sendBeacon:它设不了 token 头、过不了鉴权。)
+ *   - 信封**不含** `flow_id`(一期放弃 FlowRegistry)、**不含** `actor_type` / `actor_id`(后端按 token 凭证归一)。
+ *   - **不采任何内容正文**:不读 input/textarea value、不读消息正文/搜索词/文件名;属性名黑名单剔除(§8)。
+ *   - 远程 kill switch:`enabled=false` 时 track/pageView 立即 return,清空队列,业务零影响。
+ */
+
+export type TrackPrimitive = string | number | boolean | null
+
+/** 上报信封:每条事件出队前补齐(§2.4)。刻意不含 flow_id / actor_*。 */
+interface TrackEnvelope {
+    event_name: string
+    /** 去重键:事件产生时生成,重试 / beacon 兜底复用同一 id(§2.5) */
+    client_event_id: string
+    /** 登录会话内生成一次;后沉淀 flow 主关联键之一 */
+    session_id: string
+    /** 持久化设备标识,非身份凭据 */
+    device_id: string
+    /** 只存不算,计算以后端 server_ts 为准 */
+    client_ts: number
+    page_id?: string
+    /** 后沉淀 flow 核心键:拿得到必带,拿不到如实为空,不臆造(§2.4 / §7) */
+    object_id?: string
+    props?: Record<string, TrackPrimitive>
+}
+
+const DEVICE_ID_KEY = 'octo_track_device_id'
+/**
+ * 独立上报通道,不复用业务 axios(§2.1)。
+ *
+ * 采集端**恒为同源相对路径** `/track/batch`:上报(及其携带的业务 token 头)只发给
+ * 页面自身 origin,绝不出跨域。octo-dap 采集端如需独立部署 / 外部域名,由运维层在业务
+ * 域名下反代 `/track/*` 转发实现,前端不感知——从而避免"业务 token 被发往可配置任意
+ * 外域"的凭据外泄风险(见 PR review P0-4)。BATCH_PATH 同时用于 fetch/XHR 包裹里识别
+ * "上报请求自身"以排除自采环。
+ */
+const BATCH_PATH = '/track/batch'
+const FLUSH_SIZE = 20
+const FLUSH_INTERVAL_MS = 5000
+const MAX_RETRY = 3
+
+/**
+ * 属性名黑名单(§8 合规):命中即从 props 剔除,绝不上报。
+ * 前端本层先剔一道,后端 `/track/batch` 验签再拒一道,双保险。
+ */
+const PROP_KEY_BLACKLIST = /(text|content|body|keyword|query|token|secret|password|phone|email)/i
+
+/** UUID v4;优先原生 crypto,退化到手写,保持本文件零依赖。 */
+function genId(): string {
+    try {
+        const c = (globalThis as { crypto?: Crypto }).crypto
+        if (c && typeof c.randomUUID === 'function') {
+            return c.randomUUID()
+        }
+    } catch {
+        /* ignore */
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+        const r = (Math.random() * 16) | 0
+        const v = ch === 'x' ? r : (r & 0x3) | 0x8
+        return v.toString(16)
+    })
+}
+
+/** 设备 id:localStorage 持久化,首次生成。取不到 storage(隐身/禁用)则退回内存态。 */
+function loadOrCreateDeviceId(): string {
+    try {
+        const ls = (globalThis as { localStorage?: Storage }).localStorage
+        if (ls) {
+            const existing = ls.getItem(DEVICE_ID_KEY)
+            if (existing) return existing
+            const fresh = genId()
+            ls.setItem(DEVICE_ID_KEY, fresh)
+            return fresh
+        }
+    } catch {
+        /* storage 不可用:退回内存态,当次会话有效 */
+    }
+    return genId()
+}
+
+/**
+ * 第一方 API 的**静态路由词白名单**。normalizePath 只放行这些"固定路由词",其余任何段
+ * (用户名 / 一次性登录码 / 邀请码 / token / 文件名 / 日期 / 对象键 / id)一律占位符化。
+ *
+ * >>> 新增第一方路由时,若希望它在埋点 path 里可辨识,把新的静态词补进此表即可。 <<<
+ * 不补的后果仅是该段被并成 :seg(分析粒度变粗),**绝不会泄露数据**——默认分支即 mask。
+ * 这也是相对旧实现的关键修正:旧版按"字符形状"(纯小写串)放行,凭证/用户名会原样漏出;
+ * 现在反转为"只采声明过的",凭证这类高熵随机串永远不可能等于字典式路由词,结构上漏不了
+ * (见 PR #1320 review:normalizePath 需从"黑名单形状脱敏"改为"白名单路由模板")。
+ *
+ * 词表来源:扫描生产源码里 API 路径字面量的静态段(见提交说明),而非手工臆造。
+ */
+const ROUTE_WORDS = new Set<string>([
+    'accept', 'access', 'access-requests', 'action', 'agent', 'agent-cards', 'api', 'app_bot',
+    'appbot', 'appconfig', 'apply', 'attachments', 'avatar', 'batch', 'batch-status', 'bind',
+    'blacklist', 'blobs', 'bot_admin', 'cancel', 'card', 'categories', 'channel', 'chat',
+    'collab-token', 'comments', 'common', 'config', 'confirm', 'contacts', 'conversation', 'conversations',
+    'copy', 'create', 'current', 'decline', 'disband', 'dm', 'docs', 'download',
+    'drawings', 'drive', 'edit', 'email', 'emoji', 'emojis', 'entrypoints', 'exit',
+    'extra', 'file', 'files', 'folders', 'follow', 'friend', 'global', 'grants',
+    'group', 'groups', 'im', 'imtransfer', 'incoming-webhooks', 'internal', 'invite', 'invites',
+    'join', 'leave', 'local-config', 'login', 'login_authcode', 'loginuuid', 'managers', 'market',
+    'mcp', 'mcp_categories', 'mcp-market', 'mcps', 'mcp_tags', 'me', 'members', 'mention_pref',
+    'message', 'messages', 'migrations', 'mine', 'move', 'my_bots', 'obo', 'octo',
+    'oidc', 'org', 'organizations', 'otp', 'owned_bots', 'participants', 'personal', 'personal-draft',
+    'personal-edit', 'personal-refine', 'personal-versions', 'plugins', 'ppt', 'present', 'preview', 'qrcode',
+    'reddot', 'refine', 'regenerate', 'reminder', 'rename', 'respond', 'restore', 'robot',
+    'scopes', 'screenshots', 'search', 'sendcode', 'setting', 'settings', 'share', 'shares',
+    'skills', 'sort', 'space', 'space_bots', 'spaces', 'sticker', 'submit', 'summaries',
+    'summary', 'summary-chat-candidates', 'summary-infer', 'summary-member-candidates', 'summary-schedules', 'summary-templates', 'sync', 'thirdlogin',
+    'thread', 'threads', 'toggle', 'track', 'transcribe', 'transfer', 'upload', 'user',
+    'users', 'v1', 'v2', 'v3', 'verify', 'versions', 'voice', 'webhooks',
+    'worksheets',
+])
+
+/**
+ * 请求路径归一(§8 隐私边界:绝不泄文件名 / 对象键 / 用户名 / 凭证 / 正文)。**白名单路由词式**:
+ * 每段只有命中 ROUTE_WORDS(声明过的静态路由词)才原样保留;其余一切一律占位符化——纯数字 /
+ * 长 hex / uuid 记作 :id(仅为可读性,安全上等价),其余记作 :seg。默认即 mask,故用户名、
+ * 一次性 login_authcode、邀请码、invite token、文件名、percent-encoded 段等都不可能进 telemetry。
+ */
+function normalizePath(rawUrl: string): string {
+    try {
+        // 相对/绝对都能解析;base 仅用于补全,不进结果
+        const u = new URL(rawUrl, 'http://x')
+        return u.pathname
+            .split('/')
+            .map((seg) => {
+                if (!seg) return seg
+                // 只放行声明过的静态路由词
+                if (ROUTE_WORDS.has(seg)) return seg
+                // 其余全部占位:id 形态(纯数字 / 长 hex / uuid)记 :id,纯为可读性
+                if (/^\d+$/.test(seg)) return ':id'
+                if (/^[0-9a-fA-F-]{16,}$/.test(seg)) return ':id'
+                // 兜底:用户名 / 凭证 / 邀请码 / 文件名 / 编码段 / 短随机串 …… 一律 :seg
+                return ':seg'
+            })
+            .join('/')
+    } catch {
+        return ':seg'
+    }
+}
+
+/**
+ * 是否第一方(同源)请求。HTTP 包裹**只采第一方 API**:跨域请求(预签名对象存储上传/下载、
+ * 第三方服务)路径里常含对象键 / 文件名,且归一后与第一方路径混在同一维度无法区分,故一律不采
+ * (见 PR review P0-3)。相对 URL 天然同源;拿不到 location(SSR/测试无 DOM)时保守判为非第一方。
+ */
+function isFirstParty(rawUrl: string): boolean {
+    try {
+        const loc = (globalThis as { location?: Location }).location
+        if (!loc || !loc.origin || loc.origin === 'null') return false
+        return new URL(rawUrl, loc.origin).origin === loc.origin
+    } catch {
+        return false
+    }
+}
+
+/**
+ * 当前 runtime 是否支持采集。埋点恒发同源相对路径 /track/batch(P0-4 同源锁),
+ * 只在标准 http(s) Web 运行时成立。桌面 / Electron / Tauri 打包后页面跑在 `file://`
+ * (或自定义协议),API 走的是 apiURL.ts 解析出的**绝对后端域名**——此时相对 /track/batch
+ * 既发不出去、也不该把跨域后端流量当第一方采,故在这些 runtime 里直接不启用 tracker
+ * (见 PR #1320 review:desktop/file:// 上报打到错误 origin)。判据:protocol 必须是
+ * http/https,且无桌面运行时标记。拿不到 location(SSR/测试无 DOM)时保守判为不支持。
+ */
+function isSupportedRuntime(): boolean {
+    try {
+        const loc = (globalThis as { location?: Location }).location
+        if (!loc || (loc.protocol !== 'http:' && loc.protocol !== 'https:')) return false
+        const w = globalThis as {
+            __TAURI_IPC__?: unknown
+            __POWERED_ELECTRON__?: unknown
+        }
+        if (w.__TAURI_IPC__ || w.__POWERED_ELECTRON__) return false
+        if (import.meta.env.VITE_ELECTRON_BUILD === 'true') return false
+        return true
+    } catch {
+        return false
+    }
+}
+
+/** 状态码分桶:不报精确 code,只报量级(2xx/4xx/5xx/err)。 */
+function statusBucket(status: number): string {
+    if (status <= 0) return 'err'
+    if (status >= 500) return '5xx'
+    if (status >= 400) return '4xx'
+    if (status >= 300) return '3xx'
+    return '2xx'
+}
+
+class DapImpl {
+    /** 会话内唯一;仅作为埋点事件 envelope 的 session_id 随上报发出(采集启用时才发)。纯内存,不落盘。 */
+    readonly sessionId: string = genId()
+    /**
+     * 持久设备标识,仅作 envelope 的 device_id。**懒创建**:只有真正产出事件(即采集已启用)
+     * 时才 loadOrCreateDeviceId() 并写 localStorage——fail-closed 下开关未开就绝不落盘标识
+     * (见 PR review P0-1)。
+     */
+    private _deviceId: string | null = null
+    private deviceId(): string {
+        if (this._deviceId == null) this._deviceId = loadOrCreateDeviceId()
+        return this._deviceId
+    }
+
+    // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
+    private enabled = false
+    private started = false
+    /**
+     * 采集机制是否已装:**每个采集器一个 flag**,而非一个总开关。
+     * 单一总开关下,若某个 install 抛错(总开关保持 false),下次 setEnabled(true) 会把
+     * 四个采集器**全部重装**——已成功的那些会被再装一遍:document 上多一个 click/submit
+     * 捕获监听(声明式事件双记)、fetch/XHR 多包一层(见 PR #1320 review P2-3)。
+     * 拆成 per-collector 后,每个采集器至多装一次,与其它是否失败无关。
+     */
+    private installed: { click: boolean; page: boolean; exposure: boolean; http: boolean } = {
+        click: false,
+        page: false,
+        exposure: false,
+        http: false,
+    }
+    /**
+     * 采集代次。每次 setEnabled(false) 自增,使"停采前已捕获、尚在重试队列里的批次"整体作废,
+     * 配合 retryTimers 清理,实现 kill switch 立即生效、不再有滞后上报(见 PR review P0-2)。
+     */
+    private generation = 0
+    /** 在途重试定时器;停采时全部 clearTimeout,杜绝停采后仍 POST。 */
+    private retryTimers = new Set<ReturnType<typeof setTimeout>>()
+    /** 业务 token 取值回调(index.tsx 注入,避免 import WKApp 造成循环依赖)。上报带 token 头供后端鉴权。 */
+    private tokenProvider: (() => string | undefined) | null = null
+    private queue: TrackEnvelope[] = []
+    private flushTimer: ReturnType<typeof setInterval> | null = null
+    private lastPage: { pageId: string; enteredAt: number; settled: boolean } | null = null
+    private pageBootObserver: MutationObserver | null = null
+    /** 曝光去重:每个元素实例只触发一次 data-track-view */
+    private seenViews = new WeakSet<Element>()
+    /** 内部计数:上报最终失败丢弃数,只自增不外抛 */
+    private droppedCount = 0
+
+    /**
+     * 启动蒙版:登记卸载兜底 + 定时 flush。幂等,只装一次。
+     * **不在此装采集机制**(observer / fetch·XHR 包裹)——那些改会给所有用户加常驻开销,
+     * 而本特性默认 dark 上线;改到首次 setEnabled(true) 时惰性装(见 installCollectors)。
+     * 由 app 启动处调用一次(见 apps/web/src/index.tsx),不由业务组件调用。
+     */
+    init(): void {
+        if (this.started) return
+        this.started = true
+        this.safe(() => {
+            this.installUnloadFlush()
+            this.flushTimer = setInterval(() => this.safe(() => this.flush()), FLUSH_INTERVAL_MS)
+            // 极少数情况:enable 早于 init(如同步下发)。此时补装采集机制。
+            if (this.enabled) this.installCollectors()
+        })
+    }
+
+    /**
+     * 惰性装采集机制:点击委托 + 切页/曝光 observer + fetch·XHR 包裹。
+     * 只在特性真正启用时装,dark 态(默认)不给 prod 用户加任何常驻开销。
+     * **每个采集器独立幂等**(installOnce):某个抛错不影响其它,重试也只补装未成功的那个,
+     * 绝不会把已装的采集器再装一遍(避免重复监听 / 重复包裹,见 PR #1320 review P2-3)。
+     * installOnce 内 safe() 包裹:setEnabled 在 App remoteConfig 回调里内联调用,采集安装
+     * 抛错绝不能中断后续业务逻辑。
+     */
+    private installCollectors(): void {
+        this.installOnce('click', () => this.installClickDelegation())
+        this.installOnce('page', () => this.installPageObserver())
+        this.installOnce('exposure', () => this.installExposureObserver())
+        this.installOnce('http', () => this.installHttpWrap())
+    }
+
+    /** 装单个采集器:已装则跳过;装成功才置位(中途抛错保持 false,下次重试仅补这一个)。 */
+    private installOnce(key: keyof DapImpl['installed'], fn: () => void): void {
+        if (this.installed[key]) return
+        this.safe(() => {
+            fn()
+            this.installed[key] = true
+        })
+    }
+
+    /**
+     * 远程 kill switch(§2.6)。关:立即停采——清队列、作废采集代次、清掉所有在途重试定时器,
+     * 停采后不再有任何 POST(见 PR review P0-2)。开:补扫当前 DOM,把开关到位前就已渲染的
+     * 首个 page_view 与已存在的曝光元素补采一次(启用是 remoteConfig 异步到达,通常晚于首屏,
+     * 见 PR review P1-7)。
+     */
+    setEnabled(v: boolean): void {
+        // 桌面 / file:// 等不支持的 runtime:即便远端下发 tracking_enabled 也保持停采,
+        // 不向 file 相对路径发上报、不误采绝对后端域名流量(见 PR #1320 review)。
+        if (v && !isSupportedRuntime()) v = false
+        const was = this.enabled
+        this.enabled = v
+        if (!v) {
+            this.generation++
+            this.queue = []
+            this.lastPage = null
+            for (const t of this.retryTimers) clearTimeout(t)
+            this.retryTimers.clear()
+        } else if (!was) {
+            // 首次启用:惰性装采集机制(dark 态从未装过),再补扫当前 DOM。
+            this.installCollectors()
+            this.rescanCurrent()
+        }
+    }
+
+    /** 注入业务 token 取值回调(见 index.tsx)。上报请求据此带 `token` 头供后端鉴权归一 actor。 */
+    setTokenProvider(fn: () => string | undefined): void {
+        this.tokenProvider = fn
+    }
+
+    /** 取当前业务 token;取不到 / 抛错都返回 undefined(不阻断上报)。 */
+    private currentToken(): string | undefined {
+        try {
+            return this.tokenProvider ? this.tokenProvider() : undefined
+        } catch {
+            return undefined
+        }
+    }
+
+    /** 通用上报(蒙版内部自动调;破例点如消息补点也调它)。 */
+    track(eventName: string, props?: Record<string, unknown>): void {
+        if (!this.enabled || !eventName) return
+        this.safe(() => {
+            const clean = this.sanitizeProps(props)
+            const objectId = this.pickObjectId(clean)
+            this.enqueue(this.envelope(eventName, clean.props, objectId))
+        })
+    }
+
+    /** page_view(MutationObserver 内部调,按 pageId 去重 + 结算上一页停留)。 */
+    pageView(pageId: string, extra?: Record<string, unknown>): void {
+        if (!this.enabled || !pageId) return
+        this.safe(() => {
+            // 同页重复触发(菜单 setter + syncPath + mittBus 多次)只忽略,不重复计数(§3.2)
+            if (this.lastPage && this.lastPage.pageId === pageId) return
+            const now = Date.now()
+            // 结算上一页停留(若尚未在切后台时结算过)
+            this.settleLastPage(now)
+            this.lastPage = { pageId, enteredAt: now, settled: false }
+            const clean = this.sanitizeProps(extra)
+            const env = this.envelope('page_view', clean.props)
+            env.page_id = pageId
+            this.enqueue(env)
+        })
+    }
+
+    /**
+     * 结算当前页停留:给上一页发带 duration_ms 的 page_leave(优先入队,便于随卸载/切后台
+     * 的 keepalive 批次一起送)。幂等——已结算过则不再发,避免「切后台结算 + 随后切页」双记。
+     * 由 pageView(切页)与 visibilitychange→hidden(切后台/卸载)共同调用。
+     */
+    private settleLastPage(now: number): void {
+        if (!this.lastPage || this.lastPage.settled) return
+        const durEnv = this.envelope('page_leave', {
+            duration_ms: now - this.lastPage.enteredAt,
+        })
+        durEnv.page_id = this.lastPage.pageId
+        this.enqueue(durEnv, /* priority */ true)
+        this.lastPage.settled = true
+    }
+
+    /** 手动刷新,调试用。 */
+    flush(): void {
+        if (this.queue.length === 0) return
+        const batch = this.queue
+        this.queue = []
+        this.sendBatch(batch, 0, this.generation)
+    }
+
+    /**
+     * 运维可读的采集健康快照。`dropped` 是「重试耗尽后被丢弃的事件数」——此前是私有
+     * 计数,运维无从得知丢批(如某环境 /track/* 未配路由时会静默累积)。可在控制台
+     * `Dap.shared.getStats()` 读取。(见 PR #1320 review 的可观测性缺口。)
+     */
+    getStats(): { enabled: boolean; queued: number; dropped: number } {
+        return { enabled: this.enabled, queued: this.queue.length, dropped: this.droppedCount }
+    }
+
+    // ---------------------------------------------------------------- 内部
+
+    private envelope(
+        eventName: string,
+        props?: Record<string, TrackPrimitive>,
+        objectId?: string,
+    ): TrackEnvelope {
+        const env: TrackEnvelope = {
+            event_name: eventName,
+            client_event_id: genId(),
+            session_id: this.sessionId,
+            device_id: this.deviceId(),
+            client_ts: Date.now(),
+        }
+        if (this.lastPage) env.page_id = this.lastPage.pageId
+        if (objectId) env.object_id = objectId
+        if (props && Object.keys(props).length > 0) env.props = props
+        return env
+    }
+
+    /** 剔黑名单 + 只留 Primitive;顺带取出 object_id。绝不带正文/复杂对象。 */
+    private sanitizeProps(input?: Record<string, unknown>): {
+        props: Record<string, TrackPrimitive>
+        objectId?: string
+    } {
+        const props: Record<string, TrackPrimitive> = {}
+        let objectId: string | undefined
+        if (!input) return { props }
+        for (const key of Object.keys(input)) {
+            if (key === 'object_id') {
+                const v = input[key]
+                if (typeof v === 'string' && v) objectId = v
+                else if (typeof v === 'number') objectId = String(v)
+                continue
+            }
+            if (PROP_KEY_BLACKLIST.test(key)) continue // 合规:命中黑名单直接丢
+            const v = input[key]
+            if (v === null || typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+                props[key] = v
+            }
+            // 复杂对象 / undefined 一律丢,不做序列化(避免夹带正文)
+        }
+        return { props, objectId }
+    }
+
+    private pickObjectId(clean: { props: Record<string, TrackPrimitive>; objectId?: string }): string | undefined {
+        return clean.objectId
+    }
+
+    private enqueue(env: TrackEnvelope, priority = false): void {
+        if (!this.enabled) return
+        this.queue.push(env)
+        // 带 duration_ms 的结束事件优先 flush(§2.1)
+        if (priority || this.queue.length >= FLUSH_SIZE) {
+            this.flush()
+        }
+    }
+
+    /**
+     * 独立通道上报:带业务 token 头供后端鉴权;指数退避重试,最多 3 次;仍失败丢弃 + 计数,绝不外抛。
+     * gen 为发起时的采集代次:每次发送/重试前都要 enabled 且 gen 未过期,否则整批丢弃——保证
+     * kill switch 关闭后停采前捕获的批次不再 POST(见 PR review P0-2)。
+     */
+    private sendBatch(batch: TrackEnvelope[], attempt: number, gen: number): void {
+        if (batch.length === 0) return
+        // kill switch:已停采或本批所属采集代次已作废,直接丢弃不发
+        if (!this.enabled || gen !== this.generation) return
+        this.safe(() => {
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+            const token = this.currentToken()
+            if (token) headers['token'] = token // 与业务同名头,后端按 token 鉴权并归一 actor
+            const body = JSON.stringify({ events: batch })
+            void fetch(BATCH_PATH, {
+                method: 'POST',
+                headers,
+                body,
+                keepalive: true,
+                // 鉴权走 token 头,不依赖 cookie;仍用裸 fetch 不走业务拦截器,401 不触发登出重定向
+                credentials: 'omit',
+            })
+                .then((resp) => {
+                    if (!resp.ok) throw new Error('track batch http ' + resp.status)
+                })
+                .catch(() => {
+                    // 重试前再次确认未停采且代次未过期;定时器登记后可被 setEnabled(false) 统一取消
+                    if (attempt < MAX_RETRY && this.enabled && gen === this.generation) {
+                        const delay = 500 * Math.pow(2, attempt) // 500 / 1000 / 2000ms
+                        const timer = setTimeout(() => {
+                            this.retryTimers.delete(timer)
+                            this.sendBatch(batch, attempt + 1, gen)
+                        }, delay)
+                        this.retryTimers.add(timer)
+                    } else {
+                        this.droppedCount += batch.length // 丢弃,只内部计数,不外抛
+                    }
+                })
+        })
+    }
+
+    /**
+     * 卸载兜底(§2.1):visibilitychange(hidden)+ pagehide 一次性发残留。
+     * 用 **keepalive fetch** 而非 sendBeacon —— sendBeacon 设不了 `token` 头、过不了后端 header 鉴权;
+     * keepalive fetch 是其现代替代,能带头,鉴权与常规上报统一。不重试。
+     */
+    private unloadFlush(): void {
+        this.safe(() => {
+            if (!this.enabled) return // 停采后不发残留
+            if (this.queue.length === 0) return
+            const batch = this.queue
+            this.queue = []
+            const g = globalThis as { fetch?: typeof fetch }
+            if (typeof g.fetch !== 'function') {
+                // 无 fetch 的老运行时:无法带 token 鉴权,直接丢弃计数,不做无鉴权上报
+                this.droppedCount += batch.length
+                return
+            }
+            const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+            const token = this.currentToken()
+            if (token) headers['token'] = token
+            void fetch(BATCH_PATH, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ events: batch }),
+                keepalive: true, // unload 期后台发送,sendBeacon 的现代替代
+                credentials: 'omit',
+            }).catch(() => undefined)
+        })
+    }
+
+    // ----------------------------------------------- 机制① 全局事件委托
+
+    private installClickDelegation(): void {
+        // 解析被点/被激活元素归属的 [data-track],并施加 data-track-ignore 排除。
+        const resolveTracked = (target: HTMLElement | null): HTMLElement | null => {
+            if (!target || typeof target.closest !== 'function') return null
+            const el = target.closest<HTMLElement>('[data-track]')
+            if (!el) return null
+            // 落在被显式标记「本次交互不代表该 data-track 动作」的子控件里则跳过:
+            // 如会话行(channel_opened)内的拖拽柄/展开线程标签、市场卡片 footer 的编辑/删除
+            // 按钮——它们 stopPropagation 表示「不代表该事件」,但捕获阶段先于 stopPropagation
+            // 执行,故改用 data-track-ignore 显式排除(ignore 须是被点元素到 tracked 元素之间的一层)。
+            const ignore = target.closest<HTMLElement>('[data-track-ignore]')
+            if (ignore && el !== ignore && el.contains(ignore)) return null
+            return el
+        }
+        const fire = (el: HTMLElement) => {
+            const name = el.dataset.track
+            if (!name) return
+            this.track(name, this.collectDatasetProps(el))
+        }
+        const clickHandler = (e: Event) => {
+            this.safe(() => {
+                const el = resolveTracked(e.target as HTMLElement | null)
+                if (el) fire(el)
+            })
+        }
+        // 键盘激活补采:role="button" 等**非原生**控件(如市场卡片 McpCard/SkillCard 是
+        // div/article + role=button + 自定义 onKeyDown)被 Enter/Space 激活时,浏览器**不会**
+        // 派发 click,声明式 click 委托整条漏采——键盘用户打开详情却无任何事件(见 PR #1320
+        // review P1-4)。这里补一条 keydown:仅对**非原生可激活**的聚焦元素在 Enter/Space 时
+        // 补发;原生 button/a[href]/input/select/textarea/summary 会自行合成 click(已被上面的
+        // 委托覆盖),显式排除以免双记。
+        const keydownHandler = (e: KeyboardEvent) => {
+            this.safe(() => {
+                if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return
+                const target = e.target as HTMLElement | null
+                if (!target || this.isNativeActivatable(target)) return
+                const el = resolveTracked(target)
+                if (el) fire(el)
+            })
+        }
+        // 捕获阶段:即使业务层 stopPropagation 也能采到。
+        // click 只听 click(不听 change):Semi Switch / 原生 checkbox 一次切换会同时冒泡
+        // click 和 change,两者都命中同一个 [data-track] wrapper → 声明式事件被记两遍
+        // (如 group_setting_toggled)。click 已覆盖指针点击与原生控件的键盘激活;非原生
+        // 控件的键盘激活由 keydownHandler 补齐。
+        // 注:当前无任何 data-track 挂在只靠 change 的控件(<select>/radio)上;
+        // 若将来需要,应针对该控件单独加一条 guard 过的 change 监听,而非全局恢复。
+        document.addEventListener('click', clickHandler, true)
+        document.addEventListener('submit', clickHandler, true)
+        document.addEventListener('keydown', keydownHandler, true)
+    }
+
+    /**
+     * 原生「Enter/Space 会自动合成 click」的可激活元素。用于 keydown 补采时排除它们
+     * (避免与浏览器合成的 click 双记)。非原生的 role="button" 等返回 false → 需 keydown 补发。
+     */
+    private isNativeActivatable(el: HTMLElement): boolean {
+        const tag = el.tagName
+        if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'SUMMARY') {
+            return true
+        }
+        if (tag === 'A' && el.hasAttribute('href')) return true
+        return false
+    }
+
+    /**
+     * 从 data-track-* / data-object-id 收 props。
+     * **只读 data-* 属性,绝不读控件 value**(§4.3 / §8:不采正文)。
+     */
+    private collectDatasetProps(el: HTMLElement): Record<string, unknown> {
+        const out: Record<string, unknown> = {}
+        const ds = el.dataset
+        for (const key of Object.keys(ds)) {
+            if (key === 'track') continue
+            if (key === 'trackView') continue // 曝光标记键(data-track-view),只用于触发曝光,不进 props
+            if (key === 'objectId') {
+                out.object_id = ds[key]
+                continue
+            }
+            if (key.startsWith('track') && key.length > 5) {
+                // dataset.trackTabName -> track_tab_name
+                const rest = key.slice(5)
+                const snake = rest.replace(/([A-Z])/g, (m, c: string, i: number) =>
+                    (i === 0 ? '' : '_') + c.toLowerCase(),
+                )
+                out[snake] = ds[key]
+            }
+        }
+        return out
+    }
+
+    // ----------------------------------------------- 机制② MutationObserver(切页)
+
+    private installPageObserver(): void {
+        // 命中一个「可见的 [data-page-id]」元素 → page_view(内部按 pageId 去重)。
+        const visit = (el: HTMLElement | null) => {
+            if (el && el.style && el.style.display === 'block' && el.dataset && el.dataset.pageId) {
+                this.pageView(el.dataset.pageId)
+            }
+        }
+        // 扫一个新插入节点及其子树里所有已可见的页节点。
+        const scan = (node: Node) => {
+            if (!(node instanceof HTMLElement)) return
+            visit(node)
+            node.querySelectorAll<HTMLElement>('[data-page-id]').forEach(visit)
+        }
+        let attachedRoot: Element | null = null
+        let scoped: MutationObserver | null = null
+        const attach = (root: Element) => {
+            if (attachedRoot === root) return // 已绑同一节点,勿重复观测
+            // 容器被替换(审批屏卸载再挂回 shell 等):断开旧 scoped 观测,重绑到新节点。
+            scoped?.disconnect()
+            attachedRoot = root
+            scoped = new MutationObserver((mutations) => {
+                this.safe(() => {
+                    for (const m of mutations) {
+                        if (m.type === 'attributes') {
+                            // 已存在节点的 display 翻转(切页)
+                            visit(m.target as HTMLElement)
+                        } else {
+                            // 路由首次访问:页节点是「新插入」而非 style 翻转。只监听 style
+                            // 会整条漏掉首访 page_view,并使后续 page_leave 的 duration_ms
+                            // 错误累计到别的页(看着对、其实错的数据,见 PR #1320 review)。
+                            // 故一并监听 childList,对新增子树补扫。
+                            m.addedNodes.forEach(scan)
+                        }
+                    }
+                })
+            })
+            scoped.observe(root, { subtree: true, attributes: true, attributeFilter: ['style'], childList: true })
+            // 挂载即补扫当前已可见页,避免漏掉挂载(或重挂)那一刻的首屏 page_view(P1-7);
+            // 重挂场景下这一扫还会 pageView 新容器的当前页 → settleLastPage 结算掉此前那条
+            // 停留在旧页的 lastPage,顺带修正 page_leave 的错误归属。
+            root.querySelectorAll<HTMLElement>('[data-page-id]').forEach(visit)
+        }
+        const resolve = () => {
+            const root = document.querySelector('.wk-layout-content-left')
+            // 仅当出现「新的、未绑定过的」容器实例时才重绑。容器被移除时 root 为 null,
+            // 保留旧引用即可(旧节点已卸载,残留观测无害),等新容器出现再重解析。
+            if (root && root !== attachedRoot) attach(root)
+        }
+        resolve() // 立即尝试绑定当前容器(若首屏已渲染)
+        // 常驻引导观测:容器**首次出现**或**被替换重挂**都触发重解析重绑。
+        // 关键修正(PR #1320 review P1-1):JoinSpaceModal 的 NEED_APPROVAL/PENDING 会让
+        // AppLayout 换成审批屏、关闭后再换回 shell —— 同一 JS 上下文,单例不重建,.wk-layout-content-left
+        // 被卸载再重建。旧实现 attach 后 return、且引导观测出现容器即 disconnect,故 scoped 观测
+        // 会永久绑死在已卸载的旧容器上:此后整会话 page_view 全丢、page_leave 继续错记到旧页。
+        // 因此引导观测**不再一次性 disconnect**,常驻监听 body 以便随时重解析。
+        this.pageBootObserver = new MutationObserver(() => this.safe(resolve))
+        this.pageBootObserver.observe(document.body, { childList: true, subtree: true })
+    }
+
+    // ----------------------------------------------- 机制②b MutationObserver(曝光)
+
+    /**
+     * 触发一次元素曝光。**未启用时不标记 seen 也不触发**——否则开关到位前渲染的元素会被
+     * 永久标记已见,启用后再也不补采(见 PR review P1-7)。每个元素实例只触发一次(WeakSet 去重)。
+     */
+    private fireExposure(el: HTMLElement): void {
+        if (!el.dataset || !el.dataset.trackView) return
+        if (!this.enabled) return
+        if (this.seenViews.has(el)) return
+        this.seenViews.add(el)
+        this.track(el.dataset.trackView, this.collectDatasetProps(el))
+    }
+
+    /**
+     * 补扫当前 DOM(setEnabled(true) 时调):把开关到位前就已可见的首个 page_view 与已存在的
+     * 曝光元素补采一次。启用是 remoteConfig 异步到达、通常晚于首屏,不补扫会永久漏掉首屏(P1-7)。
+     */
+    private rescanCurrent(): void {
+        this.safe(() => {
+            const d = (globalThis as { document?: Document }).document
+            if (!d) return
+            d.querySelectorAll<HTMLElement>('[data-page-id]').forEach((el) => {
+                if (el.style && el.style.display === 'block' && el.dataset && el.dataset.pageId) {
+                    this.pageView(el.dataset.pageId)
+                }
+            })
+            d.querySelectorAll<HTMLElement>('[data-track-view]').forEach((el) => this.fireExposure(el))
+        })
+    }
+
+    /**
+     * 曝光观测器:新挂载(或初始已存在)的元素若带 `data-track-view`,触发一次曝光事件。
+     * props 复用 collectDatasetProps(已跳过 trackView 键)。
+     */
+    private installExposureObserver(): void {
+        const scan = (node: Element) => {
+            if ((node as HTMLElement).dataset && (node as HTMLElement).dataset.trackView) this.fireExposure(node as HTMLElement)
+            if (typeof node.querySelectorAll === 'function') {
+                node.querySelectorAll<HTMLElement>('[data-track-view]').forEach((el) => this.fireExposure(el))
+            }
+        }
+        const obs = new MutationObserver((mutations) => {
+            this.safe(() => {
+                for (const m of mutations) {
+                    m.addedNodes.forEach((n) => {
+                        if (n.nodeType === 1) scan(n as Element)
+                    })
+                }
+            })
+        })
+        obs.observe(document.body, { childList: true, subtree: true })
+        scan(document.body)
+    }
+
+    // ----------------------------------------------- 机制③ fetch / XHR 包裹
+    private installHttpWrap(): void {
+        const emit = (rawUrl: string, method: string, status: number, durationMs: number) => {
+            this.safe(() => {
+                if (!rawUrl) return
+                // 只采第一方(同源)API telemetry:跨域(预签名对象存储/第三方)路径含对象键/文件名,一律不采
+                if (!isFirstParty(rawUrl)) return
+                // 量/错误率/延迟,不带 query、不带正文;路径按白名单收窄脱敏。
+                // **不从 URL 路径提取 object_id**:路径末段可能是一次性登录码 / 邀请 token / 对象键
+                // (见 PR #1320 review),原样取出即等于把凭证放进 telemetry。http_request 只保留
+                // 已脱敏的 path 维度,不再单列 object_id(path 已覆盖其可分析的信息)。
+                this.track('http_request', {
+                    method: (method || 'GET').toUpperCase(),
+                    path: normalizePath(rawUrl),
+                    status_bucket: statusBucket(status),
+                    duration_ms: Math.round(durationMs),
+                })
+            })
+        }
+
+        // fetch
+        const g = globalThis as { fetch?: typeof fetch }
+        if (typeof g.fetch === 'function') {
+            const orig = g.fetch.bind(globalThis)
+            g.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+                const start = Date.now()
+                const url =
+                    typeof input === 'string'
+                        ? input
+                        : input instanceof URL
+                          ? input.toString()
+                          : (input as Request).url
+                const method = init?.method || (typeof input !== 'string' && !(input instanceof URL) ? (input as Request).method : 'GET')
+                // 埋点自身通道不采,避免自采自
+                if (url && url.indexOf(BATCH_PATH) !== -1) {
+                    return orig(input as RequestInfo, init)
+                }
+                return orig(input as RequestInfo, init)
+                    .then((resp) => {
+                        emit(url, method || 'GET', resp.status, Date.now() - start)
+                        return resp
+                    })
+                    .catch((err) => {
+                        emit(url, method || 'GET', 0, Date.now() - start)
+                        throw err
+                    })
+            }
+        }
+
+        // XMLHttpRequest
+        const XHR = (globalThis as { XMLHttpRequest?: typeof XMLHttpRequest }).XMLHttpRequest
+        if (XHR && XHR.prototype) {
+            const proto = XHR.prototype
+            const origOpen = proto.open
+            const origSend = proto.send
+            type Tracked = XMLHttpRequest & { __trackMethod?: string; __trackUrl?: string }
+            proto.open = function (this: Tracked, method: string, url: string | URL, ...rest: unknown[]) {
+                this.__trackMethod = method
+                this.__trackUrl = typeof url === 'string' ? url : url.toString()
+                // @ts-expect-error 透传原始可变参数
+                return origOpen.call(this, method, url, ...rest)
+            }
+            proto.send = function (this: Tracked, ...args: unknown[]) {
+                const start = Date.now()
+                const url = this.__trackUrl || ''
+                const method = this.__trackMethod || 'GET'
+                if (url && url.indexOf(BATCH_PATH) === -1) {
+                    // 在闭包里定住 url/method/start(不在 loadend 时读实例字段,避免复用/
+                    // 重 open 后读到串味的路径);once:true 保证复用实例多次 send 不累积监听
+                    // (否则一个 loadend 会补发历史请求的 http_request,见 review P2)。
+                    this.addEventListener(
+                        'loadend',
+                        () => emit(url, method, this.status, Date.now() - start),
+                        { once: true },
+                    )
+                }
+                // @ts-expect-error 透传原始参数
+                return origSend.apply(this, args)
+            }
+        }
+    }
+
+    // ----------------------------------------------- 卸载兜底
+
+    private installUnloadFlush(): void {
+        const onHide = () => this.unloadFlush()
+        document.addEventListener('visibilitychange', () => {
+            this.safe(() => {
+                if (document.visibilityState === 'hidden') {
+                    // 切后台/即将卸载:先结算当前页停留(duration 截到隐藏这一刻),再随
+                    // keepalive 批次一起送。否则最后一页永无 page_leave,且后台挂机时长会被
+                    // 错记进「下一次切页」的停留里(看着像一次超长阅读,实为无人在看)。
+                    this.settleLastPage(Date.now())
+                    onHide()
+                } else if (document.visibilityState === 'visible' && this.lastPage) {
+                    // 回到前台:重置停留起点并允许再次结算,后台时长不计入本页停留。
+                    this.lastPage.enteredAt = Date.now()
+                    this.lastPage.settled = false
+                }
+            })
+        })
+        window.addEventListener('pagehide', onHide)
+    }
+
+    /** 统一异常自吞:埋点任何环节抛错都不得波及业务。 */
+    private safe(fn: () => void): void {
+        try {
+            fn()
+        } catch {
+            /* 埋点内部异常一律吞掉,不 console、不 toast、不外抛 */
+        }
+    }
+}
+
+/** 蒙版单例(唯一上报出口)。`Dap.shared` 供极少数破例点(如消息补点)引用。 */
+export const Dap = {
+    shared: new DapImpl(),
+}
+
+export type { TrackEnvelope }
+
+/**
+ * 仅供单元测试引用的隐私关键纯函数(不属于运行时公共 API)。normalizePath / isFirstParty
+ * 是 §8 隐私边界的核心,单测直接断言其脱敏 / 同源判定,避免只靠集成路径覆盖。
+ */
+export const __dapInternals = { normalizePath, isFirstParty, isSupportedRuntime }

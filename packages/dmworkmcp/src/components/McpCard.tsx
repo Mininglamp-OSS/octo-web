@@ -103,6 +103,9 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
       role="button"
       tabIndex={0}
       onClick={() => onClick(item)}
+      data-track="market_card_viewed"
+      data-object-id={item.id}
+      data-track-item-type="mcp"
       onKeyDown={(e) => {
         // Don't hijack Enter/Space when the focused element is one of the
         // inner action buttons (pencil / trash) — those buttons handle the
@@ -210,6 +213,12 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
           <div
             className="wk-mcp-card__footer-actions"
             onClick={(e) => e.stopPropagation()}
+            // The card root carries data-track="market_card_viewed"; the global
+            // click delegate runs in capture phase, BEFORE this stopPropagation,
+            // so an edit/delete click here would still resolve closest('[data-track]')
+            // to the card and emit a false view. data-track-ignore makes the
+            // delegate skip any click landing inside this actions subtree.
+            data-track-ignore=""
           >
             {onEdit && (
               <button
