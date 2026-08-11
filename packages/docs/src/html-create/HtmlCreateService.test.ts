@@ -49,7 +49,7 @@ describe('HtmlCreateService helpers', () => {
 })
 
 describe('createBlankHtml', () => {
-  it.each([400, 401, 403, 413, 422])('classifies explicit HTTP %s rejection as definitely not published', async (status) => {
+  it.each([400, 401, 403, 404, 405, 413, 422, 501])('classifies explicit HTTP %s rejection as definitely not published', async (status) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status }))
     vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
     await expect(createBlankHtml({ name: 'Name', requirements: '', spaceId: 'space' }))
@@ -69,6 +69,33 @@ describe('createBlankHtml', () => {
     const error = await createBlankHtml({ name: 'Name', requirements: '', spaceId: 'space' }).catch((caught) => caught)
     expect(error).toBeInstanceOf(HtmlPublishError)
     expect(error).toMatchObject({ outcome: 'uncertain' })
+  })
+
+  it('aborts a hung request at the injectable timeout and classifies it as uncertain', async () => {
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn((_url, init) => new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    })))
+    vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
+    const result = createBlankHtml({ name: 'Name', requirements: '', spaceId: 'space', timeoutMs: 25 }).catch((error) => error)
+    await vi.advanceTimersByTimeAsync(25)
+    await expect(result).resolves.toMatchObject({ name: 'HtmlPublishError', outcome: 'uncertain' })
+    vi.useRealTimers()
+  })
+
+  it('keeps the timeout active until a successful response body is fully read', async () => {
+    vi.useFakeTimers()
+    const json = vi.fn(() => new Promise<unknown>(() => {}))
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, status: 200, json }))
+    vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
+
+    const result = createBlankHtml({ name: 'Name', requirements: '', spaceId: 'space', timeoutMs: 25 })
+      .catch((error) => error)
+    await vi.advanceTimersByTimeAsync(25)
+
+    await expect(result).resolves.toMatchObject({ name: 'HtmlPublishError', outcome: 'uncertain' })
+    expect(json).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
   })
 
   it('classifies unreadable JSON from a 2xx response as an uncertain publish result', async () => {

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { CreateHtmlModal } from './CreateHtmlModal.tsx'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
@@ -55,7 +55,7 @@ describe('CreateHtmlModal direct publish', () => {
   })
 
   it('uses a dedicated single-line style for the HTML name input', () => {
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     const nameInput = screen.getByLabelText('docs.list.htmlCreate.nameLabel')
     expect(nameInput).toBeInstanceOf(HTMLInputElement)
     expect(nameInput.className).toContain('octo-html-create-input')
@@ -63,9 +63,75 @@ describe('CreateHtmlModal direct publish', () => {
     expect((screen.getByLabelText('docs.list.htmlCreate.requirementsLabel') as HTMLTextAreaElement).maxLength).toBe(8000)
   })
 
+  it('loads Bots only after Bot mode is entered and preserves a non-first selection', async () => {
+    const wk = createMockWKApp()
+    const responder = vi.fn(() => ({ data: [{ uid: 'bot-1', name: 'Builder' }, { uid: 'bot-2', name: 'Reviewer' }], status: 200 }))
+    wk.apiClient.responder = responder
+    setWKApp(wk)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    await act(async () => {})
+    expect(responder).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Reviewer')).toBeTruthy())
+    expect(responder).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByLabelText('Reviewer'))
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeDirect/ }))
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    expect((screen.getByLabelText('Reviewer') as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('loads the new Space after Bots are ready and ignores stale Space state', async () => {
+    const wk = createMockWKApp()
+    let resolveSpace2!: (value: { data: Array<{ uid: string; name: string }>; status: number }) => void
+    wk.apiClient.responder = (_method, url) => {
+      if (url.includes('space-1')) return { data: [{ uid: 'bot-1', name: 'Space One Bot' }], status: 200 }
+      if (url.includes('space-2')) return new Promise((resolve) => { resolveSpace2 = resolve })
+      return { data: [], status: 200 }
+    }
+    setWKApp(wk)
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Space One Bot')).toBeTruthy())
+    expect((screen.getByLabelText('Space One Bot') as HTMLInputElement).checked).toBe(true)
+
+    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    expect(screen.queryByText('Space One Bot')).toBeNull()
+    expect(screen.getByText('docs.list.htmlCreate.botLoading')).toBeTruthy()
+    await waitFor(() => expect(resolveSpace2).toBeTypeOf('function'))
+    resolveSpace2({ data: [{ uid: 'bot-2', name: 'Space Two Bot' }], status: 200 })
+    await waitFor(() => expect(screen.getByText('Space Two Bot')).toBeTruthy())
+    expect((screen.getByLabelText('Space Two Bot') as HTMLInputElement).checked).toBe(true)
+
+    const calls = wk.apiClient.calls.filter((call) => call.url.startsWith('/robot/owned_bots'))
+    expect(calls.map((call) => call.url)).toEqual([
+      '/robot/owned_bots?space_id=space-1',
+      '/robot/owned_bots?space_id=space-2',
+    ])
+  })
+
+  it('does not let a late Bot response from the old Space overwrite the current Space', async () => {
+    const wk = createMockWKApp()
+    let resolveOld!: (value: { data: Array<{ uid: string; name: string }>; status: number }) => void
+    wk.apiClient.responder = (_method, url) => url.includes('space-1')
+      ? new Promise((resolve) => { resolveOld = resolve })
+      : { data: [{ uid: 'bot-2', name: 'Current Space Bot' }], status: 200 }
+    setWKApp(wk)
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(resolveOld).toBeTypeOf('function'))
+
+    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Current Space Bot')).toBeTruthy())
+    resolveOld({ data: [{ uid: 'bot-1', name: 'Stale Space Bot' }], status: 200 })
+    await act(async () => {})
+
+    expect(screen.queryByText('Stale Space Bot')).toBeNull()
+    expect((screen.getByLabelText('Current Space Bot') as HTMLInputElement).checked).toBe(true)
+  })
+
   it('closes from the accessible header close button when idle', () => {
     const onClose = vi.fn()
-    render(<CreateHtmlModal open spaceId="space-1" onClose={onClose} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={onClose} onCreated={() => {}} onSubmit={() => {}} />)
 
     const close = screen.getByRole('button', { name: 'docs.list.htmlCreate.close' })
     expect(close.className).toContain('octo-html-create-close')
@@ -77,7 +143,7 @@ describe('CreateHtmlModal direct publish', () => {
   it('disables the header close button and does not close while publishing', () => {
     vi.mocked(fetch).mockReturnValue(new Promise(() => {}) as Promise<Response>)
     const onClose = vi.fn()
-    render(<CreateHtmlModal open spaceId="space-1" onClose={onClose} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={onClose} onCreated={() => {}} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
 
@@ -90,7 +156,7 @@ describe('CreateHtmlModal direct publish', () => {
   it('clears an old copy notice when switching mode or returning to Bot editing', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
     await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Build a page' } })
@@ -111,7 +177,7 @@ describe('CreateHtmlModal direct publish', () => {
   it('clears an old copy notice after description, file, or Bot selection changes', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
     await waitFor(() => expect(screen.getByText('Reviewer')).toBeTruthy())
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Build a page' } })
@@ -143,7 +209,7 @@ describe('CreateHtmlModal direct publish', () => {
   })
 
   it('restores Bot validation accessibility and file-row styling hooks', async () => {
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fireEvent.click(screen.getByText('docs.list.htmlCreate.modeBot'))
     await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
 
@@ -200,7 +266,7 @@ describe('CreateHtmlModal direct publish', () => {
   it('allows a real final message exactly at the 5000-character boundary', async () => {
     const requestId = '123e4567-e89b-12d3-a456-426614174000'
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => requestId), getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
     await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
     const fixed = buildHtmlCreationMessage({ requestId, botUid: 'bot-1', botName: '', description: '', files: [], spaceId: 'space-1', baseUrl: '' }).length
@@ -213,7 +279,7 @@ describe('CreateHtmlModal direct publish', () => {
   it('blocks a real final message at 5001 characters with a 36-character UUID', async () => {
     const requestId = '123e4567-e89b-12d3-a456-426614174000'
     vi.stubGlobal('crypto', { randomUUID: vi.fn(() => requestId), getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
     await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
     const fixed = buildHtmlCreationMessage({ requestId, botUid: 'bot-1', botName: '', description: '', files: [], spaceId: 'space-1', baseUrl: '' }).length
@@ -249,7 +315,7 @@ describe('CreateHtmlModal direct publish', () => {
   })
 
   it('does not expose real identifiers before the server returns them', () => {
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fill()
     expect((screen.getByLabelText('docs.list.htmlCreate.promptLabel') as HTMLTextAreaElement).value).not.toContain('doc_id')
     expect(sessionStorage.length).toBe(0)
@@ -258,7 +324,7 @@ describe('CreateHtmlModal direct publish', () => {
   it('shows a complete prompt only after success without opening automatically', async () => {
     vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-server', version: 1, registered: true, status: 'published', doc_id: 'd-real' }) as Response)
     const onCreated = vi.fn()
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
     await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.directSuccess')).toBeTruthy())
@@ -274,11 +340,11 @@ describe('CreateHtmlModal direct publish', () => {
     let resolve!: (value: Response | PromiseLike<Response>) => void
     vi.mocked(fetch).mockReturnValue(new Promise((done) => { resolve = done }) as Promise<Response>)
     const onCreated = vi.fn()
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
     fill()
     const submit = screen.getByText('docs.list.htmlCreate.create') as HTMLButtonElement
-    fireEvent.click(submit)
-    fireEvent.click(submit)
+    const form = submit.closest('form')!
+    act(() => { fireEvent.submit(form); fireEvent.submit(form) })
     expect(fetch).toHaveBeenCalledTimes(1)
     expect((screen.getByText('docs.list.htmlCreate.creating') as HTMLButtonElement).disabled).toBe(true)
     resolve(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
@@ -288,7 +354,7 @@ describe('CreateHtmlModal direct publish', () => {
 
   it('locks both mode buttons while direct publishing and cannot switch to Bot', async () => {
     vi.mocked(fetch).mockReturnValue(new Promise(() => {}) as Promise<Response>)
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
 
@@ -300,15 +366,41 @@ describe('CreateHtmlModal direct publish', () => {
     expect(screen.queryByLabelText('docs.list.htmlCreate.descLabel')).toBeNull()
   })
 
+  it('times out after headers when response JSON hangs, reports uncertain, and unlocks closing', async () => {
+    vi.useFakeTimers()
+    const signalSeen = vi.fn()
+    vi.mocked(fetch).mockImplementation((_url, init) => {
+      signalSeen(init?.signal)
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => new Promise(() => {}),
+      } as Response)
+    })
+    const onClose = vi.fn()
+    render(<CreateHtmlModal open spaceId="space-1" onClose={onClose} onCreated={() => {}} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(signalSeen).toHaveBeenCalledTimes(1)
+    expect((signalSeen.mock.calls[0][0] as AbortSignal).aborted).toBe(true)
+    expect(screen.getByRole('alert').textContent).toBe('docs.list.htmlCreate.publishUncertain')
+    const close = screen.getByRole('button', { name: 'docs.list.htmlCreate.close' }) as HTMLButtonElement
+    expect(close.disabled).toBe(false)
+    fireEvent.click(close)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
   it('aborts and ignores an old request that resolves after switching Space', async () => {
     let resolve!: (value: Response | PromiseLike<Response>) => void
     vi.mocked(fetch).mockReturnValue(new Promise((done) => { resolve = done }) as Promise<Response>)
     const onCreated = vi.fn()
-    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} />)
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
     const signal = vi.mocked(fetch).mock.calls[0][1]?.signal
-    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={onCreated} />)
+    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
     expect(signal?.aborted).toBe(true)
     resolve(response({ slug: 'old-space', version: 1, registered: true, status: 'published', doc_id: 'old-doc' }) as Response)
     await Promise.resolve()
@@ -321,14 +413,30 @@ describe('CreateHtmlModal direct publish', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve })) } })
     vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
     const onCreated = vi.fn()
-    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} />)
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
     await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen')).toBeTruthy())
     fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen'))
-    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={onCreated} />)
+    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
     finish()
     await Promise.resolve()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it('invalidates a pending clipboard open when the modal closes', async () => {
+    let finish!: () => void
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve })) } })
+    vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
+    const onCreated = vi.fn()
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen'))
+    view.rerender(<CreateHtmlModal open={false} spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    finish()
+    await act(async () => {})
     expect(onCreated).not.toHaveBeenCalled()
   })
 
@@ -337,7 +445,7 @@ describe('CreateHtmlModal direct publish', () => {
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve })) } })
     vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
     const onCreated = vi.fn()
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
     await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen')).toBeTruthy())
@@ -357,7 +465,7 @@ describe('CreateHtmlModal direct publish', () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(response({}, false) as Response)
       .mockResolvedValueOnce(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
     await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('docs.list.htmlCreate.publishFailed'))
@@ -371,7 +479,7 @@ describe('CreateHtmlModal direct publish', () => {
 
   it('locks submission after a network rejection because the publish result is uncertain', async () => {
     vi.mocked(fetch).mockRejectedValue(new TypeError('network unavailable'))
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
 
@@ -384,7 +492,7 @@ describe('CreateHtmlModal direct publish', () => {
 
   it('locks submission after an invalid 2xx response because the publish result is uncertain', async () => {
     vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: true, status: 'published' }) as Response)
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
 
@@ -397,13 +505,15 @@ describe('CreateHtmlModal direct publish', () => {
 
   it('makes registration_failed terminal and never POSTs v2', async () => {
     vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: false, status: 'registration_failed' }) as Response)
-    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} />)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
     fill()
     fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
-    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('docs.list.htmlCreate.registrationFailed'))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('docs.list.htmlCreate.registrationFailed'))
     const submit = screen.getByText('docs.list.htmlCreate.create') as HTMLButtonElement
     expect(submit.disabled).toBe(true)
     fireEvent.click(submit)
     expect(fetch).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('html-a')).toBeTruthy()
+    expect(screen.getByText('docs.list.htmlCreate.copySlug')).toBeTruthy()
   })
 })
