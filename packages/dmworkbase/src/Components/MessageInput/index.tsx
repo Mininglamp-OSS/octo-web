@@ -381,14 +381,19 @@ export interface MessageInputContext {
   /** Clear editor content without sending */
   clear: () => void;
   /**
-   * Number of composes that are consumed but not yet enqueued/settled
-   * (octo-web#1280). During that window the content lives in neither the
-   * composer nor the message list, so callers that used to rely on
-   * "composer holds the content" must consult this too — e.g. the pending
-   * attachment guard before switching channel, and draft persistence.
+   * Number of composes that were handed to `onSend` and have not settled yet
+   * (octo-web#1280).
+   *
+   * Scope, deliberately conservative: this covers the whole `onSend` lifetime —
+   * "consumed but no bubble yet" (mixed compose still uploading, so the content
+   * exists nowhere visible) AND "bubble created, still uploading / waiting for
+   * ack". The first part is the data-loss window; the second is kept in because
+   * callers use this to decide whether it is safe to tear the conversation down,
+   * and a message that is still ordering is still work in progress. Splitting the
+   * two states is a possible refinement (#1333 review, non-blocking).
    */
   pendingSendCount: () => number;
-  /** Plain text of every in-flight compose, newest last. */
+  /** Plain text of every unsettled compose, newest last. */
   pendingSendText: () => string;
 }
 
@@ -1131,8 +1136,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
     // 串行队列取代旧的重入保护：pending 期间的 Enter 不再被静默丢弃（#1280 的
     // 「连点没反应」），而是排在前一条之后执行，消息顺序仍由 Conversation 等 ack
-    // 保证。in-flight 期间把 compose 文本登记到 pendingSendsRef，供切会话守卫、
-    // 草稿保存和「发送中」提示使用——这段时间内容不在输入框也还没有气泡。
+    // 保证。onSend 未 settle 前把 compose 文本登记到 pendingSendsRef，供切会话
+    // 守卫、草稿保存和「发送中」提示使用。登记覆盖整个 onSend 生命周期：既包含
+    // 「已消费但还没有气泡」（混排上传中，内容此刻不在任何可见位置——这是真正的
+    // 丢失窗口），也包含「气泡已出现但仍在上传/等 ack」。后者保留是有意的：这些
+    // 调用方要判断此刻能否安全拆掉会话，仍在排序的消息也算未完成的活。
     const pendingId = ++pendingSendSeqRef.current;
     registerPendingSend(pendingId, composeSnapshotText(handle.snapshot));
     return getSendQueue()
@@ -1344,8 +1352,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         {/* 引用/编辑条在卡片内部 */}
         {topView && <div className="wk-messageinput-topview">{topView}</div>}
 
-        {/* 发送中提示 (octo-web#1280)：compose 已被消费但气泡还没出现的窗口内，
-            给用户一个「还在发」的信号，避免以为没发出去而重复操作。 */}
+        {/* 发送中提示 (octo-web#1280)：输入框在发送开始时就被清空，这里给用户一个
+            「还在发」的信号，避免以为没发出去而重复操作。覆盖到 onSend settle
+            （上传 + ack 结束）为止，与 pendingSendCount 同口径。 */}
         {pendingSendCount > 0 && (
           <div className="wk-messageinput-sending" aria-live="polite">
             {t("base.message.sending")}

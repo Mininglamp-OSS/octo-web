@@ -21,9 +21,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Editor, Node } from "@tiptap/core";
-import Document from "@tiptap/extension-document";
-import Paragraph from "@tiptap/extension-paragraph";
-import Text from "@tiptap/extension-text";
+import StarterKit from "@tiptap/starter-kit";
 import {
   composeSnapshotText,
   consumeCompose,
@@ -63,7 +61,23 @@ const editors: Editor[] = [];
 
 function makeEditor(content?: unknown): Editor {
   const editor = new Editor({
-    extensions: [Document, Paragraph, Text, TestAttachment],
+    // Mirrors the composer's own extension set (StarterKit, rich formatting
+    // disabled) and uses only dependencies `@octo/base` declares, so the suite
+    // also resolves under a strict pnpm install.
+    extensions: [
+      StarterKit.configure({
+        bold: false,
+        italic: false,
+        code: false,
+        heading: false,
+        blockquote: false,
+        horizontalRule: false,
+        codeBlock: false,
+        strike: false,
+        link: false,
+      }),
+      TestAttachment,
+    ],
     content: content as never,
   });
   editors.push(editor);

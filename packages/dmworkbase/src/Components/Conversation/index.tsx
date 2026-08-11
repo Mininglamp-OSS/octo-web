@@ -1402,7 +1402,8 @@ export class Conversation
     // 的待发送附件失去离开确认，或被侧栏草稿反向阻塞。
     if (!this.props.isAuxiliary) {
       // in-flight 发送也算「有待发送内容」(octo-web#1280 review)：compose 已被
-      // 清出输入框、气泡还没出现，这时切走会让内容彻底消失，必须先弹确认。
+      // 清出输入框，未入队时切走会让内容彻底消失；已入队但还在上传/等 ack 的也
+      // 一并保护（拆掉会话期间没人能还原失败内容），因此这里取整个 onSend 窗口。
       WKApp.shared.pendingAttachmentGuard = () =>
         this.getPendingAttachments().length === 0 &&
         this.pendingSendCount() === 0;
@@ -1568,7 +1569,7 @@ export class Conversation
     this.vm.releaseOpenConversationOwnership();
   }
 
-  /** Composes consumed by the composer but not yet enqueued (octo-web#1280). */
+  /** Composes handed to a send that has not settled yet (octo-web#1280). */
   private pendingSendCount(): number {
     return this.messageInputContext()?.pendingSendCount?.() ?? 0;
   }

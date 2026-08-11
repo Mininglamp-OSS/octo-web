@@ -41,7 +41,7 @@ export function shouldClearDraftAfterSend({
 export interface ResolveDraftToPersistOptions {
     /** What the composer currently holds. */
     liveDraft: string
-    /** Plain text of composes that are consumed but not yet enqueued/settled. */
+    /** Plain text of composes handed to a send that has not settled yet. */
     pendingSendText: string
     /** The draft currently stored for this conversation. */
     existingDraft: string
