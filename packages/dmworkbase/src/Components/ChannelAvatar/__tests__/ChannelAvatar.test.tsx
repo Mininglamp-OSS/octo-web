@@ -143,7 +143,7 @@ describe("ChannelAvatar save intent", () => {
     expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
       avatarText: "研发",
       avatarColor: 5,
-      clearUploadedAvatar: true,
+      clearUploadedAvatar: false,
     });
     expect(mocks.changeChannelAvatarTag).toHaveBeenCalledWith(channel);
     expect(mocks.fetchCurrentImChannelInfo).toHaveBeenCalledWith(channel);
@@ -160,16 +160,31 @@ describe("ChannelAvatar save intent", () => {
     expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
   });
 
-  it("sends clear_uploaded_avatar when generated save has no text/color edits", async () => {
+  it("closes without PUT when generated save has no text/color edits", async () => {
     const channel = renderChannelAvatar({ initialAvatarText: "研发", initialColorIndex: 5 });
 
     await act(async () => {
       fireEvent.click(screen.getByText("base.common.save"));
     });
 
-    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledTimes(1);
+    expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
+    expect(mocks.changeChannelAvatarTag).not.toHaveBeenCalledWith(channel);
+  });
+
+  it("sends clear_uploaded_avatar only when creator edits an uploaded avatar", async () => {
+    const channel = renderChannelAvatar({ isUploadedAvatar: true, canClearUploadedAvatar: true });
+
+    act(() => {
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "研发" },
+      });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("base.common.save"));
+    });
+
     expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
-      avatarText: undefined,
+      avatarText: "研发",
       avatarColor: undefined,
       clearUploadedAvatar: true,
     });

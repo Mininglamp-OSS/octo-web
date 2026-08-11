@@ -24,6 +24,8 @@ export interface ChannelAvatarProps {
     isNamedGroup?: boolean
     initialAvatarText?: string
     initialColorIndex?: number
+    isUploadedAvatar?: boolean
+    canClearUploadedAvatar?: boolean
     /** 路由上下文：保存/取消成功后关闭当前「群头像」页。 */
     context?: RouteContext<any>
     onFileUpload?:(f:File)=>Promise<void>
@@ -135,6 +137,10 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             await this.saveUploadedAvatar()
             return
         }
+        if (!textChanged && !colorChanged) {
+            this.closePage()
+            return
+        }
         this.setState({ customAvatarSaving: true })
         try {
             await updateChannelAvatarCustom(channel, {
@@ -142,7 +148,9 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 avatarColor: colorChanged
                     ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
                     : undefined,
-                clearUploadedAvatar: true,
+                clearUploadedAvatar:
+                    this.props.isUploadedAvatar === true &&
+                    this.props.canClearUploadedAvatar === true,
             })
             WKApp.shared.changeChannelAvatarTag(channel)
             void fetchCurrentImChannelInfo(channel)

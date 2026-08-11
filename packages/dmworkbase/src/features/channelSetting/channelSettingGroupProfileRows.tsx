@@ -6,6 +6,7 @@ import WKApp from "../../App";
 import { ChannelAvatar } from "../../Components/ChannelAvatar";
 import ChannelQRCode from "../../Components/ChannelQRCode";
 import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context";
+import { GroupRole } from "../../Service/Const";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { ChannelField } from "../../Service/DataSource/DataSource";
 import { GROUP_NAME_MAX_LENGTH } from "../../Service/nameLimits";
@@ -36,6 +37,8 @@ export function buildGroupProfileRows({
   const { channel, channelInfo } = data;
   const isExternalGroup = channelInfo?.orgData?.is_external_group === 1;
   const isNamedGroup = channelInfo?.orgData?.is_named === 1;
+  const isUploadedAvatar = channelInfo?.orgData?.is_upload_avatar === 1;
+  const canClearUploadedAvatar = data.subscriberOfMe?.role === GroupRole.owner;
   const avatarColor = parseAvatarColorIndex(channelInfo?.orgData?.avatar_color);
   const groupName = isExternalGroup ? (
     <span>
@@ -102,6 +105,8 @@ export function buildGroupProfileRows({
               isNamedGroup={isNamedGroup}
               initialAvatarText={channelInfo?.orgData?.avatar_text || ""}
               initialColorIndex={avatarColor}
+              isUploadedAvatar={isUploadedAvatar}
+              canClearUploadedAvatar={canClearUploadedAvatar}
             />,
             { title: t("base.module.channelSettings.groupAvatar") }
           );
