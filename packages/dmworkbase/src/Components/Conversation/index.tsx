@@ -54,6 +54,7 @@ import MessageInput, {
 } from "../MessageInput";
 import {
   SendResultDetail,
+  SendDraftSnapshot,
   SendTargetSnapshot,
   UnsentEditorBlock,
 } from "../MessageInput/sendFlow";
@@ -1641,14 +1642,12 @@ export class Conversation
 
   async clearDraftAfterSend(
     sendDraftGeneration: number,
-    remoteDraftAtSend: string,
-    draftAtSend: string
+    remoteDraftAtSend: string
   ) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
     if (
       !shouldClearDraftAfterSend({
         liveDraft: this.messageInputContext()?.text() || "",
-        draftAtSend,
         remoteDraft: remoteExtra?.draft || "",
         remoteDraftAtSend,
         draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
@@ -2990,13 +2989,19 @@ export class Conversation
                           },
                         })
                       }
+                      onCaptureSendDraft={() => ({
+                        generation: this.draftSaveGeneration,
+                        remoteDraft:
+                          this.vm.currentConversation?.remoteExtra?.draft || "",
+                      })}
                       onSend={async (
                         text: string,
                         mention?: MentionModel,
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
                         editorBlocks?: EditorContentBlock[],
-                        sendTarget?: SendTargetSnapshot
+                        sendTarget?: SendTargetSnapshot,
+                        sendDraft?: SendDraftSnapshot
                       ): Promise<boolean | SendResultDetail> => {
                         // 返回值告诉 MessageInput「已消费的 compose 是否保持消费」：
                         //   true  → 消息已入队（本地气泡已在列表），输入框保持清空；
@@ -3005,19 +3010,14 @@ export class Conversation
                         // 否则整条消息会丢 (octo-web#227)；反之，**已入队但 ack 失败/
                         // 超时绝不能返回 false**，否则已经可见的内容会被塞回输入框
                         // (octo-web#1280)。
-                        const sendDraftGeneration = this.draftSaveGeneration;
+                        // This callback may run after waiting in the send queue,
+                        // so use the draft snapshot captured with the compose.
+                        const sendDraftGeneration =
+                          sendDraft?.generation ?? this.draftSaveGeneration;
                         const remoteDraftAtSend =
-                          this.vm.currentConversation?.remoteExtra?.draft || "";
-                        // #1280 起编辑器在 send 开始时就被同步消费，而 onSend 可能被
-                        // 排队后才执行，所以这里读到的**不一定**是空串：
-                        //   • 立即执行的发送 → 空串；
-                        //   • 排队后执行的发送 → 用户这期间已经写的新内容。
-                        // 两种情况下语义都收敛为「交给本次发送之后，输入框是否已经
-                        // 往前走了」——走了就不清远端草稿（新草稿权威），没走才清。
-                        // 已发出的内容在任何情况下都不再是草稿。详见
-                        // Utils/draftLifecycle.ts 的 shouldClearDraftAfterSend。
-                        const draftAtSend =
-                          this.messageInputContext()?.text() || "";
+                          sendDraft?.remoteDraft ??
+                          this.vm.currentConversation?.remoteExtra?.draft ??
+                          "";
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
@@ -3299,8 +3299,7 @@ export class Conversation
                           if (mixedSent) {
                             await this.clearDraftAfterSend(
                               sendDraftGeneration,
-                              remoteDraftAtSend,
-                              draftAtSend
+                              remoteDraftAtSend
                             );
                           }
                           return finishRichTextMixedSend(
@@ -3333,6 +3332,7 @@ export class Conversation
                         }
 
                         // ── 第二阶段：按编辑器文档顺序发送内容块（文本段和粘贴图片交替） ──
+                        let restoreReplyTarget = false;
                         if (editorBlocks && editorBlocks.length > 0) {
                           // 图文混排：同时含文本和图片、且无非图片文件块时，聚合成单条
                           // RichText(=14) 消息（而非拆成多条独立消息）。含 file 块或
@@ -3379,8 +3379,7 @@ export class Conversation
                             if (mixedSent) {
                               await this.clearDraftAfterSend(
                                 sendDraftGeneration,
-                                remoteDraftAtSend,
-                                draftAtSend
+                                remoteDraftAtSend
                               );
                             }
                             // 返回部分结果 (octo-web#227 → #1280)：
@@ -3398,6 +3397,7 @@ export class Conversation
                           }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {
+                            let carriesReply = false;
                             try {
                               if (block.type === "text") {
                                 const msgContent = buildTextContent(
@@ -3407,16 +3407,18 @@ export class Conversation
                                 // 第一个文本块携带 reply 信息
                                 if (reply && isFirstTextBlock) {
                                   msgContent.reply = reply;
-                                  reply = undefined;
+                                  carriesReply = true;
                                 }
                                 isFirstTextBlock = false;
                                 if (await this.sendTextAndWaitAck(msgContent)) {
                                   anyMessageSent = true;
+                                  if (carriesReply) reply = undefined;
                                 } else {
                                   unsentEditorBlocks.push({
                                     type: "text",
-                                    text: block.text,
+                                    text: block.restoreText,
                                   });
+                                  if (carriesReply) restoreReplyTarget = true;
                                 }
                               } else if (block.type === "image") {
                                 if (await sendImageFile(block.file)) {
@@ -3449,9 +3451,10 @@ export class Conversation
                               // 也要登记，否则它既没发出又不会被还原，内容直接消失。
                               unsentEditorBlocks.push(
                                 block.type === "text"
-                                  ? { type: "text", text: block.text }
+                                  ? { type: "text", text: block.restoreText }
                                   : { type: "attachment", id: block.id }
                               );
+                              if (carriesReply) restoreReplyTarget = true;
                               Toast.error(
                                 t("base.conversation.message.sendFailed")
                               );
@@ -3460,10 +3463,23 @@ export class Conversation
                           // 如果 reply 还没被消费（没有文本块），附加到一条空白消息;
                           // 但仅当本次确实发出了别的消息时,否则用户的所有附件都被
                           // 预检拒绝、却仍收到一条孤立的空回复气泡 (#119 Jerry-Xin)。
-                          if (reply && anyMessageSent) {
+                          if (reply && anyMessageSent && !restoreReplyTarget) {
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
-                            await this.sendTextAndWaitAck(emptyContent);
+                            try {
+                              if (await this.sendTextAndWaitAck(emptyContent)) {
+                                reply = undefined;
+                              }
+                            } catch (err) {
+                              console.error(
+                                "[Conversation] empty reply send failed:",
+                                err
+                              );
+                              restoreReplyTarget = true;
+                              Toast.error(
+                                t("base.conversation.message.sendFailed")
+                              );
+                            }
                           }
                         } else {
                           // fallback：无 editorBlocks 时走旧逻辑（纯文本）
@@ -3479,14 +3495,26 @@ export class Conversation
                             // 同上: 顶部附件全部被预检拒绝时不要补空回复
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
-                            await this.sendTextAndWaitAck(emptyContent);
+                            try {
+                              if (await this.sendTextAndWaitAck(emptyContent)) {
+                                reply = undefined;
+                              }
+                            } catch (err) {
+                              console.error(
+                                "[Conversation] empty reply send failed:",
+                                err
+                              );
+                              restoreReplyTarget = true;
+                              Toast.error(
+                                t("base.conversation.message.sendFailed")
+                              );
+                            }
                           }
                         }
                         if (anyMessageSent) {
                           await this.clearDraftAfterSend(
                             sendDraftGeneration,
-                            remoteDraftAtSend,
-                            draftAtSend
+                            remoteDraftAtSend
                           );
                         }
                         if (anyMessageSent) this.props.onMessageSent?.();
@@ -3502,6 +3530,7 @@ export class Conversation
                           editorConsumed: anyMessageSent,
                           consumedTopIds,
                           unsentEditorBlocks,
+                          restoreSendTarget: restoreReplyTarget,
                         };
                       }}
                     ></MessageInput>

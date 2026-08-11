@@ -1,6 +1,5 @@
 export interface ShouldClearDraftAfterSendOptions {
     liveDraft?: string
-    draftAtSend: string
     remoteDraft?: string
     remoteDraftAtSend?: string
     draftSavedAfterSend: boolean
@@ -10,29 +9,20 @@ export interface ShouldClearDraftAfterSendOptions {
 /**
  * Decide whether the remote draft may be cleared after a send.
  *
- * Since octo-web#1280 the composer is consumed synchronously when the send
- * starts, so `draftAtSend` (read inside `onSend`) is the empty string for an
- * immediate send and, for a queued one, whatever the user has typed since. The
- * comparison below therefore reads as "has the composer moved on since this send
- * was handed over?" — if it has, the newer draft is authoritative and must not be
- * cleared; the sent content is no longer a draft in either case.
+ * Since octo-web#1280 the composer is consumed synchronously. Any non-empty live
+ * draft after that point is newer input, even if it happens to equal the sent
+ * text. The generation and remote snapshot must be captured at consume time so a
+ * queued send cannot mistake a draft saved while it waited for its own snapshot.
  */
 export function shouldClearDraftAfterSend({
     liveDraft,
-    draftAtSend,
     remoteDraft,
     remoteDraftAtSend,
     draftSavedAfterSend,
     latestSavedDraft,
 }: ShouldClearDraftAfterSendOptions): boolean {
-    // Only a value that differs from what was handed to this send counts as a
-    // newer draft (see the note above about consume-first).
-    if (liveDraft && liveDraft !== draftAtSend) return false
-    if (
-        draftSavedAfterSend &&
-        latestSavedDraft &&
-        latestSavedDraft !== draftAtSend
-    ) return false
+    if (liveDraft) return false
+    if (draftSavedAfterSend && latestSavedDraft) return false
     if ((remoteDraft || "") !== (remoteDraftAtSend || "")) return false
 
     return true

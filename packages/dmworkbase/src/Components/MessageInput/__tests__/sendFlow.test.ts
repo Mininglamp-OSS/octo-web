@@ -100,6 +100,7 @@ function makeCompose(
       restoredEditorBlocks.push(...blocks);
       record("restoreEditorBlocks");
     }),
+    restoreSendTarget: vi.fn(() => record("restoreSendTarget")),
     disposeEditorAttachments: vi.fn((ids: string[]) => {
       disposedEditorIds.push(...ids);
       record("disposeEditorAttachments");
@@ -419,6 +420,46 @@ describe("runSendWithConsumedCompose — partial editor blocks (#1280 review)", 
     ]);
     // The attachment that did go out stays consumed → no duplicate on retry.
     expect(compose.disposedTopIds).toEqual(["t1"]);
+  });
+
+  it("restores the captured reply target before partial editor content", async () => {
+    const compose = makeCompose();
+
+    await runSendWithConsumedCompose(
+      vi.fn().mockResolvedValue({
+        editorConsumed: true,
+        consumedTopIds: ["t1"],
+        unsentEditorBlocks: [{ type: "text", text: "@[u1:Alice] retry" }],
+        restoreSendTarget: true,
+      }),
+      ids(["t1"]),
+      compose,
+    );
+
+    expect(compose.calls).toEqual([
+      "disposeTopAttachments",
+      "restoreSendTarget",
+      "restoreEditorBlocks",
+    ]);
+  });
+
+  it("restores the reply target when an attachment-only reply fails pre-enqueue", async () => {
+    const compose = makeCompose();
+
+    await runSendWithConsumedCompose(
+      vi.fn().mockResolvedValue({
+        editorConsumed: true,
+        consumedTopIds: ["t1"],
+        restoreSendTarget: true,
+      }),
+      ids(["t1"]),
+      compose,
+    );
+
+    expect(compose.calls).toEqual([
+      "disposeTopAttachments",
+      "restoreSendTarget",
+    ]);
   });
 
   it("keeps document order when both text and an attachment are unsent", async () => {

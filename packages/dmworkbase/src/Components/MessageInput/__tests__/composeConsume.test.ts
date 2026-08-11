@@ -36,6 +36,7 @@ import {
   type SendResult,
 } from "../sendFlow";
 import { captureSendTarget } from "../../Conversation/sendTarget";
+import { parseConsumedTextToContent } from "../mentionSendParse";
 
 const TestAttachment = Node.create({
   name: "attachment",
@@ -54,6 +55,22 @@ const TestAttachment = Node.create({
   },
   renderHTML() {
     return ["span", { "data-attachment": "" }];
+  },
+});
+
+const TestMention = Node.create({
+  name: "mention",
+  group: "inline",
+  inline: true,
+  atom: true,
+  addAttributes() {
+    return { id: { default: null }, label: { default: "" } };
+  },
+  renderText({ node }) {
+    return `@${node.attrs.label}`;
+  },
+  renderHTML({ node }) {
+    return ["span", { "data-mention": node.attrs.id }, `@${node.attrs.label}`];
   },
 });
 
@@ -77,6 +94,7 @@ function makeEditor(content?: unknown): Editor {
         link: false,
       }),
       TestAttachment,
+      TestMention,
     ],
     content: content as never,
   });
@@ -116,6 +134,7 @@ interface Harness {
   revoked: string[];
   errors: Array<{ step: string; err: unknown }>;
   restoredCompose: number;
+  restoredSendTarget: number;
   /** Mirrors MessageInput's restore-offset ref (reset on every consume). */
   offsets: { blocks: number; topAttachments: number };
 }
@@ -128,6 +147,7 @@ function harness(content?: unknown, top: TopAttachmentLike[] = []): Harness {
     revoked: [],
     errors: [],
     restoredCompose: 0,
+    restoredSendTarget: 0,
     offsets: { blocks: 0, topAttachments: 0 },
   };
 }
@@ -144,6 +164,8 @@ function consume(h: Harness) {
       h.top = items;
     },
     revokeObjectURL: (url) => h.revoked.push(url),
+    parseTextToNodes: (value) =>
+      parseConsumedTextToContent(value).content as ComposeDoc["content"] as never,
     getRestoreOffsets: () => h.offsets,
     onRestored: ({ blocks, topAttachments }) => {
       h.offsets = {
@@ -153,6 +175,9 @@ function consume(h: Harness) {
     },
     onRestoreCompose: () => {
       h.restoredCompose += 1;
+    },
+    onRestoreSendTarget: () => {
+      h.restoredSendTarget += 1;
     },
     onRestoreError: (err, step) => h.errors.push({ step, err }),
   });
@@ -534,6 +559,40 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     expect(h.top).toEqual([]);
     expect(h.revoked).toEqual(["blob:t1"]);
     expect(h.errors).toEqual([]);
+  });
+
+  it("restores a reply target and structured member mention on partial failure", async () => {
+    const h = harness(doc(para(text("placeholder"))), [
+      { id: "t1", previewUrl: "blob:t1" },
+    ]);
+    const handle = consume(h);
+
+    await runSendWithConsumedCompose(
+      () => ({
+        editorConsumed: true,
+        consumedTopIds: ["t1"],
+        unsentEditorBlocks: [
+          { type: "text" as const, text: "@[u-alice:Alice] please retry" },
+        ],
+        restoreSendTarget: true,
+      }),
+      handle.ids,
+      handle.compose,
+    );
+
+    expect(h.restoredSendTarget).toBe(1);
+    expect(h.editor.getJSON()).toEqual({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "mention", attrs: { id: "u-alice", label: "Alice" } },
+            { type: "text", text: " please retry" },
+          ],
+        },
+      ],
+    });
   });
 
   it("restores mixed unsent text and attachments in document order", async () => {

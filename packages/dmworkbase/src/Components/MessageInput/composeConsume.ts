@@ -78,6 +78,8 @@ export interface ConsumeComposeOptions {
   parseTextToNodes?: (text: string) => ComposeNode[];
   /** Extra side effects to undo when the whole compose is restored. */
   onRestoreCompose?: () => void;
+  /** Restore only the captured reply/edit target after a partial send. */
+  onRestoreSendTarget?: () => void;
   /**
    * Restore ordering across consecutive failures (#1280 review). Two queued
    * sends that both fail must come back as `A, B, <live draft>`, not `B, A`, so
@@ -231,6 +233,7 @@ export function consumeCompose(
       if (content.length === 0) return;
       restoreDoc({ type: "doc", content });
     },
+    restoreSendTarget: () => opts.onRestoreSendTarget?.(),
     disposeEditorAttachments: (ids: string[]) => {
       ids.forEach((id) => {
         attachmentFiles.delete(id);

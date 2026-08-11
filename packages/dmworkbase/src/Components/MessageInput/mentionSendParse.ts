@@ -270,7 +270,10 @@ export interface DraftDoc {
  * and restored also degrades to inert text — a fail-closed UX nick, not a
  * security loss. The plain typed-@ → send path (no draft) is unaffected.
  */
-export function parseDraftToContent(text: string): DraftDoc {
+function parseTextToContent(
+  text: string,
+  restoreTrustedBroadcast: boolean,
+): DraftDoc {
   const lines = text.split("\n");
   const paragraphs = lines.map((line) => {
     const nodes: DraftDocNode[] = [];
@@ -281,7 +284,8 @@ export function parseDraftToContent(text: string): DraftDoc {
     let match: RegExpExecArray | null;
 
     while ((match = regex.exec(line)) !== null) {
-      const uid = stripTrustMark(match[1]);
+      const rawUid = match[1];
+      const uid = stripTrustMark(rawUid);
       const label = match[2];
       const matchStart = match.index;
 
@@ -289,7 +293,10 @@ export function parseDraftToContent(text: string): DraftDoc {
         nodes.push({ type: "text", text: line.slice(lastIndex, matchStart) });
       }
 
-      if (isBroadcastSentinelUid(uid)) {
+      if (
+        isBroadcastSentinelUid(uid) &&
+        !(restoreTrustedBroadcast && rawUid.startsWith(MENTION_TRUST_MARK))
+      ) {
         // Fail closed: never rebuild a broadcast sentinel as a node from
         // untrusted draft text — emit inert `@label` text instead.
         nodes.push({ type: "text", text: `@${label}` });
@@ -308,4 +315,13 @@ export function parseDraftToContent(text: string): DraftDoc {
   });
 
   return { type: "doc", content: paragraphs };
+}
+
+export function parseDraftToContent(text: string): DraftDoc {
+  return parseTextToContent(text, false);
+}
+
+/** Restore text serialized directly from consumed editor nodes. */
+export function parseConsumedTextToContent(text: string): DraftDoc {
+  return parseTextToContent(text, true);
 }

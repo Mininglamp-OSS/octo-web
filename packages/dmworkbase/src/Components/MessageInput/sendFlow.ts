@@ -85,6 +85,8 @@ export interface SendResultDetail {
    * the user can retry exactly what did not make it (#1280 review).
    */
   unsentEditorBlocks?: UnsentEditorBlock[];
+  /** Restore the captured reply/edit target alongside a partial editor restore. */
+  restoreSendTarget?: boolean;
 }
 
 /**
@@ -111,6 +113,12 @@ export type SendResult = void | boolean | SendResultDetail;
  */
 export interface SendTargetSnapshot {
   restore: () => void;
+}
+
+/** Draft state captured synchronously when the compose is consumed. */
+export interface SendDraftSnapshot {
+  generation: number;
+  remoteDraft: string;
 }
 
 /**
@@ -192,6 +200,8 @@ export interface ConsumedCompose {
    * sent). Used for `unsentEditorBlocks`.
    */
   restoreEditorBlocks: (blocks: UnsentEditorBlock[]) => void;
+  /** Put back only the captured reply/edit target after a partial send failure. */
+  restoreSendTarget: () => void;
   /** Drop in-memory `File` refs + revoke preview URLs of these pasted images. */
   disposeEditorAttachments: (ids: string[]) => void;
   /** Revoke preview URLs of top attachments that stay consumed. */
@@ -281,6 +291,7 @@ interface SendDecision {
   editorConsumed: boolean;
   consumedTopIds: string[];
   unsentEditorBlocks: UnsentEditorBlock[];
+  restoreSendTarget: boolean;
 }
 
 /** Normalize the loose `SendResult` union into an explicit decision. */
@@ -289,7 +300,12 @@ function normalizeResult(
   ids: ConsumedComposeIds,
 ): SendDecision {
   if (result === false) {
-    return { editorConsumed: false, consumedTopIds: [], unsentEditorBlocks: [] };
+    return {
+      editorConsumed: false,
+      consumedTopIds: [],
+      unsentEditorBlocks: [],
+      restoreSendTarget: false,
+    };
   }
   if (result === true || result == null) {
     // void / undefined / true → full success.
@@ -297,6 +313,7 @@ function normalizeResult(
       editorConsumed: true,
       consumedTopIds: ids.topIds,
       unsentEditorBlocks: [],
+      restoreSendTarget: false,
     };
   }
   // Detailed partial result. When the editor compose was not consumed the whole
@@ -308,6 +325,9 @@ function normalizeResult(
     unsentEditorBlocks: result.editorConsumed
       ? result.unsentEditorBlocks ?? []
       : [],
+    restoreSendTarget: result.editorConsumed
+      ? result.restoreSendTarget === true
+      : false,
   };
 }
 
@@ -339,7 +359,12 @@ export async function runSendWithConsumedCompose(
   } catch (err) {
     // onSend should surface its own error toast; we just restore the draft.
     console.error("[MessageInput] send failed, restoring draft", err);
-    decision = { editorConsumed: false, consumedTopIds: [], unsentEditorBlocks: [] };
+    decision = {
+      editorConsumed: false,
+      consumedTopIds: [],
+      unsentEditorBlocks: [],
+      restoreSendTarget: false,
+    };
   }
 
   const step = (label: string, run: () => void) => {
@@ -391,9 +416,14 @@ export async function runSendWithConsumedCompose(
     );
   }
   if (decision.unsentEditorBlocks.length > 0) {
+    if (decision.restoreSendTarget) {
+      step("restoreSendTarget", () => compose.restoreSendTarget());
+    }
     step("restoreEditorBlocks", () =>
       compose.restoreEditorBlocks(decision.unsentEditorBlocks),
     );
+  } else if (decision.restoreSendTarget) {
+    step("restoreSendTarget", () => compose.restoreSendTarget());
   }
 
   return true;

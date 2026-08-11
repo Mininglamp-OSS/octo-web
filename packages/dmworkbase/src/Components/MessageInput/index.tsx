@@ -47,6 +47,7 @@ import {
   runSendWithConsumedCompose,
   SendQueue,
   SendResultDetail,
+  SendDraftSnapshot,
   SendTargetSnapshot,
 } from "./sendFlow";
 import {
@@ -111,7 +112,7 @@ function extractAttachmentsFromEditor(
  * 用于按顺序发送编辑器中穿插的文本和媒体。
  */
 export type EditorContentBlock =
-  | { type: "text"; text: string; mention?: MentionModel }
+  | { type: "text"; text: string; restoreText: string; mention?: MentionModel }
   | { type: "image"; id: string; file: File }
   | { type: "file"; id: string; file: File };
 
@@ -137,7 +138,7 @@ function extractOrderedBlocks(
     const joined = stripInvisibleChars(pendingTextParts.join(""));
     if (joined.trim() !== "") {
       const { content, mention } = formatMentionTextV2(joined);
-      blocks.push({ type: "text", text: content, mention });
+      blocks.push({ type: "text", text: content, restoreText: joined, mention });
     }
     pendingTextParts = [];
   }
@@ -259,13 +260,16 @@ interface MessageInputProps {
      * 发送被排队时 vm 上的 reply/edit 状态可能已被用户改掉，onSend 必须用这个
      * 快照而不是实时读取，否则可能回复错的消息、甚至编辑到无关消息。
      */
-    sendTarget?: SendTargetSnapshot
+    sendTarget?: SendTargetSnapshot,
+    sendDraft?: SendDraftSnapshot
   ) => void | boolean | SendResultDetail | Promise<void | boolean | SendResultDetail>;
   /**
    * 同步取走并清除 reply/edit 目标（横幅同时收起），返回的快照会被透传给
    * onSend；发送未入队时 MessageInput 调 `restore()` 复位 (octo-web#1280)。
    */
   onCaptureSendTarget?: () => SendTargetSnapshot | undefined;
+  /** Capture draft state before this send enters the serial queue. */
+  onCaptureSendDraft?: () => SendDraftSnapshot;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
@@ -330,6 +334,7 @@ import {
   serializeMentionMarker,
   stripTrustMark,
   parseDraftToContent,
+  parseConsumedTextToContent,
 } from "./mentionSendParse";
 import type { SendParseMember } from "./mentionSendParse";
 
@@ -1067,6 +1072,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 结果编排在 sendFlow.ts 的 runSendWithConsumedCompose。
     // reply/edit 目标必须与 compose 同步取走（见 SendTargetSnapshot 注释）。
     const sendTarget = props.onCaptureSendTarget?.();
+    const sendDraft = props.onCaptureSendDraft?.();
     // 本次消费会清空编辑器与本次附件，之前失败还原留下的偏移随之失效。
     restoreOffsetsRef.current = { blocks: 0, topAttachments: 0 };
     const expandedAtSend = expanded;
@@ -1094,7 +1100,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       attachmentFiles: attachmentFilesRef.current,
       // 部分还原时把 @[uid:label] 还原成 mention 节点（与草稿恢复同一套解析）。
       parseTextToNodes: (value) =>
-        (parseDraftToContent(value).content ?? []) as ComposeDoc["content"] as never,
+        (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
       getTopAttachments: () => topAttachmentsRef.current,
       setTopAttachments: (items) => {
         topAttachmentsRef.current = items as TopAttachmentItem[];
@@ -1118,6 +1124,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
           props.onExpandChange?.(true);
         }
       },
+      onRestoreSendTarget: () => sendTarget?.restore(),
       onRestoreError: (err, step) => {
         // 内容既不在输入框也不在消息列表时必须让用户知道，不能静默丢失
         // （典型触发：还原时会话已被切走、editor 已 destroy）。
@@ -1156,7 +1163,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               allAttachments.length > 0 ? allAttachments : undefined,
               topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
               orderedBlocks.length > 0 ? orderedBlocks : undefined,
-              sendTarget
+              sendTarget,
+              sendDraft
             ),
           handle.ids,
           handle.compose
@@ -1168,6 +1176,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     expanded,
     props.onSend,
     props.onCaptureSendTarget,
+    props.onCaptureSendDraft,
     props.onExpandChange,
     getSendQueue,
     registerPendingSend,
