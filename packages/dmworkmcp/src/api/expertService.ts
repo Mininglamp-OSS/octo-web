@@ -492,9 +492,10 @@ export const MAX_SKILL_PACKAGE_FETCH_BYTES = 20 * 1024 * 1024;
 
 /** Fetch the raw bytes of a skill package from its presigned URL, for the
  *  client-side file browser. Scheme-guards the URL (rejecting "" and unsafe
- *  schemes), honours the caller's AbortSignal, and rejects a package larger than
- *  MAX_SKILL_PACKAGE_FETCH_BYTES (by Content-Length up front, then by the
- *  buffered length) so a marketplace package can't OOM the tab. */
+ *  schemes), honours the caller's AbortSignal, and enforces
+ *  MAX_SKILL_PACKAGE_FETCH_BYTES by STREAMING the body and cancelling as soon as
+ *  the accumulated size exceeds the cap — so a missing/lying Content-Length
+ *  can't force the tab to buffer an oversized (or infinite) response first. */
 export async function fetchSkillPackage(
   url: string,
   signal?: AbortSignal
@@ -506,11 +507,35 @@ export async function fetchSkillPackage(
   if (Number.isFinite(declared) && declared > MAX_SKILL_PACKAGE_FETCH_BYTES) {
     throw new Error("package too large");
   }
-  const buf = await resp.arrayBuffer();
-  if (buf.byteLength > MAX_SKILL_PACKAGE_FETCH_BYTES) {
-    throw new Error("package too large");
+  const reader = resp.body?.getReader();
+  if (!reader) {
+    // No readable stream (non-browser/edge case): fall back but still cap.
+    const buf = await resp.arrayBuffer();
+    if (buf.byteLength > MAX_SKILL_PACKAGE_FETCH_BYTES) {
+      throw new Error("package too large");
+    }
+    return buf;
   }
-  return buf;
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    total += value.byteLength;
+    if (total > MAX_SKILL_PACKAGE_FETCH_BYTES) {
+      await reader.cancel();
+      throw new Error("package too large");
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out.buffer as ArrayBuffer;
 }
 
 const getExpertSkillDownloadUrlReal = (id: string, index: number) =>
