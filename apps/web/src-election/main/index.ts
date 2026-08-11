@@ -456,10 +456,14 @@ const createMainWindow = async () => {
       }
     }
   });
-  if (NODE_ENV === "development") mainWindow.loadURL(DEV_SERVER_URL);
-  if (NODE_ENV !== "development") {
+  // Hoist WEB_URL to function scope so the will-navigate handler below can
+  // reference it (block-scoped const inside the else-branch is not visible there).
+  let WEB_URL: string;
+  if (NODE_ENV === "development") {
+    mainWindow.loadURL(DEV_SERVER_URL);
+  } else {
     process.env.DIST_ELECTRON = join(__dirname, "../");
-    const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
+    WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
     mainWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
   }
 
@@ -474,10 +478,14 @@ const createMainWindow = async () => {
   // redirect back to index.html.
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (NODE_ENV === "development") return; // dev server handles routing
+    if (!WEB_URL) return; // index path not resolved yet
     let parsedUrl: URL;
     try { parsedUrl = new URL(url); } catch { return; }
     if (parsedUrl.protocol !== "file:") return;
-    const pathname = decodeURIComponent(parsedUrl.pathname || "");
+    // decodeURIComponent can throw on malformed percent-encoding (e.g. /%ZZ);
+    // fall back to the raw pathname — the extension/root check still works.
+    let pathname: string;
+    try { pathname = decodeURIComponent(parsedUrl.pathname || ""); } catch { pathname = parsedUrl.pathname || ""; }
     // A real page (index.html) ends with ".html"; leave it alone.
     if (/\.html?$/i.test(pathname)) return;
     // Only a drive root ("/E:/", "/", "/E:") or a bare directory path
