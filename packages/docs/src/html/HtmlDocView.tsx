@@ -326,7 +326,7 @@ export function HtmlDocView({
   const canOpenPanel = isAuthor || canManageBackend
   const pendingAccess = useAccessRequests(docId, canManageBackend)
   // Browser-openable address for forwarding this doc to chat. Build the PATH-style standalone
-  // link (/d/<docId>?sp=<space>) like every other kind (buildDocLink), NOT window.location.href:
+  // no-Space link (`/d/<docId>`) like every other ordinary kind, NOT window.location.href:
   // the in-shell address is the legacy /docs?doc= query form, whose docId is wiped by the host's
   // pathname-only route re-push, so a forwarded query link lands the recipient on the wrong page.
   // The path form carries the docId in the path (survives the re-push), routes through

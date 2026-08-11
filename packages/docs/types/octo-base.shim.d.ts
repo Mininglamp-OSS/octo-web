@@ -136,8 +136,9 @@ declare module '@octo/base' {
 
   // Canonical doc-share-link builder, promoted to `@octo/base`
   // (packages/dmworkbase/src/Utils/docLink.ts) as the single source of truth for the
-  // `${origin}/d/<docId>?sp=<spaceId>` format (XIN-450 / XIN-501 / XIN-513). Re-exported from
-  // dmworkbase/src/index.tsx; docs' forward/link.ts is now a thin re-export of these.
+  // `${origin}/d/<docId>` format (Phase-1 remove-`sp`, design §5.3 — no `?sp=`/`?sid=`). Re-exported
+  // from dmworkbase/src/index.tsx; docs' forward/link.ts is now a thin re-export of these. `space`/
+  // `folder` are accepted-but-ignored during the caller cutover.
   export interface DocLinkTarget {
     docId: string
     space?: string

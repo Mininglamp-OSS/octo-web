@@ -218,7 +218,7 @@ export default forwardRef((props: MentionListProps, ref) => {
         return true
       }
 
-      if (event.key === 'Enter') {
+      if (event.key === 'Enter' && !event.shiftKey) {
         enterHandler()
         return true
       }

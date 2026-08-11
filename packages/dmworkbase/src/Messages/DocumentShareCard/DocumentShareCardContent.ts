@@ -41,9 +41,9 @@ function asPermission(v: unknown): DocSharePermission {
  * reader 接口（/content、/scene、/sheet）现取，无权限则接口 403/404、卡片落 no_access 态。
  */
 export class DocumentShareCardContent extends MessageContent {
-  /** 文档 id，映射 /d/{docId}?sp={spaceId}。 */
+  /** 文档 id，映射 /d/{docId}（Phase-1 已取消 sp）。 */
   docId = "";
-  /** 文档所属 space id（预览与 deep-link 都要）。 */
+  /** 文档所属 space id（仍用于 ACL-safe 首屏预览；deep-link 不再携带）。 */
   spaceId = "";
   /** 资源类型：doc/board/sheet。 */
   kind: DocShareKind = "doc";

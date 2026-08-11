@@ -124,26 +124,29 @@ describe('buildDocLink — standalone `/d/:docId` share form (bypasses the host 
     // The doc no longer rides on a wipeable query param.
     expect(link).not.toContain('/docs?')
     expect(link).not.toContain('doc=d_1')
-    // The legacy `space=`/`folder=` in-shell params are gone; the doc's real space rides on the
-    // dedicated `?sp=` param instead (XIN-501), so the recipient's preflight can address the doc's
-    // own space.
+    // Phase-1 remove-`sp` (design §5.3): ordinary doc links carry ONLY the docId path — no in-shell
+    // `space=`/`folder=`, and no `?sp=`. `space`/`folder` are accepted-but-ignored during the caller
+    // cutover; the recipient's open-context preflight resolves the doc's Space server-side by docId.
     expect(link).not.toContain('space=')
     expect(link).not.toContain('folder=')
+    expect(link).not.toContain('sp=')
   })
 
-  it('embeds the doc real space as `?sp=` so the recipient preflight addresses the doc space (XIN-501)', () => {
+  it('never emits `?sp=` even when a space is supplied (design §5.3 — space is accepted-but-ignored)', () => {
     const link = buildDocLink({ docId: 'd_1', space: '105d4a60d0fc4d55a5cfc3c2d0501361' })
-    expect(link).toContain('sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+    expect(link).toContain('/d/d_1')
+    expect(link).not.toContain('sp=')
+    expect(link).not.toContain('105d4a60d0fc4d55a5cfc3c2d0501361')
   })
 
-  it('never carries the token-bucket `?sid`, even when a currentSpaceId is persisted (XIN-513)', () => {
-    // The link no longer mints `?sid` — an already-logged-in recipient's session is recovered from
-    // storage independently of the URL. Only the doc's real space rides along, on `?sp`.
+  it('never carries the token-bucket `?sid` nor a doc `?sp`, even when a currentSpaceId is persisted (XIN-513 + §5.3)', () => {
+    // The link no longer mints `?sid` (session recovered from storage) nor `?sp` (Space resolved
+    // server-side from docId) — it is the bare canonical `/d/:docId`.
     try {
       window.localStorage.setItem('currentSpaceId', 'sp_current')
       const link = buildDocLink({ docId: 'd_1', space: '105d4a60d0fc4d55a5cfc3c2d0501361' })
       expect(link).not.toContain('sid=')
-      expect(link).toContain('sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+      expect(link).not.toContain('sp=')
     } finally {
       window.localStorage.removeItem('currentSpaceId')
     }

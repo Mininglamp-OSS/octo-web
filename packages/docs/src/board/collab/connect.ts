@@ -68,8 +68,8 @@ export interface WhiteboardSessionOptions {
    * scene for a user the backend just denied (P1-3, combined with the P1-1 teardown).
    */
   initialTerminal?: BoardTerminal
-  /** Injectable token disposer (defaults to the real collab-token disposer via RoleController). */
-  disposeToken?: (documentName: string) => void
+  /** Required, already-scoped token invalidation closure. */
+  disposeToken: () => void
 }
 
 export interface WhiteboardSession {
@@ -169,7 +169,6 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
   // Fail closed: an unknown initial role (token not primed) starts as reader, so the board is
   // read-only until an authoritative role is known (P1-2). A primed token supplies the real role.
   const roleController = new RoleController({
-    documentName,
     initialRole: opts.initialRole ?? 'reader',
     initialEpoch: opts.initialEpoch ?? 0,
     onRole: (role) => notifyRole(role),
@@ -177,7 +176,7 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
   })
 
   const closeMachine = new CloseCodeMachine({
-    disposeToken: () => (opts.disposeToken ?? (() => {}))(documentName),
+    disposeToken: opts.disposeToken,
     connect: () => provider.connect(),
     disconnect: () => provider.disconnect(),
     goLogin: () => notifyTerminal({ kind: 'login' }),
@@ -280,7 +279,7 @@ export function createWhiteboardSession(opts: WhiteboardSessionOptions): Whitebo
       // the JWT is dropped promptly instead of lingering until it expires. Hygiene only, not a
       // security fix — a true revoke already disposes via the 4403 close-code path and the
       // role-downgrade frame, and the backend flips the connection read-only to reject stale writes.
-      opts.disposeToken?.(documentName)
+      opts.disposeToken()
     },
   }
 }

@@ -3,6 +3,7 @@ import type { Role } from '../auth/roles.ts'
 import { canManage } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
 import { MemberPicker } from '../members/MemberPicker.tsx'
+import { CurrentMembersList } from '../members/CurrentMembersList.tsx'
 import { useMemberNames } from '../members/useMemberNames.ts'
 import { listGrants, addGrant, removeGrant, type HtmlGrant, type HtmlGrantRole } from './htmlGrantsApi.ts'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
@@ -141,6 +142,20 @@ export function HtmlMemberPanel({
     }
   }
 
+  // Change a grant's role. PUT /grants is an upsert, so we reuse addGrant. admin is never grantable
+  // here (backend AddGrant refuses it — admin identity is owned by creator_uid); guard defensively
+  // like onAdd. creator/owner rows never reach here (their select is disabled + role-locked).
+  async function onChangeRole(uid: string, role: Role) {
+    if (role === 'admin') return
+    setError(null)
+    try {
+      await addGrant(slug, uid, role)
+      await refresh()
+    } catch {
+      setError(t('docs.member.errorRole'))
+    }
+  }
+
   // Existing uids (for the picker's "already added" pins): every granted uid plus
   // the creator. The creator is never a candidate (hidden) and never removable.
   const existingUids = new Set<string>(grants.map((g) => g.uid))
@@ -228,39 +243,19 @@ export function HtmlMemberPanel({
         />
       )}
 
-      {/* Slot 5: Current Members (author gate). */}
+      {/* Slot 5: Current Members (author gate). Shared with the rich-doc panel: owner/creator row
+          is locked (disabled select, no remove); non-owner rows get a reader/commenter/writer
+          select (admin never grantable). */}
       {canManageAuthorGrants && (
-        <div className="octo-member-section">
-          <h4 className="octo-member-subtitle">{t('docs.member.currentMembers')}</h4>
-          {loading && <p className="octo-loading">{t('docs.member.loading')}</p>}
-          {!loading && rows.length === 0 && (
-            <p className="octo-member-empty">{t('docs.member.empty')}</p>
-          )}
-          {rows.map((m) => {
-            const isOwner = m.source === 'owner'
-            // Non-owner rows render their actual granted role label (reader/commenter/writer);
-            // the owner row uses the fixed owner badge and carries the 'author' sentinel role.
-            const roleLabel = m.role !== 'author' ? t(`docs.role.${m.role}`) : ''
-            return (
-              <div className="octo-member-row" key={m.uid}>
-                <span className="octo-uid">
-                  {names.get(m.uid) || m.uid}{' '}
-                  {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
-                  {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {roleLabel}</small>}
-                </span>
-                {!isOwner && (
-                  <button
-                    type="button"
-                    className="octo-tb-btn"
-                    onClick={() => onRemove(m.uid)}
-                  >
-                    {t('docs.member.remove')}
-                  </button>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        <CurrentMembersList
+          rows={rows}
+          ownerUid={creatorUid}
+          roles={['reader', 'commenter', 'writer']}
+          displayName={(uid) => names.get(uid) || uid}
+          loading={loading}
+          onChangeRole={onChangeRole}
+          onRemove={onRemove}
+        />
       )}
     </section>
   )

@@ -896,7 +896,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
   // just won't show the created-on row / falls back to a short uid on failure.
   useEffect(() => {
     let cancelled = false
-    getDoc(docId)
+    getDoc(docId, space ? { spaceId: space } : undefined)
       .then((meta) => {
         if (cancelled) return
         if (typeof meta?.ownerId === 'string' && meta.ownerId) setOwnerId(meta.ownerId)
@@ -908,7 +908,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     return () => {
       cancelled = true
     }
-  }, [docId])
+  }, [docId, space])
 
   // Resolve the creator's display name: from the already-loaded space-member map first (free), else
   // via GET /users/:uid. Any failure leaves it undefined and the menu falls back to a short uid.
@@ -1018,7 +1018,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     // keyed by this user's uid (persistBoardScene(docId, scene, uid)), never another user's and
     // never an auth-denied doc, and it self-heals the moment the server answers (a 403 downgrades
     // to reader). So do not mistake this branch for the P1-3 gap it deliberately is not.
-    getDoc(docId)
+    getDoc(docId, space ? { spaceId: space } : undefined)
       .then((meta) => {
         if (cancelled) return
         if (meta?.role) setRole(meta.role)
@@ -1031,7 +1031,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     return () => {
       cancelled = true
     }
-  }, [docId, collabSession, collabMode])
+  }, [docId, space, collabSession, collabMode])
 
   // Debounced local persistence of scene edits. The timer is cleared on unmount and a final flush
   // is forced so a quick draw-then-close still saves (the close/reopen acceptance path).
@@ -1228,24 +1228,24 @@ export function BoardShell(props: BoardShellProps): ReactElement {
       }
       if (isSvg) {
         const svgFile = new File([blob], `${file.id}.svg`, { type: mime })
-        return (await uploadImage(docId, svgFile)).attachId
+        return (await uploadImage(docId, svgFile, { spaceId: space })).attachId
       }
       const presign = await presignUpload(docId, {
         fileName: file.id,
         mime,
         sizeBytes: blob.size,
-      })
+      }, { spaceId: space })
       await uploadBinary(presign, blob)
       return presign.attachId
     },
-    [docId],
+    [docId, space],
   )
   // Batch-resolve fresh signed GET urls in ONE round trip (contract: POST /attachments/resolve),
   // then download each binary. Shared with the version-history preview (boardFiles.ts) so the live
   // canvas and the historical preview can never drift onto different fetch/decoding paths.
   const fetchBoardFiles = useCallback(
-    (refs: readonly FileFetchRef[]): Promise<BinaryFileData[]> => fetchBoardFileBinaries(docId, refs),
-    [docId],
+    (refs: readonly FileFetchRef[]): Promise<BinaryFileData[]> => fetchBoardFileBinaries(docId, refs, space),
+    [docId, space],
   )
 
   // P1a: gate the imperative binding replay (setApi → applyRemote → updateScene) and the
@@ -1826,7 +1826,7 @@ export function BoardShell(props: BoardShellProps): ReactElement {
     },
     [onDeleted, returnToList, uid],
   )
-  const del = useDocDelete(docId, handleDeleted)
+  const del = useDocDelete(docId, handleDeleted, space ? { spaceId: space } : undefined)
 
   // P1-3: a runtime access-loss on the collab socket (4403 → 'deleted', or 'not-found') means the
   // board this user was editing is gone. Mirror the doc editor's terminal handling and return them

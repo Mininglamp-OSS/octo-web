@@ -19,13 +19,15 @@ export function asDocIdentifier(v: unknown): string {
 
 /**
  * 本地重建的**安全导航 URL**。P1-b：绝不信任 wire 传来的 `url`（`isSafeUrl` 只挡 scheme
- * 不绑 origin，真预览 + 攻击者 url 可拼成可信钓鱼卡）。改为只用**已校验的 docId/spaceId**
- * 拼相对路径（同源、无 scheme，天然安全）；docId 非法则返回空串，调用方不导航/不显链接。
+ * 不绑 origin，真预览 + 攻击者 url 可拼成可信钓鱼卡）。改为只用**已校验的 docId**拼相对路径
+ * （同源、无 scheme，天然安全）；docId 非法则返回空串，调用方不导航/不显链接。
+ *
+ * Phase-1 取消 `sp`（设计 §5.3）：普通文档链接不再携带文档 Space——接收端的 open-context
+ * 预检按 docId 在服务端解析文档归属，故这里只产出 `/d/{docId}`，不再拼 `?sp=`。
  */
-export function buildDocNavUrl(docId: string, spaceId: string): string {
+export function buildDocNavUrl(docId: string): string {
   if (!isValidDocIdentifier(docId)) return "";
-  const sp = isValidDocIdentifier(spaceId) ? `?sp=${encodeURIComponent(spaceId)}` : "";
-  return `/d/${encodeURIComponent(docId)}${sp}`;
+  return `/d/${encodeURIComponent(docId)}`;
 }
 
 // 类型仅用于签名，`import type` 在运行时被擦除，不会拉入 ui 组件的 React/CSS 加载链。

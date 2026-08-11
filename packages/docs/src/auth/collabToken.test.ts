@@ -41,7 +41,8 @@ describe('collab-token cache', () => {
   })
 
   it('uses tokenCacheKey form `${uid}::${documentName}`', () => {
-    expect(tokenCacheKey('u_self', 'octo:s:f:d1')).toBe('u_self::octo:s:f:d1')
+    expect(tokenCacheKey('u_self', 'octo:s:f:d1')).toBe('u_self::octo:s:f:d1::legacy')
+    expect(tokenCacheKey('u_self', 'octo:s:f:d1', 'd1')).toBe('u_self::octo:s:f:d1::doc:d1')
   })
 
   it('coalesces concurrent issuance into a single in-flight request', async () => {
@@ -123,5 +124,90 @@ describe('collab-token cache', () => {
     await Promise.resolve()
     disposeToken('octo:s:f:d7')
     expect(abortSpy).toHaveBeenCalled()
+  })
+})
+
+describe('collab-token docId-first issuance (design §7.1)', () => {
+  it('POSTs to /docs/:docId/collab-token with no redundant client locator body', async () => {
+    api.responder = () => tokenResponse('writer', 2, 'jwt-docid')
+    const entry = await getCollabTokenEntry('octo:s:f:d_x', 'd_x')
+    expect(entry.token).toBe('jwt-docid')
+    // The docId-scoped endpoint is used — NOT the legacy /docs/collab-token.
+    const call = api.calls.find((c) => c.method === 'post')
+    expect(call?.url).toBe('/docs/d_x/collab-token')
+    expect(api.calls.some((c) => c.url === '/docs/collab-token')).toBe(false)
+    // The backend derives documentName and home Space from the path docId.
+    expect(call?.body).toEqual({})
+    expect(call?.config).toMatchObject({ suppressSpaceId: true })
+  })
+
+  it('percent-encodes the docId in the path', async () => {
+    api.responder = () => tokenResponse()
+    await getCollabTokenEntry('octo:s:f:d_slash', 'a b')
+    const call = api.calls.find((c) => c.method === 'post')
+    expect(call?.url).toBe('/docs/a%20b/collab-token')
+  })
+
+  it('falls back to the legacy endpoint and sends documentName when no docId is supplied', async () => {
+    api.responder = () => tokenResponse()
+    await getCollabTokenEntry('octo:s:f:d_legacy')
+    const call = api.calls.find((c) => c.method === 'post')
+    expect(call?.url).toBe('/docs/collab-token')
+    expect(call?.body).toEqual({ documentName: 'octo:s:f:d_legacy' })
+    expect(call?.config?.suppressSpaceId).toBeUndefined()
+  })
+
+  it('keeps docId and legacy endpoint cache identities separate', async () => {
+    api.responder = () => tokenResponse()
+    const a = await getCollabTokenEntry('octo:s:f:d_cache', 'd_cache')
+    // A legacy request must not reuse a token issued under the docId-first contract.
+    const b = await getCollabTokenEntry('octo:s:f:d_cache')
+    expect(a).not.toBe(b)
+    expect(api.calls.filter((c) => c.method === 'post')).toHaveLength(2)
+  })
+
+  it('getCollabToken forwards the docId to the docId-scoped endpoint', async () => {
+    api.responder = () => tokenResponse('reader', 1, 'jwt-str')
+    expect(await getCollabToken('octo:s:f:d_g', 'd_g')).toBe('jwt-str')
+    expect(api.calls.find((c) => c.method === 'post')?.url).toBe('/docs/d_g/collab-token')
+  })
+
+  it('re-issues a docId-first token after disposing the matching cache slot', async () => {
+    api.responder = () => tokenResponse()
+    await getCollabTokenEntry('octo:s:f:d_dispose', 'd_dispose')
+    disposeToken('octo:s:f:d_dispose', { docId: 'd_dispose' })
+    await getCollabTokenEntry('octo:s:f:d_dispose', 'd_dispose')
+    expect(api.calls.filter((c) => c.url === '/docs/d_dispose/collab-token')).toHaveLength(2)
+  })
+
+  it('aborts an in-flight docId-first issuance when its matching slot is disposed', async () => {
+    const abortSpy = vi.fn()
+    api.responder = (_m, _u, _b, config) => {
+      config?.signal?.addEventListener('abort', abortSpy)
+      return new Promise(() => {})
+    }
+    void getCollabTokenEntry('octo:s:f:d_abort', 'd_abort')
+    await Promise.resolve()
+    disposeToken('octo:s:f:d_abort', { docId: 'd_abort' })
+    expect(abortSpy).toHaveBeenCalledOnce()
+  })
+
+  it('keeps a reissued docId-first request cached when the disposed request settles late', async () => {
+    const resolvers: Array<(v: ReturnType<typeof tokenResponse>) => void> = []
+    api.responder = () => new Promise((resolve) => resolvers.push(resolve))
+
+    const stale = getCollabTokenEntry('octo:s:f:d_race', 'd_race')
+    await Promise.resolve()
+    disposeToken('octo:s:f:d_race', { docId: 'd_race' })
+    const replacement = getCollabTokenEntry('octo:s:f:d_race', 'd_race')
+    await Promise.resolve()
+
+    resolvers[1](tokenResponse('writer', 2, 'jwt-fresh'))
+    await expect(replacement).resolves.toMatchObject({ token: 'jwt-fresh' })
+    resolvers[0](tokenResponse('writer', 1, 'jwt-stale'))
+    await expect(stale).rejects.toThrow(/disposed/)
+
+    expect(await getCollabToken('octo:s:f:d_race', 'd_race')).toBe('jwt-fresh')
+    expect(api.calls.filter((c) => c.url === '/docs/d_race/collab-token')).toHaveLength(2)
   })
 })

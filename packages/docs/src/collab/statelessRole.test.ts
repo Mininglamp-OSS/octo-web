@@ -6,7 +6,6 @@ function make(initialRole: Role = 'writer', initialEpoch = 1) {
   const onRole = vi.fn()
   const disposeToken = vi.fn()
   const ctrl = new RoleController({
-    documentName: 'octo:s:f:d',
     initialRole,
     initialEpoch,
     onRole,
@@ -68,7 +67,7 @@ describe('RoleController — stateless role-change handling', () => {
   it('disposes the token on downgrade (role can no longer edit)', () => {
     const { ctrl, disposeToken } = make('writer', 1)
     ctrl.handleStatelessFrame(frame({ type: 'role-change', role: 'reader', permission_epoch: 2 }))
-    expect(disposeToken).toHaveBeenCalledWith('octo:s:f:d')
+    expect(disposeToken).toHaveBeenCalledWith()
   })
 
   it('does not dispose the token when role remains editable (e.g. writer->admin)', () => {

@@ -118,4 +118,17 @@ describe("request interceptor X-Space-Id merge (explicit header wins, intercepto
     const out = holder.requestInterceptor!({ headers: {} });
     expect(out.headers["X-Space-Id"]).toBeUndefined();
   });
+
+  it("does not inject X-Space-Id when the typed request config suppresses it", () => {
+    client.config.spaceIdCallback = () => "interceptor-space";
+    const out = holder.requestInterceptor!({ headers: {}, suppressSpaceId: true });
+    expect(out.headers["X-Space-Id"]).toBeUndefined();
+  });
+
+  it("forwards suppressSpaceId to axios without forging an empty header", async () => {
+    await client.get("/docs/d1/open-context", { suppressSpaceId: true });
+    const [, cfg] = getMock.mock.calls.at(-1)!;
+    expect(cfg).toMatchObject({ suppressSpaceId: true });
+    expect((cfg as any).headers).toBeUndefined();
+  });
 });

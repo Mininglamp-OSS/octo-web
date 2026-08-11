@@ -9,12 +9,12 @@ afterEach(() => {
 });
 
 describe("standalone return target", () => {
-    it("persists the current path and query", () => {
-        window.history.replaceState(null, "", "/loop/cli-authorize?code=abc");
+    it("persists the current path, query, and hash", () => {
+        window.history.replaceState(null, "", "/loop/cli-authorize?code=abc#resume");
 
         persistStandaloneReturn();
 
-        expect(window.sessionStorage.getItem(KEY)).toBe("/loop/cli-authorize?code=abc");
+        expect(window.sessionStorage.getItem(KEY)).toBe("/loop/cli-authorize?code=abc#resume");
     });
 
     it("keeps existing docs and summary return targets valid", () => {

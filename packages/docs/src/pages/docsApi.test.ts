@@ -6,6 +6,7 @@ import {
   listRecentDocs,
   listRecentCreators,
   createDoc,
+  getOpenContext,
   getDoc,
   getUserName,
   updateDocTitle,
@@ -23,6 +24,63 @@ beforeEach(() => {
 })
 
 describe('docs list/create API (bare-relative /docs)', () => {
+  it('open-context suppresses the production space interceptor and accepts complete addressing', async () => {
+    api.responder = () => ({
+      data: { docId: 'd_open', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_open' },
+      status: 200,
+    })
+    await expect(getOpenContext('d_open')).resolves.toMatchObject({ homeSpaceId: 's_home' })
+    expect(api.calls.at(-1)).toMatchObject({
+      url: '/docs/d_open/open-context',
+      config: { suppressSpaceId: true },
+    })
+  })
+
+  it('fails closed when a 200 open-context omits addressing core', async () => {
+    api.responder = () => ({ data: { docId: 'd_open', title: 'Incomplete' }, status: 200 })
+    await expect(getOpenContext('d_open')).rejects.toThrow(/incomplete addressing/)
+  })
+
+  it.each([
+    ['unparseable name', { docId: 'd_open', homeSpaceId: 's_home', documentName: 'not-canonical' }],
+    ['wrong home space', { docId: 'd_open', homeSpaceId: 's_other', documentName: 'octo:s_home:f_default:d_open' }],
+    ['wrong document segment', { docId: 'd_open', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_other' }],
+    ['wrong board segment', { docId: 'd_open', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:wb:b_other' }],
+  ])('fails closed for %s in open-context', async (_name, data) => {
+    api.responder = () => ({ data, status: 200 })
+    await expect(getOpenContext('d_open')).rejects.toThrow(/canonical addressing/)
+  })
+
+  it.each([
+    ['html', 'html'],
+    ['html_ppt', 'ppt'],
+  ])('accepts a canonical typed documentName for %s', async (docType, kind) => {
+    api.responder = () => ({
+      data: { docId: 'd_open', homeSpaceId: 's_home', documentName: `octo:s_home:f_default:${kind}:d_open`, docType },
+      status: 200,
+    })
+    await expect(getOpenContext('d_open')).resolves.toMatchObject({ docType })
+  })
+
+  it.each([
+    ['doc', 'octo:s_home:f_default:html:d_open'],
+    ['sheet', 'octo:s_home:f_default:ppt:d_open'],
+    ['board', 'octo:s_home:f_default:d_open'],
+    ['html', 'octo:s_home:f_default:d_open'],
+    ['html_ppt', 'octo:s_home:f_default:html:d_open'],
+  ])('rejects docType %s with mismatched canonical kind', async (docType, documentName) => {
+    api.responder = () => ({ data: { docId: 'd_open', homeSpaceId: 's_home', documentName, docType }, status: 200 })
+    await expect(getOpenContext('d_open')).rejects.toThrow(/mismatched document type/)
+  })
+
+  it.each(['', 'document', 'markdown', 'DOC'])('accepts legacy docType %j in the shared document namespace', async (docType) => {
+    api.responder = () => ({
+      data: { docId: 'd_legacy', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_legacy', docType },
+      status: 200,
+    })
+    await expect(getOpenContext('d_legacy')).resolves.toMatchObject({ docId: 'd_legacy', docType })
+  })
+
   it('lists docs via GET /docs with query params', async () => {
     api.responder = () => ({
       data: {
@@ -109,7 +167,7 @@ describe('docs list/create API (bare-relative /docs)', () => {
     expect(call.config?.headers?.['X-Space-Id']).toBeUndefined()
   })
 
-  it('carries an explicit X-Space-Id header when getDoc is given a spaceId (standalone by-space preflight)', async () => {
+  it('carries an explicit compatibility X-Space-Id header when getDoc is given a spaceId', async () => {
     // Scope: this asserts the DOCS-SIDE contract — getDoc puts the explicit header into the request
     // config. That the header then really reaches the wire (host APIClient forwards config.headers to
     // axios, and the interceptor lets the explicit header win) is covered by the host unit test at
@@ -140,6 +198,12 @@ describe('docs list/create API (bare-relative /docs)', () => {
     expect(call.method).toBe('patch')
     expect(call.url).toBe('/docs/d_real')
     expect((call.body as { title: string }).title).toBe('New Name')
+  })
+
+  it('threads explicit canonical Space on standalone rename and export writes', async () => {
+    api.responder = () => ({ data: { docId: 'd_real', title: 'New Name' }, status: 200 })
+    await updateDocTitle('d_real', 'New Name', { spaceId: 's_home' })
+    expect(api.calls.at(-1)?.config?.headers?.['X-Space-Id']).toBe('s_home')
   })
 
   it('deletes a doc via DELETE /docs/{docId}', async () => {

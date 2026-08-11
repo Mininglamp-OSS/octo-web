@@ -38,9 +38,19 @@ async function stubBackend(page: Page): Promise<void> {
   await page.route('**/api/v1/**', (route: Route) =>
     route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
   )
+  // Playwright routes are LIFO: register this after the catch-all. A signed-in
+  // standalone recipient still belongs to a viewer Space; returning one keeps
+  // the host cold-start guard from replacing `/d/:docId` with JoinSpacePage.
+  await page.route('**/api/v1/space/my', (route: Route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify([{ space_id: 'space-viewer', name: 'Viewer Space', role: 1, status: 1 }]),
+    }),
+  )
 }
 
-/** Route the per-doc preflight (GET /api/v1/docs/:id) to a specific status/body. */
+/** Route the docId-global preflight to a specific status/body. */
 async function routeDocPreflight(
   page: Page,
   docId: string,
@@ -48,7 +58,7 @@ async function routeDocPreflight(
   body: object = {},
 ): Promise<{ tokenHeaderOf: () => string | undefined }> {
   let seenToken: string | undefined
-  await page.route(`**/api/v1/docs/${docId}`, (route: Route) => {
+  await page.route(`**/api/v1/docs/${docId}/open-context`, (route: Route) => {
     seenToken = route.request().headers()['token']
     route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) })
   })
@@ -85,7 +95,7 @@ async function seedAnonymous(page: Page): Promise<void> {
   })
 }
 
-test.describe('standalone /d/:docId — clean cold-load (no in-app sid route)', () => {
+test.describe('standalone /d/:docId — clean cold-load (no in-app sid route) @p0', () => {
   test('AC-3: a signed-in user opening a clean link authenticates the preflight (no 401 wall)', async ({
     page,
   }) => {
@@ -93,6 +103,9 @@ test.describe('standalone /d/:docId — clean cold-load (no in-app sid route)', 
     await stubBackend(page)
     const probe = await routeDocPreflight(page, 'd_ok', 200, {
       docId: 'd_ok',
+      homeSpaceId: 'space-doc',
+      documentName: 'octo:space-doc:f_default:html:d_ok',
+      docType: 'html',
       title: 'Shared Doc',
       ownerId: 'u_e2e',
       role: 'admin',
@@ -103,11 +116,13 @@ test.describe('standalone /d/:docId — clean cold-load (no in-app sid route)', 
 
     // The recovered session token rides the preflight — not an anonymous 401-bound request.
     await expect.poll(() => probe.tokenHeaderOf()).toBe(USER_TOKEN)
-    // The clean path did NOT dead-end on the sign-in terminal.
-    await expect(page.locator('.octo-terminal-msg')).toHaveCount(0)
+    // Assert a real document surface mounts; absence of a terminal alone could
+    // also pass on an unrelated host overlay such as JoinSpacePage. Use the HTML
+    // surface here because it has no WebSocket-sync prerequisite in this HTTP E2E.
+    await expect(page.getByTestId('html-doc-view')).toBeVisible()
   })
 
-  test('AC-7: a 403 renders the access-denied terminal with a Back control, editor not mounted', async ({
+  test('AC-7: a 403 renders the access-denied landing with request access, editor not mounted', async ({
     page,
   }) => {
     await seedSignedInSession(page)
@@ -116,9 +131,10 @@ test.describe('standalone /d/:docId — clean cold-load (no in-app sid route)', 
 
     await page.goto('/d/d_forbidden')
 
-    await expect(page.locator('.octo-terminal')).toBeVisible()
-    await expect(page.locator('.octo-terminal-msg')).toHaveText(/no longer have access|无权访问/)
-    await expect(page.locator('.octo-doc-back')).toBeVisible()
+    await expect(page.locator('.octo-standalone-forbidden')).toBeVisible()
+    await expect(page.locator('.octo-standalone-card-msg')).toHaveText(/no longer have access|无权访问/)
+    await expect(page.locator('.octo-access-request-btn')).toBeVisible()
+    await expect(page.locator('.octo-doc-back')).toHaveCount(0)
     await expect(page.locator('.octo-doc--editor')).toHaveCount(0)
   })
 
@@ -199,10 +215,12 @@ test.describe('standalone /d/:docId — records a view in the viewer space (XIN-
       }
     })
     await stubBackend(page)
-    // Cross-space share: the link carries the DOC's own space (`?sp=space-doc`), which the page uses
-    // to address the preflight — deliberately different from the viewer's current space.
+    // Cross-space share: the legacy link still carries the DOC's old `?sp=space-doc`, but the
+    // docId-global preflight ignores it. It is deliberately different from the viewer's space.
     await routeDocPreflight(page, 'd_ok', 200, {
       docId: 'd_ok',
+      homeSpaceId: 'space-doc',
+      documentName: 'octo:space-doc:f_default:d_ok',
       title: 'Shared Doc',
       ownerId: 'u_owner',
       role: 'reader',
@@ -239,7 +257,7 @@ test.describe('standalone /d/:docId — records a view in the viewer space (XIN-
 
     await page.goto('/d/d_forbidden')
 
-    await expect(page.locator('.octo-terminal')).toBeVisible()
+    await expect(page.locator('.octo-standalone-forbidden')).toBeVisible()
     expect(viewCalls).toBe(0)
   })
 })

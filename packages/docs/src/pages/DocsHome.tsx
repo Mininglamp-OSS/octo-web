@@ -627,8 +627,8 @@ function DocsList({
     })
   }
 
-  // Copy the document's own address — `${origin}/d/<docId>?sp=<space>` via buildDocLink, a pure
-  // string builder with no request behind it.
+  // Copy the document's canonical bare address — `${origin}/d/<docId>` via buildDocLink, a pure
+  // string builder with no request behind it. Open Context resolves its home Space on load.
   //
   // This REPLACES an earlier "复制链接" that called createInvite() and copied an invite token
   // (#537). That entry was gated on canManage because the backend only lets an admin mint an
@@ -1573,11 +1573,11 @@ export function DocsHome() {
   useEffect(() => {
     htmlChatDraftRef.current = htmlChatDraft
   }, [htmlChatDraft])
-  // Tracks which html-chat requestIds have already triggered their ONE first auto-send. On a
+  // Tracks which html-chat requestIds have already been handed off for their ONE first auto-send. On a
   // nav-reentry / restore the Conversation is a NEW instance (its instance-level _consumedComposeIds
   // is empty), so without this guard the same requestId would auto-send a SECOND time (reviewer P1
-  // double-send). We consult this set to force autoSend=false on any restore of an already-fired
-  // requestId; only the FIRST openHtmlChat sends (plan Task 6 step 4 / §5 risk 1).
+  // double-send). Consumption is irreversible before an imperative route handoff (or at first
+  // inline mount), rather than waiting for the asynchronous onMessageSent ACK.
   const htmlComposeFiredRef = useRef<Set<string>>(new Set())
 
   // uid → display name for the space (feature #8): used to set the awareness user.name so the
@@ -1648,11 +1648,11 @@ export function DocsHome() {
         key={draft.requestId}
         draft={draft}
         autoSend={autoSend}
+        onInitialComposeHandoff={() => {
+          htmlComposeFiredRef.current.add(draft.requestId)
+        }}
         onClose={() => closeHtmlChatRef.current()}
         onMessageSent={() => {
-          // A confirmed send means this requestId has fired its one auto-send; any later restore
-          // must be prefill-only.
-          htmlComposeFiredRef.current.add(draft.requestId)
           scheduleHtmlListRefresh()
         }}
       />
@@ -1695,28 +1695,28 @@ export function DocsHome() {
       htmlChatDraftRef.current = draft
       if (routeRight) {
         try {
+          // Consume before the imperative handoff. Re-entry may happen before Conversation reports
+          // an ACK, but must never receive another auto-send compose for this requestId.
+          htmlComposeFiredRef.current.add(draft.requestId)
           routeRight.replaceToRoot(buildBotChat(draft) as unknown)
         } catch {
-          // ignore — fall back to inline render.
+          // The route did not accept this handoff, so it did not consume auto-send. Keep the draft
+          // and roll back only this request's pre-mark; a later Docs activation can retry it.
+          htmlComposeFiredRef.current.delete(draft.requestId)
         }
       }
     },
     [routeRight, buildBotChat],
   )
 
-  // Modal submit → finalise the draft (requestId + front-end-derived base_url) and open the chat.
-  // crypto.randomUUID() is the one-shot idempotency id; base_url comes ONLY from the app origin
-  // (docsApiBaseUrl), never from user text/attachments (§5.6).
+  // Modal submit → finalise the draft with the front-end-derived base_url and open the chat.
+  // The modal has already assigned the one-shot crypto.randomUUID() requestId so preview, copy and
+  // Conversation handoff share exactly one id; base_url comes ONLY from the app origin (§5.6).
   const onSubmitHtml = useCallback(
-    (partial: Omit<HtmlCreationDraft, 'requestId' | 'baseUrl'>) => {
-      const requestId =
-        typeof crypto !== 'undefined' && 'randomUUID' in crypto
-          ? crypto.randomUUID()
-          : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    (partial: Omit<HtmlCreationDraft, 'baseUrl'>) => {
       const origin = typeof window !== 'undefined' ? window.location.origin : ''
       const draft: HtmlCreationDraft = {
         ...partial,
-        requestId,
         baseUrl: docsApiBaseUrl(origin),
       }
       setHtmlModalOpen(false)
@@ -1835,23 +1835,18 @@ export function DocsHome() {
   // in a new browser tab — the clean, shareable cold-load entry that lives outside the app shell.
   // The id only ever contains documentName-safe chars, so the built path stays a valid /d/ route.
   //
-  // The link carries NO `?sid=` (XIN-513): an already-logged-in user's session is recovered from
-  // storage independently of the URL — apps/web Layout runs recoverOctoSessionFromStorage on the
-  // `/d` path, which scans the `token<sid>` buckets and adopts a valid stored session — so the new
-  // tab opens the document directly without a login detour.
-  //
-  // It DOES carry `?sp=` (XIN-519 blocker 1): the doc's real space — the active DocsHome space, which
-  // the resident list is scoped to, so the open document lives in it — exactly as the other two minted
-  // `/d/:docId` links do (buildDocLink forward link, StandaloneDocPage Copy-link). Without `?sp` the
-  // recipient's standalone preflight (`GET /docs/:docId`) has no space to address and hits the
-  // cross-space guard's not_found ("该文档不存在或已被删除"), notably on the unauthenticated
-  // login-return path. We read spaceRef (the authoritative current space id, kept in sync by
-  // onSpaceChanged) so the callback stays deps-free. We drop only `?sid`, never `?sp`.
+  // The link carries NO query at all (Phase-1 remove-`sp`, design §5.3):
+  //   - NO `?sid=` (XIN-513): an already-logged-in user's session is recovered from storage
+  //     independently of the URL — apps/web Layout runs recoverOctoSessionFromStorage on the `/d`
+  //     path, which scans the `token<sid>` buckets and adopts a valid stored session — so the new
+  //     tab opens the document directly without a login detour.
+  //   - NO `?sp=`: the standalone reader resolves the doc's Space server-side from `docId` alone via
+  //     `GET /docs/:docId/open-context`, so the active DocsHome space no longer needs to ride on the
+  //     link. This matches the other minted `/d/:docId` links (buildDocLink forward link,
+  //     StandaloneDocPage Copy-link), which all stopped emitting `sp` this phase.
   const onOpenInNewPage = useCallback((id: string) => {
     if (typeof window !== 'undefined') {
-      const sp = (spaceRef.current || '').trim()
-      const query = sp ? `?sp=${encodeURIComponent(sp)}` : ''
-      window.open(`/d/${encodeURIComponent(id)}${query}`, '_blank', 'noopener,noreferrer')
+      window.open(`/d/${encodeURIComponent(id)}`, '_blank', 'noopener,noreferrer')
     }
   }, [])
 
@@ -2152,7 +2147,8 @@ export function DocsHome() {
             ) as unknown,
           )
         } else if (chatDraft) {
-          // Restore the same chat and requestId. A confirmed request omits initialCompose entirely.
+          // Restore the same chat and requestId. A previously handed-off request omits
+          // initialCompose even when its send ACK is still pending (or the send failed).
           const alreadyFired = htmlComposeFiredRef.current.has(chatDraft.requestId)
           routeRight.replaceToRoot(
             buildBotChatRef.current(chatDraft, !alreadyFired) as unknown,
@@ -2250,6 +2246,11 @@ export function DocsHome() {
           publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
           onClose={() => setHtmlModalOpen(false)}
           onSubmit={onSubmitHtml}
+          onCreated={(result) => {
+            setHtmlModalOpen(false)
+            setListReloadToken((value) => value + 1)
+            openDoc(result.docId, 'html', result.slug)
+          }}
         />
         {pptModal}
       </div>
@@ -2291,6 +2292,11 @@ export function DocsHome() {
         publishBaseUrl={docsApiBaseUrl(typeof window !== 'undefined' ? window.location.origin : '')}
         onClose={() => setHtmlModalOpen(false)}
         onSubmit={onSubmitHtml}
+        onCreated={(result) => {
+          setHtmlModalOpen(false)
+          setListReloadToken((value) => value + 1)
+          openDoc(result.docId, 'html', result.slug)
+        }}
       />
       {pptModal}
     </div>

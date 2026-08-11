@@ -67,13 +67,37 @@ vi.mock('../members/useMemberNames.ts', () => ({
   useMemberNames: () => new Map<string, string>(),
 }))
 
+// Replace the collaborative spreadsheet host (Univer + Yjs + Hocuspocus) with a marker so a
+// docType:'sheet' open-context lands on SheetView without mounting the heavy grid / opening a WS —
+// exactly like the editor + board markers above. Echoes the docId/space it was addressed with.
+vi.mock('../sheet/SheetView.tsx', () => ({
+  SheetView: (props: { docId: string; space?: string; folder?: string }) => (
+    <div data-testid="sheet-view">
+      <span data-testid="sheet-doc">{props.docId}</span>
+      <span data-testid="sheet-space">{props.space}</span>
+      <span data-testid="sheet-folder">{props.folder}</span>
+    </div>
+  ),
+}))
+
+vi.mock('../html/HtmlDocView.tsx', () => ({
+  HtmlDocView: (props: { docId: string; space?: string }) => (
+    <div data-testid="html-view"><span>{props.docId}</span><span>{props.space}</span></div>
+  ),
+}))
+
+vi.mock('../ppt/PptDocView.tsx', () => ({
+  PptDocView: (props: { docId: string; space?: string }) => (
+    <div data-testid="ppt-view"><span>{props.docId}</span><span>{props.space}</span></div>
+  ),
+}))
+
 import {
   StandaloneDocPage,
   parseStandaloneDocId,
   isStandaloneDocPath,
-  standaloneFallbackSpace,
   viewerCurrentSpace,
-  standaloneLinkSpace,
+  stripSpFromUrl,
   persistStandaloneReturn,
   consumeStandaloneReturn,
   withReturnSid,
@@ -93,7 +117,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   window.localStorage.clear();
   // Reset the URL between tests so a `?sid=`/`?sp=` pushed by one test (Copy-link / return-target /
-  // space-resolution cases) cannot leak into the next, which reads the link's `?sp=` (standaloneLinkSpace).
+  // legacy-link cleanup cases) cannot leak into the next.
   window.history.pushState({}, '', '/')
   wk = createMockWKApp()
   setWKApp(wk)
@@ -154,7 +178,7 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // 'locked' terminal via terminalForCreateError, with only a Back control — no collab editor,
     // hence no WebSocket, is mounted.
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_locked') throw apiError(409)
+      if (method === 'get' && url === '/docs/d_locked/open-context') throw apiError(409)
       return { data: {}, status: 200 }
     }
 
@@ -174,7 +198,7 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
 
   it('AC-7: a GET 403 renders the access-denied terminal, editor not mounted', async () => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_forbidden') throw apiError(403)
+      if (method === 'get' && url === '/docs/d_forbidden/open-context') throw apiError(403)
       return { data: {}, status: 200 }
     }
 
@@ -191,12 +215,12 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // permission can ask for it. The standalone /d/:docId deep link is the surface most recipients
     // arrive through, yet it used to dead-end on a bare terminal (Back only). It must now render the
     // in-shell RequestAccessButton so the receiver can request access without leaving the page.
+    window.localStorage.setItem('currentSpaceId', 's_viewer')
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_forbidden') throw apiError(403)
+      if (method === 'get' && url === '/docs/d_forbidden/open-context') throw apiError(403)
       // The owned-Bot lookup must return a LEGAL empty list: this case asserts the requester can ask
       // for access, which is orthogonal to the Bot dimension. The catch-all `{}` reaches the strict
       // loader as a malformed body and blocks submission, which would test the wrong thing.
-      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: [], status: 200 }
       return { data: {}, status: 200 }
     }
 
@@ -223,11 +247,34 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
         ),
       ).toBe(true),
     )
+    const post = wk.apiClient.calls.find(
+      (c) => c.method === 'post' && c.url === '/docs/d_forbidden/access-requests',
+    )!
+    expect(post.body).toBeUndefined()
+    expect(post.config?.headers?.['X-Space-Id']).toBeUndefined()
+    expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/owned_bots'))).toBe(false)
+  })
+
+  it('keeps a first-time cross-Space access request human-only with no viewer-space lookup/header', async () => {
+    wk.shared.currentSpaceId = 's_viewer'
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_cross/open-context') throw apiError(403)
+      return { data: {}, status: 200 }
+    }
+
+    render(<StandaloneDocPage docId="d_cross" />)
+    fireEvent.click(await screen.findByText('docs.forward.requestAccess'))
+    await waitFor(() => expect(wk.apiClient.calls.some((c) => c.url === '/docs/d_cross/access-requests')).toBe(true))
+
+    const post = wk.apiClient.calls.find((c) => c.url === '/docs/d_cross/access-requests')!
+    expect(post.body).toBeUndefined()
+    expect(post.config?.headers?.['X-Space-Id']).toBeUndefined()
+    expect(wk.apiClient.calls.some((c) => c.url.startsWith('/robot/owned_bots'))).toBe(false)
   })
 
   it('AC-10: a GET 404 renders the not-found terminal, editor not mounted', async () => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_missing') throw apiError(404)
+      if (method === 'get' && url === '/docs/d_missing/open-context') throw apiError(404)
       return { data: {}, status: 200 }
     }
 
@@ -244,7 +291,7 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
 
   it('AC-11: a GET 401 renders the sign-in terminal and stashes the return target', async () => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_locked_out') throw apiError(401)
+      if (method === 'get' && url === '/docs/d_locked_out/open-context') throw apiError(401)
       return { data: {}, status: 200 }
     }
 
@@ -266,7 +313,7 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     // reloads into the real login screen) rather than rendering the terminal.
     const onSessionExpired = vi.fn()
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_expired') throw apiError(401)
+      if (method === 'get' && url === '/docs/d_expired/open-context') throw apiError(401)
       return { data: {}, status: 200 }
     }
 
@@ -300,8 +347,8 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
 
   it('mounts the editor with Copy link pinned as the first ≡ menu row (no resident button, no "Open in App")', async () => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -343,8 +390,8 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
 
   it('falls back to the module title when the document title is empty', async () => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_untitled') {
-        return { data: { docId: 'd_untitled', title: '   ', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_untitled/open-context') {
+        return { data: { docId: 'd_untitled', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_untitled', title: '   ', ownerId: 'u_owner' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -365,8 +412,8 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     Object.assign(navigator, { clipboard: { writeText } })
 
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -384,18 +431,18 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     expect(copied).not.toContain('?')
   })
 
-  it('XIN-513: Copy link keeps the doc space `?sp` but strips the session `?sid`', async () => {
-    // The standalone page was opened from a share link carrying `?sp=` (the doc's real space, XIN-501)
-    // and the live URL may also carry the sharer's own `?sid=`. The copied canonical link must
-    // preserve `?sp` — the next recipient's preflight needs it to address the doc's space — while
-    // dropping the session-scoped `?sid`.
+  it('Phase-1: Copy link drops BOTH the session `?sid` and a legacy doc-space `?sp`', async () => {
+    // The standalone page may be reached from a legacy link carrying `?sp=` (the doc's old space)
+    // and the live URL may also carry the sharer's own `?sid=`. The Phase-1 canonical link is the
+    // bare `/d/:docId` (design §5.3): the reader resolves the doc's Space server-side from the docId,
+    // so the copied link must drop `?sp` as well as the session-scoped `?sid`.
     window.history.pushState({}, '', '/d/d_ok?sid=sharer-secret&sp=105d4a60d0fc4d55a5cfc3c2d0501361')
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.assign(navigator, { clipboard: { writeText } })
 
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -407,8 +454,10 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
 
     await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1))
     const copied = writeText.mock.calls[0][0] as string
-    expect(copied).toBe(`${window.location.origin}/d/d_ok?sp=105d4a60d0fc4d55a5cfc3c2d0501361`)
+    expect(copied).toBe(`${window.location.origin}/d/d_ok`)
     expect(copied).not.toContain('sid')
+    expect(copied).not.toContain('sp')
+    expect(copied).not.toContain('?')
   })
 
   it('AC-6: after copying, a menu-external "Link copied" toast appears (visible even though the menu row closes)', async () => {
@@ -420,8 +469,8 @@ describe('StandaloneDocPage — preflight boundary states (no WebSocket)', () =>
     Object.assign(navigator, { clipboard: { writeText } })
 
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -461,9 +510,9 @@ describe('StandaloneDocPage — board-kind resolved from authoritative docType (
     expect(window.localStorage.getItem('octo.board.ids.')).toBeNull()
 
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/b_shared') {
+      if (method === 'get' && url === '/docs/b_shared/open-context') {
         return {
-          data: { docId: 'b_shared', title: 'Shared Board', ownerId: 'u_owner', docType: 'board' },
+          data: { docId: 'b_shared', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:wb:b_shared', title: 'Shared Board', ownerId: 'u_owner', docType: 'board' },
           status: 200,
         }
       }
@@ -482,8 +531,8 @@ describe('StandaloneDocPage — board-kind resolved from authoritative docType (
     // Regression guard: a plain document (or a legacy backend that omits docType) must keep opening
     // in the Tiptap editor — the board branch must not swallow the default doc path.
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_plain') {
-        return { data: { docId: 'd_plain', title: 'Plain Doc', ownerId: 'u_owner', docType: 'doc' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_plain/open-context') {
+        return { data: { docId: 'd_plain', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_plain', title: 'Plain Doc', ownerId: 'u_owner', docType: 'doc' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -503,14 +552,15 @@ describe('StandaloneDocPage — board-kind resolved from authoritative docType (
     // standalone share link derived a DIFFERENT room than the REST preflight authorized (wrong collab
     // token / WS room / uid-scoped cache) for any board outside the default folder.
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/b_infolder') {
+      if (method === 'get' && url === '/docs/b_infolder/open-context') {
         return {
           data: {
             docId: 'b_infolder',
+            homeSpaceId: 's_auth',
             title: 'Board In Folder',
             ownerId: 'u_owner',
             docType: 'board',
-            documentName: 'octo:s_auth:f_team:wb:board_xyz',
+            documentName: 'octo:s_auth:f_team:wb:b_infolder',
           },
           status: 200,
         }
@@ -521,31 +571,11 @@ describe('StandaloneDocPage — board-kind resolved from authoritative docType (
     render(<StandaloneDocPage docId="b_infolder" />)
 
     await waitFor(() => expect(screen.getByTestId('board-session')).toBeTruthy())
-    // Board segment comes from parsed.board, NOT the URL docId; folder/space from the parsed key.
-    expect(screen.getByTestId('board-doc').textContent).toBe('board_xyz')
+    // Backend invariant: canonical wb segment equals docId.
+    expect(screen.getByTestId('board-doc').textContent).toBe('b_infolder')
     expect(screen.getByTestId('board-folder').textContent).toBe('f_team')
     expect(screen.getByTestId('board-folder').textContent).not.toBe('f_default')
     expect(screen.getByTestId('board-space').textContent).toBe('s_auth')
-  })
-})
-
-describe('standaloneFallbackSpace — cold-start cross-space addressing (blocker 3)', () => {
-  it('prefers the live currentSpaceId when the shell has one', () => {
-    window.localStorage.setItem('currentSpaceId', 's_cached')
-    expect(standaloneFallbackSpace('s_live')).toBe('s_live')
-  })
-
-  it('falls back to the cached localStorage currentSpaceId when the shell has none', () => {
-    // The standalone page mounts via the Layout early-return, BEFORE the shell restores
-    // currentSpaceId — so wk.shared.currentSpaceId is empty on a cold cross-space deep link. The
-    // cached key is the user's real last space; using it avoids addressing the wrong room.
-    window.localStorage.setItem('currentSpaceId', 's_cached')
-    expect(standaloneFallbackSpace('')).toBe('s_cached')
-    expect(standaloneFallbackSpace(undefined)).toBe('s_cached')
-  })
-
-  it('falls back to the deploy default only when neither is available', () => {
-    expect(standaloneFallbackSpace('')).toBe('demo') // DEFAULT_DOC_SPACE
   })
 })
 
@@ -562,92 +592,39 @@ describe('viewerCurrentSpace — the space a recorded view is written to (XIN-12
   })
 
   it('returns empty (NOT the deploy default) when there is no viewer signal, so the caller omits the header', () => {
-    // Unlike standaloneFallbackSpace (used for room addressing, where a default is a safe last
-    // resort), the view record must never be written to a space we cannot confirm the viewer is in.
+    // The view record must never be written to a space we cannot confirm the viewer is in, so with
+    // no live and no cached signal we return '' and the caller omits the explicit X-Space-Id.
     expect(viewerCurrentSpace('')).toBe('')
     expect(viewerCurrentSpace(undefined)).toBe('')
   })
 })
 
-describe('StandaloneDocPage — cold-start addressing uses the cached space, not the deploy default (blocker 3)', () => {
-  it('addresses the EditorShell to the cached currentSpaceId when the preflight carries no documentName', async () => {
-    // Repro: 200 preflight WITHOUT documentName + a cached currentSpaceId in localStorage. Before
-    // the fix the page addressed DEFAULT_DOC_SPACE ("demo"), mounting the editor against the wrong
-    // room. It must instead use the cached space so the shared doc opens in the right space.
-    window.localStorage.setItem('currentSpaceId', 's_real')
+describe('StandaloneDocPage — addresses the editor from the open-context, never a client-guessed space (design §5.2)', () => {
+  it('fails closed when the open-context carries no canonical documentName', async () => {
+    // Canonical addressing is mandatory. A partial 200 must not fall back to a cached client Space,
+    // the deploy default, or homeSpaceId plus a guessed folder.
+    window.localStorage.setItem('currentSpaceId', 's_viewer') // a DIFFERENT viewer space; must NOT win
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        // No documentName in the payload → the addressing memo hits the fallback branch.
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', title: 'Shared Doc' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
 
     render(<StandaloneDocPage docId="d_ok" />)
 
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(screen.getByTestId('editor-space').textContent).toBe('s_real')
-    expect(screen.getByTestId('editor-space').textContent).not.toBe('demo')
-  })
-})
-
-describe('StandaloneDocPage — cold-start preflight carries X-Space-Id from the cached space (by-space isolation)', () => {
-  it('sends GET /docs/:id with header X-Space-Id = cached currentSpaceId even though wk.shared.currentSpaceId is empty', async () => {
-    // Root cause: the standalone page mounts via the Layout early-return, BEFORE the app shell
-    // restores currentSpaceId, so wk.shared.currentSpaceId is empty and the global spaceIdCallback
-    // interceptor injects NO X-Space-Id. The backend's by-space middleware then rejects the bare
-    // preflight (400 space_required / 404 space mismatch) and the page shows the not-found terminal.
-    // The fix resolves the space from the SAME cached localStorage key the room addressing uses and
-    // passes it as an explicit header on the preflight. This asserts the DOCS-SIDE contract (the page
-    // puts the resolved space into the preflight config header); the real wire-level forwarding — host
-    // APIClient forwarding config.headers to axios, which was the XIN-424 fake-green — is covered by
-    // packages/dmworkbase/src/Service/__tests__/APIClient.headers.test.ts.
-    window.localStorage.setItem('currentSpaceId', 'space-abc')
-    expect(wk.shared.currentSpaceId).toBeFalsy() // shell has not restored the live space yet
-
-    wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
-      }
-      return { data: {}, status: 200 }
-    }
-
-    render(<StandaloneDocPage docId="d_ok" />)
-
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
-    expect(preflight).toBeTruthy()
-    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-abc')
-    // Consistency: the room the editor joins uses the same resolved space as the preflight header.
-    expect(screen.getByTestId('editor-space').textContent).toBe('space-abc')
+    await waitFor(() => expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy())
+    expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
 
-  it('seeds the empty live currentSpaceId from the cached value at standalone mount (defense in depth)', async () => {
-    // The primary fix is the explicit header, but the page also restores wk.shared.currentSpaceId
-    // from the cached key when empty, so any in-shell-shared logic the EditorShell touches sees it.
-    window.localStorage.setItem('currentSpaceId', 'space-abc')
-    wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
-      }
-      return { data: {}, status: 200 }
-    }
-
-    render(<StandaloneDocPage docId="d_ok" />)
-
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(wk.shared.currentSpaceId).toBe('space-abc')
-  })
-
-  it('never overwrites a real live currentSpaceId with the cached value', async () => {
-    // In-shell (or any mount where the live space is already set) must be unaffected: the guarded
-    // restore only fills an EMPTY space, so a real current space is preserved and the preflight
-    // header/room follow the live space, not the stale cached one.
+  it('sends the open-context preflight with NO X-Space-Id — docId is the sole locator (design §4/§8.3)', async () => {
+    // Phase-1: a wrong/stale `?sp` on an old link must never steer resolution, so the preflight
+    // carries no space header at all. The backend resolves the doc from the docId path alone.
+    window.history.pushState({}, '', '/d/d_ok?sp=space-wrong')
     window.localStorage.setItem('currentSpaceId', 'space-cached')
-    wk.shared.currentSpaceId = 'space-live'
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -655,155 +632,192 @@ describe('StandaloneDocPage — cold-start preflight carries X-Space-Id from the
     render(<StandaloneDocPage docId="d_ok" />)
 
     await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(wk.shared.currentSpaceId).toBe('space-live')
-    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
-    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-live')
-    expect(screen.getByTestId('editor-space').textContent).toBe('space-live')
+    const preflight = wk.apiClient.calls.find(
+      (c) => c.method === 'get' && c.url === '/docs/d_ok/open-context',
+    )
+    expect(preflight).toBeTruthy()
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBeUndefined()
+  })
+
+  it('never mutates the global currentSpaceId — opening an external /d/:docId cannot pollute the shell Space (design §5.2)', async () => {
+    // The old flow seeded the doc's link space into wk.shared.currentSpaceId; Phase-1 removed that.
+    // A cold deep link (empty live space) must leave currentSpaceId untouched so the shell's
+    // Sidebar / list / search / recent stay on the viewer's own Space.
+    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
+    expect(wk.shared.currentSpaceId).toBeFalsy()
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc' }, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+
+    const { unmount } = render(<StandaloneDocPage docId="d_ok" />)
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    // The doc's home space addressed the editor locally, but the global current space was never set.
+    expect(wk.shared.currentSpaceId).toBeFalsy()
+    unmount()
+    expect(wk.shared.currentSpaceId).toBeFalsy()
   })
 })
 
-describe('XIN-501 — preflight addresses the doc space from the link ?sp, never the token-bucket ?sid', () => {
-  it('standaloneLinkSpace reads the dedicated ?sp param (the doc space), NOT ?sid (the token bucket)', () => {
-    // ?sp carries the doc's real space_id; ?sid is only the token-bucket key. They are distinct, and
-    // the preflight space must come from ?sp — feeding ?sid was the XIN-497 regression.
-    window.history.pushState({}, '', '/d/d_x?sid=2b60d3&sp=105d4a60d0fc4d55a5cfc3c2d0501361')
-    expect(standaloneLinkSpace()).toBe('105d4a60d0fc4d55a5cfc3c2d0501361')
-    // Trimmed.
-    window.history.pushState({}, '', '/d/d_x?sp=%20space-doc%20')
-    expect(standaloneLinkSpace()).toBe('space-doc')
-    // A link with only the token-bucket ?sid (no ?sp) must NOT be treated as a space → empty, so
-    // callers fall back to currentSpaceId/cached/default.
-    window.history.pushState({}, '', '/d/d_x?sid=2b60d3')
-    expect(standaloneLinkSpace()).toBe('')
-    // No query at all → empty.
-    window.history.pushState({}, '', '/d/d_x')
-    expect(standaloneLinkSpace()).toBe('')
+describe('stripSpFromUrl — legacy `?sp` cleanup preserves every other param (design §8.4)', () => {
+  it('removes ONLY sp, keeping sid / other query / hash intact', () => {
+    window.history.pushState({}, '', '/d/d_ok?sid=abc&sp=space-old&foo=bar#sec2')
+    stripSpFromUrl()
+    const url = new URL(window.location.href)
+    expect(url.searchParams.has('sp')).toBe(false)
+    // sid, arbitrary other query, and the hash all survive — each has its own lifecycle (§8.4).
+    expect(url.searchParams.get('sid')).toBe('abc')
+    expect(url.searchParams.get('foo')).toBe('bar')
+    expect(url.hash).toBe('#sec2')
+    // The path is untouched.
+    expect(url.pathname).toBe('/d/d_ok')
   })
 
-  it('own doc (boss regression): preflight addresses the doc space from ?sp → 200, editor mounts', async () => {
-    // Scenario B (severest boss repro): the owner opens their OWN doc via a `/d/:docId` link. The
-    // link carries the doc's real space as ?sp and the short token key as ?sid. The preflight MUST
-    // send X-Space-Id = the ?sp value; sending the ?sid (as XIN-497 did) trips requireDocRole's
-    // cross-space 404 gate and 404s the owner's own doc.
-    window.history.pushState({}, '', '/d/d_own?sid=2b60d3&sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+  it('is a no-op when there is no sp (the common new-link case) — URL unchanged', () => {
+    window.history.pushState({}, '', '/d/d_ok?sid=abc#sec2')
+    const before = window.location.href
+    stripSpFromUrl()
+    expect(window.location.href).toBe(before)
+  })
+
+  it('removes a repeated sp entirely while preserving order of the rest', () => {
+    window.history.pushState({}, '', '/d/d_ok?sp=a&keep=1&sp=b')
+    stripSpFromUrl()
+    const url = new URL(window.location.href)
+    expect(url.searchParams.has('sp')).toBe(false)
+    expect(url.searchParams.get('keep')).toBe('1')
+  })
+
+  it('preserves untouched query bytes, duplicates, blanks, separators, and hash exactly', () => {
+    window.history.pushState({}, '', '/d/d_ok?a=%2f&sp=x&a=%2F&&blank=&sp=y#h%20x')
+    stripSpFromUrl()
+    expect(window.location.pathname + window.location.search + window.location.hash)
+      .toBe('/d/d_ok?a=%2f&a=%2F&&blank=#h%20x')
+  })
+
+  it('removes bare and percent-encoded sp keys without re-encoding other params', () => {
+    window.history.pushState({}, '', '/d/d_ok?sp&keep=hello+world&%73p=old&x=%7e')
+    stripSpFromUrl()
+    expect(window.location.search).toBe('?keep=hello+world&x=%7e')
+  })
+})
+
+describe('StandaloneDocPage — legacy `?sp` link: wrong/correct/missing sp all resolve identically (design §8.2/§8.3)', () => {
+  // Same user, same docId. A legacy link may carry a correct `?sp`, a wrong `?sp`, or none at all.
+  // open-context locates the doc by docId ALONE, so all three must issue the identical request (no
+  // X-Space-Id, same URL) and reach the identical ready state; after opening, `sp` is stripped from
+  // the address bar while everything else is preserved.
+  const okContext = {
+    docId: 'd_ok',
+    homeSpaceId: 's_home',
+    documentName: 'octo:s_home:f_default:d_ok',
+    title: 'Shared Doc',
+  }
+
+  async function openWith(search: string) {
+    window.history.pushState({}, '', `/d/d_ok${search}`)
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_own') {
+      if (method === 'get' && url === '/docs/d_ok/open-context') return { data: okContext, status: 200 }
+      return { data: {}, status: 200 }
+    }
+    render(<StandaloneDocPage docId="d_ok" />)
+    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
+    const preflight = wk.apiClient.calls.find(
+      (c) => c.method === 'get' && c.url === '/docs/d_ok/open-context',
+    )
+    return preflight!
+  }
+
+  it('correct sp: opens, sends no X-Space-Id, strips sp from the address bar', async () => {
+    const preflight = await openWith('?sp=s_home')
+    expect(preflight.config?.headers?.['X-Space-Id']).toBeUndefined()
+    // The editor is addressed from the authoritative homeSpaceId, not the link `sp`.
+    expect(screen.getByTestId('editor-space').textContent).toBe('s_home')
+    expect(new URL(window.location.href).searchParams.has('sp')).toBe(false)
+  })
+
+  it('wrong sp: still opens the same doc, sp cannot steer resolution, and is stripped', async () => {
+    const preflight = await openWith('?sp=s_totally_wrong')
+    expect(preflight.config?.headers?.['X-Space-Id']).toBeUndefined()
+    // Wrong link space never leaks into addressing — the backend's homeSpaceId wins.
+    expect(screen.getByTestId('editor-space').textContent).toBe('s_home')
+    expect(new URL(window.location.href).searchParams.has('sp')).toBe(false)
+  })
+
+  it('missing sp (canonical new link): opens identically with no cleanup needed', async () => {
+    const preflight = await openWith('')
+    expect(preflight.config?.headers?.['X-Space-Id']).toBeUndefined()
+    expect(screen.getByTestId('editor-space').textContent).toBe('s_home')
+    expect(window.location.search).toBe('')
+  })
+
+  it('legacy sp alongside sid: opens, strips sp, and PRESERVES sid for session recovery', async () => {
+    await openWith('?sid=keepme&sp=s_wrong')
+    const url = new URL(window.location.href)
+    expect(url.searchParams.has('sp')).toBe(false)
+    expect(url.searchParams.get('sid')).toBe('keepme')
+  })
+})
+
+describe('StandaloneDocPage — a docType:sheet open-context mounts the collaborative SheetView', () => {
+  it('opens the spreadsheet surface addressed from the canonical documentName', async () => {
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url === '/docs/d_sheet/open-context') {
         return {
-          data: { docId: 'd_own', title: 'My Doc', ownerId: 'u_self', role: 'admin' },
+          data: {
+            docId: 'd_sheet',
+            homeSpaceId: 's_auth',
+            title: 'Shared Sheet',
+            docType: 'sheet',
+            documentName: 'octo:s_auth:f_team:d_sheet',
+          },
           status: 200,
         }
       }
       return { data: {}, status: 200 }
     }
 
-    render(<StandaloneDocPage docId="d_own" />)
+    render(<StandaloneDocPage docId="d_sheet" />)
 
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_own')
-    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('105d4a60d0fc4d55a5cfc3c2d0501361')
-    // Never the token-bucket sid.
-    expect(preflight!.config?.headers?.['X-Space-Id']).not.toBe('2b60d3')
-  })
-
-  it('a no-permission recipient whose OWN space differs from the doc: preflight uses ?sp so the backend returns 403 (forbidden + request-access), not a cross-space 404', async () => {
-    // Scenario A: logged in, no permission on THIS doc, recipient's own last space (cached
-    // currentSpaceId) is a DIFFERENT space. The preflight must address the doc's space from ?sp so
-    // the backend evaluates the caller's role in the doc's space and returns 403 — reaching the
-    // request-access entry — instead of the cross-space 404 dead-end.
-    window.history.pushState({}, '', '/d/d_shared?sid=2b60d3&sp=space-doc')
-    window.localStorage.setItem('currentSpaceId', 'space-mine') // recipient's own last space, NOT the doc's
-
-    wk.apiClient.responder = (method, url) => {
-      // Real backend: same-space + no role → 403 forbidden; a mismatched space would be 404.
-      if (method === 'get' && url === '/docs/d_shared') throw apiError(403)
-      return { data: {}, status: 200 }
-    }
-
-    render(<StandaloneDocPage docId="d_shared" />)
-
-    await waitFor(() =>
-      expect(screen.getByText('docs.error.permission.forbidden')).toBeTruthy(),
-    )
-    // The preflight addressed the doc's space (from ?sp), NOT the recipient's own cached space.
-    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_shared')
-    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
-    expect(preflight!.config?.headers?.['X-Space-Id']).not.toBe('space-mine')
-    // gap2 request-access entry is reached (the whole point of the fix).
-    expect(screen.getByText('docs.forward.requestAccess')).toBeTruthy()
+    await waitFor(() => expect(screen.getByTestId('sheet-view')).toBeTruthy())
+    expect(screen.getByTestId('sheet-doc').textContent).toBe('d_sheet')
+    // Space/folder come from the authoritative documentName the backend authorized.
+    expect(screen.getByTestId('sheet-space').textContent).toBe('s_auth')
+    expect(screen.getByTestId('sheet-folder').textContent).toBe('f_team')
     expect(screen.queryByTestId('editor-shell')).toBeNull()
   })
+})
 
-  it('a genuinely deleted doc still lands on not-found even with a valid ?sp', async () => {
-    // With the correct space, a 404 now means the doc is truly gone (status 0), not a cross-space
-    // artifact — so not-found is the correct terminal.
-    window.history.pushState({}, '', '/d/d_gone?sid=2b60d3&sp=space-doc')
+describe('StandaloneDocPage — non-Yjs HTML surfaces', () => {
+  it.each([
+    ['html', 'html-view'],
+    ['html_ppt', 'ppt-view'],
+  ])('opens standalone %s from canonical addressing without mounting Yjs surfaces', async (docType, testId) => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_gone') throw apiError(404)
-      return { data: {}, status: 200 }
-    }
-
-    render(<StandaloneDocPage docId="d_gone" />)
-
-    await waitFor(() => expect(screen.getByText('docs.error.permission.notFound')).toBeTruthy())
-    expect(screen.queryByTestId('editor-shell')).toBeNull()
-  })
-
-  it('an older link with only ?sid (no ?sp) falls back to the cached currentSpaceId, so the owner opening their own doc still works', async () => {
-    // Backward compatibility: links minted before XIN-501 carry only the token-bucket ?sid. The
-    // preflight must NOT send that sid as the space; it falls back to the cached currentSpaceId,
-    // which is the doc's space whenever the opener is already in it (owner / same-space recipient).
-    window.history.pushState({}, '', '/d/d_legacy?sid=2b60d3')
-    window.localStorage.setItem('currentSpaceId', 'space-doc') // opener is in the doc's space
-    wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_legacy') {
-        return { data: { docId: 'd_legacy', title: 'Legacy', ownerId: 'u_self' }, status: 200 }
+      if (method === 'get' && url === `/docs/d_${docType}/open-context`) {
+        return {
+          data: {
+            docId: `d_${docType}`,
+            homeSpaceId: 's_home',
+            documentName: `octo:s_home:f_default:${docType === 'html' ? 'html' : 'ppt'}:d_${docType}`,
+            docType,
+            octoDocSlug: `slug-${docType}`,
+          },
+          status: 200,
+        }
       }
       return { data: {}, status: 200 }
     }
 
-    render(<StandaloneDocPage docId="d_legacy" />)
+    render(<StandaloneDocPage docId={`d_${docType}`} />)
 
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_legacy')
-    // The cached space is used — never the token-bucket sid.
-    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
-    expect(preflight!.config?.headers?.['X-Space-Id']).not.toBe('2b60d3')
-  })
-
-  it('a real expired/invalid token still 401s → login handoff, unaffected by the space (AC-4)', async () => {
-    // The space only steers requireDocRole's cross-space (404) vs role (403) branches; the auth
-    // middleware returns 401 for a bad token regardless of X-Space-Id. So a genuine stale token still
-    // hands off to onSessionExpired (login re-auth) — the space fix does not swallow real 401s.
-    window.history.pushState({}, '', '/d/d_expired?sid=2b60d3&sp=space-doc')
-    const onSessionExpired = vi.fn()
-    wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_expired') throw apiError(401)
-      return { data: {}, status: 200 }
-    }
-
-    render(<StandaloneDocPage docId="d_expired" onSessionExpired={onSessionExpired} />)
-
-    await waitFor(() => expect(onSessionExpired).toHaveBeenCalledTimes(1))
-    expect(screen.queryByText('docs.error.permission.forbidden')).toBeNull()
+    await waitFor(() => expect(screen.getByTestId(testId)).toBeTruthy())
     expect(screen.queryByTestId('editor-shell')).toBeNull()
-  })
-
-  it('seeds the empty live currentSpaceId from the link ?sp so follow-up requests match the preflight', async () => {
-    window.history.pushState({}, '', '/d/d_ok?sid=2b60d3&sp=space-doc')
-    window.localStorage.setItem('currentSpaceId', 'space-mine') // recipient's own; must NOT win over ?sp
-    wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
-      }
-      return { data: {}, status: 200 }
-    }
-
-    render(<StandaloneDocPage docId="d_ok" />)
-
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(wk.shared.currentSpaceId).toBe('space-doc')
-    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
-    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+    expect(screen.queryByTestId('sheet-view')).toBeNull()
+    expect(screen.queryByTestId('board-session')).toBeNull()
+    expect(wk.apiClient.calls.some((c) => c.url.includes('collab-token'))).toBe(false)
   })
 })
 
@@ -868,10 +882,10 @@ describe('resolveSameOriginPath — PPT editorUrl normalise (P2-1)', () => {
 
 describe('standalone return target — open-redirect-safe post-login bounce (blocker 4)', () => {
   it('round-trips a safe same-origin /d/:docId target through persist → consume', () => {
-    window.history.pushState({}, '', '/d/d_abc?sid=xyz')
+    window.history.pushState({}, '', '/d/d_abc?sid=xyz#comment-1')
     persistStandaloneReturn()
-    expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).toBe('/d/d_abc?sid=xyz')
-    expect(consumeStandaloneReturn()).toBe('/d/d_abc?sid=xyz')
+    expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).toBe('/d/d_abc?sid=xyz#comment-1')
+    expect(consumeStandaloneReturn()).toBe('/d/d_abc?sid=xyz#comment-1')
     // Consumed once — the key is cleared so a later unrelated login can't inherit a stale target.
     expect(window.sessionStorage.getItem(STANDALONE_RETURN_KEY)).toBeNull()
     expect(consumeStandaloneReturn()).toBeNull()
@@ -926,7 +940,7 @@ describe('standalone return target — open-redirect-safe post-login bounce (blo
   it('AC-11 anonymous entry: the sign-in terminal stashes a safe, consumable return target', async () => {
     window.history.pushState({}, '', '/d/d_locked_out')
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_locked_out') throw { response: { status: 401 } }
+      if (method === 'get' && url === '/docs/d_locked_out/open-context') throw { response: { status: 401 } }
       return { data: {}, status: 200 }
     }
 
@@ -988,8 +1002,8 @@ describe('withReturnSid — carry the current session sid on the post-login /d/:
 describe('StandaloneDocPage — creator name is nickname-only on the shared surface (blocker 5)', () => {
   it('tells the EditorShell to resolve the creator from the nickname, never the verified real name', async () => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -1004,19 +1018,20 @@ describe('StandaloneDocPage — creator name is nickname-only on the shared surf
 })
 
 describe('StandaloneDocPage — records a view so share-link opens surface in 最近查看 (XIN-1238)', () => {
-  it('fires POST /docs/:id/view once the doc is ready, written to the VIEWER current space, not the doc link space', async () => {
+  it('fires POST /docs/:id/view once the doc is ready, written to the VIEWER current space, not the doc home space', async () => {
     // XIN-1234 root cause: the standalone page never recorded a view, so a doc opened from a chat
     // share link never appeared in the opener's 最近查看. XIN-1237 write/read space contract: the
     // view must be written under the VIEWER's current space (X-Space-Id), which 最近查看 reads back
-    // by — NOT the doc's own space the standalone page seeds for preflight addressing.
-    // Cross-space share: the link carries the doc space `?sp=space-doc`, but the viewer is currently
-    // in space-viewer (their cached/live current space).
+    // by — NOT the doc's own home space. Phase-1 no longer seeds the doc space into currentSpaceId
+    // (design §5.2), so the viewer space stays the shell's own throughout.
+    // Cross-space: a legacy link may still carry `?sp=space-doc` (now ignored), but the viewer is
+    // currently in space-viewer (their cached/live current space).
     window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
     window.localStorage.setItem('currentSpaceId', 'space-viewer')
 
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -1028,10 +1043,10 @@ describe('StandaloneDocPage — records a view so share-link opens surface in �
       expect(wk.apiClient.calls.some((c) => c.method === 'post' && c.url === '/docs/d_ok/view')).toBe(true),
     )
     const view = wk.apiClient.calls.find((c) => c.method === 'post' && c.url === '/docs/d_ok/view')
-    // The preflight is addressed to the doc's own space (link `?sp`), but the view ingest must go to
-    // the viewer's current space so it surfaces in the viewer's recent list.
-    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok')
-    expect(preflight!.config?.headers?.['X-Space-Id']).toBe('space-doc')
+    // The open-context preflight sends NO space header (docId is the sole locator, design §8.3); the
+    // view ingest goes to the viewer's OWN current space so it surfaces in the viewer's recent list.
+    const preflight = wk.apiClient.calls.find((c) => c.method === 'get' && c.url === '/docs/d_ok/open-context')
+    expect(preflight!.config?.headers?.['X-Space-Id']).toBeUndefined()
     expect(view!.config?.headers?.['X-Space-Id']).toBe('space-viewer')
   })
 
@@ -1044,8 +1059,8 @@ describe('StandaloneDocPage — records a view so share-link opens surface in �
     window.localStorage.setItem('currentSpaceId', 'space-team')
 
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Team Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Team Doc', ownerId: 'u_owner' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -1067,8 +1082,8 @@ describe('StandaloneDocPage — records a view so share-link opens surface in �
     // the global interceptor decide, exactly as the in-shell entry does.
     window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -1087,8 +1102,8 @@ describe('StandaloneDocPage — records a view so share-link opens surface in �
   it('uses the live current space as the viewer space when the shell already restored it (in-shell mount)', async () => {
     wk.shared.currentSpaceId = 'space-live'
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -1106,8 +1121,8 @@ describe('StandaloneDocPage — records a view so share-link opens surface in �
   it('records the view at most once (idempotent — never in a render loop)', async () => {
     window.localStorage.setItem('currentSpaceId', 'space-viewer')
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
+      if (method === 'get' && url === '/docs/d_ok/open-context') {
+        return { data: { docId: 'd_ok', homeSpaceId: 's_home', documentName: 'octo:s_home:f_default:d_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
       }
       return { data: {}, status: 200 }
     }
@@ -1125,7 +1140,7 @@ describe('StandaloneDocPage — records a view so share-link opens surface in �
 
   it('does NOT record a view when the preflight fails to a terminal (forbidden / not-found)', async () => {
     wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_forbidden') {
+      if (method === 'get' && url === '/docs/d_forbidden/open-context') {
         return Promise.reject(apiError(403))
       }
       return { data: {}, status: 200 }
@@ -1134,58 +1149,8 @@ describe('StandaloneDocPage — records a view so share-link opens surface in �
     render(<StandaloneDocPage docId="d_forbidden" />)
 
     await waitFor(() =>
-      expect(wk.apiClient.calls.some((c) => c.method === 'get' && c.url === '/docs/d_forbidden')).toBe(true),
+      expect(wk.apiClient.calls.some((c) => c.method === 'get' && c.url === '/docs/d_forbidden/open-context')).toBe(true),
     )
     expect(wk.apiClient.calls.some((c) => c.url === '/docs/d_forbidden/view')).toBe(false)
-  })
-})
-
-describe('StandaloneDocPage — restores the viewer current space on teardown so 最近查看 is not left scoped to the doc space (XIN-1254)', () => {
-  it('reverts the doc-link space it seeded back to the viewer current space when the page unmounts', async () => {
-    // Cross-space share (老板 real-device repro): the viewer (大棍子) is in space-viewer; the link
-    // carries the DOC owner's (大背头) space `?sp=space-doc`. On this cold deep link
-    // wk.shared.currentSpaceId is empty, so the seed effect overwrites it with space-doc for the
-    // interceptor to address the editor's cross-space collab requests. Left in place, returning to
-    // the docs list scopes 最近查看's read (derived from the live currentSpaceId via the interceptor)
-    // to space-doc — but the view was recorded under space-viewer (viewerSpaceRef), so it stays
-    // invisible: the XIN-1234 write/read space split reintroduced by the seed.
-    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
-    window.localStorage.setItem('currentSpaceId', 'space-viewer')
-    wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
-      }
-      return { data: {}, status: 200 }
-    }
-
-    const { unmount } = render(<StandaloneDocPage docId="d_ok" />)
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    // Seed applied while the standalone editor is mounted (cross-space collab addressing).
-    expect(wk.shared.currentSpaceId).toBe('space-doc')
-
-    // On teardown the viewer's real space is restored, so the shell's recent-view read matches the
-    // space the view was written to (space-viewer) and the doc surfaces in 最近查看.
-    unmount()
-    expect(wk.shared.currentSpaceId).toBe('space-viewer')
-  })
-
-  it('only reverts the value it seeded — never clobbers a space the shell switched to meanwhile', async () => {
-    window.history.pushState({}, '', '/d/d_ok?sp=space-doc')
-    window.localStorage.setItem('currentSpaceId', 'space-viewer')
-    wk.apiClient.responder = (method, url) => {
-      if (method === 'get' && url === '/docs/d_ok') {
-        return { data: { docId: 'd_ok', title: 'Shared Doc', ownerId: 'u_owner' }, status: 200 }
-      }
-      return { data: {}, status: 200 }
-    }
-
-    const { unmount } = render(<StandaloneDocPage docId="d_ok" />)
-    await waitFor(() => expect(screen.getByTestId('editor-shell')).toBeTruthy())
-    expect(wk.shared.currentSpaceId).toBe('space-doc')
-
-    // A genuine space switch happened while the page was open; the teardown restore must be a no-op.
-    wk.shared.currentSpaceId = 'space-switched'
-    unmount()
-    expect(wk.shared.currentSpaceId).toBe('space-switched')
   })
 })

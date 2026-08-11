@@ -40,13 +40,15 @@ export class AccessRequestConflictError extends Error {
  * 200/201 → submitted; 409 → already requested (surfaced as AccessRequestConflictError so the
  * button can show "Request submitted" without treating it as a failure).
  *
- * `spaceId` MUST be passed on the standalone `/d/:docId` surface: that page mounts before the app
- * shell restores `currentSpaceId`, so the global interceptor injects no `X-Space-Id` and the
- * backend's by-space middleware rejects a bare request (same fix getDoc uses). In-shell callers can
- * omit it — the interceptor supplies the header there.
+ * `spaceId` is for legacy/in-shell by-space callers only. The standalone forbidden landing omits
+ * it deliberately: a 403 open-context response does not reveal the document home Space, and the
+ * docId-global backend resolves the target (and validates any owned Bots) from doc_meta.space_id.
+ * Sending the viewer's unrelated current Space would reject a valid cross-Space request.
  */
 export async function requestAccess(docId: string, opts?: { spaceId?: string; botUids?: string[] }): Promise<void> {
-  const config = opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
+  const config = opts?.spaceId
+    ? { headers: { 'X-Space-Id': opts.spaceId } }
+    : { suppressSpaceId: true }
   // Zero Bots → send NO body (preserves the pre-feature request shape); only attach a body once
   // the requester actually carries at least one Bot.
   const uids = [...new Set(opts?.botUids ?? [])]
