@@ -26,6 +26,8 @@ export interface ChannelAvatarProps {
     initialColorIndex?: number
     isUploadedAvatar?: boolean
     canClearUploadedAvatar?: boolean
+    visible?: boolean
+    onClose?: () => void
     /** 路由上下文：保存/取消成功后关闭当前「群头像」页。 */
     context?: RouteContext<any>
     onFileUpload?:(f:File)=>Promise<void>
@@ -65,20 +67,10 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
     componentDidUpdate(prevProps: ChannelAvatarProps) {
         if (
             prevProps.initialAvatarText !== this.props.initialAvatarText ||
-            prevProps.initialColorIndex !== this.props.initialColorIndex
+            prevProps.initialColorIndex !== this.props.initialColorIndex ||
+            (prevProps.visible === false && this.props.visible === true)
         ) {
-            if (this.state.uploadPreviewUrl) {
-                URL.revokeObjectURL(this.state.uploadPreviewUrl)
-            }
-            this.setState({
-                customAvatarText: this.props.initialAvatarText || "",
-                customAvatarColorIndex: this.props.initialColorIndex,
-                textChanged: false,
-                colorChanged: false,
-                draftMode: "generated",
-                pendingUploadFile: null,
-                uploadPreviewUrl: undefined,
-            })
+            this.resetDraftFromProps()
         }
     }
 
@@ -109,7 +101,26 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         this.$fileInput.click();
     }
     closePage = () => {
+        if (this.props.onClose) {
+            this.props.onClose()
+            return
+        }
         this.props.context?.pop()
+    }
+    resetDraftFromProps = () => {
+        if (this.state.uploadPreviewUrl) {
+            URL.revokeObjectURL(this.state.uploadPreviewUrl)
+        }
+        this.setState({
+            cropFile: null,
+            customAvatarText: this.props.initialAvatarText || "",
+            customAvatarColorIndex: this.props.initialColorIndex,
+            textChanged: false,
+            colorChanged: false,
+            draftMode: "generated",
+            pendingUploadFile: null,
+            uploadPreviewUrl: undefined,
+        })
     }
     cancelCustomAvatar = () => {
         if (this.state.customAvatarSaving || this.state.uploading) return
@@ -229,35 +240,51 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         const { channel,showUpload,groupName,isNamedGroup } = this.props
         const { cropFile, uploading, customAvatarSaving, uploadPreviewUrl } = this.state
         const editingDisabled = customAvatarSaving || uploading
-        return <>
-            <div className="wk-channelavatar">
-                <div className="wk-channelavatar-avatar-wrap">
-                    <img className="wk-channelavatar-avatar-img" src={uploadPreviewUrl || WKApp.shared.avatarChannel(channel)}></img>
-                    <button
-                        type="button"
-                        className="wk-channelavatar-camera"
-                        style={{display:showUpload?"flex":"none"}}
-                        onClick={this.chooseFile}
-                        disabled={editingDisabled}
-                        aria-label="change-avatar-image"
-                    >
-                        <IconCamera />
-                    </button>
-                </div>
-                {showUpload && <GroupAvatarEditForm
-                    name={groupName || ""}
-                    nameAsFallback={isNamedGroup === true}
-                    initialAvatarText={this.props.initialAvatarText || ""}
-                    initialColorIndex={this.props.initialColorIndex}
+        const content = <div className="wk-channelavatar">
+            <div className="wk-channelavatar-avatar-wrap">
+                <img className="wk-channelavatar-avatar-img" src={uploadPreviewUrl || WKApp.shared.avatarChannel(channel)}></img>
+                <button
+                    type="button"
+                    className="wk-channelavatar-camera"
+                    style={{display:showUpload?"flex":"none"}}
+                    onClick={this.chooseFile}
                     disabled={editingDisabled}
-                    onChange={this.onGeneratedAvatarChange}
-                />}
-                <input  onClick={this.onFileClick.bind(this)}  type="file" multiple={false} accept="image/*" style={{ display: 'none' }} ref={(ref) => { this.$fileInput = ref }}  onChange={this.onFileChange.bind(this)}></input>
-                {showUpload && <div className="wk-channelavatar-actions">
-                    <Button onClick={this.cancelCustomAvatar}>{this.context.t('base.common.cancel')}</Button>
-                    <Button loading={customAvatarSaving || uploading} onClick={this.saveCustomAvatar}>{this.context.t('base.common.save')}</Button>
-                </div>}
+                    aria-label="change-avatar-image"
+                >
+                    <IconCamera />
+                </button>
             </div>
+            {showUpload && <GroupAvatarEditForm
+                name={groupName || ""}
+                nameAsFallback={isNamedGroup === true}
+                initialAvatarText={this.props.initialAvatarText || ""}
+                initialColorIndex={this.props.initialColorIndex}
+                disabled={editingDisabled}
+                onChange={this.onGeneratedAvatarChange}
+            />}
+            <input  onClick={this.onFileClick.bind(this)}  type="file" multiple={false} accept="image/*" style={{ display: 'none' }} ref={(ref) => { this.$fileInput = ref }}  onChange={this.onFileChange.bind(this)}></input>
+            {showUpload && <div className="wk-channelavatar-actions">
+                <Button onClick={this.cancelCustomAvatar}>{this.context.t('base.common.cancel')}</Button>
+                <Button loading={customAvatarSaving || uploading} onClick={this.saveCustomAvatar}>{this.context.t('base.common.save')}</Button>
+            </div>}
+        </div>
+
+        return <>
+            {this.props.visible === undefined ? content : (
+                <WKModal
+                    title={this.context.t('base.module.channelSettings.groupAvatar')}
+                    visible={this.props.visible}
+                    onCancel={this.cancelCustomAvatar}
+                    width={520}
+                    className="wk-channelavatar-setting-modal"
+                    options={{
+                        maskClosable: !editingDisabled,
+                        closeOnEsc: !editingDisabled,
+                    }}
+                >
+                    {content}
+                </WKModal>
+            )}
             <WKModal
                 title={this.context.t('base.channelAvatar.cropAvatar')}
                 visible={!!cropFile}

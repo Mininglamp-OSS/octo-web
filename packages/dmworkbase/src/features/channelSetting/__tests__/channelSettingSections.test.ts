@@ -546,7 +546,7 @@ describe("channel setting section builders", () => {
     expect(disbanded?.rows?.[0].properties.value).toBe("remark");
   });
 
-  it("passes persisted avatar custom fields into the avatar editor route", () => {
+  it("passes persisted avatar custom fields into the avatar modal row", () => {
     const context = createContext({
       isManagerOrCreatorOfMe: true,
       channelInfo: {
@@ -569,15 +569,13 @@ describe("channel setting section builders", () => {
       disbanded: false,
     });
 
-    rows[1].properties.onClick();
-
-    const [view] = context.push.mock.calls[0];
-    expect(view.props.initialAvatarText).toBe("研发");
-    expect(view.props.initialColorIndex).toBe(5);
-    expect(view.props.isNamedGroup).toBe(true);
-    expect(view.props.isUploadedAvatar).toBe(true);
-    expect(view.props.canClearUploadedAvatar).toBe(true);
-    expect(view.props.showUpload).toBe(true);
+    expect(rows[1].properties.initialAvatarText).toBe("研发");
+    expect(rows[1].properties.initialColorIndex).toBe(5);
+    expect(rows[1].properties.isNamedGroup).toBe(true);
+    expect(rows[1].properties.isUploadedAvatar).toBe(true);
+    expect(rows[1].properties.canClearUploadedAvatar).toBe(true);
+    expect(rows[1].properties.showUpload).toBe(true);
+    expect(context.push).not.toHaveBeenCalled();
   });
 
   it("treats cleared avatar color and new groups as default fallback", () => {
@@ -599,13 +597,11 @@ describe("channel setting section builders", () => {
       disbanded: false,
     });
 
-    rows[1].properties.onClick();
-
-    const [view] = context.push.mock.calls[0];
-    expect(view.props.initialAvatarText).toBe("");
-    expect(view.props.initialColorIndex).toBeUndefined();
-    expect(view.props.isNamedGroup).toBe(false);
-    expect(view.props.showUpload).toBe(false);
+    expect(rows[1].properties.initialAvatarText).toBe("");
+    expect(rows[1].properties.initialColorIndex).toBeUndefined();
+    expect(rows[1].properties.isNamedGroup).toBe(false);
+    expect(rows[1].properties.showUpload).toBe(false);
+    expect(context.push).not.toHaveBeenCalled();
   });
 
   it("builds thread setting sections for active thread channels", () => {

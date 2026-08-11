@@ -15,6 +15,7 @@ import { updateChannelSettingField } from "../../bridge/channelSetting/channelSe
 import { t } from "../../i18n";
 import {
   ChannelSettingIconRow,
+  ChannelSettingIconRowProps,
   ChannelSettingInlineEditRow,
 } from "../../ui/ChannelSettingRows";
 import { parseAvatarColorIndex } from "./channelSettingAvatarColor";
@@ -25,6 +26,49 @@ interface BuildGroupProfileRowsOptions {
   data: ChannelSettingRouteData;
   inputEditPush: ChannelSettingInputEditPush;
   disbanded: boolean;
+}
+
+interface GroupAvatarSettingRowProps extends ChannelSettingIconRowProps {
+  channel: ChannelSettingRouteData["channel"];
+  showUpload?: boolean;
+  groupName?: string;
+  isNamedGroup?: boolean;
+  initialAvatarText?: string;
+  initialColorIndex?: number;
+  isUploadedAvatar?: boolean;
+  canClearUploadedAvatar?: boolean;
+}
+
+function GroupAvatarSettingRow({
+  channel,
+  showUpload,
+  groupName,
+  isNamedGroup,
+  initialAvatarText,
+  initialColorIndex,
+  isUploadedAvatar,
+  canClearUploadedAvatar,
+  ...rowProps
+}: GroupAvatarSettingRowProps) {
+  const [visible, setVisible] = React.useState(false);
+
+  return (
+    <>
+      <ChannelSettingIconRow {...rowProps} onClick={() => setVisible(true)} />
+      <ChannelAvatar
+        visible={visible}
+        onClose={() => setVisible(false)}
+        showUpload={showUpload}
+        channel={channel}
+        groupName={groupName}
+        isNamedGroup={isNamedGroup}
+        initialAvatarText={initialAvatarText}
+        initialColorIndex={initialColorIndex}
+        isUploadedAvatar={isUploadedAvatar}
+        canClearUploadedAvatar={canClearUploadedAvatar}
+      />
+    </>
+  );
 }
 
 export function buildGroupProfileRows({
@@ -81,7 +125,7 @@ export function buildGroupProfileRows({
       },
     }),
     new Row({
-      cell: ChannelSettingIconRow,
+      cell: GroupAvatarSettingRow,
       properties: {
         title: t("base.module.channelSettings.groupAvatar"),
         icon: (
@@ -95,22 +139,14 @@ export function buildGroupProfileRows({
             alt=""
           />
         ),
-        onClick: () => {
-          context.push(
-            <ChannelAvatar
-              showUpload={data.isManagerOrCreatorOfMe}
-              channel={channel}
-              context={context}
-              groupName={channelInfo?.title || ""}
-              isNamedGroup={isNamedGroup}
-              initialAvatarText={channelInfo?.orgData?.avatar_text || ""}
-              initialColorIndex={avatarColor}
-              isUploadedAvatar={isUploadedAvatar}
-              canClearUploadedAvatar={canClearUploadedAvatar}
-            />,
-            { title: t("base.module.channelSettings.groupAvatar") }
-          );
-        },
+        showUpload: data.isManagerOrCreatorOfMe,
+        channel,
+        groupName: channelInfo?.title || "",
+        isNamedGroup,
+        initialAvatarText: channelInfo?.orgData?.avatar_text || "",
+        initialColorIndex: avatarColor,
+        isUploadedAvatar,
+        canClearUploadedAvatar,
       },
     }),
     new Row({

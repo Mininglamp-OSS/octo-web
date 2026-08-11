@@ -189,4 +189,16 @@ describe("ChannelAvatar save intent", () => {
       clearUploadedAvatar: true,
     });
   });
+
+  it("renders as modal and calls onClose instead of route pop", async () => {
+    const onClose = vi.fn();
+
+    renderChannelAvatar({ visible: true, onClose });
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("base.common.cancel"));
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
