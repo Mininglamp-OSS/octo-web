@@ -40,8 +40,21 @@ interface MarkdownContentProps {
   mentions?: MentionInfo[];
   onMentionClick?: (uid: string) => void;
   emojis?: EmojiInfo[];
-  /** 是否启用数学公式渲染（KaTeX），默认 false */
+  /**
+   * 是否启用数学公式渲染（KaTeX），默认 true。
+   * 消息正文默认渲染 `$$...$$`（行内 + 块级），与 iOS 端保持一致
+   * （只要一端渲染所有端都渲染）。单 `$` 行内公式默认关闭，见 {@link allowSingleDollarMath}。
+   * 仅在明确不需要公式的场景传 false。
+   */
   enableMath?: boolean;
+  /**
+   * 是否额外识别单 `$...$` 行内公式，默认 false。
+   * 默认关闭是因为聊天正文里成对单 `$`（货币区间 `$5-$10`、费用 `$5 and $10`、
+   * shell/环境变量 `$HOME/bin:$PATH`）会被 remark-math 误配对成公式、损坏正文，
+   * 而单 `$` 与这些语义天然歧义、无可靠 heuristic 区分。仅文档/编辑器等
+   * 明确需要单 `$` 且可接受该风险的场景才显式传 true。
+   */
+  allowSingleDollarMath?: boolean;
   /**
    * 是否启用 Markdown 语法渲染，默认 true。
    * RichText(=14) MVP 锁纯文本：传 false 时按纯文本渲染（保留换行/链接/emoji/mention），
@@ -51,91 +64,38 @@ interface MarkdownContentProps {
 }
 
 /**
- * 在 GitHub 默认白名单基础上，追加 highlight.js 需要的 class 属性。
- * 执行顺序：rehypeHighlight 先着色（加 hljs-* className），
- * rehypeSanitize 最后兜底清洗——白名单里的 hljs-* / language-* 才真正生效。
- * 注意：react-markdown 的输入是 Markdown 字符串，remark 直接解析成安全 AST，
- * 不存在注入 HTML 的机会（未开启 allowDangerousHtml），所以 highlight 先跑不会引入风险。
+ * Sanitize 白名单。
+ * 数学路径的执行顺序为 highlight → sanitize → katex（见 {@link mathRehypePlugins}）：
+ * 先给代码块加 hljs-* / language-*，再 sanitize 清洗**用户**内容，最后 rehypeKatex
+ * 生成可信 DOM。KaTeX 的输出不再二次 sanitize，所以本 schema 只需放行两类东西：
+ *   1. highlight.js 的 hljs-* / language-* class；
+ *   2. remark-math 交给 rehype-katex 的 math 标记 —— remark-math@5 输出
+ *      `<span class="math math-inline">`（行内）与 `<div class="math math-display">`（块级），
+ *      放行这两个 class 后 rehype-katex 才能识别并替换成公式。
+ * 无需再穷举 KaTeX 自身的 class / SVG / MathML 标签（它们在 sanitize 之后才生成）。
+ *
+ * 安全性依赖 rehypeKatex 的 `trust: false`：KaTeX 不会输出可执行 HTML / 事件属性，
+ * `\href{javascript:...}` 在 trust:false 下只渲染成惰性错误文本（`javascript:` 仅出现在
+ * 不可执行的 MathML `<annotation>` 源码里，不产生 `href` 属性）。此外 react-markdown 未开
+ * allowDangerousHtml，原始 HTML 已由 rawHtmlAsTextPlugin 转成文本，不存在注入 HTML 的入口。
  */
 const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    // 放行代码块的 language-* class（highlight.js 加的）
+    // 代码块的 language-* / hljs-* class（highlight.js 加的）
     code: [
       ...(defaultSchema.attributes?.code ?? []),
       ["className", /^language-/, /^hljs/],
     ],
-    // 放行 span 上的 hljs-* class（语法高亮 token）+ KaTeX 相关 class
+    // hljs 语法高亮 token + remark-math 行内 math 标记
     span: [
       ...(defaultSchema.attributes?.span ?? []),
-      [
-        "className",
-        /^hljs/,
-        /^katex/,
-        /^mord/,
-        /^mbin/,
-        /^mrel/,
-        /^mopen/,
-        /^mclose/,
-        /^mpunct/,
-        /^minner/,
-        /^mop/,
-        /^mfrac/,
-        /^msqrt/,
-        /^mroot/,
-        /^mtable/,
-        /^mtr/,
-        /^mtd/,
-        /^svg/,
-        /^vlist/,
-        /^strut/,
-        /^frac-line/,
-        /^delimsizing/,
-        /^nulldelimiter/,
-        /^reset-size/,
-        /^sizing/,
-        /^fontsize-ensurer/,
-        /^base/,
-      ],
+      ["className", /^hljs/, "math", "math-inline"],
     ],
-    // 放行 KaTeX 相关元素的 class
-    div: [...(defaultSchema.attributes?.div ?? []), ["className", /^katex/]],
-    // 放行 KaTeX math 容器的 class
-    math: [["className", /^katex/]],
-    // 放行 KaTeX SVG 属性
-    svg: [
-      ["width"],
-      ["height"],
-      ["viewBox"],
-      ["preserveAspectRatio"],
-      ["style"],
-    ],
-    path: [["d"]],
-    line: [["x1"], ["x2"], ["y1"], ["y2"]],
+    // remark-math 块级 math 标记
+    div: [...(defaultSchema.attributes?.div ?? []), ["className", "math", "math-display"]],
   },
-  tagNames: [
-    ...(defaultSchema.tagNames ?? []),
-    // 放行 KaTeX 使用的 SVG 元素
-    "svg",
-    "path",
-    "line",
-    "math",
-    "annotation",
-    "semantics",
-    "mrow",
-    "mi",
-    "mo",
-    "mn",
-    "msup",
-    "msub",
-    "mfrac",
-    "mroot",
-    "msqrt",
-    "mtable",
-    "mtr",
-    "mtd",
-  ],
 };
 
 /** 基础 rehype 插件（不含 KaTeX） */
@@ -144,11 +104,21 @@ const baseRehypePlugins: any[] = [
   [rehypeSanitize, sanitizeSchema],
 ];
 
-/** 含 KaTeX 的 rehype 插件 */
+/**
+ * 含 KaTeX 的 rehype 插件。
+ * 顺序 highlight → sanitize → **katex**：先 sanitize 清洗用户内容，再让 rehypeKatex
+ * 生成公式 DOM。KaTeX 输出不经二次 sanitize，所以布局赖以定位的内联 style / strut /
+ * MathML 不会被剥掉——修复此前 sanitize 跑在 katex 之后导致分数/矩阵垂直塌陷的问题。
+ * `maxSize` / `maxExpand` 兜 `\rule` 超大尺寸与 `\def` 宏展开的 DoS / 布局炸弹；
+ * `trust: false` 保证不输出可执行 HTML（见 {@link sanitizeSchema} 安全说明）。
+ */
 const mathRehypePlugins: any[] = [
   [rehypeHighlight, { aliases: { json5: "json" }, ignoreMissing: true }],
-  [rehypeKatex, { strict: false, throwOnError: false }],
   [rehypeSanitize, sanitizeSchema],
+  [
+    rehypeKatex,
+    { strict: false, throwOnError: false, trust: false, maxSize: 10, maxExpand: 100 },
+  ],
 ];
 
 /** 基础 remark 插件（不含 math） */
@@ -158,8 +128,27 @@ const baseRemarkPlugins: any[] = [
   remarkBreaks,
 ];
 
-/** 含 math 的 remark 插件 */
+/**
+ * 含 math 的 remark 插件（仅 `$$...$$`）。
+ * `singleDollarTextMath: false` 关掉单 `$` 行内公式：聊天正文里的货币区间
+ * （`$5-$10`）、费用对比（`$5 and $10`）、shell/环境变量（`$HOME/bin:$PATH`）
+ * 都含成对单 `$`，若开启单 `$` 行内公式会被 remark-math 误配对、损坏正文。
+ * 单 `$` 与货币/变量语义天然歧义，无可靠 heuristic 区分，故聊天默认只认 `$$`
+ * （`$$...$$` 行内与块级均可渲染，覆盖真实公式消息）。
+ */
 const mathRemarkPlugins: any[] = [
+  rawHtmlAsTextPlugin,
+  remarkGfm,
+  remarkBreaks,
+  [remarkMath, { singleDollarTextMath: false }],
+];
+
+/**
+ * 含 math 的 remark 插件（`$...$` 与 `$$...$$` 都认）。
+ * 仅供文档/编辑器等明确需要单 `$` 行内公式、且不担心货币误渲的场景显式开启
+ * （`allowSingleDollarMath`），聊天消息不用。
+ */
+const mathRemarkPluginsSingleDollar: any[] = [
   rawHtmlAsTextPlugin,
   remarkGfm,
   remarkBreaks,
@@ -559,7 +548,8 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
   mentions = [],
   onMentionClick,
   emojis = [],
-  enableMath = false,
+  enableMath = true,
+  allowSingleDollarMath = false,
   enableMarkdown = true,
 }) => {
   const normalized = useMemo(
@@ -645,7 +635,9 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
   const remarkPlugins = !enableMarkdown
     ? plainRemarkPlugins
     : enableMath
-    ? mathRemarkPlugins
+    ? allowSingleDollarMath
+      ? mathRemarkPluginsSingleDollar
+      : mathRemarkPlugins
     : baseRemarkPlugins;
   const rehypePlugins = !enableMarkdown
     ? plainRehypePlugins
