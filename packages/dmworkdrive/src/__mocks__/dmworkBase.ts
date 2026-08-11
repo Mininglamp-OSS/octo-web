@@ -85,6 +85,22 @@ export const imDriveTransferSourceKey = (
   msgID: string,
 ): string => `${channelType}#${normaliseImDriveChannelID(channelType, channelID)}#${msgID}`;
 
+// Mirror @octo/base's resolveCardActionChannelId — person DM self-collapse
+// fallback to fromUID. Kept trivial and value-equivalent so any test that
+// asserts on the source_key wire format still exercises the same branch.
+export const resolveCardActionChannelId = (params: {
+  channelType: number;
+  channelID: string;
+  fromUID?: string;
+  selfUID?: string;
+}): string => {
+  const { channelType, channelID, fromUID, selfUID } = params;
+  if (channelType === 1 && !!selfUID && channelID === selfUID && !!fromUID) {
+    return fromUID;
+  }
+  return channelID;
+};
+
 export class Menus {
   constructor(
     public id: string,

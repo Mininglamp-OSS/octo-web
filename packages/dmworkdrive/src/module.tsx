@@ -8,6 +8,8 @@ import {
   t as translate,
   MessageContentTypeConst,
   isDriveTransferSupportedChannel,
+  resolveCardActionChannelId,
+  stripSpacePrefix,
 } from '@octo/base';
 import type { IModule } from '@octo/base';
 import DriveSidebar from './pages/DriveSidebar';
@@ -353,13 +355,42 @@ export default class DriveModule implements IModule {
         // and adding a runtime import here breaks the isolated web build
         // Rolldown pass ("failed to resolve import 'wukongimjssdk'").
         if (message.status !== 1) return null;
+        // DM peer-uid resolution: system-bot DMs (notification / fileHelper)
+        // deliver recv packets whose channel.channelID collapses to the
+        // receiver's own uid instead of the peer's — see the corresponding
+        // `resolvedImChannelID` helper in dmworkbase/Messages/File/index.tsx
+        // for the full rationale. Both the cache read AND the save path
+        // below must forward the RESOLVED peer, otherwise:
+        //   (a) getDriveTransferred keys on a source_key that never matches
+        //       what the batch-check emitter side stored → menu stays on
+        //       "存到云盘…" for an already-saved file, and
+        //   (b) saveMessageToDriveAt POSTs im_group_no=self → drive fires
+        //       octo-server GET /v1/messages/person/<self>/<msg-id> which
+        //       fails with 400 `peer_uid` and the picker Toasts an
+        //       "invalid IM message reference" error.
+        //
+        // Strip the Space prefix (`s<32hex>_`) before the self-collapse
+        // comparison: in Space deployments the recv-packet channelID
+        // arrives prefixed while `WKApp.loginInfo.uid` is bare, so a
+        // plain `channelID === selfUID` misses the collapse case.
+        // `stripSpacePrefix` is idempotent on unprefixed ids.
+        const bareChannelID =
+          message.channel.channelType === 1
+            ? stripSpacePrefix(message.channel.channelID)
+            : message.channel.channelID;
+        const resolvedGroupNo = resolveCardActionChannelId({
+          channelType: message.channel.channelType,
+          channelID: bareChannelID,
+          fromUID: message.fromUID,
+          selfUID: WKApp.loginInfo?.uid,
+        });
         // Two-state menu: mirror the icon. If the cache says the file is
         // already saved somewhere the caller can reach, offer "在云盘中查看"
         // that jumps to the winner. Otherwise (notfound / unknown) offer
         // the picker. Unknown is treated as "may not be saved" — safer
         // default: never hide the save entry when we don't know.
         const known = WKApp.getDriveTransferred?.({
-          im_group_no: message.channel.channelID,
+          im_group_no: resolvedGroupNo,
           im_channel_type: message.channel.channelType,
           im_msg_id: message.messageID,
         });
@@ -381,7 +412,7 @@ export default class DriveModule implements IModule {
             const save = WKApp.saveMessageToDriveAt;
             if (!save) return;
             void save({
-              im_group_no: message.channel.channelID,
+              im_group_no: resolvedGroupNo,
               im_channel_type: message.channel.channelType,
               im_msg_id: message.messageID,
             }).catch(() => {

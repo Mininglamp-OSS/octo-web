@@ -13,7 +13,9 @@ import MessageRow from "../../ui/message/MessageRow";
 import { getFileMessageUI } from "../../bridge/message/useFileMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { isSafeUrl } from "../../Utils/security";
-import { isDriveTransferSupportedChannel, imDriveTransferSourceKey } from "../../Service/SpacePrefix";
+import { isDriveTransferSupportedChannel, imDriveTransferSourceKey, stripSpacePrefix } from "../../Service/SpacePrefix";
+import { resolveCardActionChannelId } from "../InteractiveCard/cardAction";
+import { ChannelTypePerson } from "wukongimjssdk";
 import { I18nContext } from "../../i18n";
 
 export { FileContent } from "./FileContent";
@@ -460,6 +462,51 @@ export class FileCell extends MessageCell<any, FileCellState> {
     WKApp.mittBus.on("wk:drive-transferred-changed", this._driveTransferredListener);
   }
 
+  // Resolve the DM peer uid for the drive-transfer wire.
+  //
+  // In a person-DM the octo-server 'get message by (peer_uid, msg_id)' probe
+  // that drive uses to authorise the transfer takes the PEER's uid — NOT the
+  // caller's own uid — as the peer parameter. In normal 1v1 DMs
+  // `message.channel.channelID` is already the peer's uid so passing it
+  // through works fine. But some WuKongIM system-bot DMs (notification,
+  // fileHelper, and any bot that pushes system messages) deliver recv packets
+  // whose `channel.channelID` COLLAPSES to the receiver's own uid — the
+  // "receiver as container" storage layout that InteractiveCard hit as bug
+  // in #1261 review round 7. If we forward channelID=self as im_group_no,
+  // drive → octo-server GET /v1/messages/person/<self>/<msg-id> returns
+  // 400 `peer_uid` (can't query my own DM with myself) and the save
+  // silently fails with "invalid IM message reference".
+  //
+  // Same tie-break rule as InteractiveCard's `resolveCardActionChannelId`:
+  // when person + channelID === selfUID, fall back to `message.fromUID`
+  // (the WKSDK-canonical peer for a received message). Groups / topics and
+  // any DM whose channelID is already the peer pass through unchanged.
+  //
+  // The result of THIS helper is what upstream (dmworkdrive backend) sees.
+  //
+  // Space-prefix stripping IS applied here (only on Person channels), because
+  // the self-collapse comparison `bareChannelID === selfUID` has to be done
+  // in the same namespace: in a Space deployment the recv-packet channelID
+  // is `s<32hex>_<uid>` while `WKApp.loginInfo.uid` is the bare uid, so
+  // without the strip the equality check silently misses the collapse case
+  // and the caller still forwards `s<32hex>_<self>`. `stripSpacePrefix`
+  // is idempotent (no prefix → passthrough) so this is safe on non-Space
+  // deployments too; the downstream `imDriveTransferSourceKey` /
+  // `normaliseImDriveChannelID` will just no-op on the already-bare id.
+  private resolvedImChannelID(): string {
+    const { message } = this.props;
+    const bareChannelID =
+      message.channel.channelType === ChannelTypePerson
+        ? stripSpacePrefix(message.channel.channelID)
+        : message.channel.channelID;
+    return resolveCardActionChannelId({
+      channelType: message.channel.channelType,
+      channelID: bareChannelID,
+      fromUID: message.fromUID,
+      selfUID: WKApp.loginInfo?.uid,
+    });
+  }
+
   // sourceKey is derived by @octo/base's `imDriveTransferSourceKey` — the
   // SAME implementation dmworkdrive uses to construct the wire source_key
   // and to key the mittBus 'wk:drive-transferred-changed' fan-out. Hosting
@@ -467,11 +514,14 @@ export class FileCell extends MessageCell<any, FileCellState> {
   // subscriber-side key to drift from the emitter-side key (Octo-Q /
   // yujiawei review PR #1322 P2-6 — the earlier local inline version was
   // an obvious silent-drift trap).
+  //
+  // Uses the DM-peer-resolved channel id (not the raw one) so a system-bot
+  // DM's source_key matches what the module.tsx save/check handlers emit.
   private driveSourceKey(): string {
     const { message } = this.props;
     return imDriveTransferSourceKey(
       message.channel.channelType,
-      message.channel.channelID,
+      this.resolvedImChannelID(),
       message.messageID,
     );
   }
@@ -516,7 +566,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
 
     this._checkInFlight = true;
     check({
-      im_group_no: message.channel.channelID,
+      im_group_no: this.resolvedImChannelID(),
       im_channel_type: message.channel.channelType,
       im_msg_id: message.messageID,
     })
@@ -617,7 +667,7 @@ export class FileCell extends MessageCell<any, FileCellState> {
     if (!save) return;
     try {
       const result = await save({
-        im_group_no: message.channel.channelID,
+        im_group_no: this.resolvedImChannelID(),
         im_channel_type: message.channel.channelType,
         im_msg_id: message.messageID,
       });
