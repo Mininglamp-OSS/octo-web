@@ -110,6 +110,10 @@ export function MemberPicker({
   // creator's Bot list (convenience), but the user must be able to collapse it and have it stay
   // collapsed — this override wins over both `expanded` and the query hit. It is scoped to the
   // current search term: changing `query` clears it so a new term restores "hit ⇒ default open".
+  // Semantics (intentional): collapsing ALSO drops the uid from `expanded` (see the expander
+  // onClick) so the last EXPLICIT user action wins. Keeping it in `expanded` instead would let a
+  // later query (even one not hitting this Bot) clear the override and re-open a list the user
+  // closed ("ghost expand"); collapse must stay collapse until the user reopens it.
   const [collapsedByUser, setCollapsedByUser] = useState<Set<string>>(new Set())
   // Default to 'writer' when offered (keeps rich-doc's prior initial), else the sole/first role
   // so a single-role dropdown ('reader' for HTML) is selected without an empty state.
