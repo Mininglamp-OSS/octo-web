@@ -12,6 +12,7 @@ import { I18nContext } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge } from "../avatarUpload";
 import WKModal from "../WKModal";
 import { GroupAvatarEditForm, GroupAvatarEditResult } from "../GroupAvatarEditModal";
+import GroupAvatarPreview from "../GroupAvatarPreview";
 import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import "./index.css"
 
@@ -146,7 +147,8 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         if (this.state.customAvatarSaving || this.state.uploading) return
         const shouldClearUploadedAvatar =
             this.props.isUploadedAvatar === true &&
-            this.props.canClearUploadedAvatar === true
+            this.props.canClearUploadedAvatar === true &&
+            (textChanged || colorChanged)
         if (draftMode === "uploaded") {
             await this.saveUploadedAvatar()
             return
@@ -239,13 +241,39 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
     }
     render() {
         const { channel,showUpload,groupName,isNamedGroup } = this.props
-        const { cropFile, uploading, customAvatarSaving, uploadPreviewUrl } = this.state
+        const {
+            cropFile,
+            uploading,
+            customAvatarSaving,
+            customAvatarText,
+            customAvatarColorIndex,
+            textChanged,
+            colorChanged,
+            draftMode,
+            uploadPreviewUrl,
+        } = this.state
         const editingDisabled = customAvatarSaving || uploading
+        const showGeneratedPreview =
+            draftMode === "generated" &&
+            (this.props.isUploadedAvatar !== true || textChanged || colorChanged)
         const content = <div className="wk-channelavatar">
             <div className="wk-channelavatar-main">
                 <div className="wk-channelavatar-preview-panel">
                     <div className="wk-channelavatar-avatar-wrap">
-                        <img className="wk-channelavatar-avatar-img" src={uploadPreviewUrl || WKApp.shared.avatarChannel(channel)}></img>
+                        {uploadPreviewUrl ? (
+                            <img className="wk-channelavatar-avatar-img" src={uploadPreviewUrl} alt="" />
+                        ) : showGeneratedPreview ? (
+                            <GroupAvatarPreview
+                                avatarText={customAvatarText}
+                                colorIndex={customAvatarColorIndex}
+                                name={groupName || ""}
+                                nameAsFallback={isNamedGroup === true}
+                                size={136}
+                                className="wk-channelavatar-generated-preview"
+                            />
+                        ) : (
+                            <img className="wk-channelavatar-avatar-img" src={WKApp.shared.avatarChannel(channel)} alt="" />
+                        )}
                         <button
                             type="button"
                             className="wk-channelavatar-camera"

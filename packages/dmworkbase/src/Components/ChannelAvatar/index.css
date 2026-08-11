@@ -142,6 +142,13 @@
     box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.05);
 }
 
+.wk-channelavatar-setting-modal .wk-channelavatar-generated-preview {
+    width: 136px;
+    height: 136px;
+    border: 3px solid var(--semi-color-bg-0);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.05);
+}
+
 .wk-channelavatar-setting-modal .wk-channelavatar-camera {
     right: 2px;
     bottom: 2px;

@@ -186,7 +186,7 @@ describe("ChannelAvatar save intent", () => {
     expect(mocks.changeChannelAvatarTag).not.toHaveBeenCalledWith(channel);
   });
 
-  it("sends clear_uploaded_avatar when owner saves uploaded avatar as generated without edits", async () => {
+  it("does not clear an uploaded avatar when generated fields are unchanged", async () => {
     const channel = renderChannelAvatar({
       initialAvatarText: "研发",
       initialColorIndex: 5,
@@ -198,14 +198,8 @@ describe("ChannelAvatar save intent", () => {
       fireEvent.click(screen.getByText("base.common.save"));
     });
 
-    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledTimes(1);
-    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
-      avatarText: undefined,
-      avatarColor: undefined,
-      clearUploadedAvatar: true,
-    });
-    expect(mocks.changeChannelAvatarTag).toHaveBeenCalledWith(channel);
-    expect(mocks.fetchCurrentImChannelInfo).toHaveBeenCalledWith(channel);
+    expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
+    expect(mocks.changeChannelAvatarTag).not.toHaveBeenCalledWith(channel);
   });
 
   it("sends clear_uploaded_avatar only when creator edits an uploaded avatar", async () => {
@@ -225,6 +219,19 @@ describe("ChannelAvatar save intent", () => {
       avatarColor: undefined,
       clearUploadedAvatar: true,
     });
+  });
+
+  it("updates the large preview immediately when generated text changes", async () => {
+    renderChannelAvatar({ initialAvatarText: "原头像" });
+
+    act(() => {
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "研发" },
+      });
+    });
+
+    expect(document.querySelector(".wk-channelavatar-generated-preview")).toBeTruthy();
+    expect(screen.getAllByText("研发")).toHaveLength(2);
   });
 
   it("renders as modal and calls onClose instead of route pop", async () => {
