@@ -32,6 +32,7 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
+import { isDriveRootFileNavigation } from "./fileRootGuard";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -48,6 +49,27 @@ let isWin = process.platform === "win32";
 let isWindowFocusHandlerRegistered = false;
 
 const isDevelopment = process.env.NODE_ENV !== "production";
+
+/* ---------- file:// drive-root navigation guard ---------- */
+
+/**
+ * Attach the file:// drive-root navigation guard to a BrowserWindow.
+ * Intercepts renderer-initiated navigations (will-navigate) that land on a
+ * drive root and redirects back to index.html without minting a new session
+ * sid (omitting the query lets SessionScope fall back to sessionStorage).
+ */
+function attachFileRootGuard(win: BrowserWindow, indexPath: string): void {
+  win.webContents.on("will-navigate", (event, url) => {
+    if (isDevelopment) return; // dev server handles routing
+    if (!isDriveRootFileNavigation(url)) return;
+    event.preventDefault();
+    // Omit query: a new random sid would clobber the established session
+    // (SessionScope.ensureSessionSid gives URL sid priority over storage).
+    win.loadFile(indexPath).catch((err) => {
+      console.error("[file-root-guard] loadFile failed:", err);
+    });
+  });
+}
 // dev 模式下渲染层 dev server 地址。端口需与 vite dev server 一致，
 // 默认 3000（对齐旧 dev-ele 脚本）；可用 VITE_DEV_SERVER_URL 覆盖，
 // 避免与机器上其它占用 3000 的进程（如 e2e vite）冲突。
@@ -203,12 +225,31 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
         type: "separator",
       },
       {
-        role: "reload",
         label: "刷新",
+        accelerator: "CmdOrCtrl+R",
+        click: (_item, focusedWindow) => {
+          if (focusedWindow && !isDevelopment) {
+            // Reload the index.html directly instead of letting the browser
+            // reload whatever URL is in the address bar (which under file://
+            // may be a drive root after RouteManager pushState).
+            const indexPath = join(__dirname, "../", "../build/index.html");
+            focusedWindow.loadFile(indexPath).catch(() => {});
+          } else if (focusedWindow) {
+            focusedWindow.reload();
+          }
+        },
       },
       {
-        role: "forceReload",
         label: "强制刷新",
+        accelerator: "CmdOrCtrl+Shift+R",
+        click: (_item, focusedWindow) => {
+          if (focusedWindow && !isDevelopment) {
+            const indexPath = join(__dirname, "../", "../build/index.html");
+            focusedWindow.loadFile(indexPath).catch(() => {});
+          } else if (focusedWindow) {
+            focusedWindow.webContents.reloadIgnoringCache();
+          }
+        },
       },
     ],
   },
@@ -422,6 +463,7 @@ const createNewWindow = () => {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     const WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
     newWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+    attachFileRootGuard(newWindow, WEB_URL);
   }
 
   // 为新窗口设置菜单（Windows 需要）
@@ -456,8 +498,8 @@ const createMainWindow = async () => {
       }
     }
   });
-  // Hoist WEB_URL to function scope so the will-navigate handler below can
-  // reference it (block-scoped const inside the else-branch is not visible there).
+  // Hoist WEB_URL to function scope so the file-root guard and other code
+  // can reference it.
   let WEB_URL: string;
   if (NODE_ENV === "development") {
     mainWindow.loadURL(DEV_SERVER_URL);
@@ -465,35 +507,9 @@ const createMainWindow = async () => {
     process.env.DIST_ELECTRON = join(__dirname, "../");
     WEB_URL = join(process.env.DIST_ELECTRON, "../build/index.html");
     mainWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+    // Guard against file:// drive-root navigations (pushState "/" leak).
+    attachFileRootGuard(mainWindow, WEB_URL);
   }
-
-  // file:// history-replace fix: the app's RouteManager uses pushState/
-  // replaceState with "/"-prefixed SPA paths (e.g. "/" for the chat page).
-  // Under file:// protocol, "/" resolves to the drive root (file:///E:/),
-  // so after navigating to a route the address bar shows the drive root.
-  // Ctrl+Shift+R then reloads the drive root instead of index.html.
-  // Intercept will-navigate ONLY when the target is a drive root / bare
-  // directory (never an .html file — that includes the legitimate
-  // post-login redirect which keeps the full index.html path), and
-  // redirect back to index.html.
-  mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (NODE_ENV === "development") return; // dev server handles routing
-    if (!WEB_URL) return; // index path not resolved yet
-    let parsedUrl: URL;
-    try { parsedUrl = new URL(url); } catch { return; }
-    if (parsedUrl.protocol !== "file:") return;
-    // decodeURIComponent can throw on malformed percent-encoding (e.g. /%ZZ);
-    // fall back to the raw pathname — the extension/root check still works.
-    let pathname: string;
-    try { pathname = decodeURIComponent(parsedUrl.pathname || ""); } catch { pathname = parsedUrl.pathname || ""; }
-    // A real page (index.html) ends with ".html"; leave it alone.
-    if (/\.html?$/i.test(pathname)) return;
-    // Only a drive root ("/E:/", "/", "/E:") or a bare directory path
-    // (no file extension) reaches here — that's the SPA "/" route leaking
-    // into file://. Redirect to index.html; the router restores the route.
-    event.preventDefault();
-    mainWindow?.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
-  });
 
   ipcMain.on("screenshots-start", (event, args) => {
     console.log("main voip-message event", args);
