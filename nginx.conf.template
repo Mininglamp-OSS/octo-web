@@ -224,22 +224,31 @@ server {
         }
 
         # octo-dap telemetry collector — the fail-closed frontend tracker always
-        # POSTs to the same-origin relative path /track/batch. This block routes the
-        # /track/* surface to the collector so those reports never fall through to the
-        # SPA catch-all below (a POST to index.html would otherwise return a bogus
-        # non-JSON body the tracker cannot recognise as failure). Set TRACK_API_URL
-        # (e.g. http://octo-dap:8080) at container start; blank yields a JSON 503 so a
-        # deployment without the collector still boots AND the tracker sees an explicit
-        # !ok response (its retry/drop path) instead of a silent false success.
-        # resolver + runtime-variable proxy_pass: the collector host resolves per-request.
-        # Path+query forwarded verbatim ($request_uri) — the collector owns /track/*.
-        location /track/ {
+        # POSTs to the same-origin relative path /v1/e/b. The public path is a
+        # deliberately neutral, business-API-shaped name: words like track / collect /
+        # analytics / beacon / telemetry / pixel are on the EasyPrivacy & uBlock Origin
+        # default block lists, so a browser with a privacy extension (common on
+        # corporate intranets) would kill the request outright and the tracker would
+        # silently drop data. This block routes it to the collector so those reports
+        # never fall through to the SPA catch-all below (a POST to index.html would
+        # otherwise return a bogus non-JSON body the tracker cannot recognise as
+        # failure). Set TRACK_API_URL (e.g. http://octo-dap:8080) at container start;
+        # blank yields a JSON 503 so a deployment without the collector still boots AND
+        # the tracker sees an explicit !ok response (its retry/drop path) instead of a
+        # silent false success.
+        # Exact match (= ...) so it outranks the SPA catch-all. The public path and the
+        # backend contract are decoupled: the collector exposes /v1/dap/collect, so we
+        # rewrite to that fixed upstream URI and proxy_pass WITHOUT a URI (same
+        # variable-in-proxy_pass caveat as /summary/ and /market/) — $request_uri is
+        # NOT forwarded, so renaming the public path never touches the backend contract.
+        location = /v1/e/b {
             default_type application/json;
             if ($track_api_url = "") {
                 return 503 '{"status":503,"msg":"telemetry collector is not configured"}';
             }
             resolver 127.0.0.11 ipv6=off valid=30s;
-            proxy_pass $track_api_url$request_uri;
+            rewrite ^ /v1/dap/collect break;
+            proxy_pass $track_api_url;
             proxy_set_header token $http_token;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;

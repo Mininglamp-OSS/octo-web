@@ -268,7 +268,7 @@ export class WKRemoteConfig {
    * 埋点采集总开关(ship dark, fail-closed)。经 GET common/appconfig
    * (生产即 https://im.deepminer.com.cn/api/v1/common/appconfig)下发的
    * tracking_enabled 控制:true 才开采;字段缺失/false = 不采,前端一个请求都不发。
-   * 采集端(octo-dap /track/batch)就绪前保持缺省关闭;要停采只需把此位置 false
+   * 采集端(octo-dap /v1/e/b)就绪前保持缺省关闭;要停采只需把此位置 false
    * (远程配置即时生效、无需回滚前端),故不再单设 kill switch。一期全量开/关,
    * 按 event 粒度放二期。
    */

@@ -12,7 +12,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
  * 单独成文件:vitest 默认按文件隔离(全新 jsdom)。
  */
 
-const BATCH_PATH = '/track/batch'
+const BATCH_PATH = '/v1/e/b'
 type FetchMock = ReturnType<typeof vi.fn>
 
 async function freshTracker() {

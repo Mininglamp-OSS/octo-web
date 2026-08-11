@@ -41,20 +41,23 @@ const DEVICE_ID_KEY = 'octo_track_device_id'
 /**
  * 独立上报通道,不复用业务 axios(§2.1)。
  *
- * 采集端**恒为同源相对路径** `/track/batch`:上报(及其携带的业务 token 头)只发给
+ * 采集端**恒为同源相对路径** `/v1/e/b`:上报(及其携带的业务 token 头)只发给
  * 页面自身 origin,绝不出跨域。octo-dap 采集端如需独立部署 / 外部域名,由运维层在业务
- * 域名下反代 `/track/*` 转发实现,前端不感知——从而避免"业务 token 被发往可配置任意
- * 外域"的凭据外泄风险(见 PR review P0-4)。BATCH_PATH 同时用于 fetch/XHR 包裹里识别
- * "上报请求自身"以排除自采环。
+ * 域名下反代该路径、定向到后端真实 collector 端点(`/v1/dap/collect`)实现,前端不感知——
+ * 从而避免"业务 token 被发往可配置任意外域"的凭据外泄风险(见 PR review P0-4)。
+ * 路径刻意取中性名(不含 track/collect/analytics/beacon/telemetry/pixel 等词):这些词全在
+ * EasyPrivacy / uBlock Origin 默认过滤表里,装了隐私插件的浏览器(企业内网常见)会直接
+ * 掐掉该请求 → 前端拿到 blocked、走 retry→drop,静默丢数据且难排查(见 PR #1330 review)。
+ * BATCH_PATH 同时用于 fetch/XHR 包裹里识别"上报请求自身"以排除自采环。
  */
-const BATCH_PATH = '/track/batch'
+const BATCH_PATH = '/v1/e/b'
 const FLUSH_SIZE = 20
 const FLUSH_INTERVAL_MS = 5000
 const MAX_RETRY = 3
 
 /**
  * 属性名黑名单(§8 合规):命中即从 props 剔除,绝不上报。
- * 前端本层先剔一道,后端 `/track/batch` 验签再拒一道,双保险。
+ * 前端本层先剔一道,后端 collector(`/v1/dap/collect`)验签再拒一道,双保险。
  */
 const PROP_KEY_BLACKLIST = /(text|content|body|keyword|query|token|secret|password|phone|email)/i
 
@@ -171,9 +174,9 @@ function isFirstParty(rawUrl: string): boolean {
 }
 
 /**
- * 当前 runtime 是否支持采集。埋点恒发同源相对路径 /track/batch(P0-4 同源锁),
+ * 当前 runtime 是否支持采集。埋点恒发同源相对路径 /v1/e/b(P0-4 同源锁),
  * 只在标准 http(s) Web 运行时成立。桌面 / Electron / Tauri 打包后页面跑在 `file://`
- * (或自定义协议),API 走的是 apiURL.ts 解析出的**绝对后端域名**——此时相对 /track/batch
+ * (或自定义协议),API 走的是 apiURL.ts 解析出的**绝对后端域名**——此时相对 /v1/e/b
  * 既发不出去、也不该把跨域后端流量当第一方采,故在这些 runtime 里直接不启用 tracker
  * (见 PR #1320 review:desktop/file:// 上报打到错误 origin)。判据:protocol 必须是
  * http/https,且无桌面运行时标记。拿不到 location(SSR/测试无 DOM)时保守判为不支持。
@@ -388,7 +391,7 @@ class DapImpl {
 
     /**
      * 运维可读的采集健康快照。`dropped` 是「重试耗尽后被丢弃的事件数」——此前是私有
-     * 计数,运维无从得知丢批(如某环境 /track/* 未配路由时会静默累积)。可在控制台
+     * 计数,运维无从得知丢批(如某环境 /v1/e/b 未配路由时会静默累积)。可在控制台
      * `Dap.shared.getStats()` 读取。(见 PR #1320 review 的可观测性缺口。)
      */
     getStats(): { enabled: boolean; queued: number; dropped: number } {

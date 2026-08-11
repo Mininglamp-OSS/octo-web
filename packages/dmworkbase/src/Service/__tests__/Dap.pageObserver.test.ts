@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
  * document 上、未断开的 MutationObserver 串扰本用例。
  */
 
-const BATCH_PATH = '/track/batch'
+const BATCH_PATH = '/v1/e/b'
 type FetchMock = ReturnType<typeof vi.fn>
 
 async function freshTracker() {

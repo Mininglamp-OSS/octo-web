@@ -5,12 +5,12 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
  *   - fail-closed:未启用时不落盘设备标识、不发任何请求(P0-1)。
  *   - kill switch:setEnabled(false) 后连"停采前已捕获、排入重试的批次"也不再 POST(P0-2)。
  *   - 隐私边界:normalizePath 收窄脱敏文件名 / percent-encoded 段;HTTP 只采第一方同源(P0-3)。
- *   - same-origin:上报恒发相对路径 /track/batch,不出跨域(P0-4)。
+ *   - same-origin:上报恒发相对路径 /v1/e/b,不出跨域(P0-4)。
  * 每个用例用 resetModules + 动态 import 拿到全新单例,避免共享状态串扰。
  */
 
 const DEVICE_ID_KEY = 'octo_track_device_id'
-const BATCH_PATH = '/track/batch'
+const BATCH_PATH = '/v1/e/b'
 
 type FetchMock = ReturnType<typeof vi.fn>
 
@@ -43,7 +43,7 @@ describe('Dap — fail-closed (P0-1)', () => {
         expect(localStorage.getItem(DEVICE_ID_KEY)).toBeNull()
     })
 
-    it('enabled: sends to the same-origin relative /track/batch and only then creates the device id', async () => {
+    it('enabled: sends to the same-origin relative /v1/e/b and only then creates the device id', async () => {
         const { Dap } = await freshTracker()
         expect(localStorage.getItem(DEVICE_ID_KEY)).toBeNull() // 构造后、启用前不落盘
         Dap.shared.setEnabled(true)
@@ -134,8 +134,9 @@ describe('Dap — HTTP wrapper is first-party only and self-excludes (P0-3)', ()
         expect(httpEvents).toHaveLength(1)
         // 路由骨架保留(api/users/files),但用户名与文件名段被脱敏,绝不出现原始值
         expect(httpEvents[0].props?.path).toBe('/api/users/:seg/files/:seg')
-        // 自身上报通道 /track/batch 不被再次 track
-        expect(httpEvents.some((e) => String(e.props?.path).includes('track/batch'))).toBe(false)
+        // 自身上报通道(BATCH_PATH /v1/e/b)不被再次 track:上面只发了 1 个同源业务请求 +
+        // N 个自身批次,httpEvents 恰为 1 已证明批次未被自采;这里再显式钉死其归一路径不出现。
+        expect(httpEvents.some((e) => String(e.props?.path) === '/v1/:seg/:seg')).toBe(false)
     })
 
     it('never derives object_id from a URL path, and masks credential-shaped segments (P1)', async () => {
