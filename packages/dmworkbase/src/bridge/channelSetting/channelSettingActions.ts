@@ -1,4 +1,4 @@
-import { Channel, ChannelTypeGroup } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypeGroup } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import {
@@ -13,18 +13,27 @@ import {
   updateChannelSubscriberAttr,
   updateThread as updateThreadApi,
 } from "../../Service/ChannelSettingService";
-import { EndpointID, SubscriberStatus } from "../../Service/Const";
+import {
+  ChannelTypeCommunityTopic,
+  EndpointID,
+  SubscriberStatus,
+} from "../../Service/Const";
 import {
   clearCurrentImChannelSubscribersLocallyRemoved,
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+  getPendingCurrentImChannelInfoFetch,
   getCurrentImChannelSubscribers,
   getCurrentImChannelSubscribersCacheRaw,
   markCurrentImChannelSubscribersLocallyRemoved,
+  notifyCurrentImChannelInfoListeners,
   notifyCurrentImSubscriberChangeListeners,
+  setCurrentImChannelInfoCache,
   setCurrentImChannelSubscribersCache,
   syncCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
+import { patchImChannelInfoOrgData } from "../../im-runtime/channelRuntime";
 import {
   findCurrentImConversation,
   removeCurrentImConversation,
@@ -43,6 +52,8 @@ export interface ChannelSettingActionRuntime {
     uid: string
   ): Promise<ChannelSettingSubscriber | undefined>;
   getCurrentChannelSubscribers(channel: Channel): ChannelSettingSubscriber[];
+  getCurrentChannelInfo(channel: Channel): ChannelInfo | undefined;
+  getPendingChannelInfoFetch(channel: Channel): Promise<unknown> | undefined;
   getCurrentChannelSubscribersRaw(
     channel: Channel
   ): ChannelSettingSubscriber[] | undefined;
@@ -59,6 +70,8 @@ export interface ChannelSettingActionRuntime {
   clearRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
   markRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
   notifyCurrentChannelSubscribers(channel: Channel): void;
+  notifyCurrentChannelInfo(channelInfo: ChannelInfo): void;
+  setCurrentChannelInfo(channelInfo: ChannelInfo): void;
   setCurrentChannelSubscribers(
     channel: Channel,
     subscribers: ChannelSettingSubscriber[]
@@ -122,6 +135,12 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     getCurrentChannelSubscribers(channel) {
       return getCurrentImChannelSubscribers(channel);
     },
+    getCurrentChannelInfo(channel) {
+      return getCurrentImChannelInfo<Channel, ChannelInfo>(channel);
+    },
+    getPendingChannelInfoFetch(channel) {
+      return getPendingCurrentImChannelInfoFetch(channel);
+    },
     getCurrentChannelSubscribersRaw(channel) {
       return getCurrentImChannelSubscribersCacheRaw(channel);
     },
@@ -170,8 +189,14 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     notifyCurrentChannelSubscribers(channel) {
       notifyCurrentImSubscriberChangeListeners(channel);
     },
+    notifyCurrentChannelInfo(channelInfo) {
+      notifyCurrentImChannelInfoListeners(channelInfo);
+    },
     setCurrentChannelSubscribers(channel, subscribers) {
       setCurrentImChannelSubscribersCache(channel, subscribers);
+    },
+    setCurrentChannelInfo(channelInfo) {
+      setCurrentImChannelInfoCache(channelInfo);
     },
     syncCurrentChannelSubscribers(channel) {
       return syncCurrentImChannelSubscribers(channel);
@@ -192,6 +217,55 @@ function defaultRuntime(): ChannelSettingActionRuntime {
       return updateThreadApi(groupNo, shortId, data);
     },
   };
+}
+
+const threadMuteCacheSyncVersions = new Map<string, number>();
+
+function patchThreadMuteCache(
+  runtime: ChannelSettingActionRuntime,
+  channel: Channel,
+  mute: boolean
+) {
+  const channelInfo = runtime.getCurrentChannelInfo(channel);
+  if (!channelInfo) return;
+
+  channelInfo.mute = mute;
+  patchImChannelInfoOrgData(channelInfo, {
+    thread: {
+      ...(channelInfo.orgData?.thread || {}),
+      mute: mute ? 1 : 0,
+    },
+  });
+  runtime.setCurrentChannelInfo(channelInfo);
+  runtime.notifyCurrentChannelInfo(channelInfo);
+}
+
+function syncThreadMuteCacheAfterSave(
+  runtime: ChannelSettingActionRuntime,
+  channel: Channel,
+  mute: boolean
+) {
+  const channelKey = channel.getChannelKey();
+  const version = (threadMuteCacheSyncVersions.get(channelKey) || 0) + 1;
+  threadMuteCacheSyncVersions.set(channelKey, version);
+
+  const pendingFetch = runtime.getPendingChannelInfoFetch(channel);
+  patchThreadMuteCache(runtime, channel, mute);
+
+  if (!pendingFetch) {
+    if (threadMuteCacheSyncVersions.get(channelKey) === version) {
+      threadMuteCacheSyncVersions.delete(channelKey);
+    }
+    return;
+  }
+
+  void pendingFetch
+    .catch(() => undefined)
+    .then(() => {
+      if (threadMuteCacheSyncVersions.get(channelKey) !== version) return;
+      patchThreadMuteCache(runtime, channel, mute);
+      threadMuteCacheSyncVersions.delete(channelKey);
+    });
 }
 
 async function refreshChannelStateAfterMemberMutation(
@@ -416,10 +490,11 @@ export async function muteChannelSetting(params: {
   mute: boolean;
   runtime?: ChannelSettingActionRuntime;
 }) {
-  await runtimeOrDefault(params.runtime).muteChannel(
-    params.channel,
-    params.mute
-  );
+  const runtime = runtimeOrDefault(params.runtime);
+  await runtime.muteChannel(params.channel, params.mute);
+  if (params.channel.channelType === ChannelTypeCommunityTopic) {
+    syncThreadMuteCacheAfterSave(runtime, params.channel, params.mute);
+  }
 }
 
 export async function topChannelSetting(params: {

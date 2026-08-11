@@ -24,6 +24,11 @@ export type ImChannelInfoFetchResult<TChannelInfo> =
   | undefined
   | void;
 
+const pendingChannelInfoFetches = new WeakMap<
+  object,
+  Map<string, Promise<ImChannelInfoFetchResult<ImChannelInfoLike>>>
+>();
+
 export interface ImChannelManagerRuntime<
   TChannel extends ImChannelLike = ImChannelLike,
   TChannelInfo extends ImChannelInfoLike = ImChannelInfoLike
@@ -142,11 +147,49 @@ export function fetchImChannelInfo<
   TChannel extends ImChannelLike,
   TChannelInfo extends ImChannelInfoLike
 >(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channel: TChannel) {
-  return Promise.resolve(sdk.channelManager.fetchChannelInfo(channel)).then(
-    (channelInfo) => {
-      return channelInfo || sdk.channelManager.getChannelInfo(channel);
-    }
-  );
+  const promise = Promise.resolve(
+    sdk.channelManager.fetchChannelInfo(channel)
+  ).then((channelInfo) => {
+    return channelInfo || sdk.channelManager.getChannelInfo(channel);
+  });
+
+  // The SDK dedupes by channelKey but gives later callers no handle to the
+  // original request. Keep the first promise observable without changing any
+  // caller's return timing, so successful writes can repair a late stale read.
+  const manager = sdk.channelManager as object;
+  let pendingByChannel = pendingChannelInfoFetches.get(manager);
+  if (!pendingByChannel) {
+    pendingByChannel = new Map();
+    pendingChannelInfoFetches.set(manager, pendingByChannel);
+  }
+
+  const key = channelKey(channel);
+  if (!pendingByChannel.has(key)) {
+    pendingByChannel.set(
+      key,
+      promise as Promise<ImChannelInfoFetchResult<ImChannelInfoLike>>
+    );
+    void promise
+      .finally(() => {
+        if (pendingByChannel?.get(key) === promise) {
+          pendingByChannel.delete(key);
+        }
+      })
+      .catch(() => undefined);
+  }
+
+  return promise;
+}
+
+export function getPendingImChannelInfoFetch<
+  TChannel extends ImChannelLike,
+  TChannelInfo extends ImChannelInfoLike
+>(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channel: TChannel) {
+  return pendingChannelInfoFetches
+    .get(sdk.channelManager as object)
+    ?.get(channelKey(channel)) as
+    | Promise<ImChannelInfoFetchResult<TChannelInfo>>
+    | undefined;
 }
 
 export function setImChannelInfoCache<

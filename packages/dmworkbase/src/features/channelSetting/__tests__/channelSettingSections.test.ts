@@ -287,6 +287,7 @@ describe("channel setting section builders", () => {
       expect(context.routeData().refresh).toHaveBeenCalled();
       expect(row.loading).toBe(false);
     });
+    expect(fetchCurrentImChannelInfo).not.toHaveBeenCalled();
   });
 
   it.each([

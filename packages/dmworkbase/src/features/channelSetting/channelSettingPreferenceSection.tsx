@@ -25,10 +25,7 @@ import {
   ChannelSettingInfoRow,
   ChannelSettingToggleRow,
 } from "../../ui/ChannelSettingRows";
-import {
-  fetchCurrentImChannelInfo,
-  getCurrentImChannelInfo,
-} from "../../im-runtime/currentChannelRuntime";
+import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
 export function buildChannelPreferenceSection(
   context: RouteContext<ChannelSettingRouteData>
@@ -90,7 +87,6 @@ export function buildChannelPreferenceSection(
             onChange: (value: boolean, row: ListItemSwitchContext) => {
               row.loading = true;
               muteChannelSetting({ channel, mute: value })
-                .then(() => fetchCurrentImChannelInfo(channel))
                 .then(() => data.refresh())
                 .catch((error) =>
                   Toast.error(

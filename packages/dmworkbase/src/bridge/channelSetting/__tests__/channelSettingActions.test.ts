@@ -19,7 +19,10 @@ import {
   type ChannelSettingActionRuntime,
 } from "../channelSettingActions";
 import { ChannelField } from "../../../Service/DataSource/DataSource";
-import { SubscriberStatus } from "../../../Service/Const";
+import {
+  ChannelTypeCommunityTopic,
+  SubscriberStatus,
+} from "../../../Service/Const";
 
 vi.mock("../../../App", () => ({
   default: {},
@@ -52,6 +55,8 @@ function createRuntime(
       Promise.resolve({ uid, name: `member:${uid}` })
     ),
     getCurrentChannelSubscribers: vi.fn(() => []),
+    getCurrentChannelInfo: vi.fn(() => undefined),
+    getPendingChannelInfoFetch: vi.fn(() => undefined),
     getCurrentChannelSubscribersRaw: vi.fn(() => undefined),
     findConversation: vi.fn(),
     getLoginUid: vi.fn(() => "self"),
@@ -66,7 +71,9 @@ function createRuntime(
     clearRemovedChannelSubscribers: vi.fn(),
     markRemovedChannelSubscribers: vi.fn(),
     notifyCurrentChannelSubscribers: vi.fn(),
+    notifyCurrentChannelInfo: vi.fn(),
     setCurrentChannelSubscribers: vi.fn(),
+    setCurrentChannelInfo: vi.fn(),
     syncCurrentChannelSubscribers: vi.fn(() => Promise.resolve()),
     topChannel: vi.fn(() => Promise.resolve()),
     transferOwner: vi.fn(() => Promise.resolve()),
@@ -436,6 +443,44 @@ describe("channel setting actions", () => {
     expect(runtime.topChannel).toHaveBeenCalledWith(channel, true);
     expect(runtime.saveChannel).toHaveBeenCalledWith(channel, false);
     expect(runtime.remarkChannel).toHaveBeenCalledWith(channel, "remark");
+  });
+
+  it("reapplies the latest saved thread mute after an older fetch resolves last", async () => {
+    const oldFetch = deferred();
+    const channel = new Channel(
+      "group-1____thread-1",
+      ChannelTypeCommunityTopic
+    );
+    let cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    const runtime = createRuntime({
+      getCurrentChannelInfo: vi.fn(() => cachedChannelInfo),
+      getPendingChannelInfoFetch: vi.fn(() => oldFetch.promise),
+    });
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+
+    expect(cachedChannelInfo.mute).toBe(true);
+    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
+
+    // The SDK's older request lands after the PUT and replaces the cache object.
+    cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    oldFetch.resolve();
+    await oldFetch.promise;
+    await Promise.resolve();
+
+    expect(cachedChannelInfo.mute).toBe(true);
+    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(2);
+    expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledTimes(2);
   });
 
   it("transfers owner and refreshes subscriber and channel caches", async () => {

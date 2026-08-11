@@ -4,6 +4,7 @@ import {
   addImSubscriberChangeListener,
   deleteImChannelInfo,
   fetchImChannelInfo,
+  getPendingImChannelInfoFetch,
   getImChannelInfo,
   getImChannelLocallyRemovedSubscriberUids,
   getImChannelSubscribersCacheRaw,
@@ -78,6 +79,16 @@ export function fetchCurrentImChannelInfo<
   TChannelInfo extends ImChannelInfoLike = ImChannelInfoLike
 >(channel: TChannel): Promise<ImChannelInfoFetchResult<TChannelInfo>> {
   return fetchImChannelInfo<TChannel, TChannelInfo>(
+    currentImChannelRuntime<TChannel, TChannelInfo>(),
+    channel
+  );
+}
+
+export function getPendingCurrentImChannelInfoFetch<
+  TChannel extends ImChannelLike,
+  TChannelInfo extends ImChannelInfoLike = ImChannelInfoLike
+>(channel: TChannel) {
+  return getPendingImChannelInfoFetch<TChannel, TChannelInfo>(
     currentImChannelRuntime<TChannel, TChannelInfo>(),
     channel
   );
