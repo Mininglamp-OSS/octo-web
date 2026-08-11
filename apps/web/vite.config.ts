@@ -64,6 +64,23 @@ export default defineConfig(({ mode }) => {
           ];
         },
       },
+      ...(isElectronBuild
+        ? [{
+            name: "emit-electron-config",
+            generateBundle() {
+              this.emitFile({
+                type: "asset",
+                fileName: "electron-config.json",
+                source: JSON.stringify({
+                  // Keep this value in the generated build artifact so the
+                  // tsc-compiled Electron main process can trust it without
+                  // accepting an origin nominated by the renderer.
+                  oidcApiOrigin: apiUrl ? apiOrigin : null,
+                }, null, 2),
+              });
+            },
+          }]
+        : []),
       enterpriseHtmlHeadPlugin(enterpriseHtmlHead),
       enterpriseModulesPlugin(env.VITE_ENTERPRISE_MODULES_ENTRY, process.cwd(), enterpriseFsAllow),
       // TODO: remove after all require() calls are migrated to import (chore/migrate-require-to-import)

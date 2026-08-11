@@ -42,7 +42,7 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
-import { isMatchingOidcCallback, isTrustedSenderUrl, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, withTrustedSessionSid } from "./oidcRedirect";
+import { isMatchingOidcCallback, isOidcAuthorizeNavigation, isTrustedSenderUrl, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, withTrustedSessionSid } from "./oidcRedirect";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -246,6 +246,10 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
     }
     const callback = parseOidcCallback(url, flow.origin);
     if (!callback) {
+      // The authorize URL is the start of the flow, not a callback. Let
+      // Electron follow it to the IdP; the listener only owns the return
+      // navigation back to /login or /oidc/bind.
+      if (isOidcAuthorizeNavigation(url, flow.origin, flow.providerId)) return;
       // A navigation back to the API origin is a callback attempt, even when
       // its path/query is invalid. Do not leave a packaged window stranded on
       // an arbitrary remote API error page.

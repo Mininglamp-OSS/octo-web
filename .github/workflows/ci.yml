@@ -117,7 +117,7 @@ jobs:
           src/sheet/SheetCommentPanel.test.ts
           src/board/boardImport.test.ts
       - name: Electron main-process unit tests
-        run: pnpm --filter @octo/web exec vitest run src-election
+        run: pnpm --filter @octo/web exec vitest run src-election src/__tests__/oidcLogoutWiring.test.ts
       - name: Type-check Electron main-process tests
         run: pnpm --filter @octo/web exec tsc -p tsconfig.e.tests.json
       - name: Build

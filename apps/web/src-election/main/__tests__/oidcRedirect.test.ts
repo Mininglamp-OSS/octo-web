@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   isTrustedSenderUrl,
+  isOidcAuthorizeNavigation,
   isMatchingOidcCallback,
   parseHttpOrigin,
   parseOidcCallback,
@@ -116,6 +117,24 @@ describe('parseOidcCallback', () => {
       API,
     )
     expect(cb).toEqual({ path: '/login', query: { oidc_error: '1' } })
+  })
+})
+
+describe('isOidcAuthorizeNavigation', () => {
+  const API = 'https://api.example.com'
+
+  it('allows the matching provider authorize endpoint', () => {
+    expect(isOidcAuthorizeNavigation(
+      `${API}/v1/auth/oidc/acme-sso/authorize?authcode=abc`,
+      API,
+      'acme-sso',
+    )).toBe(true)
+  })
+
+  it('rejects callbacks, other providers, and other origins', () => {
+    expect(isOidcAuthorizeNavigation(`${API}/login`, API, 'acme-sso')).toBe(false)
+    expect(isOidcAuthorizeNavigation(`${API}/v1/auth/oidc/other/authorize`, API, 'acme-sso')).toBe(false)
+    expect(isOidcAuthorizeNavigation('https://evil.example/v1/auth/oidc/acme-sso/authorize', API, 'acme-sso')).toBe(false)
   })
 })
 

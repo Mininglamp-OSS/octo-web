@@ -96,6 +96,24 @@ export function parseOidcCallback(url: string, expectedOrigin: string): {
 }
 
 /**
+ * The first desktop navigation is the API authorize endpoint itself. It must
+ * be allowed to continue to the identity provider; only the API callback
+ * paths are handled by the redirect interceptor.
+ */
+export function isOidcAuthorizeNavigation(
+  url: string,
+  expectedOrigin: string,
+  providerId: string,
+): boolean {
+  let parsed: URL
+  const normalizedExpected = parseHttpOrigin(expectedOrigin)
+  if (!normalizedExpected || typeof providerId !== 'string' || providerId === '') return false
+  try { parsed = new URL(url) } catch { return false }
+  return parsed.origin === normalizedExpected &&
+    parsed.pathname === `/v1/auth/oidc/${encodeURIComponent(providerId)}/authorize`
+}
+
+/**
  * The API callback may return to /login without echoing authcode. In that
  * mode the renderer resumes the pending flow from sessionStorage and polls
  * authstatus, so the callback is still valid as long as it belongs to the
