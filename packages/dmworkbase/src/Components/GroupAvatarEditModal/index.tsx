@@ -212,6 +212,7 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
   nameAsFallback = false,
   initialAvatarText = "",
   initialColorIndex,
+  colorSeed,
   saving = false,
   onSave,
   onCancel,
