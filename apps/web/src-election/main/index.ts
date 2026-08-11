@@ -463,6 +463,30 @@ const createMainWindow = async () => {
     mainWindow.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
   }
 
+  // file:// history-replace fix: the app's RouteManager uses pushState/
+  // replaceState with "/"-prefixed SPA paths (e.g. "/" for the chat page).
+  // Under file:// protocol, "/" resolves to the drive root (file:///E:/),
+  // so after navigating to a route the address bar shows the drive root.
+  // Ctrl+Shift+R then reloads the drive root instead of index.html.
+  // Intercept will-navigate ONLY when the target is a drive root / bare
+  // directory (never an .html file — that includes the legitimate
+  // post-login redirect which keeps the full index.html path), and
+  // redirect back to index.html.
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (NODE_ENV === "development") return; // dev server handles routing
+    let parsedUrl: URL;
+    try { parsedUrl = new URL(url); } catch { return; }
+    if (parsedUrl.protocol !== "file:") return;
+    const pathname = decodeURIComponent(parsedUrl.pathname || "");
+    // A real page (index.html) ends with ".html"; leave it alone.
+    if (/\.html?$/i.test(pathname)) return;
+    // Only a drive root ("/E:/", "/", "/E:") or a bare directory path
+    // (no file extension) reaches here — that's the SPA "/" route leaking
+    // into file://. Redirect to index.html; the router restores the route.
+    event.preventDefault();
+    mainWindow?.loadFile(WEB_URL, { query: { sid: getRandomSid() } });
+  });
+
   ipcMain.on("screenshots-start", (event, args) => {
     console.log("main voip-message event", args);
     screenShotWindowId = event.sender.id;
