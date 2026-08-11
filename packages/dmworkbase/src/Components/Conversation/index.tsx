@@ -52,7 +52,14 @@ import MessageInput, {
   MessageInputContext,
   EditorContentBlock,
 } from "../MessageInput";
-import { SendResultDetail } from "../MessageInput/sendFlow";
+import {
+  SendResultDetail,
+  SendTargetSnapshot,
+} from "../MessageInput/sendFlow";
+import {
+  captureSendTarget,
+  type CapturedSendTarget,
+} from "./sendTarget";
 import {
   tryConsumeInitialCompose,
   type ComposeHost,
@@ -108,7 +115,10 @@ import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
-import { shouldClearDraftAfterSend } from "../../Utils/draftLifecycle";
+import {
+  resolveDraftToPersist,
+  shouldClearDraftAfterSend,
+} from "../../Utils/draftLifecycle";
 import {
   isSuccessfulSendAck,
   messageStatusWaitResult,
@@ -1391,8 +1401,11 @@ export class Conversation
     // 辅助 Thread 不覆盖主会话的全局附件守卫；否则开关侧栏会让主会话
     // 的待发送附件失去离开确认，或被侧栏草稿反向阻塞。
     if (!this.props.isAuxiliary) {
+      // in-flight 发送也算「有待发送内容」(octo-web#1280 review)：compose 已被
+      // 清出输入框、气泡还没出现，这时切走会让内容彻底消失，必须先弹确认。
       WKApp.shared.pendingAttachmentGuard = () =>
-        this.getPendingAttachments().length === 0;
+        this.getPendingAttachments().length === 0 &&
+        this.pendingSendCount() === 0;
       WKApp.shared.pendingAttachmentGuardId = this._guardId;
     }
 
@@ -1555,11 +1568,26 @@ export class Conversation
     this.vm.releaseOpenConversationOwnership();
   }
 
+  /** Composes consumed by the composer but not yet enqueued (octo-web#1280). */
+  private pendingSendCount(): number {
+    return this.messageInputContext()?.pendingSendCount?.() ?? 0;
+  }
+
+  private pendingSendText(): string {
+    return this.messageInputContext()?.pendingSendText?.() ?? "";
+  }
+
   markConversationExtra() {
-    let draft = this.messageInputContext()?.text();
+    // 不要用空草稿覆盖「已消费但还没入队」的内容 (octo-web#1280 review)：
+    // 输入框在发送开始时就被清空，离开会话时这里读到的是空串。
+    const draft = resolveDraftToPersist({
+      liveDraft: this.messageInputContext()?.text() || "",
+      pendingSendText: this.pendingSendText(),
+      existingDraft: this.vm.currentConversation?.remoteExtra?.draft || "",
+    });
     this.draftSaveGeneration += 1;
-    this.latestSavedDraft = draft || "";
-    void this.updateConversationExtra(draft || "");
+    this.latestSavedDraft = draft;
+    void this.updateConversationExtra(draft);
   }
 
   updateConversationExtra(draft: string) {
@@ -2946,12 +2974,27 @@ export class Conversation
                           },
                         });
                       }}
+                      onCaptureSendTarget={() =>
+                        // 与 compose 同步取走 reply/edit 目标并收起横幅
+                        // (octo-web#1280)：排队发送不能再实时读 vm 上的状态。
+                        captureSendTarget<Message>({
+                          getReplyMessage: () => vm.currentReplyMessage,
+                          setReplyMessage: (m) => {
+                            vm.currentReplyMessage = m;
+                          },
+                          getHandlerType: () => vm.currentHandlerType,
+                          setHandlerType: (h) => {
+                            vm.currentHandlerType = h;
+                          },
+                        })
+                      }
                       onSend={async (
                         text: string,
                         mention?: MentionModel,
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
-                        editorBlocks?: EditorContentBlock[]
+                        editorBlocks?: EditorContentBlock[],
+                        sendTarget?: SendTargetSnapshot
                       ): Promise<boolean | SendResultDetail> => {
                         // 返回值告诉 MessageInput「已消费的 compose 是否保持消费」：
                         //   true  → 消息已入队（本地气泡已在列表），输入框保持清空；
@@ -2963,48 +3006,68 @@ export class Conversation
                         const sendDraftGeneration = this.draftSaveGeneration;
                         const remoteDraftAtSend =
                           this.vm.currentConversation?.remoteExtra?.draft || "";
-                        // #1280 起编辑器在进入这里之前已被同步消费（清空），所以这里
-                        // 取到的是空串；它与 liveDraft 的比对语义因此变成「等待期间用户
-                        // 是否写了新草稿」——写了就不清远端草稿，恰好是需要的保护。
+                        // #1280 起编辑器在 send 开始时就被同步消费，而 onSend 可能被
+                        // 排队后才执行，所以这里读到的**不一定**是空串：
+                        //   • 立即执行的发送 → 空串；
+                        //   • 排队后执行的发送 → 用户这期间已经写的新内容。
+                        // 两种情况下语义都收敛为「交给本次发送之后，输入框是否已经
+                        // 往前走了」——走了就不清远端草稿（新草稿权威），没走才清。
+                        // 已发出的内容在任何情况下都不再是草稿。详见
+                        // Utils/draftLifecycle.ts 的 shouldClearDraftAfterSend。
                         const draftAtSend =
                           this.messageInputContext()?.text() || "";
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
+                        // ⚠️ 必须用按键时同步取走的 sendTarget 快照，**绝不能**在这里
+                        // 实时读 vm.currentReplyMessage / currentHandlerType：发送被
+                        // 排队后这里可能晚几秒才执行，用户可能已经改了回复目标、甚至
+                        // 切到「编辑消息」——实时读会回复错消息或覆盖无关消息
+                        // (octo-web#1280 review)。
+                        // 兼容：老调用方没有传 sendTarget 时退回实时读取。
+                        const target =
+                          (sendTarget as CapturedSendTarget<Message> | undefined) ??
+                          captureSendTarget<Message>({
+                            getReplyMessage: () => vm.currentReplyMessage,
+                            setReplyMessage: (m) => {
+                              vm.currentReplyMessage = m;
+                            },
+                            getHandlerType: () => vm.currentHandlerType,
+                            setHandlerType: (h) => {
+                              vm.currentHandlerType = h;
+                            },
+                          });
+                        const targetMessage = target.replyMessage;
                         let reply: Reply | undefined;
-                        if (vm.currentReplyMessage) {
-                          if (vm.currentHandlerType === 2) {
-                            // 编辑消息
+                        if (targetMessage) {
+                          if (target.handlerType === 2) {
+                            // 编辑消息。失败时抛出，让 MessageInput 把 compose 与
+                            // 编辑目标一起还原，用户重试仍是「编辑」而不是发新消息。
                             const editContent = new MessageText(text);
                             let json = editContent.encodeJSON();
                             json["type"] = MessageContentType.text;
                             await vm.editMessage(
-                              vm.currentReplyMessage.messageID,
-                              vm.currentReplyMessage.messageSeq,
-                              vm.currentReplyMessage.channel.channelID,
-                              vm.currentReplyMessage.channel.channelType,
+                              targetMessage.messageID,
+                              targetMessage.messageSeq,
+                              targetMessage.channel.channelID,
+                              targetMessage.channel.channelType,
                               JSON.stringify(json)
                             );
-                            vm.currentReplyMessage = undefined;
                             // 编辑消息已提交，编辑器应清空。
                             return true;
                           }
                           reply = new Reply();
-                          reply.messageID = vm.currentReplyMessage.messageID;
-                          reply.messageSeq = vm.currentReplyMessage.messageSeq;
-                          reply.fromUID = vm.currentReplyMessage.fromUID;
+                          reply.messageID = targetMessage.messageID;
+                          reply.messageSeq = targetMessage.messageSeq;
+                          reply.fromUID = targetMessage.fromUID;
                           const channelInfo = getImChannelInfo(
                             WKSDK.shared(),
-                            new Channel(
-                              vm.currentReplyMessage.fromUID,
-                              ChannelTypePerson
-                            )
+                            new Channel(targetMessage.fromUID, ChannelTypePerson)
                           );
                           if (channelInfo) {
                             reply.fromName = channelInfo.title;
                           }
-                          reply.content = vm.currentReplyMessage.content;
-                          vm.currentReplyMessage = undefined;
+                          reply.content = targetMessage.content;
                         }
 
                         // ── 辅助：发送单张图片（读取预览+宽高） ──────────────
@@ -3192,6 +3255,10 @@ export class Conversation
                         // 清掉这些已发文件、保留编辑器草稿，重试不会重复发送
                         // (octo-web#227 Jerry-Xin non-blocking)。
                         const consumedTopIds: string[] = [];
+                        // 编辑器内粘贴附件中「未入队」的 id：整条 compose 已被
+                        // MessageInput 同步消费，只有精确回报这些 id 才能把它们放回
+                        // 编辑器，而不是连同已发出的内容一起丢掉 (octo-web#1280 review)。
+                        const unsentEditorAttachmentIds: string[] = [];
                         const topFilesToSend = topFiles || [];
                         const mixedCandidate = buildRichTextMixedCandidate(
                           topFilesToSend,
@@ -3344,10 +3411,17 @@ export class Conversation
                               } else if (block.type === "image") {
                                 if (await sendImageFile(block.file)) {
                                   anyMessageSent = true;
+                                } else {
+                                  // 预检拒绝等未入队情形：记下 id，让 MessageInput
+                                  // 只把这张图放回编辑器，其余已发内容保持消费
+                                  // (octo-web#1280 review)。
+                                  unsentEditorAttachmentIds.push(block.id);
                                 }
                               } else if (block.type === "file") {
                                 if (await sendFileAttachment(block.file)) {
                                   anyMessageSent = true;
+                                } else {
+                                  unsentEditorAttachmentIds.push(block.id);
                                 }
                               }
                             } catch (err) {
@@ -3355,6 +3429,9 @@ export class Conversation
                                 "[Conversation] editorBlock send failed:",
                                 err
                               );
+                              if (block.type !== "text") {
+                                unsentEditorAttachmentIds.push(block.id);
+                              }
                               Toast.error(
                                 t("base.conversation.message.sendFailed")
                               );
@@ -3393,10 +3470,19 @@ export class Conversation
                           );
                         }
                         if (anyMessageSent) this.props.onMessageSent?.();
-                        // 与 clearDraftAfterSend 同口径：只有确实发出消息时才让
-                        // MessageInput 清空编辑器；全部失败/被预检拒绝时返回 false
-                        // 保留草稿可重试。
-                        return anyMessageSent;
+                        // 返回真实的部分结果，而不是裸 boolean (octo-web#1280 review)：
+                        //   • editorConsumed=anyMessageSent：一条都没入队时整条 compose
+                        //     还给输入框可重试；
+                        //   • consumedTopIds：只有真正发出的顶部附件保持消费，被预检
+                        //     拒绝的会回到附件区（裸 true 会被当成「全部已消费」而丢掉）；
+                        //   • unsentEditorAttachmentIds：编辑器内被拒的粘贴附件单独回到
+                        //     编辑器。文本块失败无法单独回滚（失败即整条 send 抛错，
+                        //     anyMessageSent 保持 false 走整体还原）。
+                        return {
+                          editorConsumed: anyMessageSent,
+                          consumedTopIds,
+                          unsentEditorAttachmentIds,
+                        };
                       }}
                     ></MessageInput>
                       </>

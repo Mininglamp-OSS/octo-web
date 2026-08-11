@@ -685,3 +685,17 @@
   object-fit: cover;
   border-radius: var(--wk-r-sm);
 }
+
+/* ============================================
+   发送中提示（octo-web#1280）
+   compose 在发送开始时就被清出输入框，气泡出现前用这条提示告诉用户
+   「消息还在发送中」，避免误以为没发出去。
+   ============================================ */
+
+.wk-messageinput-sending {
+  width: 100%;
+  padding: 0 var(--wk-sp-1);
+  margin-bottom: var(--wk-sp-1);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+}

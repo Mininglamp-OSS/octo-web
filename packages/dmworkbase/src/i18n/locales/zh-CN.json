@@ -1235,6 +1235,7 @@
   "messageInput.placeholder.reply": "输入消息...  {{shortcut}}+↵ 创建任务",
   "messageInput.placeholder.replyWithName": "在 {{name}} 中回复...  {{shortcut}}+↵ 创建任务",
   "messageInput.slashCommand": "斜杠命令",
+  "messageInput.send.restoreFailed": "消息未发出，且内容已无法恢复",
   "messageInput.validation.maxLength": "输入内容长度不能大于{{max}}字符！",
   "mentionList.noMembers": "没有找到成员",
   "qrCodeMy.scanToAdd": "扫一扫上面的二维码图案，加我{{appName}}",

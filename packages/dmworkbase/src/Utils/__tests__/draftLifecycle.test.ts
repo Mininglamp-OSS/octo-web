@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { shouldClearDraftAfterSend } from "../draftLifecycle"
+import { resolveDraftToPersist, shouldClearDraftAfterSend } from "../draftLifecycle"
 
 describe("shouldClearDraftAfterSend", () => {
     it("clears the draft snapshot that belonged to the sent message", () => {
@@ -80,5 +80,41 @@ describe("shouldClearDraftAfterSend", () => {
             liveDraft: "",
             draftSavedAfterSend: false,
         })).toBe(false)
+    })
+})
+
+describe("resolveDraftToPersist (octo-web#1280)", () => {
+    it("persists what the composer currently holds", () => {
+        expect(resolveDraftToPersist({
+            liveDraft: "typing this",
+            pendingSendText: "",
+            existingDraft: "old",
+        })).toBe("typing this")
+    })
+
+    it("does not clear the stored draft while a consumed compose is still in flight", () => {
+        // Leaving the conversation mid-send used to persist "" over content that
+        // had no bubble yet — composer, draft and message list all empty at once.
+        expect(resolveDraftToPersist({
+            liveDraft: "",
+            pendingSendText: "message being sent",
+            existingDraft: "older draft",
+        })).toBe("older draft")
+    })
+
+    it("still lets the live composer win over an in-flight compose", () => {
+        expect(resolveDraftToPersist({
+            liveDraft: "next message",
+            pendingSendText: "message being sent",
+            existingDraft: "older draft",
+        })).toBe("next message")
+    })
+
+    it("clears the draft normally when nothing is in flight", () => {
+        expect(resolveDraftToPersist({
+            liveDraft: "",
+            pendingSendText: "",
+            existingDraft: "older draft",
+        })).toBe("")
     })
 })

@@ -1235,6 +1235,7 @@
   "messageInput.placeholder.reply": "Type a message...  {{shortcut}}+↵ to create a task",
   "messageInput.placeholder.replyWithName": "Reply in {{name}}...  {{shortcut}}+↵ to create a task",
   "messageInput.slashCommand": "Slash commands",
+  "messageInput.send.restoreFailed": "The message was not sent and its content could not be restored",
   "messageInput.validation.maxLength": "Message cannot exceed {{max}} characters.",
   "mentionList.noMembers": "No members found",
   "qrCodeMy.scanToAdd": "Scan this QR code to add me on {{appName}}",

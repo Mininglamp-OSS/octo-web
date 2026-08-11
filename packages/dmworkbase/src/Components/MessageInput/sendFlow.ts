@@ -76,9 +76,32 @@ export interface SendResultDetail {
   /** Ids of top attachments that were actually sent. Only these stay consumed;
    *  the rest are restored. Omit to derive from `editorConsumed`. */
   consumedTopIds?: string[];
+  /**
+   * Ids of pasted (in-editor) attachments that were NOT sent even though other
+   * blocks of the same compose were — e.g. one of two pasted images is rejected
+   * by the upload pre-check. Only these attachment nodes are restored into the
+   * editor; their `File` refs and preview URLs are kept alive so the user can
+   * retry just that image instead of silently losing it (#1280 review).
+   */
+  unsentEditorAttachmentIds?: string[];
 }
 
 export type SendResult = void | boolean | SendResultDetail;
+
+/**
+ * Per-send target (reply / edit) captured synchronously with the compose.
+ *
+ * #1280: `Conversation.onSend` used to read `vm.currentReplyMessage` /
+ * `vm.currentHandlerType` when it ran. With sends queued, that read happens
+ * *after* the user may have picked a different reply target — or switched to
+ * "edit message" — so a queued send could reply to the wrong message or
+ * overwrite an unrelated one. The target is therefore taken (and its banner
+ * cleared) at key-press time, travels with the compose, and is put back by
+ * `restore()` when the send is not enqueued so a retry still edits/replies.
+ */
+export interface SendTargetSnapshot {
+  restore: () => void;
+}
 
 /**
  * Publish a composer context only after its imperative send callback is wired.
@@ -125,8 +148,9 @@ export function createSendQueue(): SendQueue {
     enqueue<T>(task: () => Promise<T>): Promise<T> {
       pending += 1;
       const run = () => task();
-      // Run after the previous task settles, regardless of its outcome.
-      const result = tail.then(run, run);
+      // `tail` is always a promise that cannot reject (see below), so a single
+      // fulfilment handler is enough — and states that invariant honestly.
+      const result = tail.then(run);
       tail = result.then(
         () => undefined,
         () => undefined,
@@ -147,17 +171,40 @@ export function createSendQueue(): SendQueue {
  */
 export interface ConsumedCompose {
   /**
-   * Put the consumed editor compose back (failure path). Implementations must
-   * re-insert it *before* any draft the user typed during the await, and must
-   * keep the pasted-image node ids so their `File` refs still resolve.
+   * Put the whole consumed editor compose back (nothing was sent).
+   * Implementations must re-insert it *before* any draft the user typed during
+   * the await, and must keep the pasted-image node ids so their `File` refs
+   * still resolve.
    */
   restoreEditor: () => void;
-  /** Drop in-memory pasted-image `File` refs + revoke their preview URLs. */
-  disposeEditorAttachments: () => void;
+  /**
+   * Put back only these pasted-attachment nodes (the rest of the compose *was*
+   * sent). Used for `unsentEditorAttachmentIds`, e.g. one of two pasted images
+   * rejected by the upload pre-check.
+   */
+  restoreEditorAttachments: (ids: string[]) => void;
+  /** Drop in-memory `File` refs + revoke preview URLs of these pasted images. */
+  disposeEditorAttachments: (ids: string[]) => void;
   /** Revoke preview URLs of top attachments that stay consumed. */
   disposeTopAttachments: (ids: string[]) => void;
-  /** Put back the top attachments that were not actually sent (failure path). */
+  /** Put back the top attachments that were not actually sent. */
   restoreTopAttachments: (ids: string[]) => void;
+  /**
+   * Called when one restore/dispose step throws. Every step is isolated so a
+   * failure in one can never skip the others (#1280 review: an editor restore
+   * throwing used to swallow the attachment restore as well). Implementations
+   * should surface this to the user — content that is in neither the composer
+   * nor the message list must not disappear silently.
+   */
+  onRestoreError?: (err: unknown, step: string) => void;
+}
+
+/** Everything this send attempt consumed, used to expand loose send results. */
+export interface ConsumedComposeIds {
+  /** Ids of every top attachment handed to this send attempt. */
+  topIds: string[];
+  /** Ids of every pasted (in-editor) attachment handed to this send attempt. */
+  editorAttachmentIds: string[];
 }
 
 /**
@@ -171,8 +218,13 @@ export interface ComposeRestoreTarget {
   setContent: (snapshot: unknown) => void;
   /** Put the caret at the end of the document. */
   focusEnd: () => void;
-  /** Insert the snapshot blocks BEFORE the live content. */
-  insertContentAtStart: (blocks: unknown[]) => void;
+  /**
+   * Insert the snapshot blocks before the live content, after `blockOffset`
+   * leading blocks. The offset is how many leading blocks already belong to
+   * earlier restores, so consecutive failed sends keep their original order
+   * instead of stacking up reversed (#1280 review).
+   */
+  insertContentAtBlock: (blockOffset: number, blocks: unknown[]) => void;
   /** Fallback: append the snapshot blocks at the end. */
   appendContent: (blocks: unknown[]) => void;
 }
@@ -185,92 +237,156 @@ export interface ComposeRestoreTarget {
  *   there";
  * - non-empty document (the user already started the next message) → the failed
  *   content is inserted BEFORE the new draft, so nothing is overwritten (this is
- *   what #227 round 2 protected, now without leaving sent content behind);
+ *   what #227 round 2 protected, now without leaving sent content behind), and
+ *   AFTER content restored by earlier failed sends so their order survives;
  * - a position error never loses content: fall back to appending.
+ *
+ * @returns how many blocks were inserted, so the caller can advance the offset
+ *   for a following restore.
  */
 export function restoreComposeSnapshot(
-  snapshot: { content?: unknown[] } | undefined,
+  snapshot: { type?: string; content?: unknown[] } | undefined,
   target: ComposeRestoreTarget,
-): void {
+  blockOffset = 0,
+): number {
   const blocks = snapshot?.content;
-  if (!blocks || blocks.length === 0) return;
+  if (!blocks || blocks.length === 0) return 0;
   if (target.isEmpty()) {
     target.setContent(snapshot);
     target.focusEnd();
-    return;
+    return blocks.length;
   }
   try {
-    target.insertContentAtStart(blocks);
+    target.insertContentAtBlock(blockOffset, blocks);
   } catch (err) {
     console.error(
-      "[MessageInput] restoring the draft at the document start failed, appending instead",
+      "[MessageInput] restoring the draft in place failed, appending instead",
       err,
     );
     target.appendContent(blocks);
   }
+  return blocks.length;
+}
+
+interface SendDecision {
+  editorConsumed: boolean;
+  consumedTopIds: string[];
+  unsentEditorAttachmentIds: string[];
 }
 
 /** Normalize the loose `SendResult` union into an explicit decision. */
 function normalizeResult(
   result: SendResult,
-  allTopIds: string[],
-): { editorConsumed: boolean; consumedTopIds: string[] } {
+  ids: ConsumedComposeIds,
+): SendDecision {
   if (result === false) {
-    return { editorConsumed: false, consumedTopIds: [] };
+    return {
+      editorConsumed: false,
+      consumedTopIds: [],
+      unsentEditorAttachmentIds: ids.editorAttachmentIds,
+    };
   }
   if (result === true || result == null) {
     // void / undefined / true → full success.
-    return { editorConsumed: true, consumedTopIds: allTopIds };
+    return {
+      editorConsumed: true,
+      consumedTopIds: ids.topIds,
+      unsentEditorAttachmentIds: [],
+    };
   }
   // Detailed partial result.
   return {
     editorConsumed: result.editorConsumed,
     consumedTopIds:
-      result.consumedTopIds ?? (result.editorConsumed ? allTopIds : []),
+      result.consumedTopIds ?? (result.editorConsumed ? ids.topIds : []),
+    unsentEditorAttachmentIds: result.editorConsumed
+      ? result.unsentEditorAttachmentIds ?? []
+      : ids.editorAttachmentIds,
   };
 }
 
 /**
  * Await `send()` for a compose the caller already consumed, then either dispose
- * the consumed resources (success) or restore the compose (failure).
+ * the consumed resources or restore what was not sent.
  *
- * @param allTopIds Ids of every top attachment handed to this send attempt;
- *   used to expand a `true`/`void` result into "all consumed" and to compute
- *   which ones must be restored on a partial result.
+ * Ordering and isolation matter here (#1280 review):
+ *   - top attachments are settled BEFORE the editor, so an editor restore that
+ *     throws (e.g. the editor was destroyed by a channel switch) can never skip
+ *     putting the unsent files back;
+ *   - every step runs in its own try/catch and reports through
+ *     `compose.onRestoreError`, so one failure never cascades into losing the
+ *     rest of the compose, and the caller can surface it to the user.
+ *
+ * @param ids Everything this attempt consumed; used to expand `true`/`void`
+ *   into "all consumed" and to compute what must be restored.
  * @returns `true` if the editor compose was consumed; `false` if it was
  *   restored for retry.
  */
 export async function runSendWithConsumedCompose(
   send: () => SendResult | Promise<SendResult>,
-  allTopIds: string[],
+  ids: ConsumedComposeIds,
   compose: ConsumedCompose,
 ): Promise<boolean> {
-  let decision: { editorConsumed: boolean; consumedTopIds: string[] };
+  let decision: SendDecision;
   try {
-    decision = normalizeResult(await send(), allTopIds);
+    decision = normalizeResult(await send(), ids);
   } catch (err) {
     // onSend should surface its own error toast; we just restore the draft.
     console.error("[MessageInput] send failed, restoring draft", err);
-    decision = { editorConsumed: false, consumedTopIds: [] };
+    decision = {
+      editorConsumed: false,
+      consumedTopIds: [],
+      unsentEditorAttachmentIds: ids.editorAttachmentIds,
+    };
   }
 
-  if (decision.editorConsumed) {
-    compose.disposeEditorAttachments();
-  } else {
+  const step = (label: string, run: () => void) => {
+    try {
+      run();
+    } catch (err) {
+      console.error(`[MessageInput] compose ${label} failed`, err);
+      compose.onRestoreError?.(err, label);
+    }
+  };
+
+  // ── Top attachments first: never skippable by an editor-side failure ──
+  const consumedTop = new Set(decision.consumedTopIds);
+  const restoredTopIds = ids.topIds.filter((id) => !consumedTop.has(id));
+  if (decision.consumedTopIds.length > 0) {
+    step("disposeTopAttachments", () =>
+      compose.disposeTopAttachments(decision.consumedTopIds),
+    );
+  }
+  if (restoredTopIds.length > 0) {
+    step("restoreTopAttachments", () =>
+      compose.restoreTopAttachments(restoredTopIds),
+    );
+  }
+
+  if (!decision.editorConsumed) {
     // Nothing was sent (or the mixed compose failed before enqueue) → give the
     // content back. Refs/URLs are intentionally NOT disposed here so the
     // restored pasted images still resolve to their `File` objects.
-    compose.restoreEditor();
+    step("restoreEditor", () => compose.restoreEditor());
+    return false;
   }
 
-  const consumed = new Set(decision.consumedTopIds);
-  const restoredTopIds = allTopIds.filter((id) => !consumed.has(id));
-  if (decision.consumedTopIds.length > 0) {
-    compose.disposeTopAttachments(decision.consumedTopIds);
+  // The editor compose was sent, but individual pasted attachments may have been
+  // rejected before enqueue — keep those alive and put just them back.
+  const unsent = new Set(decision.unsentEditorAttachmentIds);
+  const disposableEditorIds = ids.editorAttachmentIds.filter(
+    (id) => !unsent.has(id),
+  );
+  if (disposableEditorIds.length > 0) {
+    step("disposeEditorAttachments", () =>
+      compose.disposeEditorAttachments(disposableEditorIds),
+    );
   }
-  if (restoredTopIds.length > 0) {
-    compose.restoreTopAttachments(restoredTopIds);
+  if (unsent.size > 0) {
+    step("restoreEditorAttachments", () =>
+      compose.restoreEditorAttachments(Array.from(unsent)),
+    );
   }
 
-  return decision.editorConsumed;
+  return true;
 }

@@ -44,10 +44,17 @@ import {
   announceContextAfterSendReady,
   createSendQueue,
   invokeReadySend,
-  restoreComposeSnapshot,
   runSendWithConsumedCompose,
+  SendQueue,
   SendResultDetail,
+  SendTargetSnapshot,
 } from "./sendFlow";
+import {
+  composeSnapshotText,
+  consumeCompose,
+  ComposeDoc,
+  ComposeRestoreUnavailableError,
+} from "./composeConsume";
 import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
 import {
   imageBlockToPasteFile,
@@ -246,8 +253,19 @@ interface MessageInputProps {
     /** 顶部附件区文件（通过上传按钮添加），优先于编辑器内容发送 */
     topFiles?: AttachmentFile[],
     /** 编辑器中按文档顺序排列的内容块（文本段和粘贴图片交替） */
-    editorBlocks?: EditorContentBlock[]
+    editorBlocks?: EditorContentBlock[],
+    /**
+     * 本次发送的 reply/edit 目标，按下发送键时同步取走 (octo-web#1280)。
+     * 发送被排队时 vm 上的 reply/edit 状态可能已被用户改掉，onSend 必须用这个
+     * 快照而不是实时读取，否则可能回复错的消息、甚至编辑到无关消息。
+     */
+    sendTarget?: SendTargetSnapshot
   ) => void | boolean | SendResultDetail | Promise<void | boolean | SendResultDetail>;
+  /**
+   * 同步取走并清除 reply/edit 目标（横幅同时收起），返回的快照会被透传给
+   * onSend；发送未入队时 MessageInput 调 `restore()` 复位 (octo-web#1280)。
+   */
+  onCaptureSendTarget?: () => SendTargetSnapshot | undefined;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
@@ -362,6 +380,16 @@ export interface MessageInputContext {
   send: () => void | Promise<boolean | void> | undefined;
   /** Clear editor content without sending */
   clear: () => void;
+  /**
+   * Number of composes that are consumed but not yet enqueued/settled
+   * (octo-web#1280). During that window the content lives in neither the
+   * composer nor the message list, so callers that used to rely on
+   * "composer holds the content" must consult this too — e.g. the pending
+   * attachment guard before switching channel, and draft persistence.
+   */
+  pendingSendCount: () => number;
+  /** Plain text of every in-flight compose, newest last. */
+  pendingSendText: () => string;
 }
 
 // MemberInfo / buildMentionRegex / parseMentionMarkers / buildMemberInfos live
@@ -493,9 +521,46 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     props.context.channel().channelType === ChannelTypePerson,
   );
   const sendRef = useRef<(() => Promise<boolean>) | null>(null);
+  // 键盘/Enter 是 fire-and-forget 调用：send() 的同步阶段（快照/清空/取 target）
+  // 若抛错会变成 unhandled rejection，这里统一兜住并提示 (#1280 review)。
+  const fireAndForgetSend = useCallback(() => {
+    try {
+      const result = sendRef.current?.();
+      if (result && typeof result.catch === "function") {
+        result.catch((err: unknown) => {
+          console.error("[MessageInput] send rejected", err);
+        });
+      }
+    } catch (err) {
+      console.error("[MessageInput] send threw synchronously", err);
+    }
+  }, []);
   // 串行发送队列 (octo-web#1280)：compose 在 send 开始时就被同步消费，因此
   // pending 期间的新发送不再被丢弃，只需排在前一条之后执行以保持消息顺序。
-  const sendQueueRef = useRef(createSendQueue());
+  // 惰性创建，避免每次渲染都构造一个用不上的队列。
+  const sendQueueRef = useRef<SendQueue | null>(null);
+  const getSendQueue = useCallback((): SendQueue => {
+    if (!sendQueueRef.current) {
+      sendQueueRef.current = createSendQueue();
+    }
+    return sendQueueRef.current;
+  }, []);
+  // in-flight compose 登记表：这段时间内容既不在输入框、也还没有消息气泡，
+  // 切会话守卫 / 草稿保存 / 「发送中」提示都要能看到它 (octo-web#1280 review)。
+  const pendingSendsRef = useRef<Map<number, string>>(new Map());
+  const pendingSendSeqRef = useRef(0);
+  // 连续失败还原时的插入位置：已被更早的失败 send 放回的块数 / 附件数，
+  // 保证 A、B 依次失败后顺序仍是 A、B、<新草稿> 而不是倒过来 (#1280 review)。
+  const restoreOffsetsRef = useRef({ blocks: 0, topAttachments: 0 });
+  const [pendingSendCount, setPendingSendCount] = useState(0);
+  const registerPendingSend = useCallback((id: number, text: string) => {
+    pendingSendsRef.current.set(id, text);
+    setPendingSendCount(pendingSendsRef.current.size);
+  }, []);
+  const releasePendingSend = useCallback((id: number) => {
+    pendingSendsRef.current.delete(id);
+    setPendingSendCount(pendingSendsRef.current.size);
+  }, []);
   const mentionActiveRef = useRef(false);
   // 表情前缀联想下拉激活标志，激活时 Enter 用于选中而非发送
   const emojiSuggestionActiveRef = useRef(false);
@@ -987,98 +1052,117 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 再按一次 Enter 还会重复发送）。
     //
     // 本轮改为：发送开始时就**同步消费** compose（拍快照 → 清空编辑器 → 移除
-    // 本次顶部附件），await 之后不再对「当前文档」做任何判定：
-    //   • 成功 → UI 无需再动，只回收 File 引用与预览 URL；
+    // 本次顶部附件 → 同步取走 reply/edit 目标），await 之后不再对「当前文档」做
+    // 任何判定：
+    //   • 成功 → UI 无需再动，只回收已发出部分的 File 引用与预览 URL；
     //   • 失败（预检拒绝 / 混排上传失败等未入队情形）→ 把快照插回文档最前面、
-    //     未发出的顶部附件放回附件区，round-1 的「失败不丢草稿」保护仍然成立；
-    //     用户在等待期间新写的草稿天然完整保留（round-2 保护）。
-    // 编排逻辑在纯函数 runSendWithConsumedCompose，便于单测覆盖各竞态场景。
-    const editorSnapshot = editor.getJSON() as JSONContent;
-    const consumedAttachmentAttrs = attachmentAttrs;
-    const topItemsAtSend = topAttachmentsRef.current;
-    const allTopIds = topItemsAtSend.map((item) => item.id);
+    //     未发出的顶部附件放回附件区、reply/edit 目标复位，round-1 的「失败不丢
+    //     草稿」保护仍然成立；用户在等待期间新写的草稿天然完整保留（round-2）。
+    // 同步消费与还原的实现在 composeConsume.ts（可用真实 Tiptap editor 单测），
+    // 结果编排在 sendFlow.ts 的 runSendWithConsumedCompose。
+    // reply/edit 目标必须与 compose 同步取走（见 SendTargetSnapshot 注释）。
+    const sendTarget = props.onCaptureSendTarget?.();
+    // 本次消费会清空编辑器与本次附件，之前失败还原留下的偏移随之失效。
+    restoreOffsetsRef.current = { blocks: 0, topAttachments: 0 };
+    const expandedAtSend = expanded;
+    const handle = consumeCompose({
+      editor: {
+        getJSON: () => editor.getJSON() as ComposeDoc,
+        isEmpty: () => editor.isEmpty,
+        isDestroyed: () => editor.isDestroyed,
+        clearContent: () => editor.commands.clearContent(),
+        setContent: (doc) => editor.commands.setContent(doc as JSONContent),
+        insertContentAtBlock: (blockOffset, nodes) => {
+          // 把「第 n 个顶层块之前」换算成 ProseMirror 位置。
+          const docNode = editor.state.doc;
+          const limit = Math.min(blockOffset, docNode.childCount);
+          let pos = 0;
+          for (let i = 0; i < limit; i++) {
+            pos += docNode.child(i).nodeSize;
+          }
+          editor.commands.insertContentAt(pos, nodes as JSONContent[]);
+        },
+        appendContent: (nodes) =>
+          editor.commands.insertContent(nodes as JSONContent[]),
+        focusEnd: () => editor.commands.focus("end"),
+      },
+      attachmentFiles: attachmentFilesRef.current,
+      getTopAttachments: () => topAttachmentsRef.current,
+      setTopAttachments: (items) => {
+        topAttachmentsRef.current = items as TopAttachmentItem[];
+        setTopAttachments(topAttachmentsRef.current);
+      },
+      getRestoreOffsets: () => restoreOffsetsRef.current,
+      onRestored: ({ blocks, topAttachments }) => {
+        restoreOffsetsRef.current = {
+          blocks: restoreOffsetsRef.current.blocks + blocks,
+          topAttachments:
+            restoreOffsetsRef.current.topAttachments + topAttachments,
+        };
+      },
+      onRestoreCompose: () => {
+        // 整条 compose 回到输入框时，把 reply/edit 目标和展开态也一起复位，
+        // 否则「编辑消息」失败后重试会变成发一条新消息、大段草稿被挤在收起态里
+        // (#1280 review)。restore() 自身幂等，且用户已选新目标时不会覆盖。
+        sendTarget?.restore();
+        if (expandedAtSend) {
+          setExpanded(true);
+          props.onExpandChange?.(true);
+        }
+      },
+      onRestoreError: (err, step) => {
+        // 内容既不在输入框也不在消息列表时必须让用户知道，不能静默丢失
+        // （典型触发：还原时会话已被切走、editor 已 destroy）。
+        console.error(`[MessageInput] compose ${step} failed`, err);
+        Notification.error({
+          className: "wk-octo-notification",
+          content:
+            err instanceof ComposeRestoreUnavailableError
+              ? t("base.messageInput.send.restoreFailed")
+              : t("base.conversation.message.sendFailed"),
+        });
+      },
+    });
 
-    // ── 同步消费：编辑器 + 本次顶部附件 ──────────────
-    editor.commands.clearContent();
-    if (allTopIds.length > 0) {
-      const consumedIds = new Set(allTopIds);
-      topAttachmentsRef.current = topAttachmentsRef.current.filter(
-        (a: TopAttachmentItem) => !consumedIds.has(a.id)
-      );
-      setTopAttachments(topAttachmentsRef.current);
-    }
     if (expanded) {
       setExpanded(false);
       props.onExpandChange?.(false);
     }
 
-    /** 失败回滚：把本次发送的内容插回编辑器，新草稿排在其后（策略见 sendFlow）。 */
-    const restoreEditorSnapshot = () =>
-      restoreComposeSnapshot(editorSnapshot, {
-        isEmpty: () => editor.isEmpty,
-        setContent: (snapshot) => editor.commands.setContent(snapshot as JSONContent),
-        focusEnd: () => editor.commands.focus("end"),
-        insertContentAtStart: (blocks) =>
-          editor.commands.insertContentAt(0, blocks as JSONContent[]),
-        appendContent: (blocks) =>
-          editor.commands.insertContent(blocks as JSONContent[]),
-      });
-
-    /** 失败回滚：把未真正发出的顶部附件放回附件区（预览 URL 未被 revoke）。 */
-    const restoreTopItems = (ids: string[]) => {
-      const idSet = new Set(ids);
-      const restored = topItemsAtSend.filter((item: TopAttachmentItem) =>
-        idSet.has(item.id)
-      );
-      if (restored.length === 0) return;
-      const live = new Set(
-        topAttachmentsRef.current.map((a: TopAttachmentItem) => a.id)
-      );
-      topAttachmentsRef.current = [
-        ...restored.filter((item: TopAttachmentItem) => !live.has(item.id)),
-        ...topAttachmentsRef.current,
-      ];
-      setTopAttachments(topAttachmentsRef.current);
-    };
-
     // 串行队列取代旧的重入保护：pending 期间的 Enter 不再被静默丢弃（#1280 的
     // 「连点没反应」），而是排在前一条之后执行，消息顺序仍由 Conversation 等 ack
-    // 保证。返回真实结果供 initialCompose 编排器区分 sent / failed；
-    // 键盘/Enter 路径忽略返回值，行为不变。
-    return sendQueueRef.current.enqueue(() =>
-      runSendWithConsumedCompose(
-        () =>
-          props.onSend!(
-            content,
-            mention,
-            allAttachments.length > 0 ? allAttachments : undefined,
-            topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
-            orderedBlocks.length > 0 ? orderedBlocks : undefined
-          ),
-        allTopIds,
-        {
-          restoreEditor: restoreEditorSnapshot,
-          restoreTopAttachments: restoreTopItems,
-          disposeEditorAttachments: () => {
-            consumedAttachmentAttrs.forEach((attr) => {
-              attachmentFilesRef.current.delete(attr.id);
-              if (attr.previewUrl) {
-                URL.revokeObjectURL(attr.previewUrl);
-              }
-            });
-          },
-          disposeTopAttachments: (ids: string[]) => {
-            const idSet = new Set(ids);
-            topItemsAtSend.forEach((item: TopAttachmentItem) => {
-              if (idSet.has(item.id) && item.previewUrl) {
-                URL.revokeObjectURL(item.previewUrl);
-              }
-            });
-          },
-        }
+    // 保证。in-flight 期间把 compose 文本登记到 pendingSendsRef，供切会话守卫、
+    // 草稿保存和「发送中」提示使用——这段时间内容不在输入框也还没有气泡。
+    const pendingId = ++pendingSendSeqRef.current;
+    registerPendingSend(pendingId, composeSnapshotText(handle.snapshot));
+    return getSendQueue()
+      .enqueue(() =>
+        runSendWithConsumedCompose(
+          () =>
+            props.onSend!(
+              content,
+              mention,
+              allAttachments.length > 0 ? allAttachments : undefined,
+              topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
+              orderedBlocks.length > 0 ? orderedBlocks : undefined,
+              sendTarget
+            ),
+          handle.ids,
+          handle.compose
+        )
       )
-    );
-  }, [editor, expanded, props.onSend, props.onExpandChange, t]);
+      .finally(() => releasePendingSend(pendingId));
+  }, [
+    editor,
+    expanded,
+    props.onSend,
+    props.onCaptureSendTarget,
+    props.onExpandChange,
+    getSendQueue,
+    registerPendingSend,
+    releasePendingSend,
+    t,
+  ]);
 
   // 先接好 sendRef，再导出 context。Conversation 会在 onContext 回调里同步消费
   // initialCompose；两步必须处于同一 effect，避免首次无附件自动发送撞上空 sendRef。
@@ -1097,6 +1181,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
         focus: () => editor?.commands.focus(),
         send: () => invokeReadySend(sendRef.current),
+        pendingSendCount: () => pendingSendsRef.current.size,
+        pendingSendText: () =>
+          Array.from(pendingSendsRef.current.values())
+            .filter((text) => text.trim() !== "")
+            .join("\n"),
         clear: () => {
           editor?.commands.clearContent(true);
           topAttachmentsRef.current.forEach((item) => {
@@ -1183,7 +1272,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             handleSlashSelect(filtered[slashActiveIndex]);
           } else {
             setSlashMenuVisible(false);
-            sendRef.current?.();
+            fireAndForgetSend();
           }
           return true;
         }
@@ -1199,7 +1288,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       if (event.key === "Enter" && !event.shiftKey) {
         if (mentionActiveRef.current) return false;
         if (emojiSuggestionActiveRef.current) return false;
-        sendRef.current?.();
+        fireAndForgetSend();
         return true;
       }
 
@@ -1210,6 +1299,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     slashActiveIndex,
     getFilteredSlashCommands,
     handleSlashSelect,
+    fireAndForgetSend,
   ]);
 
   const toggleExpand = useCallback(() => {
@@ -1253,6 +1343,15 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       >
         {/* 引用/编辑条在卡片内部 */}
         {topView && <div className="wk-messageinput-topview">{topView}</div>}
+
+        {/* 发送中提示 (octo-web#1280)：compose 已被消费但气泡还没出现的窗口内，
+            给用户一个「还在发」的信号，避免以为没发出去而重复操作。 */}
+        {pendingSendCount > 0 && (
+          <div className="wk-messageinput-sending" aria-live="polite">
+            {t("base.message.sending")}
+            {pendingSendCount > 1 ? ` (${pendingSendCount})` : ""}
+          </div>
+        )}
 
         {/* 顶部附件区（非图片文件 + 上传的图片） */}
         {topAttachments.length > 0 && (

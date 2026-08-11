@@ -70,41 +70,77 @@ interface RecordingCompose extends ConsumedCompose {
   calls: string[];
   restoredTopIds: string[];
   disposedTopIds: string[];
+  restoredEditorIds: string[];
+  disposedEditorIds: string[];
+  restoreErrors: Array<{ step: string; err: unknown }>;
 }
 
-function makeCompose(): RecordingCompose {
+function makeCompose(
+  opts: { throwOn?: string } = {},
+): RecordingCompose {
   const calls: string[] = [];
   const restoredTopIds: string[] = [];
   const disposedTopIds: string[] = [];
+  const restoredEditorIds: string[] = [];
+  const disposedEditorIds: string[] = [];
+  const restoreErrors: Array<{ step: string; err: unknown }> = [];
+  const record = (name: string) => {
+    calls.push(name);
+    if (opts.throwOn === name) throw new Error(`${name} exploded`);
+  };
   const state = {
     calls,
     restoredTopIds,
     disposedTopIds,
-    restoreEditor: vi.fn(() => calls.push("restoreEditor")),
-    disposeEditorAttachments: vi.fn(() => calls.push("disposeEditorAttachments")),
+    restoredEditorIds,
+    disposedEditorIds,
+    restoreErrors,
+    restoreEditor: vi.fn(() => record("restoreEditor")),
+    restoreEditorAttachments: vi.fn((ids: string[]) => {
+      restoredEditorIds.push(...ids);
+      record("restoreEditorAttachments");
+    }),
+    disposeEditorAttachments: vi.fn((ids: string[]) => {
+      disposedEditorIds.push(...ids);
+      record("disposeEditorAttachments");
+    }),
     disposeTopAttachments: vi.fn((ids: string[]) => {
-      calls.push("disposeTopAttachments");
       disposedTopIds.push(...ids);
+      record("disposeTopAttachments");
     }),
     restoreTopAttachments: vi.fn((ids: string[]) => {
-      calls.push("restoreTopAttachments");
       restoredTopIds.push(...ids);
+      record("restoreTopAttachments");
+    }),
+    onRestoreError: vi.fn((err: unknown, step: string) => {
+      restoreErrors.push({ step, err });
     }),
   };
   return state as unknown as RecordingCompose;
 }
+
+/** Ids helper: `runSendWithConsumedCompose` now takes both id families. */
+const ids = (topIds: string[], editorAttachmentIds: string[] = []) => ({
+  topIds,
+  editorAttachmentIds,
+});
 
 describe("runSendWithConsumedCompose — success keeps the composer empty (#1280)", () => {
   it("disposes refs/urls and restores nothing when the send succeeds", async () => {
     const compose = makeCompose();
     const send = vi.fn().mockResolvedValue(true);
 
-    const ok = await runSendWithConsumedCompose(send, ["t1", "t2"], compose);
+    const ok = await runSendWithConsumedCompose(
+      send,
+      ids(["t1", "t2"], ["e1"]),
+      compose,
+    );
 
     expect(ok).toBe(true);
     expect(compose.restoreEditor).not.toHaveBeenCalled();
     expect(compose.restoreTopAttachments).not.toHaveBeenCalled();
-    expect(compose.disposeEditorAttachments).toHaveBeenCalledTimes(1);
+    expect(compose.restoreEditorAttachments).not.toHaveBeenCalled();
+    expect(compose.disposedEditorIds).toEqual(["e1"]);
     expect(compose.disposedTopIds).toEqual(["t1", "t2"]);
   });
 
@@ -113,7 +149,7 @@ describe("runSendWithConsumedCompose — success keeps the composer empty (#1280
 
     const ok = await runSendWithConsumedCompose(
       vi.fn().mockResolvedValue(undefined),
-      ["t1"],
+      ids(["t1"]),
       compose,
     );
 
@@ -128,11 +164,11 @@ describe("runSendWithConsumedCompose — success keeps the composer empty (#1280
       /* legacy void onSend */
     });
 
-    const ok = await runSendWithConsumedCompose(send, [], compose);
+    const ok = await runSendWithConsumedCompose(send, ids([], ["e1"]), compose);
 
     expect(ok).toBe(true);
     expect(compose.restoreEditor).not.toHaveBeenCalled();
-    expect(compose.disposeEditorAttachments).toHaveBeenCalledTimes(1);
+    expect(compose.disposedEditorIds).toEqual(["e1"]);
   });
 
   it("does NOT restore already-sent content even when the user typed during the await", async () => {
@@ -143,7 +179,7 @@ describe("runSendWithConsumedCompose — success keeps the composer empty (#1280
     let resolveSend!: (v: boolean) => void;
     const send = vi.fn(() => new Promise<boolean>((res) => (resolveSend = res)));
 
-    const p = runSendWithConsumedCompose(send, ["t1"], compose);
+    const p = runSendWithConsumedCompose(send, ids(["t1"]), compose);
     // ...user pastes another image / types the next line here...
     resolveSend(true);
 
@@ -158,7 +194,7 @@ describe("runSendWithConsumedCompose — round 1: failure restores the whole dra
     const compose = makeCompose();
     const send = vi.fn().mockResolvedValue(false);
 
-    const ok = await runSendWithConsumedCompose(send, ["t1", "t2"], compose);
+    const ok = await runSendWithConsumedCompose(send, ids(["t1", "t2"]), compose);
 
     expect(ok).toBe(false);
     expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
@@ -172,7 +208,7 @@ describe("runSendWithConsumedCompose — round 1: failure restores the whole dra
     const compose = makeCompose();
     const send = vi.fn().mockRejectedValue(new Error("upload failed"));
 
-    const ok = await runSendWithConsumedCompose(send, ["t1"], compose);
+    const ok = await runSendWithConsumedCompose(send, ids(["t1"]), compose);
 
     expect(ok).toBe(false);
     expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
@@ -185,7 +221,7 @@ describe("runSendWithConsumedCompose — round 1: failure restores the whole dra
     let resolveSend!: (v: boolean) => void;
     const send = vi.fn(() => new Promise<boolean>((res) => (resolveSend = res)));
 
-    const p = runSendWithConsumedCompose(send, ["t1"], compose);
+    const p = runSendWithConsumedCompose(send, ids(["t1"]), compose);
 
     await Promise.resolve();
     expect(compose.calls).toEqual([]);
@@ -205,7 +241,7 @@ describe("runSendWithConsumedCompose — partial result (top attachments sent, e
       .fn()
       .mockResolvedValue({ editorConsumed: false, consumedTopIds: ["t1", "t2"] });
 
-    const ok = await runSendWithConsumedCompose(send, ["t1", "t2"], compose);
+    const ok = await runSendWithConsumedCompose(send, ids(["t1", "t2"]), compose);
 
     expect(ok).toBe(false);
     expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
@@ -220,7 +256,7 @@ describe("runSendWithConsumedCompose — partial result (top attachments sent, e
       .fn()
       .mockResolvedValue({ editorConsumed: true, consumedTopIds: ["t1"] });
 
-    const ok = await runSendWithConsumedCompose(send, ["t1", "t2"], compose);
+    const ok = await runSendWithConsumedCompose(send, ids(["t1", "t2"]), compose);
 
     expect(ok).toBe(true);
     expect(compose.disposedTopIds).toEqual(["t1"]);
@@ -232,7 +268,7 @@ describe("runSendWithConsumedCompose — partial result (top attachments sent, e
 
     await runSendWithConsumedCompose(
       vi.fn().mockResolvedValue({ editorConsumed: true }),
-      ["t1", "t2"],
+      ids(["t1", "t2"]),
       compose,
     );
 
@@ -287,17 +323,19 @@ describe("createSendQueue — consecutive sends are serialized, never dropped (#
 describe("restoreComposeSnapshot — a failed send never loses or overwrites content", () => {
   function makeTarget(isEmpty: boolean, throwOnStart = false) {
     const calls: string[] = [];
+    const offsets: number[] = [];
     const target: ComposeRestoreTarget = {
       isEmpty: () => isEmpty,
       setContent: () => calls.push("setContent"),
       focusEnd: () => calls.push("focusEnd"),
-      insertContentAtStart: () => {
-        calls.push("insertContentAtStart");
+      insertContentAtBlock: (blockOffset: number) => {
+        calls.push("insertContentAtBlock");
+        offsets.push(blockOffset);
         if (throwOnStart) throw new Error("bad position");
       },
       appendContent: () => calls.push("appendContent"),
     };
-    return { target, calls };
+    return { target, calls, offsets };
   }
 
   const snapshot = { content: [{ type: "paragraph" }] };
@@ -309,16 +347,24 @@ describe("restoreComposeSnapshot — a failed send never loses or overwrites con
   });
 
   it("prepends the failed content before a draft typed during the await", () => {
-    const { target, calls } = makeTarget(false);
-    restoreComposeSnapshot(snapshot, target);
+    const { target, calls, offsets } = makeTarget(false);
+    expect(restoreComposeSnapshot(snapshot, target)).toBe(1);
     // Never setContent here — that was the #227 round-2 data loss.
-    expect(calls).toEqual(["insertContentAtStart"]);
+    expect(calls).toEqual(["insertContentAtBlock"]);
+    expect(offsets).toEqual([0]);
   });
 
-  it("falls back to appending when the start position is rejected", () => {
+  it("inserts after content an earlier failed send already restored", () => {
+    const { target, offsets } = makeTarget(false);
+    restoreComposeSnapshot(snapshot, target, 2);
+    // Two blocks already belong to an earlier restore → keep A, B order.
+    expect(offsets).toEqual([2]);
+  });
+
+  it("falls back to appending when the insert position is rejected", () => {
     const { target, calls } = makeTarget(false, true);
     restoreComposeSnapshot(snapshot, target);
-    expect(calls).toEqual(["insertContentAtStart", "appendContent"]);
+    expect(calls).toEqual(["insertContentAtBlock", "appendContent"]);
   });
 
   it("does nothing for an empty snapshot", () => {
@@ -326,5 +372,106 @@ describe("restoreComposeSnapshot — a failed send never loses or overwrites con
     restoreComposeSnapshot({ content: [] }, target);
     restoreComposeSnapshot(undefined, target);
     expect(calls).toEqual([]);
+  });
+});
+
+describe("runSendWithConsumedCompose — partial editor attachments (#1280 review)", () => {
+  it("restores only the pasted attachments that were rejected, disposing the sent ones", async () => {
+    const compose = makeCompose();
+    // Two pasted images: img-1 enqueued, img-2 rejected by the upload pre-check.
+    const send = vi.fn().mockResolvedValue({
+      editorConsumed: true,
+      consumedTopIds: [],
+      unsentEditorAttachmentIds: ["img-2"],
+    });
+
+    const ok = await runSendWithConsumedCompose(
+      send,
+      ids([], ["img-1", "img-2"]),
+      compose,
+    );
+
+    expect(ok).toBe(true);
+    // The sent image's File ref/URL can go; the rejected one must stay alive…
+    expect(compose.disposedEditorIds).toEqual(["img-1"]);
+    // …and its node comes back so the user can retry just that image.
+    expect(compose.restoredEditorIds).toEqual(["img-2"]);
+  });
+
+  it("restores every pasted attachment when nothing was enqueued", async () => {
+    const compose = makeCompose();
+
+    await runSendWithConsumedCompose(
+      vi.fn().mockResolvedValue(false),
+      ids([], ["img-1", "img-2"]),
+      compose,
+    );
+
+    // Whole compose restored → no per-attachment restore, nothing disposed.
+    expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
+    expect(compose.restoreEditorAttachments).not.toHaveBeenCalled();
+    expect(compose.disposeEditorAttachments).not.toHaveBeenCalled();
+  });
+
+  it("ignores unsentEditorAttachmentIds when the editor compose was not consumed", async () => {
+    const compose = makeCompose();
+
+    await runSendWithConsumedCompose(
+      vi.fn().mockResolvedValue({
+        editorConsumed: false,
+        unsentEditorAttachmentIds: ["img-1"],
+      }),
+      ids([], ["img-1", "img-2"]),
+      compose,
+    );
+
+    expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
+    expect(compose.restoreEditorAttachments).not.toHaveBeenCalled();
+  });
+});
+
+describe("runSendWithConsumedCompose — step isolation (#1280 review)", () => {
+  it("settles top attachments BEFORE the editor so an editor throw cannot skip them", async () => {
+    const compose = makeCompose({ throwOn: "restoreEditor" });
+
+    const ok = await runSendWithConsumedCompose(
+      vi.fn().mockResolvedValue(false),
+      ids(["t1"], ["e1"]),
+      compose,
+    );
+
+    expect(ok).toBe(false);
+    // Attachments were restored first, so the editor failure cannot swallow them.
+    expect(compose.calls).toEqual(["restoreTopAttachments", "restoreEditor"]);
+    expect(compose.restoredTopIds).toEqual(["t1"]);
+    // The failure is reported instead of vanishing silently.
+    expect(compose.restoreErrors.map((e) => e.step)).toEqual(["restoreEditor"]);
+  });
+
+  it("keeps going when a dispose step throws", async () => {
+    const compose = makeCompose({ throwOn: "disposeTopAttachments" });
+
+    const ok = await runSendWithConsumedCompose(
+      vi.fn().mockResolvedValue(true),
+      ids(["t1"], ["e1"]),
+      compose,
+    );
+
+    expect(ok).toBe(true);
+    expect(compose.disposedEditorIds).toEqual(["e1"]);
+    expect(compose.restoreErrors.map((e) => e.step)).toEqual([
+      "disposeTopAttachments",
+    ]);
+  });
+
+  it("never rejects, so the fire-and-forget Enter path cannot produce an unhandled rejection", async () => {
+    const compose = makeCompose({ throwOn: "restoreEditor" });
+    await expect(
+      runSendWithConsumedCompose(
+        vi.fn().mockRejectedValue(new Error("network down")),
+        ids([], []),
+        compose,
+      ),
+    ).resolves.toBe(false);
   });
 });
