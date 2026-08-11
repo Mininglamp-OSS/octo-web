@@ -33,6 +33,8 @@ export interface GroupAvatarEditModalProps {
   initialAvatarText?: string
   /** 初始色板下标 */
   initialColorIndex?: number
+  /** Existing-group seed, normally group_no, for server-compatible defaults. */
+  colorSeed?: string
   /** 保存中：禁用关闭并让确认按钮展示 loading */
   saving?: boolean
   /** 保存：回传清洗后的文字与色板下标 */
@@ -49,6 +51,8 @@ export interface GroupAvatarEditFormProps {
   initialAvatarText?: string
   /** 初始色板下标 */
   initialColorIndex?: number
+  /** Existing-group seed, normally group_no, for server-compatible defaults. */
+  colorSeed?: string
   /** 保存/上传中：禁止继续编辑，避免保存中的输入被丢弃。 */
   disabled?: boolean
   /** 编辑态变化：用于父组件维护本地 draft mode */
@@ -65,6 +69,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
   nameAsFallback = false,
   initialAvatarText = "",
   initialColorIndex,
+  colorSeed,
   disabled = false,
   onChange,
 }) => {
@@ -137,6 +142,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
         <GroupAvatarPreview
           avatarText={avatarText}
           colorIndex={colorIndex}
+          colorSeed={colorSeed}
           name={name}
           nameAsFallback={nameAsFallback}
           size={56}

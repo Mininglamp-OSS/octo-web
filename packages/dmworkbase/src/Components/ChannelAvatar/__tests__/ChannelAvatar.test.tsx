@@ -82,6 +82,7 @@ vi.mock("../../WKModal", () => ({
 
 import { I18nContext } from "../../../i18n";
 import { ChannelAvatar, ChannelAvatarProps } from "../index";
+import { colorIndexForSeed } from "../../GroupAvatarPreview/text";
 
 let container: HTMLDivElement;
 
@@ -232,6 +233,14 @@ describe("ChannelAvatar save intent", () => {
 
     expect(document.querySelector(".wk-channelavatar-generated-preview")).toBeTruthy();
     expect(screen.getAllByText("研发")).toHaveLength(2);
+  });
+
+  it("uses the group number seed for the default generated preview color", async () => {
+    renderChannelAvatar({ initialColorIndex: undefined });
+
+    const preview = document.querySelector(".wk-channelavatar-generated-preview") as HTMLElement;
+    expect(preview.style.background).toBe("rgb(253, 249, 237)");
+    expect(colorIndexForSeed("group-1", 10)).toBe(4);
   });
 
   it("renders as modal and calls onClose instead of route pop", async () => {

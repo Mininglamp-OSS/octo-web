@@ -9,6 +9,7 @@ import {
   cleanAvatarText,
   groupAvatarLines,
   colorIndexForName,
+  colorIndexForSeed,
   groupNameText,
 } from "./text"
 import "./index.css"
@@ -18,6 +19,8 @@ export interface GroupAvatarPreviewProps {
   avatarText?: string
   /** 色板下标；未指定（undefined/<0）时按 name 稳定派生（仅预览） */
   colorIndex?: number
+  /** Existing-group seed, normally group_no, for server-compatible defaults. */
+  colorSeed?: string
   /** 群名：用于派生颜色，且 nameAsFallback 时用于取字 */
   name?: string
   /**
@@ -36,6 +39,7 @@ export interface GroupAvatarPreviewProps {
 const GroupAvatarPreview: React.FC<GroupAvatarPreviewProps> = ({
   avatarText,
   colorIndex,
+  colorSeed,
   name = "",
   nameAsFallback = false,
   size = 56,
@@ -55,7 +59,9 @@ const GroupAvatarPreview: React.FC<GroupAvatarPreviewProps> = ({
   const idx =
     colorIndex != null && colorIndex >= 0
       ? colorIndex
-      : colorIndexForName(name, palette.length)
+      : colorSeed
+        ? colorIndexForSeed(colorSeed, palette.length)
+        : colorIndexForName(name, palette.length)
   const color = colorAt(palette, idx)
 
   // 文字优先级：自定义文字 > （命名群场景）群名前 2 字 > 空（→ 双人图标）。

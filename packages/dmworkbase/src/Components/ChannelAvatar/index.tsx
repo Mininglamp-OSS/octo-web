@@ -266,6 +266,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                             <GroupAvatarPreview
                                 avatarText={customAvatarText}
                                 colorIndex={customAvatarColorIndex}
+                                colorSeed={channel.channelID}
                                 name={groupName || ""}
                                 nameAsFallback={isNamedGroup === true}
                                 size={136}
@@ -295,6 +296,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                         nameAsFallback={isNamedGroup === true}
                         initialAvatarText={this.props.initialAvatarText || ""}
                         initialColorIndex={this.props.initialColorIndex}
+                        colorSeed={channel.channelID}
                         disabled={editingDisabled}
                         onChange={this.onGeneratedAvatarChange}
                     />}

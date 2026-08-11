@@ -101,3 +101,25 @@ export function colorIndexForName(name: string, size: number): number {
   }
   return h % size
 }
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256)
+  for (let i = 0; i < table.length; i += 1) {
+    let value = i
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0)
+    }
+    table[i] = value >>> 0
+  }
+  return table
+})()
+
+// Mirrors the server's GroupStyleForSeed: CRC32(seed) modulo palette size.
+export function colorIndexForSeed(seed: string, size: number): number {
+  if (size <= 0) return 0
+  let crc = 0xffffffff
+  for (const byte of new TextEncoder().encode(seed)) {
+    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ byte) & 0xff]
+  }
+  return ((crc ^ 0xffffffff) >>> 0) % size
+}
