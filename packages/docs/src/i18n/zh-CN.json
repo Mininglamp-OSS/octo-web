@@ -541,9 +541,69 @@
     "view": "查看",
     "comparePrev": "与上一版比较",
     "compareCurrent": "与当前版比较",
-    "currentBadge": "当前"
+    "currentBadge": "当前",
+    "badgeBotEdit": "Bot 修改",
+    "botEditLabel": "{{name}} 修改",
+    "botEditLabelGeneric": "Bot 修改前的快照",
+    "viewBotDiff": "查看 Diff",
+    "initiatedBy": "{{name}}发起",
+    "botEditDesc": "{{actor}}通过 @{{bot}} 发起修改；Bot 完成写入后临时权限即刻失效。",
+    "botEditDescGeneric": "Bot 修改前的自动快照；Bot 完成写入后临时权限即刻失效。",
+    "namedDesc": "手动保存的文档版本",
+    "restoreDesc": "还原操作前的自动快照",
+    "autoDesc": "自动保存的文档版本"
+  },
+  "botDiff": {
+    "title": "Bot 修改的内容",
+    "baseline": "对比基准：Bot 修改前的快照 #{{seq}} → 当前正文（“-”是修改前，“+”是当前）",
+    "loading": "正在加载 Bot 的改动…",
+    "errorMissing": "找不到 Bot 修改前的版本（可能已被删除），无法显示本次改动。",
+    "noChanges": "与 Bot 修改前相比，正文没有块级变更。",
+    "revert": "撤销这处",
+    "reverting": "正在撤销…",
+    "revertRetry": "重试",
+    "revertFailed": "撤销这处失败。",
+    "revertAll": "撤销本次修改",
+    "revertingAll": "正在撤销…",
+    "revertAllConfirmTitle": "撤销 Bot 的本次修改？",
+    "revertAllConfirmDetail": "正文会被还原为 Bot 修改前（#{{seq}}）的内容，当前正文会被覆盖。此操作不会删除任何版本：会先把当前正文保存为一个新版本，再从 #{{seq}} 的内容创建一个新版本。",
+    "revertAllConfirm": "确认撤销",
+    "revertAllDone": "已撤销本次修改：已从 #{{from}} 还原，并创建了新版本 #{{seq}}，文档稍后会自动更新。",
+    "revertAllFailed": "撤销失败，请稍后重试。",
+    "revertAllForbidden": "撤销失败：仅文档管理员可以撤销。",
+    "revertAllMissing": "找不到 Bot 修改前的版本（可能已被删除），无法撤销。",
+    "revertAllNeedsAdmin": "仅文档管理员可以撤销本次修改。",
+    "hunkLabel": "第 {{n}} 处",
+    "hunkParagraph": "第 {{n}} 段",
+    "oldLineNumber": "改前行号",
+    "newLineNumber": "改后行号",
+    "colBefore": "改前",
+    "colAfter": "改后",
+    "colContent": "内容",
+    "statusChanged": "已修改",
+    "statusAdded": "新增",
+    "statusRemoved": "删除",
+    "legendBefore": "修改前",
+    "legendAfter": "当前",
+    "changeCount": "{{count}} 处修改"
   },
   "comment": {
+    "expandText": "展开全文",
+    "collapseText": "收起",
+    "botTask": {
+      "cardLabel": "Bot 任务",
+      "byline": "AI 修改",
+      "running": "处理中",
+      "noReply": "未见回复",
+      "noReplyHint": "已超过 10 分钟没有收到 Bot 的回复。可能是任务没有被取走、执行中断，或回复已被删除 —— 可以重新 @ 它一次。",
+      "repliesBelow": "Bot 的回复按时间排在下方。",
+      "applied": "已完成",
+      "stale": "正文已变化",
+      "runningHint": "Bot 正在按这条评论修改文档…",
+      "appliedHint": "Bot 已按这条评论修改了文档。",
+      "staleHint": "Bot 改完之后，被引用的原文又发生了变化。请核对当前正文再决定是否保留这次修改。",
+      "viewDiff": "在版本记录中查看改动"
+    },
     "title": "评论",
     "close": "关闭",
     "loading": "正在加载评论…",
@@ -622,6 +682,21 @@
         "network": "无法删除评论，请检查网络连接后重试。",
         "generic": "删除评论失败。"
       }
+    },
+    "botBadge": "Bot",
+    "anchorUpdated": "引用已更新",
+    "anchorChanged": "引用已变化，待确认",
+    "anchorInvalid": "原引用已失效",
+    "emptyFiltered": "当前筛选下暂无记录。可以选中文字评论，也可以在下方评论全文。",
+    "wholeDoc": "全文",
+    "wholeDocLabel": "全文评论输入区",
+    "wholeDocPlaceholder": "输入评论，@Bot 可修改正文…",
+    "submitHint": "⌘ + Enter 发送",
+    "filter": {
+      "label": "评论类型",
+      "all": "全部评论",
+      "human": "普通评论",
+      "bot": "Bot 修改"
     }
   },
   "time": {
@@ -863,7 +938,19 @@
     "mention": {
       "menu": "提及",
       "search": "搜索成员或文档…",
-      "empty": "无匹配"
+      "empty": "无匹配",
+      "groupBot": "Bot",
+      "groupMember": "成员",
+      "groupDoc": "文档",
+      "botBadge": "Bot",
+      "botRelationCreator": "自己创建",
+      "botRelationFriend": "好友共享",
+      "botOffline": "离线",
+      "botNoPermission": "当前权限不能 @Bot",
+      "botRoleUnknown": "正在确认权限…",
+      "botNoneAvailable": "没有自己创建或好友共享的 Bot",
+      "botNoneWithDocAccess": "没有对本文档有编辑权限的 Bot",
+      "botPermissionUnknown": "暂时无法确认 Bot 的文档权限，请稍后重试"
     },
     "protect": {
       "editPermission": "编辑权限",
@@ -1077,5 +1164,19 @@
     },
     "copySection": "复制本节",
     "pitfallPartial": "只发你真正改动的部分，不要整篇重写：整篇覆盖会成功（不报错），但会打乱协作者的光标并摧毁所有批注锚点；而且不带 base-version 令牌就是静默覆盖别人的编辑，服务端不会拦。"
+  },
+  "mention": {
+    "groupBot": "Bot",
+    "groupMember": "成员",
+    "groupDoc": "文档",
+    "botBadge": "Bot",
+    "botRelationCreator": "自己创建",
+    "botRelationFriend": "好友共享",
+    "botOffline": "离线",
+    "botNoPermission": "当前权限不能 @Bot",
+    "botRoleUnknown": "正在确认权限…",
+    "botNoneAvailable": "没有自己创建或好友共享的 Bot",
+    "botNoneWithDocAccess": "没有对本文档有编辑权限的 Bot",
+    "botPermissionUnknown": "暂时读不到文档权限，无法列出可用的 Bot"
   }
 }

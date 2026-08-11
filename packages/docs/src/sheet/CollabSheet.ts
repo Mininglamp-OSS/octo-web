@@ -826,6 +826,12 @@ export class CollabSheet {
       opts.space,
       (item, cell, ctx) => this.insertMentionChip(item, cell, ctx),
       () => canEdit(this.currentRole),
+      // docId + the LIVE role, so the cell @ popup applies the same Bot eligibility rule as every
+      // comment composer: a Bot is offered only when the caller can reach it AND it holds writer+ on
+      // THIS document. Without these the popup listed every space member the host returned, Bots
+      // included, and picking one 403'd after the task had already been dispatched.
+      opts.docId,
+      () => this.currentRole,
     )
     // Role controller: runtime stateless role changes (monotonic epoch).
     this.roleController = new RoleController({

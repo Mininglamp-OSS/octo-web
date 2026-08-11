@@ -188,7 +188,18 @@ class FakeUniver {
       getActiveSheet: () => self.active(),
       getSheets: () => self.sheets,
       getSheetBySheetId: (id: string) => self.sheets.find((s) => s.getSheetId() === id) ?? null,
-      insertSheet: (name?: string) => (self.blockInsertSheet ? null : self.addSheet(name)),
+      insertSheet: (name?: string) => {
+        if (self.blockInsertSheet) return null
+        const s = self.addSheet(name)
+        // Faithful to real Univer: FWorkbook.insertSheet() issues a SetWorksheetActiveOperation for
+        // the sheet it just created ("The new sheet becomes the active sheet"), so anything that
+        // materializes sheets — including the remote-driven reconcile — moves the viewer's tab.
+        self.setActive(s.getSheetId())
+        return s
+      },
+      setActiveSheet: (sheetOrId: string | FakeSheet) => {
+        self.setActive(typeof sheetOrId === 'string' ? sheetOrId : sheetOrId.getSheetId())
+      },
       deleteSheet: (sheetOrId: string | FakeSheet) => {
         const id = typeof sheetOrId === 'string' ? sheetOrId : sheetOrId.getSheetId()
         const i = self.sheets.findIndex((s) => s.getSheetId() === id)
@@ -951,6 +962,93 @@ describe('UniverYjsBinding — multi-sheet (V2)', () => {
     })
     // The malformed entry is filtered out; the well-formed sheet is still created locally.
     expect(univer.sheets.find((s) => s.getSheetName() === 'Good')).toBeTruthy()
+  })
+})
+
+// The ACTIVE sheet is per-VIEWER state (it is not in the Y.Doc, and no set-worksheet-active
+// command is in any TRIGGER_IDS set), but reconcileSheetsFromRegistry materializes remote sheets
+// through Univer's `insertSheet()`, which activates each sheet it creates. That made the
+// remote-driven reconcile move the viewer's tab as a side effect.
+describe('UniverYjsBinding — reconcile must not steal the viewer’s active sheet', () => {
+  const activeName = (u: FakeUniver) => u.getActiveWorkbook().getActiveSheet().getSheetName()
+
+  /** Build a doc that ALREADY holds a 2-sheet registry + content, THEN construct the binding —
+   *  i.e. exactly what opening an existing multi-sheet doc does (runInitialSync → reconcile). */
+  function setupJoiningTwoSheetDoc() {
+    const doc = new Y.Doc()
+    const l = doc.getMap(SHEET_LIST_FIELD)
+    l.set('default', { name: 'Sheet1', order: 0 })
+    l.set('s-2', { name: 'Sheet2', order: 1 })
+    // Content lives on Sheet1 only — the reported case (Sheet2 empty, so landing there reads
+    // as "the document didn't load").
+    doc.getMap(SHEET_YMAP_FIELD).set('default!0:0', { v: '你好' })
+    doc.getMap(SHEET_YMAP_FIELD).set('default!3:4', { v: 888 })
+    const univer = new FakeUniver()
+    const binding = new UniverYjsBinding(univer as never, doc, () => true)
+    return { univer, doc, binding }
+  }
+
+  it('opens an existing multi-sheet doc on the FIRST sheet, not the last one created', () => {
+    const { univer } = setupJoiningTwoSheetDoc()
+    expect(univer.sheets.map((s) => s.getSheetName())).toEqual(['Sheet1', 'Sheet2'])
+    expect(activeName(univer)).toBe('Sheet1')
+  })
+
+  it('shows the first sheet’s content on the sheet the viewer lands on', () => {
+    const { univer } = setupJoiningTwoSheetDoc()
+    const landed = univer.getActiveWorkbook().getActiveSheet()
+    expect(landed.cells.get('0:0')).toEqual({ v: '你好' })
+    expect(landed.cells.get('3:4')).toEqual({ v: 888 })
+  })
+
+  it('lands on the first REGISTRY-ORDER sheet even when the registry order is not insertion order', () => {
+    const doc = new Y.Doc()
+    const l = doc.getMap(SHEET_LIST_FIELD)
+    // Registry iteration order (insertion) is c, a, b; `order` says a, b, c.
+    l.set('s-c', { name: 'C', order: 2 })
+    l.set('default', { name: 'A', order: 0 })
+    l.set('s-b', { name: 'B', order: 1 })
+    const univer = new FakeUniver()
+    new UniverYjsBinding(univer as never, doc, () => true)
+    expect(univer.sheets.map((s) => s.getSheetName())).toEqual(['A', 'B', 'C'])
+    expect(activeName(univer)).toBe('A')
+  })
+
+  it('keeps the viewer on their current sheet when a PEER adds a new one', () => {
+    const { univer, doc } = setup()
+    const s2 = univer.addSheet('Sheet2')
+    univer.setActive(s2.getSheetId())
+    univer.fire({ id: 'sheet.command.insert-sheet' })
+    expect(activeName(univer)).toBe('Sheet2')
+    // Peer adds Sheet3 while we are looking at Sheet2 — our viewport must not jump to it.
+    applyRemote(doc, (peer) => peer.getMap(SHEET_LIST_FIELD).set('s-3', { name: 'Sheet3', order: 2 }))
+    expect(univer.sheets.map((s) => s.getSheetName())).toEqual(['Sheet1', 'Sheet2', 'Sheet3'])
+    expect(activeName(univer)).toBe('Sheet2')
+  })
+
+  it('falls back to the first sheet when a peer deletes the sheet the viewer was on', () => {
+    const { univer, doc } = setup()
+    applyRemote(doc, (peer) => {
+      peer.getMap(SHEET_LIST_FIELD).set('default', { name: 'Sheet1', order: 0 })
+      peer.getMap(SHEET_LIST_FIELD).set('s-2', { name: 'Sheet2', order: 1 })
+    })
+    const s2 = univer.sheets.find((s) => s.getSheetName() === 'Sheet2')!
+    univer.setActive(s2.getSheetId())
+    applyRemote(doc, (peer) => peer.getMap(SHEET_LIST_FIELD).delete('s-2'))
+    expect(univer.sheets.map((s) => s.getSheetName())).toEqual(['Sheet1'])
+    expect(activeName(univer)).toBe('Sheet1')
+  })
+
+  it('never replicates the active-sheet switch it performs (stays viewer-local)', () => {
+    const { doc } = setupJoiningTwoSheetDoc()
+    // No shared field records an active/current sheet — restoring the tab must not have added one.
+    const asJson = JSON.stringify(doc.toJSON())
+    expect(asJson).not.toMatch(/active/i)
+    // The registry still holds exactly the two sheets, unchanged.
+    expect(doc.getMap(SHEET_LIST_FIELD).toJSON()).toEqual({
+      default: { name: 'Sheet1', order: 0 },
+      's-2': { name: 'Sheet2', order: 1 },
+    })
   })
 })
 

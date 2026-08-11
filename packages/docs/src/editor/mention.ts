@@ -13,13 +13,17 @@
 
 import Mention from '@tiptap/extension-mention'
 import { Plugin } from '@tiptap/pm/state'
+import type { Role } from '../auth/roles.ts'
 import { createSuggestionMenuRenderer } from './suggestionMenu.ts'
 import {
   type MentionItem,
-  loadMentionItems,
+  loadMentionSources,
   filterMentionItems,
+  mentionItemLabel,
   navigateToDoc,
 } from '../mentions/source.ts'
+import type { BotNotice } from '../mentions/botCandidates.ts'
+import { createMentionRowsRenderer, createMentionHasContent } from '../mentions/mentionMenu.ts'
 
 // Re-exported so existing importers of these symbols from './editor/mention.ts' keep working
 // while the definitions live in the shared source module (used by comments + sheet too).
@@ -28,17 +32,55 @@ export { navigateToDoc }
 
 /**
  * Build the configured Mention extension. `spaceId` scopes the @people source (empty → only
- * @docs). The source lists are loaded lazily on the first suggestion query and memoised for the
- * lifetime of the editor, so a read-only preview (which never triggers the suggestion) makes no
- * network calls.
+ * @docs). `getRole` (a THUNK, not a value) supplies the live role that gates Bot candidates: the
+ * extension list is built once per editor, but the role arrives later with the collab token and may
+ * change at runtime, and the sources are loaded lazily on the first suggestion query — so reading
+ * the role through a thunk at load time sees the current value without rebuilding the editor. No
+ * thunk → no Bot candidates (fail closed).
+ *
+ * The source lists are loaded lazily on the first suggestion query and memoised for the lifetime of
+ * the editor, so a read-only preview (which never triggers the suggestion) makes no network calls.
  */
-export function buildMention(opts: { spaceId?: string }) {
+export function buildMention(opts: {
+  spaceId?: string
+  docId?: string
+  getRole?: () => Role | undefined
+}) {
   const spaceId = opts.spaceId ?? ''
   let cache: Promise<MentionItem[]> | null = null
+  /**
+   * The role `cache` was computed under (`null` = the collab token had not answered yet).
+   *
+   * WHY THIS EXISTS: the extension list is built once per editor, but the role arrives later. The
+   * first `@` in a freshly opened doc can therefore load with an unresolved role, which fails closed
+   * to `role-unknown`. Caching THAT froze the popup on 「正在确认权限…」 forever — the role landed a
+   * moment later and nothing recomputed. Keying the cache on the role means an unresolved answer is
+   * never reused, while a genuine runtime downgrade (writer→reader) still takes effect immediately,
+   * which is the whole reason `getRole` is a thunk.
+   */
+  let cacheRole: Role | null = null
+  // Why the Bot section is empty, captured from the SAME load that produced the items so the two can
+  // never disagree. Read through a thunk by the renderer because the load settles asynchronously,
+  // possibly after the popup has already painted once.
+  let botNotice: BotNotice | null = null
   const load = (): Promise<MentionItem[]> => {
-    if (!cache) cache = loadMentionItems(spaceId)
-    return cache
+    const role = opts.getRole?.() ?? null
+    if (cache && cacheRole === role) return cache
+
+    cacheRole = role
+    const pending = loadMentionSources(spaceId, {
+      ...(opts.docId != null ? { docId: opts.docId } : {}),
+      ...(role != null ? { role } : {}),
+    }).then((res) => {
+      // A newer role may have superseded this request mid-flight; only the latest may publish its
+      // notice, otherwise a slow unresolved-role load would overwrite the resolved one's answer.
+      if (cache === pending) botNotice = res.botNotice
+      return res.items
+    })
+    cache = pending
+    return pending
   }
+  const getBotNotice = () => botNotice
 
   return Mention.extend({
     addAttributes() {
@@ -83,8 +125,12 @@ export function buildMention(opts: { spaceId?: string }) {
       },
       render: () =>
         createSuggestionMenuRenderer<MentionItem>(
-          (i) => (i.type === 'doc' ? `📄 ${i.label}` : `@${i.label}`),
+          mentionItemLabel,
           'octo-mention-menu octo-suggest-menu',
+          {
+            renderRows: createMentionRowsRenderer(getBotNotice),
+            hasContent: createMentionHasContent(getBotNotice),
+          },
         ),
     },
   })

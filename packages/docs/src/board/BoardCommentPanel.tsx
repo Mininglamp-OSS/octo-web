@@ -283,6 +283,7 @@ export function BoardCommentPanel({
   role,
   comments,
   names,
+  docId,
   spaceId,
   activeCommentId,
   onActivate,
@@ -295,6 +296,10 @@ export function BoardCommentPanel({
   role: Role
   comments: UseDocComments
   names: Map<string, string>
+  /** Doc being commented on — decides which Bots the @ menu may offer (Bot needs writer+ HERE), so
+   *  omitting it offers no Bot at all. Optional like `spaceId`, since the panel is also mounted
+   *  standalone (tests / previews) with no document context. */
+  docId?: string
   spaceId?: string
   activeCommentId: number | null
   onActivate: (thread: CommentThread) => void
@@ -383,7 +388,9 @@ export function BoardCommentPanel({
             <>
               <span className="octo-board-comment-target">{target?.label}</span>
               <MentionComposer
+                docId={docId}
                 spaceId={spaceId}
+                role={role}
                 autoFocus
                 placeholder={t('docs.board.comment.placeholder')}
                 onChange={setBody}

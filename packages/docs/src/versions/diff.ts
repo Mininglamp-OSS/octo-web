@@ -67,6 +67,55 @@ export function docToBlocks(doc: PMNode | null | undefined): string[] {
   return out
 }
 
+/**
+ * 每个块的定位信息:它属于哪个小节、是该小节里的第几段。
+ *
+ * 用来做 hunk 头的定位 —— 原型写的是「@@ 一、当前问题 · 第 3 段 @@」而不是「第 1 处」。
+ * 差别不只是好看:纯序号("第 1 处")只告诉你这是本次的第几处改动,而读者真正要问的是
+ * 「改到文档的哪儿了」。一份长文档里,不给章节名就得自己去正文里对。
+ */
+export interface BlockLocation {
+  /** 最近一个在它之前出现的标题文本;文档开头还没有标题时为 null。 */
+  sectionTitle: string | null
+  /** 在该小节里的序号(1 起)。标题本身算这一节的第 0 段,所以从它后面第一个块开始算 1。 */
+  ordinalInSection: number
+}
+
+/**
+ * 与 docToBlocks 一一对应的定位信息(同样的遍历顺序、同样的长度)。
+ *
+ * 单独一个函数而不是改 docToBlocks 的返回值:后者的「返回字符串数组」被 diff 主流程和一批
+ * 既有用例依赖,改签名会牵连一片。两者共用同一套遍历规则,靠下面这条测试钉住长度一致。
+ */
+export function docToBlockLocations(doc: PMNode | null | undefined): BlockLocation[] {
+  const out: BlockLocation[] = []
+  let sectionTitle: string | null = null
+  let ordinal = 0
+  const walk = (node: PMNode): void => {
+    if (TEXT_BLOCKS.has(node.type)) {
+      if (node.type === 'heading') {
+        // 标题自己开启新的一节。它落在「本节第 0 段」的位置上 —— 命中标题行的 hunk
+        // 应该报这个标题本身,而不是上一节的尾巴。
+        sectionTitle = inlineText(node)
+        ordinal = 0
+        out.push({ sectionTitle, ordinalInSection: 0 })
+        return
+      }
+      ordinal += 1
+      out.push({ sectionTitle, ordinalInSection: ordinal })
+      return
+    }
+    if (node.type === 'image' || node.type === 'horizontalRule') {
+      ordinal += 1
+      out.push({ sectionTitle, ordinalInSection: ordinal })
+      return
+    }
+    for (const child of node.content ?? []) walk(child)
+  }
+  for (const child of doc?.content ?? []) walk(child)
+  return out
+}
+
 interface RawOp {
   type: 'unchanged' | 'added' | 'removed'
   text: string

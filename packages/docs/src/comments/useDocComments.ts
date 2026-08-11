@@ -22,6 +22,15 @@ import { t } from '../octoweb/index.ts'
 
 const PAGE_SIZE = 25
 
+/**
+ * How often the open document silently re-reads the comment list.
+ *
+ * 15s is a deliberate middle: a Bot edit takes tens of seconds to land, so anything much longer and
+ * the reply still feels lost, while anything much shorter multiplies GETs across every open tab for
+ * a list that changes rarely. Exported so tests can drive the timer without hard-coding the number.
+ */
+export const COMMENT_POLL_INTERVAL_MS = 15_000
+
 export interface CommentMutationResult {
   ok: boolean
   error: string | null
@@ -377,6 +386,48 @@ export function useDocComments(docId: string): UseDocComments {
       runMutation(() => deleteComment(docId, id, hard), 'delete'),
     [docId, runMutation],
   )
+
+  // Background poll for comments other people (and Bots) added.
+  //
+  // WHY THIS EXISTS: comments have no realtime channel. The body is a CRDT over the hocuspocus
+  // socket, but comments are a plain REST list loaded on mount and re-read after a LOCAL mutation.
+  // The executable-comment flow is entirely asynchronous — you @Bot, the event queues, the agent
+  // works, and it POSTs its answer seconds to minutes later. Nothing on the page hears about that.
+  // So the Bot would edit the document, post its reply, and the author would still be staring at a
+  // thread with no answer until they manually toggled the panel shut and open again. Indistinguishable
+  // from "the Bot never replied", which is exactly how it got reported.
+  //
+  // Polls `reconcile`, not `refresh`: refresh sets `loading`, which would flash the panel spinner
+  // every interval. reconcile is the silent re-read, and it already carries both stale-guards so it
+  // can never clobber a fresher load.
+  const pollSkipRef = useRef({ loading: false, extended: false })
+  pollSkipRef.current = {
+    loading,
+    // The reader has paginated past the first page. reconcile re-reads only page 1, so polling here
+    // would collapse the list and yank them back to the top. Being a few seconds late on a new
+    // comment is strictly better than that; polling resumes once they scroll back.
+    extended: threads.length > PAGE_SIZE,
+  }
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const tick = () => {
+      // Nobody is looking at a background tab — don't spend the request.
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      if (pollSkipRef.current.loading || pollSkipRef.current.extended) return
+      void reconcile()
+    }
+    const timer = window.setInterval(tick, COMMENT_POLL_INTERVAL_MS)
+    // Coming back to the tab is the moment stale content is most likely AND most visible, so catch
+    // up immediately instead of waiting out a full interval.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') tick()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.clearInterval(timer)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [reconcile])
 
   return {
     threads,

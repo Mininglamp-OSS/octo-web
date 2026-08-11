@@ -67,6 +67,20 @@ beforeEach(() => {
   Element.prototype.scrollIntoView = vi.fn()
 })
 
+/**
+ * 编辑 / 删除已从底部按钮挪进右键菜单,所以断言它们之前必须先把菜单打开。
+ *
+ * 菜单项是 role=menuitem(显式 role 覆盖隐式的 button),所以断言要按 menuitem 查。
+ * 这让「不该有」的断言反而更强:菜单**开着**时该项仍然不存在,才真的说明权限挡住了 ——
+ * 而不是「按钮恰好还没渲染」。scope 传某一行的容器,可以只开那一行的菜单(嵌套的回复
+ * 有自己的菜单)。
+ */
+function openCommentMenu(scope: HTMLElement | Document = document): void {
+  const body = scope.querySelector('.octo-comment-body')
+  if (!body) throw new Error('openCommentMenu: 找不到 .octo-comment-body')
+  fireEvent.contextMenu(body)
+}
+
 describe('CommentPanel mutation failures', () => {
   it('renders delete and resolve/reopen failures as alerts beside only the affected rows', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
@@ -81,6 +95,7 @@ describe('CommentPanel mutation failures', () => {
         comments={comments({ threads: [thread(1), thread(2), thread(3, true)], remove, resolve })}
         activeCommentId={null}
         onSelectComment={() => {}}
+        docId="d_test"
       />,
     )
 
@@ -88,7 +103,8 @@ describe('CommentPanel mutation failures', () => {
     const row2 = screen.getByText('“row 2”').closest('li')!
     const row3 = screen.getByText('“row 3”').closest('li')!
 
-    fireEvent.click(within(row1).getByRole('button', { name: 'docs.comment.delete' }))
+    openCommentMenu(row1)
+    fireEvent.click(within(row1).getByRole('menuitem', { name: 'docs.comment.delete' }))
     expect((await within(row1).findByRole('alert')).textContent).toBe('Delete row 1 failed.')
     expect(within(row2).queryByRole('alert')).toBeNull()
     expect(within(row3).queryByRole('alert')).toBeNull()
@@ -118,6 +134,7 @@ describe('CommentPanel — four-role permission matrix', () => {
         comments={comments({ threads: [thread(1)] })}
         activeCommentId={null}
         onSelectComment={() => {}}
+        docId="d_test"
       />,
     )
 
@@ -138,21 +155,27 @@ describe('CommentPanel — four-role permission matrix', () => {
   // may still soft-delete their own comment (Backend allows commenter self-delete).
   it('commenter author: no edit button on own comment, but delete stays', () => {
     renderRole('commenter')
-    expect(screen.queryByRole('button', { name: 'docs.comment.edit' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'docs.comment.delete' })).toBeTruthy()
+    openCommentMenu()
+    expect(screen.queryByRole('menuitem', { name: 'docs.comment.edit' })).toBeNull()
+    openCommentMenu()
+    expect(screen.getByRole('menuitem', { name: 'docs.comment.delete' })).toBeTruthy()
   })
 
   it('writer author: edit + delete both present on own comment', () => {
     renderRole('writer')
-    expect(screen.getByRole('button', { name: 'docs.comment.edit' })).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'docs.comment.delete' })).toBeTruthy()
+    openCommentMenu()
+    expect(screen.getByRole('menuitem', { name: 'docs.comment.edit' })).toBeTruthy()
+    openCommentMenu()
+    expect(screen.getByRole('menuitem', { name: 'docs.comment.delete' })).toBeTruthy()
   })
 
   // Backend #147: DELETE requires the commenter floor, so a reader author must not see soft-delete.
   it('reader author: no delete button (soft-delete needs commenter floor)', () => {
     renderRole('reader')
-    expect(screen.queryByRole('button', { name: 'docs.comment.delete' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'docs.comment.edit' })).toBeNull()
+    openCommentMenu()
+    expect(screen.queryByRole('menuitem', { name: 'docs.comment.delete' })).toBeNull()
+    openCommentMenu()
+    expect(screen.queryByRole('menuitem', { name: 'docs.comment.edit' })).toBeNull()
   })
 
   it('admin author: own delete stays soft', async () => {
@@ -165,9 +188,11 @@ describe('CommentPanel — four-role permission matrix', () => {
         comments={comments({ threads: [thread(1)], remove })}
         activeCommentId={null}
         onSelectComment={() => {}}
+        docId="d_test"
       />,
     )
-    fireEvent.click(screen.getByRole('button', { name: 'docs.comment.delete' }))
+    openCommentMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'docs.comment.delete' }))
     await waitFor(() => expect(remove).toHaveBeenCalledWith(1, false))
   })
 
@@ -191,6 +216,7 @@ describe('CommentPanel — runtime downgrade closes open composers', () => {
         comments={comments({ threads: [thread(1)], ...extra })}
         activeCommentId={null}
         onSelectComment={() => {}}
+        docId="d_test"
       />,
     )
 
@@ -205,6 +231,7 @@ describe('CommentPanel — runtime downgrade closes open composers', () => {
         comments={comments({ threads: [thread(1)] })}
         activeCommentId={null}
         onSelectComment={() => {}}
+        docId="d_test"
       />,
     )
     expect(document.querySelector('.octo-mention-composer')).toBeNull()
@@ -213,7 +240,8 @@ describe('CommentPanel — runtime downgrade closes open composers', () => {
 
   it('writer->commenter closes an open edit composer on own comment', () => {
     const { rerender } = view('writer')
-    fireEvent.click(screen.getByRole('button', { name: 'docs.comment.edit' }))
+    openCommentMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: 'docs.comment.edit' }))
     expect(screen.getByRole('button', { name: 'docs.comment.save' })).toBeTruthy()
     rerender(
       <CommentPanel
@@ -222,9 +250,11 @@ describe('CommentPanel — runtime downgrade closes open composers', () => {
         comments={comments({ threads: [thread(1)] })}
         activeCommentId={null}
         onSelectComment={() => {}}
+        docId="d_test"
       />,
     )
     expect(screen.queryByRole('button', { name: 'docs.comment.save' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'docs.comment.edit' })).toBeNull()
+    openCommentMenu()
+    expect(screen.queryByRole('menuitem', { name: 'docs.comment.edit' })).toBeNull()
   })
 })

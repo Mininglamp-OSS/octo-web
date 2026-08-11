@@ -15,6 +15,7 @@ import type { ConnState, TerminalState } from '../collab/createCollabEditor.ts'
 import { type Role, canComment, canManage } from '../auth/roles.ts'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { SheetVersionPanel } from './SheetVersionPanel.tsx'
+import type { BotDiffHint } from '../versions/botEditForThread.ts'
 import { SheetCommentPanel, parseCell as parseCommentAnchor } from './SheetCommentPanel.tsx'
 import { useDocComments, useRefreshCommentsOnOpen } from '../comments/useDocComments.ts'
 import { pendingSheetImports } from './xlsxImport.ts'
@@ -103,11 +104,21 @@ function SheetCommentComposer({
   onSubmit,
   onCancel,
   spaceId,
+  docId,
+  role,
 }: {
   anchor: CellAnchor
   onSubmit: (body: string) => Promise<string | null>
   onCancel: () => void
   spaceId?: string
+  /**
+   * 这两个是 @ 菜单判定 Bot 候选的前提，缺一个就只能退化成「没有可用 Bot」：
+   * `docId` 决定某个 Bot 在**本文档**上有没有 writer+（没它就无从校验），`role` 决定调用者
+   * 本身能不能派活。此前这个单元格气泡两个都没接，于是永远停在「正在确认权限…」——
+   * 而右侧评论面板同样的输入框却正常，因为那条路一直传了。
+   */
+  docId: string
+  role: Role
 }) {
   const [body, setBody] = useState('')
   const [busy, setBusy] = useState(false)
@@ -139,6 +150,8 @@ function SheetCommentComposer({
       <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 4 }}>{t('docs.sheet.comment.menu')} {anchor.a1}</div>
       <MentionComposer
         spaceId={spaceId}
+        docId={docId}
+        role={role}
         placeholder={t('docs.sheet.comment.add')}
         autoFocus
         onChange={setBody}
@@ -401,6 +414,8 @@ export function SheetView(props: SheetViewProps) {
   }
 
   const tb = (p: Panel) => (panel === p ? 'octo-tb-btn is-active' : 'octo-tb-btn')
+  // 从评论卡片点「查看 Diff」时带过来的定位信息,交给版本面板去挑出对应的 Bot 快照并直接打开。
+  const [botDiffHint, setBotDiffHint] = useState<BotDiffHint | null>(null)
   const toggle = (p: Exclude<Panel, null>) => setPanel((cur) => (cur === p ? null : p))
   const closePanel = () => setPanel(null)
 
@@ -775,6 +790,8 @@ export function SheetView(props: SheetViewProps) {
           <SheetCommentComposer
             anchor={composer}
             spaceId={space}
+            docId={docId}
+            role={role}
             onCancel={() => setComposer(null)}
             onSubmit={async (body) => {
               const enc = btoa(composer.key)
@@ -788,7 +805,7 @@ export function SheetView(props: SheetViewProps) {
         {(panel === 'history' || panel === 'comments') && (
           <aside className="octo-doc-drawer" role="complementary">
             {panel === 'history' && (
-              <SheetVersionPanel docId={docId} role={role} sheet={sheet} names={names} onClose={closePanel} />
+              <SheetVersionPanel docId={docId} role={role} sheet={sheet} names={names} onClose={closePanel} botDiffHint={botDiffHint} />
             )}
             {panel === 'comments' && (
               <SheetCommentPanel
@@ -800,6 +817,11 @@ export function SheetView(props: SheetViewProps) {
                 focusCell={commentFocus}
                 spaceId={space}
                 onClose={closePanel}
+                // 同 EditorShell:切到版本记录看 Bot 改动,不在卡片里猜版本。
+                onViewBotDiff={(hint) => {
+                  setBotDiffHint(hint)
+                  setPanel('history')
+                }}
               />
             )}
           </aside>

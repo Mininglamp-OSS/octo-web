@@ -11,6 +11,7 @@
 // That module is NOT reusable here.
 
 import { resolveOctoDocBase } from './htmlDocFrameHelpers.ts'
+import { apiClient } from '../octoweb/index.ts'
 import { getWKApp } from '../octoweb/index.ts'
 
 // octo-doc verifies identity via the `token` header (octo convention, not Authorization).
@@ -152,6 +153,26 @@ export interface CreateCommentInput {
 }
 
 /**
+ * 删除一条评论或回复(软删)。
+ *
+ * 直连 octo-doc,**不像创建那样绕经 docs-backend** —— 那一跳的存在意义是识别 @Bot 并把任务
+ * 入队;删除没有 mention 要识别,多绕一跳只是多一个会漂的契约。
+ *
+ * 权限由 octo-doc 判(authorizeOwnCommentMutation):自己的评论,或在这篇文档上有 CapEdit
+ * 以上(writer/admin 可删别人的)。前端只按同样的规则决定「显不显示删除项」,判定权仍在后端 ——
+ * 越权时它回 403,不会因为前端算错就放行。
+ */
+export async function deleteComment(slug: string, id: string): Promise<void> {
+  const params = new URLSearchParams({ slug, id })
+  const res = await fetch(`${commentsUrl()}?${params.toString()}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: octoDocHeaders({ Accept: 'application/json' }),
+  })
+  if (!res.ok) throw new Error(`octo-doc deleteComment failed: ${res.status}`)
+}
+
+/**
  * Create a comment (root or reply) on a published doc.
  *
  * Body matches the frozen octo-doc contract: {slug, text, version, parent_id?, anchor?}. The
@@ -173,12 +194,21 @@ export async function createComment(
   if (input.parentId != null) body.parent_id = input.parentId
   else if (input.anchor != null) body.anchor = input.anchor
 
-  const res = await fetch(commentsUrl(), {
-    method: 'POST',
-    credentials: 'include',
-    headers: octoDocHeaders({ 'Content-Type': 'application/json', Accept: 'application/json' }),
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) throw new Error(`octo-doc createComment failed: ${res.status}`)
-  return (await res.json()) as CreateCommentResponse
+  // ★ 创建走 **docs-backend** 的转发路由,不再直连 octo-doc。
+  //
+  // 评论仍然存在 octo-doc(转发过去的),但必须让 docs-backend 在链路上 —— 「@bot 让它改
+  // 文档」需要有人识别 mention 并把任务入队,而识别 + 可靠上报(重试/退避/幂等/UTF-8 截断)
+  // 的实现只在 docs-backend 有。直连时它压根不在链路上,HTML 文档永远等不到 Bot。
+  //
+  // 读(listComments)仍然直连 octo-doc:读不需要识别 mention,多绕一跳只是白加延迟和一个
+  // 可能挂的环节。
+  //
+  // 用 apiClient 而不是裸 fetch:它带 /api/v1 基址,全局拦截器注入 octo token —— 而
+  // docs-backend 正是拿这个 token 转发给 octo-doc 去判作者权限的(它没有 token 就只能回
+  // 401,而不是拿服务身份替用户写)。
+  const { data } = await apiClient().post<CreateCommentResponse>(
+    `/docs/html/${encodeURIComponent(slug)}/comments`,
+    body,
+  )
+  return data
 }

@@ -1,4 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+
+// 创建走 docs-backend 的转发路由(apiClient),读仍然直连 octo-doc。这两条用例的主题是
+// 「视图交给数据层的 version / anchor 对不对」,所以桩数据层,别再断言 POST 的 fetch。
+// 显式标注入参类型:不标的话 vi.fn 会把 mock.calls 推成空元组,读 calls[0]![1] 直接 TS2493。
+const createCommentMock = vi.hoisted(() =>
+  vi.fn<(slug: string, input: Record<string, unknown>) => Promise<{ id: string }>>(async () => ({
+    id: 'new1',
+  })),
+)
+vi.mock('./htmlDocComments.ts', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./htmlDocComments.ts')>()),
+  createComment: createCommentMock,
+}))
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
 import {
   HtmlDocView,
@@ -11,6 +24,28 @@ import {
 } from './HtmlDocView.tsx'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
+
+// 评论输入框已换成共享的 MentionComposer(tiptap),`@` 才能弹提及下拉 —— 裸 textarea
+// 打不出 `@[user:uid:label]` token,@Bot 那条链路就没有入口。tiptap 在 jsdom 里不响应
+// fireEvent.change,照既有做法桩成 textarea 并**转发 placeholder**(用例靠它定位)。
+vi.mock('../mentions/MentionComposer.tsx', () => ({
+  MentionComposer: ({
+    initialBody = '',
+    placeholder,
+    onChange,
+  }: {
+    initialBody?: string
+    placeholder?: string
+    onChange: (body: string) => void
+  }) => (
+    <textarea
+      className="octo-comment-input"
+      placeholder={placeholder}
+      defaultValue={initialBody}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  ),
+}))
 
 // HtmlDocView fetches the published octo-doc HTML from a SEPARATE backend, so we stub the
 // global fetch (not the octoweb apiClient) — mirroring the component's raw-fetch design.
@@ -66,6 +101,8 @@ async function waitForFrame(container: HTMLElement): Promise<HTMLIFrameElement> 
 
 beforeEach(() => {
   sessionStorage.clear()
+  createCommentMock.mockClear()
+  createCommentMock.mockResolvedValue({ id: 'new1' })
   delete (window as unknown as { __OCTO_DOC_BASE__?: unknown }).__OCTO_DOC_BASE__
   ;(window as unknown as { __OCTO_HTML_SOURCE_DIFF_ENABLED__?: boolean }).__OCTO_HTML_SOURCE_DIFF_ENABLED__ = true
 })
@@ -617,7 +654,7 @@ describe('HtmlDocView — read-only rendering', () => {
 
     fireEvent.click(screen.getByText('docs.comment.clearAnchor'))
 
-    expect(screen.getByTestId('pending-anchor').textContent).toContain('docs.comment.targetDoc')
+    expect(screen.getByTestId('pending-anchor').textContent).toContain('docs.comment.wholeDoc')
     expect(screen.getByTestId('pending-anchor').textContent).not.toContain('#a2')
   })
 
@@ -650,22 +687,16 @@ describe('HtmlDocView — read-only rendering', () => {
     fireEvent.change(input, { target: { value: 'anchored note' } })
     fireEvent.click(screen.getByText('docs.comment.send'))
 
-    await waitFor(() => {
-      const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST')
-      expect(post).toBeTruthy()
-    })
-    const post = spy.mock.calls.find((c) => (c[1] as RequestInit)?.method === 'POST') as unknown as [
-      string,
-      RequestInit
-    ]
-    const body = JSON.parse(String(post[1].body))
+    await waitFor(() => expect(createCommentMock).toHaveBeenCalled())
+    const created = createCommentMock.mock.calls[0]![1] as Record<string, unknown>
+    // 读仍然直连 octo-doc,所以列表那一发照旧断言裸 fetch。
     expect(
       spy.mock.calls.some(([url, init]) =>
         (init?.method ?? 'GET') === 'GET' && String(url).includes('/v1/comments?slug=slug-1&version=latest')
       )
     ).toBe(true)
-    expect(body.version).toBe(4)
-    expect(body.anchor).toMatchObject({ kind: 'element', aid: 'a3' })
+    expect(created.version).toBe(4)
+    expect(created.anchor).toMatchObject({ kind: 'element', aid: 'a3' })
   })
 })
 
@@ -834,9 +865,8 @@ describe('HtmlDocView — header parity (presence / comments / members / more)',
     fireEvent.change(screen.getByPlaceholderText('docs.comment.placeholder'), { target: { value: 'version note' } })
     fireEvent.click(screen.getByText('docs.comment.send'))
 
-    await waitFor(() => expect(spy.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(true))
-    const post = spy.mock.calls.find(([, init]) => init?.method === 'POST') as unknown as [string, RequestInit]
-    expect(JSON.parse(String(post[1].body)).version).toBe(3)
+    await waitFor(() => expect(createCommentMock).toHaveBeenCalled())
+    expect((createCommentMock.mock.calls[0]![1] as Record<string, unknown>).version).toBe(3)
   })
 
   it('hides the member button entirely for a non-author viewer', async () => {

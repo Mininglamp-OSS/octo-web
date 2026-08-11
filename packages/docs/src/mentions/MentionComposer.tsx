@@ -9,12 +9,15 @@ import { useRef } from 'react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
+import type { Role } from '../auth/roles.ts'
 import { buildMention } from '../editor/mention.ts'
 import { bodyToDoc, docToBody, type JSONNode } from './composerDoc.ts'
 
 export function MentionComposer({
   initialBody = '',
+  docId,
   spaceId,
+  role,
   placeholder,
   autoFocus,
   onChange,
@@ -23,7 +26,15 @@ export function MentionComposer({
 }: {
   /** Read ONCE for the initial content (edit mode passes the existing token body). */
   initialBody?: string
+  /**
+   * The document being commented on. Required for Bot candidates to appear AT ALL: a Bot is only
+   * offerable when it holds writer+ on THIS document, so omitting it lists no Bot (fail closed)
+   * — see mentions/botCandidates.ts.
+   */
+  docId?: string
   spaceId?: string
+  /** Current document role — gates whether Bot candidates appear in the @ menu. Omit → no bots. */
+  role?: Role
   placeholder?: string
   autoFocus?: boolean
   /** Fires on every edit with the token-string body (same shape a textarea's value had). */
@@ -39,6 +50,10 @@ export function MentionComposer({
   // and onChange always see the latest parent state (otherwise keyboard-submit fires stale/empty body).
   const cb = useRef({ onChange, onSubmit, onCancel })
   cb.current = { onChange, onSubmit, onCancel }
+  // Same freeze applies to `role`: buildMention reads it through a thunk at first-@ time, so a role
+  // that lands after mount is still honoured without remounting the editor (which would lose the draft).
+  const roleRef = useRef(role)
+  roleRef.current = role
 
   const editor = useEditor(
     {
@@ -59,7 +74,7 @@ export function MentionComposer({
           code: false,
         }),
         Placeholder.configure({ placeholder: placeholder ?? '' }),
-        buildMention({ spaceId }),
+        buildMention({ spaceId, docId, getRole: () => roleRef.current }),
       ],
       content: bodyToDoc(initialBody),
       autofocus: autoFocus ? 'end' : false,
@@ -87,7 +102,7 @@ export function MentionComposer({
       },
       onUpdate: ({ editor: ed }) => cb.current.onChange(docToBody(ed.getJSON() as JSONNode)),
     },
-    [spaceId],
+    [spaceId, docId],
   )
 
   return (

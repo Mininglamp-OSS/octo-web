@@ -763,6 +763,10 @@ export function HtmlDocView({
             <HtmlDocCommentPanel
               docId={docId}
               space={space}
+              // 必须传:`@` 下拉里的 Bot 分组要 writer+ 才会列出来,拿不到角色就一个都不列
+              // (fail closed),那样「@Bot 让它改这篇文档」这条路等于没开。
+              role={resolvedRole ?? undefined}
+              names={names}
               mayComment={mayComment}
               mayEdit={mayEdit}
               slug={effectiveSlug}

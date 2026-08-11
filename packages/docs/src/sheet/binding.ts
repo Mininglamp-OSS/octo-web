@@ -914,6 +914,17 @@ export class UniverYjsBinding {
     const wb = this.workbook()
     if (!wb) return []
     const created: string[] = []
+    // Which sheet the LOCAL viewer is looking at, captured BEFORE we touch the sheet set so it can
+    // be restored at the end (see the restore block below). Univer's `FWorkbook.insertSheet()`
+    // deliberately activates the sheet it just created (it issues a `SetWorksheetActiveOperation`
+    // right after `InsertSheetCommand`), so every sheet this reconcile materializes steals the
+    // viewport. This function only ever runs on a REMOTE-driven path — the initial join in
+    // runInitialSync() and the sheetList observer (which returns early on `transaction.local`) —
+    // so that activation is never something the local user asked for. Two visible bugs came out of
+    // it: (1) opening a multi-sheet doc landed on the LAST tab (all sheets after the reused first
+    // one are inserted here) instead of the first, which reads as "nothing loaded" when that tab is
+    // empty; (2) a peer adding a sheet yanked everyone else's viewport onto it mid-edit.
+    const activeBefore = wb.getActiveSheet()?.getSheetId() ?? null
     this.applyingRemote = true
     try {
       // Desired order: registry entries sorted by `order`. `sheetList` is a public remote Y.Map
@@ -982,6 +993,27 @@ export class UniverYjsBinding {
         }
       }
       void localIdx
+      // Restore the viewer's active tab. The active sheet is per-VIEWER state, not document state:
+      // it is not in the Y.Doc at all, and `sheet.operation.set-worksheet-active` is absent from
+      // every TRIGGER_IDS set, so switching tabs has never replicated — this only undoes the
+      // collateral activation from insertSheet() above. Done inside the try so `applyingRemote` is
+      // still set (the activation must not be mistaken for a local edit) and via the facade's
+      // setActiveSheet(), which issues the same Univer operation the sheet bar does.
+      //
+      // Fallbacks, in order: the sheet that was active before; else the FIRST tab in registry order
+      // (the reorder pass above has already put the tabs in that order). "First" — not "last", and
+      // not "first non-empty" — matches Excel/Sheets behaviour for a doc with no saved view state,
+      // and keeps a two-sheet doc opening on the sheet whose content the author put first.
+      const liveIds = wb.getSheets().map((s) => s.getSheetId())
+      const target = (activeBefore && liveIds.includes(activeBefore) ? activeBefore : null) ?? liveIds[0] ?? null
+      if (target && wb.getActiveSheet()?.getSheetId() !== target) {
+        try {
+          wb.setActiveSheet?.(target)
+        } catch {
+          // setActiveSheet unavailable / rejected — the tab stays where Univer left it. Cosmetic
+          // only; every id mapping and all cell content is already correct at this point.
+        }
+      }
     } finally {
       this.applyingRemote = false
     }

@@ -11,8 +11,11 @@ import {
 
 // The controller lazily loads candidates through the shared source; stub it so the target-lifecycle
 // tests below stay deterministic and offline (we drive picks directly via ctrl.pick()).
+// It calls loadMentionSources (not the items-only wrapper) because a cell mention now applies the
+// same per-document Bot eligibility rule as every other surface, and needs `botNotice` back so an
+// empty Bot section can explain itself.
 vi.mock('../mentions/source.ts', () => ({
-  loadMentionItems: vi.fn(async () => []),
+  loadMentionSources: vi.fn(async () => ({ items: [], botNotice: null })),
   filterMentionItems: (items: unknown[]) => items,
   MAX_PER_SOURCE: 8,
 }))
@@ -70,6 +73,7 @@ describe('requestSheetMentionClose (overlay dismiss → controller)', () => {
       items: [],
       query: '',
       active: 0,
+      botNotice: null,
     })
     expect(getSheetMentionState().visible).toBe(true)
     requestSheetMentionClose() // no closer set → must still hide
@@ -85,6 +89,7 @@ describe('requestSheetMentionClose (overlay dismiss → controller)', () => {
       items: [],
       query: 'q',
       active: 0,
+      botNotice: null,
     })
     const cb = vi.fn()
     const unsub = subscribeSheetMention(cb)

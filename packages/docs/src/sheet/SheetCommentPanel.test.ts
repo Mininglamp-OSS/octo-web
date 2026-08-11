@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, fireEvent, cleanup, waitFor, within } from '@testing-library/react'
 import { createElement } from 'react'
-import { cellMatches, parseCell, SheetCommentPanel, type SheetCell } from './SheetCommentPanel.tsx'
+import { cellMatches, parseCell, SheetCommentPanel, type SheetCell, WHOLE_SHEET_ANCHOR_KEY, isWholeSheetThread } from './SheetCommentPanel.tsx'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
 import type { UseDocComments } from '../comments/useDocComments.ts'
@@ -12,6 +12,20 @@ import type { CollabSheet } from './CollabSheet.ts'
 // Locks the cross-sheet active-thread selection contract: highlighting a thread must match
 // the logical sheet id, not just row/col. Regression guard for the panel active-thread path
 // (SheetCommentPanel onActiveCell + focusCell effects), the sibling of the overlay ghosting bug.
+/**
+ * 编辑 / 删除已从底部按钮挪进右键菜单,所以断言它们之前必须先把菜单打开。
+ *
+ * 菜单项是 role=menuitem(显式 role 覆盖隐式的 button),所以断言要按 menuitem 查。
+ * 这让「不该有」的断言反而更强:菜单**开着**时该项仍然不存在,才真的说明权限挡住了 ——
+ * 而不是「按钮恰好还没渲染」。scope 传某一行的容器,可以只开那一行的菜单(嵌套的回复
+ * 有自己的菜单)。
+ */
+function openCommentMenu(scope: HTMLElement | Document = document): void {
+  const body = scope.querySelector('.octo-comment-body')
+  if (!body) throw new Error('openCommentMenu: 找不到 .octo-comment-body')
+  fireEvent.contextMenu(body)
+}
+
 describe('cellMatches — sheet-scoped active-thread selection', () => {
   const on = (row: number, col: number, sheetId: string): SheetCell => ({ row, col, sheetId })
 
@@ -169,16 +183,21 @@ describe('SheetCommentPanel — compose entry button (XIN-1337)', () => {
   it('shows an always-clickable entry button, not the compose box, before composing', () => {
     renderPanel(makeSheet({ key: 'default!0:0', a1: 'A1', sheetId: 'default' }))
     // Entry button (mirrors CommentBubble: "💬 <commentButton>") is present and NOT disabled…
-    const entry = screen.getByRole('button', { name: /docs\.comment\.commentButton/ }) as HTMLButtonElement
+    const entry = screen.getByRole('button', { name: /💬 docs\.comment\.commentButton/ }) as HTMLButtonElement
     expect(entry).toBeTruthy()
     expect(entry.disabled).toBe(false)
-    // …and the composer is hidden until the user clicks the entry button.
-    expect(document.querySelector('.octo-mention-composer')).toBeNull()
+    // …and the **cell** composer is hidden until the user clicks the entry button。
+    // 注意作用域:底部的「全表评论」输入框是常驻的(对齐文档侧),所以不能断言「页面上没有
+    // 任何 .octo-mention-composer」—— 那会把全表那个也算进来。只看 footer 之外的。
+    const cellComposers = Array.from(document.querySelectorAll('.octo-mention-composer')).filter(
+      (el) => !el.closest('.octo-drawer-comment-composer'),
+    )
+    expect(cellComposers).toHaveLength(0)
   })
 
   it('reveals the composer + submit button when the entry button is clicked', () => {
     renderPanel(makeSheet({ key: 'default!0:0', a1: 'A1', sheetId: 'default' }))
-    fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.commentButton/ }))
+    fireEvent.click(screen.getByRole('button', { name: /💬 docs\.comment\.commentButton/ }))
     // The rich MentionComposer now renders (replaced the plain <textarea> when @-mention landed;
     // it exposes the same octo-comment-input surface via a contenteditable, plus the mention class).
     expect(document.querySelector('.octo-mention-composer')).not.toBeNull()
@@ -189,13 +208,13 @@ describe('SheetCommentPanel — compose entry button (XIN-1337)', () => {
 
   it('disables the entry button while the sheet is not connected', () => {
     renderPanel(null)
-    const entry = screen.getByRole('button', { name: /docs\.comment\.commentButton/ }) as HTMLButtonElement
+    const entry = screen.getByRole('button', { name: /💬 docs\.comment\.commentButton/ }) as HTMLButtonElement
     expect(entry.disabled).toBe(true)
   })
 
   it('submit label reads "Comment A1" when a cell is selected (seeded from live selection)', () => {
     renderPanel(makeSheet({ key: 'default!4:2', a1: 'C5', sheetId: 'default' }))
-    fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.commentButton/ }))
+    fireEvent.click(screen.getByRole('button', { name: /💬 docs\.comment\.commentButton/ }))
     // Seeded on mount from getActiveCellRef → label carries the A1 ref, not the generic fallback.
     expect(screen.getByRole('button', { name: /docs\.sheet\.comment\.menu C5/ })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /docs\.sheet\.comment\.current/ })).toBeNull()
@@ -203,7 +222,7 @@ describe('SheetCommentPanel — compose entry button (XIN-1337)', () => {
 
   it('falls back to the generic "current cell" label when no cell is selected', () => {
     renderPanel(makeSheet(null))
-    fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.commentButton/ }))
+    fireEvent.click(screen.getByRole('button', { name: /💬 docs\.comment\.commentButton/ }))
     expect(screen.getByRole('button', { name: /docs\.sheet\.comment\.current/ })).toBeTruthy()
   })
 })
@@ -221,7 +240,7 @@ describe('SheetCommentPanel — four-role permission matrix', () => {
 
   it('reader: no compose entry and no reply button (view-only), thread still rendered', () => {
     renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'reader')
-    expect(screen.queryByRole('button', { name: /docs\.comment\.commentButton/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: /💬 docs\.comment\.commentButton/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /docs\.comment\.reply/ })).toBeNull()
     expect(screen.queryByRole('button', { name: /docs\.comment\.resolve/ })).toBeNull()
     // The comment body is still visible — reader can read.
@@ -230,7 +249,7 @@ describe('SheetCommentPanel — four-role permission matrix', () => {
 
   it('commenter: compose entry + reply present, but no resolve/reopen (cannot edit body)', () => {
     renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'commenter')
-    expect(screen.getByRole('button', { name: /docs\.comment\.commentButton/ })).toBeTruthy()
+    expect(screen.getByRole('button', { name: /💬 docs\.comment\.commentButton/ })).toBeTruthy()
     expect(screen.getByRole('button', { name: /docs\.comment\.reply/ })).toBeTruthy()
     expect(screen.queryByRole('button', { name: /docs\.comment\.resolve/ })).toBeNull()
   })
@@ -238,35 +257,49 @@ describe('SheetCommentPanel — four-role permission matrix', () => {
   // Body-edit is writer-level (PATCH contract = author + writer); a commenter author keeps delete.
   it('commenter author: no edit button on own comment, but delete stays', () => {
     renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'commenter')
-    expect(screen.queryByRole('button', { name: /docs\.comment\.edit/ })).toBeNull()
-    expect(screen.getByRole('button', { name: /docs\.comment\.delete/ })).toBeTruthy()
+    openCommentMenu()
+    openCommentMenu()
+    expect(screen.queryByRole('menuitem', { name: /docs\.comment\.edit/ })).toBeNull()
+    openCommentMenu()
+    openCommentMenu()
+    expect(screen.getByRole('menuitem', { name: /docs\.comment\.delete/ })).toBeTruthy()
   })
 
   it('writer author: edit + delete both present on own comment', () => {
     renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'writer')
-    expect(screen.getByRole('button', { name: /docs\.comment\.edit/ })).toBeTruthy()
-    expect(screen.getByRole('button', { name: /docs\.comment\.delete/ })).toBeTruthy()
+    openCommentMenu()
+    openCommentMenu()
+    expect(screen.getByRole('menuitem', { name: /docs\.comment\.edit/ })).toBeTruthy()
+    openCommentMenu()
+    openCommentMenu()
+    expect(screen.getByRole('menuitem', { name: /docs\.comment\.delete/ })).toBeTruthy()
   })
 
   // Backend #147: DELETE requires the commenter floor, so a reader author must not see soft-delete.
   it('reader author: no delete button (soft-delete needs commenter floor)', () => {
     renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), 'reader')
-    expect(screen.queryByRole('button', { name: /docs\.comment\.delete/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /docs\.comment\.edit/ })).toBeNull()
+    openCommentMenu()
+    openCommentMenu()
+    expect(screen.queryByRole('menuitem', { name: /docs\.comment\.delete/ })).toBeNull()
+    openCommentMenu()
+    openCommentMenu()
+    expect(screen.queryByRole('menuitem', { name: /docs\.comment\.edit/ })).toBeNull()
   })
 
   it('admin author: own delete stays soft', async () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const remove = vi.fn(async () => ({ ok: true, error: null }))
     renderPanel(sheet(), makeComments({ threads: [commentThread(1)], remove }), 'admin')
-    fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.delete/ }))
+    openCommentMenu()
+    openCommentMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: /docs\.comment\.delete/ }))
     await waitFor(() => expect(remove).toHaveBeenCalledWith(1, false))
   })
 
   for (const role of ['writer', 'admin'] as const) {
     it(`${role}: compose entry + reply + resolve all present`, () => {
       renderPanel(sheet(), makeComments({ threads: [commentThread(1)] }), role)
-      expect(screen.getByRole('button', { name: /docs\.comment\.commentButton/ })).toBeTruthy()
+      expect(screen.getByRole('button', { name: /💬 docs\.comment\.commentButton/ })).toBeTruthy()
       expect(screen.getByRole('button', { name: /docs\.comment\.reply/ })).toBeTruthy()
       expect(screen.getByRole('button', { name: /docs\.comment\.resolve/ })).toBeTruthy()
     })
@@ -302,7 +335,9 @@ describe('SheetCommentPanel — runtime downgrade closes open composers', () => 
 
   it('writer->commenter closes an open edit composer on own comment', () => {
     const { rerender } = renderPanel(cell(), makeComments({ threads: [commentThread(1)] }), 'writer')
-    fireEvent.click(screen.getByRole('button', { name: /docs\.comment\.edit/ }))
+    openCommentMenu()
+    openCommentMenu()
+    fireEvent.click(screen.getByRole('menuitem', { name: /docs\.comment\.edit/ }))
     expect(screen.getByRole('button', { name: /docs\.comment\.save/ })).toBeTruthy()
     rerender(
       createElement(SheetCommentPanel, {
@@ -313,7 +348,9 @@ describe('SheetCommentPanel — runtime downgrade closes open composers', () => 
       }),
     )
     expect(screen.queryByRole('button', { name: /docs\.comment\.save/ })).toBeNull()
-    expect(screen.queryByRole('button', { name: /docs\.comment\.edit/ })).toBeNull()
+    openCommentMenu()
+    openCommentMenu()
+    expect(screen.queryByRole('menuitem', { name: /docs\.comment\.edit/ })).toBeNull()
   })
 })
 
@@ -340,7 +377,8 @@ describe('SheetCommentPanel — mutation failures', () => {
     const row2 = screen.getByText('A2').closest('li')!
     const row3 = screen.getByText('A3').closest('li')!
 
-    fireEvent.click(within(row1).getByRole('button', { name: 'docs.comment.delete' }))
+    openCommentMenu(row1)
+    fireEvent.click(within(row1).getByRole('menuitem', { name: 'docs.comment.delete' }))
     expect((await within(row1).findByRole('alert')).textContent).toBe('Delete A1 failed.')
     expect(within(row2).queryByRole('alert')).toBeNull()
     expect(within(row3).queryByRole('alert')).toBeNull()
@@ -354,5 +392,36 @@ describe('SheetCommentPanel — mutation failures', () => {
     await waitFor(() => expect(within(row3).getByRole('alert').textContent).toBe('Reopen A3 failed.'))
     expect(resolve).toHaveBeenCalledWith(2, true)
     expect(resolve).toHaveBeenCalledWith(3, false)
+  })
+})
+
+describe('SheetCommentPanel — 全表评论', () => {
+  // 表格原来只能对**选中的单元格**评论(没选就报「请先选择单元格」),于是「这张表整体有个
+  // 问题」或「@Bot 帮我改整张表」压根没有入口 —— 文档侧早就有底部那条「📄 全文」。
+  it('always offers the whole-sheet composer, even with no cell selected', () => {
+    renderPanel(makeSheet(null))
+    const footer = document.querySelector('.octo-drawer-comment-composer')
+    expect(footer).not.toBeNull()
+    // 它不依赖选区,所以不该藏在「先选个单元格」后面 —— 输入框直接就在。
+    expect(footer!.querySelector('.octo-mention-composer')).not.toBeNull()
+  })
+
+  it('hides the whole-sheet composer from a reader', () => {
+    renderPanel(makeSheet(null), makeComments(), 'reader')
+    expect(document.querySelector('.octo-drawer-comment-composer')).toBeNull()
+  })
+
+  it('anchors a whole-sheet comment so it never resolves to a cell', () => {
+    // 关键:哨兵值**不能含 `!`**。parseCell 用 `!` 拆 sheetId 和 row:col,含 `!` 会被解析成
+    // 某个具体单元格,于是全表评论会在一个随机格子上画出标记。
+    expect(WHOLE_SHEET_ANCHOR_KEY).not.toContain('!')
+    expect(parseCell(btoa(WHOLE_SHEET_ANCHOR_KEY))).toBeNull()
+  })
+
+  it('treats an empty anchorText as whole-sheet (same rule as the doc side)', () => {
+    expect(isWholeSheetThread({ anchorText: '' })).toBe(true)
+    expect(isWholeSheetThread({ anchorText: '   ' })).toBe(true)
+    expect(isWholeSheetThread({ anchorText: null })).toBe(true)
+    expect(isWholeSheetThread({ anchorText: 'E8' })).toBe(false)
   })
 })

@@ -11,6 +11,7 @@
 //                 renders its OWN search box and owns query/active locally. Select appends a token.
 
 import type { MentionItem } from '../mentions/source.ts'
+import type { BotNotice } from '../mentions/botCandidates.ts'
 
 export type SheetMentionMode = 'inline' | 'button'
 
@@ -26,9 +27,25 @@ export interface SheetMentionState {
   /** 'inline' only: query + highlighted row driven by the controller's cell key stream. */
   query: string
   active: number
+  /**
+   * Why the Bot section is empty, captured by the SAME load that produced `items` so the two can
+   * never disagree. It has to travel through the bridge because the grouped panel must EXPLAIN an
+   * absent Bot section rather than leave a silent gap (which reads as a broken feature) — see
+   * mentions/mentionMenu.ts.
+   */
+  botNotice: BotNotice | null
 }
 
-const EMPTY: SheetMentionState = { visible: false, mode: 'inline', x: 0, y: 0, items: [], query: '', active: 0 }
+const EMPTY: SheetMentionState = {
+  visible: false,
+  mode: 'inline',
+  x: 0,
+  y: 0,
+  items: [],
+  query: '',
+  active: 0,
+  botNotice: null,
+}
 
 let state: SheetMentionState = EMPTY
 const listeners = new Set<() => void>()

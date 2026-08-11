@@ -2299,7 +2299,9 @@ export function BoardShell(props: BoardShellProps): ReactElement {
               190,
             )}
             dark={dark}
+            docId={docId}
             spaceId={space}
+            role={role}
             comments={comments}
             onClose={() => setInlineCommentTarget(null)}
           />

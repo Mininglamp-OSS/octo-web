@@ -15,6 +15,7 @@ import type {
   ApiRequestConfig,
   ApiResponse,
   MittBusLite,
+  MyBotLite,
   OpenDocForwardOptions,
   SpaceMemberLite,
   WKAppShape,
@@ -279,6 +280,38 @@ export async function fetchSpaceBotSnapshots(spaceId: string): Promise<SpaceMemb
 interface HostMyBot {
   uid: string
   name?: string
+  /**
+   * Creator uid. The host has used both spellings across endpoints, and it may be absent
+   * entirely — read defensively, never required (see MyBotLite for why it is label-only).
+   */
+  creator_uid?: string
+  creatorUid?: string
+  /** One-line bot description ("通用文档修改"); `remark` is the host's alternate spelling. */
+  description?: string
+  remark?: string
+  /**
+   * Activity. The host has no single convention here, so every plausible spelling is probed and
+   * an ABSENT value stays absent (unknown ≠ offline). `status` is a string ('online'/'offline')
+   * on the endpoints that have it; `online`/`active` appear as booleans or 0/1.
+   */
+  status?: string
+  online?: boolean | number
+  active?: boolean | number
+}
+
+/**
+ * Normalise the host's several "is this bot up?" spellings into a tri-state.
+ *
+ * Returns `undefined` when the payload says NOTHING about activity — the caller must then treat
+ * the bot as usable. Mapping a missing field to `false` would render every candidate disabled.
+ */
+function readBotOnline(b: HostMyBot): boolean | undefined {
+  if (typeof b.status === 'string' && b.status) return b.status.toLowerCase() === 'online'
+  if (typeof b.online === 'boolean') return b.online
+  if (typeof b.online === 'number') return b.online === 1
+  if (typeof b.active === 'boolean') return b.active
+  if (typeof b.active === 'number') return b.active === 1
+  return undefined
 }
 
 /**
@@ -296,12 +329,17 @@ interface HostMyBot {
  * doc's space; omit it to list all friend agents.
  *
  * Returns `{ uid, name, isBot: true }` triples (name falls back to the uid so an agent with no
- * display name is never blank). It deliberately does NOT stamp `safeStandalone`: friendship is not a
- * grant-trust provenance, so a friend Bot owned by someone else must never be independently
- * grantable off this list. Resolves to an EMPTY list on a non-array body; callers wrap the call in
+ * display name is never blank), each carrying the OPTIONAL `creatorUid` / `description` / `online`
+ * extras when the host sent them (see MyBotLite) — the @-mention candidate row reads those to label
+ * the relationship, show the one-line description and disable an offline bot. Fields the host
+ * omitted stay absent rather than becoming `undefined`/`false`, so "unknown" is distinguishable
+     * omitted stay absent rather than becoming `undefined`/`false`, so "unknown" is distinguishable
+     * from "offline". It deliberately does NOT stamp `safeStandalone`: friendship is not a
+     * grant-trust provenance, so a friend Bot owned by someone else must never be independently
+     * grantable off this list. Resolves to an EMPTY list on a non-array body; callers wrap the call in
  * `.catch(() => [])` so a my_bots failure never breaks the human-member roster path.
  */
-export async function fetchMyBots(spaceId?: string): Promise<SpaceMemberLite[]> {
+export async function fetchMyBots(spaceId?: string): Promise<MyBotLite[]> {
   const path = spaceId
     ? `/robot/my_bots?space_id=${encodeURIComponent(spaceId)}`
     : '/robot/my_bots'
@@ -309,7 +347,16 @@ export async function fetchMyBots(spaceId?: string): Promise<SpaceMemberLite[]> 
   const bots = Array.isArray(data) ? data : []
   return bots
     .filter((b): b is HostMyBot => !!b && !!b.uid)
-    .map((b) => ({ uid: b.uid, name: b.name || b.uid, isBot: true }))
+    .map((b) => {
+      const lite: MyBotLite = { uid: b.uid, name: b.name || b.uid, isBot: true }
+      const creator = b.creator_uid || b.creatorUid
+      if (creator) lite.creatorUid = creator
+      const description = b.description || b.remark
+      if (description) lite.description = description
+      const online = readBotOnline(b)
+      if (online != null) lite.online = online
+      return lite
+    })
 }
 
 /** Minimal view of a `/robot/owned_bots` entry the docs "new HTML" picker reads. */

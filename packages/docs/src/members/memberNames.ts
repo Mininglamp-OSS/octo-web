@@ -20,6 +20,18 @@
 import { fetchAllSpaceMembers, fetchSpaceBotNames } from '../octoweb/index.ts'
 
 const cache = new Map<string, Promise<Map<string, string>>>()
+/** 每个 spaceId 上次成功组装的时刻,用来让缓存过期。 */
+const fetchedAt = new Map<string, number>()
+
+/**
+ * 名字表的有效期。与 mentions/sourceCache.ts、members/botUids.ts 取同一个值。
+ *
+ * 原来是**永久缓存**:在一个新 Bot 创建之前打开过页面,这张表里就永远没有它的名字 ——
+ * 界面于是把它的 uid 直接显示出来(实测:AI 卡片标题显示 `27xnumudu8yb5fe4970_bot`
+ * 而不是 `test22`)。三层缓存(候选列表 / Bot 名册 / 名字表)是同一个毛病,必须一起过期,
+ * 否则会出现「下拉里有名字、卡片上是 uid」这种半新半旧的状态。
+ */
+const TTL_MS = 30_000
 
 /**
  * Resolve the uid → display-name map for a space (cached per spaceId). Always resolves; on a
@@ -28,7 +40,7 @@ const cache = new Map<string, Promise<Map<string, string>>>()
 export function getSpaceMemberNames(spaceId: string): Promise<Map<string, string>> {
   if (!spaceId) return Promise.resolve(new Map<string, string>())
   const cached = cache.get(spaceId)
-  if (cached) return cached
+  if (cached && Date.now() - (fetchedAt.get(spaceId) ?? 0) < TTL_MS) return cached
   const pending = Promise.all([
     // Human/self-created-bot names from the space-member source.
     fetchAllSpaceMembers(spaceId).then(
@@ -41,7 +53,11 @@ export function getSpaceMemberNames(spaceId: string): Promise<Map<string, string
   ]).then(([members, bots]) => {
     // Transient failure of the member list: forget it so a later open retries instead of
     // caching "no names". We still merge whatever bot names we got for this render.
-    if (members === null) cache.delete(spaceId)
+    if (members === null) {
+      cache.delete(spaceId)
+      // 时间戳一起清:留着的话下次取会因为「还新鲜」而复用这份缺名字的结果。
+      fetchedAt.delete(spaceId)
+    }
     const map = new Map<string, string>()
     for (const m of members ?? []) {
       if (m.uid) map.set(m.uid, m.name || m.uid)
@@ -56,10 +72,14 @@ export function getSpaceMemberNames(spaceId: string): Promise<Map<string, string
     return map
   })
   cache.set(spaceId, pending)
+  // ★ 在**发起时**记时间戳,不是等 resolve 之后 —— 否则「第一次还在飞、紧接着第二次调用」
+  // 会因为时间戳还是空的而判成过期,又打一次请求(测试 caches per space 正是钉这个)。
+  fetchedAt.set(spaceId, Date.now())
   return pending
 }
 
 /** Test/util hook: drop all cached maps (e.g. between tests or after a space switch). */
 export function clearMemberNameCache(): void {
   cache.clear()
+  fetchedAt.clear()
 }

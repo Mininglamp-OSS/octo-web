@@ -47,6 +47,8 @@ import { Bookmark } from './Bookmark.ts'
 import type { Extensions } from '@tiptap/core'
 import type * as Y from 'yjs'
 import type { HocuspocusProvider } from '@hocuspocus/provider'
+// Type-only: the @-mention Bot gate reads the live role through a thunk (see BuildExtensionsOptions).
+import type { Role } from '../auth/roles.ts'
 
 // KaTeX stylesheet — required for the math nodes (SCHEMA_VERSION 13) to render. katex is
 // installed at the repo root (katex ^0.16.45); the CSS is imported once here so both the live
@@ -143,10 +145,17 @@ export interface BuildExtensionsOptions {
   docId: string
   /** Current space id — scopes the @people mention source (SCHEMA_VERSION 10). */
   spaceId?: string
+  /**
+   * LIVE role reader for the @-mention source's Bot gate. A THUNK, not a value: the extension list
+   * is built once per editor, while the role arrives with the collab-token response and can change
+   * at runtime; the mention sources load lazily on the first `@`, so the thunk is read late enough
+   * to see the current role. Omit → no Bot candidates (fail closed).
+   */
+  getRole?: () => Role | undefined
 }
 
 export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
-  const { ydoc, provider, user, docId, spaceId } = opts
+  const { ydoc, provider, user, docId, spaceId, getRole } = opts
   return [
     StarterKit.configure({
       undoRedo: false, // MUST be off — yUndo handles collaborative history (v3 renamed `history`).
@@ -284,7 +293,7 @@ export function buildExtensions(opts: BuildExtensionsOptions): Extensions {
     buildEmoji(),
     // SCHEMA-SPEC §10 (SCHEMA_VERSION 10): @-mention node. Two sources (@people via the seam,
     // @docs via docsApi.listDocs) merged into one '@' menu; clicking a doc mention navigates.
-    buildMention({ spaceId }),
+    buildMention({ spaceId, docId, getRole }),
     // SCHEMA-SPEC §11 (SCHEMA_VERSION 11): collapsible details — three nodes landed together
     // (details > detailsSummary + detailsContent). Register all three; Details is the wrapper.
     Details.configure({ persist: true, HTMLAttributes: { class: 'octo-details' } }),

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { listComments, createComment, formatCommentTime } from './htmlDocComments.ts'
+import { setWKApp, getWKApp } from '../octoweb/index.ts'
+import { createMockWKApp } from '../octoweb/mock.ts'
 
 // octo-doc comments live in a SEPARATE backend (same deployment as the published HTML), reached
 // by raw credentialed fetch — so we stub the global fetch and assert URL/credentials/body, NOT
@@ -49,53 +51,74 @@ describe('listComments (octo-doc backend)', () => {
   })
 })
 
-describe('createComment (octo-doc backend)', () => {
-  it('POSTs <base>/v1/comments with {slug,text,version,anchor} and credentials', async () => {
-    const spy = stubFetch(() => jsonResponse({ id: 'new1' }))
+describe('createComment — 走 docs-backend 的转发路由', () => {
+  // 创建**不再直连 octo-doc**:必须让 docs-backend 在链路上,否则没人识别 @bot、没人入队,
+  // HTML 文档永远等不到 Bot(见 htmlDocComments.ts createComment 的说明)。
+  // 读仍然直连,所以上面 listComments 那几条继续断言裸 fetch。
+  function stubApiPost(impl: (path: string, body: unknown) => unknown) {
+    const post = vi.fn(async (path: string, body: unknown) => ({ data: impl(path, body) }))
+    setWKApp(createMockWKApp() as never)
+    const wk = getWKApp() as unknown as { apiClient: { post: typeof post } }
+    wk.apiClient.post = post
+    return post
+  }
+
+  it('POSTs /docs/html/<slug>/comments with {text,version,anchor}', async () => {
+    const post = stubApiPost(() => ({ id: 'new1' }))
     const res = await createComment('my-slug', {
       text: 'please fix',
       version: 3,
       anchor: { kind: 'element', aid: 'a42', selector: '[data-odoc-aid="a42"]', label: 'p' },
     })
     expect(res.id).toBe('new1')
-    expect(String(spy.mock.calls[0][0])).toBe('https://od.test/v1/comments')
-    const init = spy.mock.calls[0][1] as RequestInit
-    expect(init.method).toBe('POST')
-    expect(init.credentials).toBe('include')
-    const body = JSON.parse(String(init.body))
+    expect(post.mock.calls[0]![0]).toBe('/docs/html/my-slug/comments')
+    const body = post.mock.calls[0]![1] as Record<string, unknown>
     expect(body).toMatchObject({
-      slug: 'my-slug',
       text: 'please fix',
       version: 3,
       anchor: { kind: 'element', aid: 'a42' },
     })
-    // No parent_id when not a reply.
     expect(body.parent_id).toBeUndefined()
   })
 
+  it('percent-encodes the slug into the path', async () => {
+    // slug 进了 URL 路径,不编码的话带 / 或 # 的 slug 会把路由切错。
+    const post = stubApiPost(() => ({ id: 'x' }))
+    await createComment('a/b c', { text: 't', version: 1 })
+    expect(post.mock.calls[0]![0]).toBe('/docs/html/a%2Fb%20c/comments')
+  })
+
   it('drops anchor when parentId is set (exclusive reply contract)', async () => {
-    const spy = stubFetch(() => jsonResponse({ id: 'r2' }))
+    // 这条契约没变,只是换了传输:回复只带 parent_id,根评论只带 anchor,
+    // 绝不能同时出现(octo-doc 会按歧义拒掉)。
+    const post = stubApiPost(() => ({ id: 'r2' }))
     await createComment('s', {
       text: 'reply',
       version: 4,
       parentId: 'c1',
       anchor: { kind: 'element', aid: 'a1', selector: '[data-odoc-aid="a1"]' },
     })
-    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string)
+    const body = post.mock.calls[0]![1] as Record<string, unknown>
     expect(body.parent_id).toBe('c1')
     expect(body.anchor).toBeUndefined()
   })
 
   it('includes parent_id and omits anchor for a reply', async () => {
-    const spy = stubFetch(() => jsonResponse({ id: 'r1' }))
+    const post = stubApiPost(() => ({ id: 'r1' }))
     await createComment('s', { text: 'reply', version: 4, parentId: 'c1' })
-    const body = JSON.parse(String((spy.mock.calls[0][1] as RequestInit).body))
+    const body = post.mock.calls[0]![1] as Record<string, unknown>
     expect(body.parent_id).toBe('c1')
     expect(body.anchor).toBeUndefined()
   })
 
-  it('throws on a non-ok response', async () => {
-    stubFetch(() => jsonResponse(null, false, 500))
+  it('propagates a failure instead of swallowing it', async () => {
+    // apiClient 对非 2xx 自己抛。这条钉住我们没有把它吞成「成功但没 id」——
+    // 那会让用户以为评论发出去了。
+    setWKApp(createMockWKApp() as never)
+    const wk = getWKApp() as unknown as { apiClient: { post: unknown } }
+    wk.apiClient.post = vi.fn(async () => {
+      throw new Error('403')
+    })
     await expect(createComment('s', { text: 'x', version: 4 })).rejects.toThrow()
   })
 })

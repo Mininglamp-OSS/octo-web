@@ -20,6 +20,7 @@ import { useMemo, type CSSProperties } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
 import { getVersionState } from '../versions/api.ts'
+import type { BotDiffHint } from '../versions/botEditForThread.ts'
 import { VersionHistoryPanel } from '../versions/VersionHistoryPanel.tsx'
 import type { CollabSheet } from './CollabSheet.ts'
 
@@ -162,15 +163,24 @@ function SheetDiffList({ from, to }: { from: CellMap; to: CellMap }) {
   const diff = useMemo(() => diffCells(from, to), [from, to])
   if (diff.length === 0) return <p className="octo-comment-empty">{t('docs.sheet.version.noDiff')}</p>
   return (
-    <ul className="octo-sheet-diff-list" style={{ maxHeight: '52vh', overflow: 'auto', margin: 0, padding: 0, listStyle: 'none' }}>
+    // 颜色和类名走 CSS,不再内联写死。原来三个 kind 是硬编码 hex:
+    //   added #16a34a / removed #dc2626 / changed **#d97706**(amber-600)
+    // 「修改」被涂成黄褐色 —— 用户实测报「那块儿颜色是黄色的,不是应该绿色或红色吗」。
+    // 而且三个都不跟主题走、跟文档侧的 DiffView 也不是一套色(那边是 --wk-color-success
+    // #41cd59 / --wk-color-error #f54a45)。同一个产品里「改动」的颜色语言必须一致。
+    // 「修改」归到红+绿的组合语义(旧值 → 新值),用中性次要色标签 + 两侧值分别红/绿,
+    // 而不是自造第三种颜色。
+    <ul className="octo-sheet-diff-list">
       {diff.map((d) => (
-        <li key={d.a1} style={{ padding: '3px 4px', borderBottom: '1px solid #eee', fontSize: 12 }}>
-          <span style={{ fontWeight: 600, marginRight: 6 }}>{d.a1}</span>
-          <span style={{ color: d.kind === 'added' ? '#16a34a' : d.kind === 'removed' ? '#dc2626' : '#d97706' }}>
+        <li key={d.a1} className={`octo-sheet-diff-row is-${d.kind}`}>
+          <span className="octo-sheet-diff-cell">{d.a1}</span>
+          <span className="octo-sheet-diff-kind">
             {d.kind === 'added' ? t('docs.sheet.version.added') : d.kind === 'removed' ? t('docs.sheet.version.removed') : t('docs.sheet.version.changed')}
           </span>
-          <span style={{ marginLeft: 8, opacity: 0.75 }}>
-            {d.from || t('docs.sheet.version.emptyCell')} → {d.to || t('docs.sheet.version.emptyCell')}
+          <span className="octo-sheet-diff-values">
+            <span className="octo-sheet-diff-before">{d.from || t('docs.sheet.version.emptyCell')}</span>
+            {' → '}
+            <span className="octo-sheet-diff-after">{d.to || t('docs.sheet.version.emptyCell')}</span>
           </span>
         </li>
       ))}
@@ -184,6 +194,7 @@ export function SheetVersionPanel({
   sheet,
   names,
   onClose,
+  botDiffHint,
 }: {
   docId: string
   role: Role
@@ -191,9 +202,12 @@ export function SheetVersionPanel({
   sheet: CollabSheet | null
   names?: Map<string, string>
   onClose?: () => void
+  /** 见 VersionHistoryPanel 的同名 prop:从评论卡片跳过来时用它直接打开对应 Diff。 */
+  botDiffHint?: BotDiffHint | null
 }) {
   return (
     <VersionHistoryPanel<CellMap, CellMap>
+      botDiffHint={botDiffHint}
       docId={docId}
       role={role}
       names={names}

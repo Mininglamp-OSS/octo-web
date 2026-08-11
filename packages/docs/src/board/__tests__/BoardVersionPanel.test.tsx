@@ -87,6 +87,18 @@ import { BoardVersionPanel } from '../BoardVersionPanel.tsx'
 const btnByText = (root: ParentNode, text: string) =>
   Array.from(root.querySelectorAll('button')).find((b) => b.textContent === text) as HTMLButtonElement
 
+/**
+ * 恢复 / 重命名已从行上挪进右键菜单(行上只留「查看 Diff」+「删除」),所以要先右键。
+ * 只改「怎么拿到那个按钮」,权限断言的含义未变。
+ */
+const openRowMenu = (row: Element) => fireEvent.contextMenu(row)
+const rowMenuItem = (row: Element, text: string) => {
+  openRowMenu(row)
+  return Array.from(document.querySelectorAll('.octo-comment-ctx-item')).find(
+    (b) => b.textContent === text,
+  ) as HTMLButtonElement | undefined
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
 })
@@ -145,7 +157,8 @@ describe('BoardVersionPanel — thin adapter over VersionHistoryPanel', () => {
     const promptSpy = vi.spyOn(window, 'prompt')
     await renderPanel('admin')
     const row = document.querySelector('.octo-version-row') as HTMLElement // NAMED row (seq 7)
-    fireEvent.click(btnByText(row, 'docs.version.rename'))
+    fireEvent.contextMenu(row)  // 恢复/重命名已挪进右键菜单
+    fireEvent.click(rowMenuItem(row, 'docs.version.rename')!)
     const input = row.querySelector('input.octo-uid') as HTMLInputElement
     expect(input).toBeTruthy()
     expect(promptSpy).not.toHaveBeenCalled()
@@ -181,7 +194,8 @@ describe('BoardVersionPanel — thin adapter over VersionHistoryPanel', () => {
     await renderPanel('admin')
     const row = document.querySelector('.octo-version-row') as HTMLElement
     // Clicking Restore opens the shell's in-panel confirm box (not a native window.confirm).
-    fireEvent.click(btnByText(row, 'docs.version.restore'))
+    fireEvent.contextMenu(row)  // 恢复/重命名已挪进右键菜单
+    fireEvent.click(rowMenuItem(row, 'docs.version.restore')!)
     const confirm = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
     fireEvent.click(btnByText(confirm, 'docs.version.restore'))
     await waitFor(() => expect(restoreVersion).toHaveBeenCalledWith('bd_1', 7))
@@ -191,7 +205,8 @@ describe('BoardVersionPanel — thin adapter over VersionHistoryPanel', () => {
   it('surfaces the board 413 payload-too-large message on restore (versionErrorKey)', async () => {
     restoreVersion.mockRejectedValueOnce({ response: { status: 413, data: {} } })
     await renderPanel('admin')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row') as HTMLElement, 'docs.version.restore'))
+    fireEvent.contextMenu(document.querySelector('.octo-version-row') as HTMLElement)  // 恢复/重命名已挪进右键菜单
+    fireEvent.click(rowMenuItem(document.querySelector('.octo-version-row') as HTMLElement, 'docs.version.restore')!)
     const confirm = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
     fireEvent.click(btnByText(confirm, 'docs.version.restore'))
     await screen.findByText('docs.board.version.errTooLarge')
@@ -200,7 +215,8 @@ describe('BoardVersionPanel — thin adapter over VersionHistoryPanel', () => {
   it('surfaces the board 403 forbidden message on restore (versionErrorKey)', async () => {
     restoreVersion.mockRejectedValueOnce({ response: { status: 403, data: { error: 'epoch_changed' } } })
     await renderPanel('admin')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row') as HTMLElement, 'docs.version.restore'))
+    fireEvent.contextMenu(document.querySelector('.octo-version-row') as HTMLElement)  // 恢复/重命名已挪进右键菜单
+    fireEvent.click(rowMenuItem(document.querySelector('.octo-version-row') as HTMLElement, 'docs.version.restore')!)
     const confirm = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
     fireEvent.click(btnByText(confirm, 'docs.version.restore'))
     await screen.findByText('docs.board.version.errForbidden')
@@ -227,9 +243,11 @@ describe('BoardVersionPanel — thin adapter over VersionHistoryPanel', () => {
     await renderPanel('reader')
     const row = document.querySelector('.octo-version-row') as HTMLElement
     expect(btnByText(row, 'docs.version.preview')).toBeTruthy()
-    expect(btnByText(row, 'docs.version.restore')).toBeUndefined()
+    fireEvent.contextMenu(row)  // 恢复/重命名已挪进右键菜单
+    expect(rowMenuItem(row, 'docs.version.restore')).toBeUndefined()
     expect(btnByText(row, 'docs.version.delete')).toBeUndefined()
-    expect(btnByText(row, 'docs.version.rename')).toBeUndefined()
+    fireEvent.contextMenu(row)  // 恢复/重命名已挪进右键菜单
+    expect(rowMenuItem(row, 'docs.version.rename')).toBeUndefined()
     // No "save current version" affordance for a reader.
     expect(btnByText(document.body, 'docs.version.saveCurrent')).toBeUndefined()
   })
@@ -238,8 +256,10 @@ describe('BoardVersionPanel — thin adapter over VersionHistoryPanel', () => {
     await renderPanel('writer')
     const row = document.querySelector('.octo-version-row') as HTMLElement
     expect(btnByText(document.body, 'docs.version.saveCurrent')).toBeTruthy()
-    expect(btnByText(row, 'docs.version.rename')).toBeTruthy()
-    expect(btnByText(row, 'docs.version.restore')).toBeUndefined()
+    fireEvent.contextMenu(row)  // 恢复/重命名已挪进右键菜单
+    expect(rowMenuItem(row, 'docs.version.rename')).toBeTruthy()
+    fireEvent.contextMenu(row)  // 恢复/重命名已挪进右键菜单
+    expect(rowMenuItem(row, 'docs.version.restore')).toBeUndefined()
     expect(btnByText(row, 'docs.version.delete')).toBeUndefined()
   })
 
@@ -247,7 +267,8 @@ describe('BoardVersionPanel — thin adapter over VersionHistoryPanel', () => {
     await renderPanel('admin')
     // The mutation itself succeeds; only the follow-up list refresh fails (transient network).
     listVersions.mockRejectedValueOnce(new Error('network'))
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row') as HTMLElement, 'docs.version.restore'))
+    fireEvent.contextMenu(document.querySelector('.octo-version-row') as HTMLElement)  // 恢复/重命名已挪进右键菜单
+    fireEvent.click(rowMenuItem(document.querySelector('.octo-version-row') as HTMLElement, 'docs.version.restore')!)
     const confirm = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
     fireEvent.click(btnByText(confirm, 'docs.version.restore'))
     await waitFor(() => expect(restoreVersion).toHaveBeenCalledWith('bd_1', 7))

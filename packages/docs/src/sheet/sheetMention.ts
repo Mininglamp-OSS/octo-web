@@ -17,9 +17,11 @@
 
 import {
   type MentionItem,
-  loadMentionItems,
+  loadMentionSources,
   filterMentionItems,
 } from '../mentions/source.ts'
+import type { BotNotice } from '../mentions/botCandidates.ts'
+import type { Role } from '../auth/roles.ts'
 import {
   setSheetMentionState,
   hideSheetMention,
@@ -84,7 +86,14 @@ export class SheetCellMention {
   private query = ''
   private active = 0
   private items: MentionItem[] = []
+  private botNotice: BotNotice | null = null
   private cache: Promise<MentionItem[]> | null = null
+  /**
+   * The role `cache` was computed under (`null` = role had not resolved yet). Compared on every
+   * load so an unresolved-role result is never reused, and a role change invalidates the cache.
+   * See `load()` for why this matters — without it the owner gets a permanent 「当前权限不能 @Bot」.
+   */
+  private cacheRole: Role | null = null
   private target: { row: number; col: number } | null = null
   private pos = { x: 0, y: 0 }
   private disposed = false
@@ -101,6 +110,12 @@ export class SheetCellMention {
      *  chip would become a misleading local-only phantom. Defaults to always-allowed for callers
      *  that don't pass it (tests / non-collab). CollabSheet passes `() => canEdit(currentRole)`. */
     private readonly canEditNow: () => boolean = () => true,
+    /** The document this sheet IS. Required for a Bot to be offerable at all — its eligibility is
+     *  per-document (mentions/botCandidates.ts). Absent → zero Bots, never "every Bot". */
+    private readonly docId: string = '',
+    /** Live role of the CALLER, read as a thunk so a runtime downgrade is honoured without
+     *  rebuilding the controller. Absent/undefined → no Bot candidates (fail closed). */
+    private readonly getRole: () => Role | undefined = () => undefined,
   ) {
     // NOTE: the ribbon-button opener + overlay select handler are module-level singletons, so they
     // are registered by SheetView keyed on the LIVE sheet instance (see wireCellMention) — NOT here.
@@ -126,14 +141,39 @@ export class SheetCellMention {
   }
 
   private load(): Promise<MentionItem[]> {
-    if (!this.cache) {
-      this.cache = loadMentionItems(this.spaceId).catch(() => [])
-      void this.cache.then((items) => {
-        this.items = items
-        if (this.open) this.push()
+    // The role arrives ASYNCHRONOUSLY (collab token), so the first `@` in a freshly opened sheet can
+    // run before it lands. `canMentionBot` fails closed on an unknown role — correct in itself — but
+    // caching that answer turns "not asked yet" into a PERMANENT "当前权限不能 @Bot", even for the
+    // document owner. So key the cache on the role and drop it when the role changes: an unresolved
+    // role never sticks, and a runtime DOWNGRADE (writer→reader) still takes effect immediately,
+    // which is why getRole() is a thunk in the first place.
+    const role = this.getRole() ?? null
+    if (this.cache && this.cacheRole === role) return this.cache
+
+    this.cacheRole = role
+    // loadMentionSources (not the items-only wrapper) because a cell mention must obey the SAME
+    // Bot eligibility rule as every other surface: docId decides whether a Bot may act HERE, the
+    // caller's role decides whether they may dispatch work at all, and the returned notice is what
+    // explains an empty Bot section. Passing neither used to list every space member the host
+    // returned — including Bots with no permission on this document, which 403'd on dispatch.
+    const pending = loadMentionSources(this.spaceId, {
+      ...(this.docId ? { docId: this.docId } : {}),
+      ...(role != null ? { role } : {}),
+    })
+      .then((res) => {
+        this.botNotice = res.botNotice
+        return res.items
       })
-    }
-    return this.cache
+      .catch(() => [])
+    this.cache = pending
+    void pending.then((items) => {
+      // A newer role may have superseded this request while it was in flight; only the latest
+      // applies, otherwise a slow unresolved-role fetch could overwrite the resolved one.
+      if (this.cache !== pending) return
+      this.items = items
+      if (this.open) this.push()
+    })
+    return pending
   }
 
   // ── inline trigger (type `@` in a cell) ─────────────────────────────────────
@@ -288,6 +328,7 @@ export class SheetCellMention {
       items: this.items,
       query: this.query,
       active: this.active,
+      botNotice: this.botNotice,
     })
   }
 

@@ -9,6 +9,7 @@ import { StatusBar } from './StatusBar.tsx'
 import { PresenceBar } from './PresenceBar.tsx'
 import { MemberPanel } from '../members/MemberPanel.tsx'
 import { VersionPanel } from '../versions/VersionPanel.tsx'
+import type { BotDiffHint } from '../versions/botEditForThread.ts'
 import { CommentPanel } from '../comments/CommentPanel.tsx'
 import { CommentBubble } from '../comments/CommentBubble.tsx'
 import { useDocComments, useRefreshCommentsOnOpen } from '../comments/useDocComments.ts'
@@ -322,6 +323,8 @@ export function EditorShell(props: EditorShellProps) {
   // replacing the three independent show* booleans.
   const [activePanel, setActivePanel] = useState<DrawerPanel>(null)
   const [activeCommentId, setActiveCommentId] = useState<number | null>(null)
+  // 从评论卡片点「查看 Diff」时带过来的定位信息,交给版本面板去挑出对应的 Bot 快照并直接打开。
+  const [botDiffHint, setBotDiffHint] = useState<BotDiffHint | null>(null)
   // #A1: the document owner's uid, fetched from doc meta, so the member panel can mark the owner
   // row with an "Owner" badge even on a brand-new single-member (self-owned) document. Without
   // this the panel falls back to a role heuristic that never matches a fresh doc, so the badge
@@ -805,7 +808,7 @@ export function EditorShell(props: EditorShellProps) {
             {/* Selection → comment bubble is a WRITE affordance: mount only for commenter+.
                 reader may view highlights/panel but has no comment entry (fail closed). */}
             {role && canComment(role) && (
-              <CommentBubble editor={editor} onCreate={comments.createRoot} spaceId={props.space} />
+              <CommentBubble editor={editor} onCreate={comments.createRoot} docId={docId} spaceId={props.space} role={role} />
             )}
             <Outline editor={editor} />
             <div className="octo-editor-main">
@@ -822,7 +825,7 @@ export function EditorShell(props: EditorShellProps) {
         {(activePanel === 'history' || activePanel === 'comments') && (
           <aside className="octo-doc-drawer" role="complementary">
             {activePanel === 'history' && role && (
-              <VersionPanel docId={docId} role={role} editor={editor} names={names} onClose={closePanel} />
+              <VersionPanel docId={docId} role={role} editor={editor} names={names} onClose={closePanel} botDiffHint={botDiffHint} />
             )}
             {activePanel === 'comments' && role && (
               <CommentPanel
@@ -832,8 +835,16 @@ export function EditorShell(props: EditorShellProps) {
                 activeCommentId={activeCommentId}
                 onSelectComment={setActiveCommentId}
                 names={names}
+                docId={docId}
                 spaceId={props.space}
                 onClose={closePanel}
+                // 任务卡片的「查看 Diff」把抽屉切到版本记录 —— Bot 那几行本来就带 Diff 和
+                // 撤销入口。卡片内联渲染 Diff 需要猜「这条评论对应哪个安全快照」,两个任务
+                // 挨着跑就会猜错,见 AgentExecutionCard 的注释。
+                onViewBotDiff={(hint) => {
+                  setBotDiffHint(hint)
+                  setActivePanel('history')
+                }}
               />
             )}
           </aside>

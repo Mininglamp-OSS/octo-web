@@ -7,9 +7,11 @@ import {
   VersionSchemaIncompatibleError,
   VersionSchemaNewerError,
 } from './api.ts'
-import { diffDocs, type DiffEntry, type PMNode } from './diff.ts'
+import { docToBlockLocations, diffDocs, type PMNode } from './diff.ts'
+import { DiffView } from './DiffView.tsx'
+import type { BotDiffHint } from './botEditForThread.ts'
 import { VersionHistoryPanel } from './VersionHistoryPanel.tsx'
-import { t } from '../octoweb/index.ts'
+import { BotEditDiffView } from './BotEditDiffView.tsx'
 
 // Doc page size (kept from the pre-shell panel); the shell unifies the three ends at its own
 // default but honors this per-end override.
@@ -28,35 +30,7 @@ function VersionPreview({ docId, content }: { docId: string; content: PMNode }) 
   return <EditorContent editor={editor} className="octo-prose octo-version-preview" />
 }
 
-/** Block-level diff render: added / removed / changed / unchanged rows (feature #4 §1.4). */
-function DiffView({ diff }: { diff: DiffEntry[] }) {
-  if (diff.length === 1 && diff[0].type === 'too-large') {
-    return <p className="octo-version-empty">{t('docs.version.tooLarge')}</p>
-  }
-  if (diff.every((d) => d.type === 'unchanged')) {
-    return <p className="octo-version-empty">{t('docs.version.noChanges')}</p>
-  }
-  return (
-    <div className="octo-version-diff">
-      {diff.map((d, i) => {
-        if (d.type === 'changed') {
-          return (
-            <div key={i} className="octo-diff-changed">
-              <div className="octo-diff-line octo-diff-removed">- {d.before}</div>
-              <div className="octo-diff-line octo-diff-added">+ {d.after}</div>
-            </div>
-          )
-        }
-        const sign = d.type === 'added' ? '+' : d.type === 'removed' ? '-' : ' '
-        return (
-          <div key={i} className={`octo-diff-line octo-diff-${d.type}`}>
-            {sign} {d.text || ' '}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+/** Block-level diff render: moved to ./DiffView.tsx so the bot-edit diff view reuses it verbatim. */
 
 /**
  * Doc version-history drawer — now a THIN ADAPTER over the unified <VersionHistoryPanel> (XIN-840).
@@ -69,6 +43,8 @@ function DiffView({ diff }: { diff: DiffEntry[] }) {
  *   - renderPreview    → a read-only throwaway editor (VersionPreview) — never the live one,
  *   - renderDiff       → the block-level DiffView over diffDocs(version, current),
  *   - getCurrent       → the live editor's JSON (read-only) as the "current" side of a diff.
+ *   - renderBotDiff    → <BotEditDiffView> for rows that are a bot content edit's pre-edit snapshot,
+ *                        which is also where "undo this bot edit" lives (admin-only restore).
  *
  * Restore stays forward / non-destructive (the live surface reconciles via Yjs); schema-mismatch
  * restore errors keep their dedicated message via restoreErrorKey. The live `editor` is read but
@@ -80,6 +56,7 @@ export function VersionPanel({
   editor,
   names,
   onClose,
+  botDiffHint,
 }: {
   docId: string
   role: Role
@@ -88,9 +65,12 @@ export function VersionPanel({
   /** uid → display-name map (feature #7) so the author shows a name, not a raw uid. */
   names?: Map<string, string>
   onClose?: () => void
+  /** 见 VersionHistoryPanel 的同名 prop:从评论卡片跳过来时用它直接打开对应 Diff。 */
+  botDiffHint?: BotDiffHint | null
 }) {
   return (
     <VersionHistoryPanel<PMNode, PMNode>
+      botDiffHint={botDiffHint}
       docId={docId}
       role={role}
       names={names}
@@ -98,8 +78,25 @@ export function VersionPanel({
       pageSize={PAGE_SIZE}
       loadPreviewState={(seq, signal) => getVersionState(docId, seq, signal).then((r) => r.doc)}
       renderPreview={(doc) => <VersionPreview docId={docId} content={doc} />}
-      renderDiff={(version, current) => <DiffView diff={diffDocs(version, current)} />}
+      renderDiff={(version, current) => (
+        // locations 取**改前**文档:hunk 头说的是「改动落在原文哪一段」,读者拿着旧文档在找。
+        <DiffView diff={diffDocs(version, current)} locations={docToBlockLocations(version)} />
+      )}
       getCurrent={() => (editor?.getJSON() as PMNode | undefined) ?? null}
+      // Bot-edit rows get a "what did the bot change?" entry point. The seq handed over is the row's
+      // own — the PRE-edit safety snapshot — so BotEditDiffView diffs that snapshot against the live
+      // body, i.e. "before the bot edited → now". `onRestored` only tells the shell to reload the
+      // list; the undo itself (and its confirm / errors) lives in the view.
+      renderBotDiff={(v, host) => (
+        <BotEditDiffView
+          docId={docId}
+          safetyVersionSeq={v.docVersionSeq}
+          editor={editor}
+          role={role}
+          onClose={host.close}
+          onRestored={() => host.restored()}
+        />
+      )}
       restoreErrorKey={(e) =>
         e instanceof VersionSchemaIncompatibleError || e instanceof VersionSchemaNewerError
           ? 'docs.version.errorRestoreIncompatible'

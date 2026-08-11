@@ -81,6 +81,18 @@ function fakeEditor(text: string): Editor {
 const btnByText = (root: ParentNode, text: string) =>
   Array.from(root.querySelectorAll('button')).find((b) => b.textContent === text) as HTMLButtonElement
 
+/**
+ * 恢复 / 重命名已经从行上挪进右键菜单(行上只留「查看 Diff」+「删除」),所以要先右键。
+ * 只改「怎么拿到那个按钮」,权限矩阵的断言含义未变。
+ */
+const openRowMenu = (row: Element) => fireEvent.contextMenu(row)
+const rowMenuItem = (row: Element, text: string) => {
+  openRowMenu(row)
+  return Array.from(document.querySelectorAll('.octo-comment-ctx-item')).find(
+    (b) => b.textContent === text,
+  ) as HTMLButtonElement | undefined
+}
+
 beforeEach(() => {
   listVersionsMock.mockClear()
   getVersionStateMock.mockClear()
@@ -115,13 +127,16 @@ describe('VersionPanel — thin adapter over VersionHistoryPanel', () => {
   it('previews a version through getVersionState and renders the throwaway-editor preview', async () => {
     render(<VersionPanel docId="d_1" role="admin" />)
     await screen.findByText('Draft v1')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.viewBotDiff'))
     await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeTruthy())
     // Loaded via GET /versions/:seq/state for the clicked row (docId + seq forwarded).
     expect(getVersionStateMock).toHaveBeenCalled()
     expect(getVersionStateMock.mock.calls[0][0]).toBe('d_1')
     expect(getVersionStateMock.mock.calls[0][1]).toBe(7)
     const modal = document.querySelector('.docs-version-preview-modal') as HTMLElement
+    // 行上的「查看 Diff」直接进对比模式;这条断言的是一次性编辑器渲染的**预览**,先切回去。
+    await waitFor(() => expect(btnByText(modal, 'docs.version.showPreview')).toBeTruthy())
+    fireEvent.click(btnByText(modal, 'docs.version.showPreview'))
     await waitFor(() =>
       expect(modal.querySelector('[data-testid="version-preview-content"]')).toBeTruthy(),
     )
@@ -130,11 +145,10 @@ describe('VersionPanel — thin adapter over VersionHistoryPanel', () => {
   it('compares a version against the live editor JSON via the block-level diff', async () => {
     render(<VersionPanel docId="d_1" role="admin" editor={fakeEditor('current body')} />)
     await screen.findByText('Draft v1')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.viewBotDiff'))
     const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
-    await waitFor(() => expect(modal.querySelector('[data-testid="version-preview-content"]')).toBeTruthy())
-    // Toggle into compare → the real DiffView renders the historical-vs-current block diff.
-    fireEvent.click(btnByText(modal, 'docs.version.compare'))
+    // 行上的「查看 Diff」**已经**是对比模式了(不用再点 compare 切进去),真 DiffView 直接渲染
+    // 历史版本 vs 当前正文的块级 diff。
     await waitFor(() => expect(modal.querySelector('.octo-version-diff')).toBeTruthy())
     const diff = modal.querySelector('.octo-version-diff') as HTMLElement
     // 'historical body' → 'current body' is a single changed block.

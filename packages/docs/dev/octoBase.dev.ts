@@ -17,6 +17,14 @@ export {
   SpaceService,
   VoiceInputButton,
   titleContextStore,
+  // WuKongIM chat primitives the octoweb seam imports unconditionally (embedded bot-DM shell).
+  // They must be re-exported even though no harness renders the DM surface: `src/octoweb/index.ts`
+  // imports them at module scope, so a missing export breaks EVERY standalone harness with
+  // "does not provide an export named 'Channel'" before a single component mounts.
+  Channel,
+  ChannelTypePerson,
+  Conversation,
+  MAX_MESSAGE_LENGTH,
 } from "../src/__mocks__/octoBase.ts";
 export type { SpaceMember } from "../src/__mocks__/octoBase.ts";
 
@@ -72,7 +80,14 @@ export function t(key: string, values?: Record<string, unknown>): string {
   const byLocale = namespaces.get(ns) as Record<string, Tree> | undefined
   const tree = byLocale?.[locale] ?? byLocale?.['en-US']
   const hit = lookup(tree, rest)
-  return hit != null ? interpolate(hit, values) : key
+  // Production call sites use the real @octo/base signature `t(key, { values: {...} })`; some dev
+  // code passes the value bag directly. Accept BOTH — otherwise every `{{seq}}` placeholder
+  // survives into the rendered string and a dev screenshot lies about what production shows.
+  const bag =
+    values && typeof values.values === 'object' && values.values !== null
+      ? (values.values as Record<string, unknown>)
+      : values
+  return hit != null ? interpolate(hit, bag) : key
 }
 
 export function useI18n(): {

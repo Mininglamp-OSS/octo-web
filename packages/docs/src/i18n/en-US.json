@@ -541,9 +541,69 @@
     "view": "View",
     "comparePrev": "Compare with previous",
     "compareCurrent": "Compare with current",
-    "currentBadge": "Current"
+    "currentBadge": "Current",
+    "badgeBotEdit": "bot edit",
+    "botEditLabel": "{{name}} edited",
+    "botEditLabelGeneric": "Snapshot before the bot's edit",
+    "viewBotDiff": "View diff",
+    "initiatedBy": "by {{name}}",
+    "botEditDesc": "{{actor}} triggered this via @{{bot}}; the Bot’s temporary access expired the moment it finished writing.",
+    "botEditDescGeneric": "Automatic snapshot taken before a Bot edit; the Bot’s temporary access expired the moment it finished writing.",
+    "namedDesc": "Manually saved version",
+    "restoreDesc": "Automatic snapshot taken before a restore",
+    "autoDesc": "Automatically saved version"
+  },
+  "botDiff": {
+    "title": "What the bot changed",
+    "baseline": "Comparing the pre-edit snapshot #{{seq}} → the current body (“-” is before, “+” is now)",
+    "loading": "Loading the bot's changes…",
+    "errorMissing": "The pre-edit version can't be found (it may have been deleted), so these changes can't be shown.",
+    "noChanges": "No block-level changes compared with the state before the bot's edit.",
+    "revert": "Revert this",
+    "reverting": "Reverting…",
+    "revertRetry": "Retry",
+    "revertFailed": "Couldn't revert this change.",
+    "revertAll": "Undo this bot edit",
+    "revertingAll": "Undoing…",
+    "revertAllConfirmTitle": "Undo the bot's edit?",
+    "revertAllConfirmDetail": "The body is restored to its content before the bot's edit (#{{seq}}) and the current body is overwritten. No version is deleted: the current body is saved as a new version first, then a new version is created from #{{seq}}'s content.",
+    "revertAllConfirm": "Undo the edit",
+    "revertAllDone": "Undone: restored from #{{from}} and created new version #{{seq}}. The document will update shortly.",
+    "revertAllFailed": "Couldn't undo the edit. Please try again.",
+    "revertAllForbidden": "Couldn't undo: only a document admin may undo this.",
+    "revertAllMissing": "The pre-edit version can't be found (it may have been deleted), so this edit can't be undone.",
+    "revertAllNeedsAdmin": "Only a document admin can undo this bot edit.",
+    "hunkLabel": "Change {{n}}",
+    "hunkParagraph": "paragraph {{n}}",
+    "oldLineNumber": "Line before",
+    "newLineNumber": "Line after",
+    "colBefore": "Before",
+    "colAfter": "After",
+    "colContent": "Content",
+    "statusChanged": "changed",
+    "statusAdded": "added",
+    "statusRemoved": "removed",
+    "legendBefore": "before",
+    "legendAfter": "now",
+    "changeCount": "{{count}} change(s)"
   },
   "comment": {
+    "expandText": "Show more",
+    "collapseText": "Show less",
+    "botTask": {
+      "cardLabel": "Bot task",
+      "byline": "AI edit",
+      "running": "Working",
+      "noReply": "No reply",
+      "noReplyHint": "No reply from the Bot after 10 minutes. The task may not have been picked up, may have failed, or the reply was deleted — try @-mentioning it again.",
+      "repliesBelow": "The Bot's replies are listed below in order.",
+      "applied": "Done",
+      "stale": "Text changed",
+      "runningHint": "The Bot is editing the document per this comment…",
+      "appliedHint": "The Bot edited the document per this comment.",
+      "staleHint": "The quoted text changed after the Bot finished. Check the current text before keeping this edit.",
+      "viewDiff": "View the change in version history"
+    },
     "title": "Comments",
     "close": "Close",
     "loading": "Loading comments…",
@@ -622,6 +682,21 @@
         "network": "Could not delete the comment. Check your connection and try again.",
         "generic": "Failed to delete comment."
       }
+    },
+    "botBadge": "Bot",
+    "anchorUpdated": "Quote updated",
+    "anchorChanged": "Quote changed — please review",
+    "anchorInvalid": "Original quote is gone",
+    "emptyFiltered": "Nothing matches this filter. Select text to comment, or comment on the whole doc below.",
+    "wholeDoc": "Whole doc",
+    "wholeDocLabel": "Whole-document comment box",
+    "wholeDocPlaceholder": "Write a comment; @Bot can edit the body…",
+    "submitHint": "⌘ + Enter to send",
+    "filter": {
+      "label": "Comment type",
+      "all": "All comments",
+      "human": "Comments",
+      "bot": "Bot edits"
     }
   },
   "time": {
@@ -863,7 +938,19 @@
     "mention": {
       "menu": "Mention",
       "search": "Search members or docs…",
-      "empty": "No matches"
+      "empty": "No matches",
+      "groupBot": "Bot",
+      "groupMember": "Members",
+      "groupDoc": "Documents",
+      "botBadge": "Bot",
+      "botRelationCreator": "Created by you",
+      "botRelationFriend": "Shared by a friend",
+      "botOffline": "Offline",
+      "botNoPermission": "Your current permission cannot @Bot",
+      "botRoleUnknown": "Checking permissions…",
+      "botNoneAvailable": "No bots you created or that a friend shared",
+      "botNoneWithDocAccess": "No bot has edit access to this document",
+      "botPermissionUnknown": "Can't confirm bot permissions for this document right now — try again"
     },
     "protect": {
       "editPermission": "Edit permission",
@@ -1077,5 +1164,19 @@
     },
     "copySection": "Copy this section",
     "pitfallPartial": "Send only what you actually changed — never rewrite the whole body: a wholesale rewrite SUCCEEDS (no error) yet scrambles collaborators' cursors and destroys every comment anchor; and without the base-version token you silently overwrite someone else's edit, which the server will not stop."
+  },
+  "mention": {
+    "groupBot": "Bots",
+    "groupMember": "People",
+    "groupDoc": "Documents",
+    "botBadge": "Bot",
+    "botRelationCreator": "created by you",
+    "botRelationFriend": "shared by a friend",
+    "botOffline": "offline",
+    "botNoPermission": "Your role cannot @Bot",
+    "botRoleUnknown": "Checking permissions…",
+    "botNoneAvailable": "No Bot you created or a friend shared with you",
+    "botNoneWithDocAccess": "None of your Bots can edit this document",
+    "botPermissionUnknown": "Document permissions are unreadable right now, so no Bot can be listed"
   }
 }

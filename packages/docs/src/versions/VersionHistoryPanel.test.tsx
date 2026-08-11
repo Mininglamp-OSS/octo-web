@@ -1,3 +1,5 @@
+import type { VersionMeta } from './api.ts'
+import type { BotDiffHint } from './botEditForThread.ts'
 import { StrictMode } from 'react'
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
@@ -28,9 +30,26 @@ const AUTO = {
   schemaVersion: 1,
   restoredFrom: null,
 }
+/** Bot 改前的安全快照。判据见 botEdit.ts:kind='restore-marker' + label 精确命中白名单。 */
+const BOT_SNAPSHOT: VersionMeta = {
+  docVersionSeq: 7,
+  kind: 'restore-marker' as const,
+  label: 'Auto-safety before sheet edit',
+  createdBy: 'bot_1',
+  createdAt: '2026-06-20T09:00:00.000Z',
+  sizeBytes: 500,
+  schemaVersion: 1,
+  restoredFrom: null,
+}
 const COUNTS = { auto: 5, manual: 2, restore: 1, total: 8 }
 
-const defaultListImpl = async (_docId: unknown, opts?: { kind?: string; cursor?: number | null }) => {
+/** 显式标注返回类型:不标的话 mock 的签名会被字面量推窄成「只可能是 auto 行」,
+ *  往里塞 restore-marker 夹具就类型不符(而运行时完全合法)。 */
+type ListResult = { items: VersionMeta[]; nextCursor: number | null; counts: typeof COUNTS }
+const defaultListImpl = async (
+  _docId: unknown,
+  opts?: { kind?: string; cursor?: number | null },
+): Promise<ListResult> => {
   if (opts?.cursor != null) return { items: [{ ...AUTO, docVersionSeq: 4 }], nextCursor: null, counts: COUNTS }
   return { items: [NAMED, AUTO], nextCursor: 100, counts: COUNTS }
 }
@@ -67,6 +86,7 @@ function renderPanel(
     renderDiff?: (s: PreviewState, c: string | null) => React.ReactNode
     getCurrent?: () => string | null
     onRestored?: () => void
+    botDiffHint?: BotDiffHint | null
   }> = {},
 ) {
   const loadPreviewState =
@@ -74,6 +94,7 @@ function renderPanel(
   return render(
     <VersionHistoryPanel<PreviewState, string>
       docId="d_1"
+      botDiffHint={overrides.botDiffHint ?? null}
       role={role}
       loadPreviewState={loadPreviewState}
       renderPreview={(s) => <div data-testid="preview-body">{s.body}</div>}
@@ -90,6 +111,18 @@ function renderPanel(
 
 const btnByText = (root: ParentNode, text: string) =>
   Array.from(root.querySelectorAll('button')).find((b) => b.textContent === text) as HTMLButtonElement
+
+/**
+ * 恢复 / 重命名已经从行上挪进右键菜单(行上只留「查看 Diff」+「删除」),所以要先右键。
+ * 只改「怎么拿到那个按钮」,权限矩阵的断言含义未变。
+ */
+const openRowMenu = (row: Element) => fireEvent.contextMenu(row)
+const rowMenuItem = (row: Element, text: string) => {
+  openRowMenu(row)
+  return Array.from(document.querySelectorAll('.octo-comment-ctx-item')).find(
+    (b) => b.textContent === text,
+  ) as HTMLButtonElement | undefined
+}
 
 beforeEach(() => {
   listVersionsMock.mockReset()
@@ -202,11 +235,14 @@ describe('VersionHistoryPanel — centered preview modal', () => {
     })
     await screen.findByText('Draft v1')
     expect(document.querySelector('.docs-version-preview-modal')).toBeNull()
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.viewBotDiff'))
     await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeTruthy())
     const modal = document.querySelector('.docs-version-preview-modal') as HTMLElement
     expect(modal.closest('.octo-modal-overlay')).toBeTruthy()
     expect(modal.getAttribute('role')).toBe('dialog')
+    // 行上按钮直接进对比,先切回预览再断言注入的预览视图。
+    await waitFor(() => expect(btnByText(modal, 'docs.version.showPreview')).toBeTruthy())
+    fireEvent.click(btnByText(modal, 'docs.version.showPreview'))
     await waitFor(() => expect(modal.querySelector('[data-testid="preview-body"]')?.textContent).toBe('body-7'))
     // The host received a real AbortSignal.
     expect(seen[0]).toBeInstanceOf(AbortSignal)
@@ -215,7 +251,7 @@ describe('VersionHistoryPanel — centered preview modal', () => {
   it('closes on Escape and on overlay click, but not when the dialog body is clicked', async () => {
     renderPanel()
     await screen.findByText('Draft v1')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.viewBotDiff'))
     await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeTruthy())
     // Body click does not close (stopPropagation).
     fireEvent.mouseDown(document.querySelector('.docs-version-preview-modal')!)
@@ -229,18 +265,21 @@ describe('VersionHistoryPanel — centered preview modal', () => {
     // With diff+current: toggle appears and renders the injected diff.
     renderPanel()
     await screen.findByText('Draft v1')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    // 行上的「查看 Diff」**直接进对比模式**(见 onPreview 的 startInCompare),所以 diff 先出;
+    // 要看快照本身得用弹窗里的「显示预览」切回去。
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.viewBotDiff'))
     const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
-    await waitFor(() => expect(modal.querySelector('[data-testid="preview-body"]')).toBeTruthy())
-    const toggle = btnByText(modal, 'docs.version.compare')
+    await waitFor(() => expect(modal.querySelector('[data-testid="diff-body"]')?.textContent).toBe('body-7|CURRENT'))
+    const toggle = btnByText(modal, 'docs.version.showPreview')
     expect(toggle).toBeTruthy()
     fireEvent.click(toggle)
-    await waitFor(() => expect(modal.querySelector('[data-testid="diff-body"]')?.textContent).toBe('body-7|CURRENT'))
+    await waitFor(() => expect(modal.querySelector('[data-testid="preview-body"]')).toBeTruthy())
 
     cleanup()
     // Without diff (board case): no compare toggle.
     renderPanel('admin', { renderDiff: undefined, getCurrent: undefined })
     await screen.findByText('Draft v1')
+    // canCompare 为假 ⇒ 行上不给「查看 Diff」(点了没 diff 可看),退回纯预览。
     fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
     const modal2 = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
     await waitFor(() => expect(modal2.querySelector('[data-testid="preview-body"]')).toBeTruthy())
@@ -261,19 +300,21 @@ describe('VersionHistoryPanel — race guard', () => {
     await screen.findByText('Draft v1')
     const rows = document.querySelectorAll('.octo-version-row')
     // Preview #7 (slow), then #6 (fast) before #7 resolves.
-    fireEvent.click(btnByText(rows[0], 'docs.version.preview'))
-    fireEvent.click(btnByText(rows[1], 'docs.version.preview'))
+    fireEvent.click(btnByText(rows[0], 'docs.version.viewBotDiff'))
+    fireEvent.click(btnByText(rows[1], 'docs.version.viewBotDiff'))
     // The newer request aborted the earlier one on the wire.
     expect(signals.get(7)!.aborted).toBe(true)
     // Resolve the newer one first, then the stale earlier one.
     deferreds.get(6)!({ body: 'body-6' })
     await waitFor(() =>
-      expect(document.querySelector('[data-testid="preview-body"]')?.textContent).toBe('body-6'),
+      // 行上按钮直接进对比模式,所以看 diff-body。这条用例钉的是预览守卫(中止 + 丢弃过期
+      // 响应),跟渲染成预览还是 diff 无关。
+      expect(document.querySelector('[data-testid="diff-body"]')?.textContent).toBe('body-6|CURRENT'),
     )
     deferreds.get(7)!({ body: 'body-7' })
     // The stale #7 response is discarded — the modal still shows #6.
     await waitFor(() => {})
-    expect(document.querySelector('[data-testid="preview-body"]')?.textContent).toBe('body-6')
+    expect(document.querySelector('[data-testid="diff-body"]')?.textContent).toBe('body-6|CURRENT')
   })
 })
 
@@ -282,7 +323,7 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     const onRestored = vi.fn()
     renderPanel('admin', { onRestored })
     await screen.findByText('Draft v1')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.restore'))
+    fireEvent.click(rowMenuItem(document.querySelector('.octo-version-row')!, 'docs.version.restore')!)
     // A centered confirm box appears in-panel.
     const confirm = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
     fireEvent.click(btnByText(confirm, 'docs.version.restore'))
@@ -330,7 +371,7 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     fireEvent.mouseDown(overlay)
     await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
     // Reopen and confirm Escape cancels too (mirrors the preview modal).
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.restore'))
+    fireEvent.click(rowMenuItem(document.querySelector('.octo-version-row')!, 'docs.version.restore')!)
     await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeTruthy())
     fireEvent.keyDown(document, { key: 'Escape' })
     await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
@@ -354,14 +395,14 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
 
     // Restore confirm overlay is centered too.
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.restore'))
+    fireEvent.click(rowMenuItem(document.querySelector('.octo-version-row')!, 'docs.version.restore')!)
     box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
     expect(box.closest('.octo-modal-overlay')!.classList.contains('octo-modal-overlay--center')).toBe(true)
     fireEvent.keyDown(document, { key: 'Escape' })
     await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
 
     // Preview/diff overlay keeps its top-anchored (non-centered) behavior — no modifier.
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.viewBotDiff'))
     const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
     expect(modal.closest('.octo-modal-overlay')!.classList.contains('octo-modal-overlay--center')).toBe(false)
   })
@@ -378,7 +419,7 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     )
     renderPanel('admin')
     await screen.findByText('Draft v1')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.restore'))
+    fireEvent.click(rowMenuItem(document.querySelector('.octo-version-row')!, 'docs.version.restore')!)
     const box = await waitFor(() => document.querySelector('.octo-version-confirm') as HTMLElement)
     const overlay = box.closest('.octo-modal-overlay') as HTMLElement
 
@@ -400,7 +441,7 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     renderPanel('admin')
     await screen.findByText('Draft v1')
     const row = document.querySelector('.octo-version-row-named') as HTMLElement
-    fireEvent.click(btnByText(row, 'docs.version.rename'))
+    fireEvent.click(rowMenuItem(row, 'docs.version.rename')!)
     const input = row.querySelector('input') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'Renamed' } })
     fireEvent.click(btnByText(row, 'docs.version.save'))
@@ -412,11 +453,11 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     await screen.findByText('Draft v1')
     expect(btnByText(document.body, 'docs.version.saveCurrent')).toBeUndefined()
     const row = document.querySelector('.octo-version-row') as HTMLElement
-    expect(btnByText(row, 'docs.version.restore')).toBeUndefined()
+    expect(rowMenuItem(row, 'docs.version.restore')).toBeUndefined()
     expect(btnByText(row, 'docs.version.delete')).toBeUndefined()
-    expect(btnByText(row, 'docs.version.rename')).toBeUndefined()
+    expect(rowMenuItem(row, 'docs.version.rename')).toBeUndefined()
     // Preview stays available to readers.
-    expect(btnByText(row, 'docs.version.preview')).toBeTruthy()
+    expect(btnByText(row, 'docs.version.viewBotDiff')).toBeTruthy()
   })
 
   it('writer can save + rename but cannot restore/delete', async () => {
@@ -424,8 +465,8 @@ describe('VersionHistoryPanel — mutations & permissions', () => {
     await screen.findByText('Draft v1')
     expect(btnByText(document.body, 'docs.version.saveCurrent')).toBeTruthy()
     const row = document.querySelector('.octo-version-row-named') as HTMLElement
-    expect(btnByText(row, 'docs.version.rename')).toBeTruthy()
-    expect(btnByText(row, 'docs.version.restore')).toBeUndefined()
+    expect(rowMenuItem(row, 'docs.version.rename')).toBeTruthy()
+    expect(rowMenuItem(row, 'docs.version.restore')).toBeUndefined()
     expect(btnByText(row, 'docs.version.delete')).toBeUndefined()
   })
 })
@@ -457,5 +498,98 @@ describe('VersionHistoryPanel — StrictMode liveness (mounted-ref re-arm)', () 
     // Re-armed: onDelete runs past its `if (!mounted.current) return` gate → setConfirmDelete(null)
     // closes the box. Gated (no re-arm): ref stuck false → early return → the box never closes.
     await waitFor(() => expect(document.querySelector('.octo-version-confirm')).toBeNull())
+  })
+})
+
+describe('VersionHistoryPanel — 对比弹窗里的「撤销本次修改」', () => {
+  // 用户实测报的:表格点「查看 Diff」看到了 Bot 改了什么,却没有撤销入口。文档侧走
+  // renderBotDiff(BotEditDiffView 自带撤销),表格没有那个视图、走通用对比弹窗,于是缺口
+  // 只出现在这条退路上。
+  it('offers revert on a bot snapshot when the host has no renderBotDiff', async () => {
+    listVersionsMock.mockImplementation(async () => ({ items: [BOT_SNAPSHOT], nextCursor: null, counts: COUNTS }))
+    renderPanel('admin')
+    const botRow = await waitFor(() => {
+      const r = document.querySelector('.octo-version-row.is-bot-edit') as HTMLElement
+      expect(r).toBeTruthy()
+      return r
+    })
+    fireEvent.click(btnByText(botRow, 'docs.version.viewBotDiff'))
+    const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
+    const revert = btnByText(modal, 'docs.botDiff.revertAll')
+    expect(revert).toBeTruthy()
+
+    // 点它要走**现成的**恢复确认流程,而不是直接发请求。先关预览再开确认框,否则确认框
+    // 会被压在预览浮层下面。
+    fireEvent.click(revert)
+    await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeNull())
+    await waitFor(() => expect(btnByText(document.body, 'docs.version.restore')).toBeTruthy())
+  })
+
+  it('does not offer revert on a non-bot version', async () => {
+    // 普通版本的「恢复」是另一件事(回到某个旧版本),不该顶着「撤销 Bot 本次修改」的名字。
+    renderPanel('admin')
+    await screen.findByText('Draft v1')
+    const plainRow = Array.from(document.querySelectorAll('.octo-version-row')).find(
+      (r) => !r.classList.contains('is-bot-edit'),
+    ) as HTMLElement
+    fireEvent.click(btnByText(plainRow, 'docs.version.viewBotDiff'))
+    const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
+    expect(btnByText(modal, 'docs.botDiff.revertAll')).toBeUndefined()
+  })
+
+  it('hides revert from a role that cannot restore', async () => {
+    listVersionsMock.mockImplementation(async () => ({ items: [BOT_SNAPSHOT], nextCursor: null, counts: COUNTS }))
+    renderPanel('writer')
+    const botRow = await waitFor(() => {
+      const r = document.querySelector('.octo-version-row.is-bot-edit') as HTMLElement
+      expect(r).toBeTruthy()
+      return r
+    })
+    fireEvent.click(btnByText(botRow, 'docs.version.viewBotDiff'))
+    const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
+    expect(btnByText(modal, 'docs.botDiff.revertAll')).toBeUndefined()
+  })
+})
+
+describe('VersionHistoryPanel — botDiffHint 自动打开对应 Diff', () => {
+  // 用户实测:评论卡片上的按钮只是把人送到版本记录,得自己再找一遍。带上「Bot + 根评论→回复
+  // 的时间窗」就能直接打开 —— 但只在唯一命中时,否则会把别人的改动展示成这条评论的结果。
+  const HINT = { botUid: 'bot_1', fromISO: '2026-08-07T09:59:00.000Z', toISO: '2026-08-07T10:01:00.000Z' }
+
+  it('opens the matching bot diff by itself', async () => {
+    const snap = { ...BOT_SNAPSHOT, createdBy: 'bot_1', createdAt: '2026-08-07T10:00:00.000Z' }
+    listVersionsMock.mockImplementation(async () => ({ items: [snap], nextCursor: null, counts: COUNTS }))
+    renderPanel('admin', { botDiffHint: HINT })
+    // 直接出对比弹窗,不用点任何按钮。
+    await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeTruthy())
+  })
+
+  it('does NOT auto-open when two snapshots match the window', async () => {
+    // 一条串里被追问多次就会这样。哪一次对应用户此刻问的那句分不出来,所以停在列表上。
+    const a = { ...BOT_SNAPSHOT, docVersionSeq: 7, createdBy: 'bot_1', createdAt: '2026-08-07T09:59:30.000Z' }
+    const b = { ...BOT_SNAPSHOT, docVersionSeq: 9, createdBy: 'bot_1', createdAt: '2026-08-07T10:00:30.000Z' }
+    listVersionsMock.mockImplementation(async () => ({ items: [a, b], nextCursor: null, counts: COUNTS }))
+    renderPanel('admin', { botDiffHint: HINT })
+    await waitFor(() => expect(document.querySelectorAll('.octo-version-row').length).toBe(2))
+    expect(document.querySelector('.docs-version-preview-modal')).toBeNull()
+  })
+
+  it('does not re-open after the user closes it', async () => {
+    // 自动打开只做一次。不加闩的话下一次列表刷新(轮询/分页)会把它又弹出来 —— 关不掉的弹窗。
+    const snap = { ...BOT_SNAPSHOT, createdBy: 'bot_1', createdAt: '2026-08-07T10:00:00.000Z' }
+    listVersionsMock.mockImplementation(async () => ({ items: [snap], nextCursor: null, counts: COUNTS }))
+    renderPanel('admin', { botDiffHint: HINT })
+    // waitFor 的回调里必须有断言才会重试;只 return querySelector 的话第一次拿到 null 就结束了。
+    const modal = await waitFor(() => {
+      const m = document.querySelector('.docs-version-preview-modal') as HTMLElement
+      expect(m).toBeTruthy()
+      return m
+    })
+    fireEvent.click(btnByText(modal, 'docs.version.close'))
+    await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeNull())
+    // 触发一次列表刷新:切筛选页签。
+    fireEvent.click(btnByText(document.body, 'docs.version.filterAuto'))
+    await waitFor(() => expect(listVersionsMock.mock.calls.length).toBeGreaterThan(1))
+    expect(document.querySelector('.docs-version-preview-modal')).toBeNull()
   })
 })

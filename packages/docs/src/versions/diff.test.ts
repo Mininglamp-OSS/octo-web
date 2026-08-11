@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { docToBlocks, diffBlocks, diffDocs, type PMNode } from './diff.ts'
+import { docToBlocks, docToBlockLocations, diffBlocks, diffDocs, type PMNode } from './diff.ts'
 
 function doc(...blocks: PMNode[]): PMNode {
   return { type: 'doc', content: blocks }
@@ -116,5 +116,76 @@ describe('diffDocs — end to end over PM docs', () => {
     const result = diffBlocks(a, b)
     expect(result.every((d) => d.type === 'unchanged')).toBe(true)
     expect(result).toHaveLength(50)
+  })
+})
+
+describe('docToBlockLocations', () => {
+  // hunk 头的定位。原型写「@@ 一、当前问题 · 第 3 段 @@」而不是「第 1 处」——「第几处」只说明
+  // 这是本次的第几个改动,读者真正要问的是「改到文档哪儿了」。
+  const doc: PMNode = {
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: '前言' }] },
+      { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: '一、当前问题' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'p1' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'p2' }] },
+      { type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: '二、方案原则' }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'p3' }] },
+    ],
+  }
+
+  it('lines up 1:1 with docToBlocks', () => {
+    // 两者靠同一套遍历规则走,长度必须相等 —— 错位会让 hunk 头指到别的段上,那比不显示更糟。
+    expect(docToBlockLocations(doc)).toHaveLength(docToBlocks(doc).length)
+  })
+
+  it('has no section before the first heading', () => {
+    expect(docToBlockLocations(doc)[0]).toEqual({ sectionTitle: null, ordinalInSection: 1 })
+  })
+
+  it('reports the heading itself as ordinal 0 of its own section', () => {
+    // 命中标题行的 hunk 该报这个标题,而不是上一节的尾巴。
+    expect(docToBlockLocations(doc)[1]).toEqual({ sectionTitle: '一、当前问题', ordinalInSection: 0 })
+  })
+
+  it('numbers paragraphs within their section', () => {
+    const locs = docToBlockLocations(doc)
+    expect(locs[2]).toEqual({ sectionTitle: '一、当前问题', ordinalInSection: 1 })
+    expect(locs[3]).toEqual({ sectionTitle: '一、当前问题', ordinalInSection: 2 })
+  })
+
+  it('restarts numbering at the next heading', () => {
+    const locs = docToBlockLocations(doc)
+    expect(locs[5]).toEqual({ sectionTitle: '二、方案原则', ordinalInSection: 1 })
+  })
+
+  it('counts images and rules as blocks too (they are diff lines)', () => {
+    // docToBlocks 会为它们各产生一行,这里漏掉就会整体错位。
+    const withMedia: PMNode = {
+      type: 'doc',
+      content: [
+        { type: 'heading', content: [{ type: 'text', text: 'H' }] },
+        { type: 'image', attrs: { alt: 'a' } },
+        { type: 'horizontalRule' },
+      ],
+    }
+    expect(docToBlockLocations(withMedia)).toHaveLength(docToBlocks(withMedia).length)
+    expect(docToBlockLocations(withMedia)[1]?.ordinalInSection).toBe(1)
+    expect(docToBlockLocations(withMedia)[2]?.ordinalInSection).toBe(2)
+  })
+
+  it('recurses into containers like docToBlocks does', () => {
+    const nested: PMNode = {
+      type: 'doc',
+      content: [
+        { type: 'heading', content: [{ type: 'text', text: 'H' }] },
+        {
+          type: 'bulletList',
+          content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'li' }] }] }],
+        },
+      ],
+    }
+    expect(docToBlockLocations(nested)).toHaveLength(docToBlocks(nested).length)
+    expect(docToBlockLocations(nested)[1]).toEqual({ sectionTitle: 'H', ordinalInSection: 1 })
   })
 })

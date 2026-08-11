@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import type { Role } from '../auth/roles.ts'
 import { MentionComposer } from '../mentions/MentionComposer.tsx'
 import type { UseDocComments } from '../comments/useDocComments.ts'
 import { t } from '../octoweb/index.ts'
@@ -11,7 +12,9 @@ export function BoardInlineCommentComposer({
   left,
   top,
   dark,
+  docId,
   spaceId,
+  role,
   comments,
   onClose,
 }: {
@@ -19,7 +22,14 @@ export function BoardInlineCommentComposer({
   left: number
   top: number
   dark: boolean
+  /** Doc being commented on — decides which Bots the @ menu may offer (Bot needs writer+ HERE), so
+   *  omitting it offers no Bot at all. Optional like `spaceId`, since this popover is also mounted
+   *  standalone (tests / previews) with no document context. */
+  docId?: string
   spaceId?: string
+  /** Caller's document role. Gates Bot candidates in the @ menu; omitted → no Bot (fails closed),
+   *  which is why it must be threaded through rather than left to default. */
+  role?: Role
   comments: UseDocComments
   onClose: () => void
 }) {
@@ -70,7 +80,9 @@ export function BoardInlineCommentComposer({
     >
       <div className="octo-board-inline-comment-target">{target.label}</div>
       <MentionComposer
+        docId={docId}
         spaceId={spaceId}
+        role={role}
         placeholder={t('docs.board.comment.placeholder')}
         autoFocus
         onChange={setBody}

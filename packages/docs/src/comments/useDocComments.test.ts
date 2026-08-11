@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp, type MockApiClient } from '../octoweb/mock.ts'
-import { useDocComments } from './useDocComments.ts'
+import { useDocComments, COMMENT_POLL_INTERVAL_MS } from './useDocComments.ts'
 
 let api: MockApiClient
 
@@ -866,5 +866,118 @@ describe('useDocComments — loadMore/reconcile completion ordering', () => {
     expect(api.calls.filter((call) => call.method === 'get').length - getsBefore).toBe(2)
     expect(result.current.threads).toHaveLength(50)
     expect(result.current.nextCursor).toBe(50)
+      })
+    })
+    
+describe('useDocComments — background poll picks up the Bot reply', () => {
+  // 评论没有实时通道:正文走 CRDT,评论是挂载时拉一次的 REST 列表。可执行评论整条链路
+  // 都是异步的(@Bot → 事件入队 → agent 干活 → 几十秒后 POST 回复),页面这边收不到任何
+  // 通知。没有轮询的话,Bot 改完文档、评论也发了,用户还得手动开关一次侧栏才看得见 ——
+  // 跟「Bot 没回」长得一模一样,当初就是这么被报上来的。
+  //
+  // 这几条用 `act(async () => {})` 冲洗微任务而不是 waitFor:@testing-library 的 waitFor
+  // 靠 setInterval 反复重试,而这里正要假掉 setInterval 才能推进轮询 —— 两者不能共存。
+  // mock apiClient 是同步的,冲一次微任务就够。
+  const flush = () => act(async () => {})
+
+  function withFakeInterval(): () => void {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    return () => vi.useRealTimers()
+  }
+
+  it('applies a comment that appeared server-side after mount', async () => {
+    const restore = withFakeInterval()
+    try {
+      let rows = [thread(1, 'ask the bot')]
+      api.responder = (method) =>
+        method === 'get'
+          ? { data: { items: rows, nextCursor: null }, status: 200 }
+          : { data: {}, status: 200 }
+
+      const { result } = renderHook(() => useDocComments('d_1'))
+      await flush()
+      expect(result.current.threads).toHaveLength(1)
+
+      // Bot 在别处落了一条回复,本地没有任何写操作可以触发重读。
+      rows = [thread(1, 'ask the bot'), thread(2, '已按要求改好')]
+      await act(async () => {
+        vi.advanceTimersByTime(COMMENT_POLL_INTERVAL_MS)
+      })
+      await flush()
+
+      expect(result.current.threads.map((t) => t.id)).toEqual([1, 2])
+      // 静默重读:轮询不得把面板的 spinner 打开,否则每 15 秒闪一次。
+      expect(result.current.loading).toBe(false)
+    } finally {
+      restore()
+    }
+  })
+
+  it('does not poll while the tab is hidden, and catches up on return', async () => {
+    const restore = withFakeInterval()
+    const visibility = vi.spyOn(document, 'visibilityState', 'get')
+    try {
+      api.responder = (method) =>
+        method === 'get'
+          ? { data: { items: [thread(1, 'a')], nextCursor: null }, status: 200 }
+          : { data: {}, status: 200 }
+
+      const { result } = renderHook(() => useDocComments('d_1'))
+      await flush()
+      expect(result.current.threads).toHaveLength(1)
+      const afterMount = api.calls.length
+
+      visibility.mockReturnValue('hidden')
+      await act(async () => {
+        vi.advanceTimersByTime(COMMENT_POLL_INTERVAL_MS * 3)
+      })
+      await flush()
+      expect(api.calls.length).toBe(afterMount)
+
+      // 切回前台立刻补一次,不用再等一个完整周期 —— 那正是内容最可能过期、也最显眼的时刻。
+      visibility.mockReturnValue('visible')
+      await act(async () => {
+        document.dispatchEvent(new Event('visibilitychange'))
+      })
+      await flush()
+      expect(api.calls.length).toBeGreaterThan(afterMount)
+    } finally {
+      visibility.mockRestore()
+      restore()
+    }
+  })
+
+  it('pauses polling once the reader has paginated past page 1', async () => {
+    const restore = withFakeInterval()
+    try {
+      // reconcile 只重读第一页。翻过页的人被塌回顶部,比晚几秒看到新评论更糟。
+      const page1 = Array.from({ length: 25 }, (_, i) => thread(i + 1, `c${i + 1}`))
+      let served = 0
+      api.responder = (method) => {
+        if (method !== 'get') return { data: {}, status: 200 }
+        served += 1
+        return served === 1
+          ? { data: { items: page1, nextCursor: 25 }, status: 200 }
+          : { data: { items: [thread(26, 'c26')], nextCursor: null }, status: 200 }
+      }
+
+      const { result } = renderHook(() => useDocComments('d_1'))
+      await flush()
+      expect(result.current.threads).toHaveLength(25)
+      await act(async () => {
+        await result.current.loadMore()
+      })
+      expect(result.current.threads).toHaveLength(26)
+      const afterLoadMore = api.calls.length
+
+      await act(async () => {
+        vi.advanceTimersByTime(COMMENT_POLL_INTERVAL_MS * 2)
+      })
+      await flush()
+      expect(api.calls.length).toBe(afterLoadMore)
+      expect(result.current.threads).toHaveLength(26)
+    } finally {
+      restore()
+    }
   })
 })

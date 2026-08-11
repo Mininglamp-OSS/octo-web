@@ -80,6 +80,18 @@ function fakeSheet(cells: Record<string, { v?: unknown }>): CollabSheet {
 const btnByText = (root: ParentNode, text: string) =>
   Array.from(root.querySelectorAll('button')).find((b) => b.textContent === text) as HTMLButtonElement
 
+/**
+ * 恢复 / 重命名已从行上挪进右键菜单(行上只留「查看 Diff」+「删除」),所以要先右键。
+ * 只改「怎么拿到那个按钮」,权限断言的含义未变。
+ */
+const openRowMenu = (row: Element) => fireEvent.contextMenu(row)
+const rowMenuItem = (row: Element, text: string) => {
+  openRowMenu(row)
+  return Array.from(document.querySelectorAll('.octo-comment-ctx-item')).find(
+    (b) => b.textContent === text,
+  ) as HTMLButtonElement | undefined
+}
+
 beforeEach(() => {
   listVersionsMock.mockClear()
   getVersionStateMock.mockClear()
@@ -116,13 +128,21 @@ describe('SheetVersionPanel — thin adapter over VersionHistoryPanel', () => {
   it('previews a version through getVersionState and renders the snapshot cell grid', async () => {
     render(<SheetVersionPanel docId="d_1" role="admin" sheet={fakeSheet({})} />)
     await screen.findByText('Draft v1')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.viewBotDiff'))
     await waitFor(() => expect(document.querySelector('.docs-version-preview-modal')).toBeTruthy())
     // Loaded via GET /versions/:seq/state for the clicked row (docId + seq + signal forwarded).
     expect(getVersionStateMock).toHaveBeenCalled()
     expect(getVersionStateMock.mock.calls[0][0]).toBe('d_1')
     expect(getVersionStateMock.mock.calls[0][1]).toBe(7)
     const modal = document.querySelector('.docs-version-preview-modal') as HTMLElement
+    // 行上的入口现在是「查看 Diff」,直接进对比模式 —— 想单看快照要在弹窗里切回预览。
+    // 先等切换按钮出现:弹窗刚打开时还在 loading。
+    const toPreview = await waitFor(() => {
+      const b = btnByText(modal, 'docs.version.showPreview')
+      expect(b).toBeTruthy()
+      return b
+    })
+    fireEvent.click(toPreview)
     // The sheet preview is a read-only HTML grid of the snapshot cells, not a text editor.
     await waitFor(() => expect(modal.querySelector('.octo-sheet-preview-grid')).toBeTruthy())
     expect(modal.querySelector('.octo-sheet-preview-grid')!.textContent).toContain('old')
@@ -133,11 +153,9 @@ describe('SheetVersionPanel — thin adapter over VersionHistoryPanel', () => {
     const sheet = fakeSheet({ 's1!0:0': { v: 'new' }, 's1!0:2': { v: 'same' }, 's1!0:3': { v: 'fresh' } })
     render(<SheetVersionPanel docId="d_1" role="admin" sheet={sheet} />)
     await screen.findByText('Draft v1')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.viewBotDiff'))
     const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
-    await waitFor(() => expect(modal.querySelector('.octo-sheet-preview-grid')).toBeTruthy())
-    // Toggle into compare → the sheet's cell-level diff list against the live grid.
-    fireEvent.click(btnByText(modal, 'docs.version.compare'))
+    // 「查看 Diff」已经直接落在对比模式,不用再切 —— 这正是它相对旧「预览」的意义。
     const list = await waitFor(() => modal.querySelector('.octo-sheet-diff-list') as HTMLElement)
     const rows = Array.from(list.querySelectorAll('li'))
     const byAddr = (a1: string) => rows.find((r) => r.textContent?.startsWith(a1))
@@ -155,8 +173,9 @@ describe('SheetVersionPanel — thin adapter over VersionHistoryPanel', () => {
     await screen.findByText('Draft v1')
     const row = document.querySelector('.octo-version-row') as HTMLElement
     // writer can preview + save + rename, but must NOT restore or delete (canRestoreVersion = admin).
-    expect(btnByText(row, 'docs.version.preview')).toBeTruthy()
-    expect(btnByText(row, 'docs.version.restore')).toBeUndefined()
+    expect(btnByText(row, 'docs.version.viewBotDiff')).toBeTruthy()
+    fireEvent.contextMenu(row)  // 恢复/重命名已挪进右键菜单
+    expect(rowMenuItem(row, 'docs.version.restore')).toBeUndefined()
     expect(btnByText(row, 'docs.version.delete')).toBeUndefined()
   })
 
@@ -175,7 +194,8 @@ describe('SheetVersionPanel — thin adapter over VersionHistoryPanel', () => {
     render(<SheetVersionPanel docId="d_1" role="admin" sheet={fakeSheet({})} />)
     await screen.findByText('Draft v1')
     const row = document.querySelector('.octo-version-row') as HTMLElement // NAMED row (seq 7)
-    fireEvent.click(btnByText(row, 'docs.version.rename'))
+    fireEvent.contextMenu(row)  // 恢复/重命名已挪进右键菜单
+    fireEvent.click(rowMenuItem(row, 'docs.version.rename')!)
     // An inline input appears in the row — the native prompt is never used.
     const input = row.querySelector('input.octo-uid') as HTMLInputElement
     expect(input).toBeTruthy()
@@ -202,8 +222,10 @@ describe('SheetVersionPanel — thin adapter over VersionHistoryPanel', () => {
     await screen.findByText('Draft v1')
     const rows = document.querySelectorAll('.octo-version-row')
     // Preview #7 first, then #6 — before either has resolved.
-    fireEvent.click(btnByText(rows[0] as HTMLElement, 'docs.version.preview'))
-    fireEvent.click(btnByText(rows[1] as HTMLElement, 'docs.version.preview'))
+    // 行上的入口现在叫「查看 Diff」(直接进对比模式)。这条用例只关心两次点击各自发出了
+    // 请求、以及乱序返回时的 stale-guard,走哪个入口不影响。
+    fireEvent.click(btnByText(rows[0] as HTMLElement, 'docs.version.viewBotDiff'))
+    fireEvent.click(btnByText(rows[1] as HTMLElement, 'docs.version.viewBotDiff'))
     await waitFor(() => expect(resolvers.has(7) && resolvers.has(6)).toBe(true))
     // Resolve the NEWER selection (seq 6) first, then the superseded earlier one (seq 7).
     await act(async () => {
@@ -213,6 +235,13 @@ describe('SheetVersionPanel — thin adapter over VersionHistoryPanel', () => {
       resolvers.get(7)!()
     })
     const modal = document.querySelector('.docs-version-preview-modal') as HTMLElement
+    // 入口直接进对比模式,快照网格要切回预览才渲染。
+    const toPreview = await waitFor(() => {
+      const b = btnByText(modal, 'docs.version.showPreview')
+      expect(b).toBeTruthy()
+      return b
+    })
+    fireEvent.click(toPreview)
     // The stale seq-7 response must NOT overwrite the seq-6 selection the guard now owns.
     await waitFor(() => expect(modal.querySelector('.octo-sheet-preview-grid')?.textContent).toContain('snap-6'))
     expect(modal.querySelector('.octo-sheet-preview-grid')?.textContent).not.toContain('snap-7')
@@ -235,8 +264,15 @@ describe('SheetVersionPanel — thin adapter over VersionHistoryPanel', () => {
     } as unknown as CollabSheet
     render(<SheetVersionPanel docId="d_1" role="admin" sheet={guarded} />)
     await screen.findByText('Draft v1')
-    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.preview'))
+    fireEvent.click(btnByText(document.querySelector('.octo-version-row')!, 'docs.version.viewBotDiff'))
     const modal = await waitFor(() => document.querySelector('.docs-version-preview-modal') as HTMLElement)
+    // 入口直接进对比模式,快照网格要切回预览才渲染。
+    const toPreview = await waitFor(() => {
+      const b = btnByText(modal, 'docs.version.showPreview')
+      expect(b).toBeTruthy()
+      return b
+    })
+    fireEvent.click(toPreview)
     await waitFor(() => expect(modal.querySelector('.octo-sheet-preview-grid')).toBeTruthy())
     // Preview shows the SNAPSHOT cells ('old'), never the live grid ('live') — and no write threw.
     const gridText = modal.querySelector('.octo-sheet-preview-grid')!.textContent || ''

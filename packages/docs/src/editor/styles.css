@@ -2405,13 +2405,13 @@ body.octo-row-resizing {
   margin: 0;
   padding: 0;
 }
+/* 原型的版本行是**列表行**,不是卡片:细分隔线分隔、整行淡底表达类型,没有圆角外框、
+   没有左侧色条。之前那版每行都是独立卡片(圆角 + 3px 左竖条),四行堆起来视觉噪声压过内容。 */
 .octo-version-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 8px;
-  border-radius: 8px;
-  border-left: 3px solid transparent;
+  gap: 4px;
+  padding: 12px 8px;
 }
 .octo-version-row + .octo-version-row {
   border-top: 1px solid var(--octo-border, #e5e6eb);
@@ -2419,13 +2419,8 @@ body.octo-row-resizing {
 .octo-version-row.is-selected {
   background: var(--octo-accent-weak, #f2f3f5);
 }
-/* Distinguish version kinds with a left accent bar. */
-.octo-version-row-named {
-  border-left-color: #1d7afc;
-}
-.octo-version-row-restore-marker {
-  border-left-color: #d4691e;
-}
+/* 类型区分改用 badge(命名/恢复标记)和整行淡底(Bot),不再用左侧色条 —— 见
+   .octo-version-row 的注释。 */
 /* line 1: badge + label + relative time (absolute timestamp on hover via title attr). */
 .octo-version-line1 {
   display: flex;
@@ -2479,6 +2474,52 @@ body.octo-row-resizing {
   color: #d4691e;
   border-color: #d4691e;
 }
+
+/* ── Bot-edit rows: the AI accent language borrowed from the executable-comment prototype ──────
+   The prototype expresses "an agent did this" with ONE consistent signature everywhere: the purple
+   accent (--wk-color-accent) on a low-alpha tint of itself (--wk-accent-tint-08 / --wk-ai-surface),
+   pill-shaped, never a hard fill. We reuse THIS repo's existing tokens rather than copying the
+   prototype's own variable names, so light/dark both track the host theme automatically.
+
+   WHY this exists at all: the bot-edit row was previously the LEAST prominent row in the list —
+   `.octo-version-badge-bot` had no rule, so it fell back to the muted grey `.octo-version-badge`
+   and read as disabled, while a plain human "named" row got a saturated blue badge. The row that
+   matters most looked like the row that mattered least, which is why the diff entry point could
+   not be found on screen. */
+.octo-version-badge-bot {
+  color: var(--wk-color-accent, #7f3bf5);
+  border-color: transparent;
+  background: var(--wk-accent-tint-08, rgba(127, 59, 245, 0.08));
+  font-weight: 600;
+  /* The base badge upper-cases; a mixed Latin/CJK string ("Bot 改动") reads better as authored. */
+  text-transform: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* The bot glyph inside the badge tracks the badge's own colour. */
+.octo-version-badge-bot .octo-bot-glyph {
+  width: 12px;
+  height: 12px;
+}
+/* Left accent + a whisper of tint, so the row is findable while scanning the list. Overrides the
+   orange `.octo-version-row-restore-marker` bar, which a bot row would otherwise share with a
+   HUMAN restore marker and be indistinguishable from. */
+.octo-version-row.is-bot-edit {
+  background: var(--wk-ai-surface, rgba(127, 59, 245, 0.03));
+}
+/* The diff entry leads the action row: it is the answer to the first question a bot row raises
+   ("what did it change?"), so it gets the accent treatment while its neighbours stay quiet. */
+.octo-version-bot-diff-btn {
+  color: var(--wk-color-accent, #7f3bf5);
+  border: 1px solid var(--wk-ai-border, rgba(127, 59, 245, 0.12));
+  background: var(--wk-accent-tint-08, rgba(127, 59, 245, 0.08));
+  border-radius: 6px;
+  font-weight: 600;
+}
+.octo-version-bot-diff-btn:hover {
+  background: var(--wk-accent-tint-12, rgba(127, 59, 245, 0.12));
+}
 .octo-version-actions {
   display: flex;
   flex-wrap: wrap;
@@ -2524,29 +2565,270 @@ body.octo-row-resizing {
   max-height: 50vh;
   overflow: auto;
 }
+/* ── Unified block diff (version compare + Bot-edit review) ────────────────────────────────────
+   Laid out as a code-review diff, following the executable-comment prototype's
+   `.unified-diff-module` / `.change-hunk` / `.unified-diff` design: one bordered card, a `@@ … @@`
+   header band per changed region, and a four-column row grid
+   [old line № | new line № | marker | text].
+
+   DESIGN-TOKEN RULE: the prototype's CSS variables are NOT copied. Every colour resolves through
+   this repo's existing semantic tokens (packages/dmworkbase/src/theme/semantic.css), so light/dark
+   follow the host automatically:
+     added   → --wk-color-success / --wk-color-success-bg
+     removed → --wk-color-error   / --wk-color-error-bg
+     gutter  → --wk-brand-tint-04, text → --wk-text-tertiary
+   Hex fallbacks are kept only for the harness/standalone case where the theme sheet is absent
+   (stylelint warns on literals but does not error — see stylelint.config.mjs). */
 .octo-version-diff {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  border: 1px solid var(--octo-border, #e5e6eb);
-  border-radius: 8px;
-  padding: 8px;
+  font-family: var(--wk-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+  line-height: 20px;
+  border: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-md, 8px);
+  background: var(--wk-bg-surface, #fff);
   max-height: 50vh;
   overflow: auto;
 }
+/* Summary strip: how many changes, and which glyph means which side. */
+.octo-diff-module-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-3, 12px);
+  padding: var(--wk-sp-1-5, 6px) var(--wk-sp-3, 12px);
+  border-bottom: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
+  font-family: var(--wk-font-sans, inherit);
+  font-size: 11px;
+  color: var(--wk-text-secondary, #555b61);
+}
+.octo-diff-count {
+  font-weight: var(--wk-font-semibold, 600);
+}
+.octo-diff-legend {
+  display: inline-flex;
+  gap: var(--wk-sp-2, 8px);
+  color: var(--wk-text-tertiary, #6b7075);
+}
+.octo-diff-legend-before {
+  color: var(--wk-color-error, #f54a45);
+}
+.octo-diff-legend-after {
+  color: var(--wk-color-success, #41cd59);
+}
+/* One card per changed region. */
+.octo-diff-hunk + .octo-diff-hunk {
+  border-top: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+}
+.octo-diff-hunk-head {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2, 8px);
+  min-height: 32px;
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-3, 12px);
+  border-bottom: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
+  background: var(--wk-brand-tint-04, rgba(28, 28, 35, 0.04));
+}
+.octo-diff-hunk-loc {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--wk-text-secondary, #555b61);
+  font-weight: var(--wk-font-semibold, 600);
+}
+.octo-diff-hunk-status {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 var(--wk-sp-1-5, 6px);
+  border-radius: var(--wk-r-full, 9999px);
+  font-family: var(--wk-font-sans, inherit);
+  font-size: 10px;
+  color: var(--wk-color-accent, #7f3bf5);
+  background: var(--wk-accent-tint-08, rgba(127, 59, 245, 0.08));
+}
+/* 原型 .unified-diff:等宽字体 + 12px/20px。等宽不是装饰 —— 一行行对着看改动时,
+   变宽字体会让相邻两行的同一列错开,眼睛跟不住。 */
+.octo-unified-diff {
+  padding: var(--wk-sp-2, 8px) 0;
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 12px;
+  line-height: 20px;
+}
+/* Four columns: old №, new №, marker, text. The text column is the only one that grows. */
 .octo-diff-line {
+  display: grid;
+  min-height: 28px;
+  grid-template-columns: 48px 48px 24px minmax(0, 1fr);
+  align-items: start;
+}
+.octo-diff-num,
+.octo-diff-marker {
+  padding: 4px var(--wk-sp-2, 8px);
+  color: var(--wk-text-tertiary, #6b7075);
+  text-align: right;
+  user-select: none;
+}
+.octo-diff-marker {
+  padding-right: var(--wk-sp-1, 4px);
+  padding-left: var(--wk-sp-1, 4px);
+  text-align: center;
+}
+.octo-diff-text {
+  padding: 4px var(--wk-sp-4, 16px) 4px var(--wk-sp-2, 8px);
+  color: var(--wk-text-primary, #1f2329);
   white-space: pre-wrap;
-  padding: 1px 4px;
+  word-break: break-word;
+  font: inherit;
 }
-.octo-diff-added {
-  background: #e6f4ea;
-  color: #18794e;
+.octo-diff-line.is-context .octo-diff-num,
+.octo-diff-line.is-context .octo-diff-marker {
+  background: var(--wk-brand-tint-04, rgba(28, 28, 35, 0.04));
 }
-.octo-diff-removed {
-  background: #fbe9e7;
-  color: #b3261e;
+/* ── 增删行的配色:GitHub 那套实色带 ────────────────────────────────────────
+   之前用的是主题里的 8%/10% 半透明 token(照原型的 alpha-08 / alpha-10 映射过来的)。
+   数值和原型一一对得上,但**实际渲染读不出颜色** —— 8% 的绿铺在白底上是 rgb(240,250,242),
+   和纯白差 5/255,肉眼几乎无差；用户连报三次「颜色不对」「块儿是残缺的」。
+   我也没能靠读代码找出正文列为什么没吃到行背景。
+
+   所以换掉思路:不再用半透明叠加,改成 GitHub diff 的**不透明实色**。好处是确定性 ——
+   不管底下是什么、有没有别的规则在画背景,渲染出来就是这个颜色,不会被「叠加」稀释掉。
+
+   色值取自 GitHub Primer 的 diff 配色(亮色/暗色两套),行与行号列各一档,
+   和 GitHub 一致:行号列比行本身更深,自成一条边栏。 */
+.octo-unified-diff {
+  --octo-diff-add-line: #e6ffec;
+  --octo-diff-del-line: #ffebe9;
 }
-.octo-diff-unchanged {
-  color: var(--octo-muted, #86909c);
+body[theme-mode='dark'] .octo-unified-diff {
+  --octo-diff-add-line: #12261e;
+  --octo-diff-del-line: #25171c;
+}
+/* 整行**一种**颜色,行号列不再单独深一档。
+   之前照 GitHub 给行号列上了更深的 gutter 色,结果删除行那个空的「改后」格子没吃到色,
+   色带中间断了一块(用户连报两次「残缺」)。我查不出它为什么没吃到,所以换成结构上不可能
+   出缺口的做法:颜色只由行和正文列各画一次,四个格子全部走同一个值。
+   代价是没有 GitHub 那条更深的行号边栏 —— 换一个「一定不残缺」的结果,值得。 */
+.octo-diff-added,
+.octo-diff-added .octo-diff-num,
+.octo-diff-added .octo-diff-marker,
+.octo-diff-added .octo-diff-text {
+  background: var(--octo-diff-add-line);
+}
+.octo-diff-added .octo-diff-num,
+.octo-diff-added .octo-diff-marker {
+  color: var(--wk-color-success, #41cd59);
+}
+.octo-diff-removed,
+.octo-diff-removed .octo-diff-num,
+.octo-diff-removed .octo-diff-marker,
+.octo-diff-removed .octo-diff-text {
+  background: var(--octo-diff-del-line);
+}
+.octo-diff-removed .octo-diff-num,
+.octo-diff-removed .octo-diff-marker {
+  color: var(--wk-color-error, #f54a45);
+}
+.octo-diff-unchanged .octo-diff-text {
+  color: var(--wk-text-secondary, #555b61);
+}
+/* Per-entry "revert this one" affordances, right-aligned under their hunk. */
+.octo-diff-hunk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2, 8px);
+  padding: var(--wk-sp-1, 4px) var(--wk-sp-3, 12px);
+  border-top: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
+  font-family: var(--wk-font-sans, inherit);
+}
+
+/* ── Bot-edit diff view (the "what did the Bot change?" modal) ─────────────────────────────────
+   Chrome only: the diff ROWS themselves reuse .octo-diff-* above verbatim, so the bot diff and the
+   version panel's own compare render identically. Everything here previously had NO rule at all,
+   which is why the undo control read as a caption instead of a button. */
+.docs-bot-diff-modal {
+  /* A diff needs horizontal room; the generic .octo-modal width truncates prose rows. */
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(80vh, 900px);
+  overflow: auto;
+}
+.octo-bot-diff-view {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* "对比基准：… #41 → 当前正文" — a caption, not body copy. */
+.octo-bot-diff-baseline {
+  margin: 0;
+  color: var(--octo-muted, #8a919e);
+  font-size: 12px;
+  line-height: 1.5;
+}
+/* The undo affordance. Destructive-ish and admin-only, so it is a REAL button with the AI accent
+   (it acts on the bot's edit) rather than the bare text it rendered as before. */
+.octo-bot-diff-revert-all {
+  display: flex;
+}
+.octo-bot-diff-revert-all-btn {
+  color: var(--wk-color-accent, #7f3bf5);
+  border: 1px solid var(--wk-ai-border, rgba(127, 59, 245, 0.12));
+  background: var(--wk-accent-tint-08, rgba(127, 59, 245, 0.08));
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-weight: 600;
+}
+.octo-bot-diff-revert-all-btn:hover:not(:disabled) {
+  background: var(--wk-accent-tint-12, rgba(127, 59, 245, 0.12));
+}
+.octo-bot-diff-revert-all-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+/* Inline second-confirmation box (never an overlay — this view is already inside the panel modal). */
+.octo-bot-diff-confirm {
+  border: 1px solid var(--wk-ai-border, rgba(127, 59, 245, 0.12));
+  border-radius: 8px;
+  background: var(--wk-ai-surface, rgba(127, 59, 245, 0.03));
+  padding: 10px 12px;
+}
+.octo-bot-diff-confirm > p {
+  margin: 0 0 6px;
+  font-weight: 600;
+}
+.octo-bot-diff-confirm .octo-version-confirm-detail {
+  font-weight: 400;
+  color: var(--octo-muted, #8a919e);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.octo-bot-diff-revert-all-confirm {
+  color: var(--wk-color-accent, #7f3bf5);
+  border: 1px solid var(--wk-color-accent, #7f3bf5);
+  border-radius: 6px;
+  font-weight: 600;
+}
+/* Writer-but-not-admin: explain rather than dangle a control that would 403. */
+.octo-bot-diff-revert-hint {
+  margin: 0;
+  color: var(--octo-muted, #8a919e);
+  font-size: 12px;
+}
+.octo-bot-diff-reverted {
+  margin: 0;
+  border-radius: 8px;
+  background: var(--wk-accent-tint-06, rgba(127, 59, 245, 0.06));
+  color: var(--wk-text-primary, #1f2329);
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.octo-bot-diff-empty {
+  margin: 0;
+  color: var(--octo-muted, #8a919e);
+  font-size: 13px;
 }
 
 /* Tables (SCHEMA-SPEC §4) */
@@ -2937,6 +3219,182 @@ body.octo-row-resizing {
 .octo-comment-text {
   margin: 4px 0;
   white-space: pre-wrap;
+}
+/* 长评论折叠(原型 .comment-text.is-collapsible)。行数由内联 -webkit-line-clamp 给出:
+   根评论 5 行、回复 3 行,同一个类要吃两个额度,写死在 CSS 里就得拆成两条选择器。 */
+.octo-comment-text.is-collapsed {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+}
+.octo-comment-expand {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--octo-primary, #165dff);
+  cursor: pointer;
+  font-size: 12px;
+}
+.octo-comment-expand:hover {
+  text-decoration: underline;
+}
+
+/* ── 评论右键菜单(编辑 / 删除) ─────────────────────────────────────────────
+   底部只留「解决 / 回复」,破坏性操作收进右键。用真 token 而不是写死 hex —— 上次
+   Bot 卡片就是因为引用了不存在的 --octo-ai-* 变量,实际渲染成一套不跟主题的蓝色。 */
+.octo-comment-ctx-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+.octo-comment-ctx-menu {
+  position: fixed;
+  z-index: 51;
+  min-width: 120px;
+  padding: 4px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  box-shadow: 0 4px 16px rgb(0 0 0 / 12%);
+  font-size: 13px;
+}
+.octo-comment-ctx-menu:focus {
+  outline: none;
+}
+.octo-comment-ctx-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: none;
+  color: var(--wk-text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+}
+.octo-comment-ctx-item:hover,
+.octo-comment-ctx-item:focus-visible {
+  background: var(--wk-control-secondary);
+}
+.octo-comment-ctx-item.is-danger {
+  color: var(--wk-color-error);
+}
+/* 评论体要能被键盘聚焦才收得到 ContextMenu / Shift+F10,但别给鼠标用户画一圈焦点框。 */
+.octo-comment-body:focus {
+  outline: none;
+}
+.octo-comment-body:focus-visible {
+  outline: 2px solid var(--wk-color-accent);
+  outline-offset: 2px;
+}
+
+/* ── Bot 任务卡片(原型 .agent-execution 一族) ───────────────────────────────
+   挂在 Bot 评论串顶部:谁在改 / 改到哪一步 / 改完了去哪看改动。状态只有 3 个,
+   剩下 4 个原型状态没有数据源,不渲染 —— 原因见 comments/botTask.ts。
+
+   ⚠️ 这一段只剩**布局**还生效(min-height / padding / gap / flex / 字号)。所有颜色
+   都被本文件末尾那段「Bot 卡片接原型配色」覆盖了,别按这里的颜色去推实际效果。
+   原因:下面的 var(--octo-ai-*) / var(--octo-primary) 等 8 个变量在本仓库**从未定义**
+   (grep `--octo-ai-border:` 命中 0),所以真正渲染的是写死的 hex 兜底 —— 一套蓝色,
+   而 .is-ai-edit 的边框是紫的,同一个 Bot 串会出现两种 AI 色;写死的 hex 也不跟暗色
+   主题走。末尾那段改用仓库真有的 --wk-* token(--wk-ai-border 在 dmworkbase 的
+   semantic.css 里分亮/暗两套定义),与锚点状态 pill、Bot 微标共用同一批 token。
+   这里的颜色声明是死代码,清理时删掉即可,但**别删布局** —— 末尾那段没有重声明它们。 */
+.octo-agent-execution {
+  margin: 8px 0;
+  overflow: hidden;
+  border: 1px solid var(--octo-ai-border, #b8c8ff);
+  border-radius: 6px;
+  background: var(--octo-ai-surface, #f6f8ff);
+}
+.octo-agent-execution-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--octo-ai-border, #b8c8ff);
+}
+.octo-agent-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--octo-ai-tag-bg, #e8ecff);
+  color: var(--octo-primary, #165dff);
+  font-size: 13px;
+}
+.octo-agent-execution-title {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.octo-agent-execution-title strong {
+  font-size: 12px;
+}
+.octo-agent-execution-title small {
+  color: var(--octo-muted, #86909c);
+  font-size: 10px;
+}
+.octo-agent-status {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  flex: none;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--octo-fill, #f2f3f5);
+  color: var(--octo-muted, #86909c);
+  font-size: 10px;
+}
+.octo-agent-status.is-running {
+  background: var(--octo-ai-tag-bg, #e8ecff);
+  color: var(--octo-primary, #165dff);
+}
+.octo-agent-status.is-success {
+  background: rgba(0, 180, 42, 0.08);
+  color: var(--octo-success, #00b42a);
+}
+.octo-agent-status.is-review {
+  background: rgba(255, 125, 0, 0.08);
+  color: var(--octo-warning, #ff7d00);
+}
+.octo-agent-execution-body {
+  padding: 8px;
+}
+.octo-agent-execution-body > p {
+  margin: 0;
+  color: var(--octo-text-secondary, #4e5969);
+  font-size: 12px;
+  line-height: 18px;
+}
+.octo-agent-state-callout {
+  padding: 8px;
+  border: 1px solid var(--octo-border, #e5e6eb);
+  border-radius: 4px;
+  color: var(--octo-text-secondary, #4e5969);
+  font-size: 12px;
+  line-height: 18px;
+}
+.octo-agent-state-callout.is-warning {
+  border-color: var(--octo-warning, #ff7d00);
+  background: rgba(255, 125, 0, 0.08);
+}
+.octo-agent-execution-actions {
+  display: flex;
+  min-height: 36px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 8px;
+  border-top: 1px solid var(--octo-ai-border, #b8c8ff);
 }
 .octo-comment-actions {
   display: flex;
@@ -3746,6 +4204,195 @@ body.octo-row-resizing {
 }
 .octo-emoji-menu .octo-suggest-item {
   font-size: 15px;
+}
+
+/* ── @-mention candidate panel ─────────────────────────────────────────────────────────────────
+   COPIED FROM THE PROTOTYPE, PALETTE SWAPPED. The executable-comment prototype's popup is the
+   design target, so the DOM hierarchy, every layout number (padding / gap / radius / font-size /
+   font-weight / min-height) and every string are taken from it verbatim. Two things are changed, and
+   only these two:
+
+     1. COLOURS resolve through this repo's tokens. The prototype happens to use the same `--wk-*`
+        family, so most names carry over unchanged; the ones it defines locally are remapped to the
+        nearest existing token rather than pasted as literals:
+              prototype                     →  here
+              --wk-ai-tag-bg                →  --wk-accent-tint-08
+              --wk-shadow-overlay           →  --octo-modal-shadow
+              --wk-r-overlay (12px)         →  literal 12px (no such token here)
+              --wk-color-teal               →  --wk-teal-500
+        This matters because the repo ships a dark theme (semantic.css [data-theme='dark']); a pasted
+        hex would be unreadable there.
+     2. CLASS NAMES are `octo-`-prefixed. The bare prototype names (.mention-option, .agent-avatar,
+        .mention-popover) are NOT used, so nothing here can collide with or override existing styles.
+
+   Prototype source for the numbers below: `.mention-popover`, `.mention-option`, `.agent-avatar`,
+   `.mention-option em`, `.member-empty`, `.menu-separator`, `.person-avatar`. */
+.octo-mention-menu {
+  /* Prototype `.mention-popover`: width 320px; max-height 320px; padding 8px. */
+  width: 320px;
+  max-width: min(360px, calc(100vw - 32px));
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
+  border-radius: 12px;
+  background: var(--wk-bg-surface, #fff);
+  box-shadow: var(--octo-modal-shadow);
+  /* 与 .octo-doc-scroll 用同一套 token。 */
+  scrollbar-color: var(--wk-border-strong, rgba(0, 0, 0, 0.25)) transparent;
+}
+/* 滚动条常显。
+   macOS 默认是浮层式滚动条(不滚就完全隐藏),而这个下拉的内容经常超过 320px 的上限 ——
+   看不见滑块用户就以为列表只有这几项,不知道还能往下翻。
+   WebKit 显式画轨道+滑块;Firefox 由上面那条 scrollbar-color 覆盖。 */
+.octo-mention-menu::-webkit-scrollbar {
+  width: 8px;
+}
+.octo-mention-menu::-webkit-scrollbar-track {
+  background: transparent;
+}
+.octo-mention-menu::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  /* border + background-clip 让滑块视觉上内缩成 4px,不贴着菜单边框。 */
+  border: 2px solid transparent;
+  background: var(--wk-border-strong, rgba(0, 0, 0, 0.25));
+  background-clip: content-box;
+}
+.octo-mention-menu::-webkit-scrollbar-thumb:hover {
+  background: var(--wk-text-tertiary, rgba(0, 0, 0, 0.45));
+  background-clip: content-box;
+}
+/* Prototype `.mention-popover > p` — the section heading ("Bot" / "成员" / "文档"). */
+.octo-mention-group {
+  margin: 4px 8px;
+  color: var(--wk-text-tertiary, #6b7075);
+  font-size: 11px;
+  font-weight: 600;
+}
+/* Prototype `.menu-separator`. */
+.octo-mention-sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--wk-border-default, rgba(0, 0, 0, 0.08));
+}
+/* Prototype `.mention-option`: [avatar] [name / subtitle] [Bot pill]. */
+.octo-mention-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--wk-r-sm, 6px);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+/* Prototype `.mention-option:hover`. `.is-selected` is the keyboard cursor, which the prototype
+   expresses on its task variant as `.mention-option.is-selected { background: --wk-bg-selected }`. */
+.octo-mention-option:hover:not(.is-disabled) {
+  background: var(--wk-bg-hover, rgba(46, 50, 56, 0.09));
+}
+.octo-mention-option.is-selected {
+  background: var(--wk-bg-selected, rgba(127, 59, 245, 0.06));
+}
+/* Prototype `.mention-option.is-disabled`. Paired with a real `disabled` attribute, so the greying
+   here is presentation only — the row is genuinely unclickable and skipped by arrow keys. */
+.octo-mention-option.is-disabled {
+  color: var(--wk-text-disabled, rgba(28, 28, 35, 0.35));
+  cursor: not-allowed;
+}
+.octo-mention-option.is-disabled .octo-mention-avatar,
+.octo-mention-option.is-disabled .octo-mention-badge {
+  opacity: 0.5;
+}
+/* Prototype `.agent-avatar`: a rounded-SQUARE accent tile (radius --wk-r-md), deliberately not a
+   circle — that shape difference is how a Bot reads as non-human at a glance. */
+.octo-mention-avatar {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--wk-r-md, 8px);
+  color: var(--wk-color-accent, #7f3bf5);
+  background: var(--wk-accent-tint-08, rgba(127, 59, 245, 0.08));
+}
+.octo-bot-glyph {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+/* Prototype `.person-avatar`: a 28px CIRCLE with the initial, a 2px surface-coloured ring, 11px/600
+   inverse text. The circle-vs-rounded-square contrast against .octo-mention-avatar is the prototype's
+   own way of separating a human candidate from a Bot. Its three tints (avatar-purple / avatar-teal /
+   brand default) rotate deterministically by uid (mentionMenu.ts tintIndex). */
+.octo-mention-avatar.is-person {
+  border: 2px solid var(--wk-bg-surface, #fff);
+  border-radius: var(--wk-r-circle, 50%);
+  color: var(--wk-text-inverse, #fff);
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--wk-brand-primary, #1c1c23);
+}
+.octo-mention-avatar.is-person.is-tint-1 {
+  background: var(--wk-color-accent, #7f3bf5);
+}
+.octo-mention-avatar.is-person.is-tint-2 {
+  background: var(--wk-teal-500, #0b867d);
+}
+/* A DOCUMENT candidate: neutral tile + file glyph, so it is neither mistaken for a Bot (accent tile)
+   nor for a person (circle). Replaces the old 📄 emoji, which rendered inconsistently per platform. */
+.octo-mention-avatar.is-doc {
+  color: var(--wk-icon-default, rgba(28, 28, 35, 0.6));
+  background: var(--wk-bg-elevated, #f2f3f4);
+}
+.octo-doc-glyph {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+.octo-mention-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.octo-mention-meta strong {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.octo-mention-meta small {
+  color: var(--wk-text-tertiary, #6b7075);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Prototype `.mention-option em`: the trailing accent-tinted pill. `font-style: normal` because the
+   prototype renders it in an <em>, and this keeps that markup from italicising. */
+.octo-mention-badge {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border-radius: var(--wk-r-full, 9999px);
+  color: var(--wk-color-accent, #7f3bf5);
+  background: var(--wk-accent-tint-08, rgba(127, 59, 245, 0.08));
+  font-size: 10px;
+  font-style: normal;
+}
+/* Prototype `.member-empty` — why the Bot section has nothing in it. */
+.octo-mention-empty {
+  margin: 0;
+  padding: 12px;
+  color: var(--wk-text-tertiary, #6b7075);
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* Mention node (v10): pill rendering; doc mentions read as links. */
@@ -5653,4 +6300,817 @@ div:has(> .octo-link-bubble) {
 .octo-doc-guide-section-copy:hover {
   background: var(--octo-hover, #f2f3f5);
   color: var(--octo-fg, #1f2329);
+}
+
+/* 版本记录的主动作：原型里是列表上方一条占满宽度的深色按钮。用 --octo-text 作底色而不是写死
+   #000，这样暗色模式下会跟着反转（写死黑底会在暗色下变成"黑底黑字"）。 */
+.octo-version-save-primary {
+  width: 100%;
+  justify-content: center;
+  background: var(--octo-text, #1f2329);
+  color: var(--octo-surface, #fff);
+  border-color: transparent;
+  font-weight: 500;
+  padding: 8px 12px;
+}
+.octo-version-save-primary:hover:not(:disabled) {
+  opacity: 0.88;
+}
+/* 行内第二行的「时间 · 说明」。占满剩余宽度，把操作按钮推到右侧。 */
+.octo-version-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--octo-text-secondary, #646a73);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 版本号前缀（原型 `v127 · …`）。等宽数字避免不同位数时标题左边缘跳动。 */
+.octo-version-seq {
+  flex: none;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--octo-text-secondary, #646a73);
+}
+
+/* ── 评论抽屉：原型视觉移植（feature #3 §） ─────────────────────────────────────────────────────
+   COPIED FROM THE PROTOTYPE (`octo-executable-comment-shareable (1).html`), PALETTE SWAPPED —
+   同上面 @-mention 弹层移植（约 3913 行）的做法。每个布局数字（padding / gap / radius /
+   font-size / height / min-height）都取原型原值，只改两件事：
+
+     1. 颜色走本仓库的语义 token。原型的 `:root` 一个都没抄 —— 它定义了 145 个变量，而本仓库
+        已有等价的语义层（packages/dmworkbase/src/theme/{primitive,semantic}.css，且带暗色主题）。
+        **本次没有新增任何变量**，原型用到的每一个都能映射到仓库现有 token，计算值相同：
+              prototype                →  here
+              --wk-brand-alpha-03      →  --wk-brand-tint-03
+              --wk-brand-alpha-04      →  --wk-brand-tint-04      （原型 --wk-control-disabled）
+              --wk-brand-alpha-06      →  --wk-brand-tint-06      （原型 --wk-control-secondary）
+              --wk-brand-alpha-08      →  --wk-brand-tint-08
+              --wk-brand-alpha-20      →  --wk-brand-primary-ring
+              --wk-accent-alpha-08     →  --wk-accent-tint-08     （原型 --wk-ai-tag-bg）
+              --wk-success-alpha-08    →  --wk-color-success-bg
+              --wk-warning-alpha-08    →  --wk-color-warning-bg
+              --wk-duration-fast       →  --wk-dur-fast
+              --wk-shadow-overlay      →  --octo-modal-shadow
+              --wk-r-overlay (12px)    →  字面量 12px（此处无对应 token，与 3925 行同一处理）
+        （--wk-ai-border / --wk-ai-surface / --wk-color-accent / --wk-color-success /
+          --wk-color-warning / --wk-bg-* / --wk-text-* / --wk-icon-default / --wk-r-sm|md|full /
+          --wk-z-dropdown / --wk-ease / --wk-black-alpha-05 同名直接沿用。）
+
+     2. 类名用 CommentPanel.tsx / AnchorRef.tsx 里已经写好的 `octo-` 前缀名。
+
+   原型有一条全局 `button { border: 0; color: inherit; background: transparent; cursor: pointer }`
+   加 `button, input, textarea { font: inherit }` 的 reset，本仓库没有，所以下面每个按钮各自把这
+   几行补齐 —— 不是新样式，是补原型省掉的前提。
+
+   为什么多数选择器挂在 `.octo-comment-panel-content` 下面：
+   `.octo-comment-thread` / `.octo-comment-anchor` / `.octo-comment-head` / `.octo-comment-actions`
+   / `.octo-comment-list` / `.octo-comment-text` 在本文件上方（约 3040-3112 行）已有同事写的规则，
+   而那些规则**同时**服务 board/BoardCommentPanel.tsx 和 sheet/SheetCommentPanel.tsx —— 这两个面
+   板不在本次改版范围内。上面的规则一行都没删、没改；原型值追加在这里，用只有云文档抽屉才渲染的
+   `.octo-comment-panel-content` 作用域限定，靠「更高特异度 + 更靠后」生效，board/sheet 保持原样。
+   全程没有 `!important`。 */
+
+/* 原型 `.comment-panel`：纵向 flex 三段式 —— header `flex:none`、内容区 `flex:1` 自己滚、
+   composer `flex:none` 钉在底部。`:has(> .octo-comment-panel-content)` 把它挡在 board/sheet 面
+   板之外：那两个也叫 `.octo-comment-panel`，但没有这层 wrapper，仍靠抽屉整体滚动。 */
+.octo-comment-panel:has(> .octo-comment-panel-content) {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+/* 原型 `.doc-drawer` 是 `padding: 12px 16px 0` + `overflow: hidden`：底部不留 padding（composer
+   要贴住抽屉地板），自己也不滚（滚动交给内容区）。仓库上方的 `.octo-doc-drawer`（约 1946 行）是
+   `padding: 12px 16px` + `overflow-y: auto`，历史/成员面板需要它，所以那条规则不动，只在抽屉正在
+   装这个面板时补上两处差异。`overflow: hidden` 同时吃掉 composer `margin: 0 -16px` 的出血 ——
+   否则 overflow-y 非 visible 会让 overflow-x 计算成 auto，抽屉会多出一条横向滚动条。 */
+.octo-doc-drawer:has(> .octo-comment-panel > .octo-comment-panel-content) {
+  padding-bottom: 0;
+  overflow: hidden;
+}
+/* 原型 `.drawer-header` / `.drawer-header h2`。 */
+.octo-drawer-header {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.octo-drawer-header h2 {
+  margin: 0;
+  flex: 1;
+  font-size: 16px;
+  line-height: 24px;
+}
+/* 三段式的第一段必须不压缩。挂在评论专用的修饰类上而不是通用的 `.octo-drawer-header`，这样以后
+   别的面板复用那个通用类时不会被强加 flex 行为。 */
+.octo-comment-drawer-header {
+  flex: none;
+}
+/* 原型 `.drawer-close`。 */
+.octo-drawer-close {
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--wk-r-sm, 6px);
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.octo-drawer-close:hover {
+  background: var(--wk-bg-hover, #dfe0e2);
+}
+/* 原型 `.comment-panel-content`：第二段，占满剩余高度并自己滚。 */
+.octo-comment-panel-content {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+/* 原型 `.comment-filter-row` / `.comment-type-filter` / `.comment-filter-button`。 */
+.octo-comment-filter-row {
+  position: relative;
+  min-height: 40px;
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.octo-comment-type-filter {
+  position: relative;
+  flex: none;
+}
+.octo-comment-filter-button {
+  width: 120px;
+  height: 32px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-full, 9999px);
+  color: var(--wk-text-primary, #1f2329);
+  background: var(--wk-bg-surface, #fff);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.octo-comment-filter-button:hover {
+  background: var(--wk-brand-tint-06, rgba(28, 28, 35, 0.06));
+}
+.octo-comment-filter-button:focus-visible {
+  outline: 2px solid var(--wk-brand-primary-ring, rgba(28, 28, 35, 0.2));
+  outline-offset: 2px;
+}
+/* 原型 `.comment-filter-button .icon` 是 14x14 的 SVG，展开时 `rotate(180deg)`。我们这里是一个
+   `⌄` 字符，所以尺寸落成 font-size；行内盒子要 `inline-block` 才吃 transform。 */
+.octo-comment-filter-caret {
+  display: inline-block;
+  color: var(--wk-icon-default, rgba(28, 28, 35, 0.6));
+  font-size: 12px;
+  line-height: 1;
+  transition: transform var(--wk-dur-fast, 150ms) var(--wk-ease, cubic-bezier(0.16, 1, 0.3, 1));
+}
+.octo-comment-filter-button[aria-expanded='true'] .octo-comment-filter-caret {
+  transform: rotate(180deg);
+}
+/* 原型 `.comment-type-menu`。原型的标签上还挂了一个 `.wk-popover`（边框 / 12px 圆角 / surface 底
+   / overlay 阴影），本仓库没有这个类，所以把那层 chrome 折进来 —— 与上面 mention 菜单同一做法。 */
+.octo-comment-type-menu {
+  position: absolute;
+  top: 36px;
+  left: 0;
+  z-index: var(--wk-z-dropdown, 100);
+  width: 160px;
+  padding: 8px;
+  border: 1px solid var(--wk-border-subtle, rgba(0, 0, 0, 0.05));
+  border-radius: 12px;
+  background: var(--wk-bg-surface, #fff);
+  box-shadow: var(--octo-modal-shadow);
+}
+.octo-comment-type-menu button {
+  width: 100%;
+  min-height: 32px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  border-radius: var(--wk-r-sm, 6px);
+  color: var(--wk-text-primary, #1f2329);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.octo-comment-type-menu button:hover,
+.octo-comment-type-menu button:focus-visible {
+  background: var(--wk-bg-hover, #dfe0e2);
+}
+.octo-comment-type-menu button[aria-selected='true'] {
+  font-weight: 600;
+  background: var(--wk-bg-selected, rgba(127, 59, 245, 0.06));
+}
+/* 原型 `.comment-type-menu .menu-check`：始终占位，只切 visibility —— 勾上/取消时行内文字不位移。 */
+.octo-comment-type-menu .octo-menu-check {
+  color: var(--wk-brand-primary, #1c1c23);
+  font-size: 12px;
+  visibility: hidden;
+}
+.octo-comment-type-menu button[aria-selected='true'] .octo-menu-check {
+  visibility: visible;
+}
+/* 原型 `.show-resolved-filter`。 */
+.octo-show-resolved-filter {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--wk-text-secondary, #555b61);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.octo-show-resolved-filter:hover {
+  color: var(--wk-text-primary, #1f2329);
+}
+.octo-show-resolved-filter input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--wk-brand-primary, #1c1c23);
+  cursor: pointer;
+}
+.octo-show-resolved-filter input:focus-visible {
+  outline: 2px solid var(--wk-brand-primary-ring, rgba(28, 28, 35, 0.2));
+  outline-offset: 2px;
+}
+/* 原型 `.comment-list`。上方既有规则已给 `list-style/margin/padding` 归零，这里换成原型的实际值。 */
+.octo-comment-panel-content .octo-comment-list {
+  margin: 8px 0 0;
+  padding: 0 2px 12px 0;
+}
+/* 原型 `.comment-thread`。既有规则的 border / border-radius(8px) / padding(10px) /
+   margin-bottom(10px) 与原型完全一致，故只补原型多出的两条。 */
+.octo-comment-panel-content .octo-comment-thread {
+  position: relative;
+  background: var(--wk-bg-surface, #fff);
+}
+/* 原型 `.comment-thread.is-selected` 用的是**中性灰** `--wk-brand-alpha-03`。上方既有规则用
+   `--octo-accent-weak`（= `--wk-bg-selected`，6% 紫）。这里覆盖而不是就地改：紫色在这个抽屉里只
+   有一个职责 —— Bot（`.is-ai-edit`）。每条人类评论选中都泛紫，那个信号就没了。 */
+.octo-comment-panel-content .octo-comment-thread.is-selected {
+  border-color: var(--wk-brand-primary, #1c1c23);
+  background: var(--wk-brand-tint-03, rgba(28, 28, 35, 0.03));
+}
+/* 原型 `.comment-thread.is-ai-edit` / `.is-ai-edit.is-selected` —— 卡片上唯一的紫色强调，Bot 专用。 */
+.octo-comment-panel-content .octo-comment-thread.is-ai-edit {
+  border-color: var(--wk-ai-border, rgba(127, 59, 245, 0.12));
+}
+.octo-comment-panel-content .octo-comment-thread.is-ai-edit.is-selected {
+  border-color: var(--wk-color-accent, #7f3bf5);
+  background: var(--wk-ai-surface, rgba(127, 59, 245, 0.03));
+}
+/* 原型 `.comment-anchor`。既有规则已给 display/gap/width/text-align/border/background/cursor，
+   这里补原型的 padding（右侧 32px 是给串上的 ⋯ 让位，见 AnchorRef 的注释）、溢出与字体。 */
+.octo-comment-panel-content .octo-comment-anchor {
+  padding: 0 32px 6px 0;
+  overflow: hidden;
+  color: var(--wk-text-tertiary, #6b7075);
+  font-size: 12px;
+  font-style: italic;
+}
+/* `.is-anchor-active|updated|changed|invalid` 故意**不给**各自的规则：原型里锚点行在四种状态下长
+   得一模一样，状态完全由行尾追加的那枚 pill（原型 `.anchor-state-badge`，下面移植成
+   `.octo-comment-badge`）表达。AnchorRef 自己的注释也是这个意思 —— 锚点死了引文也要原样留着。
+   在这里自造一个状态色会同时违背两边。 */
+/* 原型 `.comment-anchor span`：单行省略号。 */
+.octo-comment-panel-content .octo-comment-quote {
+  min-width: 0;
+}
+/* 原型没写锚点按钮的 focus 环，但给同抽屉的其它控件（`.comment-filter-button`、
+   `.show-resolved-filter input`）都写了同一套；锚点是可聚焦按钮，沿用同一套。 */
+.octo-comment-panel-content .octo-comment-anchor:focus-visible {
+  outline: 2px solid var(--wk-brand-primary-ring, rgba(28, 28, 35, 0.2));
+  outline-offset: 2px;
+}
+/* 原型 `.anchor-state-badge`（+ `.is-warning`）。标签是 `<em>`，所以要把 font-style 掰回 normal。 */
+.octo-comment-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--wk-r-full, 9999px);
+  font-size: 10px;
+  font-style: normal;
+}
+/* 引用已更新 = 绿色实底（原型 `.anchor-state-badge` 基态）。 */
+.octo-comment-badge.is-success {
+  color: var(--wk-color-success, #41cd59);
+  background: var(--wk-color-success-bg, rgba(65, 205, 89, 0.08));
+}
+/* 引用已变化 / 原引用已失效 = 橙色实底（原型 `.anchor-state-badge.is-warning`）。 */
+.octo-comment-badge.is-review {
+  color: var(--wk-color-warning, #fc8800);
+  background: var(--wk-color-warning-bg, rgba(252, 136, 0, 0.08));
+}
+/* Bot 微标：紫色。原型没有这枚 pill（它的 Bot 态走 `.agent-status.is-running`），配色照搬那条。 */
+.octo-comment-badge.is-bot {
+  color: var(--wk-color-accent, #7f3bf5);
+  background: var(--wk-accent-tint-08, rgba(127, 59, 245, 0.08));
+}
+/* 已解决 = 绿色描边。原型没有描边款（它直接把已解决的串藏掉），所以这里沿用仓库自己既有的
+   `.octo-comment-resolved-badge`（上方约 3078 行）的绿描边观感，只是换到新类名上。描边用 inset
+   box-shadow 而不是 border：同一行里实底 pill 没有 border，加 border 会高出 2px 对不齐。 */
+.octo-comment-badge.is-resolved {
+  color: var(--wk-color-success, #41cd59);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px currentcolor;
+}
+/* 原型 `.comment-head`（min-height 28 / 居中）。既有规则是 `align-items: baseline`，这里按原型改
+   成 center 而不是就地改那条 —— board/sheet 两个面板也吃那条规则。右侧 32px 与锚点行同宽，两行
+   的右边界因此对齐。 */
+.octo-comment-panel-content .octo-comment-head {
+  min-height: 28px;
+  padding-right: 32px;
+  align-items: center;
+}
+/* 原型 `.comment-head strong`。我们这里是 `<span class="octo-uid">`，补回 strong 的字重。 */
+.octo-comment-panel-content .octo-comment-head .octo-uid {
+  font-size: 13px;
+  font-weight: var(--wk-font-semibold, 600);
+}
+/* 原型 `.comment-head time`（颜色既有规则已经对了，只差字号）。 */
+.octo-comment-panel-content .octo-comment-time {
+  font-size: 11px;
+}
+/* 原型 `.comment-body p, .comment-replies p`（既有规则已有 margin + pre-wrap）。 */
+.octo-comment-panel-content .octo-comment-text {
+  font-size: 13px;
+  line-height: 20px;
+}
+/* 原型 `.comment-actions` / `.comment-actions button`。按钮本身是 `.octo-tb-btn`，它已经是无边框
+   透明底 + hover 底色，与原型一致，所以只补尺寸。 */
+.octo-comment-panel-content .octo-comment-actions {
+  margin-top: 6px;
+}
+.octo-comment-panel-content .octo-comment-actions button {
+  height: 26px;
+  padding: 0 8px;
+  border-radius: var(--wk-r-sm, 6px);
+  font-size: 12px;
+}
+/* 原型 `.comment-replies li`（既有规则的 margin/padding/左侧竖线与原型一致）。 */
+.octo-comment-panel-content .octo-comment-replies > li {
+  position: relative;
+  padding: 4px 0;
+}
+/* 原型 `.drawer-comment-composer`：三段式的最后一段，`flex: none` 钉在底部。`margin: 0 -16px`
+   出血抵掉抽屉的 16px 横向 padding，顶边线因此横贯整个抽屉宽度。 */
+.octo-drawer-comment-composer {
+  position: relative;
+  margin: 0 -16px;
+  padding: 12px 16px 16px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+  background: var(--wk-bg-surface, #fff);
+  box-shadow: 0 -4px 12px var(--wk-black-alpha-05, rgba(0, 0, 0, 0.05));
+}
+/* 原型 `.drawer-comment-scope`。 */
+.octo-drawer-comment-scope {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--wk-text-secondary, #555b61);
+  font-size: 12px;
+  font-weight: var(--wk-font-semibold, 600);
+}
+/* 原型 `.drawer-comment-input-wrap`（+ `:focus-within`）。 */
+.octo-drawer-comment-input-wrap {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--wk-border-default, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-md, 8px);
+  background: var(--wk-bg-surface, #fff);
+}
+.octo-drawer-comment-input-wrap:focus-within {
+  border-color: var(--wk-brand-primary, #1c1c23);
+  box-shadow: 0 0 0 2px var(--wk-brand-tint-08, rgba(28, 28, 35, 0.08));
+}
+/* 原型 `.drawer-comment-input-wrap textarea`。我们的输入框是嵌套 tiptap
+   (`.octo-comment-input.octo-mention-composer`)，它从约 3002 行那条规则自带 1px 边框 + 6px 圆角；
+   现在边框由外层 wrap 画，内层就得撤掉自己的。选择器特异度 0,2,0 压过那条 0,1,0，所以既不需要
+   `!important`，也没有动上面那条规则。原型右侧留 40px 是给它的语音按钮，我们没有这个按钮，
+   所以左右都用 12px。 */
+.octo-drawer-comment-input-wrap .octo-comment-input {
+  min-height: 64px;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 13px;
+  line-height: 20px;
+}
+/* 原型 `.drawer-comment-actions` / `> span`。 */
+.octo-drawer-comment-actions {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.octo-drawer-comment-actions > span {
+  color: var(--wk-text-tertiary, #6b7075);
+  font-size: 10px;
+}
+/* 原型 `.comment-submit`（配色）+ `.bubble-actions button`（尺寸：同一个按钮在气泡里的几何值，
+   原型的抽屉版漏写了）+ `.drawer-comment-actions .comment-submit`（184px 截断）。
+   hover 态原型没写，用仓库主按钮的既有约定 `--wk-brand-primary-hover`（参见约 5103 行的
+   `.octo-docs-list-new:hover`）。 */
+.octo-comment-submit {
+  height: 28px;
+  max-width: 184px;
+  padding: 0 10px;
+  flex: none;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--wk-r-full, 9999px);
+  color: var(--wk-text-inverse, #fff);
+  background: var(--wk-brand-primary, #1c1c23);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.octo-comment-submit:hover:not(:disabled) {
+  background: var(--wk-brand-primary-hover, #2a2a33);
+}
+.octo-comment-submit:disabled {
+  color: var(--wk-text-disabled, rgba(28, 28, 35, 0.35));
+  background: var(--wk-brand-tint-04, rgba(28, 28, 35, 0.04));
+  cursor: not-allowed;
+}
+
+/* ── Bot 任务卡片：接上原型的紫色配色与几何（原型 `.agent-execution` 一族，658-699 行）─────────
+   上方约 3124-3219 行已有同事写好的 `.octo-agent-*` 结构规则（布局/尺寸基本就是原型值），
+   **一行没删、没改**。这里只追加两类修正，逐条给了理由：
+
+   A. 配色。那批规则引用了 8 个 `--octo-*` 变量：`--octo-ai-border` / `--octo-ai-surface` /
+      `--octo-ai-tag-bg` / `--octo-primary` / `--octo-success` / `--octo-warning` / `--octo-fill` /
+      `--octo-text-secondary`。**这 8 个在 packages/docs 和 packages/dmworkbase 里都没有定义**
+      （逐个 grep 过），所以真正生效的是它们的字面量兜底 —— #165dff / #b8c8ff / #e8ecff 一套
+      **蓝色**，外加两处写死的 rgba。两个问题：
+        1) 蓝色和 `.is-ai-edit` 的紫色边框不是一套。紫色是这个抽屉里 Bot 的唯一强调色，
+           卡片描边紫、卡片内部蓝，同一个 Bot 串会出现两种 AI 色。
+        2) 写死的 hex 不跟主题走。本仓库有暗色主题（dmworkbase/src/theme/semantic.css 的
+           `[data-theme='dark']`），#e8ecff 这类浅底在暗色下会亮瞎 —— 这正是本文件约 3927 行
+           那段 @mention 移植注释里写明要避免的坑。
+      所以把颜色改回原型自己用的那几个 token，并按上一段（约 5518 行）的同一张映射表落到仓库
+      现有 `--wk-*` 上。**本次同样没有新增任何变量。**
+   B. 三处几何 + 两条漏掉的规则，见各自注释。
+
+   有意**不**覆盖的（原型有差异但同事的写法更贴合我们的 DOM，或差异无害）：
+     · `.octo-agent-execution` 的 `margin: 8px 0`（原型只有 `margin-top: 8px`）—— 卡片后面紧跟
+       评论正文，多 8px 下边距无害，不值得为了对齐原型去覆盖。
+     · `.octo-agent-state-callout` 没有原型的 `margin-top: 8px` —— 对的：原型里 callout 追加在
+       `<p>` 后面，我们的卡片是用 callout **替代** `<p>`（AgentExecutionCard.tsx 的三元），
+       外层 body 已有 8px padding，再加 margin 就是白空一截。
+     · header / title / body 的 min-height / padding / gap / 字号已与原型逐项一致，不重复声明。
+
+   原型里有、但**故意不移植**的：
+     · `.agent-status.is-error` 和 `.agent-state-callout.is-error`：`botTaskTone()` 只能返回
+       running/success/review 三种，卡片也只渲染 `.is-warning` 一种 callout，写了就是死规则。
+     · `.agent-status .icon`（12x12 SVG）：我们的状态 chip 是纯文字，没有图标节点。
+     · `.agent-result-note`（原型 692 行，带 3 个 `!important`）：DOM 里没有对应节点。
+     · 4 条 `.member-list/.bot-access-identity/.ai-task-header/.ai-task-empty .agent-avatar`
+       （原型 789/806/904/910）：别的组件的尺寸覆盖，与本卡片无关。
+     · **原型 990 行 `.comment-thread:not(.is-ai-edit) .agent-execution { display: none }`**：
+       不移植，且理由比「筛选在 React 里做」更硬 —— sheet/SheetCommentPanel.tsx 第 286 行的串
+       只挂 `octo-comment-thread` + 可选的 `is-selected`，**从不加 `.is-ai-edit`**，而它同样渲染
+       这张卡片（该文件第 300 行）。照搬这条会把单元格评论里的 Bot 卡片全部隐藏。 */
+
+/* 原型 `.agent-execution`：`--wk-ai-border` 描边 + `--wk-ai-surface` 底 + `--wk-r-md`(8px)。
+   同事写的是 6px 圆角和蓝色兜底。 */
+.octo-agent-execution {
+  border-color: var(--wk-ai-border, rgba(127, 59, 245, 0.12));
+  border-radius: var(--wk-r-md, 8px);
+  background: var(--wk-ai-surface, rgba(127, 59, 245, 0.03));
+}
+.octo-agent-execution-header {
+  border-bottom-color: var(--wk-ai-border, rgba(127, 59, 245, 0.12));
+}
+/* 原型 `.agent-avatar`：`--wk-r-md` 的**圆角方块**，故意不是圆形 —— 形状差异本身就是「这不是
+   人」的第一眼信号。本文件约 3992 行给 `.octo-mention-avatar` 写过同一条理由。同事这里用了
+   `border-radius: 50%`（圆形），与那个约定相反，故覆盖。 */
+.octo-agent-avatar {
+  border-radius: var(--wk-r-md, 8px);
+  color: var(--wk-color-accent, #7f3bf5);
+  background: var(--wk-accent-tint-08, rgba(127, 59, 245, 0.08));
+}
+.octo-agent-execution-title small {
+  color: var(--wk-text-tertiary, #6b7075);
+}
+/* 原型 `.agent-status` 基态：`--wk-control-secondary` 底 + `--wk-text-secondary` 字，
+   圆角是 `--wk-r-full` 胶囊（同事写的 10px 在 20px 高上接近但不是胶囊）。 */
+.octo-agent-status {
+  border-radius: var(--wk-r-full, 9999px);
+  color: var(--wk-text-secondary, #555b61);
+  background: var(--wk-brand-tint-06, rgba(28, 28, 35, 0.06));
+}
+/* 原型 `.agent-status.is-running`：紫色 —— 与 `.is-ai-edit` 边框、Bot 微标同一套。 */
+.octo-agent-status.is-running {
+  color: var(--wk-color-accent, #7f3bf5);
+  background: var(--wk-accent-tint-08, rgba(127, 59, 245, 0.08));
+}
+/* 原型 `.agent-status.is-success` / `.is-review`：与锚点状态 pill 用同一对绿/橙 token，
+   同一个抽屉里「完成」和「要你确认」两种语气才对得上。 */
+.octo-agent-status.is-success {
+  color: var(--wk-color-success, #41cd59);
+  background: var(--wk-color-success-bg, rgba(65, 205, 89, 0.08));
+}
+.octo-agent-status.is-review {
+  color: var(--wk-color-warning, #fc8800);
+  background: var(--wk-color-warning-bg, rgba(252, 136, 0, 0.08));
+}
+.octo-agent-execution-body > p {
+  color: var(--wk-text-secondary, #555b61);
+}
+/* 原型 `.agent-state-callout`：`--wk-r-sm`(6px) 圆角，且有 `--wk-brand-alpha-04` 底色 ——
+   同事这条漏了 background，基态是透明的，压在卡片的紫底上看不出这是一块「提示区」。 */
+.octo-agent-state-callout {
+  border-color: var(--wk-border-default, rgba(0, 0, 0, 0.08));
+  border-radius: var(--wk-r-sm, 6px);
+  color: var(--wk-text-secondary, #555b61);
+  background: var(--wk-brand-tint-04, rgba(28, 28, 35, 0.04));
+}
+/* 原型 `.agent-state-callout.is-warning`。 */
+.octo-agent-state-callout.is-warning {
+  border-color: var(--wk-color-warning, #fc8800);
+  background: var(--wk-color-warning-bg, rgba(252, 136, 0, 0.08));
+}
+.octo-agent-execution-actions {
+  border-top-color: var(--wk-ai-border, rgba(127, 59, 245, 0.12));
+}
+/* 原型 `.agent-execution-actions button`（699 行），同事那批规则里没有 —— 「查看 Diff」用的是
+   `.octo-tb-btn`（13px、6px 圆角），卡片里应当是 28px 高的 12px 胶囊。选择器 0,1,1 压过
+   `.octo-tb-btn` 的 0,1,0，所以不需要 `!important`，也没有动 `.octo-tb-btn` 本身。 */
+.octo-agent-execution-actions button {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: var(--wk-r-full, 9999px);
+  font-size: 12px;
+}
+
+
+/* ── 版本行的两行文本 ────────────────────────────────────────────────────────
+   实测「9 小时...」:第二行的说明被截断了,而原型是完整两行。根因是 .octo-version-meta
+   跟操作按钮挤在同一条 flex 主轴上,按钮占满后留给文字的宽度不够。让说明独占一行、允许
+   折行,并且**不设** text-overflow —— 这一句(「张三通过 @Lobster 发起当前选区修改;Bot
+   完成写入后临时权限即刻失效」)正是用户判断这一版怎么来的依据,截掉就没意义了。 */
+.octo-version-line2 {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.octo-version-meta {
+  min-width: 0;
+  flex: 1;
+  overflow: visible;
+  color: var(--wk-text-tertiary, #86909c);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: clip;
+  white-space: normal;
+}
+/* 标题第三段「· 张三发起」。前面用 · 分隔,和原型的 `v130 · Lobster 修改 · 张三发起` 一致。 */
+.octo-version-initiator {
+  color: var(--wk-text-secondary, #4e5969);
+  font-size: 13px;
+}
+.octo-version-initiator::before {
+  margin: 0 4px;
+  color: var(--wk-text-tertiary, #86909c);
+  content: '·';
+}
+
+/* ── 版本行:两列(左=两行文字,右=操作) ─────────────────────────────────────
+   原型里「查看 Diff」和标题**同一行**、行内右对齐,不是挂在第二行说明后面。之前操作区
+   是 line2 的兄弟,所以按钮掉到了第二行,还把说明文字挤断成「10 小时...」。 */
+.octo-version-row {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+}
+.octo-version-main {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+.octo-version-actions {
+  flex: none;
+}
+/* 标题的 · 分隔符,对齐原型的 `v130 · Lobster 修改 · 张三发起`。 */
+.octo-version-sep {
+  color: var(--wk-text-tertiary, #86909c);
+}
+/* ⇅ 图标与文字同高,间距贴着原型的 4px。 */
+.octo-version-bot-diff-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.octo-diff-glyph {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+/* 版本行的操作竖排:「查看 Diff」在上、「删除」在下(不再横排三四个)。横排时右列越宽,
+   左列的说明文字越窄,那正是「8 小时前 · 还原操作前的自动 / 快照」被折成两段的原因。 */
+.octo-version-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+.octo-version-actions .octo-tb-btn {
+  justify-content: center;
+  white-space: nowrap;
+}
+/* 删除是破坏性的:红字,但不做成实心红按钮 —— 它不该比「查看 Diff」更抢眼。 */
+.octo-version-danger-btn {
+  color: var(--wk-color-error);
+}
+.octo-version-danger-btn:hover:not(:disabled) {
+  background: var(--wk-color-error-bg, rgb(245 63 63 / 8%));
+}
+/* 行要能被键盘聚焦才收得到 ContextMenu / Shift+F10。 */
+.octo-version-row:focus {
+  outline: none;
+}
+.octo-version-row:focus-visible {
+  outline: 2px solid var(--wk-color-accent);
+  outline-offset: -2px;
+}
+
+/* Diff 的列标题行。比原型多出来的一行 —— 「改前行号 / 改后行号」这两列被连问了三次
+   (删除行的改后号空着、新增行的改前号空着),悬停提示不够,得写在页面上。
+   做得比正文更轻:它是标签不是内容,不该跟 diff 行抢注意力。 */
+.octo-diff-colhead {
+  border-bottom: 1px solid var(--wk-border-default);
+  background: var(--wk-brand-tint-04, rgba(28, 28, 35, 0.04));
+  color: var(--wk-text-tertiary);
+  font-size: 11px;
+}
+.octo-diff-colhead .octo-diff-num,
+.octo-diff-colhead .octo-diff-text {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  color: inherit;
+  font-size: 11px;
+}
+.octo-diff-colhead .octo-diff-text {
+  text-align: left;
+}
+.octo-diff-colhead {
+  min-height: 0;
+}
+
+/* ── 表格版本 Diff 列表 ───────────────────────────────────────────────────────
+   原来三个 kind 的颜色是内联硬编码 hex(added #16a34a / removed #dc2626 /
+   changed #d97706)。「修改」那个是 amber-600 —— 黄褐色,和「增/删用绿红」的语言对不上,
+   用户实测直接问「那块儿颜色是黄色的,不是应该绿色或红色吗」。而且三个都不跟主题走,
+   跟文档侧 DiffView 用的 --wk-color-success / --wk-color-error 也不是一套。
+   同一个产品里「改动」的颜色语言必须统一,所以全部换成语义 token。
+
+   「修改」不再自造第三种颜色:标签用中性次要色,旧值标红、新值标绿 —— 一处修改本来
+   就是「删掉旧的 + 加上新的」,用已有的两种颜色表达比再引入一种更准。 */
+.octo-sheet-diff-list {
+  max-height: 52vh;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+.octo-sheet-diff-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wk-sp-2, 8px);
+  padding: 4px var(--wk-sp-1, 4px);
+  border-bottom: 1px solid var(--wk-border-default);
+  font-size: 12px;
+}
+.octo-sheet-diff-cell {
+  flex: none;
+  min-width: 40px;
+  font-weight: 600;
+}
+.octo-sheet-diff-kind {
+  flex: none;
+  color: var(--wk-text-tertiary);
+}
+.octo-sheet-diff-row.is-added .octo-sheet-diff-kind {
+  color: var(--wk-color-success);
+}
+.octo-sheet-diff-row.is-removed .octo-sheet-diff-kind {
+  color: var(--wk-color-error);
+}
+.octo-sheet-diff-values {
+  min-width: 0;
+  word-break: break-word;
+}
+/* 与统一差异视图共用同一套实色(见 .octo-unified-diff 那段的说明):8% 半透明在白底上
+   读不出颜色。这里也定义一份局部变量,因为表格 diff 不在 .octo-unified-diff 里面。 */
+.octo-sheet-diff-list {
+  --octo-diff-add-line: #e6ffec;
+  --octo-diff-del-line: #ffebe9;
+}
+body[theme-mode='dark'] .octo-sheet-diff-list {
+  --octo-diff-add-line: #12261e;
+  --octo-diff-del-line: #25171c;
+}
+.octo-sheet-diff-before {
+  padding: 0 2px;
+  background: var(--octo-diff-del-line);
+  color: var(--wk-color-error);
+}
+.octo-sheet-diff-after {
+  padding: 0 2px;
+  background: var(--octo-diff-add-line);
+  color: var(--wk-color-success);
+}
+/* 纯新增没有「旧值」、纯删除没有「新值」——那一侧渲染的是「(空)」占位,别给它上色,
+   否则会看着像「有个空字符串被删/加了」。 */
+.octo-sheet-diff-row.is-added .octo-sheet-diff-before,
+.octo-sheet-diff-row.is-removed .octo-sheet-diff-after {
+  background: none;
+  color: var(--wk-text-tertiary);
+}
+
+/* ── Diff 行:正文列必须自己画背景 ─────────────────────────────────────────────
+   实测:红块/绿块只涂到了行号那几列,正文列是白的 —— 整块看着是残缺的(用户原话
+   「那个红色块儿和绿色块儿都是残缺的」)。
+
+   底色本来加在 .octo-diff-added / .octo-diff-removed(也就是整行)上,按 CSS 规则应该
+   透到没有自己背景的子元素下面。我逐条查了 .octo-diff-line / .octo-unified-diff /
+   .octo-version-diff 以及所有命中 code 的规则,**没找到**是谁盖掉的。既然靠读代码定不了因,
+   就不再依赖「透过来」这件事:让正文列显式画自己的背景。多一条声明,换一个确定的结果。
+
+   放在文件末尾是故意的:它要压过 2597 行那条 .octo-diff-text 的基础规则。 */
+/* (增删行的正文列底色已并入上面那组四选择器规则,不再单独声明。) */
+/* 上下文行的正文列保持无底色 —— 它没变过,涂上会和真改动混在一起。 */
+.octo-diff-unchanged .octo-diff-text {
+  background: none;
+}
+/* 列标题行不该被上面三条影响(它既不是 added 也不是 removed,但写清楚免得以后加规则时踩)。 */
+.octo-diff-colhead .octo-diff-text {
+  background: none;
+}
+
+/* ── 表格评论面板:把「全文」输入框钉在底部 ────────────────────────────────────
+   文档侧的钉底规则(约 5753 行)用 `:has(> .octo-comment-panel-content)` **故意**把 board/sheet
+   挡在外面 —— 那两个面板也叫 .octo-comment-panel,但没有那层 wrapper,一直靠抽屉整体滚动。
+   于是表格的「全文」输入框跟着评论列表一起滚走了,想发一条整表评论得先滚到底。
+
+   这里给表格补上同样的三段式,但**不复用**那个 `:has()`:表格没有 .octo-comment-panel-content,
+   硬套会连带吃到一整块文档专用样式。改用面板上的显式标记类 .octo-comment-panel--sheet ——
+   在文档侧已经叠过一层 :has() 的情况下再加一层否定选择器,没人看得懂。
+   board 面板是另一个组件(BoardCommentPanel),不带这个标记类,行为不变。 */
+.octo-doc-drawer:has(> .octo-comment-panel--sheet) {
+  padding-bottom: 0;
+  /* 滚动交给面板内部的列表。不关掉这层滚动就是两层滚动条,而且 sticky 的参照系会变成抽屉,
+     输入框照样会跑。 */
+  overflow: hidden;
+}
+.octo-comment-panel--sheet {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+/* 只有评论列表滚。min-height: 0 是必须的 —— flex 子项默认 min-height:auto,内容一多就把
+   容器撑高,底部的输入框会被顶出可视区(那正是「没固定住」的另一半原因)。 */
+.octo-comment-panel--sheet .octo-comment-list {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+}
+/* 「加载更多」和「全文」输入框都不参与伸缩,老老实实待在底部。 */
+.octo-comment-panel--sheet > .octo-tb-btn,
+.octo-comment-panel--sheet > .octo-drawer-comment-composer {
+  flex: none;
 }

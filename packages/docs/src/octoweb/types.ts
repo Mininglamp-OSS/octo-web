@@ -252,6 +252,26 @@ export interface SpaceMemberLite {
 }
 
 /**
+ * A `/robot/my_bots` entry — a space-member lite PLUS the extra fields the @-mention candidate
+ * row needs. Every added field is OPTIONAL because the host payload is not guaranteed to carry
+ * them, and each consumer degrades gracefully rather than hiding the bot:
+ *
+ * • `creatorUid` — who created the bot. Used ONLY to label the relationship (自己创建 / 好友共享);
+ *   eligibility itself never depends on it (`my_bots` is already a friend-dimension query, so
+ *   every entry is by construction reachable by the caller). Absent → labelled as friend-shared.
+ * • `description` — the one-line "what this bot does" copy under the name. Absent → a generic
+ *   fallback string, never a blank line.
+ * • `online` — host activity flag, mapped from a `status`/`online`/`active` field when one is
+ *   present. Absent (the common case today) → UNKNOWN, and the candidate is treated as
+ *   available: we must not disable every bot just because the host omits the field.
+ */
+export interface MyBotLite extends SpaceMemberLite {
+  creatorUid?: string
+  description?: string
+  online?: boolean
+}
+
+/**
  * Minimal shape of ONE bot returned by `GET /robot/owned_bots?space_id=` — the owner-scoped
  * endpoint (octo-server modules/robot ownedBots) that returns only bots the current user CREATED,
  * that are active and members of the given Space. The docs "new HTML" picker reads exactly these
