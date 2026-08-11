@@ -65,6 +65,6 @@ describe("OIDC logout wiring", () => {
     expect(source).toContain('kind: "no-end-session"');
     expect(source).toContain('kind: "logout-error"');
     // Scheme gate: end-session URL must be https (RFC 8252 §8.10).
-    expect(source).toMatch(/parsed\.protocol === "https:"/);
+    expect(source).toMatch(/parsed\.protocol !== "https:"/);
   });
 });
