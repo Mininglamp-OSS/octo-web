@@ -48,7 +48,7 @@ let isOsx = process.platform === "darwin";
 let isWin = process.platform === "win32";
 let isWindowFocusHandlerRegistered = false;
 
-const isDevelopment = process.env.NODE_ENV === "development";
+const isDevelopment = process.env.NODE_ENV !== "production";
 
 /* ---------- file:// drive-root navigation guard ---------- */
 
@@ -57,10 +57,12 @@ const isDevelopment = process.env.NODE_ENV === "development";
  * Intercepts renderer-initiated navigations (will-navigate) that land on a
  * drive root and redirects back to index.html without minting a new session
  * sid (omitting the query lets SessionScope fall back to sessionStorage).
+ *
+ * NOTE: This function is only called from production code paths (the else
+ * branch of NODE_ENV checks), so no isDevelopment guard is needed here.
  */
 function attachFileRootGuard(win: BrowserWindow, indexPath: string): void {
   win.webContents.on("will-navigate", (event, url) => {
-    if (isDevelopment) return; // dev server handles routing
     if (!isDriveRootFileNavigation(url)) return;
     event.preventDefault();
     // Omit query: a new random sid would clobber the established session
@@ -228,7 +230,7 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
         label: "刷新",
         accelerator: "CmdOrCtrl+R",
         click: (_item, focusedWindow) => {
-          if (focusedWindow && !isDevelopment) {
+          if (focusedWindow && app.isPackaged) {
             // Reload the index.html directly instead of letting the browser
             // reload whatever URL is in the address bar (which under file://
             // may be a drive root after RouteManager pushState).
@@ -243,7 +245,7 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
         label: "强制刷新",
         accelerator: "CmdOrCtrl+Shift+R",
         click: (_item, focusedWindow) => {
-          if (focusedWindow && !isDevelopment) {
+          if (focusedWindow && app.isPackaged) {
             const indexPath = join(__dirname, "../", "../build/index.html");
             focusedWindow.loadFile(indexPath).catch(() => {});
           } else if (focusedWindow) {
