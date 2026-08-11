@@ -48,7 +48,7 @@ let isOsx = process.platform === "darwin";
 let isWin = process.platform === "win32";
 let isWindowFocusHandlerRegistered = false;
 
-const isDevelopment = process.env.NODE_ENV !== "production";
+const isDevelopment = process.env.NODE_ENV === "development";
 
 /* ---------- file:// drive-root navigation guard ---------- */
 
