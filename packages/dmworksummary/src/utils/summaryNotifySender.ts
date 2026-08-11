@@ -152,25 +152,28 @@ export async function sendGroupSummaryNotifyImpl(
         state.inFlight.add(memoryKey);
         try {
             await deps.sendToChannel(ch, myUid);
-            // Write to persistent storage first, so a fast follow-up trigger
-            // reading the storage sees the record. Then also into the
-            // in-instance memory set — the belt-and-braces guarantees dedup
-            // even if the storage write silently dropped.
+            // NOTE: `chatManager.send` (wukongimjssdk@1.3.5) resolves once the
+            // packet is enqueued in-process; the actual socket write happens
+            // later in a detached setInterval and is dropped silently if the
+            // WebSocket is not OPEN. This resolve therefore does NOT imply
+            // server delivery. We still mark the source as sent here — the
+            // dedup layer is intentionally best-effort under the one-time
+            // contract, matching the screenshot-tip posture. A completion
+            // that fires while the socket is mid-reconnect will end up
+            // marked-sent without the group ever receiving the tip; this is
+            // an accepted risk, not a covered case.
             markSummaryNotifySent(detail.task_id, sourceId);
             state.sentThisInstance.add(memoryKey);
         } catch (error) {
             warn("[summaryNotify] send failed", { channelId: sourceId, error });
-            // No markSummaryNotifySent on failure — the source stays unmarked
-            // in both persistence layers so a LATER observed → COMPLETED edge
-            // can retry. In production that edge only comes from manual
-            // regenerate: both trigger sites advance `lastKnownStatus` before
-            // the fan-out, and both `loadDetail` and revisit-from-card seed
-            // `lastKnownStatus = detail.status`, so a straight reload does
-            // NOT itself produce an edge (round-11 P2 @mochashanyao — the
-            // round-11 comment overstated recovery via reload / return-nav).
-            // A transient IM 5xx can therefore lose the tip for that single
-            // completion window; the trade-off is documented in the PR body
-            // and matches the shipped screenshot-tip posture.
+            // This catch only reaches the synchronous / rejection surface of
+            // `deps.sendToChannel` — SDK gate / helper throws / etc. It does
+            // NOT cover an async socket-write drop (see resolve note above),
+            // so leaving the source unmarked here is only meaningful for
+            // failures the SDK surface actually rejects on. The catch stays
+            // for the per-group failure isolation the sender tests exercise,
+            // but do NOT read it as "async send failure never poisons the
+            // record" — that guarantee is not provided by the SDK.
         } finally {
             state.inFlight.delete(memoryKey);
         }

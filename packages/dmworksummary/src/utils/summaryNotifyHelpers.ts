@@ -214,9 +214,16 @@ export function readSummaryNotifySentSources(taskId: number | string): Set<strin
  * the belt-and-braces for the same-instance case, so within one page instance
  * the property holds even if this write silently drops.
  *
- * ONLY called after the SDK send resolves — a transient IM error must not
- * poison the record and turn "retry on next observed → COMPLETED" into a
- * permanent silent hole.
+ * Called after `sendToChannel` (i.e. `chatManager.send`) resolves. The SDK's
+ * `send()` resolves once the packet is enqueued in-process — it does NOT
+ * await the server SendackPacket, and the socket write can be dropped
+ * silently if the WebSocket is not OPEN (wukongimjssdk@1.3.5). So this
+ * marker records "we attempted to deliver, and the local SDK accepted the
+ * enqueue", NOT "the server has acknowledged the send". Under the one-time
+ * contract, a completion that fires while the socket is mid-reconnect can
+ * therefore end up marked-sent without the group ever receiving the tip.
+ * This is the accepted best-effort posture and matches the screenshot-tip
+ * precedent; do not restate it as an ack-gated guarantee.
  */
 export function markSummaryNotifySent(taskId: number | string, sourceId: string): void {
     if (!sourceId) return;
