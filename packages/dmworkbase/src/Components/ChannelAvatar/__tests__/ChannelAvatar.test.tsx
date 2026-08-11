@@ -222,6 +222,27 @@ describe("ChannelAvatar save intent", () => {
     });
   });
 
+  it("does not clear an uploaded avatar after a net-zero text edit", async () => {
+    const channel = renderChannelAvatar({
+      initialAvatarText: "研发",
+      isUploadedAvatar: true,
+      canClearUploadedAvatar: true,
+    });
+
+    act(() => {
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "研发X" } });
+    });
+    act(() => {
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "研发" } });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("base.common.save"));
+    });
+
+    expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
+    expect(mocks.changeChannelAvatarTag).not.toHaveBeenCalledWith(channel);
+  });
+
   it("updates the large preview immediately when generated text changes", async () => {
     renderChannelAvatar({ initialAvatarText: "原头像" });
 
@@ -237,6 +258,10 @@ describe("ChannelAvatar save intent", () => {
 
   it("uses the group number seed for the default generated preview color", async () => {
     renderChannelAvatar({ initialColorIndex: undefined });
+
+    act(() => {
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "研发" } });
+    });
 
     const preview = document.querySelector(".wk-channelavatar-generated-preview") as HTMLElement;
     expect(preview.style.background).toBe("rgb(253, 249, 237)");

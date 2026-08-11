@@ -99,6 +99,9 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
     setColorChanged(false)
   }, [initialAvatarText, initialColorIndex])
 
+  const hasTextChanged = (value: string) => cleanAvatarText(value) !== cleanAvatarText(initialAvatarText)
+  const hasColorChanged = (value: number | undefined) => value !== initialColorIndex
+
   const emitChange = (next: {
     avatarText?: string
     textChanged?: boolean
@@ -118,22 +121,25 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
     // 限制可见字符 ≤4（与服务端一致），超出即截断。
     const nextText = visibleCount(v) > MAX_VISIBLE ? cleanAvatarText(v) : v
     setAvatarText(nextText)
-    setTextChanged(true)
-    emitChange({ avatarText: nextText, textChanged: true, colorIndex, colorChanged })
+    const nextTextChanged = hasTextChanged(nextText)
+    setTextChanged(nextTextChanged)
+    emitChange({ avatarText: nextText, textChanged: nextTextChanged, colorIndex, colorChanged })
   }
 
   const selectColor = (index: number) => {
     if (disabled) return
     setColorIndex(index)
-    setColorChanged(true)
-    emitChange({ colorIndex: index, colorChanged: true })
+    const nextColorChanged = hasColorChanged(index)
+    setColorChanged(nextColorChanged)
+    emitChange({ colorIndex: index, colorChanged: nextColorChanged })
   }
 
   const clearColor = () => {
     if (disabled) return
     setColorIndex(undefined)
-    setColorChanged(true)
-    emitChange({ colorIndex: undefined, colorChanged: true })
+    const nextColorChanged = hasColorChanged(undefined)
+    setColorChanged(nextColorChanged)
+    emitChange({ colorIndex: undefined, colorChanged: nextColorChanged })
   }
 
   return (
@@ -250,6 +256,7 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
         nameAsFallback={nameAsFallback}
         initialAvatarText={initialAvatarText}
         initialColorIndex={initialColorIndex}
+        colorSeed={colorSeed}
         disabled={saving}
         onChange={setDraft}
       />

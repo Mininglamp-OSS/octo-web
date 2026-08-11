@@ -255,7 +255,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         const editingDisabled = customAvatarSaving || uploading
         const showGeneratedPreview =
             draftMode === "generated" &&
-            (this.props.isUploadedAvatar !== true || textChanged || colorChanged)
+            (textChanged || colorChanged)
         const content = <div className="wk-channelavatar">
             <div className="wk-channelavatar-main">
                 <div className="wk-channelavatar-preview-panel">
@@ -292,6 +292,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                         {this.context.t('base.channelAvatar.changeTextColorAvatar')}
                     </div>}
                     {showUpload && <GroupAvatarEditForm
+                        key={this.props.visible === true ? "open" : "closed"}
                         name={groupName || ""}
                         nameAsFallback={isNamedGroup === true}
                         initialAvatarText={this.props.initialAvatarText || ""}
