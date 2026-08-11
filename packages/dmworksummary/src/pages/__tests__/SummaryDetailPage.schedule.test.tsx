@@ -56,6 +56,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
 import * as api from '../../api/summaryApi';
 import { WKApp } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
+import { shouldEmitOnStatusTransition } from '../../utils/summaryNotifyHelpers';
 
 vi.mock('../../api/summaryApi');
 
@@ -3036,5 +3037,71 @@ describe('SummaryDetailPage — 深链 string taskNo：loadPersonalResult 四入
         expect(api.getPersonalResult).toHaveBeenCalledWith(740);    // 终态刷新用数字
         expect(api.batchStatus).not.toHaveBeenCalledWith(['SUM-740']);
         expect(api.getPersonalResult).not.toHaveBeenCalledWith('SUM-740');
+    });
+});
+
+// round-13 P1(双 reviewer 一致:@yujiawei addendum P1-2 escalated / @mochashanyao P1):
+// `lastKnownStatus` 是 SummaryDetailPage 上非 task-scoped 的 baseline —— 写在
+// loadDetail seed 与 handleStatusChangeEvent 观测里,但 task-switch 时未 reset,
+// 于是上一 task 的 status 会跨切换泄漏到下一 task 的 shouldEmitOnStatusTransition
+// 判定。两种 error direction:
+//
+//   SHAPE fabricated edge: A 的 lastKnownStatus=2(PROCESSING) · 切到 B(已完成),
+//     shouldEmit(2, 5, 5) === true → fake "首次观察即完成" tip(错发)。
+//   SHAPE suppressed edge: A 的 lastKnownStatus=5(COMPLETED) · 切到 B(processing) ·
+//     B 真的完成时 shouldEmit(5, 5, 5) === false → 应发的 tip 被吃掉(错抑)。
+//
+// One-line fix(task-switch setState 加 lastKnownStatus: undefined)之后,
+// shouldEmit(undefined, *, *) 短路返回 false —— 变成"首次观察一个 terminal task
+// 不 fire",这是既有契约,silence over wrong announcement,@yujiawei review 明确
+// 称为 acceptable trade。
+describe('SummaryDetailPage — round-13 P1: lastKnownStatus 必须 task-scoped(切 task 时 reset)', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    // SHAPE-1c(单元级 · 最直接):componentDidUpdate 观测到 prevTaskId !== currentTaskId 时,
+    // reset schedule state 的那个 setState 里必须包含 lastKnownStatus: undefined。
+    it('SHAPE-1c: task-switch 时 setState reset lastKnownStatus 到 undefined(不遗留上一 task 的值)', () => {
+        // A 的 detail loaded · lastKnownStatus 被 seed 到 5(COMPLETED)。
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 1, status: 5 }) as any);
+        const page = makePage(1);
+        page.state = { ...(page.state as any), lastKnownStatus: 5 /* A 的 terminal · 不该跨切换泄漏 */ };
+
+        // 切到 task B。
+        (page as any).props = { taskId: 2 };
+        page.componentDidUpdate({ taskId: 1 } as any);
+
+        // 关键断言:reset 到 undefined,而不是留着 A 的 5。
+        expect((page.state as any).lastKnownStatus).toBeUndefined();
+    });
+
+    // SHAPE fabricated edge:未 reset 前,shouldEmit(2, 5, 5) = true → 错发。
+    // Reset 后,shouldEmit(undefined, 5, 5) = false → 首次观察不 fire。
+    it('SHAPE-1a: 切到已完成的 B · A 遗留的 PROCESSING 不会 misfire 首次完成 tip', () => {
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 1, status: 2 }) as any);
+        const page = makePage(1);
+        page.state = { ...(page.state as any), lastKnownStatus: 2 };
+
+        (page as any).props = { taskId: 2 };
+        page.componentDidUpdate({ taskId: 1 } as any);
+
+        const prev = (page.state as any).lastKnownStatus;
+        expect(prev).toBeUndefined();
+        expect(shouldEmitOnStatusTransition(prev, 5 /* COMPLETED */, 5)).toBe(false);
+    });
+
+    // SHAPE suppressed edge:未 reset 前,shouldEmit(5, 5, 5) = false → 错抑。
+    // Reset 后,shouldEmit(undefined, 5, 5) = false —— 同一 silence,但契约是
+    // "first observation of terminal task 不 fire",而非"stale 的巧合"。
+    it('SHAPE-1b: 切到 processing 的 B · A 遗留的 COMPLETED 不会造成 5→5 self-loop 抑制', () => {
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 1, status: 5 }) as any);
+        const page = makePage(1);
+        page.state = { ...(page.state as any), lastKnownStatus: 5 };
+
+        (page as any).props = { taskId: 2 };
+        page.componentDidUpdate({ taskId: 1 } as any);
+
+        const prev = (page.state as any).lastKnownStatus;
+        expect(prev).toBeUndefined();
+        expect(shouldEmitOnStatusTransition(prev, 5, 5)).toBe(false);
     });
 });
