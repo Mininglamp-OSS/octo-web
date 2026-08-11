@@ -158,6 +158,23 @@ export default defineConfig(({ mode }) => {
             ? (path: string) => path.replace(/^\/summary/, "")
             : undefined,
         },
+        // Meeting API — standalone octo-meeting-service, mounted at
+        // /meeting/api/v1 by the gateway (prod) and proxied here (dev). Without
+        // this rule a dev /meeting/api/v1/* request falls through to the SPA
+        // index.html (200), which the client now rejects as fail-closed. See
+        // octo-meeting-service (XIN-1773) for the gateway mount convention.
+        "/meeting/api/v1": {
+          target:
+            env.VITE_MEETING_API_URL || apiOrigin || "http://localhost:8080",
+          changeOrigin: true,
+          secure: false,
+          // The client calls /meeting/api/v1/v1/... (BASE + canonical /v1 path).
+          // A standalone service serves /v1/...; strip the FULL /meeting/api/v1
+          // prefix so the local target receives /v1/... (not /api/v1/v1/...).
+          rewrite: env.VITE_MEETING_API_URL
+            ? (path: string) => path.replace(/^\/meeting\/api\/v1/, "")
+            : undefined,
+        },
         // Marketplace (MCP catalog) API — must be before the general /api/ rule.
         // octo-marketplace serves its own /api/v1/*; the /market prefix is
         // stripped here (dev) and by nginx (prod). See octo-marketplace

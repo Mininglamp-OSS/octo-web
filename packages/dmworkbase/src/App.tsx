@@ -185,6 +185,7 @@ export class WKConfig {
   pageSizeOfMessage: number = 30; // 每次请求消息数量
   fileHelperUID: string = "fileHelper"; // 文件助手UID
   systemUID: string = "u_10000"; // 系统uid
+  meetingFeatureEnabled: boolean = false; // MEETING_FEATURE_ENABLED: fail-safe/default-off gate for the Meeting module
 
   private _themeMode: ThemeMode = ThemeMode.light; // 主题模式
 

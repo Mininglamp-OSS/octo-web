@@ -188,6 +188,9 @@ importers:
       '@dmwork/mcp':
         specifier: workspace:*
         version: link:../../packages/dmworkmcp
+      '@dmwork/meeting':
+        specifier: workspace:*
+        version: link:../../packages/dmworkmeeting
       '@dmwork/skillmarket':
         specifier: workspace:*
         version: link:../../packages/dmworkskillmarket
@@ -737,6 +740,31 @@ importers:
       react-dom:
         specifier: ^17.0.2
         version: 17.0.2(react@17.0.2)
+
+  packages/dmworkmeeting:
+    dependencies:
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
+    devDependencies:
+      '@testing-library/jest-dom':
+        specifier: ^6.9.1
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: ^14.3.1
+        version: 14.3.1(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/react':
+        specifier: ^18.3.3
+        version: 18.3.28
+      '@types/react-dom':
+        specifier: ^18.3.0
+        version: 18.3.7(@types/react@18.3.28)
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
 
   packages/dmworkskillmarket:
     dependencies:

@@ -1,0 +1,102 @@
+{
+  "menu": { "title": "会议" },
+  "home": {
+    "title": "会议",
+    "quick": "快速会议",
+    "schedule": "预约会议",
+    "join": "加入会议",
+    "upcoming": "即将开始",
+    "history": "历史会议",
+    "empty": "暂无会议"
+  },
+  "join": {
+    "numberLabel": "会议号或链接",
+    "numberPlaceholder": "请输入会议号",
+    "submit": "继续"
+  },
+  "form": {
+    "titleLabel": "标题",
+    "startLabel": "开始时间",
+    "enablePassword": "入会需要密码",
+    "save": "保存",
+    "createNow": "立即开始",
+    "editTitle": "编辑会议",
+    "cancelMeeting": "取消会议"
+  },
+  "detail": {
+    "number": "会议号",
+    "copyNumber": "复制会议号",
+    "copyLink": "复制入会链接",
+    "copied": "已复制",
+    "edit": "编辑"
+  },
+  "challenge": {
+    "title": "输入会议密码",
+    "inputLabel": "6 位数字密码",
+    "placeholder": "6 位数字",
+    "submit": "验证",
+    "attemptsRemaining": "还可尝试 {{count}} 次",
+    "cooldown": "尝试次数过多，请在 {{seconds}} 秒后重试。"
+  },
+  "prejoin": {
+    "title": "准备加入",
+    "camera": "摄像头",
+    "microphone": "麦克风",
+    "join": "立即加入",
+    "retry": "媒体暂不可用，{{seconds}} 秒后重试"
+  },
+  "room": {
+    "leave": "离开",
+    "muteAll": "全体静音",
+    "share": "共享屏幕",
+    "stopShare": "停止共享",
+    "reconnecting": "重新连接中…",
+    "participants": "成员",
+    "mediaUnavailable": "媒体未连接",
+    "role": { "host": "主持人", "cohost": "联席主持", "member": "成员" },
+    "promoteCohost": "设为联席主持"
+  },
+  "terminal": {
+    "ended": "会议已结束",
+    "cancelled": "会议已取消",
+    "removed": "你已被移出会议",
+    "superseded": "你已在其他设备加入",
+    "left": "你已离开会议",
+    "noShow": "无人加入，会议已结束",
+    "emptyTimeout": "会议因空房已结束",
+    "authRequired": "请重新登录",
+    "backHome": "返回会议列表"
+  },
+  "service": {
+    "unavailable": "会议服务暂不可用",
+    "notEnabled": "会议功能未启用",
+    "retry": "重试"
+  },
+  "history": { "passwordEnabled": "密码保护：已启用", "passwordDisabled": "密码保护：未启用" },
+  "error": {
+    "authRequired": "请重新登录",
+    "credentialInvalid": "会议号或链接无效",
+    "ended": "会议已结束",
+    "cancelled": "会议已取消",
+    "tooEarly": "可从 {{earliestJoinAt}} 开始入会",
+    "locked": "会议已锁定",
+    "full": "会议人数已满",
+    "removed": "你已被移出会议",
+    "notSameSpace": "请切换到正确的空间以访问该会议",
+    "passwordRequired": "该会议需要入会密码",
+    "passwordFormatInvalid": "请输入 6 位数字密码",
+    "passwordInvalid": "密码错误",
+    "passwordCooldown": "尝试次数过多，请稍后再试。",
+    "passwordPassExpired": "验证已过期，请重新输入密码",
+    "passwordImmutable": "会议开始后密码不可修改",
+    "forbidden": "你没有执行该操作的权限",
+    "versionConflict": "会议信息已变更，正在刷新…",
+    "idempotencyConflict": "检测到重复请求",
+    "shareConflict": "已有成员正在共享",
+    "livekitUnavailable": "媒体暂不可用",
+    "notificationDeferred": "通知将稍后送达",
+    "timeInvalid": "请选择有效的时间",
+    "rateLimited": "请求过于频繁，请稍候",
+    "internal": "出现错误，请重试"
+  }
+}

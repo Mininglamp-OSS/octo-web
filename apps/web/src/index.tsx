@@ -9,6 +9,7 @@ import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
 import { SummaryModule } from '@dmwork/summary';
+import { MeetingModule } from '@dmwork/meeting';
 import { McpMarketModule } from '@dmwork/mcp';
 import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
@@ -62,6 +63,9 @@ WKApp.apiClient.config.spaceIdCallback = () => {
 }
 WKApp.config.appVersion = import.meta.env.VITE_VERSION || pkgVersion
 WKApp.config.appName = "Octo"
+// MEETING_FEATURE_ENABLED — fail-safe/default-off. The Meeting module registers
+// its menu and routes only when this is explicitly "true".
+WKApp.config.meetingFeatureEnabled = import.meta.env.VITE_MEETING_FEATURE_ENABLED === "true"
 
 WKApp.loginInfo.load() // 加载登录信息
 i18n.registerNamespace("app", {
@@ -82,6 +86,7 @@ WKApp.shared.registerModule(new LoginModule()); // 登录模块
 WKApp.shared.registerModule(new BindModule()); // OIDC 自助绑定页 (/oidc/bind)
 WKApp.shared.registerModule(new ContactsModule()); // 联系模块
 WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
+WKApp.shared.registerModule(new MeetingModule()); // 会议模块
 WKApp.shared.registerModule(new McpMarketModule()); // MCP 市场模块
 WKApp.shared.registerModule(new SkillMarketModule()); // Skill 市场模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块

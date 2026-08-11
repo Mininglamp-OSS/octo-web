@@ -68,6 +68,7 @@
   "devDependencies": {
     "@dmwork/appbot": "workspace:*",
     "@dmwork/mcp": "workspace:*",
+    "@dmwork/meeting": "workspace:*",
     "@dmwork/skillmarket": "workspace:*",
     "@dmwork/summary": "workspace:*",
     "@douyinfe/semi-icons": "^2.93.0",
