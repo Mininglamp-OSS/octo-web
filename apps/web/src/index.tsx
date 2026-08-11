@@ -149,8 +149,9 @@ async function main(): Promise<void> {
   await enableMockImIfE2E();
   WKApp.shared.startup(); // app启动
   // 埋点蒙版底座(octo-dap 采集方案):启动时初始化一次,装事件委托 / MutationObserver /
-  // fetch-XHR 包裹 / 卸载兜底。默认 ship dark(不采),由 remoteConfig 的 tracking_enabled
-  // 显式开采、tracking_disabled 急停(见 App.tsx requestConfig)。全程自吞异常,失败不影响业务。
+  // fetch-XHR 包裹 / 卸载兜底。默认 ship dark(fail-closed,不采),仅当 remoteConfig 下发
+  // tracking_enabled 为真时才开采;字段缺失 / false / 拉取失败一律不采,前端一个请求都不发
+  // (见 App.tsx requestConfig)。全程自吞异常,失败不影响业务。
   Dap.shared.init();
 
   const container = document.getElementById("root")!;

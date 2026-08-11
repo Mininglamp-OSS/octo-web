@@ -20,7 +20,7 @@ import {
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
-import { rememberSendIntent, trackMessageSent, trackMessageRevoked } from "../../Service/trackMessage";
+import { rememberSendIntent, trackMessageRevoked } from "../../Service/trackMessage";
 import { SuperGroup } from "../../Utils/const";
 import { SystemContent } from "wukongimjssdk";
 import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
@@ -1453,7 +1453,9 @@ export default class ConversationVM extends ProviderListener {
                 this.removeSendingMessageIfNeed(ackPacket.clientSeq, this.channel)
                 this.messagesOfOrigin = ConversationVM.deduplicateMessages(this.sortMessages(this.messagesOfOrigin))
                 this.refreshMessages(this.messagesOfOrigin)
-                trackMessageSent(ackPacket.clientSeq) // 破例2:submitted 口径补点(§5.2)
+                // message_sent 等的 sendack 补点已搬到 trackMessage.ts 的常驻全局监听
+                // (按 clientSeq 消费,与本 VM 生命周期无关),避免切频道致发送 VM 卸载后
+                // 事件被静默丢弃(见 PR #1320 review P1-3)。此处不再补点。
                 return
             }
         }

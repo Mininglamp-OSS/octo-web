@@ -648,7 +648,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     renderBotFatherBanner() {
         return (
             <div className="wk-contacts-botfather-banner" onClick={() => {
-                WKApp.endpoints.showConversation(new Channel("botfather", ChannelTypePerson))
+                // 走 handleContactClick 而非直接 showConversation:后者绕过 contact_opened
+                // 埋点(PR #1320 review P1-4)。handleContactClick('botfather', true) 会先补
+                // contact_opened(is_bot/bot_type),再执行同样的「直接进聊天」。
+                this.handleContactClick("botfather", true)
             }}>
                 <div className="wk-contacts-botfather-avatar">
                     <WKAvatar channel={new Channel("botfather", ChannelTypePerson)} />

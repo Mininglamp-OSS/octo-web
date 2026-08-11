@@ -94,4 +94,41 @@ describe('Dap — page observer drives page_view/page_leave on route INSERT (P1)
         expect(leaves[0].page_id).toBe('page-a')
         expect(typeof leaves[0].props?.duration_ms).toBe('number')
     })
+
+    it('re-resolves the container after it is removed and re-added, emitting page_view in the NEW root (P1-1)', async () => {
+        // 首个容器先于 init 存在
+        const root1 = document.createElement('div')
+        root1.className = 'wk-layout-content-left'
+        document.body.appendChild(root1)
+
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        // 在旧容器内首访 A
+        const a = document.createElement('div')
+        a.setAttribute('data-page-id', 'page-a')
+        a.style.display = 'block'
+        root1.appendChild(a)
+        await tick()
+
+        // 布局整体重建:移除旧容器,换一个新的(如切换工作区 / 路由级重挂载)。
+        // 旧实现只在挂载那刻 querySelector 一次并 one-shot 断开 boot observer,新容器再也
+        // 采不到 → 换容器后 page_view 整条丢失(delete-the-fix:把常驻 boot observer 改回
+        // 一次性断开,本断言立即变红)。
+        root1.remove()
+        const root2 = document.createElement('div')
+        root2.className = 'wk-layout-content-left'
+        const c = document.createElement('div')
+        c.setAttribute('data-page-id', 'page-c')
+        c.style.display = 'block'
+        root2.appendChild(c)
+        document.body.appendChild(root2)
+        await tick()
+
+        Dap.shared.flush()
+
+        // 新容器里的可见页被重新观测到
+        expect(events('page_view').map((e) => e.page_id)).toContain('page-c')
+    })
 })

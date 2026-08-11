@@ -220,8 +220,19 @@ class DapImpl {
     // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
     private enabled = false
     private started = false
-    /** 采集机制(observer + fetch/XHR 包裹)是否已装:首次 enable 才装,幂等,dark 态零开销 */
-    private collectorsInstalled = false
+    /**
+     * 采集机制是否已装:**每个采集器一个 flag**,而非一个总开关。
+     * 单一总开关下,若某个 install 抛错(总开关保持 false),下次 setEnabled(true) 会把
+     * 四个采集器**全部重装**——已成功的那些会被再装一遍:document 上多一个 click/submit
+     * 捕获监听(声明式事件双记)、fetch/XHR 多包一层(见 PR #1320 review P2-3)。
+     * 拆成 per-collector 后,每个采集器至多装一次,与其它是否失败无关。
+     */
+    private installed: { click: boolean; page: boolean; exposure: boolean; http: boolean } = {
+        click: false,
+        page: false,
+        exposure: false,
+        http: false,
+    }
     /**
      * 采集代次。每次 setEnabled(false) 自增,使"停采前已捕获、尚在重试队列里的批次"整体作废,
      * 配合 retryTimers 清理,实现 kill switch 立即生效、不再有滞后上报(见 PR review P0-2)。
@@ -258,20 +269,26 @@ class DapImpl {
     }
 
     /**
-     * 惰性装采集机制:点击委托 + 切页/曝光 observer + fetch·XHR 包裹。幂等。
+     * 惰性装采集机制:点击委托 + 切页/曝光 observer + fetch·XHR 包裹。
      * 只在特性真正启用时装,dark 态(默认)不给 prod 用户加任何常驻开销。
-     * 全程 safe() 包裹:setEnabled 在 App remoteConfig 回调里内联调用,采集安装抛错
-     * 绝不能中断后续业务逻辑。collectorsInstalled 在四项全装成功后才置位——中途失败
-     * 保持 false,下次 setEnabled(true) 会重试,不会留下「装了一半」的永久残缺态。
+     * **每个采集器独立幂等**(installOnce):某个抛错不影响其它,重试也只补装未成功的那个,
+     * 绝不会把已装的采集器再装一遍(避免重复监听 / 重复包裹,见 PR #1320 review P2-3)。
+     * installOnce 内 safe() 包裹:setEnabled 在 App remoteConfig 回调里内联调用,采集安装
+     * 抛错绝不能中断后续业务逻辑。
      */
     private installCollectors(): void {
-        if (this.collectorsInstalled) return
+        this.installOnce('click', () => this.installClickDelegation())
+        this.installOnce('page', () => this.installPageObserver())
+        this.installOnce('exposure', () => this.installExposureObserver())
+        this.installOnce('http', () => this.installHttpWrap())
+    }
+
+    /** 装单个采集器:已装则跳过;装成功才置位(中途抛错保持 false,下次重试仅补这一个)。 */
+    private installOnce(key: keyof DapImpl['installed'], fn: () => void): void {
+        if (this.installed[key]) return
         this.safe(() => {
-            this.installClickDelegation()
-            this.installPageObserver()
-            this.installExposureObserver()
-            this.installHttpWrap()
-            this.collectorsInstalled = true
+            fn()
+            this.installed[key] = true
         })
     }
 
@@ -505,32 +522,68 @@ class DapImpl {
     // ----------------------------------------------- 机制① 全局事件委托
 
     private installClickDelegation(): void {
-        const handler = (e: Event) => {
+        // 解析被点/被激活元素归属的 [data-track],并施加 data-track-ignore 排除。
+        const resolveTracked = (target: HTMLElement | null): HTMLElement | null => {
+            if (!target || typeof target.closest !== 'function') return null
+            const el = target.closest<HTMLElement>('[data-track]')
+            if (!el) return null
+            // 落在被显式标记「本次交互不代表该 data-track 动作」的子控件里则跳过:
+            // 如会话行(channel_opened)内的拖拽柄/展开线程标签、市场卡片 footer 的编辑/删除
+            // 按钮——它们 stopPropagation 表示「不代表该事件」,但捕获阶段先于 stopPropagation
+            // 执行,故改用 data-track-ignore 显式排除(ignore 须是被点元素到 tracked 元素之间的一层)。
+            const ignore = target.closest<HTMLElement>('[data-track-ignore]')
+            if (ignore && el !== ignore && el.contains(ignore)) return null
+            return el
+        }
+        const fire = (el: HTMLElement) => {
+            const name = el.dataset.track
+            if (!name) return
+            this.track(name, this.collectDatasetProps(el))
+        }
+        const clickHandler = (e: Event) => {
             this.safe(() => {
+                const el = resolveTracked(e.target as HTMLElement | null)
+                if (el) fire(el)
+            })
+        }
+        // 键盘激活补采:role="button" 等**非原生**控件(如市场卡片 McpCard/SkillCard 是
+        // div/article + role=button + 自定义 onKeyDown)被 Enter/Space 激活时,浏览器**不会**
+        // 派发 click,声明式 click 委托整条漏采——键盘用户打开详情却无任何事件(见 PR #1320
+        // review P1-4)。这里补一条 keydown:仅对**非原生可激活**的聚焦元素在 Enter/Space 时
+        // 补发;原生 button/a[href]/input/select/textarea/summary 会自行合成 click(已被上面的
+        // 委托覆盖),显式排除以免双记。
+        const keydownHandler = (e: KeyboardEvent) => {
+            this.safe(() => {
+                if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return
                 const target = e.target as HTMLElement | null
-                if (!target || typeof target.closest !== 'function') return
-                const el = target.closest<HTMLElement>('[data-track]')
-                if (!el) return
-                // 落在被显式标记「本次交互不代表该 data-track 动作」的子控件里则跳过:
-                // 如会话行(channel_opened)内的拖拽柄、展开线程标签——它们 stopPropagation
-                // 表示「不打开会话」,但捕获阶段先于 stopPropagation 执行,故改用 data-track-ignore
-                // 显式排除(ignore 须是被点元素到 tracked 元素之间的一层)。
-                const ignore = target.closest<HTMLElement>('[data-track-ignore]')
-                if (ignore && el !== ignore && el.contains(ignore)) return
-                const name = el.dataset.track
-                if (!name) return
-                this.track(name, this.collectDatasetProps(el))
+                if (!target || this.isNativeActivatable(target)) return
+                const el = resolveTracked(target)
+                if (el) fire(el)
             })
         }
         // 捕获阶段:即使业务层 stopPropagation 也能采到。
-        // 只听 click(不听 change):Semi Switch / 原生 checkbox 一次切换会同时冒泡
+        // click 只听 click(不听 change):Semi Switch / 原生 checkbox 一次切换会同时冒泡
         // click 和 change,两者都命中同一个 [data-track] wrapper → 声明式事件被记两遍
-        // (如 group_setting_toggled)。click 已覆盖指针点击与键盘 Space 激活(原生
-        // 控件被 Space 激活时也派发 click),故去掉 change 订阅即可去重且不漏采。
+        // (如 group_setting_toggled)。click 已覆盖指针点击与原生控件的键盘激活;非原生
+        // 控件的键盘激活由 keydownHandler 补齐。
         // 注:当前无任何 data-track 挂在只靠 change 的控件(<select>/radio)上;
         // 若将来需要,应针对该控件单独加一条 guard 过的 change 监听,而非全局恢复。
-        document.addEventListener('click', handler, true)
-        document.addEventListener('submit', handler, true)
+        document.addEventListener('click', clickHandler, true)
+        document.addEventListener('submit', clickHandler, true)
+        document.addEventListener('keydown', keydownHandler, true)
+    }
+
+    /**
+     * 原生「Enter/Space 会自动合成 click」的可激活元素。用于 keydown 补采时排除它们
+     * (避免与浏览器合成的 click 双记)。非原生的 role="button" 等返回 false → 需 keydown 补发。
+     */
+    private isNativeActivatable(el: HTMLElement): boolean {
+        const tag = el.tagName
+        if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || tag === 'SUMMARY') {
+            return true
+        }
+        if (tag === 'A' && el.hasAttribute('href')) return true
+        return false
     }
 
     /**
@@ -574,8 +627,14 @@ class DapImpl {
             visit(node)
             node.querySelectorAll<HTMLElement>('[data-page-id]').forEach(visit)
         }
+        let attachedRoot: Element | null = null
+        let scoped: MutationObserver | null = null
         const attach = (root: Element) => {
-            const obs = new MutationObserver((mutations) => {
+            if (attachedRoot === root) return // 已绑同一节点,勿重复观测
+            // 容器被替换(审批屏卸载再挂回 shell 等):断开旧 scoped 观测,重绑到新节点。
+            scoped?.disconnect()
+            attachedRoot = root
+            scoped = new MutationObserver((mutations) => {
                 this.safe(() => {
                     for (const m of mutations) {
                         if (m.type === 'attributes') {
@@ -591,26 +650,26 @@ class DapImpl {
                     }
                 })
             })
-            obs.observe(root, { subtree: true, attributes: true, attributeFilter: ['style'], childList: true })
-            // 挂载即补扫当前已可见页,避免漏掉挂载那一刻的首屏 page_view(P1-7)
+            scoped.observe(root, { subtree: true, attributes: true, attributeFilter: ['style'], childList: true })
+            // 挂载即补扫当前已可见页,避免漏掉挂载(或重挂)那一刻的首屏 page_view(P1-7);
+            // 重挂场景下这一扫还会 pageView 新容器的当前页 → settleLastPage 结算掉此前那条
+            // 停留在旧页的 lastPage,顺带修正 page_leave 的错误归属。
             root.querySelectorAll<HTMLElement>('[data-page-id]').forEach(visit)
         }
-        const found = document.querySelector('.wk-layout-content-left')
-        if (found) {
-            attach(found)
-            return
+        const resolve = () => {
+            const root = document.querySelector('.wk-layout-content-left')
+            // 仅当出现「新的、未绑定过的」容器实例时才重绑。容器被移除时 root 为 null,
+            // 保留旧引用即可(旧节点已卸载,残留观测无害),等新容器出现再重解析。
+            if (root && root !== attachedRoot) attach(root)
         }
-        // 容器尚未渲染:临时观测 body 等它出现,出现后切到 scoped 观测并断开引导观测
-        this.pageBootObserver = new MutationObserver(() => {
-            this.safe(() => {
-                const root = document.querySelector('.wk-layout-content-left')
-                if (root) {
-                    this.pageBootObserver?.disconnect()
-                    this.pageBootObserver = null
-                    attach(root)
-                }
-            })
-        })
+        resolve() // 立即尝试绑定当前容器(若首屏已渲染)
+        // 常驻引导观测:容器**首次出现**或**被替换重挂**都触发重解析重绑。
+        // 关键修正(PR #1320 review P1-1):JoinSpaceModal 的 NEED_APPROVAL/PENDING 会让
+        // AppLayout 换成审批屏、关闭后再换回 shell —— 同一 JS 上下文,单例不重建,.wk-layout-content-left
+        // 被卸载再重建。旧实现 attach 后 return、且引导观测出现容器即 disconnect,故 scoped 观测
+        // 会永久绑死在已卸载的旧容器上:此后整会话 page_view 全丢、page_leave 继续错记到旧页。
+        // 因此引导观测**不再一次性 disconnect**,常驻监听 body 以便随时重解析。
+        this.pageBootObserver = new MutationObserver(() => this.safe(resolve))
         this.pageBootObserver.observe(document.body, { childList: true, subtree: true })
     }
 

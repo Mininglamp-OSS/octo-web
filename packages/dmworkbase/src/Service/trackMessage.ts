@@ -13,6 +13,7 @@
  *   - 一律不写 actor(user_id / actor_type),后端按凭证归一。
  */
 import { Dap } from './Dap'
+import { WKSDK, SendackPacket } from 'wukongimjssdk'
 
 /** channelType → chat_type 枚举(§ Const.ts:ChannelTypePerson=1/Group=2/CommunityTopic=5/CustomerService=3) */
 function chatTypeOf(channelType: number): string {
@@ -42,10 +43,40 @@ const MAX_INTENTS = 500
 
 export function rememberSendIntent(clientSeq: number | undefined, intent: SendIntent): void {
     if (!clientSeq) return
+    // sendack 到达前用户可能已切走频道,发送 VM 卸载、其 messageStatusListener 被摘,
+    // 故消费 sendack 的监听必须**独立于任何 VM**。见 ensureGlobalAckListener。
+    ensureGlobalAckListener()
     intents.set(clientSeq, intent)
     if (intents.size > MAX_INTENTS) {
         const oldest = intents.keys().next().value
         if (oldest !== undefined) intents.delete(oldest)
+    }
+}
+
+/**
+ * 常驻(与任何 ConversationVM 无关)的 sendack 监听:纯按 clientSeq 消费 intents。
+ *
+ * 此前 message_sent / ai_mentioned / bot_create_started 只在**发送会话自己**的 VM 的
+ * sendack 回调里补点(updateMessageStatusBySendAck → findMessageWithClientSeq 需命中本 VM
+ * 列表)。用户在 sendack 到达前切走频道时,发送 VM 已卸载、其 messageStatusListener 已摘,
+ * 新挂载 VM 找不到该 clientSeq,message_sent 被静默丢弃——系统性少计"快速切频道 / 慢网"
+ * 用户的旗舰事件(见 PR #1320 review P1-3)。
+ *
+ * intents 本就是模块级、跨 VM 存活;把消费点搬到一个常驻 chatManager 监听后,切频道再也
+ * 吞不掉事件。trackMessageSent 消费即 delete,故即便与旧 VM 路径并存也天然去重、绝不双记;
+ * 无 intent(如转发)则直接 no-op。幂等,仅注册一次。
+ */
+let ackListenerBound = false
+function ensureGlobalAckListener(): void {
+    if (ackListenerBound) return
+    try {
+        WKSDK.shared().chatManager.addMessageStatusListener((p: SendackPacket) => {
+            // reasonCode===1 = IM 服务端已受理(submitted 口径),与原 VM 路径判据一致
+            if (p && p.reasonCode === 1) trackMessageSent(p.clientSeq)
+        })
+        ackListenerBound = true
+    } catch {
+        /* WKSDK 尚未就绪等异常一律吞掉,不影响业务发送 */
     }
 }
 

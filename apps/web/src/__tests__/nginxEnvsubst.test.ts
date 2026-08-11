@@ -9,8 +9,12 @@ import * as path from 'path';
  *   `if ($track_api_url = "")` 的 fail-closed 守卫永真,那条路由 503,与运维配置无关。
  *   TRACK_API_URL 正是这样漏掉才导致 /track 整条死掉(P1-1)。
  *
- * 这是纯静态文件断言(不依赖 jsdom/运行时),CI 的 `pnpm test` 即可拦住此类回归 ——
- * 比 `nginx -t` 生成配置更早、更便宜地把"占位符没被替换"钉死在提交时。
+ * 这是纯静态文件断言(不依赖 jsdom/运行时):跑 @octo/web 的 vitest(本地
+ * `pnpm --filter @octo/web test`,或直接 `vitest run`)即可拦住此类回归 —— 比 `nginx -t`
+ * 生成配置更早、更便宜地把"占位符没被替换"钉死。
+ * 注意:当前 `.github/workflows/ci.yml` 只跑 build/lint 与少数窄过滤的测试,并不执行
+ * @octo/web 这一 suite,故本用例现阶段只在本地 / 按需运行时守门,尚未在 CI 里 gate 该 PR;
+ * 若要让它随 CI 强制,需另行调整 ci.yml(本 PR 不动 CI)。
  */
 describe('nginx envsubst allowlist covers every template placeholder (P1-1)', () => {
     let tplVars: string[];
