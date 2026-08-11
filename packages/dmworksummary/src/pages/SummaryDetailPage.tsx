@@ -1201,7 +1201,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 isDisbanded: (ch) => isConversationDisbanded(ch),
             },
             TaskStatus.COMPLETED,
-            SummaryMode.BY_GROUP,
             ChannelTypeGroup,
         );
     }

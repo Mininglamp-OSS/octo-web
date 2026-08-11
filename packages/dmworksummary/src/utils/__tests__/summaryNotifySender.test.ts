@@ -58,7 +58,7 @@ async function invoke(
     deps: SummaryNotifySendDeps,
     myUid: string | undefined = CREATOR,
 ) {
-    await sendGroupSummaryNotifyImpl(detail, myUid, state, deps, COMPLETED, BY_GROUP, CHANNEL_TYPE_GROUP);
+    await sendGroupSummaryNotifyImpl(detail, myUid, state, deps, COMPLETED, CHANNEL_TYPE_GROUP);
 }
 
 /** All channel IDs the mocked sender was called with, in call order. */
@@ -81,11 +81,14 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
         expect(deps.sendToChannel).not.toHaveBeenCalled();
     });
 
-    it('returns without sending for BY_PERSON summaries even with group sources', async () => {
+    // Product intent (owner clarification 2026-08-11): the tip is scoped by
+    // `sources`, not by `summary_mode`. A BY_PERSON summary initiated from a
+    // group chat still emits — this reverses the round-7 BY_GROUP gate.
+    it('DOES send for BY_PERSON summaries when group sources are present (source-driven emission)', async () => {
         const state = newSummaryNotifySendState();
         const deps = makeDeps();
         await invoke(taskWithSources(1, ['g1'], { summary_mode: BY_PERSON as any }), state, deps);
-        expect(deps.sendToChannel).not.toHaveBeenCalled();
+        expect(sentSourceIds(deps.sendToChannel)).toEqual(['g1']);
     });
 
     it('returns without sending when viewer is not the creator', async () => {

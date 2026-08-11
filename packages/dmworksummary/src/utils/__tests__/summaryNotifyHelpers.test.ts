@@ -22,6 +22,9 @@ const GROUP = 1;
 const THREAD = 2;
 const DM = 3;
 // SummaryMode: BY_GROUP = 1, BY_PERSON = 2.
+// Kept as fixtures for `minimalDetail` — the shouldEmit helper no longer
+// gates on mode (see helper doc block), but sender-layer tests still need to
+// construct realistic SummaryDetail rows.
 const BY_GROUP = 1;
 const BY_PERSON = 2;
 
@@ -35,46 +38,51 @@ function minimalDetail(overrides: Partial<Pick<SummaryDetail, 'status' | 'creato
 }
 
 describe('shouldEmitGroupSummaryNotify', () => {
-    it('returns true when creator viewing own COMPLETED BY_GROUP task', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail(), 'creator-uid', COMPLETED, BY_GROUP)).toBe(true);
+    it('returns true when creator viewing own COMPLETED task', () => {
+        expect(shouldEmitGroupSummaryNotify(minimalDetail(), 'creator-uid', COMPLETED)).toBe(true);
     });
 
     it('returns false when viewer is not the creator', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail(), 'other-uid', COMPLETED, BY_GROUP)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail(), 'other-uid', COMPLETED)).toBe(false);
     });
 
     it('returns false when task is not COMPLETED (PROCESSING)', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: PROCESSING as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: PROCESSING as any }), 'creator-uid', COMPLETED)).toBe(false);
     });
 
     it('returns false when task is FAILED (never announce failure to group)', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: FAILED as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: FAILED as any }), 'creator-uid', COMPLETED)).toBe(false);
     });
 
     it('returns false when task is CANCELLED', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: CANCELLED as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ status: CANCELLED as any }), 'creator-uid', COMPLETED)).toBe(false);
     });
 
     it('returns false when logged-out (empty myUid)', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail(), '', COMPLETED, BY_GROUP)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail(), '', COMPLETED)).toBe(false);
     });
 
     it('returns false when task has no creator_id (defensive)', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ creator_id: '' }), 'anyone', COMPLETED, BY_GROUP)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ creator_id: '' }), 'anyone', COMPLETED)).toBe(false);
     });
 
-    // #1283 round-7 P1 (Jerry-Xin / lml2468 / yujiawei): BY_PERSON summaries
-    // produce per-participant DM content, not a group summary — announcing
-    // "总结了群聊内容" into every group source is a scope violation.
-    it('returns false for BY_PERSON mode (positive BY_GROUP gate)', () => {
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ summary_mode: BY_PERSON as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
+    // Product intent (owner clarification 2026-08-11): the tip fires when a
+    // summary is INITIATED FROM A GROUP CHAT (a property of `sources`), not
+    // gated on how the result is partitioned per participant (which is what
+    // `summary_mode` records). BY_PERSON summaries created from a group chat
+    // must now emit — the reverse of the round-7 gate. The "don't announce
+    // into unrelated chats" invariant that the round-7 gate reached for is
+    // now enforced by `collectGroupSourceIds` (no group sources → sender
+    // returns without sending; see sender.test.ts).
+    it('returns true for BY_PERSON mode (mode gate removed — source-driven emission)', () => {
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ summary_mode: BY_PERSON as any }), 'creator-uid', COMPLETED)).toBe(true);
     });
 
-    // Positive check guards a hypothetical future mode value (e.g. 3) from
-    // silently emitting a group announcement it was never designed for.
-    it('returns false for an unknown future summary_mode value', () => {
+    // Extra unknown `summary_mode` values are equally allowed to reach the
+    // sender — the sender then filters on `sources`, not on mode.
+    it('returns true for an unknown future summary_mode value (mode is not a gate)', () => {
         const futureMode = 99;
-        expect(shouldEmitGroupSummaryNotify(minimalDetail({ summary_mode: futureMode as any }), 'creator-uid', COMPLETED, BY_GROUP)).toBe(false);
+        expect(shouldEmitGroupSummaryNotify(minimalDetail({ summary_mode: futureMode as any }), 'creator-uid', COMPLETED)).toBe(true);
     });
 });
 

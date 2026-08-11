@@ -116,10 +116,9 @@ export async function sendGroupSummaryNotifyImpl(
     state: SummaryNotifySendState,
     deps: SummaryNotifySendDeps,
     completedStatus: number,
-    byGroupMode: number,
     channelTypeGroup: number,
 ): Promise<void> {
-    if (!shouldEmitGroupSummaryNotify(detail, myUid, completedStatus, byGroupMode)) return;
+    if (!shouldEmitGroupSummaryNotify(detail, myUid, completedStatus)) return;
     if (!myUid) return; // narrow for TS after helper predicate
 
     const groupSourceIds = collectGroupSourceIds(detail.sources);

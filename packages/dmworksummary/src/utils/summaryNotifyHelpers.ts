@@ -20,6 +20,36 @@ import type { SummaryDetail } from '../types/summary';
  *      concurrent tabs. See the "First-completion-only persistence" section
  *      below for the full contract.
  *
+ * # Trigger contract — the mode gate was removed in favour of source-driven emission
+ *
+ * The tip fires when a summary is **initiated from a group chat** — a
+ * property of the task's `sources`, not of `summary_mode`. Whether the
+ * result is partitioned per participant (BY_PERSON) or delivered as a
+ * single team-level artifact (BY_GROUP) is orthogonal: both flavours, when
+ * initiated from a group chat, should announce "{creator} 总结了群聊内容"
+ * into that group.
+ *
+ * Rationale — the round-7 BY_GROUP gate that this note replaces was a
+ * scope-violation defense premised on the assumption that BY_GROUP tasks
+ * exist as a distinct product surface. That assumption does not hold in
+ * the current deployment: the backend defines only `ModeByPerson = 2` in
+ * `internal/model/model.go` (no `ModeByGroup` constant), and all three
+ * task-creation entrypoints — `handler/task.go`, `handler/bot_summary_create.go`,
+ * `handler/agent_summary.go` — hard-code `SummaryMode: model.ModeByPerson`.
+ * Under that shape the gate `if (summary_mode !== BY_GROUP) return false`
+ * suppresses every real-world tip end-to-end. Owner clarification (2026-08-11)
+ * confirmed the intended trigger is "was this summary initiated from a
+ * group chat?", so mode is not the right axis.
+ *
+ * The "don't announce into unrelated chats" invariant that the mode gate
+ * was reaching for is preserved by the source filter in
+ * `collectGroupSourceIds` — a task with no group entries in `sources`
+ * yields an empty recipient list and the sender's per-source loop is a
+ * no-op. This is a stronger property than the mode gate ever provided
+ * (the mode gate would still have suppressed a BY_PERSON task that WAS
+ * initiated from a group chat, which is exactly the user-visible bug that
+ * motivated this change).
+ *
  * Reviewer context:
  *
  *   - PR #1234 round-6 (@yujiawei) asked to retire an earlier persistent
@@ -28,6 +58,18 @@ import type { SummaryDetail } from '../types/summary';
  *     (one boolean per group per task) and shipped in round-9 to close
  *     the "regenerate posts a tip depending on whether the creator
  *     refreshed" defect from round-8.
+ *
+ *   - PR #1283 round-7 P1 (@Jerry-Xin / @lml2468 / @yujiawei, three-way
+ *     convergence) added the BY_GROUP mode gate on the concern that
+ *     BY_PERSON summaries would fan out a group-level announcement they
+ *     never produced. The concern is real for the shape reviewers had in
+ *     mind — a BY_PERSON summary NOT initiated from a group chat — but
+ *     under the current backend that shape does not exist end-to-end,
+ *     and the shape that DOES exist (BY_PERSON with group sources,
+ *     because the creator opened the chat and pressed the summarise
+ *     button) is exactly the shape the tip should announce for. See the
+ *     source-driven invariant above for how the "don't announce into
+ *     unrelated chats" half of their concern is preserved.
  *
  *   - Multi-tab / cross-device dedup is best-effort, not exactly-once:
  *     localStorage is same-origin-same-profile shared, so two tabs on
@@ -51,29 +93,31 @@ const GROUP_CHAT_SOURCE_TYPE = 1 as const;
  *     invariant that the actor is always the authenticated sender);
  *   - the task is in a settled COMPLETED state (FAILED / CANCELLED / mid-flight
  *     never announce);
- *   - the task is BY_GROUP mode (positive check — a future third mode will
- *     default to *not* announcing, which is the safer default for a passive
- *     public tip. BY_PERSON summaries are per-participant and never produce
- *     the group-level "group summary" this tip announces, so announcing one
- *     into the group would be a scope violation. #1283 round-7 P1 raised
- *     independently by @Jerry-Xin / @lml2468 / @yujiawei.);
  *   - myUid is non-empty (logged-out fallback would render as "someone…" and
  *     defeat the point of the tip);
  *   - creator_id is non-empty (defensive: a task with no creator cannot have
  *     an authenticated announcement path).
+ *
+ * `summary_mode` is intentionally NOT consulted — see the module doc block
+ * ("Trigger contract — the mode gate was removed in favour of source-driven
+ * emission") for the product rationale. In one line: whether the tip fires
+ * is a function of "was this summary initiated from a group chat?" (a
+ * property of `sources`), not of "how is the result partitioned per
+ * participant?" (which is what `summary_mode` records). `collectGroupSourceIds`
+ * enforces the source-driven half of the contract by returning `[]` when
+ * `sources` has no group entries, at which point the sender fans out to
+ * nobody and the invariant "we only announce into groups this summary was
+ * actually about" is preserved without a mode gate.
  */
 export function shouldEmitGroupSummaryNotify(
-    detail: Pick<SummaryDetail, 'status' | 'creator_id' | 'summary_mode'>,
+    detail: Pick<SummaryDetail, 'status' | 'creator_id'>,
     myUid: string | undefined,
     completedStatus: number,
-    byGroupMode: number,
 ): boolean {
     if (!myUid) return false;
     if (!detail.creator_id) return false;
     if (detail.creator_id !== myUid) return false;
     if (detail.status !== completedStatus) return false;
-    // Positive BY_GROUP gate — a future third mode defaults to no announcement.
-    if (detail.summary_mode !== byGroupMode) return false;
     return true;
 }
 
