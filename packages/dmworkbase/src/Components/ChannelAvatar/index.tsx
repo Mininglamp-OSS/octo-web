@@ -264,8 +264,8 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             />}
             <input  onClick={this.onFileClick.bind(this)}  type="file" multiple={false} accept="image/*" style={{ display: 'none' }} ref={(ref) => { this.$fileInput = ref }}  onChange={this.onFileChange.bind(this)}></input>
             {showUpload && <div className="wk-channelavatar-actions">
-                <Button onClick={this.cancelCustomAvatar}>{this.context.t('base.common.cancel')}</Button>
-                <Button loading={customAvatarSaving || uploading} onClick={this.saveCustomAvatar}>{this.context.t('base.common.save')}</Button>
+                <Button theme="borderless" onClick={this.cancelCustomAvatar}>{this.context.t('base.common.cancel')}</Button>
+                <Button theme="solid" type="primary" loading={customAvatarSaving || uploading} onClick={this.saveCustomAvatar}>{this.context.t('base.common.save')}</Button>
             </div>}
         </div>
 
@@ -275,7 +275,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                     title={this.context.t('base.module.channelSettings.groupAvatar')}
                     visible={this.props.visible}
                     onCancel={this.cancelCustomAvatar}
-                    width={520}
+                    width={420}
                     className="wk-channelavatar-setting-modal"
                     options={{
                         maskClosable: !editingDisabled,
