@@ -14,10 +14,14 @@ export interface McpBotPublishPromptValues {
 const SPACE_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
 /** Whether a caller-supplied space id is shell-safe: letters, digits, and the
- *  separators [._-] only (bounded length). Covers hex, UUIDv4, and readable
- *  slugs like `minglue_default`; rejects empty, spaces, and shell metacharacters. */
+ *  separators [._-] only (bounded length), never a bare `..` and never leading
+ *  with `-`/`.` (which would parse as a flag or a traversal-shaped token when
+ *  reaching `--space ${id}` / `--profile space-${id}`). Covers hex, UUIDv4, and
+ *  readable slugs like `minglue_default`; rejects empty, spaces, and metachars. */
 export function isValidMcpSpaceId(raw?: string): boolean {
-  return typeof raw === "string" && SPACE_ID_RE.test(raw.trim());
+  if (typeof raw !== "string") return false;
+  const v = raw.trim();
+  return SPACE_ID_RE.test(v) && v !== ".." && !/^[-.]/.test(v);
 }
 
 function sanitizeSpaceId(raw?: string): string {

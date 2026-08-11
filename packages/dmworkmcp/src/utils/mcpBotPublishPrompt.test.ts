@@ -36,6 +36,9 @@ describe("isValidMcpSpaceId — server space id gate", () => {
     "a b",
     "id|cat",
     "x&y",
+    "..",
+    "-rf",
+    ".hidden",
   ])("rejects shell-unsafe value %j", (bad) => {
     expect(isValidMcpSpaceId(bad)).toBe(false);
   });
