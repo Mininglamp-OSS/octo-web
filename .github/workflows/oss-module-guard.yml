@@ -35,25 +35,25 @@ jobs:
             --jq '.[] | [.filename, .status, (.previous_filename // "")] | @tsv' > "${changed_files}"
 
           guard_awk="$(mktemp)"
-          cat > "${guard_awk}" <<'AWK'
-            function removed_module_path(path) {
-              return path ~ /^packages\/(dmloop|dmpersonal|dmworkdrive|docs)(\/|$)/
-            }
-            function removed_module_e2e_path(path) {
-              return path ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/(loop|personal|drive|doc|docs)([\/_.-]|$)/ ||
-                path ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/.*[\/_.-](loop|personal|drive|doc|docs)([\/_.-]|$)/
-            }
-            $2 != "removed" && (removed_module_path($1) || removed_module_e2e_path($1)) { print $1; next }
-            $2 == "renamed" && (removed_module_path($3) || removed_module_e2e_path($3)) { print $3 " -> " $1; next }
-AWK
+          printf '%s\n' \
+            'function removed_module_path(path) {' \
+            '  return path ~ /^packages\/(dmloop|dmpersonal|dmworkdrive|docs)(\/|$)/' \
+            '}' \
+            'function removed_module_e2e_path(path) {' \
+            '  return path ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/(loop|personal|drive|doc|docs)([\/_.-]|$)/ ||' \
+            '    path ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/.*[\/_.-](loop|personal|drive|doc|docs)([\/_.-]|$)/' \
+            '}' \
+            '$2 != "removed" && (removed_module_path($1) || removed_module_e2e_path($1)) { print $1; next }' \
+            '$2 == "renamed" && (removed_module_path($3) || removed_module_e2e_path($3)) { print $3 " -> " $1; next }' \
+            > "${guard_awk}"
 
           guard_fixture="$(mktemp)"
-          cat > "${guard_fixture}" <<'EOF'
-apps/web/e2e-kit/tests/doc/foo.spec.ts	added
-apps/web/e2e-kit/tests/docs.spec.ts	added
-apps/web/e2e-kit/tests/loop/foo.spec.ts	added
-apps/web/e2e-kit/case-specs/docs-login.md	added
-EOF
+          printf '%s\n' \
+            $'apps/web/e2e-kit/tests/doc/foo.spec.ts\tadded' \
+            $'apps/web/e2e-kit/tests/docs.spec.ts\tadded' \
+            $'apps/web/e2e-kit/tests/loop/foo.spec.ts\tadded' \
+            $'apps/web/e2e-kit/case-specs/docs-login.md\tadded' \
+            > "${guard_fixture}"
           fixture_hits="$(awk -F '\t' -f "${guard_awk}" "${guard_fixture}")"
           fixture_count="$(printf '%s\n' "${fixture_hits}" | grep -c . || true)"
           if [[ "${fixture_count}" -ne 4 ]]; then
