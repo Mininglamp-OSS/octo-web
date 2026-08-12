@@ -91,9 +91,20 @@ export default class SummaryReferencePicker extends Component<
             // 检测后端是否已部署 referenceable 字段：如果返回的 items 中没有任何项
             // 带 referenceable 字段，则进入 legacy 模式（后续请求继续带 trigger_type）。
             const sampled = resp?.items || [];
-            const hasReferenceable = sampled.some(t => t.referenceable !== undefined);
-            if (!hasReferenceable && !this.state.legacyMode) {
-                this.setState({ legacyMode: true });
+            // P1-2: Only infer legacy mode from non-empty responses: an empty list
+            // tells us nothing about whether the backend supports referenceable.
+            if (sampled.length > 0) {
+                const hasReferenceable = sampled.some(t => t.referenceable !== undefined);
+                if (!hasReferenceable && !this.state.legacyMode) {
+                    // P1-3: Re-fetch with legacy narrowing enabled so the user sees
+                    // Agent-type summaries immediately instead of an empty list.
+                    this.setState({ legacyMode: true }, () => this.fetchList(keyword));
+                    return;
+                }
+                // 后端已部署 referenceable 且之前在 legacy 模式，退出 legacy 模式。
+                if (hasReferenceable && this.state.legacyMode) {
+                    this.setState({ legacyMode: false });
+                }
             }
             // 只保留已完成且可引用的项（含 legacy 兼容）
             const items = sampled.filter(

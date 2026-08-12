@@ -17,7 +17,7 @@
 - fixture: `fixtures-authed`，本地 mock 模式已预置登录态、Space `e2e-space-001` 和中文 locale。
 - baseline MSW handler 已覆盖 app shell / chat bootstrap 所需接口。
 - Per-case MSW handler: `e2e-kit/msw-handlers/s10-summary-agent-reference-side-panel.ts`
-  - `GET */summary/api/v1/summaries` — 普通列表入口返回空；引用选择器（page_size=50）返回已完成 Agent 总结 `S10 已有客户总结`。
+  - `GET */summary/api/v1/summaries` — 普通列表入口返回空；引用选择器（status=3=COMPLETED）返回已完成 Agent 总结 `S10 已有客户总结`。
   - `GET */summary/api/v1/summaries/10010` — 返回引用总结详情，包含正文 `历史风险需要继续跟进`。
   - `GET */summary/api/v1/summaries/10010/personal` — 兜底返回个人结果，供 side panel 在团队正文为空时 fallback。
   - `GET */summary/api/v1/summary-templates` — 返回空模板列表和 `custom_template_limit`，供创建页 mount。
@@ -59,8 +59,8 @@
 - `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:1064`: Agent 模式渲染 `AgentChatPanel`。
 - `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:1087`: 已选引用且 sidePanelOpen 时渲染 `SummaryReferenceSidePanel`。
 - `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:1093`: 创建页挂载 `SummaryReferencePicker`。
-- `packages/dmworksummary/src/components/SummaryReferencePicker.tsx:62`: 引用选择器调用 `listSummaries()` 带 `status=COMPLETED`，兼容模式下带 `trigger_type=AGENT`。
-- `packages/dmworksummary/src/components/SummaryReferencePicker.tsx:80`: 引用选择器只保留可引用总结（`referenceable` 或 legacy `trigger_type === AGENT`）。
+- `packages/dmworksummary/src/components/SummaryReferencePicker.tsx:84`: 引用选择器调用 `listSummaries()` 带 `status=COMPLETED`，兼容模式下带 `trigger_type=AGENT`。
+- `packages/dmworksummary/src/components/SummaryReferencePicker.tsx:107`: 引用选择器只保留可引用总结（`referenceable` 或 legacy `trigger_type === AGENT`）。
 - `packages/dmworksummary/src/components/SummaryReferenceSidePanel.tsx:75`: 右侧对照面板加载 `getSummaryDetail()`。
 - `packages/dmworksummary/src/components/SummaryReferenceSidePanel.tsx:87`: 团队正文为空时 fallback 到 `getPersonalResult()`。
 - `packages/dmworksummary/src/i18n/zh-CN.json:607-618`: 引用选择器、引用卡片和预览提示实际中文文案。

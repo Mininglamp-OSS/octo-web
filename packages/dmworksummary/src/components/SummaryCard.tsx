@@ -6,6 +6,7 @@ import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
 import { ParticipantStatus, TaskStatus } from "../types/summary";
 import { getStatusLabel, getSummaryTypeLabel } from "../utils/summaryHelpers";
+import { TriggerType } from "../types/summary";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -91,6 +92,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     const isGenerating = task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING;
     // Type label — shared with SummaryReferencePicker for consistency
     const typeLabel = getSummaryTypeLabel(t, task);
+    const isAgentType = task.trigger_type === TriggerType.AGENT;
     const sourceInfo = getSourceInfo(task, t);
     const relativeTime = formatRelativeTime(task.created_at, t);
     const isCreator = task.creator_id != null && task.creator_id === currentUid;

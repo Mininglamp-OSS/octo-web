@@ -188,7 +188,11 @@ describe('SummaryReferencePicker', () => {
     describe('legacy mode (referenceable field missing)', () => {
         it('first request omits trigger_type; second request sends AGENT after detecting missing referenceable', async () => {
             const agentItem = makeItem({ referenceable: undefined, trigger_type: TriggerType.AGENT });
-            mockListSummaries.mockResolvedValue({ items: [agentItem], total: 1 });
+            // First call returns items without referenceable → triggers legacy flip + re-fetch.
+            // Second call (re-fetch) returns the same items with trigger_type=AGENT in the request.
+            mockListSummaries
+                .mockResolvedValueOnce({ items: [agentItem], total: 1 })
+                .mockResolvedValueOnce({ items: [agentItem], total: 1 });
             const { rerender } = render(<SummaryReferencePicker visible={false} onCancel={() => {}} onSelect={() => {}} />);
             rerender(<SummaryReferencePicker visible={true} onCancel={() => {}} onSelect={() => {}} />);
 
@@ -199,18 +203,31 @@ describe('SummaryReferencePicker', () => {
                 expect(firstCallArg.trigger_type).toBeUndefined();
             });
 
-            // Trigger a second request by typing in search (debounced)
-            const input = screen.getByTestId('summary-agent-ref-search-input');
-            fireEvent.change(input, { target: { value: 'test' } });
-
-            // Wait for debounce + second call
+            // Second request (re-fetch after legacy flip): legacyMode=true, trigger_type should be AGENT
             await waitFor(() => {
                 expect(mockListSummaries).toHaveBeenCalledTimes(2);
+                const secondCallArg = mockListSummaries.mock.calls[1][0];
+                expect(secondCallArg.trigger_type).toBe(TriggerType.AGENT);
             }, { timeout: 2000 });
 
-            // Second request: legacyMode=true, trigger_type should be AGENT
-            const secondCallArg = mockListSummaries.mock.calls[1][0];
-            expect(secondCallArg.trigger_type).toBe(TriggerType.AGENT);
+            // Item should still be visible after re-fetch
+            await waitFor(() => expect(screen.getByText('测试总结')).toBeInTheDocument());
+        });
+
+        it('does not enter legacy mode when response is empty (no items to infer from)', async () => {
+            // Empty response should NOT trigger legacy mode — we can't infer
+            // whether the backend supports referenceable from an empty list.
+            mockListSummaries.mockResolvedValue({ items: [], total: 0 });
+            const { rerender } = render(<SummaryReferencePicker visible={false} onCancel={() => {}} onSelect={() => {}} />);
+            rerender(<SummaryReferencePicker visible={true} onCancel={() => {}} onSelect={() => {}} />);
+
+            await waitFor(() => {
+                expect(mockListSummaries).toHaveBeenCalledTimes(1);
+            });
+            // Only one call — no re-fetch triggered because legacy mode is NOT flipped
+            // for empty responses.
+            expect(mockListSummaries).toHaveBeenCalledTimes(1);
+            expect(screen.getByTestId('empty')).toBeInTheDocument();
         });
 
         it('does not send trigger_type when referenceable field is present', async () => {

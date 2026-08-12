@@ -84,8 +84,9 @@ export async function registerS11SummaryAgentContinueRefine(page: Page): Promise
     worker.use(
       http.get("*/summary/api/v1/summaries", ({ request }: any) => {
         const url = new URL(request.url);
-        const pageSize = url.searchParams.get("page_size");
-        const isReferencePicker = pageSize === "50";
+        // Discriminate picker vs list-page: picker sends status=3 (COMPLETED).
+        const status = url.searchParams.get("status");
+        const isReferencePicker = status === "3";
         return env({
           items: isReferencePicker ? [listItem] : [],
           total: isReferencePicker ? 1 : 0,

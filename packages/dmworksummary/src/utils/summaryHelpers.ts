@@ -199,10 +199,10 @@ export function isReferenceable(item: { referenceable?: boolean; trigger_type: n
  * 总结类型标签 — SummaryReferencePicker 与 SummaryCard 共享。
  *
  * - Agent 总结: trigger_type === AGENT
- * - 定时总结: trigger_type === SCHEDULED 或 schedule_id 存在（本仓契约以 schedule_id 为权威标记）
+ * - 定时总结: trigger_type === SCHEDULED 或 schedule_id > 0（0 表示无 schedule）
  * - 多人总结: trigger_type === MANUAL 且 participants.length > 1
  * - 快速总结: trigger_type === MANUAL 且 participants.length <= 1
- * - 未知类型: 返回空字符串（调用方负责条件渲染）
+ * - 未知类型: 回退到"快速总结"（避免空 tooltip/aria-label）
  *
  * @param t i18n 翻译函数
  * @param item 总结列表项
@@ -211,7 +211,7 @@ export function getSummaryTypeLabel(
     t: (key: string, opts?: any) => string,
     item: SummaryListItem,
 ): string {
-    const isScheduled = item.trigger_type === TriggerType.SCHEDULED || item.schedule_id != null;
+    const isScheduled = item.trigger_type === TriggerType.SCHEDULED || (item.schedule_id != null && item.schedule_id > 0);
     if (isScheduled) return t("summary.summaryCard.scheduledType");
     switch (item.trigger_type) {
         case TriggerType.AGENT:
@@ -221,7 +221,7 @@ export function getSummaryTypeLabel(
                 ? t("summary.summaryCard.multiPersonType")
                 : t("summary.summaryCard.quickType");
         default:
-            return "";
+            return t("summary.summaryCard.quickType");
     }
 }
 
