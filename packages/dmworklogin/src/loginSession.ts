@@ -1,4 +1,10 @@
-import { WKApp, i18n, normalizeLocale } from '@octo/base'
+import {
+  IM_DEVICE_FLAG_PC,
+  IM_DEVICE_FLAG_WEB,
+  WKApp,
+  i18n,
+  normalizeLocale,
+} from '@octo/base'
 
 // LoginRespJSON 的字段子集. 用 unknown / any 避免对后端 schema 过度约束:
 // 不同登录入口 (password / sms / OIDC autolink / OIDC bind confirm) 走的是同
@@ -57,7 +63,7 @@ export function applyLoginResp(data: LoginRespFields, provider: string): void {
   loginInfo.name = typeof data.name === 'string' ? data.name : ''
   loginInfo.sex = typeof data.sex === 'number' ? data.sex : 0
   loginInfo.loginProvider = provider
-  loginInfo.deviceFlag = WKApp.shared.isPC ? 2 : 1
+  loginInfo.deviceFlag = WKApp.shared.isPC ? IM_DEVICE_FLAG_PC : IM_DEVICE_FLAG_WEB
 
   // 实名 tri-state: undefined 表示"未知" (老后端字段缺失场景), 不能塌缩为 false.
   // 原由保留在 login_vm.tsx 旧实现的注释里 (memory 627798ef): 后续 /v1/users/:uid

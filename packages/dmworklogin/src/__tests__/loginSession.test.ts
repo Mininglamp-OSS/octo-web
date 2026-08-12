@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { applyLoginResp, parseLoginResp } from '../loginSession'
 
 vi.mock('@octo/base', () => ({
+  IM_DEVICE_FLAG_WEB: 1,
+  IM_DEVICE_FLAG_PC: 2,
   WKApp: {
     loginInfo: {
       appID: '',

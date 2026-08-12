@@ -168,9 +168,14 @@ import {
   markOidcPostLogoutCleanup,
   performOidcUserInitiatedLogout,
 } from "./Service/oidcLogout";
+import {
+  getExpectedImDeviceFlag,
+  hasImDeviceFlagMismatch,
+  IM_DEVICE_FLAG_PC,
+  IM_DEVICE_FLAG_WEB,
+} from "./Service/deviceFlags";
 
-export const IM_DEVICE_FLAG_WEB = 1;
-export const IM_DEVICE_FLAG_PC = 2;
+export { IM_DEVICE_FLAG_PC, IM_DEVICE_FLAG_WEB } from "./Service/deviceFlags";
 
 export enum ThemeMode {
   light,
@@ -932,12 +937,19 @@ export default class WKApp extends ProviderListener {
     ) {
       this.isPC = true;
     }
-    const expectedDeviceFlag = this.isPC ? IM_DEVICE_FLAG_PC : IM_DEVICE_FLAG_WEB;
+    const expectedDeviceFlag = getExpectedImDeviceFlag(this.isPC);
     WKSDK.shared().config.deviceFlag = expectedDeviceFlag;
     // Tokens issued before the desktop device-slot migration do not carry a
     // marker. Re-authenticate once instead of reconnecting with an ambiguous
     // token/device tuple and silently losing the IM connection.
-    if (this.isPC && WKApp.loginInfo.isLogined() && WKApp.loginInfo.deviceFlag !== expectedDeviceFlag) {
+    if (hasImDeviceFlagMismatch(
+      WKApp.loginInfo.isLogined(),
+      WKApp.loginInfo.deviceFlag,
+      expectedDeviceFlag,
+    )) {
+      console.warn(
+        `[im] device flag mismatch detected at startup (stored=${String(WKApp.loginInfo.deviceFlag)}, expected=${expectedDeviceFlag}); forcing re-login`,
+      );
       WKApp.loginInfo.logout();
     }
     this.deviceId = this.getDeviceIdFromStorage();
@@ -1114,6 +1126,18 @@ export default class WKApp extends ProviderListener {
   }
 
   connectIM() {
+    const expectedDeviceFlag = getExpectedImDeviceFlag(this.isPC);
+    if (hasImDeviceFlagMismatch(
+      WKApp.loginInfo.isLogined(),
+      WKApp.loginInfo.deviceFlag,
+      expectedDeviceFlag,
+    )) {
+      console.error(
+        `[im] refusing to connect with mismatched device flag (stored=${String(WKApp.loginInfo.deviceFlag)}, expected=${expectedDeviceFlag}); forcing re-login`,
+      );
+      this.logout();
+      return;
+    }
     // e2e: mock-im-runtime 已 short-circuit connect → Connected (fake-provider install 时做),
     // 这里跳过真实 sdk.connect() 免真去建 WebSocket / 覆盖 mock 的 connect status.
     // dev / prod 完全走 tree-shake 分支, 无副作用.

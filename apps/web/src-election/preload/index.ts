@@ -51,24 +51,42 @@ const trustedShellFileURL = (() => {
 // Same-document SPA history changes update window.location.pathname but do
 // not load a new preload; re-checking the pathname for every bridge call
 // would therefore disable IPC after navigating to routes such as /drive.
-const trustedShellAtLoad = (() => {
+const trustedShellAtLoadResult = (() => {
   if (window.location.protocol === "file:" && trustedShellFileURL) {
     try {
       const current = new URL(window.location.href);
       const trusted = new URL(trustedShellFileURL);
       if (current.protocol === trusted.protocol &&
         current.hostname === trusted.hostname &&
-        current.pathname.toLowerCase() === trusted.pathname.toLowerCase()) return true;
+        current.pathname.toLowerCase() === trusted.pathname.toLowerCase()) {
+        return { trusted: true, reason: "packaged shell path matched" };
+      }
+      return {
+        trusted: false,
+        reason: `packaged shell path mismatch (current=${current.pathname}, expected=${trusted.pathname})`,
+      };
     } catch {
-      return false;
+      return { trusted: false, reason: "invalid packaged shell URL" };
     }
   }
   // In packaged builds `devOrigin` is null → dev-server access is denied,
   // which is exactly what we want (packaged app should only ever load
   // build/index.html via file://).
-  if (devOrigin && window.location.origin === devOrigin) return true;
-  return false;
+  if (devOrigin && window.location.origin === devOrigin) {
+    return { trusted: true, reason: "development origin matched" };
+  }
+  return {
+    trusted: false,
+    reason: devOrigin
+      ? `origin mismatch (current=${window.location.origin}, expected=${devOrigin})`
+      : "no packaged shell file or development origin was provided",
+  };
 })();
+
+const trustedShellAtLoad = trustedShellAtLoadResult.trusted;
+if (!trustedShellAtLoad) {
+  console.error(`[preload] Desktop bridge disabled: ${trustedShellAtLoadResult.reason}`);
+}
 
 const isTrustedShell = () => trustedShellAtLoad;
 

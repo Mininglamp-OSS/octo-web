@@ -55,6 +55,8 @@ vi.mock('@octo/base', () => {
     remoteConfig: { oidcProviders: [] },
   }
   return {
+    IM_DEVICE_FLAG_WEB: 1,
+    IM_DEVICE_FLAG_PC: 2,
     WKApp,
     ProviderListener,
     i18n: { setLocale: vi.fn() },

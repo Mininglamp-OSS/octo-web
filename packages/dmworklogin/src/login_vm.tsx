@@ -1,4 +1,9 @@
-import { WKApp, ProviderListener } from "@octo/base";
+import {
+    IM_DEVICE_FLAG_PC,
+    IM_DEVICE_FLAG_WEB,
+    WKApp,
+    ProviderListener,
+} from "@octo/base";
 import { applyLoginResp } from "./loginSession";
 import {
     buildAuthorizeURL,
@@ -35,6 +40,16 @@ export enum LoginType {
     phone, // 手机号登录
     register, // 注册
     forgetPassword, // 忘记密码
+}
+
+export function buildQrLoginRedeemPath(
+    authCode: string,
+    deviceFlag: number,
+    pollSecret?: string,
+): string {
+    const params = new URLSearchParams({ flag: String(deviceFlag) });
+    if (pollSecret) params.set('poll_secret', pollSecret);
+    return `user/login_authcode/${encodeURIComponent(authCode)}?${params.toString()}`;
 }
 
 export class LoginVM extends ProviderListener {
@@ -239,9 +254,10 @@ export class LoginVM extends ProviderListener {
         this.loginLoading = true
         this.notifyListener()
         try {
-            const resp = await WKApp.apiClient.post(`user/login_authcode/${authCode}`, {
-                flag: WKApp.shared.isPC ? 2 : 1,
-            });
+            const deviceFlag = WKApp.shared.isPC ? IM_DEVICE_FLAG_PC : IM_DEVICE_FLAG_WEB
+            const resp = await WKApp.apiClient.post(
+                buildQrLoginRedeemPath(authCode, deviceFlag, this.pollSecret),
+            );
             if (resp) {
                 this.loginSuccess(resp)
             }
@@ -257,7 +273,7 @@ export class LoginVM extends ProviderListener {
         this.loginLoading = true
         this.notifyListener()
         const device = this.getDevice()
-        const deviceFlag = WKApp.shared.isPC ? 2 : 1
+        const deviceFlag = WKApp.shared.isPC ? IM_DEVICE_FLAG_PC : IM_DEVICE_FLAG_WEB
         return WKApp.apiClient.post(`user/login`, { "username": username, "password": password, "flag": deviceFlag,"device":device }).then((result)=>{
             this.loginSuccess(result)
         }).finally(()=>{
@@ -608,7 +624,13 @@ export class LoginVM extends ProviderListener {
             // string (P1-1). Rebuilding the URL on the main side from
             // (origin + provider id) had encoding drift; the renderer already
             // knows the exact URL it is about to load.
-            const authorizeUrl = buildAuthorizeURL(provider, authcode, returnTo, authorizeBaseURL, isDesktop ? '2' : '1')
+            const authorizeUrl = buildAuthorizeURL(
+                provider,
+                authcode,
+                returnTo,
+                authorizeBaseURL,
+                isDesktop ? String(IM_DEVICE_FLAG_PC) : String(IM_DEVICE_FLAG_WEB),
+            )
             if (isDesktop) {
                 const registered = await beginOidcAuthorize(apiURL, authcode, providerId, authorizeUrl)
                 if (!registered?.ok) throw new Error(t('oidc.failed'))
