@@ -20,6 +20,7 @@ import {
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
+import { rememberSendIntent, trackMessageSent, trackMessageRevoked } from "../../Service/trackMessage";
 import { SuperGroup } from "../../Utils/const";
 import { SystemContent } from "wukongimjssdk";
 import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
@@ -716,7 +717,9 @@ export default class ConversationVM extends ProviderListener {
     // 撤回消息
     async revokeMessage(message: Message): Promise<void> {
 
-        return WKApp.conversationProvider.revokeMessage(message)
+        await WKApp.conversationProvider.revokeMessage(message)
+        // 破例2:撤回成功后补点(ui_action,§5.2)
+        trackMessageRevoked(message.clientSeq, message.channel?.channelType ?? 0)
 
     }
 
@@ -1450,6 +1453,7 @@ export default class ConversationVM extends ProviderListener {
                 this.removeSendingMessageIfNeed(ackPacket.clientSeq, this.channel)
                 this.messagesOfOrigin = ConversationVM.deduplicateMessages(this.sortMessages(this.messagesOfOrigin))
                 this.refreshMessages(this.messagesOfOrigin)
+                trackMessageSent(ackPacket.clientSeq) // 破例2:submitted 口径补点(§5.2)
                 return
             }
         }
@@ -2436,6 +2440,22 @@ export default class ConversationVM extends ProviderListener {
         // wire 不携带 from_home_space_* 等字段；在业务层收尾统一补一次，避免自发送
         // bubble 丢外部来源标识。已有值不覆盖、失败静默。
         applyMsgLevelExternalFieldsWithFallback(message, undefined)
+        // 破例2(octo-dap §5 / §5.4):记发送意图,sendack Normal 时消费补点。
+        // /newbot 只测前缀识别已知命令,不采集正文;意图里不含任何正文。
+        {
+            let botCreateEntry: string | undefined
+            if (SYSTEM_BOTS.has(channel.channelID) && content instanceof MessageText) {
+                if ((content.text || "").trim().startsWith("/newbot")) {
+                    botCreateEntry = "botfather_im"
+                }
+            }
+            rememberSendIntent(message.clientSeq, {
+                channelId: channel.channelID,
+                channelType: channel.channelType,
+                mentionAis: !!(mentionAny && mentionAny.ais),
+                botCreateEntry,
+            })
+        }
         const messageWrap = new MessageWrap(message)
         this.fillOrder(messageWrap)
 
