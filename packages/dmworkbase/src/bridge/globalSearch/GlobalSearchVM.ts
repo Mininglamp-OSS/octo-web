@@ -13,18 +13,7 @@ import { ProviderListener } from "../../Service/Provider";
 import { debounce } from "../../Utils/rateLimit";
 import { t } from "../../i18n";
 import { addCurrentImChannelInfoListener, getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
-
-// 与后端 html.EscapeString 口径对齐：先 escape 用户名再拼 <mark>，
-// 让 sanitizeHighlight 白名单只放行 <mark>，其它 HTML 视作文本。
-// 与 Components/GlobalSearch/sanitize.ts 的转义集合保持一致。
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+import { buildSelfContactEntry, shouldInjectSelf } from "./selfInject";
 
 /** Legacy contacts/groups bridge retained while the aggregated tabs migrate. */
 export default class GlobalSearchVM extends ProviderListener {
@@ -211,18 +200,19 @@ export default class GlobalSearchVM extends ProviderListener {
         // 都不需要自己），后端 /search/global 联系人分支同样不返回 self
         // （Space 分支显式过滤，非 Space 分支好友表天然不含）。但全局搜索的
         // 语义 = 查找，用户想搜自己跳到"我"的资料页是合理的，这里补齐。
-        // 只在非 loadMore、非 onlyMessage（联系人段激活）、有 keyword 时注入；
-        // 幂等去重防未来后端变更或 loadMore 重复拼接。
-        // 高亮口径与后端逐字对齐：先 escape 再包 <mark>，最终由 sanitizeHighlight
-        // 放行 <mark> 白名单。
+        //
+        // 匹配口径与搜索栈其它节点一致：trim + toLowerCase（见 selfInject.ts
+        // shouldInjectSelf 的 contract 注释）。keyword 命中 self、非 loadMore、
+        // 非 onlyMessage（联系人段激活）、friends 里还没有 self 时才注入。
+        //
+        // 注入 RAW channel_name（不预包 <mark>）。tab-contacts.tsx renderItem
+        // 是唯一的高亮源，它会在 render 时用 raw keyword 匹配 raw name 并包
+        // <mark>。双源会走到 <mark><mark>...</mark></mark> 双包路径。
         if (
           !this.loadMoreing &&
           !this.channel &&
-          this.keyword &&
-          this.keyword.trim().length > 0 &&
           this.searchResult
         ) {
-          const kw = this.keyword;
           const selfUid = WKApp.loginInfo.uid;
           const selfName =
             WKApp.loginInfo.selfDisplayName?.() ||
@@ -230,24 +220,13 @@ export default class GlobalSearchVM extends ProviderListener {
             "";
           if (
             selfUid &&
-            selfName &&
-            selfName.indexOf(kw) !== -1 &&
+            shouldInjectSelf(this.keyword, selfName) &&
             !(this.searchResult.friends || []).some(
               (f: any) => f.channel_id === selfUid
             )
           ) {
-            const escapedKw = escapeHtml(kw);
-            const escapedName = escapeHtml(selfName);
-            const markedName = escapedName.split(escapedKw).join(
-              `<mark>${escapedKw}</mark>`
-            );
             this.searchResult.friends = [
-              {
-                channel_id: selfUid,
-                channel_type: ChannelTypePerson,
-                channel_name: markedName,
-                channel_remark: "",
-              },
+              buildSelfContactEntry(selfUid, selfName, ChannelTypePerson),
               ...(this.searchResult.friends || []),
             ];
           }
