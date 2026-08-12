@@ -1,10 +1,24 @@
 # Chat Composer 重构架构与开发指南
 
-> 状态：实施中（发送生命周期、稳定契约、attempt ledger、发送计划和执行桥接器已落地）。
+> 状态：第一阶段重构已落地，兼容迁移仍在进行中。
 >
 > 适用范围：`packages/dmworkbase` 聊天输入框、发送编排、附件、草稿、快捷键、粘贴和消息渲染扩展。
 >
 > 本文档定义目标架构、稳定接口、扩展机制和迁移顺序。每个迁移 PR 都必须保持现有用户行为，除非 PR 明确声明并验证行为变化。
+
+当前实现已经落地：
+
+- `ChatSendRequest`、`ChatSendOutcome`、`ComposeAttemptLedger` 和纯函数发送计划。
+- operation 级 transport/executor，以及统一的 settle 顺序。
+- attempt ID 草稿所有权；草稿清理发生在编辑器恢复/释放之后。
+- 编辑器销毁或切换频道时的按频道 recovery store。
+- pending-send renderer registry 和 transport operation handler 扩展点。
+
+仍需后续迁移：
+
+- 把 Tiptap capture/restore 从 `Components/MessageInput` 迁移到 `features/chat-composer/editor`。
+- 把通用 `ComposePart`/extension operation 纳入现有兼容 request，而不是继续增加字段分支。
+- 将 Conversation 中的上传预检和 SDK content 构造进一步下沉到 bridge adapter。
 
 ## 1. 背景
 
@@ -529,6 +543,13 @@ sendExtensionRegistry.register(locationSendExtension)
 composerRenderRegistry.register(locationComposerRenderer)
 messageRenderRegistry.register(locationMessageRenderer)
 ```
+
+当前迁移阶段的 pending UI 已通过
+`features/chat-composer/ui/pendingComposeRenderRegistry.ts` 提供 registry；默认
+renderer 保持现有预览行为，扩展可以按 pending item 优先级接管渲染。transport
+则通过 `ConversationChatTransportHandlers.operationHandlers` 提供 operation 级覆盖。
+完整的 editor/message extension registry 仍应在后续迁移中补齐，不能把当前两个扩展点误认为
+已经完成全部插件化。
 
 扩展注册必须发生在应用装配层，domain 不允许 import 具体扩展。
 
