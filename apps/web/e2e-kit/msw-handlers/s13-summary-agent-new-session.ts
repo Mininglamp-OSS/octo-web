@@ -84,10 +84,13 @@ export async function registerS13SummaryAgentNewSession(page: Page): Promise<voi
     };
 
     worker.use(
-      http.get("*/summary/api/v1/summaries", () => {
+      http.get("*/summary/api/v1/summaries", ({ request }: any) => {
+        const url = new URL(request.url);
+        const pageSize = url.searchParams.get("page_size");
+        const isReferencePicker = pageSize === "50";
         return env({
-          items: [listItem],
-          total: 1,
+          items: isReferencePicker ? [listItem] : [],
+          total: isReferencePicker ? 1 : 0,
           attention_count: 0,
           unread_count: 0,
           pending_invitation_count: 0,

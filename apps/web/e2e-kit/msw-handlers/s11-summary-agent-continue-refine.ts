@@ -82,9 +82,18 @@ export async function registerS11SummaryAgentContinueRefine(page: Page): Promise
     };
 
     worker.use(
-      http.get("*/summary/api/v1/summaries", () =>
-        env({ items: [listItem], total: 1, attention_count: 0, unread_count: 1, pending_invitation_count: 0 })
-      ),
+      http.get("*/summary/api/v1/summaries", ({ request }: any) => {
+        const url = new URL(request.url);
+        const pageSize = url.searchParams.get("page_size");
+        const isReferencePicker = pageSize === "50";
+        return env({
+          items: isReferencePicker ? [listItem] : [],
+          total: isReferencePicker ? 1 : 0,
+          attention_count: 0,
+          unread_count: isReferencePicker ? 1 : 0,
+          pending_invitation_count: 0,
+        });
+      }),
       http.get("*/summary/api/v1/summary-templates", () =>
         env({ templates: [], custom_template_limit: 30 })
       ),

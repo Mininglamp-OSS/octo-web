@@ -3,9 +3,10 @@ import { Modal, Input, List, Empty, Spin, Toast } from '@douyinfe/semi-ui';
 import { IconClose, IconLink } from '@douyinfe/semi-icons';
 import { listSummaries } from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
-import { TriggerType, SummaryMode } from '../types/summary';
+import { TriggerType, TaskStatus } from '../types/summary';
 import { I18nContext, type I18nCtx } from '@octo/base';
 import { summaryTestIds } from '../utils/testIds';
+import { getSummaryTypeLabel, isReferenceable as isItemReferenceable } from '../utils/summaryHelpers';
 import './SummaryReferencePicker.css';
 
 /**
@@ -33,6 +34,8 @@ interface SummaryReferencePickerState {
     keyword: string;
     items: SummaryListItem[];
     error: string;
+    /** 后端未部署 referenceable 字段时为 true，请求带 trigger_type=AGENT 收窄 */
+    legacyMode: boolean;
 }
 
 export default class SummaryReferencePicker extends Component<
@@ -49,6 +52,7 @@ export default class SummaryReferencePicker extends Component<
             keyword: '',
             items: [],
             error: '',
+            legacyMode: false,
         };
     }
 
@@ -62,25 +66,40 @@ export default class SummaryReferencePicker extends Component<
     private fetchList = async (keyword: string) => {
         this.setState({ loading: true, error: '' });
         try {
-            // 列出当前 space 所有总结（不再固定 trigger_type=3）。
-            // 后端在列表项中返回 referenceable/reference_artifact_type/reference_unavailable_reason，
-            // 前端据此筛选可引用候选并展示类型标签。
-            // 兼容：当后端尚未部署 referenceable 字段时，回退到 legacy
-            // trigger_type === AGENT 判定，保证现有功能不受影响。
+            // 列出当前 space 可引用的总结。
             //
-            // NOTE: 当前仅取首页 50 条并客户端过滤。若 space 中总结数量较多，
-            // 可引用项可能落在首页之外。后续应由后端支持 referenceable
-            // 服务端筛选或前端实现分页/懒加载来覆盖全部可引用项。
+            // 兼容策略（与 isReferenceable 保持一致）：
+            // - 后端已部署 referenceable 字段时，不再传 trigger_type，由后端返回所有类型中
+            //   referenceable=true 的项；前端再按 status + referenceable 客户端复核。
+            // - 后端未部署 referenceable 时（字段缺失），仍传 trigger_type=AGENT 保持
+            //   与改动前等价的服务端收窄，避免在 >50 条总结的 space 中因全量拉取而
+            //   把原本可见的 Agent 总结挤出首页。
+            //
+            // 无论哪种模式，都传 status=COMPLETED 让服务端过滤未完成项，避免浪费配额。
+            //
+            // NOTE: 当前仅取首页 50 条。若 space 中总结数量较多且可引用项落在首页之外，
+            // 可引用项可能不显示。后续应由后端支持 referenceable 服务端筛选或前端实现
+            // 分页/懒加载来覆盖全部可引用项。
+            const useLegacyNarrowing = this.state.legacyMode;
             const resp = await listSummaries({
                 page: 1,
                 page_size: 50,
+                status: TaskStatus.COMPLETED,
+                trigger_type: useLegacyNarrowing ? TriggerType.AGENT : undefined,
                 keyword: keyword.trim() || undefined,
             });
+            // 检测后端是否已部署 referenceable 字段：如果返回的 items 中没有任何项
+            // 带 referenceable 字段，则进入 legacy 模式（后续请求继续带 trigger_type）。
+            const sampled = resp?.items || [];
+            const hasReferenceable = sampled.some(t => t.referenceable !== undefined);
+            if (!hasReferenceable && !this.state.legacyMode) {
+                this.setState({ legacyMode: true });
+            }
             // 只保留已完成且可引用的项（含 legacy 兼容）
-            const items = (resp?.items || []).filter(
+            const items = sampled.filter(
                 (t: SummaryListItem) =>
                     t.task_id != null && t.title != null &&
-                    t.status === 3 &&
+                    t.status === TaskStatus.COMPLETED &&
                     this.isReferenceable(t),
             );
             this.setState({ items, loading: false });
@@ -106,30 +125,11 @@ export default class SummaryReferencePicker extends Component<
     private debounceTimer: number | null = null;
 
     private isReferenceable = (t: SummaryListItem): boolean => {
-        // 当后端已部署 referenceable 字段时，以后端值为准。
-        // 字段缺失时（后端未部署或 mock 未提供），回退到 legacy 行为：
-        // 仅 trigger_type === AGENT 的总结可被引用，保证现有功能不受影响。
-        if (t.referenceable !== undefined) return t.referenceable === true;
-        return t.trigger_type === TriggerType.AGENT;
+        return isItemReferenceable(t);
     };
 
     private getTypeLabel = (item: SummaryListItem): string => {
-        const { t } = this.context;
-        switch (item.trigger_type) {
-            case TriggerType.AGENT:
-                return t('summary.summaryCard.agentType');
-            case TriggerType.SCHEDULED:
-                // 兼容 scheduled 类型：trigger_type 或 schedule_id 均可判定
-                return t('summary.summaryCard.scheduledType');
-            case TriggerType.MANUAL:
-                // 多人总结通过 participants 数量判断，而非 summary_mode
-                // （summary_mode 是按群/按人的分组模式，不是参与人数）
-                return (item.participants?.length ?? 0) > 1
-                    ? t('summary.summaryCard.multiPersonType')
-                    : t('summary.summaryCard.quickType');
-            default:
-                return '';
-        }
+        return getSummaryTypeLabel(this.context.t, item);
     };
 
     private handleSelect = (task: SummaryListItem) => {

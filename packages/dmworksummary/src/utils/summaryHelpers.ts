@@ -3,11 +3,13 @@ import {
     TaskStatus,
     SourceType,
     ParticipantStatus,
+    TriggerType,
     type TaskStatusType,
     type SummaryModeType,
     type SourceTypeValue,
     type ScheduleConfig,
     type ScheduleItem,
+    type SummaryListItem,
 } from "../types/summary";
 import { t } from "@octo/base";
 
@@ -179,6 +181,48 @@ export function getStatusColor(status: TaskStatusType): string {
 /** 总结模式 → 显示文本 */
 export function getModeLabel(mode: SummaryModeType): string {
     return mode === SummaryMode.BY_GROUP ? t("summary.mode.byGroup") : t("summary.mode.byPerson");
+}
+
+/**
+ * 总结是否可被 Agent 引用 — SummaryReferencePicker 与 SummaryDetailPage 共享。
+ *
+ * 当后端已部署 referenceable 字段时，以后端值为准。
+ * 字段缺失时（后端未部署或 mock 未提供），回退到 legacy 行为：
+ * 仅 trigger_type === AGENT 的总结可被引用。
+ */
+export function isReferenceable(item: { referenceable?: boolean; trigger_type: number }): boolean {
+    if (item.referenceable !== undefined) return item.referenceable === true;
+    return item.trigger_type === TriggerType.AGENT;
+}
+
+/**
+ * 总结类型标签 — SummaryReferencePicker 与 SummaryCard 共享。
+ *
+ * - Agent 总结: trigger_type === AGENT
+ * - 定时总结: trigger_type === SCHEDULED 或 schedule_id 存在（本仓契约以 schedule_id 为权威标记）
+ * - 多人总结: trigger_type === MANUAL 且 participants.length > 1
+ * - 快速总结: trigger_type === MANUAL 且 participants.length <= 1
+ * - 未知类型: 返回空字符串（调用方负责条件渲染）
+ *
+ * @param t i18n 翻译函数
+ * @param item 总结列表项
+ */
+export function getSummaryTypeLabel(
+    t: (key: string, opts?: any) => string,
+    item: SummaryListItem,
+): string {
+    const isScheduled = item.trigger_type === TriggerType.SCHEDULED || item.schedule_id != null;
+    if (isScheduled) return t("summary.summaryCard.scheduledType");
+    switch (item.trigger_type) {
+        case TriggerType.AGENT:
+            return t("summary.summaryCard.agentType");
+        case TriggerType.MANUAL:
+            return (item.participants?.length ?? 0) > 1
+                ? t("summary.summaryCard.multiPersonType")
+                : t("summary.summaryCard.quickType");
+        default:
+            return "";
+    }
 }
 
 /** 信息来源类型 → 显示文本 */

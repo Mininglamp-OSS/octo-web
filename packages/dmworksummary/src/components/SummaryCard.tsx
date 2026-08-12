@@ -4,8 +4,8 @@ import { MoreHorizontal, AlertTriangle, Bot, FileText, X } from "lucide-react";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import type { SummaryListItem } from "../types/summary";
-import { ParticipantStatus, TaskStatus, TriggerType } from "../types/summary";
-import { getStatusLabel } from "../utils/summaryHelpers";
+import { ParticipantStatus, TaskStatus } from "../types/summary";
+import { getStatusLabel, getSummaryTypeLabel } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -89,11 +89,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     const statusText = getStatusLabel(displayStatus);
 
     const isGenerating = task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING;
-    // Type icon: agent-conversation summaries vs the traditional workflow ("快速总结").
-    const isAgentType = task.trigger_type === TriggerType.AGENT;
-    const typeLabel = isAgentType
-        ? t("summary.summaryCard.agentType")
-        : t("summary.summaryCard.quickType");
+    // Type label — shared with SummaryReferencePicker for consistency
+    const typeLabel = getSummaryTypeLabel(t, task);
     const sourceInfo = getSourceInfo(task, t);
     const relativeTime = formatRelativeTime(task.created_at, t);
     const isCreator = task.creator_id != null && task.creator_id === currentUid;

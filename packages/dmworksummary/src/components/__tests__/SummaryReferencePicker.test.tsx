@@ -1,6 +1,6 @@
 import React from 'react';
 import '@testing-library/jest-dom/vitest';
-import { render, screen, waitFor, cleanup, act } from '@testing-library/react';
+import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import type { SummaryListItem } from '../../types/summary';
 import { TriggerType, TaskStatus, SummaryMode } from '../../types/summary';
@@ -172,6 +172,56 @@ describe('SummaryReferencePicker', () => {
             await waitFor(() => expect(screen.getByText('测试总结')).toBeInTheDocument());
             // The task_no should still render
             expect(screen.getByText('TASK-001')).toBeInTheDocument();
+        });
+
+        it('renders Scheduled label when schedule_id is present even if trigger_type is not SCHEDULED', async () => {
+            const item = makeItem({
+                referenceable: true,
+                trigger_type: TriggerType.MANUAL,
+                schedule_id: 42,
+            });
+            renderPicker({ item });
+            await waitFor(() => expect(screen.getByText('定时总结')).toBeInTheDocument());
+        });
+    });
+
+    describe('legacy mode (referenceable field missing)', () => {
+        it('first request omits trigger_type; second request sends AGENT after detecting missing referenceable', async () => {
+            const agentItem = makeItem({ referenceable: undefined, trigger_type: TriggerType.AGENT });
+            mockListSummaries.mockResolvedValue({ items: [agentItem], total: 1 });
+            const { rerender } = render(<SummaryReferencePicker visible={false} onCancel={() => {}} onSelect={() => {}} />);
+            rerender(<SummaryReferencePicker visible={true} onCancel={() => {}} onSelect={() => {}} />);
+
+            // First request: legacyMode=false, trigger_type should be undefined
+            await waitFor(() => {
+                expect(mockListSummaries).toHaveBeenCalledTimes(1);
+                const firstCallArg = mockListSummaries.mock.calls[0][0];
+                expect(firstCallArg.trigger_type).toBeUndefined();
+            });
+
+            // Trigger a second request by typing in search (debounced)
+            const input = screen.getByTestId('summary-agent-ref-search-input');
+            fireEvent.change(input, { target: { value: 'test' } });
+
+            // Wait for debounce + second call
+            await waitFor(() => {
+                expect(mockListSummaries).toHaveBeenCalledTimes(2);
+            }, { timeout: 2000 });
+
+            // Second request: legacyMode=true, trigger_type should be AGENT
+            const secondCallArg = mockListSummaries.mock.calls[1][0];
+            expect(secondCallArg.trigger_type).toBe(TriggerType.AGENT);
+        });
+
+        it('does not send trigger_type when referenceable field is present', async () => {
+            const item = makeItem({ referenceable: true, trigger_type: TriggerType.AGENT });
+            mockListSummaries.mockResolvedValue({ items: [item], total: 1 });
+            const { rerender } = render(<SummaryReferencePicker visible={false} onCancel={() => {}} onSelect={() => {}} />);
+            rerender(<SummaryReferencePicker visible={true} onCancel={() => {}} onSelect={() => {}} />);
+            await waitFor(() => {
+                const callArg = mockListSummaries.mock.calls[0][0];
+                expect(callArg.trigger_type).toBeUndefined();
+            });
         });
     });
 });

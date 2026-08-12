@@ -78,10 +78,17 @@ export async function registerS10SummaryAgentReferenceSidePanel(page: Page): Pro
     };
 
     worker.use(
-      http.get("*/summary/api/v1/summaries", () => {
+      http.get("*/summary/api/v1/summaries", ({ request }: any) => {
+        const url = new URL(request.url);
+        // 列表页传 status 参数；引用选择器不传 status（picker 传 status=COMPLETED 但以数值形式）。
+        // 用 page_size 或 status 的有无来区分：列表页 status 通常为 PENDING 等非 COMPLETED 值，
+        // picker 传 status=3（COMPLETED）且无 trigger_type。
+        // 更可靠的区分：列表页带 page_size=20，picker 带 page_size=50。
+        const pageSize = url.searchParams.get("page_size");
+        const isReferencePicker = pageSize === "50";
         return env({
-          items: [listItem],
-          total: 1,
+          items: isReferencePicker ? [listItem] : [],
+          total: isReferencePicker ? 1 : 0,
           attention_count: 0,
           unread_count: 0,
           pending_invitation_count: 0,
