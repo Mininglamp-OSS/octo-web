@@ -47,7 +47,17 @@ export interface ComposeEditorPort {
 
 export interface TopAttachmentLike {
   id: string;
+  file?: File;
+  name?: string;
+  size?: number;
+  type?: string;
   previewUrl?: string;
+}
+
+export interface ConsumedComposeRecovery {
+  snapshot: ComposeDoc;
+  editorAttachments: Array<{ id: string; file: File }>;
+  topAttachments: TopAttachmentLike[];
 }
 
 /**
@@ -97,6 +107,7 @@ export interface ConsumedComposeHandle {
   compose: ConsumedCompose;
   /** The document that was taken out of the editor (for draft persistence). */
   snapshot: ComposeDoc;
+  recovery: ConsumedComposeRecovery;
 }
 
 /** Collect attachment nodes (inline atoms) from a document snapshot, in order. */
@@ -160,6 +171,14 @@ export function consumeCompose(
 
   const topItemsAtSend = getTopAttachments().slice();
   const topIds = topItemsAtSend.map((item) => item.id);
+  const recovery: ConsumedComposeRecovery = {
+    snapshot,
+    editorAttachments: editorAttachmentIds.flatMap((id) => {
+      const file = attachmentFiles.get(id);
+      return file ? [{ id, file }] : [];
+    }),
+    topAttachments: topItemsAtSend,
+  };
 
   // ── consume ──────────────────────────────────────────────────────────────
   editor.clearContent();
@@ -272,7 +291,48 @@ export function consumeCompose(
     onRestoreError,
   };
 
-  return { ids: { topIds, editorAttachmentIds }, compose, snapshot };
+  return {
+    ids: { topIds, editorAttachmentIds },
+    compose,
+    snapshot,
+    recovery,
+  };
+}
+
+/** Build the document portion that remains after a partial send. */
+export function buildComposeRecoveryDocument(
+  recovery: ConsumedComposeRecovery,
+  blocks: UnsentEditorBlock[] | undefined,
+  parseTextToNodes: (text: string) => ComposeNode[],
+): ComposeDoc | undefined {
+  if (!blocks) return recovery.snapshot;
+
+  const attachmentNodes = collectAttachmentNodes(recovery.snapshot);
+  const nodeById = new Map<string, ComposeNode>();
+  attachmentNodes.forEach((node) => {
+    if (node.attrs?.id) nodeById.set(node.attrs.id, node);
+  });
+
+  const content: ComposeNode[] = [];
+  let inline: ComposeNode[] = [];
+  const flushInline = () => {
+    if (inline.length === 0) return;
+    content.push({ type: "paragraph", content: inline });
+    inline = [];
+  };
+  blocks.forEach((block) => {
+    if (block.type === "attachment") {
+      const node = nodeById.get(block.id);
+      if (node) inline.push(node);
+      return;
+    }
+    if (block.text.trim() === "") return;
+    flushInline();
+    content.push(...parseTextToNodes(block.text));
+  });
+  flushInline();
+
+  return content.length > 0 ? { type: "doc", content } : undefined;
 }
 
 function serializeComposeSnapshot(

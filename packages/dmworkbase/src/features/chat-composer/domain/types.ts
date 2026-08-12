@@ -77,6 +77,7 @@ export interface ChatSendSettlement {
   attemptId: string;
   outcome: ChatSendOutcome;
   sendDraft?: SendDraftSnapshot;
+  restoreFailed: boolean;
 }
 
 export function createChatSendOutcome(

@@ -26,6 +26,7 @@ import {
   composeSnapshotDraftText,
   composeSnapshotPreviewText,
   consumeCompose,
+  buildComposeRecoveryDocument,
   ComposeRestoreUnavailableError,
   type ComposeDoc,
   type ComposeEditorPort,
@@ -668,5 +669,51 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     );
 
     expect(h.editor.getText()).toBe("");
+  });
+
+  it("captures enough state to recover a consumed compose after editor destruction", () => {
+    const h = harness(
+      doc(
+        para(text("caption")),
+        para(attachment("img-1", "blob:img-1")),
+      ),
+      [{ id: "top-1", previewUrl: "blob:top-1" }],
+    );
+    h.files.set("img-1", new File(["1"], "img-1.png", { type: "image/png" }));
+
+    const handle = consume(h);
+
+    expect(handle.recovery.snapshot).toEqual(handle.snapshot);
+    expect(handle.recovery.editorAttachments).toEqual([
+      expect.objectContaining({ id: "img-1" }),
+    ]);
+    expect(handle.recovery.topAttachments).toEqual([
+      { id: "top-1", previewUrl: "blob:top-1" },
+    ]);
+  });
+
+  it("rebuilds only unsent editor blocks for recovery after a partial send", () => {
+    const h = harness(
+      doc(
+        para(text("caption")),
+        para(attachment("img-1", "blob:img-1")),
+        para(text("tail")),
+      ),
+    );
+    h.files.set("img-1", new File(["1"], "img-1.png", { type: "image/png" }));
+    const handle = consume(h);
+
+    const recovered = buildComposeRecoveryDocument(
+      handle.recovery,
+      [
+        { type: "text", text: "caption" },
+        { type: "text", text: "tail" },
+      ],
+      (value) => parseConsumedTextToContent(value).content as never,
+    );
+
+    expect(JSON.stringify(recovered)).toContain("caption");
+    expect(JSON.stringify(recovered)).toContain("tail");
+    expect(JSON.stringify(recovered)).not.toContain("img-1");
   });
 });

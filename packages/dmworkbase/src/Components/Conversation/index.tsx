@@ -48,7 +48,10 @@ import {
   buildMessageMentions as buildMentionRenderInfo,
   readMentionFlags,
 } from "../../Utils/mentionRender";
-import MessageInput, { MessageInputContext } from "../MessageInput";
+import MessageInput, {
+  MessageInputContext,
+  type MessageInputRecovery,
+} from "../MessageInput";
 import {
   type ChatSendOutcome,
   type ChatSendRequest,
@@ -342,6 +345,10 @@ export class Conversation
     { message: Message; handlerType: number }
   > = new Map();
   private static readonly REPLY_STATE_CACHE_MAX_SIZE = 50;
+  private static readonly composeRecoveryStore = new Map<
+    string,
+    MessageInputRecovery[]
+  >();
   vm!: ConversationVM;
   contextMenusContext!: ContextMenusContext;
   avatarMenusContext!: ContextMenusContext; // 点击头像弹出的菜单
@@ -1420,7 +1427,12 @@ export class Conversation
       WKApp.shared.pendingAttachmentGuardId = this._guardId;
     }
 
-    if (this.vm.hasDraft()) {
+    if (
+      this.vm.hasDraft() &&
+      !Conversation.composeRecoveryStore.has(
+        `${channel.channelID}:${channel.channelType}`,
+      )
+    ) {
       this.restoreDraft(this.vm.draft());
     }
     // 恢复引用/回复状态
@@ -1590,6 +1602,33 @@ export class Conversation
   private pendingPreEnqueueDrafts(): PendingSendDraft[] {
     return this.messageInputContext()?.pendingPreEnqueueDrafts?.() ?? [];
   }
+
+  private composeRecoveryKey(): string {
+    return `${this.props.channel.channelID}:${this.props.channel.channelType}`;
+  }
+
+  private recordComposeRecovery = (recovery: MessageInputRecovery): void => {
+    const key = recovery.channelKey;
+    const current = Conversation.composeRecoveryStore.get(key) ?? [];
+    if (current.some(({ attemptId }) => attemptId === recovery.attemptId)) {
+      return;
+    }
+    Conversation.composeRecoveryStore.set(key, [...current, recovery]);
+    this.forceUpdate();
+  };
+
+  private consumeComposeRecoveries = (attemptIds: string[]): void => {
+    const key = this.composeRecoveryKey();
+    const current = Conversation.composeRecoveryStore.get(key) ?? [];
+    const ids = new Set(attemptIds);
+    const remaining = current.filter(({ attemptId }) => !ids.has(attemptId));
+    if (remaining.length === 0) {
+      Conversation.composeRecoveryStore.delete(key);
+    } else {
+      Conversation.composeRecoveryStore.set(key, remaining);
+    }
+    this.forceUpdate();
+  };
 
   markConversationExtra() {
     // 不要用空草稿覆盖「已消费但还没入队」的内容 (octo-web#1280 review)：
@@ -2623,6 +2662,10 @@ export class Conversation
 
   render() {
     const { chatBg, channel, initLocateMessageSeq } = this.props;
+    const recoveredComposes =
+      Conversation.composeRecoveryStore.get(
+        `${channel.channelID}:${channel.channelType}`,
+      ) ?? [];
 
     const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
 
@@ -2899,6 +2942,15 @@ export class Conversation
                       </div>
                     )}
                     <MessageInput
+                      recoveredComposes={recoveredComposes}
+                      onComposeRecovery={this.recordComposeRecovery}
+                      onRecoveredComposes={this.consumeComposeRecoveries}
+                      onRestoreRecoveredTarget={(target) => {
+                        if (target.replyMessage !== undefined) {
+                          vm.currentReplyMessage = target.replyMessage as Message;
+                        }
+                        vm.currentHandlerType = target.handlerType;
+                      }}
                       botCommands={botCommands}
                       onAddAttachment={(
                         addFn: (
@@ -3026,7 +3078,9 @@ export class Conversation
                       })}
                       onSendSettled={async (settlement) => {
                         if (!settlement.outcome.editorConsumed) return;
-                        await this.clearDraftAfterSend(settlement);
+                        if (!settlement.restoreFailed) {
+                          await this.clearDraftAfterSend(settlement);
+                        }
                         this.props.onMessageSent?.();
                       }}
                       onSend={async ({

@@ -47,6 +47,7 @@ import {
   enqueueSettledSend,
   invokeReadySend,
   settleConsumedCompose,
+  restoreComposeSnapshot,
   SendQueue,
 } from "./sendFlow";
 import type {
@@ -60,6 +61,7 @@ import type {
   SendDraftSnapshot,
   SendProgressSnapshot,
   SendTargetSnapshot,
+  UnsentEditorBlock,
 } from "../../features/chat-composer/domain";
 import {
   ComposeAttemptLedger,
@@ -73,8 +75,11 @@ import {
   composeSnapshotDraftText,
   composeSnapshotPreviewText,
   consumeCompose,
+  buildComposeRecoveryDocument,
   ComposeDoc,
   ComposeRestoreUnavailableError,
+  type ConsumedComposeRecovery,
+  type TopAttachmentLike,
 } from "./composeConsume";
 import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
 import {
@@ -264,6 +269,15 @@ interface MessageInputProps {
   onSendSettled?: (
     settlement: ChatSendSettlement,
   ) => void | Promise<void>;
+  /** Preserve a consumed compose when its original editor was destroyed. */
+  onComposeRecovery?: (recovery: MessageInputRecovery) => void;
+  /** Recover consumed composes transferred from an earlier editor instance. */
+  recoveredComposes?: MessageInputRecovery[];
+  onRecoveredComposes?: (attemptIds: string[]) => void;
+  onRestoreRecoveredTarget?: (target: {
+    replyMessage?: unknown;
+    handlerType: number;
+  }) => void;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
@@ -448,6 +462,17 @@ interface TopAttachmentItem {
   size: number;
   type: string;
   previewUrl?: string;
+}
+
+export interface MessageInputRecovery {
+  channelKey: string;
+  attemptId: string;
+  snapshot: ConsumedComposeRecovery["snapshot"];
+  editorAttachments: ConsumedComposeRecovery["editorAttachments"];
+  topAttachments: TopAttachmentLike[];
+  editorBlocks?: UnsentEditorBlock[];
+  sendTarget?: { replyMessage?: unknown; handlerType: number };
+  expanded: boolean;
 }
 
 interface PendingSendAttachmentPreview {
@@ -1025,6 +1050,87 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     [editor]
   );
 
+  const restoreRecoveredComposes = useCallback(() => {
+    if (!editor || !props.recoveredComposes?.length) return;
+
+    const recovered = props.recoveredComposes;
+    recovered.forEach((item) => {
+      item.editorAttachments.forEach(({ id, file }) => {
+        attachmentFilesRef.current.set(id, file);
+      });
+    });
+
+    let blockOffset = 0;
+    recovered.forEach((item) => {
+      const document = buildComposeRecoveryDocument(
+        {
+          snapshot: item.snapshot,
+          editorAttachments: item.editorAttachments,
+          topAttachments: item.topAttachments,
+        },
+        item.editorBlocks,
+        (value) =>
+          (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+      );
+      if (!document) return;
+
+      const inserted = restoreComposeSnapshot(
+        document,
+        {
+          isEmpty: () => editor.isEmpty,
+          setContent: (snapshot) =>
+            editor.commands.setContent(snapshot as JSONContent),
+          focusEnd: () => editor.commands.focus("end"),
+          insertContentAtBlock: (offset, nodes) => {
+            const docNode = editor.state.doc;
+            const limit = Math.min(offset, docNode.childCount);
+            let pos = 0;
+            for (let index = 0; index < limit; index += 1) {
+              pos += docNode.child(index).nodeSize;
+            }
+            editor.commands.insertContentAt(pos, nodes as JSONContent[]);
+          },
+          appendContent: (nodes) =>
+            editor.commands.insertContent(nodes as JSONContent[]),
+        },
+        blockOffset,
+      );
+      blockOffset += inserted;
+    });
+
+    const recoveredTopAttachments = recovered.flatMap((item) =>
+      item.topAttachments.filter(
+        (attachment): attachment is TopAttachmentItem =>
+          attachment.file !== undefined,
+      ),
+    );
+    if (recoveredTopAttachments.length > 0) {
+      const liveIds = new Set(topAttachmentsRef.current.map(({ id }) => id));
+      const fresh = recoveredTopAttachments.filter(({ id }) => !liveIds.has(id));
+      if (fresh.length > 0) {
+        topAttachmentsRef.current = [
+          ...fresh,
+          ...topAttachmentsRef.current,
+        ];
+        setTopAttachments(topAttachmentsRef.current);
+      }
+    }
+
+    const target = recovered.find((item) => item.sendTarget)?.sendTarget;
+    if (target) props.onRestoreRecoveredTarget?.(target);
+    if (recovered.some((item) => item.expanded)) {
+      setExpanded(true);
+      props.onExpandChange?.(true);
+    }
+    props.onRecoveredComposes?.(recovered.map(({ attemptId }) => attemptId));
+  }, [
+    editor,
+    props.onExpandChange,
+    props.onRecoveredComposes,
+    props.onRestoreRecoveredTarget,
+    props.recoveredComposes,
+  ]);
+
   const addMention = useCallback(
     (uid: string, name: string) => {
       if (editor && name) {
@@ -1121,6 +1227,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 结果编排在 sendFlow.ts 的 runSendWithConsumedCompose。
     // reply/edit 目标必须与 compose 同步取走（见 SendTargetSnapshot 注释）。
     const sendTarget = props.onCaptureSendTarget?.();
+    const sendChannel = props.context.channel();
+    const sendChannelKey = `${sendChannel.channelID}:${sendChannel.channelType}`;
     const sendDraftBaseline = props.onCaptureSendDraft?.();
     // 本次消费会清空编辑器与本次附件，之前失败还原留下的偏移随之失效。
     restoreOffsetsRef.current = { blocks: 0, topAttachments: 0 };
@@ -1245,7 +1353,60 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             attemptId: pendingId,
             outcome: settlement.outcome,
             sendDraft,
+            restoreFailed: settlement.restoreErrors.length > 0,
           });
+        }
+        if (settlement.restoreErrors.length > 0) {
+          const failedSteps = new Set(
+            settlement.restoreErrors.map(({ step }) => step),
+          );
+          const unavailable = settlement.restoreErrors.some(
+            ({ error }) => error instanceof ComposeRestoreUnavailableError,
+          );
+          const editorFailed =
+            unavailable ||
+            failedSteps.has("restoreEditor") ||
+            failedSteps.has("restoreEditorBlocks");
+          const topFailed =
+            unavailable || failedSteps.has("restoreTopAttachments");
+          const partialEditorRestore = failedSteps.has("restoreEditorBlocks");
+          const unsentAttachmentIds = new Set(
+            settlement.outcome.unsentEditorBlocks
+              .filter((block) => block.type === "attachment")
+              .map((block) => block.id),
+          );
+          if (editorFailed || topFailed) {
+            props.onComposeRecovery?.({
+              channelKey: sendChannelKey,
+              attemptId: pendingId,
+              snapshot: handle.recovery.snapshot,
+              editorAttachments: editorFailed
+                ? handle.recovery.editorAttachments.filter(
+                    ({ id }) =>
+                      !partialEditorRestore || unsentAttachmentIds.has(id),
+                  )
+                : [],
+              topAttachments: topFailed
+                ? handle.recovery.topAttachments.filter(
+                    ({ id }) =>
+                      !settlement.outcome.consumedTopIds.includes(id),
+                  )
+                : [],
+              editorBlocks: partialEditorRestore
+                ? settlement.outcome.unsentEditorBlocks
+                : undefined,
+              sendTarget:
+                unavailable && settlement.outcome.restoreSendTarget
+                  ? sendTarget
+                    ? {
+                        replyMessage: sendTarget.replyMessage,
+                        handlerType: sendTarget.handlerType,
+                      }
+                    : undefined
+                  : undefined,
+              expanded: unavailable && expandedAtSend,
+            });
+          }
         }
         return settlement.editorConsumed;
       },
@@ -1271,6 +1432,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // initialCompose；两步必须处于同一 effect，避免首次无附件自动发送撞上空 sendRef。
   useEffect(() => {
     announceContextAfterSendReady(sendRef, send, () => {
+      restoreRecoveredComposes();
       props.onInsertText?.(insertText);
       props.onContext?.({
         insertText,
@@ -1309,6 +1471,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     editor,
     props.onInsertText,
     props.onContext,
+    restoreRecoveredComposes,
     insertText,
     restoreDraft,
     addMention,
