@@ -36,6 +36,7 @@ export interface ChannelAvatarProps {
 
 interface ChannelAvatarState {
     cropFile: File | null
+    converting: boolean
     uploading: boolean
     customAvatarSaving: boolean
     customAvatarText: string
@@ -46,7 +47,6 @@ interface ChannelAvatarState {
     pendingUploadFile: File | null
     uploadPreviewUrl?: string
     clearUploadedAvatarRequested: boolean
-    explicitGeneratedAvatarRequested: boolean
 }
 
 export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarState>{
@@ -57,32 +57,40 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
     avatarEdit?: WKAvatarEditor|null
     state: ChannelAvatarState = {
         cropFile: null,
+        converting: false,
         uploading: false,
         customAvatarSaving: false,
-        customAvatarText: this.props.initialAvatarText || "",
-        customAvatarColorIndex: this.props.initialColorIndex,
+        customAvatarText: this.props.isUploadedAvatar === true ? "" : this.props.initialAvatarText || "",
+        customAvatarColorIndex: this.props.isUploadedAvatar === true ? undefined : this.props.initialColorIndex,
         textChanged: false,
         colorChanged: false,
         draftMode: "generated",
         pendingUploadFile: null,
         clearUploadedAvatarRequested: false,
-        explicitGeneratedAvatarRequested: false,
     }
 
     componentDidUpdate(prevProps: ChannelAvatarProps) {
         if (
             prevProps.initialAvatarText !== this.props.initialAvatarText ||
             prevProps.initialColorIndex !== this.props.initialColorIndex ||
+            prevProps.isUploadedAvatar !== this.props.isUploadedAvatar ||
             (prevProps.visible === false && this.props.visible === true)
         ) {
             this.resetDraftFromProps()
         }
     }
 
+    private activeUploadPreviewUrl?: string
+
+    releaseUploadPreviewUrl = () => {
+        if (!this.activeUploadPreviewUrl) return
+
+        URL.revokeObjectURL(this.activeUploadPreviewUrl)
+        this.activeUploadPreviewUrl = undefined
+    }
+
     componentWillUnmount() {
-        if (this.state.uploadPreviewUrl) {
-            URL.revokeObjectURL(this.state.uploadPreviewUrl)
-        }
+        this.releaseUploadPreviewUrl()
     }
 
     uploadAvatar(file: File) {
@@ -106,6 +114,12 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         this.$fileInput.click();
     }
     closePage = () => {
+        this.releaseUploadPreviewUrl()
+        this.setState({
+            cropFile: null,
+            pendingUploadFile: null,
+            uploadPreviewUrl: undefined,
+        })
         if (this.props.onClose) {
             this.props.onClose()
             return
@@ -113,24 +127,22 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         this.props.context?.pop()
     }
     resetDraftFromProps = () => {
-        if (this.state.uploadPreviewUrl) {
-            URL.revokeObjectURL(this.state.uploadPreviewUrl)
-        }
+        this.releaseUploadPreviewUrl()
         this.setState({
             cropFile: null,
-            customAvatarText: this.props.initialAvatarText || "",
-            customAvatarColorIndex: this.props.initialColorIndex,
+            converting: false,
+            customAvatarText: this.props.isUploadedAvatar === true ? "" : this.props.initialAvatarText || "",
+            customAvatarColorIndex: this.props.isUploadedAvatar === true ? undefined : this.props.initialColorIndex,
             textChanged: false,
             colorChanged: false,
             draftMode: "generated",
             pendingUploadFile: null,
             uploadPreviewUrl: undefined,
             clearUploadedAvatarRequested: false,
-            explicitGeneratedAvatarRequested: false,
         })
     }
     cancelCustomAvatar = () => {
-        if (this.state.customAvatarSaving || this.state.uploading) return
+        if (this.state.customAvatarSaving || this.state.uploading || this.state.converting) return
         this.closePage()
     }
     onGeneratedAvatarChange = (result: GroupAvatarEditResult) => {
@@ -139,9 +151,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             result.textChanged !== true &&
             result.colorChanged !== true
         const generatedEditRequested = result.textChanged === true || result.colorChanged === true
-        if (!preserveUpload && this.state.uploadPreviewUrl) {
-            URL.revokeObjectURL(this.state.uploadPreviewUrl)
-        }
+        if (!preserveUpload) this.releaseUploadPreviewUrl()
         this.setState({
             customAvatarText: result.avatarText,
             customAvatarColorIndex: result.colorIndex,
@@ -151,27 +161,13 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             pendingUploadFile: preserveUpload ? this.state.pendingUploadFile : null,
             uploadPreviewUrl: preserveUpload ? this.state.uploadPreviewUrl : undefined,
             clearUploadedAvatarRequested:
-                this.state.explicitGeneratedAvatarRequested ||
-                (generatedEditRequested && this.props.canClearUploadedAvatar === true),
-        })
-    }
-    useGeneratedAvatar = () => {
-        if (!this.props.canClearUploadedAvatar || this.state.customAvatarSaving || this.state.uploading) return
-        if (this.state.uploadPreviewUrl) {
-            URL.revokeObjectURL(this.state.uploadPreviewUrl)
-        }
-        this.setState({
-            draftMode: "generated",
-            pendingUploadFile: null,
-            uploadPreviewUrl: undefined,
-            clearUploadedAvatarRequested: true,
-            explicitGeneratedAvatarRequested: true,
+                generatedEditRequested && this.props.canClearUploadedAvatar === true,
         })
     }
     saveCustomAvatar = async () => {
         const { channel } = this.props
         const { customAvatarText, customAvatarColorIndex, textChanged, colorChanged, draftMode } = this.state
-        if (this.state.customAvatarSaving || this.state.uploading) return
+        if (this.state.customAvatarSaving || this.state.uploading || this.state.converting) return
         const shouldClearUploadedAvatar =
             this.props.isUploadedAvatar === true &&
             this.props.canClearUploadedAvatar === true &&
@@ -214,31 +210,33 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         this.setState({ cropFile: file })
     }
     cancelCrop = () => {
-        if (this.state.uploading) return
+        if (this.state.uploading || this.state.converting) return
         this.setState({ cropFile: null })
     }
     saveCrop = async () => {
         const canvas = this.avatarEdit?.getImageScaledToCanvas()
-        if (!canvas || this.state.uploading) return
+        if (!canvas || this.state.uploading || this.state.converting) return
+
+        this.setState({ converting: true })
 
         let file: File
         try {
             file = await canvasToPngFile(canvas, "channelAvatarPicture.png")
         } catch {
             Toast.error(this.context.t('base.channelAvatar.imageProcessFailedRetry'))
+            this.setState({ converting: false })
             return
         }
 
-        this.setState((state) => {
-            if (state.uploadPreviewUrl) {
-                URL.revokeObjectURL(state.uploadPreviewUrl)
-            }
-            return {
-                cropFile: null,
-                pendingUploadFile: file,
-                uploadPreviewUrl: URL.createObjectURL(file),
-                draftMode: "uploaded",
-            }
+        this.releaseUploadPreviewUrl()
+        const uploadPreviewUrl = URL.createObjectURL(file)
+        this.activeUploadPreviewUrl = uploadPreviewUrl
+        this.setState({
+            cropFile: null,
+            converting: false,
+            pendingUploadFile: file,
+            uploadPreviewUrl,
+            draftMode: "uploaded",
         })
     }
 
@@ -270,6 +268,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         const { channel,showUpload,groupName,isNamedGroup } = this.props
         const {
             cropFile,
+            converting,
             uploading,
             customAvatarSaving,
             customAvatarText,
@@ -279,7 +278,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             draftMode,
             uploadPreviewUrl,
         } = this.state
-        const editingDisabled = customAvatarSaving || uploading
+        const editingDisabled = customAvatarSaving || uploading || converting
         const generatedEditingDisabled =
             editingDisabled ||
             (this.props.isUploadedAvatar === true && this.props.canClearUploadedAvatar !== true)
@@ -316,27 +315,22 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                             <IconCamera />
                         </button>
                     </div>
-                    {showUpload && this.props.isUploadedAvatar === true && this.props.canClearUploadedAvatar === true && (
-                        <Button
-                            theme="borderless"
-                            className="wk-channelavatar-use-generated"
-                            onClick={this.useGeneratedAvatar}
-                            disabled={editingDisabled}
-                        >
-                            {this.context.t('base.channelAvatar.useGeneratedAvatar')}
-                        </Button>
-                    )}
                 </div>
                 <div className="wk-channelavatar-editor-panel">
                     {showUpload && <div className="wk-channelavatar-editor-title">
                         {this.context.t('base.channelAvatar.changeTextColorAvatar')}
                     </div>}
+                    {showUpload && this.props.isUploadedAvatar === true && this.props.canClearUploadedAvatar !== true && (
+                        <div className="wk-channelavatar-generated-disabled-hint">
+                            {this.context.t('base.channelAvatar.generatedAvatarOwnerOnly')}
+                        </div>
+                    )}
                     {showUpload && <GroupAvatarEditForm
                         key={this.props.visible === true ? "open" : "closed"}
                         name={groupName || ""}
                         nameAsFallback={isNamedGroup === true}
-                        initialAvatarText={this.props.initialAvatarText || ""}
-                        initialColorIndex={this.props.initialColorIndex}
+                        initialAvatarText={this.props.isUploadedAvatar === true ? "" : this.props.initialAvatarText || ""}
+                        initialColorIndex={this.props.isUploadedAvatar === true ? undefined : this.props.initialColorIndex}
                         colorSeed={channel.channelID}
                         disabled={generatedEditingDisabled}
                         onChange={this.onGeneratedAvatarChange}
@@ -381,12 +375,12 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 footerConfig={{
                     okText: this.context.t('base.common.save'),
                     cancelText: this.context.t('base.common.cancel'),
-                    isOkLoading: uploading,
+                    isOkLoading: converting,
                     onOk: this.saveCrop,
                 }}
                 options={{
-                    maskClosable: !uploading,
-                    closeOnEsc: !uploading,
+                    maskClosable: !converting,
+                    closeOnEsc: !converting,
                 }}
             >
                 {cropFile && (

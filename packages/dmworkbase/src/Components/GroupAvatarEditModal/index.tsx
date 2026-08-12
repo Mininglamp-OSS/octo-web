@@ -111,7 +111,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
     onChange?.({
       avatarText: cleanAvatarText(next.avatarText ?? avatarText),
       textChanged: next.textChanged ?? textChanged,
-      colorIndex: next.colorIndex,
+      colorIndex: "colorIndex" in next ? next.colorIndex : colorIndex,
       colorChanged: next.colorChanged ?? colorChanged,
     })
   }

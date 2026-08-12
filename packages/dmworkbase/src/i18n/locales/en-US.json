@@ -1212,7 +1212,7 @@
   "categorySection.noGroups": "No group chats",
   "channelAvatar.changeAvatar": "Change avatar",
   "channelAvatar.changeTextColorAvatar": "Text / color avatar",
-  "channelAvatar.useGeneratedAvatar": "Use generated avatar",
+  "channelAvatar.generatedAvatarOwnerOnly": "This group uses an uploaded avatar. Only the owner can switch to a generated avatar.",
   "channelAvatar.cropAvatar": "Crop avatar",
   "channelAvatar.fileTooLarge": "Avatar file must be 5 MB or smaller.",
   "channelAvatar.previewAvatar": "Preview avatar",

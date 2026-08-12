@@ -11,6 +11,9 @@ const mocks = vi.hoisted(() => ({
   fetchCurrentImChannelInfo: vi.fn(() => Promise.resolve()),
   changeChannelAvatarTag: vi.fn(),
   uploadFile: vi.fn(() => Promise.resolve()),
+  canvasToPngFile: vi.fn(),
+  createObjectURL: vi.fn(() => "blob:avatar-preview"),
+  revokeObjectURL: vi.fn(),
 }));
 
 vi.mock("../../../Service/ChannelSettingService", () => ({
@@ -59,6 +62,11 @@ vi.mock("@douyinfe/semi-icons", () => ({
 
 vi.mock("../../WKAvatarEditor", () => ({
   WKAvatarEditor: class {},
+}));
+
+vi.mock("../../avatarUpload", () => ({
+  canvasToPngFile: mocks.canvasToPngFile,
+  isAvatarFileTooLarge: vi.fn(() => false),
 }));
 
 vi.mock("../../WKModal", () => ({
@@ -128,6 +136,17 @@ beforeEach(() => {
   mocks.fetchCurrentImChannelInfo.mockClear();
   mocks.changeChannelAvatarTag.mockClear();
   mocks.uploadFile.mockClear();
+  mocks.canvasToPngFile.mockReset();
+  mocks.createObjectURL.mockClear();
+  mocks.revokeObjectURL.mockClear();
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: mocks.createObjectURL,
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: mocks.revokeObjectURL,
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
 });
@@ -246,6 +265,19 @@ describe("ChannelAvatar save intent", () => {
     expect(mocks.changeChannelAvatarTag).not.toHaveBeenCalledWith(channel);
   });
 
+  it("shows generated fields without backfilling stale values for an uploaded avatar", () => {
+    renderChannelAvatar({
+      initialAvatarText: "旧头像",
+      initialColorIndex: 5,
+      isUploadedAvatar: true,
+      canClearUploadedAvatar: true,
+    });
+
+    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("");
+    expect(screen.getByLabelText("avatar-color-default").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByText("base.channelAvatar.useGeneratedAvatar")).toBeNull();
+  });
+
   it("sends clear_uploaded_avatar only when creator edits an uploaded avatar", async () => {
     const channel = renderChannelAvatar({
       isUploadedAvatar: true,
@@ -260,9 +292,6 @@ describe("ChannelAvatar save intent", () => {
       });
     });
     act(() => {
-      fireEvent.click(screen.getByText("base.channelAvatar.useGeneratedAvatar"));
-    });
-    act(() => {
       fireEvent.click(screen.getByLabelText("avatar-color-default"));
     });
     await act(async () => {
@@ -275,6 +304,18 @@ describe("ChannelAvatar save intent", () => {
       clearUploadedAvatar: true,
     });
     expect(container.querySelector(".wk-group-avatar-preview-text")?.textContent).toBe("研发");
+  });
+
+  it("shows empty disabled generated controls and explains why a manager cannot switch sources", () => {
+    renderChannelAvatar({
+      isUploadedAvatar: true,
+      canClearUploadedAvatar: false,
+    });
+
+    expect(screen.getByText("base.channelAvatar.generatedAvatarOwnerOnly")).toBeTruthy();
+    expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("");
+    expect((screen.getByRole("textbox") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByText("base.channelAvatar.useGeneratedAvatar")).toBeNull();
   });
 
   it("clears an uploaded avatar when the owner edits generated text", async () => {
@@ -301,16 +342,16 @@ describe("ChannelAvatar save intent", () => {
 
   it("does not clear an uploaded avatar after a net-zero text edit", async () => {
     const channel = renderChannelAvatar({
-      initialAvatarText: "研发",
+      initialAvatarText: "旧头像",
       isUploadedAvatar: true,
       canClearUploadedAvatar: true,
     });
 
     act(() => {
-      fireEvent.change(screen.getByRole("textbox"), { target: { value: "研发X" } });
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "研发" } });
     });
     act(() => {
-      fireEvent.change(screen.getByRole("textbox"), { target: { value: "研发" } });
+      fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } });
     });
     await act(async () => {
       fireEvent.click(screen.getByText("base.common.save"));
@@ -338,6 +379,56 @@ describe("ChannelAvatar save intent", () => {
     expect(component.state.draftMode).toBe("uploaded");
     expect(component.state.pendingUploadFile).toBe(file);
     expect(component.state.uploadPreviewUrl).toBe("blob:preview");
+  });
+
+  it("locks crop actions while converting and only converts once", async () => {
+    const sourceFile = new File(["source"], "source.png", { type: "image/png" });
+    const croppedFile = new File(["cropped"], "cropped.png", { type: "image/png" });
+    let resolveConversion!: (file: File) => void;
+    mocks.canvasToPngFile.mockReturnValue(
+      new Promise<File>((resolve) => {
+        resolveConversion = resolve;
+      })
+    );
+    const component = createComponent();
+    component.avatarEdit = {
+      getImageScaledToCanvas: () => document.createElement("canvas"),
+    };
+    component.setState({ cropFile: sourceFile });
+
+    const firstSave = component.saveCrop();
+    const secondSave = component.saveCrop();
+    component.cancelCrop();
+
+    expect(mocks.canvasToPngFile).toHaveBeenCalledTimes(1);
+    expect(component.state.converting).toBe(true);
+    expect(component.state.cropFile).toBe(sourceFile);
+
+    resolveConversion(croppedFile);
+    await firstSave;
+    await secondSave;
+
+    expect(component.state.converting).toBe(false);
+    expect(component.state.pendingUploadFile).toBe(croppedFile);
+    expect(component.state.uploadPreviewUrl).toBe("blob:avatar-preview");
+  });
+
+  it("releases a pending upload preview when the editor closes", async () => {
+    const onClose = vi.fn();
+    const croppedFile = new File(["cropped"], "cropped.png", { type: "image/png" });
+    mocks.canvasToPngFile.mockResolvedValue(croppedFile);
+    const component = createComponent({ onClose });
+    component.avatarEdit = {
+      getImageScaledToCanvas: () => document.createElement("canvas"),
+    };
+
+    await component.saveCrop();
+    component.closePage();
+
+    expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:avatar-preview");
+    expect(component.state.uploadPreviewUrl).toBeUndefined();
+    expect(component.state.pendingUploadFile).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("updates the large preview immediately when generated text changes", async () => {

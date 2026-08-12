@@ -115,6 +115,13 @@
     line-height: 20px;
 }
 
+.wk-channelavatar-setting-modal .wk-channelavatar-generated-disabled-hint {
+    margin: -8px 0 16px;
+    color: var(--semi-color-text-2);
+    font-size: 12px;
+    line-height: 18px;
+}
+
 .wk-channelavatar-setting-modal .wk-channelavatar-avatar-wrap {
     width: 136px;
     height: 136px;
