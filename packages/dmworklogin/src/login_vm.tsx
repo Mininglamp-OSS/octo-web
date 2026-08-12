@@ -1,6 +1,7 @@
 import {
     IM_DEVICE_FLAG_PC,
     IM_DEVICE_FLAG_WEB,
+    getExpectedImDeviceFlag,
     WKApp,
     ProviderListener,
 } from "@octo/base";
@@ -629,7 +630,7 @@ export class LoginVM extends ProviderListener {
                 authcode,
                 returnTo,
                 authorizeBaseURL,
-                isDesktop ? String(IM_DEVICE_FLAG_PC) : String(IM_DEVICE_FLAG_WEB),
+                String(getExpectedImDeviceFlag(WKApp.shared.isPC)),
             )
             if (isDesktop) {
                 const registered = await beginOidcAuthorize(apiURL, authcode, providerId, authorizeUrl)

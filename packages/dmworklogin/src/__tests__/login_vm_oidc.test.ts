@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { i18n } from '@octo/base/src/i18n/instance'
+import { WKApp } from '@octo/base'
 
 // Stub @octo/base so LoginVM can be instantiated in jsdom without bringing
 // in the real WKApp / apiClient. Only the surface LoginVM touches needs filling in.
@@ -29,6 +30,7 @@ vi.mock('@octo/base', () => {
       deviceId: 'd',
       deviceName: 'n',
       deviceModel: 'm',
+      isPC: false,
     },
     config: {
       themeColor: '#000',
@@ -49,6 +51,7 @@ vi.mock('@octo/base', () => {
   return {
     IM_DEVICE_FLAG_WEB: 1,
     IM_DEVICE_FLAG_PC: 2,
+    getExpectedImDeviceFlag: (isPC: boolean) => isPC ? 2 : 1,
     WKApp,
     ProviderListener,
     i18n: { setLocale: vi.fn() },
@@ -92,6 +95,7 @@ function stubLocation() {
     writable: true,
     value: {
       origin: 'http://localhost',
+      protocol: 'http:',
       href: 'http://localhost/login',
       search: '',
     },
@@ -111,6 +115,7 @@ beforeEach(() => {
   sessionStorage.clear()
   fetchAuthcodeMock.mockReset()
   pollAuthStatusMock.mockReset()
+  ;(WKApp.shared as { isPC?: boolean }).isPC = false
   vi.useFakeTimers()
   stubLocation()
 })
@@ -131,6 +136,16 @@ describe('LoginVM.startOidcLogin', () => {
     expect(window.location.href).toContain('/v1/auth/oidc/acme-sso/authorize')
     expect(window.location.href).toContain('authcode=AC-123')
     expect(vm.oidcLoading).toBe(true)
+  })
+
+  it('uses the PC device flag for Tauri-style PC runtimes', async () => {
+    fetchAuthcodeMock.mockResolvedValue('TAURI-AC')
+    const vm = new LoginVM()
+    ;(WKApp.shared as { isPC?: boolean }).isPC = true
+
+    await vm.startOidcLogin('acme-sso')
+
+    expect(new URL(window.location.href, 'http://localhost').searchParams.get('flag')).toBe('2')
   })
 
   it('flips oidcLoading off via the fallback timer if redirect is intercepted', async () => {

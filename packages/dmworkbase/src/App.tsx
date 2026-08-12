@@ -942,7 +942,7 @@ export default class WKApp extends ProviderListener {
     // Tokens issued before the desktop device-slot migration do not carry a
     // marker. Re-authenticate once instead of reconnecting with an ambiguous
     // token/device tuple and silently losing the IM connection.
-    if (hasImDeviceFlagMismatch(
+    if (this.isPC && hasImDeviceFlagMismatch(
       WKApp.loginInfo.isLogined(),
       WKApp.loginInfo.deviceFlag,
       expectedDeviceFlag,
@@ -1127,7 +1127,7 @@ export default class WKApp extends ProviderListener {
 
   connectIM() {
     const expectedDeviceFlag = getExpectedImDeviceFlag(this.isPC);
-    if (hasImDeviceFlagMismatch(
+    if (this.isPC && hasImDeviceFlagMismatch(
       WKApp.loginInfo.isLogined(),
       WKApp.loginInfo.deviceFlag,
       expectedDeviceFlag,
