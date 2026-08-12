@@ -288,10 +288,9 @@ export interface OidcUserInitiatedLogoutDeps {
 // branch ran, not just that something happened.
 export type OidcUserInitiatedLogoutOutcome =
   | { kind: "not-oidc" }                 // provider is local / empty / no token
-  | { kind: "desktop-external"; url: string }
+  | { kind: "desktop-local"; url: string }
   | { kind: "web-redirect"; url: string }
   | { kind: "no-end-session" }           // IdP returned no end_session_url
-  | { kind: "desktop-open-failed"; url: string }
   | { kind: "logout-error"; error: unknown };
 
 export async function performOidcUserInitiatedLogout(
@@ -335,27 +334,21 @@ export async function performOidcUserInitiatedLogout(
     deps.clearLocalLoginState();
 
     if (deps.env === "desktop-shell") {
+      // Keep user-initiated logout inside the desktop app. The main process
+      // runs the IdP end-session URL in a hidden window so the IdP session is
+      // cleared without showing the browser/Web login page to the user.
       const ipcInvoke = deps.ipc?.invoke;
       if (typeof ipcInvoke !== "function") {
-        // Desktop env announced but no ipc bridge — treat as an open failure
-        // and fall back to local logout instead of navigating the packaged
-        // window to a remote URL (which would strand the file:// shell).
         deps.fallbackLogout();
-        return { kind: "desktop-open-failed", url: endSessionUrl };
+        return { kind: "desktop-local", url: endSessionUrl };
       }
       const opened = await ipcInvoke(IPC_OIDC_OPEN_EXTERNAL, endSessionUrl) as { ok?: boolean } | undefined;
       if (opened?.ok !== true) {
-        // shell.openExternal refused (bad scheme / userinfo / etc.). Fall
-        // back locally — do NOT set location.href because file:// cannot
-        // navigate to an external https URL and would leave the shell in an
-        // error state.
         deps.fallbackLogout();
-        return { kind: "desktop-open-failed", url: endSessionUrl };
+        return { kind: "desktop-local", url: endSessionUrl };
       }
-      // Reload the trusted file:// shell so the cleared credentials render
-      // the login UI immediately.
       deps.reloadShell();
-      return { kind: "desktop-external", url: endSessionUrl };
+      return { kind: "desktop-local", url: endSessionUrl };
     }
 
     // Web: mark the post-logout cleanup so the next boot re-clears storage

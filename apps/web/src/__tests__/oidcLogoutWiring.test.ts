@@ -46,6 +46,9 @@ describe("OIDC logout wiring", () => {
     // Behavioural coverage lives in oidcLogout.test.ts::performOidcUserInitiatedLogout.
     expect(appSource).toContain("performOidcUserInitiatedLogout");
     expect(appSource).toMatch(/async logoutUserInitiated\(\)\s*{[\s\S]*performOidcUserInitiatedLogout\(/);
+    // Electron dev mode runs on http://localhost, so desktop detection must
+    // use the preload marker/IPC bridge rather than file:// alone.
+    expect(appSource).toMatch(/env:\s*this\.isElectronShell\(\)\s*\?\s*"desktop-shell"\s*:\s*"web"/);
     // The web branch continues to mark the post-logout cleanup key so the
     // next boot can consume it (regression guard for the file we test above).
     expect(appSource).toContain("markPostLogoutCleanup");
@@ -53,15 +56,14 @@ describe("OIDC logout wiring", () => {
 
   it("exposes the end-session URL policy in a single testable helper", () => {
     // The extracted helper owns every branch that used to live inline in
-    // App.tsx: desktop-shell → shell.openExternal, web → location.href,
+    // App.tsx: desktop-shell → local shell reload, web → location.href,
     // no-end-session → fallback local logout. Assert its API surface stays
     // stable so the behavioural tests remain meaningful.
     const source = readRepoFile("packages/dmworkbase/src/Service/oidcLogout.ts");
     expect(source).toContain("export async function performOidcUserInitiatedLogout");
     // Discriminated result: reviewers grep for these to trace call flow.
-    expect(source).toContain('kind: "desktop-external"');
+    expect(source).toContain('kind: "desktop-local"');
     expect(source).toContain('kind: "web-redirect"');
-    expect(source).toContain('kind: "desktop-open-failed"');
     expect(source).toContain('kind: "no-end-session"');
     expect(source).toContain('kind: "logout-error"');
     // Scheme gate: end-session URL must be https (RFC 8252 §8.10).

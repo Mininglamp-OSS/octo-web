@@ -11,7 +11,6 @@ import {
   nativeImage,
   dialog,
   net,
-  shell,
 } from "electron";
 import fs from "fs";
 import tmp from 'tmp';
@@ -269,13 +268,65 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
   const win = resolveTrustedOidcSender(event);
   if (!win) return { ok: false as const };
   // Validation lives in oidcRedirect.ts so the URL/scheme allowlist is
-  // covered by pure-function tests alongside the redirect helpers.
+  // covered by pure-function tests alongside the redirect helpers. Load the
+  // validated URL in a hidden window: shell.openExternal would leave the user
+  // in a browser/Web page after desktop logout.
   const validated = validateOpenExternalUrl(url);
   if (validated.ok === false) return { ok: false as const };
+  let logoutWindow: BrowserWindow | undefined;
   try {
-    await shell.openExternal(validated.value);
-    return { ok: true as const };
+    const endSession = new URL(validated.value);
+    const redirect = endSession.searchParams.get("post_logout_redirect_uri") ||
+      endSession.searchParams.get("redirect_uri");
+    let redirectURL: URL | undefined;
+    try { if (redirect) redirectURL = new URL(redirect); } catch { /* no redirect target */ }
+
+    logoutWindow = new BrowserWindow({
+      show: false,
+      width: 1,
+      height: 1,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+
+    const result = await new Promise<boolean>((resolve) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      const settle = (ok: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        resolve(ok);
+      };
+      logoutWindow!.webContents.on("did-navigate", (_event, navigatedURL) => {
+        if (!redirectURL) {
+          settle(true);
+          return;
+        }
+        try {
+          const parsed = new URL(navigatedURL);
+          if (parsed.origin === redirectURL.origin && parsed.pathname === redirectURL.pathname) {
+            settle(true);
+          }
+        } catch { /* keep waiting for the trusted redirect */ }
+      });
+      logoutWindow!.webContents.once("did-finish-load", () => {
+        if (!redirectURL) settle(true);
+      });
+      logoutWindow!.webContents.once("did-fail-load", () => settle(false));
+      // A timeout means the IdP logout was not confirmed. Report failure so
+      // the renderer can complete local logout without claiming that the
+      // provider session was cleared.
+      timeout = setTimeout(() => settle(false), 15000);
+      void logoutWindow!.loadURL(validated.value).catch(() => settle(false));
+    });
+    if (!logoutWindow.isDestroyed()) logoutWindow.destroy();
+    return result ? { ok: true as const } : { ok: false as const };
   } catch {
+    if (logoutWindow && !logoutWindow.isDestroyed()) logoutWindow.destroy();
     return { ok: false as const };
   }
 });

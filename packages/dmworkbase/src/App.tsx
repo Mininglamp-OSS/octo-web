@@ -1132,11 +1132,24 @@ export default class WKApp extends ProviderListener {
     // Web (http[s]) keeps the original behavior because the login route
     // *is* served by the SPA host and a reload would drop deep-link state
     // that the login page may still want to consume (e.g. `?returnTo=`).
-    if (window.location.protocol === "file:") {
+    if (this.isElectronShell()) {
       replaceWithShellDocument();
       return;
     }
     window.location.replace("/login");
+  }
+
+  /**
+   * Electron dev mode serves the renderer from http://localhost, just like a
+   * browser. The preload marker is the authoritative signal that this window
+   * is still inside the desktop shell; checking only file:// sends dev-shell
+   * logout through the web redirect path.
+   */
+  private isElectronShell() {
+    return Boolean(
+      (window as any).__POWERED_ELECTRON__ &&
+      typeof (window as any).ipc?.invoke === "function",
+    );
   }
 
   async logoutUserInitiated() {
@@ -1149,7 +1162,7 @@ export default class WKApp extends ProviderListener {
       token: WKApp.loginInfo.token || "",
       apiURL: WKApp.apiClient.config.apiURL || "",
       ipc: (window as any).ipc,
-      env: window.location.protocol === "file:" ? "desktop-shell" : "web",
+      env: this.isElectronShell() ? "desktop-shell" : "web",
       // Only forward the dev override when actually in a dev build; in
       // production `import.meta.env.DEV` is false and we must not read the
       // VITE_ env var (it may leak into production bundles as `undefined`

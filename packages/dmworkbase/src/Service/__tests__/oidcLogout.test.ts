@@ -65,6 +65,18 @@ describe("oidcLogout helpers", () => {
     );
   });
 
+  it("treats a non-JSON success body as an empty logout response", async () => {
+    const fetcher = vi.fn(
+      async () => new Response("logged out", { status: 200 })
+    );
+    const resp = await requestOidcLogout(
+      "aegis",
+      "octo-token",
+      fetcher as typeof fetch
+    );
+    expect(resp).toEqual({});
+  });
+
   it("resolves Electron logout through the absolute API IPC proxy without an origin preflight", async () => {
     // The `oidc-api-origin-start` preflight was removed together with the
     // main-process handler and the preload allowlist entry — main validates
@@ -194,10 +206,9 @@ describe("oidcLogout helpers", () => {
 // fallback-to-local-logout path are covered without booting WKApp.
 //
 // The primary regression these tests guard against (P0 from the review):
-// the packaged-desktop path must invoke `oidc-open-external` on the ipc
-// bridge and must NOT depend on the removed `oidc-api-origin-start`
-// channel. A stale channel reference here would silently fall back to
-// local logout and leak the IdP session.
+// the packaged-desktop path must reload the trusted shell and must not invoke
+// an external browser. The backend logout request still uses the desktop IPC
+// HTTP bridge, but the IdP end-session URL must never leave the app window.
 // -----------------------------------------------------------------------------
 
 type SideEffects = ReturnType<typeof makeSideEffects>;
@@ -258,15 +269,9 @@ describe("performOidcUserInitiatedLogout", () => {
     expect(sfx.fallbackLogout).toHaveBeenCalledTimes(1);
   });
 
-  it("packaged desktop: launches shell.openExternal via ipc and reloads the trusted shell", async () => {
+  it("packaged desktop: stays in the trusted shell after logout", async () => {
     const sfx = makeSideEffects();
-    // Only `oidc-open-external` is expected. If the orchestration accidentally
-    // invokes the removed `oidc-api-origin-start` channel, the mock throws
-    // and the test fails — regression guard for the P0 finding.
-    const invoke = vi.fn(async (channel: string, arg: unknown) => {
-      if (channel === "oidc-open-external") return { ok: true };
-      throw new Error(`unexpected channel: ${channel}`);
-    });
+    const invoke = vi.fn(async () => ({ ok: true }));
     const requestLogout = vi.fn(async () => ({
       end_session_url: "https://accounts.example.com/end_session?id_token_hint=jwt",
     }));
@@ -294,16 +299,11 @@ describe("performOidcUserInitiatedLogout", () => {
       ),
     );
 
-    expect(result.kind).toBe("desktop-external");
+    expect(result.kind).toBe("desktop-local");
     expect(sfx.clearLocalLoginState).toHaveBeenCalledTimes(1);
     expect(invoke).toHaveBeenCalledWith(
       "oidc-open-external",
       "https://accounts.example.com/end_session?id_token_hint=jwt",
-    );
-    // Regression guard: the removed origin-preflight channel must not appear.
-    expect(invoke).not.toHaveBeenCalledWith(
-      "oidc-api-origin-start",
-      expect.anything(),
     );
     expect(sfx.reloadShell).toHaveBeenCalledTimes(1);
     expect(sfx.navigateExternal).not.toHaveBeenCalled();
@@ -311,9 +311,9 @@ describe("performOidcUserInitiatedLogout", () => {
     expect(sfx.fallbackLogout).not.toHaveBeenCalled();
   });
 
-  it("packaged desktop: shell.openExternal refusal falls back to local logout without navigating", async () => {
+  it("packaged desktop: uses the hidden logout bridge without opening a browser", async () => {
     const sfx = makeSideEffects();
-    const invoke = vi.fn(async () => ({ ok: false }));
+    const invoke = vi.fn(async () => ({ ok: true }));
     const result = await performOidcUserInitiatedLogout(
       buildDeps(
         {
@@ -333,15 +333,17 @@ describe("performOidcUserInitiatedLogout", () => {
     );
 
     expect(result).toEqual({
-      kind: "desktop-open-failed",
+      kind: "desktop-local",
       url: "https://accounts.example.com/end_session",
     });
-    // clearLocalLoginState still ran because we already committed to the
-    // IdP round-trip; fallbackLogout is the safety net.
+    expect(invoke).toHaveBeenCalledWith(
+      "oidc-open-external",
+      "https://accounts.example.com/end_session",
+    );
     expect(sfx.clearLocalLoginState).toHaveBeenCalledTimes(1);
-    expect(sfx.reloadShell).not.toHaveBeenCalled();
+    expect(sfx.reloadShell).toHaveBeenCalledTimes(1);
     expect(sfx.navigateExternal).not.toHaveBeenCalled();
-    expect(sfx.fallbackLogout).toHaveBeenCalledTimes(1);
+    expect(sfx.fallbackLogout).not.toHaveBeenCalled();
   });
 
   it("web: navigates the current window to the IdP end-session URL and marks cleanup", async () => {
@@ -440,7 +442,7 @@ describe("performOidcUserInitiatedLogout", () => {
       ),
     );
 
-    expect(result.kind).toBe("desktop-open-failed");
+    expect(result.kind).toBe("desktop-local");
     expect(sfx.navigateExternal).not.toHaveBeenCalled();
     expect(sfx.reloadShell).not.toHaveBeenCalled();
     expect(sfx.fallbackLogout).toHaveBeenCalledTimes(1);
