@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { createChatSendOutcome } from "../../../features/chat-composer/domain";
 import {
   buildRichTextMixedCandidate,
   countSendPlanParts,
@@ -65,7 +66,12 @@ describe("buildRichTextMixedCandidate", () => {
     );
 
     expect(onMessageSent).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({ editorConsumed: false, consumedTopIds: ["pdf1"] });
+    expect(result).toEqual(
+      createChatSendOutcome({
+        editorConsumed: false,
+        consumedTopIds: ["pdf1"],
+      }),
+    );
   });
 
   it("keeps top attachments and later editor blocks as separate guarded parts", () => {

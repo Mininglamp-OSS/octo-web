@@ -1,3 +1,5 @@
+import { createChatSendOutcome } from "../../features/chat-composer/domain";
+
 export type RichTextMixedEditorBlock =
   | { type: "text"; text: string; mention?: unknown }
   | { type: "image"; id: string; file: File }
@@ -20,7 +22,10 @@ export function finishRichTextMixedSend(
   onMessageSent?: () => void
 ) {
   if (anyMessageSent) onMessageSent?.();
-  return { editorConsumed: mixedSent, consumedTopIds };
+  return createChatSendOutcome({
+    editorConsumed: mixedSent,
+    consumedTopIds,
+  });
 }
 
 const IMAGE_EXTENSIONS = new Set([

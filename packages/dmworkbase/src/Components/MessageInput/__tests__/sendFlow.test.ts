@@ -40,6 +40,10 @@ import {
   ConsumedCompose,
   ComposeRestoreTarget,
 } from "../sendFlow";
+import {
+  createChatSendOutcome,
+  type ChatSendOutcome,
+} from "../../../features/chat-composer/domain";
 
 describe("createPendingSendTracker", () => {
   it("keeps a multi-part compose guarded until every part is enqueued", () => {
@@ -213,10 +217,15 @@ const ids = (topIds: string[], editorAttachmentIds: string[] = []) => ({
   editorAttachmentIds,
 });
 
+const outcome = (overrides: Partial<ChatSendOutcome> = {}) =>
+  createChatSendOutcome(overrides);
+
 describe("runSendWithConsumedCompose — success keeps the composer empty (#1280)", () => {
   it("disposes refs/urls and restores nothing when the send succeeds", async () => {
     const compose = makeCompose();
-    const send = vi.fn().mockResolvedValue(true);
+    const send = vi.fn().mockResolvedValue(
+      outcome({ editorConsumed: true, consumedTopIds: ["t1", "t2"] }),
+    );
 
     const ok = await runSendWithConsumedCompose(
       send,
@@ -232,31 +241,24 @@ describe("runSendWithConsumedCompose — success keeps the composer empty (#1280
     expect(compose.disposedTopIds).toEqual(["t1", "t2"]);
   });
 
-  it("treats void/undefined return as success (back-compat with legacy onSend)", async () => {
+  it("requires an explicit normalized outcome from the send callback", async () => {
     const compose = makeCompose();
+    const send = vi
+      .fn()
+      .mockResolvedValue(
+        outcome({ editorConsumed: true, consumedTopIds: ["t1"] }),
+      );
 
     const ok = await runSendWithConsumedCompose(
-      vi.fn().mockResolvedValue(undefined),
+      send,
       ids(["t1"]),
       compose,
     );
 
     expect(ok).toBe(true);
+    expect(send).toHaveBeenCalledTimes(1);
     expect(compose.restoreEditor).not.toHaveBeenCalled();
     expect(compose.disposedTopIds).toEqual(["t1"]);
-  });
-
-  it("treats a synchronous void return as success", async () => {
-    const compose = makeCompose();
-    const send = vi.fn(() => {
-      /* legacy void onSend */
-    });
-
-    const ok = await runSendWithConsumedCompose(send, ids([], ["e1"]), compose);
-
-    expect(ok).toBe(true);
-    expect(compose.restoreEditor).not.toHaveBeenCalled();
-    expect(compose.disposedEditorIds).toEqual(["e1"]);
   });
 
   it("does NOT restore already-sent content even when the user typed during the await", async () => {
@@ -264,12 +266,14 @@ describe("runSendWithConsumedCompose — success keeps the composer empty (#1280
     // in the composer. Consume-first makes it structurally impossible — success
     // simply never touches the live document.
     const compose = makeCompose();
-    let resolveSend!: (v: boolean) => void;
-    const send = vi.fn(() => new Promise<boolean>((res) => (resolveSend = res)));
+    let resolveSend!: (v: ChatSendOutcome) => void;
+    const send = vi.fn(
+      () => new Promise<ChatSendOutcome>((res) => (resolveSend = res)),
+    );
 
     const p = runSendWithConsumedCompose(send, ids(["t1"]), compose);
     // ...user pastes another image / types the next line here...
-    resolveSend(true);
+    resolveSend(outcome({ editorConsumed: true, consumedTopIds: ["t1"] }));
 
     await expect(p).resolves.toBe(true);
     expect(compose.restoreEditor).not.toHaveBeenCalled();
@@ -280,7 +284,7 @@ describe("runSendWithConsumedCompose — success keeps the composer empty (#1280
 describe("runSendWithConsumedCompose — round 1: failure restores the whole draft", () => {
   it("restores editor + top attachments when the send resolves false", async () => {
     const compose = makeCompose();
-    const send = vi.fn().mockResolvedValue(false);
+    const send = vi.fn().mockResolvedValue(outcome());
 
     const ok = await runSendWithConsumedCompose(send, ids(["t1", "t2"]), compose);
 
@@ -306,15 +310,17 @@ describe("runSendWithConsumedCompose — round 1: failure restores the whole dra
 
   it("never restores or disposes before the async send settles (ordering guarantee)", async () => {
     const compose = makeCompose();
-    let resolveSend!: (v: boolean) => void;
-    const send = vi.fn(() => new Promise<boolean>((res) => (resolveSend = res)));
+    let resolveSend!: (v: ChatSendOutcome) => void;
+    const send = vi.fn(
+      () => new Promise<ChatSendOutcome>((res) => (resolveSend = res)),
+    );
 
     const p = runSendWithConsumedCompose(send, ids(["t1"]), compose);
 
     await Promise.resolve();
     expect(compose.calls).toEqual([]);
 
-    resolveSend(false);
+    resolveSend(outcome());
     await p;
 
     expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
@@ -327,7 +333,9 @@ describe("runSendWithConsumedCompose — partial result (top attachments sent, e
     // Top attachments t1,t2 were sent first; the mixed editor send then failed.
     const send = vi
       .fn()
-      .mockResolvedValue({ editorConsumed: false, consumedTopIds: ["t1", "t2"] });
+      .mockResolvedValue(
+        outcome({ editorConsumed: false, consumedTopIds: ["t1", "t2"] }),
+      );
 
     const ok = await runSendWithConsumedCompose(send, ids(["t1", "t2"]), compose);
 
@@ -342,7 +350,9 @@ describe("runSendWithConsumedCompose — partial result (top attachments sent, e
     const compose = makeCompose();
     const send = vi
       .fn()
-      .mockResolvedValue({ editorConsumed: true, consumedTopIds: ["t1"] });
+      .mockResolvedValue(
+        outcome({ editorConsumed: true, consumedTopIds: ["t1"] }),
+      );
 
     const ok = await runSendWithConsumedCompose(send, ids(["t1", "t2"]), compose);
 
@@ -351,11 +361,15 @@ describe("runSendWithConsumedCompose — partial result (top attachments sent, e
     expect(compose.restoredTopIds).toEqual(["t2"]);
   });
 
-  it("detail editorConsumed=true with no consumedTopIds falls back to all top ids", async () => {
+  it("disposes all top attachments named by a complete success outcome", async () => {
     const compose = makeCompose();
 
     await runSendWithConsumedCompose(
-      vi.fn().mockResolvedValue({ editorConsumed: true }),
+      vi
+        .fn()
+        .mockResolvedValue(
+          outcome({ editorConsumed: true, consumedTopIds: ["t1", "t2"] }),
+        ),
       ids(["t1", "t2"]),
       compose,
     );
@@ -467,11 +481,12 @@ describe("runSendWithConsumedCompose — partial editor blocks (#1280 review)", 
   it("restores only the pasted attachments that were rejected, disposing the sent ones", async () => {
     const compose = makeCompose();
     // Two pasted images: img-1 enqueued, img-2 rejected by the upload pre-check.
-    const send = vi.fn().mockResolvedValue({
-      editorConsumed: true,
-      consumedTopIds: [],
-      unsentEditorBlocks: [{ type: "attachment", id: "img-2" }],
-    });
+    const send = vi.fn().mockResolvedValue(
+      outcome({
+        editorConsumed: true,
+        unsentEditorBlocks: [{ type: "attachment", id: "img-2" }],
+      }),
+    );
 
     const ok = await runSendWithConsumedCompose(
       send,
@@ -493,11 +508,13 @@ describe("runSendWithConsumedCompose — partial editor blocks (#1280 review)", 
     // A top attachment went out, then the text block's send threw pre-enqueue
     // (disbanded-group guard / sendMessage failure). Reporting only
     // `editorConsumed: true` used to discard that text for good (#1333 review).
-    const send = vi.fn().mockResolvedValue({
-      editorConsumed: true,
-      consumedTopIds: ["t1"],
-      unsentEditorBlocks: [{ type: "text", text: "please keep me" }],
-    });
+    const send = vi.fn().mockResolvedValue(
+      outcome({
+        editorConsumed: true,
+        consumedTopIds: ["t1"],
+        unsentEditorBlocks: [{ type: "text", text: "please keep me" }],
+      }),
+    );
 
     const ok = await runSendWithConsumedCompose(send, ids(["t1"], []), compose);
 
@@ -513,12 +530,14 @@ describe("runSendWithConsumedCompose — partial editor blocks (#1280 review)", 
     const compose = makeCompose();
 
     await runSendWithConsumedCompose(
-      vi.fn().mockResolvedValue({
-        editorConsumed: true,
-        consumedTopIds: ["t1"],
-        unsentEditorBlocks: [{ type: "text", text: "@[u1:Alice] retry" }],
-        restoreSendTarget: true,
-      }),
+      vi.fn().mockResolvedValue(
+        outcome({
+          editorConsumed: true,
+          consumedTopIds: ["t1"],
+          unsentEditorBlocks: [{ type: "text", text: "@[u1:Alice] retry" }],
+          restoreSendTarget: true,
+        }),
+      ),
       ids(["t1"]),
       compose,
     );
@@ -534,11 +553,13 @@ describe("runSendWithConsumedCompose — partial editor blocks (#1280 review)", 
     const compose = makeCompose();
 
     await runSendWithConsumedCompose(
-      vi.fn().mockResolvedValue({
-        editorConsumed: true,
-        consumedTopIds: ["t1"],
-        restoreSendTarget: true,
-      }),
+      vi.fn().mockResolvedValue(
+        outcome({
+          editorConsumed: true,
+          consumedTopIds: ["t1"],
+          restoreSendTarget: true,
+        }),
+      ),
       ids(["t1"]),
       compose,
     );
@@ -551,14 +572,16 @@ describe("runSendWithConsumedCompose — partial editor blocks (#1280 review)", 
 
   it("keeps document order when both text and an attachment are unsent", async () => {
     const compose = makeCompose();
-    const send = vi.fn().mockResolvedValue({
-      editorConsumed: true,
-      unsentEditorBlocks: [
-        { type: "text", text: "before" },
-        { type: "attachment", id: "img-2" },
-        { type: "text", text: "after" },
-      ],
-    });
+    const send = vi.fn().mockResolvedValue(
+      outcome({
+        editorConsumed: true,
+        unsentEditorBlocks: [
+          { type: "text", text: "before" },
+          { type: "attachment", id: "img-2" },
+          { type: "text", text: "after" },
+        ],
+      }),
+    );
 
     await runSendWithConsumedCompose(send, ids([], ["img-1", "img-2"]), compose);
 
@@ -574,7 +597,7 @@ describe("runSendWithConsumedCompose — partial editor blocks (#1280 review)", 
     const compose = makeCompose();
 
     await runSendWithConsumedCompose(
-      vi.fn().mockResolvedValue(false),
+      vi.fn().mockResolvedValue(outcome()),
       ids([], ["img-1", "img-2"]),
       compose,
     );
@@ -589,10 +612,12 @@ describe("runSendWithConsumedCompose — partial editor blocks (#1280 review)", 
     const compose = makeCompose();
 
     await runSendWithConsumedCompose(
-      vi.fn().mockResolvedValue({
-        editorConsumed: false,
-        unsentEditorBlocks: [{ type: "attachment", id: "img-1" }],
-      }),
+      vi.fn().mockResolvedValue(
+        outcome({
+          editorConsumed: false,
+          unsentEditorBlocks: [{ type: "attachment", id: "img-1" }],
+        }),
+      ),
       ids([], ["img-1", "img-2"]),
       compose,
     );
@@ -607,7 +632,7 @@ describe("runSendWithConsumedCompose — step isolation (#1280 review)", () => {
     const compose = makeCompose({ throwOn: "restoreEditor" });
 
     const ok = await runSendWithConsumedCompose(
-      vi.fn().mockResolvedValue(false),
+      vi.fn().mockResolvedValue(outcome()),
       ids(["t1"], ["e1"]),
       compose,
     );
@@ -624,7 +649,11 @@ describe("runSendWithConsumedCompose — step isolation (#1280 review)", () => {
     const compose = makeCompose({ throwOn: "disposeTopAttachments" });
 
     const ok = await runSendWithConsumedCompose(
-      vi.fn().mockResolvedValue(true),
+      vi
+        .fn()
+        .mockResolvedValue(
+          outcome({ editorConsumed: true, consumedTopIds: ["t1"] }),
+        ),
       ids(["t1"], ["e1"]),
       compose,
     );

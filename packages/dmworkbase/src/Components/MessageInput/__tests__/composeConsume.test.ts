@@ -34,10 +34,16 @@ import {
 import {
   createSendQueue,
   runSendWithConsumedCompose,
-  type SendResult,
 } from "../sendFlow";
+import {
+  createChatSendOutcome,
+  type ChatSendOutcome,
+} from "../../../features/chat-composer/domain";
 import { captureSendTarget } from "../../Conversation/sendTarget";
 import { parseConsumedTextToContent } from "../mentionSendParse";
+
+const outcome = (overrides: Partial<ChatSendOutcome> = {}) =>
+  createChatSendOutcome(overrides);
 
 const TestAttachment = Node.create({
   name: "attachment",
@@ -227,7 +233,7 @@ describe("consumeCompose — a send that was never enqueued gives the content ba
     const handle = consume(h);
 
     await runSendWithConsumedCompose(
-      () => false as SendResult,
+      () => outcome(),
       handle.ids,
       handle.compose,
     );
@@ -245,7 +251,7 @@ describe("consumeCompose — a send that was never enqueued gives the content ba
     h.editor.commands.insertContent("next draft");
 
     await runSendWithConsumedCompose(
-      () => false as SendResult,
+      () => outcome(),
       handle.ids,
       handle.compose,
     );
@@ -264,7 +270,7 @@ describe("consumeCompose — a send that was never enqueued gives the content ba
     const handle = consume(h);
 
     await runSendWithConsumedCompose(
-      () => false as SendResult,
+      () => outcome(),
       handle.ids,
       handle.compose,
     );
@@ -289,7 +295,7 @@ describe("consumeCompose — a send that was never enqueued gives the content ba
 
     // t1 was actually sent, t2 was rejected by the pre-check.
     await runSendWithConsumedCompose(
-      () => ({ editorConsumed: true, consumedTopIds: ["t1"] }),
+      () => outcome({ editorConsumed: true, consumedTopIds: ["t1"] }),
       handle.ids,
       handle.compose,
     );
@@ -309,11 +315,11 @@ describe("consumeCompose — partial pasted-attachment failure", () => {
     const handle = consume(h);
 
     await runSendWithConsumedCompose(
-      () => ({
-        editorConsumed: true,
-        consumedTopIds: [],
-        unsentEditorBlocks: [{ type: "attachment" as const, id: "img-2" }],
-      }),
+      () =>
+        outcome({
+          editorConsumed: true,
+          unsentEditorBlocks: [{ type: "attachment" as const, id: "img-2" }],
+        }),
       handle.ids,
       handle.compose,
     );
@@ -340,7 +346,7 @@ describe("consumeCompose — the editor is gone (channel switch mid-flight)", ()
     h.editor.destroy(); // switching conversation unmounts MessageInput
 
     const ok = await runSendWithConsumedCompose(
-      () => false as SendResult,
+      () => outcome(),
       handle.ids,
       handle.compose,
     );
@@ -474,7 +480,7 @@ describe("consumeCompose — success leaves the composer alone", () => {
     h.editor.commands.insertContent("brand new draft");
 
     const ok = await runSendWithConsumedCompose(
-      () => true as SendResult,
+      () => outcome({ editorConsumed: true }),
       handle.ids,
       handle.compose,
     );
@@ -500,12 +506,12 @@ describe("consumeCompose — two queued sends that both fail keep their order", 
 
     // Both fail before enqueue (e.g. upload credentials rejected).
     await runSendWithConsumedCompose(
-      () => false as SendResult,
+      () => outcome(),
       handleA.ids,
       handleA.compose,
     );
     await runSendWithConsumedCompose(
-      () => false as SendResult,
+      () => outcome(),
       handleB.ids,
       handleB.compose,
     );
@@ -524,12 +530,12 @@ describe("consumeCompose — two queued sends that both fail keep their order", 
     h.top = [{ id: "t3-added-later" }];
 
     await runSendWithConsumedCompose(
-      () => false as SendResult,
+      () => outcome(),
       handleA.ids,
       handleA.compose,
     );
     await runSendWithConsumedCompose(
-      () => false as SendResult,
+      () => outcome(),
       handleB.ids,
       handleB.compose,
     );
@@ -554,13 +560,14 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     const handle = consume(h);
 
     const ok = await runSendWithConsumedCompose(
-      () => ({
-        editorConsumed: true,
-        consumedTopIds: ["t1"],
-        unsentEditorBlocks: [
-          { type: "text" as const, text: "this text must survive" },
-        ],
-      }),
+      () =>
+        outcome({
+          editorConsumed: true,
+          consumedTopIds: ["t1"],
+          unsentEditorBlocks: [
+            { type: "text" as const, text: "this text must survive" },
+          ],
+        }),
       handle.ids,
       handle.compose,
     );
@@ -580,14 +587,15 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     const handle = consume(h);
 
     await runSendWithConsumedCompose(
-      () => ({
-        editorConsumed: true,
-        consumedTopIds: ["t1"],
-        unsentEditorBlocks: [
-          { type: "text" as const, text: "@[u-alice:Alice] please retry" },
-        ],
-        restoreSendTarget: true,
-      }),
+      () =>
+        outcome({
+          editorConsumed: true,
+          consumedTopIds: ["t1"],
+          unsentEditorBlocks: [
+            { type: "text" as const, text: "@[u-alice:Alice] please retry" },
+          ],
+          restoreSendTarget: true,
+        }),
       handle.ids,
       handle.compose,
     );
@@ -621,14 +629,15 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
 
     // img-1 went out; the caption, img-2 and the tail did not.
     await runSendWithConsumedCompose(
-      () => ({
-        editorConsumed: true,
-        unsentEditorBlocks: [
-          { type: "text" as const, text: "caption" },
-          { type: "attachment" as const, id: "img-2" },
-          { type: "text" as const, text: "tail" },
-        ],
-      }),
+      () =>
+        outcome({
+          editorConsumed: true,
+          unsentEditorBlocks: [
+            { type: "text" as const, text: "caption" },
+            { type: "attachment" as const, id: "img-2" },
+            { type: "text" as const, text: "tail" },
+          ],
+        }),
       handle.ids,
       handle.compose,
     );
@@ -649,10 +658,11 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     const handle = consume(h);
 
     await runSendWithConsumedCompose(
-      () => ({
-        editorConsumed: true,
-        unsentEditorBlocks: [{ type: "text" as const, text: "   " }],
-      }),
+      () =>
+        outcome({
+          editorConsumed: true,
+          unsentEditorBlocks: [{ type: "text" as const, text: "   " }],
+        }),
       handle.ids,
       handle.compose,
     );

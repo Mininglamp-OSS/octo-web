@@ -48,22 +48,16 @@ import {
   buildMessageMentions as buildMentionRenderInfo,
   readMentionFlags,
 } from "../../Utils/mentionRender";
-import MessageInput, {
-  MentionModel,
-  MessageInputContext,
-  EditorContentBlock,
-} from "../MessageInput";
+import MessageInput, { MessageInputContext } from "../MessageInput";
 import {
-  SendResultDetail,
-  SendDraftSnapshot,
-  SendProgressSnapshot,
-  SendTargetSnapshot,
-  UnsentEditorBlock,
-} from "../MessageInput/sendFlow";
-import {
-  captureSendTarget,
-  type CapturedSendTarget,
-} from "./sendTarget";
+  createChatSendOutcome,
+  type ChatMention,
+  type ChatSendOutcome,
+  type ChatSendRequest,
+  type EditorContentBlock,
+  type UnsentEditorBlock,
+} from "../../features/chat-composer/domain";
+import { captureSendTarget } from "./sendTarget";
 import {
   tryConsumeInitialCompose,
   type ComposeHost,
@@ -3022,22 +3016,19 @@ export class Conversation
                         remoteDraft:
                           this.vm.currentConversation?.remoteExtra?.draft || "",
                       })}
-                      onSend={async (
-                        text: string,
-                        mention?: MentionModel,
-                        _attachments?: { id: string; file: File }[],
-                        topFiles?: { id: string; file: File }[],
-                        editorBlocks?: EditorContentBlock[],
-                        sendTarget?: SendTargetSnapshot,
-                        sendDraft?: SendDraftSnapshot,
-                        sendProgress?: SendProgressSnapshot
-                      ): Promise<boolean | SendResultDetail> => {
-                        // 返回值告诉 MessageInput「已消费的 compose 是否保持消费」：
-                        //   true  → 消息已入队（本地气泡已在列表），输入框保持清空；
-                        //   false → 未入队，把内容还给输入框供重试。
+                      onSend={async ({
+                        text,
+                        mention,
+                        topFiles,
+                        editorBlocks,
+                        sendTarget,
+                        sendDraft,
+                        sendProgress,
+                      }: ChatSendRequest<Message>): Promise<ChatSendOutcome> => {
+                        // outcome 告诉 MessageInput 已消费 compose 的精确结算结果。
                         // 关键：混排 (text+image) 在入队前上传失败时必须返回 false，
                         // 否则整条消息会丢 (octo-web#227)；反之，**已入队但 ack 失败/
-                        // 超时绝不能返回 false**，否则已经可见的内容会被塞回输入框
+                        // 超时必须保持 editorConsumed=true，否则可见内容会被塞回输入框
                         // (octo-web#1280)。
                         // This callback may run after waiting in the send queue,
                         // so use the draft snapshot captured with the compose.
@@ -3059,7 +3050,7 @@ export class Conversation
                         // (octo-web#1280 review)。
                         // 兼容：老调用方没有传 sendTarget 时退回实时读取。
                         const target =
-                          (sendTarget as CapturedSendTarget<Message> | undefined) ??
+                          sendTarget ??
                           captureSendTarget<Message>({
                             getReplyMessage: () => vm.currentReplyMessage,
                             setReplyMessage: (m) => {
@@ -3089,7 +3080,9 @@ export class Conversation
                             );
                             markEnqueued();
                             // 编辑消息已提交，编辑器应清空。
-                            return true;
+                            return createChatSendOutcome({
+                              editorConsumed: true,
+                            });
                           }
                           reply = new Reply();
                           reply.messageID = targetMessage.messageID;
@@ -3208,7 +3201,7 @@ export class Conversation
                         // ── 辅助：构建带 mention 的文本 MessageContent ──────────────
                         const buildTextContent = (
                           blockText: string,
-                          blockMention?: MentionModel
+                          blockMention?: ChatMention
                         ) => {
                           const msgContent = new MessageText(blockText);
                           if (blockMention) {
@@ -3352,7 +3345,7 @@ export class Conversation
                             await this.clearDraftAfterSend(
                               sendDraftGeneration,
                               remoteDraftAtSend,
-                              sendDraft?.text ?? text
+                              sendDraft?.draftText ?? text
                             );
                           }
                           return finishRichTextMixedSend(
@@ -3434,7 +3427,7 @@ export class Conversation
                               await this.clearDraftAfterSend(
                                 sendDraftGeneration,
                                 remoteDraftAtSend,
-                                sendDraft?.text ?? text
+                              sendDraft?.draftText ?? text
                               );
                             }
                             // 返回部分结果 (octo-web#227 → #1280)：
@@ -3594,7 +3587,7 @@ export class Conversation
                           await this.clearDraftAfterSend(
                             sendDraftGeneration,
                             remoteDraftAtSend,
-                            sendDraft?.text ?? text
+                            sendDraft?.draftText ?? text
                           );
                         }
                         if (anyMessageSent) this.props.onMessageSent?.();
@@ -3606,12 +3599,12 @@ export class Conversation
                         //   • unsentEditorBlocks：编辑器内未入队的块（被拒的粘贴附件、
                         //     入队前抛错的文本）按原顺序单独回到编辑器；已发出的块保持
                         //     消费，所以重试不会重复发送。
-                        return {
+                        return createChatSendOutcome({
                           editorConsumed: anyMessageSent,
                           consumedTopIds,
                           unsentEditorBlocks,
                           restoreSendTarget: restoreReplyTarget,
-                        };
+                        });
                       }}
                     ></MessageInput>
                       </>

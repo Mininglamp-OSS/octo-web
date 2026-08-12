@@ -50,86 +50,32 @@
  * message ordering (which `Conversation` guarantees by awaiting ack) is kept
  * while rapid consecutive sends all go out.
  *
- * `onSend` return-value contract (unchanged, back-compatible):
- *   - `undefined` / `void` → success: compose consumed;
- *   - `true`               → success: same as void;
- *   - `false`              → failure / nothing sent: RESTORE everything so the
- *     user can retry;
- *   - `{ editorConsumed, consumedTopIds }` → partial result: "the editor compose
- *     failed and must be restored, but these top attachments were already sent —
- *     keep them consumed so a retry does not duplicate them";
- *   - throws               → treated as failure → restore everything.
+ * `onSend` always returns a complete `ChatSendOutcome`. Boolean and void
+ * results are intentionally rejected at this internal boundary: every caller
+ * must declare consumed attachments, unsent editor blocks and target restore
+ * behavior explicitly. A thrown error still restores the whole compose.
  *
  * NOTE for `onSend` implementors: "consumed" means *the message was enqueued and
  * is visible in the message list* — not "the server acked it". A message that is
- * enqueued and later fails renders a failure marker with resend, so it must NOT
- * be reported as `false`; reporting `false` would push already-visible content
- * back into the composer (defect 3c above).
+ * enqueued and later fails renders a failure marker with resend, so its outcome
+ * must keep `editorConsumed` true.
  */
+import {
+  createChatSendOutcome,
+  type ChatSendOutcome,
+  type SendDraftSnapshot,
+  type SendProgressSnapshot,
+  type SendTargetSnapshot,
+  type UnsentEditorBlock,
+} from "../../features/chat-composer/domain";
 
-/** Partial send outcome — see contract above. */
-export interface SendResultDetail {
-  /** Whether the editor compose (text + pasted images / ordered blocks) was
-   *  sent. `true` → the consumed editor content stays consumed; `false` → it is
-   *  restored into the live editor. */
-  editorConsumed: boolean;
-  /** Ids of top attachments that were actually sent. Only these stay consumed;
-   *  the rest are restored. Omit to derive from `editorConsumed`. */
-  consumedTopIds?: string[];
-  /**
-   * The parts of the editor compose that were NOT sent even though other parts
-   * were — e.g. one of two pasted images rejected by the upload pre-check, or a
-   * text block whose send threw before enqueue after an earlier block had already
-   * gone out. Listed in document order; only these are restored into the editor,
-   * and the `File` refs / preview URLs of the listed attachments are kept alive so
-   * the user can retry exactly what did not make it (#1280 review).
-   */
-  unsentEditorBlocks?: UnsentEditorBlock[];
-  /** Restore the captured reply/edit target alongside a partial editor restore. */
-  restoreSendTarget?: boolean;
-}
-
-/**
- * A piece of the editor compose that did not make it out. Attachments are
- * addressed by node id; text carries its send-format string (with `@[uid:label]`
- * markers) because text blocks have no stable id.
- */
-export type UnsentEditorBlock =
-  | { type: "attachment"; id: string }
-  | { type: "text"; text: string };
-
-export type SendResult = void | boolean | SendResultDetail;
-
-/**
- * Per-send target (reply / edit) captured synchronously with the compose.
- *
- * #1280: `Conversation.onSend` used to read `vm.currentReplyMessage` /
- * `vm.currentHandlerType` when it ran. With sends queued, that read happens
- * *after* the user may have picked a different reply target — or switched to
- * "edit message" — so a queued send could reply to the wrong message or
- * overwrite an unrelated one. The target is therefore taken (and its banner
- * cleared) at key-press time, travels with the compose, and is put back by
- * `restore()` when the send is not enqueued so a retry still edits/replies.
- */
-export interface SendTargetSnapshot {
-  restore: () => void;
-}
-
-/** Draft state captured synchronously when the compose is consumed. */
-export interface SendDraftSnapshot {
-  generation: number;
-  remoteDraft: string;
-  /** Plain text synchronously consumed by this send. */
-  text: string;
-}
-
-/** Per-send progress reported while `onSend` is still awaiting upload / ack. */
-export interface SendProgressSnapshot {
-  /** Declare how many consumed parts must gain a local bubble before switching is safe. */
-  setExpectedParts: (count: number) => void;
-  /** One consumed part now has a local message bubble or completed edit. */
-  markPartEnqueued: () => void;
-}
+export type {
+  ChatSendOutcome,
+  SendDraftSnapshot,
+  SendProgressSnapshot,
+  SendTargetSnapshot,
+  UnsentEditorBlock,
+} from "../../features/chat-composer/domain";
 
 export interface PendingSendTrackable {
   id: number;
@@ -378,50 +324,6 @@ export function restoreComposeSnapshot(
   return blocks.length;
 }
 
-interface SendDecision {
-  editorConsumed: boolean;
-  consumedTopIds: string[];
-  unsentEditorBlocks: UnsentEditorBlock[];
-  restoreSendTarget: boolean;
-}
-
-/** Normalize the loose `SendResult` union into an explicit decision. */
-function normalizeResult(
-  result: SendResult,
-  ids: ConsumedComposeIds,
-): SendDecision {
-  if (result === false) {
-    return {
-      editorConsumed: false,
-      consumedTopIds: [],
-      unsentEditorBlocks: [],
-      restoreSendTarget: false,
-    };
-  }
-  if (result === true || result == null) {
-    // void / undefined / true → full success.
-    return {
-      editorConsumed: true,
-      consumedTopIds: ids.topIds,
-      unsentEditorBlocks: [],
-      restoreSendTarget: false,
-    };
-  }
-  // Detailed partial result. When the editor compose was not consumed the whole
-  // snapshot is restored, so a per-block list would be redundant.
-  return {
-    editorConsumed: result.editorConsumed,
-    consumedTopIds:
-      result.consumedTopIds ?? (result.editorConsumed ? ids.topIds : []),
-    unsentEditorBlocks: result.editorConsumed
-      ? result.unsentEditorBlocks ?? []
-      : [],
-    restoreSendTarget: result.editorConsumed
-      ? result.restoreSendTarget === true
-      : false,
-  };
-}
-
 /**
  * Await `send()` for a compose the caller already consumed, then either dispose
  * the consumed resources or restore what was not sent.
@@ -434,28 +336,23 @@ function normalizeResult(
  *     `compose.onRestoreError`, so one failure never cascades into losing the
  *     rest of the compose, and the caller can surface it to the user.
  *
- * @param ids Everything this attempt consumed; used to expand `true`/`void`
- *   into "all consumed" and to compute what must be restored.
+ * @param ids Everything this attempt consumed; used to compute what must be
+ *   restored from the explicit send outcome.
  * @returns `true` if the editor compose was consumed; `false` if it was
  *   restored for retry.
  */
 export async function runSendWithConsumedCompose(
-  send: () => SendResult | Promise<SendResult>,
+  send: () => ChatSendOutcome | Promise<ChatSendOutcome>,
   ids: ConsumedComposeIds,
   compose: ConsumedCompose,
 ): Promise<boolean> {
-  let decision: SendDecision;
+  let decision: ChatSendOutcome;
   try {
-    decision = normalizeResult(await send(), ids);
+    decision = await send();
   } catch (err) {
     // onSend should surface its own error toast; we just restore the draft.
     console.error("[MessageInput] send failed, restoring draft", err);
-    decision = {
-      editorConsumed: false,
-      consumedTopIds: [],
-      unsentEditorBlocks: [],
-      restoreSendTarget: false,
-    };
+    decision = createChatSendOutcome();
   }
 
   const step = (label: string, run: () => void) => {

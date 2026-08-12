@@ -49,11 +49,21 @@ import {
   invokeReadySend,
   runSendWithConsumedCompose,
   SendQueue,
-  SendResultDetail,
+} from "./sendFlow";
+import type {
+  AttachmentFile,
+  ChatMention,
+  ChatSendOutcome,
+  ChatSendRequest,
+  EditorContentBlock,
   SendDraftSnapshot,
   SendProgressSnapshot,
   SendTargetSnapshot,
-} from "./sendFlow";
+} from "../../features/chat-composer/domain";
+export type {
+  AttachmentFile,
+  EditorContentBlock,
+} from "../../features/chat-composer/domain";
 import {
   composeSnapshotDraftText,
   composeSnapshotPreviewText,
@@ -116,11 +126,6 @@ function extractAttachmentsFromEditor(
  * 编辑器内容块类型：文本段落或粘贴图片/文件。
  * 用于按顺序发送编辑器中穿插的文本和媒体。
  */
-export type EditorContentBlock =
-  | { type: "text"; text: string; restoreText: string; mention?: MentionModel }
-  | { type: "image"; id: string; file: File }
-  | { type: "file"; id: string; file: File };
-
 const TIPTAP_BLOCK_TYPES = new Set([
   'paragraph', 'heading', 'blockquote', 'codeBlock',
   'orderedList', 'bulletList', 'listItem',
@@ -228,54 +233,28 @@ function notifySecretPaste(detectedValue: string): void {
 export type OnInsertFnc = (text: string) => void;
 export type OnAddMentionFnc = (uid: string, name: string) => void;
 
-// 附件数据（用于发送）
-export interface AttachmentFile {
-  id: string;
-  file: File;
-}
-
 interface MessageInputProps {
   context: ConversationContext;
   /**
-   * 发送回调。返回值决定「已消费的 compose 是否保持消费」：
-   *   - resolve `true`（或 `undefined`/`void`，向后兼容）→ 已入队，编辑器保持清空；
-   *   - resolve `false` → 未入队（预检拒绝 / 混排上传失败等），把 compose 还原
-   *     回编辑器与顶部附件区，供用户重试；
-   *   - resolve `{ editorConsumed, consumedTopIds }` → 部分成功：可表达「顶部
-   *     附件已发出但编辑器混排失败需还原」，只还原未发出的 top 附件，避免重试
-   *     重复发送 (octo-web#227 Jerry-Xin non-blocking)。
+   * 发送回调接收同步捕获的完整 request，并返回显式 outcome。outcome 精确声明
+   * editor、顶部附件、编辑器块和 reply/edit target 哪些保持消费、哪些需要恢复。
    *
-   * 语义约定 (octo-web#1280)：`true` = **消息已入队并出现在消息列表**，不是
-   * 「服务端已 ack」。已入队但 ack 失败/超时的消息会带失败标记 + 重发入口，因此
-   * 绝不能返回 `false`——否则已经可见的内容会被塞回输入框（#1280 的现象之一）。
+   * `editorConsumed` 表示消息已入队并出现在消息列表，不表示服务端已 ack。
+   * 已入队但 ack 失败/超时的消息仍保持消费，由消息气泡提供失败与重发状态。
    *
    * compose 在 send 开始时就被同步消费（清空编辑器 + 移除本次顶部附件），失败
    * 才还原，所以 await 期间用户新输入的草稿不会被旧 send 干扰。
    */
   onSend?: (
-    text: string,
-    mention?: MentionModel,
-    attachments?: AttachmentFile[],
-    /** 顶部附件区文件（通过上传按钮添加），优先于编辑器内容发送 */
-    topFiles?: AttachmentFile[],
-    /** 编辑器中按文档顺序排列的内容块（文本段和粘贴图片交替） */
-    editorBlocks?: EditorContentBlock[],
-    /**
-     * 本次发送的 reply/edit 目标，按下发送键时同步取走 (octo-web#1280)。
-     * 发送被排队时 vm 上的 reply/edit 状态可能已被用户改掉，onSend 必须用这个
-     * 快照而不是实时读取，否则可能回复错的消息、甚至编辑到无关消息。
-     */
-    sendTarget?: SendTargetSnapshot,
-    sendDraft?: SendDraftSnapshot,
-    sendProgress?: SendProgressSnapshot
-  ) => void | boolean | SendResultDetail | Promise<void | boolean | SendResultDetail>;
+    request: ChatSendRequest<any>,
+  ) => ChatSendOutcome | Promise<ChatSendOutcome>;
   /**
    * 同步取走并清除 reply/edit 目标（横幅同时收起），返回的快照会被透传给
    * onSend；发送未入队时 MessageInput 调 `restore()` 复位 (octo-web#1280)。
    */
   onCaptureSendTarget?: () => SendTargetSnapshot | undefined;
   /** Capture draft state before this send enters the serial queue. */
-  onCaptureSendDraft?: () => Omit<SendDraftSnapshot, "text">;
+  onCaptureSendDraft?: () => Omit<SendDraftSnapshot, "draftText">;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
@@ -308,7 +287,7 @@ export interface MentionEntity {
   length: number;
 }
 
-export class MentionModel {
+export class MentionModel implements ChatMention {
   all: boolean = false;
   uids?: Array<string>;
   entities?: MentionEntity[];
@@ -1200,7 +1179,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       remainingPreEnqueueParts: 1,
     });
     const sendDraft = sendDraftBaseline
-      ? { ...sendDraftBaseline, text: draftText }
+      ? { ...sendDraftBaseline, draftText }
       : undefined;
     const sendProgress: SendProgressSnapshot = {
       setExpectedParts: (count) =>
@@ -1222,16 +1201,21 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       () =>
         runSendWithConsumedCompose(
           () =>
-            props.onSend!(
-              content,
+            props.onSend!({
+              text: content,
               mention,
-              allAttachments.length > 0 ? allAttachments : undefined,
-              topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
-              orderedBlocks.length > 0 ? orderedBlocks : undefined,
+              attachments:
+                allAttachments.length > 0 ? allAttachments : undefined,
+              topFiles:
+                topAttachmentFiles.length > 0
+                  ? topAttachmentFiles
+                  : undefined,
+              editorBlocks:
+                orderedBlocks.length > 0 ? orderedBlocks : undefined,
               sendTarget,
               sendDraft,
-              sendProgress
-            ),
+              sendProgress,
+            }),
           handle.ids,
           handle.compose
         ),
