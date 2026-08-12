@@ -2435,33 +2435,6 @@
   gap: var(--wk-sp-4);
 }
 
-/* -------- Squad card 安装 action (matches skill market's dark pill) -------- */
-.wk-mcp-expert-card__install {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 26px;
-  min-width: 76px;
-  padding: 0 var(--wk-sp-3);
-  border: 1px solid transparent;
-  border-radius: var(--wk-r-full);
-  background: var(--wk-text-strong);
-  color: var(--wk-bg-base);
-  font: 500 12px/1 var(--wk-font-sans);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.wk-mcp-expert-card__install:hover {
-  background: var(--wk-text-primary);
-}
-
-.wk-mcp-expert-card__install:focus-visible {
-  outline: none;
-  border-color: var(--wk-border-strong);
-}
-
 /* 添加到回路 — dark primary pill (matches the skill market's 安装 button). */
 .wk-mcp-expert-card__add-loop {
   display: inline-flex;

@@ -12,11 +12,9 @@ interface ExpertCardProps {
   onEdit?: (item: ExpertItem) => void;
   /** When provided, renders the delete action in the card footer (我的 tab). */
   onDelete?: (item: ExpertItem) => void;
-  /** When provided, renders the 安装 action that pops the install prompt. */
-  onInstall?: (item: ExpertItem) => void;
-  /** When provided (experts only), renders the 添加到回路 action that opens the
-   *  workspace/runtime picker and installs the agent directly. Squad items
-   *  ignore it — squad install is not supported in this flow. */
+  /** When provided, renders the 添加到回路 action that opens the workspace/runtime
+   *  picker and provisions directly — an agent for an expert, or the member
+   *  agents + team for a squad. */
   onAddToLoop?: (item: ExpertItem) => void;
 }
 
@@ -29,15 +27,14 @@ const MAX_TAGS = 3;
  * tag pills, and a footer stat. The whole card is one click target (no inline
  * action button competing for the click); copying lives in the detail modal.
  */
-export default function ExpertCard({ item, onOpen, onEdit, onDelete, onInstall, onAddToLoop }: ExpertCardProps) {
+export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop }: ExpertCardProps) {
   const isSquad = item.kind === "squad";
   const owner = resolveExpertOwner(item);
   const visibleTags = item.tags.slice(0, MAX_TAGS);
   const overflowTags = item.tags.slice(MAX_TAGS);
-  // 添加到回路 is experts-only; squad cards never show it even if the handler
-  // is passed from a shared call site.
-  const showAddToLoop = Boolean(onAddToLoop) && !isSquad;
-  const hasActions = Boolean(onEdit || onDelete || onInstall || showAddToLoop);
+  // 添加到回路 is offered for both experts and squads.
+  const showAddToLoop = Boolean(onAddToLoop);
+  const hasActions = Boolean(onEdit || onDelete || showAddToLoop);
 
   return (
     <div
@@ -154,18 +151,6 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onInstall, 
                   }}
                 >
                   {t("mcp.expert.addToLoop")}
-                </button>
-              )}
-              {onInstall && (
-                <button
-                  type="button"
-                  className="wk-mcp-expert-card__install"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onInstall(item);
-                  }}
-                >
-                  {t("mcp.expert.install")}
                 </button>
               )}
               {onEdit && (

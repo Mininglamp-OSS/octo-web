@@ -147,7 +147,15 @@ expertAxios.interceptors.request.use((config) => {
 expertAxios.interceptors.response.use(
   (resp) => resp,
   (err) => {
-    if (err?.response?.status === 401) {
+    // Only a marketplace 401 means the session itself is invalid. A 401 from the
+    // fleet service (secondary, reached via a different gateway path) must NOT
+    // tear down the whole session — otherwise a fleet-only auth hiccup, or the
+    // Loop-target prefetch that now fires on market mount, would silently log the
+    // user out with no action. Fleet 401s propagate to the caller instead (the
+    // dialog surfaces the error; the prefetch swallows it). A genuinely expired
+    // session still logs out via the marketplace list calls the page makes.
+    const url = (err?.config?.url as string | undefined) ?? "";
+    if (err?.response?.status === 401 && !url.startsWith(FLEET_BASE)) {
       WKApp.shared.logout();
     }
     return Promise.reject(err);
@@ -654,6 +662,83 @@ export async function listLoopRuntimes(
     : [];
 }
 
+// ─── Loop target cache (workspaces + runtimes) ──────────────────────────────
+// listLoopWorkspaces/listLoopRuntimes each hit the fleet gateway, and the
+// "添加到回路" picker chains them (workspaces → the first workspace's runtimes),
+// so a cold open waits on two sequential round-trips. Cache both per Space and
+// warm them on market mount (prefetchLoopTargets) so the dialog's selects are
+// populated by the time the user clicks a card. Promises — not just results —
+// are cached, so a prefetch still in flight is shared with a modal opened
+// before it resolves (no duplicate request).
+let loopCacheSpaceId: string | null = null;
+let cachedWorkspaces: Promise<LoopWorkspace[]> | null = null;
+const cachedRuntimes = new Map<string, Promise<LoopRuntime[]>>();
+
+// Mirror the request interceptor's space source so the cache key matches the
+// Space the fleet call is actually scoped to.
+function loopCacheSpace(): string {
+  return WKApp.shared?.currentSpaceId ?? "";
+}
+
+// Drop the cache when the Space changed under us so one Space's targets never
+// leak into another after a switch (belt-and-suspenders alongside the explicit
+// clearLoopCache the page fires on the space-changed event).
+function syncLoopCacheSpace(): void {
+  const sid = loopCacheSpace();
+  if (sid !== loopCacheSpaceId) {
+    cachedWorkspaces = null;
+    cachedRuntimes.clear();
+    loopCacheSpaceId = sid;
+  }
+}
+
+/** Clear all cached Loop workspaces/runtimes. Call on Space switch so the next
+ *  open refetches for the new Space. */
+export function clearLoopCache(): void {
+  loopCacheSpaceId = null;
+  cachedWorkspaces = null;
+  cachedRuntimes.clear();
+}
+
+/** Cached listLoopWorkspaces — shared by the "添加到回路" picker and the market
+ *  prefetch. A rejected fetch drops the cache so a later open can retry. */
+export function getLoopWorkspaces(): Promise<LoopWorkspace[]> {
+  syncLoopCacheSpace();
+  if (!cachedWorkspaces) {
+    cachedWorkspaces = listLoopWorkspaces().catch((err) => {
+      cachedWorkspaces = null;
+      throw err;
+    });
+  }
+  return cachedWorkspaces;
+}
+
+/** Cached listLoopRuntimes for one workspace (keyed within the current Space). */
+export function getLoopRuntimes(workspaceId: string): Promise<LoopRuntime[]> {
+  syncLoopCacheSpace();
+  const hit = cachedRuntimes.get(workspaceId);
+  if (hit) return hit;
+  const pending = listLoopRuntimes(workspaceId).catch((err) => {
+    cachedRuntimes.delete(workspaceId);
+    throw err;
+  });
+  cachedRuntimes.set(workspaceId, pending);
+  return pending;
+}
+
+/** Warm the workspace list + the first workspace's runtimes so the "添加到回路"
+ *  dialog opens with its selects already populated. Fire-and-forget: errors are
+ *  swallowed here (a real open re-runs the fetch and surfaces them). */
+export function prefetchLoopTargets(): void {
+  getLoopWorkspaces()
+    .then((list) => {
+      // The picker auto-selects the first workspace, so warming its runtimes
+      // removes the second sequential round-trip on open.
+      if (list.length > 0) void getLoopRuntimes(list[0].id).catch(() => {});
+    })
+    .catch(() => {});
+}
+
 /** POST /experts/{id}/install — create the agent (+ its skills) in the chosen
  *  workspace/runtime. The marketplace backend orchestrates the fleet calls
  *  server-side (create agent → create skills → bind) and rolls back on partial
@@ -671,19 +756,42 @@ export async function installExpertToLoop(
     return { agentId: data?.agent_id ?? "" };
   } catch (err) {
     if (axios.isCancel(err)) throw err;
-    throw new Error(installErrorMessage(err));
+    throw new Error(installErrorMessage(err, "mcp.expert.installConflict"));
+  }
+}
+
+/** POST /squads/{id}/install — provision the squad into the chosen
+ *  workspace/runtime. The marketplace backend installs each member as a Loop
+ *  agent (create agent → skills → bind), then forms the squad (create it led by
+ *  the leader member, attach the rest), rolling back on partial failure. Returns
+ *  the new fleet squad's id. */
+export async function installSquadToLoop(
+  squadId: string,
+  opts: { workspaceId: string; runtimeId: string }
+): Promise<{ squadId: string }> {
+  try {
+    const resp = await expertAxios.post(
+      `${BASE}/squads/${encodeURIComponent(squadId)}/install`,
+      { workspace_id: opts.workspaceId, runtime_id: opts.runtimeId }
+    );
+    const data = resp.data.data as { squad_id?: string } | null;
+    return { squadId: data?.squad_id ?? "" };
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(installErrorMessage(err, "mcp.expert.installConflictSquad"));
   }
 }
 
 /** Install-specific error copy. A CONFLICT here is fleet rejecting a duplicate
- *  agent name in the workspace (not the generic catalog name-taken), so it gets
- *  a dedicated friendly message; everything else falls back to the shared map. */
-function installErrorMessage(err: unknown): string {
+ *  agent/squad name in the workspace (not the generic catalog name-taken), so it
+ *  gets a dedicated friendly message (keyed per kind); everything else falls
+ *  back to the shared map. */
+function installErrorMessage(err: unknown, conflictKey: string): string {
   const code = (
     err as { response?: { data?: { error?: { code?: string } } } }
   )?.response?.data?.error?.code;
   if (code === "CONFLICT") {
-    return t("mcp.expert.installConflict");
+    return t(conflictKey);
   }
   return extractErrorMessage(err);
 }

@@ -6,6 +6,7 @@ import { t, useI18n, WKApp, WKButton } from "@octo/base";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
 import type { ExpertItem } from "../mock/expertMock";
 import {
+  clearLoopCache,
   deleteExpert,
   deleteSquad,
   getExpert,
@@ -15,6 +16,7 @@ import {
   listMyExperts,
   listMySquads,
   listSquads,
+  prefetchLoopTargets,
 } from "../api/expertService";
 import type { ExpertCategoryCount } from "../api/expertService";
 import { expertListErrorI18nKey } from "../api/expertListError";
@@ -22,7 +24,6 @@ import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
 import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
 import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
-import ExpertInstallPromptModal from "../components/ExpertInstallPromptModal";
 import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
 
 type ExpertKind = "agent" | "squad" | "mine";
@@ -86,7 +87,6 @@ export default function ExpertMarketListPage() {
     { id: string; kind: "agent" | "squad" } | null
   >(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
-  const [installTarget, setInstallTarget] = useState<ExpertItem | null>(null);
   const [addToLoopTarget, setAddToLoopTarget] = useState<ExpertItem | null>(null);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
@@ -181,6 +181,14 @@ export default function ExpertMarketListPage() {
     load(kind);
   }, [kind, load]);
 
+  // Warm the Loop workspace/runtime lists on mount so the "添加到回路" dialog opens
+  // with its selects already populated instead of waiting on two sequential
+  // fleet round-trips at open time. Fire-and-forget; the dialog still fetches
+  // (cache-hit) on real open.
+  useEffect(() => {
+    prefetchLoopTargets();
+  }, []);
+
   // Reset transient UI + filters and reload on space switch, matching the other
   // market pages (visibility/ownership is Space-scoped on the backend).
   useEffect(() => {
@@ -189,13 +197,16 @@ export default function ExpertMarketListPage() {
       setBotPublishOpen(false);
       setEditTarget(null);
       setDeleteTarget(null);
-      setInstallTarget(null);
       setAddToLoopTarget(null);
       setQuery("");
       setCategory(ALL_CATEGORY);
       setSelectedTags([]);
       setTagFilterOpen(false);
       setTagQuery("");
+      // Loop targets are Space-scoped: drop the old Space's cache and warm the
+      // new one so the dialog stays instant after a switch.
+      clearLoopCache();
+      prefetchLoopTargets();
       reload();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
@@ -349,19 +360,10 @@ export default function ExpertMarketListPage() {
     }
   };
 
-  const openInstall = async (item: ExpertItem) => {
-    setInstallTarget(item);
-    try {
-      const full = await hydrate(item);
-      setInstallTarget((cur) => (cur && cur.id === item.id ? full : cur));
-    } catch {
-      showToast(t("mcp.expert.loadError"));
-    }
-  };
-
-  // Add-to-Loop (experts only): the marketplace backend reads the full spec by
-  // id, so no client-side hydrate is needed — we only need the id + name to
-  // display and to fire the install call.
+  // Add-to-Loop: the marketplace backend reads the full spec by id, so no
+  // client-side hydrate is needed — we only need the id + name to display and to
+  // fire the install call. For a squad this provisions the member agents + team;
+  // for an expert, a single agent.
   const openAddToLoop = (item: ExpertItem) => {
     setAddToLoopTarget(item);
   };
@@ -616,7 +618,7 @@ export default function ExpertMarketListPage() {
                       key={item.id}
                       item={item}
                       onOpen={openDetail}
-                      onInstall={openInstall}
+                      onAddToLoop={openAddToLoop}
                       onEdit={handleEdit}
                       onDelete={setDeleteTarget}
                     />
@@ -737,10 +739,6 @@ export default function ExpertMarketListPage() {
         item={deleteTarget}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleConfirmDelete}
-      />
-      <ExpertInstallPromptModal
-        item={installTarget}
-        onClose={() => setInstallTarget(null)}
       />
       <ExpertAddToLoopModal
         key={addToLoopTarget?.id ?? "none"}

@@ -4,8 +4,9 @@ import { Select, Toast } from "@douyinfe/semi-ui";
 import type { ExpertItem } from "../mock/expertMock";
 import {
   installExpertToLoop,
-  listLoopRuntimes,
-  listLoopWorkspaces,
+  installSquadToLoop,
+  getLoopRuntimes,
+  getLoopWorkspaces,
 } from "../api/expertService";
 import type { LoopRuntime, LoopWorkspace } from "../api/expertService";
 
@@ -17,11 +18,12 @@ interface ExpertAddToLoopModalProps {
 }
 
 /**
- * "添加到回路" dialog opened from an expert card. Unlike the copy-a-prompt
- * install flow, this creates the agent (+ its skills) directly: the user picks
- * a Loop workspace and a runtime, and the marketplace backend orchestrates the
- * install server-side (see installExpertToLoop). Experts only — squads are not
- * supported in this flow.
+ * "添加到回路" dialog opened from an expert / squad card. Unlike the copy-a-prompt
+ * install flow, this provisions directly: the user picks a Loop workspace and a
+ * runtime, and the marketplace backend orchestrates the install server-side. For
+ * a single expert that means one agent (installExpertToLoop); for a squad it
+ * means installing each member as an agent then forming the squad
+ * (installSquadToLoop). The workspace/runtime picker is identical for both.
  */
 export default function ExpertAddToLoopModal({
   item,
@@ -48,7 +50,7 @@ export default function ExpertAddToLoopModal({
     setRuntimeId("");
     setRuntimes([]);
     setLoadingWorkspaces(true);
-    listLoopWorkspaces()
+    getLoopWorkspaces()
       .then((list) => {
         if (cancelled) return;
         setWorkspaces(list);
@@ -81,7 +83,7 @@ export default function ExpertAddToLoopModal({
     let cancelled = false;
     setRuntimeId("");
     setLoadingRuntimes(true);
-    listLoopRuntimes(workspaceId)
+    getLoopRuntimes(workspaceId)
       .then((list) => {
         if (cancelled) return;
         setRuntimes(list);
@@ -113,10 +115,12 @@ export default function ExpertAddToLoopModal({
     if (!item || !workspaceId || !runtimeId || submitting) return;
     setSubmitting(true);
     try {
-      const { agentId } = await installExpertToLoop(item.id, {
-        workspaceId,
-        runtimeId,
-      });
+      // Squads install each member then form the team; experts install one
+      // agent. Both take the same workspace/runtime selection.
+      const agentId =
+        item.kind === "squad"
+          ? (await installSquadToLoop(item.id, { workspaceId, runtimeId })).squadId
+          : (await installExpertToLoop(item.id, { workspaceId, runtimeId })).agentId;
       Toast.success(t("mcp.expert.installSuccess"));
       onInstalled?.(agentId);
       onClose();
@@ -187,7 +191,9 @@ export default function ExpertAddToLoopModal({
         />
 
         <p className="wk-mcp-add-to-loop__note">
-          {t("mcp.expert.secretPlaceholderNote")}
+          {item.kind === "squad"
+            ? t("mcp.expert.secretPlaceholderNoteSquad")
+            : t("mcp.expert.secretPlaceholderNote")}
         </p>
       </div>
     </WKModal>
