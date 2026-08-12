@@ -43,7 +43,6 @@ import {
 import { t as translate, useI18n } from "../../i18n";
 import {
   announceContextAfterSendReady,
-  createPendingSendTracker,
   createSendQueue,
   enqueueSettledSend,
   invokeReadySend,
@@ -59,6 +58,10 @@ import type {
   SendDraftSnapshot,
   SendProgressSnapshot,
   SendTargetSnapshot,
+} from "../../features/chat-composer/domain";
+import {
+  ComposeAttemptLedger,
+  type ComposeAttempt,
 } from "../../features/chat-composer/domain";
 export type {
   AttachmentFile,
@@ -446,13 +449,7 @@ interface PendingSendAttachmentPreview {
   previewUrl?: string;
 }
 
-interface PendingSendItem {
-  id: number;
-  previewText: string;
-  draftText: string;
-  attachments: PendingSendAttachmentPreview[];
-  remainingPreEnqueueParts: number;
-}
+type PendingSendItem = ComposeAttempt<PendingSendAttachmentPreview>;
 
 // 判断是否为图片类型（模块级别函数）
 function isImageFileType(file: File): boolean {
@@ -556,8 +553,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   }, []);
   // in-flight compose 登记表：完整集合保留到任务 settle，供草稿保存使用；可见
   // 预览只包含尚未产生本地气泡的 compose，避免与消息列表重复展示。
-  const pendingSendsRef = useRef(createPendingSendTracker<PendingSendItem>());
-  const pendingSendSeqRef = useRef(0);
+  const pendingSendsRef = useRef(
+    new ComposeAttemptLedger<PendingSendAttachmentPreview>(),
+  );
   // 连续失败还原时的插入位置：已被更早的失败 send 放回的块数 / 附件数，
   // 保证 A、B 依次失败后顺序仍是 A、B、<新草稿> 而不是倒过来 (#1280 review)。
   const restoreOffsetsRef = useRef({ blocks: 0, topAttachments: 0 });
@@ -565,27 +563,41 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     PendingSendItem[]
   >([]);
   const publishPendingSends = useCallback(() => {
-    setPendingPreEnqueueItems(pendingSendsRef.current.preEnqueueValues());
+    setPendingPreEnqueueItems(pendingSendsRef.current.orderedPreEnqueue());
   }, []);
-  const registerPendingSend = useCallback((item: PendingSendItem) => {
-    pendingSendsRef.current.register(item);
-    publishPendingSends();
-  }, [publishPendingSends]);
+  const registerPendingSend = useCallback(
+    (item: {
+      previewText: string;
+      draftText: string;
+      attachments: PendingSendAttachmentPreview[];
+    }) => {
+      const attempt = pendingSendsRef.current.capture(item);
+      publishPendingSends();
+      return attempt;
+    },
+    [publishPendingSends],
+  );
   const setPendingSendExpectedParts = useCallback(
-    (id: number, count: number) => {
+    (id: string, count: number) => {
       if (pendingSendsRef.current.setExpectedParts(id, count)) {
         publishPendingSends();
       }
     },
     [publishPendingSends]
   );
-  const markPendingSendPartEnqueued = useCallback((id: number) => {
-    if (pendingSendsRef.current.markPartEnqueued(id)) publishPendingSends();
-  }, [publishPendingSends]);
-  const releasePendingSend = useCallback((id: number) => {
-    pendingSendsRef.current.release(id);
-    publishPendingSends();
-  }, [publishPendingSends]);
+  const markPendingSendPartEnqueued = useCallback(
+    (id: string) => {
+      if (pendingSendsRef.current.markPartEnqueued(id)) publishPendingSends();
+    },
+    [publishPendingSends],
+  );
+  const releasePendingSend = useCallback(
+    (id: string) => {
+      pendingSendsRef.current.remove(id);
+      publishPendingSends();
+    },
+    [publishPendingSends],
+  );
   const mentionActiveRef = useRef(false);
   // 表情前缀联想下拉激活标志，激活时 Enter 用于选中而非发送
   const emojiSuggestionActiveRef = useRef(false);
@@ -1169,15 +1181,12 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     });
     const previewText = composeSnapshotPreviewText(handle.snapshot);
     const draftText = composeSnapshotDraftText(handle.snapshot);
-    const pendingId = ++pendingSendSeqRef.current;
-    registerPendingSend({
-      id: pendingId,
+    const pendingAttempt = registerPendingSend({
       previewText,
       draftText,
       attachments: pendingAttachmentPreviews,
-      // Keep the guard closed until Conversation declares the real send plan.
-      remainingPreEnqueueParts: 1,
     });
+    const pendingId = pendingAttempt.id;
     const sendDraft = sendDraftBaseline
       ? { ...sendDraftBaseline, draftText }
       : undefined;
@@ -1253,16 +1262,15 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
         focus: () => editor?.commands.focus(),
         send: () => invokeReadySend(sendRef.current),
-        pendingSendCount: () => pendingSendsRef.current.values().length,
+        pendingSendCount: () => pendingSendsRef.current.orderedPending().length,
         pendingPreEnqueueCount: () =>
-          pendingSendsRef.current.preEnqueueCount(),
+          pendingSendsRef.current.pendingPreEnqueueCount(),
         pendingSendDrafts: () =>
-          pendingSendsRef.current.values().map((item) => item.draftText),
+          pendingSendsRef.current
+            .orderedPending()
+            .map((item) => item.draftText),
         pendingSendText: () =>
-          pendingSendsRef.current.values()
-            .map((item) => item.draftText)
-            .filter((text) => text.trim() !== "")
-            .join("\n"),
+          pendingSendsRef.current.pendingDraftText(),
         clear: () => {
           editor?.commands.clearContent(true);
           topAttachmentsRef.current.forEach((item) => {

@@ -77,68 +77,6 @@ export type {
   UnsentEditorBlock,
 } from "../../features/chat-composer/domain";
 
-export interface PendingSendTrackable {
-  id: number;
-  remainingPreEnqueueParts: number;
-}
-
-/** Ordered pending-send state used by the preview and pre-enqueue guard. */
-export interface PendingSendTracker<T extends PendingSendTrackable> {
-  register: (item: T) => void;
-  setExpectedParts: (id: number, count: number) => boolean;
-  markPartEnqueued: (id: number) => boolean;
-  release: (id: number) => void;
-  values: () => T[];
-  preEnqueueValues: () => T[];
-  preEnqueueCount: () => number;
-}
-
-export function createPendingSendTracker<
-  T extends PendingSendTrackable
->(): PendingSendTracker<T> {
-  const items = new Map<number, T>();
-  return {
-    register(item) {
-      items.set(item.id, item);
-    },
-    setExpectedParts(id, count) {
-      const item = items.get(id);
-      if (!item) return false;
-      const remainingPreEnqueueParts = Math.max(1, count);
-      if (item.remainingPreEnqueueParts === remainingPreEnqueueParts) {
-        return false;
-      }
-      items.set(id, { ...item, remainingPreEnqueueParts });
-      return true;
-    },
-    markPartEnqueued(id) {
-      const item = items.get(id);
-      if (!item || item.remainingPreEnqueueParts === 0) return false;
-      items.set(id, {
-        ...item,
-        remainingPreEnqueueParts: item.remainingPreEnqueueParts - 1,
-      });
-      return true;
-    },
-    release(id) {
-      items.delete(id);
-    },
-    values() {
-      return Array.from(items.values());
-    },
-    preEnqueueValues() {
-      return Array.from(items.values()).filter(
-        (item) => item.remainingPreEnqueueParts > 0
-      );
-    },
-    preEnqueueCount() {
-      return Array.from(items.values()).filter(
-        (item) => item.remainingPreEnqueueParts > 0
-      ).length;
-    },
-  };
-}
-
 /**
  * Publish a composer context only after its imperative send callback is wired.
  * React runs effects in declaration order; keeping these two operations atomic

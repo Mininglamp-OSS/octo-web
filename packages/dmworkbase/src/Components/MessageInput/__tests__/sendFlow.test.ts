@@ -31,7 +31,6 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   announceContextAfterSendReady,
-  createPendingSendTracker,
   createSendQueue,
   enqueueSettledSend,
   invokeReadySend,
@@ -45,88 +44,29 @@ import {
   type ChatSendOutcome,
 } from "../../../features/chat-composer/domain";
 
-describe("createPendingSendTracker", () => {
-  it("keeps a multi-part compose guarded until every part is enqueued", () => {
-    const tracker = createPendingSendTracker<{
-      id: number;
-      text: string;
-      remainingPreEnqueueParts: number;
-    }>();
-
-    tracker.register({
-      id: 1,
-      text: "file + text",
-      remainingPreEnqueueParts: 1,
-    });
-    tracker.register({ id: 2, text: "B", remainingPreEnqueueParts: 1 });
-    expect(tracker.values().map((item) => item.text)).toEqual([
-      "file + text",
-      "B",
-    ]);
-    expect(tracker.preEnqueueCount()).toBe(2);
-
-    expect(tracker.setExpectedParts(1, 2)).toBe(true);
-    expect(tracker.markPartEnqueued(1)).toBe(true);
-    expect(tracker.values().map((item) => item.text)).toEqual([
-      "file + text",
-      "B",
-    ]);
-    expect(tracker.preEnqueueCount()).toBe(2);
-
-    expect(tracker.markPartEnqueued(1)).toBe(true);
-    expect(tracker.preEnqueueCount()).toBe(1);
-    expect(tracker.preEnqueueValues().map((item) => item.text)).toEqual(["B"]);
-    expect(tracker.values().map((item) => item.text)).toEqual([
-      "file + text",
-      "B",
-    ]);
-
-    tracker.release(1);
-    expect(tracker.values().map((item) => item.text)).toEqual(["B"]);
-    expect(tracker.preEnqueueCount()).toBe(1);
-  });
-
-  it("ignores duplicate or stale enqueue signals", () => {
-    const tracker = createPendingSendTracker();
-    tracker.register({ id: 1, remainingPreEnqueueParts: 1 });
-
-    expect(tracker.markPartEnqueued(1)).toBe(true);
-    expect(tracker.markPartEnqueued(1)).toBe(false);
-    expect(tracker.markPartEnqueued(99)).toBe(false);
-    expect(tracker.preEnqueueValues()).toEqual([]);
-    expect(tracker.preEnqueueCount()).toBe(0);
-  });
-});
-
 describe("enqueueSettledSend", () => {
   it("releases the previous attempt before the next queued send starts", async () => {
     const queue = createSendQueue();
-    const tracker = createPendingSendTracker<{
-      id: number;
-      draftText: string;
-      remainingPreEnqueueParts: number;
-    }>();
-    tracker.register({ id: 1, draftText: "A", remainingPreEnqueueParts: 1 });
-    tracker.register({ id: 2, draftText: "B", remainingPreEnqueueParts: 1 });
+    const pending = new Set(["A", "B"]);
 
     let finishA!: () => void;
     const taskA = enqueueSettledSend(
       queue,
       () => new Promise<void>((resolve) => (finishA = resolve)),
-      () => tracker.release(1),
+      () => pending.delete("A"),
     );
     const taskB = enqueueSettledSend(
       queue,
       async () => {
-        expect(tracker.values().map((item) => item.draftText)).toEqual(["B"]);
+        expect([...pending]).toEqual(["B"]);
       },
-      () => tracker.release(2),
+      () => pending.delete("B"),
     );
 
     await Promise.resolve();
     finishA();
     await Promise.all([taskA, taskB]);
-    expect(tracker.values()).toEqual([]);
+    expect(pending).toEqual(new Set());
   });
 });
 
