@@ -377,10 +377,13 @@ export function validateOpenExternalUrl(
   }
   if (trustedOrigins) {
     for (const key of ['post_logout_redirect_uri', 'redirect_uri', 'returnTo', 'return_to', 'return_url', 'returnUrl']) {
-      const redirect = parsed.searchParams.get(key)
-      if (redirect === null) continue
+      const redirectValues = parsed.searchParams.getAll(key)
+      if (redirectValues.length === 0) continue
+      // Duplicate redirect params are ambiguous: the allowlist check reads the
+      // first value, but some IdPs follow the last. Reject rather than guess.
+      if (redirectValues.length > 1) return { ok: false }
       try {
-        if (!trustedOrigins.has(new URL(redirect).origin)) return { ok: false }
+        if (!trustedOrigins.has(new URL(redirectValues[0]).origin)) return { ok: false }
       } catch {
         return { ok: false }
       }

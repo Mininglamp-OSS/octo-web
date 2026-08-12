@@ -288,7 +288,8 @@ export interface OidcUserInitiatedLogoutDeps {
 // branch ran, not just that something happened.
 export type OidcUserInitiatedLogoutOutcome =
   | { kind: "not-oidc" }                 // provider is local / empty / no token
-  | { kind: "desktop-local"; url: string }
+  | { kind: "desktop-idp"; url: string } // IdP end-session completed in the hidden window
+  | { kind: "desktop-local"; url: string } // IPC guard rejected or IPC unavailable; local fallback
   | { kind: "web-redirect"; url: string }
   | { kind: "no-end-session" }           // IdP returned no end_session_url
   | { kind: "logout-error"; error: unknown };
@@ -348,7 +349,7 @@ export async function performOidcUserInitiatedLogout(
         return { kind: "desktop-local", url: endSessionUrl };
       }
       deps.reloadShell();
-      return { kind: "desktop-local", url: endSessionUrl };
+      return { kind: "desktop-idp", url: endSessionUrl };
     }
 
     // Web: mark the post-logout cleanup so the next boot re-clears storage

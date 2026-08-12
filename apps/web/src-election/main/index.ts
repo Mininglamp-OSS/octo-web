@@ -269,7 +269,15 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
   // validated URL in a hidden window: shell.openExternal would leave the user
   // in a browser/Web page after desktop logout.
   const validated = validateOpenExternalUrl(url, OIDC_END_SESSION_ORIGINS);
-  if (validated.ok === false) return { ok: false as const };
+  if (validated.ok === false) {
+    console.warn(
+      "[oidc] IPC_OIDC_OPEN_EXTERNAL rejected: URL failed scheme/origin/shape validation. " +
+      "If this is a user-initiated logout, check that VITE_OIDC_TRUSTED_ORIGINS " +
+      "includes all IdP origins. Falling back to local logout.",
+      typeof url === "string" ? url.slice(0, 200) : `(type: ${typeof url})`,
+    );
+    return { ok: false as const };
+  }
   let logoutWindow: BrowserWindow | undefined;
   try {
     const endSession = new URL(validated.value);
@@ -299,7 +307,7 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
         if (timeout) clearTimeout(timeout);
         resolve(ok);
       };
-      logoutWindow!.webContents.on("will-navigate", (navigationEvent, navigatedURL) => {
+      const guardLogoutNavigation = (navigationEvent: Electron.Event, navigatedURL: string) => {
         try {
           const navigationOrigin = new URL(navigatedURL).origin;
           if (!OIDC_END_SESSION_ORIGINS.has(navigationOrigin)) {
@@ -308,7 +316,12 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
         } catch {
           navigationEvent.preventDefault();
         }
-      });
+      };
+      // End-session flows are redirect-driven (IdP issues 302/303); will-navigate
+      // only fires for renderer-initiated navigations. Register both so HTTP
+      // redirects to untrusted origins are blocked the same way.
+      logoutWindow!.webContents.on("will-navigate", guardLogoutNavigation);
+      logoutWindow!.webContents.on("will-redirect", guardLogoutNavigation);
       logoutWindow!.webContents.on("did-navigate", (_event, navigatedURL) => {
         if (!redirectURL) {
           settle(true);

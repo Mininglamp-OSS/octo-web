@@ -47,6 +47,7 @@ if (!this._deviceFlagMigrationHandled && this.isPC && hasDeviceFlagMismatch) {
 - [ ] 打包 macOS：升级安装后首次启动确认被登出一次，重新登录后第二次启动不再登出。
 - [ ] 打包 Windows：同上，另外验证 `file://` URL 的 `hostname` 归一化对 IPC 通道无影响。
 - [ ] Tauri：确认 `deviceFlag` 判定路径与 Electron 一致。
+- [ ] 确认构建时已设置 `VITE_OIDC_TRUSTED_ORIGINS`，值包含所有外部 IdP origin（如 `https://sso.company.com`）；验证：产物 `build/electron-config.json` 的 `oidcEndSessionOrigins` 数组不仅含 API origin，还含完整 IdP origin 列表。若该数组只有一条（API origin），则外部 IdP 部署时 OIDC 退出会静默回退到本地退出，IdP session 不会被终止。
 - [ ] OIDC 全流程（登录 / 绑定 / 登出）在打包环境端到端通过。
 - [ ] IdP 停留 > 5 分钟后完成登录，客户端不被卡在远端页面。
 - [ ] IdP 报错 / 取消登录 / 密码到期弹窗等场景，客户端能返回本地登录界面。

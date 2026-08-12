@@ -299,7 +299,7 @@ describe("performOidcUserInitiatedLogout", () => {
       ),
     );
 
-    expect(result.kind).toBe("desktop-local");
+    expect(result.kind).toBe("desktop-idp");
     expect(sfx.clearLocalLoginState).toHaveBeenCalledTimes(1);
     expect(invoke).toHaveBeenCalledWith(
       "oidc-open-external",
@@ -333,7 +333,7 @@ describe("performOidcUserInitiatedLogout", () => {
     );
 
     expect(result).toEqual({
-      kind: "desktop-local",
+      kind: "desktop-idp",
       url: "https://accounts.example.com/end_session",
     });
     expect(invoke).toHaveBeenCalledWith(

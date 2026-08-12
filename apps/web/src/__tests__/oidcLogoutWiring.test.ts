@@ -62,6 +62,7 @@ describe("OIDC logout wiring", () => {
     const source = readRepoFile("packages/dmworkbase/src/Service/oidcLogout.ts");
     expect(source).toContain("export async function performOidcUserInitiatedLogout");
     // Discriminated result: reviewers grep for these to trace call flow.
+    expect(source).toContain('kind: "desktop-idp"');
     expect(source).toContain('kind: "desktop-local"');
     expect(source).toContain('kind: "web-redirect"');
     expect(source).toContain('kind: "no-end-session"');
