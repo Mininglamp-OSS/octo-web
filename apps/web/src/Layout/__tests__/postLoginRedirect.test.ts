@@ -52,4 +52,15 @@ describe("buildPostLoginRedirectUrl", () => {
       "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html?logout=1&sid=old",
     );
   });
+
+  it("strips one-time OIDC callback parameters from the shell anchor", () => {
+    expect(
+      buildShellDocumentUrl(
+        "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html?authcode=AC123&provider=acme-sso&token=BINDTOK&sid=w1&__octo_route=%2Foidc%2Fbind",
+        "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html",
+      ),
+    ).toBe(
+      "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html?sid=w1",
+    );
+  });
 });

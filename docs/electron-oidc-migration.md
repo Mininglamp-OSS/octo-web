@@ -1,6 +1,6 @@
 # Electron OIDC 上线迁移说明
 
-本页描述 PR #1331（`feat(electron): support OIDC login and binding`）随 packaged Electron / Tauri 桌面应用上线时，对**现有已登录用户**产生的一次性影响。发版 release note 与运维沟通请引用本页。
+本页描述 PR #1353（`feat(electron): support OIDC login and binding`）随 packaged Electron / Tauri 桌面应用上线时，对**现有已登录用户**产生的一次性影响。发版 release note 与运维沟通请引用本页。
 
 ## 变更摘要
 

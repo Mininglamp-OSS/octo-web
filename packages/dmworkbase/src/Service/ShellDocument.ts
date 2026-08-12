@@ -3,8 +3,26 @@
  * navigation may change the visible pathname, but it must not change the
  * document URL used when returning to the shell.
  */
-const initialShellDocumentUrl =
-  typeof window !== "undefined" ? window.location.href : ""
+function normalizeShellDocumentUrl(href: string): string {
+  const url = new URL(href)
+  const sid = url.searchParams.get("sid")
+  url.search = ""
+  if (sid) url.searchParams.set("sid", sid)
+  url.hash = ""
+  return url.toString()
+}
+
+// The first renderer document can be an OIDC callback document. Keep only the
+// shell document and session sid; callback credentials and __octo_route are
+// single-use input and must never be replayed by a later shell replacement.
+const initialShellDocumentUrl = (() => {
+  if (typeof window === "undefined") return ""
+  try {
+    return normalizeShellDocumentUrl(window.location.href)
+  } catch {
+    return ""
+  }
+})()
 
 export function buildShellDocumentUrl(
   shellHref: string,
@@ -15,6 +33,7 @@ export function buildShellDocumentUrl(
   const currentUrl = new URL(currentHref)
   const shellSid = shellUrl.searchParams.get("sid")
 
+  shellUrl.search = ""
   if (query !== undefined) shellUrl.search = query
 
   const sid = currentUrl.searchParams.get("sid") || shellSid
