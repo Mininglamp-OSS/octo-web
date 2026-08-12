@@ -11,6 +11,7 @@ import ScheduleListPage from "./pages/ScheduleListPage";
 import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
 import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
+import { getPendingInvitationBadge, refreshPendingInvitationBadge } from "./utils/summaryMenuBadge";
 import { isSupportedChannelType } from "./utils/channelType";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
 import ChatSummaryPanel from "./components/ChatSummaryPanel";
@@ -150,19 +151,28 @@ export class SummaryModule implements IModule {
         WKApp.menus.register(
             "summary",
             () => {
-                return new Menus(
+                const menu = new Menus(
                     "summary",
                     "/summary",
                     translate("summary.menu.title"),
                     <SummaryMenuIcon />,
                     <SummaryMenuIcon active />,
                 );
+                // #1359 未处理邀请红点：badge 字段与 NavRail 渲染已存在，
+                // 此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
+                menu.badge = getPendingInvitationBadge();
+                return menu;
             },
             4002,
         );
 
+        // #1359 首屏拉取当前 space 的未处理邀请数（page_size=1，只取 count）。
+        refreshPendingInvitationBadge();
+
         _spaceChangedHandler = () => {
             WKApp.mittBus.emit('summary-space-changed');
+            // 切 space 后邀请计数按新 space 重算（后端 count 是 space-scoped）。
+            refreshPendingInvitationBadge();
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
 
