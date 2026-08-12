@@ -14,7 +14,6 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, PptEditorPage, PptPresentPage, parsePptEditorDocId, isPptEditorPath, parsePptPresentDocId, isPptPresentPath, parsePresentVersion } from "@octo/docs";
 import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules";
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
@@ -417,78 +416,6 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             } else if (enterpriseStandaloneHandler.persistReturnOnAnonymous) {
                 persistStandaloneReturn();
             }
-        }
-
-        // Standalone document deep-link (`/d/:docId`, octo-web #512): a shareable full-window
-        // doc view that lives OUTSIDE the app shell (no MainPage / NavRail), mounted with the
-        // same early-return interception the `?invite=` landing uses below. We claim the whole
-        // `/d` namespace (not just well-formed ids) so a malformed/empty id renders the
-        // standalone not-found terminal instead of silently falling through to the shell (AC-9).
-        //
-        // Auth: this branch renders before the Provider, so ensure the octo session is loaded
-        // for the page's GET /docs/{docId} preflight + collab-token exchange. A clean cold-load
-        // in a fresh tab carries no `?sid=`, so load() (sid-keyed) misses even a signed-in user's
-        // token — recover it from localStorage the way the invite branch does (AC-3). When the
-        // visitor is genuinely anonymous, fall through to the login screen rendered IN PLACE: the
-        // pathname stays `/d/:docId`, so onLogin derives basePath from it and bounces the user
-        // straight back to the doc (now with `?sid=`) after sign-in — the deep-link resumes
-        // instead of dead-ending (AC-11). SPA deep-link serving depends on the nginx try_files
-        // fallback (deployment concern, out of scope for this frontend change).
-        if (isStandaloneDocPath(window.location.pathname)) {
-            if (!WKApp.loginInfo.token) {
-                WKApp.loginInfo.load();
-            }
-            if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage(true);
-            }
-            if (WKApp.loginInfo.token) {
-                const standaloneDocId = parseStandaloneDocId(window.location.pathname);
-                return <StandaloneDocPage docId={standaloneDocId} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
-            }
-            // Anonymous: stash the exact /d/:docId target so the post-login flow (local OR SSO/OIDC)
-            // can bounce the user back to the document instead of the app root, then fall through to
-            // the login screen (below) without navigating away. SessionScope keeps the session bucket
-            // available without exposing sid in the return URL. The standalone page itself only
-            // mounts once a token exists, so the anonymous path is the ONLY place this key gets
-            // written for a first-time visitor — onLogin consumes it via consumeStandaloneReturn.
-            persistStandaloneReturn();
-            // Anonymous: fall through to the login screen (below) without navigating away.
-        }
-
-        // html_ppt peer surfaces (R3-F1, XIN-1495): two full-window Bento routes that live OUTSIDE
-        // the app shell and are intercepted exactly like `/d/:docId` above — so a PPT deep link
-        // lands on the PPT surface and NEVER falls through to the rich-text editor / app-shell list
-        // (the R1 no-fallthrough contract). Both consume live backend source, so the pages keep that
-        // behind PPT_SOURCE_ENABLED (default OFF until backend R3-B1 merges) and show a gated shell
-        // meanwhile; the host still routes to them. Session handling mirrors the standalone branch:
-        // load/recover the octo session, render when signed in, else stash the return target and fall
-        // through to login so the user bounces back after sign-in.
-        //
-        //   - `/ppt/d/:docId`         → peer editor route (namespace-claimed; a malformed id renders
-        //                               the PPT not-found shell, not the app shell).
-        //   - `/docs/:docId/present`  → present route (`?version=latest|N`); only this exact shape is
-        //                               claimed, so every other `/docs...` path keeps the app shell.
-        const isPptEditor = isPptEditorPath(window.location.pathname);
-        const isPptPresent = isPptPresentPath(window.location.pathname);
-        if (isPptEditor || isPptPresent) {
-            if (!WKApp.loginInfo.token) {
-                WKApp.loginInfo.load();
-            }
-            if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage(true);
-            }
-            if (WKApp.loginInfo.token) {
-                if (isPptEditor) {
-                    const pptDocId = parsePptEditorDocId(window.location.pathname);
-                    return <PptEditorPage docId={pptDocId} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
-                }
-                const presentDocId = parsePptPresentDocId(window.location.pathname);
-                const presentVersion = parsePresentVersion(window.location.search);
-                return <PptPresentPage docId={presentDocId} version={presentVersion} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
-            }
-            // Anonymous: stash the exact target so the post-login flow bounces the user back to the
-            // PPT surface, then fall through to the login screen without navigating away.
-            persistStandaloneReturn();
         }
 
         // Read-only shared summary deep-link (`/s/share/:shareId`). It uses the same

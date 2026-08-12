@@ -23,7 +23,6 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../pnpm-lock.yaml",
-        "../../patches/@excalidraw__excalidraw@0.18.1.patch",
         "../../packages/dmworkappbot/**",
         "../../packages/dmworkbase/**",
         "../../packages/dmworkcontacts/**",
@@ -32,8 +31,6 @@
         "../../packages/dmworkmcp/**",
         "../../packages/dmworkskillmarket/**",
         "../../packages/dmworksummary/**",
-        "../../packages/docs/**",
-        "../../packages/whiteboard-schema/**",
         "!../../packages/**/node_modules/**",
         "!../../packages/**/build/**",
         "!../../packages/**/dist/**",

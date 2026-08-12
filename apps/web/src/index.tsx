@@ -12,7 +12,6 @@ import { SummaryModule } from '@dmwork/summary';
 import { McpMarketModule } from '@dmwork/mcp';
 import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
-import { DocsModule } from '@octo/docs';
 import { registerEnterpriseModules } from 'virtual:octo-enterprise-modules';
 import { version as pkgVersion } from '../package.json';
 import appEnUS from './i18n/en-US.json';
@@ -84,9 +83,6 @@ WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
 WKApp.shared.registerModule(new McpMarketModule()); // MCP 市场模块
 WKApp.shared.registerModule(new SkillMarketModule()); // Skill 市场模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
-if (import.meta.env.VITE_DISABLE_BUILTIN_DOCS !== "1") {
-  WKApp.shared.registerModule(new DocsModule()); // Docs module
-}
 registerEnterpriseModules({
   registerModule: (module) => WKApp.shared.registerModule(module),
 });

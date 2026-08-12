@@ -17,10 +17,7 @@ describe("standalone return target", () => {
         expect(window.sessionStorage.getItem(KEY)).toBe("/loop/cli-authorize?code=abc#resume");
     });
 
-    it("keeps existing docs and summary return targets valid", () => {
-        window.sessionStorage.setItem(KEY, "/d/d_abc?sp=space1");
-        expect(consumeStandaloneReturn()).toBe("/d/d_abc?sp=space1");
-
+    it("keeps built-in summary return targets valid", () => {
         window.sessionStorage.setItem(KEY, "/s/TN_abc?sp=space1");
         expect(consumeStandaloneReturn()).toBe("/s/TN_abc?sp=space1");
 
@@ -49,34 +46,19 @@ describe("standalone return target", () => {
         ).toBeNull();
     });
 
-    it("accepts the html_ppt peer surface deep-links so they replay after login (XIN-1608)", () => {
-        for (const good of [
-            "/ppt/d/d_abc",
-            "/ppt/d/d_abc/",
-            "/ppt/d/d_abc?foo=bar",
-            "/docs/d_abc/present",
-            "/docs/d_abc/present/",
-            "/docs/d_abc/present?version=3",
-        ]) {
-            window.sessionStorage.setItem(KEY, good);
-            expect(consumeStandaloneReturn()).toBe(good);
-        }
-    });
+    it("requires enterprise handlers for removed feature return targets", () => {
+        window.sessionStorage.setItem(KEY, "/d/d_abc?sp=space1");
+        expect(consumeStandaloneReturn()).toBeNull();
 
-    it("rejects docs paths that are not the exact /docs/:id/present shape (keeps the shell)", () => {
-        for (const bad of [
-            "/docs", // list namespace
-            "/docs/d_abc", // editor route, not a return target
-            "/docs/d_abc/edit", // wrong tail
-            "/docs/d_abc/present/extra", // extra segment
-            "/ppt/d", // no id
-            "/ppt/d/", // empty id
-            "/ppt/x/d_abc", // wrong shape
-        ]) {
-            window.sessionStorage.setItem(KEY, bad);
-            expect(consumeStandaloneReturn()).toBeNull();
-            expect(window.sessionStorage.getItem(KEY)).toBeNull();
-        }
+        window.sessionStorage.setItem(KEY, "/d/d_abc?sp=space1");
+        expect(
+            consumeStandaloneReturn([
+                {
+                    match: (pathname) => pathname === "/d/d_abc",
+                    persistReturnOnAnonymous: true,
+                },
+            ])
+        ).toBe("/d/d_abc?sp=space1");
     });
 
     it("rejects off-origin and control-character return targets", () => {
