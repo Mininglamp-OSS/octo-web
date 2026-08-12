@@ -50,6 +50,18 @@ vi.mock('@octo/base', () => {
     WKApp,
     ProviderListener,
     i18n: { setLocale: vi.fn() },
+    // Mirrors @octo/base's extractErrorCode (Service/APIClient.ts): reads the
+    // interceptor's reject shape { code, msg, ... }. Stubbed because the real
+    // module graph is mocked out wholesale here.
+    extractErrorCode: (err: unknown) =>
+      err && typeof err === 'object' && 'code' in err && typeof (err as { code: unknown }).code === 'string'
+        ? (err as { code: string }).code
+        : undefined,
+    // Mirrors @octo/base's extractErrorMsg (Service/APIClient.ts).
+    extractErrorMsg: (err: unknown) =>
+      err && typeof err === 'object' && 'msg' in err && typeof (err as { msg: unknown }).msg === 'string'
+        ? (err as { msg: string }).msg
+        : '',
     normalizeLocale: vi.fn((value: string | null | undefined) => {
       if (value === 'zh-CN' || value === 'en-US') return value
       return undefined

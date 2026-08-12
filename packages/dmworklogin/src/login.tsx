@@ -24,6 +24,25 @@ const ENTERPRISE_SSO_ENABLED =
 // 错误的 IdP 环境。若后续接入新的 OIDC provider 或非 Aegis 登录方式，入口配置
 // 应改为由 appconfig 下发。
 
+/**
+ * 扫码登录入口是否可见。
+ *
+ * 两个条件都要满足，因为它们是两条不同的信息源：
+ *   - `remoteConfig.scanLoginEnabled` 来自 /v1/common/appconfig 的 scan_login_enabled
+ *     (JSON boolean)。默认 false，appconfig 还没到 / 拉取失败时同样是 false —— 与
+ *     服务端 fail-closed 对齐，不要在不确定的时候放出一个必然失败的入口。注意这里
+ *     不能改用 local_login_off 反推：本地密码登录的开关与扫码开关互不代表。
+ *   - `vm.scanLoginDisabled` 是链路刚刚明确拒绝过的事实（loginstatus 回 disabled，或
+ *     某个入口回 err.server.user.scan_login_disabled）。运行时改开关在多副本间最多
+ *     60 秒收敛，这段时间里 appconfig 可能还说 true，而请求已经在被拒。
+ *
+ * `scanLoginDisabled` 一旦置位就不再自动复位：重新开放扫码是一次运维动作，让用户刷新
+ * 页面拿到新的 appconfig 比在前端猜「现在是不是又能用了」更可靠。
+ */
+function scanLoginEntryVisible(vm: LoginVM): boolean {
+    return WKApp.remoteConfig.scanLoginEnabled && !vm.scanLoginDisabled
+}
+
 function getNextLocale(locale: Locale): Locale {
     return locale === "zh-CN" ? "en-US" : "zh-CN";
 }
@@ -182,6 +201,24 @@ const SsoLoginPanel: React.FC<{
                     </Button>
                 </div>
             )}
+            {/* 扫码登录入口必须独立于本地密码登录区存在。
+                另外两处入口都在本地密码登录的 DOM 里（LegacyPasswordSection 与
+                renderLocalPasswordLogin），而 OIDC 部署下前者被下面的 `false &&` 关着、
+                后者根本不渲染 —— 也就是说没有这一处，扫码入口在 SSO 部署里完全够不到，
+                运维把 login.scan_enabled 打开也不会有任何变化。二维码面板本身是页面级
+                兄弟节点（按 loginType 切换），与 SSO 面板不冲突。 */}
+            {scanLoginEntryVisible(vm) && (
+                <div className="wk-login-content-sso-scanlogin-entry">
+                    <Button
+                        theme="borderless"
+                        size="small"
+                        disabled={vm.oidcLoading || vm.oidcResuming}
+                        onClick={() => { vm.loginType = LoginType.qrcode }}
+                    >
+                        {t('login.scanLogin')}
+                    </Button>
+                </div>
+            )}
             <div className="wk-login-content-sso-flow-hint">
                 {t('login.ssoFlowHint')}
             </div>
@@ -274,12 +311,14 @@ const LegacyPasswordSection: React.FC<{
                     </div>
                 )}
                 <div className="wk-login-content-form-others">
-                    <div
-                        className="wk-login-content-form-scanlogin"
-                        onClick={() => { vm.loginType = LoginType.qrcode }}
-                    >
-                        {t('login.scanLogin')}
-                    </div>
+                    {scanLoginEntryVisible(vm) && (
+                        <div
+                            className="wk-login-content-form-scanlogin"
+                            onClick={() => { vm.loginType = LoginType.qrcode }}
+                        >
+                            {t('login.scanLogin')}
+                        </div>
+                    )}
                     <div
                         className="wk-login-content-form-switch"
                         onClick={() => { vm.loginType = LoginType.forgetPassword }}
@@ -458,11 +497,13 @@ class Login extends Component<any, LoginState> {
                             onClick={handleLogin}>{t('login.button')}</Button>
                     </div>
                     <div className="wk-login-content-form-others">
-                        <div className="wk-login-content-form-scanlogin" onClick={() => {
-                            vm.loginType = LoginType.qrcode
-                        }}>
-                            {t('login.scanLogin')}
-                        </div>
+                        {scanLoginEntryVisible(vm) && (
+                            <div className="wk-login-content-form-scanlogin" onClick={() => {
+                                vm.loginType = LoginType.qrcode
+                            }}>
+                                {t('login.scanLogin')}
+                            </div>
+                        )}
                         <div className="wk-login-content-form-switch" onClick={() => {
                             vm.loginType = LoginType.register
                         }}>
@@ -787,7 +828,10 @@ class Login extends Component<any, LoginState> {
                                         <div className="wk-login-content-scanlogin-qrcode">
                                             {vm.qrcodeLoading || !vm.qrcode ? undefined : <QRCodeSVG value={vm.qrcode} size={176} fgColor={WKApp.config.themeColor}></QRCodeSVG>}
                                             <div className={classNames("wk-login-content-scanlogin-qrcode-avatar", vm.showAvatar() ? "wk-login-content-scanlogin-qrcode-avatar-show" : undefined)}>
-                                                {vm.showAvatar() ? <img src={WKApp.shared.avatarUser(vm.uid!)}></img> : undefined}
+                                                {/* 用 vm.uid 收窄而不是 vm.uid!：服务端的 scanned 载荷已不含 uid，
+                                                    showAvatar() 恒为 falsy，非空断言等于对一个只能是 undefined 的值
+                                                    打包票，而编译器无法把它和这个 helper 关联起来。 */}
+                                                {vm.showAvatar() && vm.uid ? <img src={WKApp.shared.avatarUser(vm.uid)}></img> : undefined}
                                             </div>
                                             {!vm.autoRefresh ? <div className="wk-login-content-scanlogin-qrcode-expire">
                                                 <p>{t('qr.expired')}</p>
@@ -841,7 +885,12 @@ class Login extends Component<any, LoginState> {
                             </div>
 
                             <div className="wk-login-footer-buttons">
-                                <button onClick={() => { vm.loginType = LoginType.phone }}>{t('qr.accountPassword')}</button>
+                                {/* 退出扫码时回到 loginType=phone，也就是主登录区。SSO 部署下那里
+                                    没有密码表单，"使用账号密码登录"会指向一个不存在的东西，所以按
+                                    当前主登录区的形态选文案（两个 key 都已有译文，不新增文案）。 */}
+                                <button onClick={() => { vm.loginType = LoginType.phone }}>
+                                    {showSsoLogin ? t('common.backLogin') : t('qr.accountPassword')}
+                                </button>
                             </div>
                         </div>
                     </div>

@@ -101,4 +101,42 @@ describe("[api] WKRemoteConfig notifications", () => {
     expect(configChangeListener).toHaveBeenCalledTimes(1);
     expect(warnSpy).toHaveBeenCalledTimes(2);
   });
+
+  it("reads scan_login_enabled as a JSON boolean and defaults to closed", async () => {
+    const remoteConfig = new WKRemoteConfig();
+    expect(remoteConfig.scanLoginEnabled).toBe(false);
+
+    // Field absent (older server, or appconfig served before the setting loaded):
+    // stay closed rather than showing an entry whose every request would fail.
+    getSpy.mockResolvedValueOnce({});
+    await remoteConfig.requestConfig();
+    expect(remoteConfig.scanLoginEnabled).toBe(false);
+
+    // The backend sends a real JSON boolean here, not the 0/1 integer used by
+    // sibling switches such as local_login_off.
+    getSpy.mockResolvedValueOnce({ scan_login_enabled: true });
+    await remoteConfig.requestConfig();
+    expect(remoteConfig.scanLoginEnabled).toBe(true);
+
+    getSpy.mockResolvedValueOnce({ scan_login_enabled: false });
+    await remoteConfig.requestConfig();
+    expect(remoteConfig.scanLoginEnabled).toBe(false);
+  });
+
+  it("notifies config-change listeners when scan login is switched at runtime", async () => {
+    const remoteConfig = new WKRemoteConfig();
+    getSpy.mockResolvedValueOnce({ scan_login_enabled: false });
+    await remoteConfig.requestConfig();
+
+    const configChangeListener = vi.fn();
+    remoteConfig.addConfigChangeListener(configChangeListener);
+
+    // A runtime switch converges across replicas within ~60s; the login page has
+    // already rendered by then, so it only hides/shows the entry if it is told.
+    getSpy.mockResolvedValueOnce({ scan_login_enabled: true });
+    await remoteConfig.requestConfig();
+
+    expect(remoteConfig.scanLoginEnabled).toBe(true);
+    expect(configChangeListener).toHaveBeenCalledTimes(1);
+  });
 });

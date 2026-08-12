@@ -32,6 +32,21 @@ export function extractErrorMsg(err: unknown): string {
     return "";
 }
 
+/**
+ * 从 APIClient 拦截器 reject 的错误对象中提取业务错误码（`err.server.*` / `err.shared.*`）。
+ * 拦截器 reject 形状：{ error, msg, status, code, ... }
+ *
+ * 与 extractErrorMsg 成对：调用方要按错误码分支时（而不是拿 msg 展示）用这个，
+ * 不要在各自的模块里再写一遍 `"code" in err` 的窄化。
+ */
+export function extractErrorCode(err: unknown): string | undefined {
+    if (err && typeof err === "object" && "code" in err) {
+        const code = (err as { code: unknown }).code;
+        if (typeof code === "string") return code;
+    }
+    return undefined;
+}
+
 export class APIClientConfig {
     private _apiURL: string =""
     private _token:string = ""
@@ -145,6 +160,11 @@ export default class APIClient {
     }
     post(path: string, data?: any, config?: RequestConfig) {
         return this.wrapResult(axios.post(path, data, {
+            // get/put/patch/delete 都转发 config.param，post 此前漏了：调用方传了
+            // param 会被静默丢掉，请求照样 2xx，只是参数没上 wire —— 凭据类参数走这条
+            // 路时是最难查的一种故障。现网没有任何 post 调用方传 param（全部走 body），
+            // 所以补上它对现有行为是空操作。
+            params: config?.param,
             headers: config?.headers,
             responseType: config?.responseType,
             timeout: config?.timeout,

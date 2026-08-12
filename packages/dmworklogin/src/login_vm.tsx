@@ -1,4 +1,4 @@
-import { WKApp, ProviderListener } from "@octo/base";
+import { WKApp, ProviderListener, extractErrorCode, extractErrorMsg } from "@octo/base";
 import { applyLoginResp } from "./loginSession";
 import {
     buildAuthorizeURL,
@@ -25,6 +25,73 @@ export class LoginStatus {
     static authed: string = "authed"
     static scanned: string = "scanned"
     static expired: string = "expired"
+    // 服务端在 login.scan_enabled=false 时用 200 + {"status":"disabled"} 回应 loginstatus。
+    // 没有这个分支时它会落进 advance() 的 switch 里无人处理：轮询就此停摆，而页面上的
+    // 二维码继续挂着，用户对着一张永远不会完成的码等下去。
+    static disabled: string = "disabled"
+}
+
+/**
+ * 扫码总开关关闭时，loginuuid / login_authcode / grant_login 返回的业务错误码。
+ *
+ * 按错误码判断而不是 HTTP 状态码：服务端 httperr.ResponseErrorL 对兼容期的端点一律
+ * 把 wire status 钉在 400，真实状态只在 envelope 的 error.http_status 里。
+ */
+const SCAN_LOGIN_DISABLED_CODE = 'err.server.user.scan_login_disabled'
+
+/**
+ * `scanned` 确认窗口的本地兜底时长，取自对接文档约定的 5 分钟（服务端同一个值叫
+ * user.ScanLoginConfirmWindow）。
+ *
+ * **两边不是同步的，是各自独立的一份**：服务端在扫码那一刻把 qrcode:{uuid} 的 TTL 续成
+ * 这个值，客户端则在**首次轮询看到 scanned** 时才起算，天然晚一个长轮询周期。正常路径
+ * 上到点的是服务端 —— 轮询读到 expired 就重铸，根本走不到这里；这份本地截止只在
+ * 「status 因任何原因不再推进」（网关吞长轮询、Redis 抖动）时兜底，避免页面永久停在
+ * 「已扫码，等待手机确认」。
+ *
+ * 所以如果服务端把窗口调长，这里必须跟着改，否则客户端会开始掐掉服务端仍然认可的会话。
+ * 没有任何机制会在两边漂移时报错。
+ */
+const SCAN_LOGIN_CONFIRM_WINDOW_MS = 5 * 60 * 1000
+
+/**
+ * 兑换时上报的设备标识。
+ *
+ * 值来自 octo-lib `config/msg.go` 的 `const ( APP DeviceFlag = iota; Web; PC )`
+ * —— 即 0=APP、1=Web、2=PC（同文件 device_flag 字段注释「0. APP 1.web」佐证）。
+ * 与 requestLoginWithUsernameAndPwd 里内联的 flag 取值一致。
+ *
+ * 服务端在 flag 缺省/为 0 时也会回落到 Web（modules/user/api.go loginWithAuthCode），
+ * 所以显式带上与省略等价；带上只是让链路里的设备语义不依赖那条回落分支。
+ */
+const WEB_DEVICE_FLAG = 1
+
+function isScanLoginDisabledError(err: unknown): boolean {
+    return extractErrorCode(err) === SCAN_LOGIN_DISABLED_CODE
+}
+
+/**
+ * 把一个请求失败压成一行**不含凭据**的可诊断标签。
+ *
+ * 绝不能直接把 reject 对象丢给 console：APIClient 的拦截器会把原始 axios error 挂在
+ * `error` 字段上（Service/APIClient.ts），而它带着 `config.params = { poll_secret, flag }`
+ * 和 `config.url = "user/login_authcode/<auth_code>"` —— 凭据的两半会出现在同一行日志里。
+ * 对接文档明确要求 poll_secret / auth_code / token 不得进入埋点与崩溃日志，服务端也专门
+ * 在 access log 里脱敏了同一对参数（octo-server pkg/accesslog/accesslog.go）。
+ *
+ * 不能只用 code：`normalizeApiError` 只在 v2 error envelope 分支里赋 code，网关返回
+ * HTML 的 502、超时、网络中断走的是 legacy/网络分支，code 恒为 undefined —— 那正是
+ * 「`?? error`」会把整个对象打出来的时候。message 由 normalizeApiError 归类产出
+ * （i18n 文案或后端 message），不含 URL 与参数，可以安全落日志。
+ */
+function redactedErrorLabel(err: unknown): string {
+    const code = extractErrorCode(err)
+    if (code) return code
+    if (err && typeof err === 'object' && 'status' in err) {
+        const status = (err as { status: unknown }).status
+        if (typeof status === 'number') return `http_status=${status}`
+    }
+    return extractErrorMsg(err) || 'unknown error'
 }
 
 export enum LoginType {
@@ -45,6 +112,20 @@ export class LoginVM extends ProviderListener {
     qrcode?: string
     expireMaxTryCount: number = 5 // 过期最多次数（超过指定次数则永远显示过期，需要用户手动刷新）
     private _expireTryCount: number = 0 // 过期尝试次数
+    // 主动放弃扫码会话的次数（兑换失败 / 密钥被剥掉 / 确认窗口超时），与自然过期分开计数。
+    // 见 restartScanLogin。
+    private _abandonTryCount: number = 0
+    /**
+     * 服务端已明确告知扫码登录不可用（loginstatus 回 disabled，或某个入口回
+     * err.server.user.scan_login_disabled）。
+     *
+     * 与 WKApp.remoteConfig.scanLoginEnabled 是两条独立的信息源，都要看：appconfig 有
+     * 缓存/重试窗口（多副本运行时改开关最多 60 秒收敛），而这一条是链路刚刚拒绝过的
+     * 事实。login.tsx 据此隐藏入口，避免用户点进来再吃一次必然失败的请求。
+     */
+    scanLoginDisabled: boolean = false
+    // 本地的 scanned 确认截止时间（epoch ms）。进入 scanned 时落一次，重铸二维码时清掉。
+    private _scannedDeadline?: number
 
     uid?: string // 当前扫描的用户uid
     private _loginType: LoginType = LoginType.phone
@@ -165,6 +246,9 @@ export class LoginVM extends ProviderListener {
 
     reStartAdvance() {
         this.restCount()
+        // 用户手动要求重来（点「点击刷新」/ 切回扫码 tab）就给一份新的放弃预算。刻意不放进
+        // restCount()：authed 分支在兑换前也会调它，那会让闸门永远清零、拦不住任何东西。
+        this._abandonTryCount = 0
         this.loginStatus = LoginStatus.getUUID
         this._autoRefresh = true
         this.notifyListener()
@@ -184,9 +268,28 @@ export class LoginVM extends ProviderListener {
                 this.pullLoginStatus(this.uuid)
                 break
             case LoginStatus.scanned:
-                this.uid = data.uid
+                // 服务端的 scanned 状态**不再下发 uid**（payload 只有 app_id / status），
+                // 所以这里是可选读取：拿不到就不显示扫码者头像。不得据此判断扫码者身份
+                // 或推进状态机 —— 唯一的推进依据是 status。
+                this.uid = data?.uid
+                if (this.scannedWindowExpired()) {
+                    // 手机端迟迟不确认。服务端的 qrcode TTL 到点后轮询本来也会读到
+                    // expired，本地截止只是兜底那条路没走到的情况（网关吞长轮询、
+                    // status 因任何原因不再推进），避免页面永久停在「等待手机确认」。
+                    //
+                    // 必须留日志：这条路会把一次已经发生的扫码丢掉，用户侧只看到「刚扫完
+                    // 二维码就自己刷新了」。其余三个 restartScanLogin 调用点都有 warn，缺
+                    // 这一条会让本地截止时间相关的故障在现场完全无迹可查。
+                    console.warn('[login] scan-login confirm window elapsed locally; restarting scan flow')
+                    this.restartScanLogin()
+                    break
+                }
                 this.notifyListener()
                 this.pullLoginStatus(this.uuid)
+                break
+            case LoginStatus.disabled:
+                // 全链路已关闭：停轮询、清会话、隐藏入口并交还其他登录方式。
+                this.handleScanLoginDisabled()
                 break
             case LoginStatus.authed:
                 if (!data?.auth_code) {
@@ -203,10 +306,7 @@ export class LoginVM extends ProviderListener {
                     // 被中途丢掉（代理剥参数、Redis 抖动），症状是二维码悄悄自我重建而手机
                     // 显示"已授权"，在日志和监控里和正常过期完全无法区分。
                     console.warn('[login] scan-login status=authed without auth_code; poll_secret was not accepted, re-minting QR')
-                    this.resetQRCodeState()
-                    this.loginStatus = LoginStatus.getUUID
-                    this.notifyListener()
-                    this.advance()
+                    this.restartScanLogin()
                     break
                 }
                 this.restCount()
@@ -220,7 +320,19 @@ export class LoginVM extends ProviderListener {
                     this.loginStatus = LoginStatus.getUUID
                     this.advance()
                 }
-
+                break
+            default:
+                // 未知或缺失的 status。没有这条分支时它落进 switch 无人处理：轮询就此停摆，
+                // 而 login.tsx 继续渲染一张活二维码，且 autoRefresh 仍为 true —— 连「点击
+                // 刷新」覆盖层都不显示，只能整页刷新。那正是本次改动要消灭的冻结形态，
+                // `disabled` 只是它已知的一个实例；服务端的响应字段走白名单过滤，将来多一个
+                // 状态、或者某条路径漏掉 status，都会走到这里。
+                //
+                // 重铸而不是继续轮询：拿不到能推进的状态时，一张新码是唯一确定有效的动作。
+                // 它受 _abandonTryCount 上限约束，所以不会变成铸码风暴，计满后交给
+                // 「点击刷新」覆盖层。
+                console.warn('[login] scan-login got an unhandled status; restarting scan flow', this.loginStatus)
+                this.restartScanLogin()
         }
     }
 
@@ -229,23 +341,157 @@ export class LoginVM extends ProviderListener {
         this._pullErrCount = 0
     }
 
+    /**
+     * 丢弃当前扫码会话并重新申请二维码。
+     *
+     * 这是所有「这一轮扫码不可能再走通」的统一出口：auth_code 被剥掉、兑换失败或结果
+     * 不确定、手机端超过确认窗口没确认。三种情况的共同要求是**绝不重试同一个
+     * auth_code**（服务端一次性消费，重试只会拿到 auth_code_not_found），而是把
+     * uuid / poll_secret / auth_code 一起丢掉重来。
+     */
+    private restartScanLogin() {
+        this.resetQRCodeState()
+        // 自己的计数闸门，不与 expired 共用 _expireTryCount：二维码 TTL 只有 60 秒，用户
+        // 在扫码页干等几分钟就能把那个预算烧光，于是第一次真正的失败会立刻撞上限、直接
+        // 死在「点击刷新」上；反过来 authed 分支在兑换前会 restCount() 清零，共用又会让
+        // 这个闸门永远拦不住东西。两类失败语义不同，各记一份。
+        //
+        // 需要闸门的理由：密钥被链路中途剥掉时（authed 但没有 auth_code）重铸不需要人参与，
+        // 是机器速度的循环，在日志里与正常过期无法区分。计满后亮出既有的「二维码已过期，
+        // 点击刷新」覆盖层，把不可见的循环变成用户能看见、能操作的状态。手动点刷新
+        // （reStartAdvance）会重置预算。
+        this._abandonTryCount++
+        if (this._abandonTryCount > this.expireMaxTryCount) {
+            this.loginStatus = LoginStatus.expired
+            // setter 传 false 不会触发 reStartAdvance，只停掉自动重铸并通知渲染。
+            this.autoRefresh = false
+            return
+        }
+        this.loginStatus = LoginStatus.getUUID
+        this.notifyListener()
+        this.advance()
+    }
+
+    /**
+     * 服务端已明确关闭扫码登录时的收尾。
+     *
+     * 立刻停轮询、清掉会话凭据、标记入口不可用，并把用户交还给其他登录方式。
+     * 刻意不亮「点击刷新」覆盖层：刷新只会再吃一次 disabled。
+     */
+    private handleScanLoginDisabled() {
+        this.scanLoginDisabled = true
+        this.resetQRCodeState()
+        // 直接写字段而不是走 autoRefresh setter：这里只要停掉自动重铸，不需要 setter
+        // 在 true 分支附带的 reStartAdvance 语义。
+        this._autoRefresh = false
+        this.loginStatus = LoginStatus.disabled
+        // loginType setter 只在切到 qrcode 时重启流程，切回 phone 是安全的，并且会
+        // notifyListener 让登录页重渲染（此时扫码入口已随 scanLoginDisabled 隐藏）。
+        this.loginType = LoginType.phone
+    }
+
+    /**
+     * 判断 scanned 的本地确认窗口是否已过；首次进入 scanned 时落下截止时间。
+     *
+     * 只在轮询返回时求值，所以感知延迟最多一个长轮询周期（10s）—— 作为兜底足够，
+     * 不值得为它专门挂一个定时器再去和 didUnMount / 重铸抢生命周期。
+     */
+    private scannedWindowExpired(): boolean {
+        if (this._scannedDeadline === undefined) {
+            this._scannedDeadline = Date.now() + SCAN_LOGIN_CONFIRM_WINDOW_MS
+            return false
+        }
+        return Date.now() > this._scannedDeadline
+    }
+
     async requestLogin(authCode: string) {
         if (this.loginLoading) {
+            // loginLoading 是共享的「登录中」标志：密码登录、邮箱登录都会置位，而两个面板
+            // 同时挂载、只靠 display 切换。此刻直接 return 就等于把一枚**已经被手机确认掉**
+            // 的授权码丢进黑洞：authed 分支不再安排任何轮询，页面就永久停在二维码上，而
+            // 手机显示「已授权」—— 正是这次改动要消灭的那个形态。丢掉这一轮重新扫。
+            console.warn('[login] scan-login redeem skipped: another login is in flight; restarting scan flow')
+            this.restartScanLogin()
+            return
+        }
+        // 兑换必须同时出示 auth_code 与申请这张二维码时拿到的 poll_secret。缺少或不匹配
+        // 时服务端一律折叠成 err.server.user.auth_code_not_found —— 与「授权码不存在」
+        // 完全同形，无法从响应上区分。所以没有密钥时就别发这个只可能 404 的请求，直接重来。
+        //
+        // 注意：密钥不对**不会**消费掉授权码 —— 服务端的密钥校验排在 Consume 之前就 return
+        // 了（octo-server modules/user/api.go:2407 vs :2413），对接文档也写明「poll_secret
+        // 错误或缺失不会消费有效授权码」。所以这里的收益不是「保住授权码」，而是省掉一次
+        // 必然失败的往返、并让流程立刻进入可恢复状态。
+        const pollSecret = this.pollSecret
+        if (!pollSecret) {
+            console.warn('[login] scan-login redeem without poll_secret; re-minting QR')
+            this.restartScanLogin()
             return
         }
         this.loginLoading = true
         this.notifyListener()
+        let resp: unknown
         try {
-            const resp = await WKApp.apiClient.post(`user/login_authcode/${authCode}`);
-            if (resp) {
-                this.loginSuccess(resp)
-            }
+            resp = await WKApp.apiClient.post(`user/login_authcode/${encodeURIComponent(authCode)}`, undefined, {
+                param: { poll_secret: pollSecret, flag: WEB_DEVICE_FLAG },
+            })
         } catch (error) {
-            console.error('Login failed:', error)
-        } finally {
             this.loginLoading = false
-            this.notifyListener()
+            if (isScanLoginDisabledError(error)) {
+                // 兑换窗口内运维关掉了总开关。重来也没有意义。
+                this.handleScanLoginDisabled()
+                return
+            }
+            // auth_code 只能成功兑换一次。失败（含 auth_code_not_found、poll_secret 不
+            // 匹配、网络超时后结果未知）之后必须丢掉整套 uuid / poll_secret / auth_code
+            // 重新扫码，既不能重试同一码，也不能静默停在二维码页 —— 那样手机端显示
+            // 「已授权」而页面永远不动，用户只能自己刷新。
+            console.warn('[login] scan-login redeem failed; restarting scan flow', redactedErrorLabel(error))
+            this.restartScanLogin()
+            return
         }
+        this.loginLoading = false
+        if (!resp) {
+            // 2xx 但空响应：兑换结果不确定，而授权码已经被消费。服务端可能已经签发了
+            // token 并更新 IM 状态，但这条响应里拿不到，重试同一码只会 not_found。
+            console.warn('[login] scan-login redeem returned an empty response; restarting scan flow')
+            this.restartScanLogin()
+            return
+        }
+        // loginSuccess 刻意在 try 之外：它内部会写 token/loginInfo，再碰 localStorage、
+        // 起 space/my 预检。一旦它抛（响应字段不合契约、嵌入环境里 storage 被禁），放在
+        // 同一个 try 里就会被当成「兑换失败」去重铸二维码 —— 那时 token 可能已经写进去了，
+        // 用户落在一个半登录态上，而页面在铸新码。
+        try {
+            this.loginSuccess(resp)
+        } catch (error) {
+            // 只打日志是不够的：走到这里时 loginStatus 还是 authed、uuid/qrcode 都还在、
+            // autoRefresh 仍为 true，于是页面显示一张看起来正常的二维码，没有报错也没有
+            // 「点击刷新」覆盖层，而轮询早已停止 —— 又一个只能整页刷新的冻结页。
+            //
+            // 用「这次响应里的 token 有没有真的写进 loginInfo」来区分两种情况，比看
+            // loginInfo 里有没有 token 更准（避免把上一段会话的残留 token 误判成成功）：
+            //   - 没写进去 → applyLoginResp 的字段校验没过，登录根本没发生。旧授权码已被
+            //     消费，唯一出路是重新扫码。
+            //   - 写进去了 → 登录已经生效，失败发生在后续步骤（storage 被禁、space 预检）。
+            //     此时回滚扫码流程会把一个已登录会话变成半登录态，只能继续往前走。
+            console.error('[login] scan-login redeemed but post-login handling failed',
+                error instanceof Error ? error.message : redactedErrorLabel(error))
+            const respToken = (resp as { token?: unknown }).token
+            const tokenApplied = typeof respToken === 'string' && respToken !== ''
+                && WKApp.loginInfo?.token === respToken
+            if (!tokenApplied) {
+                this.restartScanLogin()
+                return
+            }
+            try {
+                WKApp.endpoints.callOnLogin()
+            } catch (e) {
+                console.error('[login] callOnLogin after failed post-login handling also failed',
+                    e instanceof Error ? e.message : 'unknown error')
+            }
+        }
+        this.notifyListener()
     }
 
     async requestLoginWithUsernameAndPwd(username: string, password: string) {
@@ -467,13 +713,25 @@ export class LoginVM extends ProviderListener {
             this.uuid = result.uuid
             // 与 uuid 同生共死：二维码轮换时密钥必须一起换，否则会拿旧密钥去轮询新 uuid。
             this.pollSecret = result.poll_secret
+            // 新码 = 新的确认窗口。expired 自然重铸那条路（advance 的 expired 分支直接转
+            // getUUID）不经过 resetQRCodeState，旧截止时间会活下来 —— 于是用户扫这张新码，
+            // 第一个 scanned 就被判超时、扫码被白白丢掉。在装配新会话的地方清才覆盖全部路径。
+            this._scannedDeadline = undefined
             this.qrcodeLoading = false
             this.qrcode = result.qrcode
             this.loginStatus = LoginStatus.waitScan
             this.notifyListener()
             this.advance()
-        }).catch(() => {
+        }).catch((error) => {
             if (session !== this._qrSession) return
+            if (isScanLoginDisabledError(error)) {
+                // 总开关关闭时 loginuuid 返 scan_login_disabled。把它当成普通铸码失败会
+                // 亮出「二维码已过期，点击刷新」—— 用户点一次再吃一次 400，既误导原因
+                // 又形成一个人力驱动的死循环。走 disabled 收尾，隐藏入口。
+                this.qrcodeLoading = false
+                this.handleScanLoginDisabled()
+                return
+            }
             // 铸码失败必须交出一个可恢复的出口。此前只清 spinner：loginStatus 停在
             // getUUID、没有任何后续调度，而 login.tsx 只要 qrcode 非空就照渲染 —— 用户
             // 盯着一张已经被消费掉、永远完不成的二维码，没有报错也没有刷新入口，只能手动
@@ -502,6 +760,19 @@ export class LoginVM extends ProviderListener {
         this.uuid = undefined
         this.qrcode = undefined
         this.pollSecret = undefined
+        // 截止时间属于「这一张二维码」的状态。留着会让新码继承旧码的剩余窗口，扫完
+        // 立刻被判超时。（新码铸成时也会清一次，见 requestUUID —— 走 expired 自然重铸
+        // 那条路不经过这里。）
+        this._scannedDeadline = undefined
+        this.uid = undefined
+        // 递增 _qrSession 的同时必须交出 qrcodeLoading 的所有权。
+        //
+        // 在途的 loginuuid 请求落地时会在会话代号处提前 return —— 那条 return 在
+        // `qrcodeLoading = false` 之前，所以它不会再清这个标志。而 requestUUID 开头有
+        // `if (this.qrcodeLoading) return`：标志一旦留在 true，紧接着的重铸会被自己挡住，
+        // 页面停在一个转不完的 spinner 上（qrcode 已被清空），连「二维码已过期，点击刷新」
+        // 也发不出任何请求，只能整页刷新。
+        this.qrcodeLoading = false
     }
 
     // 轮训登录状态
@@ -554,6 +825,14 @@ export class LoginVM extends ProviderListener {
             }
         })
     }
+    /**
+     * 是否展示扫码者头像。
+     *
+     * 现服务端的 scanned 状态不再下发 uid（payload 只有 app_id / status），所以这里实际
+     * 恒为 falsy，登录页的头像位永远不会点亮。刻意保留而不是删掉 UI：uid 是否下发属于
+     * 服务端策略，这条判断本身仍然正确（有 uid 才展示），删掉反而会让将来恢复下发时
+     * 需要重新拼一遍展示链路。不得据此推进状态机。
+     */
     showAvatar() {
         return this.loginStatus === LoginStatus.scanned && this.uid
     }
