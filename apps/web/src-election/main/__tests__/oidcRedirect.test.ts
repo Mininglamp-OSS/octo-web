@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  decideLogoutWindowNavigation,
   isTrustedSenderUrl,
   classifyOidcNavigation,
   isOidcAuthorizeNavigation,
@@ -479,6 +480,93 @@ describe('validateOpenExternalUrl', () => {
     ).toBe(true)
   })
 
+  it('categorizes the rejection reason so the main-process log can point at the right check', () => {
+    // ZB2 diagnostic ask: the generic "check VITE_OIDC_TRUSTED_ORIGINS" log
+    // used to point operators at the IdP list even when the missing entry
+    // was actually the post_logout_redirect_uri target — which is normally
+    // the web app origin, not the IdP. Distinguishing these is what lets the
+    // IPC handler emit a hint that actually names the correct env var entry.
+    expect(
+      validateOpenExternalUrl('https://attacker.example/logout?state=x', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'origin' })
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fattacker.example%2Fdone',
+        TRUSTED_ORIGINS,
+      ),
+    ).toEqual({ ok: false, reason: 'redirect-origin' })
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fapi.example.com%2Fa&post_logout_redirect_uri=https%3A%2F%2Fapi.example.com%2Fb',
+        TRUSTED_ORIGINS,
+      ),
+    ).toEqual({ ok: false, reason: 'redirect-duplicate' })
+    expect(
+      validateOpenExternalUrl('http://idp.example.com/logout', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'scheme' })
+    expect(
+      validateOpenExternalUrl('https://idp.example.com/authorize', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'path' })
+    expect(
+      validateOpenExternalUrl('https://idp.example.com/logout?exec=curl', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'query-unknown' })
+    expect(
+      validateOpenExternalUrl('https://user:pass@idp.example.com/logout', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'userinfo' })
+    expect(
+      validateOpenExternalUrl('https://idp.example.com/logout#/login', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'fragment' })
+    expect(
+      validateOpenExternalUrl('not a url', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'invalid-url' })
+    expect(
+      validateOpenExternalUrl('', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'not-string' })
+    expect(
+      validateOpenExternalUrl(42, TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'not-string' })
+  })
+
+  it('accepts a relative post_logout_redirect_uri (resolved against the end-session URL)', () => {
+    // A backend that emits a bare path as the return target is common on
+    // reverse-proxied deployments where the IdP and the web app share an
+    // origin. The renderer-side `safeEndSessionUrl` already accepts these,
+    // so refusing them here would create a desktop-only silent-fallback
+    // divergence that no browser QA would surface. Resolution against the
+    // end-session URL's own origin — which is already trusted by the
+    // allowlist check above — keeps the security posture identical.
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=%2Flogin',
+        TRUSTED_ORIGINS,
+      ).ok,
+    ).toBe(true)
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=%2F%2Fattacker.example%2Fdone',
+        TRUSTED_ORIGINS,
+      ).ok,
+    ).toBe(false) // protocol-relative → resolves to attacker.example, not the IdP
+  })
+
+  it('accepts redirect targets that are separately listed as a distinct trusted origin', () => {
+    // The typical split-origin deployment: IdP at sso.example.com, web app at
+    // app.example.com, API at api.example.com. This is the row the operator
+    // documentation used to omit — verified here so a future refactor cannot
+    // regress it without a test failure.
+    const TRUSTED = new Set([
+      'https://api.example.com',
+      'https://sso.example.com',
+      'https://app.example.com',
+    ])
+    expect(
+      validateOpenExternalUrl(
+        'https://sso.example.com/logout?id_token_hint=jwt&post_logout_redirect_uri=https%3A%2F%2Fapp.example.com%2Flogin',
+        TRUSTED,
+      ).ok,
+    ).toBe(true)
+  })
+
   it('rejects userinfo, fragments, and unknown query params', () => {
     // Embedded credentials would be leaked into the OS URL handler + logs.
     expect(validateOpenExternalUrl('https://user:pass@idp.example.com/oauth2/end_session').ok).toBe(false)
@@ -543,5 +631,78 @@ describe('validateOidcHttpRequest provider path allowlist', () => {
       { url: `${API}/v1/auth/oidc/aegis:1/logout`, method: 'POST' },
       API,
     ).ok).toBe(false)
+  })
+})
+
+describe('decideLogoutWindowNavigation', () => {
+  // Represents a typical desktop deployment with a federated IdP where the
+  // hidden logout window may traverse: sso.example.com (initial end-session)
+  // → login.microsoftonline.com (federation hop) → app.example.com (return
+  // target). front-channel logout iframes belonging to OTHER RPs
+  // (rp-other.example.com) are legitimately loaded as subframes and must not
+  // trip the guard.
+  const TRUSTED = new Set([
+    'https://sso.example.com',
+    'https://login.microsoftonline.com',
+    'https://app.example.com',
+  ])
+
+  it('allows any subframe navigation regardless of origin', () => {
+    // Front-channel logout: an unrelated RP's iframe must not block or be
+    // blocked. preventDefault() on will-redirect cancels the entire top-level
+    // navigation, so subframe blocking would abort the real logout flow.
+    expect(decideLogoutWindowNavigation({
+      url: 'https://rp-other.example.com/frontchannel/logout',
+      isMainFrame: false,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+    expect(decideLogoutWindowNavigation({
+      url: 'https://attacker.example.com/anything',
+      isMainFrame: false,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+  })
+
+  it('allows a top-level navigation to any trusted origin', () => {
+    expect(decideLogoutWindowNavigation({
+      url: 'https://sso.example.com/oauth2/end_session?id_token_hint=jwt',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+    // Federation hop: also allowed if listed.
+    expect(decideLogoutWindowNavigation({
+      url: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/logout',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+    // post_logout_redirect_uri target hop.
+    expect(decideLogoutWindowNavigation({
+      url: 'https://app.example.com/login',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+  })
+
+  it('blocks a top-level navigation to an untrusted origin and reports the origin', () => {
+    // The block payload names the origin (never the query) so the main-process
+    // log can tell the operator exactly which entry is missing from
+    // VITE_OIDC_TRUSTED_ORIGINS without leaking id_token_hint into stdout.
+    expect(decideLogoutWindowNavigation({
+      url: 'https://attacker.example.com/logout?id_token_hint=jwt',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({
+      action: 'block',
+      reason: 'untrusted-origin',
+      origin: 'https://attacker.example.com',
+    })
+  })
+
+  it('blocks a top-level navigation to an unparseable URL', () => {
+    expect(decideLogoutWindowNavigation({
+      url: 'not a url',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'block', reason: 'not-a-url' })
   })
 })

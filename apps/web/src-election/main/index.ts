@@ -40,7 +40,7 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
-import { classifyOidcNavigation, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
+import { classifyOidcNavigation, decideLogoutWindowNavigation, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 import { createTrustedShellDocumentTracker } from "./trustedShell";
 
 let forceQuit = false;
@@ -270,11 +270,54 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
   // in a browser/Web page after desktop logout.
   const validated = validateOpenExternalUrl(url, OIDC_END_SESSION_ORIGINS);
   if (validated.ok === false) {
+    // Log the categorized reason + the URL's origin/pathname ONLY. The
+    // end-session URL legitimately carries id_token_hint / logout_hint (JWTs)
+    // as query values, so slicing the raw URL into the log — as the previous
+    // implementation did — would leak the header and leading payload of a
+    // real ID token every time an operator hit this misconfiguration.
+    let rejectedOrigin: string | undefined;
+    let rejectedPathname: string | undefined;
+    if (typeof url === "string") {
+      try {
+        const parsed = new URL(url);
+        rejectedOrigin = parsed.origin;
+        rejectedPathname = parsed.pathname;
+      } catch { /* keep undefined; the invalid-url reason already covers this */ }
+    }
+    const hint = (() => {
+      switch (validated.reason) {
+        case "origin":
+          return "IdP origin is missing from VITE_OIDC_TRUSTED_ORIGINS";
+        case "redirect-origin":
+          return "post_logout_redirect_uri origin is missing from VITE_OIDC_TRUSTED_ORIGINS (this is the web app origin, not the IdP)";
+        case "redirect-duplicate":
+          return "URL carries duplicate redirect parameters — reject rather than guess which value the IdP will follow";
+        case "redirect-parse":
+          return "redirect parameter is not a valid URL";
+        case "scheme":
+          return "end-session endpoint must be https (RFC 8252 §8.10)";
+        case "path":
+          return "path does not end in an OIDC end-session segment (logout/end_session/signout/…)";
+        case "query-unknown":
+          return "URL carries an unknown query parameter — extend OIDC_END_SESSION_QUERY_ALLOWLIST intentionally, or fix the caller";
+        case "userinfo":
+          return "URL carries embedded credentials";
+        case "fragment":
+          return "URL carries a fragment";
+        case "invalid-url":
+          return "URL is malformed";
+        case "not-string":
+          return "value is not a non-empty string";
+        default:
+          return "shape validation failed";
+      }
+    })();
     console.warn(
-      "[oidc] IPC_OIDC_OPEN_EXTERNAL rejected: URL failed scheme/origin/shape validation. " +
-      "If this is a user-initiated logout, check that VITE_OIDC_TRUSTED_ORIGINS " +
-      "includes all IdP origins. Falling back to local logout.",
-      typeof url === "string" ? url.slice(0, 200) : `(type: ${typeof url})`,
+      "[oidc] IPC_OIDC_OPEN_EXTERNAL rejected. Falling back to local logout. " +
+        `reason=${validated.reason}; hint=${hint}; ` +
+        `origin=${rejectedOrigin ?? "(unparseable)"}; ` +
+        `pathname=${rejectedPathname ?? "(unparseable)"}; ` +
+        `type=${typeof url}`,
     );
     return { ok: false as const };
   }
@@ -284,7 +327,7 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
     const redirect = endSession.searchParams.get("post_logout_redirect_uri") ||
       endSession.searchParams.get("redirect_uri");
     let redirectURL: URL | undefined;
-    try { if (redirect) redirectURL = new URL(redirect); } catch { /* no redirect target */ }
+    try { if (redirect) redirectURL = new URL(redirect, endSession.href); } catch { /* no redirect target */ }
 
     logoutWindow = new BrowserWindow({
       show: false,
@@ -307,21 +350,50 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
         if (timeout) clearTimeout(timeout);
         resolve(ok);
       };
-      const guardLogoutNavigation = (navigationEvent: Electron.Event, navigatedURL: string) => {
-        try {
-          const navigationOrigin = new URL(navigatedURL).origin;
-          if (!OIDC_END_SESSION_ORIGINS.has(navigationOrigin)) {
-            navigationEvent.preventDefault();
-          }
-        } catch {
-          navigationEvent.preventDefault();
+      // Guard the TOP-LEVEL navigation only. Front-channel logout iframes
+      // embedded by federated OPs (Keycloak, Auth0, Okta, Azure AD) legitimately
+      // load cross-origin subframes to notify each RP; blocking those would
+      // (a) sever other RPs' single-logout and (b) fail-load the whole flow
+      // because preventDefault() on `will-redirect` aborts the entire
+      // navigation, not just the redirect. Electron's `will-redirect` carries
+      // an `isMainFrame` argument for exactly this reason; `will-navigate`
+      // fires only on the main frame today but we still take the argument so
+      // a future Electron widen is not silently unsafe.
+      const guardLogoutNavigation = (
+        navigationEvent: Electron.Event,
+        navigatedURL: string,
+        isMainFrame: boolean,
+      ) => {
+        const decision = decideLogoutWindowNavigation({
+          url: navigatedURL,
+          isMainFrame,
+          trustedOrigins: OIDC_END_SESSION_ORIGINS,
+        });
+        if (decision.action === "allow") return;
+        // Origin-only diagnostic — never log query values (id_token_hint).
+        if (decision.reason === "untrusted-origin") {
+          console.warn(
+            "[oidc] logout window blocked top-level navigation to untrusted origin. " +
+              "Add this origin to VITE_OIDC_TRUSTED_ORIGINS if it is a legitimate " +
+              "intermediate hop or the post_logout_redirect_uri target. " +
+              `origin=${decision.origin}`,
+          );
+        } else {
+          console.warn("[oidc] logout window blocked unparseable top-level navigation");
         }
+        navigationEvent.preventDefault();
       };
       // End-session flows are redirect-driven (IdP issues 302/303); will-navigate
       // only fires for renderer-initiated navigations. Register both so HTTP
-      // redirects to untrusted origins are blocked the same way.
-      logoutWindow!.webContents.on("will-navigate", guardLogoutNavigation);
-      logoutWindow!.webContents.on("will-redirect", guardLogoutNavigation);
+      // redirects to untrusted origins are blocked the same way. The two
+      // events have different arg positions for `isMainFrame`, hence the
+      // explicit adaptors.
+      logoutWindow!.webContents.on("will-navigate", (event, navURL, isMainFrame) => {
+        guardLogoutNavigation(event, navURL, isMainFrame);
+      });
+      logoutWindow!.webContents.on("will-redirect", (event, navURL, _isInPlace, isMainFrame) => {
+        guardLogoutNavigation(event, navURL, isMainFrame);
+      });
       logoutWindow!.webContents.on("did-navigate", (_event, navigatedURL) => {
         if (!redirectURL) {
           settle(true);
@@ -337,7 +409,20 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
       logoutWindow!.webContents.once("did-finish-load", () => {
         if (!redirectURL) settle(true);
       });
-      logoutWindow!.webContents.once("did-fail-load", () => settle(false));
+      // Filter to main-frame failures and ignore -3 (ERR_ABORTED, fired for
+      // every intercepted navigation and for benign renderer aborts). Without
+      // the isMainFrame gate, a front-channel logout iframe failing to load —
+      // e.g. because its RP origin isn't in this window's allowlist — would
+      // settle(false) and destroy the window mid-flow, cutting off the real
+      // main-frame logout request. Same shape as the OIDC login window's
+      // did-fail-load handler further down this file.
+      logoutWindow!.webContents.on(
+        "did-fail-load",
+        (_event, errorCode, _errorDescription, _validatedURL, isMainFrame) => {
+          if (!isMainFrame || errorCode === -3) return;
+          settle(false);
+        },
+      );
       // A timeout means the IdP logout was not confirmed. Report failure so
       // the renderer can complete local logout without claiming that the
       // provider session was cleared.

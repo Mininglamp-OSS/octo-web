@@ -47,7 +47,12 @@ if (!this._deviceFlagMigrationHandled && this.isPC && hasDeviceFlagMismatch) {
 - [ ] 打包 macOS：升级安装后首次启动确认被登出一次，重新登录后第二次启动不再登出。
 - [ ] 打包 Windows：同上，另外验证 `file://` URL 的 `hostname` 归一化对 IPC 通道无影响。
 - [ ] Tauri：确认 `deviceFlag` 判定路径与 Electron 一致。
-- [ ] 确认构建时已设置 `VITE_OIDC_TRUSTED_ORIGINS`，值包含所有外部 IdP origin（如 `https://sso.company.com`）；验证：产物 `build/electron-config.json` 的 `oidcEndSessionOrigins` 数组不仅含 API origin，还含完整 IdP origin 列表。若该数组只有一条（API origin），则外部 IdP 部署时 OIDC 退出会静默回退到本地退出，IdP session 不会被终止。
+- [ ] 确认构建时已设置 `VITE_OIDC_TRUSTED_ORIGINS`（构建期变量，值会写入产物 `build/electron-config.json.oidcEndSessionOrigins`，运行时改不生效）。该白名单必须覆盖**三类** origin，缺一即在打包桌面端触发静默回退：
+  1. **IdP end-session origin**：每个可能接收 `/logout`、`/end_session`、`/signout` 请求的 IdP 主机（如 `https://sso.company.com`）；
+  2. **`post_logout_redirect_uri` 目标 origin**：IdP 清完会话后重定向回来的地址所属 origin，通常是 Web 应用 origin，可能与 `VITE_API_URL` 及 IdP 主机都不同（如 `https://app.company.com`）。相对路径（如 `/login`）会按 end-session URL 自身的 origin 解析，无需额外配置；
+  3. **联邦流程中间跳转 origin**：主进程现已拦截 `will-redirect` 到非白名单 origin，Microsoft/Auth0 等多域 IdP 的中间跳（如 `login.microsoftonline.com → login.live.com`）也必须列出。
+
+  API origin（`VITE_API_URL`）会自动加入白名单，无需重复填写。验证：产物 `build/electron-config.json` 的 `oidcEndSessionOrigins` 数组包含上述三类 origin；若打包端登出静默回退，主进程控制台会输出 `[oidc] IPC_OIDC_OPEN_EXTERNAL rejected` 并标注具体拒因（`origin` / `redirect-origin` / `redirect-duplicate` / `path` 等）。
 - [ ] OIDC 全流程（登录 / 绑定 / 登出）在打包环境端到端通过。
 - [ ] IdP 停留 > 5 分钟后完成登录，客户端不被卡在远端页面。
 - [ ] IdP 报错 / 取消登录 / 密码到期弹窗等场景，客户端能返回本地登录界面。

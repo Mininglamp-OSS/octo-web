@@ -70,4 +70,46 @@ describe("OIDC logout wiring", () => {
     // Scheme gate: end-session URL must be https (RFC 8252 §8.10).
     expect(source).toMatch(/parsed\.protocol !== "https:"/);
   });
+
+  it("filters the logout window navigation guard to the main frame", () => {
+    // ZB3(a) regression: preventDefault() on `will-redirect` cancels the
+    // entire top-level navigation, and both `will-redirect` and
+    // `did-fail-load` carry an `isMainFrame` argument. If either listener
+    // trips on a front-channel logout iframe (federated OPs load these
+    // cross-origin), the whole logout flow settles(false) and the window is
+    // destroyed mid-flow — cutting off the real main-frame end-session and
+    // making the logout appear to succeed while other RPs' single-logout is
+    // severed. Assert both listeners either delegate to the pure decision
+    // helper (whose main-frame gate is unit-tested) or explicitly filter
+    // isMainFrame themselves.
+    const source = readRepoFile("apps/web/src-election/main/index.ts");
+    // Guard delegates the isMainFrame gate to the pure helper.
+    expect(source).toContain("decideLogoutWindowNavigation");
+    // will-navigate uses arg-position (event, url, isMainFrame).
+    expect(source).toMatch(
+      /"will-navigate",\s*\(\s*event\s*,\s*navURL\s*,\s*isMainFrame\s*\)\s*=>/,
+    );
+    // will-redirect uses arg-position (event, url, isInPlace, isMainFrame).
+    expect(source).toMatch(
+      /"will-redirect",\s*\(\s*event\s*,\s*navURL\s*,\s*_isInPlace\s*,\s*isMainFrame\s*\)\s*=>/,
+    );
+    // did-fail-load filters both !isMainFrame and errorCode === -3 (aborted)
+    // to match the pattern already used for the OIDC login window.
+    expect(source).toMatch(/if\s*\(\s*!isMainFrame\s*\|\|\s*errorCode\s*===\s*-3\s*\)\s*return\s*;/);
+  });
+
+  it("distinguishes rejection reasons in the logout IPC log", () => {
+    // ZB2 diagnostic ask: the previous handler emitted one generic warning
+    // for every failure mode, so an operator whose missing entry was the
+    // post_logout_redirect_uri target got pointed at the IdP list.
+    // The rewritten log switches on the categorized reason returned by
+    // validateOpenExternalUrl; grep for the two distinguishing hints so a
+    // future refactor cannot silently drop them.
+    const source = readRepoFile("apps/web/src-election/main/index.ts");
+    expect(source).toContain('case "origin":');
+    expect(source).toContain('case "redirect-origin":');
+    expect(source).toContain("post_logout_redirect_uri origin is missing");
+    // Never log the raw URL — end-session URLs carry id_token_hint/logout_hint.
+    expect(source).not.toMatch(/url\.slice\(0,\s*200\)/);
+  });
 });

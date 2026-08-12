@@ -299,14 +299,23 @@ export function isTrustedSenderUrl(
  *
  *   - https only (RFC 8252 §8.10 disallows plaintext for the end-session
  *     endpoint; anyone deploying an OIDC IdP over http:// is misconfigured
- *     and we refuse to relay to the OS handler for them either way);
+ *     and we refuse to relay to a hidden window with app cookies either way);
  *   - no userinfo, no fragment (both are common obfuscation vectors);
- *   - path segment ending in `end_session`, `endsession`, `logout`, or
- *     `signout` (case-insensitive) — matches every real OIDC IdP we
- *     integrate with (Keycloak, Auth0, Azure AD, Okta, ForgeRock);
+ *   - path segment ending in one of `OIDC_END_SESSION_PATH_SUFFIXES` — matches
+ *     every real OIDC IdP we integrate with (Keycloak, Auth0, Azure AD, Okta,
+ *     ForgeRock);
  *   - query params limited to the standard OIDC end-session set (see
  *     https://openid.net/specs/openid-connect-rpinitiated-1_0.html): any
- *     unexpected parameter is treated as smuggling and rejected.
+ *     unexpected parameter is treated as smuggling and rejected;
+ *   - every redirect-bearing param must resolve to an origin in the allowlist
+ *     (or be a relative path, resolved against the end-session URL's own
+ *     origin, which is already in the allowlist).
+ *
+ * On rejection returns `{ok:false, reason}` so the IPC handler can log which
+ * specific check tripped — the `origin` vs `redirect-origin` distinction
+ * points operators at the correct allowlist entry to add rather than the
+ * generic "check VITE_OIDC_TRUSTED_ORIGINS" that used to be emitted for
+ * every failure mode.
  *
  * Kept as a pure function so the URL-shape allowlist is covered by tests
  * without spinning up Electron. If a new IdP integration needs a different
@@ -314,6 +323,26 @@ export function isTrustedSenderUrl(
  * and add a test case — do NOT loosen the scheme, userinfo, or fragment
  * checks.
  */
+/**
+ * Categorized reason for rejecting a URL passed to IPC_OIDC_OPEN_EXTERNAL.
+ * Distinguishes the "origin missing from the allowlist" cases from generic
+ * shape violations so the main-process log at the call site can point the
+ * operator at the specific check that failed. Never surfaced beyond the
+ * main-process console — callers still only observe {ok:false}.
+ */
+export type OpenExternalRejectReason =
+  | 'not-string'
+  | 'invalid-url'
+  | 'scheme'
+  | 'origin'
+  | 'userinfo'
+  | 'fragment'
+  | 'path'
+  | 'query-unknown'
+  | 'redirect-duplicate'
+  | 'redirect-parse'
+  | 'redirect-origin'
+
 const OIDC_END_SESSION_PATH_SUFFIXES = [
   'end_session',
   'endsession',
@@ -338,58 +367,120 @@ const OIDC_END_SESSION_QUERY_ALLOWLIST = new Set([
   'return_url',
   'returnUrl',
 ])
+const OIDC_END_SESSION_REDIRECT_KEYS = [
+  'post_logout_redirect_uri',
+  'redirect_uri',
+  'returnTo',
+  'return_to',
+  'return_url',
+  'returnUrl',
+] as const
 export function validateOpenExternalUrl(
   value: unknown,
   trustedOrigins?: ReadonlySet<string>,
-): { ok: true; value: string } | { ok: false } {
-  if (typeof value !== 'string' || value === '') return { ok: false }
+): { ok: true; value: string } | { ok: false; reason: OpenExternalRejectReason } {
+  if (typeof value !== 'string' || value === '') return { ok: false, reason: 'not-string' }
   let parsed: URL
-  try { parsed = new URL(value) } catch { return { ok: false } }
+  try { parsed = new URL(value) } catch { return { ok: false, reason: 'invalid-url' } }
   // https only. See doc comment above for why http:// is refused.
-  if (parsed.protocol !== 'https:') return { ok: false }
+  if (parsed.protocol !== 'https:') return { ok: false, reason: 'scheme' }
   // This is a main-process security boundary. Shape checks alone would still
   // allow https://attacker.example/logout to be loaded in the default session
   // with application cookies. The optional argument keeps this pure helper
   // backwards-compatible for non-Electron callers; the IPC handler always
   // supplies the build-time allowlist.
-  if (trustedOrigins && !trustedOrigins.has(parsed.origin)) return { ok: false }
-  // Reject embedded credentials — shell.openExternal would leak them into
-  // the OS handler and system logs.
-  if (parsed.username !== '' || parsed.password !== '') return { ok: false }
+  if (trustedOrigins && !trustedOrigins.has(parsed.origin)) return { ok: false, reason: 'origin' }
+  // Reject embedded credentials — they would leak into the hidden logout
+  // window's request URL and be echoed into main-process logs.
+  if (parsed.username !== '' || parsed.password !== '') return { ok: false, reason: 'userinfo' }
   // Fragments are never used by RP-initiated logout; disallow them so a
   // renderer cannot smuggle a client-side URL (e.g. `#/login`) into the
   // launched browser.
-  if (parsed.hash !== '') return { ok: false }
+  if (parsed.hash !== '') return { ok: false, reason: 'fragment' }
   // Path shape: must end in a known end-session segment. `URL.pathname` is
   // already normalized (no `..`, no double slashes), so a case-insensitive
   // suffix match after stripping the trailing slash is safe.
   const path = parsed.pathname.replace(/\/$/, '').toLowerCase()
   const segments = path.split('/')
   const lastSegment = segments[segments.length - 1] ?? ''
-  if (!OIDC_END_SESSION_PATH_SUFFIXES.some((s) => lastSegment === s)) return { ok: false }
+  if (!OIDC_END_SESSION_PATH_SUFFIXES.some((s) => lastSegment === s)) return { ok: false, reason: 'path' }
   // Query allowlist. Unknown parameters fail closed — see doc comment.
   // Materialize the iterator to an array so tsconfig.e.json (which targets
   // an older ES version without downlevelIteration) can consume it.
   const searchKeys: string[] = []
   parsed.searchParams.forEach((_v, key) => { searchKeys.push(key) })
   for (const key of searchKeys) {
-    if (!OIDC_END_SESSION_QUERY_ALLOWLIST.has(key)) return { ok: false }
+    if (!OIDC_END_SESSION_QUERY_ALLOWLIST.has(key)) return { ok: false, reason: 'query-unknown' }
   }
   if (trustedOrigins) {
-    for (const key of ['post_logout_redirect_uri', 'redirect_uri', 'returnTo', 'return_to', 'return_url', 'returnUrl']) {
+    for (const key of OIDC_END_SESSION_REDIRECT_KEYS) {
       const redirectValues = parsed.searchParams.getAll(key)
       if (redirectValues.length === 0) continue
       // Duplicate redirect params are ambiguous: the allowlist check reads the
       // first value, but some IdPs follow the last. Reject rather than guess.
-      if (redirectValues.length > 1) return { ok: false }
-      try {
-        if (!trustedOrigins.has(new URL(redirectValues[0]).origin)) return { ok: false }
-      } catch {
-        return { ok: false }
+      if (redirectValues.length > 1) return { ok: false, reason: 'redirect-duplicate' }
+      // Resolve against the end-session URL so a relative redirect value
+      // (e.g. "/login") is treated as returning to the IdP's own origin —
+      // which is already trusted by the allowlist check above. This closes
+      // the divergence with the renderer-side safeEndSessionUrl (which
+      // accepts relative values) that otherwise appeared only under
+      // desktop-shell logout.
+      let resolvedRedirect: URL
+      try { resolvedRedirect = new URL(redirectValues[0], parsed.href) } catch {
+        return { ok: false, reason: 'redirect-parse' }
       }
+      if (!trustedOrigins.has(resolvedRedirect.origin)) return { ok: false, reason: 'redirect-origin' }
     }
   }
   return { ok: true, value: parsed.toString() }
+}
+
+/**
+ * Decide whether a top-level navigation inside the hidden OIDC logout window
+ * should be allowed to proceed. Extracted from the IPC handler in main/index.ts
+ * so both the main-frame filter and the origin allowlist are covered without
+ * an Electron BrowserWindow.
+ *
+ * The hidden logout window is preferably navigated only across trusted origins
+ * (the IdP host and, on the last hop, the `post_logout_redirect_uri` target).
+ * Federated OPs (Keycloak / Auth0 / Okta / Azure AD) load front-channel logout
+ * iframes on RP origins that are NOT in this window's allowlist — those must
+ * be permitted, because:
+ *
+ *   - preventDefault() on `will-redirect` cancels the ENTIRE navigation, not
+ *     just the current hop (Electron docs, `will-redirect`);
+ *   - blocking subframes would sever other RPs' single-logout without
+ *     protecting this window (subframes in a hidden 1x1 sandbox with no
+ *     interaction are not an attack surface);
+ *   - `did-fail-load` would then fire for the subframe and — before this
+ *     patch — would settle(false) and destroy the window mid-flow.
+ *
+ * Return { action: "block", reason: "not-a-url" | "untrusted-origin", origin? }
+ * lets the caller emit a specific diagnostic that names the actual origin
+ * needed in VITE_OIDC_TRUSTED_ORIGINS (never any query values — those may
+ * carry id_token_hint).
+ */
+export type LogoutNavigationDecision =
+  | { action: 'allow' }
+  | { action: 'block'; reason: 'not-a-url' }
+  | { action: 'block'; reason: 'untrusted-origin'; origin: string }
+
+export function decideLogoutWindowNavigation(input: {
+  url: string
+  isMainFrame: boolean
+  trustedOrigins: ReadonlySet<string>
+}): LogoutNavigationDecision {
+  if (!input.isMainFrame) return { action: 'allow' }
+  let parsedOrigin: string
+  try {
+    parsedOrigin = new URL(input.url).origin
+  } catch {
+    return { action: 'block', reason: 'not-a-url' }
+  }
+  if (!input.trustedOrigins.has(parsedOrigin)) {
+    return { action: 'block', reason: 'untrusted-origin', origin: parsedOrigin }
+  }
+  return { action: 'allow' }
 }
 
 /**
