@@ -31,6 +31,12 @@ describe('access-request API (screen 4c, contract 4 — pull-based, bare-relativ
     })
     // Zero Bots preserves the legacy request shape: an undefined body, never `{ botUids: [] }`.
     expect(api.calls[0].body).toBeUndefined()
+    expect(api.calls[0].config).toMatchObject({ suppressSpaceId: true })
+  })
+
+  it('uses an explicit supplied Space instead of suppression for legacy by-space callers', async () => {
+    await requestAccess('d_1', { spaceId: 's_home' })
+    expect(api.calls[0].config).toMatchObject({ headers: { 'X-Space-Id': 's_home' } })
   })
 
   it('submits a de-duplicated Bot snapshot body only when Bots are present', async () => {

@@ -52,7 +52,17 @@ import MessageInput, {
   MessageInputContext,
   EditorContentBlock,
 } from "../MessageInput";
-import { SendResultDetail } from "../MessageInput/sendFlow";
+import {
+  SendResultDetail,
+  SendDraftSnapshot,
+  SendProgressSnapshot,
+  SendTargetSnapshot,
+  UnsentEditorBlock,
+} from "../MessageInput/sendFlow";
+import {
+  captureSendTarget,
+  type CapturedSendTarget,
+} from "./sendTarget";
 import {
   tryConsumeInitialCompose,
   type ComposeHost,
@@ -108,7 +118,11 @@ import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
-import { shouldClearDraftAfterSend } from "../../Utils/draftLifecycle";
+import {
+  DraftPersistenceSource,
+  resolveDraftAfterSend,
+  resolveDraftToPersist,
+} from "../../Utils/draftLifecycle";
 import {
   isSuccessfulSendAck,
   messageStatusWaitResult,
@@ -128,6 +142,7 @@ import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPrev
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
+  countSendPlanParts,
   finishRichTextMixedSend,
   isImageFileForRichTextMixed,
 } from "./richTextMixedSend";
@@ -350,6 +365,7 @@ export class Conversation
   private _unsubscribeChannelInfoListener?: () => void;
   private draftSaveGeneration = 0;
   private latestSavedDraft = "";
+  private latestSavedDraftSource: DraftPersistenceSource = "empty";
   private _addAttachmentFn?: (
     files: File[],
     source?: "paste" | "upload"
@@ -633,17 +649,23 @@ export class Conversation
    * 发送媒体消息并等待上传完成 + 服务端 ack 后才返回。
    * 保证多条消息严格顺序发送，且本地回显排序正确（每条消息的 messageSeq 确定后再发下一条）。
    * 超时 30s 自动 resolve（避免网络断开时永久阻塞）。
+   *
+   * 返回值语义 (octo-web#1280)：**是否已入队**（本地气泡已出现在消息列表），
+   * 不是「服务端已确认」。等待 ack 只为排序；ack 失败/超时的消息会带失败标记与
+   * 重发入口（Messages/Base + MediaMessageUploadTask.restart），若把它当失败上报，
+   * MessageInput 会把已经可见的内容塞回输入框（#1280 的主要投诉）。
    */
   private async sendMediaAndWait(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
+    onEnqueued?: () => void
   ): Promise<boolean> {
     // 非媒体消息（或无文件需上传）无需等待上传，直接发送并等 ack
     if (
       !(content instanceof MediaMessageContent) ||
       !(content as MediaMessageContent).file
     ) {
-      return this.sendTextAndWaitAck(content, channel);
+      return this.sendTextAndWaitAck(content, channel, onEnqueued);
     }
 
     const TIMEOUT = 30_000;
@@ -721,13 +743,19 @@ export class Conversation
     WKSDK.shared().chatManager.addMessageStatusListener(ackListener);
 
     // 发送消息（内部会 addTask → task.start()，所有 listener 已就绪）
+    let enqueued = false;
     let message: Message;
     try {
       message = await this.sendMessage(content, channel);
     } catch (err) {
+      // 未入队：调用方据此保留草稿供重试。
       done(false);
       throw err;
     }
+    // 已入队：本地气泡已经出现在消息列表里，之后无论上传/ack 成功与否，
+    // 用户都能在气泡上重发，输入框不应再把这条内容拿回来 (octo-web#1280)。
+    enqueued = true;
+    onEnqueued?.();
     clientSeq = message.clientSeq;
 
     // sendMessage 返回后主动检查
@@ -777,7 +805,14 @@ export class Conversation
       }
     }
 
-    return promise;
+    // 等 upload+ack 结果（或超时）只为保证发送顺序；对外只告知「是否已入队」。
+    const delivered = await promise;
+    if (!delivered) {
+      console.warn(
+        "[Conversation] media message not confirmed (upload/ack failed or timed out); the bubble keeps its failure state and can be resent"
+      );
+    }
+    return enqueued;
   }
 
   /**
@@ -785,10 +820,14 @@ export class Conversation
    * 用于连续发送多条消息时保证本地回显顺序与服务端一致：
    * 每条消息拿到 messageSeq 后 order 被正确设置，再发下一条时 fillOrder 不会乱。
    * 超时 10s 自动 resolve（文本消息不需要上传，ack 应该很快回来）。
+   *
+   * 返回值语义同 sendMediaAndWait (octo-web#1280)：**是否已入队**。ack 超时
+   * （慢网/丢 ack）不再上报失败，否则已经发出去的文字会被塞回输入框。
    */
   private async sendTextAndWaitAck(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
+    onEnqueued?: () => void
   ): Promise<boolean> {
     const TIMEOUT = 10_000;
     let settled = false;
@@ -829,13 +868,18 @@ export class Conversation
     };
     WKSDK.shared().chatManager.addMessageStatusListener(statusListener);
 
+    let enqueued = false;
     let message: Message;
     try {
       message = await this.sendMessage(content, channel);
     } catch (err) {
+      // 未入队（例如发送前编码抛错）→ 调用方保留草稿供重试。
       done(false);
       throw err;
     }
+    // 已入队：气泡已在消息列表，ack 结果只影响气泡状态，不影响输入框 (#1280)。
+    enqueued = true;
+    onEnqueued?.();
     clientSeq = message.clientSeq;
 
     // fallback：检查暂存的 ack 或已处理的 status
@@ -856,7 +900,14 @@ export class Conversation
       }
     }
 
-    return promise;
+    // 等 ack（或超时）只为保证发送顺序；对外只告知「是否已入队」。
+    const delivered = await promise;
+    if (!delivered) {
+      console.warn(
+        "[Conversation] text message not acked (failed or timed out); the bubble keeps its failure state and can be resent"
+      );
+    }
+    return enqueued;
   }
 
   /**
@@ -882,7 +933,8 @@ export class Conversation
    */
   private async sendRichTextMixed(
     editorBlocks: EditorContentBlock[],
-    reply?: Reply
+    reply?: Reply,
+    onEnqueued?: () => void
   ): Promise<boolean> {
     const channel = this.channel();
     const contentBlocks: RichTextBlock[] = [];
@@ -995,7 +1047,7 @@ export class Conversation
       if (mentionEntities.length > 0) (mn as any).entities = mentionEntities;
       content.mention = mn;
     }
-    return this.sendTextAndWaitAck(content);
+    return this.sendTextAndWaitAck(content, undefined, onEnqueued);
   }
 
   scrollToBottom(animate?: boolean): void {
@@ -1360,8 +1412,11 @@ export class Conversation
     // 辅助 Thread 不覆盖主会话的全局附件守卫；否则开关侧栏会让主会话
     // 的待发送附件失去离开确认，或被侧栏草稿反向阻塞。
     if (!this.props.isAuxiliary) {
+      // 只保护「compose 已清空但本地气泡还没出现」的数据丢失窗口。消息一旦入队，
+      // 即使仍在等 upload/ack，也已有气泡承载失败与重试，不应再弹“未发送附件”确认。
       WKApp.shared.pendingAttachmentGuard = () =>
-        this.getPendingAttachments().length === 0;
+        this.getPendingAttachments().length === 0 &&
+        this.pendingPreEnqueueCount() === 0;
       WKApp.shared.pendingAttachmentGuardId = this._guardId;
     }
 
@@ -1524,11 +1579,29 @@ export class Conversation
     this.vm.releaseOpenConversationOwnership();
   }
 
+  private pendingPreEnqueueCount(): number {
+    return this.messageInputContext()?.pendingPreEnqueueCount?.() ?? 0;
+  }
+
+  private pendingSendText(): string {
+    return this.messageInputContext()?.pendingSendText?.() ?? "";
+  }
+
+  private pendingSendDrafts(): string[] {
+    return this.messageInputContext()?.pendingSendDrafts?.() ?? [];
+  }
+
   markConversationExtra() {
-    let draft = this.messageInputContext()?.text();
+    // 不要用空草稿覆盖「已消费但还没入队」的内容 (octo-web#1280 review)：
+    // 输入框在发送开始时就被清空，离开会话时这里读到的是空串。
+    const { draft, source } = resolveDraftToPersist({
+      liveDraft: this.messageInputContext()?.text() || "",
+      pendingSendText: this.pendingSendText(),
+    });
     this.draftSaveGeneration += 1;
-    this.latestSavedDraft = draft || "";
-    void this.updateConversationExtra(draft || "");
+    this.latestSavedDraft = draft;
+    this.latestSavedDraftSource = source;
+    void this.updateConversationExtra(draft);
   }
 
   updateConversationExtra(draft: string) {
@@ -1581,27 +1654,28 @@ export class Conversation
   async clearDraftAfterSend(
     sendDraftGeneration: number,
     remoteDraftAtSend: string,
-    draftAtSend: string
+    sentDraft: string
   ) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
-    if (
-      !shouldClearDraftAfterSend({
-        liveDraft: this.messageInputContext()?.text() || "",
-        draftAtSend,
-        remoteDraft: remoteExtra?.draft || "",
-        remoteDraftAtSend,
-        draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
-        latestSavedDraft: this.latestSavedDraft,
-      })
-    ) {
+    const pendingDrafts = this.pendingSendDrafts();
+    const nextDraft = resolveDraftAfterSend({
+      liveDraft: this.messageInputContext()?.text() || "",
+      remoteDraft: remoteExtra?.draft || "",
+      remoteDraftAtSend,
+      draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
+      latestSavedDraft: this.latestSavedDraft,
+      latestSavedDraftSource: this.latestSavedDraftSource,
+      sentDraft,
+      pendingDrafts: pendingDrafts.length > 0 ? pendingDrafts : [sentDraft],
+    });
+    if (nextDraft === undefined) {
       return;
     }
 
-    if (remoteExtra) {
-      remoteExtra.draft = "";
-    }
+    this.latestSavedDraft = nextDraft;
+    this.latestSavedDraftSource = nextDraft ? "pending" : "empty";
     try {
-      await this.updateConversationExtra("");
+      await this.updateConversationExtra(nextDraft);
     } catch (err) {
       console.warn("[Conversation] clear draft after send failed", err);
     }
@@ -2915,60 +2989,106 @@ export class Conversation
                           },
                         });
                       }}
+                      onCaptureSendTarget={() =>
+                        // 与 compose 同步取走 reply/edit 目标并收起横幅
+                        // (octo-web#1280)：排队发送不能再实时读 vm 上的状态。
+                        captureSendTarget<Message>({
+                          getReplyMessage: () => vm.currentReplyMessage,
+                          setReplyMessage: (m) => {
+                            vm.currentReplyMessage = m;
+                          },
+                          getHandlerType: () => vm.currentHandlerType,
+                          setHandlerType: (h) => {
+                            vm.currentHandlerType = h;
+                          },
+                        })
+                      }
+                      onCaptureSendDraft={() => ({
+                        generation: this.draftSaveGeneration,
+                        remoteDraft:
+                          this.vm.currentConversation?.remoteExtra?.draft || "",
+                      })}
                       onSend={async (
                         text: string,
                         mention?: MentionModel,
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
-                        editorBlocks?: EditorContentBlock[]
+                        editorBlocks?: EditorContentBlock[],
+                        sendTarget?: SendTargetSnapshot,
+                        sendDraft?: SendDraftSnapshot,
+                        sendProgress?: SendProgressSnapshot
                       ): Promise<boolean | SendResultDetail> => {
-                        // 返回值告诉 MessageInput 是否清空编辑器/附件：
-                        //   true  → 发送成功(或已消费)，清空草稿+附件；
-                        //   false → 发送失败，保留编辑器内容+图片引用供重试。
-                        // 关键：混排 (text+image) 上传失败时必须返回 false，否则
-                        // 用户整条消息会被同步清空丢失 (octo-web#227 Jerry-Xin P1)。
-                        const sendDraftGeneration = this.draftSaveGeneration;
+                        // 返回值告诉 MessageInput「已消费的 compose 是否保持消费」：
+                        //   true  → 消息已入队（本地气泡已在列表），输入框保持清空；
+                        //   false → 未入队，把内容还给输入框供重试。
+                        // 关键：混排 (text+image) 在入队前上传失败时必须返回 false，
+                        // 否则整条消息会丢 (octo-web#227)；反之，**已入队但 ack 失败/
+                        // 超时绝不能返回 false**，否则已经可见的内容会被塞回输入框
+                        // (octo-web#1280)。
+                        // This callback may run after waiting in the send queue,
+                        // so use the draft snapshot captured with the compose.
+                        const sendDraftGeneration =
+                          sendDraft?.generation ?? this.draftSaveGeneration;
                         const remoteDraftAtSend =
-                          this.vm.currentConversation?.remoteExtra?.draft || "";
-                        const draftAtSend =
-                          this.messageInputContext()?.text() || "";
+                          sendDraft?.remoteDraft ??
+                          this.vm.currentConversation?.remoteExtra?.draft ??
+                          "";
+                        const markEnqueued = () =>
+                          sendProgress?.markPartEnqueued();
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
+                        // ⚠️ 必须用按键时同步取走的 sendTarget 快照，**绝不能**在这里
+                        // 实时读 vm.currentReplyMessage / currentHandlerType：发送被
+                        // 排队后这里可能晚几秒才执行，用户可能已经改了回复目标、甚至
+                        // 切到「编辑消息」——实时读会回复错消息或覆盖无关消息
+                        // (octo-web#1280 review)。
+                        // 兼容：老调用方没有传 sendTarget 时退回实时读取。
+                        const target =
+                          (sendTarget as CapturedSendTarget<Message> | undefined) ??
+                          captureSendTarget<Message>({
+                            getReplyMessage: () => vm.currentReplyMessage,
+                            setReplyMessage: (m) => {
+                              vm.currentReplyMessage = m;
+                            },
+                            getHandlerType: () => vm.currentHandlerType,
+                            setHandlerType: (h) => {
+                              vm.currentHandlerType = h;
+                            },
+                          });
+                        const targetMessage = target.replyMessage;
                         let reply: Reply | undefined;
-                        if (vm.currentReplyMessage) {
-                          if (vm.currentHandlerType === 2) {
-                            // 编辑消息
+                        if (targetMessage) {
+                          if (target.handlerType === 2) {
+                            sendProgress?.setExpectedParts(1);
+                            // 编辑消息。失败时抛出，让 MessageInput 把 compose 与
+                            // 编辑目标一起还原，用户重试仍是「编辑」而不是发新消息。
                             const editContent = new MessageText(text);
                             let json = editContent.encodeJSON();
                             json["type"] = MessageContentType.text;
                             await vm.editMessage(
-                              vm.currentReplyMessage.messageID,
-                              vm.currentReplyMessage.messageSeq,
-                              vm.currentReplyMessage.channel.channelID,
-                              vm.currentReplyMessage.channel.channelType,
+                              targetMessage.messageID,
+                              targetMessage.messageSeq,
+                              targetMessage.channel.channelID,
+                              targetMessage.channel.channelType,
                               JSON.stringify(json)
                             );
-                            vm.currentReplyMessage = undefined;
+                            markEnqueued();
                             // 编辑消息已提交，编辑器应清空。
                             return true;
                           }
                           reply = new Reply();
-                          reply.messageID = vm.currentReplyMessage.messageID;
-                          reply.messageSeq = vm.currentReplyMessage.messageSeq;
-                          reply.fromUID = vm.currentReplyMessage.fromUID;
+                          reply.messageID = targetMessage.messageID;
+                          reply.messageSeq = targetMessage.messageSeq;
+                          reply.fromUID = targetMessage.fromUID;
                           const channelInfo = getImChannelInfo(
                             WKSDK.shared(),
-                            new Channel(
-                              vm.currentReplyMessage.fromUID,
-                              ChannelTypePerson
-                            )
+                            new Channel(targetMessage.fromUID, ChannelTypePerson)
                           );
                           if (channelInfo) {
                             reply.fromName = channelInfo.title;
                           }
-                          reply.content = vm.currentReplyMessage.content;
-                          vm.currentReplyMessage = undefined;
+                          reply.content = targetMessage.content;
                         }
 
                         // ── 辅助：发送单张图片（读取预览+宽高） ──────────────
@@ -3032,7 +3152,9 @@ export class Conversation
                             img.src = previewUrl;
                           });
                           return this.sendMediaAndWait(
-                            new ImageContent(file, previewUrl, width, height)
+                            new ImageContent(file, previewUrl, width, height),
+                            undefined,
+                            markEnqueued
                           );
                         };
 
@@ -3063,7 +3185,9 @@ export class Conversation
                             return false;
                           }
                           return this.sendMediaAndWait(
-                            new FileContent(file, name, ext, file.size)
+                            new FileContent(file, name, ext, file.size),
+                            undefined,
+                            markEnqueued
                           );
                         };
 
@@ -3156,10 +3280,31 @@ export class Conversation
                         // 清掉这些已发文件、保留编辑器草稿，重试不会重复发送
                         // (octo-web#227 Jerry-Xin non-blocking)。
                         const consumedTopIds: string[] = [];
+                        // 编辑器 compose 里「未入队」的块（按文档顺序）：整条 compose
+                        // 已被 MessageInput 同步消费，只有精确回报这些块才能把它们放回
+                        // 编辑器，而不是连同已发出的内容一起丢掉 (octo-web#1280 review)。
+                        // 文本块也必须登记：sendTextAndWaitAck 在入队前失败会抛错，
+                        // 若此前已有块发出（anyMessageSent=true），异常被 per-block
+                        // catch 吞掉后这段文字既没发出、也不会被整体还原。
+                        const unsentEditorBlocks: UnsentEditorBlock[] = [];
                         const topFilesToSend = topFiles || [];
                         const mixedCandidate = buildRichTextMixedCandidate(
                           topFilesToSend,
                           editorBlocks
+                        );
+                        const replyNeedsOwnBubble =
+                          !!reply &&
+                          !mixedCandidate &&
+                          !editorBlocks?.some((block) => block.type === "text") &&
+                          text.trim() === "";
+                        sendProgress?.setExpectedParts(
+                          countSendPlanParts(
+                            topFilesToSend,
+                            editorBlocks,
+                            text,
+                            mixedCandidate,
+                            replyNeedsOwnBubble
+                          )
                         );
                         if (mixedCandidate) {
                           let mixedSent = false;
@@ -3167,7 +3312,8 @@ export class Conversation
                             if (
                               await this.sendRichTextMixed(
                                 mixedCandidate.blocks as EditorContentBlock[],
-                                reply
+                                reply,
+                                markEnqueued
                               )
                             ) {
                               mixedSent = true;
@@ -3192,7 +3338,7 @@ export class Conversation
                             await this.clearDraftAfterSend(
                               sendDraftGeneration,
                               remoteDraftAtSend,
-                              draftAtSend
+                              sendDraft?.text ?? text
                             );
                           }
                           return finishRichTextMixedSend(
@@ -3225,6 +3371,7 @@ export class Conversation
                         }
 
                         // ── 第二阶段：按编辑器文档顺序发送内容块（文本段和粘贴图片交替） ──
+                        let restoreReplyTarget = false;
                         if (editorBlocks && editorBlocks.length > 0) {
                           // 图文混排：同时含文本和图片、且无非图片文件块时，聚合成单条
                           // RichText(=14) 消息（而非拆成多条独立消息）。含 file 块或
@@ -3247,7 +3394,8 @@ export class Conversation
                               if (
                                 await this.sendRichTextMixed(
                                   editorBlocks,
-                                  reply
+                                  reply,
+                                  markEnqueued
                                 )
                               ) {
                                 mixedSent = true;
@@ -3272,16 +3420,15 @@ export class Conversation
                               await this.clearDraftAfterSend(
                                 sendDraftGeneration,
                                 remoteDraftAtSend,
-                                draftAtSend
+                                sendDraft?.text ?? text
                               );
                             }
-                            // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
-                            // 第二轮)：
-                            //   • editorConsumed=mixedSent：混排失败时保留编辑器
-                            //     文本+图片，用户可整条重试；
+                            // 返回部分结果 (octo-web#227 → #1280)：
+                            //   • editorConsumed=mixedSent：混排未入队时把文本+图片
+                            //     还给编辑器，用户可整条重试；
                             //   • consumedTopIds：本次已发出的顶部附件 id。即使
-                            //     混排失败，这些文件也已发出，让 MessageInput 只
-                            //     清掉它们、不随编辑器草稿一起保留，避免重试重复。
+                            //     混排失败，这些文件也已发出，MessageInput 不会把
+                            //     它们放回附件区，避免重试重复发送。
                             return finishRichTextMixedSend(
                               anyMessageSent,
                               mixedSent,
@@ -3291,6 +3438,7 @@ export class Conversation
                           }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {
+                            let carriesReply = false;
                             try {
                               if (block.type === "text") {
                                 const msgContent = buildTextContent(
@@ -3300,19 +3448,45 @@ export class Conversation
                                 // 第一个文本块携带 reply 信息
                                 if (reply && isFirstTextBlock) {
                                   msgContent.reply = reply;
-                                  reply = undefined;
+                                  carriesReply = true;
                                 }
                                 isFirstTextBlock = false;
-                                if (await this.sendTextAndWaitAck(msgContent)) {
+                                if (
+                                  await this.sendTextAndWaitAck(
+                                    msgContent,
+                                    undefined,
+                                    markEnqueued
+                                  )
+                                ) {
                                   anyMessageSent = true;
+                                  if (carriesReply) reply = undefined;
+                                } else {
+                                  unsentEditorBlocks.push({
+                                    type: "text",
+                                    text: block.restoreText,
+                                  });
+                                  if (carriesReply) restoreReplyTarget = true;
                                 }
                               } else if (block.type === "image") {
                                 if (await sendImageFile(block.file)) {
                                   anyMessageSent = true;
+                                } else {
+                                  // 预检拒绝等未入队情形：记下这一块，让 MessageInput
+                                  // 只把它放回编辑器，其余已发内容保持消费
+                                  // (octo-web#1280 review)。
+                                  unsentEditorBlocks.push({
+                                    type: "attachment",
+                                    id: block.id,
+                                  });
                                 }
                               } else if (block.type === "file") {
                                 if (await sendFileAttachment(block.file)) {
                                   anyMessageSent = true;
+                                } else {
+                                  unsentEditorBlocks.push({
+                                    type: "attachment",
+                                    id: block.id,
+                                  });
                                 }
                               }
                             } catch (err) {
@@ -3320,6 +3494,14 @@ export class Conversation
                                 "[Conversation] editorBlock send failed:",
                                 err
                               );
+                              // 入队前抛错（解散守卫 / sendMessage 失败等）：文本块
+                              // 也要登记，否则它既没发出又不会被还原，内容直接消失。
+                              unsentEditorBlocks.push(
+                                block.type === "text"
+                                  ? { type: "text", text: block.restoreText }
+                                  : { type: "attachment", id: block.id }
+                              );
+                              if (carriesReply) restoreReplyTarget = true;
                               Toast.error(
                                 t("base.conversation.message.sendFailed")
                               );
@@ -3328,10 +3510,29 @@ export class Conversation
                           // 如果 reply 还没被消费（没有文本块），附加到一条空白消息;
                           // 但仅当本次确实发出了别的消息时,否则用户的所有附件都被
                           // 预检拒绝、却仍收到一条孤立的空回复气泡 (#119 Jerry-Xin)。
-                          if (reply && anyMessageSent) {
+                          if (reply && anyMessageSent && !restoreReplyTarget) {
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
-                            await this.sendTextAndWaitAck(emptyContent);
+                            try {
+                              if (
+                                await this.sendTextAndWaitAck(
+                                  emptyContent,
+                                  undefined,
+                                  markEnqueued
+                                )
+                              ) {
+                                reply = undefined;
+                              }
+                            } catch (err) {
+                              console.error(
+                                "[Conversation] empty reply send failed:",
+                                err
+                              );
+                              restoreReplyTarget = true;
+                              Toast.error(
+                                t("base.conversation.message.sendFailed")
+                              );
+                            }
                           }
                         } else {
                           // fallback：无 editorBlocks 时走旧逻辑（纯文本）
@@ -3340,28 +3541,63 @@ export class Conversation
                             if (reply) {
                               msgContent.reply = reply;
                             }
-                            if (await this.sendTextAndWaitAck(msgContent)) {
+                            if (
+                              await this.sendTextAndWaitAck(
+                                msgContent,
+                                undefined,
+                                markEnqueued
+                              )
+                            ) {
                               anyMessageSent = true;
                             }
                           } else if (reply && anyMessageSent) {
                             // 同上: 顶部附件全部被预检拒绝时不要补空回复
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
-                            await this.sendTextAndWaitAck(emptyContent);
+                            try {
+                              if (
+                                await this.sendTextAndWaitAck(
+                                  emptyContent,
+                                  undefined,
+                                  markEnqueued
+                                )
+                              ) {
+                                reply = undefined;
+                              }
+                            } catch (err) {
+                              console.error(
+                                "[Conversation] empty reply send failed:",
+                                err
+                              );
+                              restoreReplyTarget = true;
+                              Toast.error(
+                                t("base.conversation.message.sendFailed")
+                              );
+                            }
                           }
                         }
                         if (anyMessageSent) {
                           await this.clearDraftAfterSend(
                             sendDraftGeneration,
                             remoteDraftAtSend,
-                            draftAtSend
+                            sendDraft?.text ?? text
                           );
                         }
                         if (anyMessageSent) this.props.onMessageSent?.();
-                        // 与 clearDraftAfterSend 同口径：只有确实发出消息时才让
-                        // MessageInput 清空编辑器；全部失败/被预检拒绝时返回 false
-                        // 保留草稿可重试。
-                        return anyMessageSent;
+                        // 返回真实的部分结果，而不是裸 boolean (octo-web#1280 review)：
+                        //   • editorConsumed=anyMessageSent：一条都没入队时整条 compose
+                        //     还给输入框可重试；
+                        //   • consumedTopIds：只有真正发出的顶部附件保持消费，被预检
+                        //     拒绝的会回到附件区（裸 true 会被当成「全部已消费」而丢掉）；
+                        //   • unsentEditorBlocks：编辑器内未入队的块（被拒的粘贴附件、
+                        //     入队前抛错的文本）按原顺序单独回到编辑器；已发出的块保持
+                        //     消费，所以重试不会重复发送。
+                        return {
+                          editorConsumed: anyMessageSent,
+                          consumedTopIds,
+                          unsentEditorBlocks,
+                          restoreSendTarget: restoreReplyTarget,
+                        };
                       }}
                     ></MessageInput>
                       </>

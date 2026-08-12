@@ -6,6 +6,7 @@
 
 import { apiClient } from '../octoweb/index.ts'
 import type { Role } from '../auth/roles.ts'
+import { parseDocumentName } from '../documentName/index.ts'
 
 /**
  * Document kind enum — the wire contract for `doc_type`, authored in lockstep with the backend
@@ -228,10 +229,9 @@ export async function listRecentCreators(q?: string): Promise<CreatorOption[]> {
  * `opts.spaceId` (standalone need, XIN-1237): the backend writes the view into the space carried by
  * the request's `X-Space-Id` and "最近查看" reads back by that same viewer space. In-shell callers
  * omit it and rely on the global interceptor (spaceIdCallback → currentSpaceId, the viewer's live
- * space). The standalone `/d/:docId` page seeds currentSpaceId to the DOC's own space for preflight
- * addressing, so it must pass the viewer's real current space here explicitly — otherwise the view
- * would be written under the doc space and never surface in a cross-space recipient's recent list.
- * Axios merges this header over (and thus wins against) the interceptor's value.
+ * space). The standalone `/d/:docId` path deliberately does not mutate `currentSpaceId`, so it must
+ * pass the independently established viewer Space explicitly when one is available. Axios merges
+ * this header over (and thus wins against) the interceptor's value.
  */
 export async function recordDocView(docId: string, opts?: { spaceId?: string }): Promise<void> {
   try {
@@ -290,19 +290,118 @@ export interface DocMeta {
 }
 
 /**
+ * Canonical document open context returned by `GET /api/v1/docs/:docId/open-context`
+ * (Phase-1 remove-`sp` design §4/§5.2). The backend locates the document by `docId` ALONE — no
+ * `sp` query, no `X-Space-Id` header, no client-supplied Space participates in resolution or
+ * authorization — and returns the AUTHORITATIVE addressing the standalone page needs to open the
+ * doc: its real home Space, canonical `documentName`, kind, the caller's effective role, and the
+ * permission epoch. This is the permanent no-`sp` reader foundation: the page consumes it as a
+ * per-request `DocRequestContext` and NEVER writes `homeSpaceId` into the global `currentSpaceId`,
+ * so opening an external `/d/:docId` link cannot pollute the shell's Sidebar / list / search /
+ * recent Space (design §5.2).
+ *
+ * `role`/`permissionEpoch`/`docType`/`title`/`folderId` are optional; the addressing core
+ * (`docId`/`homeSpaceId`/`documentName`) is mandatory and validated fail-closed. This contract is
+ * publicly reviewable in octo-web issue #1317. A failure response (403/404/409) carries none of
+ * these fields — see getOpenContext.
+ */
+export interface DocRequestContext {
+  docId: string
+  /**
+   * The document's REAL home Space (`doc_meta.space_id`), resolved server-side from `docId`. Used
+   * ONLY to address THIS document request (room/name resolution); it must never be promoted to the
+   * viewer's global current Space.
+   */
+  homeSpaceId: string
+  /**
+   * Canonical key: 4-segment `octo:{space}:{folder}:{doc}` for the shared document namespace,
+   * or a typed 5-segment `:wb:`, `:html:`, or `:ppt:` key.
+   */
+  documentName: string
+  /** Folder segment echoed for convenience; the canonical value is inside `documentName`. */
+  folderId?: string
+  /**
+   * Usually a {@link DocType}; legacy 4-segment rows may carry an arbitrary historical free-string.
+   * Typed `wb`/`html`/`ppt` keys are still required to match `board`/`html`/`html_ppt` exactly.
+   */
+  docType?: string
+  /** The caller's effective role on the doc (owner/admin/writer/reader), computed server-side. */
+  role?: Role
+  /** Monotonic permission epoch bound into the collab token (design §7.3 WS verification). */
+  permissionEpoch?: number
+  /** Document title — present only on the 200 success path. */
+  title?: string
+  /** Present only for html docs: the octo-doc slug used to fetch/render the read-only body. */
+  octoDocSlug?: string
+}
+
+/**
+ * GET /api/v1/docs/{docId}/open-context — the docId-first preflight for the standalone `/d/:docId`
+ * page (Phase-1 remove-`sp` design §4). Unlike getDoc, it takes NO space input: the backend locates
+ * the doc by `docId` and returns the canonical {@link DocRequestContext}. The standalone page calls
+ * this instead of the by-space `GET /docs/:docId` so a shared link opens without the sharer's `?sp`.
+ *
+ * Status contract (design §5.1 / §12) — the caller maps rejections to terminals via
+ * terminalForCreateError, exactly as the old getDoc preflight did:
+ *   - 200 → resolve the context (mount the editor from `documentName`/`homeSpaceId`).
+ *   - 401 → login handoff (return to /d/:docId after sign-in).
+ *   - 403 → the doc exists but the caller has no role → forbidden landing + request-access.
+ *   - 404 → illegal / missing / deleted docId → not-found.
+ *   - 409 → archived / locked state conflict.
+ * No `X-Space-Id` is sent: `docId` is the sole locator, so a wrong/stale `?sp` on an old link can
+ * never steer resolution (design §8.3). Deliberately does NOT swallow failures — the boundary
+ * states depend on the status propagating.
+ */
+export async function getOpenContext(docId: string): Promise<DocRequestContext> {
+  const { data } = await apiClient().get<DocRequestContext>(
+    `/docs/${encodeURIComponent(docId)}/open-context`,
+    { suppressSpaceId: true },
+  )
+  if (
+    !data ||
+    typeof data.docId !== 'string' ||
+    data.docId !== docId ||
+    typeof data.homeSpaceId !== 'string' ||
+    !data.homeSpaceId ||
+    typeof data.documentName !== 'string' ||
+    !data.documentName
+  ) {
+    throw new Error('open-context returned incomplete addressing')
+  }
+  let parsed: ReturnType<typeof parseDocumentName>
+  try {
+    parsed = parseDocumentName(data.documentName)
+  } catch {
+    throw new Error('open-context returned invalid canonical addressing')
+  }
+  const canonicalDocId = parsed.kind === 'whiteboard' ? parsed.board : parsed.doc
+  if (parsed.space !== data.homeSpaceId || canonicalDocId !== docId) {
+    throw new Error('open-context returned inconsistent canonical addressing')
+  }
+  // Mirror the backend's deny-list rather than treating doc_type as a closed
+  // runtime enum. Historical rows may contain arbitrary free-string values in
+  // the shared 4-segment document namespace; only the three typed namespaces
+  // (`wb`, `html`, `ppt`) require an exact persisted kind.
+  const consistentType =
+    parsed.kind === 'whiteboard' ? data.docType === 'board'
+      : parsed.kind === 'html' ? data.docType === 'html'
+        : parsed.kind === 'ppt' ? data.docType === HTML_PPT_DOC_TYPE
+          : data.docType !== 'board' && data.docType !== 'html' && data.docType !== HTML_PPT_DOC_TYPE
+  if (!consistentType) {
+    throw new Error('open-context returned mismatched document type and canonical addressing')
+  }
+  return data
+}
+
+/**
  * GET /api/v1/docs/{docId} — fetch a single document's metadata (title etc).
  * Used to render the real title in the editor header instead of a hardcoded
  * placeholder. Resilient: callers fall back to a passed-in title if this throws
  * (e.g. the backend has no per-doc GET in a given environment).
  *
- * `opts.spaceId` (standalone by-space need): the backend gates `/docs/:docId` behind a by-space
- * middleware — a request with no `X-Space-Id` header is rejected (400 space_required) and a header
- * that does not match the doc's space returns 404. In-shell callers omit `opts` and rely on the
- * global request interceptor (spaceIdCallback → WKApp.shared.currentSpaceId) to inject the header.
- * The standalone `/d/:docId` page mounts before that space is restored, so the interceptor injects
- * nothing; it passes the resolved space here to carry an explicit `X-Space-Id` on the preflight,
- * which axios merges over (and thus wins against) the interceptor's absent header. A non-empty
- * `opts.spaceId` is the only trigger — omitting it preserves the exact prior no-header behavior.
+ * Phase-1 human document-resource routes locate and authorize by docId; `X-Space-Id` is not a
+ * locator or authorization input there. `spaceId` remains an optional compatibility carrier for
+ * older backend nodes and Bot mounts, whose same-Space boundary is still enforced server-side.
  */
 export async function getDoc(docId: string, opts?: { spaceId?: string }): Promise<DocMeta> {
   const config =
@@ -339,8 +438,9 @@ export async function getUserName(
  * PATCH /api/v1/docs/{docId} — rename a document. Backend confirmed 200 + DB
  * persistence. Manage-role only (enforced server-side; UI also gates on canManage).
  */
-export async function updateDocTitle(docId: string, title: string): Promise<DocMeta> {
-  const { data } = await apiClient().patch<DocMeta>(`/docs/${docId}`, { title })
+export async function updateDocTitle(docId: string, title: string, opts?: { spaceId?: string }): Promise<DocMeta> {
+  const config = opts?.spaceId ? { headers: { 'X-Space-Id': opts.spaceId } } : undefined
+  const { data } = await apiClient().patch<DocMeta>(`/docs/${docId}`, { title }, config)
   return data
 }
 
@@ -360,10 +460,11 @@ export async function deleteDoc(docId: string, opts?: { spaceId?: string }): Pro
 export type DocExportFormat = 'md' | 'docx' | 'pdf'
 
 /** GET the unified backend file export through the authenticated host client. */
-export async function exportDocFile(docId: string, format: DocExportFormat): Promise<ArrayBuffer> {
+export async function exportDocFile(docId: string, format: DocExportFormat, opts?: { spaceId?: string }): Promise<ArrayBuffer> {
+  const headers = opts?.spaceId ? { 'X-Space-Id': opts.spaceId } : undefined
   const { data } = await apiClient().get<ArrayBuffer>(
     `/docs/${encodeURIComponent(docId)}/export/file?format=${format}`,
-    { responseType: 'arraybuffer', timeout: 120_000 },
+    { responseType: 'arraybuffer', timeout: 120_000, headers },
   )
   return data
 }

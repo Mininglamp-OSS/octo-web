@@ -1,7 +1,9 @@
 // documentName addressing contract (frontend-design §7.2 / §9.1, backend §8.1).
 //
-//   document key (4 segments):  octo:{space}:{folder}:{doc}
-//   whiteboard key (5 segments): octo:{space}:{folder}:wb:{board}   (NOT built this round)
+//   document key (4 segments):   octo:{space}:{folder}:{doc}
+//   whiteboard key (5 segments): octo:{space}:{folder}:wb:{board}
+//   HTML key (5 segments):       octo:{space}:{folder}:html:{doc}
+//   PPT key (5 segments):        octo:{space}:{folder}:ppt:{doc}
 //
 // v2.1: segment 3 is the docs-native {folder} (organization/routing dimension).
 // It is NOT an octo group_no and the frontend NEVER derives permissions from it.
@@ -14,6 +16,8 @@
 export type ParsedDocumentName =
   | { kind: 'document'; space: string; folder: string; doc: string }
   | { kind: 'whiteboard'; space: string; folder: string; board: string }
+  | { kind: 'html'; space: string; folder: string; doc: string }
+  | { kind: 'ppt'; space: string; folder: string; doc: string }
 
 // Each segment is a restricted charset: no ':' separators, no empty segments.
 const SEGMENT = /^[A-Za-z0-9_-]+$/
@@ -46,10 +50,8 @@ export function buildDocumentName(space: string, folder: string, doc: string): s
 }
 
 /**
- * Parse a documentName using the non-symmetric rule: a 5-segment key whose 4th
- * segment is the literal `wb` is a whiteboard key; otherwise it must be exactly a
- * 4-segment document key. The whiteboard branch is parsed correctly but no
- * whiteboard UI is built this round (deferred).
+ * Parse a canonical documentName. Typed 5-segment keys use `wb`, `html`, or
+ * `ppt`; the shared collaborative document namespace uses exactly 4 segments.
  */
 export function parseDocumentName(name: string): ParsedDocumentName {
   if (typeof name !== 'string' || name.length === 0) {
@@ -60,13 +62,15 @@ export function parseDocumentName(name: string): ParsedDocumentName {
     throw new Error('documentName must start with the "octo" namespace')
   }
 
-  // Whiteboard key (positional, length===5 && parts[3]==='wb') — checked first.
-  if (parts.length === 5 && parts[3] === 'wb') {
-    const [, space, folder, , board] = parts
+  // Typed five-segment keys are positional. `html` and `ppt` are standalone, non-Yjs surfaces;
+  // they must not be collapsed into the ordinary collaborative-document kind.
+  if (parts.length === 5 && ['wb', 'html', 'ppt'].includes(parts[3])) {
+    const [, space, folder, type, resourceId] = parts
     assertSegment(space, 'space')
     assertSegment(folder, 'folder')
-    assertSegment(board, 'board')
-    return { kind: 'whiteboard', space, folder, board }
+    assertSegment(resourceId, type === 'wb' ? 'board' : 'doc')
+    if (type === 'wb') return { kind: 'whiteboard', space, folder, board: resourceId }
+    return { kind: type as 'html' | 'ppt', space, folder, doc: resourceId }
   }
 
   // Document key must be exactly 4 segments.

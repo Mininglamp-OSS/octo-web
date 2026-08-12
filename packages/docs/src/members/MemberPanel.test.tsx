@@ -89,6 +89,24 @@ describe('MemberPanel — display names (#7)', () => {
     expect(selects.some((s) => s.disabled)).toBe(true)
   })
 
+  it('keeps the owner row rendering a disabled admin select on the rich surface (zero change)', async () => {
+    // Guards rich-side parity after the locked-row fix: on rich the grantable set is the full
+    // ROLES (incl. admin), so the owner's synthetic 'admin' role DOES have a matching option and
+    // must still render as a disabled select whose value is 'admin' (unlike html, which drops it).
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_named" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    const ownerRow = screen
+      .getByText('docs.member.ownerBadge')
+      .closest('.octo-member-row') as HTMLElement
+    const ownerSelect = ownerRow.querySelector('select') as HTMLSelectElement
+    expect(ownerSelect).toBeTruthy()
+    expect(ownerSelect.disabled).toBe(true)
+    // On rich the owner's effective role ('writer' here — a real grant; 'admin' when synthesized)
+    // is in the grantable ROLES set, so it renders a disabled select showing that real role
+    // (rich behavior is unchanged by the html locked-row fix).
+    expect(ownerSelect.value).toBe('writer')
+  })
+
   it('synthesizes a pinned owner row when the owner is absent from the members API (#A1/#A3)', async () => {
     // Backend members API excludes the owner (owner lives in doc_meta, not doc_member). With an
     // ownerId that is NOT in the returned members, the panel still shows an owner row + badge.
@@ -129,6 +147,43 @@ describe('MemberPanel — display names (#7)', () => {
       (s) => Array.from(s.options).map((o) => o.value).join(',') === 'reader,commenter,writer',
     )
     expect(requestSelect).toBeTruthy()
+  })
+  it('still sorts the current-members list by role after migrating to the shared component (#A3)', async () => {
+    // Members arrive in a deliberately unsorted order; the shared CurrentMembersList must still
+    // apply sort.ts ordering (owner pinned → admin → writer → commenter → reader). This locks the
+    // post-migration ordering contract: fail-before if the shared list dropped the sort call.
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        return {
+          data: {
+            items: [
+              { uid: 'u_reader', role: 'reader', source: 'direct', grantedBy: 'u_admin' },
+              { uid: 'u_writer', role: 'writer', source: 'direct', grantedBy: 'u_admin' },
+              { uid: 'u_commenter', role: 'commenter', source: 'direct', grantedBy: 'u_admin' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    // Scope to the Current Members section (the one carrying the owner badge); other sections
+    // (the picker roster) also render `.octo-uid` rows and would pollute the ordering read.
+    const currentSection = screen.getByText('docs.member.ownerBadge').closest('.octo-member-section')!
+    const rows = Array.from(
+      currentSection.querySelectorAll('.octo-member-row .octo-uid'),
+    ).map((el) => el.textContent ?? '')
+    // owner first (synthetic), then writer → commenter → reader.
+    const idxOwner = rows.findIndex((r) => r.includes('u_owner'))
+    const idxWriter = rows.findIndex((r) => r.includes('u_writer'))
+    const idxCommenter = rows.findIndex((r) => r.includes('u_commenter'))
+    const idxReader = rows.findIndex((r) => r.includes('u_reader'))
+    expect(idxOwner).toBe(0)
+    expect(idxWriter).toBeLessThan(idxCommenter)
+    expect(idxCommenter).toBeLessThan(idxReader)
   })
 })
 

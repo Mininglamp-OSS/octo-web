@@ -691,6 +691,63 @@ describe('MemberPicker Bot expander UX (task #3)', () => {
     ).toBe(true)
     expect(onAdd).not.toHaveBeenCalled()
   })
+
+  // Bug (task): a query hit auto-expands a creator's Bot list. The user must be able to collapse
+  // that query-expanded list and have it STAY collapsed for the current term; a new term restores
+  // the "hit ⇒ default open" convenience; and manual collapse→expand must still work (no dead click).
+  it('lets the user collapse a query-expanded Bot list (stays collapsed under the same query)', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    // Query hits the Bot → its list defaults open (protects the current convenience).
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'Writer Bot' },
+    })
+    expect(screen.getByText('Writer Bot')).toBeTruthy()
+    // The expander reads as expanded (label = hideBots).
+    expect(screen.getByText('docs.member.hideBots')).toBeTruthy()
+    // Click “collapse” → the Bot row disappears and the label flips back to showBots (FAILS before fix).
+    fireEvent.click(screen.getByText('docs.member.hideBots'))
+    expect(screen.queryByText('Writer Bot')).toBeNull()
+    expect(screen.getByText('docs.member.showBots')).toBeTruthy()
+  })
+
+  it('restores the default-open on a new query term after a manual collapse', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    const search = screen.getByPlaceholderText('docs.member.pickPlaceholder')
+    fireEvent.change(search, { target: { value: 'Writer' } })
+    // Manually collapse the query-expanded list.
+    fireEvent.click(screen.getByText('docs.member.hideBots'))
+    expect(screen.queryByText('Writer Bot')).toBeNull()
+    // A different term that still hits the Bot clears the override → defaults open again.
+    fireEvent.change(search, { target: { value: 'Bot' } })
+    expect(screen.getByText('Writer Bot')).toBeTruthy()
+    expect(screen.getByText('docs.member.hideBots')).toBeTruthy()
+  })
+
+  it('allows manual collapse then manual re-expand (direction toggle never dead-locks)', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'Writer Bot' },
+    })
+    // collapse …
+    fireEvent.click(screen.getByText('docs.member.hideBots'))
+    expect(screen.queryByText('Writer Bot')).toBeNull()
+    // … then re-expand on the very next click (a single click must flip it back open).
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    expect(screen.getByText('Writer Bot')).toBeTruthy()
+    expect(screen.getByText('docs.member.hideBots')).toBeTruthy()
+  })
 })
 
 // Latest blocking P1 (yujiawei): selection reachability across live rerenders. A selected human
@@ -758,5 +815,74 @@ describe('MemberPicker selection reachability across rerenders (yujiawei P1)', (
     const submittedUids = onAdd.mock.calls[0][0] as string[]
     expect(submittedUids).toEqual(['u_ada'])
     expect(submittedUids).not.toContain('u_grace')
+  })
+})
+
+// Collapse-override semantics (intentional — not a bug). A review P1 argued that a manual expand
+// that the user later collapses (while a query is active) is "silently destroyed" on query clear,
+// and proposed keeping the uid in `expanded` on collapse (only recording collapsedByUser). We
+// reject that: the LAST EXPLICIT user action wins, so an explicit collapse must survive the query
+// clearing. The proposed change would also introduce a real "ghost EXPAND" (test (b)): a later
+// query — even one that does not hit this Bot — clears collapsedByUser and re-opens a list the user
+// closed. These two tests pin that contract. NOTE: if someone "fixes" per the review by removing
+// `expanded.delete(m.uid)` from the collapse branch of the expander onClick, test (b) fails.
+describe('MemberPicker collapse-override semantics (review P1 rejected)', () => {
+  function botResponder(bots: Array<{ uid: string; name: string; creator_uid?: string }>) {
+    return (method: string, url: string) =>
+      method === 'get' && url.startsWith('/robot/space_bots')
+        ? { data: bots, status: 200 }
+        : { data: [], status: 200 }
+  }
+
+  // (a) An explicit collapse survives clearing the search: manual expand (no query) → type a query
+  // that hits the Bot → collapse → clear the query. The list stays CLOSED because the user's last
+  // explicit action was "collapse" (last-explicit-action-wins). This is deliberate, not a bug.
+  it('keeps an explicit collapse closed after the search is cleared', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    const search = screen.getByPlaceholderText('docs.member.pickPlaceholder')
+    // Manual expand with NO query active.
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    expect(screen.getByText('Writer Bot')).toBeTruthy()
+    // Type a query that hits the Bot (list stays open).
+    fireEvent.change(search, { target: { value: 'Writer Bot' } })
+    expect(screen.getByText('docs.member.hideBots')).toBeTruthy()
+    // Explicit collapse.
+    fireEvent.click(screen.getByText('docs.member.hideBots'))
+    expect(screen.queryByText('Writer Bot')).toBeNull()
+    // Clear the query — the list stays CLOSED (last explicit action = collapse wins).
+    fireEvent.change(search, { target: { value: '' } })
+    expect(screen.queryByText('Writer Bot')).toBeNull()
+    expect(screen.getByText('docs.member.showBots')).toBeTruthy()
+  })
+
+  // (b) Guardrail against the review's proposed change: a list closed by the user must NOT re-open
+  // itself when a later query merely matches the PERSON (not the Bot). Manual expand (no query) →
+  // collapse (still no query) → search the human's name "Ada" (matches Ada, NOT "Writer Bot"). The
+  // Bot list must stay CLOSED. If collapse kept the uid in `expanded` (the review's suggestion),
+  // the [query] effect would clear collapsedByUser and the still-`expanded` uid would pop open — a
+  // real ghost-expand. This test FAILS if `expanded.delete(m.uid)` is removed from the collapse
+  // branch of the expander onClick.
+  it('does not self-expand a user-collapsed list when a later query matches only the person', async () => {
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    const search = screen.getByPlaceholderText('docs.member.pickPlaceholder')
+    // Manual expand then collapse, all with NO query active.
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    expect(screen.getByText('Writer Bot')).toBeTruthy()
+    fireEvent.click(screen.getByText('docs.member.hideBots'))
+    expect(screen.queryByText('Writer Bot')).toBeNull()
+    // Search by the PERSON's name "Ada" — matches Ada, does NOT hit "Writer Bot".
+    fireEvent.change(search, { target: { value: 'Ada' } })
+    expect(screen.getByText('Ada Lovelace')).toBeTruthy()
+    // The user-closed Bot list must stay CLOSED (no ghost-expand).
+    expect(screen.queryByText('Writer Bot')).toBeNull()
+    expect(screen.getByText('docs.member.showBots')).toBeTruthy()
   })
 })

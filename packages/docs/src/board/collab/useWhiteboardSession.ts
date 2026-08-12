@@ -81,7 +81,7 @@ async function buildSession(
   let initialRole: Role | undefined
   let initialEpoch = 0
   try {
-    const entry = await getCollabTokenEntry(documentName)
+    const entry = await getCollabTokenEntry(documentName, opts.board)
     url = resolveBoardWsUrl(entry.collabWsUrl)
     initialRole = entry.role
     initialEpoch = entry.permission_epoch
@@ -96,10 +96,10 @@ async function buildSession(
         folder: opts.folder,
         board: opts.board,
         url,
-        token: () => getCollabToken(documentName),
+        token: () => getCollabToken(documentName, opts.board),
         initialTerminal: terminal,
         disableOfflineCache: true,
-        disposeToken,
+        disposeToken: () => disposeToken(documentName, { docId: opts.board }),
       })
     }
     // Prime failed for a NON-auth reason (offline / no backend / pre-contract): keep the origin-
@@ -112,11 +112,11 @@ async function buildSession(
     folder: opts.folder,
     board: opts.board,
     url,
-    token: () => getCollabToken(documentName),
+    token: () => getCollabToken(documentName, opts.board),
     initialRole,
     initialEpoch,
     disableOfflineCache: opts.disableOfflineCache,
-    disposeToken,
+    disposeToken: () => disposeToken(documentName, { docId: opts.board }),
   })
 }
 

@@ -1720,8 +1720,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     }}
                     onOpenDoc={(item) => {
                       // Open the clicked cloud-doc in the standalone `/d/:docId`
-                      // page, carrying the doc's real space on `?sp=` so the
-                      // preflight addresses the right space (buildDocLink). The
+                      // page. buildDocLink intentionally emits no Space locator;
+                      // authenticated open-context resolves canonical addressing. The
                       // `/d` namespace is intercepted by apps/web Layout OUTSIDE
                       // the app shell and is not a RouteManager route, so it can't
                       // be reached by an in-shell soft push — open it in a new tab

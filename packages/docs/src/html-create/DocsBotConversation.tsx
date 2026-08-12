@@ -8,7 +8,7 @@
 // The right-pane owner (DocsHome) keeps the left DocsList resident; closing here just returns the
 // pane to the docs empty state — it never deletes the DM.
 
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useState } from 'react'
 import {
   Conversation,
   Channel,
@@ -26,6 +26,8 @@ export interface DocsBotConversationProps {
    * passes false, leaving the composer empty and attachments unstaged. Defaults to true.
    */
   autoSend?: boolean
+  /** Fired as soon as the auto-send compose is handed to Conversation, before any send ACK. */
+  onInitialComposeHandoff?(): void
   /** Close the chat and return the right pane to the docs empty state (does NOT delete the DM). */
   onClose(): void
   /** Fired after the initial task message is acknowledged as sent (drives list-refresh in DocsHome). */
@@ -44,6 +46,7 @@ function CloseIcon(): React.ReactElement {
 export function DocsBotConversation({
   draft,
   autoSend = true,
+  onInitialComposeHandoff,
   onClose,
   onMessageSent,
 }: DocsBotConversationProps) {
@@ -67,6 +70,12 @@ export function DocsBotConversation({
     }) : undefined,
     [draft, autoSend],
   )
+
+  // Consume at the handoff boundary, not after onMessageSent: route re-entry can remount
+  // Conversation while the first send is still pending (or after it failed).
+  useLayoutEffect(() => {
+    if (compose) onInitialComposeHandoff?.()
+  }, [compose, onInitialComposeHandoff])
 
   // First letter of the bot name as an avatar fallback (WKAvatar isn't publicly exported; §Task5
   // step 2 permits a name-initial fallback rather than a deep host import).

@@ -115,6 +115,7 @@ vi.mock('../html-create/DocsBotConversation.tsx', () => ({
   DocsBotConversation: (props: {
     draft: { botUid: string; requestId: string; spaceId: string; description: string }
     autoSend?: boolean
+    onInitialComposeHandoff?: () => void
     onClose?: () => void
     onMessageSent?: () => void
   }) => (
@@ -676,30 +677,29 @@ describe('DocsHome navigation (split-pane)', () => {
     const entry = await waitFor(() => screen.getByTestId('editor-open-new-page'))
     fireEvent.click(entry)
 
-    // It opens the clean standalone deep-link in a new tab — no in-app navigation. The link carries
-    // the doc's real space as `?sp` (XIN-519 blocker 1); with no active space the shell falls back to
-    // the default doc space ('demo'). No `?sid` — the opener's session is recovered from storage.
-    expect(openSpy).toHaveBeenCalledWith('/d/d_a?sp=demo', '_blank', 'noopener,noreferrer')
+    // It opens the clean canonical standalone deep-link in a new tab — no in-app navigation. Phase-1
+    // (design §5.3): the link is the bare `/d/:docId` with NO query — no `?sp` (the reader resolves
+    // the doc's Space server-side from the docId) and no `?sid` (the opener's session is recovered
+    // from storage).
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a', '_blank', 'noopener,noreferrer')
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
-  it('XIN-513/519: the standalone link opens with `?sp` (doc space) but no `?sid`, even when the in-shell URL carries a sid', async () => {
+  it('XIN-513/519 + §5.3: the standalone link opens with NO query — neither `?sp` nor `?sid` — even when the in-shell URL carries a sid', async () => {
     const openSpy = vi.fn()
     Object.defineProperty(window, 'open', { configurable: true, writable: true, value: openSpy })
     // In-shell URL carries the active session's sid (the host's RouteManager re-push collapses the
     // docs route to `/docs?sid=…`). The opened standalone link must NOT copy that sid forward: an
-    // already-logged-in user's session is recovered from storage independently of the URL (XIN-513),
-    // so a sid-less `/d/:docId` opens the document directly. It MUST, however, carry `?sp` (the doc's
-    // real space) so the recipient's standalone preflight can address the doc's own space — dropping
-    // it (XIN-519 blocker 1) sent the login-return path into the cross-space not_found terminal.
+    // already-logged-in user's session is recovered from storage independently of the URL (XIN-513).
+    // Phase-1 (design §5.3) also drops `?sp`: the standalone reader resolves the doc's Space
+    // server-side from the docId via open-context, so the active DocsHome space no longer rides along.
     Object.defineProperty(window, 'location', {
       configurable: true,
       writable: true,
       value: { origin: 'https://app.example.com', search: '?sid=s_active', assign: assignSpy },
     })
     const wk = createMockWKApp()
-    // Give the shell an active space so DocsHome's space (spaceRef) resolves to a real doc space id,
-    // which the opened standalone link must carry as `?sp`.
+    // An active space is present, but it must NOT be stamped onto the standalone link anymore.
     wk.shared.currentSpaceId = '105d4a60d0fc4d55a5cfc3c2d0501361'
     setWKApp(wk)
     wk.apiClient.responder = (method, url) => {
@@ -721,14 +721,9 @@ describe('DocsHome navigation (split-pane)', () => {
     // The list item carries no docType, so the editor mounts only after the async open resolves.
     fireEvent.click(await waitFor(() => screen.getByTestId('editor-open-new-page')))
 
-    // The standalone link carries `?sp` (the doc's real space) so the recipient's preflight addresses
-    // the doc's own space — but NO `?sid`; the opener's session is recovered from storage (XIN-513).
-    // (The multi-session wrong-space-session recovery edge is tracked separately as octo-web #551.)
-    expect(openSpy).toHaveBeenCalledWith(
-      '/d/d_a?sp=105d4a60d0fc4d55a5cfc3c2d0501361',
-      '_blank',
-      'noopener,noreferrer',
-    )
+    // Bare canonical link: no `?sp` (Space resolved from docId server-side, §5.3) and no `?sid`
+    // (session recovered from storage, XIN-513).
+    expect(openSpy).toHaveBeenCalledWith('/d/d_a', '_blank', 'noopener,noreferrer')
     expect(assignSpy).not.toHaveBeenCalled()
   })
 
@@ -2543,178 +2538,118 @@ describe('DocsHome — re-activating the docs nav entry refetches the recent lis
   })
 })
 
-// plan Task 6: the "new HTML" entry launches an embedded bot DM in the right pane. The left
-// DocsList stays resident; no placeholder doc is created; the global Chat is never entered; the
-// same requestId is never re-sent on NavRail re-entry; opening a doc / switching Space closes it.
-describe('DocsHome — new HTML embedded bot DM (Task 6)', () => {
-  function ownedBotsResponder(
-    calls: Array<{ method: string; url: string; body?: unknown }>,
-    bots: Array<{ uid: string; name: string }> = [{ uid: 'bot_1', name: 'Publisher' }],
-  ) {
-    return (method: string, url: string, body?: unknown) => {
-      calls.push({ method, url, body })
-      if (method === 'get' && url.startsWith('/robot/owned_bots')) return { data: bots, status: 200 }
-      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+describe('DocsHome — direct blank HTML creation', () => {
+  it('publishes once, refreshes the list, and opens the returned doc id and slug', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    wk.shared.currentSpaceId = 'space-current'
+    wk.apiClient.responder = (method, url) => method === 'get' && url.startsWith('/docs')
+      ? { data: { total: 0, items: [] }, status: 200 }
+      : { data: {}, status: 200 }
+    setWKApp(wk)
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: { slug: 'html-new', version: 1, registered: true, status: 'published', doc_id: 'd-new' } }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.empty.recentNone')).toBeTruthy())
+    const getsBefore = wk.apiClient.calls.filter((call) => call.method === 'get' && call.url.startsWith('/docs')).length
+    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
+    fireEvent.click(screen.getByText('docs.list.newHtml'))
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.nameLabel'), { target: { value: 'Blank page' } })
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.requirementsLabel'), { target: { value: 'Add content later' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.directSuccess')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.openDirectly'))
+
+    await waitFor(() => {
+      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { docId?: string; slug?: string } }
+      expect(last?.props).toMatchObject({ docId: 'd-new', slug: 'html-new' })
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({ space_id: 'space-current' })
+    await waitFor(() => expect(
+      wk.apiClient.calls.filter((call) => call.method === 'get' && call.url.startsWith('/docs')).length,
+    ).toBeGreaterThan(getsBefore))
+  })
+})
+
+describe('DocsHome — Bot HTML auto-send handoff', () => {
+  it('does not auto-send again when re-entering Docs before the first send ACK', async () => {
+    const wk = createMockWKApp()
+    const replaceToRoot = vi.fn()
+    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
+    wk.shared.currentSpaceId = 'space-current'
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) {
+        return { data: { total: 0, items: [] }, status: 200 }
+      }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
+        return { data: [{ uid: 'bot-1', name: 'Builder' }], status: 200 }
+      }
       return { data: {}, status: 200 }
     }
-  }
-
-  it('shows "New HTML" in the New dropdown and opens the modal WITHOUT creating a doc', async () => {
-    const wk = createMockWKApp()
     setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
-    render(<DocsHome />)
-    await waitFor(() => expect(screen.getByText('docs.state.empty')).toBeTruthy())
-
-    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
-    expect(screen.getByText('docs.list.newHtml')).toBeTruthy()
-    fireEvent.click(screen.getByText('docs.list.newHtml'))
-
-    // Modal opened + owned bots loaded; NO POST /docs was made.
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
-    expect(calls.some((c) => c.url.startsWith('/robot/owned_bots'))).toBe(true)
-  })
-
-  it('submits the modal → pushes the bot chat into routeRight, DocsList still resident, no global Chat', async () => {
-    const wk = createMockWKApp()
-    const replaceToRoot = vi.fn()
-    const switchToMenuById = vi.fn()
-    const showConversation = vi.fn()
-    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
-    ;(wk as { switchToMenuById?: unknown }).switchToMenuById = switchToMenuById
-    ;(wk as { endpoints?: unknown }).endpoints = { showConversation }
-    setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
 
     render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.empty.recentNone')).toBeTruthy())
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
     fireEvent.click(screen.getByText('docs.list.newHtml'))
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.modeBot'))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'A launch page' },
+      target: { value: 'Build a launch page' },
     })
     fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
     fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
 
-    // The bot chat element was pushed into the host right pane.
     await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: { botUid?: string } } }
-        | undefined
-      expect(last?.props?.draft?.botUid).toBe('bot_1')
+      const first = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+      expect(first?.props?.autoSend).toBe(true)
     })
-    // Left DocsList is still mounted (production resident-list path).
-    expect(screen.getByLabelText('docs.list.newMenu')).toBeTruthy()
-    // Never entered the global Chat.
-    expect(switchToMenuById).not.toHaveBeenCalled()
-    expect(showConversation).not.toHaveBeenCalled()
-    // No placeholder doc.
-    expect(calls.some((c) => c.method === 'post' && c.url === '/docs')).toBe(false)
-  })
-
-  it('re-entering after an unconfirmed send retains the SAME auto-send compose', async () => {
-    const wk = createMockWKApp()
-    const replaceToRoot = vi.fn()
-    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
-    setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
-
-    render(<DocsHome />)
-    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
-    fireEvent.click(screen.getByText('docs.list.newHtml'))
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'Landing' },
-    })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
-
-    let requestId: string | undefined
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: { requestId?: string }; autoSend?: boolean } }
-        | undefined
-      requestId = last?.props?.draft?.requestId
-      expect(requestId).toBeTruthy()
-      // First open is the one allowed auto-send.
-      expect(last?.props?.autoSend).toBe(true)
-    })
-
-    // No onMessageSent confirmation happened, so remounting must retain the compose for retry.
+    // No bot-chat-sent click / onMessageSent ACK occurs before this re-entry.
     act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: { requestId?: string }; autoSend?: boolean } }
-        | undefined
-      expect(last?.props?.draft?.requestId).toBe(requestId)
-      expect(last?.props?.autoSend).toBe(true)
-    })
+    const restored = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+    expect(restored?.props?.autoSend).toBe(false)
   })
 
-  it('re-entering after a confirmed send omits the initial auto-send compose', async () => {
+  it('restores auto-send after the imperative handoff throws', async () => {
     const wk = createMockWKApp()
-    const replaceToRoot = vi.fn()
-    ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
-    setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
-
-    render(<DocsHome />)
-    fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
-    fireEvent.click(screen.getByText('docs.list.newHtml'))
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Landing' } })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
-
-    const first = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { onMessageSent?: () => void } }
-    act(() => first.props?.onMessageSent?.())
-    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
-      expect(last.props?.autoSend).toBe(false)
+    const replaceToRoot = vi.fn((view: { props?: { autoSend?: boolean } }) => {
+      if (view?.props?.autoSend === true) throw new Error('right pane unavailable')
     })
-  })
-
-  it('a Space switch closes the html chat and returns the right pane to the empty state', async () => {
-    const wk = createMockWKApp()
-    const replaceToRoot = vi.fn()
     ;(wk as { routeRight?: unknown }).routeRight = { replaceToRoot, popToRoot: vi.fn() }
-    wk.shared.currentSpaceId = 's_1'
+    wk.shared.currentSpaceId = 'space-current'
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.startsWith('/docs')) return { data: { total: 0, items: [] }, status: 200 }
+      if (method === 'get' && url.startsWith('/robot/owned_bots')) {
+        return { data: [{ uid: 'bot-1', name: 'Builder' }], status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
     setWKApp(wk)
-    const calls: Array<{ method: string; url: string; body?: unknown }> = []
-    wk.apiClient.responder = ownedBotsResponder(calls)
 
     render(<DocsHome />)
+    await waitFor(() => expect(screen.getByText('docs.empty.recentNone')).toBeTruthy())
     fireEvent.click(screen.getByLabelText('docs.list.newMenu'))
     fireEvent.click(screen.getByText('docs.list.newHtml'))
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.modeBot'))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
     fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'Landing' },
+      target: { value: 'Build a launch page' },
     })
     fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
     fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: { botUid?: string } } }
-        | undefined
-      expect(last?.props?.draft?.botUid).toBe('bot_1')
-    })
 
-    // Switch Space → the reconciler closes the chat; the LAST push is no longer a bot chat.
-    wk.shared.currentSpaceId = 's_2'
-    act(() => wk.mockMittBus.emitSpaceChanged())
-    await waitFor(() => {
-      const last = replaceToRoot.mock.calls.at(-1)?.[0] as
-        | { props?: { draft?: unknown } }
-        | undefined
-      expect(last?.props?.draft).toBeUndefined()
-    })
+    const failedHandoff = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+    expect(failedHandoff?.props?.autoSend).toBe(true)
+    replaceToRoot.mockImplementation(() => undefined)
+    act(() => wk.mockMittBus.emitNavMenuActivated('docs'))
+    const restored = replaceToRoot.mock.calls.at(-1)?.[0] as { props?: { autoSend?: boolean } }
+    expect(restored?.props?.autoSend).toBe(true)
   })
 })
 
@@ -3328,10 +3263,10 @@ describe('DocsHome — row context menu: 复制文档链接 / 转发', () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalled())
     const copied = writeText.mock.calls[0][0] as string
-    // The doc's own address (buildDocLink), not an invite token.
+    // The doc's canonical address (buildDocLink), not an invite token. Ordinary
+    // document URLs no longer expose or depend on the home Space query.
     expect(copied).toContain('/d/d_b')
-    // Pin the Space query too — without this the case would still pass if `space` were dropped.
-    expect(copied).toContain('sp=')
+    expect(copied).not.toContain('sp=')
     expect(copied).not.toContain('invite')
     // And no request was made: minting an invite is what the old entry did.
     expect(

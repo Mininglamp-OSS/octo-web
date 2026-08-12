@@ -1,342 +1,519 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { render, screen, waitFor, cleanup, fireEvent } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { CreateHtmlModal } from './CreateHtmlModal.tsx'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
-import { CreateHtmlModal } from './CreateHtmlModal.tsx'
+import { buildHtmlCreationMessage } from './createHtmlTask.ts'
 
-// The modal loads owned bots on open (plan §1.2). Tests inject the seam via setWKApp() and drive
-// the /robot/owned_bots response through the mock apiClient responder.
-function mountBots(list: Array<{ uid: string; name: string; description?: string }> | 'error') {
-  const wk = createMockWKApp()
-  wk.apiClient.responder = (_m, url) => {
-    if (url.startsWith('/robot/owned_bots')) {
-      if (list === 'error') return Promise.reject({ response: { status: 500 } })
-      return { data: list, status: 200 }
-    }
-    return { data: {}, status: 200 }
-  }
-  setWKApp(wk)
-  return wk
+function response(data: Record<string, unknown>, ok = true, status = ok ? 200 : 400) {
+  return { ok, status, json: async () => ({ data }) }
 }
 
-describe('CreateHtmlModal', () => {
+function fill() {
+  fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.nameLabel'), { target: { value: 'A < B' } })
+  fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.requirementsLabel'), { target: { value: 'Add a chart' } })
+}
+
+describe('CreateHtmlModal direct publish', () => {
   beforeEach(() => {
-    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {
-      configurable: true,
-      value: vi.fn(function (this: HTMLDialogElement) { this.setAttribute('open', '') }),
-    })
-    Object.defineProperty(HTMLDialogElement.prototype, 'close', {
-      configurable: true,
-      value: vi.fn(function (this: HTMLDialogElement) { this.removeAttribute('open') }),
-    })
-    // Default: two owned bots.
-    mountBots([
-      { uid: 'bot1', name: 'Publisher', description: 'Builds HTML' },
-      { uid: 'bot2', name: 'Scribe' },
+    sessionStorage.clear()
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value() { this.setAttribute('open', '') } })
+    Object.defineProperty(HTMLDialogElement.prototype, 'close', { configurable: true, value() { this.removeAttribute('open') } })
+    vi.stubGlobal('crypto', { getRandomValues: (bytes: Uint8Array) => bytes.fill(10) })
+    vi.stubGlobal('fetch', vi.fn())
+    const wk = createMockWKApp()
+    wk.apiClient.responder = () => ({ data: [{ uid: 'bot-1', name: 'Builder' }, { uid: 'bot-2', name: 'Reviewer' }], status: 200 })
+    setWKApp(wk)
+  })
+
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); sessionStorage.clear() })
+
+  it('keeps direct creation and Bot creation in one accessible workflow-card group', async () => {
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    const choices = screen.getByRole('radiogroup', { name: 'docs.list.htmlCreate.modeLabel' })
+    const direct = screen.getByRole('radio', { name: /docs.list.htmlCreate.modeDirect/ })
+    const bot = screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ })
+    expect(choices).toContain(direct)
+    expect(direct).toBeInstanceOf(HTMLInputElement)
+    expect(bot).toBeInstanceOf(HTMLInputElement)
+    expect((direct as HTMLInputElement).type).toBe('radio')
+    expect((direct as HTMLInputElement).name).toBe((bot as HTMLInputElement).name)
+    expect((direct as HTMLInputElement).checked).toBe(true)
+    expect((bot as HTMLInputElement).checked).toBe(false)
+    expect(direct.closest('label')?.className).toContain('octo-html-create-mode-card')
+    expect(screen.getByText('docs.list.htmlCreate.modeDirectDescription')).toBeTruthy()
+    expect(screen.getByText('docs.list.htmlCreate.modeBotDescription')).toBeTruthy()
+    fireEvent.click(bot)
+    expect((direct as HTMLInputElement).checked).toBe(false)
+    expect((bot as HTMLInputElement).checked).toBe(true)
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
+    expect(screen.getByLabelText('docs.list.htmlCreate.descLabel')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Build a page' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    expect(screen.getByLabelText('docs.list.htmlCreate.botPromptLabel')).toBeTruthy()
+    expect(screen.queryByLabelText('docs.list.htmlCreate.promptLabel')).toBeNull()
+  })
+
+  it('uses a dedicated single-line style for the HTML name input', () => {
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    const nameInput = screen.getByLabelText('docs.list.htmlCreate.nameLabel')
+    expect(nameInput).toBeInstanceOf(HTMLInputElement)
+    expect(nameInput.className).toContain('octo-html-create-input')
+    expect((nameInput as HTMLInputElement).maxLength).toBe(512)
+    expect((screen.getByLabelText('docs.list.htmlCreate.requirementsLabel') as HTMLTextAreaElement).maxLength).toBe(8000)
+  })
+
+  it('loads Bots only after Bot mode is entered and preserves a non-first selection', async () => {
+    const wk = createMockWKApp()
+    const responder = vi.fn(() => ({ data: [{ uid: 'bot-1', name: 'Builder' }, { uid: 'bot-2', name: 'Reviewer' }], status: 200 }))
+    wk.apiClient.responder = responder
+    setWKApp(wk)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    await act(async () => {})
+    expect(responder).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Reviewer')).toBeTruthy())
+    expect(responder).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByLabelText('Reviewer'))
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeDirect/ }))
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    expect((screen.getByLabelText('Reviewer') as HTMLInputElement).checked).toBe(true)
+  })
+
+  it('loads the new Space after Bots are ready and ignores stale Space state', async () => {
+    const wk = createMockWKApp()
+    let resolveSpace2!: (value: { data: Array<{ uid: string; name: string }>; status: number }) => void
+    wk.apiClient.responder = (_method, url) => {
+      if (url.includes('space-1')) return { data: [{ uid: 'bot-1', name: 'Space One Bot' }], status: 200 }
+      if (url.includes('space-2')) return new Promise((resolve) => { resolveSpace2 = resolve })
+      return { data: [], status: 200 }
+    }
+    setWKApp(wk)
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Space One Bot')).toBeTruthy())
+    expect((screen.getByLabelText('Space One Bot') as HTMLInputElement).checked).toBe(true)
+
+    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    expect(screen.queryByText('Space One Bot')).toBeNull()
+    expect(screen.getByText('docs.list.htmlCreate.botLoading')).toBeTruthy()
+    await waitFor(() => expect(resolveSpace2).toBeTypeOf('function'))
+    resolveSpace2({ data: [{ uid: 'bot-2', name: 'Space Two Bot' }], status: 200 })
+    await waitFor(() => expect(screen.getByText('Space Two Bot')).toBeTruthy())
+    expect((screen.getByLabelText('Space Two Bot') as HTMLInputElement).checked).toBe(true)
+
+    const calls = wk.apiClient.calls.filter((call) => call.url.startsWith('/robot/owned_bots'))
+    expect(calls.map((call) => call.url)).toEqual([
+      '/robot/owned_bots?space_id=space-1',
+      '/robot/owned_bots?space_id=space-2',
     ])
   })
 
-  afterEach(() => {
-    cleanup()
-    vi.restoreAllMocks()
-  })
-
-  it('renders nothing when closed', () => {
-    const { container } = render(
-      <CreateHtmlModal open={false} spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />,
-    )
-    expect(container.firstChild).toBeNull()
-  })
-
-  it('renders a native <dialog> element (real dialog semantics, not a div impostor)', async () => {
-    const { container } = render(
-      <CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />,
-    )
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    // The modal is a real <dialog> element ...
-    const dialogEl = container.querySelector('dialog.octo-html-create-modal')
-    expect(dialogEl).not.toBeNull()
-    expect(dialogEl?.tagName).toBe('DIALOG')
-    expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalledTimes(1)
-    // ... whose implicit ARIA role is still dialog (queryable by role), with the a11y contract kept.
-    const byRole = screen.getByRole('dialog')
-    expect(byRole.tagName).toBe('DIALOG')
-    expect(byRole.getAttribute('aria-modal')).toBe('true')
-    expect(byRole.getAttribute('aria-labelledby')).toBeTruthy()
-    // No div is impersonating the dialog role anymore.
-    expect(container.querySelector('div[role="dialog"]')).toBeNull()
-  })
-
-  it('loads owned bots for the current space on open', async () => {
-    const wk = mountBots([{ uid: 'bot1', name: 'Publisher' }])
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    const calls = wk.apiClient.calls.filter((c) => c.url.startsWith('/robot/owned_bots'))
-    expect(calls).toHaveLength(1)
-    expect(calls[0].url).toBe('/robot/owned_bots?space_id=s_1')
-  })
-
-  it('shows a loading hint before bots resolve', () => {
-    // Never-resolving responder keeps it in the loading state.
+  it('does not let a late Bot response from the old Space overwrite the current Space', async () => {
     const wk = createMockWKApp()
-    wk.apiClient.responder = () => new Promise(() => {})
+    let resolveOld!: (value: { data: Array<{ uid: string; name: string }>; status: number }) => void
+    wk.apiClient.responder = (_method, url) => url.includes('space-1')
+      ? new Promise((resolve) => { resolveOld = resolve })
+      : { data: [{ uid: 'bot-2', name: 'Current Space Bot' }], status: 200 }
     setWKApp(wk)
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    expect(screen.getByText('docs.list.htmlCreate.botLoading')).toBeTruthy()
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(resolveOld).toBeTypeOf('function'))
+
+    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Current Space Bot')).toBeTruthy())
+    resolveOld({ data: [{ uid: 'bot-1', name: 'Stale Space Bot' }], status: 200 })
+    await act(async () => {})
+
+    expect(screen.queryByText('Stale Space Bot')).toBeNull()
+    expect((screen.getByLabelText('Current Space Bot') as HTMLInputElement).checked).toBe(true)
   })
 
-  it('shows an error + retry when the bot load fails, and retry refetches', async () => {
-    const wk = mountBots('error')
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.botError')).toBeTruthy())
-    // Flip the responder to success, then retry.
-    wk.apiClient.responder = (_m, url) =>
-      url.startsWith('/robot/owned_bots')
-        ? { data: [{ uid: 'bot1', name: 'Recovered' }], status: 200 }
-        : { data: {}, status: 200 }
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.retry'))
-    await waitFor(() => expect(screen.getByText('Recovered')).toBeTruthy())
-  })
-
-  it('retry preserves the description and staged files', async () => {
-    const wk = mountBots('error')
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Keep this' } })
-    fireEvent.change(document.querySelector('input[type="file"]')!, {
-      target: { files: [new File(['x'], 'keep.txt', { type: 'text/plain' })] },
-    })
-    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.botError')).toBeTruthy())
-    wk.apiClient.responder = () => ({ data: [{ uid: 'bot1', name: 'Recovered' }], status: 200 })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.retry'))
-    await waitFor(() => expect(screen.getByText('Recovered')).toBeTruthy())
-    expect((screen.getByLabelText('docs.list.htmlCreate.descLabel') as HTMLTextAreaElement).value).toBe('Keep this')
-    expect(screen.getByText('keep.txt')).toBeTruthy()
-  })
-
-  it('uses native modal cancel handling for Escape', async () => {
+  it('closes from the accessible header close button when idle', () => {
     const onClose = vi.fn()
-    render(<CreateHtmlModal open spaceId="s_1" onClose={onClose} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }))
+    render(<CreateHtmlModal open spaceId="space-1" onClose={onClose} onCreated={() => {}} onSubmit={() => {}} />)
+
+    const close = screen.getByRole('button', { name: 'docs.list.htmlCreate.close' })
+    expect(close.className).toContain('octo-html-create-close')
+    fireEvent.click(close)
+
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('shows the empty state and disables submit when the user owns no bot', async () => {
-    mountBots([])
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.botEmpty')).toBeTruthy())
-    const submit = screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement
-    expect(submit.disabled).toBe(true)
+  it('disables the header close button and does not close while publishing', () => {
+    vi.mocked(fetch).mockReturnValue(new Promise(() => {}) as Promise<Response>)
+    const onClose = vi.fn()
+    render(<CreateHtmlModal open spaceId="space-1" onClose={onClose} onCreated={() => {}} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+
+    const close = screen.getByRole('button', { name: 'docs.list.htmlCreate.close' }) as HTMLButtonElement
+    expect(close.disabled).toBe(true)
+    fireEvent.click(close)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
-  it('disables submit until a description is entered (bot is preselected)', async () => {
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    const submit = screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement
-    expect(submit.disabled).toBe(true)
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'A landing page' },
-    })
-    expect(submit.disabled).toBe(false)
-  })
-
-  it('disables submit for a whitespace-only description', async () => {
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: '   \n  ' },
-    })
-    expect((screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('blocks submit and flags an error when the description exceeds 8000 chars', async () => {
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'x'.repeat(8001) },
-    })
-    expect(screen.getByText('docs.list.htmlCreate.descTooLong')).toBeTruthy()
-    expect((screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('validates the final encoded message against the shared transport limit', async () => {
-    render(<CreateHtmlModal open spaceId="s_1" publishBaseUrl="https://octo.example/api/" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: '\\'.repeat(3000) },
-    })
-    expect(screen.getByRole('alert').textContent).toContain('docs.list.htmlCreate.messageTooLong')
-    expect((screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement).disabled).toBe(true)
-  })
-
-  it('has no component-local color tokens and follows shared light/dark semantic tokens', () => {
-    const css = readFileSync('src/editor/styles.css', 'utf8')
-    const start = css.indexOf('/* ── New-HTML')
-    const scope = css.slice(start)
-    expect(scope).not.toMatch(/\.octo-(?:html-create-overlay|docs-bot-chat)\s*\{[^}]*--wk-[\w-]+\s*:/s)
-    expect(scope).toContain('background: var(--wk-bg-surface)')
-    expect(scope).toContain('color: var(--wk-text-primary)')
-    const semantic = readFileSync('../dmworkbase/src/theme/semantic.css', 'utf8')
-    expect(semantic).toMatch(/:root[\s\S]*--wk-bg-surface:/)
-    expect(semantic).toMatch(/body\[theme-mode=["']?dark["']?\][\s\S]*--wk-bg-surface:/)
-  })
-
-  it('hands the selected bot + description + staged files to onSubmit and never uploads', async () => {
-    const wk = mountBots([
-      { uid: 'bot1', name: 'Publisher' },
-      { uid: 'bot2', name: 'Scribe' },
-    ])
-    const onSubmit = vi.fn()
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={onSubmit} />)
-    await waitFor(() => expect(screen.getByText('Scribe')).toBeTruthy())
-    // Choose the second bot.
-    fireEvent.click(screen.getByDisplayValue('bot2'))
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'My page' },
-    })
-    // Stage two files via the hidden file input.
-    const f1 = new File(['a'], 'a.png', { type: 'image/png' })
-    const f2 = new File(['b'], 'b.pdf', { type: 'application/pdf' })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    fireEvent.change(input, { target: { files: [f1, f2] } })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    expect((screen.getByLabelText('docs.list.htmlCreate.promptLabel') as HTMLTextAreaElement).readOnly).toBe(true)
-    expect(screen.getByText('docs.list.htmlCreate.backToEdit')).toBeTruthy()
-    expect(screen.getByText('docs.list.htmlCreate.copyPrompt')).toBeTruthy()
-    expect(screen.getByText('docs.list.htmlCreate.forwardToBot')).toBeTruthy()
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
-
-    expect(onSubmit).toHaveBeenCalledTimes(1)
-    const draft = onSubmit.mock.calls[0][0]
-    expect(draft.botUid).toBe('bot2')
-    expect(draft.botName).toBe('Scribe')
-    expect(draft.description).toBe('My page')
-    expect(draft.files).toHaveLength(2)
-    expect(draft.spaceId).toBe('s_1')
-    // No upload API touched — only the owned_bots GET.
-    const uploads = wk.apiClient.calls.filter((c) => c.method !== 'get')
-    expect(uploads).toHaveLength(0)
-  })
-
-  it('returns from preview without losing the description or attachments', async () => {
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Keep me' } })
-    fireEvent.change(document.querySelector('input[type="file"]')!, {
-      target: { files: [new File(['x'], 'keep.txt', { type: 'text/plain' })] },
-    })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.backToEdit'))
-    expect((screen.getByLabelText('docs.list.htmlCreate.descLabel') as HTMLTextAreaElement).value).toBe('Keep me')
-    expect(screen.getByText('keep.txt')).toBeTruthy()
-  })
-
-  it('copies only prompt text and reports that attachments are not copied', async () => {
+  it('clears an old copy notice when switching mode or returning to Bot editing', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined)
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Copy me' } })
-    fireEvent.change(document.querySelector('input[type="file"]')!, {
-      target: { files: [new File(['x'], 'ref.txt', { type: 'text/plain' })] },
-    })
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Build a page' } })
     fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('docs.list.htmlCreate.copySuccess'))
+
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeDirect/ }))
+    expect(screen.queryByText('docs.list.htmlCreate.copySuccess')).toBeNull()
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
+    await waitFor(() => expect(screen.getByRole('status').textContent).toBe('docs.list.htmlCreate.copySuccess'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.backToEdit'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    expect(screen.queryByText('docs.list.htmlCreate.copySuccess')).toBeNull()
+  })
+
+  it('clears an old copy notice after description, file, or Bot selection changes', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Reviewer')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Build a page' } })
+
+    const copyThenEdit = async () => {
+      fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+      fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
+      await waitFor(() => expect(screen.getByRole('status')).toBeTruthy())
+      fireEvent.click(screen.getByText('docs.list.htmlCreate.backToEdit'))
+    }
+
+    await copyThenEdit()
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Build another page' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    expect(screen.queryByText('docs.list.htmlCreate.copySuccess')).toBeNull()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.backToEdit'))
+
+    await copyThenEdit()
+    fireEvent.click(screen.getByLabelText('Reviewer'))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    expect(screen.queryByText('docs.list.htmlCreate.copySuccess')).toBeNull()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.backToEdit'))
+
+    await copyThenEdit()
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(fileInput, { target: { files: [new File(['x'], 'brief.txt')] } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    expect(screen.queryByText('docs.list.htmlCreate.copySuccess')).toBeNull()
+  })
+
+  it('restores Bot validation accessibility and file-row styling hooks', async () => {
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.modeBot'))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
+
+    const description = screen.getByLabelText('docs.list.htmlCreate.descLabel') as HTMLTextAreaElement
+    fireEvent.change(description, { target: { value: 'x'.repeat(8001) } })
+    const error = screen.getByRole('alert')
+    expect(description.getAttribute('aria-invalid')).toBe('true')
+    expect(description.getAttribute('aria-describedby')).toBe(error.id)
+
+    const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(fileInput, { target: { files: [new File(['x'], 'brief.txt')] } })
+    expect(screen.getByText('brief.txt').className).toContain('octo-html-create-file-name')
+    expect(screen.getByLabelText('docs.list.htmlCreate.removeFile').className).toContain('octo-html-create-file-remove')
+  })
+
+  it('forwards a Bot preview only once on a double click', async () => {
+    const onSubmit = vi.fn()
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Build a page' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+
+    const forward = screen.getByText('docs.list.htmlCreate.forwardToBot') as HTMLButtonElement
+    fireEvent.click(forward)
+    fireEvent.click(forward)
+
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+    expect(forward.disabled).toBe(true)
+  })
+
+  it('keeps one non-empty request id across preview, copy, edit and forwarding', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    const onSubmit = vi.fn()
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={onSubmit} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Build a page' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    const first = (screen.getByLabelText('docs.list.htmlCreate.botPromptLabel') as HTMLTextAreaElement).value
+    const requestId = first.match(/^request_id: (.+)$/m)?.[1]
+    expect(requestId).toBeTruthy()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(first))
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.backToEdit'))
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Changed page' } })
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    expect((screen.getByLabelText('docs.list.htmlCreate.botPromptLabel') as HTMLTextAreaElement).value).toContain(`request_id: ${requestId}`)
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.forwardToBot'))
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ requestId }))
+  })
+
+  it('allows a real final message exactly at the 5000-character boundary', async () => {
+    const requestId = '123e4567-e89b-12d3-a456-426614174000'
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => requestId), getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
+    const fixed = buildHtmlCreationMessage({ requestId, botUid: 'bot-1', botName: '', description: '', files: [], spaceId: 'space-1', baseUrl: '' }).length
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'x'.repeat(5000 - fixed) } })
+    expect((screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement).disabled).toBe(false)
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
+    expect((screen.getByLabelText('docs.list.htmlCreate.botPromptLabel') as HTMLTextAreaElement).value).toHaveLength(5000)
+  })
+
+  it('blocks a real final message at 5001 characters with a 36-character UUID', async () => {
+    const requestId = '123e4567-e89b-12d3-a456-426614174000'
+    vi.stubGlobal('crypto', { randomUUID: vi.fn(() => requestId), getRandomValues: (bytes: Uint8Array) => bytes.fill(1) })
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fireEvent.click(screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }))
+    await waitFor(() => expect(screen.getByText('Builder')).toBeTruthy())
+    const fixed = buildHtmlCreationMessage({ requestId, botUid: 'bot-1', botName: '', description: '', files: [], spaceId: 'space-1', baseUrl: '' }).length
+    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'x'.repeat(5001 - fixed) } })
+    expect((screen.getByText('docs.list.htmlCreate.generatePrompt') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByRole('alert').textContent).toBe('docs.list.htmlCreate.messageTooLong')
+  })
+
+  it('previews a non-copyable comment prompt, then keeps a real-id success state until opened', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } })
+    vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-server', version: 1, registered: true, status: 'published', doc_id: 'd-real' }) as Response)
+    const onCreated = vi.fn()
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    fill()
+    const precreatePrompt = (screen.getByLabelText('docs.list.htmlCreate.promptLabel') as HTMLTextAreaElement).value
+    expect(precreatePrompt).not.toContain('doc_id')
+    expect(precreatePrompt).toContain('docs.list.htmlCreate.precreatePrompt')
+    expect(screen.getByText('docs.list.htmlCreate.directPromptHelp')).toBeTruthy()
+    expect(screen.queryByText('docs.list.htmlCreate.copyPrompt')).toBeNull()
+    expect(writeText).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.directSuccess')).toBeTruthy())
     const prompt = (screen.getByLabelText('docs.list.htmlCreate.promptLabel') as HTMLTextAreaElement).value
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
+    expect(prompt).toContain('doc_id：d-real')
+    expect(prompt).toContain('slug：html-server')
+    expect(onCreated).not.toHaveBeenCalled()
+    const copyAndOpen = screen.getByText('docs.list.htmlCreate.copyPromptAndOpen')
+    expect(copyAndOpen).toBeTruthy()
+    fireEvent.click(copyAndOpen)
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(prompt))
-    expect(screen.getByText('docs.list.htmlCreate.copySuccessWithFiles')).toBeTruthy()
+    expect(onCreated).toHaveBeenCalledWith({ kind: 'published', docId: 'd-real', slug: 'html-server', version: 1 })
   })
 
-  it('falls back to execCommand when Clipboard API is unavailable', async () => {
-    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: undefined })
-    const execCommand = vi.fn().mockReturnValue(true)
-    Object.defineProperty(document, 'execCommand', { configurable: true, value: execCommand })
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Fallback copy' } })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
-    await waitFor(() => expect(execCommand).toHaveBeenCalledWith('copy'))
-    expect(screen.getByText('docs.list.htmlCreate.copySuccess')).toBeTruthy()
+  it('does not expose real identifiers before the server returns them', () => {
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fill()
+    expect((screen.getByLabelText('docs.list.htmlCreate.promptLabel') as HTMLTextAreaElement).value).not.toContain('doc_id')
+    expect(sessionStorage.length).toBe(0)
   })
 
-  it('shows a localized failure when prompt copying fails', async () => {
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+  it('shows a complete prompt only after success without opening automatically', async () => {
+    vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-server', version: 1, registered: true, status: 'published', doc_id: 'd-real' }) as Response)
+    const onCreated = vi.fn()
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.directSuccess')).toBeTruthy())
+    const prompt = (screen.getByLabelText('docs.list.htmlCreate.promptLabel') as HTMLTextAreaElement).value
+    expect(prompt).toContain('doc_id：d-real')
+    expect(prompt).toContain('slug：html-server')
+    expect(prompt).toContain('HTML 名称：A < B')
+    expect(prompt).toContain('修改需求：Add a chart')
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it('locks submission while publishing and sends only one POST on double click', async () => {
+    let resolve!: (value: Response | PromiseLike<Response>) => void
+    vi.mocked(fetch).mockReturnValue(new Promise((done) => { resolve = done }) as Promise<Response>)
+    const onCreated = vi.fn()
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    fill()
+    const submit = screen.getByText('docs.list.htmlCreate.create') as HTMLButtonElement
+    const form = submit.closest('form')!
+    act(() => { fireEvent.submit(form); fireEvent.submit(form) })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect((screen.getByText('docs.list.htmlCreate.creating') as HTMLButtonElement).disabled).toBe(true)
+    resolve(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.directSuccess')).toBeTruthy())
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it('locks both mode buttons while direct publishing and cannot switch to Bot', async () => {
+    vi.mocked(fetch).mockReturnValue(new Promise(() => {}) as Promise<Response>)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+
+    const directMode = screen.getByRole('radio', { name: /docs.list.htmlCreate.modeDirect/ }) as HTMLInputElement
+    const botMode = screen.getByRole('radio', { name: /docs.list.htmlCreate.modeBot/ }) as HTMLInputElement
+    expect(directMode.disabled).toBe(true)
+    expect(botMode.disabled).toBe(true)
+    expect(screen.getByLabelText('docs.list.htmlCreate.nameLabel')).toBeTruthy()
+    expect(screen.queryByLabelText('docs.list.htmlCreate.descLabel')).toBeNull()
+  })
+
+  it('times out after headers when response JSON hangs, reports uncertain, and unlocks closing', async () => {
+    vi.useFakeTimers()
+    const signalSeen = vi.fn()
+    vi.mocked(fetch).mockImplementation((_url, init) => {
+      signalSeen(init?.signal)
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => new Promise(() => {}),
+      } as Response)
     })
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), {
-      target: { value: 'Copy me' },
-    })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPrompt'))
-    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.copyFailed')).toBeTruthy())
-  })
-
-  it('lets the user remove a staged file before submit', async () => {
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    const f1 = new File(['a'], 'keep.png', { type: 'image/png' })
-    const f2 = new File(['b'], 'drop.png', { type: 'image/png' })
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement
-    fireEvent.change(input, { target: { files: [f1, f2] } })
-    expect(screen.getByText('drop.png')).toBeTruthy()
-    // Remove the second file.
-    const removeBtns = screen.getAllByLabelText('docs.list.htmlCreate.removeFile')
-    fireEvent.click(removeBtns[1])
-    expect(screen.queryByText('drop.png')).toBeNull()
-    expect(screen.getByText('keep.png')).toBeTruthy()
-  })
-
-  it('renders add files as an icon button with visible text', async () => {
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    const button = screen.getByRole('button', { name: 'docs.list.htmlCreate.addFiles' })
-    expect(button.classList.contains('octo-html-create-add-files')).toBe(true)
-    expect(button.querySelector('svg[aria-hidden="true"]')).not.toBeNull()
-  })
-
-  it('keeps edit and preview actions inside the styled footer action group', async () => {
-    render(<CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    expect(screen.getByText('docs.list.htmlCreate.cancel').closest('.octo-html-create-footer')).not.toBeNull()
-    expect(screen.getByText('docs.list.htmlCreate.generatePrompt').closest('.octo-html-create-footer')).not.toBeNull()
-    expect(screen.getByText('docs.list.htmlCreate.prerequisiteHint')).toBeTruthy()
-    fireEvent.change(screen.getByLabelText('docs.list.htmlCreate.descLabel'), { target: { value: 'Preview me' } })
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.generatePrompt'))
-    for (const key of ['backToEdit', 'copyPrompt', 'forwardToBot']) {
-      expect(screen.getByText(`docs.list.htmlCreate.${key}`).closest('.octo-html-create-footer')).not.toBeNull()
-    }
-    expect(screen.getByText('docs.list.htmlCreate.prerequisiteHint')).toBeTruthy()
-  })
-
-  it('reloads bots when the space changes (no stale bot carried over)', async () => {
-    const wk = createMockWKApp()
-    wk.apiClient.responder = (_m, url) => {
-      if (url === '/robot/owned_bots?space_id=s_1') return { data: [{ uid: 'a', name: 'AlphaBot' }], status: 200 }
-      if (url === '/robot/owned_bots?space_id=s_2') return { data: [{ uid: 'b', name: 'BetaBot' }], status: 200 }
-      return { data: {}, status: 200 }
-    }
-    setWKApp(wk)
-    const { rerender } = render(
-      <CreateHtmlModal open spaceId="s_1" onClose={() => {}} onSubmit={() => {}} />,
-    )
-    await waitFor(() => expect(screen.getByText('AlphaBot')).toBeTruthy())
-    rerender(<CreateHtmlModal open spaceId="s_2" onClose={() => {}} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('BetaBot')).toBeTruthy())
-    expect(screen.queryByText('AlphaBot')).toBeNull()
-  })
-
-  it('closes on Escape and on cancel', async () => {
     const onClose = vi.fn()
-    render(<CreateHtmlModal open spaceId="s_1" onClose={onClose} onSubmit={() => {}} />)
-    await waitFor(() => expect(screen.getByText('Publisher')).toBeTruthy())
-    fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }))
+    render(<CreateHtmlModal open spaceId="space-1" onClose={onClose} onCreated={() => {}} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })
+    expect(signalSeen).toHaveBeenCalledTimes(1)
+    expect((signalSeen.mock.calls[0][0] as AbortSignal).aborted).toBe(true)
+    expect(screen.getByRole('alert').textContent).toBe('docs.list.htmlCreate.publishUncertain')
+    const close = screen.getByRole('button', { name: 'docs.list.htmlCreate.close' }) as HTMLButtonElement
+    expect(close.disabled).toBe(false)
+    fireEvent.click(close)
     expect(onClose).toHaveBeenCalledTimes(1)
-    fireEvent.click(screen.getByText('docs.list.htmlCreate.cancel'))
-    expect(onClose).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
+  })
+
+  it('aborts and ignores an old request that resolves after switching Space', async () => {
+    let resolve!: (value: Response | PromiseLike<Response>) => void
+    vi.mocked(fetch).mockReturnValue(new Promise((done) => { resolve = done }) as Promise<Response>)
+    const onCreated = vi.fn()
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    const signal = vi.mocked(fetch).mock.calls[0][1]?.signal
+    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    expect(signal?.aborted).toBe(true)
+    resolve(response({ slug: 'old-space', version: 1, registered: true, status: 'published', doc_id: 'old-doc' }) as Response)
+    await Promise.resolve()
+    expect(onCreated).not.toHaveBeenCalled()
+    expect(sessionStorage.length).toBe(0)
+  })
+
+  it('does not open after copy completes in a different Space', async () => {
+    let finish!: () => void
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve })) } })
+    vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
+    const onCreated = vi.fn()
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen'))
+    view.rerender(<CreateHtmlModal open spaceId="space-2" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    finish()
+    await Promise.resolve()
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it('invalidates a pending clipboard open when the modal closes', async () => {
+    let finish!: () => void
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve })) } })
+    vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
+    const onCreated = vi.fn()
+    const view = render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen'))
+    view.rerender(<CreateHtmlModal open={false} spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    finish()
+    await act(async () => {})
+    expect(onCreated).not.toHaveBeenCalled()
+  })
+
+  it('synchronously locks copy-and-open and direct-open across double/cross clicks', async () => {
+    let finish!: () => void
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn(() => new Promise<void>((resolve) => { finish = resolve })) } })
+    vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
+    const onCreated = vi.fn()
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={onCreated} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.copyPromptAndOpen')).toBeTruthy())
+    const copyAndOpen = screen.getByText('docs.list.htmlCreate.copyPromptAndOpen') as HTMLButtonElement
+    const directOpen = screen.getByText('docs.list.htmlCreate.openDirectly') as HTMLButtonElement
+    fireEvent.click(copyAndOpen)
+    fireEvent.click(copyAndOpen)
+    fireEvent.click(directOpen)
+    expect(copyAndOpen.disabled).toBe(true)
+    expect(directOpen.disabled).toBe(true)
+    expect(onCreated).not.toHaveBeenCalled()
+    finish()
+    await waitFor(() => expect(onCreated).toHaveBeenCalledTimes(1))
+  })
+
+  it('keeps the editable form and allows retry after an explicit HTTP publish failure', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response({}, false) as Response)
+      .mockResolvedValueOnce(response({ slug: 'html-a', version: 1, registered: true, status: 'published', doc_id: 'd-1' }) as Response)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('docs.list.htmlCreate.publishFailed'))
+    expect((screen.getByLabelText('docs.list.htmlCreate.nameLabel') as HTMLInputElement).value).toBe('A < B')
+    const submit = screen.getByText('docs.list.htmlCreate.create') as HTMLButtonElement
+    expect(submit.disabled).toBe(false)
+    fireEvent.click(submit)
+    await waitFor(() => expect(screen.getByText('docs.list.htmlCreate.directSuccess')).toBeTruthy())
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
+  it('locks submission after a network rejection because the publish result is uncertain', async () => {
+    vi.mocked(fetch).mockRejectedValue(new TypeError('network unavailable'))
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('docs.list.htmlCreate.publishUncertain'))
+    const submit = screen.getByText('docs.list.htmlCreate.create') as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+    fireEvent.click(submit)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('locks submission after an invalid 2xx response because the publish result is uncertain', async () => {
+    vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: true, status: 'published' }) as Response)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toBe('docs.list.htmlCreate.publishUncertain'))
+    const submit = screen.getByText('docs.list.htmlCreate.create') as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+    fireEvent.click(submit)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('makes registration_failed terminal and never POSTs v2', async () => {
+    vi.mocked(fetch).mockResolvedValue(response({ slug: 'html-a', version: 1, registered: false, status: 'registration_failed' }) as Response)
+    render(<CreateHtmlModal open spaceId="space-1" onClose={() => {}} onCreated={() => {}} onSubmit={() => {}} />)
+    fill()
+    fireEvent.click(screen.getByText('docs.list.htmlCreate.create'))
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('docs.list.htmlCreate.registrationFailed'))
+    const submit = screen.getByText('docs.list.htmlCreate.create') as HTMLButtonElement
+    expect(submit.disabled).toBe(true)
+    fireEvent.click(submit)
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(screen.getByText('html-a')).toBeTruthy()
+    expect(screen.getByText('docs.list.htmlCreate.copySlug')).toBeTruthy()
   })
 })

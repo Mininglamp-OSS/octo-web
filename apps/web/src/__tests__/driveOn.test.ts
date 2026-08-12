@@ -35,17 +35,12 @@ describe("drive_on appconfig web integration", () => {
     expect(source).toContain("notifyConfigChangeListeners");
   });
 
-  it("gates the Drive NavRail entry on driveOn and refreshes when appconfig arrives", () => {
-    const source = readRepoFile("packages/dmworkdrive/src/module.tsx");
+  it("keeps Drive registration delegated to enterprise modules", () => {
+    const source = readRepoFile("apps/web/src/index.tsx");
 
-    // Menu factory returns the entry only when driveOn is true (else undefined → hidden).
-    expect(source).toContain("WKApp.remoteConfig?.driveOn");
-    // Subscribe to first load AND later changes, refreshing the NavRail each time.
-    expect(source).toContain("rc.addListener(refreshMenus)");
-    expect(source).toContain("rc.addConfigChangeListener(refreshMenus)");
-    expect(source).toContain("WKApp.menus.refresh?.()");
-    // Honor the addListener contract: when appconfig already resolved before init,
-    // reflect the current drive_on immediately instead of waiting on a listener.
-    expect(source).toContain("rc.requestSuccess");
+    // The open-source host only exposes the appconfig bridge. The Drive NavRail
+    // entry itself is supplied by the enterprise module slot.
+    expect(source).toContain("registerEnterpriseModules");
+    expect(source).not.toContain("new DriveModule()");
   });
 });

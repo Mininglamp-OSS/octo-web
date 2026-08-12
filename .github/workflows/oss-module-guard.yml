@@ -37,12 +37,12 @@ jobs:
           blocked_paths="$(mktemp)"
           awk -F '\t' '
             $2 == "removed" { next }
-            $1 ~ /^packages\/(dmloop|dmpersonal)(\/|$)/ { print $1; next }
-            $1 ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/.*(loop|personal)/ { print $1; next }
+            $1 ~ /^packages\/(dmloop|dmpersonal|dmworkdrive)(\/|$)/ { print $1; next }
+            $1 ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/.*(loop|personal|drive)/ { print $1; next }
           ' "${changed_files}" > "${blocked_paths}"
 
           if [[ -s "${blocked_paths}" ]]; then
-            echo "::error::Loop/Personal have been moved out of the OSS repository. Submit these changes to the enterprise module repository instead."
+            echo "::error::Loop/Personal/Drive have been moved out of the OSS repository. Submit these changes to the enterprise module repository instead."
             cat "${blocked_paths}"
             exit 1
           fi
@@ -55,7 +55,7 @@ jobs:
 
             case "${file}" in
               *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.json|*.yaml|*.yml|Dockerfile*)
-                if grep -nHE "@(octo|dmwork)/(loop|personal)(/|['\"[:space:]]|$)" "${file}" >> "${blocked_refs}"; then
+                if grep -nHE "@(octo|dmwork)/(loop|personal|drive)(/|['\"[:space:]]|$)" "${file}" >> "${blocked_refs}"; then
                   true
                 fi
                 ;;
@@ -63,7 +63,7 @@ jobs:
           done < "${changed_files}"
 
           if [[ -s "${blocked_refs}" ]]; then
-            echo "::error::Open-source code must not reintroduce Loop/Personal package imports. Submit these changes to the enterprise module repository instead."
+            echo "::error::Open-source code must not reintroduce Loop/Personal/Drive package imports. Submit these changes to the enterprise module repository instead."
             cat "${blocked_refs}"
             exit 1
           fi

@@ -82,3 +82,29 @@ export function buildRichTextMixedCandidate(
     topImageIds: topImages.map(({ id }) => id),
   };
 }
+
+/** Count the local bubbles needed to cover every consumed part of a compose. */
+export function countSendPlanParts(
+  topFiles: RichTextMixedAttachment[],
+  editorBlocks: RichTextMixedEditorBlock[] | undefined,
+  fallbackText: string,
+  mixedCandidate: RichTextMixedCandidate | null,
+  includeEmptyReplyPart = false
+): number {
+  if (mixedCandidate) return 1;
+
+  const blocks = editorBlocks || [];
+  let editorParts = 0;
+  if (blocks.length > 0) {
+    const hasText = blocks.some(
+      (block) => block.type === "text" && block.text.trim() !== ""
+    );
+    const hasImage = blocks.some((block) => block.type === "image");
+    const hasFile = blocks.some((block) => block.type === "file");
+    editorParts = hasText && hasImage && !hasFile ? 1 : blocks.length;
+  } else if (fallbackText.trim() !== "") {
+    editorParts = 1;
+  }
+
+  return topFiles.length + editorParts + (includeEmptyReplyPart ? 1 : 0);
+}

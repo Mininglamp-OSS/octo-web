@@ -53,6 +53,7 @@ const BASE = {
   uid: 'u_self',
   url: 'wss://collab.example.com',
   token: () => 'wb-jwt',
+  disposeToken: vi.fn(),
 }
 const DOC_NAME = 'octo:demo:f_default:wb:d_board1'
 
@@ -108,7 +109,7 @@ describe('createWhiteboardSession — runtime permission wiring (P1-1 / P1-3)', 
     expect(s.canEdit()).toBe(false)
     expect(roles).toEqual(['reader'])
     // Downgrade invalidates the cached token so a reconnect re-issues with the new role/epoch.
-    expect(disposeToken).toHaveBeenCalledWith(DOC_NAME)
+    expect(disposeToken).toHaveBeenCalledWith()
   })
 
   it('notifies comment subscribers only for this board', () => {
@@ -177,7 +178,7 @@ describe('createWhiteboardSession — runtime permission wiring (P1-1 / P1-3)', 
     s.destroy()
     // Mirrors createCollabEditor.destroyAll: a normal teardown drops the cached token so it is not
     // left to expire (hygiene/parity — the 4403 revoke path already disposes on its own).
-    expect(disposeToken).toHaveBeenCalledWith(DOC_NAME)
+    expect(disposeToken).toHaveBeenCalledWith()
   })
 })
 

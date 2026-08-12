@@ -132,6 +132,7 @@ export function buildHtmlCreationMessage(draft: HtmlCreationDraft): string {
   return [
     '[Octo HTML 创建任务]',
     '挂载：space',
+    `request_id: ${draft.requestId}`,
     `space_id: ${draft.spaceId}`,
     `publish_base_url: ${draft.baseUrl}`,
     '',

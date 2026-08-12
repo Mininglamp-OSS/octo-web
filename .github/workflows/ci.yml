@@ -103,10 +103,15 @@ jobs:
           src/editor/Toolbar.test.tsx
           src/editor/styles.test.ts
           src/pages/DocsHome.test.tsx
+          src/pages/StandaloneDocPage.test.tsx
+          src/pages/docsApi.test.ts
+          src/auth/collabToken.test.ts
           src/pages/docsApi.export.test.ts
           src/pages/docsApi.import.test.ts
       - name: Verify Excalidraw patch
         run: pnpm verify:excalidraw-patch
+      - name: APIClient request interceptor tests
+        run: pnpm --filter @octo/base exec vitest run src/Service/__tests__/APIClient.headers.test.ts
       - name: Verify Web build cache key
         run: pnpm verify:web-build-cache-key
       - name: Board and comment unit tests

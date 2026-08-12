@@ -4444,6 +4444,111 @@ div:has(> .octo-link-bubble) {
   font-weight: 600;
   color: var(--wk-brand-primary);
 }
+.octo-html-create-close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--wk-text-secondary);
+  cursor: pointer;
+}
+.octo-html-create-close:hover:not(:disabled) {
+  background: var(--wk-border-default);
+  color: var(--wk-text-primary);
+}
+.octo-html-create-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wk-brand-primary-ring);
+}
+.octo-html-create-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.octo-html-create-mode-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px 16px 0;
+}
+.octo-html-create-mode-card {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px;
+  text-align: left;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.octo-html-create-mode-card:hover:not(:has(input:disabled)) {
+  background: var(--wk-bg-hover);
+  border-color: var(--wk-border-strong);
+}
+.octo-html-create-mode-card:has(input:focus-visible) {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--wk-brand-primary-ring);
+}
+.octo-html-create-mode-card:has(input:checked) {
+  background: var(--wk-bg-selected);
+  border-color: var(--wk-brand-primary);
+}
+.octo-html-create-mode-card:has(input:disabled) {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.octo-html-create-mode-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+.octo-html-create-mode-indicator {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--wk-border-strong);
+  border-radius: 9999px;
+  color: var(--wk-bg-surface);
+  font-size: 12px;
+  line-height: 1;
+}
+.octo-html-create-mode-card:has(input:checked) .octo-html-create-mode-indicator {
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+}
+.octo-html-create-mode-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.octo-html-create-mode-title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+}
+.octo-html-create-mode-description {
+  color: var(--wk-text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+}
 .octo-html-create-body {
   display: flex;
   flex-direction: column;
@@ -4483,6 +4588,11 @@ div:has(> .octo-link-bubble) {
   outline: none;
   border-color: var(--wk-text-tertiary);
   box-shadow: 0 0 0 3px var(--wk-brand-primary-ring);
+}
+.octo-html-create-input {
+  min-height: 40px;
+  height: 40px;
+  resize: none;
 }
 .octo-html-create-preview {
   min-height: 320px;

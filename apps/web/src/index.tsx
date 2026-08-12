@@ -14,7 +14,6 @@ import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
 import { DocsModule } from '@octo/docs';
 import { registerEnterpriseModules } from 'virtual:octo-enterprise-modules';
-import { DriveModule } from '@octo/drive';
 import { version as pkgVersion } from '../package.json';
 import appEnUS from './i18n/en-US.json';
 import appZhCN from './i18n/zh-CN.json';
@@ -96,7 +95,6 @@ registerEnterpriseModules({
 // branching on enterprise business ids inside the shared NavRail renderer.
 WKApp.menus.registerIconOverride("loop", <LoopIcon />);
 WKApp.menus.registerIconOverride("dmloop", <LoopIcon />);
-WKApp.shared.registerModule(new DriveModule()); // 网盘模块
 
 // e2e mock: 仅在 VITE_E2E_MOCK=1 时启动 MSW Service Worker.
 // dev / prod 完全走 tree-shake 分支, 无副作用. 必须在 startup() 之前 await,

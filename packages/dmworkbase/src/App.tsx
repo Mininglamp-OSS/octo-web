@@ -68,6 +68,21 @@ export type MittEvents = {
   /** Login, logout or account replacement changed the identity that owns page-level state. */
   'wk:auth-state-changed': undefined;
   /**
+   * A chat file's drive-transferred state flipped (unsaved → saved) — either
+   * via the icon (quick-save personal root) or the right-click picker (chosen
+   * space + folder). The payload carries the `source_key`
+   * (channelType#channelID#msgID, the IM identity used as the drive cache key)
+   * plus the resulting drive coordinates so listeners can update in place
+   * without a follow-up backend call. FileCell subscribes and setState on a
+   * matching source_key so its icon flips the moment ANY save path wins,
+   * regardless of which entry the user used. The private Drive module owns
+   * the producer-side transferred cache.
+   */
+  'wk:drive-transferred-changed': {
+    sourceKey: string;
+    entry: { file_id: number; space_id: string; parent_id: number };
+  };
+  /**
    * dmloop 派单(quick-create)后的看板补刷协议。派单是异步的(agent 稍后建 issue,dmloop 暂无 WS 推送):
    * NewLoopPage 派单成功发 `wk:loop-issues-dispatched`;常驻的 LoopPage 据此有界补发 `wk:loop-issues-refresh`,
    * 当前挂载的看板(IssuePage)订阅后重取,使新回路自动出现——统一覆盖看板内/侧栏两个建单入口。
@@ -779,14 +794,33 @@ export default class WKApp extends ProviderListener {
   // Returns the resulting drive file coordinates so the caller can flip its UI
   // state to "view in drive" without a follow-up query.
   static saveMessageToDrive?: (params: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
+  // Save-to-drive with a target picker. Opens a modal where the caller
+  // chooses target space + folder; resolves after the transfer POST
+  // returns. Rejects ONLY on cancel — a backend failure surfaces via
+  // Toast.error and leaves the modal open for retry (a later successful
+  // retry then resolves the same promise). This inversion vs the earlier
+  // "reject on any failure" contract matches how the picker actually
+  // stays interactive; see PR #1322 review discussion.
+  static saveMessageToDriveAt?: (params: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number }>;
   // Query whether an IM file (identified by the (channelType, channelID, msgID)
   // triple the backend uses to derive its source_key) is already transferred
-  // into the caller's personal drive space. Registered by DriveModule; the chat
-  // file card uses it to switch its icon action between "save" and "view".
+  // into ANY drive space the caller can see. Cross-space evolution of the
+  // earlier personal-only lookup: personal wins the tie-break, then the
+  // freshest shared save. Registered by DriveModule; the chat file card
+  // uses it to switch its icon action between "save" and "view".
   static checkDriveTransferred?: (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => Promise<{ file_id: number; space_id: string; parent_id: number } | null>;
+  // Synchronous cache probe of the drive-transferred state — returns the
+  // known entry, `null` for confirmed-not-transferred, or `undefined` when
+  // the cache has no answer yet. Registered by DriveModule; the right-click
+  // menu factory uses this because it runs synchronously (can't await the
+  // async checkDriveTransferred) and needs the current answer, if any, to
+  // decide between "存到云盘…" and "在云盘中查看" at menu open time.
+  static getDriveTransferred?: (msg: { im_group_no: string; im_channel_type: number; im_msg_id: string }) => { file_id: number; space_id: string; parent_id: number } | null | undefined;
   // Open the drive UI and focus/flash a specific file. Registered by DriveModule.
-  // Only the space root is entered — the caller does not thread parent_id.
-  static openDriveFile?: (params: { space_id: string; file_id: number }) => void;
+  // parent_id is optional — when the file lives at the space root pass 0 or omit;
+  // when the file is buried in nested folders pass the immediate parent so the
+  // drive VM can rebuild the breadcrumb via GET /files/:id/ancestors.
+  static openDriveFile?: (params: { space_id: string; file_id: number; parent_id?: number }) => void;
   // Id of the currently active sidebar menu (kept in sync by Main page)
   static currentMenuId?: string;
   static apiClient = APIClient.shared; // api客户端
@@ -813,7 +847,8 @@ export default class WKApp extends ProviderListener {
 
   /**
    * 附件发送守卫（#143/#144）
-   * Conversation 在有未发送附件时注册此回调，返回 true 表示可以切换，false 表示有附件待确认。
+   * Conversation 在有未发送附件或尚未入队的 compose 时注册此回调。
+   * 返回 true 表示可以切换，false 表示需要确认。
    * componentDidMount 注册，componentWillUnmount 清空（仅注册者可清空，防止新实例 guard 被旧实例覆盖）。
    */
   pendingAttachmentGuard?: () => boolean;
