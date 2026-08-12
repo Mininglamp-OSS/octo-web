@@ -134,8 +134,10 @@ describe("ConversationChatTransport", () => {
   });
 
   it("does not claim media was enqueued when its Conversation helper is unavailable", async () => {
-    const transport = new ConversationChatTransport(conversation());
-    const operation: ChatSendOperation = {
+    const transport = new ConversationChatTransport<ReturnType<typeof target>>(
+      conversation(),
+    );
+    const operation: ChatSendOperation<ReturnType<typeof target>> = {
       kind: "send_media",
       partIds: ["file:0"],
       attachment: {
@@ -147,5 +149,28 @@ describe("ConversationChatTransport", () => {
     await expect(transport.execute(operation)).rejects.toBeInstanceOf(
       UnsupportedChatSendOperationError,
     );
+  });
+
+  it("allows an operation extension to own execution without changing the bridge switch", async () => {
+    const host = conversation();
+    const executeExtension = vi.fn(async (operation) => ({
+      enqueuedPartIds: operation.partIds,
+      messageId: "extension-message",
+    }));
+    const transport = new ConversationChatTransport<ReturnType<typeof target>>(host, {
+      operationHandlers: { send_text: executeExtension },
+    });
+    const operation: ChatSendOperation<ReturnType<typeof target>> = {
+      kind: "send_text",
+      partIds: ["extension:0"],
+      text: "extension payload",
+    };
+
+    await expect(transport.execute(operation)).resolves.toEqual({
+      enqueuedPartIds: ["extension:0"],
+      messageId: "extension-message",
+    });
+    expect(executeExtension).toHaveBeenCalledWith(operation);
+    expect(host.sendMessage).not.toHaveBeenCalled();
   });
 });

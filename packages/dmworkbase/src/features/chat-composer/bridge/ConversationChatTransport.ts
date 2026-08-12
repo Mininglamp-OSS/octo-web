@@ -53,6 +53,12 @@ export interface ConversationChatTransportHandlers {
     reply?: Reply,
   ) => Promise<boolean>;
   resolveReplyFromName?: (message: ConversationMessageTarget) => string;
+  /** Optional operation-level extensions or overrides. */
+  operationHandlers?: Partial<{
+    [K in ChatSendOperation["kind"]]: (
+      operation: Extract<ChatSendOperation, { kind: K }>,
+    ) => Promise<ChatTransportResult>;
+  }>;
 }
 
 export class UnsupportedChatSendOperationError extends Error {
@@ -151,6 +157,11 @@ export class ConversationChatTransport<
   ) {}
 
   async execute(operation: ChatSendOperation<TMessage>): Promise<ChatTransportResult> {
+    const extensionHandler = this.handlers.operationHandlers?.[operation.kind] as
+      | ((current: ChatSendOperation<TMessage>) => Promise<ChatTransportResult>)
+      | undefined;
+    if (extensionHandler) return extensionHandler(operation);
+
     switch (operation.kind) {
       case "edit_text":
         return this.executeEdit(operation);

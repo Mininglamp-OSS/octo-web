@@ -67,6 +67,7 @@ import {
   ComposeAttemptLedger,
   type ComposeAttempt,
 } from "../../features/chat-composer/domain";
+import { PendingComposeRenderRegistry } from "../../features/chat-composer/ui/pendingComposeRenderRegistry";
 export type {
   AttachmentFile,
   EditorContentBlock,
@@ -483,6 +484,38 @@ interface PendingSendAttachmentPreview {
 }
 
 type PendingSendItem = ComposeAttempt<PendingSendAttachmentPreview>;
+
+const pendingComposeRenderRegistry = new PendingComposeRenderRegistry<
+  PendingSendItem,
+  PendingSendAttachmentPreview
+>();
+
+pendingComposeRenderRegistry.register({
+  id: "default",
+  canRender: () => true,
+  render: (item, context) => (
+    <div className="wk-messageinput-sending-item" key={item.id}>
+      <LoaderCircle
+        className="wk-messageinput-sending-spinner"
+        role="img"
+        aria-label={context.sendingLabel}
+      />
+      {item.previewText && (
+        <span
+          className="wk-messageinput-sending-text"
+          title={item.previewText}
+        >
+          {item.previewText}
+        </span>
+      )}
+      {item.attachments.length > 0 && (
+        <span className="wk-messageinput-sending-attachments">
+          {item.attachments.map(context.renderAttachment)}
+        </span>
+      )}
+    </div>
+  ),
+});
 
 // 判断是否为图片类型（模块级别函数）
 function isImageFileType(file: File): boolean {
@@ -1624,47 +1657,30 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         {pendingPreEnqueueItems.length > 0 && (
           <div className="wk-messageinput-sending" aria-live="polite">
             {pendingPreEnqueueItems.map((item) => (
-              <div className="wk-messageinput-sending-item" key={item.id}>
-                <LoaderCircle
-                  className="wk-messageinput-sending-spinner"
-                  role="img"
-                  aria-label={t("base.message.sending")}
-                />
-                {item.previewText && (
-                  <span
-                    className="wk-messageinput-sending-text"
-                    title={item.previewText}
-                  >
-                    {item.previewText}
-                  </span>
-                )}
-                {item.attachments.length > 0 && (
-                  <span className="wk-messageinput-sending-attachments">
-                    {item.attachments.map((attachment) =>
-                      attachment.previewUrl ? (
-                        <img
-                          key={attachment.id}
-                          className="wk-messageinput-sending-thumbnail"
-                          src={attachment.previewUrl}
-                          alt={attachment.name}
-                        />
-                      ) : (
-                        <span
-                          key={attachment.id}
-                          className="wk-messageinput-sending-file"
-                          title={attachment.name}
-                        >
-                          <img
-                            src={getFileIcon(attachment.name, attachment.type)}
-                            alt=""
-                          />
-                          <span>{attachment.name}</span>
-                        </span>
-                      )
-                    )}
-                  </span>
-                )}
-              </div>
+              pendingComposeRenderRegistry.render(item, {
+                sendingLabel: t("base.message.sending"),
+                renderAttachment: (attachment) =>
+                  attachment.previewUrl ? (
+                    <img
+                      key={attachment.id}
+                      className="wk-messageinput-sending-thumbnail"
+                      src={attachment.previewUrl}
+                      alt={attachment.name}
+                    />
+                  ) : (
+                    <span
+                      key={attachment.id}
+                      className="wk-messageinput-sending-file"
+                      title={attachment.name}
+                    >
+                      <img
+                        src={getFileIcon(attachment.name, attachment.type)}
+                        alt=""
+                      />
+                      <span>{attachment.name}</span>
+                    </span>
+                  ),
+              })
             ))}
           </div>
         )}
