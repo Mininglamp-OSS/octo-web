@@ -4081,7 +4081,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <div data-testid={summaryTestIds.detailPage} className="summary-detail-page">
                 <div
                     ref={this.layoutRef}
-                    className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}${this.state.layoutWidth != null && this.state.layoutWidth > 0 && this.state.layoutWidth < SummaryDetailPage.TOC_MIN_LAYOUT_WIDTH ? " version-panel-overlay" : ""}`}
+                    className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}
                 >
                     <div className="summary-detail-content-wrapper">
                     {detail && !loading && this.renderHeader()}

@@ -4186,21 +4186,17 @@ body[theme-mode="dark"] .chat-selector-modal {
     color: var(--wk-color-accent);
 }
 
-/* 桌面端版本栏参与横向布局，不遮挡正文。 */
-.version-panel-scrim {
-    display: none;
-}
-@keyframes version-scrim-in {
-    from { opacity: 0; }
-    to { opacity: 1; }
-}
+/* 版本栏始终参与横向分栏布局，绝不遮挡正文 (#1360)。
+ * 容器较窄（如聊天侧栏，可窄至 320px）时面板按容器宽度收窄，
+ * 正文区域自适应缩窄但保持可见。不使用 viewport media query：
+ * 详情页也会渲染在窄聊天侧栏中，宽度由容器决定。 */
 
 /* 面板本体 */
 .version-panel {
     position: relative;
     z-index: 6;
-    width: 320px;
-    min-width: 320px;
+    width: clamp(200px, 40%, 320px);
+    min-width: 200px;
     height: 100%;
     display: flex;
     flex-direction: column;
@@ -4211,31 +4207,6 @@ body[theme-mode="dark"] .chat-selector-modal {
 @keyframes version-panel-in {
     from { transform: translateX(24px); opacity: 0; }
     to { transform: translateX(0); opacity: 1; }
-}
-
-/* 可用容器宽度不足时退化为覆盖式面板。宽度 class 由 layout ResizeObserver
- * 驱动，不能使用 viewport media query：详情页也会渲染在窄聊天侧栏中。 */
-.summary-detail-layout.version-panel-overlay .version-panel-scrim {
-        position: absolute;
-        inset: 0;
-        z-index: 20;
-        display: block;
-        border: 0;
-        padding: 0;
-        background: rgba(28, 28, 35, 0.28);
-        cursor: pointer;
-        animation: version-scrim-in 160ms ease;
-}
-
-.summary-detail-layout.version-panel-overlay .version-panel {
-        position: absolute;
-        top: 0;
-        right: 0;
-        bottom: 0;
-        z-index: 21;
-        width: min(320px, 100%);
-        min-width: 0;
-        box-shadow: -12px 0 32px rgba(28, 28, 35, 0.10);
 }
 
 .version-panel__header {
