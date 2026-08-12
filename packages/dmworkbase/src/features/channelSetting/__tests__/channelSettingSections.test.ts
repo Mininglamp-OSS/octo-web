@@ -332,11 +332,20 @@ describe("channel setting section builders", () => {
     }
   );
 
-  it("waits for authoritative parent info before building thread mute rows", () => {
+  it("renders a fallback mute row while parent info is unavailable", () => {
     vi.mocked(getCurrentImChannelInfo).mockReturnValue(undefined);
     const context = createThreadContext();
+    const section = buildChannelPreferenceSection(context);
 
-    expect(buildChannelPreferenceSection(context)).toBeUndefined();
+    expect(section?.rows).toHaveLength(1);
+    expect(section?.rows?.[0].cell).toBe(ChannelSettingInfoRow);
+    expect(section?.rows?.[0].properties.title).toBe(
+      t("base.module.channelSettings.mute")
+    );
+    expect(section?.rows?.[0].properties.value).toBe(
+      t("base.module.thread.muteParentUnavailable")
+    );
+    expect(section?.rows?.[0].properties.onChange).toBeUndefined();
     expect(fetchCurrentImChannelInfo).not.toHaveBeenCalled();
     expect(context.routeData().refresh).not.toHaveBeenCalled();
   });

@@ -34,6 +34,7 @@ vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
   fetchCurrentImChannelInfo: vi.fn(),
   getCurrentImChannelSubscribers: vi.fn(() => []),
   getCurrentImChannelSubscribersCacheRaw: vi.fn(() => undefined),
+  getPendingCurrentImChannelInfoFetches: vi.fn(() => undefined),
   markCurrentImChannelSubscribersLocallyRemoved: vi.fn(),
   notifyCurrentImSubscriberChangeListeners: vi.fn(),
   setCurrentImChannelSubscribersCache: vi.fn(),
@@ -56,7 +57,7 @@ function createRuntime(
     ),
     getCurrentChannelSubscribers: vi.fn(() => []),
     getCurrentChannelInfo: vi.fn(() => undefined),
-    getPendingChannelInfoFetch: vi.fn(() => undefined),
+    getPendingChannelInfoFetches: vi.fn(() => undefined),
     getCurrentChannelSubscribersRaw: vi.fn(() => undefined),
     findConversation: vi.fn(),
     getLoginUid: vi.fn(() => "self"),
@@ -458,7 +459,7 @@ describe("channel setting actions", () => {
     } as any;
     const runtime = createRuntime({
       getCurrentChannelInfo: vi.fn(() => cachedChannelInfo),
-      getPendingChannelInfoFetch: vi.fn(() => oldFetch.promise),
+      getPendingChannelInfoFetches: vi.fn(() => [oldFetch.promise]),
     });
 
     await muteChannelSetting({ channel, mute: true, runtime });
@@ -483,13 +484,9 @@ describe("channel setting actions", () => {
     expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledTimes(2);
   });
 
-  it("waits for every older thread info fetch before clearing the mute repair", async () => {
+  it("repairs after each older thread info fetch settles", async () => {
     const firstOldFetch = deferred();
     const secondOldFetch = deferred();
-    const pendingFetches = Promise.allSettled([
-      firstOldFetch.promise,
-      secondOldFetch.promise,
-    ]);
     const channel = new Channel(
       "group-1____thread-1",
       ChannelTypeCommunityTopic
@@ -501,7 +498,10 @@ describe("channel setting actions", () => {
     } as any;
     const runtime = createRuntime({
       getCurrentChannelInfo: vi.fn(() => cachedChannelInfo),
-      getPendingChannelInfoFetch: vi.fn(() => pendingFetches),
+      getPendingChannelInfoFetches: vi.fn(() => [
+        firstOldFetch.promise,
+        secondOldFetch.promise,
+      ]),
     });
 
     await muteChannelSetting({ channel, mute: true, runtime });
@@ -517,8 +517,9 @@ describe("channel setting actions", () => {
     await firstOldFetch.promise;
     await Promise.resolve();
 
-    expect(cachedChannelInfo.mute).toBe(false);
-    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
+    expect(cachedChannelInfo.mute).toBe(true);
+    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(2);
 
     cachedChannelInfo = {
       channel,
@@ -527,13 +528,12 @@ describe("channel setting actions", () => {
     } as any;
     secondOldFetch.resolve();
     await secondOldFetch.promise;
-    await pendingFetches;
     await Promise.resolve();
 
     expect(cachedChannelInfo.mute).toBe(true);
     expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
-    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(2);
-    expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledTimes(2);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(3);
+    expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledTimes(3);
   });
 
   it("transfers owner and refreshes subscriber and channel caches", async () => {

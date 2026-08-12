@@ -51,7 +51,17 @@ export function buildChannelPreferenceSection(
       parentChannel
     );
     if (!parentChannelInfo) {
-      return undefined;
+      return new Section({
+        rows: [
+          new Row({
+            cell: ChannelSettingInfoRow,
+            properties: {
+              title: t("base.module.channelSettings.mute"),
+              value: t("base.module.thread.muteParentUnavailable"),
+            },
+          }),
+        ],
+      });
     }
     if (isGroupDisbanded(parentChannelInfo)) {
       return undefined;

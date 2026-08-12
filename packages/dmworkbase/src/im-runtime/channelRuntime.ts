@@ -188,15 +188,27 @@ export function getPendingImChannelInfoFetch<
   TChannel extends ImChannelLike,
   TChannelInfo extends ImChannelInfoLike
 >(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channel: TChannel) {
+  const pendingSnapshot = getPendingImChannelInfoFetches<TChannel, TChannelInfo>(
+    sdk,
+    channel
+  );
+  if (!pendingSnapshot) return undefined;
+
+  return Promise.allSettled(pendingSnapshot).then(() => undefined);
+}
+
+export function getPendingImChannelInfoFetches<
+  TChannel extends ImChannelLike,
+  TChannelInfo extends ImChannelInfoLike
+>(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channel: TChannel) {
   const pendingFetches = pendingChannelInfoFetches
     .get(sdk.channelManager as object)
     ?.get(channelKey(channel));
   if (!pendingFetches || pendingFetches.size === 0) return undefined;
 
-  const pendingSnapshot = Array.from(pendingFetches) as Array<
+  return Array.from(pendingFetches) as Array<
     Promise<ImChannelInfoFetchResult<TChannelInfo>>
   >;
-  return Promise.allSettled(pendingSnapshot).then(() => undefined);
 }
 
 export function setImChannelInfoCache<

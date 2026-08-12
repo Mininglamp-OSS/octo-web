@@ -23,7 +23,7 @@ import {
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
-  getPendingCurrentImChannelInfoFetch,
+  getPendingCurrentImChannelInfoFetches,
   getCurrentImChannelSubscribers,
   getCurrentImChannelSubscribersCacheRaw,
   markCurrentImChannelSubscribersLocallyRemoved,
@@ -53,7 +53,7 @@ export interface ChannelSettingActionRuntime {
   ): Promise<ChannelSettingSubscriber | undefined>;
   getCurrentChannelSubscribers(channel: Channel): ChannelSettingSubscriber[];
   getCurrentChannelInfo(channel: Channel): ChannelInfo | undefined;
-  getPendingChannelInfoFetch(channel: Channel): Promise<unknown> | undefined;
+  getPendingChannelInfoFetches(channel: Channel): Promise<unknown>[] | undefined;
   getCurrentChannelSubscribersRaw(
     channel: Channel
   ): ChannelSettingSubscriber[] | undefined;
@@ -138,8 +138,8 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     getCurrentChannelInfo(channel) {
       return getCurrentImChannelInfo<Channel, ChannelInfo>(channel);
     },
-    getPendingChannelInfoFetch(channel) {
-      return getPendingCurrentImChannelInfoFetch(channel);
+    getPendingChannelInfoFetches(channel) {
+      return getPendingCurrentImChannelInfoFetches(channel);
     },
     getCurrentChannelSubscribersRaw(channel) {
       return getCurrentImChannelSubscribersCacheRaw(channel);
@@ -249,23 +249,29 @@ function syncThreadMuteCacheAfterSave(
   const version = (threadMuteCacheSyncVersions.get(channelKey) || 0) + 1;
   threadMuteCacheSyncVersions.set(channelKey, version);
 
-  const pendingFetch = runtime.getPendingChannelInfoFetch(channel);
+  const pendingFetches = runtime.getPendingChannelInfoFetches(channel);
   patchThreadMuteCache(runtime, channel, mute);
 
-  if (!pendingFetch) {
+  if (!pendingFetches || pendingFetches.length === 0) {
     if (threadMuteCacheSyncVersions.get(channelKey) === version) {
       threadMuteCacheSyncVersions.delete(channelKey);
     }
     return;
   }
 
-  void pendingFetch
-    .catch(() => undefined)
-    .then(() => {
-      if (threadMuteCacheSyncVersions.get(channelKey) !== version) return;
-      patchThreadMuteCache(runtime, channel, mute);
-      threadMuteCacheSyncVersions.delete(channelKey);
-    });
+  let remainingFetches = pendingFetches.length;
+  pendingFetches.forEach((pendingFetch) => {
+    void pendingFetch
+      .catch(() => undefined)
+      .then(() => {
+        if (threadMuteCacheSyncVersions.get(channelKey) !== version) return;
+        patchThreadMuteCache(runtime, channel, mute);
+        remainingFetches -= 1;
+        if (remainingFetches === 0) {
+          threadMuteCacheSyncVersions.delete(channelKey);
+        }
+      });
+  });
 }
 
 async function refreshChannelStateAfterMemberMutation(

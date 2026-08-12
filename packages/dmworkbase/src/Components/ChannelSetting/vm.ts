@@ -320,12 +320,12 @@ export class ChannelSettingVM extends ProviderListener {
         void fetchCurrentImChannelInfo(this.channel)
         if (this.parentChannel && !getCurrentImChannelInfo(this.parentChannel)) {
             void fetchCurrentImChannelInfo(this.parentChannel)
-                .then(() => {
+                .catch(() => undefined)
+                .finally(() => {
                     if (!this._disposed) {
                         this.notifyListener()
                     }
                 })
-                .catch(() => undefined)
         }
 
         this.reloadSubscribers()

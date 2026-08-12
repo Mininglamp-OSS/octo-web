@@ -5,6 +5,7 @@ import {
   deleteImChannelInfo,
   fetchImChannelInfo,
   getPendingImChannelInfoFetch,
+  getPendingImChannelInfoFetches,
   getImChannelInfo,
   getImChannelSubscribersCacheRaw,
   getImChannelSubscriberOfMe,
@@ -132,10 +133,12 @@ describe("channelRuntime", () => {
     const secondFetch = fetchImChannelInfo(sdk, channel);
 
     const pendingFetches = getPendingImChannelInfoFetch(sdk, channel);
+    const pendingFetchList = getPendingImChannelInfoFetches(sdk, channel);
     let pendingSettled = false;
     void pendingFetches?.then(() => {
       pendingSettled = true;
     });
+    expect(pendingFetchList).toHaveLength(2);
 
     resolveFirst({ channel, title: "Older" });
     await firstFetch;
@@ -148,6 +151,7 @@ describe("channelRuntime", () => {
     await pendingFetches;
 
     expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
+    expect(getPendingImChannelInfoFetches(sdk, channel)).toBeUndefined();
   });
 
   it("writes channel info to the SDK channel cache", () => {
