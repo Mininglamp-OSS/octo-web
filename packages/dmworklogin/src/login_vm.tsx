@@ -46,10 +46,8 @@ export enum LoginType {
 export function buildQrLoginRedeemPath(
     authCode: string,
     deviceFlag: number,
-    pollSecret?: string,
 ): string {
     const params = new URLSearchParams({ flag: String(deviceFlag) });
-    if (pollSecret) params.set('poll_secret', pollSecret);
     return `user/login_authcode/${encodeURIComponent(authCode)}?${params.toString()}`;
 }
 
@@ -257,7 +255,7 @@ export class LoginVM extends ProviderListener {
         try {
             const deviceFlag = WKApp.shared.isPC ? IM_DEVICE_FLAG_PC : IM_DEVICE_FLAG_WEB
             const resp = await WKApp.apiClient.post(
-                buildQrLoginRedeemPath(authCode, deviceFlag, this.pollSecret),
+                buildQrLoginRedeemPath(authCode, deviceFlag),
             );
             if (resp) {
                 this.loginSuccess(resp)

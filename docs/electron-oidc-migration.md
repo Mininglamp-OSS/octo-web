@@ -1,12 +1,12 @@
 # Electron OIDC 上线迁移说明
 
-本页描述 PR #1353（`feat(electron): support OIDC login and binding`）随 packaged Electron / Tauri 桌面应用上线时，对**现有已登录用户**产生的一次性影响。发版 release note 与运维沟通请引用本页。
+本页描述 PR #1365（`feat(electron): support OIDC login and binding`）随 packaged Electron / Tauri 桌面应用上线时，对**现有已登录用户**产生的一次性影响。发版 release note 与运维沟通请引用本页。
 
 ## 变更摘要
 
 1. 打包 Electron 客户端首次支持 OIDC 登录与账号绑定；
 2. 登录会话新增 `device_flag` 字段，用于区分 Web / Electron / Tauri；
-3. 桌面 OIDC 登出通过系统浏览器（`shell.openExternal`）执行 IdP end-session，避免把主窗口丢到远端页面回不来；
+3. 桌面 OIDC 登出由 Electron 主进程在隐藏的沙箱窗口中执行 IdP end-session，主窗口不会跳转到远端页面，也不会弹出系统浏览器；
 4. 收窄了 dev 模式下 OIDC 入口的隐藏范围 —— 只有 Electron dev 会隐藏，Web dev 仍可调试 OIDC 流程。
 
 ## 用户可见影响：强制一次性重登（桌面端）
@@ -18,7 +18,12 @@
 本 PR 之前存储的会话令牌未记录 `device_flag`。升级后代码判定"缓存 `deviceFlag !== expectedDeviceFlag`"即视为需要复登，无法在客户端本地伪造该字段。相关代码见 `packages/dmworkbase/src/App.tsx`：
 
 ```ts
-if (this.isPC && WKApp.loginInfo.isLogined() && WKApp.loginInfo.deviceFlag !== expectedDeviceFlag) {
+const hasDeviceFlagMismatch = hasImDeviceFlagMismatch(
+  WKApp.loginInfo.isLogined(),
+  WKApp.loginInfo.deviceFlag,
+  expectedDeviceFlag,
+)
+if (!this._deviceFlagMigrationHandled && this.isPC && hasDeviceFlagMismatch) {
   WKApp.loginInfo.logout();
 }
 ```
@@ -27,6 +32,8 @@ if (this.isPC && WKApp.loginInfo.isLogined() && WKApp.loginInfo.deviceFlag !== e
 - ✅ 所有升级到本版本的 Electron 打包客户端（macOS / Windows / Linux）
 - ✅ 所有 Tauri 桌面客户端
 - ❌ Web 端不受影响（Web 会话的 `device_flag` 与浏览器判定一致）
+
+除 OIDC 和密码登录外，桌面端的用户名注册、邮箱注册和邮箱密码登录也会携带 PC 设备槽位；Web 端继续使用 Web 设备槽位。
 
 ### 频率
 **恰好一次**。所有登录路径（密码、OIDC、绑定成功后创建会话）都统一走 `applyLoginResp`，会正确写入 `deviceFlag`。第二次启动读到匹配的 `deviceFlag` 后不再触发。

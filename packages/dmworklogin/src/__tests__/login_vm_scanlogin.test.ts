@@ -55,8 +55,8 @@ beforeEach(() => {
   apiPost.mockReset()
 })
 
-describe('scan-login poll credential', () => {
-  it('puts the device flag and poll secret in the redeem URL query', async () => {
+describe('scan-login redeem request', () => {
+  it('puts only the device flag in the redeem URL query', async () => {
     const vm = newQRCodeVM()
     apiPost.mockResolvedValue(null)
     vm.pollSecret = 'secret-1'
@@ -64,7 +64,7 @@ describe('scan-login poll credential', () => {
     await vm.requestLogin('auth code/1')
 
     expect(apiPost).toHaveBeenCalledWith(
-      'user/login_authcode/auth%20code%2F1?flag=1&poll_secret=secret-1',
+      'user/login_authcode/auth%20code%2F1?flag=1',
     )
     expect(apiPost.mock.calls[0][1]).toBeUndefined()
 
@@ -73,7 +73,7 @@ describe('scan-login poll credential', () => {
     apiPost.mockResolvedValue(null)
     await vm.requestLogin('desktop-code')
     expect(apiPost.mock.calls[0][0]).toBe(
-      'user/login_authcode/desktop-code?flag=2&poll_secret=secret-1',
+      'user/login_authcode/desktop-code?flag=2',
     )
     ;(WKApp.shared as { isPC?: boolean }).isPC = false
   })

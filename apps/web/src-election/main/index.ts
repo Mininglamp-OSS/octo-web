@@ -41,6 +41,7 @@ import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
 import { classifyOidcNavigation, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
+import { createTrustedShellDocumentTracker } from "./trustedShell";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -99,6 +100,7 @@ const trustedShellContents = new WeakSet<Electron.WebContents>();
 function trackTrustedShellDocument(win: BrowserWindow) {
   const isTrustedDocument = (url: string) =>
     isTrustedSenderUrl(url, TRUSTED_SHELL_DEV_ORIGIN, TRUSTED_SHELL_FILE_URL);
+  const tracker = createTrustedShellDocumentTracker(isTrustedDocument);
   const updateTrust = (
     _event: Electron.Event,
     url: string,
@@ -106,22 +108,17 @@ function trackTrustedShellDocument(win: BrowserWindow) {
     _httpStatusText: string,
     isMainFrame: boolean,
   ) => {
-    if (!isMainFrame) return;
-    if (isTrustedDocument(url)) {
+    tracker.update(url, isMainFrame);
+    if (tracker.isTrusted()) {
       trustedShellContents.add(win.webContents);
     } else {
       trustedShellContents.delete(win.webContents);
     }
   };
-  // Revoke the previous document's trust before an external navigation can
-  // commit. The did-frame-navigate listener below restores it only after a
-  // trusted shell document has actually committed.
-  win.webContents.on("will-navigate", (_event, url) => {
-    if (!isTrustedDocument(url)) trustedShellContents.delete(win.webContents);
-  });
-  win.webContents.on("will-redirect", (_event, url, _isInPlace, isMainFrame) => {
-    if (isMainFrame && !isTrustedDocument(url)) trustedShellContents.delete(win.webContents);
-  });
+  // Trust follows committed main-frame documents only. A will-navigate or
+  // will-redirect can be cancelled (for example by an external-protocol
+  // link), in which case revoking here would permanently disable IPC for the
+  // still-visible shell because no did-frame-navigate event restores it.
   win.webContents.on("did-frame-navigate", updateTrust);
   win.webContents.once("destroyed", () => trustedShellContents.delete(win.webContents));
 }
