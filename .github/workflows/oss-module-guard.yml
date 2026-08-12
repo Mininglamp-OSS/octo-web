@@ -53,7 +53,7 @@ jobs:
           fi
 
           blocked_refs="$(mktemp)"
-          while IFS=$'\t' read -r file status previous_file; do
+          while IFS=$'\t' read -r file status _previous_file; do
             [[ "${status}" == "removed" ]] && continue
             [[ "${file}" == ".github/workflows/oss-module-guard.yml" ]] && continue
             [[ -f "${file}" ]] || continue
