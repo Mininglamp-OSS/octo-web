@@ -66,6 +66,7 @@ import type {
 import {
   ComposeAttemptLedger,
 } from "../../features/chat-composer/domain";
+import { chatEditorComposePartRegistry } from "../../features/chat-composer/editor";
 import {
   chatPendingComposeRenderRegistry,
   type ChatPendingAttachmentPreview,
@@ -155,6 +156,15 @@ function extractOrderedBlocks(
   const json = editorInstance.getJSON();
   if (!json.content) return [];
 
+  const composePartContext = { attachmentFiles: attachmentFilesMap };
+  const capturedParts = chatEditorComposePartRegistry.capture(
+    json,
+    composePartContext,
+  );
+  capturedParts.forEach((part) =>
+    chatEditorComposePartRegistry.assertSettlementSupported(part),
+  );
+
   const blocks: EditorContentBlock[] = [];
   let pendingTextParts: string[] = [];
 
@@ -168,13 +178,13 @@ function extractOrderedBlocks(
   }
 
   function processNode(node: any): void {
-    if (node.type === "attachment" && node.attrs) {
-      const file = attachmentFilesMap.get(node.attrs.id);
-      if (file) {
-        flushText();
-        const blockType = file.type.startsWith("image/") ? "image" : "file";
-        blocks.push({ type: blockType, id: node.attrs.id, file });
-      }
+    const part = chatEditorComposePartRegistry.captureNode(
+      node,
+      composePartContext,
+    );
+    if (part) {
+      flushText();
+      blocks.push(chatEditorComposePartRegistry.toSendBlock(part));
       return;
     }
 
@@ -1175,6 +1185,13 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
     // 兼容旧 allAttachments（保留向后兼容）
     const allAttachments = [...editorAttachments, ...topAttachmentFiles];
+    let orderedBlocks: EditorContentBlock[];
+    try {
+      orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
+    } catch (err) {
+      console.error("[MessageInput] editor compose part is not sendable", err);
+      return false;
+    }
     const pendingAttachmentPreviews: PendingSendAttachmentPreview[] = [
       ...attachmentAttrs.map(({ id, name, type, previewUrl }) => ({
         id,
@@ -1192,10 +1209,13 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
     const hasText = text.trim() !== "";
     const hasAttachments = allAttachments.length > 0;
+    const hasEditorBlocks = orderedBlocks.some(
+      (block) => block.type !== "text" || block.text.trim() !== "",
+    );
 
     // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
     // 视为未发送（editorConsumed=false），供编排器判定真实结果。
-    if (!props.onSend || (!hasText && !hasAttachments)) {
+    if (!props.onSend || (!hasText && !hasAttachments && !hasEditorBlocks)) {
       return false;
     }
 
@@ -1203,9 +1223,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // trusted=true：仅 node-origin 广播 sentinel 才被信任标记，伪造文本无法路由广播。
     const formattedText = extractMentionsFromEditor(editor, true);
     const { content, mention } = formatMentionTextV2(formattedText);
-
-    // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
-    const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
 
     // ⚠️ 关键修复 (octo-web#1280，承接 #227 两轮)：consume-first / restore-on-failure。
     //

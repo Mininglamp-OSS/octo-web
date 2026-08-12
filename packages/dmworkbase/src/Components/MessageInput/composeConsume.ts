@@ -75,6 +75,8 @@ export class ComposeRestoreUnavailableError extends Error {
 
 export interface ConsumeComposeOptions {
   editor: ComposeEditorPort;
+  /** Injectable registry for tests and isolated composer integrations. */
+  composePartRegistry?: EditorComposePartRegistry;
   /** In-memory pasted-image files, keyed by attachment node id. */
   attachmentFiles: Map<string, File>;
   /** Live top-attachment list accessor/mutator (kept outside this module). */
@@ -143,11 +145,15 @@ export function consumeCompose(
     });
 
   const snapshot = editor.getJSON();
-  const composePartRegistry = chatEditorComposePartRegistry;
+  const composePartRegistry =
+    opts.composePartRegistry ?? chatEditorComposePartRegistry;
   const composePartContext = { attachmentFiles, revokeObjectURL };
   const editorParts = composePartRegistry.capture(
     snapshot,
     composePartContext,
+  );
+  editorParts.forEach((part) =>
+    composePartRegistry.assertSettlementSupported(part),
   );
   const editorAttachmentIds = editorParts.map(({ id }) => id);
   const editorPartById = new Map(editorParts.map((part) => [part.id, part]));

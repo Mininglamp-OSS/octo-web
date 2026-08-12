@@ -88,4 +88,138 @@ describe("EditorComposePartRegistry", () => {
     registry.dispose(part, context);
     expect(dispose).toHaveBeenCalledWith(part, context);
   });
+
+  it("maps attachment parts to the existing media settlement model", () => {
+    const file = new File(["x"], "image.png", { type: "image/png" });
+    const [part] = chatEditorComposePartRegistry.capture(
+      {
+        type: "doc",
+        content: [{ type: "attachment", attrs: { id: "a" } }],
+      },
+      { attachmentFiles: new Map([["a", file]]) },
+    );
+
+    expect(chatEditorComposePartRegistry.toSendBlock(part)).toEqual({
+      type: "image",
+      id: "a",
+      file,
+    });
+  });
+
+  it("rejects duplicate part IDs before settlement maps overwrite them", () => {
+    const registry = new EditorComposePartRegistry();
+    registry.register({
+      id: "custom",
+      canCapture: (node) => node.type === "custom",
+      capture: (node) => ({
+        id: "duplicate",
+        kind: "custom",
+        extensionId: "custom",
+        node,
+      }),
+    });
+
+    expect(() =>
+      registry.capture(
+        {
+          type: "doc",
+          content: [{ type: "custom" }, { type: "custom" }],
+        },
+        { attachmentFiles: new Map() },
+      ),
+    ).toThrow("duplicate editor compose part id");
+  });
+
+  it("fails closed when a captured part has no send settlement adapter", () => {
+    const registry = new EditorComposePartRegistry();
+    registry.register({
+      id: "custom",
+      canCapture: () => true,
+      capture: (node) => ({
+        id: "custom-1",
+        kind: "custom",
+        extensionId: "custom",
+        node,
+      }),
+    });
+    const [part] = registry.capture(
+      { type: "doc", content: [{ type: "custom" }] },
+      { attachmentFiles: new Map() },
+    );
+
+    expect(() => registry.assertSettlementSupported(part)).toThrow(
+      "cannot participate in send settlement",
+    );
+  });
+
+  it("does not let a stale disposer unregister a replacement extension", () => {
+    const registry = new EditorComposePartRegistry();
+    const disposeFirst = registry.register({
+      id: "custom",
+      canCapture: () => false,
+      capture: () => undefined,
+    });
+    registry.unregister("custom");
+    registry.register({
+      id: "custom",
+      canCapture: () => false,
+      capture: () => undefined,
+    });
+
+    expect(disposeFirst()).toBe(false);
+    expect(() =>
+      registry.register({
+        id: "custom",
+        canCapture: () => false,
+        capture: () => undefined,
+      }),
+    ).toThrow("already registered");
+  });
+
+  it("keeps captured lifecycle hooks alive after unregister", () => {
+    const registry = new EditorComposePartRegistry();
+    const dispose = vi.fn();
+    const unregister = registry.register({
+      id: "custom",
+      canCapture: (node) => node.type === "custom",
+      capture: (node) => ({
+        id: "custom-1",
+        kind: "custom",
+        extensionId: "custom",
+        node,
+      }),
+      restore: () => ({ type: "paragraph" }),
+      dispose,
+    });
+    const [part] = registry.capture(
+      { type: "doc", content: [{ type: "custom" }] },
+      { attachmentFiles: new Map() },
+    );
+    unregister();
+
+    expect(registry.restore(part)).toEqual({ type: "paragraph" });
+    registry.dispose(part, { attachmentFiles: new Map() });
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("does not silently restore or dispose after the owner is unregistered", () => {
+    const registry = new EditorComposePartRegistry();
+    const unregister = registry.register({
+      id: "custom",
+      canCapture: () => false,
+      capture: () => undefined,
+    });
+    const part = {
+      id: "custom-1",
+      kind: "custom",
+      extensionId: "custom",
+      node: { type: "custom" },
+    };
+    unregister();
+
+    expect(() => registry.restore(part)).toThrow("is not registered");
+    expect(() =>
+      registry.dispose(part, { attachmentFiles: new Map() }),
+    ).toThrow("is not registered");
+  });
 });

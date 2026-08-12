@@ -38,4 +38,25 @@ describe("ChatSendOperationRegistry", () => {
       registry.register("send_text", async () => ({ enqueuedPartIds: [] })),
     ).toThrow("already registered");
   });
+
+  it("does not let a stale disposer unregister a replacement handler", async () => {
+    const registry = new ChatSendOperationRegistry();
+    const disposeFirst = registry.register("send_text", async () => ({
+      enqueuedPartIds: ["first"],
+    }));
+    registry.unregister("send_text");
+    const replacement = vi.fn(async () => ({
+      enqueuedPartIds: ["replacement"],
+    }));
+    registry.register("send_text", replacement);
+    const operation = {
+      kind: "send_text" as const,
+      partIds: ["text:0"],
+      text: "hello",
+    };
+
+    expect(disposeFirst()).toBe(false);
+    await registry.get(operation)?.(operation);
+    expect(replacement).toHaveBeenCalledOnce();
+  });
 });

@@ -40,6 +40,7 @@ import {
   createChatSendOutcome,
   type ChatSendOutcome,
 } from "../../../features/chat-composer/domain";
+import { EditorComposePartRegistry } from "../../../features/chat-composer/editor";
 import { captureSendTarget } from "../../Conversation/sendTarget";
 import { parseConsumedTextToContent } from "../mentionSendParse";
 
@@ -199,6 +200,43 @@ const attachment = (id: string, previewUrl?: string) => ({
 const doc = (...content: unknown[]) => ({ type: "doc", content });
 const para = (...content: unknown[]) => ({ type: "paragraph", content });
 const text = (value: string) => ({ type: "text", text: value });
+
+it("keeps the editor intact when a registered part has no settlement adapter", () => {
+  const registry = new EditorComposePartRegistry();
+  registry.register({
+    id: "custom",
+    canCapture: (node) => node.type === "custom",
+    capture: (node) => ({
+      id: "custom-1",
+      kind: "custom",
+      extensionId: "custom",
+      node,
+    }),
+  });
+  let cleared = false;
+
+  expect(() =>
+    consumeCompose({
+      editor: {
+        getJSON: () => ({ type: "doc", content: [{ type: "custom" }] }),
+        isEmpty: () => false,
+        isDestroyed: () => false,
+        clearContent: () => {
+          cleared = true;
+        },
+        setContent: () => undefined,
+        insertContentAtBlock: () => undefined,
+        appendContent: () => undefined,
+        focusEnd: () => undefined,
+      },
+      composePartRegistry: registry,
+      attachmentFiles: new Map(),
+      getTopAttachments: () => [],
+      setTopAttachments: () => undefined,
+    }),
+  ).toThrow("cannot participate in send settlement");
+  expect(cleared).toBe(false);
+});
 
 describe("consumeCompose — the composer is emptied synchronously", () => {
   it("clears the editor and removes this send's top attachments before any await", () => {

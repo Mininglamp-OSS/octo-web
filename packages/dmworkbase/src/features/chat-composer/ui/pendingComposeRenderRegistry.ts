@@ -22,11 +22,17 @@ export class PendingComposeRenderRegistry<TItem, TAttachment> {
     PendingComposeRenderer<TItem, TAttachment>
   >();
 
-  register(renderer: PendingComposeRenderer<TItem, TAttachment>): void {
+  register(
+    renderer: PendingComposeRenderer<TItem, TAttachment>,
+  ): () => boolean {
     if (this.renderers.has(renderer.id)) {
       throw new Error(`pending compose renderer already registered: ${renderer.id}`);
     }
     this.renderers.set(renderer.id, renderer);
+    return () => {
+      if (this.renderers.get(renderer.id) !== renderer) return false;
+      return this.renderers.delete(renderer.id);
+    };
   }
 
   unregister(id: string): boolean {

@@ -13,7 +13,7 @@
 - attempt ID 草稿所有权；草稿清理发生在编辑器恢复/释放之后。
 - 编辑器销毁或切换频道时的可观察、有限容量 recovery store。
 - 公开的 pending-send renderer registry 和 transport operation registry。
-- editor compose part registry；附件节点已迁移 capture/restore/dispose。
+- editor compose part registry；附件节点已迁移 capture/restore/dispose，并显式映射到现有 image/file 发送模型。
 
 仍需后续迁移：
 
@@ -585,9 +585,11 @@ messageRenderRegistry.register(locationMessageRenderer)
 旧 `operationHandlers` 只保留为内建 operation 覆盖兼容层。
 
 editor 层已提供 `chatEditorComposePartRegistry`，附件是第一个生产扩展，负责节点
-capture、部分失败 restore、`File` 引用和 object URL dispose。当前
-`UnsentEditorBlock` 仍只标准化 text/attachment，因此新 part 在接入发送前必须先补齐
-settle/recovery 映射；不能只注册 operation 而忽略失败恢复。
+capture、部分失败 restore、`File` 引用和 object URL dispose。当前 registry 的
+`toSendBlock` 只接受映射到既有 image/file 发送模型的原子节点；没有该 adapter 的 part
+会在编辑器清空前 fail-closed。`UnsentEditorBlock` 仍只标准化 text/attachment，因此
+自定义 wire payload 尚未形成 editor capture → operation → settle → recovery 的完整闭环。
+不能只注册 `extension:*` operation 就宣称新 editor part 已可安全发送。
 
 text/mention capture、Tiptap port 和历史消息 renderer 仍需后续迁移，不能把当前
 editor/operation/pending registry 误认为已经完成全部插件化。
@@ -596,7 +598,16 @@ editor/operation/pending registry 误认为已经完成全部插件化。
 
 ### 10.5 未知扩展降级
 
-- 编辑器恢复遇到未知 part：恢复成可见文本占位，不静默丢弃。
+当前迁移阶段：
+
+- 已注册但没有 settlement adapter 的 editor part：发送前拒绝消费，保留原编辑器内容。
+- capture 后 owning extension 被注销：已 capture part 继续使用原 extension 的生命周期租约；
+  无租约的重建 part 则抛出可诊断错误，不再静默使用原始 node 或跳过资源释放。
+- 重复 part ID：capture 直接失败，避免后续 Map 覆盖错误 part。
+
+目标架构仍需补齐：
+
+- 编辑器恢复遇到版本未知但有持久化 fallback 的 part：恢复成可见文本占位，不静默丢弃。
 - pending preview 遇到未知 part：展示统一 unsupported 状态。
 - send plan 遇到未知 extension：返回 `not_enqueued`，保留整个 attempt。
 - 接收消息遇到未知 content type：沿用现有未知消息降级策略。

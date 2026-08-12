@@ -20,18 +20,24 @@ export class ChatSendOperationRegistry<TMessage = unknown> {
     if (this.handlers.has(kind)) {
       throw new Error(`chat send operation already registered: ${kind}`);
     }
-    this.handlers.set(kind, handler as ChatSendOperationHandler<TMessage>);
-    return () => this.unregister(kind);
+    const registered = handler as ChatSendOperationHandler<TMessage>;
+    this.handlers.set(kind, registered);
+    return () => {
+      if (this.handlers.get(kind) !== registered) return false;
+      return this.handlers.delete(kind);
+    };
   }
 
   unregister(kind: ChatSendOperation<TMessage>["kind"]): boolean {
     return this.handlers.delete(kind);
   }
 
-  get(
-    operation: ChatSendOperation<TMessage>,
-  ): ChatSendOperationHandler<TMessage> | undefined {
-    return this.handlers.get(operation.kind);
+  get<TOperation extends ChatSendOperation<TMessage>>(
+    operation: TOperation,
+  ): ChatSendOperationHandler<TMessage, TOperation> | undefined {
+    return this.handlers.get(operation.kind) as
+      | ChatSendOperationHandler<TMessage, TOperation>
+      | undefined;
   }
 
   has(kind: ChatSendOperation<TMessage>["kind"]): boolean {

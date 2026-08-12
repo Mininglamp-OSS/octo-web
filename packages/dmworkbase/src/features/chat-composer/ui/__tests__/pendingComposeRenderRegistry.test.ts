@@ -51,4 +51,27 @@ describe("PendingComposeRenderRegistry", () => {
     expect(registry.unregister("default")).toBe(true);
     expect(registry.unregister("default")).toBe(false);
   });
+
+  it("does not let a stale disposer unregister a replacement renderer", () => {
+    const registry = new PendingComposeRenderRegistry<unknown, unknown>();
+    const disposeFirst = registry.register({
+      id: "default",
+      canRender: () => true,
+      render: () => "first",
+    });
+    registry.unregister("default");
+    registry.register({
+      id: "default",
+      canRender: () => true,
+      render: () => "replacement",
+    });
+
+    expect(disposeFirst()).toBe(false);
+    expect(
+      registry.render({}, {
+        sendingLabel: "sending",
+        renderAttachment: () => null,
+      }),
+    ).toBe("replacement");
+  });
 });
