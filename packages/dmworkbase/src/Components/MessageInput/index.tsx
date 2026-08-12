@@ -473,6 +473,7 @@ export interface MessageInputRecovery {
   attemptId: string;
   snapshot: ConsumedComposeRecovery["snapshot"];
   editorAttachments: ConsumedComposeRecovery["editorAttachments"];
+  editorObjectUrls: string[];
   topAttachments: TopAttachmentLike[];
   editorBlocks?: UnsentEditorBlock[];
   sendTarget?: { replyMessage?: unknown; handlerType: number };
@@ -1389,6 +1390,14 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                     ({ id }) =>
                       !partialEditorRestore || unsentAttachmentIds.has(id),
                   )
+                : [],
+              editorObjectUrls: editorFailed
+                ? handle.recovery.editorObjectUrls
+                    .filter(
+                      ({ id }) =>
+                        !partialEditorRestore || unsentAttachmentIds.has(id),
+                    )
+                    .map(({ url }) => url)
                 : [],
               topAttachments: topFailed
                 ? handle.recovery.topAttachments.filter(

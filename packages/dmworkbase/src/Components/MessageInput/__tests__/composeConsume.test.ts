@@ -687,6 +687,9 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     expect(handle.recovery.editorAttachments).toEqual([
       expect.objectContaining({ id: "img-1" }),
     ]);
+    expect(handle.recovery.editorObjectUrls).toEqual([
+      { id: "img-1", url: "blob:img-1" },
+    ]);
     expect(handle.recovery.topAttachments).toEqual([
       { id: "top-1", previewUrl: "blob:top-1" },
     ]);

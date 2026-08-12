@@ -7,22 +7,11 @@ describe("disposeComposeRecoveryObjectUrls", () => {
 
     disposeComposeRecoveryObjectUrls(
       {
+        editorObjectUrls: ["blob:inline", "blob:shared"],
         topAttachments: [
           { previewUrl: "blob:top" },
           { previewUrl: "blob:shared" },
         ],
-        snapshot: {
-          type: "doc",
-          content: [
-            {
-              type: "paragraph",
-              content: [
-                { type: "attachment", attrs: { previewUrl: "blob:inline" } },
-                { type: "attachment", attrs: { previewUrl: "blob:shared" } },
-              ],
-            },
-          ],
-        },
       },
       revoke
     );
@@ -32,5 +21,21 @@ describe("disposeComposeRecoveryObjectUrls", () => {
       "blob:shared",
       "blob:inline",
     ]);
+  });
+
+  it("does not inspect snapshot URLs that the recovery does not own", () => {
+    const revoke = vi.fn();
+
+    disposeComposeRecoveryObjectUrls(
+      {
+        editorObjectUrls: ["blob:unsent"],
+        topAttachments: [],
+        snapshot: { attrs: { previewUrl: "blob:already-sent" } },
+      } as never,
+      revoke,
+    );
+
+    expect(revoke).toHaveBeenCalledOnce();
+    expect(revoke).toHaveBeenCalledWith("blob:unsent");
   });
 });

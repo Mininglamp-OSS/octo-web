@@ -1,5 +1,5 @@
 export interface ObjectUrlComposeRecovery {
-  snapshot: unknown;
+  editorObjectUrls?: string[];
   topAttachments: Array<{ previewUrl?: string }>;
 }
 
@@ -19,17 +19,6 @@ export function disposeComposeRecoveryObjectUrls(
   recovery.topAttachments.forEach(({ previewUrl }) => {
     if (previewUrl) urls.add(previewUrl);
   });
-  const collect = (node: unknown): void => {
-    if (!node || typeof node !== "object") return;
-    const value = node as {
-      attrs?: { previewUrl?: unknown };
-      content?: unknown[];
-    };
-    if (typeof value.attrs?.previewUrl === "string") {
-      urls.add(value.attrs.previewUrl);
-    }
-    value.content?.forEach(collect);
-  };
-  collect(recovery.snapshot);
+  recovery.editorObjectUrls?.forEach((url) => urls.add(url));
   urls.forEach((url) => revoke(url));
 }

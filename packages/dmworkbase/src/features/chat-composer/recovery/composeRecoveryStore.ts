@@ -14,6 +14,7 @@ export interface ComposeRecoveryStoreOptions<T extends ComposeRecoveryRecord> {
 interface StoredRecovery<T> {
   record: T;
   createdAt: number;
+  claimedBy?: symbol;
 }
 
 interface RecoveryBucket<T> {
@@ -69,10 +70,23 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryRecord> {
   }
 
   list(channelKey: string): readonly T[] {
-    this.pruneExpired(this.now(), false, channelKey);
     return (
       this.buckets.get(channelKey)?.records.map(({ record }) => record) ?? []
     );
+  }
+
+  /** Exclusively reserve available records for one mounted consumer. */
+  claim(channelKey: string, owner: symbol): readonly T[] {
+    this.pruneExpired(this.now(), false, channelKey);
+    const bucket = this.buckets.get(channelKey);
+    if (!bucket) return [];
+
+    bucket.records.forEach((stored) => {
+      if (!stored.claimedBy) stored.claimedBy = owner;
+    });
+    return bucket.records
+      .filter(({ claimedBy }) => claimedBy === owner)
+      .map(({ record }) => record);
   }
 
   add(record: T): boolean {
@@ -94,7 +108,11 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryRecord> {
     }
 
     while (bucket.records.length >= this.maxRecordsPerChannel) {
-      const evicted = bucket.records.shift();
+      const evictIndex = bucket.records.findIndex(
+        ({ claimedBy }) => !claimedBy
+      );
+      if (evictIndex < 0) break;
+      const [evicted] = bucket.records.splice(evictIndex, 1);
       if (evicted) this.disposeRecord(evicted.record);
     }
     bucket.records.push({ record, createdAt: now });
@@ -104,18 +122,39 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryRecord> {
   }
 
   /** Remove successfully restored records without disposing transferred resources. */
-  consume(channelKey: string, attemptIds: readonly string[]): void {
+  consume(
+    channelKey: string,
+    owner: symbol,
+    attemptIds: readonly string[]
+  ): void {
     const bucket = this.buckets.get(channelKey);
     if (!bucket || attemptIds.length === 0) return;
 
     const consumed = new Set(attemptIds);
     const remaining = bucket.records.filter(
-      ({ record }) => !consumed.has(record.attemptId)
+      ({ record, claimedBy }) =>
+        claimedBy !== owner || !consumed.has(record.attemptId)
     );
     if (remaining.length === bucket.records.length) return;
 
     if (remaining.length === 0) this.buckets.delete(channelKey);
     else bucket.records = remaining;
+    this.notify(channelKey);
+  }
+
+  /** Release unacknowledged claims so another consumer can recover them. */
+  release(channelKey: string, owner: symbol): void {
+    const bucket = this.buckets.get(channelKey);
+    if (!bucket) return;
+    let released = false;
+    bucket.records.forEach((stored) => {
+      if (stored.claimedBy === owner) {
+        stored.claimedBy = undefined;
+        released = true;
+      }
+    });
+    if (!released) return;
+    this.pruneExpired(this.now(), false, channelKey);
     this.notify(channelKey);
   }
 
@@ -140,6 +179,7 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryRecord> {
     while (this.buckets.size >= this.maxChannels) {
       let oldest: [string, RecoveryBucket<T>] | undefined;
       this.buckets.forEach((bucket, channelKey) => {
+        if (bucket.records.some(({ claimedBy }) => claimedBy)) return;
         if (!oldest || bucket.touchedAt < oldest[1].touchedAt) {
           oldest = [channelKey, bucket];
         }
@@ -165,7 +205,7 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryRecord> {
       if (!bucket) return;
       const live: StoredRecovery<T>[] = [];
       bucket.records.forEach((stored) => {
-        if (now - stored.createdAt >= this.ttlMs) {
+        if (!stored.claimedBy && now - stored.createdAt >= this.ttlMs) {
           this.disposeRecord(stored.record);
         } else {
           live.push(stored);

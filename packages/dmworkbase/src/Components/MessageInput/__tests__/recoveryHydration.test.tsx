@@ -41,6 +41,7 @@ function failedCompose(text: string): MessageInputRecovery {
       ],
     },
     editorAttachments: [],
+    editorObjectUrls: [],
     topAttachments: [],
     expanded: false,
   };

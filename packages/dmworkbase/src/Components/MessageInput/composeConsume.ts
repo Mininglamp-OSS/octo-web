@@ -56,6 +56,7 @@ export interface TopAttachmentLike {
 export interface ConsumedComposeRecovery {
   snapshot: ComposeDoc;
   editorAttachments: Array<{ id: string; file: File }>;
+  editorObjectUrls: Array<{ id: string; url: string }>;
   topAttachments: TopAttachmentLike[];
 }
 
@@ -157,6 +158,9 @@ export function consumeCompose(
     snapshot,
     editorAttachments: editorParts.flatMap((part) => {
       return part.file ? [{ id: part.id, file: part.file }] : [];
+    }),
+    editorObjectUrls: editorParts.flatMap((part) => {
+      return part.previewUrl ? [{ id: part.id, url: part.previewUrl }] : [];
     }),
     topAttachments: topItemsAtSend,
   };

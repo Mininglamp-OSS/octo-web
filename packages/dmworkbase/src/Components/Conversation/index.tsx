@@ -336,6 +336,7 @@ const ConversationSelectionStateBridge: React.FC<{
 interface ConversationState {
   inputExpanded: boolean;
   contextMenuMessageID: string | null;
+  recoveredComposes: MessageInputRecovery[];
 }
 
 const composeRecoveryStore = new ComposeRecoveryStore<MessageInputRecovery>({
@@ -389,6 +390,7 @@ export class Conversation
   private _lastAttentionCheckedMessageSeq = 0;
   private _unsubscribeVmAttentionListener?: () => void;
   private _unsubscribeComposeRecovery?: () => void;
+  private readonly _composeRecoveryOwner = Symbol("composeRecoveryOwner");
   private _attentionRefreshHandler = () => {
     const run = () => this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
@@ -411,6 +413,7 @@ export class Conversation
     this.state = {
       inputExpanded: false,
       contextMenuMessageID: null as string | null,
+      recoveredComposes: [],
     };
     this.onOpenThreadPanel = props.onOpenThreadPanel;
     this.onOpenWebhookPreview = props.onOpenWebhookPreview;
@@ -1522,7 +1525,13 @@ export class Conversation
     if (channelChanged || prev !== next) {
       this._initialComposeGeneration += 1;
     }
-    if (channelChanged) this.subscribeComposeRecovery();
+    if (channelChanged) {
+      composeRecoveryStore.release(
+        this.composeRecoveryKey(prevProps.channel),
+        this._composeRecoveryOwner,
+      );
+      this.subscribeComposeRecovery();
+    }
     if (next && next !== prev) {
       this.tryConsumeInitialCompose();
     }
@@ -1542,6 +1551,10 @@ export class Conversation
     this._unsubscribeVmAttentionListener = undefined;
     this._unsubscribeComposeRecovery?.();
     this._unsubscribeComposeRecovery = undefined;
+    composeRecoveryStore.release(
+      this.composeRecoveryKey(),
+      this._composeRecoveryOwner,
+    );
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
     if (this._channelInfoListener) {
       this._unsubscribeChannelInfoListener?.();
@@ -1610,18 +1623,26 @@ export class Conversation
     return this.messageInputContext()?.pendingPreEnqueueDrafts?.() ?? [];
   }
 
-  private composeRecoveryKey(): string {
-    return `${this.props.channel.channelID}:${this.props.channel.channelType}`;
+  private composeRecoveryKey(channel = this.props.channel): string {
+    return `${channel.channelID}:${channel.channelType}`;
+  }
+
+  private refreshComposeRecoveries = (): void => {
+    if (!this._initialComposeMounted) return;
+    const recoveredComposes = composeRecoveryStore.claim(
+      this.composeRecoveryKey(),
+      this._composeRecoveryOwner,
+    );
+    this.setState({ recoveredComposes: [...recoveredComposes] });
   }
 
   private subscribeComposeRecovery(): void {
     this._unsubscribeComposeRecovery?.();
     this._unsubscribeComposeRecovery = composeRecoveryStore.subscribe(
       this.composeRecoveryKey(),
-      () => {
-        if (this._initialComposeMounted) this.forceUpdate();
-      },
+      this.refreshComposeRecoveries,
     );
+    this.refreshComposeRecoveries();
   }
 
   private recordComposeRecovery = (recovery: MessageInputRecovery): void => {
@@ -1629,7 +1650,11 @@ export class Conversation
   };
 
   private consumeComposeRecoveries = (attemptIds: string[]): void => {
-    composeRecoveryStore.consume(this.composeRecoveryKey(), attemptIds);
+    composeRecoveryStore.consume(
+      this.composeRecoveryKey(),
+      this._composeRecoveryOwner,
+      attemptIds,
+    );
   };
 
   markConversationExtra() {
@@ -2664,8 +2689,9 @@ export class Conversation
 
   render() {
     const { chatBg, channel, initLocateMessageSeq } = this.props;
-    const recoveredComposes = composeRecoveryStore.list(
-      `${channel.channelID}:${channel.channelType}`,
+    const recoveryKey = `${channel.channelID}:${channel.channelType}`;
+    const recoveredComposes = this.state.recoveredComposes.filter(
+      ({ channelKey }) => channelKey === recoveryKey,
     );
 
     const channelInfo = getImChannelInfo(WKSDK.shared(), channel);

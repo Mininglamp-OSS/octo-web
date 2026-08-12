@@ -42,18 +42,65 @@ describe("ComposeRecoveryStore", () => {
   it("consumes restored records without disposing transferred resources", () => {
     const dispose = vi.fn();
     const listener = vi.fn();
+    const owner = Symbol("owner");
     const store = new ComposeRecoveryStore<Recovery>({ dispose });
     store.subscribe("channel", listener);
     store.add(recovery("channel", "A"));
     store.add(recovery("channel", "B"));
 
-    store.consume("channel", ["A"]);
+    expect(store.claim("channel", owner).map(({ attemptId }) => attemptId)).toEqual([
+      "A",
+      "B",
+    ]);
+    store.consume("channel", owner, ["A"]);
 
     expect(store.list("channel").map(({ attemptId }) => attemptId)).toEqual([
       "B",
     ]);
     expect(dispose).not.toHaveBeenCalled();
     expect(listener).toHaveBeenCalledTimes(3);
+  });
+
+  it("allows only one mounted owner to claim a recovery", () => {
+    const store = new ComposeRecoveryStore<Recovery>();
+    const first = Symbol("first");
+    const second = Symbol("second");
+    store.add(recovery("channel", "A"));
+
+    expect(store.claim("channel", first)).toHaveLength(1);
+    expect(store.claim("channel", second)).toEqual([]);
+
+    store.release("channel", first);
+    expect(store.claim("channel", second)).toHaveLength(1);
+  });
+
+  it("does not let another owner consume a claimed recovery", () => {
+    const store = new ComposeRecoveryStore<Recovery>();
+    const owner = Symbol("owner");
+    const stranger = Symbol("stranger");
+    store.add(recovery("channel", "A"));
+    store.claim("channel", owner);
+
+    store.consume("channel", stranger, ["A"]);
+
+    expect(store.list("channel")).toHaveLength(1);
+  });
+
+  it("keeps list pure and expires unclaimed records on the next claim", () => {
+    let now = 0;
+    const dispose = vi.fn();
+    const store = new ComposeRecoveryStore<Recovery>({
+      ttlMs: 10,
+      now: () => now,
+      dispose,
+    });
+    store.add(recovery("channel", "A"));
+    now = 10;
+
+    expect(store.list("channel")).toHaveLength(1);
+    expect(dispose).not.toHaveBeenCalled();
+    expect(store.claim("channel", Symbol("owner"))).toEqual([]);
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 
   it("disposes expired records and bounds channels and records per channel", () => {
@@ -87,7 +134,7 @@ describe("ComposeRecoveryStore", () => {
     );
 
     now = 12;
-    expect(store.list("two")).toEqual([]);
+    expect(store.claim("two", Symbol("owner"))).toEqual([]);
     expect(dispose).toHaveBeenCalledWith(
       expect.objectContaining({ attemptId: "D" })
     );
