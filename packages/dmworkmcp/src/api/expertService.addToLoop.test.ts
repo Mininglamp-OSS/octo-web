@@ -67,14 +67,14 @@ describe("expertService add-to-loop wire contract", () => {
     clearLoopCache();
   });
 
-  it("listLoopWorkspaces GETs /fleet/api/workspaces and maps the wire", async () => {
+  it("listLoopWorkspaces GETs /fleet/api/v1/workspaces and maps the wire", async () => {
     mock.instance.get.mockResolvedValue({
       data: [{ id: "w1", name: "Workspace One" }],
     });
 
     const res = await listLoopWorkspaces();
 
-    expect(mock.instance.get).toHaveBeenCalledWith("/fleet/api/workspaces", {
+    expect(mock.instance.get).toHaveBeenCalledWith("/fleet/api/v1/workspaces", {
       params: undefined,
     });
     expect(res).toEqual([{ id: "w1", name: "Workspace One" }]);
@@ -97,7 +97,7 @@ describe("expertService add-to-loop wire contract", () => {
 
     const res = await listLoopRuntimes("w1");
 
-    expect(mock.instance.get).toHaveBeenCalledWith("/fleet/api/runtimes", {
+    expect(mock.instance.get).toHaveBeenCalledWith("/fleet/api/v1/runtimes", {
       params: { workspace_id: "w1" },
     });
     expect(res).toEqual([{ id: "rt1", name: "Runtime One", status: "online" }]);
@@ -197,7 +197,7 @@ describe("expertService add-to-loop wire contract", () => {
 
   it("prefetchLoopTargets warms workspaces + the first workspace's runtimes", async () => {
     mock.instance.get.mockImplementation((url: string) =>
-      url === "/fleet/api/workspaces"
+      url === "/fleet/api/v1/workspaces"
         ? Promise.resolve({ data: [{ id: "w1", name: "W1" }] })
         : Promise.resolve({ data: [{ id: "rt1", name: "RT1" }] })
     );
@@ -208,8 +208,8 @@ describe("expertService add-to-loop wire contract", () => {
     await getLoopRuntimes("w1");
 
     const calls = mock.instance.get.mock.calls.map((c: unknown[]) => c[0]);
-    expect(calls.filter((u) => u === "/fleet/api/workspaces")).toHaveLength(1);
-    expect(calls.filter((u) => u === "/fleet/api/runtimes")).toHaveLength(1);
+    expect(calls.filter((u) => u === "/fleet/api/v1/workspaces")).toHaveLength(1);
+    expect(calls.filter((u) => u === "/fleet/api/v1/runtimes")).toHaveLength(1);
   });
 
   it("logs out on a marketplace 401 but NOT on a fleet 401", async () => {
@@ -232,7 +232,7 @@ describe("expertService add-to-loop wire contract", () => {
     // end the session on a fleet-only auth hiccup.
     await expect(
       onRejected!({
-        config: { url: "/fleet/api/workspaces" },
+        config: { url: "/fleet/api/v1/workspaces" },
         response: { status: 401 },
       })
     ).rejects.toBeTruthy();

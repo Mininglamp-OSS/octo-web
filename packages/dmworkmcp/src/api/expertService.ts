@@ -122,10 +122,13 @@ const expertAxios = axios.create({
 
 const BASE = "/market/api/v1";
 // Loop workspaces/runtimes are served by the fleet service (octo-fleet), NOT
-// marketplace. In dev the vite proxy forwards /fleet/api/* to the fleet gateway;
-// in prod nginx routes it. Same-origin like BASE — the request interceptor
-// above attaches token + X-Space-Id, which fleet's auth middleware also reads.
-const FLEET_BASE = "/fleet/api";
+// marketplace. Fleet's native paths are /v1/*; the public shape everywhere in
+// this repo is /fleet/api/v1/* (vite.config.ts: the dev "/fleet/api/v1" rule
+// proxies to a local fleet, prod nginx strips /fleet/api and forwards /v1/* —
+// the daemon likewise calls OCTO_FLEET_URL + /v1/*). Same-origin like BASE —
+// the request interceptor above attaches token + X-Space-Id, which fleet's
+// auth middleware also reads.
+const FLEET_BASE = "/fleet/api/v1";
 
 expertAxios.interceptors.request.use((config) => {
   // Same-origin: leave baseURL empty so /market/api/v1/* is a relative path
@@ -638,7 +641,7 @@ interface LoopRuntimeWire {
   status?: string;
 }
 
-/** GET /fleet/api/workspaces — Loop workspaces the user belongs to (workspace picker). */
+/** GET /fleet/api/v1/workspaces — Loop workspaces the user belongs to (workspace picker). */
 export async function listLoopWorkspaces(): Promise<LoopWorkspace[]> {
   const data = await fleetGet<LoopWorkspaceWire[] | null>("/workspaces");
   return Array.isArray(data)
@@ -646,7 +649,7 @@ export async function listLoopWorkspaces(): Promise<LoopWorkspace[]> {
     : [];
 }
 
-/** GET /fleet/api/runtimes?workspace_id= — runtimes in the chosen workspace (runtime picker). */
+/** GET /fleet/api/v1/runtimes?workspace_id= — runtimes in the chosen workspace (runtime picker). */
 export async function listLoopRuntimes(
   workspaceId: string
 ): Promise<LoopRuntime[]> {
