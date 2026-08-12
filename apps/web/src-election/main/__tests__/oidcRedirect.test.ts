@@ -402,6 +402,13 @@ describe('isTrustedSenderUrl', () => {
 })
 
 describe('validateOpenExternalUrl', () => {
+  const TRUSTED_ORIGINS = new Set([
+    'https://api.example.com',
+    'https://idp.example.com',
+    'https://tenant.auth0.com',
+    'https://login.microsoftonline.com',
+  ])
+
   it('accepts end-session-shaped https URLs across common IdPs', () => {
     // Real end_session URLs we've observed in production integrations. Each
     // vendor's path shape and standard query params must go through.
@@ -425,10 +432,9 @@ describe('validateOpenExternalUrl', () => {
     expect(validateOpenExternalUrl('http://idp.example.com/logout').ok).toBe(false)
   })
 
-  it('rejects non-http(s) schemes forwarded to the OS handler', () => {
-    // file:/javascript:/data: to shell.openExternal would let a compromised
-    // renderer launch arbitrary local documents or scripts via the user's
-    // default handler. All must be rejected before we hit shell.openExternal.
+  it('rejects non-http(s) schemes forwarded to the logout window', () => {
+    // file:/javascript:/data: must not reach the hidden logout window from a
+    // compromised renderer. All must be rejected before navigation begins.
     expect(validateOpenExternalUrl('file:///etc/passwd').ok).toBe(false)
     expect(validateOpenExternalUrl('javascript:alert(1)').ok).toBe(false)
     expect(validateOpenExternalUrl('data:text/html,<script>alert(1)</script>').ok).toBe(false)
@@ -447,6 +453,30 @@ describe('validateOpenExternalUrl', () => {
     expect(validateOpenExternalUrl('https://evil.example.com/').ok).toBe(false)
     expect(validateOpenExternalUrl('https://idp.example.com/authorize').ok).toBe(false)
     expect(validateOpenExternalUrl('https://idp.example.com/oauth2/token').ok).toBe(false)
+  })
+
+  it('rejects an end-session-shaped URL on an untrusted host', () => {
+    expect(
+      validateOpenExternalUrl('https://attacker.example/logout?state=x', TRUSTED_ORIGINS).ok,
+    ).toBe(false)
+    expect(
+      validateOpenExternalUrl('https://idp.example.com/logout?state=x', TRUSTED_ORIGINS).ok,
+    ).toBe(true)
+  })
+
+  it('rejects redirect targets outside the trusted origins', () => {
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fattacker.example%2Fdone',
+        TRUSTED_ORIGINS,
+      ).ok,
+    ).toBe(false)
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fapi.example.com%2Flogin',
+        TRUSTED_ORIGINS,
+      ).ok,
+    ).toBe(true)
   })
 
   it('rejects userinfo, fragments, and unknown query params', () => {

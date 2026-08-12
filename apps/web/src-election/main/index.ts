@@ -26,7 +26,7 @@ import {
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
 } from "../shared/ipc-channels";
-import OCTO_CONFIG, { OIDC_API_ORIGIN } from "./config";
+import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
 import {
   actualBreadcrumbFile,
   cleanupStaleStaging,
@@ -268,7 +268,7 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
   // covered by pure-function tests alongside the redirect helpers. Load the
   // validated URL in a hidden window: shell.openExternal would leave the user
   // in a browser/Web page after desktop logout.
-  const validated = validateOpenExternalUrl(url);
+  const validated = validateOpenExternalUrl(url, OIDC_END_SESSION_ORIGINS);
   if (validated.ok === false) return { ok: false as const };
   let logoutWindow: BrowserWindow | undefined;
   try {
@@ -288,6 +288,7 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
         sandbox: true,
       },
     });
+    logoutWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 
     const result = await new Promise<boolean>((resolve) => {
       let settled = false;
@@ -298,6 +299,16 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
         if (timeout) clearTimeout(timeout);
         resolve(ok);
       };
+      logoutWindow!.webContents.on("will-navigate", (navigationEvent, navigatedURL) => {
+        try {
+          const navigationOrigin = new URL(navigatedURL).origin;
+          if (!OIDC_END_SESSION_ORIGINS.has(navigationOrigin)) {
+            navigationEvent.preventDefault();
+          }
+        } catch {
+          navigationEvent.preventDefault();
+        }
+      });
       logoutWindow!.webContents.on("did-navigate", (_event, navigatedURL) => {
         if (!redirectURL) {
           settle(true);

@@ -292,16 +292,15 @@ export function isTrustedSenderUrl(
  *
  * This IPC has exactly one caller: `logoutUserInitiated` in App.tsx forwards
  * the backend-issued `end_session_url` returned by our own `/logout` endpoint.
- * A compromised renderer must NOT be able to smuggle arbitrary browser
- * navigations (data:, javascript:, custom protocol handlers, or even
- * arbitrary http(s) URLs) through `shell.openExternal`, so validation goes
- * beyond scheme checks and enforces the *shape* of an OIDC end-session URL:
+ * A compromised renderer must NOT be able to smuggle arbitrary navigations
+ * into the hidden, cookie-bearing logout window, so validation goes beyond
+ * scheme checks and enforces both a build-time origin allowlist and the
+ * *shape* of an OIDC end-session URL:
  *
  *   - https only (RFC 8252 §8.10 disallows plaintext for the end-session
  *     endpoint; anyone deploying an OIDC IdP over http:// is misconfigured
  *     and we refuse to relay to the OS handler for them either way);
- *   - no userinfo, no fragment (both are common obfuscation vectors that
- *     shell.openExternal will happily forward);
+ *   - no userinfo, no fragment (both are common obfuscation vectors);
  *   - path segment ending in `end_session`, `endsession`, `logout`, or
  *     `signout` (case-insensitive) — matches every real OIDC IdP we
  *     integrate with (Keycloak, Auth0, Azure AD, Okta, ForgeRock);
@@ -339,12 +338,21 @@ const OIDC_END_SESSION_QUERY_ALLOWLIST = new Set([
   'return_url',
   'returnUrl',
 ])
-export function validateOpenExternalUrl(value: unknown): { ok: true; value: string } | { ok: false } {
+export function validateOpenExternalUrl(
+  value: unknown,
+  trustedOrigins?: ReadonlySet<string>,
+): { ok: true; value: string } | { ok: false } {
   if (typeof value !== 'string' || value === '') return { ok: false }
   let parsed: URL
   try { parsed = new URL(value) } catch { return { ok: false } }
   // https only. See doc comment above for why http:// is refused.
   if (parsed.protocol !== 'https:') return { ok: false }
+  // This is a main-process security boundary. Shape checks alone would still
+  // allow https://attacker.example/logout to be loaded in the default session
+  // with application cookies. The optional argument keeps this pure helper
+  // backwards-compatible for non-Electron callers; the IPC handler always
+  // supplies the build-time allowlist.
+  if (trustedOrigins && !trustedOrigins.has(parsed.origin)) return { ok: false }
   // Reject embedded credentials — shell.openExternal would leak them into
   // the OS handler and system logs.
   if (parsed.username !== '' || parsed.password !== '') return { ok: false }
@@ -366,6 +374,17 @@ export function validateOpenExternalUrl(value: unknown): { ok: true; value: stri
   parsed.searchParams.forEach((_v, key) => { searchKeys.push(key) })
   for (const key of searchKeys) {
     if (!OIDC_END_SESSION_QUERY_ALLOWLIST.has(key)) return { ok: false }
+  }
+  if (trustedOrigins) {
+    for (const key of ['post_logout_redirect_uri', 'redirect_uri', 'returnTo', 'return_to', 'return_url', 'returnUrl']) {
+      const redirect = parsed.searchParams.get(key)
+      if (redirect === null) continue
+      try {
+        if (!trustedOrigins.has(new URL(redirect).origin)) return { ok: false }
+      } catch {
+        return { ok: false }
+      }
+    }
   }
   return { ok: true, value: parsed.toString() }
 }

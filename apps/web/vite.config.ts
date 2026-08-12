@@ -12,6 +12,9 @@ import {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const apiUrl = env.VITE_API_URL;
+  const oidcTrustedOrigins = [...new Set([
+    ...(env.VITE_OIDC_TRUSTED_ORIGINS || "").split(",").map((value) => value.trim()),
+  ].filter(Boolean))];
   const isElectronBuild = env.VITE_ELECTRON_BUILD === "true";
   const enterpriseHtmlHead = readEnterpriseHtmlHead(
     env.VITE_ENTERPRISE_HTML_HEAD_PATH,
@@ -94,6 +97,7 @@ export default defineConfig(({ mode }) => {
                   // tsc-compiled Electron main process can trust it without
                   // accepting an origin nominated by the renderer.
                   oidcApiOrigin: apiOrigin,
+                  oidcEndSessionOrigins: [apiOrigin, ...oidcTrustedOrigins],
                 }, null, 2),
               });
             },
