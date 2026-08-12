@@ -318,7 +318,7 @@ export class ChannelSettingVM extends ProviderListener {
 
     didMount(): void {
         void fetchCurrentImChannelInfo(this.channel)
-        if (this.parentChannel && !getCurrentImChannelInfo(this.parentChannel)) {
+        if (this.parentChannel) {
             void fetchCurrentImChannelInfo(this.parentChannel)
                 .catch(() => undefined)
                 .finally(() => {

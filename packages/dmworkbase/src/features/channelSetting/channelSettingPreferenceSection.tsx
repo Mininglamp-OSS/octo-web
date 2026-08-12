@@ -27,6 +27,12 @@ import {
 } from "../../ui/ChannelSettingRows";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
+function hasLoadedParentChannelInfo(channelInfo?: ChannelInfo) {
+  return (
+    !!channelInfo?.orgData && Object.keys(channelInfo.orgData).length > 0
+  );
+}
+
 export function buildChannelPreferenceSection(
   context: RouteContext<ChannelSettingRouteData>
 ) {
@@ -50,7 +56,7 @@ export function buildChannelPreferenceSection(
     const parentChannelInfo = getCurrentImChannelInfo<Channel, ChannelInfo>(
       parentChannel
     );
-    if (!parentChannelInfo) {
+    if (!hasLoadedParentChannelInfo(parentChannelInfo)) {
       return new Section({
         rows: [
           new Row({
@@ -67,11 +73,6 @@ export function buildChannelPreferenceSection(
       return undefined;
     }
 
-    const threadMuted = isEffectivelyMuted({
-      isThread: true,
-      channelInfo,
-      parentChannelInfo,
-    });
     if (parentChannelInfo.mute) {
       return new Section({
         rows: [
@@ -85,6 +86,12 @@ export function buildChannelPreferenceSection(
         ],
       });
     }
+
+    const threadMuted = isEffectivelyMuted({
+      isThread: true,
+      channelInfo,
+      parentChannelInfo,
+    });
 
     return new Section({
       rows: [

@@ -350,6 +350,22 @@ describe("channel setting section builders", () => {
     expect(context.routeData().refresh).not.toHaveBeenCalled();
   });
 
+  it("renders a fallback mute row for an empty parent channel info shell", () => {
+    vi.mocked(getCurrentImChannelInfo).mockReturnValue({
+      title: "",
+      orgData: {},
+    } as any);
+    const context = createThreadContext();
+    const section = buildChannelPreferenceSection(context);
+
+    expect(section?.rows).toHaveLength(1);
+    expect(section?.rows?.[0].cell).toBe(ChannelSettingInfoRow);
+    expect(section?.rows?.[0].properties.value).toBe(
+      t("base.module.thread.muteParentUnavailable")
+    );
+    expect(section?.rows?.[0].properties.onChange).toBeUndefined();
+  });
+
   it.each([ThreadStatus.Archived, ThreadStatus.Deleted])(
     "hides thread mute rows for non-active status %s",
     (status) => {
