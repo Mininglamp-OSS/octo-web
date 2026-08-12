@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import rehypeSanitize from "rehype-sanitize";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import JSZip from "jszip";
 import { Download, FileText } from "lucide-react";
 import { t, useI18n, WKButton } from "@octo/base";
@@ -33,6 +33,16 @@ const MAX_PACKAGE_ENTRIES = 500;
 // Fetch timeout for the whole package (mirrors the app request ceiling).
 const PACKAGE_FETCH_TIMEOUT_MS = 30000;
 
+// Sanitize schema for publisher-supplied markdown. The default schema permits
+// <img> with an https: src, so a SKILL.md embedding a remote image would beacon
+// the viewer's IP/UA/referer to a publisher-chosen host (and could probe
+// reachable hosts) the moment the skill is expanded. Skill docs are text —
+// drop img entirely; script/javascript: URLs are already blocked by default.
+const SKILL_MD_SCHEMA = {
+  ...defaultSchema,
+  tagNames: (defaultSchema.tagNames ?? []).filter((tag) => tag !== "img"),
+};
+
 function stripFrontmatter(md: string): string {
   const match = /^﻿?---\r?\n[\s\S]*?\r?\n---\s*(?:\r?\n|$)/.exec(md);
   return match ? md.slice(match[0].length) : md;
@@ -61,6 +71,96 @@ function looksBinary(bytes: Uint8Array): boolean {
   const n = Math.min(bytes.length, 8000);
   for (let i = 0; i < n; i += 1) if (bytes[i] === 0) return true;
   return false;
+}
+
+/**
+ * Read the total entry count from the zip's End Of Central Directory record
+ * WITHOUT handing the buffer to JSZip: `loadAsync` parses the entire central
+ * directory up front (building one object per entry), so the entry cap must be
+ * enforced before it runs — a hostile archive with millions of entries would
+ * otherwise bloat memory during the parse itself. The EOCD is a 22-byte record
+ * (signature 0x06054b50) sitting within the last 22..65557 bytes of the file
+ * (fixed part + up to 64 KiB comment); the total entry count is the u16 at
+ * offset 10. 0xFFFF (ZIP64 sentinel or a genuine 65535) is far past our cap
+ * either way. No EOCD → not a zip we should feed to the parser.
+ */
+function zipEntryCount(buf: ArrayBuffer): number {
+  const bytes = new Uint8Array(buf);
+  const last = bytes.length - 22;
+  const scanFrom = Math.max(0, last - 0xffff);
+  for (let i = last; i >= scanFrom; i -= 1) {
+    if (
+      bytes[i] === 0x50 &&
+      bytes[i + 1] === 0x4b &&
+      bytes[i + 2] === 0x05 &&
+      bytes[i + 3] === 0x06
+    ) {
+      return bytes[i + 10] | (bytes[i + 11] << 8);
+    }
+  }
+  return Number.MAX_SAFE_INTEGER;
+}
+
+// jszip's documented streaming API, absent from its index.d.ts (typed there
+// only for `nodeStream`). Narrow surface we rely on, typed here instead of `any`.
+interface ZipEntryStream {
+  on(event: "data", cb: (chunk: Uint8Array) => void): ZipEntryStream;
+  on(event: "error", cb: (err: Error) => void): ZipEntryStream;
+  on(event: "end", cb: () => void): ZipEntryStream;
+  resume(): ZipEntryStream;
+  pause(): ZipEntryStream;
+}
+
+/**
+ * Inflate one zip entry with the byte ceiling enforced DURING decompression.
+ * The central directory's declared uncompressed size is publisher-controlled,
+ * so it must not be trusted to decide whether inflating is safe — understating
+ * it would let a high-ratio entry (zip bomb) expand fully into memory before
+ * any post-hoc length check. Streaming caps the materialised bytes at
+ * `cap` + one chunk: past that the stream is paused and dropped. Resolves
+ * null when the cap is exceeded.
+ */
+function inflateCapped(
+  entry: JSZip.JSZipObject,
+  cap: number
+): Promise<Uint8Array | null> {
+  return new Promise((resolve, reject) => {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let settled = false;
+    const stream = (
+      entry as unknown as { internalStream(type: "uint8array"): ZipEntryStream }
+    ).internalStream("uint8array");
+    stream
+      .on("data", (chunk) => {
+        if (settled) return;
+        total += chunk.length;
+        if (total > cap) {
+          settled = true;
+          stream.pause();
+          resolve(null);
+          return;
+        }
+        chunks.push(chunk);
+      })
+      .on("error", (err) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      })
+      .on("end", () => {
+        if (settled) return;
+        settled = true;
+        const out = new Uint8Array(total);
+        let offset = 0;
+        for (const chunk of chunks) {
+          out.set(chunk, offset);
+          offset += chunk.length;
+        }
+        resolve(out);
+      })
+      .resume();
+  });
 }
 
 /**
@@ -96,19 +196,13 @@ export default function ExpertSkillBrowser({
       setViews((v) => ({ ...v, [path]: { kind: "notice", body: t("mcp.expert.skillEmpty") } }));
       return;
     }
-    // Skip decompression entirely when the entry's DECLARED uncompressed size is
-    // already over the preview cap — a high-ratio entry must not be expanded
-    // into memory just to measure it. (Falls through to the post-check below for
-    // entries whose declared size is missing/understated.)
-    const declared = (entry as unknown as { _data?: { uncompressedSize?: number } })._data
-      ?.uncompressedSize;
-    if (typeof declared === "number" && declared > MAX_PREVIEW_BYTES) {
-      setViews((v) => ({ ...v, [path]: { kind: "notice", body: t("mcp.expert.skillFileTooLarge") } }));
-      return;
-    }
-    const bytes = await entry.async("uint8array");
+    // The preview cap is enforced while inflating (inflateCapped): the entry's
+    // declared uncompressed size lives in the publisher-supplied central
+    // directory, so it cannot be the guard — a bomb entry that understates it
+    // must still be stopped mid-stream rather than fully materialised.
+    const bytes = await inflateCapped(entry, MAX_PREVIEW_BYTES);
     let view: FileView;
-    if (bytes.length > MAX_PREVIEW_BYTES) {
+    if (bytes === null) {
       view = { kind: "notice", body: t("mcp.expert.skillFileTooLarge") };
     } else if (looksBinary(bytes)) {
       view = { kind: "notice", body: t("mcp.expert.skillFileBinary") };
@@ -134,6 +228,12 @@ export default function ExpertSkillBrowser({
           if (cancelled) return;
           setPackageUrl(url);
           const buf = await fetchSkillPackage(url, controller.signal);
+          // Bound the entry count BEFORE JSZip parses the central directory —
+          // loadAsync builds an object per entry up front, so the forEach cap
+          // below cannot protect against a pathological entry count on its own.
+          if (zipEntryCount(buf) > MAX_PACKAGE_ENTRIES) {
+            throw new Error("package has too many entries");
+          }
           const zip = await JSZip.loadAsync(buf);
           if (cancelled) return;
           zipRef.current = zip;
@@ -236,7 +336,7 @@ export default function ExpertSkillBrowser({
               <div className="wk-mcp-expert-skill__md">
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
-                  rehypePlugins={[rehypeSanitize]}
+                  rehypePlugins={[[rehypeSanitize, SKILL_MD_SCHEMA]]}
                 >
                   {view.body || t("mcp.expert.skillEmpty")}
                 </ReactMarkdown>
