@@ -262,6 +262,9 @@ describe("ChannelAvatar save intent", () => {
     act(() => {
       fireEvent.click(screen.getByText("base.channelAvatar.useGeneratedAvatar"));
     });
+    act(() => {
+      fireEvent.click(screen.getByLabelText("avatar-color-default"));
+    });
     await act(async () => {
       fireEvent.click(screen.getByText("base.common.save"));
     });

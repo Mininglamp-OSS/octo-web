@@ -46,6 +46,7 @@ interface ChannelAvatarState {
     pendingUploadFile: File | null
     uploadPreviewUrl?: string
     clearUploadedAvatarRequested: boolean
+    explicitGeneratedAvatarRequested: boolean
 }
 
 export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarState>{
@@ -65,6 +66,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         draftMode: "generated",
         pendingUploadFile: null,
         clearUploadedAvatarRequested: false,
+        explicitGeneratedAvatarRequested: false,
     }
 
     componentDidUpdate(prevProps: ChannelAvatarProps) {
@@ -124,6 +126,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             pendingUploadFile: null,
             uploadPreviewUrl: undefined,
             clearUploadedAvatarRequested: false,
+            explicitGeneratedAvatarRequested: false,
         })
     }
     cancelCustomAvatar = () => {
@@ -148,7 +151,8 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             pendingUploadFile: preserveUpload ? this.state.pendingUploadFile : null,
             uploadPreviewUrl: preserveUpload ? this.state.uploadPreviewUrl : undefined,
             clearUploadedAvatarRequested:
-                generatedEditRequested && this.props.canClearUploadedAvatar === true,
+                this.state.explicitGeneratedAvatarRequested ||
+                (generatedEditRequested && this.props.canClearUploadedAvatar === true),
         })
     }
     useGeneratedAvatar = () => {
@@ -161,6 +165,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             pendingUploadFile: null,
             uploadPreviewUrl: undefined,
             clearUploadedAvatarRequested: true,
+            explicitGeneratedAvatarRequested: true,
         })
     }
     saveCustomAvatar = async () => {
