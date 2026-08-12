@@ -183,8 +183,12 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         this.setState({ customAvatarSaving: true })
         try {
             await updateChannelAvatarCustom(channel, {
-                avatarText: textChanged ? customAvatarText : undefined,
-                avatarColor: colorChanged
+                avatarText: shouldClearUploadedAvatar
+                    ? customAvatarText
+                    : (textChanged ? customAvatarText : undefined),
+                avatarColor: shouldClearUploadedAvatar
+                    ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
+                    : colorChanged
                     ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
                     : undefined,
                 clearUploadedAvatar: shouldClearUploadedAvatar,

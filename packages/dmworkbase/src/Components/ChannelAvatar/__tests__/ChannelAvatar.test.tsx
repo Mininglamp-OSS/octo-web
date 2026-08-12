@@ -300,7 +300,7 @@ describe("ChannelAvatar save intent", () => {
 
     expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
       avatarText: "研发",
-      avatarColor: undefined,
+      avatarColor: "",
       clearUploadedAvatar: true,
     });
     expect(container.querySelector(".wk-group-avatar-preview-text")?.textContent).toBe("研发");
@@ -335,7 +335,29 @@ describe("ChannelAvatar save intent", () => {
 
     expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
       avatarText: "研发",
-      avatarColor: undefined,
+      avatarColor: "",
+      clearUploadedAvatar: true,
+    });
+  });
+
+  it("clears hidden generated text when an uploaded avatar owner edits only color", async () => {
+    const channel = renderChannelAvatar({
+      initialAvatarText: "旧头像",
+      initialColorIndex: 5,
+      isUploadedAvatar: true,
+      canClearUploadedAvatar: true,
+    });
+
+    act(() => {
+      fireEvent.click(screen.getByLabelText("avatar-color-3"));
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("base.common.save"));
+    });
+
+    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
+      avatarText: "",
+      avatarColor: 3,
       clearUploadedAvatar: true,
     });
   });

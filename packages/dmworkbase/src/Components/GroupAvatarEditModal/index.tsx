@@ -275,6 +275,7 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
       }}
     >
       <GroupAvatarEditForm
+        key={visible ? "open" : "closed"}
         name={name}
         nameAsFallback={nameAsFallback}
         initialAvatarText={initialAvatarText}
