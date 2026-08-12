@@ -705,10 +705,16 @@ export function clearLoopCache(): void {
 export function getLoopWorkspaces(): Promise<LoopWorkspace[]> {
   syncLoopCacheSpace();
   if (!cachedWorkspaces) {
-    cachedWorkspaces = listLoopWorkspaces().catch((err) => {
-      cachedWorkspaces = null;
-      throw err;
-    });
+    const pending: Promise<LoopWorkspace[]> = listLoopWorkspaces().catch(
+      (err) => {
+        // Only drop the entry if it's still ours: a clearLoopCache() + refetch
+        // (e.g. a Space switch) may have replaced it while this was in flight,
+        // and nulling the newer promise would defeat the cache.
+        if (cachedWorkspaces === pending) cachedWorkspaces = null;
+        throw err;
+      }
+    );
+    cachedWorkspaces = pending;
   }
   return cachedWorkspaces;
 }
@@ -718,10 +724,14 @@ export function getLoopRuntimes(workspaceId: string): Promise<LoopRuntime[]> {
   syncLoopCacheSpace();
   const hit = cachedRuntimes.get(workspaceId);
   if (hit) return hit;
-  const pending = listLoopRuntimes(workspaceId).catch((err) => {
-    cachedRuntimes.delete(workspaceId);
-    throw err;
-  });
+  const pending: Promise<LoopRuntime[]> = listLoopRuntimes(workspaceId).catch(
+    (err) => {
+      // Only evict if this promise is still the cached one (see getLoopWorkspaces).
+      if (cachedRuntimes.get(workspaceId) === pending)
+        cachedRuntimes.delete(workspaceId);
+      throw err;
+    }
+  );
   cachedRuntimes.set(workspaceId, pending);
   return pending;
 }
@@ -752,8 +762,14 @@ export async function installExpertToLoop(
       `${BASE}/experts/${encodeURIComponent(expertId)}/install`,
       { workspace_id: opts.workspaceId, runtime_id: opts.runtimeId }
     );
-    const data = resp.data.data as { agent_id?: string } | null;
-    return { agentId: data?.agent_id ?? "" };
+    const data = (resp?.data?.data ?? null) as { agent_id?: string } | null;
+    const agentId = data?.agent_id ?? "";
+    // The agent id is the whole point of this call. A 2xx without it means the
+    // install did not actually happen (version skew, an envelope change, an
+    // intermediary rewriting the body) — treat it as a failure rather than
+    // telling the user "已添加到回路" when nothing was created.
+    if (!agentId) throw new Error(t("mcp.expert.installFailed"));
+    return { agentId };
   } catch (err) {
     if (axios.isCancel(err)) throw err;
     throw new Error(installErrorMessage(err, "mcp.expert.installConflict"));
@@ -774,24 +790,35 @@ export async function installSquadToLoop(
       `${BASE}/squads/${encodeURIComponent(squadId)}/install`,
       { workspace_id: opts.workspaceId, runtime_id: opts.runtimeId }
     );
-    const data = resp.data.data as { squad_id?: string } | null;
-    return { squadId: data?.squad_id ?? "" };
+    const data = (resp?.data?.data ?? null) as { squad_id?: string } | null;
+    const newSquadId = data?.squad_id ?? "";
+    // The squad id is the whole point of this call — a 2xx without it means the
+    // squad was not formed. Fail rather than falsely report success.
+    if (!newSquadId) throw new Error(t("mcp.expert.installFailed"));
+    return { squadId: newSquadId };
   } catch (err) {
     if (axios.isCancel(err)) throw err;
     throw new Error(installErrorMessage(err, "mcp.expert.installConflictSquad"));
   }
 }
 
-/** Install-specific error copy. A CONFLICT here is fleet rejecting a duplicate
- *  agent/squad name in the workspace (not the generic catalog name-taken), so it
- *  gets a dedicated friendly message (keyed per kind); everything else falls
- *  back to the shared map. */
+/** Install-specific error copy. The install path is fleet-backed, so its most
+ *  likely failures — a duplicate name (CONFLICT), missing workspace permission
+ *  (FORBIDDEN; squad create needs owner/admin), and an unconfigured/unavailable
+ *  Loop service (UPSTREAM_UNAVAILABLE) — get dedicated expert-context copy
+ *  rather than the shared connector strings (which read wrong here). Everything
+ *  else falls back to the shared map. */
 function installErrorMessage(err: unknown, conflictKey: string): string {
   const code = (
     err as { response?: { data?: { error?: { code?: string } } } }
   )?.response?.data?.error?.code;
-  if (code === "CONFLICT") {
-    return t(conflictKey);
-  }
+  const INSTALL_COPY: Record<string, string> = {
+    CONFLICT: conflictKey,
+    FORBIDDEN: "mcp.expert.installForbidden",
+    NOT_FOUND: "mcp.expert.installNotFound",
+    UPSTREAM_UNAVAILABLE: "mcp.expert.loopUnavailable",
+  };
+  const key = code ? INSTALL_COPY[code] : undefined;
+  if (key) return t(key);
   return extractErrorMessage(err);
 }

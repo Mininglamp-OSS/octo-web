@@ -4,8 +4,25 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // `{data:...}` envelope. Mock axios so we can pin the exact request shape (URL /
 // method / body / query) and the wire→TS mapping without a real backend.
 const mock = vi.hoisted(() => ({
+  logout: vi.fn(),
+  responseOnRejected: undefined as
+    | ((err: unknown) => Promise<unknown>)
+    | undefined,
   instance: {
-    interceptors: { request: { use: () => {} }, response: { use: () => {} } },
+    interceptors: {
+      request: { use: () => {} },
+      response: {
+        // Capture the rejection handler so a test can drive the 401 logic
+        // directly (the real interceptor is what decides whether a 401 tears
+        // down the session).
+        use: (
+          _onFulfilled: unknown,
+          onRejected: (err: unknown) => Promise<unknown>
+        ) => {
+          mock.responseOnRejected = onRejected;
+        },
+      },
+    },
     get: vi.fn(),
     post: vi.fn(),
     delete: vi.fn(),
@@ -22,7 +39,7 @@ vi.mock("axios", () => ({
 vi.mock("@octo/base", () => ({
   WKApp: {
     loginInfo: { token: "tok" },
-    shared: { currentSpaceId: "sp", logout: () => {} },
+    shared: { currentSpaceId: "sp", logout: mock.logout },
   },
   buildAcceptLanguage: () => "en-US",
   t: (key: string) => key,
@@ -44,6 +61,7 @@ describe("expertService add-to-loop wire contract", () => {
   beforeEach(() => {
     mock.instance.get.mockReset();
     mock.instance.post.mockReset();
+    mock.logout.mockReset();
     // The cached getters keep module-level state across tests; reset it so each
     // case starts cold.
     clearLoopCache();
@@ -103,7 +121,7 @@ describe("expertService add-to-loop wire contract", () => {
   });
 
   it("installExpertToLoop URL-encodes the expert id", async () => {
-    mock.instance.post.mockResolvedValue({ data: { data: {} } });
+    mock.instance.post.mockResolvedValue({ data: { data: { agent_id: "a1" } } });
 
     await installExpertToLoop("a/b c", { workspaceId: "w", runtimeId: "r" });
 
@@ -111,6 +129,14 @@ describe("expertService add-to-loop wire contract", () => {
       "/market/api/v1/experts/a%2Fb%20c/install",
       { workspace_id: "w", runtime_id: "r" }
     );
+  });
+
+  it("installExpertToLoop rejects when the 2xx envelope has no agent_id", async () => {
+    mock.instance.post.mockResolvedValue({ data: { data: {} } });
+
+    await expect(
+      installExpertToLoop("e1", { workspaceId: "w", runtimeId: "r" })
+    ).rejects.toThrow();
   });
 
   it("installSquadToLoop POSTs /squads/{id}/install with snake_case body and returns squadId", async () => {
@@ -130,16 +156,17 @@ describe("expertService add-to-loop wire contract", () => {
     expect(res).toEqual({ squadId: "squad-123" });
   });
 
-  it("installSquadToLoop URL-encodes the squad id and tolerates a missing squad_id", async () => {
+  it("installSquadToLoop URL-encodes the squad id and rejects on a missing squad_id", async () => {
     mock.instance.post.mockResolvedValue({ data: { data: {} } });
 
-    const res = await installSquadToLoop("a/b c", { workspaceId: "w", runtimeId: "r" });
+    await expect(
+      installSquadToLoop("a/b c", { workspaceId: "w", runtimeId: "r" })
+    ).rejects.toThrow();
 
     expect(mock.instance.post).toHaveBeenCalledWith(
       "/market/api/v1/squads/a%2Fb%20c/install",
       { workspace_id: "w", runtime_id: "r" }
     );
-    expect(res).toEqual({ squadId: "" });
   });
 
   it("getLoopWorkspaces caches within a Space and refetches after clearLoopCache", async () => {
@@ -183,5 +210,32 @@ describe("expertService add-to-loop wire contract", () => {
     const calls = mock.instance.get.mock.calls.map((c: unknown[]) => c[0]);
     expect(calls.filter((u) => u === "/fleet/api/workspaces")).toHaveLength(1);
     expect(calls.filter((u) => u === "/fleet/api/runtimes")).toHaveLength(1);
+  });
+
+  it("logs out on a marketplace 401 but NOT on a fleet 401", async () => {
+    const onRejected = mock.responseOnRejected;
+    expect(typeof onRejected).toBe("function");
+
+    // A marketplace 401 means the session itself is invalid → tear it down.
+    await expect(
+      onRejected!({
+        config: { url: "/market/api/v1/experts" },
+        response: { status: 401 },
+      })
+    ).rejects.toBeTruthy();
+    expect(mock.logout).toHaveBeenCalledTimes(1);
+
+    mock.logout.mockClear();
+
+    // A fleet 401 (secondary service, reached via a different gateway path) must
+    // NOT log the user out — otherwise the mount-time prefetch could silently
+    // end the session on a fleet-only auth hiccup.
+    await expect(
+      onRejected!({
+        config: { url: "/fleet/api/workspaces" },
+        response: { status: 401 },
+      })
+    ).rejects.toBeTruthy();
+    expect(mock.logout).not.toHaveBeenCalled();
   });
 });

@@ -10,11 +10,21 @@ import {
 } from "../api/expertService";
 import type { LoopRuntime, LoopWorkspace } from "../api/expertService";
 
+// A runtime is "ready" to run an agent when it has no status (older fleet builds
+// omit it) or reports one of the known healthy states. Anything else (offline /
+// error / provisioning) is treated as not-ready: skipped for default selection
+// and annotated in the picker. The status domain is fleet-owned, so we match
+// leniently rather than enumerate it exhaustively.
+function isRuntimeReady(rt: LoopRuntime): boolean {
+  if (!rt.status) return true;
+  return ["online", "ready", "running", "active"].includes(
+    rt.status.toLowerCase()
+  );
+}
+
 interface ExpertAddToLoopModalProps {
   item: ExpertItem | null;
   onClose: () => void;
-  /** Called after a successful install (before the modal closes). */
-  onInstalled?: (agentId: string) => void;
 }
 
 /**
@@ -28,7 +38,6 @@ interface ExpertAddToLoopModalProps {
 export default function ExpertAddToLoopModal({
   item,
   onClose,
-  onInstalled,
 }: ExpertAddToLoopModalProps) {
   useI18n();
   const [workspaces, setWorkspaces] = useState<LoopWorkspace[]>([]);
@@ -87,10 +96,13 @@ export default function ExpertAddToLoopModal({
       .then((list) => {
         if (cancelled) return;
         setRuntimes(list);
-        // Default-select the first runtime so the dialog is confirmable in one
-        // click; the user can still switch before confirming.
+        // Default-select the first READY runtime so the dialog is confirmable in
+        // one click without picking a runtime that can't actually run the agent;
+        // fall back to the first runtime if none report ready. The user can
+        // still switch before confirming.
         if (list.length > 0) {
-          setRuntimeId(list[0].id);
+          const firstReady = list.find(isRuntimeReady) ?? list[0];
+          setRuntimeId(firstReady.id);
         }
       })
       .catch((err) => {
@@ -116,13 +128,14 @@ export default function ExpertAddToLoopModal({
     setSubmitting(true);
     try {
       // Squads install each member then form the team; experts install one
-      // agent. Both take the same workspace/runtime selection.
-      const agentId =
-        item.kind === "squad"
-          ? (await installSquadToLoop(item.id, { workspaceId, runtimeId })).squadId
-          : (await installExpertToLoop(item.id, { workspaceId, runtimeId })).agentId;
+      // agent. Both take the same workspace/runtime selection and throw if the
+      // backend 2xx carries no id (so we never falsely report success).
+      if (item.kind === "squad") {
+        await installSquadToLoop(item.id, { workspaceId, runtimeId });
+      } else {
+        await installExpertToLoop(item.id, { workspaceId, runtimeId });
+      }
       Toast.success(t("mcp.expert.installSuccess"));
-      onInstalled?.(agentId);
       onClose();
     } catch (err) {
       Toast.error(
@@ -136,7 +149,12 @@ export default function ExpertAddToLoopModal({
   if (!item) return null;
 
   const workspaceOptions = workspaces.map((w) => ({ label: w.name, value: w.id }));
-  const runtimeOptions = runtimes.map((rt) => ({ label: rt.name, value: rt.id }));
+  const runtimeOptions = runtimes.map((rt) => ({
+    // Surface a non-ready status so the user isn't silently defaulted onto (or
+    // left picking) a runtime that can't run the agent.
+    label: isRuntimeReady(rt) ? rt.name : `${rt.name}（${rt.status}）`,
+    value: rt.id,
+  }));
   const canSubmit = Boolean(workspaceId && runtimeId) && !submitting;
 
   return (

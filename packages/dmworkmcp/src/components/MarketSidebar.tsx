@@ -157,7 +157,7 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
                 onClick={() => this.handleClick(item)}
               >
                 <span className="wk-mcp-sidebar__item-label">{item.label()}</span>
-                {item.badge && (
+                {item.badge && WKApp.remoteConfig?.dmloopOn && (
                   <span className="wk-mcp-sidebar__badge">{item.badge()}</span>
                 )}
               </button>

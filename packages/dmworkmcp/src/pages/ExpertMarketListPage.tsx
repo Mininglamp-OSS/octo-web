@@ -75,6 +75,12 @@ function sortItems<T extends ExpertItem>(items: T[], sort: ExpertSort): T[] {
  */
 export default function ExpertMarketListPage() {
   useI18n();
+  // Loop(回路) feature gate. The install flow (添加到回路), its explainer, and the
+  // Loop-target prefetch all depend on octo-fleet being deployed; until ops flips
+  // dmloop_on this UI must stay hidden so the feature can land on main "dark"
+  // (mirrors the driveOn / docs_on pattern in dmworkbase). When off, cards get no
+  // onAddToLoop (ExpertCard then hides the button) and we skip the fleet prefetch.
+  const loopOn = WKApp.remoteConfig?.dmloopOn ?? false;
   const [kind, setKind] = useState<ExpertKind>("agent");
   const [category, setCategory] = useState<string>(ALL_CATEGORY);
   const [query, setQuery] = useState("");
@@ -186,8 +192,8 @@ export default function ExpertMarketListPage() {
   // fleet round-trips at open time. Fire-and-forget; the dialog still fetches
   // (cache-hit) on real open.
   useEffect(() => {
-    prefetchLoopTargets();
-  }, []);
+    if (loopOn) prefetchLoopTargets();
+  }, [loopOn]);
 
   // Reset transient UI + filters and reload on space switch, matching the other
   // market pages (visibility/ownership is Space-scoped on the backend).
@@ -206,12 +212,12 @@ export default function ExpertMarketListPage() {
       // Loop targets are Space-scoped: drop the old Space's cache and warm the
       // new one so the dialog stays instant after a switch.
       clearLoopCache();
-      prefetchLoopTargets();
+      if (loopOn) prefetchLoopTargets();
       reload();
     };
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
     return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
-  }, [reload]);
+  }, [reload, loopOn]);
 
   // Tags are catalog-specific, so switching the 专家 / 专家团 tab clears any
   // active tag filter (a squad tag rarely matches an agent, and vice versa).
@@ -429,20 +435,22 @@ export default function ExpertMarketListPage() {
               {t("mcp.expert.typeMine")}
             </button>
           </nav>
-          <Tooltip
-            content={t("mcp.expert.loopIntro")}
-            className="wk-mcp-tooltip-light"
-            mouseEnterDelay={100}
-            position="bottomLeft"
-          >
-            <button
-              type="button"
-              className="wk-mcp-expert-help"
-              aria-label={t("mcp.expert.loopIntro")}
+          {loopOn && (
+            <Tooltip
+              content={t("mcp.expert.loopIntro")}
+              className="wk-mcp-tooltip-light"
+              mouseEnterDelay={100}
+              position="bottomLeft"
             >
-              <HelpCircle size={16} aria-hidden="true" />
-            </button>
-          </Tooltip>
+              <button
+                type="button"
+                className="wk-mcp-expert-help"
+                aria-label={t("mcp.expert.loopIntro")}
+              >
+                <HelpCircle size={16} aria-hidden="true" />
+              </button>
+            </Tooltip>
+          )}
         </div>
         <div className="wk-mcp-expert-topbar__actions">
           <div className="wk-mcp-expert-search">
@@ -618,7 +626,7 @@ export default function ExpertMarketListPage() {
                       key={item.id}
                       item={item}
                       onOpen={openDetail}
-                      onAddToLoop={openAddToLoop}
+                      onAddToLoop={loopOn ? openAddToLoop : undefined}
                       onEdit={handleEdit}
                       onDelete={setDeleteTarget}
                     />
@@ -641,7 +649,7 @@ export default function ExpertMarketListPage() {
                       key={item.id}
                       item={item}
                       onOpen={openDetail}
-                      onAddToLoop={openAddToLoop}
+                      onAddToLoop={loopOn ? openAddToLoop : undefined}
                       onEdit={handleEdit}
                       onDelete={setDeleteTarget}
                     />
@@ -690,7 +698,7 @@ export default function ExpertMarketListPage() {
                     key={item.id}
                     item={item}
                     onOpen={openDetail}
-                    onAddToLoop={openAddToLoop}
+                    onAddToLoop={loopOn ? openAddToLoop : undefined}
                   />
                 ))}
               </div>
