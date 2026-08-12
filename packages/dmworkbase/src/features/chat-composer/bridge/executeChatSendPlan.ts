@@ -14,6 +14,13 @@ export interface ChatSendExecution<TMessage = unknown> {
   enqueuedPartIds: string[];
 }
 
+export interface ExecuteChatSendPlanOptions<TMessage = unknown> {
+  /** Called once per operation that produced at least one local enqueue. */
+  onOperationEnqueued?: (
+    execution: ChatOperationExecution<TMessage>,
+  ) => void;
+}
+
 export class InvalidChatTransportResultError extends Error {
   constructor(operation: ChatSendOperation, partId: unknown) {
     super(
@@ -48,14 +55,29 @@ function validateResult(
 export async function executeChatSendPlan<TMessage = unknown>(
   plan: ChatSendPlan<TMessage>,
   transport: ChatTransportPort<TMessage>,
+  options: ExecuteChatSendPlanOptions<TMessage> = {},
 ): Promise<ChatSendExecution<TMessage>> {
   const operations: ChatOperationExecution<TMessage>[] = [];
+  let hasEnqueuedOperation = false;
 
   for (const operation of plan.operations) {
+    if (operation.requiresPreviousEnqueue && !hasEnqueuedOperation) {
+      operations.push({
+        operation,
+        enqueuedPartIds: [],
+        result: { enqueuedPartIds: [] },
+      });
+      continue;
+    }
     try {
       const result = await transport.execute(operation);
       const enqueuedPartIds = validateResult(operation, result);
-      operations.push({ operation, enqueuedPartIds, result });
+      const execution = { operation, enqueuedPartIds, result };
+      operations.push(execution);
+      if (enqueuedPartIds.length > 0) {
+        hasEnqueuedOperation = true;
+        options.onOperationEnqueued?.(execution);
+      }
     } catch (error) {
       operations.push({ operation, enqueuedPartIds: [], error });
     }
@@ -67,4 +89,3 @@ export async function executeChatSendPlan<TMessage = unknown>(
     enqueuedPartIds: operations.flatMap((execution) => execution.enqueuedPartIds),
   };
 }
-

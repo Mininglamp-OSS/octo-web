@@ -16,6 +16,7 @@ interface ChatSendOperationBase<TMessage> {
   kind: ChatSendOperationKind;
   partIds: string[];
   sendTarget?: SendTargetSnapshot<TMessage>;
+  requiresPreviousEnqueue?: boolean;
 }
 
 export type ChatSendOperation<TMessage = unknown> =
@@ -174,6 +175,9 @@ export function buildChatSendPlan<TMessage = unknown>(
     targetAttached = withTarget(operation, target, targetAttached);
     operations.push(operation);
   };
+  const pushOperation = (operation: ChatSendOperation<TMessage>) => {
+    operations.push(operation);
+  };
 
   const topImages = topFiles.filter(({ file }) => isImageFile(file));
   const allTopFilesAreImages = topImages.length === topFiles.length;
@@ -214,7 +218,7 @@ export function buildChatSendPlan<TMessage = unknown>(
       partIds: [topPartId(attachment, index)],
       attachment,
     };
-    attachTarget(operation);
+    pushOperation(operation);
   });
 
   editorBlocks.forEach((block, index) => {
@@ -236,7 +240,11 @@ export function buildChatSendPlan<TMessage = unknown>(
       partIds: [partId],
       attachment: { id: block.id, file: block.file },
     };
-    attachTarget(operation);
+    if (block.type === "text") {
+      attachTarget(operation);
+    } else {
+      pushOperation(operation);
+    }
   });
 
   if (editorBlocks.length === 0 && text.trim() !== "") {
@@ -247,6 +255,20 @@ export function buildChatSendPlan<TMessage = unknown>(
       mention: request.mention,
     };
     attachTarget(operation);
+  }
+
+  if (
+    target &&
+    !targetAttached &&
+    operations.length > 0
+  ) {
+    pushOperation({
+      kind: "send_text",
+      partIds: ["reply:empty"],
+      text: "",
+      sendTarget: target,
+      requiresPreviousEnqueue: true,
+    });
   }
 
   return { attemptId, operations };

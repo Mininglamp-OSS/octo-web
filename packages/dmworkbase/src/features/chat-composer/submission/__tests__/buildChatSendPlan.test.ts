@@ -171,7 +171,7 @@ describe("buildChatSendPlan", () => {
     ]);
   });
 
-  it("sends attachments without inventing an empty text operation", () => {
+  it("adds a conditional empty reply after attachment-only sends", () => {
     const sendTarget = target(1);
     const plan = buildChatSendPlan(
       request({
@@ -190,9 +190,15 @@ describe("buildChatSendPlan", () => {
     expect(plan.operations.map(({ kind }) => kind)).toEqual([
       "send_media",
       "send_media",
+      "send_text",
     ]);
-    expect(plan.operations[0].sendTarget).toBe(sendTarget);
+    expect(plan.operations[0].sendTarget).toBeUndefined();
     expect(plan.operations[1].sendTarget).toBeUndefined();
+    expect(plan.operations[2]).toMatchObject({
+      sendTarget,
+      requiresPreviousEnqueue: true,
+      text: "",
+    });
   });
 
   it("does not send an empty reply, except for an edit target", () => {

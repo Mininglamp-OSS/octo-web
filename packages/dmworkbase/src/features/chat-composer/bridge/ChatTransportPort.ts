@@ -12,4 +12,3 @@ export interface ChatTransportPort<TMessage = unknown> {
     operation: ChatSendOperation<TMessage>,
   ): Promise<ChatTransportResult>;
 }
-

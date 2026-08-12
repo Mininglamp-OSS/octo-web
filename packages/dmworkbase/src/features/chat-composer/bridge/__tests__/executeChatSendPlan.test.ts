@@ -92,5 +92,41 @@ describe("executeChatSendPlan", () => {
     });
     expect(JSON.stringify(input)).toBe(before);
   });
-});
 
+  it("reports one enqueue event per successful operation", async () => {
+    const events: string[] = [];
+    await executeChatSendPlan(plan("a", "b"), {
+      execute: async (current) => ({ enqueuedPartIds: current.partIds }),
+    }, {
+      onOperationEnqueued: ({ operation }) => events.push(operation.partIds[0]),
+    });
+
+    expect(events).toEqual(["a", "b"]);
+  });
+
+  it("skips a conditional reply operation when no earlier operation enqueued", async () => {
+    let calls = 0;
+    const execution = await executeChatSendPlan(
+      {
+        attemptId: "reply",
+        operations: [
+          {
+            kind: "send_text",
+            partIds: ["reply:empty"],
+            text: "",
+            requiresPreviousEnqueue: true,
+          },
+        ],
+      },
+      {
+        execute: async () => {
+          calls += 1;
+          return { enqueuedPartIds: ["reply:empty"] };
+        },
+      },
+    );
+
+    expect(calls).toBe(0);
+    expect(execution.enqueuedPartIds).toEqual([]);
+  });
+});

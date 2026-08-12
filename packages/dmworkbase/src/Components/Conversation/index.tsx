@@ -50,13 +50,16 @@ import {
 } from "../../Utils/mentionRender";
 import MessageInput, { MessageInputContext } from "../MessageInput";
 import {
-  createChatSendOutcome,
-  type ChatMention,
   type ChatSendOutcome,
   type ChatSendRequest,
   type EditorContentBlock,
-  type UnsentEditorBlock,
 } from "../../features/chat-composer/domain";
+import { buildChatSendPlan } from "../../features/chat-composer/submission";
+import {
+  createConversationChatTransport,
+  executeChatSendPlan,
+  settleChatSendExecution,
+} from "../../features/chat-composer/bridge";
 import { captureSendTarget } from "./sendTarget";
 import {
   tryConsumeInitialCompose,
@@ -135,12 +138,6 @@ import { isMessageSelectable } from "../../Service/messageSelection";
 import { isIncomingWebhookSender } from "../../Service/IncomingWebhook";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
 import { I18nContext, t } from "../../i18n";
-import {
-  buildRichTextMixedCandidate,
-  countSendPlanParts,
-  finishRichTextMixedSend,
-  isImageFileForRichTextMixed,
-} from "./richTextMixedSend";
 import {
   InteractiveCardContent,
   InteractiveCardForwardBlockedError,
@@ -3017,6 +3014,7 @@ export class Conversation
                           this.vm.currentConversation?.remoteExtra?.draft || "",
                       })}
                       onSend={async ({
+                        attemptId,
                         text,
                         mention,
                         topFiles,
@@ -3042,13 +3040,8 @@ export class Conversation
                           sendProgress?.markPartEnqueued();
                         VoiceFeedback.shared()?.submitAll(text);
 
-                        // ── 回复/编辑处理 ──────────────
-                        // ⚠️ 必须用按键时同步取走的 sendTarget 快照，**绝不能**在这里
-                        // 实时读 vm.currentReplyMessage / currentHandlerType：发送被
-                        // 排队后这里可能晚几秒才执行，用户可能已经改了回复目标、甚至
-                        // 切到「编辑消息」——实时读会回复错消息或覆盖无关消息
-                        // (octo-web#1280 review)。
-                        // 兼容：老调用方没有传 sendTarget 时退回实时读取。
+                        // 兼容未提供快照的旧调用方；MessageInput 正常路径会在
+                        // consume 时同步传入 sendTarget。
                         const target =
                           sendTarget ??
                           captureSendTarget<Message>({
@@ -3061,43 +3054,6 @@ export class Conversation
                               vm.currentHandlerType = h;
                             },
                           });
-                        const targetMessage = target.replyMessage;
-                        let reply: Reply | undefined;
-                        if (targetMessage) {
-                          if (target.handlerType === 2) {
-                            sendProgress?.setExpectedParts(1);
-                            // 编辑消息。失败时抛出，让 MessageInput 把 compose 与
-                            // 编辑目标一起还原，用户重试仍是「编辑」而不是发新消息。
-                            const editContent = new MessageText(text);
-                            let json = editContent.encodeJSON();
-                            json["type"] = MessageContentType.text;
-                            await vm.editMessage(
-                              targetMessage.messageID,
-                              targetMessage.messageSeq,
-                              targetMessage.channel.channelID,
-                              targetMessage.channel.channelType,
-                              JSON.stringify(json)
-                            );
-                            markEnqueued();
-                            // 编辑消息已提交，编辑器应清空。
-                            return createChatSendOutcome({
-                              editorConsumed: true,
-                            });
-                          }
-                          reply = new Reply();
-                          reply.messageID = targetMessage.messageID;
-                          reply.messageSeq = targetMessage.messageSeq;
-                          reply.fromUID = targetMessage.fromUID;
-                          const channelInfo = getImChannelInfo(
-                            WKSDK.shared(),
-                            new Channel(targetMessage.fromUID, ChannelTypePerson)
-                          );
-                          if (channelInfo) {
-                            reply.fromName = channelInfo.title;
-                          }
-                          reply.content = targetMessage.content;
-                        }
-
                         // ── 辅助：发送单张图片（读取预览+宽高） ──────────────
                         // 返回 true 表示消息已入队 / 发送; false 表示被预检拒绝、
                         // 调用方应据此决定是否继续后续流程 (例如不要再补一条
@@ -3198,413 +3154,89 @@ export class Conversation
                           );
                         };
 
-                        // ── 辅助：构建带 mention 的文本 MessageContent ──────────────
-                        const buildTextContent = (
-                          blockText: string,
-                          blockMention?: ChatMention
-                        ) => {
-                          const msgContent = new MessageText(blockText);
-                          if (blockMention) {
-                            const mn = new Mention();
-                            mn.all = blockMention.all;
-                            mn.uids = blockMention.uids;
-                            // 三态 mention：SDK Mention 类型未声明 humans/ais，
-                            // 这里用 (mn as any) 把字段透传到 wire JSON。客户端
-                            // render 只读 contentObj.mention（下方 override 注入），
-                            // server 同时认 mn.humans/mn.ais（PR-A 已支持）。
-                            if (blockMention.humans) {
-                              (mn as any).humans = blockMention.humans;
-                            }
-                            if (blockMention.ais) {
-                              (mn as any).ais = blockMention.ais;
-                            }
-                            msgContent.mention = mn;
-
-                            const hasEntities =
-                              blockMention.entities &&
-                              blockMention.entities.length > 0;
-                            const hasThreeState = !!(
-                              blockMention.humans || blockMention.ais
-                            );
-
-                            if (hasEntities || hasThreeState) {
-                              const entities = blockMention.entities;
-                              if (!msgContent.contentObj)
-                                msgContent.contentObj = {};
-                              if (!msgContent.contentObj.mention)
-                                msgContent.contentObj.mention = {};
-                              if (hasEntities) {
-                                msgContent.contentObj.mention.entities =
-                                  entities;
-                              }
-                              if (blockMention.humans) {
-                                msgContent.contentObj.mention.humans =
-                                  blockMention.humans;
-                              }
-                              if (blockMention.ais) {
-                                msgContent.contentObj.mention.ais =
-                                  blockMention.ais;
-                              }
-                              const originalEncode =
-                                msgContent.encode.bind(msgContent);
-                              msgContent.encode = () => {
-                                try {
-                                  const bytes = originalEncode();
-                                  const str = new TextDecoder().decode(bytes);
-                                  const obj = JSON.parse(str);
-                                  if (!obj.mention) obj.mention = {};
-                                  if (hasEntities) {
-                                    obj.mention.entities = entities;
-                                  }
-                                  if (blockMention.humans) {
-                                    obj.mention.humans = blockMention.humans;
-                                  }
-                                  if (blockMention.ais) {
-                                    obj.mention.ais = blockMention.ais;
-                                  }
-                                  return new TextEncoder().encode(
-                                    JSON.stringify(obj)
-                                  );
-                                } catch (e) {
-                                  console.warn(
-                                    "[Mention] encode override failed",
-                                    e
-                                  );
-                                  return originalEncode();
-                                }
-                              };
-                            }
-                          }
-                          return msgContent;
+                        const request: ChatSendRequest<Message> = {
+                          attemptId,
+                          text,
+                          mention,
+                          topFiles,
+                          editorBlocks,
+                          sendTarget: target,
+                          sendDraft,
+                          sendProgress,
                         };
+                        const plan = buildChatSendPlan(request);
+                        sendProgress?.setExpectedParts(plan.operations.length);
 
-                        // ── 第一阶段：发送顶部附件区的文件（优先级最高） ──────────────
-                        // anyMessageSent: 标记本次 onSend 是否实际入队过任何消息。
-                        // 若所有顶部附件 + 编辑器内容块都被预检拒绝,且没有文本块,
-                        // 则不应再补发空回复消息 (octo-web#119 review by Jerry-Xin)。
-                        let anyMessageSent = false;
-                        // 记录实际发出的顶部附件 id：失败时让 MessageInput 仅
-                        // 清掉这些已发文件、保留编辑器草稿，重试不会重复发送
-                        // (octo-web#227 Jerry-Xin non-blocking)。
-                        const consumedTopIds: string[] = [];
-                        // 编辑器 compose 里「未入队」的块（按文档顺序）：整条 compose
-                        // 已被 MessageInput 同步消费，只有精确回报这些块才能把它们放回
-                        // 编辑器，而不是连同已发出的内容一起丢掉 (octo-web#1280 review)。
-                        // 文本块也必须登记：sendTextAndWaitAck 在入队前失败会抛错，
-                        // 若此前已有块发出（anyMessageSent=true），异常被 per-block
-                        // catch 吞掉后这段文字既没发出、也不会被整体还原。
-                        const unsentEditorBlocks: UnsentEditorBlock[] = [];
-                        const topFilesToSend = topFiles || [];
-                        const mixedCandidate = buildRichTextMixedCandidate(
-                          topFilesToSend,
-                          editorBlocks
-                        );
-                        const replyNeedsOwnBubble =
-                          !!reply &&
-                          !mixedCandidate &&
-                          !editorBlocks?.some((block) => block.type === "text") &&
-                          text.trim() === "";
-                        sendProgress?.setExpectedParts(
-                          countSendPlanParts(
-                            topFilesToSend,
-                            editorBlocks,
-                            text,
-                            mixedCandidate,
-                            replyNeedsOwnBubble
-                          )
-                        );
-                        if (mixedCandidate) {
-                          let mixedSent = false;
-                          try {
-                            if (
-                              await this.sendRichTextMixed(
-                                mixedCandidate.blocks as EditorContentBlock[],
-                                reply,
-                                markEnqueued
-                              )
-                            ) {
-                              mixedSent = true;
-                              anyMessageSent = true;
-                              consumedTopIds.push(
-                                ...mixedCandidate.topImageIds
-                              );
-                            }
-                            reply = undefined;
-                          } catch (err) {
-                            console.error(
-                              "[Conversation] richtext mixed send failed:",
-                              err
-                            );
-                            if (!(err as { toasted?: boolean })?.toasted) {
-                              Toast.error(
-                                t("base.conversation.message.sendFailed")
-                              );
-                            }
-                          }
-                          if (mixedSent) {
-                            await this.clearDraftAfterSend(
-                              sendDraftGeneration,
-                              remoteDraftAtSend,
-                              sendDraft?.draftText ?? text
-                            );
-                          }
-                          return finishRichTextMixedSend(
-                            anyMessageSent,
-                            mixedSent,
-                            consumedTopIds,
-                            this.props.onMessageSent
-                          );
-                        }
-
-                        for (const { id, file } of topFilesToSend) {
-                          try {
-                            let sent = false;
-                            if (isImageFileForRichTextMixed(file)) {
-                              sent = await sendImageFile(file);
-                            } else {
-                              sent = await sendFileAttachment(file);
-                            }
-                            if (sent) {
-                              anyMessageSent = true;
-                              consumedTopIds.push(id);
-                            }
-                          } catch (err) {
-                            Toast.error(
-                              t("base.conversation.upload.fileSendFailed", {
-                                values: { name: file.name },
-                              })
-                            );
-                          }
-                        }
-
-                        // ── 第二阶段：按编辑器文档顺序发送内容块（文本段和粘贴图片交替） ──
-                        let restoreReplyTarget = false;
-                        if (editorBlocks && editorBlocks.length > 0) {
-                          // 图文混排：同时含文本和图片、且无非图片文件块时，聚合成单条
-                          // RichText(=14) 消息（而非拆成多条独立消息）。含 file 块或
-                          // 纯文本/纯图片时仍走下方逐块发送路径，不回退已落地逻辑。
-                          const hasText = editorBlocks.some(
-                            (b) => b.type === "text" && b.text.trim() !== ""
-                          );
-                          const hasImage = editorBlocks.some(
-                            (b) => b.type === "image"
-                          );
-                          const hasFile = editorBlocks.some(
-                            (b) => b.type === "file"
-                          );
-                          if (hasText && hasImage && !hasFile) {
-                            // 单独跟踪图文混排是否成功：图片准备失败时 sendRichTextMixed
-                            // 抛错，此时即便此前顶部附件已发(anyMessageSent=true)，也不能
-                            // 清空编辑器草稿——草稿里的文本+图片整条都没发出，须保留可重试。
-                            let mixedSent = false;
-                            try {
-                              if (
-                                await this.sendRichTextMixed(
-                                  editorBlocks,
-                                  reply,
-                                  markEnqueued
-                                )
-                              ) {
-                                mixedSent = true;
-                                anyMessageSent = true;
-                              }
-                              reply = undefined;
-                            } catch (err) {
-                              console.error(
-                                "[Conversation] richtext mixed send failed:",
-                                err
-                              );
-                              // 图片准备失败已在 sendRichTextMixed 内 Toast 具体原因，
-                              // 不再重复弹通用错误。
-                              if (!(err as { toasted?: boolean })?.toasted) {
-                                Toast.error(
-                                  t("base.conversation.message.sendFailed")
-                                );
-                              }
-                            }
-                            // 仅当图文混排本身发出时才清草稿；失败则保留编辑器内容可重试。
-                            if (mixedSent) {
-                              await this.clearDraftAfterSend(
-                                sendDraftGeneration,
-                                remoteDraftAtSend,
-                              sendDraft?.draftText ?? text
-                              );
-                            }
-                            // 返回部分结果 (octo-web#227 → #1280)：
-                            //   • editorConsumed=mixedSent：混排未入队时把文本+图片
-                            //     还给编辑器，用户可整条重试；
-                            //   • consumedTopIds：本次已发出的顶部附件 id。即使
-                            //     混排失败，这些文件也已发出，MessageInput 不会把
-                            //     它们放回附件区，避免重试重复发送。
-                            return finishRichTextMixedSend(
-                              anyMessageSent,
-                              mixedSent,
-                              consumedTopIds,
-                              this.props.onMessageSent
-                            );
-                          }
-                          let isFirstTextBlock = true;
-                          for (const block of editorBlocks) {
-                            let carriesReply = false;
-                            try {
-                              if (block.type === "text") {
-                                const msgContent = buildTextContent(
-                                  block.text,
-                                  block.mention
-                                );
-                                // 第一个文本块携带 reply 信息
-                                if (reply && isFirstTextBlock) {
-                                  msgContent.reply = reply;
-                                  carriesReply = true;
-                                }
-                                isFirstTextBlock = false;
-                                if (
-                                  await this.sendTextAndWaitAck(
-                                    msgContent,
-                                    undefined,
-                                    markEnqueued
-                                  )
-                                ) {
-                                  anyMessageSent = true;
-                                  if (carriesReply) reply = undefined;
-                                } else {
-                                  unsentEditorBlocks.push({
-                                    type: "text",
-                                    text: block.restoreText,
-                                  });
-                                  if (carriesReply) restoreReplyTarget = true;
-                                }
-                              } else if (block.type === "image") {
-                                if (await sendImageFile(block.file)) {
-                                  anyMessageSent = true;
-                                } else {
-                                  // 预检拒绝等未入队情形：记下这一块，让 MessageInput
-                                  // 只把它放回编辑器，其余已发内容保持消费
-                                  // (octo-web#1280 review)。
-                                  unsentEditorBlocks.push({
-                                    type: "attachment",
-                                    id: block.id,
-                                  });
-                                }
-                              } else if (block.type === "file") {
-                                if (await sendFileAttachment(block.file)) {
-                                  anyMessageSent = true;
-                                } else {
-                                  unsentEditorBlocks.push({
-                                    type: "attachment",
-                                    id: block.id,
-                                  });
-                                }
-                              }
-                            } catch (err) {
-                              console.error(
-                                "[Conversation] editorBlock send failed:",
-                                err
-                              );
-                              // 入队前抛错（解散守卫 / sendMessage 失败等）：文本块
-                              // 也要登记，否则它既没发出又不会被还原，内容直接消失。
-                              unsentEditorBlocks.push(
-                                block.type === "text"
-                                  ? { type: "text", text: block.restoreText }
-                                  : { type: "attachment", id: block.id }
-                              );
-                              if (carriesReply) restoreReplyTarget = true;
-                              Toast.error(
-                                t("base.conversation.message.sendFailed")
-                              );
-                            }
-                          }
-                          // 如果 reply 还没被消费（没有文本块），附加到一条空白消息;
-                          // 但仅当本次确实发出了别的消息时,否则用户的所有附件都被
-                          // 预检拒绝、却仍收到一条孤立的空回复气泡 (#119 Jerry-Xin)。
-                          if (reply && anyMessageSent && !restoreReplyTarget) {
-                            const emptyContent = new MessageText("");
-                            emptyContent.reply = reply;
-                            try {
-                              if (
-                                await this.sendTextAndWaitAck(
-                                  emptyContent,
-                                  undefined,
-                                  markEnqueued
-                                )
-                              ) {
-                                reply = undefined;
-                              }
-                            } catch (err) {
-                              console.error(
-                                "[Conversation] empty reply send failed:",
-                                err
-                              );
-                              restoreReplyTarget = true;
-                              Toast.error(
-                                t("base.conversation.message.sendFailed")
-                              );
-                            }
-                          }
-                        } else {
-                          // fallback：无 editorBlocks 时走旧逻辑（纯文本）
-                          if (text && text.trim() !== "") {
-                            const msgContent = buildTextContent(text, mention);
-                            if (reply) {
-                              msgContent.reply = reply;
-                            }
-                            if (
-                              await this.sendTextAndWaitAck(
-                                msgContent,
+                        const transport = createConversationChatTransport<Message>(
+                          this,
+                          {
+                            sendTextAndWaitAck: (content) =>
+                              this.sendTextAndWaitAck(
+                                content,
                                 undefined,
-                                markEnqueued
-                              )
-                            ) {
-                              anyMessageSent = true;
-                            }
-                          } else if (reply && anyMessageSent) {
-                            // 同上: 顶部附件全部被预检拒绝时不要补空回复
-                            const emptyContent = new MessageText("");
-                            emptyContent.reply = reply;
-                            try {
-                              if (
-                                await this.sendTextAndWaitAck(
-                                  emptyContent,
-                                  undefined,
-                                  markEnqueued
-                                )
-                              ) {
-                                reply = undefined;
+                                markEnqueued,
+                              ),
+                            sendImageFile,
+                            sendFileAttachment,
+                            sendRichTextMixed: (blocks, operationReply) =>
+                              this.sendRichTextMixed(
+                                blocks,
+                                operationReply,
+                                markEnqueued,
+                              ),
+                            resolveReplyFromName: (message) => {
+                              const channelInfo = getImChannelInfo(
+                                WKSDK.shared(),
+                                new Channel(message.fromUID, ChannelTypePerson),
+                              );
+                              return channelInfo?.title || "";
+                            },
+                          },
+                        );
+                        const execution = await executeChatSendPlan(
+                          plan,
+                          transport,
+                          {
+                            // The existing media/text helpers report their
+                            // enqueue point directly. Edit has no helper, so
+                            // report it after the edit request succeeds.
+                            onOperationEnqueued: ({ operation }) => {
+                              if (operation.kind === "edit_text") {
+                                markEnqueued();
                               }
-                            } catch (err) {
-                              console.error(
-                                "[Conversation] empty reply send failed:",
-                                err
-                              );
-                              restoreReplyTarget = true;
-                              Toast.error(
-                                t("base.conversation.message.sendFailed")
-                              );
-                            }
+                            },
+                          },
+                        );
+                        execution.operations.forEach(({ operation, error }) => {
+                          if (!error) return;
+                          console.error(
+                            `[Conversation] ${operation.kind} operation failed:`,
+                            error,
+                          );
+                          if (!(error as { toasted?: boolean })?.toasted) {
+                            Toast.error(
+                              operation.kind === "send_media"
+                                ? t("base.conversation.upload.fileSendFailed", {
+                                    values: { name: operation.attachment.file.name },
+                                  })
+                                : t("base.conversation.message.sendFailed"),
+                            );
                           }
-                        }
-                        if (anyMessageSent) {
+                        });
+                        const outcome = settleChatSendExecution(
+                          request,
+                          execution,
+                        );
+                        if (outcome.editorConsumed) {
                           await this.clearDraftAfterSend(
                             sendDraftGeneration,
                             remoteDraftAtSend,
-                            sendDraft?.draftText ?? text
+                            sendDraft?.draftText ?? text,
                           );
+                          this.props.onMessageSent?.();
                         }
-                        if (anyMessageSent) this.props.onMessageSent?.();
-                        // 返回真实的部分结果，而不是裸 boolean (octo-web#1280 review)：
-                        //   • editorConsumed=anyMessageSent：一条都没入队时整条 compose
-                        //     还给输入框可重试；
-                        //   • consumedTopIds：只有真正发出的顶部附件保持消费，被预检
-                        //     拒绝的会回到附件区（裸 true 会被当成「全部已消费」而丢掉）；
-                        //   • unsentEditorBlocks：编辑器内未入队的块（被拒的粘贴附件、
-                        //     入队前抛错的文本）按原顺序单独回到编辑器；已发出的块保持
-                        //     消费，所以重试不会重复发送。
-                        return createChatSendOutcome({
-                          editorConsumed: anyMessageSent,
-                          consumedTopIds,
-                          unsentEditorBlocks,
-                          restoreSendTarget: restoreReplyTarget,
-                        });
+                        return outcome;
+
                       }}
                     ></MessageInput>
                       </>
