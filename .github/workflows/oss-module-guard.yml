@@ -35,6 +35,7 @@ jobs:
             --jq '.[] | [.filename, .status, (.previous_filename // "")] | @tsv' > "${changed_files}"
 
           guard_awk="$(mktemp)"
+          # shellcheck disable=SC2016
           printf '%s\n' \
             'function removed_module_path(path) {' \
             '  return path ~ /^packages\/(dmloop|dmpersonal|dmworkdrive|docs)(\/|$)/' \
