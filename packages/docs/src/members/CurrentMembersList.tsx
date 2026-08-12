@@ -11,11 +11,12 @@ import type { Member } from './api.ts'
  * callbacks; the ordering (owner pinned → admin → writer → commenter → reader, stable within a
  * tier) is applied here via sort.ts so the two surfaces stay byte-identical.
  *
- * Bots are AI-tagged and NEST under their creator: each top-level row (owner + humans + ownerless
- * bots) carries its own default-collapsed expander for the bots it owns; bots whose creator is
- * unknown or not a top-level row fall into one default-collapsed "ownerless bots" fold at the
- * bottom. The order freeze applies to TOP-LEVEL rows only — nested bots ride along with their
- * creator. Fail-soft: an empty `botUids` set makes every row a human (never hide a real person).
+ * Bots are AI-tagged and NEST under their creator: each top-level row (owner + humans) carries
+ * its own default-collapsed expander for the bots it owns; bots whose creator is unknown or not a
+ * top-level row render FLAT (never collapsed) in a labeled bottom section ("Other Bots"), each
+ * row carrying a creator label when its creator chain is known. The order freeze applies to
+ * TOP-LEVEL rows only — nested bots ride along with their creator. Fail-soft: an empty `botUids`
+ * set makes every row a human (never hide a real person).
  *
  * The owner is a synthetic row (owner identity lives outside the grant table): it carries the
  * fixed owner badge, a disabled role select, and no remove button. Non-owner rows show ` · source`
@@ -76,23 +77,22 @@ export function CurrentMembersList({
   canRemove?: (row: CurrentMemberRow) => boolean
   /**
    * uids known to be bots (from the space directory). Bots are tagged AI and nested under their
-   * creator's row (default-collapsed per creator); bots whose creator is unknown or not a top-level
-   * row fall into a single default-collapsed "ownerless bots" fold at the bottom. Fail-soft: an
-   * empty set (directory not resolved / fetch failed) means EVERY row renders as a human — a real
-   * human is never hidden in the fold.
+   * creator's row (default-collapsed per creator); bots whose creator is unknown or not a
+   * top-level row render FLAT in a labeled bottom section. Fail-soft: an empty set (directory not
+   * resolved / fetch failed) means EVERY row renders as a human — a real human is never hidden.
    */
   botUids?: Set<string>
   /**
-   * botUid → creatorUid (from `/robot/space_bots`). A bot whose creator is itself a top-level row is
-   * nested beneath that creator; anything else (creator unknown, or not a top-level row) is an
-   * "ownerless" bot in the bottom fold. Empty map + non-empty `botUids` ⇒ every bot is ownerless
-   * (never hide a bot just because its owner is unknown).
+   * botUid → creatorUid (from `/robot/space_bots`). A bot whose creator is itself a top-level row
+   * is nested beneath that creator; anything else (creator unknown, or not a top-level row) is an
+   * orphan bot rendered flat in the labeled bottom section (with its creator label when known).
+   * Empty map + non-empty `botUids` ⇒ every bot is orphaned (never hide a bot just because its
+   * owner is unknown).
    */
   botCreators?: Map<string, string>
 }) {
-  // Per-creator expansion (need: each owner's bots collapse independently) + the ownerless fold.
+  // Per-creator expansion (need: each owner's bots collapse independently).
   const [openCreators, setOpenCreators] = useState<Set<string>>(() => new Set())
-  const [orphanOpen, setOrphanOpen] = useState(false)
   // Frozen display order (need #4): once seeded, a role change updates a row's content but not its
   // position; the panel only re-sorts when it is closed + reopened (this component unmounts) or the
   // owner (document) changes. The snapshot lives for the component's mount lifetime.
@@ -124,7 +124,6 @@ export function CurrentMembersList({
     // useEffect: that runs after commit and would reintroduce exactly the stale frame this avoids.
     // The `size > 0` / truthiness guards are what bound the re-render to a single extra pass.
     if (openCreators.size > 0) setOpenCreators(new Set())
-    if (orphanOpen) setOrphanOpen(false)
   }
 
   const isBot = (uid: string) => bots.has(uid)
@@ -264,7 +263,7 @@ export function CurrentMembersList({
     orphanBots = applyOrderSnapshot(orphanBots, snap)
   }
 
-  function renderRow(sm: Member, nested = false) {
+  function renderRow(sm: Member, nested = false, creatorNote?: string) {
     const isOwner = ownerUid != null && sm.uid === ownerUid
     const isBotRow = !isOwner && bots.has(sm.uid)
     // Resolve back to the display row; the synthetic owner has no display row, so fall back to
@@ -281,6 +280,9 @@ export function CurrentMembersList({
         <span className="octo-uid">
           {displayName(sm.uid)}{' '}
           {isBotRow && <span className="octo-member-picker-badge">{t('docs.member.aiTag')}</span>}
+          {/* Orphan-bot creator label, right after the AI badge (flat section only). Same muted
+              convention as the `· source` span below — no dedicated class needed. */}
+          {creatorNote && <small style={{ color: 'var(--octo-muted)' }}> · {creatorNote}</small>}
           {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
           {!isOwner && (
             <small style={{ color: 'var(--octo-muted)' }}> · {t(`docs.member.source.${row.source}`)}</small>
@@ -320,6 +322,23 @@ export function CurrentMembersList({
         )}
       </div>
     )
+  }
+
+  // Orphan-bot creator label: the creator's display name when the creator chain is known and
+  // acyclic; "creator unknown" for the same buckets that make a bot an orphan without a nameable
+  // creator (no creator_uid, self-reference, or a cyclic bot chain — never show a misleading name).
+  const orphanCreatorNote = (uid: string): string => {
+    const creator = creators.get(uid)
+    if (!creator || creator === uid) return t('docs.member.orphanCreatorUnknown')
+    // Cycle guard: walk bot→creator links; any repeated uid means a cyclic chain.
+    const seen = new Set<string>([uid])
+    let cur: string | undefined = creator
+    while (cur && isBot(cur)) {
+      if (seen.has(cur)) return t('docs.member.orphanCreatorUnknown')
+      seen.add(cur)
+      cur = creators.get(cur)
+    }
+    return t('docs.member.botCreator', { values: { name: displayName(creator) } })
   }
 
   const noRows = tiledRows.length === 0 && orphanBots.length === 0
@@ -364,22 +383,13 @@ export function CurrentMembersList({
           </div>
         )
       })}
-      {/* Ownerless bots (creator unknown or not a top-level row) grouped in one default-collapsed
-          fold at the bottom. Not rendered at all when there are none (no empty "Show 0 Bots"). */}
+      {/* Orphan bots (creator unknown or not a top-level row) render FLAT in a labeled section
+          at the bottom — never collapsed, so an orphan bot can never go unnoticed or unreachable.
+          Not rendered at all when there are none. */}
       {orphanBots.length > 0 && (
         <>
-          <button
-            type="button"
-            className="octo-member-picker-expand"
-            aria-expanded={orphanOpen}
-            onClick={() => setOrphanOpen((v) => !v)}
-          >
-            <span className="octo-member-picker-chevron" aria-hidden="true" />
-            {t(orphanOpen ? 'docs.member.hideBots' : 'docs.member.showBots', {
-              values: { count: orphanBots.length },
-            })}
-          </button>
-          {orphanOpen && orphanBots.map((b) => renderRow(b, true))}
+          <h4 className="octo-member-subtitle">{t('docs.member.orphanBotsTitle')}</h4>
+          {orphanBots.map((b) => renderRow(b, true, orphanCreatorNote(b.uid)))}
         </>
       )}
     </div>
