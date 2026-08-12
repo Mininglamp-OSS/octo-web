@@ -81,6 +81,23 @@ export default function ExpertMarketListPage() {
   // (mirrors the driveOn / docs_on pattern in dmworkbase). When off, cards get no
   // onAddToLoop (ExpertCard then hides the button) and we skip the fleet prefetch.
   const loopOn = WKApp.remoteConfig?.dmloopOn ?? false;
+  // appconfig is fetched asynchronously, so at mount dmloopOn is usually still
+  // its default false. Re-render when the first load resolves (addListener) and
+  // on later ops flips (addConfigChangeListener) so the Loop UI appears/disappears
+  // the moment the flag does — same seam DriveModule / dmworkbase Messages/File use.
+  const [, setConfigRevision] = useState(0);
+  useEffect(() => {
+    const rc = WKApp.remoteConfig;
+    if (!rc) return;
+    const bump = () => setConfigRevision((n) => n + 1);
+    const unsubscribers = [
+      ...(rc.requestSuccess ? [] : [rc.addListener(bump)]),
+      rc.addConfigChangeListener(bump),
+    ];
+    return () => {
+      for (const unsub of unsubscribers) unsub();
+    };
+  }, []);
   const [kind, setKind] = useState<ExpertKind>("agent");
   const [category, setCategory] = useState<string>(ALL_CATEGORY);
   const [query, setQuery] = useState("");
@@ -219,9 +236,13 @@ export default function ExpertMarketListPage() {
     return () => WKApp.mittBus.off("space-changed", handleSpaceChanged);
   }, [reload, loopOn]);
 
-  // Tags are catalog-specific, so switching the 专家 / 专家团 tab clears any
-  // active tag filter (a squad tag rarely matches an agent, and vice versa).
+  // Tags and categories are catalog-specific, so switching the 专家 / 专家团 tab
+  // clears any active tag filter (a squad tag rarely matches an agent, and vice
+  // versa) AND the category: a carried-over category may not exist in the new
+  // kind's category set, which would filter the list down to empty while no
+  // chip renders as active — an empty catalog with no visible reason.
   useEffect(() => {
+    setCategory(ALL_CATEGORY);
     setSelectedTags([]);
     setTagFilterOpen(false);
     setTagQuery("");

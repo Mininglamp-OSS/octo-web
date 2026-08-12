@@ -41,13 +41,24 @@ const MARKET_ITEMS: MarketItem[] = [
   },
 ];
 
+// The experts entry is display-gated on expert_market_on (fail-safe, default
+// false): its /market/api/v1/experts backend (octo-marketplace#51) may not be
+// deployed in an environment tracking marketplace main, and an ungated tab
+// would 404 on its first request. Mirrors the docs_on / dmloop_on / drive_on
+// convention (dmworkbase App.tsx) — pure display gate, no auth semantics.
+function visibleMarketItems(): MarketItem[] {
+  return WKApp.remoteConfig?.expertMarketOn
+    ? MARKET_ITEMS
+    : MARKET_ITEMS.filter((item) => item.id !== "experts");
+}
+
 interface MarketSidebarState {
   activeId: string;
 }
 
 function findMarketItemByRoutePath(path?: string): MarketItem | undefined {
   if (!path) return undefined;
-  return MARKET_ITEMS.find((item) => item.routePath === path);
+  return visibleMarketItems().find((item) => item.routePath === path);
 }
 
 /**
@@ -71,9 +82,22 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
       MARKET_ITEMS[0].id,
   };
 
+  private configUnsubscribers: Array<() => void> = [];
+
   componentDidMount() {
     WKApp.mittBus.on("space-changed", this.handleSpaceChanged);
     WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated);
+    // appconfig is fetched asynchronously, so at mount expertMarketOn /
+    // dmloopOn are usually still their default false. Re-render when the first
+    // load resolves (addListener) and on any later ops flip
+    // (addConfigChangeListener) so the experts entry and the 回路 badge appear
+    // or disappear the moment the flags do. Mirrors DriveModule / DocsModule.
+    const rc = WKApp.remoteConfig;
+    if (rc) {
+      const rerender = () => this.forceUpdate();
+      if (!rc.requestSuccess) this.configUnsubscribers.push(rc.addListener(rerender));
+      this.configUnsubscribers.push(rc.addConfigChangeListener(rerender));
+    }
     if (WKApp.currentMenuId === "mcp-market") {
       this.replaceRightPane(this.currentItem());
     }
@@ -82,14 +106,17 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
   componentWillUnmount() {
     WKApp.mittBus.off("space-changed", this.handleSpaceChanged);
     WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated);
+    for (const unsub of this.configUnsubscribers) unsub();
+    this.configUnsubscribers = [];
   }
 
   private currentItem = () => {
+    const visible = visibleMarketItems();
     return (
       findMarketItemByRoutePath(WKApp.route.currentPath) ??
       findMarketItemByRoutePath(window.location.pathname) ??
-      MARKET_ITEMS.find((item) => item.id === this.state.activeId) ??
-      MARKET_ITEMS[0]
+      visible.find((item) => item.id === this.state.activeId) ??
+      visible[0]
     );
   };
 
@@ -131,7 +158,7 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
     const item =
       findMarketItemByRoutePath(WKApp.route.currentPath) ??
       findMarketItemByRoutePath(window.location.pathname) ??
-      MARKET_ITEMS[0];
+      visibleMarketItems()[0];
     if (item.id !== this.state.activeId) {
       this.setState({ activeId: item.id });
     }
@@ -145,7 +172,7 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
           {t("mcp.sidebar.header")}
         </div>
         <ul className="wk-mcp-sidebar__list">
-          {MARKET_ITEMS.map((item) => (
+          {visibleMarketItems().map((item) => (
             <li key={item.id}>
               <button
                 type="button"
