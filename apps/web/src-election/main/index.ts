@@ -40,7 +40,7 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
-import { classifyOidcNavigation, decideLogoutWindowNavigation, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
+import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractEndSessionRedirect, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 import { createTrustedShellDocumentTracker } from "./trustedShell";
 
 let forceQuit = false;
@@ -324,10 +324,12 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
   let logoutWindow: BrowserWindow | undefined;
   try {
     const endSession = new URL(validated.value);
-    const redirect = endSession.searchParams.get("post_logout_redirect_uri") ||
-      endSession.searchParams.get("redirect_uri");
-    let redirectURL: URL | undefined;
-    try { if (redirect) redirectURL = new URL(redirect, endSession.href); } catch { /* no redirect target */ }
+    // Cover all six redirect keys the query allowlist accepts (returnTo etc.),
+    // not just post_logout_redirect_uri/redirect_uri — otherwise a returnTo-
+    // style IdP leaves redirectURL undefined and the first did-navigate
+    // settles(true) at document commit, destroying the window before the
+    // front-channel logout iframes can complete.
+    const redirectURL = extractEndSessionRedirect(endSession);
 
     logoutWindow = new BrowserWindow({
       show: false,
@@ -350,79 +352,23 @@ ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
         if (timeout) clearTimeout(timeout);
         resolve(ok);
       };
-      // Guard the TOP-LEVEL navigation only. Front-channel logout iframes
-      // embedded by federated OPs (Keycloak, Auth0, Okta, Azure AD) legitimately
-      // load cross-origin subframes to notify each RP; blocking those would
-      // (a) sever other RPs' single-logout and (b) fail-load the whole flow
-      // because preventDefault() on `will-redirect` aborts the entire
-      // navigation, not just the redirect. Electron's `will-redirect` carries
-      // an `isMainFrame` argument for exactly this reason; `will-navigate`
-      // fires only on the main frame today but we still take the argument so
-      // a future Electron widen is not silently unsafe.
-      const guardLogoutNavigation = (
-        navigationEvent: Electron.Event,
-        navigatedURL: string,
-        isMainFrame: boolean,
-      ) => {
-        const decision = decideLogoutWindowNavigation({
-          url: navigatedURL,
-          isMainFrame,
-          trustedOrigins: OIDC_END_SESSION_ORIGINS,
-        });
-        if (decision.action === "allow") return;
-        // Origin-only diagnostic — never log query values (id_token_hint).
-        if (decision.reason === "untrusted-origin") {
-          console.warn(
-            "[oidc] logout window blocked top-level navigation to untrusted origin. " +
-              "Add this origin to VITE_OIDC_TRUSTED_ORIGINS if it is a legitimate " +
-              "intermediate hop or the post_logout_redirect_uri target. " +
-              `origin=${decision.origin}`,
-          );
-        } else {
-          console.warn("[oidc] logout window blocked unparseable top-level navigation");
-        }
-        navigationEvent.preventDefault();
-      };
-      // End-session flows are redirect-driven (IdP issues 302/303); will-navigate
-      // only fires for renderer-initiated navigations. Register both so HTTP
-      // redirects to untrusted origins are blocked the same way. The two
-      // events have different arg positions for `isMainFrame`, hence the
-      // explicit adaptors.
-      logoutWindow!.webContents.on("will-navigate", (event, navURL, isMainFrame) => {
-        guardLogoutNavigation(event, navURL, isMainFrame);
-      });
-      logoutWindow!.webContents.on("will-redirect", (event, navURL, _isInPlace, isMainFrame) => {
-        guardLogoutNavigation(event, navURL, isMainFrame);
-      });
-      logoutWindow!.webContents.on("did-navigate", (_event, navigatedURL) => {
-        if (!redirectURL) {
-          settle(true);
-          return;
-        }
-        try {
-          const parsed = new URL(navigatedURL);
-          if (parsed.origin === redirectURL.origin && parsed.pathname === redirectURL.pathname) {
-            settle(true);
-          }
-        } catch { /* keep waiting for the trusted redirect */ }
+      // Navigation-safety listeners live in a testable helper (see
+      // oidcRedirect.ts). The helper is what enforces the shared Electron 26
+      // arg tuple (event, url, isInPlace, isMainFrame, pid, rid) on both
+      // will-navigate and will-redirect — a regex over source cannot tell
+      // isMainFrame apart from isInPlace when both are boolean, so this
+      // extraction lets a mocked-webContents test drive the real tuple.
+      // The helper also fast-fails on a blocked main-frame navigation
+      // (settle(false)) so the UI does not wait for the 15s watchdog.
+      attachLogoutWindowNavigationListeners({
+        webContents: logoutWindow!.webContents,
+        trustedOrigins: OIDC_END_SESSION_ORIGINS,
+        redirectURL,
+        onSettle: settle,
       });
       logoutWindow!.webContents.once("did-finish-load", () => {
         if (!redirectURL) settle(true);
       });
-      // Filter to main-frame failures and ignore -3 (ERR_ABORTED, fired for
-      // every intercepted navigation and for benign renderer aborts). Without
-      // the isMainFrame gate, a front-channel logout iframe failing to load —
-      // e.g. because its RP origin isn't in this window's allowlist — would
-      // settle(false) and destroy the window mid-flow, cutting off the real
-      // main-frame logout request. Same shape as the OIDC login window's
-      // did-fail-load handler further down this file.
-      logoutWindow!.webContents.on(
-        "did-fail-load",
-        (_event, errorCode, _errorDescription, _validatedURL, isMainFrame) => {
-          if (!isMainFrame || errorCode === -3) return;
-          settle(false);
-        },
-      );
       // A timeout means the IdP logout was not confirmed. Report failure so
       // the renderer can complete local logout without claiming that the
       // provider session was cleared.

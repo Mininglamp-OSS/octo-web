@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  attachLogoutWindowNavigationListeners,
   decideLogoutWindowNavigation,
+  extractEndSessionRedirect,
   isTrustedSenderUrl,
   classifyOidcNavigation,
   isOidcAuthorizeNavigation,
@@ -704,5 +706,252 @@ describe('decideLogoutWindowNavigation', () => {
       isMainFrame: true,
       trustedOrigins: TRUSTED,
     })).toEqual({ action: 'block', reason: 'not-a-url' })
+  })
+})
+
+describe('extractEndSessionRedirect', () => {
+  // Regression guard for P2-2: earlier revisions read only post_logout_redirect_uri
+  // and redirect_uri, so a returnTo-style IdP left the completion-detection
+  // target undefined. did-navigate then settled(true) at the first commit and
+  // destroyed the logout window before front-channel iframes could complete.
+  it('resolves post_logout_redirect_uri against the end-session URL', () => {
+    const endSession = new URL(
+      'https://sso.example.com/oauth2/end_session' +
+        '?post_logout_redirect_uri=https%3A%2F%2Fapp.example.com%2Flogin',
+    )
+    const target = extractEndSessionRedirect(endSession)
+    expect(target?.origin).toBe('https://app.example.com')
+    expect(target?.pathname).toBe('/login')
+  })
+  it.each(['redirect_uri', 'returnTo', 'return_to', 'return_url', 'returnUrl'])(
+    'resolves %s so returnTo-style IdPs are not treated as "no redirect"',
+    (key) => {
+      const endSession = new URL(
+        `https://sso.example.com/logout?${key}=${encodeURIComponent('https://app.example.com/done')}`,
+      )
+      const target = extractEndSessionRedirect(endSession)
+      expect(target?.origin).toBe('https://app.example.com')
+      expect(target?.pathname).toBe('/done')
+    },
+  )
+  it('resolves a relative redirect value against the IdP origin', () => {
+    // Backends emitting post_logout_redirect_uri=/login now match the IdP's
+    // own origin (which is always allowlisted), so completion detection
+    // agrees with validateOpenExternalUrl's resolution rule.
+    const endSession = new URL(
+      'https://sso.example.com/oauth2/end_session?post_logout_redirect_uri=%2Flogin',
+    )
+    const target = extractEndSessionRedirect(endSession)
+    expect(target?.origin).toBe('https://sso.example.com')
+    expect(target?.pathname).toBe('/login')
+  })
+  it('returns undefined when no redirect key is present', () => {
+    const endSession = new URL('https://sso.example.com/logout?id_token_hint=jwt')
+    expect(extractEndSessionRedirect(endSession)).toBeUndefined()
+  })
+})
+
+describe('attachLogoutWindowNavigationListeners', () => {
+  // The wiring bug that motivated this suite: both will-navigate and
+  // will-redirect share Electron 26's (event, url, isInPlace, isMainFrame,
+  // pid, rid) shape. Because isInPlace and isMainFrame are both boolean, a
+  // regex over source cannot distinguish position 3 from position 4 — the
+  // earlier build read the wrong slot and silently disabled the guard on
+  // renderer-initiated top-level navigations (location.href, meta refresh,
+  // link clicks in the IdP page). This suite drives the listeners with the
+  // full 6-arg tuple Electron actually emits, so a future refactor that
+  // shifts a slot will fail the test immediately.
+  type Listener = (...args: unknown[]) => void
+  function makeMockWebContents() {
+    const listeners = new Map<string, Listener[]>()
+    return {
+      wc: {
+        on(event: string, cb: Listener) {
+          const existing = listeners.get(event) ?? []
+          existing.push(cb)
+          listeners.set(event, existing)
+          return this
+        },
+      },
+      emit(event: string, ...args: unknown[]) {
+        for (const cb of listeners.get(event) ?? []) cb(...args)
+      },
+      handlerCount(event: string) {
+        return (listeners.get(event) ?? []).length
+      },
+    }
+  }
+
+  const TRUSTED = new Set([
+    'https://sso.example.com',
+    'https://app.example.com',
+  ])
+
+  it('preventDefaults an untrusted top-level will-navigate and fast-fails', () => {
+    // Real Electron 26 tuple: (event, url, isInPlace, isMainFrame, pid, rid).
+    // isInPlace is always false for will-navigate. If the adaptor reads
+    // position 3, guard sees isMainFrame=false and returns allow — the exact
+    // regression this test locks down.
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    const onWarn = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+      onWarn,
+    })
+    const event = { preventDefault: vi.fn() }
+    mock.emit(
+      'will-navigate',
+      event,
+      'https://attacker.example.com/pwned',
+      false, // isInPlace
+      true,  // isMainFrame
+      12345, // frameProcessId
+      67890, // frameRoutingId
+    )
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(onSettle).toHaveBeenCalledWith(false)
+    expect(onWarn).toHaveBeenCalledWith(
+      expect.stringContaining('origin=https://attacker.example.com'),
+    )
+    // Diagnostic must not echo the query (id_token_hint carrier).
+    expect(onWarn.mock.calls[0][0]).not.toMatch(/pwned/)
+  })
+
+  it('allows a top-level will-navigate to a trusted origin', () => {
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    const event = { preventDefault: vi.fn() }
+    mock.emit(
+      'will-navigate',
+      event,
+      'https://sso.example.com/oauth2/end_session',
+      false,
+      true,
+      0,
+      0,
+    )
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(onSettle).not.toHaveBeenCalled()
+  })
+
+  it('does NOT block a subframe (front-channel logout iframe)', () => {
+    // The whole point of the isMainFrame gate: federated OPs load OTHER
+    // RPs' front-channel logout endpoints as cross-origin iframes, and
+    // preventDefault() cancels the entire top-level navigation. If the
+    // guard tripped here the real logout would abort.
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    const event = { preventDefault: vi.fn() }
+    mock.emit(
+      'will-redirect',
+      event,
+      'https://rp-other.example.com/frontchannel/logout',
+      false,
+      false, // isMainFrame=false — subframe
+      0,
+      0,
+    )
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(onSettle).not.toHaveBeenCalled()
+  })
+
+  it('preventDefaults an untrusted top-level will-redirect', () => {
+    // Server-3xx path — this was correctly wired even in the broken build,
+    // but the test locks the pair so a future refactor can't silently
+    // reintroduce the shape divergence.
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    const event = { preventDefault: vi.fn() }
+    mock.emit(
+      'will-redirect',
+      event,
+      'https://attacker.example.com/hop',
+      false,
+      true,
+      0,
+      0,
+    )
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(onSettle).toHaveBeenCalledWith(false)
+  })
+
+  it('did-navigate settles(true) when no redirect target is configured', () => {
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    mock.emit('did-navigate', {}, 'https://sso.example.com/oauth2/end_session')
+    expect(onSettle).toHaveBeenCalledWith(true)
+  })
+
+  it('did-navigate settles(true) only on the configured redirect target', () => {
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      redirectURL: new URL('https://app.example.com/login'),
+      onSettle,
+    })
+    mock.emit('did-navigate', {}, 'https://sso.example.com/oauth2/end_session')
+    expect(onSettle).not.toHaveBeenCalled()
+    mock.emit('did-navigate', {}, 'https://app.example.com/login?state=x')
+    expect(onSettle).toHaveBeenCalledWith(true)
+  })
+
+  it('did-fail-load ignores subframe failures and ERR_ABORTED', () => {
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    // Subframe failure — must not settle. Real Electron did-fail-load tuple:
+    // (event, errorCode, errorDescription, validatedURL, isMainFrame, ...).
+    mock.emit('did-fail-load', {}, -105, 'ERR_NAME_NOT_RESOLVED', 'https://x/', false)
+    expect(onSettle).not.toHaveBeenCalled()
+    // Main-frame ERR_ABORTED — every intercepted navigation triggers it,
+    // filtering to -3 is required or the guard's own preventDefault would
+    // settle(false) twice.
+    mock.emit('did-fail-load', {}, -3, 'ERR_ABORTED', 'https://x/', true)
+    expect(onSettle).not.toHaveBeenCalled()
+    // Real main-frame load failure — this is the terminal signal.
+    mock.emit('did-fail-load', {}, -105, 'ERR_NAME_NOT_RESOLVED', 'https://x/', true)
+    expect(onSettle).toHaveBeenCalledWith(false)
+  })
+
+  it('registers exactly four listeners (no leakage)', () => {
+    const mock = makeMockWebContents()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle: () => {},
+    })
+    expect(mock.handlerCount('will-navigate')).toBe(1)
+    expect(mock.handlerCount('will-redirect')).toBe(1)
+    expect(mock.handlerCount('did-navigate')).toBe(1)
+    expect(mock.handlerCount('did-fail-load')).toBe(1)
   })
 })

@@ -71,31 +71,29 @@ describe("OIDC logout wiring", () => {
     expect(source).toMatch(/parsed\.protocol !== "https:"/);
   });
 
-  it("filters the logout window navigation guard to the main frame", () => {
-    // ZB3(a) regression: preventDefault() on `will-redirect` cancels the
-    // entire top-level navigation, and both `will-redirect` and
-    // `did-fail-load` carry an `isMainFrame` argument. If either listener
-    // trips on a front-channel logout iframe (federated OPs load these
-    // cross-origin), the whole logout flow settles(false) and the window is
-    // destroyed mid-flow — cutting off the real main-frame end-session and
-    // making the logout appear to succeed while other RPs' single-logout is
-    // severed. Assert both listeners either delegate to the pure decision
-    // helper (whose main-frame gate is unit-tested) or explicitly filter
-    // isMainFrame themselves.
+  it("delegates logout window navigation guarding to the extracted helper", () => {
+    // The wiring bug that motivated this test (will-navigate binding
+    // isInPlace to a parameter named isMainFrame) cannot be caught by a
+    // regex over source: both slots are boolean and grepping the adaptor
+    // shape only checks the adaptor, not what Electron actually passes.
+    // The behavioural coverage lives in oidcRedirect.test.ts against
+    // `attachLogoutWindowNavigationListeners`, driven with the real
+    // Electron 26 6-arg tuple (event, url, isInPlace, isMainFrame, pid,
+    // rid). Here we only assert that index.ts still delegates to that
+    // helper — if a future refactor re-inlines the listeners, this fails
+    // and points at the behavioural test.
     const source = readRepoFile("apps/web/src-election/main/index.ts");
-    // Guard delegates the isMainFrame gate to the pure helper.
-    expect(source).toContain("decideLogoutWindowNavigation");
-    // will-navigate uses arg-position (event, url, isMainFrame).
-    expect(source).toMatch(
-      /"will-navigate",\s*\(\s*event\s*,\s*navURL\s*,\s*isMainFrame\s*\)\s*=>/,
-    );
-    // will-redirect uses arg-position (event, url, isInPlace, isMainFrame).
-    expect(source).toMatch(
-      /"will-redirect",\s*\(\s*event\s*,\s*navURL\s*,\s*_isInPlace\s*,\s*isMainFrame\s*\)\s*=>/,
-    );
-    // did-fail-load filters both !isMainFrame and errorCode === -3 (aborted)
-    // to match the pattern already used for the OIDC login window.
-    expect(source).toMatch(/if\s*\(\s*!isMainFrame\s*\|\|\s*errorCode\s*===\s*-3\s*\)\s*return\s*;/);
+    expect(source).toContain("attachLogoutWindowNavigationListeners");
+    // The completion-detection redirect must cover all six keys the query
+    // allowlist accepts (returnTo etc.), not just post_logout_redirect_uri.
+    // Regression guard for P2-2 — a returnTo-style IdP previously left
+    // redirectURL undefined and destroyed the window at the first commit.
+    expect(source).toContain("extractEndSessionRedirect");
+    // The inline listener block that carried the arg-position bug must
+    // stay gone — no direct did-fail-load / will-navigate registration.
+    expect(source).not.toMatch(/logoutWindow!\.webContents\.on\(\s*"will-navigate"/);
+    expect(source).not.toMatch(/logoutWindow!\.webContents\.on\(\s*"will-redirect"/);
+    expect(source).not.toMatch(/logoutWindow!\.webContents\.on\(\s*"did-fail-load"/);
   });
 
   it("distinguishes rejection reasons in the logout IPC log", () => {

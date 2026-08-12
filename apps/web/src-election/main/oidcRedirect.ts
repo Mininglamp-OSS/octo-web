@@ -484,6 +484,147 @@ export function decideLogoutWindowNavigation(input: {
 }
 
 /**
+ * Resolve the end-session URL's post-logout redirect target. Iterates all
+ * six redirect keys the query allowlist accepts (post_logout_redirect_uri,
+ * redirect_uri, returnTo, return_to, return_url, returnUrl) so a returnTo-
+ * style IdP is not treated as "no redirect configured" — which would let
+ * the logout window's did-navigate settle(true) at the first commit and
+ * destroy the window before the front-channel logout iframes can start.
+ *
+ * validateOpenExternalUrl already rejects duplicate redirect params, so at
+ * most one key is populated on any URL that reaches this point. Relative
+ * values resolve against the end-session URL, matching the allowlist check
+ * in validateOpenExternalUrl.
+ */
+export function extractEndSessionRedirect(endSession: URL): URL | undefined {
+  for (const key of OIDC_END_SESSION_REDIRECT_KEYS) {
+    const raw = endSession.searchParams.get(key)
+    if (!raw) continue
+    try { return new URL(raw, endSession.href) } catch { return undefined }
+  }
+  return undefined
+}
+
+/**
+ * Minimal shape of the Electron webContents surface this module needs. Kept
+ * structural so tests can pass an EventEmitter-shaped fake driven with the
+ * real Electron 26 argument tuples. The listener type is intentionally loose
+ * (any[]) so it accepts both Electron's per-event overloaded signatures and
+ * the mock's plain callbacks; the arg-position wiring is what we care about,
+ * and Node's EventEmitter uses this same shape.
+ */
+export interface LogoutNavigationWebContents {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  on(event: string, listener: (...args: any[]) => void): unknown
+}
+
+export interface LogoutNavigationEvent {
+  preventDefault(): void
+}
+
+export interface AttachLogoutWindowNavigationListenersOptions {
+  webContents: LogoutNavigationWebContents
+  trustedOrigins: ReadonlySet<string>
+  /** Resolved post-logout redirect target (see extractEndSessionRedirect). */
+  redirectURL?: URL
+  /** Called once the logout flow reaches a terminal state. Idempotent. */
+  onSettle(ok: boolean): void
+  /** Optional sink for diagnostics; defaults to console.warn. */
+  onWarn?(message: string): void
+}
+
+/**
+ * Install the navigation-safety listeners for the hidden OIDC logout window.
+ * Extracted from the inline registration in main/index.ts so the arg-position
+ * wiring (both will-navigate and will-redirect share Electron 26's
+ * (event, url, isInPlace, isMainFrame, pid, rid) shape — position 3 is
+ * isInPlace, position 4 is isMainFrame) can be exercised by a mocked-
+ * webContents test. A regex over source cannot distinguish two boolean
+ * arguments in adjacent slots; this seam lets the test drive the real
+ * 6-arg tuple and assert preventDefault fires on an untrusted top-level nav.
+ */
+export function attachLogoutWindowNavigationListeners(
+  opts: AttachLogoutWindowNavigationListenersOptions,
+): void {
+  const warn = opts.onWarn ?? ((m: string) => { console.warn(m) })
+  const guard = (
+    event: LogoutNavigationEvent,
+    navURL: string,
+    isMainFrame: boolean,
+  ) => {
+    const decision = decideLogoutWindowNavigation({
+      url: navURL,
+      isMainFrame,
+      trustedOrigins: opts.trustedOrigins,
+    })
+    if (decision.action === 'allow') return
+    if (decision.reason === 'untrusted-origin') {
+      warn(
+        '[oidc] logout window blocked top-level navigation to untrusted origin. ' +
+          'Add this origin to VITE_OIDC_TRUSTED_ORIGINS if it is a legitimate ' +
+          'intermediate hop or the post_logout_redirect_uri target. ' +
+          `origin=${decision.origin}`,
+      )
+    } else {
+      warn('[oidc] logout window blocked unparseable top-level navigation')
+    }
+    event.preventDefault()
+    // A blocked main-frame navigation is terminal: the IdP flow cannot
+    // complete because the target origin was refused. Settle immediately so
+    // the caller can fall back to local logout, rather than leaving the UI
+    // half-logged-out for the full watchdog interval (~15s).
+    opts.onSettle(false)
+  }
+  opts.webContents.on('will-navigate', (...args: unknown[]) => {
+    const [event, url, , isMainFrame] = args as [
+      LogoutNavigationEvent,
+      string,
+      boolean,
+      boolean,
+      number?,
+      number?,
+    ]
+    guard(event, url, isMainFrame)
+  })
+  opts.webContents.on('will-redirect', (...args: unknown[]) => {
+    const [event, url, , isMainFrame] = args as [
+      LogoutNavigationEvent,
+      string,
+      boolean,
+      boolean,
+      number?,
+      number?,
+    ]
+    guard(event, url, isMainFrame)
+  })
+  opts.webContents.on('did-navigate', (...args: unknown[]) => {
+    const [, navigatedURL] = args as [unknown, string]
+    if (!opts.redirectURL) { opts.onSettle(true); return }
+    try {
+      const parsed = new URL(navigatedURL)
+      if (
+        parsed.origin === opts.redirectURL.origin &&
+        parsed.pathname === opts.redirectURL.pathname
+      ) opts.onSettle(true)
+    } catch { /* keep waiting for the trusted redirect */ }
+  })
+  opts.webContents.on('did-fail-load', (...args: unknown[]) => {
+    const [, errorCode, , , isMainFrame] = args as [
+      unknown,
+      number,
+      string,
+      string,
+      boolean,
+    ]
+    // -3 is ERR_ABORTED, fired for every intercepted navigation and for
+    // benign renderer aborts. Filtering it here matches the OIDC login
+    // window's did-fail-load handler.
+    if (!isMainFrame || errorCode === -3) return
+    opts.onSettle(false)
+  })
+}
+
+/**
  * Cap the OIDC HTTP proxy response body size. OIDC responses are small JSON
  * objects (a few KB); anything materially larger is either a misconfigured
  * endpoint or a hostile server trying to inflate main-process memory. 2 MiB
