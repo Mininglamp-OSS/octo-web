@@ -112,7 +112,7 @@ export class SummaryModule implements IModule {
         });
 
         WKApp.route.register("/summary/create", () => {
-            return <SummaryCreatePage />;
+            return <SummaryCreatePage source="summary_home" />;
         });
 
         // 详情页「继续优化」按钮 → 打开新的 chat + 预填引用。
@@ -122,7 +122,7 @@ export class SummaryModule implements IModule {
         window.addEventListener('summary-open-chat-with-reference', ((e: CustomEvent) => {
             const task = e.detail;
             if (!task || !task.task_id) return;
-            WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} />);
+            WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} source="detail_optimize" />);
         }) as EventListener);
 
         WKApp.route.register("/summary/detail", (param: any) => {

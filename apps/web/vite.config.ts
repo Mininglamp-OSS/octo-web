@@ -193,6 +193,19 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        // Telemetry collector (octo-dap). The frontend POSTs to a neutral,
+        // business-API-shaped path /v1/e/b (words like track/collect/beacon are on
+        // adblock filter lists and would be silently killed). Prod nginx rewrites it
+        // to the collector's /v1/dap/collect; dev mirrors that rewrite against the API
+        // origin so the fail-closed tracker is exercisable locally (otherwise POST
+        // /v1/e/b falls through to the SPA and dev collection is non-functional).
+        // MUST precede the general /v1/ rule below (first prefix wins).
+        "/v1/e/b": {
+          target: env.VITE_TRACK_API_URL || apiOrigin,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (p) => p.replace(/^\/v1\/e\/b/, "/v1/dap/collect"),
+        },
         // Drive service API — drive serves /v1/drive/* natively; route it to
         // the drive service. MUST precede the general /v1/ rule below (vite
         // matches proxy keys in insertion order, first prefix wins).
