@@ -204,3 +204,54 @@ describe('getSpaceMemberDirectory — botCreators from /robot/space_bots creator
     expect(dir.botCreators.size).toBe(0)
   })
 })
+
+describe('useMemberDirectory — space switch returns EMPTY_DIRECTORY until new space resolves (B2)', () => {
+  // B2: when spaceId changes, useMemberDirectory must NOT return the old space's directory;
+  // it must return EMPTY_DIRECTORY (fail-soft: everyone is a human) until the new space resolves.
+  // This prevents a real person in space B from being misclassified as a bot (and hidden) because
+  // space A's botUids contained that uid.
+  //
+  // Testing hooks in isolation is tricky; we use a minimal component + renderHook from @testing-library/react.
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    clearMemberNameCache()
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  it('returns empty directory immediately after spaceId changes (before new space resolves)', async () => {
+    // Import the hook dynamically to avoid hoisting issues.
+    const { useMemberDirectory } = await import('./useMemberNames.ts')
+    const { renderHook, waitFor } = await import('@testing-library/react')
+
+    // Space A has a bot.
+    wk.spaceMembers.push({ uid: 'u_bot_a', name: 'Bot A', isBot: true })
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) return { data: [{ uid: 'u_bot_a', name: 'Bot A' }], status: 200 }
+      return { data: {}, status: 200 }
+    }
+
+    const { result, rerender } = renderHook(({ space }) => useMemberDirectory(space), {
+      initialProps: { space: 's_a' },
+    })
+
+    // Wait for space A's directory to resolve.
+    await waitFor(() => expect(result.current.botUids.has('u_bot_a')).toBe(true))
+
+    // Now switch to space B. Before B resolves, the hook should return EMPTY_DIRECTORY.
+    clearMemberNameCache() // Clear so B is a fresh fetch.
+    wk.spaceMembers.length = 0 // B has no bots.
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      return { data: {}, status: 200 }
+    }
+
+    rerender({ space: 's_b' })
+
+    // IMMEDIATELY after rerender (before the async fetch completes), the directory should be EMPTY.
+    // This is the critical assertion: we must NOT still have u_bot_a in botUids.
+    expect(result.current.botUids.has('u_bot_a')).toBe(false)
+    expect(result.current.botUids.size).toBe(0)
+  })
+})
