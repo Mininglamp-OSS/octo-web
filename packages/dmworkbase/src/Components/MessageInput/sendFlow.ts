@@ -279,11 +279,17 @@ export function restoreComposeSnapshot(
  * @returns `true` if the editor compose was consumed; `false` if it was
  *   restored for retry.
  */
-export async function runSendWithConsumedCompose(
+export interface ConsumedComposeSettlement {
+  outcome: ChatSendOutcome;
+  editorConsumed: boolean;
+  restoreErrors: Array<{ error: unknown; step: string }>;
+}
+
+export async function settleConsumedCompose(
   send: () => ChatSendOutcome | Promise<ChatSendOutcome>,
   ids: ConsumedComposeIds,
   compose: ConsumedCompose,
-): Promise<boolean> {
+): Promise<ConsumedComposeSettlement> {
   let decision: ChatSendOutcome;
   try {
     decision = await send();
@@ -293,11 +299,13 @@ export async function runSendWithConsumedCompose(
     decision = createChatSendOutcome();
   }
 
+  const restoreErrors: ConsumedComposeSettlement["restoreErrors"] = [];
   const step = (label: string, run: () => void) => {
     try {
       run();
     } catch (err) {
       console.error(`[MessageInput] compose ${label} failed`, err);
+      restoreErrors.push({ error: err, step: label });
       compose.onRestoreError?.(err, label);
     }
   };
@@ -321,7 +329,7 @@ export async function runSendWithConsumedCompose(
     // content back. Refs/URLs are intentionally NOT disposed here so the
     // restored pasted images still resolve to their `File` objects.
     step("restoreEditor", () => compose.restoreEditor());
-    return false;
+    return { outcome: decision, editorConsumed: false, restoreErrors };
   }
 
   // The editor compose went out, but individual blocks may have failed before
@@ -352,5 +360,14 @@ export async function runSendWithConsumedCompose(
     step("restoreSendTarget", () => compose.restoreSendTarget());
   }
 
-  return true;
+  return { outcome: decision, editorConsumed: true, restoreErrors };
+}
+
+/** Backward-compatible boolean facade for callers that only need send status. */
+export async function runSendWithConsumedCompose(
+  send: () => ChatSendOutcome | Promise<ChatSendOutcome>,
+  ids: ConsumedComposeIds,
+  compose: ConsumedCompose,
+): Promise<boolean> {
+  return (await settleConsumedCompose(send, ids, compose)).editorConsumed;
 }

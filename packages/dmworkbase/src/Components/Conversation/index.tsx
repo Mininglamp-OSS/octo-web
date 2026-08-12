@@ -52,7 +52,9 @@ import MessageInput, { MessageInputContext } from "../MessageInput";
 import {
   type ChatSendOutcome,
   type ChatSendRequest,
+  type ChatSendSettlement,
   type EditorContentBlock,
+  type PendingSendDraft,
 } from "../../features/chat-composer/domain";
 import { buildChatSendPlan } from "../../features/chat-composer/submission";
 import {
@@ -358,6 +360,7 @@ export class Conversation
   private draftSaveGeneration = 0;
   private latestSavedDraft = "";
   private latestSavedDraftSource: DraftPersistenceSource = "empty";
+  private latestSavedPendingAttemptIds: string[] = [];
   private _addAttachmentFn?: (
     files: File[],
     source?: "paste" | "upload"
@@ -1580,24 +1583,25 @@ export class Conversation
     return this.messageInputContext()?.pendingPreEnqueueCount?.() ?? 0;
   }
 
-  private pendingSendText(): string {
-    return this.messageInputContext()?.pendingSendText?.() ?? "";
+  private pendingSendDrafts(): PendingSendDraft[] {
+    return this.messageInputContext()?.pendingSendDrafts?.() ?? [];
   }
 
-  private pendingSendDrafts(): string[] {
-    return this.messageInputContext()?.pendingSendDrafts?.() ?? [];
+  private pendingPreEnqueueDrafts(): PendingSendDraft[] {
+    return this.messageInputContext()?.pendingPreEnqueueDrafts?.() ?? [];
   }
 
   markConversationExtra() {
     // 不要用空草稿覆盖「已消费但还没入队」的内容 (octo-web#1280 review)：
     // 输入框在发送开始时就被清空，离开会话时这里读到的是空串。
-    const { draft, source } = resolveDraftToPersist({
+    const { draft, source, pendingAttemptIds } = resolveDraftToPersist({
       liveDraft: this.messageInputContext()?.text() || "",
-      pendingSendText: this.pendingSendText(),
+      pendingDrafts: this.pendingPreEnqueueDrafts(),
     });
     this.draftSaveGeneration += 1;
     this.latestSavedDraft = draft;
     this.latestSavedDraftSource = source;
+    this.latestSavedPendingAttemptIds = pendingAttemptIds;
     void this.updateConversationExtra(draft);
   }
 
@@ -1648,22 +1652,26 @@ export class Conversation
     });
   }
 
-  async clearDraftAfterSend(
-    sendDraftGeneration: number,
-    remoteDraftAtSend: string,
-    sentDraft: string
-  ) {
+  async clearDraftAfterSend(settlement: ChatSendSettlement) {
+    const { attemptId, sendDraft } = settlement;
+    const sendDraftGeneration =
+      sendDraft?.generation ?? this.draftSaveGeneration;
+    const remoteDraftAtSend =
+      sendDraft?.remoteDraft ??
+      this.vm.currentConversation?.remoteExtra?.draft ??
+      "";
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
     const pendingDrafts = this.pendingSendDrafts();
     const nextDraft = resolveDraftAfterSend({
+      attemptId,
       liveDraft: this.messageInputContext()?.text() || "",
       remoteDraft: remoteExtra?.draft || "",
       remoteDraftAtSend,
       draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
       latestSavedDraft: this.latestSavedDraft,
       latestSavedDraftSource: this.latestSavedDraftSource,
-      sentDraft,
-      pendingDrafts: pendingDrafts.length > 0 ? pendingDrafts : [sentDraft],
+      latestSavedPendingAttemptIds: this.latestSavedPendingAttemptIds,
+      pendingDrafts,
     });
     if (nextDraft === undefined) {
       return;
@@ -1671,6 +1679,9 @@ export class Conversation
 
     this.latestSavedDraft = nextDraft;
     this.latestSavedDraftSource = nextDraft ? "pending" : "empty";
+    this.latestSavedPendingAttemptIds = nextDraft
+      ? this.latestSavedPendingAttemptIds.filter((id) => id !== attemptId)
+      : [];
     try {
       await this.updateConversationExtra(nextDraft);
     } catch (err) {
@@ -3013,6 +3024,11 @@ export class Conversation
                         remoteDraft:
                           this.vm.currentConversation?.remoteExtra?.draft || "",
                       })}
+                      onSendSettled={async (settlement) => {
+                        if (!settlement.outcome.editorConsumed) return;
+                        await this.clearDraftAfterSend(settlement);
+                        this.props.onMessageSent?.();
+                      }}
                       onSend={async ({
                         attemptId,
                         text,
@@ -3020,7 +3036,6 @@ export class Conversation
                         topFiles,
                         editorBlocks,
                         sendTarget,
-                        sendDraft,
                         sendProgress,
                       }: ChatSendRequest<Message>): Promise<ChatSendOutcome> => {
                         // outcome 告诉 MessageInput 已消费 compose 的精确结算结果。
@@ -3028,14 +3043,6 @@ export class Conversation
                         // 否则整条消息会丢 (octo-web#227)；反之，**已入队但 ack 失败/
                         // 超时必须保持 editorConsumed=true，否则可见内容会被塞回输入框
                         // (octo-web#1280)。
-                        // This callback may run after waiting in the send queue,
-                        // so use the draft snapshot captured with the compose.
-                        const sendDraftGeneration =
-                          sendDraft?.generation ?? this.draftSaveGeneration;
-                        const remoteDraftAtSend =
-                          sendDraft?.remoteDraft ??
-                          this.vm.currentConversation?.remoteExtra?.draft ??
-                          "";
                         const markEnqueued = () =>
                           sendProgress?.markPartEnqueued();
                         VoiceFeedback.shared()?.submitAll(text);
@@ -3161,7 +3168,6 @@ export class Conversation
                           topFiles,
                           editorBlocks,
                           sendTarget: target,
-                          sendDraft,
                           sendProgress,
                         };
                         const plan = buildChatSendPlan(request);
@@ -3227,14 +3233,6 @@ export class Conversation
                           request,
                           execution,
                         );
-                        if (outcome.editorConsumed) {
-                          await this.clearDraftAfterSend(
-                            sendDraftGeneration,
-                            remoteDraftAtSend,
-                            sendDraft?.draftText ?? text,
-                          );
-                          this.props.onMessageSent?.();
-                        }
                         return outcome;
 
                       }}

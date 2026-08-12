@@ -46,7 +46,7 @@ import {
   createSendQueue,
   enqueueSettledSend,
   invokeReadySend,
-  runSendWithConsumedCompose,
+  settleConsumedCompose,
   SendQueue,
 } from "./sendFlow";
 import type {
@@ -54,7 +54,9 @@ import type {
   ChatMention,
   ChatSendOutcome,
   ChatSendRequest,
+  ChatSendSettlement,
   EditorContentBlock,
+  PendingSendDraft,
   SendDraftSnapshot,
   SendProgressSnapshot,
   SendTargetSnapshot,
@@ -258,6 +260,10 @@ interface MessageInputProps {
   onCaptureSendTarget?: () => SendTargetSnapshot | undefined;
   /** Capture draft state before this send enters the serial queue. */
   onCaptureSendDraft?: () => Omit<SendDraftSnapshot, "draftText">;
+  /** Runs after editor/attachment settlement and before the attempt is released. */
+  onSendSettled?: (
+    settlement: ChatSendSettlement,
+  ) => void | Promise<void>;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
@@ -383,8 +389,10 @@ export interface MessageInputContext {
   pendingSendCount: () => number;
   /** Composes that have been consumed but do not have a local bubble yet. */
   pendingPreEnqueueCount: () => number;
-  /** Plain text of unsettled composes in consumption order, including empties. */
-  pendingSendDrafts: () => string[];
+  /** Attempt-owned drafts of all unsettled composes, including empty drafts. */
+  pendingSendDrafts: () => PendingSendDraft[];
+  /** Attempt-owned drafts that have not produced all local bubbles yet. */
+  pendingPreEnqueueDrafts: () => PendingSendDraft[];
   /** Plain text of every unsettled compose, newest last. */
   pendingSendText: () => string;
 }
@@ -1207,10 +1215,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 保存使用；「发送中」预览和切会话守卫只查看尚未产生本地气泡的条目。
     return enqueueSettledSend(
       getSendQueue(),
-      () =>
-        runSendWithConsumedCompose(
-          () =>
-            props.onSend!({
+      async () => {
+        const settlement = await settleConsumedCompose(
+          () => props.onSend!({
               attemptId: pendingId,
               text: content,
               mention,
@@ -1228,7 +1235,20 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             }),
           handle.ids,
           handle.compose
-        ),
+        );
+        const ledgerSettlement = pendingSendsRef.current.settle(
+          pendingId,
+          settlement.outcome,
+        );
+        if (ledgerSettlement) {
+          await props.onSendSettled?.({
+            attemptId: pendingId,
+            outcome: settlement.outcome,
+            sendDraft,
+          });
+        }
+        return settlement.editorConsumed;
+      },
       () => releasePendingSend(pendingId),
     );
   }, [
@@ -1237,6 +1257,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     props.onSend,
     props.onCaptureSendTarget,
     props.onCaptureSendDraft,
+    props.onSendSettled,
     props.onExpandChange,
     getSendQueue,
     registerPendingSend,
@@ -1267,9 +1288,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         pendingPreEnqueueCount: () =>
           pendingSendsRef.current.pendingPreEnqueueCount(),
         pendingSendDrafts: () =>
-          pendingSendsRef.current
-            .orderedPending()
-            .map((item) => item.draftText),
+          pendingSendsRef.current.orderedPendingDrafts(),
+        pendingPreEnqueueDrafts: () =>
+          pendingSendsRef.current.orderedPreEnqueueDrafts(),
         pendingSendText: () =>
           pendingSendsRef.current.pendingDraftText(),
         clear: () => {

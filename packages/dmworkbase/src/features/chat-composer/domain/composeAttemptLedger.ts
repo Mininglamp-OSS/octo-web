@@ -1,4 +1,4 @@
-import type { ChatSendOutcome } from "./types";
+import type { ChatSendOutcome, PendingSendDraft } from "./types";
 
 export interface ComposeAttempt<TAttachment = unknown> {
   id: string;
@@ -97,10 +97,24 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
   }
 
   pendingDraftText(): string {
-    return this.orderedPreEnqueue()
+    return this.orderedPreEnqueueDrafts()
       .map((attempt) => attempt.draftText)
       .filter((draft) => draft.trim() !== "")
       .join("\n");
+  }
+
+  orderedPendingDrafts(): PendingSendDraft[] {
+    return this.orderedPending().map(({ id, draftText }) => ({
+      attemptId: id,
+      draftText,
+    }));
+  }
+
+  orderedPreEnqueueDrafts(): PendingSendDraft[] {
+    return this.orderedPreEnqueue().map(({ id, draftText }) => ({
+      attemptId: id,
+      draftText,
+    }));
   }
 
   pendingPreEnqueueCount(): number {

@@ -1,92 +1,117 @@
-export type DraftPersistenceSource = "live" | "pending" | "empty"
+import type { PendingSendDraft } from "../features/chat-composer/domain";
+
+export type DraftPersistenceSource = "live" | "pending" | "empty";
 
 export interface ResolveDraftAfterSendOptions {
-    liveDraft?: string
-    remoteDraft?: string
-    remoteDraftAtSend?: string
-    draftSavedAfterSend: boolean
-    latestSavedDraft?: string
-    latestSavedDraftSource?: DraftPersistenceSource
-    sentDraft: string
-    pendingDrafts: string[]
+  attemptId: string;
+  liveDraft?: string;
+  remoteDraft?: string;
+  remoteDraftAtSend?: string;
+  draftSavedAfterSend: boolean;
+  latestSavedDraft?: string;
+  latestSavedDraftSource?: DraftPersistenceSource;
+  latestSavedPendingAttemptIds?: string[];
+  pendingDrafts: PendingSendDraft[];
+}
+
+function joinDrafts(drafts: PendingSendDraft[]): string {
+  return drafts
+    .map(({ draftText }) => draftText)
+    .filter((draft) => draft.trim() !== "")
+    .join("\n");
+}
+
+function sameIds(left: string[], right: string[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every((attemptId, index) => attemptId === right[index])
+  );
 }
 
 /**
- * Decide whether a successful send owns the persisted draft and, if it does,
- * what should remain after that send settles.
+ * Resolve persisted draft cleanup for one settled compose attempt.
  *
- * `pendingDrafts` is ordered by send consumption. The currently executing send
- * is first; later queued sends remain behind it. A persisted pending draft is
- * therefore reduced from `A\nB` to `B` when A succeeds, then cleared when B
- * succeeds. A live draft is never owned by the send, even when its text happens
- * to be identical.
+ * Attempt IDs own provisional draft entries. Text comparisons are used only as
+ * optimistic concurrency checks against remote state and never identify which
+ * compose attempt is settling.
  */
 export function resolveDraftAfterSend({
-    liveDraft,
-    remoteDraft,
-    remoteDraftAtSend,
-    draftSavedAfterSend,
-    latestSavedDraft,
-    latestSavedDraftSource,
-    sentDraft,
-    pendingDrafts,
+  attemptId,
+  liveDraft,
+  remoteDraft,
+  remoteDraftAtSend,
+  draftSavedAfterSend,
+  latestSavedDraft,
+  latestSavedDraftSource,
+  latestSavedPendingAttemptIds = [],
+  pendingDrafts,
 }: ResolveDraftAfterSendOptions): string | undefined {
-    if (liveDraft) return undefined
+  if (liveDraft) return undefined;
+  if (pendingDrafts[0]?.attemptId !== attemptId) return undefined;
 
-    const [currentPending = "", ...remainingPending] = pendingDrafts
-    if (currentPending !== sentDraft) return undefined
+  if (draftSavedAfterSend) {
+    if (latestSavedDraftSource !== "pending") return undefined;
+    if (!latestSavedPendingAttemptIds.includes(attemptId)) return undefined;
 
-    const pendingDraft = pendingDrafts.filter((draft) => draft.trim() !== "").join("\n")
-    const remainingDraft = remainingPending
-        .filter((draft) => draft.trim() !== "")
-        .join("\n")
+    const ownedDrafts = latestSavedPendingAttemptIds.map((ownedAttemptId) =>
+      pendingDrafts.find(({ attemptId: pendingId }) => pendingId === ownedAttemptId),
+    );
+    if (ownedDrafts.some((draft) => !draft)) return undefined;
 
-    if (draftSavedAfterSend) {
-        const ownsPersistedPendingDraft =
-            latestSavedDraftSource === "pending" &&
-            (latestSavedDraft || "") === pendingDraft &&
-            (remoteDraft || "") === pendingDraft
-        return ownsPersistedPendingDraft ? remainingDraft : undefined
+    const savedDrafts = ownedDrafts as PendingSendDraft[];
+    if (
+      !sameIds(
+        savedDrafts.map(({ attemptId: savedAttemptId }) => savedAttemptId),
+        latestSavedPendingAttemptIds,
+      ) ||
+      (latestSavedDraft || "") !== joinDrafts(savedDrafts) ||
+      (remoteDraft || "") !== (latestSavedDraft || "")
+    ) {
+      return undefined;
     }
 
-    if ((remoteDraft || "") !== (remoteDraftAtSend || "")) return undefined
+    return joinDrafts(
+      savedDrafts.filter(({ attemptId: savedAttemptId }) => savedAttemptId !== attemptId),
+    );
+  }
 
-    return ""
+  if ((remoteDraft || "") !== (remoteDraftAtSend || "")) return undefined;
+  return "";
 }
 
 export interface ResolveDraftToPersistOptions {
-    /** What the composer currently holds. */
-    liveDraft: string
-    /** Plain text of composes handed to a send that has not settled yet. */
-    pendingSendText: string
+  /** What the composer currently holds. */
+  liveDraft: string;
+  /** Captured composes that have not produced all local bubbles yet. */
+  pendingDrafts: PendingSendDraft[];
 }
 
 export interface ResolvedDraftPersistence {
-    draft: string
-    source: DraftPersistenceSource
+  draft: string;
+  source: DraftPersistenceSource;
+  pendingAttemptIds: string[];
 }
 
-/**
- * Decide what to persist as the conversation draft (octo-web#1280).
- *
- * The composer is emptied the moment a send starts, so a draft save that happens
- * during an in-flight send (leaving the conversation is the common trigger) used
- * to write an EMPTY draft over content that had not been enqueued yet — the
- * composer, the draft and the message list were then all empty at once.
- *
- * Rules:
- *   - the live composer content always wins (the user's newest intent);
- *   - while a send is in flight and the composer is empty, persist its text as a
- *     provisional draft so a pre-enqueue failure can survive editor teardown;
- *   - otherwise persist the (possibly empty) live value as before.
- */
+/** Resolve the draft payload and its attempt-based ownership metadata. */
 export function resolveDraftToPersist({
-    liveDraft,
-    pendingSendText,
+  liveDraft,
+  pendingDrafts,
 }: ResolveDraftToPersistOptions): ResolvedDraftPersistence {
-    if (liveDraft.trim() !== "") return { draft: liveDraft, source: "live" }
-    if (pendingSendText.trim() !== "") {
-        return { draft: pendingSendText, source: "pending" }
-    }
-    return { draft: liveDraft, source: "empty" }
+  if (liveDraft.trim() !== "") {
+    return { draft: liveDraft, source: "live", pendingAttemptIds: [] };
+  }
+
+  const ownedPendingDrafts = pendingDrafts.filter(
+    ({ draftText }) => draftText.trim() !== "",
+  );
+  const pendingDraft = joinDrafts(ownedPendingDrafts);
+  if (pendingDraft !== "") {
+    return {
+      draft: pendingDraft,
+      source: "pending",
+      pendingAttemptIds: ownedPendingDrafts.map(({ attemptId }) => attemptId),
+    };
+  }
+
+  return { draft: liveDraft, source: "empty", pendingAttemptIds: [] };
 }

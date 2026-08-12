@@ -36,6 +36,12 @@ export interface SendDraftSnapshot {
   draftText: string;
 }
 
+/** Draft text owned by one captured compose attempt. */
+export interface PendingSendDraft {
+  attemptId: string;
+  draftText: string;
+}
+
 export interface SendProgressSnapshot {
   setExpectedParts: (count: number) => void;
   markPartEnqueued: () => void;
@@ -64,6 +70,13 @@ export interface ChatSendOutcome {
   consumedTopIds: string[];
   unsentEditorBlocks: UnsentEditorBlock[];
   restoreSendTarget: boolean;
+}
+
+/** Emitted after consumed compose resources have been restored or disposed. */
+export interface ChatSendSettlement {
+  attemptId: string;
+  outcome: ChatSendOutcome;
+  sendDraft?: SendDraftSnapshot;
 }
 
 export function createChatSendOutcome(
