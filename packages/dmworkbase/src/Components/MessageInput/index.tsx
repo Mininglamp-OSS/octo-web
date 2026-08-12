@@ -1262,6 +1262,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const sendTarget = props.onCaptureSendTarget?.();
     const sendChannel = props.context.channel();
     const sendChannelKey = `${sendChannel.channelID}:${sendChannel.channelType}`;
+    const isSendChannelActive = () => {
+      const channel = props.context.channel();
+      return `${channel.channelID}:${channel.channelType}` === sendChannelKey;
+    };
     const sendDraftBaseline = props.onCaptureSendDraft?.();
     // 本次消费会清空编辑器与本次附件，之前失败还原留下的偏移随之失效。
     restoreOffsetsRef.current = { blocks: 0, topAttachments: 0 };
@@ -1308,13 +1312,15 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         // 整条 compose 回到输入框时，把 reply/edit 目标和展开态也一起复位，
         // 否则「编辑消息」失败后重试会变成发一条新消息、大段草稿被挤在收起态里
         // (#1280 review)。restore() 自身幂等，且用户已选新目标时不会覆盖。
-        sendTarget?.restore();
-        if (expandedAtSend) {
+        if (isSendChannelActive()) sendTarget?.restore();
+        if (isSendChannelActive() && expandedAtSend) {
           setExpanded(true);
           props.onExpandChange?.(true);
         }
       },
-      onRestoreSendTarget: () => sendTarget?.restore(),
+      onRestoreSendTarget: () => {
+        if (isSendChannelActive()) sendTarget?.restore();
+      },
       onRestoreError: (err, step) => {
         // 内容既不在输入框也不在消息列表时必须让用户知道，不能静默丢失
         // （典型触发：还原时会话已被切走、editor 已 destroy）。
