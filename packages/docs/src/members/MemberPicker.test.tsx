@@ -21,6 +21,15 @@ beforeEach(() => {
 
 afterEach(() => cleanup())
 
+// After the search-hit-highlight batch, a matched name is split into text/<mark>/text nodes, so a
+// plain getByText('Full Name') no longer finds it. This cross-node matcher matches the element
+// whose full textContent equals the name — used only where a query is a substring of the asserted
+// name (highlighting is active). Non-highlighted assertions keep using getByText unchanged.
+const wholeText = (name: string) => (_content: string, el: Element | null) =>
+  el?.textContent === name &&
+  Array.from(el.childNodes).some((n) => n.nodeName.toLowerCase() === 'mark')
+
+
 describe('MemberPicker (Problem 1)', () => {
   it('lists space members with names and an AI badge for bots', async () => {
     render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
@@ -38,7 +47,8 @@ describe('MemberPicker (Problem 1)', () => {
       target: { value: 'ada' },
     })
     expect(screen.queryByText('Grace Hopper')).toBeNull()
-    expect(screen.getByText('Ada Lovelace')).toBeTruthy()
+    // The matched name is highlighted (split into <mark> nodes), so match on full textContent.
+    expect(screen.getByText(wholeText('Ada Lovelace'))).toBeTruthy()
   })
 
   it('marks an already-added member disabled and non-selectable', async () => {
@@ -708,10 +718,11 @@ describe('MemberPicker Bot expander UX (task #3)', () => {
     expect(screen.getByText('Writer Bot')).toBeTruthy()
     // The expander reads as expanded (label = hideBots).
     expect(screen.getByText('docs.member.hideBots')).toBeTruthy()
-    // Click “collapse” → the Bot row disappears and the label flips back to showBots (FAILS before fix).
+    // Click “collapse” → the Bot row disappears and the label flips back to the collapsed variant.
+    // With a Bot matching the query, the collapsed label is the match-count variant (this batch).
     fireEvent.click(screen.getByText('docs.member.hideBots'))
     expect(screen.queryByText('Writer Bot')).toBeNull()
-    expect(screen.getByText('docs.member.showBots')).toBeTruthy()
+    expect(screen.getByText('docs.member.showBotsWithMatch')).toBeTruthy()
   })
 
   it('restores the default-open on a new query term after a manual collapse', async () => {
@@ -727,7 +738,7 @@ describe('MemberPicker Bot expander UX (task #3)', () => {
     expect(screen.queryByText('Writer Bot')).toBeNull()
     // A different term that still hits the Bot clears the override → defaults open again.
     fireEvent.change(search, { target: { value: 'Bot' } })
-    expect(screen.getByText('Writer Bot')).toBeTruthy()
+    expect(screen.getByText(wholeText('Writer Bot'))).toBeTruthy()
     expect(screen.getByText('docs.member.hideBots')).toBeTruthy()
   })
 
@@ -743,8 +754,9 @@ describe('MemberPicker Bot expander UX (task #3)', () => {
     // collapse …
     fireEvent.click(screen.getByText('docs.member.hideBots'))
     expect(screen.queryByText('Writer Bot')).toBeNull()
-    // … then re-expand on the very next click (a single click must flip it back open).
-    fireEvent.click(screen.getByText('docs.member.showBots'))
+    // … then re-expand on the very next click (a single click must flip it back open). With a Bot
+    // matching the query, the collapsed expander shows the match-count label (this batch).
+    fireEvent.click(screen.getByText('docs.member.showBotsWithMatch'))
     expect(screen.getByText('Writer Bot')).toBeTruthy()
     expect(screen.getByText('docs.member.hideBots')).toBeTruthy()
   })
@@ -880,9 +892,173 @@ describe('MemberPicker collapse-override semantics (review P1 rejected)', () => 
     expect(screen.queryByText('Writer Bot')).toBeNull()
     // Search by the PERSON's name "Ada" — matches Ada, does NOT hit "Writer Bot".
     fireEvent.change(search, { target: { value: 'Ada' } })
-    expect(screen.getByText('Ada Lovelace')).toBeTruthy()
+    expect(screen.getByText(wholeText('Ada Lovelace'))).toBeTruthy()
     // The user-closed Bot list must stay CLOSED (no ghost-expand).
     expect(screen.queryByText('Writer Bot')).toBeNull()
     expect(screen.getByText('docs.member.showBots')).toBeTruthy()
+  })
+})
+
+// Search-hit highlight (this batch): name/uid hit fragments are wrapped in <mark>, the uid segment
+// only appears when the uid (not the name) explains the match, and a matched Bot earns a "matched"
+// tag + name highlight while keeping its position. Order/topology are NOT changed by this batch.
+describe('MemberPicker search-hit highlight', () => {
+  function botResponder(bots: Array<{ uid: string; name: string; creator_uid?: string }>) {
+    return (method: string, url: string) =>
+      method === 'get' && url.startsWith('/robot/space_bots')
+        ? { data: bots, status: 200 }
+        : { data: [], status: 200 }
+  }
+  const marks = (root: ParentNode = document) =>
+    Array.from(root.querySelectorAll('mark.octo-member-picker-hit')).map((m) => m.textContent)
+
+  it('wraps a name hit in <mark> preserving original casing, once per occurrence', async () => {
+    // "Anna Hanna" has "an"/"An" appearing multiple times; a lowercase query marks them all with
+    // the ORIGINAL casing preserved in each <mark>.
+    wk.spaceMembers.length = 0
+    wk.spaceMembers.push({ uid: 'u_anna', name: 'Anna Hanna' })
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Anna Hanna')).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'an' },
+    })
+    const row = document.querySelector('.octo-member-picker-name') as HTMLElement
+    // "Anna Hanna": An(0-2), an(6-8)  → two marks, original casing kept.
+    const got = marks(row)
+    expect(got.length).toBeGreaterThanOrEqual(2)
+    expect(got).toContain('An')
+    expect(got).toContain('an')
+    // No innerHTML/dangerous injection: the <mark> content is exactly the sliced original text.
+    expect(row.textContent).toBe('Anna Hanna')
+  })
+
+  it('shows the uid fragment (with a mark) only when the uid, not the name, explains the match', async () => {
+    wk.spaceMembers.length = 0
+    wk.spaceMembers.push(
+      { uid: 'u_deadbeef', name: 'Alice' },
+      { uid: 'u_plain', name: 'Bob' },
+    )
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Alice')).toBeTruthy())
+    // Search a uid substring that hits Alice's uid but not her name.
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'deadbeef' },
+    })
+    const uidSpan = document.querySelector('.octo-member-picker-uid') as HTMLElement
+    expect(uidSpan).toBeTruthy()
+    expect(uidSpan.querySelector('mark.octo-member-picker-hit')?.textContent).toBe('deadbeef')
+  })
+
+  it('does NOT render the uid fragment when the name matches (name hit, uid miss)', async () => {
+    wk.spaceMembers.length = 0
+    wk.spaceMembers.push({ uid: 'u_x1', name: 'Grace Hopper' })
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Grace Hopper')).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'grace' },
+    })
+    // Name hit → highlight present, but no uid fragment (avoids noisy hex on every row).
+    expect(document.querySelector('.octo-member-picker-name mark.octo-member-picker-hit')).toBeTruthy()
+    expect(document.querySelector('.octo-member-picker-uid')).toBeNull()
+  })
+
+  it('tags the matched Bot + highlights its name, keeps non-matched Bots visible/untagged, order unchanged', async () => {
+    wk.spaceMembers.length = 0
+    wk.spaceMembers.push({ uid: 'u_ada', name: 'Ada Lovelace' })
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+      { uid: 'b_2', name: 'Review Bot', creator_uid: 'u_ada' },
+      { uid: 'b_3', name: 'Deploy Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    // Baseline order (no query): expand and record the Bot row order.
+    fireEvent.click(screen.getByText('docs.member.showBots'))
+    const botName = (row: Element) => (row.querySelector('span') as HTMLElement).textContent
+    const orderNoQuery = Array.from(
+      document.querySelectorAll('.octo-member-picker-bot'),
+    ).map(botName)
+    expect(orderNoQuery).toEqual(['Writer Bot', 'Review Bot', 'Deploy Bot'])
+
+    // Query hits exactly one Bot by name → creator auto-expands (existing behaviour, not regressed).
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'Review' },
+    })
+    // Creator row still present (existing "hit ⇒ auto-expand" behaviour).
+    expect(screen.getByText('Ada Lovelace')).toBeTruthy()
+    // The matched Bot carries the "matched" tag; the others do not.
+    const rows = Array.from(document.querySelectorAll('.octo-member-picker-bot'))
+    const rowOrder = rows.map(botName)
+    // Order preserved (no top-pinning / reordering this batch).
+    expect(rowOrder).toEqual(['Writer Bot', 'Review Bot', 'Deploy Bot'])
+    const reviewRow = rows.find((r) => r.textContent?.includes('Review Bot')) as HTMLElement
+    expect(reviewRow.querySelector('.octo-member-picker-matched')?.textContent).toBe('docs.member.matchedTag')
+    expect(reviewRow.querySelector('mark.octo-member-picker-hit')?.textContent).toBe('Review')
+    // Non-matched Bots remain visible and untagged.
+    const writerRow = rows.find((r) => r.textContent?.includes('Writer Bot')) as HTMLElement
+    expect(writerRow.querySelector('.octo-member-picker-matched')).toBeNull()
+    expect(screen.getByText('Deploy Bot')).toBeTruthy()
+  })
+
+  it('uses the match-count expander label when Bots match, and the plain one otherwise', async () => {
+    wk.spaceMembers.length = 0
+    wk.spaceMembers.push({ uid: 'u_ada', name: 'Ada Lovelace' })
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_1', name: 'Writer Bot', creator_uid: 'u_ada' },
+      { uid: 'b_2', name: 'Review Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    // No query: the plain showBots label (collapsed).
+    expect(screen.getByText('docs.member.showBots')).toBeTruthy()
+    expect(screen.queryByText('docs.member.showBotsWithMatch')).toBeNull()
+    // A query that hits a Bot auto-expands the list → the label reads hideBots. Collapse it so the
+    // (collapsed) label is observable, then assert the match-count variant is used.
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'Review' },
+    })
+    fireEvent.click(screen.getByText('docs.member.hideBots'))
+    expect(screen.getByText('docs.member.showBotsWithMatch')).toBeTruthy()
+    expect(screen.queryByText('docs.member.showBots')).toBeNull()
+  })
+
+  it('shows the uid fragment on a nested Bot row when only its uid matched', async () => {
+    // A uid-only Bot hit must be self-explaining too: without the uid segment the row would carry a
+    // "matched" tag with nothing highlighted, which is the black box this feature removes.
+    wk.spaceMembers.length = 0
+    wk.spaceMembers.push({ uid: 'u_ada', name: 'Ada Lovelace' })
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_cafebabe', name: 'Writer Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'cafebabe' },
+    })
+    const botRow = document.querySelector('.octo-member-picker-bot') as HTMLElement
+    expect(botRow).toBeTruthy()
+    // uid segment present with the hit marked; the Bot is tagged as matched.
+    const uidSpan = botRow.querySelector('.octo-member-picker-uid') as HTMLElement
+    expect(uidSpan).toBeTruthy()
+    expect(uidSpan.querySelector('mark.octo-member-picker-hit')?.textContent).toBe('cafebabe')
+    expect(botRow.querySelector('.octo-member-picker-matched')).toBeTruthy()
+    // Name did not match → no highlight inside the Bot's name span.
+    expect(botRow.querySelector('span mark.octo-member-picker-hit')?.textContent).not.toBe('Writer Bot')
+  })
+
+  it('does NOT render a uid fragment on a nested Bot row when its NAME matched', async () => {
+    wk.spaceMembers.length = 0
+    wk.spaceMembers.push({ uid: 'u_ada', name: 'Ada Lovelace' })
+    wk.apiClient.responder = botResponder([
+      { uid: 'b_plain1', name: 'Review Bot', creator_uid: 'u_ada' },
+    ])
+    render(<MemberPicker space="s_1" existingUids={new Set()} onAdd={() => {}} />)
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeTruthy())
+    fireEvent.change(screen.getByPlaceholderText('docs.member.pickPlaceholder'), {
+      target: { value: 'Review' },
+    })
+    const botRow = document.querySelector('.octo-member-picker-bot') as HTMLElement
+    expect(botRow.querySelector('mark.octo-member-picker-hit')?.textContent).toBe('Review')
+    expect(botRow.querySelector('.octo-member-picker-uid')).toBeNull()
   })
 })

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Role } from '../auth/roles.ts'
 import { fetchAllSpaceMembers, fetchMyOwnedBots, fetchSpaceBotSnapshots, t, type SpaceMemberLite } from '../octoweb/index.ts'
 import { colorFromId } from '../awareness/presence.ts'
-import { sortPickerMembers } from './sort.ts'
+import { sortPickerMembers, findMatchRanges, matchesQuery } from './sort.ts'
 
 const DEFAULT_ROLES: Role[] = ['reader', 'commenter', 'writer', 'admin']
 
@@ -10,6 +10,27 @@ const DEFAULT_ROLES: Role[] = ['reader', 'commenter', 'writer', 'admin']
 function initial(name: string): string {
   const ch = name.trim().charAt(0)
   return ch ? ch.toUpperCase() : '?'
+}
+
+/**
+ * Render `text` with every case-insensitive occurrence of `query` wrapped in a semantic <mark>.
+ * Slice-based (text/mark/text React nodes) — never innerHTML — so the original casing is preserved
+ * and multiple hits are all marked. No query / no hit → the plain string.
+ */
+function HighlightedText({ text, query }: { text: string; query: string }) {
+  const ranges = query ? findMatchRanges(text, query) : []
+  if (ranges.length === 0) return <>{text}</>
+  const nodes: Array<string | JSX.Element> = []
+  let cursor = 0
+  ranges.forEach(([start, end], i) => {
+    if (start > cursor) nodes.push(text.slice(cursor, start))
+    nodes.push(
+      <mark key={i} className="octo-member-picker-hit">{text.slice(start, end)}</mark>,
+    )
+    cursor = end
+  })
+  if (cursor < text.length) nodes.push(text.slice(cursor))
+  return <>{nodes}</>
 }
 
 /**
@@ -408,8 +429,20 @@ export function MemberPicker({
           // selecting the person defaults all their Bots on (see toggle). The active query also
           // force-expands a creator whose Bot matched, so a Bot search reveals it under its creator.
           const q = query.trim().toLowerCase()
+          const nameHit = matchesQuery(m.name, q)
+          const uidHit = matchesQuery(m.uid, q)
+          // Show the uid only when it explains the match: uid hit while the name did NOT (so the
+          // admin sees why a name-less match surfaced). A pure name hit stays uid-free to avoid
+          // hanging a hex string on every row.
+          const showUid = !!q && uidHit && !nameHit
+          // A top-level row that is itself a Bot (standalone) and matches the query earns the
+          // "matched" tag, mirroring the nested-Bot treatment (#3).
+          const selfBotMatched = m.isBot && !!q && (nameHit || uidHit)
           const queryHitsBot =
-            !!q && bots.some((b) => b.name.toLowerCase().includes(q) || b.uid.toLowerCase().includes(q))
+            !!q && bots.some((b) => matchesQuery(b.name, q) || matchesQuery(b.uid, q))
+          const matchedBotCount = q
+            ? bots.filter((b) => matchesQuery(b.name, q) || matchesQuery(b.uid, q)).length
+            : 0
           const showBots = bots.length > 0
           // A user's explicit collapse (scoped to this query) wins over both the click-expand set
           // and the query auto-expand; otherwise a click-expand or a query hit opens the list.
@@ -449,8 +482,16 @@ export function MemberPicker({
               >
                 {m.avatar ? <img src={m.avatar} alt="" /> : initial(m.name)}
               </span>
-              <span className="octo-member-picker-name">{m.name}</span>
+              <span className="octo-member-picker-name"><HighlightedText text={m.name} query={q} /></span>
+              {showUid && (
+                <span className="octo-member-picker-uid" aria-hidden="true">
+                  <HighlightedText text={m.uid} query={q} />
+                </span>
+              )}
               {m.isBot && <span className="octo-member-picker-badge">{t('docs.member.aiTag')}</span>}
+              {selfBotMatched && (
+                <span className="octo-member-picker-matched">{t('docs.member.matchedTag')}</span>
+              )}
               {standaloneCreator && (
                 <span className="octo-member-picker-bot-creator">
                   {t('docs.member.botCreator', { values: { name: standaloneCreator } })}
@@ -479,19 +520,38 @@ export function MemberPicker({
                     }
                   }}>
                   <span className="octo-member-picker-chevron" aria-hidden="true" />
-                  {t(isExpanded ? 'docs.member.hideBots' : 'docs.member.showBots', { values: { count: bots.length } })}
+                  {isExpanded
+                    ? t('docs.member.hideBots', { values: { count: bots.length } })
+                    : matchedBotCount > 0
+                      ? t('docs.member.showBotsWithMatch', { values: { count: bots.length, matched: matchedBotCount } })
+                      : t('docs.member.showBots', { values: { count: bots.length } })}
                 </button>
-                {isExpanded && bots.map((bot) => (
+                {isExpanded && bots.map((bot) => {
+                  const botNameHit = matchesQuery(bot.name, q)
+                  const botUidHit = matchesQuery(bot.uid, q)
+                  const botMatched = botNameHit || botUidHit
+                  // Same rule as the top-level row: surface the uid only when IT is what matched.
+                  // Without this a uid-only Bot hit shows the "matched" tag with nothing highlighted
+                  // to explain it — the exact black box this feature exists to remove.
+                  const showBotUid = botUidHit && !botNameHit
+                  return (
                   // Bot controls are live only while the human is selected. When the human is
                   // unselected the checkbox is a disabled, read-only preview: inspecting a Bot must
                   // create no Bot selection. Selecting the human defaults these on (see toggle).
                   <label key={bot.uid} className={'octo-member-picker-bot' + (isSelected ? '' : ' is-preview')}>
                     <input type="checkbox" checked={isSelected && selectedBots.has(bot.uid)}
                       disabled={!isSelected} onChange={() => toggleBot(bot.uid)} />
-                    <span>{bot.name}</span><span className="octo-member-picker-badge">{t('docs.member.aiTag')}</span>
+                    <span><HighlightedText text={bot.name} query={q} /></span><span className="octo-member-picker-badge">{t('docs.member.aiTag')}</span>
+                    {showBotUid && (
+                      <span className="octo-member-picker-uid" aria-hidden="true">
+                        <HighlightedText text={bot.uid} query={q} />
+                      </span>
+                    )}
+                    {botMatched && <span className="octo-member-picker-matched">{t('docs.member.matchedTag')}</span>}
                     <span className="octo-member-picker-bot-creator">{t('docs.member.botCreator', { values: { name: m.name } })}</span>
                   </label>
-                ))}
+                  )
+                })}
               </>
             )}
             </div>

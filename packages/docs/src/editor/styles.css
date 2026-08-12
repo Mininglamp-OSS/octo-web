@@ -1766,6 +1766,44 @@ body.octo-row-resizing {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Search-hit highlight: AI-purple tint (the accent hue reserved for AI/highlight per the UI spec),
+   never the browser's default yellow <mark>. color:inherit keeps the original text colour; the
+   fallback mirrors the real --wk-accent-tint-12 value so themed and unthemed hosts agree. */
+.octo-member-picker-hit {
+  background: var(--wk-accent-tint-12, rgba(127, 59, 245, 0.12));
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 var(--wk-sp-0-5, 2px);
+}
+/* uid fragment shown only when the uid (not the name) explains the match: small + muted. Must be
+   allowed to SHRINK (min-width/ellipsis) — a 32-char hex uid with flex:0 0 auto would otherwise
+   squeeze the name, which owns the row. */
+.octo-member-picker-uid {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--octo-muted, #8a919e);
+  font-variant-numeric: tabular-nums;
+}
+.octo-member-picker-uid .octo-member-picker-hit {
+  padding: 0 1px;
+}
+/* "Matched" tag: shares the badge pill shape but reads as a FILLED accent chip so it stays
+   visually distinct from the outlined AI badge sitting next to it. */
+.octo-member-picker-matched {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 999px;
+  color: var(--wk-text-inverse, #fff);
+  background: var(--wk-color-accent, #7f3bf5);
+}
 .octo-member-picker-badge {
   flex: 0 0 auto;
   font-size: 10px;
