@@ -3,6 +3,7 @@ import { PluginKey } from '@tiptap/pm/state'
 import Suggestion, {
   SuggestionMatch,
   SuggestionOptions,
+  exitSuggestion,
 } from '@tiptap/suggestion'
 import { ReactRenderer } from '@tiptap/react'
 import tippy, { Instance as TippyInstance } from 'tippy.js'
@@ -75,6 +76,9 @@ export function createEmojiSuggestionExtension(
 
     command: ({ editor, range, props }) => {
       // 把光标前的 query 文字替换为表情 key 纯文本（第一版不追加空格）
+      // 先退出当前 suggestion plugin，避免插入事务触发一次过渡性的 onUpdate，
+      // 让已经选中的候选条闪回一帧。
+      exitSuggestion(editor.view, emojiSuggestionPluginKey)
       editor.chain().focus().insertContentAt(range, props.key).run()
     },
 
