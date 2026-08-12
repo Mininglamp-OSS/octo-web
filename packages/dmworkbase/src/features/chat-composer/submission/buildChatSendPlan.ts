@@ -184,13 +184,17 @@ export function buildChatSendPlan<TMessage = unknown>(
   const hasEditorText = editorBlocks.some(isNonEmptyText);
   const hasEditorImage = editorBlocks.some((block) => block.type === "image");
   const hasEditorFile = editorBlocks.some((block) => block.type === "file");
+  const editorCanBeRichText =
+    hasEditorText && hasEditorImage && !hasEditorFile;
+  const topImagesCanJoinRichText =
+    allTopFilesAreImages &&
+    hasEditorText &&
+    !hasEditorFile &&
+    (topImages.length > 0 || hasEditorImage);
 
   if (
     editorBlocks.length > 0 &&
-    allTopFilesAreImages &&
-    hasEditorText &&
-    hasEditorImage &&
-    !hasEditorFile
+    topImagesCanJoinRichText
   ) {
     const blocks: EditorContentBlock[] = [
       ...topImages.map(({ id, file }) => ({
@@ -220,6 +224,16 @@ export function buildChatSendPlan<TMessage = unknown>(
     };
     pushOperation(operation);
   });
+
+  if (editorCanBeRichText) {
+    const operation: ChatSendOperation<TMessage> = {
+      kind: "send_rich_text",
+      partIds: editorBlocks.map((_, index) => editorPartId(index)),
+      blocks: editorBlocks,
+    };
+    attachTarget(operation);
+    return { attemptId, operations };
+  }
 
   editorBlocks.forEach((block, index) => {
     const partId = editorPartId(index);

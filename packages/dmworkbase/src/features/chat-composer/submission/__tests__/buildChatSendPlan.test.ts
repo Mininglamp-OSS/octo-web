@@ -98,6 +98,64 @@ describe("buildChatSendPlan", () => {
     expect(plan.operations[0].partIds).toContain("top-image");
   });
 
+  it("aggregates a top image with editor text even without an editor image", () => {
+    const sendTarget = target(1);
+    const plan = buildChatSendPlan(
+      request({
+        topFiles: [attachment("top-image", "top.png", "image/png")],
+        editorBlocks: [
+          { type: "text", text: "caption", restoreText: "caption", mention },
+        ],
+        sendTarget,
+      })
+    );
+
+    expect(plan.operations).toHaveLength(1);
+    expect(plan.operations[0]).toMatchObject({
+      kind: "send_rich_text",
+      partIds: ["top-image", "editor:0"],
+      sendTarget,
+      blocks: [
+        { type: "image", id: "top-image" },
+        { type: "text", text: "caption", mention },
+      ],
+    });
+  });
+
+  it("keeps top documents separate while aggregating editor text and images", () => {
+    const sendTarget = target(1);
+    const plan = buildChatSendPlan(
+      request({
+        topFiles: [attachment("top-file", "notes.pdf", "application/pdf")],
+        editorBlocks: [
+          { type: "text", text: "caption", restoreText: "caption", mention },
+          {
+            type: "image",
+            id: "editor-image",
+            file: file("editor.png", "image/png"),
+          },
+        ],
+        sendTarget,
+      })
+    );
+
+    expect(plan.operations).toHaveLength(2);
+    expect(plan.operations[0]).toMatchObject({
+      kind: "send_media",
+      partIds: ["top-file"],
+    });
+    expect(plan.operations[0].sendTarget).toBeUndefined();
+    expect(plan.operations[1]).toMatchObject({
+      kind: "send_rich_text",
+      partIds: ["editor:0", "editor:1"],
+      sendTarget,
+      blocks: [
+        { type: "text", text: "caption", mention },
+        { type: "image", id: "editor-image" },
+      ],
+    });
+  });
+
   it("keeps top files before editor blocks in document order", () => {
     const plan = buildChatSendPlan(
       request({
