@@ -1,5 +1,6 @@
 import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
+import { replaceWithShellDocument } from "./Service/ShellDocument";
 
 /** mittBus 全局事件类型表 */
 export type MittEvents = {
@@ -1132,7 +1133,7 @@ export default class WKApp extends ProviderListener {
     // *is* served by the SPA host and a reload would drop deep-link state
     // that the login page may still want to consume (e.g. `?returnTo=`).
     if (window.location.protocol === "file:") {
-      window.location.reload();
+      replaceWithShellDocument();
       return;
     }
     window.location.replace("/login");
@@ -1157,7 +1158,7 @@ export default class WKApp extends ProviderListener {
         ? import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI
         : undefined,
       clearLocalLoginState: () => this.clearLocalLoginState(),
-      reloadShell: () => window.location.reload(),
+      reloadShell: replaceWithShellDocument,
       navigateExternal: (url) => { window.location.href = url; },
       markPostLogoutCleanup: () => { markOidcPostLogoutCleanup(); },
       fallbackLogout: () => this.logout(),

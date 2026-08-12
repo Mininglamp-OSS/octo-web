@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { buildPostLoginRedirectUrl } from "../postLoginRedirect";
+import { buildShellDocumentUrl } from "../../../../../packages/dmworkbase/src/Service/ShellDocument";
 
 describe("buildPostLoginRedirectUrl", () => {
   it("keeps Electron on the packaged index file after login", () => {
@@ -38,5 +39,17 @@ describe("buildPostLoginRedirectUrl", () => {
         "?doc=d_1"
       )
     ).toBe("https://octo.example.com/?doc=d_1");
+  });
+
+  it("returns to the shell document after a packaged route was pushed", () => {
+    expect(
+      buildShellDocumentUrl(
+        "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html?sid=old",
+        "file:///drive",
+        "?logout=1",
+      ),
+    ).toBe(
+      "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html?logout=1&sid=old",
+    );
   });
 });

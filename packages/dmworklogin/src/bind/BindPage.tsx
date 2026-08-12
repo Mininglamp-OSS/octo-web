@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
-import { WKApp } from '@octo/base'
+import { replaceWithShellDocument, WKApp } from '@octo/base'
 import { clearBindEntry } from './bindEntryState'
 import {
   clearPendingOidcLogin,
@@ -300,7 +300,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
         // There is no HTTP pathname router in the packaged shell. Reload the
         // trusted index document instead of resolving `/` or `/login` as a
         // filesystem root such as file:///login.
-        window.location.reload()
+        replaceWithShellDocument()
         return
       }
       try {
@@ -412,7 +412,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     if (isElectronDesktop()) {
       // Packaged Electron renders from file://; `/login` would otherwise
       // resolve to file:///login instead of the app's index.html.
-      window.location.reload()
+      replaceWithShellDocument()
       return
     }
     window.location.replace('/login')

@@ -13,6 +13,7 @@ export { default as Provider } from './Service/Provider'
 export * from './Service/Provider'
 export * from './Service/Route'
 export * from './Service/SessionScope'
+export * from './Service/ShellDocument'
 export * from './Service/RoutePath'
 export * from './Service/DataSource/DataProvider'
 export { default as ChatPage } from "./Pages/Chat"
