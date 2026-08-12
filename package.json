@@ -54,7 +54,7 @@
     "katex": "^0.16.45",
     "lucide-react": "^0.577.0",
     "pinyin-pro": "^3.28.0",
-    "react-syntax-highlighter": "^15.6.6",
+    "react-syntax-highlighter": "^16.1.1",
     "rehype-katex": "^7.0.1",
     "remark-math": "^6.0.0",
     "zxcvbn": "^4.4.2"
