@@ -274,6 +274,28 @@ describe("ChannelAvatar save intent", () => {
     expect(container.querySelector(".wk-group-avatar-preview-text")?.textContent).toBe("研发");
   });
 
+  it("clears an uploaded avatar when the owner edits generated text", async () => {
+    const channel = renderChannelAvatar({
+      isUploadedAvatar: true,
+      canClearUploadedAvatar: true,
+    });
+
+    act(() => {
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "研发" },
+      });
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("base.common.save"));
+    });
+
+    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
+      avatarText: "研发",
+      avatarColor: undefined,
+      clearUploadedAvatar: true,
+    });
+  });
+
   it("does not clear an uploaded avatar after a net-zero text edit", async () => {
     const channel = renderChannelAvatar({
       initialAvatarText: "研发",

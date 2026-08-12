@@ -135,6 +135,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             this.state.draftMode === "uploaded" &&
             result.textChanged !== true &&
             result.colorChanged !== true
+        const generatedEditRequested = result.textChanged === true || result.colorChanged === true
         if (!preserveUpload && this.state.uploadPreviewUrl) {
             URL.revokeObjectURL(this.state.uploadPreviewUrl)
         }
@@ -146,6 +147,8 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             draftMode: preserveUpload ? "uploaded" : "generated",
             pendingUploadFile: preserveUpload ? this.state.pendingUploadFile : null,
             uploadPreviewUrl: preserveUpload ? this.state.uploadPreviewUrl : undefined,
+            clearUploadedAvatarRequested:
+                generatedEditRequested && this.props.canClearUploadedAvatar === true,
         })
     }
     useGeneratedAvatar = () => {
@@ -272,6 +275,9 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             uploadPreviewUrl,
         } = this.state
         const editingDisabled = customAvatarSaving || uploading
+        const generatedEditingDisabled =
+            editingDisabled ||
+            (this.props.isUploadedAvatar === true && this.props.canClearUploadedAvatar !== true)
         const showGeneratedPreview =
             draftMode === "generated" &&
             (textChanged || colorChanged || this.state.clearUploadedAvatarRequested)
@@ -327,7 +333,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                         initialAvatarText={this.props.initialAvatarText || ""}
                         initialColorIndex={this.props.initialColorIndex}
                         colorSeed={channel.channelID}
-                        disabled={editingDisabled}
+                        disabled={generatedEditingDisabled}
                         onChange={this.onGeneratedAvatarChange}
                     />}
                 </div>
