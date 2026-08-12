@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   buildRichTextMixedCandidate,
+  countSendPlanParts,
   finishRichTextMixedSend,
   isImageFileForRichTextMixed,
 } from "../richTextMixedSend";
@@ -65,5 +66,30 @@ describe("buildRichTextMixedCandidate", () => {
 
     expect(onMessageSent).toHaveBeenCalledTimes(1);
     expect(result).toEqual({ editorConsumed: false, consumedTopIds: ["pdf1"] });
+  });
+
+  it("keeps top attachments and later editor blocks as separate guarded parts", () => {
+    const topFiles = [{ id: "pdf1", file: file("a.pdf", "application/pdf") }];
+    const editorBlocks = [{ type: "text" as const, text: "later text" }];
+
+    expect(countSendPlanParts(topFiles, editorBlocks, "later text", null)).toBe(
+      2
+    );
+  });
+
+  it("counts an aggregated rich-text compose as one guarded part", () => {
+    const topFiles = [{ id: "img1", file: file("a.png", "image/png") }];
+    const editorBlocks = [{ type: "text" as const, text: "caption" }];
+    const candidate = buildRichTextMixedCandidate(topFiles, editorBlocks);
+
+    expect(
+      countSendPlanParts(topFiles, editorBlocks, "caption", candidate)
+    ).toBe(1);
+  });
+
+  it("includes the reply bubble when attachments have no text block", () => {
+    const topFiles = [{ id: "pdf1", file: file("a.pdf", "application/pdf") }];
+
+    expect(countSendPlanParts(topFiles, [], "", null, true)).toBe(2);
   });
 });

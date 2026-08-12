@@ -24,13 +24,14 @@ import { blobToDataURL, type BinaryFileData, type FileFetchRef } from './collab/
 export async function fetchBoardFileBinaries(
   docId: string,
   refs: readonly FileFetchRef[],
+  spaceId?: string,
 ): Promise<BinaryFileData[]> {
   if (refs.length === 0) return []
   const refByAttach = new Map(refs.map((r) => [r.attachId, r]))
-  const { items } = await resolveAttachments(
-    docId,
-    refs.map((r) => r.attachId),
-  )
+  const attachIds = refs.map((r) => r.attachId)
+  const { items } = spaceId
+    ? await resolveAttachments(docId, attachIds, { spaceId })
+    : await resolveAttachments(docId, attachIds)
   const out: BinaryFileData[] = []
   await Promise.all(
     items.map(async (item) => {

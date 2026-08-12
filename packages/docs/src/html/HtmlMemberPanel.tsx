@@ -3,7 +3,8 @@ import type { Role } from '../auth/roles.ts'
 import { canManage } from '../auth/roles.ts'
 import { t } from '../octoweb/index.ts'
 import { MemberPicker } from '../members/MemberPicker.tsx'
-import { useMemberNames } from '../members/useMemberNames.ts'
+import { CurrentMembersList } from '../members/CurrentMembersList.tsx'
+import { useMemberDirectory } from '../members/useMemberNames.ts'
 import { listGrants, addGrant, removeGrant, type HtmlGrant, type HtmlGrantRole } from './htmlGrantsApi.ts'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
@@ -58,8 +59,10 @@ export function HtmlMemberPanel({
   isAuthor: boolean
   accessRequests?: UseAccessRequestsResult
 }) {
-  // uid → display name for member rows (falls back to uid until the roster resolves).
-  const names = useMemberNames(space ?? '')
+  // uid → display name + bot uids for member rows (falls back to uid until the roster resolves).
+  // html `space` is optional: when undefined the directory is empty (empty botUids) so every row
+  // renders as a human — the fail-soft direction (never hide a real person in the bot fold).
+  const { names, botUids, botCreators } = useMemberDirectory(space ?? '')
   const [grants, setGrants] = useState<HtmlGrant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -138,6 +141,20 @@ export function HtmlMemberPanel({
       await refresh()
     } catch {
       setError(t('docs.member.errorRemove'))
+    }
+  }
+
+  // Change a grant's role. PUT /grants is an upsert, so we reuse addGrant. admin is never grantable
+  // here (backend AddGrant refuses it — admin identity is owned by creator_uid); guard defensively
+  // like onAdd. creator/owner rows never reach here (their select is disabled + role-locked).
+  async function onChangeRole(uid: string, role: Role) {
+    if (role === 'admin') return
+    setError(null)
+    try {
+      await addGrant(slug, uid, role)
+      await refresh()
+    } catch {
+      setError(t('docs.member.errorRole'))
     }
   }
 
@@ -228,39 +245,21 @@ export function HtmlMemberPanel({
         />
       )}
 
-      {/* Slot 5: Current Members (author gate). */}
+      {/* Slot 5: Current Members (author gate). Shared with the rich-doc panel: owner/creator row
+          is locked (disabled select, no remove); non-owner rows get a reader/commenter/writer
+          select (admin never grantable). */}
       {canManageAuthorGrants && (
-        <div className="octo-member-section">
-          <h4 className="octo-member-subtitle">{t('docs.member.currentMembers')}</h4>
-          {loading && <p className="octo-loading">{t('docs.member.loading')}</p>}
-          {!loading && rows.length === 0 && (
-            <p className="octo-member-empty">{t('docs.member.empty')}</p>
-          )}
-          {rows.map((m) => {
-            const isOwner = m.source === 'owner'
-            // Non-owner rows render their actual granted role label (reader/commenter/writer);
-            // the owner row uses the fixed owner badge and carries the 'author' sentinel role.
-            const roleLabel = m.role !== 'author' ? t(`docs.role.${m.role}`) : ''
-            return (
-              <div className="octo-member-row" key={m.uid}>
-                <span className="octo-uid">
-                  {names.get(m.uid) || m.uid}{' '}
-                  {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
-                  {!isOwner && <small style={{ color: 'var(--octo-muted)' }}> · {roleLabel}</small>}
-                </span>
-                {!isOwner && (
-                  <button
-                    type="button"
-                    className="octo-tb-btn"
-                    onClick={() => onRemove(m.uid)}
-                  >
-                    {t('docs.member.remove')}
-                  </button>
-                )}
-              </div>
-            )
-          })}
-        </div>
+        <CurrentMembersList
+          rows={rows}
+          ownerUid={creatorUid}
+          roles={['reader', 'commenter', 'writer']}
+          displayName={(uid) => names.get(uid) || uid}
+          loading={loading}
+          onChangeRole={onChangeRole}
+          onRemove={onRemove}
+          botUids={botUids}
+          botCreators={botCreators}
+        />
       )}
     </section>
   )

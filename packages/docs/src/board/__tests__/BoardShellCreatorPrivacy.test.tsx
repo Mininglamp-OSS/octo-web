@@ -46,7 +46,13 @@ vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
 const { useMemberNamesMock } = vi.hoisted(() => ({
   useMemberNamesMock: vi.fn(() => new Map<string, string>()),
 }))
-vi.mock('../../members/useMemberNames.ts', () => ({ useMemberNames: useMemberNamesMock }))
+// The empty-directory stub is required because BoardShell renders MemberPanel (`../BoardShell.tsx`),
+// which calls useMemberDirectory; a full-module mock without it would throw the moment the members
+// modal mounts. Empty directory = fail-soft "everyone is a human".
+vi.mock('../../members/useMemberNames.ts', () => ({
+  useMemberNames: useMemberNamesMock,
+  useMemberDirectory: () => ({ names: new Map<string, string>(), botUids: new Set<string>(), botCreators: new Map<string, string>() }),
+}))
 
 // Imported AFTER the mocks so the mocked modules are in place.
 import { BoardShell } from '../BoardShell.tsx'

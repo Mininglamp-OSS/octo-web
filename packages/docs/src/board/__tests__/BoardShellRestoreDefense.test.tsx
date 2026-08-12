@@ -65,7 +65,12 @@ vi.mock('@excalidraw/excalidraw', async () => {
   }
 })
 vi.mock('@excalidraw/excalidraw/index.css', () => ({}))
-vi.mock('../../members/useMemberNames.ts', () => ({ useMemberNames: () => new Map<string, string>() }))
+// Empty-directory stub for useMemberDirectory: BoardShell renders MemberPanel, which calls it.
+// Without this export a full-module mock throws as soon as the members modal mounts.
+vi.mock('../../members/useMemberNames.ts', () => ({
+  useMemberNames: () => new Map<string, string>(),
+  useMemberDirectory: () => ({ names: new Map<string, string>(), botUids: new Set<string>(), botCreators: new Map<string, string>() }),
+}))
 
 // Imported AFTER the mocks so the mocked modules are in place.
 import { BoardShell } from '../BoardShell.tsx'

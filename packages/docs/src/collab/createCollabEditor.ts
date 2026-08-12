@@ -54,6 +54,8 @@ export interface CollabEditorOptions {
 
 export class CollabEditor {
   readonly documentName: string
+  /** Stable doc id used to issue the collab token docId-first (design §7.1); '' falls back to legacy. */
+  private readonly docId: string
   readonly ydoc: Y.Doc
   readonly provider: HocuspocusProvider
   readonly editor: Editor
@@ -76,6 +78,7 @@ export class CollabEditor {
   ) {
     const scope: DocScope = { uid: opts.uid, space: opts.space, folder: opts.folder, doc: opts.doc }
     this.documentName = buildDocumentName(opts.space, opts.folder, opts.doc)
+    this.docId = opts.docId || ''
     this.cacheKeyStr = cacheKey(scope)
 
     // 1) single Y.Doc
@@ -93,7 +96,7 @@ export class CollabEditor {
       url: wsUrl,
       name: this.documentName,
       document: this.ydoc,
-      token: () => getCollabToken(this.documentName),
+      token: () => getCollabToken(this.documentName, this.docId || undefined),
       connect: false,
     })
 
@@ -105,18 +108,18 @@ export class CollabEditor {
 
     // Role controller: runtime stateless role changes (monotonic epoch).
     this.roleController = new RoleController({
-      documentName: this.documentName,
       initialRole,
       initialEpoch,
       onRole: (role) => {
         this.editor.setEditable(canEdit(role))
         opts.onRole?.(role)
       },
+      disposeToken: () => disposeToken(this.documentName, { docId: this.docId || undefined }),
     })
 
     // Close-code state machine: the only auth-recovery source is event.code.
     this.closeMachine = new CloseCodeMachine({
-      disposeToken: () => disposeToken(this.documentName),
+      disposeToken: () => disposeToken(this.documentName, { docId: this.docId || undefined }),
       connect: () => this.provider.connect(),
       disconnect: () => this.provider.disconnect(),
       goLogin: () => opts.onTerminal?.({ kind: 'login' }),
@@ -180,7 +183,7 @@ export class CollabEditor {
    */
   static async create(opts: CollabEditorOptions): Promise<CollabEditor> {
     const documentName = buildDocumentName(opts.space, opts.folder, opts.doc)
-    const entry = await getCollabTokenEntry(documentName)
+    const entry = await getCollabTokenEntry(documentName, opts.docId || undefined)
     // The collab-token response is the single source of truth for the WS origin: the
     // backend-issued `collabWsUrl` is required. resolveCollabWsUrl throws when it is absent, so a
     // misconfigured backend fails loudly here instead of silently connecting to a placeholder.
@@ -238,6 +241,6 @@ export class CollabEditor {
     this.provider.destroy()
     void this.persistence?.destroy()
     this.ydoc.destroy()
-    disposeToken(this.documentName, /* uid implicit current */ undefined)
+    disposeToken(this.documentName, { docId: this.docId || undefined })
   }
 }

@@ -241,16 +241,23 @@ async function getSpaceBots(spaceId: string): Promise<HostSpaceBot[]> {
  * so one request per space backfills those names with no per-uid fanout and no extra permission.
  *
  * Returns `{ uid, name }` pairs (name falls back to the uid so a bot with no display name is never
- * blank). Name backfill is COSMETIC, so a malformed (non-array) 200 degrades to an EMPTY list here
- * and the uid fallback stands — unlike the grant-critical snapshot path, which fails closed. Request
- * failures still reject; callers wrap them so the human-member name path never breaks.
+ * blank), plus `creatorUid` when the endpoint carried one — the member panel nests each bot under
+ * its creator row. Same source/request as before (no extra fetch); the signature/return type are
+ * unchanged (`creatorUid` is an already-existing optional field on SpaceMemberLite). Name backfill
+ * is COSMETIC, so a malformed (non-array) 200 degrades to an EMPTY list here and the uid fallback
+ * stands — unlike the grant-critical snapshot path, which fails closed. Request failures still
+ * reject; callers wrap them so the human-member name path never breaks.
  */
 export async function fetchSpaceBotNames(spaceId: string): Promise<SpaceMemberLite[]> {
   const bots = await getSpaceBots(spaceId).catch((e: unknown) => {
     if (e instanceof MalformedSpaceBotsError) return [] as HostSpaceBot[]
     throw e
   })
-  return bots.map((b) => ({ uid: b.uid, name: b.name || b.uid }))
+  return bots.map((b) => ({
+    uid: b.uid,
+    name: b.name || b.uid,
+    ...(b.creator_uid ? { creatorUid: b.creator_uid } : {}),
+  }))
 }
 
 /**

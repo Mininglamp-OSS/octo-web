@@ -10,9 +10,9 @@ import {
   UserNotFoundError,
   type Member,
 } from './api.ts'
-import { useMemberNames } from './useMemberNames.ts'
+import { useMemberDirectory } from './useMemberNames.ts'
 import { MemberPicker } from './MemberPicker.tsx'
-import { sortMembersForDisplay, withSyntheticOwner } from './sort.ts'
+import { CurrentMembersList } from './CurrentMembersList.tsx'
 import { settleWithConcurrency } from './batchGrant.ts'
 import { InvitePanel } from '../invite/InvitePanel.tsx'
 import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
@@ -68,7 +68,7 @@ export function MemberPanel({
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
-  const names = useMemberNames(space ?? '')
+  const { names, botUids, botCreators } = useMemberDirectory(space ?? '')
   // Screen 4c admin side: prefer the shared instance from EditorShell so the toolbar badge and this
   // panel read/mutate the SAME pending-request state; only fall back to a local hook when rendered
   // standalone (no shared instance passed). The fallback is kept INERT (enabled=false) whenever a
@@ -211,51 +211,18 @@ export function MemberPanel({
         displayName={displayName}
       />
 
-      <div className="octo-member-section">
-        <h4 className="octo-member-subtitle">{t('docs.member.currentMembers')}</h4>
-        {loading && <p className="octo-loading">{t('docs.member.loading')}</p>}
-        {!loading && members.length === 0 && (
-          <p className="octo-member-empty">{t('docs.member.empty')}</p>
-        )}
-        {sortMembersForDisplay(withSyntheticOwner(members, resolvedOwner), resolvedOwner).map((m) => {
-          const isOwner = resolvedOwner != null && m.uid === resolvedOwner
-          const removable = !isOwner && (resolvedOwner ? canRemoveMember(m, resolvedOwner) : true)
-          return (
-            <div className="octo-member-row" key={m.uid}>
-              <span className="octo-uid">
-                {displayName(m.uid)}{' '}
-                {isOwner && <span className="octo-owner-badge">{t('docs.member.ownerBadge')}</span>}
-                {!isOwner && (
-                  <small style={{ color: 'var(--octo-muted)' }}> · {t(`docs.member.source.${m.source}`)}</small>
-                )}
-              </span>
-              <select
-                value={m.role}
-                disabled={isOwner}
-                onChange={(e) => onChangeRole(m.uid, e.target.value as Role)}
-              >
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {t(`docs.role.${r}`)}
-                  </option>
-                ))}
-              </select>
-              {/* The owner row is synthetic (owner lives in doc_meta, not doc_member) — it is not
-                  a removable member grant, so it shows no remove button. */}
-              {!isOwner && (
-                <button
-                  type="button"
-                  className="octo-tb-btn"
-                  disabled={!removable}
-                  onClick={() => onRemove(m.uid)}
-                >
-                  {t('docs.member.remove')}
-                </button>
-              )}
-            </div>
-          )
-        })}
-      </div>
+      <CurrentMembersList
+        rows={members}
+        ownerUid={resolvedOwner}
+        roles={ROLES}
+        displayName={displayName}
+        loading={loading}
+        onChangeRole={onChangeRole}
+        onRemove={onRemove}
+        botUids={botUids}
+        botCreators={botCreators}
+        canRemove={(m) => (resolvedOwner ? canRemoveMember({ ...m, grantedBy: '' } as Member, resolvedOwner) : true)}
+      />
     </section>
   )
 }

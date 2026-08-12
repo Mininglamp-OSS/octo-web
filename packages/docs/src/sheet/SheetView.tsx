@@ -296,14 +296,14 @@ export function SheetView(props: SheetViewProps) {
   // Load the real title so it's editable (docs have an inline DocTitle; the sheet
   // reuses the same rename REST endpoint). Also lift ownerId + createdAt for the ≡ menu head.
   useEffect(() => {
-    getDoc(docId)
+    getDoc(docId, props.space ? { spaceId: props.space } : undefined)
       .then((m) => {
         setTitle(m.title || '')
         if (typeof m.ownerId === 'string' && m.ownerId) setOwnerId(m.ownerId)
         if (typeof m.createdAt === 'string' && m.createdAt) setCreatedAt(m.createdAt)
       })
       .catch(() => {})
-  }, [docId])
+  }, [docId, props.space])
 
   // Resolve the creator's display name for the ≡ menu head: first from the already-loaded
   // space-member map (free), then GET /users/:uid. Resilient — any failure leaves it undefined
@@ -342,7 +342,7 @@ export function SheetView(props: SheetViewProps) {
   const saveTitle = () => {
     if (!manage) return
     const next = title.trim()
-    void updateDocTitle(docId, next || t('docs.state.untitled'))
+    void updateDocTitle(docId, next || t('docs.state.untitled'), space ? { spaceId: space } : undefined)
       .then(() => onTitleSaved?.(docId, next))
       .catch(() => {})
   }
@@ -350,7 +350,7 @@ export function SheetView(props: SheetViewProps) {
   // Delete the sheet (soft delete, owner/admin) — reuses the docs delete hook + shared centered
   // ConfirmModal, so a sheet delete and a document delete pop the SAME dialog in the middle of the
   // screen (replacing the old native window.confirm). deleteDoc works for a sheet doc unchanged.
-  const del = useDocDelete(docId, onDeleted)
+  const del = useDocDelete(docId, onDeleted, space ? { spaceId: space } : undefined)
 
   useEffect(() => {
     const el = containerRef.current

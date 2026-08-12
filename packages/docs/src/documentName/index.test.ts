@@ -44,8 +44,21 @@ describe('parseDocumentName — 5-segment whiteboard key (non-symmetric)', () =>
     expect(parsed).toEqual({ kind: 'whiteboard', space: 's_001', folder: 'f_888', board: 'board_7' })
   })
 
-  it('a 5-segment key whose 4th part is NOT "wb" is invalid (not a doc, not a wb)', () => {
+  it('rejects an unknown 5-segment key type', () => {
     expect(() => parseDocumentName('octo:s:f:x:y')).toThrow()
+  })
+})
+
+describe('parseDocumentName — standalone typed keys', () => {
+  it.each([
+    ['octo:s_001:f_888:html:d_html', 'html'],
+    ['octo:s_001:f_888:ppt:d_ppt', 'ppt'],
+  ] as const)('parses %s as %s rather than an ordinary document', (name, kind) => {
+    expect(parseDocumentName(name)).toEqual({ kind, space: 's_001', folder: 'f_888', doc: name.split(':')[4] })
+  })
+
+  it.each(['octo:s:f:html:d:extra', 'octo:s:f:unknown:d'])('rejects malformed typed key %s', (name) => {
+    expect(() => parseDocumentName(name)).toThrow()
   })
 })
 

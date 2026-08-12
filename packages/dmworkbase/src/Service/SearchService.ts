@@ -471,8 +471,8 @@ const SearchService = {
   //      positive-millis-in-plausible-range-or-null so a stray seconds value or
   //      garbage can't render as an Invalid Date.
   //   4. `spaceId` — returned on every item; search is single-space scoped
-  //      (OS term space_id, injected by the gateway, never from the body). We
-  //      pass it through unchanged for buildDocLink's `?sp=`.
+  //      (OS term space_id, injected by the gateway, never from the body).
+  //      Retained as result metadata; ordinary document links no longer serialize it.
   async searchDocs(query: DocSearchQuery): Promise<DocSearchResponse> {
     const body: Record<string, unknown> = {
       q: query.keyword,

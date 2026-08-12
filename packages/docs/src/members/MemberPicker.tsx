@@ -106,6 +106,15 @@ export function MemberPicker({
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [selectedBots, setSelectedBots] = useState<Set<string>>(new Set())
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // uids the user EXPLICITLY collapsed under the current query. A query-hit auto-expands a
+  // creator's Bot list (convenience), but the user must be able to collapse it and have it stay
+  // collapsed — this override wins over both `expanded` and the query hit. It is scoped to the
+  // current search term: changing `query` clears it so a new term restores "hit ⇒ default open".
+  // Semantics (intentional): collapsing ALSO drops the uid from `expanded` (see the expander
+  // onClick) so the last EXPLICIT user action wins. Keeping it in `expanded` instead would let a
+  // later query (even one not hitting this Bot) clear the override and re-open a list the user
+  // closed ("ghost expand"); collapse must stay collapse until the user reopens it.
+  const [collapsedByUser, setCollapsedByUser] = useState<Set<string>>(new Set())
   // Default to 'writer' when offered (keeps rich-doc's prior initial), else the sole/first role
   // so a single-role dropdown ('reader' for HTML) is selected without an empty state.
   const [role, setRole] = useState<Role>(
@@ -127,6 +136,12 @@ export function MemberPicker({
       return effectiveRoles.includes('writer') ? 'writer' : effectiveRoles[0]
     })
   }, [roles, defaultRole])
+
+  // A new search term drops every manual-collapse override so the fresh term recovers the
+  // "query hits a Bot ⇒ its list defaults open" convenience (behaviour #3).
+  useEffect(() => {
+    setCollapsedByUser((prev) => (prev.size === 0 ? prev : new Set()))
+  }, [query])
 
   useEffect(() => {
     let active = true
@@ -396,7 +411,11 @@ export function MemberPicker({
           const queryHitsBot =
             !!q && bots.some((b) => b.name.toLowerCase().includes(q) || b.uid.toLowerCase().includes(q))
           const showBots = bots.length > 0
-          const isExpanded = expanded.has(m.uid) || queryHitsBot
+          // A user's explicit collapse (scoped to this query) wins over both the click-expand set
+          // and the query auto-expand; otherwise a click-expand or a query hit opens the list.
+          const isExpanded = collapsedByUser.has(m.uid)
+            ? false
+            : expanded.has(m.uid) || queryHitsBot
           return (
             <div key={m.uid} className="octo-member-picker-group" role="presentation">
             <button
@@ -446,7 +465,19 @@ export function MemberPicker({
                 {/* Expander is its own control: clicking it toggles the Bot list, never the human
                     row's selection (UX #3). Chevron is decorative; state is on aria-expanded. */}
                 <button type="button" className="octo-member-picker-expand" aria-expanded={isExpanded}
-                  onClick={() => setExpanded((prev) => { const next = new Set(prev); if (next.has(m.uid)) next.delete(m.uid); else next.add(m.uid); return next })}>
+                  onClick={() => {
+                    // Toggle from the ACTUAL rendered state (isExpanded), not just `expanded`, so a
+                    // query-auto-expanded list collapses on the first click. Keep both sets coherent:
+                    // collapsing records the override + clears the click-expand; expanding clears the
+                    // override + records the click-expand.
+                    if (isExpanded) {
+                      setCollapsedByUser((prev) => { const next = new Set(prev); next.add(m.uid); return next })
+                      setExpanded((prev) => { if (!prev.has(m.uid)) return prev; const next = new Set(prev); next.delete(m.uid); return next })
+                    } else {
+                      setCollapsedByUser((prev) => { if (!prev.has(m.uid)) return prev; const next = new Set(prev); next.delete(m.uid); return next })
+                      setExpanded((prev) => { const next = new Set(prev); next.add(m.uid); return next })
+                    }
+                  }}>
                   <span className="octo-member-picker-chevron" aria-hidden="true" />
                   {t(isExpanded ? 'docs.member.hideBots' : 'docs.member.showBots', { values: { count: bots.length } })}
                 </button>

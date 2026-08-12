@@ -82,7 +82,13 @@ export async function requestOidcLogout(
   if (resp.status === 204) return {};
   const text = await resp.text();
   if (!text) return {};
-  return JSON.parse(text) as OidcLogoutResponse;
+  try {
+    return JSON.parse(text) as OidcLogoutResponse;
+  } catch {
+    // A successful logout may return an empty or text body. The optional
+    // response payload must not turn that into a local-login failure.
+    return {};
+  }
 }
 
 export function markOidcPostLogoutCleanup(): boolean {

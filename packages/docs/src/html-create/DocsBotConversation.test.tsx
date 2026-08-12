@@ -74,10 +74,26 @@ describe('DocsBotConversation', () => {
     expect(screen.getByTestId('conv-files').textContent).toBe('1')
     const text = screen.getByTestId('conv-text').textContent || ''
     expect(text).toContain('[Octo HTML 创建任务]')
-    expect(text).not.toContain('request_id:')
+    expect(text.split(/\r\n|[\r\n\u2028\u2029\u0085\u000B\u000C]/).filter((line) => line.startsWith('request_id: ')))
+      .toEqual(['request_id: req-abc'])
     expect(text).toContain('publish_base_url: https://octo.example/api/')
     // No token anywhere in the auto-sent text.
     expect(text.toLowerCase()).not.toContain('authorization')
+  })
+
+  it('marks the request consumed at compose handoff before any send ACK', () => {
+    const onInitialComposeHandoff = vi.fn()
+    const onMessageSent = vi.fn()
+    render(
+      <DocsBotConversation
+        draft={draft()}
+        onClose={() => {}}
+        onInitialComposeHandoff={onInitialComposeHandoff}
+        onMessageSent={onMessageSent}
+      />,
+    )
+    expect(onInitialComposeHandoff).toHaveBeenCalledTimes(1)
+    expect(onMessageSent).not.toHaveBeenCalled()
   })
 
   it('omits initialCompose entirely after the request has fired', () => {

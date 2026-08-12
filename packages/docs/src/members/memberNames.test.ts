@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setWKApp } from '../octoweb/index.ts'
 import { createMockWKApp } from '../octoweb/mock.ts'
-import { getSpaceMemberNames, clearMemberNameCache } from './memberNames.ts'
+import { getSpaceMemberNames, getSpaceMemberDirectory, clearMemberNameCache } from './memberNames.ts'
 
 describe('getSpaceMemberNames — uid → display name resolution', () => {
   let wk: ReturnType<typeof createMockWKApp>
@@ -95,5 +95,163 @@ describe('getSpaceMemberNames — bot name backfill via /robot/space_bots (#60)'
     respondBots({ unexpected: true })
     const map = await getSpaceMemberNames('s_1')
     expect(map.get('u1')).toBe('Alice')
+  })
+})
+
+describe('getSpaceMemberDirectory — bot uid set (PR C need #3)', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    clearMemberNameCache()
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  function respondBots(bots: unknown, opts: { fail?: boolean } = {}): void {
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) {
+        if (opts.fail) return Promise.reject(new Error('space_bots down'))
+        return { data: bots, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+  }
+
+  it('marks space-member entries flagged isBot as bots, humans stay out of the set', async () => {
+    wk.spaceMembers.push(
+      { uid: 'u_human', name: 'Alice' },
+      { uid: 'u_bot', name: 'Helper', isBot: true },
+    )
+    respondBots([])
+    const dir = await getSpaceMemberDirectory('s_1')
+    expect(dir.botUids.has('u_bot')).toBe(true)
+    expect(dir.botUids.has('u_human')).toBe(false)
+  })
+
+  it('adds every /robot/space_bots uid to the bot set (that endpoint returns bots only)', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Alice' })
+    respondBots([{ uid: 'bot1', name: 'Bot One' }])
+    const dir = await getSpaceMemberDirectory('s_1')
+    expect(dir.botUids.has('bot1')).toBe(true)
+    expect(dir.botUids.has('u_human')).toBe(false)
+    // Names still resolve for both.
+    expect(dir.names.get('bot1')).toBe('Bot One')
+    expect(dir.names.get('u_human')).toBe('Alice')
+  })
+
+  it('fail-soft: an empty space yields an empty bot set (unknown ⇒ human)', async () => {
+    const dir = await getSpaceMemberDirectory('')
+    expect(dir.botUids.size).toBe(0)
+    expect(dir.names.size).toBe(0)
+  })
+
+  it('fail-soft: a missing isBot flag is treated as human, never as a bot', async () => {
+    // No isBot on the member and no space_bots rows → nothing is classified as a bot.
+    wk.spaceMembers.push({ uid: 'u_maybe', name: 'Maybe' })
+    respondBots([])
+    const dir = await getSpaceMemberDirectory('s_1')
+    expect(dir.botUids.size).toBe(0)
+  })
+
+  it('getSpaceMemberNames stays identity-stable (single fetch) alongside the directory', async () => {
+    wk.spaceMembers.push({ uid: 'u1', name: 'Alice' })
+    const first = getSpaceMemberNames('s_1')
+    const second = getSpaceMemberNames('s_1')
+    expect(first).toBe(second)
+    await first
+  })
+})
+
+describe('getSpaceMemberDirectory — botCreators from /robot/space_bots creator_uid (PR C nesting)', () => {
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    clearMemberNameCache()
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  function respondBots(bots: unknown): void {
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) return { data: bots, status: 200 }
+      return { data: {}, status: 200 }
+    }
+  }
+
+  it('maps botUid → creatorUid straight from the endpoint creator_uid', async () => {
+    respondBots([
+      { uid: 'bot1', name: 'Bot One', creator_uid: 'u_human' },
+      { uid: 'bot2', name: 'Bot Two', creator_uid: 'u_owner' },
+    ])
+    const dir = await getSpaceMemberDirectory('s_1')
+    expect(dir.botCreators.get('bot1')).toBe('u_human')
+    expect(dir.botCreators.get('bot2')).toBe('u_owner')
+    // Both bots are still in the bot set + name map (no behavior lost).
+    expect(dir.botUids.has('bot1')).toBe(true)
+    expect(dir.names.get('bot1')).toBe('Bot One')
+  })
+
+  it('leaves a bot with NO creator_uid out of botCreators (still a bot, just ownerless)', async () => {
+    respondBots([{ uid: 'bot1', name: 'Bot One' }])
+    const dir = await getSpaceMemberDirectory('s_1')
+    expect(dir.botCreators.has('bot1')).toBe(false)
+    // It is still classified as a bot (space_bots endpoint returns bots only).
+    expect(dir.botUids.has('bot1')).toBe(true)
+  })
+
+  it('fail-soft: blank space / empty directory yields an empty botCreators map', async () => {
+    const dir = await getSpaceMemberDirectory('')
+    expect(dir.botCreators.size).toBe(0)
+  })
+})
+
+describe('useMemberDirectory — space switch returns EMPTY_DIRECTORY until new space resolves (B2)', () => {
+  // B2: when spaceId changes, useMemberDirectory must NOT return the old space's directory;
+  // it must return EMPTY_DIRECTORY (fail-soft: everyone is a human) until the new space resolves.
+  // This prevents a real person in space B from being misclassified as a bot (and hidden) because
+  // space A's botUids contained that uid.
+  //
+  // Testing hooks in isolation is tricky; we use a minimal component + renderHook from @testing-library/react.
+  let wk: ReturnType<typeof createMockWKApp>
+
+  beforeEach(() => {
+    clearMemberNameCache()
+    wk = createMockWKApp()
+    setWKApp(wk)
+  })
+
+  it('returns empty directory immediately after spaceId changes (before new space resolves)', async () => {
+    // Import the hook dynamically to avoid hoisting issues.
+    const { useMemberDirectory } = await import('./useMemberNames.ts')
+    const { renderHook, waitFor } = await import('@testing-library/react')
+
+    // Space A has a bot.
+    wk.spaceMembers.push({ uid: 'u_bot_a', name: 'Bot A', isBot: true })
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) return { data: [{ uid: 'u_bot_a', name: 'Bot A' }], status: 200 }
+      return { data: {}, status: 200 }
+    }
+
+    const { result, rerender } = renderHook(({ space }) => useMemberDirectory(space), {
+      initialProps: { space: 's_a' },
+    })
+
+    // Wait for space A's directory to resolve.
+    await waitFor(() => expect(result.current.botUids.has('u_bot_a')).toBe(true))
+
+    // Now switch to space B. Before B resolves, the hook should return EMPTY_DIRECTORY.
+    clearMemberNameCache() // Clear so B is a fresh fetch.
+    wk.spaceMembers.length = 0 // B has no bots.
+    wk.apiClient.responder = (_method, url) => {
+      if (url.startsWith('/robot/space_bots')) return { data: [], status: 200 }
+      return { data: {}, status: 200 }
+    }
+
+    rerender({ space: 's_b' })
+
+    // IMMEDIATELY after rerender (before the async fetch completes), the directory should be EMPTY.
+    // This is the critical assertion: we must NOT still have u_bot_a in botUids.
+    expect(result.current.botUids.has('u_bot_a')).toBe(false)
+    expect(result.current.botUids.size).toBe(0)
   })
 })

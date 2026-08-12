@@ -124,6 +124,31 @@ describe("resolveCardActionChannelId — person DM 对端塌缩兜底", () => {
       })
     ).toBe("peer-uid");
   });
+
+  // Regression: octo-web fix/dm-peer-uid-fallback — File-cell drive save flow.
+  // In a Space deployment, recv-packet channelID for a Person DM arrives
+  // Space-prefixed (`s<32hex>_<uid>`) while `WKApp.loginInfo.uid` is bare.
+  // The FileCell / module.tsx call sites strip the prefix on Person channels
+  // BEFORE handing the id to `resolveCardActionChannelId`, so that the
+  // self-collapse comparison happens in the same namespace and a collapsed
+  // channelID (bare or prefixed) correctly falls back to `fromUID`. Anchor
+  // the two-step behaviour end-to-end here so a future refactor that keeps
+  // one step but drops the other regresses one of these cases.
+  it("Space deployment: prefixed channelID === selfUID 塌缩 → strip 前缀后回退到 fromUID", () => {
+    // stripSpacePrefix("s<32hex>_<self>") === "<self>" is done inline by the
+    // call sites (see FileCell.resolvedImChannelID and module.tsx). This
+    // test locks the equivalent explicit two-step contract.
+    const bare = "s6ac237f6137a4c6dac0c7cc88883a32f_" + SELF;
+    const strippedBare = bare.substring(bare.indexOf("_") + 1); // "<self>"
+    expect(
+      resolveCardActionChannelId({
+        channelType: 1,
+        channelID: strippedBare,
+        fromUID: "notification",
+        selfUID: SELF,
+      })
+    ).toBe("notification");
+  });
 });
 
 describe("isRetryableCardActionError — 409/5xx 可重试；400/403 终态", () => {

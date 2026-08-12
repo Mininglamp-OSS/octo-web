@@ -196,14 +196,17 @@ describe('tryConsumeInitialCompose', () => {
     expect(res.state).toBe('prepared')
   })
 
-  it('reports failed (but stays consumed) when send throws', async () => {
+  it('reports failed and stays consumed when send throws because delivery may have started', async () => {
     const host = makeHost({ sendThrows: true })
     const consumed = new Set<string>()
     const res = await tryConsumeInitialCompose(compose(), host, consumed)
     expect(res.state).toBe('failed')
     expect(res.reason).toBe('send-failed')
-    // Still consumed — a failed send must not auto-retry on the next render (user retries manually).
     expect(consumed.has('req-1')).toBe(true)
+    const retry = makeHost({ sendResult: true })
+    const recovered = await tryConsumeInitialCompose(compose(), retry, consumed)
+    expect(recovered.consumed).toBe(false)
+    expect(retry.send).not.toHaveBeenCalled()
   })
 
   // P1 fix: host.send returning a falsy outcome (draft preserved = send rejected) must be
@@ -222,9 +225,20 @@ describe('tryConsumeInitialCompose', () => {
 
   it('reports failed when send resolves { editorConsumed: false }', async () => {
     const host = makeHost({ sendResult: { editorConsumed: false } })
-    const res = await tryConsumeInitialCompose(compose(), host, new Set())
+    const consumed = new Set<string>()
+    const res = await tryConsumeInitialCompose(compose(), host, consumed)
     expect(res.state).toBe('failed')
     expect(res.reason).toBe('send-rejected')
+    // MessageInput preserved the composer; retry is deliberately manual, never navigation-driven.
+    expect(consumed.has('req-1')).toBe(true)
+  })
+
+  it('never re-arms a successful send', async () => {
+    const consumed = new Set<string>()
+    const host = makeHost({ sendResult: true })
+    await tryConsumeInitialCompose(compose(), host, consumed)
+    await tryConsumeInitialCompose(compose(), host, consumed)
+    expect(host.send).toHaveBeenCalledTimes(1)
   })
 
   it('reports sent when send resolves true', async () => {

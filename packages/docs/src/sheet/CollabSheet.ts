@@ -176,6 +176,8 @@ export interface CollabSheetOptions {
 
 export class CollabSheet {
   readonly documentName: string
+  /** Stable doc id used to issue the collab token docId-first (design §7.1); '' falls back to legacy. */
+  private readonly docId: string
   readonly ydoc: Y.Doc
   readonly provider: HocuspocusProvider
   readonly persistence: IndexeddbPersistence | null
@@ -233,6 +235,7 @@ export class CollabSheet {
   private constructor(opts: CollabSheetOptions, initialRole: Role, initialEpoch: number, wsUrl: string) {
     const scope: DocScope = { uid: opts.uid, space: opts.space, folder: opts.folder, doc: opts.doc }
     this.documentName = buildDocumentName(opts.space, opts.folder, opts.doc)
+    this.docId = opts.docId || ''
     this.cacheKeyStr = cacheKey(scope)
     this.currentRole = initialRole
 
@@ -249,7 +252,7 @@ export class CollabSheet {
       url: wsUrl,
       name: this.documentName,
       document: this.ydoc,
-      token: () => getCollabToken(this.documentName),
+      token: () => getCollabToken(this.documentName, this.docId || undefined),
       connect: false,
     })
 
@@ -826,7 +829,6 @@ export class CollabSheet {
     )
     // Role controller: runtime stateless role changes (monotonic epoch).
     this.roleController = new RoleController({
-      documentName: this.documentName,
       initialRole,
       initialEpoch,
       onRole: (role) => {
@@ -837,11 +839,12 @@ export class CollabSheet {
         this.setUniverEditable(canEdit(role))
         opts.onRole?.(role)
       },
+      disposeToken: () => disposeToken(this.documentName, { docId: this.docId || undefined }),
     })
 
     // Close-code state machine: the only auth-recovery source is event.code.
     this.closeMachine = new CloseCodeMachine({
-      disposeToken: () => disposeToken(this.documentName),
+      disposeToken: () => disposeToken(this.documentName, { docId: this.docId || undefined }),
       connect: () => this.provider.connect(),
       disconnect: () => this.provider.disconnect(),
       goLogin: () => opts.onTerminal?.({ kind: 'login' }),
@@ -893,7 +896,7 @@ export class CollabSheet {
   /** Identity-first construction (§6.1): confirm identity + role BEFORE wiring network. */
   static async create(opts: CollabSheetOptions): Promise<CollabSheet> {
     const documentName = buildDocumentName(opts.space, opts.folder, opts.doc)
-    const entry = await getCollabTokenEntry(documentName)
+    const entry = await getCollabTokenEntry(documentName, opts.docId || undefined)
     const wsUrl = resolveCollabWsUrl(entry.collabWsUrl)
     return new CollabSheet(opts, entry.role, entry.permission_epoch, wsUrl)
   }
@@ -1574,6 +1577,6 @@ export class CollabSheet {
     this.provider.destroy()
     void this.persistence?.destroy()
     this.ydoc.destroy()
-    disposeToken(this.documentName)
+    disposeToken(this.documentName, { docId: this.docId || undefined })
   }
 }

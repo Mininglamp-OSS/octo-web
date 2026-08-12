@@ -3,16 +3,16 @@
 // P1-1 (round-5): `resolveDeckSpace()` (PptSurfacePage.tsx) reads a deep-link's dedicated `?sp=`
 // carrier FIRST so a cross-space cold open resolves the deck's REAL space before the app shell has
 // restored `currentSpaceId`. That read is only useful if something on the FE actually PRODUCES a PPT
-// link carrying `?sp=` — and until this module, nothing did: `buildDocLink` mints `/d/:docId?sp=` for
-// the STANDALONE rich-text route (a different route), the peer editor link arrives from the backend
+// link carrying `?sp=` — and until this module, nothing did: ordinary `buildDocLink` deliberately
+// mints `/d/:docId` without Space, while the peer editor link arrives from the backend
 // `editorUrl` verbatim, and the present route had no minting site at all. So a cross-space share fell
 // through to the recipient's last-visited space and 404'd on the backend cross-space guard.
 //
 // `withDeckSpace` is the PPT-route analogue of `buildDocLink`: it stamps the deck's owning space onto
 // the `?sp=` carrier the PPT routes read, so a link the FE produces resolves the right `X-Space-Id` on
 // a cross-space cold open. It is pure (only rewrites the query string) so it is unit-testable and
-// reusable from any producer. It mints the SAME `?sp=` param the standalone route uses (docs-backend
-// space_id), never the octo `?sid` token-bucket key.
+// reusable from any producer. It mints the PPT route's dedicated `?sp=` carrier (docs-backend
+// space_id), never the octo `?sid` token-bucket key or an ordinary-document locator.
 //
 // SCOPE (round-6, XIN-1630 — honesty): the ONLY wired producer today is the create flow, which stamps
 // the deck's space onto the backend-forwarded editor link (`/ppt/d/:docId?sp=`) via `withDeckSpace`

@@ -70,7 +70,7 @@ vi.mock('../comments/useCommentHighlights.ts', () => ({ useCommentHighlights: ()
 const { useMemberNamesMock } = vi.hoisted(() => ({
   useMemberNamesMock: vi.fn(() => new Map<string, string>()),
 }))
-vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: useMemberNamesMock }))
+vi.mock('../members/useMemberNames.ts', () => ({ useMemberNames: useMemberNamesMock, useMemberDirectory: () => ({ names: new Map<string, string>(), botUids: new Set<string>() }) }))
 vi.mock('./useDocDelete.ts', () => ({
   useDocDelete: () => ({
     confirming: false,
@@ -156,7 +156,7 @@ describe('EditorShell — export filename uses the live title, not the stale pro
     fireEvent.click(screen.getByText('docs.toolbar.export'))
     fireEvent.click(screen.getByText('docs.toolbar.exportMarkdown'))
 
-    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md'))
+    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md', { spaceId: 's_1' }))
     await waitFor(() => expect(createdAnchors.length).toBeGreaterThan(0))
     const a = createdAnchors[createdAnchors.length - 1]
     expect(a.download).toBe('Live Title.md')
@@ -185,7 +185,7 @@ describe('EditorShell — export filename uses the live title, not the stale pro
 
     fakeProvider.hasUnsyncedChanges = false
     fakeProvider.emit('unsyncedChanges', 0)
-    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md'))
+    await waitFor(() => expect(exportSpy).toHaveBeenCalledWith('d_1', 'md', { spaceId: 's_1' }))
   })
 })
 

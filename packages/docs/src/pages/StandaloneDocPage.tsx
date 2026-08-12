@@ -10,7 +10,7 @@ import { DocTerminal, type TerminalKind } from '../editor/DocTerminal.tsx'
 import { RequestAccessButton } from '../access-request/RequestAccessButton.tsx'
 import { LinkIcon, type DocMoreMenuItem } from '../editor/DocMoreMenu.tsx'
 import { terminalForCreateError } from '../collab/useCollabEditor.ts'
-import { getDoc, recordDocView, type DocMeta } from './docsApi.ts'
+import { getOpenContext, recordDocView, type DocRequestContext } from './docsApi.ts'
 import { parseDocumentName } from '../documentName/index.ts'
 import { DEFAULT_DOC_SPACE, DEFAULT_DOC_FOLDER } from '../config.ts'
 import { useMemberNames } from '../members/useMemberNames.ts'
@@ -62,11 +62,42 @@ export function persistStandaloneReturn(): void {
   try {
     window.sessionStorage.setItem(
       STANDALONE_RETURN_KEY,
-      window.location.pathname + window.location.search,
+      window.location.pathname + window.location.search + window.location.hash,
     )
   } catch {
     // sessionStorage unavailable (private mode / disabled): the deep-link still works on a fresh
     // open; we just can't auto-return after login.
+  }
+}
+
+/**
+ * Old-link compatibility cleanup (octo-web #1317). A legacy link is
+ * `/d/:docId?sp=:spaceId`; the new reader locates the doc by `docId` alone and IGNORES `sp` as an
+ * authoritative input, so once the doc has opened successfully we strip ONLY the
+ * `sp` param from the address bar and PRESERVE everything else — `sid`, the login-return params,
+ * any other query, and the hash — each of which has its own lifecycle and must not be swept away by
+ * this step. Uses history.replaceState so the cleanup does not create a back-stack
+ * entry. No-op when there is no `sp` (the common new-link case) or under SSR / a malformed URL.
+ */
+export function stripSpFromUrl(): void {
+  if (typeof window === 'undefined') return
+  try {
+    const { pathname, search, hash } = window.location
+    if (!search) return
+    const parts = search.slice(1).split('&')
+    const kept = parts.filter((part) => {
+      const rawKey = part.slice(0, part.indexOf('=') < 0 ? undefined : part.indexOf('='))
+      try {
+        return decodeURIComponent(rawKey.replace(/\+/g, ' ')) !== 'sp'
+      } catch {
+        return rawKey !== 'sp'
+      }
+    })
+    if (kept.length === parts.length) return
+    window.history.replaceState(null, '', pathname + (kept.length ? `?${kept.join('&')}` : '') + hash)
+  } catch {
+    // Malformed location / history unavailable: leave the address bar as-is (harmless — `sp` is
+    // ignored for resolution regardless of whether it lingers in the URL).
   }
 }
 
@@ -217,7 +248,7 @@ export function withReturnSid(target: string, sid: string | null | undefined): s
     const url = new URL(target, window.location.origin)
     if (url.searchParams.has('sid')) return target
     url.searchParams.set('sid', sid)
-    const rebuilt = url.pathname + url.search
+    const rebuilt = url.pathname + url.search + url.hash
     return isSafeReturnPath(rebuilt) ? rebuilt : target
   } catch {
     return target
@@ -249,43 +280,18 @@ function LockIcon(): ReactElement {
 }
 
 /**
- * Resolve the fallback space for the standalone editor when the preflight carries no
- * documentName to address from.
- *
- * The standalone page mounts via the host Layout's EARLY RETURN — before the app-shell logic that
- * restores `currentSpaceId` from localStorage runs (Layout's Provider branch / Main's space
- * bootstrap are both skipped). So on a cold-start cross-space deep link, `wk.shared.currentSpaceId`
- * is still empty and falling straight to DEFAULT_DOC_SPACE would mount the EditorShell against the
- * wrong room (`octo:<DEFAULT_DOC_SPACE>:f_default:docId`) → not-found / wrong document. Read the
- * cached `currentSpaceId` localStorage key (the same key the shell persists) as the middle
- * fallback so the shared link addresses the user's real last space, not the deploy default.
- */
-export function standaloneFallbackSpace(currentSpaceId: string | undefined): string {
-  if (currentSpaceId) return currentSpaceId
-  if (typeof window !== 'undefined') {
-    try {
-      const cached = window.localStorage.getItem('currentSpaceId')
-      if (cached) return cached
-    } catch {
-      // localStorage unavailable (private mode / disabled): fall back to the deploy default below.
-    }
-  }
-  return DEFAULT_DOC_SPACE
-}
-
-/**
  * The VIEWER's real current space, resolved from a genuine viewer signal ONLY: the live
  * `currentSpaceId`, else the cached `currentSpaceId` localStorage key the shell persists. Returns
- * '' when neither exists — deliberately WITHOUT standaloneFallbackSpace's DEFAULT_DOC_SPACE tail.
+ * '' when neither exists — deliberately WITHOUT a DEFAULT_DOC_SPACE tail.
  *
  * This is the space recordDocView writes the "最近查看" ingest into (XIN-1237 write/read contract):
  * the backend writes and reads the recent list by X-Space-Id = the viewer's current space, so the
- * view MUST be recorded under the viewer's space, NOT the doc's link space (`?sp=`). Where the doc
- * space is used (preflight/room addressing) the deploy default is a safe last resort, but for the
- * view record it is NOT: recording into DEFAULT_DOC_SPACE when we cannot confirm the viewer is
- * actually there would (a) write the view into a space the viewer isn't in — breaking the
- * per-space isolation the recent list relies on — and (b) still never surface in the viewer's own
- * recent list. So when there is no real viewer signal we return '' and the caller omits the
+ * view MUST be recorded under the viewer's OWN space. Phase-1 remove-`sp` (design §5.2) no longer
+ * seeds the doc's home space into the global `currentSpaceId`, so the viewer signal here stays the
+ * shell's own throughout the page's life. Recording into DEFAULT_DOC_SPACE when we cannot confirm
+ * the viewer is actually there would (a) write the view into a space the viewer isn't in — breaking
+ * the per-space isolation the recent list relies on — and (b) still never surface in the viewer's
+ * own recent list. So when there is no real viewer signal we return '' and the caller omits the
  * explicit header, letting the global interceptor decide (exactly as the in-shell entry does),
  * rather than forcing a wrong space.
  */
@@ -303,44 +309,46 @@ export function viewerCurrentSpace(currentSpaceId: string | undefined): string {
 }
 
 /**
- * The doc's OWN space, as carried by the standalone share link's dedicated `?sp=` query param.
+ * The document title a 403 disclosed, or undefined. Read ONLY from a 403: the open-context preflight
+ * carries `title` there and on no other status. A 404 must never yield one — that is the response
+ * that hides a doc's existence, so reading a name off it would defeat the point.
  *
- * buildDocLink (forward/link.ts) embeds the shared document's REAL space id as `?sp=` — the space
- * the doc actually lives in (doc_meta.space_id, a 32-hex docs-backend id), known to the sharer at
- * forward time (the in-shell EditorShell space prop = the live currentSpaceId). It is the
- * AUTHORITATIVE space for the standalone preflight, ahead of the recipient's own live/cached
- * currentSpaceId (which, for a cross-space share, is a DIFFERENT space).
+ * Note what the disclosure does and does not rest on. open-context locates by `docId` alone and has
+ * NO same-space gate, so a 403 can reach a caller from any Space or none: the title goes to whoever
+ * holds the docId and already learned the doc exists from getting 403 rather than 404. That is the
+ * product decision (leader) this page implements — the chat share card already shows the same title
+ * to the same link holder.
  *
- * Why a DEDICATED `?sp` and NOT the link's `?sid` (XIN-501, boss real-device evidence): `?sid` is
- * the token-bucket key (`token<sid>`, #511 problem 2) — a short octo session/space id (e.g.
- * `2b60d3`), which is NOT the docs backend space_id (e.g. `105d4a60d0fc4d55a5cfc3c2d0501361`).
- * XIN-497 fed `?sid` in as X-Space-Id; the backend gates GET /docs/:docId behind requireDocRole,
- * which checks the CROSS-SPACE guard (`meta.space_id !== req.spaceId` → 404 not_found) BEFORE the
- * role guard (role `none` → 403 forbidden). Because the sid never equals the doc's space_id, that
- * preflight returned 404 for EVERY recipient — including the owner opening their OWN doc (the boss
- * regression) — and never reached the intended 403 forbidden + request-access landing. Addressing
- * the preflight from the doc's real space (`?sp`) lets the backend evaluate the caller's role in the
- * doc's space: 200 for a member/owner, 403 for a no-permission caller (→ request-access), 404 only
- * when the doc is genuinely gone. The `token<sid>` logic is untouched — `?sid` still keys the token.
+ * Deliberately strict, because an error body is untrusted input: anything that is not a non-empty
+ * string after trimming yields undefined, so the caller renders the page exactly as it did before
+ * rather than showing "undefined" or an empty heading. Not truncated here — the full string is kept
+ * so the element's `title` tooltip can show all of it, and display is bounded by CSS
+ * (`-webkit-line-clamp: 2` on `.octo-standalone-forbidden-doc`) instead.
  *
- * Returns '' when the link carries no `?sp=` (older links minted before XIN-501, or under SSR);
- * callers then fall back to standaloneFallbackSpace (live currentSpaceId → cached → deploy default),
- * which still addresses the doc correctly whenever the opener is already in the doc's space (the
- * owner opening their own doc, or a same-space recipient).
+ * Exported for its own unit test. The status gate cannot be observed through the rendered page — a
+ * 404 renders DocTerminal, which never reads this value — so a page-level test of "a 404 shows no
+ * name" passes with the gate removed and pins nothing. Testing the function directly is the only way
+ * to hold it.
  */
-export function standaloneLinkSpace(): string {
-  if (typeof window === 'undefined') return ''
-  try {
-    return (new URLSearchParams(window.location.search).get('sp') || '').trim()
-  } catch {
-    return ''
-  }
+export function forbiddenTitleFrom(err: unknown): string | undefined {
+  const response = (err as { response?: { status?: number; data?: unknown } } | undefined)?.response
+  if (response?.status !== 403) return undefined
+  const raw = (response.data as { title?: unknown } | undefined)?.title
+  if (typeof raw !== 'string') return undefined
+  return raw.trim() || undefined
 }
 
 type Phase =
   | { status: 'loading' }
-  | { status: 'ready'; meta: DocMeta }
-  | { status: 'terminal'; kind: TerminalKind }
+  | { status: 'ready'; ctx: DocRequestContext }
+  /**
+   * `title` is only ever set for `kind: 'forbidden'`, read from the 403 body of the open-context
+   * preflight — the backend discloses it there so this page can name the document the viewer is
+   * being asked to request access to. Optional on purpose: a backend that predates that disclosure,
+   * or a doc whose stored title is blank, omits the field, and the page must then render exactly as
+   * it did before rather than substituting a placeholder.
+   */
+  | { status: 'terminal'; kind: TerminalKind; title?: string }
 
 /**
  * Standalone document page (octo-web #512) — the full-window view a shared `/d/:docId` link opens,
@@ -359,13 +367,18 @@ type Phase =
  * menu-external toast rendered by this page instead (reusing the docs package's document-external
  * transient-toast convention, the same fixed overlay style as the image upload status/error toasts).
  *
- * A GET /api/v1/docs/{docId} preflight runs BEFORE the collaborative editor mounts. This is the
- * single deterministic gate for every boundary state, and it needs no WebSocket:
- *   - 200          -> mount the editor.
+ * A GET /api/v1/docs/{docId}/open-context preflight runs BEFORE the collaborative editor mounts
+ * (Phase-1 remove-`sp` design §4/§5.1). It is the single deterministic gate for every boundary
+ * state, needs no WebSocket, and — crucially — locates the doc by `docId` ALONE: no `?sp`, no
+ * `X-Space-Id`, no client-supplied Space. It returns the canonical DocRequestContext (home Space +
+ * documentName + type + role), which the page uses to address the editor LOCALLY and NEVER writes
+ * into the global currentSpaceId (design §5.2, so an external link cannot pollute the shell Space):
+ *   - 200          -> mount the editor from the canonical documentName; strip a legacy `?sp` from
+ *                     the address bar, preserving everything else (design §8.4).
  *   - 403 forbidden (AC-7), 404 not-found (AC-10), 401 login (AC-11), 409 locked/archived (AC-12)
  *     -> render the matching terminal screen (a centered card; the forbidden landing adds Request
- *     access, XIN-505). 409 is the archived signal the collab-token path never reports, which is
- *     exactly why the preflight exists.
+ *     access by docId alone, no Space, design §6.1). 409 is the archived signal the collab-token
+ *     path never reports, which is exactly why the preflight exists.
  *
  * `docId` is nullable: the host Layout claims the whole `/d` namespace, so a malformed / empty id
  * (`/d/`, `/d/a:b`) arrives here as null and short-circuits to the not-found terminal instead of
@@ -395,7 +408,7 @@ export function StandaloneDocPage({
   const titleContextOwner = useRef(Symbol('standalone-doc-title-context'))
 
   useEffect(() => {
-    const primaryTitle = phase.status === 'ready' ? phase.meta.title?.trim() : ''
+    const primaryTitle = phase.status === 'ready' ? phase.ctx.title?.trim() : ''
     if (!primaryTitle) {
       titleContextStore.clear('docs', titleContextOwner.current)
       return
@@ -411,86 +424,18 @@ export function StandaloneDocPage({
     return () => titleContextStore.clear('docs', titleContextOwner.current)
   }, [locale, phase])
 
-  // Resolve the standalone space ONCE, and address BOTH the preflight's explicit X-Space-Id header
-  // and the EditorShell room fallback from it, so preflight and room can never target different
-  // spaces. Priority (XIN-501): the doc's real space carried by the share link's dedicated `?sp=`
-  // (standaloneLinkSpace — the doc_meta.space_id embedded by buildDocLink, authoritative for a
-  // `/d/:docId` deep link) → live currentSpaceId → cached localStorage → deploy default. Do NOT use
-  // the link's `?sid` here: `?sid` is the token-bucket key, a short octo session/space id, not the
-  // doc's space_id, so feeding it as X-Space-Id trips requireDocRole's cross-space 404 gate BEFORE
-  // the role check — 404'ing every recipient, including the owner opening their own doc (XIN-497
-  // regression). Older links minted without `?sp` fall through to currentSpaceId, which still
-  // addresses the doc correctly when the opener is already in the doc's space (owner / same-space).
-  const preflightSpace = standaloneLinkSpace() || standaloneFallbackSpace(wk.shared?.currentSpaceId)
-
-  // XIN-1237 write/read space contract: a view is written into the space carried by the request's
-  // X-Space-Id and "最近查看" reads back by that SAME viewer space. recordDocView must therefore be
-  // written to the VIEWER's current space, NOT the doc's own space. But the seed effect below
-  // overwrites wk.shared.currentSpaceId to the doc's link space (`?sp=`) for preflight/room
-  // addressing, so by the time the doc is ready that value no longer reflects the viewer. Capture
-  // the viewer's real current space ONCE on first render — before the seed effect runs — resolving
-  // live currentSpaceId → cached localStorage (viewerCurrentSpace). Do NOT source it from the link
-  // `?sp=` and do NOT fall through to the deploy default: an empty result means "no viewer signal",
-  // which the record path treats as "omit the explicit header", never as "write to DEFAULT space".
-  // Lazy null-init so the resolution runs exactly once and is immune to the later seed mutation.
+  // The VIEWER's own current space, resolved from a genuine viewer signal ONLY (live
+  // currentSpaceId → cached localStorage key; '' when neither). This is the space recordDocView
+  // writes "最近查看" into (XIN-1237 write/read contract). Phase-1 no longer seeds the doc's home
+  // space into the global currentSpaceId (design §5.2 — opening an external /d/:docId must not
+  // pollute the shell's Space), so this value stays the viewer's own throughout the page's life and
+  // no teardown restore is needed. Captured once via lazy null-init to keep the record path stable
+  // across re-renders; '' means "no viewer signal" → the record path omits the explicit header
+  // rather than writing to the deploy-default space (design §7.1).
   const viewerSpaceRef = useRef<string | null>(null)
   if (viewerSpaceRef.current === null) {
     viewerSpaceRef.current = viewerCurrentSpace(wk.shared?.currentSpaceId)
   }
-
-  // Genuine defense in depth (second, independent path — NOT the only working one): the standalone
-  // page mounts via the Layout early-return, before the app shell restores currentSpaceId from
-  // localStorage, so any in-shell-shared logic the EditorShell touches would see an empty space. If —
-  // and only if — the live space is empty and a cached value exists, seed it from the same cached key.
-  // Never overwrite a real current space, so in-shell mounts (where it is already set) are unaffected.
-  //
-  // Both paths now really carry the space to the backend: the preflight's EXPLICIT X-Space-Id header
-  // (primary — APIClient forwards config.headers since XIN-424, so it truly reaches the wire) AND this
-  // seeding, which repopulates currentSpaceId so the global request interceptor injects X-Space-Id on
-  // every OTHER request the shell fires. Before XIN-424 the explicit header was silently dropped by
-  // APIClient, so this seeding was in fact the ONLY thing that made same-space docs open; with the
-  // header fixed the two are now independent, mutually-reinforcing paths (explicit header wins per
-  // request; interceptor is the fallback), which is what real defense in depth means.
-  useEffect(() => {
-    const shared = wk.shared
-    if (!shared || shared.currentSpaceId) return
-    // Prefer the doc's real space carried by the share link (`?sp=`, standaloneLinkSpace) so the
-    // global interceptor injects the SAME space on the editor's follow-up requests as the preflight
-    // header used (XIN-501); fall back to the cached last space when the link carries no `?sp`.
-    // Never overwrite a real live space, so in-shell mounts (where it is already set) are unaffected.
-    const linkSpace = standaloneLinkSpace()
-    let seeded: string | undefined
-    if (linkSpace) {
-      seeded = linkSpace
-    } else if (typeof window !== 'undefined') {
-      try {
-        const cached = window.localStorage.getItem('currentSpaceId')
-        if (cached) seeded = cached
-      } catch {
-        // localStorage unavailable: the explicit preflight header (primary fix) still carries the space.
-      }
-    }
-    if (!seeded) return
-    shared.currentSpaceId = seeded
-
-    // XIN-1254 (XIN-1234 variant): the seed above overwrites the shared `currentSpaceId` — which the
-    // app shell reads as "the VIEWER's current space" — with the DOC's link space so the global
-    // interceptor addresses the standalone editor's cross-space collab requests. Left in place after
-    // the page tears down, returning to the docs list scopes "最近查看"'s read to the DOC space (the
-    // recent feed derives its space from the live currentSpaceId via the interceptor). A view we
-    // recorded under the VIEWER's real space (viewerSpaceRef) is then invisible in that read — the
-    // exact write/read space split of XIN-1234, reintroduced by this seed for a CROSS-space share
-    // (opening someone else's doc, `?sp=` ≠ the viewer's space). Restore the viewer's real space on
-    // teardown so the shell's recent-view read matches the space the view was written to. React runs
-    // an unmounted tree's effect cleanups before the newly-mounted tree's effects within the same
-    // commit, so this restore lands before DocsHome's recent-view request fires. Only revert the
-    // value WE seeded — never clobber a space the shell legitimately switched to meanwhile.
-    return () => {
-      if (shared.currentSpaceId === seeded) {
-        shared.currentSpaceId = viewerSpaceRef.current ?? ''
-      }
-    }
-  }, [wk.shared])
 
   useEffect(() => {
     let cancelled = false
@@ -502,11 +447,19 @@ export function StandaloneDocPage({
       return
     }
     setPhase({ status: 'loading' })
-    // Carry an explicit X-Space-Id on the preflight (docsApi getDoc): on a cold standalone deep link
-    // the global interceptor's space is empty, so this resolved space is the header's only source.
-    getDoc(docId, { spaceId: preflightSpace })
-      .then((meta) => {
-        if (!cancelled) setPhase({ status: 'ready', meta })
+    // Phase-1 docId-first preflight (design §4/§5.1): GET /docs/:docId/open-context. NO space input
+    // is sent — the backend resolves the doc from `docId` alone and returns the canonical
+    // DocRequestContext (home Space + documentName + type + role). A legacy link's `?sp` is neither
+    // read nor forwarded, so a wrong/stale `?sp` cannot steer resolution (design §8.3). The returned
+    // context addresses the editor LOCALLY (props below); it is never written to the global
+    // currentSpaceId (design §5.2).
+    getOpenContext(docId)
+      .then((ctx) => {
+        if (cancelled) return
+        setPhase({ status: 'ready', ctx })
+        // Old-link compatibility: the doc opened by docId, so drop only the now-vestigial `sp` from
+        // the address bar, preserving sid / login-return params / other query / hash (design §8.4).
+        stripSpFromUrl()
       })
       .catch((err: unknown) => {
         if (cancelled) return
@@ -526,18 +479,19 @@ export function StandaloneDocPage({
           setPhase({ status: 'terminal', kind })
           return
         }
-        setPhase({ status: 'terminal', kind })
+        setPhase({ status: 'terminal', kind, title: forbiddenTitleFrom(err) })
       })
     return () => {
       cancelled = true
     }
-  }, [docId, onSessionExpired, preflightSpace])
+  }, [docId, onSessionExpired])
 
   // XIN-1238 / XIN-1234: the standalone `/d/:docId` page never recorded a view, so a doc opened from
   // a chat share link never surfaced in the opener's "最近查看". Mirror the in-shell entry
   // (DocsHome.commitOpen): once the doc is READY, fire a single view ingest. It is written to the
-  // VIEWER's real current space (viewerSpaceRef), per the XIN-1237 write/read space contract — NOT
-  // the doc space (`?sp=`) the page seeds for addressing. When no viewer signal was resolvable
+  // VIEWER's real current space (viewerSpaceRef), per the XIN-1237 write/read space contract — never
+  // the doc's home space. Phase-1 no longer seeds the doc space into currentSpaceId (design §5.2),
+  // so the viewer space is simply the shell's own. When no viewer signal was resolvable
   // (viewerSpaceRef === ''), omit the explicit X-Space-Id and let the global interceptor decide,
   // exactly as the in-shell entry does — never force the deploy-default space, which would record
   // the view under a space the viewer isn't in and break per-space isolation. Guarded by docId so
@@ -563,16 +517,14 @@ export function StandaloneDocPage({
   const onCopyLink = useCallback(async () => {
     if (typeof window === 'undefined') return
     try {
-      // Copy the CANONICAL share link — origin + `/d/:docId` — carrying only the doc's real space
-      // `?sp=` and NEVER the session-scoped `?sid=`. The live URL can carry `?sid=` (the sharer's
-      // own token-bucket key, added when opening a doc in a new page / returning post-login); copying
-      // window.location.href verbatim would leak the sharer's session id into the shared link. So we
-      // rebuild from the path and re-attach ONLY `?sp` (the doc's own space, XIN-501 preflight
-      // addressing), which every recipient needs and which is safe to share. The recipient's own
-      // session is recovered from storage independently of the link (XIN-513), so no `?sid` is needed.
+      // Copy the CANONICAL Phase-1 share link — origin + `/d/:docId` — with NO query at all. The
+      // link no longer carries `?sp` (the reader resolves the doc's Space server-side from docId,
+      // design §5.3), and it must never leak the sharer's session-scoped `?sid` (the live URL can
+      // carry one, added when opening a doc in a new page / returning post-login). Rebuilding from
+      // origin + pathname drops both; the recipient's own session is recovered from storage
+      // independently of the link (XIN-513).
       const here = new URL(window.location.href)
-      const sp = standaloneLinkSpace()
-      const canonical = here.origin + here.pathname + (sp ? `?sp=${encodeURIComponent(sp)}` : '')
+      const canonical = here.origin + here.pathname
       await navigator.clipboard?.writeText(canonical)
       // Drive the menu-external "Link copied" toast (below). The menu closes on selection, so this
       // confirmation must live outside the (now-unmounted) menu panel — hence page-level state, not
@@ -587,32 +539,39 @@ export function StandaloneDocPage({
   }, [])
 
   // Resolve display names for the doc's space so the presence caret shows a real name (parity
-  // with the in-shell path). Space comes from the preflight documentName when available, else the
-  // SAME resolved `preflightSpace` the preflight header used — so the room the editor joins matches
-  // the space the preflight was authorized against. Derived from `phase` so it re-resolves once the
-  // doc meta lands.
+  // with the in-shell path). Space/folder/resource id come exclusively from the open-context's
+  // canonical documentName (design §4/§5.2), which getOpenContext validates before ready. There is
+  // no home-Space/default-folder fallback. Everything here is LOCAL addressing passed as surface
+  // props; it is never written to global currentSpaceId. Derived from `phase` so it re-resolves once
+  // the context lands.
   const addressing = useMemo(() => {
-    if (phase.status === 'ready' && phase.meta.documentName) {
-      try {
-        const parsed = parseDocumentName(phase.meta.documentName)
-        if (parsed.kind === 'document') {
-          return { space: parsed.space, folder: parsed.folder, doc: parsed.doc, board: undefined }
+    if (phase.status === 'ready') {
+      const ctx = phase.ctx
+      if (ctx.documentName) {
+        try {
+          const parsed = parseDocumentName(ctx.documentName)
+          if (parsed.kind === 'document' || parsed.kind === 'html' || parsed.kind === 'ppt') {
+            return { space: parsed.space, folder: parsed.folder, doc: parsed.doc, board: undefined }
+          }
+          // A whiteboard key (octo:{space}:{folder}:wb:{board}) is authoritative for the board
+          // surface just as the document key is for the editor: honor it symmetrically. Falling
+          // through to DEFAULT_DOC_FOLDER here derived a DIFFERENT whiteboard key than the
+          // open-context authorized for any board in a non-default folder — a wrong collab token / WS
+          // room / uid-scoped cache on the cross-node/cross-user `/d/:docId` share surface (XIN-634
+          // P1-a). It only worked before because in-app boards hardcode DEFAULT_DOC_FOLDER.
+          if (parsed.kind === 'whiteboard') {
+            return { space: parsed.space, folder: parsed.folder, doc: docId ?? '', board: parsed.board }
+          }
+        } catch {
+          // Defensive only: getOpenContext rejects malformed canonical addressing before ready.
         }
-        // A whiteboard key (octo:{space}:{folder}:wb:{board}) is authoritative for the board
-        // surface just as the document key is for the editor: honor it symmetrically. Falling
-        // through to DEFAULT_DOC_FOLDER here derived a DIFFERENT whiteboard key than the REST
-        // preflight authorized for any board in a non-default folder — a wrong collab token / WS
-        // room / uid-scoped cache on the cross-node/cross-user `/d/:docId` share surface (XIN-634
-        // P1-a). It only worked before because in-app boards hardcode DEFAULT_DOC_FOLDER.
-        if (parsed.kind === 'whiteboard') {
-          return { space: parsed.space, folder: parsed.folder, doc: docId ?? '', board: parsed.board }
-        }
-      } catch {
-        // Malformed documentName from the backend: fall back to the caller's space + default folder.
       }
+      // Unreachable defense: getOpenContext parses the canonical key and verifies its doc/home
+      // Space identity before setting ready. Never guess a different room if that contract changes.
+      return { space: '', folder: '', doc: '', board: undefined }
     }
-    return { space: preflightSpace, folder: DEFAULT_DOC_FOLDER, doc: docId ?? '', board: undefined }
-  }, [phase, preflightSpace, docId])
+    return { space: DEFAULT_DOC_SPACE, folder: DEFAULT_DOC_FOLDER, doc: docId ?? '', board: undefined }
+  }, [phase, docId])
 
   const names = useMemberNames(addressing.space)
 
@@ -632,11 +591,25 @@ export function StandaloneDocPage({
     // The in-shell EditorShell renders its OWN inline terminal markup and is untouched by this
     // branch, so this redesign cannot affect the in-shell scenario.
     if (phase.kind === 'forbidden' && docId) {
-      // Forbidden landing (feature #511 screen 4c): a lock glyph, a non-misleading heading — NOT a
-      // fake "Untitled document" title, since a recipient without permission cannot know the real
-      // title — the reason line, and the reused RequestAccessButton whose action is the centered
-      // primary CTA. docId is guaranteed non-null here: a null id short-circuits to the not-found
-      // terminal before any preflight runs, so it can never reach a forbidden terminal.
+      // Forbidden landing (feature #511 screen 4c): a lock glyph, the heading, the document's own
+      // name when the backend disclosed it, the reason line, and the reused RequestAccessButton whose
+      // action is the centered primary CTA. docId is guaranteed non-null here: a null id
+      // short-circuits to the not-found terminal before any preflight runs, so it can never reach a
+      // forbidden terminal.
+      //
+      // The name sits under the heading rather than replacing it: the heading answers "what
+      // happened", the name answers "which document", and leading with a name the viewer cannot open
+      // would read like a broken document page. It was originally omitted altogether on the grounds
+      // that a recipient without permission cannot know the real title. Product decision (leader)
+      // reverses that: the page must name the document it is asking the viewer to request access to.
+      // Be precise about the basis — open-context locates by docId ALONE and has no same-space gate,
+      // so this screen is reachable by a caller from any Space or none; what bounds the disclosure is
+      // that they already hold the docId and already learned the doc exists from getting 403 rather
+      // than 404, and the chat share card that carried the link shows them the same title anyway.
+      //
+      // Still NEVER a placeholder: with no title in the body — an older backend, or a doc whose
+      // stored title is blank — the line is omitted entirely rather than rendering 无标题 as though
+      // that were the document's name.
       return (
         <div className="octo-doc-standalone octo-doc-standalone--terminal">
           <div className="octo-standalone-card octo-standalone-forbidden" role="alert">
@@ -644,8 +617,16 @@ export function StandaloneDocPage({
               <LockIcon />
             </span>
             <h1 className="octo-standalone-card-title">{t('docs.forward.forbiddenTitle')}</h1>
+            {phase.title && (
+              <p className="octo-standalone-forbidden-doc" title={phase.title}>
+                {phase.title}
+              </p>
+            )}
             <p className="octo-standalone-card-msg">{t('docs.error.permission.forbidden')}</p>
-            <RequestAccessButton docId={docId} spaceId={preflightSpace} />
+            {/* A forbidden response does not reveal the document's home Space. Keep this request
+                human-only: the backend validates owned Bots against doc_meta.space_id, so a viewer
+                Space header/snapshot would be both unauthoritative and incorrect. */}
+            <RequestAccessButton docId={docId} />
           </div>
         </div>
       )
@@ -661,10 +642,10 @@ export function StandaloneDocPage({
     )
   }
 
-  const meta = phase.meta
+  const ctx = phase.ctx
   // In the ready phase the addressed id is guaranteed non-null (a null id short-circuits to the
-  // not-found terminal above); prefer the id echoed by the preflight, falling back to it.
-  const editorDocId = meta.docId || (docId as string)
+  // not-found terminal above); prefer the id echoed by the open-context, falling back to it.
+  const editorDocId = ctx.docId || (docId as string)
 
   // Board-kind is resolved from the AUTHORITATIVE backend docType the preflight already carried —
   // NOT a node-local registry (XIN-530, boss real-device). A `/d/:docId` share link opens on any
@@ -679,13 +660,13 @@ export function StandaloneDocPage({
   // falls through to the collab EditorShell, which has no yjs data for it and reports "not found".
   // The preflight already ran (reader gate) and recordDocView above logged the view, so a shared
   // /d/<docId> html link opens AND lands in "recently viewed" like every other kind.
-  if (meta.docType === 'html') {
+  if (ctx.docType === 'html') {
     return (
       <div className="octo-doc-standalone">
         <HtmlDocView
           key={editorDocId}
           docId={editorDocId}
-          slug={meta.octoDocSlug}
+          slug={ctx.octoDocSlug}
           space={addressing.space}
           creatorNicknameOnly
         />
@@ -697,31 +678,30 @@ export function StandaloneDocPage({
   // NOT fall through to the collab EditorShell below — a Bento deck has no Yjs data and would 404
   // there, and the standalone editor would otherwise try to open a Hocuspocus room for it. The
   // preflight reader gate already ran and recordDocView logged the view, same as every other kind.
-  if (meta.docType === 'html_ppt') {
+  if (ctx.docType === 'html_ppt') {
     return (
       <div className="octo-doc-standalone">
         <PptDocView
           key={editorDocId}
           docId={editorDocId}
-          slug={meta.octoDocSlug}
+          slug={ctx.octoDocSlug}
           space={addressing.space}
-          title={meta.title}
+          title={ctx.title}
         />
       </div>
     )
   }
-  if (meta.docType === 'board') {
+  if (ctx.docType === 'board') {
     // The whiteboard {board} segment is BoardSession's `docId` (it becomes octo:{space}:{folder}:
-    // wb:{board}). Prefer the authoritative segment parsed from the preflight documentName so the
-    // key matches what REST authorized; fall back to the addressed id for legacy backends whose
-    // preflight omitted the documentName (XIN-634 P1-a).
-    const boardId = addressing.board || editorDocId
+    // wb:{board}). Prefer the authoritative segment parsed from the open-context documentName so the
+    // key matches what the backend authorized. getOpenContext validated this before ready.
+    const boardId = addressing.board!
     return (
       <div className="octo-doc-standalone">
         <BoardSession
           key={boardId}
           docId={boardId}
-          title={meta.title || t('docs.state.untitled')}
+          title={ctx.title || t('docs.state.untitled')}
           uid={uid}
           space={addressing.space}
           folder={addressing.folder}
@@ -746,7 +726,7 @@ export function StandaloneDocPage({
 
   return (
     <div className="octo-doc-standalone">
-      {meta.docType === 'sheet' ? (
+      {ctx.docType === 'sheet' ? (
         // A shared /d/:docId that resolves to a spreadsheet mounts the collaborative SheetView, not
         // the Tiptap EditorShell — so forwarded / open-in-new-page sheet links open correctly (parity
         // with the in-shell docType branch in DocsHome). Same standalone chrome: "Copy link" as the ≡
@@ -767,7 +747,7 @@ export function StandaloneDocPage({
         <EditorShell
           key={editorDocId}
           docId={editorDocId}
-          title={meta.title || t('docs.state.untitled')}
+          title={ctx.title || t('docs.state.untitled')}
           uid={uid}
           space={addressing.space}
           folder={addressing.folder}
