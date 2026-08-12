@@ -143,6 +143,7 @@ export interface PendingSendTracker<T extends PendingSendTrackable> {
   markPartEnqueued: (id: number) => boolean;
   release: (id: number) => void;
   values: () => T[];
+  preEnqueueValues: () => T[];
   preEnqueueCount: () => number;
 }
 
@@ -178,6 +179,11 @@ export function createPendingSendTracker<
     },
     values() {
       return Array.from(items.values());
+    },
+    preEnqueueValues() {
+      return Array.from(items.values()).filter(
+        (item) => item.remainingPreEnqueueParts > 0
+      );
     },
     preEnqueueCount() {
       return Array.from(items.values()).filter(

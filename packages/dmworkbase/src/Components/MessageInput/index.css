@@ -697,7 +697,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--wk-sp-1);
-  max-height: calc(var(--wk-sp-12) * 2 + var(--wk-sp-2));
+  max-height: calc(var(--wk-sp-8) * 2 + var(--wk-sp-2));
   overflow-y: auto;
   padding: 0 var(--wk-sp-1) var(--wk-sp-1);
   margin-bottom: var(--wk-sp-1);
@@ -706,19 +706,21 @@
 }
 
 .wk-messageinput-sending-item {
-  min-height: var(--wk-sp-8);
+  min-height: var(--wk-sp-6);
   display: flex;
   align-items: center;
-  gap: var(--wk-sp-2);
-  padding: var(--wk-sp-1) var(--wk-sp-2);
-  background: var(--wk-bg-elevated);
-  border-radius: var(--wk-r-sm);
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1) 0;
   overflow: hidden;
 }
 
-.wk-messageinput-sending-label {
+.wk-messageinput-sending-spinner {
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
   flex-shrink: 0;
-  color: var(--wk-text-secondary);
+  color: var(--wk-text-tertiary);
+  animation: wk-messageinput-sending-spin calc(var(--wk-dur-slow) * 2) linear
+    infinite;
 }
 
 .wk-messageinput-sending-text {
@@ -740,8 +742,8 @@
 }
 
 .wk-messageinput-sending-thumbnail {
-  width: var(--wk-sp-7);
-  height: var(--wk-sp-7);
+  width: var(--wk-sp-6);
+  height: var(--wk-sp-6);
   flex-shrink: 0;
   object-fit: cover;
   border-radius: var(--wk-r-sm);
@@ -768,4 +770,10 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@keyframes wk-messageinput-sending-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

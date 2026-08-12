@@ -5,7 +5,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -571,16 +571,18 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     }
     return sendQueueRef.current;
   }, []);
-  // in-flight compose 登记表：内容预览保留到任务 settle；enqueued 单独标记本地
-  // 气泡是否已经出现，让切会话守卫只覆盖真正的数据丢失窗口。
+  // in-flight compose 登记表：完整集合保留到任务 settle，供草稿保存使用；可见
+  // 预览只包含尚未产生本地气泡的 compose，避免与消息列表重复展示。
   const pendingSendsRef = useRef(createPendingSendTracker<PendingSendItem>());
   const pendingSendSeqRef = useRef(0);
   // 连续失败还原时的插入位置：已被更早的失败 send 放回的块数 / 附件数，
   // 保证 A、B 依次失败后顺序仍是 A、B、<新草稿> 而不是倒过来 (#1280 review)。
   const restoreOffsetsRef = useRef({ blocks: 0, topAttachments: 0 });
-  const [pendingSendItems, setPendingSendItems] = useState<PendingSendItem[]>([]);
+  const [pendingPreEnqueueItems, setPendingPreEnqueueItems] = useState<
+    PendingSendItem[]
+  >([]);
   const publishPendingSends = useCallback(() => {
-    setPendingSendItems(pendingSendsRef.current.values());
+    setPendingPreEnqueueItems(pendingSendsRef.current.preEnqueueValues());
   }, []);
   const registerPendingSend = useCallback((item: PendingSendItem) => {
     pendingSendsRef.current.register(item);
@@ -1208,8 +1210,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 串行队列取代旧的重入保护：pending 期间的 Enter 不再被静默丢弃（#1280 的
     // 「连点没反应」），而是排在前一条之后执行，消息顺序仍由 Conversation 等 ack
     // 保证。onSend 未 settle 前把 compose 内容登记到 pendingSendsRef，供草稿
-    // 保存和「发送中」预览使用。切会话守卫另外只查看尚未产生本地
-    // 气泡的条目；已入队的消息虽然继续显示预览，但不再阻塞会话切换。
+    // 保存使用；「发送中」预览和切会话守卫只查看尚未产生本地气泡的条目。
     return getSendQueue()
       .enqueue(() =>
         runSendWithConsumedCompose(
@@ -1429,15 +1430,17 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         {/* 引用/编辑条在卡片内部 */}
         {topView && <div className="wk-messageinput-topview">{topView}</div>}
 
-        {/* 发送中内容预览 (octo-web#1280)：输入框在发送开始时就被清空，队列中的
-            实际文本与附件必须保持可见，直到对应 onSend settle。 */}
-        {pendingSendItems.length > 0 && (
+        {/* 发送中内容预览 (octo-web#1280)：输入框在发送开始时就被清空，实际文本
+            与附件保持可见；本地气泡出现后立即移除，避免同一内容重复展示。 */}
+        {pendingPreEnqueueItems.length > 0 && (
           <div className="wk-messageinput-sending" aria-live="polite">
-            {pendingSendItems.map((item) => (
+            {pendingPreEnqueueItems.map((item) => (
               <div className="wk-messageinput-sending-item" key={item.id}>
-                <span className="wk-messageinput-sending-label">
-                  {t("base.message.sending")}
-                </span>
+                <LoaderCircle
+                  className="wk-messageinput-sending-spinner"
+                  role="img"
+                  aria-label={t("base.message.sending")}
+                />
                 {item.text && (
                   <span
                     className="wk-messageinput-sending-text"

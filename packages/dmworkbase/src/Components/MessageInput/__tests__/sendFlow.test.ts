@@ -70,6 +70,11 @@ describe("createPendingSendTracker", () => {
 
     expect(tracker.markPartEnqueued(1)).toBe(true);
     expect(tracker.preEnqueueCount()).toBe(1);
+    expect(tracker.preEnqueueValues().map((item) => item.text)).toEqual(["B"]);
+    expect(tracker.values().map((item) => item.text)).toEqual([
+      "file + text",
+      "B",
+    ]);
 
     tracker.release(1);
     expect(tracker.values().map((item) => item.text)).toEqual(["B"]);
@@ -83,6 +88,7 @@ describe("createPendingSendTracker", () => {
     expect(tracker.markPartEnqueued(1)).toBe(true);
     expect(tracker.markPartEnqueued(1)).toBe(false);
     expect(tracker.markPartEnqueued(99)).toBe(false);
+    expect(tracker.preEnqueueValues()).toEqual([]);
     expect(tracker.preEnqueueCount()).toBe(0);
   });
 });
