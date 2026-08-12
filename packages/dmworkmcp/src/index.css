@@ -727,14 +727,6 @@
   white-space: nowrap;
 }
 
-.wk-mcp-card__version {
-  flex: 0 0 auto;
-  color: var(--wk-text-tertiary);
-  font-size: var(--wk-text-size-sm);
-  line-height: 1.35;
-  white-space: nowrap;
-}
-
 .wk-mcp-card__meta-row {
   display: flex;
   align-items: center;

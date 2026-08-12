@@ -27,8 +27,8 @@ function memberInitial(name: string): string {
  * Expert / expert-squad detail modal. Shows the dispatch strategy, members,
  * dependencies and permission. Agents render a simplified intro (no
  * members/strategy). Squad members can be drilled into (in-place) to view their
- * own spec (指令 / MCP / Skills). Installing is handled by the separate 安装
- * prompt modal, not here.
+ * own spec (指令 / MCP / Skills). Installing (添加到回路) is handled by
+ * ExpertAddToLoopModal from the card's install button, not here.
  */
 export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalProps) {
   useI18n();
