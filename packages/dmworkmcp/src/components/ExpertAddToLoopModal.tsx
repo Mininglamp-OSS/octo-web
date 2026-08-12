@@ -151,8 +151,13 @@ export default function ExpertAddToLoopModal({
   const workspaceOptions = workspaces.map((w) => ({ label: w.name, value: w.id }));
   const runtimeOptions = runtimes.map((rt) => ({
     // Surface a non-ready status so the user isn't silently defaulted onto (or
-    // left picking) a runtime that can't run the agent.
-    label: isRuntimeReady(rt) ? rt.name : `${rt.name}（${rt.status}）`,
+    // left picking) a runtime that can't run the agent. The status value itself
+    // is fleet data (shown raw); the surrounding chrome is localized.
+    label: isRuntimeReady(rt)
+      ? rt.name
+      : t("mcp.expert.runtimeWithStatus", {
+          values: { name: rt.name, status: rt.status ?? "" },
+        }),
     value: rt.id,
   }));
   const canSubmit = Boolean(workspaceId && runtimeId) && !submitting;
