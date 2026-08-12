@@ -170,7 +170,10 @@ import {
 } from "./Service/oidcLogout";
 import {
   getExpectedImDeviceFlag,
+  clearDeviceFlagMigration,
+  hasDeviceFlagMigration,
   hasImDeviceFlagMismatch,
+  markDeviceFlagMigration,
   IM_DEVICE_FLAG_PC,
   IM_DEVICE_FLAG_WEB,
 } from "./Service/deviceFlags";
@@ -913,6 +916,10 @@ export default class WKApp extends ProviderListener {
   // 会被连发多次，且导航是异步的、飞行中的请求继续 reject 继续 logout，
   // 造成"登录页反复跳转 / 控制台疯狂刷 401"的死循环。首次进入即置位，后续重入直接返回。
   private _loggingOut: boolean = false;
+  // Startup and connectIM can both observe the legacy desktop session during
+  // boot.  The migration is intentionally one-shot per app instance; after
+  // the first logout there must not be a second logout/navigation race.
+  private _deviceFlagMigrationHandled: boolean = false;
 
   set notificationIsClose(v: boolean) {
     this._notificationIsClose = v;
@@ -942,15 +949,23 @@ export default class WKApp extends ProviderListener {
     // Tokens issued before the desktop device-slot migration do not carry a
     // marker. Re-authenticate once instead of reconnecting with an ambiguous
     // token/device tuple and silently losing the IM connection.
-    if (this.isPC && hasImDeviceFlagMismatch(
+    const migrationSid = getSessionSid();
+    const hasDeviceFlagMismatch = hasImDeviceFlagMismatch(
       WKApp.loginInfo.isLogined(),
       WKApp.loginInfo.deviceFlag,
       expectedDeviceFlag,
-    )) {
+    );
+    if (!this._deviceFlagMigrationHandled && this.isPC && hasDeviceFlagMismatch) {
+      const alreadyMigrated = hasDeviceFlagMigration(migrationSid);
       console.warn(
-        `[im] device flag mismatch detected at startup (stored=${String(WKApp.loginInfo.deviceFlag)}, expected=${expectedDeviceFlag}); forcing re-login`,
+        `[im] device flag mismatch detected at startup (stored=${String(WKApp.loginInfo.deviceFlag)}, expected=${expectedDeviceFlag}); ${alreadyMigrated ? "cleaning up an interrupted" : "starting"} one-shot re-login`,
       );
+      this._deviceFlagMigrationHandled = true;
+      markDeviceFlagMigration(migrationSid);
       WKApp.loginInfo.logout();
+    } else if (!hasDeviceFlagMismatch && WKApp.loginInfo.isLogined()) {
+      // A matching session supersedes any marker left by an interrupted boot.
+      clearDeviceFlagMigration(migrationSid);
     }
     this.deviceId = this.getDeviceIdFromStorage();
     this.deviceName = this.getOSAndVersion();
@@ -968,6 +983,10 @@ export default class WKApp extends ProviderListener {
     );
 
     WKApp.endpoints.addOnLogin(() => {
+      // The replacement session has now been persisted with its device flag;
+      // do not carry the legacy-session migration marker into its lifecycle.
+      clearDeviceFlagMigration(getSessionSid());
+      this._deviceFlagMigrationHandled = false;
       WKApp.mittBus.emit("wk:auth-state-changed");
       this.startMain();
     });
@@ -1127,7 +1146,7 @@ export default class WKApp extends ProviderListener {
 
   connectIM() {
     const expectedDeviceFlag = getExpectedImDeviceFlag(this.isPC);
-    if (this.isPC && hasImDeviceFlagMismatch(
+    if (!this._deviceFlagMigrationHandled && this.isPC && hasImDeviceFlagMismatch(
       WKApp.loginInfo.isLogined(),
       WKApp.loginInfo.deviceFlag,
       expectedDeviceFlag,
@@ -1135,6 +1154,8 @@ export default class WKApp extends ProviderListener {
       console.error(
         `[im] refusing to connect with mismatched device flag (stored=${String(WKApp.loginInfo.deviceFlag)}, expected=${expectedDeviceFlag}); forcing re-login`,
       );
+      this._deviceFlagMigrationHandled = true;
+      markDeviceFlagMigration(getSessionSid());
       this.logout();
       return;
     }
