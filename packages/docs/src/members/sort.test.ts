@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { sortMembersForDisplay, sortPickerMembers, withSyntheticOwner, applyOrderSnapshot } from './sort.ts'
+import { sortMembersForDisplay, sortPickerMembers, withSyntheticOwner, applyOrderSnapshot, findMatchRanges, matchesQuery } from './sort.ts'
 import type { Member } from './api.ts'
 import type { SpaceMemberLite } from '../octoweb/index.ts'
 
@@ -88,5 +88,74 @@ describe('applyOrderSnapshot (need #4 — frozen order)', () => {
   it('is a stable pass-through when the snapshot is empty (all rows treated as new)', () => {
     const rows = [row('a'), row('b'), row('c')]
     expect(applyOrderSnapshot(rows, new Map()).map((r) => r.uid)).toEqual(['a', 'b', 'c'])
+  })
+})
+
+describe('findMatchRanges (search-hit highlight)', () => {
+  it('returns [] for an empty query (must NOT loop on the empty needle)', () => {
+    expect(findMatchRanges('Ada Lovelace', '')).toEqual([])
+  })
+
+  it('returns [] for empty text or when nothing matches', () => {
+    expect(findMatchRanges('', 'ada')).toEqual([])
+    expect(findMatchRanges('Ada', 'zzz')).toEqual([])
+  })
+
+  it('finds every occurrence, not just the first', () => {
+    // "an" appears twice in "banana" (non-overlapping): [1,3) and [3,5).
+    expect(findMatchRanges('banana', 'an')).toEqual([[1, 3], [3, 5]])
+  })
+
+  it('matches case-insensitively but reports ranges over the ORIGINAL string', () => {
+    const ranges = findMatchRanges('Ada LOVElace', 'love')
+    expect(ranges).toEqual([[4, 8]])
+    // slicing the original by the range preserves the original casing.
+    expect('Ada LOVElace'.slice(4, 8)).toBe('LOVE')
+  })
+
+  it('returns [] when the query is longer than the text', () => {
+    expect(findMatchRanges('ab', 'abcdef')).toEqual([])
+  })
+
+  it('treats a pure-whitespace query as a literal match (no trimming inside the fn)', () => {
+    // The function itself does not trim; a non-empty whitespace needle matches the space literally.
+    expect(findMatchRanges('a b', ' ')).toEqual([[1, 2]])
+  })
+
+  it('keeps indices aligned when a character lower-cases to a DIFFERENT length', () => {
+    // 'İ' (U+0130) lower-cases to 'i' + U+0307 — 1 UTF-16 unit becomes 2. Folding with a plain
+    // toLowerCase() would shift every later index by one and highlight the wrong characters
+    // (searching 'stan' in 'İstanbul' would mark 'tanb'). The range must address the ORIGINAL string.
+    const text = 'İstanbul Bot'
+    expect(text.toLowerCase().length).not.toBe(text.length) // documents why this case is dangerous
+    const ranges = findMatchRanges(text, 'stan')
+    expect(ranges).toEqual([[1, 5]])
+    expect(text.slice(1, 5)).toBe('stan')
+  })
+
+  it('never returns a range outside the text and never splits a surrogate pair', () => {
+    const text = '🙂🙂'
+    const ranges = findMatchRanges(text, '🙂')
+    expect(ranges).toEqual([[0, 2], [2, 4]])
+    // Each range slices a whole emoji (a lone surrogate would render as a replacement char).
+    expect(ranges.map(([s, e]) => text.slice(s, e))).toEqual(['🙂', '🙂'])
+    for (const [s, e] of ranges) {
+      expect(s).toBeGreaterThanOrEqual(0)
+      expect(e).toBeLessThanOrEqual(text.length)
+    }
+  })
+
+  it('treats regex metacharacters literally (no regex path)', () => {
+    expect(findMatchRanges('a.b.c', '.')).toEqual([[1, 2], [3, 4]])
+    expect(findMatchRanges('a*b', '*')).toEqual([[1, 2]])
+    expect(findMatchRanges('x(y)', '(')).toEqual([[1, 2]])
+  })
+})
+
+describe('matchesQuery (single predicate)', () => {
+  it('is case-insensitive and false on empty query', () => {
+    expect(matchesQuery('Ada Lovelace', 'ADA')).toBe(true)
+    expect(matchesQuery('Ada', 'zzz')).toBe(false)
+    expect(matchesQuery('Ada', '')).toBe(false)
   })
 })

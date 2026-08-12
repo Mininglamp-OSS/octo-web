@@ -81,6 +81,58 @@ export function applyOrderSnapshot<T extends { uid: string }>(
 }
 
 /**
+ * Case-fold `s` WITHOUT changing its length, so indices computed on the folded string still address
+ * the original string. Plain `toLowerCase()` is not length-stable: some code points lower-case into a
+ * different number of UTF-16 units (e.g. Turkish 'İ' U+0130 → 'i' + U+0307, 1 unit → 2), which would
+ * shift every index after it and highlight the WRONG characters. Any code point whose lower-case form
+ * has a different length is left as-is: that character then only matches case-sensitively, which is
+ * the safe direction (no highlight beats a misplaced highlight).
+ */
+function foldKeepingLength(s: string): string {
+  let out = ''
+  for (const ch of s) {
+    const lower = ch.toLowerCase()
+    out += lower.length === ch.length ? lower : ch
+  }
+  return out
+}
+
+/**
+ * All case-insensitive match ranges of `query` inside `text`, as half-open [start, end) pairs over
+ * the ORIGINAL string (so callers can slice `text` and preserve its original casing). Every
+ * occurrence is returned, not just the first. Empty query, empty text, or no hit → `[]`.
+ *
+ * Guard: a zero-length query (empty or, after we do NOT trim here, a caller passing '') must return
+ * `[]` — `indexOf('')` returns 0 forever and would otherwise spin. Callers that treat pure-whitespace
+ * as "no query" should trim before calling; a non-empty whitespace query still matches literally.
+ *
+ * Index safety: folding is length-preserving (see foldKeepingLength), so a returned range always
+ * slices the intended characters out of `text`. Matches are non-overlapping (the scan resumes after
+ * the previous hit) and every range stays within `[0, text.length]`.
+ */
+export function findMatchRanges(text: string, query: string): Array<[number, number]> {
+  if (!text || !query) return []
+  const hay = foldKeepingLength(text)
+  const needle = foldKeepingLength(query)
+  const ranges: Array<[number, number]> = []
+  let from = 0
+  for (;;) {
+    const at = hay.indexOf(needle, from)
+    if (at === -1) break
+    ranges.push([at, at + needle.length])
+    from = at + needle.length // non-overlapping; needle.length > 0 guaranteed above
+  }
+  return ranges
+}
+
+/** Whether `text` contains `query` case-insensitively — the picker's single matching predicate
+ *  (mirrors the `.toLowerCase().includes` filter), reused so JSX never re-implements it. */
+export function matchesQuery(text: string, query: string): boolean {
+  if (!query) return false
+  return text.toLowerCase().includes(query.toLowerCase())
+}
+
+/**
  * Order the picker roster (#A3): members already on the document are pinned at the top (they are
  * shown disabled/marked) so the admin can see who is already in, with the original order preserved
  * within each group.
