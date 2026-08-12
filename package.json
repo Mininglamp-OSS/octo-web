@@ -29,8 +29,8 @@
     "verify:web-build-cache-key": "node scripts/verify-web-build-cache-key.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "gen:component": "node scripts/gen-component.mjs",
-    "new:worktree": "bash scripts/new-worktree.sh",
-    "cleanup:worktree": "bash scripts/cleanup-worktree.sh"
+    "new:worktree": "node scripts/run-bash-script.mjs scripts/new-worktree.sh",
+    "cleanup:worktree": "node scripts/run-bash-script.mjs scripts/cleanup-worktree.sh"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
