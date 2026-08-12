@@ -218,8 +218,9 @@ describe('MemberPanel — bot section + AI tag + frozen order (PR C #3/#4)', () 
     return Array.from(currentSection().querySelectorAll('.octo-member-row .octo-uid')).map((el) => el.textContent ?? '')
   }
 
-  it('groups bots below all humans, default-collapsed (hidden until expanded)', async () => {
-    // u_bot is a bot (space-member isBot flag); u_human is a person.
+  it('renders orphan bots FLAT under a labeled heading — visible without any click', async () => {
+    // u_bot is a bot (space-member isBot flag) with NO creator → orphan → flat section. It must
+    // be visible immediately (never collapsed), under the orphan heading, AFTER the human rows.
     wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'u_bot', name: 'Bot One', isBot: true })
     wireMembers([
       { uid: 'u_human', role: 'writer' },
@@ -228,20 +229,15 @@ describe('MemberPanel — bot section + AI tag + frozen order (PR C #3/#4)', () 
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
     await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
     await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Human One'))).toBe(true))
-    // Collapsed by default: the bot row is NOT rendered, and the expander (showBots) is present.
-    expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(false)
-    const toggle = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
-    expect(toggle).toBeTruthy()
-    expect(toggle.getAttribute('aria-expanded')).toBe('false')
-    // Expand → bot row appears, and it sits AFTER the human row.
-    fireEvent.click(toggle)
-    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true))
+    // Flat by design: the orphan heading is present, the row is rendered WITHOUT any click, and
+    // there is no expander button anywhere in the section (the human owns no nested bots).
+    expect(within(currentSection()).getByText('docs.member.orphanBotsTitle')).toBeTruthy()
+    expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true)
+    expect(currentSection().querySelector('.octo-member-picker-expand')).toBeNull()
     const rows = currentSectionRows()
     expect(rows.findIndex((r) => r.includes('Human One'))).toBeLessThan(
       rows.findIndex((r) => r.includes('Bot One')),
     )
-    // aria-expanded flips to true after expanding.
-    expect(within(currentSection()).getByText('docs.member.hideBots').closest('button')!.getAttribute('aria-expanded')).toBe('true')
   })
 
   it('tags bot rows with the AI badge; human rows have none', async () => {
@@ -251,8 +247,7 @@ describe('MemberPanel — bot section + AI tag + frozen order (PR C #3/#4)', () 
       { uid: 'u_bot', role: 'writer' },
     ])
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
-    await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Human One'))).toBe(true))
-    fireEvent.click(within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    // Orphan bot is flat now: the row renders immediately, no expander click needed.
     await waitFor(() => expect(currentSectionRows().some((r) => r.includes('Bot One'))).toBe(true))
     const section = currentSection()
     const botRow = Array.from(section.querySelectorAll('.octo-member-row')).find((r) =>
@@ -396,7 +391,8 @@ describe('MemberPanel — bot section + AI tag + frozen order (PR C #3/#4)', () 
 
 describe('MemberPanel — bots nested under their creator (PR C bot-nesting change)', () => {
   // space_bots now carries creator_uid; the panel nests each bot under its creator row (per-creator
-  // default-collapsed expander) and drops ownerless bots into a single bottom fold.
+  // default-collapsed expander); orphans (creator unknown / not a member) render FLAT in a labeled
+  // bottom section instead of a collapsed fold.
   function wireMembers(
     members: Array<{ uid: string; role: string; source?: string }>,
     bots: Array<{ uid: string; name?: string; creator_uid?: string }>,
@@ -473,7 +469,7 @@ describe('MemberPanel — bots nested under their creator (PR C bot-nesting chan
     expect(visibleUids().some((r) => r.includes('BotB'))).toBe(false)
   })
 
-  it('drops a bot whose creator is not a member into the bottom ownerless fold (new #3)', async () => {
+  it('renders a bot whose creator is not a member FLAT in the labeled orphan section (new #3)', async () => {
     wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
     wireMembers(
       [{ uid: 'u_human', role: 'writer' }],
@@ -483,12 +479,13 @@ describe('MemberPanel — bots nested under their creator (PR C bot-nesting chan
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
     // The human has no bots → no expander in its wrapper.
     expect(rowFor('Human One').parentElement!.querySelector('.octo-member-picker-expand')).toBeNull()
-    const expander = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
-    fireEvent.click(expander)
-    await waitFor(() => expect(visibleUids().some((r) => r.includes('Orphan Bot'))).toBe(true))
+    // The orphan renders FLAT under the heading — visible without any click, no expander anywhere.
+    expect(within(currentSection()).getByText('docs.member.orphanBotsTitle')).toBeTruthy()
+    expect(visibleUids().some((r) => r.includes('Orphan Bot'))).toBe(true)
+    expect(currentSection().querySelector('.octo-member-picker-expand')).toBeNull()
   })
 
-  it('does not render the bottom ownerless fold when there are zero orphan bots (new #4)', async () => {
+  it('does not render the flat orphan section when there are zero orphan bots (new #4)', async () => {
     wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
     wireMembers(
       [{ uid: 'u_human', role: 'writer' }],
@@ -500,6 +497,8 @@ describe('MemberPanel — bots nested under their creator (PR C bot-nesting chan
     expect(expanders.length).toBe(1)
     // That single expander lives inside the creator's wrapper (nested), not a bottom sibling.
     expect(rowFor('Human One').parentElement!.contains(expanders[0])).toBe(true)
+    // No orphan heading when every bot nests under a member.
+    expect(within(currentSection()).queryByText('docs.member.orphanBotsTitle')).toBeNull()
   })
 
   it('renders no expander for a creator that owns zero bots (new #5)', async () => {
@@ -546,7 +545,7 @@ describe('MemberPanel — bots nested under their creator (PR C bot-nesting chan
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
     fireEvent.click(rowFor('Human One').parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement)
-    fireEvent.click(within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    // The orphan bot is FLAT now — visible without any click; only the nested one needs expanding.
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Orphan Bot'))).toBe(true))
     expect(rowFor('Nested Bot').querySelector('.octo-member-picker-badge')).toBeTruthy()
     expect(rowFor('Orphan Bot').querySelector('.octo-member-picker-badge')).toBeTruthy()
@@ -568,7 +567,7 @@ describe('MemberPanel — bots nested under their creator (PR C bot-nesting chan
     expect(currentSection().querySelector('.octo-member-picker-badge')).toBeNull()
   })
 
-  it('empty botCreators (bots but no creator_uid) → all bots land in the bottom fold (new #9)', async () => {
+  it('empty botCreators (bots but no creator_uid) → all bots render flat in the orphan section (new #9)', async () => {
     wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
     wireMembers(
       [{ uid: 'u_human', role: 'writer' }],
@@ -580,9 +579,11 @@ describe('MemberPanel — bots nested under their creator (PR C bot-nesting chan
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
     expect(rowFor('Human One').parentElement!.querySelector('.octo-member-picker-expand')).toBeNull()
-    fireEvent.click(within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    // Both bots are creator-less orphans → flat section, visible immediately, both labeled unknown.
+    expect(within(currentSection()).getByText('docs.member.orphanBotsTitle')).toBeTruthy()
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot One'))).toBe(true))
     expect(visibleUids().some((r) => r.includes('Bot Two'))).toBe(true)
+    expect(currentSection().querySelectorAll('.octo-member-picker-expand')).toHaveLength(0)
   })
 
   it('indents a bot revealed under its creator (octo-member-row--nested); creator + owner are not indented', async () => {
@@ -603,7 +604,7 @@ describe('MemberPanel — bots nested under their creator (PR C bot-nesting chan
     expect(ownerRow.classList.contains('octo-member-row--nested')).toBe(false)
   })
 
-  it('indents orphan bots revealed in the bottom fold (octo-member-row--nested)', async () => {
+  it('indents orphan bots rendered in the flat section (octo-member-row--nested)', async () => {
     wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
     wireMembers(
       [{ uid: 'u_human', role: 'writer' }],
@@ -611,9 +612,28 @@ describe('MemberPanel — bots nested under their creator (PR C bot-nesting chan
     )
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
-    fireEvent.click(within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement)
+    // Flat section: no click needed.
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Orphan Bot'))).toBe(true))
     expect(rowFor('Orphan Bot').classList.contains('octo-member-row--nested')).toBe(true)
+  })
+
+  it('labels a known-creator orphan with its creator name, an unknown creator with orphanCreatorUnknown', async () => {
+    // b_known's creator resolves to a space name; b_ghost has no creator_uid at all.
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'u_maker', name: 'The Maker' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [
+        { uid: 'b_known', name: 'Known Bot', creator_uid: 'u_maker' },
+        { uid: 'b_ghost', name: 'Ghost Bot' },
+      ],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Known Bot'))).toBe(true))
+    // Known creator → the existing botCreator label renders in the orphan row.
+    expect(rowFor('Known Bot').textContent).toContain('docs.member.botCreator')
+    // Unknown creator → the new orphanCreatorUnknown label.
+    expect(rowFor('Ghost Bot').textContent).toContain('docs.member.orphanCreatorUnknown')
+    expect(rowFor('Ghost Bot').textContent).not.toContain('docs.member.botCreator')
   })
 })
 
@@ -669,7 +689,7 @@ describe('MemberPanel add: partial-failure detail survives a refresh failure (ta
 
 describe('MemberPanel — cyclic bot creator chain resilience (B1)', () => {
   // B1: a cyclic creator_uid chain (A→B→A or A→B→C→A) must NOT cause a stack overflow; the
-  // panel must render the involved bots in the orphan fold (visible + removable, not hidden).
+  // panel must render the involved bots FLAT in the orphan section (visible + removable).
   function wireMembers(
     members: Array<{ uid: string; role: string; source?: string }>,
     bots: Array<{ uid: string; name?: string; creator_uid?: string }>,
@@ -694,7 +714,7 @@ describe('MemberPanel — cyclic bot creator chain resilience (B1)', () => {
     return Array.from(currentSection().querySelectorAll('.octo-member-row .octo-uid')).map((el) => el.textContent ?? '')
   }
 
-  it('handles a two-node cycle (A→B→A) without crashing, placing both in the orphan fold', async () => {
+    it('handles a two-node cycle (A→B→A) without crashing, placing both in the flat orphan section', async () => {
     // bot_x -> bot_y, bot_y -> bot_x (both are bots and members)
     wireMembers(
       [],
@@ -703,19 +723,19 @@ describe('MemberPanel — cyclic bot creator chain resilience (B1)', () => {
         { uid: 'bot_y', name: 'Bot Y', creator_uid: 'bot_x' },
       ],
     )
-    // Should NOT throw RangeError; both bots should land in orphan fold.
+    // Should NOT throw RangeError; both bots render FLAT — visible without any click.
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
     await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
-    // Expand the orphan fold.
-    const expander = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
-    fireEvent.click(expander)
+    expect(within(currentSection()).getByText('docs.member.orphanBotsTitle')).toBeTruthy()
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot X'))).toBe(true))
     expect(visibleUids().some((r) => r.includes('Bot Y'))).toBe(true)
     // Both have AI badges (they are bots).
     expect(currentSection().querySelectorAll('.octo-member-picker-badge').length).toBeGreaterThanOrEqual(2)
+    // Cyclic creators are unresolvable → labeled unknown, never a misleading creator name.
+    expect(visibleUids().some((r) => r.includes('docs.member.orphanCreatorUnknown'))).toBe(true)
   })
 
-  it('handles a three-node cycle (A→B→C→A) without crashing, placing all in the orphan fold', async () => {
+  it('handles a three-node cycle (A→B→C→A) without crashing, placing all in the flat orphan section', async () => {
     wireMembers(
       [],
       [
@@ -726,22 +746,20 @@ describe('MemberPanel — cyclic bot creator chain resilience (B1)', () => {
     )
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
     await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
-    const expander = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
-    fireEvent.click(expander)
+    // Flat orphan section — no expander click needed.
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot A'))).toBe(true))
     expect(visibleUids().some((r) => r.includes('Bot B'))).toBe(true)
     expect(visibleUids().some((r) => r.includes('Bot C'))).toBe(true)
   })
 
-  it('handles a self-reference (A→A) without crashing, placing the bot in the orphan fold', async () => {
+  it('handles a self-reference (A→A) without crashing, placing the bot in the flat orphan section', async () => {
     wireMembers(
       [],
       [{ uid: 'bot_s', name: 'Self Bot', creator_uid: 'bot_s' }],
     )
     render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
     await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
-    const expander = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
-    fireEvent.click(expander)
+    // Flat orphan section — visible without any click.
     await waitFor(() => expect(visibleUids().some((r) => r.includes('Self Bot'))).toBe(true))
   })
 })
@@ -900,5 +918,134 @@ describe('MemberPanel — nested bot order freezing (B4)', () => {
     const rows = visibleUids()
     expect(rows.findIndex((r) => r.includes('Bot Z'))).toBeLessThan(rows.findIndex((r) => r.includes('Bot A')))
     unmount()
+  })
+})
+
+describe('MemberPanel — remove-member confirmation + optional bot cascade', () => {
+  // Mutable members + DELETE-capable responder (probe pattern): DELETE rewrites the member list
+  // and records the URL, so tests assert exactly which uids were revoked.
+  function wireRemovable(
+    initial: Array<{ uid: string; role: string; source?: string }>,
+    bots: Array<{ uid: string; name?: string; creator_uid?: string }>,
+    opts?: { failUid?: string },
+  ): { deleted: string[] } {
+    let members = [
+      ...initial.map((m) => ({ uid: m.uid, role: m.role, source: m.source ?? 'direct', grantedBy: 'u_admin' })),
+      ...bots.map((b) => ({ uid: b.uid, role: 'reader', source: 'direct', grantedBy: 'u_admin' })),
+    ]
+    const deleted: string[] = []
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) return { data: { items: members }, status: 200 }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (url.startsWith('/robot/space_bots')) return { data: bots, status: 200 }
+      if (method === 'delete') {
+        const uid = url.split('/').pop() as string
+        if (opts?.failUid && uid === opts.failUid) throw { response: { status: 500 } }
+        deleted.push(uid)
+        members = members.filter((m) => m.uid !== uid)
+        return { data: {}, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    return { deleted }
+  }
+  function currentSection(): HTMLElement {
+    return screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+  }
+  function rowFor(text: string): HTMLElement {
+    return Array.from(currentSection().querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes(text),
+    ) as HTMLElement
+  }
+  function removeButtonOf(text: string): HTMLButtonElement {
+    return rowFor(text).querySelector('button') as HTMLButtonElement
+  }
+
+  it('opens the confirm modal when removing a member who owns bots, and cascade removes member + bots', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'b_1', name: 'Bot One' }, { uid: 'b_2', name: 'Bot Two' })
+    const { deleted } = wireRemovable(
+      [{ uid: 'u_human', role: 'writer' }],
+      [
+        { uid: 'b_1', name: 'Bot One', creator_uid: 'u_human' },
+        { uid: 'b_2', name: 'Bot Two', creator_uid: 'u_human' },
+      ],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText(/Human One/)).toBeTruthy())
+    fireEvent.click(removeButtonOf('Human One'))
+    // Modal appears with the cascade confirm + member-only alt (before any DELETE).
+    await waitFor(() => expect(screen.getByText('docs.member.removeCreatorTitle')).toBeTruthy())
+    expect(screen.getByText('docs.member.removeCreatorMessage')).toBeTruthy()
+    expect(deleted).toEqual([])
+    fireEvent.click(screen.getByText('docs.member.removeCreatorConfirm').closest('button') as HTMLButtonElement)
+    // DELETE for the human AND every bot under it.
+    await waitFor(() => expect(deleted).toEqual(['u_human', 'b_1', 'b_2']))
+    // Modal closes after the cascade settles.
+    await waitFor(() => expect(screen.queryByText('docs.member.removeCreatorTitle')).toBeNull())
+  })
+
+  it('partial cascade failure: names the failed bot, keeps the member removal, no rollback', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'b_ok', name: 'Good Bot' }, { uid: 'b_bad', name: 'Broken Bot' })
+    const { deleted } = wireRemovable(
+      [{ uid: 'u_human', role: 'writer' }],
+      [
+        { uid: 'b_ok', name: 'Good Bot', creator_uid: 'u_human' },
+        { uid: 'b_bad', name: 'Broken Bot', creator_uid: 'u_human' },
+      ],
+      { failUid: 'b_bad' },
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText(/Human One/)).toBeTruthy())
+    fireEvent.click(removeButtonOf('Human One'))
+    await waitFor(() => expect(screen.getByText('docs.member.removeCreatorTitle')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.member.removeCreatorConfirm').closest('button') as HTMLButtonElement)
+    // Human + the good bot are deleted; the broken bot's DELETE threw and was NOT rolled back.
+    await waitFor(() => expect(deleted).toEqual(['u_human', 'b_ok']))
+    // The cascade error names the FAILED bot (display name), and the modal is gone.
+    await waitFor(() => expect(screen.getByText('docs.member.errorRemoveCascade')).toBeTruthy())
+    expect(screen.queryByText('docs.member.removeCreatorTitle')).toBeNull()
+    // The surviving bot stays visible + removable in the flat orphan section (retry path).
+    await waitFor(() => expect(currentSection().textContent).toContain('Broken Bot'))
+  })
+
+  it('"Remove member only" deletes ONLY the human; the bots survive as orphans', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'b_1', name: 'Bot One' })
+    const { deleted } = wireRemovable(
+      [{ uid: 'u_human', role: 'writer' }],
+      [{ uid: 'b_1', name: 'Bot One', creator_uid: 'u_human' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText(/Human One/)).toBeTruthy())
+    fireEvent.click(removeButtonOf('Human One'))
+    await waitFor(() => expect(screen.getByText('docs.member.removeCreatorTitle')).toBeTruthy())
+    fireEvent.click(screen.getByText('docs.member.removeCreatorOnly').closest('button') as HTMLButtonElement)
+    await waitFor(() => expect(deleted).toEqual(['u_human']))
+    await waitFor(() => expect(screen.queryByText('docs.member.removeCreatorTitle')).toBeNull())
+    // The bot survived and now renders FLAT in the orphan section (its creator is gone).
+    await waitFor(() => expect(currentSection().textContent).toContain('Bot One'))
+    expect(within(currentSection()).getByText('docs.member.orphanBotsTitle')).toBeTruthy()
+  })
+
+  it('removing a member with NO bots skips the modal entirely (direct DELETE)', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    const { deleted } = wireRemovable([{ uid: 'u_human', role: 'writer' }], [])
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText(/Human One/)).toBeTruthy())
+    fireEvent.click(removeButtonOf('Human One'))
+    await waitFor(() => expect(deleted).toEqual(['u_human']))
+    expect(screen.queryByText('docs.member.removeCreatorTitle')).toBeNull()
+  })
+
+  it('removing a bot row is a direct DELETE with no modal (a bot has no children)', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' }, { uid: 'b_1', name: 'Bot One' })
+    const { deleted } = wireRemovable(
+      [{ uid: 'u_human', role: 'writer' }],
+      [{ uid: 'b_1', name: 'Bot One', creator_uid: 'u_stranger' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText(/Bot One/)).toBeTruthy())
+    fireEvent.click(removeButtonOf('Bot One'))
+    await waitFor(() => expect(deleted).toEqual(['b_1']))
+    expect(screen.queryByText('docs.member.removeCreatorTitle')).toBeNull()
   })
 })

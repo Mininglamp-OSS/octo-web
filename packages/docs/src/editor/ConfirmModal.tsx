@@ -17,6 +17,13 @@ export interface ConfirmModalProps {
   message?: ReactNode
   /** Confirm button label. */
   confirmLabel: string
+  /**
+   * Optional THIRD (alternate) action button, rendered between cancel and confirm when BOTH
+   * `altLabel` and `onAlt` are supplied. Lets one dialog offer two distinct destructive outcomes
+   * (e.g. "remove member + cascade bots" vs "remove member only") without a second modal.
+   * Optional: the 5 pre-existing confirm/cancel call sites stay byte-identical.
+   */
+  altLabel?: string
   /** Cancel button label. */
   cancelLabel: string
   /** Paint the confirm button red for destructive actions. */
@@ -26,6 +33,8 @@ export interface ConfirmModalProps {
   /** Optional error line shown above the actions (e.g. a failed delete). */
   error?: string | null
   onConfirm: () => void
+  /** Fired by the optional third (alternate) button; ignored unless `altLabel` is set too. */
+  onAlt?: () => void
   onCancel: () => void
 }
 
@@ -34,11 +43,13 @@ export function ConfirmModal({
   title,
   message,
   confirmLabel,
+  altLabel,
   cancelLabel,
   danger,
   busy,
   error,
   onConfirm,
+  onAlt,
   onCancel,
 }: ConfirmModalProps) {
   useEffect(() => {
@@ -78,6 +89,12 @@ export function ConfirmModal({
           <button type="button" className="octo-tb-btn" disabled={busy} onClick={onCancel}>
             {cancelLabel}
           </button>
+          {/* Optional third outcome (only when the caller wired both altLabel + onAlt). */}
+          {altLabel != null && onAlt && (
+            <button type="button" className="octo-tb-btn" disabled={busy} onClick={onAlt}>
+              {altLabel}
+            </button>
+          )}
           <button
             type="button"
             className={danger ? 'octo-tb-btn octo-confirm-go-danger' : 'octo-tb-btn'}

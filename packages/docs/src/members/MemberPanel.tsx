@@ -18,6 +18,7 @@ import { InvitePanel } from '../invite/InvitePanel.tsx'
 import { useAccessRequests, type UseAccessRequestsResult } from '../access-request/useAccessRequests.ts'
 import { PendingRequests } from '../access-request/PendingRequests.tsx'
 import { ShareScopePanel } from '../share/ShareScopePanel.tsx'
+import { ConfirmModal } from '../editor/ConfirmModal.tsx'
 import type { ShareSeed, ShareSettings } from '../share/shareScope.ts'
 
 const ROLES: Role[] = ['reader', 'commenter', 'writer', 'admin']
@@ -68,6 +69,11 @@ export function MemberPanel({
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [adding, setAdding] = useState(false)
+  // Remove-member confirmation: when the target owns bots in THIS doc we confirm first and
+  // offer a cascade (remove member + revoke those bots). `{ uid, bots }` is set instead of
+  // removing immediately; null = no modal. `removeBusy` blocks dismiss + double-submits mid-flight.
+  const [removeTarget, setRemoveTarget] = useState<{ uid: string; bots: string[] } | null>(null)
+  const [removeBusy, setRemoveBusy] = useState(false)
   const { names, botUids, botCreators } = useMemberDirectory(space ?? '')
   // Screen 4c admin side: prefer the shared instance from EditorShell so the toolbar badge and this
   // panel read/mutate the SAME pending-request state; only fall back to a local hook when rendered
@@ -145,13 +151,102 @@ export function MemberPanel({
     }
   }
 
-  async function onRemove(uid: string) {
+  /**
+   * The target member's bots-in-this-doc: current grants that are bots AND whose creator map
+   * entry points at the target (the ONLY "under this member" relation we honor — no name
+   * heuristics, no directory guesswork).
+   */
+  function botsOf(uid: string): string[] {
+    return members
+      .filter((m) => botUids.has(m.uid) && botCreators.get(m.uid) === uid)
+      .map((m) => m.uid)
+  }
+
+  /** Plain single removal — the path for members with no bots, and for every bot row. */
+  async function removeDirect(uid: string) {
     setError(null)
     try {
       await removeMember(docId, uid)
       await refresh()
     } catch {
       setError(t('docs.member.errorRemove'))
+    }
+  }
+
+  async function onRemove(uid: string) {
+    // Bot rows are always a direct removal — a bot row is never offered the cascade modal.
+    const bots = botUids.has(uid) ? [] : botsOf(uid)
+    if (bots.length === 0) {
+      // No bots under this member (incl. every bot row — a bot has no children here): the
+      // existing direct path, unchanged.
+      await removeDirect(uid)
+      return
+    }
+    setError(null)
+    setRemoveTarget({ uid, bots })
+  }
+
+  /** Modal alt: remove ONLY the member; the bots stay and auto-land in the flat orphan section. */
+  async function removeMemberOnly() {
+    if (!removeTarget || removeBusy) return
+    const { uid } = removeTarget
+    setRemoveBusy(true)
+    try {
+      await removeMember(docId, uid)
+      setRemoveTarget(null)
+      setError(null)
+      try {
+        await refresh()
+      } catch {
+        setError(t('docs.member.errorRefresh'))
+      }
+    } catch {
+      setRemoveTarget(null)
+      setError(t('docs.member.errorRemove'))
+    } finally {
+      setRemoveBusy(false)
+    }
+  }
+
+  /**
+   * Modal confirm: remove the member, then revoke every bot under it (bounded fan-out). Owner-
+   * approved failure policy — NO rollback: a member removal that already succeeded is never
+   * undone by a later bot failure; the user gets a precise list of the bots to retry. If the
+   * MEMBER removal itself fails we stop before touching any bot.
+   */
+  async function removeMemberAndBots() {
+    if (!removeTarget || removeBusy) return
+    const { uid, bots } = removeTarget
+    setRemoveBusy(true)
+    let cascadeError = false
+    try {
+      setError(null)
+      try {
+        await removeMember(docId, uid)
+      } catch {
+        // Member removal failed → nothing else happens; bots are untouched.
+        setRemoveTarget(null)
+        setError(t('docs.member.errorRemove'))
+        return
+      }
+      const results = await settleWithConcurrency(bots, (u) => removeMember(docId, u))
+      const failed = results.flatMap((r, i) => (r.status === 'rejected' ? [bots[i]] : []))
+      if (failed.length > 0) {
+        cascadeError = true
+        setError(
+          t('docs.member.errorRemoveCascade', {
+            values: { name: displayName(uid), failed: failed.map(displayName).join(', ') },
+          }),
+        )
+      }
+      setRemoveTarget(null)
+      try {
+        await refresh()
+      } catch {
+        if (!cascadeError) setError(t('docs.member.errorRefresh'))
+      }
+    } finally {
+      setRemoveBusy(false)
     }
   }
 
@@ -222,6 +317,28 @@ export function MemberPanel({
         botUids={botUids}
         botCreators={botCreators}
         canRemove={(m) => (resolvedOwner ? canRemoveMember({ ...m, grantedBy: '' } as Member, resolvedOwner) : true)}
+      />
+
+      {/* Remove-member confirmation with optional bot cascade (shown only when the target owns
+          bots in this doc). Confirm = member + bots; alt = member only; cancel = nothing. */}
+      <ConfirmModal
+        open={removeTarget != null}
+        title={removeTarget ? t('docs.member.removeCreatorTitle', { values: { name: displayName(removeTarget.uid) } }) : ''}
+        message={
+          removeTarget
+            ? t('docs.member.removeCreatorMessage', {
+                values: { name: displayName(removeTarget.uid), count: removeTarget.bots.length },
+              })
+            : undefined
+        }
+        confirmLabel={t('docs.member.removeCreatorConfirm')}
+        altLabel={t('docs.member.removeCreatorOnly')}
+        cancelLabel={t('docs.doc.deleteCancel')}
+        danger
+        busy={removeBusy}
+        onConfirm={() => void removeMemberAndBots()}
+        onAlt={() => void removeMemberOnly()}
+        onCancel={() => setRemoveTarget(null)}
       />
     </section>
   )
