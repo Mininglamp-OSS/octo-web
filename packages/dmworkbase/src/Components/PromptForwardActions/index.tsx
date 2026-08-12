@@ -88,6 +88,9 @@ async function fetchOwnedBots(spaceId: string): Promise<OwnedBot[]> {
     });
 }
 
+// Monotonic source for per-instance radio group names (see radioGroupName below).
+let radioGroupNameSeq = 0;
+
 export default function PromptForwardActions({
   prompt,
   spaceId,
@@ -108,6 +111,14 @@ export default function PromptForwardActions({
   const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [forwarding, setForwarding] = useState(false);
+  // Per-instance radio group name: this is a shared @octo/base component, and a
+  // hardcoded name would merge two simultaneously-mounted pickers into one
+  // radio group (state/DOM desync). No caller does that today, but a unique
+  // name makes it impossible rather than merely unexercised. Module counter
+  // via useState initializer (React 17 here — no useId), stable per mount.
+  const [radioGroupName] = useState(
+    () => `wk-prompt-forward-bot-${++radioGroupNameSeq}`
+  );
 
   useEffect(() => {
     let active = true;
@@ -206,7 +217,7 @@ export default function PromptForwardActions({
               <label className="wk-prompt-forward__item">
                 <input
                   type="radio"
-                  name="wk-prompt-forward-bot"
+                  name={radioGroupName}
                   value={b.uid}
                   checked={selectedUid === b.uid}
                   onChange={() => setSelectedUid(b.uid)}
