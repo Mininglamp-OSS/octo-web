@@ -1,6 +1,7 @@
 import { Tag, Toast } from "@douyinfe/semi-ui";
 import { QrCode } from "lucide-react";
 import React from "react";
+import type { ChannelInfo } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import { ChannelAvatar } from "../../Components/ChannelAvatar";
@@ -13,6 +14,7 @@ import { GROUP_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import { Row } from "../../Service/Section";
 import { updateChannelSettingField } from "../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../i18n";
+import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import {
   ChannelSettingIconRow,
   ChannelSettingIconRowProps,
@@ -39,7 +41,43 @@ interface GroupAvatarSettingRowProps extends ChannelSettingIconRowProps {
   canClearUploadedAvatar?: boolean;
 }
 
-function GroupAvatarSettingRow({
+interface GroupAvatarEditorValues {
+  groupName: string;
+  isNamedGroup: boolean;
+  initialAvatarText: string;
+  initialColorIndex?: number;
+  isUploadedAvatar: boolean;
+}
+
+function groupAvatarEditorValuesFromInfo(
+  channelInfo: ChannelInfo | undefined,
+  fallback: GroupAvatarEditorValues
+): GroupAvatarEditorValues {
+  if (!channelInfo) return fallback;
+
+  const orgData = channelInfo.orgData;
+  return {
+    groupName: channelInfo.title || fallback.groupName,
+    isNamedGroup:
+      orgData?.is_named === undefined
+        ? fallback.isNamedGroup
+        : orgData.is_named === 1,
+    initialAvatarText:
+      typeof orgData?.avatar_text === "string"
+        ? orgData.avatar_text
+        : fallback.initialAvatarText,
+    initialColorIndex:
+      orgData?.avatar_color === undefined
+        ? fallback.initialColorIndex
+        : parseAvatarColorIndex(orgData.avatar_color),
+    isUploadedAvatar:
+      orgData?.is_upload_avatar === undefined
+        ? fallback.isUploadedAvatar
+        : orgData.is_upload_avatar === 1,
+  };
+}
+
+export function GroupAvatarSettingRow({
   channel,
   showUpload,
   groupName,
@@ -51,20 +89,56 @@ function GroupAvatarSettingRow({
   ...rowProps
 }: GroupAvatarSettingRowProps) {
   const [visible, setVisible] = React.useState(false);
+  const [opening, setOpening] = React.useState(false);
+  const fallbackValues: GroupAvatarEditorValues = {
+    groupName: groupName || "",
+    isNamedGroup: isNamedGroup === true,
+    initialAvatarText: initialAvatarText || "",
+    initialColorIndex,
+    isUploadedAvatar: isUploadedAvatar === true,
+  };
+  const [editorValues, setEditorValues] =
+    React.useState<GroupAvatarEditorValues>(fallbackValues);
+
+  const openAvatarEditor = async () => {
+    if (opening) return;
+
+    setOpening(true);
+    try {
+      const latestChannelInfo = await fetchCurrentImChannelInfo<
+        typeof channel,
+        ChannelInfo
+      >(channel);
+      setEditorValues(
+        groupAvatarEditorValuesFromInfo(latestChannelInfo, fallbackValues)
+      );
+    } catch (error) {
+      console.error("Refresh group avatar info failed:", error);
+      setEditorValues(fallbackValues);
+    } finally {
+      setOpening(false);
+      setVisible(true);
+    }
+  };
 
   return (
     <>
-      <ChannelSettingIconRow {...rowProps} onClick={() => setVisible(true)} />
+      <ChannelSettingIconRow
+        {...rowProps}
+        onClick={() => {
+          void openAvatarEditor();
+        }}
+      />
       <ChannelAvatar
         visible={visible}
         onClose={() => setVisible(false)}
         showUpload={showUpload}
         channel={channel}
-        groupName={groupName}
-        isNamedGroup={isNamedGroup}
-        initialAvatarText={initialAvatarText}
-        initialColorIndex={initialColorIndex}
-        isUploadedAvatar={isUploadedAvatar}
+        groupName={editorValues.groupName}
+        isNamedGroup={editorValues.isNamedGroup}
+        initialAvatarText={editorValues.initialAvatarText}
+        initialColorIndex={editorValues.initialColorIndex}
+        isUploadedAvatar={editorValues.isUploadedAvatar}
         canClearUploadedAvatar={canClearUploadedAvatar}
       />
     </>
