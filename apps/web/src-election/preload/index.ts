@@ -47,7 +47,11 @@ const trustedShellFileURL = (() => {
   return arg ? arg.slice(SHELL_FILE_FLAG.length) : null;
 })();
 
-const isTrustedShell = () => {
+// Evaluate the shell identity once, while this preload is being evaluated.
+// Same-document SPA history changes update window.location.pathname but do
+// not load a new preload; re-checking the pathname for every bridge call
+// would therefore disable IPC after navigating to routes such as /drive.
+const trustedShellAtLoad = (() => {
   if (window.location.protocol === "file:" && trustedShellFileURL) {
     try {
       const current = new URL(window.location.href);
@@ -64,7 +68,9 @@ const isTrustedShell = () => {
   // build/index.html via file://).
   if (devOrigin && window.location.origin === devOrigin) return true;
   return false;
-};
+})();
+
+const isTrustedShell = () => trustedShellAtLoad;
 
 const ALLOWED_SEND_CHANNELS = [
   "check-update",

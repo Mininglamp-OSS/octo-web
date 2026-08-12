@@ -328,6 +328,22 @@ describe('isTrustedSenderUrl', () => {
     )).toBe(true)
   })
 
+  it('keeps the document identity separate from SPA route history', () => {
+    // The main-process IPC guard records this result when the document is
+    // committed. A later history.pushState('/drive') must not turn the shell
+    // into a different local document or revoke its bridge.
+    expect(isTrustedSenderUrl(
+      'file:///Applications/OCTO.app/build/index.html?sid=window-sid',
+      undefined,
+      'file:///Applications/OCTO.app/build/index.html',
+    )).toBe(true)
+    expect(isTrustedSenderUrl(
+      'file:///Applications/OCTO.app/build/other.html',
+      undefined,
+      'file:///Applications/OCTO.app/build/index.html',
+    )).toBe(false)
+  })
+
   it('accepts Windows drive-letter case differences in the trusted file path', () => {
     expect(isTrustedSenderUrl(
       'file:///c:/Applications/OCTO.app/build/index.html',

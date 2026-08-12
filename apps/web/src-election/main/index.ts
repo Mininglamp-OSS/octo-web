@@ -91,6 +91,41 @@ const TRUSTED_SHELL_DEV_ORIGIN = isDevelopment
   ? new URL(DEV_SERVER_URL).origin
   : undefined;
 const TRUSTED_SHELL_FILE_URL = pathToFileURL(join(__dirname, "../../build/index.html")).href;
+// A same-document history.pushState changes frame.url without creating a new
+// document. Track trust at document navigation time instead of re-evaluating
+// the current pathname for every IPC call, otherwise normal SPA routes such
+// as /drive would disable the entire desktop bridge.
+const trustedShellContents = new WeakSet<Electron.WebContents>();
+
+function trackTrustedShellDocument(win: BrowserWindow) {
+  const isTrustedDocument = (url: string) =>
+    isTrustedSenderUrl(url, TRUSTED_SHELL_DEV_ORIGIN, TRUSTED_SHELL_FILE_URL);
+  const updateTrust = (
+    _event: Electron.Event,
+    url: string,
+    _httpResponseCode: number,
+    _httpStatusText: string,
+    isMainFrame: boolean,
+  ) => {
+    if (!isMainFrame) return;
+    if (isTrustedDocument(url)) {
+      trustedShellContents.add(win.webContents);
+    } else {
+      trustedShellContents.delete(win.webContents);
+    }
+  };
+  // Revoke the previous document's trust before an external navigation can
+  // commit. The did-frame-navigate listener below restores it only after a
+  // trusted shell document has actually committed.
+  win.webContents.on("will-navigate", (_event, url) => {
+    if (!isTrustedDocument(url)) trustedShellContents.delete(win.webContents);
+  });
+  win.webContents.on("will-redirect", (_event, url, _isInPlace, isMainFrame) => {
+    if (isMainFrame && !isTrustedDocument(url)) trustedShellContents.delete(win.webContents);
+  });
+  win.webContents.on("did-frame-navigate", updateTrust);
+  win.webContents.once("destroyed", () => trustedShellContents.delete(win.webContents));
+}
 
 // Guards every OIDC IPC handler against callers that are not our own
 // renderer top-frame. Runs BEFORE any argument parsing so a malformed or
@@ -114,7 +149,7 @@ function resolveTrustedOidcSender(
   // hosting an IdP page mid-flow, a future <webview>, etc.) must not reach
   // this handler even if its URL happens to be file://.
   if (frame.top !== frame) return undefined;
-  if (!isTrustedSenderUrl(frame.url, TRUSTED_SHELL_DEV_ORIGIN, TRUSTED_SHELL_FILE_URL)) return undefined;
+  if (!trustedShellContents.has(event.sender)) return undefined;
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win.isDestroyed()) return undefined;
   return win;
@@ -776,6 +811,7 @@ const getWindowConfig = () => {
 // 创建新窗口
 const createNewWindow = () => {
   const newWindow = new BrowserWindow(getWindowConfig());
+  trackTrustedShellDocument(newWindow);
 
   newWindow.center();
   newWindow.once("ready-to-show", () => {
@@ -810,6 +846,7 @@ const createNewWindow = () => {
 
 const createMainWindow = async () => {
   mainWindow = new BrowserWindow(getWindowConfig());
+  trackTrustedShellDocument(mainWindow);
   mainWindow.center();
   mainWindow.once("ready-to-show", () => {
     mainWindow.setTitle(OCTO_CONFIG.name);
