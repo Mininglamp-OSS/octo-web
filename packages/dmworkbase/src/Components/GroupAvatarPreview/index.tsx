@@ -8,6 +8,7 @@ import {
 import {
   cleanAvatarText,
   groupAvatarLines,
+  avatarTextFontSize,
   colorIndexForName,
   colorIndexForSeed,
   groupNameText,
@@ -78,7 +79,7 @@ const GroupAvatarPreview: React.FC<GroupAvatarPreviewProps> = ({
 
   if (text) {
     const lines = groupAvatarLines(text)
-    const fontSize = Math.round(size * (lines.length > 1 ? 0.3 : 0.4))
+    const fontSize = avatarTextFontSize(size, lines)
     return (
       <div className={cls} style={style}>
         <div

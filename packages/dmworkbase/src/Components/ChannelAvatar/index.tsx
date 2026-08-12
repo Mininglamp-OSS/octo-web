@@ -183,7 +183,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 avatarColor: colorChanged
                     ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
                     : undefined,
-            clearUploadedAvatar: shouldClearUploadedAvatar,
+                clearUploadedAvatar: shouldClearUploadedAvatar,
             })
             WKApp.shared.changeChannelAvatarTag(channel)
             void fetchCurrentImChannelInfo(channel)
@@ -274,7 +274,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         const editingDisabled = customAvatarSaving || uploading
         const showGeneratedPreview =
             draftMode === "generated" &&
-            (textChanged || colorChanged)
+            (textChanged || colorChanged || this.state.clearUploadedAvatarRequested)
         const content = <div className="wk-channelavatar">
             <div className="wk-channelavatar-main">
                 <div className="wk-channelavatar-preview-panel">

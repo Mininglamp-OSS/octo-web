@@ -118,12 +118,11 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
 
   const onTextChange = (v: string) => {
     if (disabled) return
-    // 限制可见字符 ≤4（与服务端一致），超出即截断。
-    const nextText = visibleCount(v) > MAX_VISIBLE ? cleanAvatarText(v) : v
-    setAvatarText(nextText)
-    const nextTextChanged = hasTextChanged(nextText)
+    // 保留完整输入，避免中文输入法组合输入和光标位置被截断打断；预览与保存统一取前 4 字。
+    setAvatarText(v)
+    const nextTextChanged = hasTextChanged(v)
     setTextChanged(nextTextChanged)
-    emitChange({ avatarText: nextText, textChanged: nextTextChanged, colorIndex, colorChanged })
+    emitChange({ avatarText: v, textChanged: nextTextChanged, colorIndex, colorChanged })
   }
 
   const selectColor = (index: number) => {
@@ -141,6 +140,9 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
     setColorChanged(nextColorChanged)
     emitChange({ colorIndex: undefined, colorChanged: nextColorChanged })
   }
+
+  const textLength = visibleCount(avatarText)
+  const textExceeded = textLength > MAX_VISIBLE
 
   return (
     <>
@@ -163,7 +165,25 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
         placeholder={t("base.groupAvatarEdit.customTextPlaceholder")}
         onChange={onTextChange}
         disabled={disabled}
+        aria-describedby="wk-group-avatar-edit-text-meta"
       />
+      <div
+        className={
+          "wk-group-avatar-edit-input-meta" +
+          (textExceeded ? " is-exceeded" : "")
+        }
+        id="wk-group-avatar-edit-text-meta"
+        aria-live="polite"
+      >
+        <span>
+          {t(
+            textExceeded
+              ? "base.groupAvatarEdit.customTextExceededHint"
+              : "base.groupAvatarEdit.customTextHint"
+          )}
+        </span>
+        <span>{t("base.groupAvatarEdit.customTextCount", { values: { count: textLength } })}</span>
+      </div>
 
       <div className="wk-group-avatar-edit-label">
         {t("base.groupAvatarEdit.color")}
@@ -178,6 +198,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
           onClick={clearColor}
           disabled={disabled}
           aria-label="avatar-color-default"
+          aria-pressed={colorIndex == null}
           title={t("base.groupAvatarEdit.defaultColor")}
         >
           {colorIndex == null && <IconTick />}
@@ -197,6 +218,7 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
             onClick={() => selectColor(c.index)}
             disabled={disabled}
             aria-label={`avatar-color-${c.index}`}
+            aria-pressed={c.index === colorIndex}
           >
             {c.index === colorIndex && <IconTick style={{ color: c.main }} />}
           </button>

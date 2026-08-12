@@ -140,6 +140,46 @@ afterEach(() => {
 });
 
 describe("ChannelAvatar save intent", () => {
+  it("updates the left preview when generated avatar text changes", () => {
+    renderChannelAvatar();
+
+    expect(container.querySelector(".wk-group-avatar-preview-text")).toBeNull();
+
+    act(() => {
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "研发" },
+      });
+    });
+
+    expect(container.querySelector(".wk-group-avatar-preview-text")?.textContent).toBe("研发");
+  });
+
+  it("keeps long input editable while previewing and saving only the first four characters", async () => {
+    const channel = renderChannelAvatar();
+    const input = screen.getByRole("textbox") as HTMLInputElement;
+
+    act(() => {
+      fireEvent.change(input, {
+        target: { value: "研发项目组" },
+      });
+    });
+
+    expect(input.value).toBe("研发项目组");
+    expect(container.querySelector(".wk-group-avatar-preview-text")?.textContent).toBe("研发项目");
+    expect(container.querySelector(".wk-group-avatar-edit-input-meta.is-exceeded")).toBeTruthy();
+    expect(screen.getByText("5/4")).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("base.common.save"));
+    });
+
+    expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
+      avatarText: "研发项目",
+      avatarColor: undefined,
+      clearUploadedAvatar: false,
+    });
+  });
+
   it("saves one generated avatar PUT with both text and color edits", async () => {
     const channel = renderChannelAvatar();
 
@@ -174,6 +214,9 @@ describe("ChannelAvatar save intent", () => {
 
     expect(mocks.uploadFile).toHaveBeenCalledWith(file);
     expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
+
+    component.resetDraftFromProps();
+    expect(component.state.draftMode).toBe("generated");
   });
 
   it("closes without PUT when generated save has no text/color edits and no uploaded avatar clear", async () => {
@@ -204,7 +247,12 @@ describe("ChannelAvatar save intent", () => {
   });
 
   it("sends clear_uploaded_avatar only when creator edits an uploaded avatar", async () => {
-    const channel = renderChannelAvatar({ isUploadedAvatar: true, canClearUploadedAvatar: true });
+    const channel = renderChannelAvatar({
+      isUploadedAvatar: true,
+      canClearUploadedAvatar: true,
+    });
+
+    expect(container.querySelector(".wk-channelavatar-avatar-img")).toBeTruthy();
 
     act(() => {
       fireEvent.change(screen.getByRole("textbox"), {
@@ -223,6 +271,7 @@ describe("ChannelAvatar save intent", () => {
       avatarColor: undefined,
       clearUploadedAvatar: true,
     });
+    expect(container.querySelector(".wk-group-avatar-preview-text")?.textContent).toBe("研发");
   });
 
   it("does not clear an uploaded avatar after a net-zero text edit", async () => {
