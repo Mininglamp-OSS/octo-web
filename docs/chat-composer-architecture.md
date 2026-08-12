@@ -13,10 +13,11 @@
 - attempt ID 草稿所有权；草稿清理发生在编辑器恢复/释放之后。
 - 编辑器销毁或切换频道时的可观察、有限容量 recovery store。
 - 公开的 pending-send renderer registry 和 transport operation registry。
+- editor compose part registry；附件节点已迁移 capture/restore/dispose。
 
 仍需后续迁移：
 
-- 把 Tiptap capture/restore 从 `Components/MessageInput` 迁移到 `features/chat-composer/editor`。
+- 继续迁移 text/mention capture、Tiptap port、keyboard 和 clipboard policy。
 - 把通用 `ComposePart`/extension operation 纳入现有兼容 request，而不是继续增加字段分支。
 - 将 Conversation 中的上传预检和 SDK content 构造进一步下沉到 bridge adapter。
 
@@ -137,6 +138,7 @@ packages/dmworkbase/src/features/chat-composer/
     extensionRegistry.ts
 
   editor/
+    composePartRegistry.ts
     createChatEditorExtensions.ts
     tiptapEditorPort.ts
     captureEditorDocument.ts
@@ -582,8 +584,13 @@ messageRenderRegistry.register(locationMessageRenderer)
 `ConversationChatTransportHandlers.operationRegistry` 即可增加 operation，不修改 bridge。
 旧 `operationHandlers` 只保留为内建 operation 覆盖兼容层。
 
-完整的 editor capture/restore 与 `ComposePart` registry 仍需后续迁移，不能把
-operation/render registry 误认为已经完成全部插件化。
+editor 层已提供 `chatEditorComposePartRegistry`，附件是第一个生产扩展，负责节点
+capture、部分失败 restore、`File` 引用和 object URL dispose。当前
+`UnsentEditorBlock` 仍只标准化 text/attachment，因此新 part 在接入发送前必须先补齐
+settle/recovery 映射；不能只注册 operation 而忽略失败恢复。
+
+text/mention capture、Tiptap port 和历史消息 renderer 仍需后续迁移，不能把当前
+editor/operation/pending registry 误认为已经完成全部插件化。
 
 扩展注册必须发生在应用装配层，domain 不允许 import 具体扩展。
 

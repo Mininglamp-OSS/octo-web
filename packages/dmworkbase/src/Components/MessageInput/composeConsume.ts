@@ -16,20 +16,19 @@ import type {
   ConsumedComposeIds,
   UnsentEditorBlock,
 } from "./sendFlow";
+import {
+  chatEditorComposePartRegistry,
+  type EditorComposeDocument,
+  type EditorComposeNode,
+  type EditorComposePartRegistry,
+} from "../../features/chat-composer/editor";
 import { restoreComposeSnapshot } from "./sendFlow";
 import { serializeMentionMarker, stripTrustMark } from "./mentionSendParse";
 
 /** Minimal document node shape we need from the editor JSON. */
-export interface ComposeNode {
-  type?: string;
-  attrs?: { id?: string; previewUrl?: string; [key: string]: unknown };
-  content?: ComposeNode[];
-  [key: string]: unknown;
-}
+export type ComposeNode = EditorComposeNode;
 
-export interface ComposeDoc extends ComposeNode {
-  content?: ComposeNode[];
-}
+export type ComposeDoc = EditorComposeDocument;
 
 /** The editor operations the consume/restore flow needs. */
 export interface ComposeEditorPort {
@@ -110,21 +109,6 @@ export interface ConsumedComposeHandle {
   recovery: ConsumedComposeRecovery;
 }
 
-/** Collect attachment nodes (inline atoms) from a document snapshot, in order. */
-function collectAttachmentNodes(doc: ComposeDoc): ComposeNode[] {
-  const found: ComposeNode[] = [];
-  const walk = (node: ComposeNode | undefined) => {
-    if (!node) return;
-    if (node.type === "attachment" && node.attrs?.id) {
-      found.push(node);
-      return;
-    }
-    node.content?.forEach(walk);
-  };
-  doc.content?.forEach(walk);
-  return found;
-}
-
 /**
  * Take the current compose out of the composer and return the hooks
  * `runSendWithConsumedCompose` needs.
@@ -158,24 +142,21 @@ export function consumeCompose(
     });
 
   const snapshot = editor.getJSON();
-  const attachmentNodes = collectAttachmentNodes(snapshot);
-  const editorAttachmentIds = attachmentNodes
-    .map((node) => node.attrs?.id)
-    .filter((id): id is string => typeof id === "string");
-  const previewUrlById = new Map<string, string | undefined>();
-  attachmentNodes.forEach((node) => {
-    if (node.attrs?.id) {
-      previewUrlById.set(node.attrs.id, node.attrs.previewUrl);
-    }
-  });
+  const composePartRegistry = chatEditorComposePartRegistry;
+  const composePartContext = { attachmentFiles, revokeObjectURL };
+  const editorParts = composePartRegistry.capture(
+    snapshot,
+    composePartContext,
+  );
+  const editorAttachmentIds = editorParts.map(({ id }) => id);
+  const editorPartById = new Map(editorParts.map((part) => [part.id, part]));
 
   const topItemsAtSend = getTopAttachments().slice();
   const topIds = topItemsAtSend.map((item) => item.id);
   const recovery: ConsumedComposeRecovery = {
     snapshot,
-    editorAttachments: editorAttachmentIds.flatMap((id) => {
-      const file = attachmentFiles.get(id);
-      return file ? [{ id, file }] : [];
+    editorAttachments: editorParts.flatMap((part) => {
+      return part.file ? [{ id: part.id, file: part.file }] : [];
     }),
     topAttachments: topItemsAtSend,
   };
@@ -225,10 +206,6 @@ export function consumeCompose(
     },
     restoreEditorBlocks: (blocks: UnsentEditorBlock[]) => {
       assertRestorable();
-      const nodeById = new Map<string, ComposeNode>();
-      attachmentNodes.forEach((node) => {
-        if (node.attrs?.id) nodeById.set(node.attrs.id, node);
-      });
 
       const content: ComposeNode[] = [];
       let inline: ComposeNode[] = [];
@@ -240,7 +217,8 @@ export function consumeCompose(
       };
       blocks.forEach((block) => {
         if (block.type === "attachment") {
-          const node = nodeById.get(block.id);
+          const part = editorPartById.get(block.id);
+          const node = part ? composePartRegistry.restore(part) : undefined;
           if (node) inline.push(node);
           return;
         }
@@ -256,9 +234,8 @@ export function consumeCompose(
     restoreSendTarget: () => opts.onRestoreSendTarget?.(),
     disposeEditorAttachments: (ids: string[]) => {
       ids.forEach((id) => {
-        attachmentFiles.delete(id);
-        const previewUrl = previewUrlById.get(id);
-        if (previewUrl) revokeObjectURL(previewUrl);
+        const part = editorPartById.get(id);
+        if (part) composePartRegistry.dispose(part, composePartContext);
       });
     },
     disposeTopAttachments: (ids: string[]) => {
@@ -304,14 +281,17 @@ export function buildComposeRecoveryDocument(
   recovery: ConsumedComposeRecovery,
   blocks: UnsentEditorBlock[] | undefined,
   parseTextToNodes: (text: string) => ComposeNode[],
+  composePartRegistry: EditorComposePartRegistry =
+    chatEditorComposePartRegistry,
 ): ComposeDoc | undefined {
   if (!blocks) return recovery.snapshot;
 
-  const attachmentNodes = collectAttachmentNodes(recovery.snapshot);
-  const nodeById = new Map<string, ComposeNode>();
-  attachmentNodes.forEach((node) => {
-    if (node.attrs?.id) nodeById.set(node.attrs.id, node);
+  const editorParts = composePartRegistry.capture(recovery.snapshot, {
+    attachmentFiles: new Map(
+      recovery.editorAttachments.map(({ id, file }) => [id, file]),
+    ),
   });
+  const editorPartById = new Map(editorParts.map((part) => [part.id, part]));
 
   const content: ComposeNode[] = [];
   let inline: ComposeNode[] = [];
@@ -322,7 +302,8 @@ export function buildComposeRecoveryDocument(
   };
   blocks.forEach((block) => {
     if (block.type === "attachment") {
-      const node = nodeById.get(block.id);
+      const part = editorPartById.get(block.id);
+      const node = part ? composePartRegistry.restore(part) : undefined;
       if (node) inline.push(node);
       return;
     }
