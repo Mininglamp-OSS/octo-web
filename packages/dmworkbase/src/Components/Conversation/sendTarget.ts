@@ -31,6 +31,11 @@ export interface CapturedSendTarget<M> {
   restore: () => void;
 }
 
+export interface RecoveredSendTarget<M> {
+  replyMessage?: M;
+  handlerType: number;
+}
+
 /**
  * Read and clear the reply/edit target.
  *
@@ -62,4 +67,15 @@ export function captureSendTarget<M>(
       host.setHandlerType(handlerType);
     },
   };
+}
+
+/** Restore an abandoned target only when no newer reply/edit selection exists. */
+export function restoreSendTargetIfVacant<M>(
+  host: SendTargetHost<M>,
+  target: RecoveredSendTarget<M>,
+): boolean {
+  if (!target.replyMessage || host.getReplyMessage()) return false;
+  host.setReplyMessage(target.replyMessage);
+  host.setHandlerType(target.handlerType);
+  return true;
 }

@@ -1467,11 +1467,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     t,
   ]);
 
-  // 先接好 sendRef，再导出 context。Conversation 会在 onContext 回调里同步消费
-  // initialCompose；两步必须处于同一 effect，避免首次无附件自动发送撞上空 sendRef。
+  // 先接好 sendRef，再导出 context。Conversation 先通过 context 恢复最新草稿，
+  // 随后这里把失败 compose 前置合并，避免旧失败内容覆盖更新的草稿。
   useEffect(() => {
     announceContextAfterSendReady(sendRef, send, () => {
-      restoreRecoveredComposes();
       props.onInsertText?.(insertText);
       props.onContext?.({
         insertText,
@@ -1504,6 +1503,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
           attachmentFilesRef.current.clear();
         },
       });
+      restoreRecoveredComposes();
     });
   }, [
     send,

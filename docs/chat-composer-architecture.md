@@ -11,7 +11,7 @@
 - `ChatSendRequest`、`ChatSendOutcome`、`ComposeAttemptLedger` 和纯函数发送计划。
 - operation 级 transport/executor，以及统一的 settle 顺序。
 - attempt ID 草稿所有权；草稿清理发生在编辑器恢复/释放之后。
-- 编辑器销毁或切换频道时的按频道 recovery store。
+- 编辑器销毁或切换频道时的可观察、有限容量 recovery store。
 - pending-send renderer registry 和 transport operation handler 扩展点。
 
 仍需后续迁移：
@@ -159,6 +159,9 @@ packages/dmworkbase/src/features/chat-composer/
     executeChatSendPlan.ts
     waitForMessageEnqueue.ts
     waitForMessageAck.ts
+
+  recovery/
+    composeRecoveryStore.ts
 
   ui/
     ChatComposer.tsx
@@ -429,6 +432,31 @@ type DraftOwner =
 - attempt 入队后，只移除该 attempt 对应的草稿片段。
 - 不通过字符串相等判断草稿归属。
 - canonical draft 不携带内部 trust mark，恢复 mention 时继续 fail-closed。
+
+### 8.1 跨编辑器恢复
+
+发送期间切换频道会销毁原 Tiptap editor。尚未入队的 compose 不能继续回写旧 editor，必须转移到按频道存储：
+
+```text
+old MessageInput settle failure
+  -> ComposeRecoveryStore.add(channelKey, attempt)
+  -> notify active Conversation subscriber
+  -> restore latest persisted/live draft first
+  -> prepend failed attempts in arrival order
+  -> consume recovery records without disposing transferred resources
+```
+
+当前存储策略：
+
+- session 内存级，不使用 `Conversation` 实例静态字段。
+- 每频道最多 20 条，最多 50 个频道，TTL 30 分钟。
+- attempt ID 去重，多个失败 attempt 按到达顺序恢复。
+- 正常恢复表示 `File` 和 object URL 所有权已转移给新 editor，不执行 dispose。
+- TTL、容量淘汰会显式释放尚未转移的 object URL；document unload 由浏览器回收。
+- recovery 只在 reply/edit target 为空时恢复目标，用户更新的选择始终优先。
+- 远端草稿和 live draft 先恢复，失败 compose 再前置合并；禁止因 recovery 存在而跳过新草稿。
+
+当前不把 recovery `File` 写入 IndexedDB。页面重载后原发送任务和 settle 上下文已经终止，单独持久化文件会引入存储配额、权限、版本迁移和孤儿 Blob 清理问题。文本草稿继续走现有远端 draft；如果后续产品要求“浏览器崩溃后恢复附件”，应作为独立的 durable outbox 设计，而不是扩展当前临时 recovery store。
 
 ## 9. 发送计划
 
@@ -783,6 +811,9 @@ Chat 和 `MentionComposer` 各自实现 adapter。
 - capture 后同步清空。
 - restore 保留 mention、hardBreak、段落和 attachment ID。
 - 新草稿不会被失败 attempt 覆盖。
+- 远端草稿与跨编辑器 recovery 同时存在时，恢复顺序为失败 attempt、最新草稿。
+- recovery 到达已挂载的新 Conversation 时能触发恢复。
+- 新 reply/edit target 不被旧 recovery 覆盖。
 - extension part 可以 capture、restore 和降级。
 
 ### 16.3 Send executor 测试

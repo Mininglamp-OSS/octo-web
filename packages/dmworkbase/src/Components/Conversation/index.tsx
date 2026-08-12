@@ -65,7 +65,14 @@ import {
   executeChatSendPlan,
   settleChatSendExecution,
 } from "../../features/chat-composer/bridge";
-import { captureSendTarget } from "./sendTarget";
+import {
+  ComposeRecoveryStore,
+  disposeComposeRecoveryObjectUrls,
+} from "../../features/chat-composer/recovery";
+import {
+  captureSendTarget,
+  restoreSendTargetIfVacant,
+} from "./sendTarget";
 import {
   tryConsumeInitialCompose,
   type ComposeHost,
@@ -331,6 +338,10 @@ interface ConversationState {
   contextMenuMessageID: string | null;
 }
 
+const composeRecoveryStore = new ComposeRecoveryStore<MessageInputRecovery>({
+  dispose: disposeComposeRecoveryObjectUrls,
+});
+
 export class Conversation
   extends Component<ConversationProps, ConversationState>
   implements ConversationContext
@@ -345,10 +356,6 @@ export class Conversation
     { message: Message; handlerType: number }
   > = new Map();
   private static readonly REPLY_STATE_CACHE_MAX_SIZE = 50;
-  private static readonly composeRecoveryStore = new Map<
-    string,
-    MessageInputRecovery[]
-  >();
   vm!: ConversationVM;
   contextMenusContext!: ContextMenusContext;
   avatarMenusContext!: ContextMenusContext; // 点击头像弹出的菜单
@@ -381,6 +388,7 @@ export class Conversation
   private _ownedOpenChannel?: Channel;
   private _lastAttentionCheckedMessageSeq = 0;
   private _unsubscribeVmAttentionListener?: () => void;
+  private _unsubscribeComposeRecovery?: () => void;
   private _attentionRefreshHandler = () => {
     const run = () => this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
@@ -1406,6 +1414,7 @@ export class Conversation
 
   componentDidMount() {
     this._initialComposeMounted = true;
+    this.subscribeComposeRecovery();
     const { channel, onContext } = this.props;
     if (onContext) {
       onContext(this);
@@ -1427,12 +1436,7 @@ export class Conversation
       WKApp.shared.pendingAttachmentGuardId = this._guardId;
     }
 
-    if (
-      this.vm.hasDraft() &&
-      !Conversation.composeRecoveryStore.has(
-        `${channel.channelID}:${channel.channelType}`,
-      )
-    ) {
+    if (this.vm.hasDraft()) {
       this.restoreDraft(this.vm.draft());
     }
     // 恢复引用/回复状态
@@ -1518,6 +1522,7 @@ export class Conversation
     if (channelChanged || prev !== next) {
       this._initialComposeGeneration += 1;
     }
+    if (channelChanged) this.subscribeComposeRecovery();
     if (next && next !== prev) {
       this.tryConsumeInitialCompose();
     }
@@ -1535,6 +1540,8 @@ export class Conversation
     WKApp.mittBus.off("wk:active-menu-changed", this._attentionRefreshHandler);
     this._unsubscribeVmAttentionListener?.();
     this._unsubscribeVmAttentionListener = undefined;
+    this._unsubscribeComposeRecovery?.();
+    this._unsubscribeComposeRecovery = undefined;
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
     if (this._channelInfoListener) {
       this._unsubscribeChannelInfoListener?.();
@@ -1607,27 +1614,22 @@ export class Conversation
     return `${this.props.channel.channelID}:${this.props.channel.channelType}`;
   }
 
+  private subscribeComposeRecovery(): void {
+    this._unsubscribeComposeRecovery?.();
+    this._unsubscribeComposeRecovery = composeRecoveryStore.subscribe(
+      this.composeRecoveryKey(),
+      () => {
+        if (this._initialComposeMounted) this.forceUpdate();
+      },
+    );
+  }
+
   private recordComposeRecovery = (recovery: MessageInputRecovery): void => {
-    const key = recovery.channelKey;
-    const current = Conversation.composeRecoveryStore.get(key) ?? [];
-    if (current.some(({ attemptId }) => attemptId === recovery.attemptId)) {
-      return;
-    }
-    Conversation.composeRecoveryStore.set(key, [...current, recovery]);
-    this.forceUpdate();
+    composeRecoveryStore.add(recovery);
   };
 
   private consumeComposeRecoveries = (attemptIds: string[]): void => {
-    const key = this.composeRecoveryKey();
-    const current = Conversation.composeRecoveryStore.get(key) ?? [];
-    const ids = new Set(attemptIds);
-    const remaining = current.filter(({ attemptId }) => !ids.has(attemptId));
-    if (remaining.length === 0) {
-      Conversation.composeRecoveryStore.delete(key);
-    } else {
-      Conversation.composeRecoveryStore.set(key, remaining);
-    }
-    this.forceUpdate();
+    composeRecoveryStore.consume(this.composeRecoveryKey(), attemptIds);
   };
 
   markConversationExtra() {
@@ -2662,10 +2664,9 @@ export class Conversation
 
   render() {
     const { chatBg, channel, initLocateMessageSeq } = this.props;
-    const recoveredComposes =
-      Conversation.composeRecoveryStore.get(
-        `${channel.channelID}:${channel.channelType}`,
-      ) ?? [];
+    const recoveredComposes = composeRecoveryStore.list(
+      `${channel.channelID}:${channel.channelType}`,
+    );
 
     const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
 
@@ -2946,10 +2947,24 @@ export class Conversation
                       onComposeRecovery={this.recordComposeRecovery}
                       onRecoveredComposes={this.consumeComposeRecoveries}
                       onRestoreRecoveredTarget={(target) => {
-                        if (target.replyMessage !== undefined) {
-                          vm.currentReplyMessage = target.replyMessage as Message;
-                        }
-                        vm.currentHandlerType = target.handlerType;
+                        restoreSendTargetIfVacant<Message>(
+                          {
+                            getReplyMessage: () => vm.currentReplyMessage,
+                            setReplyMessage: (message) => {
+                              vm.currentReplyMessage = message;
+                            },
+                            getHandlerType: () => vm.currentHandlerType,
+                            setHandlerType: (handlerType) => {
+                              vm.currentHandlerType = handlerType;
+                            },
+                          },
+                          {
+                            replyMessage: target.replyMessage as
+                              | Message
+                              | undefined,
+                            handlerType: target.handlerType,
+                          },
+                        );
                       }}
                       botCommands={botCommands}
                       onAddAttachment={(
@@ -2998,9 +3013,12 @@ export class Conversation
                           ctx.insertText(this._pendingInsertText);
                           this._pendingInsertText = undefined;
                         }
-                        // MessageInput 就绪（context + _addAttachmentFn 已设）后才尝试一次性初始编排，
-                        // 避免在 componentDidMount 时 onContext / _addAttachmentFn 尚未 ready 就发送（plan Task 4）。
-                        this.tryConsumeInitialCompose();
+                        // MessageInput 会在 onContext 返回后合并跨实例 recovery。
+                        // 延迟到当前调用栈结束，确保 initialCompose 的冲突检查看到
+                        // 完整的“远端草稿 + recovery”，不会覆盖待恢复内容。
+                        Promise.resolve().then(() =>
+                          this.tryConsumeInitialCompose(),
+                        );
                       }}
                       toolbar={this.chatToolbarUI()}
                       context={this}
