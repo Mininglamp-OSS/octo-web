@@ -14,12 +14,14 @@
 - 编辑器销毁或切换频道时的可观察、有限容量 recovery store。
 - 公开的 pending-send renderer registry 和 transport operation registry。
 - editor compose part registry；附件节点已迁移 capture/restore/dispose，并显式映射到现有 image/file 发送模型。
+- `ChatComposerAttachmentStore`；顶部附件使用 snapshot/take/restore 转移所有权，React 只订阅列表快照。
 
 仍需后续迁移：
 
 - 继续迁移 text/mention capture、Tiptap port、keyboard 和 clipboard policy。
 - 把通用 `ComposePart`/extension operation 纳入现有兼容 request，而不是继续增加字段分支。
 - 将 Conversation 中的上传预检和 SDK content 构造进一步下沉到 bridge adapter。
+- 将 editor node 中的 inline preview URL 也纳入 attachment resource lease；当前 store 已收口 File Map 和顶部附件 URL。
 
 ## 1. 背景
 
@@ -794,6 +796,14 @@ Chat 和 `MentionComposer` 各自实现 adapter。
 - 提取 editor port、attachment store、capture 和 restore。
 - `MessageInput/index.tsx` 变为兼容装配层。
 - 显式关闭列表 extension。
+
+当前进度：
+
+- `ComposeEditorPort`、editor compose part registry 和 attachment capture/restore 已提取。
+- `ChatComposerAttachmentStore` 已替代 `attachmentFilesRef`、`topAttachmentsRef` 及其双写逻辑。
+- 顶部附件在发送时先 snapshot，editor 成功清空后再按 ID take；失败 restore 和 recovery
+  通过同一 store 去重回插，避免同步异常提前移走附件。
+- inline preview URL 的 lease 仍由 attachment extension/attempt 管理，后续与 store 资源接口合并。
 
 ### PR 6：Clipboard 与 Keyboard
 

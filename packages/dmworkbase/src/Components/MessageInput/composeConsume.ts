@@ -79,9 +79,15 @@ export interface ConsumeComposeOptions {
   composePartRegistry?: EditorComposePartRegistry;
   /** In-memory pasted-image files, keyed by attachment node id. */
   attachmentFiles: Map<string, File>;
-  /** Live top-attachment list accessor/mutator (kept outside this module). */
-  getTopAttachments: () => TopAttachmentLike[];
-  setTopAttachments: (items: TopAttachmentLike[]) => void;
+  /** Snapshot current top attachments before the editor is consumed. */
+  snapshotTopAttachments: () => readonly TopAttachmentLike[];
+  /** Transfer captured top attachments after the editor was cleared. */
+  takeTopAttachments: (ids: readonly string[]) => void;
+  /** Transfer attempt-owned top attachments back to the composer. */
+  restoreTopAttachments: (
+    items: TopAttachmentLike[],
+    offset: number,
+  ) => number;
   /** Injectable for tests / non-browser environments. */
   revokeObjectURL?: (url: string) => void;
   /**
@@ -126,8 +132,9 @@ export function consumeCompose(
   const {
     editor,
     attachmentFiles,
-    getTopAttachments,
-    setTopAttachments,
+    snapshotTopAttachments,
+    takeTopAttachments,
+    restoreTopAttachments,
     onRestoreCompose,
     onRestoreError,
   } = opts;
@@ -158,7 +165,7 @@ export function consumeCompose(
   const editorAttachmentIds = editorParts.map(({ id }) => id);
   const editorPartById = new Map(editorParts.map((part) => [part.id, part]));
 
-  const topItemsAtSend = getTopAttachments().slice();
+  const topItemsAtSend = [...snapshotTopAttachments()];
   const topIds = topItemsAtSend.map((item) => item.id);
   const recovery: ConsumedComposeRecovery = {
     snapshot,
@@ -173,10 +180,7 @@ export function consumeCompose(
 
   // ── consume ──────────────────────────────────────────────────────────────
   editor.clearContent();
-  if (topIds.length > 0) {
-    const consumed = new Set(topIds);
-    setTopAttachments(getTopAttachments().filter((a) => !consumed.has(a.id)));
-  }
+  takeTopAttachments(topIds);
 
   const assertRestorable = () => {
     if (editor.isDestroyed()) {
@@ -260,20 +264,13 @@ export function consumeCompose(
       const wanted = new Set(ids);
       const restored = topItemsAtSend.filter((item) => wanted.has(item.id));
       if (restored.length === 0) return;
-      const live = getTopAttachments();
-      const liveIds = new Set(live.map((item) => item.id));
-      const fresh = restored.filter((item) => !liveIds.has(item.id));
-      if (fresh.length === 0) return;
-      // Keep the original relative order of the restored items, insert them
-      // after items an earlier failed send already restored, and never duplicate
-      // an item the user re-added during the await.
-      const offset = Math.min(offsets().topAttachments, live.length);
-      setTopAttachments([
-        ...live.slice(0, offset),
-        ...fresh,
-        ...live.slice(offset),
-      ]);
-      opts.onRestored?.({ blocks: 0, topAttachments: fresh.length });
+      const count = restoreTopAttachments(
+        restored,
+        offsets().topAttachments,
+      );
+      if (count > 0) {
+        opts.onRestored?.({ blocks: 0, topAttachments: count });
+      }
     },
     onRestoreError,
   };
@@ -288,7 +285,10 @@ export function consumeCompose(
 
 /** Build the document portion that remains after a partial send. */
 export function buildComposeRecoveryDocument(
-  recovery: ConsumedComposeRecovery,
+  recovery: Pick<
+    ConsumedComposeRecovery,
+    "snapshot" | "editorAttachments" | "topAttachments"
+  >,
   blocks: UnsentEditorBlock[] | undefined,
   parseTextToNodes: (text: string) => ComposeNode[],
   composePartRegistry: EditorComposePartRegistry =

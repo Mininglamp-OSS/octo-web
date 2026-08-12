@@ -66,7 +66,10 @@ import type {
 import {
   ComposeAttemptLedger,
 } from "../../features/chat-composer/domain";
-import { chatEditorComposePartRegistry } from "../../features/chat-composer/editor";
+import {
+  ChatComposerAttachmentStore,
+  chatEditorComposePartRegistry,
+} from "../../features/chat-composer/editor";
 import {
   chatPendingComposeRenderRegistry,
   type ChatPendingAttachmentPreview,
@@ -507,6 +510,15 @@ function isVideoFileType(file: File): boolean {
   return ["mp4", "avi", "mov", "mkv", "webm"].includes(ext);
 }
 
+let attachmentIdSequence = 0;
+
+function createAttachmentId(file: File): string {
+  attachmentIdSequence += 1;
+  return `${file.name}-${file.size}-${
+    file.lastModified
+  }-${Date.now()}-${attachmentIdSequence}`;
+}
+
 const MessageInput: React.FC<MessageInputProps> = (props) => {
   const { t } = useI18n();
   const [slashMenuVisible, setSlashMenuVisible] = useState(false);
@@ -515,11 +527,20 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const previousScopeRef = useRef<string>("all");
-  // 附件文件映射：id -> File（用于编辑器内的粘贴图片）
-  const attachmentFilesRef = useRef<Map<string, File>>(new Map());
-  // 顶部附件区的附件列表（非图片文件 + 上传的图片）
+  const [attachmentStore] = useState(
+    () => new ChatComposerAttachmentStore<TopAttachmentItem>(),
+  );
   const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
-  const topAttachmentsRef = useRef<TopAttachmentItem[]>([]);
+
+  useEffect(() => {
+    const unsubscribe = attachmentStore.subscribe((items) => {
+      setTopAttachments([...items]);
+    });
+    return () => {
+      unsubscribe();
+      attachmentStore.clear();
+    };
+  }, [attachmentStore]);
 
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
@@ -850,16 +871,14 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const addAttachment = useCallback(
     async (files: File[], source: "paste" | "upload" = "upload") => {
       for (const file of files) {
-        const id = `${file.name}-${file.size}-${
-          file.lastModified
-        }-${Date.now()}`;
+        const id = createAttachmentId(file);
 
         // 判断是否为粘贴的图片（只有粘贴的图片才放入编辑器）
         const isPastedImage = source === "paste" && isImageFile(file);
 
         if (isPastedImage && editor) {
           // 粘贴的图片：插入到编辑器作为富文本元素
-          attachmentFilesRef.current.set(id, file);
+          attachmentStore.addInlineFile(id, file);
           const previewUrl = URL.createObjectURL(file);
 
           editor
@@ -895,15 +914,14 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             previewUrl,
           };
 
-          topAttachmentsRef.current = [...topAttachmentsRef.current, item];
-          setTopAttachments(topAttachmentsRef.current);
+          attachmentStore.appendTopAttachment(item);
         }
       }
 
       // 插入附件后切换到多行模式
       setIsMultiLine(true);
     },
-    [editor]
+    [attachmentStore, editor]
   );
 
   useEffect(() => {
@@ -949,11 +967,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
   // 移除顶部附件区的附件
   const removeTopAttachment = useCallback((id: string) => {
-    const item = topAttachmentsRef.current.find((a) => a.id === id);
-    if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
-    topAttachmentsRef.current = topAttachmentsRef.current.filter((a) => a.id !== id);
-    setTopAttachments(topAttachmentsRef.current);
-  }, []);
+    attachmentStore.removeTopAttachment(id);
+  }, [attachmentStore]);
 
   // 监听顶部附件区变化，更新多行模式状态
   useEffect(() => {
@@ -979,18 +994,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     }
   }, [topAttachments.length, editor]);
 
-  // 组件卸载时清理顶部附件区的预览 URL，避免内存泄漏
-  useEffect(() => {
-    return () => {
-      topAttachmentsRef.current.forEach((item) => {
-        if (item.previewUrl) {
-          URL.revokeObjectURL(item.previewUrl);
-        }
-      });
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   // 动态更新 placeholder
   useEffect(() => {
     if (editor) {
@@ -1015,15 +1018,17 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 编辑器内的附件（粘贴的图片）
     const editorFiles: File[] = editor
       ? extractAttachmentsFromEditor(editor)
-          .map((attr) => attachmentFilesRef.current.get(attr.id))
+          .map((attr) => attachmentStore.attachmentFiles.get(attr.id))
           .filter((f): f is File => f !== undefined)
       : [];
 
     // 顶部附件区的附件
-    const topFiles = topAttachmentsRef.current.map((a) => a.file);
+    const topFiles = attachmentStore
+      .snapshotTopAttachments()
+      .map((a) => a.file);
 
     return [...editorFiles, ...topFiles];
-  }, [editor]);
+  }, [attachmentStore, editor]);
 
 
   // 导出 addMention 方法
@@ -1065,7 +1070,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const recovered = props.recoveredComposes;
     recovered.forEach((item) => {
       item.editorAttachments.forEach(({ id, file }) => {
-        attachmentFilesRef.current.set(id, file);
+        attachmentStore.addInlineFile(id, file);
       });
     });
 
@@ -1114,15 +1119,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       ),
     );
     if (recoveredTopAttachments.length > 0) {
-      const liveIds = new Set(topAttachmentsRef.current.map(({ id }) => id));
-      const fresh = recoveredTopAttachments.filter(({ id }) => !liveIds.has(id));
-      if (fresh.length > 0) {
-        topAttachmentsRef.current = [
-          ...fresh,
-          ...topAttachmentsRef.current,
-        ];
-        setTopAttachments(topAttachmentsRef.current);
-      }
+      attachmentStore.restoreTopAttachments(recoveredTopAttachments, 0);
     }
 
     const target = recovered.find((item) => item.sendTarget)?.sendTarget;
@@ -1134,6 +1131,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     props.onRecoveredComposes?.(recovered.map(({ attemptId }) => attemptId));
   }, [
     editor,
+    attachmentStore,
     props.onExpandChange,
     props.onRecoveredComposes,
     props.onRestoreRecoveredTarget,
@@ -1169,7 +1167,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     const attachmentAttrs = extractAttachmentsFromEditor(editor);
     const editorAttachments: AttachmentFile[] = attachmentAttrs
       .map((attr) => {
-        const file = attachmentFilesRef.current.get(attr.id);
+        const file = attachmentStore.attachmentFiles.get(attr.id);
         if (file) {
           return { id: attr.id, file };
         }
@@ -1178,16 +1176,19 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       .filter((a): a is AttachmentFile => a !== null);
 
     // 顶部附件区文件（通过上传按钮添加）
-    const topAttachmentFiles: AttachmentFile[] = topAttachmentsRef.current.map((a) => ({
-      id: a.id,
-      file: a.file,
-    }));
+    const topAttachmentsAtSend = attachmentStore.snapshotTopAttachments();
+    const topAttachmentFiles: AttachmentFile[] = topAttachmentsAtSend.map(
+      (a) => ({
+        id: a.id,
+        file: a.file,
+      }),
+    );
 
     // 兼容旧 allAttachments（保留向后兼容）
     const allAttachments = [...editorAttachments, ...topAttachmentFiles];
     let orderedBlocks: EditorContentBlock[];
     try {
-      orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
+      orderedBlocks = extractOrderedBlocks(editor, attachmentStore.attachmentFiles);
     } catch (err) {
       console.error("[MessageInput] editor compose part is not sendable", err);
       return false;
@@ -1199,7 +1200,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         type,
         previewUrl,
       })),
-      ...topAttachmentsRef.current.map(({ id, name, type, previewUrl }) => ({
+      ...topAttachmentsAtSend.map(({ id, name, type, previewUrl }) => ({
         id,
         name,
         type,
@@ -1274,15 +1275,19 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
           editor.commands.insertContent(nodes as JSONContent[]),
         focusEnd: () => editor.commands.focus("end"),
       },
-      attachmentFiles: attachmentFilesRef.current,
+      attachmentFiles: attachmentStore.attachmentFiles,
       // 部分还原时把 @[uid:label] 还原成 mention 节点（与草稿恢复同一套解析）。
       parseTextToNodes: (value) =>
         (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
-      getTopAttachments: () => topAttachmentsRef.current,
-      setTopAttachments: (items) => {
-        topAttachmentsRef.current = items as TopAttachmentItem[];
-        setTopAttachments(topAttachmentsRef.current);
+      snapshotTopAttachments: () => attachmentStore.snapshotTopAttachments(),
+      takeTopAttachments: (ids) => {
+        attachmentStore.takeTopAttachments(ids);
       },
+      restoreTopAttachments: (items, offset) =>
+        attachmentStore.restoreTopAttachments(
+          items as TopAttachmentItem[],
+          offset,
+        ),
       getRestoreOffsets: () => restoreOffsetsRef.current,
       onRestored: ({ blocks, topAttachments }) => {
         restoreOffsetsRef.current = {
@@ -1444,6 +1449,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     );
   }, [
     editor,
+    attachmentStore,
     expanded,
     props.onSend,
     props.onCaptureSendTarget,
@@ -1486,12 +1492,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
           pendingSendsRef.current.pendingDraftText(),
         clear: () => {
           editor?.commands.clearContent(true);
-          topAttachmentsRef.current.forEach((item) => {
-            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-          });
-          topAttachmentsRef.current = [];
-          setTopAttachments([]);
-          attachmentFilesRef.current.clear();
+          attachmentStore.clear();
         },
       });
       restoreRecoveredComposes();
@@ -1506,6 +1507,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     restoreDraft,
     addMention,
     addAttachment,
+    attachmentStore,
     getAttachmentFiles,
   ]);
 

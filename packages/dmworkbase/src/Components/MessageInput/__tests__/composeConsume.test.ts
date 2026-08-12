@@ -168,9 +168,21 @@ function consume(h: Harness) {
   return consumeCompose({
     editor: port(h.editor),
     attachmentFiles: h.files,
-    getTopAttachments: () => h.top,
-    setTopAttachments: (items) => {
-      h.top = items;
+    snapshotTopAttachments: () => h.top,
+    takeTopAttachments: (ids) => {
+      const wanted = new Set(ids);
+      h.top = h.top.filter(({ id }) => !wanted.has(id));
+    },
+    restoreTopAttachments: (items, offset) => {
+      const liveIds = new Set(h.top.map(({ id }) => id));
+      const fresh = items.filter(({ id }) => !liveIds.has(id));
+      const index = Math.min(offset, h.top.length);
+      h.top = [
+        ...h.top.slice(0, index),
+        ...fresh,
+        ...h.top.slice(index),
+      ];
+      return fresh.length;
     },
     revokeObjectURL: (url) => h.revoked.push(url),
     parseTextToNodes: (value) =>
@@ -231,11 +243,39 @@ it("keeps the editor intact when a registered part has no settlement adapter", (
       },
       composePartRegistry: registry,
       attachmentFiles: new Map(),
-      getTopAttachments: () => [],
-      setTopAttachments: () => undefined,
+      snapshotTopAttachments: () => [],
+      takeTopAttachments: () => undefined,
+      restoreTopAttachments: () => 0,
     }),
   ).toThrow("cannot participate in send settlement");
   expect(cleared).toBe(false);
+});
+
+it("does not take top attachments when clearing the editor throws", () => {
+  const top = [{ id: "top-1", previewUrl: "blob:top-1" }];
+  const takeTopAttachments = vi.fn();
+
+  expect(() =>
+    consumeCompose({
+      editor: {
+        getJSON: () => ({ type: "doc", content: [] }),
+        isEmpty: () => false,
+        isDestroyed: () => false,
+        clearContent: () => {
+          throw new Error("clear failed");
+        },
+        setContent: () => undefined,
+        insertContentAtBlock: () => undefined,
+        appendContent: () => undefined,
+        focusEnd: () => undefined,
+      },
+      attachmentFiles: new Map(),
+      snapshotTopAttachments: () => top,
+      takeTopAttachments,
+      restoreTopAttachments: () => 0,
+    }),
+  ).toThrow("clear failed");
+  expect(takeTopAttachments).not.toHaveBeenCalled();
 });
 
 describe("consumeCompose — the composer is emptied synchronously", () => {
