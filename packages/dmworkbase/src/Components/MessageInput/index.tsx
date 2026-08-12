@@ -5,7 +5,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { LoaderCircle, X } from "lucide-react";
+import { X } from "lucide-react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -65,9 +65,12 @@ import type {
 } from "../../features/chat-composer/domain";
 import {
   ComposeAttemptLedger,
-  type ComposeAttempt,
 } from "../../features/chat-composer/domain";
-import { PendingComposeRenderRegistry } from "../../features/chat-composer/ui/pendingComposeRenderRegistry";
+import {
+  chatPendingComposeRenderRegistry,
+  type ChatPendingAttachmentPreview,
+  type ChatPendingComposeItem,
+} from "../../features/chat-composer/ui";
 export type {
   AttachmentFile,
   EditorContentBlock,
@@ -476,46 +479,8 @@ export interface MessageInputRecovery {
   expanded: boolean;
 }
 
-interface PendingSendAttachmentPreview {
-  id: string;
-  name: string;
-  type: string;
-  previewUrl?: string;
-}
-
-type PendingSendItem = ComposeAttempt<PendingSendAttachmentPreview>;
-
-const pendingComposeRenderRegistry = new PendingComposeRenderRegistry<
-  PendingSendItem,
-  PendingSendAttachmentPreview
->();
-
-pendingComposeRenderRegistry.register({
-  id: "default",
-  canRender: () => true,
-  render: (item, context) => (
-    <div className="wk-messageinput-sending-item" key={item.id}>
-      <LoaderCircle
-        className="wk-messageinput-sending-spinner"
-        role="img"
-        aria-label={context.sendingLabel}
-      />
-      {item.previewText && (
-        <span
-          className="wk-messageinput-sending-text"
-          title={item.previewText}
-        >
-          {item.previewText}
-        </span>
-      )}
-      {item.attachments.length > 0 && (
-        <span className="wk-messageinput-sending-attachments">
-          {item.attachments.map(context.renderAttachment)}
-        </span>
-      )}
-    </div>
-  ),
-});
+type PendingSendAttachmentPreview = ChatPendingAttachmentPreview;
+type PendingSendItem = ChatPendingComposeItem;
 
 // 判断是否为图片类型（模块级别函数）
 function isImageFileType(file: File): boolean {
@@ -1663,7 +1628,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         {pendingPreEnqueueItems.length > 0 && (
           <div className="wk-messageinput-sending" aria-live="polite">
             {pendingPreEnqueueItems.map((item) => (
-              pendingComposeRenderRegistry.render(item, {
+              chatPendingComposeRenderRegistry.render(item, {
                 sendingLabel: t("base.message.sending"),
                 renderAttachment: (attachment) =>
                   attachment.previewUrl ? (

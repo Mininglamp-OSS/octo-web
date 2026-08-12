@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { MessageContent, MessageText } from "wukongimjssdk";
-import type { ChatSendOperation } from "../../submission/buildChatSendPlan";
+import type {
+  ChatSendOperation,
+  ExtensionChatSendOperation,
+} from "../../submission/buildChatSendPlan";
+import { ChatSendOperationRegistry } from "../ChatSendOperationRegistry";
 import {
   ConversationChatTransport,
   UnsupportedChatSendOperationError,
@@ -151,7 +155,7 @@ describe("ConversationChatTransport", () => {
     );
   });
 
-  it("allows an operation extension to own execution without changing the bridge switch", async () => {
+  it("allows a compatibility handler to override a built-in operation", async () => {
     const host = conversation();
     const executeExtension = vi.fn(async (operation) => ({
       enqueuedPartIds: operation.partIds,
@@ -172,5 +176,48 @@ describe("ConversationChatTransport", () => {
     });
     expect(executeExtension).toHaveBeenCalledWith(operation);
     expect(host.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it("executes a new extension kind through the public registry", async () => {
+    type LocationOperation = ExtensionChatSendOperation<
+      ReturnType<typeof target>,
+      { latitude: number; longitude: number }
+    > & { kind: "extension:location" };
+    const operationRegistry =
+      new ChatSendOperationRegistry<ReturnType<typeof target>>();
+    const executeLocation = vi.fn(async (operation: LocationOperation) => ({
+      enqueuedPartIds: operation.partIds,
+      messageId: "location-message",
+    }));
+    operationRegistry.register<LocationOperation>(
+      "extension:location",
+      executeLocation,
+    );
+    const transport = new ConversationChatTransport(conversation(), {
+      operationRegistry,
+    });
+    const operation: LocationOperation = {
+      kind: "extension:location",
+      partIds: ["location:0"],
+      payload: { latitude: 31.2, longitude: 121.5 },
+    };
+
+    await expect(transport.execute(operation)).resolves.toEqual({
+      enqueuedPartIds: ["location:0"],
+      messageId: "location-message",
+    });
+    expect(executeLocation).toHaveBeenCalledWith(operation);
+  });
+
+  it("rejects an unregistered extension kind", async () => {
+    const transport = new ConversationChatTransport(conversation());
+
+    await expect(
+      transport.execute({
+        kind: "extension:unknown",
+        partIds: ["unknown:0"],
+        payload: {},
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedChatSendOperationError);
   });
 });

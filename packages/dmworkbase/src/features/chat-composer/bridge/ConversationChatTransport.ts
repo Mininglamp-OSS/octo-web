@@ -9,8 +9,15 @@ import type {
   ChatMention,
   EditorContentBlock,
 } from "../domain";
-import type { ChatSendOperation } from "../submission/buildChatSendPlan";
+import type {
+  BuiltInChatSendOperation,
+  ChatSendOperation,
+} from "../submission/buildChatSendPlan";
 import type { ChatTransportPort, ChatTransportResult } from "./ChatTransportPort";
+import {
+  ChatSendOperationRegistry,
+  type ChatSendOperationHandler,
+} from "./ChatSendOperationRegistry";
 
 /** The part of a Message needed to preserve the existing reply/edit behavior. */
 export interface ConversationMessageTarget {
@@ -44,7 +51,9 @@ export interface ConversationChatTransportConversation<
  * closures can inject them without making the bridge reach through private
  * implementation details.
  */
-export interface ConversationChatTransportHandlers {
+export interface ConversationChatTransportHandlers<
+  TMessage extends ConversationMessageTarget = ConversationMessageTarget,
+> {
   sendTextAndWaitAck?: (content: MessageContent) => Promise<boolean>;
   sendImageFile?: (file: File) => Promise<boolean>;
   sendFileAttachment?: (file: File) => Promise<boolean>;
@@ -53,16 +62,18 @@ export interface ConversationChatTransportHandlers {
     reply?: Reply,
   ) => Promise<boolean>;
   resolveReplyFromName?: (message: ConversationMessageTarget) => string;
-  /** Optional operation-level extensions or overrides. */
+  /** Public extension registry. Registered operations run before built-ins. */
+  operationRegistry?: ChatSendOperationRegistry<TMessage>;
+  /** Compatibility hook for overriding built-in operations. */
   operationHandlers?: Partial<{
-    [K in ChatSendOperation["kind"]]: (
-      operation: Extract<ChatSendOperation, { kind: K }>,
+    [K in BuiltInChatSendOperation<TMessage>["kind"]]: (
+      operation: Extract<BuiltInChatSendOperation<TMessage>, { kind: K }>,
     ) => Promise<ChatTransportResult>;
   }>;
 }
 
 export class UnsupportedChatSendOperationError extends Error {
-  constructor(kind: ChatSendOperation["kind"]) {
+  constructor(kind: string) {
     super(`Conversation chat transport cannot execute ${kind} without a handler`);
     this.name = "UnsupportedChatSendOperationError";
   }
@@ -151,27 +162,45 @@ export class ConversationChatTransport<
   >
   implements ChatTransportPort<TMessage>
 {
+  private readonly builtInOperations =
+    new ChatSendOperationRegistry<TMessage>();
+
   constructor(
     private readonly conversation: ConversationChatTransportConversation<TMessage>,
-    private readonly handlers: ConversationChatTransportHandlers = {},
-  ) {}
+    private readonly handlers: ConversationChatTransportHandlers<TMessage> = {},
+  ) {
+    this.registerBuiltInOperations();
+  }
 
   async execute(operation: ChatSendOperation<TMessage>): Promise<ChatTransportResult> {
-    const extensionHandler = this.handlers.operationHandlers?.[operation.kind] as
-      | ((current: ChatSendOperation<TMessage>) => Promise<ChatTransportResult>)
-      | undefined;
-    if (extensionHandler) return extensionHandler(operation);
+    const publicHandler = this.handlers.operationRegistry?.get(operation);
+    if (publicHandler) return publicHandler(operation);
 
-    switch (operation.kind) {
-      case "edit_text":
-        return this.executeEdit(operation);
-      case "send_text":
-        return this.executeText(operation);
-      case "send_media":
-        return this.executeMedia(operation);
-      case "send_rich_text":
-        return this.executeRichText(operation);
-    }
+    const override = (
+      this.handlers.operationHandlers as
+        | Record<string, ChatSendOperationHandler<TMessage> | undefined>
+        | undefined
+    )?.[operation.kind];
+    if (override) return override(operation);
+
+    const builtIn = this.builtInOperations.get(operation);
+    if (builtIn) return builtIn(operation);
+    throw new UnsupportedChatSendOperationError(operation.kind);
+  }
+
+  private registerBuiltInOperations(): void {
+    this.builtInOperations.register<
+      Extract<ChatSendOperation<TMessage>, { kind: "edit_text" }>
+    >("edit_text", (operation) => this.executeEdit(operation));
+    this.builtInOperations.register<
+      Extract<ChatSendOperation<TMessage>, { kind: "send_text" }>
+    >("send_text", (operation) => this.executeText(operation));
+    this.builtInOperations.register<
+      Extract<ChatSendOperation<TMessage>, { kind: "send_media" }>
+    >("send_media", (operation) => this.executeMedia(operation));
+    this.builtInOperations.register<
+      Extract<ChatSendOperation<TMessage>, { kind: "send_rich_text" }>
+    >("send_rich_text", (operation) => this.executeRichText(operation));
   }
 
   private targetFor(operation: ChatSendOperation<TMessage>): TMessage {
@@ -250,7 +279,7 @@ export function createConversationChatTransport<
   TMessage extends ConversationMessageTarget = ConversationMessageTarget,
 >(
   conversation: ConversationChatTransportConversation<TMessage>,
-  handlers?: ConversationChatTransportHandlers,
+  handlers?: ConversationChatTransportHandlers<TMessage>,
 ): ConversationChatTransport<TMessage> {
   return new ConversationChatTransport(conversation, handlers);
 }

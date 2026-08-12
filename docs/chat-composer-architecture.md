@@ -12,7 +12,7 @@
 - operation 级 transport/executor，以及统一的 settle 顺序。
 - attempt ID 草稿所有权；草稿清理发生在编辑器恢复/释放之后。
 - 编辑器销毁或切换频道时的可观察、有限容量 recovery store。
-- pending-send renderer registry 和 transport operation handler 扩展点。
+- 公开的 pending-send renderer registry 和 transport operation registry。
 
 仍需后续迁移：
 
@@ -573,11 +573,17 @@ messageRenderRegistry.register(locationMessageRenderer)
 ```
 
 当前迁移阶段的 pending UI 已通过
-`features/chat-composer/ui/pendingComposeRenderRegistry.ts` 提供 registry；默认
-renderer 保持现有预览行为，扩展可以按 pending item 优先级接管渲染。transport
-则通过 `ConversationChatTransportHandlers.operationHandlers` 提供 operation 级覆盖。
-完整的 editor/message extension registry 仍应在后续迁移中补齐，不能把当前两个扩展点误认为
-已经完成全部插件化。
+`features/chat-composer/ui/chatPendingComposeRenderRegistry.tsx` 暴露应用级 registry。
+附件预览是第一个注册 renderer，扩展可以注册更高优先级的 renderer 接管匹配项，
+`MessageInput` 不再持有私有单例。
+
+发送执行通过 `ChatSendOperationRegistry` 装配。内建 text/edit/media/RichText
+和外部 `extension:*` operation 使用同一分发机制；应用层把 registry 传给
+`ConversationChatTransportHandlers.operationRegistry` 即可增加 operation，不修改 bridge。
+旧 `operationHandlers` 只保留为内建 operation 覆盖兼容层。
+
+完整的 editor capture/restore 与 `ComposePart` registry 仍需后续迁移，不能把
+operation/render registry 误认为已经完成全部插件化。
 
 扩展注册必须发生在应用装配层，domain 不允许 import 具体扩展。
 

@@ -10,16 +10,17 @@ export type ChatSendOperationKind =
   | "edit_text"
   | "send_text"
   | "send_media"
-  | "send_rich_text";
+  | "send_rich_text"
+  | `extension:${string}`;
 
-interface ChatSendOperationBase<TMessage> {
+export interface ChatSendOperationBase<TMessage> {
   kind: ChatSendOperationKind;
   partIds: string[];
   sendTarget?: SendTargetSnapshot<TMessage>;
   requiresPreviousEnqueue?: boolean;
 }
 
-export type ChatSendOperation<TMessage = unknown> =
+export type BuiltInChatSendOperation<TMessage = unknown> =
   | (ChatSendOperationBase<TMessage> & {
       kind: "edit_text";
       text: string;
@@ -38,6 +39,18 @@ export type ChatSendOperation<TMessage = unknown> =
       kind: "send_rich_text";
       blocks: EditorContentBlock[];
     });
+
+export type ExtensionChatSendOperation<
+  TMessage = unknown,
+  TPayload = unknown,
+> = ChatSendOperationBase<TMessage> & {
+  kind: `extension:${string}`;
+  payload: TPayload;
+};
+
+export type ChatSendOperation<TMessage = unknown> =
+  | BuiltInChatSendOperation<TMessage>
+  | ExtensionChatSendOperation<TMessage>;
 
 export interface ChatSendPlan<TMessage = unknown> {
   attemptId: string;
@@ -254,11 +267,7 @@ export function buildChatSendPlan<TMessage = unknown>(
       partIds: [partId],
       attachment: { id: block.id, file: block.file },
     };
-    if (block.type === "text") {
-      attachTarget(operation);
-    } else {
-      pushOperation(operation);
-    }
+    pushOperation(operation);
   });
 
   if (editorBlocks.length === 0 && text.trim() !== "") {
