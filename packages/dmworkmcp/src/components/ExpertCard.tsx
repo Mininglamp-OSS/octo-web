@@ -1,9 +1,10 @@
 import React from "react";
-import { Bot, Pencil, Trash2, UserRound, Users } from "lucide-react";
+import { Bot, Pencil, ShieldCheck, Trash2, UserRound, Users } from "lucide-react";
 import { t } from "@octo/base";
 import type { ExpertItem } from "../mock/expertMock";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
+import { isOfficialExpert } from "../utils/publisher";
 
 interface ExpertCardProps {
   item: ExpertItem;
@@ -29,6 +30,7 @@ const MAX_TAGS = 3;
  */
 export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop }: ExpertCardProps) {
   const isSquad = item.kind === "squad";
+  const isOfficial = isOfficialExpert(item);
   const owner = resolveExpertOwner(item);
   const visibleTags = item.tags.slice(0, MAX_TAGS);
   const overflowTags = item.tags.slice(MAX_TAGS);
@@ -38,7 +40,7 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
 
   return (
     <div
-      className="wk-mcp-card"
+      className={`wk-mcp-card${isOfficial ? " wk-mcp-card--official" : ""}`}
       role="button"
       tabIndex={0}
       aria-label={item.name}
@@ -84,23 +86,32 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
               {item.name}
             </h3>
           </div>
-          <div className="wk-mcp-card__meta-row">
-            {owner.botName && (
-              <span className="wk-mcp-card__owner" title={owner.botName}>
-                <Bot className="wk-mcp-card__owner-bot-icon" size={13} aria-hidden="true" />
-                <span className="wk-mcp-card__owner-name">{owner.botName}</span>
+          {isOfficial ? (
+            <div className="wk-mcp-card__meta-row">
+              <span className="wk-mcp-card__owner wk-mcp-card__owner--official">
+                <ShieldCheck className="wk-mcp-card__owner-official-icon" size={13} aria-hidden="true" />
+                <span className="wk-mcp-card__owner-name">{t("mcp.card.officialPublisher")}</span>
               </span>
-            )}
-            {owner.botName && owner.humanName && (
-              <span className="wk-mcp-card__meta-separator">·</span>
-            )}
-            {owner.humanName && (
-              <span className="wk-mcp-card__owner" title={owner.humanName}>
-                <UserRound className="wk-mcp-card__owner-user-icon" size={13} aria-hidden="true" />
-                <span className="wk-mcp-card__owner-name">{owner.humanName}</span>
-              </span>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="wk-mcp-card__meta-row">
+              {owner.botName && (
+                <span className="wk-mcp-card__owner" title={owner.botName}>
+                  <Bot className="wk-mcp-card__owner-bot-icon" size={13} aria-hidden="true" />
+                  <span className="wk-mcp-card__owner-name">{owner.botName}</span>
+                </span>
+              )}
+              {owner.botName && owner.humanName && (
+                <span className="wk-mcp-card__meta-separator">·</span>
+              )}
+              {owner.humanName && (
+                <span className="wk-mcp-card__owner" title={owner.humanName}>
+                  <UserRound className="wk-mcp-card__owner-user-icon" size={13} aria-hidden="true" />
+                  <span className="wk-mcp-card__owner-name">{owner.humanName}</span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

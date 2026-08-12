@@ -52,6 +52,9 @@ interface ExpertBase {
   tags: string[];
   /** Publishing org, shown in the detail header meta. */
   publisher: string;
+  /** Wire visibility; "system" marks a platform-published (官方) record and
+   *  swaps the owner row for the official badge (mirrors MCP). */
+  visibility?: string;
   /** Who created this entry — drives the bot/human owner display (mirrors MCP). */
   createdByType: "bot" | "human";
   /** Bot display name when createdByType === "bot". */

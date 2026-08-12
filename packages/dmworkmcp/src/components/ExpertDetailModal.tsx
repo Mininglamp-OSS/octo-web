@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   Bot,
   Route,
+  ShieldCheck,
   UserRound,
   Users,
 } from "lucide-react";
@@ -10,6 +11,7 @@ import type { ExpertItem, ExpertMember } from "../mock/expertMock";
 import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, openDownloadUrl } from "../api/expertService";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
+import { isOfficialExpert } from "../utils/publisher";
 import ExpertSpecView from "./ExpertSpecView";
 
 interface ExpertDetailModalProps {
@@ -82,23 +84,32 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
         </div>
         <p className="wk-mcp-expert-detail__summary">{item.summary}</p>
         <div className="wk-mcp-expert-detail__meta">
-          <span className="wk-mcp-expert-owner">
-            {owner.botName && (
-              <span className="wk-mcp-expert-owner__item" title={owner.botName}>
-                <Bot size={13} aria-hidden="true" />
-                <span className="wk-mcp-expert-owner__name">{owner.botName}</span>
+          {isOfficialExpert(item) ? (
+            <span className="wk-mcp-expert-owner">
+              <span className="wk-mcp-expert-owner__item wk-mcp-detail__owner--official">
+                <ShieldCheck size={13} aria-hidden="true" />
+                <span className="wk-mcp-expert-owner__name">{t("mcp.card.officialPublisher")}</span>
               </span>
-            )}
-            {owner.botName && owner.humanName && (
-              <span className="wk-mcp-expert-owner__sep">·</span>
-            )}
-            {owner.humanName && (
-              <span className="wk-mcp-expert-owner__item" title={owner.humanName}>
-                <UserRound size={13} aria-hidden="true" />
-                <span className="wk-mcp-expert-owner__name">{owner.humanName}</span>
-              </span>
-            )}
-          </span>
+            </span>
+          ) : (
+            <span className="wk-mcp-expert-owner">
+              {owner.botName && (
+                <span className="wk-mcp-expert-owner__item" title={owner.botName}>
+                  <Bot size={13} aria-hidden="true" />
+                  <span className="wk-mcp-expert-owner__name">{owner.botName}</span>
+                </span>
+              )}
+              {owner.botName && owner.humanName && (
+                <span className="wk-mcp-expert-owner__sep">·</span>
+              )}
+              {owner.humanName && (
+                <span className="wk-mcp-expert-owner__item" title={owner.humanName}>
+                  <UserRound size={13} aria-hidden="true" />
+                  <span className="wk-mcp-expert-owner__name">{owner.humanName}</span>
+                </span>
+              )}
+            </span>
+          )}
         </div>
       </div>
     </div>
