@@ -23,7 +23,8 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { Editor, Node } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import {
-  composeSnapshotText,
+  composeSnapshotDraftText,
+  composeSnapshotPreviewText,
   consumeCompose,
   ComposeRestoreUnavailableError,
   type ComposeDoc,
@@ -203,7 +204,7 @@ describe("consumeCompose — the composer is emptied synchronously", () => {
     expect(h.editor.getText()).toBe("");
     expect(h.top).toEqual([]);
     expect(handle.ids.topIds).toEqual(["t1"]);
-    expect(composeSnapshotText(handle.snapshot)).toBe("hello");
+    expect(composeSnapshotDraftText(handle.snapshot)).toBe("hello");
   });
 
   it("captures pasted attachment ids in document order", () => {
@@ -440,18 +441,29 @@ describe("send queue — consecutive sends keep their own target and order", () 
   });
 });
 
-describe("composeSnapshotText", () => {
-  it("flattens text, mentions and line breaks for draft persistence", () => {
+describe("compose snapshot serialization", () => {
+  it("keeps canonical mentions and whitespace in persisted drafts", () => {
     const snapshot = doc(
-      para(text("hi "), { type: "attachment", attrs: { id: "a" } }),
-      para(text("bye")),
+      para(
+        text("  hi "),
+        { type: "mention", attrs: { id: "u1", label: "Alice" } },
+        { type: "hardBreak" },
+        text("there  "),
+        { type: "attachment", attrs: { id: "a" } },
+      ),
+      para(text("bye ")),
     ) as ComposeDoc;
-    expect(composeSnapshotText(snapshot)).toBe("hi \nbye");
+    expect(composeSnapshotDraftText(snapshot)).toBe(
+      "  hi @[u1:Alice]\nthere  \nbye ",
+    );
+    expect(composeSnapshotPreviewText(snapshot)).toBe(
+      "hi @Alice\nthere  \nbye",
+    );
   });
 
   it("returns an empty string for an empty compose", () => {
-    expect(composeSnapshotText(undefined)).toBe("");
-    expect(composeSnapshotText({ type: "doc", content: [] })).toBe("");
+    expect(composeSnapshotDraftText(undefined)).toBe("");
+    expect(composeSnapshotPreviewText({ type: "doc", content: [] })).toBe("");
   });
 });
 

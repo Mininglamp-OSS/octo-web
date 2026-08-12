@@ -256,6 +256,25 @@ export function createSendQueue(): SendQueue {
 }
 
 /**
+ * Run send settlement inside the serialized task boundary. The settlement hook
+ * must finish before the queue starts the next task, otherwise the next send can
+ * observe stale pending-attempt state.
+ */
+export function enqueueSettledSend<T>(
+  queue: SendQueue,
+  task: () => Promise<T>,
+  settle: () => void,
+): Promise<T> {
+  return queue.enqueue(async () => {
+    try {
+      return await task();
+    } finally {
+      settle();
+    }
+  });
+}
+
+/**
  * Restore / dispose hooks for a compose that was already consumed synchronously
  * by the caller before the send started.
  */

@@ -33,6 +33,7 @@ import {
   announceContextAfterSendReady,
   createPendingSendTracker,
   createSendQueue,
+  enqueueSettledSend,
   invokeReadySend,
   restoreComposeSnapshot,
   runSendWithConsumedCompose,
@@ -90,6 +91,38 @@ describe("createPendingSendTracker", () => {
     expect(tracker.markPartEnqueued(99)).toBe(false);
     expect(tracker.preEnqueueValues()).toEqual([]);
     expect(tracker.preEnqueueCount()).toBe(0);
+  });
+});
+
+describe("enqueueSettledSend", () => {
+  it("releases the previous attempt before the next queued send starts", async () => {
+    const queue = createSendQueue();
+    const tracker = createPendingSendTracker<{
+      id: number;
+      draftText: string;
+      remainingPreEnqueueParts: number;
+    }>();
+    tracker.register({ id: 1, draftText: "A", remainingPreEnqueueParts: 1 });
+    tracker.register({ id: 2, draftText: "B", remainingPreEnqueueParts: 1 });
+
+    let finishA!: () => void;
+    const taskA = enqueueSettledSend(
+      queue,
+      () => new Promise<void>((resolve) => (finishA = resolve)),
+      () => tracker.release(1),
+    );
+    const taskB = enqueueSettledSend(
+      queue,
+      async () => {
+        expect(tracker.values().map((item) => item.draftText)).toEqual(["B"]);
+      },
+      () => tracker.release(2),
+    );
+
+    await Promise.resolve();
+    finishA();
+    await Promise.all([taskA, taskB]);
+    expect(tracker.values()).toEqual([]);
   });
 });
 

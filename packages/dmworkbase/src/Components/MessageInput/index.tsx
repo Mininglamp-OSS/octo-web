@@ -45,6 +45,7 @@ import {
   announceContextAfterSendReady,
   createPendingSendTracker,
   createSendQueue,
+  enqueueSettledSend,
   invokeReadySend,
   runSendWithConsumedCompose,
   SendQueue,
@@ -54,7 +55,8 @@ import {
   SendTargetSnapshot,
 } from "./sendFlow";
 import {
-  composeSnapshotText,
+  composeSnapshotDraftText,
+  composeSnapshotPreviewText,
   consumeCompose,
   ComposeDoc,
   ComposeRestoreUnavailableError,
@@ -467,7 +469,8 @@ interface PendingSendAttachmentPreview {
 
 interface PendingSendItem {
   id: number;
-  text: string;
+  previewText: string;
+  draftText: string;
   attachments: PendingSendAttachmentPreview[];
   remainingPreEnqueueParts: number;
 }
@@ -1185,17 +1188,19 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         });
       },
     });
-    const composeText = composeSnapshotText(handle.snapshot);
+    const previewText = composeSnapshotPreviewText(handle.snapshot);
+    const draftText = composeSnapshotDraftText(handle.snapshot);
     const pendingId = ++pendingSendSeqRef.current;
     registerPendingSend({
       id: pendingId,
-      text: composeText,
+      previewText,
+      draftText,
       attachments: pendingAttachmentPreviews,
       // Keep the guard closed until Conversation declares the real send plan.
       remainingPreEnqueueParts: 1,
     });
     const sendDraft = sendDraftBaseline
-      ? { ...sendDraftBaseline, text: composeText }
+      ? { ...sendDraftBaseline, text: draftText }
       : undefined;
     const sendProgress: SendProgressSnapshot = {
       setExpectedParts: (count) =>
@@ -1212,8 +1217,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 「连点没反应」），而是排在前一条之后执行，消息顺序仍由 Conversation 等 ack
     // 保证。onSend 未 settle 前把 compose 内容登记到 pendingSendsRef，供草稿
     // 保存使用；「发送中」预览和切会话守卫只查看尚未产生本地气泡的条目。
-    return getSendQueue()
-      .enqueue(() =>
+    return enqueueSettledSend(
+      getSendQueue(),
+      () =>
         runSendWithConsumedCompose(
           () =>
             props.onSend!(
@@ -1228,9 +1234,9 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             ),
           handle.ids,
           handle.compose
-        )
-      )
-      .finally(() => releasePendingSend(pendingId));
+        ),
+      () => releasePendingSend(pendingId),
+    );
   }, [
     editor,
     expanded,
@@ -1267,10 +1273,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         pendingPreEnqueueCount: () =>
           pendingSendsRef.current.preEnqueueCount(),
         pendingSendDrafts: () =>
-          pendingSendsRef.current.values().map((item) => item.text),
+          pendingSendsRef.current.values().map((item) => item.draftText),
         pendingSendText: () =>
           pendingSendsRef.current.values()
-            .map((item) => item.text)
+            .map((item) => item.draftText)
             .filter((text) => text.trim() !== "")
             .join("\n"),
         clear: () => {
@@ -1447,12 +1453,12 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                   role="img"
                   aria-label={t("base.message.sending")}
                 />
-                {item.text && (
+                {item.previewText && (
                   <span
                     className="wk-messageinput-sending-text"
-                    title={item.text}
+                    title={item.previewText}
                   >
-                    {item.text}
+                    {item.previewText}
                   </span>
                 )}
                 {item.attachments.length > 0 && (

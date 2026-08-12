@@ -17,6 +17,7 @@ import type {
   UnsentEditorBlock,
 } from "./sendFlow";
 import { restoreComposeSnapshot } from "./sendFlow";
+import { serializeMentionMarker, stripTrustMark } from "./mentionSendParse";
 
 /** Minimal document node shape we need from the editor JSON. */
 export interface ComposeNode {
@@ -274,19 +275,24 @@ export function consumeCompose(
   return { ids: { topIds, editorAttachmentIds }, compose, snapshot };
 }
 
-/** Plain text of a compose snapshot — used for draft persistence / previews. */
-export function composeSnapshotText(doc: ComposeDoc | undefined): string {
+function serializeComposeSnapshot(
+  doc: ComposeDoc | undefined,
+  mentionText: (id: string, label: string) => string,
+): string {
   if (!doc?.content) return "";
   const parts: string[] = [];
   const walk = (node: ComposeNode | undefined) => {
     if (!node) return;
     if (node.type === "text" && typeof node.text === "string") {
-      parts.push(node.text);
+      parts.push(stripTrustMark(node.text));
       return;
     }
     if (node.type === "mention") {
+      const id = node.attrs?.id;
       const label = node.attrs?.label;
-      if (typeof label === "string") parts.push(`@${label}`);
+      if (typeof id === "string" && typeof label === "string") {
+        parts.push(mentionText(id, label));
+      }
       return;
     }
     if (node.type === "hardBreak") {
@@ -299,5 +305,19 @@ export function composeSnapshotText(doc: ComposeDoc | undefined): string {
     if (index > 0) parts.push("\n");
     walk(node);
   });
-  return parts.join("").trim();
+  return parts.join("");
+}
+
+/** Canonical, restorable text used for provisional draft persistence. */
+export function composeSnapshotDraftText(doc: ComposeDoc | undefined): string {
+  return serializeComposeSnapshot(doc, (id, label) =>
+    serializeMentionMarker(id, label, false),
+  );
+}
+
+/** Human-readable text used only by the pending-send preview. */
+export function composeSnapshotPreviewText(
+  doc: ComposeDoc | undefined,
+): string {
+  return serializeComposeSnapshot(doc, (_id, label) => `@${label}`).trim();
 }
