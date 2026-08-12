@@ -325,11 +325,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
     // 已切换 task 或重新加载，旧请求的响应必须丢弃，绝不污染当前 task 的 scheduleItem。
     private scheduleLoadSeq = 0;
+    /** 当前真正令 scheduleLoading=true 的请求 seq；用于安全取消旧 spinner。 */
+    private scheduleLoadingSeq?: number;
     private publishedTitleLocale?: string;
 
     /** bump 并返回最新调度加载序列号；任何会改变「当前 scheduleItem 归属」的入口都应调用。 */
     private nextScheduleSeq(): number {
         this.scheduleLoadSeq += 1;
+        // bump 会令旧 schedule 请求失效。若没有替代 loadSchedule（例如状态事件
+        // 只刷新 personal/members），旧请求迟到后只会 return，过去会让 spinner
+        // 永久停在 true。新 loadSchedule 会在拿到本 seq 后重新登记并置 true。
+        if (this.scheduleLoadingSeq !== undefined) {
+            this.scheduleLoadingSeq = undefined;
+            if (!this.unmounted) {
+                this.setState({ scheduleLoading: false });
+            }
+        }
         return this.scheduleLoadSeq;
     }
 
@@ -767,17 +778,21 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      * 「这次是最新的一次 schedule 加载」。
      */
     async loadSchedule(scheduleId: number, seq?: number) {
+        if (this.unmounted) return;
         const reqSeq = seq ?? this.nextScheduleSeq();
         const requestTaskId = this.taskId;
+        this.scheduleLoadingSeq = reqSeq;
         this.setState({ scheduleLoading: true });
         try {
             const item = await api.getSchedule(scheduleId);
             // 旧请求（期间又发了一轮加载 / 切了 task）迟到 resolve：丢弃，不污染新 task。
-            if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
+            if (this.unmounted || this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
+            this.scheduleLoadingSeq = undefined;
             this.setState({ scheduleItem: item, scheduleLoading: false });
         } catch {
             // 同样：只有仍是最新请求才允许清空，避免旧请求的失败反而抹掉新 task 的定时。
-            if (this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
+            if (this.unmounted || this.scheduleLoadSeq !== reqSeq || this.taskId !== requestTaskId) return;
+            this.scheduleLoadingSeq = undefined;
             // Blocking 5：加载失败也要清空 scheduleItem，避免上一条总结的定时残留，
             // 保证 scheduleItem 始终对应当前 detail（宁可显示「设置定时」也不串台）。
             this.setState({ scheduleItem: null, scheduleLoading: false });
@@ -1033,7 +1048,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const capturedPrevStatus = this.state.lastKnownStatus;
             const detail = await api.getSummaryDetail(this.taskId);
             const newStatus = detail.status;
-            const staleAfterAwait = this.taskId !== requestTaskId;
+            const staleAfterAwait = this.unmounted || this.taskId !== requestTaskId;
             if (!staleAfterAwait) {
                 this.setState({ detail, lastKnownStatus: newStatus });
             }
@@ -1044,7 +1059,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 // dedup layer is task-scoped (round-11), so posting for
                 // captured task A does not interfere with task B's own
                 // eventual send decision.
-                void this.sendGroupSummaryNotify(detail);
+                void this.sendGroupSummaryNotify(detail).catch((error) => {
+                    console.warn("[summaryNotify] unexpected dispatch failure", {
+                        taskId: detail.task_id,
+                        error,
+                    });
+                });
             }
             if (staleAfterAwait) return; // skip the non-tip transition side effects for the stale task
 
@@ -1112,17 +1132,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const requestTaskId = this.taskId;
         const capturedPrevStatus = this.state.lastKnownStatus;
         try {
-            const updates = await api.batchStatus([this.taskId]);
-            const staleAfterBatch = this.taskId !== requestTaskId;
+            const updates = await api.batchStatus([requestTaskId]);
+            const staleAfterBatch = this.unmounted || this.taskId !== requestTaskId;
             const update = updates.find(u => u.id === requestTaskId);
             if (!update) return;
 
-            const newStatus = update.status;
+            // batchStatus 是轻量索引，可能领先于详情副本。它只负责提示「值得补拉」，
+            // 真正推进 baseline、停轮询和发 tip 必须以后续 detail.status 为准。
+            const batchStatus = update.status;
 
-            if (capturedPrevStatus !== undefined && capturedPrevStatus !== newStatus) {
+            if (capturedPrevStatus !== undefined && capturedPrevStatus !== batchStatus) {
                 try {
                     const detail = await api.getSummaryDetail(requestTaskId);
-                    const staleAfterDetail = staleAfterBatch || this.taskId !== requestTaskId;
+                    const newStatus = detail.status;
+                    const staleAfterDetail = this.unmounted || staleAfterBatch || this.taskId !== requestTaskId;
                     if (!staleAfterDetail) {
                         this.setState({ detail, lastKnownStatus: newStatus });
                     }
@@ -1152,7 +1175,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             //  against the CAPTURED detail even when a task
                             //  switch raced the second await — round-12 P1
                             //  (@mochashanyao) makes this explicit.
-                            void this.sendGroupSummaryNotify(detail);
+                            void this.sendGroupSummaryNotify(detail).catch((error) => {
+                                console.warn("[summaryNotify] unexpected dispatch failure", {
+                                    taskId: detail.task_id,
+                                    error,
+                                });
+                            });
                         }
                     }
                 } catch {
@@ -1210,6 +1238,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             },
             TaskStatus.COMPLETED,
             ChannelTypeGroup,
+            WKApp.remoteConfig.summaryNotifyEnabled,
         );
     }
 

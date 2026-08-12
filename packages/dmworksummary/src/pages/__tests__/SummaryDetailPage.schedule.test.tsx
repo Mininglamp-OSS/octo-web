@@ -57,6 +57,7 @@ import * as api from '../../api/summaryApi';
 import { WKApp } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { shouldEmitOnStatusTransition } from '../../utils/summaryNotifyHelpers';
+import { TaskStatus } from '../../types/summary';
 
 vi.mock('../../api/summaryApi');
 
@@ -179,7 +180,7 @@ const baseDetail = (over: any = {}) => ({
     task_no: 'T1',
     title: 't',
     summary_mode: 1,
-    status: 5, // 已完成-ish，避免触发 fallback poll 分支无所谓
+    status: TaskStatus.COMPLETED,
     trigger_type: 0,
     time_range_start: '',
     time_range_end: '',
@@ -236,6 +237,59 @@ describe('SummaryDetailPage — Blocking 5: scheduleItem must track current deta
         await page.loadDetail();
 
         expect(api.getSchedule).toHaveBeenCalledWith(55);
+    });
+
+    it('clears scheduleLoading when an in-flight schedule request is invalidated without a replacement', async () => {
+        let resolveSchedule: (value: any) => void = () => {};
+        const pendingSchedule = new Promise((resolve) => {
+            resolveSchedule = resolve;
+        });
+        vi.mocked(api.getSchedule).mockReturnValueOnce(pendingSchedule as any);
+
+        const page = makePage(1);
+        const pending = page.loadSchedule(55);
+        expect((page.state as any).scheduleLoading).toBe(true);
+
+        // A terminal status refresh invalidates the shared seq but does not
+        // necessarily start another schedule request. The abandoned request
+        // must not leave the spinner wedged forever. Simulate React batching:
+        // the earlier `true` update may still be queued while state reads false,
+        // so invalidation must always enqueue the clearing update.
+        (page.state as any).scheduleLoading = false;
+        const setState = vi.spyOn(page, 'setState');
+        setState.mockClear();
+        (page as any).nextScheduleSeq();
+        expect(setState).toHaveBeenCalledWith({ scheduleLoading: false });
+        expect((page.state as any).scheduleLoading).toBe(false);
+
+        resolveSchedule({ schedule_id: 55, is_active: true });
+        await pending;
+        expect((page.state as any).scheduleItem).toBeNull();
+        expect((page.state as any).scheduleLoading).toBe(false);
+    });
+
+    it('does not update schedule state when an in-flight request resolves after unmount', async () => {
+        let resolveSchedule: (value: any) => void = () => {};
+        const pendingSchedule = new Promise((resolve) => {
+            resolveSchedule = resolve;
+        });
+        vi.mocked(api.getSchedule).mockReturnValueOnce(pendingSchedule as any);
+
+        const page = makePage(1);
+        const pending = page.loadSchedule(55);
+        const setState = vi.spyOn(page, 'setState');
+        setState.mockClear();
+        (page as any).unmounted = true;
+
+        resolveSchedule({ schedule_id: 55, is_active: true });
+        await pending;
+
+        expect(setState).not.toHaveBeenCalled();
+
+        vi.mocked(api.getSchedule).mockClear();
+        await page.loadSchedule(56);
+        expect(api.getSchedule).not.toHaveBeenCalled();
+        expect(setState).not.toHaveBeenCalled();
     });
 
     // 核心 blocker（async race / 跨 task 串台）：
@@ -668,6 +722,32 @@ describe('SummaryDetailPage — 续修3/4: detail 写入路径切 task 迟到丢
         // B 的 detail 不被 A 覆盖。
         expect((page.state as any).detail.task_id).toBe(2);
         expect((page.state as any).detail.title).toBe('B-detail');
+    });
+
+    it('does not advance or stop polling when batch status is terminal but detail still lags', async () => {
+        vi.mocked(api.batchStatus).mockResolvedValue([
+            { id: 1, status: TaskStatus.COMPLETED },
+        ] as any);
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 1, status: TaskStatus.PROCESSING }) as any,
+        );
+
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({ task_id: 1, status: TaskStatus.PROCESSING }) as any,
+            lastKnownStatus: TaskStatus.PROCESSING,
+        };
+        const stopFallbackPoll = vi.spyOn(page as any, 'stopFallbackPoll');
+        const sendGroupSummaryNotify = vi
+            .spyOn(page as any, 'sendGroupSummaryNotify')
+            .mockResolvedValue(undefined);
+
+        await (page as any).doFallbackPollOnce();
+
+        expect((page.state as any).lastKnownStatus).toBe(TaskStatus.PROCESSING);
+        expect(stopFallbackPoll).not.toHaveBeenCalled();
+        expect(sendGroupSummaryNotify).not.toHaveBeenCalled();
     });
 });
 
@@ -1317,7 +1397,7 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
-            detail: baseDetail({ summary_mode: 2, status: 5, permissions: { can_edit: true, can_schedule: true } }),
+            detail: baseDetail({ summary_mode: 2, status: TaskStatus.COMPLETED, permissions: { can_edit: true, can_schedule: true } }),
             personalResult: { worker_status: 2, content: 'my summary', submitted_at: null } as any,
             personalLoading: false,
             scheduleItem: null,
@@ -2989,7 +3069,7 @@ describe('SummaryDetailPage — 深链 string taskNo：loadPersonalResult 四入
     it('入口3 handleStatusChangeEvent: 数字 taskIds 命中当前深链 task 时刷新 personalResult', async () => {
         // 事件前状态 processing，事件后 completed → 触发终态刷新分支。
         vi.mocked(api.getSummaryDetail).mockResolvedValue(
-            baseDetail({ task_id: 740, task_no: 'SUM-740', summary_mode: 2, status: 5 /* COMPLETED */ }) as any,
+            baseDetail({ task_id: 740, task_no: 'SUM-740', summary_mode: 2, status: TaskStatus.COMPLETED }) as any,
         );
         vi.mocked(api.getPersonalResult).mockResolvedValue(
             { content: 'r', worker_status: 2, submitted_at: null } as any,
@@ -3015,9 +3095,9 @@ describe('SummaryDetailPage — 深链 string taskNo：loadPersonalResult 四入
 
     // 入口4：doFallbackPollOnce——兜底轮询，batchStatus 用数字 id，终态触发刷新。
     it('入口4 doFallbackPollOnce: batchStatus 用数字 id，终态刷新 personalResult 用数字', async () => {
-        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 740, status: 5 /* COMPLETED */ }] as any);
+        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 740, status: TaskStatus.COMPLETED }] as any);
         vi.mocked(api.getSummaryDetail).mockResolvedValue(
-            baseDetail({ task_id: 740, task_no: 'SUM-740', summary_mode: 2, status: 5 }) as any,
+            baseDetail({ task_id: 740, task_no: 'SUM-740', summary_mode: 2, status: TaskStatus.COMPLETED }) as any,
         );
         vi.mocked(api.getPersonalResult).mockResolvedValue(
             { content: 'r', worker_status: 2, submitted_at: null } as any,
@@ -3062,9 +3142,9 @@ describe('SummaryDetailPage — round-13 P1: lastKnownStatus 必须 task-scoped(
     // reset schedule state 的那个 setState 里必须包含 lastKnownStatus: undefined。
     it('SHAPE-1c: task-switch 时 setState reset lastKnownStatus 到 undefined(不遗留上一 task 的值)', () => {
         // A 的 detail loaded · lastKnownStatus 被 seed 到 5(COMPLETED)。
-        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 1, status: 5 }) as any);
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 1, status: TaskStatus.COMPLETED }) as any);
         const page = makePage(1);
-        page.state = { ...(page.state as any), lastKnownStatus: 5 /* A 的 terminal · 不该跨切换泄漏 */ };
+        page.state = { ...(page.state as any), lastKnownStatus: TaskStatus.COMPLETED };
 
         // 切到 task B。
         (page as any).props = { taskId: 2 };
@@ -3086,22 +3166,22 @@ describe('SummaryDetailPage — round-13 P1: lastKnownStatus 必须 task-scoped(
 
         const prev = (page.state as any).lastKnownStatus;
         expect(prev).toBeUndefined();
-        expect(shouldEmitOnStatusTransition(prev, 5 /* COMPLETED */, 5)).toBe(false);
+        expect(shouldEmitOnStatusTransition(prev, TaskStatus.COMPLETED, TaskStatus.COMPLETED)).toBe(false);
     });
 
     // SHAPE suppressed edge:未 reset 前,shouldEmit(5, 5, 5) = false → 错抑。
     // Reset 后,shouldEmit(undefined, 5, 5) = false —— 同一 silence,但契约是
     // "first observation of terminal task 不 fire",而非"stale 的巧合"。
     it('SHAPE-1b: 切到 processing 的 B · A 遗留的 COMPLETED 不会造成 5→5 self-loop 抑制', () => {
-        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 1, status: 5 }) as any);
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 1, status: TaskStatus.COMPLETED }) as any);
         const page = makePage(1);
-        page.state = { ...(page.state as any), lastKnownStatus: 5 };
+        page.state = { ...(page.state as any), lastKnownStatus: TaskStatus.COMPLETED };
 
         (page as any).props = { taskId: 2 };
         page.componentDidUpdate({ taskId: 1 } as any);
 
         const prev = (page.state as any).lastKnownStatus;
         expect(prev).toBeUndefined();
-        expect(shouldEmitOnStatusTransition(prev, 5, 5)).toBe(false);
+        expect(shouldEmitOnStatusTransition(prev, TaskStatus.COMPLETED, TaskStatus.COMPLETED)).toBe(false);
     });
 });

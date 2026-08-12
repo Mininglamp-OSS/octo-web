@@ -57,8 +57,9 @@ async function invoke(
     state: SummaryNotifySendState,
     deps: SummaryNotifySendDeps,
     myUid: string | undefined = CREATOR,
+    enabled = true,
 ) {
-    await sendGroupSummaryNotifyImpl(detail, myUid, state, deps, COMPLETED, CHANNEL_TYPE_GROUP);
+    await sendGroupSummaryNotifyImpl(detail, myUid, state, deps, COMPLETED, CHANNEL_TYPE_GROUP, enabled);
 }
 
 /** All channel IDs the mocked sender was called with, in call order. */
@@ -73,6 +74,18 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
     });
 
     // --- Gate coverage (fast-fails; also cross-checked by helper tests) ------
+
+    it('returns without sending or marking when the remote rollout flag is disabled', async () => {
+        const state = newSummaryNotifySendState();
+        const deps = makeDeps();
+
+        await invoke(taskWithSources(1, ['g1']), state, deps, CREATOR, false);
+
+        expect(deps.sendToChannel).not.toHaveBeenCalled();
+        expect(readSummaryNotifySentSources(1)).toEqual(new Set());
+        expect(state.inFlight.size).toBe(0);
+        expect(state.sentThisInstance.size).toBe(0);
+    });
 
     it('returns without sending when detail is not COMPLETED', async () => {
         const state = newSummaryNotifySendState();

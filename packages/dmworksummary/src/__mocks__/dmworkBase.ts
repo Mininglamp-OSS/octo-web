@@ -71,6 +71,7 @@ export const titleContextStore = {
 
 export const WKApp = {
   loginInfo: { token: 'test-token-abc', uid: 'test-uid' },
+  remoteConfig: { summaryNotifyEnabled: false },
   shared: { currentSpaceId: 'space-123', deviceId: 'test-device-uuid', logout: () => {}, avatarUser: () => '' },
   routeRight: { push: () => {}, replaceToRoot: () => {}, popToRoot: () => {} },
   mittBus: { on: () => {}, off: () => {}, emit: () => {} },

@@ -320,7 +320,7 @@ export default class BaseModule implements IModule {
             return LocationCell;
           case MessageContentTypeConst.screenshot:
             return ScreenshotCell;
-          case MessageContentTypeConst.summaryNotify: // 智能总结完成通知(server-driven)
+          case MessageContentTypeConst.summaryNotify: // 智能总结完成通知(client-side send)
             return SummaryNotifyCell;
           case MessageContentType.signalMessage: // 端对端加密错误消息
           case MessageContentTypeConst.approveGroupMember: // 审批群成员

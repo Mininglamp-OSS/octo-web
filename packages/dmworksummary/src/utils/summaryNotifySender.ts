@@ -91,16 +91,17 @@ export function newSummaryNotifySendState(): SummaryNotifySendState {
  * `summaryNotifySender.test.ts`.
  *
  * Contract (in order):
- *   1. Emit-gate — shouldEmitGroupSummaryNotify + collectGroupSourceIds; the
+ *   1. Rollout gate — fail closed unless appconfig explicitly enables sends.
+ *   2. Emit-gate — shouldEmitGroupSummaryNotify + collectGroupSourceIds; the
  *      creator / non-empty myUid / status checks live in the helpers so a
  *      caller that forgets to guard cannot leak.
- *   2. Per-source dedup — check FRESH localStorage read AND the in-memory
+ *   3. Per-source dedup — check FRESH localStorage read AND the in-memory
  *      `sentThisInstance` AND the `inFlight` set. A stale snapshot is a
  *      correctness bug (yujiawei reproduced it on `5cff6246`), so we re-read
  *      right before each send rather than snapshotting once per fan-out.
- *   3. Disband skip — via injected predicate.
- *   4. In-flight claim → send → mark success → clear in-flight.
- *   5. Failure logs via `warn` and clears in-flight so a later trigger can
+ *   4. Disband skip — via injected predicate.
+ *   5. In-flight claim → send → mark success → clear in-flight.
+ *   6. Failure logs via `warn` and clears in-flight so a later trigger can
  *      retry. NO persistent marker on failure.
  *
  * The `sentThisInstance` memory set is written UNCONDITIONALLY on success —
@@ -117,7 +118,9 @@ export async function sendGroupSummaryNotifyImpl(
     deps: SummaryNotifySendDeps,
     completedStatus: number,
     channelTypeGroup: number,
+    enabled: boolean,
 ): Promise<void> {
+    if (!enabled) return;
     if (!shouldEmitGroupSummaryNotify(detail, myUid, completedStatus)) return;
     if (!myUid) return; // narrow for TS after helper predicate
 
@@ -152,28 +155,20 @@ export async function sendGroupSummaryNotifyImpl(
         state.inFlight.add(memoryKey);
         try {
             await deps.sendToChannel(ch, myUid);
-            // NOTE: `chatManager.send` (wukongimjssdk@1.3.5) resolves once the
-            // packet is enqueued in-process; the actual socket write happens
-            // later in a detached setInterval and is dropped silently if the
-            // WebSocket is not OPEN. This resolve therefore does NOT imply
-            // server delivery. We still mark the source as sent here — the
-            // dedup layer is intentionally best-effort under the one-time
-            // contract, matching the screenshot-tip posture. A completion
-            // that fires while the socket is mid-reconnect will end up
-            // marked-sent without the group ever receiving the tip; this is
-            // an accepted risk, not a covered case.
+            // `chatManager.send` (wukongimjssdk@1.3.5) resolves after placing
+            // the packet in the SDK's in-memory sending queue, not after a
+            // server Sendack. Unacked packets remain queued and are flushed on
+            // the next successful CONNACK, so a normal reconnect is retried.
+            // The residual best-effort window is page close/reload before that
+            // reconnect/ack because the SDK queue is not persisted. The marker
+            // therefore means "accepted by the local SDK", not "server acked".
             markSummaryNotifySent(detail.task_id, sourceId);
             state.sentThisInstance.add(memoryKey);
         } catch (error) {
             warn("[summaryNotify] send failed", { channelId: sourceId, error });
-            // This catch only reaches the synchronous / rejection surface of
-            // `deps.sendToChannel` — SDK gate / helper throws / etc. It does
-            // NOT cover an async socket-write drop (see resolve note above),
-            // so leaving the source unmarked here is only meaningful for
-            // failures the SDK surface actually rejects on. The catch stays
-            // for the per-group failure isolation the sender tests exercise,
-            // but do NOT read it as "async send failure never poisons the
-            // record" — that guarantee is not provided by the SDK.
+            // This catch covers the rejection surface exposed by the injected
+            // sender. Leaving the source unmarked keeps it retryable for a
+            // later trigger and supports a future ack-aware transport.
         } finally {
             state.inFlight.delete(memoryKey);
         }

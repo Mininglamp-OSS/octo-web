@@ -215,15 +215,12 @@ export function readSummaryNotifySentSources(taskId: number | string): Set<strin
  * the property holds even if this write silently drops.
  *
  * Called after `sendToChannel` (i.e. `chatManager.send`) resolves. The SDK's
- * `send()` resolves once the packet is enqueued in-process — it does NOT
- * await the server SendackPacket, and the socket write can be dropped
- * silently if the WebSocket is not OPEN (wukongimjssdk@1.3.5). So this
- * marker records "we attempted to deliver, and the local SDK accepted the
- * enqueue", NOT "the server has acknowledged the send". Under the one-time
- * contract, a completion that fires while the socket is mid-reconnect can
- * therefore end up marked-sent without the group ever receiving the tip.
- * This is the accepted best-effort posture and matches the screenshot-tip
- * precedent; do not restate it as an ack-gated guarantee.
+ * `send()` resolves once the packet enters its in-memory sending queue; it
+ * does NOT await the server SendackPacket. Unacked packets stay in that queue
+ * and `flushSendingQueue()` retries them after the next successful CONNACK.
+ * The remaining best-effort gap is page close/reload before reconnect/ack,
+ * because that queue is not persisted. This marker therefore records "the
+ * local SDK accepted the enqueue", not "the server acknowledged delivery".
  */
 export function markSummaryNotifySent(taskId: number | string, sourceId: string): void {
     if (!sourceId) return;
