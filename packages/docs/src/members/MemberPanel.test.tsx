@@ -666,3 +666,239 @@ describe('MemberPanel add: partial-failure detail survives a refresh failure (ta
     expect(screen.queryByText('docs.member.errorAddSnapshot')).toBeNull()
   })
 })
+
+describe('MemberPanel — cyclic bot creator chain resilience (B1)', () => {
+  // B1: a cyclic creator_uid chain (A→B→A or A→B→C→A) must NOT cause a stack overflow; the
+  // panel must render the involved bots in the orphan fold (visible + removable, not hidden).
+  function wireMembers(
+    members: Array<{ uid: string; role: string; source?: string }>,
+    bots: Array<{ uid: string; name?: string; creator_uid?: string }>,
+  ): void {
+    const memberItems = [
+      ...members.map((m) => ({ uid: m.uid, role: m.role, source: m.source ?? 'direct', grantedBy: 'u_admin' })),
+      ...bots.map((b) => ({ uid: b.uid, role: 'reader', source: 'direct', grantedBy: 'u_admin' })),
+    ]
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        return { data: { items: memberItems }, status: 200 }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (url.startsWith('/robot/space_bots')) return { data: bots, status: 200 }
+      return { data: {}, status: 200 }
+    }
+  }
+  function currentSection(): HTMLElement {
+    return screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+  }
+  function visibleUids(): string[] {
+    return Array.from(currentSection().querySelectorAll('.octo-member-row .octo-uid')).map((el) => el.textContent ?? '')
+  }
+
+  it('handles a two-node cycle (A→B→A) without crashing, placing both in the orphan fold', async () => {
+    // bot_x -> bot_y, bot_y -> bot_x (both are bots and members)
+    wireMembers(
+      [],
+      [
+        { uid: 'bot_x', name: 'Bot X', creator_uid: 'bot_y' },
+        { uid: 'bot_y', name: 'Bot Y', creator_uid: 'bot_x' },
+      ],
+    )
+    // Should NOT throw RangeError; both bots should land in orphan fold.
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    // Expand the orphan fold.
+    const expander = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
+    fireEvent.click(expander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot X'))).toBe(true))
+    expect(visibleUids().some((r) => r.includes('Bot Y'))).toBe(true)
+    // Both have AI badges (they are bots).
+    expect(currentSection().querySelectorAll('.octo-member-picker-badge').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('handles a three-node cycle (A→B→C→A) without crashing, placing all in the orphan fold', async () => {
+    wireMembers(
+      [],
+      [
+        { uid: 'bot_a', name: 'Bot A', creator_uid: 'bot_c' },
+        { uid: 'bot_b', name: 'Bot B', creator_uid: 'bot_a' },
+        { uid: 'bot_c', name: 'Bot C', creator_uid: 'bot_b' },
+      ],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    const expander = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
+    fireEvent.click(expander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot A'))).toBe(true))
+    expect(visibleUids().some((r) => r.includes('Bot B'))).toBe(true)
+    expect(visibleUids().some((r) => r.includes('Bot C'))).toBe(true)
+  })
+
+  it('handles a self-reference (A→A) without crashing, placing the bot in the orphan fold', async () => {
+    wireMembers(
+      [],
+      [{ uid: 'bot_s', name: 'Self Bot', creator_uid: 'bot_s' }],
+    )
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    const expander = within(currentSection()).getByText('docs.member.showBots').closest('button') as HTMLButtonElement
+    fireEvent.click(expander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Self Bot'))).toBe(true))
+  })
+})
+
+describe('MemberPanel — expansion state reset on ownerUid change (B3)', () => {
+  function wireMembers(
+    members: Array<{ uid: string; role: string; source?: string }>,
+    bots: Array<{ uid: string; name?: string; creator_uid?: string }>,
+  ): void {
+    const memberItems = [
+      ...members.map((m) => ({ uid: m.uid, role: m.role, source: m.source ?? 'direct', grantedBy: 'u_admin' })),
+      ...bots.map((b) => ({ uid: b.uid, role: 'reader', source: 'direct', grantedBy: 'u_admin' })),
+    ]
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        return { data: { items: memberItems }, status: 200 }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (url.startsWith('/robot/space_bots')) return { data: bots, status: 200 }
+      return { data: {}, status: 200 }
+    }
+  }
+  function currentSection(): HTMLElement {
+    return screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+  }
+  function visibleUids(): string[] {
+    return Array.from(currentSection().querySelectorAll('.octo-member-row .octo-uid')).map((el) => el.textContent ?? '')
+  }
+
+  it('resets expansion state when ownerUid changes (doc switch)', async () => {
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    wireMembers(
+      [{ uid: 'u_human', role: 'writer' }],
+      [{ uid: 'b_1', name: 'Bot One', creator_uid: 'u_human' }],
+    )
+    const { rerender } = render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner_a" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    // Expand the bot fold.
+    const expander = currentSection().querySelector('.octo-member-picker-expand') as HTMLButtonElement
+    fireEvent.click(expander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot One'))).toBe(true))
+    // Now switch doc (owner changes).
+    rerender(<MemberPanel docId="d_2" role="admin" space="s_1" ownerId="u_owner_b" />)
+    await waitFor(() => expect(screen.getByText('docs.member.ownerBadge')).toBeTruthy())
+    // The expansion state should have reset — the bot should NOT be visible until re-expanded.
+    expect(visibleUids().some((r) => r.includes('Bot One'))).toBe(false)
+    expect(currentSection().querySelector('.octo-member-picker-expand')!.getAttribute('aria-expanded')).toBe('false')
+  })
+})
+
+describe('MemberPanel — nested bot order freezing (B4)', () => {
+  function currentSection(): HTMLElement {
+    return screen.getByText('docs.member.currentMembers').closest('.octo-member-section')! as HTMLElement
+  }
+  function visibleUids(): string[] {
+    return Array.from(currentSection().querySelectorAll('.octo-member-row .octo-uid')).map((el) => el.textContent ?? '')
+  }
+  function rowFor(text: string): HTMLElement {
+    return Array.from(currentSection().querySelectorAll('.octo-member-row')).find((r) =>
+      (r.textContent ?? '').includes(text),
+    ) as HTMLElement
+  }
+
+  it('freezes nested bot order within a creator fold across role changes (B4)', async () => {
+    // Two bots under the same creator: bot_z starts as reader, bot_a as commenter.
+    // Initial order: bot_a (commenter) before bot_z (reader).
+    // After promoting bot_z to admin, it should NOT jump ahead of bot_a (frozen order).
+    let zRole = 'reader'
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        return {
+          data: {
+            items: [
+              { uid: 'u_human', role: 'writer', source: 'direct', grantedBy: 'u_admin' },
+              { uid: 'bot_a', role: 'commenter', source: 'direct', grantedBy: 'u_admin' },
+              { uid: 'bot_z', role: zRole, source: 'direct', grantedBy: 'u_admin' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (url.startsWith('/robot/space_bots')) {
+        return {
+          data: [
+            { uid: 'bot_a', name: 'Bot A', creator_uid: 'u_human' },
+            { uid: 'bot_z', name: 'Bot Z', creator_uid: 'u_human' },
+          ],
+          status: 200,
+        }
+      }
+      if (method === 'put' && url.endsWith('/members')) {
+        zRole = 'admin'
+        return { data: {}, status: 200 }
+      }
+      return { data: {}, status: 200 }
+    }
+    render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    // Expand the creator's bot fold.
+    const expander = rowFor('Human One').parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement
+    fireEvent.click(expander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot A'))).toBe(true))
+    // Initial order: bot_a before bot_z.
+    let rows = visibleUids()
+    expect(rows.findIndex((r) => r.includes('Bot A'))).toBeLessThan(rows.findIndex((r) => r.includes('Bot Z')))
+    // Promote bot_z from reader to admin.
+    const zRow = rowFor('Bot Z')
+    fireEvent.change(zRow.querySelector('select') as HTMLSelectElement, { target: { value: 'admin' } })
+    await waitFor(() => {
+      const s = rowFor('Bot Z').querySelector('select') as HTMLSelectElement
+      expect(s.value).toBe('admin')
+    })
+    // Frozen order: bot_a should STILL be before bot_z.
+    rows = visibleUids()
+    expect(rows.findIndex((r) => r.includes('Bot A'))).toBeLessThan(rows.findIndex((r) => r.includes('Bot Z')))
+  })
+
+  it('reorders nested bots after unmount + remount (fresh snapshot)', async () => {
+    // Same setup, but unmount and remount to prove the frozen order resets.
+    let zRole = 'admin' // bot_z is already admin after the previous test's promotion
+    wk.spaceMembers.push({ uid: 'u_human', name: 'Human One' })
+    wk.apiClient.responder = (method, url) => {
+      if (method === 'get' && url.endsWith('/members')) {
+        return {
+          data: {
+            items: [
+              { uid: 'u_human', role: 'writer', source: 'direct', grantedBy: 'u_admin' },
+              { uid: 'bot_a', role: 'commenter', source: 'direct', grantedBy: 'u_admin' },
+              { uid: 'bot_z', role: zRole, source: 'direct', grantedBy: 'u_admin' },
+            ],
+          },
+          status: 200,
+        }
+      }
+      if (method === 'get' && url.endsWith('/invites')) return { data: { items: [] }, status: 200 }
+      if (url.startsWith('/robot/space_bots')) {
+        return {
+          data: [
+            { uid: 'bot_a', name: 'Bot A', creator_uid: 'u_human' },
+            { uid: 'bot_z', name: 'Bot Z', creator_uid: 'u_human' },
+          ],
+          status: 200,
+        }
+      }
+      return { data: {}, status: 200 }
+    }
+    const { unmount } = render(<MemberPanel docId="d_1" role="admin" space="s_1" ownerId="u_owner" />)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Human One'))).toBe(true))
+    const expander = rowFor('Human One').parentElement!.querySelector('.octo-member-picker-expand') as HTMLButtonElement
+    fireEvent.click(expander)
+    await waitFor(() => expect(visibleUids().some((r) => r.includes('Bot A'))).toBe(true))
+    // With bot_z as admin, on a fresh mount it should sort BEFORE bot_a (commenter).
+    // (This proves the snapshot is fresh on remount.)
+    const rows = visibleUids()
+    expect(rows.findIndex((r) => r.includes('Bot Z'))).toBeLessThan(rows.findIndex((r) => r.includes('Bot A')))
+    unmount()
+  })
+})

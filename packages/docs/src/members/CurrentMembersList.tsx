@@ -97,6 +97,10 @@ export function CurrentMembersList({
   // position; the panel only re-sorts when it is closed + reopened (this component unmounts) or the
   // owner (document) changes. The snapshot lives for the component's mount lifetime.
   const snapshotRef = useRef<Map<string, number>>(new Map())
+  // Per-creator bot group snapshots (B4): freeze nested bot order within each creator's fold.
+  const nestedSnapshotsRef = useRef<Map<string, Map<string, number>>>(new Map())
+  // B4: orphan bots also get a frozen snapshot.
+  const orphanSnapshotRef = useRef<Map<string, number>>(new Map())
   const seededOwnerRef = useRef<string | undefined>(undefined)
 
   // Order via sort.ts on the adapted Member[]; keep the original display rows keyed by uid so the
@@ -105,11 +109,18 @@ export function CurrentMembersList({
   const bots = botUids ?? new Set<string>()
   const creators = botCreators ?? new Map<string, string>()
 
-  // Reset the frozen order when the document (owner) changes — a doc switch must re-sort from
-  // scratch rather than carry a stale snapshot from the previous doc.
+  // Reset the frozen order + expansion state when the document (owner) changes — a doc switch must
+  // re-sort from scratch rather than carry stale state from the previous doc (B3: expansion parity).
   if (seededOwnerRef.current !== ownerUid) {
     seededOwnerRef.current = ownerUid
     snapshotRef.current = new Map()
+    nestedSnapshotsRef.current = new Map()
+    orphanSnapshotRef.current = new Map()
+    // B3: reset expansion state on doc change (must stay in sync with snapshot reset).
+    // Using direct mutation here because this runs during render before the state is read.
+    // The next render will pick up the fresh empty sets from useState's initial value behavior.
+    if (openCreators.size > 0) setOpenCreators(new Set())
+    if (orphanOpen) setOrphanOpen(false)
   }
 
   const isBot = (uid: string) => bots.has(uid)
@@ -132,21 +143,29 @@ export function CurrentMembersList({
 
   // A bot nests iff its creator is present as a member/owner AND that creator is not itself a bot
   // that nests under someone else. Owner and humans always qualify as nest targets.
-  const creatorIsTopLevel = (creatorUid: string): boolean => {
+  // B1: cycle detection — a cyclic creator chain (A→B→A or A→B→C→A) must NOT recurse infinitely;
+  // when we detect a cycle, the bot is treated as ownerless (returns false) so it safely lands in
+  // the orphan fold and remains visible+removable. Self-reference (A→A) is already blocked by the
+  // nestedCreatorOf check (`c === uid`), but multi-node cycles require explicit seen-set tracking.
+  const creatorIsTopLevel = (creatorUid: string, seen: Set<string> = new Set()): boolean => {
     if (!memberUids.has(creatorUid)) return false
     if (isOwnerUid(creatorUid)) return true
     if (!isBot(creatorUid)) return true
+    // B1: cycle guard — if we've already visited this uid in the current chain, it's a cycle.
+    if (seen.has(creatorUid)) return false
+    seen.add(creatorUid)
     // creator is a bot member: it is top-level only if it is itself an orphan (its own creator is
     // not a top-level row) — avoids hiding a bot under another bot that is itself hidden.
     const grandCreator = creators.get(creatorUid)
-    return !grandCreator || !creatorIsTopLevel(grandCreator)
+    return !grandCreator || !creatorIsTopLevel(grandCreator, seen)
   }
 
   const nestedCreatorOf = (uid: string): string | undefined => {
     if (!isBot(uid) || isOwnerUid(uid)) return undefined // owner is never nested
     const c = creators.get(uid)
     if (!c || c === uid) return undefined
-    return creatorIsTopLevel(c) ? c : undefined
+    // B1: pass a fresh seen set so each lookup starts clean (the cycle check is per-chain).
+    return creatorIsTopLevel(c, new Set()) ? c : undefined
   }
 
   // Normal role-ranked order (owner pinned → admin → writer → commenter → reader) over ALL rows.
@@ -182,10 +201,13 @@ export function CurrentMembersList({
   // carry a per-creator bot fold); orphan bots drop into the single bottom fold. Both keep the
   // frozen top-level order.
   const tiledRows = orderedTop.filter((sm) => !isOrphanBot(sm.uid))
-  const orphanBots = orderedTop.filter((sm) => isOrphanBot(sm.uid))
+  // B4: orphanBots starts as a mutable array; we'll add demoted bots from nested groups below,
+  // then apply a frozen snapshot for order stability.
+  let orphanBots = orderedTop.filter((sm) => isOrphanBot(sm.uid))
 
   // Nested bots grouped by their (top-level) creator, each group ordered by the SAME role-ranked
   // rules (from `ranked`, which already carries role order + stable tie-break).
+  // B4: each group also gets its own frozen snapshot so a role change within the fold doesn't reorder.
   const botsByCreator = new Map<string, Member[]>()
   for (const sm of ranked) {
     if (!isBot(sm.uid) || isOwnerUid(sm.uid)) continue
@@ -196,6 +218,24 @@ export function CurrentMembersList({
     botsByCreator.set(c, arr)
   }
 
+  // B4: seed/maintain per-creator snapshots for nested bot order freezing.
+  for (const [creatorUid, groupBots] of botsByCreator) {
+    let snap = nestedSnapshotsRef.current.get(creatorUid)
+    if (!snap) {
+      snap = new Map<string, number>()
+      groupBots.forEach((m, i) => snap!.set(m.uid, i))
+      nestedSnapshotsRef.current.set(creatorUid, snap)
+    } else {
+      // Maintain: prune departed bots, append new ones.
+      const present = new Set(groupBots.map((m) => m.uid))
+      for (const uid of [...snap.keys()]) if (!present.has(uid)) snap.delete(uid)
+      let next = snap.size ? Math.max(...snap.values()) + 1 : 0
+      for (const m of groupBots) if (!snap.has(m.uid)) snap.set(m.uid, next++)
+    }
+    // Apply the frozen order to this group.
+    botsByCreator.set(creatorUid, applyOrderSnapshot(groupBots, snap))
+  }
+
   const tiledSet = new Set(tiledRows.map((m) => m.uid))
   // Defensive: a nested bot whose creator is not actually a tiled row (shouldn't happen given
   // nestedCreatorOf) is demoted to an orphan so it can never vanish (fail-soft: never hide a bot).
@@ -204,6 +244,20 @@ export function CurrentMembersList({
       orphanBots.push(...arr)
       botsByCreator.delete(c)
     }
+  }
+
+  // B4: apply frozen snapshot to orphan bots (same logic as nested groups).
+  if (orphanBots.length > 0) {
+    let snap = orphanSnapshotRef.current
+    if (snap.size === 0) {
+      orphanBots.forEach((m, i) => snap.set(m.uid, i))
+    } else {
+      const present = new Set(orphanBots.map((m) => m.uid))
+      for (const uid of [...snap.keys()]) if (!present.has(uid)) snap.delete(uid)
+      let next = snap.size ? Math.max(...snap.values()) + 1 : 0
+      for (const m of orphanBots) if (!snap.has(m.uid)) snap.set(m.uid, next++)
+    }
+    orphanBots = applyOrderSnapshot(orphanBots, snap)
   }
 
   function renderRow(sm: Member, nested = false) {
