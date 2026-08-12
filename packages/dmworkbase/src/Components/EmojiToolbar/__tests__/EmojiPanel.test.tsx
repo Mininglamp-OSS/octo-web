@@ -130,7 +130,7 @@ vi.mock("../../IconClick", () => ({
 // require("./emoji_tab_icon.png") 在 EmojiPanel.render 里被调用, 让 vitest 有静态 stub。
 vi.mock("../emoji_tab_icon.png", () => ({ default: "stub.png" }));
 
-import { EmojiPanel } from "../index";
+import EmojiToolbar, { EmojiPanel } from "../index";
 
 let container: HTMLDivElement;
 let originalImage: typeof Image;
@@ -149,6 +149,7 @@ beforeEach(() => {
     hoisted.state.mittHandlers = {};
     hoisted.addConfigChangeListener.mockClear();
     hoisted.getAllEmoji.mockClear();
+    hoisted.getAllEmoji.mockReturnValue([]);
     hoisted.uploadSticker.mockClear();
     hoisted.addSticker.mockClear();
     hoisted.deleteSticker.mockClear();
@@ -203,6 +204,61 @@ function selectFile(file: File) {
 function flush(): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, 0));
 }
+
+describe("EmojiToolbar selection dismissal", () => {
+    function renderToolbar() {
+        const insertText = vi.fn();
+        const sendMessage = vi.fn();
+        const conversationContext = {
+            messageInputContext: () => ({ insertText }),
+            sendMessage,
+        } as any;
+
+        hoisted.getAllEmoji.mockReturnValue([
+            { key: "[使命必达]", image: "/emoji/custom_mission.png" },
+        ]);
+        render(
+            <EmojiToolbar
+                conversationContext={conversationContext}
+                icon={<span />}
+            />,
+        );
+
+        const trigger = container.querySelector(".wk-emojitoolbar > div") as HTMLElement;
+        act(() => trigger.click());
+
+        return { insertText, sendMessage };
+    }
+
+    it("hides immediately after selecting an emoji", () => {
+        const { insertText } = renderToolbar();
+        const emoji = document.body.querySelector(
+            ".wk-emojipanel-content li",
+        ) as HTMLElement;
+
+        act(() => emoji.click());
+
+        const panel = document.body.querySelector(
+            ".wk-emojitoolbar-emojipanel",
+        ) as HTMLElement;
+        expect(insertText).toHaveBeenCalledWith("[使命必达]");
+        expect(panel.className).toBe("wk-emojitoolbar-emojipanel");
+        expect(document.body.querySelector(".wk-emojitoolbar-mask")).toBeNull();
+    });
+
+    it("keeps the close animation for an explicit outside click", () => {
+        renderToolbar();
+        const mask = document.body.querySelector(
+            ".wk-emojitoolbar-mask",
+        ) as HTMLElement;
+
+        act(() => mask.click());
+
+        expect(
+            document.body.querySelector(".wk-emojitoolbar-emojipanel")?.className,
+        ).toContain("wk-emojitoolbar-emojipanel-hide");
+    });
+});
 
 describe("EmojiPanel sticker gating", () => {
     it("renders the sticker tab when stickerCustomEnabled is true", () => {

@@ -3,7 +3,6 @@ import { PluginKey } from '@tiptap/pm/state'
 import Suggestion, {
   SuggestionMatch,
   SuggestionOptions,
-  exitSuggestion,
 } from '@tiptap/suggestion'
 import { ReactRenderer } from '@tiptap/react'
 import tippy, { Instance as TippyInstance } from 'tippy.js'
@@ -53,21 +52,6 @@ function findEmojiSuggestionMatch(config: { $position: any }): SuggestionMatch {
   }
 }
 
-function hasCurrentEmojiMatch(editor: any): boolean {
-  const position = editor?.state?.selection?.from
-  if (typeof position !== 'number') return false
-
-  try {
-    return Boolean(
-      findEmojiSuggestionMatch({
-        $position: editor.state.doc.resolve(position),
-      }),
-    )
-  } catch {
-    return false
-  }
-}
-
 export function createEmojiSuggestionExtension(
   onActiveChange?: (active: boolean) => void,
 ): Extension {
@@ -91,9 +75,6 @@ export function createEmojiSuggestionExtension(
 
     command: ({ editor, range, props }) => {
       // 把光标前的 query 文字替换为表情 key 纯文本（第一版不追加空格）
-      // 先退出当前 suggestion plugin，避免插入事务触发一次过渡性的 onUpdate，
-      // 让已经选中的候选条闪回一帧。
-      exitSuggestion(editor.view, emojiSuggestionPluginKey)
       editor.chain().focus().insertContentAt(range, props.key).run()
     },
 
@@ -103,10 +84,7 @@ export function createEmojiSuggestionExtension(
 
       return {
         onStart: (props: any) => {
-          // Tiptap may deliver a stale start/update callback after the command
-          // has already inserted the selected key. Never recreate the popup
-          // unless the live editor state still contains a matching prefix.
-          if (!props.items?.length || !hasCurrentEmojiMatch(props.editor)) return
+          if (!props.items?.length) return
 
           onActiveChange?.(true)
           component = new ReactRenderer(EmojiSuggestionList, {
@@ -132,7 +110,7 @@ export function createEmojiSuggestionExtension(
 
           component.updateProps(props)
 
-          if (!props.items?.length || !hasCurrentEmojiMatch(props.editor)) {
+          if (!props.items?.length) {
             popup?.[0]?.hide()
             return
           }

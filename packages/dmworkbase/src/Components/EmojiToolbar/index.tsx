@@ -147,6 +147,13 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
         this.setState({ show: false, animationStart: true })
     }
 
+    // A completed selection moves focus back to the editor immediately. Keeping the
+    // picker visible for the close animation makes it appear to flash after insertion.
+    private closeAfterSelection = () => {
+        window.removeEventListener("resize", this.onResize)
+        this.setState({ show: false, animationStart: false })
+    }
+
     componentWillUnmount() {
         window.removeEventListener("resize", this.onResize)
     }
@@ -172,7 +179,7 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
                 className={classNames("wk-emojitoolbar-emojipanel", animationStart ? (show ? "wk-emojitoolbar-emojipanel-show" : "wk-emojitoolbar-emojipanel-hide") : undefined)}
             >
                 <EmojiPanel onSticker={(sticker) => {
-                    this.close()
+                    this.closeAfterSelection()
                     const lottieSticker = new LottieSticker()
                     lottieSticker.category = sticker.category
                     lottieSticker.url = sticker.path
@@ -180,7 +187,7 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
                     lottieSticker.format = sticker.format
                     conversationContext.sendMessage(lottieSticker)
                 }} onEmoji={(emoji) => {
-                    this.close()
+                    this.closeAfterSelection()
                     conversationContext.messageInputContext().insertText(emoji.key)
                 }}></EmojiPanel>
             </div>
