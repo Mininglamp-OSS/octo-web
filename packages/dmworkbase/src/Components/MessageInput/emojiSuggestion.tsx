@@ -53,6 +53,21 @@ function findEmojiSuggestionMatch(config: { $position: any }): SuggestionMatch {
   }
 }
 
+function hasCurrentEmojiMatch(editor: any): boolean {
+  const position = editor?.state?.selection?.from
+  if (typeof position !== 'number') return false
+
+  try {
+    return Boolean(
+      findEmojiSuggestionMatch({
+        $position: editor.state.doc.resolve(position),
+      }),
+    )
+  } catch {
+    return false
+  }
+}
+
 export function createEmojiSuggestionExtension(
   onActiveChange?: (active: boolean) => void,
 ): Extension {
@@ -88,7 +103,10 @@ export function createEmojiSuggestionExtension(
 
       return {
         onStart: (props: any) => {
-          if (!props.items?.length) return
+          // Tiptap may deliver a stale start/update callback after the command
+          // has already inserted the selected key. Never recreate the popup
+          // unless the live editor state still contains a matching prefix.
+          if (!props.items?.length || !hasCurrentEmojiMatch(props.editor)) return
 
           onActiveChange?.(true)
           component = new ReactRenderer(EmojiSuggestionList, {
@@ -114,7 +132,7 @@ export function createEmojiSuggestionExtension(
 
           component.updateProps(props)
 
-          if (!props.items?.length) {
+          if (!props.items?.length || !hasCurrentEmojiMatch(props.editor)) {
             popup?.[0]?.hide()
             return
           }
