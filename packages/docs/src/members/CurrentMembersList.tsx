@@ -117,8 +117,12 @@ export function CurrentMembersList({
     nestedSnapshotsRef.current = new Map()
     orphanSnapshotRef.current = new Map()
     // B3: reset expansion state on doc change (must stay in sync with snapshot reset).
-    // Using direct mutation here because this runs during render before the state is read.
-    // The next render will pick up the fresh empty sets from useState's initial value behavior.
+    // This is React's sanctioned "adjust state when a prop changes" pattern: calling setState during
+    // render makes React discard this render's output and immediately re-render this component with
+    // the new state BEFORE committing, so the previous doc's expansion state is never painted.
+    // (useState initializers run only at mount and play no part here.) Do NOT move this into a
+    // useEffect: that runs after commit and would reintroduce exactly the stale frame this avoids.
+    // The `size > 0` / truthiness guards are what bound the re-render to a single extra pass.
     if (openCreators.size > 0) setOpenCreators(new Set())
     if (orphanOpen) setOrphanOpen(false)
   }
