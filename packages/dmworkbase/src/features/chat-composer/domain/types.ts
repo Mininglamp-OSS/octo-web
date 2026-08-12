@@ -47,6 +47,7 @@ export type UnsentEditorBlock =
 
 /** Immutable request captured before the serial send queue starts execution. */
 export interface ChatSendRequest<TMessage = unknown> {
+  attemptId: string;
   text: string;
   mention?: ChatMention;
   attachments?: AttachmentFile[];

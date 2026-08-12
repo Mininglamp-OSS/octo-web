@@ -1211,6 +1211,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         runSendWithConsumedCompose(
           () =>
             props.onSend!({
+              attemptId: pendingId,
               text: content,
               mention,
               attachments:
