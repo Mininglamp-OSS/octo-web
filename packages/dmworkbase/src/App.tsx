@@ -366,18 +366,6 @@ export class WKRemoteConfig {
    */
   driveOn: boolean = false;
   /**
-   * 市场「专家 / 专家团」tab 展示开关。后端字段 expert_market_on 为 true 时，前端在
-   * 市场侧边栏展示专家入口（及 /mcp-market/experts 路由页面）；false 或字段缺失时隐藏。
-   *
-   * 默认 false(fail-safe): 专家市场依赖 octo-marketplace 的 /market/api/v1/experts|squads
-   * 端点（octo-marketplace#51），后端未部署前保持隐藏——feature 分支合入 main 也不对用户
-   * 暴露，避免用户点进 tab 首个请求即 404 报错。运维在后端部署就绪后再下发
-   * expert_market_on=true 放量。与 dmloop_on 分开：专家市场的浏览/发布不依赖 fleet，
-   * 而「添加到回路」等 Loop 面 UI 在 tab 内部另由 dmloop_on 门控（可分阶段放量）。
-   * 镜像 docs_on / dmloop_on / drive_on，纯 UI 展示门，不承担鉴权。
-   */
-  expertMarketOn: boolean = false;
-  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -487,7 +475,6 @@ export class WKRemoteConfig {
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
       const previousDriveOn = this.driveOn;
-      const previousExpertMarketOn = this.expertMarketOn;
       const previousRequestFailed = this.requestFailed;
       const previousOidcProviders = this.oidcProviders;
       this.requestSuccess = true;
@@ -515,7 +502,6 @@ export class WKRemoteConfig {
       this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
       this.driveOn = parseRemoteBool(result["drive_on"]);
-      this.expertMarketOn = parseRemoteBool(result["expert_market_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -536,7 +522,6 @@ export class WKRemoteConfig {
         previousDmloopOn !== this.dmloopOn ||
         previousDmpersonalOn !== this.dmpersonalOn ||
         previousDriveOn !== this.driveOn ||
-        previousExpertMarketOn !== this.expertMarketOn ||
         previousRequestFailed !== this.requestFailed ||
         !oidcProvidersEqual(previousOidcProviders, this.oidcProviders)
       ) {

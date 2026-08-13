@@ -76,20 +76,11 @@ export class McpMarketModule implements IModule {
 
     // Expert market tab — squads & single experts. Same static-first shell as
     // the other markets: an additional /mcp-market/* route + a MarketSidebar
-    // entry, no new NavRail icon. See src/pages/ExpertMarketListPage.tsx.
-    // Display-gated on expert_market_on (fail-safe, default false — mirrors
-    // docs_on / dmloop_on / drive_on): the /market/api/v1/experts backend
-    // (octo-marketplace#51) may not be deployed yet, so until ops flips the
-    // flag a deep link to /mcp-market/experts degrades to the MCP landing page
-    // instead of mounting a tab whose first request 404s. The flag is read at
-    // render time (route handlers are invoked per navigation), so an ops flip
-    // takes effect on the next mount without re-registration.
-    WKApp.route.register(
-      "/mcp-market/experts",
-      () =>
-        WKApp.remoteConfig?.expertMarketOn ? <ExpertMarketListPage /> : <McpMarketListPage />,
-      { hostShell: marketHostShell }
-    );
+    // entry, no new NavRail icon. Ungated like the MCP / Skills tabs: its
+    // /market/api/v1/experts|squads backend (octo-marketplace#51) is merged
+    // and deployed, and the /market/api/v1 nginx location fail-louds (503)
+    // when the marketplace is absent. See src/pages/ExpertMarketListPage.tsx.
+    WKApp.route.register("/mcp-market/experts", () => <ExpertMarketListPage />, { hostShell: marketHostShell });
 
     // 顶层 NavRail 菜单入口。sort=5003 紧跟在 summary(4002/5000) 之后，
     // 与既有 chat(1000)/contacts(4000) 图标栏共用同一注册机制
