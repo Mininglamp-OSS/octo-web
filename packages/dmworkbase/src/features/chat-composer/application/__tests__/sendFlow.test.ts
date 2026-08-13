@@ -42,7 +42,7 @@ import {
 import {
   createChatSendOutcome,
   type ChatSendOutcome,
-} from "../../../features/chat-composer/domain";
+} from "../../domain";
 
 describe("enqueueSettledSend", () => {
   it("releases the previous attempt before the next queued send starts", async () => {

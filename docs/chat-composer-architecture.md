@@ -20,7 +20,7 @@
 
 - 继续迁移 text/mention capture、Tiptap port、keyboard 和 clipboard policy。
 - 把通用 `ComposePart`/extension operation 纳入现有兼容 request，而不是继续增加字段分支。
-- 将 Conversation 中的上传预检和 SDK content 构造进一步下沉到 bridge adapter。
+- 将 Conversation 中的上传预检和 SDK content 构造进一步下沉到 conversation adapter。
 
 ## 1. 背景
 
@@ -133,21 +133,26 @@ else if (node.type === "card") { ... }
 packages/dmworkbase/src/features/chat-composer/
   domain/
     types.ts
+    sendPlan.ts
     sendOutcome.ts
     composeAttemptLedger.ts
     draftCoordinator.ts
     extensionRegistry.ts
 
   application/
+    ChatComposerController.ts
     consumeCompose.ts
     settleConsumedCompose.ts
     sendQueue.ts
     captureComposeAttempt.ts
     buildChatSendPlan.ts
+    executeChatSendPlan.ts
+    settleChatSendExecution.ts
     settleComposeAttempt.ts
 
   ports/
     ChatTransportPort.ts
+    ChatTransportEvents.ts
     ChatComposerHostPort.ts
     ChatComposerDraftPort.ts
 
@@ -179,9 +184,8 @@ packages/dmworkbase/src/features/chat-composer/
     pendingComposeRenderRegistry.ts
     chatPendingComposeRenderRegistry.tsx
 
-  infrastructure/
-    executeChatSendPlan.ts
-    settleChatSendExecution.ts
+  extensions/
+    ChatComposerExtensions.ts
     ChatSendOperationRegistry.ts
 
   recovery/
@@ -193,12 +197,18 @@ packages/dmworkbase/src/features/chat-composer/
     PendingComposePreview.tsx
     ComposerToolbar.tsx
 
-  __tests__/
+  domain/__tests__/
     composeAttemptLedger.test.ts
+  application/__tests__/
+    sendFlow.test.ts
     buildChatSendPlan.test.ts
     executeChatSendPlan.test.ts
+  clipboard/__tests__/
     clipboardPipeline.test.ts
+  keyboard/__tests__/
     keyboardPolicy.test.ts
+  __tests__/
+    chatComposer.integration.test.ts
 ```
 
 迁移期间保留：
@@ -226,6 +236,12 @@ Components/MessageInput/index.tsx
 `application/`、`clipboard/` 和 `keyboard/` 不得反向 import `Components/Conversation`、
 `App`、SDK 或具体 UI 组件。
 
+`ChatSendPlan`、`ChatSendOperation`、`ChatTransportResult` 等跨层 DTO 归属于
+`domain/sendPlan.ts`，不能定义在 planner 或 adapter 中。`ports/ChatTransportPort.ts` 与
+`application/` 只能共同依赖这些 DTO，避免 `application -> ports -> application` 循环。
+`executeChatSendPlan` 和 `settleChatSendExecution` 是 application use case；adapter 只实现
+上传、入队、ack、编辑消息等外部能力。
+
 ### 4.2 物理迁移完成判据
 
 满足以下条件才算重构完成，而不是仅“新代码已被调用”：
@@ -233,12 +249,16 @@ Components/MessageInput/index.tsx
 - `Components/MessageInput/index.tsx` 是不超过一个 re-export 的兼容入口。
 - `Components/MessageInput` 下不再保留 composer-owned 的 `.ts/.tsx/.css` 实现与测试。
 - compose capture/consume/settle/queue/recovery 全部位于 feature 内。
+- UI 通过 `ChatComposerController` 或 `useChatComposerController` 使用 application；channel
+  key、draft baseline、send target、expanded state 和 recovery handoff 不散落在 JSX 中。
 - Tiptap、clipboard、keyboard、mention、emoji、attachment 与 voice UI 位于 feature 的
   adapter 或 UI 目录。
 - `Conversation` 只组装 host port 和 transport adapter，不读取 editor 文档、不操作附件
   store，也不补捕获发送时遗漏的 reply/edit target。
 - 新增一种 compose part 只需注册 editor capture/restore、send operation 和 pending render，
   不修改 `ChatComposer.send()` 主分支。
+- composition root 构造同一个 `ChatComposerExtensions` 并同时注入 editor、send 和 render，
+  生产路径不得依赖无法替换的模块级 registry 单例。
 - 非兼容代码不得从 `Components/MessageInput` import；公共入口统一从
   `features/chat-composer` 或包级 export 引入。
 
@@ -264,7 +284,21 @@ Domain 层不依赖 React、Tiptap、Semi UI、WKApp 或 WuKongIM SDK。
 - Tiptap command。
 - 消息气泡渲染。
 
-### 5.2 Editor
+### 5.2 Application
+
+Application 层负责一次发送事务在客户端的完整生命周期。
+
+负责：
+
+- 同步 capture 和 consume。
+- 建立 attempt、串行排队和生成 send plan。
+- 调用 transport port、接收 part 级 enqueue 事件并 settle。
+- 根据 outcome 释放或恢复 editor、附件、target 和 draft ownership。
+- 通过 controller 向 UI 暴露状态与动作。
+
+Application 不调用 SDK、上传服务、Toast 或具体 Tiptap command。
+
+### 5.3 Editor Adapter
 
 Editor 层是 Tiptap adapter。
 
@@ -276,23 +310,9 @@ Editor 层是 Tiptap adapter。
 - clipboard handler 的执行顺序。
 - keyboard policy 与 suggestion plugin 的边界。
 
-### 5.3 Submission
+### 5.4 Transport Port 与 Conversation Adapter
 
-Submission 层负责一次发送事务在客户端的生命周期。
-
-负责：
-
-- 同步 capture 和 consume。
-- 建立 `ComposeAttempt`。
-- 排队执行。
-- 根据 `ChatSendOutcome` settle。
-- 释放或恢复附件资源。
-
-Submission 不调用 SDK，实际传输通过 `ChatTransportPort` 完成。
-
-### 5.4 Bridge
-
-Bridge 层适配现有 Conversation、SDK、上传和消息状态。
+Conversation adapter 通过 transport port 适配现有 Conversation、SDK、上传和消息状态。
 
 负责：
 
@@ -301,7 +321,8 @@ Bridge 层适配现有 Conversation、SDK、上传和消息状态。
 - 创建 SDK `MessageContent`。
 - 入队消息。
 - 等待 ack 以维持消息顺序。
-- 将 SDK 结果转换为 `ChatSendOutcome`。
+- 通过 `onEnqueued(partIds)` 在 ack 前报告已经进入消息列表的 part。
+- 将 SDK 结果转换为 transport result；application 再结算为 `ChatSendOutcome`。
 
 ### 5.5 UI
 
@@ -635,7 +656,7 @@ messageRenderRegistry.register(locationMessageRenderer)
 
 发送执行通过 `ChatSendOperationRegistry` 装配。内建 text/edit/media/RichText
 和外部 `extension:*` operation 使用同一分发机制；应用层把 registry 传给
-`ConversationChatTransportHandlers.operationRegistry` 即可增加 operation，不修改 bridge。
+`ConversationChatTransportHandlers.operationRegistry` 即可增加 operation，不修改 application。
 旧 `operationHandlers` 只保留为内建 operation 覆盖兼容层。
 
 editor 层已提供 `chatEditorComposePartRegistry`，附件是第一个生产扩展，负责节点
@@ -738,7 +759,7 @@ type ComposerKeyAction =
 ## 13. ChatTransportPort
 
 当前第一阶段使用 operation 级窄接口，避免把 SDK 类型泄漏到 domain 和
-submission：
+application：
 
 ```ts
 export interface ChatTransportResult {
@@ -747,9 +768,18 @@ export interface ChatTransportResult {
 }
 
 export interface ChatTransportPort<TMessage = unknown> {
-  execute(operation: ChatSendOperation<TMessage>): Promise<ChatTransportResult>
+  execute(
+    operation: ChatSendOperation<TMessage>,
+    events: {
+      onEnqueued(partIds: readonly string[]): void
+    },
+  ): Promise<ChatTransportResult>
 }
 ```
+
+`onEnqueued(partIds)` 是 ack 前的即时事件，也是 compose consumption、pending UI 和
+草稿 ownership 的唯一入队信号；最终 `ChatTransportResult` 用于校验和完整 execution
+记录，不能再次推进 Ledger。application 按 attempt + part ID 去重，重复事件无副作用。
 
 `executeChatSendPlan()` 按 plan 顺序串行调用 port，并保留每个 operation 的成功、
 部分入队和异常结果。Conversation 适配器内部可以继续拆成
@@ -761,7 +791,7 @@ export interface ChatTransportPort<TMessage = unknown> {
 - operation 成功返回的 `enqueuedPartIds` 必须是该 operation 声明的 part ID 子集，且不能重复。
 - 入队成功后，composer 视为已消费；ack 超时或服务端失败不应恢复已入队 part。
 - operation 失败不阻断后续 operation，settle 层根据结果精确恢复未入队 part。
-- Toast 和通知由 bridge/UI 错误呈现层处理，domain 不依赖 UI。
+- Toast 和通知由 adapter/UI 错误呈现层处理，domain 不依赖 UI。
 
 ## 14. Chat 与评论输入框的复用边界
 

@@ -48,7 +48,7 @@ import {
   settleConsumedCompose,
   restoreComposeSnapshot,
   SendQueue,
-} from "./sendFlow";
+} from "../../features/chat-composer/application/sendFlow";
 import type {
   AttachmentFile,
   ChatMention,

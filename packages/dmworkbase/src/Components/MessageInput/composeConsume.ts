@@ -15,14 +15,14 @@ import type {
   ConsumedCompose,
   ConsumedComposeIds,
   UnsentEditorBlock,
-} from "./sendFlow";
+} from "../../features/chat-composer/application/sendFlow";
 import {
   chatEditorComposePartRegistry,
   type EditorComposeDocument,
   type EditorComposeNode,
   type EditorComposePartRegistry,
 } from "../../features/chat-composer/editor";
-import { restoreComposeSnapshot } from "./sendFlow";
+import { restoreComposeSnapshot } from "../../features/chat-composer/application/sendFlow";
 import { serializeMentionMarker, stripTrustMark } from "./mentionSendParse";
 
 /** Minimal document node shape we need from the editor JSON. */

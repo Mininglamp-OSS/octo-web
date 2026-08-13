@@ -67,7 +67,7 @@ import {
   type SendProgressSnapshot,
   type SendTargetSnapshot,
   type UnsentEditorBlock,
-} from "../../features/chat-composer/domain";
+} from "../domain";
 
 export type {
   ChatSendOutcome,
@@ -75,7 +75,7 @@ export type {
   SendProgressSnapshot,
   SendTargetSnapshot,
   UnsentEditorBlock,
-} from "../../features/chat-composer/domain";
+} from "../domain";
 
 /**
  * Publish a composer context only after its imperative send callback is wired.

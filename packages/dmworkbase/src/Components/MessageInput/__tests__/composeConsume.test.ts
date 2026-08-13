@@ -35,7 +35,7 @@ import {
 import {
   createSendQueue,
   runSendWithConsumedCompose,
-} from "../sendFlow";
+} from "../../../features/chat-composer/application/sendFlow";
 import {
   createChatSendOutcome,
   type ChatSendOutcome,
