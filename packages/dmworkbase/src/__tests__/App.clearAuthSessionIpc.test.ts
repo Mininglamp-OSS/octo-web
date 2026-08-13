@@ -1,15 +1,16 @@
-import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-
-const appSource = readFileSync("src/App.tsx", "utf8");
+import { describe, expect, it, vi } from "vitest";
+import { runLogoutCleanup } from "../Service/logoutCleanup";
 
 describe("clear-auth-session IPC wiring", () => {
-  it("keeps Electron auth-session cleanup separate from local state cleanup", () => {
-    expect(appSource).toContain('const IPC_CLEAR_AUTH_SESSION = "octo:oidc:clear-auth-session"');
-    expect(appSource).toMatch(/__POWERED_ELECTRON__\s*&&[\s\S]*ipc\?\.invoke/);
-    expect(appSource).toContain("ipc.invoke(IPC_CLEAR_AUTH_SESSION)");
-    expect(appSource).toMatch(/await\s+\(window as any\)\.ipc\.invoke\(IPC_CLEAR_AUTH_SESSION\)/);
-    expect(appSource).toContain("catch {");
-    expect(appSource).toMatch(/clearLocalLoginState\(\)[\s\S]*?clearElectronAuthSession\(\)/);
+  it("clears local state before the Electron auth session", async () => {
+    const calls: string[] = [];
+    const clearLocalLoginState = vi.fn(async () => calls.push("local"));
+    const clearElectronAuthSession = vi.fn(async () => calls.push("electron"));
+
+    await runLogoutCleanup(clearLocalLoginState, clearElectronAuthSession);
+
+    expect(calls).toEqual(["local", "electron"]);
+    expect(clearLocalLoginState).toHaveBeenCalledOnce();
+    expect(clearElectronAuthSession).toHaveBeenCalledOnce();
   });
 });

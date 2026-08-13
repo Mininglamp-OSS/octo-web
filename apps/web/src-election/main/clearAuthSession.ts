@@ -67,8 +67,13 @@ export async function clearAuthSessionCookies(params: {
           const url = removalUrl(cookie);
           if (seen.has(key) || !url) continue;
           seen.add(key);
-          await params.session.cookies.remove(url, cookie.name);
-          cleared += 1;
+          try {
+            await params.session.cookies.remove(url, cookie.name);
+            cleared += 1;
+          } catch (error) {
+            partial = true;
+            params.log.warn(`clearAuthSession: cookie removal failed for ${origin}/${cookie.name}: ${error instanceof Error ? error.message : "unknown error"}`);
+          }
         }
       } catch (error) {
         partial = true;

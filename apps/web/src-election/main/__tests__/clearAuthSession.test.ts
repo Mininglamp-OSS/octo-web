@@ -43,4 +43,30 @@ describe("clearAuthSessionCookies", () => {
     })).resolves.toEqual({ ok: true, cleared: 0, partial: true });
     expect(log).toHaveBeenCalled();
   });
+
+  it("continues removing the remaining cookies after one removal fails", async () => {
+    const removed: string[] = [];
+    const log = vi.fn();
+    const session: SessionLike = {
+      cookies: {
+        get: async () => [
+          { name: "failed", domain: "idp.example.com", path: "/", secure: true },
+          { name: "remaining", domain: "idp.example.com", path: "/", secure: true },
+        ],
+        remove: async (url, name) => {
+          if (name === "failed") throw new Error("remove failed");
+          removed.push(`${url}:${name}`);
+        },
+      },
+      clearAuthCache: async () => {},
+    };
+
+    await expect(clearAuthSessionCookies({
+      session,
+      origins: ["https://idp.example.com"],
+      log: { warn: log },
+    })).resolves.toEqual({ ok: true, cleared: 1, partial: true });
+    expect(removed).toEqual(["https://idp.example.com/:remaining"]);
+    expect(log).toHaveBeenCalled();
+  });
 });

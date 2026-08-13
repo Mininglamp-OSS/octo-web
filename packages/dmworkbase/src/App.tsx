@@ -1,6 +1,7 @@
 import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
 import { replaceWithShellDocument } from "./Service/ShellDocument";
+import { runLogoutCleanup } from "./Service/logoutCleanup";
 
 const IPC_CLEAR_AUTH_SESSION = "octo:oidc:clear-auth-session";
 
@@ -1216,7 +1217,10 @@ export default class WKApp extends ProviderListener {
       typeof (window as any).ipc?.invoke === "function"
     ) {
       try {
-        await (window as any).ipc.invoke(IPC_CLEAR_AUTH_SESSION);
+        const result = await (window as any).ipc.invoke(IPC_CLEAR_AUTH_SESSION);
+        if (result?.ok !== true || result?.partial === true) {
+          console.warn("[auth] Electron auth-session cleanup was incomplete", result);
+        }
       } catch {
         // Local storage cleanup must still complete if the main process is
         // unavailable; callers await this before reloading the shell.
@@ -1230,8 +1234,10 @@ export default class WKApp extends ProviderListener {
     // 后续重入直接返回，避免 window.location.replace 被连发导致的反复跳转/刷屏。
     if (this._loggingOut) return;
     this._loggingOut = true;
-    await this.clearLocalLoginState();
-    await this.clearElectronAuthSession();
+    await runLogoutCleanup(
+      () => this.clearLocalLoginState(),
+      () => this.clearElectronAuthSession(),
+    );
     // Packaged Electron shell loads via `file://` and has no `/login` route
     // on disk, so `location.replace("/login")` navigates to
     // `file:///login` and hangs on ERR_FILE_NOT_FOUND — the interceptor's

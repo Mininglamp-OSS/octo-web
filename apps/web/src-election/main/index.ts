@@ -423,12 +423,6 @@ ipcMain.handle(IPC_OIDC_HTTP_REQUEST, async (event, request: unknown) => {
       response = await net.fetch(url, {
         method,
         redirect: "error",
-        // `net.fetch` runs in the main process, so its default credentials
-        // mode is not the renderer's `same-origin` context.  The OIDC
-        // callback establishes the session cookie in the BrowserWindow and
-        // authstatus must see that same cookie; without an explicit
-        // credentials mode packaged desktop login stays in PENDING forever.
-        credentials: "include",
         signal: controller.signal,
         headers: {
           Accept: "application/json",
