@@ -49,22 +49,35 @@ export function ChannelSettingIconRow({
 
 export interface ChannelSettingToggleRowProps {
   title: string;
+  subTitle?: React.ReactNode;
   checked?: boolean;
   onChange?: (checked: boolean, context?: ListItemSwitchContext) => void;
+  settingKey?: string;
 }
 
 export function ChannelSettingToggleRow({
   title,
+  subTitle,
   checked,
   onChange,
+  settingKey,
 }: ChannelSettingToggleRowProps) {
   return (
-    <ListItemSwitch
-      title={title}
-      checked={checked}
-      onCheck={onChange}
-      style={{}}
-    />
+    <div
+      style={{ display: "contents" }}
+      data-track={settingKey ? "group_setting_toggled" : undefined}
+      data-track-setting-key={settingKey}
+      // 点击瞬间 DOM 里的 checked 还是旧值,上报的是「将切换到」的目标态
+      data-track-state={checked ? "off" : "on"}
+    >
+      <ListItemSwitch
+        title={title}
+        subTitle={subTitle}
+        checked={checked}
+        onCheck={onChange}
+        style={{}}
+      />
+    </div>
   );
 }
 

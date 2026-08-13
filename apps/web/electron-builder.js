@@ -17,7 +17,18 @@ module.exports = {
   electronDownload: {
     mirror: "https://registry.npmmirror.com/-/binary/electron/",
   },
-  files: ["resources/**/*","out-election/**/*", "build/**/*"], // 需要打包的文件
+  files: [
+    "resources/**/*",
+    "out-election/**/*",
+    "build/**/*",
+    // electron-builder appends its own node_modules handling; a positive
+    // node_modules glob would force a filesystem walk of apps/web/node_modules
+    // instead of relying on the production dependency graph. The app-builder-lib
+    // collector patch (patches/app-builder-lib@26.8.1.patch) is what makes the
+    // main-process deps resolvable; packaging must fail loudly (see the patch's
+    // throw on unresolvable required deps) rather than be masked by a glob.
+    // package.json is auto-appended by electron-builder, no need to list it.
+  ], // 需要打包的文件
   extraMetadata: {
     main: "out-election/main/index.js",
   },
@@ -75,10 +86,13 @@ module.exports = {
     // installerHeaderIcon: "./build/icon.ico", // 安装时头部图标
     createDesktopShortcut: true, // 创建桌面图标
     createStartMenuShortcut: true, // 创建开始菜单图标
-    shortcutName: "DMWork", // 图标名称
+    shortcutName: "OCTO", // 图标名称
   },
   linux: {
     target: ["AppImage", "deb"],
-    icon: "resources/icons/icon.icns",
+    icon: "resources/icons/512x512.png",
+    category: "Network;InstantMessaging;",
+    // eslint-disable-next-line no-template-curly-in-string
+    artifactName: '${productName}-${version}-linux-${arch}.${ext}',
   },
 };

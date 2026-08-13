@@ -62,6 +62,7 @@ export MARKET_API_URL
 DRIVE_API_URL="${DRIVE_API_URL%/}"
 export DRIVE_API_URL
 
+
 # octo-fleet upstream for the /fleet/api/ location (Loop workspace/runtime
 # pickers in the expert market). Blank by default (503 when unset) — same
 # shape as the hosts above. Set FLEET_API_URL=http://octo-fleet:8080 in the
@@ -76,7 +77,19 @@ export DRIVE_API_URL
 FLEET_API_URL="${FLEET_API_URL%/}"
 export FLEET_API_URL
 
-envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${FLEET_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
+# octo-dap telemetry collector upstream for the `location = /v1/e/b` block. Blank
+# by default (503 when unset) — same shape as the hosts above. Trailing slash
+# stripped: that block rewrites to a fixed `/v1/dap/collect` and proxy_passes
+# `$track_api_url` (no URI), so a trailing slash on the host would produce a
+# double-slash upstream. Must be in the envsubst allowlist or the literal
+# `${TRACK_API_URL}` would survive into the generated config and defeat the
+# blank-value guard (`if ($track_api_url = "")`), so the telemetry route would
+# 503 regardless of what the operator configures.
+: "${TRACK_API_URL:=}"
+TRACK_API_URL="${TRACK_API_URL%/}"
+export TRACK_API_URL
+
+envsubst '${API_URL} ${SUMMARY_API_URL} ${MARKET_API_URL} ${DRIVE_API_URL} ${FLEET_API_URL} ${TRACK_API_URL} ${DOCS_ASSET_CSP_ORIGIN} ${DOC_APP_URL} ${DOCS_BACKEND_URL}' < /nginx.conf.template > /etc/nginx/conf.d/default.conf
 
 
 exec "$@"

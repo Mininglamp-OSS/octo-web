@@ -303,6 +303,36 @@ describe("MentionList interaction mode", () => {
     expect(command).toHaveBeenCalledWith({ id: "uid-1", label: "Alice" });
   });
 
+  it("lets Shift+Enter fall through without selecting a mention", () => {
+    const command = vi.fn();
+    const { ref } = renderMentionList(command);
+
+    let handled: boolean | undefined;
+    act(() => {
+      handled = ref.current.onKeyDown({
+        event: { key: "Enter", shiftKey: true },
+      });
+    });
+
+    expect(handled).toBe(false);
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it("lets Shift+Enter fall through when no mention result is visible", () => {
+    const command = vi.fn();
+    const { ref } = renderMentionList(command, []);
+
+    let handled: boolean | undefined;
+    act(() => {
+      handled = ref.current.onKeyDown({
+        event: { key: "Enter", shiftKey: true },
+      });
+    });
+
+    expect(handled).toBe(false);
+    expect(command).not.toHaveBeenCalled();
+  });
+
   it("returns to the first keyboard item after the pointer leaves the list", () => {
     const command = vi.fn();
     const { ref } = renderMentionList(command);

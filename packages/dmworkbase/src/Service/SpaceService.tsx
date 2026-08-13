@@ -314,8 +314,8 @@ export class SpaceService {
     // dmloop directory / SettingsPage 各自复制的分页逻辑，
     // 避免翻页上限相互漂移。
     //
-    // 注意默认上限是 100×50 = 5000。已知有 5760 人的空间（见 packages/docs
-    // octoweb 的 picker 截断修复），所以需要完整名册的调用方应改用 getRoster，
+    // 注意默认上限是 100×50 = 5000。已知有 5760 人的空间（见外部 Docs
+    // 模块的 picker 截断修复），所以需要完整名册的调用方应改用 getRoster，
     // 或显式传更大的 pageLimit。
     async getAllMembers(spaceId: string, pageLimit: number = 100, maxPages: number = 50, signal?: AbortSignal): Promise<SpaceMember[]> {
         if (!spaceId) return []

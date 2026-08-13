@@ -8,7 +8,7 @@ import {
     Tooltip,
     Modal,
 } from "@douyinfe/semi-ui";
-import { I18nContext, t } from "@octo/base";
+import { I18nContext, t, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -65,6 +65,8 @@ interface SummaryCreatePageProps {
     onClose?: () => void;
     /** 面板模式创建成功回调（替代 routeRight.push 详情页）。 */
     onSubmit?: (taskId: number) => void;
+    /** 打开总结创建的来源入口(埋点 source/entry_point,枚举值,非正文)。 */
+    source?: string;
 }
 
 interface SummaryCreatePageState {
@@ -414,6 +416,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (creatingCustomTemplate) {
                 const template = await api.createCustomTopicTemplate({ label, description });
                 this.appendTemplateToState(template);
+                // 真创建成功后才 emit(§started-vs-created):挂在 Save 按钮点击上会把
+                // 被服务端拒绝/取消的尝试也计一次创建,虚高成功率。带 object_id 供归因。
+                Dap.shared.track("template_created", {
+                    object_id: template.id,
+                    template_type: "summary_topic",
+                });
                 Toast.success(t("summary.templates.custom.createSuccess"));
             } else if (editingTemplate?.is_custom) {
                 const template = await api.updateCustomTopicTemplate(editingTemplate.id, { label, description });
@@ -576,6 +584,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         const { topic, selectedChats, selectedMembers, scheduleConfig } = this.state;
         if (!this.canSubmit()) return;
         const summaryTitle = deriveSummaryTitle(topic);
+
+        // smart_summary_started 收口在这里,而非「开始」按钮的声明式 data-track。按钮 onClick
+        // 是 handlePrimaryClick——agent 模式下它**不提交**(短路 return),但捕获阶段的 data-track
+        // 委托照样会触发,给 agent 模式记一条根本没发起的幻影 started(见 PR #1330 review blocker②)。
+        // 挪到通过 canSubmit、真正发起创建的唯一收口点(handleSubmit 目前仅由 handlePrimaryClick
+        // 的 normal 分支调用;无 Enter 提交路径),agent 模式(不经 handleSubmit)天然不误发。
+        // trigger_mode 恒为 'normal'(agent 分支永不到此),保留字段仅为口径显式、便于日后扩展。
+        Dap.shared.track('smart_summary_started', {
+            object_id: this.props.channel?.channelID,
+            source: this.props.source,
+            entry_point: this.props.source,
+            trigger_mode: this.state.mode,
+        });
 
         this.setState({ submitting: true, error: null });
         try {

@@ -2,8 +2,8 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { autoUpdater } from "electron-updater";
 import logger from "electron-log";
 import path from "path";
-import DMWORK_CONFIG from "./config";
-const feedUrl = `${DMWORK_CONFIG.updateUrl}v1/common/pcupdater/`;
+import OCTO_CONFIG from "./config";
+const feedUrl = `${OCTO_CONFIG.updateUrl}v1/common/pcupdater/`;
 
 let mainWindow: BrowserWindow;
 // 封装更新相关的进程通信方法

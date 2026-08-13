@@ -7,13 +7,16 @@ export * from './Service/Thread'
 export * from './Service/Module'
 export * from './Service/Menus'
 export * from './Service/APIClient'
+export * from './Service/Dap'
 export * from './Service/apiLanguage'
 export * from './Service/apiFetch'
 export { default as Provider } from './Service/Provider'
 export * from './Service/Provider'
 export * from './Service/Route'
 export * from './Service/SessionScope'
+export * from './Service/ShellDocument'
 export * from './Service/RoutePath'
+export * from './Service/deviceFlags'
 export * from './Service/DataSource/DataProvider'
 export { default as ChatPage } from "./Pages/Chat"
 export * from './Components/ChannelSetting/context'
@@ -159,6 +162,7 @@ export type { AgentCardData, FileGroup, FileItem, FileContent, FileContentRespon
 export { Channel, ChannelTypePerson } from 'wukongimjssdk'
 
 // Drive-transfer Space-prefix + supported-channel helpers used by both
-// dmworkbase (FileCell) and dmworkdrive (module.tsx). Single source of truth
+// dmworkbase (FileCell) and the private Drive module. Single source of truth
 // for the channel-normalisation contract (#1261 review round 6).
-export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel } from './Service/SpacePrefix'
+export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel, normaliseImDriveChannelID, imDriveTransferSourceKey } from './Service/SpacePrefix'
+export { resolveCardActionChannelId } from './Messages/InteractiveCard/cardAction'

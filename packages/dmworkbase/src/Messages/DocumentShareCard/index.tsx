@@ -64,15 +64,15 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
 
   private handleOpen = (): void => {
     const content = this.props.message.content as DocumentShareCardContent;
-    // P1-b：不信任 wire url，用已校验的 docId/spaceId 本地重建同源相对路径再导航。
-    const url = buildDocNavUrl(content.docId, content.spaceId);
+    // P1-b：不信任 wire url，用已校验的 docId 本地重建同源相对路径再导航（Phase-1 已去 sp）。
+    const url = buildDocNavUrl(content.docId);
     if (url) window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  /** 复制文档链接：用已校验 docId/spaceId 在本源重建绝对链接（不回显 wire url，安全且可分享）。 */
+  /** 复制文档链接：用已校验 docId 在本源重建绝对链接（不回显 wire url，安全且可分享；无 sp）。 */
   private handleCopy = (): void => {
     const content = this.props.message.content as DocumentShareCardContent;
-    const rel = buildDocNavUrl(content.docId, content.spaceId);
+    const rel = buildDocNavUrl(content.docId);
     if (!rel) return;
     void navigator.clipboard?.writeText(`${window.location.origin}${rel}`);
   };

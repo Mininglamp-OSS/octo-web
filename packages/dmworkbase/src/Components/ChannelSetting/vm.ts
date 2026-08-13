@@ -1,6 +1,6 @@
 import { ChannelInfoListener, SubscriberChangeListener } from "wukongimjssdk";
-import { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wukongimjssdk";
-import { GroupRole, SubscriberStatus } from "../../Service/Const";
+import { Channel, ChannelInfo, ChannelTypeGroup, ChannelTypePerson, Subscriber } from "wukongimjssdk";
+import { ChannelTypeCommunityTopic, GroupRole, SubscriberStatus } from "../../Service/Const";
 import RouteContext from "../../Service/Context";
 import WKApp from "../../App";
 import { ProviderListener } from "../../Service/Provider";
@@ -27,6 +27,7 @@ import {
     type OboScope,
 } from "../../Service/OboService";
 import { t } from "../../i18n";
+import { parseThreadChannelId } from "../../Service/Thread";
 
 
 export class ChannelSettingVM extends ProviderListener {
@@ -37,6 +38,7 @@ export class ChannelSettingVM extends ProviderListener {
     subscribersTop: Subscriber[] = [] // 显示的成员
     subscriberChangeListener?: SubscriberChangeListener
     channelInfoListener!:ChannelInfoListener
+    private parentChannel?: Channel
     unsubscribeSubscriberChangeListener?: () => void
     unsubscribeChannelInfoListener?: () => void
     subscriberOfMe?: Subscriber
@@ -93,6 +95,12 @@ export class ChannelSettingVM extends ProviderListener {
         super()
         this.channel = channel
         this.routeData.channel = channel
+        if (channel.channelType === ChannelTypeCommunityTopic) {
+            const threadInfo = parseThreadChannelId(channel.channelID)
+            if (threadInfo) {
+                this.parentChannel = new Channel(threadInfo.groupNo, ChannelTypeGroup)
+            }
+        }
 
     }
 
@@ -310,6 +318,15 @@ export class ChannelSettingVM extends ProviderListener {
 
     didMount(): void {
         void fetchCurrentImChannelInfo(this.channel)
+        if (this.parentChannel) {
+            void fetchCurrentImChannelInfo(this.parentChannel)
+                .catch(() => undefined)
+                .finally(() => {
+                    if (!this._disposed) {
+                        this.notifyListener()
+                    }
+                })
+        }
 
         this.reloadSubscribers()
 
@@ -326,6 +343,9 @@ export class ChannelSettingVM extends ProviderListener {
             if(channelInfo.channel.isEqual(this.channel)) {
                 this.reloadChannelInfo()
                 return
+            }
+            if(this.parentChannel && channelInfo.channel.isEqual(this.parentChannel)) {
+                this.notifyListener()
             }
         }
         this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(this.channelInfoListener)

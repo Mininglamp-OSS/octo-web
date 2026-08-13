@@ -28,6 +28,10 @@ server {
         # so an unset/unresolvable host 503s its own route instead of aborting the
         # whole container at startup (same pattern as the doc/backend hosts below).
         set $drive_api_url "${DRIVE_API_URL}";
+        # octo-dap telemetry collector (TRACK_API_URL) upstream, as a runtime nginx
+        # variable so an unset/unresolvable host 503s its own /v1/e/b route instead of
+        # aborting the whole container at startup (same pattern as the hosts below).
+        set $track_api_url "${TRACK_API_URL}";
         # octo-doc (DOC_APP_URL) + octo-docs-backend (DOCS_BACKEND_URL) upstreams, as
         # runtime nginx variables so the doc/backend hosts resolve per-request (with a
         # resolver) instead of at config load — an unset/unresolvable host then 503s its
@@ -243,6 +247,48 @@ server {
         # forward /v1/* without the strip-then-prepend dance the /api/ rule does.
         location /v1/ {
             proxy_pass  ${API_URL}/v1/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size 10m;
+        }
+
+        # octo-dap telemetry collector — the fail-closed frontend tracker always
+        # POSTs to the same-origin relative path /v1/e/b. The public path is a
+        # deliberately neutral, business-API-shaped name: words like track / collect /
+        # analytics / beacon / telemetry / pixel are on the EasyPrivacy & uBlock Origin
+        # default block lists, so a browser with a privacy extension (common on
+        # corporate intranets) would kill the request outright and the tracker would
+        # silently drop data. This block routes it to the collector so those reports
+        # never fall through to the SPA catch-all below (a POST to index.html would
+        # otherwise return a bogus non-JSON body the tracker cannot recognise as
+        # failure). Set TRACK_API_URL (e.g. http://octo-dap:8080) at container start;
+        # blank yields a JSON 503 so a deployment without the collector still boots AND
+        # the tracker sees an explicit !ok response (its retry/drop path) instead of a
+        # silent false success.
+        # Exact match (= ...) so it outranks the SPA catch-all. The public path and the
+        # backend contract are decoupled: the collector exposes /v1/dap/collect, so we
+        # rewrite to that fixed upstream URI and proxy_pass WITHOUT a URI (same
+        # variable-in-proxy_pass caveat as /summary/ and /market/) — $request_uri is
+        # NOT forwarded, so renaming the public path never touches the backend contract.
+        #
+        # SECURITY PRECONDITION (see Dap.ts BATCH_PATH comment): this block relays the
+        # session `token` header to $track_api_url. The frontend's same-origin lock only
+        # guarantees the browser hop; from here the token travels to whatever TRACK_API_URL
+        # resolves to. Therefore, by deployment contract: (1) TRACK_API_URL MUST point at an
+        # in-cluster / trusted collector, never an untrusted external host; (2) the collector
+        # MUST NOT log or persist the `token` header (it is a live business credential used
+        # only for request-time auth). Do not point this at an arbitrary third-party endpoint.
+        location = /v1/e/b {
+            default_type application/json;
+            if ($track_api_url = "") {
+                return 503 '{"status":503,"msg":"telemetry collector is not configured"}';
+            }
+            resolver 127.0.0.11 ipv6=off valid=30s;
+            rewrite ^ /v1/dap/collect break;
+            proxy_pass $track_api_url;
+            proxy_set_header token $http_token;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

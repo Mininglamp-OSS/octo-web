@@ -32,30 +32,55 @@ jobs:
           changed_files="$(mktemp)"
           gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
             --paginate \
-            --jq '.[] | [.filename, .status] | @tsv' > "${changed_files}"
+            --jq '.[] | [.filename, .status, (.previous_filename // "")] | @tsv' > "${changed_files}"
+
+          guard_awk="$(mktemp)"
+          # shellcheck disable=SC2016
+          printf '%s\n' \
+            'function removed_module_path(path) {' \
+            '  return path ~ /^packages\/(dmloop|dmpersonal|dmworkdrive|docs)(\/|$)/' \
+            '}' \
+            'function removed_module_e2e_path(path) {' \
+            '  return path ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/(loop|personal|drive|doc|docs)([\/_.-]|$)/ ||' \
+            '    path ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/.*[\/_.-](loop|personal|drive|doc|docs)([\/_.-]|$)/' \
+            '}' \
+            '$2 != "removed" && (removed_module_path($1) || removed_module_e2e_path($1)) { print $1; next }' \
+            '$2 == "renamed" && (removed_module_path($3) || removed_module_e2e_path($3)) { print $3 " -> " $1; next }' \
+            > "${guard_awk}"
+
+          guard_fixture="$(mktemp)"
+          printf '%s\n' \
+            $'apps/web/e2e-kit/tests/doc/foo.spec.ts\tadded' \
+            $'apps/web/e2e-kit/tests/docs.spec.ts\tadded' \
+            $'apps/web/e2e-kit/tests/loop/foo.spec.ts\tadded' \
+            $'apps/web/e2e-kit/case-specs/docs-login.md\tadded' \
+            > "${guard_fixture}"
+          fixture_hits="$(awk -F '\t' -f "${guard_awk}" "${guard_fixture}")"
+          fixture_count="$(printf '%s\n' "${fixture_hits}" | grep -c . || true)"
+          if [[ "${fixture_count}" -ne 4 ]]; then
+            echo "::error::OSS module guard fixture coverage failed."
+            printf '%s\n' "${fixture_hits}"
+            exit 1
+          fi
 
           blocked_paths="$(mktemp)"
-          awk -F '\t' '
-            $2 == "removed" { next }
-            $1 ~ /^packages\/(dmloop|dmpersonal)(\/|$)/ { print $1; next }
-            $1 ~ /^apps\/web\/e2e-kit\/(case-specs|reports|screenshots|tests)\/.*(loop|personal)/ { print $1; next }
-          ' "${changed_files}" > "${blocked_paths}"
+          awk -F '\t' -f "${guard_awk}" "${changed_files}" > "${blocked_paths}"
 
           if [[ -s "${blocked_paths}" ]]; then
-            echo "::error::Loop/Personal have been moved out of the OSS repository. Submit these changes to the enterprise module repository instead."
+            echo "::error::Loop/Personal/Drive/Docs have been moved out of the OSS repository. Submit these changes to the enterprise module repository instead."
             cat "${blocked_paths}"
             exit 1
           fi
 
           blocked_refs="$(mktemp)"
-          while IFS=$'\t' read -r file status; do
+          while IFS=$'\t' read -r file status _previous_file; do
             [[ "${status}" == "removed" ]] && continue
             [[ "${file}" == ".github/workflows/oss-module-guard.yml" ]] && continue
             [[ -f "${file}" ]] || continue
 
             case "${file}" in
-              *.ts|*.tsx|*.js|*.jsx|*.mjs|*.cjs|*.json|*.yaml|*.yml|Dockerfile*)
-                if grep -nHE "@(octo|dmwork)/(loop|personal)(/|['\"[:space:]]|$)" "${file}" >> "${blocked_refs}"; then
+              *.ts|*.tsx|*.mts|*.cts|*.js|*.jsx|*.mjs|*.cjs|*.css|*.scss|*.less|*.json|*.yaml|*.yml|Dockerfile*)
+                if grep -nHE "@(octo|dmwork)/(loop|personal|drive|docs)(/|['\"[:space:]]|$)" "${file}" >> "${blocked_refs}"; then
                   true
                 fi
                 ;;
@@ -63,7 +88,7 @@ jobs:
           done < "${changed_files}"
 
           if [[ -s "${blocked_refs}" ]]; then
-            echo "::error::Open-source code must not reintroduce Loop/Personal package imports. Submit these changes to the enterprise module repository instead."
+            echo "::error::Open-source code must not reintroduce Loop/Personal/Drive/Docs package imports. Submit these changes to the enterprise module repository instead."
             cat "${blocked_refs}"
             exit 1
           fi

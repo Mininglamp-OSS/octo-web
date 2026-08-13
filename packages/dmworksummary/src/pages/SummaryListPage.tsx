@@ -467,7 +467,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 } else {
                     WKApp.routeRight.popToRoot();
                     WKApp.routeRight.push(
-                        <SummaryCreatePage onCreated={() => this.loadData()} />
+                        <SummaryCreatePage onCreated={() => this.loadData()} source="summary_list" />
                     );
                 }
             });
@@ -549,7 +549,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }
         WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(
-            <SummaryCreatePage onCreated={() => this.loadData()} />
+            <SummaryCreatePage onCreated={() => this.loadData()} source="summary_list" />
         );
     };
 

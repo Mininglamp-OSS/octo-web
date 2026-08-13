@@ -150,6 +150,16 @@ export default function SkillListPage() {
     setDetailId(item.id);
   }
 
+  // The paginated /skills response carries no real total, so list.total falls
+  // back to the loaded page size (e.g. 20). The /skill_categories counts are
+  // authoritative — on the skills tab show the active category's skillCount
+  // (for "全部" this equals the summed total shown in the chip). The "我的" tab
+  // has no category chips and a different scope, so keep list.total there.
+  const summaryTotal = mine
+    ? list.total
+    : list.categories.find((category) => category.id === list.categoryId)
+        ?.skillCount ?? list.total;
+
   return (
     <div className="skill-market-page">
       <header className="skill-market-topbar">
@@ -250,7 +260,7 @@ export default function SkillListPage() {
           <div className="skill-market-result-summary">
             <span className="skill-market-result-summary__total" aria-live="polite">
               {t("skillMarket.list.totalCount", {
-                values: { count: list.total },
+                values: { count: summaryTotal },
               })}
             </span>
             {!mine && (

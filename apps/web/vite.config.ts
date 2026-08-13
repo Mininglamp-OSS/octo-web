@@ -12,6 +12,9 @@ import {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const apiUrl = env.VITE_API_URL;
+  const oidcTrustedOrigins = [...new Set([
+    ...(env.VITE_OIDC_TRUSTED_ORIGINS || "").split(",").map((value) => value.trim()),
+  ].filter(Boolean))];
   const isElectronBuild = env.VITE_ELECTRON_BUILD === "true";
   const enterpriseHtmlHead = readEnterpriseHtmlHead(
     env.VITE_ENTERPRISE_HTML_HEAD_PATH,
@@ -64,6 +67,42 @@ export default defineConfig(({ mode }) => {
           ];
         },
       },
+      ...(isElectronBuild
+        ? [{
+            name: "emit-electron-config",
+            generateBundle() {
+              // Fail loud when the packaged renderer would ship without a
+              // trustable OIDC API origin. The main process reads this file
+              // to seed OIDC_API_ORIGIN — shipping a build with
+              // oidcApiOrigin=null used to silently disable every OIDC IPC
+              // handler at runtime (P2-1). Refuse to emit an unusable build
+              // instead: reviewers, CI, and release pipelines get a hard
+              // stop right at `vite build` and cannot accidentally publish
+              // a broken installer.
+              if (!apiUrl) {
+                this.error(
+                  "[vite] Refusing to emit electron-config.json without VITE_API_URL. "
+                  + "Packaged Electron builds require an absolute API origin so main "
+                  + "can trust the OIDC endpoint without accepting one nominated by "
+                  + "the renderer. Set VITE_API_URL (e.g. https://api.example.com) "
+                  + "and rerun the build.",
+                );
+                return;
+              }
+              this.emitFile({
+                type: "asset",
+                fileName: "electron-config.json",
+                source: JSON.stringify({
+                  // Keep this value in the generated build artifact so the
+                  // tsc-compiled Electron main process can trust it without
+                  // accepting an origin nominated by the renderer.
+                  oidcApiOrigin: apiOrigin,
+                  oidcEndSessionOrigins: [apiOrigin, ...oidcTrustedOrigins],
+                }, null, 2),
+              });
+            },
+          }]
+        : []),
       enterpriseHtmlHeadPlugin(enterpriseHtmlHead),
       enterpriseModulesPlugin(env.VITE_ENTERPRISE_MODULES_ENTRY, process.cwd(), enterpriseFsAllow),
       // TODO: remove after all require() calls are migrated to import (chore/migrate-require-to-import)
@@ -192,6 +231,19 @@ export default defineConfig(({ mode }) => {
           target: apiOrigin,
           changeOrigin: true,
           secure: false,
+        },
+        // Telemetry collector (octo-dap). The frontend POSTs to a neutral,
+        // business-API-shaped path /v1/e/b (words like track/collect/beacon are on
+        // adblock filter lists and would be silently killed). Prod nginx rewrites it
+        // to the collector's /v1/dap/collect; dev mirrors that rewrite against the API
+        // origin so the fail-closed tracker is exercisable locally (otherwise POST
+        // /v1/e/b falls through to the SPA and dev collection is non-functional).
+        // MUST precede the general /v1/ rule below (first prefix wins).
+        "/v1/e/b": {
+          target: env.VITE_TRACK_API_URL || apiOrigin,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (p) => p.replace(/^\/v1\/e\/b/, "/v1/dap/collect"),
         },
         // Drive service API — drive serves /v1/drive/* natively; route it to
         // the drive service. MUST precede the general /v1/ rule below (vite

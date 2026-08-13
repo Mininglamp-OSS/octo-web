@@ -396,8 +396,8 @@ describe("ForwardService.send — interMessageDelayMs", () => {
     })
 })
 
-// forwardPlainText is the seam a feature package uses when it cannot import wukongimjssdk itself
-// (@octo/docs). It is a thin wrapper, so what actually needs locking down is that the caller's text
+// forwardPlainText is the seam an external feature package uses when it cannot import wukongimjssdk itself.
+// It is a thin wrapper, so what actually needs locking down is that the caller's text
 // really becomes the MessageText handed to send() — the docs-side tests can only see a mock of this
 // function, so without these cases nothing verifies the text ever reaches the wire.
 describe("forwardPlainText", () => {
