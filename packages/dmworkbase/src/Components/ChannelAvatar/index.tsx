@@ -188,7 +188,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                     : (textChanged ? customAvatarText : undefined),
                 avatarColor: colorChanged
                     ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
-                    : undefined,
+                    : (shouldClearUploadedAvatar ? "" : undefined),
                 clearUploadedAvatar: shouldClearUploadedAvatar,
             })
             WKApp.shared.changeChannelAvatarTag(channel)

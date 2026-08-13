@@ -32,6 +32,7 @@ interface BuildGroupProfileRowsOptions {
 
 interface GroupAvatarSettingRowProps extends ChannelSettingIconRowProps {
   channel: ChannelSettingRouteData["channel"];
+  canEdit: boolean;
   showUpload?: boolean;
   groupName?: string;
   isNamedGroup?: boolean;
@@ -79,6 +80,7 @@ function groupAvatarEditorValuesFromInfo(
 
 export function GroupAvatarSettingRow({
   channel,
+  canEdit,
   showUpload,
   groupName,
   isNamedGroup,
@@ -126,7 +128,7 @@ export function GroupAvatarSettingRow({
       <ChannelSettingIconRow
         {...rowProps}
         onClick={() => {
-          if (!showUpload) {
+          if (!canEdit) {
             Toast.warning(
               t("base.module.channelSettings.groupAvatarOnlyManager")
             );
@@ -221,6 +223,7 @@ export function buildGroupProfileRows({
           />
         ),
         showUpload: canEditAvatar,
+        canEdit: canEditAvatar,
         channel,
         groupName: channelInfo?.title || "",
         isNamedGroup,

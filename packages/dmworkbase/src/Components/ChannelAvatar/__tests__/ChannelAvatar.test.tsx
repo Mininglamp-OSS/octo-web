@@ -297,7 +297,7 @@ describe("ChannelAvatar save intent", () => {
 
     expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
       avatarText: "研发",
-      avatarColor: undefined,
+      avatarColor: "",
       clearUploadedAvatar: true,
     });
     expect(container.querySelector(".wk-group-avatar-preview-text")?.textContent).toBe("研发");
@@ -317,6 +317,8 @@ describe("ChannelAvatar save intent", () => {
 
   it("clears an uploaded avatar when the owner edits generated text", async () => {
     const channel = renderChannelAvatar({
+      initialAvatarText: "旧头像",
+      initialColorIndex: 5,
       isUploadedAvatar: true,
       canClearUploadedAvatar: true,
     });
@@ -332,7 +334,7 @@ describe("ChannelAvatar save intent", () => {
 
     expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
       avatarText: "研发",
-      avatarColor: undefined,
+      avatarColor: "",
       clearUploadedAvatar: true,
     });
   });

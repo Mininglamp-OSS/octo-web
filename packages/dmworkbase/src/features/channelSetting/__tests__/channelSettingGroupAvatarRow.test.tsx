@@ -105,6 +105,7 @@ describe("GroupAvatarSettingRow", () => {
           title="Group avatar"
           icon={<span />}
           channel={channel}
+          canEdit
           showUpload
           groupName="Cached Group"
           isNamedGroup={false}
@@ -143,6 +144,7 @@ describe("GroupAvatarSettingRow", () => {
           title="Group avatar"
           icon={<span />}
           channel={channel}
+          canEdit={false}
           showUpload={false}
         />,
         container
