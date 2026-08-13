@@ -156,6 +156,19 @@ const TIPTAP_BLOCK_TYPES = new Set([
   'horizontalRule',
 ]);
 
+function escapeTrailingMarkdownImageBang(text: string): string {
+  if (!text.endsWith("!")) return text;
+
+  let precedingBackslashes = 0;
+  for (let index = text.length - 2; index >= 0; index -= 1) {
+    if (text[index] !== "\\") break;
+    precedingBackslashes += 1;
+  }
+  return precedingBackslashes % 2 === 0
+    ? `${text.slice(0, -1)}\\!`
+    : text;
+}
+
 function extractOrderedBlocks(
   editorInstance: any,
   attachmentFilesMap: Map<string, File>
@@ -197,7 +210,14 @@ function extractOrderedBlocks(
     }
 
     if (node.type === "text") {
-      pendingTextParts.push(serializeEditorTextNodeForSend(node));
+      const serialized = serializeEditorTextNodeForSend(node);
+      if (serialized.startsWith("[") && pendingTextParts.length > 0) {
+        const previousIndex = pendingTextParts.length - 1;
+        pendingTextParts[previousIndex] = escapeTrailingMarkdownImageBang(
+          pendingTextParts[previousIndex],
+        );
+      }
+      pendingTextParts.push(serialized);
       return;
     }
     if (node.type === "mention") {
@@ -449,9 +469,13 @@ function extractMentionsFromEditor(editor: any, trusted = false): string {
 
   function traverse(node: any) {
     if (node.type === "text") {
-      result += trusted
+      const serialized = trusted
         ? serializeEditorTextNodeForSend(node)
         : stripTrustMark(node.text || "");
+      if (trusted && serialized.startsWith("[")) {
+        result = escapeTrailingMarkdownImageBang(result);
+      }
+      result += serialized;
     } else if (node.type === "mention") {
       result += serializeMentionMarker(node.attrs.id, node.attrs.label, trusted);
     } else if (node.type === "hardBreak") {
@@ -684,6 +708,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       decision: ComposerPasteDecision,
     ) => boolean) | null
   >(null);
+  const pasteLifecycleRef = useRef(0);
 
   // 更新模块级别的 membersRef
   membersRef = localMembersRef;
@@ -805,6 +830,13 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       );
     },
   });
+
+  useEffect(() => {
+    pasteLifecycleRef.current += 1;
+    return () => {
+      pasteLifecycleRef.current += 1;
+    };
+  }, [editor, props.context]);
 
   // 设置hotkeys scope
   useEffect(() => {
@@ -942,6 +974,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       }
 
       const beforePasteContent = JSON.stringify(editor.getJSON());
+      const pasteLifecycle = pasteLifecycleRef.current;
+      const isPasteActive = () =>
+        composerMountedRef.current &&
+        pasteLifecycleRef.current === pasteLifecycle &&
+        !editor.isDestroyed;
       restoreOctoRichTextClipboardToEditor(
         decision.payload,
         editor,
@@ -958,9 +995,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
           // forged clipboard payload cannot inject mentions for non-members
           // or broadcast-routing sentinels (octo-web#330).
           members: buildMemberInfos(localMembersRef.current),
+          isActive: isPasteActive,
         }
       ).catch(() => {
         if (
+          isPasteActive() &&
           decision.payload.plain &&
           JSON.stringify(editor.getJSON()) === beforePasteContent
         ) {

@@ -41,16 +41,48 @@ export function snapshotComposerClipboard(
   };
 }
 
+function extractVisibleHtmlText(html: string): string {
+  if (!html || typeof DOMParser === "undefined") return "";
+
+  const document = new DOMParser().parseFromString(html, "text/html");
+  document
+    .querySelectorAll("script, style, template, noscript")
+    .forEach((node) => node.remove());
+  return document.body.textContent || "";
+}
+
+function getRichTextSecretCandidates(
+  payload: OctoRichTextClipboardPayload | null,
+): string[] {
+  if (!payload) return [];
+
+  return [
+    payload.plain || "",
+    payload.blocks
+      .map((block) => {
+        if (block.type === "text") return block.text;
+        if (block.type === "file") return ` ${block.name || ""} `;
+        return " ";
+      })
+      .join(""),
+  ];
+}
+
 /** Security and product precedence for every editor paste entry point. */
 export function decideComposerPaste(
   snapshot: ComposerClipboardSnapshot,
 ): ComposerPasteDecision {
-  const secret =
-    detectPastedSecret(snapshot.plainText) ??
-    detectPastedSecret(snapshot.html);
+  const richText = extractOctoRichTextClipboardPayloadFromHtml(snapshot.html);
+  const secret = [
+    snapshot.plainText,
+    extractVisibleHtmlText(snapshot.html),
+    ...getRichTextSecretCandidates(richText),
+  ].reduce<ReturnType<typeof detectPastedSecret>>(
+    (found, candidate) => found ?? detectPastedSecret(candidate),
+    null,
+  );
   if (secret) return { kind: "block-secret", value: secret.value };
 
-  const richText = extractOctoRichTextClipboardPayloadFromHtml(snapshot.html);
   if (richText) return { kind: "octo-rich-text", payload: richText };
 
   // Preserve the browser's established HTML/plain precedence for mixed pastes.

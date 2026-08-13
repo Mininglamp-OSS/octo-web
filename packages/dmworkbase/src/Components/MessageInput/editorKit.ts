@@ -1,4 +1,5 @@
 import StarterKit from "@tiptap/starter-kit";
+import { isSafeUrl } from "../../Utils/security";
 
 /** Plain composer schema that still preserves explicitly pasted HTML links. */
 export function createComposerStarterKit() {
@@ -16,6 +17,7 @@ export function createComposerStarterKit() {
       linkOnPaste: false,
       openOnClick: false,
       shouldAutoLink: () => false,
+      isAllowedUri: (url) => isSafeUrl(url),
     },
   });
 }

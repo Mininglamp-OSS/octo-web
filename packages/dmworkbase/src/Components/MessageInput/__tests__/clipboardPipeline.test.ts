@@ -54,6 +54,54 @@ describe("composer clipboard pipeline", () => {
     });
   });
 
+  it("detects a secret split across visible HTML nodes", () => {
+    const decision = decideComposerPaste(
+      snapshotComposerClipboard(
+        clipboardData({ html: "<p>sk-ABCDEF<span>GHIJKLMNOP</span></p>" }),
+      ),
+    );
+
+    expect(decision).toEqual({
+      kind: "block-secret",
+      value: "sk-ABCDEFGHIJKLMNOP",
+    });
+  });
+
+  it("does not scan non-visible HTML attributes for secret-shaped values", () => {
+    expect(
+      decideComposerPaste(
+        snapshotComposerClipboard(
+          clipboardData({
+            html: '<a href="https://example.com/app-ABCDEFGHIJKLMNOP">docs</a>',
+          }),
+        ),
+      ),
+    ).toEqual({ kind: "default" });
+  });
+
+  it("blocks a secret encoded only inside an Octo rich text payload", () => {
+    const payload = encodeOctoRichTextClipboardPayload({
+      version: 1,
+      blocks: [
+        { type: "text", text: "sk-ABCDEF" },
+        { type: "text", text: "GHIJKLMNOP" },
+      ],
+    });
+
+    expect(
+      decideComposerPaste(
+        snapshotComposerClipboard(
+          clipboardData({
+            html: `<div data-octo-richtext="${payload}"></div>`,
+          }),
+        ),
+      ),
+    ).toEqual({
+      kind: "block-secret",
+      value: "sk-ABCDEFGHIJKLMNOP",
+    });
+  });
+
   it("routes Octo rich text before clipboard files", () => {
     const file = new File(["image"], "image.png", { type: "image/png" });
     const payload = encodeOctoRichTextClipboardPayload({
@@ -144,6 +192,25 @@ describe("composer clipboard pipeline", () => {
       expect(paragraph?.content?.[1]).toEqual({
         type: "text",
         text: " README.md",
+      });
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it.each([
+    "mailto:person@example.com",
+    "ftp://example.com/file.txt",
+    "/relative/path",
+    "javascript:alert(1)",
+  ])("drops unsupported pasted link targets: %s", (href) => {
+    const editor = new Editor({ extensions: [createComposerStarterKit()] });
+    try {
+      editor.commands.setContent(`<p><a href="${href}">Example</a></p>`);
+
+      expect(editor.getJSON().content?.[0]?.content?.[0]).toEqual({
+        type: "text",
+        text: "Example",
       });
     } finally {
       editor.destroy();

@@ -1,7 +1,9 @@
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
+import WKApp from "../../../App";
 import { createChatSendOutcome } from "../../../features/chat-composer/domain";
+import { encodeOctoRichTextClipboardPayload } from "../../../Utils/richTextClipboard";
 import MessageInput, { type MessageInputContext } from "..";
 
 vi.mock("../../../App", () => ({
@@ -110,5 +112,101 @@ describe("MessageInput clipboard integration", () => {
       }),
     );
     act(() => inputContext?.clear());
+  });
+
+  it("keeps an exclamation before a pasted link from becoming a Markdown image", async () => {
+    let inputContext: MessageInputContext | undefined;
+    const onSend = vi.fn(() =>
+      createChatSendOutcome({ editorConsumed: true }),
+    );
+    const view = render(
+      <MessageInput
+        context={conversationContext()}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+        onSend={onSend}
+      />
+    );
+    await waitFor(() => expect(inputContext).toBeDefined());
+    const editor = view.container.querySelector(".ProseMirror");
+    expect(editor).not.toBeNull();
+
+    paste(editor!, {
+      plain: "!Example",
+      html: '<p>!<a href="https://example.com/pixel.png">Example</a></p>',
+    });
+    await waitFor(() => expect(inputContext?.text()).toBe("!Example"));
+
+    await act(async () => {
+      await inputContext?.send();
+    });
+
+    expect(onSend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "\\![Example](https://example.com/pixel.png)",
+      }),
+    );
+    act(() => inputContext?.clear());
+  });
+
+  it("does not add a delayed rich-text image after the composer unmounts", async () => {
+    let inputContext: MessageInputContext | undefined;
+    let resolveFetch: ((response: Response) => void) | undefined;
+    const fetchPromise = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    const fetch = vi.fn(() => fetchPromise);
+    const blob = new Blob(["image"], { type: "image/png" });
+    const response = {
+      ok: true,
+      body: undefined,
+      headers: {
+        get: (name: string) =>
+          name.toLowerCase() === "content-type" ? "image/png" : null,
+      },
+      blob: vi.fn().mockResolvedValue(blob),
+    } as unknown as Response;
+    const onAddPendingAttachments = vi.fn().mockResolvedValue(true);
+    vi.stubGlobal("fetch", fetch);
+    vi.mocked(
+      WKApp.dataSource.commonDataSource.getImageURL,
+    ).mockReturnValue("https://cdn.example.com/a.png");
+
+    const view = render(
+      <MessageInput
+        context={conversationContext()}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+        onAddPendingAttachments={onAddPendingAttachments}
+      />
+    );
+    try {
+      await waitFor(() => expect(inputContext).toBeDefined());
+      const editor = view.container.querySelector(".ProseMirror");
+      expect(editor).not.toBeNull();
+      const payload = encodeOctoRichTextClipboardPayload({
+        version: 1,
+        blocks: [
+          { type: "image", url: "https://cdn.example.com/a.png" },
+        ],
+      });
+
+      paste(editor!, {
+        html: `<div data-octo-richtext="${payload}"></div>`,
+      });
+      await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+      view.unmount();
+      resolveFetch?.(response);
+      await waitFor(() => expect(response.blob).toHaveBeenCalledOnce());
+
+      expect(onAddPendingAttachments).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+      vi.mocked(
+        WKApp.dataSource.commonDataSource.getImageURL,
+      ).mockReturnValue("");
+    }
   });
 });

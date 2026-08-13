@@ -217,6 +217,40 @@ describe("richTextPaste", () => {
     ]);
   });
 
+  it("stops restoring after the composer lifecycle becomes inactive", async () => {
+    const { editor, insertContent } = fakeEditor();
+    const imageFile = new File(["image"], "a.png", { type: "image/png" });
+    let resolveImage: ((file: File) => void) | undefined;
+    let active = true;
+    const imageBlockToFile = vi.fn(
+      () =>
+        new Promise<File>((resolve) => {
+          resolveImage = resolve;
+        })
+    );
+    const addAttachment = vi.fn();
+
+    const restoring = restoreOctoRichTextClipboardToEditor(
+      {
+        version: 1,
+        blocks: [
+          { type: "image", url: "https://cdn.example.com/a.png" },
+          { type: "text", text: "after" },
+        ],
+      },
+      editor,
+      addAttachment,
+      { imageBlockToFile, isActive: () => active }
+    );
+
+    active = false;
+    resolveImage?.(imageFile);
+    await restoring;
+
+    expect(addAttachment).not.toHaveBeenCalled();
+    expect(insertContent).not.toHaveBeenCalled();
+  });
+
   it("falls back to the image placeholder when the validated attachment path rejects the file", async () => {
     const { editor, insertContent } = fakeEditor();
     const imageFile = new File(["image"], "a.png", { type: "image/png" });

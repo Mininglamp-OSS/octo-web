@@ -75,6 +75,9 @@ export interface RestoreOctoRichTextPasteDeps {
   // Current channel members, used to validate pasted mention UIDs. When
   // omitted, all pasted mentions degrade to plain text (fail closed).
   members?: ReadonlyArray<PasteMentionMember>;
+  // Async image restoration must stop mutating an editor after its composer
+  // unmounts or switches channel.
+  isActive?: () => boolean;
 }
 
 function appendPlainText(nodes: any[], text: string) {
@@ -244,8 +247,11 @@ export async function restoreOctoRichTextClipboardToEditor(
 ): Promise<void> {
   const resolveImageFile =
     deps.imageBlockToFile || (() => Promise.resolve(null));
+  const isActive = deps.isActive || (() => true);
 
   for (const block of payload.blocks) {
+    if (!isActive()) return;
+
     if (block.type === "text") {
       insertInlineContent(
         editor,
@@ -260,8 +266,10 @@ export async function restoreOctoRichTextClipboardToEditor(
 
     if (block.type === "image") {
       const file = await resolveImageFile(block);
+      if (!isActive()) return;
       if (file) {
         const accepted = await addAttachment([file], "paste");
+        if (!isActive()) return;
         if (accepted !== false) continue;
         insertInlineContent(editor, [
           { type: "text", text: RichTextImagePlaceholder },
