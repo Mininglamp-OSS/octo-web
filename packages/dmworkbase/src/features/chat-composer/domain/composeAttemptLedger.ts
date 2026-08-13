@@ -26,14 +26,25 @@ export interface ComposeAttemptLedgerOptions {
   now?: () => number;
 }
 
+let fallbackAttemptSequence = 0;
+const fallbackAttemptNamespace = `${Date.now().toString(36)}-${Math.random()
+  .toString(36)
+  .slice(2)}`;
+
+function createDefaultAttemptId(): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) return `compose-${uuid}`;
+  fallbackAttemptSequence += 1;
+  return `compose-${fallbackAttemptNamespace}-${fallbackAttemptSequence}`;
+}
+
 export class ComposeAttemptLedger<TAttachment = unknown> {
   private readonly attempts = new Map<string, ComposeAttempt<TAttachment>>();
   private readonly createId: () => string;
   private readonly now: () => number;
 
   constructor(options: ComposeAttemptLedgerOptions = {}) {
-    let sequence = 0;
-    this.createId = options.createId ?? (() => `compose-${++sequence}`);
+    this.createId = options.createId ?? createDefaultAttemptId;
     this.now = options.now ?? Date.now;
   }
 

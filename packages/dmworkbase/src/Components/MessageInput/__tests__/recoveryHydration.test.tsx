@@ -5,6 +5,7 @@ import MessageInput, {
   type MessageInputContext,
   type MessageInputRecovery,
 } from "..";
+import { createChatSendOutcome } from "../../../features/chat-composer/domain";
 
 vi.mock("../../../App", () => ({
   default: {
@@ -172,4 +173,95 @@ describe("MessageInput recovery hydration", () => {
     act(() => inputContext?.clear());
     consoleError.mockRestore();
   });
+
+  it.each(["rejects", "throws"] as const)(
+    "releases a leased preview once when recovery %s after unmount",
+    async (behavior) => {
+      const createObjectURL = vi.fn(() => "blob:leased");
+      const revokeObjectURL = vi.fn();
+      const originalCreate = Object.getOwnPropertyDescriptor(
+        URL,
+        "createObjectURL",
+      );
+      const originalRevoke = Object.getOwnPropertyDescriptor(
+        URL,
+        "revokeObjectURL",
+      );
+      Object.defineProperty(URL, "createObjectURL", {
+        configurable: true,
+        value: createObjectURL,
+      });
+      Object.defineProperty(URL, "revokeObjectURL", {
+        configurable: true,
+        value: revokeObjectURL,
+      });
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
+      let inputContext: MessageInputContext | undefined;
+      let resolveSend: (
+        outcome: ReturnType<typeof createChatSendOutcome>,
+      ) => void = () => undefined;
+      const onSend = vi.fn(
+        () =>
+          new Promise<ReturnType<typeof createChatSendOutcome>>((resolve) => {
+            resolveSend = resolve;
+          }),
+      );
+      const onComposeRecovery = vi.fn(() => {
+        if (behavior === "throws") throw new Error("handoff failed");
+        return false;
+      });
+
+      try {
+        const view = render(
+          <MessageInput
+            context={conversationContext()}
+            onContext={(context) => {
+              inputContext = context;
+            }}
+            onSend={onSend}
+            onComposeRecovery={onComposeRecovery}
+          />
+        );
+        await waitFor(() => expect(inputContext).toBeDefined());
+
+        const file = new File(["image"], "image.png", {
+          type: "image/png",
+        });
+        await act(async () => {
+          await inputContext?.addAttachment([file], "paste");
+        });
+
+        let sendPromise: Promise<boolean | void> | undefined;
+        act(() => {
+          sendPromise = Promise.resolve(inputContext?.send());
+        });
+        await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+
+        act(() => view.unmount());
+        await act(async () => {
+          resolveSend(createChatSendOutcome());
+          await sendPromise;
+        });
+
+        expect(await sendPromise).toBe(false);
+        expect(onComposeRecovery).toHaveBeenCalledOnce();
+        expect(revokeObjectURL).toHaveBeenCalledOnce();
+        expect(revokeObjectURL).toHaveBeenCalledWith("blob:leased");
+      } finally {
+        consoleError.mockRestore();
+        if (originalCreate) {
+          Object.defineProperty(URL, "createObjectURL", originalCreate);
+        } else {
+          delete (URL as { createObjectURL?: unknown }).createObjectURL;
+        }
+        if (originalRevoke) {
+          Object.defineProperty(URL, "revokeObjectURL", originalRevoke);
+        } else {
+          delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+        }
+      }
+    },
+  );
 });

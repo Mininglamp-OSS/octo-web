@@ -531,13 +531,16 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const [attachmentStore] = useState(
     () => new ChatComposerAttachmentStore<TopAttachmentItem>(),
   );
+  const composerMountedRef = useRef(true);
   const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
 
   useEffect(() => {
+    composerMountedRef.current = true;
     const unsubscribe = attachmentStore.subscribe((items) => {
       setTopAttachments([...items]);
     });
     return () => {
+      composerMountedRef.current = false;
       unsubscribe();
       attachmentStore.clear();
     };
@@ -1276,7 +1279,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       editor: {
         getJSON: () => editor.getJSON() as ComposeDoc,
         isEmpty: () => editor.isEmpty,
-        isDestroyed: () => editor.isDestroyed,
+        isDestroyed: () => !composerMountedRef.current || editor.isDestroyed,
         clearContent: () => editor.commands.clearContent(),
         setContent: (doc) => editor.commands.setContent(doc as JSONContent),
         insertContentAtBlock: (blockOffset, nodes) => {

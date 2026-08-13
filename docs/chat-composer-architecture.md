@@ -10,7 +10,7 @@
 
 - `ChatSendRequest`、`ChatSendOutcome`、`ComposeAttemptLedger` 和纯函数发送计划。
 - operation 级 transport/executor，以及统一的 settle 顺序。
-- attempt ID 草稿所有权；草稿清理发生在编辑器恢复/释放之后。
+- 跨 `MessageInput` 实例唯一的 attempt ID 草稿所有权；草稿清理发生在编辑器恢复/释放之后。
 - 编辑器销毁或切换频道时的可观察、有限容量 recovery store。
 - 公开的 pending-send renderer registry 和 transport operation registry。
 - editor compose part registry；附件节点已迁移 capture/restore/dispose，并显式映射到现有 image/file 发送模型。

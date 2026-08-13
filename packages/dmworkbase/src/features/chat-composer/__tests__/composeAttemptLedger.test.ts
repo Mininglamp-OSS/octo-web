@@ -22,6 +22,18 @@ describe("createChatSendOutcome", () => {
 });
 
 describe("ComposeAttemptLedger", () => {
+  it("generates IDs that remain unique across ledger instances", () => {
+    const first = new ComposeAttemptLedger();
+    const second = new ComposeAttemptLedger();
+
+    const firstId = first.capture({ previewText: "A", draftText: "A" }).id;
+    const secondId = second.capture({ previewText: "B", draftText: "B" }).id;
+
+    expect(firstId).not.toBe(secondId);
+    expect(firstId).toMatch(/^compose-/);
+    expect(secondId).toMatch(/^compose-/);
+  });
+
   it("captures immutable snapshots in insertion order", () => {
     const state = ledger();
     const attachments = [{ id: "file-1" }];
