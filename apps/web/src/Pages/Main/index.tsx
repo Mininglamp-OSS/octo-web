@@ -92,11 +92,14 @@ export class MainPage extends Component<{}, MainPageState> {
         SpaceService.shared.getMySpaces().then(spaces => {
             this.setState({ allSpaces: spaces });
             const savedSpaceId = localStorage.getItem("currentSpaceId");
+            let resolvedSpace: Space | undefined;
             if (savedSpaceId && spaces.find(s => s.space_id === savedSpaceId)) {
+                resolvedSpace = spaces.find(s => s.space_id === savedSpaceId);
                 WKApp.shared.currentSpaceId = savedSpaceId;
             } else if (spaces.length > 0) {
-                WKApp.shared.currentSpaceId = spaces[0].space_id;
-                localStorage.setItem("currentSpaceId", spaces[0].space_id);
+                resolvedSpace = spaces[0];
+                WKApp.shared.currentSpaceId = resolvedSpace.space_id;
+                localStorage.setItem("currentSpaceId", resolvedSpace.space_id);
                 this.forceUpdate();
             } else {
                 WKApp.shared.currentSpaceId = '';
@@ -104,6 +107,9 @@ export class MainPage extends Component<{}, MainPageState> {
                 localStorage.removeItem("currentSpaceId");
                 try { WKApp.shared.notifyListener(); } catch (_) {}
             }
+            // 冷启动首次解析 Space 也必须与手动切换走同一通知链：summary 等模块
+            // 在收到事件时再发带鉴权、带 X-Space-Id 的首屏请求。
+            if (resolvedSpace) WKApp.mittBus.emit("space-changed", resolvedSpace);
             // dmwork-web#1065: InviteLanding 走 window.location.href 跳转后，
             // Toast 无法跨 full-reload 存活。我们用 sessionStorage 把 notice 带过来，
             // 在主界面挂载、Space 列表就绪之后再弹出。放在 .then() 内确保 spaces 已加载，

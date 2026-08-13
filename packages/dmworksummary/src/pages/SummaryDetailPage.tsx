@@ -33,6 +33,7 @@ import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
+import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
 // RefineSection 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
 // (见 CHAT-REFERENCE-BASED-DESIGN-v1)
 import OverflowTooltip from "../components/OverflowTooltip";
@@ -3793,6 +3794,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ confirmingSchedule: true });
         try {
             await api.confirmSchedule(scheduleItem.schedule_id);
+            // schedule 邀请也是 pending_invitation_count 的组成部分；确认成功后
+            // 立即按当前 Space 重算，即使等待期间用户已切到另一条总结。
+            refreshPendingInvitationBadge();
             // 迟到（已切 task）：不回显新 task（confirmingSchedule 由 finally 复位）。
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.scheduleConfirmed"));

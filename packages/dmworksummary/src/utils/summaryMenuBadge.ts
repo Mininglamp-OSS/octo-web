@@ -18,6 +18,7 @@ import * as api from '../api/summaryApi';
  * 已接线 setRefresh → forceUpdate），NavRail 即重绘。
  */
 let pendingInvitationBadge = 0;
+let refreshSeq = 0;
 
 export function getPendingInvitationBadge(): number {
     return pendingInvitationBadge;
@@ -28,9 +29,10 @@ export function getPendingInvitationBadge(): number {
  * 风暴（docs/module.tsx 注释：宿主 re-render 是高频 sync priority）。
  */
 export function setPendingInvitationBadge(count: number): void {
-    if (count === pendingInvitationBadge) return;
-    pendingInvitationBadge = Math.max(0, count);
-    (WKApp.menus as { refresh?: () => void }).refresh?.();
+    const next = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+    if (next === pendingInvitationBadge) return;
+    pendingInvitationBadge = next;
+    WKApp.menus.refresh();
 }
 
 /**
@@ -39,8 +41,13 @@ export function setPendingInvitationBadge(count: number): void {
  * silent refresh 同样的克制原则）。
  */
 export async function refreshPendingInvitationBadge(): Promise<void> {
+    const seq = ++refreshSeq;
+    const spaceId = WKApp.shared.currentSpaceId;
+    if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return;
+
     try {
         const resp = await api.listSummaries({ page: 1, page_size: 1 });
+        if (seq !== refreshSeq || WKApp.shared.currentSpaceId !== spaceId) return;
         setPendingInvitationBadge(resp.pending_invitation_count ?? 0);
     } catch {
         // 静默失败，保持旧值。

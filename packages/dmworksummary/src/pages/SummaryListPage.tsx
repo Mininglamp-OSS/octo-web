@@ -219,12 +219,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             };
             const resp = await api.listSummaries(params);
             if (seq !== this.loadDataSeq) return;
-            // #1359 顺带同步侧边栏邀请红点。仅在全局列表（非聊天侧栏）时同步：
-            // 聊天侧栏带 origin_channel_id 过滤，后端 count 是 channel-scoped，
-            // 不能代表整个 space 的未处理邀请数。
-            if (!this.props.channelId) {
-                setPendingInvitationBadge(resp.pending_invitation_count ?? 0);
-            }
+            // #1359 顺带同步侧边栏邀请红点。后端计数刻意忽略 channel、状态、
+            // 关键词等列表过滤，任何列表响应携带的都是当前 Space 的全量待处理数。
+            setPendingInvitationBadge(resp.pending_invitation_count ?? 0);
             // Post-await mount check (round-8 yujiawei P2-3): the entry
             // isMounted_ guard cannot cover the await window; React 18 will
             // drop setState on an unmounted fiber but the callback would

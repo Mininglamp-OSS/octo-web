@@ -2,8 +2,7 @@
  * SummaryListPage 侧边栏邀请红点接线测试 (#1359)。
  *
  * loadData 成功时顺带用后端 pending_invitation_count 同步 NavRail
- * 菜单红点；聊天侧栏（channelId 过滤）场景不同步，因为后端 count
- * 是 channel-scoped，不能代表整个 space 的未处理邀请数。
+ * 菜单红点；后端 count 刻意忽略 channelId 等列表过滤，始终代表 Space。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -77,7 +76,7 @@ describe('SummaryListPage — 侧边栏邀请红点同步 (#1359)', () => {
         expect(getPendingInvitationBadge()).toBe(3);
     });
 
-    it('聊天侧栏（带 channelId）loadData 不覆盖 space 级红点', async () => {
+    it('聊天侧栏（带 channelId）也用后端 Space 级 count 更新红点', async () => {
         vi.mocked(api.listSummaries).mockResolvedValue({
             items: [],
             total: 0,
@@ -90,8 +89,7 @@ describe('SummaryListPage — 侧边栏邀请红点同步 (#1359)', () => {
         const page = makePage({ channelId: 'ch-1' });
         await (page as any).loadData();
 
-        // channel-scoped count 不代表整个 space，红点保持旧值
-        expect(getPendingInvitationBadge()).toBe(2);
+        expect(getPendingInvitationBadge()).toBe(9);
     });
 
     it('后端未返回 pending_invitation_count 时红点归零', async () => {

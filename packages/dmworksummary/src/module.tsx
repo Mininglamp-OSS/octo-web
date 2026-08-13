@@ -161,17 +161,23 @@ export class SummaryModule implements IModule {
                 // #1359 未处理邀请红点：badge 字段与 NavRail 渲染已存在，
                 // 此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
                 menu.badge = getPendingInvitationBadge();
+                // 保留既有顶层入口行为：点击后直接进入新建总结页。
+                menu.onPress = () => {
+                    WKApp.routeLeft.popToRoot();
+                    const page = WKApp.route.get("/summary/create");
+                    if (page && React.isValidElement(page)) {
+                        WKApp.routeRight.replaceToRoot(page);
+                    }
+                };
                 return menu;
             },
             4002,
         );
 
-        // #1359 首屏拉取当前 space 的未处理邀请数（page_size=1，只取 count）。
-        refreshPendingInvitationBadge();
-
         _spaceChangedHandler = () => {
             WKApp.mittBus.emit('summary-space-changed');
-            // 切 space 后邀请计数按新 space 重算（后端 count 是 space-scoped）。
+            // 首次 Space 解析和后续切换都从宿主发出该事件；此时登录态与
+            // X-Space-Id 已就绪，再拉取 Space 级邀请计数，避免 init 期 401/404。
             refreshPendingInvitationBadge();
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);

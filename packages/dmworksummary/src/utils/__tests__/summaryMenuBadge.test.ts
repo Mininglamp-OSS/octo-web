@@ -19,15 +19,24 @@ import {
     refreshPendingInvitationBadge,
 } from '../summaryMenuBadge';
 
-// 给 mock WKApp.menus 补上 refresh（生产 MenusManager 有，mock 缺）。
 import { WKApp } from '@octo/base';
+
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((res) => { resolve = res; });
+    return { promise, resolve };
+}
 
 describe('summaryMenuBadge (#1359)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
         // 重置模块级计数
         setPendingInvitationBadge(0);
-        (WKApp.menus as any).refresh = vi.fn();
+        vi.mocked(WKApp.menus.refresh).mockClear();
     });
 
     it('getPendingInvitationBadge 初始返回 0', () => {
@@ -37,13 +46,25 @@ describe('summaryMenuBadge (#1359)', () => {
     it('setPendingInvitationBadge 更新计数并触发 menus.refresh', () => {
         setPendingInvitationBadge(3);
         expect(getPendingInvitationBadge()).toBe(3);
-        expect((WKApp.menus as any).refresh).toHaveBeenCalledTimes(1);
+        expect(WKApp.menus.refresh).toHaveBeenCalledTimes(1);
     });
 
     it('setPendingInvitationBadge 相同值不重复触发 refresh', () => {
         setPendingInvitationBadge(2);
         setPendingInvitationBadge(2);
-        expect((WKApp.menus as any).refresh).toHaveBeenCalledTimes(1);
+        expect(WKApp.menus.refresh).toHaveBeenCalledTimes(1);
+    });
+
+    it('setPendingInvitationBadge 先规范化非有限值、小数和负数再比较', () => {
+        setPendingInvitationBadge(-1);
+        setPendingInvitationBadge(Number.NaN);
+        setPendingInvitationBadge(Number.POSITIVE_INFINITY);
+        expect(getPendingInvitationBadge()).toBe(0);
+        expect(WKApp.menus.refresh).not.toHaveBeenCalled();
+
+        setPendingInvitationBadge(3.9);
+        expect(getPendingInvitationBadge()).toBe(3);
+        expect(WKApp.menus.refresh).toHaveBeenCalledTimes(1);
     });
 
     it('refreshPendingInvitationBadge 从 listSummaries 拉取 pending_invitation_count', async () => {
@@ -81,5 +102,37 @@ describe('summaryMenuBadge (#1359)', () => {
         setPendingInvitationBadge(7);
         await refreshPendingInvitationBadge();
         expect(getPendingInvitationBadge()).toBe(0);
+    });
+
+    it('refreshPendingInvitationBadge 未登录或 Space 未就绪时不发请求', async () => {
+        vi.mocked(WKApp.loginInfo.isLogined).mockReturnValue(false);
+        await refreshPendingInvitationBadge();
+
+        vi.mocked(WKApp.loginInfo.isLogined).mockReturnValue(true);
+        WKApp.shared.currentSpaceId = '';
+        await refreshPendingInvitationBadge();
+
+        expect(api.listSummaries).not.toHaveBeenCalled();
+    });
+
+    it('refreshPendingInvitationBadge 丢弃跨 Space 的迟到响应', async () => {
+        const responseA = deferred<any>();
+        const responseB = deferred<any>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(responseA.promise)
+            .mockReturnValueOnce(responseB.promise);
+
+        WKApp.shared.currentSpaceId = 'space-a';
+        const pendingA = refreshPendingInvitationBadge();
+        WKApp.shared.currentSpaceId = 'space-b';
+        const pendingB = refreshPendingInvitationBadge();
+
+        responseB.resolve({ pending_invitation_count: 2 });
+        await pendingB;
+        expect(getPendingInvitationBadge()).toBe(2);
+
+        responseA.resolve({ pending_invitation_count: 9 });
+        await pendingA;
+        expect(getPendingInvitationBadge()).toBe(2);
     });
 });

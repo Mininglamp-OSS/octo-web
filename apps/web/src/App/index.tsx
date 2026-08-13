@@ -7,7 +7,6 @@ import AppLayout from '../Layout';
 import { WKSDK } from 'wukongimjssdk';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
-import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
 import { createOctoDocumentTitleController } from '../features/documentTitle/octoDocumentTitle';
@@ -131,18 +130,6 @@ async function registerMenus() {
     const m = new Menus("contacts", "/contacts", t("app.nav.contacts"), <ContactsIcon />, <ContactsIcon />)
     return m
   }, 4000)
-
-  WKApp.menus.register("summary", (_context) => {
-    const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
-    m.onPress = () => {
-      WKApp.routeLeft.popToRoot()
-      const page = WKApp.route.get("/summary/create")
-      if (page && React.isValidElement(page)) {
-        WKApp.routeRight.replaceToRoot(page)
-      }
-    }
-    return m
-  }, 5000)
 
   WKApp.route.register("/", () => {
     return <ChatPage></ChatPage>
