@@ -1073,11 +1073,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     const detail = await api.getSummaryDetail(this.taskId);
                     if (this.taskId !== requestTaskId) return;
                     this.notifyGroupsOnCompletion(prevStatus, detail);
-                    this.setState({ detail, lastKnownStatus: newStatus });
+                    this.setState({ detail, lastKnownStatus: detail.status });
                     if (
-                        newStatus === TaskStatus.COMPLETED ||
-                        newStatus === TaskStatus.FAILED ||
-                        newStatus === TaskStatus.CANCELLED
+                        detail.status === TaskStatus.COMPLETED ||
+                        detail.status === TaskStatus.FAILED ||
+                        detail.status === TaskStatus.CANCELLED
                     ) {
                         this.stopFallbackPoll();
                         // 续修1：本轮刷新共用一个 seq，传给所有子加载（personal/members/schedule），

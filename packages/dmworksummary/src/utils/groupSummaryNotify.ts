@@ -1,7 +1,10 @@
 import { Channel } from "wukongimjssdk";
-import type { SummaryDetail } from "../types/summary";
+import {
+  SourceType,
+  TriggerType,
+  type SummaryDetail,
+} from "../types/summary";
 
-const GROUP_CHAT_SOURCE_TYPE = 1;
 const STORAGE_KEY_PREFIX = "summary-group-tip:v1:";
 const inFlight = new Set<string>();
 const sentThisSession = new Set<string>();
@@ -17,28 +20,38 @@ export interface GroupSummaryNotifyDeps {
 
 export function shouldNotifyGroupSummaryCompletion(
   previousStatus: number | undefined,
-  detail: Pick<SummaryDetail, "status" | "creator_id">,
+  detail: Pick<SummaryDetail, "status" | "creator_id" | "trigger_type">,
   currentUserId: string | undefined,
   completedStatus: number
 ): boolean {
   return (
-    previousStatus !== undefined &&
-    previousStatus !== completedStatus &&
     detail.status === completedStatus &&
     !!currentUserId &&
-    detail.creator_id === currentUserId
+    detail.creator_id === currentUserId &&
+    ((previousStatus !== undefined && previousStatus !== completedStatus) ||
+      (previousStatus === undefined && detail.trigger_type === TriggerType.AGENT))
   );
 }
 
 export function collectGroupSourceIds(
-  sources: SummaryDetail["sources"] | undefined
+  detail: Pick<
+    SummaryDetail,
+    "sources" | "origin_channel_id" | "origin_channel_type"
+  >
 ): string[] {
   const ids = new Set<string>();
-  for (const source of sources ?? []) {
+  for (const source of detail.sources ?? []) {
     const sourceId = source.source_id?.trim();
-    if (source.source_type === GROUP_CHAT_SOURCE_TYPE && sourceId) {
+    if (source.source_type === SourceType.GROUP_CHAT && sourceId) {
       ids.add(sourceId);
     }
+  }
+  const originChannelId = detail.origin_channel_id?.trim();
+  if (
+    detail.origin_channel_type === SourceType.GROUP_CHAT &&
+    originChannelId
+  ) {
+    ids.add(originChannelId);
   }
   return [...ids];
 }
@@ -75,6 +88,17 @@ function markNotified(taskId: number, channelId: string) {
   }
 }
 
+function unmarkNotified(taskId: number, channelId: string) {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const notified = readNotifiedGroups(taskId);
+    notified.delete(channelId);
+    localStorage.setItem(storageKey(taskId), JSON.stringify([...notified]));
+  } catch {
+    // Persistence is best-effort.
+  }
+}
+
 export async function sendGroupSummaryCompletionTips(
   previousStatus: number | undefined,
   detail: SummaryDetail,
@@ -94,7 +118,7 @@ export async function sendGroupSummaryCompletionTips(
     return;
   if (!currentUserId) return;
 
-  for (const channelId of collectGroupSourceIds(detail.sources)) {
+  for (const channelId of collectGroupSourceIds(detail)) {
     const dedupKey = `${detail.task_id}:${channelId}`;
     if (inFlight.has(dedupKey) || sentThisSession.has(dedupKey)) continue;
     if (readNotifiedGroups(detail.task_id).has(channelId)) continue;
@@ -103,11 +127,15 @@ export async function sendGroupSummaryCompletionTips(
     if (deps.isDisbanded(channel)) continue;
 
     inFlight.add(dedupKey);
+    // Claim before the async send so another tab in this browser profile sees
+    // the marker. On failure we roll it back; the agreed best-effort model
+    // prefers a rare miss over duplicate tips in the source group.
+    markNotified(detail.task_id, channelId);
     try {
       await deps.sendToChannel(channel, currentUserId);
       sentThisSession.add(dedupKey);
-      markNotified(detail.task_id, channelId);
     } catch (error) {
+      unmarkNotified(detail.task_id, channelId);
       deps.warn?.("[summaryNotify] send failed", {
         taskId: detail.task_id,
         channelId,

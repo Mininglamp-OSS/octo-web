@@ -56,6 +56,14 @@ describe("groupSummaryNotify", () => {
     ).toBe(false);
     expect(
       shouldNotifyGroupSummaryCompletion(
+        undefined,
+        detail({ trigger_type: 3 }),
+        "creator",
+        COMPLETED
+      )
+    ).toBe(true);
+    expect(
+      shouldNotifyGroupSummaryCompletion(
         COMPLETED,
         detail(),
         "creator",
@@ -69,13 +77,39 @@ describe("groupSummaryNotify", () => {
 
   it("collects unique group sources only", () => {
     expect(
-      collectGroupSourceIds([
-        { source_type: 1, source_id: " group-a " },
-        { source_type: 1, source_id: "group-a" },
-        { source_type: 2, source_id: "thread-a" },
-        { source_type: 3, source_id: "dm-a" },
-      ])
-    ).toEqual(["group-a"]);
+      collectGroupSourceIds({
+        sources: [
+          { source_type: 1, source_id: " group-a " },
+          { source_type: 1, source_id: "group-a" },
+          { source_type: 2, source_id: "thread-a" },
+          { source_type: 3, source_id: "dm-a" },
+        ],
+        origin_channel_id: "group-origin",
+        origin_channel_type: 1,
+      })
+    ).toEqual(["group-a", "group-origin"]);
+  });
+
+  it("notifies an initially completed agent summary using its origin group", async () => {
+    const sendToChannel = vi.fn().mockResolvedValue(undefined);
+
+    await sendGroupSummaryCompletionTips(
+      undefined,
+      detail({
+        trigger_type: 3,
+        sources: [],
+        origin_channel_id: "group-origin",
+        origin_channel_type: 1,
+      }),
+      "creator",
+      COMPLETED,
+      2,
+      { sendToChannel, isDisbanded: () => false }
+    );
+
+    expect(sendToChannel).toHaveBeenCalledTimes(1);
+    expect(sendToChannel.mock.calls[0][0].channelID).toBe("group-origin");
+    expect(readNotifiedGroups(42)).toEqual(new Set(["group-origin"]));
   });
 
   it("sends once per task and group, including after runtime reset", async () => {
@@ -138,7 +172,43 @@ describe("groupSummaryNotify", () => {
     expect(readNotifiedGroups(42)).toEqual(new Set(["group-a", "group-b"]));
   });
 
-  it("isolates failures and leaves failed groups retryable", async () => {
+  it("claims a group before send so another runtime skips it", async () => {
+    let releaseSend!: () => void;
+    const pendingSend = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    const sendToChannel = vi.fn().mockReturnValue(pendingSend);
+    const oneGroupDetail = detail({
+      sources: [{ source_type: 1, source_id: "group-a" }],
+      origin_channel_id: "",
+    });
+    const deps = { sendToChannel, isDisbanded: () => false };
+
+    const first = sendGroupSummaryCompletionTips(
+      2,
+      oneGroupDetail,
+      "creator",
+      COMPLETED,
+      2,
+      deps
+    );
+    await Promise.resolve();
+    resetGroupSummaryNotifyRuntimeForTests();
+    await sendGroupSummaryCompletionTips(
+      2,
+      oneGroupDetail,
+      "creator",
+      COMPLETED,
+      2,
+      deps
+    );
+
+    expect(sendToChannel).toHaveBeenCalledTimes(1);
+    releaseSend();
+    await first;
+  });
+
+  it("isolates failures and does not mark failed groups", async () => {
     const sendToChannel = vi
       .fn()
       .mockRejectedValueOnce(new Error("offline"))
