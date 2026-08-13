@@ -641,12 +641,27 @@ interface LoopRuntimeWire {
   status?: string;
 }
 
+/** Fail loud on a fleet payload that is not a list. A routing miss (e.g. the
+ *  SPA fallback answering 200 text/html because /fleet/api is not proxied, or
+ *  an envelope change) must surface as the dialog's error state — coercing it
+ *  to [] would render a permanent, plausible-looking "no workspaces" that is
+ *  indistinguishable from the user genuinely having none. `null` stays a valid
+ *  empty list (Go marshals a nil slice as null). */
+function expectFleetList<T>(data: unknown): T[] {
+  if (data === null || data === undefined) return [];
+  if (!Array.isArray(data)) {
+    throw new Error(t("mcp.expert.loopBadResponse"));
+  }
+  return data as T[];
+}
+
 /** GET /fleet/api/v1/workspaces — Loop workspaces the user belongs to (workspace picker). */
 export async function listLoopWorkspaces(): Promise<LoopWorkspace[]> {
   const data = await fleetGet<LoopWorkspaceWire[] | null>("/workspaces");
-  return Array.isArray(data)
-    ? data.map((w) => ({ id: w.id, name: w.name ?? w.id }))
-    : [];
+  return expectFleetList<LoopWorkspaceWire>(data).map((w) => ({
+    id: w.id,
+    name: w.name ?? w.id,
+  }));
 }
 
 /** GET /fleet/api/v1/runtimes?workspace_id= — runtimes in the chosen workspace (runtime picker). */
@@ -656,13 +671,11 @@ export async function listLoopRuntimes(
   const data = await fleetGet<LoopRuntimeWire[] | null>("/runtimes", {
     workspace_id: workspaceId,
   });
-  return Array.isArray(data)
-    ? data.map((rt) => ({
-        id: rt.id,
-        name: rt.name ?? rt.id,
-        status: rt.status,
-      }))
-    : [];
+  return expectFleetList<LoopRuntimeWire>(data).map((rt) => ({
+    id: rt.id,
+    name: rt.name ?? rt.id,
+    status: rt.status,
+  }));
 }
 
 // ─── Loop target cache (workspaces + runtimes) ──────────────────────────────

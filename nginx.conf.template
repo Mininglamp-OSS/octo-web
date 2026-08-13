@@ -19,6 +19,11 @@ server {
         # string that the corresponding location block tests for.
         set $summary_api_url "${SUMMARY_API_URL}";
         set $market_api_url "${MARKET_API_URL}";
+        # octo-fleet (FLEET_API_URL) upstream for the browser-originated
+        # /fleet/api/v1/* calls (Loop workspace/runtime pickers in the expert
+        # market). Runtime variable for the same reason as the others: blank /
+        # unresolvable 503s its own route instead of aborting nginx startup.
+        set $fleet_api_url "${FLEET_API_URL}";
         # octo-drive service (DRIVE_API_URL) upstream, as a runtime nginx variable
         # so an unset/unresolvable host 503s its own route instead of aborting the
         # whole container at startup (same pattern as the doc/backend hosts below).
@@ -178,6 +183,32 @@ server {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             client_max_body_size 100m;
+        }
+
+        # octo-fleet service API — the expert market's Loop pickers call
+        # /fleet/api/v1/{workspaces,runtimes} same-origin (see dmworkmcp
+        # expertService FLEET_BASE). Fleet serves its API natively under /v1/*,
+        # so the /fleet/api prefix is stripped here (mirrors the vite dev rule
+        # and the daemon's OCTO_FLEET_URL + /v1/* shape). Set FLEET_API_URL
+        # (e.g. http://octo-fleet:8080) at container start; blank yields a 503
+        # — fail loud, never the SPA fallback — so a deployment without fleet
+        # still boots and the web client surfaces a real error instead of an
+        # empty workspace list.
+        location /fleet/api/ {
+            default_type application/json;
+            if ($fleet_api_url = "") {
+                return 503 '{"status":503,"msg":"fleet API is not configured"}';
+            }
+            resolver 127.0.0.11 ipv6=off valid=30s;
+            # Same variable-in-proxy_pass caveat as /summary/ and /market/:
+            # rewrite to the upstream URI first, then proxy_pass without a URI.
+            rewrite ^/fleet/api/(.*)$ /$1 break;
+            proxy_pass  $fleet_api_url;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size 10m;
         }
 
         # octo-drive service — an INDEPENDENT backend (not octo-server) that serves

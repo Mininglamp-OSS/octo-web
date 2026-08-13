@@ -90,6 +90,37 @@ describe("expertService add-to-loop wire contract", () => {
     expect(await listLoopWorkspaces()).toEqual([]);
   });
 
+  it("fleet getters fail loud on a non-array payload instead of coercing to []", async () => {
+    // A routing miss (no /fleet/api location in prod nginx) answers the SPA
+    // fallback: 200 text/html whose body axios leaves as a string. That must
+    // reject — an empty list here is indistinguishable from the user genuinely
+    // having no workspaces, which is exactly how the install flow shipped
+    // silently dead. Pins the fix for PR #1367's P1.
+    mock.instance.get.mockResolvedValueOnce({
+      data: "<!doctype html><html><head></head><body></body></html>",
+    });
+    await expect(listLoopWorkspaces()).rejects.toThrow(
+      "mcp.expert.loopBadResponse"
+    );
+
+    // Same for an unexpected envelope object on the runtimes side.
+    mock.instance.get.mockResolvedValueOnce({
+      data: { data: [{ id: "rt1" }] },
+    });
+    await expect(listLoopRuntimes("w1")).rejects.toThrow(
+      "mcp.expert.loopBadResponse"
+    );
+  });
+
+  it("getLoopWorkspaces does not cache a bad-payload rejection", async () => {
+    mock.instance.get.mockResolvedValueOnce({ data: "<!doctype html>" });
+    await expect(getLoopWorkspaces()).rejects.toThrow();
+    // The rejected promise must be evicted so a later open can retry and
+    // succeed (e.g. after ops fixes the routing).
+    mock.instance.get.mockResolvedValueOnce({ data: [{ id: "w1" }] });
+    expect(await getLoopWorkspaces()).toEqual([{ id: "w1", name: "w1" }]);
+  });
+
   it("listLoopRuntimes passes workspace_id as a query param and maps status", async () => {
     mock.instance.get.mockResolvedValue({
       data: [{ id: "rt1", name: "Runtime One", status: "online" }],
