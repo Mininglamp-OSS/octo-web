@@ -68,7 +68,14 @@ export default function PromptForwardModal({
       <div className="wk-prompt-forward-modal__box">
         <PromptForwardActions
           layout="split"
-          preview={<pre className="wk-prompt-forward__preview-pre">{prompt}</pre>}
+          preview={
+            // tabIndex: the scrollbar is styled away, so keyboard users need
+            // the <pre> focusable to scroll a long generated prompt (a plain
+            // pre is not in the tab order).
+            <pre className="wk-prompt-forward__preview-pre" tabIndex={0}>
+              {prompt}
+            </pre>
+          }
           prompt={prompt}
           spaceId={spaceId}
           disabled={!prompt}

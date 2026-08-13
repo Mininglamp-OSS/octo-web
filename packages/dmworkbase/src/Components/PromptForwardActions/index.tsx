@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
 import { Check, Copy, Send } from "lucide-react";
@@ -102,6 +102,11 @@ export default function PromptForwardActions({
   preview,
 }: PromptForwardActionsProps) {
   useI18n();
+  // INVARIANT: this snapshot does NOT subscribe to space changes. Every current
+  // host closes its modal on the `space-changed` bus event (Expert/MCP publish
+  // modals), so a stale Space here is unreachable today. A future caller that
+  // keeps this mounted across a Space switch must remount it (e.g. key it by
+  // Space) — otherwise the forward would target the previous Space's bot.
   const effectiveSpaceId = useMemo(
     () => spaceId || WKApp.shared?.currentSpaceId || "",
     [spaceId]
@@ -111,6 +116,21 @@ export default function PromptForwardActions({
   const [reloadKey, setReloadKey] = useState(0);
   const [copied, setCopied] = useState(false);
   const [forwarding, setForwarding] = useState(false);
+  // A successful forward typically unmounts this component mid-handler (the
+  // host closes its modal from onForwarded / showConversation), and the
+  // copied-toast reset timer can outlive a fast close. Guard both so React 17
+  // doesn't warn about setState on an unmounted component.
+  const mountedRef = useRef(true);
+  const copiedTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+    };
+  }, []);
   // Per-instance radio group name: this is a shared @octo/base component, and a
   // hardcoded name would merge two simultaneously-mounted pickers into one
   // radio group (state/DOM desync). No caller does that today, but a unique
@@ -150,8 +170,15 @@ export default function PromptForwardActions({
     if (!promptReady) return;
     const ok = await copyToClipboard(prompt);
     if (ok) {
+      if (!mountedRef.current) return;
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 2000);
+      if (copiedTimerRef.current !== null) {
+        window.clearTimeout(copiedTimerRef.current);
+      }
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null;
+        if (mountedRef.current) setCopied(false);
+      }, 2000);
     } else {
       Toast.error(t("base.promptForward.copyFailed"));
     }
@@ -179,7 +206,7 @@ export default function PromptForwardActions({
     } catch {
       Toast.error(t("base.promptForward.forwardFailed"));
     } finally {
-      setForwarding(false);
+      if (mountedRef.current) setForwarding(false);
     }
   };
 
