@@ -3,7 +3,29 @@ export interface ComposeRecoveryStoreRecord {
   attemptId: string;
 }
 
-export interface ComposeRecoveryStoreOptions<T extends ComposeRecoveryStoreRecord> {
+export interface ComposeRecoveryPendingDraft {
+  attemptId: string;
+  draftText: string;
+}
+
+export type ComposeRecoveryDraftSource = "live" | "pending" | "empty";
+
+export interface ComposeRecoveryDraftState {
+  revision: number;
+  draft: string;
+  source: ComposeRecoveryDraftSource;
+  pendingAttemptIds: string[];
+}
+
+export interface RecordComposeRecoveryDraft {
+  draft: string;
+  source: ComposeRecoveryDraftSource;
+  pendingDrafts?: readonly ComposeRecoveryPendingDraft[];
+}
+
+export interface ComposeRecoveryStoreOptions<
+  T extends ComposeRecoveryStoreRecord
+> {
   maxChannels?: number;
   maxRecordsPerChannel?: number;
   ttlMs?: number;
@@ -17,8 +39,15 @@ interface StoredRecovery<T> {
   claimedBy?: symbol;
 }
 
+interface StoredDraftState extends ComposeRecoveryDraftState {
+  pendingDrafts: ComposeRecoveryPendingDraft[];
+  touchedAt: number;
+}
+
 interface RecoveryBucket<T> {
   records: StoredRecovery<T>[];
+  draftState?: StoredDraftState;
+  draftRevisionLeases: Map<number, number>;
   touchedAt: number;
 }
 
@@ -42,6 +71,7 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
   private readonly ttlMs: number;
   private readonly now: () => number;
   private readonly disposeRecord: (record: T) => void;
+  private nextDraftRevision = 1;
 
   constructor(options: ComposeRecoveryStoreOptions<T> = {}) {
     this.maxChannels = Math.max(
@@ -75,6 +105,65 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
     );
   }
 
+  /** Capture the current session revision for a send's draft baseline. */
+  captureDraftRevision(channelKey: string, draft: string): number {
+    const now = this.now();
+    this.pruneExpired(now, true, channelKey);
+    const bucket = this.ensureBucket(channelKey, now);
+    if (!bucket.draftState || bucket.draftState.draft !== draft) {
+      this.setDraftState(
+        bucket,
+        {
+          draft,
+          source: draft.trim() === "" ? "empty" : "live",
+        },
+        now
+      );
+    }
+    const revision = bucket.draftState!.revision;
+    bucket.draftRevisionLeases.set(
+      revision,
+      (bucket.draftRevisionLeases.get(revision) ?? 0) + 1
+    );
+    return revision;
+  }
+
+  releaseDraftRevision(channelKey: string, revision: number): void {
+    const bucket = this.buckets.get(channelKey);
+    const count = bucket?.draftRevisionLeases.get(revision);
+    if (!bucket || !count) return;
+    if (count === 1) bucket.draftRevisionLeases.delete(revision);
+    else bucket.draftRevisionLeases.set(revision, count - 1);
+    this.deleteEmptyBucket(channelKey, bucket);
+  }
+
+  recordDraft(channelKey: string, record: RecordComposeRecoveryDraft): number {
+    const now = this.now();
+    this.pruneExpired(now, true);
+    const bucket = this.ensureBucket(channelKey, now);
+    this.setDraftState(bucket, record, now);
+    return bucket.draftState!.revision;
+  }
+
+  draftState(channelKey: string): ComposeRecoveryDraftState | undefined {
+    this.pruneExpired(this.now(), true, channelKey);
+    const state = this.buckets.get(channelKey)?.draftState;
+    if (!state) return undefined;
+    return {
+      revision: state.revision,
+      draft: state.draft,
+      source: state.source,
+      pendingAttemptIds: [...state.pendingAttemptIds],
+    };
+  }
+
+  /** Match only an exact provisional draft still owned by pending attempts. */
+  matchPendingDraft(channelKey: string, draft: string): readonly string[] {
+    const state = this.draftState(channelKey);
+    if (state?.source !== "pending" || state.draft !== draft) return [];
+    return state.pendingAttemptIds;
+  }
+
   /** Exclusively reserve available records for one mounted consumer. */
   claim(channelKey: string, owner: symbol): readonly T[] {
     this.pruneExpired(this.now(), false, channelKey);
@@ -93,12 +182,7 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
     const now = this.now();
     this.pruneExpired(now, true);
 
-    let bucket = this.buckets.get(record.channelKey);
-    if (!bucket) {
-      this.ensureChannelCapacity();
-      bucket = { records: [], touchedAt: now };
-      this.buckets.set(record.channelKey, bucket);
-    }
+    const bucket = this.ensureBucket(record.channelKey, now);
     if (
       bucket.records.some(
         ({ record: item }) => item.attemptId === record.attemptId
@@ -112,8 +196,20 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
         ({ claimedBy }) => !claimedBy
       );
       if (evictIndex < 0) break;
-      const [evicted] = bucket.records.splice(evictIndex, 1);
-      if (evicted) this.disposeRecord(evicted.record);
+      const evicted = bucket.records[evictIndex];
+      if (
+        evicted &&
+        bucket.draftState?.pendingAttemptIds.includes(evicted.record.attemptId)
+      ) {
+        const invalidated = this.invalidateDraftRecovery(bucket, now);
+        if (invalidated.has(record.attemptId)) {
+          this.notify(record.channelKey);
+          return false;
+        }
+        continue;
+      }
+      const [removed] = bucket.records.splice(evictIndex, 1);
+      if (removed) this.disposeRecord(removed.record);
     }
     bucket.records.push({ record, createdAt: now });
     bucket.touchedAt = now;
@@ -125,7 +221,8 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
   consume(
     channelKey: string,
     owner: symbol,
-    attemptIds: readonly string[]
+    attemptIds: readonly string[],
+    hydratedDraft?: string
   ): void {
     const bucket = this.buckets.get(channelKey);
     if (!bucket || attemptIds.length === 0) return;
@@ -137,8 +234,20 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
     );
     if (remaining.length === bucket.records.length) return;
 
-    if (remaining.length === 0) this.buckets.delete(channelKey);
-    else bucket.records = remaining;
+    bucket.records = remaining;
+    if (hydratedDraft !== undefined) {
+      this.setDraftState(
+        bucket,
+        {
+          draft: hydratedDraft,
+          source: hydratedDraft.trim() === "" ? "empty" : "live",
+        },
+        this.now()
+      );
+    } else {
+      this.invalidateDraftRecovery(bucket, this.now(), attemptIds);
+    }
+    this.deleteEmptyBucket(channelKey, bucket);
     this.notify(channelKey);
   }
 
@@ -179,7 +288,12 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
     while (this.buckets.size >= this.maxChannels) {
       let oldest: [string, RecoveryBucket<T>] | undefined;
       this.buckets.forEach((bucket, channelKey) => {
-        if (bucket.records.some(({ claimedBy }) => claimedBy)) return;
+        if (
+          bucket.records.some(({ claimedBy }) => claimedBy) ||
+          bucket.draftRevisionLeases.size > 0
+        ) {
+          return;
+        }
         if (!oldest || bucket.touchedAt < oldest[1].touchedAt) {
           oldest = [channelKey, bucket];
         }
@@ -189,6 +303,118 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
       bucket.records.forEach(({ record }) => this.disposeRecord(record));
       this.buckets.delete(channelKey);
       this.notify(channelKey);
+    }
+  }
+
+  private ensureBucket(channelKey: string, now: number): RecoveryBucket<T> {
+    let bucket = this.buckets.get(channelKey);
+    if (bucket) return bucket;
+    this.ensureChannelCapacity();
+    bucket = {
+      records: [],
+      draftRevisionLeases: new Map(),
+      touchedAt: now,
+    };
+    this.buckets.set(channelKey, bucket);
+    return bucket;
+  }
+
+  private setDraftState(
+    bucket: RecoveryBucket<T>,
+    record: RecordComposeRecoveryDraft,
+    now: number
+  ): void {
+    const pendingDrafts =
+      record.source === "pending"
+        ? (record.pendingDrafts ?? []).filter(
+            ({ draftText }) => draftText.trim() !== ""
+          )
+        : [];
+    const source =
+      pendingDrafts.length > 0
+        ? record.source
+        : record.draft.trim() === ""
+        ? "empty"
+        : "live";
+    bucket.draftState = {
+      revision: this.nextDraftRevision++,
+      draft: record.draft,
+      source,
+      pendingAttemptIds: pendingDrafts.map(({ attemptId }) => attemptId),
+      pendingDrafts: pendingDrafts.map(({ attemptId, draftText }) => ({
+        attemptId,
+        draftText,
+      })),
+      touchedAt: now,
+    };
+    bucket.touchedAt = now;
+  }
+
+  private removeDraftOwners(
+    bucket: RecoveryBucket<T>,
+    attemptIds: readonly string[],
+    now: number
+  ): void {
+    const state = bucket.draftState;
+    if (!state || attemptIds.length === 0) return;
+    const removed = new Set(attemptIds);
+    if (!state.pendingDrafts.some(({ attemptId }) => removed.has(attemptId))) {
+      return;
+    }
+    bucket.draftState = {
+      ...state,
+      revision: this.nextDraftRevision++,
+      source: state.draft.trim() === "" ? "empty" : "live",
+      pendingAttemptIds: [],
+      pendingDrafts: [],
+      touchedAt: now,
+    };
+    bucket.touchedAt = now;
+  }
+
+  /**
+   * Once one text-owning recovery is unavailable, the provisional remote
+   * draft becomes the canonical fallback. Keeping sibling recoveries would
+   * prepend duplicate text to that full draft, so they are disposed together.
+   */
+  private invalidateDraftRecovery(
+    bucket: RecoveryBucket<T>,
+    now: number,
+    attemptIds?: readonly string[]
+  ): Set<string> {
+    const state = bucket.draftState;
+    const owned = new Set(state?.pendingAttemptIds ?? []);
+    if (
+      !state ||
+      owned.size === 0 ||
+      (attemptIds && !attemptIds.some((attemptId) => owned.has(attemptId)))
+    ) {
+      return new Set();
+    }
+
+    const remaining: StoredRecovery<T>[] = [];
+    bucket.records.forEach((stored) => {
+      if (owned.has(stored.record.attemptId)) {
+        this.disposeRecord(stored.record);
+      } else {
+        remaining.push(stored);
+      }
+    });
+    bucket.records = remaining;
+    this.removeDraftOwners(bucket, [...owned], now);
+    return owned;
+  }
+
+  private deleteEmptyBucket(
+    channelKey: string,
+    bucket: RecoveryBucket<T>
+  ): void {
+    if (
+      bucket.records.length === 0 &&
+      !bucket.draftState &&
+      bucket.draftRevisionLeases.size === 0
+    ) {
+      this.buckets.delete(channelKey);
     }
   }
 
@@ -204,17 +430,40 @@ export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
     buckets.forEach(([channelKey, bucket]) => {
       if (!bucket) return;
       const live: StoredRecovery<T>[] = [];
+      const expiredAttemptIds: string[] = [];
       bucket.records.forEach((stored) => {
         if (!stored.claimedBy && now - stored.createdAt >= this.ttlMs) {
           this.disposeRecord(stored.record);
+          expiredAttemptIds.push(stored.record.attemptId);
         } else {
           live.push(stored);
         }
       });
-      if (live.length === bucket.records.length) return;
-      if (live.length === 0) this.buckets.delete(channelKey);
-      else bucket.records = live;
-      if (notify) this.notify(channelKey);
+      let recordsChanged = live.length !== bucket.records.length;
+      if (recordsChanged) bucket.records = live;
+
+      const state = bucket.draftState;
+      if (state && state.source === "pending") {
+        // Pending ownership represents a still-running attempt and therefore
+        // does not expire by age alone. Once a recovery exists, its
+        // expiry/eviction removes the matching owner atomically.
+        const invalidated = this.invalidateDraftRecovery(
+          bucket,
+          now,
+          expiredAttemptIds
+        );
+        if (invalidated.size > 0) recordsChanged = true;
+      } else if (
+        state &&
+        now - state.touchedAt >= this.ttlMs &&
+        live.length === 0 &&
+        !bucket.draftRevisionLeases.has(state.revision)
+      ) {
+        bucket.draftState = undefined;
+      }
+
+      this.deleteEmptyBucket(channelKey, bucket);
+      if (recordsChanged && notify) this.notify(channelKey);
     });
   }
 

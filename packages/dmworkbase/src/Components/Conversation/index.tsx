@@ -50,6 +50,7 @@ import {
 } from "../../Utils/mentionRender";
 import {
   ChatComposer,
+  ComposeDraftWriteQueue,
   ComposeRecoveryStore,
   createConversationChatSendHandler,
   createDefaultChatComposerExtensions,
@@ -58,6 +59,7 @@ import {
   imageBlockToPasteFile,
   restoreSendTargetIfVacant,
   type ComposeRecoveryRecord,
+  type RecoveredComposeHydration,
   type ChatSendSettlement,
   type EditorContentBlock,
   type MessageInputContext,
@@ -118,7 +120,6 @@ import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
 import {
-  DraftPersistenceSource,
   resolveDraftAfterSend,
   resolveDraftToPersist,
 } from "../../Utils/draftLifecycle";
@@ -330,6 +331,7 @@ interface ConversationState {
 const composeRecoveryStore = new ComposeRecoveryStore<ComposeRecoveryRecord>({
   dispose: disposeComposeRecoveryObjectUrls,
 });
+const composeDraftWriteQueue = new ComposeDraftWriteQueue();
 
 function hasSameComposeRecoveryResources(
   left: ComposeRecoveryRecord,
@@ -387,10 +389,6 @@ export class Conversation
   // 监听 channelInfo 变化：群解散时 status 翻转为 2，需重渲染以隐藏成员栏/置灰发送框
   private _channelInfoListener?: (channelInfo: ChannelInfo) => void;
   private _unsubscribeChannelInfoListener?: () => void;
-  private draftSaveGeneration = 0;
-  private latestSavedDraft = "";
-  private latestSavedDraftSource: DraftPersistenceSource = "empty";
-  private latestSavedPendingAttemptIds: string[] = [];
   private _addAttachmentFn?: (
     files: File[],
     source?: "paste" | "upload"
@@ -1480,7 +1478,14 @@ export class Conversation
     }
 
     if (this.vm.hasDraft()) {
-      this.restoreDraft(this.vm.draft());
+      const draft = this.vm.draft();
+      const pendingOwners = composeRecoveryStore.matchPendingDraft(
+        this.composeRecoveryKey(),
+        draft,
+      );
+      // Attempt-owned recovery is the visible source while this provisional
+      // remote draft belongs to a consumed compose.
+      if (pendingOwners.length === 0) this.restoreDraft(draft);
     }
     // 恢复引用/回复状态
     const channelKey = `${channel.channelID}-${channel.channelType}`;
@@ -1693,26 +1698,37 @@ export class Conversation
     return !!existing && hasSameComposeRecoveryResources(existing, recovery);
   };
 
-  private consumeComposeRecoveries = (attemptIds: string[]): void => {
+  private consumeComposeRecoveries = ({
+    attemptIds,
+    draftText,
+  }: RecoveredComposeHydration): void => {
     composeRecoveryStore.consume(
       this.composeRecoveryKey(),
       this._composeRecoveryOwner,
       attemptIds,
+      draftText,
+    );
+    void this.updateConversationExtra(draftText).catch((err) =>
+      console.warn("[Conversation] persist recovered draft failed", err),
     );
   };
 
   markConversationExtra() {
     // 不要用空草稿覆盖「已消费但还没入队」的内容 (octo-web#1280 review)：
     // 输入框在发送开始时就被清空，离开会话时这里读到的是空串。
-    const { draft, source, pendingAttemptIds } = resolveDraftToPersist({
+    const pendingDrafts = this.pendingPreEnqueueDrafts();
+    const { draft, source } = resolveDraftToPersist({
       liveDraft: this.messageInputContext()?.text() || "",
-      pendingDrafts: this.pendingPreEnqueueDrafts(),
+      pendingDrafts,
     });
-    this.draftSaveGeneration += 1;
-    this.latestSavedDraft = draft;
-    this.latestSavedDraftSource = source;
-    this.latestSavedPendingAttemptIds = pendingAttemptIds;
-    void this.updateConversationExtra(draft);
+    composeRecoveryStore.recordDraft(this.composeRecoveryKey(), {
+      draft,
+      source,
+      pendingDrafts,
+    });
+    void this.updateConversationExtra(draft).catch((err) =>
+      console.warn("[Conversation] persist draft failed", err),
+    );
   }
 
   updateConversationExtra(draft: string) {
@@ -1752,46 +1768,57 @@ export class Conversation
       remoteExtra.draft = draft || "";
     }
 
-    return WKApp.dataSource.channelDataSource.conversationExtraUpdate({
+    const update = {
       channel: this.vm.channel,
       browseTo: 0,
       keepMessageSeq: keepMessageSeq,
       keepOffsetY,
       draft,
       version: 0,
-    });
+    };
+    return composeDraftWriteQueue.enqueue(this.composeRecoveryKey(), () =>
+      WKApp.dataSource.channelDataSource.conversationExtraUpdate(update),
+    );
   }
 
   async clearDraftAfterSend(settlement: ChatSendSettlement) {
     const { attemptId, sendDraft } = settlement;
-    const sendDraftGeneration =
-      sendDraft?.generation ?? this.draftSaveGeneration;
-    const remoteDraftAtSend =
-      sendDraft?.remoteDraft ??
-      this.vm.currentConversation?.remoteExtra?.draft ??
-      "";
+    if (!sendDraft) return;
+    const remoteDraftAtSend = sendDraft.remoteDraft;
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
+    const remoteDraft = remoteExtra?.draft || "";
+    const persistedDraft = composeRecoveryStore.draftState(
+      this.composeRecoveryKey(),
+    );
+    if (!persistedDraft || persistedDraft.draft !== remoteDraft) return;
+
     const pendingDrafts = this.pendingSendDrafts();
     const nextDraft = resolveDraftAfterSend({
       attemptId,
+      protectedPendingAttemptIds:
+        sendDraft.protectedPendingAttemptIds.filter((protectedAttemptId) =>
+          persistedDraft.pendingAttemptIds.includes(protectedAttemptId),
+        ),
       liveDraft: this.messageInputContext()?.text() || "",
-      remoteDraft: remoteExtra?.draft || "",
+      remoteDraft,
       remoteDraftAtSend,
-      draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
-      latestSavedDraft: this.latestSavedDraft,
-      latestSavedDraftSource: this.latestSavedDraftSource,
-      latestSavedPendingAttemptIds: this.latestSavedPendingAttemptIds,
+      draftSavedAfterSend: persistedDraft.revision !== sendDraft.revision,
+      latestSavedDraft: persistedDraft.draft,
+      latestSavedDraftSource: persistedDraft.source,
+      latestSavedPendingAttemptIds: persistedDraft.pendingAttemptIds,
       pendingDrafts,
     });
     if (nextDraft === undefined) {
       return;
     }
 
-    this.latestSavedDraft = nextDraft;
-    this.latestSavedDraftSource = nextDraft ? "pending" : "empty";
-    this.latestSavedPendingAttemptIds = nextDraft
-      ? this.latestSavedPendingAttemptIds.filter((id) => id !== attemptId)
-      : [];
+    composeRecoveryStore.recordDraft(this.composeRecoveryKey(), {
+      draft: nextDraft,
+      source: nextDraft ? "pending" : "empty",
+      pendingDrafts: pendingDrafts.filter(
+        ({ attemptId: pendingAttemptId }) => pendingAttemptId !== attemptId,
+      ),
+    });
     try {
       await this.updateConversationExtra(nextDraft);
     } catch (err) {
@@ -3160,17 +3187,38 @@ export class Conversation
                           },
                         })
                       }
-                      onCaptureSendDraft={() => ({
-                        generation: this.draftSaveGeneration,
-                        remoteDraft:
-                          this.vm.currentConversation?.remoteExtra?.draft || "",
-                      })}
+                      onCaptureSendDraft={() => {
+                        const remoteDraft =
+                          this.vm.currentConversation?.remoteExtra?.draft || "";
+                        return {
+                          revision: composeRecoveryStore.captureDraftRevision(
+                            this.composeRecoveryKey(),
+                            remoteDraft,
+                          ),
+                          remoteDraft,
+                          protectedPendingAttemptIds: [
+                            ...composeRecoveryStore.matchPendingDraft(
+                              this.composeRecoveryKey(),
+                              remoteDraft,
+                            ),
+                          ],
+                        };
+                      }}
                       onSendSettled={async (settlement) => {
-                        if (!settlement.outcome.editorConsumed) return;
-                        if (!settlement.restoreFailed) {
-                          await this.clearDraftAfterSend(settlement);
+                        try {
+                          if (!settlement.outcome.editorConsumed) return;
+                          if (!settlement.restoreFailed) {
+                            await this.clearDraftAfterSend(settlement);
+                          }
+                          this.props.onMessageSent?.();
+                        } finally {
+                          if (settlement.sendDraft) {
+                            composeRecoveryStore.releaseDraftRevision(
+                              this.composeRecoveryKey(),
+                              settlement.sendDraft.revision,
+                            );
+                          }
                         }
-                        this.props.onMessageSent?.();
                       }}
                       onSend={this._sendChatComposerRequest}
                     ></ChatComposer>

@@ -4,6 +4,7 @@ export type DraftPersistenceSource = "live" | "pending" | "empty";
 
 export interface ResolveDraftAfterSendOptions {
   attemptId: string;
+  protectedPendingAttemptIds?: string[];
   liveDraft?: string;
   remoteDraft?: string;
   remoteDraftAtSend?: string;
@@ -37,6 +38,7 @@ function sameIds(left: string[], right: string[]): boolean {
  */
 export function resolveDraftAfterSend({
   attemptId,
+  protectedPendingAttemptIds = [],
   liveDraft,
   remoteDraft,
   remoteDraftAtSend,
@@ -46,6 +48,7 @@ export function resolveDraftAfterSend({
   latestSavedPendingAttemptIds = [],
   pendingDrafts,
 }: ResolveDraftAfterSendOptions): string | undefined {
+  if (protectedPendingAttemptIds.length > 0) return undefined;
   if (liveDraft) return undefined;
   if (pendingDrafts[0]?.attemptId !== attemptId) return undefined;
 
@@ -54,7 +57,9 @@ export function resolveDraftAfterSend({
     if (!latestSavedPendingAttemptIds.includes(attemptId)) return undefined;
 
     const ownedDrafts = latestSavedPendingAttemptIds.map((ownedAttemptId) =>
-      pendingDrafts.find(({ attemptId: pendingId }) => pendingId === ownedAttemptId),
+      pendingDrafts.find(
+        ({ attemptId: pendingId }) => pendingId === ownedAttemptId
+      )
     );
     if (ownedDrafts.some((draft) => !draft)) return undefined;
 
@@ -62,7 +67,7 @@ export function resolveDraftAfterSend({
     if (
       !sameIds(
         savedDrafts.map(({ attemptId: savedAttemptId }) => savedAttemptId),
-        latestSavedPendingAttemptIds,
+        latestSavedPendingAttemptIds
       ) ||
       (latestSavedDraft || "") !== joinDrafts(savedDrafts) ||
       (remoteDraft || "") !== (latestSavedDraft || "")
@@ -71,7 +76,9 @@ export function resolveDraftAfterSend({
     }
 
     return joinDrafts(
-      savedDrafts.filter(({ attemptId: savedAttemptId }) => savedAttemptId !== attemptId),
+      savedDrafts.filter(
+        ({ attemptId: savedAttemptId }) => savedAttemptId !== attemptId
+      )
     );
   }
 
@@ -102,7 +109,7 @@ export function resolveDraftToPersist({
   }
 
   const ownedPendingDrafts = pendingDrafts.filter(
-    ({ draftText }) => draftText.trim() !== "",
+    ({ draftText }) => draftText.trim() !== ""
   );
   const pendingDraft = joinDrafts(ownedPendingDrafts);
   if (pendingDraft !== "") {

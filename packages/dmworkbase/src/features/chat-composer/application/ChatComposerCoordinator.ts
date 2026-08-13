@@ -9,10 +9,7 @@ import {
   disposeComposeRecoveryObjectUrls,
   type ComposeRecoveryRecord,
 } from "../recovery";
-import type {
-  ChatComposerEditorPort,
-  ChatComposerHostPort,
-} from "../ports";
+import type { ChatComposerEditorPort, ChatComposerHostPort } from "../ports";
 import { ChatComposerController } from "./ChatComposerController";
 import {
   ComposeRestoreUnavailableError,
@@ -37,20 +34,19 @@ export interface ChatComposerSubmitPorts<TMessage = unknown> {
 /** Application coordinator for capture -> consume -> send -> settle -> recovery. */
 export class ChatComposerCoordinator<
   TAttachmentPreview = unknown,
-  TMessage = unknown,
+  TMessage = unknown
 > {
   constructor(
-    private readonly controller: ChatComposerController<TAttachmentPreview>,
+    private readonly controller: ChatComposerController<TAttachmentPreview>
   ) {}
 
   async submit(
     input: ChatComposerSubmitInput<TAttachmentPreview>,
-    ports: ChatComposerSubmitPorts<TMessage>,
+    ports: ChatComposerSubmitPorts<TMessage>
   ): Promise<ChatComposerSendResult> {
     const { host, editor } = ports;
     const sendTarget = host.captureSendTarget();
     const channelKey = host.channelKey();
-    const sendDraftBaseline = host.captureSendDraft();
     this.controller.resetRestoreOffsets();
     const expandedAtSend = host.getExpanded();
 
@@ -58,8 +54,7 @@ export class ChatComposerCoordinator<
     try {
       consumed = editor.consume({
         getRestoreOffsets: () => this.controller.getRestoreOffsets(),
-        onRestored: (offsets) =>
-          this.controller.advanceRestoreOffsets(offsets),
+        onRestored: (offsets) => this.controller.advanceRestoreOffsets(offsets),
         onRestoreCompose: () => {
           if (!host.isChannelActive(channelKey)) return;
           sendTarget?.restore();
@@ -68,14 +63,14 @@ export class ChatComposerCoordinator<
         onRestoreSendTarget: () => {
           if (host.isChannelActive(channelKey)) sendTarget?.restore();
         },
-        onRestoreError: (error, step) =>
-          host.notifyRestoreError?.(error, step),
+        onRestoreError: (error, step) => host.notifyRestoreError?.(error, step),
       });
     } catch (error) {
       if (host.isChannelActive(channelKey)) sendTarget?.restore();
       throw error;
     }
 
+    const sendDraftBaseline = host.captureSendDraft();
     const draftText = composeSnapshotDraftText(consumed.snapshot);
     const attempt = this.controller.capture({
       previewText: composeSnapshotPreviewText(consumed.snapshot),
@@ -110,12 +105,12 @@ export class ChatComposerCoordinator<
             sendProgress,
           }),
         consumed.ids,
-        consumed.compose,
+        consumed.compose
       );
 
       const ledgerSettlement = this.controller.settle(
         attemptId,
-        settlement.outcome,
+        settlement.outcome
       );
       try {
         if (ledgerSettlement) {
@@ -165,24 +160,23 @@ export class ChatComposerCoordinator<
     if (settlement.restoreErrors.length === 0) return undefined;
 
     const failedSteps = new Set(
-      settlement.restoreErrors.map(({ step }) => step),
+      settlement.restoreErrors.map(({ step }) => step)
     );
     const unavailable = settlement.restoreErrors.some(
-      ({ error }) => error instanceof ComposeRestoreUnavailableError,
+      ({ error }) => error instanceof ComposeRestoreUnavailableError
     );
     const editorFailed =
       unavailable ||
       failedSteps.has("restoreEditor") ||
       failedSteps.has("restoreEditorBlocks");
-    const topFailed =
-      unavailable || failedSteps.has("restoreTopAttachments");
+    const topFailed = unavailable || failedSteps.has("restoreTopAttachments");
     if (!editorFailed && !topFailed) return undefined;
 
     const partialEditorRestore = failedSteps.has("restoreEditorBlocks");
     const unsentAttachmentIds = new Set(
       settlement.outcome.unsentEditorBlocks
         .filter((block) => block.type === "attachment")
-        .map((block) => block.id),
+        .map((block) => block.id)
     );
 
     return {
@@ -191,19 +185,17 @@ export class ChatComposerCoordinator<
       snapshot: consumed.recovery.snapshot,
       editorAttachments: editorFailed
         ? consumed.recovery.editorAttachments.filter(
-            ({ id }) =>
-              !partialEditorRestore || unsentAttachmentIds.has(id),
+            ({ id }) => !partialEditorRestore || unsentAttachmentIds.has(id)
           )
         : [],
       editorObjectUrls: editorFailed
         ? consumed.recovery.editorObjectUrls.filter(
-            ({ id }) =>
-              !partialEditorRestore || unsentAttachmentIds.has(id),
+            ({ id }) => !partialEditorRestore || unsentAttachmentIds.has(id)
           )
         : [],
       topAttachments: topFailed
         ? consumed.recovery.topAttachments.filter(
-            ({ id }) => !settlement.outcome.consumedTopIds.includes(id),
+            ({ id }) => !settlement.outcome.consumedTopIds.includes(id)
           )
         : [],
       editorBlocks: partialEditorRestore
@@ -222,7 +214,7 @@ export class ChatComposerCoordinator<
 
   private handoffRecovery(
     recovery: ComposeRecoveryRecord,
-    ports: ChatComposerSubmitPorts<TMessage>,
+    ports: ChatComposerSubmitPorts<TMessage>
   ): void {
     let accepted = false;
     try {

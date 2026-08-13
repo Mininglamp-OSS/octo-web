@@ -3,7 +3,10 @@ import { act, render, waitFor } from "@testing-library/react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
 import { createChatSendOutcome } from "../../domain";
-import type { ComposeRecoveryRecord } from "../../recovery";
+import type {
+  ComposeRecoveryRecord,
+  RecoveredComposeHydration,
+} from "../../recovery";
 
 vi.mock("../../../../App", () => ({
   default: {
@@ -49,7 +52,7 @@ function failedCompose(text: string): ComposeRecoveryRecord {
 describe("MessageInput recovery hydration", () => {
   it("prepends a failed compose without overwriting the newer persisted draft", async () => {
     let inputContext: MessageInputContext | undefined;
-    const recovered: string[][] = [];
+    const recovered: RecoveredComposeHydration[] = [];
 
     render(
       <ChatComposer
@@ -59,7 +62,7 @@ describe("MessageInput recovery hydration", () => {
           inputContext = context;
           context.restoreDraft("new draft C");
         }}
-        onRecoveredComposes={(attemptIds) => recovered.push(attemptIds)}
+        onRecoveredComposes={(hydration) => recovered.push(hydration)}
       />
     );
 
@@ -70,7 +73,9 @@ describe("MessageInput recovery hydration", () => {
 
     const text = inputContext?.text() ?? "";
     expect(text.indexOf("failed A")).toBeLessThan(text.indexOf("new draft C"));
-    expect(recovered).toEqual([["attempt-A"]]);
+    expect(recovered).toEqual([
+      { attemptIds: ["attempt-A"], draftText: "failed A\nnew draft C" },
+    ]);
 
     act(() => inputContext?.clear());
   });
@@ -79,7 +84,7 @@ describe("MessageInput recovery hydration", () => {
     const revokeObjectURL = vi.fn();
     const originalRevoke = Object.getOwnPropertyDescriptor(
       URL,
-      "revokeObjectURL",
+      "revokeObjectURL"
     );
     Object.defineProperty(URL, "revokeObjectURL", {
       configurable: true,
@@ -141,7 +146,7 @@ describe("MessageInput recovery hydration", () => {
       .spyOn(console, "error")
       .mockImplementation(() => undefined);
     let inputContext: MessageInputContext | undefined;
-    const recovered: string[][] = [];
+    const recovered: RecoveredComposeHydration[] = [];
     const recovery: ComposeRecoveryRecord = {
       ...failedCompose(""),
       editorBlocks: [{ type: "attachment", id: "unknown" }],
@@ -154,7 +159,7 @@ describe("MessageInput recovery hydration", () => {
         onContext={(context) => {
           inputContext = context;
         }}
-        onRecoveredComposes={(attemptIds) => recovered.push(attemptIds)}
+        onRecoveredComposes={(hydration) => recovered.push(hydration)}
       />
     );
 
@@ -163,9 +168,84 @@ describe("MessageInput recovery hydration", () => {
         "[MessageInput] compose recovery hydration failed",
         expect.objectContaining({
           message: "cannot recover unknown editor attachment: unknown",
-        }),
+        })
       );
     });
+    expect(recovered).toEqual([]);
+
+    act(() => inputContext?.clear());
+    consoleError.mockRestore();
+  });
+
+  it("does not partially hydrate a recovery batch", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let inputContext: MessageInputContext | undefined;
+    const recovered: RecoveredComposeHydration[] = [];
+    const malformed: ComposeRecoveryRecord = {
+      ...failedCompose("failed B"),
+      attemptId: "attempt-B",
+      editorBlocks: [{ type: "attachment", id: "unknown" }],
+    };
+
+    render(
+      <ChatComposer
+        context={conversationContext()}
+        recoveredComposes={[failedCompose("failed A"), malformed]}
+        onContext={(context) => {
+          inputContext = context;
+          context.restoreDraft("new draft C");
+        }}
+        onRecoveredComposes={(hydration) => recovered.push(hydration)}
+      />
+    );
+
+    await waitFor(() => expect(consoleError).toHaveBeenCalled());
+    expect(inputContext?.text()).toBe("new draft C");
+    expect(recovered).toEqual([]);
+
+    act(() => inputContext?.clear());
+    consoleError.mockRestore();
+  });
+
+  it("rejects a recovery batch with conflicting inline resources", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let inputContext: MessageInputContext | undefined;
+    const recovered: RecoveredComposeHydration[] = [];
+    const first: ComposeRecoveryRecord = {
+      ...failedCompose("failed A"),
+      editorAttachments: [{ id: "shared", file: new File(["A"], "A.png") }],
+    };
+    const second: ComposeRecoveryRecord = {
+      ...failedCompose("failed B"),
+      attemptId: "attempt-B",
+      editorAttachments: [{ id: "shared", file: new File(["B"], "B.png") }],
+    };
+
+    render(
+      <ChatComposer
+        context={conversationContext()}
+        recoveredComposes={[first, second]}
+        onContext={(context) => {
+          inputContext = context;
+          context.restoreDraft("new draft C");
+        }}
+        onRecoveredComposes={(hydration) => recovered.push(hydration)}
+      />
+    );
+
+    await waitFor(() =>
+      expect(consoleError).toHaveBeenCalledWith(
+        "[MessageInput] compose recovery hydration failed",
+        expect.objectContaining({
+          message: "inline attachment already registered: shared",
+        })
+      )
+    );
+    expect(inputContext?.text()).toBe("new draft C");
     expect(recovered).toEqual([]);
 
     act(() => inputContext?.clear());
@@ -179,11 +259,11 @@ describe("MessageInput recovery hydration", () => {
       const revokeObjectURL = vi.fn();
       const originalCreate = Object.getOwnPropertyDescriptor(
         URL,
-        "createObjectURL",
+        "createObjectURL"
       );
       const originalRevoke = Object.getOwnPropertyDescriptor(
         URL,
-        "revokeObjectURL",
+        "revokeObjectURL"
       );
       Object.defineProperty(URL, "createObjectURL", {
         configurable: true,
@@ -198,13 +278,13 @@ describe("MessageInput recovery hydration", () => {
         .mockImplementation(() => undefined);
       let inputContext: MessageInputContext | undefined;
       let resolveSend: (
-        outcome: ReturnType<typeof createChatSendOutcome>,
+        outcome: ReturnType<typeof createChatSendOutcome>
       ) => void = () => undefined;
       const onSend = vi.fn(
         () =>
           new Promise<ReturnType<typeof createChatSendOutcome>>((resolve) => {
             resolveSend = resolve;
-          }),
+          })
       );
       const onComposeRecovery = vi.fn(() => {
         if (behavior === "throws") throw new Error("handoff failed");
@@ -213,7 +293,7 @@ describe("MessageInput recovery hydration", () => {
 
       try {
         const view = render(
-      <ChatComposer
+          <ChatComposer
             context={conversationContext()}
             onContext={(context) => {
               inputContext = context;
@@ -260,6 +340,6 @@ describe("MessageInput recovery hydration", () => {
           delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
         }
       }
-    },
+    }
   );
 });

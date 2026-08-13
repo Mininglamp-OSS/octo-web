@@ -48,10 +48,9 @@ describe("ComposeRecoveryStore", () => {
     store.add(recovery("channel", "A"));
     store.add(recovery("channel", "B"));
 
-    expect(store.claim("channel", owner).map(({ attemptId }) => attemptId)).toEqual([
-      "A",
-      "B",
-    ]);
+    expect(
+      store.claim("channel", owner).map(({ attemptId }) => attemptId)
+    ).toEqual(["A", "B"]);
     store.consume("channel", owner, ["A"]);
 
     expect(store.list("channel").map(({ attemptId }) => attemptId)).toEqual([
@@ -59,6 +58,81 @@ describe("ComposeRecoveryStore", () => {
     ]);
     expect(dispose).not.toHaveBeenCalled();
     expect(listener).toHaveBeenCalledTimes(3);
+  });
+
+  it("moves a hydrated recovery to a live draft in the same store", () => {
+    const store = new ComposeRecoveryStore<Recovery>();
+    const owner = Symbol("owner");
+    store.recordDraft("channel", {
+      draft: "failed A",
+      source: "pending",
+      pendingDrafts: [{ attemptId: "A", draftText: "failed A" }],
+    });
+    store.add(recovery("channel", "A"));
+    store.claim("channel", owner);
+
+    store.consume("channel", owner, ["A"], "failed A\nnew draft");
+
+    expect(store.list("channel")).toEqual([]);
+    expect(store.matchPendingDraft("channel", "failed A\nnew draft")).toEqual(
+      []
+    );
+    expect(store.draftState("channel")).toMatchObject({
+      draft: "failed A\nnew draft",
+      source: "live",
+      pendingAttemptIds: [],
+    });
+  });
+
+  it("revisions distinguish a later identical live draft from an attempt draft", () => {
+    const store = new ComposeRecoveryStore<Recovery>();
+    const baseline = store.captureDraftRevision("channel", "");
+    const pending = store.recordDraft("channel", {
+      draft: "same",
+      source: "pending",
+      pendingDrafts: [{ attemptId: "A", draftText: "same" }],
+    });
+    const live = store.recordDraft("channel", {
+      draft: "same",
+      source: "live",
+    });
+
+    expect(new Set([baseline, pending, live]).size).toBe(3);
+    expect(store.matchPendingDraft("channel", "same")).toEqual([]);
+    expect(store.draftState("channel")).toMatchObject({
+      revision: live,
+      draft: "same",
+      source: "live",
+      pendingAttemptIds: [],
+    });
+  });
+
+  it("keeps an active send revision beyond recovery TTL", () => {
+    let now = 0;
+    const store = new ComposeRecoveryStore<Recovery>({
+      ttlMs: 10,
+      now: () => now,
+    });
+    const revision = store.captureDraftRevision("channel", "draft");
+    now = 10;
+
+    expect(store.draftState("channel")).toMatchObject({ revision });
+    store.releaseDraftRevision("channel", revision);
+    expect(store.draftState("channel")).toBeUndefined();
+  });
+
+  it("does not assign text ownership to attachment-only attempts", () => {
+    const store = new ComposeRecoveryStore<Recovery>();
+    store.recordDraft("channel", {
+      draft: "B",
+      source: "pending",
+      pendingDrafts: [
+        { attemptId: "attachment", draftText: "" },
+        { attemptId: "text", draftText: "B" },
+      ],
+    });
+
+    expect(store.matchPendingDraft("channel", "B")).toEqual(["text"]);
   });
 
   it("allows only one mounted owner to claim a recovery", () => {
@@ -103,6 +177,48 @@ describe("ComposeRecoveryStore", () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 
+  it("exposes the remote draft when its recovery expires", () => {
+    let now = 0;
+    const store = new ComposeRecoveryStore<Recovery>({
+      ttlMs: 10,
+      now: () => now,
+    });
+    store.recordDraft("channel", {
+      draft: "A",
+      source: "pending",
+      pendingDrafts: [{ attemptId: "A", draftText: "A" }],
+    });
+    store.add(recovery("channel", "A"));
+    now = 10;
+
+    expect(store.claim("channel", Symbol("owner"))).toEqual([]);
+    expect(store.matchPendingDraft("channel", "A")).toEqual([]);
+    expect(store.draftState("channel")).toMatchObject({
+      draft: "A",
+      source: "live",
+      pendingAttemptIds: [],
+    });
+  });
+
+  it("keeps attempt ownership while its recovery is claimed", () => {
+    let now = 0;
+    const store = new ComposeRecoveryStore<Recovery>({
+      ttlMs: 10,
+      now: () => now,
+    });
+    const owner = Symbol("owner");
+    store.recordDraft("channel", {
+      draft: "A",
+      source: "pending",
+      pendingDrafts: [{ attemptId: "A", draftText: "A" }],
+    });
+    store.add(recovery("channel", "A"));
+    store.claim("channel", owner);
+    now = 10;
+
+    expect(store.matchPendingDraft("channel", "A")).toEqual(["A"]);
+  });
+
   it("disposes expired records and bounds channels and records per channel", () => {
     let now = 0;
     const dispose = vi.fn();
@@ -137,6 +253,54 @@ describe("ComposeRecoveryStore", () => {
     expect(store.claim("two", Symbol("owner"))).toEqual([]);
     expect(dispose).toHaveBeenCalledWith(
       expect.objectContaining({ attemptId: "D" })
+    );
+  });
+
+  it("releases draft ownership when record capacity evicts its recovery", () => {
+    const store = new ComposeRecoveryStore<Recovery>({
+      maxRecordsPerChannel: 1,
+    });
+    store.recordDraft("channel", {
+      draft: "A",
+      source: "pending",
+      pendingDrafts: [{ attemptId: "A", draftText: "A" }],
+    });
+    store.add(recovery("channel", "A"));
+    store.add(recovery("channel", "B"));
+
+    expect(store.list("channel").map(({ attemptId }) => attemptId)).toEqual([
+      "B",
+    ]);
+    expect(store.matchPendingDraft("channel", "A")).toEqual([]);
+  });
+
+  it("invalidates sibling text recoveries when one is evicted", () => {
+    const dispose = vi.fn();
+    const store = new ComposeRecoveryStore<Recovery>({
+      maxRecordsPerChannel: 2,
+      dispose,
+    });
+    store.recordDraft("channel", {
+      draft: "A\nB",
+      source: "pending",
+      pendingDrafts: [
+        { attemptId: "A", draftText: "A" },
+        { attemptId: "B", draftText: "B" },
+      ],
+    });
+    store.add(recovery("channel", "A"));
+    store.add(recovery("channel", "B"));
+
+    expect(store.add(recovery("channel", "C"))).toBe(true);
+    expect(store.list("channel").map(({ attemptId }) => attemptId)).toEqual([
+      "C",
+    ]);
+    expect(store.matchPendingDraft("channel", "A\nB")).toEqual([]);
+    expect(dispose).toHaveBeenCalledWith(
+      expect.objectContaining({ attemptId: "A" })
+    );
+    expect(dispose).toHaveBeenCalledWith(
+      expect.objectContaining({ attemptId: "B" })
     );
   });
 

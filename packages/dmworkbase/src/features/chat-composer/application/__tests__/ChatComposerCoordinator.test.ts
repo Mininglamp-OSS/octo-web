@@ -11,7 +11,7 @@ import { ComposeRestoreUnavailableError } from "../composeConsume";
 
 function consumed(
   context: ChatComposerConsumeContext,
-  overrides: Partial<ReturnType<ChatComposerEditorPort["consume"]>> = {},
+  overrides: Partial<ReturnType<ChatComposerEditorPort["consume"]>> = {}
 ): ReturnType<ChatComposerEditorPort["consume"]> {
   return {
     ids: { topIds: [], editorAttachmentIds: [] },
@@ -41,7 +41,7 @@ function consumed(
 }
 
 function host(
-  overrides: Partial<ChatComposerHostPort> = {},
+  overrides: Partial<ChatComposerHostPort> = {}
 ): ChatComposerHostPort {
   return {
     channelKey: () => "channel-1:2",
@@ -80,7 +80,11 @@ describe("ChatComposerCoordinator", () => {
       },
       captureSendDraft: () => {
         order.push("draft");
-        return { generation: 7, remoteDraft: "remote" };
+        return {
+          revision: 7,
+          remoteDraft: "remote",
+          protectedPendingAttemptIds: [],
+        };
       },
       getExpanded: () => {
         order.push("expanded");
@@ -106,16 +110,16 @@ describe("ChatComposerCoordinator", () => {
           editorBlocks: [],
           pendingAttachments: [{ id: "preview-1" }],
         },
-        { host: currentHost, editor },
-      ),
+        { host: currentHost, editor }
+      )
     ).resolves.toMatchObject({ editorConsumed: true });
 
     expect(order).toEqual([
       "target",
       "channel",
-      "draft",
       "expanded",
       "consume",
+      "draft",
       "set-expanded:false",
       "send",
       "settled",
@@ -124,14 +128,15 @@ describe("ChatComposerCoordinator", () => {
       expect.objectContaining({
         text: "hello",
         sendDraft: {
-          generation: 7,
+          revision: 7,
           remoteDraft: "remote",
           draftText: "hello",
+          protectedPendingAttemptIds: [],
         },
-      }),
+      })
     );
     expect(onSendSettled).toHaveBeenCalledWith(
-      expect.objectContaining({ restoreFailed: false }),
+      expect.objectContaining({ restoreFailed: false })
     );
     expect(controller.pendingSendCount()).toBe(0);
   });
@@ -190,15 +195,15 @@ describe("ChatComposerCoordinator", () => {
           editorBlocks: [],
           pendingAttachments: [],
         },
-        { host: currentHost, editor },
-      ),
+        { host: currentHost, editor }
+      )
     ).rejects.toBe(settledError);
 
     expect(setExpanded.mock.calls).toEqual([[false], [true]]);
     expect(restoreTarget).toHaveBeenCalledOnce();
     expect(notifyRestoreError).toHaveBeenCalledWith(
       expect.any(ComposeRestoreUnavailableError),
-      "restoreEditor",
+      "restoreEditor"
     );
     expect(handoffRecovery).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -208,10 +213,10 @@ describe("ChatComposerCoordinator", () => {
           handlerType: 1,
         },
         expanded: true,
-      }),
+      })
     );
     expect(handoffEditorRecovery).toHaveBeenCalledWith(
-      handoffRecovery.mock.calls[0][0],
+      handoffRecovery.mock.calls[0][0]
     );
   });
 
@@ -222,13 +227,15 @@ describe("ChatComposerCoordinator", () => {
     const sentRequests: Array<{
       text: string;
       target?: unknown;
-      draftGeneration?: number;
+      draftRevision?: number;
     }> = [];
-    let resolveFirst: ((value: ReturnType<typeof createChatSendOutcome>) => void) | undefined;
+    let resolveFirst:
+      | ((value: ReturnType<typeof createChatSendOutcome>) => void)
+      | undefined;
     const firstResult = new Promise<ReturnType<typeof createChatSendOutcome>>(
       (resolve) => {
         resolveFirst = resolve;
-      },
+      }
     );
 
     const submit = (label: "A" | "B", expanded: boolean) =>
@@ -248,8 +255,9 @@ describe("ChatComposerCoordinator", () => {
               restore: vi.fn(),
             }),
             captureSendDraft: () => ({
-              generation: label === "A" ? 1 : 2,
+              revision: label === "A" ? 1 : 2,
               remoteDraft: `remote-${label}`,
+              protectedPendingAttemptIds: [],
             }),
             getExpanded: () => expanded,
             setExpanded: vi.fn(),
@@ -257,7 +265,7 @@ describe("ChatComposerCoordinator", () => {
               sentRequests.push({
                 text: request.text,
                 target: request.sendTarget?.replyMessage,
-                draftGeneration: request.sendDraft?.generation,
+                draftRevision: request.sendDraft?.revision,
               });
               return label === "A"
                 ? firstResult
@@ -281,7 +289,7 @@ describe("ChatComposerCoordinator", () => {
             },
             handoffRecovery: vi.fn(),
           },
-        },
+        }
       );
 
     const first = submit("A", true);
@@ -296,14 +304,15 @@ describe("ChatComposerCoordinator", () => {
     await expect(second).resolves.toMatchObject({ editorConsumed: true });
 
     expect(sentRequests).toEqual([
-      { text: "A", target: { id: "target-A" }, draftGeneration: 1 },
-      { text: "B", target: { id: "target-B" }, draftGeneration: 2 },
+      { text: "A", target: { id: "target-A" }, draftRevision: 1 },
+      { text: "B", target: { id: "target-B" }, draftRevision: 2 },
     ]);
     expect(controller.pendingSendCount()).toBe(0);
   });
 
   it("restores a captured target when editor consumption throws", async () => {
     const restoreTarget = vi.fn();
+    const captureSendDraft = vi.fn();
     const controller = new ChatComposerController();
     const coordinator = new ChatComposerCoordinator(controller);
     const editor: ChatComposerEditorPort = {
@@ -327,13 +336,15 @@ describe("ChatComposerCoordinator", () => {
               handlerType: 1,
               restore: restoreTarget,
             }),
+            captureSendDraft,
           }),
           editor,
-        },
-      ),
+        }
+      )
     ).rejects.toThrow("unsupported compose part");
 
     expect(restoreTarget).toHaveBeenCalledOnce();
+    expect(captureSendDraft).not.toHaveBeenCalled();
     expect(controller.pendingSendCount()).toBe(0);
   });
 });

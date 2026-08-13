@@ -31,9 +31,10 @@ export interface SendTargetSnapshot<TMessage = unknown> {
 }
 
 export interface SendDraftSnapshot {
-  generation: number;
+  revision: number;
   remoteDraft: string;
   draftText: string;
+  protectedPendingAttemptIds: string[];
 }
 
 /** Draft text owned by one captured compose attempt. */
@@ -108,13 +109,13 @@ export type ChatComposerSendResult =
   | ChatComposerSendAttemptResult;
 
 export function rejectChatComposerSend(
-  reason: ChatComposerSendRejectReason,
+  reason: ChatComposerSendRejectReason
 ): ChatComposerSendRejection {
   return { kind: "rejected", editorConsumed: false, reason };
 }
 
 export function createChatSendOutcome(
-  overrides: Partial<ChatSendOutcome> = {},
+  overrides: Partial<ChatSendOutcome> = {}
 ): ChatSendOutcome {
   return {
     editorConsumed: overrides.editorConsumed ?? false,

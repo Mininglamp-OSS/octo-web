@@ -23,3 +23,8 @@ export interface ComposeRecoveryRecord extends ComposeRecoveryPayload {
   sendTarget?: { replyMessage?: unknown; handlerType: number };
   expanded: boolean;
 }
+
+export interface RecoveredComposeHydration {
+  attemptIds: string[];
+  draftText: string;
+}

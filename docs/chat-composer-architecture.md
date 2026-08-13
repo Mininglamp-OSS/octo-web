@@ -1,1005 +1,414 @@
-# Chat Composer 重构架构与开发指南
+# Chat Composer 架构与开发指南
 
-> 状态：第一阶段重构已落地，兼容迁移仍在进行中。
+> 状态：核心重构已落地。旧 `Components/MessageInput` 实现已删除，生产聊天输入框使用
+> `features/chat-composer`。
 >
-> 适用范围：`packages/dmworkbase` 聊天输入框、发送编排、附件、草稿、快捷键、粘贴和消息渲染扩展。
->
-> 本文档定义目标架构、稳定接口、扩展机制和迁移顺序。每个迁移 PR 都必须保持现有用户行为，除非 PR 明确声明并验证行为变化。
+> 适用范围：`packages/dmworkbase` 中的聊天输入、发送事务、mention、emoji、附件、粘贴、
+> 快捷键、失败恢复和 pending preview。
 
-当前实现已经落地：
+## 1. 结论
 
-- `ChatSendRequest`、`ChatSendOutcome`、`ComposeAttemptLedger` 和纯函数发送计划。
-- operation 级 transport/executor，以及统一的 settle 顺序。
-- 跨 `MessageInput` 实例唯一的 attempt ID 草稿所有权；草稿清理发生在编辑器恢复/释放之后。
-- 编辑器销毁或切换频道时的可观察、有限容量 recovery store。
-- 公开的 pending-send renderer registry 和 transport operation registry。
-- editor compose part registry；附件节点已迁移 capture/restore/dispose，并显式映射到现有 image/file 发送模型。
-- `ChatComposerAttachmentStore`；顶部附件使用 snapshot/take/restore，inline 附件使用 live/leased/handoff 转移所有权，React 只订阅列表快照。
+Chat Composer 现在以一次发送事务为核心，而不是把发送视为一个返回 boolean 的 React
+回调。一次发送由稳定的 `attemptId` 贯穿 capture、consume、queue、transport、settle 和
+recovery。
 
-仍需后续迁移：
-
-- 继续迁移 text/mention capture、Tiptap port、keyboard 和 clipboard policy。
-- 把通用 `ComposePart`/extension operation 纳入现有兼容 request，而不是继续增加字段分支。
-- 将 Conversation 中的上传预检和 SDK content 构造进一步下沉到 conversation adapter。
-
-## 1. 背景
-
-当前聊天输入框已经具备 Tiptap 编辑器、mention、emoji、slash command、顶部附件、编辑器内附件、RichText 混排、语音输入、草稿恢复和连续发送等能力。
-
-主要实现集中在：
-
-- `packages/dmworkbase/src/Components/MessageInput/index.tsx`
-- `packages/dmworkbase/src/features/chat-composer/application/sendFlow.ts`
-- `packages/dmworkbase/src/features/chat-composer/application/composeConsume.ts`
-- `packages/dmworkbase/src/Components/Conversation/index.tsx`
-
-当前问题不是单纯的文件过大，而是一次发送的生命周期跨越多个所有者：
+当前生产路径为：
 
 ```text
-MessageInput
-  -> 读取 Tiptap 文档和附件
-  -> 同步清空输入框
-  -> 维护 pending send 和恢复偏移
-  -> 调用 Conversation.onSend
-
-Conversation
-  -> 决定 text / attachment / RichText mixed 路径
-  -> 执行上传和消息入队
-  -> 等待 upload / ack
-  -> 清理远端草稿
-  -> 返回部分发送结果
-
-MessageInput
-  -> 解释发送结果
-  -> 恢复或释放编辑器内容、附件、reply/edit target
+Conversation composition root
+  -> createDefaultChatComposerExtensions()
+  -> ChatComposer
+  -> ChatComposerCoordinator
+  -> createConversationChatSendHandler()
+  -> buildChatSendPlan()
+  -> executeChatSendPlan()
+  -> ConversationChatTransport
+  -> settleChatSendExecution()
+  -> editor restore/dispose or ComposeRecoveryStore
 ```
 
-这会导致以下风险：
+重构完成的关键事实：
 
-- pending send、队列和草稿清理之间依赖隐含时序。
-- `void | boolean | SendResultDetail` 无法直观表达“未入队、部分入队、已入队但 ack 失败”。
-- 编辑器文档、发送协议和渲染组件互相知道过多细节。
-- 新增一种可编辑、可发送、可预览的内容节点时，需要修改多处核心分支。
-- Chat 与 Docs 评论输入框容易因为“看起来都用 Tiptap”而被错误地强行统一。
+- `Conversation` 不读取 Tiptap 文档，也不直接操作 composer 附件 store。
+- `ChatComposerCoordinator` 统一捕获 target、draft、channel、expanded 和 editor compose。
+- capture 后同步 consume，连续发送进入串行队列，不再由 re-entrancy guard 丢弃。
+- transport 每次 attempt 都快照 operation handlers，运行中的发送不受后续扩展变更影响。
+- settle 决定恢复、释放、target 回填和 recovery handoff，下一任务只在 settle 完成后开始。
+- `ChatComposerExtensions` 是实例级依赖，由 composition root 创建并同时注入 editor、send、
+  render；生产路径不依赖模块级 registry 单例。
+- `MessageInputContext.send()` 返回显式 `ChatComposerSendResult`，不再返回
+  `void | boolean | object`。
+- feature 对外入口是 `features/chat-composer/index.ts`；轻量语音调用使用
+  `features/chat-composer/voice.ts`，避免加载完整 ChatComposer 图。
 
-## 2. 设计目标
-
-### 2.1 必须满足
-
-- 保持现有消息协议和接收端渲染兼容。
-- 保持 consume-first / restore-on-failure 行为。
-- 明确区分 `enqueued` 和 `acked`。
-- 连续发送、部分失败、切换会话和编辑器销毁时不丢内容、不重复发送。
-- 输入框 UI 不直接理解 WuKongIM SDK、上传协议或消息 ack。
-- Conversation 不直接操作 Tiptap 文档和输入框内部附件状态。
-- 新增编辑器节点或消息类型时，通过注册扩展完成，不修改主发送循环和主渲染组件。
-- 支持独立测试编辑器捕获、发送计划、传输执行、settle 和渲染。
-
-### 2.2 非目标
-
-- 不切换回 textarea。
-- 不在本轮启用完整 WYSIWYG。
-- 不让聊天输入框和评论输入框共享同一个 React 组件。
-- 不建立包含所有场景开关的通用 `ComposerCapabilities` 框架。
-- 不把 Tiptap JSON 定义成跨模块公共协议。
-- 不在一个 PR 中同时完成行为修复、目录迁移和视觉改版。
-
-## 3. 架构原则
-
-### 3.1 发送是事务，不是回调
-
-一次发送必须拥有稳定 ID，并按以下状态推进：
+## 2. 目录与职责
 
 ```text
-draft
-  -> captured
-  -> queued
-  -> pre_enqueue
-  -> enqueued | partially_enqueued | not_enqueued
-  -> settled
-```
+features/chat-composer/
+  index.ts                         公共入口
+  voice.ts                         轻量语音公共子入口
 
-所有恢复、附件释放、reply/edit target 恢复和草稿清理，都由同一个 attempt 的 settle 决策触发。
-
-### 3.2 编辑器模型、发送模型、消息模型分离
-
-- 编辑器模型：Tiptap JSON 和 NodeView，只服务编辑体验。
-- 发送模型：标准化 `ComposePart` 和 `ChatSendPlan`，只服务发送事务。
-- 消息模型：WuKongIM `MessageContent` 和接收侧 renderer，只服务 wire protocol 与历史消息展示。
-
-三者允许映射，但不得直接互相替代。
-
-### 3.3 扩展通过注册表进入
-
-核心流程不应出现不断增长的：
-
-```ts
-if (node.type === "image") { ... }
-else if (node.type === "file") { ... }
-else if (node.type === "card") { ... }
-```
-
-节点捕获、恢复、发送操作构建和预览渲染由扩展描述符注册。
-
-### 3.4 行为优先于目录
-
-先建立测试和稳定接口，再移动文件。不能为了得到整齐目录而同时重写发送语义。
-
-## 4. 目标模块结构
-
-新代码放在 `features/`，避免继续扩大 `Components/MessageInput`：
-
-```text
-packages/dmworkbase/src/features/chat-composer/
   domain/
-    types.ts
-    sendPlan.ts
-    sendOutcome.ts
-    composeAttemptLedger.ts
-    draftCoordinator.ts
-    extensionRegistry.ts
+    types.ts                       request、outcome、settlement、公开 send result
+    sendPlan.ts                    operation 与 plan DTO
+    composeAttemptLedger.ts        pending attempt 唯一事实源
+    editorCompose.ts               editor capture 的稳定中间模型
+    mentionMarker.ts               mention canonical marker
 
   application/
-    ChatComposerController.ts
-    consumeCompose.ts
-    settleConsumedCompose.ts
-    sendQueue.ts
-    captureComposeAttempt.ts
-    buildChatSendPlan.ts
-    executeChatSendPlan.ts
-    settleChatSendExecution.ts
-    settleComposeAttempt.ts
+    ChatComposerCoordinator.ts     单次提交事务协调器
+    ChatComposerController.ts      pending/queue/ledger 状态
+    composeConsume.ts              同步 consume 与可恢复资源租约
+    buildChatSendPlan.ts            纯计划构建
+    executeChatSendPlan.ts          operation 执行用例
+    settleChatSendExecution.ts      transport result -> outcome
+    sendFlow.ts                     queue、settle、恢复辅助函数
 
   ports/
-    ChatTransportPort.ts
-    ChatTransportEvents.ts
-    ChatComposerHostPort.ts
-    ChatComposerDraftPort.ts
+    ChatComposerEditorPort.ts       editor capture/consume/restore 边界
+    ChatComposerHostPort.ts         target/draft/channel/settlement 边界
+    ChatTransportPort.ts            发送计划的外部执行边界
 
   adapters/
-    tiptap/
-      composePartRegistry.ts
-      createChatEditorExtensions.ts
-      tiptapEditorPort.ts
-      captureEditorDocument.ts
-      restoreEditorParts.ts
-      extensions/
-        textExtension.ts
-        mentionExtension.ts
-        attachmentExtension.ts
-    conversation/
-      ConversationChatTransport.ts
-      conversationSendTargetAdapter.ts
-      conversationDraftAdapter.ts
+    conversation/                   SDK、上传、入队、ack、send target adapter
+    tiptap/                         Tiptap 节点、mention/emoji suggestion、发送解析
+    voice/                          语音输入 hook
 
-  clipboard/
-    clipboardPipeline.ts
-    richTextPaste.ts
-    secretPasteDetect.ts
-
-  keyboard/
-    keyboardPolicy.ts
-
-  rendering/
-    pendingComposeRenderRegistry.ts
-    chatPendingComposeRenderRegistry.tsx
+  editor/
+    attachmentStore.ts              top/inline 附件所有权
+    composePartRegistry.ts           editor part capture/restore/dispose
 
   extensions/
-    ChatComposerExtensions.ts
-    ChatSendOperationRegistry.ts
+    ChatComposerExtensions.ts        实例扩展 bundle
+    ChatSendOperationRegistry.ts     operation handler 注册表
+    PendingComposeRenderRegistry.ts  pending preview 注册表
 
-  recovery/
-    composeRecoveryStore.ts
-
-  ui/
-    ChatComposer.tsx
-    AttachmentTray.tsx
-    PendingComposePreview.tsx
-    ComposerToolbar.tsx
-
-  domain/__tests__/
-    composeAttemptLedger.test.ts
-  application/__tests__/
-    sendFlow.test.ts
-    buildChatSendPlan.test.ts
-    executeChatSendPlan.test.ts
-  clipboard/__tests__/
-    clipboardPipeline.test.ts
-  keyboard/__tests__/
-    keyboardPolicy.test.ts
-  __tests__/
-    chatComposer.integration.test.ts
+  clipboard/                        secret、RichText、HTML、文件粘贴策略
+  keyboard/                         Enter/IME/suggestion/slash policy
+  recovery/                         跨实例临时恢复与资源释放
+  ui/                               ChatComposer、suggestion、pending/voice UI
 ```
 
-迁移期间保留：
-
-```text
-Components/MessageInput/index.tsx
-```
-
-它作为兼容入口重新导出或装配新的 `ChatComposer`，直到所有调用方迁移完成。
-
-最终状态下该文件只能包含 re-export，不得再拥有 React state、Tiptap editor、发送队列、
-附件资源或恢复逻辑。测试也必须迁到 `features/chat-composer`，避免旧目录继续成为事实上的
-实现归属。
-
-### 4.1 允许保留在 feature 外的职责
-
-以下能力属于应用宿主，不应为了“全迁出”被复制进 Chat Composer：
+允许保留在 feature 外的职责：
 
 - `ConversationContext`、当前 channel、reply/edit 状态和远端草稿状态。
-- `WKApp`、SDK、上传、消息入队/ack、Toast/Notification 和埋点。
-- 通用 UI 组件，例如 `IconClick`、`SlashCommandMenu` 和应用级 modal。
-- Docs 评论编辑器等其他 composer；它们只复用明确的 port 或 adapter，不复用 Chat UI。
+- `WKApp`、WuKongIM SDK、上传服务、消息状态、通知和埋点。
+- 通用应用 UI，例如 modal、avatar、slash command 数据源。
+- 历史消息 renderer。composer pending renderer 不负责接收侧消息展示。
 
-这些依赖必须通过 `ports/` 定义的接口或 `adapters/` 封装进入 feature。`domain/`、
-`application/`、`clipboard/` 和 `keyboard/` 不得反向 import `Components/Conversation`、
-`App`、SDK 或具体 UI 组件。
+这些能力必须通过 port 或 conversation adapter 进入发送事务，不能反向渗入 domain。
 
-`ChatSendPlan`、`ChatSendOperation`、`ChatTransportResult` 等跨层 DTO 归属于
-`domain/sendPlan.ts`，不能定义在 planner 或 adapter 中。`ports/ChatTransportPort.ts` 与
-`application/` 只能共同依赖这些 DTO，避免 `application -> ports -> application` 循环。
-`executeChatSendPlan` 和 `settleChatSendExecution` 是 application use case；adapter 只实现
-上传、入队、ack、编辑消息等外部能力。
+## 3. 发送事务
 
-### 4.2 物理迁移完成判据
+### 3.1 提交前拒绝
 
-满足以下条件才算重构完成，而不是仅“新代码已被调用”：
+`ChatComposer.send()` 在 consume 前完成以下检查：
 
-- `Components/MessageInput/index.tsx` 是不超过一个 re-export 的兼容入口。
-- `Components/MessageInput` 下不再保留 composer-owned 的 `.ts/.tsx/.css` 实现与测试。
-- compose capture/consume/settle/queue/recovery 全部位于 feature 内。
-- UI 通过 `ChatComposerController` 或 `useChatComposerController` 使用 application；channel
-  key、draft baseline、send target、expanded state 和 recovery handoff 不散落在 JSX 中。
-- Tiptap、clipboard、keyboard、mention、emoji、attachment 与 voice UI 位于 feature 的
-  adapter 或 UI 目录。
-- `Conversation` 只组装 host port 和 transport adapter，不读取 editor 文档、不操作附件
-  store，也不补捕获发送时遗漏的 reply/edit target。
-- 新增一种 compose part 只需注册 editor capture/restore、send operation 和 pending render，
-  不修改 `ChatComposer.send()` 主分支。
-- composition root 构造同一个 `ChatComposerExtensions` 并同时注入 editor、send 和 render，
-  生产路径不得依赖无法替换的模块级 registry 单例。
-- 非兼容代码不得从 `Components/MessageInput` import；公共入口统一从
-  `features/chat-composer` 或包级 export 引入。
+- editor 是否就绪。
+- 文本是否超过长度限制。
+- editor part 是否都有可发送 adapter。
+- host 是否提供发送能力。
+- compose 是否为空。
 
-## 5. 分层职责
-
-### 5.1 Domain
-
-Domain 层不依赖 React、Tiptap、Semi UI、WKApp 或 WuKongIM SDK。
-
-负责：
-
-- compose attempt 状态。
-- 标准化 part 和 send outcome。
-- pending attempt 顺序。
-- 草稿所有权。
-- 扩展描述符的纯数据接口。
-
-不得负责：
-
-- DOM 事件。
-- Toast 或 Notification。
-- 文件上传。
-- Tiptap command。
-- 消息气泡渲染。
-
-### 5.2 Application
-
-Application 层负责一次发送事务在客户端的完整生命周期。
-
-负责：
-
-- 同步 capture 和 consume。
-- 建立 attempt、串行排队和生成 send plan。
-- 调用 transport port、接收 part 级 enqueue 事件并 settle。
-- 根据 outcome 释放或恢复 editor、附件、target 和 draft ownership。
-- 通过 controller 向 UI 暴露状态与动作。
-
-Application 不调用 SDK、上传服务、Toast 或具体 Tiptap command。
-
-### 5.3 Editor Adapter
-
-Editor 层是 Tiptap adapter。
-
-负责：
-
-- 创建聊天输入框 extension 集合。
-- 把 Tiptap 文档捕获为 `ComposePart[]`。
-- 把未发送 part 恢复为 Tiptap 节点。
-- clipboard handler 的执行顺序。
-- keyboard policy 与 suggestion plugin 的边界。
-
-### 5.4 Transport Port 与 Conversation Adapter
-
-Conversation adapter 通过 transport port 适配现有 Conversation、SDK、上传和消息状态。
-
-负责：
-
-- 上传前检查。
-- 媒体上传。
-- 创建 SDK `MessageContent`。
-- 入队消息。
-- 等待 ack 以维持消息顺序。
-- 通过 `onEnqueued(partIds)` 在 ack 前报告已经进入消息列表的 part。
-- 将 SDK 结果转换为 transport result；application 再结算为 `ChatSendOutcome`。
-
-### 5.5 UI
-
-UI 层只渲染 controller 暴露的状态和动作。
-
-负责：
-
-- EditorContent 容器。
-- 附件托盘。
-- 工具栏。
-- expanded 状态。
-- pending preview。
-- 错误状态展示。
-
-UI 不构造发送 payload，不读取 SDK 状态，不维护草稿所有权。
-
-## 6. 核心数据模型
-
-### 6.1 ComposePart
-
-`ComposePart` 是编辑器和发送计划之间的稳定边界。
+拒绝结果必须是：
 
 ```ts
-export interface ComposePartBase {
-  id: string
-  kind: string
-  version: number
-}
-
-export interface TextComposePart extends ComposePartBase {
-  kind: "text"
-  text: string
-  restoreText: string
-  mention?: MentionPayload
-}
-
-export interface AttachmentComposePart extends ComposePartBase {
-  kind: "attachment"
-  attachmentId: string
-  placement: "inline" | "top"
-  mediaKind: "image" | "video" | "file"
-  file: File
-}
-
-export interface ExtensionComposePart<TPayload = unknown> extends ComposePartBase {
-  kind: `extension:${string}`
-  payload: TPayload
-}
-
-export type ComposePart<TPayload = unknown> =
-  | TextComposePart
-  | AttachmentComposePart
-  | ExtensionComposePart<TPayload>
+type ChatComposerSendRejection = {
+  kind: "rejected";
+  editorConsumed: false;
+  reason:
+    | "editor-not-ready"
+    | "message-too-long"
+    | "unsupported-content"
+    | "send-host-unavailable"
+    | "empty-compose";
+};
 ```
 
-要求：
+拒绝不允许伪装成成功，也不允许用 `false` 丢失原因。
 
-- 每个 part 必须有稳定 ID。
-- `restoreText` 保留 mention marker 等可恢复信息，不能只保留展示文本。
-- `previewText` 和 `draftText` 必须分开生成。
-- extension payload 必须包含版本号，并由对应扩展负责运行时校验。
+### 3.2 已发起的 attempt
 
-### 6.2 ComposeAttempt
+通过预检后，coordinator 同步执行：
+
+1. 捕获 send target、draft baseline、channel key 和 expanded 状态。
+2. 捕获 text、mention、top attachments 和 editor blocks。
+3. 分配 `attemptId`，把 compose 从 editor 转成带所有权的 consumed handle。
+4. 将 attempt 放入 controller/ledger 和串行队列。
+5. 在队列中调用 host send handler。
+6. settle outcome，恢复或释放资源。
+7. 调用 `onSendSettled`；若原 editor 已销毁，将 recovery 交给对应 channel。
+
+已发起结果必须是：
 
 ```ts
-export interface ComposeAttempt {
-  id: string
-  createdAt: number
-  editorSnapshot: unknown
-  parts: ComposePart[]
-  previewText: string
-  draftText: string
-  target?: SendTargetSnapshot
-  draftBaseline: DraftBaseline
-  expandedAtCapture: boolean
-}
+type ChatComposerSendAttemptResult = {
+  kind: "attempted";
+  attemptId: string;
+  editorConsumed: boolean;
+  outcome: ChatSendOutcome;
+};
 ```
 
-`editorSnapshot` 仅由 editor adapter 使用，不能传给 transport。
+`editorConsumed:false` 在这里表示 attempt 已运行但内容需要保留或恢复，不等同于提交前拒绝。
 
-### 6.3 ChatSendRequest
+### 3.3 连续发送
 
-```ts
-export interface ChatSendRequest {
-  attemptId: string
-  parts: ComposePart[]
-  target?: SendTarget
-  progress: SendProgressReporter
-}
-```
+consume 在第一次 await 之前完成。因此用户可以在第一条消息上传或等待 ack 时继续输入并发送。
+后续 attempt 捕获自己的 editor、target 和 draft 快照，再进入串行执行。
 
-替代当前多位置参数 `onSend(text, mention, attachments, topFiles, editorBlocks, ...)`。
+队列约束：
 
-### 6.4 ChatSendOutcome
+- 前一 attempt 必须完成 settle、resource handoff 和 ledger remove，下一 attempt 才能执行。
+- operation handlers 在 attempt 开始时快照，不能在执行中读取可变 registry。
+- 相同文本仍是两个不同 attempt，草稿归属只能按 attempt ID 判断。
 
-```ts
-export type ChatSendOutcome =
-  | {
-      kind: "not_enqueued"
-      reason: SendFailureReason
-    }
-  | {
-      kind: "enqueued"
-      consumedPartIds: string[]
-      unsentParts: ComposePart[]
-      restoreTarget: boolean
-    }
-```
+## 4. 数据与所有权
 
-规则：
-
-- `not_enqueued`：没有本地气泡，所有内容必须恢复。
-- `enqueued`：至少一个操作已产生本地气泡。
-- ack 超时或服务器拒绝发生在入队之后时，仍返回 `enqueued`，失败状态由消息气泡承载。
-- 部分失败通过 `unsentParts` 精确恢复。
-- 不允许使用 `boolean` 表达该语义。
-
-## 7. Compose Attempt Ledger
-
-`ComposeAttemptLedger` 是 pending send 的唯一事实源。
-
-```ts
-export interface ComposeAttemptLedger {
-  capture(attempt: ComposeAttempt): void
-  markExpectedParts(attemptId: string, count: number): void
-  markPartEnqueued(attemptId: string): void
-  settle(attemptId: string, outcome: ChatSendOutcome): LedgerSettlement
-  remove(attemptId: string): void
-  orderedPending(): ComposeAttempt[]
-  pendingDraftText(): string
-  pendingPreEnqueueCount(): number
-}
-```
-
-关键约束：
-
-- attempt 必须在队列允许下一项执行前完成 settle 和 remove。
-- 草稿逻辑通过 attempt ID 判断所有权，不能比较文本内容。
-- 两条内容相同的消息仍然是不同 attempt。
-- attachment-only attempt 不能消费下一条文本草稿。
-- ledger reducer 必须是纯函数或可通过纯状态测试驱动。
-
-推荐队列结构：
-
-```ts
-queue.enqueue(async () => {
-  try {
-    const outcome = await executeChatSendPlan(request)
-    return settleComposeAttempt(attempt, outcome)
-  } finally {
-    ledger.remove(attempt.id)
-  }
-})
-```
-
-`remove` 必须在 task promise settle 前运行，避免下一项看到已经完成的旧 attempt。
-
-## 8. 草稿模型
-
-草稿需要区分三种表示：
+### 4.1 三种文本
 
 ```text
-previewText  用户可见的发送中预览，例如 @Alice
-draftText    可恢复的 canonical 文本，例如 @[uid:Alice]
-sendText     最终 wire 文本及 mention sidecar
+previewText  pending UI 展示文本，例如 @Alice
+draftText    可恢复 canonical 文本，例如 @[uid:Alice]
+sendText     wire 文本和 mention sidecar
 ```
 
-禁止用一个字符串同时承担三种职责。
+三者不能由同一个字符串隐式承担。
 
-`DraftCoordinator` 维护：
+### 4.2 附件
 
-```ts
-type DraftOwner =
-  | { kind: "live" }
-  | { kind: "pending"; attemptIds: string[] }
-  | { kind: "empty" }
-```
+- top attachments 通过 snapshot/take/restore 转移所有权。
+- inline attachments 通过 live/leased/handoff 生命周期管理。
+- object URL 必须由 owning extension 或 recovery store 显式 dispose。
+- 部分发送成功时只释放已消费 part，未发送 part 精确恢复。
 
-规则：
+### 4.3 跨实例 recovery
 
-- live editor 内容始终优先。
-- 编辑器为空且存在 pre-enqueue attempt 时，持久化 ordered pending `draftText`。
-- attempt 入队后，只移除该 attempt 对应的草稿片段。
-- 不通过字符串相等判断草稿归属。
-- canonical draft 不携带内部 trust mark，恢复 mention 时继续 fail-closed。
-
-### 8.1 跨编辑器恢复
-
-发送期间切换频道会销毁原 Tiptap editor。尚未入队的 compose 不能继续回写旧 editor，必须转移到按频道存储：
+发送期间切换频道或卸载 editor 时，失败 compose 不能回写旧 editor：
 
 ```text
-old MessageInput settle failure
-  -> ComposeRecoveryStore.add(channelKey, attempt)
-  -> notify active Conversation subscriber
-  -> restore latest persisted/live draft first
-  -> prepend failed attempts in arrival order
-  -> consume recovery records without disposing transferred resources
+old coordinator settle
+  -> ComposeRecoveryStore.add(channelKey, record)
+  -> active Conversation subscriber
+  -> suppress the exact provisional draft owned by pending attempt IDs
+  -> hydrate failed attempts in arrival order
+  -> atomically consume recovery ownership and publish the hydrated live draft
 ```
 
-当前存储策略：
+`ComposeRecoveryStore` 同时管理 recovery record 和 session 草稿 revision，不能拆成两个独立
+store。每次远端草稿写入都会生成新 revision；settlement 只有在 revision 未变化，或当前草稿仍
+由自己的 `attemptId` 持有时才能清理。即使新旧草稿文本完全相同，也不能绕过 revision 和
+attempt ownership。发送捕获的 revision 使用引用计数 lease，直到 settlement `finally` 释放；
+活跃发送不会因 TTL 或频道容量淘汰而失去清理依据。
 
-- session 内存级，不使用 `Conversation` 实例静态字段。
-- 每频道最多 20 条，最多 50 个频道，TTL 30 分钟。
-- attempt ID 去重，多个失败 attempt 按到达顺序恢复。
-- 正常恢复表示 `File` 和 object URL 所有权已转移给新 editor，不执行 dispose。
-- recovery callback 必须同步返回是否已接管记录；未接管或抛错时旧 composer 立即释放资源。
-- TTL、容量淘汰会显式释放尚未转移的 object URL；document unload 由浏览器回收。
-- recovery 只在 reply/edit target 为空时恢复目标，用户更新的选择始终优先。
-- 远端草稿和 live draft 先恢复，失败 compose 再前置合并；禁止因 recovery 存在而跳过新草稿。
+recovery record 是 session 内存级：每频道最多 20 条、最多 50 个频道、TTL 30 分钟。record
+过期或被淘汰时，对应 provisional draft ownership 必须同时释放，使远端草稿重新可见。正在
+运行但尚未产生 recovery 的 attempt ownership 不按时间单独过期，由 settlement 或频道容量
+淘汰结束。
 
-当前不把 recovery `File` 写入 IndexedDB。页面重载后原发送任务和 settle 上下文已经终止，单独持久化文件会引入存储配额、权限、版本迁移和孤儿 Blob 清理问题。文本草稿继续走现有远端 draft；如果后续产品要求“浏览器崩溃后恢复附件”，应作为独立的 durable outbox 设计，而不是扩展当前临时 recovery store。
+hydration 成功后必须立即把 editor 的 canonical draft 回写到远端；部分成功时不能继续保留包含
+已发送 part 的旧 provisional draft。hydration 先对同一批 recovery 做完整 preflight，任一记录
+无法构建或附件资源 ID 冲突就整批不应用、不 acknowledge，避免成功子集覆盖仍依赖 provisional
+draft 的失败子集。
 
-## 9. 发送计划
+所有远端草稿 POST 通过 session 级 `ComposeDraftWriteQueue` 按 channel 串行执行。旧实例的
+provisional 保存必须先于新实例的 hydration 精确回写完成，不能只保证内存 revision 正确而让
+服务端最终落盘顺序反转。
+当前实现不会把 `File` 写入 IndexedDB，也不承诺浏览器崩溃或刷新后的附件恢复。需要跨重载
+恢复时，应单独设计 durable outbox。
 
-`buildChatSendPlan()` 是纯函数，输入 `ChatSendRequest`，输出明确的操作序列：
+## 5. 扩展模型
+
+### 5.1 实例扩展 bundle
+
+composition root 必须只创建一次：
 
 ```ts
-export interface ChatSendPlan {
-  attemptId: string
-  operations: ChatSendOperation[]
-}
-
-export type ChatSendOperation =
-  | { kind: "edit_text"; partIds: string[]; content: TextPayload }
-  | { kind: "send_text"; partIds: string[]; content: TextPayload }
-  | { kind: "send_media"; partIds: string[]; attachment: AttachmentComposePart }
-  | { kind: "send_rich_text"; partIds: string[]; blocks: RichTextBlock[] }
-  | { kind: "send_extension"; partIds: string[]; extensionId: string; payload: unknown }
+const extensions = createDefaultChatComposerExtensions<Message>();
 ```
 
-计划构建规则：
+同一个 `extensions` 实例同时传给：
 
-- text + image 且不含普通文件时，可聚合为一条 RichText operation。
-- top image 被聚合后不能再次生成独立 media operation。
-- reply/edit target 在 capture 时确定，不能在队列执行时读取 live VM。
-- 每个 operation 都必须声明消费的 part ID。
-- executor 只报告 operation 是否入队，settle 层再计算哪些 part 需要恢复。
+- `<ChatComposer extensions={extensions} />`
+- `createConversationChatSendHandler({ extensions, ... })`
 
-## 10. 渲染扩展架构
+这样 editor capture、send operation 和 pending render 使用同一个扩展世界。不得在组件 render
+期间重复创建，也不得恢复模块级可变单例。
 
-渲染扩展分成三层，不能使用同一个 React renderer 覆盖所有阶段。
+### 5.2 新增可发送 editor part
 
-### 10.1 编辑器节点渲染
+一个新 part 至少需要三段能力：
 
-负责编辑中的节点、NodeView、捕获和恢复。
+1. editor compose part：capture、restore、dispose、toSendBlock。
+2. send operation：planner 生成 operation，registry 注册 handler。
+3. pending renderer：为发送中状态提供稳定 UI。
 
-```ts
-export interface ComposerEditorExtension<TPayload> {
-  id: string
-  version: number
-  tiptapExtensions(): Extension[]
-  capture(node: JSONContent, context: CaptureContext): ComposePart<TPayload> | null
-  restore(part: ComposePart<TPayload>, context: RestoreContext): JSONContent[]
-}
-```
-
-例如 attachment 扩展负责：
-
-- 注册 `AttachmentNode`。
-- 把 attachment node 转为 `AttachmentComposePart`。
-- 部分失败时恢复 node。
-- 管理 File 引用和 preview URL 生命周期。
-
-### 10.2 输入框和 pending preview 渲染
-
-负责顶部附件区、发送中预览、失败恢复提示等即时 UI。
-
-```tsx
-export interface ComposerPartRenderer<TPayload> {
-  extensionId: string
-  renderInline?(part: ComposePart<TPayload>): React.ReactNode
-  renderTray?(part: ComposePart<TPayload>): React.ReactNode
-  renderPending?(part: ComposePart<TPayload>): React.ReactNode
-}
-```
-
-`ChatComposerView` 只根据 registry 查 renderer：
-
-```tsx
-const renderer = renderRegistry.get(part.kind)
-return renderer?.renderPending?.(part) ?? <UnsupportedPendingPart />
-```
-
-新增节点不修改 `ChatComposerView` 主分支。
-
-### 10.3 接收消息渲染
-
-历史消息渲染继续由消息内容类型和现有消息 renderer 体系负责，不复用 composer renderer。
-
-```ts
-export interface MessageRenderExtension<TContent extends MessageContent> {
-  contentType: number
-  decode(payload: unknown): TContent
-  render(content: TContent, context: MessageRenderContext): React.ReactNode
-}
-```
-
-原因：
-
-- 编辑节点可能包含本地 `File` 和 blob URL，历史消息只包含远端 payload。
-- pending 状态包含上传和恢复动作，历史消息包含 resend、reply 和权限状态。
-- 两者视觉可以共享小型 UI 组件，但不能共享生命周期组件。
-
-### 10.4 完整扩展注册
-
-新增一个可编辑且可发送的内容类型时，提供独立扩展包：
+实现顺序：
 
 ```text
-extensions/location/
-  editorExtension.ts
-  sendExtension.ts
-  composerRenderer.tsx
-  messageRenderer.tsx
-  schema.ts
-  __tests__/
+schema/runtime validation
+  -> editor capture/restore/dispose
+  -> send operation + transport handler
+  -> settlement/recovery mapping
+  -> pending renderer
+  -> focused tests
+  -> production composition root registration
 ```
 
-注册示例：
+只有 operation handler 而没有 restore/dispose，不算完整扩展。发送前遇到无 adapter 的 editor
+part 必须 fail closed，保留原 editor 内容。
 
-```ts
-composerExtensionRegistry.register(locationEditorExtension)
-sendExtensionRegistry.register(locationSendExtension)
-composerRenderRegistry.register(locationComposerRenderer)
-messageRenderRegistry.register(locationMessageRenderer)
-```
+### 5.3 当前扩展限制
 
-当前迁移阶段的 pending UI 已通过
-`features/chat-composer/ui/chatPendingComposeRenderRegistry.tsx` 暴露应用级 registry。
-附件预览是第一个注册 renderer，扩展可以注册更高优先级的 renderer 接管匹配项，
-`MessageInput` 不再持有私有单例。
+- attachment 已完成 capture -> send -> settle -> recovery 的生产闭环。
+- text/mention 仍有专用捕获与解析路径，尚未全部变成通用 editor part。
+- `UnsentEditorBlock` 目前标准化 text/attachment；全新 wire payload 需要同时扩展 settlement
+  和 recovery 映射。
+- 历史消息 renderer 继续按消息 content type 注册，不复用 pending renderer。
+- `ChatComposer.tsx` 仍包含较多 UI/editor 装配代码；后续可以拆视觉组件，但不应再次拆散事务
+  所有权。
 
-发送执行通过 `ChatSendOperationRegistry` 装配。内建 text/edit/media/RichText
-和外部 `extension:*` operation 使用同一分发机制；应用层把 registry 传给
-`ConversationChatTransportHandlers.operationRegistry` 即可增加 operation，不修改 application。
-旧 `operationHandlers` 只保留为内建 operation 覆盖兼容层。
+## 6. UI 变更指南
 
-editor 层已提供 `chatEditorComposePartRegistry`，附件是第一个生产扩展，负责节点
-capture、部分失败 restore、`File` 引用和 object URL dispose。当前 registry 的
-`toSendBlock` 只接受映射到既有 image/file 发送模型的原子节点；没有该 adapter 的 part
-会在编辑器清空前 fail-closed。`UnsentEditorBlock` 仍只标准化 text/attachment，因此
-自定义 wire payload 尚未形成 editor capture → operation → settle → recovery 的完整闭环。
-不能只注册 `extension:*` operation 就宣称新 editor part 已可安全发送。
+当前架构支持在不改发送事务的前提下调整 UI。常见变更位置：
 
-text/mention capture、Tiptap port 和历史消息 renderer 仍需后续迁移，不能把当前
-editor/operation/pending registry 误认为已经完成全部插件化。
+| 需求                   | 修改位置                                     | 不应修改                   |
+| ---------------------- | -------------------------------------------- | -------------------------- |
+| 输入框布局、边距、颜色 | `ui/ChatComposer.tsx`、`ui/ChatComposer.css` | coordinator、transport     |
+| 工具栏按钮             | `ChatComposerProps.toolbar` 或独立 UI 组件   | send plan 主循环           |
+| mention/emoji 面板     | `ui/suggestions/`、Tiptap suggestion adapter | draft/settle               |
+| pending preview        | `PendingComposeRenderRegistry` renderer      | Conversation 分支          |
+| 新 editor 节点外观     | Tiptap NodeView + editor extension           | SDK adapter                |
+| 语音指示器             | `ui/voice/`                                  | ChatComposer send contract |
 
-扩展注册必须发生在应用装配层，domain 不允许 import 具体扩展。
+UI 改动必须保持：
 
-### 10.5 未知扩展降级
+- editor DOM 和 suggestion popup 的生命周期不因状态更新被重复卸载。
+- emoji/mention 选择后先完成 Tiptap transaction，再关闭 popup，避免闪回。
+- IME composing 时 Enter 不触发发送。
+- 控件尺寸稳定，pending 数量、长文件名和翻译文本不能推动整体布局跳动。
+- 视觉组件只接收状态与动作，不读取 SDK、草稿所有权或 transport result。
 
-当前迁移阶段：
+如果只是换皮、移动按钮或重做附件托盘，通常只改 UI 层和视觉测试；如果新增一种可编辑且可
+发送的内容，则按扩展模型完成全链路。
 
-- 已注册但没有 settlement adapter 的 editor part：发送前拒绝消费，保留原编辑器内容。
-- capture 后 owning extension 被注销：已 capture part 继续使用原 extension 的生命周期租约；
-  无租约的重建 part 则抛出可诊断错误，不再静默使用原始 node 或跳过资源释放。
-- 重复 part ID：capture 直接失败，避免后续 Map 覆盖错误 part。
+## 7. Clipboard 与 Keyboard
 
-目标架构仍需补齐：
-
-- 编辑器恢复遇到版本未知但有持久化 fallback 的 part：恢复成可见文本占位，不静默丢弃。
-- pending preview 遇到未知 part：展示统一 unsupported 状态。
-- send plan 遇到未知 extension：返回 `not_enqueued`，保留整个 attempt。
-- 接收消息遇到未知 content type：沿用现有未知消息降级策略。
-
-## 11. Clipboard Pipeline
-
-clipboard handler 使用明确优先级：
+clipboard 优先级固定为：
 
 ```text
 secret guard
   -> Octo RichText payload
   -> external HTML link conversion
-  -> image / file paste
+  -> image/file paste
   -> plain text fallback
 ```
 
-接口：
+HTML 使用 `DOMParser`，只保留安全的 `http/https` 链接。secret guard 永远最高优先级。
 
-```ts
-export interface ClipboardHandler {
-  id: string
-  priority: number
-  handle(context: ClipboardContext): ClipboardResult
-}
+键盘优先级：
 
-type ClipboardResult =
-  | { handled: true }
-  | { handled: false }
-```
-
-要求：
-
-- secret guard 永远最高优先级。
-- HTML 使用 `DOMParser`，禁止正则解析 HTML。
-- 外部 `<a href>` 仅保留安全 http/https URL，并转换为 Markdown source text。
-- 不恢复 Tiptap autolink。
-- `README.md`、`xxx.md` 保持普通文本。
-
-## 12. Keyboard Policy
-
-键盘行为采用两层策略，不建立一个接管全部 ProseMirror keymap 的巨大状态机。
-
-### Suggestion 层
-
-mention 和 emoji plugin 负责：
-
-- ArrowUp / ArrowDown。
-- 普通 Enter 选择候选项。
-- Escape 关闭候选项。
-- Shift+Enter 必须返回 false，让 Tiptap HardBreak 处理。
-
-### Composer 层
-
-`keyboardPolicy.ts` 负责：
-
-```ts
-type ComposerKeyAction =
-  | "pass"
-  | "submit"
-  | "slash_select"
-  | "slash_close"
-  | "alt_action"
-```
-
-优先级：
-
-1. IME composing：`pass`。
-2. suggestion active：`pass` 给 suggestion plugin。
+1. IME composing：交给输入法。
+2. mention/emoji suggestion active：交给 suggestion plugin。
 3. slash menu：处理选择、关闭和导航。
-4. Alt+Enter：`alt_action`。
-5. Enter 且非 Shift：`submit`。
-6. Shift+Enter：`pass` 给 Tiptap HardBreak。
+4. Alt+Enter：执行替代动作。
+5. Enter 且非 Shift：提交。
+6. Shift+Enter：交给 Tiptap HardBreak。
 
-## 13. ChatTransportPort
+## 8. Conversation 边界
 
-当前第一阶段使用 operation 级窄接口，避免把 SDK 类型泄漏到 domain 和
-application：
+`Conversation` 负责 composition root 和宿主能力：
 
-```ts
-export interface ChatTransportResult {
-  enqueuedPartIds: string[]
-  messageId?: string
-}
+- 创建实例级 extensions。
+- 提供 send target、draft、channel、reply/edit 状态。
+- 提供上传、SDK content 构造、入队和 ack handlers。
+- 持有跨 ChatComposer 实例的 recovery store。
+- 通过同一 store 记录远端草稿 revision 与 pending attempt ownership。
+- 通过 `createConversationChatSendHandler` 适配发送事务。
 
-export interface ChatTransportPort<TMessage = unknown> {
-  execute(
-    operation: ChatSendOperation<TMessage>,
-    events: {
-      onEnqueued(partIds: readonly string[]): void
-    },
-  ): Promise<ChatTransportResult>
-}
-```
+`Conversation` 不得：
 
-`onEnqueued(partIds)` 是 ack 前的即时事件，也是 compose consumption、pending UI 和
-草稿 ownership 的唯一入队信号；最终 `ChatTransportResult` 用于校验和完整 execution
-记录，不能再次推进 Ledger。application 按 attempt + part ID 去重，重复事件无副作用。
+- 读取或修改 Tiptap JSON。
+- 直接 take/restore composer attachment store。
+- 绕过 ChatComposer 发送 initial compose。
+- 在队列执行时重新读取 live reply/edit target。
+- 根据内容字符串猜测草稿属于哪个 attempt。
+- 让旧实例 settlement 在未验证 session revision 时清理远端草稿。
 
-`executeChatSendPlan()` 按 plan 顺序串行调用 port，并保留每个 operation 的成功、
-部分入队和异常结果。Conversation 适配器内部可以继续拆成
-`precheckAttachment`、`uploadAttachment`、`enqueue`、`edit` 和 ack 等步骤，但这些
-步骤不应成为 composer 的公共协议。
+## 9. 公共入口
 
-语义：
-
-- operation 成功返回的 `enqueuedPartIds` 必须是该 operation 声明的 part ID 子集，且不能重复。
-- 入队成功后，composer 视为已消费；ack 超时或服务端失败不应恢复已入队 part。
-- operation 失败不阻断后续 operation，settle 层根据结果精确恢复未入队 part。
-- Toast 和通知由 adapter/UI 错误呈现层处理，domain 不依赖 UI。
-
-## 14. Chat 与评论输入框的复用边界
-
-Chat Composer 和 Docs `MentionComposer` 不共享完整组件或发送模型。
-
-允许共享：
-
-- Tiptap voice target adapter。
-- 安全 URL 校验。
-- selection 和 replace range 类型。
-- suggestion 键盘辅助函数。
-- 通用 mention candidate 接口。
-
-不共享：
-
-- mention token codec。Chat 和 Docs 的持久化格式不同。
-- attachment store。
-- ChatSendPlan。
-- 草稿 ledger。
-- submit shortcut 配置对象。
-- React composer shell。
-
-语音输入建议抽取：
+feature 外部代码优先从以下入口导入：
 
 ```ts
-export interface VoiceInsertTarget {
-  getText(): string
-  getSelection(): SelectionRange | null
-  replaceAll(text: string): void
-  replaceSelection(text: string): void
-  insertAtCursor(text: string): void
-  focus(): void
-}
+import {
+  ChatComposer,
+  createDefaultChatComposerExtensions,
+  type ChatComposerSendResult,
+} from "../../features/chat-composer";
+
+import { useVoiceInput } from "../../features/chat-composer/voice";
 ```
 
-Chat 和 `MentionComposer` 各自实现 adapter。
+规则：
 
-## 15. 迁移计划
+- 不从 `domain/`、`ui/`、`extensions/`、`recovery/` 等内部目录深导入。
+- 仅需语音 hook 时使用 `voice.ts`，避免总入口引入完整 UI 图。
+- feature 内部测试可以直接测试所属模块；feature 外生产代码使用公共入口。
+- 包消费者可以从 `@octo/base` 使用根入口已公开的 composer contract。
 
-### PR 1：生命周期基线
+## 10. 测试与验收
 
-范围：
+### 10.1 自动化测试
 
-- 增加 queued send + provisional draft 集成测试。
-- 修正上一 attempt 尚未 remove 时下一任务启动的问题。
-- 拆分 `previewText` 和 canonical `draftText`。
-- pending 草稿保留 mention 结构和换行。
+```bash
+cd packages/dmworkbase
+pnpm test
 
-不做：
+cd ../..
+pnpm --filter @octo/web build
+```
 
-- 不移动 UI 文件。
-- 不修改消息 payload。
+重点测试覆盖：
 
-### PR 2：稳定发送契约
+- rapid consecutive sends 的捕获顺序和队列隔离。
+- target/draft/channel/expanded 的 capture-time 语义。
+- partial enqueue、restore error、recovery handoff 和资源 dispose。
+- extension bundle 隔离、rerender 稳定性和 production attachment pipeline。
+- mention 实例隔离、emoji/mention Shift+Enter、clipboard handler 优先级。
+- initial compose 的 prepared/rejected/attempted/throw 分支。
 
-范围：
+### 10.2 浏览器验收
 
-- 引入 `ComposeAttempt`、`ChatSendRequest`、`ChatSendOutcome`。
-- 将位置参数改为单对象参数。
-- 内部移除 `void | boolean` 结果。
-- 兼容 adapter 只保留在旧入口边界。
+每次修改 UI、keyboard、clipboard、editor lifecycle 或 Conversation 装配后，至少验证：
 
-### PR 3：Attempt Ledger
+1. 中文输入法候选期间按 Enter 不发送；确认文字后 Enter 只发送一次。
+2. 粘贴真实 HTML 链接，安全 URL 正确转 Markdown，普通 `.md` 文本不误判。
+3. 第一条消息等待上传或 ack 时立即输入并发送第二条，两条内容和顺序正确。
+4. pre-enqueue 阶段切换会话，旧内容不进入新会话，失败内容恢复到原 channel。
+5. recovery 文本与 provisional draft 相同也只出现一次；附件只恢复一份。
+6. emoji/mention 选择后 popup 一次关闭，不闪回。
+7. 文本、top attachment、inline attachment、RichText 混排发送与失败恢复。
+8. reply/edit target 在点击发送时固定，后续切换选择不改变已排队 attempt。
 
-范围：
+## 11. Review 与提交纪律
 
-- 引入 `ComposeAttemptLedger`。
-- 收口 pending count、pending preview、draft ownership 和 restore offset。
-- 删除散落的 pending refs。
+关键节点必须按以下顺序完成：
 
-### PR 4：发送计划和 executor
+1. 聚焦测试通过。
+2. Web 生产构建通过。
+3. 独立 reviewer 检查事务语义、资源所有权、扩展边界和缺失测试。
+4. 关闭所有 actionable findings。
+5. 运行完整 `dmworkbase` 测试。
+6. 提交单一主题 commit。
 
-范围：
+禁止把未验证的视觉改动、发送语义变化和目录整理混在同一个提交中。
 
-- 提取 `buildChatSendPlan()`。
-- 提取 `executeChatSendPlan()`。
-- 为 text、top attachment、inline attachment、RichText mixed、reply、edit 和部分失败补齐测试。
-- `Conversation` 只提供 transport port 和消息上下文。
+## 12. 后续工作
 
-### PR 5：Editor 与附件拆分
+核心重构已完成，后续工作是增量演进，不再依赖旧架构：
 
-范围：
-
-- 提取 editor port、attachment store、capture 和 restore。
-- `MessageInput/index.tsx` 变为兼容装配层。
-- 显式关闭列表 extension。
-
-当前进度：
-
-- `ComposeEditorPort`、editor compose part registry 和 attachment capture/restore 已提取。
-- `ChatComposerAttachmentStore` 已替代 `attachmentFilesRef`、`topAttachmentsRef` 及其双写逻辑。
-- 顶部附件在发送时先 snapshot，editor 成功清空后再按 ID take；失败 restore 和 recovery
-  通过同一 store 去重回插，避免同步异常提前移走附件。
-- inline `File` 与 preview URL 已合并为 store 资源：发送时 leased，失败恢复时转回 live，
-  成功时统一 dispose，editor 销毁时无 revoke 地 handoff 给 recovery。
-
-### PR 6：Clipboard 与 Keyboard
-
-范围：
-
-- 建立 clipboard pipeline。
-- 修复外部 HTML link paste。
-- 提取 keyboard policy。
-- 增加 IME、slash、mention、emoji、Shift+Enter 组合测试。
-
-当前进度：
-
-- clipboard pipeline 已固定 secret、Octo rich text、普通 HTML/text、file/items 的优先级，
-  并通过关闭 Link paste rule 保留显式外部链接且不自动链接 `.md` 文本。
-- keyboard policy 已从 React/Tiptap 副作用中提取，明确 IME、slash、mention、emoji、
-  Alt+Enter、Enter 和 Shift+Enter 的优先级。
-
-### PR 7：渲染扩展注册
-
-范围：
-
-- 引入 editor、send、composer render registry。
-- 先迁移 attachment 作为参考扩展。
-- 保持现有 message renderer 不变，仅增加明确适配边界。
-
-### PR 8：评论语音 adapter
-
-范围：
-
-- 提取 Tiptap voice target adapter。
-- Chat 保持行为不变。
-- Docs `MentionComposer` 接入语音输入。
-
-## 16. 测试策略
-
-### 16.1 Domain 单测
-
-- attempt 状态迁移。
-- 相同文本的两个 attempt 不混淆。
-- A/B 连续发送的 settle 和 remove 顺序。
-- attachment-only attempt 不消费后续文本草稿。
-- 部分入队仅恢复未发送 part。
-
-### 16.2 Real Tiptap 测试
-
-- capture 后同步清空。
-- restore 保留 mention、hardBreak、段落和 attachment ID。
-- 新草稿不会被失败 attempt 覆盖。
-- 远端草稿与跨编辑器 recovery 同时存在时，恢复顺序为失败 attempt、最新草稿。
-- recovery 到达已挂载的新 Conversation 时能触发恢复。
-- 新 reply/edit target 不被旧 recovery 覆盖。
-- extension part 可以 capture、restore 和降级。
-
-### 16.3 Send executor 测试
-
-- text 入队。
-- media precheck 失败。
-- upload 后入队。
-- ack timeout 不恢复 composer。
-- mixed payload 不重复消费顶部图片。
-- 一个附件失败时只恢复该附件。
-- reply/edit target 随 attempt 固定。
-
-### 16.4 Clipboard 测试
-
-- secret paste 硬阻断。
-- Octo RichText 优先于普通 HTML。
-- `<a href>` 转 Markdown，并过滤不安全 URL。
-- `README.md` 不触发链接。
-- 图片和文件 fallback。
-
-### 16.5 浏览器测试
-
-jsdom 无法可靠模拟所有 IME 和系统 clipboard 行为，以下场景需要浏览器测试：
-
-- 中文输入法 Enter 上屏不发送。
-- mention/emoji 弹层打开时 Shift+Enter 换行。
-- HTML 链接从真实网页复制后保留 URL。
-- 快速连续发送三条文本和三张图片。
-- 发送 pre-enqueue 阶段切换会话。
-- 暗色模式、expanded 模式和长文本布局。
-
-## 17. 验收标准
-
-重构完成后应满足：
-
-- `MessageInput` 不再包含上传、ack、消息协议和草稿所有权逻辑。
-- `Conversation` 不再读取 Tiptap 文档或操作输入框附件状态。
-- 每次发送都有 attempt ID，所有恢复和释放都可追踪到该 ID。
-- 内部发送 API 不再返回裸 boolean。
-- 新增一个 extension part 不需要修改 ChatComposer 主渲染分支或发送循环。
-- editor、send plan、executor 和 settle 可以独立测试。
-- 现有 MessageInput 测试和 Docs 评论测试继续通过。
-- 手工验证连续发送、失败恢复、reply/edit、草稿、IME 和链接粘贴。
-
-## 18. 风险控制
-
-- 每个 PR 只迁移一个所有权边界。
-- 纯提取 PR 不同时改变用户行为。
-- 行为修复必须先有失败测试。
-- 旧入口在迁移期保留 adapter，所有调用方迁移后再删除。
-- 不以减少行数作为验收标准，以所有权、接口和可测试性作为标准。
-- 新 extension 首先迁移现有 attachment，证明注册机制足够后再开放给新类型。
-
-## 19. 开发检查清单
-
-- 是否明确本 PR 改变的是 capture、plan、execute 还是 settle？
-- 是否保持 `enqueued != acked`？
-- 是否有 attempt ID，而不是通过文本比较归属？
-- 是否说明失败后哪些 part 恢复、哪些保持消费？
-- 是否保持 mention fail-closed？
-- 是否为新增 part 提供 editor、send 和 renderer 扩展？
-- 是否提供未知扩展的降级行为？
-- 是否覆盖连续发送和切换会话？
-- 是否没有把 SDK、WKApp 或 Toast 引入 domain/UI 层？
-- 是否给出可复现的测试命令和手工路径？
+- 将 text/mention capture 逐步统一到 editor compose part contract。
+- 为全新 wire payload 补齐 typed settlement/recovery extension contract。
+- 从 `ChatComposer.tsx` 拆出纯视觉组件，保持 coordinator 和 ports 不变。
+- 为关键浏览器场景建立稳定的 Playwright/端到端 fixture，减少人工验收成本。
+- 只有明确要求跨刷新恢复附件时，才设计 durable outbox。

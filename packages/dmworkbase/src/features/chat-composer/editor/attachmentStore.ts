@@ -14,9 +14,7 @@ type AttachmentStoreListener<TTop> = (items: readonly TTop[]) => void;
  * Taking items transfers ownership to a send attempt; restoring transfers it
  * back. Only resources still owned by the store are released by remove/clear.
  */
-export class ChatComposerAttachmentStore<
-  TTop extends AttachmentStoreTopItem,
-> {
+export class ChatComposerAttachmentStore<TTop extends AttachmentStoreTopItem> {
   readonly attachmentFiles = new Map<string, File>();
   private readonly inlinePreviewUrls = new Map<string, string>();
   private readonly leasedInlineIds = new Set<string>();
@@ -98,7 +96,7 @@ export class ChatComposerAttachmentStore<
     if (removed.length === 0) return false;
     this.topItems = this.topItems.filter((candidate) => candidate.id !== id);
     const urls = new Set(
-      removed.flatMap(({ previewUrl }) => (previewUrl ? [previewUrl] : [])),
+      removed.flatMap(({ previewUrl }) => (previewUrl ? [previewUrl] : []))
     );
     urls.forEach((url) => this.revokeObjectURL(url));
     this.notify();
@@ -155,12 +153,12 @@ export class ChatComposerAttachmentStore<
     this.inlinePreviewUrls.forEach((url, id) => {
       if (!this.leasedInlineIds.has(id)) urls.add(url);
     });
-    this.topItems.flatMap(({ previewUrl }) =>
-      previewUrl ? [previewUrl] : [],
-    ).forEach((url) => urls.add(url));
+    this.topItems
+      .flatMap(({ previewUrl }) => (previewUrl ? [previewUrl] : []))
+      .forEach((url) => urls.add(url));
 
     const liveInlineIds = [...this.attachmentFiles.keys()].filter(
-      (id) => !this.leasedInlineIds.has(id),
+      (id) => !this.leasedInlineIds.has(id)
     );
     liveInlineIds.forEach((id) => {
       this.attachmentFiles.delete(id);
@@ -186,10 +184,18 @@ export class ChatComposerAttachmentStore<
     };
   }
 
+  validateInlineRegistration(
+    id: string,
+    file?: File,
+    previewUrl?: string
+  ): void {
+    this.assertInlineRegistration(id, file, previewUrl);
+  }
+
   private assertInlineRegistration(
     id: string,
     file: File | undefined,
-    previewUrl: string | undefined,
+    previewUrl: string | undefined
   ): void {
     if (this.leasedInlineIds.has(id)) {
       throw new Error(`cannot replace leased inline attachment: ${id}`);
@@ -199,11 +205,7 @@ export class ChatComposerAttachmentStore<
       throw new Error(`inline attachment already registered: ${id}`);
     }
     const currentPreviewUrl = this.inlinePreviewUrls.get(id);
-    if (
-      currentPreviewUrl &&
-      previewUrl &&
-      currentPreviewUrl !== previewUrl
-    ) {
+    if (currentPreviewUrl && previewUrl && currentPreviewUrl !== previewUrl) {
       throw new Error(`inline attachment preview already registered: ${id}`);
     }
   }

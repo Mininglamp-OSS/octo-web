@@ -18,7 +18,7 @@ describe("resolveDraftAfterSend", () => {
         remoteDraftAtSend: "hello",
         draftSavedAfterSend: false,
         pendingDrafts: [draft("a", "hello")],
-      }),
+      })
     ).toBe("");
   });
 
@@ -31,8 +31,37 @@ describe("resolveDraftAfterSend", () => {
         remoteDraftAtSend: "hello",
         draftSavedAfterSend: false,
         pendingDrafts: [draft("a", "hello")],
-      }),
+      })
     ).toBeUndefined();
+  });
+
+  it("does not clear a draft protected by another in-flight attempt", () => {
+    expect(
+      resolveDraftAfterSend({
+        attemptId: "new",
+        protectedPendingAttemptIds: ["older"],
+        remoteDraft: "older draft",
+        remoteDraftAtSend: "older draft",
+        draftSavedAfterSend: false,
+        pendingDrafts: [draft("new", "new message")],
+      })
+    ).toBeUndefined();
+  });
+
+  it("allows cleanup after a captured protection becomes stale", () => {
+    expect(
+      resolveDraftAfterSend({
+        attemptId: "new",
+        protectedPendingAttemptIds: [],
+        remoteDraft: "new message",
+        remoteDraftAtSend: "older draft",
+        draftSavedAfterSend: true,
+        latestSavedDraft: "new message",
+        latestSavedDraftSource: "pending",
+        latestSavedPendingAttemptIds: ["new"],
+        pendingDrafts: [draft("new", "new message")],
+      })
+    ).toBe("");
   });
 
   it("does not clear a newer live draft even when its text equals the sent text", () => {
@@ -44,7 +73,7 @@ describe("resolveDraftAfterSend", () => {
         remoteDraftAtSend: "",
         draftSavedAfterSend: false,
         pendingDrafts: [draft("a", "same text")],
-      }),
+      })
     ).toBeUndefined();
   });
 
@@ -59,7 +88,7 @@ describe("resolveDraftAfterSend", () => {
         latestSavedDraftSource: "pending",
         latestSavedPendingAttemptIds: ["a"],
         pendingDrafts: [draft("a", "A")],
-      }),
+      })
     ).toBe("");
   });
 
@@ -74,7 +103,7 @@ describe("resolveDraftAfterSend", () => {
         latestSavedDraftSource: "pending",
         latestSavedPendingAttemptIds: ["a", "b"],
         pendingDrafts: [draft("a", "A"), draft("b", "B")],
-      }),
+      })
     ).toBe("B");
 
     expect(
@@ -87,7 +116,7 @@ describe("resolveDraftAfterSend", () => {
         latestSavedDraftSource: "pending",
         latestSavedPendingAttemptIds: ["b"],
         pendingDrafts: [draft("b", "B")],
-      }),
+      })
     ).toBe("");
   });
 
@@ -102,7 +131,7 @@ describe("resolveDraftAfterSend", () => {
         latestSavedDraftSource: "pending",
         latestSavedPendingAttemptIds: ["a", "b"],
         pendingDrafts: [draft("a", "same"), draft("b", "same")],
-      }),
+      })
     ).toBeUndefined();
   });
 
@@ -117,7 +146,7 @@ describe("resolveDraftAfterSend", () => {
         latestSavedDraftSource: "pending",
         latestSavedPendingAttemptIds: ["text"],
         pendingDrafts: [draft("attachment", ""), draft("text", "B")],
-      }),
+      })
     ).toBeUndefined();
   });
 
@@ -132,7 +161,7 @@ describe("resolveDraftAfterSend", () => {
         latestSavedDraftSource: "pending",
         latestSavedPendingAttemptIds: ["a", "b"],
         pendingDrafts: [draft("a", "A"), draft("b", "B")],
-      }),
+      })
     ).toBeUndefined();
   });
 
@@ -146,7 +175,22 @@ describe("resolveDraftAfterSend", () => {
         latestSavedDraft: "C",
         latestSavedDraftSource: "live",
         pendingDrafts: [draft("b", "B")],
-      }),
+      })
+    ).toBeUndefined();
+  });
+
+  it("does not erase a later live draft with identical text", () => {
+    expect(
+      resolveDraftAfterSend({
+        attemptId: "a",
+        remoteDraft: "same",
+        remoteDraftAtSend: "",
+        draftSavedAfterSend: true,
+        latestSavedDraft: "same",
+        latestSavedDraftSource: "live",
+        latestSavedPendingAttemptIds: [],
+        pendingDrafts: [draft("a", "same")],
+      })
     ).toBeUndefined();
   });
 
@@ -158,7 +202,7 @@ describe("resolveDraftAfterSend", () => {
         remoteDraftAtSend: "A",
         draftSavedAfterSend: false,
         pendingDrafts: [draft("a", "A")],
-      }),
+      })
     ).toBeUndefined();
   });
 });
@@ -169,7 +213,7 @@ describe("resolveDraftToPersist", () => {
       resolveDraftToPersist({
         liveDraft: "typing this",
         pendingDrafts: [draft("a", "sent")],
-      }),
+      })
     ).toEqual({
       draft: "typing this",
       source: "live",
@@ -182,7 +226,7 @@ describe("resolveDraftToPersist", () => {
       resolveDraftToPersist({
         liveDraft: "",
         pendingDrafts: [draft("a", "A"), draft("attachment", "")],
-      }),
+      })
     ).toEqual({
       draft: "A",
       source: "pending",
@@ -191,8 +235,8 @@ describe("resolveDraftToPersist", () => {
   });
 
   it("persists an empty draft when nothing is live or pending", () => {
-    expect(
-      resolveDraftToPersist({ liveDraft: "", pendingDrafts: [] }),
-    ).toEqual({ draft: "", source: "empty", pendingAttemptIds: [] });
+    expect(resolveDraftToPersist({ liveDraft: "", pendingDrafts: [] })).toEqual(
+      { draft: "", source: "empty", pendingAttemptIds: [] }
+    );
   });
 });

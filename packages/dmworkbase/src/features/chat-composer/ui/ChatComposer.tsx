@@ -65,7 +65,10 @@ import {
   ChatComposerAttachmentStore,
   type EditorComposePartRegistry,
 } from "../editor";
-import { type ComposeRecoveryRecord } from "../recovery";
+import {
+  type ComposeRecoveryRecord,
+  type RecoveredComposeHydration,
+} from "../recovery";
 import {
   type ChatPendingAttachmentPreview,
   type ChatPendingComposeItem,
@@ -313,7 +316,7 @@ export interface ChatComposerProps {
   onComposeRecovery?: (recovery: ComposeRecoveryRecord) => boolean;
   /** Recover consumed composes transferred from an earlier editor instance. */
   recoveredComposes?: ComposeRecoveryRecord[];
-  onRecoveredComposes?: (attemptIds: string[]) => void;
+  onRecoveredComposes?: (hydration: RecoveredComposeHydration) => void;
   onRestoreRecoveredTarget?: (target: {
     replyMessage?: unknown;
     handlerType: number;
@@ -1047,66 +1050,126 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const restoreRecoveredComposes = useCallback(() => {
     if (!editor || !props.recoveredComposes?.length) return;
 
-    const hydrated: ComposeRecoveryRecord[] = [];
-    let blockOffset = 0;
+    const prepared: Array<{
+      item: ComposeRecoveryRecord;
+      document: ComposeDoc | undefined;
+    }> = [];
+    let preparationFailed = false;
     props.recoveredComposes.forEach((item) => {
-      const registeredInlineIds: string[] = [];
       try {
-        const document = buildComposeRecoveryDocument(
-          {
-            snapshot: item.snapshot,
-            editorAttachments: item.editorAttachments,
-            topAttachments: item.topAttachments,
-          },
-          item.editorBlocks,
-          (value) =>
-            (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
-          extensions.editor.composeParts,
-        );
+        prepared.push({
+          item,
+          document: buildComposeRecoveryDocument(
+            {
+              snapshot: item.snapshot,
+              editorAttachments: item.editorAttachments,
+              topAttachments: item.topAttachments,
+            },
+            item.editorBlocks,
+            (value) =>
+              (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+            extensions.editor.composeParts,
+          ),
+        });
+      } catch (err) {
+        preparationFailed = true;
+        console.error("[MessageInput] compose recovery hydration failed", err);
+      }
+    });
+    // Recovery ownership is a batch: acknowledging only the valid subset
+    // would overwrite the provisional draft while malformed siblings still
+    // depend on it.
+    if (preparationFailed) return;
+
+    const preparedFiles = new Map<string, File>();
+    const preparedPreviewUrls = new Map<string, string>();
+    try {
+      prepared.forEach(({ item }) => {
         const previewUrls = new Map(
           item.editorObjectUrls.map(({ id, url }) => [id, url]),
         );
         item.editorAttachments.forEach(({ id, file }) => {
-          attachmentStore.addInlineFile(id, file, previewUrls.get(id));
-          registeredInlineIds.push(id);
+          const existingFile = preparedFiles.get(id);
+          if (existingFile && existingFile !== file) {
+            throw new Error(`inline attachment already registered: ${id}`);
+          }
+          const previewUrl = previewUrls.get(id);
+          const existingPreviewUrl = preparedPreviewUrls.get(id);
+          if (
+            existingPreviewUrl &&
+            previewUrl &&
+            existingPreviewUrl !== previewUrl
+          ) {
+            throw new Error(
+              `inline attachment preview already registered: ${id}`,
+            );
+          }
+          attachmentStore.validateInlineRegistration(id, file, previewUrl);
+          preparedFiles.set(id, file);
+          if (previewUrl) preparedPreviewUrls.set(id, previewUrl);
         });
-        const fileIds = new Set(item.editorAttachments.map(({ id }) => id));
         item.editorObjectUrls.forEach(({ id, url }) => {
-          if (fileIds.has(id)) return;
-          attachmentStore.addInlinePreviewUrl(id, url);
-          registeredInlineIds.push(id);
-        });
-
-        if (document) {
-          const inserted = restoreComposeSnapshot(
-            document,
-            {
-              isEmpty: () => editor.isEmpty,
-              setContent: (snapshot) =>
-                editor.commands.setContent(snapshot as JSONContent),
-              focusEnd: () => editor.commands.focus("end"),
-              insertContentAtBlock: (offset, nodes) => {
-                const docNode = editor.state.doc;
-                const limit = Math.min(offset, docNode.childCount);
-                let pos = 0;
-                for (let index = 0; index < limit; index += 1) {
-                  pos += docNode.child(index).nodeSize;
-                }
-                editor.commands.insertContentAt(pos, nodes as JSONContent[]);
-              },
-              appendContent: (nodes) =>
-                editor.commands.insertContent(nodes as JSONContent[]),
-            },
-            blockOffset,
+          const existingPreviewUrl = preparedPreviewUrls.get(id);
+          if (existingPreviewUrl && existingPreviewUrl !== url) {
+            throw new Error(
+              `inline attachment preview already registered: ${id}`,
+            );
+          }
+          attachmentStore.validateInlineRegistration(
+            id,
+            preparedFiles.get(id),
+            url,
           );
-          blockOffset += inserted;
-        }
-        hydrated.push(item);
-      } catch (err) {
-        attachmentStore.handoffInlineAttachments(registeredInlineIds);
-        console.error("[MessageInput] compose recovery hydration failed", err);
+          preparedPreviewUrls.set(id, url);
+        });
+      });
+    } catch (err) {
+      console.error("[MessageInput] compose recovery hydration failed", err);
+      return;
+    }
+
+    prepared.forEach(({ item }) => {
+      const previewUrls = new Map(
+        item.editorObjectUrls.map(({ id, url }) => [id, url]),
+      );
+      item.editorAttachments.forEach(({ id, file }) => {
+        attachmentStore.addInlineFile(id, file, previewUrls.get(id));
+      });
+      const fileIds = new Set(item.editorAttachments.map(({ id }) => id));
+      item.editorObjectUrls.forEach(({ id, url }) => {
+        if (fileIds.has(id)) return;
+        attachmentStore.addInlinePreviewUrl(id, url);
+      });
+    });
+
+    let blockOffset = 0;
+    prepared.forEach(({ document }) => {
+      if (document) {
+        const inserted = restoreComposeSnapshot(
+          document,
+          {
+            isEmpty: () => editor.isEmpty,
+            setContent: (snapshot) =>
+              editor.commands.setContent(snapshot as JSONContent),
+            focusEnd: () => editor.commands.focus("end"),
+            insertContentAtBlock: (offset, nodes) => {
+              const docNode = editor.state.doc;
+              const limit = Math.min(offset, docNode.childCount);
+              let pos = 0;
+              for (let index = 0; index < limit; index += 1) {
+                pos += docNode.child(index).nodeSize;
+              }
+              editor.commands.insertContentAt(pos, nodes as JSONContent[]);
+            },
+            appendContent: (nodes) =>
+              editor.commands.insertContent(nodes as JSONContent[]),
+          },
+          blockOffset,
+        );
+        blockOffset += inserted;
       }
     });
+    const hydrated = prepared.map(({ item }) => item);
 
     const recoveredTopAttachments = hydrated.flatMap((item) =>
       item.topAttachments.filter(
@@ -1125,7 +1188,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       props.onExpandChange?.(true);
     }
     if (hydrated.length > 0) {
-      props.onRecoveredComposes?.(hydrated.map(({ attemptId }) => attemptId));
+      props.onRecoveredComposes?.({
+        attemptIds: hydrated.map(({ attemptId }) => attemptId),
+        draftText: extractMentionsFromEditor(editor) ?? "",
+      });
     }
   }, [
     editor,
