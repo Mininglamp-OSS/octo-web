@@ -106,9 +106,6 @@ export interface ExpertAgent extends ExpertBase {
 
 export type ExpertItem = ExpertSquad | ExpertAgent;
 
-/** Target workspace shown in generated prompts (prototype: window.prototypeData.workspace). */
-export const EXPERT_WORKSPACE = "增长产品组";
-
 /** Filter categories. "全部" is the pseudo "all" bucket, always first. */
 export const EXPERT_CATEGORIES: string[] = [
   "全部",
