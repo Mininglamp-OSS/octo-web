@@ -34,7 +34,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
 vi.mock("@douyinfe/semi-icons", () => ({}));
 
 // Mock VoiceFeedbackNotice
-vi.mock("@octo/base/src/Components/MessageInput/VoiceFeedbackNotice", () => ({
+vi.mock("../../../../packages/dmworkbase/src/features/voice-input/VoiceFeedbackNotice", () => ({
   default: (props: any) => {
     const React = require("react");
     return React.createElement("div", { className: "voice-feedback-notice" });
@@ -50,7 +50,7 @@ const mockSharedSpaceFeedbackState = {
 
 const mockVoiceConfig = { current: null as { feedback_url?: string } | null };
 
-vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
+vi.mock("../../../../packages/dmworkbase/src/features/voice-input/useSpaceFeedbackSetting", () => ({
   default: () => ({
     spaceSetting: mockSharedSpaceFeedbackState.spaceSetting,
     loaded: mockSharedSpaceFeedbackState.loaded,

@@ -7,8 +7,8 @@ import useSpaceFeedbackSetting, {
   acceptVoiceInput,
   disableVoiceInput,
   setSharedVoiceConfig,
-} from '../MessageInput/useSpaceFeedbackSetting';
-import VoiceFeedbackNotice from '../MessageInput/VoiceFeedbackNotice';
+} from '../../features/voice-input/useSpaceFeedbackSetting';
+import VoiceFeedbackNotice from '../../features/voice-input/VoiceFeedbackNotice';
 import WKApp from '../../App';
 import VoiceService from '../../Service/VoiceService';
 import { Dap } from '../../Service/Dap';

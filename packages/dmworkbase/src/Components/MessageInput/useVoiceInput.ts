@@ -17,7 +17,7 @@ import {
   getSharedSpaceFeedbackState,
   getSharedVoiceConfig,
   subscribe as subscribeSpaceFeedback,
-} from "./useSpaceFeedbackSetting";
+} from "../../features/voice-input/useSpaceFeedbackSetting";
 
 export interface UseVoiceInputOptions {
   maxDuration?: number;

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Checkbox, Spin } from "@douyinfe/semi-ui";
 import DOMPurify from "dompurify";
-import WKModal from "../WKModal";
-import WKButton from "../WKButton";
+import WKModal from "../../Components/WKModal";
+import WKButton from "../../Components/WKButton";
 import { getDocument } from "../../Service/DocumentService";
 import { useI18n } from "../../i18n";
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ensureVoiceFeedbackLoaded } from '../MessageInput/useSpaceFeedbackSetting';
+import { ensureVoiceFeedbackLoaded } from '../../features/voice-input/useSpaceFeedbackSetting';
 import WKApp from '../../App';
 import VoiceSettingsPanel from './VoiceSettingsPanel';
 import { useI18n } from '../../i18n';

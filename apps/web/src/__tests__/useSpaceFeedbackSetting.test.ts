@@ -30,7 +30,7 @@ import {
   getSharedSpaceFeedbackState,
   resetSharedSpaceSetting,
   setSharedSpaceSetting,
-} from "@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting";
+} from "@octo/base/src/features/voice-input/useSpaceFeedbackSetting";
 
 const mockGetSpaceSetting = vi.mocked(getSpaceSetting);
 

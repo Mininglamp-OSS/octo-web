@@ -58,7 +58,7 @@ vi.mock("@octo/base/src/Service/LocalModelService", () => ({
 
 // Mock useSpaceFeedbackSetting helpers
 vi.mock(
-  "@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting",
+  "../../../../packages/dmworkbase/src/features/voice-input/useSpaceFeedbackSetting",
   () => ({
     fetchAndApplySpaceSetting: vi.fn().mockResolvedValue(undefined),
     resetSharedSpaceSetting: vi.fn(),

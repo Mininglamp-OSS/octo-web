@@ -7,7 +7,7 @@ import {
   IconClose,
   IconDropdown,
 } from "./icons";
-import { getFileIcon as getFileIconUrl } from "../MessageInput/AttachmentNode";
+import { getFileIcon as getFileIconUrl } from "../../Utils/fileIcon";
 import { FilePreviewInfo } from "./types";
 import { isImageType } from "./config";
 import { useI18n } from "../../i18n";

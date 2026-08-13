@@ -43,7 +43,7 @@ function resetHookReturn() {
 
 resetHookReturn();
 
-vi.mock('../../MessageInput/useSpaceFeedbackSetting', () => ({
+vi.mock('../../../features/voice-input/useSpaceFeedbackSetting', () => ({
   default: () => hookReturn,
   toggleVoiceFeedback: (...args: any[]) => hoisted.toggleVoiceFeedback(...args),
   acceptVoiceInput: (...args: any[]) => hoisted.acceptVoiceInput(...args),
@@ -74,7 +74,7 @@ vi.mock('../../WKButton', () => ({
   __esModule: true,
 }));
 
-vi.mock('../../MessageInput/VoiceFeedbackNotice', () => ({
+vi.mock('../../../features/voice-input/VoiceFeedbackNotice', () => ({
   default: (props: any) => {
     hoisted.noticeMock(props);
     return React.createElement('div', { 'data-testid': 'voice-feedback-notice' },

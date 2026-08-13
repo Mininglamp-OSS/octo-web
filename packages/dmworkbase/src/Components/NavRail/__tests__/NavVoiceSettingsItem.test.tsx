@@ -13,7 +13,7 @@ import { act } from 'react-dom/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { i18n } from '../../../i18n';
 
-vi.mock('../../MessageInput/useSpaceFeedbackSetting', () => ({
+vi.mock('../../../features/voice-input/useSpaceFeedbackSetting', () => ({
   ensureVoiceFeedbackLoaded: vi.fn().mockResolvedValue(undefined),
 }));
 
