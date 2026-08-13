@@ -210,7 +210,7 @@ if (!uiOnly) {
 if (isOctoUiPackage) {
   appendLineIfMissing(
     join(ROOT_DIR, 'packages/octo-ui/src/index.ts'),
-    `export { default as ${name}, ${name} } from './components/${name}'`,
+    `export { default as ${name} } from './components/${name}'`,
   )
   appendLineIfMissing(
     join(ROOT_DIR, 'packages/octo-ui/src/index.ts'),
