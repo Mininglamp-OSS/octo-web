@@ -165,11 +165,15 @@ describe('SummaryReferencePicker', () => {
             await waitFor(() => expect(screen.getByText('快速总结')).toBeInTheDocument());
         });
 
-        it('renders no badge for unknown trigger_type', async () => {
+        // R4 yj P2-4: renamed — unknown trigger_type falls back to the quick
+        // label (summaryHelpers.getSummaryTypeKind default branch), so a badge
+        // IS rendered. Assert the badge text to lock that behaviour.
+        it('falls back to the quick label for unknown trigger_type', async () => {
             const item = makeItem({ referenceable: true, trigger_type: 99 as any });
             renderPicker({ item });
-            // Item should still appear, just without a type badge
+            // Item should still appear, with the quick fallback badge
             await waitFor(() => expect(screen.getByText('测试总结')).toBeInTheDocument());
+            expect(screen.getByText('快速总结')).toBeInTheDocument();
             // The task_no should still render
             expect(screen.getByText('TASK-001')).toBeInTheDocument();
         });
@@ -182,6 +186,23 @@ describe('SummaryReferencePicker', () => {
             });
             renderPicker({ item });
             await waitFor(() => expect(screen.getByText('定时总结')).toBeInTheDocument());
+        });
+
+        // R4 yj P2-1: regression guard. `schedule_id: 0` means "no schedule"
+        // (the sentinel value the backend uses), so a MANUAL summary with
+        // schedule_id=0 must render 快速总结, NOT 定时总结. Without this case
+        // reverting summaryHelpers to the round-3 bug
+        // (`item.schedule_id != null`) leaves the suite green — verified by
+        // reviewer mutation testing.
+        it('renders Quick label when schedule_id is 0 (no-schedule sentinel)', async () => {
+            const item = makeItem({
+                referenceable: true,
+                trigger_type: TriggerType.MANUAL,
+                schedule_id: 0,
+            });
+            renderPicker({ item });
+            await waitFor(() => expect(screen.getByText('快速总结')).toBeInTheDocument());
+            expect(screen.queryByText('定时总结')).not.toBeInTheDocument();
         });
     });
 
@@ -239,6 +260,97 @@ describe('SummaryReferencePicker', () => {
                 const callArg = mockListSummaries.mock.calls[0][0];
                 expect(callArg.trigger_type).toBeUndefined();
             });
+        });
+    });
+
+    describe('pagination (R4 yj P1-1 / ms P1 / jx 🟡: referenceable items beyond page 1)', () => {
+        it('pages forward and surfaces a referenceable item sitting on page 2', async () => {
+            // Full first page of NON-referenceable items, referenceable one on page 2.
+            // This is the exact regression shape reviewers flagged: with a fixed
+            // page=1, page_size=50 window the referenceable item would be pushed out.
+            const bulkNonRef = Array.from({ length: 100 }, (_, i) => makeItem({
+                task_id: 1000 + i,
+                task_no: `TASK-${1000 + i}`,
+                title: `不可引用总结 ${i}`,
+                referenceable: false,
+            }));
+            const refItem = makeItem({ task_id: 9001, task_no: 'TASK-9001', title: '第二页可引用总结', referenceable: true });
+
+            mockListSummaries.mockImplementation((params: any) => {
+                if (params.page === 1) return Promise.resolve({ items: bulkNonRef, total: 101 });
+                if (params.page === 2) return Promise.resolve({ items: [refItem], total: 101 });
+                return Promise.resolve({ items: [], total: 101 });
+            });
+
+            const { rerender } = render(<SummaryReferencePicker visible={false} onCancel={() => {}} onSelect={() => {}} />);
+            rerender(<SummaryReferencePicker visible={true} onCancel={() => {}} onSelect={() => {}} />);
+
+            await waitFor(() => expect(screen.getByText('第二页可引用总结')).toBeInTheDocument());
+            // Page 1 full (100 == page_size) so it must have requested page 2
+            const pages = mockListSummaries.mock.calls.map((c) => c[0].page);
+            expect(pages).toContain(2);
+            // Non-referenceable bulk must not be rendered
+            expect(screen.queryByText('不可引用总结 0')).not.toBeInTheDocument();
+        });
+
+        it('stops on a short final page without over-paging', async () => {
+            const shortPage = Array.from({ length: 30 }, (_, i) => makeItem({
+                task_id: 2000 + i,
+                task_no: `TASK-${2000 + i}`,
+                title: `短页总结 ${i}`,
+                referenceable: false,
+            }));
+            mockListSummaries.mockImplementation((params: any) => {
+                if (params.page === 1) return Promise.resolve({ items: shortPage, total: 30 });
+                return Promise.resolve({ items: [], total: 30 });
+            });
+
+            const { rerender } = render(<SummaryReferencePicker visible={false} onCancel={() => {}} onSelect={() => {}} />);
+            rerender(<SummaryReferencePicker visible={true} onCancel={() => {}} onSelect={() => {}} />);
+
+            await waitFor(() => expect(screen.getByTestId('empty')).toBeInTheDocument());
+            // 30 < page_size=100 → short page → stop; must not request page 2
+            expect(mockListSummaries).toHaveBeenCalledTimes(1);
+            expect(mockListSummaries.mock.calls[0][0].page).toBe(1);
+        });
+
+        it('dedupes an item that appears on both pages', async () => {
+            // To actually reach page 2, page 1 must be FULL (100 items) and leave
+            // fewer than PICKER_TARGET_COUNT (50) referenceable items collected.
+            // page 1: 60 non-referenceable + 40 referenceable (one of them,
+            // task_id=555, is duplicated on page 2).
+            const page1: SummaryListItem[] = [
+                ...Array.from({ length: 60 }, (_, i) => makeItem({
+                    task_id: 3000 + i,
+                    task_no: `TASK-${3000 + i}`,
+                    title: `不可引用 ${i}`,
+                    referenceable: false,
+                })),
+                ...Array.from({ length: 39 }, (_, i) => makeItem({
+                    task_id: 4000 + i,
+                    task_no: `TASK-${4000 + i}`,
+                    title: `可引用 ${i}`,
+                    referenceable: true,
+                })),
+                makeItem({ task_id: 555, task_no: 'TASK-555', title: '重复总结', referenceable: true }),
+            ];
+            const page2 = [makeItem({ task_id: 555, task_no: 'TASK-555', title: '重复总结', referenceable: true })];
+
+            mockListSummaries.mockImplementation((params: any) => {
+                if (params.page === 1) return Promise.resolve({ items: page1, total: 101 });
+                if (params.page === 2) return Promise.resolve({ items: page2, total: 101 });
+                return Promise.resolve({ items: [], total: 101 });
+            });
+
+            const { rerender } = render(<SummaryReferencePicker visible={false} onCancel={() => {}} onSelect={() => {}} />);
+            rerender(<SummaryReferencePicker visible={true} onCancel={() => {}} onSelect={() => {}} />);
+
+            await waitFor(() => expect(screen.getByText('重复总结')).toBeInTheDocument());
+            // page 1 full (100) + only 40 referenceable (< 50 target) → page 2 requested
+            const pages = mockListSummaries.mock.calls.map((c) => c[0].page);
+            expect(pages).toContain(2);
+            // task_id=555 appears in both pages; must render exactly once
+            expect(screen.getAllByText('重复总结')).toHaveLength(1);
         });
     });
 });
