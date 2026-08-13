@@ -43,10 +43,10 @@ import { t as translate, useI18n } from "../../../i18n";
 import {
   announceContextAfterSendReady,
   invokeReadySend,
-  settleConsumedCompose,
   restoreComposeSnapshot,
 } from "../application/sendFlow";
 import { ChatComposerController } from "../application/ChatComposerController";
+import { ChatComposerCoordinator } from "../application/ChatComposerCoordinator";
 import type {
   AttachmentFile,
   ChatMention,
@@ -56,7 +56,6 @@ import type {
   EditorContentBlock,
   PendingSendDraft,
   SendDraftSnapshot,
-  SendProgressSnapshot,
   SendTargetSnapshot,
   UnsentEditorBlock,
 } from "../domain";
@@ -64,10 +63,7 @@ import {
   ChatComposerAttachmentStore,
   chatEditorComposePartRegistry,
 } from "../editor";
-import {
-  disposeComposeRecoveryObjectUrls,
-  type ComposeRecoveryRecord,
-} from "../recovery";
+import { type ComposeRecoveryRecord } from "../recovery";
 import {
   chatPendingComposeRenderRegistry,
   type ChatPendingAttachmentPreview,
@@ -78,8 +74,6 @@ export type {
   EditorContentBlock,
 } from "../domain";
 import {
-  composeSnapshotDraftText,
-  composeSnapshotPreviewText,
   consumeCompose,
   buildComposeRecoveryDocument,
   ComposeDoc,
@@ -543,6 +537,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   );
   const [controller] = useState(
     () => new ChatComposerController<PendingSendAttachmentPreview>(),
+  );
+  const [coordinator] = useState(
+    () =>
+      new ChatComposerCoordinator<PendingSendAttachmentPreview>(controller),
   );
   const composerMountedRef = useRef(true);
   const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
@@ -1211,227 +1209,97 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       localMembersRef.current,
     );
 
-    // ⚠️ 关键修复 (octo-web#1280，承接 #227 两轮)：consume-first / restore-on-failure。
-    //
-    // #227 round 1 把同步清理改成「await onSend、仅成功才清」；round 2 再加
-    // snapshot 判定，避免旧 send 清掉用户在等待期间写的新草稿。但 round 2 是
-    // 「全清或全不清」：只要 await 期间文档变了，**已经发出去的内容也留在输入框**
-    // ——这正是 #1280 报的现象（消息已在聊天记录里，输入框还挂着缩略图/文字，
-    // 再按一次 Enter 还会重复发送）。
-    //
-    // 本轮改为：发送开始时就**同步消费** compose（拍快照 → 清空编辑器 → 移除
-    // 本次顶部附件 → 同步取走 reply/edit 目标），await 之后不再对「当前文档」做
-    // 任何判定：
-    //   • 成功 → UI 无需再动，只回收已发出部分的 File 引用与预览 URL；
-    //   • 失败（预检拒绝 / 混排上传失败等未入队情形）→ 把快照插回文档最前面、
-    //     未发出的顶部附件放回附件区、reply/edit 目标复位，round-1 的「失败不丢
-    //     草稿」保护仍然成立；用户在等待期间新写的草稿天然完整保留（round-2）。
-    // 同步消费与还原的实现在 composeConsume.ts（可用真实 Tiptap editor 单测），
-    // 结果编排在 sendFlow.ts 的 runSendWithConsumedCompose。
-    // reply/edit 目标必须与 compose 同步取走（见 SendTargetSnapshot 注释）。
-    const sendTarget = props.onCaptureSendTarget?.();
-    const sendChannel = props.context.channel();
-    const sendChannelKey = `${sendChannel.channelID}:${sendChannel.channelType}`;
-    const isSendChannelActive = () => {
-      const channel = props.context.channel();
-      return `${channel.channelID}:${channel.channelType}` === sendChannelKey;
-    };
-    const sendDraftBaseline = props.onCaptureSendDraft?.();
-    // 本次消费会清空编辑器与本次附件，之前失败还原留下的偏移随之失效。
-    controller.resetRestoreOffsets();
-    const expandedAtSend = expanded;
-    const handle = consumeCompose({
-      editor: {
-        getJSON: () => editor.getJSON() as ComposeDoc,
-        isEmpty: () => editor.isEmpty,
-        isDestroyed: () => !composerMountedRef.current || editor.isDestroyed,
-        clearContent: () => editor.commands.clearContent(),
-        setContent: (doc) => editor.commands.setContent(doc as JSONContent),
-        insertContentAtBlock: (blockOffset, nodes) => {
-          // 把「第 n 个顶层块之前」换算成 ProseMirror 位置。
-          const docNode = editor.state.doc;
-          const limit = Math.min(blockOffset, docNode.childCount);
-          let pos = 0;
-          for (let i = 0; i < limit; i++) {
-            pos += docNode.child(i).nodeSize;
-          }
-          editor.commands.insertContentAt(pos, nodes as JSONContent[]);
+    return coordinator.submit(
+      {
+        text: content,
+        mention,
+        topFiles: topAttachmentFiles,
+        editorBlocks: orderedBlocks,
+        pendingAttachments: pendingAttachmentPreviews,
+      },
+      {
+        host: {
+          channelKey: () => {
+            const channel = props.context.channel();
+            return `${channel.channelID}:${channel.channelType}`;
+          },
+          isChannelActive: (channelKey) => {
+            const channel = props.context.channel();
+            return `${channel.channelID}:${channel.channelType}` === channelKey;
+          },
+          captureSendTarget: () => props.onCaptureSendTarget?.(),
+          captureSendDraft: () => props.onCaptureSendDraft?.(),
+          getExpanded: () => expanded,
+          setExpanded: (nextExpanded) => {
+            setExpanded(nextExpanded);
+            props.onExpandChange?.(nextExpanded);
+          },
+          send: props.onSend,
+          onSendSettled: props.onSendSettled,
+          handoffRecovery: props.onComposeRecovery,
+          notifyRestoreError: (err, step) => {
+            console.error(`[MessageInput] compose ${step} failed`, err);
+            Notification.error({
+              className: "wk-octo-notification",
+              content:
+                err instanceof ComposeRestoreUnavailableError
+                  ? t("base.messageInput.send.restoreFailed")
+                  : t("base.conversation.message.sendFailed"),
+            });
+          },
         },
-        appendContent: (nodes) =>
-          editor.commands.insertContent(nodes as JSONContent[]),
-        focusEnd: () => editor.commands.focus("end"),
-      },
-      attachmentFiles: attachmentStore.attachmentFiles,
-      takeEditorAttachments: (ids) =>
-        attachmentStore.takeInlineAttachments(ids),
-      restoreEditorAttachments: (ids) =>
-        attachmentStore.restoreInlineAttachments(ids),
-      disposeEditorAttachment: (id, previewUrl) =>
-        attachmentStore.disposeInlineAttachment(id, previewUrl),
-      // 部分还原时把 @[uid:label] 还原成 mention 节点（与草稿恢复同一套解析）。
-      parseTextToNodes: (value) =>
-        (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
-      snapshotTopAttachments: () => attachmentStore.snapshotTopAttachments(),
-      takeTopAttachments: (ids) => {
-        attachmentStore.takeTopAttachments(ids);
-      },
-      restoreTopAttachments: (items, offset) =>
-        attachmentStore.restoreTopAttachments(
-          items as TopAttachmentItem[],
-          offset,
-        ),
-      getRestoreOffsets: () => controller.getRestoreOffsets(),
-      onRestored: (offsets) => controller.advanceRestoreOffsets(offsets),
-      onRestoreCompose: () => {
-        // 整条 compose 回到输入框时，把 reply/edit 目标和展开态也一起复位，
-        // 否则「编辑消息」失败后重试会变成发一条新消息、大段草稿被挤在收起态里
-        // (#1280 review)。restore() 自身幂等，且用户已选新目标时不会覆盖。
-        if (isSendChannelActive()) sendTarget?.restore();
-        if (isSendChannelActive() && expandedAtSend) {
-          setExpanded(true);
-          props.onExpandChange?.(true);
-        }
-      },
-      onRestoreSendTarget: () => {
-        if (isSendChannelActive()) sendTarget?.restore();
-      },
-      onRestoreError: (err, step) => {
-        // 内容既不在输入框也不在消息列表时必须让用户知道，不能静默丢失
-        // （典型触发：还原时会话已被切走、editor 已 destroy）。
-        console.error(`[MessageInput] compose ${step} failed`, err);
-        Notification.error({
-          className: "wk-octo-notification",
-          content:
-            err instanceof ComposeRestoreUnavailableError
-              ? t("base.messageInput.send.restoreFailed")
-              : t("base.conversation.message.sendFailed"),
-        });
-      },
-    });
-    const previewText = composeSnapshotPreviewText(handle.snapshot);
-    const draftText = composeSnapshotDraftText(handle.snapshot);
-    const pendingAttempt = controller.capture({
-      previewText,
-      draftText,
-      attachments: pendingAttachmentPreviews,
-    });
-    const pendingId = pendingAttempt.id;
-    const sendDraft = sendDraftBaseline
-      ? { ...sendDraftBaseline, draftText }
-      : undefined;
-    const sendProgress: SendProgressSnapshot = {
-      setExpectedPartIds: (partIds) =>
-        controller.setExpectedPartIds(pendingId, partIds),
-      markPartsEnqueued: (partIds) =>
-        controller.markPartsEnqueued(pendingId, partIds),
-    };
-
-    if (expanded) {
-      setExpanded(false);
-      props.onExpandChange?.(false);
-    }
-
-    // 串行队列取代旧的重入保护：pending 期间的 Enter 不再被静默丢弃（#1280 的
-    // 「连点没反应」），而是排在前一条之后执行，消息顺序仍由 Conversation 等 ack
-    // 保证。onSend 未 settle 前把 compose 内容登记到 controller，供草稿
-    // 保存使用；「发送中」预览和切会话守卫只查看尚未产生本地气泡的条目。
-    return controller.enqueueAttempt(
-      pendingId,
-      async () => {
-        const settlement = await settleConsumedCompose(
-          () => props.onSend!({
-              attemptId: pendingId,
-              text: content,
-              mention,
-              topFiles:
-                topAttachmentFiles.length > 0
-                  ? topAttachmentFiles
-                  : undefined,
-              editorBlocks:
-                orderedBlocks.length > 0 ? orderedBlocks : undefined,
-              sendTarget,
-              sendDraft,
-              sendProgress,
+        editor: {
+          consume: (context) =>
+            consumeCompose({
+              editor: {
+                getJSON: () => editor.getJSON() as ComposeDoc,
+                isEmpty: () => editor.isEmpty,
+                isDestroyed: () =>
+                  !composerMountedRef.current || editor.isDestroyed,
+                clearContent: () => editor.commands.clearContent(),
+                setContent: (doc) =>
+                  editor.commands.setContent(doc as JSONContent),
+                insertContentAtBlock: (blockOffset, nodes) => {
+                  const docNode = editor.state.doc;
+                  const limit = Math.min(blockOffset, docNode.childCount);
+                  let pos = 0;
+                  for (let i = 0; i < limit; i++) {
+                    pos += docNode.child(i).nodeSize;
+                  }
+                  editor.commands.insertContentAt(
+                    pos,
+                    nodes as JSONContent[],
+                  );
+                },
+                appendContent: (nodes) =>
+                  editor.commands.insertContent(nodes as JSONContent[]),
+                focusEnd: () => editor.commands.focus("end"),
+              },
+              attachmentFiles: attachmentStore.attachmentFiles,
+              takeEditorAttachments: (ids) =>
+                attachmentStore.takeInlineAttachments(ids),
+              restoreEditorAttachments: (ids) =>
+                attachmentStore.restoreInlineAttachments(ids),
+              disposeEditorAttachment: (id, previewUrl) =>
+                attachmentStore.disposeInlineAttachment(id, previewUrl),
+              parseTextToNodes: (value) =>
+                (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+              snapshotTopAttachments: () =>
+                attachmentStore.snapshotTopAttachments(),
+              takeTopAttachments: (ids) =>
+                attachmentStore.takeTopAttachments(ids),
+              restoreTopAttachments: (items, offset) =>
+                attachmentStore.restoreTopAttachments(
+                  items as TopAttachmentItem[],
+                  offset,
+                ),
+              getRestoreOffsets: context.getRestoreOffsets,
+              onRestored: context.onRestored,
+              onRestoreCompose: context.onRestoreCompose,
+              onRestoreSendTarget: context.onRestoreSendTarget,
+              onRestoreError: context.onRestoreError,
             }),
-          handle.ids,
-          handle.compose
-        );
-        const ledgerSettlement = controller.settle(
-          pendingId,
-          settlement.outcome,
-        );
-        if (ledgerSettlement) {
-          await props.onSendSettled?.({
-            attemptId: pendingId,
-            outcome: settlement.outcome,
-            sendDraft,
-            restoreFailed: settlement.restoreErrors.length > 0,
-          });
-        }
-        if (settlement.restoreErrors.length > 0) {
-          const failedSteps = new Set(
-            settlement.restoreErrors.map(({ step }) => step),
-          );
-          const unavailable = settlement.restoreErrors.some(
-            ({ error }) => error instanceof ComposeRestoreUnavailableError,
-          );
-          const editorFailed =
-            unavailable ||
-            failedSteps.has("restoreEditor") ||
-            failedSteps.has("restoreEditorBlocks");
-          const topFailed =
-            unavailable || failedSteps.has("restoreTopAttachments");
-          const partialEditorRestore = failedSteps.has("restoreEditorBlocks");
-          const unsentAttachmentIds = new Set(
-            settlement.outcome.unsentEditorBlocks
-              .filter((block) => block.type === "attachment")
-              .map((block) => block.id),
-          );
-          if (editorFailed || topFailed) {
-            const recovery: ComposeRecoveryRecord = {
-              channelKey: sendChannelKey,
-              attemptId: pendingId,
-              snapshot: handle.recovery.snapshot,
-              editorAttachments: editorFailed
-                ? handle.recovery.editorAttachments.filter(
-                    ({ id }) =>
-                      !partialEditorRestore || unsentAttachmentIds.has(id),
-                  )
-                : [],
-              editorObjectUrls: editorFailed
-                ? handle.recovery.editorObjectUrls
-                    .filter(
-                      ({ id }) =>
-                        !partialEditorRestore || unsentAttachmentIds.has(id),
-                    )
-                : [],
-              topAttachments: topFailed
-                ? handle.recovery.topAttachments.filter(
-                    ({ id }) =>
-                      !settlement.outcome.consumedTopIds.includes(id),
-                  )
-                : [],
-              editorBlocks: partialEditorRestore
-                ? settlement.outcome.unsentEditorBlocks
-                : undefined,
-              sendTarget:
-                unavailable && settlement.outcome.restoreSendTarget
-                  ? sendTarget
-                    ? {
-                        replyMessage: sendTarget.replyMessage,
-                        handlerType: sendTarget.handlerType,
-                      }
-                    : undefined
-                  : undefined,
-              expanded: unavailable && expandedAtSend,
-            };
-            let accepted = false;
-            try {
-              accepted = props.onComposeRecovery?.(recovery) ?? false;
-            } catch (err) {
-              console.error("[MessageInput] compose recovery handoff failed", err);
-            }
-            if (!accepted) disposeComposeRecoveryObjectUrls(recovery);
+          handoffRecovery: (recovery) => {
             const editorRecoveryIds = new Set([
               ...recovery.editorAttachments.map(({ id }) => id),
               ...recovery.editorObjectUrls.map(({ id }) => id),
@@ -1440,9 +1308,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             attachmentStore.handoffTopAttachments(
               recovery.topAttachments.map(({ id }) => id),
             );
-          }
-        }
-        return settlement.editorConsumed;
+          },
+        },
       },
     );
   }, [
@@ -1456,6 +1323,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.onSendSettled,
     props.onExpandChange,
     controller,
+    coordinator,
     t,
   ]);
 

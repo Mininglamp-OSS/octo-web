@@ -18,10 +18,9 @@ import type {
 } from "./sendFlow";
 import {
   chatEditorComposePartRegistry,
-  type EditorComposeDocument,
-  type EditorComposeNode,
   type EditorComposePartRegistry,
 } from "../editor";
+import type { EditorComposeDocument, EditorComposeNode } from "../domain";
 import { restoreComposeSnapshot } from "./sendFlow";
 import {
   serializeMentionMarker,

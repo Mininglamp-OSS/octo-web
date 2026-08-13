@@ -1,5 +1,4 @@
-import type { UnsentEditorBlock } from "../domain";
-import type { EditorComposeDocument } from "../editor";
+import type { EditorComposeDocument, UnsentEditorBlock } from "../domain";
 
 export interface ComposeRecoveryTopAttachment {
   id: string;

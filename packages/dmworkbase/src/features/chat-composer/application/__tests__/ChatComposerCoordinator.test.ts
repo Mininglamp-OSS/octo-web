@@ -1,0 +1,339 @@
+import { describe, expect, it, vi } from "vitest";
+import { createChatSendOutcome } from "../../domain";
+import type {
+  ChatComposerConsumeContext,
+  ChatComposerEditorPort,
+  ChatComposerHostPort,
+} from "../../ports";
+import { ChatComposerController } from "../ChatComposerController";
+import { ChatComposerCoordinator } from "../ChatComposerCoordinator";
+import { ComposeRestoreUnavailableError } from "../composeConsume";
+
+function consumed(
+  context: ChatComposerConsumeContext,
+  overrides: Partial<ReturnType<ChatComposerEditorPort["consume"]>> = {},
+): ReturnType<ChatComposerEditorPort["consume"]> {
+  return {
+    ids: { topIds: [], editorAttachmentIds: [] },
+    compose: {
+      restoreEditor: context.onRestoreCompose,
+      restoreEditorBlocks: () => undefined,
+      restoreSendTarget: context.onRestoreSendTarget,
+      disposeEditorAttachments: () => undefined,
+      disposeTopAttachments: () => undefined,
+      restoreTopAttachments: () => undefined,
+      onRestoreError: context.onRestoreError,
+    },
+    snapshot: {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "hello" }] },
+      ],
+    },
+    recovery: {
+      snapshot: { type: "doc", content: [] },
+      editorAttachments: [],
+      editorObjectUrls: [],
+      topAttachments: [],
+    },
+    ...overrides,
+  };
+}
+
+function host(
+  overrides: Partial<ChatComposerHostPort> = {},
+): ChatComposerHostPort {
+  return {
+    channelKey: () => "channel-1:2",
+    isChannelActive: () => true,
+    captureSendTarget: () => undefined,
+    captureSendDraft: () => undefined,
+    getExpanded: () => false,
+    setExpanded: () => undefined,
+    send: async () => createChatSendOutcome({ editorConsumed: true }),
+    ...overrides,
+  };
+}
+
+describe("ChatComposerCoordinator", () => {
+  it("owns capture, consume, queue, settlement and release ordering", async () => {
+    const order: string[] = [];
+    const controller = new ChatComposerController<{ id: string }>();
+    const coordinator = new ChatComposerCoordinator(controller);
+    const send = vi.fn(async (request) => {
+      order.push("send");
+      request.sendProgress?.setExpectedPartIds(["text:0"]);
+      request.sendProgress?.markPartsEnqueued(["text:0"]);
+      return createChatSendOutcome({ editorConsumed: true });
+    });
+    const onSendSettled = vi.fn(async () => {
+      order.push("settled");
+    });
+    const currentHost = host({
+      captureSendTarget: () => {
+        order.push("target");
+        return undefined;
+      },
+      channelKey: () => {
+        order.push("channel");
+        return "channel-1:2";
+      },
+      captureSendDraft: () => {
+        order.push("draft");
+        return { generation: 7, remoteDraft: "remote" };
+      },
+      getExpanded: () => {
+        order.push("expanded");
+        return true;
+      },
+      setExpanded: (value) => order.push(`set-expanded:${value}`),
+      send,
+      onSendSettled,
+    });
+    const editor: ChatComposerEditorPort = {
+      consume: (context) => {
+        order.push("consume");
+        return consumed(context);
+      },
+      handoffRecovery: vi.fn(),
+    };
+
+    await expect(
+      coordinator.submit(
+        {
+          text: "hello",
+          topFiles: [],
+          editorBlocks: [],
+          pendingAttachments: [{ id: "preview-1" }],
+        },
+        { host: currentHost, editor },
+      ),
+    ).resolves.toBe(true);
+
+    expect(order).toEqual([
+      "target",
+      "channel",
+      "draft",
+      "expanded",
+      "consume",
+      "set-expanded:false",
+      "send",
+      "settled",
+    ]);
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "hello",
+        sendDraft: {
+          generation: 7,
+          remoteDraft: "remote",
+          draftText: "hello",
+        },
+      }),
+    );
+    expect(onSendSettled).toHaveBeenCalledWith(
+      expect.objectContaining({ restoreFailed: false }),
+    );
+    expect(controller.pendingSendCount()).toBe(0);
+  });
+
+  it("hands an unavailable compose to recovery after restoring host state", async () => {
+    const restoreTarget = vi.fn();
+    const setExpanded = vi.fn();
+    const handoffRecovery = vi.fn(() => true);
+    const notifyRestoreError = vi.fn();
+    const handoffEditorRecovery = vi.fn();
+    const settledError = new Error("draft cleanup failed");
+    const controller = new ChatComposerController();
+    const coordinator = new ChatComposerCoordinator(controller);
+    const currentHost = host({
+      captureSendTarget: () => ({
+        replyMessage: { id: "reply-1" },
+        handlerType: 1,
+        restore: restoreTarget,
+      }),
+      getExpanded: () => true,
+      setExpanded,
+      send: async () =>
+        createChatSendOutcome({
+          restoreSendTarget: true,
+        }),
+      onSendSettled: async () => {
+        throw settledError;
+      },
+      handoffRecovery,
+      notifyRestoreError,
+    });
+    const editor: ChatComposerEditorPort = {
+      consume: (context) => {
+        const value = consumed(context, {
+          recovery: {
+            snapshot: { type: "doc", content: [] },
+            editorAttachments: [],
+            editorObjectUrls: [],
+            topAttachments: [],
+          },
+        });
+        value.compose.restoreEditor = () => {
+          context.onRestoreCompose();
+          throw new ComposeRestoreUnavailableError();
+        };
+        return value;
+      },
+      handoffRecovery: handoffEditorRecovery,
+    };
+
+    await expect(
+      coordinator.submit(
+        {
+          text: "hello",
+          topFiles: [],
+          editorBlocks: [],
+          pendingAttachments: [],
+        },
+        { host: currentHost, editor },
+      ),
+    ).rejects.toBe(settledError);
+
+    expect(setExpanded.mock.calls).toEqual([[false], [true]]);
+    expect(restoreTarget).toHaveBeenCalledOnce();
+    expect(notifyRestoreError).toHaveBeenCalledWith(
+      expect.any(ComposeRestoreUnavailableError),
+      "restoreEditor",
+    );
+    expect(handoffRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelKey: "channel-1:2",
+        sendTarget: {
+          replyMessage: { id: "reply-1" },
+          handlerType: 1,
+        },
+        expanded: true,
+      }),
+    );
+    expect(handoffEditorRecovery).toHaveBeenCalledWith(
+      handoffRecovery.mock.calls[0][0],
+    );
+  });
+
+  it("consumes consecutive attempts synchronously and sends them in order", async () => {
+    const controller = new ChatComposerController();
+    const coordinator = new ChatComposerCoordinator(controller);
+    const consumedLabels: string[] = [];
+    const sentRequests: Array<{
+      text: string;
+      target?: unknown;
+      draftGeneration?: number;
+    }> = [];
+    let resolveFirst: ((value: ReturnType<typeof createChatSendOutcome>) => void) | undefined;
+    const firstResult = new Promise<ReturnType<typeof createChatSendOutcome>>(
+      (resolve) => {
+        resolveFirst = resolve;
+      },
+    );
+
+    const submit = (label: "A" | "B", expanded: boolean) =>
+      coordinator.submit(
+        {
+          text: label,
+          topFiles: [],
+          editorBlocks: [],
+          pendingAttachments: [],
+        },
+        {
+          host: host({
+            channelKey: () => `channel-${label}:2`,
+            captureSendTarget: () => ({
+              replyMessage: { id: `target-${label}` },
+              handlerType: 1,
+              restore: vi.fn(),
+            }),
+            captureSendDraft: () => ({
+              generation: label === "A" ? 1 : 2,
+              remoteDraft: `remote-${label}`,
+            }),
+            getExpanded: () => expanded,
+            setExpanded: vi.fn(),
+            send: async (request) => {
+              sentRequests.push({
+                text: request.text,
+                target: request.sendTarget?.replyMessage,
+                draftGeneration: request.sendDraft?.generation,
+              });
+              return label === "A"
+                ? firstResult
+                : createChatSendOutcome({ editorConsumed: true });
+            },
+          }),
+          editor: {
+            consume: (context) => {
+              consumedLabels.push(label);
+              const value = consumed(context);
+              value.snapshot = {
+                type: "doc",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: label }],
+                  },
+                ],
+              };
+              return value;
+            },
+            handoffRecovery: vi.fn(),
+          },
+        },
+      );
+
+    const first = submit("A", true);
+    const second = submit("B", false);
+
+    expect(consumedLabels).toEqual(["A", "B"]);
+    await Promise.resolve();
+    expect(sentRequests.map(({ text }) => text)).toEqual(["A"]);
+
+    resolveFirst?.(createChatSendOutcome({ editorConsumed: true }));
+    await expect(first).resolves.toBe(true);
+    await expect(second).resolves.toBe(true);
+
+    expect(sentRequests).toEqual([
+      { text: "A", target: { id: "target-A" }, draftGeneration: 1 },
+      { text: "B", target: { id: "target-B" }, draftGeneration: 2 },
+    ]);
+    expect(controller.pendingSendCount()).toBe(0);
+  });
+
+  it("restores a captured target when editor consumption throws", async () => {
+    const restoreTarget = vi.fn();
+    const controller = new ChatComposerController();
+    const coordinator = new ChatComposerCoordinator(controller);
+    const editor: ChatComposerEditorPort = {
+      consume: () => {
+        throw new Error("unsupported compose part");
+      },
+      handoffRecovery: vi.fn(),
+    };
+
+    await expect(
+      coordinator.submit(
+        {
+          text: "hello",
+          topFiles: [],
+          editorBlocks: [],
+          pendingAttachments: [],
+        },
+        {
+          host: host({
+            captureSendTarget: () => ({
+              handlerType: 1,
+              restore: restoreTarget,
+            }),
+          }),
+          editor,
+        },
+      ),
+    ).rejects.toThrow("unsupported compose part");
+
+    expect(restoreTarget).toHaveBeenCalledOnce();
+    expect(controller.pendingSendCount()).toBe(0);
+  });
+});

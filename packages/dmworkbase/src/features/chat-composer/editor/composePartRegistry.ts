@@ -1,15 +1,10 @@
-import type { EditorContentBlock } from "../domain";
+import type {
+  EditorComposeDocument,
+  EditorComposeNode,
+  EditorContentBlock,
+} from "../domain";
 
-export interface EditorComposeNode {
-  type?: string;
-  attrs?: { id?: string; previewUrl?: string; [key: string]: unknown };
-  content?: EditorComposeNode[];
-  [key: string]: unknown;
-}
-
-export interface EditorComposeDocument extends EditorComposeNode {
-  content?: EditorComposeNode[];
-}
+export type { EditorComposeDocument, EditorComposeNode } from "../domain";
 
 export interface EditorComposePart {
   id: string;
