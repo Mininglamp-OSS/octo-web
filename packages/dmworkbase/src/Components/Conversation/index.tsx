@@ -58,12 +58,12 @@ import {
   type EditorContentBlock,
   type PendingSendDraft,
 } from "../../features/chat-composer/domain";
-import { buildChatSendPlan } from "../../features/chat-composer/application";
 import {
-  createConversationChatTransport,
+  buildChatSendPlan,
   executeChatSendPlan,
   settleChatSendExecution,
-} from "../../features/chat-composer/bridge";
+} from "../../features/chat-composer/application";
+import { createConversationChatTransport } from "../../features/chat-composer/adapters/conversation";
 import {
   ComposeRecoveryStore,
   disposeComposeRecoveryObjectUrls,

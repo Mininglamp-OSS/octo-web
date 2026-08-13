@@ -2,7 +2,7 @@ import type {
   ChatSendOperation,
   ChatTransportResult,
 } from "../domain/sendPlan";
-import type { ChatTransportEvents } from "./ChatTransportPort";
+import type { ChatTransportEvents } from "../ports/ChatTransportPort";
 
 export type ChatSendOperationHandler<
   TMessage,

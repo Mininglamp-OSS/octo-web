@@ -3,7 +3,7 @@ import type {
   ChatSendPlan,
   ChatTransportResult,
 } from "../domain/sendPlan";
-import type { ChatTransportPort } from "./ChatTransportPort";
+import type { ChatTransportPort } from "../ports/ChatTransportPort";
 
 export interface ChatOperationExecution<TMessage = unknown> {
   operation: ChatSendOperation<TMessage>;

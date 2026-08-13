@@ -8,20 +8,20 @@ import {
 import type {
   ChatMention,
   EditorContentBlock,
-} from "../domain";
+} from "../../domain";
 import type {
   BuiltInChatSendOperation,
   ChatSendOperation,
   ChatTransportResult,
-} from "../domain/sendPlan";
+} from "../../domain/sendPlan";
 import type {
   ChatTransportEvents,
   ChatTransportPort,
-} from "./ChatTransportPort";
+} from "../../ports/ChatTransportPort";
 import {
   ChatSendOperationRegistry,
   type ChatSendOperationHandler,
-} from "./ChatSendOperationRegistry";
+} from "../../extensions/ChatSendOperationRegistry";
 
 /** The part of a Message needed to preserve the existing reply/edit behavior. */
 export interface ConversationMessageTarget {
