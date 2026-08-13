@@ -1361,6 +1361,51 @@ export default class BaseModule implements IModule {
   }
 
   registerUserInfo() {
+    // self 分支：其他四个 register（remark / others / source / blacklist.tip）
+    // 每个都 `if (data.isSelf) return;` 早退,导致 self 视角下 sections 全空,
+    // UserInfo 弹层只剩 Header(name+短号)看起来像坏了的卡片。这里补一个 self
+    // 专属 section:提供"查看我的信息"入口跳到导航栏「我」tab（MeInfo,完整的
+    // 个人资料 + 二维码 + 设置）。
+    //
+    // 为什么不直接改前面几个 register 让它们对 self 也返回内容? 那些 section
+    // 的语义（备注 / 加好友来源 / 拉黑）对 self 都不成立,不适合硬塞。独立
+    // section 边界干净,产品语义清晰。
+    //
+    // 为什么用 switchToMenuById("me") 而不是直接渲染 MeInfo? MeInfo 是导航栏
+    // 「我」tab 的独占视图（RoutePage 栈,需要外层 menu 挂载）,弹层里嵌不完整。
+    // 跳到 tab 是对齐 IM 系产品直觉的做法。开源 host 里如果 `me` menu 未被
+    // 挂载（比如企业 personal 模块未装配）,switchToMenuById 是 no-op,不炸。
+    WKApp.shared.userInfoRegister(
+      "userinfo.self.myProfile",
+      (context: RouteContext<UserInfoRouteData>) => {
+        const data = context.routeData();
+        if (!data.isSelf) {
+          return;
+        }
+        const rows = new Array();
+        rows.push(
+          new Row({
+            cell: ListItem,
+            properties: {
+              key: "userinfo.self.myProfile",
+              title: t("base.userInfo.viewMyProfile"),
+              onClick: () => {
+                // 关闭当前 UserInfo 弹层后再切「我」tab。反过来做的话弹层还
+                // 盖在 me tab 上,用户看不见跳转的视觉转场,体感像"点了没反应"。
+                WKApp.shared.baseContext.hideUserInfo();
+                if (WKApp.switchToMenuById) {
+                  WKApp.switchToMenuById("me");
+                }
+              },
+            },
+          })
+        );
+        return new Section({
+          rows: rows,
+        });
+      }
+    );
+
     WKApp.shared.userInfoRegister(
       "userinfo.remark",
       (context: RouteContext<UserInfoRouteData>) => {

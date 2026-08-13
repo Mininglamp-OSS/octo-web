@@ -557,6 +557,7 @@
   "userInfo.remarkUpdated": "备注已更新",
   "userInfo.remarkUpdateFailed": "备注更新失败",
   "userInfo.selfIntro": "我是{{name}}",
+  "userInfo.viewMyProfile": "查看我的信息",
   "userInfo.sendMessage": "发送消息",
   "userInfo.shortNo": "{{appName}}号：",
   "spaceList.copy": "复制",
