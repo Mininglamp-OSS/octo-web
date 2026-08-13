@@ -169,7 +169,8 @@ function escapeTrailingMarkdownImageBang(text: string): string {
 
 function extractOrderedBlocks(
   editorInstance: any,
-  attachmentFilesMap: Map<string, File>
+  attachmentFilesMap: Map<string, File>,
+  members: readonly Subscriber[] | undefined,
 ): EditorContentBlock[] {
   if (!editorInstance) return [];
   const json = editorInstance.getJSON();
@@ -190,7 +191,7 @@ function extractOrderedBlocks(
   function flushText() {
     const joined = stripInvisibleChars(pendingTextParts.join(""));
     if (joined.trim() !== "") {
-      const { content, mention } = formatMentionTextV2(joined);
+      const { content, mention } = formatMentionTextV2(joined, members);
       blocks.push({ type: "text", text: content, restoreText: joined, mention });
     }
     pendingTextParts = [];
@@ -383,11 +384,14 @@ import type { SendParseMember } from "../adapters/tiptap/mentionSendParse";
 
 // 解析 @[uid:name] 格式的 mention（send 边界）。安全核心在纯函数 parseSendMentionText：
 // 仅当广播 sentinel 携带 node-origin 信任标记时才路由广播，伪造的字面文本降级为纯文本。
-function formatMentionTextV2(text: string): {
+function formatMentionTextV2(
+  text: string,
+  subscribers: readonly Subscriber[] | undefined,
+): {
   content: string;
   mention?: MentionModel;
 } {
-  const members = (membersRef.current ?? []) as unknown as SendParseMember[];
+  const members = (subscribers ?? []) as unknown as SendParseMember[];
   const parsed = parseSendMentionText(text, members);
   if (!parsed.mention) return { content: parsed.content };
 
@@ -448,9 +452,6 @@ export interface MessageInputContext {
 
 // MemberInfo / buildMentionRegex / parseMentionMarkers / buildMemberInfos live
 // in the Tiptap mention adapter so the editor and unit tests share one implementation.
-
-// 保持 membersRef 在模块级别供 formatMentionTextV2 使用
-let membersRef: React.MutableRefObject<Array<Subscriber> | undefined>;
 
 // `trusted` is set on the send path so node-origin broadcast sentinels are
 // tagged with MENTION_TRUST_MARK (text-origin grammar is neutralized). The
@@ -648,8 +649,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   >(null);
   const pasteLifecycleRef = useRef(0);
 
-  // 更新模块级别的 membersRef
-  membersRef = localMembersRef;
   isDirectChannelRef.current =
     props.context.channel().channelType === ChannelTypePerson;
 
@@ -1167,7 +1166,11 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     );
     let orderedBlocks: EditorContentBlock[];
     try {
-      orderedBlocks = extractOrderedBlocks(editor, attachmentStore.attachmentFiles);
+      orderedBlocks = extractOrderedBlocks(
+        editor,
+        attachmentStore.attachmentFiles,
+        localMembersRef.current,
+      );
     } catch (err) {
       console.error("[MessageInput] editor compose part is not sendable", err);
       return false;
@@ -1203,7 +1206,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）。
     // trusted=true：仅 node-origin 广播 sentinel 才被信任标记，伪造文本无法路由广播。
     const formattedText = extractMentionsFromEditor(editor, true);
-    const { content, mention } = formatMentionTextV2(formattedText);
+    const { content, mention } = formatMentionTextV2(
+      formattedText,
+      localMembersRef.current,
+    );
 
     // ⚠️ 关键修复 (octo-web#1280，承接 #227 两轮)：consume-first / restore-on-failure。
     //
