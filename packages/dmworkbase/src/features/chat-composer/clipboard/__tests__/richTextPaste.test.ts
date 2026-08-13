@@ -2,31 +2,6 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("wukongimjssdk", () => ({
-  MessageContent: class {
-    contentObj: any;
-    contentType!: number;
-  },
-}));
-
-vi.mock("../../../Service/Const", () => ({
-  MessageContentTypeConst: { richText: 14 },
-}));
-
-vi.mock("../../../i18n", () => ({
-  t: (key: string) => key,
-}));
-
-vi.mock("../../../App", () => ({
-  default: {
-    dataSource: {
-      commonDataSource: {
-        getImageURL: (url: string) => url,
-      },
-    },
-  },
-}));
-
 import {
   buildInlineContentForRichTextPaste,
   imageBlockToPasteFile,

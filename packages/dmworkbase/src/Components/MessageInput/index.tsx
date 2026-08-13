@@ -95,14 +95,14 @@ import {
 import {
   imageBlockToPasteFile,
   restoreOctoRichTextClipboardToEditor,
-} from "./richTextPaste";
+} from "../../features/chat-composer/clipboard/richTextPaste";
 import {
   decideComposerPaste,
   snapshotComposerClipboard,
   type ComposerPasteDecision,
-} from "./clipboardPipeline";
-import { createComposerStarterKit } from "./editorKit";
-import { decideComposerKeyboard } from "./keyboardPolicy";
+} from "../../features/chat-composer/clipboard/clipboardPipeline";
+import { createComposerStarterKit } from "../../features/chat-composer/adapters/tiptap/editorKit";
+import { decideComposerKeyboard } from "../../features/chat-composer/keyboard";
 import {
   addImChannelInfoListener,
   fetchImChannelInfo,

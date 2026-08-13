@@ -1,5 +1,5 @@
-import type { OctoRichTextClipboardPayload } from "../../Utils/richTextClipboard";
-import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
+import type { OctoRichTextClipboardPayload } from "../../../Utils/richTextClipboard";
+import { extractOctoRichTextClipboardPayloadFromHtml } from "../../../Utils/richTextClipboard";
 import { detectPastedSecret } from "./secretPasteDetect";
 
 export interface ComposerClipboardSnapshot {

@@ -1,14 +1,14 @@
 import {
   RichTextFilePlaceholder,
   RichTextImagePlaceholder,
-} from "../../Messages/RichText/RichTextContent";
+} from "../../../Utils/richTextProtocol";
 import type {
   OctoRichTextClipboardBlock,
   OctoRichTextClipboardMention,
   OctoRichTextClipboardPayload,
-} from "../../Utils/richTextClipboard";
-import { isBroadcastSentinelUid } from "../../Utils/mentionProtocol";
-import { isSafeUrl } from "../../Utils/security";
+} from "../../../Utils/richTextClipboard";
+import { isBroadcastSentinelUid } from "../../../Utils/mentionProtocol";
+import { isSafeUrl } from "../../../Utils/security";
 
 // Clipboard payloads are a forgeable, untrusted source (plain HTML the user can
 // hand-author). A broadcast/all-routing sentinel UID lets a single paste fan a

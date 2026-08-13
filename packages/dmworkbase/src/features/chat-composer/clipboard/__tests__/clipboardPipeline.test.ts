@@ -1,11 +1,11 @@
 import { Editor } from "@tiptap/core";
 import { describe, expect, it } from "vitest";
-import { encodeOctoRichTextClipboardPayload } from "../../../Utils/richTextClipboard";
+import { encodeOctoRichTextClipboardPayload } from "../../../../Utils/richTextClipboard";
 import {
   decideComposerPaste,
   snapshotComposerClipboard,
 } from "../clipboardPipeline";
-import { createComposerStarterKit } from "../editorKit";
+import { createComposerStarterKit } from "../../adapters/tiptap/editorKit";
 
 function clipboardData(values: {
   plain?: string;

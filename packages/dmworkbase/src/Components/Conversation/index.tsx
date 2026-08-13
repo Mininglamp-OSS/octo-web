@@ -123,7 +123,7 @@ import {
   isOwnedConversationSingleton,
   shouldMarkConversationRead,
 } from "../../features/notifications";
-import { imageBlockToPasteFile } from "../MessageInput/richTextPaste";
+import { imageBlockToPasteFile } from "../../features/chat-composer/clipboard";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
