@@ -12,13 +12,15 @@ import {
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
-import { Channel, MessageText } from "wukongimjssdk";
+import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";
 import {
   I18nContext,
   t,
   ForwardService,
   interpretForwardResult,
   titleContextStore,
+  SummaryNotifyContent,
+  isConversationDisbanded,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -28,6 +30,7 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
+import { sendGroupSummaryCompletionTips } from "../utils/groupSummaryNotify";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
@@ -587,6 +590,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // loadSchedule（包括本函数下面发起的）都会被后续轮作废，不会回填到新 task。
         const seq = this.nextScheduleSeq();
         const requestTaskId = lookupId;
+        const isSameTask = typeof requestTaskId === "number"
+            ? this.state.detail?.task_id === requestTaskId
+            : this.state.detail?.task_no === requestTaskId;
+        const previousStatus = isSameTask ? this.state.lastKnownStatus : undefined;
         // F1：切 task / 重拉 detail 时复位全部编辑态，避免旧 task 编辑态（尤其
         // editingTeamSummary）被带入新 task——否则切到非 creator 新 task 会绕过权限进编辑器。
         // FE-1（切任务竞态）：开始新 task 加载时同步清空上一 task 的 personalResult/members，
@@ -630,6 +637,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const detail = await api.getSummaryDetail(lookupId);
             // detail 本身也可能是旧请求：期间切了 task / 又发了一轮 loadDetail 就丢弃。
             if (this.scheduleLoadSeq !== seq || this.detailLookupId !== requestTaskId) return;
+            this.notifyGroupsOnCompletion(previousStatus, detail);
             this.setState({
                 detail,
                 loading: false,
@@ -985,13 +993,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // B members/personal 混搭串台）。迟到直接 return，后续 prevStatus 判断 / 成对
             // reload 都在这道守卫之后。
             const requestTaskId = this.taskId;
+            const previousStatus = this.state.lastKnownStatus;
             const detail = await api.getSummaryDetail(this.taskId);
             if (this.taskId !== requestTaskId) return;
-            const prevStatus = this.state.lastKnownStatus;
             const newStatus = detail.status;
+            this.notifyGroupsOnCompletion(previousStatus, detail);
             this.setState({ detail, lastKnownStatus: newStatus });
 
-            if (prevStatus !== undefined && prevStatus !== newStatus) {
+            if (previousStatus !== undefined && previousStatus !== newStatus) {
                 if (
                     newStatus === TaskStatus.COMPLETED ||
                     newStatus === TaskStatus.FAILED ||
@@ -1063,6 +1072,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 try {
                     const detail = await api.getSummaryDetail(this.taskId);
                     if (this.taskId !== requestTaskId) return;
+                    this.notifyGroupsOnCompletion(prevStatus, detail);
                     this.setState({ detail, lastKnownStatus: newStatus });
                     if (
                         newStatus === TaskStatus.COMPLETED ||
@@ -1099,6 +1109,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             clearInterval(this.fallbackPollTimer);
             this.fallbackPollTimer = null;
         }
+    }
+
+    private notifyGroupsOnCompletion(previousStatus: number | undefined, detail: SummaryDetail) {
+        void sendGroupSummaryCompletionTips(
+            previousStatus,
+            detail,
+            WKApp.loginInfo.uid,
+            TaskStatus.COMPLETED,
+            ChannelTypeGroup,
+            {
+                sendToChannel: async (channel, currentUserId) => {
+                    const content = new SummaryNotifyContent();
+                    content.fromUID = currentUserId;
+                    content.fromName = WKApp.loginInfo.selfDisplayName?.()
+                        || WKApp.loginInfo.name
+                        || currentUserId;
+                    await WKSDK.shared().chatManager.send(content, channel);
+                },
+                isDisbanded: isConversationDisbanded,
+                warn: (message, context) => console.warn(message, context),
+            },
+        );
     }
 
 

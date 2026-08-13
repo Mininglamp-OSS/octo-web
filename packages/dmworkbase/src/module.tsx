@@ -93,6 +93,7 @@ import { patchSdkDecodeForExternalFields } from "./Service/Convert";
 import { isMessageSelectable } from "./Service/messageSelection";
 import ConversationVM from "./Components/Conversation/vm";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
+import { SummaryNotifyCell, SummaryNotifyContent } from "./Messages/SummaryNotify";
 import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
@@ -320,6 +321,8 @@ export default class BaseModule implements IModule {
             return LocationCell;
           case MessageContentTypeConst.screenshot:
             return ScreenshotCell;
+          case MessageContentTypeConst.summaryNotify:
+            return SummaryNotifyCell;
           case MessageContentType.signalMessage: // 端对端加密错误消息
           case MessageContentTypeConst.approveGroupMember: // 审批群成员
             return ApproveGroupMemberCell;
@@ -389,6 +392,10 @@ export default class BaseModule implements IModule {
     registerCurrentImMessageContent(
       MessageContentTypeConst.screenshot,
       () => new ScreenshotContent()
+    );
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.summaryNotify,
+      () => new SummaryNotifyContent()
     );
     // 加入组织
     registerCurrentImMessageContent(
