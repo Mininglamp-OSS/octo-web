@@ -120,6 +120,11 @@ export default function ExpertMarketListPage() {
   const [squadsData, setSquadsData] = useState<ExpertItem[]>([]);
   const [myAgentsData, setMyAgentsData] = useState<ExpertItem[]>([]);
   const [mySquadsData, setMySquadsData] = useState<ExpertItem[]>([]);
+  // True totals behind the mine sections: the list fetch caps at
+  // LIST_PAGE_SIZE, and 我的 is the only entry point to edit/delete, so a
+  // silent cut at 100 would make older records unmanageable with no clue.
+  const [myAgentsTotal, setMyAgentsTotal] = useState(0);
+  const [mySquadsTotal, setMySquadsTotal] = useState(0);
   // True catalog totals per kind (the list fetch caps at PAGE_SIZE, so total can
   // exceed the loaded array length — see the truncation notice below).
   const [agentsTotal, setAgentsTotal] = useState(0);
@@ -169,7 +174,9 @@ export default function ExpertMarketListPage() {
         const [mine, minesq] = await Promise.all([listMyExperts(), listMySquads()]);
         if (v !== reqVer.current) return;
         setMyAgentsData(mine.items);
+        setMyAgentsTotal(mine.total);
         setMySquadsData(minesq.items);
+        setMySquadsTotal(minesq.total);
       } else if (activeKind === "squad") {
         const [list, cats] = await Promise.all([
           listSquads(),
@@ -318,6 +325,20 @@ export default function ExpertMarketListPage() {
   const categoryCounts = useMemo(() => {
     const source: ExpertItem[] = kind === "squad" ? squadsData : agentsData;
     const q = query.trim().toLowerCase();
+    // With no keyword/tag filter active, use the authoritative server counts:
+    // they cover the WHOLE catalog, while the loaded slice caps at
+    // LIST_PAGE_SIZE — recomputing from the slice under-reports on a truncated
+    // catalog and contradicts the header total rendered beside the chips.
+    // Keyword/tag filtering is client-side over the slice, so once a filter is
+    // active the recount below is the honest number for what choosing a chip
+    // would actually yield.
+    if (!q && selectedTags.length === 0 && categories.length) {
+      const counts: Record<string, number> = {
+        [ALL_CATEGORY]: kind === "squad" ? squadsTotal : agentsTotal,
+      };
+      for (const c of categories) counts[c.name] = c.count;
+      return counts;
+    }
     const base = source.filter((item) => {
       if (
         selectedTags.length &&
@@ -332,7 +353,7 @@ export default function ExpertMarketListPage() {
       counts[item.category] = (counts[item.category] ?? 0) + 1;
     }
     return counts;
-  }, [kind, squadsData, agentsData, query, selectedTags]);
+  }, [kind, squadsData, agentsData, query, selectedTags, categories, squadsTotal, agentsTotal]);
 
   // 我的 tab: the caller's own experts / squads (GET /experts/mine +
   // /squads/mine). Only the keyword search applies here (category / tag filters
@@ -640,6 +661,13 @@ export default function ExpertMarketListPage() {
               <h2 className="wk-mcp-expert-mine-title">
                 <span>{t("mcp.expert.mineSquadsTitle")}</span>
               </h2>
+              {mySquadsData.length < mySquadsTotal && (
+                <p className="wk-mcp-expert-truncated" role="note">
+                  {t("mcp.expert.truncatedNotice", {
+                    values: { count: mySquadsData.length },
+                  })}
+                </p>
+              )}
               {mySquads.length > 0 ? (
                 <div className="wk-mcp-expert-grid">
                   {mySquads.map((item) => (
@@ -663,6 +691,13 @@ export default function ExpertMarketListPage() {
               <h2 className="wk-mcp-expert-mine-title">
                 <span>{t("mcp.expert.mineAgentsTitle")}</span>
               </h2>
+              {myAgentsData.length < myAgentsTotal && (
+                <p className="wk-mcp-expert-truncated" role="note">
+                  {t("mcp.expert.truncatedNotice", {
+                    values: { count: myAgentsData.length },
+                  })}
+                </p>
+              )}
               {myAgents.length > 0 ? (
                 <div className="wk-mcp-expert-grid">
                   {myAgents.map((item) => (
@@ -728,12 +763,14 @@ export default function ExpertMarketListPage() {
                 <PackageOpen size={48} aria-hidden="true" />
                 <strong>{t("mcp.expert.empty")}</strong>
                 <p>{t("mcp.expert.emptyHint")}</p>
-                {(query || category !== ALL_CATEGORY) && (
+                {(query || category !== ALL_CATEGORY || selectedTags.length > 0) && (
                   <WKButton
                     variant="primary"
                     onClick={() => {
                       setQuery("");
                       setCategory(ALL_CATEGORY);
+                      setSelectedTags([]);
+                      setTagQuery("");
                     }}
                   >
                     {t("mcp.expert.resetFilters")}
