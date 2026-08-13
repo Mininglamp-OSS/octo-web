@@ -5,6 +5,7 @@ import {
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
+  IPC_OIDC_CLEAR_AUTH_SESSION,
 } from "../shared/ipc-channels";
 
 // Keep the preload entry self-contained. Electron runs sandboxed preloads in
@@ -110,6 +111,7 @@ const ALLOWED_INVOKE_CHANNELS = [
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
+  IPC_OIDC_CLEAR_AUTH_SESSION,
 ];
 
 const ALLOWED_RECEIVE_CHANNELS = [

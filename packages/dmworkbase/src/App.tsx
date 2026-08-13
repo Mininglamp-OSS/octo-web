@@ -2,6 +2,8 @@ import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
 import { replaceWithShellDocument } from "./Service/ShellDocument";
 
+const IPC_CLEAR_AUTH_SESSION = "octo:oidc:clear-auth-session";
+
 /** mittBus 全局事件类型表 */
 export type MittEvents = {
   "friend-applys-unread-count": number;
@@ -946,7 +948,7 @@ export default class WKApp extends ProviderListener {
   // app启动
   startup() {
     if (consumeOidcPostLogoutCleanup()) {
-      this.clearLocalLoginState();
+      void this.clearLocalLoginState();
     }
     WKApp.loginInfo.load(); // 加载登录信息
 
@@ -1197,7 +1199,7 @@ export default class WKApp extends ProviderListener {
   isLogined() {
     return WKApp.loginInfo.isLogined();
   }
-  private clearLocalLoginState() {
+  private async clearLocalLoginState() {
     WKApp.loginInfo.logout();
     clearAuthStorage();
     setSessionSid("");
@@ -1205,16 +1207,27 @@ export default class WKApp extends ProviderListener {
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
+    if (
+      (window as any).__POWERED_ELECTRON__ &&
+      typeof (window as any).ipc?.invoke === "function"
+    ) {
+      try {
+        await (window as any).ipc.invoke(IPC_CLEAR_AUTH_SESSION);
+      } catch {
+        // Local storage cleanup must still complete if the main process is
+        // unavailable; callers await this before reloading the shell.
+      }
+    }
     WKApp.mittBus.emit("wk:auth-state-changed");
   }
 
   // 登出
-  logout() {
+  async logout() {
     // 幂等守卫：并发 401 会重复调用本方法，只允许第一次真正执行清理与跳转，
     // 后续重入直接返回，避免 window.location.replace 被连发导致的反复跳转/刷屏。
     if (this._loggingOut) return;
     this._loggingOut = true;
-    this.clearLocalLoginState();
+    await this.clearLocalLoginState();
     // Packaged Electron shell loads via `file://` and has no `/login` route
     // on disk, so `location.replace("/login")` navigates to
     // `file:///login` and hangs on ERR_FILE_NOT_FOUND — the interceptor's

@@ -25,6 +25,7 @@ import {
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
+  IPC_OIDC_CLEAR_AUTH_SESSION,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
 import {
@@ -42,6 +43,7 @@ import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
 import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractEndSessionRedirect, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 import { createTrustedShellDocumentTracker } from "./trustedShell";
+import { clearAuthSessionCookies } from "./clearAuthSession";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -261,6 +263,16 @@ ipcMain.handle(IPC_OIDC_AUTHORIZE_END, (event) => {
   return { ok: !!win };
 });
 
+ipcMain.handle(IPC_OIDC_CLEAR_AUTH_SESSION, async (event) => {
+  const win = resolveTrustedOidcSender(event);
+  if (!win) return { ok: false as const, code: "untrusted-sender" as const };
+  return clearAuthSessionCookies({
+    session: win.webContents.session,
+    origins: OIDC_END_SESSION_ORIGINS,
+    log: { warn: (message) => console.warn(`[oidc] ${message}`) },
+  });
+});
+
 ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {
   const win = resolveTrustedOidcSender(event);
   if (!win) return { ok: false as const };
@@ -411,6 +423,12 @@ ipcMain.handle(IPC_OIDC_HTTP_REQUEST, async (event, request: unknown) => {
       response = await net.fetch(url, {
         method,
         redirect: "error",
+        // `net.fetch` runs in the main process, so its default credentials
+        // mode is not the renderer's `same-origin` context.  The OIDC
+        // callback establishes the session cookie in the BrowserWindow and
+        // authstatus must see that same cookie; without an explicit
+        // credentials mode packaged desktop login stays in PENDING forever.
+        credentials: "include",
         signal: controller.signal,
         headers: {
           Accept: "application/json",
