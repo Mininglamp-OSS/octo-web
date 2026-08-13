@@ -1,3 +1,4 @@
+export * from "./ChatComposerController";
 export * from "./buildChatSendPlan";
 export * from "./composeConsume";
 export * from "./executeChatSendPlan";

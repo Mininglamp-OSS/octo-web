@@ -42,13 +42,11 @@ import {
 import { t as translate, useI18n } from "../../../i18n";
 import {
   announceContextAfterSendReady,
-  createSendQueue,
-  enqueueSettledSend,
   invokeReadySend,
   settleConsumedCompose,
   restoreComposeSnapshot,
-  SendQueue,
 } from "../application/sendFlow";
+import { ChatComposerController } from "../application/ChatComposerController";
 import type {
   AttachmentFile,
   ChatMention,
@@ -61,9 +59,6 @@ import type {
   SendProgressSnapshot,
   SendTargetSnapshot,
   UnsentEditorBlock,
-} from "../domain";
-import {
-  ComposeAttemptLedger,
 } from "../domain";
 import {
   ChatComposerAttachmentStore,
@@ -545,8 +540,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const [attachmentStore] = useState(
     () => new ChatComposerAttachmentStore<TopAttachmentItem>(),
   );
+  const [controller] = useState(
+    () => new ChatComposerController<PendingSendAttachmentPreview>(),
+  );
   const composerMountedRef = useRef(true);
   const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
+  const [pendingPreEnqueueItems, setPendingPreEnqueueItems] = useState<
+    PendingSendItem[]
+  >([]);
 
   useEffect(() => {
     composerMountedRef.current = true;
@@ -559,6 +560,14 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       attachmentStore.clear();
     };
   }, [attachmentStore]);
+
+  useEffect(
+    () =>
+      controller.subscribe(({ preEnqueue }) => {
+        setPendingPreEnqueueItems(preEnqueue);
+      }),
+    [controller],
+  );
 
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
@@ -622,65 +631,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       console.error("[MessageInput] send threw synchronously", err);
     }
   }, []);
-  // 串行发送队列 (octo-web#1280)：compose 在 send 开始时就被同步消费，因此
-  // pending 期间的新发送不再被丢弃，只需排在前一条之后执行以保持消息顺序。
-  // 惰性创建，避免每次渲染都构造一个用不上的队列。
-  const sendQueueRef = useRef<SendQueue | null>(null);
-  const getSendQueue = useCallback((): SendQueue => {
-    if (!sendQueueRef.current) {
-      sendQueueRef.current = createSendQueue();
-    }
-    return sendQueueRef.current;
-  }, []);
-  // in-flight compose 登记表：完整集合保留到任务 settle，供草稿保存使用；可见
-  // 预览只包含尚未产生本地气泡的 compose，避免与消息列表重复展示。
-  const pendingSendsRef = useRef(
-    new ComposeAttemptLedger<PendingSendAttachmentPreview>(),
-  );
-  // 连续失败还原时的插入位置：已被更早的失败 send 放回的块数 / 附件数，
-  // 保证 A、B 依次失败后顺序仍是 A、B、<新草稿> 而不是倒过来 (#1280 review)。
-  const restoreOffsetsRef = useRef({ blocks: 0, topAttachments: 0 });
-  const [pendingPreEnqueueItems, setPendingPreEnqueueItems] = useState<
-    PendingSendItem[]
-  >([]);
-  const publishPendingSends = useCallback(() => {
-    setPendingPreEnqueueItems(pendingSendsRef.current.orderedPreEnqueue());
-  }, []);
-  const registerPendingSend = useCallback(
-    (item: {
-      previewText: string;
-      draftText: string;
-      attachments: PendingSendAttachmentPreview[];
-    }) => {
-      const attempt = pendingSendsRef.current.capture(item);
-      publishPendingSends();
-      return attempt;
-    },
-    [publishPendingSends],
-  );
-  const setPendingSendExpectedPartIds = useCallback(
-    (id: string, partIds: readonly string[]) => {
-      if (pendingSendsRef.current.setExpectedPartIds(id, partIds)) {
-        publishPendingSends();
-      }
-    },
-    [publishPendingSends]
-  );
-  const markPendingSendPartsEnqueued = useCallback(
-    (id: string, partIds: readonly string[]) => {
-      if (pendingSendsRef.current.markPartsEnqueued(id, partIds)) {
-        publishPendingSends();
-      }
-    },
-    [publishPendingSends],
-  );
-  const releasePendingSend = useCallback(
-    (id: string) => {
-      pendingSendsRef.current.remove(id);
-      publishPendingSends();
-    },
-    [publishPendingSends],
-  );
   const mentionActiveRef = useRef(false);
   // 表情前缀联想下拉激活标志，激活时 Enter 用于选中而非发送
   const emojiSuggestionActiveRef = useRef(false);
@@ -1282,7 +1232,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     };
     const sendDraftBaseline = props.onCaptureSendDraft?.();
     // 本次消费会清空编辑器与本次附件，之前失败还原留下的偏移随之失效。
-    restoreOffsetsRef.current = { blocks: 0, topAttachments: 0 };
+    controller.resetRestoreOffsets();
     const expandedAtSend = expanded;
     const handle = consumeCompose({
       editor: {
@@ -1324,14 +1274,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           items as TopAttachmentItem[],
           offset,
         ),
-      getRestoreOffsets: () => restoreOffsetsRef.current,
-      onRestored: ({ blocks, topAttachments }) => {
-        restoreOffsetsRef.current = {
-          blocks: restoreOffsetsRef.current.blocks + blocks,
-          topAttachments:
-            restoreOffsetsRef.current.topAttachments + topAttachments,
-        };
-      },
+      getRestoreOffsets: () => controller.getRestoreOffsets(),
+      onRestored: (offsets) => controller.advanceRestoreOffsets(offsets),
       onRestoreCompose: () => {
         // 整条 compose 回到输入框时，把 reply/edit 目标和展开态也一起复位，
         // 否则「编辑消息」失败后重试会变成发一条新消息、大段草稿被挤在收起态里
@@ -1360,7 +1304,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     });
     const previewText = composeSnapshotPreviewText(handle.snapshot);
     const draftText = composeSnapshotDraftText(handle.snapshot);
-    const pendingAttempt = registerPendingSend({
+    const pendingAttempt = controller.capture({
       previewText,
       draftText,
       attachments: pendingAttachmentPreviews,
@@ -1371,9 +1315,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       : undefined;
     const sendProgress: SendProgressSnapshot = {
       setExpectedPartIds: (partIds) =>
-        setPendingSendExpectedPartIds(pendingId, partIds),
+        controller.setExpectedPartIds(pendingId, partIds),
       markPartsEnqueued: (partIds) =>
-        markPendingSendPartsEnqueued(pendingId, partIds),
+        controller.markPartsEnqueued(pendingId, partIds),
     };
 
     if (expanded) {
@@ -1383,10 +1327,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
     // 串行队列取代旧的重入保护：pending 期间的 Enter 不再被静默丢弃（#1280 的
     // 「连点没反应」），而是排在前一条之后执行，消息顺序仍由 Conversation 等 ack
-    // 保证。onSend 未 settle 前把 compose 内容登记到 pendingSendsRef，供草稿
+    // 保证。onSend 未 settle 前把 compose 内容登记到 controller，供草稿
     // 保存使用；「发送中」预览和切会话守卫只查看尚未产生本地气泡的条目。
-    return enqueueSettledSend(
-      getSendQueue(),
+    return controller.enqueueAttempt(
+      pendingId,
       async () => {
         const settlement = await settleConsumedCompose(
           () => props.onSend!({
@@ -1406,7 +1350,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           handle.ids,
           handle.compose
         );
-        const ledgerSettlement = pendingSendsRef.current.settle(
+        const ledgerSettlement = controller.settle(
           pendingId,
           settlement.outcome,
         );
@@ -1494,7 +1438,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         }
         return settlement.editorConsumed;
       },
-      () => releasePendingSend(pendingId),
     );
   }, [
     editor,
@@ -1506,11 +1449,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.onComposeRecovery,
     props.onSendSettled,
     props.onExpandChange,
-    getSendQueue,
-    registerPendingSend,
-    setPendingSendExpectedPartIds,
-    markPendingSendPartsEnqueued,
-    releasePendingSend,
+    controller,
     t,
   ]);
 
@@ -1530,15 +1469,12 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
         focus: () => editor?.commands.focus(),
         send: () => invokeReadySend(sendRef.current),
-        pendingSendCount: () => pendingSendsRef.current.orderedPending().length,
-        pendingPreEnqueueCount: () =>
-          pendingSendsRef.current.pendingPreEnqueueCount(),
-        pendingSendDrafts: () =>
-          pendingSendsRef.current.orderedPendingDrafts(),
+        pendingSendCount: () => controller.pendingSendCount(),
+        pendingPreEnqueueCount: () => controller.pendingPreEnqueueCount(),
+        pendingSendDrafts: () => controller.pendingSendDrafts(),
         pendingPreEnqueueDrafts: () =>
-          pendingSendsRef.current.orderedPreEnqueueDrafts(),
-        pendingSendText: () =>
-          pendingSendsRef.current.pendingDraftText(),
+          controller.pendingPreEnqueueDrafts(),
+        pendingSendText: () => controller.pendingSendText(),
         clear: () => {
           editor?.commands.clearContent(true);
           attachmentStore.clear();
@@ -1556,6 +1492,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     addMention,
     addAttachment,
     attachmentStore,
+    controller,
     getAttachmentFiles,
   ]);
 
