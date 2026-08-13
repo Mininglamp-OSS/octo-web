@@ -12,7 +12,7 @@
  * 否则使用内置默认值。
  */
 
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { config, ROOT_DIR } from './config.mjs'
 
@@ -25,7 +25,12 @@ let targetPackage = 'default'
 for (let i = 0; i < args.length; i += 1) {
   const arg = args[i]
   if (arg === '--package') {
-    targetPackage = args[i + 1] || ''
+    const value = args[i + 1]
+    if (!value || value.startsWith('--')) {
+      console.error('❌ --package 需要指定值。目前仅支持 --package ui。')
+      process.exit(1)
+    }
+    targetPackage = value
     i += 1
   } else if (arg.startsWith('--package=')) {
     targetPackage = arg.slice('--package='.length)
@@ -175,6 +180,18 @@ function writeFile(filePath, content) {
   console.log(`  ✅ ${relative(ROOT_DIR, filePath)}`)
 }
 
+function appendLineIfMissing(filePath, line) {
+  const content = readFileSync(filePath, 'utf-8')
+  if (content.split(/\r?\n/).includes(line)) {
+    return
+  }
+  const nextContent = content.endsWith('\n')
+    ? `${content}${line}\n`
+    : `${content}\n${line}\n`
+  writeFileSync(filePath, nextContent, 'utf-8')
+  console.log(`  ✅ ${relative(ROOT_DIR, filePath)}`)
+}
+
 console.log(`\n🔨 生成组件: ${name}\n`)
 console.log(`📦 package: ${isOctoUiPackage ? '@octo/ui' : 'default'}`)
 console.log(`📁 ui:      ${relative(ROOT_DIR, uiBaseDir)}`)
@@ -188,6 +205,21 @@ writeFile(join(uiDir, `${name}.stories.tsx`), uiStory)
 if (!uiOnly) {
   writeFile(join(bridgeDir, 'types.ts'), bridgeTypes)
   writeFile(join(bridgeDir, `${hookName}.ts`), bridgeHook)
+}
+
+if (isOctoUiPackage) {
+  appendLineIfMissing(
+    join(ROOT_DIR, 'packages/octo-ui/src/index.ts'),
+    `export { default as ${name}, ${name} } from './components/${name}'`,
+  )
+  appendLineIfMissing(
+    join(ROOT_DIR, 'packages/octo-ui/src/index.ts'),
+    `export type { ${name}Props } from './components/${name}/types'`,
+  )
+  appendLineIfMissing(
+    join(ROOT_DIR, 'packages/octo-ui/src/styles/components.css'),
+    `@import '../components/${name}/index.css';`,
+  )
 }
 
 console.log(`\n✨ 完成！`)

@@ -55,6 +55,7 @@
     "storybook": "storybook dev -p 16006",
     "prebuild-storybook": "pnpm --filter @octo/ui build",
     "build-storybook": "storybook build",
+    "pretest:storybook": "pnpm --filter @octo/ui build",
     "test:storybook": "vitest run --config vitest.storybook.config.ts"
   },
   "dependencies": {

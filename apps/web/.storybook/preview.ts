@@ -3,9 +3,9 @@ import { OctoUIProvider } from '@octo/ui'
 import React from 'react'
 
 // 分层 CSS — 直接 import，不走 @import 链，避免 Vite 跨包路径问题
-import '@octo/ui/styles.css'
 import '../../../packages/dmworkbase/src/theme/primitive.css'
 import '../../../packages/dmworkbase/src/theme/semantic.css'
+import '@octo/ui/styles.css'
 import './preview.css'
 
 const preview: Preview = {
