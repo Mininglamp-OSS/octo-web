@@ -3174,20 +3174,10 @@ export class Conversation
                         // (octo-web#1280)。
                         VoiceFeedback.shared()?.submitAll(text);
 
-                        // 兼容未提供快照的旧调用方；MessageInput 正常路径会在
-                        // consume 时同步传入 sendTarget。
-                        const target =
-                          sendTarget ??
-                          captureSendTarget<Message>({
-                            getReplyMessage: () => vm.currentReplyMessage,
-                            setReplyMessage: (m) => {
-                              vm.currentReplyMessage = m;
-                            },
-                            getHandlerType: () => vm.currentHandlerType,
-                            setHandlerType: (h) => {
-                              vm.currentHandlerType = h;
-                            },
-                          });
+                        // reply/edit ownership is captured with the compose.
+                        // Never read the live VM here: queued sends must retain
+                        // the target selected when their editor state was consumed.
+                        const target = sendTarget;
                         // ── 辅助：发送单张图片（读取预览+宽高） ──────────────
                         // 返回 true 表示消息已入队 / 发送; false 表示被预检拒绝、
                         // 调用方应据此决定是否继续后续流程 (例如不要再补一条
