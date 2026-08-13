@@ -93,15 +93,71 @@ describe("executeChatSendPlan", () => {
     expect(JSON.stringify(input)).toBe(before);
   });
 
-  it("reports one enqueue event per successful operation", async () => {
+  it("reports unique part IDs as soon as the transport enqueues them", async () => {
     const events: string[] = [];
-    await executeChatSendPlan(plan("a", "b"), {
-      execute: async (current) => ({ enqueuedPartIds: current.partIds }),
-    }, {
-      onOperationEnqueued: ({ operation }) => events.push(operation.partIds[0]),
-    });
+    await executeChatSendPlan(
+      plan("a", "b"),
+      {
+        execute: async (current, transportEvents) => {
+          transportEvents.onEnqueued(current.partIds);
+          transportEvents.onEnqueued(current.partIds);
+          return { enqueuedPartIds: current.partIds };
+        },
+      },
+      {
+        onPartsEnqueued: (partIds) => events.push(...partIds),
+      },
+    );
 
     expect(events).toEqual(["a", "b"]);
+  });
+
+  it("keeps an enqueue event when ack waiting throws afterwards", async () => {
+    const events: string[] = [];
+    const execution = await executeChatSendPlan(
+      plan("a"),
+      {
+        execute: async (_current, transportEvents) => {
+          transportEvents.onEnqueued(["a"]);
+          throw new Error("ack timeout");
+        },
+      },
+      {
+        onPartsEnqueued: (partIds) => events.push(...partIds),
+      },
+    );
+
+    expect(events).toEqual(["a"]);
+    expect(execution.enqueuedPartIds).toEqual(["a"]);
+    expect(execution.operations[0].error).toBeInstanceOf(Error);
+  });
+
+  it("keeps owned parts from a batch that also contains an invalid part", async () => {
+    const execution = await executeChatSendPlan(plan("a"), {
+      execute: async (_current, transportEvents) => {
+        transportEvents.onEnqueued(["a", "wrong"]);
+        return { enqueuedPartIds: [] };
+      },
+    });
+
+    expect(execution.enqueuedPartIds).toEqual(["a"]);
+    expect(execution.operations[0].error).toBeInstanceOf(
+      InvalidChatTransportResultError,
+    );
+  });
+
+  it("keeps a part reported twice while recording the protocol error", async () => {
+    const execution = await executeChatSendPlan(plan("a"), {
+      execute: async (_current, transportEvents) => {
+        transportEvents.onEnqueued(["a", "a"]);
+        return { enqueuedPartIds: [] };
+      },
+    });
+
+    expect(execution.enqueuedPartIds).toEqual(["a"]);
+    expect(execution.operations[0].error).toBeInstanceOf(
+      InvalidChatTransportResultError,
+    );
   });
 
   it("skips a conditional reply operation when no earlier operation enqueued", async () => {

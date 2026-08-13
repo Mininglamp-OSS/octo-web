@@ -7,6 +7,8 @@ type LocationOperation = ExtensionChatSendOperation<unknown, { lat: number }> & 
 };
 
 describe("ChatSendOperationRegistry", () => {
+  const events = { onEnqueued: vi.fn() };
+
   it("registers a typed extension operation and returns an unregister handle", async () => {
     const registry = new ChatSendOperationRegistry();
     const handler = vi.fn(async (operation: LocationOperation) => ({
@@ -22,10 +24,10 @@ describe("ChatSendOperationRegistry", () => {
       payload: { lat: 31.2 },
     };
 
-    await expect(registry.get(operation)?.(operation)).resolves.toEqual({
+    await expect(registry.get(operation)?.(operation, events)).resolves.toEqual({
       enqueuedPartIds: ["location:0"],
     });
-    expect(handler).toHaveBeenCalledWith(operation);
+    expect(handler).toHaveBeenCalledWith(operation, events);
     expect(unregister()).toBe(true);
     expect(registry.get(operation)).toBeUndefined();
   });
@@ -56,7 +58,7 @@ describe("ChatSendOperationRegistry", () => {
     };
 
     expect(disposeFirst()).toBe(false);
-    await registry.get(operation)?.(operation);
+    await registry.get(operation)?.(operation, events);
     expect(replacement).toHaveBeenCalledOnce();
   });
 });

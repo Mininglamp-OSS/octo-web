@@ -9,8 +9,8 @@ function item(attachments: Array<{ id: string; name: string; type: string }>) {
     previewText: "caption",
     draftText: "caption",
     attachments,
-    expectedParts: 1,
-    enqueuedParts: 0,
+    expectedPartIds: [],
+    enqueuedPartIds: [],
   };
 }
 

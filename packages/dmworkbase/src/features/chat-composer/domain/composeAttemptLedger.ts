@@ -6,8 +6,8 @@ export interface ComposeAttempt<TAttachment = unknown> {
   previewText: string;
   draftText: string;
   attachments: TAttachment[];
-  expectedParts: number;
-  enqueuedParts: number;
+  expectedPartIds: string[];
+  enqueuedPartIds: string[];
 }
 
 export interface CaptureComposeAttempt<TAttachment = unknown> {
@@ -55,32 +55,57 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
       previewText: input.previewText,
       draftText: input.draftText,
       attachments: [...(input.attachments ?? [])],
-      expectedParts: 1,
-      enqueuedParts: 0,
+      expectedPartIds: [],
+      enqueuedPartIds: [],
     };
     this.attempts.set(attempt.id, attempt);
     return attempt;
   }
 
-  setExpectedParts(attemptId: string, count: number): boolean {
+  setExpectedPartIds(
+    attemptId: string,
+    partIds: readonly string[],
+  ): boolean {
     const attempt = this.attempts.get(attemptId);
     if (!attempt) return false;
-    const expectedParts = Math.max(
-      1,
-      attempt.enqueuedParts,
-      Number.isFinite(count) ? Math.floor(count) : 1,
+    const expectedPartIds = Array.from(
+      new Set(
+        [...partIds, ...attempt.enqueuedPartIds].filter(
+          (partId): partId is string =>
+            typeof partId === "string" && partId.length > 0,
+        ),
+      ),
     );
-    if (attempt.expectedParts === expectedParts) return false;
-    this.attempts.set(attemptId, { ...attempt, expectedParts });
+    if (
+      expectedPartIds.length === attempt.expectedPartIds.length &&
+      expectedPartIds.every(
+        (partId, index) => partId === attempt.expectedPartIds[index],
+      )
+    ) {
+      return false;
+    }
+    this.attempts.set(attemptId, { ...attempt, expectedPartIds });
     return true;
   }
 
-  markPartEnqueued(attemptId: string): boolean {
+  markPartsEnqueued(
+    attemptId: string,
+    partIds: readonly string[],
+  ): boolean {
     const attempt = this.attempts.get(attemptId);
-    if (!attempt || attempt.enqueuedParts >= attempt.expectedParts) return false;
+    if (!attempt) return false;
+    const expected = new Set(attempt.expectedPartIds);
+    const enqueued = new Set(attempt.enqueuedPartIds);
+    let changed = false;
+    partIds.forEach((partId) => {
+      if (!expected.has(partId) || enqueued.has(partId)) return;
+      enqueued.add(partId);
+      changed = true;
+    });
+    if (!changed) return false;
     this.attempts.set(attemptId, {
       ...attempt,
-      enqueuedParts: attempt.enqueuedParts + 1,
+      enqueuedPartIds: [...enqueued],
     });
     return true;
   }
@@ -103,7 +128,9 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
 
   orderedPreEnqueue(): ComposeAttempt<TAttachment>[] {
     return this.orderedPending().filter(
-      (attempt) => attempt.enqueuedParts < attempt.expectedParts,
+      (attempt) =>
+        attempt.expectedPartIds.length === 0 ||
+        attempt.enqueuedPartIds.length < attempt.expectedPartIds.length,
     );
   }
 

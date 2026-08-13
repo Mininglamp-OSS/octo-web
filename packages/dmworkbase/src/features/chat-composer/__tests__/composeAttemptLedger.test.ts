@@ -49,8 +49,8 @@ describe("ComposeAttemptLedger", () => {
       id: "attempt-1",
       capturedAt: 100,
       attachments: [{ id: "file-1" }],
-      expectedParts: 1,
-      enqueuedParts: 0,
+      expectedPartIds: [],
+      enqueuedPartIds: [],
     });
     expect(state.orderedPending().map((attempt) => attempt.id)).toEqual([
       first.id,
@@ -79,29 +79,28 @@ describe("ComposeAttemptLedger", () => {
     ).toThrow();
   });
 
-  it("tracks expected and enqueued parts without exceeding the plan", () => {
+  it("tracks expected and enqueued part IDs without duplicates", () => {
     const state = ledger();
     const attempt = state.capture({ previewText: "mixed", draftText: "mixed" });
-    expect(state.setExpectedParts(attempt.id, 3)).toBe(true);
-    expect(state.markPartEnqueued(attempt.id)).toBe(true);
-    expect(state.markPartEnqueued(attempt.id)).toBe(true);
-    expect(state.markPartEnqueued(attempt.id)).toBe(true);
-    expect(state.markPartEnqueued(attempt.id)).toBe(false);
+    expect(state.setExpectedPartIds(attempt.id, ["a", "b", "c"])).toBe(true);
+    expect(state.markPartsEnqueued(attempt.id, ["a"])).toBe(true);
+    expect(state.markPartsEnqueued(attempt.id, ["a"])).toBe(false);
+    expect(state.markPartsEnqueued(attempt.id, ["b", "c"])).toBe(true);
+    expect(state.markPartsEnqueued(attempt.id, ["unknown"])).toBe(false);
     expect(state.orderedPending()[0]).toMatchObject({
-      expectedParts: 3,
-      enqueuedParts: 3,
+      expectedPartIds: ["a", "b", "c"],
+      enqueuedPartIds: ["a", "b", "c"],
     });
     expect(state.pendingPreEnqueueCount()).toBe(0);
   });
 
-  it("does not lower expected parts below parts already enqueued", () => {
+  it("does not drop parts already reported enqueued when a plan is replaced", () => {
     const state = ledger();
     const attempt = state.capture({ previewText: "mixed", draftText: "mixed" });
-    state.setExpectedParts(attempt.id, 3);
-    state.markPartEnqueued(attempt.id);
-    state.markPartEnqueued(attempt.id);
-    state.setExpectedParts(attempt.id, 1);
-    expect(state.orderedPending()[0].expectedParts).toBe(2);
+    state.setExpectedPartIds(attempt.id, ["a", "b", "c"]);
+    state.markPartsEnqueued(attempt.id, ["a", "b"]);
+    state.setExpectedPartIds(attempt.id, ["c"]);
+    expect(state.orderedPending()[0].expectedPartIds).toEqual(["c", "a", "b"]);
   });
 
   it("persists only drafts that have not produced all local bubbles", () => {
@@ -109,7 +108,8 @@ describe("ComposeAttemptLedger", () => {
     const first = state.capture({ previewText: "A", draftText: "A" });
     state.capture({ previewText: "file", draftText: "" });
     state.capture({ previewText: "B", draftText: "@[u2:Bob] B" });
-    state.markPartEnqueued(first.id);
+    state.setExpectedPartIds(first.id, ["a"]);
+    state.markPartsEnqueued(first.id, ["a"]);
 
     expect(state.pendingDraftText()).toBe("@[u2:Bob] B");
     expect(state.pendingPreEnqueueCount()).toBe(2);
@@ -118,7 +118,8 @@ describe("ComposeAttemptLedger", () => {
   it("retains settled attempts until explicit removal", () => {
     const state = ledger();
     const attempt = state.capture({ previewText: "A", draftText: "A" });
-    state.markPartEnqueued(attempt.id);
+    state.setExpectedPartIds(attempt.id, ["a"]);
+    state.markPartsEnqueued(attempt.id, ["a"]);
     const outcome = createChatSendOutcome({ editorConsumed: true });
 
     expect(state.settle(attempt.id, outcome)).toEqual({
@@ -132,8 +133,8 @@ describe("ComposeAttemptLedger", () => {
 
   it("ignores stale progress and removal operations", () => {
     const state = ledger();
-    expect(state.setExpectedParts("missing", 2)).toBe(false);
-    expect(state.markPartEnqueued("missing")).toBe(false);
+    expect(state.setExpectedPartIds("missing", ["a"])).toBe(false);
+    expect(state.markPartsEnqueued("missing", ["a"])).toBe(false);
     expect(state.settle("missing", createChatSendOutcome())).toBeUndefined();
     expect(state.remove("missing")).toBe(false);
   });

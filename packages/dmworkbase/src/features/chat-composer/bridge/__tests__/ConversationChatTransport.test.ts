@@ -40,6 +40,10 @@ function conversation() {
   };
 }
 
+function transportEvents() {
+  return { onEnqueued: vi.fn() };
+}
+
 describe("ConversationChatTransport", () => {
   it("maps text operations to sendMessage and preserves reply/mention metadata", async () => {
     const host = conversation();
@@ -61,7 +65,8 @@ describe("ConversationChatTransport", () => {
       },
     };
 
-    const result = await transport.execute(operation);
+    const events = transportEvents();
+    const result = await transport.execute(operation, events);
     const content = host.sendMessage.mock.calls[0][0] as MessageText;
 
     expect(result).toEqual({ enqueuedPartIds: ["text:0"], messageId: "sent-1" });
@@ -70,6 +75,7 @@ describe("ConversationChatTransport", () => {
     expect(content.reply.messageID).toBe("message-1");
     expect(content.reply.messageSeq).toBe(7);
     expect(content.encode().byteLength).toBeGreaterThan(0);
+    expect(events.onEnqueued).toHaveBeenCalledWith(["text:0"]);
   });
 
   it("maps edit operations to the existing editMessage signature", async () => {
@@ -86,7 +92,8 @@ describe("ConversationChatTransport", () => {
       },
     };
 
-    const result = await transport.execute(operation);
+    const events = transportEvents();
+    const result = await transport.execute(operation, events);
     const args = host.editMessage.mock.calls[0];
 
     expect(result).toEqual({ enqueuedPartIds: ["text:0"] });
@@ -100,6 +107,7 @@ describe("ConversationChatTransport", () => {
       type: 1,
       content: "edited",
     });
+    expect(events.onEnqueued).toHaveBeenCalledWith(["text:0"]);
   });
 
   it("routes media and rich text through injected Conversation send helpers", async () => {
@@ -125,15 +133,18 @@ describe("ConversationChatTransport", () => {
         { type: "image", id: "editor:1", file },
       ],
     };
-    const mediaResult = await transport.execute(media);
-    const richResult = await transport.execute(rich);
+    const mediaEvents = transportEvents();
+    const richEvents = transportEvents();
+    const mediaResult = await transport.execute(media, mediaEvents);
+    const richResult = await transport.execute(rich, richEvents);
 
     expect(mediaResult.enqueuedPartIds).toEqual(["top:0"]);
     expect(richResult.enqueuedPartIds).toEqual(["editor:0", "editor:1"]);
-    expect(sendImageFile).toHaveBeenCalledWith(file);
+    expect(sendImageFile).toHaveBeenCalledWith(file, expect.any(Function));
     expect(sendRichTextMixed).toHaveBeenCalledWith(
       expect.any(Array),
       undefined,
+      expect.any(Function),
     );
   });
 
@@ -150,7 +161,9 @@ describe("ConversationChatTransport", () => {
       },
     };
 
-    await expect(transport.execute(operation)).rejects.toBeInstanceOf(
+    await expect(
+      transport.execute(operation, transportEvents()),
+    ).rejects.toBeInstanceOf(
       UnsupportedChatSendOperationError,
     );
   });
@@ -170,11 +183,12 @@ describe("ConversationChatTransport", () => {
       text: "extension payload",
     };
 
-    await expect(transport.execute(operation)).resolves.toEqual({
+    const events = transportEvents();
+    await expect(transport.execute(operation, events)).resolves.toEqual({
       enqueuedPartIds: ["extension:0"],
       messageId: "extension-message",
     });
-    expect(executeExtension).toHaveBeenCalledWith(operation);
+    expect(executeExtension).toHaveBeenCalledWith(operation, events);
     expect(host.sendMessage).not.toHaveBeenCalled();
   });
 
@@ -202,22 +216,26 @@ describe("ConversationChatTransport", () => {
       payload: { latitude: 31.2, longitude: 121.5 },
     };
 
-    await expect(transport.execute(operation)).resolves.toEqual({
+    const events = transportEvents();
+    await expect(transport.execute(operation, events)).resolves.toEqual({
       enqueuedPartIds: ["location:0"],
       messageId: "location-message",
     });
-    expect(executeLocation).toHaveBeenCalledWith(operation);
+    expect(executeLocation).toHaveBeenCalledWith(operation, events);
   });
 
   it("rejects an unregistered extension kind", async () => {
     const transport = new ConversationChatTransport(conversation());
 
     await expect(
-      transport.execute({
-        kind: "extension:unknown",
-        partIds: ["unknown:0"],
-        payload: {},
-      }),
+      transport.execute(
+        {
+          kind: "extension:unknown",
+          partIds: ["unknown:0"],
+          payload: {},
+        },
+        transportEvents(),
+      ),
     ).rejects.toBeInstanceOf(UnsupportedChatSendOperationError);
   });
 });

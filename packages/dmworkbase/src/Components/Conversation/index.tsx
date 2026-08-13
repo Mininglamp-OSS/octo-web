@@ -3172,8 +3172,6 @@ export class Conversation
                         // 否则整条消息会丢 (octo-web#227)；反之，**已入队但 ack 失败/
                         // 超时必须保持 editorConsumed=true，否则可见内容会被塞回输入框
                         // (octo-web#1280)。
-                        const markEnqueued = () =>
-                          sendProgress?.markPartEnqueued();
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // 兼容未提供快照的旧调用方；MessageInput 正常路径会在
@@ -3195,7 +3193,8 @@ export class Conversation
                         // 调用方应据此决定是否继续后续流程 (例如不要再补一条
                         // 空回复消息: octo-web#119 review by Jerry-Xin)。
                         const sendImageFile = async (
-                          file: File
+                          file: File,
+                          onEnqueued: () => void,
                         ): Promise<boolean> => {
                           // 上传前预检：后端会对文件大小/类型做校验,失败时直接 Toast,
                           // 不要让本地气泡先进聊天框再显示失败 (octo-web#119)。
@@ -3253,13 +3252,14 @@ export class Conversation
                           return this.sendMediaAndWait(
                             new ImageContent(file, previewUrl, width, height),
                             undefined,
-                            markEnqueued
+                            onEnqueued,
                           );
                         };
 
                         // ── 辅助：发送单个非图片文件 ──────────────
                         const sendFileAttachment = async (
-                          file: File
+                          file: File,
+                          onEnqueued: () => void,
                         ): Promise<boolean> => {
                           const name = file.name || "unknown";
                           const dotIndex = name.lastIndexOf(".");
@@ -3286,7 +3286,7 @@ export class Conversation
                           return this.sendMediaAndWait(
                             new FileContent(file, name, ext, file.size),
                             undefined,
-                            markEnqueued
+                            onEnqueued,
                           );
                         };
 
@@ -3300,24 +3300,30 @@ export class Conversation
                           sendProgress,
                         };
                         const plan = buildChatSendPlan(request);
-                        sendProgress?.setExpectedParts(plan.operations.length);
+                        sendProgress?.setExpectedPartIds(
+                          plan.operations.flatMap(({ partIds }) => partIds),
+                        );
 
                         const transport = createConversationChatTransport<Message>(
                           this,
                           {
-                            sendTextAndWaitAck: (content) =>
+                            sendTextAndWaitAck: (content, onEnqueued) =>
                               this.sendTextAndWaitAck(
                                 content,
                                 undefined,
-                                markEnqueued,
+                                onEnqueued,
                               ),
                             sendImageFile,
                             sendFileAttachment,
-                            sendRichTextMixed: (blocks, operationReply) =>
+                            sendRichTextMixed: (
+                              blocks,
+                              operationReply,
+                              onEnqueued,
+                            ) =>
                               this.sendRichTextMixed(
                                 blocks,
                                 operationReply,
-                                markEnqueued,
+                                onEnqueued,
                               ),
                             resolveReplyFromName: (message) => {
                               const channelInfo = getImChannelInfo(
@@ -3332,14 +3338,8 @@ export class Conversation
                           plan,
                           transport,
                           {
-                            // The existing media/text helpers report their
-                            // enqueue point directly. Edit has no helper, so
-                            // report it after the edit request succeeds.
-                            onOperationEnqueued: ({ operation }) => {
-                              if (operation.kind === "edit_text") {
-                                markEnqueued();
-                              }
-                            },
+                            onPartsEnqueued: (partIds) =>
+                              sendProgress?.markPartsEnqueued(partIds),
                           },
                         );
                         execution.operations.forEach(({ operation, error }) => {

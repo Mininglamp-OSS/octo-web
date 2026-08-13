@@ -667,17 +667,19 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     },
     [publishPendingSends],
   );
-  const setPendingSendExpectedParts = useCallback(
-    (id: string, count: number) => {
-      if (pendingSendsRef.current.setExpectedParts(id, count)) {
+  const setPendingSendExpectedPartIds = useCallback(
+    (id: string, partIds: readonly string[]) => {
+      if (pendingSendsRef.current.setExpectedPartIds(id, partIds)) {
         publishPendingSends();
       }
     },
     [publishPendingSends]
   );
-  const markPendingSendPartEnqueued = useCallback(
-    (id: string) => {
-      if (pendingSendsRef.current.markPartEnqueued(id)) publishPendingSends();
+  const markPendingSendPartsEnqueued = useCallback(
+    (id: string, partIds: readonly string[]) => {
+      if (pendingSendsRef.current.markPartsEnqueued(id, partIds)) {
+        publishPendingSends();
+      }
     },
     [publishPendingSends],
   );
@@ -1377,9 +1379,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       ? { ...sendDraftBaseline, draftText }
       : undefined;
     const sendProgress: SendProgressSnapshot = {
-      setExpectedParts: (count) =>
-        setPendingSendExpectedParts(pendingId, count),
-      markPartEnqueued: () => markPendingSendPartEnqueued(pendingId),
+      setExpectedPartIds: (partIds) =>
+        setPendingSendExpectedPartIds(pendingId, partIds),
+      markPartsEnqueued: (partIds) =>
+        markPendingSendPartsEnqueued(pendingId, partIds),
     };
 
     if (expanded) {
@@ -1514,8 +1517,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     props.onExpandChange,
     getSendQueue,
     registerPendingSend,
-    setPendingSendExpectedParts,
-    markPendingSendPartEnqueued,
+    setPendingSendExpectedPartIds,
+    markPendingSendPartsEnqueued,
     releasePendingSend,
     t,
   ]);

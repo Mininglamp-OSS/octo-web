@@ -14,7 +14,10 @@ import type {
   ChatSendOperation,
   ChatTransportResult,
 } from "../domain/sendPlan";
-import type { ChatTransportPort } from "./ChatTransportPort";
+import type {
+  ChatTransportEvents,
+  ChatTransportPort,
+} from "./ChatTransportPort";
 import {
   ChatSendOperationRegistry,
   type ChatSendOperationHandler,
@@ -55,12 +58,16 @@ export interface ConversationChatTransportConversation<
 export interface ConversationChatTransportHandlers<
   TMessage extends ConversationMessageTarget = ConversationMessageTarget,
 > {
-  sendTextAndWaitAck?: (content: MessageContent) => Promise<boolean>;
-  sendImageFile?: (file: File) => Promise<boolean>;
-  sendFileAttachment?: (file: File) => Promise<boolean>;
+  sendTextAndWaitAck?: (
+    content: MessageContent,
+    onEnqueued: () => void,
+  ) => Promise<boolean>;
+  sendImageFile?: (file: File, onEnqueued: () => void) => Promise<boolean>;
+  sendFileAttachment?: (file: File, onEnqueued: () => void) => Promise<boolean>;
   sendRichTextMixed?: (
     blocks: EditorContentBlock[],
-    reply?: Reply,
+    reply: Reply | undefined,
+    onEnqueued: () => void,
   ) => Promise<boolean>;
   resolveReplyFromName?: (message: ConversationMessageTarget) => string;
   /** Public extension registry. Registered operations run before built-ins. */
@@ -69,6 +76,7 @@ export interface ConversationChatTransportHandlers<
   operationHandlers?: Partial<{
     [K in BuiltInChatSendOperation<TMessage>["kind"]]: (
       operation: Extract<BuiltInChatSendOperation<TMessage>, { kind: K }>,
+      events: ChatTransportEvents,
     ) => Promise<ChatTransportResult>;
   }>;
 }
@@ -173,35 +181,40 @@ export class ConversationChatTransport<
     this.registerBuiltInOperations();
   }
 
-  async execute(operation: ChatSendOperation<TMessage>): Promise<ChatTransportResult> {
+  async execute(
+    operation: ChatSendOperation<TMessage>,
+    events: ChatTransportEvents,
+  ): Promise<ChatTransportResult> {
     const publicHandler = this.handlers.operationRegistry?.get(operation);
-    if (publicHandler) return publicHandler(operation);
+    if (publicHandler) return publicHandler(operation, events);
 
     const override = (
       this.handlers.operationHandlers as
         | Record<string, ChatSendOperationHandler<TMessage> | undefined>
         | undefined
     )?.[operation.kind];
-    if (override) return override(operation);
+    if (override) return override(operation, events);
 
     const builtIn = this.builtInOperations.get(operation);
-    if (builtIn) return builtIn(operation);
+    if (builtIn) return builtIn(operation, events);
     throw new UnsupportedChatSendOperationError(operation.kind);
   }
 
   private registerBuiltInOperations(): void {
     this.builtInOperations.register<
       Extract<ChatSendOperation<TMessage>, { kind: "edit_text" }>
-    >("edit_text", (operation) => this.executeEdit(operation));
+    >("edit_text", (operation, events) => this.executeEdit(operation, events));
     this.builtInOperations.register<
       Extract<ChatSendOperation<TMessage>, { kind: "send_text" }>
-    >("send_text", (operation) => this.executeText(operation));
+    >("send_text", (operation, events) => this.executeText(operation, events));
     this.builtInOperations.register<
       Extract<ChatSendOperation<TMessage>, { kind: "send_media" }>
-    >("send_media", (operation) => this.executeMedia(operation));
+    >("send_media", (operation, events) => this.executeMedia(operation, events));
     this.builtInOperations.register<
       Extract<ChatSendOperation<TMessage>, { kind: "send_rich_text" }>
-    >("send_rich_text", (operation) => this.executeRichText(operation));
+    >("send_rich_text", (operation, events) =>
+      this.executeRichText(operation, events),
+    );
   }
 
   private targetFor(operation: ChatSendOperation<TMessage>): TMessage {
@@ -214,6 +227,7 @@ export class ConversationChatTransport<
 
   private async executeEdit(
     operation: Extract<ChatSendOperation<TMessage>, { kind: "edit_text" }>,
+    events: ChatTransportEvents,
   ): Promise<ChatTransportResult> {
     const target = this.targetFor(operation);
     const editContent = new MessageText(operation.text);
@@ -226,11 +240,13 @@ export class ConversationChatTransport<
       target.channel.channelType,
       JSON.stringify(json),
     );
+    events.onEnqueued(operation.partIds);
     return resultFor(operation, true);
   }
 
   private async executeText(
     operation: Extract<ChatSendOperation<TMessage>, { kind: "send_text" }>,
+    events: ChatTransportEvents,
   ): Promise<ChatTransportResult> {
     const content = buildTextContent(operation.text, operation.mention);
     const target = operation.sendTarget?.replyMessage;
@@ -241,26 +257,36 @@ export class ConversationChatTransport<
     if (this.handlers.sendTextAndWaitAck) {
       return resultFor(
         operation,
-        await this.handlers.sendTextAndWaitAck(content),
+        await this.handlers.sendTextAndWaitAck(content, () =>
+          events.onEnqueued(operation.partIds),
+        ),
       );
     }
 
     const message = await this.conversation.sendMessage(content);
+    events.onEnqueued(operation.partIds);
     return resultFor(operation, true, message.messageID);
   }
 
   private async executeMedia(
     operation: Extract<ChatSendOperation<TMessage>, { kind: "send_media" }>,
+    events: ChatTransportEvents,
   ): Promise<ChatTransportResult> {
     const handler = isImageFile(operation.attachment.file)
       ? this.handlers.sendImageFile
       : this.handlers.sendFileAttachment;
     if (!handler) throw new UnsupportedChatSendOperationError(operation.kind);
-    return resultFor(operation, await handler(operation.attachment.file));
+    return resultFor(
+      operation,
+      await handler(operation.attachment.file, () =>
+        events.onEnqueued(operation.partIds),
+      ),
+    );
   }
 
   private async executeRichText(
     operation: Extract<ChatSendOperation<TMessage>, { kind: "send_rich_text" }>,
+    events: ChatTransportEvents,
   ): Promise<ChatTransportResult> {
     if (!this.handlers.sendRichTextMixed) {
       throw new UnsupportedChatSendOperationError(operation.kind);
@@ -271,7 +297,9 @@ export class ConversationChatTransport<
       : undefined;
     return resultFor(
       operation,
-      await this.handlers.sendRichTextMixed(operation.blocks, reply),
+      await this.handlers.sendRichTextMixed(operation.blocks, reply, () =>
+        events.onEnqueued(operation.partIds),
+      ),
     );
   }
 }

@@ -2,11 +2,15 @@ import type {
   ChatSendOperation,
   ChatTransportResult,
 } from "../domain/sendPlan";
+import type { ChatTransportEvents } from "./ChatTransportPort";
 
 export type ChatSendOperationHandler<
   TMessage,
   TOperation extends ChatSendOperation<TMessage> = ChatSendOperation<TMessage>,
-> = (operation: TOperation) => Promise<ChatTransportResult>;
+> = (
+  operation: TOperation,
+  events: ChatTransportEvents,
+) => Promise<ChatTransportResult>;
 
 /** Public operation dispatcher used by transport adapters and app extensions. */
 export class ChatSendOperationRegistry<TMessage = unknown> {

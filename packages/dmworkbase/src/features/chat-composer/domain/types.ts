@@ -43,8 +43,8 @@ export interface PendingSendDraft {
 }
 
 export interface SendProgressSnapshot {
-  setExpectedParts: (count: number) => void;
-  markPartEnqueued: () => void;
+  setExpectedPartIds: (partIds: readonly string[]) => void;
+  markPartsEnqueued: (partIds: readonly string[]) => void;
 }
 
 export type UnsentEditorBlock =

@@ -19,40 +19,24 @@ export interface ChatSendExecution<TMessage = unknown> {
 }
 
 export interface ExecuteChatSendPlanOptions<TMessage = unknown> {
-  /** Called once per operation that produced at least one local enqueue. */
-  onOperationEnqueued?: (
-    execution: ChatOperationExecution<TMessage>,
+  /** Called immediately for newly enqueued part IDs, before server ack. */
+  onPartsEnqueued?: (
+    partIds: readonly string[],
+    operation: ChatSendOperation<TMessage>,
   ) => void;
 }
 
 export class InvalidChatTransportResultError extends Error {
-  constructor(operation: ChatSendOperation, partId: unknown) {
+  constructor(
+    operation: ChatSendOperation,
+    partId: unknown,
+    reason = "is not owned by",
+  ) {
     super(
-      `transport returned part id ${String(partId)} not owned by ${operation.kind}`,
+      `transport returned part id ${String(partId)} that ${reason} ${operation.kind}`,
     );
     this.name = "InvalidChatTransportResultError";
   }
-}
-
-function validateResult(
-  operation: ChatSendOperation,
-  result: ChatTransportResult,
-): string[] {
-  if (!Array.isArray(result.enqueuedPartIds)) {
-    throw new TypeError("transport result must contain enqueuedPartIds[]");
-  }
-  const allowed = new Set(operation.partIds);
-  const seen = new Set<string>();
-  for (const partId of result.enqueuedPartIds) {
-    if (typeof partId !== "string" || !allowed.has(partId)) {
-      throw new InvalidChatTransportResultError(operation, partId);
-    }
-    if (seen.has(partId)) {
-      throw new InvalidChatTransportResultError(operation, partId);
-    }
-    seen.add(partId);
-  }
-  return [...result.enqueuedPartIds];
 }
 
 /** Execute operations serially while preserving every partial result. */
@@ -73,17 +57,55 @@ export async function executeChatSendPlan<TMessage = unknown>(
       });
       continue;
     }
+    const reportedPartIds = new Set<string>();
+    const reportEnqueued = (partIds: readonly string[]) => {
+      const allowed = new Set(operation.partIds);
+      const seenInBatch = new Set<string>();
+      const newlyEnqueued: string[] = [];
+      let invalid: { partId: unknown; reason?: string } | undefined;
+      partIds.forEach((partId) => {
+        if (typeof partId !== "string" || !allowed.has(partId)) {
+          invalid ??= { partId };
+          return;
+        }
+        if (seenInBatch.has(partId)) {
+          invalid ??= { partId, reason: "is duplicated for" };
+          return;
+        }
+        seenInBatch.add(partId);
+        if (reportedPartIds.has(partId)) return;
+        reportedPartIds.add(partId);
+        newlyEnqueued.push(partId);
+      });
+      if (newlyEnqueued.length > 0) {
+        hasEnqueuedOperation = true;
+        options.onPartsEnqueued?.(newlyEnqueued, operation);
+      }
+      if (invalid) {
+        throw new InvalidChatTransportResultError(
+          operation,
+          invalid.partId,
+          invalid.reason,
+        );
+      }
+    };
     try {
-      const result = await transport.execute(operation);
-      const enqueuedPartIds = validateResult(operation, result);
+      const result = await transport.execute(operation, {
+        onEnqueued: reportEnqueued,
+      });
+      if (!Array.isArray(result.enqueuedPartIds)) {
+        throw new TypeError("transport result must contain enqueuedPartIds[]");
+      }
+      reportEnqueued(result.enqueuedPartIds);
+      const enqueuedPartIds = [...reportedPartIds];
       const execution = { operation, enqueuedPartIds, result };
       operations.push(execution);
-      if (enqueuedPartIds.length > 0) {
-        hasEnqueuedOperation = true;
-        options.onOperationEnqueued?.(execution);
-      }
     } catch (error) {
-      operations.push({ operation, enqueuedPartIds: [], error });
+      operations.push({
+        operation,
+        enqueuedPartIds: [...reportedPartIds],
+        error,
+      });
     }
   }
 
