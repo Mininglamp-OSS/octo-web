@@ -48,9 +48,9 @@ import {
   buildMessageMentions as buildMentionRenderInfo,
   readMentionFlags,
 } from "../../Utils/mentionRender";
-import MessageInput, {
+import ChatComposer, {
   MessageInputContext,
-} from "../MessageInput";
+} from "../../features/chat-composer/ui/ChatComposer";
 import {
   type ChatSendOutcome,
   type ChatSendRequest,
@@ -2999,7 +2999,7 @@ export class Conversation
                         </div>
                       </div>
                     )}
-                    <MessageInput
+                    <ChatComposer
                       recoveredComposes={recoveredComposes}
                       onComposeRecovery={this.recordComposeRecovery}
                       onRecoveredComposes={this.consumeComposeRecoveries}
@@ -3365,7 +3365,7 @@ export class Conversation
                         return outcome;
 
                       }}
-                    ></MessageInput>
+                    ></ChatComposer>
                       </>
                     )}
                   </div>
