@@ -1,11 +1,11 @@
 import React from "react";
 import { act, render, waitFor } from "@testing-library/react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
-import MessageInput, { type MessageInputContext } from "..";
-import { createChatSendOutcome } from "../../../features/chat-composer/domain";
-import type { ComposeRecoveryRecord } from "../../../features/chat-composer/recovery";
+import ChatComposer, { type MessageInputContext } from "../ChatComposer";
+import { createChatSendOutcome } from "../../domain";
+import type { ComposeRecoveryRecord } from "../../recovery";
 
-vi.mock("../../../App", () => ({
+vi.mock("../../../../App", () => ({
   default: {
     mittBus: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
     shared: { avatarChannel: vi.fn() },
@@ -52,7 +52,7 @@ describe("MessageInput recovery hydration", () => {
     const recovered: string[][] = [];
 
     render(
-      <MessageInput
+      <ChatComposer
         context={conversationContext()}
         recoveredComposes={[failedCompose("failed A")]}
         onContext={(context) => {
@@ -113,7 +113,7 @@ describe("MessageInput recovery hydration", () => {
 
     try {
       render(
-        <MessageInput
+        <ChatComposer
           context={conversationContext()}
           recoveredComposes={[recovery]}
           onContext={(context) => {
@@ -148,7 +148,7 @@ describe("MessageInput recovery hydration", () => {
     };
 
     render(
-      <MessageInput
+      <ChatComposer
         context={conversationContext()}
         recoveredComposes={[recovery]}
         onContext={(context) => {
@@ -213,7 +213,7 @@ describe("MessageInput recovery hydration", () => {
 
       try {
         const view = render(
-          <MessageInput
+      <ChatComposer
             context={conversationContext()}
             onContext={(context) => {
               inputContext = context;

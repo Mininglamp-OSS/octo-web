@@ -1,10 +1,10 @@
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
-import { createChatSendOutcome } from "../../../features/chat-composer/domain";
-import MessageInput, { type MessageInputContext } from "..";
+import { createChatSendOutcome } from "../../domain";
+import ChatComposer, { type MessageInputContext } from "../ChatComposer";
 
-vi.mock("../../../App", () => ({
+vi.mock("../../../../App", () => ({
   default: {
     mittBus: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
     shared: { avatarChannel: vi.fn() },
@@ -32,7 +32,7 @@ describe("MessageInput keyboard integration", () => {
       createChatSendOutcome({ editorConsumed: true }),
     );
     const view = render(
-      <MessageInput
+      <ChatComposer
         context={conversationContext()}
         onContext={(context) => {
           inputContext = context;

@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import React, { useState, useRef, useEffect } from "react";
-import "./index.css";
+import "./ChatComposer.css";
 
 /**
  * MessageInput 的纯 UI Mock 版本

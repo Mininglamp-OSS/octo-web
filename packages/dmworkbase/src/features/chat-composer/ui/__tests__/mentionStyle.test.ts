@@ -8,9 +8,9 @@ import {
   MENTION_UID_AIS,
   MENTION_UID_HUMANS,
   MENTION_UID_LEGACY_ALL,
-} from "../../../Utils/mentionRender";
+} from "../../../../Utils/mentionRender";
 
-const cssPath = path.resolve(__dirname, "../index.css");
+const cssPath = path.resolve(__dirname, "../ChatComposer.css");
 const css = fs.readFileSync(cssPath, "utf8");
 const cssWithoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
 const broadcastEditorUids = [
