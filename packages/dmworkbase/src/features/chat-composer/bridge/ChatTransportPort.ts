@@ -1,10 +1,9 @@
-import type { ChatSendOperation } from "../submission/buildChatSendPlan";
+import type {
+  ChatSendOperation,
+  ChatTransportResult,
+} from "../domain/sendPlan";
 
-export interface ChatTransportResult {
-  /** Parts that produced a local message/edit bubble. */
-  enqueuedPartIds: string[];
-  messageId?: string;
-}
+export type { ChatTransportResult } from "../domain/sendPlan";
 
 /** SDK-free boundary for executing one planned operation. */
 export interface ChatTransportPort<TMessage = unknown> {

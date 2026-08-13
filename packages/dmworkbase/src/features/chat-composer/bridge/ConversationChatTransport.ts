@@ -12,8 +12,9 @@ import type {
 import type {
   BuiltInChatSendOperation,
   ChatSendOperation,
-} from "../submission/buildChatSendPlan";
-import type { ChatTransportPort, ChatTransportResult } from "./ChatTransportPort";
+  ChatTransportResult,
+} from "../domain/sendPlan";
+import type { ChatTransportPort } from "./ChatTransportPort";
 import {
   ChatSendOperationRegistry,
   type ChatSendOperationHandler,

@@ -1,5 +1,9 @@
-import type { ChatSendOperation, ChatSendPlan } from "../submission/buildChatSendPlan";
-import type { ChatTransportPort, ChatTransportResult } from "./ChatTransportPort";
+import type {
+  ChatSendOperation,
+  ChatSendPlan,
+  ChatTransportResult,
+} from "../domain/sendPlan";
+import type { ChatTransportPort } from "./ChatTransportPort";
 
 export interface ChatOperationExecution<TMessage = unknown> {
   operation: ChatSendOperation<TMessage>;

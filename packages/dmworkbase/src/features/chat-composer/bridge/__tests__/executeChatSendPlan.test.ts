@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ChatSendOperation, ChatSendPlan } from "../../submission/buildChatSendPlan";
+import type { ChatSendOperation, ChatSendPlan } from "../../domain";
 import {
   executeChatSendPlan,
   InvalidChatTransportResultError,

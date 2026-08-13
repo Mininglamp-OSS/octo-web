@@ -3,7 +3,7 @@ import { MessageContent, MessageText } from "wukongimjssdk";
 import type {
   ChatSendOperation,
   ExtensionChatSendOperation,
-} from "../../submission/buildChatSendPlan";
+} from "../../domain";
 import { ChatSendOperationRegistry } from "../ChatSendOperationRegistry";
 import {
   ConversationChatTransport,

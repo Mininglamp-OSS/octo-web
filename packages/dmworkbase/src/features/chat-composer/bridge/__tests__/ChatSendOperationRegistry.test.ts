@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ExtensionChatSendOperation } from "../../submission";
+import type { ExtensionChatSendOperation } from "../../domain";
 import { ChatSendOperationRegistry } from "../ChatSendOperationRegistry";
 
 type LocationOperation = ExtensionChatSendOperation<unknown, { lat: number }> & {

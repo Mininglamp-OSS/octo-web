@@ -1,5 +1,7 @@
-import type { ChatSendOperation } from "../submission";
-import type { ChatTransportResult } from "./ChatTransportPort";
+import type {
+  ChatSendOperation,
+  ChatTransportResult,
+} from "../domain/sendPlan";
 
 export type ChatSendOperationHandler<
   TMessage,

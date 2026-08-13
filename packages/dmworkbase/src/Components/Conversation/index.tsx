@@ -59,7 +59,7 @@ import {
   type EditorContentBlock,
   type PendingSendDraft,
 } from "../../features/chat-composer/domain";
-import { buildChatSendPlan } from "../../features/chat-composer/submission";
+import { buildChatSendPlan } from "../../features/chat-composer/application";
 import {
   createConversationChatTransport,
   executeChatSendPlan,
