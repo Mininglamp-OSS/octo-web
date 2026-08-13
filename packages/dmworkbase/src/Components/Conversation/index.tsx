@@ -51,6 +51,7 @@ import {
 import ChatComposer, {
   MessageInputContext,
 } from "../../features/chat-composer/ui/ChatComposer";
+import { createDefaultChatComposerExtensions } from "../../features/chat-composer/ui/createDefaultChatComposerExtensions";
 import {
   type ChatSendSettlement,
   type EditorContentBlock,
@@ -410,25 +411,30 @@ export class Conversation
   private _unsubscribeVmAttentionListener?: () => void;
   private _unsubscribeComposeRecovery?: () => void;
   private readonly _composeRecoveryOwner = Symbol("composeRecoveryOwner");
+  private readonly _chatComposerExtensions =
+    createDefaultChatComposerExtensions<Message>();
   private readonly _sendChatComposerRequest =
-    createConversationChatSendHandler<Message>({
-      conversation: this,
-      channel: () => this.channel(),
-      sendTextAndWaitAck: (content, onEnqueued) =>
-        this.sendTextAndWaitAck(content, undefined, onEnqueued),
-      sendMediaAndWait: (content, onEnqueued) =>
-        this.sendMediaAndWait(content, undefined, onEnqueued),
-      sendRichTextMixed: (blocks, reply, onEnqueued) =>
-        this.sendRichTextMixed(blocks, reply, onEnqueued),
-      resolveReplyFromName: (message) => {
-        const channelInfo = getImChannelInfo(
-          WKSDK.shared(),
-          new Channel(message.fromUID, ChannelTypePerson),
-        );
-        return channelInfo?.title || "";
+    createConversationChatSendHandler<Message>(
+      {
+        conversation: this,
+        channel: () => this.channel(),
+        sendTextAndWaitAck: (content, onEnqueued) =>
+          this.sendTextAndWaitAck(content, undefined, onEnqueued),
+        sendMediaAndWait: (content, onEnqueued) =>
+          this.sendMediaAndWait(content, undefined, onEnqueued),
+        sendRichTextMixed: (blocks, reply, onEnqueued) =>
+          this.sendRichTextMixed(blocks, reply, onEnqueued),
+        resolveReplyFromName: (message) => {
+          const channelInfo = getImChannelInfo(
+            WKSDK.shared(),
+            new Channel(message.fromUID, ChannelTypePerson),
+          );
+          return channelInfo?.title || "";
+        },
+        submitVoiceFeedback: (text) => VoiceFeedback.shared()?.submitAll(text),
       },
-      submitVoiceFeedback: (text) => VoiceFeedback.shared()?.submitAll(text),
-    });
+      { operationRegistry: this._chatComposerExtensions.send.operations },
+    );
   private _attentionRefreshHandler = () => {
     const run = () => this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
@@ -3011,6 +3017,7 @@ export class Conversation
                       </div>
                     )}
                     <ChatComposer
+                      extensions={this._chatComposerExtensions}
                       recoveredComposes={recoveredComposes}
                       onComposeRecovery={this.recordComposeRecovery}
                       onRecoveredComposes={this.consumeComposeRecoveries}

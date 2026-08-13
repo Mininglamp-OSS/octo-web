@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, expect, it, vi } from "vitest";
-import { chatPendingComposeRenderRegistry } from "../chatPendingComposeRenderRegistry";
+import { createDefaultChatPendingComposeRenderRegistry } from "../chatPendingComposeRenderRegistry";
 
 function item(attachments: Array<{ id: string; name: string; type: string }>) {
   return {
@@ -19,8 +19,9 @@ describe("chatPendingComposeRenderRegistry", () => {
     const renderAttachment = vi.fn((attachment: { id: string }) =>
       React.createElement("span", { key: attachment.id }),
     );
+    const registry = createDefaultChatPendingComposeRenderRegistry();
 
-    const rendered = chatPendingComposeRenderRegistry.render(
+    const rendered = registry.render(
       item([{ id: "file-1", name: "report.pdf", type: "application/pdf" }]),
       { sendingLabel: "sending", renderAttachment },
     );
@@ -33,9 +34,10 @@ describe("chatPendingComposeRenderRegistry", () => {
 
   it("keeps the fallback renderer for text-only attempts", () => {
     const renderAttachment = vi.fn(() => null);
+    const registry = createDefaultChatPendingComposeRenderRegistry();
 
     expect(
-      chatPendingComposeRenderRegistry.render(item([]), {
+      registry.render(item([]), {
         sendingLabel: "sending",
         renderAttachment,
       }),

@@ -61,4 +61,24 @@ describe("ChatSendOperationRegistry", () => {
     await registry.get(operation)?.(operation, events);
     expect(replacement).toHaveBeenCalledOnce();
   });
+
+  it("keeps an attempt snapshot stable when live handlers change", async () => {
+    const registry = new ChatSendOperationRegistry();
+    const first = vi.fn(async () => ({ enqueuedPartIds: ["first"] }));
+    const replacement = vi.fn(async () => ({ enqueuedPartIds: ["replacement"] }));
+    registry.register("send_text", first);
+    const snapshot = registry.snapshot();
+    registry.unregister("send_text");
+    registry.register("send_text", replacement);
+    const operation = {
+      kind: "send_text" as const,
+      partIds: ["text:0"],
+      text: "hello",
+    };
+
+    await snapshot.get(operation)?.(operation, events);
+
+    expect(first).toHaveBeenCalledOnce();
+    expect(replacement).not.toHaveBeenCalled();
+  });
 });

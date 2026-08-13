@@ -173,11 +173,18 @@ export class ConversationChatTransport<
 {
   private readonly builtInOperations =
     new ChatSendOperationRegistry<TMessage>();
+  private readonly publicOperations?: ChatSendOperationRegistry<TMessage>;
+  private readonly operationHandlers: Record<
+    string,
+    ChatSendOperationHandler<TMessage> | undefined
+  >;
 
   constructor(
     private readonly conversation: ConversationChatTransportConversation<TMessage>,
     private readonly handlers: ConversationChatTransportHandlers<TMessage> = {},
   ) {
+    this.publicOperations = handlers.operationRegistry?.snapshot();
+    this.operationHandlers = { ...handlers.operationHandlers };
     this.registerBuiltInOperations();
   }
 
@@ -185,14 +192,10 @@ export class ConversationChatTransport<
     operation: ChatSendOperation<TMessage>,
     events: ChatTransportEvents,
   ): Promise<ChatTransportResult> {
-    const publicHandler = this.handlers.operationRegistry?.get(operation);
+    const publicHandler = this.publicOperations?.get(operation);
     if (publicHandler) return publicHandler(operation, events);
 
-    const override = (
-      this.handlers.operationHandlers as
-        | Record<string, ChatSendOperationHandler<TMessage> | undefined>
-        | undefined
-    )?.[operation.kind];
+    const override = this.operationHandlers[operation.kind];
     if (override) return override(operation, events);
 
     const builtIn = this.builtInOperations.get(operation);

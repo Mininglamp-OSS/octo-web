@@ -40,7 +40,10 @@ import {
   createChatSendOutcome,
   type ChatSendOutcome,
 } from "../../domain";
-import { EditorComposePartRegistry } from "../../editor";
+import {
+  createDefaultEditorComposePartRegistry,
+  EditorComposePartRegistry,
+} from "../../editor";
 import { captureSendTarget } from "../../adapters/conversation/sendTarget";
 import { parseConsumedTextToContent } from "../../adapters/tiptap/mentionSendParse";
 
@@ -172,6 +175,7 @@ function consume(h: Harness) {
   // the editor and removes this send's attachments.
   h.offsets = { blocks: 0, topAttachments: 0 };
   return consumeCompose({
+    composePartRegistry: createDefaultEditorComposePartRegistry(),
     editor: port(h.editor),
     attachmentFiles: h.files,
     takeEditorAttachments: (ids) => {
@@ -246,6 +250,7 @@ it("keeps the editor intact when a registered part has no settlement adapter", (
 
   expect(() =>
     consumeCompose({
+      composePartRegistry: createDefaultEditorComposePartRegistry(),
       editor: {
         getJSON: () => ({ type: "doc", content: [{ type: "custom" }] }),
         isEmpty: () => false,
@@ -274,6 +279,7 @@ it("does not take top attachments when clearing the editor throws", () => {
 
   expect(() =>
     consumeCompose({
+      composePartRegistry: createDefaultEditorComposePartRegistry(),
       editor: {
         getJSON: () => ({ type: "doc", content: [] }),
         isEmpty: () => false,
@@ -838,6 +844,7 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
         { type: "text", text: "tail" },
       ],
       (value) => parseConsumedTextToContent(value).content as never,
+      createDefaultEditorComposePartRegistry(),
     );
 
     expect(JSON.stringify(recovered)).toContain("caption");
@@ -855,6 +862,7 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
         handle.recovery,
         [{ type: "attachment", id: "unknown" }],
         (value) => parseConsumedTextToContent(value).content as never,
+        createDefaultEditorComposePartRegistry(),
       ),
     ).toThrow("cannot recover unknown editor attachment: unknown");
   });

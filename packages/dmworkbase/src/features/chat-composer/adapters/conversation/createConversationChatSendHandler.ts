@@ -19,6 +19,7 @@ import type {
   ChatSendRequest,
   EditorContentBlock,
 } from "../../domain";
+import type { ChatSendOperationRegistry } from "../../extensions";
 import {
   createConversationChatTransport,
   type ConversationChatTransportConversation,
@@ -47,7 +48,9 @@ export interface ConversationChatSendHost<
   submitVoiceFeedback?(text: string): void;
 }
 
-export interface ConversationChatSendDependencies {
+export interface ConversationChatSendDependencies<
+  TMessage extends ConversationMessageTarget = ConversationMessageTarget,
+> {
   precheckUpload?: typeof precheckUploadCredentials;
   readImagePreview?: (file: File) => Promise<string>;
   measureImage?: (
@@ -55,6 +58,7 @@ export interface ConversationChatSendDependencies {
   ) => Promise<{ width: number; height: number }>;
   translate?: typeof t;
   toastError?: (message: string) => void;
+  operationRegistry?: ChatSendOperationRegistry<TMessage>;
 }
 
 function extension(fileName: string): string {
@@ -88,7 +92,7 @@ export function createConversationChatSendHandler<
   TMessage extends ConversationMessageTarget,
 >(
   host: ConversationChatSendHost<TMessage>,
-  dependencies: ConversationChatSendDependencies = {},
+  dependencies: ConversationChatSendDependencies<TMessage> = {},
 ): (request: ChatSendRequest<TMessage>) => Promise<ChatSendOutcome> {
   const precheckUpload =
     dependencies.precheckUpload ?? precheckUploadCredentials;
@@ -179,6 +183,7 @@ export function createConversationChatSendHandler<
       sendFileAttachment,
       sendRichTextMixed: host.sendRichTextMixed,
       resolveReplyFromName: host.resolveReplyFromName,
+      operationRegistry: dependencies.operationRegistry,
     });
     const execution = await executeChatSendPlan(plan, transport, {
       onPartsEnqueued: (partIds) =>

@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  createDefaultEditorComposePartRegistry,
   EditorComposePartRegistry,
-  chatEditorComposePartRegistry,
 } from "../composePartRegistry";
 
 describe("EditorComposePartRegistry", () => {
   it("captures attachment nodes in document order", () => {
     const file = new File(["x"], "image.png", { type: "image/png" });
-    const parts = chatEditorComposePartRegistry.capture(
+    const registry = createDefaultEditorComposePartRegistry();
+    const parts = registry.capture(
       {
         type: "doc",
         content: [
@@ -91,7 +92,8 @@ describe("EditorComposePartRegistry", () => {
 
   it("maps attachment parts to the existing media settlement model", () => {
     const file = new File(["x"], "image.png", { type: "image/png" });
-    const [part] = chatEditorComposePartRegistry.capture(
+    const registry = createDefaultEditorComposePartRegistry();
+    const [part] = registry.capture(
       {
         type: "doc",
         content: [{ type: "attachment", attrs: { id: "a" } }],
@@ -99,7 +101,7 @@ describe("EditorComposePartRegistry", () => {
       { attachmentFiles: new Map([["a", file]]) },
     );
 
-    expect(chatEditorComposePartRegistry.toSendBlock(part)).toEqual({
+    expect(registry.toSendBlock(part)).toEqual({
       type: "image",
       id: "a",
       file,
@@ -226,7 +228,8 @@ describe("EditorComposePartRegistry", () => {
   it("delegates attachment disposal to the resource owner", () => {
     const file = new File(["x"], "x.png", { type: "image/png" });
     const disposeAttachment = vi.fn();
-    const [part] = chatEditorComposePartRegistry.capture(
+    const registry = createDefaultEditorComposePartRegistry();
+    const [part] = registry.capture(
       {
         type: "doc",
         content: [
@@ -239,7 +242,7 @@ describe("EditorComposePartRegistry", () => {
       { attachmentFiles: new Map([["a", file]]) },
     );
 
-    chatEditorComposePartRegistry.dispose(part, {
+    registry.dispose(part, {
       attachmentFiles: new Map([["a", file]]),
       disposeAttachment,
     });

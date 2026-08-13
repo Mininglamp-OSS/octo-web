@@ -4,7 +4,7 @@ import type { ComposeAttempt } from "../domain";
 import {
   PendingComposeRenderRegistry,
   type PendingComposeRenderContext,
-} from "./pendingComposeRenderRegistry";
+} from "../extensions";
 
 export interface ChatPendingAttachmentPreview {
   id: string;
@@ -50,22 +50,34 @@ function renderPendingCompose(
   );
 }
 
-/** App-level registry. Feature packages can register higher-priority renderers. */
-export const chatPendingComposeRenderRegistry =
-  new PendingComposeRenderRegistry<
+export function registerDefaultChatPendingComposeRenderers(
+  registry: PendingComposeRenderRegistry<
+    ChatPendingComposeItem,
+    ChatPendingAttachmentPreview
+  >,
+): void {
+  registry.register({
+    id: "attachment",
+    priority: 10,
+    canRender: (item) => item.attachments.length > 0,
+    render: (item, context) => renderPendingCompose(item, context, true),
+  });
+
+  registry.register({
+    id: "default",
+    canRender: () => true,
+    render: (item, context) => renderPendingCompose(item, context, false),
+  });
+}
+
+export function createDefaultChatPendingComposeRenderRegistry(): PendingComposeRenderRegistry<
+  ChatPendingComposeItem,
+  ChatPendingAttachmentPreview
+> {
+  const registry = new PendingComposeRenderRegistry<
     ChatPendingComposeItem,
     ChatPendingAttachmentPreview
   >();
-
-chatPendingComposeRenderRegistry.register({
-  id: "attachment",
-  priority: 10,
-  canRender: (item) => item.attachments.length > 0,
-  render: (item, context) => renderPendingCompose(item, context, true),
-});
-
-chatPendingComposeRenderRegistry.register({
-  id: "default",
-  canRender: () => true,
-  render: (item, context) => renderPendingCompose(item, context, false),
-});
+  registerDefaultChatPendingComposeRenderers(registry);
+  return registry;
+}

@@ -50,6 +50,15 @@ export class ChatSendOperationRegistry<TMessage = unknown> {
     return this.handlers.has(kind);
   }
 
+  /** Freeze the current handler set for one send attempt. */
+  snapshot(): ChatSendOperationRegistry<TMessage> {
+    const snapshot = new ChatSendOperationRegistry<TMessage>();
+    this.handlers.forEach((handler, kind) => {
+      snapshot.handlers.set(kind, handler);
+    });
+    return snapshot;
+  }
+
   clear(): void {
     this.handlers.clear();
   }

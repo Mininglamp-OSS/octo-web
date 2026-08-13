@@ -9,6 +9,7 @@ import {
 import { FileContent } from "../../../../../Messages/File/FileContent";
 import { ImageContent } from "../../../../../Messages/Image/ImageContent";
 import type { ChatSendRequest } from "../../../domain";
+import { ChatSendOperationRegistry } from "../../../extensions";
 import { createConversationChatSendHandler } from "../createConversationChatSendHandler";
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -81,6 +82,30 @@ describe("createConversationChatSendHandler", () => {
     expect(setExpectedPartIds).toHaveBeenCalledWith(["text:0"]);
     expect(markPartsEnqueued).toHaveBeenCalledWith(["text:0"]);
     expect(sendTextAndWaitAck).toHaveBeenCalledOnce();
+  });
+
+  it("uses the injected operation registry in the production send path", async () => {
+    const operationRegistry = new ChatSendOperationRegistry();
+    const operationHandler = vi.fn(async (operation, events) => {
+      events.onEnqueued(operation.partIds);
+      return { enqueuedPartIds: operation.partIds };
+    });
+    operationRegistry.register("send_text", operationHandler);
+    const sendTextAndWaitAck = vi.fn(async () => true);
+    const handler = createConversationChatSendHandler(
+      host(sendTextAndWaitAck),
+      { operationRegistry },
+    );
+
+    await expect(handler(request())).resolves.toMatchObject({
+      editorConsumed: true,
+    });
+
+    expect(operationHandler).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "send_text", text: "hello" }),
+      expect.objectContaining({ onEnqueued: expect.any(Function) }),
+    );
+    expect(sendTextAndWaitAck).not.toHaveBeenCalled();
   });
 
   it("keeps enqueue evidence when ack waiting rejects", async () => {

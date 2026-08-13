@@ -17,7 +17,6 @@ import type {
   UnsentEditorBlock,
 } from "./sendFlow";
 import {
-  chatEditorComposePartRegistry,
   type EditorComposePartRegistry,
 } from "../editor";
 import type { EditorComposeDocument, EditorComposeNode } from "../domain";
@@ -68,8 +67,7 @@ export class ComposeRestoreUnavailableError extends Error {
 
 export interface ConsumeComposeOptions {
   editor: ComposeEditorPort;
-  /** Injectable registry for tests and isolated composer integrations. */
-  composePartRegistry?: EditorComposePartRegistry;
+  composePartRegistry: EditorComposePartRegistry;
   /** In-memory pasted-image files, keyed by attachment node id. */
   attachmentFiles: Map<string, File>;
   /** Mark captured editor attachment resources as attempt-owned. */
@@ -151,8 +149,7 @@ export function consumeCompose(
     });
 
   const snapshot = editor.getJSON();
-  const composePartRegistry =
-    opts.composePartRegistry ?? chatEditorComposePartRegistry;
+  const composePartRegistry = opts.composePartRegistry;
   const composePartContext = {
     attachmentFiles,
     revokeObjectURL,
@@ -309,8 +306,7 @@ export function buildComposeRecoveryDocument(
   >,
   blocks: UnsentEditorBlock[] | undefined,
   parseTextToNodes: (text: string) => ComposeNode[],
-  composePartRegistry: EditorComposePartRegistry =
-    chatEditorComposePartRegistry,
+  composePartRegistry: EditorComposePartRegistry,
 ): ComposeDoc | undefined {
   if (!blocks) return recovery.snapshot;
 

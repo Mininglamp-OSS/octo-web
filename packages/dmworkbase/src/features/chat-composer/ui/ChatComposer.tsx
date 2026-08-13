@@ -61,14 +61,17 @@ import type {
 } from "../domain";
 import {
   ChatComposerAttachmentStore,
-  chatEditorComposePartRegistry,
+  type EditorComposePartRegistry,
 } from "../editor";
 import { type ComposeRecoveryRecord } from "../recovery";
 import {
-  chatPendingComposeRenderRegistry,
   type ChatPendingAttachmentPreview,
   type ChatPendingComposeItem,
 } from "./chatPendingComposeRenderRegistry";
+import {
+  createDefaultChatComposerExtensions,
+  type DefaultChatComposerExtensions,
+} from "./createDefaultChatComposerExtensions";
 export type {
   AttachmentFile,
   EditorContentBlock,
@@ -165,18 +168,19 @@ function extractOrderedBlocks(
   editorInstance: any,
   attachmentFilesMap: Map<string, File>,
   members: readonly Subscriber[] | undefined,
+  composePartRegistry: EditorComposePartRegistry,
 ): EditorContentBlock[] {
   if (!editorInstance) return [];
   const json = editorInstance.getJSON();
   if (!json.content) return [];
 
   const composePartContext = { attachmentFiles: attachmentFilesMap };
-  const capturedParts = chatEditorComposePartRegistry.capture(
+  const capturedParts = composePartRegistry.capture(
     json,
     composePartContext,
   );
   capturedParts.forEach((part) =>
-    chatEditorComposePartRegistry.assertSettlementSupported(part),
+    composePartRegistry.assertSettlementSupported(part),
   );
 
   const blocks: EditorContentBlock[] = [];
@@ -192,13 +196,13 @@ function extractOrderedBlocks(
   }
 
   function processNode(node: any): void {
-    const part = chatEditorComposePartRegistry.captureNode(
+    const part = composePartRegistry.captureNode(
       node,
       composePartContext,
     );
     if (part) {
       flushText();
-      blocks.push(chatEditorComposePartRegistry.toSendBlock(part));
+      blocks.push(composePartRegistry.toSendBlock(part));
       return;
     }
 
@@ -277,6 +281,8 @@ function notifySecretPaste(detectedValue: string): void {
 
 export interface ChatComposerProps {
   context: ConversationContext;
+  /** Instance-scoped extensions selected once when this composer mounts. */
+  extensions?: DefaultChatComposerExtensions<any>;
   /**
    * 发送回调接收同步捕获的完整 request，并返回显式 outcome。outcome 精确声明
    * editor、顶部附件、编辑器块和 reply/edit target 哪些保持消费、哪些需要恢复。
@@ -526,6 +532,9 @@ function createAttachmentId(file: File): string {
 
 const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const { t } = useI18n();
+  const [extensions] = useState(() =>
+    props.extensions ?? createDefaultChatComposerExtensions(),
+  );
   const [slashMenuVisible, setSlashMenuVisible] = useState(false);
   const [slashFilter, setSlashFilter] = useState("");
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
@@ -1053,6 +1062,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           item.editorBlocks,
           (value) =>
             (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+          extensions.editor.composeParts,
         );
         const previewUrls = new Map(
           item.editorObjectUrls.map(({ id, url }) => [id, url]),
@@ -1125,6 +1135,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.onRecoveredComposes,
     props.onRestoreRecoveredTarget,
     props.recoveredComposes,
+    extensions.editor.composeParts,
   ]);
 
   const addMention = useCallback(
@@ -1168,6 +1179,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         editor,
         attachmentStore.attachmentFiles,
         localMembersRef.current,
+        extensions.editor.composeParts,
       );
     } catch (err) {
       console.error("[MessageInput] editor compose part is not sendable", err);
@@ -1251,6 +1263,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         editor: {
           consume: (context) =>
             consumeCompose({
+              composePartRegistry: extensions.editor.composeParts,
               editor: {
                 getJSON: () => editor.getJSON() as ComposeDoc,
                 isEmpty: () => editor.isEmpty,
@@ -1324,6 +1337,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     props.onExpandChange,
     controller,
     coordinator,
+    extensions.editor.composeParts,
     t,
   ]);
 
@@ -1497,7 +1511,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         {pendingPreEnqueueItems.length > 0 && (
           <div className="wk-messageinput-sending" aria-live="polite">
             {pendingPreEnqueueItems.map((item) => (
-              chatPendingComposeRenderRegistry.render(item, {
+              extensions.render.pending.render(item, {
                 sendingLabel: t("base.message.sending"),
                 renderAttachment: (attachment) =>
                   attachment.previewUrl ? (

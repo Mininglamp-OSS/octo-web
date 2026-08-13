@@ -173,38 +173,46 @@ export class EditorComposePartRegistry {
   }
 }
 
-export const chatEditorComposePartRegistry = new EditorComposePartRegistry();
+export function registerDefaultEditorComposeParts(
+  registry: EditorComposePartRegistry,
+): void {
+  registry.register({
+    id: "attachment",
+    canCapture: (node) => node.type === "attachment" && !!node.attrs?.id,
+    capture: (node, context) => {
+      const id = node.attrs?.id;
+      if (!id) return undefined;
+      return {
+        id,
+        kind: "attachment",
+        extensionId: "attachment",
+        node,
+        file: context.attachmentFiles.get(id),
+        previewUrl: node.attrs?.previewUrl,
+      };
+    },
+    restore: (part) => part.node,
+    toSendBlock: (part) => {
+      if (!part.file) return undefined;
+      return {
+        type: part.file.type.startsWith("image/") ? "image" : "file",
+        id: part.id,
+        file: part.file,
+      };
+    },
+    dispose: (part, context) => {
+      if (context.disposeAttachment) {
+        context.disposeAttachment(part.id, part.previewUrl);
+        return;
+      }
+      context.attachmentFiles.delete(part.id);
+      if (part.previewUrl) context.revokeObjectURL?.(part.previewUrl);
+    },
+  });
+}
 
-chatEditorComposePartRegistry.register({
-  id: "attachment",
-  canCapture: (node) => node.type === "attachment" && !!node.attrs?.id,
-  capture: (node, context) => {
-    const id = node.attrs?.id;
-    if (!id) return undefined;
-    return {
-      id,
-      kind: "attachment",
-      extensionId: "attachment",
-      node,
-      file: context.attachmentFiles.get(id),
-      previewUrl: node.attrs?.previewUrl,
-    };
-  },
-  restore: (part) => part.node,
-  toSendBlock: (part) => {
-    if (!part.file) return undefined;
-    return {
-      type: part.file.type.startsWith("image/") ? "image" : "file",
-      id: part.id,
-      file: part.file,
-    };
-  },
-  dispose: (part, context) => {
-    if (context.disposeAttachment) {
-      context.disposeAttachment(part.id, part.previewUrl);
-      return;
-    }
-    context.attachmentFiles.delete(part.id);
-    if (part.previewUrl) context.revokeObjectURL?.(part.previewUrl);
-  },
-});
+export function createDefaultEditorComposePartRegistry(): EditorComposePartRegistry {
+  const registry = new EditorComposePartRegistry();
+  registerDefaultEditorComposeParts(registry);
+  return registry;
+}
