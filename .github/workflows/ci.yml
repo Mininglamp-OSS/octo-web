@@ -86,6 +86,23 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Agent Mail tests
+        run: pnpm --filter @octo/mail test
+      - name: Agent Mail typecheck
+        run: pnpm --filter @octo/mail typecheck
+      - name: Agent Mail app tests
+        run: >-
+          pnpm --filter @octo/web exec vitest run
+          src/__tests__/mailAuthorizationLayout.test.ts
+          src/__tests__/mailAuthorizeDeepLink.test.ts
+          src/__tests__/mailProxyParity.test.ts
+          src/__tests__/mainInitialSpaceResolution.test.ts
+          src/__tests__/nginxEnvsubst.test.ts
+          src/Layout/__tests__/standaloneReturn.test.ts
+      - name: Agent Mail host navigation tests
+        run: |
+          pnpm --filter @octo/base exec vitest run src/__tests__/EndpointCommon.menuSwitch.test.tsx
+          pnpm --filter @dmwork/summary exec vitest run src/__tests__/module.menuSwitch.test.tsx
       - name: I18n check
         run: pnpm i18n:check
       - name: Skill Market tests
@@ -102,7 +119,10 @@ jobs:
           src/__tests__/expertMarketOn.test.ts
           src/__tests__/driveOn.test.ts
       - name: APIClient request interceptor tests
-        run: pnpm --filter @octo/base exec vitest run src/Service/__tests__/APIClient.headers.test.ts
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/Service/__tests__/APIClient.headers.test.ts
+          src/Service/__tests__/APIClient.test.ts
       - name: Electron main-process unit tests
         run: pnpm --filter @octo/web exec vitest run src-election src/__tests__/oidcLogoutWiring.test.ts
       - name: Type-check Electron main-process tests

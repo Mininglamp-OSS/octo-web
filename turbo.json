@@ -28,6 +28,7 @@
         "../../packages/dmworkcontacts/**",
         "../../packages/dmworkdatasource/**",
         "../../packages/dmworklogin/**",
+        "../../packages/mail/**",
         "../../packages/dmworkmcp/**",
         "../../packages/dmworkskillmarket/**",
         "../../packages/dmworksummary/**",

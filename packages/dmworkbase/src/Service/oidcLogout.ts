@@ -16,7 +16,15 @@ const AUTH_STORAGE_PREFIXES = [
   "realname_verified_at",
 ];
 
-const AUTH_STORAGE_KEYS = ["currentSpaceId", "pending_oidc_login"];
+const AUTH_STORAGE_KEYS = [
+  "currentSpaceId",
+  "pending_oidc_login",
+  // One-time standalone authorization targets are owned by the account that
+  // opened them and must not be replayed after another account signs in.
+  "octo.mail.authorize.pending-search",
+  "octo.mail.authorize.recovery-attempt",
+  "octo.docs.standaloneReturn",
+];
 // The main-process `oidc-api-origin-start` preflight was removed in the
 // desktop OIDC hardening pass — main now validates the API origin inline on
 // every `oidc-http-request` (see main/oidcRedirect.ts::validateOidcHttpRequest),
@@ -56,12 +64,22 @@ export function safeEndSessionUrl(value: unknown): string | undefined {
   try {
     const parsed = new URL(value);
     if (parsed.protocol !== "https:") return undefined;
-    if (parsed.username !== "" || parsed.password !== "" || parsed.hash !== "") return undefined;
+    if (parsed.username !== "" || parsed.password !== "" || parsed.hash !== "")
+      return undefined;
 
     const path = parsed.pathname.replace(/\/$/, "").toLowerCase();
     const pathSegments = path.split("/");
     const lastSegment = pathSegments[pathSegments.length - 1] ?? "";
-    if (!["end_session", "endsession", "end-session", "logout", "signout", "sign-out"].includes(lastSegment)) {
+    if (
+      ![
+        "end_session",
+        "endsession",
+        "end-session",
+        "logout",
+        "signout",
+        "sign-out",
+      ].includes(lastSegment)
+    ) {
       return undefined;
     }
 
@@ -110,7 +128,12 @@ function safePostLogoutRedirectUri(value: unknown): string | undefined {
   if (typeof value !== "string" || value === "") return undefined;
   try {
     const parsed = new URL(value);
-    if (parsed.protocol !== "https:" || parsed.username !== "" || parsed.password !== "" || parsed.hash !== "") {
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.username !== "" ||
+      parsed.password !== "" ||
+      parsed.hash !== ""
+    ) {
       return undefined;
     }
     return parsed.toString();
@@ -149,9 +172,12 @@ export async function requestOidcLogout(
 
 export function createOidcLogoutFetcher(
   apiURL: string,
-  ipc: { invoke?: (channel: string, request: unknown) => Promise<unknown> } | undefined,
+  ipc:
+    | { invoke?: (channel: string, request: unknown) => Promise<unknown> }
+    | undefined
 ): typeof fetch | undefined {
-  if (!/^https?:\/\//i.test(apiURL) || typeof ipc?.invoke !== "function") return undefined;
+  if (!/^https?:\/\//i.test(apiURL) || typeof ipc?.invoke !== "function")
+    return undefined;
   return async (input, init) => {
     // Main-process validates the API origin inline on every IPC round-trip
     // (see main/oidcRedirect.ts::validateOidcHttpRequest); no separate
@@ -161,10 +187,17 @@ export function createOidcLogoutFetcher(
     // calling it here would throw and silently break user-initiated OIDC
     // logout on packaged desktop.
     const path = typeof input === "string" ? input : input.toString();
-    const url = new URL(path, apiURL.endsWith("/") ? apiURL : `${apiURL}/`).toString();
-    let body: unknown = undefined
+    const url = new URL(
+      path,
+      apiURL.endsWith("/") ? apiURL : `${apiURL}/`
+    ).toString();
+    let body: unknown = undefined;
     if (init?.body != null) {
-      try { body = JSON.parse(String(init.body)) } catch { body = init.body }
+      try {
+        body = JSON.parse(String(init.body));
+      } catch {
+        body = init.body;
+      }
     }
     const result = await ipc.invoke(IPC_OIDC_HTTP_REQUEST, {
       url,
@@ -172,14 +205,19 @@ export function createOidcLogoutFetcher(
       body,
       headers: init?.headers,
     });
-    const envelope = result && typeof result === "object" &&
+    const envelope =
+      result &&
+      typeof result === "object" &&
       (result as Record<string, unknown>).__octoOidcHttpResponse === true
-      ? result as { ok: boolean; status: number; body?: unknown }
-      : undefined;
-    return new Response(JSON.stringify(envelope ? envelope.body ?? {} : result ?? {}), {
-      status: envelope?.status ?? 200,
-      headers: { "Content-Type": "application/json" },
-    });
+        ? (result as { ok: boolean; status: number; body?: unknown })
+        : undefined;
+    return new Response(
+      JSON.stringify(envelope ? envelope.body ?? {} : result ?? {}),
+      {
+        status: envelope?.status ?? 200,
+        headers: { "Content-Type": "application/json" },
+      }
+    );
   };
 }
 
@@ -262,7 +300,9 @@ export interface OidcUserInitiatedLogoutDeps {
   apiURL: string;
   // Packaged desktop preload injects `window.ipc.invoke`; web renderer has
   // no ipc. `undefined` on web is the normal case.
-  ipc: { invoke?: (channel: string, request: unknown) => Promise<unknown> } | undefined;
+  ipc:
+    | { invoke?: (channel: string, request: unknown) => Promise<unknown> }
+    | undefined;
   // Discriminates the packaged file:// shell from a browser tab. Passed in
   // rather than read from `window.location.protocol` so tests do not have
   // to patch jsdom's location.
@@ -274,10 +314,10 @@ export interface OidcUserInitiatedLogoutDeps {
   // Side-effects the orchestration performs. Injected so the test asserts
   // the sequence without touching real jsdom navigation.
   clearLocalLoginState: () => void;
-  reloadShell: () => void;             // window.location.reload()
+  reloadShell: () => void; // window.location.reload()
   navigateExternal: (url: string) => void; // window.location.href = url
-  markPostLogoutCleanup: () => void;   // markOidcPostLogoutCleanup()
-  fallbackLogout: () => void;          // WKApp.logout()
+  markPostLogoutCleanup: () => void; // markOidcPostLogoutCleanup()
+  fallbackLogout: () => void; // WKApp.logout()
   // Injected for testability. Defaults in the wrapper call site.
   requestLogout?: typeof requestOidcLogout;
   createFetcher?: typeof createOidcLogoutFetcher;
@@ -287,15 +327,15 @@ export interface OidcUserInitiatedLogoutDeps {
 // Discriminated outcome so the caller (and the test) can assert *which*
 // branch ran, not just that something happened.
 export type OidcUserInitiatedLogoutOutcome =
-  | { kind: "not-oidc" }                 // provider is local / empty / no token
+  | { kind: "not-oidc" } // provider is local / empty / no token
   | { kind: "desktop-idp"; url: string } // IdP end-session completed in the hidden window
   | { kind: "desktop-local"; url: string } // IPC guard rejected or IPC unavailable; local fallback
   | { kind: "web-redirect"; url: string }
-  | { kind: "no-end-session" }           // IdP returned no end_session_url
+  | { kind: "no-end-session" } // IdP returned no end_session_url
   | { kind: "logout-error"; error: unknown };
 
 export async function performOidcUserInitiatedLogout(
-  deps: OidcUserInitiatedLogoutDeps,
+  deps: OidcUserInitiatedLogoutDeps
 ): Promise<OidcUserInitiatedLogoutOutcome> {
   const requestLogout = deps.requestLogout ?? requestOidcLogout;
   const createFetcher = deps.createFetcher ?? createOidcLogoutFetcher;
@@ -309,21 +349,23 @@ export async function performOidcUserInitiatedLogout(
   }
 
   try {
-    const fetcher = deps.env === "desktop-shell"
-      ? createFetcher(deps.apiURL || "", deps.ipc)
-      : undefined;
+    const fetcher =
+      deps.env === "desktop-shell"
+        ? createFetcher(deps.apiURL || "", deps.ipc)
+        : undefined;
     const resp = await requestLogout(
       deps.loginProvider,
       deps.token,
-      fetcher || fetch,
+      fetcher || fetch
     );
     const rawEndSessionUrl = safeEndSessionUrl(resp.end_session_url);
-    const endSessionUrl = rawEndSessionUrl && deps.devPostLogoutRedirectUriOverride !== undefined
-      ? overridePostLogoutRedirectUri(
-          rawEndSessionUrl,
-          deps.devPostLogoutRedirectUriOverride,
-        )
-      : rawEndSessionUrl;
+    const endSessionUrl =
+      rawEndSessionUrl && deps.devPostLogoutRedirectUriOverride !== undefined
+        ? overridePostLogoutRedirectUri(
+            rawEndSessionUrl,
+            deps.devPostLogoutRedirectUriOverride
+          )
+        : rawEndSessionUrl;
 
     if (!endSessionUrl) {
       // IdP returned no usable end-session URL. Fall back to local logout so
@@ -343,7 +385,10 @@ export async function performOidcUserInitiatedLogout(
         deps.fallbackLogout();
         return { kind: "desktop-local", url: endSessionUrl };
       }
-      const opened = await ipcInvoke(IPC_OIDC_OPEN_EXTERNAL, endSessionUrl) as { ok?: boolean } | undefined;
+      const opened = (await ipcInvoke(
+        IPC_OIDC_OPEN_EXTERNAL,
+        endSessionUrl
+      )) as { ok?: boolean } | undefined;
       if (opened?.ok !== true) {
         deps.fallbackLogout();
         return { kind: "desktop-local", url: endSessionUrl };

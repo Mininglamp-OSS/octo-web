@@ -807,7 +807,7 @@ export default class WKApp extends ProviderListener {
   static routeRight = new ContextRouteManager(); // 右边（main）页面路由
   static menus = MenusManager.shared; // 菜单
   // Callback to switch the active sidebar menu by id (set by Main page)
-  static switchToMenuById?: (menuId: string) => void;
+  static switchToMenuById?: (menuId: string, afterSwitch?: () => void) => void;
   static openSummaryDetail?: (
     taskId: number | string,
     spaceId?: string,

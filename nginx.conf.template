@@ -8,6 +8,10 @@ gzip_buffers 16 8k;
 gzip_http_version 1.1;
 gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
 
+map $http_authorization $agent_mail_authorization {
+        default             "";
+        ~*^Bearer\ omb_     $http_authorization;
+}
 
 server {
         listen       80;
@@ -19,6 +23,8 @@ server {
         # string that the corresponding location block tests for.
         set $summary_api_url "${SUMMARY_API_URL}";
         set $market_api_url "${MARKET_API_URL}";
+        set $mail_api_url "${MAIL_API_URL}";
+        set $agent_mail_api_url "${AGENT_MAIL_API_URL}";
         # octo-fleet (FLEET_API_URL) upstream for the browser-originated
         # /fleet/api/v1/* calls (Loop workspace/runtime pickers in the expert
         # market). Runtime variable for the same reason as the others: blank /
@@ -115,6 +121,57 @@ server {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             client_max_body_size 100m;
+        }
+
+        location /mail-api/ {
+            default_type application/json;
+            if ($mail_api_url = "") {
+                return 503 '{"status":503,"msg":"mail API is not configured"}';
+            }
+            resolver ${NGINX_RESOLVER} ipv6=off valid=30s;
+            rewrite ^/mail-api/(.*)$ /v1/mail-gateway/$1 break;
+            proxy_pass $mail_api_url;
+            proxy_set_header token $http_token;
+            proxy_set_header X-Space-ID $http_x_space_id;
+            proxy_set_header Authorization "";
+            proxy_set_header Cookie "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size ${MAIL_CLIENT_MAX_BODY_SIZE};
+        }
+
+        location ~ ^/agent-mail-api(?:/|$) {
+            default_type application/json;
+            if ($agent_mail_api_url = "") {
+                return 503 '{"status":503,"msg":"Agent Mail API is not configured"}';
+            }
+            # The public Agent path exists for OpenClaw Plugin/CLI clients, but
+            # it must never become an anonymous passthrough to octo-mail.
+            # Authentication is still verified authoritatively by octo-mail;
+            # this edge guard rejects requests that cannot possibly authenticate.
+            if ($agent_mail_authorization = "") {
+                return 401 '{"status":401,"msg":"mailbox credential required"}';
+            }
+            resolver ${NGINX_RESOLVER} ipv6=off valid=30s;
+            rewrite ^/agent-mail-api/?(.*)$ /$1 break;
+            proxy_pass $agent_mail_api_url;
+            proxy_http_version 1.1;
+            proxy_buffering off;
+            proxy_cache off;
+            proxy_read_timeout 3600s;
+            proxy_set_header Connection "";
+            proxy_set_header Authorization $agent_mail_authorization;
+            proxy_set_header token "";
+            proxy_set_header X-Space-ID "";
+            proxy_set_header X-Octo-Mailbox-ID "";
+            proxy_set_header Cookie "";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            client_max_body_size ${MAIL_CLIENT_MAX_BODY_SIZE};
         }
 
         # ── octo-doc HTML: single unified prefix /docs-html/* ─────────────────────

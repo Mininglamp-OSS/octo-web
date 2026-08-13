@@ -181,6 +181,14 @@ describe("oidcLogout helpers", () => {
     sessionStorage.setItem("login_providerabc", "aegis");
     sessionStorage.setItem("realname_verifiedabc", "1");
     sessionStorage.setItem("pending_oidc_login", "{}");
+    sessionStorage.setItem(
+      "octo.mail.authorize.pending-search",
+      "?code=owner-a&space_id=space-a"
+    );
+    sessionStorage.setItem(
+      "octo.docs.standaloneReturn",
+      "/mail/authorize?code=owner-a&space_id=space-a"
+    );
     sessionStorage.setItem("theme-mode", "dark");
     localStorage.setItem("tokenabc", "t");
     localStorage.setItem("currentSpaceId", "s1");
@@ -193,6 +201,10 @@ describe("oidcLogout helpers", () => {
     expect(sessionStorage.getItem("login_providerabc")).toBeNull();
     expect(sessionStorage.getItem("realname_verifiedabc")).toBeNull();
     expect(sessionStorage.getItem("pending_oidc_login")).toBeNull();
+    expect(
+      sessionStorage.getItem("octo.mail.authorize.pending-search")
+    ).toBeNull();
+    expect(sessionStorage.getItem("octo.docs.standaloneReturn")).toBeNull();
     expect(localStorage.getItem("tokenabc")).toBeNull();
     expect(localStorage.getItem("currentSpaceId")).toBeNull();
     expect(sessionStorage.getItem("theme-mode")).toBe("dark");

@@ -22,6 +22,14 @@ import "./index.css";
 let _spaceChangedHandler: (() => void) | null = null;
 const openingSummaryShares = new Set<string>();
 
+function afterSummaryMenuSwitch(action: () => void) {
+    if (WKApp.switchToMenuById && WKApp.currentMenuId !== "summary") {
+        WKApp.switchToMenuById("summary", action);
+        return;
+    }
+    action();
+}
+
 /**
  * NavRail 顶层菜单图标（智能总结）。与 dmworkappbot 的菜单图标同构：
  * 纯 SVG、随 active 变色，不引入额外依赖。
@@ -50,13 +58,14 @@ export class SummaryModule implements IModule {
         });
 
         WKApp.openSummaryDetail = (taskId: number | string, spaceId, originChannel) => {
-            // 卡片深链带的空间可能≠当前空间，路由前先切目标空间，与浏览器路由 applyStandaloneSummarySpaceFromQuery 对称。
-            if (spaceId) WKApp.shared.currentSpaceId = spaceId;
-            WKApp.switchToMenuById?.("summary");
-            WKApp.routeLeft.popToRoot();
-            WKApp.routeRight.replaceToRoot(
-                <SummaryDetailPage taskId={taskId} originChannel={originChannel} emitSelection />
-            );
+            afterSummaryMenuSwitch(() => {
+                // 卡片深链带的空间可能≠当前空间，路由前先切目标空间，与浏览器路由 applyStandaloneSummarySpaceFromQuery 对称。
+                if (spaceId) WKApp.shared.currentSpaceId = spaceId;
+                WKApp.routeLeft.popToRoot();
+                WKApp.routeRight.replaceToRoot(
+                    <SummaryDetailPage taskId={taskId} originChannel={originChannel} emitSelection />
+                );
+            });
         };
 
         WKApp.openSummarySharePreview = (shareId, spaceId, originChannel) => {
@@ -81,9 +90,8 @@ export class SummaryModule implements IModule {
         WKApp.openSummaryShareDetail = async (shareId, spaceId, originChannel) => {
             if (openingSummaryShares.has(shareId)) return;
             openingSummaryShares.add(shareId);
-            if (spaceId) WKApp.shared.currentSpaceId = spaceId;
             try {
-                const share = await getSummaryShare(shareId);
+                const share = await getSummaryShare(shareId, spaceId);
                 if (shouldOpenOriginalSummary(share) && WKApp.openSummaryDetail) {
                     WKApp.openSummaryDetail(
                         getOriginalSummaryTaskId(share),
@@ -98,13 +106,15 @@ export class SummaryModule implements IModule {
                 openingSummaryShares.delete(shareId);
             }
 
-            const query = spaceId ? `?sp=${encodeURIComponent(spaceId)}` : "";
-            window.history.pushState({}, "", `/s/share/${encodeURIComponent(shareId)}${query}`);
-            WKApp.switchToMenuById?.("summary");
-            WKApp.routeLeft.popToRoot();
-            WKApp.routeRight.replaceToRoot(
-                <SummaryShareDetailPage shareId={shareId} originChannel={originChannel} />
-            );
+            afterSummaryMenuSwitch(() => {
+                if (spaceId) WKApp.shared.currentSpaceId = spaceId;
+                const query = spaceId ? `?sp=${encodeURIComponent(spaceId)}` : "";
+                window.history.pushState({}, "", `/s/share/${encodeURIComponent(shareId)}${query}`);
+                WKApp.routeLeft.popToRoot();
+                WKApp.routeRight.replaceToRoot(
+                    <SummaryShareDetailPage shareId={shareId} originChannel={originChannel} />
+                );
+            });
         };
 
         WKApp.route.register("/summary", () => {

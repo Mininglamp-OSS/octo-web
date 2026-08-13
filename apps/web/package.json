@@ -75,6 +75,7 @@
     "@octo/contacts": "workspace:*",
     "@octo/datasource": "workspace:*",
     "@octo/login": "workspace:*",
+    "@octo/mail": "workspace:*",
     "@react-pdf-viewer/core": "^3.12.0",
     "@react-pdf-viewer/page-navigation": "^3.12.0",
     "@react-pdf-viewer/thumbnail": "^3.12.0",

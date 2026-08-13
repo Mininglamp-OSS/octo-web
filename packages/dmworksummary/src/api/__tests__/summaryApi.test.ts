@@ -54,6 +54,20 @@ describe('summaryApi interceptors', () => {
     expect(result.headers['token']).toBe('test-token-abc');
     expect(result.headers['X-Space-Id']).toBe('space-123');
   });
+
+  it('preserves an explicit target Space header', async () => {
+    vi.resetModules();
+    mockRequestUse.mockClear();
+
+    await import('../summaryApi');
+
+    const requestInterceptor = mockRequestUse.mock.calls[0]?.[0];
+    const result = requestInterceptor({
+      headers: { 'X-Space-Id': 'space-target' },
+    } as any);
+
+    expect(result.headers['X-Space-Id']).toBe('space-target');
+  });
 });
 
 // The summary service lives at <origin>/summary/api/v1. On Web, apiClient.apiURL
@@ -128,6 +142,18 @@ describe('summaryApi', () => {
 
             expect(mockGet).toHaveBeenCalledWith('/summary/api/v1/summary-shares/share%2F1', { params: undefined, signal: undefined });
             expect(mockDelete).toHaveBeenCalledWith('/summary/api/v1/summary-shares/share%2F1');
+        });
+
+        it('loads a cross-Space share with an explicit Space header', async () => {
+            const response = { share_id: 'share-2', source_accessible: true, snapshot: { id: 2 } };
+            mockGet.mockResolvedValue({ data: { data: response } });
+
+            await expect(getSummaryShare('share-2', 'space-b')).resolves.toEqual(response);
+
+            expect(mockGet).toHaveBeenCalledWith('/summary/api/v1/summary-shares/share-2', {
+                params: undefined,
+                headers: { 'X-Space-Id': 'space-b' },
+            });
         });
     });
 
