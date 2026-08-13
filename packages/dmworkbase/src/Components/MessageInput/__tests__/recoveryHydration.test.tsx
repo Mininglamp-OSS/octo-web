@@ -75,4 +75,101 @@ describe("MessageInput recovery hydration", () => {
 
     act(() => inputContext?.clear());
   });
+
+  it("reclaims the recovered inline preview URL until the live compose clears", async () => {
+    const revokeObjectURL = vi.fn();
+    const originalRevoke = Object.getOwnPropertyDescriptor(
+      URL,
+      "revokeObjectURL",
+    );
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectURL,
+    });
+    let inputContext: MessageInputContext | undefined;
+    const recovery: MessageInputRecovery = {
+      ...failedCompose(""),
+      snapshot: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "attachment",
+                attrs: {
+                  id: "inline-1",
+                  name: "image.png",
+                  type: "image/png",
+                  previewUrl: "blob:inline-1",
+                },
+              },
+            ],
+          },
+        ],
+      },
+      editorAttachments: [],
+      editorObjectUrls: [{ id: "inline-1", url: "blob:inline-1" }],
+    };
+
+    try {
+      render(
+        <MessageInput
+          context={conversationContext()}
+          recoveredComposes={[recovery]}
+          onContext={(context) => {
+            inputContext = context;
+          }}
+        />
+      );
+
+      await waitFor(() => expect(inputContext).toBeDefined());
+      act(() => inputContext?.clear());
+
+      expect(revokeObjectURL).toHaveBeenCalledOnce();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:inline-1");
+    } finally {
+      if (originalRevoke) {
+        Object.defineProperty(URL, "revokeObjectURL", originalRevoke);
+      } else {
+        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
+      }
+    }
+  });
+
+  it("does not acknowledge a malformed recovery record", async () => {
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    let inputContext: MessageInputContext | undefined;
+    const recovered: string[][] = [];
+    const recovery: MessageInputRecovery = {
+      ...failedCompose(""),
+      editorBlocks: [{ type: "attachment", id: "unknown" }],
+    };
+
+    render(
+      <MessageInput
+        context={conversationContext()}
+        recoveredComposes={[recovery]}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+        onRecoveredComposes={(attemptIds) => recovered.push(attemptIds)}
+      />
+    );
+
+    await waitFor(() => {
+      expect(consoleError).toHaveBeenCalledWith(
+        "[MessageInput] compose recovery hydration failed",
+        expect.objectContaining({
+          message: "cannot recover unknown editor attachment: unknown",
+        }),
+      );
+    });
+    expect(recovered).toEqual([]);
+
+    act(() => inputContext?.clear());
+    consoleError.mockRestore();
+  });
 });

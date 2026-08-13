@@ -79,6 +79,12 @@ export interface ConsumeComposeOptions {
   composePartRegistry?: EditorComposePartRegistry;
   /** In-memory pasted-image files, keyed by attachment node id. */
   attachmentFiles: Map<string, File>;
+  /** Mark captured editor attachment resources as attempt-owned. */
+  takeEditorAttachments?: (ids: readonly string[]) => void;
+  /** Return restored editor attachment resources to the live composer. */
+  restoreEditorAttachments?: (ids: readonly string[]) => void;
+  /** Dispose an attachment resource that was successfully consumed. */
+  disposeEditorAttachment?: (id: string, previewUrl?: string) => void;
   /** Snapshot current top attachments before the editor is consumed. */
   snapshotTopAttachments: () => readonly TopAttachmentLike[];
   /** Transfer captured top attachments after the editor was cleared. */
@@ -154,7 +160,11 @@ export function consumeCompose(
   const snapshot = editor.getJSON();
   const composePartRegistry =
     opts.composePartRegistry ?? chatEditorComposePartRegistry;
-  const composePartContext = { attachmentFiles, revokeObjectURL };
+  const composePartContext = {
+    attachmentFiles,
+    revokeObjectURL,
+    disposeAttachment: opts.disposeEditorAttachment,
+  };
   const editorParts = composePartRegistry.capture(
     snapshot,
     composePartContext,
@@ -180,6 +190,7 @@ export function consumeCompose(
 
   // ── consume ──────────────────────────────────────────────────────────────
   editor.clearContent();
+  opts.takeEditorAttachments?.(editorAttachmentIds);
   takeTopAttachments(topIds);
 
   const assertRestorable = () => {
@@ -217,11 +228,13 @@ export function consumeCompose(
       onRestoreCompose?.();
       assertRestorable();
       restoreDoc(snapshot);
+      opts.restoreEditorAttachments?.(editorAttachmentIds);
     },
     restoreEditorBlocks: (blocks: UnsentEditorBlock[]) => {
       assertRestorable();
 
       const content: ComposeNode[] = [];
+      const restoredAttachmentIds: string[] = [];
       let inline: ComposeNode[] = [];
       const flushInline = () => {
         if (inline.length === 0) return;
@@ -232,8 +245,19 @@ export function consumeCompose(
       blocks.forEach((block) => {
         if (block.type === "attachment") {
           const part = editorPartById.get(block.id);
-          const node = part ? composePartRegistry.restore(part) : undefined;
-          if (node) inline.push(node);
+          if (!part) {
+            throw new Error(
+              `cannot restore unknown editor attachment: ${block.id}`,
+            );
+          }
+          const node = composePartRegistry.restore(part);
+          if (!node) {
+            throw new Error(
+              `editor attachment restore returned no node: ${block.id}`,
+            );
+          }
+          inline.push(node);
+          restoredAttachmentIds.push(block.id);
           return;
         }
         if (block.text.trim() === "") return;
@@ -244,6 +268,7 @@ export function consumeCompose(
 
       if (content.length === 0) return;
       restoreDoc({ type: "doc", content });
+      opts.restoreEditorAttachments?.(restoredAttachmentIds);
     },
     restoreSendTarget: () => opts.onRestoreSendTarget?.(),
     disposeEditorAttachments: (ids: string[]) => {
@@ -313,8 +338,18 @@ export function buildComposeRecoveryDocument(
   blocks.forEach((block) => {
     if (block.type === "attachment") {
       const part = editorPartById.get(block.id);
-      const node = part ? composePartRegistry.restore(part) : undefined;
-      if (node) inline.push(node);
+      if (!part) {
+        throw new Error(
+          `cannot recover unknown editor attachment: ${block.id}`,
+        );
+      }
+      const node = composePartRegistry.restore(part);
+      if (!node) {
+        throw new Error(
+          `editor attachment recovery returned no node: ${block.id}`,
+        );
+      }
+      inline.push(node);
       return;
     }
     if (block.text.trim() === "") return;

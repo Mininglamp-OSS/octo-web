@@ -70,6 +70,7 @@ import {
   ChatComposerAttachmentStore,
   chatEditorComposePartRegistry,
 } from "../../features/chat-composer/editor";
+import { disposeComposeRecoveryObjectUrls } from "../../features/chat-composer/recovery/disposeComposeRecovery";
 import {
   chatPendingComposeRenderRegistry,
   type ChatPendingAttachmentPreview,
@@ -287,7 +288,7 @@ interface MessageInputProps {
     settlement: ChatSendSettlement,
   ) => void | Promise<void>;
   /** Preserve a consumed compose when its original editor was destroyed. */
-  onComposeRecovery?: (recovery: MessageInputRecovery) => void;
+  onComposeRecovery?: (recovery: MessageInputRecovery) => boolean;
   /** Recover consumed composes transferred from an earlier editor instance. */
   recoveredComposes?: MessageInputRecovery[];
   onRecoveredComposes?: (attemptIds: string[]) => void;
@@ -486,7 +487,7 @@ export interface MessageInputRecovery {
   attemptId: string;
   snapshot: ConsumedComposeRecovery["snapshot"];
   editorAttachments: ConsumedComposeRecovery["editorAttachments"];
-  editorObjectUrls: string[];
+  editorObjectUrls: ConsumedComposeRecovery["editorObjectUrls"];
   topAttachments: TopAttachmentLike[];
   editorBlocks?: UnsentEditorBlock[];
   sendTarget?: { replyMessage?: unknown; handlerType: number };
@@ -878,8 +879,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
         if (isPastedImage && editor) {
           // 粘贴的图片：插入到编辑器作为富文本元素
-          attachmentStore.addInlineFile(id, file);
           const previewUrl = URL.createObjectURL(file);
+          attachmentStore.addInlineFile(id, file, previewUrl);
 
           editor
             .chain()
@@ -1067,52 +1068,67 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const restoreRecoveredComposes = useCallback(() => {
     if (!editor || !props.recoveredComposes?.length) return;
 
-    const recovered = props.recoveredComposes;
-    recovered.forEach((item) => {
-      item.editorAttachments.forEach(({ id, file }) => {
-        attachmentStore.addInlineFile(id, file);
-      });
-    });
-
+    const hydrated: MessageInputRecovery[] = [];
     let blockOffset = 0;
-    recovered.forEach((item) => {
-      const document = buildComposeRecoveryDocument(
-        {
-          snapshot: item.snapshot,
-          editorAttachments: item.editorAttachments,
-          topAttachments: item.topAttachments,
-        },
-        item.editorBlocks,
-        (value) =>
-          (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
-      );
-      if (!document) return;
-
-      const inserted = restoreComposeSnapshot(
-        document,
-        {
-          isEmpty: () => editor.isEmpty,
-          setContent: (snapshot) =>
-            editor.commands.setContent(snapshot as JSONContent),
-          focusEnd: () => editor.commands.focus("end"),
-          insertContentAtBlock: (offset, nodes) => {
-            const docNode = editor.state.doc;
-            const limit = Math.min(offset, docNode.childCount);
-            let pos = 0;
-            for (let index = 0; index < limit; index += 1) {
-              pos += docNode.child(index).nodeSize;
-            }
-            editor.commands.insertContentAt(pos, nodes as JSONContent[]);
+    props.recoveredComposes.forEach((item) => {
+      const registeredInlineIds: string[] = [];
+      try {
+        const document = buildComposeRecoveryDocument(
+          {
+            snapshot: item.snapshot,
+            editorAttachments: item.editorAttachments,
+            topAttachments: item.topAttachments,
           },
-          appendContent: (nodes) =>
-            editor.commands.insertContent(nodes as JSONContent[]),
-        },
-        blockOffset,
-      );
-      blockOffset += inserted;
+          item.editorBlocks,
+          (value) =>
+            (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+        );
+        const previewUrls = new Map(
+          item.editorObjectUrls.map(({ id, url }) => [id, url]),
+        );
+        item.editorAttachments.forEach(({ id, file }) => {
+          attachmentStore.addInlineFile(id, file, previewUrls.get(id));
+          registeredInlineIds.push(id);
+        });
+        const fileIds = new Set(item.editorAttachments.map(({ id }) => id));
+        item.editorObjectUrls.forEach(({ id, url }) => {
+          if (fileIds.has(id)) return;
+          attachmentStore.addInlinePreviewUrl(id, url);
+          registeredInlineIds.push(id);
+        });
+
+        if (document) {
+          const inserted = restoreComposeSnapshot(
+            document,
+            {
+              isEmpty: () => editor.isEmpty,
+              setContent: (snapshot) =>
+                editor.commands.setContent(snapshot as JSONContent),
+              focusEnd: () => editor.commands.focus("end"),
+              insertContentAtBlock: (offset, nodes) => {
+                const docNode = editor.state.doc;
+                const limit = Math.min(offset, docNode.childCount);
+                let pos = 0;
+                for (let index = 0; index < limit; index += 1) {
+                  pos += docNode.child(index).nodeSize;
+                }
+                editor.commands.insertContentAt(pos, nodes as JSONContent[]);
+              },
+              appendContent: (nodes) =>
+                editor.commands.insertContent(nodes as JSONContent[]),
+            },
+            blockOffset,
+          );
+          blockOffset += inserted;
+        }
+        hydrated.push(item);
+      } catch (err) {
+        attachmentStore.handoffInlineAttachments(registeredInlineIds);
+        console.error("[MessageInput] compose recovery hydration failed", err);
+      }
     });
 
-    const recoveredTopAttachments = recovered.flatMap((item) =>
+    const recoveredTopAttachments = hydrated.flatMap((item) =>
       item.topAttachments.filter(
         (attachment): attachment is TopAttachmentItem =>
           attachment.file !== undefined,
@@ -1122,13 +1138,15 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       attachmentStore.restoreTopAttachments(recoveredTopAttachments, 0);
     }
 
-    const target = recovered.find((item) => item.sendTarget)?.sendTarget;
+    const target = hydrated.find((item) => item.sendTarget)?.sendTarget;
     if (target) props.onRestoreRecoveredTarget?.(target);
-    if (recovered.some((item) => item.expanded)) {
+    if (hydrated.some((item) => item.expanded)) {
       setExpanded(true);
       props.onExpandChange?.(true);
     }
-    props.onRecoveredComposes?.(recovered.map(({ attemptId }) => attemptId));
+    if (hydrated.length > 0) {
+      props.onRecoveredComposes?.(hydrated.map(({ attemptId }) => attemptId));
+    }
   }, [
     editor,
     attachmentStore,
@@ -1276,6 +1294,12 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         focusEnd: () => editor.commands.focus("end"),
       },
       attachmentFiles: attachmentStore.attachmentFiles,
+      takeEditorAttachments: (ids) =>
+        attachmentStore.takeInlineAttachments(ids),
+      restoreEditorAttachments: (ids) =>
+        attachmentStore.restoreInlineAttachments(ids),
+      disposeEditorAttachment: (id, previewUrl) =>
+        attachmentStore.disposeInlineAttachment(id, previewUrl),
       // 部分还原时把 @[uid:label] 还原成 mention 节点（与草稿恢复同一套解析）。
       parseTextToNodes: (value) =>
         (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
@@ -1403,7 +1427,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               .map((block) => block.id),
           );
           if (editorFailed || topFailed) {
-            props.onComposeRecovery?.({
+            const recovery: MessageInputRecovery = {
               channelKey: sendChannelKey,
               attemptId: pendingId,
               snapshot: handle.recovery.snapshot,
@@ -1419,7 +1443,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                       ({ id }) =>
                         !partialEditorRestore || unsentAttachmentIds.has(id),
                     )
-                    .map(({ url }) => url)
                 : [],
               topAttachments: topFailed
                 ? handle.recovery.topAttachments.filter(
@@ -1440,7 +1463,22 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
                     : undefined
                   : undefined,
               expanded: unavailable && expandedAtSend,
-            });
+            };
+            let accepted = false;
+            try {
+              accepted = props.onComposeRecovery?.(recovery) ?? false;
+            } catch (err) {
+              console.error("[MessageInput] compose recovery handoff failed", err);
+            }
+            if (!accepted) disposeComposeRecoveryObjectUrls(recovery);
+            const editorRecoveryIds = new Set([
+              ...recovery.editorAttachments.map(({ id }) => id),
+              ...recovery.editorObjectUrls.map(({ id }) => id),
+            ]);
+            attachmentStore.handoffInlineAttachments([...editorRecoveryIds]);
+            attachmentStore.handoffTopAttachments(
+              recovery.topAttachments.map(({ id }) => id),
+            );
           }
         }
         return settlement.editorConsumed;
@@ -1454,6 +1492,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     props.onSend,
     props.onCaptureSendTarget,
     props.onCaptureSendDraft,
+    props.onComposeRecovery,
     props.onSendSettled,
     props.onExpandChange,
     getSendQueue,

@@ -23,6 +23,7 @@ export interface EditorComposePart {
 export interface EditorComposePartContext {
   attachmentFiles: Map<string, File>;
   revokeObjectURL?: (url: string) => void;
+  disposeAttachment?: (id: string, previewUrl?: string) => void;
 }
 
 export type EditorComposePartSendBlock = Extract<
@@ -204,6 +205,10 @@ chatEditorComposePartRegistry.register({
     };
   },
   dispose: (part, context) => {
+    if (context.disposeAttachment) {
+      context.disposeAttachment(part.id, part.previewUrl);
+      return;
+    }
     context.attachmentFiles.delete(part.id);
     if (part.previewUrl) context.revokeObjectURL?.(part.previewUrl);
   },

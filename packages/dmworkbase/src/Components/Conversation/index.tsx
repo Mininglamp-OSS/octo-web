@@ -343,6 +343,33 @@ const composeRecoveryStore = new ComposeRecoveryStore<MessageInputRecovery>({
   dispose: disposeComposeRecoveryObjectUrls,
 });
 
+function hasSameComposeRecoveryResources(
+  left: MessageInputRecovery,
+  right: MessageInputRecovery,
+): boolean {
+  return (
+    left.editorAttachments.length === right.editorAttachments.length &&
+    left.editorAttachments.every(
+      (item, index) =>
+        item.id === right.editorAttachments[index]?.id &&
+        item.file === right.editorAttachments[index]?.file,
+    ) &&
+    left.editorObjectUrls.length === right.editorObjectUrls.length &&
+    left.editorObjectUrls.every(
+      (item, index) =>
+        item.id === right.editorObjectUrls[index]?.id &&
+        item.url === right.editorObjectUrls[index]?.url,
+    ) &&
+    left.topAttachments.length === right.topAttachments.length &&
+    left.topAttachments.every(
+      (item, index) =>
+        item.id === right.topAttachments[index]?.id &&
+        item.file === right.topAttachments[index]?.file &&
+        item.previewUrl === right.topAttachments[index]?.previewUrl,
+    )
+  );
+}
+
 export class Conversation
   extends Component<ConversationProps, ConversationState>
   implements ConversationContext
@@ -1645,8 +1672,12 @@ export class Conversation
     this.refreshComposeRecoveries();
   }
 
-  private recordComposeRecovery = (recovery: MessageInputRecovery): void => {
-    composeRecoveryStore.add(recovery);
+  private recordComposeRecovery = (recovery: MessageInputRecovery): boolean => {
+    if (composeRecoveryStore.add(recovery)) return true;
+    const existing = composeRecoveryStore
+      .list(recovery.channelKey)
+      .find(({ attemptId }) => attemptId === recovery.attemptId);
+    return !!existing && hasSameComposeRecoveryResources(existing, recovery);
   };
 
   private consumeComposeRecoveries = (attemptIds: string[]): void => {

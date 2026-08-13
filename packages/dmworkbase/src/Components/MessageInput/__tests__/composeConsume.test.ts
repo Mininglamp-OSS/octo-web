@@ -144,6 +144,9 @@ interface Harness {
   errors: Array<{ step: string; err: unknown }>;
   restoredCompose: number;
   restoredSendTarget: number;
+  takenEditorAttachments: string[];
+  restoredEditorAttachments: string[];
+  disposedEditorAttachments: string[];
   /** Mirrors MessageInput's restore-offset ref (reset on every consume). */
   offsets: { blocks: number; topAttachments: number };
 }
@@ -157,6 +160,9 @@ function harness(content?: unknown, top: TopAttachmentLike[] = []): Harness {
     errors: [],
     restoredCompose: 0,
     restoredSendTarget: 0,
+    takenEditorAttachments: [],
+    restoredEditorAttachments: [],
+    disposedEditorAttachments: [],
     offsets: { blocks: 0, topAttachments: 0 },
   };
 }
@@ -168,6 +174,17 @@ function consume(h: Harness) {
   return consumeCompose({
     editor: port(h.editor),
     attachmentFiles: h.files,
+    takeEditorAttachments: (ids) => {
+      h.takenEditorAttachments.push(...ids);
+    },
+    restoreEditorAttachments: (ids) => {
+      h.restoredEditorAttachments.push(...ids);
+    },
+    disposeEditorAttachment: (id, previewUrl) => {
+      h.disposedEditorAttachments.push(id);
+      h.files.delete(id);
+      if (previewUrl) h.revoked.push(previewUrl);
+    },
     snapshotTopAttachments: () => h.top,
     takeTopAttachments: (ids) => {
       const wanted = new Set(ids);
@@ -303,6 +320,7 @@ describe("consumeCompose — the composer is emptied synchronously", () => {
     const handle = consume(h);
 
     expect(handle.ids.editorAttachmentIds).toEqual(["img-1", "img-2"]);
+    expect(h.takenEditorAttachments).toEqual(["img-1", "img-2"]);
   });
 });
 
@@ -360,6 +378,7 @@ describe("consumeCompose — a send that was never enqueued gives the content ba
     expect(JSON.stringify(h.editor.getJSON())).toContain("img-1");
     expect(h.files.has("img-1")).toBe(true);
     expect(h.revoked).toEqual([]);
+    expect(h.restoredEditorAttachments).toEqual(["img-1"]);
   });
 
   it("restores unsent top attachments while keeping ones queued during the await", async () => {
@@ -410,8 +429,36 @@ describe("consumeCompose — partial pasted-attachment failure", () => {
     expect(h.files.has("img-1")).toBe(false);
     expect(h.files.has("img-2")).toBe(true);
     expect(h.revoked).toEqual(["blob:1"]);
+    expect(h.disposedEditorAttachments).toEqual(["img-1"]);
+    expect(h.restoredEditorAttachments).toEqual(["img-2"]);
     // Sent text is NOT re-inserted — only the rejected attachment comes back.
     expect(h.editor.getText()).not.toContain("two pics");
+  });
+
+  it("reports an unknown attachment instead of silently losing its lease", async () => {
+    const h = harness(doc(para(attachment("img-1", "blob:1"))));
+    h.files.set("img-1", new File(["1"], "img-1.png", { type: "image/png" }));
+    const handle = consume(h);
+
+    await runSendWithConsumedCompose(
+      () =>
+        outcome({
+          editorConsumed: true,
+          unsentEditorBlocks: [
+            { type: "attachment" as const, id: "unknown" },
+          ],
+        }),
+      handle.ids,
+      handle.compose,
+    );
+
+    expect(h.errors).toHaveLength(1);
+    expect(h.errors[0].step).toBe("restoreEditorBlocks");
+    expect(h.errors[0].err).toEqual(
+      expect.objectContaining({
+        message: "cannot restore unknown editor attachment: unknown",
+      }),
+    );
   });
 });
 
@@ -796,5 +843,19 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     expect(JSON.stringify(recovered)).toContain("caption");
     expect(JSON.stringify(recovered)).toContain("tail");
     expect(JSON.stringify(recovered)).not.toContain("img-1");
+  });
+
+  it("fails closed when recovery references an unknown attachment", () => {
+    const h = harness(doc(para(attachment("img-1", "blob:img-1"))));
+    h.files.set("img-1", new File(["1"], "img-1.png", { type: "image/png" }));
+    const handle = consume(h);
+
+    expect(() =>
+      buildComposeRecoveryDocument(
+        handle.recovery,
+        [{ type: "attachment", id: "unknown" }],
+        (value) => parseConsumedTextToContent(value).content as never,
+      ),
+    ).toThrow("cannot recover unknown editor attachment: unknown");
   });
 });

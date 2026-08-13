@@ -14,14 +14,13 @@
 - 编辑器销毁或切换频道时的可观察、有限容量 recovery store。
 - 公开的 pending-send renderer registry 和 transport operation registry。
 - editor compose part registry；附件节点已迁移 capture/restore/dispose，并显式映射到现有 image/file 发送模型。
-- `ChatComposerAttachmentStore`；顶部附件使用 snapshot/take/restore 转移所有权，React 只订阅列表快照。
+- `ChatComposerAttachmentStore`；顶部附件使用 snapshot/take/restore，inline 附件使用 live/leased/handoff 转移所有权，React 只订阅列表快照。
 
 仍需后续迁移：
 
 - 继续迁移 text/mention capture、Tiptap port、keyboard 和 clipboard policy。
 - 把通用 `ComposePart`/extension operation 纳入现有兼容 request，而不是继续增加字段分支。
 - 将 Conversation 中的上传预检和 SDK content 构造进一步下沉到 bridge adapter。
-- 将 editor node 中的 inline preview URL 也纳入 attachment resource lease；当前 store 已收口 File Map 和顶部附件 URL。
 
 ## 1. 背景
 
@@ -456,6 +455,7 @@ old MessageInput settle failure
 - 每频道最多 20 条，最多 50 个频道，TTL 30 分钟。
 - attempt ID 去重，多个失败 attempt 按到达顺序恢复。
 - 正常恢复表示 `File` 和 object URL 所有权已转移给新 editor，不执行 dispose。
+- recovery callback 必须同步返回是否已接管记录；未接管或抛错时旧 composer 立即释放资源。
 - TTL、容量淘汰会显式释放尚未转移的 object URL；document unload 由浏览器回收。
 - recovery 只在 reply/edit target 为空时恢复目标，用户更新的选择始终优先。
 - 远端草稿和 live draft 先恢复，失败 compose 再前置合并；禁止因 recovery 存在而跳过新草稿。
@@ -803,7 +803,8 @@ Chat 和 `MentionComposer` 各自实现 adapter。
 - `ChatComposerAttachmentStore` 已替代 `attachmentFilesRef`、`topAttachmentsRef` 及其双写逻辑。
 - 顶部附件在发送时先 snapshot，editor 成功清空后再按 ID take；失败 restore 和 recovery
   通过同一 store 去重回插，避免同步异常提前移走附件。
-- inline preview URL 的 lease 仍由 attachment extension/attempt 管理，后续与 store 资源接口合并。
+- inline `File` 与 preview URL 已合并为 store 资源：发送时 leased，失败恢复时转回 live，
+  成功时统一 dispose，editor 销毁时无 revoke 地 handoff 给 recovery。
 
 ### PR 6：Clipboard 与 Keyboard
 

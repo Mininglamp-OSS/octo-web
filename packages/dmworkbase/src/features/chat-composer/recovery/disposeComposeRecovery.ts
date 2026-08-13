@@ -1,5 +1,5 @@
 export interface ObjectUrlComposeRecovery {
-  editorObjectUrls?: string[];
+  editorObjectUrls?: Array<{ id: string; url: string }>;
   topAttachments: Array<{ previewUrl?: string }>;
 }
 
@@ -19,6 +19,6 @@ export function disposeComposeRecoveryObjectUrls(
   recovery.topAttachments.forEach(({ previewUrl }) => {
     if (previewUrl) urls.add(previewUrl);
   });
-  recovery.editorObjectUrls?.forEach((url) => urls.add(url));
+  recovery.editorObjectUrls?.forEach(({ url }) => urls.add(url));
   urls.forEach((url) => revoke(url));
 }

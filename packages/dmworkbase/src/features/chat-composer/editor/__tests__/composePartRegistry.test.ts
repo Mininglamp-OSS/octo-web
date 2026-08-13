@@ -222,4 +222,28 @@ describe("EditorComposePartRegistry", () => {
       registry.dispose(part, { attachmentFiles: new Map() }),
     ).toThrow("is not registered");
   });
+
+  it("delegates attachment disposal to the resource owner", () => {
+    const file = new File(["x"], "x.png", { type: "image/png" });
+    const disposeAttachment = vi.fn();
+    const [part] = chatEditorComposePartRegistry.capture(
+      {
+        type: "doc",
+        content: [
+          {
+            type: "attachment",
+            attrs: { id: "a", previewUrl: "blob:a" },
+          },
+        ],
+      },
+      { attachmentFiles: new Map([["a", file]]) },
+    );
+
+    chatEditorComposePartRegistry.dispose(part, {
+      attachmentFiles: new Map([["a", file]]),
+      disposeAttachment,
+    });
+
+    expect(disposeAttachment).toHaveBeenCalledWith("a", "blob:a");
+  });
 });

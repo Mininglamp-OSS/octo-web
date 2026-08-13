@@ -7,7 +7,10 @@ describe("disposeComposeRecoveryObjectUrls", () => {
 
     disposeComposeRecoveryObjectUrls(
       {
-        editorObjectUrls: ["blob:inline", "blob:shared"],
+        editorObjectUrls: [
+          { id: "inline", url: "blob:inline" },
+          { id: "shared", url: "blob:shared" },
+        ],
         topAttachments: [
           { previewUrl: "blob:top" },
           { previewUrl: "blob:shared" },
@@ -28,7 +31,7 @@ describe("disposeComposeRecoveryObjectUrls", () => {
 
     disposeComposeRecoveryObjectUrls(
       {
-        editorObjectUrls: ["blob:unsent"],
+        editorObjectUrls: [{ id: "unsent", url: "blob:unsent" }],
         topAttachments: [],
         snapshot: { attrs: { previewUrl: "blob:already-sent" } },
       } as never,
