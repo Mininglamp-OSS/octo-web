@@ -83,10 +83,12 @@ export function createMentionSuggestion(
           component.updateProps(props)
 
           if (!props.items?.length) {
+            onActiveChange?.(false)
             popup?.[0]?.hide()
             return
           }
 
+          onActiveChange?.(true)
           popup?.[0]?.show()
 
           if (!props.clientRect) {
@@ -102,6 +104,7 @@ export function createMentionSuggestion(
           if (!component) return false
 
           if (props.event.key === 'Escape') {
+            onActiveChange?.(false)
             popup?.[0]?.hide()
             return true
           }

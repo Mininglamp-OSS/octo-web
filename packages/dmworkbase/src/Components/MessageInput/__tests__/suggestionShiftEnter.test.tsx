@@ -149,6 +149,7 @@ describe("MessageInput suggestion Shift+Enter", () => {
       await Promise.resolve();
     });
 
+    expect(mentionActiveChange).toHaveBeenLastCalledWith(false);
     expect(editor.getText()).toHaveLength(51);
 
     const event = pressEnter(true);
