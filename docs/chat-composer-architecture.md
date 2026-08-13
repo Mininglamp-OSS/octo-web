@@ -815,6 +815,13 @@ Chat 和 `MentionComposer` 各自实现 adapter。
 - 提取 keyboard policy。
 - 增加 IME、slash、mention、emoji、Shift+Enter 组合测试。
 
+当前进度：
+
+- clipboard pipeline 已固定 secret、Octo rich text、普通 HTML/text、file/items 的优先级，
+  并通过关闭 Link paste rule 保留显式外部链接且不自动链接 `.md` 文本。
+- keyboard policy 已从 React/Tiptap 副作用中提取，明确 IME、slash、mention、emoji、
+  Alt+Enter、Enter 和 Shift+Enter 的优先级。
+
 ### PR 7：渲染扩展注册
 
 范围：

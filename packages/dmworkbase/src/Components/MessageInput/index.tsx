@@ -99,6 +99,7 @@ import {
   type ComposerPasteDecision,
 } from "./clipboardPipeline";
 import { createComposerStarterKit } from "./editorKit";
+import { decideComposerKeyboard } from "./keyboardPolicy";
 import {
   addImChannelInfoListener,
   fetchImChannelInfo,
@@ -1590,54 +1591,37 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 每次状态变更时更新键盘处理函数（通过 ref 保持最新，避免 useEditor 闭包过期）
   useEffect(() => {
     editorHandleKeyDownRef.current = (_view: any, event: KeyboardEvent) => {
-      if (slashMenuVisible) {
-        const filtered = getFilteredSlashCommands();
-        if (event.key === "Escape") {
-          setSlashMenuVisible(false);
-          return true;
-        }
-        if (event.key === "ArrowDown") {
-          event.preventDefault();
-          setSlashActiveIndex(
-            (prev) => (prev + 1) % Math.max(1, filtered.length)
-          );
-          return true;
-        }
-        if (event.key === "ArrowUp") {
-          event.preventDefault();
-          setSlashActiveIndex(
-            (prev) =>
-              (prev - 1 + Math.max(1, filtered.length)) %
-              Math.max(1, filtered.length)
-          );
-          return true;
-        }
-        if (event.key === "Enter" && !event.shiftKey) {
-          if (filtered.length > 0) {
-            handleSlashSelect(filtered[slashActiveIndex]);
-          } else {
-            setSlashMenuVisible(false);
-            fireAndForgetSend();
-          }
-          return true;
-        }
-        return false;
-      }
+      const filteredSlashCommands = slashMenuVisible
+        ? getFilteredSlashCommands()
+        : [];
+      const decision = decideComposerKeyboard({
+        key: event.key,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        isComposing: event.isComposing,
+        keyCode: event.keyCode,
+        slashMenuVisible,
+        slashItemCount: filteredSlashCommands.length,
+        slashActiveIndex,
+        mentionActive: mentionActiveRef.current,
+        emojiActive: emojiSuggestionActiveRef.current,
+      });
+      if (decision.kind === "pass") return false;
 
-      if (event.key === "Enter" && event.altKey) {
-        event.preventDefault();
+      event.preventDefault();
+      if (decision.kind === "close-slash") {
+        setSlashMenuVisible(false);
+      } else if (decision.kind === "move-slash") {
+        setSlashActiveIndex(decision.index);
+      } else if (decision.kind === "select-slash") {
+        handleSlashSelect(filteredSlashCommands[decision.index]);
+      } else if (decision.kind === "alt-enter") {
         props.onAltEnter?.();
-        return true;
-      }
-
-      if (event.key === "Enter" && !event.shiftKey) {
-        if (mentionActiveRef.current) return false;
-        if (emojiSuggestionActiveRef.current) return false;
+      } else {
+        if (decision.closeSlash) setSlashMenuVisible(false);
         fireAndForgetSend();
-        return true;
       }
-
-      return false;
+      return true;
     };
   }, [
     slashMenuVisible,
@@ -1645,6 +1629,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     getFilteredSlashCommands,
     handleSlashSelect,
     fireAndForgetSend,
+    props.onAltEnter,
   ]);
 
   const toggleExpand = useCallback(() => {
