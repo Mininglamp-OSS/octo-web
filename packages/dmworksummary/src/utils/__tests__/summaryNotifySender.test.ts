@@ -307,6 +307,34 @@ describe('sendGroupSummaryNotifyImpl — round-10 integration test (yujiawei esc
         }
     });
 
+    it('SHAPE-4b successful send with throwing localStorage getter: records memory and does not re-send', async () => {
+        const state = newSummaryNotifySendState();
+        const deps = makeDeps();
+        const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+        Object.defineProperty(window, 'localStorage', {
+            configurable: true,
+            get() {
+                throw new DOMException('Storage access denied', 'SecurityError');
+            },
+        });
+
+        try {
+            const detail = taskWithSources(1, ['g1']);
+            await invoke(detail, state, deps);
+
+            expect(sentSourceIds(deps.sendToChannel)).toEqual(['g1']);
+            expect(state.sentThisInstance.has('1:g1')).toBe(true);
+            expect(deps.warn).not.toHaveBeenCalled();
+
+            (deps.sendToChannel as any).mockClear();
+            await invoke(detail, state, deps);
+            expect(deps.sendToChannel).not.toHaveBeenCalled();
+            expect(deps.warn).not.toHaveBeenCalled();
+        } finally {
+            if (descriptor) Object.defineProperty(window, 'localStorage', descriptor);
+        }
+    });
+
     // --- SHAPE 5 · Cross-task same-group (round-10 P1 · 4-reviewer consensus) ---
 
     // Reproduces the round-10 P1: SummaryDetailPage supports switching taskId

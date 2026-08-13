@@ -100,7 +100,8 @@ export function newSummaryNotifySendState(): SummaryNotifySendState {
  *      correctness bug (yujiawei reproduced it on `5cff6246`), so we re-read
  *      right before each send rather than snapshotting once per fan-out.
  *   4. Disband skip — via injected predicate.
- *   5. In-flight claim → send → mark success → clear in-flight.
+ *   5. In-flight claim → send → mark in-memory success → persist
+ *      best-effort → clear in-flight.
  *   6. Failure logs via `warn` and clears in-flight so a later trigger can
  *      retry. NO persistent marker on failure.
  *
@@ -162,8 +163,13 @@ export async function sendGroupSummaryNotifyImpl(
             // The residual best-effort window is page close/reload before that
             // reconnect/ack because the SDK queue is not persisted. The marker
             // therefore means "accepted by the local SDK", not "server acked".
-            markSummaryNotifySent(detail.task_id, sourceId);
+            // Record success in memory before touching localStorage. Accessing
+            // the localStorage global itself may throw SecurityError in a
+            // sandboxed/storage-disabled context; persistence must never turn
+            // an accepted send into a reported failure or make it retry in
+            // this page instance.
             state.sentThisInstance.add(memoryKey);
+            markSummaryNotifySent(detail.task_id, sourceId);
         } catch (error) {
             warn("[summaryNotify] send failed", { channelId: sourceId, error });
             // This catch covers the rejection surface exposed by the injected

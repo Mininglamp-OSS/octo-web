@@ -3185,3 +3185,119 @@ describe('SummaryDetailPage — round-13 P1: lastKnownStatus 必须 task-scoped(
         expect(shouldEmitOnStatusTransition(prev, TaskStatus.COMPLETED, TaskStatus.COMPLETED)).toBe(false);
     });
 });
+
+// round-15 P1-1: stream done uses loadDetail as the primary completion
+// observation. loadDetail must emit the captured same-task edge before it
+// advances lastKnownStatus, while first loads and task switches stay silent.
+describe('SummaryDetailPage — round-15 P1-1: loadDetail completion edge', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('does not emit when the first detail observation is already COMPLETED', async () => {
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 1, status: TaskStatus.COMPLETED }) as any,
+        );
+        const page = makePage(1);
+        const sendGroupSummaryNotify = vi
+            .spyOn(page as any, 'sendGroupSummaryNotify')
+            .mockResolvedValue(undefined);
+
+        await page.loadDetail();
+
+        expect((page.state as any).lastKnownStatus).toBe(TaskStatus.COMPLETED);
+        expect(sendGroupSummaryNotify).not.toHaveBeenCalled();
+    });
+
+    it('stream done emits PROCESSING → COMPLETED exactly once before later status events', async () => {
+        let onEvent!: Parameters<typeof api.streamSummary>[1]['onEvent'];
+        vi.mocked(api.streamSummary).mockImplementation((_taskId, options) => {
+            onEvent = options.onEvent;
+            return new Promise<void>(() => {});
+        });
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 1, summary_mode: 2, status: TaskStatus.COMPLETED }) as any,
+        );
+        vi.mocked(api.getPersonalResult).mockResolvedValue(
+            { content: 'r', worker_status: 2, submitted_at: null } as any,
+        );
+        vi.mocked(api.getMembers).mockResolvedValue([] as any);
+
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({ task_id: 1, summary_mode: 2, status: TaskStatus.PROCESSING }) as any,
+            lastKnownStatus: TaskStatus.PROCESSING,
+        };
+        const sendGroupSummaryNotify = vi
+            .spyOn(page as any, 'sendGroupSummaryNotify')
+            .mockResolvedValue(undefined);
+        const loadDetail = vi.spyOn(page, 'loadDetail');
+
+        (page as any).startSummaryStream(1);
+        onEvent({ type: 'done' } as any);
+        await loadDetail.mock.results[0].value;
+
+        expect(sendGroupSummaryNotify).toHaveBeenCalledTimes(1);
+        expect(sendGroupSummaryNotify).toHaveBeenCalledWith(
+            expect.objectContaining({ task_id: 1, status: TaskStatus.COMPLETED }),
+        );
+        expect((page.state as any).lastKnownStatus).toBe(TaskStatus.COMPLETED);
+
+        await (page as any).handleStatusChangeEvent(
+            new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+        );
+        expect(sendGroupSummaryNotify).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not reuse task A baseline when loading an already-completed task B', async () => {
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 2, task_no: 'T2', status: TaskStatus.COMPLETED }) as any,
+        );
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({ task_id: 1, status: TaskStatus.PROCESSING }) as any,
+            lastKnownStatus: TaskStatus.PROCESSING,
+        };
+        (page as any).props = { taskId: 2 };
+        const sendGroupSummaryNotify = vi
+            .spyOn(page as any, 'sendGroupSummaryNotify')
+            .mockResolvedValue(undefined);
+
+        await page.loadDetail();
+
+        expect((page.state as any).detail.task_id).toBe(2);
+        expect(sendGroupSummaryNotify).not.toHaveBeenCalled();
+    });
+
+    it('emits task A edge but does not write A detail after switching to task B mid-request', async () => {
+        let resolveA!: (detail: any) => void;
+        vi.mocked(api.getSummaryDetail).mockReturnValueOnce(
+            new Promise((resolve) => { resolveA = resolve; }) as any,
+        );
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({ task_id: 1, status: TaskStatus.PROCESSING }) as any,
+            lastKnownStatus: TaskStatus.PROCESSING,
+        };
+        const sendGroupSummaryNotify = vi
+            .spyOn(page as any, 'sendGroupSummaryNotify')
+            .mockResolvedValue(undefined);
+
+        const pending = page.loadDetail();
+        (page as any).props = { taskId: 2 };
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({ task_id: 2, task_no: 'T2', title: 'B-detail', status: TaskStatus.PROCESSING }) as any,
+        };
+        resolveA(baseDetail({ task_id: 1, title: 'A-detail', status: TaskStatus.COMPLETED }) as any);
+        await pending;
+
+        expect(sendGroupSummaryNotify).toHaveBeenCalledTimes(1);
+        expect(sendGroupSummaryNotify).toHaveBeenCalledWith(
+            expect.objectContaining({ task_id: 1, status: TaskStatus.COMPLETED }),
+        );
+        expect((page.state as any).detail.task_id).toBe(2);
+        expect((page.state as any).detail.title).toBe('B-detail');
+    });
+});

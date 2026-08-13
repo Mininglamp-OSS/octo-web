@@ -637,6 +637,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // loadSchedule（包括本函数下面发起的）都会被后续轮作废，不会回填到新 task。
         const seq = this.nextScheduleSeq();
         const requestTaskId = lookupId;
+        // A detail refresh is also a status observation. Preserve a baseline
+        // only when the detail currently on screen belongs to the same task;
+        // otherwise this is a first load / task switch and must stay silent.
+        // Capture before the await so a later task switch cannot consume A's
+        // valid completion edge or make B inherit A's status.
+        const hasSameTaskBaseline = typeof requestTaskId === "number"
+            ? this.state.detail?.task_id === requestTaskId
+            : this.state.detail?.task_no === requestTaskId;
+        const capturedPrevStatus = hasSameTaskBaseline
+            ? this.state.lastKnownStatus
+            : undefined;
         // F1：切 task / 重拉 detail 时复位全部编辑态，避免旧 task 编辑态（尤其
         // editingTeamSummary）被带入新 task——否则切到非 creator 新 task 会绕过权限进编辑器。
         // FE-1（切任务竞态）：开始新 task 加载时同步清空上一 task 的 personalResult/members，
@@ -678,6 +689,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         });
         try {
             const detail = await api.getSummaryDetail(lookupId);
+            // Stream `done` reaches this path before the list status event on
+            // the primary flow. Emit from the captured same-task baseline
+            // before advancing it, even if the user switched tasks mid-await;
+            // the stale guard below still protects all UI state.
+            this.emitGroupSummaryNotifyOnTransition(detail, capturedPrevStatus);
             // detail 本身也可能是旧请求：期间切了 task / 又发了一轮 loadDetail 就丢弃。
             if (this.scheduleLoadSeq !== seq || this.detailLookupId !== requestTaskId) return;
             this.setState({
@@ -1053,19 +1069,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 this.setState({ detail, lastKnownStatus: newStatus });
             }
 
-            if (shouldEmitOnStatusTransition(capturedPrevStatus, newStatus, TaskStatus.COMPLETED)) {
-                // #289 群内总结 tip: fires against the CAPTURED detail (task A)
-                // even when the user has switched to task B mid-await. The
-                // dedup layer is task-scoped (round-11), so posting for
-                // captured task A does not interfere with task B's own
-                // eventual send decision.
-                void this.sendGroupSummaryNotify(detail).catch((error) => {
-                    console.warn("[summaryNotify] unexpected dispatch failure", {
-                        taskId: detail.task_id,
-                        error,
-                    });
-                });
-            }
+            // #289 群内总结 tip: fires against the CAPTURED detail (task A)
+            // even when the user has switched to task B mid-await. The dedup
+            // layer is task-scoped, so A does not interfere with B.
+            this.emitGroupSummaryNotifyOnTransition(detail, capturedPrevStatus);
             if (staleAfterAwait) return; // skip the non-tip transition side effects for the stale task
 
             if (capturedPrevStatus !== undefined && capturedPrevStatus !== newStatus) {
@@ -1167,21 +1174,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 this.loadSchedule(detail.schedule_id, seq);
                             }
                         }
-                        if (shouldEmitOnStatusTransition(capturedPrevStatus, newStatus, TaskStatus.COMPLETED)) {
-                            // #289 群内总结 tip · fallback poll 路径同样触发一次
-                            // (与 status-event 路径二选一 · dedup semantics live
-                            //  in summaryNotifySender — see summaryNotifySendState
-                            //  field doc + summaryNotifySender.test.ts). Fires
-                            //  against the CAPTURED detail even when a task
-                            //  switch raced the second await — round-12 P1
-                            //  (@mochashanyao) makes this explicit.
-                            void this.sendGroupSummaryNotify(detail).catch((error) => {
-                                console.warn("[summaryNotify] unexpected dispatch failure", {
-                                    taskId: detail.task_id,
-                                    error,
-                                });
-                            });
-                        }
+                        // Fallback polling shares the same transition funnel
+                        // as status events and stream-driven detail refreshes.
+                        this.emitGroupSummaryNotifyOnTransition(detail, capturedPrevStatus);
                     }
                 } catch {
                     // Don't advance lastKnownStatus — retry on next tick
@@ -1218,6 +1213,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      *
      * @param detail  freshly fetched task detail carrying the → COMPLETED edge.
      */
+    private emitGroupSummaryNotifyOnTransition(detail: SummaryDetail, previousStatus: number | undefined): void {
+        if (!shouldEmitOnStatusTransition(previousStatus, detail.status, TaskStatus.COMPLETED)) return;
+        void this.sendGroupSummaryNotify(detail).catch((error) => {
+            console.warn("[summaryNotify] unexpected dispatch failure", {
+                taskId: detail.task_id,
+                error,
+            });
+        });
+    }
+
     private async sendGroupSummaryNotify(detail: SummaryDetail) {
         await sendGroupSummaryNotifyImpl(
             detail,

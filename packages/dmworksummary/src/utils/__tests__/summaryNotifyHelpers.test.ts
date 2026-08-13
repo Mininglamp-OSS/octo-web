@@ -218,6 +218,23 @@ describe('localStorage sent-marker helpers (first-completion-only persistence)',
         expect(readSummaryNotifySentSources(42).size).toBe(0);
     });
 
+    it('does not throw when the localStorage getter raises SecurityError', () => {
+        const descriptor = Object.getOwnPropertyDescriptor(window, 'localStorage');
+        Object.defineProperty(window, 'localStorage', {
+            configurable: true,
+            get() {
+                throw new DOMException('Storage access denied', 'SecurityError');
+            },
+        });
+
+        try {
+            expect(() => markSummaryNotifySent(42, 'group-a')).not.toThrow();
+            expect(readSummaryNotifySentSources(42).size).toBe(0);
+        } finally {
+            if (descriptor) Object.defineProperty(window, 'localStorage', descriptor);
+        }
+    });
+
     it('gracefully degrades to empty Set on malformed storage', () => {
         localStorage.setItem(summaryNotifySentKey(42), 'not-json');
         expect(readSummaryNotifySentSources(42).size).toBe(0);

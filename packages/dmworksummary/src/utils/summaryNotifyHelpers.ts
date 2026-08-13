@@ -224,8 +224,11 @@ export function readSummaryNotifySentSources(taskId: number | string): Set<strin
  */
 export function markSummaryNotifySent(taskId: number | string, sourceId: string): void {
     if (!sourceId) return;
-    if (typeof localStorage === 'undefined') return;
     try {
+        // Accessing the global itself can throw SecurityError in sandboxed or
+        // storage-disabled browsing contexts, so keep the existence check
+        // inside the same best-effort boundary as getItem/setItem.
+        if (typeof localStorage === 'undefined') return;
         // Re-read to merge concurrent tab writes rather than clobber them.
         const set = readSummaryNotifySentSources(taskId);
         if (set.has(sourceId)) return;
