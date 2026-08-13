@@ -37,7 +37,11 @@ const MARKET_ITEMS: MarketItem[] = [
     routePath: "/mcp-market/experts",
     label: () => t("mcp.sidebar.experts"),
     badge: () => t("mcp.sidebar.expertsBadge"),
-    render: () => <ExpertMarketListPage />,
+    // Defence in depth: every path to render() goes through visibleMarketItems()
+    // today, but the gate must not depend on that staying true — a future caller
+    // reaching this item directly must still get the fallback, not the gated page.
+    render: () =>
+      WKApp.remoteConfig?.expertMarketOn ? <ExpertMarketListPage /> : <McpMarketListPage />,
   },
 ];
 
@@ -92,11 +96,31 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
     // load resolves (addListener) and on any later ops flip
     // (addConfigChangeListener) so the experts entry and the 回路 badge appear
     // or disappear the moment the flags do. Mirrors DriveModule / DocsModule.
+    // Re-rendering the sidebar alone is not enough: the RIGHT PANE was mounted
+    // from the pre-flip item set (e.g. a hard refresh on /mcp-market/experts
+    // mounted the MCP fallback before the flag resolved true, or an ops
+    // kill-switch flipped it false while the expert page is open and calling
+    // the now-disabled backend). Reconcile it against the current visible item
+    // whenever this market is the active menu — the same pairing DriveModule
+    // does with WKApp.menus.refresh().
     const rc = WKApp.remoteConfig;
     if (rc) {
-      const rerender = () => this.forceUpdate();
-      if (!rc.requestSuccess) this.configUnsubscribers.push(rc.addListener(rerender));
-      this.configUnsubscribers.push(rc.addConfigChangeListener(rerender));
+      const reconcile = () => {
+        // Sync the highlighted entry and the mounted pane to the post-flip
+        // item set (a stale activeId like "experts" after a kill-switch flip
+        // falls back through currentItem() to the first visible item).
+        const item = this.currentItem();
+        if (item.id !== this.state.activeId) {
+          this.setState({ activeId: item.id });
+        } else {
+          this.forceUpdate();
+        }
+        if (WKApp.currentMenuId === "mcp-market") {
+          this.replaceRightPane(item);
+        }
+      };
+      if (!rc.requestSuccess) this.configUnsubscribers.push(rc.addListener(reconcile));
+      this.configUnsubscribers.push(rc.addConfigChangeListener(reconcile));
     }
     if (WKApp.currentMenuId === "mcp-market") {
       this.replaceRightPane(this.currentItem());
