@@ -274,7 +274,7 @@ describe("ChannelAvatar save intent", () => {
     });
 
     expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("");
-    expect(screen.getByLabelText("avatar-color-default").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByLabelText("avatar-color-default")).toBeNull();
     expect(screen.queryByText("base.channelAvatar.useGeneratedAvatar")).toBeNull();
   });
 
@@ -291,16 +291,13 @@ describe("ChannelAvatar save intent", () => {
         target: { value: "研发" },
       });
     });
-    act(() => {
-      fireEvent.click(screen.getByLabelText("avatar-color-default"));
-    });
     await act(async () => {
       fireEvent.click(screen.getByText("base.common.save"));
     });
 
     expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
       avatarText: "研发",
-      avatarColor: "",
+      avatarColor: undefined,
       clearUploadedAvatar: true,
     });
     expect(container.querySelector(".wk-group-avatar-preview-text")?.textContent).toBe("研发");
@@ -335,7 +332,7 @@ describe("ChannelAvatar save intent", () => {
 
     expect(mocks.updateChannelAvatarCustom).toHaveBeenCalledWith(channel, {
       avatarText: "研发",
-      avatarColor: "",
+      avatarColor: undefined,
       clearUploadedAvatar: true,
     });
   });

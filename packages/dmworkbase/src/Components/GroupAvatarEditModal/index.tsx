@@ -19,7 +19,7 @@ export interface GroupAvatarEditResult {
   textChanged?: boolean
   /** 用户显式选中的色板下标；undefined 表示未选色 → 由服务端按 group_no 派生默认色 */
   colorIndex?: number
-  /** 色板是否被用户操作过：选择颜色或清除为默认色 */
+  /** 色板是否被用户操作过：选择颜色 */
   colorChanged?: boolean
 }
 
@@ -133,14 +133,6 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
     emitChange({ colorIndex: index, colorChanged: nextColorChanged })
   }
 
-  const clearColor = () => {
-    if (disabled) return
-    setColorIndex(undefined)
-    const nextColorChanged = hasColorChanged(undefined)
-    setColorChanged(nextColorChanged)
-    emitChange({ colorIndex: undefined, colorChanged: nextColorChanged })
-  }
-
   const textLength = visibleCount(avatarText)
   const textExceeded = textLength > MAX_VISIBLE
 
@@ -189,20 +181,6 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
         {t("base.groupAvatarEdit.color")}
       </div>
       <div className="wk-group-avatar-edit-colors">
-        <button
-          type="button"
-          className={
-            "wk-group-avatar-edit-color wk-group-avatar-edit-color-default" +
-            (colorIndex == null ? " selected" : "")
-          }
-          onClick={clearColor}
-          disabled={disabled}
-          aria-label="avatar-color-default"
-          aria-pressed={colorIndex == null}
-          title={t("base.groupAvatarEdit.defaultColor")}
-        >
-          {colorIndex == null && <IconTick />}
-        </button>
         {palette.map((c) => (
           <button
             type="button"

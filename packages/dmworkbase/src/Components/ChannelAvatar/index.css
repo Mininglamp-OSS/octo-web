@@ -220,14 +220,6 @@
     box-shadow: inset 0 0 0 2px var(--semi-color-bg-0), 0 0 0 2px var(--semi-color-primary), 0 6px 14px rgba(15, 23, 42, 0.1);
 }
 
-.wk-channelavatar-setting-modal .wk-group-avatar-edit-color-default {
-    border: 1px solid var(--semi-color-border);
-}
-
-.wk-channelavatar-setting-modal .wk-group-avatar-edit-color-default.selected {
-    box-shadow: inset 0 0 0 2px var(--semi-color-bg-0), 0 0 0 2px var(--semi-color-primary), 0 6px 14px rgba(15, 23, 42, 0.1);
-}
-
 .wk-channelavatar-setting-modal .wk-modal-footer {
     margin: 0;
     padding: 18px 0 24px;

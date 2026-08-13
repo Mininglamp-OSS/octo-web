@@ -186,9 +186,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 avatarText: shouldClearUploadedAvatar
                     ? customAvatarText
                     : (textChanged ? customAvatarText : undefined),
-                avatarColor: shouldClearUploadedAvatar
-                    ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
-                    : colorChanged
+                avatarColor: colorChanged
                     ? (typeof customAvatarColorIndex === "number" ? customAvatarColorIndex : "")
                     : undefined,
                 clearUploadedAvatar: shouldClearUploadedAvatar,

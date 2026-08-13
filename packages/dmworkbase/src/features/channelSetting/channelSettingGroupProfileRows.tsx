@@ -126,6 +126,12 @@ export function GroupAvatarSettingRow({
       <ChannelSettingIconRow
         {...rowProps}
         onClick={() => {
+          if (!showUpload) {
+            Toast.warning(
+              t("base.module.channelSettings.groupAvatarOnlyManager")
+            );
+            return;
+          }
           void openAvatarEditor();
         }}
       />
