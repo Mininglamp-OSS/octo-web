@@ -698,9 +698,12 @@ export async function handleGlobalSearchClick(item: any, type: string,hideModal?
             // 搜自己应看资料页）。后端 notes-to-self 通道仍是合法的，只是不
             // 通过这个入口触发它。（不锁 octo-server 行号，重构会挪。）
             if (item.channel_id === WKApp.loginInfo.uid) {
-                if (hideModal) {
-                    hideModal()
-                }
+                // self 分支不调 hideModal():用户搜自己看一眼资料多半只是好奇/
+                // 查证,并没完成主要检索意图,不应把搜索面板收掉——UserInfo
+                // 弹层直接叠在全局搜索面板之上,关掉 UserInfo 后能顺畅继续搜
+                // 其他人。与他人点击(follow=1 开会话/follow=0 开资料页)的
+                // hideModal 语义有意不对称:开会话是"检索完成、转移注意力",
+                // 开自己资料是"顺手一看、还没完成"。
                 WKApp.shared.baseContext.showUserInfo(item.channel_id, new Channel(item.channel_id, item.channel_type))
                 return
             }
