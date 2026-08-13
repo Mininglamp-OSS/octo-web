@@ -690,6 +690,20 @@ export class ChatVM extends ProviderListener {
 export async function handleGlobalSearchClick(item: any, type: string,hideModal?:()=>void) {
     if (type === "contacts") {
         if (item.channel_type === ChannelTypePerson) {
+            // 联系人 tab 点击自己：无条件走资料页，不查 follow、不开"自己和自己"会话。
+            // 后端 GetUserDetail 里，follow==0 && Robot==0 时会补一层 GetCommonSpaceID
+            // 兜底（modules/user/service.go:518-522），而 GetCommonSpaceID(self, self)
+            // 永远命中同一 Space → follow 被硬置 1 → 原逻辑走 showConversation 打开
+            // 「自己和自己」的私聊，这不是用户搜自己的产品意图（对齐微信/Slack：搜自己
+            // 应看资料页）。后端 notes-to-self 通道仍是合法的（personDMAccessDecision
+            // Step 0 显式允许），我们只是不通过这个入口触发它。
+            if (item.channel_id === WKApp.loginInfo.uid) {
+                if (hideModal) {
+                    hideModal()
+                }
+                WKApp.shared.baseContext.showUserInfo(item.channel_id, new Channel(item.channel_id, item.channel_type))
+                return
+            }
             // 个人频道/Bot：通过 users API 检查好友关系
             try {
                 const resp = await WKApp.apiClient.get(`users/${item.channel_id}`)

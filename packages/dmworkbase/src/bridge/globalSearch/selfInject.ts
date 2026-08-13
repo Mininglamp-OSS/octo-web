@@ -32,17 +32,31 @@ export interface SelfContactEntry {
 }
 
 /**
- * Decide whether the keyword hits selfName under the same normalization
- * as the rest of the search stack (trim + case-insensitive substring).
- * Returns false for empty/whitespace-only keyword or missing selfName.
+ * Decide whether self should be injected into the Contacts tab result.
+ *
+ * Two modes match the backend /v1/search/global contacts branch semantics:
+ *
+ *   1. Empty keyword (cold start) — backend returns the full friend list;
+ *      self must appear there too, else the Contacts tab shows every friend
+ *      EXCEPT self, which was the RC-1368 v2 report.
+ *   2. Non-empty keyword — inject only when the keyword hits selfName under
+ *      the SAME normalization as the rest of the stack: trim +
+ *      toLowerCase substring match. This matches
+ *      createGlobalSearchDataSource.loadSenderCandidates
+ *      (`keyword.trim().toLowerCase()`) and the backend's MySQL
+ *      utf8mb4_general_ci LIKE. Without normalization, "Alice" searching
+ *      "alice" (or "Alice ") matched every other contact but silently
+ *      missed self — the RC-1368 v1 blocker Jerry-Xin flagged.
+ *
+ * Missing selfName means we can't render an entry — bail either way.
  */
 export function shouldInjectSelf(
   keyword: string | undefined,
   selfName: string | undefined
 ): boolean {
-  if (!keyword || !selfName) return false;
-  const kw = keyword.trim().toLowerCase();
-  if (kw.length === 0) return false;
+  if (!selfName) return false;
+  const kw = (keyword || "").trim().toLowerCase();
+  if (kw.length === 0) return true;
   return selfName.trim().toLowerCase().indexOf(kw) !== -1;
 }
 

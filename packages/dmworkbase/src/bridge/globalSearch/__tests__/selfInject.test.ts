@@ -43,25 +43,28 @@ describe("shouldInjectSelf", () => {
     expect(shouldInjectSelf("  张 ", "张三")).toBe(true);
   });
 
-  it("returns false when keyword is empty", () => {
-    expect(shouldInjectSelf("", "Alice")).toBe(false);
+  it("returns true when keyword is empty (cold start: backend returns full friend list, self must be in it)", () => {
+    // RC-1368 v2: without this the Contacts tab shows every friend EXCEPT self
+    // on modal open (before any typing) because backend /search/global with
+    // keyword="" returns the full friend list minus self.
+    expect(shouldInjectSelf("", "Alice")).toBe(true);
+    expect(shouldInjectSelf(undefined, "Alice")).toBe(true);
   });
 
-  it("returns false when keyword is whitespace-only", () => {
-    expect(shouldInjectSelf("   ", "Alice")).toBe(false);
-    expect(shouldInjectSelf("\t\n", "Alice")).toBe(false);
+  it("returns true when keyword is whitespace-only (treated as empty)", () => {
+    // Trim collapses "   " to "" → cold-start semantics apply.
+    expect(shouldInjectSelf("   ", "Alice")).toBe(true);
+    expect(shouldInjectSelf("\t\n", "Alice")).toBe(true);
   });
 
-  it("returns false when selfName is empty or undefined", () => {
+  it("returns false when selfName is empty or undefined (nothing to render)", () => {
     expect(shouldInjectSelf("alice", "")).toBe(false);
     expect(shouldInjectSelf("alice", undefined)).toBe(false);
+    expect(shouldInjectSelf("", "")).toBe(false);
+    expect(shouldInjectSelf(undefined, undefined)).toBe(false);
   });
 
-  it("returns false when keyword is undefined", () => {
-    expect(shouldInjectSelf(undefined, "Alice")).toBe(false);
-  });
-
-  it("returns false when the keyword does not appear in selfName", () => {
+  it("returns false when keyword is set but does not appear in selfName", () => {
     expect(shouldInjectSelf("bob", "Alice")).toBe(false);
     expect(shouldInjectSelf("李四", "张三")).toBe(false);
   });
