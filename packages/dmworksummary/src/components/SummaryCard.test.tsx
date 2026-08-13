@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup, render as rtlRender, screen } from '@testing-library/react';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import SummaryCard from './SummaryCard';
-import { ParticipantStatus, TaskStatus } from '../types/summary';
+import { ParticipantStatus, TaskStatus, TriggerType } from '../types/summary';
 
 vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../__mocks__/dmworkBase');
@@ -93,10 +93,24 @@ afterEach(cleanup);
 describe('SummaryCard bot-created marker', () => {
     it('bot 创建时显示 Bot 小标与「由 <bot> 创建」', () => {
         render(
-            <SummaryCard task={makeItem({ trigger_type: 4, creator_bot_name: '周报助手' }) as any} onClick={noop} onDelete={noop} />,
+            <SummaryCard task={makeItem({ trigger_type: TriggerType.BOT, creator_bot_name: '周报助手' }) as any} onClick={noop} onDelete={noop} />,
         );
         expect(screen.getByText('Bot')).toBeInTheDocument();
         expect(screen.getByText(/由 周报助手 创建/)).toBeInTheDocument();
+    });
+
+    it('bot 创建但后端未透出 creator_bot_name 时：仍显示 Bot 小标，但回退旧创建者文案而非「未知」', () => {
+        // 复现 octo-smart-summary#188 上线前的真实生产形态：trigger_type=BOT
+        // （自 #181 起可达）但 API 不返回 creator_bot_name。此前会渲染「由 未知 创建」。
+        render(
+            <SummaryCard task={makeItem({ trigger_type: TriggerType.BOT, creator_id: 'someone-else' }) as any} onClick={noop} onDelete={noop} />,
+        );
+        // Bot 小标由 trigger_type 驱动，名字缺失也应显示
+        expect(screen.getByText('Bot')).toBeInTheDocument();
+        // 名字缺失时不得再渲染「未知」创建者文案
+        expect(screen.queryByText(/未知/)).not.toBeInTheDocument();
+        // 回退到旧的 creator/time 文案（startedAt = "{name}于{time}"）
+        expect(screen.getByText(/张三于/)).toBeInTheDocument();
     });
 
     it('人发起的总结不显示 Bot 小标', () => {

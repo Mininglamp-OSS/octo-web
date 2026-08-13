@@ -3872,12 +3872,17 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {displayTitle}
                     </OverflowTooltip>
                     {this.renderScheduleSummary()}
-                    {detail && (detail.trigger_type === TriggerType.BOT || !!detail.creator_bot_name) && (
+                    {/* Only render the "由 <bot> 代 <owner> 创建" subtitle once both
+                        names are present (backend fields from octo-smart-summary#188).
+                        Gating on trigger_type alone would show "由 未知 代 未知 创建"
+                        for bot summaries until that backend ships — the two services
+                        deploy independently, so we must not depend on their order. */}
+                    {detail && !!detail.creator_bot_name && !!detail.creator_name && (
                         <div className="summary-detail-bot-created">
                             {t("summary.detail.botCreatedByFor", {
                                 values: {
-                                    bot: detail.creator_bot_name || t("summary.common.unknown"),
-                                    owner: detail.creator_name || t("summary.common.unknown"),
+                                    bot: detail.creator_bot_name,
+                                    owner: detail.creator_name,
                                 },
                             })}
                         </div>
