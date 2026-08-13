@@ -6,12 +6,12 @@ import Suggestion, {
 } from '@tiptap/suggestion'
 import { ReactRenderer } from '@tiptap/react'
 import tippy, { Instance as TippyInstance } from 'tippy.js'
-import EmojiSuggestionList from './EmojiSuggestionList'
+import EmojiSuggestionList from '../../ui/suggestions/EmojiSuggestionList'
 import {
   buildEmojiSuggestItems,
   matchEmojiPrefix,
   EmojiSuggestItem,
-} from '../../Utils/emojiSuggestion'
+} from '../../../../Utils/emojiSuggestion'
 
 /**
  * 表情前缀联想的 Tiptap 扩展，复用 @ 提及同一套 Tiptap Suggestion + tippy 基建。

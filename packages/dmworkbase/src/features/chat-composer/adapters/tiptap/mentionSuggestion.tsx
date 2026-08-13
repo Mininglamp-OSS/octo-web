@@ -1,8 +1,8 @@
 import { ReactRenderer } from '@tiptap/react'
 import { escapeForRegEx } from '@tiptap/core'
 import tippy, { Instance as TippyInstance } from 'tippy.js'
-import MentionList from './MentionList'
-import { Dap } from '../../Service/Dap'
+import MentionList from '../../ui/suggestions/MentionList'
+import { Dap } from '../../../../Service/Dap'
 
 // 自定义 findSuggestionMatch：去掉默认的前缀空格限制，允许 @ 在任意位置触发。
 // 其余逻辑（range 计算、query 提取）与 Tiptap 官方实现完全一致，不影响

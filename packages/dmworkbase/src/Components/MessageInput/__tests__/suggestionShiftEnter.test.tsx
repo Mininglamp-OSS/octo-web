@@ -18,7 +18,7 @@ import {
   type Mock,
   vi,
 } from "vitest";
-import { createMentionSuggestion } from "../mentionSuggestion";
+import { createMentionSuggestion } from "../../../features/chat-composer/adapters/tiptap/mentionSuggestion";
 
 vi.mock("../../../i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),

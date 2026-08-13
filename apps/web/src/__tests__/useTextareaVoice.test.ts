@@ -9,7 +9,7 @@ const mockStopRecordingAndTranscribe = vi.fn();
 const mockCancelRecording = vi.fn();
 let capturedOnTranscribed: ((text: string) => void) | undefined;
 
-vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
+vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/adapters/voice/useVoiceInput", () => ({
   default: (opts: { onTranscribed?: (text: string) => void }) => {
     capturedOnTranscribed = opts?.onTranscribed;
     return {

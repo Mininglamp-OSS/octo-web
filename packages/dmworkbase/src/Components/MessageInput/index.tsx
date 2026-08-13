@@ -9,8 +9,8 @@ import { X } from "lucide-react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import Placeholder from "@tiptap/extension-placeholder";
 import TiptapMention from "@tiptap/extension-mention";
-import { createMentionSuggestion } from "./mentionSuggestion";
-import { createEmojiSuggestionExtension } from "./emojiSuggestion";
+import { createMentionSuggestion } from "../../features/chat-composer/adapters/tiptap/mentionSuggestion";
+import { createEmojiSuggestionExtension } from "../../features/chat-composer/adapters/tiptap/emojiSuggestion";
 import ConversationContext from "../Conversation/context";
 import clazz from "classnames";
 import WKSDK, { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wukongimjssdk";
@@ -23,11 +23,11 @@ import {
   buildMemberInfos,
   buildMentionRegex,
   parseMentionMarkers,
-} from "./mentionResolve";
+} from "../../features/chat-composer/adapters/tiptap/mentionResolve";
 import "./index.css";
 import { Notification } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../SlashCommandMenu";
-import VoiceInputIndicator from "./VoiceInputIndicator";
+import VoiceInputIndicator from "../../features/chat-composer/ui/voice/VoiceInputIndicator";
 import { ChatContextResult } from "../Conversation/chatContext";
 import { Maximize2, Minimize2 } from "lucide-react";
 import IconClick from "../IconClick";
@@ -38,7 +38,7 @@ import {
   getFileIcon,
   formatFileSize,
   videoPlayIcon,
-} from "./AttachmentNode";
+} from "../../features/chat-composer/adapters/tiptap/AttachmentNode";
 import { t as translate, useI18n } from "../../i18n";
 import {
   announceContextAfterSendReady,
@@ -109,7 +109,7 @@ import {
   getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
 
-import { MAX_MESSAGE_LENGTH } from "./constants";
+import { MAX_MESSAGE_LENGTH } from "../../features/chat-composer/domain/constants";
 
 // placeholder 格式化所需的平台快捷键标识（模块级常量，避免重复计算）
 const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
@@ -452,7 +452,7 @@ export interface MessageInputContext {
 }
 
 // MemberInfo / buildMentionRegex / parseMentionMarkers / buildMemberInfos live
-// in ./mentionResolve so the editor and unit tests share one implementation.
+// in the Tiptap mention adapter so the editor and unit tests share one implementation.
 
 // 保持 membersRef 在模块级别供 formatMentionTextV2 使用
 let membersRef: React.MutableRefObject<Array<Subscriber> | undefined>;

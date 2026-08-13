@@ -2,14 +2,14 @@ import { describe, it, expect } from "vitest"
 import {
     buildMemberInfos,
     parseMentionMarkers,
-} from "@octo/base/src/Components/MessageInput/mentionResolve"
+} from "@octo/base/src/features/chat-composer/adapters/tiptap/mentionResolve"
 import { subscriberDisplayName } from "@octo/base/src/Utils/displayName"
 
 /**
  * Tests for inbound @-mention matching with real_name candidates.
  *
  * These exercise the REAL production helpers from
- * MessageInput/mentionResolve.ts (the same `buildMemberInfos` /
+ * chat-composer/adapters/tiptap/mentionResolve.ts (the same `buildMemberInfos` /
  * `buildMentionRegex` / `parseMentionMarkers` used by the editor), so a backend
  * that backfills `@实名` / `@群昵称` / `@昵称` all resolve to the same uid. Bots
  * are excluded from real_name augmentation; unknown names stay plain text.

@@ -4,7 +4,7 @@ import React from "react";
 
 // Mock useVoiceInput hook
 const mockUseVoiceInput = vi.fn();
-vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
+vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/adapters/voice/useVoiceInput", () => ({
   default: () => mockUseVoiceInput(),
 }));
 
@@ -62,7 +62,7 @@ vi.mock("../../../../packages/dmworkbase/src/features/voice-input/useSpaceFeedba
   getSharedVoiceConfig: () => mockVoiceConfig.current,
 }));
 
-import VoiceInputIndicator from "@octo/base/src/Components/MessageInput/VoiceInputIndicator";
+import VoiceInputIndicator from "@octo/base/src/features/chat-composer/ui/voice/VoiceInputIndicator";
 import { Toast } from "@douyinfe/semi-ui";
 
 // Reset shared feedback state before each test

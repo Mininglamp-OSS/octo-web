@@ -4,12 +4,12 @@ import VoiceService, {
   VoiceConfig,
   VoiceContextResponse,
   VoiceMode,
-} from "../../Service/VoiceService";
-import VoiceFeedback, { type AsrParams } from "../../Service/VoiceFeedback";
-import LocalModelService, { LocalModelConfig } from "../../Service/LocalModelService";
-import WKApp from "../../App";
-import { ChatContextResult } from "../Conversation/chatContext";
-import { t } from "../../i18n";
+} from "../../../../Service/VoiceService";
+import VoiceFeedback, { type AsrParams } from "../../../../Service/VoiceFeedback";
+import LocalModelService, { LocalModelConfig } from "../../../../Service/LocalModelService";
+import WKApp from "../../../../App";
+import { ChatContextResult } from "../../../../Components/Conversation/chatContext";
+import { t } from "../../../../i18n";
 import {
   fetchAndApplySpaceSetting,
   resetSharedSpaceSetting,
@@ -17,7 +17,7 @@ import {
   getSharedSpaceFeedbackState,
   getSharedVoiceConfig,
   subscribe as subscribeSpaceFeedback,
-} from "../../features/voice-input/useSpaceFeedbackSetting";
+} from "../../../voice-input/useSpaceFeedbackSetting";
 
 export interface UseVoiceInputOptions {
   maxDuration?: number;

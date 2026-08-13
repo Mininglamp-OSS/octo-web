@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import type { EmojiSuggestItem } from '../../Utils/emojiSuggestion'
+import type { EmojiSuggestItem } from '../../../../Utils/emojiSuggestion'
 import './EmojiSuggestionList.css'
 
 interface EmojiSuggestionListProps {

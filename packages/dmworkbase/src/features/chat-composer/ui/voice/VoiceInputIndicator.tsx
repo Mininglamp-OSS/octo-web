@@ -2,15 +2,15 @@ import React, { useEffect, useRef, useState, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Toast, Dropdown } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
-import useVoiceInput from "./useVoiceInput";
+import useVoiceInput from "../../adapters/voice/useVoiceInput";
 import "./voiceInput.css";
-import { ChatContextResult } from "../Conversation/chatContext";
-import { VoiceMode } from "../../Service/VoiceService";
-import VoiceFeedbackNotice from "../../features/voice-input/VoiceFeedbackNotice";
-import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../../features/voice-input/useSpaceFeedbackSetting";
-import WKApp from "../../App";
-import { Dap } from "../../Service/Dap";
-import { useI18n } from "../../i18n";
+import { ChatContextResult } from "../../../../Components/Conversation/chatContext";
+import { VoiceMode } from "../../../../Service/VoiceService";
+import VoiceFeedbackNotice from "../../../voice-input/VoiceFeedbackNotice";
+import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../../../voice-input/useSpaceFeedbackSetting";
+import WKApp from "../../../../App";
+import { Dap } from "../../../../Service/Dap";
+import { useI18n } from "../../../../i18n";
 
 type ReplaceMode = "all" | "selection" | "insert";
 

@@ -2,12 +2,12 @@ import { Node, mergeAttributes } from "@tiptap/core";
 import { NodeViewWrapper, ReactNodeViewRenderer } from "@tiptap/react";
 import React from "react";
 import { X } from "lucide-react";
-import { useI18n } from "../../i18n";
+import { useI18n } from "../../../../i18n";
 import {
   formatFileSize,
   getFileIcon,
   videoPlayIcon,
-} from "../../Utils/fileIcon";
+} from "../../../../Utils/fileIcon";
 
 // 导出图标供外部使用
 export {
@@ -24,7 +24,7 @@ export {
   txtIcon,
   formatFileSize,
   getFileIcon,
-} from "../../Utils/fileIcon";
+} from "../../../../Utils/fileIcon";
 
 export interface AttachmentAttributes {
   id: string;

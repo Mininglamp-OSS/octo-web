@@ -74,7 +74,7 @@ vi.mock(
 import WKApp from "@octo/base/src/App";
 import VoiceService from "@octo/base/src/Service/VoiceService";
 import LocalModelService from "@octo/base/src/Service/LocalModelService";
-import useVoiceInput from "@octo/base/src/Components/MessageInput/useVoiceInput";
+import useVoiceInput from "@octo/base/src/features/chat-composer/adapters/voice/useVoiceInput";
 
 // Mock MediaRecorder
 class MockMediaRecorder {

@@ -5,9 +5,9 @@ import React, {
   useRef,
   useState,
 } from 'react'
-import AiBadge from '../AiBadge'
-import { useI18n } from '../../i18n'
-import { Dap } from '../../Service/Dap'
+import AiBadge from '../../../../Components/AiBadge'
+import { useI18n } from '../../../../i18n'
+import { Dap } from '../../../../Service/Dap'
 import './MentionList.css'
 
 interface MemberItem {

@@ -9,7 +9,7 @@ import { fireEvent } from "@testing-library/dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MentionList from "../MentionList";
 
-vi.mock("../../../i18n", () => ({
+vi.mock("../../../../../i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 

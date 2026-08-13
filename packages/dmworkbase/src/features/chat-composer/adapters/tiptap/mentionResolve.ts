@@ -6,13 +6,13 @@
  * Kept free of React / DOM / SDK imports so it loads cleanly in a plain TS
  * test environment.
  */
-import { isRealnameVerified, subscriberDisplayName } from "../../Utils/displayName";
+import { isRealnameVerified, subscriberDisplayName } from "../../../../Utils/displayName";
 import {
   MENTION_UID_HUMANS,
   MENTION_UID_AIS,
   MENTION_LABEL_HUMANS,
   MENTION_LABEL_AIS,
-} from "../../Utils/mentionProtocol";
+} from "../../../../Utils/mentionProtocol";
 
 export interface MemberInfo {
   uid: string;
