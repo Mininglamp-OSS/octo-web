@@ -60,6 +60,10 @@ vi.mock("../features/summaryShare/navigation", () => ({
 vi.mock("../utils/chatSummaryActions", () => ({
   notifyChatSummaryCreated: vi.fn(),
 }));
+vi.mock("../utils/summaryMenuBadge", () => ({
+  getPendingInvitationBadge: () => 0,
+  refreshPendingInvitationBadge: vi.fn(),
+}));
 vi.mock("../utils/channelType", () => ({
   isSupportedChannelType: () => true,
 }));
@@ -71,6 +75,15 @@ vi.mock("../components/ChatSummaryPanel", () => ({ default: () => null }));
 import { WKApp } from "@octo/base";
 import { getSummaryShare } from "../api/summaryApi";
 import { SummaryModule } from "../module";
+import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
+
+function registeredHandler(event: string): () => void {
+  const call = vi.mocked(WKApp.mittBus.on).mock.calls.find(
+    ([registeredEvent]) => registeredEvent === event
+  );
+  if (!call) throw new Error(`Missing ${event} handler`);
+  return call[1] as () => void;
+}
 
 describe("SummaryModule guarded menu switching", () => {
   beforeEach(() => {
@@ -132,5 +145,22 @@ describe("SummaryModule guarded menu switching", () => {
     afterSwitch?.();
     expect(state.shared.currentSpaceId).toBe("space-b");
     expect(state.replaceToRoot).toHaveBeenCalledTimes(1);
+  });
+
+  it("refreshes the invitation badge once when the initial Space becomes ready", () => {
+    registeredHandler("space-ready")();
+
+    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not double-fetch when boot repairs Space before publishing ready", () => {
+    registeredHandler("space-changed")();
+    expect(refreshPendingInvitationBadge).not.toHaveBeenCalled();
+
+    registeredHandler("space-ready")();
+    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+
+    registeredHandler("space-changed")();
+    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(2);
   });
 });

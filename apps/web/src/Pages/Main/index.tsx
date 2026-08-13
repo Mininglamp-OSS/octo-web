@@ -14,8 +14,8 @@ import { consumeJoinSuccessNotice, showJoinSuccessToast } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 import {
     requestGuardedSpaceChange,
+    publishInitialSpaceResolution,
     resolveInitialSpace,
-    shouldPublishInitialSpaceChange,
 } from "./spaceChange";
 import { requestGuardedMenuChange, requestProgrammaticMenuChange } from "./menuChange";
 import { requestMailWorkspaceSwitch } from "@octo/mail";
@@ -109,15 +109,11 @@ export class MainPage extends Component<{}, MainPageState> {
                 WKApp.shared.spaceChecked = false;
                 localStorage.removeItem("currentSpaceId");
             }
-            const nextSpaceId = selectedSpace?.space_id || "";
-            // 只有解析结果实际修正了 Space 才广播，避免启动阶段重复刷新
-            // 已经处于正确 Space 的其他模块。
-            if (
-                selectedSpace &&
-                shouldPublishInitialSpaceChange(previousSpaceId, nextSpaceId)
-            ) {
-                WKApp.mittBus.emit("space-changed", selectedSpace);
-            }
+            publishInitialSpaceResolution(
+                previousSpaceId,
+                selectedSpace,
+                (event, space) => WKApp.mittBus.emit(event, space),
+            );
             try { WKApp.shared.notifyListener(); } catch (_) {}
             // dmwork-web#1065: InviteLanding 走 window.location.href 跳转后，
             // Toast 无法跨 full-reload 存活。我们用 sessionStorage 把 notice 带过来，

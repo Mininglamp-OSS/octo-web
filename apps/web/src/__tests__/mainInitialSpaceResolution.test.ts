@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  publishInitialSpaceResolution,
   requestGuardedSpaceChange,
   resolveInitialSpace,
   shouldPublishInitialSpaceChange,
@@ -20,6 +21,28 @@ describe("MainPage initial Space resolution", () => {
   it("publishes the resolved Space only when startup changes the active Space", () => {
     expect(shouldPublishInitialSpaceChange("space-a", "space-b")).toBe(true);
     expect(shouldPublishInitialSpaceChange("space-a", "space-a")).toBe(false);
+  });
+
+  it("publishes one non-destructive ready event when cached Space is unchanged", () => {
+    const emit = vi.fn();
+    const space = { space_id: "space-a" };
+
+    publishInitialSpaceResolution("space-a", space, emit);
+
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith("space-ready", space);
+  });
+
+  it("publishes a real change before the ready event when startup repairs Space", () => {
+    const emit = vi.fn();
+    const space = { space_id: "space-b" };
+
+    publishInitialSpaceResolution("space-a", space, emit);
+
+    expect(emit.mock.calls).toEqual([
+      ["space-changed", space],
+      ["space-ready", space],
+    ]);
   });
 
   it("clears a stale Space when the user has no accessible Spaces", () => {

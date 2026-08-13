@@ -21,6 +21,7 @@ import "./index.css";
 import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
+let _spaceReadyHandler: (() => void) | null = null;
 const openingSummaryShares = new Set<string>();
 
 function afterSummaryMenuSwitch(action: () => void) {
@@ -184,13 +185,21 @@ export class SummaryModule implements IModule {
             4002,
         );
 
+        let initialSpaceReady = false;
         _spaceChangedHandler = () => {
             WKApp.mittBus.emit('summary-space-changed');
-            // 首次 Space 解析和后续切换都从宿主发出该事件；此时登录态与
-            // X-Space-Id 已就绪，再拉取 Space 级邀请计数，避免 init 期 401/404。
+            // Main 冷启动若修正了缓存 Space，会先发 space-changed 再发
+            // space-ready；首刷统一交给 space-ready，避免同一次启动请求两次。
+            if (!initialSpaceReady) return;
+            refreshPendingInvitationBadge();
+        };
+        _spaceReadyHandler = () => {
+            initialSpaceReady = true;
+            // 此时登录态与 X-Space-Id 已就绪，安全执行一次冷启动首刷。
             refreshPendingInvitationBadge();
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
+        WKApp.mittBus.on('space-ready', _spaceReadyHandler);
 
         WKApp.searchChatCandidates = async (params) => {
             return getChatCandidates(params);
@@ -226,6 +235,10 @@ if (import.meta.hot) {
         if (_spaceChangedHandler) {
             WKApp.mittBus.off('space-changed', _spaceChangedHandler);
             _spaceChangedHandler = null;
+        }
+        if (_spaceReadyHandler) {
+            WKApp.mittBus.off('space-ready', _spaceReadyHandler);
+            _spaceReadyHandler = null;
         }
     });
 }
