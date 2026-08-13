@@ -684,6 +684,9 @@ importers:
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
+      '@octo/ui':
+        specifier: workspace:*
+        version: link:../octo-ui
       axios:
         specifier: ^0.25.0
         version: 0.25.0

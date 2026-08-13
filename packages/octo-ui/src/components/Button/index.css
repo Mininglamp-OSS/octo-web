@@ -1,0 +1,147 @@
+.octo-ui-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  min-height: calc(var(--wk-sp-5) + var(--wk-sp-4));
+  padding: var(--wk-sp-2) var(--wk-sp-4);
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-md);
+  font-family: var(--wk-font-sans);
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-leading-normal);
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease),
+    box-shadow var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.octo-ui-button:focus-visible {
+  outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+  outline-offset: var(--wk-sp-0-5);
+}
+
+.octo-ui-button--sm {
+  gap: var(--wk-sp-1);
+  min-height: calc(var(--wk-sp-4) + var(--wk-sp-3));
+  padding: var(--wk-sp-1) var(--wk-sp-3);
+  border-radius: var(--wk-r-sm);
+  font-size: var(--wk-text-size-sm);
+}
+
+.octo-ui-button--icon-only {
+  width: calc(var(--wk-sp-5) + var(--wk-sp-4));
+  padding-inline: 0;
+}
+
+.octo-ui-button--icon-only.octo-ui-button--sm {
+  width: calc(var(--wk-sp-4) + var(--wk-sp-3));
+}
+
+.octo-ui-button--primary {
+  background: var(--wk-brand-gradient);
+  color: var(--wk-text-inverse);
+}
+
+.octo-ui-button--primary:hover:not(:disabled) {
+  background: var(--wk-brand-gradient-hover);
+  box-shadow: 0 var(--wk-sp-1) var(--wk-sp-4) var(--wk-brand-glow);
+}
+
+.octo-ui-button--primary:active:not(:disabled) {
+  background: var(--wk-brand-gradient-hover);
+  box-shadow: none;
+}
+
+.octo-ui-button--secondary {
+  background: var(--wk-bg-elevated);
+  border-color: var(--wk-border-default);
+  color: var(--wk-text-primary);
+}
+
+.octo-ui-button--secondary:hover:not(:disabled) {
+  background: var(--wk-bg-hover);
+  border-color: var(--wk-border-strong);
+}
+
+.octo-ui-button--secondary:active:not(:disabled) {
+  background: var(--wk-bg-active);
+}
+
+.octo-ui-button--ghost {
+  background: transparent;
+  color: var(--wk-text-secondary);
+}
+
+.octo-ui-button--ghost:hover:not(:disabled) {
+  background: var(--wk-bg-hover);
+  color: var(--wk-text-primary);
+}
+
+.octo-ui-button--ghost:active:not(:disabled) {
+  background: var(--wk-bg-active);
+}
+
+.octo-ui-button--danger {
+  background: var(--wk-color-danger-bg);
+  border-color: var(--wk-color-danger-border);
+  color: var(--wk-color-danger);
+}
+
+.octo-ui-button--danger:hover:not(:disabled) {
+  background: var(--wk-color-danger-hover);
+  border-color: var(--wk-color-danger-active);
+}
+
+.octo-ui-button--danger:active:not(:disabled) {
+  background: var(--wk-color-danger-active);
+  border-color: var(--wk-color-danger-active);
+}
+
+.octo-ui-button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.octo-ui-button--loading {
+  cursor: wait;
+}
+
+.octo-ui-button__icon,
+.octo-ui-button__label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.octo-ui-button__icon {
+  flex-shrink: 0;
+  font-size: var(--wk-text-size-xl);
+}
+
+.octo-ui-button__spinner {
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+  border: var(--wk-sp-0-5) solid currentColor;
+  border-top-color: transparent;
+  border-radius: var(--wk-r-full);
+  animation: octo-ui-button-spin var(--wk-dur-slow) linear infinite;
+  flex-shrink: 0;
+}
+
+.octo-ui-button--sm .octo-ui-button__spinner {
+  width: var(--wk-sp-3);
+  height: var(--wk-sp-3);
+}
+
+@keyframes octo-ui-button-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

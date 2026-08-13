@@ -89,6 +89,7 @@ if (!uiOnly && existsSync(bridgeDir)) {
 const kebab = toKebab(name)
 const prefix = isOctoUiPackage ? 'octo-ui' : config.cssPrefix
 const storyTitle = isOctoUiPackage ? `Octo UI/${name}` : `Base/${name}`
+const uiCssImport = isOctoUiPackage ? '' : "\nimport './index.css'"
 
 const uiTypes = `export interface ${name}Props {
   className?: string
@@ -97,7 +98,7 @@ const uiTypes = `export interface ${name}Props {
 
 const uiIndex = `import React from 'react'
 import type { ${name}Props } from './types'
-import './index.css'
+${uiCssImport}
 
 const ${name}: React.FC<${name}Props> = ({ className }) => {
   return (
@@ -210,7 +211,7 @@ if (!uiOnly) {
 if (isOctoUiPackage) {
   appendLineIfMissing(
     join(ROOT_DIR, 'packages/octo-ui/src/index.ts'),
-    `export { default as ${name}, ${name} } from './components/${name}'`,
+    `export { default as ${name} } from './components/${name}'`,
   )
   appendLineIfMissing(
     join(ROOT_DIR, 'packages/octo-ui/src/index.ts'),
