@@ -90,6 +90,17 @@ jobs:
         run: pnpm i18n:check
       - name: Skill Market tests
         run: pnpm --filter @dmwork/skillmarket test
+      - name: MCP / Expert market tests
+        run: pnpm --filter @dmwork/mcp test
+      - name: Shared prompt-forward component tests
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/Components/PromptForwardActions
+      - name: Feature-flag gate tests
+        run: >-
+          pnpm --filter @octo/web exec vitest run
+          src/__tests__/expertMarketOn.test.ts
+          src/__tests__/driveOn.test.ts
       - name: Unified import/export unit tests
         run: >-
           pnpm --filter @octo/docs exec vitest run
