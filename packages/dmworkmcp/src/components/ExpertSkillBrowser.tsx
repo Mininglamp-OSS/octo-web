@@ -74,18 +74,24 @@ function looksBinary(bytes: Uint8Array): boolean {
 }
 
 /**
- * Read the total entry count from the zip's End Of Central Directory record
- * WITHOUT handing the buffer to JSZip: `loadAsync` parses the entire central
- * directory up front (building one object per entry), so the entry cap must be
- * enforced before it runs — a hostile archive with millions of entries would
- * otherwise bloat memory during the parse itself. The EOCD is a 22-byte record
- * (signature 0x06054b50) sitting within the last 22..65557 bytes of the file
- * (fixed part + up to 64 KiB comment); the total entry count is the u16 at
- * offset 10. 0xFFFF (ZIP64 sentinel or a genuine 65535) is far past our cap
- * either way. No EOCD → not a zip we should feed to the parser.
+ * Count the entries JSZip will actually parse by walking the central directory
+ * record by record from the offset the EOCD points at. The EOCD's declared
+ * total-entries field is deliberately NOT used: it is publisher-controlled and
+ * jszip's readCentralDir iterates on the record signature (0x02014b50) rather
+ * than the declared count, so a forged count of 1 in front of 250k real
+ * records would pass a count-field check while loadAsync still builds every
+ * entry object. Walking the same records jszip will read keeps the guard and
+ * the parser in agreement, and the walk aborts as soon as `limit` is exceeded,
+ * so the scan itself is bounded. Anything malformed — no EOCD, a ZIP64
+ * sentinel, an out-of-range central-directory offset — reports over-limit:
+ * reject rather than guess.
  */
-function zipEntryCount(buf: ArrayBuffer): number {
+function zipEntryCount(buf: ArrayBuffer, limit: number): number {
   const bytes = new Uint8Array(buf);
+  const view = new DataView(buf);
+  // Locate the EOCD record (signature 0x06054b50): a 22-byte fixed part plus
+  // up to a 64 KiB comment, so it sits within the last 22..65557 bytes.
+  let eocd = -1;
   const last = bytes.length - 22;
   const scanFrom = Math.max(0, last - 0xffff);
   for (let i = last; i >= scanFrom; i -= 1) {
@@ -95,10 +101,28 @@ function zipEntryCount(buf: ArrayBuffer): number {
       bytes[i + 2] === 0x05 &&
       bytes[i + 3] === 0x06
     ) {
-      return bytes[i + 10] | (bytes[i + 11] << 8);
+      eocd = i;
+      break;
     }
   }
-  return Number.MAX_SAFE_INTEGER;
+  if (eocd < 0) return Number.MAX_SAFE_INTEGER;
+  // u32 at EOCD+16: offset of the start of the central directory.
+  const cdOffset = view.getUint32(eocd + 16, true);
+  if (cdOffset === 0xffffffff || cdOffset >= eocd) return Number.MAX_SAFE_INTEGER;
+  // Central-directory file header: signature(4) + fixed fields up to the three
+  // variable lengths — file name (u16 @28), extra field (u16 @30), comment
+  // (u16 @32) — 46 fixed bytes total, then the three variable regions.
+  let pos = cdOffset;
+  let count = 0;
+  while (pos + 46 <= eocd && view.getUint32(pos, true) === 0x02014b50) {
+    count += 1;
+    if (count > limit) return count;
+    const nameLen = view.getUint16(pos + 28, true);
+    const extraLen = view.getUint16(pos + 30, true);
+    const commentLen = view.getUint16(pos + 32, true);
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  return count;
 }
 
 // jszip's documented streaming API, absent from its index.d.ts (typed there
@@ -229,9 +253,11 @@ export default function ExpertSkillBrowser({
           setPackageUrl(url);
           const buf = await fetchSkillPackage(url, controller.signal);
           // Bound the entry count BEFORE JSZip parses the central directory —
-          // loadAsync builds an object per entry up front, so the forEach cap
-          // below cannot protect against a pathological entry count on its own.
-          if (zipEntryCount(buf) > MAX_PACKAGE_ENTRIES) {
+          // loadAsync builds an object per entry while parsing, so the forEach
+          // cap below cannot protect against a pathological entry count. The
+          // count comes from walking the real records (see zipEntryCount), not
+          // from any publisher-declared field.
+          if (zipEntryCount(buf, MAX_PACKAGE_ENTRIES) > MAX_PACKAGE_ENTRIES) {
             throw new Error("package has too many entries");
           }
           const zip = await JSZip.loadAsync(buf);
