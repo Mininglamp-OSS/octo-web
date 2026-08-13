@@ -6,8 +6,12 @@ import {
 } from "../types/summary";
 
 const STORAGE_KEY_PREFIX = "summary-group-tip:v1:";
+const AGENT_ELIGIBILITY_STORAGE_KEY =
+  "summary-group-tip-agent-eligible:v1";
+const MAX_AGENT_ELIGIBLE_TASKS = 100;
 const inFlight = new Set<string>();
 const sentThisSession = new Set<string>();
+const consumedAgentEligibilityThisSession = new Set<number>();
 
 export interface GroupSummaryNotifyDeps {
   sendToChannel: (channel: Channel, currentUserId: string) => Promise<void>;
@@ -22,14 +26,17 @@ export function shouldNotifyGroupSummaryCompletion(
   previousStatus: number | undefined,
   detail: Pick<SummaryDetail, "status" | "creator_id" | "trigger_type">,
   currentUserId: string | undefined,
-  completedStatus: number
+  completedStatus: number,
+  allowInitialAgentCompletion = false
 ): boolean {
   return (
     detail.status === completedStatus &&
     !!currentUserId &&
     detail.creator_id === currentUserId &&
     ((previousStatus !== undefined && previousStatus !== completedStatus) ||
-      (previousStatus === undefined && detail.trigger_type === TriggerType.AGENT))
+      (previousStatus === undefined &&
+        detail.trigger_type === TriggerType.AGENT &&
+        allowInitialAgentCompletion))
   );
 }
 
@@ -48,12 +55,74 @@ export function collectGroupSourceIds(
   }
   const originChannelId = detail.origin_channel_id?.trim();
   if (
+    !detail.sources?.length &&
     detail.origin_channel_type === SourceType.GROUP_CHAT &&
     originChannelId
   ) {
     ids.add(originChannelId);
   }
   return [...ids];
+}
+
+function readAgentEligibleTasks(): number[] {
+  try {
+    if (typeof localStorage === "undefined") return [];
+    const value = JSON.parse(
+      localStorage.getItem(AGENT_ELIGIBILITY_STORAGE_KEY) || "[]"
+    );
+    return Array.isArray(value)
+      ? value.filter(
+          (item): item is number => Number.isInteger(item) && item > 0
+        )
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function markAgentSummaryNotificationEligible(taskId: number) {
+  try {
+    if (
+      typeof localStorage === "undefined" ||
+      !Number.isInteger(taskId) ||
+      taskId <= 0
+    )
+      return;
+    const taskIds = readAgentEligibleTasks().filter((id) => id !== taskId);
+    taskIds.push(taskId);
+    localStorage.setItem(
+      AGENT_ELIGIBILITY_STORAGE_KEY,
+      JSON.stringify(taskIds.slice(-MAX_AGENT_ELIGIBLE_TASKS))
+    );
+  } catch {
+    // Eligibility is best-effort. Missing it produces an accepted missed tip,
+    // never a retroactive post into a shared group.
+  }
+}
+
+export function isAgentSummaryNotificationEligible(taskId: number): boolean {
+  return (
+    !consumedAgentEligibilityThisSession.has(taskId) &&
+    readAgentEligibleTasks().includes(taskId)
+  );
+}
+
+function consumeAgentSummaryNotificationEligibility(taskId: number): boolean {
+  if (consumedAgentEligibilityThisSession.has(taskId)) return false;
+  const taskIds = readAgentEligibleTasks();
+  if (!taskIds.includes(taskId)) return false;
+  consumedAgentEligibilityThisSession.add(taskId);
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(
+        AGENT_ELIGIBILITY_STORAGE_KEY,
+        JSON.stringify(taskIds.filter((id) => id !== taskId))
+      );
+    }
+  } catch {
+    // The in-memory observation still consumes this attempt for the page.
+  }
+  return true;
 }
 
 function storageKey(taskId: number) {
@@ -107,15 +176,26 @@ export async function sendGroupSummaryCompletionTips(
   channelTypeGroup: number,
   deps: GroupSummaryNotifyDeps
 ): Promise<void> {
+  const allowInitialAgentCompletion =
+    previousStatus === undefined &&
+    detail.status === completedStatus &&
+    detail.trigger_type === TriggerType.AGENT &&
+    !!currentUserId &&
+    detail.creator_id === currentUserId &&
+    consumeAgentSummaryNotificationEligibility(detail.task_id);
   if (
     !shouldNotifyGroupSummaryCompletion(
       previousStatus,
       detail,
       currentUserId,
-      completedStatus
+      completedStatus,
+      allowInitialAgentCompletion
     )
   )
     return;
+  if (previousStatus !== undefined && detail.trigger_type === TriggerType.AGENT) {
+    consumeAgentSummaryNotificationEligibility(detail.task_id);
+  }
   if (!currentUserId) return;
 
   for (const channelId of collectGroupSourceIds(detail)) {
@@ -150,4 +230,5 @@ export async function sendGroupSummaryCompletionTips(
 export function resetGroupSummaryNotifyRuntimeForTests() {
   inFlight.clear();
   sentThisSession.clear();
+  consumedAgentEligibilityThisSession.clear();
 }

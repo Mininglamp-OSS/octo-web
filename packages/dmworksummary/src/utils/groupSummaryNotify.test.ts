@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SummaryDetail } from "../types/summary";
 import {
   collectGroupSourceIds,
+  isAgentSummaryNotificationEligible,
+  markAgentSummaryNotificationEligible,
   readNotifiedGroups,
   resetGroupSummaryNotifyRuntimeForTests,
   sendGroupSummaryCompletionTips,
@@ -59,7 +61,8 @@ describe("groupSummaryNotify", () => {
         undefined,
         detail({ trigger_type: 3 }),
         "creator",
-        COMPLETED
+        COMPLETED,
+        true
       )
     ).toBe(true);
     expect(
@@ -87,20 +90,41 @@ describe("groupSummaryNotify", () => {
         origin_channel_id: "group-origin",
         origin_channel_type: 1,
       })
-    ).toEqual(["group-a", "group-origin"]);
-  });
-
-  it("notifies an initially completed agent summary using its origin group", async () => {
-    const sendToChannel = vi.fn().mockResolvedValue(undefined);
-
-    await sendGroupSummaryCompletionTips(
-      undefined,
-      detail({
-        trigger_type: 3,
+    ).toEqual(["group-a"]);
+    expect(
+      collectGroupSourceIds({
         sources: [],
         origin_channel_id: "group-origin",
         origin_channel_type: 1,
-      }),
+      })
+    ).toEqual(["group-origin"]);
+  });
+
+  it("only notifies a newly created agent summary using its origin group", async () => {
+    const sendToChannel = vi.fn().mockResolvedValue(undefined);
+    const agentDetail = detail({
+      trigger_type: 3,
+      sources: [],
+      origin_channel_id: "group-origin",
+      origin_channel_type: 1,
+    });
+
+    await sendGroupSummaryCompletionTips(
+      undefined,
+      agentDetail,
+      "creator",
+      COMPLETED,
+      2,
+      { sendToChannel, isDisbanded: () => false }
+    );
+    expect(sendToChannel).not.toHaveBeenCalled();
+
+    markAgentSummaryNotificationEligible(42);
+    expect(isAgentSummaryNotificationEligible(42)).toBe(true);
+
+    await sendGroupSummaryCompletionTips(
+      undefined,
+      agentDetail,
       "creator",
       COMPLETED,
       2,
@@ -110,6 +134,7 @@ describe("groupSummaryNotify", () => {
     expect(sendToChannel).toHaveBeenCalledTimes(1);
     expect(sendToChannel.mock.calls[0][0].channelID).toBe("group-origin");
     expect(readNotifiedGroups(42)).toEqual(new Set(["group-origin"]));
+    expect(isAgentSummaryNotificationEligible(42)).toBe(false);
   });
 
   it("sends once per task and group, including after runtime reset", async () => {

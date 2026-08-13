@@ -16,6 +16,7 @@ import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/Voic
 import * as api from "../api/summaryApi";
 import { getTopicTemplatesConfig, getTopicTemplates } from "../api/summaryApi";
 import { chatTypeToOriginChannelType, getOriginChannelType } from "../utils/channelType";
+import { markAgentSummaryNotificationEligible } from "../utils/groupSummaryNotify";
 import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
@@ -959,6 +960,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             const result = await api.createAgentSummary(params);
+            markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t('summary.create.agentSummaryCreated'));
 

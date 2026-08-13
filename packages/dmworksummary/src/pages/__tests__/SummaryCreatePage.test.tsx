@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SummaryCreatePage from '../SummaryCreatePage';
 import * as api from '../../api/summaryApi';
 import { Dap } from '@octo/base';
+import { isAgentSummaryNotificationEligible } from '../../utils/groupSummaryNotify';
 
 import * as summaryHelpers from '../../utils/summaryHelpers';
 vi.mock('@douyinfe/semi-ui', () => ({
@@ -16,6 +17,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
     Input: ({ value, onChange, ...rest }: any) => <input value={value} onChange={(e) => onChange?.(e.target.value)} {...rest} />,
     Modal: ({ children, visible, onOk, onCancel }: any) => visible ? <div data-testid="modal">{children}</div> : null,
     Typography: { Text: ({ children }: any) => <span>{children}</span> },
+    Tooltip: ({ children }: any) => <>{children}</>,
     Tag: ({ children }: any) => <span data-testid="tag">{children}</span>,
     Avatar: ({ children }: any) => <span data-testid="avatar">{children}</span>,
     Modal: ({ children, visible }: any) => visible ? <div data-testid="modal">{children}</div> : null,
@@ -696,6 +698,7 @@ describe('SummaryCreatePage derivedFromTask cross-session isolation (#907 P1 Jer
 describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        localStorage.clear();
         vi.spyOn(summaryHelpers, 'writeAgentChatSession').mockImplementation(() => {});
     });
 
@@ -721,6 +724,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(api.createAgentSummary).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp-1', origin_channel_type: 1 }),
         );
+        expect(isAgentSummaryNotificationEligible(1)).toBe(true);
     });
 
     it('maps a thread selectedChat[0] to origin_channel_type=2', async () => {

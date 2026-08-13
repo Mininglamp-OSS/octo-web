@@ -7,6 +7,7 @@ import type { ReplaceMode, SelectionRange } from '@octo/base/src/Components/Voic
 import type { TopicTemplate, ChatCandidate, ScheduleConfig, CreateAgentSummaryParams, ChatMessage } from '../types/summary';
 import { SummaryMode } from '../types/summary';
 import { getSourceType, getOriginChannelType, chatTypeToOriginChannelType } from '../utils/channelType';
+import { markAgentSummaryNotificationEligible } from '../utils/groupSummaryNotify';
 import { channelToChatCandidate } from '../utils/channelConvert';
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from '../utils/templateResolver';
 
@@ -629,6 +630,7 @@ export default class ChatSummaryNewModal extends Component<
                 origin_channel_id: channel.channelID,
                 origin_channel_type: getOriginChannelType(channel),
             });
+            markAgentSummaryNotificationEligible(res.task_id);
 
             Toast.success(t('summary.create.agentSummaryCreated'));
 
