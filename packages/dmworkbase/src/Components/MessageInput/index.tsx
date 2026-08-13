@@ -7,7 +7,6 @@ import React, {
 } from "react";
 import { X } from "lucide-react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import TiptapMention from "@tiptap/extension-mention";
 import { createMentionSuggestion } from "./mentionSuggestion";
@@ -90,12 +89,16 @@ import {
   type ConsumedComposeRecovery,
   type TopAttachmentLike,
 } from "./composeConsume";
-import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
 import {
   imageBlockToPasteFile,
   restoreOctoRichTextClipboardToEditor,
 } from "./richTextPaste";
-import { handleSecretPaste } from "./secretPasteDetect";
+import {
+  decideComposerPaste,
+  snapshotComposerClipboard,
+  type ComposerPasteDecision,
+} from "./clipboardPipeline";
+import { createComposerStarterKit } from "./editorKit";
 import {
   addImChannelInfoListener,
   fetchImChannelInfo,
@@ -674,7 +677,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     ((view: any, event: KeyboardEvent) => boolean) | null
   >(null);
   const editorHandlePasteRef = useRef<
-    ((view: any, event: ClipboardEvent) => boolean) | null
+    ((
+      view: any,
+      event: ClipboardEvent,
+      decision: ComposerPasteDecision,
+    ) => boolean) | null
   >(null);
 
   // 更新模块级别的 membersRef
@@ -695,21 +702,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 创建编辑器
   const editor = useEditor({
     extensions: [
-      StarterKit.configure({
-        // 只保留基础功能，禁用富文本格式
-        bold: false,
-        italic: false,
-        code: false,
-        heading: false,
-        blockquote: false,
-        horizontalRule: false,
-        codeBlock: false,
-        strike: false,
-        // StarterKit 3.x 内置 Link 扩展的 linkifyjs 会把 xxx.md / README.md
-        // 识别为 .md 顶级域名并补成超链接（issue #870）。输入框只保留纯文本，
-        // 链接由消息渲染层的 markdown 解析生成。
-        link: false,
-      }),
+      createComposerStarterKit(),
       Placeholder.configure({
         placeholder,
       }),
@@ -762,19 +755,19 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       handleKeyDown: (_view, event) => {
         return editorHandleKeyDownRef.current?.(_view, event) ?? false;
       },
-      // 防手滑（YUJ-3539，Jerry-Xin/lml2468 P0-1）：检测到粘贴明文像 API 密钥
-      // （sk-/bf-/app- 开头）时，**硬拦截这次粘贴**——明文绝不进编辑器，因此也不
-      // 可能被后续 send（editor.getText()）读到发进聊天；同时弹引导提示去密钥管理
-      // 保存。preventDefault + 返回 true 阻断 ProseMirror 默认粘贴，仅本地预填新增
-      // 弹窗，绝不把明文发送出去。
       handlePaste: (_view, event) => {
-        const pasted = event.clipboardData?.getData("text/plain") ?? "";
-        const blocked = handleSecretPaste(pasted, notifySecretPaste);
-        if (blocked) {
+        if (!event.clipboardData) return false;
+        const decision = decideComposerPaste(
+          snapshotComposerClipboard(event.clipboardData),
+        );
+        if (decision.kind === "block-secret") {
           event.preventDefault();
-          return true; // 已处理：阻断默认粘贴，明文不进编辑器
+          notifySecretPaste(decision.value);
+          return true;
         }
-        return editorHandlePasteRef.current?.(_view, event) ?? false;
+        return (
+          editorHandlePasteRef.current?.(_view, event, decision) ?? false
+        );
       },
     },
     onUpdate: ({ editor }) => {
@@ -929,21 +922,29 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   );
 
   useEffect(() => {
-    editorHandlePasteRef.current = (_view: any, event: ClipboardEvent) => {
-      if (!editor || !event.clipboardData) return false;
-      const payload = extractOctoRichTextClipboardPayloadFromHtml(
-        event.clipboardData.getData("text/html")
-      );
-      if (!payload) return false;
+    editorHandlePasteRef.current = (
+      _view: any,
+      event: ClipboardEvent,
+      decision: ComposerPasteDecision,
+    ) => {
+      if (!editor) return false;
+      if (decision.kind === "default") return false;
 
       event.preventDefault();
+
+      const addPastedAttachments = props.onAddPendingAttachments || addAttachment;
+      if (decision.kind === "files") {
+        Promise.resolve(addPastedAttachments(decision.files, "paste")).catch(
+          (err) => console.error("[MessageInput] pasted files failed", err),
+        );
+        return true;
+      }
+
       const beforePasteContent = JSON.stringify(editor.getJSON());
-      const addRichTextPasteAttachment =
-        props.onAddPendingAttachments || addAttachment;
       restoreOctoRichTextClipboardToEditor(
-        payload,
+        decision.payload,
         editor,
-        addRichTextPasteAttachment,
+        addPastedAttachments,
         {
           imageBlockToFile: (block) =>
             imageBlockToPasteFile(
@@ -959,10 +960,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         }
       ).catch(() => {
         if (
-          payload.plain &&
+          decision.payload.plain &&
           JSON.stringify(editor.getJSON()) === beforePasteContent
         ) {
-          editor.commands.insertContent(payload.plain);
+          editor.commands.insertContent(decision.payload.plain);
         }
       });
       return true;
