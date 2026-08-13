@@ -158,11 +158,23 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                   instruction={drillMember.instruction}
                   mcpConfig={drillMember.mcpConfig}
                   skills={drillMember.skills}
+                  // member_key is optional on the wire. Without it the backend
+                  // cannot address this member's skill package, so fail the
+                  // fetch deliberately client-side instead of issuing a request
+                  // with a guessed empty key (wrong lookup / opaque 4xx).
                   fetchSkillContent={(i) =>
-                    getSquadSkillContent(item.id, drillMember.key ?? "", i)
+                    drillMember.key
+                      ? getSquadSkillContent(item.id, drillMember.key, i)
+                      : Promise.reject(
+                          new Error(t("mcp.expert.memberKeyMissing"))
+                        )
                   }
                   fetchSkillPackageUrl={(i) =>
-                    getSquadSkillDownloadUrl(item.id, drillMember.key ?? "", i)
+                    drillMember.key
+                      ? getSquadSkillDownloadUrl(item.id, drillMember.key, i)
+                      : Promise.reject(
+                          new Error(t("mcp.expert.memberKeyMissing"))
+                        )
                   }
                   openDownload={openDownloadUrl}
                 />
