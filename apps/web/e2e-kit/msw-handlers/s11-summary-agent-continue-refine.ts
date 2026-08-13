@@ -82,19 +82,9 @@ export async function registerS11SummaryAgentContinueRefine(page: Page): Promise
     };
 
     worker.use(
-      http.get("*/summary/api/v1/summaries", ({ request }: any) => {
-        const url = new URL(request.url);
-        // Discriminate picker vs list-page: picker sends status=3 (COMPLETED).
-        const status = url.searchParams.get("status");
-        const isReferencePicker = status === "3";
-        return env({
-          items: isReferencePicker ? [listItem] : [],
-          total: isReferencePicker ? 1 : 0,
-          attention_count: 0,
-          unread_count: isReferencePicker ? 1 : 0,
-          pending_invitation_count: 0,
-        });
-      }),
+      http.get("*/summary/api/v1/summaries", () =>
+        env({ items: [listItem], total: 1, attention_count: 0, unread_count: 1, pending_invitation_count: 0 })
+      ),
       http.get("*/summary/api/v1/summary-templates", () =>
         env({ templates: [], custom_template_limit: 30 })
       ),
