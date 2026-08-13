@@ -314,6 +314,10 @@ export interface OidcUserInitiatedLogoutDeps {
   // Side-effects the orchestration performs. Injected so the test asserts
   // the sequence without touching real jsdom navigation.
   clearLocalLoginState: () => void | Promise<void>;
+  // Electron provider cookies must remain available while the hidden
+  // end-session window is navigating. The wrapper performs this cleanup only
+  // after that flow has completed (or the local fallback has taken over).
+  clearElectronAuthSession?: () => void | Promise<void>;
   reloadShell: () => void; // window.location.reload()
   navigateExternal: (url: string) => void; // window.location.href = url
   markPostLogoutCleanup: () => void; // markOidcPostLogoutCleanup()
@@ -393,6 +397,11 @@ export async function performOidcUserInitiatedLogout(
         await deps.fallbackLogout();
         return { kind: "desktop-local", url: endSessionUrl };
       }
+      // Do not clear the shell's auth session before IPC_OIDC_OPEN_EXTERNAL:
+      // the hidden BrowserWindow uses the same session and needs the IdP
+      // cookies to complete provider logout. At this point the main process
+      // has finished (or timed out) the end-session navigation.
+      await deps.clearElectronAuthSession?.();
       deps.reloadShell();
       return { kind: "desktop-idp", url: endSessionUrl };
     }

@@ -11,7 +11,9 @@ describe("clearAuthSessionCookies", () => {
           { name: "sid", domain: "idp.example.com", path: "/", secure: true },
           { name: "scoped", domain: ".idp.example.com", path: "/auth", secure: true },
         ],
-        remove: async (url, name) => removed.push(`${url}:${name}`),
+      remove: async (url, name) => {
+        removed.push(`${url}:${name}`);
+      },
       },
       clearAuthCache: async () => {},
     };

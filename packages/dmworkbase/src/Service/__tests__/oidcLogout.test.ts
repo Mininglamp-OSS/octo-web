@@ -227,6 +227,7 @@ type SideEffects = ReturnType<typeof makeSideEffects>;
 function makeSideEffects() {
   return {
     clearLocalLoginState: vi.fn(),
+    clearElectronAuthSession: vi.fn(),
     reloadShell: vi.fn(),
     navigateExternal: vi.fn(),
     markPostLogoutCleanup: vi.fn(),
@@ -247,6 +248,7 @@ function buildDeps(
     env: "web",
     devPostLogoutRedirectUriOverride: undefined,
     clearLocalLoginState: sfx.clearLocalLoginState,
+    clearElectronAuthSession: sfx.clearElectronAuthSession,
     reloadShell: sfx.reloadShell,
     navigateExternal: sfx.navigateExternal,
     markPostLogoutCleanup: sfx.markPostLogoutCleanup,
@@ -313,6 +315,10 @@ describe("performOidcUserInitiatedLogout", () => {
 
     expect(result.kind).toBe("desktop-idp");
     expect(sfx.clearLocalLoginState).toHaveBeenCalledTimes(1);
+    expect(sfx.clearElectronAuthSession).toHaveBeenCalledTimes(1);
+    expect(sfx.clearElectronAuthSession.mock.invocationCallOrder[0]).toBeGreaterThan(
+      invoke.mock.invocationCallOrder[0],
+    );
     expect(invoke).toHaveBeenCalledWith(
       "oidc-open-external",
       "https://accounts.example.com/end_session?id_token_hint=jwt",
@@ -353,6 +359,7 @@ describe("performOidcUserInitiatedLogout", () => {
       "https://accounts.example.com/end_session",
     );
     expect(sfx.clearLocalLoginState).toHaveBeenCalledTimes(1);
+    expect(sfx.clearElectronAuthSession).toHaveBeenCalledTimes(1);
     expect(sfx.reloadShell).toHaveBeenCalledTimes(1);
     expect(sfx.navigateExternal).not.toHaveBeenCalled();
     expect(sfx.fallbackLogout).not.toHaveBeenCalled();

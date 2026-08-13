@@ -1207,6 +1207,10 @@ export default class WKApp extends ProviderListener {
     this.channelSpaceMap.clear();
     this.channelMySourceSpaceMap.clear();
     this.spaceChecked = false;
+    WKApp.mittBus.emit("wk:auth-state-changed");
+  }
+
+  private async clearElectronAuthSession() {
     if (
       (window as any).__POWERED_ELECTRON__ &&
       typeof (window as any).ipc?.invoke === "function"
@@ -1218,7 +1222,6 @@ export default class WKApp extends ProviderListener {
         // unavailable; callers await this before reloading the shell.
       }
     }
-    WKApp.mittBus.emit("wk:auth-state-changed");
   }
 
   // 登出
@@ -1228,6 +1231,7 @@ export default class WKApp extends ProviderListener {
     if (this._loggingOut) return;
     this._loggingOut = true;
     await this.clearLocalLoginState();
+    await this.clearElectronAuthSession();
     // Packaged Electron shell loads via `file://` and has no `/login` route
     // on disk, so `location.replace("/login")` navigates to
     // `file:///login` and hangs on ERR_FILE_NOT_FOUND — the interceptor's
@@ -1277,6 +1281,7 @@ export default class WKApp extends ProviderListener {
         ? import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI
         : undefined,
       clearLocalLoginState: () => this.clearLocalLoginState(),
+      clearElectronAuthSession: () => this.clearElectronAuthSession(),
       reloadShell: replaceWithShellDocument,
       navigateExternal: (url) => { window.location.href = url; },
       markPostLogoutCleanup: () => { markOidcPostLogoutCleanup(); },
