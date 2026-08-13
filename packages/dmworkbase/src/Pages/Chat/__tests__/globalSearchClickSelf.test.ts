@@ -12,7 +12,8 @@ import { describe, expect, it } from "vitest";
 //
 // Regression risk: a well-meaning cleanup could delete the self short-circuit
 // thinking "resp.follow==0 will handle it" — but the backend's
-// GetCommonSpaceID(self,self) fallback in modules/user/service.go:518-522
+// GetCommonSpaceID(self,self) fallback in modules/user/service.go (folds
+// follow to 1 for real users in any Space)
 // hard-sets follow=1 for real users in any Space, so without this guard
 // clicking self opens a "notes-to-self" conversation instead of the profile
 // page (RC-1368 v2 report).

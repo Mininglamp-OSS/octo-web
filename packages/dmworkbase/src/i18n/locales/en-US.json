@@ -557,7 +557,6 @@
   "userInfo.remarkUpdated": "Remark updated",
   "userInfo.remarkUpdateFailed": "Failed to update remark",
   "userInfo.selfIntro": "I'm {{name}}",
-  "userInfo.viewMyProfile": "View my profile",
   "userInfo.sendMessage": "Send message",
   "userInfo.shortNo": "{{appName}} ID:",
   "spaceList.copy": "Copy",
