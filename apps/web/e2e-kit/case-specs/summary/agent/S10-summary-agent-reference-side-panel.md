@@ -59,8 +59,8 @@
 - `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:1064`: Agent 模式渲染 `AgentChatPanel`。
 - `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:1087`: 已选引用且 sidePanelOpen 时渲染 `SummaryReferenceSidePanel`。
 - `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:1093`: 创建页挂载 `SummaryReferencePicker`。
-- `packages/dmworksummary/src/components/SummaryReferencePicker.tsx:84`: 引用选择器调用 `listSummaries()` 带 `status=COMPLETED`，兼容模式下带 `trigger_type=AGENT`。
-- `packages/dmworksummary/src/components/SummaryReferencePicker.tsx:107`: 引用选择器只保留可引用总结（`referenceable` 或 legacy `trigger_type === AGENT`）。
+- `packages/dmworksummary/src/components/SummaryReferencePicker.tsx`（`fetchList`）: 引用选择器调用 `listSummaries()` 带 `status=COMPLETED`，兼容模式下带 `trigger_type=AGENT`；翻页收集可引用项。
+- `packages/dmworksummary/src/components/SummaryReferencePicker.tsx`（`isReferenceable`）: 引用选择器只保留可引用总结（`referenceable` 或 legacy `trigger_type === AGENT`）。
 - `packages/dmworksummary/src/components/SummaryReferenceSidePanel.tsx:75`: 右侧对照面板加载 `getSummaryDetail()`。
 - `packages/dmworksummary/src/components/SummaryReferenceSidePanel.tsx:87`: 团队正文为空时 fallback 到 `getPersonalResult()`。
 - `packages/dmworksummary/src/i18n/zh-CN.json:607-618`: 引用选择器、引用卡片和预览提示实际中文文案。
