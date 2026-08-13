@@ -92,6 +92,16 @@ describe("APIClient forwards config.headers to axios (explicit X-Space-Id reache
     );
   });
 
+  it("forwards per-request timeouts through every mutation wrapper", async () => {
+    await client.put("/docs/d1", {}, { timeout: 120_000 });
+    await client.patch("/docs/d1", {}, { timeout: 120_000 });
+    await client.delete("/docs/d1", { timeout: 120_000 });
+
+    expect(putMock.mock.calls.at(-1)?.[2]).toMatchObject({ timeout: 120_000 });
+    expect(patchMock.mock.calls.at(-1)?.[2]).toMatchObject({ timeout: 120_000 });
+    expect(deleteMock.mock.calls.at(-1)?.[1]).toMatchObject({ timeout: 120_000 });
+  });
+
   it("omits headers (undefined) when the caller passes none — unchanged behavior", async () => {
     await client.get("/docs/d1", { param: { a: 1 } });
     const [, cfg] = getMock.mock.calls.at(-1)!;
@@ -105,6 +115,15 @@ describe("request interceptor X-Space-Id merge (explicit header wins, intercepto
     client.config.spaceIdCallback = () => "interceptor-space";
     const out = holder.requestInterceptor!({ headers: { "X-Space-Id": "explicit-space" } });
     expect(out.headers["X-Space-Id"]).toBe("explicit-space");
+  });
+
+  it("treats HTTP header names case-insensitively when preserving an explicit Space", () => {
+    client.config.spaceIdCallback = () => "stale-current-space";
+    const out = holder.requestInterceptor!({
+      headers: { "X-Space-ID": "authorization-space" },
+    });
+    expect(out.headers["X-Space-ID"]).toBe("authorization-space");
+    expect(out.headers["X-Space-Id"]).toBeUndefined();
   });
 
   it("injects the interceptor's space when no explicit header is present (unchanged fallback)", () => {
@@ -130,5 +149,13 @@ describe("request interceptor X-Space-Id merge (explicit header wins, intercepto
     const [, cfg] = getMock.mock.calls.at(-1)!;
     expect(cfg).toMatchObject({ suppressSpaceId: true });
     expect((cfg as any).headers).toBeUndefined();
+  });
+
+  it("forwards standalone ownership of expired-session recovery", async () => {
+    await client.get("/mail/authorize", {
+      suppressAuthExpiredLogout: true,
+    });
+    const [, cfg] = getMock.mock.calls.at(-1)!;
+    expect(cfg).toMatchObject({ suppressAuthExpiredLogout: true });
   });
 });

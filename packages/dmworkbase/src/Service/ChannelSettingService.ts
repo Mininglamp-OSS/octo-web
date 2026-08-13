@@ -19,6 +19,12 @@ export interface CreateChannelOptions {
   spaceId?: string;
 }
 
+export interface UpdateChannelAvatarCustomOptions {
+  avatarText?: string;
+  avatarColor?: number | "";
+  clearUploadedAvatar?: boolean;
+}
+
 function isPersonChannel(channel: Channel) {
   return channel.channelType === ChannelTypePerson;
 }
@@ -101,6 +107,30 @@ export function updateChannelField(
   return APIClient.shared.put(`groups/${channel.channelID}`, {
     [field]: value,
   });
+}
+
+export function updateChannelAvatarCustom(
+  channel: Channel,
+  options: UpdateChannelAvatarCustomOptions
+): Promise<void> {
+  if (isPersonChannel(channel)) {
+    return Promise.resolve();
+  }
+
+  const body: Record<string, any> = {};
+  if (typeof options.avatarText === "string") {
+    body.avatar_text = options.avatarText;
+  }
+  if (typeof options.avatarColor === "number" && Number.isInteger(options.avatarColor)) {
+    body.avatar_color = String(options.avatarColor);
+  } else if (options.avatarColor === "") {
+    // 后端约定空串表示清除自定义色（回退按 group_no 派生）。
+    body.avatar_color = "";
+  }
+  if (options.clearUploadedAvatar) {
+    body.clear_uploaded_avatar = "1";
+  }
+  return APIClient.shared.put(`groups/${channel.channelID}`, body);
 }
 
 export function transferChannelOwner(

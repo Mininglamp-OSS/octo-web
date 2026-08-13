@@ -1,21 +1,26 @@
 import { Tag, Toast } from "@douyinfe/semi-ui";
 import { QrCode } from "lucide-react";
 import React from "react";
+import type { ChannelInfo } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import { ChannelAvatar } from "../../Components/ChannelAvatar";
 import ChannelQRCode from "../../Components/ChannelQRCode";
 import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context";
+import { GroupRole } from "../../Service/Const";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { ChannelField } from "../../Service/DataSource/DataSource";
 import { GROUP_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import { Row } from "../../Service/Section";
 import { updateChannelSettingField } from "../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../i18n";
+import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 import {
   ChannelSettingIconRow,
+  ChannelSettingIconRowProps,
   ChannelSettingInlineEditRow,
 } from "../../ui/ChannelSettingRows";
+import { parseAvatarColorIndex } from "./channelSettingAvatarColor";
 import { ChannelSettingInputEditPush } from "./types";
 
 interface BuildGroupProfileRowsOptions {
@@ -23,6 +28,129 @@ interface BuildGroupProfileRowsOptions {
   data: ChannelSettingRouteData;
   inputEditPush: ChannelSettingInputEditPush;
   disbanded: boolean;
+}
+
+interface GroupAvatarSettingRowProps extends ChannelSettingIconRowProps {
+  channel: ChannelSettingRouteData["channel"];
+  canEdit: boolean;
+  showUpload?: boolean;
+  groupName?: string;
+  isNamedGroup?: boolean;
+  initialAvatarText?: string;
+  initialColorIndex?: number;
+  isUploadedAvatar?: boolean;
+  canClearUploadedAvatar?: boolean;
+}
+
+interface GroupAvatarEditorValues {
+  groupName: string;
+  isNamedGroup: boolean;
+  initialAvatarText: string;
+  initialColorIndex?: number;
+  isUploadedAvatar: boolean;
+}
+
+function groupAvatarEditorValuesFromInfo(
+  channelInfo: ChannelInfo | undefined,
+  fallback: GroupAvatarEditorValues
+): GroupAvatarEditorValues {
+  if (!channelInfo) return fallback;
+
+  const orgData = channelInfo.orgData;
+  return {
+    groupName: channelInfo.title || fallback.groupName,
+    isNamedGroup:
+      orgData?.is_named === undefined
+        ? fallback.isNamedGroup
+        : orgData.is_named === 1,
+    initialAvatarText:
+      typeof orgData?.avatar_text === "string"
+        ? orgData.avatar_text
+        : fallback.initialAvatarText,
+    initialColorIndex:
+      orgData?.avatar_color === undefined
+        ? fallback.initialColorIndex
+        : parseAvatarColorIndex(orgData.avatar_color),
+    isUploadedAvatar:
+      orgData?.is_upload_avatar === undefined
+        ? fallback.isUploadedAvatar
+        : orgData.is_upload_avatar === 1,
+  };
+}
+
+export function GroupAvatarSettingRow({
+  channel,
+  canEdit,
+  showUpload,
+  groupName,
+  isNamedGroup,
+  initialAvatarText,
+  initialColorIndex,
+  isUploadedAvatar,
+  canClearUploadedAvatar,
+  ...rowProps
+}: GroupAvatarSettingRowProps) {
+  const [visible, setVisible] = React.useState(false);
+  const [opening, setOpening] = React.useState(false);
+  const fallbackValues: GroupAvatarEditorValues = {
+    groupName: groupName || "",
+    isNamedGroup: isNamedGroup === true,
+    initialAvatarText: initialAvatarText || "",
+    initialColorIndex,
+    isUploadedAvatar: isUploadedAvatar === true,
+  };
+  const [editorValues, setEditorValues] =
+    React.useState<GroupAvatarEditorValues>(fallbackValues);
+
+  const openAvatarEditor = async () => {
+    if (opening) return;
+
+    setOpening(true);
+    try {
+      const latestChannelInfo = await fetchCurrentImChannelInfo<
+        typeof channel,
+        ChannelInfo
+      >(channel);
+      setEditorValues(
+        groupAvatarEditorValuesFromInfo(latestChannelInfo, fallbackValues)
+      );
+    } catch (error) {
+      console.error("Refresh group avatar info failed:", error);
+      setEditorValues(fallbackValues);
+    } finally {
+      setOpening(false);
+      setVisible(true);
+    }
+  };
+
+  return (
+    <>
+      <ChannelSettingIconRow
+        {...rowProps}
+        onClick={() => {
+          if (!canEdit) {
+            Toast.warning(
+              t("base.module.channelSettings.groupAvatarOnlyManager")
+            );
+            return;
+          }
+          void openAvatarEditor();
+        }}
+      />
+      <ChannelAvatar
+        visible={visible}
+        onClose={() => setVisible(false)}
+        showUpload={showUpload}
+        channel={channel}
+        groupName={editorValues.groupName}
+        isNamedGroup={editorValues.isNamedGroup}
+        initialAvatarText={editorValues.initialAvatarText}
+        initialColorIndex={editorValues.initialColorIndex}
+        isUploadedAvatar={editorValues.isUploadedAvatar}
+        canClearUploadedAvatar={canClearUploadedAvatar}
+      />
+    </>
+  );
 }
 
 export function buildGroupProfileRows({
@@ -34,6 +162,11 @@ export function buildGroupProfileRows({
 
   const { channel, channelInfo } = data;
   const isExternalGroup = channelInfo?.orgData?.is_external_group === 1;
+  const isNamedGroup = channelInfo?.orgData?.is_named === 1;
+  const isUploadedAvatar = channelInfo?.orgData?.is_upload_avatar === 1;
+  const canClearUploadedAvatar = data.subscriberOfMe?.role === GroupRole.owner;
+  const canEditAvatar = data.isManagerOrCreatorOfMe;
+  const avatarColor = parseAvatarColorIndex(channelInfo?.orgData?.avatar_color);
   const groupName = isExternalGroup ? (
     <span>
       {channelInfo?.title}
@@ -75,7 +208,7 @@ export function buildGroupProfileRows({
       },
     }),
     new Row({
-      cell: ChannelSettingIconRow,
+      cell: GroupAvatarSettingRow,
       properties: {
         title: t("base.module.channelSettings.groupAvatar"),
         icon: (
@@ -89,15 +222,15 @@ export function buildGroupProfileRows({
             alt=""
           />
         ),
-        onClick: () => {
-          context.push(
-            <ChannelAvatar
-              showUpload={data.isManagerOrCreatorOfMe}
-              channel={channel}
-            />,
-            { title: t("base.module.channelSettings.groupAvatar") }
-          );
-        },
+        showUpload: canEditAvatar,
+        canEdit: canEditAvatar,
+        channel,
+        groupName: channelInfo?.title || "",
+        isNamedGroup,
+        initialAvatarText: channelInfo?.orgData?.avatar_text || "",
+        initialColorIndex: avatarColor,
+        isUploadedAvatar,
+        canClearUploadedAvatar,
       },
     }),
     new Row({

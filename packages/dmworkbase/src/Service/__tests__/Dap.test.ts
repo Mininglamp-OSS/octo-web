@@ -221,6 +221,8 @@ describe('Dap.normalizePath / isFirstParty (P0-3 helpers)', () => {
         const { normalizePath } = __dapInternals
         // 静态路由词原样保留
         expect(normalizePath('/v1/common/appconfig')).toBe('/v1/common/appconfig')
+        expect(normalizePath('/mail-api/webapi/v0/mailboxes')).toBe('/mail-api/webapi/v0/mailboxes')
+        expect(normalizePath('/v1/mail-gateway/webapi/v0/agent-auth/requests/ABCD-1234')).toBe('/v1/mail-gateway/webapi/v0/agent-auth/requests/:seg')
         // id → :id;文件名 / percent-encoded 段 → :seg
         expect(normalizePath('/agent-cards/9987/files/report-2024.pdf')).toBe('/agent-cards/:id/files/:seg')
         expect(normalizePath('/x/memory%2F2026-05-07.md')).toBe('/:seg/:seg') // 'x' 非路由词 → :seg

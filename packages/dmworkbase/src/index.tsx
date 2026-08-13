@@ -14,7 +14,9 @@ export { default as Provider } from './Service/Provider'
 export * from './Service/Provider'
 export * from './Service/Route'
 export * from './Service/SessionScope'
+export * from './Service/ShellDocument'
 export * from './Service/RoutePath'
+export * from './Service/deviceFlags'
 export * from './Service/DataSource/DataProvider'
 export { default as ChatPage } from "./Pages/Chat"
 export * from './Components/ChannelSetting/context'
@@ -102,6 +104,10 @@ export { default as WKButton } from "./Components/WKButton"
 export { default as WKInput } from "./Components/WKInput"
 export { default as WKModal } from "./Components/WKModal"
 export type { WKModalProps, WKModalSize, WKModalFooterConfig } from "./Components/WKModal"
+export { default as PromptForwardActions } from "./Components/PromptForwardActions"
+export type { PromptForwardActionsProps } from "./Components/PromptForwardActions"
+export { default as PromptForwardModal } from "./Components/PromptForwardModal"
+export type { PromptForwardModalProps } from "./Components/PromptForwardModal"
 export { wkConfirm } from "./Components/WKModal"
 export type { WKConfirmProps } from "./Components/WKModal"
 export { default as GroupAvatarPreview } from "./Components/GroupAvatarPreview"
@@ -118,7 +124,7 @@ export { default as SpaceMembers } from "./Components/SpaceMembers"
 export { default as SpaceSettings } from "./Components/SpaceSettings"
 export * from "./Service/SpaceService"
 export { default as UserService } from "./Service/UserService"
-export type { UserProfile } from "./Service/UserService"
+export type { UserProfile, UserProfileRequestOptions } from "./Service/UserService"
 
 export type { JoinApprovalStatus } from "./EndpointCommon"
 export { toJoinApprovalStatus } from "./EndpointCommon"

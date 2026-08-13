@@ -98,3 +98,15 @@ export const fetchHttpClient: OidcHttpClient = {
     return (await resp.json()) as T
   },
 }
+
+function resolveOidcUrl(url: string, baseURL?: string): string {
+  if (!baseURL || /^[a-z][a-z\d+.-]*:/i.test(url)) return url
+  return new URL(url, baseURL.endsWith('/') ? baseURL : `${baseURL}/`).toString()
+}
+
+export function createFetchHttpClient(baseURL: string): OidcHttpClient {
+  return {
+    get: (url, init) => fetchHttpClient.get(resolveOidcUrl(url, baseURL), init),
+    post: (url, body, init) => fetchHttpClient.post(resolveOidcUrl(url, baseURL), body, init),
+  }
+}

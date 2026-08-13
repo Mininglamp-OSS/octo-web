@@ -18,18 +18,21 @@ vi.mock('@octo/base', () => {
       post: (...args: unknown[]) => apiPost(...args),
     },
     endpoints: { callOnLogin: vi.fn(), onNeedJoinSpace: vi.fn() },
-    shared: { deviceId: 'd', deviceName: 'n', deviceModel: 'm' },
+    shared: { deviceId: 'd', deviceName: 'n', deviceModel: 'm', isPC: false },
     config: { themeColor: '#000', appName: 'Test' },
     remoteConfig: { oidcProviders: [] },
   }
   return {
     WKApp,
     ProviderListener,
+    IM_DEVICE_FLAG_WEB: 1,
+    IM_DEVICE_FLAG_PC: 2,
     i18n: { setLocale: vi.fn() },
     normalizeLocale: vi.fn(() => undefined),
   }
 })
 
+import { WKApp } from '@octo/base'
 import { LoginVM, LoginStatus, LoginType } from '../login_vm'
 
 /** Put the VM in QR mode without letting didMount kick off real polling. */
@@ -52,7 +55,29 @@ beforeEach(() => {
   apiPost.mockReset()
 })
 
-describe('scan-login poll credential', () => {
+describe('scan-login redeem request', () => {
+  it('puts only the device flag in the redeem URL query', async () => {
+    const vm = newQRCodeVM()
+    apiPost.mockResolvedValue(null)
+    vm.pollSecret = 'secret-1'
+
+    await vm.requestLogin('auth code/1')
+
+    expect(apiPost).toHaveBeenCalledWith(
+      'user/login_authcode/auth%20code%2F1?flag=1',
+    )
+    expect(apiPost.mock.calls[0][1]).toBeUndefined()
+
+    ;(WKApp.shared as { isPC?: boolean }).isPC = true
+    apiPost.mockReset()
+    apiPost.mockResolvedValue(null)
+    await vm.requestLogin('desktop-code')
+    expect(apiPost.mock.calls[0][0]).toBe(
+      'user/login_authcode/desktop-code?flag=2',
+    )
+    ;(WKApp.shared as { isPC?: boolean }).isPC = false
+  })
+
   it('sends poll_secret on the status poll', async () => {
     const vm = newQRCodeVM()
     apiGet.mockResolvedValue(INERT)

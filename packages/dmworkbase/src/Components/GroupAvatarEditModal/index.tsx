@@ -15,8 +15,12 @@ import "./index.css"
 export interface GroupAvatarEditResult {
   /** 清洗后的自定义头像文字（≤4 可见字符；空串表示回退双人图标） */
   avatarText: string
+  /** 头像文字是否被用户操作过：修改或清除 */
+  textChanged?: boolean
   /** 用户显式选中的色板下标；undefined 表示未选色 → 由服务端按 group_no 派生默认色 */
   colorIndex?: number
+  /** 色板是否被用户操作过：选择颜色 */
+  colorChanged?: boolean
 }
 
 export interface GroupAvatarEditModalProps {
@@ -29,9 +33,30 @@ export interface GroupAvatarEditModalProps {
   initialAvatarText?: string
   /** 初始色板下标 */
   initialColorIndex?: number
+  /** Existing-group seed, normally group_no, for server-compatible defaults. */
+  colorSeed?: string
+  /** 保存中：禁用关闭并让确认按钮展示 loading */
+  saving?: boolean
   /** 保存：回传清洗后的文字与色板下标 */
   onSave: (result: GroupAvatarEditResult) => void
   onCancel: () => void
+}
+
+export interface GroupAvatarEditFormProps {
+  /** 群名：未选色时派生颜色；nameAsFallback 时无自定义文字也按群名取字预览 */
+  name?: string
+  /** 无自定义文字时是否按群名取字预览（命名群场景传 true，对齐服务端） */
+  nameAsFallback?: boolean
+  /** 初始自定义文字 */
+  initialAvatarText?: string
+  /** 初始色板下标 */
+  initialColorIndex?: number
+  /** Existing-group seed, normally group_no, for server-compatible defaults. */
+  colorSeed?: string
+  /** 保存/上传中：禁止继续编辑，避免保存中的输入被丢弃。 */
+  disabled?: boolean
+  /** 编辑态变化：用于父组件维护本地 draft mode */
+  onChange?: (result: GroupAvatarEditResult) => void
 }
 
 const MAX_VISIBLE = 4
@@ -39,20 +64,22 @@ const MAX_VISIBLE = 4
 // GroupAvatarEditModal 是「修改头像」二次弹窗：自定义头像文字 + 头像颜色 + 实时预览。
 // 上下文无关（不直接调接口）——保存时把结果回传调用方：创建弹窗据此更新本地态、群设置
 // 据此调 PUT。
-const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
-  visible,
+export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
   name = "",
   nameAsFallback = false,
   initialAvatarText = "",
   initialColorIndex,
-  onSave,
-  onCancel,
+  colorSeed,
+  disabled = false,
+  onChange,
 }) => {
   const [palette, setPalette] = useState<GroupColorHex[]>(getCachedPalette())
   const [avatarText, setAvatarText] = useState<string>(initialAvatarText)
+  const [textChanged, setTextChanged] = useState(false)
   // undefined = 用户未显式选色：预览按群名派生、不下发 avatar_color（服务端按 group_no
   // 派生默认色）。只有点击色圈才落定一个下标，避免「打开弹窗即静默锁死某个颜色」。
   const [colorIndex, setColorIndex] = useState<number | undefined>(initialColorIndex)
+  const [colorChanged, setColorChanged] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -64,39 +91,58 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
     }
   }, [])
 
-  // 每次打开用初始值重置（避免上次编辑残留）。
+  // 初始值变化时重置（避免上次编辑残留）。
   useEffect(() => {
-    if (visible) {
-      setAvatarText(initialAvatarText)
-      setColorIndex(initialColorIndex)
-    }
-  }, [visible, initialAvatarText, initialColorIndex])
+    setAvatarText(initialAvatarText)
+    setTextChanged(false)
+    setColorIndex(initialColorIndex)
+    setColorChanged(false)
+  }, [initialAvatarText, initialColorIndex])
 
-  const onTextChange = (v: string) => {
-    // 限制可见字符 ≤4（与服务端一致），超出即截断。
-    setAvatarText(visibleCount(v) > MAX_VISIBLE ? cleanAvatarText(v) : v)
+  const hasTextChanged = (value: string) => cleanAvatarText(value) !== cleanAvatarText(initialAvatarText)
+  const hasColorChanged = (value: number | undefined) => value !== initialColorIndex
+
+  const emitChange = (next: {
+    avatarText?: string
+    textChanged?: boolean
+    colorIndex?: number
+    colorChanged?: boolean
+  }) => {
+    onChange?.({
+      avatarText: cleanAvatarText(next.avatarText ?? avatarText),
+      textChanged: next.textChanged ?? textChanged,
+      colorIndex: "colorIndex" in next ? next.colorIndex : colorIndex,
+      colorChanged: next.colorChanged ?? colorChanged,
+    })
   }
 
-  const handleSave = () =>
-    onSave({ avatarText: cleanAvatarText(avatarText), colorIndex })
+  const onTextChange = (v: string) => {
+    if (disabled) return
+    // 保留完整输入，避免中文输入法组合输入和光标位置被截断打断；预览与保存统一取前 4 字。
+    setAvatarText(v)
+    const nextTextChanged = hasTextChanged(v)
+    setTextChanged(nextTextChanged)
+    emitChange({ avatarText: v, textChanged: nextTextChanged, colorIndex, colorChanged })
+  }
+
+  const selectColor = (index: number) => {
+    if (disabled) return
+    setColorIndex(index)
+    const nextColorChanged = hasColorChanged(index)
+    setColorChanged(nextColorChanged)
+    emitChange({ colorIndex: index, colorChanged: nextColorChanged })
+  }
+
+  const textLength = visibleCount(avatarText)
+  const textExceeded = textLength > MAX_VISIBLE
 
   return (
-    <WKModal
-      size="md"
-      className="wk-group-avatar-edit-modal"
-      visible={visible}
-      title={t("base.groupAvatarEdit.title")}
-      onCancel={onCancel}
-      footerConfig={{
-        onOk: handleSave,
-        okText: t("base.common.ok"),
-        cancelText: t("base.common.cancel"),
-      }}
-    >
+    <>
       <div className="wk-group-avatar-edit-preview-row">
         <GroupAvatarPreview
           avatarText={avatarText}
           colorIndex={colorIndex}
+          colorSeed={colorSeed}
           name={name}
           nameAsFallback={nameAsFallback}
           size={56}
@@ -110,7 +156,26 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
         value={avatarText}
         placeholder={t("base.groupAvatarEdit.customTextPlaceholder")}
         onChange={onTextChange}
+        disabled={disabled}
+        aria-describedby="wk-group-avatar-edit-text-meta"
       />
+      <div
+        className={
+          "wk-group-avatar-edit-input-meta" +
+          (textExceeded ? " is-exceeded" : "")
+        }
+        id="wk-group-avatar-edit-text-meta"
+        aria-live="polite"
+      >
+        <span>
+          {t(
+            textExceeded
+              ? "base.groupAvatarEdit.customTextExceededHint"
+              : "base.groupAvatarEdit.customTextHint"
+          )}
+        </span>
+        <span>{t("base.groupAvatarEdit.customTextCount", { values: { count: textLength } })}</span>
+      </div>
 
       <div className="wk-group-avatar-edit-label">
         {t("base.groupAvatarEdit.color")}
@@ -128,13 +193,75 @@ const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
               background: c.fill,
               borderColor: c.index === colorIndex ? c.main : "transparent",
             }}
-            onClick={() => setColorIndex(c.index)}
+            onClick={() => selectColor(c.index)}
+            disabled={disabled}
             aria-label={`avatar-color-${c.index}`}
+            aria-pressed={c.index === colorIndex}
           >
             {c.index === colorIndex && <IconTick style={{ color: c.main }} />}
           </button>
         ))}
       </div>
+    </>
+  )
+}
+
+const GroupAvatarEditModal: React.FC<GroupAvatarEditModalProps> = ({
+  visible,
+  name = "",
+  nameAsFallback = false,
+  initialAvatarText = "",
+  initialColorIndex,
+  colorSeed,
+  saving = false,
+  onSave,
+  onCancel,
+}) => {
+  const [draft, setDraft] = useState<GroupAvatarEditResult>({
+    avatarText: initialAvatarText,
+    colorIndex: initialColorIndex,
+  })
+
+  useEffect(() => {
+    if (visible) {
+      setDraft({ avatarText: initialAvatarText, colorIndex: initialColorIndex })
+    }
+  }, [visible, initialAvatarText, initialColorIndex])
+
+  const handleSave = () => {
+    if (saving) return
+
+    onSave(draft)
+  }
+
+  return (
+    <WKModal
+      size="md"
+      className="wk-group-avatar-edit-modal"
+      visible={visible}
+      title={t("base.groupAvatarEdit.title")}
+      onCancel={onCancel}
+      footerConfig={{
+        onOk: handleSave,
+        isOkLoading: saving,
+        okText: t("base.common.ok"),
+        cancelText: t("base.common.cancel"),
+      }}
+      options={{
+        maskClosable: !saving,
+        closeOnEsc: !saving,
+      }}
+    >
+      <GroupAvatarEditForm
+        key={visible ? "open" : "closed"}
+        name={name}
+        nameAsFallback={nameAsFallback}
+        initialAvatarText={initialAvatarText}
+        initialColorIndex={initialColorIndex}
+        colorSeed={colorSeed}
+        disabled={saving}
+        onChange={setDraft}
+      />
     </WKModal>
   )
 }

@@ -1,0 +1,957 @@
+import { describe, expect, it, vi } from 'vitest'
+import {
+  attachLogoutWindowNavigationListeners,
+  decideLogoutWindowNavigation,
+  extractEndSessionRedirect,
+  isTrustedSenderUrl,
+  classifyOidcNavigation,
+  isOidcAuthorizeNavigation,
+  isMatchingOidcCallback,
+  parseHttpOrigin,
+  parseOidcCallback,
+  validateOidcHttpRequest,
+  validateOpenExternalUrl,
+  withTrustedSessionSid,
+} from '../oidcRedirect'
+
+describe('parseHttpOrigin', () => {
+  it('normalizes http and https URLs to their origin', () => {
+    expect(parseHttpOrigin('https://api.example.com/v1/x?y=1')).toBe('https://api.example.com')
+    expect(parseHttpOrigin('http://api.example.com:8080/path')).toBe('http://api.example.com:8080')
+  })
+
+  it('rejects non-http(s) schemes', () => {
+    expect(parseHttpOrigin('file:///etc/passwd')).toBeUndefined()
+    expect(parseHttpOrigin('javascript:alert(1)')).toBeUndefined()
+    expect(parseHttpOrigin('data:text/html,<script>')).toBeUndefined()
+    expect(parseHttpOrigin('ftp://api.example.com')).toBeUndefined()
+  })
+
+  it('rejects invalid inputs', () => {
+    expect(parseHttpOrigin('')).toBeUndefined()
+    expect(parseHttpOrigin('not a url')).toBeUndefined()
+    expect(parseHttpOrigin('/relative/path')).toBeUndefined()
+    expect(parseHttpOrigin(undefined)).toBeUndefined()
+    expect(parseHttpOrigin(null)).toBeUndefined()
+    expect(parseHttpOrigin(42)).toBeUndefined()
+    expect(parseHttpOrigin({})).toBeUndefined()
+  })
+})
+
+describe('parseOidcCallback', () => {
+  const API = 'https://api.example.com'
+
+  it('accepts only the configured API origin', () => {
+    expect(parseOidcCallback('https://idp.example.com/login?oidc_error=1', API)).toBeUndefined()
+    expect(parseOidcCallback('https://api.example.com/login?oidc_error=1', API)).toEqual({
+      path: '/login',
+      query: { oidc_error: '1' },
+    })
+  })
+
+  it('tolerates a trailing slash on the expected origin', () => {
+    // Callers sometimes pass the raw apiURL rather than a normalized origin;
+    // parseHttpOrigin() is applied on both sides so the compare stays exact.
+    expect(parseOidcCallback('https://api.example.com/login?oidc_error=1', 'https://api.example.com/')).toEqual({
+      path: '/login',
+      query: { oidc_error: '1' },
+    })
+  })
+
+  it('rejects mismatched port / scheme', () => {
+    expect(parseOidcCallback('http://api.example.com/login?oidc_error=1', API)).toBeUndefined()
+    expect(parseOidcCallback('https://api.example.com:8443/login', API)).toBeUndefined()
+  })
+
+  it('rejects unknown pathnames', () => {
+    expect(parseOidcCallback('https://api.example.com/', API)).toBeUndefined()
+    expect(parseOidcCallback('https://api.example.com/login/', API)).toBeUndefined()
+    expect(parseOidcCallback('https://api.example.com/LOGIN', API)).toBeUndefined()
+    expect(parseOidcCallback('https://api.example.com/attack', API)).toBeUndefined()
+  })
+
+  it('rejects non-URL inputs', () => {
+    expect(parseOidcCallback('not a url', API)).toBeUndefined()
+    expect(parseOidcCallback('/login?x=1', API)).toBeUndefined()
+    expect(parseOidcCallback('javascript:alert(1)', API)).toBeUndefined()
+  })
+
+  it('rejects an invalid expected origin', () => {
+    expect(parseOidcCallback('https://api.example.com/login', 'not a url')).toBeUndefined()
+    expect(parseOidcCallback('https://api.example.com/login', 'file:///etc/passwd')).toBeUndefined()
+  })
+
+  it('forwards only bind parameters on /oidc/bind', () => {
+    expect(
+      parseOidcCallback(
+        'https://api.example.com/oidc/bind?token=t&provider=acme&authcode=ac&return_to=/foo&evil=x&__octo_route=/attack',
+        API,
+      ),
+    ).toEqual({
+      path: '/oidc/bind',
+      query: { token: 't', provider: 'acme', authcode: 'ac', return_to: '/foo' },
+    })
+  })
+
+  it('drops __octo_route sourced from the IdP URL', () => {
+    // `__octo_route` is renderer-facing routing metadata injected by
+    // withTrustedSessionSid; the IdP MUST NOT be able to steer it.
+    const cb = parseOidcCallback(
+      'https://api.example.com/oidc/bind?token=t&__octo_route=/somewhere',
+      API,
+    )
+    expect(cb?.query).not.toHaveProperty('__octo_route')
+  })
+
+  it('forwards OIDC error fields on /login', () => {
+    // Backends returning ?error=access_denied&error_description=... need to
+    // reach the login page for i18n error surfacing.
+    const cb = parseOidcCallback(
+      'https://api.example.com/login?error=access_denied&error_description=user+cancelled&evil=x',
+      API,
+    )
+    expect(cb).toEqual({
+      path: '/login',
+      query: { error: 'access_denied', error_description: 'user cancelled' },
+    })
+  })
+
+  it('forwards login correlation fields so the interceptor can verify them', () => {
+    const cb = parseOidcCallback(
+      'https://api.example.com/login?authcode=expected&provider=acme&error=access_denied',
+      API,
+    )
+    expect(cb).toEqual({
+      path: '/login',
+      query: { authcode: 'expected', provider: 'acme', error: 'access_denied' },
+    })
+  })
+
+  it('drops bind-only params on /login', () => {
+    const cb = parseOidcCallback(
+      'https://api.example.com/login?token=leak&oidc_error=1',
+      API,
+    )
+    expect(cb).toEqual({ path: '/login', query: { oidc_error: '1' } })
+  })
+})
+
+describe('isOidcAuthorizeNavigation', () => {
+  const API = 'https://api.example.com'
+
+  it('allows the matching provider authorize endpoint', () => {
+    const authorizeUrl = `${API}/api/v1/auth/oidc/acme-sso/authorize?authcode=abc&return_to=%2Flogin`
+    expect(isOidcAuthorizeNavigation(
+      authorizeUrl,
+      API,
+      'acme-sso',
+      authorizeUrl,
+    )).toBe(true)
+  })
+
+  it('rejects callbacks, other providers, and other origins', () => {
+    const authorizeUrl = `${API}/api/v1/auth/oidc/acme-sso/authorize?authcode=abc`
+    expect(isOidcAuthorizeNavigation(`${API}/login`, API, 'acme-sso', authorizeUrl)).toBe(false)
+    expect(isOidcAuthorizeNavigation(`${API}/api/v1/auth/oidc/other/authorize?authcode=abc`, API, 'acme-sso', authorizeUrl)).toBe(false)
+    expect(isOidcAuthorizeNavigation('https://evil.example/api/v1/auth/oidc/acme-sso/authorize?authcode=abc', API, 'acme-sso', authorizeUrl)).toBe(false)
+  })
+
+  it('rejects an authorize URL that differs only by path or query', () => {
+    const authorizeUrl = `${API}/api/v1/auth/oidc/acme-sso/authorize?authcode=abc&flag=2`
+    expect(isOidcAuthorizeNavigation(
+      `${API}/v1/auth/oidc/acme-sso/authorize?authcode=abc&flag=2`,
+      API,
+      'acme-sso',
+      authorizeUrl,
+    )).toBe(false)
+  })
+})
+
+describe('classifyOidcNavigation', () => {
+  const origin = 'https://api.example.com'
+  const authorizeUrl = `${origin}/v1/auth/oidc/acme/authorize?authcode=ac&return_to=%2Flogin&flag=2`
+  const base = {
+    origin,
+    providerId: 'acme',
+    authorizeUrl,
+    authcode: 'ac',
+    expiresAt: 2_000,
+    now: 1_000,
+  }
+
+  it('allows the API callback hop before the terminal frontend callback', () => {
+    expect(classifyOidcNavigation({
+      ...base,
+      url: `${origin}/v1/auth/oidc/acme/callback?code=code&state=state`,
+    })).toBe('same-origin')
+  })
+
+  it('only classifies a correlated /login callback as terminal', () => {
+    expect(classifyOidcNavigation({
+      ...base,
+      url: `${origin}/login?authcode=ac&provider=acme`,
+    })).toBe('callback')
+    expect(classifyOidcNavigation({
+      ...base,
+      url: `${origin}/login?authcode=other&provider=acme`,
+    })).toBe('invalid-callback')
+  })
+
+  it('marks an expired flow for local-shell recovery', () => {
+    expect(classifyOidcNavigation({
+      ...base,
+      now: 2_000,
+      url: 'https://idp.example.com/authorize',
+    })).toBe('expired')
+  })
+})
+
+describe('validateOidcHttpRequest', () => {
+  const API = 'https://api.example.com'
+
+  it('allows only the configured origin and endpoint/method pairs', () => {
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/auth/oidc/acme/bind/info`, method: 'GET',
+    }, API).ok).toBe(true)
+    expect(validateOidcHttpRequest({
+      url: 'https://attacker.example/v1/user/thirdlogin/authstatus', method: 'GET',
+    }, API)).toEqual({ ok: false, error: 'OIDC origin is not allowed' })
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/auth/oidc/acme/bind/info`, method: 'POST',
+    }, undefined)).toEqual({ ok: false, error: 'OIDC origin is not allowed' })
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/auth/oidc/acme/bind/info`, method: 'POST',
+    }, API)).toEqual({ ok: false, error: 'Invalid OIDC method' })
+  })
+
+  it('does not accept arbitrary paths or non-string token headers', () => {
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/secrets`, method: 'GET',
+    }, API).ok).toBe(false)
+    expect(validateOidcHttpRequest({
+      url: `${API}/v1/user/thirdlogin/authstatus`, method: 'GET',
+      headers: { token: 123 },
+    }, API)).toEqual({ ok: false, error: 'Invalid OIDC headers' })
+  })
+})
+
+describe('withTrustedSessionSid', () => {
+  it('injects sid and preserves /login query as-is', () => {
+    expect(
+      withTrustedSessionSid({ path: '/login', query: { oidc_error: '1' } }, 'window-sid'),
+    ).toEqual({
+      oidc_error: '1',
+      sid: 'window-sid',
+    })
+  })
+
+  it('injects sid + __octo_route on /oidc/bind', () => {
+    expect(
+      withTrustedSessionSid(
+        { path: '/oidc/bind', query: { token: 't', provider: 'acme' } },
+        'window-sid',
+      ),
+    ).toEqual({
+      token: 't',
+      provider: 'acme',
+      sid: 'window-sid',
+      __octo_route: '/oidc/bind',
+    })
+  })
+
+  it('does not add __octo_route on /login even if the caller mutates the map later', () => {
+    const result = withTrustedSessionSid({ path: '/login', query: {} }, 's')
+    expect(result).not.toHaveProperty('__octo_route')
+  })
+
+  it('sid overrides any user-supplied sid in callback query (defense in depth)', () => {
+    // Belt-and-suspenders: parseOidcCallback already strips non-whitelisted
+    // keys, but if a future path adds `sid` to the allow-list, the trusted
+    // window-scoped sid must still win.
+    const result = withTrustedSessionSid(
+      { path: '/login', query: { oidc_error: '1', sid: 'idp-attacker' } as any },
+      'window-sid',
+    )
+    expect(result.sid).toBe('window-sid')
+  })
+})
+
+describe('isMatchingOidcCallback', () => {
+  it('accepts the authstatus callback that returns to /login without authcode', () => {
+    expect(isMatchingOidcCallback(
+      { path: '/login', query: {} },
+      'pending-authcode',
+      'aegis',
+    )).toBe(true)
+  })
+
+  it('still rejects an explicitly mismatched authcode or provider', () => {
+    expect(isMatchingOidcCallback(
+      { path: '/login', query: { authcode: 'attacker-code' } },
+      'pending-authcode',
+      'aegis',
+    )).toBe(false)
+    expect(isMatchingOidcCallback(
+      { path: '/login', query: { provider: 'other' } },
+      'pending-authcode',
+      'aegis',
+    )).toBe(false)
+  })
+
+  it('requires both correlation fields for bind callbacks', () => {
+    expect(isMatchingOidcCallback(
+      { path: '/oidc/bind', query: { token: 'attacker-token' } },
+      'pending-authcode',
+      'aegis',
+    )).toBe(false)
+    expect(isMatchingOidcCallback(
+      { path: '/oidc/bind', query: { token: 't', authcode: 'pending-authcode', provider: 'aegis' } },
+      'pending-authcode',
+      'aegis',
+    )).toBe(true)
+  })
+})
+
+describe('isTrustedSenderUrl', () => {
+  it('accepts file:// regardless of dev origin (packaged shell)', () => {
+    expect(isTrustedSenderUrl(
+      'file:///Applications/OCTO.app/build/index.html',
+      undefined,
+      'file:///Applications/OCTO.app/build/index.html',
+    )).toBe(true)
+    expect(isTrustedSenderUrl(
+      'file:///c:/build/index.html',
+      'http://localhost:3000',
+      'file:///c:/build/index.html',
+    )).toBe(true)
+    expect(isTrustedSenderUrl(
+      'file:///Applications/OCTO.app/build/index.html?sid=window-sid&__octo_route=%2Foidc%2Fbind#callback',
+      undefined,
+      'file:///Applications/OCTO.app/build/index.html',
+    )).toBe(true)
+  })
+
+  it('keeps the document identity separate from SPA route history', () => {
+    // The main-process IPC guard records this result when the document is
+    // committed. A later history.pushState('/drive') must not turn the shell
+    // into a different local document or revoke its bridge.
+    expect(isTrustedSenderUrl(
+      'file:///Applications/OCTO.app/build/index.html?sid=window-sid',
+      undefined,
+      'file:///Applications/OCTO.app/build/index.html',
+    )).toBe(true)
+    expect(isTrustedSenderUrl(
+      'file:///Applications/OCTO.app/build/other.html',
+      undefined,
+      'file:///Applications/OCTO.app/build/index.html',
+    )).toBe(false)
+  })
+
+  it('accepts Windows drive-letter case differences in the trusted file path', () => {
+    expect(isTrustedSenderUrl(
+      'file:///c:/Applications/OCTO.app/build/index.html',
+      undefined,
+      'file:///C:/Applications/OCTO.app/build/index.html',
+    )).toBe(true)
+  })
+
+  it('rejects a different local file even when it uses file://', () => {
+    expect(isTrustedSenderUrl(
+      'file:///tmp/attacker.html',
+      undefined,
+      'file:///Applications/OCTO.app/build/index.html',
+    )).toBe(false)
+  })
+
+  it('rejects a different file host even when the path matches', () => {
+    expect(isTrustedSenderUrl(
+      'file://attacker/build/index.html',
+      undefined,
+      'file:///build/index.html',
+    )).toBe(false)
+  })
+
+  it('accepts an exact dev origin match', () => {
+    expect(isTrustedSenderUrl('http://localhost:3000/', 'http://localhost:3000')).toBe(true)
+    expect(isTrustedSenderUrl('http://localhost:3000/anything?x=1', 'http://localhost:3000')).toBe(true)
+  })
+
+  it('rejects a mismatched port / scheme even in dev', () => {
+    expect(isTrustedSenderUrl('http://localhost:3001/', 'http://localhost:3000')).toBe(false)
+    expect(isTrustedSenderUrl('https://localhost:3000/', 'http://localhost:3000')).toBe(false)
+    expect(isTrustedSenderUrl('http://evil.example/', 'http://localhost:3000')).toBe(false)
+  })
+
+  it('rejects http(s) senders when no dev origin was pushed (packaged build)', () => {
+    // In packaged builds `TRUSTED_SHELL_DEV_ORIGIN` is undefined — only
+    // file:// may reach IPC. A packaged renderer navigated to an http URL
+    // (e.g. accidental external navigation) must lose IPC access.
+    expect(isTrustedSenderUrl('http://localhost:3000/', undefined)).toBe(false)
+    expect(isTrustedSenderUrl('https://api.example.com/', undefined)).toBe(false)
+  })
+
+  it('rejects hostile / degenerate schemes', () => {
+    expect(isTrustedSenderUrl('javascript:alert(1)', 'http://localhost:3000')).toBe(false)
+    expect(isTrustedSenderUrl('data:text/html,<script>', 'http://localhost:3000')).toBe(false)
+    expect(isTrustedSenderUrl('chrome-extension://abc/', 'http://localhost:3000')).toBe(false)
+    expect(isTrustedSenderUrl('about:blank', 'http://localhost:3000')).toBe(false)
+  })
+
+  it('rejects invalid inputs', () => {
+    expect(isTrustedSenderUrl(undefined, 'http://localhost:3000')).toBe(false)
+    expect(isTrustedSenderUrl('', 'http://localhost:3000')).toBe(false)
+    expect(isTrustedSenderUrl('not a url', 'http://localhost:3000')).toBe(false)
+  })
+})
+
+describe('validateOpenExternalUrl', () => {
+  const TRUSTED_ORIGINS = new Set([
+    'https://api.example.com',
+    'https://idp.example.com',
+    'https://tenant.auth0.com',
+    'https://login.microsoftonline.com',
+  ])
+
+  it('accepts end-session-shaped https URLs across common IdPs', () => {
+    // Real end_session URLs we've observed in production integrations. Each
+    // vendor's path shape and standard query params must go through.
+    for (const url of [
+      // Keycloak (RP-initiated logout 1.0)
+      'https://idp.example.com/realms/octo/protocol/openid-connect/logout?id_token_hint=jwt&post_logout_redirect_uri=https%3A%2F%2Fapp.example.com%2Flogin&state=abc',
+      // Auth0
+      'https://tenant.auth0.com/v2/logout?client_id=abc&returnTo=https%3A%2F%2Fapp.example.com',
+      // Azure AD
+      'https://login.microsoftonline.com/tenant/oauth2/v2.0/logout?post_logout_redirect_uri=https%3A%2F%2Fapp.example.com',
+      // Bare end_session with trailing slash (common with reverse proxies).
+      'https://idp.example.com/oauth2/end_session/?id_token_hint=jwt',
+    ]) {
+      const result = validateOpenExternalUrl(url)
+      expect(result.ok, url).toBe(true)
+    }
+  })
+
+  it('rejects http (RFC 8252 §8.10 requires TLS on the end-session leg)', () => {
+    expect(validateOpenExternalUrl('http://idp.example.com/oauth2/end_session').ok).toBe(false)
+    expect(validateOpenExternalUrl('http://idp.example.com/logout').ok).toBe(false)
+  })
+
+  it('rejects non-http(s) schemes forwarded to the logout window', () => {
+    // file:/javascript:/data: must not reach the hidden logout window from a
+    // compromised renderer. All must be rejected before navigation begins.
+    expect(validateOpenExternalUrl('file:///etc/passwd').ok).toBe(false)
+    expect(validateOpenExternalUrl('javascript:alert(1)').ok).toBe(false)
+    expect(validateOpenExternalUrl('data:text/html,<script>alert(1)</script>').ok).toBe(false)
+    expect(validateOpenExternalUrl('vbscript:msgbox').ok).toBe(false)
+    expect(validateOpenExternalUrl('ftp://example.com/end_session').ok).toBe(false)
+    // Custom protocol handlers registered by third-party apps (Slack, Zoom,
+    // etc.) must not be reachable from this channel either.
+    expect(validateOpenExternalUrl('slack://open').ok).toBe(false)
+  })
+
+  it('rejects arbitrary https URLs that do not match the end-session shape', () => {
+    // Even https:// is not a free pass: a compromised renderer must not be
+    // able to smuggle a marketing page, a phishing site, or an arbitrary
+    // Google Docs URL through shell.openExternal by wrapping it in a
+    // legitimate scheme. Path shape gates this.
+    expect(validateOpenExternalUrl('https://evil.example.com/').ok).toBe(false)
+    expect(validateOpenExternalUrl('https://idp.example.com/authorize').ok).toBe(false)
+    expect(validateOpenExternalUrl('https://idp.example.com/oauth2/token').ok).toBe(false)
+  })
+
+  it('rejects an end-session-shaped URL on an untrusted host', () => {
+    expect(
+      validateOpenExternalUrl('https://attacker.example/logout?state=x', TRUSTED_ORIGINS).ok,
+    ).toBe(false)
+    expect(
+      validateOpenExternalUrl('https://idp.example.com/logout?state=x', TRUSTED_ORIGINS).ok,
+    ).toBe(true)
+  })
+
+  it('rejects redirect targets outside the trusted origins', () => {
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fattacker.example%2Fdone',
+        TRUSTED_ORIGINS,
+      ).ok,
+    ).toBe(false)
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fapi.example.com%2Flogin',
+        TRUSTED_ORIGINS,
+      ).ok,
+    ).toBe(true)
+  })
+
+  it('categorizes the rejection reason so the main-process log can point at the right check', () => {
+    // ZB2 diagnostic ask: the generic "check VITE_OIDC_TRUSTED_ORIGINS" log
+    // used to point operators at the IdP list even when the missing entry
+    // was actually the post_logout_redirect_uri target — which is normally
+    // the web app origin, not the IdP. Distinguishing these is what lets the
+    // IPC handler emit a hint that actually names the correct env var entry.
+    expect(
+      validateOpenExternalUrl('https://attacker.example/logout?state=x', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'origin' })
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fattacker.example%2Fdone',
+        TRUSTED_ORIGINS,
+      ),
+    ).toEqual({ ok: false, reason: 'redirect-origin' })
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=https%3A%2F%2Fapi.example.com%2Fa&post_logout_redirect_uri=https%3A%2F%2Fapi.example.com%2Fb',
+        TRUSTED_ORIGINS,
+      ),
+    ).toEqual({ ok: false, reason: 'redirect-duplicate' })
+    expect(
+      validateOpenExternalUrl('http://idp.example.com/logout', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'scheme' })
+    expect(
+      validateOpenExternalUrl('https://idp.example.com/authorize', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'path' })
+    expect(
+      validateOpenExternalUrl('https://idp.example.com/logout?exec=curl', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'query-unknown' })
+    expect(
+      validateOpenExternalUrl('https://user:pass@idp.example.com/logout', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'userinfo' })
+    expect(
+      validateOpenExternalUrl('https://idp.example.com/logout#/login', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'fragment' })
+    expect(
+      validateOpenExternalUrl('not a url', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'invalid-url' })
+    expect(
+      validateOpenExternalUrl('', TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'not-string' })
+    expect(
+      validateOpenExternalUrl(42, TRUSTED_ORIGINS),
+    ).toEqual({ ok: false, reason: 'not-string' })
+  })
+
+  it('accepts a relative post_logout_redirect_uri (resolved against the end-session URL)', () => {
+    // A backend that emits a bare path as the return target is common on
+    // reverse-proxied deployments where the IdP and the web app share an
+    // origin. The renderer-side `safeEndSessionUrl` already accepts these,
+    // so refusing them here would create a desktop-only silent-fallback
+    // divergence that no browser QA would surface. Resolution against the
+    // end-session URL's own origin — which is already trusted by the
+    // allowlist check above — keeps the security posture identical.
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=%2Flogin',
+        TRUSTED_ORIGINS,
+      ).ok,
+    ).toBe(true)
+    expect(
+      validateOpenExternalUrl(
+        'https://idp.example.com/logout?post_logout_redirect_uri=%2F%2Fattacker.example%2Fdone',
+        TRUSTED_ORIGINS,
+      ).ok,
+    ).toBe(false) // protocol-relative → resolves to attacker.example, not the IdP
+  })
+
+  it('accepts redirect targets that are separately listed as a distinct trusted origin', () => {
+    // The typical split-origin deployment: IdP at sso.example.com, web app at
+    // app.example.com, API at api.example.com. This is the row the operator
+    // documentation used to omit — verified here so a future refactor cannot
+    // regress it without a test failure.
+    const TRUSTED = new Set([
+      'https://api.example.com',
+      'https://sso.example.com',
+      'https://app.example.com',
+    ])
+    expect(
+      validateOpenExternalUrl(
+        'https://sso.example.com/logout?id_token_hint=jwt&post_logout_redirect_uri=https%3A%2F%2Fapp.example.com%2Flogin',
+        TRUSTED,
+      ).ok,
+    ).toBe(true)
+  })
+
+  it('rejects userinfo, fragments, and unknown query params', () => {
+    // Embedded credentials would be leaked into the OS URL handler + logs.
+    expect(validateOpenExternalUrl('https://user:pass@idp.example.com/oauth2/end_session').ok).toBe(false)
+    // Fragments are not used by RP-initiated logout; disallow them so a
+    // renderer cannot smuggle client-side navigation state.
+    expect(validateOpenExternalUrl('https://idp.example.com/oauth2/end_session#/login').ok).toBe(false)
+    // Unknown query params fail closed — extending the allowlist is a
+    // deliberate action, not something a caller can do at runtime.
+    expect(validateOpenExternalUrl('https://idp.example.com/oauth2/end_session?exec=curl').ok).toBe(false)
+  })
+
+  it('rejects non-string / malformed inputs', () => {
+    expect(validateOpenExternalUrl(undefined).ok).toBe(false)
+    expect(validateOpenExternalUrl(null).ok).toBe(false)
+    expect(validateOpenExternalUrl(42).ok).toBe(false)
+    expect(validateOpenExternalUrl({}).ok).toBe(false)
+    expect(validateOpenExternalUrl('').ok).toBe(false)
+    expect(validateOpenExternalUrl('not a url').ok).toBe(false)
+  })
+})
+
+describe('validateOidcHttpRequest provider path allowlist', () => {
+  const API = 'https://api.example.com'
+  it('accepts realistic slug provider ids', () => {
+    const ok = validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/aegis/bind/info`, method: 'GET' },
+      API,
+    )
+    expect(ok.ok).toBe(true)
+    const dotted = validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/corp.sso-eu_1/logout`, method: 'POST' },
+      API,
+    )
+    expect(dotted.ok).toBe(true)
+    const encodedAt = validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/corp%40sso/logout`, method: 'POST' },
+      API,
+    )
+    expect(encodedAt.ok).toBe(true)
+  })
+
+  it('rejects percent-encoded traversal in the provider segment', () => {
+    // Regression for review P2-6: [a-z0-9_%.-]+ used to accept %2e%2e / %2f,
+    // widening the allowlist beyond `encodeURIComponent(providerId)` output.
+    // The tightened class refuses `%` entirely.
+    expect(validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/%2e%2e/logout`, method: 'POST' },
+      API,
+    ).ok).toBe(false)
+    expect(validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/aegis%2f..%2fadmin/logout`, method: 'POST' },
+      API,
+    ).ok).toBe(false)
+  })
+
+  it('rejects provider segments containing unsupported characters', () => {
+    expect(validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/aegis@corp/logout`, method: 'POST' },
+      API,
+    ).ok).toBe(false)
+    expect(validateOidcHttpRequest(
+      { url: `${API}/v1/auth/oidc/aegis:1/logout`, method: 'POST' },
+      API,
+    ).ok).toBe(false)
+  })
+})
+
+describe('decideLogoutWindowNavigation', () => {
+  // Represents a typical desktop deployment with a federated IdP where the
+  // hidden logout window may traverse: sso.example.com (initial end-session)
+  // → login.microsoftonline.com (federation hop) → app.example.com (return
+  // target). front-channel logout iframes belonging to OTHER RPs
+  // (rp-other.example.com) are legitimately loaded as subframes and must not
+  // trip the guard.
+  const TRUSTED = new Set([
+    'https://sso.example.com',
+    'https://login.microsoftonline.com',
+    'https://app.example.com',
+  ])
+
+  it('allows any subframe navigation regardless of origin', () => {
+    // Front-channel logout: an unrelated RP's iframe must not block or be
+    // blocked. preventDefault() on will-redirect cancels the entire top-level
+    // navigation, so subframe blocking would abort the real logout flow.
+    expect(decideLogoutWindowNavigation({
+      url: 'https://rp-other.example.com/frontchannel/logout',
+      isMainFrame: false,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+    expect(decideLogoutWindowNavigation({
+      url: 'https://attacker.example.com/anything',
+      isMainFrame: false,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+  })
+
+  it('allows a top-level navigation to any trusted origin', () => {
+    expect(decideLogoutWindowNavigation({
+      url: 'https://sso.example.com/oauth2/end_session?id_token_hint=jwt',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+    // Federation hop: also allowed if listed.
+    expect(decideLogoutWindowNavigation({
+      url: 'https://login.microsoftonline.com/tenant/oauth2/v2.0/logout',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+    // post_logout_redirect_uri target hop.
+    expect(decideLogoutWindowNavigation({
+      url: 'https://app.example.com/login',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'allow' })
+  })
+
+  it('blocks a top-level navigation to an untrusted origin and reports the origin', () => {
+    // The block payload names the origin (never the query) so the main-process
+    // log can tell the operator exactly which entry is missing from
+    // VITE_OIDC_TRUSTED_ORIGINS without leaking id_token_hint into stdout.
+    expect(decideLogoutWindowNavigation({
+      url: 'https://attacker.example.com/logout?id_token_hint=jwt',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({
+      action: 'block',
+      reason: 'untrusted-origin',
+      origin: 'https://attacker.example.com',
+    })
+  })
+
+  it('blocks a top-level navigation to an unparseable URL', () => {
+    expect(decideLogoutWindowNavigation({
+      url: 'not a url',
+      isMainFrame: true,
+      trustedOrigins: TRUSTED,
+    })).toEqual({ action: 'block', reason: 'not-a-url' })
+  })
+})
+
+describe('extractEndSessionRedirect', () => {
+  // Regression guard for P2-2: earlier revisions read only post_logout_redirect_uri
+  // and redirect_uri, so a returnTo-style IdP left the completion-detection
+  // target undefined. did-navigate then settled(true) at the first commit and
+  // destroyed the logout window before front-channel iframes could complete.
+  it('resolves post_logout_redirect_uri against the end-session URL', () => {
+    const endSession = new URL(
+      'https://sso.example.com/oauth2/end_session' +
+        '?post_logout_redirect_uri=https%3A%2F%2Fapp.example.com%2Flogin',
+    )
+    const target = extractEndSessionRedirect(endSession)
+    expect(target?.origin).toBe('https://app.example.com')
+    expect(target?.pathname).toBe('/login')
+  })
+  it.each(['redirect_uri', 'returnTo', 'return_to', 'return_url', 'returnUrl'])(
+    'resolves %s so returnTo-style IdPs are not treated as "no redirect"',
+    (key) => {
+      const endSession = new URL(
+        `https://sso.example.com/logout?${key}=${encodeURIComponent('https://app.example.com/done')}`,
+      )
+      const target = extractEndSessionRedirect(endSession)
+      expect(target?.origin).toBe('https://app.example.com')
+      expect(target?.pathname).toBe('/done')
+    },
+  )
+  it('resolves a relative redirect value against the IdP origin', () => {
+    // Backends emitting post_logout_redirect_uri=/login now match the IdP's
+    // own origin (which is always allowlisted), so completion detection
+    // agrees with validateOpenExternalUrl's resolution rule.
+    const endSession = new URL(
+      'https://sso.example.com/oauth2/end_session?post_logout_redirect_uri=%2Flogin',
+    )
+    const target = extractEndSessionRedirect(endSession)
+    expect(target?.origin).toBe('https://sso.example.com')
+    expect(target?.pathname).toBe('/login')
+  })
+  it('returns undefined when no redirect key is present', () => {
+    const endSession = new URL('https://sso.example.com/logout?id_token_hint=jwt')
+    expect(extractEndSessionRedirect(endSession)).toBeUndefined()
+  })
+})
+
+describe('attachLogoutWindowNavigationListeners', () => {
+  // The wiring bug that motivated this suite: both will-navigate and
+  // will-redirect share Electron 26's (event, url, isInPlace, isMainFrame,
+  // pid, rid) shape. Because isInPlace and isMainFrame are both boolean, a
+  // regex over source cannot distinguish position 3 from position 4 — the
+  // earlier build read the wrong slot and silently disabled the guard on
+  // renderer-initiated top-level navigations (location.href, meta refresh,
+  // link clicks in the IdP page). This suite drives the listeners with the
+  // full 6-arg tuple Electron actually emits, so a future refactor that
+  // shifts a slot will fail the test immediately.
+  type Listener = (...args: unknown[]) => void
+  function makeMockWebContents() {
+    const listeners = new Map<string, Listener[]>()
+    return {
+      wc: {
+        on(event: string, cb: Listener) {
+          const existing = listeners.get(event) ?? []
+          existing.push(cb)
+          listeners.set(event, existing)
+          return this
+        },
+      },
+      emit(event: string, ...args: unknown[]) {
+        for (const cb of listeners.get(event) ?? []) cb(...args)
+      },
+      handlerCount(event: string) {
+        return (listeners.get(event) ?? []).length
+      },
+    }
+  }
+
+  const TRUSTED = new Set([
+    'https://sso.example.com',
+    'https://app.example.com',
+  ])
+
+  it('preventDefaults an untrusted top-level will-navigate and fast-fails', () => {
+    // Real Electron 26 tuple: (event, url, isInPlace, isMainFrame, pid, rid).
+    // isInPlace is always false for will-navigate. If the adaptor reads
+    // position 3, guard sees isMainFrame=false and returns allow — the exact
+    // regression this test locks down.
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    const onWarn = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+      onWarn,
+    })
+    const event = { preventDefault: vi.fn() }
+    mock.emit(
+      'will-navigate',
+      event,
+      'https://attacker.example.com/pwned',
+      false, // isInPlace
+      true,  // isMainFrame
+      12345, // frameProcessId
+      67890, // frameRoutingId
+    )
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(onSettle).toHaveBeenCalledWith(false)
+    expect(onWarn).toHaveBeenCalledWith(
+      expect.stringContaining('origin=https://attacker.example.com'),
+    )
+    // Diagnostic must not echo the query (id_token_hint carrier).
+    expect(onWarn.mock.calls[0][0]).not.toMatch(/pwned/)
+  })
+
+  it('allows a top-level will-navigate to a trusted origin', () => {
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    const event = { preventDefault: vi.fn() }
+    mock.emit(
+      'will-navigate',
+      event,
+      'https://sso.example.com/oauth2/end_session',
+      false,
+      true,
+      0,
+      0,
+    )
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(onSettle).not.toHaveBeenCalled()
+  })
+
+  it('does NOT block a subframe (front-channel logout iframe)', () => {
+    // The whole point of the isMainFrame gate: federated OPs load OTHER
+    // RPs' front-channel logout endpoints as cross-origin iframes, and
+    // preventDefault() cancels the entire top-level navigation. If the
+    // guard tripped here the real logout would abort.
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    const event = { preventDefault: vi.fn() }
+    mock.emit(
+      'will-redirect',
+      event,
+      'https://rp-other.example.com/frontchannel/logout',
+      false,
+      false, // isMainFrame=false — subframe
+      0,
+      0,
+    )
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(onSettle).not.toHaveBeenCalled()
+  })
+
+  it('preventDefaults an untrusted top-level will-redirect', () => {
+    // Server-3xx path — this was correctly wired even in the broken build,
+    // but the test locks the pair so a future refactor can't silently
+    // reintroduce the shape divergence.
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    const event = { preventDefault: vi.fn() }
+    mock.emit(
+      'will-redirect',
+      event,
+      'https://attacker.example.com/hop',
+      false,
+      true,
+      0,
+      0,
+    )
+    expect(event.preventDefault).toHaveBeenCalledTimes(1)
+    expect(onSettle).toHaveBeenCalledWith(false)
+  })
+
+  it('did-navigate settles(true) when no redirect target is configured', () => {
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    mock.emit('did-navigate', {}, 'https://sso.example.com/oauth2/end_session')
+    expect(onSettle).toHaveBeenCalledWith(true)
+  })
+
+  it('did-navigate settles(true) only on the configured redirect target', () => {
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      redirectURL: new URL('https://app.example.com/login'),
+      onSettle,
+    })
+    mock.emit('did-navigate', {}, 'https://sso.example.com/oauth2/end_session')
+    expect(onSettle).not.toHaveBeenCalled()
+    mock.emit('did-navigate', {}, 'https://app.example.com/login?state=x')
+    expect(onSettle).toHaveBeenCalledWith(true)
+  })
+
+  it('did-fail-load ignores subframe failures and ERR_ABORTED', () => {
+    const mock = makeMockWebContents()
+    const onSettle = vi.fn()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle,
+    })
+    // Subframe failure — must not settle. Real Electron did-fail-load tuple:
+    // (event, errorCode, errorDescription, validatedURL, isMainFrame, ...).
+    mock.emit('did-fail-load', {}, -105, 'ERR_NAME_NOT_RESOLVED', 'https://x/', false)
+    expect(onSettle).not.toHaveBeenCalled()
+    // Main-frame ERR_ABORTED — every intercepted navigation triggers it,
+    // filtering to -3 is required or the guard's own preventDefault would
+    // settle(false) twice.
+    mock.emit('did-fail-load', {}, -3, 'ERR_ABORTED', 'https://x/', true)
+    expect(onSettle).not.toHaveBeenCalled()
+    // Real main-frame load failure — this is the terminal signal.
+    mock.emit('did-fail-load', {}, -105, 'ERR_NAME_NOT_RESOLVED', 'https://x/', true)
+    expect(onSettle).toHaveBeenCalledWith(false)
+  })
+
+  it('registers exactly four listeners (no leakage)', () => {
+    const mock = makeMockWebContents()
+    attachLogoutWindowNavigationListeners({
+      webContents: mock.wc,
+      trustedOrigins: TRUSTED,
+      onSettle: () => {},
+    })
+    expect(mock.handlerCount('will-navigate')).toBe(1)
+    expect(mock.handlerCount('will-redirect')).toBe(1)
+    expect(mock.handlerCount('did-navigate')).toBe(1)
+    expect(mock.handlerCount('did-fail-load')).toBe(1)
+  })
+})

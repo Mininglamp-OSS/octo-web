@@ -1,5 +1,6 @@
 import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
+import { replaceWithShellDocument } from "./Service/ShellDocument";
 
 /** mittBus 全局事件类型表 */
 export type MittEvents = {
@@ -165,12 +166,20 @@ import { registerImConnectStatusListener } from "./im-runtime/connectStatus";
 import {
   clearAuthStorage,
   consumeOidcPostLogoutCleanup,
-  isOidcLoginProvider,
   markOidcPostLogoutCleanup,
-  overridePostLogoutRedirectUri,
-  requestOidcLogout,
-  safeEndSessionUrl,
+  performOidcUserInitiatedLogout,
 } from "./Service/oidcLogout";
+import {
+  getExpectedImDeviceFlag,
+  clearDeviceFlagMigration,
+  hasDeviceFlagMigration,
+  hasImDeviceFlagMismatch,
+  markDeviceFlagMigration,
+  IM_DEVICE_FLAG_PC,
+  IM_DEVICE_FLAG_WEB,
+} from "./Service/deviceFlags";
+
+export { IM_DEVICE_FLAG_PC, IM_DEVICE_FLAG_WEB } from "./Service/deviceFlags";
 
 export enum ThemeMode {
   light,
@@ -542,6 +551,7 @@ export class LoginInfo {
    * 用于 UI 区分入口（如 OIDC 用户跳转对应 IdP 的账户中心修改密码）。
    */
   loginProvider?: string;
+  deviceFlag?: number;
 
   /**
    * OCTO 实名认证状态缓存（GH #1121）。
@@ -582,6 +592,7 @@ export class LoginInfo {
     this.setStorageItemForSID("is_work", this.isWork ? "1" : "0");
     this.setStorageItemForSID("sex", this.sex === 1 ? "1" : "0");
     this.setStorageItemForSID("login_provider", this.loginProvider ?? "");
+    this.setStorageItemForSID("device_flag", this.deviceFlag ? String(this.deviceFlag) : "");
     // 实名认证状态 — 严格 tri-state 持久化。
     //   undefined → 删除 key（区别于「明确未实名」）
     //   true      → "1"
@@ -676,6 +687,8 @@ export class LoginInfo {
     }
     const provider = this.getStorageItemForSID("login_provider");
     this.loginProvider = provider ? provider : undefined;
+    const deviceFlag = this.getStorageItemForSID("device_flag");
+    this.deviceFlag = deviceFlag ? Number(deviceFlag) : undefined;
     // 恢复实名认证状态缓存 — 严格 tri-state。
     //   key 缺失（getStorageItemForSID 返回 null） → undefined（未知，保持空白）
     //   "1" → true
@@ -718,6 +731,7 @@ export class LoginInfo {
     this.isWork = false;
     this.sex = 0;
     this.loginProvider = undefined;
+    this.deviceFlag = undefined;
     this.removeStorageItemForSID("token");
     this.removeStorageItemForSID("app_id");
     this.removeStorageItemForSID("role");
@@ -728,6 +742,7 @@ export class LoginInfo {
     this.removeStorageItemForSID("name");
     this.removeStorageItemForSID("sex");
     this.removeStorageItemForSID("login_provider");
+    this.removeStorageItemForSID("device_flag");
     // 清除实名认证缓存
     this.realnameVerified = undefined;
     this.realName = undefined;
@@ -777,7 +792,7 @@ export default class WKApp extends ProviderListener {
   static routeRight = new ContextRouteManager(); // 右边（main）页面路由
   static menus = MenusManager.shared; // 菜单
   // Callback to switch the active sidebar menu by id (set by Main page)
-  static switchToMenuById?: (menuId: string) => void;
+  static switchToMenuById?: (menuId: string, afterSwitch?: () => void) => void;
   static openSummaryDetail?: (
     taskId: number | string,
     spaceId?: string,
@@ -914,6 +929,10 @@ export default class WKApp extends ProviderListener {
   // 会被连发多次，且导航是异步的、飞行中的请求继续 reject 继续 logout，
   // 造成"登录页反复跳转 / 控制台疯狂刷 401"的死循环。首次进入即置位，后续重入直接返回。
   private _loggingOut: boolean = false;
+  // Startup and connectIM can both observe the legacy desktop session during
+  // boot.  The migration is intentionally one-shot per app instance; after
+  // the first logout there must not be a second logout/navigation race.
+  private _deviceFlagMigrationHandled: boolean = false;
 
   set notificationIsClose(v: boolean) {
     this._notificationIsClose = v;
@@ -938,6 +957,29 @@ export default class WKApp extends ProviderListener {
     ) {
       this.isPC = true;
     }
+    const expectedDeviceFlag = getExpectedImDeviceFlag(this.isPC);
+    WKSDK.shared().config.deviceFlag = expectedDeviceFlag;
+    // Tokens issued before the desktop device-slot migration do not carry a
+    // marker. Re-authenticate once instead of reconnecting with an ambiguous
+    // token/device tuple and silently losing the IM connection.
+    const migrationSid = getSessionSid();
+    const hasDeviceFlagMismatch = hasImDeviceFlagMismatch(
+      WKApp.loginInfo.isLogined(),
+      WKApp.loginInfo.deviceFlag,
+      expectedDeviceFlag,
+    );
+    if (!this._deviceFlagMigrationHandled && this.isPC && hasDeviceFlagMismatch) {
+      const alreadyMigrated = hasDeviceFlagMigration(migrationSid);
+      console.warn(
+        `[im] device flag mismatch detected at startup (stored=${String(WKApp.loginInfo.deviceFlag)}, expected=${expectedDeviceFlag}); ${alreadyMigrated ? "cleaning up an interrupted" : "starting"} one-shot re-login`,
+      );
+      this._deviceFlagMigrationHandled = true;
+      markDeviceFlagMigration(migrationSid);
+      WKApp.loginInfo.logout();
+    } else if (!hasDeviceFlagMismatch && WKApp.loginInfo.isLogined()) {
+      // A matching session supersedes any marker left by an interrupted boot.
+      clearDeviceFlagMigration(migrationSid);
+    }
     this.deviceId = this.getDeviceIdFromStorage();
     this.deviceName = this.getOSAndVersion();
     this.deviceModel = this.getBrandsFromUserAgent();
@@ -954,6 +996,10 @@ export default class WKApp extends ProviderListener {
     );
 
     WKApp.endpoints.addOnLogin(() => {
+      // The replacement session has now been persisted with its device flag;
+      // do not carry the legacy-session migration marker into its lifecycle.
+      clearDeviceFlagMigration(getSessionSid());
+      this._deviceFlagMigrationHandled = false;
       WKApp.mittBus.emit("wk:auth-state-changed");
       this.startMain();
     });
@@ -1112,6 +1158,20 @@ export default class WKApp extends ProviderListener {
   }
 
   connectIM() {
+    const expectedDeviceFlag = getExpectedImDeviceFlag(this.isPC);
+    if (!this._deviceFlagMigrationHandled && this.isPC && hasImDeviceFlagMismatch(
+      WKApp.loginInfo.isLogined(),
+      WKApp.loginInfo.deviceFlag,
+      expectedDeviceFlag,
+    )) {
+      console.error(
+        `[im] refusing to connect with mismatched device flag (stored=${String(WKApp.loginInfo.deviceFlag)}, expected=${expectedDeviceFlag}); forcing re-login`,
+      );
+      this._deviceFlagMigrationHandled = true;
+      markDeviceFlagMigration(getSessionSid());
+      this.logout();
+      return;
+    }
     // e2e: mock-im-runtime 已 short-circuit connect → Connected (fake-provider install 时做),
     // 这里跳过真实 sdk.connect() 免真去建 WebSocket / 覆盖 mock 的 connect status.
     // dev / prod 完全走 tree-shake 分支, 无副作用.
@@ -1155,34 +1215,60 @@ export default class WKApp extends ProviderListener {
     if (this._loggingOut) return;
     this._loggingOut = true;
     this.clearLocalLoginState();
+    // Packaged Electron shell loads via `file://` and has no `/login` route
+    // on disk, so `location.replace("/login")` navigates to
+    // `file:///login` and hangs on ERR_FILE_NOT_FOUND — the interceptor's
+    // will-navigate hook then no longer runs because there's no armed flow.
+    // Reload the trusted shell instead; the renderer boot decides which
+    // login UI to render based on the cleared credentials.
+    //
+    // Web (http[s]) keeps the original behavior because the login route
+    // *is* served by the SPA host and a reload would drop deep-link state
+    // that the login page may still want to consume (e.g. `?returnTo=`).
+    if (this.isElectronShell()) {
+      replaceWithShellDocument();
+      return;
+    }
     window.location.replace("/login");
   }
 
+  /**
+   * Electron dev mode serves the renderer from http://localhost, just like a
+   * browser. The preload marker is the authoritative signal that this window
+   * is still inside the desktop shell; checking only file:// sends dev-shell
+   * logout through the web redirect path.
+   */
+  private isElectronShell() {
+    return Boolean(
+      (window as any).__POWERED_ELECTRON__ &&
+      typeof (window as any).ipc?.invoke === "function",
+    );
+  }
+
   async logoutUserInitiated() {
-    const providerId = WKApp.loginInfo.loginProvider;
-    const token = WKApp.loginInfo.token || "";
-    if (isOidcLoginProvider(providerId) && token) {
-      try {
-        const resp = await requestOidcLogout(providerId, token);
-        const rawEndSessionUrl = safeEndSessionUrl(resp.end_session_url);
-        const endSessionUrl =
-          rawEndSessionUrl && import.meta.env.DEV
-            ? overridePostLogoutRedirectUri(
-                rawEndSessionUrl,
-                import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI
-              )
-            : rawEndSessionUrl;
-        if (endSessionUrl) {
-          this.clearLocalLoginState();
-          markOidcPostLogoutCleanup();
-          window.location.href = endSessionUrl;
-          return;
-        }
-      } catch (e) {
-        console.warn("OIDC logout failed, falling back to local logout", e);
-      }
-    }
-    this.logout();
+    // Thin wrapper around performOidcUserInitiatedLogout so the packaged
+    // desktop / web branching and end-session URL policy can be exercised
+    // by unit tests without booting WKApp. All side-effects on WKApp state
+    // are done through the injected callbacks below.
+    await performOidcUserInitiatedLogout({
+      loginProvider: WKApp.loginInfo.loginProvider,
+      token: WKApp.loginInfo.token || "",
+      apiURL: WKApp.apiClient.config.apiURL || "",
+      ipc: (window as any).ipc,
+      env: this.isElectronShell() ? "desktop-shell" : "web",
+      // Only forward the dev override when actually in a dev build; in
+      // production `import.meta.env.DEV` is false and we must not read the
+      // VITE_ env var (it may leak into production bundles as `undefined`
+      // and cause spurious overridePostLogoutRedirectUri no-ops).
+      devPostLogoutRedirectUriOverride: import.meta.env.DEV
+        ? import.meta.env.VITE_OIDC_POST_LOGOUT_REDIRECT_URI
+        : undefined,
+      clearLocalLoginState: () => this.clearLocalLoginState(),
+      reloadShell: replaceWithShellDocument,
+      navigateExternal: (url) => { window.location.href = url; },
+      markPostLogoutCleanup: () => { markOidcPostLogoutCleanup(); },
+      fallbackLogout: () => this.logout(),
+    });
   }
 
   avatarChannel(channel: Channel) {

@@ -122,8 +122,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   const [draft, setDraft] = useState<GlobalSearchFilters>(filters);
   const [senderQuery, setSenderQuery] = useState("");
   const [senderOptions, setSenderOptions] = useState<ChannelSearchSender[]>(
-    () =>
-      dataSource.getSenders().filter((s) => s.uid !== dataSource.getSelfUid())
+    () => dataSource.getSenders()
   );
   const [channelQuery, setChannelQuery] = useState("");
   const [channelOptions, setChannelOptions] = useState<
@@ -230,13 +229,17 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   }, [mode]);
 
   // Load sender candidates on open + when query changes (debounced light).
+  // Sender filter intentionally includes self — 全局搜索发送人过滤按"谁发的"
+  // 语义查找，用户搜自己名字过滤自己发的消息是合理场景。与之相对，member
+  // 过滤（「包含成员」）语义是"这个会话得包含谁"，选自己无意义，所以下面的
+  // memberOptions useEffect + toggleMember 仍显式过滤 self。
   useEffect(() => {
     let cancelled = false;
     const handle = window.setTimeout(async () => {
       try {
         const list = (await dataSource.searchSenders?.(senderQuery)) ?? [];
         if (cancelled) return;
-        setSenderOptions(list.filter((s) => s.uid !== selfUid));
+        setSenderOptions(list);
       } catch (_) {
         if (!cancelled) setSenderOptions([]);
       }
@@ -245,7 +248,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [dataSource, senderQuery, selfUid]);
+  }, [dataSource, senderQuery]);
 
   useEffect(() => {
     let cancelled = false;

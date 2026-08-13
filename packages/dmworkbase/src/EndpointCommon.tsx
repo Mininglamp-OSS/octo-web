@@ -78,9 +78,8 @@ export class EndpointCommon {
   }
 
   showConversation(channel: Channel, opts?: ShowConversationOptions) {
-    WKApp.shared.openChannel = channel;
-
     const dispatch = () => {
+      WKApp.shared.openChannel = channel;
       EndpointManager.shared.invoke(EndpointID.showConversation, {
         channel: channel,
         opts: opts,
@@ -93,8 +92,7 @@ export class EndpointCommon {
     // event. Without this delay the UI can end up in a broken state when
     // the user later switches back to another tab.
     if (WKApp.switchToMenuById && WKApp.currentMenuId !== "chat") {
-      WKApp.switchToMenuById("chat");
-      setTimeout(dispatch, 50);
+      WKApp.switchToMenuById("chat", () => setTimeout(dispatch, 50));
       return;
     }
 

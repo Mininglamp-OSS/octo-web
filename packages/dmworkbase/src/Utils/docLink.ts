@@ -7,8 +7,8 @@
 // `?doc=` deep-link was wiped before the docs module mounted and the recipient landed on the empty
 // document list / a login detour. By carrying the docId in the PATH, which the pathname-only
 // re-push PRESERVES, the shared link opens the target document directly: apps/web Layout intercepts
-// the whole `/d` namespace before the app shell and mounts StandaloneDocPage (which reads the id
-// from the path, runs a GET /docs/{docId} preflight, then mounts the collaborative editor). When
+// the whole `/d` namespace before the app shell and mounts the external standalone docs surface
+// (which reads the id from the path, runs a GET /docs/{docId} preflight, then mounts the editor). When
 // the recipient must sign in first, the anonymous Layout branch stashes the exact `/d/:docId`
 // target in sessionStorage (`octo.docs.standaloneReturn`) and the post-login flow bounces them back
 // to it — so deep-link direct-open AND login-return both land on the correct document.
@@ -61,8 +61,8 @@ function origin(): string {
  * with their own auth/Space chains (design §12.4).
  *
  * The receiver opens it → the host Layout intercepts the `/d` namespace → the stored session is
- * recovered → the standalone page runs the docId-first open-context preflight → StandaloneDocPage
- * mounts the surface (reader / writer / forbidden-with-request / not-found / archived), all outside
+ * recovered → the standalone docs surface runs the docId-first open-context preflight and mounts
+ * reader / writer / forbidden-with-request / not-found / archived states, all outside
  * the app shell and immune to the host's query-wiping re-push (the docId lives in the path).
  */
 export function buildDocLink({ docId }: DocLinkTarget): string {
