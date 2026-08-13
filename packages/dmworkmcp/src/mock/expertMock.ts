@@ -9,7 +9,8 @@
  * (a .zip/.skill containing SKILL.md). `name` is always present; the rest is the
  * read / detail projection:
  *   - `hasContent` — a stored SKILL.md exists (drives the markdown viewer).
- *   - `canDownload` — the raw package is stored (drives the download button).
+ *   - `canDownload` — the raw package is stored (enables the in-place
+ *     file-browser preview, which fetches + unzips the package client-side).
  *   - `fileName` / `fileSize` — the uploaded package's original name/size.
  *   - `files` — manifest of paths inside the package (bundled-file list).
  * Content/package bytes are fetched lazily via the skill_md / skill_download

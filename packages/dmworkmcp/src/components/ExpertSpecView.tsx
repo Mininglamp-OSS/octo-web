@@ -12,8 +12,6 @@ interface ExpertSpecViewProps {
   fetchSkillContent: (index: number) => Promise<string>;
   /** Resolve the presigned package URL for the skill at `index` (file browser). */
   fetchSkillPackageUrl?: (index: number) => Promise<string>;
-  /** Open a URL as a download. */
-  openDownload?: (url: string) => void;
 }
 
 /**
@@ -22,7 +20,7 @@ interface ExpertSpecViewProps {
  * its field is present. A content/downloadable skill row expands in place
  * (accordion) into an ExpertSkillBrowser: it fetches + unzips the package
  * client-side and lets the user switch between the bundled files to view each
- * one's content, plus download the whole package.
+ * one's content.
  */
 export default function ExpertSpecView({
   instruction,
@@ -30,7 +28,6 @@ export default function ExpertSpecView({
   skills,
   fetchSkillContent,
   fetchSkillPackageUrl,
-  openDownload,
 }: ExpertSpecViewProps) {
   useI18n();
   // Index of the expanded skill (null when all collapsed); one open at a time.
@@ -115,7 +112,6 @@ export default function ExpertSpecView({
                           ? () => fetchSkillPackageUrl(index)
                           : undefined
                       }
-                      openDownload={openDownload ?? (() => undefined)}
                     />
                   )}
                 </div>

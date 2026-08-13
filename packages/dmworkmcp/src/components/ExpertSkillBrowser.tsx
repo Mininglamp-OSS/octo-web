@@ -3,8 +3,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import JSZip from "jszip";
-import { Download, FileText } from "lucide-react";
-import { t, useI18n, WKButton } from "@octo/base";
+import { FileText } from "lucide-react";
+import { t, useI18n } from "@octo/base";
 import { fetchSkillPackage } from "../api/expertService";
 import type { ExpertSkill } from "../mock/expertMock";
 
@@ -14,8 +14,6 @@ interface ExpertSkillBrowserProps {
   fetchPackageUrl?: () => Promise<string>;
   /** Fetch the stored SKILL.md text (legacy content-only skills, no package). */
   fetchContent: () => Promise<string>;
-  /** Open a URL as a download (new tab). */
-  openDownload: (url: string) => void;
 }
 
 /** Per-file preview outcome: rendered markdown, plain text, or a notice
@@ -200,7 +198,6 @@ export default function ExpertSkillBrowser({
   skill,
   fetchPackageUrl,
   fetchContent,
-  openDownload,
 }: ExpertSkillBrowserProps) {
   useI18n();
   const zipRef = useRef<JSZip | null>(null);
@@ -209,7 +206,6 @@ export default function ExpertSkillBrowser({
   const [paths, setPaths] = useState<string[]>([]);
   const [active, setActive] = useState<string>("");
   const [views, setViews] = useState<Record<string, FileView>>({});
-  const [packageUrl, setPackageUrl] = useState<string>("");
 
   // Decode one zip entry into a viewable FileView, applying size/binary guards.
   const loadFile = async (path: string) => {
@@ -250,7 +246,6 @@ export default function ExpertSkillBrowser({
         if (skill.canDownload && fetchPackageUrl) {
           const url = await fetchPackageUrl();
           if (cancelled) return;
-          setPackageUrl(url);
           const buf = await fetchSkillPackage(url, controller.signal);
           // Bound the entry count BEFORE JSZip parses the central directory —
           // loadAsync builds an object per entry while parsing, so the forEach
@@ -307,27 +302,11 @@ export default function ExpertSkillBrowser({
 
   return (
     <div className="wk-mcp-expert-skill__browser">
-      {skill.canDownload && (
-        <div className="wk-mcp-expert-skill__toolbar">
-          <WKButton
-            variant="secondary"
-            size="sm"
-            icon={<Download size={14} />}
-            disabled={!packageUrl}
-            onClick={() => packageUrl && openDownload(packageUrl)}
-          >
-            {t("mcp.expert.downloadPackage")}
-          </WKButton>
-        </div>
-      )}
-
       {loading ? (
         <p className="wk-mcp-expert-skill__state">{t("mcp.expert.loading")}</p>
       ) : error ? (
         <p className="wk-mcp-expert-skill__state wk-mcp-expert-skill__state--error">
-          {skill.canDownload
-            ? t("mcp.expert.skillPreviewError")
-            : t("mcp.expert.loadError")}
+          {t("mcp.expert.loadError")}
         </p>
       ) : paths.length === 0 ? (
         <p className="wk-mcp-expert-skill__state">{t("mcp.expert.skillEmpty")}</p>

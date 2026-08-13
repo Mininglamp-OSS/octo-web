@@ -3013,6 +3013,12 @@
   font-weight: var(--wk-font-semibold);
 }
 
+/* Hash-tinted variant (inline background color) needs inverse text, same as
+   the expert card/detail logos on the same getMcpAvatarColor backgrounds. */
+.wk-mcp-expert-member-row__avatar--tinted {
+  color: var(--wk-text-inverse);
+}
+
 .wk-mcp-expert-member-row__copy {
   min-width: 0;
 }
@@ -3049,24 +3055,46 @@
 
 /* Member drill-in: back control + member header above the shared spec view. */
 .wk-mcp-expert-member-back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
   align-self: flex-start;
-  padding: var(--wk-sp-1) 0;
-  border: none;
-  background: none;
-  color: var(--wk-color-accent);
+  height: 28px;
+  padding: 0 var(--wk-sp-3) 0 var(--wk-sp-2);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-secondary);
   font-size: var(--wk-text-size-sm);
   cursor: pointer;
+  transition: color var(--wk-dur-fast) var(--wk-ease),
+    border-color var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
 }
 
-.wk-mcp-expert-member-back:hover {
-  text-decoration: underline;
+.wk-mcp-expert-member-back:hover,
+.wk-mcp-expert-member-back:focus-visible {
+  color: var(--wk-color-accent);
+  border-color: var(--wk-color-accent);
+  background: var(--wk-bg-base);
 }
 
+/* Card-style member header, matching the spec-section cards below it. */
 .wk-mcp-expert-member-detail__header {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   align-items: center;
   gap: var(--wk-sp-3);
+  padding: var(--wk-sp-4);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+}
+
+.wk-mcp-expert-member-detail__header .wk-mcp-expert-member-row__avatar {
+  width: 40px;
+  height: 40px;
+  font-size: var(--wk-text-size-base);
 }
 
 .wk-mcp-expert-member-detail__heading {
@@ -3995,13 +4023,6 @@
   border: 1px solid var(--wk-border-default);
   border-radius: var(--wk-r-sm);
   background: var(--wk-bg-subtle, var(--wk-bg-base));
-}
-
-/* Download toolbar above the file browser body. */
-.wk-mcp-expert-skill__toolbar {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: var(--wk-sp-3);
 }
 
 .wk-mcp-expert-skill__browser-body {

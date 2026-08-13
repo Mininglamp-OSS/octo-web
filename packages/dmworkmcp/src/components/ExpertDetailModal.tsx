@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Bot,
+  ChevronLeft,
   Route,
   ShieldCheck,
   UserRound,
@@ -8,7 +9,7 @@ import {
 } from "lucide-react";
 import { t, useI18n, WKModal } from "@octo/base";
 import type { ExpertItem, ExpertMember } from "../mock/expertMock";
-import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, openDownloadUrl } from "../api/expertService";
+import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl } from "../api/expertService";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
 import { isOfficialExpert } from "../utils/publisher";
@@ -21,6 +22,22 @@ interface ExpertDetailModalProps {
 
 function memberInitial(name: string): string {
   return Array.from(name.trim())[0] ?? "?";
+}
+
+/** Hash-tinted member avatar (initial on a deterministic per-member color).
+ *  The tint is salted with the squad id so same-named members of different
+ *  squads still differ. Bundles the tint class with its required inline
+ *  background so call sites can't apply one without the other. */
+function MemberAvatar({ itemId, member }: { itemId: string; member: ExpertMember }) {
+  return (
+    <span
+      className="wk-mcp-expert-member-row__avatar wk-mcp-expert-member-row__avatar--tinted"
+      style={{ background: getMcpAvatarColor(`${itemId}:${member.key ?? member.name}`) }}
+      aria-hidden="true"
+    >
+      {memberInitial(member.name)}
+    </span>
+  );
 }
 
 /**
@@ -133,15 +150,11 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                   className="wk-mcp-expert-member-back"
                   onClick={() => setDrillMember(null)}
                 >
+                  <ChevronLeft size={15} aria-hidden="true" />
                   {t("mcp.expert.backToSquad")}
                 </button>
                 <div className="wk-mcp-expert-member-detail__header">
-                  <span
-                    className="wk-mcp-expert-member-row__avatar"
-                    aria-hidden="true"
-                  >
-                    {memberInitial(drillMember.name)}
-                  </span>
+                  <MemberAvatar itemId={item.id} member={drillMember} />
                   <div className="wk-mcp-expert-member-detail__heading">
                     <strong>
                       {drillMember.name}
@@ -176,7 +189,6 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                           new Error(t("mcp.expert.memberKeyMissing"))
                         )
                   }
-                  openDownload={openDownloadUrl}
                 />
               </>
             )}
@@ -222,9 +234,7 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                       key={member.key ?? `${member.name}-${index}`}
                       onClick={() => setDrillMember(member)}
                     >
-                      <span className="wk-mcp-expert-member-row__avatar" aria-hidden="true">
-                        {memberInitial(member.name)}
-                      </span>
+                      <MemberAvatar itemId={item.id} member={member} />
                       <div className="wk-mcp-expert-member-row__copy">
                         <strong>
                           {member.name}
@@ -249,7 +259,6 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
                 skills={item.skills}
                 fetchSkillContent={(i) => getExpertSkillContent(item.id, i)}
                 fetchSkillPackageUrl={(i) => getExpertSkillDownloadUrl(item.id, i)}
-                openDownload={openDownloadUrl}
               />
             )}
           </div>

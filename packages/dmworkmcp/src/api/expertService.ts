@@ -498,9 +498,11 @@ export function getSquadSkillContent(
     : getSquadSkillContentReal(squadId, memberKey, index);
 }
 
-// ─── Skill package download (whole .zip/.skill, doc §3.1) ────────────────────
-// The detail view resolves a short-lived presigned GET URL to download the
-// package (and to fetch + unzip it client-side for the file browser).
+// ─── Skill package retrieval (whole .zip/.skill, doc §3.1) ───────────────────
+// The detail view resolves a short-lived presigned GET URL and fetches + unzips
+// the package client-side for the in-place file browser. There is no user-facing
+// download; the *DownloadUrl helper names mirror the wire endpoint
+// (skill_download / download_url).
 
 /** Reject presigned URLs whose scheme isn't http(s); http only for localhost.
  *  Scheme-level guard mirroring the skills market's assertSafeExternalURL. */
@@ -593,20 +595,6 @@ export function getSquadSkillDownloadUrl(
   index: number
 ): Promise<string> {
   return getSquadSkillDownloadUrlReal(id, memberKey, index);
-}
-
-/** Open a presigned download URL in a new tab via a synthetic anchor (safe:
- *  scheme-checked, noopener). */
-export function openDownloadUrl(url: string): void {
-  if (!url) throw new Error("empty download url");
-  assertSafeExternalURL(url);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.target = "_blank";
-  anchor.rel = "noopener noreferrer";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
 }
 
 // ─── Add-to-Loop: install an expert into a Loop workspace ───────────────────
