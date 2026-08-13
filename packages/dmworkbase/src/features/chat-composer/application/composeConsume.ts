@@ -15,15 +15,22 @@ import type {
   ConsumedCompose,
   ConsumedComposeIds,
   UnsentEditorBlock,
-} from "../../features/chat-composer/application/sendFlow";
+} from "./sendFlow";
 import {
   chatEditorComposePartRegistry,
   type EditorComposeDocument,
   type EditorComposeNode,
   type EditorComposePartRegistry,
-} from "../../features/chat-composer/editor";
-import { restoreComposeSnapshot } from "../../features/chat-composer/application/sendFlow";
-import { serializeMentionMarker, stripTrustMark } from "./mentionSendParse";
+} from "../editor";
+import { restoreComposeSnapshot } from "./sendFlow";
+import {
+  serializeMentionMarker,
+  stripTrustMark,
+} from "../domain/mentionMarker";
+import type {
+  ComposeRecoveryPayload,
+  ComposeRecoveryTopAttachment,
+} from "../recovery/types";
 
 /** Minimal document node shape we need from the editor JSON. */
 export type ComposeNode = EditorComposeNode;
@@ -44,21 +51,8 @@ export interface ComposeEditorPort {
   focusEnd: () => void;
 }
 
-export interface TopAttachmentLike {
-  id: string;
-  file?: File;
-  name?: string;
-  size?: number;
-  type?: string;
-  previewUrl?: string;
-}
-
-export interface ConsumedComposeRecovery {
-  snapshot: ComposeDoc;
-  editorAttachments: Array<{ id: string; file: File }>;
-  editorObjectUrls: Array<{ id: string; url: string }>;
-  topAttachments: TopAttachmentLike[];
-}
+export type TopAttachmentLike = ComposeRecoveryTopAttachment;
+export type ConsumedComposeRecovery = ComposeRecoveryPayload;
 
 /**
  * Thrown when a compose cannot be given back because the editor no longer

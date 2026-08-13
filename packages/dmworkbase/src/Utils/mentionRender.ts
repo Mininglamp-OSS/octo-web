@@ -1,4 +1,21 @@
 import { match } from "pinyin-pro";
+import {
+  MENTION_LABEL_AIS,
+  MENTION_LABEL_HUMANS,
+  MENTION_UID_AIS,
+  MENTION_UID_HUMANS,
+} from "./mentionProtocol";
+
+export {
+  isBroadcastSentinelUid,
+  MENTION_LABEL_AIS,
+  MENTION_LABEL_HUMANS,
+  MENTION_UID_AIS,
+  MENTION_UID_HUMANS,
+  MENTION_UID_LEGACY_ALL,
+  MENTION_UID_RENDER_ALL,
+  MENTION_TRUST_MARK,
+} from "./mentionProtocol";
 
 /**
  * Shared render-side helpers for the three-state mention model
@@ -114,48 +131,6 @@ export function readMentionFlags(
 }
 
 // ─── Send-side dropdown helpers (used by MessageInput) ────────────
-
-// Sentinel uids used by the @-dropdown sticky top items + voice transcription.
-// `-1` is the legacy "@所有人" (mention.all=1). `-2` / `-3` are the new
-// three-state sentinels (mention.humans=1 / mention.ais=1).
-export const MENTION_UID_LEGACY_ALL = "-1";
-export const MENTION_UID_HUMANS = "-2";
-export const MENTION_UID_AIS = "-3";
-export const MENTION_LABEL_HUMANS = "所有人";
-export const MENTION_LABEL_AIS = "所有AI";
-
-// Render-side synthetic uid used by `buildMessageMentions` for non-clickable
-// broadcast highlights. Not a wire/routing uid, but it must be treated as a
-// broadcast sentinel by the paste/render guards so a forged clipboard payload
-// cannot smuggle it back into a routable mention node.
-export const MENTION_UID_RENDER_ALL = "all";
-
-/**
- * A broadcast-routing sentinel fans a single message out to every human / AI
- * in the channel. Untrusted sources (clipboard HTML, literal `@[uid:label]`
- * text the user typed/pasted) must never be allowed to decode one — only a
- * sanctioned structured mention (the typed-@ dropdown, which inserts a real
- * editor mention node) may. Grafted from octo-web#361 so the paste guard, the
- * send-side re-parse, and the render path all share one definition instead of
- * each maintaining a private set (octo-web#330).
- */
-export function isBroadcastSentinelUid(uid: string): boolean {
-  return (
-    uid === MENTION_UID_LEGACY_ALL ||
-    uid === MENTION_UID_HUMANS ||
-    uid === MENTION_UID_AIS ||
-    uid === MENTION_UID_RENDER_ALL
-  );
-}
-
-// Internal control char that tags a broadcast-sentinel marker as originating
-// from a sanctioned editor mention node (typed-@ dropdown) rather than from
-// untrusted literal text. The send serializer prefixes a sentinel uid with this
-// mark for node-origin mentions and strips it from all text-origin content, so
-// a forged/typed `@[-2:label]` string cannot carry it. The send-side parser
-// honors a broadcast only when the mark is present, then consumes it — it is
-// never persisted to drafts and never reaches the wire/recipient text.
-export const MENTION_TRUST_MARK = "\u0000";
 
 export type MentionUidState = "bot" | "user" | "unknown";
 

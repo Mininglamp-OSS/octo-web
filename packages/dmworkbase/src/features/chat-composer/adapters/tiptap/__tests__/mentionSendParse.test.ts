@@ -30,7 +30,7 @@ import {
   MENTION_UID_HUMANS,
   MENTION_UID_AIS,
   MENTION_TRUST_MARK,
-} from "../../../Utils/mentionRender";
+} from "../../../../../Utils/mentionProtocol";
 
 // A channel roster with one human and one bot, so we can assert that an @所有AI
 // broadcast fans out to the bot uid only when it is actually routed.

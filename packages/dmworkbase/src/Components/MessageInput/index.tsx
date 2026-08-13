@@ -69,7 +69,10 @@ import {
   ChatComposerAttachmentStore,
   chatEditorComposePartRegistry,
 } from "../../features/chat-composer/editor";
-import { disposeComposeRecoveryObjectUrls } from "../../features/chat-composer/recovery/disposeComposeRecovery";
+import {
+  disposeComposeRecoveryObjectUrls,
+  type ComposeRecoveryRecord,
+} from "../../features/chat-composer/recovery";
 import {
   chatPendingComposeRenderRegistry,
   type ChatPendingAttachmentPreview,
@@ -88,7 +91,7 @@ import {
   ComposeRestoreUnavailableError,
   type ConsumedComposeRecovery,
   type TopAttachmentLike,
-} from "./composeConsume";
+} from "../../features/chat-composer/application/composeConsume";
 import {
   imageBlockToPasteFile,
   restoreOctoRichTextClipboardToEditor,
@@ -309,9 +312,9 @@ interface MessageInputProps {
     settlement: ChatSendSettlement,
   ) => void | Promise<void>;
   /** Preserve a consumed compose when its original editor was destroyed. */
-  onComposeRecovery?: (recovery: MessageInputRecovery) => boolean;
+  onComposeRecovery?: (recovery: ComposeRecoveryRecord) => boolean;
   /** Recover consumed composes transferred from an earlier editor instance. */
-  recoveredComposes?: MessageInputRecovery[];
+  recoveredComposes?: ComposeRecoveryRecord[];
   onRecoveredComposes?: (attemptIds: string[]) => void;
   onRestoreRecoveredTarget?: (target: {
     replyMessage?: unknown;
@@ -380,8 +383,8 @@ import {
   stripTrustMark,
   parseDraftToContent,
   parseConsumedTextToContent,
-} from "./mentionSendParse";
-import type { SendParseMember } from "./mentionSendParse";
+} from "../../features/chat-composer/adapters/tiptap/mentionSendParse";
+import type { SendParseMember } from "../../features/chat-composer/adapters/tiptap/mentionSendParse";
 
 // 解析 @[uid:name] 格式的 mention（send 边界）。安全核心在纯函数 parseSendMentionText：
 // 仅当广播 sentinel 携带 node-origin 信任标记时才路由广播，伪造的字面文本降级为纯文本。
@@ -503,18 +506,6 @@ interface TopAttachmentItem {
   size: number;
   type: string;
   previewUrl?: string;
-}
-
-export interface MessageInputRecovery {
-  channelKey: string;
-  attemptId: string;
-  snapshot: ConsumedComposeRecovery["snapshot"];
-  editorAttachments: ConsumedComposeRecovery["editorAttachments"];
-  editorObjectUrls: ConsumedComposeRecovery["editorObjectUrls"];
-  topAttachments: TopAttachmentLike[];
-  editorBlocks?: UnsentEditorBlock[];
-  sendTarget?: { replyMessage?: unknown; handlerType: number };
-  expanded: boolean;
 }
 
 type PendingSendAttachmentPreview = ChatPendingAttachmentPreview;
@@ -1101,7 +1092,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const restoreRecoveredComposes = useCallback(() => {
     if (!editor || !props.recoveredComposes?.length) return;
 
-    const hydrated: MessageInputRecovery[] = [];
+    const hydrated: ComposeRecoveryRecord[] = [];
     let blockOffset = 0;
     props.recoveredComposes.forEach((item) => {
       const registeredInlineIds: string[] = [];
@@ -1447,7 +1438,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               .map((block) => block.id),
           );
           if (editorFailed || topFailed) {
-            const recovery: MessageInputRecovery = {
+            const recovery: ComposeRecoveryRecord = {
               channelKey: sendChannelKey,
               attemptId: pendingId,
               snapshot: handle.recovery.snapshot,

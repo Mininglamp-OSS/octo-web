@@ -29,8 +29,8 @@
 主要实现集中在：
 
 - `packages/dmworkbase/src/Components/MessageInput/index.tsx`
-- `packages/dmworkbase/src/Components/MessageInput/sendFlow.ts`
-- `packages/dmworkbase/src/Components/MessageInput/composeConsume.ts`
+- `packages/dmworkbase/src/features/chat-composer/application/sendFlow.ts`
+- `packages/dmworkbase/src/features/chat-composer/application/composeConsume.ts`
 - `packages/dmworkbase/src/Components/Conversation/index.tsx`
 
 当前问题不是单纯的文件过大，而是一次发送的生命周期跨越多个所有者：

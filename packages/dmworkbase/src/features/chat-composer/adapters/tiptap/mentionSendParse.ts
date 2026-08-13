@@ -27,9 +27,9 @@
  * (`buildInlineContentForRichTextPaste`), and they cannot fan out a broadcast.
  */
 
-import { subscriberDisplayName } from "../../Utils/displayName";
-import type { SubscriberLike } from "../../Utils/displayName";
-import { isSafeUrl } from "../../Utils/security";
+import { subscriberDisplayName } from "../../../../Utils/displayName";
+import type { SubscriberLike } from "../../../../Utils/displayName";
+import { isSafeUrl } from "../../../../Utils/security";
 import {
   MENTION_UID_LEGACY_ALL,
   MENTION_UID_HUMANS,
@@ -38,7 +38,13 @@ import {
   MENTION_LABEL_AIS,
   MENTION_TRUST_MARK,
   isBroadcastSentinelUid,
-} from "../../Utils/mentionRender";
+} from "../../../../Utils/mentionProtocol";
+import {
+  serializeMentionMarker,
+  stripTrustMark,
+} from "../../domain/mentionMarker";
+
+export { serializeMentionMarker, stripTrustMark } from "../../domain/mentionMarker";
 
 export interface ParsedMentionEntity {
   uid: string;
@@ -168,31 +174,6 @@ export function parseSendMentionText(
 }
 
 // ─── Serialization helpers (the trust-boundary primitives) ────────────────
-
-// Serialize a mention NODE to its `@[uid:label]` marker. A mention node is the
-// only sanctioned broadcast origin (typed-@ dropdown), so when serializing for
-// SEND we tag a broadcast-sentinel uid with MENTION_TRUST_MARK; the send-side
-// parser routes a broadcast only for trust-marked uids. Member uids and the
-// non-send (draft) path stay canonical (octo-web#330).
-export function serializeMentionMarker(
-  id: string,
-  label: string,
-  trusted: boolean
-): string {
-  const uid =
-    trusted && isBroadcastSentinelUid(id) ? `${MENTION_TRUST_MARK}${id}` : id;
-  return `@[${uid}:${label}]`;
-}
-
-// Remove the internal trust mark from text-origin content so forged/typed text
-// can never carry it into a routable broadcast marker (octo-web#330). This is
-// the linchpin of the "cannot forge trust" guarantee: every untrusted → string
-// path must run through it.
-export function stripTrustMark(text: string): string {
-  return text.includes(MENTION_TRUST_MARK)
-    ? text.split(MENTION_TRUST_MARK).join("")
-    : text;
-}
 
 export interface EditorTextMark {
   type: string;

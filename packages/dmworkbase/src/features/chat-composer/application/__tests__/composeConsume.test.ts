@@ -35,14 +35,14 @@ import {
 import {
   createSendQueue,
   runSendWithConsumedCompose,
-} from "../../../features/chat-composer/application/sendFlow";
+} from "../sendFlow";
 import {
   createChatSendOutcome,
   type ChatSendOutcome,
-} from "../../../features/chat-composer/domain";
-import { EditorComposePartRegistry } from "../../../features/chat-composer/editor";
-import { captureSendTarget } from "../../Conversation/sendTarget";
-import { parseConsumedTextToContent } from "../mentionSendParse";
+} from "../../domain";
+import { EditorComposePartRegistry } from "../../editor";
+import { captureSendTarget } from "../../adapters/conversation/sendTarget";
+import { parseConsumedTextToContent } from "../../adapters/tiptap/mentionSendParse";
 
 const outcome = (overrides: Partial<ChatSendOutcome> = {}) =>
   createChatSendOutcome(overrides);

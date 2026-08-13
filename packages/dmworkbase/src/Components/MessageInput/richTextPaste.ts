@@ -7,7 +7,7 @@ import type {
   OctoRichTextClipboardMention,
   OctoRichTextClipboardPayload,
 } from "../../Utils/richTextClipboard";
-import { isBroadcastSentinelUid } from "../../Utils/mentionRender";
+import { isBroadcastSentinelUid } from "../../Utils/mentionProtocol";
 import { isSafeUrl } from "../../Utils/security";
 
 // Clipboard payloads are a forgeable, untrusted source (plain HTML the user can
@@ -15,7 +15,7 @@ import { isSafeUrl } from "../../Utils/security";
 // message out to every human / AI in the channel, so we never reconstruct a
 // mention node for one — it degrades to plain "@label" text. The sentinel set
 // (legacy `@所有人` `-1`, three-state `-2`/`-3`, render-side `"all"`) lives in
-// `isBroadcastSentinelUid` (Utils/mentionRender) so the paste guard, the
+// `isBroadcastSentinelUid` (Utils/mentionProtocol) so the paste guard, the
 // send-side re-parse, and the render path share one definition (octo-web#330,
 // helper grafted from #361).
 

@@ -12,7 +12,7 @@ import {
   MENTION_UID_AIS,
   MENTION_LABEL_HUMANS,
   MENTION_LABEL_AIS,
-} from "../../Utils/mentionRender";
+} from "../../Utils/mentionProtocol";
 
 export interface MemberInfo {
   uid: string;

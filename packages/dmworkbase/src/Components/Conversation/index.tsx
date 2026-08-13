@@ -50,7 +50,6 @@ import {
 } from "../../Utils/mentionRender";
 import MessageInput, {
   MessageInputContext,
-  type MessageInputRecovery,
 } from "../MessageInput";
 import {
   type ChatSendOutcome,
@@ -68,11 +67,12 @@ import {
 import {
   ComposeRecoveryStore,
   disposeComposeRecoveryObjectUrls,
+  type ComposeRecoveryRecord,
 } from "../../features/chat-composer/recovery";
 import {
   captureSendTarget,
   restoreSendTargetIfVacant,
-} from "./sendTarget";
+} from "../../features/chat-composer/adapters/conversation/sendTarget";
 import {
   tryConsumeInitialCompose,
   type ComposeHost,
@@ -336,16 +336,16 @@ const ConversationSelectionStateBridge: React.FC<{
 interface ConversationState {
   inputExpanded: boolean;
   contextMenuMessageID: string | null;
-  recoveredComposes: MessageInputRecovery[];
+  recoveredComposes: ComposeRecoveryRecord[];
 }
 
-const composeRecoveryStore = new ComposeRecoveryStore<MessageInputRecovery>({
+const composeRecoveryStore = new ComposeRecoveryStore<ComposeRecoveryRecord>({
   dispose: disposeComposeRecoveryObjectUrls,
 });
 
 function hasSameComposeRecoveryResources(
-  left: MessageInputRecovery,
-  right: MessageInputRecovery,
+  left: ComposeRecoveryRecord,
+  right: ComposeRecoveryRecord,
 ): boolean {
   return (
     left.editorAttachments.length === right.editorAttachments.length &&
@@ -1672,7 +1672,7 @@ export class Conversation
     this.refreshComposeRecoveries();
   }
 
-  private recordComposeRecovery = (recovery: MessageInputRecovery): boolean => {
+  private recordComposeRecovery = (recovery: ComposeRecoveryRecord): boolean => {
     if (composeRecoveryStore.add(recovery)) return true;
     const existing = composeRecoveryStore
       .list(recovery.channelKey)

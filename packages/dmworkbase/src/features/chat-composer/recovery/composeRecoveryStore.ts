@@ -1,9 +1,9 @@
-export interface ComposeRecoveryRecord {
+export interface ComposeRecoveryStoreRecord {
   channelKey: string;
   attemptId: string;
 }
 
-export interface ComposeRecoveryStoreOptions<T extends ComposeRecoveryRecord> {
+export interface ComposeRecoveryStoreOptions<T extends ComposeRecoveryStoreRecord> {
   maxChannels?: number;
   maxRecordsPerChannel?: number;
   ttlMs?: number;
@@ -34,7 +34,7 @@ const DEFAULT_TTL_MS = 30 * 60 * 1000;
  * currently owns the channel, rather than the stale instance that reported the
  * failure.
  */
-export class ComposeRecoveryStore<T extends ComposeRecoveryRecord> {
+export class ComposeRecoveryStore<T extends ComposeRecoveryStoreRecord> {
   private readonly buckets = new Map<string, RecoveryBucket<T>>();
   private readonly listeners = new Map<string, Set<RecoveryListener>>();
   private readonly maxChannels: number;

@@ -1,11 +1,9 @@
 import React from "react";
 import { act, render, waitFor } from "@testing-library/react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
-import MessageInput, {
-  type MessageInputContext,
-  type MessageInputRecovery,
-} from "..";
+import MessageInput, { type MessageInputContext } from "..";
 import { createChatSendOutcome } from "../../../features/chat-composer/domain";
+import type { ComposeRecoveryRecord } from "../../../features/chat-composer/recovery";
 
 vi.mock("../../../App", () => ({
   default: {
@@ -28,7 +26,7 @@ function conversationContext() {
   } as any;
 }
 
-function failedCompose(text: string): MessageInputRecovery {
+function failedCompose(text: string): ComposeRecoveryRecord {
   return {
     channelKey: "channel:2",
     attemptId: "attempt-A",
@@ -88,7 +86,7 @@ describe("MessageInput recovery hydration", () => {
       value: revokeObjectURL,
     });
     let inputContext: MessageInputContext | undefined;
-    const recovery: MessageInputRecovery = {
+    const recovery: ComposeRecoveryRecord = {
       ...failedCompose(""),
       snapshot: {
         type: "doc",
@@ -144,7 +142,7 @@ describe("MessageInput recovery hydration", () => {
       .mockImplementation(() => undefined);
     let inputContext: MessageInputContext | undefined;
     const recovered: string[][] = [];
-    const recovery: MessageInputRecovery = {
+    const recovery: ComposeRecoveryRecord = {
       ...failedCompose(""),
       editorBlocks: [{ type: "attachment", id: "unknown" }],
     };
