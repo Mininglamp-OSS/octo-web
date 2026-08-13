@@ -1,7 +1,10 @@
 import React from "react";
 import { act, render, waitFor } from "@testing-library/react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
-import { createChatSendOutcome } from "../../domain";
+import {
+  createChatSendOutcome,
+  type ChatComposerSendResult,
+} from "../../domain";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
 import { createDefaultChatComposerExtensions } from "../createDefaultChatComposerExtensions";
 
@@ -61,10 +64,10 @@ describe("ChatComposer extension injection", () => {
     const view = render(<ChatComposer {...props} extensions={extensionsA} />);
     await waitFor(() => expect(inputContext).toBeDefined());
 
-    let sendPromise: Promise<boolean | void> | undefined;
+    let sendPromise: Promise<ChatComposerSendResult> | undefined;
     act(() => {
       inputContext?.restoreDraft("hello");
-      sendPromise = inputContext?.send() as Promise<boolean | void>;
+      sendPromise = inputContext?.send();
     });
     await waitFor(() =>
       expect(view.queryByTestId("pending-a")).not.toBeNull(),

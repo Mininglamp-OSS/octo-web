@@ -48,25 +48,21 @@ import {
   buildMessageMentions as buildMentionRenderInfo,
   readMentionFlags,
 } from "../../Utils/mentionRender";
-import ChatComposer, {
-  MessageInputContext,
-} from "../../features/chat-composer/ui/ChatComposer";
-import { createDefaultChatComposerExtensions } from "../../features/chat-composer/ui/createDefaultChatComposerExtensions";
 import {
+  ChatComposer,
+  ComposeRecoveryStore,
+  createConversationChatSendHandler,
+  createDefaultChatComposerExtensions,
+  captureSendTarget,
+  disposeComposeRecoveryObjectUrls,
+  imageBlockToPasteFile,
+  restoreSendTargetIfVacant,
+  type ComposeRecoveryRecord,
   type ChatSendSettlement,
   type EditorContentBlock,
+  type MessageInputContext,
   type PendingSendDraft,
-} from "../../features/chat-composer/domain";
-import { createConversationChatSendHandler } from "../../features/chat-composer/adapters/conversation";
-import {
-  ComposeRecoveryStore,
-  disposeComposeRecoveryObjectUrls,
-  type ComposeRecoveryRecord,
-} from "../../features/chat-composer/recovery";
-import {
-  captureSendTarget,
-  restoreSendTargetIfVacant,
-} from "../../features/chat-composer/adapters/conversation/sendTarget";
+} from "../../features/chat-composer";
 import {
   tryConsumeInitialCompose,
   type ComposeHost,
@@ -117,7 +113,6 @@ import {
   isOwnedConversationSingleton,
   shouldMarkConversationRead,
 } from "../../features/notifications";
-import { imageBlockToPasteFile } from "../../features/chat-composer/clipboard";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -1359,7 +1354,8 @@ export class Conversation
     if (!compose) return;
     if (this._consumedComposeIds.has(compose.requestId)) return;
     // 未就绪（onContext 尚未回调）时不消费，等待下一次 ready-retry。
-    if (!this._messageInputContext) return;
+    const messageInputContext = this._messageInputContext;
+    if (!messageInputContext) return;
 
     const generation = this._initialComposeGeneration;
     const channelKey = `${this.props.channel.channelID}:${this.props.channel.channelType}`;
@@ -1369,15 +1365,15 @@ export class Conversation
       this.props.initialCompose?.requestId === compose.requestId &&
       `${this.props.channel.channelID}:${this.props.channel.channelType}` === channelKey;
     const host: ComposeHost = {
-      isReady: () => !!this._messageInputContext,
+      isReady: () => true,
       isLive,
-      currentDraftText: () => this._messageInputContext?.text() ?? "",
+      currentDraftText: () => messageInputContext.text() ?? "",
       pendingAttachmentCount: () => this.getPendingAttachments().length,
-      restoreDraft: (text: string) => this._messageInputContext?.restoreDraft(text),
+      restoreDraft: (text: string) => messageInputContext.restoreDraft(text),
       // 复用唯一附件权威校验（扩展名/100MB 总量），失败返回错误描述。
       addPendingAttachments: (files: File[]) => this.addPendingAttachments(files),
       // 经 MessageInput 发送（与回车发送同一路径），保留上传/ACK/失败保留语义。
-      send: () => this._messageInputContext?.send(),
+      send: () => messageInputContext.send(),
     };
 
     void tryConsumeInitialCompose(

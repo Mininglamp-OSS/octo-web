@@ -50,6 +50,7 @@ import { ChatComposerCoordinator } from "../application/ChatComposerCoordinator"
 import type {
   AttachmentFile,
   ChatMention,
+  ChatComposerSendResult,
   ChatSendOutcome,
   ChatSendRequest,
   ChatSendSettlement,
@@ -59,6 +60,7 @@ import type {
   SendTargetSnapshot,
   UnsentEditorBlock,
 } from "../domain";
+import { rejectChatComposerSend } from "../domain";
 import {
   ChatComposerAttachmentStore,
   type EditorComposePartRegistry,
@@ -423,13 +425,10 @@ export interface MessageInputContext {
    * Programmatically trigger send (same as pressing Enter).
    *
    * Returns the underlying send promise so an orchestrator (e.g. the Conversation initialCompose
-   * consumer) can await completion AND read the real outcome: the resolved boolean is
-   * `editorConsumed` — `true` when the compose was actually sent, `false` when the send was
-   * rejected / preserved as a draft (so the orchestrator can report 'failed' instead of a false
-   * 'sent'). `undefined` is only possible before the send handler is wired. Keyboard/Enter callers
-   * ignore the return value, so this does NOT change interactive send behaviour.
+   * consumer) can await completion and inspect the explicit send result. Keyboard/Enter callers
+   * ignore the result, so this does not change interactive send behaviour.
    */
-  send: () => void | Promise<boolean | void> | undefined;
+  send: () => Promise<ChatComposerSendResult>;
   /** Clear editor content without sending */
   clear: () => void;
   /**
@@ -624,7 +623,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const isDirectChannelRef = useRef(
     props.context.channel().channelType === ChannelTypePerson,
   );
-  const sendRef = useRef<(() => Promise<boolean>) | null>(null);
+  const sendRef = useRef<(() => Promise<ChatComposerSendResult>) | null>(null);
   // 键盘/Enter 是 fire-and-forget 调用：send() 的同步阶段（快照/清空/取 target）
   // 若抛错会变成 unhandled rejection，这里统一兜住并提示 (#1280 review)。
   const fireAndForgetSend = useCallback(() => {
@@ -1151,8 +1150,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     [editor]
   );
 
-  const send = useCallback(async (): Promise<boolean> => {
-    if (!editor) return false;
+  const send = useCallback(async (): Promise<ChatComposerSendResult> => {
+    if (!editor) return rejectChatComposerSend("editor-not-ready");
 
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
@@ -1160,7 +1159,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         className: "wk-octo-notification",
         content: t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }),
       });
-      return false;
+      return rejectChatComposerSend("message-too-long");
     }
 
     // 从编辑器提取附件（粘贴的图片）
@@ -1183,7 +1182,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       );
     } catch (err) {
       console.error("[MessageInput] editor compose part is not sendable", err);
-      return false;
+      return rejectChatComposerSend("unsupported-content");
     }
     const pendingAttachmentPreviews: PendingSendAttachmentPreview[] = [
       ...attachmentAttrs.map(({ id, name, type, previewUrl }) => ({
@@ -1209,8 +1208,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
     // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
     // 视为未发送（editorConsumed=false），供编排器判定真实结果。
-    if (!props.onSend || (!hasText && !hasAttachments && !hasEditorBlocks)) {
-      return false;
+    if (!props.onSend) return rejectChatComposerSend("send-host-unavailable");
+    if (!hasText && !hasAttachments && !hasEditorBlocks) {
+      return rejectChatComposerSend("empty-compose");
     }
 
     // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）。
@@ -1344,6 +1344,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   // 先接好 sendRef，再导出 context。Conversation 先通过 context 恢复最新草稿，
   // 随后这里把失败 compose 前置合并，避免旧失败内容覆盖更新的草稿。
   useEffect(() => {
+    if (!editor) return;
+
     announceContextAfterSendReady(sendRef, send, () => {
       props.onContext?.({
         insertText,

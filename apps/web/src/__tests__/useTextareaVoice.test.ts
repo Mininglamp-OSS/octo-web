@@ -9,8 +9,8 @@ const mockStopRecordingAndTranscribe = vi.fn();
 const mockCancelRecording = vi.fn();
 let capturedOnTranscribed: ((text: string) => void) | undefined;
 
-vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/adapters/voice/useVoiceInput", () => ({
-  default: (opts: { onTranscribed?: (text: string) => void }) => {
+vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/voice", () => ({
+  useVoiceInput: (opts: { onTranscribed?: (text: string) => void }) => {
     capturedOnTranscribed = opts?.onTranscribed;
     return {
       isRecording: false,
@@ -37,6 +37,7 @@ describe("useTextareaVoice", () => {
     overrides: Partial<HTMLTextAreaElement> = {}
   ): React.RefObject<HTMLTextAreaElement> {
     const el = {
+      value: "",
       selectionStart: 0,
       selectionEnd: 0,
       ...overrides,

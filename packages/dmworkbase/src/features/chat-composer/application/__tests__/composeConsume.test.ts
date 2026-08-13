@@ -34,7 +34,7 @@ import {
 } from "../composeConsume";
 import {
   createSendQueue,
-  runSendWithConsumedCompose,
+  settleConsumedCompose,
 } from "../sendFlow";
 import {
   createChatSendOutcome,
@@ -49,6 +49,10 @@ import { parseConsumedTextToContent } from "../../adapters/tiptap/mentionSendPar
 
 const outcome = (overrides: Partial<ChatSendOutcome> = {}) =>
   createChatSendOutcome(overrides);
+
+const runSendWithConsumedCompose = async (
+  ...args: Parameters<typeof settleConsumedCompose>
+) => (await settleConsumedCompose(...args)).editorConsumed;
 
 const TestAttachment = Node.create({
   name: "attachment",

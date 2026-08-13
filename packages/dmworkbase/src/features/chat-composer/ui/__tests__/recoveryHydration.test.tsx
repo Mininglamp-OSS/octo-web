@@ -231,9 +231,9 @@ describe("MessageInput recovery hydration", () => {
           await inputContext?.addAttachment([file], "paste");
         });
 
-        let sendPromise: Promise<boolean | void> | undefined;
+        let sendPromise: ReturnType<MessageInputContext["send"]> | undefined;
         act(() => {
-          sendPromise = Promise.resolve(inputContext?.send());
+          sendPromise = inputContext?.send();
         });
         await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
 
@@ -243,7 +243,7 @@ describe("MessageInput recovery hydration", () => {
           await sendPromise;
         });
 
-        expect(await sendPromise).toBe(false);
+        expect(await sendPromise).toMatchObject({ editorConsumed: false });
         expect(onComposeRecovery).toHaveBeenCalledOnce();
         expect(revokeObjectURL).toHaveBeenCalledOnce();
         expect(revokeObjectURL).toHaveBeenCalledWith("blob:leased");

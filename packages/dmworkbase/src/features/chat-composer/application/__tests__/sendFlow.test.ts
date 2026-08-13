@@ -35,14 +35,19 @@ import {
   enqueueSettledSend,
   invokeReadySend,
   restoreComposeSnapshot,
-  runSendWithConsumedCompose,
+  settleConsumedCompose,
   ConsumedCompose,
   ComposeRestoreTarget,
 } from "../sendFlow";
 import {
   createChatSendOutcome,
+  type ChatComposerSendResult,
   type ChatSendOutcome,
 } from "../../domain";
+
+const runSendWithConsumedCompose = async (
+  ...args: Parameters<typeof settleConsumedCompose>
+) => (await settleConsumedCompose(...args)).editorConsumed;
 
 describe("enqueueSettledSend", () => {
   it("releases the previous attempt before the next queued send starts", async () => {
@@ -72,9 +77,17 @@ describe("enqueueSettledSend", () => {
 
 describe("announceContextAfterSendReady", () => {
   it("wires the send handler before announcing context readiness", async () => {
-    const sendRef: { current: (() => Promise<boolean>) | null } = { current: null };
-    const send = vi.fn().mockResolvedValue(true);
-    let firstContextSend: Promise<boolean> | undefined;
+    const result: ChatComposerSendResult = {
+      kind: "attempted",
+      editorConsumed: true,
+      attemptId: "attempt-1",
+      outcome: createChatSendOutcome({ editorConsumed: true }),
+    };
+    const sendRef: {
+      current: (() => Promise<ChatComposerSendResult>) | null;
+    } = { current: null };
+    const send = vi.fn().mockResolvedValue(result);
+    let firstContextSend: Promise<ChatComposerSendResult> | undefined;
 
     announceContextAfterSendReady(sendRef, send, () => {
       // Models Conversation consuming a no-attachment initialCompose immediately
@@ -82,18 +95,28 @@ describe("announceContextAfterSendReady", () => {
       firstContextSend = invokeReadySend(sendRef.current);
     });
 
-    await expect(firstContextSend).resolves.toBe(true);
+    await expect(firstContextSend).resolves.toBe(result);
     expect(send).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("invokeReadySend", () => {
-  it("returns false instead of legacy void when the send callback is not ready", async () => {
-    await expect(invokeReadySend(null)).resolves.toBe(false);
+  it("returns an explicit rejection when the send callback is not ready", async () => {
+    await expect(invokeReadySend(null)).resolves.toEqual({
+      kind: "rejected",
+      editorConsumed: false,
+      reason: "editor-not-ready",
+    });
   });
 
   it("forwards the real result once the send callback is ready", async () => {
-    await expect(invokeReadySend(async () => true)).resolves.toBe(true);
+    const result: ChatComposerSendResult = {
+      kind: "attempted",
+      editorConsumed: true,
+      attemptId: "attempt-1",
+      outcome: createChatSendOutcome({ editorConsumed: true }),
+    };
+    await expect(invokeReadySend(async () => result)).resolves.toBe(result);
   });
 });
 

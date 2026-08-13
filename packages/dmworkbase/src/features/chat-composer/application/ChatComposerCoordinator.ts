@@ -1,6 +1,7 @@
 import type {
   AttachmentFile,
   ChatMention,
+  ChatComposerSendResult,
   EditorContentBlock,
   SendProgressSnapshot,
 } from "../domain";
@@ -45,7 +46,7 @@ export class ChatComposerCoordinator<
   async submit(
     input: ChatComposerSubmitInput<TAttachmentPreview>,
     ports: ChatComposerSubmitPorts<TMessage>,
-  ): Promise<boolean> {
+  ): Promise<ChatComposerSendResult> {
     const { host, editor } = ports;
     const sendTarget = host.captureSendTarget();
     const channelKey = host.channelKey();
@@ -137,7 +138,12 @@ export class ChatComposerCoordinator<
         if (recovery) this.handoffRecovery(recovery, ports);
       }
 
-      return settlement.editorConsumed;
+      return {
+        kind: "attempted",
+        attemptId,
+        outcome: settlement.outcome,
+        editorConsumed: settlement.editorConsumed,
+      };
     });
   }
 

@@ -108,7 +108,7 @@ describe("ChatComposerCoordinator", () => {
         },
         { host: currentHost, editor },
       ),
-    ).resolves.toBe(true);
+    ).resolves.toMatchObject({ editorConsumed: true });
 
     expect(order).toEqual([
       "target",
@@ -292,8 +292,8 @@ describe("ChatComposerCoordinator", () => {
     expect(sentRequests.map(({ text }) => text)).toEqual(["A"]);
 
     resolveFirst?.(createChatSendOutcome({ editorConsumed: true }));
-    await expect(first).resolves.toBe(true);
-    await expect(second).resolves.toBe(true);
+    await expect(first).resolves.toMatchObject({ editorConsumed: true });
+    await expect(second).resolves.toMatchObject({ editorConsumed: true });
 
     expect(sentRequests).toEqual([
       { text: "A", target: { id: "target-A" }, draftGeneration: 1 },

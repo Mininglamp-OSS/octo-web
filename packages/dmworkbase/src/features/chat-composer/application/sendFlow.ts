@@ -62,6 +62,8 @@
  */
 import {
   createChatSendOutcome,
+  rejectChatComposerSend,
+  type ChatComposerSendResult,
   type ChatSendOutcome,
   type SendDraftSnapshot,
   type SendProgressSnapshot,
@@ -82,7 +84,9 @@ export type {
  * React runs effects in declaration order; keeping these two operations atomic
  * prevents a consumer from synchronously calling context.send() in the gap.
  */
-export function announceContextAfterSendReady<T extends () => Promise<boolean>>(
+export function announceContextAfterSendReady<
+  T extends () => Promise<ChatComposerSendResult>,
+>(
   sendRef: { current: T | null },
   send: T,
   announce: () => void,
@@ -93,9 +97,9 @@ export function announceContextAfterSendReady<T extends () => Promise<boolean>>(
 
 /** A context send invoked before its callback is wired is explicitly rejected. */
 export async function invokeReadySend(
-  send: (() => Promise<boolean>) | null,
-): Promise<boolean> {
-  return send ? send() : false;
+  send: (() => Promise<ChatComposerSendResult>) | null,
+): Promise<ChatComposerSendResult> {
+  return send ? send() : rejectChatComposerSend("editor-not-ready");
 }
 
 /**
@@ -361,13 +365,4 @@ export async function settleConsumedCompose(
   }
 
   return { outcome: decision, editorConsumed: true, restoreErrors };
-}
-
-/** Backward-compatible boolean facade for callers that only need send status. */
-export async function runSendWithConsumedCompose(
-  send: () => ChatSendOutcome | Promise<ChatSendOutcome>,
-  ids: ConsumedComposeIds,
-  compose: ConsumedCompose,
-): Promise<boolean> {
-  return (await settleConsumedCompose(send, ids, compose)).editorConsumed;
 }

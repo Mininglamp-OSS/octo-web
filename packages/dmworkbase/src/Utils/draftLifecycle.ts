@@ -1,4 +1,4 @@
-import type { PendingSendDraft } from "../features/chat-composer/domain";
+import type { PendingSendDraft } from "../features/chat-composer";
 
 export type DraftPersistenceSource = "live" | "pending" | "empty";
 

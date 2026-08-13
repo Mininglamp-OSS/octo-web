@@ -117,7 +117,7 @@ export interface ConsumedComposeHandle {
 
 /**
  * Take the current compose out of the composer and return the hooks
- * `runSendWithConsumedCompose` needs.
+ * `settleConsumedCompose` needs.
  *
  * Consumption is synchronous and unconditional: the editor is cleared and the
  * top attachments handed to this send are removed before any await, so a send

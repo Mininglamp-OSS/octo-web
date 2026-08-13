@@ -1,5 +1,5 @@
 import { useRef, useCallback } from "react";
-import useVoiceInput from "../../features/chat-composer/adapters/voice/useVoiceInput";
+import { useVoiceInput } from "../../features/chat-composer/voice";
 import type { ChatContextResult } from "../Conversation/chatContext";
 import type { VoiceMode } from "../../Service/VoiceService";
 

@@ -79,6 +79,40 @@ export interface ChatSendSettlement {
   restoreFailed: boolean;
 }
 
+export type ChatComposerSendRejectReason =
+  | "editor-not-ready"
+  | "message-too-long"
+  | "unsupported-content"
+  | "send-host-unavailable"
+  | "empty-compose";
+
+export interface ChatComposerSendRejection {
+  kind: "rejected";
+  editorConsumed: false;
+  reason: ChatComposerSendRejectReason;
+  attemptId?: never;
+  outcome?: never;
+}
+
+export interface ChatComposerSendAttemptResult {
+  kind: "attempted";
+  editorConsumed: boolean;
+  attemptId: string;
+  outcome: ChatSendOutcome;
+  reason?: never;
+}
+
+/** Explicit result returned by the imperative composer send surface. */
+export type ChatComposerSendResult =
+  | ChatComposerSendRejection
+  | ChatComposerSendAttemptResult;
+
+export function rejectChatComposerSend(
+  reason: ChatComposerSendRejectReason,
+): ChatComposerSendRejection {
+  return { kind: "rejected", editorConsumed: false, reason };
+}
+
 export function createChatSendOutcome(
   overrides: Partial<ChatSendOutcome> = {},
 ): ChatSendOutcome {
