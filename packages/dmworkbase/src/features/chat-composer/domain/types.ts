@@ -56,7 +56,6 @@ export interface ChatSendRequest<TMessage = unknown> {
   attemptId: string;
   text: string;
   mention?: ChatMention;
-  attachments?: AttachmentFile[];
   topFiles?: AttachmentFile[];
   editorBlocks?: EditorContentBlock[];
   sendTarget?: SendTargetSnapshot<TMessage>;

@@ -138,41 +138,60 @@ packages/dmworkbase/src/features/chat-composer/
     draftCoordinator.ts
     extensionRegistry.ts
 
-  editor/
-    composePartRegistry.ts
-    createChatEditorExtensions.ts
-    tiptapEditorPort.ts
-    captureEditorDocument.ts
-    restoreEditorParts.ts
-    keyboardPolicy.ts
-    clipboardPipeline.ts
-    extensions/
-      textExtension.ts
-      mentionExtension.ts
-      attachmentExtension.ts
-
-  submission/
+  application/
+    consumeCompose.ts
+    settleConsumedCompose.ts
+    sendQueue.ts
     captureComposeAttempt.ts
     buildChatSendPlan.ts
     settleComposeAttempt.ts
-    chatSendQueue.ts
 
-  bridge/
+  ports/
     ChatTransportPort.ts
+    ChatComposerHostPort.ts
+    ChatComposerDraftPort.ts
+
+  adapters/
+    tiptap/
+      composePartRegistry.ts
+      createChatEditorExtensions.ts
+      tiptapEditorPort.ts
+      captureEditorDocument.ts
+      restoreEditorParts.ts
+      extensions/
+        textExtension.ts
+        mentionExtension.ts
+        attachmentExtension.ts
+    conversation/
+      ConversationChatTransport.ts
+      conversationSendTargetAdapter.ts
+      conversationDraftAdapter.ts
+
+  clipboard/
+    clipboardPipeline.ts
+    richTextPaste.ts
+    secretPasteDetect.ts
+
+  keyboard/
+    keyboardPolicy.ts
+
+  rendering/
+    pendingComposeRenderRegistry.ts
+    chatPendingComposeRenderRegistry.tsx
+
+  infrastructure/
     executeChatSendPlan.ts
-    waitForMessageEnqueue.ts
-    waitForMessageAck.ts
+    settleChatSendExecution.ts
+    ChatSendOperationRegistry.ts
 
   recovery/
     composeRecoveryStore.ts
 
   ui/
     ChatComposer.tsx
-    ChatComposerView.tsx
     AttachmentTray.tsx
     PendingComposePreview.tsx
     ComposerToolbar.tsx
-    renderRegistry.tsx
 
   __tests__/
     composeAttemptLedger.test.ts
@@ -189,6 +208,39 @@ Components/MessageInput/index.tsx
 ```
 
 它作为兼容入口重新导出或装配新的 `ChatComposer`，直到所有调用方迁移完成。
+
+最终状态下该文件只能包含 re-export，不得再拥有 React state、Tiptap editor、发送队列、
+附件资源或恢复逻辑。测试也必须迁到 `features/chat-composer`，避免旧目录继续成为事实上的
+实现归属。
+
+### 4.1 允许保留在 feature 外的职责
+
+以下能力属于应用宿主，不应为了“全迁出”被复制进 Chat Composer：
+
+- `ConversationContext`、当前 channel、reply/edit 状态和远端草稿状态。
+- `WKApp`、SDK、上传、消息入队/ack、Toast/Notification 和埋点。
+- 通用 UI 组件，例如 `IconClick`、`SlashCommandMenu` 和应用级 modal。
+- Docs 评论编辑器等其他 composer；它们只复用明确的 port 或 adapter，不复用 Chat UI。
+
+这些依赖必须通过 `ports/` 定义的接口或 `adapters/` 封装进入 feature。`domain/`、
+`application/`、`clipboard/` 和 `keyboard/` 不得反向 import `Components/Conversation`、
+`App`、SDK 或具体 UI 组件。
+
+### 4.2 物理迁移完成判据
+
+满足以下条件才算重构完成，而不是仅“新代码已被调用”：
+
+- `Components/MessageInput/index.tsx` 是不超过一个 re-export 的兼容入口。
+- `Components/MessageInput` 下不再保留 composer-owned 的 `.ts/.tsx/.css` 实现与测试。
+- compose capture/consume/settle/queue/recovery 全部位于 feature 内。
+- Tiptap、clipboard、keyboard、mention、emoji、attachment 与 voice UI 位于 feature 的
+  adapter 或 UI 目录。
+- `Conversation` 只组装 host port 和 transport adapter，不读取 editor 文档、不操作附件
+  store，也不补捕获发送时遗漏的 reply/edit target。
+- 新增一种 compose part 只需注册 editor capture/restore、send operation 和 pending render，
+  不修改 `ChatComposer.send()` 主分支。
+- 非兼容代码不得从 `Components/MessageInput` import；公共入口统一从
+  `features/chat-composer` 或包级 export 引入。
 
 ## 5. 分层职责
 

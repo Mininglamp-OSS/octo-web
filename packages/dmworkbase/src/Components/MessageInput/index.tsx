@@ -282,9 +282,6 @@ function notifySecretPaste(detectedValue: string): void {
 }
 
 
-export type OnInsertFnc = (text: string) => void;
-export type OnAddMentionFnc = (uid: string, name: string) => void;
-
 interface MessageInputProps {
   context: ConversationContext;
   /**
@@ -322,8 +319,6 @@ interface MessageInputProps {
   }) => void;
   members?: Array<Subscriber>;
   onInputRef?: any;
-  onInsertText?: (fnc: OnInsertFnc) => void;
-  onAddMention?: (fnc: OnAddMentionFnc) => void;
   onAddAttachment?: (
     fnc: (files: File[], source?: "paste" | "upload") => void | Promise<void>
   ) => void;
@@ -1075,14 +1070,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     return [...editorFiles, ...topFiles];
   }, [attachmentStore, editor]);
 
-
-  // 导出 addMention 方法
-  useEffect(() => {
-    if (props.onAddMention) {
-      props.onAddMention(addMention);
-    }
-  }, [editor, props.onAddMention]);
-
   const insertText = useCallback(
     (text: string) => {
       if (editor) {
@@ -1227,16 +1214,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
     // 从编辑器提取附件（粘贴的图片）
     const attachmentAttrs = extractAttachmentsFromEditor(editor);
-    const editorAttachments: AttachmentFile[] = attachmentAttrs
-      .map((attr) => {
-        const file = attachmentStore.attachmentFiles.get(attr.id);
-        if (file) {
-          return { id: attr.id, file };
-        }
-        return null;
-      })
-      .filter((a): a is AttachmentFile => a !== null);
-
     // 顶部附件区文件（通过上传按钮添加）
     const topAttachmentsAtSend = attachmentStore.snapshotTopAttachments();
     const topAttachmentFiles: AttachmentFile[] = topAttachmentsAtSend.map(
@@ -1245,9 +1222,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
         file: a.file,
       }),
     );
-
-    // 兼容旧 allAttachments（保留向后兼容）
-    const allAttachments = [...editorAttachments, ...topAttachmentFiles];
     let orderedBlocks: EditorContentBlock[];
     try {
       orderedBlocks = extractOrderedBlocks(editor, attachmentStore.attachmentFiles);
@@ -1271,7 +1245,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     ];
 
     const hasText = text.trim() !== "";
-    const hasAttachments = allAttachments.length > 0;
+    const hasAttachments =
+      attachmentAttrs.length > 0 || topAttachmentFiles.length > 0;
     const hasEditorBlocks = orderedBlocks.some(
       (block) => block.type !== "text" || block.text.trim() !== "",
     );
@@ -1424,8 +1399,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
               attemptId: pendingId,
               text: content,
               mention,
-              attachments:
-                allAttachments.length > 0 ? allAttachments : undefined,
               topFiles:
                 topAttachmentFiles.length > 0
                   ? topAttachmentFiles
@@ -1551,7 +1524,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 随后这里把失败 compose 前置合并，避免旧失败内容覆盖更新的草稿。
   useEffect(() => {
     announceContextAfterSendReady(sendRef, send, () => {
-      props.onInsertText?.(insertText);
       props.onContext?.({
         insertText,
         insertContent: (content) => {
@@ -1583,7 +1555,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   }, [
     send,
     editor,
-    props.onInsertText,
     props.onContext,
     restoreRecoveredComposes,
     insertText,
