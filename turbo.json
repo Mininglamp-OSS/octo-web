@@ -21,6 +21,14 @@
         "dist/**"
       ]
     },
+    "Octo 插件端#build": {
+      "dependsOn": [
+        "@octo/ui#build"
+      ],
+      "outputs": [
+        ".output/**"
+      ]
+    },
     "@octo/web#build": {
       "dependsOn": [
         "@octo/ui#build"
@@ -31,6 +39,8 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "../../pnpm-lock.yaml",
+        "../../patches/@excalidraw__excalidraw@0.18.1.patch",
+        "../../packages/docs/**",
         "../../packages/dmworkappbot/**",
         "../../packages/dmworkbase/**",
         "../../packages/dmworkcontacts/**",
@@ -40,6 +50,7 @@
         "../../packages/octo-ui/**",
         "../../packages/dmworkskillmarket/**",
         "../../packages/dmworksummary/**",
+        "../../packages/whiteboard-schema/**",
         "!../../packages/**/node_modules/**",
         "!../../packages/**/build/**",
         "!../../packages/**/dist/**",

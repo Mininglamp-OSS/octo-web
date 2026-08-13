@@ -11,7 +11,13 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  external: ['@douyinfe/semi-icons', '@douyinfe/semi-ui', 'react', 'react-dom'],
+  external: [
+    '@douyinfe/semi-icons',
+    '@douyinfe/semi-ui',
+    'react',
+    'react-dom',
+    'react/jsx-runtime',
+  ],
   async onSuccess() {
     const entryCss = 'src/styles/index.css'
     const raw = readFileSync(entryCss, 'utf8')

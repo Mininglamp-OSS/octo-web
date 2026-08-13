@@ -51,7 +51,9 @@
     "eject": "react-app-rewired eject",
     "clean": "rimraf node_modules dist-ele build dist-ele .turbo",
     "tauri": "tauri",
+    "prestorybook": "pnpm --filter @octo/ui build",
     "storybook": "storybook dev -p 16006",
+    "prebuild-storybook": "pnpm --filter @octo/ui build",
     "build-storybook": "storybook build",
     "test:storybook": "vitest run --config vitest.storybook.config.ts"
   },
