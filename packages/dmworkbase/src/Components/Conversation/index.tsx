@@ -52,18 +52,11 @@ import ChatComposer, {
   MessageInputContext,
 } from "../../features/chat-composer/ui/ChatComposer";
 import {
-  type ChatSendOutcome,
-  type ChatSendRequest,
   type ChatSendSettlement,
   type EditorContentBlock,
   type PendingSendDraft,
 } from "../../features/chat-composer/domain";
-import {
-  buildChatSendPlan,
-  executeChatSendPlan,
-  settleChatSendExecution,
-} from "../../features/chat-composer/application";
-import { createConversationChatTransport } from "../../features/chat-composer/adapters/conversation";
+import { createConversationChatSendHandler } from "../../features/chat-composer/adapters/conversation";
 import {
   ComposeRecoveryStore,
   disposeComposeRecoveryObjectUrls,
@@ -143,7 +136,6 @@ import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import { captureSelectionWithinContainer } from "./copySelection";
 import VoiceFeedback from "../../Service/VoiceFeedback";
 import {
-  precheckUploadCredentials,
   uploadChatMedia,
 } from "../../Service/UploadCredentials";
 import { isMessageSelectable } from "../../Service/messageSelection";
@@ -418,6 +410,25 @@ export class Conversation
   private _unsubscribeVmAttentionListener?: () => void;
   private _unsubscribeComposeRecovery?: () => void;
   private readonly _composeRecoveryOwner = Symbol("composeRecoveryOwner");
+  private readonly _sendChatComposerRequest =
+    createConversationChatSendHandler<Message>({
+      conversation: this,
+      channel: () => this.channel(),
+      sendTextAndWaitAck: (content, onEnqueued) =>
+        this.sendTextAndWaitAck(content, undefined, onEnqueued),
+      sendMediaAndWait: (content, onEnqueued) =>
+        this.sendMediaAndWait(content, undefined, onEnqueued),
+      sendRichTextMixed: (blocks, reply, onEnqueued) =>
+        this.sendRichTextMixed(blocks, reply, onEnqueued),
+      resolveReplyFromName: (message) => {
+        const channelInfo = getImChannelInfo(
+          WKSDK.shared(),
+          new Channel(message.fromUID, ChannelTypePerson),
+        );
+        return channelInfo?.title || "";
+      },
+      submitVoiceFeedback: (text) => VoiceFeedback.shared()?.submitAll(text),
+    });
   private _attentionRefreshHandler = () => {
     const run = () => this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
@@ -3158,203 +3169,7 @@ export class Conversation
                         }
                         this.props.onMessageSent?.();
                       }}
-                      onSend={async ({
-                        attemptId,
-                        text,
-                        mention,
-                        topFiles,
-                        editorBlocks,
-                        sendTarget,
-                        sendProgress,
-                      }: ChatSendRequest<Message>): Promise<ChatSendOutcome> => {
-                        // outcome 告诉 MessageInput 已消费 compose 的精确结算结果。
-                        // 关键：混排 (text+image) 在入队前上传失败时必须返回 false，
-                        // 否则整条消息会丢 (octo-web#227)；反之，**已入队但 ack 失败/
-                        // 超时必须保持 editorConsumed=true，否则可见内容会被塞回输入框
-                        // (octo-web#1280)。
-                        VoiceFeedback.shared()?.submitAll(text);
-
-                        // reply/edit ownership is captured with the compose.
-                        // Never read the live VM here: queued sends must retain
-                        // the target selected when their editor state was consumed.
-                        const target = sendTarget;
-                        // ── 辅助：发送单张图片（读取预览+宽高） ──────────────
-                        // 返回 true 表示消息已入队 / 发送; false 表示被预检拒绝、
-                        // 调用方应据此决定是否继续后续流程 (例如不要再补一条
-                        // 空回复消息: octo-web#119 review by Jerry-Xin)。
-                        const sendImageFile = async (
-                          file: File,
-                          onEnqueued: () => void,
-                        ): Promise<boolean> => {
-                          // 上传前预检：后端会对文件大小/类型做校验,失败时直接 Toast,
-                          // 不要让本地气泡先进聊天框再显示失败 (octo-web#119)。
-                          try {
-                            const dot = (file.name || "").lastIndexOf(".");
-                            const ext =
-                              dot > 0 ? file.name.substring(dot + 1) : "";
-                            await precheckUploadCredentials(
-                              file,
-                              this.channel(),
-                              ext
-                            );
-                          } catch (err) {
-                            const msg =
-                              (err as { msg?: string })?.msg ||
-                              t("base.conversation.upload.failed");
-                            Toast.error(
-                              t("base.conversation.upload.imageFailed", {
-                                values: { name: file.name, message: msg },
-                              })
-                            );
-                            return false;
-                          }
-                          const reader = new FileReader();
-                          const previewUrl = await new Promise<string>(
-                            (resolve) => {
-                              reader.onloadend = () =>
-                                resolve(reader.result as string);
-                              reader.onerror = () => resolve("");
-                              reader.readAsDataURL(file);
-                            }
-                          );
-                          if (!previewUrl) {
-                            Toast.error(
-                              t("base.conversation.upload.imageReadFailed", {
-                                values: { name: file.name },
-                              })
-                            );
-                            return false;
-                          }
-                          const { width, height } = await new Promise<{
-                            width: number;
-                            height: number;
-                          }>((resolve) => {
-                            const img = new Image();
-                            img.onload = () =>
-                              resolve({
-                                width: img.naturalWidth,
-                                height: img.naturalHeight,
-                              });
-                            img.onerror = () =>
-                              resolve({ width: 0, height: 0 });
-                            img.src = previewUrl;
-                          });
-                          return this.sendMediaAndWait(
-                            new ImageContent(file, previewUrl, width, height),
-                            undefined,
-                            onEnqueued,
-                          );
-                        };
-
-                        // ── 辅助：发送单个非图片文件 ──────────────
-                        const sendFileAttachment = async (
-                          file: File,
-                          onEnqueued: () => void,
-                        ): Promise<boolean> => {
-                          const name = file.name || "unknown";
-                          const dotIndex = name.lastIndexOf(".");
-                          const ext =
-                            dotIndex > 0 ? name.substring(dotIndex + 1) : "";
-                          // 上传前预检 (octo-web#119)。
-                          try {
-                            await precheckUploadCredentials(
-                              file,
-                              this.channel(),
-                              ext
-                            );
-                          } catch (err) {
-                            const msg =
-                              (err as { msg?: string })?.msg ||
-                              t("base.conversation.upload.failed");
-                            Toast.error(
-                              t("base.conversation.upload.fileFailed", {
-                                values: { name, message: msg },
-                              })
-                            );
-                            return false;
-                          }
-                          return this.sendMediaAndWait(
-                            new FileContent(file, name, ext, file.size),
-                            undefined,
-                            onEnqueued,
-                          );
-                        };
-
-                        const request: ChatSendRequest<Message> = {
-                          attemptId,
-                          text,
-                          mention,
-                          topFiles,
-                          editorBlocks,
-                          sendTarget: target,
-                          sendProgress,
-                        };
-                        const plan = buildChatSendPlan(request);
-                        sendProgress?.setExpectedPartIds(
-                          plan.operations.flatMap(({ partIds }) => partIds),
-                        );
-
-                        const transport = createConversationChatTransport<Message>(
-                          this,
-                          {
-                            sendTextAndWaitAck: (content, onEnqueued) =>
-                              this.sendTextAndWaitAck(
-                                content,
-                                undefined,
-                                onEnqueued,
-                              ),
-                            sendImageFile,
-                            sendFileAttachment,
-                            sendRichTextMixed: (
-                              blocks,
-                              operationReply,
-                              onEnqueued,
-                            ) =>
-                              this.sendRichTextMixed(
-                                blocks,
-                                operationReply,
-                                onEnqueued,
-                              ),
-                            resolveReplyFromName: (message) => {
-                              const channelInfo = getImChannelInfo(
-                                WKSDK.shared(),
-                                new Channel(message.fromUID, ChannelTypePerson),
-                              );
-                              return channelInfo?.title || "";
-                            },
-                          },
-                        );
-                        const execution = await executeChatSendPlan(
-                          plan,
-                          transport,
-                          {
-                            onPartsEnqueued: (partIds) =>
-                              sendProgress?.markPartsEnqueued(partIds),
-                          },
-                        );
-                        execution.operations.forEach(({ operation, error }) => {
-                          if (!error) return;
-                          console.error(
-                            `[Conversation] ${operation.kind} operation failed:`,
-                            error,
-                          );
-                          if (!(error as { toasted?: boolean })?.toasted) {
-                            Toast.error(
-                              operation.kind === "send_media"
-                                ? t("base.conversation.upload.fileSendFailed", {
-                                    values: { name: operation.attachment.file.name },
-                                  })
-                                : t("base.conversation.message.sendFailed"),
-                            );
-                          }
-                        });
-                        const outcome = settleChatSendExecution(
-                          request,
-                          execution,
-                        );
-                        return outcome;
-
-                      }}
+                      onSend={this._sendChatComposerRequest}
                     ></ChatComposer>
                       </>
                     )}
