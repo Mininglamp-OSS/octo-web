@@ -1,4 +1,5 @@
 import React from "react";
+import { IconEdit } from "@douyinfe/semi-icons";
 import { Input } from "@douyinfe/semi-ui";
 
 import { GroupAvatarEditModal, GroupAvatarPreview, WKModal } from "@octo/base";
@@ -43,12 +44,17 @@ function GroupCreateDialog({
                   name={form.groupName}
                   size={48}
                 />
-                <span
+                <button
+                  type="button"
                   className="group-create-edit-avatar"
                   onClick={actions.onOpenAvatarEditor}
                 >
+                  <IconEdit
+                    className="group-create-edit-avatar-icon"
+                    aria-hidden="true"
+                  />
                   {copy.editAvatar}
-                </span>
+                </button>
               </div>
             </div>
 

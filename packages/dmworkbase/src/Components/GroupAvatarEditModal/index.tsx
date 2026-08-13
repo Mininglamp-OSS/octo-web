@@ -189,10 +189,13 @@ export const GroupAvatarEditForm: React.FC<GroupAvatarEditFormProps> = ({
               "wk-group-avatar-edit-color" +
               (c.index === colorIndex ? " selected" : "")
             }
-            style={{
-              background: c.fill,
-              borderColor: c.index === colorIndex ? c.main : "transparent",
-            }}
+            style={
+              {
+                background: c.fill,
+                borderColor: c.index === colorIndex ? c.main : "transparent",
+                "--wk-group-avatar-color": c.main,
+              } as React.CSSProperties
+            }
             onClick={() => selectColor(c.index)}
             disabled={disabled}
             aria-label={`avatar-color-${c.index}`}
