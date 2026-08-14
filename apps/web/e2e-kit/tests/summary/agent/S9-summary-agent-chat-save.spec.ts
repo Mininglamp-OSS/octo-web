@@ -101,7 +101,8 @@ test.describe("@S9 @p0 @summary @agent @summary-agent @summary-create @summary-d
     await authedPage.getByTestId(T.agentSaveTitleInput).fill("S9 Agent 风险总结");
     await authedPage.getByTestId(T.agentSaveConfirmBtn).click();
 
-    // P1 回归：切 Agent 时已清空 selectedMembers，保存请求不得携带 participants。
+    // P1 回归：Agent 保存不携带 participants（payload 边界守卫 mode !== 'agent'）。
+    // selectedMembers 不再被清空——往返切换后选择仍保留（见上方 Agent→Normal 断言）。
     await expect(authedPage.getByText("AI 总结已保存")).toBeVisible({ timeout: 15_000 });
     const saveBody = await authedPage.evaluate(
       () => (window as unknown as { __s9State__?: { saveBody: unknown } }).__s9State__?.saveBody
