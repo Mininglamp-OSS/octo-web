@@ -1,4 +1,5 @@
 import APIClient from "./APIClient";
+import { apiPath } from "./apiPath";
 
 /**
  * 群入站 Webhook（Incoming Webhook）类型与纯工具函数。
@@ -156,19 +157,19 @@ export const IncomingWebhookService = {
     },
 
     update(groupNo: string, webhookId: string, request: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhook> {
-        return APIClient.shared.put(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}`, request);
+        return APIClient.shared.put(apiPath`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}`, request);
     },
 
     delete(groupNo: string, webhookId: string, threadShortId?: string): Promise<void> {
-        return APIClient.shared.delete(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}`);
+        return APIClient.shared.delete(apiPath`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}`);
     },
 
     regenerate(groupNo: string, webhookId: string, threadShortId?: string): Promise<IncomingWebhookCreateResp> {
-        return APIClient.shared.post(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}/regenerate`);
+        return APIClient.shared.post(apiPath`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}/regenerate`);
     },
 
     test(groupNo: string, webhookId: string, threadShortId?: string): Promise<void> {
-        return APIClient.shared.post(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}/test`);
+        return APIClient.shared.post(apiPath`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}/test`);
     },
 };
 

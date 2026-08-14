@@ -173,6 +173,7 @@ export function buildGroupProfileRows({
   return [
     new Row({
       cell: ChannelSettingInlineEditRow,
+      trackEvent: "group_name_edit_opened",
       properties: {
         title: t("base.module.channelSettings.groupName"),
         value: channelInfo?.title || "",
@@ -201,6 +202,7 @@ export function buildGroupProfileRows({
     }),
     new Row({
       cell: GroupAvatarSettingRow,
+      trackEvent: "group_avatar_edit_opened",
       properties: {
         title: t("base.module.channelSettings.groupAvatar"),
         icon: (
@@ -226,6 +228,7 @@ export function buildGroupProfileRows({
     }),
     new Row({
       cell: ChannelSettingIconRow,
+      trackEvent: "group_qrcode_viewed",
       properties: {
         title: t("base.module.channelSettings.groupQrCode"),
         icon: <QrCode className="wk-channelsetting-qrcode-icon" aria-hidden />,
@@ -241,6 +244,7 @@ export function buildGroupProfileRows({
     }),
     new Row({
       cell: ChannelSettingInlineEditRow,
+      trackEvent: "group_announcement_edit_opened",
       properties: {
         title: t("base.module.channelSettings.groupNotice"),
         value: channelInfo?.orgData?.notice,

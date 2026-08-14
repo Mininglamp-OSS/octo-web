@@ -29,6 +29,7 @@ export function buildChannelDangerSection(
     rows: [
       new Row({
         cell: ChannelSettingActionRow,
+        trackEvent: "conversation_clear_dialog_opened",
         properties: {
           title: t("base.module.channelSettings.clearMessages"),
           danger: true,
@@ -44,6 +45,7 @@ export function buildChannelDangerSection(
       }),
       new Row({
         cell: ChannelSettingActionRow,
+        trackEvent: "conversation_leave_dialog_opened",
         properties: {
           title: t("base.module.channelSettings.deleteAndExit"),
           danger: true,

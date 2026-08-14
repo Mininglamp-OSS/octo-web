@@ -8,6 +8,7 @@ import APIClient from "./APIClient";
 import { ChannelTypeCommunityTopic } from "./Const";
 import { hasSpacePrefix, stripSpacePrefix } from "./SpacePrefix";
 import { parseThreadChannelId } from "./Thread";
+import { apiPath } from './apiPath'
 
 export type ChannelSettingPayload = Record<string, any>;
 
@@ -34,12 +35,12 @@ export async function updateChannelSetting(
   channel: Channel
 ): Promise<void> {
   if (channel.channelType === ChannelTypeGroup) {
-    return APIClient.shared.put(`groups/${channel.channelID}/setting`, setting);
+    return APIClient.shared.put(apiPath`groups/${channel.channelID}/setting`, setting);
   }
 
   if (channel.channelType === ChannelTypePerson) {
     return APIClient.shared.put(
-      `users/${stripSpacePrefix(channel.channelID)}/setting`,
+      apiPath`users/${stripSpacePrefix(channel.channelID)}/setting`,
       setting
     );
   }
@@ -50,7 +51,7 @@ export async function updateChannelSetting(
       return;
     }
     return APIClient.shared.put(
-      `groups/${threadInfo.groupNo}/threads/${threadInfo.shortId}/setting`,
+      apiPath`groups/${threadInfo.groupNo}/threads/${threadInfo.shortId}/setting`,
       setting
     );
   }
@@ -83,7 +84,7 @@ export async function addChannelSubscribers(
   channel: Channel,
   uids: string[]
 ): Promise<void> {
-  await APIClient.shared.post(`groups/${channel.channelID}/members`, {
+  await APIClient.shared.post(apiPath`groups/${channel.channelID}/members`, {
     members: uids,
   });
 }
@@ -92,7 +93,7 @@ export async function removeChannelSubscribers(
   channel: Channel,
   uids: string[]
 ): Promise<void> {
-  await APIClient.shared.delete(`groups/${channel.channelID}/members`, {
+  await APIClient.shared.delete(apiPath`groups/${channel.channelID}/members`, {
     data: {
       members: uids,
     },
@@ -104,7 +105,7 @@ export function updateChannelField(
   field: string,
   value: string
 ): Promise<void> {
-  return APIClient.shared.put(`groups/${channel.channelID}`, {
+  return APIClient.shared.put(apiPath`groups/${channel.channelID}`, {
     [field]: value,
   });
 }
@@ -140,7 +141,7 @@ export function transferChannelOwner(
   if (isPersonChannel(channel)) {
     return Promise.resolve();
   }
-  return APIClient.shared.post(`groups/${channel.channelID}/transfer/${uid}`);
+  return APIClient.shared.post(apiPath`groups/${channel.channelID}/transfer/${uid}`);
 }
 
 export function updateChannelSubscriberAttr(
@@ -152,7 +153,7 @@ export function updateChannelSubscriberAttr(
     return Promise.resolve();
   }
   return APIClient.shared.put(
-    `groups/${channel.channelID}/members/${subscriberUID}`,
+    apiPath`groups/${channel.channelID}/members/${subscriberUID}`,
     attr
   );
 }
@@ -161,7 +162,7 @@ export function exitChannel(channel: Channel): Promise<void> {
   if (isPersonChannel(channel)) {
     return Promise.resolve();
   }
-  return APIClient.shared.post(`groups/${channel.channelID}/exit`);
+  return APIClient.shared.post(apiPath`groups/${channel.channelID}/exit`);
 }
 
 export function updateThread(
@@ -169,9 +170,9 @@ export function updateThread(
   shortId: string,
   data: Record<string, any>
 ): Promise<void> {
-  return APIClient.shared.put(`groups/${groupNo}/threads/${shortId}`, data);
+  return APIClient.shared.put(apiPath`groups/${groupNo}/threads/${shortId}`, data);
 }
 
 export function leaveThread(shortId: string): Promise<void> {
-  return APIClient.shared.post(`threads/${shortId}/leave`);
+  return APIClient.shared.post(apiPath`threads/${shortId}/leave`);
 }

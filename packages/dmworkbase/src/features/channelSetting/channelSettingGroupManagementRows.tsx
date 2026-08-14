@@ -52,6 +52,7 @@ function buildTransferOwnerRow(
   let selectedItems: Subscriber[] = [];
   return new Row({
     cell: ChannelSettingInfoRow,
+    trackEvent: "group_transfer_dialog_opened",
     properties: {
       title: t("base.module.channelSettings.transferOwner"),
       onClick: () => {
@@ -137,6 +138,7 @@ export function buildGroupManagementRows({
     rows.push(
       new Row({
         cell: ChannelSettingInfoRow,
+        trackEvent: "group_md_viewed",
         properties: {
           title: "GROUP.md",
           value: hasGroupMd
@@ -160,6 +162,7 @@ export function buildGroupManagementRows({
       }),
       new Row({
         cell: ChannelSettingInfoRow,
+        trackEvent: "group_webhook_panel_opened",
         properties: {
           title: t("base.module.channelSettings.incomingWebhook"),
           onClick: () => {
@@ -187,6 +190,7 @@ export function buildGroupManagementRows({
       rows.push(
         new Row({
           cell: ChannelSettingInfoRow,
+          trackEvent: "group_management_page_opened",
           properties: {
             title: t("base.module.channelSettings.groupManagement"),
             onClick: () => {
@@ -211,6 +215,7 @@ export function buildGroupManagementRows({
   rows.push(
     new Row({
       cell: ChannelSettingInlineEditRow,
+      trackEvent: "conversation_remark_edit_opened",
       properties: {
         title: t("base.module.channelSettings.remark"),
         value: channelInfo?.orgData?.remark || "",

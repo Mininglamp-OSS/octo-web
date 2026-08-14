@@ -18,6 +18,13 @@
  *   - 远程 kill switch:`enabled=false` 时 track/pageView 立即 return,清空队列,业务零影响。
  */
 
+// 唯一的模块依赖:埋点路由模板 registry(见 apiPath.ts)。apiPath 自身零依赖,不成环。
+// 供 normalizePath 优先命中调用处已知的路由模板,命中不了才退回本文件的白名单归一兜底。
+import { templateForPathname } from './apiPath'
+// 锚点规则表(见 TrackRules.ts):点击委托 closest('[data-track]') 落空后的纯前端 fallback。
+// TrackRules 自身零依赖,不成环。
+import { TRACK_RULES, buildIndex, matchRoute, type TrackRule, type TrackRuleIndex } from './TrackRules'
+
 export type TrackPrimitive = string | number | boolean | null
 
 /** 上报信封:每条事件出队前补齐(§2.4)。刻意不含 flow_id / actor_*。 */
@@ -140,15 +147,24 @@ const ROUTE_WORDS = new Set<string>([
 ])
 
 /**
- * 请求路径归一(§8 隐私边界:绝不泄文件名 / 对象键 / 用户名 / 凭证 / 正文)。**白名单路由词式**:
- * 每段只有命中 ROUTE_WORDS(声明过的静态路由词)才原样保留;其余一切一律占位符化——纯数字 /
- * 长 hex / uuid 记作 :id(仅为可读性,安全上等价),其余记作 :seg。默认即 mask,故用户名、
- * 一次性 login_authcode、邀请码、invite token、文件名、percent-encoded 段等都不可能进 telemetry。
+ * 请求路径归一(§8 隐私边界:绝不泄文件名 / 对象键 / 用户名 / 凭证 / 正文)。
+ *
+ * **优先**:命中调用处经 `apiPath` 登记的路由模板(见 apiPath.ts)——直接上报源码里的静态
+ * 路由模板(`/api/v1/spaces/:id/categories/:id`),字面业务段原样可见、变量段占位 :id,
+ * 同一 endpoint 无论 id 怎么变都是同一个稳定模板,且模板里从不含变量值,隐私天然安全。
+ *
+ * **兜底**(未经 apiPath 的请求 / 直接 axios / 第三方库):**白名单路由词式**归一——每段只有
+ * 命中 ROUTE_WORDS(声明过的静态路由词)才原样保留;其余一切一律占位符化——纯数字 / 长 hex /
+ * uuid 记作 :id(仅为可读性,安全上等价),其余记作 :seg。默认即 mask,故用户名、一次性
+ * login_authcode、邀请码、invite token、文件名、percent-encoded 段等都不可能进 telemetry。
  */
 function normalizePath(rawUrl: string): string {
     try {
         // 相对/绝对都能解析;base 仅用于补全,不进结果
         const u = new URL(rawUrl, 'http://x')
+        // 优先:调用处已知的路由模板(无损、稳定、隐私安全)。按 pathname 精确命中。
+        const template = templateForPathname(u.pathname)
+        if (template !== undefined) return template
         return u.pathname
             .split('/')
             .map((seg) => {
@@ -219,6 +235,12 @@ function statusBucket(status: number): string {
 function isAbortError(err: unknown): boolean {
     return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError'
 }
+
+/**
+ * 点击委托 resolver 的归宿:命中的元素 + 事件名 + 可选静态 props。
+ * data-track 路径 event 取 dataset.track、props 省略;规则表路径 event/props 来自 TrackRule。
+ */
+type Resolved = { el: HTMLElement; event: string; props?: Record<string, TrackPrimitive> }
 
 class DapImpl {
     /** 会话内唯一;仅作为埋点事件 envelope 的 session_id 随上报发出(采集启用时才发)。纯内存,不落盘。 */
@@ -578,28 +600,44 @@ class DapImpl {
     // ----------------------------------------------- 机制① 全局事件委托
 
     private installClickDelegation(): void {
-        // 解析被点/被激活元素归属的 [data-track],并施加 data-track-ignore 排除。
-        const resolveTracked = (target: HTMLElement | null): HTMLElement | null => {
+        // 规则表索引:安装时构建一次(此刻读 TRACK_RULES)。data-track 落空才查它,故对现有
+        // 声明式埋点零影响;表为空时 fallback 恒 miss,行为与旧实现完全一致。
+        const index = buildIndex(TRACK_RULES)
+        // 解析被点/被激活元素归属的埋点归宿:先 data-track(绝对优先),落空再查规则表 fallback。
+        // 返回从「元素」升级为 { el, event, props? }:data-track 命中时 event 取 dataset.track、
+        // 无静态 props;规则命中时 event / props 来自规则表。两路统一交给 fire()。
+        const resolveTracked = (
+            target: HTMLElement | null,
+            evType: 'click' | 'submit' | 'keydown',
+        ): Resolved | null => {
             if (!target || typeof target.closest !== 'function') return null
             const el = target.closest<HTMLElement>('[data-track]')
-            if (!el) return null
-            // 落在被显式标记「本次交互不代表该 data-track 动作」的子控件里则跳过:
-            // 如会话行(channel_opened)内的拖拽柄/展开线程标签、市场卡片 footer 的编辑/删除
-            // 按钮——它们 stopPropagation 表示「不代表该事件」,但捕获阶段先于 stopPropagation
-            // 执行,故改用 data-track-ignore 显式排除(ignore 须是被点元素到 tracked 元素之间的一层)。
-            const ignore = target.closest<HTMLElement>('[data-track-ignore]')
-            if (ignore && el !== ignore && el.contains(ignore)) return null
-            return el
+            if (el) {
+                // 落在被显式标记「本次交互不代表该 data-track 动作」的子控件里则跳过:
+                // 如会话行(channel_opened)内的拖拽柄/展开线程标签、市场卡片 footer 的编辑/删除
+                // 按钮——它们 stopPropagation 表示「不代表该事件」,但捕获阶段先于 stopPropagation
+                // 执行,故改用 data-track-ignore 显式排除(ignore 须是被点元素到 tracked 元素之间的一层)。
+                if (this.isTrackIgnored(target, el)) return null
+                const event = el.dataset.track
+                if (!event) return null
+                return { el, event }
+            }
+            // data-track 落空 → 规则表 fallback。只吃「没有 data-track」的节点 → 现有埋点零回归。
+            return this.resolveByRules(target, evType, index)
         }
-        const fire = (el: HTMLElement) => {
-            const name = el.dataset.track
-            if (!name) return
-            this.track(name, this.collectDatasetProps(el))
+        const fire = (r: Resolved) => {
+            if (!r.event) return
+            // 合并规则静态 props 与 collectDatasetProps(el)(读 data-*,不读 value/正文);
+            // 让运行时 data-object-id 等覆盖同名静态项。data-track 路径无静态 props,退化为原行为。
+            const dsProps = this.collectDatasetProps(r.el)
+            const props = r.props ? { ...r.props, ...dsProps } : dsProps
+            this.track(r.event, props)
         }
         const clickHandler = (e: Event) => {
             this.safe(() => {
-                const el = resolveTracked(e.target as HTMLElement | null)
-                if (el) fire(el)
+                const evType = e.type === 'submit' ? 'submit' : 'click'
+                const r = resolveTracked(e.target as HTMLElement | null, evType)
+                if (r) fire(r)
             })
         }
         // 键盘激活补采:role="button" 等**非原生**控件(如市场卡片 McpCard/SkillCard 是
@@ -607,14 +645,14 @@ class DapImpl {
         // 派发 click,声明式 click 委托整条漏采——键盘用户打开详情却无任何事件(见 PR #1320
         // review P1-4)。这里补一条 keydown:仅对**非原生可激活**的聚焦元素在 Enter/Space 时
         // 补发;原生 button/a[href]/input/select/textarea/summary 会自行合成 click(已被上面的
-        // 委托覆盖),显式排除以免双记。
+        // 委托覆盖),显式排除以免双记。规则表命中的节点走同一 resolver,故键盘激活同样能采到。
         const keydownHandler = (e: KeyboardEvent) => {
             this.safe(() => {
                 if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return
                 const target = e.target as HTMLElement | null
                 if (!target || this.isNativeActivatable(target)) return
-                const el = resolveTracked(target)
-                if (el) fire(el)
+                const r = resolveTracked(target, 'keydown')
+                if (r) fire(r)
             })
         }
         // 捕获阶段:即使业务层 stopPropagation 也能采到。
@@ -627,6 +665,120 @@ class DapImpl {
         document.addEventListener('click', clickHandler, true)
         document.addEventListener('submit', clickHandler, true)
         document.addEventListener('keydown', keydownHandler, true)
+    }
+
+    /**
+     * 规则表 fallback:从被点元素沿 parentElement 向上 walk,逐个祖先看 `data-testid`,用它查
+     * byTestid 主索引;再用 route + closestTestid + on + role 做 AND 约束消歧。命中数 >1 打 warn
+     * 取第一条。testid 主路径 miss 后,再走少量 loose(role/aria)线性兜底。全程只读 data-testid /
+     * role 属性,绝不读 value / 正文。
+     */
+    private resolveByRules(
+        target: HTMLElement,
+        evType: 'click' | 'submit' | 'keydown',
+        index: TrackRuleIndex,
+    ): Resolved | null {
+        const route = this.currentRoute()
+        // ① testid 主路径(O(1) 查 Map):第一个「有 data-testid 且规则命中」的祖先胜出。
+        let node: HTMLElement | null = target
+        while (node) {
+            const testid = node.dataset ? node.dataset.testid : undefined
+            if (testid) {
+                const rules = index.byTestid.get(testid)
+                if (rules && rules.length) {
+                    const el = node
+                    const matched = rules.filter(
+                        (r) =>
+                            matchRoute(r.route, route) &&
+                            this.matchOn(r.on, evType) &&
+                            this.matchClosest(el, r.closestTestid) &&
+                            this.matchRole(el, r.role),
+                    )
+                    if (matched.length) {
+                        if (matched.length > 1) this.warnAmbiguous(testid, matched)
+                        // data-track-ignore 复用:落在 ignore 子树里则视为「不代表该事件」,跳过。
+                        if (this.isTrackIgnored(target, el)) return null
+                        return { el, event: matched[0].event, props: matched[0].props }
+                    }
+                }
+            }
+            node = node.parentElement
+        }
+        // ② loose 兜底(线性,数量应很小):无 testid、靠 role/aria 命中。沿祖先找首个 role 匹配的元素。
+        for (const r of index.loose) {
+            if (!r.role) continue // loose 规则必须带 role,否则会匹配一切
+            let n: HTMLElement | null = target
+            while (n) {
+                const el = n
+                if (
+                    this.matchRole(el, r.role) &&
+                    matchRoute(r.route, route) &&
+                    this.matchOn(r.on, evType) &&
+                    this.matchClosest(el, r.closestTestid)
+                ) {
+                    if (this.isTrackIgnored(target, el)) return null
+                    return { el, event: r.event, props: r.props }
+                }
+                n = n.parentElement
+            }
+        }
+        return null
+    }
+
+    /** 当前路由(location.pathname);拿不到(SSR/测试无 DOM)返回空串 → 带 route 约束的规则一律不命中。 */
+    private currentRoute(): string {
+        try {
+            const loc = (globalThis as { location?: Location }).location
+            return loc && loc.pathname ? loc.pathname : ''
+        } catch {
+            return ''
+        }
+    }
+
+    /** on 约束:规则缺省 on → 三类交互都可;否则仅在指定交互类型触发。 */
+    private matchOn(on: TrackRule['on'], evType: 'click' | 'submit' | 'keydown'): boolean {
+        return !on || on === evType
+    }
+
+    /** closestTestid 约束:规则缺省 → 恒真;否则该元素需能 closest 到带此 data-testid 的祖先(消歧用)。 */
+    private matchClosest(el: HTMLElement, closestTestid?: string): boolean {
+        if (!closestTestid) return true
+        try {
+            return !!el.closest(`[data-testid="${closestTestid}"]`)
+        } catch {
+            return false
+        }
+    }
+
+    /** role 约束:规则缺省 → 恒真;否则该元素的 role 属性需精确等于它。 */
+    private matchRole(el: HTMLElement, role?: string): boolean {
+        if (!role) return true
+        return typeof el.getAttribute === 'function' && el.getAttribute('role') === role
+    }
+
+    /**
+     * data-track-ignore 排除(data-track 路径与规则表路径共用):被点元素最近的 data-track-ignore
+     * 若严格落在归宿元素 `el` 内部(el.contains(ignore) 且 el !== ignore),则本次交互「不代表该
+     * 事件」,跳过。
+     */
+    private isTrackIgnored(target: HTMLElement, el: HTMLElement): boolean {
+        const ignore = target.closest<HTMLElement>('[data-track-ignore]')
+        return !!ignore && el !== ignore && el.contains(ignore)
+    }
+
+    /**
+     * 规则表消歧告警:同一 data-testid 在当前约束下命中多条规则,取第一条并 warn,提示规则表
+     * 作者补 route/closestTestid/on 约束。仅为配置期质量信号,包在 try 里绝不抛、不影响业务。
+     */
+    private warnAmbiguous(testid: string, matched: TrackRule[]): void {
+        try {
+            const c = (globalThis as { console?: Console }).console
+            c?.warn?.(
+                `[Dap] ambiguous track rules for data-testid="${testid}" (${matched.length} matched); using "${matched[0].event}"`,
+            )
+        } catch {
+            /* ignore */
+        }
     }
 
     /**

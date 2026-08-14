@@ -28,6 +28,7 @@ export function buildMyGroupNicknameSection(
     rows: [
       new Row({
         cell: ChannelSettingInlineEditRow,
+        trackEvent: "group_nickname_edit_opened",
         properties: {
           title: t("base.module.channelSettings.myGroupNickname"),
           value: groupNickname,
