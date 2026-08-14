@@ -57,7 +57,7 @@ import {
   captureSendTarget,
   disposeComposeRecoveryObjectUrls,
   imageBlockToPasteFile,
-  restoreSendTargetIfVacant,
+  reconcileRecoveredSendTarget,
   type ComposeRecoveryRecord,
   type RecoveredComposeHydration,
   type ChatSendSettlement,
@@ -3102,8 +3102,8 @@ export class Conversation
                       recoveredComposes={recoveredComposes}
                       onComposeRecovery={this.recordComposeRecovery}
                       onRecoveredComposes={this.consumeComposeRecoveries}
-                      onRestoreRecoveredTarget={(target) => {
-                        restoreSendTargetIfVacant<Message>(
+                      onRestoreRecoveredTarget={(target) =>
+                        reconcileRecoveredSendTarget<Message>(
                           {
                             getReplyMessage: () => vm.currentReplyMessage,
                             setReplyMessage: (message) => {
@@ -3114,14 +3114,16 @@ export class Conversation
                               vm.currentHandlerType = handlerType;
                             },
                           },
-                          {
-                            replyMessage: target.replyMessage as
-                              | Message
-                              | undefined,
-                            handlerType: target.handlerType,
-                          },
-                        );
-                      }}
+                          target
+                            ? {
+                                replyMessage: target.replyMessage as
+                                  | Message
+                                  | undefined,
+                                handlerType: target.handlerType,
+                              }
+                            : undefined,
+                        )
+                      }
                       botCommands={botCommands}
                       onAddAttachment={(
                         addFn: (

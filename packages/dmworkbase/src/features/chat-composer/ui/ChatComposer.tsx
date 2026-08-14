@@ -339,10 +339,15 @@ export interface ChatComposerProps {
   /** Recover consumed composes transferred from an earlier editor instance. */
   recoveredComposes?: ComposeRecoveryRecord[];
   onRecoveredComposes?: (hydration: RecoveredComposeHydration) => void;
-  onRestoreRecoveredTarget?: (target: {
-    replyMessage?: unknown;
-    handlerType: number;
-  }) => void;
+  /** Return false when the host cannot safely prepare this recovered target. */
+  onRestoreRecoveredTarget?: (
+    target:
+      | {
+          replyMessage?: unknown;
+          handlerType: number;
+        }
+      | undefined,
+  ) => boolean | void;
   members?: Array<ChatComposerMember>;
   onInputRef?: any;
   onAddAttachment?: (
@@ -1120,6 +1125,13 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       return;
     }
 
+    // Target coordination must succeed before any editor or attachment state
+    // mutates. Otherwise a newer active reply could capture the merged content,
+    // while acknowledging here would also discard the only recovery copy.
+    const hydrated = prepared.map(({ item }) => item);
+    const target = commonRecoveredTarget(hydrated);
+    if (props.onRestoreRecoveredTarget?.(target) === false) return;
+
     prepared.forEach(({ item }) => {
       const previewUrls = new Map(
         item.editorObjectUrls.map(({ id, url }) => [id, url]),
@@ -1161,8 +1173,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         blockOffset += inserted;
       }
     });
-    const hydrated = prepared.map(({ item }) => item);
-
     const recoveredTopAttachments = hydrated.flatMap((item) =>
       item.topAttachments.filter(
         (attachment): attachment is TopAttachmentItem =>
@@ -1173,11 +1183,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       attachmentStore.restoreTopAttachments(recoveredTopAttachments, 0);
     }
 
-    // One composer can represent only one reply target. Recover it only when
-    // the whole batch agrees, otherwise the merged content would be silently
-    // attached to whichever failed attempt happened to come first.
-    const target = commonRecoveredTarget(hydrated);
-    if (target) props.onRestoreRecoveredTarget?.(target);
     if (hydrated.some((item) => item.expanded)) {
       setExpanded(true);
       props.onExpandChange?.(true);

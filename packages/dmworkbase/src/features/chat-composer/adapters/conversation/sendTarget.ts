@@ -79,3 +79,27 @@ export function restoreSendTargetIfVacant<M>(
   host.setHandlerType(target.handlerType);
   return true;
 }
+
+/**
+ * Make the host target state safe for hydrating recovered compose content.
+ * A newer, different target is never cleared or overwritten; the recovery
+ * remains owned by the store until that conflict is resolved.
+ */
+export function reconcileRecoveredSendTarget<M>(
+  host: SendTargetHost<M>,
+  target?: RecoveredSendTarget<M>,
+): boolean {
+  const current = host.getReplyMessage();
+  if (!target?.replyMessage) {
+    if (current) return false;
+    host.setHandlerType(0);
+    return true;
+  }
+  if (current) {
+    return (
+      current === target.replyMessage &&
+      host.getHandlerType() === target.handlerType
+    );
+  }
+  return restoreSendTargetIfVacant(host, target);
+}

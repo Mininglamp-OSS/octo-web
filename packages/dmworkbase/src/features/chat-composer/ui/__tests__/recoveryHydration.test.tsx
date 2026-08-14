@@ -77,7 +77,7 @@ describe("MessageInput recovery hydration", () => {
   it("does not assign merged recovery content to conflicting reply targets", async () => {
     let inputContext: MessageInputContext | undefined;
     const recovered: RecoveredComposeHydration[] = [];
-    const onRestoreRecoveredTarget = vi.fn();
+    const onRestoreRecoveredTarget = vi.fn(() => true);
     const firstTarget = { id: "reply-A" };
     const secondTarget = { id: "reply-B" };
     const first: ComposeRecoveryRecord = {
@@ -106,7 +106,8 @@ describe("MessageInput recovery hydration", () => {
       expect(inputContext?.text()).toContain("failed A");
       expect(inputContext?.text()).toContain("failed B");
     });
-    expect(onRestoreRecoveredTarget).not.toHaveBeenCalled();
+    expect(onRestoreRecoveredTarget).toHaveBeenCalledOnce();
+    expect(onRestoreRecoveredTarget).toHaveBeenCalledWith(undefined);
     expect(recovered).toEqual([
       {
         attemptIds: ["attempt-A", "attempt-B"],
@@ -119,7 +120,7 @@ describe("MessageInput recovery hydration", () => {
 
   it("restores the reply target when every recovery record agrees", async () => {
     let inputContext: MessageInputContext | undefined;
-    const onRestoreRecoveredTarget = vi.fn();
+    const onRestoreRecoveredTarget = vi.fn(() => true);
     const replyMessage = { id: "reply-A" };
     const sendTarget = { replyMessage, handlerType: 1 };
     const first: ComposeRecoveryRecord = {
@@ -146,6 +147,36 @@ describe("MessageInput recovery hydration", () => {
     await waitFor(() => expect(inputContext?.text()).toContain("failed B"));
     expect(onRestoreRecoveredTarget).toHaveBeenCalledOnce();
     expect(onRestoreRecoveredTarget).toHaveBeenCalledWith(sendTarget);
+
+    act(() => inputContext?.clear());
+  });
+
+  it("does not mutate or acknowledge recovery when target coordination fails", async () => {
+    let inputContext: MessageInputContext | undefined;
+    const recovered: RecoveredComposeHydration[] = [];
+    const replyMessage = { id: "reply-A" };
+
+    render(
+      <ChatComposer
+        host={createTestViewHost()}
+        recoveredComposes={[
+          {
+            ...failedCompose("failed A"),
+            sendTarget: { replyMessage, handlerType: 1 },
+          },
+        ]}
+        onContext={(context) => {
+          inputContext = context;
+          context.restoreDraft("new draft");
+        }}
+        onRecoveredComposes={(hydration) => recovered.push(hydration)}
+        onRestoreRecoveredTarget={() => false}
+      />
+    );
+
+    await waitFor(() => expect(inputContext).toBeDefined());
+    expect(inputContext?.text()).toBe("new draft");
+    expect(recovered).toEqual([]);
 
     act(() => inputContext?.clear());
   });
