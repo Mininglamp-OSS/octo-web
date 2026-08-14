@@ -8,8 +8,6 @@ This directory contains development guides and implementation notes for Octo Web
   module, route entry, feature flow, or structured module migration. It defines the pre-work checklist, module layout,
   Service boundary, UI/data split, route rules, i18n/Story requirements, and PR acceptance checklist.
 - [`i18n-agent-guide.md`](./i18n-agent-guide.md) — required reading before changing user-visible copy or multilingual UI behavior.
-- [`overlay-lifecycle-review-guide.md`](./overlay-lifecycle-review-guide.md) — required review checklist for custom
-  pickers, popovers, flyouts, context menus, masks, and other portaled overlays.
 
 ## Implementation Notes
 
