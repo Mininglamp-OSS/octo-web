@@ -56,6 +56,7 @@ import type {
 import { rejectChatComposerSend } from "../domain";
 import {
   ChatComposerAttachmentStore,
+  type EditorComposePart,
   type EditorComposePartRegistry,
 } from "../editor";
 import {
@@ -167,10 +168,13 @@ function extractOrderedBlocks(
   attachmentFilesMap: Map<string, File>,
   members: readonly ChatComposerMember[] | undefined,
   composePartRegistry: EditorComposePartRegistry,
-): EditorContentBlock[] {
-  if (!editorInstance) return [];
-  const json = editorInstance.getJSON();
-  if (!json.content) return [];
+): {
+  blocks: EditorContentBlock[];
+  snapshot: ComposeDoc;
+  editorParts: EditorComposePart[];
+} {
+  const json = editorInstance.getJSON() as ComposeDoc;
+  if (!json.content) return { blocks: [], snapshot: json, editorParts: [] };
 
   const composePartContext = { attachmentFiles: attachmentFilesMap };
   const capturedParts = composePartRegistry.capture(
@@ -179,6 +183,9 @@ function extractOrderedBlocks(
   );
   capturedParts.forEach((part) =>
     composePartRegistry.assertSettlementSupported(part),
+  );
+  const capturedPartByNode = new Map(
+    capturedParts.map((part) => [composePartRegistry.sourceNode(part), part]),
   );
 
   const blocks: EditorContentBlock[] = [];
@@ -194,10 +201,7 @@ function extractOrderedBlocks(
   }
 
   function processNode(node: any): void {
-    const part = composePartRegistry.captureNode(
-      node,
-      composePartContext,
-    );
+    const part = capturedPartByNode.get(node);
     if (part) {
       flushText();
       blocks.push(composePartRegistry.toSendBlock(part));
@@ -247,7 +251,11 @@ function extractOrderedBlocks(
 
   flushText();
 
-  return blocks;
+  return {
+    blocks,
+    snapshot: json,
+    editorParts: capturedParts,
+  };
 }
 
 // Strip zero-width and invisible Unicode characters
@@ -1202,13 +1210,22 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       }),
     );
     let orderedBlocks: EditorContentBlock[];
+    let capturedEditorCompose: {
+      snapshot: ComposeDoc;
+      editorParts: EditorComposePart[];
+    };
     try {
-      orderedBlocks = extractOrderedBlocks(
+      const extracted = extractOrderedBlocks(
         editor,
         attachmentStore.attachmentFiles,
         localMembersRef.current,
         extensions.editor.composeParts,
       );
+      orderedBlocks = extracted.blocks;
+      capturedEditorCompose = {
+        snapshot: extracted.snapshot,
+        editorParts: extracted.editorParts,
+      };
     } catch (err) {
       console.error("[MessageInput] editor compose part is not sendable", err);
       return rejectChatComposerSend("unsupported-content");
@@ -1291,6 +1308,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           consume: (context) =>
             consumeCompose({
               composePartRegistry: extensions.editor.composeParts,
+              captured: capturedEditorCompose,
               editor: {
                 getJSON: () => editor.getJSON() as ComposeDoc,
                 isEmpty: () => editor.isEmpty,

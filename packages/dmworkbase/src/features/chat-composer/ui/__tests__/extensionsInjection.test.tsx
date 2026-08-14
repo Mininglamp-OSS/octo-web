@@ -27,6 +27,13 @@ vi.mock("react-virtuoso", () => ({
 describe("ChatComposer extension injection", () => {
   it("carries a custom editor node into pending UI and the send request", async () => {
     const extensions = createDefaultChatComposerExtensions();
+    const capturePoll = vi.fn((node: any) => ({
+      id: String(node.attrs?.id),
+      kind: "poll",
+      extensionId: "poll",
+      placement: "block" as const,
+      node,
+    }));
     extensions.editor.tiptap.push(
       Node.create({
         name: "poll",
@@ -46,14 +53,9 @@ describe("ChatComposer extension injection", () => {
     );
     extensions.editor.composeParts.register({
       id: "poll",
+      recovery: "snapshot",
       canCapture: (node) => node.type === "poll",
-      capture: (node) => ({
-        id: String(node.attrs?.id),
-        kind: "poll",
-        extensionId: "poll",
-        placement: "block",
-        node,
-      }),
+      capture: capturePoll,
       restore: (part) => part.node,
       toSendBlock: (part) => ({
         type: "extension:poll",
@@ -112,6 +114,7 @@ describe("ChatComposer extension injection", () => {
         ],
       }),
     );
+    expect(capturePoll).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveSend?.(createChatSendOutcome({ editorConsumed: true }));

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { ExtensionChatSendOperation } from "../../domain";
 import { ChatSendOperationRegistry } from "../ChatSendOperationRegistry";
 
@@ -11,10 +11,12 @@ describe("ChatSendOperationRegistry", () => {
 
   it("registers a typed extension operation and returns an unregister handle", async () => {
     const registry = new ChatSendOperationRegistry();
-    const handler = vi.fn(async (operation: LocationOperation) => ({
-      enqueuedPartIds: operation.partIds,
-    }));
-    const unregister = registry.register<LocationOperation>(
+    const handled: LocationOperation[] = [];
+    const handler = vi.fn(async (operation) => {
+      handled.push(operation as LocationOperation);
+      return { enqueuedPartIds: operation.partIds };
+    });
+    const unregister = registry.register(
       "extension:location",
       handler,
     );
@@ -28,8 +30,21 @@ describe("ChatSendOperationRegistry", () => {
       enqueuedPartIds: ["location:0"],
     });
     expect(handler).toHaveBeenCalledWith(operation, events);
+    expect(handled).toEqual([operation]);
     expect(unregister()).toBe(true);
     expect(registry.get(operation)).toBeUndefined();
+  });
+
+  it("infers extension and built-in operation shapes from the kind", () => {
+    const registry = new ChatSendOperationRegistry();
+    registry.register("extension:poll", async (operation) => {
+      expectTypeOf(operation.payload).toEqualTypeOf<unknown>();
+      return { enqueuedPartIds: operation.partIds };
+    });
+    registry.register("send_text", async (operation) => {
+      expectTypeOf(operation.text).toEqualTypeOf<string>();
+      return { enqueuedPartIds: operation.partIds };
+    });
   });
 
   it("rejects duplicate operation kinds", () => {

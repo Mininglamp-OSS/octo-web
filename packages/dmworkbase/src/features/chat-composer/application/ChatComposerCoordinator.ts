@@ -5,6 +5,7 @@ import type {
   EditorContentBlock,
   SendProgressSnapshot,
 } from "../domain";
+import { cloneEditorContentBlocks } from "../domain";
 import {
   disposeComposeRecoveryObjectUrls,
   type ComposeRecoveryRecord,
@@ -45,6 +46,7 @@ export class ChatComposerCoordinator<
     ports: ChatComposerSubmitPorts<TMessage>
   ): Promise<ChatComposerSendResult> {
     const { host, editor } = ports;
+    const editorBlocks = cloneEditorContentBlocks(input.editorBlocks);
     const sendTarget = host.captureSendTarget();
     const channelKey = host.channelKey();
     this.controller.resetRestoreOffsets();
@@ -75,7 +77,7 @@ export class ChatComposerCoordinator<
     const attempt = this.controller.capture({
       previewText: composeSnapshotPreviewText(consumed.snapshot),
       draftText,
-      editorBlocks: input.editorBlocks,
+      editorBlocks,
       attachments: input.pendingAttachments,
     });
     const attemptId = attempt.id;
@@ -100,7 +102,7 @@ export class ChatComposerCoordinator<
             mention: input.mention,
             topFiles: input.topFiles.length > 0 ? input.topFiles : undefined,
             editorBlocks:
-              input.editorBlocks.length > 0 ? input.editorBlocks : undefined,
+              editorBlocks.length > 0 ? editorBlocks : undefined,
             sendTarget,
             sendDraft,
             sendProgress,

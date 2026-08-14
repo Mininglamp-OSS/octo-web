@@ -154,6 +154,61 @@ describe("EditorComposePartRegistry", () => {
     );
   });
 
+  it("fails closed when a custom sendable part has no recovery policy", () => {
+    const registry = new EditorComposePartRegistry();
+    registry.register({
+      id: "custom",
+      canCapture: () => true,
+      capture: (node) => ({
+        id: "custom-1",
+        kind: "custom",
+        extensionId: "custom",
+        node,
+      }),
+      toSendBlock: (part) => ({
+        type: "extension:custom",
+        id: part.id,
+        payload: {},
+      }),
+    });
+    const [part] = registry.capture(
+      { type: "doc", content: [{ type: "custom" }] },
+      { attachmentFiles: new Map() },
+    );
+
+    expect(() => registry.assertSettlementSupported(part)).toThrow(
+      "cannot participate in send settlement",
+    );
+  });
+
+  it("rejects a send block that changes its captured part id", () => {
+    const registry = new EditorComposePartRegistry();
+    registry.register({
+      id: "custom",
+      recovery: "snapshot",
+      canCapture: () => true,
+      capture: (node) => ({
+        id: "custom-1",
+        kind: "custom",
+        extensionId: "custom",
+        node,
+      }),
+      toSendBlock: () => ({
+        type: "extension:custom",
+        id: "different-id",
+        payload: {},
+      }),
+    });
+    const [part] = registry.capture(
+      { type: "doc", content: [{ type: "custom" }] },
+      { attachmentFiles: new Map() },
+    );
+
+    expect(() => registry.toSendBlock(part)).toThrow(
+      "send block id mismatch",
+    );
+  });
+
   it("does not let a stale disposer unregister a replacement extension", () => {
     const registry = new EditorComposePartRegistry();
     const disposeFirst = registry.register({

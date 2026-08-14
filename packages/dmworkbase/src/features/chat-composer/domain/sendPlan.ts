@@ -51,6 +51,13 @@ export type ChatSendOperation<TMessage = unknown> =
   | BuiltInChatSendOperation<TMessage>
   | ExtensionChatSendOperation<TMessage>;
 
+export type ChatSendOperationForKind<
+  TMessage,
+  TKind extends ChatSendOperationKind,
+> = TKind extends `extension:${string}`
+  ? ExtensionChatSendOperation<TMessage> & { kind: TKind }
+  : Extract<BuiltInChatSendOperation<TMessage>, { kind: TKind }>;
+
 export interface ChatSendPlan<TMessage = unknown> {
   attemptId: string;
   operations: ChatSendOperation<TMessage>[];

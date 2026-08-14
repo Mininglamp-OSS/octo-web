@@ -22,6 +22,8 @@ export interface ExtensionEditorContentBlock<TPayload = unknown> {
   type: `extension:${string}`;
   id: string;
   payload: TPayload;
+  /** True only when the extension operation serializes reply/edit target data. */
+  acceptsSendTarget?: boolean;
 }
 
 export type EditorContentBlock =
@@ -29,6 +31,85 @@ export type EditorContentBlock =
   | { type: "image"; id: string; file: File }
   | { type: "file"; id: string; file: File }
   | ExtensionEditorContentBlock;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isFileLike(value: unknown): value is File {
+  return isRecord(value) && typeof value.name === "string";
+}
+
+export function isAttachmentFile(value: unknown): value is AttachmentFile {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    isFileLike(value.file)
+  );
+}
+
+export function isEditorContentBlock(
+  value: unknown,
+): value is EditorContentBlock {
+  if (!isRecord(value) || typeof value.type !== "string") return false;
+
+  if (value.type === "text") {
+    return (
+      typeof value.text === "string" && typeof value.restoreText === "string"
+    );
+  }
+
+  if (value.type === "image" || value.type === "file") {
+    return (
+      typeof value.id === "string" &&
+      value.id.trim() !== "" &&
+      isFileLike(value.file)
+    );
+  }
+
+  return (
+    /^extension:.+/.test(value.type) &&
+    typeof value.id === "string" &&
+    value.id.trim() !== "" &&
+    "payload" in value &&
+    (value.acceptsSendTarget === undefined ||
+      typeof value.acceptsSendTarget === "boolean")
+  );
+}
+
+function cloneMention(mention: ChatMention | undefined): ChatMention | undefined {
+  if (!mention) return undefined;
+  return {
+    ...mention,
+    uids: mention.uids ? [...mention.uids] : undefined,
+    entities: mention.entities?.map((entity) => ({ ...entity })),
+  };
+}
+
+function cloneExtensionPayload<T>(payload: T): T {
+  if (typeof globalThis.structuredClone !== "function") {
+    throw new Error("structuredClone is required for extension payloads");
+  }
+  return globalThis.structuredClone(payload);
+}
+
+/** Clone mutable transaction data while preserving owned File references. */
+export function cloneEditorContentBlocks(
+  blocks: readonly EditorContentBlock[],
+): EditorContentBlock[] {
+  return blocks.map((block) => {
+    if (block.type === "text") {
+      return { ...block, mention: cloneMention(block.mention) };
+    }
+    if (block.type === "image" || block.type === "file") {
+      return { ...block };
+    }
+    return {
+      ...block,
+      payload: cloneExtensionPayload(block.payload),
+    };
+  });
+}
 
 /** Reply/edit target captured synchronously with the compose. */
 export interface SendTargetSnapshot<TMessage = unknown> {

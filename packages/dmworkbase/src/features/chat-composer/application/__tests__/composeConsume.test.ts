@@ -370,6 +370,7 @@ describe("consumeCompose — a send that was never enqueued gives the content ba
     const registry = createDefaultEditorComposePartRegistry();
     registry.register({
       id: "poll",
+      recovery: "snapshot",
       canCapture: (node) => node.type === "poll",
       capture: (node) => ({
         id: String(node.attrs?.id),
@@ -922,6 +923,7 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     const registry = createDefaultEditorComposePartRegistry();
     registry.register({
       id: "poll",
+      recovery: "snapshot",
       canCapture: (node) => node.type === "poll",
       capture: (node) => ({
         id: String(node.attrs?.id),

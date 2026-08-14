@@ -105,6 +105,30 @@ describe("settleChatSendExecution", () => {
     ]);
   });
 
+  it("does not shift settlement indices around malformed runtime blocks", () => {
+    const result = settleChatSendExecution(
+      request({
+        text: "",
+        editorBlocks: [
+          { type: "extension:", id: "invalid", payload: {} } as never,
+          {
+            type: "extension:poll",
+            id: "poll-1",
+            payload: { question: "Ship it?" },
+          },
+        ],
+      }),
+      execution({ enqueuedPartIds: ["editor:0"] }),
+    );
+
+    expect(result).toEqual({
+      editorConsumed: false,
+      consumedTopIds: [],
+      unsentEditorBlocks: [],
+      restoreSendTarget: false,
+    });
+  });
+
   it("keeps fallback text when a top attachment succeeded first", () => {
     const result = settleChatSendExecution(
       request({

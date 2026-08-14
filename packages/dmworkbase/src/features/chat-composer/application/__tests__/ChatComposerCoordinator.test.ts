@@ -56,6 +56,35 @@ function host(
 }
 
 describe("ChatComposerCoordinator", () => {
+  it("rejects non-cloneable extension payloads before consuming the editor", async () => {
+    const controller = new ChatComposerController();
+    const coordinator = new ChatComposerCoordinator(controller);
+    const editor: ChatComposerEditorPort = {
+      consume: vi.fn((context) => consumed(context)),
+      handoffRecovery: vi.fn(),
+    };
+
+    await expect(
+      coordinator.submit(
+        {
+          text: "",
+          topFiles: [],
+          editorBlocks: [
+            {
+              type: "extension:custom",
+              id: "custom-1",
+              payload: { callback: () => undefined },
+            },
+          ],
+          pendingAttachments: [],
+        },
+        { host: host(), editor },
+      ),
+    ).rejects.toThrow();
+
+    expect(editor.consume).not.toHaveBeenCalled();
+  });
+
   it("owns capture, consume, queue, settlement and release ordering", async () => {
     const order: string[] = [];
     const controller = new ChatComposerController<{ id: string }>();

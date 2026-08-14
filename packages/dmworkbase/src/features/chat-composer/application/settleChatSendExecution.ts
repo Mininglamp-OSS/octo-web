@@ -4,6 +4,10 @@ import type {
   EditorContentBlock,
   UnsentEditorBlock,
 } from "../domain/types";
+import {
+  isAttachmentFile,
+  isEditorContentBlock,
+} from "../domain/types";
 import type { ChatSendExecution } from "./executeChatSendPlan";
 
 function topPartId(id: string, index: number): string {
@@ -33,6 +37,23 @@ export function settleChatSendExecution<TMessage = unknown>(
   request: ChatSendRequest<TMessage>,
   execution: ChatSendExecution<TMessage>,
 ): ChatSendOutcome {
+  const invalidTopFiles =
+    request.topFiles !== undefined &&
+    (!Array.isArray(request.topFiles) ||
+      !request.topFiles.every(isAttachmentFile));
+  const invalidEditorBlocks =
+    request.editorBlocks !== undefined &&
+    (!Array.isArray(request.editorBlocks) ||
+      !request.editorBlocks.every(isEditorContentBlock));
+  if (invalidTopFiles || invalidEditorBlocks) {
+    return {
+      editorConsumed: false,
+      consumedTopIds: [],
+      unsentEditorBlocks: [],
+      restoreSendTarget: request.sendTarget !== undefined,
+    };
+  }
+
   const enqueued = new Set(execution.enqueuedPartIds);
   const topFiles = request.topFiles ?? [];
   const editorBlocks = request.editorBlocks ?? [];

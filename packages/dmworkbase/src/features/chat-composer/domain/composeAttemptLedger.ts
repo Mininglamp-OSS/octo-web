@@ -3,6 +3,7 @@ import type {
   EditorContentBlock,
   PendingSendDraft,
 } from "./types";
+import { cloneEditorContentBlocks } from "./types";
 
 export interface ComposeAttempt<TAttachment = unknown> {
   id: string;
@@ -60,7 +61,7 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
       capturedAt: this.now(),
       previewText: input.previewText,
       draftText: input.draftText,
-      editorBlocks: [...(input.editorBlocks ?? [])],
+      editorBlocks: cloneEditorContentBlocks(input.editorBlocks ?? []),
       attachments: [...(input.attachments ?? [])],
       expectedPartIds: [],
       enqueuedPartIds: [],

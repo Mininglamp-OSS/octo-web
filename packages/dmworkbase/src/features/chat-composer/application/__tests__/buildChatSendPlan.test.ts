@@ -200,6 +200,7 @@ describe("buildChatSendPlan", () => {
             type: "extension:poll",
             id: "poll-1",
             payload: { question: "Ship it?" },
+            acceptsSendTarget: true,
           },
         ],
         sendTarget,
@@ -214,6 +215,54 @@ describe("buildChatSendPlan", () => {
         sendTarget,
       },
     ]);
+  });
+
+  it("keeps reply targets out of extension operations by default", () => {
+    const sendTarget = target(1);
+    const plan = buildChatSendPlan(
+      request({
+        editorBlocks: [
+          {
+            type: "extension:poll",
+            id: "poll-1",
+            payload: { question: "Ship it?" },
+          },
+        ],
+        sendTarget,
+      }),
+    );
+
+    expect(plan.operations).toEqual([
+      {
+        kind: "extension:poll",
+        partIds: ["editor:0"],
+        payload: { question: "Ship it?" },
+      },
+      {
+        kind: "send_text",
+        partIds: ["reply:empty"],
+        text: "",
+        sendTarget,
+        requiresPreviousEnqueue: true,
+      },
+    ]);
+  });
+
+  it("rejects all editor operations when any runtime block is malformed", () => {
+    const plan = buildChatSendPlan(
+      request({
+        editorBlocks: [
+          { type: "extension:", id: "invalid", payload: {} } as never,
+          {
+            type: "extension:poll",
+            id: "poll-1",
+            payload: { question: "Ship it?" },
+          },
+        ],
+      }),
+    );
+
+    expect(plan.operations).toEqual([]);
   });
 
   it("keeps extension blocks out of built-in rich text operations", () => {

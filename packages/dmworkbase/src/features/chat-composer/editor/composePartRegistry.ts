@@ -41,11 +41,20 @@ export class MissingEditorComposePartExtensionError extends Error {
   }
 }
 
+export class InvalidEditorComposePartError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidEditorComposePartError";
+  }
+}
+
 export interface EditorComposePartExtension<
   TPart extends EditorComposePart = EditorComposePart,
 > {
   id: string;
   priority?: number;
+  /** Cross-instance recovery model. Custom extensions currently support snapshot only. */
+  recovery?: "snapshot" | "attachment";
   canCapture: (node: EditorComposeNode) => boolean;
   capture: (
     node: EditorComposeNode,
@@ -63,6 +72,10 @@ export class EditorComposePartRegistry {
   private readonly capturedOwners = new WeakMap<
     EditorComposePart,
     EditorComposePartExtension
+  >();
+  private readonly capturedSources = new WeakMap<
+    EditorComposePart,
+    EditorComposeNode
   >();
   private orderedExtensionsCache?: EditorComposePartExtension[];
 
@@ -123,13 +136,36 @@ export class EditorComposePartRegistry {
       candidate.canCapture(node),
     );
     const part = extension?.capture(node, context);
-    if (part && extension) this.capturedOwners.set(part, extension);
+    if (part && extension) {
+      if (part.id.trim() === "") {
+        throw new InvalidEditorComposePartError(
+          `editor compose part id is empty: ${extension.id}`,
+        );
+      }
+      if (part.extensionId !== extension.id) {
+        throw new InvalidEditorComposePartError(
+          `editor compose part owner mismatch: ${part.extensionId} !== ${extension.id}`,
+        );
+      }
+      this.capturedOwners.set(part, extension);
+      this.capturedSources.set(part, node);
+    }
     return part;
+  }
+
+  sourceNode(part: EditorComposePart): EditorComposeNode {
+    return this.capturedSources.get(part) ?? part.node;
   }
 
   assertSettlementSupported(part: EditorComposePart): void {
     const extension = this.extensionFor(part);
     if (!extension.toSendBlock) {
+      throw new UnsupportedEditorComposePartError(part.extensionId);
+    }
+    if (
+      extension.recovery !== "snapshot" &&
+      !(extension.id === "attachment" && extension.recovery === "attachment")
+    ) {
       throw new UnsupportedEditorComposePartError(part.extensionId);
     }
   }
@@ -138,6 +174,11 @@ export class EditorComposePartRegistry {
     const extension = this.extensionFor(part);
     const block = extension.toSendBlock?.(part);
     if (!block) throw new UnsupportedEditorComposePartError(part.extensionId);
+    if (block.id !== part.id) {
+      throw new InvalidEditorComposePartError(
+        `editor compose part send block id mismatch: ${block.id} !== ${part.id}`,
+      );
+    }
     return block;
   }
 
@@ -179,6 +220,7 @@ export function registerDefaultEditorComposeParts(
 ): void {
   registry.register({
     id: "attachment",
+    recovery: "attachment",
     canCapture: (node) => node.type === "attachment" && !!node.attrs?.id,
     capture: (node, context) => {
       const id = node.attrs?.id;

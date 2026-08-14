@@ -59,6 +59,27 @@ describe("ComposeAttemptLedger", () => {
     ]);
   });
 
+  it("isolates pending extension payloads from the queued request", () => {
+    const state = ledger();
+    const editorBlocks = [
+      {
+        type: "extension:poll" as const,
+        id: "poll-1",
+        payload: { question: "Ship it?" },
+      },
+    ];
+    const attempt = state.capture({
+      previewText: "poll",
+      draftText: "",
+      editorBlocks,
+    });
+
+    (attempt.editorBlocks[0] as typeof editorBlocks[0]).payload.question =
+      "Changed by renderer";
+
+    expect(editorBlocks[0].payload.question).toBe("Ship it?");
+  });
+
   it("keeps identical text as separate attempts", () => {
     const state = ledger();
     state.capture({ previewText: "same", draftText: "same" });

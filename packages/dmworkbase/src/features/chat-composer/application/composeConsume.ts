@@ -17,6 +17,7 @@ import type {
   UnsentEditorBlock,
 } from "./sendFlow";
 import {
+  type EditorComposePart,
   type EditorComposePartRegistry,
 } from "../editor";
 import type { EditorComposeDocument, EditorComposeNode } from "../domain";
@@ -68,6 +69,11 @@ export class ComposeRestoreUnavailableError extends Error {
 export interface ConsumeComposeOptions {
   editor: ComposeEditorPort;
   composePartRegistry: EditorComposePartRegistry;
+  /** Preflight capture reused by consume so extension hooks run exactly once. */
+  captured?: {
+    snapshot: ComposeDoc;
+    editorParts: EditorComposePart[];
+  };
   /** In-memory pasted-image files, keyed by attachment node id. */
   attachmentFiles: Map<string, File>;
   /** Mark captured editor attachment resources as attempt-owned. */
@@ -148,17 +154,16 @@ export function consumeCompose(
       }
     });
 
-  const snapshot = editor.getJSON();
+  const snapshot = opts.captured?.snapshot ?? editor.getJSON();
   const composePartRegistry = opts.composePartRegistry;
   const composePartContext = {
     attachmentFiles,
     revokeObjectURL,
     disposeAttachment: opts.disposeEditorAttachment,
   };
-  const editorParts = composePartRegistry.capture(
-    snapshot,
-    composePartContext,
-  );
+  const editorParts =
+    opts.captured?.editorParts ??
+    composePartRegistry.capture(snapshot, composePartContext);
   editorParts.forEach((part) =>
     composePartRegistry.assertSettlementSupported(part),
   );

@@ -1,5 +1,7 @@
 import type {
   ChatSendOperation,
+  ChatSendOperationForKind,
+  ChatSendOperationKind,
   ChatTransportResult,
 } from "../domain/sendPlan";
 import type { ChatTransportEvents } from "../ports/ChatTransportPort";
@@ -12,6 +14,27 @@ export type ChatSendOperationHandler<
   events: ChatTransportEvents,
 ) => Promise<ChatTransportResult>;
 
+type RegisterKind<
+  TMessage,
+  TKindOrOperation extends
+    | ChatSendOperationKind
+    | ChatSendOperation<TMessage>,
+> = TKindOrOperation extends ChatSendOperation<TMessage>
+  ? TKindOrOperation["kind"]
+  : TKindOrOperation;
+
+type RegisterOperation<
+  TMessage,
+  TKindOrOperation extends
+    | ChatSendOperationKind
+    | ChatSendOperation<TMessage>,
+> = TKindOrOperation extends ChatSendOperation<TMessage>
+  ? TKindOrOperation
+  : ChatSendOperationForKind<
+      TMessage,
+      Extract<TKindOrOperation, ChatSendOperationKind>
+    >;
+
 /** Public operation dispatcher used by transport adapters and app extensions. */
 export class ChatSendOperationRegistry<TMessage = unknown> {
   private readonly handlers = new Map<
@@ -19,9 +42,16 @@ export class ChatSendOperationRegistry<TMessage = unknown> {
     ChatSendOperationHandler<TMessage>
   >();
 
-  register<TOperation extends ChatSendOperation<TMessage>>(
-    kind: TOperation["kind"],
-    handler: ChatSendOperationHandler<TMessage, TOperation>,
+  register<
+    TKindOrOperation extends
+      | ChatSendOperationKind
+      | ChatSendOperation<TMessage>,
+  >(
+    kind: RegisterKind<TMessage, TKindOrOperation>,
+    handler: ChatSendOperationHandler<
+      TMessage,
+      RegisterOperation<TMessage, TKindOrOperation>
+    >,
   ): () => boolean {
     if (this.handlers.has(kind)) {
       throw new Error(`chat send operation already registered: ${kind}`);

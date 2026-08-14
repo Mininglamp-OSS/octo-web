@@ -5,6 +5,10 @@ import type {
   ExtensionEditorContentBlock,
   SendTargetSnapshot,
 } from "../domain/types";
+import {
+  isAttachmentFile,
+  isEditorContentBlock,
+} from "../domain/types";
 import type { ChatSendOperation, ChatSendPlan } from "../domain/sendPlan";
 
 const FALLBACK_TEXT_PART_ID = "text:0";
@@ -32,40 +36,6 @@ function isImageFile(file: unknown): boolean {
   const name = typeof file.name === "string" ? file.name : "";
   const extension = name.split(".").pop()?.toLowerCase() || "";
   return IMAGE_EXTENSIONS.has(extension);
-}
-
-function isAttachment(value: unknown): value is AttachmentFile {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    isRecord(value.file) &&
-    typeof value.file.name === "string"
-  );
-}
-
-function isEditorBlock(value: unknown): value is EditorContentBlock {
-  if (!isRecord(value) || typeof value.type !== "string") return false;
-
-  if (value.type === "text") {
-    return (
-      typeof value.text === "string" && typeof value.restoreText === "string"
-    );
-  }
-
-  if (
-    (value.type === "image" || value.type === "file") &&
-    typeof value.id === "string" &&
-    isRecord(value.file) &&
-    typeof value.file.name === "string"
-  ) {
-    return true;
-  }
-
-  return (
-    value.type.startsWith("extension:") &&
-    typeof value.id === "string" &&
-    "payload" in value
-  );
 }
 
 function isExtensionEditorBlock(
@@ -129,12 +99,19 @@ export function buildChatSendPlan<TMessage = unknown>(
   const attemptId =
     typeof request.attemptId === "string" ? request.attemptId : "";
   const text = typeof request.text === "string" ? request.text : "";
-  const topFiles = Array.isArray(request.topFiles)
-    ? request.topFiles.filter(isAttachment)
-    : [];
-  const editorBlocks = Array.isArray(request.editorBlocks)
-    ? request.editorBlocks.filter(isEditorBlock)
-    : [];
+  const invalidTopFiles =
+    request.topFiles !== undefined &&
+    (!Array.isArray(request.topFiles) ||
+      !request.topFiles.every(isAttachmentFile));
+  const invalidEditorBlocks =
+    request.editorBlocks !== undefined &&
+    (!Array.isArray(request.editorBlocks) ||
+      !request.editorBlocks.every(isEditorContentBlock));
+  if (invalidTopFiles || invalidEditorBlocks) {
+    return { attemptId, operations: [] };
+  }
+  const topFiles = request.topFiles ?? [];
+  const editorBlocks = request.editorBlocks ?? [];
   const target = hasReplyTarget(request.sendTarget)
     ? request.sendTarget
     : undefined;
@@ -234,7 +211,8 @@ export function buildChatSendPlan<TMessage = unknown>(
         partIds: [partId],
         payload: block.payload,
       };
-      attachTarget(operation);
+      if (block.acceptsSendTarget) attachTarget(operation);
+      else pushOperation(operation);
       return;
     }
 

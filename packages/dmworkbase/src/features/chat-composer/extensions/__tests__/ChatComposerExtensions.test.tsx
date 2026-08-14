@@ -78,6 +78,7 @@ describe("ChatComposerExtensions", () => {
     const extensions = createDefaultChatComposerExtensions();
     extensions.editor.composeParts.register({
       id: "poll",
+      recovery: "snapshot",
       canCapture: (node) => node.type === "poll",
       capture: (node) => ({
         id: String(node.attrs?.id),
