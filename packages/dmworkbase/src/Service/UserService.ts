@@ -1,5 +1,4 @@
 import APIClient from "./APIClient"
-import { apiPath } from "./apiPath"
 
 export interface UserProfile {
   vercode?: string
@@ -21,7 +20,7 @@ export interface UpdateCurrentUserPayload {
 
 const UserService = {
   getUserProfile(uid: string, groupNo?: string): Promise<UserProfile> {
-    return APIClient.shared.get(apiPath`users/${uid}`, {
+    return APIClient.shared.get(`users/${uid}`, {
       param: { group_no: groupNo || "" },
     })
   },
@@ -49,7 +48,7 @@ const UserService = {
   uploadUserAvatar(uid: string, file: File): Promise<any> {
     const data = new FormData()
     data.append("file", file)
-    return APIClient.shared.post(apiPath`users/${uid}/avatar`, data, {
+    return APIClient.shared.post(`users/${uid}/avatar`, data, {
       headers: { "Content-Type": "multipart/form-data" },
       timeout: 60_000,
     })
