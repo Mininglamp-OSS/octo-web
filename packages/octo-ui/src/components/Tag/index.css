@@ -1,0 +1,65 @@
+.octo-ui-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: var(--wk-sp-1);
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-xs);
+  font-family: var(--wk-font-sans);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-leading-tight);
+  white-space: nowrap;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.octo-ui-tag--sm {
+  min-height: calc(var(--wk-sp-4) + var(--wk-sp-0-5));
+  padding: 0 var(--wk-sp-1-5);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-ui-tag--md {
+  min-height: calc(var(--wk-sp-5) + var(--wk-sp-1));
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
+  font-size: var(--wk-text-size-sm);
+}
+
+.octo-ui-tag--neutral {
+  background: var(--wk-bg-elevated);
+  border-color: var(--wk-border-default);
+  color: var(--wk-text-secondary);
+}
+
+.octo-ui-tag--brand {
+  background: var(--wk-bg-selected);
+  border-color: var(--wk-border-glow);
+  color: var(--wk-text-accent);
+}
+
+.octo-ui-tag--success {
+  background: var(--wk-color-success-bg);
+  color: var(--wk-color-success);
+}
+
+.octo-ui-tag--warning {
+  background: var(--wk-color-warning-bg);
+  color: var(--wk-color-warning);
+}
+
+.octo-ui-tag--danger {
+  background: var(--wk-color-danger-bg);
+  border-color: var(--wk-color-danger-border);
+  color: var(--wk-color-danger);
+}
+
+.octo-ui-tag__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.octo-ui-tag__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
