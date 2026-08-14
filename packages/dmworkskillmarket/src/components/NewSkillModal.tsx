@@ -670,7 +670,7 @@ function ConfirmLeaveModal({
       visible={Boolean(mode)}
       onCancel={onKeep}
       title={t("skillMarket.confirm.title")}
-      size="sm"
+      size="md"
       footer={
         <>
           <Button variant="secondary" onClick={onKeep}>{mode === "busy" ? t("skillMarket.confirm.keepUploading") : t("skillMarket.confirm.keepEditing")}</Button>

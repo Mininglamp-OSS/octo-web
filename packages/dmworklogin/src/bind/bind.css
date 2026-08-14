@@ -78,6 +78,10 @@
     margin-bottom: 16px;
 }
 
+.wk-bind-method-button {
+    width: 100%;
+}
+
 /* "或" 分隔条, 把主操作 (Create) 与次操作 (Verify) 视觉切开. 中间一段灰线
    + 短文字, 比单纯空白更明确"这是另一条路径"而不是"重复选项". */
 .wk-bind-divider {

@@ -12,12 +12,11 @@ const normalizeVariant = (
     if (variant === 'ghost') return 'text'
     return variant
   }
-  if (theme === 'borderless') return 'text'
-  if (theme === 'solid' && !type) return 'solid'
-  if (type === 'primary') return 'solid'
   if (type === 'danger') return theme === 'solid' ? 'danger' : 'warning'
   if (type === 'warning') return 'warning'
-  if (variant === 'ghost') return 'text'
+  if (theme === 'borderless') return 'text'
+  if (theme === 'solid' && !type) return 'solid'
+  if (type === 'primary') return theme === 'light' ? 'secondary' : 'solid'
   return 'secondary'
 }
 

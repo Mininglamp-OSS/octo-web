@@ -5,6 +5,7 @@ import { ChannelTypeCommunityTopic } from "./Const"
 import { parseThreadChannelId } from "./Thread"
 import { getImChannelInfo, getImChannelSubscribers } from "../im-runtime/channelRuntime"
 import { abortError, createAsyncCache } from "../Utils/asyncCache"
+import type { RequestConfig } from "./APIClient"
 
 export type JoinSpaceStatus = "NEED_APPROVAL" | "PENDING"
 
@@ -280,8 +281,10 @@ const rosterCache = createAsyncCache<SpaceMember[]>({
 export class SpaceService {
     static shared = new SpaceService()
 
-    async getMySpaces(): Promise<Space[]> {
-        const resp = await WKApp.apiClient.get("space/my")
+    async getMySpaces(
+        config?: Pick<RequestConfig, "suppressAuthExpiredLogout">,
+    ): Promise<Space[]> {
+        const resp = await WKApp.apiClient.get("space/my", config)
         return resp || []
     }
 

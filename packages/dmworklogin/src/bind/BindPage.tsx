@@ -657,7 +657,7 @@ function renderChooseMethod(
           <Button
             theme="solid"
             type="primary"
-            block
+            className="wk-bind-method-button"
             size="large"
             disabled={busy}
             onClick={onCreate}
@@ -691,7 +691,7 @@ function renderChooseMethod(
                 // create 可用时 verify 降为次要 (light theme), 没 create 时 verify 还是主要.
                 theme={createState.kind === 'available' ? 'light' : 'solid'}
                 type="primary"
-                block
+                className="wk-bind-method-button"
                 size="large"
                 disabled={busy}
                 onClick={() => onSelectMethod(m)}

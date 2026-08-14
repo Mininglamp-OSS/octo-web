@@ -12,6 +12,7 @@ import {
   ListItemSwitch,
   ListItemSwitchContext,
 } from "../../Components/ListItem";
+import { Dap } from "../../Service/Dap";
 import { t } from "../../i18n";
 import "./index.css";
 
@@ -112,6 +113,12 @@ export interface ChannelSettingInlineEditRowProps {
   allowEmpty?: boolean;
   multiline?: boolean;
   onStartEdit?: () => boolean | void;
+  /**
+   * 埋点事件名:仅在编辑器真正打开(onStartEdit 权限门通过)那一刻发一次。
+   * 不走行 wrapper 的 data-track——编辑态 input/取消/保存都在同一 wrapper 内,
+   * 否则每次点击都会重发「打开」事件(见 PR #1390 review)。
+   */
+  trackEvent?: string;
   /** Resolve false or reject to keep the editor open with its current draft. */
   onSave: (value: string) => Promise<void | boolean>;
 }
@@ -125,6 +132,7 @@ export function ChannelSettingInlineEditRow({
   allowEmpty = false,
   multiline = false,
   onStartEdit,
+  trackEvent,
   onSave,
 }: ChannelSettingInlineEditRowProps) {
   const [editing, setEditing] = useState(false);
@@ -151,6 +159,7 @@ export function ChannelSettingInlineEditRow({
 
   const startEdit = () => {
     if (onStartEdit?.() === false) return;
+    if (trackEvent) Dap.shared.track(trackEvent);
     setDraft(currentValue);
     setDirty(false);
     setEditing(true);

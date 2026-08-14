@@ -3,11 +3,13 @@ import {
     TaskStatus,
     SourceType,
     ParticipantStatus,
+    TriggerType,
     type TaskStatusType,
     type SummaryModeType,
     type SourceTypeValue,
     type ScheduleConfig,
     type ScheduleItem,
+    type SummaryListItem,
 } from "../types/summary";
 import { t } from "@octo/base";
 
@@ -179,6 +181,68 @@ export function getStatusColor(status: TaskStatusType): string {
 /** 总结模式 → 显示文本 */
 export function getModeLabel(mode: SummaryModeType): string {
     return mode === SummaryMode.BY_GROUP ? t("summary.mode.byGroup") : t("summary.mode.byPerson");
+}
+
+/**
+ * 总结是否可被 Agent 引用 — SummaryReferencePicker 与 SummaryDetailPage 共享。
+ *
+ * 当后端已部署 referenceable 字段时，以后端值为准。
+ * 字段缺失时（后端未部署或 mock 未提供），回退到 legacy 行为：
+ * 仅 trigger_type === AGENT 的总结可被引用。
+ */
+export function isReferenceable(item: { referenceable?: boolean; trigger_type: number }): boolean {
+    if (item.referenceable !== undefined) return item.referenceable === true;
+    return item.trigger_type === TriggerType.AGENT;
+}
+
+/**
+ * 总结类型分类 — 单一 classifier（R4 yj P2-2）。
+ *
+ * icon、CSS class 和 label 全部由这个 kind 派生，消除「四路 label 配两路
+ * icon」的分裂（此前定时总结会渲染快速总结的 icon，aria-label 与视觉不符）。
+ *
+ * - agent: trigger_type === AGENT
+ * - scheduled: trigger_type === SCHEDULED 或 schedule_id > 0（0 表示无 schedule）
+ * - multi: trigger_type === MANUAL 且 participants.length > 1
+ * - quick: trigger_type === MANUAL 且 participants.length <= 1，以及未知类型兜底
+ */
+export type SummaryTypeKind = 'agent' | 'scheduled' | 'multi' | 'quick';
+
+export function getSummaryTypeKind(item: SummaryListItem): SummaryTypeKind {
+    const isScheduled = item.trigger_type === TriggerType.SCHEDULED || (item.schedule_id != null && item.schedule_id > 0);
+    if (isScheduled) return 'scheduled';
+    switch (item.trigger_type) {
+        case TriggerType.AGENT:
+            return 'agent';
+        case TriggerType.MANUAL:
+            return (item.participants?.length ?? 0) > 1 ? 'multi' : 'quick';
+        default:
+            return 'quick';
+    }
+}
+
+/**
+ * 总结类型标签 — SummaryReferencePicker 与 SummaryCard 共享。
+ * 由 getSummaryTypeKind 单一 classifier 派生，保证 label/icon 一致。
+ *
+ * @param t i18n 翻译函数
+ * @param item 总结列表项
+ */
+export function getSummaryTypeLabel(
+    t: (key: string, opts?: any) => string,
+    item: SummaryListItem,
+): string {
+    switch (getSummaryTypeKind(item)) {
+        case 'scheduled':
+            return t("summary.summaryCard.scheduledType");
+        case 'agent':
+            return t("summary.summaryCard.agentType");
+        case 'multi':
+            return t("summary.summaryCard.multiPersonType");
+        case 'quick':
+        default:
+            return t("summary.summaryCard.quickType");
+    }
 }
 
 /** 信息来源类型 → 显示文本 */

@@ -15,6 +15,8 @@ export type WKModalSize = 'md' | 'lg' | 'full'
 export interface WKModalFooterConfig {
   okText?: string
   cancelText?: string
+  /** 禁用取消按钮 */
+  isCancelDisabled?: boolean
   /** 确认按钮的加载状态 */
   isOkLoading?: boolean
   /** 确认按钮变为危险色（用于删除等操作） */
@@ -78,10 +80,21 @@ function resolveFooter(
     )
   }
   if (footerConfig?.onOk) {
-    const { okText = t('base.common.ok'), cancelText = t('base.common.cancel'), isOkLoading, isDanger, onOk } = footerConfig
+    const {
+      okText = t('base.common.ok'),
+      cancelText = t('base.common.cancel'),
+      isCancelDisabled,
+      isOkLoading,
+      isDanger,
+      onOk,
+    } = footerConfig
     return (
       <div className="wk-modal-footer">
-        <Button variant="secondary" onClick={onCancel}>
+        <Button
+          variant="secondary"
+          disabled={isCancelDisabled}
+          onClick={onCancel}
+        >
           {cancelText}
         </Button>
         <Button

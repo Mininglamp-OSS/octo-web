@@ -416,7 +416,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     <Button
                         data-testid={summaryTestIds.agentSendBtn}
                         theme="solid"
-                        size="default"
+                        size="sm"
                         loading={isBusy}
                         disabled={isBusy || !input.trim()}
                         onClick={this.handleSend}
@@ -426,7 +426,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     {canSave && (
                         <Button
                             data-testid={summaryTestIds.agentSaveBtn}
-                            size="default"
+                            size="sm"
                             disabled={!this.hasAssistantOutput() || savingSummary}
                             loading={savingSummary}
                             onClick={this.handleOpenSaveDialog}

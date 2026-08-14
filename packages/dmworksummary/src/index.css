@@ -515,6 +515,15 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     color: var(--wk-color-info);
     background: var(--wk-color-info-bg);
 }
+/* R4 yj P2-2: 四种类型各自 icon/class，与 getSummaryTypeKind classifier 一致 */
+.summary-card-type-icon--scheduled {
+    color: var(--wk-color-warning);
+    background: var(--wk-color-warning-bg);
+}
+.summary-card-type-icon--multi {
+    color: var(--wk-color-success);
+    background: var(--wk-color-success-bg);
+}
 .summary-card-type-icon:hover,
 .summary-card-type-icon:focus-visible {
     color: var(--wk-text-primary);

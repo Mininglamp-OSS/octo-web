@@ -35,7 +35,7 @@ export default function JoinApprovalResult({ status, onDismiss }: JoinApprovalRe
                 </p>
                 <Button
                     variant="solid"
-                    size="sm"
+                    size="large"
                     className="wk-join-approval-btn"
                     onClick={onDismiss}
                 >

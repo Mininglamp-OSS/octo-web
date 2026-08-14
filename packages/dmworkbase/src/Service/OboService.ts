@@ -1,4 +1,5 @@
 import APIClient from "./APIClient";
+import { apiPath } from "./apiPath";
 
 export interface OboGrant {
   id: number;
@@ -73,11 +74,11 @@ export function updateOboGrant(
   grantId: number,
   request: UpdateOboGrantRequest
 ): Promise<void> {
-  return APIClient.shared.put(`obo/grants/${grantId}`, request);
+  return APIClient.shared.put(apiPath`obo/grants/${grantId}`, request);
 }
 
 export function deleteOboGrant(grantId: number): Promise<void> {
-  return APIClient.shared.delete(`obo/grants/${grantId}`);
+  return APIClient.shared.delete(apiPath`obo/grants/${grantId}`);
 }
 
 export function createOboScope(
@@ -87,5 +88,5 @@ export function createOboScope(
 }
 
 export function deleteOboScope(scopeId: number): Promise<void> {
-  return APIClient.shared.delete(`obo/scopes/${scopeId}`);
+  return APIClient.shared.delete(apiPath`obo/scopes/${scopeId}`);
 }

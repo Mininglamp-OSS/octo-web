@@ -247,6 +247,25 @@ describe('Dap.normalizePath / isFirstParty (P0-3 helpers)', () => {
         expect(isFirstParty(`${location.origin}/api/x`)).toBe(true)
         expect(isFirstParty('https://cdn.example.com/x')).toBe(false)
     })
+
+    it('prefers the apiPath route template over lossy whitelist normalization', async () => {
+        vi.resetModules()
+        // 关键:必须从与 Dap 同一个 fresh 模块图里拿 apiPath,二者共享同一 registry。
+        const dap = await import('../Dap')
+        const api = await import('../apiPath')
+        const { normalizePath } = dap.__dapInternals
+
+        // 无模板兜底:短 hex id `8f3a`(<16)在白名单归一里塌成 :seg —— 正是要修的丢失。
+        expect(normalizePath('/api/v1/spaces/8f3a/categories/12')).toBe('/api/v1/spaces/:seg/categories/:id')
+
+        // 登记 apiPath 模板后:字面段全可见、变量段统一 :id,同一 endpoint 稳定模板。
+        const p = api.apiPath`/spaces/${'8f3a'}/categories/${'12'}`
+        api.registerRequestTemplate(p, '/api/v1/')
+        expect(normalizePath('/api/v1/spaces/8f3a/categories/12')).toBe('/api/v1/spaces/:id/categories/:id')
+
+        // 模板里从不含变量原值 —— 隐私天然安全。
+        expect(normalizePath('/api/v1/spaces/8f3a/categories/12').includes('8f3a')).toBe(false)
+    })
 })
 
 describe('Dap — unsupported runtime stays disabled (desktop/file://)', () => {
@@ -276,5 +295,167 @@ describe('Dap — unsupported runtime stays disabled (desktop/file://)', () => {
         expect(__dapInternals.isSupportedRuntime()).toBe(true) // jsdom 默认 http:
         vi.stubGlobal('location', { protocol: 'file:', origin: 'null' })
         expect(__dapInternals.isSupportedRuntime()).toBe(false)
+    })
+})
+
+describe('TrackRules — buildIndex / matchRoute (pure)', () => {
+    it('buildIndex splits testid rules into the Map and role-only rules into loose', async () => {
+        const { buildIndex } = await import('../TrackRules')
+        const idx = buildIndex([
+            { event: 'a', testid: 'x' },
+            { event: 'b', testid: 'x' }, // 同 testid → 同桶
+            { event: 'c', role: 'switch' }, // 无 testid → loose
+            { event: '', testid: 'skip' }, // 无 event → 丢弃
+        ])
+        expect(idx.byTestid.get('x')?.map((r) => r.event)).toEqual(['a', 'b'])
+        expect(idx.byTestid.has('skip')).toBe(false)
+        expect(idx.loose.map((r) => r.event)).toEqual(['c'])
+    })
+
+    it('matchRoute: absent route always matches; else exact or segment-boundary prefix', async () => {
+        const { matchRoute } = await import('../TrackRules')
+        expect(matchRoute(undefined, '/anything')).toBe(true)
+        expect(matchRoute('/automation', '/automation')).toBe(true)
+        expect(matchRoute('/automation', '/automation/rules')).toBe(true)
+        expect(matchRoute('/automation', '/automationX')).toBe(false) // 段边界,不误配
+        expect(matchRoute(['/a', '/b'], '/b/c')).toBe(true)
+    })
+})
+
+describe('Dap — rule-table fallback (no data-track)', () => {
+    let fetchMock: FetchMock
+    beforeEach(() => {
+        localStorage.clear()
+        document.body.innerHTML = ''
+        fetchMock = okFetch()
+        // @ts-expect-error test stub
+        globalThis.fetch = fetchMock
+    })
+
+    /** 从自身上报批次里取指定事件。 */
+    function eventsFromBatch(name: string) {
+        const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
+        if (!batchCall) return []
+        const body = JSON.parse((batchCall[1] as RequestInit).body as string)
+        return (body.events as Array<{ event_name: string; object_id?: string; props?: Record<string, unknown> }>).filter(
+            (e) => e.event_name === name,
+        )
+    }
+
+    it('fires the rule event for a data-testid node that has no data-track', async () => {
+        const { Dap } = await freshTracker()
+        const { TRACK_RULES } = await import('../TrackRules')
+        TRACK_RULES.push({ event: 'automation_run_clicked', testid: 'automation-run-btn' })
+        Dap.shared.setEnabled(true) // 安装点击委托时构建规则索引(读此刻的 TRACK_RULES)
+        Dap.shared.init()
+
+        const btn = document.createElement('button')
+        btn.setAttribute('data-testid', 'automation-run-btn')
+        document.body.appendChild(btn)
+        btn.click()
+        Dap.shared.flush()
+
+        expect(eventsFromBatch('automation_run_clicked')).toHaveLength(1)
+    })
+
+    it('data-track wins: a node with BOTH data-track and a matching rule uses the data-track event', async () => {
+        const { Dap } = await freshTracker()
+        const { TRACK_RULES } = await import('../TrackRules')
+        // 同一元素既有 data-track 又匹配规则:必须走 data-track,规则不得插手(零回归)。
+        TRACK_RULES.push({ event: 'rule_event', testid: 'dual' })
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        const btn = document.createElement('button')
+        btn.setAttribute('data-track', 'declared_event')
+        btn.setAttribute('data-testid', 'dual')
+        document.body.appendChild(btn)
+        btn.click()
+        Dap.shared.flush()
+
+        expect(eventsFromBatch('declared_event')).toHaveLength(1)
+        expect(eventsFromBatch('rule_event')).toHaveLength(0)
+    })
+
+    it('route constraint gates the fallback (only fires on a matching pathname)', async () => {
+        const { Dap } = await freshTracker()
+        const { TRACK_RULES } = await import('../TrackRules')
+        // jsdom 默认 pathname='/':route:'/nope' 不命中,route:'/' 命中。
+        TRACK_RULES.push({ event: 'gated_off', testid: 'r1', route: '/nope' })
+        TRACK_RULES.push({ event: 'gated_on', testid: 'r2', route: '/' })
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        for (const id of ['r1', 'r2']) {
+            const el = document.createElement('button')
+            el.setAttribute('data-testid', id)
+            document.body.appendChild(el)
+            el.click()
+        }
+        Dap.shared.flush()
+
+        expect(eventsFromBatch('gated_off')).toHaveLength(0)
+        expect(eventsFromBatch('gated_on')).toHaveLength(1)
+    })
+
+    it('keyboard-activates a non-native role=button rule node (Enter), same as data-track', async () => {
+        const { Dap } = await freshTracker()
+        const { TRACK_RULES } = await import('../TrackRules')
+        TRACK_RULES.push({ event: 'automation_toggle', testid: 'kb-toggle' })
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        const div = document.createElement('div') // 非原生可激活 → 浏览器不合成 click
+        div.setAttribute('role', 'button')
+        div.setAttribute('tabindex', '0')
+        div.setAttribute('data-testid', 'kb-toggle')
+        document.body.appendChild(div)
+        div.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+        Dap.shared.flush()
+
+        expect(eventsFromBatch('automation_toggle')).toHaveLength(1)
+    })
+
+    it('data-track-ignore excludes a rule hit just like a data-track hit', async () => {
+        const { Dap } = await freshTracker()
+        const { TRACK_RULES } = await import('../TrackRules')
+        TRACK_RULES.push({ event: 'row_opened', testid: 'auto-row' })
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        const row = document.createElement('div')
+        row.setAttribute('data-testid', 'auto-row')
+        const handle = document.createElement('span') // 行内拖拽柄:不代表本事件
+        handle.setAttribute('data-track-ignore', '')
+        row.appendChild(handle)
+        document.body.appendChild(row)
+        handle.click() // 点在 ignore 子控件上
+        Dap.shared.flush()
+
+        expect(eventsFromBatch('row_opened')).toHaveLength(0)
+    })
+
+    it('merges static rule props with data-* (object_id promoted), never leaks the testid', async () => {
+        const { Dap } = await freshTracker()
+        const { TRACK_RULES } = await import('../TrackRules')
+        TRACK_RULES.push({ event: 'automation_edit', testid: 'auto-edit', props: { area: 'automation', action: 'edit' } })
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        const btn = document.createElement('button')
+        btn.setAttribute('data-testid', 'auto-edit')
+        btn.setAttribute('data-object-id', 'auto-42')
+        document.body.appendChild(btn)
+        btn.click()
+        Dap.shared.flush()
+
+        const evts = eventsFromBatch('automation_edit')
+        expect(evts).toHaveLength(1)
+        expect(evts[0].object_id).toBe('auto-42') // data-object-id 提到 envelope 顶层
+        expect(evts[0].props?.area).toBe('automation') // 静态枚举 props
+        expect(evts[0].props?.action).toBe('edit')
+        // testid 绝不进 props(collectDatasetProps 只收 track*/object_id),object_id 不重复留 props
+        expect('testid' in (evts[0].props ?? {})).toBe(false)
+        expect(evts[0].props?.object_id).toBeUndefined()
     })
 })

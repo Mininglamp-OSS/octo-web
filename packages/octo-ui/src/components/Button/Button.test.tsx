@@ -55,6 +55,19 @@ describe('Button', () => {
     expect(html).toContain('type="button"')
   })
 
+  it.each([
+    ['primary solid', { type: 'primary', theme: 'solid' }, 'octo-ui-button--solid'],
+    ['primary light', { type: 'primary', theme: 'light' }, 'octo-ui-button--secondary'],
+    ['borderless', { theme: 'borderless' }, 'octo-ui-button--text'],
+    ['danger solid', { type: 'danger', theme: 'solid' }, 'octo-ui-button--danger'],
+    ['danger borderless', { type: 'danger', theme: 'borderless' }, 'octo-ui-button--warning'],
+    ['warning light', { type: 'warning', theme: 'light' }, 'octo-ui-button--warning'],
+  ] as const)('maps legacy %s props', (_, props, expectedClass) => {
+    const html = renderToStaticMarkup(<Button {...props}>Action</Button>)
+
+    expect(html).toContain(expectedClass)
+  })
+
   it('keeps native submit type through htmlType', () => {
     const html = renderToStaticMarkup(<Button htmlType="submit">Submit</Button>)
 

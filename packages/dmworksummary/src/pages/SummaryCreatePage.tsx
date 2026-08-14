@@ -10,6 +10,7 @@ import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/Voic
 import * as api from "../api/summaryApi";
 import { getTopicTemplatesConfig, getTopicTemplates } from "../api/summaryApi";
 import { chatTypeToOriginChannelType, getOriginChannelType } from "../utils/channelType";
+import { markAgentSummaryNotificationEligible } from "../utils/groupSummaryNotify";
 import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
@@ -623,6 +624,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             const result = await api.createSummary(params);
+            // 首次完成通知来源群(#1379):手动创建的任务也登记 eligibility。
+            // 完成快于首次 detail 轮询时,页面第一次看到的就是 COMPLETED
+            // (previousStatus === undefined),靠 transition 抓不到跳变;
+            // 登记后首次观察到 COMPLETED 即补发,标记只在创建时写入,
+            // 不会让历史任务追溯群发。
+            markAgentSummaryNotificationEligible(result.task_id);
 
             // If schedule is configured, create it in ONE step bound to the new task.
             // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
@@ -953,6 +960,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             const result = await api.createAgentSummary(params);
+            markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t('summary.create.agentSummaryCreated'));
 
@@ -998,12 +1006,24 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     Toast.error(t('summary.create.noOutputToSave'));
                     return false;
                 }
-                // 40001: origin_channel_id 反查失败(通常是引用总结退出重进后
-                // referencedTask 丢失,前端没发 referenced_task_ids,后端 fallback
-                // 借 origin 无路可走)。给友好文案指导用户下一步动作。
+                // 40001: origin_channel_id 反查失败。拆两个子因给不同文案
+                // （R4 ms P2-1）：
+                //   (a) referencedTask 还在：前端已把 referenced_task_ids 发过去，
+                //       后端继承兜底也失败 = 被引用总结本身没有 origin（老 agent
+                //       任务 / bot 创建的 owner-scoped 总结）。「重新选择 / 新会话」
+                //       文案对该子因无效——且前端不能显式传 origin：后端在
+                //       origin_channel_id 非 nil 时跳过 session trace 解析，会把
+                //       新总结归错频道（见 octo-smart-summary agent_summary.go
+                //       CreateAgentSummary 的 nil 分支优先级）。
+                //   (b) referencedTask 已丢（退出重进后前端没发 referenced_task_ids，
+                //       后端 fallback 无路可走）→ 沿用原「引用丢失」文案。
                 // 见 SUM-161 fast-follow · CHAT-REFERENCE-BASED-DESIGN-v1。
                 if (code === 40001) {
-                    Toast.error(t('summary.create.savedReferenceLostRetry'));
+                    if (this.state.referencedTask) {
+                        Toast.error(t('summary.create.savedNoOriginRetry'));
+                    } else {
+                        Toast.error(t('summary.create.savedReferenceLostRetry'));
+                    }
                     return false;
                 }
             }

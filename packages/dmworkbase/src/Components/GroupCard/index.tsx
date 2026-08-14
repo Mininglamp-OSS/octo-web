@@ -100,7 +100,7 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
                         <Button
                             theme="solid"
                             type="primary"
-                            block
+                            className="wk-group-card-enter-btn"
                             onClick={this.handleEnterChat}
                             style={{ marginTop: 8 }}
                         >

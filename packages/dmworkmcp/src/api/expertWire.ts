@@ -45,6 +45,8 @@ interface ExpertCommonWire {
   created_by_type?: "human" | "bot" | "import";
   created_by_bot_uid?: string;
   created_by_bot_name?: string;
+  view_count?: number;
+  install_count?: number;
 }
 
 export interface ExpertAgentListItemWire extends ExpertCommonWire {
@@ -121,6 +123,8 @@ export function mapAgentListItem(raw: ExpertAgentListItemWire): ExpertAgent {
     createdByType: mapCreatedByType(raw.created_by_type),
     botName: raw.created_by_bot_name,
     creatorName: raw.creator_name ?? "",
+    viewCount: raw.view_count ?? 0,
+    installCount: raw.install_count ?? 0,
   };
 }
 
@@ -160,6 +164,8 @@ export function mapSquadListItem(raw: ExpertSquadListItemWire): ExpertSquad {
     createdByType: mapCreatedByType(raw.created_by_type),
     botName: raw.created_by_bot_name,
     creatorName: raw.creator_name ?? "",
+    viewCount: raw.view_count ?? 0,
+    installCount: raw.install_count ?? 0,
     // List projection: roster loads on detail. Carry the count for the card
     // stat, leave `members` empty (ExpertCard falls back to memberCount).
     memberCount: raw.member_count ?? 0,

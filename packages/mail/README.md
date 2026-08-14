@@ -19,7 +19,10 @@ container, maps the authenticated OCTO user and Space to a provisioned mailbox
 owner.
 
 Agent CLI requests use `/agent-mail-api/*` on the same public OCTO base URL.
-That path forwards the profile-bound `omb_` mailbox credential directly to
-octo-mail and strips OCTO session/Space headers. Keeping the paths separate
-prevents the human gateway from overwriting Agent credentials while preserving
-one CLI base-URL configuration.
+Authenticated routes forward the profile-bound `omb_` mailbox credential
+directly to octo-mail and strip OCTO session/Space headers. The exact
+`/webapi/v0/agent-auth/device` and `/webapi/v0/agent-auth/token` bootstrap
+routes are available before a mailbox credential exists; both proxies strip
+all ambient human, Bot, mailbox, Space, and cookie credentials before
+forwarding them. Keeping the paths separate prevents the human gateway from
+overwriting Agent credentials while preserving one CLI base-URL configuration.

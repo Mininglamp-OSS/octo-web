@@ -690,6 +690,22 @@ describe('SummaryDetailPage — 续修3/4: detail 写入路径切 task 迟到丢
         expect((page.state as any).detail.task_id).toBe(2);
         expect((page.state as any).detail.title).toBe('B-detail');
     });
+
+    it('keeps polling when batch status is terminal but detail still lags', async () => {
+        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 1, status: 2 }) as any,
+        );
+
+        const page = makePage(1);
+        page.state = { ...(page.state as any), lastKnownStatus: 2 };
+        const stopFallbackPoll = vi.spyOn(page as any, 'stopFallbackPoll');
+
+        await (page as any).doFallbackPollOnce();
+
+        expect((page.state as any).lastKnownStatus).toBe(2);
+        expect(stopFallbackPoll).not.toHaveBeenCalled();
+    });
 });
 
 // ─── 续修5/6/7（blocking）：schedule 用户操作路径切 task 迟到丢弃 ───

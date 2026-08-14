@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SummaryCreatePage from '../SummaryCreatePage';
 import * as api from '../../api/summaryApi';
 import { Dap } from '@octo/base';
+import { isAgentSummaryNotificationEligible } from '../../utils/groupSummaryNotify';
 
 import * as summaryHelpers from '../../utils/summaryHelpers';
 vi.mock('@douyinfe/semi-ui', () => ({
@@ -16,7 +17,10 @@ vi.mock('@douyinfe/semi-ui', () => ({
     Input: ({ value, onChange, ...rest }: any) => <input value={value} onChange={(e) => onChange?.(e.target.value)} {...rest} />,
     Modal: ({ children, visible, onOk, onCancel }: any) => visible ? <div data-testid="modal">{children}</div> : null,
     Typography: { Text: ({ children }: any) => <span>{children}</span> },
+    Tooltip: ({ children }: any) => <>{children}</>,
     Tag: ({ children }: any) => <span data-testid="tag">{children}</span>,
+    // Tooltip wraps several elements (SummaryCreatePage.tsx:1295); render children only.
+    Tooltip: ({ children }: any) => <>{children}</>,
     Avatar: ({ children }: any) => <span data-testid="avatar">{children}</span>,
     Modal: ({ children, visible }: any) => visible ? <div data-testid="modal">{children}</div> : null,
     SplitButtonGroup: ({ children, className }: any) => (
@@ -614,6 +618,49 @@ describe('SummaryCreatePage handleSubmit error handling', () => {
         expect(shown).toBe('保存失败：请重新选择引用总结，或点「新会话」重来');
         expect(result).toBe(false);
     });
+
+    // R4 ms P2-1: when referencedTask IS still in state, the backend borrow
+    // fallback also failed — the referenced summary itself has no origin.
+    // The "re-select / new session" copy is useless for that sub-cause, so
+    // the toast must use the dedicated no-origin wording instead.
+    it('shows no-origin toast for 40001 when referencedTask is still selected', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+
+        const err = {
+            response: { data: { code: 40001, message: 'origin_channel_id 未传且无法从 session 反查(session 无 fetch_channel 调用),也无引用总结可继承 origin' } },
+        };
+        (api.createAgentSummary as any).mockRejectedValueOnce(err);
+
+        const ref = React.createRef<any>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+
+        await act(async () => {
+            instance.setState({
+                sessionId: 'session-abc',
+                mode: 'agent',
+                messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'summary' }],
+                referencedTask: { task_id: 42, title: '老 Agent 总结', origin_channel_id: '', origin_channel_type: 1 },
+            });
+        });
+
+        (Toast.error as any).mockClear();
+
+        let result: boolean | undefined;
+        await act(async () => {
+            result = await instance.handleSaveAsSummary('a title');
+            await flushPromises();
+        });
+
+        expect(Toast.error).toHaveBeenCalled();
+        const shown = (Toast.error as any).mock.calls[0]?.[0] ?? '';
+        expect(shown).toBe('保存失败：该引用总结缺少来源频道，本次会话也未读取过频道。请更换有来源的引用总结，或开始新会话让 AI 先读取频道');
+        expect(result).toBe(false);
+    });
 });
 
 describe('SummaryCreatePage derivedFromTask cross-session isolation (#907 P1 Jerry-Xin)', () => {
@@ -696,6 +743,7 @@ describe('SummaryCreatePage derivedFromTask cross-session isolation (#907 P1 Jer
 describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        localStorage.clear();
         vi.spyOn(summaryHelpers, 'writeAgentChatSession').mockImplementation(() => {});
     });
 
@@ -721,6 +769,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(api.createAgentSummary).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp-1', origin_channel_type: 1 }),
         );
+        expect(isAgentSummaryNotificationEligible(1)).toBe(true);
     });
 
     it('maps a thread selectedChat[0] to origin_channel_type=2', async () => {

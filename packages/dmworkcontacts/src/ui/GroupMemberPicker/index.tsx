@@ -10,6 +10,7 @@ import "./index.css";
 
 function GroupMemberPicker({
   mode,
+  disabled = false,
   candidates,
   selected,
   selectedUids,
@@ -26,6 +27,7 @@ function GroupMemberPicker({
           placeholder={copy.searchPlaceholder}
           value={keyword}
           showClear
+          disabled={disabled}
           onChange={actions.onKeywordChange}
         />
       </div>
@@ -35,6 +37,7 @@ function GroupMemberPicker({
             <CheckboxGroup
               style={{ width: "100%" }}
               value={Array.from(selectedUids)}
+              disabled={disabled}
               onChange={(values) => {
                 const next = new Set(values);
                 candidates.forEach((member) => {
@@ -80,8 +83,9 @@ function GroupMemberPicker({
         {member.robot && <AiBadge size="small" />}
       </div>
       <div
-        className="close-icon"
-        onClick={() => actions.onToggleMember(member.uid)}
+        className={`close-icon${disabled ? " close-icon--disabled" : ""}`}
+        aria-disabled={disabled}
+        onClick={disabled ? undefined : () => actions.onToggleMember(member.uid)}
       >
         <span className="group-member-remove-icon">
           <svg

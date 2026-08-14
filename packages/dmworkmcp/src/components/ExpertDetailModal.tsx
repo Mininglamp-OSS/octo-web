@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import {
   Bot,
   ChevronLeft,
+  Download,
+  Eye,
   Route,
   ShieldCheck,
   UserRound,
@@ -9,10 +11,11 @@ import {
 } from "lucide-react";
 import { t, useI18n, WKModal } from "@octo/base";
 import type { ExpertItem, ExpertMember } from "../mock/expertMock";
-import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl } from "../api/expertService";
+import { getExpertSkillContent, getSquadSkillContent, getExpertSkillDownloadUrl, getSquadSkillDownloadUrl, trackExpertView } from "../api/expertService";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
 import { isOfficialExpert } from "../utils/publisher";
+import { formatCount } from "../utils/format";
 import ExpertSpecView from "./ExpertSpecView";
 
 interface ExpertDetailModalProps {
@@ -52,10 +55,16 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
   // A drilled-into squad member; null shows the squad overview.
   const [drillMember, setDrillMember] = useState<ExpertMember | null>(null);
 
-  // Reset the member drill-in whenever a different item is opened.
+  // Per opened item (keyed by id + kind, so a list-item -> hydrated-detail
+  // swap of the same record re-triggers neither, while a cross-kind swap at an
+  // identical id — unreachable via the UI today but exercised in tests — still
+  // records its own view): reset the member drill-in and record one
+  // best-effort view event. trackExpertView never rejects.
   useEffect(() => {
-    if (item) setDrillMember(null);
-  }, [item?.id]);
+    if (!item) return;
+    setDrillMember(null);
+    void trackExpertView(item.kind, item.id);
+  }, [item?.id, item?.kind]);
 
   if (!item) return null;
 
@@ -127,6 +136,24 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
               )}
             </span>
           )}
+          <span className="wk-mcp-expert-detail__stats">
+            <span
+              className="wk-mcp-expert-detail__stat"
+              title={t("mcp.expert.viewCountTitle", { values: { count: item.viewCount ?? 0 } })}
+              aria-label={t("mcp.expert.viewCountTitle", { values: { count: item.viewCount ?? 0 } })}
+            >
+              <Eye size={13} aria-hidden="true" />
+              {formatCount(item.viewCount ?? 0)}
+            </span>
+            <span
+              className="wk-mcp-expert-detail__stat"
+              title={t("mcp.expert.installCountTitle", { values: { count: item.installCount ?? 0 } })}
+              aria-label={t("mcp.expert.installCountTitle", { values: { count: item.installCount ?? 0 } })}
+            >
+              <Download size={13} aria-hidden="true" />
+              {formatCount(item.installCount ?? 0)}
+            </span>
+          </span>
         </div>
       </div>
     </div>

@@ -47,6 +47,7 @@ export async function registerS11SummaryAgentContinueRefine(page: Page): Promise
       current_result_id: 11101,
       current_personal_version_id: null,
       activity_at: "2026-08-06T11:12:00Z",
+      referenceable: true,
     };
     const detail = {
       ...listItem,
