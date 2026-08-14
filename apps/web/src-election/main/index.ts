@@ -25,6 +25,7 @@ import {
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
+  IPC_OIDC_CLEAR_AUTH_SESSION,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
 import {
@@ -42,6 +43,7 @@ import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
 import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractEndSessionRedirect, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 import { createTrustedShellDocumentTracker } from "./trustedShell";
+import { clearAuthSessionCookies } from "./clearAuthSession";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -259,6 +261,16 @@ ipcMain.handle(IPC_OIDC_AUTHORIZE_END, (event) => {
   const win = resolveTrustedOidcSender(event);
   if (win) oidcExpectedFlows.delete(win);
   return { ok: !!win };
+});
+
+ipcMain.handle(IPC_OIDC_CLEAR_AUTH_SESSION, async (event) => {
+  const win = resolveTrustedOidcSender(event);
+  if (!win) return { ok: false as const, code: "untrusted-sender" as const };
+  return clearAuthSessionCookies({
+    session: win.webContents.session,
+    origins: OIDC_END_SESSION_ORIGINS,
+    log: { warn: (message) => console.warn(`[oidc] ${message}`) },
+  });
 });
 
 ipcMain.handle(IPC_OIDC_OPEN_EXTERNAL, async (event, url: unknown) => {

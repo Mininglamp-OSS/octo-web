@@ -181,6 +181,14 @@ describe("oidcLogout helpers", () => {
     sessionStorage.setItem("login_providerabc", "aegis");
     sessionStorage.setItem("realname_verifiedabc", "1");
     sessionStorage.setItem("pending_oidc_login", "{}");
+    sessionStorage.setItem(
+      "octo.mail.authorize.pending-search",
+      "?code=owner-a&space_id=space-a"
+    );
+    sessionStorage.setItem(
+      "octo.docs.standaloneReturn",
+      "/mail/authorize?code=owner-a&space_id=space-a"
+    );
     sessionStorage.setItem("theme-mode", "dark");
     localStorage.setItem("tokenabc", "t");
     localStorage.setItem("currentSpaceId", "s1");
@@ -193,6 +201,10 @@ describe("oidcLogout helpers", () => {
     expect(sessionStorage.getItem("login_providerabc")).toBeNull();
     expect(sessionStorage.getItem("realname_verifiedabc")).toBeNull();
     expect(sessionStorage.getItem("pending_oidc_login")).toBeNull();
+    expect(
+      sessionStorage.getItem("octo.mail.authorize.pending-search")
+    ).toBeNull();
+    expect(sessionStorage.getItem("octo.docs.standaloneReturn")).toBeNull();
     expect(localStorage.getItem("tokenabc")).toBeNull();
     expect(localStorage.getItem("currentSpaceId")).toBeNull();
     expect(sessionStorage.getItem("theme-mode")).toBe("dark");
@@ -215,6 +227,7 @@ type SideEffects = ReturnType<typeof makeSideEffects>;
 function makeSideEffects() {
   return {
     clearLocalLoginState: vi.fn(),
+    clearElectronAuthSession: vi.fn(),
     reloadShell: vi.fn(),
     navigateExternal: vi.fn(),
     markPostLogoutCleanup: vi.fn(),
@@ -235,6 +248,7 @@ function buildDeps(
     env: "web",
     devPostLogoutRedirectUriOverride: undefined,
     clearLocalLoginState: sfx.clearLocalLoginState,
+    clearElectronAuthSession: sfx.clearElectronAuthSession,
     reloadShell: sfx.reloadShell,
     navigateExternal: sfx.navigateExternal,
     markPostLogoutCleanup: sfx.markPostLogoutCleanup,
@@ -301,6 +315,10 @@ describe("performOidcUserInitiatedLogout", () => {
 
     expect(result.kind).toBe("desktop-idp");
     expect(sfx.clearLocalLoginState).toHaveBeenCalledTimes(1);
+    expect(sfx.clearElectronAuthSession).toHaveBeenCalledTimes(1);
+    expect(sfx.clearElectronAuthSession.mock.invocationCallOrder[0]).toBeGreaterThan(
+      invoke.mock.invocationCallOrder[0],
+    );
     expect(invoke).toHaveBeenCalledWith(
       "oidc-open-external",
       "https://accounts.example.com/end_session?id_token_hint=jwt",
@@ -341,6 +359,7 @@ describe("performOidcUserInitiatedLogout", () => {
       "https://accounts.example.com/end_session",
     );
     expect(sfx.clearLocalLoginState).toHaveBeenCalledTimes(1);
+    expect(sfx.clearElectronAuthSession).toHaveBeenCalledTimes(1);
     expect(sfx.reloadShell).toHaveBeenCalledTimes(1);
     expect(sfx.navigateExternal).not.toHaveBeenCalled();
     expect(sfx.fallbackLogout).not.toHaveBeenCalled();

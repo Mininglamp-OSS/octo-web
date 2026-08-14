@@ -123,6 +123,7 @@ import { isEffectivelyMuted, parseThreadChannelId } from "./Service/Thread";
 import {
   getBrowserSingleAlertCoordinator,
   isConversationChannelVisible,
+  isDocumentFocusScene,
   isMessageElementVisible,
   isSameMessageAttentionSession,
   shouldSuppressImmediateAlert,
@@ -501,7 +502,10 @@ export default class BaseModule implements IModule {
         friendApply.unread = true;
         friendApply.createdAt = message.timestamp;
         WKApp.shared.addFriendApply(friendApply);
-        this.tipsAudio();
+        // 文档专注场景不播提示音（红点/未读仍会更新）；IM 场景不受影响。
+        if (!isDocumentFocusScene()) {
+          this.tipsAudio();
+        }
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
         const toUID = param.to_uid;
@@ -872,6 +876,11 @@ export default class BaseModule implements IModule {
   allowNotify(message: Message) {
     if (WKApp.shared.notificationIsClose) {
       // 用户关闭了通知
+      return false;
+    }
+    if (isDocumentFocusScene()) {
+      // 文档专注场景（独立文档页 /d/:docId、/ppt/d/:docId）：不弹 IM 桌面通知、不播提示音，
+      // 仅保留红点/未读数。IM 场景不受影响。
       return false;
     }
     if (isCurrentImSystemMessage(message.contentType)) {

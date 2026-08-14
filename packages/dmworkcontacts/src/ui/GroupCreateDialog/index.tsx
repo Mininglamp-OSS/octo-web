@@ -1,5 +1,6 @@
 import React from "react";
 import { Input } from "@douyinfe/semi-ui";
+import { Pencil } from "lucide-react";
 
 import { GroupAvatarEditModal, GroupAvatarPreview, WKModal } from "@octo/base";
 
@@ -43,12 +44,18 @@ function GroupCreateDialog({
                   name={form.groupName}
                   size={48}
                 />
-                <span
+                <button
+                  type="button"
                   className="group-create-edit-avatar"
                   onClick={actions.onOpenAvatarEditor}
                 >
+                  <Pencil
+                    size={16}
+                    className="group-create-edit-avatar-icon"
+                    aria-hidden="true"
+                  />
                   {copy.editAvatar}
-                </span>
+                </button>
               </div>
             </div>
 

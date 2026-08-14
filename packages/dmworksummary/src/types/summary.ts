@@ -21,6 +21,7 @@ export const TriggerType = {
     MANUAL: 1,
     SCHEDULED: 2,
     AGENT: 3,
+    BOT: 4,
 } as const;
 export type TriggerTypeType = typeof TriggerType[keyof typeof TriggerType];
 
@@ -189,6 +190,9 @@ export interface SummaryListItem {
     participants?: Participant[];
     total_msg_count: number;
     creator_name?: string;
+    /** 若由 bot 代 owner 创建：acting bot 的 uid / 显示名(trigger_type=BOT)。 */
+    creator_bot_id?: string;
+    creator_bot_name?: string;
     origin_channel_id: string;
     origin_channel_type: number;
     created_at: string;
@@ -220,6 +224,10 @@ export interface SummaryDetail {
     schedule_id?: number | null;
     /** 任务创建者 user_id。详情页区分 creator/participant 视角的移除/退出按钮。 */
     creator_id?: string;
+    creator_name?: string;
+    /** 若由 bot 代 owner 创建:acting bot 的 uid / 显示名(trigger_type=BOT)。 */
+    creator_bot_id?: string;
+    creator_bot_name?: string;
     origin_channel_id: string;
     origin_channel_type: number;
     created_at: string;

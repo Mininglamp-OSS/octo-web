@@ -215,6 +215,9 @@ importers:
       '@octo/login':
         specifier: workspace:*
         version: link:../../packages/dmworklogin
+      '@octo/mail':
+        specifier: workspace:*
+        version: link:../../packages/mail
       '@octo/ui':
         specifier: workspace:*
         version: link:../../packages/octo-ui
@@ -690,9 +693,21 @@ importers:
       classnames:
         specifier: ^2.3.1
         version: 2.5.1
+      jszip:
+        specifier: ^3.10.1
+        version: 3.10.1
       lucide-react:
         specifier: ^0.577.0
         version: 0.577.0(react@17.0.2)
+      react-markdown:
+        specifier: '8'
+        version: 8.0.7(@types/react@19.2.14)(react@17.0.2)
+      rehype-sanitize:
+        specifier: ^6.0.0
+        version: 6.0.0
+      remark-gfm:
+        specifier: '3'
+        version: 3.0.1
     devDependencies:
       '@testing-library/jest-dom':
         specifier: ^6.9.1
@@ -821,10 +836,38 @@ importers:
         version: 8.10.2(eslint@7.32.0)
       eslint-config-turbo:
         specifier: latest
-        version: 2.10.3(eslint@7.32.0)(turbo@2.2.1)
+        version: 2.10.9(eslint@7.32.0)(turbo@2.2.1)
       eslint-plugin-react:
         specifier: 7.28.0
         version: 7.28.0(eslint@7.32.0)
+
+  packages/mail:
+    dependencies:
+      '@octo/base':
+        specifier: workspace:*
+        version: link:../dmworkbase
+      lucide-react:
+        specifier: ^0.577.0
+        version: 0.577.0(react@18.3.1)
+    devDependencies:
+      '@testing-library/react':
+        specifier: 16.1.0
+        version: 16.1.0(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      '@types/node':
+        specifier: ^22.19.21
+        version: 22.19.21
+      '@types/react':
+        specifier: ^18.3.28
+        version: 18.3.28
+      '@types/react-dom':
+        specifier: ^18.3.5
+        version: 18.3.7(@types/react@18.3.28)
+      react:
+        specifier: ^18.3.1
+        version: 18.3.1
+      react-dom:
+        specifier: ^18.3.1
+        version: 18.3.1(react@18.3.1)
 
   packages/octo-ui:
     devDependencies:
@@ -2909,6 +2952,21 @@ packages:
       react: ^18.0.0
       react-dom: ^18.0.0
 
+  '@testing-library/react@16.1.0':
+    resolution: {integrity: sha512-Q2ToPvg0KsVL0ohND9A3zLJWcOXXcO8IDu3fj11KhNt0UlCWyFyvnCIBkd12tidB2lkiVRG8VFqdhcqhqnAQtg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      '@testing-library/dom': ^10.0.0
+      '@types/react': ^18.0.0 || ^19.0.0
+      '@types/react-dom': ^18.0.0 || ^19.0.0
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+
   '@testing-library/user-event@14.5.2':
     resolution: {integrity: sha512-YAh82Wh4TIrxYLmfGcixwD18oIjyC1pFQC2Y01F2lzV2HTMiYrI0nze0FD0ocB//CKS/7jIUgae+adPqxK5yCQ==}
     engines: {node: '>=12', npm: '>=6'}
@@ -4305,6 +4363,7 @@ packages:
 
   crypto-js@4.2.0:
     resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    deprecated: Active development of CryptoJS has been discontinued. This library is no longer maintained.
 
   css-functions-list@3.3.3:
     resolution: {integrity: sha512-8HFEBPKhOpJPEPu70wJJetjKta86Gw9+CCyCnB3sui2qQfOvRyqBy4IKLKKAwdMpWb2lHXWk9Wb4Z6AmaUT1Pg==}
@@ -4761,8 +4820,8 @@ packages:
       typescript:
         optional: true
 
-  eslint-config-turbo@2.10.3:
-    resolution: {integrity: sha512-P509ALgsf9fA8hxUVuF6MFZdcE2CAdEZIiUq9eHIm8h58u4us0qUZ5SPTxWOQjX+in5vfikXfX4qBrP2Tx//EA==}
+  eslint-config-turbo@2.10.9:
+    resolution: {integrity: sha512-UskkV02SOEm/k6KJfF3tPwyWCxUGCM2cGfD6ko2WQ+xSa5o8v7QcKbFMU6Qg2d7dwHD+L3dbg5Pp+mb1iPETYA==}
     peerDependencies:
       eslint: '>6.6.0'
       turbo: '>2.0.0'
@@ -4865,8 +4924,8 @@ packages:
     peerDependencies:
       eslint: ^7.5.0 || ^8.0.0
 
-  eslint-plugin-turbo@2.10.3:
-    resolution: {integrity: sha512-R6aIYTa0bqxPn1IhAom3/zIJF9lPChAq+o7cywdEY8GxPnktGMW04P6oFCrg/V3zvhtF4+n1d5Og2r0GqrBtQA==}
+  eslint-plugin-turbo@2.10.9:
+    resolution: {integrity: sha512-OOo50d6UEXN1qK61PPi7O7+Rx117zjumYqatKqReUNCYbi5OBnAtPudnDTuKhpgEbutG3wF0ApqeWjRKj95vxA==}
     peerDependencies:
       eslint: '>6.6.0'
       turbo: '>2.0.0'
@@ -10921,7 +10980,7 @@ snapshots:
 
   '@mdx-js/mdx@3.1.1':
     dependencies:
-      '@types/estree': 1.0.8
+      '@types/estree': 1.0.9
       '@types/estree-jsx': 1.0.5
       '@types/hast': 3.0.4
       '@types/mdx': 2.0.13
@@ -11651,6 +11710,16 @@ snapshots:
       react-dom: 17.0.2(react@17.0.2)
     transitivePeerDependencies:
       - '@types/react'
+
+  '@testing-library/react@16.1.0(@testing-library/dom@10.4.1)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)':
+    dependencies:
+      '@babel/runtime': 7.29.2
+      '@testing-library/dom': 10.4.1
+      react: 18.3.1
+      react-dom: 18.3.1(react@18.3.1)
+    optionalDependencies:
+      '@types/react': 18.3.28
+      '@types/react-dom': 18.3.7(@types/react@18.3.28)
 
   '@testing-library/user-event@14.5.2(@testing-library/dom@10.4.0)':
     dependencies:
@@ -14010,10 +14079,10 @@ snapshots:
       - jest
       - supports-color
 
-  eslint-config-turbo@2.10.3(eslint@7.32.0)(turbo@2.2.1):
+  eslint-config-turbo@2.10.9(eslint@7.32.0)(turbo@2.2.1):
     dependencies:
       eslint: 7.32.0
-      eslint-plugin-turbo: 2.10.3(eslint@7.32.0)(turbo@2.2.1)
+      eslint-plugin-turbo: 2.10.9(eslint@7.32.0)(turbo@2.2.1)
       turbo: 2.2.1
 
   eslint-import-resolver-node@0.3.10:
@@ -14213,7 +14282,7 @@ snapshots:
       - supports-color
       - typescript
 
-  eslint-plugin-turbo@2.10.3(eslint@7.32.0)(turbo@2.2.1):
+  eslint-plugin-turbo@2.10.9(eslint@7.32.0)(turbo@2.2.1):
     dependencies:
       dotenv: 16.0.3
       eslint: 7.32.0

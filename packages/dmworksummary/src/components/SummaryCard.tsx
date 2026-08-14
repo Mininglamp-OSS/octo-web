@@ -98,8 +98,19 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     const relativeTime = formatRelativeTime(task.created_at, t);
     const isCreator = task.creator_id != null && task.creator_id === currentUid;
     const isParticipant = myParticipant != null;
+    // Bot-created summaries (trigger_type=BOT) are marked with the acting bot's
+    // name. The Bot tag keys off trigger_type so the summary stays visibly marked
+    // regardless of field availability; the "由 <bot> 创建" copy is only used when
+    // creator_bot_name is actually present. That field is added by the backend in
+    // octo-smart-summary#188 — until it ships, trigger_type=BOT tasks (producible
+    // since #181) carry no name, so we fall back to the normal creator/time copy
+    // instead of rendering "未知" (the two services deploy independently).
+    const isBotCreated = task.trigger_type === TriggerType.BOT || !!task.creator_bot_name;
+    const hasBotName = isBotCreated && !!task.creator_bot_name;
 
-    const timeText = isCreator
+    const timeText = hasBotName
+        ? t("summary.summaryCard.botCreatedAt", { values: { name: task.creator_bot_name!, time: relativeTime } })
+        : isCreator
         ? t("summary.summaryCard.youStartedAt", { values: { time: relativeTime } })
         : t("summary.summaryCard.startedAt", { values: { name: task.creator_name || t("summary.common.unknown"), time: relativeTime } });
 
@@ -171,6 +182,12 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
 
             {/* 底部：时间 + 操作菜单 */}
             <div className="summary-card-bottom">
+                {isBotCreated && (
+                    <span className="summary-card-bot-tag">
+                        <Bot size={11} />
+                        {t("summary.summaryCard.botTag")}
+                    </span>
+                )}
                 <span className="summary-card-time">{timeText}</span>
                 {(isCreator || (isParticipant && onLeave)) && (
                     <Dropdown

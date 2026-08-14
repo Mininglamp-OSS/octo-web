@@ -11,6 +11,7 @@ import { GroupAvatarSettingRow } from "../channelSettingGroupProfileRows";
 
 const mocks = vi.hoisted(() => ({
   fetchCurrentImChannelInfo: vi.fn(),
+  toastWarning: vi.fn(),
   channelAvatarProps: undefined as Record<string, unknown> | undefined,
 }));
 
@@ -18,7 +19,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Tag: () => null,
   Toast: {
     error: vi.fn(),
-    warning: vi.fn(),
+    warning: mocks.toastWarning,
   },
 }));
 
@@ -73,6 +74,7 @@ describe("GroupAvatarSettingRow", () => {
 
   beforeEach(() => {
     mocks.fetchCurrentImChannelInfo.mockReset();
+    mocks.toastWarning.mockReset();
     mocks.channelAvatarProps = undefined;
     container = document.createElement("div");
     document.body.appendChild(container);
@@ -103,6 +105,7 @@ describe("GroupAvatarSettingRow", () => {
           title="Group avatar"
           icon={<span />}
           channel={channel}
+          canEdit
           showUpload
           groupName="Cached Group"
           isNamedGroup={false}
@@ -130,5 +133,32 @@ describe("GroupAvatarSettingRow", () => {
       isUploadedAvatar: true,
       visible: true,
     });
+  });
+
+  it("shows a permission toast instead of opening for non-managers", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    act(() => {
+      ReactDOM.render(
+        <GroupAvatarSettingRow
+          title="Group avatar"
+          icon={<span />}
+          channel={channel}
+          canEdit={false}
+          showUpload={false}
+        />,
+        container
+      );
+    });
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Group avatar" }));
+    });
+
+    expect(mocks.toastWarning).toHaveBeenCalledWith(
+      "base.module.channelSettings.groupAvatarOnlyManager"
+    );
+    expect(mocks.fetchCurrentImChannelInfo).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("avatar-editor")).toBeNull();
   });
 });

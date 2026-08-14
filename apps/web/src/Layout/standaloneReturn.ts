@@ -41,6 +41,16 @@ export function persistStandaloneReturn(): void {
     }
 }
 
+/** Clear a resolved standalone flow without navigating to its saved target. */
+export function clearStandaloneReturn(): void {
+    if (typeof window === "undefined") return;
+    try {
+        window.sessionStorage.removeItem(STANDALONE_RETURN_KEY);
+    } catch {
+        // sessionStorage unavailable: nothing can remain to clear.
+    }
+}
+
 export function consumeStandaloneReturn(
     handlers: readonly ReturnHandler[] = []
 ): string | null {

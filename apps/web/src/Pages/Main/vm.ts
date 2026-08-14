@@ -1,5 +1,7 @@
 import { WKApp, Menus, ProviderListener, normalizeRoutePath, startVersionCheck, t } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
+import { requestMailWorkspaceSwitch } from "@octo/mail";
+import { requestGuardedBrowserRouteChange } from "./menuChange";
 import { reconcileMenuState, resolvePendingRouteActivation } from "./menuReconcile";
 
 export default class MainVM extends ProviderListener {
@@ -64,6 +66,28 @@ export default class MainVM extends ProviderListener {
   // first appconfig load, then cleared. Any explicit user navigation also clears it (see the
   // currentMenus setter) so a late toggle never yanks the user off a view they chose.
   private _pendingRouteActivation?: string;
+  private _allowNextBrowserRouteChange = false;
+  private _onBrowserRouteGuard = (event: PopStateEvent) => {
+    if (this._allowNextBrowserRouteChange) {
+      this._allowNextBrowserRouteChange = false;
+      return;
+    }
+    const currentRoute = this._currentMenus?.routePath;
+    const targetRoute = normalizeRoutePath(window.location.pathname);
+    const targetMenu = this.findMenuForRoute(targetRoute);
+    if (!currentRoute || !targetMenu || targetMenu.id === this._currentMenus?.id) {
+      return;
+    }
+    requestGuardedBrowserRouteChange(
+      event,
+      requestMailWorkspaceSwitch,
+      () => window.history.pushState({}, "title", currentRoute),
+      () => {
+        this._allowNextBrowserRouteChange = true;
+        window.history.back();
+      }
+    );
+  };
   private _onBrowserRouteChange = () => {
     this.syncMenuFromBrowserPath();
   };
@@ -115,6 +139,7 @@ export default class MainVM extends ProviderListener {
         this.notifyListener();
       }
     });
+    window.addEventListener("popstate", this._onBrowserRouteGuard, true);
     window.addEventListener("popstate", this._onBrowserRouteChange);
 
     if ((window as any).__POWERED_ELECTRON__) {
@@ -196,6 +221,7 @@ export default class MainVM extends ProviderListener {
     this.ipcListeners = [];
     this.stopVersionCheck?.();
     this._unsubscribeMenuReconcile?.();
+    window.removeEventListener("popstate", this._onBrowserRouteGuard, true);
     window.removeEventListener("popstate", this._onBrowserRouteChange);
   }
 

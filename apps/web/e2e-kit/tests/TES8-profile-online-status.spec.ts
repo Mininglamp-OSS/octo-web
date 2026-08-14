@@ -206,12 +206,26 @@ test("@TES8 @p0 @chat @profile 资料详情在线状态专用 e2e", async ({ aut
   await authedPage.screenshot({ path: kf("02-human-offline"), fullPage: true });
   await closeUserInfo();
 
-  await openSearchHit(SELF_NAME);
-  const selfDialog = authedPage.getByRole("dialog").filter({ hasText: SELF_NAME });
+  await openSearchHit(SELF_NAME, { searchCloses: false });
+  // self 场景搜索面板保留(rev-6):此时页面上有两个 dialog——搜索面板和 UserInfo。
+  // 用 `.wk-base-modal-userinfo` 直接定位 Semi Modal wrapper 会拿到前一次开关
+  // 后残留的 hidden wrapper(Semi 关闭时保留 DOM 只改 CSS)。改用 role=dialog +
+  // 语义特征:UserInfo 独有"Octo号"字段,搜索面板没有,以此精确锁定。
+  const selfDialog = authedPage.getByRole("dialog").filter({
+    has: authedPage.getByText(/Octo号/),
+  });
   await expect(selfDialog).toBeVisible({ timeout: 10_000 });
+  await expect(selfDialog.getByText(SELF_NAME).first()).toBeVisible({ timeout: 10_000 });
   expect(await selfDialog.getByRole("status").count()).toBe(0);
   await authedPage.screenshot({ path: kf("03-self-hidden"), fullPage: true });
   await closeUserInfo();
+  // self 分支 openSearchHit 时刻意不关搜索面板(rev-6),关掉 UserInfo 后搜索
+  // 面板仍在,会拦截下一次 openSearchHit 的"会话"按钮点击。手动收掉。
+  await authedPage.keyboard.press("Escape");
+  const searchModal = authedPage.getByRole("dialog").filter({
+    has: authedPage.getByPlaceholder(/搜索联系人/),
+  });
+  await expect(searchModal).toBeHidden({ timeout: 10_000 });
 
   await openSearchHit(BOT_ONLINE_NAME, { searchCloses: false });
   const botDialog = authedPage.getByRole("dialog").filter({ hasText: BOT_ONLINE_NAME });
