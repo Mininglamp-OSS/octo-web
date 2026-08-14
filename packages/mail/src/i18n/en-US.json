@@ -159,7 +159,7 @@
   "mail.agentMailboxes.createdAddress": "Mailbox address: {{address}}",
   "mail.agentMailboxes.copyPromptTitle": "Copy the prompt and send it to an Agent",
   "mail.agentMailboxes.copyPromptDescription": "Send this prompt in the conversation with the Bot you choose and follow the setup guide.",
-  "mail.agentMailboxes.setupPrompt": "Please connect mailbox {{address}} to the current Agent and send me the authorization link. After I approve it, complete the connection automatically. If this Agent does not support mailbox connections, tell me directly.\n\nIf the plugin is not installed, use /install first, or run the following command to install and connect it:\n\nnpx -y create-openclaw-octo-mail bind --mailbox {{address}} --agent <agent-id> --space-id {{spaceId}}",
+  "mail.agentMailboxes.setupPrompt": "Please connect mailbox {{address}} to the current Agent and send me the authorization link. After I approve it, complete the connection automatically. If this Agent does not support mailbox connections, tell me directly.\n\nIf the plugin is not installed, use /install first, or run the following command to install it from ClawHub:\n\nopenclaw plugins install clawhub:openclaw-octo-mail-plugin\n\nAfter installation, run:\n\nopenclaw octo-mail setup\nopenclaw octo-mail bind --mailbox {{address}} --agent <agent-id> --space-id {{spaceId}}",
   "mail.agentMailboxes.copyPrompt": "Copy prompt",
   "mail.agentMailboxes.promptCopied": "Prompt copied",
   "mail.agentMailboxes.userChoosesAgent": "The Bot that receives this prompt initiates the mailbox connection; the mailbox page does not choose a Bot for you.",

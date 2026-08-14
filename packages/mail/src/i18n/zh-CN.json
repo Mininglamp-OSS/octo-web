@@ -159,7 +159,7 @@
   "mail.agentMailboxes.createdAddress": "邮箱地址：{{address}}",
   "mail.agentMailboxes.copyPromptTitle": "复制提示词，发送给 Agent",
   "mail.agentMailboxes.copyPromptDescription": "请将以下提示词发送到你选择的 Bot 对话窗口，根据引导完成配置。",
-  "mail.agentMailboxes.setupPrompt": "请帮我把邮箱 {{address}} 接入当前 Agent，并把授权链接发给我。授权确认后请自动完成接入。如果当前 Agent 暂不支持邮箱接入，请直接说明。\n\n如果尚未安装插件，请先使用 /install，或执行以下命令安装并接入：\n\nnpx -y create-openclaw-octo-mail bind --mailbox {{address}} --agent <agent标识> --space-id {{spaceId}}",
+  "mail.agentMailboxes.setupPrompt": "请帮我把邮箱 {{address}} 接入当前 Agent，并把授权链接发给我。授权确认后请自动完成接入。如果当前 Agent 暂不支持邮箱接入，请直接说明。\n\n如果尚未安装插件，请先使用 /install，或执行以下命令从 ClawHub 安装：\n\nopenclaw plugins install clawhub:openclaw-octo-mail-plugin\n\n安装后执行：\n\nopenclaw octo-mail setup\nopenclaw octo-mail bind --mailbox {{address}} --agent <agent标识> --space-id {{spaceId}}",
   "mail.agentMailboxes.copyPrompt": "复制提示词",
   "mail.agentMailboxes.promptCopied": "提示词已复制",
   "mail.agentMailboxes.userChoosesAgent": "你把提示词发送给哪个 Bot，就由哪个 Bot 发起邮箱接入；邮箱页面不会替你选择 Bot。",

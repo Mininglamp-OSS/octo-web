@@ -4,15 +4,20 @@ import zhCN from "./zh-CN.json";
 
 describe("Agent Mail setup prompt", () => {
   it.each([zhCN, enUS])(
-    "provides the public installer command without credentials or internal tools",
+    "provides the public ClawHub install and binding commands without credentials or internal tools",
     (messages) => {
       const prompt = messages["mail.agentMailboxes.setupPrompt"];
       expect(prompt).toContain("{{address}}");
       expect(prompt).toContain("{{spaceId}}");
-      expect(prompt).toContain("npx -y create-openclaw-octo-mail bind");
+      expect(prompt).toContain(
+        "openclaw plugins install clawhub:openclaw-octo-mail-plugin",
+      );
+      expect(prompt).toContain("openclaw octo-mail setup");
+      expect(prompt).toContain("openclaw octo-mail bind");
       expect(prompt).toContain("--space-id {{spaceId}}");
       expect(prompt).toMatch(/<agent标识>|<agent-id>/);
       expect(prompt).not.toContain("octo-cli");
+      expect(prompt).not.toContain("npx");
       expect(prompt).not.toContain("mail_connect");
       expect(prompt).not.toContain("mail_connection_status");
       expect(prompt).not.toContain("Bot ID");

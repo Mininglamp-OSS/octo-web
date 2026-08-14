@@ -187,17 +187,28 @@ describe("Agent Mail proxy path parity", () => {
     const bootstrapLocation =
       "location ~ ^/agent-mail-api/webapi/v0/agent-auth/(device|token)$";
     const credentialedLocation = "location ~ ^/agent-mail-api(?:/|$)";
-    expect(nginx).toContain(bootstrapLocation);
-    expect(nginx).toContain(credentialedLocation);
-    expect(nginx.indexOf(bootstrapLocation)).toBeLessThan(
-      nginx.indexOf(credentialedLocation)
+    const bootstrapStart = nginx.indexOf(bootstrapLocation);
+    const credentialedStart = nginx.indexOf(credentialedLocation);
+    expect(bootstrapStart).toBeGreaterThanOrEqual(0);
+    expect(credentialedStart).toBeGreaterThan(bootstrapStart);
+
+    const bootstrapBlock = nginx.slice(bootstrapStart, credentialedStart);
+    const credentialedBlock = nginx.slice(credentialedStart);
+    expect(bootstrapBlock).toContain(
+      "rewrite ^/agent-mail-api/?(.*)$ /$1 break;",
     );
-    expect(nginx).toContain("rewrite ^/agent-mail-api/?(.*)$ /$1 break;");
-    expect(nginx).toContain('if ($agent_mail_authorization = "")');
-    expect(nginx).toContain('proxy_set_header Authorization "";');
-    expect(nginx).toContain('proxy_set_header Cookie "";');
-    expect(nginx).toContain(
-      "proxy_set_header Authorization $agent_mail_authorization;"
+    expect(bootstrapBlock).toContain('proxy_set_header Authorization "";');
+    expect(bootstrapBlock).toContain('proxy_set_header token "";');
+    expect(bootstrapBlock).toContain('proxy_set_header X-Space-ID "";');
+    expect(bootstrapBlock).toContain(
+      'proxy_set_header X-Octo-Mailbox-ID "";',
+    );
+    expect(bootstrapBlock).toContain('proxy_set_header Cookie "";');
+    expect(credentialedBlock).toContain(
+      'if ($agent_mail_authorization = "")',
+    );
+    expect(credentialedBlock).toContain(
+      "proxy_set_header Authorization $agent_mail_authorization;",
     );
   });
 });
