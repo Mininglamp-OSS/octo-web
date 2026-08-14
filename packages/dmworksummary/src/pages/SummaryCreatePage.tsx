@@ -324,7 +324,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     }
 
     componentDidUpdate(prevProps: SummaryCreatePageProps, prevState: SummaryCreatePageState) {
-        if (prevState.selectedChats !== this.state.selectedChats) {
+        // selectedChats 或 mode 变化都会改变 start-group 宽度（mode=agent 时主按钮隐藏），
+        // 需要重算 select-chat 宽度与芯片溢出，避免残留上一次计算的宽度。
+        if (prevState.selectedChats !== this.state.selectedChats || prevState.mode !== this.state.mode) {
             this.updateSelectChatWidth();
             this.setState({ visibleChipCount: 999 }, () => this.updateVisibleChipCount());
         }
