@@ -67,6 +67,13 @@ test.describe("@S9 @p0 @summary @agent @summary-agent @summary-create @summary-d
     await expect(authedPage.getByTestId(T.createSelectMembers)).toHaveCount(0);
     await expect(authedPage.getByTestId(T.createSubmit)).toHaveCount(0);
 
+    // Agent → Normal 往返：selectedMembers 不再被清空，切回后参与者 chips 保留（P1-2）。
+    await authedPage.getByTestId(T.createModeSwitch).click();
+    await authedPage.getByTestId(T.createNormalTab).click();
+    await expect(authedPage.getByText("S9 Alice", { exact: true })).toBeVisible();
+    await authedPage.getByTestId(T.createModeSwitch).click();
+    await authedPage.getByTestId(T.createAgentTab).click();
+
     await expect(
       authedPage.getByText("你好，我是总结助手，想总结什么尽管告诉我。")
     ).toBeVisible({ timeout: 15_000 });

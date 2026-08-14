@@ -812,8 +812,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /**
      * 进入 agent 模式：读 localStorage 拿 session_id → 拉历史回显。
      * 无历史（新会话）则照旧空白开场；session_id 仍惰性生成于首次发送。
-     * 同时清空 selectedMembers：Agent 模式无参与者入口，残留的不可见
-     * participants 会在「保存为总结」时被误提交给后端（P1 回归）。
+     * 注意：不再清空 selectedMembers —— 静默销毁用户已选的参与者是不可逆的
+     * 数据丢失。participants 泄漏在 payload 边界拦截（handleSaveAsSummary 在
+     * agent 模式下不提交 participants），切回「开始总结」时选择仍然保留。
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
@@ -822,7 +823,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         const storedRef = readAgentChatReferenced(this.agentChannelId());
         this.setState((prev) => ({
             mode: 'agent',
-            selectedMembers: [],
             sessionId: stored || prev.sessionId,
             referencedTask: storedRef
                 ? { task_id: storedRef.task_id, title: storedRef.title } as SummaryListItem
@@ -953,7 +953,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 }));
             }
 
-            if (selectedMembers.length > 0) {
+            // Agent 模式无参与者入口，selectedMembers 只会残留自 normal 模式的选择，
+            // 不应随 agent 保存提交给后端（P1 回归）。泄漏在 payload 边界拦截，
+            // 而不是销毁表单状态——切回 normal 时选择仍然保留。
+            if (this.state.mode !== 'agent' && selectedMembers.length > 0) {
                 params.participants = selectedMembers.map((m) => ({ 
                     user_id: m.user_id,
                     user_name: m.name,
