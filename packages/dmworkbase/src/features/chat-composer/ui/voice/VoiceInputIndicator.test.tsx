@@ -129,6 +129,42 @@ afterEach(() => {
 });
 
 describe("VoiceInputIndicator consent lifecycle", () => {
+  it("closes a pending consent notice when the space changes", async () => {
+    let spaceId = "space-a";
+    const listeners = new Set<() => void>();
+    const voiceHost: ChatComposerVoiceHost = {
+      getSpaceId: () => spaceId,
+      subscribeSpaceChange: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+
+    await act(async () => {
+      ReactDOM.render(
+        <VoiceInputIndicator
+          voiceHost={voiceHost}
+          onTranscribed={() => undefined}
+        />,
+        container
+      );
+    });
+    act(() => {
+      (
+        container.querySelector(".wk-voice-button-group") as HTMLElement
+      ).click();
+    });
+    expect(container.querySelector('[data-testid="accept-consent"]')).not.toBeNull();
+
+    spaceId = "space-b";
+    act(() => {
+      listeners.forEach((listener) => listener());
+    });
+
+    expect(container.querySelector('[data-testid="accept-consent"]')).toBeNull();
+    expect(mocks.acceptVoiceInput).not.toHaveBeenCalled();
+  });
+
   it("does not start recording when the space changes during consent", async () => {
     let spaceId = "space-a";
     const listeners = new Set<() => void>();

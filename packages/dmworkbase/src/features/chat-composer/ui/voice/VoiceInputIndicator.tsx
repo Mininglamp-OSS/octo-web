@@ -121,6 +121,9 @@ export default function VoiceInputIndicator({
     const invalidateConsent = () => {
       consentEpochRef.current += 1;
       consentGenerationRef.current += 1;
+      consentPendingRef.current = false;
+      pendingModeRef.current = "append_only";
+      setShowFeedbackNotice(false);
     };
     const unsubscribe = voiceHost.subscribeSpaceChange(invalidateConsent);
     return () => {

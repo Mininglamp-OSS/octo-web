@@ -449,7 +449,16 @@ export default function useVoiceInput(
           }
 
           setIsTranscribing(true);
-          const allowFeedback = voiceFeedbackOnRef.current === 1;
+          const allowFeedback = () => {
+            if (!isOperationActive(operation)) return false;
+            const state = getSharedSpaceFeedbackState();
+            return (
+              state.loadedSpaceId === operation.spaceId &&
+              state.spaceSetting?.voice_input_enabled === 1 &&
+              state.spaceSetting?.voice_feedback_notice_acked === 1 &&
+              state.spaceSetting?.voice_feedback_on === 1
+            );
+          };
           const notifyFeedback = (
             text: string,
             source: "local" | "remote",
@@ -457,8 +466,7 @@ export default function useVoiceInput(
             asrParams?: AsrParams
           ) => {
             if (
-              !isOperationActive(operation) ||
-              voiceFeedbackOnRef.current !== 1
+              !allowFeedback()
             ) {
               return;
             }
@@ -523,7 +531,7 @@ export default function useVoiceInput(
                   mode: operation.mode,
                   channelType,
                   model: localResult.m,
-                  allowFeedback,
+                  allowFeedback: allowFeedback(),
                 });
                 onTranscribed?.(localResult.text);
               }
@@ -545,7 +553,7 @@ export default function useVoiceInput(
               operation.mode,
               true,
               channelType,
-              allowFeedback,
+              allowFeedback(),
               selfName
             );
             if (!isOperationActive(operation)) return;
@@ -587,7 +595,7 @@ export default function useVoiceInput(
             operation.mode,
             true,
             channelType,
-            allowFeedback,
+            allowFeedback(),
             selfName
           );
           if (!isOperationActive(operation)) return;

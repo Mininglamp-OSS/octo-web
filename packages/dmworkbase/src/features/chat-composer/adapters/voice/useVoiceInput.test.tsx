@@ -376,7 +376,13 @@ describe("useVoiceInput space lifecycle", () => {
 
   it("stops feedback after an unacknowledged setting notification", async () => {
     const onTranscribeResult = vi.fn();
+    let resolveVoiceContext!: (value: { has_context: boolean }) => void;
     mocks.voiceFeedbackShared = { onTranscribeResult };
+    mocks.getVoiceContext.mockReturnValue(
+      new Promise((resolve) => {
+        resolveVoiceContext = resolve;
+      })
+    );
     mocks.spaceFeedbackState = {
       spaceSetting: {
         voice_input_enabled: 1,
@@ -400,13 +406,7 @@ describe("useVoiceInput space lifecycle", () => {
         container
       );
     });
-    mocks.spaceFeedbackState.spaceSetting = {
-      voice_input_enabled: 1,
-      voice_feedback_on: 1,
-      voice_feedback_notice_acked: 0,
-    };
     act(() => {
-      mocks.feedbackListeners.forEach((listener) => listener());
       latest.startRecording();
     });
     await flush();
@@ -415,12 +415,23 @@ describe("useVoiceInput space lifecycle", () => {
 
     await act(async () => {
       latest.stopRecordingAndTranscribe();
-      for (let index = 0; index < 5; index += 1) {
-        await Promise.resolve();
-      }
+      await Promise.resolve();
+    });
+    mocks.spaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 0,
+    };
+    act(() => {
+      mocks.feedbackListeners.forEach((listener) => listener());
+    });
+    await act(async () => {
+      resolveVoiceContext({ has_context: false });
+      for (let index = 0; index < 5; index += 1) await Promise.resolve();
     });
 
     expect(mocks.transcribe).toHaveBeenCalledOnce();
+    expect(mocks.transcribe.mock.calls[0][8]).toBe(false);
     expect(onTranscribeResult).not.toHaveBeenCalled();
   });
 });
