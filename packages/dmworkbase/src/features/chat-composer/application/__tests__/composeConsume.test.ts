@@ -46,6 +46,11 @@ import {
 } from "../../editor";
 import { captureSendTarget } from "../../adapters/conversation/sendTarget";
 import { parseConsumedTextToContent } from "../../adapters/tiptap/mentionSendParse";
+import {
+  getRestoredBlockMarkerIds,
+  markRestoredBlocks,
+  RestorePrefixTracker,
+} from "../../adapters/tiptap/restorePrefixTracker";
 
 const outcome = (overrides: Partial<ChatSendOutcome> = {}) =>
   createChatSendOutcome(overrides);
@@ -121,6 +126,7 @@ function makeEditor(content?: unknown): Editor {
         strike: false,
         link: false,
       }),
+      RestorePrefixTracker,
       TestAttachment,
       TestMention,
       TestPoll,
@@ -140,6 +146,9 @@ afterEach(() => {
 function port(editor: Editor): ComposeEditorPort {
   return {
     getJSON: () => editor.getJSON() as ComposeDoc,
+    getRestoredBlockMarkerIds: () => getRestoredBlockMarkerIds(editor),
+    markRestoredBlocks: (blockOffset, blockCount) =>
+      markRestoredBlocks(editor, blockOffset, blockCount),
     isEmpty: () => editor.isEmpty,
     isDestroyed: () => editor.isDestroyed,
     clearContent: () => editor.commands.clearContent(),
@@ -169,7 +178,7 @@ interface Harness {
   disposedEditorAttachments: string[];
   /** Mirrors MessageInput's restore-offset ref (reset on every consume). */
   offsets: { blocks: number; topAttachments: number };
-  restorePrefix: { blockKeys: string[]; topAttachmentIds: string[] };
+  restorePrefix: { blockMarkerIds: string[]; topAttachmentIds: string[] };
 }
 
 function harness(content?: unknown, top: TopAttachmentLike[] = []): Harness {
@@ -185,7 +194,7 @@ function harness(content?: unknown, top: TopAttachmentLike[] = []): Harness {
     restoredEditorAttachments: [],
     disposedEditorAttachments: [],
     offsets: { blocks: 0, topAttachments: 0 },
-    restorePrefix: { blockKeys: [], topAttachmentIds: [] },
+    restorePrefix: { blockMarkerIds: [], topAttachmentIds: [] },
   };
 }
 
@@ -196,7 +205,7 @@ function consume(
   // The component resets the offsets on every consume, because consuming clears
   // the editor and removes this send's attachments.
   h.offsets = { blocks: 0, topAttachments: 0 };
-  h.restorePrefix = { blockKeys: [], topAttachmentIds: [] };
+  h.restorePrefix = { blockMarkerIds: [], topAttachmentIds: [] };
   return consumeCompose({
     composePartRegistry,
     editor: port(h.editor),
@@ -234,8 +243,8 @@ function consume(
     getRestoreOffsets: (livePrefix) => ({
       blocks:
         livePrefix &&
-        h.restorePrefix.blockKeys.every(
-          (key, index) => livePrefix.blockKeys[index] === key,
+        h.restorePrefix.blockMarkerIds.every(
+          (id, index) => livePrefix.blockMarkerIds[index] === id,
         )
           ? h.offsets.blocks
           : 0,
@@ -252,15 +261,15 @@ function consume(
       restoredPrefix,
     ) => {
       h.offsets = {
-        blocks: restoredPrefix?.blockKeys
-          ? restoredPrefix.blockKeys.length
+        blocks: restoredPrefix?.blockMarkerIds
+          ? restoredPrefix.blockMarkerIds.length
           : h.offsets.blocks + blocks,
         topAttachments: restoredPrefix?.topAttachmentIds
           ? restoredPrefix.topAttachmentIds.length
           : h.offsets.topAttachments + topAttachments,
       };
-      if (restoredPrefix?.blockKeys) {
-        h.restorePrefix.blockKeys = restoredPrefix.blockKeys;
+      if (restoredPrefix?.blockMarkerIds) {
+        h.restorePrefix.blockMarkerIds = restoredPrefix.blockMarkerIds;
       }
       if (restoredPrefix?.topAttachmentIds) {
         h.restorePrefix.topAttachmentIds = restoredPrefix.topAttachmentIds;
@@ -774,6 +783,32 @@ describe("consumeCompose — two queued sends that both fail keep their order", 
       "t2",
       "t3-added-later",
     ]);
+  });
+
+  it("does not confuse identical replacement content with the restored block", async () => {
+    const h = harness(doc(para(text("AAA"))));
+    const handleA = consume(h);
+    h.editor.commands.insertContent("BBB");
+    const handleB = consume(h);
+    h.editor.commands.insertContent("AAA");
+
+    await runSendWithConsumedCompose(
+      () => outcome(),
+      handleA.ids,
+      handleA.compose,
+    );
+    // Replacing the document removes A's transaction marker even though the
+    // remaining live draft has byte-for-byte identical JSON.
+    h.editor.commands.setContent(doc(para(text("AAA"))) as never);
+    await runSendWithConsumedCompose(
+      () => outcome(),
+      handleB.ids,
+      handleB.compose,
+    );
+
+    const value = h.editor.getText();
+    expect(value.indexOf("BBB")).toBe(0);
+    expect(value.indexOf("BBB")).toBeLessThan(value.indexOf("AAA"));
   });
 
   it("invalidates the restore prefix after the user edits restored content", async () => {

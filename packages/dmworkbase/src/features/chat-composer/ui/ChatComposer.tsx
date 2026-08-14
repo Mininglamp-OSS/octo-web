@@ -93,6 +93,11 @@ import {
   type ComposerPasteDecision,
 } from "../clipboard/clipboardPipeline";
 import { createComposerStarterKit } from "../adapters/tiptap/editorKit";
+import {
+  getRestoredBlockMarkerIds,
+  markRestoredBlocks,
+  RestorePrefixTracker,
+} from "../adapters/tiptap/restorePrefixTracker";
 import { decideComposerKeyboard } from "../keyboard";
 import type {
   ChatComposerMember,
@@ -668,6 +673,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const editor = useEditor({
     extensions: [
       createComposerStarterKit(),
+      RestorePrefixTracker,
       Placeholder.configure({
         placeholder: () => placeholderRef.current,
       }),
@@ -1311,6 +1317,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               captured: capturedEditorCompose,
               editor: {
                 getJSON: () => editor.getJSON() as ComposeDoc,
+                getRestoredBlockMarkerIds: () =>
+                  getRestoredBlockMarkerIds(editor),
+                markRestoredBlocks: (blockOffset, blockCount) =>
+                  markRestoredBlocks(editor, blockOffset, blockCount),
                 isEmpty: () => editor.isEmpty,
                 isDestroyed: () =>
                   !composerMountedRef.current || editor.isDestroyed,

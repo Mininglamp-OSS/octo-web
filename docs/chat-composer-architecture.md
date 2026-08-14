@@ -396,6 +396,14 @@ HTML 使用 `DOMParser`，只保留安全的 `http/https` 链接。secret guard 
 - 通过 `createConversationChatSendHandler` 适配发送事务。
 - 通过 `ChatComposerViewHost.voice` 适配 `WKApp` 的 current space 与 `space-changed` 事件。
 
+连续失败恢复的顺序规则：
+
+- 已恢复 editor block 由 Tiptap transaction marker 标识，后续 queued failure 只允许插入到仍然
+  连续存在的恢复前缀之后。
+- marker 同时校验节点身份和创建时内容；删除、替换或编辑恢复节点都会使对应前缀失效。
+- 不得只比较节点 JSON。内容相同的 live replacement 不是原恢复节点，不能继承其 restore
+  offset。
+
 语音 port 与异步生命周期规则：
 
 - `ChatComposerViewHost.voice` 与 `UseVoiceInputOptions.voiceHost` 均为必需依赖。

@@ -42,7 +42,7 @@ export class ChatComposerController<TAttachment = unknown> {
     topAttachments: 0,
   };
   private restorePrefix: ChatComposerRestorePrefix = {
-    blockKeys: [],
+    blockMarkerIds: [],
     topAttachmentIds: [],
   };
 
@@ -108,7 +108,7 @@ export class ChatComposerController<TAttachment = unknown> {
 
   resetRestoreOffsets(): void {
     this.restoreOffsets = { blocks: 0, topAttachments: 0 };
-    this.restorePrefix = { blockKeys: [], topAttachmentIds: [] };
+    this.restorePrefix = { blockMarkerIds: [], topAttachmentIds: [] };
   }
 
   getRestoreOffsets(
@@ -117,8 +117,8 @@ export class ChatComposerController<TAttachment = unknown> {
     if (livePrefix) {
       return {
         blocks: this.hasPrefix(
-          livePrefix.blockKeys,
-          this.restorePrefix.blockKeys,
+          livePrefix.blockMarkerIds,
+          this.restorePrefix.blockMarkerIds,
         )
           ? this.restoreOffsets.blocks
           : 0,
@@ -138,15 +138,17 @@ export class ChatComposerController<TAttachment = unknown> {
     restoredPrefix?: Partial<ChatComposerRestorePrefix>,
   ): void {
     this.restoreOffsets = {
-      blocks: restoredPrefix?.blockKeys
-        ? restoredPrefix.blockKeys.length
+      blocks: restoredPrefix?.blockMarkerIds
+        ? restoredPrefix.blockMarkerIds.length
         : this.restoreOffsets.blocks + offsets.blocks,
       topAttachments: restoredPrefix?.topAttachmentIds
         ? restoredPrefix.topAttachmentIds.length
         : this.restoreOffsets.topAttachments + offsets.topAttachments,
     };
-    if (restoredPrefix?.blockKeys) {
-      this.restorePrefix.blockKeys = [...restoredPrefix.blockKeys];
+    if (restoredPrefix?.blockMarkerIds) {
+      this.restorePrefix.blockMarkerIds = [
+        ...restoredPrefix.blockMarkerIds,
+      ];
     }
     if (restoredPrefix?.topAttachmentIds) {
       this.restorePrefix.topAttachmentIds = [

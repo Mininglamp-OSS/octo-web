@@ -40,6 +40,8 @@ export type ComposeDoc = EditorComposeDocument;
 /** The editor operations the consume/restore flow needs. */
 export interface ComposeEditorPort {
   getJSON: () => ComposeDoc;
+  getRestoredBlockMarkerIds: () => string[];
+  markRestoredBlocks: (blockOffset: number, blockCount: number) => string[];
   isEmpty: () => boolean;
   /** True once the editor instance is gone (unmount / channel switch). */
   isDestroyed: () => boolean;
@@ -213,13 +215,11 @@ export function consumeCompose(
       editor.appendContent(nodes as ComposeNode[]),
   };
 
-  const blockKeys = () =>
-    (editor.getJSON().content ?? []).map((node) => JSON.stringify(node));
   const topAttachmentIds = () =>
     snapshotTopAttachments().map(({ id }) => id);
   const offsets = () =>
     opts.getRestoreOffsets?.({
-      blockKeys: blockKeys(),
+      blockMarkerIds: editor.getRestoredBlockMarkerIds(),
       topAttachmentIds: topAttachmentIds(),
     }) ?? { blocks: 0, topAttachments: 0 };
   const restoreDoc = (snapshotToRestore: ComposeDoc) => {
@@ -232,7 +232,7 @@ export function consumeCompose(
     opts.onRestored?.(
       { blocks: inserted, topAttachments: 0 },
       {
-        blockKeys: blockKeys().slice(0, blockOffset + inserted),
+        blockMarkerIds: editor.markRestoredBlocks(blockOffset, inserted),
       },
     );
   };

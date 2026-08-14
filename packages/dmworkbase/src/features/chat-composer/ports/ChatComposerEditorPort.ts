@@ -10,7 +10,7 @@ export interface ChatComposerRestoreOffsets {
 }
 
 export interface ChatComposerRestorePrefix {
-  blockKeys: string[];
+  blockMarkerIds: string[];
   topAttachmentIds: string[];
 }
 
