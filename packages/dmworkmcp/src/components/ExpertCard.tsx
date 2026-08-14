@@ -1,10 +1,11 @@
 import React from "react";
-import { Bot, Pencil, ShieldCheck, Trash2, UserRound, Users } from "lucide-react";
+import { Bot, Download, Eye, Pencil, ShieldCheck, Trash2, UserRound, Users } from "lucide-react";
 import { t } from "@octo/base";
 import type { ExpertItem } from "../mock/expertMock";
 import { getMcpAvatarColor } from "../utils/mcpAvatar";
 import { resolveExpertOwner } from "../utils/expertOwner";
 import { isOfficialExpert } from "../utils/publisher";
+import { formatCount } from "../utils/format";
 
 interface ExpertCardProps {
   item: ExpertItem;
@@ -37,6 +38,8 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
   // 添加到回路 is offered for both experts and squads.
   const showAddToLoop = Boolean(onAddToLoop);
   const hasActions = Boolean(onEdit || onDelete || showAddToLoop);
+  const rawViewCount = item.viewCount ?? 0;
+  const rawInstallCount = item.installCount ?? 0;
 
   return (
     <div
@@ -134,68 +137,82 @@ export default function ExpertCard({ item, onOpen, onEdit, onDelete, onAddToLoop
         )}
       </div>
 
-      {(isSquad || hasActions) && (
-        <div className="wk-mcp-card__footer">
-          <div className="wk-mcp-card__stats">
-            {isSquad && (
-              <span
-                className="wk-mcp-card__stat"
-                title={t("mcp.expert.memberCount", { values: { count: item.memberCount ?? item.members.length } })}
+      <div className="wk-mcp-card__footer">
+        <div className="wk-mcp-card__stats">
+          {isSquad && (
+            <span
+              className="wk-mcp-card__stat"
+              title={t("mcp.expert.memberCount", { values: { count: item.memberCount ?? item.members.length } })}
+            >
+              <Users size={14} aria-hidden="true" />
+              {item.memberCount ?? item.members.length}
+            </span>
+          )}
+          <span
+            className="wk-mcp-card__stat"
+            title={t("mcp.expert.viewCountTitle", { values: { count: rawViewCount } })}
+            aria-label={t("mcp.expert.viewCountTitle", { values: { count: rawViewCount } })}
+          >
+            <Eye size={14} aria-hidden="true" />
+            {formatCount(rawViewCount)}
+          </span>
+          <span
+            className="wk-mcp-card__stat"
+            title={t("mcp.expert.installCountTitle", { values: { count: rawInstallCount } })}
+            aria-label={t("mcp.expert.installCountTitle", { values: { count: rawInstallCount } })}
+          >
+            <Download size={14} aria-hidden="true" />
+            {formatCount(rawInstallCount)}
+          </span>
+        </div>
+        {hasActions && (
+          <div
+            className="wk-mcp-card__footer-actions"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            {showAddToLoop && (
+              <button
+                type="button"
+                className="wk-mcp-expert-card__add-loop"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onAddToLoop?.(item);
+                }}
               >
-                <Users size={14} aria-hidden="true" />
-                {item.memberCount ?? item.members.length}
-              </span>
+                {t("mcp.expert.addToLoop")}
+              </button>
+            )}
+            {onEdit && (
+              <button
+                type="button"
+                className="wk-mcp-card__action-button"
+                aria-label={t("mcp.expert.editAriaLabel", { values: { name: item.name } })}
+                title={t("mcp.expert.edit")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onEdit(item);
+                }}
+              >
+                <Pencil size={15} />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                className="wk-mcp-card__action-button is-danger"
+                aria-label={t("mcp.expert.deleteAriaLabel", { values: { name: item.name } })}
+                title={t("mcp.expert.delete")}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDelete(item);
+                }}
+              >
+                <Trash2 size={15} />
+              </button>
             )}
           </div>
-          {hasActions && (
-            <div
-              className="wk-mcp-card__footer-actions"
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              {showAddToLoop && (
-                <button
-                  type="button"
-                  className="wk-mcp-expert-card__add-loop"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onAddToLoop?.(item);
-                  }}
-                >
-                  {t("mcp.expert.addToLoop")}
-                </button>
-              )}
-              {onEdit && (
-                <button
-                  type="button"
-                  className="wk-mcp-card__action-button"
-                  aria-label={t("mcp.expert.editAriaLabel", { values: { name: item.name } })}
-                  title={t("mcp.expert.edit")}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onEdit(item);
-                  }}
-                >
-                  <Pencil size={15} />
-                </button>
-              )}
-              {onDelete && (
-                <button
-                  type="button"
-                  className="wk-mcp-card__action-button is-danger"
-                  aria-label={t("mcp.expert.deleteAriaLabel", { values: { name: item.name } })}
-                  title={t("mcp.expert.delete")}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDelete(item);
-                  }}
-                >
-                  <Trash2 size={15} />
-                </button>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

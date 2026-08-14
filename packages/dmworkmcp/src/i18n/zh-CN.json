@@ -34,6 +34,8 @@
     "botUpdateTitleAgent": "Bot 更新专家",
     "botUpdateHint": "复制下面的提示词交给 Agent，它会按你的改动更新已上架的内容。",
     "memberCount": "{{count}} 位专家",
+    "viewCountTitle": "浏览 {{count}} 次",
+    "installCountTitle": "添加到回路 {{count}} 次",
     "totalCount": "共 {{count}} 个",
     "truncatedNotice": "仅显示前 {{count}} 项，请用搜索或分类筛选缩小范围",
     "sortAriaLabel": "排序方式",

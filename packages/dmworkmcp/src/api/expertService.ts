@@ -158,7 +158,14 @@ expertAxios.interceptors.response.use(
     // dialog surfaces the error; the prefetch swallows it). A genuinely expired
     // session still logs out via the marketplace list calls the page makes.
     const url = (err?.config?.url as string | undefined) ?? "";
-    if (err?.response?.status === 401 && !url.startsWith(FLEET_BASE)) {
+    if (
+      err?.response?.status === 401 &&
+      !url.startsWith(FLEET_BASE) &&
+      // The view-tracking beacon is fire-and-forget: a 401 on it must never
+      // tear down the session (the page's list calls are the authoritative
+      // session probe and still log out on a genuinely expired token).
+      !url.endsWith("/metrics/track")
+    ) {
       WKApp.shared.logout();
     }
     return Promise.reject(err);
@@ -297,6 +304,22 @@ const getSquadReal = (id: string) =>
 const deleteExpertReal = (id: string) => del(`/experts/${encodeURIComponent(id)}`);
 const deleteSquadReal = (id: string) => del(`/squads/${encodeURIComponent(id)}`);
 
+/** POST /metrics/track — bump the backend view counter. Only detail views are
+ *  tracked (opening the modal), matching the skill market's semantics.
+ *  Fire-and-forget: every failure is swallowed here so no call site ever has
+ *  to remember to catch a rejection that carries no actionable signal. */
+async function trackExpertViewReal(kind: ExpertKindParam, id: string): Promise<void> {
+  try {
+    await expertAxios.post(`${BASE}/metrics/track`, {
+      resource_type: kind === "squad" ? "squad" : "expert",
+      resource_id: id,
+      event_type: "view",
+    });
+  } catch {
+    // A lost view must never block or break the detail view.
+  }
+}
+
 async function listExpertTagsReal(kind: ExpertKindParam): Promise<string[]> {
   const data = await get<{ name: string; count: number }[] | null>(
     "/expert_tags",
@@ -392,6 +415,13 @@ const deleteSquadMock = (id: string): Promise<void> => {
   return delay(undefined);
 };
 
+const trackExpertViewMock = (kind: ExpertKindParam, id: string): Promise<void> => {
+  const source: ExpertItem[] = kind === "squad" ? mockSquads : mockAgents;
+  const found = source.find((item) => item.id === id);
+  if (found) found.viewCount = (found.viewCount ?? 0) + 1;
+  return delay(undefined);
+};
+
 function listExpertTagsMock(kind: ExpertKindParam): Promise<string[]> {
   const source: ExpertItem[] = kind === "squad" ? mockSquads : mockAgents;
   const counts = new Map<string, number>();
@@ -446,6 +476,13 @@ export function deleteExpert(id: string): Promise<void> {
 
 export function deleteSquad(id: string): Promise<void> {
   return USE_MOCK ? deleteSquadMock(id) : deleteSquadReal(id);
+}
+
+/** Record one detail view for an expert ("agent") or squad. Fire-and-forget:
+ *  never rejects — failures are swallowed inside (a lost view is meaningless
+ *  to the user and must not surface). */
+export function trackExpertView(kind: ExpertKindParam, id: string): Promise<void> {
+  return USE_MOCK ? trackExpertViewMock(kind, id) : trackExpertViewReal(kind, id);
 }
 
 /** GET /expert_tags?kind= — tag names for the current tab's popover. */

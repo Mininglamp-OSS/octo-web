@@ -2869,6 +2869,20 @@
   font-size: var(--wk-text-size-sm);
 }
 
+/* 浏览量 / 安装量：跟卡片 footer 的 .wk-mcp-card__stat 同一套视觉。 */
+.wk-mcp-expert-detail__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-expert-detail__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
 .wk-mcp-expert-detail__tabs {
   position: sticky;
   top: 0;
