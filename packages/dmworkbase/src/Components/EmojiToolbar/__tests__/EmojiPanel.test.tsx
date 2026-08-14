@@ -246,7 +246,7 @@ describe("EmojiToolbar selection dismissal", () => {
         expect(document.body.querySelector(".wk-emojitoolbar-mask")).toBeNull();
     });
 
-    it("keeps the close animation for an explicit outside click", () => {
+    it("hides immediately after an explicit outside click", () => {
         renderToolbar();
         const mask = document.body.querySelector(
             ".wk-emojitoolbar-mask",
@@ -256,7 +256,8 @@ describe("EmojiToolbar selection dismissal", () => {
 
         expect(
             document.body.querySelector(".wk-emojitoolbar-emojipanel")?.className,
-        ).toContain("wk-emojitoolbar-emojipanel-hide");
+        ).toBe("wk-emojitoolbar-emojipanel");
+        expect(document.body.querySelector(".wk-emojitoolbar-mask")).toBeNull();
     });
 });
 

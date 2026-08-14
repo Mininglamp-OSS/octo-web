@@ -96,7 +96,6 @@ interface EmojiToolbarProps {
 
 interface EmojiToolbarState {
     show: boolean
-    animationStart: boolean
     panelPos: { left: number; top: number } | null
 }
 
@@ -107,7 +106,6 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
         super(props)
         this.state = {
             show: false,
-            animationStart: false,
             panelPos: null,
         }
     }
@@ -137,21 +135,14 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
             // input_emoji_picker_opened:仅在「打开」这一支计数。原 TrackRules 的 input-emoji-btn 点击
             // 规则在开和关都触发(toggle),会把「关闭」也计成「打开」→ 翻倍(见 review P2-7)。已移除该规则。
             Dap.shared.track("input_emoji_picker_opened", {})
-            this.setState({ show: true, animationStart: true, panelPos: this.computePanelPos() })
+            this.setState({ show: true, panelPos: this.computePanelPos() })
             window.addEventListener("resize", this.onResize)
         }
     }
 
     close = () => {
         window.removeEventListener("resize", this.onResize)
-        this.setState({ show: false, animationStart: true })
-    }
-
-    // A completed selection moves focus back to the editor immediately. Keeping the
-    // picker visible for the close animation makes it appear to flash after insertion.
-    private closeAfterSelection = () => {
-        window.removeEventListener("resize", this.onResize)
-        this.setState({ show: false, animationStart: false })
+        this.setState({ show: false })
     }
 
     componentWillUnmount() {
@@ -166,20 +157,15 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
     }
 
     render(): ReactNode {
-        const { show, animationStart, panelPos } = this.state
+        const { show, panelPos } = this.state
         const { icon, conversationContext } = this.props
         const overlay = <>
             <div
-                onAnimationEnd={() => {
-                    if (!show) {
-                        this.setState({ animationStart: false })
-                    }
-                }}
                 style={panelPos ? { left: panelPos.left, top: panelPos.top } : undefined}
-                className={classNames("wk-emojitoolbar-emojipanel", animationStart ? (show ? "wk-emojitoolbar-emojipanel-show" : "wk-emojitoolbar-emojipanel-hide") : undefined)}
+                className={classNames("wk-emojitoolbar-emojipanel", show ? "wk-emojitoolbar-emojipanel-show" : undefined)}
             >
                 <EmojiPanel onSticker={(sticker) => {
-                    this.closeAfterSelection()
+                    this.close()
                     const lottieSticker = new LottieSticker()
                     lottieSticker.category = sticker.category
                     lottieSticker.url = sticker.path
@@ -187,7 +173,7 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
                     lottieSticker.format = sticker.format
                     conversationContext.sendMessage(lottieSticker)
                 }} onEmoji={(emoji) => {
-                    this.closeAfterSelection()
+                    this.close()
                     conversationContext.messageInputContext().insertText(emoji.key)
                 }}></EmojiPanel>
             </div>
