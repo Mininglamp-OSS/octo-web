@@ -33,6 +33,14 @@ declare module "@octo/base" {
     ): Promise<unknown>;
   };
 
+  export const SpaceService: {
+    shared: {
+      getMySpaces(config?: {
+        suppressAuthExpiredLogout?: boolean;
+      }): Promise<Array<{ space_id: string; name?: string }>>;
+    };
+  };
+
   export interface ConfirmOptions {
     title?: string;
     content?: string | import("react").ReactNode;

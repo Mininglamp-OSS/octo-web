@@ -42,6 +42,21 @@
   font: var(--wk-text-h3);
 }
 
+.octo-mail-sidebar__brand-beta {
+  display: inline-flex;
+  align-items: center;
+  height: var(--wk-sp-4);
+  padding: 0 var(--wk-sp-1-5);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-xs);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-elevated);
+  font-size: var(--wk-text-size-tiny);
+  font-weight: var(--wk-font-semibold);
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
 .octo-mail-sidebar__body {
   min-height: 0;
   display: flex;

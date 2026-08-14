@@ -6,7 +6,7 @@ import React, {
   useState,
 } from "react";
 import { Bot, CheckCircle2, Mail, ShieldCheck } from "lucide-react";
-import { useI18n, UserService, WKApp } from "@octo/base";
+import { SpaceService, useI18n, UserService, WKApp } from "@octo/base";
 import MailService from "../Service/MailService";
 import type {
   AgentAuthorizationView,
@@ -68,6 +68,7 @@ export default function MailAuthorizationPage({
   const [phase, setPhase] = useState<MailAuthorizationPhase>("approval");
   const [error, setError] = useState("");
   const [botDisplayName, setBotDisplayName] = useState("");
+  const [targetSpaceName, setTargetSpaceName] = useState("");
   const [spaceMismatchConfirmed, setSpaceMismatchConfirmed] = useState(false);
   const preserveForLoginRef = useRef(false);
   const sessionExpirationHandledRef = useRef(false);
@@ -99,6 +100,27 @@ export default function MailAuthorizationPage({
   useEffect(() => {
     stripMailAuthorizeCodeFromUrl();
   }, []);
+
+  useEffect(() => {
+    if (!spaceId) {
+      setTargetSpaceName("");
+      return;
+    }
+    let active = true;
+    void SpaceService.shared
+      .getMySpaces({ suppressAuthExpiredLogout: true })
+      .then((spaces) => {
+        if (!active) return;
+        const target = spaces.find((space) => space.space_id === spaceId);
+        setTargetSpaceName((target?.name || "").trim());
+      })
+      .catch(() => {
+        if (active) setTargetSpaceName("");
+      });
+    return () => {
+      active = false;
+    };
+  }, [spaceId]);
 
   useEffect(() => {
     const generation = ++unmountCleanupGenerationRef.current;
@@ -283,7 +305,14 @@ export default function MailAuthorizationPage({
       active = false;
       if (timer !== undefined) clearTimeout(timer);
     };
-  }, [code, phase, recoverExpiredSession, resolveAuthorizationSession, spaceId, t]);
+  }, [
+    code,
+    phase,
+    recoverExpiredSession,
+    resolveAuthorizationSession,
+    spaceId,
+    t,
+  ]);
 
   const approve = async () => {
     if (!code || !mailboxId || submitting) return;
@@ -373,7 +402,7 @@ export default function MailAuthorizationPage({
         {phase === "approval" && request && (
           <div className="mail-auth-card__status">
             {t("mail.authorization.targetSpace", {
-              values: { spaceId },
+              values: { spaceName: targetSpaceName || spaceId },
             })}
           </div>
         )}

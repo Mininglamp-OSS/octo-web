@@ -4,14 +4,14 @@ import zhCN from "./zh-CN.json";
 
 describe("Agent Mail setup prompt", () => {
   it.each([zhCN, enUS])(
-    "uses the controlled in-app installer without advertising an unowned package",
+    "provides the public installer command without credentials or internal tools",
     (messages) => {
       const prompt = messages["mail.agentMailboxes.setupPrompt"];
       expect(prompt).toContain("{{address}}");
       expect(prompt).toContain("{{spaceId}}");
-      expect(prompt).not.toContain("npx");
-      expect(prompt).not.toContain("create-openclaw-octo-mail");
-      expect(prompt).not.toContain("-y");
+      expect(prompt).toContain("npx -y create-openclaw-octo-mail bind");
+      expect(prompt).toContain("--space-id {{spaceId}}");
+      expect(prompt).toMatch(/<agent标识>|<agent-id>/);
       expect(prompt).not.toContain("octo-cli");
       expect(prompt).not.toContain("mail_connect");
       expect(prompt).not.toContain("mail_connection_status");
@@ -30,13 +30,17 @@ describe("Agent Mail setup prompt", () => {
       const description = messages["mail.authorization.connectingDescription"];
       expect(description).not.toContain("mail_connection_status");
       expect(description).not.toContain("octo-cli");
-      expect(description).toMatch(/完成邮箱接入|Finishing the mailbox connection/);
+      expect(description).toMatch(
+        /完成邮箱接入|Finishing the mailbox connection/
+      );
     }
   );
 
   it("asks the Agent to state unsupported capability directly", () => {
     expect(zhCN["mail.agentMailboxes.setupPrompt"]).toContain("请直接说明");
-    expect(enUS["mail.agentMailboxes.setupPrompt"]).toContain("tell me directly");
+    expect(enUS["mail.agentMailboxes.setupPrompt"]).toContain(
+      "tell me directly"
+    );
   });
 
   it.each([zhCN, enUS])(

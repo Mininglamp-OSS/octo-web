@@ -118,6 +118,9 @@ export default function MailSidebarView(props: MailSidebarViewProps) {
           <Mail size={18} />
         </span>
         <strong>{t("mail.header.title")}</strong>
+        <span className="octo-mail-sidebar__brand-beta">
+          {t("mail.header.beta")}
+        </span>
       </header>
 
       <div className="octo-mail-sidebar__body">

@@ -5,6 +5,7 @@ import "./story.css";
 
 const copy: Record<string, string> = {
   "mail.header.title": "Agent Mail",
+  "mail.header.beta": "Beta",
   "mail.identity.connected": "Connected",
   "mail.identity.loading": "Loading mailbox address",
   "mail.identity.unavailable": "Mailbox address unavailable",
