@@ -182,6 +182,41 @@ describe("useGroupCreate", () => {
     expect(options.onClose).toHaveBeenCalledTimes(1);
   });
 
+  it("ignores submit re-entry and member changes while submitting", async () => {
+    const options = createOptions();
+    const result = renderGroupCreateHook(options);
+    let releaseSubmit: (() => void) | undefined;
+    submitAction.mockImplementation(
+      () => new Promise<void>((resolve) => (releaseSubmit = resolve))
+    );
+
+    await flushLoad();
+    act(() => {
+      result.current.setGroupName("Project Octo");
+      result.current.toggleMember("alice");
+    });
+
+    let firstSubmit!: Promise<void>;
+    act(() => {
+      firstSubmit = result.current.submit();
+      void result.current.submit();
+    });
+
+    expect(submitAction).toHaveBeenCalledTimes(1);
+    expect(result.current.isSubmitting).toBe(true);
+
+    act(() => result.current.toggleMember("bot"));
+    expect(result.current.selected.map((item) => item.uid)).toEqual(["alice"]);
+
+    await act(async () => {
+      releaseSubmit?.();
+      await firstSubmit;
+    });
+
+    expect(result.current.isSubmitting).toBe(false);
+    expect(options.onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("submits add-member without create metadata", async () => {
     const options = createOptions("addMember");
     const result = renderGroupCreateHook(options);
@@ -213,8 +248,21 @@ describe("useGroupCreate", () => {
     act(() => {
       result.current.setGroupName("Project Octo");
       result.current.toggleMember("alice");
+      result.current.avatar.save({
+        type: "generated",
+        avatarText: "PO",
+        colorIndex: 2,
+      });
+    });
+    expect(result.current.avatar.text).toBe("PO");
+    expect(result.current.avatar.colorIndex).toBe(2);
+
+    act(() => {
       result.current.avatar.save({ type: "uploaded", file });
     });
+    expect(result.current.avatar.text).toBe("");
+    expect(result.current.avatar.colorIndex).toBeUndefined();
+
     await act(async () => result.current.submit());
 
     expect(submitAction).toHaveBeenCalledWith({

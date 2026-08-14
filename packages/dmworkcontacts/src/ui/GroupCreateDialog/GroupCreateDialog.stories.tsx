@@ -78,6 +78,17 @@ export const AvatarEditorOpen: Story = {
   },
 };
 
+export const Submitting: Story = {
+  args: {
+    ...common,
+    mode: "createGroup",
+    form: {
+      ...common.form,
+      isSubmitting: true,
+    },
+  },
+};
+
 export const AddMembers: Story = {
   args: {
     ...common,

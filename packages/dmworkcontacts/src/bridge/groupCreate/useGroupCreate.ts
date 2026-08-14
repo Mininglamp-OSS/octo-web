@@ -58,6 +58,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
   const [avatarFile, setAvatarFile] = useState<File>();
   const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
   const [isSubmitting, setSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
   const loadSequence = useRef(0);
   const candidatesRef = useRef<GroupCreateCandidateContact[]>([]);
   const searchIndex = useRef(createEmptyGroupCreateSearchIndex());
@@ -116,6 +117,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
 
   const toggleMember = useCallback(
     (uid: string) => {
+      if (isSubmittingRef.current) return;
       setSelected((current) => {
         if (current.some((member) => member.uid === uid)) {
           return current.filter((member) => member.uid !== uid);
@@ -135,6 +137,8 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
   }, []);
 
   const submit = useCallback(async () => {
+    if (isSubmittingRef.current) return;
+
     const name = groupName.trim();
     if (options.action === "createGroup" && !name) {
       options.notice.onNameRequired();
@@ -145,6 +149,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
       return;
     }
 
+    isSubmittingRef.current = true;
     setSubmitting(true);
     try {
       await submitGroupCreateAction({
@@ -169,6 +174,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
     } catch (error) {
       options.notice.onError(errorMessage(error));
     } finally {
+      isSubmittingRef.current = false;
       setSubmitting(false);
     }
   }, [avatarColorIndex, avatarFile, avatarText, groupName, options, selected]);
@@ -184,6 +190,8 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
       save: (draft: ChannelAvatarDraft) => {
         if (draft.type === "uploaded") {
           setAvatarFile(draft.file);
+          setAvatarText("");
+          setAvatarColorIndex(undefined);
         } else {
           setAvatarText(draft.avatarText);
           setAvatarColorIndex(draft.colorIndex);

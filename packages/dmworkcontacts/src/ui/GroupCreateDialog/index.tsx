@@ -24,6 +24,7 @@ function GroupCreateDialog({
 }: GroupCreateDialogProps) {
   const isCreate = mode === "createGroup";
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string>();
+  const onCancel = form.isSubmitting ? () => undefined : actions.onCancel;
 
   useEffect(() => {
     if (!form.avatarFile) {
@@ -43,12 +44,17 @@ function GroupCreateDialog({
           className="wk-main-modal-group-create"
           visible={isOpen}
           title={copy.title}
-          options={{ closable: true, maskClosable: false }}
-          onCancel={actions.onCancel}
+          options={{
+            closable: !form.isSubmitting,
+            maskClosable: false,
+            closeOnEsc: !form.isSubmitting,
+          }}
+          onCancel={onCancel}
           footerConfig={{
             onOk: actions.onConfirm,
             okText: copy.confirm,
             cancelText: copy.cancel,
+            isCancelDisabled: form.isSubmitting,
             isOkLoading: form.isSubmitting,
           }}
         >
@@ -113,7 +119,10 @@ function GroupCreateDialog({
                 {copy.membersLabel}
               </div>
               <div className="group-create-members">
-                <GroupMemberPicker {...memberPicker} />
+                <GroupMemberPicker
+                  {...memberPicker}
+                  disabled={form.isSubmitting}
+                />
               </div>
             </div>
           </div>
