@@ -42,6 +42,7 @@ import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
 import { isDriveRootFileNavigation } from "./fileRootGuard";
+import { INDEX_HTML, reloadShell } from "./reloadShell";
 import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractEndSessionRedirect, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 import { createTrustedShellDocumentTracker } from "./trustedShell";
 import { clearAuthSessionCookies } from "./clearAuthSession";
@@ -116,7 +117,7 @@ const TRAY_FLASH_INTERVAL_MS = 1000;
 const TRUSTED_SHELL_DEV_ORIGIN = isDevelopment
   ? new URL(DEV_SERVER_URL).origin
   : undefined;
-const TRUSTED_SHELL_FILE_URL = pathToFileURL(join(__dirname, "../../build/index.html")).href;
+const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
 // A same-document history.pushState changes frame.url without creating a new
 // document. Track trust at document navigation time instead of re-evaluating
 // the current pathname for every IPC call, otherwise normal SPA routes such
@@ -743,27 +744,17 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
         label: "刷新",
         accelerator: "CmdOrCtrl+R",
         click: (_item, focusedWindow) => {
-          if (focusedWindow && app.isPackaged) {
-            // Reload the index.html directly instead of letting the browser
-            // reload whatever URL is in the address bar (which under file://
-            // may be a drive root after RouteManager pushState).
-            const indexPath = join(__dirname, "../", "../build/index.html");
-            focusedWindow.loadFile(indexPath).catch(() => {});
-          } else if (focusedWindow) {
-            focusedWindow.reload();
-          }
+          // Reload through index.html only when the window is on a file://
+          // shell document (drive-root guard, see reloadShell). Non-shell
+          // documents (e.g. an IdP page mid-SSO) keep native reload.
+          if (focusedWindow) reloadShell(focusedWindow, false);
         },
       },
       {
         label: "强制刷新",
         accelerator: "CmdOrCtrl+Shift+R",
         click: (_item, focusedWindow) => {
-          if (focusedWindow && app.isPackaged) {
-            const indexPath = join(__dirname, "../", "../build/index.html");
-            focusedWindow.loadFile(indexPath).catch(() => {});
-          } else if (focusedWindow) {
-            focusedWindow.webContents.reloadIgnoringCache();
-          }
+          if (focusedWindow) reloadShell(focusedWindow, true);
         },
       },
     ],
