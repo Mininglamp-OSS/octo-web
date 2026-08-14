@@ -238,6 +238,44 @@ describe("ChannelAvatar save intent", () => {
     expect(component.state.draftMode).toBe("generated");
   });
 
+  it("returns generated edits as a local draft without updating a group", async () => {
+    const onDraftSave = vi.fn();
+    const onClose = vi.fn();
+    const component = createComponent({ onDraftSave, onClose });
+
+    component.onGeneratedAvatarChange({
+      avatarText: "研发",
+      colorIndex: 5,
+      textChanged: true,
+      colorChanged: true,
+    });
+    await component.saveCustomAvatar();
+
+    expect(onDraftSave).toHaveBeenCalledWith({
+      type: "generated",
+      avatarText: "研发",
+      colorIndex: 5,
+    });
+    expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
+    expect(mocks.uploadFile).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores and returns an uploaded local draft", async () => {
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    const onDraftSave = vi.fn();
+    const component = createComponent({ initialUploadFile: file, onDraftSave });
+
+    expect(component.state.draftMode).toBe("uploaded");
+    expect(component.state.pendingUploadFile).toBe(file);
+    expect(component.state.uploadPreviewUrl).toBe("blob:avatar-preview");
+
+    await component.saveCustomAvatar();
+
+    expect(onDraftSave).toHaveBeenCalledWith({ type: "uploaded", file });
+    expect(mocks.updateChannelAvatarCustom).not.toHaveBeenCalled();
+  });
+
   it("closes without PUT when generated save has no text/color edits and no uploaded avatar clear", async () => {
     const channel = renderChannelAvatar({ initialAvatarText: "研发", initialColorIndex: 5 });
 

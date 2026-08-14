@@ -79,6 +79,15 @@ export function createChannel(
   return APIClient.shared.post("group/create", body);
 }
 
+export function uploadGroupAvatar(groupNo: string, file: File): Promise<void> {
+  const data = new FormData();
+  data.append("file", file);
+  return APIClient.shared.post(`groups/${groupNo}/avatar`, data, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 60_000,
+  });
+}
+
 export async function addChannelSubscribers(
   channel: Channel,
   uids: string[]

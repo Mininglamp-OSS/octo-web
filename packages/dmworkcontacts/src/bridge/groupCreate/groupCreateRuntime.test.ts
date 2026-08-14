@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 import { describe, expect, it, vi } from "vitest";
 
@@ -20,6 +22,7 @@ vi.mock("@octo/base", () => ({
   setCurrentImChannelSubscribersCache: vi.fn(),
   SubscriberStatus: { normal: 1 },
   syncCurrentImChannelSubscribers: vi.fn(),
+  uploadGroupAvatar: vi.fn(),
 }));
 
 vi.mock("@octo/base/src/Utils/const", () => ({
@@ -32,6 +35,7 @@ function createRuntime(
   return {
     addSubscribers: vi.fn(),
     createChannel: vi.fn(),
+    uploadGroupAvatar: vi.fn(() => Promise.resolve()),
     getAvatarUser: vi.fn((uid) => `avatar:${uid}`),
     getContactsList: vi.fn(() => []),
     getCurrentChannelInfo: vi.fn(() => ({})),
@@ -218,6 +222,58 @@ describe("group create runtime bridge", () => {
       expect.objectContaining({ channelID: "group-created" }),
       { fromSidebarList: true }
     );
+  });
+
+  it("uploads a local avatar after creation and before opening the conversation", async () => {
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    const runtime = createRuntime({
+      createChannel: vi.fn(() => Promise.resolve({ group_no: "group-created" })),
+    });
+
+    await submitGroupCreateAction({
+      action: "createGroup",
+      channel: { channelID: "", channelType: ChannelTypePerson },
+      selectedUids: ["alice"],
+      avatarFile: file,
+      runtime,
+    });
+
+    expect(runtime.uploadGroupAvatar).toHaveBeenCalledWith("group-created", file);
+    expect(
+      (runtime.uploadGroupAvatar as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    ).toBeLessThan(
+      (runtime.showConversation as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    );
+  });
+
+  it("opens the created group and then reports a failed avatar upload", async () => {
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+    const onAvatarUploadFailed = vi.fn();
+    const runtime = createRuntime({
+      createChannel: vi.fn(() => Promise.resolve({ group_no: "group-created" })),
+      uploadGroupAvatar: vi.fn(() => Promise.reject(new Error("upload failed"))),
+    });
+
+    await expect(
+      submitGroupCreateAction({
+        action: "createGroup",
+        channel: { channelID: "", channelType: ChannelTypePerson },
+        selectedUids: ["alice"],
+        avatarFile: file,
+        onAvatarUploadFailed,
+        runtime,
+      })
+    ).resolves.toEqual({ group_no: "group-created" });
+
+    expect(runtime.createChannel).toHaveBeenCalledTimes(1);
+    expect(runtime.showConversation).toHaveBeenCalledWith(
+      expect.objectContaining({ channelID: "group-created" }),
+      undefined
+    );
+    expect(onAvatarUploadFailed).toHaveBeenCalledTimes(1);
+    expect(
+      (runtime.showConversation as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
+    ).toBeLessThan(onAvatarUploadFailed.mock.invocationCallOrder[0]);
   });
 
   it("creates a group from a private chat by including self and peer", async () => {

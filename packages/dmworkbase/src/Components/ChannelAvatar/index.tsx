@@ -18,6 +18,17 @@ import "./index.css"
 
 type ChannelAvatarDraftMode = "generated" | "uploaded"
 
+export type ChannelAvatarDraft =
+    | {
+        type: "generated"
+        avatarText: string
+        colorIndex?: number
+    }
+    | {
+        type: "uploaded"
+        file: File
+    }
+
 export interface ChannelAvatarProps {
     channel:Channel
     showUpload?:boolean
@@ -32,6 +43,12 @@ export interface ChannelAvatarProps {
     /** 路由上下文：保存/取消成功后关闭当前「群头像」页。 */
     context?: RouteContext<any>
     onFileUpload?:(f:File)=>Promise<void>
+    /** 建群等前置场景：仅回传本地草稿，不调用已有群的更新接口。 */
+    onDraftSave?:(draft:ChannelAvatarDraft)=>void|Promise<void>
+    /** 草稿模式下重新打开编辑器时恢复已裁剪图片。 */
+    initialUploadFile?: File
+    /** 默认颜色种子；空字符串表示按群名派生。 */
+    colorSeed?: string
 }
 
 interface ChannelAvatarState {
@@ -55,32 +72,44 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
 
     $fileInput: any
     avatarEdit?: WKAvatarEditor|null
-    state: ChannelAvatarState = {
-        cropFile: null,
-        converting: false,
-        uploading: false,
-        customAvatarSaving: false,
-        customAvatarText: this.props.isUploadedAvatar === true ? "" : this.props.initialAvatarText || "",
-        customAvatarColorIndex: this.props.isUploadedAvatar === true ? undefined : this.props.initialColorIndex,
-        textChanged: false,
-        colorChanged: false,
-        draftMode: "generated",
-        pendingUploadFile: null,
-        clearUploadedAvatarRequested: false,
+    private activeUploadPreviewUrl?: string
+
+    private draftStateFromProps = (props: ChannelAvatarProps): ChannelAvatarState => {
+        const pendingUploadFile = props.initialUploadFile || null
+        let uploadPreviewUrl: string | undefined
+        if (pendingUploadFile) {
+            uploadPreviewUrl = URL.createObjectURL(pendingUploadFile)
+            this.activeUploadPreviewUrl = uploadPreviewUrl
+        }
+        return {
+            cropFile: null,
+            converting: false,
+            uploading: false,
+            customAvatarSaving: false,
+            customAvatarText: props.isUploadedAvatar === true ? "" : props.initialAvatarText || "",
+            customAvatarColorIndex: props.isUploadedAvatar === true ? undefined : props.initialColorIndex,
+            textChanged: false,
+            colorChanged: false,
+            draftMode: pendingUploadFile ? "uploaded" : "generated",
+            pendingUploadFile,
+            uploadPreviewUrl,
+            clearUploadedAvatarRequested: false,
+        }
     }
+
+    state: ChannelAvatarState = this.draftStateFromProps(this.props)
 
     componentDidUpdate(prevProps: ChannelAvatarProps) {
         if (
             prevProps.initialAvatarText !== this.props.initialAvatarText ||
             prevProps.initialColorIndex !== this.props.initialColorIndex ||
+            prevProps.initialUploadFile !== this.props.initialUploadFile ||
             prevProps.isUploadedAvatar !== this.props.isUploadedAvatar ||
             (prevProps.visible === false && this.props.visible === true)
         ) {
             this.resetDraftFromProps()
         }
     }
-
-    private activeUploadPreviewUrl?: string
 
     releaseUploadPreviewUrl = () => {
         if (!this.activeUploadPreviewUrl) return
@@ -128,18 +157,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
     }
     resetDraftFromProps = () => {
         this.releaseUploadPreviewUrl()
-        this.setState({
-            cropFile: null,
-            converting: false,
-            customAvatarText: this.props.isUploadedAvatar === true ? "" : this.props.initialAvatarText || "",
-            customAvatarColorIndex: this.props.isUploadedAvatar === true ? undefined : this.props.initialColorIndex,
-            textChanged: false,
-            colorChanged: false,
-            draftMode: "generated",
-            pendingUploadFile: null,
-            uploadPreviewUrl: undefined,
-            clearUploadedAvatarRequested: false,
-        })
+        this.setState(this.draftStateFromProps(this.props))
     }
     cancelCustomAvatar = () => {
         if (this.state.customAvatarSaving || this.state.uploading || this.state.converting) return
@@ -168,6 +186,26 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
         const { channel } = this.props
         const { customAvatarText, customAvatarColorIndex, textChanged, colorChanged, draftMode } = this.state
         if (this.state.customAvatarSaving || this.state.uploading || this.state.converting) return
+        if (this.props.onDraftSave) {
+            const draft: ChannelAvatarDraft | undefined = draftMode === "uploaded"
+                ? (this.state.pendingUploadFile
+                    ? { type: "uploaded", file: this.state.pendingUploadFile }
+                    : undefined)
+                : {
+                    type: "generated",
+                    avatarText: customAvatarText,
+                    colorIndex: customAvatarColorIndex,
+                }
+            if (!draft) return
+            this.setState({ customAvatarSaving: true })
+            try {
+                await this.props.onDraftSave(draft)
+                this.closePage()
+            } finally {
+                this.setState({ customAvatarSaving: false })
+            }
+            return
+        }
         const shouldClearUploadedAvatar =
             this.props.isUploadedAvatar === true &&
             this.props.canClearUploadedAvatar === true &&
@@ -286,7 +324,10 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             (this.props.isUploadedAvatar === true && this.props.canClearUploadedAvatar !== true)
         const showGeneratedPreview =
             draftMode === "generated" &&
-            (textChanged || colorChanged || this.state.clearUploadedAvatarRequested)
+            (this.props.onDraftSave !== undefined || textChanged || colorChanged || this.state.clearUploadedAvatarRequested)
+        const colorSeed = this.props.colorSeed !== undefined
+            ? this.props.colorSeed
+            : channel.channelID
         const content = <div className="wk-channelavatar">
             <div className="wk-channelavatar-main">
                 <div className="wk-channelavatar-preview-panel">
@@ -297,7 +338,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                             <GroupAvatarPreview
                                 avatarText={customAvatarText}
                                 colorIndex={customAvatarColorIndex}
-                                colorSeed={channel.channelID}
+                                colorSeed={colorSeed}
                                 name={groupName || ""}
                                 nameAsFallback={isNamedGroup === true}
                                 size={136}
@@ -333,7 +374,7 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                         nameAsFallback={isNamedGroup === true}
                         initialAvatarText={this.props.isUploadedAvatar === true ? "" : this.props.initialAvatarText || ""}
                         initialColorIndex={this.props.isUploadedAvatar === true ? undefined : this.props.initialColorIndex}
-                        colorSeed={channel.channelID}
+                        colorSeed={colorSeed}
                         disabled={generatedEditingDisabled}
                         onChange={this.onGeneratedAvatarChange}
                     />}
