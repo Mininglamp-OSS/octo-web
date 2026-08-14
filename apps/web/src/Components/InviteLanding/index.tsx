@@ -1,7 +1,8 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react";
 import { I18nContext, WKApp, apiFetchJson, computeAndSaveJoinSuccess, setSessionSid, t, toJoinApprovalStatus } from "@octo/base";
 import type { JoinSpaceStatus } from "@octo/base";
-import { Button, Spin, Toast } from "@douyinfe/semi-ui";
+import { Spin, Toast } from "@douyinfe/semi-ui";
 import { buildPostLoginRedirectUrl } from "../../Layout/postLoginRedirect";
 import "./index.css";
 

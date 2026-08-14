@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useState } from "react";
 import { Check, Copy, Terminal } from "lucide-react";
-import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKApp, WKModal } from "@octo/base";
 import { buildInstallPrompt, resolveAPIBaseURL } from "../utils/installPrompt";
 
 interface InstallPromptModalProps {
@@ -46,13 +47,13 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
         </div>
       }
       footer={
-        <WKButton
-          variant="primary"
+        <Button
+          variant="solid"
           icon={copied ? <Check size={15} /> : <Copy size={15} />}
           onClick={handleCopy}
         >
           {copied ? t("skillMarket.install.copied") : t("skillMarket.install.copyBtn")}
-        </WKButton>
+        </Button>
       }
     >
       <div className="skill-market-prompt-modal__body">

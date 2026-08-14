@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -9,7 +10,7 @@ import {
   RefreshCw,
   Upload,
 } from "lucide-react";
-import { t, useI18n, WKApp, WKButton } from "@octo/base";
+import { t, useI18n, WKApp } from "@octo/base";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import BotPublishModal from "../components/BotPublishModal";
@@ -193,8 +194,8 @@ export default function SkillListPage() {
             autoFocus
           />
           <div className="skill-market-publish-menu" ref={publishMenuRef}>
-            <WKButton
-              variant="primary"
+            <Button
+              variant="solid"
               icon={<Upload size={15} />}
               onClick={() => setPublishMenuOpen((open) => !open)}
               aria-haspopup="menu"
@@ -202,7 +203,7 @@ export default function SkillListPage() {
             >
               {t("skillMarket.list.publishSkill")}
               <ChevronDown size={14} />
-            </WKButton>
+            </Button>
             {publishMenuOpen && (
               <div className="skill-market-publish-menu__panel" role="menu">
                 <button
@@ -303,13 +304,13 @@ export default function SkillListPage() {
             <AlertCircle size={28} />
             <strong>{t("skillMarket.common.loadFailed")}</strong>
             <span>{list.error}</span>
-            <WKButton
+            <Button
               variant="secondary"
               icon={<RefreshCw size={15} />}
               onClick={list.refresh}
             >
               {t("skillMarket.list.retry")}
-            </WKButton>
+            </Button>
           </div>
         )}
         {!list.loading && !list.error && list.skills.length === 0 && (

@@ -1,6 +1,6 @@
+import { Button } from "@octo/ui";
 import React from "react";
 import { Switch } from "@douyinfe/semi-ui";
-import WKButton from "../../../Components/WKButton";
 import "./index.css";
 
 export type GroupManagementMemberRole = "owner" | "manager" | "botAdmin";
@@ -192,14 +192,14 @@ export default function GroupManagementView({
           onRemove={onRemoveManager}
           action={
             canManageManagers ? (
-              <WKButton
+              <Button
                 type="button"
-                variant="ghost"
+                variant="text"
                 size="sm"
                 onClick={onAddManager}
               >
                 {labels.addManager}
-              </WKButton>
+              </Button>
             ) : undefined
           }
         />
@@ -213,14 +213,14 @@ export default function GroupManagementView({
           onRemove={onRemoveBotAdmin}
           action={
             canManageBotAdmins ? (
-              <WKButton
+              <Button
                 type="button"
-                variant="ghost"
+                variant="text"
                 size="sm"
                 onClick={onAddBotAdmin}
               >
                 {labels.addBotAdmin}
-              </WKButton>
+              </Button>
             ) : undefined
           }
         />

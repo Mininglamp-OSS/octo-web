@@ -1,13 +1,7 @@
+import { Button } from "@octo/ui";
 import { Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
-import {
-    Button,
-    Toast,
-    Typography,
-    Tag,
-    Tooltip,
-    Modal,
-} from "@douyinfe/semi-ui";
+import { Toast, Typography, Tag, Tooltip, Modal } from "@douyinfe/semi-ui";
 import { I18nContext, t, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";

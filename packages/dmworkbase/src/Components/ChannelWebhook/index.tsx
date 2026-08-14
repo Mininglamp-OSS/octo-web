@@ -1,8 +1,8 @@
+import { Button } from "@octo/ui";
 import React, { useCallback, useEffect, useState } from "react";
 import { Channel } from "wukongimjssdk";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import { IconPlus, IconLink } from "@douyinfe/semi-icons";
-import WKButton from "../WKButton";
 import { wkConfirm } from "../WKModal";
 import { useI18n } from "../../i18n";
 import { extractErrorMsg } from "../../Service/APIClient";
@@ -210,14 +210,14 @@ export default function ChannelWebhookPanel({
         {/* 列表非空时才显示 header 的新建按钮；空态有自己的醒目 CTA，
                     避免出现两个「新建」。加载中也不显示。 */}
         {!loading && items.length > 0 && (
-          <WKButton
-            variant="primary"
+          <Button
+            variant="solid"
             size="sm"
             icon={<IconPlus />}
             onClick={() => setEditTarget({ mode: "create" })}
           >
             {t("base.channelWebhook.add")}
-          </WKButton>
+          </Button>
         )}
       </div>
 
@@ -230,14 +230,14 @@ export default function ChannelWebhookPanel({
           <p className="wk-webhook__state-text">
             {t("base.channelWebhook.error.loadFailed")}
           </p>
-          <WKButton
+          <Button
             variant="secondary"
             onClick={() => {
               void load(true);
             }}
           >
             {t("base.channelWebhook.retry")}
-          </WKButton>
+          </Button>
         </div>
       ) : items.length === 0 ? (
         <div className="wk-webhook__empty">
@@ -247,13 +247,13 @@ export default function ChannelWebhookPanel({
           <p className="wk-webhook__empty-text">
             {t("base.channelWebhook.empty")}
           </p>
-          <WKButton
-            variant="primary"
+          <Button
+            variant="solid"
             icon={<IconPlus />}
             onClick={() => setEditTarget({ mode: "create" })}
           >
             {t("base.channelWebhook.add")}
-          </WKButton>
+          </Button>
         </div>
       ) : (
         <ul className="wk-webhook__list">

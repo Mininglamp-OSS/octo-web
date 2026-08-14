@@ -1,10 +1,37 @@
 import { forwardRef } from 'react'
-import type { ButtonProps } from './types'
+import type { ButtonHTMLType, ButtonProps } from './types'
+
+const htmlButtonTypes: ButtonHTMLType[] = ['button', 'submit', 'reset']
+
+const normalizeVariant = (
+  variant: ButtonProps['variant'],
+  type: ButtonProps['type'],
+  theme: ButtonProps['theme'],
+) => {
+  if (variant) {
+    if (variant === 'ghost') return 'text'
+    return variant
+  }
+  if (theme === 'borderless') return 'text'
+  if (theme === 'solid' && !type) return 'solid'
+  if (type === 'primary') return 'solid'
+  if (type === 'danger') return theme === 'solid' ? 'danger' : 'warning'
+  if (type === 'warning') return 'warning'
+  if (variant === 'ghost') return 'text'
+  return 'secondary'
+}
+
+const normalizeSize = (size: ButtonProps['size']) => {
+  if (size === 'md') return 'sm'
+  if (size === 'large') return 'sm'
+  if (size === 'small') return 'xs'
+  return size ?? 'sm'
+}
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
-    variant = 'secondary',
-    size = 'md',
+    variant,
+    size = 'sm',
     loading = false,
     iconOnly = false,
     icon,
@@ -12,14 +39,19 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
     className,
     disabled,
     type,
+    htmlType,
+    theme,
     ...rest
   },
   ref,
 ) {
+  const normalizedVariant = normalizeVariant(variant, type, theme)
+  const normalizedSize = normalizeSize(size)
+  const nativeType = htmlType ?? (htmlButtonTypes.includes(type as ButtonHTMLType) ? type as ButtonHTMLType : 'button')
   const classes = [
     'octo-ui-button',
-    `octo-ui-button--${variant}`,
-    `octo-ui-button--${size}`,
+    `octo-ui-button--${normalizedVariant}`,
+    `octo-ui-button--${normalizedSize}`,
     iconOnly ? 'octo-ui-button--icon-only' : '',
     loading ? 'octo-ui-button--loading' : '',
     className,
@@ -30,7 +62,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
       ref={ref}
       className={classes}
       disabled={disabled || loading}
-      type={type ?? 'button'}
+      type={nativeType}
       aria-busy={loading || undefined}
       {...rest}
     >
@@ -41,8 +73,10 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
           {icon}
         </span>
       ) : null}
-      {!iconOnly && children ? (
+      {!iconOnly && children && (icon || loading) ? (
         <span className="octo-ui-button__label">{children}</span>
+      ) : !iconOnly && children ? (
+        children
       ) : null}
     </button>
   )

@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useRef, useState } from 'react'
-import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
+import { Input, Spin, Toast } from '@douyinfe/semi-ui';
 import { replaceWithShellDocument, WKApp } from '@octo/base'
 import { clearBindEntry } from './bindEntryState'
 import {

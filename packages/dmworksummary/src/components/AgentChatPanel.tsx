@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component, createRef } from 'react';
-import { Button, Modal, Input, Toast } from '@douyinfe/semi-ui';
+import { Modal, Input, Toast } from '@douyinfe/semi-ui';
 import { I18nContext } from '@octo/base';
 import type { ChatMessage, ChatCandidate, AgentProgressEvent, AgentDoneEvent, AgentErrorEvent } from '../types/summary';
 import { agentChatStream, agentChat } from '../api/summaryApi';

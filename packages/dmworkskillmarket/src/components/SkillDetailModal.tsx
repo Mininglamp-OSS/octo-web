@@ -1,10 +1,11 @@
+import { Button } from "@octo/ui";
 import React, { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { Bot, Download, Eye, Pencil, RefreshCw, ShieldCheck, Trash2, UserRound } from "lucide-react";
-import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKApp, WKModal } from "@octo/base";
 import type { Category, Skill, SkillVersion } from "../types/skill";
 import { getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
 import { formatCount, formatFullDateTime, formatRecentOrDate } from "../utils/format";
@@ -405,14 +406,14 @@ export default function SkillDetailModal({
                 {mdError && (
                   <div className="skill-market-modal-state is-error">
                     <span>{t("skillMarket.common.loadFailed")}</span>
-                    <WKButton
+                    <Button
                       variant="secondary"
                       size="small"
                       icon={<RefreshCw size={14} />}
                       onClick={() => skillId && fetchSkillMd(skillId)}
                     >
                       {t("skillMarket.detail.retry")}
-                    </WKButton>
+                    </Button>
                   </div>
                 )}
                 {!mdLoading && !mdError && (

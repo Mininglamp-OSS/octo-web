@@ -1,7 +1,7 @@
+import { Button } from "@octo/ui";
 import React from 'react'
 import { Modal } from '@douyinfe/semi-ui'
 import { IconClose } from '@douyinfe/semi-icons'
-import WKButton from '../WKButton'
 import { t } from '../../i18n'
 import './index.css'
 export { wkConfirm } from './confirm'
@@ -81,16 +81,16 @@ function resolveFooter(
     const { okText = t('base.common.ok'), cancelText = t('base.common.cancel'), isOkLoading, isDanger, onOk } = footerConfig
     return (
       <div className="wk-modal-footer">
-        <WKButton variant="secondary" onClick={onCancel}>
+        <Button variant="secondary" onClick={onCancel}>
           {cancelText}
-        </WKButton>
-        <WKButton
-          variant={isDanger ? 'danger' : 'primary'}
+        </Button>
+        <Button
+          variant={isDanger ? 'danger' : 'solid'}
           loading={isOkLoading}
           onClick={onOk}
         >
           {okText}
-        </WKButton>
+        </Button>
       </div>
     )
   }

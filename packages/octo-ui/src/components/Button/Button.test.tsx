@@ -8,21 +8,57 @@ describe('Button', () => {
 
     expect(html).toContain('octo-ui-button')
     expect(html).toContain('octo-ui-button--secondary')
-    expect(html).toContain('octo-ui-button--md')
+    expect(html).toContain('octo-ui-button--sm')
     expect(html).toContain('Confirm')
     expect(html).toContain('type="button"')
   })
 
   it('supports variant, size, and custom className', () => {
     const html = renderToStaticMarkup(
-      <Button variant="primary" size="sm" className="custom-button">
+      <Button variant="solid" size="xs" className="custom-button">
         Save
       </Button>,
     )
 
-    expect(html).toContain('octo-ui-button--primary')
-    expect(html).toContain('octo-ui-button--sm')
+    expect(html).toContain('octo-ui-button--solid')
+    expect(html).toContain('octo-ui-button--xs')
     expect(html).toContain('custom-button')
+  })
+
+  it('normalizes deprecated variant and size aliases', () => {
+    const html = renderToStaticMarkup(
+      <Button variant="ghost" size="md">
+        Save
+      </Button>,
+    )
+
+    expect(html).toContain('octo-ui-button--text')
+    expect(html).toContain('octo-ui-button--sm')
+  })
+
+  it('maps Semi-compatible visual props when variant is omitted', () => {
+    const html = renderToStaticMarkup(
+      <Button type="primary" theme="solid" size="small">
+        Submit
+      </Button>,
+    )
+
+    expect(html).toContain('octo-ui-button--solid')
+    expect(html).toContain('octo-ui-button--xs')
+    expect(html).toContain('type="button"')
+  })
+
+  it('maps Semi solid theme without explicit visual type to solid', () => {
+    const html = renderToStaticMarkup(<Button theme="solid">Create</Button>)
+
+    expect(html).toContain('octo-ui-button--solid')
+    expect(html).toContain('type="button"')
+  })
+
+  it('keeps native submit type through htmlType', () => {
+    const html = renderToStaticMarkup(<Button htmlType="submit">Submit</Button>)
+
+    expect(html).toContain('type="submit"')
   })
 
   it('disables the button and renders a spinner while loading', () => {

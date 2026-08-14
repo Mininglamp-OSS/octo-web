@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react"
-import { Button, Spin, Toast, Tooltip } from "@douyinfe/semi-ui"
+import { Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk"
 import { UserPlus, LogOut, Trash2 } from "lucide-react"
 import { Thread, ThreadStatus } from "../../Service/Thread"

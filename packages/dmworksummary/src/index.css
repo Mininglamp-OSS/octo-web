@@ -1110,7 +1110,7 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     min-width: 0;
 }
 
-.wk-summary-panel-detail .summary-detail-header-actions .semi-button .semi-icon {
+.wk-summary-panel-detail .summary-detail-header-actions .octo-ui-button .semi-icon {
     font-size: 16px;
 }
 
@@ -1429,7 +1429,7 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     line-height: 20px;
 }
 
-.summary-detail-inline-edit.semi-button {
+.summary-detail-inline-edit.octo-ui-button {
     flex: none;
 }
 
@@ -2819,7 +2819,7 @@ body[theme-mode="dark"] .summary-template-create-btn:hover {
 }
 
 .summary-template-create-btn:disabled,
-.summary-template-create-btn.semi-button-disabled {
+.summary-template-create-btn.octo-ui-button:disabled {
     color: var(--wk-text-disabled);
     background: transparent;
 }
@@ -4362,16 +4362,20 @@ body[theme-mode="dark"] .chat-selector-modal {
     width: 100%;
 }
 
+.summary-detail-add-member-confirm {
+    width: 100%;
+}
+
 /* ============================================================
    顶部主操作按钮（转发/重新生成/删除 常驻顶部）
    ============================================================ */
-.summary-detail-header-btn.semi-button {
+.summary-detail-header-btn.octo-ui-button {
     border-radius: var(--wk-r-full);
 }
-.summary-detail-header-btn.semi-button:hover {
+.summary-detail-header-btn.octo-ui-button:hover {
     background: var(--wk-bg-item-hover);
 }
-.summary-detail-header-btn--danger.semi-button:hover {
+.summary-detail-header-btn--danger.octo-ui-button:hover {
     background: var(--wk-color-danger-bg, rgba(246, 94, 88, 0.1));
 }
 

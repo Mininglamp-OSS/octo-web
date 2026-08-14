@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component, createRef } from 'react';
-import { Modal, Toast, Tag, Button, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
+import { Modal, Toast, Tag, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
 import { IconPlus, IconClock, IconChevronDown } from '@douyinfe/semi-icons';
 import { WKApp, I18nContext } from '@octo/base';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';

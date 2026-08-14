@@ -15,11 +15,11 @@ const meta: Meta<typeof Button> = {
   argTypes: {
     variant: {
       control: 'radio',
-      options: ['primary', 'secondary', 'ghost', 'danger'],
+      options: ['solid', 'brand', 'secondary', 'text', 'warning', 'danger'],
     },
     size: {
       control: 'radio',
-      options: ['md', 'sm'],
+      options: ['sm', 'xs'],
     },
     loading: { control: 'boolean' },
     disabled: { control: 'boolean' },
@@ -39,17 +39,19 @@ const Row = ({ children }: { children: ReactNode }) => (
 export const Playground: Story = {
   args: {
     children: 'Confirm',
-    variant: 'primary',
-    size: 'md',
+    variant: 'solid',
+    size: 'sm',
   },
 }
 
 export const Variants: Story = {
   render: () => (
     <Row>
-      <Button variant="primary">Primary</Button>
+      <Button variant="solid">Solid</Button>
+      <Button variant="brand">Brand</Button>
       <Button variant="secondary">Secondary</Button>
-      <Button variant="ghost">Ghost</Button>
+      <Button variant="text">Text</Button>
+      <Button variant="warning">Warning</Button>
       <Button variant="danger">Danger</Button>
     </Row>
   ),
@@ -58,10 +60,10 @@ export const Variants: Story = {
 export const Sizes: Story = {
   render: () => (
     <Row>
-      <Button variant="primary" size="md">Medium</Button>
-      <Button variant="primary" size="sm">Small</Button>
-      <Button variant="secondary" size="md">Medium</Button>
+      <Button variant="solid" size="sm">Small</Button>
+      <Button variant="solid" size="xs">Compact</Button>
       <Button variant="secondary" size="sm">Small</Button>
+      <Button variant="secondary" size="xs">Compact</Button>
     </Row>
   ),
 }
@@ -69,9 +71,9 @@ export const Sizes: Story = {
 export const States: Story = {
   render: () => (
     <Row>
-      <Button variant="primary" disabled>Disabled</Button>
+      <Button variant="solid" disabled>Disabled</Button>
       <Button variant="secondary" disabled>Disabled</Button>
-      <Button variant="primary" loading>Loading</Button>
+      <Button variant="solid" loading>Loading</Button>
       <Button variant="secondary" loading>Loading</Button>
     </Row>
   ),
@@ -80,9 +82,9 @@ export const States: Story = {
 export const WithIcon: Story = {
   render: () => (
     <Row>
-      <Button variant="primary" icon={<span>+</span>}>Create</Button>
+      <Button variant="solid" icon={<span>+</span>}>Create</Button>
       <Button variant="secondary" icon={<span>i</span>}>Details</Button>
-      <Button variant="ghost" icon={<span>?</span>}>Help</Button>
+      <Button variant="text" icon={<span>?</span>}>Help</Button>
     </Row>
   ),
 }
@@ -90,9 +92,9 @@ export const WithIcon: Story = {
 export const IconOnly: Story = {
   render: () => (
     <Row>
-      <Button variant="ghost" iconOnly icon={<span>x</span>} aria-label="Close" />
+      <Button variant="text" iconOnly icon={<span>x</span>} aria-label="Close" />
       <Button variant="secondary" iconOnly icon={<span>...</span>} aria-label="More actions" />
-      <Button variant="primary" iconOnly icon={<span>+</span>} aria-label="Create" size="sm" />
+      <Button variant="solid" iconOnly icon={<span>+</span>} aria-label="Create" size="xs" />
     </Row>
   ),
 }
@@ -101,7 +103,7 @@ export const EdgeCases: Story = {
   render: () => (
     <div style={{ display: 'grid', gap: 'var(--wk-sp-3)', maxWidth: 'min(100%, 420px)' }}>
       <Button variant="secondary">A button with a longer label that stays on one line</Button>
-      <Button variant="primary" icon={<span>+</span>}>Create shared component</Button>
+      <Button variant="solid" icon={<span>+</span>}>Create shared component</Button>
       <Button variant="danger" loading>Deleting</Button>
     </div>
   ),

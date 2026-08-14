@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import React, { useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { t, useI18n, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKModal } from "@octo/base";
 import type { Skill } from "../types/skill";
 import { deleteSkill } from "../api/skillApi";
 
@@ -37,8 +38,8 @@ export default function DeleteConfirmModal({ skill, onClose, onDeleted }: Delete
       title={t("skillMarket.delete.title")}
       footer={
         <>
-          <WKButton variant="secondary" onClick={onClose} disabled={deleting}>{t("skillMarket.common.cancel")}</WKButton>
-          <WKButton variant="danger" onClick={() => void submit()} loading={deleting}>{t("skillMarket.common.delete")}</WKButton>
+          <Button variant="secondary" onClick={onClose} disabled={deleting}>{t("skillMarket.common.cancel")}</Button>
+          <Button variant="danger" onClick={() => void submit()} loading={deleting}>{t("skillMarket.common.delete")}</Button>
         </>
       }
     >

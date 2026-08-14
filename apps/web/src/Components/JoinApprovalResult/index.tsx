@@ -34,8 +34,8 @@ export default function JoinApprovalResult({ status, onDismiss }: JoinApprovalRe
                         : t("app.joinApproval.submittedDesc")}
                 </p>
                 <Button
-                    variant="primary"
-                    size="md"
+                    variant="solid"
+                    size="sm"
                     className="wk-join-approval-btn"
                     onClick={onDismiss}
                 >

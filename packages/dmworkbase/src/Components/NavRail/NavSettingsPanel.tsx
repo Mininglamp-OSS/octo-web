@@ -1,7 +1,8 @@
+import { Button } from "@octo/ui";
 import WKApp from "../../App";
 import { checkVersionOnce } from "../../Utils/versionChecker";
 import React, { Component } from "react";
-import { Toast, Spin, Button, Progress } from "@douyinfe/semi-ui";
+import { Toast, Spin, Progress } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import NavVoiceSettingsItem from "./NavVoiceSettingsItem";
 import NavSecretsSettingsItem from "./NavSecretsSettingsItem";
