@@ -240,22 +240,35 @@ function consume(
     revokeObjectURL: (url) => h.revoked.push(url),
     parseTextToNodes: (value) =>
       parseConsumedTextToContent(value).content as ComposeDoc["content"] as never,
-    getRestoreOffsets: (livePrefix) => ({
-      blocks:
-        livePrefix &&
-        h.restorePrefix.blockMarkerIds.every(
-          (id, index) => livePrefix.blockMarkerIds[index] === id,
-        )
-          ? h.offsets.blocks
-          : 0,
-      topAttachments:
-        livePrefix &&
-        h.restorePrefix.topAttachmentIds.every(
-          (id, index) => livePrefix.topAttachmentIds[index] === id,
-        )
-          ? h.offsets.topAttachments
-          : 0,
-    }),
+    getRestoreOffsets: (livePrefix) => {
+      const matchingPrefixLength = (
+        live: readonly string[],
+        restored: readonly string[],
+        fallbackOffset: number,
+      ) => {
+        if (restored.length === 0) return fallbackOffset;
+        const limit = Math.min(live.length, restored.length, fallbackOffset);
+        let length = 0;
+        while (length < limit && live[length] === restored[length]) length += 1;
+        return length;
+      };
+      return {
+        blocks: livePrefix
+          ? matchingPrefixLength(
+              livePrefix.blockMarkerIds,
+              h.restorePrefix.blockMarkerIds,
+              h.offsets.blocks,
+            )
+          : h.offsets.blocks,
+        topAttachments: livePrefix
+          ? matchingPrefixLength(
+              livePrefix.topAttachmentIds,
+              h.restorePrefix.topAttachmentIds,
+              h.offsets.topAttachments,
+            )
+          : h.offsets.topAttachments,
+      };
+    },
     onRestored: (
       { blocks, topAttachments },
       restoredPrefix,
@@ -834,6 +847,51 @@ describe("consumeCompose — two queued sends that both fail keep their order", 
     expect(value.indexOf("BBB")).toBe(0);
     expect(value.indexOf("BBB")).toBeLessThan(value.indexOf("edited draft"));
     expect(value).not.toContain("AAA");
+  });
+
+  it("keeps the valid prefix when a later restored block is edited", async () => {
+    const h = harness(doc(para(text("AAA"))));
+    const handleA = consume(h);
+    h.editor.commands.insertContent("BBB");
+    const handleB = consume(h);
+    h.editor.commands.insertContent("CCC");
+    const handleC = consume(h);
+    h.editor.commands.insertContent("live draft");
+
+    await runSendWithConsumedCompose(
+      () => outcome(),
+      handleA.ids,
+      handleA.compose,
+    );
+    await runSendWithConsumedCompose(
+      () => outcome(),
+      handleB.ids,
+      handleB.compose,
+    );
+
+    const secondBlockStart = h.editor.state.doc.child(0).nodeSize;
+    const secondBlock = h.editor.state.doc.child(1);
+    h.editor.commands.insertContentAt(
+      {
+        from: secondBlockStart + 1,
+        to: secondBlockStart + 1 + secondBlock.content.size,
+      },
+      "edited BBB",
+    );
+
+    await runSendWithConsumedCompose(
+      () => outcome(),
+      handleC.ids,
+      handleC.compose,
+    );
+
+    const value = h.editor.getText();
+    expect(value.indexOf("AAA")).toBe(0);
+    expect(value.indexOf("AAA")).toBeLessThan(value.indexOf("CCC"));
+    expect(value.indexOf("CCC")).toBeLessThan(value.indexOf("edited BBB"));
+    expect(value.indexOf("edited BBB")).toBeLessThan(
+      value.indexOf("live draft"),
+    );
   });
 
   it("invalidates the attachment prefix after the user removes it", async () => {

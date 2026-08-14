@@ -130,4 +130,22 @@ describe("ChatComposerController", () => {
       }),
     ).toEqual({ blocks: 1, topAttachments: 0 });
   });
+
+  it("keeps the longest still-valid restore prefix", () => {
+    const controller = new ChatComposerController();
+    controller.advanceRestoreOffsets(
+      { blocks: 3, topAttachments: 3 },
+      {
+        blockMarkerIds: ["block-a", "block-b", "block-c"],
+        topAttachmentIds: ["top-a", "top-b", "top-c"],
+      },
+    );
+
+    expect(
+      controller.getRestoreOffsets({
+        blockMarkerIds: ["block-a"],
+        topAttachmentIds: ["top-a", "top-b"],
+      }),
+    ).toEqual({ blocks: 1, topAttachments: 2 });
+  });
 });

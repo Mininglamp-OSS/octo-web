@@ -116,18 +116,16 @@ export class ChatComposerController<TAttachment = unknown> {
   ): ChatComposerRestoreOffsets {
     if (livePrefix) {
       return {
-        blocks: this.hasPrefix(
+        blocks: this.matchingPrefixLength(
           livePrefix.blockMarkerIds,
           this.restorePrefix.blockMarkerIds,
-        )
-          ? this.restoreOffsets.blocks
-          : 0,
-        topAttachments: this.hasPrefix(
+          this.restoreOffsets.blocks,
+        ),
+        topAttachments: this.matchingPrefixLength(
           livePrefix.topAttachmentIds,
           this.restorePrefix.topAttachmentIds,
-        )
-          ? this.restoreOffsets.topAttachments
-          : 0,
+          this.restoreOffsets.topAttachments,
+        ),
       };
     }
     return { ...this.restoreOffsets };
@@ -157,14 +155,16 @@ export class ChatComposerController<TAttachment = unknown> {
     }
   }
 
-  private hasPrefix(
+  private matchingPrefixLength(
     values: readonly string[],
     prefix: readonly string[],
-  ): boolean {
-    return (
-      prefix.length <= values.length &&
-      prefix.every((value, index) => values[index] === value)
-    );
+    fallbackOffset: number,
+  ): number {
+    if (prefix.length === 0) return fallbackOffset;
+    const limit = Math.min(values.length, prefix.length, fallbackOffset);
+    let length = 0;
+    while (length < limit && values[length] === prefix[length]) length += 1;
+    return length;
   }
 
   private release(attemptId: string): void {
