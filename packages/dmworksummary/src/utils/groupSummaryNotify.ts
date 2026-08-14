@@ -1,11 +1,10 @@
 import { Channel } from "wukongimjssdk";
-import {
-  SourceType,
-  TriggerType,
-  type SummaryDetail,
-} from "../types/summary";
+import { SourceType, type SummaryDetail } from "../types/summary";
 
 const STORAGE_KEY_PREFIX = "summary-group-tip:v1:";
+// Storage key keeps the historical "agent" name for backward compatibility
+// with in-flight eligibility marks; eligibility itself now covers every
+// trigger type (see markAgentSummaryNotificationEligible).
 const AGENT_ELIGIBILITY_STORAGE_KEY =
   "summary-group-tip-agent-eligible:v1";
 const MAX_AGENT_ELIGIBLE_TASKS = 100;
@@ -27,16 +26,14 @@ export function shouldNotifyGroupSummaryCompletion(
   detail: Pick<SummaryDetail, "status" | "creator_id" | "trigger_type">,
   currentUserId: string | undefined,
   completedStatus: number,
-  allowInitialAgentCompletion = false
+  allowInitialCompletion = false
 ): boolean {
   return (
     detail.status === completedStatus &&
     !!currentUserId &&
     detail.creator_id === currentUserId &&
     ((previousStatus !== undefined && previousStatus !== completedStatus) ||
-      (previousStatus === undefined &&
-        detail.trigger_type === TriggerType.AGENT &&
-        allowInitialAgentCompletion))
+      (previousStatus === undefined && allowInitialCompletion))
   );
 }
 
@@ -80,6 +77,13 @@ function readAgentEligibleTasks(): number[] {
   }
 }
 
+/**
+ * Mark a newly created summary task as eligible for a completion tip even if
+ * the page first observes it already COMPLETED (fast completion / refresh /
+ * re-open). Covers every trigger type — the eligibility mark is only written
+ * at creation time by the creator, so a later page load of an old task can
+ * never retroactively post into a shared group.
+ */
 export function markAgentSummaryNotificationEligible(taskId: number) {
   try {
     if (
@@ -176,10 +180,9 @@ export async function sendGroupSummaryCompletionTips(
   channelTypeGroup: number,
   deps: GroupSummaryNotifyDeps
 ): Promise<void> {
-  const allowInitialAgentCompletion =
+  const allowInitialCompletion =
     previousStatus === undefined &&
     detail.status === completedStatus &&
-    detail.trigger_type === TriggerType.AGENT &&
     !!currentUserId &&
     detail.creator_id === currentUserId &&
     consumeAgentSummaryNotificationEligibility(detail.task_id);
@@ -189,11 +192,11 @@ export async function sendGroupSummaryCompletionTips(
       detail,
       currentUserId,
       completedStatus,
-      allowInitialAgentCompletion
+      allowInitialCompletion
     )
   )
     return;
-  if (previousStatus !== undefined && detail.trigger_type === TriggerType.AGENT) {
+  if (previousStatus !== undefined) {
     consumeAgentSummaryNotificationEligibility(detail.task_id);
   }
   if (!currentUserId) return;

@@ -137,6 +137,28 @@ describe("groupSummaryNotify", () => {
     expect(isAgentSummaryNotificationEligible(42)).toBe(false);
   });
 
+  it("backfills a newly created manual summary on initial completed observation", async () => {
+    const sendToChannel = vi.fn().mockResolvedValue(undefined);
+    const manualDetail = detail({ trigger_type: 1 });
+    const deps = { sendToChannel, isDisbanded: () => false };
+
+    // 未标记的任务不补发(防止刷新页面给历史任务追溯群发)。
+    await sendGroupSummaryCompletionTips(undefined, manualDetail, "creator", COMPLETED, 2, deps);
+    expect(sendToChannel).not.toHaveBeenCalled();
+
+    markAgentSummaryNotificationEligible(42);
+    expect(isAgentSummaryNotificationEligible(42)).toBe(true);
+
+    await sendGroupSummaryCompletionTips(undefined, manualDetail, "creator", COMPLETED, 2, deps);
+
+    expect(sendToChannel).toHaveBeenCalledTimes(2);
+    expect(sendToChannel.mock.calls.map((c) => c[0].channelID).sort()).toEqual([
+      "group-a",
+      "group-b",
+    ]);
+    expect(isAgentSummaryNotificationEligible(42)).toBe(false);
+  });
+
   it("sends once per task and group, including after runtime reset", async () => {
     const sendToChannel = vi.fn().mockResolvedValue(undefined);
     const deps = { sendToChannel, isDisbanded: () => false };

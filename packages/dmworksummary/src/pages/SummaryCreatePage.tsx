@@ -630,6 +630,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             const result = await api.createSummary(params);
+            // 首次完成通知来源群(#1379):手动创建的任务也登记 eligibility。
+            // 完成快于首次 detail 轮询时,页面第一次看到的就是 COMPLETED
+            // (previousStatus === undefined),靠 transition 抓不到跳变;
+            // 登记后首次观察到 COMPLETED 即补发,标记只在创建时写入,
+            // 不会让历史任务追溯群发。
+            markAgentSummaryNotificationEligible(result.task_id);
 
             // If schedule is configured, create it in ONE step bound to the new task.
             // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
