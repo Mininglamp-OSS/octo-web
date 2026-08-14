@@ -7,6 +7,7 @@
   "scripts": {
     "start": "vite",
     "dev": "vite",
+    "predev-ele": "pnpm --filter @octo/ui build",
     "dev-ele": "concurrently -k -n=web,ele -c=green,blue \"vite\" \"wait-on tcp:3000 && npm-run-all watch\"",
     "watch": "tsc-watch -p tsconfig.e.json --onSuccess \"npm-run-all compile:electron-preload start:electron\"",
     "start:electron": "cross-env NODE_ENV=development electron .",
