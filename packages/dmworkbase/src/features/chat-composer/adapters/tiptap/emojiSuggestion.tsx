@@ -1,4 +1,4 @@
-import { Editor, Extension } from '@tiptap/core'
+import { Extension } from '@tiptap/core'
 import { PluginKey } from '@tiptap/pm/state'
 import Suggestion, {
   SuggestionMatch,
@@ -53,7 +53,7 @@ function findEmojiSuggestionMatch(config: { $position: any }): SuggestionMatch {
 }
 
 export function createEmojiSuggestionExtension(
-  onActiveChange?: (active: boolean) => void
+  onActiveChange?: (active: boolean) => void,
 ): Extension {
   const suggestion: Omit<SuggestionOptions<EmojiSuggestItem>, 'editor'> = {
     pluginKey: emojiSuggestionPluginKey,
@@ -75,234 +75,73 @@ export function createEmojiSuggestionExtension(
 
     command: ({ editor, range, props }) => {
       // 把光标前的 query 文字替换为表情 key 纯文本（第一版不追加空格）
-      editor.chain().insertContentAt(range, props.key).focus().run()
+      editor.chain().focus().insertContentAt(range, props.key).run()
     },
 
     render: () => {
-      let component: ReactRenderer | null = null
-      let popup: TippyInstance | null = null
-      let lastReferenceRect: DOMRect | null = null
-      let lifecycleEditor: Editor | null = null
-      let visible = false
-      let disposed = false
-      let lifecycleEpoch = 0
-      let pendingExitRevision = 0
-      let pendingExitFrame: number | null = null
-      let pendingExitTimer: number | null = null
-      const propsEpoch = new WeakMap<object, number>()
+      let component: ReactRenderer
+      let popup: TippyInstance[]
 
-      const isCurrentSuggestion = (props: any) => {
-        const current = emojiSuggestionPluginKey.getState(props.editor.state)
-        return Boolean(
-          current?.active &&
-            current.query === props.query &&
-            current.range.from === props.range.from &&
-            current.range.to === props.range.to
-        )
-      }
+      return {
+        onStart: (props: any) => {
+          if (!props.items?.length) return
 
-      const isOriginalQueryIntact = (props: any) => {
-        const { from, to } = props.range
-        const { doc } = props.editor.state
-        if (from < 0 || to < from || to > doc.content.size) return false
-        return doc.textBetween(from, to, '\n', '\n') === props.query
-      }
-
-      const setVisible = (nextVisible: boolean) => {
-        const next = nextVisible && Boolean(popup)
-        if (visible === next) return
-        visible = next
-        onActiveChange?.(next)
-        if (next) {
-          popup?.show()
-        } else {
-          popup?.hide()
-        }
-      }
-
-      const ensureComponent = (props: any) => {
-        if (!component) {
+          onActiveChange?.(true)
           component = new ReactRenderer(EmojiSuggestionList, {
             props,
             editor: props.editor,
           })
-        } else {
-          component.updateProps(props)
-        }
-      }
 
-      const createTrackedReference = (
-        clientRect: () => DOMRect | null
-      ) => () => {
-        const referenceRect = clientRect()
-        if (referenceRect) lastReferenceRect = referenceRect
-        return referenceRect ?? lastReferenceRect
-      }
+          if (!props.clientRect) return
 
-      const ensurePopup = (props: any) => {
-        if (popup || !component || !props.clientRect) return
-        popup =
-          tippy('body', {
-            getReferenceClientRect: createTrackedReference(props.clientRect),
+          popup = tippy('body', {
+            getReferenceClientRect: props.clientRect,
             appendTo: () => document.body,
             content: component.element,
-            showOnCreate: false,
+            showOnCreate: true,
             interactive: true,
-            hideOnClick: false,
             trigger: 'manual',
             placement: 'bottom-start',
-          })[0] ?? null
-      }
-
-      const reconcile = (props: any) => {
-        // Suggestion.view.update awaits items(). Older updates may resume after
-        // selection already exited or after a newer query became current.
-        if (
-          disposed ||
-          props.editor.isDestroyed ||
-          propsEpoch.get(props) !== lifecycleEpoch ||
-          !isCurrentSuggestion(props)
-        )
-          return
-
-        ensureComponent(props)
-        ensurePopup(props)
-        if (popup && props.clientRect) {
-          popup.setProps({
-            getReferenceClientRect: createTrackedReference(props.clientRect),
           })
-        }
-        setVisible(Boolean(props.items?.length))
-      }
-
-      const cancelPendingExit = () => {
-        pendingExitRevision += 1
-        if (pendingExitFrame !== null) {
-          cancelAnimationFrame(pendingExitFrame)
-          pendingExitFrame = null
-        }
-        if (pendingExitTimer !== null) {
-          window.clearTimeout(pendingExitTimer)
-          pendingExitTimer = null
-        }
-      }
-
-      const destroy = () => {
-        cancelPendingExit()
-        setVisible(false)
-        popup?.destroy()
-        component?.destroy()
-        popup = null
-        component = null
-        lastReferenceRect = null
-      }
-
-      const scheduleDestroy = () => {
-        cancelPendingExit()
-        const revision = pendingExitRevision
-        pendingExitFrame = requestAnimationFrame(() => {
-          pendingExitFrame = null
-          // Tiptap's focus command also restores DOM focus in RAF. Use the next
-          // task so every focus callback and its suggestion microtasks can
-          // reactivate the current lifecycle before teardown is finalized.
-          pendingExitTimer = window.setTimeout(() => {
-            pendingExitTimer = null
-            if (disposed || revision !== pendingExitRevision) return
-            const current = lifecycleEditor
-              ? emojiSuggestionPluginKey.getState(lifecycleEditor.state)
-              : null
-            if (current?.active) return
-            destroy()
-          }, 0)
-        })
-      }
-
-      const dispose = () => {
-        if (disposed) return
-        disposed = true
-        destroy()
-        lifecycleEditor?.off('unmount', resetForUnmount)
-        lifecycleEditor?.off('destroy', dispose)
-        lifecycleEditor = null
-      }
-
-      const resetForUnmount = () => {
-        lifecycleEpoch += 1
-        destroy()
-      }
-
-      const bindEditorLifecycle = (editor: Editor) => {
-        if (disposed || lifecycleEditor === editor) return
-        lifecycleEditor?.off('unmount', resetForUnmount)
-        lifecycleEditor?.off('destroy', dispose)
-        lifecycleEditor = editor
-        lifecycleEditor.on('unmount', resetForUnmount)
-        lifecycleEditor.on('destroy', dispose)
-      }
-
-      const prepareUpdate = (props: any) => {
-        cancelPendingExit()
-        bindEditorLifecycle(props.editor)
-        propsEpoch.set(props, lifecycleEpoch)
-        if (popup && props.clientRect) {
-          popup.setProps({
-            getReferenceClientRect: createTrackedReference(props.clientRect),
-          })
-        }
-      }
-
-      return {
-        onBeforeStart: (props: any) => {
-          prepareUpdate(props)
-        },
-
-        onBeforeUpdate: (props: any) => {
-          prepareUpdate(props)
-        },
-
-        onStart: (props: any) => {
-          reconcile(props)
         },
 
         onUpdate(props: any) {
-          reconcile(props)
+          if (!component) return
+
+          component.updateProps(props)
+
+          if (!props.items?.length) {
+            onActiveChange?.(false)
+            popup?.[0]?.hide()
+            return
+          }
+
+          onActiveChange?.(true)
+          popup?.[0]?.show()
+
+          if (!props.clientRect) return
+
+          popup[0].setProps({
+            getReferenceClientRect: props.clientRect,
+          })
         },
 
         onKeyDown(props: any) {
           if (!component) return false
 
           if (props.event.key === 'Escape') {
-            setVisible(false)
+            onActiveChange?.(false)
+            popup?.[0]?.hide()
             return true
           }
 
           return component.ref?.onKeyDown(props)
         },
 
-        onExit(props: any) {
-          if (disposed || props.editor.isDestroyed) {
-            dispose()
-            return
-          }
-
-          // moved+changed exits are delivered after awaiting items(). An older
-          // exit can therefore arrive after a newer active suggestion. It must
-          // not destroy the popup now owned by that current suggestion.
-          const current = emojiSuggestionPluginKey.getState(props.editor.state)
-          if (current?.active) return
-          if (!isOriginalQueryIntact(props)) {
-            destroy()
-            return
-          }
-          if (popup && lastReferenceRect) {
-            const pinnedRect = lastReferenceRect
-            popup.setProps({ getReferenceClientRect: () => pinnedRect })
-          }
-          // Pointer focus can briefly move the selection outside the matched
-          // query before restoring it in the same browser event. Deferring the
-          // teardown past the next focus frame lets that new start reuse the
-          // existing popup instead of producing a visible destroy/recreate.
-          scheduleDestroy()
+        onExit() {
+          onActiveChange?.(false)
+          popup?.[0]?.destroy()
+          component?.destroy()
         },
       }
     },
