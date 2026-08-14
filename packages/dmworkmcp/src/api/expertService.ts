@@ -62,12 +62,18 @@ function delay<T>(value: T, ms = MOCK_DELAY_MS): Promise<T> {
 
 export type ExpertKindParam = "agent" | "squad";
 
+/** Catalog sort modes accepted by the marketplace list endpoints. `installs`
+ *  and `views` rank by the resource_metrics counters; `comprehensive` is the
+ *  backend's weighted blend of both plus a recency boost. */
+export type ExpertCatalogSort = "comprehensive" | "latest" | "installs" | "views";
+
 /** List query params shared by all four list endpoints (expert-v1.md §4.2). */
 export interface ListExpertParams {
   keyword?: string;
   /** Category NAME; "全部" / "all" disables the filter. */
   category?: string;
   tags?: string[];
+  sort?: ExpertCatalogSort;
   page?: number;
   pageSize?: number;
 }
@@ -269,6 +275,7 @@ function buildListQuery(params: ListExpertParams): Record<string, unknown> {
     query.category = category;
   }
   if (params.tags?.length) query.tag = params.tags;
+  if (params.sort) query.sort = params.sort;
   query.page = params.page && params.page > 0 ? params.page : 1;
   query.page_size = params.pageSize && params.pageSize > 0 ? params.pageSize : 100;
   return query;
@@ -371,11 +378,28 @@ function paginate<T>(source: T[], params: ListExpertParams): { items: T[]; total
   return { items: source.slice(start, start + pageSize), total: source.length };
 }
 
+/** Mirror the backend's catalog ordering over the mock fixtures. `latest` (and
+ *  no sort) keeps the fixture order, which already plays newest-first. */
+function sortMockItems(items: ExpertItem[], sort?: ExpertCatalogSort): ExpertItem[] {
+  if (!sort || sort === "latest") return items;
+  const score = (item: ExpertItem): number => {
+    const installs = item.installCount ?? 0;
+    const views = item.viewCount ?? 0;
+    if (sort === "installs") return installs;
+    if (sort === "views") return views;
+    return installs * 5 + views;
+  };
+  return [...items].sort((a, b) => score(b) - score(a));
+}
+
 function listMockFrom(
   source: ExpertItem[],
   params: ListExpertParams
 ): Promise<ExpertListResult> {
-  const filtered = source.filter((item) => matchesFilters(item, params));
+  const filtered = sortMockItems(
+    source.filter((item) => matchesFilters(item, params)),
+    params.sort
+  );
   const { items, total } = paginate(filtered, params);
   return delay({ items, total });
 }

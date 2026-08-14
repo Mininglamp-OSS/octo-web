@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
+import { ArrowDown, Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
 import { Tooltip } from "@douyinfe/semi-ui";
 import { t, useI18n, WKApp, WKButton } from "@octo/base";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
@@ -18,7 +18,7 @@ import {
   listSquads,
   prefetchLoopTargets,
 } from "../api/expertService";
-import type { ExpertCategoryCount } from "../api/expertService";
+import type { ExpertCatalogSort, ExpertCategoryCount } from "../api/expertService";
 import { expertListErrorI18nKey } from "../api/expertListError";
 import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
@@ -27,7 +27,6 @@ import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
 import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
 
 type ExpertKind = "agent" | "squad" | "mine";
-type ExpertSort = "latest" | "name";
 
 const TOAST_DURATION = 3000;
 // The localized "all" chip / sentinel. Sourced from the shared category list
@@ -36,9 +35,14 @@ const ALL_CATEGORY = EXPERT_CATEGORIES[0];
 // Catalog lists are fetched with page_size=100 (expertService default); when the
 // true total exceeds this the catalog is truncated and we surface a notice.
 const LIST_PAGE_SIZE = 100;
-const SORT_OPTIONS: Array<{ value: ExpertSort; labelKey: string }> = [
+// Catalog sort modes, mirroring the skill market's control: the backend orders
+// the list (metric-backed modes rank by resource_metrics counters), the client
+// only filters. `descending` adds the ↓ affordance on the count-based modes.
+const SORT_OPTIONS: Array<{ value: ExpertCatalogSort; labelKey: string; descending?: boolean }> = [
+  { value: "comprehensive", labelKey: "mcp.expert.sortComprehensive" },
   { value: "latest", labelKey: "mcp.expert.sortLatest" },
-  { value: "name", labelKey: "mcp.expert.sortName" },
+  { value: "installs", labelKey: "mcp.expert.sortInstalls", descending: true },
+  { value: "views", labelKey: "mcp.expert.sortViews", descending: true },
 ];
 
 /** Keyword match against name / summary / tags (all lower-cased upstream). */
@@ -52,26 +56,15 @@ function matchesQuery(item: ExpertItem, q: string): boolean {
 }
 
 /**
- * Order a list by the active sort mode (shared by the catalog and 我的 tabs).
- * "latest" keeps the source order (backend returns newest-first); "name" sorts
- * alphabetically.
- */
-function sortItems<T extends ExpertItem>(items: T[], sort: ExpertSort): T[] {
-  const sorted = [...items];
-  if (sort === "name") {
-    sorted.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN"));
-  }
-  return sorted;
-}
-
-/**
  * Expert Marketplace catalog — the third tab under 市场 (after MCP / Skills).
  * Data comes from the octo-marketplace expert catalog (expertService.ts): the
- * catalog list for the active kind, the caller's own records for the 我的 tab,
- * and category chips with live counts. Filtering/sorting/tag selection stay
- * client-side over the fetched arrays. Sub-tabs switch between 专家 (single
- * experts) and 专家团 (squads); 专家 is the default. Clicking a card fetches the
- * full detail (list items are projections) and opens the shared detail modal.
+ * catalog list for the active kind (ordered server-side by the sort control,
+ * mirroring the skill market's 综合/最新/安装/浏览 modes), the caller's own
+ * records for the 我的 tab, and category chips with live counts. Keyword /
+ * category / tag filtering stays client-side over the fetched arrays. Sub-tabs
+ * switch between 专家 (single experts) and 专家团 (squads); 专家 is the default.
+ * Clicking a card fetches the full detail (list items are projections) and
+ * opens the shared detail modal.
  */
 export default function ExpertMarketListPage() {
   useI18n();
@@ -101,7 +94,7 @@ export default function ExpertMarketListPage() {
   const [kind, setKind] = useState<ExpertKind>("agent");
   const [category, setCategory] = useState<string>(ALL_CATEGORY);
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<ExpertSort>("latest");
+  const [sort, setSort] = useState<ExpertCatalogSort>("comprehensive");
   const [selected, setSelected] = useState<ExpertItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [botPublishOpen, setBotPublishOpen] = useState(false);
@@ -145,6 +138,8 @@ export default function ExpertMarketListPage() {
   const reqVer = useRef(0);
   const kindRef = useRef(kind);
   kindRef.current = kind;
+  const sortRef = useRef(sort);
+  sortRef.current = sort;
 
   const showToast = (message: string) => {
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
@@ -162,10 +157,11 @@ export default function ExpertMarketListPage() {
   }, []);
 
   // Fetch the data backing the active tab. The catalog tabs (专家 / 专家团) load
-  // the full kind list + category counts; the 我的 tab loads the caller's own
-  // experts and squads (rendered in two sections). Filtering/sort stay
-  // client-side over the returned arrays.
-  const load = useCallback(async (activeKind: ExpertKind) => {
+  // the full kind list (ordered server-side by the active sort mode) + category
+  // counts; the 我的 tab loads the caller's own experts and squads (rendered in
+  // two sections). Keyword / category / tag filtering stays client-side over
+  // the returned arrays.
+  const load = useCallback(async (activeKind: ExpertKind, activeSort: ExpertCatalogSort) => {
     const v = ++reqVer.current;
     setLoading(true);
     setErrorKey(null);
@@ -179,7 +175,7 @@ export default function ExpertMarketListPage() {
         setMySquadsTotal(minesq.total);
       } else if (activeKind === "squad") {
         const [list, cats] = await Promise.all([
-          listSquads(),
+          listSquads({ sort: activeSort }),
           listExpertCategories("squad"),
         ]);
         if (v !== reqVer.current) return;
@@ -188,7 +184,7 @@ export default function ExpertMarketListPage() {
         setCategories(cats);
       } else {
         const [list, cats] = await Promise.all([
-          listExperts(),
+          listExperts({ sort: activeSort }),
           listExpertCategories("agent"),
         ]);
         if (v !== reqVer.current) return;
@@ -204,12 +200,16 @@ export default function ExpertMarketListPage() {
     }
   }, []);
 
-  const reload = useCallback(() => load(kindRef.current), [load]);
+  const reload = useCallback(
+    () => load(kindRef.current, sortRef.current),
+    [load]
+  );
 
-  // Load on mount and whenever the active tab changes.
+  // Load on mount and whenever the active tab or sort mode changes (ordering is
+  // server-side, so a sort switch is a refetch).
   useEffect(() => {
-    load(kind);
-  }, [kind, load]);
+    load(kind, sort);
+  }, [kind, sort, load]);
 
   // Warm the Loop workspace/runtime lists on mount so the "添加到回路" dialog opens
   // with its selects already populated instead of waiting on two sequential
@@ -304,7 +304,9 @@ export default function ExpertMarketListPage() {
   const items = useMemo(() => {
     const source: ExpertItem[] = kind === "squad" ? squadsData : agentsData;
     const q = query.trim().toLowerCase();
-    const filtered = source.filter((item) => {
+    // The backend already ordered the list by the active sort mode; filtering
+    // preserves that order.
+    return source.filter((item) => {
       if (category !== ALL_CATEGORY && item.category !== category) return false;
       // Tag filter: item must carry EVERY selected tag (AND, matching the MCP
       // market's tag semantics).
@@ -316,8 +318,7 @@ export default function ExpertMarketListPage() {
       }
       return matchesQuery(item, q);
     });
-    return sortItems(filtered, sort);
-  }, [kind, category, query, sort, squadsData, agentsData, selectedTags]);
+  }, [kind, category, query, squadsData, agentsData, selectedTags]);
 
   // Per-category counts for the filter chips, reflecting the active keyword /
   // tag filters (but not the selected category itself, so every chip shows how
@@ -356,17 +357,18 @@ export default function ExpertMarketListPage() {
   }, [kind, squadsData, agentsData, query, selectedTags, categories, squadsTotal, agentsTotal]);
 
   // 我的 tab: the caller's own experts / squads (GET /experts/mine +
-  // /squads/mine). Only the keyword search applies here (category / tag filters
-  // are hidden in this tab); each kind gets its own section.
+  // /squads/mine). Only the keyword search applies here (the sort control and
+  // category / tag filters are hidden in this tab); each kind gets its own
+  // section, keeping the backend's newest-first order.
   const myAgents = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return sortItems(myAgentsData.filter((item) => matchesQuery(item, q)), sort);
-  }, [myAgentsData, query, sort]);
+    return myAgentsData.filter((item) => matchesQuery(item, q));
+  }, [myAgentsData, query]);
 
   const mySquads = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return sortItems(mySquadsData.filter((item) => matchesQuery(item, q)), sort);
-  }, [mySquadsData, query, sort]);
+    return mySquadsData.filter((item) => matchesQuery(item, q));
+  }, [mySquadsData, query]);
 
   // The active catalog's true total vs. how many were actually loaded. The list
   // fetch caps at LIST_PAGE_SIZE, so when the total exceeds the loaded count the
@@ -725,17 +727,20 @@ export default function ExpertMarketListPage() {
                 {t("mcp.expert.totalCount", { values: { count: summaryCount } })}
               </span>
               <div className="wk-mcp-expert-sort" aria-label={t("mcp.expert.sortAriaLabel")}>
-                {SORT_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={sort === option.value ? "is-active" : ""}
-                    aria-pressed={sort === option.value}
-                    onClick={() => setSort(option.value)}
-                  >
-                    {t(option.labelKey)}
-                  </button>
-                ))}
+                <div className="wk-mcp-expert-sort__options">
+                  {SORT_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={sort === option.value ? "is-active" : ""}
+                      aria-pressed={sort === option.value}
+                      onClick={() => setSort(option.value)}
+                    >
+                      <span>{t(option.labelKey)}</span>
+                      {option.descending && <ArrowDown size={12} aria-hidden="true" />}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
