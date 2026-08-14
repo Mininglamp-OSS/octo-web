@@ -3,6 +3,7 @@ import React, { Component, createRef } from "react";
 import {
     Button,
     Dropdown,
+    SplitButtonGroup,
     Toast,
     Typography,
     Tag,
@@ -199,7 +200,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         const actions = selectChat.parentElement;
         if (!actions) return;
-        const startGroup = actions.querySelector('.summary-workbench-start-group');
+        const startGroup = actions.querySelector('.chat-summary-modal-split');
         const actionsWidth = actions.clientWidth;
         const groupWidth = startGroup ? (startGroup as HTMLElement).offsetWidth : 0;
         const gap = 24;
@@ -329,6 +330,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (prevState.selectedChats !== this.state.selectedChats || prevState.mode !== this.state.mode) {
             this.updateSelectChatWidth();
             this.setState({ visibleChipCount: 999 }, () => this.updateVisibleChipCount());
+            // Agent→Normal 往返后 textarea 重新挂载（无内联高度），恢复按内容自动增高；
+            // 参与者 chip 区同样重新挂载，需按新宽度重算溢出。
+            this.autoResizeTextarea();
+            this.updateVisibleMemberChipCount();
         }
         if (prevState.selectedMembers !== this.state.selectedMembers) {
             this.setState({ visibleMemberChipCount: 999 }, () => this.updateVisibleMemberChipCount());
@@ -807,6 +812,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /**
      * 进入 agent 模式：读 localStorage 拿 session_id → 拉历史回显。
      * 无历史（新会话）则照旧空白开场；session_id 仍惰性生成于首次发送。
+     * 同时清空 selectedMembers：Agent 模式无参与者入口，残留的不可见
+     * participants 会在「保存为总结」时被误提交给后端（P1 回归）。
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
@@ -815,6 +822,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         const storedRef = readAgentChatReferenced(this.agentChannelId());
         this.setState((prev) => ({
             mode: 'agent',
+            selectedMembers: [],
             sessionId: stored || prev.sessionId,
             referencedTask: storedRef
                 ? { task_id: storedRef.task_id, title: storedRef.title } as SummaryListItem
@@ -1364,13 +1372,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             </div>
                             )}
                         </div>
-                        {/* 右下角：默认「开始总结」主按钮 + 下拉切换总结方式（恢复初版设计） */}
-                        <div className="summary-workbench-start-group">
+                        {/* 右下角：默认「开始总结」主按钮 + 下拉切换总结方式（SplitButtonGroup，与 ChatSummaryNewModal 一致） */}
+                        <SplitButtonGroup className="chat-summary-modal-split">
                             {mode !== 'agent' && (
                                 <Button
                                     data-testid={summaryTestIds.createSubmit}
                                     theme="solid"
-                                    className="summary-workbench-start-btn"
                                     loading={submitting}
                                     disabled={!this.canSubmit() || submitting}
                                     onClick={this.handlePrimaryClick}
@@ -1403,14 +1410,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             >
                                 <Button
                                     data-testid={summaryTestIds.createModeSwitch}
-                                    className="summary-workbench-mode-switch-btn"
+                                    theme="solid"
                                     icon={<ChevronDown size={16} />}
                                     aria-label={translate("summary.create.switchMode")}
                                     title={translate("summary.create.switchMode")}
                                     disabled={submitting}
                                 />
                             </Dropdown>
-                        </div>
+                        </SplitButtonGroup>
                     </div>
                 </div>
 

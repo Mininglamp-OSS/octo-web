@@ -2438,7 +2438,7 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     gap: 12px;
 }
 
-.summary-workbench--panel .summary-workbench-start-group {
+.summary-workbench--panel .chat-summary-modal-split {
     align-self: flex-end;
 }
 
@@ -2592,46 +2592,11 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     margin-top: 4px;
 }
 
-/* Start button group - 主按钮 + 模式下拉，右下角 */
-.summary-workbench-start-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
-}
-
-/* Start button - 药丸形，active 状态深色白字，disabled 状态浅灰背景灰字+图标 */
-.summary-workbench-start-btn {
-    border-radius: 99px !important;
-    padding: 0 12px;
-    height: 32px;
-    font-size: 14px;
-    font-weight: 500;
-    flex-shrink: 0;
-}
-
-/* 模式下拉触发按钮 - 药丸形图标按钮 */
-button.summary-workbench-mode-switch-btn {
-    border-radius: 99px;
-    padding: 0;
-    height: 32px;
-    width: 32px;
-    flex-shrink: 0;
-    color: var(--wk-text-secondary);
-}
-
-.summary-workbench-start-btn svg {
-    margin-right: 10px;
-}
-
-.summary-workbench-start-btn:disabled {
-    background-color: var(--wk-bg-elevated) !important;
-    color: var(--wk-text-disabled) !important;
-}
-
-.summary-workbench-start-btn:disabled svg {
-    color: var(--wk-text-disabled);
-    margin-right: 4px;
+/* 右下角按钮组：SplitButtonGroup（主按钮 + 模式下拉），与 ChatSummaryNewModal 一致。
+   chevron 触发按钮加紧凑 padding，避免默认 16px 左右 padding 撑宽图标按钮。 */
+.chat-summary-modal-split .semi-button:last-child {
+    padding-left: var(--wk-sp-2, 8px);
+    padding-right: var(--wk-sp-2, 8px);
 }
 
 @media (max-width: 600px) {
@@ -2641,7 +2606,7 @@ button.summary-workbench-mode-switch-btn {
         gap: 12px;
     }
 
-    .summary-workbench-start-group {
+    .chat-summary-modal-split {
         align-self: flex-end;
     }
 }
