@@ -1,4 +1,5 @@
 import type { GroupMemberPickerProps } from "../GroupMemberPicker";
+import type { ChannelAvatarDraft } from "@octo/base";
 
 export interface GroupCreateDialogProps {
   mode: "createGroup" | "addMember";
@@ -17,8 +18,10 @@ export interface GroupCreateDialogProps {
     groupName: string;
     avatarText: string;
     avatarColorIndex?: number;
+    avatarFile?: File;
     maxNameLength: number;
     isAvatarEditorOpen: boolean;
+    isSubmitting: boolean;
   };
   memberPicker: GroupMemberPickerProps;
   actions: {
@@ -27,6 +30,6 @@ export interface GroupCreateDialogProps {
     onGroupNameChange: (value: string) => void;
     onOpenAvatarEditor: () => void;
     onCloseAvatarEditor: () => void;
-    onSaveAvatar: (avatarText: string, colorIndex?: number) => void;
+    onSaveAvatar: (draft: ChannelAvatarDraft) => void;
   };
 }

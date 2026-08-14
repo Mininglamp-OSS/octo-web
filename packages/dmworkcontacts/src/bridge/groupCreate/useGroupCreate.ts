@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ChannelAvatarDraft } from "@octo/base";
 
 import {
   loadGroupCreateCandidates,
@@ -19,6 +20,7 @@ interface GroupCreateNotice {
   onError: (message: string) => void;
   onNameRequired: () => void;
   onMembersRequired: () => void;
+  onAvatarUploadFailed: () => void;
 }
 
 export interface UseGroupCreateOptions {
@@ -53,6 +55,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
   const [avatarColorIndex, setAvatarColorIndex] = useState<
     number | undefined
   >();
+  const [avatarFile, setAvatarFile] = useState<File>();
   const [isAvatarEditorOpen, setAvatarEditorOpen] = useState(false);
   const [isSubmitting, setSubmitting] = useState(false);
   const loadSequence = useRef(0);
@@ -71,6 +74,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
       setGroupName("");
       setAvatarText("");
       setAvatarColorIndex(undefined);
+      setAvatarFile(undefined);
       setAvatarEditorOpen(false);
       return;
     }
@@ -81,6 +85,7 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
     setGroupName("");
     setAvatarText("");
     setAvatarColorIndex(undefined);
+    setAvatarFile(undefined);
     setAvatarEditorOpen(false);
 
     void loadGroupCreateCandidates({ channel: options.channel }).then(
@@ -155,6 +160,8 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
                 avatarColor: avatarColorIndex,
               }
             : undefined,
+        avatarFile: options.action === "createGroup" ? avatarFile : undefined,
+        onAvatarUploadFailed: options.notice.onAvatarUploadFailed,
         keepSidebarTab: options.keepSidebarTab,
       });
       if (options.action === "createGroup") options.onSuccess?.();
@@ -164,18 +171,24 @@ export function useGroupCreate(options: UseGroupCreateOptions) {
     } finally {
       setSubmitting(false);
     }
-  }, [avatarColorIndex, avatarText, groupName, options, selected]);
+  }, [avatarColorIndex, avatarFile, avatarText, groupName, options, selected]);
 
   return {
     avatar: {
       colorIndex: avatarColorIndex,
+      file: avatarFile,
       isEditorOpen: isAvatarEditorOpen,
       text: avatarText,
       closeEditor: () => setAvatarEditorOpen(false),
       openEditor: () => setAvatarEditorOpen(true),
-      save: (text: string, colorIndex?: number) => {
-        setAvatarText(text);
-        setAvatarColorIndex(colorIndex);
+      save: (draft: ChannelAvatarDraft) => {
+        if (draft.type === "uploaded") {
+          setAvatarFile(draft.file);
+        } else {
+          setAvatarText(draft.avatarText);
+          setAvatarColorIndex(draft.colorIndex);
+          setAvatarFile(undefined);
+        }
         setAvatarEditorOpen(false);
       },
     },
