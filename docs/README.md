@@ -13,8 +13,6 @@ This directory contains development guides and implementation notes for Octo Web
 
 ## Implementation Notes
 
-- [`overlay-lifecycle-audit-2026-08-14.md`](./overlay-lifecycle-audit-2026-08-14.md) — findings and follow-up order
-  from the first repository-wide custom-overlay lifecycle audit.
 - [`channel-search-ui-implementation.md`](./channel-search-ui-implementation.md) — implementation notes for channel-level chat search UI.
 - [`chat-composer-architecture.md`](./chat-composer-architecture.md) — target architecture and migration guide for the
   chat composer, send transaction, draft lifecycle, clipboard/keyboard policy, and extensible editor/message rendering.
