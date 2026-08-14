@@ -456,6 +456,13 @@ export class Conversation
     openSecretCreate: (value) => {
       WKApp.mittBus.emit("wk:open-secrets", { create: true, value });
     },
+    voice: {
+      getSpaceId: () => WKApp.shared.currentSpaceId,
+      subscribeSpaceChange: (listener) => {
+        WKApp.mittBus.on("space-changed", listener);
+        return () => WKApp.mittBus.off("space-changed", listener);
+      },
+    },
   };
   private readonly _sendChatComposerRequest =
     createConversationChatSendHandler<Message>(

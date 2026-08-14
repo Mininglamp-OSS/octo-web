@@ -23,6 +23,14 @@ const INDICATOR_HEIGHT = 48;
 const PREPARING_DELAY_MS = 300;
 const RECORDING_DELAY_MS = 500;
 
+const voiceHost = {
+  getSpaceId: () => WKApp.shared.currentSpaceId,
+  subscribeSpaceChange: (listener: () => void) => {
+    WKApp.mittBus.on("space-changed", listener);
+    return () => WKApp.mittBus.off("space-changed", listener);
+  },
+};
+
 export interface VoiceInputButtonProps {
   inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
@@ -61,6 +69,7 @@ export default function VoiceInputButton({
     isVoiceEnabled,
     localAvailable,
   } = useTextareaVoice({
+    voiceHost,
     inputRef,
     onTranscribed,
     getCurrentText,

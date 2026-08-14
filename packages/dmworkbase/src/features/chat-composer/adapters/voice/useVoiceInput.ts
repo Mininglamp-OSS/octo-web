@@ -7,8 +7,11 @@ import VoiceService, {
 } from "../../../../Service/VoiceService";
 import VoiceFeedback, { type AsrParams } from "../../../../Service/VoiceFeedback";
 import LocalModelService, { LocalModelConfig } from "../../../../Service/LocalModelService";
-import WKApp from "../../../../App";
-import type { ChatComposerVoiceContext } from "../../ports";
+import {
+  noopChatComposerVoiceHost,
+  type ChatComposerVoiceContext,
+  type ChatComposerVoiceHost,
+} from "../../ports";
 import { t } from "../../../../i18n";
 import {
   fetchAndApplySpaceSetting,
@@ -20,6 +23,7 @@ import {
 } from "../../../voice-input/useSpaceFeedbackSetting";
 
 export interface UseVoiceInputOptions {
+  voiceHost?: ChatComposerVoiceHost;
   maxDuration?: number;
   onTranscribed?: (text: string) => void;
   onError?: (error: Error) => void;
@@ -55,6 +59,7 @@ export default function useVoiceInput(
   options: UseVoiceInputOptions = {}
 ): UseVoiceInputReturn {
   const {
+    voiceHost = noopChatComposerVoiceHost,
     maxDuration = 60,
     onTranscribed,
     onError,
@@ -83,6 +88,8 @@ export default function useVoiceInput(
 
   const getChatContextRef = useRef(getChatContext);
   getChatContextRef.current = getChatContext;
+  const voiceHostRef = useRef(voiceHost);
+  voiceHostRef.current = voiceHost;
   const stopFnRef = useRef<(contextText?: string) => void>(() => {});
 
   const voiceContextRef = useRef<VoiceContextResponse | null>(null);
@@ -115,10 +122,14 @@ export default function useVoiceInput(
         feedbackUrlRef.current = config.feedback_url;
         setSharedVoiceConfig(config);
 
-        const spaceId = WKApp.shared.currentSpaceId;
+        const spaceId = voiceHostRef.current.getSpaceId();
         if (spaceId) {
           const seq = ++spaceSeqRef.current;
-          fetchAndApplySpaceSetting(spaceId, config.feedback_url).then(() => {
+          fetchAndApplySpaceSetting(
+            spaceId,
+            config.feedback_url,
+            () => voiceHostRef.current.getSpaceId() === spaceId,
+          ).then(() => {
             if (cancelled || spaceSeqRef.current !== seq) return;
             const st = getSharedSpaceFeedbackState();
             voiceFeedbackOnRef.current = (st.spaceSetting?.voice_input_enabled === 1 && st.spaceSetting?.voice_feedback_on === 1) ? 1 : 0;
@@ -151,22 +162,23 @@ export default function useVoiceInput(
       resetSharedSpaceSetting();
       voiceFeedbackOnRef.current = 0;
 
-      const newSpaceId = WKApp.shared.currentSpaceId;
+      const newSpaceId = voiceHostRef.current.getSpaceId();
       const url = feedbackUrlRef.current;
       if (newSpaceId) {
         const seq = ++spaceSeqRef.current;
-        fetchAndApplySpaceSetting(newSpaceId, url).then(() => {
+        fetchAndApplySpaceSetting(
+          newSpaceId,
+          url,
+          () => voiceHostRef.current.getSpaceId() === newSpaceId,
+        ).then(() => {
           if (spaceSeqRef.current !== seq) return;
           const st = getSharedSpaceFeedbackState();
           voiceFeedbackOnRef.current = (st.spaceSetting?.voice_input_enabled === 1 && st.spaceSetting?.voice_feedback_on === 1) ? 1 : 0;
         });
       }
     };
-    WKApp.mittBus.on("space-changed", handler);
-    return () => {
-      WKApp.mittBus.off("space-changed", handler);
-    };
-  }, []);
+    return voiceHost.subscribeSpaceChange(handler);
+  }, [voiceHost]);
 
   useEffect(() => {
     return subscribeSpaceFeedback(() => {
@@ -241,7 +253,7 @@ export default function useVoiceInput(
 
       voiceContextRef.current = null;
 
-      const spaceId = WKApp.shared.currentSpaceId;
+      const spaceId = voiceHostRef.current.getSpaceId();
       voiceContextSpaceIdRef.current = spaceId;
 
       if (spaceId) {

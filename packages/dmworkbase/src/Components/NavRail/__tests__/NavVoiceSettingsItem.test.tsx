@@ -19,6 +19,7 @@ vi.mock('../../../features/voice-input/useSpaceFeedbackSetting', () => ({
 
 vi.mock('../../../App', () => ({
   default: {
+    shared: { currentSpaceId: 'space-1' },
     mittBus: { on: vi.fn(), off: vi.fn() },
   },
   __esModule: true,

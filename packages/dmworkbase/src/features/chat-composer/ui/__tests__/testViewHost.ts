@@ -23,6 +23,10 @@ export function createTestViewHost(
     }),
     resolveImageUrl: (url) => url,
     openSecretCreate: () => {},
+    voice: {
+      getSpaceId: () => "",
+      subscribeSpaceChange: () => () => {},
+    },
     ...overrides,
   };
 }

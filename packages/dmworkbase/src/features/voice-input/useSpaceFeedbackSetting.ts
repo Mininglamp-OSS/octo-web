@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from "react";
-import WKApp from "../../App";
 import {
   getSpaceSetting,
   updateSpaceSetting,
@@ -67,10 +66,14 @@ export function subscribe(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-export async function fetchAndApplySpaceSetting(spaceId: string, feedbackUrl?: string): Promise<void> {
+export async function fetchAndApplySpaceSetting(
+  spaceId: string,
+  feedbackUrl: string | undefined,
+  isSpaceActive: () => boolean,
+): Promise<void> {
   try {
     const setting = await getSpaceSetting(spaceId);
-    if (WKApp.shared.currentSpaceId !== spaceId) return;
+    if (!isSpaceActive()) return;
     setSharedSpaceSetting(setting, true, spaceId);
 
     if (feedbackUrl && setting.voice_input_enabled === 1 && setting.voice_feedback_on === 1) {
@@ -83,7 +86,7 @@ export async function fetchAndApplySpaceSetting(spaceId: string, feedbackUrl?: s
       VoiceFeedback.shared()!.disable();
     }
   } catch (err: unknown) {
-    if (WKApp.shared.currentSpaceId !== spaceId) return;
+    if (!isSpaceActive()) return;
     const status = (err as { status?: number })?.status;
     if (status === 404) {
       setSharedSpaceSetting(defaultSetting, false, spaceId);
@@ -97,8 +100,10 @@ let ensureInflightSpaceId: string | null = null;
 let inflightPromise: Promise<void> | null = null;
 let configPromise: Promise<VoiceConfig> | null = null;
 
-export function ensureVoiceFeedbackLoaded(): Promise<void> {
-  const spaceId = WKApp.shared.currentSpaceId;
+export function ensureVoiceFeedbackLoaded(
+  spaceId: string,
+  isSpaceActive: () => boolean,
+): Promise<void> {
   if (!spaceId) return Promise.resolve();
 
   if (sharedState.loaded && sharedState.apiAvailable && sharedState.loadedSpaceId === spaceId) return Promise.resolve();
@@ -114,10 +119,14 @@ export function ensureVoiceFeedbackLoaded(): Promise<void> {
         configPromise = VoiceService.shared.getConfig();
       }
       const config = await configPromise;
-      if (WKApp.shared.currentSpaceId !== spaceId) return;
+      if (!isSpaceActive()) return;
 
       setSharedVoiceConfig(config);
-      await fetchAndApplySpaceSetting(spaceId, config.feedback_url);
+      await fetchAndApplySpaceSetting(
+        spaceId,
+        config.feedback_url,
+        isSpaceActive,
+      );
     } catch {
       configPromise = null;
     } finally {

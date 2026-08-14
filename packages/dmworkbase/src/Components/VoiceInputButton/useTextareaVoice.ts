@@ -1,6 +1,9 @@
 import { useRef, useCallback } from "react";
 import { useVoiceInput } from "../../features/chat-composer/voice";
-import type { ChatComposerVoiceContext } from "../../features/chat-composer/ports";
+import type {
+  ChatComposerVoiceContext,
+  ChatComposerVoiceHost,
+} from "../../features/chat-composer/ports";
 import type { VoiceMode } from "../../Service/VoiceService";
 
 export type ReplaceMode = "all" | "selection" | "insert";
@@ -11,6 +14,7 @@ export interface SelectionRange {
 }
 
 export interface UseTextareaVoiceOptions {
+  voiceHost: ChatComposerVoiceHost;
   inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
   getCurrentText?: () => string;
@@ -29,6 +33,7 @@ export interface UseTextareaVoiceReturn {
 }
 
 export default function useTextareaVoice({
+  voiceHost,
   inputRef,
   onTranscribed,
   getCurrentText,
@@ -54,6 +59,7 @@ export default function useTextareaVoice({
     isVoiceEnabled,
     localAvailable,
   } = useVoiceInput({
+    voiceHost,
     onTranscribed: (text: string) => {
       const mode = recordingModeRef.current;
       const range = savedSelectionRangeRef.current;

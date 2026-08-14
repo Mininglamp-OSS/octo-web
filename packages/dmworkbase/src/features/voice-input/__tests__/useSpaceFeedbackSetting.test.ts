@@ -41,6 +41,7 @@ import {
   setSharedSpaceSetting,
   setSharedVoiceConfig,
   getSharedSpaceFeedbackState,
+  fetchAndApplySpaceSetting,
 } from '../useSpaceFeedbackSetting';
 
 describe('useSpaceFeedbackSetting helpers', () => {
@@ -56,6 +57,23 @@ describe('useSpaceFeedbackSetting helpers', () => {
       feedback_privacy_url: '',
       feedback_user_agreement_url: '',
     } as any);
+  });
+
+  it('does not apply a response after its space becomes inactive', async () => {
+    mockGetSpaceSetting.mockResolvedValue({
+      voice_input_enabled: 1,
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 1,
+    });
+
+    await fetchAndApplySpaceSetting(
+      'space-2',
+      'https://fb.test',
+      () => false,
+    );
+
+    expect(getSharedSpaceFeedbackState().loadedSpaceId).toBe('space-1');
+    expect(mockVoiceFeedbackInit).not.toHaveBeenCalled();
   });
 
   describe('acceptVoiceInput', () => {

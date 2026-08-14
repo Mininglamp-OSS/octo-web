@@ -4,11 +4,13 @@ import { Toast, Dropdown } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useVoiceInput from "../../adapters/voice/useVoiceInput";
 import "./voiceInput.css";
-import type { ChatComposerVoiceContext } from "../../ports";
+import type {
+  ChatComposerVoiceContext,
+  ChatComposerVoiceHost,
+} from "../../ports";
 import { VoiceMode } from "../../../../Service/VoiceService";
 import VoiceFeedbackNotice from "../../../voice-input/VoiceFeedbackNotice";
 import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../../../voice-input/useSpaceFeedbackSetting";
-import WKApp from "../../../../App";
 import { useI18n } from "../../../../i18n";
 
 type ReplaceMode = "all" | "selection" | "insert";
@@ -21,6 +23,7 @@ interface SelectionRange {
 
 interface VoiceInputIndicatorProps {
   onRecordingStarted?: () => void;
+  voiceHost: ChatComposerVoiceHost;
   onTranscribed: (
     text: string,
     replaceMode: ReplaceMode,
@@ -53,6 +56,7 @@ const VOICE_MODES: { value: VoiceMode; labelKey: string; description: string }[]
 
 export default function VoiceInputIndicator({
   onRecordingStarted,
+  voiceHost,
   onTranscribed,
   getCurrentText,
   getSelectedText,
@@ -93,6 +97,7 @@ export default function VoiceInputIndicator({
     currentMode,
     localAvailable,
   } = useVoiceInput({
+    voiceHost,
     onTranscribed: (text: string) => {
       // 根据模式和是否有选中文本决定替换方式
       const mode = recordingModeRef.current;
@@ -786,7 +791,7 @@ export default function VoiceInputIndicator({
       <VoiceFeedbackNotice
         onAccept={async (feedbackOn) => {
           setShowFeedbackNotice(false);
-          const spaceId = WKApp.shared.currentSpaceId;
+          const spaceId = voiceHost.getSpaceId();
           try {
             if (spaceId) {
               await acceptVoiceInput(spaceId, feedbackOn);

@@ -36,6 +36,7 @@ Conversation composition root
 - settle 决定恢复、释放、target 回填和 recovery handoff，下一任务只在 settle 完成后开始。
 - `ChatComposerExtensions` 是实例级依赖，由 composition root 创建并同时注入 editor、send、
   render；生产路径不依赖模块级 registry 单例。
+- voice hook/UI 通过 `ChatComposerVoiceHost` 获取当前 space 与切换订阅，不读取 `WKApp`。
 - `MessageInputContext.send()` 返回显式 `ChatComposerSendResult`，不再返回
   `void | boolean | object`。
 - feature 对外入口是 `features/chat-composer/index.ts`；轻量语音调用使用
@@ -67,6 +68,7 @@ features/chat-composer/
   ports/
     ChatComposerEditorPort.ts       editor capture/consume/restore 边界
     ChatComposerHostPort.ts         target/draft/channel/settlement 边界
+    ChatComposerViewHost.ts         channel、space、avatar、图片 URL 等视图服务
     ChatTransportPort.ts            发送计划的外部执行边界
 
   adapters/
@@ -384,6 +386,7 @@ HTML 使用 `DOMParser`，只保留安全的 `http/https` 链接。secret guard 
 - 持有跨 ChatComposer 实例的 recovery store。
 - 通过同一 store 记录远端草稿 revision 与 pending attempt ownership。
 - 通过 `createConversationChatSendHandler` 适配发送事务。
+- 通过 `ChatComposerViewHost.voice` 适配 `WKApp` 的 current space 与 `space-changed` 事件。
 
 `Conversation` 不得：
 
