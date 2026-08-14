@@ -10,6 +10,7 @@ import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context
 import { GroupRole } from "../../Service/Const";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { ChannelField } from "../../Service/DataSource/DataSource";
+import { Dap } from "../../Service/Dap";
 import { GROUP_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import { Row } from "../../Service/Section";
 import { updateChannelSettingField } from "../../bridge/channelSetting/channelSettingActions";
@@ -103,6 +104,9 @@ export function GroupAvatarSettingRow({
   const openAvatarEditor = async () => {
     if (opening) return;
 
+    // 命令式上报:过了重入门(opening)才计一次,在途重复点击不再灌水
+    // (行需先 await 网络刷新才弹编辑器,见 PR #1390 review P1-2)。
+    Dap.shared.track("group_avatar_edit_opened");
     setOpening(true);
     try {
       const latestChannelInfo = await fetchCurrentImChannelInfo<
@@ -202,7 +206,6 @@ export function buildGroupProfileRows({
     }),
     new Row({
       cell: GroupAvatarSettingRow,
-      trackEvent: "group_avatar_edit_opened",
       properties: {
         title: t("base.module.channelSettings.groupAvatar"),
         icon: (

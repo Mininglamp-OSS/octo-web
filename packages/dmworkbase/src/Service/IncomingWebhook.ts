@@ -137,15 +137,17 @@ type IncomingWebhookListResponse =
 /** 群/子区入站 Webhook 的 HTTP 边界。 */
 export const IncomingWebhookService = {
     basePath(groupNo: string, threadShortId?: string): string {
+        // apiPath 只做模板旁挂、不编码插值段，故 id 段须在此显式 encodeURIComponent，
+        // 否则含 / ? # 空格的 id 会改变 wire 上的路径语义（见 PR #1390 review P0-1）。
         return threadShortId
-            ? apiPath`groups/${groupNo}/threads/${threadShortId}/incoming-webhooks`
-            : apiPath`groups/${groupNo}/incoming-webhooks`;
+            ? apiPath`groups/${encodeURIComponent(groupNo)}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks`
+            : apiPath`groups/${encodeURIComponent(groupNo)}/incoming-webhooks`;
     },
 
     itemPath(groupNo: string, webhookId: string, threadShortId?: string): string {
         return threadShortId
-            ? apiPath`groups/${groupNo}/threads/${threadShortId}/incoming-webhooks/${webhookId}`
-            : apiPath`groups/${groupNo}/incoming-webhooks/${webhookId}`;
+            ? apiPath`groups/${encodeURIComponent(groupNo)}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks/${encodeURIComponent(webhookId)}`
+            : apiPath`groups/${encodeURIComponent(groupNo)}/incoming-webhooks/${encodeURIComponent(webhookId)}`;
     },
 
     async list(groupNo: string, threadShortId?: string): Promise<IncomingWebhook[]> {
@@ -172,16 +174,16 @@ export const IncomingWebhookService = {
     regenerate(groupNo: string, webhookId: string, threadShortId?: string): Promise<IncomingWebhookCreateResp> {
         return APIClient.shared.post(
             threadShortId
-                ? apiPath`groups/${groupNo}/threads/${threadShortId}/incoming-webhooks/${webhookId}/regenerate`
-                : apiPath`groups/${groupNo}/incoming-webhooks/${webhookId}/regenerate`
+                ? apiPath`groups/${encodeURIComponent(groupNo)}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks/${encodeURIComponent(webhookId)}/regenerate`
+                : apiPath`groups/${encodeURIComponent(groupNo)}/incoming-webhooks/${encodeURIComponent(webhookId)}/regenerate`
         );
     },
 
     test(groupNo: string, webhookId: string, threadShortId?: string): Promise<void> {
         return APIClient.shared.post(
             threadShortId
-                ? apiPath`groups/${groupNo}/threads/${threadShortId}/incoming-webhooks/${webhookId}/test`
-                : apiPath`groups/${groupNo}/incoming-webhooks/${webhookId}/test`
+                ? apiPath`groups/${encodeURIComponent(groupNo)}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks/${encodeURIComponent(webhookId)}/test`
+                : apiPath`groups/${encodeURIComponent(groupNo)}/incoming-webhooks/${encodeURIComponent(webhookId)}/test`
         );
     },
 };
