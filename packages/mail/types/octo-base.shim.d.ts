@@ -69,6 +69,7 @@ declare module "@octo/base" {
   export const WKApp: {
     currentMenuId?: string;
     shared: { currentSpaceId?: string };
+    remoteConfig: { mailOn: boolean };
     route: {
       register(
         path: string,
@@ -77,7 +78,11 @@ declare module "@octo/base" {
       ): void;
     };
     menus: {
-      register(id: string, factory: () => Menus, order: number): void;
+      register(
+        id: string,
+        factory: () => Menus | undefined,
+        order: number
+      ): void;
     };
     routeLeft: { popToRoot(): void };
     routeRight: {

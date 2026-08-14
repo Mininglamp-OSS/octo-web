@@ -371,6 +371,13 @@ export class WKRemoteConfig {
    */
   driveOn: boolean = false;
   /**
+   * Agent Mail 模块展示开关。后端字段 mail_on 为 true 时，前端在侧边栏 NavRail
+   * 展示邮件入口；false 或字段缺失时隐藏。
+   *
+   * 默认 false(fail-safe)，仅控制前端入口展示，不承担权限校验。
+   */
+  mailOn: boolean = false;
+  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -480,6 +487,7 @@ export class WKRemoteConfig {
       const previousDmloopOn = this.dmloopOn;
       const previousDmpersonalOn = this.dmpersonalOn;
       const previousDriveOn = this.driveOn;
+      const previousMailOn = this.mailOn;
       const previousRequestFailed = this.requestFailed;
       const previousOidcProviders = this.oidcProviders;
       this.requestSuccess = true;
@@ -507,6 +515,7 @@ export class WKRemoteConfig {
       this.dmloopOn = parseRemoteBool(result["dmloop_on"]);
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
       this.driveOn = parseRemoteBool(result["drive_on"]);
+      this.mailOn = parseRemoteBool(result["mail_on"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -527,6 +536,7 @@ export class WKRemoteConfig {
         previousDmloopOn !== this.dmloopOn ||
         previousDmpersonalOn !== this.dmpersonalOn ||
         previousDriveOn !== this.driveOn ||
+        previousMailOn !== this.mailOn ||
         previousRequestFailed !== this.requestFailed ||
         !oidcProvidersEqual(previousOidcProviders, this.oidcProviders)
       ) {
