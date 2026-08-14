@@ -410,6 +410,7 @@ export default class ChatSummaryNewModal extends Component<
                 origin_channel_type: sourceType,
                 sources,
             });
+            markAgentSummaryNotificationEligible(res.task_id);
 
             // 若配置了定时：仿完整页，在 scope='task' 下由后端在一个事务里原子完成
             // 「建定时 + 绑定到 task_id」。总结本身已创建成功，定时失败仅提示不阻断。

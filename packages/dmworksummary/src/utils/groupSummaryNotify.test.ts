@@ -159,6 +159,34 @@ describe("groupSummaryNotify", () => {
     expect(isAgentSummaryNotificationEligible(42)).toBe(false);
   });
 
+  it("expires eligibility after ten minutes and removes legacy task IDs", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date("2026-08-14T00:00:00Z"));
+      markAgentSummaryNotificationEligible(42);
+
+      vi.advanceTimersByTime(10 * 60 * 1000);
+      expect(isAgentSummaryNotificationEligible(42)).toBe(true);
+
+      vi.advanceTimersByTime(1);
+      expect(isAgentSummaryNotificationEligible(42)).toBe(false);
+      expect(
+        localStorage.getItem("summary-group-tip-agent-eligible:v1")
+      ).toBe("[]");
+
+      localStorage.setItem(
+        "summary-group-tip-agent-eligible:v1",
+        JSON.stringify([99])
+      );
+      expect(isAgentSummaryNotificationEligible(99)).toBe(false);
+      expect(
+        localStorage.getItem("summary-group-tip-agent-eligible:v1")
+      ).toBe("[]");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("sends once per task and group, including after runtime reset", async () => {
     const sendToChannel = vi.fn().mockResolvedValue(undefined);
     const deps = { sendToChannel, isDisbanded: () => false };

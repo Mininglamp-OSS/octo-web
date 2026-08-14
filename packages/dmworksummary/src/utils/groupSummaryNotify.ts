@@ -8,9 +8,15 @@ const STORAGE_KEY_PREFIX = "summary-group-tip:v1:";
 const AGENT_ELIGIBILITY_STORAGE_KEY =
   "summary-group-tip-agent-eligible:v1";
 const MAX_AGENT_ELIGIBLE_TASKS = 100;
+const AGENT_ELIGIBILITY_TTL_MS = 10 * 60 * 1000;
 const inFlight = new Set<string>();
 const sentThisSession = new Set<string>();
 const consumedAgentEligibilityThisSession = new Set<number>();
+
+interface AgentEligibleTask {
+  id: number;
+  ts: number;
+}
 
 export interface GroupSummaryNotifyDeps {
   sendToChannel: (channel: Channel, currentUserId: string) => Promise<void>;
@@ -61,17 +67,32 @@ export function collectGroupSourceIds(
   return [...ids];
 }
 
-function readAgentEligibleTasks(): number[] {
+function readAgentEligibleTasks(): AgentEligibleTask[] {
   try {
     if (typeof localStorage === "undefined") return [];
     const value = JSON.parse(
       localStorage.getItem(AGENT_ELIGIBILITY_STORAGE_KEY) || "[]"
     );
-    return Array.isArray(value)
-      ? value.filter(
-          (item): item is number => Number.isInteger(item) && item > 0
-        )
-      : [];
+    if (!Array.isArray(value)) return [];
+
+    const now = Date.now();
+    const tasks = value.filter(
+      (item): item is AgentEligibleTask =>
+        typeof item === "object" &&
+        item !== null &&
+        Number.isInteger(item.id) &&
+        item.id > 0 &&
+        Number.isFinite(item.ts) &&
+        item.ts <= now &&
+        now - item.ts <= AGENT_ELIGIBILITY_TTL_MS
+    );
+    if (tasks.length !== value.length) {
+      localStorage.setItem(
+        AGENT_ELIGIBILITY_STORAGE_KEY,
+        JSON.stringify(tasks)
+      );
+    }
+    return tasks;
   } catch {
     return [];
   }
@@ -92,11 +113,11 @@ export function markAgentSummaryNotificationEligible(taskId: number) {
       taskId <= 0
     )
       return;
-    const taskIds = readAgentEligibleTasks().filter((id) => id !== taskId);
-    taskIds.push(taskId);
+    const tasks = readAgentEligibleTasks().filter(({ id }) => id !== taskId);
+    tasks.push({ id: taskId, ts: Date.now() });
     localStorage.setItem(
       AGENT_ELIGIBILITY_STORAGE_KEY,
-      JSON.stringify(taskIds.slice(-MAX_AGENT_ELIGIBLE_TASKS))
+      JSON.stringify(tasks.slice(-MAX_AGENT_ELIGIBLE_TASKS))
     );
   } catch {
     // Eligibility is best-effort. Missing it produces an accepted missed tip,
@@ -107,20 +128,20 @@ export function markAgentSummaryNotificationEligible(taskId: number) {
 export function isAgentSummaryNotificationEligible(taskId: number): boolean {
   return (
     !consumedAgentEligibilityThisSession.has(taskId) &&
-    readAgentEligibleTasks().includes(taskId)
+    readAgentEligibleTasks().some(({ id }) => id === taskId)
   );
 }
 
 function consumeAgentSummaryNotificationEligibility(taskId: number): boolean {
   if (consumedAgentEligibilityThisSession.has(taskId)) return false;
-  const taskIds = readAgentEligibleTasks();
-  if (!taskIds.includes(taskId)) return false;
+  const tasks = readAgentEligibleTasks();
+  if (!tasks.some(({ id }) => id === taskId)) return false;
   consumedAgentEligibilityThisSession.add(taskId);
   try {
     if (typeof localStorage !== "undefined") {
       localStorage.setItem(
         AGENT_ELIGIBILITY_STORAGE_KEY,
-        JSON.stringify(taskIds.filter((id) => id !== taskId))
+        JSON.stringify(tasks.filter(({ id }) => id !== taskId))
       );
     }
   } catch {
