@@ -23,6 +23,19 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   feedbackListeners: new Set<() => void>(),
   localConfig: { preferLocal: false, enabled: false },
+  voiceFeedbackShared: null as null | {
+    onTranscribeResult: ReturnType<typeof vi.fn>;
+  },
+  spaceFeedbackState: {
+    spaceSetting: null as null | {
+      voice_input_enabled: number;
+      voice_feedback_on: number;
+      voice_feedback_notice_acked: number;
+    },
+    loaded: false,
+    apiAvailable: false,
+    loadedSpaceId: null as string | null,
+  },
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -46,7 +59,7 @@ vi.mock("../../../../Service/VoiceService", () => ({
 
 vi.mock("../../../../Service/VoiceFeedback", () => ({
   default: {
-    shared: () => null,
+    shared: () => mocks.voiceFeedbackShared,
     init: (...args: unknown[]) => mocks.voiceFeedbackInit(...args),
     destroy: (...args: unknown[]) => mocks.voiceFeedbackDestroy(...args),
   },
@@ -77,12 +90,7 @@ vi.mock("../../../voice-input/useSpaceFeedbackSetting", () => ({
     mocks.resetSharedSpaceSetting(...args),
   setSharedVoiceConfig: (...args: unknown[]) =>
     mocks.setSharedVoiceConfig(...args),
-  getSharedSpaceFeedbackState: () => ({
-    spaceSetting: null,
-    loaded: false,
-    apiAvailable: false,
-    loadedSpaceId: null,
-  }),
+  getSharedSpaceFeedbackState: () => mocks.spaceFeedbackState,
   getSharedVoiceConfig: () => null,
   subscribe: (listener: () => void) => {
     mocks.feedbackListeners.add(listener);
@@ -164,6 +172,13 @@ beforeEach(() => {
   mocks.feedbackListeners.clear();
   mocks.localConfig.preferLocal = false;
   mocks.localConfig.enabled = false;
+  mocks.voiceFeedbackShared = null;
+  mocks.spaceFeedbackState = {
+    spaceSetting: null,
+    loaded: false,
+    apiAvailable: false,
+    loadedSpaceId: null,
+  };
   mocks.getConfig.mockResolvedValue({ enabled: true });
   mocks.getVoiceContext.mockResolvedValue({ has_context: false });
   mocks.fetchAndApplySpaceSetting.mockResolvedValue(undefined);
@@ -357,5 +372,55 @@ describe("useVoiceInput space lifecycle", () => {
 
     expect(onTranscribed).not.toHaveBeenCalled();
     expect(latest.isTranscribing).toBe(false);
+  });
+
+  it("stops feedback after an unacknowledged setting notification", async () => {
+    const onTranscribeResult = vi.fn();
+    mocks.voiceFeedbackShared = { onTranscribeResult };
+    mocks.spaceFeedbackState = {
+      spaceSetting: {
+        voice_input_enabled: 1,
+        voice_feedback_on: 1,
+        voice_feedback_notice_acked: 1,
+      },
+      loaded: true,
+      apiAvailable: true,
+      loadedSpaceId: "space-a",
+    };
+    mocks.getUserMedia.mockResolvedValue({
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream);
+    mocks.transcribe.mockResolvedValue({ text: "hello" });
+    const current = createHost("space-a");
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
+
+    await act(async () => {
+      ReactDOM.render(
+        <Probe host={current.host} onTranscribed={() => undefined} />,
+        container
+      );
+    });
+    mocks.spaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 0,
+    };
+    act(() => {
+      mocks.feedbackListeners.forEach((listener) => listener());
+      latest.startRecording();
+    });
+    await flush();
+    MockMediaRecorder.instances[0].emitData(new Blob(["audio"]));
+    now.mockReturnValue(3000);
+
+    await act(async () => {
+      latest.stopRecordingAndTranscribe();
+      for (let index = 0; index < 5; index += 1) {
+        await Promise.resolve();
+      }
+    });
+
+    expect(mocks.transcribe).toHaveBeenCalledOnce();
+    expect(onTranscribeResult).not.toHaveBeenCalled();
   });
 });

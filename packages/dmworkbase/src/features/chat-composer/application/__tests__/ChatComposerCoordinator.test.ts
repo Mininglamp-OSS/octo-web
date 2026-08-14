@@ -377,10 +377,72 @@ describe("ChatComposerCoordinator", () => {
     expect(controller.pendingSendCount()).toBe(0);
   });
 
-  it("keeps restore offsets across interleaved queued submissions", async () => {
+  it("keeps consecutive queued failures before the live draft", async () => {
     const controller = new ChatComposerController();
     const coordinator = new ChatComposerCoordinator(controller);
-    const restored: Array<{ label: string; blockOffset: number }> = [];
+    const liveBlocks: string[] = [];
+    let resolveA!: (value: ReturnType<typeof createChatSendOutcome>) => void;
+    let resolveB!: (value: ReturnType<typeof createChatSendOutcome>) => void;
+    const aResult = new Promise<ReturnType<typeof createChatSendOutcome>>(
+      (resolve) => {
+        resolveA = resolve;
+      }
+    );
+    const bResult = new Promise<ReturnType<typeof createChatSendOutcome>>(
+      (resolve) => {
+        resolveB = resolve;
+      }
+    );
+
+    const submit = (label: "A" | "B") => {
+      liveBlocks.push(label);
+      return coordinator.submit(
+        {
+          text: label,
+          topFiles: [],
+          editorBlocks: [],
+          pendingAttachments: [],
+        },
+        {
+          host: host({
+            send: async () => (label === "A" ? aResult : bResult),
+          }),
+          editor: {
+            consume: (context) => {
+              const captured = liveBlocks.splice(0);
+              const value = consumed(context);
+              value.compose.restoreEditor = () => {
+                const offset = context.getRestoreOffsets().blocks;
+                liveBlocks.splice(offset, 0, ...captured);
+                context.onRestored({
+                  blocks: captured.length,
+                  topAttachments: 0,
+                });
+              };
+              return value;
+            },
+            handoffRecovery: vi.fn(),
+          },
+        }
+      );
+    };
+
+    const first = submit("A");
+    const second = submit("B");
+    liveBlocks.push("D");
+
+    resolveA(createChatSendOutcome());
+    await first;
+    resolveB(createChatSendOutcome());
+    await second;
+
+    expect(liveBlocks).toEqual(["A", "B", "D"]);
+  });
+
+  it("resets restore offsets after restored content is consumed again", async () => {
+    const controller = new ChatComposerController();
+    const coordinator = new ChatComposerCoordinator(controller);
+    const liveBlocks: string[] = [];
     let resolveA!: (value: ReturnType<typeof createChatSendOutcome>) => void;
     let resolveB!: (value: ReturnType<typeof createChatSendOutcome>) => void;
     let markBStarted!: () => void;
@@ -398,8 +460,9 @@ describe("ChatComposerCoordinator", () => {
       markBStarted = resolve;
     });
 
-    const submit = (label: "A" | "B" | "C") =>
-      coordinator.submit(
+    const submit = (label: "A" | "B" | "C") => {
+      liveBlocks.push(label);
+      return coordinator.submit(
         {
           text: label,
           topFiles: [],
@@ -419,13 +482,15 @@ describe("ChatComposerCoordinator", () => {
           }),
           editor: {
             consume: (context) => {
+              const captured = liveBlocks.splice(0);
               const value = consumed(context);
               value.compose.restoreEditor = () => {
-                restored.push({
-                  label,
-                  blockOffset: context.getRestoreOffsets().blocks,
+                const offset = context.getRestoreOffsets().blocks;
+                liveBlocks.splice(offset, 0, ...captured);
+                context.onRestored({
+                  blocks: captured.length,
+                  topAttachments: 0,
                 });
-                context.onRestored({ blocks: 1, topAttachments: 0 });
               };
               return value;
             },
@@ -433,6 +498,7 @@ describe("ChatComposerCoordinator", () => {
           },
         }
       );
+    };
 
     const first = submit("A");
     const second = submit("B");
@@ -441,14 +507,12 @@ describe("ChatComposerCoordinator", () => {
     await bStarted;
 
     const third = submit("C");
+    liveBlocks.push("D");
     resolveB(createChatSendOutcome());
     await second;
     await third;
 
-    expect(restored).toEqual([
-      { label: "A", blockOffset: 0 },
-      { label: "B", blockOffset: 1 },
-    ]);
+    expect(liveBlocks).toEqual(["B", "D"]);
   });
 
   it("restores a captured target when editor consumption throws", async () => {

@@ -44,6 +44,7 @@ import {
   fetchAndApplySpaceSetting,
   ensureVoiceFeedbackLoaded,
   resetSharedSpaceSetting,
+  toggleVoiceFeedback,
 } from "../useSpaceFeedbackSetting";
 
 describe("useSpaceFeedbackSetting helpers", () => {
@@ -89,6 +90,27 @@ describe("useSpaceFeedbackSetting helpers", () => {
     await fetchAndApplySpaceSetting("space-1", "https://fb.test", () => true);
 
     expect(mockVoiceFeedbackInit).not.toHaveBeenCalled();
+  });
+
+  it("does not enable a manual feedback toggle before acknowledgement", async () => {
+    const enable = vi.fn();
+    const disable = vi.fn();
+    mockVoiceFeedbackShared.mockReturnValue({ enable, disable });
+    setSharedSpaceSetting(
+      {
+        voice_input_enabled: 1,
+        voice_feedback_on: 0,
+        voice_feedback_notice_acked: 0,
+      },
+      true,
+      "space-1"
+    );
+
+    await toggleVoiceFeedback("space-1", 1, "https://fb.test");
+
+    expect(enable).not.toHaveBeenCalled();
+    expect(mockVoiceFeedbackInit).not.toHaveBeenCalled();
+    expect(disable).toHaveBeenCalledOnce();
   });
 
   it("deduplicates concurrent loads while the existing space request is active", async () => {

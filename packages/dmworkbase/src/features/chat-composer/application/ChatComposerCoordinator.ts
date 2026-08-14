@@ -61,9 +61,6 @@ export class ChatComposerCoordinator<
     }
     const sendTarget = host.captureSendTarget();
     const channelKey = host.channelKey();
-    if (this.controller.pendingSendCount() === 0) {
-      this.controller.resetRestoreOffsets();
-    }
     const expandedAtSend = host.getExpanded();
 
     let consumed;
@@ -81,6 +78,9 @@ export class ChatComposerCoordinator<
         },
         onRestoreError: (error, step) => host.notifyRestoreError?.(error, step),
       });
+      // A successful consume removes every live restored block/attachment from
+      // the editor, so later queued failures must start a fresh restore prefix.
+      this.controller.resetRestoreOffsets();
     } catch (error) {
       if (host.isChannelActive(channelKey)) sendTarget?.restore();
       throw error;

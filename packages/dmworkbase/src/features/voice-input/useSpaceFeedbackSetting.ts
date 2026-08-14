@@ -207,7 +207,12 @@ export async function toggleVoiceFeedback(
     );
   }
 
-  if (newValue === 0) {
+  const feedbackAllowed =
+    sharedState.loadedSpaceId === spaceId &&
+    sharedState.spaceSetting?.voice_input_enabled === 1 &&
+    sharedState.spaceSetting?.voice_feedback_notice_acked === 1;
+
+  if (newValue === 0 || !feedbackAllowed) {
     VoiceFeedback.shared()?.disable();
   } else if (feedbackUrl) {
     if (VoiceFeedback.shared()) {
