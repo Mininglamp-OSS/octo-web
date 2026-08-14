@@ -37,6 +37,8 @@ Conversation composition root
 - `ChatComposerExtensions` 是实例级依赖，由 composition root 创建并同时注入 editor、send、
   render；生产路径不依赖模块级 registry 单例。
 - voice hook/UI 通过 `ChatComposerVoiceHost` 获取当前 space 与切换订阅，不读取 `WKApp`。
+- `ChatComposerViewHost.voice` 是必需 port；缺少 space 生命周期必须在 composition root
+  显式解决，不能静默回退到 no-op host。
 - `MessageInputContext.send()` 返回显式 `ChatComposerSendResult`，不再返回
   `void | boolean | object`。
 - feature 对外入口是 `features/chat-composer/index.ts`；轻量语音调用使用
@@ -109,6 +111,7 @@ features/chat-composer/
 - editor 是否就绪。
 - 文本是否超过长度限制。
 - editor part 是否都有可发送 adapter。
+- editor blocks 是否满足公开 schema 且 payload 可结构化克隆。
 - host 是否提供发送能力。
 - compose 是否为空。
 
@@ -290,7 +293,8 @@ extensions.render.pending.register({
 `placement: "block"`，否则部分失败恢复时会被包进 paragraph。part `id` 在一次 editor
 document 中必须全局唯一，不能只在各扩展内部唯一；`toSendBlock()` 返回的 `id` 必须与
 captured part 完全一致。snapshot 扩展还必须把同一个稳定 ID 写入源节点 `attrs.id`，capture
-只能读取该 ID，不能在发送时临时生成，否则跨实例 partial recovery 无法精确匹配。
+只能读取该 ID，不能修改或在发送时临时生成。capture 前后的 `attrs.id` 与 part ID 必须完全
+一致，否则跨实例 partial recovery 无法精确匹配。
 
 当前自定义 part 必须声明 `recovery: "snapshot"`，表示恢复所需状态全部存在于 Tiptap node
 snapshot 中。带独立 `File`、object URL、worker handle 或外部 store lease 的新 part 暂不允许
@@ -388,6 +392,17 @@ HTML 使用 `DOMParser`，只保留安全的 `http/https` 链接。secret guard 
 - 通过同一 store 记录远端草稿 revision 与 pending attempt ownership。
 - 通过 `createConversationChatSendHandler` 适配发送事务。
 - 通过 `ChatComposerViewHost.voice` 适配 `WKApp` 的 current space 与 `space-changed` 事件。
+
+语音 port 与异步生命周期规则：
+
+- `ChatComposerViewHost.voice` 与 `UseVoiceInputOptions.voiceHost` 均为必需依赖。
+- 一次录音绑定启动时的 host、space ID 和 lifecycle epoch。
+- host 替换、space 变化、显式取消或组件卸载都会使旧录音和转写结果失效。
+- 麦克风授权、个人上下文、聊天上下文、本地转写、远端转写和反馈回调每次 await 后都必须
+  重新验证 epoch 与 space；旧结果不得写入新 composer。
+- space setting 请求同时携带 query `space_id` 与显式 `X-Space-Id`，并由 mount/request
+  generation 约束，防止 A→B→A 的旧请求覆盖新状态。
+- consent 保存完成后必须重新验证 host、space 和 epoch，验证失败时不启动录音。
 
 `Conversation` 不得：
 

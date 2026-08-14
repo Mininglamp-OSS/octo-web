@@ -42,6 +42,8 @@ import {
   setSharedVoiceConfig,
   getSharedSpaceFeedbackState,
   fetchAndApplySpaceSetting,
+  ensureVoiceFeedbackLoaded,
+  resetSharedSpaceSetting,
 } from '../useSpaceFeedbackSetting';
 
 describe('useSpaceFeedbackSetting helpers', () => {
@@ -76,6 +78,61 @@ describe('useSpaceFeedbackSetting helpers', () => {
     expect(mockVoiceFeedbackInit).not.toHaveBeenCalled();
   });
 
+  it('starts a fresh request when navigation returns to an inflight space', async () => {
+    resetSharedSpaceSetting();
+    const resolvers: Array<(value: any) => void> = [];
+    mockGetSpaceSetting.mockImplementation(
+      () => new Promise((resolve) => resolvers.push(resolve)),
+    );
+    let activeSpace = 'space-a';
+    let generation = 1;
+
+    const firstA = ensureVoiceFeedbackLoaded(
+      'space-a',
+      () => activeSpace === 'space-a' && generation === 1,
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    activeSpace = 'space-b';
+    generation = 2;
+    const b = ensureVoiceFeedbackLoaded(
+      'space-b',
+      () => activeSpace === 'space-b' && generation === 2,
+    );
+    await Promise.resolve();
+
+    activeSpace = 'space-a';
+    generation = 3;
+    const latestA = ensureVoiceFeedbackLoaded(
+      'space-a',
+      () => activeSpace === 'space-a' && generation === 3,
+    );
+    await Promise.resolve();
+
+    expect(mockGetSpaceSetting).toHaveBeenCalledTimes(3);
+    resolvers[2]({
+      voice_input_enabled: 1,
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 1,
+    });
+    await latestA;
+    expect(getSharedSpaceFeedbackState().loadedSpaceId).toBe('space-a');
+
+    resolvers[0]({
+      voice_input_enabled: 0,
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 0,
+    });
+    resolvers[1]({
+      voice_input_enabled: 0,
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 0,
+    });
+    await Promise.all([firstA, b]);
+    expect(getSharedSpaceFeedbackState().spaceSetting?.voice_input_enabled).toBe(1);
+  });
+
   describe('acceptVoiceInput', () => {
     it('sets voice_feedback_notice_acked: 1 alongside voice_input_enabled: 1', async () => {
       await acceptVoiceInput('space-1', false);
@@ -105,6 +162,15 @@ describe('useSpaceFeedbackSetting helpers', () => {
       mockVoiceFeedbackShared.mockReturnValue(null);
       await acceptVoiceInput('space-1', true);
       expect(mockVoiceFeedbackInit).toHaveBeenCalledWith('https://fb.test');
+    });
+
+    it('does not apply feedback side effects after its space becomes inactive', async () => {
+      mockVoiceFeedbackShared.mockReturnValue(null);
+
+      await acceptVoiceInput('space-1', true, () => false);
+
+      expect(getSharedSpaceFeedbackState().spaceSetting?.voice_input_enabled).toBe(0);
+      expect(mockVoiceFeedbackInit).not.toHaveBeenCalled();
     });
   });
 

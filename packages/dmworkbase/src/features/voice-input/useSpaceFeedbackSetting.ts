@@ -55,8 +55,6 @@ export function setSharedSpaceSetting(setting: SpaceSetting | null, apiAvailable
 
 export function resetSharedSpaceSetting() {
   sharedState = { spaceSetting: null, loaded: false, apiAvailable: false, loadedSpaceId: null };
-  ensureInflightSpaceId = null;
-  inflightPromise = null;
   configPromise = null;
   notify();
 }
@@ -96,8 +94,6 @@ export async function fetchAndApplySpaceSetting(
   }
 }
 
-let ensureInflightSpaceId: string | null = null;
-let inflightPromise: Promise<void> | null = null;
 let configPromise: Promise<VoiceConfig> | null = null;
 
 export function ensureVoiceFeedbackLoaded(
@@ -108,12 +104,7 @@ export function ensureVoiceFeedbackLoaded(
 
   if (sharedState.loaded && sharedState.apiAvailable && sharedState.loadedSpaceId === spaceId) return Promise.resolve();
 
-  if (ensureInflightSpaceId === spaceId && inflightPromise) {
-    return inflightPromise;
-  }
-
-  ensureInflightSpaceId = spaceId;
-  inflightPromise = (async () => {
+  return (async () => {
     try {
       if (!configPromise) {
         configPromise = VoiceService.shared.getConfig();
@@ -129,14 +120,8 @@ export function ensureVoiceFeedbackLoaded(
       );
     } catch {
       configPromise = null;
-    } finally {
-      if (ensureInflightSpaceId === spaceId) {
-        ensureInflightSpaceId = null;
-        inflightPromise = null;
-      }
     }
   })();
-  return inflightPromise;
 }
 
 export async function toggleVoiceFeedback(
@@ -201,6 +186,7 @@ export async function disableVoiceInput(spaceId: string): Promise<void> {
 export async function acceptVoiceInput(
   spaceId: string,
   feedbackOn: boolean,
+  isSpaceActive: () => boolean = () => true,
 ): Promise<void> {
   const data: Partial<SpaceSetting> = {
     voice_input_enabled: 1,
@@ -208,6 +194,7 @@ export async function acceptVoiceInput(
     voice_feedback_on: feedbackOn ? 1 : 0,
   };
   await updateSpaceSetting(spaceId, data);
+  if (!isSpaceActive()) return;
 
   if (sharedState.spaceSetting && sharedState.loadedSpaceId === spaceId) {
     setSharedSpaceSetting(

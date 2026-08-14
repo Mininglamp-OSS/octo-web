@@ -1,0 +1,152 @@
+/** @vitest-environment jsdom */
+import React from "react";
+import ReactDOM from "react-dom";
+import { act } from "react-dom/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  startRecording: vi.fn(),
+  acceptVoiceInput: vi.fn(),
+  toastError: vi.fn(),
+}));
+
+vi.mock("../../adapters/voice/useVoiceInput", () => ({
+  default: () => ({
+    isRecording: false,
+    isTranscribing: false,
+    startRecording: (...args: unknown[]) => mocks.startRecording(...args),
+    stopRecordingAndTranscribe: vi.fn(),
+    cancelRecording: vi.fn(),
+    isVoiceEnabled: true,
+    currentMode: "append_only",
+    localAvailable: false,
+  }),
+}));
+
+vi.mock("../../../voice-input/useSpaceFeedbackSetting", () => ({
+  default: () => ({
+    spaceSetting: {
+      voice_input_enabled: 0,
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 0,
+    },
+    loaded: true,
+    voiceConfig: {},
+  }),
+  getSharedSpaceFeedbackState: () => ({ loaded: true }),
+  acceptVoiceInput: (...args: unknown[]) => mocks.acceptVoiceInput(...args),
+}));
+
+vi.mock("../../../voice-input/VoiceFeedbackNotice", () => ({
+  default: ({ onAccept }: { onAccept: (feedbackOn: boolean) => void }) => (
+    <button data-testid="accept-consent" onClick={() => onAccept(false)}>
+      accept
+    </button>
+  ),
+}));
+
+vi.mock("../../../../i18n", () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
+vi.mock("lucide-react", () => ({
+  Mic: () => <span />,
+}));
+
+vi.mock("@douyinfe/semi-ui", () => {
+  const Dropdown = ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  );
+  Dropdown.Menu = ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  );
+  Dropdown.Item = ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  );
+  return {
+    Dropdown,
+    Toast: {
+      error: (...args: unknown[]) => mocks.toastError(...args),
+      warning: vi.fn(),
+    },
+  };
+});
+
+import VoiceInputIndicator from "./VoiceInputIndicator";
+import type { ChatComposerVoiceHost } from "../../ports";
+
+let container: HTMLDivElement;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  Object.defineProperty(navigator, "onLine", {
+    configurable: true,
+    value: true,
+  });
+  container = document.createElement("div");
+  document.body.appendChild(container);
+});
+
+afterEach(() => {
+  act(() => {
+    ReactDOM.unmountComponentAtNode(container);
+  });
+  container.remove();
+});
+
+describe("VoiceInputIndicator consent lifecycle", () => {
+  it("does not start recording when the space changes during consent", async () => {
+    let spaceId = "space-a";
+    const listeners = new Set<() => void>();
+    const voiceHost: ChatComposerVoiceHost = {
+      getSpaceId: () => spaceId,
+      subscribeSpaceChange: (listener) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      },
+    };
+    let resolveConsent!: () => void;
+    mocks.acceptVoiceInput.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveConsent = resolve;
+      })
+    );
+
+    await act(async () => {
+      ReactDOM.render(
+        <VoiceInputIndicator
+          voiceHost={voiceHost}
+          onTranscribed={() => undefined}
+        />,
+        container
+      );
+    });
+    act(() => {
+      (
+        container.querySelector(".wk-voice-button-group") as HTMLElement
+      ).click();
+    });
+    act(() => {
+      (
+        container.querySelector('[data-testid="accept-consent"]') as HTMLElement
+      ).click();
+    });
+
+    spaceId = "space-b";
+    act(() => {
+      listeners.forEach((listener) => listener());
+    });
+    await act(async () => {
+      resolveConsent();
+      await Promise.resolve();
+    });
+
+    expect(mocks.acceptVoiceInput).toHaveBeenCalledWith(
+      "space-a",
+      false,
+      expect.any(Function),
+    );
+    expect(mocks.acceptVoiceInput.mock.calls[0][2]()).toBe(false);
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+  });
+});

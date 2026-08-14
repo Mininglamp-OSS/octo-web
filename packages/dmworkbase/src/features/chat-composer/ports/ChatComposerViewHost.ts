@@ -33,11 +33,6 @@ export interface ChatComposerVoiceHost {
   subscribeSpaceChange(listener: () => void): () => void;
 }
 
-export const noopChatComposerVoiceHost: ChatComposerVoiceHost = {
-  getSpaceId: () => "",
-  subscribeSpaceChange: () => () => {},
-};
-
 /** Host-owned view services consumed by the reusable composer UI. */
 export interface ChatComposerViewHost {
   track(event: string): void;
@@ -54,5 +49,5 @@ export interface ChatComposerViewHost {
     opts?: { width: number; height: number }
   ): string;
   openSecretCreate(value: string): void;
-  voice?: ChatComposerVoiceHost;
+  voice: ChatComposerVoiceHost;
 }

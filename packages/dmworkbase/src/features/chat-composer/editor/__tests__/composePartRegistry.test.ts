@@ -245,6 +245,39 @@ describe("EditorComposePartRegistry", () => {
     ).toThrow("must match node attrs.id");
   });
 
+  it("rejects snapshot capture that mutates the source node id", () => {
+    const registry = new EditorComposePartRegistry();
+    registry.register({
+      id: "custom",
+      recovery: "snapshot",
+      canCapture: () => true,
+      capture: (node) => {
+        if (node.attrs) node.attrs.id = "mutated-id";
+        return {
+          id: "mutated-id",
+          kind: "custom",
+          extensionId: "custom",
+          node,
+        };
+      },
+      toSendBlock: (part) => ({
+        type: "extension:custom",
+        id: part.id,
+        payload: {},
+      }),
+    });
+
+    expect(() =>
+      registry.capture(
+        {
+          type: "doc",
+          content: [{ type: "custom", attrs: { id: "source-id" } }],
+        },
+        { attachmentFiles: new Map() },
+      ),
+    ).toThrow("must match node attrs.id");
+  });
+
   it("rejects malformed send blocks during preflight", () => {
     const registry = new EditorComposePartRegistry();
     registry.register({

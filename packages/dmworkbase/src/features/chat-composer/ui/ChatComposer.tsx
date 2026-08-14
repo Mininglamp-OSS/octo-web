@@ -99,7 +99,6 @@ import type {
   ChatComposerViewHost,
   ChatComposerVoiceContext,
 } from "../ports";
-import { noopChatComposerVoiceHost } from "../ports";
 
 import { MAX_MESSAGE_LENGTH } from "../domain/constants";
 
@@ -1711,7 +1710,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
             {/* 语音输入 */}
             <VoiceInputIndicator
-              voiceHost={props.host.voice ?? noopChatComposerVoiceHost}
+              voiceHost={props.host.voice}
               onRecordingStarted={() =>
                 props.host.track("input_voice_recording_started")
               }

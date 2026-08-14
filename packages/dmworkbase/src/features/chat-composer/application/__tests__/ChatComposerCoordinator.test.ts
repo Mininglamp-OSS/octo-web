@@ -89,6 +89,40 @@ describe("ChatComposerCoordinator", () => {
     expect(editor.consume).not.toHaveBeenCalled();
   });
 
+  it("rejects cloneable malformed blocks before consuming the editor", async () => {
+    const coordinator = new ChatComposerCoordinator(
+      new ChatComposerController(),
+    );
+    const editor: ChatComposerEditorPort = {
+      consume: vi.fn((context) => consumed(context)),
+      handoffRecovery: vi.fn(),
+    };
+
+    await expect(
+      coordinator.submit(
+        {
+          text: "",
+          topFiles: [],
+          editorBlocks: [
+            {
+              type: "extension:",
+              id: "custom-1",
+              payload: {},
+            } as never,
+          ],
+          pendingAttachments: [],
+        },
+        { host: host(), editor },
+      ),
+    ).resolves.toEqual({
+      kind: "rejected",
+      editorConsumed: false,
+      reason: "unsupported-content",
+    });
+
+    expect(editor.consume).not.toHaveBeenCalled();
+  });
+
   it("owns capture, consume, queue, settlement and release ordering", async () => {
     const order: string[] = [];
     const controller = new ChatComposerController<{ id: string }>();

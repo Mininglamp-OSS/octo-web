@@ -5,12 +5,15 @@ import VoiceService, {
   VoiceContextResponse,
   VoiceMode,
 } from "../../../../Service/VoiceService";
-import VoiceFeedback, { type AsrParams } from "../../../../Service/VoiceFeedback";
-import LocalModelService, { LocalModelConfig } from "../../../../Service/LocalModelService";
-import {
-  noopChatComposerVoiceHost,
-  type ChatComposerVoiceContext,
-  type ChatComposerVoiceHost,
+import VoiceFeedback, {
+  type AsrParams,
+} from "../../../../Service/VoiceFeedback";
+import LocalModelService, {
+  LocalModelConfig,
+} from "../../../../Service/LocalModelService";
+import type {
+  ChatComposerVoiceContext,
+  ChatComposerVoiceHost,
 } from "../../ports";
 import { t } from "../../../../i18n";
 import {
@@ -23,12 +26,14 @@ import {
 } from "../../../voice-input/useSpaceFeedbackSetting";
 
 export interface UseVoiceInputOptions {
-  voiceHost?: ChatComposerVoiceHost;
+  voiceHost: ChatComposerVoiceHost;
   maxDuration?: number;
   onTranscribed?: (text: string) => void;
   onError?: (error: Error) => void;
   onRecordingFailed?: () => void;
-  getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
+  getChatContext?: () =>
+    | ChatComposerVoiceContext
+    | Promise<ChatComposerVoiceContext>;
   mode?: VoiceMode;
   scene?: string;
 }
@@ -45,6 +50,13 @@ export interface UseVoiceInputReturn {
   currentUtteranceId: string;
 }
 
+interface VoiceOperation {
+  epoch: number;
+  spaceId: string;
+  utteranceId: string;
+  mode: VoiceMode;
+}
+
 function getSupportedMimeType(): string {
   if (
     typeof MediaRecorder !== "undefined" &&
@@ -56,10 +68,10 @@ function getSupportedMimeType(): string {
 }
 
 export default function useVoiceInput(
-  options: UseVoiceInputOptions = {}
+  options: UseVoiceInputOptions
 ): UseVoiceInputReturn {
   const {
-    voiceHost = noopChatComposerVoiceHost,
+    voiceHost,
     maxDuration = 60,
     onTranscribed,
     onError,
@@ -81,9 +93,8 @@ export default function useVoiceInput(
     null
   );
   const streamRef = useRef<MediaStream | null>(null);
-  const startTimeRef = useRef<number>(0);
+  const startTimeRef = useRef(0);
   const contextTextRef = useRef<string | undefined>(undefined);
-  const recordingModeRef = useRef<VoiceMode>(mode);
   const utteranceIdRef = useRef("");
 
   const getChatContextRef = useRef(getChatContext);
@@ -95,13 +106,92 @@ export default function useVoiceInput(
   const voiceContextRef = useRef<VoiceContextResponse | null>(null);
   const voiceContextPromiseRef =
     useRef<Promise<VoiceContextResponse | null> | null>(null);
-  const voiceContextSpaceIdRef = useRef<string>("");
-  const maxFileSizeRef = useRef<number>(0);
+  const voiceContextSpaceIdRef = useRef("");
+  const maxFileSizeRef = useRef(0);
   const backendMaxDurationRef = useRef<number | null>(null);
   const backendEnabledRef = useRef(false);
   const feedbackUrlRef = useRef<string | undefined>(undefined);
-  const voiceFeedbackOnRef = useRef<number>(0);
-  const spaceSeqRef = useRef(0);
+  const voiceFeedbackOnRef = useRef(0);
+
+  const mountedRef = useRef(true);
+  const lifecycleEpochRef = useRef(0);
+  const settingGenerationRef = useRef(0);
+  const localProbeGenerationRef = useRef(0);
+  const operationRef = useRef<VoiceOperation | null>(null);
+
+  const isOperationActive = useCallback((operation: VoiceOperation) => {
+    return (
+      mountedRef.current &&
+      operationRef.current === operation &&
+      lifecycleEpochRef.current === operation.epoch &&
+      voiceHostRef.current.getSpaceId() === operation.spaceId
+    );
+  }, []);
+
+  const cleanupRecorder = useCallback(() => {
+    if (maxDurationTimeoutRef.current) {
+      clearTimeout(maxDurationTimeoutRef.current);
+      maxDurationTimeoutRef.current = null;
+    }
+    if (streamRef.current) {
+      streamRef.current
+        .getTracks()
+        .forEach((track: MediaStreamTrack) => track.stop());
+      streamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
+  }, []);
+
+  const abortActiveOperation = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    cleanupRecorder();
+    operationRef.current = null;
+    contextTextRef.current = undefined;
+    voiceContextRef.current = null;
+    voiceContextPromiseRef.current = null;
+    voiceContextSpaceIdRef.current = "";
+    if (mountedRef.current) {
+      setIsRecording(false);
+      setIsTranscribing(false);
+    }
+  }, [cleanupRecorder]);
+
+  const reconcileSpaceSetting = useCallback(
+    (feedbackUrl = feedbackUrlRef.current) => {
+      const generation = ++settingGenerationRef.current;
+      const host = voiceHostRef.current;
+      const spaceId = host.getSpaceId();
+      const isCurrent = () =>
+        mountedRef.current &&
+        settingGenerationRef.current === generation &&
+        voiceHostRef.current === host &&
+        host.getSpaceId() === spaceId;
+
+      if (!spaceId) {
+        VoiceFeedback.init(undefined);
+        return;
+      }
+
+      void fetchAndApplySpaceSetting(spaceId, feedbackUrl, isCurrent).then(
+        () => {
+          if (!isCurrent()) return;
+          const state = getSharedSpaceFeedbackState();
+          voiceFeedbackOnRef.current =
+            state.loadedSpaceId === spaceId &&
+            state.spaceSetting?.voice_input_enabled === 1 &&
+            state.spaceSetting?.voice_feedback_on === 1
+              ? 1
+              : 0;
+        }
+      );
+    },
+    []
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +202,7 @@ export default function useVoiceInput(
     VoiceService.shared
       .getConfig()
       .then((config: VoiceConfig) => {
-        if (cancelled) return;
+        if (cancelled || !mountedRef.current) return;
         setIsVoiceEnabled(config.enabled || config.local_enabled === true);
         backendEnabledRef.current = config.enabled;
         maxFileSizeRef.current = config.max_file_size || 0;
@@ -121,38 +211,26 @@ export default function useVoiceInput(
         }
         feedbackUrlRef.current = config.feedback_url;
         setSharedVoiceConfig(config);
-
-        const spaceId = voiceHostRef.current.getSpaceId();
-        if (spaceId) {
-          const seq = ++spaceSeqRef.current;
-          fetchAndApplySpaceSetting(
-            spaceId,
-            config.feedback_url,
-            () => voiceHostRef.current.getSpaceId() === spaceId,
-          ).then(() => {
-            if (cancelled || spaceSeqRef.current !== seq) return;
-            const st = getSharedSpaceFeedbackState();
-            voiceFeedbackOnRef.current = (st.spaceSetting?.voice_input_enabled === 1 && st.spaceSetting?.voice_feedback_on === 1) ? 1 : 0;
-          });
-        } else {
-          VoiceFeedback.init(undefined);
-        }
-
+        reconcileSpaceSetting(config.feedback_url);
       })
       .catch(() => {
-        if (cancelled) return;
+        if (cancelled || !mountedRef.current) return;
         setIsVoiceEnabled(false);
       });
 
-    return () => { cancelled = true; };
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [reconcileSpaceSetting]);
 
-  // Listen for space changes: destroy + reinit VoiceFeedback
   useEffect(() => {
-    const handler = () => {
-      const prevSpaceId = voiceContextSpaceIdRef.current;
-      if (prevSpaceId) {
-        VoiceService.shared.clearVoiceContextCache(prevSpaceId);
+    const handleSpaceLifecycleChange = () => {
+      const previousSpaceId = voiceContextSpaceIdRef.current;
+      lifecycleEpochRef.current += 1;
+      abortActiveOperation();
+
+      if (previousSpaceId) {
+        VoiceService.shared.clearVoiceContextCache(previousSpaceId);
       }
       voiceContextRef.current = null;
       voiceContextPromiseRef.current = null;
@@ -161,114 +239,105 @@ export default function useVoiceInput(
       VoiceFeedback.destroy();
       resetSharedSpaceSetting();
       voiceFeedbackOnRef.current = 0;
-
-      const newSpaceId = voiceHostRef.current.getSpaceId();
-      const url = feedbackUrlRef.current;
-      if (newSpaceId) {
-        const seq = ++spaceSeqRef.current;
-        fetchAndApplySpaceSetting(
-          newSpaceId,
-          url,
-          () => voiceHostRef.current.getSpaceId() === newSpaceId,
-        ).then(() => {
-          if (spaceSeqRef.current !== seq) return;
-          const st = getSharedSpaceFeedbackState();
-          voiceFeedbackOnRef.current = (st.spaceSetting?.voice_input_enabled === 1 && st.spaceSetting?.voice_feedback_on === 1) ? 1 : 0;
-        });
-      }
+      reconcileSpaceSetting();
     };
-    return voiceHost.subscribeSpaceChange(handler);
-  }, [voiceHost]);
+
+    handleSpaceLifecycleChange();
+    return voiceHost.subscribeSpaceChange(handleSpaceLifecycleChange);
+  }, [voiceHost, abortActiveOperation, reconcileSpaceSetting]);
 
   useEffect(() => {
     return subscribeSpaceFeedback(() => {
-      const st = getSharedSpaceFeedbackState();
-      voiceFeedbackOnRef.current = (st.spaceSetting?.voice_input_enabled === 1 && st.spaceSetting?.voice_feedback_on === 1) ? 1 : 0;
+      const state = getSharedSpaceFeedbackState();
+      const spaceId = voiceHostRef.current.getSpaceId();
+      voiceFeedbackOnRef.current =
+        state.loadedSpaceId === spaceId &&
+        state.spaceSetting?.voice_input_enabled === 1 &&
+        state.spaceSetting?.voice_feedback_on === 1
+          ? 1
+          : 0;
     });
   }, []);
 
   useEffect(() => {
-    const prevRef = { enabled: false, probeUrl: '', transcribeUrl: '', timeoutMs: 0 };
+    const previous = {
+      enabled: false,
+      probeUrl: "",
+      transcribeUrl: "",
+      timeoutMs: 0,
+    };
     return subscribeSpaceFeedback(() => {
       const config = getSharedVoiceConfig();
       if (!config) return;
 
       const next = {
         enabled: config.local_enabled === true,
-        probeUrl: config.local_probe_url ?? '',
-        transcribeUrl: config.local_transcribe_url ?? '',
+        probeUrl: config.local_probe_url ?? "",
+        transcribeUrl: config.local_transcribe_url ?? "",
         timeoutMs: config.local_timeout_ms ?? 10000,
       };
-
-      const changed = next.enabled !== prevRef.enabled
-        || next.probeUrl !== prevRef.probeUrl
-        || next.transcribeUrl !== prevRef.transcribeUrl
-        || next.timeoutMs !== prevRef.timeoutMs;
-
+      const changed =
+        next.enabled !== previous.enabled ||
+        next.probeUrl !== previous.probeUrl ||
+        next.transcribeUrl !== previous.transcribeUrl ||
+        next.timeoutMs !== previous.timeoutMs;
       if (!changed) return;
-      Object.assign(prevRef, next);
+      Object.assign(previous, next);
 
-      // Assumption: fetchAndApplySpaceSetting does not mutate local_* fields.
+      const generation = ++localProbeGenerationRef.current;
       if (next.enabled) {
         const updateFields: Partial<LocalModelConfig> = {
           enabled: true,
           requestTimeoutMs: next.timeoutMs,
         };
         if (next.probeUrl) updateFields.probeUrl = next.probeUrl;
-        if (next.transcribeUrl) updateFields.transcribeUrl = next.transcribeUrl;
+        if (next.transcribeUrl) {
+          updateFields.transcribeUrl = next.transcribeUrl;
+        }
         LocalModelService.shared.updateConfig(updateFields, localStorage);
-        LocalModelService.shared.probe().then(setLocalAvailable);
+        void LocalModelService.shared.probe().then((available) => {
+          if (
+            mountedRef.current &&
+            localProbeGenerationRef.current === generation
+          ) {
+            setLocalAvailable(available);
+          }
+        });
       } else {
         LocalModelService.shared.updateConfig({ enabled: false }, localStorage);
-        setLocalAvailable(false);
+        if (mountedRef.current) setLocalAvailable(false);
       }
     });
   }, []);
 
-  const cleanup = useCallback(() => {
-    if (maxDurationTimeoutRef.current) {
-      clearTimeout(maxDurationTimeoutRef.current);
-      maxDurationTimeoutRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    mediaRecorderRef.current = null;
-    chunksRef.current = [];
-  }, []);
-
   const startRecording = useCallback(
     async (overrideMode?: VoiceMode) => {
-      if (isRecording) {
-        return;
-      }
+      if (operationRef.current) return;
 
-      recordingModeRef.current = overrideMode ?? mode;
-      setCurrentMode(recordingModeRef.current);
-
-      utteranceIdRef.current =
-        crypto.randomUUID?.() ??
-        Math.random().toString(36).slice(2) + Date.now().toString(36);
+      const operation: VoiceOperation = {
+        epoch: lifecycleEpochRef.current,
+        spaceId: voiceHostRef.current.getSpaceId(),
+        utteranceId:
+          crypto.randomUUID?.() ??
+          Math.random().toString(36).slice(2) + Date.now().toString(36),
+        mode: overrideMode ?? mode,
+      };
+      operationRef.current = operation;
+      utteranceIdRef.current = operation.utteranceId;
+      setCurrentMode(operation.mode);
 
       voiceContextRef.current = null;
-
-      const spaceId = voiceHostRef.current.getSpaceId();
-      voiceContextSpaceIdRef.current = spaceId;
-
-      if (spaceId) {
-        const promise = VoiceService.shared
-          .getVoiceContext(spaceId)
-          .then((resp) => {
-            if (voiceContextSpaceIdRef.current === spaceId) {
-              voiceContextRef.current = resp;
+      voiceContextSpaceIdRef.current = operation.spaceId;
+      if (operation.spaceId) {
+        voiceContextPromiseRef.current = VoiceService.shared
+          .getVoiceContext(operation.spaceId)
+          .then((response) => {
+            if (isOperationActive(operation)) {
+              voiceContextRef.current = response;
             }
-            return resp;
+            return response;
           })
-          .catch(() => {
-            return null;
-          });
-        voiceContextPromiseRef.current = promise;
+          .catch(() => null);
       } else {
         voiceContextPromiseRef.current = null;
       }
@@ -277,22 +346,25 @@ export default function useVoiceInput(
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true,
         });
-        streamRef.current = stream;
+        if (!isOperationActive(operation)) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
 
+        streamRef.current = stream;
         const mimeType = getSupportedMimeType();
         const recorder = new MediaRecorder(stream, { mimeType });
         mediaRecorderRef.current = recorder;
         chunksRef.current = [];
 
-        recorder.ondataavailable = (e: BlobEvent) => {
-          if (e.data.size > 0) {
-            chunksRef.current.push(e.data);
+        recorder.ondataavailable = (event: BlobEvent) => {
+          if (isOperationActive(operation) && event.data.size > 0) {
+            chunksRef.current.push(event.data);
           }
         };
 
         recorder.start();
         setIsRecording(true);
-
         startTimeRef.current = Date.now();
 
         const effectiveDuration = Math.max(
@@ -300,77 +372,98 @@ export default function useVoiceInput(
           backendMaxDurationRef.current ?? maxDuration
         );
         maxDurationTimeoutRef.current = setTimeout(() => {
-          stopFnRef.current();
+          if (isOperationActive(operation)) stopFnRef.current();
         }, effectiveDuration * 1000);
-      } catch (err) {
+      } catch (errorValue) {
+        if (!isOperationActive(operation)) return;
         const error =
-          err instanceof Error ? err : new Error("Microphone access denied");
-        if (onError) onError(error);
-        cleanup();
-        if (onRecordingFailed) onRecordingFailed();
+          errorValue instanceof Error
+            ? errorValue
+            : new Error("Microphone access denied");
+        onError?.(error);
+        cleanupRecorder();
+        operationRef.current = null;
+        onRecordingFailed?.();
       }
     },
-    [isRecording, maxDuration, onError, onRecordingFailed, cleanup]
+    [
+      mode,
+      maxDuration,
+      onError,
+      onRecordingFailed,
+      cleanupRecorder,
+      isOperationActive,
+    ]
   );
 
   const stopRecordingAndTranscribe = useCallback(
     (contextText?: string) => {
-      if (contextText !== undefined) {
-        contextTextRef.current = contextText;
-      }
+      if (contextText !== undefined) contextTextRef.current = contextText;
+      const operation = operationRef.current;
       const recorder = mediaRecorderRef.current;
-      if (!recorder || recorder.state === "inactive") {
-        cleanup();
-        setIsRecording(false);
+      if (
+        !operation ||
+        !isOperationActive(operation) ||
+        !recorder ||
+        recorder.state === "inactive"
+      ) {
+        abortActiveOperation();
         return;
       }
 
       const capturedStartTime = startTimeRef.current;
+      const capturedContextText = contextTextRef.current;
 
       recorder.onstop = async () => {
         const mimeType = getSupportedMimeType();
         const blob = new Blob(chunksRef.current, { type: mimeType });
-        cleanup();
+        cleanupRecorder();
+        if (!isOperationActive(operation)) return;
         setIsRecording(false);
 
-        const recordingDurationMs = Date.now() - capturedStartTime;
-        if (recordingDurationMs < 1000) {
-          Toast.warning(t("base.voiceInput.error.noSpeech"));
-          return;
-        }
-
-        if (maxFileSizeRef.current > 0 && blob.size > maxFileSizeRef.current) {
-          Toast.error(t("base.voiceInput.error.fileTooLarge"));
-          if (onError) onError(new Error("Recording file size exceeds limit"));
-          return;
-        }
-
-        setIsTranscribing(true);
-        const notifyFeedback = (
-          text: string,
-          source: "local" | "remote",
-          requestId?: string,
-          asrParams?: AsrParams,
-        ) => {
-          if (voiceFeedbackOnRef.current !== 1) return;
-          VoiceFeedback.shared()?.onTranscribeResult({
-            utteranceId: utteranceIdRef.current,
-            modelText: text,
-            source,
-            requestId,
-            scene,
-            audioBlob: source === "local" ? blob : undefined,
-            asrParams,
-          });
-        };
-
-        const allowFeedback = voiceFeedbackOnRef.current === 1;
-
         try {
+          const recordingDurationMs = Date.now() - capturedStartTime;
+          if (recordingDurationMs < 1000) {
+            Toast.warning(t("base.voiceInput.error.noSpeech"));
+            return;
+          }
+
+          if (
+            maxFileSizeRef.current > 0 &&
+            blob.size > maxFileSizeRef.current
+          ) {
+            Toast.error(t("base.voiceInput.error.fileTooLarge"));
+            onError?.(new Error("Recording file size exceeds limit"));
+            return;
+          }
+
+          setIsTranscribing(true);
+          const allowFeedback = voiceFeedbackOnRef.current === 1;
+          const notifyFeedback = (
+            text: string,
+            source: "local" | "remote",
+            requestId?: string,
+            asrParams?: AsrParams
+          ) => {
+            if (
+              !isOperationActive(operation) ||
+              voiceFeedbackOnRef.current !== 1
+            ) {
+              return;
+            }
+            VoiceFeedback.shared()?.onTranscribeResult({
+              utteranceId: operation.utteranceId,
+              modelText: text,
+              source,
+              requestId,
+              scene,
+              audioBlob: source === "local" ? blob : undefined,
+              asrParams,
+            });
+          };
+
           const localConfig = LocalModelService.shared.config;
-          const useLocalFirst =
-            localConfig.preferLocal &&
-            localConfig.enabled;
+          const useLocalFirst = localConfig.preferLocal && localConfig.enabled;
 
           if (useLocalFirst) {
             const contextPromise = voiceContextPromiseRef.current
@@ -381,156 +474,157 @@ export default function useVoiceInput(
                   ),
                 ])
               : Promise.resolve(null);
-            const chatCtxPromise =
+            const chatContextPromise =
               getChatContextRef.current?.() ?? Promise.resolve({});
 
             await contextPromise;
+            if (!isOperationActive(operation)) return;
             voiceContextPromiseRef.current = null;
 
-            let personalContext: string | undefined;
-            const voiceCtx = voiceContextRef.current;
-            if (voiceCtx && voiceCtx.has_context === true && voiceCtx.context) {
-              personalContext = voiceCtx.context;
-            }
+            const voiceContext = voiceContextRef.current;
+            const personalContext =
+              voiceContext?.has_context === true
+                ? voiceContext.context
+                : undefined;
+            const chatContextResult = (await chatContextPromise) ?? {};
+            if (!isOperationActive(operation)) return;
+            const { memberContext, chatContext, selfName, channelType } =
+              chatContextResult;
 
-            const chatCtxResult = (await chatCtxPromise) ?? {};
-            const memberContext = chatCtxResult.memberContext;
-            const chatContext = chatCtxResult.chatContext;
-            const selfName = chatCtxResult.selfName;
-
-            const localResult =
-              await LocalModelService.shared.transcribe(
-                blob,
-                contextTextRef.current,
-                chatContext,
-                personalContext,
-                memberContext,
-                recordingModeRef.current,
-                selfName,
-              );
+            const localResult = await LocalModelService.shared.transcribe(
+              blob,
+              capturedContextText,
+              chatContext,
+              personalContext,
+              memberContext,
+              operation.mode,
+              selfName
+            );
+            if (!isOperationActive(operation)) return;
             if (localResult) {
               if (localResult.text) {
                 notifyFeedback(localResult.text, "local", undefined, {
-                  contextText: contextTextRef.current,
+                  contextText: capturedContextText,
                   chatContext,
                   personalContext,
                   memberContext,
                   selfName,
-                  mode: recordingModeRef.current,
-                  channelType: chatCtxResult.channelType,
+                  mode: operation.mode,
+                  channelType,
                   model: localResult.m,
                   allowFeedback,
                 });
-                if (onTranscribed) onTranscribed(localResult.text);
+                onTranscribed?.(localResult.text);
               }
               return;
             }
 
             if (!backendEnabledRef.current) {
               Toast.error(t("base.voiceInput.error.localTranscriptionFailed"));
-              if (onError) onError(new Error("Transcription failed"));
+              onError?.(new Error("Transcription failed"));
               return;
             }
 
             const result = await VoiceService.shared.transcribe(
               blob,
-              contextTextRef.current,
+              capturedContextText,
               chatContext,
               personalContext,
               memberContext,
-              recordingModeRef.current,
+              operation.mode,
               true,
-              chatCtxResult.channelType,
+              channelType,
               allowFeedback,
-              selfName,
+              selfName
             );
+            if (!isOperationActive(operation)) return;
             if (result.text) {
               notifyFeedback(result.text, "remote", result.request_id);
-              if (onTranscribed) onTranscribed(result.text);
+              onTranscribed?.(result.text);
             }
             return;
           }
 
           if (voiceContextPromiseRef.current) {
             await voiceContextPromiseRef.current;
+            if (!isOperationActive(operation)) return;
             voiceContextPromiseRef.current = null;
           }
 
-          let personalContext: string | undefined;
-          const voiceCtx = voiceContextRef.current;
-          if (voiceCtx && voiceCtx.has_context === true && voiceCtx.context) {
-            personalContext = voiceCtx.context;
-          }
-
-          const chatCtxResult = (await getChatContextRef.current?.()) ?? {};
-          const memberContext = chatCtxResult.memberContext;
-          const chatContext = chatCtxResult.chatContext;
-          const selfName = chatCtxResult.selfName;
+          const voiceContext = voiceContextRef.current;
+          const personalContext =
+            voiceContext?.has_context === true
+              ? voiceContext.context
+              : undefined;
+          const chatContextResult = (await getChatContextRef.current?.()) ?? {};
+          if (!isOperationActive(operation)) return;
+          const { memberContext, chatContext, selfName, channelType } =
+            chatContextResult;
 
           if (!backendEnabledRef.current) {
             Toast.error(t("base.voiceInput.error.unavailable"));
-            if (onError) onError(new Error("Transcription failed"));
+            onError?.(new Error("Transcription failed"));
             return;
           }
 
           const result = await VoiceService.shared.transcribe(
             blob,
-            contextTextRef.current,
+            capturedContextText,
             chatContext,
             personalContext,
             memberContext,
-            recordingModeRef.current,
+            operation.mode,
             true,
-            chatCtxResult.channelType,
+            channelType,
             allowFeedback,
-            selfName,
+            selfName
           );
+          if (!isOperationActive(operation)) return;
           if (result.text) {
             notifyFeedback(result.text, "remote", result.request_id);
-            if (onTranscribed) onTranscribed(result.text);
+            onTranscribed?.(result.text);
           }
-        } catch (err) {
+        } catch {
+          if (!isOperationActive(operation)) return;
           Toast.error(t("base.voiceInput.error.transcriptionFailedRetry"));
-          if (onError) onError(new Error("Transcription failed"));
+          onError?.(new Error("Transcription failed"));
         } finally {
-          setIsTranscribing(false);
-          contextTextRef.current = undefined;
+          if (operationRef.current === operation) {
+            operationRef.current = null;
+            contextTextRef.current = undefined;
+            if (mountedRef.current) setIsTranscribing(false);
+          }
         }
       };
 
       recorder.stop();
     },
-    [cleanup, onTranscribed, onError]
+    [
+      cleanupRecorder,
+      abortActiveOperation,
+      isOperationActive,
+      onTranscribed,
+      onError,
+      scene,
+    ]
   );
 
   stopFnRef.current = stopRecordingAndTranscribe;
 
   const cancelRecording = useCallback(() => {
-    const recorder = mediaRecorderRef.current;
-    if (recorder && recorder.state !== "inactive") {
-      recorder.onstop = null;
-      recorder.stop();
-    }
-    cleanup();
-    setIsRecording(false);
-    voiceContextRef.current = null;
-    voiceContextPromiseRef.current = null;
-    voiceContextSpaceIdRef.current = "";
-  }, [cleanup]);
+    lifecycleEpochRef.current += 1;
+    abortActiveOperation();
+  }, [abortActiveOperation]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (
-        mediaRecorderRef.current &&
-        mediaRecorderRef.current.state !== "inactive"
-      ) {
-        mediaRecorderRef.current.onstop = null;
-        mediaRecorderRef.current.stop();
-      }
-      cleanup();
+      mountedRef.current = false;
+      lifecycleEpochRef.current += 1;
+      settingGenerationRef.current += 1;
+      localProbeGenerationRef.current += 1;
+      abortActiveOperation();
     };
-  }, [cleanup]);
+  }, [abortActiveOperation]);
 
   return {
     isRecording,

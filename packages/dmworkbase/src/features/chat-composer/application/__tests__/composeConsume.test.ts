@@ -947,11 +947,31 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     );
     const handle = consume(h, registry);
 
+    const recoveryRegistry = createDefaultEditorComposePartRegistry();
+    recoveryRegistry.register({
+      id: "poll",
+      recovery: "snapshot",
+      canCapture: (node) => node.type === "poll",
+      capture: (node) => ({
+        id: String(node.attrs?.id),
+        kind: "poll",
+        extensionId: "poll",
+        placement: "block",
+        node,
+      }),
+      restore: (part) => part.node,
+      toSendBlock: (part) => ({
+        type: "extension:poll",
+        id: part.id,
+        payload: { question: part.node.attrs?.question },
+      }),
+    });
+
     const recovered = buildComposeRecoveryDocument(
       handle.recovery,
       [{ type: "extension", id: "poll-1" }],
       (value) => parseConsumedTextToContent(value).content as never,
-      registry,
+      recoveryRegistry,
     );
 
     expect(recovered?.content).toEqual([

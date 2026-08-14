@@ -86,6 +86,27 @@ export default function VoiceInputIndicator({
   // 记录当前录音使用的模式（用于 onTranscribed 回调）
   const recordingModeRef = useRef<VoiceMode>("append_only");
   const pendingModeRef = useRef<VoiceMode>("append_only");
+  const mountedRef = useRef(true);
+  const consentEpochRef = useRef(0);
+
+  useEffect(() => {
+    consentEpochRef.current += 1;
+    const invalidateConsent = () => {
+      consentEpochRef.current += 1;
+    };
+    const unsubscribe = voiceHost.subscribeSpaceChange(invalidateConsent);
+    return () => {
+      consentEpochRef.current += 1;
+      unsubscribe();
+    };
+  }, [voiceHost]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+      consentEpochRef.current += 1;
+    };
+  }, []);
 
   const {
     isRecording,
@@ -792,14 +813,20 @@ export default function VoiceInputIndicator({
         onAccept={async (feedbackOn) => {
           setShowFeedbackNotice(false);
           const spaceId = voiceHost.getSpaceId();
+          const consentEpoch = consentEpochRef.current;
+          const isConsentCurrent = () =>
+            mountedRef.current &&
+            consentEpochRef.current === consentEpoch &&
+            voiceHost.getSpaceId() === spaceId;
           try {
             if (spaceId) {
-              await acceptVoiceInput(spaceId, feedbackOn);
+              await acceptVoiceInput(spaceId, feedbackOn, isConsentCurrent);
             }
           } catch {
             Toast.error(t("base.voiceInput.error.operationFailed"));
             return;
           }
+          if (!isConsentCurrent()) return;
           const selectedText = getSelectedText?.();
           const selectionRange = getSelectionRange?.();
           hadSelectionRef.current = !!selectedText;

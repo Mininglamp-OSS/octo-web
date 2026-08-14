@@ -7,6 +7,7 @@ import type {
 } from "../domain";
 import {
   cloneEditorContentBlocks,
+  isEditorContentBlock,
   rejectChatComposerSend,
 } from "../domain";
 import {
@@ -52,6 +53,9 @@ export class ChatComposerCoordinator<
     let editorBlocks: EditorContentBlock[];
     try {
       editorBlocks = cloneEditorContentBlocks(input.editorBlocks);
+      if (!editorBlocks.every(isEditorContentBlock)) {
+        return rejectChatComposerSend("unsupported-content");
+      }
     } catch {
       return rejectChatComposerSend("unsupported-content");
     }

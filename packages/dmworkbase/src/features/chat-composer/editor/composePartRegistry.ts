@@ -133,6 +133,7 @@ export class EditorComposePartRegistry {
     node: EditorComposeNode,
     context: EditorComposePartContext,
   ): EditorComposePart | undefined {
+    const sourceIdBefore = node.attrs?.id;
     const extension = this.orderedExtensions().find((candidate) =>
       candidate.canCapture(node),
     );
@@ -149,11 +150,11 @@ export class EditorComposePartRegistry {
         );
       }
       if (extension.recovery === "snapshot") {
-        const snapshotId = node.attrs?.id;
         if (
-          typeof snapshotId !== "string" ||
-          snapshotId.trim() === "" ||
-          snapshotId !== part.id
+          typeof sourceIdBefore !== "string" ||
+          sourceIdBefore.trim() === "" ||
+          node.attrs?.id !== sourceIdBefore ||
+          sourceIdBefore !== part.id
         ) {
           throw new InvalidEditorComposePartError(
             `snapshot editor compose part id must match node attrs.id: ${part.id}`,

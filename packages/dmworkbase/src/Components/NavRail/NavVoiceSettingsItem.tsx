@@ -10,18 +10,26 @@ export default function NavVoiceSettingsItem() {
   const { t } = useI18n();
 
   useEffect(() => {
+    let generation = 0;
+    let disposed = false;
     const load = () => {
+      const requestGeneration = ++generation;
       const spaceId = WKApp.shared?.currentSpaceId ?? '';
       if (!spaceId) return;
       ensureVoiceFeedbackLoaded(
         spaceId,
-        () => WKApp.shared?.currentSpaceId === spaceId,
+        () =>
+          !disposed &&
+          generation === requestGeneration &&
+          WKApp.shared?.currentSpaceId === spaceId,
       ).catch(() => {});
     };
     load();
     const handler = () => load();
     WKApp.mittBus.on('space-changed', handler);
     return () => {
+      disposed = true;
+      generation += 1;
       WKApp.mittBus.off('space-changed', handler);
     };
   }, []);
