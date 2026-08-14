@@ -87,10 +87,18 @@ export default forwardRef((props: EmojiSuggestionListProps, ref) => {
 
         return (
           <div
-            className={`emoji-suggestion-cell ${isSelected ? 'is-selected' : ''}`}
+            className={`emoji-suggestion-cell ${
+              isSelected ? 'is-selected' : ''
+            }`}
             key={item.key}
             role="option"
             aria-selected={isSelected}
+            onMouseDown={(event) => {
+              // Keep ProseMirror focused until the command transaction replaces
+              // the query. Otherwise blur/focus transactions can briefly revive
+              // an older async suggestion update.
+              if (event.button === 0) event.preventDefault()
+            }}
             onMouseEnter={() => {
               setInteractionMode('mouse')
               selectedIndexRef.current = index

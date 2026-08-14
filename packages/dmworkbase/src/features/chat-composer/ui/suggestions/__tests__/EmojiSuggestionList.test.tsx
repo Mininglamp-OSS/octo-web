@@ -90,3 +90,27 @@ describe("EmojiSuggestionList keyboard handling", () => {
     expect(command).not.toHaveBeenCalled();
   });
 });
+
+describe("EmojiSuggestionList pointer handling", () => {
+  it("keeps the editor focused while selecting with the mouse", () => {
+    const command = vi.fn();
+    renderEmojiSuggestionList(command);
+    const option = container.querySelector(
+      ".emoji-suggestion-cell"
+    ) as HTMLElement;
+    const mouseDown = new MouseEvent("mousedown", {
+      bubbles: true,
+      cancelable: true,
+      button: 0,
+    });
+
+    act(() => {
+      option.dispatchEvent(mouseDown);
+      option.click();
+    });
+
+    expect(mouseDown.defaultPrevented).toBe(true);
+    expect(command).toHaveBeenCalledOnce();
+    expect(command).toHaveBeenCalledWith(items[0]);
+  });
+});
