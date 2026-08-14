@@ -87,4 +87,48 @@ describe("MessageInput keyboard integration", () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
     act(() => inputContext?.clear());
   });
+
+  it("uses the latest view host after the composer is rerendered", async () => {
+    let inputContext: MessageInputContext | undefined;
+    const first = createTestViewHost("first");
+    const second = createTestViewHost("second");
+    const firstGetChannel = vi.fn(first.getChannel);
+    const secondGetChannel = vi.fn(second.getChannel);
+    first.getChannel = firstGetChannel;
+    second.getChannel = secondGetChannel;
+    const onSend = vi.fn(() =>
+      createChatSendOutcome({ editorConsumed: true }),
+    );
+    const view = render(
+      <ChatComposer
+        host={first}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+        onSend={onSend}
+      />,
+    );
+    await waitFor(() => expect(inputContext).toBeDefined());
+
+    view.rerender(
+      <ChatComposer
+        host={second}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+        onSend={onSend}
+      />,
+    );
+    await waitFor(() => expect(secondGetChannel).toHaveBeenCalled());
+    firstGetChannel.mockClear();
+    secondGetChannel.mockClear();
+
+    await act(async () => {
+      inputContext?.restoreDraft("latest host");
+      await inputContext?.send();
+    });
+
+    expect(secondGetChannel).toHaveBeenCalled();
+    expect(firstGetChannel).not.toHaveBeenCalled();
+  });
 });

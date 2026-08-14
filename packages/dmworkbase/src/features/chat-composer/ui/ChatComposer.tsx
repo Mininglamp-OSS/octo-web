@@ -528,6 +528,8 @@ function createAttachmentId(file: File): string {
 
 const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const { t } = useI18n();
+  const hostRef = useRef(props.host);
+  hostRef.current = props.host;
   const channelSnapshot = props.host.getChannel();
   const [extensions] = useState(() =>
     props.extensions ?? createDefaultChatComposerExtensions(),
@@ -677,9 +679,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               query,
               members: localMembersRef.current,
               iconResolver: (member) =>
-                props.host.resolveMemberAvatar(member.uid),
+                hostRef.current.resolveMemberAvatar(member.uid),
               externalResolver: (member) =>
-                props.host.resolveMemberExternal(member),
+                hostRef.current.resolveMemberExternal(member),
               stickyIcon: mentionAllIcon,
               includeBroadcastMentions: !isDirectChannelRef.current,
             });
@@ -716,7 +718,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         if (decision.kind === "block-secret") {
           event.preventDefault();
           notifySecretPaste(decision.value, (value) =>
-            props.host.openSecretCreate(value),
+            hostRef.current.openSecretCreate(value),
           );
           return true;
         }
@@ -907,7 +909,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           imageBlockToFile: (block) =>
             imageBlockToPasteFile(
               block,
-              (url, opts) => props.host.resolveImageUrl(url, opts),
+              (url, opts) => hostRef.current.resolveImageUrl(url, opts),
             ),
           // Validate pasted mentions against the live channel roster so a
           // forged clipboard payload cannot inject mentions for non-members
@@ -956,18 +958,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       );
     }
   }, [topAttachments.length, editor]);
-
-  // 动态更新 placeholder
-  useEffect(() => {
-    if (editor) {
-      editor.extensionManager.extensions
-        .filter((ext) => ext.name === "placeholder")
-        .forEach((ext) => {
-          (ext.options as any).placeholder = placeholder;
-          editor.view.dispatch(editor.state.tr);
-        });
-    }
-  }, [editor, placeholder]);
 
   // 导出 addAttachment 方法
   useEffect(() => {
@@ -1270,10 +1260,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       {
         host: {
           channelKey: () => {
-            return props.host.getChannel().key;
+            return hostRef.current.getChannel().key;
           },
           isChannelActive: (channelKey) => {
-            return props.host.getChannel().key === channelKey;
+            return hostRef.current.getChannel().key === channelKey;
           },
           captureSendTarget: () => props.onCaptureSendTarget?.(),
           captureSendDraft: () => props.onCaptureSendDraft?.(),

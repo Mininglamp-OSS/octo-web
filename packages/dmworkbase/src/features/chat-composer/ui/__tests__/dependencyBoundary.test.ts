@@ -7,8 +7,8 @@ const source = fs.readFileSync(
   "utf8",
 );
 
-describe("ChatComposer UI dependency boundary", () => {
-  it("does not reach into SDK or Conversation runtime globals", () => {
+describe("ChatComposer main module dependency boundary", () => {
+  it("does not reach into SDK or Conversation runtime globals directly", () => {
     expect(source).not.toContain("wukongimjssdk");
     expect(source).not.toContain("Components/Conversation");
     expect(source).not.toContain('from "../../../App"');
