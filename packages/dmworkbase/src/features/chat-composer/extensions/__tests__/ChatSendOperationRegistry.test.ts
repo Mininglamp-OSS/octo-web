@@ -1,6 +1,9 @@
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 import type { ExtensionChatSendOperation } from "../../domain";
-import { ChatSendOperationRegistry } from "../ChatSendOperationRegistry";
+import {
+  ChatSendOperationRegistry,
+  type ChatSendOperationHandler,
+} from "../ChatSendOperationRegistry";
 
 type LocationOperation = ExtensionChatSendOperation<unknown, { lat: number }> & {
   kind: "extension:location";
@@ -45,6 +48,17 @@ describe("ChatSendOperationRegistry", () => {
       expectTypeOf(operation.text).toEqualTypeOf<string>();
       return { enqueuedPartIds: operation.partIds };
     });
+  });
+
+  it("accepts an already typed extension handler without explicit generics", () => {
+    const registry = new ChatSendOperationRegistry();
+    const handler: ChatSendOperationHandler<unknown, LocationOperation> = async (
+      operation,
+    ) => ({ enqueuedPartIds: operation.partIds });
+
+    registry.register("extension:location", handler);
+
+    expect(registry.has("extension:location")).toBe(true);
   });
 
   it("rejects duplicate operation kinds", () => {

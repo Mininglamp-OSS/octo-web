@@ -3,6 +3,7 @@ import type {
   EditorComposeNode,
   EditorContentBlock,
 } from "../domain";
+import { isEditorContentBlock } from "../domain";
 
 export type { EditorComposeDocument, EditorComposeNode } from "../domain";
 
@@ -147,6 +148,18 @@ export class EditorComposePartRegistry {
           `editor compose part owner mismatch: ${part.extensionId} !== ${extension.id}`,
         );
       }
+      if (extension.recovery === "snapshot") {
+        const snapshotId = node.attrs?.id;
+        if (
+          typeof snapshotId !== "string" ||
+          snapshotId.trim() === "" ||
+          snapshotId !== part.id
+        ) {
+          throw new InvalidEditorComposePartError(
+            `snapshot editor compose part id must match node attrs.id: ${part.id}`,
+          );
+        }
+      }
       this.capturedOwners.set(part, extension);
       this.capturedSources.set(part, node);
     }
@@ -174,6 +187,14 @@ export class EditorComposePartRegistry {
     const extension = this.extensionFor(part);
     const block = extension.toSendBlock?.(part);
     if (!block) throw new UnsupportedEditorComposePartError(part.extensionId);
+    if (
+      !isEditorContentBlock(block) ||
+      (block as { type: string }).type === "text"
+    ) {
+      throw new InvalidEditorComposePartError(
+        `editor compose part returned an invalid send block: ${part.id}`,
+      );
+    }
     if (block.id !== part.id) {
       throw new InvalidEditorComposePartError(
         `editor compose part send block id mismatch: ${block.id} !== ${part.id}`,

@@ -145,7 +145,10 @@ describe("EditorComposePartRegistry", () => {
       }),
     });
     const [part] = registry.capture(
-      { type: "doc", content: [{ type: "custom" }] },
+      {
+        type: "doc",
+        content: [{ type: "custom", attrs: { id: "custom-1" } }],
+      },
       { attachmentFiles: new Map() },
     );
 
@@ -172,7 +175,10 @@ describe("EditorComposePartRegistry", () => {
       }),
     });
     const [part] = registry.capture(
-      { type: "doc", content: [{ type: "custom" }] },
+      {
+        type: "doc",
+        content: [{ type: "custom", attrs: { id: "custom-1" } }],
+      },
       { attachmentFiles: new Map() },
     );
 
@@ -200,13 +206,73 @@ describe("EditorComposePartRegistry", () => {
       }),
     });
     const [part] = registry.capture(
-      { type: "doc", content: [{ type: "custom" }] },
+      {
+        type: "doc",
+        content: [{ type: "custom", attrs: { id: "custom-1" } }],
+      },
       { attachmentFiles: new Map() },
     );
 
     expect(() => registry.toSendBlock(part)).toThrow(
       "send block id mismatch",
     );
+  });
+
+  it("requires snapshot recovery ids to come from node attrs", () => {
+    const registry = new EditorComposePartRegistry();
+    registry.register({
+      id: "custom",
+      recovery: "snapshot",
+      canCapture: () => true,
+      capture: (node) => ({
+        id: "generated-at-capture",
+        kind: "custom",
+        extensionId: "custom",
+        node,
+      }),
+      toSendBlock: (part) => ({
+        type: "extension:custom",
+        id: part.id,
+        payload: {},
+      }),
+    });
+
+    expect(() =>
+      registry.capture(
+        { type: "doc", content: [{ type: "custom" }] },
+        { attachmentFiles: new Map() },
+      ),
+    ).toThrow("must match node attrs.id");
+  });
+
+  it("rejects malformed send blocks during preflight", () => {
+    const registry = new EditorComposePartRegistry();
+    registry.register({
+      id: "custom",
+      recovery: "snapshot",
+      canCapture: () => true,
+      capture: (node) => ({
+        id: "custom-1",
+        kind: "custom",
+        extensionId: "custom",
+        node,
+      }),
+      toSendBlock: () =>
+        ({
+          type: "extension:",
+          id: "custom-1",
+          payload: {},
+        }) as never,
+    });
+    const [part] = registry.capture(
+      {
+        type: "doc",
+        content: [{ type: "custom", attrs: { id: "custom-1" } }],
+      },
+      { attachmentFiles: new Map() },
+    );
+
+    expect(() => registry.toSendBlock(part)).toThrow("invalid send block");
   });
 
   it("does not let a stale disposer unregister a replacement extension", () => {

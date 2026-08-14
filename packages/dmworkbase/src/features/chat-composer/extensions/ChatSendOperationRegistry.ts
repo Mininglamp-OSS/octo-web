@@ -52,6 +52,14 @@ export class ChatSendOperationRegistry<TMessage = unknown> {
       TMessage,
       RegisterOperation<TMessage, TKindOrOperation>
     >,
+  ): () => boolean;
+  register<TOperation extends ChatSendOperation<TMessage>>(
+    kind: TOperation["kind"],
+    handler: ChatSendOperationHandler<TMessage, TOperation>,
+  ): () => boolean;
+  register(
+    kind: ChatSendOperationKind,
+    handler: ChatSendOperationHandler<TMessage>,
   ): () => boolean {
     if (this.handlers.has(kind)) {
       throw new Error(`chat send operation already registered: ${kind}`);

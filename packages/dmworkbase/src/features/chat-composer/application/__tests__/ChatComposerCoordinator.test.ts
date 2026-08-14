@@ -80,7 +80,11 @@ describe("ChatComposerCoordinator", () => {
         },
         { host: host(), editor },
       ),
-    ).rejects.toThrow();
+    ).resolves.toEqual({
+      kind: "rejected",
+      editorConsumed: false,
+      reason: "unsupported-content",
+    });
 
     expect(editor.consume).not.toHaveBeenCalled();
   });

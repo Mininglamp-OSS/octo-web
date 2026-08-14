@@ -289,7 +289,8 @@ extensions.render.pending.register({
 `placement` 默认按 inline part 处理；顶层卡片、投票等 block node 必须显式写
 `placement: "block"`，否则部分失败恢复时会被包进 paragraph。part `id` 在一次 editor
 document 中必须全局唯一，不能只在各扩展内部唯一；`toSendBlock()` 返回的 `id` 必须与
-captured part 完全一致。
+captured part 完全一致。snapshot 扩展还必须把同一个稳定 ID 写入源节点 `attrs.id`，capture
+只能读取该 ID，不能在发送时临时生成，否则跨实例 partial recovery 无法精确匹配。
 
 当前自定义 part 必须声明 `recovery: "snapshot"`，表示恢复所需状态全部存在于 Tiptap node
 snapshot 中。带独立 `File`、object URL、worker handle 或外部 store lease 的新 part 暂不允许
@@ -318,7 +319,7 @@ part 必须 fail closed，保留原 editor 内容。
 - text/mention 仍有专用捕获与解析路径，尚未全部变成通用 editor part。
 - extension payload 当前是 `unknown`；扩展自己的 operation handler 必须做 schema/runtime
   validation，不能信任调用方输入。payload 在 consume 前通过 `structuredClone` 固化；不可
-  clone 的 payload 会 fail closed，不清空 editor。
+  clone 的 payload 会返回 `unsupported-content` rejection，并且不清空 editor。
 - editor extension 的 `capture` 每次发送只执行一次，同一批 captured parts 同时用于 block
   提取、consume、settlement 和 dispose，不能在各阶段重新生成 ID 或资源。
 - 跨实例 recovery 对自定义 extension 仅支持 snapshot 模式；attachment 继续额外保留内存中的

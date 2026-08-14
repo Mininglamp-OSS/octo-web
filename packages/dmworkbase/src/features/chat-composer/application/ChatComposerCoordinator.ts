@@ -5,7 +5,10 @@ import type {
   EditorContentBlock,
   SendProgressSnapshot,
 } from "../domain";
-import { cloneEditorContentBlocks } from "../domain";
+import {
+  cloneEditorContentBlocks,
+  rejectChatComposerSend,
+} from "../domain";
 import {
   disposeComposeRecoveryObjectUrls,
   type ComposeRecoveryRecord,
@@ -46,7 +49,12 @@ export class ChatComposerCoordinator<
     ports: ChatComposerSubmitPorts<TMessage>
   ): Promise<ChatComposerSendResult> {
     const { host, editor } = ports;
-    const editorBlocks = cloneEditorContentBlocks(input.editorBlocks);
+    let editorBlocks: EditorContentBlock[];
+    try {
+      editorBlocks = cloneEditorContentBlocks(input.editorBlocks);
+    } catch {
+      return rejectChatComposerSend("unsupported-content");
+    }
     const sendTarget = host.captureSendTarget();
     const channelKey = host.channelKey();
     this.controller.resetRestoreOffsets();
