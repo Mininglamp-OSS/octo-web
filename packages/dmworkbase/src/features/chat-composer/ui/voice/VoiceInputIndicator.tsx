@@ -123,6 +123,7 @@ export default function VoiceInputIndicator({
   consentHostRef.current = voiceHost;
 
   const openConsent = useCallback((mode: VoiceMode) => {
+    if (consentPendingRef.current) return;
     const spaceId = voiceHost.getSpaceId();
     if (!spaceId) return;
     const generation = ++consentGenerationRef.current;

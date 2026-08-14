@@ -363,6 +363,43 @@ describe("VoiceInputButton - interactions", () => {
     expect(startRecording).not.toHaveBeenCalled();
   });
 
+  it("ignores reopen attempts while consent is being saved", async () => {
+    let resolveConsent!: () => void;
+    mockAcceptVoiceInput
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveConsent = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(undefined);
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.apiAvailable = true;
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 0,
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 0,
+    };
+
+    const { container } = render(
+      <VoiceInputButton inputRef={createInputRef()} onTranscribed={vi.fn()} />,
+    );
+    fireEvent.click(container.querySelector(".wk-vib")!);
+    fireEvent.click(container.querySelector(".voice-feedback-notice")!);
+
+    fireEvent.click(container.querySelector(".wk-vib")!);
+    expect(container.querySelector(".voice-feedback-notice")).toBeNull();
+    expect(mockAcceptVoiceInput).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveConsent();
+      await Promise.resolve();
+    });
+    fireEvent.click(container.querySelector(".wk-vib")!);
+    expect(container.querySelector(".voice-feedback-notice")).not.toBeNull();
+    fireEvent.click(container.querySelector(".voice-feedback-notice")!);
+    expect(mockAcceptVoiceInput).toHaveBeenCalledTimes(2);
+  });
+
   it("should call stopRecordingAndTranscribe when clicking during recording", async () => {
     const mockStop = vi.fn();
     mockUseTextareaVoice.mockReturnValue(

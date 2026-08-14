@@ -308,6 +308,55 @@ describe("VoiceInputIndicator consent lifecycle", () => {
     expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
   });
 
+  it("ignores reopen attempts while consent is being saved", async () => {
+    const voiceHost: ChatComposerVoiceHost = {
+      getSpaceId: () => "space-a",
+      subscribeSpaceChange: () => () => {},
+    };
+    let resolveConsent!: () => void;
+    mocks.acceptVoiceInput
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveConsent = resolve;
+        })
+      )
+      .mockResolvedValueOnce(undefined);
+
+    await act(async () => {
+      ReactDOM.render(
+        <VoiceInputIndicator
+          voiceHost={voiceHost}
+          onTranscribed={() => undefined}
+        />,
+        container
+      );
+    });
+    const voiceButton = container.querySelector(
+      ".wk-voice-button-group"
+    ) as HTMLElement;
+    act(() => voiceButton.click());
+    act(() => {
+      (
+        container.querySelector('[data-testid="accept-consent"]') as HTMLElement
+      ).click();
+    });
+
+    act(() => voiceButton.click());
+    expect(container.querySelector('[data-testid="accept-consent"]')).toBeNull();
+    expect(mocks.acceptVoiceInput).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveConsent();
+      await Promise.resolve();
+    });
+    act(() => voiceButton.click());
+    expect(container.querySelector('[data-testid="accept-consent"]')).not.toBeNull();
+    await act(async () => {
+      await mocks.noticeAccept?.(false);
+    });
+    expect(mocks.acceptVoiceInput).toHaveBeenCalledTimes(2);
+  });
+
   it("resets a cancelled edit consent before a main-button consent", async () => {
     const voiceHost: ChatComposerVoiceHost = {
       getSpaceId: () => "space-a",

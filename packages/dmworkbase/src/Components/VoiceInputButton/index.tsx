@@ -69,6 +69,7 @@ export default function VoiceInputButton({
   const { spaceSetting, loaded, voiceConfig } = useSpaceFeedbackSetting();
 
   const openConsent = useCallback((mode: VoiceMode) => {
+    if (consentPendingRef.current) return;
     const spaceId = voiceHost.getSpaceId();
     if (!spaceId) return;
     const generation = ++consentGenerationRef.current;
