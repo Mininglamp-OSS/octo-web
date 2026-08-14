@@ -1,8 +1,8 @@
 import React from "react";
 import { act, render, waitFor } from "@testing-library/react";
-import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
 import { createChatSendOutcome } from "../../domain";
+import { createTestViewHost } from "./testViewHost";
 import type {
   ComposeRecoveryRecord,
   RecoveredComposeHydration,
@@ -22,12 +22,6 @@ vi.mock("react-virtuoso", () => ({
   Virtuoso: () => null,
   TableVirtuoso: () => null,
 }));
-
-function conversationContext() {
-  return {
-    channel: () => new Channel("channel", ChannelTypeGroup),
-  } as any;
-}
 
 function failedCompose(text: string): ComposeRecoveryRecord {
   return {
@@ -56,7 +50,7 @@ describe("MessageInput recovery hydration", () => {
 
     render(
       <ChatComposer
-        context={conversationContext()}
+        host={createTestViewHost()}
         recoveredComposes={[failedCompose("failed A")]}
         onContext={(context) => {
           inputContext = context;
@@ -119,7 +113,7 @@ describe("MessageInput recovery hydration", () => {
     try {
       render(
         <ChatComposer
-          context={conversationContext()}
+          host={createTestViewHost()}
           recoveredComposes={[recovery]}
           onContext={(context) => {
             inputContext = context;
@@ -154,7 +148,7 @@ describe("MessageInput recovery hydration", () => {
 
     render(
       <ChatComposer
-        context={conversationContext()}
+        host={createTestViewHost()}
         recoveredComposes={[recovery]}
         onContext={(context) => {
           inputContext = context;
@@ -191,7 +185,7 @@ describe("MessageInput recovery hydration", () => {
 
     render(
       <ChatComposer
-        context={conversationContext()}
+        host={createTestViewHost()}
         recoveredComposes={[failedCompose("failed A"), malformed]}
         onContext={(context) => {
           inputContext = context;
@@ -227,7 +221,7 @@ describe("MessageInput recovery hydration", () => {
 
     render(
       <ChatComposer
-        context={conversationContext()}
+        host={createTestViewHost()}
         recoveredComposes={[first, second]}
         onContext={(context) => {
           inputContext = context;
@@ -294,7 +288,7 @@ describe("MessageInput recovery hydration", () => {
       try {
         const view = render(
           <ChatComposer
-            context={conversationContext()}
+            host={createTestViewHost()}
             onContext={(context) => {
               inputContext = context;
             }}

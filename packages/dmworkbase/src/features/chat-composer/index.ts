@@ -11,6 +11,7 @@ export {
 
 export * from "./domain";
 export * from "./extensions";
+export * from "./ports";
 export * from "./recovery";
 export * from "./adapters/conversation";
 export { imageBlockToPasteFile } from "./clipboard";

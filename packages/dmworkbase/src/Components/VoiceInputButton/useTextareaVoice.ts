@@ -1,6 +1,6 @@
 import { useRef, useCallback } from "react";
 import { useVoiceInput } from "../../features/chat-composer/voice";
-import type { ChatContextResult } from "../Conversation/chatContext";
+import type { ChatComposerVoiceContext } from "../../features/chat-composer/ports";
 import type { VoiceMode } from "../../Service/VoiceService";
 
 export type ReplaceMode = "all" | "selection" | "insert";
@@ -15,7 +15,7 @@ export interface UseTextareaVoiceOptions {
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
   getCurrentText?: () => string;
   enableEditMode?: boolean;
-  getChatContext?: () => ChatContextResult | Promise<ChatContextResult>;
+  getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
 }
 
 export interface UseTextareaVoiceReturn {

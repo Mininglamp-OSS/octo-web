@@ -8,7 +8,7 @@ import VoiceService, {
 import VoiceFeedback, { type AsrParams } from "../../../../Service/VoiceFeedback";
 import LocalModelService, { LocalModelConfig } from "../../../../Service/LocalModelService";
 import WKApp from "../../../../App";
-import { ChatContextResult } from "../../../../Components/Conversation/chatContext";
+import type { ChatComposerVoiceContext } from "../../ports";
 import { t } from "../../../../i18n";
 import {
   fetchAndApplySpaceSetting,
@@ -24,7 +24,7 @@ export interface UseVoiceInputOptions {
   onTranscribed?: (text: string) => void;
   onError?: (error: Error) => void;
   onRecordingFailed?: () => void;
-  getChatContext?: () => ChatContextResult | Promise<ChatContextResult>;
+  getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
   mode?: VoiceMode;
   scene?: string;
 }

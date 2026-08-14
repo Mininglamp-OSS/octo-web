@@ -179,10 +179,10 @@ export function buildMentionDropdownItems<
     orgData?: {
       home_space_id?: string;
       home_space_name?: string;
-      is_external?: boolean;
+      is_external?: number | boolean | null;
       source_space_name?: string;
       robot?: number;
-    };
+    } | null;
   },
 >(args: {
   query: string;

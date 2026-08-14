@@ -7,7 +7,6 @@ import React, {
 } from 'react'
 import AiBadge from '../../../../Components/AiBadge'
 import { useI18n } from '../../../../i18n'
-import { Dap } from '../../../../Service/Dap'
 import './MentionList.css'
 
 interface MemberItem {
@@ -27,6 +26,7 @@ interface MemberItem {
 interface MentionListProps {
   items: MemberItem[]
   command: (item: { id: string; label: string }) => void
+  onAiSelected?: () => void
 }
 
 type InteractionMode = 'keyboard' | 'mouse'
@@ -53,8 +53,7 @@ export default forwardRef((props: MentionListProps, ref) => {
     const item = props.items[index]
     if (item) {
       if (item.isBot) {
-        // 选中 AI bot:命令式补点。props 恒空,不采 bot 名/uid。
-        Dap.shared.track("input_mention_ai_selected", {})
+        props.onAiSelected?.()
       }
       props.command({
         id: item.uid || item.id,

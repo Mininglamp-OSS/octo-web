@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { Toast, Dropdown } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useTextareaVoice, { ReplaceMode, SelectionRange } from "./useTextareaVoice";
-import type { ChatContextResult } from "../Conversation/chatContext";
+import type { ChatComposerVoiceContext } from "../../features/chat-composer/ports";
 import type { VoiceMode } from "../../Service/VoiceService";
 import VoiceFeedbackNotice from "../../features/voice-input/VoiceFeedbackNotice";
 import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../../features/voice-input/useSpaceFeedbackSetting";
@@ -29,7 +29,7 @@ export interface VoiceInputButtonProps {
   getCurrentText?: () => string;
   showModeMenu?: boolean;
   size?: "sm" | "md";
-  getChatContext?: () => ChatContextResult | Promise<ChatContextResult>;
+  getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
   className?: string;
   /** Called right before recording starts (useful for cancelling pending blur commits) */
   onRecordingStart?: () => void;

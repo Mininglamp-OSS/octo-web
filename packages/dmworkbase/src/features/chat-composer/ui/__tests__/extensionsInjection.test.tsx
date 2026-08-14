@@ -1,12 +1,12 @@
 import React from "react";
 import { act, render, waitFor } from "@testing-library/react";
-import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import {
   createChatSendOutcome,
   type ChatComposerSendResult,
 } from "../../domain";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
 import { createDefaultChatComposerExtensions } from "../createDefaultChatComposerExtensions";
+import { createTestViewHost } from "./testViewHost";
 
 vi.mock("../../../../App", () => ({
   default: {
@@ -22,10 +22,6 @@ vi.mock("react-virtuoso", () => ({
   Virtuoso: () => null,
   TableVirtuoso: () => null,
 }));
-
-const context = {
-  channel: () => new Channel("channel", ChannelTypeGroup),
-} as any;
 
 describe("ChatComposer extension injection", () => {
   it("keeps the mount-time extension bundle for in-flight attempts", async () => {
@@ -55,7 +51,7 @@ describe("ChatComposer extension injection", () => {
         }),
     );
     const props = {
-      context,
+      host: createTestViewHost(),
       onSend,
       onContext: (value: MessageInputContext) => {
         inputContext = value;

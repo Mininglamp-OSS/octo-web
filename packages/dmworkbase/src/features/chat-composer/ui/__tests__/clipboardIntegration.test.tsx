@@ -1,10 +1,9 @@
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { Channel, ChannelTypeGroup } from "wukongimjssdk";
-import WKApp from "../../../../App";
 import { createChatSendOutcome } from "../../domain";
 import { encodeOctoRichTextClipboardPayload } from "../../../../Utils/richTextClipboard";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
+import { createTestViewHost } from "./testViewHost";
 
 vi.mock("../../../../App", () => ({
   default: {
@@ -20,12 +19,6 @@ vi.mock("react-virtuoso", () => ({
   Virtuoso: () => null,
   TableVirtuoso: () => null,
 }));
-
-function conversationContext() {
-  return {
-    channel: () => new Channel("channel", ChannelTypeGroup),
-  } as any;
-}
 
 function paste(
   target: Element,
@@ -53,7 +46,7 @@ describe("MessageInput clipboard integration", () => {
     const onAddPendingAttachments = vi.fn().mockResolvedValue(true);
     const view = render(
       <ChatComposer
-        context={conversationContext()}
+        host={createTestViewHost()}
         onContext={(context) => {
           inputContext = context;
         }}
@@ -83,7 +76,7 @@ describe("MessageInput clipboard integration", () => {
     );
     const view = render(
       <ChatComposer
-        context={conversationContext()}
+        host={createTestViewHost()}
         onContext={(context) => {
           inputContext = context;
         }}
@@ -121,7 +114,7 @@ describe("MessageInput clipboard integration", () => {
     );
     const view = render(
       <ChatComposer
-        context={conversationContext()}
+        host={createTestViewHost()}
         onContext={(context) => {
           inputContext = context;
         }}
@@ -169,13 +162,13 @@ describe("MessageInput clipboard integration", () => {
     } as unknown as Response;
     const onAddPendingAttachments = vi.fn().mockResolvedValue(true);
     vi.stubGlobal("fetch", fetch);
-    vi.mocked(
-      WKApp.dataSource.commonDataSource.getImageURL,
-    ).mockReturnValue("https://cdn.example.com/a.png");
+    const host = createTestViewHost("channel", 2, {
+      resolveImageUrl: () => "https://cdn.example.com/a.png",
+    });
 
     const view = render(
       <ChatComposer
-        context={conversationContext()}
+        host={host}
         onContext={(context) => {
           inputContext = context;
         }}
@@ -204,9 +197,6 @@ describe("MessageInput clipboard integration", () => {
       expect(onAddPendingAttachments).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
-      vi.mocked(
-        WKApp.dataSource.commonDataSource.getImageURL,
-      ).mockReturnValue("");
     }
   });
 });

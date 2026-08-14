@@ -1,12 +1,11 @@
 import React from "react";
 import { act, render, waitFor } from "@testing-library/react";
 import {
-  Channel,
-  ChannelTypeGroup,
   type Subscriber,
 } from "wukongimjssdk";
 import { createChatSendOutcome } from "../../domain";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
+import { createTestViewHost } from "./testViewHost";
 
 vi.mock("../../../../App", () => ({
   default: {
@@ -22,12 +21,6 @@ vi.mock("react-virtuoso", () => ({
   Virtuoso: () => null,
   TableVirtuoso: () => null,
 }));
-
-function conversationContext(channelId: string) {
-  return {
-    channel: () => new Channel(channelId, ChannelTypeGroup),
-  } as any;
-}
 
 function member(uid: string, name: string): Subscriber {
   return { uid, name, orgData: {} } as Subscriber;
@@ -47,7 +40,7 @@ describe("ChatComposer mention isolation", () => {
     render(
       <>
         <ChatComposer
-          context={conversationContext("first")}
+          host={createTestViewHost("first")}
           members={[member("alice", "Alice")]}
           onContext={(context) => {
             firstContext = context;
@@ -55,7 +48,7 @@ describe("ChatComposer mention isolation", () => {
           onSend={firstSend}
         />
         <ChatComposer
-          context={conversationContext("second")}
+          host={createTestViewHost("second")}
           members={[member("bob", "Bob")]}
           onContext={(context) => {
             secondContext = context;

@@ -4,12 +4,11 @@ import { Toast, Dropdown } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useVoiceInput from "../../adapters/voice/useVoiceInput";
 import "./voiceInput.css";
-import { ChatContextResult } from "../../../../Components/Conversation/chatContext";
+import type { ChatComposerVoiceContext } from "../../ports";
 import { VoiceMode } from "../../../../Service/VoiceService";
 import VoiceFeedbackNotice from "../../../voice-input/VoiceFeedbackNotice";
 import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../../../voice-input/useSpaceFeedbackSetting";
 import WKApp from "../../../../App";
-import { Dap } from "../../../../Service/Dap";
 import { useI18n } from "../../../../i18n";
 
 type ReplaceMode = "all" | "selection" | "insert";
@@ -21,6 +20,7 @@ interface SelectionRange {
 }
 
 interface VoiceInputIndicatorProps {
+  onRecordingStarted?: () => void;
   onTranscribed: (
     text: string,
     replaceMode: ReplaceMode,
@@ -31,7 +31,7 @@ interface VoiceInputIndicatorProps {
   getSelectedText?: () => string | undefined;
   /** 获取当前选区的 ProseMirror 位置 */
   getSelectionRange?: () => SelectionRange | undefined;
-  getChatContext?: () => ChatContextResult | Promise<ChatContextResult>;
+  getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
   /** 判断当前输入框是否处于活动状态（用于避免多个输入框同时响应语音快捷键） */
   checkIsInputActive?: () => boolean;
 }
@@ -52,6 +52,7 @@ const VOICE_MODES: { value: VoiceMode; labelKey: string; description: string }[]
   ];
 
 export default function VoiceInputIndicator({
+  onRecordingStarted,
   onTranscribed,
   getCurrentText,
   getSelectedText,
@@ -204,10 +205,9 @@ export default function VoiceInputIndicator({
     }
     if (isRecording) {
       setIsPreparing(false);
-      // 录音真正开始:命令式补点。props 恒空。
-      Dap.shared.track("input_voice_recording_started", {});
+      onRecordingStarted?.();
     }
-  }, [isRecording, cancelRecording]);
+  }, [isRecording, cancelRecording, onRecordingStarted]);
 
   // Calculate floating indicator position when recording starts
   const updateFloatingPosition = useCallback(() => {

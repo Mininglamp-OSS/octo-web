@@ -1,8 +1,8 @@
 import React from "react";
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { createChatSendOutcome } from "../../domain";
 import ChatComposer, { type MessageInputContext } from "../ChatComposer";
+import { createTestViewHost } from "./testViewHost";
 
 vi.mock("../../../../App", () => ({
   default: {
@@ -19,13 +19,40 @@ vi.mock("react-virtuoso", () => ({
   TableVirtuoso: () => null,
 }));
 
-function conversationContext() {
-  return {
-    channel: () => new Channel("channel", ChannelTypeGroup),
-  } as any;
-}
-
 describe("MessageInput keyboard integration", () => {
+  it("renders channel titles supplied by the view host", async () => {
+    let publishTitle: ((title: string) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const host = createTestViewHost("channel", 2, {
+      getChannelTitle: () => "Initial room",
+      subscribeChannelTitle: (listener) => {
+        publishTitle = listener;
+        return unsubscribe;
+      },
+    });
+    const view = render(<ChatComposer host={host} />);
+
+    await waitFor(() =>
+      expect(
+        view.container
+          .querySelector(".ProseMirror p")
+          ?.getAttribute("data-placeholder"),
+      ).toContain("Initial room"),
+    );
+
+    act(() => publishTitle?.("Renamed room"));
+    await waitFor(() =>
+      expect(
+        view.container
+          .querySelector(".ProseMirror p")
+          ?.getAttribute("data-placeholder"),
+      ).toContain("Renamed room"),
+    );
+
+    view.unmount();
+    expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
   it("does not send when Enter confirms an IME composition", async () => {
     let inputContext: MessageInputContext | undefined;
     const onSend = vi.fn(() =>
@@ -33,7 +60,7 @@ describe("MessageInput keyboard integration", () => {
     );
     const view = render(
       <ChatComposer
-        context={conversationContext()}
+        host={createTestViewHost()}
         onContext={(context) => {
           inputContext = context;
         }}

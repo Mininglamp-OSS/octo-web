@@ -2,7 +2,11 @@ import { ReactRenderer } from '@tiptap/react'
 import { escapeForRegEx } from '@tiptap/core'
 import tippy, { Instance as TippyInstance } from 'tippy.js'
 import MentionList from '../../ui/suggestions/MentionList'
-import { Dap } from '../../../../Service/Dap'
+
+interface MentionSuggestionEvents {
+  onOpened?: () => void
+  onAiSelected?: () => void
+}
 
 // 自定义 findSuggestionMatch：去掉默认的前缀空格限制，允许 @ 在任意位置触发。
 // 其余逻辑（range 计算、query 提取）与 Tiptap 官方实现完全一致，不影响
@@ -41,6 +45,7 @@ function findSuggestionMatchAnyPrefix(config: any) {
 export function createMentionSuggestion(
   itemsFn: ({ query }: { query: string }) => any[],
   onActiveChange?: (active: boolean) => void,
+  events?: MentionSuggestionEvents,
 ) {
   return {
     items: itemsFn,
@@ -55,10 +60,9 @@ export function createMentionSuggestion(
           if (!props.items?.length) return
 
           onActiveChange?.(true)
-          // mention 面板打开:命令式补点。props 恒空,不采关键词/候选。
-          Dap.shared.track("input_mention_opened", {})
+          events?.onOpened?.()
           component = new ReactRenderer(MentionList, {
-            props,
+            props: { ...props, onAiSelected: events?.onAiSelected },
             editor: props.editor,
           })
 

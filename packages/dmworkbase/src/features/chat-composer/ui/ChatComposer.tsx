@@ -11,13 +11,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import TiptapMention from "@tiptap/extension-mention";
 import { createMentionSuggestion } from "../adapters/tiptap/mentionSuggestion";
 import { createEmojiSuggestionExtension } from "../adapters/tiptap/emojiSuggestion";
-import ConversationContext from "../../../Components/Conversation/context";
 import clazz from "classnames";
-import WKSDK, { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wukongimjssdk";
-import hotkeys from "hotkeys-js";
-import WKApp from "../../../App";
-import { Dap } from "../../../Service/Dap";
-import { resolveExternalForViewer } from "../../../Utils/externalViewer";
 import {
   MemberInfo,
   buildMemberInfos,
@@ -28,7 +22,6 @@ import "./ChatComposer.css";
 import { Notification } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../../../Components/SlashCommandMenu";
 import VoiceInputIndicator from "./voice/VoiceInputIndicator";
-import { ChatContextResult } from "../../../Components/Conversation/chatContext";
 import { Maximize2, Minimize2 } from "lucide-react";
 import IconClick from "../../../Components/IconClick";
 import mentionAllIcon from "./assets/mention.png";
@@ -100,11 +93,11 @@ import {
 } from "../clipboard/clipboardPipeline";
 import { createComposerStarterKit } from "../adapters/tiptap/editorKit";
 import { decideComposerKeyboard } from "../keyboard";
-import {
-  addImChannelInfoListener,
-  fetchImChannelInfo,
-  getImChannelInfo,
-} from "../../../im-runtime/channelRuntime";
+import type {
+  ChatComposerMember,
+  ChatComposerViewHost,
+  ChatComposerVoiceContext,
+} from "../ports";
 
 import { MAX_MESSAGE_LENGTH } from "../domain/constants";
 
@@ -112,8 +105,8 @@ import { MAX_MESSAGE_LENGTH } from "../domain/constants";
 const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
 
 /** 根据频道类型和名称生成 placeholder 文本 */
-function buildPlaceholder(channel: Channel, name: string, t: typeof translate): string {
-  if (channel.channelType === ChannelTypePerson) {
+function buildPlaceholder(isDirect: boolean, name: string, t: typeof translate): string {
+  if (isDirect) {
     return name
       ? t("base.messageInput.placeholder.directWithName", { values: { name } })
       : t("base.messageInput.placeholder.direct");
@@ -172,7 +165,7 @@ function escapeTrailingMarkdownImageBang(text: string): string {
 function extractOrderedBlocks(
   editorInstance: any,
   attachmentFilesMap: Map<string, File>,
-  members: readonly Subscriber[] | undefined,
+  members: readonly ChatComposerMember[] | undefined,
   composePartRegistry: EditorComposePartRegistry,
 ): EditorContentBlock[] {
   if (!editorInstance) return [];
@@ -270,22 +263,23 @@ function stripInvisibleChars(text: string): string {
  *
  * 注意：detectedValue 是用户自己刚粘贴的明文，只在本机本地预填，不经任何网络/聊天流。
  */
-function notifySecretPaste(detectedValue: string): void {
+function notifySecretPaste(
+  detectedValue: string,
+  openSecretCreate: (value: string) => void,
+): void {
   Notification.warning({
     className: "wk-octo-notification",
     title: <span className="wk-octo-notification__title">{translate("base.secrets.pasteGuard.title")}</span>,
     content: <span className="wk-octo-notification__body">{translate("base.secrets.pasteGuard.content")}</span>,
     duration: 8,
     showClose: true,
-    onClick: () => {
-      WKApp.mittBus.emit("wk:open-secrets", { create: true, value: detectedValue });
-    },
+    onClick: () => openSecretCreate(detectedValue),
   });
 }
 
 
 export interface ChatComposerProps {
-  context: ConversationContext;
+  host: ChatComposerViewHost;
   /** Instance-scoped extensions selected once when this composer mounts. */
   extensions?: DefaultChatComposerExtensions<any>;
   /**
@@ -321,7 +315,7 @@ export interface ChatComposerProps {
     replyMessage?: unknown;
     handlerType: number;
   }) => void;
-  members?: Array<Subscriber>;
+  members?: Array<ChatComposerMember>;
   onInputRef?: any;
   onAddAttachment?: (
     fnc: (files: File[], source?: "paste" | "upload") => void | Promise<void>
@@ -337,7 +331,7 @@ export interface ChatComposerProps {
   onContext?: (ctx: MessageInputContext) => void;
   topView?: JSX.Element;
   botCommands?: BotCommand[];
-  getChatContext?: () => ChatContextResult | Promise<ChatContextResult>;
+  getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
   onExpandChange?: (expanded: boolean) => void;
   /** Called when Alt+Enter is pressed in the editor */
   onAltEnter?: () => void;
@@ -391,7 +385,7 @@ import type { SendParseMember } from "../adapters/tiptap/mentionSendParse";
 // 仅当广播 sentinel 携带 node-origin 信任标记时才路由广播，伪造的字面文本降级为纯文本。
 function formatMentionTextV2(
   text: string,
-  subscribers: readonly Subscriber[] | undefined,
+  subscribers: readonly ChatComposerMember[] | undefined,
 ): {
   content: string;
   mention?: MentionModel;
@@ -534,6 +528,7 @@ function createAttachmentId(file: File): string {
 
 const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const { t } = useI18n();
+  const channelSnapshot = props.host.getChannel();
   const [extensions] = useState(() =>
     props.extensions ?? createDefaultChatComposerExtensions(),
   );
@@ -542,7 +537,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const previousScopeRef = useRef<string>("all");
   const [attachmentStore] = useState(
     () => new ChatComposerAttachmentStore<TopAttachmentItem>(),
   );
@@ -581,51 +575,41 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
-    const channel = props.context.channel();
-    const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
-    return buildPlaceholder(channel, channelInfo?.title || "", t);
+    return buildPlaceholder(
+      channelSnapshot.isDirect,
+      props.host.getChannelTitle() || "",
+      t,
+    );
   });
 
   useEffect(() => {
-    const channel = props.context.channel();
     let aborted = false;
+    const channelKey = channelSnapshot.key;
 
     const updateName = (name: string) => {
       if (aborted) return;
-      setPlaceholder(buildPlaceholder(channel, name, t));
+      if (props.host.getChannel().key !== channelKey) return;
+      setPlaceholder(buildPlaceholder(channelSnapshot.isDirect, name, t));
     };
 
-    // 监听 channelInfo 更新（SDK fetch 完成后会通知）
-    const listener = (channelInfo: ChannelInfo) => {
-      if (channelInfo.channel.isEqual(channel)) {
-        updateName(channelInfo.title || "");
-      }
-    };
-    const unsubscribeChannelInfo = addImChannelInfoListener(WKSDK.shared(), listener);
-
-    // 检查本地缓存；没有则主动 fetch（fetch 完成后 listener 会收到通知）
-    const cached = getImChannelInfo(WKSDK.shared(), channel);
-    if (cached) {
-      updateName(cached.title || "");
-    } else {
-      fetchImChannelInfo(WKSDK.shared(), channel).catch(() => {});
-    }
+    updateName(props.host.getChannelTitle() || "");
+    const unsubscribeChannelTitle = props.host.subscribeChannelTitle(updateName);
 
     return () => {
       aborted = true;
-      unsubscribeChannelInfo();
+      unsubscribeChannelTitle();
     };
-  }, [props.context, t]);
+  }, [channelSnapshot.isDirect, channelSnapshot.key, props.host, t]);
 
   const memberInfos = useMemo<MemberInfo[]>(
     () => buildMemberInfos(props.members),
     [props.members],
   );
+  const placeholderRef = useRef(placeholder);
+  placeholderRef.current = placeholder;
 
   const localMembersRef = useRef(props.members);
-  const isDirectChannelRef = useRef(
-    props.context.channel().channelType === ChannelTypePerson,
-  );
+  const isDirectChannelRef = useRef(channelSnapshot.isDirect);
   const sendRef = useRef<(() => Promise<ChatComposerSendResult>) | null>(null);
   // 键盘/Enter 是 fire-and-forget 调用：send() 的同步阶段（快照/清空/取 target）
   // 若抛错会变成 unhandled rejection，这里统一兜住并提示 (#1280 review)。
@@ -658,8 +642,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   >(null);
   const pasteLifecycleRef = useRef(0);
 
-  isDirectChannelRef.current =
-    props.context.channel().channelType === ChannelTypePerson;
+  isDirectChannelRef.current = channelSnapshot.isDirect;
 
   // 更新 membersRef
   useEffect(() => {
@@ -676,7 +659,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     extensions: [
       createComposerStarterKit(),
       Placeholder.configure({
-        placeholder,
+        placeholder: () => placeholderRef.current,
       }),
       AttachmentNode,
       TiptapMention.configure({
@@ -694,23 +677,21 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
               query,
               members: localMembersRef.current,
               iconResolver: (member) =>
-                WKApp.shared.avatarChannel(
-                  new Channel(member.uid, ChannelTypePerson),
-                ),
+                props.host.resolveMemberAvatar(member.uid),
               externalResolver: (member) =>
-                resolveExternalForViewer({
-                  homeSpaceId: member.orgData?.home_space_id,
-                  homeSpaceName: member.orgData?.home_space_name,
-                  isExternalLegacy: member.orgData?.is_external,
-                  sourceSpaceNameLegacy: member.orgData?.source_space_name,
-                }),
+                props.host.resolveMemberExternal(member),
               stickyIcon: mentionAllIcon,
               includeBroadcastMentions: !isDirectChannelRef.current,
             });
           },
           (active) => {
             mentionActiveRef.current = active;
-          }
+          },
+          {
+            onOpened: () => props.host.track("input_mention_opened"),
+            onAiSelected: () =>
+              props.host.track("input_mention_ai_selected"),
+          },
         ),
         renderLabel({ options, node }) {
           return `@${node.attrs.label}`;
@@ -734,7 +715,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         );
         if (decision.kind === "block-secret") {
           event.preventDefault();
-          notifySecretPaste(decision.value);
+          notifySecretPaste(decision.value, (value) =>
+            props.host.openSecretCreate(value),
+          );
           return true;
         }
         return (
@@ -778,25 +761,16 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   });
 
   useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    editor.view.dispatch(editor.state.tr.setMeta("chatComposerPlaceholder", true));
+  }, [editor, placeholder]);
+
+  useEffect(() => {
     pasteLifecycleRef.current += 1;
     return () => {
       pasteLifecycleRef.current += 1;
     };
-  }, [editor, props.context]);
-
-  // 设置hotkeys scope
-  useEffect(() => {
-    const scope = "messageInput";
-    previousScopeRef.current = hotkeys.getScope();
-    hotkeys.filter = function (event) {
-      return true;
-    };
-    hotkeys.setScope(scope);
-
-    return () => {
-      hotkeys.setScope(previousScopeRef.current);
-    };
-  }, []);
+  }, [channelSnapshot.key, editor]);
 
   // 使用模块级别的函数
   const isImageFile = isImageFileType;
@@ -933,9 +907,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           imageBlockToFile: (block) =>
             imageBlockToPasteFile(
               block,
-              WKApp.dataSource.commonDataSource.getImageURL.bind(
-                WKApp.dataSource.commonDataSource
-              )
+              (url, opts) => props.host.resolveImageUrl(url, opts),
             ),
           // Validate pasted mentions against the live channel roster so a
           // forged clipboard payload cannot inject mentions for non-members
@@ -1298,12 +1270,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       {
         host: {
           channelKey: () => {
-            const channel = props.context.channel();
-            return `${channel.channelID}:${channel.channelType}`;
+            return props.host.getChannel().key;
           },
           isChannelActive: (channelKey) => {
-            const channel = props.context.channel();
-            return `${channel.channelID}:${channel.channelType}` === channelKey;
+            return props.host.getChannel().key === channelKey;
           },
           captureSendTarget: () => props.onCaptureSendTarget?.(),
           captureSendDraft: () => props.onCaptureSendDraft?.(),
@@ -1532,7 +1502,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const toggleExpand = useCallback(() => {
     const next = !expanded;
     if (next) {
-      Dap.shared.track("input_expanded", {});
+      props.host.track("input_expanded");
     }
     props.onExpandChange?.(next);
     setExpanded(next);
@@ -1731,6 +1701,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
             {/* 语音输入 */}
             <VoiceInputIndicator
+              onRecordingStarted={() =>
+                props.host.track("input_voice_recording_started")
+              }
               onTranscribed={(
                 text: string,
                 replaceMode: "all" | "selection" | "insert",

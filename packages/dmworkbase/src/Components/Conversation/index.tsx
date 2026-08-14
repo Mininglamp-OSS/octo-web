@@ -61,6 +61,7 @@ import {
   type ComposeRecoveryRecord,
   type RecoveredComposeHydration,
   type ChatSendSettlement,
+  type ChatComposerViewHost,
   type EditorContentBlock,
   type MessageInputContext,
   type PendingSendDraft,
@@ -110,6 +111,7 @@ import {
 } from "../../Messages/RichText/RichTextContent";
 import { formatMessageTimestamp } from "../../Utils/time";
 import { isSafeUrl } from "../../Utils/security";
+import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import {
   isConversationViewportVisible,
   isOwnedConversationSingleton,
@@ -406,6 +408,55 @@ export class Conversation
   private readonly _composeRecoveryOwner = Symbol("composeRecoveryOwner");
   private readonly _chatComposerExtensions =
     createDefaultChatComposerExtensions<Message>();
+  private readonly _chatComposerViewHost: ChatComposerViewHost = {
+    track: (event) => Dap.shared.track(event, {}),
+    getChannel: () => {
+      const channel = this.channel();
+      return {
+        id: channel.channelID,
+        type: channel.channelType,
+        key: `${channel.channelID}:${channel.channelType}`,
+        isDirect: channel.channelType === ChannelTypePerson,
+      };
+    },
+    getChannelTitle: () =>
+      getImChannelInfo(WKSDK.shared(), this.channel())?.title,
+    subscribeChannelTitle: (listener) => {
+      const channel = this.channel();
+      const channelInfoListener = (channelInfo: ChannelInfo) => {
+        if (channelInfo.channel.isEqual(channel)) {
+          listener(channelInfo.title || "");
+        }
+      };
+      const unsubscribe = addImChannelInfoListener(
+        WKSDK.shared(),
+        channelInfoListener,
+      );
+      const cached = getImChannelInfo(WKSDK.shared(), channel);
+      if (cached) listener(cached.title || "");
+      else fetchImChannelInfo(WKSDK.shared(), channel).catch(() => {});
+      return unsubscribe;
+    },
+    resolveMemberAvatar: (uid) =>
+      WKApp.shared.avatarChannel(new Channel(uid, ChannelTypePerson)),
+    resolveMemberExternal: (member) =>
+      resolveExternalForViewer({
+        homeSpaceId: member.orgData?.home_space_id,
+        homeSpaceName: member.orgData?.home_space_name,
+        isExternalLegacy:
+          member.orgData?.is_external === true
+            ? 1
+            : member.orgData?.is_external === false
+              ? 0
+              : member.orgData?.is_external,
+        sourceSpaceNameLegacy: member.orgData?.source_space_name,
+      }),
+    resolveImageUrl: (url, opts) =>
+      WKApp.dataSource.commonDataSource.getImageURL(url, opts),
+    openSecretCreate: (value) => {
+      WKApp.mittBus.emit("wk:open-secrets", { create: true, value });
+    },
+  };
   private readonly _sendChatComposerRequest =
     createConversationChatSendHandler<Message>(
       {
@@ -3119,7 +3170,7 @@ export class Conversation
                         );
                       }}
                       toolbar={this.chatToolbarUI()}
-                      context={this}
+                      host={this._chatComposerViewHost}
                       getChatContext={async () => {
                         const { channel } = this.props;
                         await this.vm.ensureSubscribersLoaded();
