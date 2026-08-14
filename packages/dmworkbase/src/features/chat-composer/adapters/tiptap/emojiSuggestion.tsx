@@ -81,6 +81,7 @@ export function createEmojiSuggestionExtension(
     render: () => {
       let component: ReactRenderer | null = null
       let popup: TippyInstance | null = null
+      let lastReferenceRect: DOMRect | null = null
       let lifecycleEditor: Editor | null = null
       let visible = false
       let disposed = false
@@ -130,11 +131,19 @@ export function createEmojiSuggestionExtension(
         }
       }
 
+      const createTrackedReference = (
+        clientRect: () => DOMRect | null
+      ) => () => {
+        const referenceRect = clientRect()
+        if (referenceRect) lastReferenceRect = referenceRect
+        return referenceRect ?? lastReferenceRect
+      }
+
       const ensurePopup = (props: any) => {
         if (popup || !component || !props.clientRect) return
         popup =
           tippy('body', {
-            getReferenceClientRect: props.clientRect,
+            getReferenceClientRect: createTrackedReference(props.clientRect),
             appendTo: () => document.body,
             content: component.element,
             showOnCreate: false,
@@ -159,7 +168,9 @@ export function createEmojiSuggestionExtension(
         ensureComponent(props)
         ensurePopup(props)
         if (popup && props.clientRect) {
-          popup.setProps({ getReferenceClientRect: props.clientRect })
+          popup.setProps({
+            getReferenceClientRect: createTrackedReference(props.clientRect),
+          })
         }
         setVisible(Boolean(props.items?.length))
       }
@@ -183,6 +194,7 @@ export function createEmojiSuggestionExtension(
         component?.destroy()
         popup = null
         component = null
+        lastReferenceRect = null
       }
 
       const scheduleDestroy = () => {
@@ -232,6 +244,11 @@ export function createEmojiSuggestionExtension(
         cancelPendingExit()
         bindEditorLifecycle(props.editor)
         propsEpoch.set(props, lifecycleEpoch)
+        if (popup && props.clientRect) {
+          popup.setProps({
+            getReferenceClientRect: createTrackedReference(props.clientRect),
+          })
+        }
       }
 
       return {
@@ -276,6 +293,10 @@ export function createEmojiSuggestionExtension(
           if (!isOriginalQueryIntact(props)) {
             destroy()
             return
+          }
+          if (popup && lastReferenceRect) {
+            const pinnedRect = lastReferenceRect
+            popup.setProps({ getReferenceClientRect: () => pinnedRect })
           }
           // Pointer focus can briefly move the selection outside the matched
           // query before restoring it in the same browser event. Deferring the

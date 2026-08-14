@@ -262,12 +262,21 @@ describe("emoji suggestion popup lifecycle", () => {
     createEditor();
     editor.commands.insertContent("使命");
     await flushSuggestionUpdates();
+    const decoration = element.querySelector(".suggestion") as HTMLElement;
+    const activeRect = new DOMRect(24, 48, 2, 18);
+    vi.spyOn(decoration, "getBoundingClientRect").mockReturnValue(activeRect);
+    const liveReference =
+      mocks.popups[0].setProps.mock.calls.at(-1)?.[0].getReferenceClientRect;
+    expect(liveReference?.()).toBe(activeRect);
 
     editor.view.dispatch(
       editor.state.tr.setSelection(TextSelection.atStart(editor.state.doc))
     );
     await Promise.resolve();
     expect(mocks.popups[0].destroy).not.toHaveBeenCalled();
+    const pinnedReference =
+      mocks.popups[0].setProps.mock.calls.at(-1)?.[0].getReferenceClientRect;
+    expect(pinnedReference?.()).toBe(activeRect);
 
     await new Promise<void>((resolve) => {
       requestAnimationFrame(() => {
@@ -282,6 +291,50 @@ describe("emoji suggestion popup lifecycle", () => {
     expect(mocks.popups).toHaveLength(1);
     expect(mocks.popups[0].show).toHaveBeenCalledOnce();
     expect(mocks.popups[0].hide).not.toHaveBeenCalled();
+    expect(mocks.popups[0].destroy).not.toHaveBeenCalled();
+  });
+
+  it("restores live positioning before reactivated items resolve", async () => {
+    createEditor();
+    editor.commands.insertContent("使命");
+    await flushSuggestionUpdates();
+
+    const initialDecoration = element.querySelector(
+      ".suggestion"
+    ) as HTMLElement;
+    const initialRect = new DOMRect(10, 20, 2, 18);
+    vi.spyOn(initialDecoration, "getBoundingClientRect").mockReturnValue(
+      initialRect
+    );
+    const initialReference =
+      mocks.popups[0].setProps.mock.calls.at(-1)?.[0].getReferenceClientRect;
+    expect(initialReference?.()).toBe(initialRect);
+
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.atStart(editor.state.doc))
+    );
+    await Promise.resolve();
+
+    mocks.deferItems = true;
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.atEnd(editor.state.doc))
+    );
+    expect(mocks.itemRequests).toHaveLength(1);
+
+    const restoredDecoration = element.querySelector(
+      ".suggestion"
+    ) as HTMLElement;
+    const restoredRect = new DOMRect(30, 60, 2, 18);
+    vi.spyOn(restoredDecoration, "getBoundingClientRect").mockReturnValue(
+      restoredRect
+    );
+    const restoredReference =
+      mocks.popups[0].setProps.mock.calls.at(-1)?.[0].getReferenceClientRect;
+    expect(restoredReference?.()).toBe(restoredRect);
+
+    mocks.itemRequests[0].resolve();
+    await flushSuggestionUpdates();
+
     expect(mocks.popups[0].destroy).not.toHaveBeenCalled();
   });
 
