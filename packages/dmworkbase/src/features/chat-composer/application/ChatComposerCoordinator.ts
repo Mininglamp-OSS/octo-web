@@ -61,7 +61,9 @@ export class ChatComposerCoordinator<
     }
     const sendTarget = host.captureSendTarget();
     const channelKey = host.channelKey();
-    this.controller.resetRestoreOffsets();
+    if (this.controller.pendingSendCount() === 0) {
+      this.controller.resetRestoreOffsets();
+    }
     const expandedAtSend = host.getExpanded();
 
     let consumed;
@@ -113,8 +115,7 @@ export class ChatComposerCoordinator<
             text: input.text,
             mention: input.mention,
             topFiles: input.topFiles.length > 0 ? input.topFiles : undefined,
-            editorBlocks:
-              editorBlocks.length > 0 ? editorBlocks : undefined,
+            editorBlocks: editorBlocks.length > 0 ? editorBlocks : undefined,
             sendTarget,
             sendDraft,
             sendProgress,

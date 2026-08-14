@@ -78,8 +78,8 @@ describe("ChatComposerCoordinator", () => {
           ],
           pendingAttachments: [],
         },
-        { host: host(), editor },
-      ),
+        { host: host(), editor }
+      )
     ).resolves.toEqual({
       kind: "rejected",
       editorConsumed: false,
@@ -91,7 +91,7 @@ describe("ChatComposerCoordinator", () => {
 
   it("rejects cloneable malformed blocks before consuming the editor", async () => {
     const coordinator = new ChatComposerCoordinator(
-      new ChatComposerController(),
+      new ChatComposerController()
     );
     const editor: ChatComposerEditorPort = {
       consume: vi.fn((context) => consumed(context)),
@@ -112,8 +112,8 @@ describe("ChatComposerCoordinator", () => {
           ],
           pendingAttachments: [],
         },
-        { host: host(), editor },
-      ),
+        { host: host(), editor }
+      )
     ).resolves.toEqual({
       kind: "rejected",
       editorConsumed: false,
@@ -375,6 +375,80 @@ describe("ChatComposerCoordinator", () => {
       { text: "B", target: { id: "target-B" }, draftRevision: 2 },
     ]);
     expect(controller.pendingSendCount()).toBe(0);
+  });
+
+  it("keeps restore offsets across interleaved queued submissions", async () => {
+    const controller = new ChatComposerController();
+    const coordinator = new ChatComposerCoordinator(controller);
+    const restored: Array<{ label: string; blockOffset: number }> = [];
+    let resolveA!: (value: ReturnType<typeof createChatSendOutcome>) => void;
+    let resolveB!: (value: ReturnType<typeof createChatSendOutcome>) => void;
+    let markBStarted!: () => void;
+    const aResult = new Promise<ReturnType<typeof createChatSendOutcome>>(
+      (resolve) => {
+        resolveA = resolve;
+      }
+    );
+    const bResult = new Promise<ReturnType<typeof createChatSendOutcome>>(
+      (resolve) => {
+        resolveB = resolve;
+      }
+    );
+    const bStarted = new Promise<void>((resolve) => {
+      markBStarted = resolve;
+    });
+
+    const submit = (label: "A" | "B" | "C") =>
+      coordinator.submit(
+        {
+          text: label,
+          topFiles: [],
+          editorBlocks: [],
+          pendingAttachments: [],
+        },
+        {
+          host: host({
+            send: async () => {
+              if (label === "A") return aResult;
+              if (label === "B") {
+                markBStarted();
+                return bResult;
+              }
+              return createChatSendOutcome({ editorConsumed: true });
+            },
+          }),
+          editor: {
+            consume: (context) => {
+              const value = consumed(context);
+              value.compose.restoreEditor = () => {
+                restored.push({
+                  label,
+                  blockOffset: context.getRestoreOffsets().blocks,
+                });
+                context.onRestored({ blocks: 1, topAttachments: 0 });
+              };
+              return value;
+            },
+            handoffRecovery: vi.fn(),
+          },
+        }
+      );
+
+    const first = submit("A");
+    const second = submit("B");
+    resolveA(createChatSendOutcome());
+    await first;
+    await bStarted;
+
+    const third = submit("C");
+    resolveB(createChatSendOutcome());
+    await second;
+    await third;
+
+    expect(restored).toEqual([
+      { label: "A", blockOffset: 0 },
+      { label: "B", blockOffset: 1 },
+    ]);
   });
 
   it("restores a captured target when editor consumption throws", async () => {
