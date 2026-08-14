@@ -444,6 +444,8 @@ describe("MessageInput recovery hydration", () => {
     );
     await waitFor(() => expect(inputContext).toBeDefined());
 
+    act(() => inputContext?.insertText("sent body"));
+
     await act(async () => {
       await inputContext?.addAttachment([first, second], "upload");
     });
@@ -473,6 +475,7 @@ describe("MessageInput recovery hydration", () => {
     expect(onComposeRecovery).toHaveBeenCalledOnce();
     expect(onComposeRecovery).toHaveBeenCalledWith(
       expect.objectContaining({
+        snapshot: { type: "doc", content: [] },
         topAttachments: [
           expect.objectContaining({ id: secondTop.id, file: second }),
         ],

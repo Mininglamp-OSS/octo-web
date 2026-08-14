@@ -180,14 +180,20 @@ export class ChatComposerCoordinator<
     const failedSteps = new Set(
       settlement.restoreErrors.map(({ step }) => step)
     );
-    const unavailable = settlement.restoreErrors.some(
-      ({ error }) => error instanceof ComposeRestoreUnavailableError
+    const unavailableSteps = new Set(
+      settlement.restoreErrors
+        .filter(
+          ({ error }) => error instanceof ComposeRestoreUnavailableError
+        )
+        .map(({ step }) => step)
     );
+    const editorUnavailable =
+      unavailableSteps.has("restoreEditor") ||
+      unavailableSteps.has("restoreEditorBlocks");
     const editorFailed =
-      unavailable ||
       failedSteps.has("restoreEditor") ||
       failedSteps.has("restoreEditorBlocks");
-    const topFailed = unavailable || failedSteps.has("restoreTopAttachments");
+    const topFailed = failedSteps.has("restoreTopAttachments");
     if (!editorFailed && !topFailed) return undefined;
 
     const partialEditorRestore = failedSteps.has("restoreEditorBlocks");
@@ -200,7 +206,9 @@ export class ChatComposerCoordinator<
     return {
       channelKey,
       attemptId,
-      snapshot: consumed.recovery.snapshot,
+      snapshot: editorFailed
+        ? consumed.recovery.snapshot
+        : { type: "doc", content: [] },
       editorAttachments: editorFailed
         ? consumed.recovery.editorAttachments.filter(
             ({ id }) => !partialEditorRestore || unsentEditorPartIds.has(id)
@@ -220,13 +228,13 @@ export class ChatComposerCoordinator<
         ? settlement.outcome.unsentEditorBlocks
         : undefined,
       sendTarget:
-        unavailable && settlement.outcome.restoreSendTarget && sendTarget
+        editorUnavailable && settlement.outcome.restoreSendTarget && sendTarget
           ? {
               replyMessage: sendTarget.replyMessage,
               handlerType: sendTarget.handlerType,
             }
           : undefined,
-      expanded: unavailable && expandedAtSend,
+      expanded: editorUnavailable && expandedAtSend,
     };
   }
 

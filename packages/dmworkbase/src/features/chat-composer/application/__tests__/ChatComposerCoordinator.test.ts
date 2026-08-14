@@ -287,6 +287,83 @@ describe("ChatComposerCoordinator", () => {
     );
   });
 
+  it("does not recover sent editor content when only top restoration is unavailable", async () => {
+    const handoffRecovery = vi.fn(() => true);
+    const handoffEditorRecovery = vi.fn();
+    const first = new File(["first"], "first.pdf");
+    const second = new File(["second"], "second.pdf");
+    const coordinator = new ChatComposerCoordinator(
+      new ChatComposerController()
+    );
+    const editor: ChatComposerEditorPort = {
+      consume: (context) => {
+        const value = consumed(context, {
+          ids: { topIds: ["top-1", "top-2"], editorPartIds: [] },
+          recovery: {
+            snapshot: {
+              type: "doc",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "sent body" }],
+                },
+              ],
+            },
+            editorAttachments: [],
+            editorObjectUrls: [],
+            topAttachments: [
+              { id: "top-1", file: first },
+              { id: "top-2", file: second },
+            ],
+          },
+        });
+        value.compose.restoreTopAttachments = () => {
+          throw new ComposeRestoreUnavailableError();
+        };
+        return value;
+      },
+      handoffRecovery: handoffEditorRecovery,
+    };
+
+    await coordinator.submit(
+      {
+        text: "sent body",
+        topFiles: [
+          { id: "top-1", file: first },
+          { id: "top-2", file: second },
+        ],
+        editorBlocks: [],
+        pendingAttachments: [],
+      },
+      {
+        host: host({
+          send: async () =>
+            createChatSendOutcome({
+              editorConsumed: true,
+              consumedTopIds: ["top-1"],
+            }),
+          handoffRecovery,
+        }),
+        editor,
+      }
+    );
+
+    expect(handoffRecovery).toHaveBeenCalledWith({
+      channelKey: "channel-1:2",
+      attemptId: expect.any(String),
+      snapshot: { type: "doc", content: [] },
+      editorAttachments: [],
+      editorObjectUrls: [],
+      topAttachments: [{ id: "top-2", file: second }],
+      editorBlocks: undefined,
+      sendTarget: undefined,
+      expanded: false,
+    });
+    expect(handoffEditorRecovery).toHaveBeenCalledWith(
+      handoffRecovery.mock.calls[0][0]
+    );
+  });
+
   it("consumes consecutive attempts synchronously and sends them in order", async () => {
     const controller = new ChatComposerController();
     const coordinator = new ChatComposerCoordinator(controller);
