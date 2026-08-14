@@ -25,7 +25,20 @@ vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/voice", () =
   },
 }));
 
-import useTextareaVoice from "@octo/base/src/Components/VoiceInputButton/useTextareaVoice";
+import useTextareaVoice, {
+  type UseTextareaVoiceOptions,
+} from "@octo/base/src/Components/VoiceInputButton/useTextareaVoice";
+
+const voiceHost = {
+  getSpaceId: () => "test-space-id",
+  subscribeSpaceChange: () => () => {},
+};
+
+function useTestTextareaVoice(
+  options: Omit<UseTextareaVoiceOptions, "voiceHost">,
+) {
+  return useTextareaVoice({ voiceHost, ...options });
+}
 
 describe("useTextareaVoice", () => {
   beforeEach(() => {
@@ -50,7 +63,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     expect(result.current.isRecording).toBe(false);
@@ -63,7 +76,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -78,7 +91,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -93,7 +106,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -116,7 +129,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -135,7 +148,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -154,7 +167,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -170,7 +183,7 @@ describe("useTextareaVoice", () => {
     const getCurrentText = vi.fn().mockReturnValue("current content");
 
     const { result } = renderHook(() =>
-      useTextareaVoice({
+      useTestTextareaVoice({
         inputRef,
         onTranscribed,
         getCurrentText,
@@ -197,7 +210,7 @@ describe("useTextareaVoice", () => {
     const getCurrentText = vi.fn().mockReturnValue("current content");
 
     const { result } = renderHook(() =>
-      useTextareaVoice({
+      useTestTextareaVoice({
         inputRef,
         onTranscribed,
         getCurrentText,
@@ -220,7 +233,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {

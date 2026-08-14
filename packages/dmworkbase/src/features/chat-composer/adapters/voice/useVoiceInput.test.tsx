@@ -251,6 +251,65 @@ describe("useVoiceInput space lifecycle", () => {
     expect(latest.isRecording).toBe(false);
   });
 
+  it("stops a pending microphone stream when the host changes in the same space", async () => {
+    let resolveStream!: (stream: MediaStream) => void;
+    mocks.getUserMedia.mockReturnValue(
+      new Promise<MediaStream>((resolve) => {
+        resolveStream = resolve;
+      })
+    );
+    const stopTrack = vi.fn();
+    const stream = {
+      getTracks: () => [{ stop: stopTrack }],
+    } as unknown as MediaStream;
+    const first = createHost("space-a");
+    const second = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(
+        <Probe host={first.host} onTranscribed={() => undefined} />,
+        container
+      );
+    });
+    act(() => {
+      latest.startRecording();
+    });
+    await act(async () => {
+      ReactDOM.render(
+        <Probe host={second.host} onTranscribed={() => undefined} />,
+        container
+      );
+      resolveStream(stream);
+      await Promise.resolve();
+    });
+
+    expect(stopTrack).toHaveBeenCalledOnce();
+    expect(MockMediaRecorder.instances).toHaveLength(0);
+  });
+
+  it("remains mounted when rendered under StrictMode", async () => {
+    mocks.getUserMedia.mockResolvedValue({
+      getTracks: () => [{ stop: vi.fn() }],
+    } as unknown as MediaStream);
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(
+        <React.StrictMode>
+          <Probe host={current.host} onTranscribed={() => undefined} />
+        </React.StrictMode>,
+        container
+      );
+    });
+    act(() => {
+      latest.startRecording();
+    });
+    await flush();
+
+    expect(MockMediaRecorder.instances).toHaveLength(1);
+    expect(latest.isRecording).toBe(true);
+  });
+
   it("ignores a transcription result after the recording space changed", async () => {
     const stopTrack = vi.fn();
     mocks.getUserMedia.mockResolvedValue({

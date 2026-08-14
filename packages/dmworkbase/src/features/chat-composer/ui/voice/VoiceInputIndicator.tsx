@@ -1,4 +1,10 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { createPortal } from "react-dom";
 import { Toast, Dropdown } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
@@ -88,23 +94,32 @@ export default function VoiceInputIndicator({
   const pendingModeRef = useRef<VoiceMode>("append_only");
   const mountedRef = useRef(true);
   const consentEpochRef = useRef(0);
+  const consentGenerationRef = useRef(0);
+  const consentPendingRef = useRef(false);
+  const consentHostRef = useRef(voiceHost);
+  consentHostRef.current = voiceHost;
 
   useEffect(() => {
     consentEpochRef.current += 1;
+    consentGenerationRef.current += 1;
     const invalidateConsent = () => {
       consentEpochRef.current += 1;
+      consentGenerationRef.current += 1;
     };
     const unsubscribe = voiceHost.subscribeSpaceChange(invalidateConsent);
     return () => {
       consentEpochRef.current += 1;
+      consentGenerationRef.current += 1;
       unsubscribe();
     };
   }, [voiceHost]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       consentEpochRef.current += 1;
+      consentGenerationRef.current += 1;
     };
   }, []);
 
@@ -811,20 +826,31 @@ export default function VoiceInputIndicator({
     {showFeedbackNotice && (
       <VoiceFeedbackNotice
         onAccept={async (feedbackOn) => {
+          if (consentPendingRef.current) return;
+          consentPendingRef.current = true;
           setShowFeedbackNotice(false);
-          const spaceId = voiceHost.getSpaceId();
+          const consentHost = voiceHost;
+          const spaceId = consentHost.getSpaceId();
           const consentEpoch = consentEpochRef.current;
+          const consentGeneration = ++consentGenerationRef.current;
+          const selectedMode = pendingModeRef.current;
           const isConsentCurrent = () =>
             mountedRef.current &&
             consentEpochRef.current === consentEpoch &&
-            voiceHost.getSpaceId() === spaceId;
+            consentGenerationRef.current === consentGeneration &&
+            consentHostRef.current === consentHost &&
+            consentHost.getSpaceId() === spaceId;
           try {
             if (spaceId) {
               await acceptVoiceInput(spaceId, feedbackOn, isConsentCurrent);
             }
           } catch {
-            Toast.error(t("base.voiceInput.error.operationFailed"));
+            if (isConsentCurrent()) {
+              Toast.error(t("base.voiceInput.error.operationFailed"));
+            }
             return;
+          } finally {
+            consentPendingRef.current = false;
           }
           if (!isConsentCurrent()) return;
           const selectedText = getSelectedText?.();
@@ -832,8 +858,8 @@ export default function VoiceInputIndicator({
           hadSelectionRef.current = !!selectedText;
           savedSelectedTextRef.current = selectedText;
           savedSelectionRangeRef.current = selectionRange;
-          recordingModeRef.current = pendingModeRef.current;
-          startRecording(pendingModeRef.current);
+          recordingModeRef.current = selectedMode;
+          startRecording(selectedMode);
         }}
         onCancel={() => {
           setShowFeedbackNotice(false);

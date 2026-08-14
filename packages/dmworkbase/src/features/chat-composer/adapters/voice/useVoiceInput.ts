@@ -1,4 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  useState,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+} from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import VoiceService, {
   VoiceConfig,
@@ -52,6 +58,7 @@ export interface UseVoiceInputReturn {
 
 interface VoiceOperation {
   epoch: number;
+  host: ChatComposerVoiceHost;
   spaceId: string;
   utteranceId: string;
   mode: VoiceMode;
@@ -124,6 +131,7 @@ export default function useVoiceInput(
       mountedRef.current &&
       operationRef.current === operation &&
       lifecycleEpochRef.current === operation.epoch &&
+      voiceHostRef.current === operation.host &&
       voiceHostRef.current.getSpaceId() === operation.spaceId
     );
   }, []);
@@ -316,6 +324,7 @@ export default function useVoiceInput(
 
       const operation: VoiceOperation = {
         epoch: lifecycleEpochRef.current,
+        host: voiceHostRef.current,
         spaceId: voiceHostRef.current.getSpaceId(),
         utteranceId:
           crypto.randomUUID?.() ??
@@ -483,7 +492,7 @@ export default function useVoiceInput(
 
             const voiceContext = voiceContextRef.current;
             const personalContext =
-              voiceContext?.has_context === true
+              voiceContext?.has_context === true && voiceContext.context
                 ? voiceContext.context
                 : undefined;
             const chatContextResult = (await chatContextPromise) ?? {};
@@ -553,7 +562,7 @@ export default function useVoiceInput(
 
           const voiceContext = voiceContextRef.current;
           const personalContext =
-            voiceContext?.has_context === true
+            voiceContext?.has_context === true && voiceContext.context
               ? voiceContext.context
               : undefined;
           const chatContextResult = (await getChatContextRef.current?.()) ?? {};
@@ -616,7 +625,8 @@ export default function useVoiceInput(
     abortActiveOperation();
   }, [abortActiveOperation]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    mountedRef.current = true;
     return () => {
       mountedRef.current = false;
       lifecycleEpochRef.current += 1;

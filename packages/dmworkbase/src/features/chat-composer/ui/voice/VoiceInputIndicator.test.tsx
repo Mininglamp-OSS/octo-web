@@ -8,6 +8,9 @@ const mocks = vi.hoisted(() => ({
   startRecording: vi.fn(),
   acceptVoiceInput: vi.fn(),
   toastError: vi.fn(),
+  noticeAccept: undefined as
+    | ((feedbackOn: boolean) => void | Promise<void>)
+    | undefined,
 }));
 
 vi.mock("../../adapters/voice/useVoiceInput", () => ({
@@ -38,11 +41,18 @@ vi.mock("../../../voice-input/useSpaceFeedbackSetting", () => ({
 }));
 
 vi.mock("../../../voice-input/VoiceFeedbackNotice", () => ({
-  default: ({ onAccept }: { onAccept: (feedbackOn: boolean) => void }) => (
-    <button data-testid="accept-consent" onClick={() => onAccept(false)}>
-      accept
-    </button>
-  ),
+  default: ({
+    onAccept,
+  }: {
+    onAccept: (feedbackOn: boolean) => void | Promise<void>;
+  }) => {
+    mocks.noticeAccept = onAccept;
+    return (
+      <button data-testid="accept-consent" onClick={() => onAccept(false)}>
+        accept
+      </button>
+    );
+  },
 }));
 
 vi.mock("../../../../i18n", () => ({
@@ -79,6 +89,7 @@ let container: HTMLDivElement;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.noticeAccept = undefined;
   Object.defineProperty(navigator, "onLine", {
     configurable: true,
     value: true,
@@ -148,5 +159,48 @@ describe("VoiceInputIndicator consent lifecycle", () => {
     );
     expect(mocks.acceptVoiceInput.mock.calls[0][2]()).toBe(false);
     expect(mocks.startRecording).not.toHaveBeenCalled();
+  });
+
+  it("allows only one consent request at a time", async () => {
+    const voiceHost: ChatComposerVoiceHost = {
+      getSpaceId: () => "space-a",
+      subscribeSpaceChange: () => () => {},
+    };
+    let resolveConsent!: () => void;
+    mocks.acceptVoiceInput.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveConsent = resolve;
+      })
+    );
+
+    await act(async () => {
+      ReactDOM.render(
+        <VoiceInputIndicator
+          voiceHost={voiceHost}
+          onTranscribed={() => undefined}
+        />,
+        container
+      );
+    });
+    act(() => {
+      (
+        container.querySelector(".wk-voice-button-group") as HTMLElement
+      ).click();
+    });
+
+    let firstRequest!: Promise<void>;
+    act(() => {
+      firstRequest = mocks.noticeAccept?.(false) as Promise<void>;
+      void mocks.noticeAccept?.(true);
+    });
+    expect(mocks.acceptVoiceInput).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveConsent();
+      await firstRequest;
+    });
+
+    expect(mocks.startRecording).toHaveBeenCalledOnce();
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
   });
 });
