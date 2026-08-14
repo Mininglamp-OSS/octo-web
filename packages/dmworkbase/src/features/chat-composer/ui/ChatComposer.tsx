@@ -107,6 +107,21 @@ import type {
 
 import { MAX_MESSAGE_LENGTH } from "../domain/constants";
 
+function commonRecoveredTarget(
+  recovered: ComposeRecoveryRecord[],
+): ComposeRecoveryRecord["sendTarget"] {
+  const first = recovered[0]?.sendTarget;
+  if (!first) return undefined;
+
+  return recovered.every(
+    ({ sendTarget }) =>
+      sendTarget?.handlerType === first.handlerType &&
+      sendTarget.replyMessage === first.replyMessage,
+  )
+    ? first
+    : undefined;
+}
+
 // placeholder 格式化所需的平台快捷键标识（模块级常量，避免重复计算）
 const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
 
@@ -1158,7 +1173,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       attachmentStore.restoreTopAttachments(recoveredTopAttachments, 0);
     }
 
-    const target = hydrated.find((item) => item.sendTarget)?.sendTarget;
+    // One composer can represent only one reply target. Recover it only when
+    // the whole batch agrees, otherwise the merged content would be silently
+    // attached to whichever failed attempt happened to come first.
+    const target = commonRecoveredTarget(hydrated);
     if (target) props.onRestoreRecoveredTarget?.(target);
     if (hydrated.some((item) => item.expanded)) {
       setExpanded(true);

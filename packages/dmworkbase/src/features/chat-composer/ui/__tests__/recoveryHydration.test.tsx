@@ -74,6 +74,82 @@ describe("MessageInput recovery hydration", () => {
     act(() => inputContext?.clear());
   });
 
+  it("does not assign merged recovery content to conflicting reply targets", async () => {
+    let inputContext: MessageInputContext | undefined;
+    const recovered: RecoveredComposeHydration[] = [];
+    const onRestoreRecoveredTarget = vi.fn();
+    const firstTarget = { id: "reply-A" };
+    const secondTarget = { id: "reply-B" };
+    const first: ComposeRecoveryRecord = {
+      ...failedCompose("failed A"),
+      sendTarget: { replyMessage: firstTarget, handlerType: 1 },
+    };
+    const second: ComposeRecoveryRecord = {
+      ...failedCompose("failed B"),
+      attemptId: "attempt-B",
+      sendTarget: { replyMessage: secondTarget, handlerType: 1 },
+    };
+
+    render(
+      <ChatComposer
+        host={createTestViewHost()}
+        recoveredComposes={[first, second]}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+        onRecoveredComposes={(hydration) => recovered.push(hydration)}
+        onRestoreRecoveredTarget={onRestoreRecoveredTarget}
+      />
+    );
+
+    await waitFor(() => {
+      expect(inputContext?.text()).toContain("failed A");
+      expect(inputContext?.text()).toContain("failed B");
+    });
+    expect(onRestoreRecoveredTarget).not.toHaveBeenCalled();
+    expect(recovered).toEqual([
+      {
+        attemptIds: ["attempt-A", "attempt-B"],
+        draftText: "failed A\nfailed B",
+      },
+    ]);
+
+    act(() => inputContext?.clear());
+  });
+
+  it("restores the reply target when every recovery record agrees", async () => {
+    let inputContext: MessageInputContext | undefined;
+    const onRestoreRecoveredTarget = vi.fn();
+    const replyMessage = { id: "reply-A" };
+    const sendTarget = { replyMessage, handlerType: 1 };
+    const first: ComposeRecoveryRecord = {
+      ...failedCompose("failed A"),
+      sendTarget,
+    };
+    const second: ComposeRecoveryRecord = {
+      ...failedCompose("failed B"),
+      attemptId: "attempt-B",
+      sendTarget: { ...sendTarget },
+    };
+
+    render(
+      <ChatComposer
+        host={createTestViewHost()}
+        recoveredComposes={[first, second]}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+        onRestoreRecoveredTarget={onRestoreRecoveredTarget}
+      />
+    );
+
+    await waitFor(() => expect(inputContext?.text()).toContain("failed B"));
+    expect(onRestoreRecoveredTarget).toHaveBeenCalledOnce();
+    expect(onRestoreRecoveredTarget).toHaveBeenCalledWith(sendTarget);
+
+    act(() => inputContext?.clear());
+  });
+
   it("reclaims the recovered inline preview URL until the live compose clears", async () => {
     const revokeObjectURL = vi.fn();
     const originalRevoke = Object.getOwnPropertyDescriptor(
