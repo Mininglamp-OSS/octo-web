@@ -169,6 +169,7 @@ interface Harness {
   disposedEditorAttachments: string[];
   /** Mirrors MessageInput's restore-offset ref (reset on every consume). */
   offsets: { blocks: number; topAttachments: number };
+  restorePrefix: { blockKeys: string[]; topAttachmentIds: string[] };
 }
 
 function harness(content?: unknown, top: TopAttachmentLike[] = []): Harness {
@@ -184,6 +185,7 @@ function harness(content?: unknown, top: TopAttachmentLike[] = []): Harness {
     restoredEditorAttachments: [],
     disposedEditorAttachments: [],
     offsets: { blocks: 0, topAttachments: 0 },
+    restorePrefix: { blockKeys: [], topAttachmentIds: [] },
   };
 }
 
@@ -194,6 +196,7 @@ function consume(
   // The component resets the offsets on every consume, because consuming clears
   // the editor and removes this send's attachments.
   h.offsets = { blocks: 0, topAttachments: 0 };
+  h.restorePrefix = { blockKeys: [], topAttachmentIds: [] };
   return consumeCompose({
     composePartRegistry,
     editor: port(h.editor),
@@ -228,12 +231,40 @@ function consume(
     revokeObjectURL: (url) => h.revoked.push(url),
     parseTextToNodes: (value) =>
       parseConsumedTextToContent(value).content as ComposeDoc["content"] as never,
-    getRestoreOffsets: () => h.offsets,
-    onRestored: ({ blocks, topAttachments }) => {
+    getRestoreOffsets: (livePrefix) => ({
+      blocks:
+        livePrefix &&
+        h.restorePrefix.blockKeys.every(
+          (key, index) => livePrefix.blockKeys[index] === key,
+        )
+          ? h.offsets.blocks
+          : 0,
+      topAttachments:
+        livePrefix &&
+        h.restorePrefix.topAttachmentIds.every(
+          (id, index) => livePrefix.topAttachmentIds[index] === id,
+        )
+          ? h.offsets.topAttachments
+          : 0,
+    }),
+    onRestored: (
+      { blocks, topAttachments },
+      restoredPrefix,
+    ) => {
       h.offsets = {
-        blocks: h.offsets.blocks + blocks,
-        topAttachments: h.offsets.topAttachments + topAttachments,
+        blocks: restoredPrefix?.blockKeys
+          ? restoredPrefix.blockKeys.length
+          : h.offsets.blocks + blocks,
+        topAttachments: restoredPrefix?.topAttachmentIds
+          ? restoredPrefix.topAttachmentIds.length
+          : h.offsets.topAttachments + topAttachments,
       };
+      if (restoredPrefix?.blockKeys) {
+        h.restorePrefix.blockKeys = restoredPrefix.blockKeys;
+      }
+      if (restoredPrefix?.topAttachmentIds) {
+        h.restorePrefix.topAttachmentIds = restoredPrefix.topAttachmentIds;
+      }
     },
     onRestoreCompose: () => {
       h.restoredCompose += 1;
@@ -270,7 +301,6 @@ it("keeps the editor intact when a registered part has no settlement adapter", (
 
   expect(() =>
     consumeCompose({
-      composePartRegistry: createDefaultEditorComposePartRegistry(),
       editor: {
         getJSON: () => ({ type: "doc", content: [{ type: "custom" }] }),
         isEmpty: () => false,
@@ -744,6 +774,53 @@ describe("consumeCompose — two queued sends that both fail keep their order", 
       "t2",
       "t3-added-later",
     ]);
+  });
+
+  it("invalidates the restore prefix after the user edits restored content", async () => {
+    const h = harness(doc(para(text("AAA"))));
+    const handleA = consume(h);
+    h.editor.commands.insertContent("BBB");
+    const handleB = consume(h);
+    h.editor.commands.insertContent("live draft");
+
+    await runSendWithConsumedCompose(
+      () => outcome(),
+      handleA.ids,
+      handleA.compose,
+    );
+    h.editor.commands.setContent(doc(para(text("edited draft"))) as never);
+    await runSendWithConsumedCompose(
+      () => outcome(),
+      handleB.ids,
+      handleB.compose,
+    );
+
+    const value = h.editor.getText();
+    expect(value.indexOf("BBB")).toBe(0);
+    expect(value.indexOf("BBB")).toBeLessThan(value.indexOf("edited draft"));
+    expect(value).not.toContain("AAA");
+  });
+
+  it("invalidates the attachment prefix after the user removes it", async () => {
+    const h = harness(doc(para(text("a"))), [{ id: "t1" }]);
+    const handleA = consume(h);
+    h.top = [{ id: "t2" }];
+    const handleB = consume(h);
+    h.top = [{ id: "live" }];
+
+    await runSendWithConsumedCompose(
+      () => outcome(),
+      handleA.ids,
+      handleA.compose,
+    );
+    h.top = [{ id: "live" }];
+    await runSendWithConsumedCompose(
+      () => outcome(),
+      handleB.ids,
+      handleB.compose,
+    );
+
+    expect(h.top.map(({ id }) => id)).toEqual(["t2", "live"]);
   });
 });
 

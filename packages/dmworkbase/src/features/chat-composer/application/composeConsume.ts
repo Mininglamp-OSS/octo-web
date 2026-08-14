@@ -30,6 +30,7 @@ import type {
   ComposeRecoveryPayload,
   ComposeRecoveryTopAttachment,
 } from "../recovery/types";
+import type { ChatComposerRestorePrefix } from "../ports";
 
 /** Minimal document node shape we need from the editor JSON. */
 export type ComposeNode = EditorComposeNode;
@@ -107,8 +108,13 @@ export interface ConsumeComposeOptions {
    * sends that both fail must come back as `A, B, <live draft>`, not `B, A`, so
    * each restore starts after the blocks/attachments earlier restores put back.
    */
-  getRestoreOffsets?: () => { blocks: number; topAttachments: number };
-  onRestored?: (restored: { blocks: number; topAttachments: number }) => void;
+  getRestoreOffsets?: (
+    livePrefix?: ChatComposerRestorePrefix,
+  ) => { blocks: number; topAttachments: number };
+  onRestored?: (
+    restored: { blocks: number; topAttachments: number },
+    restoredPrefix?: Partial<ChatComposerRestorePrefix>,
+  ) => void;
   /** Reported when a restore/dispose step throws (see ConsumedCompose). */
   onRestoreError?: (err: unknown, step: string) => void;
 }
@@ -207,15 +213,28 @@ export function consumeCompose(
       editor.appendContent(nodes as ComposeNode[]),
   };
 
+  const blockKeys = () =>
+    (editor.getJSON().content ?? []).map((node) => JSON.stringify(node));
+  const topAttachmentIds = () =>
+    snapshotTopAttachments().map(({ id }) => id);
   const offsets = () =>
-    opts.getRestoreOffsets?.() ?? { blocks: 0, topAttachments: 0 };
+    opts.getRestoreOffsets?.({
+      blockKeys: blockKeys(),
+      topAttachmentIds: topAttachmentIds(),
+    }) ?? { blocks: 0, topAttachments: 0 };
   const restoreDoc = (snapshotToRestore: ComposeDoc) => {
+    const blockOffset = offsets().blocks;
     const inserted = restoreComposeSnapshot(
       snapshotToRestore,
       restoreTarget,
-      offsets().blocks,
+      blockOffset,
     );
-    opts.onRestored?.({ blocks: inserted, topAttachments: 0 });
+    opts.onRestored?.(
+      { blocks: inserted, topAttachments: 0 },
+      {
+        blockKeys: blockKeys().slice(0, blockOffset + inserted),
+      },
+    );
   };
 
   const compose: ConsumedCompose = {
@@ -294,13 +313,20 @@ export function consumeCompose(
       const wanted = new Set(ids);
       const restored = topItemsAtSend.filter((item) => wanted.has(item.id));
       if (restored.length === 0) return;
+      const topAttachmentOffset = offsets().topAttachments;
       const count = restoreTopAttachments(
         restored,
-        offsets().topAttachments,
+        topAttachmentOffset,
       );
-      if (count > 0) {
-        opts.onRestored?.({ blocks: 0, topAttachments: count });
-      }
+      opts.onRestored?.(
+        { blocks: 0, topAttachments: count },
+        {
+          topAttachmentIds: topAttachmentIds().slice(
+            0,
+            topAttachmentOffset + count,
+          ),
+        },
+      );
     },
     onRestoreError,
   };

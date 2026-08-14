@@ -9,9 +9,19 @@ export interface ChatComposerRestoreOffsets {
   topAttachments: number;
 }
 
+export interface ChatComposerRestorePrefix {
+  blockKeys: string[];
+  topAttachmentIds: string[];
+}
+
 export interface ChatComposerConsumeContext {
-  getRestoreOffsets(): ChatComposerRestoreOffsets;
-  onRestored(offsets: ChatComposerRestoreOffsets): void;
+  getRestoreOffsets(
+    livePrefix?: ChatComposerRestorePrefix,
+  ): ChatComposerRestoreOffsets;
+  onRestored(
+    offsets: ChatComposerRestoreOffsets,
+    restoredPrefix?: Partial<ChatComposerRestorePrefix>,
+  ): void;
   onRestoreCompose(): void;
   onRestoreSendTarget(): void;
   onRestoreError(error: unknown, step: string): void;

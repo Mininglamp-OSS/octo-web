@@ -103,4 +103,31 @@ describe("ChatComposerController", () => {
       topAttachments: 0,
     });
   });
+
+  it("uses restore offsets only while their live prefixes still match", () => {
+    const controller = new ChatComposerController();
+    controller.advanceRestoreOffsets(
+      { blocks: 1, topAttachments: 1 },
+      { blockKeys: ["block-a"], topAttachmentIds: ["top-a"] },
+    );
+
+    expect(
+      controller.getRestoreOffsets({
+        blockKeys: ["block-a", "live-block"],
+        topAttachmentIds: ["top-a", "live-top"],
+      }),
+    ).toEqual({ blocks: 1, topAttachments: 1 });
+    expect(
+      controller.getRestoreOffsets({
+        blockKeys: ["edited-block"],
+        topAttachmentIds: ["top-a", "live-top"],
+      }),
+    ).toEqual({ blocks: 0, topAttachments: 1 });
+    expect(
+      controller.getRestoreOffsets({
+        blockKeys: ["block-a", "live-block"],
+        topAttachmentIds: ["live-top"],
+      }),
+    ).toEqual({ blocks: 1, topAttachments: 0 });
+  });
 });

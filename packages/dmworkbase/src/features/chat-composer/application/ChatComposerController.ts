@@ -6,16 +6,15 @@ import {
   type LedgerSettlement,
   type PendingSendDraft,
 } from "../domain";
+import type {
+  ChatComposerRestoreOffsets,
+  ChatComposerRestorePrefix,
+} from "../ports";
 import {
   createSendQueue,
   enqueueSettledSend,
   type SendQueue,
 } from "./sendFlow";
-
-export interface ChatComposerRestoreOffsets {
-  blocks: number;
-  topAttachments: number;
-}
 
 export interface ChatComposerControllerSnapshot<TAttachment = unknown> {
   pending: ComposeAttempt<TAttachment>[];
@@ -41,6 +40,10 @@ export class ChatComposerController<TAttachment = unknown> {
   private restoreOffsets: ChatComposerRestoreOffsets = {
     blocks: 0,
     topAttachments: 0,
+  };
+  private restorePrefix: ChatComposerRestorePrefix = {
+    blockKeys: [],
+    topAttachmentIds: [],
   };
 
   constructor(options: ChatComposerControllerOptions<TAttachment> = {}) {
@@ -105,18 +108,61 @@ export class ChatComposerController<TAttachment = unknown> {
 
   resetRestoreOffsets(): void {
     this.restoreOffsets = { blocks: 0, topAttachments: 0 };
+    this.restorePrefix = { blockKeys: [], topAttachmentIds: [] };
   }
 
-  getRestoreOffsets(): ChatComposerRestoreOffsets {
+  getRestoreOffsets(
+    livePrefix?: ChatComposerRestorePrefix,
+  ): ChatComposerRestoreOffsets {
+    if (livePrefix) {
+      return {
+        blocks: this.hasPrefix(
+          livePrefix.blockKeys,
+          this.restorePrefix.blockKeys,
+        )
+          ? this.restoreOffsets.blocks
+          : 0,
+        topAttachments: this.hasPrefix(
+          livePrefix.topAttachmentIds,
+          this.restorePrefix.topAttachmentIds,
+        )
+          ? this.restoreOffsets.topAttachments
+          : 0,
+      };
+    }
     return { ...this.restoreOffsets };
   }
 
-  advanceRestoreOffsets(offsets: ChatComposerRestoreOffsets): void {
+  advanceRestoreOffsets(
+    offsets: ChatComposerRestoreOffsets,
+    restoredPrefix?: Partial<ChatComposerRestorePrefix>,
+  ): void {
     this.restoreOffsets = {
-      blocks: this.restoreOffsets.blocks + offsets.blocks,
-      topAttachments:
-        this.restoreOffsets.topAttachments + offsets.topAttachments,
+      blocks: restoredPrefix?.blockKeys
+        ? restoredPrefix.blockKeys.length
+        : this.restoreOffsets.blocks + offsets.blocks,
+      topAttachments: restoredPrefix?.topAttachmentIds
+        ? restoredPrefix.topAttachmentIds.length
+        : this.restoreOffsets.topAttachments + offsets.topAttachments,
     };
+    if (restoredPrefix?.blockKeys) {
+      this.restorePrefix.blockKeys = [...restoredPrefix.blockKeys];
+    }
+    if (restoredPrefix?.topAttachmentIds) {
+      this.restorePrefix.topAttachmentIds = [
+        ...restoredPrefix.topAttachmentIds,
+      ];
+    }
+  }
+
+  private hasPrefix(
+    values: readonly string[],
+    prefix: readonly string[],
+  ): boolean {
+    return (
+      prefix.length <= values.length &&
+      prefix.every((value, index) => values[index] === value)
+    );
   }
 
   private release(attemptId: string): void {
