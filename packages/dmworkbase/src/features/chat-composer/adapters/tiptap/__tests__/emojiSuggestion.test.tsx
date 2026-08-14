@@ -145,6 +145,15 @@ const flushSuggestionUpdates = async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
+const flushExitGracePeriod = async () => {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      setTimeout(resolve, 0);
+    });
+  });
+  await flushSuggestionUpdates();
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.popups.length = 0;
@@ -215,6 +224,7 @@ describe("emoji suggestion popup lifecycle", () => {
     expect(mocks.itemRequests).toHaveLength(1);
 
     mocks.renderers[0].props.command(item);
+    await flushExitGracePeriod();
     expect(mocks.popups[0].destroy).toHaveBeenCalledOnce();
 
     mocks.itemRequests[0].resolve();
@@ -246,6 +256,48 @@ describe("emoji suggestion popup lifecycle", () => {
     expect(mocks.popups).toHaveLength(1);
     expect(mocks.popups[0].show).toHaveBeenCalledOnce();
     expect(mocks.popups[0].destroy).not.toHaveBeenCalled();
+  });
+
+  it("keeps the visible popup across transient pointer focus selections", async () => {
+    createEditor();
+    editor.commands.insertContent("使命");
+    await flushSuggestionUpdates();
+
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.atStart(editor.state.doc))
+    );
+    await Promise.resolve();
+    expect(mocks.popups[0].destroy).not.toHaveBeenCalled();
+
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => {
+        editor.view.dispatch(
+          editor.state.tr.setSelection(TextSelection.atEnd(editor.state.doc))
+        );
+        resolve();
+      });
+    });
+    await flushExitGracePeriod();
+
+    expect(mocks.popups).toHaveLength(1);
+    expect(mocks.popups[0].show).toHaveBeenCalledOnce();
+    expect(mocks.popups[0].hide).not.toHaveBeenCalled();
+    expect(mocks.popups[0].destroy).not.toHaveBeenCalled();
+  });
+
+  it("destroys after the focus grace period when selection stays outside", async () => {
+    createEditor();
+    editor.commands.insertContent("使命");
+    await flushSuggestionUpdates();
+
+    editor.view.dispatch(
+      editor.state.tr.setSelection(TextSelection.atStart(editor.state.doc))
+    );
+    await flushExitGracePeriod();
+
+    expect(mocks.popups[0].hide).toHaveBeenCalledOnce();
+    expect(mocks.popups[0].destroy).toHaveBeenCalledOnce();
+    expect(mocks.renderers[0].destroy).toHaveBeenCalledOnce();
   });
 
   it("releases an active popup when the editor is destroyed", async () => {

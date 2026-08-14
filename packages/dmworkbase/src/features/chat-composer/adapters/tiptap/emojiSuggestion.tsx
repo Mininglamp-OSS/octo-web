@@ -85,6 +85,9 @@ export function createEmojiSuggestionExtension(
       let visible = false
       let disposed = false
       let lifecycleEpoch = 0
+      let pendingExitRevision = 0
+      let pendingExitFrame: number | null = null
+      let pendingExitTimer: number | null = null
       const propsEpoch = new WeakMap<object, number>()
 
       const isCurrentSuggestion = (props: any) => {
@@ -95,6 +98,13 @@ export function createEmojiSuggestionExtension(
             current.range.from === props.range.from &&
             current.range.to === props.range.to
         )
+      }
+
+      const isOriginalQueryIntact = (props: any) => {
+        const { from, to } = props.range
+        const { doc } = props.editor.state
+        if (from < 0 || to < from || to > doc.content.size) return false
+        return doc.textBetween(from, to, '\n', '\n') === props.query
       }
 
       const setVisible = (nextVisible: boolean) => {
@@ -154,12 +164,45 @@ export function createEmojiSuggestionExtension(
         setVisible(Boolean(props.items?.length))
       }
 
+      const cancelPendingExit = () => {
+        pendingExitRevision += 1
+        if (pendingExitFrame !== null) {
+          cancelAnimationFrame(pendingExitFrame)
+          pendingExitFrame = null
+        }
+        if (pendingExitTimer !== null) {
+          window.clearTimeout(pendingExitTimer)
+          pendingExitTimer = null
+        }
+      }
+
       const destroy = () => {
+        cancelPendingExit()
         setVisible(false)
         popup?.destroy()
         component?.destroy()
         popup = null
         component = null
+      }
+
+      const scheduleDestroy = () => {
+        cancelPendingExit()
+        const revision = pendingExitRevision
+        pendingExitFrame = requestAnimationFrame(() => {
+          pendingExitFrame = null
+          // Tiptap's focus command also restores DOM focus in RAF. Use the next
+          // task so every focus callback and its suggestion microtasks can
+          // reactivate the current lifecycle before teardown is finalized.
+          pendingExitTimer = window.setTimeout(() => {
+            pendingExitTimer = null
+            if (disposed || revision !== pendingExitRevision) return
+            const current = lifecycleEditor
+              ? emojiSuggestionPluginKey.getState(lifecycleEditor.state)
+              : null
+            if (current?.active) return
+            destroy()
+          }, 0)
+        })
       }
 
       const dispose = () => {
@@ -186,6 +229,7 @@ export function createEmojiSuggestionExtension(
       }
 
       const prepareUpdate = (props: any) => {
+        cancelPendingExit()
         bindEditorLifecycle(props.editor)
         propsEpoch.set(props, lifecycleEpoch)
       }
@@ -229,7 +273,15 @@ export function createEmojiSuggestionExtension(
           // not destroy the popup now owned by that current suggestion.
           const current = emojiSuggestionPluginKey.getState(props.editor.state)
           if (current?.active) return
-          destroy()
+          if (!isOriginalQueryIntact(props)) {
+            destroy()
+            return
+          }
+          // Pointer focus can briefly move the selection outside the matched
+          // query before restoring it in the same browser event. Deferring the
+          // teardown past the next focus frame lets that new start reuse the
+          // existing popup instead of producing a visible destroy/recreate.
+          scheduleDestroy()
         },
       }
     },
