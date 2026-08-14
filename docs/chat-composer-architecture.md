@@ -167,6 +167,9 @@ consume 在第一次 await 之前完成。因此用户可以在第一条消息�
 - 前一 attempt 必须完成 settle、resource handoff 和 ledger remove，下一 attempt 才能执行。
 - operation handlers 在 attempt 开始时快照，不能在执行中读取可变 registry。
 - 相同文本仍是两个不同 attempt，草稿归属只能按 attempt ID 判断。
+- 连续失败的恢复顺序不能只依赖累计 offset。controller 必须记录实际恢复后的顶层 block
+  指纹和 top attachment ID 前缀；每次恢复前用 live editor/attachment 状态重新验证。用户删除、
+  编辑或重新消费过恢复内容后，旧前缀自动失效，后续失败从 offset 0 恢复。
 
 ## 4. 数据与所有权
 
@@ -400,9 +403,13 @@ HTML 使用 `DOMParser`，只保留安全的 `http/https` 链接。secret guard 
 - host 替换、space 变化、显式取消或组件卸载都会使旧录音和转写结果失效。
 - 麦克风授权、个人上下文、聊天上下文、本地转写、远端转写和反馈回调每次 await 后都必须
   重新验证 epoch 与 space；旧结果不得写入新 composer。
+- `allow_feedback` 不能使用录音开始时缓存的布尔值；每次远端转写请求和反馈回调前必须从当前
+  space setting 重新验证 `voice_input_enabled`、`voice_feedback_notice_acked` 和
+  `voice_feedback_on`。
 - space setting 请求同时携带 query `space_id` 与显式 `X-Space-Id`，并由 mount/request
   generation 约束，防止 A→B→A 的旧请求覆盖新状态。
-- consent 保存完成后必须重新验证 host、space 和 epoch，验证失败时不启动录音。
+- composer 与设置面板的 consent 都必须绑定 mount、generation 和 space；space 切换时立即关闭
+  旧弹窗并重置 pending mode，保存完成后验证失败时不得启用反馈或启动录音。
 
 `Conversation` 不得：
 
