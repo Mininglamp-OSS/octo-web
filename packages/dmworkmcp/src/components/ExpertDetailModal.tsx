@@ -55,14 +55,16 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
   // A drilled-into squad member; null shows the squad overview.
   const [drillMember, setDrillMember] = useState<ExpertMember | null>(null);
 
-  // Per opened item (keyed by id, so a list-item -> hydrated-detail swap of
-  // the same record re-triggers neither): reset the member drill-in and record
-  // one best-effort view event. trackExpertView never rejects.
+  // Per opened item (keyed by id + kind, so a list-item -> hydrated-detail
+  // swap of the same record re-triggers neither, while a cross-kind swap at an
+  // identical id — unreachable via the UI today but exercised in tests — still
+  // records its own view): reset the member drill-in and record one
+  // best-effort view event. trackExpertView never rejects.
   useEffect(() => {
     if (!item) return;
     setDrillMember(null);
     void trackExpertView(item.kind, item.id);
-  }, [item?.id]);
+  }, [item?.id, item?.kind]);
 
   if (!item) return null;
 

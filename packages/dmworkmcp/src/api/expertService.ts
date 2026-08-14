@@ -169,8 +169,10 @@ expertAxios.interceptors.response.use(
       !url.startsWith(FLEET_BASE) &&
       // The view-tracking beacon is fire-and-forget: a 401 on it must never
       // tear down the session (the page's list calls are the authoritative
-      // session probe and still log out on a genuinely expired token).
-      !url.endsWith("/metrics/track")
+      // session probe and still log out on a genuinely expired token). Exact
+      // pathname match — a suffix check would also exempt any future URL that
+      // happens to end in /metrics/track.
+      url !== `${BASE}/metrics/track`
     ) {
       WKApp.shared.logout();
     }
