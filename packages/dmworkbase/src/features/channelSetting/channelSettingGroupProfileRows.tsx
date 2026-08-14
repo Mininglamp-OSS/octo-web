@@ -173,12 +173,12 @@ export function buildGroupProfileRows({
   return [
     new Row({
       cell: ChannelSettingInlineEditRow,
-      trackEvent: "group_name_edit_opened",
       properties: {
         title: t("base.module.channelSettings.groupName"),
         value: channelInfo?.title || "",
         displayValue: groupName,
         placeholder: t("base.module.channelSettings.groupNamePlaceholder"),
+        trackEvent: "group_name_edit_opened",
         maxCount: GROUP_NAME_MAX_LENGTH,
         onStartEdit: () => {
           if (!data.isManagerOrCreatorOfMe) {
@@ -244,12 +244,12 @@ export function buildGroupProfileRows({
     }),
     new Row({
       cell: ChannelSettingInlineEditRow,
-      trackEvent: "group_announcement_edit_opened",
       properties: {
         title: t("base.module.channelSettings.groupNotice"),
         value: channelInfo?.orgData?.notice,
         multiline: true,
         placeholder: t("base.module.channelSettings.groupNotice"),
+        trackEvent: "group_announcement_edit_opened",
         maxCount: 400,
         allowEmpty: true,
         onStartEdit: () => {

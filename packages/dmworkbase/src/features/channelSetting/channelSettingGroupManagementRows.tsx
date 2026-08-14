@@ -215,11 +215,11 @@ export function buildGroupManagementRows({
   rows.push(
     new Row({
       cell: ChannelSettingInlineEditRow,
-      trackEvent: "conversation_remark_edit_opened",
       properties: {
         title: t("base.module.channelSettings.remark"),
         value: channelInfo?.orgData?.remark || "",
         placeholder: t("base.module.channelSettings.remarkPlaceholder"),
+        trackEvent: "conversation_remark_edit_opened",
         maxCount: 15,
         allowEmpty: true,
         onSave: (value: string) =>
