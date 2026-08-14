@@ -1,13 +1,5 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-vi.mock("@octo/base/src/App", () => ({
-  default: {
-    shared: {
-      currentSpaceId: "space-a",
-    },
-  },
-}));
-
 vi.mock("@octo/base/src/Service/SpaceSettingService", () => ({
   getSpaceSetting: vi.fn(),
   updateSpaceSetting: vi.fn(),
@@ -22,7 +14,6 @@ vi.mock("@octo/base/src/Service/VoiceService", () => ({
   default: { shared: { getConfig: () => mockGetConfig() } },
 }));
 
-import WKApp from "@octo/base/src/App";
 import { getSpaceSetting } from "@octo/base/src/Service/SpaceSettingService";
 import {
   ensureVoiceFeedbackLoaded,
@@ -33,22 +24,32 @@ import {
 } from "@octo/base/src/features/voice-input/useSpaceFeedbackSetting";
 
 const mockGetSpaceSetting = vi.mocked(getSpaceSetting);
+let activeSpaceId = "space-a";
+const activeFor = (spaceId: string) => () => activeSpaceId === spaceId;
 
 describe("useSpaceFeedbackSetting - spaceId isolation", () => {
   beforeEach(() => {
     resetSharedSpaceSetting();
     vi.clearAllMocks();
-    (WKApp.shared as any).currentSpaceId = "space-a";
+    activeSpaceId = "space-a";
   });
 
   it("should store loadedSpaceId when setting is applied", () => {
-    setSharedSpaceSetting({ voice_feedback_on: 1, voice_feedback_notice_acked: 0 }, true, "space-a");
+    setSharedSpaceSetting(
+      { voice_feedback_on: 1, voice_feedback_notice_acked: 0 },
+      true,
+      "space-a"
+    );
     const state = getSharedSpaceFeedbackState();
     expect(state.loadedSpaceId).toBe("space-a");
   });
 
   it("should clear loadedSpaceId on reset", () => {
-    setSharedSpaceSetting({ voice_feedback_on: 1, voice_feedback_notice_acked: 0 }, true, "space-a");
+    setSharedSpaceSetting(
+      { voice_feedback_on: 1, voice_feedback_notice_acked: 0 },
+      true,
+      "space-a"
+    );
     resetSharedSpaceSetting();
     const state = getSharedSpaceFeedbackState();
     expect(state.loadedSpaceId).toBeNull();
@@ -61,16 +62,15 @@ describe("useSpaceFeedbackSetting - spaceId isolation", () => {
     mockGetConfig.mockResolvedValue({ feedback_url: "https://feedback.test" });
     mockGetSpaceSetting.mockResolvedValueOnce(settingA);
 
-    (WKApp.shared as any).currentSpaceId = "space-a";
-    await ensureVoiceFeedbackLoaded();
+    await ensureVoiceFeedbackLoaded("space-a", activeFor("space-a"));
 
     let state = getSharedSpaceFeedbackState();
     expect(state.loadedSpaceId).toBe("space-a");
     expect(state.spaceSetting?.voice_feedback_on).toBe(1);
 
     mockGetSpaceSetting.mockResolvedValueOnce(settingB);
-    (WKApp.shared as any).currentSpaceId = "space-b";
-    await ensureVoiceFeedbackLoaded();
+    activeSpaceId = "space-b";
+    await ensureVoiceFeedbackLoaded("space-b", activeFor("space-b"));
 
     state = getSharedSpaceFeedbackState();
     expect(state.loadedSpaceId).toBe("space-b");
@@ -80,11 +80,14 @@ describe("useSpaceFeedbackSetting - spaceId isolation", () => {
 
   it("should NOT re-fetch when same space is already loaded", async () => {
     mockGetConfig.mockResolvedValue({ feedback_url: "https://feedback.test" });
-    mockGetSpaceSetting.mockResolvedValueOnce({ voice_feedback_on: 1, voice_feedback_notice_acked: 0 });
+    mockGetSpaceSetting.mockResolvedValueOnce({
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 0,
+    });
 
-    (WKApp.shared as any).currentSpaceId = "space-a";
-    await ensureVoiceFeedbackLoaded();
-    await ensureVoiceFeedbackLoaded();
+    const isSpaceActive = activeFor("space-a");
+    await ensureVoiceFeedbackLoaded("space-a", isSpaceActive);
+    await ensureVoiceFeedbackLoaded("space-a", isSpaceActive);
 
     expect(mockGetSpaceSetting).toHaveBeenCalledTimes(1);
   });
@@ -96,9 +99,13 @@ describe("useSpaceFeedbackSetting - spaceId isolation", () => {
     });
     mockGetSpaceSetting.mockReturnValueOnce(delayedPromise);
 
-    const promise = fetchAndApplySpaceSetting("space-a", "https://feedback.test");
+    const promise = fetchAndApplySpaceSetting(
+      "space-a",
+      "https://feedback.test",
+      activeFor("space-a")
+    );
 
-    (WKApp.shared as any).currentSpaceId = "space-b";
+    activeSpaceId = "space-b";
 
     resolveA!({ voice_feedback_on: 1, voice_feedback_notice_acked: 0 });
     await promise;
@@ -109,30 +116,41 @@ describe("useSpaceFeedbackSetting - spaceId isolation", () => {
 
   it("voiceFeedbackOn should be false when voice_feedback_on=1 but notice_acked=0 (race condition guard)", async () => {
     mockGetConfig.mockResolvedValue({ feedback_url: "https://feedback.test" });
-    mockGetSpaceSetting.mockResolvedValueOnce({ voice_feedback_on: 1, voice_feedback_notice_acked: 0 });
+    mockGetSpaceSetting.mockResolvedValueOnce({
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 0,
+    });
 
-    (WKApp.shared as any).currentSpaceId = "space-a";
-    await ensureVoiceFeedbackLoaded();
+    await ensureVoiceFeedbackLoaded("space-a", activeFor("space-a"));
 
     const state = getSharedSpaceFeedbackState();
     expect(state.spaceSetting?.voice_feedback_on).toBe(1);
     expect(state.spaceSetting?.voice_feedback_notice_acked).toBe(0);
 
     const allowFeedback =
-      (state.spaceSetting?.voice_feedback_on === 1 && state.spaceSetting?.voice_feedback_notice_acked === 1) ? 1 : 0;
+      state.spaceSetting?.voice_feedback_on === 1 &&
+      state.spaceSetting?.voice_feedback_notice_acked === 1
+        ? 1
+        : 0;
     expect(allowFeedback).toBe(0);
   });
 
   it("voiceFeedbackOn should be true when both voice_feedback_on=1 and notice_acked=1", async () => {
     mockGetConfig.mockResolvedValue({ feedback_url: "https://feedback.test" });
-    mockGetSpaceSetting.mockResolvedValueOnce({ voice_feedback_on: 1, voice_feedback_notice_acked: 1 });
+    mockGetSpaceSetting.mockResolvedValueOnce({
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 1,
+    });
 
-    (WKApp.shared as any).currentSpaceId = "space-c";
-    await ensureVoiceFeedbackLoaded();
+    activeSpaceId = "space-c";
+    await ensureVoiceFeedbackLoaded("space-c", activeFor("space-c"));
 
     const state = getSharedSpaceFeedbackState();
     const allowFeedback =
-      (state.spaceSetting?.voice_feedback_on === 1 && state.spaceSetting?.voice_feedback_notice_acked === 1) ? 1 : 0;
+      state.spaceSetting?.voice_feedback_on === 1 &&
+      state.spaceSetting?.voice_feedback_notice_acked === 1
+        ? 1
+        : 0;
     expect(allowFeedback).toBe(1);
   });
 });
@@ -141,7 +159,7 @@ describe("ensureVoiceFeedbackLoaded - inflight promise deduplication", () => {
   beforeEach(() => {
     resetSharedSpaceSetting();
     vi.clearAllMocks();
-    (WKApp.shared as any).currentSpaceId = "space-dedup";
+    activeSpaceId = "space-dedup";
   });
 
   it("should return the same promise for concurrent calls with same spaceId", async () => {
@@ -150,10 +168,14 @@ describe("ensureVoiceFeedbackLoaded - inflight promise deduplication", () => {
       resolveConfig = resolve;
     });
     mockGetConfig.mockReturnValue(configDeferred);
-    mockGetSpaceSetting.mockResolvedValue({ voice_feedback_on: 0, voice_feedback_notice_acked: 0 });
+    mockGetSpaceSetting.mockResolvedValue({
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 0,
+    });
 
-    const p1 = ensureVoiceFeedbackLoaded();
-    const p2 = ensureVoiceFeedbackLoaded();
+    const isSpaceActive = activeFor("space-dedup");
+    const p1 = ensureVoiceFeedbackLoaded("space-dedup", isSpaceActive);
+    const p2 = ensureVoiceFeedbackLoaded("space-dedup", isSpaceActive);
 
     expect(p1).toBe(p2);
 
@@ -166,14 +188,23 @@ describe("ensureVoiceFeedbackLoaded - inflight promise deduplication", () => {
 
   it("should allow new call after previous completes", async () => {
     mockGetConfig.mockResolvedValue({ feedback_url: "https://feedback.test" });
-    mockGetSpaceSetting.mockResolvedValue({ voice_feedback_on: 0, voice_feedback_notice_acked: 0 });
+    mockGetSpaceSetting.mockResolvedValue({
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 0,
+    });
 
-    await ensureVoiceFeedbackLoaded();
+    await ensureVoiceFeedbackLoaded("space-dedup", activeFor("space-dedup"));
 
-    (WKApp.shared as any).currentSpaceId = "space-dedup-2";
-    mockGetSpaceSetting.mockResolvedValue({ voice_feedback_on: 1, voice_feedback_notice_acked: 1 });
+    activeSpaceId = "space-dedup-2";
+    mockGetSpaceSetting.mockResolvedValue({
+      voice_feedback_on: 1,
+      voice_feedback_notice_acked: 1,
+    });
 
-    await ensureVoiceFeedbackLoaded();
+    await ensureVoiceFeedbackLoaded(
+      "space-dedup-2",
+      activeFor("space-dedup-2")
+    );
 
     const state = getSharedSpaceFeedbackState();
     expect(state.loadedSpaceId).toBe("space-dedup-2");

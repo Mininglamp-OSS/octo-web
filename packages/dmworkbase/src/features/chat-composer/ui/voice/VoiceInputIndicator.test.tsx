@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   noticeAccept: undefined as
     | ((feedbackOn: boolean) => void | Promise<void>)
     | undefined,
+  noticeCancel: undefined as (() => void) | undefined,
 }));
 
 vi.mock("../../adapters/voice/useVoiceInput", () => ({
@@ -43,14 +44,22 @@ vi.mock("../../../voice-input/useSpaceFeedbackSetting", () => ({
 vi.mock("../../../voice-input/VoiceFeedbackNotice", () => ({
   default: ({
     onAccept,
+    onCancel,
   }: {
     onAccept: (feedbackOn: boolean) => void | Promise<void>;
+    onCancel: () => void;
   }) => {
     mocks.noticeAccept = onAccept;
+    mocks.noticeCancel = onCancel;
     return (
-      <button data-testid="accept-consent" onClick={() => onAccept(false)}>
-        accept
-      </button>
+      <>
+        <button data-testid="accept-consent" onClick={() => onAccept(false)}>
+          accept
+        </button>
+        <button data-testid="cancel-consent" onClick={onCancel}>
+          cancel
+        </button>
+      </>
     );
   },
 }));
@@ -64,15 +73,28 @@ vi.mock("lucide-react", () => ({
 }));
 
 vi.mock("@douyinfe/semi-ui", () => {
-  const Dropdown = ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
+  const Dropdown = ({
+    children,
+    render,
+  }: {
+    children: React.ReactNode;
+    render?: React.ReactNode;
+  }) => (
+    <>
+      {children}
+      {render}
+    </>
   );
   Dropdown.Menu = ({ children }: { children: React.ReactNode }) => (
     <>{children}</>
   );
-  Dropdown.Item = ({ children }: { children: React.ReactNode }) => (
-    <>{children}</>
-  );
+  Dropdown.Item = ({
+    children,
+    onClick,
+  }: {
+    children: React.ReactNode;
+    onClick?: () => void;
+  }) => <button onClick={onClick}>{children}</button>;
   return {
     Dropdown,
     Toast: {
@@ -90,6 +112,7 @@ let container: HTMLDivElement;
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.noticeAccept = undefined;
+  mocks.noticeCancel = undefined;
   Object.defineProperty(navigator, "onLine", {
     configurable: true,
     value: true,
@@ -155,7 +178,7 @@ describe("VoiceInputIndicator consent lifecycle", () => {
     expect(mocks.acceptVoiceInput).toHaveBeenCalledWith(
       "space-a",
       false,
-      expect.any(Function),
+      expect.any(Function)
     );
     expect(mocks.acceptVoiceInput.mock.calls[0][2]()).toBe(false);
     expect(mocks.startRecording).not.toHaveBeenCalled();
@@ -198,6 +221,42 @@ describe("VoiceInputIndicator consent lifecycle", () => {
     await act(async () => {
       resolveConsent();
       await firstRequest;
+    });
+
+    expect(mocks.startRecording).toHaveBeenCalledOnce();
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+  });
+
+  it("resets a cancelled edit consent before a main-button consent", async () => {
+    const voiceHost: ChatComposerVoiceHost = {
+      getSpaceId: () => "space-a",
+      subscribeSpaceChange: () => () => {},
+    };
+    mocks.acceptVoiceInput.mockResolvedValue(undefined);
+
+    await act(async () => {
+      ReactDOM.render(
+        <VoiceInputIndicator
+          voiceHost={voiceHost}
+          onTranscribed={() => undefined}
+        />,
+        container
+      );
+    });
+
+    const editMode = Array.from(container.querySelectorAll("button")).find(
+      (button) => button.textContent === "base.voiceInput.mode.edit"
+    ) as HTMLButtonElement;
+    act(() => editMode.click());
+    act(() => mocks.noticeCancel?.());
+    act(() => {
+      (
+        container.querySelector(".wk-voice-button-group") as HTMLElement
+      ).click();
+    });
+
+    await act(async () => {
+      await mocks.noticeAccept?.(false);
     });
 
     expect(mocks.startRecording).toHaveBeenCalledOnce();

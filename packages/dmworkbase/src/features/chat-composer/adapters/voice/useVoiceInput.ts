@@ -192,6 +192,7 @@ export default function useVoiceInput(
           voiceFeedbackOnRef.current =
             state.loadedSpaceId === spaceId &&
             state.spaceSetting?.voice_input_enabled === 1 &&
+            state.spaceSetting?.voice_feedback_notice_acked === 1 &&
             state.spaceSetting?.voice_feedback_on === 1
               ? 1
               : 0;

@@ -16,7 +16,10 @@ import type {
 } from "../../ports";
 import { VoiceMode } from "../../../../Service/VoiceService";
 import VoiceFeedbackNotice from "../../../voice-input/VoiceFeedbackNotice";
-import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../../../voice-input/useSpaceFeedbackSetting";
+import useSpaceFeedbackSetting, {
+  getSharedSpaceFeedbackState,
+  acceptVoiceInput,
+} from "../../../voice-input/useSpaceFeedbackSetting";
 import { useI18n } from "../../../../i18n";
 
 type ReplaceMode = "all" | "selection" | "insert";
@@ -40,7 +43,9 @@ interface VoiceInputIndicatorProps {
   getSelectedText?: () => string | undefined;
   /** 获取当前选区的 ProseMirror 位置 */
   getSelectionRange?: () => SelectionRange | undefined;
-  getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
+  getChatContext?: () =>
+    | ChatComposerVoiceContext
+    | Promise<ChatComposerVoiceContext>;
   /** 判断当前输入框是否处于活动状态（用于避免多个输入框同时响应语音快捷键） */
   checkIsInputActive?: () => boolean;
 }
@@ -54,11 +59,22 @@ const PREPARING_DELAY_MS = 300;
 const RECORDING_DELAY_MS = 500;
 
 // 模式配置 - 匹配 Figma 设计：语音输入 / 语音编辑
-const VOICE_MODES: { value: VoiceMode; labelKey: string; description: string }[] =
-  [
-    { value: "append_only", labelKey: "base.voiceInput.mode.input", description: "" },
-    { value: "edit_only", labelKey: "base.voiceInput.mode.edit", description: "" },
-  ];
+const VOICE_MODES: {
+  value: VoiceMode;
+  labelKey: string;
+  description: string;
+}[] = [
+  {
+    value: "append_only",
+    labelKey: "base.voiceInput.mode.input",
+    description: "",
+  },
+  {
+    value: "edit_only",
+    labelKey: "base.voiceInput.mode.edit",
+    description: "",
+  },
+];
 
 export default function VoiceInputIndicator({
   onRecordingStarted,
@@ -328,6 +344,7 @@ export default function VoiceInputIndicator({
             return;
           }
           if (feedbackState.spaceSetting?.voice_input_enabled !== 1) {
+            pendingModeRef.current = "append_only";
             setShowFeedbackNotice(true);
             return;
           }
@@ -376,6 +393,7 @@ export default function VoiceInputIndicator({
             }
             if (feedbackState.spaceSetting?.voice_input_enabled !== 1) {
               setIsPreparing(false);
+              pendingModeRef.current = "append_only";
               setShowFeedbackNotice(true);
               return;
             }
@@ -418,7 +436,11 @@ export default function VoiceInputIndicator({
     const handleKeyUp = (e: KeyboardEvent) => {
       // 如果正在录音，允许任何输入框停止录音（用户可能在录音时切换了输入框）
       // 如果没在录音，只处理当前活动输入框的事件
-      if (!isRecordingRef.current && checkIsInputActive && !checkIsInputActive()) {
+      if (
+        !isRecordingRef.current &&
+        checkIsInputActive &&
+        !checkIsInputActive()
+      ) {
         return;
       }
 
@@ -542,6 +564,7 @@ export default function VoiceInputIndicator({
       return;
     }
     if (spaceSetting?.voice_input_enabled !== 1) {
+      pendingModeRef.current = "append_only";
       setShowFeedbackNotice(true);
       return;
     }
@@ -597,9 +620,10 @@ export default function VoiceInputIndicator({
     }
 
     // 语音编辑模式显示「编辑中」，语音输入模式显示「转写中」
-    const statusText = currentMode === "edit_only"
-      ? t("base.voiceInput.status.editing")
-      : t("base.voiceInput.status.transcribing");
+    const statusText =
+      currentMode === "edit_only"
+        ? t("base.voiceInput.status.editing")
+        : t("base.voiceInput.status.transcribing");
 
     const transcribingIndicator = (
       <div
@@ -624,9 +648,11 @@ export default function VoiceInputIndicator({
         <div className="wk-voice-button-group" ref={buttonGroupRef}>
           <div
             className="wk-voice-button wk-voice-button--recording"
-            title={currentMode === "edit_only"
-              ? t("base.voiceInput.status.editingDots")
-              : t("base.voiceInput.status.transcribingDots")}
+            title={
+              currentMode === "edit_only"
+                ? t("base.voiceInput.status.editingDots")
+                : t("base.voiceInput.status.transcribingDots")
+            }
           >
             <Mic size={18} color="currentColor" />
             <svg
@@ -776,98 +802,103 @@ export default function VoiceInputIndicator({
 
   return (
     <>
-    <Dropdown
-      trigger="hover"
-      position="topRight"
-      render={dropdownMenu}
-      visible={canRecord ? showModeMenu : false}
-      onVisibleChange={setShowModeMenu}
-      spacing={4}
-    >
-      <div
-        className={`wk-voice-button-group ${
-          isActive ? "wk-voice-button-group--active" : ""
-        }`}
-        ref={buttonGroupRef}
-        onClick={handleVoiceClick}
-        onKeyDown={handleVoiceKeyDown}
-        style={{
-          cursor: canRecord ? "pointer" : "not-allowed",
-        }}
+      <Dropdown
+        trigger="hover"
+        position="topRight"
+        render={dropdownMenu}
+        visible={canRecord ? showModeMenu : false}
+        onVisibleChange={setShowModeMenu}
+        spacing={4}
       >
-        {/* 麦克风 + 箭头一体，点击整个区域开始录音 */}
         <div
-          className={`wk-voice-button ${
-            !canRecord
-              ? "wk-voice-button--disabled"
-              : isActive
-              ? "wk-voice-button--active"
-              : ""
+          className={`wk-voice-button-group ${
+            isActive ? "wk-voice-button-group--active" : ""
           }`}
-          title={canRecord
-            ? t("base.voiceInput.title.inputLongPress")
-            : t("base.voiceInput.title.networkUnavailable")}
-          role="button"
-          tabIndex={canRecord ? 0 : -1}
+          ref={buttonGroupRef}
+          onClick={handleVoiceClick}
+          onKeyDown={handleVoiceKeyDown}
+          style={{
+            cursor: canRecord ? "pointer" : "not-allowed",
+          }}
         >
-          <Mic size={18} color="currentColor" />
-          <svg
-            width="6"
-            height="4"
-            viewBox="0 0 6 4"
-            fill="currentColor"
-            className={`wk-voice-arrow ${isActive ? "wk-voice-arrow--up" : ""}`}
+          {/* 麦克风 + 箭头一体，点击整个区域开始录音 */}
+          <div
+            className={`wk-voice-button ${
+              !canRecord
+                ? "wk-voice-button--disabled"
+                : isActive
+                ? "wk-voice-button--active"
+                : ""
+            }`}
+            title={
+              canRecord
+                ? t("base.voiceInput.title.inputLongPress")
+                : t("base.voiceInput.title.networkUnavailable")
+            }
+            role="button"
+            tabIndex={canRecord ? 0 : -1}
           >
-            <path d="M0.5 0.5L3 3.5L5.5 0.5H0.5Z" />
-          </svg>
+            <Mic size={18} color="currentColor" />
+            <svg
+              width="6"
+              height="4"
+              viewBox="0 0 6 4"
+              fill="currentColor"
+              className={`wk-voice-arrow ${
+                isActive ? "wk-voice-arrow--up" : ""
+              }`}
+            >
+              <path d="M0.5 0.5L3 3.5L5.5 0.5H0.5Z" />
+            </svg>
+          </div>
         </div>
-      </div>
-    </Dropdown>
-    {showFeedbackNotice && (
-      <VoiceFeedbackNotice
-        onAccept={async (feedbackOn) => {
-          if (consentPendingRef.current) return;
-          consentPendingRef.current = true;
-          setShowFeedbackNotice(false);
-          const consentHost = voiceHost;
-          const spaceId = consentHost.getSpaceId();
-          const consentEpoch = consentEpochRef.current;
-          const consentGeneration = ++consentGenerationRef.current;
-          const selectedMode = pendingModeRef.current;
-          const isConsentCurrent = () =>
-            mountedRef.current &&
-            consentEpochRef.current === consentEpoch &&
-            consentGenerationRef.current === consentGeneration &&
-            consentHostRef.current === consentHost &&
-            consentHost.getSpaceId() === spaceId;
-          try {
-            if (spaceId) {
-              await acceptVoiceInput(spaceId, feedbackOn, isConsentCurrent);
+      </Dropdown>
+      {showFeedbackNotice && (
+        <VoiceFeedbackNotice
+          onAccept={async (feedbackOn) => {
+            if (consentPendingRef.current) return;
+            consentPendingRef.current = true;
+            setShowFeedbackNotice(false);
+            const consentHost = voiceHost;
+            const spaceId = consentHost.getSpaceId();
+            const consentEpoch = consentEpochRef.current;
+            const consentGeneration = ++consentGenerationRef.current;
+            const selectedMode = pendingModeRef.current;
+            const isConsentCurrent = () =>
+              mountedRef.current &&
+              consentEpochRef.current === consentEpoch &&
+              consentGenerationRef.current === consentGeneration &&
+              consentHostRef.current === consentHost &&
+              consentHost.getSpaceId() === spaceId;
+            try {
+              if (spaceId) {
+                await acceptVoiceInput(spaceId, feedbackOn, isConsentCurrent);
+              }
+            } catch {
+              if (isConsentCurrent()) {
+                Toast.error(t("base.voiceInput.error.operationFailed"));
+              }
+              return;
+            } finally {
+              consentPendingRef.current = false;
             }
-          } catch {
-            if (isConsentCurrent()) {
-              Toast.error(t("base.voiceInput.error.operationFailed"));
-            }
-            return;
-          } finally {
-            consentPendingRef.current = false;
-          }
-          if (!isConsentCurrent()) return;
-          const selectedText = getSelectedText?.();
-          const selectionRange = getSelectionRange?.();
-          hadSelectionRef.current = !!selectedText;
-          savedSelectedTextRef.current = selectedText;
-          savedSelectionRangeRef.current = selectionRange;
-          recordingModeRef.current = selectedMode;
-          startRecording(selectedMode);
-        }}
-        onCancel={() => {
-          setShowFeedbackNotice(false);
-        }}
-        feedbackPrivacyUrl={voiceConfig?.feedback_privacy_url}
-        feedbackUserAgreementUrl={voiceConfig?.feedback_user_agreement_url}
-      />
-    )}
+            if (!isConsentCurrent()) return;
+            const selectedText = getSelectedText?.();
+            const selectionRange = getSelectionRange?.();
+            hadSelectionRef.current = !!selectedText;
+            savedSelectedTextRef.current = selectedText;
+            savedSelectionRangeRef.current = selectionRange;
+            recordingModeRef.current = selectedMode;
+            startRecording(selectedMode);
+          }}
+          onCancel={() => {
+            pendingModeRef.current = "append_only";
+            setShowFeedbackNotice(false);
+          }}
+          feedbackPrivacyUrl={voiceConfig?.feedback_privacy_url}
+          feedbackUserAgreementUrl={voiceConfig?.feedback_user_agreement_url}
+        />
+      )}
     </>
   );
 }

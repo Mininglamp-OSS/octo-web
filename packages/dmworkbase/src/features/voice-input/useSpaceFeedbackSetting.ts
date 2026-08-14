@@ -30,6 +30,24 @@ let sharedState: SpaceFeedbackState = {
 
 let sharedVoiceConfig: VoiceConfig | null = null;
 const listeners = new Set<() => void>();
+let configPromise: Promise<VoiceConfig> | null = null;
+let settingLoadEpoch = 0;
+
+interface InflightSettingLoad {
+  promise: Promise<void>;
+  activePredicates: Set<() => boolean>;
+  epoch: number;
+}
+
+const inflightSettingLoads = new Map<string, InflightSettingLoad>();
+
+function isActive(predicate: () => boolean): boolean {
+  try {
+    return predicate();
+  } catch {
+    return false;
+  }
+}
 
 function notify() {
   for (const fn of listeners) fn();
@@ -48,33 +66,56 @@ export function setSharedVoiceConfig(config: VoiceConfig | null) {
   notify();
 }
 
-export function setSharedSpaceSetting(setting: SpaceSetting | null, apiAvailable: boolean, spaceId?: string) {
-  sharedState = { spaceSetting: setting, loaded: true, apiAvailable, loadedSpaceId: spaceId ?? sharedState.loadedSpaceId };
+export function setSharedSpaceSetting(
+  setting: SpaceSetting | null,
+  apiAvailable: boolean,
+  spaceId?: string
+) {
+  sharedState = {
+    spaceSetting: setting,
+    loaded: true,
+    apiAvailable,
+    loadedSpaceId: spaceId ?? sharedState.loadedSpaceId,
+  };
   notify();
 }
 
 export function resetSharedSpaceSetting() {
-  sharedState = { spaceSetting: null, loaded: false, apiAvailable: false, loadedSpaceId: null };
+  sharedState = {
+    spaceSetting: null,
+    loaded: false,
+    apiAvailable: false,
+    loadedSpaceId: null,
+  };
   configPromise = null;
+  settingLoadEpoch += 1;
+  inflightSettingLoads.clear();
   notify();
 }
 
 export function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export async function fetchAndApplySpaceSetting(
   spaceId: string,
   feedbackUrl: string | undefined,
-  isSpaceActive: () => boolean,
+  isSpaceActive: () => boolean
 ): Promise<void> {
   try {
     const setting = await getSpaceSetting(spaceId);
     if (!isSpaceActive()) return;
     setSharedSpaceSetting(setting, true, spaceId);
 
-    if (feedbackUrl && setting.voice_input_enabled === 1 && setting.voice_feedback_on === 1) {
+    if (
+      feedbackUrl &&
+      setting.voice_input_enabled === 1 &&
+      setting.voice_feedback_notice_acked === 1 &&
+      setting.voice_feedback_on === 1
+    ) {
       if (VoiceFeedback.shared()) {
         VoiceFeedback.shared()!.enable(feedbackUrl);
       } else {
@@ -89,45 +130,72 @@ export async function fetchAndApplySpaceSetting(
     if (status === 404) {
       setSharedSpaceSetting(defaultSetting, false, spaceId);
     } else {
-      setSharedSpaceSetting({ ...defaultSetting, voice_feedback_on: 0 }, false, spaceId);
+      setSharedSpaceSetting(
+        { ...defaultSetting, voice_feedback_on: 0 },
+        false,
+        spaceId
+      );
     }
   }
 }
 
-let configPromise: Promise<VoiceConfig> | null = null;
-
 export function ensureVoiceFeedbackLoaded(
   spaceId: string,
-  isSpaceActive: () => boolean,
+  isSpaceActive: () => boolean
 ): Promise<void> {
   if (!spaceId) return Promise.resolve();
 
-  if (sharedState.loaded && sharedState.apiAvailable && sharedState.loadedSpaceId === spaceId) return Promise.resolve();
+  if (
+    sharedState.loaded &&
+    sharedState.apiAvailable &&
+    sharedState.loadedSpaceId === spaceId
+  )
+    return Promise.resolve();
 
-  return (async () => {
+  const existing = inflightSettingLoads.get(spaceId);
+  if (
+    existing?.epoch === settingLoadEpoch &&
+    [...existing.activePredicates].some(isActive)
+  ) {
+    existing.activePredicates.add(isSpaceActive);
+    return existing.promise;
+  }
+
+  const epoch = settingLoadEpoch;
+  const activePredicates = new Set([isSpaceActive]);
+  const isLoadActive = () =>
+    settingLoadEpoch === epoch && [...activePredicates].some(isActive);
+  let promise!: Promise<void>;
+  promise = (async () => {
     try {
       if (!configPromise) {
         configPromise = VoiceService.shared.getConfig();
       }
       const config = await configPromise;
-      if (!isSpaceActive()) return;
+      if (!isLoadActive()) return;
 
       setSharedVoiceConfig(config);
       await fetchAndApplySpaceSetting(
         spaceId,
         config.feedback_url,
-        isSpaceActive,
+        isLoadActive
       );
     } catch {
       configPromise = null;
     }
-  })();
+  })().finally(() => {
+    if (inflightSettingLoads.get(spaceId)?.promise === promise) {
+      inflightSettingLoads.delete(spaceId);
+    }
+  });
+  inflightSettingLoads.set(spaceId, { promise, activePredicates, epoch });
+  return promise;
 }
 
 export async function toggleVoiceFeedback(
   spaceId: string,
   newValue: number,
-  feedbackUrl?: string,
+  feedbackUrl?: string
 ): Promise<void> {
   await updateSpaceSetting(spaceId, { voice_feedback_on: newValue });
 
@@ -135,7 +203,7 @@ export async function toggleVoiceFeedback(
     setSharedSpaceSetting(
       { ...sharedState.spaceSetting, voice_feedback_on: newValue },
       sharedState.apiAvailable,
-      spaceId,
+      spaceId
     );
   }
 
@@ -160,7 +228,7 @@ export async function enableVoiceInput(spaceId: string): Promise<void> {
     setSharedSpaceSetting(
       { ...sharedState.spaceSetting, ...data },
       sharedState.apiAvailable,
-      spaceId,
+      spaceId
     );
   }
 }
@@ -176,7 +244,7 @@ export async function disableVoiceInput(spaceId: string): Promise<void> {
     setSharedSpaceSetting(
       { ...sharedState.spaceSetting, ...data },
       sharedState.apiAvailable,
-      spaceId,
+      spaceId
     );
   }
 
@@ -186,7 +254,7 @@ export async function disableVoiceInput(spaceId: string): Promise<void> {
 export async function acceptVoiceInput(
   spaceId: string,
   feedbackOn: boolean,
-  isSpaceActive: () => boolean = () => true,
+  isSpaceActive: () => boolean = () => true
 ): Promise<void> {
   const data: Partial<SpaceSetting> = {
     voice_input_enabled: 1,
@@ -200,7 +268,7 @@ export async function acceptVoiceInput(
     setSharedSpaceSetting(
       { ...sharedState.spaceSetting, ...data },
       sharedState.apiAvailable,
-      spaceId,
+      spaceId
     );
   }
 
@@ -227,14 +295,16 @@ export default function useSpaceFeedbackSetting() {
     };
     listeners.add(handler);
     handler();
-    return () => { listeners.delete(handler); };
+    return () => {
+      listeners.delete(handler);
+    };
   }, []);
 
   const updateSetting = useCallback((partial: Partial<SpaceSetting>) => {
     if (!sharedState.spaceSetting) return;
     setSharedSpaceSetting(
       { ...sharedState.spaceSetting, ...partial },
-      sharedState.apiAvailable,
+      sharedState.apiAvailable
     );
   }, []);
 
