@@ -1,7 +1,8 @@
-import { Sparkles, X, Plus } from "lucide-react";
+import { Sparkles, X, Plus, ChevronDown } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
+    Dropdown,
     Toast,
     Typography,
     Tag,
@@ -198,11 +199,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         const actions = selectChat.parentElement;
         if (!actions) return;
-        const startBtn = actions.querySelector('.summary-workbench-start-btn');
+        const startGroup = actions.querySelector('.summary-workbench-start-group');
         const actionsWidth = actions.clientWidth;
-        const btnWidth = startBtn ? (startBtn as HTMLElement).offsetWidth : 0;
+        const groupWidth = startGroup ? (startGroup as HTMLElement).offsetWidth : 0;
         const gap = 24;
-        const width = actionsWidth - btnWidth - gap;
+        const width = actionsWidth - groupWidth - gap;
         selectChat.style.width = width + 'px';
         selectChat.style.flex = 'none';
         selectChat.style.maxWidth = width + 'px';
@@ -535,9 +536,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     autoResizeTextarea = () => {
         const el = this.textareaRef.current;
         if (!el) return;
-        // 整页模式：input-wrap 有固定 420px 高度，textarea height:100% 填满即可。
-        // 面板模式：input-wrap 无固定高度，需要按内容自动撑开。
-        if (!this.props.embedded) return;
+        // 输入框按内容自动撑开（CSS min/max-height 约束边界，见 index.css）。
         el.style.height = "auto";
         el.style.height = `${el.scrollHeight}px`;
     };
@@ -1052,24 +1051,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <div className="summary-workbench-header">
                     <span className="summary-workbench-header-emoji">🚀</span>
                     <span className="summary-workbench-title">{translate("summary.create.title")}</span>
-                    <div className="summary-workbench-mode-switch">
-                        <button
-                            type="button"
-                            data-testid={summaryTestIds.createNormalTab}
-                            className={`summary-workbench-mode-btn${mode === 'normal' ? ' summary-workbench-mode-btn--active' : ''}`}
-                            onClick={() => this.handleSelectMode('normal')}
-                        >
-                            {translate("summary.create.start")}
-                        </button>
-                        <button
-                            type="button"
-                            data-testid={summaryTestIds.createAgentTab}
-                            className={`summary-workbench-mode-btn${mode === 'agent' ? ' summary-workbench-mode-btn--active' : ''}`}
-                            onClick={() => this.handleSelectMode('agent')}
-                        >
-                            {translate("summary.create.agentStart")}
-                        </button>
-                    </div>
                 </div>
 
                 {/* Content card */}
@@ -1331,7 +1312,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectChat")}</span>
                                 </button>
                             )}
-                            {/* 选择参与者 */}
+                            {/* 选择参与者（仅普通模式；Agent 模式不提供多人协作入口） */}
+                            {mode !== 'agent' && (
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
                                     <div className="summary-workbench-chat-chips" ref={this.memberChipsContainerRef}>
@@ -1378,18 +1360,55 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectMembers")}</span>
                                 </button>
                             </div>
+                            )}
                         </div>
-                        <Button
-                            data-testid={summaryTestIds.createSubmit}
-                            theme="solid"
-                            className="summary-workbench-start-btn"
-                            loading={submitting}
-                            disabled={!this.canSubmit() || submitting}
-                            onClick={this.handlePrimaryClick}
-                        >
-                            <Sparkles size={16} />
-                            {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
-                        </Button>
+                        {/* 右下角：默认「开始总结」主按钮 + 下拉切换总结方式（恢复初版设计） */}
+                        <div className="summary-workbench-start-group">
+                            {mode !== 'agent' && (
+                                <Button
+                                    data-testid={summaryTestIds.createSubmit}
+                                    theme="solid"
+                                    className="summary-workbench-start-btn"
+                                    loading={submitting}
+                                    disabled={!this.canSubmit() || submitting}
+                                    onClick={this.handlePrimaryClick}
+                                >
+                                    <Sparkles size={16} />
+                                    {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                                </Button>
+                            )}
+                            <Dropdown
+                                trigger="click"
+                                position="bottomRight"
+                                render={(
+                                    <Dropdown.Menu>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.createNormalTab}
+                                            active={mode !== 'agent'}
+                                            onClick={() => this.handleSelectMode('normal')}
+                                        >
+                                            {translate("summary.create.start")}
+                                        </Dropdown.Item>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.createAgentTab}
+                                            active={mode === 'agent'}
+                                            onClick={() => this.handleSelectMode('agent')}
+                                        >
+                                            {translate("summary.create.agentStart")}
+                                        </Dropdown.Item>
+                                    </Dropdown.Menu>
+                                )}
+                            >
+                                <Button
+                                    data-testid={summaryTestIds.createModeSwitch}
+                                    className="summary-workbench-mode-switch-btn"
+                                    icon={<ChevronDown size={16} />}
+                                    aria-label={translate("summary.create.switchMode")}
+                                    title={translate("summary.create.switchMode")}
+                                    disabled={submitting}
+                                />
+                            </Dropdown>
+                        </div>
                     </div>
                 </div>
 
