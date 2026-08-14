@@ -336,4 +336,71 @@ describe("MessageInput recovery hydration", () => {
       }
     }
   );
+
+  it("hands a partially rejected top attachment to recovery after unmount", async () => {
+    let inputContext: MessageInputContext | undefined;
+    let resolveSend: (
+      outcome: ReturnType<typeof createChatSendOutcome>
+    ) => void = () => undefined;
+    const onSend = vi.fn(
+      () =>
+        new Promise<ReturnType<typeof createChatSendOutcome>>((resolve) => {
+          resolveSend = resolve;
+        })
+    );
+    const onComposeRecovery = vi.fn(() => true);
+    const first = new File(["first"], "first.pdf", {
+      type: "application/pdf",
+    });
+    const second = new File(["second"], "second.pdf", {
+      type: "application/pdf",
+    });
+
+    const view = render(
+      <ChatComposer
+        host={createTestViewHost()}
+        onContext={(context) => {
+          inputContext = context;
+        }}
+        onSend={onSend}
+        onComposeRecovery={onComposeRecovery}
+      />
+    );
+    await waitFor(() => expect(inputContext).toBeDefined());
+
+    await act(async () => {
+      await inputContext?.addAttachment([first, second], "upload");
+    });
+
+    let sendPromise: ReturnType<MessageInputContext["send"]> | undefined;
+    act(() => {
+      sendPromise = inputContext?.send();
+    });
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+
+    const request = onSend.mock.calls[0][0];
+    const [firstTop, secondTop] = request.topFiles ?? [];
+    expect(firstTop?.file).toBe(first);
+    expect(secondTop?.file).toBe(second);
+
+    act(() => view.unmount());
+    await act(async () => {
+      resolveSend(
+        createChatSendOutcome({
+          editorConsumed: true,
+          consumedTopIds: [firstTop.id],
+        })
+      );
+      await sendPromise;
+    });
+
+    expect(onComposeRecovery).toHaveBeenCalledOnce();
+    expect(onComposeRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        topAttachments: [
+          expect.objectContaining({ id: secondTop.id, file: second }),
+        ],
+      })
+    );
+  });
 });

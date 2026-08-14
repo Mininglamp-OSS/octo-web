@@ -310,6 +310,11 @@ export function consumeCompose(
       });
     },
     restoreTopAttachments: (ids: string[]) => {
+      // The attachment store belongs to the same composer instance as the
+      // editor. Restoring into it after unmount would appear to succeed while
+      // leaving the files in an unreachable store, so force the coordinator to
+      // transfer them to cross-instance recovery instead.
+      assertRestorable();
       const wanted = new Set(ids);
       const restored = topItemsAtSend.filter((item) => wanted.has(item.id));
       if (restored.length === 0) return;

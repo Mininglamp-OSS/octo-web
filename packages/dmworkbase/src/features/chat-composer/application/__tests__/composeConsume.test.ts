@@ -604,14 +604,43 @@ describe("consumeCompose — the editor is gone (channel switch mid-flight)", ()
 
     expect(ok).toBe(false);
     // The user is told (MessageInput turns this into a notification)…
-    expect(h.errors).toHaveLength(1);
-    expect(h.errors[0].step).toBe("restoreEditor");
+    // The instance-owned attachment store is unavailable too. Both failures
+    // are reported so the coordinator can hand the whole compose to recovery.
+    expect(h.errors.map(({ step }) => step)).toEqual([
+      "restoreTopAttachments",
+      "restoreEditor",
+    ]);
     expect(h.errors[0].err).toBeInstanceOf(ComposeRestoreUnavailableError);
-    // …the unsent top attachments were still put back first…
-    expect(h.top.map((item) => item.id)).toEqual(["t1"]);
+    expect(h.top).toEqual([]);
     // …and the compose-level side effects (reply/edit target, expanded state)
     // ran even though the document could not be restored.
     expect(h.restoredCompose).toBe(1);
+  });
+
+  it("does not restore a partially rejected top attachment into an unmounted store", async () => {
+    const h = harness(doc(para(text("sent with files"))), [
+      { id: "t1", previewUrl: "blob:t1" },
+      { id: "t2", previewUrl: "blob:t2" },
+    ]);
+    const handle = consume(h);
+
+    h.editor.destroy();
+
+    const ok = await runSendWithConsumedCompose(
+      () => outcome({ editorConsumed: true, consumedTopIds: ["t1"] }),
+      handle.ids,
+      handle.compose,
+    );
+
+    expect(ok).toBe(true);
+    expect(h.revoked).toEqual(["blob:t1"]);
+    expect(h.top).toEqual([]);
+    expect(h.errors).toEqual([
+      {
+        err: expect.any(ComposeRestoreUnavailableError),
+        step: "restoreTopAttachments",
+      },
+    ]);
   });
 });
 
