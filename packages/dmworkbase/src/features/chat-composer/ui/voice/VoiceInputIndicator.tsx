@@ -113,18 +113,40 @@ export default function VoiceInputIndicator({
   const consentGenerationRef = useRef(0);
   const consentPendingRef = useRef(false);
   const consentHostRef = useRef(voiceHost);
+  const pendingConsentRef = useRef<{
+    host: ChatComposerVoiceHost;
+    spaceId: string;
+    epoch: number;
+    generation: number;
+    mode: VoiceMode;
+  } | null>(null);
   consentHostRef.current = voiceHost;
 
+  const openConsent = useCallback((mode: VoiceMode) => {
+    const spaceId = voiceHost.getSpaceId();
+    if (!spaceId) return;
+    const generation = ++consentGenerationRef.current;
+    pendingModeRef.current = mode;
+    pendingConsentRef.current = {
+      host: voiceHost,
+      spaceId,
+      epoch: consentEpochRef.current,
+      generation,
+      mode,
+    };
+    setShowFeedbackNotice(true);
+  }, [voiceHost]);
+
   useEffect(() => {
-    consentEpochRef.current += 1;
-    consentGenerationRef.current += 1;
     const invalidateConsent = () => {
       consentEpochRef.current += 1;
       consentGenerationRef.current += 1;
       consentPendingRef.current = false;
+      pendingConsentRef.current = null;
       pendingModeRef.current = "append_only";
       setShowFeedbackNotice(false);
     };
+    invalidateConsent();
     const unsubscribe = voiceHost.subscribeSpaceChange(invalidateConsent);
     return () => {
       consentEpochRef.current += 1;
@@ -347,8 +369,7 @@ export default function VoiceInputIndicator({
             return;
           }
           if (feedbackState.spaceSetting?.voice_input_enabled !== 1) {
-            pendingModeRef.current = "append_only";
-            setShowFeedbackNotice(true);
+            openConsent("append_only");
             return;
           }
           // 记录选中文本和位置
@@ -396,8 +417,7 @@ export default function VoiceInputIndicator({
             }
             if (feedbackState.spaceSetting?.voice_input_enabled !== 1) {
               setIsPreparing(false);
-              pendingModeRef.current = "append_only";
-              setShowFeedbackNotice(true);
+              openConsent("append_only");
               return;
             }
             shiftRecordingRef.current = true;
@@ -510,7 +530,14 @@ export default function VoiceInputIndicator({
       window.removeEventListener("blur", handleBlurWhilePreparing);
       clearShiftTimer();
     };
-  }, [isVoiceEnabled, getCurrentText, getSelectedText, cancelRecording, t]);
+  }, [
+    isVoiceEnabled,
+    getCurrentText,
+    getSelectedText,
+    cancelRecording,
+    openConsent,
+    t,
+  ]);
 
   // Window blur: auto-stop recording
   useEffect(() => {
@@ -537,8 +564,7 @@ export default function VoiceInputIndicator({
       return;
     }
     if (spaceSetting?.voice_input_enabled !== 1) {
-      pendingModeRef.current = selectedMode;
-      setShowFeedbackNotice(true);
+      openConsent(selectedMode);
       return;
     }
 
@@ -567,8 +593,7 @@ export default function VoiceInputIndicator({
       return;
     }
     if (spaceSetting?.voice_input_enabled !== 1) {
-      pendingModeRef.current = "append_only";
-      setShowFeedbackNotice(true);
+      openConsent("append_only");
       return;
     }
     // 点击麦克风 icon 固定使用语音输入模式
@@ -860,41 +885,47 @@ export default function VoiceInputIndicator({
         <VoiceFeedbackNotice
           onAccept={async (feedbackOn) => {
             if (consentPendingRef.current) return;
-            consentPendingRef.current = true;
-            setShowFeedbackNotice(false);
-            const consentHost = voiceHost;
-            const spaceId = consentHost.getSpaceId();
-            const consentEpoch = consentEpochRef.current;
-            const consentGeneration = ++consentGenerationRef.current;
-            const selectedMode = pendingModeRef.current;
+            const consent = pendingConsentRef.current;
+            if (!consent) return;
             const isConsentCurrent = () =>
               mountedRef.current &&
-              consentEpochRef.current === consentEpoch &&
-              consentGenerationRef.current === consentGeneration &&
-              consentHostRef.current === consentHost &&
-              consentHost.getSpaceId() === spaceId;
+              pendingConsentRef.current === consent &&
+              consentEpochRef.current === consent.epoch &&
+              consentGenerationRef.current === consent.generation &&
+              consentHostRef.current === consent.host &&
+              consent.host.getSpaceId() === consent.spaceId;
+            if (!isConsentCurrent()) return;
+            consentPendingRef.current = true;
+            setShowFeedbackNotice(false);
             try {
-              if (spaceId) {
-                await acceptVoiceInput(spaceId, feedbackOn, isConsentCurrent);
-              }
+              await acceptVoiceInput(
+                consent.spaceId,
+                feedbackOn,
+                isConsentCurrent
+              );
             } catch {
               if (isConsentCurrent()) {
                 Toast.error(t("base.voiceInput.error.operationFailed"));
               }
               return;
             } finally {
-              consentPendingRef.current = false;
+              if (consentGenerationRef.current === consent.generation) {
+                consentPendingRef.current = false;
+              }
             }
             if (!isConsentCurrent()) return;
+            pendingConsentRef.current = null;
             const selectedText = getSelectedText?.();
             const selectionRange = getSelectionRange?.();
             hadSelectionRef.current = !!selectedText;
             savedSelectedTextRef.current = selectedText;
             savedSelectionRangeRef.current = selectionRange;
-            recordingModeRef.current = selectedMode;
-            startRecording(selectedMode);
+            recordingModeRef.current = consent.mode;
+            startRecording(consent.mode);
           }}
           onCancel={() => {
+            consentGenerationRef.current += 1;
+            pendingConsentRef.current = null;
             pendingModeRef.current = "append_only";
             setShowFeedbackNotice(false);
           }}

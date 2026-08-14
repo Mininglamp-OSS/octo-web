@@ -220,6 +220,51 @@ describe("VoiceInputIndicator consent lifecycle", () => {
     expect(mocks.startRecording).not.toHaveBeenCalled();
   });
 
+  it("invalidates a visible consent notice when the voice host is replaced", async () => {
+    const firstHost: ChatComposerVoiceHost = {
+      getSpaceId: () => "space-a",
+      subscribeSpaceChange: () => () => {},
+    };
+    const secondHost: ChatComposerVoiceHost = {
+      getSpaceId: () => "space-b",
+      subscribeSpaceChange: () => () => {},
+    };
+
+    await act(async () => {
+      ReactDOM.render(
+        <VoiceInputIndicator
+          voiceHost={firstHost}
+          onTranscribed={() => undefined}
+        />,
+        container
+      );
+    });
+    act(() => {
+      (
+        container.querySelector(".wk-voice-button-group") as HTMLElement
+      ).click();
+    });
+    const staleAccept = mocks.noticeAccept;
+    expect(container.querySelector('[data-testid="accept-consent"]')).not.toBeNull();
+
+    await act(async () => {
+      ReactDOM.render(
+        <VoiceInputIndicator
+          voiceHost={secondHost}
+          onTranscribed={() => undefined}
+        />,
+        container
+      );
+    });
+
+    expect(container.querySelector('[data-testid="accept-consent"]')).toBeNull();
+    await act(async () => {
+      await staleAccept?.(false);
+    });
+    expect(mocks.acceptVoiceInput).not.toHaveBeenCalled();
+    expect(mocks.startRecording).not.toHaveBeenCalled();
+  });
+
   it("allows only one consent request at a time", async () => {
     const voiceHost: ChatComposerVoiceHost = {
       getSpaceId: () => "space-a",

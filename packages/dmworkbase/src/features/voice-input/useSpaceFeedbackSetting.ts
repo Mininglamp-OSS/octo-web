@@ -259,7 +259,7 @@ export async function disableVoiceInput(spaceId: string): Promise<void> {
 export async function acceptVoiceInput(
   spaceId: string,
   feedbackOn: boolean,
-  isSpaceActive: () => boolean = () => true
+  isSpaceActive: () => boolean
 ): Promise<void> {
   const data: Partial<SpaceSetting> = {
     voice_input_enabled: 1,

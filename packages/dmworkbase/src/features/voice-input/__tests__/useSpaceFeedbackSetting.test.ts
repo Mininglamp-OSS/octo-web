@@ -197,7 +197,7 @@ describe("useSpaceFeedbackSetting helpers", () => {
 
   describe("acceptVoiceInput", () => {
     it("sets voice_feedback_notice_acked: 1 alongside voice_input_enabled: 1", async () => {
-      await acceptVoiceInput("space-1", false);
+      await acceptVoiceInput("space-1", false, () => true);
       expect(mockUpdateSpaceSetting).toHaveBeenCalledWith("space-1", {
         voice_input_enabled: 1,
         voice_feedback_notice_acked: 1,
@@ -210,7 +210,7 @@ describe("useSpaceFeedbackSetting helpers", () => {
 
     it("sets voice_feedback_on: 1 when feedbackOn is true", async () => {
       mockVoiceFeedbackShared.mockReturnValue({ enable: vi.fn() });
-      await acceptVoiceInput("space-1", true);
+      await acceptVoiceInput("space-1", true, () => true);
       expect(mockUpdateSpaceSetting).toHaveBeenCalledWith("space-1", {
         voice_input_enabled: 1,
         voice_feedback_notice_acked: 1,
@@ -222,7 +222,7 @@ describe("useSpaceFeedbackSetting helpers", () => {
 
     it("initializes VoiceFeedback when feedbackOn is true and no shared instance", async () => {
       mockVoiceFeedbackShared.mockReturnValue(null);
-      await acceptVoiceInput("space-1", true);
+      await acceptVoiceInput("space-1", true, () => true);
       expect(mockVoiceFeedbackInit).toHaveBeenCalledWith("https://fb.test");
     });
 
