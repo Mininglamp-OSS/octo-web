@@ -52,10 +52,14 @@ vi.mock('@douyinfe/semi-icons', () => ({
     IconMinusCircle: () => null,
     IconExit: () => null,
 }));
+vi.mock('../../utils/summaryMenuBadge', () => ({
+    refreshPendingInvitationBadge: vi.fn(),
+}));
 
 import * as api from '../../api/summaryApi';
 import { WKApp } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
+import { refreshPendingInvitationBadge } from '../../utils/summaryMenuBadge';
 
 vi.mock('../../api/summaryApi');
 
@@ -91,11 +95,29 @@ describe('SummaryDetailPage — 历史版本引用隐私', () => {
 });
 
 describe('SummaryDetailPage — 窄容器布局', () => {
-    it('渲染版本面板 overlay class 时不会引用未定义的宽度常量', () => {
+    it('窄容器下版本面板保持并排分栏，绝不退化为覆盖式遮挡正文 (#1360)', () => {
         const page = makePage(1);
-        page.state = { ...(page.state as any), layoutWidth: 360, loading: true };
+        page.state = {
+            ...(page.state as any),
+            layoutWidth: 360,
+            loading: true,
+            detail: baseDetail({
+                result: { result_id: 2, version: 2, content: 'v2 body', citations: [] },
+            }) as any,
+            versionPanelOpen: true,
+            versionsLoading: false,
+            versions: [
+                { result_id: 1, version: 1, operation_type: 'generate', operation_note: '', generated_at: '', created_by: 'u1' },
+                { result_id: 2, version: 2, operation_type: 'edit', operation_note: '', generated_at: '', created_by: 'u1' },
+            ],
+        };
         expect(() => page.render()).not.toThrow();
-        expect(JSON.stringify(page.render())).toContain('version-panel-overlay');
+        const html = JSON.stringify(page.render());
+        // 分栏面板本体仍在场（正文可见性由布局保证，不再被覆盖）
+        expect(html).toContain('version-panel');
+        // 覆盖式退化 + 遮罩必须彻底移除：它们就是 #1360 遮挡正文的根源
+        expect(html).not.toContain('version-panel-overlay');
+        expect(html).not.toContain('version-panel-scrim');
     });
 });
 
@@ -668,6 +690,22 @@ describe('SummaryDetailPage — 续修3/4: detail 写入路径切 task 迟到丢
         expect((page.state as any).detail.task_id).toBe(2);
         expect((page.state as any).detail.title).toBe('B-detail');
     });
+
+    it('keeps polling when batch status is terminal but detail still lags', async () => {
+        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 1, status: 2 }) as any,
+        );
+
+        const page = makePage(1);
+        page.state = { ...(page.state as any), lastKnownStatus: 2 };
+        const stopFallbackPoll = vi.spyOn(page as any, 'stopFallbackPoll');
+
+        await (page as any).doFallbackPollOnce();
+
+        expect((page.state as any).lastKnownStatus).toBe(2);
+        expect(stopFallbackPoll).not.toHaveBeenCalled();
+    });
 });
 
 // ─── 续修5/6/7（blocking）：schedule 用户操作路径切 task 迟到丢弃 ───
@@ -772,6 +810,7 @@ describe('SummaryDetailPage — 续修5/6/7: schedule 用户操作路径切 task
 
         // 不重拉 schedule 回显，confirmingSchedule 由 finally 复位。
         expect(api.getSchedule).not.toHaveBeenCalled();
+        expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
         expect((page.state as any).confirmingSchedule).toBe(false);
     });
 });

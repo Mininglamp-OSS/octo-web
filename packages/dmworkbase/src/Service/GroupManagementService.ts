@@ -1,6 +1,7 @@
 import { Channel, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 
 import APIClient from "./APIClient";
+import { apiPath } from "./apiPath";
 
 export interface GroupSubscriberMap {
   uid: string;
@@ -65,14 +66,14 @@ export function addGroupManagementManagers(
   channel: Channel,
   uids: string[]
 ): Promise<void> {
-  return APIClient.shared.post(`groups/${channel.channelID}/managers`, uids);
+  return APIClient.shared.post(apiPath`groups/${channel.channelID}/managers`, uids);
 }
 
 export function removeGroupManagementManagers(
   channel: Channel,
   uids: string[]
 ): Promise<void> {
-  return APIClient.shared.delete(`groups/${channel.channelID}/managers`, {
+  return APIClient.shared.delete(apiPath`groups/${channel.channelID}/managers`, {
     data: uids,
   });
 }
@@ -81,19 +82,19 @@ export function disbandGroupManagement(channel: Channel): Promise<void> {
   if (channel.channelType === ChannelTypePerson) {
     return Promise.resolve();
   }
-  return APIClient.shared.delete(`groups/${channel.channelID}/disband`);
+  return APIClient.shared.delete(apiPath`groups/${channel.channelID}/disband`);
 }
 
 export function setGroupManagementBotAdmin(
   channel: Channel,
   uid: string
 ): Promise<void> {
-  return APIClient.shared.put(`groups/${channel.channelID}/bot_admin/${uid}`);
+  return APIClient.shared.put(apiPath`groups/${channel.channelID}/bot_admin/${uid}`);
 }
 
 export function removeGroupManagementBotAdmin(
   channel: Channel,
   uid: string
 ): Promise<void> {
-  return APIClient.shared.delete(`groups/${channel.channelID}/bot_admin/${uid}`);
+  return APIClient.shared.delete(apiPath`groups/${channel.channelID}/bot_admin/${uid}`);
 }

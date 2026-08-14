@@ -24,6 +24,7 @@ import { ChatVM, handleGlobalSearchClick } from "./vm";
 import "./index.css";
 import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
+import { Dap } from "../../Service/Dap";
 import ChannelSetting from "../../Components/ChannelSetting";
 import ChannelSearchPanel from "../../features/channelSearch/ChannelSearchPanel";
 import { createChannelSearchApiDataSource } from "../../bridge/channelSearch/createChannelSearchDataSource";
@@ -1587,7 +1588,14 @@ export default class ChatPage extends Component<any, ChatPageState> {
                                 const groupMenu = menus.find(
                                   (m) => m.key === "start-group"
                                 );
-                                if (groupMenu?.onClick) groupMenu.onClick();
+                                // 空态入口与「+」气泡里的 start-group 项(见 ChatMenusPopover
+                                // 的 data-track)触发同一 groupMenu.onClick,但此按钮无 data-track,
+                                // 声明式委托采不到(PR #1320 review P1-4)。两处互斥,这里补发一次
+                                // 与气泡项一致的 channel_create_started。
+                                if (groupMenu?.onClick) {
+                                  Dap.shared.track("channel_create_started");
+                                  groupMenu.onClick();
+                                }
                               }}
                             >
                               {t("base.chatPage.startGroup")}
@@ -1720,8 +1728,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     }}
                     onOpenDoc={(item) => {
                       // Open the clicked cloud-doc in the standalone `/d/:docId`
-                      // page, carrying the doc's real space on `?sp=` so the
-                      // preflight addresses the right space (buildDocLink). The
+                      // page. buildDocLink intentionally emits no Space locator;
+                      // authenticated open-context resolves canonical addressing. The
                       // `/d` namespace is intercepted by apps/web Layout OUTSIDE
                       // the app shell and is not a RouteManager route, so it can't
                       // be reached by an in-shell soft push — open it in a new tab
@@ -1823,6 +1831,7 @@ class ChatMenusPopover extends Component<
             return (
               <li
                 key={i}
+                data-track={c.key === "start-group" ? "channel_create_started" : undefined}
                 onClick={() => {
                   if (c.onClick) {
                     c.onClick();

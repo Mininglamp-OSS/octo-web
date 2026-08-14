@@ -217,10 +217,10 @@ export interface DocSearchItem {
    */
   updatedAt: number | null;
   /**
-   * The doc's real space id (backend `spaceId`), passed to buildDocLink's
-   * `?sp=` so the standalone preflight addresses the doc's own space. The
-   * backend returns it on every item (search is single-space scoped, space_id
-   * injected by the gateway); optional only so DataSource fakes/tests may omit it.
+   * The doc's home Space id (backend `spaceId`). Search remains Space-scoped,
+   * but buildDocLink intentionally ignores this field and emits bare `/d/:docId`;
+   * authenticated open-context resolves canonical addressing. Optional only so
+   * DataSource fakes/tests may omit it.
    */
   spaceId?: string;
   /**

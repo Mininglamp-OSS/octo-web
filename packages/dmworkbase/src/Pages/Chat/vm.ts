@@ -690,6 +690,23 @@ export class ChatVM extends ProviderListener {
 export async function handleGlobalSearchClick(item: any, type: string,hideModal?:()=>void) {
     if (type === "contacts") {
         if (item.channel_type === ChannelTypePerson) {
+            // 联系人 tab 点击自己：无条件走资料页，不查 follow、不开"自己和自己"会话。
+            // 后端 GetUserDetail 对 self 的 follow 判定不可靠：非 friend 时会用
+            // GetCommonSpaceID(loginUID, uid) 兜底，而 self 和 self 永远在同一
+            // Space —— 结果 follow 恒为 1，原逻辑因此走 showConversation 打开
+            // 「自己和自己」的私聊，这不是用户搜自己的产品意图（对齐微信/Slack：
+            // 搜自己应看资料页）。后端 notes-to-self 通道仍是合法的，只是不
+            // 通过这个入口触发它。（不锁 octo-server 行号，重构会挪。）
+            if (item.channel_id === WKApp.loginInfo.uid) {
+                // self 分支不调 hideModal():用户搜自己看一眼资料多半只是好奇/
+                // 查证,并没完成主要检索意图,不应把搜索面板收掉——UserInfo
+                // 弹层直接叠在全局搜索面板之上,关掉 UserInfo 后能顺畅继续搜
+                // 其他人。与他人点击(follow=1 开会话/follow=0 开资料页)的
+                // hideModal 语义有意不对称:开会话是"检索完成、转移注意力",
+                // 开自己资料是"顺手一看、还没完成"。
+                WKApp.shared.baseContext.showUserInfo(item.channel_id, new Channel(item.channel_id, item.channel_type))
+                return
+            }
             // 个人频道/Bot：通过 users API 检查好友关系
             try {
                 const resp = await WKApp.apiClient.get(`users/${item.channel_id}`)

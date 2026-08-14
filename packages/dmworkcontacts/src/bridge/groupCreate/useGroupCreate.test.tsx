@@ -26,6 +26,7 @@ function createOptions(action: "createGroup" | "addMember" = "createGroup") {
       onError: vi.fn(),
       onNameRequired: vi.fn(),
       onMembersRequired: vi.fn(),
+      onAvatarUploadFailed: vi.fn(),
     },
     onClose: vi.fn(),
     onSuccess: vi.fn(),
@@ -155,7 +156,11 @@ describe("useGroupCreate", () => {
     act(() => {
       result.current.setGroupName(" Project Octo ");
       result.current.toggleMember("alice");
-      result.current.avatar.save("PO", 2);
+      result.current.avatar.save({
+        type: "generated",
+        avatarText: "PO",
+        colorIndex: 2,
+      });
     });
     await act(async () => result.current.submit());
 
@@ -169,9 +174,46 @@ describe("useGroupCreate", () => {
         avatarText: "PO",
         avatarColor: 2,
       },
+      avatarFile: undefined,
+      onAvatarUploadFailed: options.notice.onAvatarUploadFailed,
       keepSidebarTab: true,
     });
     expect(options.onSuccess).toHaveBeenCalledTimes(1);
+    expect(options.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignores submit re-entry and member changes while submitting", async () => {
+    const options = createOptions();
+    const result = renderGroupCreateHook(options);
+    let releaseSubmit: (() => void) | undefined;
+    submitAction.mockImplementation(
+      () => new Promise<void>((resolve) => (releaseSubmit = resolve))
+    );
+
+    await flushLoad();
+    act(() => {
+      result.current.setGroupName("Project Octo");
+      result.current.toggleMember("alice");
+    });
+
+    let firstSubmit!: Promise<void>;
+    act(() => {
+      firstSubmit = result.current.submit();
+      void result.current.submit();
+    });
+
+    expect(submitAction).toHaveBeenCalledTimes(1);
+    expect(result.current.isSubmitting).toBe(true);
+
+    act(() => result.current.toggleMember("bot"));
+    expect(result.current.selected.map((item) => item.uid)).toEqual(["alice"]);
+
+    await act(async () => {
+      releaseSubmit?.();
+      await firstSubmit;
+    });
+
+    expect(result.current.isSubmitting).toBe(false);
     expect(options.onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -189,9 +231,53 @@ describe("useGroupCreate", () => {
       channel: options.channel,
       selectedUids: ["bot"],
       createOptions: undefined,
+      avatarFile: undefined,
+      onAvatarUploadFailed: options.notice.onAvatarUploadFailed,
       keepSidebarTab: true,
     });
     expect(options.onSuccess).not.toHaveBeenCalled();
     expect(options.onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("submits a locally selected avatar file without generated avatar fields", async () => {
+    const options = createOptions();
+    const result = renderGroupCreateHook(options);
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+
+    await flushLoad();
+    act(() => {
+      result.current.setGroupName("Project Octo");
+      result.current.toggleMember("alice");
+      result.current.avatar.save({
+        type: "generated",
+        avatarText: "PO",
+        colorIndex: 2,
+      });
+    });
+    expect(result.current.avatar.text).toBe("PO");
+    expect(result.current.avatar.colorIndex).toBe(2);
+
+    act(() => {
+      result.current.avatar.save({ type: "uploaded", file });
+    });
+    expect(result.current.avatar.text).toBe("");
+    expect(result.current.avatar.colorIndex).toBeUndefined();
+
+    await act(async () => result.current.submit());
+
+    expect(submitAction).toHaveBeenCalledWith({
+      action: "createGroup",
+      channel: options.channel,
+      selectedUids: ["alice"],
+      createOptions: {
+        categoryId: "category-1",
+        name: "Project Octo",
+        avatarText: undefined,
+        avatarColor: undefined,
+      },
+      avatarFile: file,
+      onAvatarUploadFailed: options.notice.onAvatarUploadFailed,
+      keepSidebarTab: true,
+    });
   });
 });

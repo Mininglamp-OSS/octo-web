@@ -1,6 +1,16 @@
 import axios, { AxiosResponse } from "axios";
 import { buildAcceptLanguage } from "./apiLanguage";
 import { isAuthExpiredApiError, normalizeApiError, NormalizedApiError } from "./apiError";
+import { registerRequestTemplate } from "./apiPath";
+
+declare module "axios" {
+    interface AxiosRequestConfig {
+        /** Internal host-client flag; never serialized as an HTTP header. */
+        suppressSpaceId?: boolean;
+        /** Let a standalone surface own its expired-session recovery flow. */
+        suppressAuthExpiredLogout?: boolean;
+    }
+}
 
 export interface APIClientRejectedError {
     error: unknown;
@@ -63,6 +73,16 @@ export class APIClientConfig {
  */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 20_000
 
+function hasHeaderIgnoreCase(
+    headers: Record<string, unknown>,
+    name: string,
+): boolean {
+    const normalizedName = name.toLowerCase()
+    return Object.keys(headers).some(
+        (headerName) => headerName.toLowerCase() === normalizedName,
+    )
+}
+
 export default class APIClient {
     private constructor() {
         this.initAxios()
@@ -79,6 +99,12 @@ export default class APIClient {
         axios.interceptors.request.use(function (config) {
             config.headers = config.headers || {};
             config.headers["Accept-Language"] = buildAcceptLanguage();
+            // 埋点路由模板登记(见 apiPath.ts):唯一知道 baseURL 的地方,把 apiPath 产出的
+            // 具体路径与模板按最终 pathname 对齐,供 Dap http_request 上报稳定模板而非反解归一。
+            // 非 apiPath 路径无副作用;登记失败绝不影响请求本身。
+            try {
+                registerRequestTemplate(config.url, config.baseURL ?? axios.defaults.baseURL ?? undefined);
+            } catch { /* 埋点旁路,任何异常不得波及业务请求 */ }
             let token:string | undefined
             if(self.config.tokenCallback) {
                 token = self.config.tokenCallback()
@@ -93,7 +119,11 @@ export default class APIClient {
             // X-Space-Id（如 standalone /d/:docId 冷启动 preflight），拦截器不覆盖它；
             // 仅在显式头缺省时用 currentSpaceId 兜底注入。这样显式头与拦截器头永远一致
             // （显式为准/拦截器兜底），不会互相冲突。
-            if (self.config.spaceIdCallback && !config.headers!["X-Space-Id"]) {
+            if (
+                !config.suppressSpaceId &&
+                self.config.spaceIdCallback &&
+                !hasHeaderIgnoreCase(config.headers!, "X-Space-Id")
+            ) {
                 const spaceId = self.config.spaceIdCallback()
                 if (spaceId && spaceId !== "") {
                     config.headers!["X-Space-Id"] = spaceId;
@@ -110,7 +140,11 @@ export default class APIClient {
                 httpStatus: error?.response?.status,
                 raw: error,
             });
-            if (isAuthExpiredApiError(normalized) && self.logoutCallback) {
+            if (
+                isAuthExpiredApiError(normalized) &&
+                !error?.config?.suppressAuthExpiredLogout &&
+                self.logoutCallback
+            ) {
                 self.logoutCallback()
             }
             const rejected: APIClientRejectedError = {
@@ -133,6 +167,8 @@ export default class APIClient {
         responseType: config?.responseType,
         timeout: config?.timeout,
         signal: config?.signal,
+        suppressSpaceId: config?.suppressSpaceId,
+        suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
     }), config)
     }
     post(path: string, data?: any, config?: RequestConfig) {
@@ -141,6 +177,8 @@ export default class APIClient {
             responseType: config?.responseType,
             timeout: config?.timeout,
             signal: config?.signal,
+            suppressSpaceId: config?.suppressSpaceId,
+            suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
         }), config)
     }
 
@@ -148,6 +186,9 @@ export default class APIClient {
         return this.wrapResult(axios.put(path, data, {
             params: config?.param,
             headers: config?.headers,
+            timeout: config?.timeout,
+            suppressSpaceId: config?.suppressSpaceId,
+            suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
         }), config)
     }
 
@@ -155,6 +196,9 @@ export default class APIClient {
         return this.wrapResult(axios.patch(path, data, {
             params: config?.param,
             headers: config?.headers,
+            timeout: config?.timeout,
+            suppressSpaceId: config?.suppressSpaceId,
+            suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
         }), config)
     }
 
@@ -163,6 +207,9 @@ export default class APIClient {
             params: config?.param,
             data: config?.data,
             headers: config?.headers,
+            timeout: config?.timeout,
+            suppressSpaceId: config?.suppressSpaceId,
+            suppressAuthExpiredLogout: config?.suppressAuthExpiredLogout,
         }), config)
     }
 
@@ -208,6 +255,13 @@ export class RequestConfig {
      * 保持既有无显式头行为。
      */
     headers?: Record<string, string>
+    /** Suppress the global X-Space-Id injector for docId-global endpoints. */
+    suppressSpaceId?: boolean
+    /**
+     * Suppress the global forced logout for a 401 when a standalone surface
+     * must preserve its deep link and clear only the expired session itself.
+     */
+    suppressAuthExpiredLogout?: boolean
     /**
      * Per-request axios responseType passthrough. Defaults to axios' `'json'`.
      * `'arraybuffer'` is required for binary endpoints (e.g. server-side PDF

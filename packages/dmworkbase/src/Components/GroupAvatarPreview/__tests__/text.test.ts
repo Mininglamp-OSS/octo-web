@@ -5,6 +5,7 @@ import {
   cleanAvatarText,
   groupNameText,
   groupAvatarLines,
+  avatarTextFontSize,
   colorIndexForName,
 } from "../text"
 
@@ -79,6 +80,16 @@ describe("groupAvatarLines — 单行 / 双行拆分", () => {
   ]
   it.each(cases)("groupAvatarLines(%j) → %j", (input, expected) => {
     expect(groupAvatarLines(input)).toEqual(expected)
+  })
+})
+
+describe("avatarTextFontSize — 大尺寸头像中的单行文字", () => {
+  it("四位数字缩小后不会溢出头像", () => {
+    expect(avatarTextFontSize(136, ["1123"])).toBe(37)
+  })
+
+  it("两行中文保持原有字号比例", () => {
+    expect(avatarTextFontSize(136, ["项", "目群"])).toBe(41)
   })
 })
 

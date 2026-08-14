@@ -15,7 +15,6 @@ overrides:
   react-error-overlay: 6.0.9
 
 patchedDependencies:
-  '@excalidraw/excalidraw@0.18.1': patches/@excalidraw__excalidraw@0.18.1.patch
   # electron-builder 26.x pnpm 依赖收集器 bug：pnpm list 树同名包只展开一处，
   # 导致 electron-screenshots -> debug -> ms 等传递依赖漏进 app.asar（运行时 Cannot find module 'ms'）。
   # 补丁让收集器以 package.json 声明为准补全依赖图。

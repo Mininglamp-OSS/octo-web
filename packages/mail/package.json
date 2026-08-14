@@ -1,0 +1,22 @@
+{
+  "name": "@octo/mail",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.tsx",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json"
+  },
+  "dependencies": {
+    "@octo/base": "workspace:*",
+    "lucide-react": "^0.577.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.21",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.5",
+    "@testing-library/react": "16.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

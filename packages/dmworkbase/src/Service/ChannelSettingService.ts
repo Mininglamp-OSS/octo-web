@@ -8,6 +8,7 @@ import APIClient from "./APIClient";
 import { ChannelTypeCommunityTopic } from "./Const";
 import { hasSpacePrefix, stripSpacePrefix } from "./SpacePrefix";
 import { parseThreadChannelId } from "./Thread";
+import { apiPath } from './apiPath'
 
 export type ChannelSettingPayload = Record<string, any>;
 
@@ -19,6 +20,12 @@ export interface CreateChannelOptions {
   spaceId?: string;
 }
 
+export interface UpdateChannelAvatarCustomOptions {
+  avatarText?: string;
+  avatarColor?: number | "";
+  clearUploadedAvatar?: boolean;
+}
+
 function isPersonChannel(channel: Channel) {
   return channel.channelType === ChannelTypePerson;
 }
@@ -28,12 +35,12 @@ export async function updateChannelSetting(
   channel: Channel
 ): Promise<void> {
   if (channel.channelType === ChannelTypeGroup) {
-    return APIClient.shared.put(`groups/${channel.channelID}/setting`, setting);
+    return APIClient.shared.put(apiPath`groups/${channel.channelID}/setting`, setting);
   }
 
   if (channel.channelType === ChannelTypePerson) {
     return APIClient.shared.put(
-      `users/${stripSpacePrefix(channel.channelID)}/setting`,
+      apiPath`users/${stripSpacePrefix(channel.channelID)}/setting`,
       setting
     );
   }
@@ -44,7 +51,7 @@ export async function updateChannelSetting(
       return;
     }
     return APIClient.shared.put(
-      `groups/${threadInfo.groupNo}/threads/${threadInfo.shortId}/setting`,
+      apiPath`groups/${threadInfo.groupNo}/threads/${threadInfo.shortId}/setting`,
       setting
     );
   }
@@ -73,11 +80,20 @@ export function createChannel(
   return APIClient.shared.post("group/create", body);
 }
 
+export function uploadGroupAvatar(groupNo: string, file: File): Promise<void> {
+  const data = new FormData();
+  data.append("file", file);
+  return APIClient.shared.post(`groups/${groupNo}/avatar`, data, {
+    headers: { "Content-Type": "multipart/form-data" },
+    timeout: 60_000,
+  });
+}
+
 export async function addChannelSubscribers(
   channel: Channel,
   uids: string[]
 ): Promise<void> {
-  await APIClient.shared.post(`groups/${channel.channelID}/members`, {
+  await APIClient.shared.post(apiPath`groups/${channel.channelID}/members`, {
     members: uids,
   });
 }
@@ -86,7 +102,7 @@ export async function removeChannelSubscribers(
   channel: Channel,
   uids: string[]
 ): Promise<void> {
-  await APIClient.shared.delete(`groups/${channel.channelID}/members`, {
+  await APIClient.shared.delete(apiPath`groups/${channel.channelID}/members`, {
     data: {
       members: uids,
     },
@@ -98,9 +114,33 @@ export function updateChannelField(
   field: string,
   value: string
 ): Promise<void> {
-  return APIClient.shared.put(`groups/${channel.channelID}`, {
+  return APIClient.shared.put(apiPath`groups/${channel.channelID}`, {
     [field]: value,
   });
+}
+
+export function updateChannelAvatarCustom(
+  channel: Channel,
+  options: UpdateChannelAvatarCustomOptions
+): Promise<void> {
+  if (isPersonChannel(channel)) {
+    return Promise.resolve();
+  }
+
+  const body: Record<string, any> = {};
+  if (typeof options.avatarText === "string") {
+    body.avatar_text = options.avatarText;
+  }
+  if (typeof options.avatarColor === "number" && Number.isInteger(options.avatarColor)) {
+    body.avatar_color = String(options.avatarColor);
+  } else if (options.avatarColor === "") {
+    // 后端约定空串表示清除自定义色（回退按 group_no 派生）。
+    body.avatar_color = "";
+  }
+  if (options.clearUploadedAvatar) {
+    body.clear_uploaded_avatar = "1";
+  }
+  return APIClient.shared.put(`groups/${channel.channelID}`, body);
 }
 
 export function transferChannelOwner(
@@ -110,7 +150,7 @@ export function transferChannelOwner(
   if (isPersonChannel(channel)) {
     return Promise.resolve();
   }
-  return APIClient.shared.post(`groups/${channel.channelID}/transfer/${uid}`);
+  return APIClient.shared.post(apiPath`groups/${channel.channelID}/transfer/${uid}`);
 }
 
 export function updateChannelSubscriberAttr(
@@ -122,7 +162,7 @@ export function updateChannelSubscriberAttr(
     return Promise.resolve();
   }
   return APIClient.shared.put(
-    `groups/${channel.channelID}/members/${subscriberUID}`,
+    apiPath`groups/${channel.channelID}/members/${subscriberUID}`,
     attr
   );
 }
@@ -131,7 +171,7 @@ export function exitChannel(channel: Channel): Promise<void> {
   if (isPersonChannel(channel)) {
     return Promise.resolve();
   }
-  return APIClient.shared.post(`groups/${channel.channelID}/exit`);
+  return APIClient.shared.post(apiPath`groups/${channel.channelID}/exit`);
 }
 
 export function updateThread(
@@ -139,9 +179,9 @@ export function updateThread(
   shortId: string,
   data: Record<string, any>
 ): Promise<void> {
-  return APIClient.shared.put(`groups/${groupNo}/threads/${shortId}`, data);
+  return APIClient.shared.put(apiPath`groups/${groupNo}/threads/${shortId}`, data);
 }
 
 export function leaveThread(shortId: string): Promise<void> {
-  return APIClient.shared.post(`threads/${shortId}/leave`);
+  return APIClient.shared.post(apiPath`threads/${shortId}/leave`);
 }

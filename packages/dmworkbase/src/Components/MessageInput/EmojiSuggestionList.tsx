@@ -64,7 +64,7 @@ export default forwardRef((props: EmojiSuggestionListProps, ref) => {
         moveSelection('next')
         return true
       }
-      if (event.key === 'Enter') {
+      if (event.key === 'Enter' && !event.shiftKey) {
         selectItem(selectedIndexRef.current)
         return true
       }

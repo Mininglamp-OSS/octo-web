@@ -321,7 +321,7 @@ export class ForwardService {
 /**
  * Forward one plain-text message to each channel.
  *
- * WHY this exists: a feature package (e.g. `@octo/docs`) may need to forward text it composed itself
+ * WHY this exists: an external feature package may need to forward text it composed itself
  * — a prompt for an agent, say — but that package deliberately cannot import `wukongimjssdk` (only
  * `@octo/base` may, per the docs seam contract), so it cannot build a `MessageText` to hand to
  * {@link ForwardService.send}. This is the thinnest possible seam over that gap: construct the

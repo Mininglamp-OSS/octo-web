@@ -84,6 +84,15 @@ describe("APIClient request interceptor — X-Space-Id (GH #1038)", () => {
         expect(captured.headers["token"]).toBe("tkn_abc123")
         expect(captured.headers["X-Space-Id"]).toBe("space-gamma")
     })
+
+    it("显式 X-Space-ID 不会被历史 currentSpaceId 覆盖", async () => {
+        client.config.spaceIdCallback = () => "stale-current-space"
+        await client.get("/ping", {
+            headers: { "X-Space-ID": "authorization-space" },
+        })
+        expect(captured.headers["X-Space-ID"]).toBe("authorization-space")
+        expect(captured.headers["X-Space-Id"]).toBeUndefined()
+    })
 })
 
 /**

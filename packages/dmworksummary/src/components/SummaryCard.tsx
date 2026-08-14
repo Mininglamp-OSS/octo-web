@@ -1,11 +1,10 @@
 import React, { useState } from "react";
 import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
-import { MoreHorizontal, AlertTriangle, Bot, FileText, X } from "lucide-react";
+import { MoreHorizontal, AlertTriangle, Bot, Clock, FileText, UsersRound, X } from "lucide-react";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
-import type { SummaryListItem } from "../types/summary";
-import { ParticipantStatus, TaskStatus, TriggerType } from "../types/summary";
-import { getStatusLabel } from "../utils/summaryHelpers";
+import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
+import { getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -89,17 +88,26 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     const statusText = getStatusLabel(displayStatus);
 
     const isGenerating = task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING;
-    // Type icon: agent-conversation summaries vs the traditional workflow ("快速总结").
-    const isAgentType = task.trigger_type === TriggerType.AGENT;
-    const typeLabel = isAgentType
-        ? t("summary.summaryCard.agentType")
-        : t("summary.summaryCard.quickType");
+    // 类型分类 — 单一 classifier 派生 label + icon + CSS class（R4 yj P2-2）。
+    const typeKind = getSummaryTypeKind(task);
+    const typeLabel = getSummaryTypeLabel(t, task);
     const sourceInfo = getSourceInfo(task, t);
     const relativeTime = formatRelativeTime(task.created_at, t);
     const isCreator = task.creator_id != null && task.creator_id === currentUid;
     const isParticipant = myParticipant != null;
+    // Bot-created summaries (trigger_type=BOT) are marked with the acting bot's
+    // name. The Bot tag keys off trigger_type so the summary stays visibly marked
+    // regardless of field availability; the "由 <bot> 创建" copy is only used when
+    // creator_bot_name is actually present. That field is added by the backend in
+    // octo-smart-summary#188 — until it ships, trigger_type=BOT tasks (producible
+    // since #181) carry no name, so we fall back to the normal creator/time copy
+    // instead of rendering "未知" (the two services deploy independently).
+    const isBotCreated = task.trigger_type === TriggerType.BOT || !!task.creator_bot_name;
+    const hasBotName = isBotCreated && !!task.creator_bot_name;
 
-    const timeText = isCreator
+    const timeText = hasBotName
+        ? t("summary.summaryCard.botCreatedAt", { values: { name: task.creator_bot_name!, time: relativeTime } })
+        : isCreator
         ? t("summary.summaryCard.youStartedAt", { values: { time: relativeTime } })
         : t("summary.summaryCard.startedAt", { values: { name: task.creator_name || t("summary.common.unknown"), time: relativeTime } });
 
@@ -154,12 +162,15 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                 <div className="summary-card-title-row">
                     <Tooltip content={typeLabel} position="top">
                         <span
-                            className={`summary-card-type-icon summary-card-type-icon--${isAgentType ? "agent" : "quick"}`}
+                            className={`summary-card-type-icon summary-card-type-icon--${typeKind}`}
                             role="img"
                             aria-label={typeLabel}
                             tabIndex={0}
                         >
-                            {isAgentType ? <Bot size={14} /> : <FileText size={14} />}
+                            {typeKind === 'agent' ? <Bot size={14} />
+                                : typeKind === 'scheduled' ? <Clock size={14} />
+                                : typeKind === 'multi' ? <UsersRound size={14} />
+                                : <FileText size={14} />}
                         </span>
                     </Tooltip>
                     <div className="summary-card-title">{displayTitle}</div>
@@ -171,6 +182,12 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
 
             {/* 底部：时间 + 操作菜单 */}
             <div className="summary-card-bottom">
+                {isBotCreated && (
+                    <span className="summary-card-bot-tag">
+                        <Bot size={11} />
+                        {t("summary.summaryCard.botTag")}
+                    </span>
+                )}
                 <span className="summary-card-time">{timeText}</span>
                 {(isCreator || (isParticipant && onLeave)) && (
                     <Dropdown

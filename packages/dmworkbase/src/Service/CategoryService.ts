@@ -1,4 +1,5 @@
 import APIClient from "./APIClient"
+import { apiPath } from "./apiPath"
 
 export interface CategoryGroup {
     group_no: string
@@ -39,27 +40,27 @@ const CategoryService = {
 
     /** 创建分组 */
     create(spaceId: string, req: CreateCategoryReq): Promise<CategoryItem> {
-        return APIClient.shared.post(`/spaces/${spaceId}/categories`, req)
+        return APIClient.shared.post(apiPath`/spaces/${spaceId}/categories`, req)
     },
 
     /** 重命名分组 */
     update(spaceId: string, categoryId: string, req: UpdateCategoryReq): Promise<void> {
-        return APIClient.shared.put(`/spaces/${spaceId}/categories/${categoryId}`, req)
+        return APIClient.shared.put(apiPath`/spaces/${spaceId}/categories/${categoryId}`, req)
     },
 
     /** 删除分组 */
     delete(spaceId: string, categoryId: string): Promise<void> {
-        return APIClient.shared.delete(`/spaces/${spaceId}/categories/${categoryId}`)
+        return APIClient.shared.delete(apiPath`/spaces/${spaceId}/categories/${categoryId}`)
     },
 
     /** 批量排序分组 */
     sort(spaceId: string, req: SortCategoriesReq): Promise<void> {
-        return APIClient.shared.put(`/spaces/${spaceId}/categories/sort`, req)
+        return APIClient.shared.put(apiPath`/spaces/${spaceId}/categories/sort`, req)
     },
 
     /** 移动群聊到分组 */
     moveGroupToCategory(groupNo: string, req: MoveGroupToCategoryReq): Promise<void> {
-        return APIClient.shared.put(`/groups/${groupNo}/category`, req)
+        return APIClient.shared.put(apiPath`/groups/${groupNo}/category`, req)
     },
 }
 

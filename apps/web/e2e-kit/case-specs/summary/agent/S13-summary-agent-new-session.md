@@ -16,7 +16,7 @@
 
 - fixture: `fixtures-authed`，本地 mock 模式已预置登录态、Space `e2e-space-001` 和中文 locale。
 - Per-case MSW handler: `e2e-kit/msw-handlers/s13-summary-agent-new-session.ts`
-  - `GET */summary/api/v1/summaries` — 普通列表入口返回空；引用选择器带 `trigger_type=3` 时返回 `S13 可引用总结`。
+  - `GET */summary/api/v1/summaries` — 普通列表入口返回空；引用选择器（status=3=COMPLETED）返回 `S13 可引用总结`。
   - `GET */summary/api/v1/summaries/13013` — 返回引用 side panel 详情兜底。
   - `GET */summary/api/v1/summary-templates` — 返回空模板列表。
   - `GET */summary/api/v1/agent/chat/history` — 返回空历史。

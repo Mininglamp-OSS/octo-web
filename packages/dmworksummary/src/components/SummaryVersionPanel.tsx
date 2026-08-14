@@ -87,14 +87,7 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
     const showRestore = canRestore && !!selected && !selectedIsCurrent;
 
     return (
-        <>
-            <button
-                type="button"
-                className="version-panel-scrim"
-                aria-label={t("summary.detail.versionPanelClose")}
-                onClick={onClose}
-            />
-            <aside data-testid={summaryTestIds.versionPanel} className="version-panel" aria-label={t("summary.detail.versionRecords")}>
+        <aside data-testid={summaryTestIds.versionPanel} className="version-panel" aria-label={t("summary.detail.versionRecords")}>
                 <header className="version-panel__header">
                     <span className="version-panel__icon" aria-hidden>
                         <IconHistory />
@@ -177,8 +170,7 @@ const SummaryVersionPanel: React.FC<SummaryVersionPanelProps> = ({
                         </Button>
                     </footer>
                 )}
-            </aside>
-        </>
+        </aside>
     );
 };
 

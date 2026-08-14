@@ -91,8 +91,10 @@ import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
 import { patchSdkDecodeForExternalFields } from "./Service/Convert";
 import { isMessageSelectable } from "./Service/messageSelection";
+import { isNotificationSuppressedContentType } from "./Service/messageNotification";
 import ConversationVM from "./Components/Conversation/vm";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
+import { SummaryNotifyCell, SummaryNotifyContent } from "./Messages/SummaryNotify";
 import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
@@ -123,6 +125,7 @@ import { isEffectivelyMuted, parseThreadChannelId } from "./Service/Thread";
 import {
   getBrowserSingleAlertCoordinator,
   isConversationChannelVisible,
+  isDocumentFocusScene,
   isMessageElementVisible,
   isSameMessageAttentionSession,
   shouldSuppressImmediateAlert,
@@ -319,6 +322,8 @@ export default class BaseModule implements IModule {
             return LocationCell;
           case MessageContentTypeConst.screenshot:
             return ScreenshotCell;
+          case MessageContentTypeConst.summaryNotify:
+            return SummaryNotifyCell;
           case MessageContentType.signalMessage: // 端对端加密错误消息
           case MessageContentTypeConst.approveGroupMember: // 审批群成员
             return ApproveGroupMemberCell;
@@ -388,6 +393,10 @@ export default class BaseModule implements IModule {
     registerCurrentImMessageContent(
       MessageContentTypeConst.screenshot,
       () => new ScreenshotContent()
+    );
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.summaryNotify,
+      () => new SummaryNotifyContent()
     );
     // 加入组织
     registerCurrentImMessageContent(
@@ -501,7 +510,10 @@ export default class BaseModule implements IModule {
         friendApply.unread = true;
         friendApply.createdAt = message.timestamp;
         WKApp.shared.addFriendApply(friendApply);
-        this.tipsAudio();
+        // 文档专注场景不播提示音（红点/未读仍会更新）；IM 场景不受影响。
+        if (!isDocumentFocusScene()) {
+          this.tipsAudio();
+        }
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
         const toUID = param.to_uid;
@@ -872,6 +884,15 @@ export default class BaseModule implements IModule {
   allowNotify(message: Message) {
     if (WKApp.shared.notificationIsClose) {
       // 用户关闭了通知
+      return false;
+    }
+    if (isDocumentFocusScene()) {
+      // 文档专注场景（独立文档页 /d/:docId、/ppt/d/:docId）：不弹 IM 桌面通知、不播提示音，
+      // 仅保留红点/未读数。IM 场景不受影响。
+      return false;
+    }
+    if (isNotificationSuppressedContentType(message.contentType)) {
+      // 群总结完成提示是会话内的被动系统提示，不弹桌面通知、不播提示音。
       return false;
     }
     if (isCurrentImSystemMessage(message.contentType)) {
@@ -1840,7 +1861,6 @@ export default class BaseModule implements IModule {
     );
 
     // 子区信息行沿用各自既有 builder 和权限/点击逻辑，只在展示层合并为同一信息卡。
-    // 当前未注册的免打扰、查找聊天内容等入口不得因 UI 参考图而补回。
     WKApp.shared.channelSettingRegister(
       "thread.overview",
       (context) => {
@@ -1852,9 +1872,7 @@ export default class BaseModule implements IModule {
       500
     );
 
-    // 子区设置说明：
-    // - 消息免打扰/聊天置顶：子区继承父群组设置，暂不支持单独配置
-    // - 成员管理：子区成员通过加入/离开操作，不支持手动添加
+    // 子区成员通过加入/离开操作，不支持手动添加。
     WKApp.shared.channelSettingRegister(
       "thread.actions",
       (context) => {

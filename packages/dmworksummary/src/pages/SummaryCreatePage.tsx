@@ -8,7 +8,7 @@ import {
     Tooltip,
     Modal,
 } from "@douyinfe/semi-ui";
-import { I18nContext, t } from "@octo/base";
+import { I18nContext, t, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -16,6 +16,7 @@ import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/Voic
 import * as api from "../api/summaryApi";
 import { getTopicTemplatesConfig, getTopicTemplates } from "../api/summaryApi";
 import { chatTypeToOriginChannelType, getOriginChannelType } from "../utils/channelType";
+import { markAgentSummaryNotificationEligible } from "../utils/groupSummaryNotify";
 import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
@@ -65,6 +66,8 @@ interface SummaryCreatePageProps {
     onClose?: () => void;
     /** 面板模式创建成功回调（替代 routeRight.push 详情页）。 */
     onSubmit?: (taskId: number) => void;
+    /** 打开总结创建的来源入口(埋点 source/entry_point,枚举值,非正文)。 */
+    source?: string;
 }
 
 interface SummaryCreatePageState {
@@ -414,6 +417,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (creatingCustomTemplate) {
                 const template = await api.createCustomTopicTemplate({ label, description });
                 this.appendTemplateToState(template);
+                // 真创建成功后才 emit(§started-vs-created):挂在 Save 按钮点击上会把
+                // 被服务端拒绝/取消的尝试也计一次创建,虚高成功率。带 object_id 供归因。
+                Dap.shared.track("template_created", {
+                    object_id: template.id,
+                    template_type: "summary_topic",
+                });
                 Toast.success(t("summary.templates.custom.createSuccess"));
             } else if (editingTemplate?.is_custom) {
                 const template = await api.updateCustomTopicTemplate(editingTemplate.id, { label, description });
@@ -577,6 +586,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (!this.canSubmit()) return;
         const summaryTitle = deriveSummaryTitle(topic);
 
+        // smart_summary_started 收口在这里,而非「开始」按钮的声明式 data-track。按钮 onClick
+        // 是 handlePrimaryClick——agent 模式下它**不提交**(短路 return),但捕获阶段的 data-track
+        // 委托照样会触发,给 agent 模式记一条根本没发起的幻影 started(见 PR #1330 review blocker②)。
+        // 挪到通过 canSubmit、真正发起创建的唯一收口点(handleSubmit 目前仅由 handlePrimaryClick
+        // 的 normal 分支调用;无 Enter 提交路径),agent 模式(不经 handleSubmit)天然不误发。
+        // trigger_mode 恒为 'normal'(agent 分支永不到此),保留字段仅为口径显式、便于日后扩展。
+        Dap.shared.track('smart_summary_started', {
+            object_id: this.props.channel?.channelID,
+            source: this.props.source,
+            entry_point: this.props.source,
+            trigger_mode: this.state.mode,
+        });
+
         this.setState({ submitting: true, error: null });
         try {
             const params: CreateSummaryParams = {
@@ -608,6 +630,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             const result = await api.createSummary(params);
+            // 首次完成通知来源群(#1379):手动创建的任务也登记 eligibility。
+            // 完成快于首次 detail 轮询时,页面第一次看到的就是 COMPLETED
+            // (previousStatus === undefined),靠 transition 抓不到跳变;
+            // 登记后首次观察到 COMPLETED 即补发,标记只在创建时写入,
+            // 不会让历史任务追溯群发。
+            markAgentSummaryNotificationEligible(result.task_id);
 
             // If schedule is configured, create it in ONE step bound to the new task.
             // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
@@ -938,6 +966,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             const result = await api.createAgentSummary(params);
+            markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t('summary.create.agentSummaryCreated'));
 
@@ -983,12 +1012,24 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     Toast.error(t('summary.create.noOutputToSave'));
                     return false;
                 }
-                // 40001: origin_channel_id 反查失败(通常是引用总结退出重进后
-                // referencedTask 丢失,前端没发 referenced_task_ids,后端 fallback
-                // 借 origin 无路可走)。给友好文案指导用户下一步动作。
+                // 40001: origin_channel_id 反查失败。拆两个子因给不同文案
+                // （R4 ms P2-1）：
+                //   (a) referencedTask 还在：前端已把 referenced_task_ids 发过去，
+                //       后端继承兜底也失败 = 被引用总结本身没有 origin（老 agent
+                //       任务 / bot 创建的 owner-scoped 总结）。「重新选择 / 新会话」
+                //       文案对该子因无效——且前端不能显式传 origin：后端在
+                //       origin_channel_id 非 nil 时跳过 session trace 解析，会把
+                //       新总结归错频道（见 octo-smart-summary agent_summary.go
+                //       CreateAgentSummary 的 nil 分支优先级）。
+                //   (b) referencedTask 已丢（退出重进后前端没发 referenced_task_ids，
+                //       后端 fallback 无路可走）→ 沿用原「引用丢失」文案。
                 // 见 SUM-161 fast-follow · CHAT-REFERENCE-BASED-DESIGN-v1。
                 if (code === 40001) {
-                    Toast.error(t('summary.create.savedReferenceLostRetry'));
+                    if (this.state.referencedTask) {
+                        Toast.error(t('summary.create.savedNoOriginRetry'));
+                    } else {
+                        Toast.error(t('summary.create.savedReferenceLostRetry'));
+                    }
                     return false;
                 }
             }

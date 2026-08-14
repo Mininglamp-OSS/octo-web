@@ -12,7 +12,11 @@
     "@douyinfe/semi-ui": "^2.93.0",
     "axios": "^0.25.0",
     "classnames": "^2.3.1",
-    "lucide-react": "^0.577.0"
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.577.0",
+    "react-markdown": "8",
+    "rehype-sanitize": "^6.0.0",
+    "remark-gfm": "3"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
