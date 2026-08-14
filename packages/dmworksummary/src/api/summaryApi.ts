@@ -66,7 +66,10 @@ summaryAxios.interceptors.request.use((config) => {
         config.headers['token'] = token;
     }
     const spaceId = WKApp.shared.currentSpaceId;
-    if (spaceId) {
+    const hasExplicitSpace = Object.keys(config.headers).some(
+        (name) => name.toLowerCase() === 'x-space-id',
+    );
+    if (spaceId && !hasExplicitSpace) {
         config.headers['X-Space-Id'] = spaceId;
     }
     return config;
@@ -545,8 +548,12 @@ export async function createSummaryShares(
     });
 }
 
-export async function getSummaryShare(shareId: string): Promise<GetSummaryShareResponse> {
-    return get(`/summary-shares/${encodeURIComponent(shareId)}`);
+export async function getSummaryShare(shareId: string, spaceId?: string): Promise<GetSummaryShareResponse> {
+    return get(
+        `/summary-shares/${encodeURIComponent(shareId)}`,
+        undefined,
+        spaceId ? { headers: { 'X-Space-Id': spaceId } } : undefined,
+    );
 }
 
 export async function revokeSummaryShare(shareId: string): Promise<void> {

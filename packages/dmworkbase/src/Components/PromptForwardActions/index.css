@@ -1,0 +1,216 @@
+/* Shared "copy prompt / forward to Bot" action block (PromptForwardActions).
+ * Dropped into the body of a prompt modal; the host modal passes footer={null}. */
+
+.wk-prompt-forward {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.wk-prompt-forward__bots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wk-prompt-forward__label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--wk-text-secondary, #4b5563);
+}
+
+.wk-prompt-forward__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--wk-text-tertiary, #6b7280);
+}
+
+.wk-prompt-forward__inline-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--wk-danger, #dc2626);
+}
+
+.wk-prompt-forward__retry {
+  border: 1px solid var(--wk-border, #e5e7eb);
+  background: transparent;
+  border-radius: 6px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--wk-text-secondary, #4b5563);
+}
+
+.wk-prompt-forward__retry:hover {
+  background: var(--wk-hover-bg, #f3f4f6);
+}
+
+.wk-prompt-forward__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--wk-border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.wk-prompt-forward__list > li + li {
+  border-top: 1px solid var(--wk-border, #eef0f2);
+}
+
+.wk-prompt-forward__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.wk-prompt-forward__item:hover {
+  background: var(--wk-hover-bg, #f7f8fa);
+}
+
+.wk-prompt-forward__item input[type="radio"] {
+  margin-top: 2px;
+  accent-color: var(--wk-brand-primary, #6d5cfb);
+}
+
+.wk-prompt-forward__item-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wk-prompt-forward__item-name {
+  font-size: 14px;
+  color: var(--wk-text-primary, #111827);
+}
+
+.wk-prompt-forward__item-desc {
+  font-size: 12px;
+  color: var(--wk-text-tertiary, #9ca3af);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-prompt-forward__prereq {
+  margin: 0;
+  font-size: 12px;
+  color: var(--wk-text-tertiary, #9ca3af);
+}
+
+.wk-prompt-forward__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* -------- Split layout --------
+ * layout="split": prompt (host `preview`) + copy on the left, bot picker +
+ * forward on the right. The host sizes the outer box; both columns fill its
+ * height and pin their action button to the bottom. The bot list grows to
+ * fill the column so "选择 Bot" is as tall as the dialog. */
+.wk-prompt-forward--split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+}
+
+.wk-prompt-forward__col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.wk-prompt-forward__col--preview {
+  border-right: 1px solid var(--wk-border, #e5e7eb);
+}
+
+.wk-prompt-forward__preview-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The prompt <pre> the host drops into the left column: fills the column and
+ * scrolls internally. Generic (not tied to any feature package) so the shared
+ * PromptForwardModal can render it directly. */
+.wk-prompt-forward__preview-pre {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 16px;
+  overflow: auto;
+  color: var(--wk-text-primary, #111827);
+  background: var(--wk-bg-base, #f7f8fa);
+  font: 13px / 1.7 var(--wk-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* Hide the scrollbar — matches the bot list; still scrolls via wheel. */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.wk-prompt-forward__preview-pre::-webkit-scrollbar {
+  display: none;
+}
+
+.wk-prompt-forward__col--bots {
+  gap: 8px;
+  padding: 12px;
+}
+
+.wk-prompt-forward--split .wk-prompt-forward__bots {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.wk-prompt-forward--split .wk-prompt-forward__list {
+  flex: 1 1 auto;
+  max-height: none;
+  /* Hide the scrollbar in the split layout — a bar pinned to the dialog edge
+   * reads as clutter; the list still scrolls via wheel/trackpad. */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge/IE */
+}
+
+.wk-prompt-forward--split .wk-prompt-forward__list::-webkit-scrollbar {
+  display: none; /* WebKit */
+}
+
+/* Copy button sits under the prompt column; give it the same framed footer. */
+.wk-prompt-forward__col--preview .wk-prompt-forward__actions {
+  padding: 12px;
+  border-top: 1px solid var(--wk-border, #e5e7eb);
+}
+
+.wk-prompt-forward__col--preview .wk-prompt-forward__actions .wk-btn,
+.wk-prompt-forward__col--bots .wk-prompt-forward__actions .wk-btn {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+@media (max-width: 719px) {
+  .wk-prompt-forward--split {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .wk-prompt-forward__col--preview {
+    border-right: 0;
+    border-bottom: 1px solid var(--wk-border, #e5e7eb);
+  }
+}

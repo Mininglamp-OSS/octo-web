@@ -19,7 +19,17 @@ import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
-import { consumeStandaloneReturn, persistStandaloneReturn } from "./standaloneReturn";
+import {
+    getMailAuthorizationSessionStorage,
+    isMailAuthorizePath,
+    mailAuthorizeCode,
+    mailAuthorizeMailbox,
+    mailAuthorizeSpaceId,
+    MAIL_AUTHORIZATION_RESOLVED_EVENT,
+    MAIL_AUTHORIZE_PATH,
+    resolveMailAuthorizeSearch,
+} from "@octo/mail";
+import { consumeStandaloneReturn, persistStandaloneReturn, clearStandaloneReturn } from "./standaloneReturn";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -115,8 +125,19 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
     onNeedJoinSpace!: () => void
     onJoinApproval!: (status: JoinApprovalStatus, inviteCode: string) => void
     private _spaceChecked = false; // 冷启动 Space 检测只跑一次
+    private onMailAuthorizationResolved = () => clearStandaloneReturn();
 
     componentDidMount() {
+        window.addEventListener(
+            MAIL_AUTHORIZATION_RESOLVED_EVENT,
+            this.onMailAuthorizationResolved,
+        );
+        if (isMailAuthorizePath(window.location.pathname)) {
+            // Stash once for a possible expired-session round trip. Keeping this
+            // out of render prevents a later AppLayout state update from
+            // recreating a return target that the authorization page resolved.
+            persistStandaloneReturn();
+        }
         // Wave 2: 无 Space 时触发 JoinSpacePage 覆盖层
         this.onNeedJoinSpace = () => {
             this.setState({ showJoinSpace: true });
@@ -130,7 +151,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         WKApp.endpoints.addOnJoinApproval(this.onJoinApproval);
 
         // T5: 冷启动已登录检测 — 用户直接打开 App 恢复登录态时，检查是否有 Space
-        if (WKApp.shared.isLogined()) {
+        if (
+            WKApp.shared.isLogined() &&
+            !isMailAuthorizePath(window.location.pathname)
+        ) {
             this.checkSpaceOnColdStart();
         }
 
@@ -167,6 +191,19 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 if (forwardSp) redirectQuery.set("sp", forwardSp)
                 if (forwardSpace) redirectQuery.set("space", forwardSpace)
             }
+            if (isMailAuthorizePath(window.location.pathname)) {
+                const authorizationSearch = resolveMailAuthorizeSearch(
+                    window.location.pathname,
+                    window.location.search,
+                    getMailAuthorizationSessionStorage(),
+                );
+                const authorizationCode = mailAuthorizeCode(authorizationSearch);
+                if (authorizationCode) redirectQuery.set("code", authorizationCode);
+                const authorizationMailbox = mailAuthorizeMailbox(authorizationSearch);
+                if (authorizationMailbox) redirectQuery.set("mailbox", authorizationMailbox);
+                const authorizationSpaceId = mailAuthorizeSpaceId(authorizationSearch);
+                if (authorizationSpaceId) redirectQuery.set("space_id", authorizationSpaceId);
+            }
             const redirectQs = redirectQuery.toString()
             const redirectSearch = redirectQs ? `?${redirectQs}` : ""
 
@@ -181,7 +218,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 // the URL clean: store the known bucket sid in SessionScope, then navigate to the
                 // sid-less return path. The reloaded page still hits the right sid-keyed session
                 // bucket, without exposing `?sid=` in the address bar.
-                const standaloneReturn = consumeStandaloneReturn(getEnterpriseStandaloneHandlers());
+                const standaloneReturn = consumeStandaloneReturn([
+                    { match: isMailAuthorizePath, persistReturnOnAnonymous: true },
+                    ...getEnterpriseStandaloneHandlers(),
+                ]);
                 if (standaloneReturn) {
                     const sessionSid = findSidForToken(localStorage, WKApp.loginInfo.token || "");
                     if (sessionSid) setSessionSid(sessionSid);
@@ -266,6 +306,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
     }
 
     componentWillUnmount() {
+        window.removeEventListener(
+            MAIL_AUTHORIZATION_RESOLVED_EVENT,
+            this.onMailAuthorizationResolved,
+        );
         WKApp.endpoints.removeOnLogin(this.onLogin);
         WKApp.endpoints.removeOnNeedJoinSpace(this.onNeedJoinSpace);
         WKApp.endpoints.removeOnJoinApproval(this.onJoinApproval);
@@ -396,6 +440,21 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             const bindComponent = WKApp.route.get('/oidc/bind')
             if (bindComponent) {
                 return bindComponent
+            }
+        }
+
+        if (isMailAuthorizePath(window.location.pathname)) {
+            if (!WKApp.loginInfo.token) WKApp.loginInfo.load();
+            if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
+            if (WKApp.loginInfo.token) {
+                if (!WKApp.shared.currentSpaceId) {
+                    const cachedSpaceId = localStorage.getItem("currentSpaceId") || "";
+                    if (cachedSpaceId) WKApp.shared.currentSpaceId = cachedSpaceId;
+                }
+                const mailAuthorizeComponent = WKApp.route.get(MAIL_AUTHORIZE_PATH, {
+                    onSessionExpired: clearExpiredStandaloneSessionAndReload,
+                });
+                if (mailAuthorizeComponent) return mailAuthorizeComponent;
             }
         }
 

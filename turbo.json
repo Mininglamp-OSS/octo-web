@@ -44,6 +44,7 @@
         "../../packages/dmworkcontacts/**",
         "../../packages/dmworkdatasource/**",
         "../../packages/dmworklogin/**",
+        "../../packages/mail/**",
         "../../packages/dmworkmcp/**",
         "../../packages/octo-ui/**",
         "../../packages/dmworkskillmarket/**",

@@ -70,13 +70,13 @@ export const titleContextStore = {
 };
 
 export const WKApp = {
-  loginInfo: { token: 'test-token-abc', uid: 'test-uid' },
+  loginInfo: { token: 'test-token-abc', uid: 'test-uid', isLogined: () => true },
   shared: { currentSpaceId: 'space-123', deviceId: 'test-device-uuid', logout: () => {}, avatarUser: () => '' },
   routeRight: { push: () => {}, replaceToRoot: () => {}, popToRoot: () => {} },
   mittBus: { on: () => {}, off: () => {}, emit: () => {} },
   apiClient: {},
   endpoints: { showConversation: () => {} },
-  menus: { menusList: () => [] },
+  menus: { menusList: () => [], refresh: () => {} },
 };
 
 export default WKApp;

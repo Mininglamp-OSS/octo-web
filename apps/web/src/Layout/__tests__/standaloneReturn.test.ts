@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { isMailAuthorizePath } from "../../../../../packages/mail/src/authorizationSession";
 import { consumeStandaloneReturn, persistStandaloneReturn } from "../standaloneReturn";
 
 const KEY = "octo.docs.standaloneReturn";
@@ -23,6 +24,19 @@ describe("standalone return target", () => {
 
         window.sessionStorage.setItem(KEY, "/s/share/share_abc?sp=space1");
         expect(consumeStandaloneReturn()).toBe("/s/share/share_abc?sp=space1");
+    });
+
+    it("returns an anonymous Mail authorization deep link after off-path login", () => {
+        const target = "/mail/authorize?code=ABCD-1234&mailbox=bot%40mail.imocto.cn&space_id=space-a";
+        window.history.replaceState(null, "", target);
+        persistStandaloneReturn();
+
+        window.history.replaceState(null, "", "/login");
+
+        expect(consumeStandaloneReturn([{
+            match: isMailAuthorizePath,
+            persistReturnOnAnonymous: true,
+        }])).toBe(target);
     });
 
     it("accepts enterprise return targets only when a persistent handler owns the path", () => {

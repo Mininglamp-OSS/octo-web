@@ -274,7 +274,7 @@ describe("ChannelAvatar save intent", () => {
     });
 
     expect((screen.getByRole("textbox") as HTMLInputElement).value).toBe("");
-    expect(screen.getByLabelText("avatar-color-default").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByLabelText("avatar-color-default")).toBeNull();
     expect(screen.queryByText("base.channelAvatar.useGeneratedAvatar")).toBeNull();
   });
 
@@ -290,9 +290,6 @@ describe("ChannelAvatar save intent", () => {
       fireEvent.change(screen.getByRole("textbox"), {
         target: { value: "研发" },
       });
-    });
-    act(() => {
-      fireEvent.click(screen.getByLabelText("avatar-color-default"));
     });
     await act(async () => {
       fireEvent.click(screen.getByText("base.common.save"));
@@ -320,6 +317,8 @@ describe("ChannelAvatar save intent", () => {
 
   it("clears an uploaded avatar when the owner edits generated text", async () => {
     const channel = renderChannelAvatar({
+      initialAvatarText: "旧头像",
+      initialColorIndex: 5,
       isUploadedAvatar: true,
       canClearUploadedAvatar: true,
     });

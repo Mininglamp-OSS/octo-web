@@ -20,3 +20,6 @@ export const IPC_OIDC_HTTP_REQUEST = "oidc-http-request";
 
 /** Renderer → Main: open an IdP URL outside the embedded application window. */
 export const IPC_OIDC_OPEN_EXTERNAL = "oidc-open-external";
+
+/** Renderer → Main: clear authentication cookies and the session auth cache. */
+export const IPC_OIDC_CLEAR_AUTH_SESSION = "octo:oidc:clear-auth-session";

@@ -3,20 +3,25 @@ export interface McpBotPublishPromptValues {
   apiBaseUrl?: string;
 }
 
-// Server-issued space IDs are hex — either the 32-char compact form
-// (`9f5fda183d94482cb49bca5024439105`) or the canonical 36-char UUIDv4
-// (`9f5fda18-3d94-482c-b49b-ca5024439105`). Reject anything else before
-// embedding into a shell command example so a poisoned localStorage
-// fallback value (see McpBotPublishModal.getCurrentSpaceId) can't inject
-// shell tokens like `$(whoami)` / `;` / backticks into `--space ${spaceId}`.
-// The prompt then falls back to the `<space-id>` placeholder, forcing the
-// operator to notice and provide a real one.
-const SPACE_ID_RE = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+// A space id is interpolated into shell command examples (`--space ${spaceId}`),
+// so it must not carry shell metacharacters. Server-issued space ids are
+// readable slugs — hex, UUIDv4, or names like `minglue_default` — i.e. letters,
+// digits, and the separators [._-]. Accept that safe, length-bounded character
+// set and reject anything else (spaces, `$`, `;`, backticks, quotes, …) so a
+// poisoned localStorage fallback (see McpBotPublishModal.getCurrentSpaceId)
+// can't inject shell tokens into `--space ${spaceId}`. The prompt then falls
+// back to the `<space-id>` placeholder, forcing the operator to provide a real one.
+const SPACE_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
-/** Whether a caller-supplied space id has a server-issued hex shape
- *  (compact 32-char or canonical 36-char UUIDv4). */
+/** Whether a caller-supplied space id is shell-safe: letters, digits, and the
+ *  separators [._-] only (bounded length), never a bare `..` and never leading
+ *  with `-`/`.` (which would parse as a flag or a traversal-shaped token when
+ *  reaching `--space ${id}` / `--profile space-${id}`). Covers hex, UUIDv4, and
+ *  readable slugs like `minglue_default`; rejects empty, spaces, and metachars. */
 export function isValidMcpSpaceId(raw?: string): boolean {
-  return typeof raw === "string" && SPACE_ID_RE.test(raw.trim());
+  if (typeof raw !== "string") return false;
+  const v = raw.trim();
+  return SPACE_ID_RE.test(v) && v !== ".." && !/^[-.]/.test(v);
 }
 
 function sanitizeSpaceId(raw?: string): string {

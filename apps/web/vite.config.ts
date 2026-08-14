@@ -1,4 +1,11 @@
 import { defineConfig, loadEnv } from "vite";
+import {
+  agentMailProxyContext,
+  agentMailProxyStrippedHeaders,
+  browserMailProxyStrippedHeaders,
+  isAgentMailboxAuthorization,
+  rewriteAgentMailProxyPath,
+} from "./src/mailProxy";
 import react from "@vitejs/plugin-react";
 import tsconfigPaths from "vite-tsconfig-paths";
 import commonjs from "vite-plugin-commonjs";
@@ -12,9 +19,17 @@ import {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const apiUrl = env.VITE_API_URL;
-  const oidcTrustedOrigins = [...new Set([
-    ...(env.VITE_OIDC_TRUSTED_ORIGINS || "").split(",").map((value) => value.trim()),
-  ].filter(Boolean))];
+  const mailApiUrl = env.VITE_MAIL_API_URL || apiUrl || "http://127.0.0.1:8080";
+  const agentMailApiUrl =
+    env.VITE_AGENT_MAIL_API_URL || "http://127.0.0.1:8090";
+  const oidcTrustedOrigins = [
+    ...new Set(
+      (env.VITE_OIDC_TRUSTED_ORIGINS || "")
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    ),
+  ];
   const isElectronBuild = env.VITE_ELECTRON_BUILD === "true";
   const enterpriseHtmlHead = readEnterpriseHtmlHead(
     env.VITE_ENTERPRISE_HTML_HEAD_PATH,
@@ -68,43 +83,53 @@ export default defineConfig(({ mode }) => {
         },
       },
       ...(isElectronBuild
-        ? [{
-            name: "emit-electron-config",
-            generateBundle() {
-              // Fail loud when the packaged renderer would ship without a
-              // trustable OIDC API origin. The main process reads this file
-              // to seed OIDC_API_ORIGIN — shipping a build with
-              // oidcApiOrigin=null used to silently disable every OIDC IPC
-              // handler at runtime (P2-1). Refuse to emit an unusable build
-              // instead: reviewers, CI, and release pipelines get a hard
-              // stop right at `vite build` and cannot accidentally publish
-              // a broken installer.
-              if (!apiUrl) {
-                this.error(
-                  "[vite] Refusing to emit electron-config.json without VITE_API_URL. "
-                  + "Packaged Electron builds require an absolute API origin so main "
-                  + "can trust the OIDC endpoint without accepting one nominated by "
-                  + "the renderer. Set VITE_API_URL (e.g. https://api.example.com) "
-                  + "and rerun the build.",
-                );
-                return;
-              }
-              this.emitFile({
-                type: "asset",
-                fileName: "electron-config.json",
-                source: JSON.stringify({
-                  // Keep this value in the generated build artifact so the
-                  // tsc-compiled Electron main process can trust it without
-                  // accepting an origin nominated by the renderer.
-                  oidcApiOrigin: apiOrigin,
-                  oidcEndSessionOrigins: [apiOrigin, ...oidcTrustedOrigins],
-                }, null, 2),
-              });
+        ? [
+            {
+              name: "emit-electron-config",
+              generateBundle() {
+                // Fail loud when the packaged renderer would ship without a
+                // trustable OIDC API origin. The main process reads this file
+                // to seed OIDC_API_ORIGIN — shipping a build with
+                // oidcApiOrigin=null used to silently disable every OIDC IPC
+                // handler at runtime (P2-1). Refuse to emit an unusable build
+                // instead: reviewers, CI, and release pipelines get a hard
+                // stop right at `vite build` and cannot accidentally publish
+                // a broken installer.
+                if (!apiUrl) {
+                  this.error(
+                    "[vite] Refusing to emit electron-config.json without VITE_API_URL. " +
+                      "Packaged Electron builds require an absolute API origin so main " +
+                      "can trust the OIDC endpoint without accepting one nominated by " +
+                      "the renderer. Set VITE_API_URL (e.g. https://api.example.com) " +
+                      "and rerun the build."
+                  );
+                  return;
+                }
+                this.emitFile({
+                  type: "asset",
+                  fileName: "electron-config.json",
+                  source: JSON.stringify(
+                    {
+                      // Keep this value in the generated build artifact so the
+                      // tsc-compiled Electron main process can trust it without
+                      // accepting an origin nominated by the renderer.
+                      oidcApiOrigin: apiOrigin,
+                      oidcEndSessionOrigins: [apiOrigin, ...oidcTrustedOrigins],
+                    },
+                    null,
+                    2
+                  ),
+                });
+              },
             },
-          }]
+          ]
         : []),
       enterpriseHtmlHeadPlugin(enterpriseHtmlHead),
-      enterpriseModulesPlugin(env.VITE_ENTERPRISE_MODULES_ENTRY, process.cwd(), enterpriseFsAllow),
+      enterpriseModulesPlugin(
+        env.VITE_ENTERPRISE_MODULES_ENTRY,
+        process.cwd(),
+        enterpriseFsAllow
+      ),
       // TODO: remove after all require() calls are migrated to import (chore/migrate-require-to-import)
       commonjs(),
       react(),
@@ -181,6 +206,55 @@ export default defineConfig(({ mode }) => {
       port: env.VITE_PORT ? Number(env.VITE_PORT) : 3000,
       host: env.VITE_HOST ?? true,
       proxy: {
+        // Agent Mail uses one stable browser path in every environment. The
+        // development proxy selects the OCTO server origin through
+        // configuration, while production uses the equivalent Nginx route.
+        "/mail-api/": {
+          target: mailApiUrl,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path: string) =>
+            path.replace(/^\/mail-api/, "/v1/mail-gateway"),
+          configure(proxy) {
+            proxy.on("proxyReq", (proxyReq) => {
+              browserMailProxyStrippedHeaders.forEach((header) =>
+                proxyReq.removeHeader(header)
+              );
+            });
+          },
+        },
+        // Agent CLI uses the same OCTO origin but a distinct mailbox-token
+        // boundary. Never route omb_ credentials through the human gateway.
+        [agentMailProxyContext]: {
+          target: agentMailApiUrl,
+          changeOrigin: true,
+          secure: false,
+          rewrite: rewriteAgentMailProxyPath,
+          bypass(request, response) {
+            if (isAgentMailboxAuthorization(request.headers.authorization)) {
+              return undefined;
+            }
+            if (!response) return false;
+            response.statusCode = 401;
+            response.setHeader("Content-Type", "application/json");
+            response.end(
+              JSON.stringify({
+                status: 401,
+                msg: "mailbox credential required",
+              })
+            );
+            // Returning a string makes Vite stop after the response written
+            // above instead of forwarding the rejected request upstream.
+            return request.url || "/agent-mail-api";
+          },
+          configure(proxy) {
+            proxy.on("proxyReq", (proxyReq) => {
+              agentMailProxyStrippedHeaders.forEach((header) =>
+                proxyReq.removeHeader(header)
+              );
+            });
+          },
+        },
         // Docs service API — must be before the general /api/ rule
         "/api/v1/docs": {
           target: env.VITE_DOCS_API_URL || "http://localhost:4000",
@@ -202,8 +276,7 @@ export default defineConfig(({ mode }) => {
         // stripped here (dev) and by nginx (prod). See octo-marketplace
         // docs/api/mcp-v1.md §0.
         "/market/api/v1": {
-          target:
-            env.VITE_MARKET_API_URL || "http://127.0.0.1:8092",
+          target: env.VITE_MARKET_API_URL || "http://127.0.0.1:8092",
           changeOrigin: true,
           secure: false,
           rewrite: (path: string) => path.replace(/^\/market/, ""),

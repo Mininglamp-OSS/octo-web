@@ -117,25 +117,25 @@ function loadOrCreateDeviceId(): string {
  * 词表来源:扫描生产源码里 API 路径字面量的静态段(见提交说明),而非手工臆造。
  */
 const ROUTE_WORDS = new Set<string>([
-    'accept', 'access', 'access-requests', 'action', 'agent', 'agent-cards', 'api', 'app_bot',
+    'accept', 'access', 'access-requests', 'action', 'agent', 'agent-auth', 'agent-cards', 'agent-mailboxes', 'api', 'app_bot',
     'appbot', 'appconfig', 'apply', 'attachments', 'avatar', 'batch', 'batch-status', 'bind',
     'blacklist', 'blobs', 'bot_admin', 'cancel', 'card', 'categories', 'channel', 'chat',
     'collab-token', 'comments', 'common', 'config', 'confirm', 'contacts', 'conversation', 'conversations',
     'copy', 'create', 'current', 'decline', 'disband', 'dm', 'docs', 'download',
-    'drawings', 'drive', 'edit', 'email', 'emoji', 'emojis', 'entrypoints', 'exit',
+    'drafts', 'drawings', 'drive', 'edit', 'email', 'emoji', 'emojis', 'entrypoints', 'exit',
     'extra', 'file', 'files', 'folders', 'follow', 'friend', 'global', 'grants',
     'group', 'groups', 'im', 'imtransfer', 'incoming-webhooks', 'internal', 'invite', 'invites',
     'join', 'leave', 'local-config', 'login', 'login_authcode', 'loginuuid', 'managers', 'market',
-    'mcp', 'mcp_categories', 'mcp-market', 'mcps', 'mcp_tags', 'me', 'members', 'mention_pref',
+    'mail-api', 'mail-gateway', 'mail-rules', 'mailboxes', 'mcp', 'mcp_categories', 'mcp-market', 'mcps', 'mcp_tags', 'me', 'members', 'mention_pref',
     'message', 'messages', 'migrations', 'mine', 'move', 'my_bots', 'obo', 'octo',
     'oidc', 'org', 'organizations', 'otp', 'owned_bots', 'participants', 'personal', 'personal-draft',
     'personal-edit', 'personal-refine', 'personal-versions', 'plugins', 'ppt', 'present', 'preview', 'qrcode',
-    'reddot', 'refine', 'regenerate', 'reminder', 'rename', 'respond', 'restore', 'robot',
+    'reddot', 'refine', 'regenerate', 'reminder', 'rename', 'requests', 'respond', 'restore', 'robot',
     'scopes', 'screenshots', 'search', 'sendcode', 'setting', 'settings', 'share', 'shares',
     'skills', 'sort', 'space', 'space_bots', 'spaces', 'sticker', 'submit', 'summaries',
     'summary', 'summary-chat-candidates', 'summary-infer', 'summary-member-candidates', 'summary-schedules', 'summary-templates', 'sync', 'thirdlogin',
     'thread', 'threads', 'toggle', 'track', 'transcribe', 'transfer', 'upload', 'user',
-    'users', 'v1', 'v2', 'v3', 'verify', 'versions', 'voice', 'webhooks',
+    'users', 'v0', 'v1', 'v2', 'v3', 'verify', 'versions', 'voice', 'webapi', 'webhooks',
     'worksheets',
 ])
 

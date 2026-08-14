@@ -11,6 +11,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp } from "@octo/base";
 import * as api from "../api/summaryApi";
+import { setPendingInvitationBadge } from "../utils/summaryMenuBadge";
 import type {
     SummaryListItem,
     ListSummariesParams,
@@ -197,6 +198,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // loadData already bumped captures the already-bumped value and
         // would still commit.
         const seq = ++this.loadDataSeq;
+        const requestSpaceId = WKApp.shared.currentSpaceId;
         this.isLoadingData = true;
         // Only toggle loading. Do NOT pre-set page:1 / hasMore:true here —
         // if the request fails in silent mode we would leave items at the
@@ -221,8 +223,14 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             // Post-await mount check (round-8 yujiawei P2-3): the entry
             // isMounted_ guard cannot cover the await window; React 18 will
             // drop setState on an unmounted fiber but the callback would
-            // still be scheduled. Explicit check makes the guarantee ours.
-            if (!this.isMounted_) return;
+            // still be scheduled. Also bind the response to the Space that
+            // issued it so an unmounted/late list cannot commit stale data.
+            if (!this.isMounted_ || WKApp.shared.currentSpaceId !== requestSpaceId) return;
+            // #1359 只有全局列表拥有写 NavRail badge 的职责。后端 count 虽然是
+            // Space 级，但聊天侧栏是嵌入式 channel 实例，不应改写全局导航状态。
+            if (!this.props.channelId) {
+                setPendingInvitationBadge(resp.pending_invitation_count ?? 0);
+            }
             this.setState({
                 items: resp.items,
                 page: 1,
