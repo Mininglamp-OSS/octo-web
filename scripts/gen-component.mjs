@@ -193,6 +193,48 @@ function appendLineIfMissing(filePath, line) {
   console.log(`  ✅ ${relative(ROOT_DIR, filePath)}`)
 }
 
+function insertImportIfMissing(filePath, line) {
+  const content = readFileSync(filePath, 'utf-8')
+  const lines = content.split(/\r?\n/)
+  if (lines.includes(line)) {
+    return
+  }
+
+  let insertAt = 0
+  let inBlockComment = false
+
+  while (insertAt < lines.length) {
+    const trimmed = lines[insertAt].trim()
+
+    if (inBlockComment) {
+      if (trimmed.includes('*/')) {
+        inBlockComment = false
+      }
+      insertAt += 1
+      continue
+    }
+
+    if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('@import ')) {
+      insertAt += 1
+      continue
+    }
+
+    if (trimmed.startsWith('/*')) {
+      if (!trimmed.includes('*/')) {
+        inBlockComment = true
+      }
+      insertAt += 1
+      continue
+    }
+
+    break
+  }
+
+  lines.splice(insertAt, 0, line)
+  writeFileSync(filePath, `${lines.join('\n').replace(/\n*$/, '')}\n`, 'utf-8')
+  console.log(`  ✅ ${relative(ROOT_DIR, filePath)}`)
+}
+
 console.log(`\n🔨 生成组件: ${name}\n`)
 console.log(`📦 package: ${isOctoUiPackage ? '@octo/ui' : 'default'}`)
 console.log(`📁 ui:      ${relative(ROOT_DIR, uiBaseDir)}`)
@@ -217,7 +259,7 @@ if (isOctoUiPackage) {
     join(ROOT_DIR, 'packages/octo-ui/src/index.ts'),
     `export type { ${name}Props } from './components/${name}/types'`,
   )
-  appendLineIfMissing(
+  insertImportIfMissing(
     join(ROOT_DIR, 'packages/octo-ui/src/styles/components.css'),
     `@import '../components/${name}/index.css';`,
   )
