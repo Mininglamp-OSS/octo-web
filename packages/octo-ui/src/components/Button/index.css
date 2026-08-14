@@ -118,11 +118,13 @@
 .octo-ui-button__label {
   display: inline-flex;
   align-items: center;
+  line-height: 1;
 }
 
 .octo-ui-button__icon {
   flex-shrink: 0;
   font-size: var(--wk-text-size-xl);
+  line-height: 1;
 }
 
 .octo-ui-button__spinner {
