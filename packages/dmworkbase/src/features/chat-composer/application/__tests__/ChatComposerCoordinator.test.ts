@@ -14,12 +14,12 @@ function consumed(
   overrides: Partial<ReturnType<ChatComposerEditorPort["consume"]>> = {}
 ): ReturnType<ChatComposerEditorPort["consume"]> {
   return {
-    ids: { topIds: [], editorAttachmentIds: [] },
+    ids: { topIds: [], editorPartIds: [] },
     compose: {
       restoreEditor: context.onRestoreCompose,
       restoreEditorBlocks: () => undefined,
       restoreSendTarget: context.onRestoreSendTarget,
-      disposeEditorAttachments: () => undefined,
+      disposeEditorParts: () => undefined,
       disposeTopAttachments: () => undefined,
       restoreTopAttachments: () => undefined,
       onRestoreError: context.onRestoreError,

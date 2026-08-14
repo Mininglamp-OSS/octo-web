@@ -1,10 +1,15 @@
-import type { ChatSendOutcome, PendingSendDraft } from "./types";
+import type {
+  ChatSendOutcome,
+  EditorContentBlock,
+  PendingSendDraft,
+} from "./types";
 
 export interface ComposeAttempt<TAttachment = unknown> {
   id: string;
   capturedAt: number;
   previewText: string;
   draftText: string;
+  editorBlocks: EditorContentBlock[];
   attachments: TAttachment[];
   expectedPartIds: string[];
   enqueuedPartIds: string[];
@@ -13,6 +18,7 @@ export interface ComposeAttempt<TAttachment = unknown> {
 export interface CaptureComposeAttempt<TAttachment = unknown> {
   previewText: string;
   draftText: string;
+  editorBlocks?: EditorContentBlock[];
   attachments?: TAttachment[];
 }
 
@@ -54,6 +60,7 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
       capturedAt: this.now(),
       previewText: input.previewText,
       draftText: input.draftText,
+      editorBlocks: [...(input.editorBlocks ?? [])],
       attachments: [...(input.attachments ?? [])],
       expectedPartIds: [],
       enqueuedPartIds: [],

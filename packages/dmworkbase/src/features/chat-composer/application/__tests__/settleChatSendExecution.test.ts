@@ -84,6 +84,27 @@ describe("settleChatSendExecution", () => {
     expect(result.unsentEditorBlocks).toEqual([]);
   });
 
+  it("restores an extension editor part when its operation did not enqueue", () => {
+    const result = settleChatSendExecution(
+      request({
+        text: "",
+        editorBlocks: [
+          {
+            type: "extension:poll",
+            id: "poll-1",
+            payload: { question: "Ship it?" },
+          },
+        ],
+      }),
+      execution({ enqueuedPartIds: ["other-part"] }),
+    );
+
+    expect(result.editorConsumed).toBe(true);
+    expect(result.unsentEditorBlocks).toEqual([
+      { type: "extension", id: "poll-1" },
+    ]);
+  });
+
   it("keeps fallback text when a top attachment succeeded first", () => {
     const result = settleChatSendExecution(
       request({

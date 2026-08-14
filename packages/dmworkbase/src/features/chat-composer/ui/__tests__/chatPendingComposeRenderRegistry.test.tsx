@@ -8,6 +8,7 @@ function item(attachments: Array<{ id: string; name: string; type: string }>) {
     capturedAt: 1,
     previewText: "caption",
     draftText: "caption",
+    editorBlocks: [],
     attachments,
     expectedPartIds: [],
     enqueuedPartIds: [],

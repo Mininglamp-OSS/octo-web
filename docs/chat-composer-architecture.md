@@ -239,9 +239,54 @@ const extensions = createDefaultChatComposerExtensions<Message>();
 
 一个新 part 至少需要三段能力：
 
-1. editor compose part：capture、restore、dispose、toSendBlock。
+1. editor：注入 Tiptap extension，并提供 compose part 的 capture、restore、dispose、
+   toSendBlock。
 2. send operation：planner 生成 operation，registry 注册 handler。
 3. pending renderer：为发送中状态提供稳定 UI。
+
+最小注册形态：
+
+```ts
+extensions.editor.tiptap.push(PollNode);
+extensions.editor.composeParts.register({
+  id: "poll",
+  canCapture: (node) => node.type === "poll",
+  capture: (node) => ({
+    id: String(node.attrs?.id),
+    kind: "poll",
+    extensionId: "poll",
+    placement: "block",
+    node,
+  }),
+  restore: (part) => part.node,
+  dispose: (part, context) => {
+    // 仅资源型节点需要；释放逻辑由扩展自己拥有。
+  },
+  toSendBlock: (part) => ({
+    type: "extension:poll",
+    id: part.id,
+    payload: { question: part.node.attrs?.question },
+  }),
+});
+
+extensions.send.operations.register("extension:poll", async (operation, events) => {
+  const message = await sendPoll(operation.payload);
+  events.onEnqueued(operation.partIds);
+  return { enqueuedPartIds: operation.partIds, messageId: message.id };
+});
+
+extensions.render.pending.register({
+  id: "poll",
+  priority: 100,
+  canRender: (attempt) =>
+    attempt.editorBlocks.some((block) => block.type === "extension:poll"),
+  render: (attempt) => <PendingPoll attempt={attempt} />,
+});
+```
+
+`placement` 默认按 inline part 处理；顶层卡片、投票等 block node 必须显式写
+`placement: "block"`，否则部分失败恢复时会被包进 paragraph。part `id` 在一次 editor
+document 中必须全局唯一，不能只在各扩展内部唯一。
 
 实现顺序：
 
@@ -260,10 +305,14 @@ part 必须 fail closed，保留原 editor 内容。
 
 ### 5.3 当前扩展限制
 
-- attachment 已完成 capture -> send -> settle -> recovery 的生产闭环。
+- attachment 和 `extension:*` 已完成 capture -> pending -> plan -> operation -> settle ->
+  recovery 的事务闭环。
 - text/mention 仍有专用捕获与解析路径，尚未全部变成通用 editor part。
-- `UnsentEditorBlock` 目前标准化 text/attachment；全新 wire payload 需要同时扩展 settlement
-  和 recovery 映射。
+- extension payload 当前是 `unknown`；扩展自己的 operation handler 必须做 schema/runtime
+  validation，不能信任调用方输入。
+- 跨实例 recovery 会保留 Tiptap node snapshot 和内存中的 attachment `File`/object URL；如果
+  新扩展持有 snapshot 之外的临时资源，需要由扩展增加对应的资源 handoff 设计，不能把资源只
+  放在 React component state 中。
 - 历史消息 renderer 继续按消息 content type 注册，不复用 pending renderer。
 - `ChatComposer.tsx` 仍包含较多 UI/editor 装配代码；后续可以拆视觉组件，但不应再次拆散事务
   所有权。
@@ -373,7 +422,8 @@ pnpm --filter @octo/web build
 - rapid consecutive sends 的捕获顺序和队列隔离。
 - target/draft/channel/expanded 的 capture-time 语义。
 - partial enqueue、restore error、recovery handoff 和资源 dispose。
-- extension bundle 隔离、rerender 稳定性和 production attachment pipeline。
+- extension bundle 隔离、Tiptap node 注入、自定义 operation、pending renderer、部分失败和
+  cross-instance recovery。
 - mention 实例隔离、emoji/mention Shift+Enter、clipboard handler 优先级。
 - initial compose 的 prepared/rejected/attempted/throw 分支。
 
@@ -387,7 +437,7 @@ pnpm --filter @octo/web build
 4. pre-enqueue 阶段切换会话，旧内容不进入新会话，失败内容恢复到原 channel。
 5. recovery 文本与 provisional draft 相同也只出现一次；附件只恢复一份。
 6. emoji/mention 选择后 popup 一次关闭，不闪回。
-7. 文本、top attachment、inline attachment、RichText 混排发送与失败恢复。
+7. 文本、top attachment、inline attachment、RichText 和自定义 editor part 的发送与失败恢复。
 8. reply/edit target 在点击发送时固定，后续切换选择不改变已排队 attempt。
 
 ## 11. Review 与提交纪律
@@ -408,7 +458,8 @@ pnpm --filter @octo/web build
 核心重构已完成，后续工作是增量演进，不再依赖旧架构：
 
 - 将 text/mention capture 逐步统一到 editor compose part contract。
-- 为全新 wire payload 补齐 typed settlement/recovery extension contract。
+- 根据真实扩展数量评估是否把 `extension:*` payload 从 `unknown` 收紧为 declaration map。
+- 若出现拥有独立临时资源的扩展，为 recovery 增加通用 resource handoff contract。
 - 从 `ChatComposer.tsx` 拆出纯视觉组件，保持 coordinator 和 ports 不变。
 - 为关键浏览器场景建立稳定的 Playwright/端到端 fixture，减少人工验收成本。
 - 只有明确要求跨刷新恢复附件时，才设计 durable outbox。

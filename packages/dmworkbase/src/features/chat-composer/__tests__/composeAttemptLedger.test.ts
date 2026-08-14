@@ -48,6 +48,7 @@ describe("ComposeAttemptLedger", () => {
     expect(first).toMatchObject({
       id: "attempt-1",
       capturedAt: 100,
+      editorBlocks: [],
       attachments: [{ id: "file-1" }],
       expectedPartIds: [],
       enqueuedPartIds: [],

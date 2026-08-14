@@ -2,6 +2,7 @@ import type {
   AttachmentFile,
   ChatSendRequest,
   EditorContentBlock,
+  ExtensionEditorContentBlock,
   SendTargetSnapshot,
 } from "../domain/types";
 import type { ChatSendOperation, ChatSendPlan } from "../domain/sendPlan";
@@ -51,12 +52,26 @@ function isEditorBlock(value: unknown): value is EditorContentBlock {
     );
   }
 
-  return (
+  if (
     (value.type === "image" || value.type === "file") &&
     typeof value.id === "string" &&
     isRecord(value.file) &&
     typeof value.file.name === "string"
+  ) {
+    return true;
+  }
+
+  return (
+    value.type.startsWith("extension:") &&
+    typeof value.id === "string" &&
+    "payload" in value
   );
+}
+
+function isExtensionEditorBlock(
+  block: EditorContentBlock,
+): block is ExtensionEditorContentBlock {
+  return block.type.startsWith("extension:");
 }
 
 function hasReplyTarget<TMessage>(
@@ -146,12 +161,14 @@ export function buildChatSendPlan<TMessage = unknown>(
   const hasEditorText = editorBlocks.some(isNonEmptyText);
   const hasEditorImage = editorBlocks.some((block) => block.type === "image");
   const hasEditorFile = editorBlocks.some((block) => block.type === "file");
+  const hasEditorExtension = editorBlocks.some(isExtensionEditorBlock);
   const editorCanBeRichText =
-    hasEditorText && hasEditorImage && !hasEditorFile;
+    hasEditorText && hasEditorImage && !hasEditorFile && !hasEditorExtension;
   const topImagesCanJoinRichText =
     allTopFilesAreImages &&
     hasEditorText &&
     !hasEditorFile &&
+    !hasEditorExtension &&
     (topImages.length > 0 || hasEditorImage);
 
   if (
@@ -206,6 +223,16 @@ export function buildChatSendPlan<TMessage = unknown>(
         partIds: [partId],
         text: block.text,
         mention: block.mention,
+      };
+      attachTarget(operation);
+      return;
+    }
+
+    if (isExtensionEditorBlock(block)) {
+      const operation: ChatSendOperation<TMessage> = {
+        kind: block.type,
+        partIds: [partId],
+        payload: block.payload,
       };
       attachTarget(operation);
       return;

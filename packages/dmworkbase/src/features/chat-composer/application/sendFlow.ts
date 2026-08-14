@@ -181,8 +181,8 @@ export interface ConsumedCompose {
   restoreEditorBlocks: (blocks: UnsentEditorBlock[]) => void;
   /** Put back only the captured reply/edit target after a partial send failure. */
   restoreSendTarget: () => void;
-  /** Drop in-memory `File` refs + revoke preview URLs of these pasted images. */
-  disposeEditorAttachments: (ids: string[]) => void;
+  /** Dispose resources owned by editor compose parts that stayed consumed. */
+  disposeEditorParts: (ids: string[]) => void;
   /** Revoke preview URLs of top attachments that stay consumed. */
   disposeTopAttachments: (ids: string[]) => void;
   /** Put back the top attachments that were not actually sent. */
@@ -201,8 +201,8 @@ export interface ConsumedCompose {
 export interface ConsumedComposeIds {
   /** Ids of every top attachment handed to this send attempt. */
   topIds: string[];
-  /** Ids of every pasted (in-editor) attachment handed to this send attempt. */
-  editorAttachmentIds: string[];
+  /** Ids of every atomic editor compose part handed to this send attempt. */
+  editorPartIds: string[];
 }
 
 /**
@@ -340,17 +340,17 @@ export async function settleConsumedCompose(
   // enqueue (a rejected pasted image, or a text block whose send threw after an
   // earlier block had already been sent). Keep those alive and put just them back
   // — everything else stays consumed so nothing is sent twice.
-  const unsentAttachmentIds = new Set(
+  const unsentEditorPartIds = new Set(
     decision.unsentEditorBlocks
-      .filter((block) => block.type === "attachment")
+      .filter((block) => block.type !== "text")
       .map((block) => (block as { id: string }).id),
   );
-  const disposableEditorIds = ids.editorAttachmentIds.filter(
-    (id) => !unsentAttachmentIds.has(id),
+  const disposableEditorIds = ids.editorPartIds.filter(
+    (id) => !unsentEditorPartIds.has(id),
   );
   if (disposableEditorIds.length > 0) {
-    step("disposeEditorAttachments", () =>
-      compose.disposeEditorAttachments(disposableEditorIds),
+    step("disposeEditorParts", () =>
+      compose.disposeEditorParts(disposableEditorIds),
     );
   }
   if (decision.unsentEditorBlocks.length > 0) {

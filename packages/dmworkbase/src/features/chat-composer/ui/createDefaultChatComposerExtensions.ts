@@ -22,6 +22,7 @@ export function createDefaultChatComposerExtensions<
   return {
     editor: {
       composeParts: createDefaultEditorComposePartRegistry(),
+      tiptap: [],
     },
     send: {
       operations: new ChatSendOperationRegistry<TMessage>(),

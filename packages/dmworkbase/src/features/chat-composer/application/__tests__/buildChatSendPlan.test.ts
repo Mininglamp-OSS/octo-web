@@ -191,6 +191,57 @@ describe("buildChatSendPlan", () => {
     expect(plan.operations[1]).toMatchObject({ text: "first", mention });
   });
 
+  it("maps extension editor blocks to extension operations", () => {
+    const sendTarget = target(1);
+    const plan = buildChatSendPlan(
+      request({
+        editorBlocks: [
+          {
+            type: "extension:poll",
+            id: "poll-1",
+            payload: { question: "Ship it?" },
+          },
+        ],
+        sendTarget,
+      }),
+    );
+
+    expect(plan.operations).toEqual([
+      {
+        kind: "extension:poll",
+        partIds: ["editor:0"],
+        payload: { question: "Ship it?" },
+        sendTarget,
+      },
+    ]);
+  });
+
+  it("keeps extension blocks out of built-in rich text operations", () => {
+    const plan = buildChatSendPlan(
+      request({
+        editorBlocks: [
+          { type: "text", text: "before", restoreText: "before" },
+          {
+            type: "extension:poll",
+            id: "poll-1",
+            payload: { question: "Ship it?" },
+          },
+          {
+            type: "image",
+            id: "image-1",
+            file: file("image.png", "image/png"),
+          },
+        ],
+      }),
+    );
+
+    expect(plan.operations.map(({ kind }) => kind)).toEqual([
+      "send_text",
+      "extension:poll",
+      "send_media",
+    ]);
+  });
+
   it("creates only an edit operation for an edit target", () => {
     const sendTarget = target(2, "message-to-edit");
     const plan = buildChatSendPlan(

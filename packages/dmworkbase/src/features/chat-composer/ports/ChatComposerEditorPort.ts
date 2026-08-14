@@ -20,13 +20,13 @@ export interface ChatComposerConsumeContext {
 export interface ChatComposerConsumedCompose {
   ids: {
     topIds: string[];
-    editorAttachmentIds: string[];
+    editorPartIds: string[];
   };
   compose: {
     restoreEditor(): void;
     restoreEditorBlocks(blocks: UnsentEditorBlock[]): void;
     restoreSendTarget(): void;
-    disposeEditorAttachments(ids: string[]): void;
+    disposeEditorParts(ids: string[]): void;
     disposeTopAttachments(ids: string[]): void;
     restoreTopAttachments(ids: string[]): void;
     onRestoreError?(error: unknown, step: string): void;

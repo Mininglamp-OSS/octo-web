@@ -10,6 +10,7 @@ export interface EditorComposePart {
   id: string;
   kind: string;
   extensionId: string;
+  placement?: "inline" | "block";
   node: EditorComposeNode;
   file?: File;
   previewUrl?: string;
@@ -21,9 +22,9 @@ export interface EditorComposePartContext {
   disposeAttachment?: (id: string, previewUrl?: string) => void;
 }
 
-export type EditorComposePartSendBlock = Extract<
+export type EditorComposePartSendBlock = Exclude<
   EditorContentBlock,
-  { type: "image" | "file" }
+  { type: "text" }
 >;
 
 export class UnsupportedEditorComposePartError extends Error {
@@ -52,7 +53,7 @@ export interface EditorComposePartExtension<
   ) => TPart | undefined;
   restore?: (part: TPart) => EditorComposeNode | undefined;
   dispose?: (part: TPart, context: EditorComposePartContext) => void;
-  /** Map an atomic editor node to the currently supported media send model. */
+  /** Map an atomic editor node to a built-in or extension send block. */
   toSendBlock?: (part: TPart) => EditorComposePartSendBlock | undefined;
 }
 
@@ -186,6 +187,7 @@ export function registerDefaultEditorComposeParts(
         id,
         kind: "attachment",
         extensionId: "attachment",
+        placement: "inline",
         node,
         file: context.attachmentFiles.get(id),
         previewUrl: node.attrs?.previewUrl,

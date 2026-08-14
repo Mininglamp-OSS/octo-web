@@ -161,7 +161,7 @@ describe("MessageInput recovery hydration", () => {
       expect(consoleError).toHaveBeenCalledWith(
         "[MessageInput] compose recovery hydration failed",
         expect.objectContaining({
-          message: "cannot recover unknown editor attachment: unknown",
+          message: "cannot recover unknown editor compose part: unknown",
         })
       );
     });

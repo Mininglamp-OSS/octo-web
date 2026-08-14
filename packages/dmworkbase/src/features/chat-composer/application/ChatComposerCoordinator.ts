@@ -75,6 +75,7 @@ export class ChatComposerCoordinator<
     const attempt = this.controller.capture({
       previewText: composeSnapshotPreviewText(consumed.snapshot),
       draftText,
+      editorBlocks: input.editorBlocks,
       attachments: input.pendingAttachments,
     });
     const attemptId = attempt.id;
@@ -173,9 +174,9 @@ export class ChatComposerCoordinator<
     if (!editorFailed && !topFailed) return undefined;
 
     const partialEditorRestore = failedSteps.has("restoreEditorBlocks");
-    const unsentAttachmentIds = new Set(
+    const unsentEditorPartIds = new Set(
       settlement.outcome.unsentEditorBlocks
-        .filter((block) => block.type === "attachment")
+        .filter((block) => block.type !== "text")
         .map((block) => block.id)
     );
 
@@ -185,12 +186,12 @@ export class ChatComposerCoordinator<
       snapshot: consumed.recovery.snapshot,
       editorAttachments: editorFailed
         ? consumed.recovery.editorAttachments.filter(
-            ({ id }) => !partialEditorRestore || unsentAttachmentIds.has(id)
+            ({ id }) => !partialEditorRestore || unsentEditorPartIds.has(id)
           )
         : [],
       editorObjectUrls: editorFailed
         ? consumed.recovery.editorObjectUrls.filter(
-            ({ id }) => !partialEditorRestore || unsentAttachmentIds.has(id)
+            ({ id }) => !partialEditorRestore || unsentEditorPartIds.has(id)
           )
         : [],
       topAttachments: topFailed

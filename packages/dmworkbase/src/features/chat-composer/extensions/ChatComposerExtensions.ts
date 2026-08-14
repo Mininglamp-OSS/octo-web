@@ -1,3 +1,4 @@
+import type { Extensions } from "@tiptap/core";
 import type { EditorComposePartRegistry } from "../editor";
 import type { PendingComposeRenderRegistry } from "./PendingComposeRenderRegistry";
 import type { ChatSendOperationRegistry } from "./ChatSendOperationRegistry";
@@ -10,6 +11,7 @@ export interface ChatComposerExtensions<
 > {
   editor: {
     composeParts: EditorComposePartRegistry;
+    tiptap: Extensions;
   };
   send: {
     operations: ChatSendOperationRegistry<TMessage>;

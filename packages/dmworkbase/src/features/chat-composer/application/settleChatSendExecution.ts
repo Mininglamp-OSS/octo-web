@@ -18,6 +18,9 @@ function unsentEditorBlock(block: EditorContentBlock): UnsentEditorBlock {
   if (block.type === "text") {
     return { type: "text", text: block.restoreText };
   }
+  if (block.type.startsWith("extension:")) {
+    return { type: "extension", id: block.id };
+  }
   return { type: "attachment", id: block.id };
 }
 

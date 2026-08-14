@@ -155,9 +155,9 @@ function makeCompose(
       record("restoreEditorBlocks");
     }),
     restoreSendTarget: vi.fn(() => record("restoreSendTarget")),
-    disposeEditorAttachments: vi.fn((ids: string[]) => {
+    disposeEditorParts: vi.fn((ids: string[]) => {
       disposedEditorIds.push(...ids);
-      record("disposeEditorAttachments");
+      record("disposeEditorParts");
     }),
     disposeTopAttachments: vi.fn((ids: string[]) => {
       disposedTopIds.push(...ids);
@@ -175,9 +175,9 @@ function makeCompose(
 }
 
 /** Ids helper: `runSendWithConsumedCompose` now takes both id families. */
-const ids = (topIds: string[], editorAttachmentIds: string[] = []) => ({
+const ids = (topIds: string[], editorPartIds: string[] = []) => ({
   topIds,
-  editorAttachmentIds,
+  editorPartIds,
 });
 
 const outcome = (overrides: Partial<ChatSendOutcome> = {}) =>
@@ -255,7 +255,7 @@ describe("runSendWithConsumedCompose — round 1: failure restores the whole dra
     expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
     expect(compose.restoredTopIds).toEqual(["t1", "t2"]);
     // Nothing disposed → the restored pasted images still resolve to their File.
-    expect(compose.disposeEditorAttachments).not.toHaveBeenCalled();
+    expect(compose.disposeEditorParts).not.toHaveBeenCalled();
     expect(compose.disposeTopAttachments).not.toHaveBeenCalled();
   });
 
@@ -268,7 +268,7 @@ describe("runSendWithConsumedCompose — round 1: failure restores the whole dra
     expect(ok).toBe(false);
     expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
     expect(compose.restoredTopIds).toEqual(["t1"]);
-    expect(compose.disposeEditorAttachments).not.toHaveBeenCalled();
+    expect(compose.disposeEditorParts).not.toHaveBeenCalled();
   });
 
   it("never restores or disposes before the async send settles (ordering guarantee)", async () => {
@@ -568,7 +568,7 @@ describe("runSendWithConsumedCompose — partial editor blocks (#1280 review)", 
     // Whole compose restored → no per-attachment restore, nothing disposed.
     expect(compose.restoreEditor).toHaveBeenCalledTimes(1);
     expect(compose.restoreEditorBlocks).not.toHaveBeenCalled();
-    expect(compose.disposeEditorAttachments).not.toHaveBeenCalled();
+    expect(compose.disposeEditorParts).not.toHaveBeenCalled();
   });
 
   it("ignores unsentEditorBlocks when the editor compose was not consumed", async () => {

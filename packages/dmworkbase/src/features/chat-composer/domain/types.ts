@@ -18,10 +18,17 @@ export interface AttachmentFile {
   file: File;
 }
 
+export interface ExtensionEditorContentBlock<TPayload = unknown> {
+  type: `extension:${string}`;
+  id: string;
+  payload: TPayload;
+}
+
 export type EditorContentBlock =
   | { type: "text"; text: string; restoreText: string; mention?: ChatMention }
   | { type: "image"; id: string; file: File }
-  | { type: "file"; id: string; file: File };
+  | { type: "file"; id: string; file: File }
+  | ExtensionEditorContentBlock;
 
 /** Reply/edit target captured synchronously with the compose. */
 export interface SendTargetSnapshot<TMessage = unknown> {
@@ -50,6 +57,7 @@ export interface SendProgressSnapshot {
 
 export type UnsentEditorBlock =
   | { type: "attachment"; id: string }
+  | { type: "extension"; id: string }
   | { type: "text"; text: string };
 
 /** Immutable request captured before the serial send queue starts execution. */

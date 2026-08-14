@@ -90,6 +90,18 @@ const TestMention = Node.create({
   },
 });
 
+const TestPoll = Node.create({
+  name: "poll",
+  group: "block",
+  atom: true,
+  addAttributes() {
+    return { id: { default: null }, question: { default: "" } };
+  },
+  renderHTML({ node }) {
+    return ["div", { "data-poll": node.attrs.id }, node.attrs.question];
+  },
+});
+
 const editors: Editor[] = [];
 
 function makeEditor(content?: unknown): Editor {
@@ -111,6 +123,7 @@ function makeEditor(content?: unknown): Editor {
       }),
       TestAttachment,
       TestMention,
+      TestPoll,
     ],
     content: content as never,
   });
@@ -174,12 +187,15 @@ function harness(content?: unknown, top: TopAttachmentLike[] = []): Harness {
   };
 }
 
-function consume(h: Harness) {
+function consume(
+  h: Harness,
+  composePartRegistry = createDefaultEditorComposePartRegistry(),
+) {
   // The component resets the offsets on every consume, because consuming clears
   // the editor and removes this send's attachments.
   h.offsets = { blocks: 0, topAttachments: 0 };
   return consumeCompose({
-    composePartRegistry: createDefaultEditorComposePartRegistry(),
+    composePartRegistry,
     editor: port(h.editor),
     attachmentFiles: h.files,
     takeEditorAttachments: (ids) => {
@@ -329,7 +345,7 @@ describe("consumeCompose — the composer is emptied synchronously", () => {
 
     const handle = consume(h);
 
-    expect(handle.ids.editorAttachmentIds).toEqual(["img-1", "img-2"]);
+    expect(handle.ids.editorPartIds).toEqual(["img-1", "img-2"]);
     expect(h.takenEditorAttachments).toEqual(["img-1", "img-2"]);
   });
 });
@@ -348,6 +364,52 @@ describe("consumeCompose — a send that was never enqueued gives the content ba
     expect(h.editor.getText()).toBe("retry me");
     expect(h.restoredCompose).toBe(1);
     expect(h.errors).toEqual([]);
+  });
+
+  it("restores a failed extension part through its registered adapter", async () => {
+    const registry = createDefaultEditorComposePartRegistry();
+    registry.register({
+      id: "poll",
+      canCapture: (node) => node.type === "poll",
+      capture: (node) => ({
+        id: String(node.attrs?.id),
+        kind: "poll",
+        extensionId: "poll",
+        placement: "block",
+        node,
+      }),
+      restore: (part) => part.node,
+      toSendBlock: (part) => ({
+        type: "extension:poll",
+        id: part.id,
+        payload: { question: part.node.attrs?.question },
+      }),
+    });
+    const h = harness(
+      doc({
+        type: "poll",
+        attrs: { id: "poll-1", question: "Ship it?" },
+      }),
+    );
+    const handle = consume(h, registry);
+
+    expect(handle.ids.editorPartIds).toEqual(["poll-1"]);
+    expect(h.takenEditorAttachments).toEqual([]);
+
+    await runSendWithConsumedCompose(
+      () =>
+        outcome({
+          editorConsumed: true,
+          unsentEditorBlocks: [{ type: "extension", id: "poll-1" }],
+        }),
+      handle.ids,
+      handle.compose,
+    );
+
+    expect(h.editor.getJSON().content?.[0]).toMatchObject({
+      type: "poll",
+      attrs: { id: "poll-1", question: "Ship it?" },
+    });
   });
 
   it("inserts the failed content BEFORE a draft typed during the await (no overwrite)", async () => {
@@ -466,7 +528,7 @@ describe("consumeCompose — partial pasted-attachment failure", () => {
     expect(h.errors[0].step).toBe("restoreEditorBlocks");
     expect(h.errors[0].err).toEqual(
       expect.objectContaining({
-        message: "cannot restore unknown editor attachment: unknown",
+        message: "cannot restore unknown editor compose part: unknown",
       }),
     );
   });
@@ -856,6 +918,48 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
     expect(JSON.stringify(recovered)).not.toContain("img-1");
   });
 
+  it("rebuilds an unsent custom block node for cross-instance recovery", () => {
+    const registry = createDefaultEditorComposePartRegistry();
+    registry.register({
+      id: "poll",
+      canCapture: (node) => node.type === "poll",
+      capture: (node) => ({
+        id: String(node.attrs?.id),
+        kind: "poll",
+        extensionId: "poll",
+        placement: "block",
+        node,
+      }),
+      restore: (part) => part.node,
+      toSendBlock: (part) => ({
+        type: "extension:poll",
+        id: part.id,
+        payload: { question: part.node.attrs?.question },
+      }),
+    });
+    const h = harness(
+      doc({
+        type: "poll",
+        attrs: { id: "poll-1", question: "Ship it?" },
+      }),
+    );
+    const handle = consume(h, registry);
+
+    const recovered = buildComposeRecoveryDocument(
+      handle.recovery,
+      [{ type: "extension", id: "poll-1" }],
+      (value) => parseConsumedTextToContent(value).content as never,
+      registry,
+    );
+
+    expect(recovered?.content).toEqual([
+      {
+        type: "poll",
+        attrs: { id: "poll-1", question: "Ship it?" },
+      },
+    ]);
+  });
+
   it("fails closed when recovery references an unknown attachment", () => {
     const h = harness(doc(para(attachment("img-1", "blob:img-1"))));
     h.files.set("img-1", new File(["1"], "img-1.png", { type: "image/png" }));
@@ -868,6 +972,6 @@ describe("consumeCompose — text that failed before enqueue comes back (#1333 r
         (value) => parseConsumedTextToContent(value).content as never,
         createDefaultEditorComposePartRegistry(),
       ),
-    ).toThrow("cannot recover unknown editor attachment: unknown");
+    ).toThrow("cannot recover unknown editor compose part: unknown");
   });
 });

@@ -162,7 +162,10 @@ export function consumeCompose(
   editorParts.forEach((part) =>
     composePartRegistry.assertSettlementSupported(part),
   );
-  const editorAttachmentIds = editorParts.map(({ id }) => id);
+  const editorPartIds = editorParts.map(({ id }) => id);
+  const editorAttachmentIds = editorParts
+    .filter(({ extensionId }) => extensionId === "attachment")
+    .map(({ id }) => id);
   const editorPartById = new Map(editorParts.map((part) => [part.id, part]));
 
   const topItemsAtSend = [...snapshotTopAttachments()];
@@ -228,26 +231,33 @@ export function consumeCompose(
       let inline: ComposeNode[] = [];
       const flushInline = () => {
         if (inline.length === 0) return;
-        // Attachment nodes are inline atoms, so they need a block wrapper.
+        // Inline atom parts need a block wrapper in a Tiptap document.
         content.push({ type: "paragraph", content: inline });
         inline = [];
       };
       blocks.forEach((block) => {
-        if (block.type === "attachment") {
+        if (block.type !== "text") {
           const part = editorPartById.get(block.id);
           if (!part) {
             throw new Error(
-              `cannot restore unknown editor attachment: ${block.id}`,
+              `cannot restore unknown editor compose part: ${block.id}`,
             );
           }
           const node = composePartRegistry.restore(part);
           if (!node) {
             throw new Error(
-              `editor attachment restore returned no node: ${block.id}`,
+              `editor compose part restore returned no node: ${block.id}`,
             );
           }
-          inline.push(node);
-          restoredAttachmentIds.push(block.id);
+          if (part.placement === "block") {
+            flushInline();
+            content.push(node);
+          } else {
+            inline.push(node);
+          }
+          if (part.extensionId === "attachment") {
+            restoredAttachmentIds.push(block.id);
+          }
           return;
         }
         if (block.text.trim() === "") return;
@@ -261,7 +271,7 @@ export function consumeCompose(
       opts.restoreEditorAttachments?.(restoredAttachmentIds);
     },
     restoreSendTarget: () => opts.onRestoreSendTarget?.(),
-    disposeEditorAttachments: (ids: string[]) => {
+    disposeEditorParts: (ids: string[]) => {
       ids.forEach((id) => {
         const part = editorPartById.get(id);
         if (part) composePartRegistry.dispose(part, composePartContext);
@@ -291,7 +301,7 @@ export function consumeCompose(
   };
 
   return {
-    ids: { topIds, editorAttachmentIds },
+    ids: { topIds, editorPartIds },
     compose,
     snapshot,
     recovery,
@@ -325,20 +335,25 @@ export function buildComposeRecoveryDocument(
     inline = [];
   };
   blocks.forEach((block) => {
-    if (block.type === "attachment") {
+    if (block.type !== "text") {
       const part = editorPartById.get(block.id);
       if (!part) {
         throw new Error(
-          `cannot recover unknown editor attachment: ${block.id}`,
+          `cannot recover unknown editor compose part: ${block.id}`,
         );
       }
       const node = composePartRegistry.restore(part);
       if (!node) {
         throw new Error(
-          `editor attachment recovery returned no node: ${block.id}`,
+          `editor compose part recovery returned no node: ${block.id}`,
         );
       }
-      inline.push(node);
+      if (part.placement === "block") {
+        flushInline();
+        content.push(node);
+      } else {
+        inline.push(node);
+      }
       return;
     }
     if (block.text.trim() === "") return;

@@ -664,6 +664,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         placeholder: () => placeholderRef.current,
       }),
       AttachmentNode,
+      ...extensions.editor.tiptap,
       TiptapMention.configure({
         HTMLAttributes: {
           class: "mention",
