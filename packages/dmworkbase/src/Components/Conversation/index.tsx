@@ -25,7 +25,7 @@ import { interpretForwardResult, ForwardToastScope } from "../../Service/forward
 
 import Provider from "../../Service/Provider";
 import ConversationVM from "./vm";
-import { selectDoneReminderIDs } from "./reminderDone";
+import { selectDoneReminderIDs, isReadToLatest } from "./reminderDone";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
@@ -2371,19 +2371,23 @@ export class Conversation
     if (!reminders || reminders.length === 0) {
       return;
     }
-    // 是否已浏览到会话最新一条消息。复用 vm 的“已读到底”信号（同 vm.ts didMount 里
-    // browseToMessageSeq >= lastMessage.messageSeq 的语义），此时视口外被挤走的历史
-    // mention 也应视为已读，否则角标会永久亮着。
-    const lastMessageSeq = this.vm.currentConversation?.lastMessage?.messageSeq;
-    const scrolledToBottom =
-      typeof lastMessageSeq === "number" &&
-      this.vm.browseToMessageSeq >= lastMessageSeq;
+    // 是否已真实读到会话最新。不能只靠 browseToMessageSeq >= lastMessage.messageSeq：
+    // 用户自己发消息时 self-send 快捷路径会把 browseToMessageSeq 强推到最新 seq，即使更早
+    // 历史没加载/没看过，会把没看见的 @ 静默标 done。改用真实渲染/加载状态判定（见
+    // isReadToLatest）：无更多历史待上拉，且最后一条消息真实渲染在视口内。
+    const readToLatest = isReadToLatest({
+      lastMessageSeq: this.vm.currentConversation?.lastMessage?.messageSeq,
+      lastVisibleSeq: this.lastVisiableMessage(viewport)?.messageSeq,
+      pullupHasMore: this.vm.pullupHasMore,
+    });
 
     const doneReminderIDs = selectDoneReminderIDs(reminders, {
-      scrolledToBottom,
+      readToLatest,
       isVisible: (reminder) => {
         const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
-        return !!message && this.isVisiableMessage(message.message, viewport);
+        return (
+          !!message && this.isVisiableMessage(message.message, viewport) === true
+        );
       },
     });
     if (doneReminderIDs.length > 0) {
