@@ -1,24 +1,38 @@
 import { describe, it, expect } from "vitest"
+import { ReminderType } from "wukongimjssdk"
 
 import { selectDoneReminderIDs, ReminderLike } from "../reminderDone"
 
 // #1408: category header 的 `@` 角标永久亮着但展开每行都没 @。根因是 mention reminder
 // 只在消息当前处于视口内可见时才被标 done，历史 mention 被滚出视口后永不 done。
-// Fix A：用户已滚到会话底部时，会话内所有未 done 的 mention reminder 一律标 done。
+// Fix A：用户已滚到会话底部时，会话内所有未 done 的 mention reminder 一律标 done；
+// 其它类型（入群申请等）保持基于视口可见性的处理，避免被兜底静默清掉。
 describe("selectDoneReminderIDs", () => {
-    const mkReminder = (
+    const mention = (
         reminderID: number,
         messageSeq: number,
         done = false
-    ): ReminderLike => ({ reminderID, messageSeq, done })
+    ): ReminderLike => ({
+        reminderID,
+        messageSeq,
+        reminderType: ReminderType.ReminderTypeMentionMe,
+        done,
+    })
 
-    it("marks every un-done reminder done when scrolled to bottom, regardless of visibility", () => {
-        const reminders = [
-            mkReminder(1, 10),
-            mkReminder(2, 20),
-            mkReminder(3, 30),
-        ]
-        // 视口只覆盖最新一条（seq 30），但已滚到底 → 全部标 done。
+    const joinRequest = (
+        reminderID: number,
+        messageSeq: number,
+        done = false
+    ): ReminderLike => ({
+        reminderID,
+        messageSeq,
+        reminderType: ReminderType.ReminderTypeApplyJoinGroup,
+        done,
+    })
+
+    it("marks every un-done mention reminder done when scrolled to bottom, regardless of visibility", () => {
+        const reminders = [mention(1, 10), mention(2, 20), mention(3, 30)]
+        // 视口只覆盖最新一条（seq 30），但已滚到底 → 所有 mention 都标 done。
         const ids = selectDoneReminderIDs(reminders, {
             scrolledToBottom: true,
             isVisible: (r) => r.messageSeq === 30,
@@ -26,11 +40,37 @@ describe("selectDoneReminderIDs", () => {
         expect(ids).toEqual([1, 2, 3])
     })
 
+    it("does NOT dismiss non-mention reminders via the bottom fallback (mixed types)", () => {
+        // 会话里既有 mention 又有入群申请。用户跳到最新（滚到底），但入群申请消息
+        // 不在视口内。只有 mention 应被标 done，入群申请必须保留。
+        const reminders = [
+            mention(1, 10),
+            joinRequest(2, 15),
+            mention(3, 30),
+        ]
+        const ids = selectDoneReminderIDs(reminders, {
+            scrolledToBottom: true,
+            isVisible: (r) => r.messageSeq === 30, // 只有最新那条 mention 可见
+        })
+        expect(ids).toEqual([1, 3])
+        expect(ids).not.toContain(2)
+    })
+
+    it("still marks a visible non-mention reminder done even when scrolled to bottom", () => {
+        // 入群申请当前在视口内可见 → 沿用原有基于可见性的处理，标 done。
+        const reminders = [mention(1, 10), joinRequest(2, 30)]
+        const ids = selectDoneReminderIDs(reminders, {
+            scrolledToBottom: true,
+            isVisible: (r) => r.messageSeq === 30,
+        })
+        expect(ids).toEqual([1, 2])
+    })
+
     it("skips already-done reminders even when scrolled to bottom", () => {
         const reminders = [
-            mkReminder(1, 10, true),
-            mkReminder(2, 20, false),
-            mkReminder(3, 30, true),
+            mention(1, 10, true),
+            mention(2, 20, false),
+            mention(3, 30, true),
         ]
         const ids = selectDoneReminderIDs(reminders, {
             scrolledToBottom: true,
@@ -40,11 +80,7 @@ describe("selectDoneReminderIDs", () => {
     })
 
     it("only marks visible reminders done when NOT scrolled to bottom (existing behavior)", () => {
-        const reminders = [
-            mkReminder(1, 10),
-            mkReminder(2, 20),
-            mkReminder(3, 30),
-        ]
+        const reminders = [mention(1, 10), mention(2, 20), joinRequest(3, 30)]
         const ids = selectDoneReminderIDs(reminders, {
             scrolledToBottom: false,
             isVisible: (r) => r.messageSeq === 20,
@@ -68,7 +104,7 @@ describe("selectDoneReminderIDs", () => {
     })
 
     it("returns empty when all reminders are already done", () => {
-        const reminders = [mkReminder(1, 10, true), mkReminder(2, 20, true)]
+        const reminders = [mention(1, 10, true), joinRequest(2, 20, true)]
         expect(
             selectDoneReminderIDs(reminders, {
                 scrolledToBottom: true,
@@ -78,7 +114,7 @@ describe("selectDoneReminderIDs", () => {
     })
 
     it("returns empty when not scrolled to bottom and nothing is visible", () => {
-        const reminders = [mkReminder(1, 10), mkReminder(2, 20)]
+        const reminders = [mention(1, 10), joinRequest(2, 20)]
         expect(
             selectDoneReminderIDs(reminders, {
                 scrolledToBottom: false,
