@@ -101,7 +101,7 @@ const QuickAccess: React.FC<{ quickStart: McpQuickStart }> = ({
       </div>
       <div className="wk-mcp-code">
         <div className="wk-mcp-code__copy">
-          <WKButton size="sm" variant="ghost" data-testid="mcp-quickaccess-copy" onClick={handleCopy}>
+          <WKButton size="sm" variant="ghost" onClick={handleCopy}>
             {t("mcp.detail.copy")}
           </WKButton>
         </div>

@@ -136,8 +136,8 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedQuery(query);
-      // 埋点 317:遥测 fire-and-forget，放在 setDebouncedQuery 之后并用可选链守护，
-      // 绝不让埋点异常（如 Dap 未初始化 / 测试未 mock）阻断 debounce 主逻辑。
+      // 埋点 317:遥测 fire-and-forget，放在 setDebouncedQuery 之后 —— debounce 主逻辑先落地;
+      // track() 内部以 safe() 自吞异常(Dap 未初始化 / 测试未 mock 时静默),不回灌到本回调。
       if (query.trim()) Dap.shared.track("market_searched", {});
     }, 300);
     return () => window.clearTimeout(timer);

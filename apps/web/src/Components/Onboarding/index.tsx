@@ -275,16 +275,20 @@ export const Onboarding: React.FC<OnboardingProps> = ({
   // 组件全程不 remount,用 ref 记进入时刻;同 id 不触发,天然去重。
   useEffect(() => {
     // 仍在 intro 或不可见:不处于「章节视图」,不处理
-    if (!visible || showIntro) return;
+    if (!visible || showIntro || !activeSection) return;
 
-    // 进入某章:emit viewed(首进/切章都算),累计已浏览的不同章 id;
-    // 集齐所有章后 once emit all_viewed。总数取 onboardingSections.length。
+    // 八审 P2:统一用 activeSection.id(实际显示的章)而非原始 activeId 计数。
+    //   activeSection = find(id===activeId) || sections[0],当 activeId 落不到任何章时回退到首章;
+    //   若仍按 activeId 累计,viewedChapters 会混入一个不在 sections 里的 id → 集齐前 size 就先到
+    //   length,all_viewed 提前一章 emit(off-by-one)。锚定到显示章 id 后 chapter_id 与 UI 一致,
+    //   size 的 gate 也改为 >= 作防御(集合永不应超出章数,但即便超出也仍会补发)。
+    const chapterId = activeSection.id;
     const emitChapterViewed = () => {
-      Dap.shared.track("onboarding_chapter_viewed", { chapter_id: activeId });
-      viewedChaptersRef.current.add(activeId);
+      Dap.shared.track("onboarding_chapter_viewed", { chapter_id: chapterId });
+      viewedChaptersRef.current.add(chapterId);
       if (
         !allViewedEmittedRef.current &&
-        viewedChaptersRef.current.size === onboardingSections.length
+        viewedChaptersRef.current.size >= onboardingSections.length
       ) {
         allViewedEmittedRef.current = true;
         Dap.shared.track("onboarding_all_viewed", {});
@@ -293,23 +297,23 @@ export const Onboarding: React.FC<OnboardingProps> = ({
 
     // 首次进入章节视图:记录进入时刻与当前章,不 emit completed,但首进也算 viewed
     if (prevChapterRef.current === null) {
-      prevChapterRef.current = activeId;
+      prevChapterRef.current = chapterId;
       chapterEnterAtRef.current = Date.now();
       emitChapterViewed();
       return;
     }
     // activeId 变了:给上一章 emit completed,再翻到当前章并 emit viewed
-    if (prevChapterRef.current !== activeId) {
+    if (prevChapterRef.current !== chapterId) {
       Dap.shared.track("onboarding_chapter", {
         chapter_id: prevChapterRef.current,
         outcome: "completed",
         duration_ms: Date.now() - chapterEnterAtRef.current,
       });
-      prevChapterRef.current = activeId;
+      prevChapterRef.current = chapterId;
       chapterEnterAtRef.current = Date.now();
       emitChapterViewed();
     }
-  }, [activeId, showIntro, visible, onboardingSections.length]);
+  }, [activeId, activeSection, showIntro, visible, onboardingSections.length]);
 
   const persistDismissed = () => {
     try {

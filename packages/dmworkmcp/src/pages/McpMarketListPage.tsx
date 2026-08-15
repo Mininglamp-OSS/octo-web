@@ -484,7 +484,8 @@ export default class McpMarketListPage extends Component<
     if (this.searchTimer) clearTimeout(this.searchTimer);
     this.searchTimer = setTimeout(() => {
       this.loadData();
-      // 埋点 317:遥测 fire-and-forget，放在 loadData 之后并用可选链守护，绝不阻断搜索主逻辑。
+      // 埋点 317:遥测 fire-and-forget，放在 loadData 之后 —— 搜索主逻辑先落地;track() 内部
+      // 以 safe() 自吞异常(Dap 未初始化 / 测试未 mock 时静默),不回灌到本回调。
       if (value.trim()) Dap.shared.track("market_searched", {});
     }, 300);
   };

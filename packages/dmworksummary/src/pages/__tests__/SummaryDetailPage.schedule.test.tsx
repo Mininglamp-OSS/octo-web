@@ -783,31 +783,38 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
         }
     });
 
-    // 六审 P1b：同一 taskId 的 regenerate。regenerate 把状态就地推回 PENDING 再重跑到 COMPLETED，
-    // task id 不变。修复前 completedTrackedTaskId 只写不清 → 第二次完成命中 id 相等被跳过 → 只 1 条
-    //（flagship 漏斗 smart_summary_completed 系统性漏掉每一轮 regenerate 的完成）。
-    // 修复后 trackSummaryCompletedOnce 在「离开 COMPLETED」时清锚 → 同 task 再次完成能再计 → 2 条。
-    // delete-the-fix：去掉 helper 里的 else-if 复位分支，本用例退回 1 条即红。
-    it('re-tracks the SAME task after regenerate: completed → pending(regenerate) → completed = 2 events (六审 P1b)', async () => {
+    // 六审 P1b / 八审 🔴2：同一 taskId 的 regenerate。regenerate 把状态就地推回 PENDING 再重跑到
+    // COMPLETED，task id 不变。修复前 completedTrackedTaskId 只写不清 → 第二次完成命中 id 相等被跳过 →
+    // 只 1 条（flagship 漏斗 smart_summary_completed 系统性漏掉每一轮 regenerate 的完成）。
+    // 关键：产品的 regenerate 路径是 handleRegenerateConfirm 就地置 PENDING 后调 **this.loadDetail()**，
+    // 并不派发 summary-status-change。八审 🔴2 指出锚复位若只挂在状态订阅里,这条真实路径就绕过了它。
+    // 故 step ② 必须经 loadDetail(而非 handleStatusChangeEvent)驱动,才是产品真的会走的调用序列。
+    // delete-the-fix：去掉 loadDetail 里的锚维护(或 helper 的 else-if 复位),本用例退回 1 条即红。
+    it('re-tracks the SAME task after regenerate via the real loadDetail path: completed → pending(regenerate) → completed = 2 events (六审 P1b / 八审 🔴2)', async () => {
         const track = vi.spyOn(Dap.shared, 'track');
         try {
             const page = makePage(1);
             page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+            // loadDetail 的无关副作用(轮询/标题/日程/版本)与本锚断言无关,置空避免定时器/事件噪声。
+            (page as any).startFallbackPoll = () => {};
+            (page as any).stopFallbackPoll = () => {};
+            (page as any).stopSummaryStream = () => {};
+            (page as any).stopTeamSummaryStream = () => {};
+            (page as any).publishDetailTitle = () => {};
+            (page as any).loadSchedule = () => {};
 
-            // ① 首次完成：PROCESSING → COMPLETED（写锚 + 发一条）。
+            // ① 首次完成：PROCESSING → COMPLETED（写锚 + 发一条），经真实状态订阅入口。
             vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
             await (page as any).handleStatusChangeEvent(
                 new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
             );
 
-            // ② regenerate：COMPLETED → PENDING（同一 taskId 状态就地回退）。必须清锚。
-            //    (handleStatusChangeEvent 自身已把 lastKnownStatus setState 为上一步的 3，无需手动改。)
-            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 1 /* PENDING */ }) as any);
-            await (page as any).handleStatusChangeEvent(
-                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
-            );
+            // ② regenerate：走产品真实路径 loadDetail。此时 state.detail.task_id=1、lastKnownStatus=3(COMPLETED)，
+            //    loadDetail 拉到 WAITING_CONFIRM(非 COMPLETED) → 观测到 3→1 的状态沿 → 必须清锚。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 1 /* 非 COMPLETED */ }) as any);
+            await (page as any).loadDetail();
 
-            // ③ 二次完成：PENDING → COMPLETED，同一 taskId。锚已复位 → 再发一条。
+            // ③ 二次完成：→ COMPLETED，同一 taskId。锚已复位 → 再发一条。
             vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
             await (page as any).handleStatusChangeEvent(
                 new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
@@ -815,6 +822,31 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
 
             const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
             expect(completed).toHaveLength(2);
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    // 八审 🔴2 反向守卫：首次加载一条已完成总结(仅「查看」历史)**不得**计成一次新完成。
+    // previousStatus===undefined 时 loadDetail 不发 completed,否则每次翻阅历史都 +1,completed 超过 started。
+    it('does NOT emit completed on a fresh load of an already-COMPLETED summary (view ≠ completion, 八审 🔴2)', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            (page as any).startFallbackPoll = () => {};
+            (page as any).stopFallbackPoll = () => {};
+            (page as any).stopSummaryStream = () => {};
+            (page as any).stopTeamSummaryStream = () => {};
+            (page as any).publishDetailTitle = () => {};
+            (page as any).loadSchedule = () => {};
+            (page as any).loadVersions = () => {};
+
+            // state.detail 为空 → isSameTask=false → previousStatus=undefined（首屏）。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 /* COMPLETED */ }) as any);
+            await (page as any).loadDetail();
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(0);
         } finally {
             track.mockRestore();
         }

@@ -92,7 +92,7 @@ describe('Dap — declarative click skips data-track-ignore children (P1-A4) in 
         footer.setAttribute('data-track-ignore', '')
         const editBtn = document.createElement('button') // 编辑,无 data-track → 归到卡根但被 ignore
         const installBtn = document.createElement('button')
-        installBtn.setAttribute('data-track', 'skill_install_clicked') // closest() 停在按钮,不受 ignore 影响
+        installBtn.setAttribute('data-track', 'market_skill_install_clicked') // closest() 停在按钮,不受 ignore 影响
         installBtn.setAttribute('data-object-id', 'card-1')
         footer.appendChild(editBtn)
         footer.appendChild(installBtn)
@@ -106,6 +106,6 @@ describe('Dap — declarative click skips data-track-ignore children (P1-A4) in 
 
         Dap.shared.flush()
         expect(events('market_card_opened')).toHaveLength(1)
-        expect(events('skill_install_clicked')).toHaveLength(1)
+        expect(events('market_skill_install_clicked')).toHaveLength(1)
     })
 })

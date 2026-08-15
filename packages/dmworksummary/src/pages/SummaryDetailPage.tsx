@@ -673,6 +673,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 lastKnownStatus: detail.status,
                 workflowGateContent: false,
             });
+            // 八审 🔴2:loadDetail 也是 lastKnownStatus 的写入者(regenerate 走 handleRegenerateConfirm →
+            // 就地置 PENDING → this.loadDetail(),不经 summary-status-change 订阅)。此前它是唯一不维护
+            // completedTrackedTaskId 去重锚的写入者 → 离开 COMPLETED 时锚不清 → 同一 taskId 的下一次完成
+            // 命中 id 相等被跳过而丢事件(六审 P1b 的复位在这条真实 regenerate 路径上失效)。
+            // 按与两个状态订阅入口(handleStatusChangeEvent / doFallbackPollOnce)完全相同的「状态沿」语义
+            // 维护锚:仅在观测到状态变化时走 helper(COMPLETED 写锚+发一次,离开 COMPLETED 清锚)。
+            // **首次加载(previousStatus===undefined)不发**——打开一条历史已完成的总结属「查看」,不是一次
+            // 新完成;若在此发,completed 会随每次翻阅历史而超过 started(见八审 P2:首屏已完成的漏计是已知
+            // 方向性偏差,不能用「查看即完成」去补,否则引入更糟的高计)。
+            if (
+                previousStatus !== undefined &&
+                previousStatus !== detail.status &&
+                typeof detail.task_id === "number"
+            ) {
+                this.trackSummaryCompletedOnce(detail.status, detail.task_id);
+            }
             this.publishDetailTitle(detail);
             if (detail.status === TaskStatus.COMPLETED && detail.result_id) {
                 const markRead = api.markSummaryRead;

@@ -599,6 +599,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     handleSubmit = async () => {
         const { topic, selectedChats, selectedMembers, scheduleConfig } = this.state;
         if (!this.canSubmit()) return;
+        // 八审 P2:提交即取消未触发的主题输入去抖 —— 用户已从「填主题」进到「生成」,
+        // 600ms 后再补发 smart_summary_theme_input 会把一次已转化的输入多计一次。
+        if (this.themeTrackTimer) {
+            clearTimeout(this.themeTrackTimer);
+            this.themeTrackTimer = null;
+        }
         const summaryTitle = deriveSummaryTitle(topic);
 
         // smart_summary_started 收口在 api 层(summaryApi.createSummary → envelope code===0 gate),

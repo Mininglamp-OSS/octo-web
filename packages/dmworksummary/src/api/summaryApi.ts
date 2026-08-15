@@ -355,7 +355,11 @@ export async function createAgentSummary(
         err.response = { data: resp.data };
         throw err;
     }
-    const data = (resp.data?.data ?? resp.data) as {
+    // 八审 P2:走到这里 envelope code 已判定成功(仅 code===0),响应必是预期信封 {code,message,data}。
+    // 故只从 data 取;此前的 `?? resp.data` 回退是给「无信封裸响应」用的,而那正是 code===undefined 的情形,
+    // 已在上面 :350 rejected —— 回退再也走不到(裸响应没有 task_id,反而会在下面 :361 抛),留着只会
+    // 误导「仍支持裸响应」。去掉,语义与实际行为一致。
+    const data = resp.data?.data as {
         task_id: number; task_no: string; status: number; created_at: string;
     } | undefined;
     if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
@@ -665,7 +669,11 @@ export async function regeneratePersonalSummary(
     taskId: number,
     body?: { topic?: string },
 ): Promise<{ task_id: number; result_id: number; status: number }> {
-    return post(`/summaries/${taskId}/personal-regenerate`, body);
+    // 八审 P2:BY_PERSON 多人协作的「个人报告」整条重生成,与 regenerateSummary(团队整体重生成)
+    // 同属一次 full regenerate,漏斗 smart_summary_regenerated 必须计入,否则 dialog_opened→regenerated
+    // 比值只反映埋点覆盖而非用户行为。走 post() 的 code===0 gate,与团队路径同口径。
+    // (注:refine-by-feedback 是「反馈微调」的另一种交互,不是 full regenerate,不计本事件;见 DAP_EVENTS.md。)
+    return post(`/summaries/${taskId}/personal-regenerate`, body, 'smart_summary_regenerated');
 }
 
 export async function streamRefinePersonalSummary(

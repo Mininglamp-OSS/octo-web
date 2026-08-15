@@ -219,11 +219,6 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     return newBubbleStyle;
   }
 
-  onMultiple() {
-    const { context } = this.props;
-    context.setEditOn(true);
-  }
-
   onMessageDelete() {
     const { context, message } = this.props;
     context.deleteMessages([message.message]);

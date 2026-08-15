@@ -136,6 +136,15 @@ export default function SkillListPage() {
     setSelectedTags(next);
   }
 
+  function handleSortChange(next: SkillSort) {
+    // 八审 P2:原先每个排序项挂无条件 onClick + DOM 委托规则 market_skill_sorted,重复点当前排序也计一次
+    //   (选择型控件的过计),且所有项事件相同、区分不出选了哪种排序。改为按「实际变化」gate 后命令式 track,
+    //   并带 props.sort 记录排序值。
+    if (next === sort) return;
+    Dap.shared.track("market_skill_sorted", { sort: next });
+    setSort(next);
+  }
+
   function handleDeleted() {
     setDetailId(null);
     setEditing(null);
@@ -292,7 +301,7 @@ export default function SkillListPage() {
                         sort === option.value ? "is-active" : undefined
                       }
                       aria-pressed={sort === option.value}
-                      onClick={() => setSort(option.value)}
+                      onClick={() => handleSortChange(option.value)}
                     >
                       <span>{t(option.labelKey)}</span>
                       {option.descending && <ArrowDown size={12} aria-hidden="true" />}

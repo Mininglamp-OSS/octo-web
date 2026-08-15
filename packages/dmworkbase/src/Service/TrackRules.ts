@@ -130,7 +130,9 @@ export const TRACK_RULES: TrackRule[] = [
     // market_tab_switched / market_category_filtered 不在本表 —— 都是「重复点当前项」会经 DOM 委托
     //   重复触发的选择型控件,已改为在切换 handler 里按「实际变化」gate 后命令式 track(MarketSidebar.handleClick /
     //   McpMarketListPage.handleCategory / CategoryChips.choose),见 review P2-7。
-    { event: 'market_skill_sorted', testid: 'skill-sort-option', on: 'click' },
+    // market_skill_sorted 不在本表 —— 每个排序项都挂无条件 onClick,DOM 委托会把「重复点当前排序」也计一次
+    //   (与 market_tab_switched 同类过计),且所有项事件相同、无法区分选了哪种排序;已改为 SkillListPage.setSort
+    //   按「实际变化」gate 后命令式 track,并带 props.sort 区分排序值(八审 P2)。
     // market_skill_install_prompt_copied / market_mcp_connect_prompt_copied 不在本表 ——
     //   点击委托在 clipboard.writeText promise 落定前就发、权限拒绝/非安全上下文也计;已分别改为
     //   InstallPromptModal.handleCopy 的 .then 与 McpDetailModal.handleCopy 的 try 成功分支命令式 track(六审 P2)。
@@ -140,9 +142,10 @@ export const TRACK_RULES: TrackRule[] = [
     { event: 'market_publish_method_selected', testid: 'mcp-publish-method-manual', on: 'click', props: { method: 'manual' } },
     { event: 'market_publish_method_selected', testid: 'skill-publish-method-bot', on: 'click', props: { method: 'bot' } },
     { event: 'market_publish_method_selected', testid: 'skill-publish-method-manual', on: 'click', props: { method: 'manual' } },
-    { event: 'market_bot_publish_prompt_copied', testid: 'skill-bot-publish-copy', on: 'click' },
-    // 331 MCP 侧走共享 PromptForwardActions；用 route 门与 Expert/squad(/mcp-market/experts) 消歧。
-    { event: 'market_bot_publish_prompt_copied', testid: 'mcp-bot-publish-copy', on: 'click', route: '/mcp-market/mcp' },
+    // market_bot_publish_prompt_copied 不在本表 —— 与上面三条 *_copied 同因:点击委托在 clipboard 落定前
+    //   就发、失败也计。已改为复制成功后命令式 track:skill 侧 BotPublishModal.handleCopy 的 .then;MCP 侧走
+    //   共享 PromptForwardActions.handleCopy 的 ok 分支,并在组件内沿用原 route 门(/mcp-market/mcp,与
+    //   Expert/squad 的 /mcp-market/experts 消歧,matchRoute 同源)(八审 P2)。
 
     // ---- onboarding / 设置（agent D）。
     { event: 'onboarding_opensource_clicked', testid: 'onboarding-opensource-link', on: 'click' },
