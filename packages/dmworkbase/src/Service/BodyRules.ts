@@ -196,6 +196,16 @@ export const BODY_RULES: BodyRule[] = [
         fallbackEvent: 'webhook_edited',
     },
 
+    // PUT /api/v1/groups/:g/threads/:t/incoming-webhooks/:id —— 子区(thread)作用域的 webhook 编辑/启停,
+    // 与群级同构(IncomingWebhookService.update 在 threadShortId 存在时切到 threads/:t 嵌套路径)。十审 🔴:
+    // 群级 body 规则(段数固定)不命中子区路径,子区 webhook 的 启停/编辑 会漏计;补一条 thread 平行规则。
+    {
+        method: 'PUT',
+        path: '/api/v1/groups/:id/threads/:seg/incoming-webhooks/:id',
+        discriminators: [{ event: 'webhook_enabled_toggled', hasKeys: ['status'] }],
+        fallbackEvent: 'webhook_edited',
+    },
+
     // PUT /api/v1/groups/:id/setting —— 会话/群设置单键部分更新(updateChannelSetting 发单键对象):
     // mute→免打扰,top→置顶,remark→备注,save→存到通讯录,allow_no_mention→机器人免@。
     // (bridge/channelSetting/channelSettingActions.ts & groupManagementActions.ts)

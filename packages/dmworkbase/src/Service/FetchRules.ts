@@ -145,12 +145,26 @@ export const FETCH_RULES: FetchRule[] = [
     // group_md_viewed 不在此通道 —— GET /groups/:id/md 在打开群设置面板时随行渲染即拉,且编辑保存后回读也重打,
     //   请求成功 ≠ 用户查看 md。删除避免与面板打开/编辑重复计数(见二审 P1-5)。
     { method: 'PUT', path: '/api/v1/groups/:id/md', event: 'group_md_edited' },
+    // 十审 🔴(相似问题):群 md 编辑器(GroupMdEditor)同一个「保存」按钮既编群 md 也编**子区(thread)md**
+    //   —— isThreadMd() 时走 updateThreadMd(PUT groups/:g/threads/:t/md)。群级规则(5 段)不命中子区路径
+    //   (7 段),子区 md 编辑漏计。同 webhook 一类,补一条 thread 平行规则发同一 group_md_edited。
+    //   (注:md 的删除态无独立事件 —— FETCH 仅 PUT /md 计编辑,DELETE 不在通道,故不补 delete 变体。)
+    { method: 'PUT', path: '/api/v1/groups/:id/threads/:id/md', event: 'group_md_edited' },
     // group_webhook_panel_opened 不在此通道 —— GET /groups/:id/incoming-webhooks 在创建/重置/删除 webhook 后
     //   都会回读刷新列表,请求成功 ≠ 打开面板。删除避免每次增删都被计成一次「打开」(见二审 P1-5)。
     { method: 'POST', path: '/api/v1/groups/:id/incoming-webhooks', event: 'webhook_created' },
     { method: 'POST', path: '/api/v1/groups/:id/incoming-webhooks/:id/regenerate', event: 'webhook_url_reset' },
     { method: 'POST', path: '/api/v1/groups/:id/incoming-webhooks/:id/test', event: 'webhook_tested' },
     { method: 'DELETE', path: '/api/v1/groups/:id/incoming-webhooks/:id', event: 'webhook_deleted' },
+    // 十审 🔴:webhook 同一批操作在**子区(thread)**作用域走 threads/:t 嵌套路径(IncomingWebhookService
+    //   basePath/itemPath/regenerate/test 在 threadShortId 存在时切到 groups/:g/threads/:t/incoming-webhooks/...;
+    //   ChannelWebhook UI 对群与子区共用同一套增删改重置测试按钮)。matchFetchEvent 严格按段数匹配,群级规则
+    //   (5/7/7/7 段)永不命中子区路径(7/9/9/9 段) → 子区 webhook 动作被静默漏计(与 conversation_* 漏 DM/thread
+    //   同类)。webhook_* 事件名本就与作用域无关,故子区动作应发同一事件。补齐四条 thread 平行规则。
+    { method: 'POST', path: '/api/v1/groups/:id/threads/:id/incoming-webhooks', event: 'webhook_created' },
+    { method: 'POST', path: '/api/v1/groups/:id/threads/:id/incoming-webhooks/:id/regenerate', event: 'webhook_url_reset' },
+    { method: 'POST', path: '/api/v1/groups/:id/threads/:id/incoming-webhooks/:id/test', event: 'webhook_tested' },
+    { method: 'DELETE', path: '/api/v1/groups/:id/threads/:id/incoming-webhooks/:id', event: 'webhook_deleted' },
     { method: 'POST', path: '/api/v1/groups/:id/managers', event: 'group_admin_added' },
     { method: 'DELETE', path: '/api/v1/groups/:id/managers', event: 'group_admin_removed' },
     { method: 'PUT', path: '/api/v1/groups/:id/bot_admin/:id', event: 'group_bot_admin_added' },

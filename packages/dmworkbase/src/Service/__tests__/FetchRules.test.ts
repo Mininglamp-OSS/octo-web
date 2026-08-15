@@ -254,3 +254,40 @@ describe('FETCH_RULES — 二审(dap350)移出通道的端点钉死为「不产�
         expect(matchFetchEvent(idx, 'POST', '/api/v1/groups/98765/incoming-webhooks')).toBe('webhook_created')
     })
 })
+
+describe('FETCH_RULES — 子区(thread)作用域 webhook 与群级同事件(十审 🔴)', () => {
+    // IncomingWebhookService 在 threadShortId 存在时把 create/regenerate/test/delete 切到
+    // groups/:g/threads/:t/incoming-webhooks/... 嵌套路径;ChannelWebhook UI 群/子区共用同一套操作。
+    // matchFetchEvent 严格按段数匹配,群级规则永不命中子区路径,故须有平行 thread 规则,否则子区动作漏计。
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('thread-nested create/regenerate/test/delete 命中与群级相同的 webhook_* 事件', () => {
+        expect(
+            matchFetchEvent(idx, 'POST', '/api/v1/groups/g1/threads/t1/incoming-webhooks')
+        ).toBe('webhook_created')
+        expect(
+            matchFetchEvent(idx, 'POST', '/api/v1/groups/g1/threads/t1/incoming-webhooks/w1/regenerate')
+        ).toBe('webhook_url_reset')
+        expect(
+            matchFetchEvent(idx, 'POST', '/api/v1/groups/g1/threads/t1/incoming-webhooks/w1/test')
+        ).toBe('webhook_tested')
+        expect(
+            matchFetchEvent(idx, 'DELETE', '/api/v1/groups/g1/threads/t1/incoming-webhooks/w1')
+        ).toBe('webhook_deleted')
+    })
+
+    it('群级路径仍各自命中原事件(平行 thread 规则不干扰群级)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/groups/g1/incoming-webhooks')).toBe('webhook_created')
+        expect(
+            matchFetchEvent(idx, 'POST', '/api/v1/groups/g1/incoming-webhooks/w1/regenerate')
+        ).toBe('webhook_url_reset')
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/groups/g1/incoming-webhooks/w1/test')).toBe('webhook_tested')
+        expect(matchFetchEvent(idx, 'DELETE', '/api/v1/groups/g1/incoming-webhooks/w1')).toBe('webhook_deleted')
+    })
+
+    it('子区 md 编辑(GroupMdEditor 同一保存流)与群级同发 group_md_edited', () => {
+        // PUT groups/:g/threads/:t/md(updateThreadMd)与群级 PUT groups/:id/md 是同一「保存」动作。
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/groups/g1/threads/t1/md')).toBe('group_md_edited')
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/groups/g1/md')).toBe('group_md_edited')
+    })
+})

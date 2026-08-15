@@ -23,6 +23,17 @@ describe('BodyRules — 群资料/设置真实规则命中', () => {
         expect(put('/api/v1/groups/g1/incoming-webhooks/w1', JSON.stringify({ name: 'hook' }))).toBe('webhook_edited')
     })
 
+    it('子区 thread 作用域 webhook PUT 同样区分启停/编辑(十审 🔴)', () => {
+        // IncomingWebhookService.update 在 threadShortId 存在时切到 threads/:t 嵌套路径;群级 body 规则
+        // 段数固定不命中,须有平行 thread 规则,否则子区 webhook 的 启停/编辑 漏计。
+        expect(
+            put('/api/v1/groups/g1/threads/t1/incoming-webhooks/w1', JSON.stringify({ status: 0 })),
+        ).toBe('webhook_enabled_toggled')
+        expect(
+            put('/api/v1/groups/g1/threads/t1/incoming-webhooks/w1', JSON.stringify({ name: 'hook' })),
+        ).toBe('webhook_edited')
+    })
+
     it('PUT /groups/:id/setting 单键 → 各会话设置事件', () => {
         const s = (b: unknown) => put('/api/v1/groups/g1/setting', JSON.stringify(b))
         expect(s({ mute: 1 })).toBe('conversation_muted')
