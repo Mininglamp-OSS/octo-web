@@ -138,7 +138,7 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
       setDebouncedQuery(query);
       // 埋点 317:遥测 fire-and-forget，放在 setDebouncedQuery 之后并用可选链守护，
       // 绝不让埋点异常（如 Dap 未初始化 / 测试未 mock）阻断 debounce 主逻辑。
-      if (query.trim()) Dap?.shared?.track?.("market_searched", {});
+      if (query.trim()) Dap.shared.track("market_searched", {});
     }, 300);
     return () => window.clearTimeout(timer);
   }, [query]);

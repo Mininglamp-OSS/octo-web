@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import { WKApp, buildAcceptLanguage } from '@octo/base';
+import { WKApp, buildAcceptLanguage, Dap } from '@octo/base';
 import type {
     AgentChatHistory,
     AgentChatParams,
@@ -114,9 +114,21 @@ async function get<T>(path: string, params?: Record<string, unknown>, config?: A
     }
 }
 
-async function post<T>(path: string, data?: unknown): Promise<T> {
+// P1-5:summary 走 {code,message,data} 信封 —— HTTP200 + code≠0 是**逻辑失败**(见本文件 agentChat 注)。
+// 故「动作成功」类事件不能挂 FetchRules 的 2xx 通道(否则失败也计成成功,成功率被失败率隐性冲高)。
+// 改为在此按业务码 gate:仅 code===0(或后端没包信封、code 缺省)才命令式 track 一次。
+// 放在 api 层 = 天然去重(同一动作多入口共用一个 api 函数,只计一次),且是唯一能看到 code 的位置
+// (公共 post/put/del 只 unwrap .data、不看 code,页面成功回调已丢失 code)。
+function trackOnEnvelopeSuccess(resp: { data?: { code?: number } }, event?: string): void {
+    if (!event) return;
+    const code = resp?.data?.code;
+    if (code === 0 || code === undefined || code === null) Dap.shared.track(event, {});
+}
+
+async function post<T>(path: string, data?: unknown, successEvent?: string): Promise<T> {
     try {
         const resp = await summaryAxios.post(`${BASE}${path}`, data);
+        trackOnEnvelopeSuccess(resp, successEvent);
         return resp.data?.data ?? resp.data;
     } catch (err) {
         if (axios.isCancel(err)) throw err;
@@ -124,9 +136,10 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
     }
 }
 
-async function put<T>(path: string, data?: unknown): Promise<T> {
+async function put<T>(path: string, data?: unknown, successEvent?: string): Promise<T> {
     try {
         const resp = await summaryAxios.put(`${BASE}${path}`, data);
+        trackOnEnvelopeSuccess(resp, successEvent);
         return resp.data?.data ?? resp.data;
     } catch (err) {
         if (axios.isCancel(err)) throw err;
@@ -134,9 +147,10 @@ async function put<T>(path: string, data?: unknown): Promise<T> {
     }
 }
 
-async function del<T>(path: string): Promise<T> {
+async function del<T>(path: string, successEvent?: string): Promise<T> {
     try {
         const resp = await summaryAxios.delete(`${BASE}${path}`);
+        trackOnEnvelopeSuccess(resp, successEvent);
         return resp.data?.data ?? resp.data;
     } catch (err) {
         if (axios.isCancel(err)) throw err;
@@ -291,7 +305,7 @@ export async function streamSummary(
 }
 
 export async function createSummary(params: CreateSummaryParams): Promise<{ task_id: number }> {
-    return post('/summaries', params);
+    return post('/summaries', params, 'smart_summary_started');
 }
 
 /**
@@ -568,11 +582,11 @@ export async function markSummaryRead(
 }
 
 export async function deleteSummary(taskId: number): Promise<void> {
-    return del(`/summaries/${taskId}`);
+    return del(`/summaries/${taskId}`, 'smart_summary_deleted');
 }
 
 export async function regenerateSummary(taskId: number, body?: { topic?: string }): Promise<{ task_id: number }> {
-    return post(`/summaries/${taskId}/regenerate`, body);
+    return post(`/summaries/${taskId}/regenerate`, body, 'smart_summary_regenerated');
 }
 
 export async function streamRefineSummary(
@@ -728,6 +742,7 @@ export async function editSummary(
             content,
             base_result_id: baseResultId,
         });
+        trackOnEnvelopeSuccess(resp, 'smart_summary_edited');
         return resp.data?.data ?? resp.data;
     } catch (err: unknown) {
         // Preserve cancellation identity so callers can use axios.isCancel(err)
@@ -894,7 +909,7 @@ export async function resetMyTopicTemplate(templateId: string): Promise<TopicTem
 }
 
 export async function createCustomTopicTemplate(payload: CustomTopicTemplatePayload): Promise<TopicTemplate> {
-    const data = await post<{ template: TopicTemplate }>('/summary-templates/my', payload);
+    const data = await post<{ template: TopicTemplate }>('/summary-templates/my', payload, 'smart_summary_custom_template_created');
     return data.template;
 }
 
@@ -931,7 +946,7 @@ export async function getSchedule(scheduleId: number): Promise<ScheduleItem> {
 }
 
 export async function createSchedule(params: CreateScheduleParams): Promise<ScheduleItem> {
-    return normalizeScheduleItem(await post<ScheduleItem>('/summary-schedules', params));
+    return normalizeScheduleItem(await post<ScheduleItem>('/summary-schedules', params, 'smart_summary_timer_configured'));
 }
 
 export async function listSchedules(): Promise<ScheduleItem[]> {
@@ -940,7 +955,7 @@ export async function listSchedules(): Promise<ScheduleItem[]> {
 }
 
 export async function updateSchedule(scheduleId: number, params: UpdateScheduleParams): Promise<ScheduleItem> {
-    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params));
+    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params, 'smart_summary_timer_configured'));
 }
 
 export async function deleteSchedule(scheduleId: number): Promise<void> {

@@ -265,6 +265,8 @@ class DapImpl {
     // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
     private enabled = false
     private started = false
+    // app_launched 一次性哨兵:整个页面生命周期只发一次「应用启动」。见 setEnabled 首启分支。
+    private launchTracked = false
     /**
      * 采集机制是否已装:**每个采集器一个 flag**,而非一个总开关。
      * 单一总开关下,若某个 install 抛错(总开关保持 false),下次 setEnabled(true) 会把
@@ -370,6 +372,14 @@ class DapImpl {
             // 首次启用:惰性装采集机制(dark 态从未装过),再补扫当前 DOM。
             this.installCollectors()
             this.rescanCurrent()
+            // app_launched:改由此处发,而非 GET /appconfig 的 2xx 通道 —— appconfig 会被前台可见性/
+            //   focus 刷新反复调,请求成功 ≠ 应用启动(见 review P1-1)。而采集只在 remoteConfig 下发
+            //   tracking_enabled 后首次启用时打开,该时刻恰是「应用启动且埋点可测」的唯一一次,故在此
+            //   命令式发一次。launchTracked 哨兵保证停采→再启用不会重复计(整生命周期仅一次)。
+            if (!this.launchTracked) {
+                this.launchTracked = true
+                this.track('app_launched', {})
+            }
         }
     }
 
@@ -960,6 +970,8 @@ class DapImpl {
 
     // ----------------------------------------------- 机制③ fetch / XHR 包裹
     private installHttpWrap(): void {
+        // XHR proto.send 里的 this 是 XMLHttpRequest 实例,拿不到 DapImpl;用 dap 别名读 enabled。
+        const dap = this
         // 中央映射索引:一次性构建,emit 闭包复用(installOnce('http') 保证只装一次)。
         const fetchIndex: FetchRuleIndex = buildFetchIndex(FETCH_RULES)
         const bodyIndex: BodyRuleIndex = buildBodyIndex(BODY_RULES)
@@ -1009,8 +1021,14 @@ class DapImpl {
                 }
                 // body 键通道:只在能拿到 JSON 字符串体时算(Request 对象体是流、只能异步读,跳过);
                 // computeBodyEvent 内部做白名单门 + 只读键,返回的只是本表里的事件名常量。
+                // P2-1:必须在**第一方(同源) + 已启用**时才读体 —— BodyRules.ts:17 承诺「跨域不读」,
+                // 且 kill switch(enabled=false)要连「读」一并停掉,不能只停 emit。这里把不变式落进代码,
+                // 不再只靠 emit 里的 isFirstParty 兜底(那只挡上报、挡不住 parse)。
                 const reqBody = typeof init?.body === 'string' ? init.body : undefined
-                const bodyEvent = computeBodyEvent(bodyIndex, method || 'GET', url, reqBody)
+                const bodyEvent =
+                    this.enabled && isFirstParty(url)
+                        ? computeBodyEvent(bodyIndex, method || 'GET', url, reqBody)
+                        : undefined
                 return orig(input as RequestInfo, init)
                     .then((resp) => {
                         emit(url, method || 'GET', resp.status, Date.now() - start, bodyEvent)
@@ -1046,12 +1064,16 @@ class DapImpl {
                 if (url && url.indexOf(BATCH_PATH) === -1) {
                     // body 键通道:axios 走 XHR,JSON payload 序列化为字符串体传入 send(args[0])。
                     // 只在字符串体上算(Blob/FormData 上传等一律跳过);内部白名单门 + 只读键。
-                    const bodyEvent = computeBodyEvent(
-                        bodyIndex,
-                        method,
-                        url,
-                        typeof args[0] === 'string' ? (args[0] as string) : undefined,
-                    )
+                    // P2-1:同 fetch —— 只在第一方 + 已启用时读体,把「跨域不读 / 停采即停读」落进代码。
+                    const bodyEvent =
+                        dap.enabled && isFirstParty(url)
+                            ? computeBodyEvent(
+                                  bodyIndex,
+                                  method,
+                                  url,
+                                  typeof args[0] === 'string' ? (args[0] as string) : undefined,
+                              )
+                            : undefined
                     // 在闭包里定住 url/method/start(不在 loadend 时读实例字段,避免复用/
                     // 重 open 后读到串味的路径);once:true 保证复用实例多次 send 不累积监听
                     // (否则一个 loadend 会补发历史请求的 http_request,见 review P2)。
@@ -1061,15 +1083,23 @@ class DapImpl {
                     // 若一直不触发就不会自动摘,复用实例多次正常完成会累积一串死监听(见 review P2)。
                     let aborted = false
                     const onAbort = () => { aborted = true }
+                    const onLoadEnd = () => {
+                        this.removeEventListener('abort', onAbort)
+                        if (!aborted) emit(url, method, this.status, Date.now() - start, bodyEvent)
+                    }
                     this.addEventListener('abort', onAbort, { once: true })
-                    this.addEventListener(
-                        'loadend',
-                        () => {
-                            this.removeEventListener('abort', onAbort)
-                            if (!aborted) emit(url, method, this.status, Date.now() - start, bodyEvent)
-                        },
-                        { once: true },
-                    )
+                    this.addEventListener('loadend', onLoadEnd, { once: true })
+                    // P2-5:监听器在 native send() 之前挂上;若 send() 同步抛(如对已 open 的实例重复
+                    // send() 触发 InvalidStateError),这两个监听器会残留,等首个请求 loadend 时连带
+                    // 补发一次历史请求的 http_request。故 send 抛错时先摘掉两个监听器再重抛。
+                    try {
+                        // @ts-expect-error 透传原始参数
+                        return origSend.apply(this, args)
+                    } catch (e) {
+                        this.removeEventListener('abort', onAbort)
+                        this.removeEventListener('loadend', onLoadEnd)
+                        throw e
+                    }
                 }
                 // @ts-expect-error 透传原始参数
                 return origSend.apply(this, args)

@@ -3,6 +3,7 @@ import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
+import { Dap } from "@octo/base";
 import WKAvatar, { isBot } from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
@@ -225,6 +226,8 @@ export default class ChatSelectorModal extends Component<Props, State> {
             this.setState({ localSelected: localSelected.filter((s) => s.chat_id !== item.chat_id) });
         } else {
             if (localSelected.length >= maxSelect) return;
+            // 仅「选中」(add)一沿采集,取消勾选不计;原先误用 GET /summary-chat-candidates 列表加载推断。
+            Dap.shared.track("smart_summary_scope_channel_selected", {});
             this.setState({ localSelected: [...localSelected, item] });
         }
     };

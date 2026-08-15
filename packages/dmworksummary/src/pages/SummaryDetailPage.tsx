@@ -1003,6 +1003,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.setState({ detail, lastKnownStatus: newStatus });
 
             if (previousStatus !== undefined && previousStatus !== newStatus) {
+                // 仅在「运行→完成」状态沿采集一次;原先误用 GET /summaries/:id,失败/进行中/导航等
+                // 一切 2xx 都会误报 completed。此处按 detail.status 状态转移判定,语义可靠。
+                if (newStatus === TaskStatus.COMPLETED) {
+                    Dap.shared.track("smart_summary_completed", {});
+                }
                 if (
                     newStatus === TaskStatus.COMPLETED ||
                     newStatus === TaskStatus.FAILED ||

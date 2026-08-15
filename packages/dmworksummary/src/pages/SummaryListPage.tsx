@@ -555,6 +555,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     };
 
     handleCreate = () => {
+        // 「新建总结」意图:三处 create 控件都走这里(原先误用 GET /summary-templates 页面加载推断)。
+        Dap.shared.track("smart_summary_create_clicked", {});
         if (this.props.onCreateNew) {
             this.props.onCreateNew();
             return;

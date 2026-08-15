@@ -130,7 +130,9 @@ const BOTFATHER_COMMAND_EVENTS: Array<[string, string]> = [
 function matchBotfatherCommandEvent(text: string): string | undefined {
     if (!text.startsWith("/")) return undefined
     for (const [prefix, event] of BOTFATHER_COMMAND_EVENTS) {
-        if (text.startsWith(prefix)) return event
+        // 需带参数边界:裸前缀、prefix + 空格、prefix + 换行才算命中,否则 /installation 会误命中
+        // /install、/revokeall 误命中 /revoke。不加边界时非法命令会被错记成某个真命令(见 review P2-10)。
+        if (text === prefix || text.startsWith(prefix + " ") || text.startsWith(prefix + "\n")) return event
     }
     return "botfather_command_sent"
 }
@@ -2508,7 +2510,7 @@ export default class ConversationVM extends ProviderListener {
                 mentionAis: !!(mentionAny && mentionAny.ais),
                 botCreateEntry,
                 botCommandEvent,
-                isReply: !!(content as any).reply,
+                isReply: !!content.reply,
                 mentionedBots,
             })
         }

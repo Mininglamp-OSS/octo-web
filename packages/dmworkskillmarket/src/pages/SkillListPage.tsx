@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Upload,
 } from "lucide-react";
-import { t, useI18n, WKApp, WKButton } from "@octo/base";
+import { t, useI18n, WKApp, WKButton, Dap } from "@octo/base";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import BotPublishModal from "../components/BotPublishModal";
@@ -124,7 +124,16 @@ export default function SkillListPage() {
   }, [list]);
 
   function switchTab(next: TabId) {
+    if (next === tab) return;
+    // 用户切换视图 Tab;原先误用 GET /skills/mine 加载推断,而 mine 列表也用于建议/初始化。
+    Dap.shared.track("market_view_switched", {});
     setTab(next);
+  }
+
+  function handleSelectedTagsChange(next: string[]) {
+    // 用户增删 tag 过滤;原先误用 GET /skills/tags 加载 tag 列表推断。
+    Dap.shared.track("market_tag_filtered", {});
+    setSelectedTags(next);
   }
 
   function handleDeleted() {
@@ -189,7 +198,7 @@ export default function SkillListPage() {
             onChange={list.setQuery}
             placeholder={t("skillMarket.filter.searchNameDescription")}
             selectedTags={selectedTags}
-            onSelectedTagsChange={setSelectedTags}
+            onSelectedTagsChange={handleSelectedTagsChange}
             autoFocus
           />
           <div className="skill-market-publish-menu" ref={publishMenuRef}>

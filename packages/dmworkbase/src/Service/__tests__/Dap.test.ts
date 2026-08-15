@@ -315,19 +315,19 @@ describe('Dap — 中央映射·path 通道(①):成功请求补发映射事件'
         return (body.events as Array<{ event_name: string }>).map((e) => e.event_name)
     }
 
-    it('2xx 的第一方请求既发 http_request 又补发映射事件(POST /api/v1/docs → document_created)', async () => {
+    it('2xx 的第一方请求既发 http_request 又补发映射事件(POST /api/v1/message/revoke → message_revoked)', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.setEnabled(true)
         Dap.shared.init()
 
         const origin = location.origin
-        await globalThis.fetch(`${origin}/api/v1/docs`, { method: 'POST' })
+        await globalThis.fetch(`${origin}/api/v1/message/revoke`, { method: 'POST' })
         Dap.shared.flush()
         await Promise.resolve()
 
         const names = eventNamesFromBatch()
         expect(names).toContain('http_request')
-        expect(names).toContain('document_created')
+        expect(names).toContain('message_revoked')
     })
 
     it('4xx 不补发映射事件(动作未发生),但仍记 http_request', async () => {
@@ -341,13 +341,13 @@ describe('Dap — 中央映射·path 通道(①):成功请求补发映射事件'
         Dap.shared.setEnabled(true)
         Dap.shared.init()
 
-        await globalThis.fetch(`${location.origin}/api/v1/docs`, { method: 'POST' })
+        await globalThis.fetch(`${location.origin}/api/v1/message/revoke`, { method: 'POST' })
         Dap.shared.flush()
         await Promise.resolve()
 
         const names = eventNamesFromBatch()
         expect(names).toContain('http_request')
-        expect(names).not.toContain('document_created')
+        expect(names).not.toContain('message_revoked')
     })
 
     it('跨域请求即使 2xx 也不映射(与 http_request 同源边界一致)', async () => {
@@ -355,11 +355,11 @@ describe('Dap — 中央映射·path 通道(①):成功请求补发映射事件'
         Dap.shared.setEnabled(true)
         Dap.shared.init()
 
-        await globalThis.fetch('https://other.example.com/api/v1/docs', { method: 'POST' })
+        await globalThis.fetch('https://other.example.com/api/v1/message/revoke', { method: 'POST' })
         Dap.shared.flush()
         await Promise.resolve()
 
-        expect(eventNamesFromBatch()).not.toContain('document_created')
+        expect(eventNamesFromBatch()).not.toContain('message_revoked')
     })
 })
 

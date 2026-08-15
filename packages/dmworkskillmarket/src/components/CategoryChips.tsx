@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { t, useI18n } from "@octo/base";
+import { t, useI18n, Dap } from "@octo/base";
 import type { Category } from "../types/skill";
 
 interface CategoryChipsProps {
@@ -54,6 +54,11 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
   const showMore = mediumOverflow.length > 0 || mobileOnlyMenuItems.length > 0;
 
   function choose(categoryId: string) {
+    // market_category_filtered:仅在选中分类实际变化时计一次。原 TrackRules 的 skill-category-chip
+    // 点击规则对「重复点已选分类」也触发 → 虚增(见 review P2-7)。已移除该规则,改此处 gate。
+    if (categoryId !== activeId) {
+      Dap.shared.track("market_category_filtered", {});
+    }
     onChange(categoryId);
     setMoreOpen(false);
   }

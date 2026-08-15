@@ -92,7 +92,8 @@ export const TRACK_RULES: TrackRule[] = [
     { event: 'smart_summary_edit_opened', testid: 'summary-detail-edit-btn', on: 'click' },
     { event: 'smart_summary_regenerate_dialog_opened', testid: 'summary-detail-regenerate-btn', on: 'click' },
     { event: 'smart_summary_delete_dialog_opened', testid: 'summary-detail-delete-btn', on: 'click' },
-    { event: 'smart_summary_agent_message_sent', testid: 'summary-agent-send-btn', on: 'click' },
+    // smart_summary_agent_message_sent 不走本表 —— 点击规则漏 Enter 发送(焦点在 textarea,keydown
+    // fallback 会跳过原生可激活元素),已改为 AgentChatPanel.handleSend 里命令式 track(覆盖点击+Enter)。见 review P1-4。
     { event: 'smart_summary_agent_new_session', testid: 'summary-agent-new-session-btn', on: 'click' },
 
     // ---- IM / 消息（dmworkbase）：右键菜单 testid 透传链 + 输入区控件（agent A）。
@@ -105,12 +106,12 @@ export const TRACK_RULES: TrackRule[] = [
     { event: 'message_multiselect_forward_panel_opened', testid: 'multiselect-mergeforward-btn', on: 'click' },
     { event: 'message_multiselect_delete_dialog_opened', testid: 'multiselect-delete-btn', on: 'click' },
     { event: 'channel_search_opened', testid: 'channel-search-entry', on: 'click' },
-    // 以下三枚为 toggle 型控件（开+关都触发 click）；spec 列为 ADD-TESTID，若只想计「打开」需后续加 gate。
-    { event: 'channel_search_filter_panel_opened', testid: 'channel-search-filter-trigger', on: 'click' },
-    { event: 'input_emoji_picker_opened', testid: 'input-emoji-btn', on: 'click' },
+    // channel_search_filter_panel_opened / input_emoji_picker_opened / input_expanded 不在本表 ——
+    //   三者都是 toggle 控件(开+关同一个 click),点击规则会把「关」也计成「开」→ 翻倍。已改为各自
+    //   组件在「打开/展开」分支命令式 track(ChannelSearchPanel.toggleFilterOpen / EmojiToolbar.togglePanel /
+    //   MessageInput.toggleExpand),见 review P2-7。
     { event: 'input_sticker_sent', testid: 'input-sticker-item', on: 'click' },
     { event: 'input_attachment_clicked', testid: 'input-attachment-btn', on: 'click' },
-    { event: 'input_expanded', testid: 'input-expand-btn', on: 'click' },
 
     // ---- 群 / 联系人（dmworkcontacts 等，agent B）。
     { event: 'group_qrcode_invite_link_copied', testid: 'group-qrcode-copy-invite-link-btn', on: 'click' },
@@ -125,9 +126,9 @@ export const TRACK_RULES: TrackRule[] = [
     { event: 'group_bot_admin_remove_dialog_opened', testid: 'group-bot-admin-remove-btn', on: 'click' },
 
     // ---- 市场 M11（dmworkmcp / dmworkskillmarket，agent C）。
-    { event: 'market_tab_switched', testid: 'market-sidebar-item', on: 'click' },
-    { event: 'market_category_filtered', testid: 'mcp-category-pill', on: 'click' },
-    { event: 'market_category_filtered', testid: 'skill-category-chip', on: 'click' },
+    // market_tab_switched / market_category_filtered 不在本表 —— 都是「重复点当前项」会经 DOM 委托
+    //   重复触发的选择型控件,已改为在切换 handler 里按「实际变化」gate 后命令式 track(MarketSidebar.handleClick /
+    //   McpMarketListPage.handleCategory / CategoryChips.choose),见 review P2-7。
     { event: 'market_skill_sorted', testid: 'skill-sort-option', on: 'click' },
     { event: 'market_skill_install_prompt_copied', testid: 'skill-install-copy', on: 'click' },
     { event: 'market_mcp_connect_prompt_copied', testid: 'mcp-quickaccess-copy', on: 'click' },

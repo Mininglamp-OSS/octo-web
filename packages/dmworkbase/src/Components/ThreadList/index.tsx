@@ -5,6 +5,7 @@ import { UserPlus, LogOut, Trash2 } from "lucide-react"
 import { Thread, ThreadStatus } from "../../Service/Thread"
 import { ChannelTypeCommunityTopic } from "../../Service/Const"
 import WKApp from "../../App"
+import { Dap } from "../../Service/Dap"
 import RouteContext from "../../Service/Context"
 import { ThreadListVM, ThreadListState } from "./vm"
 import { ThreadCreate } from "../ThreadCreate"
@@ -36,6 +37,10 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
   }
 
   componentDidMount() {
+    // channel_subchannel_panel_opened:面板挂载 = 打开子区面板一次。原挂在 GET /groups/:id/threads
+    // 的 2xx 通道,但该 GET 在删除/归档/重试刷新时也会 threadList() 再拉一次 → 过计数(见 review §4)。
+    // 改为命令式,只在打开(mount)时计一次。
+    Dap.shared.track("channel_subchannel_panel_opened", {});
     this.vm.load()
   }
 

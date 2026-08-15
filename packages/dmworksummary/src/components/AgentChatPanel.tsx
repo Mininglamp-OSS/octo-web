@@ -1,6 +1,6 @@
 import React, { Component, createRef } from 'react';
 import { Button, Modal, Input, Toast } from '@douyinfe/semi-ui';
-import { I18nContext } from '@octo/base';
+import { I18nContext, Dap } from '@octo/base';
 import type { ChatMessage, ChatCandidate, AgentProgressEvent, AgentDoneEvent, AgentErrorEvent } from '../types/summary';
 import { agentChatStream, agentChat } from '../api/summaryApi';
 import { genSessionId } from '../utils/summaryHelpers';
@@ -113,6 +113,11 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
     private handleSend = () => {
         const text = this.state.input.trim();
         if (!text || this.props.sending || this.state.isStreaming) return;
+
+        // P1-4:单通道计一次「发消息」。此处覆盖点击(onClick)与 Enter(handleKeyDown)两条入口,
+        // 已移除 TrackRules 的 summary-agent-send-btn 点击规则(漏 Enter)与 FetchRules 的
+        // POST /agent/chat 2xx 规则(SSE 失败回退时会二次计数)。放在守卫之后 = 确有一次发送。
+        Dap.shared.track("smart_summary_agent_message_sent", {});
 
         if (this.props.useStream) {
             this.startSSEStream(text);

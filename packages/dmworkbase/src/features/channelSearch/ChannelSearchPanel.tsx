@@ -25,6 +25,7 @@ import type {
   ChannelSearchTab,
 } from "../../Service/SearchTypes";
 import WKApp from "../../App";
+import { Dap } from "../../Service/Dap";
 import { ChannelSearchFilterPopover as FilterPopover } from "./ChannelSearchFilters";
 import {
   ChannelSearchEmpty as SearchEmpty,
@@ -197,6 +198,11 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
 
   const toggleFilterOpen = () => {
     setOpenFileMenuId(null);
+    // channel_search_filter_panel_opened:仅在「打开」这一支计数。原 TrackRules 的
+    // channel-search-filter-trigger 点击规则在开和关都触发(toggle)→ 翻倍(见 review P2-7)。已移除该规则。
+    if (!filterOpen) {
+      Dap.shared.track("channel_search_filter_panel_opened", {});
+    }
     setFilterOpen((open) => !open);
   };
   const handleFileMenuOpenChange = useCallback(

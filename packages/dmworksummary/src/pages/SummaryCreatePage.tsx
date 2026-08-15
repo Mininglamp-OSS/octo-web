@@ -325,6 +325,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     componentWillUnmount() {
         this.chipResizeObserver?.disconnect();
+        // 防抖计时器若不清，卸载后仍可能补发 smart_summary_theme_input（用户已离开页面）。
+        if (this.themeTrackTimer) {
+            clearTimeout(this.themeTrackTimer);
+            this.themeTrackTimer = null;
+        }
     }
 
     componentDidUpdate(prevProps: SummaryCreatePageProps, prevState: SummaryCreatePageState) {

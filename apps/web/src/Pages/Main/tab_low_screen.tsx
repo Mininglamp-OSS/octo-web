@@ -1,4 +1,4 @@
-import { WKApp } from "@octo/base";
+import { WKApp, Dap } from "@octo/base";
 import React from "react";
 import { Component, ReactNode } from "react";
 import "./tab_low_screen.css"
@@ -19,6 +19,11 @@ export class TabLowScreen extends Component<TabLowScreenProps> {
                         vm.menusList.map((menus) => {
                             return <li key={menus.id} onClick={() => {
                                 vm.currentMenus = menus
+                                // contacts_module_entered:低屏路径与桌面 NavRail 一致,进联系人时计一次
+                                // (见 review P2-4;桌面侧在 Main/index.tsx 导航回调里对称埋点)。
+                                if (menus.id === "contacts") {
+                                    Dap.shared.track("contacts_module_entered", {})
+                                }
                                 if (menus.onPress) {
                                     // Sync the URL before firing the custom
                                     // onPress. Some menu items only swap the

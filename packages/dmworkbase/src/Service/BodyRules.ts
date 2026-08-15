@@ -192,6 +192,33 @@ export const BODY_RULES: BodyRule[] = [
         ],
     },
 
+    // PUT /api/v1/users/:id/setting —— 1:1 会话设置。updateChannelSetting 对 ChannelTypePerson 发到
+    // users/:id/setting,body 与群设置**同构**(单键部分更新)。conversation_* 事件名本就按「会话」命名,
+    // 若只挂 groups/:id/setting 会漏掉所有 DM(读作「没人静音 DM」而非「没测量」)。见 review P2-6。
+    // (allow_no_mention 是群机器人专属键,DM 不会出现,presence-only 判别不命中即可,无副作用。)
+    {
+        method: 'PUT',
+        path: '/api/v1/users/:id/setting',
+        discriminators: [
+            { event: 'conversation_muted', hasKeys: ['mute'] },
+            { event: 'conversation_pinned', hasKeys: ['top'] },
+            { event: 'conversation_remark_edited', hasKeys: ['remark'] },
+            { event: 'conversation_saved_to_contacts', hasKeys: ['save'] },
+        ],
+    },
+
+    // PUT /api/v1/groups/:g/threads/:t/setting —— 话题(CommunityTopic)会话设置,同上同构。见 review P2-6。
+    {
+        method: 'PUT',
+        path: '/api/v1/groups/:id/threads/:seg/setting',
+        discriminators: [
+            { event: 'conversation_muted', hasKeys: ['mute'] },
+            { event: 'conversation_pinned', hasKeys: ['top'] },
+            { event: 'conversation_remark_edited', hasKeys: ['remark'] },
+            { event: 'conversation_saved_to_contacts', hasKeys: ['save'] },
+        ],
+    },
+
     // ==== 以下 body 键事件经源码核对**无法在 octo-web 落地**,不填本表(见 Phase 3 findings) ====
     //  · /fleet/api/v1/* 的 issues / autopilots / agents / squads / webhook-subscriptions 全套
     //    (task_* / project_* / automation_* / expert_* / workspace_* / skill_* / *_webhook_*):

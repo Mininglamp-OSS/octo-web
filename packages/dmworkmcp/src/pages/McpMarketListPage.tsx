@@ -393,6 +393,8 @@ export default class McpMarketListPage extends Component<
 
   private handleMode = (mode: ListMode) => {
     if (mode === this.state.mode) return;
+    // 用户切换「全部/我的」视图(已过同值 guard);原先误用 GET /mcps/mine 加载推断,而 mine 列表也用于建议/初始化。
+    Dap.shared.track("market_view_switched", {});
     // Full reset — tag suggestions are mode-scoped on the backend (see
     // /mcp_tags?mode=mine), so keeping stale suggestions after a tab switch
     // paints suggestions the just-loaded list can't produce. Mirrors
@@ -483,15 +485,19 @@ export default class McpMarketListPage extends Component<
     this.searchTimer = setTimeout(() => {
       this.loadData();
       // 埋点 317:遥测 fire-and-forget，放在 loadData 之后并用可选链守护，绝不阻断搜索主逻辑。
-      if (value.trim()) Dap?.shared?.track?.("market_searched", {});
+      if (value.trim()) Dap.shared.track("market_searched", {});
     }, 300);
   };
 
   private handleCategory = (key: string) => {
-    this.setState((prev) => ({
-      categoriesSelected:
-        key === "all" || prev.categoriesSelected[0] === key ? [] : [key],
-    }), () => this.loadData());
+    const prevSel = this.state.categoriesSelected;
+    const nextSel = key === "all" || prevSel[0] === key ? [] : [key];
+    // market_category_filtered:仅在选中分类实际变化时计一次。原 TrackRules 的 mcp-category-pill
+    // 点击规则对「重复点已选分类 / 空态点 all」也触发 → 虚增(见 review P2-7)。已移除该规则,改此处 gate。
+    if (nextSel[0] !== prevSel[0] || nextSel.length !== prevSel.length) {
+      Dap.shared.track("market_category_filtered", {});
+    }
+    this.setState({ categoriesSelected: nextSel }, () => this.loadData());
   };
 
   /** Multi-tag filter — clicking a tag in the popover toggles membership.
@@ -499,6 +505,8 @@ export default class McpMarketListPage extends Component<
    *  Refetches on every change; the tag popover stays open so the user can
    *  toggle several tags in one interaction. */
   private handleToggleTag = (tag: string) => {
+    // 用户点 tag 过滤(选/取消都算一次过滤动作);原先误用 GET /mcp_tags 加载 tag 列表推断。
+    Dap.shared.track("market_tag_filtered", {});
     this.setState((prev) => ({
       tagsSelected: prev.tagsSelected.includes(tag)
         ? prev.tagsSelected.filter((t) => t !== tag)

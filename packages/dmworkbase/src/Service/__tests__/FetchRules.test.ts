@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { FETCH_RULES, buildFetchIndex, matchFetchEvent, rawPathname, type FetchRule } from '../FetchRules'
+import { FETCH_RULES, FETCH_IGNORE, buildFetchIndex, matchFetchEvent, rawPathname, type FetchRule } from '../FetchRules'
 
 /**
  * FetchRules —— 中央映射·path 通道(①)的匹配器与规则表守卫。
@@ -107,6 +107,8 @@ describe('FETCH_RULES — 规则表不变量', () => {
     it('每条真实规则都能被自身 path 的具体化实例命中(通配段代入具体值)', () => {
         const idx = buildFetchIndex(FETCH_RULES)
         for (const r of FETCH_RULES) {
+            // 抑制哨兵规则命中即返回 undefined(设计如此),不参与「必有命中」断言。
+            if (r.event === FETCH_IGNORE) continue
             const concrete = r.path
                 .split('/')
                 .map((s) => (s.startsWith(':') ? '12345' : s))
@@ -114,5 +116,106 @@ describe('FETCH_RULES — 规则表不变量', () => {
             // 命中的事件不一定是 r.event(可能有更具体的字面规则夺走),但必须有命中。
             expect(matchFetchEvent(idx, r.method, concrete), `${r.method} ${r.path}`).toBeTruthy()
         }
+    })
+})
+
+describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负例)', () => {
+    // dap350 review 反馈:凡「2xx 不能无歧义证明该事件」的 path→event 一律移出本表,改由 UI/命令式采集。
+    // 这些负例把「后台轮询 / 页面初始化加载 / 列表加载 / 详情轮询」钉死为**不产出**对应事件,
+    // 防止回归重新把这些语义错误的映射加回来。
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('后台版本轮询 GET /version.json 不产出任何事件(定时轮询,非用户打开设置)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/version.json')).toBeUndefined()
+    })
+
+    it('智能总结模板/候选加载不被当成用户意图(页面 init 与列表加载,非点击/勾选)', () => {
+        // 新建页 init 加载模板 ≠ 点「新建」
+        expect(matchFetchEvent(idx, 'GET', '/summary/api/v1/summary-templates')).toBeUndefined()
+        // 候选列表加载 ≠ 用户勾选 channel / participant
+        expect(matchFetchEvent(idx, 'GET', '/summary/api/v1/summary-chat-candidates')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/summary/api/v1/summary-member-candidates')).toBeUndefined()
+    })
+
+    it('总结详情 GET /summaries/:id 不产出 completed(失败/进行中/导航都会 2xx,completed 是状态沿)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/summary/api/v1/summaries/98765')).toBeUndefined()
+    })
+
+    it('市场 mine 列表 / tag 列表加载不被当成切视图 / 选标签(也用于建议/初始化)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/mcps/mine')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/mine')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/mcp_tags')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/tags')).toBeUndefined()
+    })
+
+    it('这些「UI 采集专属」事件名不得再出现在 path 通道规则表里', () => {
+        const uiOnly = new Set([
+            'settings_menu_opened',
+            'smart_summary_create_clicked',
+            'smart_summary_scope_channel_selected',
+            'smart_summary_scope_participant_selected',
+            'smart_summary_completed',
+            'market_view_switched',
+            'market_tag_filtered',
+            // ↓ dap350 二审移出 path 通道、改命令式/UI 采集的事件(见 review P1-1/P1-3/P1-4/P1-5/P2-3/P2-4/P2-7、§4)
+            'app_launched',                        // Dap.setEnabled 首启一次性(GET /appconfig 会被可见性刷新反复调)
+            'space_switched',                      // Pages/Main.applySpaceSelection(POST /conversation/sync 是 SDK 同步回调)
+            'channel_subchannel_panel_opened',     // ThreadList.componentDidMount(GET /groups/:id/threads 刷新时会再拉)
+            'contacts_module_entered',             // 导航回调按 menu id(GET /robot/my_bots 别处也调)
+            'contact_opened',                      // Contacts.handleContactClick(GET /users/:id 是通用 profile 拉取)
+            'smart_summary_agent_message_sent',    // AgentChatPanel.handleSend(覆盖点击+Enter;SSE 回退会二次计)
+            'smart_summary_started',               // ↓ summary 走业务码信封,改 summaryApi 层 code===0 gate 后命令式
+            'smart_summary_edited',
+            'smart_summary_regenerated',
+            'smart_summary_deleted',
+            'smart_summary_timer_configured',
+            'smart_summary_custom_template_created',
+            'input_emoji_picker_opened',           // ↓ toggle 控件,改「打开/展开/切换」分支命令式(避免开+关翻倍)
+            'input_expanded',
+            'channel_search_filter_panel_opened',
+            'market_tab_switched',
+            'market_category_filtered',
+        ])
+        const leaked = FETCH_RULES.filter((r) => uiOnly.has(r.event)).map((r) => `${r.method} ${r.path} → ${r.event}`)
+        expect(leaked, leaked.join('\n')).toEqual([])
+    })
+
+    it('市场详情 GET /:id 仍保留(点卡片才拉详情,语义成立)', () => {
+        // 反向确认:清理只针对 mine/tags 加载,card_viewed 这类「成功=动作」映射不受影响。
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/mcps/42')).toBe('market_card_viewed')
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/42')).toBe('market_card_viewed')
+    })
+})
+
+describe('FETCH_RULES — 二审(dap350)移出通道的端点钉死为「不产出」(防回归)', () => {
+    // 这些端点的 2xx 会被轮询/可见性刷新/SDK 回调/别处复用/信封失败等触发,「成功 ≠ 用户动作(且成功)」,
+    // 已分别改为命令式或 UI 采集(见对应 review 项)。下面把它们钉死为在 path 通道无命中。
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('GET /common/appconfig 不产出 app_launched(前台可见性/focus 会反复刷)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/common/appconfig')).toBeUndefined()
+    })
+
+    it('POST /conversation/sync 不产出 space_switched(WuKongIM 会话同步回调,连接/重连都触发)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/conversation/sync')).toBeUndefined()
+    })
+
+    it('GET /groups/:id/threads 不产出 channel_subchannel_panel_opened(删除/归档/重试会再拉)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/groups/98765/threads')).toBeUndefined()
+    })
+
+    it('GET /robot/my_bots 不产出 contacts_module_entered(BotStore/PersonaSettings 也调)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/robot/my_bots')).toBeUndefined()
+    })
+
+    it('GET /users/:id 不产出 contact_opened(通用 profile 拉取,bot/内部查库都打)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/users/12345')).toBeUndefined()
+    })
+
+    it('summary 成功类 mutation 端点不产出 smart_summary_*(走业务码信封,改 api 层 code===0 gate)', () => {
+        // 代表性端点:创建/删除/重生成 —— 这些 2xx 可能携带 code≠0 的逻辑失败,不能进 2xx 通道。
+        expect(matchFetchEvent(idx, 'POST', '/summary/api/v1/summaries')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'DELETE', '/summary/api/v1/summaries/42')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'POST', '/summary/api/v1/summaries/42/regenerate')).toBeUndefined()
     })
 })

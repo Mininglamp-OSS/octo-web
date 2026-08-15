@@ -1,4 +1,4 @@
-import { WKApp, WKLayout, Provider, WKModal, t } from "@octo/base";
+import { WKApp, WKLayout, Provider, WKModal, t, Dap } from "@octo/base";
 import React, { Component } from "react";
 import "./index.css"
 import MainVM from "./vm";
@@ -161,6 +161,13 @@ export class MainPage extends Component<{}, MainPageState> {
     }
 
     private applySpaceSelection = (spaceId: string) => {
+        // space_switched:改由此处(切换守卫通过、真正 apply 的唯一入口)命令式 track,而非
+        //   POST /conversation/sync 的 2xx 通道 —— 那是 WuKongIM SDK 的会话同步回调,连接/重连/
+        //   冷启动都会触发,不只切空间(见 review P1-3)。仅在目标与当前不同(确有切换)时计一次。
+        const prevSpaceId = WKApp.shared.currentSpaceId || "";
+        if (spaceId && spaceId !== prevSpaceId) {
+            Dap.shared.track("space_switched", {});
+        }
         // 同步更新 currentSpaceId 与持久化，并立刻 emit space-changed，
         // 避免随后用户立即触发的"合并转发"等动作读到旧的 spaceId
         // （此前这些更新都放在 getMySpaces().then 内，存在网络 race）。
@@ -274,6 +281,14 @@ export class MainPage extends Component<{}, MainPageState> {
                                                 menus.id,
                                                 requestMailWorkspaceSwitch,
                                                 () => {
+                                                    // contacts_module_entered:在导航真正切到联系人时计一次,
+                                                    // 而非 GET /robot/my_bots 的 2xx 通道 —— 那个端点 BotStore/
+                                                    // PersonaSettings 也会调,拉取 ≠ 进模块(见 review P2-4)。
+                                                    // 不改成 onPress:onPress 会顶替默认导航(此处 popToRoot /
+                                                    // 低屏 route.push 两条路径不同),故就近在导航回调里按 id 计。
+                                                    if (menus.id === "contacts") {
+                                                        Dap.shared.track("contacts_module_entered", {});
+                                                    }
                                                     vm.currentMenus = menus;
                                                     WKApp.currentMenuId = menus.id;
                                                     WKApp.route.syncPath(menus.routePath);

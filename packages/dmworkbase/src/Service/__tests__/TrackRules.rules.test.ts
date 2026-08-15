@@ -12,7 +12,8 @@ describe('TRACK_RULES — A_rule summary batch', () => {
         { event: 'smart_summary_edit_opened', testid: 'summary-detail-edit-btn' },
         { event: 'smart_summary_regenerate_dialog_opened', testid: 'summary-detail-regenerate-btn' },
         { event: 'smart_summary_delete_dialog_opened', testid: 'summary-detail-delete-btn' },
-        { event: 'smart_summary_agent_message_sent', testid: 'summary-agent-send-btn' },
+        // smart_summary_agent_message_sent 已移出本表 —— 点击规则漏 Enter 发送(焦点在 textarea),
+        // 改为 AgentChatPanel.handleSend 命令式 track(覆盖点击+Enter),见 review P1-4。
         { event: 'smart_summary_agent_new_session', testid: 'summary-agent-new-session-btn' },
     ]
 

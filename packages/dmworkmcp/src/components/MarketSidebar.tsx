@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { I18nContext, t, WKApp } from "@octo/base";
+import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "../pages/McpMarketListPage";
 import ExpertMarketListPage from "../pages/ExpertMarketListPage";
@@ -124,6 +124,9 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
 
   private handleClick = (item: MarketItem) => {
     if (item.id !== this.state.activeId) {
+      // market_tab_switched:仅在真正切到不同 tab 时计一次。原 TrackRules 的 market-sidebar-item
+      // 点击规则对「重复点当前 tab」也会触发 → 虚增(见 review P2-7)。已移除该规则,改此处 gate。
+      Dap.shared.track("market_tab_switched", {});
       this.setState({ activeId: item.id });
     }
     this.replaceRightPane(item);
