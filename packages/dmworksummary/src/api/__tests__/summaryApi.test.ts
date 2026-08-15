@@ -501,5 +501,17 @@ describe('summaryApi', () => {
             expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
             track.mockRestore();
         });
+
+        it('agent mode 缺 code 视为失败,不发也抛错(七审 P1:与 normal 路径同口径)', async () => {
+            // 一个带合法 task_id 但缺 envelope code 的响应:normal 路径已收紧到仅 code===0 才发,
+            // agent 路径此前放行 undefined 会误发且误清 chat。此处钉死缺 code 即失败,两路径不再漂移。
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { data: { task_id: 7, task_no: 'n', status: 1, created_at: 'x' } } });
+            await expect(createAgentSummary({} as any, { trigger_mode: 'agent' })).rejects.toBeTruthy();
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
     });
 });

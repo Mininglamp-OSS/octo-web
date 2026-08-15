@@ -342,8 +342,13 @@ export async function createAgentSummary(
 ): Promise<{ task_id: number; task_no: string; status: number; created_at: string }> {
     const resp = await summaryAxios.post(`${BASE}/summaries/agent`, params);
     const envelopeCode = resp.data?.code;
-    if (envelopeCode !== 0 && envelopeCode !== undefined) {
-        // 业务失败（如 40004 session 无产出）——保留 envelope code 让上层 switch
+    // 七审 P1:与 trackOnEnvelopeSuccess 同口径,严格 code===0 才算成功。
+    // summary 端点响应恒为 {code,message,data} 信封,缺 code(===undefined)与 code===null 同属
+    // 「非预期信封」失败签名(网关 HTML+200 / 代理错误页 / {data:null})。此前这里放行 undefined,
+    // 而 normal 路径的 gate 已收紧到仅 code===0,两条创建路径就此不一致:一个带 task_id 但缺 code 的响应
+    // 会让 agent 模式误发 smart_summary_started 且误清 chat,normal 模式却不发。统一为 code!==0 即失败。
+    if (envelopeCode !== 0) {
+        // 业务失败（如 40004 session 无产出）或缺/空信封——保留 envelope code 让上层 switch
         const err = new Error(resp.data?.message || 'create agent summary failed') as Error & {
             response?: { data?: { code?: number; message?: string } };
         };
@@ -358,7 +363,7 @@ export async function createAgentSummary(
         throw new Error(resp.data?.message || 'create agent summary returned no task_id');
     }
     // 二审 P1/P2-2:agent 模式也是一条「成功发起」。走到这里 envelope code 已判定成功
-    // (code===0 或缺省,非 0/null 已在上面抛出),与传统 createSummary 的 gate 同口径,
+    // (仅 code===0,缺/空/非零信封均已在上面抛出),与传统 createSummary 的 gate 同口径,
     // 补发 smart_summary_started(此前 agent 模式一次都不发,与 normal 模式不一致)。
     Dap.shared.track('smart_summary_started', trackProps);
     return data;
