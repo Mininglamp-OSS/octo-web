@@ -291,3 +291,23 @@ describe('FETCH_RULES — 子区(thread)作用域 webhook 与群级同事件(十
         expect(matchFetchEvent(idx, 'PUT', '/api/v1/groups/g1/md')).toBe('group_md_edited')
     })
 })
+
+describe('FETCH_RULES — conversation_left 已移出 path 通道(十一审 🔴,防回归)', () => {
+    // 原 POST /groups/:id/exit 与 DELETE /conversations/:id/:id 两条 fetch 规则:退群一次手势双发、
+    // 把「关闭会话」(onCloseChat 同走 DELETE conversations)误计成退出、子区/DM 退出靠兜底 DELETE 偶发命中。
+    // 已改命令式(exitChannelSettingGroup / leaveChannelSettingThread 成功后单发)。这里钉死两端点无 path 映射。
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('POST /groups/:id/exit 不产出 conversation_left(退群改命令式,fetch 会与 deleteConversation 双计)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/groups/98765/exit')).toBeUndefined()
+    })
+
+    it('DELETE /conversations/:id/:id 不产出 conversation_left(「关闭会话」同走此端点,非退出)', () => {
+        expect(matchFetchEvent(idx, 'DELETE', '/api/v1/conversations/1/2')).toBeUndefined()
+    })
+
+    it('conversation_left 不再出现在 FETCH_RULES 任一条(整表扫描)', () => {
+        const leaked = FETCH_RULES.filter((r) => r.event === 'conversation_left').map((r) => `${r.method} ${r.path}`)
+        expect(leaked, leaked.join('\n')).toEqual([])
+    })
+})

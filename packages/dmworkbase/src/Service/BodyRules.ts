@@ -186,6 +186,20 @@ export const BODY_RULES: BodyRule[] = [
         ],
     },
 
+    // PUT /api/v1/groups/:g/threads/:t —— 子区(thread)改名(updateThread 发 { name }),十一审 🔴 相似问题:
+    // 群改名走 PUT groups/:id{name}→group_name_edited,而**子区改名**走嵌套路径 PUT groups/:g/threads/:t{name}
+    // (ChannelSettingService.updateThread;updateChannelSettingThreadName 唯一调用点,只带 name)。群级 body 规则
+    // (3 段)不命中子区路径(5 段),子区改名漏计。按 FetchRules 头「子区滚入群级同名事件」策略,发同一
+    // group_name_edited(与 group_md_edited / webhook_* 的群/子区归一一致)。updateThread 目前仅 rename 一处调用、
+    // 只带 name,故无 fallback、无其它键碰撞;若日后子区新增其它单键 PUT,须在此补判别子。
+    {
+        method: 'PUT',
+        path: '/api/v1/groups/:id/threads/:seg',
+        discriminators: [
+            { event: 'group_name_edited', hasKeys: ['name'] },
+        ],
+    },
+
     // PUT /api/v1/groups/:id/incoming-webhooks/:id —— 启停 vs 编辑:
     // 启停走 updateStatus,body 只带 status(枚举 0/1);编辑走 buildWebhookUpsertReq,只带
     // name/avatar/allow_mention_* / mention_uids 且**从不带 status**。故 status 在=启停,否则=编辑。

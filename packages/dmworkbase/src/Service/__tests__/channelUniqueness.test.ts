@@ -185,3 +185,90 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
         expect(collisions, collisions.join('\n')).toEqual([])
     })
 })
+
+/**
+ * 十一审 🔴 相似问题守卫:同一张表内「一个手势 → 一个事件」——除非在显式白名单里(有意的滚入/别名)。
+ * =====================================================================
+ * 跨通道互斥已由上面两块钉死。但**同一张表内**允许多条规则映射到同一事件(如群/子区滚入、登录别名),
+ * 这类「有意的多对一」若不显式登记,回归时新塞的重复无法与「有意滚入」区分。本块把每张表里
+ * 「事件 → 命中它的不同端点(method+path)集合」算出来,凡集合 >1 的事件**必须**出现在该表白名单,
+ * 且白名单里的每一项**必须**当前确为重复(双向相等)——既防新增未登记的重复,也防白名单腐烂(留下
+ * 早已不重复的陈项)。任一方向不符立即红,逼迫作者在白名单里写下「为什么这个事件由多条规则发」。
+ *
+ * 白名单语义 = 该事件的多条规则是**同一次用户手势的不同作用域/入口**,产品上就该记同一事件:
+ *   - 群/子区滚入(subchannel-inclusion policy,见 FetchRules 头):webhook_* / group_md_edited / group_name_edited
+ *   - 会话设置跨群/DM/子区三作用域同构:conversation_muted / _pinned / _remark_edited / _saved_to_contacts
+ *   - 登录双入口(账号 / 邮箱)同为一次登录:user_login
+ *   - 密钥「配置」= 新建(POST)或更新(PUT)同一动作:settings_secrets_configured
+ *   - 市场「发布」跨 mcp / skill 两个目录同一手势:market_manual_publish_submitted
+ *
+ * 仅覆盖 FETCH / BODY 两条**后端调用驱动**通道:一次真实后端调用被两条同事件规则命中 = 真·双计。
+ * TRACK(DOM 锚点)**不在此约束**:一个事件在 DOM 层锚到多个 testid(工具栏 + 菜单等不同入口)是常态,
+ * 单次点击只命中一个元素 → 一个 testid → 一次 event,不同 testid 是互斥手势,不构成双计(见头块
+ * 「FETCH/TRACK 允许同名多条」)。故 TRACK 的表内重名由 TrackRules 自身语义保证,不进本守卫。
+ */
+describe('中央映射通道 —— 表内「一手势一事件」守卫(重复映射须显式登记,十一审 🔴)', () => {
+    // 收集「事件 → 命中它的不同端点(method+path)」。FETCH_IGNORE 是哨兵不计。
+    const endpointsByEvent = (pairs: Array<{ event: string; method: string; path: string }>) => {
+        const m = new Map<string, Set<string>>()
+        for (const p of pairs) {
+            if (p.event === FETCH_IGNORE) continue
+            const s = m.get(p.event) ?? new Set<string>()
+            s.add(`${p.method.toUpperCase()} ${p.path}`)
+            m.set(p.event, s)
+        }
+        return m
+    }
+    const dupEvents = (m: Map<string, Set<string>>) =>
+        new Set([...m.entries()].filter(([, s]) => s.size > 1).map(([e]) => e))
+
+    // 各表当前「有意的多对一」白名单(改动这里 = 承认新增了一处滚入/别名,须在上方注释写明理由)。
+    const cases: Array<{ name: string; dup: Set<string>; allow: Set<string> }> = [
+        {
+            name: 'FETCH_RULES',
+            dup: dupEvents(endpointsByEvent(FETCH_RULES.map((r) => ({ event: r.event, method: r.method, path: r.path })))),
+            allow: new Set([
+                'user_login',
+                'settings_secrets_configured',
+                'market_manual_publish_submitted',
+                'group_md_edited',
+                'webhook_created',
+                'webhook_url_reset',
+                'webhook_tested',
+                'webhook_deleted',
+            ]),
+        },
+        {
+            name: 'BODY_RULES',
+            dup: dupEvents(
+                endpointsByEvent(
+                    BODY_RULES.flatMap((r) => {
+                        const evs = [...r.discriminators.map((d) => d.event), ...(r.fallbackEvent ? [r.fallbackEvent] : [])]
+                        return evs.map((event) => ({ event, method: r.method, path: r.path }))
+                    })
+                )
+            ),
+            allow: new Set([
+                'group_name_edited',
+                'conversation_muted',
+                'conversation_pinned',
+                'conversation_remark_edited',
+                'conversation_saved_to_contacts',
+                'webhook_enabled_toggled',
+                'webhook_edited',
+            ]),
+        },
+    ]
+
+    for (const c of cases) {
+        it(`${c.name}:未登记的重复映射立即红(新增滚入必须写进白名单)`, () => {
+            const unlisted = [...c.dup].filter((e) => !c.allow.has(e)).sort()
+            expect(unlisted, `${c.name} 出现未登记的多对一映射:\n${unlisted.join('\n')}`).toEqual([])
+        })
+
+        it(`${c.name}:白名单不得腐烂(登记项必须当前确为重复)`, () => {
+            const stale = [...c.allow].filter((e) => !c.dup.has(e)).sort()
+            expect(stale, `${c.name} 白名单存在已不再重复的陈项(应删除):\n${stale.join('\n')}`).toEqual([])
+        })
+    }
+})

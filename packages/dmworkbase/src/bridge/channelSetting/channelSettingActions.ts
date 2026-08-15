@@ -34,6 +34,7 @@ import {
   syncCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
 import { patchImChannelInfoOrgData } from "../../im-runtime/channelRuntime";
+import { Dap } from "../../Service/Dap";
 import {
   findCurrentImConversation,
   removeCurrentImConversation,
@@ -578,6 +579,11 @@ export async function exitChannelSettingGroup(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   await runtime.exitChannel(params.channel);
+  // 十一审 🔴:conversation_left 从 path 通道(POST groups/:id/exit + DELETE conversations/:id/:id)
+  //   移到命令式。原两条 fetch 规则会:退群一次手势双发(exit + 随后的 deleteConversation 都命中)、
+  //   把「关闭会话」(onCloseChat 走同一 DELETE,与退出无关)误计成退出、且子区退出仅靠兜底 DELETE 偶发命中。
+  //   真正的「退群」= exitChannel 成功这一刻,故在此按成功单发一次;不依赖后续 best-effort 的 deleteConversation。
+  Dap.shared.track("conversation_left", {});
   await runtime.deleteConversation(params.channel).catch((err) => {
     params.onDeleteConversationError?.(err);
   });
@@ -607,6 +613,9 @@ export async function leaveChannelSettingThread(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   await runtime.leaveThread(params.shortId);
+  // 十一审 🔴:子区退出同群退出——原 path 通道靠兜底 DELETE conversations/:id/:id 偶发命中,
+  //   与「关闭会话」共用同一 DELETE 且依赖 catch 是否触发,漏计/误计。命令式在 leaveThread 成功后单发。
+  Dap.shared.track("conversation_left", {});
   await runtime.deleteConversation(params.channel).catch((err) => {
     params.onDeleteConversationError?.(err);
   });

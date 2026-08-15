@@ -16,6 +16,14 @@ describe('BodyRules — 群资料/设置真实规则命中', () => {
         expect(put('/api/v1/groups/g1', JSON.stringify({ notice: 'x' }))).toBe('group_announcement_edited')
     })
 
+    it('子区改名 PUT /groups/:g/threads/:t name→group_name_edited(十一审 🔴,与群改名归一)', () => {
+        // updateChannelSettingThreadName → updateThread(PUT groups/:g/threads/:t {name});群级 body 规则
+        // (3 段)不命中子区路径(5 段),原本漏计。按子区滚入策略发同一 group_name_edited。
+        expect(put('/api/v1/groups/g1/threads/t1', JSON.stringify({ name: 'x' }))).toBe('group_name_edited')
+        // 无 name 键(未来若新增其它子区单键 PUT)当前不命中,不误报。
+        expect(put('/api/v1/groups/g1/threads/t1', JSON.stringify({ other: 1 }))).toBeUndefined()
+    })
+
     it('PUT incoming-webhooks/:id: 有 status→启停, 否则→编辑(fallback)', () => {
         expect(put('/api/v1/groups/g1/incoming-webhooks/w1', JSON.stringify({ status: 1 }))).toBe(
             'webhook_enabled_toggled',

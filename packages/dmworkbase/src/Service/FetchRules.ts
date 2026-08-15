@@ -20,7 +20,19 @@
  *   - 一个实际 path 可能同时匹配「字面规则」与「通配规则」(如 /issues/search 同时匹配
  *     /issues/search 与 /issues/:id)——取**通配段更少**者(更具体者)。已离线验证:表内规则
  *     在同 method 下无等具体度歧义,故该规则可完全消歧(见 dap350 碰撞分析)。
- */
+ *
+ * 子区(thread)作用域策略(subchannel-inclusion policy):
+ *   群设置里的一批操作在**子区**作用域会走 groups/:id/threads/:seg/... 嵌套路径,而 matchFetchEvent
+ *   严格按段数匹配 —— 群级规则(N 段)永不命中子区路径(N+2 段)。策略是**子区动作滚入群级同名事件**
+ *   (roll-up):子区里做的 webhook 增删改重置测试、md 编辑、子区改名,都发与群级相同的
+ *   webhook_* / group_md_edited / group_name_edited,不新造带作用域后缀的事件。
+ *     - 理由:这些事件的产品语义与作用域无关(「webhook 被创建」不因群/子区而不同),整合表也未区分;
+ *       与其漏计子区,不如与群级归一,保证「一次手势 → 一个事件」在两级作用域一致。
+ *     - 实现:凡群级有规则、子区又有平行嵌套路径的,补一条 thread 平行规则(段数+2,thread 段用 :seg)。
+ *     - 段命名约定:group=:id、thread=:seg、末级资源(webhook 等)=:id —— 与 BodyRules 一致。
+ *     - 若日后要在报表里拆分群/子区,应在事件属性里加 scope 维度,而非拆事件名(避免事件爆炸)。
+ *   例外:conversation_left(退群/退子区)不走本表,已改命令式(见下方 message/offset 附近注释)。
+
 
 /** 单条 fetch 映射规则。method 大写;path 用 ':' 段表通配;event 为整合表事件名。 */
 export interface FetchRule {
@@ -149,7 +161,7 @@ export const FETCH_RULES: FetchRule[] = [
     //   —— isThreadMd() 时走 updateThreadMd(PUT groups/:g/threads/:t/md)。群级规则(5 段)不命中子区路径
     //   (7 段),子区 md 编辑漏计。同 webhook 一类,补一条 thread 平行规则发同一 group_md_edited。
     //   (注:md 的删除态无独立事件 —— FETCH 仅 PUT /md 计编辑,DELETE 不在通道,故不补 delete 变体。)
-    { method: 'PUT', path: '/api/v1/groups/:id/threads/:id/md', event: 'group_md_edited' },
+    { method: 'PUT', path: '/api/v1/groups/:id/threads/:seg/md', event: 'group_md_edited' },
     // group_webhook_panel_opened 不在此通道 —— GET /groups/:id/incoming-webhooks 在创建/重置/删除 webhook 后
     //   都会回读刷新列表,请求成功 ≠ 打开面板。删除避免每次增删都被计成一次「打开」(见二审 P1-5)。
     { method: 'POST', path: '/api/v1/groups/:id/incoming-webhooks', event: 'webhook_created' },
@@ -161,10 +173,10 @@ export const FETCH_RULES: FetchRule[] = [
     //   ChannelWebhook UI 对群与子区共用同一套增删改重置测试按钮)。matchFetchEvent 严格按段数匹配,群级规则
     //   (5/7/7/7 段)永不命中子区路径(7/9/9/9 段) → 子区 webhook 动作被静默漏计(与 conversation_* 漏 DM/thread
     //   同类)。webhook_* 事件名本就与作用域无关,故子区动作应发同一事件。补齐四条 thread 平行规则。
-    { method: 'POST', path: '/api/v1/groups/:id/threads/:id/incoming-webhooks', event: 'webhook_created' },
-    { method: 'POST', path: '/api/v1/groups/:id/threads/:id/incoming-webhooks/:id/regenerate', event: 'webhook_url_reset' },
-    { method: 'POST', path: '/api/v1/groups/:id/threads/:id/incoming-webhooks/:id/test', event: 'webhook_tested' },
-    { method: 'DELETE', path: '/api/v1/groups/:id/threads/:id/incoming-webhooks/:id', event: 'webhook_deleted' },
+    { method: 'POST', path: '/api/v1/groups/:id/threads/:seg/incoming-webhooks', event: 'webhook_created' },
+    { method: 'POST', path: '/api/v1/groups/:id/threads/:seg/incoming-webhooks/:id/regenerate', event: 'webhook_url_reset' },
+    { method: 'POST', path: '/api/v1/groups/:id/threads/:seg/incoming-webhooks/:id/test', event: 'webhook_tested' },
+    { method: 'DELETE', path: '/api/v1/groups/:id/threads/:seg/incoming-webhooks/:id', event: 'webhook_deleted' },
     { method: 'POST', path: '/api/v1/groups/:id/managers', event: 'group_admin_added' },
     { method: 'DELETE', path: '/api/v1/groups/:id/managers', event: 'group_admin_removed' },
     { method: 'PUT', path: '/api/v1/groups/:id/bot_admin/:id', event: 'group_bot_admin_added' },
@@ -172,8 +184,18 @@ export const FETCH_RULES: FetchRule[] = [
     { method: 'DELETE', path: '/api/v1/groups/:id/disband', event: 'group_dissolved' },
     { method: 'PUT', path: '/api/v1/groups/:id/members/:id', event: 'group_nickname_edited' },
     { method: 'POST', path: '/api/v1/message/offset', event: 'conversation_cleared' },
-    { method: 'POST', path: '/api/v1/groups/:id/exit', event: 'conversation_left' },
-    { method: 'DELETE', path: '/api/v1/conversations/:id/:id', event: 'conversation_left' },
+    // conversation_left 不在此通道 —— 原 POST /groups/:id/exit + DELETE /conversations/:id/:id 两条 fetch 规则
+    //   有三个语义缺陷(十一审 🔴):
+    //   (a) 退群一次手势双发 —— exitChannelSettingGroup 先 exitChannel(POST exit)、随后 deleteConversation
+    //       (DELETE conversations),两条规则都命中,一次退群计两次。
+    //   (b) 「关闭会话」误计 —— ConversationList.onCloseChat 走同一 DELETE conversations/:id/:id(仅本地隐藏,
+    //       非退出),被计成 conversation_left。
+    //   (c) 子区/DM 退出仅靠兜底 DELETE 偶发命中,且依赖 best-effort deleteConversation 的 catch 是否触发。
+    //   改为命令式:exitChannelSettingGroup 在 exitChannel 成功后、leaveChannelSettingThread 在 leaveThread
+    //   成功后各单发一次 Dap.shared.track('conversation_left')(见 channelSettingActions.ts)。与四审
+    //   message_revoked 同款收口:真实「退出」动作成功这一刻单通道计一次,不再让 path 通道二义命中。
+    //   (DM 无独立「退出」手势 —— 关闭会话是隐藏非退出,故 conversation_left 只覆盖群退出 + 子区退出。)
+
     // contacts_module_entered 不在此通道 —— GET /robot/my_bots 也被 BotStore / PersonaSettings 调用,
     //   不只进联系人模块。改为 apps/web 导航回调(桌面 NavRail + 低屏 tab,按 menu id 判定)命令式 track(见 review P2-4)。
     // contact_opened 不在此通道 —— GET /users/:id 是通用 profile 拉取(bot profile / 内部查库都会打),
