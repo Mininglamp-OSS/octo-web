@@ -339,9 +339,12 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     // 非 final 分支关闭:当前章视为「退出」。
     // 仅当已真正进入章节视图(chapterEnterAtRef 已初始化)才 emit——否则从 intro 屏直接
     // 关闭时 chapterEnterAtRef 仍为 0,会算出跨年的假 duration_ms(见 PR #1320 review)。
+    // 九审 🔴:chapter_id 用 prevChapterRef.current(effect 里与 activeSection.id 同步)而非原始
+    //   activeId —— activeId 初值 "workspace" 可能被 resolveOnboardingSections 过滤掉,那时 activeSection
+    //   回退到首章,若仍报 activeId 会与 _viewed 报的真实章 id 不一致(正是八审要修的错报类)。
     if (prevChapterRef.current !== null) {
       Dap.shared.track("onboarding_chapter", {
-        chapter_id: activeId,
+        chapter_id: prevChapterRef.current,
         outcome: "exited",
         duration_ms: Date.now() - chapterEnterAtRef.current,
       });
@@ -358,9 +361,10 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     completionStartedRef.current = true;
     // 完成:当前(最后一)章视为 completed。与 handleClose 对齐——仅在已真正进入章节视图
     // (prevChapterRef 已初始化)才 emit,防两条路径漂移出跨年假 duration_ms(见 review)。
+    // 九审 🔴:chapter_id 同样用 prevChapterRef.current(= 实际显示章 id),不用会漂到 "workspace" 的 activeId。
     if (prevChapterRef.current !== null) {
       Dap.shared.track("onboarding_chapter", {
-        chapter_id: activeId,
+        chapter_id: prevChapterRef.current,
         outcome: "completed",
         duration_ms: Date.now() - chapterEnterAtRef.current,
       });
