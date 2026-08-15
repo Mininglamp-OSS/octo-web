@@ -57,7 +57,7 @@ vi.mock('../../utils/summaryMenuBadge', () => ({
 }));
 
 import * as api from '../../api/summaryApi';
-import { WKApp } from '@octo/base';
+import { WKApp, Dap } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshPendingInvitationBadge } from '../../utils/summaryMenuBadge';
 
@@ -705,6 +705,67 @@ describe('SummaryDetailPage — 续修3/4: detail 写入路径切 task 迟到丢
 
         expect((page.state as any).lastKnownStatus).toBe(2);
         expect(stopFallbackPoll).not.toHaveBeenCalled();
+    });
+});
+
+// ─── R3 blocker（Jerry-Xin 三审）：smart_summary_completed 在「状态订阅 + 兜底轮询」重叠下精确一次 ───
+//
+// 两路都在各自 await api.getSummaryDetail 之前捕获 prevStatus 快照(PROCESSING)，await 后同见
+// COMPLETED，故两路都能越过 prev!==new 边界守卫；stopFallbackPoll() 也取消不了已越过 await 的
+// tick。修复前二者会各发一次 smart_summary_completed（双计）。修复：以「已发 completed 的 taskId」
+// 为去重锚(completedTrackedTaskId)，先检出者写锚并发，后到者 id 相等即跳过——按 task 精确一次。
+describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under status-event + fallback race', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('emits smart_summary_completed once when both paths observe the same pending→completed transition', async () => {
+        // 状态订阅路径直接 getSummaryDetail→COMPLETED；兜底轮询路径 batchStatus→3 后 getSummaryDetail→COMPLETED。
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(baseDetail({ task_id: 1, status: 3 }) as any);
+        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
+
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+
+            // 两路并发跑同一 pending→completed 转移。
+            await Promise.all([
+                (page as any).handleStatusChangeEvent(
+                    new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+                ),
+                (page as any).doFallbackPollOnce(),
+            ]);
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(1);
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    it('re-tracks for a different task id (dedup is per-task, not global)', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 };
+
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            // 切到 task 2，重新经历 pending→completed：锚 id 不同 → 再计一次。
+            (page as any).props = { taskId: 2 };
+            page.state = { ...(page.state as any), lastKnownStatus: 2 };
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 2, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [2] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(2);
+        } finally {
+            track.mockRestore();
+        }
     });
 });
 

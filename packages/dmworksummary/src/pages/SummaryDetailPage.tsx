@@ -294,6 +294,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
+    // R3 blocker（Jerry-Xin 三审）：smart_summary_completed 的 exactly-once 去重锚点。
+    // 状态订阅路径(:handleStatusChangeEvent)与兜底轮询路径(:doFallbackPollOnce)都在各自
+    // await 之前捕获 prevStatus 快照，stopFallbackPoll() 无法取消已越过 await 的 tick，故仅靠
+    // 「prev !== new 状态沿」判定不足以防双计：两路可各自读到 prev=RUNNING、await 后同见
+    // COMPLETED，双双越过边界守卫各发一次。以「已发 completed 的 taskId」为锚，先发者写锚，
+    // 后到者 id 相等即跳过——按 task 维度精确一次。task 切换后 id 不同，自然重新计一次。
+    private completedTrackedTaskId: number | null = null;
     // Blocking 5（跨 task 串台 / async race）：单调递增的「调度加载序列号」。
     // 每次发起一轮 detail+schedule 加载（loadDetail / 状态切换补拉 / 重新加载）都 bump，
     // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
@@ -1005,7 +1012,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (previousStatus !== undefined && previousStatus !== newStatus) {
                 // 仅在「运行→完成」状态沿采集一次;原先误用 GET /summaries/:id,失败/进行中/导航等
                 // 一切 2xx 都会误报 completed。此处按 detail.status 状态转移判定,语义可靠。
-                if (newStatus === TaskStatus.COMPLETED) {
+                if (newStatus === TaskStatus.COMPLETED && this.completedTrackedTaskId !== requestTaskId) {
+                    // 先写锚再发:与兜底轮询路径共用 completedTrackedTaskId，谁先检出谁发,防跨路径双计。
+                    this.completedTrackedTaskId = requestTaskId;
                     Dap.shared.track("smart_summary_completed", {});
                 }
                 if (
@@ -1081,9 +1090,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId) return;
                     this.notifyGroupsOnCompletion(prevStatus, detail);
                     this.setState({ detail, lastKnownStatus: detail.status });
-                    // 与主状态订阅路径(:1008)同一「运行→完成」沿采集一次。SSE 不可用时由本 fallback 轮询
-                    // 检出完成,若此处不发则 completed 漏计;两路都以 lastKnownStatus 沿判定,只有先检出者发,不双计(见二审 P2)。
-                    if (detail.status === TaskStatus.COMPLETED) {
+                    // 与主状态订阅路径(:handleStatusChangeEvent)同一「运行→完成」沿采集一次。SSE 不可用时
+                    // 由本 fallback 轮询检出完成,若此处不发则 completed 漏计;两路共用 completedTrackedTaskId
+                    // 去重,先检出者写锚并发,后到者 id 相等即跳过——按 task 维度精确一次(见三审 R3 blocker)。
+                    if (detail.status === TaskStatus.COMPLETED && this.completedTrackedTaskId !== requestTaskId) {
+                        this.completedTrackedTaskId = requestTaskId;
                         Dap.shared.track("smart_summary_completed", {});
                     }
                     if (
