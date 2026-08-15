@@ -21,7 +21,7 @@ import {
 import React, { Component, HTMLProps } from "react";
 import { isConversationDisbanded } from "../../Utils/groupDisband";
 import { ForwardService, ForwardOptions, ForwardResult } from "../../Service/ForwardService";
-import { interpretForwardResult, ForwardToastScope } from "../../Service/forwardResultToast";
+import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../../Service/forwardResultToast";
 
 import Provider from "../../Service/Provider";
 import { Dap } from "../../Service/Dap";
@@ -452,18 +452,19 @@ export class Conversation
   private showForwardResult(
     result: ForwardResult,
     scope: ForwardToastScope,
-  ): void {
+  ): ForwardToastKind {
     const state = interpretForwardResult(result, scope);
-    if (state.kind === "success") return;
+    if (state.kind === "success") return "success";
     if (state.kind === "all-failed") {
       Toast.error(t("base.conversation.forward.allFailed"));
-      return;
+      return "all-failed";
     }
     Toast.error(
       t("base.conversation.forward.partialFailed", {
         values: { failed: state.failed, total: state.total },
       }),
     );
+    return "partial";
   }
 
   // 转发到当前会话时，需要保留本地"发送中"气泡（vm.fillOrder + addSendMessageToQueue）。
@@ -494,8 +495,9 @@ export class Conversation
           () => getEffectiveContent(message),
           this.buildForwardOptions(),
         );
-        this.showForwardResult(result, "targets");
-        Dap.shared.track("message_forwarded", {});
+        const kind = this.showForwardResult(result, "targets");
+        // 全部目标失败(如群已解散)不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
+        if (kind !== "all-failed") Dap.shared.track("message_forwarded", {});
       } catch (e) {
         console.error("[forward] build content failed", e);
         const blockedMessageKey = forwardBlockedMessageKey(e);
@@ -2769,8 +2771,9 @@ export class Conversation
                               this.buildForwardOptions({ messageMode: "parallel" }),
                             );
                             // 多选 Toast 分母保持 messages × channels 语义（scope='messages'）。
-                            this.showForwardResult(result, "messages");
-                            Dap.shared.track("message_multiselect_forwarded", {});
+                            const kind = this.showForwardResult(result, "messages");
+                            // 全部失败不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
+                            if (kind !== "all-failed") Dap.shared.track("message_multiselect_forwarded", {});
                           } catch (e) {
                             console.error("[forward] build content failed", e);
                             const blockedMessageKey = forwardBlockedMessageKey(e);
@@ -2801,8 +2804,9 @@ export class Conversation
                               () => vm.buildMergeforwardContent(vm.getCheckedMessages()),
                               this.buildForwardOptions(),
                             );
-                            this.showForwardResult(result, "targets");
-                            Dap.shared.track("message_multiselect_forwarded", {});
+                            const kind = this.showForwardResult(result, "targets");
+                            // 全部失败不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
+                            if (kind !== "all-failed") Dap.shared.track("message_multiselect_forwarded", {});
                           } catch (e) {
                             console.error(
                               "[merge-forward] build content failed",

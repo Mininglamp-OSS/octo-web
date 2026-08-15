@@ -409,6 +409,12 @@ export default class ChatSummaryNewModal extends Component<
                 origin_channel_id: channel.channelID,
                 origin_channel_type: sourceType,
                 sources,
+            }, {
+                // 二审 P1:与 SummaryCreatePage 共用 api 层收口点,补齐维度 props 保持口径一致。
+                object_id: channel.channelID,
+                source: 'chat_new_modal',
+                entry_point: 'chat_new_modal',
+                trigger_mode: 'normal',
             });
             markAgentSummaryNotificationEligible(res.task_id);
 

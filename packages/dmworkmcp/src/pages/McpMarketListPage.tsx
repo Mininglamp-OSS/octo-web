@@ -516,6 +516,8 @@ export default class McpMarketListPage extends Component<
 
   private handleClearTags = () => {
     if (this.state.tagsSelected.length === 0) return;
+    // 清空 tag 与逐个 toggle 改变同一 tagsSelected、触发同一 loadData(),同属过滤动作,一并计数(见二审 P2-3)。
+    Dap.shared.track("market_tag_filtered", {});
     this.setState({ tagsSelected: [] }, () => this.loadData());
   };
 
@@ -792,7 +794,13 @@ export default class McpMarketListPage extends Component<
                         <McpCard
                           key={item.id}
                           item={item}
-                          onClick={(it) => this.setState({ detailId: it.id })}
+                          onClick={(it) => {
+                            // market_card_viewed:点卡片主体=打开详情=查看一次。原挂 GET /mcps/:id 的 2xx 通道,
+                            // 但编辑(⋯→handleEditFromCard)也拉同一 GET,fetch 层区分不了看/编(见二审 P2-1)。
+                            // 编辑走 onEdit,不经这里,故命令式在此计不误含编辑。
+                            Dap.shared.track("market_card_viewed", {});
+                            this.setState({ detailId: it.id });
+                          }}
                           onEdit={canManage ? this.handleEditFromCard : undefined}
                           onDelete={
                             canManage

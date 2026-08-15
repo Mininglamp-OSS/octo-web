@@ -119,16 +119,24 @@ async function get<T>(path: string, params?: Record<string, unknown>, config?: A
 // 改为在此按业务码 gate:仅 code===0(或后端没包信封、code 缺省)才命令式 track 一次。
 // 放在 api 层 = 天然去重(同一动作多入口共用一个 api 函数,只计一次),且是唯一能看到 code 的位置
 // (公共 post/put/del 只 unwrap .data、不看 code,页面成功回调已丢失 code)。
-function trackOnEnvelopeSuccess(resp: { data?: { code?: number } }, event?: string): void {
+// 二审 P2-5:code===null 不再当成功。null 常见于「{code:null,data:null} 空信封」或网关/HTML
+// 被解析成无 code 的对象——这些是失败,不能计成动作成功。仅 code===0(明确成功)或 code 缺省
+// (端点不包信封)才 track。successProps 由调用方按事件语义传入(单一收口点,避免多入口重复发射
+// 时 props 不一致;见二审 P1「smart_summary_started 双发」)。
+function trackOnEnvelopeSuccess(
+    resp: { data?: { code?: number } },
+    event?: string,
+    props: Record<string, unknown> = {},
+): void {
     if (!event) return;
     const code = resp?.data?.code;
-    if (code === 0 || code === undefined || code === null) Dap.shared.track(event, {});
+    if (code === 0 || code === undefined) Dap.shared.track(event, props);
 }
 
-async function post<T>(path: string, data?: unknown, successEvent?: string): Promise<T> {
+async function post<T>(path: string, data?: unknown, successEvent?: string, successProps: Record<string, unknown> = {}): Promise<T> {
     try {
         const resp = await summaryAxios.post(`${BASE}${path}`, data);
-        trackOnEnvelopeSuccess(resp, successEvent);
+        trackOnEnvelopeSuccess(resp, successEvent, successProps);
         return resp.data?.data ?? resp.data;
     } catch (err) {
         if (axios.isCancel(err)) throw err;
@@ -136,10 +144,10 @@ async function post<T>(path: string, data?: unknown, successEvent?: string): Pro
     }
 }
 
-async function put<T>(path: string, data?: unknown, successEvent?: string): Promise<T> {
+async function put<T>(path: string, data?: unknown, successEvent?: string, successProps: Record<string, unknown> = {}): Promise<T> {
     try {
         const resp = await summaryAxios.put(`${BASE}${path}`, data);
-        trackOnEnvelopeSuccess(resp, successEvent);
+        trackOnEnvelopeSuccess(resp, successEvent, successProps);
         return resp.data?.data ?? resp.data;
     } catch (err) {
         if (axios.isCancel(err)) throw err;
@@ -147,10 +155,10 @@ async function put<T>(path: string, data?: unknown, successEvent?: string): Prom
     }
 }
 
-async function del<T>(path: string, successEvent?: string): Promise<T> {
+async function del<T>(path: string, successEvent?: string, successProps: Record<string, unknown> = {}): Promise<T> {
     try {
         const resp = await summaryAxios.delete(`${BASE}${path}`);
-        trackOnEnvelopeSuccess(resp, successEvent);
+        trackOnEnvelopeSuccess(resp, successEvent, successProps);
         return resp.data?.data ?? resp.data;
     } catch (err) {
         if (axios.isCancel(err)) throw err;
@@ -304,8 +312,15 @@ export async function streamSummary(
     }, options.onEvent);
 }
 
-export async function createSummary(params: CreateSummaryParams): Promise<{ task_id: number }> {
-    return post('/summaries', params, 'smart_summary_started');
+// 二审 P1「smart_summary_started 双发」修复:本事件的**唯一**收口点在 api 层(envelope code===0 才发),
+// 而非页面/按钮。因为「HTTP200 + code≠0」是逻辑失败,只有 api 层能看到 code(见 trackOnEnvelopeSuccess)。
+// 各创建入口(SummaryCreatePage normal / ChatSummaryNewModal / agent 模式)把维度 props 传进来,
+// 由这里按业务码 gate 后发一次 —— 计数与 props 在所有入口一致。
+export async function createSummary(
+    params: CreateSummaryParams,
+    trackProps: Record<string, unknown> = {},
+): Promise<{ task_id: number }> {
+    return post('/summaries', params, 'smart_summary_started', trackProps);
 }
 
 /**
@@ -323,6 +338,7 @@ export async function createSummary(params: CreateSummaryParams): Promise<{ task
  */
 export async function createAgentSummary(
     params: CreateAgentSummaryParams,
+    trackProps: Record<string, unknown> = {},
 ): Promise<{ task_id: number; task_no: string; status: number; created_at: string }> {
     const resp = await summaryAxios.post(`${BASE}/summaries/agent`, params);
     const envelopeCode = resp.data?.code;
@@ -341,6 +357,10 @@ export async function createAgentSummary(
         // 后端返成功但 task_id 缺失/非法 —— 视为保存失败,不能清 chat
         throw new Error(resp.data?.message || 'create agent summary returned no task_id');
     }
+    // 二审 P1/P2-2:agent 模式也是一条「成功发起」。走到这里 envelope code 已判定成功
+    // (code===0 或缺省,非 0/null 已在上面抛出),与传统 createSummary 的 gate 同口径,
+    // 补发 smart_summary_started(此前 agent 模式一次都不发,与 normal 模式不一致)。
+    Dap.shared.track('smart_summary_started', trackProps);
     return data;
 }
 

@@ -215,7 +215,7 @@ describe('ChatSummaryNewModal', () => {
         expect(summaryApi.createSummary).toHaveBeenCalledWith(expect.objectContaining({
             topic: submittedTopic,
             title: '已一段',
-        }));
+        }), expect.any(Object));
     });
 
     it('hides templates when input has content', async () => {

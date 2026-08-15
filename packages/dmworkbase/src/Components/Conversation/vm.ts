@@ -130,9 +130,10 @@ const BOTFATHER_COMMAND_EVENTS: Array<[string, string]> = [
 function matchBotfatherCommandEvent(text: string): string | undefined {
     if (!text.startsWith("/")) return undefined
     for (const [prefix, event] of BOTFATHER_COMMAND_EVENTS) {
-        // 需带参数边界:裸前缀、prefix + 空格、prefix + 换行才算命中,否则 /installation 会误命中
-        // /install、/revokeall 误命中 /revoke。不加边界时非法命令会被错记成某个真命令(见 review P2-10)。
-        if (text === prefix || text.startsWith(prefix + " ") || text.startsWith(prefix + "\n")) return event
+        // 需带参数边界:裸前缀,或 prefix 后紧跟任意空白(空格/换行/CRLF/制表符)才算命中,
+        // 否则 /installation 会误命中 /install、/revokeall 误命中 /revoke。用 \s 覆盖整类空白,
+        // 避免只列空格/\n 时粘贴的 CRLF、Tab 落到兜底 botfather_command_sent(见 review P2-10 / 二审 P2-8)。
+        if (text === prefix || (text.startsWith(prefix) && /\s/.test(text.charAt(prefix.length)))) return event
     }
     return "botfather_command_sent"
 }
@@ -2482,7 +2483,10 @@ export default class ConversationVM extends ProviderListener {
         {
             let botCreateEntry: string | undefined
             let botCommandEvent: string | undefined
-            if (SYSTEM_BOTS.has(channel.channelID) && content instanceof MessageText) {
+            // botfather 命令(/newbot、/help…)是 botfather 专属;门按 channelID==="botfather" 判,
+            // 与 BOTFATHER_COMMAND_EVENTS 注释(§B)对齐。不用 SYSTEM_BOTS.has():该集合未来加入其它
+            // 系统 bot 时会让别的 bot 的 /command 文本误命中 botfather 事件(见二审 nit)。
+            if (channel.channelID === "botfather" && content instanceof MessageText) {
                 const text = (content.text || "").trim()
                 if (text.startsWith("/newbot")) {
                     botCreateEntry = "botfather_im"

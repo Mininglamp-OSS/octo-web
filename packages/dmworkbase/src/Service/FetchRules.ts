@@ -129,17 +129,21 @@ export const FETCH_RULES: FetchRule[] = [
     { method: 'POST', path: '/api/v1/groups/:id/threads', event: 'message_subchannel_created' },
     { method: 'DELETE', path: '/api/v1/message', event: 'message_multiselect_deleted' },
     // channel_subchannel_panel_opened 不在此通道 —— GET /groups/:id/threads(threadList)在删除/归档/重试
-    //   刷新时也会再拉,请求成功 ≠ 打开面板。改为 ThreadList.componentDidMount 命令式 track(见 review §4)。
-    { method: 'POST', path: '/api/v1/messages/_search_media', event: 'channel_search_tab_switched' },
-    { method: 'POST', path: '/api/v1/messages/_search_files', event: 'channel_search_tab_switched' },
+    //   刷新时也会再拉,请求成功 ≠ 打开面板。二审又发现原命令式落点 ThreadList.componentDidMount 为死组件
+    //   (实际渲染 ThreadPanel),永不触发;已改到 Pages/Chat/index.tsx 子区 header 开关的「仅开边沿」(见二审 P1-2)。
+    // channel_search_tab_switched 不在此通道 —— POST /messages/_search_media|_search_files 每次「搜索」都发,
+    //   一次输入去抖/翻页都会重打,请求成功 ≠ 切 tab。改由 ChannelSearchPanel activeTab 变化命令式 track(见二审 P1-4)。
     { method: 'POST', path: '/api/v1/groups/:id/avatar', event: 'group_avatar_edited' },
-    { method: 'GET', path: '/api/v1/groups/:id/qrcode', event: 'group_qrcode_viewed' },
+    // group_qrcode_viewed 不在此通道 —— GET /groups/:id/qrcode 由二维码组件挂载即拉,含缩略图/刷新/重试重复打,
+    //   请求成功 ≠ 用户主动查看。改由二维码入口点击命令式 track(见二审 P1-5)。
     { method: 'POST', path: '/api/v1/groups/:id/members', event: 'group_member_added' },
     { method: 'DELETE', path: '/api/v1/groups/:id/members', event: 'group_member_removed' },
     { method: 'POST', path: '/api/v1/groups/:id/transfer/:id', event: 'group_transferred' },
-    { method: 'GET', path: '/api/v1/groups/:id/md', event: 'group_md_viewed' },
+    // group_md_viewed 不在此通道 —— GET /groups/:id/md 在打开群设置面板时随行渲染即拉,且编辑保存后回读也重打,
+    //   请求成功 ≠ 用户查看 md。删除避免与面板打开/编辑重复计数(见二审 P1-5)。
     { method: 'PUT', path: '/api/v1/groups/:id/md', event: 'group_md_edited' },
-    { method: 'GET', path: '/api/v1/groups/:id/incoming-webhooks', event: 'group_webhook_panel_opened' },
+    // group_webhook_panel_opened 不在此通道 —— GET /groups/:id/incoming-webhooks 在创建/重置/删除 webhook 后
+    //   都会回读刷新列表,请求成功 ≠ 打开面板。删除避免每次增删都被计成一次「打开」(见二审 P1-5)。
     { method: 'POST', path: '/api/v1/groups/:id/incoming-webhooks', event: 'webhook_created' },
     { method: 'POST', path: '/api/v1/groups/:id/incoming-webhooks/:id/regenerate', event: 'webhook_url_reset' },
     { method: 'POST', path: '/api/v1/groups/:id/incoming-webhooks/:id/test', event: 'webhook_tested' },
@@ -165,7 +169,8 @@ export const FETCH_RULES: FetchRule[] = [
     // 注意:settings_menu_opened 不在此通道。/version.json 由 versionChecker 定时轮询(cache-bust),
     // 请求成功 ≠ 用户打开设置 —— 该事件改由「设置入口」点击(data-testid / 命令式 track)采集。
     { method: 'GET', path: '/api/v1/common/updater/web/1.0', event: 'settings_changelog_viewed' },
-    { method: 'GET', path: '/api/v1/voice/local-config', event: 'settings_voice_opened' },
+    // settings_voice_opened 不在此通道 —— GET /voice/local-config 由语音设置组件挂载即拉,且被设置页其他
+    //   子面板/焦点刷新连带调用,请求成功 ≠ 用户打开语音设置。改由语音设置入口点击命令式 track(见二审 P1-3)。
     { method: 'PUT', path: '/api/v1/voice/local-config', event: 'settings_voice_toggled' },
     { method: 'GET', path: '/api/v1/manager/secrets', event: 'settings_secrets_opened' },
     { method: 'POST', path: '/api/v1/manager/secrets', event: 'settings_secrets_configured' },
@@ -189,13 +194,14 @@ export const FETCH_RULES: FetchRule[] = [
     // ---- market
     // 注意:market_view_switched / market_tag_filtered 不在此通道 —— «mine» 列表也用于建议/初始化,
     //       tag 列表在 init/搜索时加载,请求成功 ≠ 用户切视图/选标签。改由 Tab / tag chip 点击采集。
-    // 抑制:mine / skills-tags 是 list/子资源,须压过下面 /mcps|skills/:id 的 card_viewed 通配,否则
-    //       删掉 view/tag 映射后它们会被 :id 误吞成 market_card_viewed(mcp_tags 是 4 段,不碰撞,无需抑制)。
+    // market_card_viewed 也不在此通道 —— GET /mcps|skills/:id 既被「点卡片看详情」拉,也被「卡片 ⋯ 菜单→编辑」
+    //   (handleEditFromCard→fetchMcpDetail)拉,fetch 层无法区分看/编,编辑会被误计成查看(见二审 P2-1)。
+    //   改由卡片主体点击(打开详情)命令式 track;这里把 /:id 钉成 IGNORE,同时继续压过 mine/tags/versions。
     { method: 'GET', path: '/market/api/v1/mcps/mine', event: FETCH_IGNORE },
     { method: 'GET', path: '/market/api/v1/skills/mine', event: FETCH_IGNORE },
     { method: 'GET', path: '/market/api/v1/skills/tags', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/mcps/:id', event: 'market_card_viewed' },
-    { method: 'GET', path: '/market/api/v1/skills/:id', event: 'market_card_viewed' },
+    { method: 'GET', path: '/market/api/v1/mcps/:id', event: FETCH_IGNORE },
+    { method: 'GET', path: '/market/api/v1/skills/:id', event: FETCH_IGNORE },
     { method: 'GET', path: '/market/api/v1/skills/:id/versions', event: 'market_skill_version_history_viewed' },
     { method: 'POST', path: '/market/api/v1/mcps', event: 'market_manual_publish_submitted' },
     { method: 'POST', path: '/market/api/v1/skills', event: 'market_manual_publish_submitted' },

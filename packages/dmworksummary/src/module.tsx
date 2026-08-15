@@ -173,9 +173,12 @@ export class SummaryModule implements IModule {
                 // 此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
                 menu.badge = getPendingInvitationBadge();
                 // 保留既有顶层入口行为：点击后直接进入新建总结页。
-                menu.onPress = () => {
+                menu.onPress = (reentry?: boolean) => {
                     // 埋点 290:从 NavRail「总结」顶层入口进入模块（隐私 props 恒空）。
-                    Dap.shared.track("smart_summary_module_entered", {});
+                    // 重复点击已激活的总结菜单不计（reentry），宿主按 prevMenuId===id 传入（见二审 P2-4）。
+                    if (!reentry) {
+                        Dap.shared.track("smart_summary_module_entered", {});
+                    }
                     WKApp.routeLeft.popToRoot();
                     const page = WKApp.route.get("/summary/create");
                     if (page && React.isValidElement(page)) {

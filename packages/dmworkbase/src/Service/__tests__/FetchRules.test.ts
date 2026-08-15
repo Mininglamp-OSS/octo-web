@@ -175,15 +175,24 @@ describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负
             'channel_search_filter_panel_opened',
             'market_tab_switched',
             'market_category_filtered',
+            // ↓ dap350 三审(R2)再移出 path 通道、改命令式/UI 采集的事件(见 R2-B/C/D/E)
+            'settings_voice_opened',               // VoiceSettingsPanel 挂载(GET /voice/local-config 被设置页焦点刷新连带调)
+            'channel_search_tab_switched',         // ChannelSearchPanel onTabChange(POST _search_media|_search_files 每次搜索都打)
+            'group_qrcode_viewed',                 // 二维码入口点击(GET /groups/:id/qrcode 组件挂载/刷新/重试重复打)
+            'group_md_viewed',                     // 群设置面板随行拉取,编辑回读也重打 → 删除
+            'group_webhook_panel_opened',          // 增删/重置 webhook 后回读刷新列表会重打 → 删除
+            'market_card_viewed',                  // 卡片主体点击命令式(GET /:id 编辑也拉,fetch 层区分不了看/编)
         ])
         const leaked = FETCH_RULES.filter((r) => uiOnly.has(r.event)).map((r) => `${r.method} ${r.path} → ${r.event}`)
         expect(leaked, leaked.join('\n')).toEqual([])
     })
 
-    it('市场详情 GET /:id 仍保留(点卡片才拉详情,语义成立)', () => {
-        // 反向确认:清理只针对 mine/tags 加载,card_viewed 这类「成功=动作」映射不受影响。
-        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/mcps/42')).toBe('market_card_viewed')
-        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/42')).toBe('market_card_viewed')
+    it('市场详情 GET /:id 不再产出 market_card_viewed(改命令式,fetch 层区分不了看/编;见二审 P2-1)', () => {
+        // /:id 钉成 IGNORE:点卡片看详情已改卡片主体点击命令式 track;编辑(⋯→fetchDetail)也拉同一 GET,
+        // 不能在 fetch 层计成查看。versions 子资源不受影响(段数不同,语义仍成立)。
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/mcps/42')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/42')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/42/versions')).toBe('market_skill_version_history_viewed')
     })
 })
 
@@ -217,5 +226,26 @@ describe('FETCH_RULES — 二审(dap350)移出通道的端点钉死为「不产�
         expect(matchFetchEvent(idx, 'POST', '/summary/api/v1/summaries')).toBeUndefined()
         expect(matchFetchEvent(idx, 'DELETE', '/summary/api/v1/summaries/42')).toBeUndefined()
         expect(matchFetchEvent(idx, 'POST', '/summary/api/v1/summaries/42/regenerate')).toBeUndefined()
+    })
+
+    it('POST /messages/_search_media|_search_files 不产出 channel_search_tab_switched(每次搜索/去抖/翻页都打)', () => {
+        // R2-D:改由 ChannelSearchPanel onTabChange 命令式,只在 tab 真正切换时计一次。
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/messages/_search_media')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/messages/_search_files')).toBeUndefined()
+    })
+
+    it('GET /voice/local-config 不产出 settings_voice_opened(设置页焦点刷新会连带调)', () => {
+        // R2-C:改由 VoiceSettingsPanel 挂载命令式。PUT 仍保留 settings_voice_toggled(真实写=切换)。
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/voice/local-config')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/voice/local-config')).toBe('settings_voice_toggled')
+    })
+
+    it('GET /groups/:id/qrcode|md|incoming-webhooks 不产出 view/open 事件(组件挂载/回读刷新重复打)', () => {
+        // R2-E:三条 config-row GET 删除。相邻的写类端点仍保留(真实写=动作)。
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/groups/98765/qrcode')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/groups/98765/md')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/groups/98765/incoming-webhooks')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/groups/98765/md')).toBe('group_md_edited')
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/groups/98765/incoming-webhooks')).toBe('webhook_created')
     })
 })

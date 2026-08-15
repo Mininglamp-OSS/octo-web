@@ -11,6 +11,7 @@ import useSpaceFeedbackSetting, {
 import VoiceFeedbackNotice from '../MessageInput/VoiceFeedbackNotice';
 import WKApp from '../../App';
 import VoiceService from '../../Service/VoiceService';
+import { Dap } from '../../Service/Dap';
 import { useI18n } from '../../i18n';
 import WKButton from '../WKButton';
 import './VoiceSettingsPanel.css';
@@ -25,6 +26,12 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
   const [loading, setLoading] = useState(false);
   const [showNotice, setShowNotice] = useState(false);
   const spaceIdRef = useRef<string>('');
+
+  useEffect(() => {
+    // settings_voice_opened:面板挂载 = 打开语音设置一次。原挂在 GET /voice/local-config 的 2xx 通道,
+    // 但该 GET 也被设置页其他子面板/焦点刷新连带调用,请求成功 ≠ 打开语音设置(见二审 P1-3)。
+    Dap.shared.track('settings_voice_opened', {});
+  }, []);
 
   const isVoiceEnabled = spaceSetting?.voice_input_enabled === 1;
   const isFeedbackOn = spaceSetting?.voice_feedback_on === 1;

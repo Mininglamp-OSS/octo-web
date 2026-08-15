@@ -17,6 +17,11 @@
  *     4. **同源 + 2xx 才触发**(由 Dap.installHttpWrap 保证):跨域不读、动作没成功不记。
  *   —— 这样即便放宽了「读 body」,能逃逸到 telemetry 的也只有一个我们自己声明的事件名,
  *      用户数据(名称 / 备注 / 指令正文 / 文件名)在任何路径上都不出现。
+ *
+ * ⚠️ 实现前提(XHR-only):body 通道的读取只覆盖 XHR(APIClient 走 axios/XHR)与 `fetch(url, {body})`
+ *   字符串体两条路。`fetch(new Request(url, { body }))` 形态下 init 为 undefined,拿不到 body,
+ *   本通道静默不发。今天所有已映射端点都经 APIClient(XHR),故无影响;若将来 APIClient 迁到
+ *   fetch(Request),这些 conversation_* / group_* / webhook_* body 事件会悄悄归零(见二审 P2-7)。
  */
 
 /** 顶层键的枚举值只允许基础量(用于「键==值」判别,值本身仅用于比较,绝不上报)。 */
@@ -77,7 +82,21 @@ export function buildBodyIndex(rules: BodyRule[]): BodyRuleIndex {
         if (arr) arr.push(compiled)
         else byMethod.set(m, [compiled])
     }
+    // 最具体者优先(与 FetchRules 的 most-specific-wins 一致):同一 method 桶内按通配段数升序,
+    // 字面段多(通配少)的规则排前,先被 computeBodyEvent 命中。防止「字面规则被排在通配 fallbackEvent
+    // 规则之后而被静默盖住」——本表未来新增同形 PUT 时的错归属风险(见二审 P2-6)。
+    // 段数不同的规则在 pathMatches 里本就互斥,排序只影响「同段数、通配多寡不同」这一类。
+    for (const arr of byMethod.values()) {
+        arr.sort((a, b) => nWild(a) - nWild(b))
+    }
     return { byMethod }
+}
+
+/** 编译规则的通配段数(越少越具体)。 */
+function nWild(rule: CompiledBodyRule): number {
+    let n = 0
+    for (const w of rule.wild) if (w) n++
+    return n
 }
 
 /** path 段级匹配(与 FetchRules 一致:':' 段通配,字面须相等,段数须同)。 */

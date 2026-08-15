@@ -92,4 +92,34 @@ describe('BODY_RULES — 规则表不变量', () => {
             }
         }
     })
+
+    it('无「同 method + 同 path 形状」的重复规则(排序歧义 / 静默盖住的前提)', () => {
+        // 同一 method 下,若两条规则编译出完全相同的段形状(字面段相同、通配位相同),
+        // 谁先命中取决于表内顺序,是潜在的错归属源。钉死为唯一。
+        const seen = new Map<string, string>()
+        for (const r of BODY_RULES) {
+            const shape = r.path
+                .split('/')
+                .filter((s) => s !== '')
+                .map((s) => (s.charCodeAt(0) === 58 ? ':' : s))
+                .join('/')
+            const key = `${r.method.toUpperCase()} ${shape}`
+            expect(seen.has(key), `重复规则形状: ${key}(与 ${seen.get(key)} 撞形)`).toBe(false)
+            seen.set(key, r.path)
+        }
+    })
+
+    it('most-specific-wins:同段数下字面规则先于通配 fallback 规则命中(排序生效)', () => {
+        // 构造一条通配 fallbackEvent 规则 + 一条同段数字面规则,验证字面规则赢(不被通配 fallback 盖住)。
+        const rules: BodyRule[] = [
+            { method: 'PUT', path: '/api/v1/x/:id', discriminators: [{ event: 'wild_fallback', hasKeys: ['zzz'] }], fallbackEvent: 'wild_fallback' },
+            { method: 'PUT', path: '/api/v1/x/lit', discriminators: [{ event: 'literal_hit', hasKeys: ['k'] }] },
+        ]
+        const i = buildBodyIndex(rules)
+        // /x/lit 同时匹配两条(字面 + 通配),字面规则更具体应先命中其判别子;
+        // body 不带 k 时字面规则判别子不中,但字面规则无 fallback → 落到通配规则 fallback。
+        expect(computeBodyEvent(i, 'PUT', '/api/v1/x/lit', JSON.stringify({ k: 1 }))).toBe('literal_hit')
+        // 通配规则仍对其它 id 生效。
+        expect(computeBodyEvent(i, 'PUT', '/api/v1/x/other', JSON.stringify({ anything: 1 }))).toBe('wild_fallback')
+    })
 })

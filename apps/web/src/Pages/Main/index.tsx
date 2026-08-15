@@ -286,14 +286,16 @@ export class MainPage extends Component<{}, MainPageState> {
                                                     // PersonaSettings 也会调,拉取 ≠ 进模块(见 review P2-4)。
                                                     // 不改成 onPress:onPress 会顶替默认导航(此处 popToRoot /
                                                     // 低屏 route.push 两条路径不同),故就近在导航回调里按 id 计。
-                                                    if (menus.id === "contacts") {
+                                                    // 重复点击当前菜单(reentry)不计,与 onPress 类模块统一口径(见二审 P2-4)。
+                                                    const isReentry = prevMenuId === menus.id;
+                                                    if (menus.id === "contacts" && !isReentry) {
                                                         Dap.shared.track("contacts_module_entered", {});
                                                     }
                                                     vm.currentMenus = menus;
                                                     WKApp.currentMenuId = menus.id;
                                                     WKApp.route.syncPath(menus.routePath);
                                                     if (menus.onPress) {
-                                                        menus.onPress();
+                                                        menus.onPress(isReentry);
                                                     } else {
                                                         WKApp.routeLeft.popToRoot();
                                                         const stayInChat = prevMenuId === "chat" && menus.id === "chat";

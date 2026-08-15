@@ -156,6 +156,10 @@ export default function SkillListPage() {
   }
 
   function openDetail(item: Skill) {
+    // market_card_viewed:点卡片主体=打开详情=查看一次。原挂 GET /skills/:id 的 2xx 通道,
+    // 但该 GET 也可能被编辑/其它详情路径拉,fetch 层区分不了(见二审 P2-1,与 mcp 侧对称)。
+    // 编辑走 onEdit(setEditing),不经这里,故命令式在此计不误含编辑。
+    Dap.shared.track("market_card_viewed", {});
     setDetailId(item.id);
   }
 

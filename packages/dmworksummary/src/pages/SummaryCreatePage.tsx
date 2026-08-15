@@ -601,18 +601,17 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (!this.canSubmit()) return;
         const summaryTitle = deriveSummaryTitle(topic);
 
-        // smart_summary_started 收口在这里,而非「开始」按钮的声明式 data-track。按钮 onClick
-        // 是 handlePrimaryClick——agent 模式下它**不提交**(短路 return),但捕获阶段的 data-track
-        // 委托照样会触发,给 agent 模式记一条根本没发起的幻影 started(见 PR #1330 review blocker②)。
-        // 挪到通过 canSubmit、真正发起创建的唯一收口点(handleSubmit 目前仅由 handlePrimaryClick
-        // 的 normal 分支调用;无 Enter 提交路径),agent 模式(不经 handleSubmit)天然不误发。
-        // trigger_mode 恒为 'normal'(agent 分支永不到此),保留字段仅为口径显式、便于日后扩展。
-        Dap.shared.track('smart_summary_started', {
+        // smart_summary_started 收口在 api 层(summaryApi.createSummary → envelope code===0 gate),
+        // 不在此页面/按钮发 —— 因为 HTTP200+code≠0 是逻辑失败,只有 api 层看得到 code,且多入口
+        // (本页 normal / ChatSummaryNewModal / agent 模式)共用一个收口点才能计数与 props 一致
+        // (见二审 P1「smart_summary_started 双发」)。此处只把维度 props 透传给 createSummary。
+        // trigger_mode 恒为 'normal'(agent 分支走 handleAgentSubmit,永不到此)。
+        const startedProps = {
             object_id: this.props.channel?.channelID,
             source: this.props.source,
             entry_point: this.props.source,
             trigger_mode: this.state.mode,
-        });
+        };
 
         this.setState({ submitting: true, error: null });
         try {
@@ -644,7 +643,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 params.summary_mode = SummaryMode.BY_PERSON;
             }
 
-            const result = await api.createSummary(params);
+            const result = await api.createSummary(params, startedProps);
             // 首次完成通知来源群(#1379):手动创建的任务也登记 eligibility。
             // 完成快于首次 detail 轮询时,页面第一次看到的就是 COMPLETED
             // (previousStatus === undefined),靠 transition 抓不到跳变;
@@ -988,7 +987,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 params.referenced_task_ids = [this.state.referencedTask.task_id];
             }
 
-            const result = await api.createAgentSummary(params);
+            // smart_summary_started 由 createAgentSummary 在 envelope code===0 后补发(见二审 P1/P2-2),
+            // 与 normal 模式同一收口口径;trigger_mode 固定 'agent'。
+            const result = await api.createAgentSummary(params, {
+                object_id: this.props.channel?.channelID,
+                source: this.props.source,
+                entry_point: this.props.source,
+                trigger_mode: 'agent',
+            });
             markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t('summary.create.agentSummaryCreated'));

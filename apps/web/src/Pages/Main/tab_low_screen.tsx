@@ -18,10 +18,13 @@ export class TabLowScreen extends Component<TabLowScreenProps> {
                     {
                         vm.menusList.map((menus) => {
                             return <li key={menus.id} onClick={() => {
+                                const prevMenuId = vm.currentMenus?.id
+                                const isReentry = prevMenuId === menus.id
                                 vm.currentMenus = menus
                                 // contacts_module_entered:低屏路径与桌面 NavRail 一致,进联系人时计一次
                                 // (见 review P2-4;桌面侧在 Main/index.tsx 导航回调里对称埋点)。
-                                if (menus.id === "contacts") {
+                                // 重复点击当前菜单(reentry)不计,与 onPress 类模块统一口径(见二审 P2-4)。
+                                if (menus.id === "contacts" && !isReentry) {
                                     Dap.shared.track("contacts_module_entered", {})
                                 }
                                 if (menus.onPress) {
@@ -37,7 +40,7 @@ export class TabLowScreen extends Component<TabLowScreenProps> {
                                     // Mirrors the desktop-path NavRail
                                     // handler in Main/index.tsx.
                                     WKApp.route.syncPath(menus.routePath)
-                                    menus.onPress()
+                                    menus.onPress(isReentry)
                                 } else {
                                     WKApp.route.push(menus.routePath)
                                 }

@@ -1081,6 +1081,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId) return;
                     this.notifyGroupsOnCompletion(prevStatus, detail);
                     this.setState({ detail, lastKnownStatus: detail.status });
+                    // 与主状态订阅路径(:1008)同一「运行→完成」沿采集一次。SSE 不可用时由本 fallback 轮询
+                    // 检出完成,若此处不发则 completed 漏计;两路都以 lastKnownStatus 沿判定,只有先检出者发,不双计(见二审 P2)。
+                    if (detail.status === TaskStatus.COMPLETED) {
+                        Dap.shared.track("smart_summary_completed", {});
+                    }
                     if (
                         detail.status === TaskStatus.COMPLETED ||
                         detail.status === TaskStatus.FAILED ||

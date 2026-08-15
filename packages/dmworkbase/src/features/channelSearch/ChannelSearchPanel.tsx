@@ -322,7 +322,12 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         activeTab={activeTab}
         onTabChange={(nextTab) => {
           const tab = tabs.find((candidate) => candidate === nextTab);
-          if (tab) setActiveTab(tab);
+          if (tab && tab !== activeTab) {
+            // channel_search_tab_switched:仅在 tab 真正切换时计一次。原挂在 POST
+            // /messages/_search_media|_search_files 的 2xx 通道,每次搜索/去抖/翻页都重打 → 过计数(见二审 P1-4)。
+            Dap.shared.track("channel_search_tab_switched", { tab });
+            setActiveTab(tab);
+          }
         }}
         actions={
           <div className="wk-channel-search-filter-wrap" ref={filterWrapRef}>
