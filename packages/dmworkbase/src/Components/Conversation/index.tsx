@@ -25,6 +25,7 @@ import { interpretForwardResult, ForwardToastScope } from "../../Service/forward
 
 import Provider from "../../Service/Provider";
 import ConversationVM from "./vm";
+import { selectDoneReminderIDs } from "./reminderDone";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
@@ -2370,17 +2371,21 @@ export class Conversation
     if (!reminders || reminders.length === 0) {
       return;
     }
-    const doneReminderIDs: number[] = [];
-    for (const reminder of reminders) {
-      if (reminder.done) {
-        continue;
-      }
-      const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
-      if (message && this.isVisiableMessage(message.message, viewport)) {
-        doneReminderIDs.push(reminder.reminderID);
-        continue;
-      }
-    }
+    // 是否已浏览到会话最新一条消息。复用 vm 的“已读到底”信号（同 vm.ts didMount 里
+    // browseToMessageSeq >= lastMessage.messageSeq 的语义），此时视口外被挤走的历史
+    // mention 也应视为已读，否则角标会永久亮着。
+    const lastMessageSeq = this.vm.currentConversation?.lastMessage?.messageSeq;
+    const scrolledToBottom =
+      typeof lastMessageSeq === "number" &&
+      this.vm.browseToMessageSeq >= lastMessageSeq;
+
+    const doneReminderIDs = selectDoneReminderIDs(reminders, {
+      scrolledToBottom,
+      isVisible: (reminder) => {
+        const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
+        return !!message && this.isVisiableMessage(message.message, viewport);
+      },
+    });
     if (doneReminderIDs.length > 0) {
       // Persist reminder done status to server via SDK (fixes #169)
       WKSDK.shared().reminderManager.done(doneReminderIDs);
