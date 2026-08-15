@@ -738,6 +738,7 @@
   "module.contextMenus.react": "贴表情",
   "module.contextMenus.reply": "回复",
   "module.contextMenus.revoke": "撤回",
+  "module.contextMenus.revokeFailed": "撤回失败",
   "module.createThread.failed": "创建失败",
   "module.createThread.nameLabel": "话题名称",
   "module.createThread.namePlaceholder": "输入讨论话题...",

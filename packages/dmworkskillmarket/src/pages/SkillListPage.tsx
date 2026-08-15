@@ -156,10 +156,8 @@ export default function SkillListPage() {
   }
 
   function openDetail(item: Skill) {
-    // market_card_viewed:点卡片主体=打开详情=查看一次。原挂 GET /skills/:id 的 2xx 通道,
-    // 但该 GET 也可能被编辑/其它详情路径拉,fetch 层区分不了(见二审 P2-1,与 mcp 侧对称)。
-    // 编辑走 onEdit(setEditing),不经这里,故命令式在此计不误含编辑。
-    Dap.shared.track("market_card_viewed", {});
+    // 六审 C2:卡片打开只保留卡根 data-track="market_card_opened"(DOM 委托,亦覆盖键盘),
+    // 删除此处命令式 market_card_viewed —— 二者本是对「同一次打开」的双计(owner 决策:留 opened;与 mcp 侧对称)。
     setDetailId(item.id);
   }
 

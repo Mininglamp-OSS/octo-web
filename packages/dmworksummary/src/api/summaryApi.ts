@@ -116,13 +116,13 @@ async function get<T>(path: string, params?: Record<string, unknown>, config?: A
 
 // P1-5:summary 走 {code,message,data} 信封 —— HTTP200 + code≠0 是**逻辑失败**(见本文件 agentChat 注)。
 // 故「动作成功」类事件不能挂 FetchRules 的 2xx 通道(否则失败也计成成功,成功率被失败率隐性冲高)。
-// 改为在此按业务码 gate:仅 code===0(或后端没包信封、code 缺省)才命令式 track 一次。
+// 改为在此按业务码 gate:仅 code===0(明确成功)才命令式 track 一次。
 // 放在 api 层 = 天然去重(同一动作多入口共用一个 api 函数,只计一次),且是唯一能看到 code 的位置
 // (公共 post/put/del 只 unwrap .data、不看 code,页面成功回调已丢失 code)。
-// 二审 P2-5:code===null 不再当成功。null 常见于「{code:null,data:null} 空信封」或网关/HTML
-// 被解析成无 code 的对象——这些是失败,不能计成动作成功。仅 code===0(明确成功)或 code 缺省
-// (端点不包信封)才 track。successProps 由调用方按事件语义传入(单一收口点,避免多入口重复发射
-// 时 props 不一致;见二审 P1「smart_summary_started 双发」)。
+// 二审 P2-5:code===null 不当成功(常见于「{code:null,data:null} 空信封」或网关/HTML 被解析成无 code)。
+// 六审 P2:code===undefined 同样不当成功。summary 端点响应恒为 {code,message,data} 信封,**缺 code**
+// 意味着这不是预期信封(网关 HTML+200 / {data:null} / 代理错误页)——与 null 同一失败签名,不能计成成功。
+// 仅 code===0 才 track。successProps 由调用方按事件语义传入(单一收口点,见二审 P1「双发」)。
 function trackOnEnvelopeSuccess(
     resp: { data?: { code?: number } },
     event?: string,
@@ -130,7 +130,7 @@ function trackOnEnvelopeSuccess(
 ): void {
     if (!event) return;
     const code = resp?.data?.code;
-    if (code === 0 || code === undefined) Dap.shared.track(event, props);
+    if (code === 0) Dap.shared.track(event, props);
 }
 
 async function post<T>(path: string, data?: unknown, successEvent?: string, successProps: Record<string, unknown> = {}): Promise<T> {

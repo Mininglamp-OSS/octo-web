@@ -782,6 +782,43 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
             track.mockRestore();
         }
     });
+
+    // 六审 P1b：同一 taskId 的 regenerate。regenerate 把状态就地推回 PENDING 再重跑到 COMPLETED，
+    // task id 不变。修复前 completedTrackedTaskId 只写不清 → 第二次完成命中 id 相等被跳过 → 只 1 条
+    //（flagship 漏斗 smart_summary_completed 系统性漏掉每一轮 regenerate 的完成）。
+    // 修复后 trackSummaryCompletedOnce 在「离开 COMPLETED」时清锚 → 同 task 再次完成能再计 → 2 条。
+    // delete-the-fix：去掉 helper 里的 else-if 复位分支，本用例退回 1 条即红。
+    it('re-tracks the SAME task after regenerate: completed → pending(regenerate) → completed = 2 events (六审 P1b)', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+
+            // ① 首次完成：PROCESSING → COMPLETED（写锚 + 发一条）。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            // ② regenerate：COMPLETED → PENDING（同一 taskId 状态就地回退）。必须清锚。
+            //    (handleStatusChangeEvent 自身已把 lastKnownStatus setState 为上一步的 3，无需手动改。)
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 1 /* PENDING */ }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            // ③ 二次完成：PENDING → COMPLETED，同一 taskId。锚已复位 → 再发一条。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(2);
+        } finally {
+            track.mockRestore();
+        }
+    });
 });
 
 // ─── 续修5/6/7（blocking）：schedule 用户操作路径切 task 迟到丢弃 ───

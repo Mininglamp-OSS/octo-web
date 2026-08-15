@@ -203,10 +203,10 @@ export const BODY_RULES: BodyRule[] = [
         method: 'PUT',
         path: '/api/v1/groups/:id/setting',
         discriminators: [
-            { event: 'conversation_muted', hasKeys: ['mute'] },
-            { event: 'conversation_pinned', hasKeys: ['top'] },
+            { event: 'conversation_muted', equals: { key: 'mute', values: [1] } },
+            { event: 'conversation_pinned', equals: { key: 'top', values: [1] } },
             { event: 'conversation_remark_edited', hasKeys: ['remark'] },
-            { event: 'conversation_saved_to_contacts', hasKeys: ['save'] },
+            { event: 'conversation_saved_to_contacts', equals: { key: 'save', values: [1] } },
             { event: 'group_bot_free_mention_toggled', hasKeys: ['allow_no_mention'] },
         ],
     },
@@ -219,10 +219,10 @@ export const BODY_RULES: BodyRule[] = [
         method: 'PUT',
         path: '/api/v1/users/:id/setting',
         discriminators: [
-            { event: 'conversation_muted', hasKeys: ['mute'] },
-            { event: 'conversation_pinned', hasKeys: ['top'] },
+            { event: 'conversation_muted', equals: { key: 'mute', values: [1] } },
+            { event: 'conversation_pinned', equals: { key: 'top', values: [1] } },
             { event: 'conversation_remark_edited', hasKeys: ['remark'] },
-            { event: 'conversation_saved_to_contacts', hasKeys: ['save'] },
+            { event: 'conversation_saved_to_contacts', equals: { key: 'save', values: [1] } },
         ],
     },
 
@@ -231,10 +231,10 @@ export const BODY_RULES: BodyRule[] = [
         method: 'PUT',
         path: '/api/v1/groups/:id/threads/:seg/setting',
         discriminators: [
-            { event: 'conversation_muted', hasKeys: ['mute'] },
-            { event: 'conversation_pinned', hasKeys: ['top'] },
+            { event: 'conversation_muted', equals: { key: 'mute', values: [1] } },
+            { event: 'conversation_pinned', equals: { key: 'top', values: [1] } },
             { event: 'conversation_remark_edited', hasKeys: ['remark'] },
-            { event: 'conversation_saved_to_contacts', hasKeys: ['save'] },
+            { event: 'conversation_saved_to_contacts', equals: { key: 'save', values: [1] } },
         ],
     },
 

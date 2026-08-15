@@ -314,6 +314,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return this.scheduleLoadSeq;
     }
 
+    /**
+     * 「运行→完成」沿的 smart_summary_completed 单发 + regenerate 复位。状态订阅
+     * (handleStatusChangeEvent) 与兜底轮询(doFallbackPollOnce)两路共用本方法与
+     * completedTrackedTaskId 去重锚(见三审 R3):先检出者写锚并发,后到者 id 相等即跳过——
+     * 按 task 精确一次。**离开 COMPLETED**(如 regenerate 把状态就地推回 PENDING)时清锚,
+     * 使同一 taskId 的下一次完成能再计一次(见六审 P1b:原先锚只写不清 → 除首次外每轮 regenerate
+     * 的完成都命中 id 相等而被跳过,flagship 漏斗 smart_summary_completed 系统性漏计)。
+     * 两路必须走同一入口,避免各自内联再次跑偏(这正是三→六审反复回炉的同源)。
+     */
+    private trackSummaryCompletedOnce(status: TaskStatus, taskId: number) {
+        if (status === TaskStatus.COMPLETED) {
+            if (this.completedTrackedTaskId !== taskId) {
+                this.completedTrackedTaskId = taskId;
+                Dap.shared.track("smart_summary_completed", {});
+            }
+        } else if (this.completedTrackedTaskId === taskId) {
+            this.completedTrackedTaskId = null;
+        }
+    }
+
     componentDidMount() {
         this.unmounted = false;
         window.addEventListener("summary-status-change", this.handleStatusChangeEvent);
@@ -1012,11 +1032,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (previousStatus !== undefined && previousStatus !== newStatus) {
                 // 仅在「运行→完成」状态沿采集一次;原先误用 GET /summaries/:id,失败/进行中/导航等
                 // 一切 2xx 都会误报 completed。此处按 detail.status 状态转移判定,语义可靠。
-                if (newStatus === TaskStatus.COMPLETED && this.completedTrackedTaskId !== requestTaskId) {
-                    // 先写锚再发:与兜底轮询路径共用 completedTrackedTaskId，谁先检出谁发,防跨路径双计。
-                    this.completedTrackedTaskId = requestTaskId;
-                    Dap.shared.track("smart_summary_completed", {});
-                }
+                // 单发/复位统一走 trackSummaryCompletedOnce(见三审 R3 单发、六审 P1b regenerate 复位)。
+                this.trackSummaryCompletedOnce(newStatus, requestTaskId);
                 if (
                     newStatus === TaskStatus.COMPLETED ||
                     newStatus === TaskStatus.FAILED ||
@@ -1091,12 +1108,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     this.notifyGroupsOnCompletion(prevStatus, detail);
                     this.setState({ detail, lastKnownStatus: detail.status });
                     // 与主状态订阅路径(:handleStatusChangeEvent)同一「运行→完成」沿采集一次。SSE 不可用时
-                    // 由本 fallback 轮询检出完成,若此处不发则 completed 漏计;两路共用 completedTrackedTaskId
-                    // 去重,先检出者写锚并发,后到者 id 相等即跳过——按 task 维度精确一次(见三审 R3 blocker)。
-                    if (detail.status === TaskStatus.COMPLETED && this.completedTrackedTaskId !== requestTaskId) {
-                        this.completedTrackedTaskId = requestTaskId;
-                        Dap.shared.track("smart_summary_completed", {});
-                    }
+                    // 由本 fallback 轮询检出完成,若此处不发则 completed 漏计;单发/复位统一走
+                    // trackSummaryCompletedOnce(两路共用 completedTrackedTaskId 去重,见三审 R3、六审 P1b)。
+                    this.trackSummaryCompletedOnce(detail.status, requestTaskId);
                     if (
                         detail.status === TaskStatus.COMPLETED ||
                         detail.status === TaskStatus.FAILED ||

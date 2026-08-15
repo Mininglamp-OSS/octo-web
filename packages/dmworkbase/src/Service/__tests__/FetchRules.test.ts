@@ -181,8 +181,8 @@ describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负
             'group_qrcode_viewed',                 // 二维码入口点击(GET /groups/:id/qrcode 组件挂载/刷新/重试重复打)
             'group_md_viewed',                     // 群设置面板随行拉取,编辑回读也重打 → 删除
             'group_webhook_panel_opened',          // 增删/重置 webhook 后回读刷新列表会重打 → 删除
-            'market_card_viewed',                  // 卡片主体点击命令式(GET /:id 编辑也拉,fetch 层区分不了看/编)
-            'message_revoked',                     // 命令式单通道(两个撤回入口都调 trackMessageRevoked;fetch 规则会双计,见四审 P1-1)
+            'market_card_opened',                  // 卡片打开走卡根 data-track(DOM 委托,亦覆盖键盘);六审 C2 删除了并存的命令式 market_card_viewed(同一次打开双计)
+            'message_revoked',                     // 命令式单通道(撤回入口调 trackMessageRevoked;fetch 规则会双计,见四审 P1-1)
         ])
         const leaked = FETCH_RULES.filter((r) => uiOnly.has(r.event)).map((r) => `${r.method} ${r.path} → ${r.event}`)
         expect(leaked, leaked.join('\n')).toEqual([])
@@ -192,9 +192,9 @@ describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负
         expect(matchFetchEvent(idx, 'POST', '/api/v1/message/revoke')).toBeUndefined()
     })
 
-    it('市场详情 GET /:id 不再产出 market_card_viewed(改命令式,fetch 层区分不了看/编;见二审 P2-1)', () => {
-        // /:id 钉成 IGNORE:点卡片看详情已改卡片主体点击命令式 track;编辑(⋯→fetchDetail)也拉同一 GET,
-        // 不能在 fetch 层计成查看。versions 子资源不受影响(段数不同,语义仍成立)。
+    it('市场详情 GET /:id 不再产出 market_card_viewed(改 DOM 采集,fetch 层区分不了看/编;见二审 P2-1)', () => {
+        // /:id 钉成 IGNORE:点卡片看详情已改卡根 data-track="market_card_opened"(DOM 委托);编辑(⋯→fetchDetail)
+        // 也拉同一 GET,不能在 fetch 层计成查看。versions 子资源不受影响(段数不同,语义仍成立)。
         expect(matchFetchEvent(idx, 'GET', '/market/api/v1/mcps/42')).toBeUndefined()
         expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/42')).toBeUndefined()
         expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/42/versions')).toBe('market_skill_version_history_viewed')

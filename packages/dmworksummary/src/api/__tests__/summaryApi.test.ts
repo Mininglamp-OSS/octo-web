@@ -467,6 +467,19 @@ describe('summaryApi', () => {
             track.mockRestore();
         });
 
+        it('does NOT emit when envelope code 缺省(网关 HTML/{data:null},与 null 同失败签名,六审 P2)', async () => {
+            // summary 端点响应恒为 {code,message,data} 信封。缺 code 不是「后端没包信封」,而是这次响应
+            // 根本不是预期信封(200 的网关错误页 / 代理 HTML / {data:null})——与 code===null 同一失败签名,
+            // 不能计成动作成功。二审只堵了 null,漏了 undefined;此处钉死缺省也不发。
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { data: null } });
+            await createSummary({ topic: 't' } as any, {});
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
+
         it('agent mode emits once after envelope success (P2-2)', async () => {
             const { Dap } = await import('@octo/base');
             const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);

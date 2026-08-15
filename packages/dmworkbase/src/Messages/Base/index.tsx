@@ -16,7 +16,6 @@ import {
   MessageContentTypeConst,
   MessageReasonCode,
 } from "../../Service/Const";
-import { IConversationProvider } from "../../Service/DataSource/DataProvider";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import {
@@ -32,7 +31,7 @@ import { css } from "@emotion/react";
 // import ClockLoader from "react-spinners/ClockLoader";
 import Checkbox from "../../Components/Checkbox";
 import classNames from "classnames";
-import { Popconfirm, Toast } from "@douyinfe/semi-ui";
+import { Popconfirm } from "@douyinfe/semi-ui";
 import WKAvatar from "../../Components/WKAvatar";
 import AiBadge from "../../Components/AiBadge";
 import WebhookBadge from "../../Components/WebhookBadge";
@@ -43,7 +42,6 @@ import ThreadIndicator, {
 } from "../../Components/ThreadIndicator";
 import { isMessageContinuation } from "../../Service/messageContinuity";
 import { isMessageSelectable } from "../../Service/messageSelection";
-import { trackMessageRevoked } from "../../Service/trackMessage";
 import { I18nContext } from "../../i18n";
 import { formatMessageTimestamp } from "../../Utils/time";
 import {
@@ -71,14 +69,9 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
 
   channelInfoListener!: ChannelInfoListener;
   subscriberChangeListener!: (channel: Channel) => void;
-  conversationProvider: IConversationProvider;
   private unsubscribeChannelInfoListener?: () => void;
   private unsubscribeSubscriberChangeListener?: () => void;
 
-  constructor(props: any) {
-    super(props);
-    this.conversationProvider = WKApp.conversationProvider;
-  }
   componentDidMount() {
     const self = this;
 
@@ -226,24 +219,6 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     return newBubbleStyle;
   }
 
-  async onMessageRevoke() {
-    const { message } = this.props;
-    try {
-      // 气泡撤回入口直接调低层 conversationProvider(绕过 vm.revokeMessage)。必须 await 撤回
-      //   成功后再补点:撤回失败(reject)时不得记 phantom success,也不能留悬空未处理 promise
-      //   (见五审 blocker)。成功后与会话菜单入口(vm.revokeMessage)共用命令式单通道,fetch 规则
-      //   已删除,不会双计(见四审 P1-1)。
-      await this.conversationProvider.revokeMessage(message.message);
-    } catch (err: any) {
-      // 与会话菜单入口(module.tsx: context.revokeMessage().catch)一致的失败提示;失败不补点。
-      Toast.error(err?.msg);
-      return;
-    }
-    trackMessageRevoked(
-      message.message.clientSeq,
-      message.message.channel?.channelType ?? 0
-    );
-  }
   onMultiple() {
     const { context } = this.props;
     context.setEditOn(true);

@@ -372,15 +372,26 @@ class DapImpl {
             // 首次启用:惰性装采集机制(dark 态从未装过),再补扫当前 DOM。
             this.installCollectors()
             this.rescanCurrent()
-            // app_launched:改由此处发,而非 GET /appconfig 的 2xx 通道 —— appconfig 会被前台可见性/
-            //   focus 刷新反复调,请求成功 ≠ 应用启动(见 review P1-1)。而采集只在 remoteConfig 下发
-            //   tracking_enabled 后首次启用时打开,该时刻恰是「应用启动且埋点可测」的唯一一次,故在此
-            //   命令式发一次。launchTracked 哨兵保证停采→再启用不会重复计(整生命周期仅一次)。
-            if (!this.launchTracked) {
-                this.launchTracked = true
-                this.track('app_launched', {})
-            }
+            // app_launched **不在此发**(六审 P2):首次 setEnabled(true) 由 appconfig 回调驱动
+            //   (App.tsx:502-503),而 appconfig 在**登录页(未登录、无 token)**就会拉,此处发会
+            //   逼 envelope()→deviceId() 给匿名访客写持久 localStorage 标识 + 发一条无 token 上报,
+            //   破坏 Dap.ts:255-258 的「惰性创建」保证。改由 maybeTrackLaunch() 在**登录后拿到 token、
+            //   首个真正产出的事件到来时**补发一次(整生命周期仍仅一次,launchTracked 哨兵保证)。
         }
+    }
+
+    /**
+     * app_launched 惰性补发(六审 P2 / owner 决策 b):登录(currentToken 有值)后、采集开启、
+     * 且首个真正 track 到来时发一次「应用启动」。放在 track() 顶部——匿名登录页无 token 时不发,
+     * 从而不写 device_id、不产生无 token 上报;登录后首个鉴权事件(通常是 http_request / page 进入)
+     * 触发它,并排在该事件之前。launchTracked 哨兵保证整生命周期仅一次(停采→再启用亦不重复)。
+     */
+    private maybeTrackLaunch(): void {
+        if (this.launchTracked) return
+        if (!this.enabled) return
+        if (!this.currentToken()) return
+        this.launchTracked = true
+        this.track('app_launched', {})
     }
 
     /** 注入业务 token 取值回调(见 index.tsx)。上报请求据此带 `token` 头供后端鉴权归一 actor。 */
@@ -400,6 +411,7 @@ class DapImpl {
     /** 通用上报(蒙版内部自动调;破例点如消息补点也调它)。 */
     track(eventName: string, props?: Record<string, unknown>): void {
         if (!this.enabled || !eventName) return
+        this.maybeTrackLaunch() // 登录后首个事件时补发 app_launched(见其注释);哨兵防重入
         this.safe(() => {
             const clean = this.sanitizeProps(props)
             const objectId = this.pickObjectId(clean)
@@ -410,6 +422,7 @@ class DapImpl {
     /** page_view(MutationObserver 内部调,按 pageId 去重 + 结算上一页停留)。 */
     pageView(pageId: string, extra?: Record<string, unknown>): void {
         if (!this.enabled || !pageId) return
+        this.maybeTrackLaunch() // 首个鉴权页进入亦可触发 app_launched(排在 page_view 前)
         this.safe(() => {
             // 同页重复触发(菜单 setter + syncPath + mittBus 多次)只忽略,不重复计数(§3.2)
             if (this.lastPage && this.lastPage.pageId === pageId) return
@@ -1027,7 +1040,7 @@ class DapImpl {
                 const reqBody = typeof init?.body === 'string' ? init.body : undefined
                 const bodyEvent =
                     this.enabled && isFirstParty(url)
-                        ? computeBodyEvent(bodyIndex, method || 'GET', url, reqBody)
+                        ? dap.safeCall(() => computeBodyEvent(bodyIndex, method || 'GET', url, reqBody))
                         : undefined
                 return orig(input as RequestInfo, init)
                     .then((resp) => {
@@ -1067,11 +1080,13 @@ class DapImpl {
                     // P2-1:同 fetch —— 只在第一方 + 已启用时读体,把「跨域不读 / 停采即停读」落进代码。
                     const bodyEvent =
                         dap.enabled && isFirstParty(url)
-                            ? computeBodyEvent(
-                                  bodyIndex,
-                                  method,
-                                  url,
-                                  typeof args[0] === 'string' ? (args[0] as string) : undefined,
+                            ? dap.safeCall(() =>
+                                  computeBodyEvent(
+                                      bodyIndex,
+                                      method,
+                                      url,
+                                      typeof args[0] === 'string' ? (args[0] as string) : undefined,
+                                  ),
                               )
                             : undefined
                     // 在闭包里定住 url/method/start(不在 loadend 时读实例字段,避免复用/
@@ -1139,6 +1154,20 @@ class DapImpl {
             fn()
         } catch {
             /* 埋点内部异常一律吞掉,不 console、不 toast、不外抛 */
+        }
+    }
+
+    /**
+     * safe 的取值版:执行 fn 并返回其值,内部抛错时降级为 undefined(绝不外抛)。
+     * 六审 P5:computeBodyEvent 在 fetch/XHR 拦截热路径里同步调用,虽已内含 try/catch,但它是外部
+     * 纯函数,一旦将来重构引入抛错(或 URL/JSON 极端输入),异常会顺着我们 wrap 的 fetch/send 冒泡、
+     * 污染宿主网络层。这里把「算 body 事件」也纳入 Dap「内部异常一律吞」的统一边界,埋点永不拖累业务请求。
+     */
+    private safeCall<T>(fn: () => T): T | undefined {
+        try {
+            return fn()
+        } catch {
+            return undefined
         }
     }
 }

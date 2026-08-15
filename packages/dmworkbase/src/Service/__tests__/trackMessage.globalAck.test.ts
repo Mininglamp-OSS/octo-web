@@ -157,9 +157,9 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
 /**
  * message_revoked 单通道契约(对应四审 P1-1 blocking):
  *   撤回原先同时挂在 fetch 通道(FetchRules POST /message/revoke)与命令式 trackMessageRevoked 上,
- *   会话菜单入口双发(fetch 空属性 + 命令式富属性)、气泡入口又只发 fetch 空属性,既双计又属性不一致。
- *   修法:删除 fetch 规则,两个撤回入口(vm.revokeMessage / Messages/Base.onMessageRevoke)都调
- *   trackMessageRevoked,统一收口到命令式单通道。此处断言每次撤回恰好补发一条、且带富属性。
+ *   会话菜单入口双发(fetch 空属性 + 命令式富属性),既双计又属性不一致。
+ *   修法:删除 fetch 规则,撤回的唯一活入口 vm.revokeMessage 调 trackMessageRevoked,统一收口到命令式
+ *   单通道(六审已删除从未接线的气泡 onMessageRevoke 死入口)。此处断言每次撤回恰好补发一条、且带富属性。
  */
 describe('trackMessage — message_revoked 命令式单通道 (四审 P1-1)', () => {
     beforeEach(() => {

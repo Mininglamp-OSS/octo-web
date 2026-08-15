@@ -30,7 +30,7 @@ export interface FetchRule {
 }
 
 /**
- * 抑制哨兵:命中但**主动不上报**。用途 —— 当一个过宽的 `:id` 通配规则(如 /mcps/:id → market_card_viewed)
+ * 抑制哨兵:命中但**主动不上报**。用途 —— 当一个过宽的 `:id` 通配规则(如 /mcps/:id,历史上曾映射市场详情查看)
  * 会把某个 list / 子资源字面路径(mine / tags)误吞时,给该字面路径挂一条 event=FETCH_IGNORE 的规则。
  * 因「最具体优先」,字面(nWild=0)压过 `:id`(nWild=1),matchFetchEvent 命中它时返回 undefined → 不 track。
  * 这样删除语义错误映射后,残留路径也不会顺着通配掉进别的事件。
@@ -126,9 +126,9 @@ export const FETCH_RULES: FetchRule[] = [
     //   都会触发,不只切换空间。改为 Pages/Main applySpaceSelection(切换确认后)命令式 track(见 review P1-3)。
     { method: 'POST', path: '/api/v1/space/join', event: 'space_join_new' },
     // message_revoked 不在此通道 —— 撤回成功后已由命令式 trackMessageRevoked 采集(带 channel_type/object_id
-    //   富属性),且两个撤回入口(会话菜单 vm.revokeMessage、气泡 Messages/Base.onMessageRevoke)都补点。
-    //   若此处再挂 POST /message/revoke 的 fetch 规则,会话菜单路径会双发(fetch 空属性 + 命令式富属性),
-    //   气泡路径又只发 fetch 空属性,属性还不一致。故删除 fetch 规则,统一收口到命令式单通道(见四审 P1-1)。
+    //   富属性)。撤回的唯一活入口是会话菜单 vm.revokeMessage(module.tsx 的 context.revokeMessage)。
+    //   若此处再挂 POST /message/revoke 的 fetch 规则,会与命令式双发(fetch 空属性 + 命令式富属性)、属性不一致。
+    //   故删除 fetch 规则,统一收口到命令式单通道(见四审 P1-1;六审删除已死的气泡 onMessageRevoke 入口)。
     { method: 'POST', path: '/api/v1/groups/:id/threads', event: 'message_subchannel_created' },
     { method: 'DELETE', path: '/api/v1/message', event: 'message_multiselect_deleted' },
     // channel_subchannel_panel_opened 不在此通道 —— GET /groups/:id/threads(threadList)在删除/归档/重试
@@ -197,9 +197,10 @@ export const FETCH_RULES: FetchRule[] = [
     // ---- market
     // 注意:market_view_switched / market_tag_filtered 不在此通道 —— «mine» 列表也用于建议/初始化,
     //       tag 列表在 init/搜索时加载,请求成功 ≠ 用户切视图/选标签。改由 Tab / tag chip 点击采集。
-    // market_card_viewed 也不在此通道 —— GET /mcps|skills/:id 既被「点卡片看详情」拉,也被「卡片 ⋯ 菜单→编辑」
+    // 卡片打开(市场详情)也不在此通道 —— GET /mcps|skills/:id 既被「点卡片看详情」拉,也被「卡片 ⋯ 菜单→编辑」
     //   (handleEditFromCard→fetchMcpDetail)拉,fetch 层无法区分看/编,编辑会被误计成查看(见二审 P2-1)。
-    //   改由卡片主体点击(打开详情)命令式 track;这里把 /:id 钉成 IGNORE,同时继续压过 mine/tags/versions。
+    //   改由卡根 data-track="market_card_opened"(DOM 委托,亦覆盖键盘)采集;这里把 /:id 钉成 IGNORE,
+    //   同时继续压过 mine/tags/versions。(六审 C2:已删除曾并存的命令式 market_card_viewed,避免同一次打开双计。)
     { method: 'GET', path: '/market/api/v1/mcps/mine', event: FETCH_IGNORE },
     { method: 'GET', path: '/market/api/v1/skills/mine', event: FETCH_IGNORE },
     { method: 'GET', path: '/market/api/v1/skills/tags', event: FETCH_IGNORE },

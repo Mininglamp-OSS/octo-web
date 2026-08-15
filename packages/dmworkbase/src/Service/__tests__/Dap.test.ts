@@ -57,6 +57,61 @@ describe('Dap — fail-closed (P0-1)', () => {
     })
 })
 
+describe('Dap — app_launched 延后至登录后(六审 P2 / owner 决策 b)', () => {
+    let fetchMock: FetchMock
+    beforeEach(() => {
+        localStorage.clear()
+        fetchMock = okFetch()
+        // @ts-expect-error test stub
+        globalThis.fetch = fetchMock
+    })
+
+    it('enabled 但无 token(匿名登录页):不发 app_launched、不落盘 device id、不上报', async () => {
+        const { Dap } = await freshTracker()
+        // appconfig 回调在登录页就会 setEnabled(true),但此刻还没登录(无 token)
+        Dap.shared.setEnabled(true)
+        Dap.shared.flush()
+        expect(fetchMock).not.toHaveBeenCalled()
+        expect(localStorage.getItem(DEVICE_ID_KEY)).toBeNull()
+    })
+
+    it('登录拿到 token 后:首个事件触发 app_launched 一次,且排在该事件之前', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        // 登录:接上 token provider
+        Dap.shared.setTokenProvider(() => 'tok-abc')
+        Dap.shared.track('first_evt', {})
+        Dap.shared.flush()
+
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+        const [, init] = fetchMock.mock.calls[0]
+        const body = JSON.parse((init as RequestInit).body as string)
+        const events: Array<{ event_name: string }> = body.events ?? body
+        const names = events.map((e) => e.event_name)
+        expect(names.filter((n) => n === 'app_launched')).toHaveLength(1)
+        // app_launched 排在触发它的事件之前
+        expect(names.indexOf('app_launched')).toBeLessThan(names.indexOf('first_evt'))
+        expect(localStorage.getItem(DEVICE_ID_KEY)).toBeTruthy()
+    })
+
+    it('整生命周期仅一次:第二个事件不再补发 app_launched', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.setTokenProvider(() => 'tok-abc')
+        Dap.shared.track('e1', {})
+        Dap.shared.track('e2', {})
+        Dap.shared.flush()
+
+        const allNames: string[] = []
+        for (const call of fetchMock.mock.calls) {
+            const body = JSON.parse((call[1] as RequestInit).body as string)
+            const events: Array<{ event_name: string }> = body.events ?? body
+            allNames.push(...events.map((e) => e.event_name))
+        }
+        expect(allNames.filter((n) => n === 'app_launched')).toHaveLength(1)
+    })
+})
+
 describe('Dap — kill switch cancels in-flight retries (P0-2)', () => {
     let fetchMock: FetchMock
     beforeEach(() => {

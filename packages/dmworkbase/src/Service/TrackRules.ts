@@ -114,7 +114,8 @@ export const TRACK_RULES: TrackRule[] = [
     { event: 'input_attachment_clicked', testid: 'input-attachment-btn', on: 'click' },
 
     // ---- 群 / 联系人（dmworkcontacts 等，agent B）。
-    { event: 'group_qrcode_invite_link_copied', testid: 'group-qrcode-copy-invite-link-btn', on: 'click' },
+    // group_qrcode_invite_link_copied 不在本表 —— 点击委托在 copy promise 落定前就发、失败也计;
+    //   已改为 ChannelQRCode.handleCopyLink 的 ok 分支命令式 track(见六审 P2)。
     { event: 'group_member_add_dialog_opened', testid: 'group-member-add-btn', on: 'click' },
     { event: 'group_member_remove_dialog_opened', testid: 'group-member-remove-btn', on: 'click' },
     { event: 'group_md_preview_toggled', testid: 'group-md-preview-btn', on: 'click' },
@@ -130,8 +131,9 @@ export const TRACK_RULES: TrackRule[] = [
     //   重复触发的选择型控件,已改为在切换 handler 里按「实际变化」gate 后命令式 track(MarketSidebar.handleClick /
     //   McpMarketListPage.handleCategory / CategoryChips.choose),见 review P2-7。
     { event: 'market_skill_sorted', testid: 'skill-sort-option', on: 'click' },
-    { event: 'market_skill_install_prompt_copied', testid: 'skill-install-copy', on: 'click' },
-    { event: 'market_mcp_connect_prompt_copied', testid: 'mcp-quickaccess-copy', on: 'click' },
+    // market_skill_install_prompt_copied / market_mcp_connect_prompt_copied 不在本表 ——
+    //   点击委托在 clipboard.writeText promise 落定前就发、权限拒绝/非安全上下文也计;已分别改为
+    //   InstallPromptModal.handleCopy 的 .then 与 McpDetailModal.handleCopy 的 try 成功分支命令式 track(六审 P2)。
     { event: 'market_publish_entry_clicked', testid: 'mcp-publish-entry', on: 'click' },
     { event: 'market_publish_entry_clicked', testid: 'skill-publish-entry', on: 'click' },
     { event: 'market_publish_method_selected', testid: 'mcp-publish-method-bot', on: 'click', props: { method: 'bot' } },

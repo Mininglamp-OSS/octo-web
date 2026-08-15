@@ -31,6 +31,22 @@ describe('BodyRules — 群资料/设置真实规则命中', () => {
         expect(s({ save: 1 })).toBe('conversation_saved_to_contacts')
         expect(s({ allow_no_mention: 1 })).toBe('group_bot_free_mention_toggled')
     })
+
+    it('关闭(值=0)不得记成开启:mute/top/save 用 equals[1] 判值(见六审 P1a)', () => {
+        // 三处 */setting 的调用方对开关两个方向都发同一顶层键(channelSettingActions.ts:
+        // muteChannel/topChannel/saveChannel 均 {key: on?1:0})。若判别子用 presence-only 的 hasKeys,
+        // {mute:0} 会被记成 conversation_muted → 计数被反向操作虚增。改 equals{values:[1]} 后 0 值不命中。
+        const g = (b: unknown) => put('/api/v1/groups/g1/setting', JSON.stringify(b))
+        const u = (b: unknown) => put('/api/v1/users/u1/setting', JSON.stringify(b))
+        const th = (b: unknown) => put('/api/v1/groups/g1/threads/t1/setting', JSON.stringify(b))
+        for (const s of [g, u, th]) {
+            expect(s({ mute: 0 })).toBeUndefined()
+            expect(s({ top: 0 })).toBeUndefined()
+            expect(s({ save: 0 })).toBeUndefined()
+        }
+        // remark 是「编辑」语义、无关闭态,保持 presence-only,任何值都记一次编辑。
+        expect(g({ remark: '' })).toBe('conversation_remark_edited')
+    })
 })
 
 describe('BodyRules — 隐私 / 边界', () => {

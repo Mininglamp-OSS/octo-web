@@ -120,10 +120,15 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
     const root = findRepoRoot()
     const files = collectSourceFiles(root)
 
-    // 命令式:Dap.shared.track('literal' | "literal", ...)。只抽字面量首参。
-    const IMPERATIVE_RE = /Dap\.shared\.track\(\s*['"]([a-zA-Z0-9_]+)['"]/g
-    // DOM:data-track="literal"(与 data-testid 委托是两套机制;本仓当前约定不用 data-track,预期为空集)。
-    const DATATRACK_RE = /data-track=\s*['"]([a-zA-Z0-9_]+)['"]/g
+    // 命令式:任意 `.track('literal'|"literal", ...)` —— 既含 Dap.shared.track(页面站点),也含
+    // Dap 内部 this.track('app_launched'|'http_request')。四审只钉 Dap.shared.前缀,漏了 this.track,
+    // 于是 app_launched 这类内部命令式事件不进互斥集合、无法防回归(六审 P4)。放宽到 `.track(` 后
+    // 仍要求首参为字面量,只多抓 this.track / 别名调用,不会误纳无关调用(需带引号事件名)。
+    const IMPERATIVE_RE = /\.track\(\s*['"]([a-zA-Z0-9_]+)['"]/g
+    // DOM:data-track="literal" 或 JSX data-track={ cond ? "literal" : undefined }。
+    // 放宽以容忍可选的 `{` 包裹与「点号标识符 ? 」三元前缀(前缀本身不含引号,不会误吞比较字面量);
+    // 纯变量表达式 data-track={settingKey} 无引号 → 不匹配(本就无法静态抽取),安全跳过。
+    const DATATRACK_RE = /data-track=(?:\s*\{)?\s*(?:[\w.]+\s*\?\s*)?['"]([a-zA-Z0-9_]+)['"]/g
 
     const imperativeEvents = new Set<string>()
     const dataTrackEvents = new Set<string>()
@@ -135,10 +140,12 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
     }
 
     it('扫描确实覆盖到源码(自检:抽到了已知的命令式事件)', () => {
-        // 反测:若扫描根算错 / 正则失配,集合会空 → 守卫形同虚设。用两个稳定存在的命令式事件兜底。
+        // 反测:若扫描根算错 / 正则失配,集合会空 → 守卫形同虚设。用稳定存在的命令式事件兜底。
         expect(files.length).toBeGreaterThan(50)
         expect(imperativeEvents.has('smart_summary_started')).toBe(true)
         expect(imperativeEvents.has('message_revoked')).toBe(true)
+        // 六审 P4:钉死放宽后的正则确实抓到 Dap 内部 this.track('app_launched')(旧 `Dap.shared.` 前缀抓不到)。
+        expect(imperativeEvents.has('app_launched')).toBe(true)
     })
 
     it('命令式站点事件名不得再出现在任何一张声明式规则表(否则跨通道双计)', () => {

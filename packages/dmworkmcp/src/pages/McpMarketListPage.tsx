@@ -794,10 +794,8 @@ export default class McpMarketListPage extends Component<
                           key={item.id}
                           item={item}
                           onClick={(it) => {
-                            // market_card_viewed:点卡片主体=打开详情=查看一次。原挂 GET /mcps/:id 的 2xx 通道,
-                            // 但编辑(⋯→handleEditFromCard)也拉同一 GET,fetch 层区分不了看/编(见二审 P2-1)。
-                            // 编辑走 onEdit,不经这里,故命令式在此计不误含编辑。
-                            Dap.shared.track("market_card_viewed", {});
+                            // 六审 C2:卡片打开只保留卡根 data-track="market_card_opened"(DOM 委托,亦覆盖键盘),
+                            // 删除此处命令式 market_card_viewed —— 二者本是对「同一次打开」的双计(owner 决策:留 opened)。
                             this.setState({ detailId: it.id });
                           }}
                           onEdit={canManage ? this.handleEditFromCard : undefined}

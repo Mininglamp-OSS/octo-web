@@ -738,6 +738,7 @@
   "module.contextMenus.react": "React",
   "module.contextMenus.reply": "Reply",
   "module.contextMenus.revoke": "Recall",
+  "module.contextMenus.revokeFailed": "Recall failed",
   "module.createThread.failed": "Create failed",
   "module.createThread.nameLabel": "Topic name",
   "module.createThread.namePlaceholder": "Enter discussion topic...",
