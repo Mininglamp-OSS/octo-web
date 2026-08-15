@@ -195,6 +195,7 @@ export default function SkillListPage() {
           <div className="skill-market-publish-menu" ref={publishMenuRef}>
             <WKButton
               variant="primary"
+              data-testid="skill-publish-entry"
               icon={<Upload size={15} />}
               onClick={() => setPublishMenuOpen((open) => !open)}
               aria-haspopup="menu"
@@ -208,6 +209,7 @@ export default function SkillListPage() {
                 <button
                   type="button"
                   role="menuitem"
+                  data-testid="skill-publish-method-bot"
                   onClick={() => {
                     setPublishMenuOpen(false);
                     setBotPublishVisible(true);
@@ -222,6 +224,7 @@ export default function SkillListPage() {
                 <button
                   type="button"
                   role="menuitem"
+                  data-testid="skill-publish-method-manual"
                   onClick={() => {
                     setPublishMenuOpen(false);
                     setCreateVisible(true);
@@ -273,6 +276,7 @@ export default function SkillListPage() {
                     <button
                       key={option.value}
                       type="button"
+                      data-testid="skill-sort-option"
                       className={
                         sort === option.value ? "is-active" : undefined
                       }

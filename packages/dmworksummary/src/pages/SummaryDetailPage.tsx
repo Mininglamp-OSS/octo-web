@@ -21,6 +21,7 @@ import {
   titleContextStore,
   SummaryNotifyContent,
   isConversationDisbanded,
+  Dap,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -1844,6 +1845,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     openScheduleModal = () => {
+        // 埋点 308:打开定时总结配置弹窗（隐私 props 恒空）。
+        Dap.shared.track("smart_summary_timer_dialog_opened", {});
         const { scheduleItem } = this.state;
         // Blocking 1：is_active=false 的记录在交互上视为「无活动定时」，但仍回填
         // 原有周期/时刻，方便用户「重新启用」时不用从零填。保存逻辑（handleScheduleSave）
@@ -2266,6 +2269,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 两者的 content 语义都是"给用户看的最终交付文本",转发到聊天的姿势一致。
         const sourceContent = detail?.result?.content ?? personalResult?.content ?? '';
         if (!sourceContent.trim()) return;
+        // 埋点 310:打开「转发到聊天」的会话选择面板（有正文可转发时才算打开）。
+        Dap.shared.track("smart_summary_forward_panel_opened", {});
         WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
             const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
             const chunks = splitSummaryText(cleanContent);
@@ -2294,6 +2299,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             } else {
                 Toast.success(t("summary.detail.forwarded"));
             }
+            // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
+            if (state.kind !== "all-failed") Dap.shared.track("smart_summary_forwarded", {});
         }, t("summary.detail.forwardToChat"));
     };
 

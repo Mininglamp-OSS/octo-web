@@ -48,6 +48,7 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
       footer={
         <WKButton
           variant="primary"
+          data-testid="skill-install-copy"
           icon={copied ? <Check size={15} /> : <Copy size={15} />}
           onClick={handleCopy}
         >

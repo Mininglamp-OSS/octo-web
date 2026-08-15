@@ -94,6 +94,7 @@ export default class NavRail extends Component<NavRailProps> {
                                 <button
                                     type="button"
                                     className="wk-navrail__user-avatar"
+                                    data-testid="nav-user-avatar"
                                     title={t("base.navRail.me")}
                                     aria-label={t("base.navRail.me")}
                                     onClick={onAvatarClick}

@@ -304,7 +304,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
                 hideDescriptionTooltip();
                 onInstall(skill);
               }}
-              data-track="skill_install_clicked"
+              data-track="market_skill_install_clicked"
               data-object-id={skill.id}
               data-track-item-type="skill"
             >

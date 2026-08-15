@@ -4,7 +4,7 @@ import { IconClose, IconLink } from '@douyinfe/semi-icons';
 import { listSummaries } from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';
 import { TriggerType, TaskStatus } from '../types/summary';
-import { I18nContext, type I18nCtx } from '@octo/base';
+import { I18nContext, type I18nCtx, Dap } from '@octo/base';
 import { summaryTestIds } from '../utils/testIds';
 import { getSummaryTypeLabel, isReferenceable as isItemReferenceable } from '../utils/summaryHelpers';
 import './SummaryReferencePicker.css';
@@ -190,6 +190,8 @@ export default class SummaryReferencePicker extends Component<
     };
 
     private handleSelect = (task: SummaryListItem) => {
+        // 埋点 301:agent 总结里选中一条历史总结作为引用（隐私 props 恒空）。
+        Dap.shared.track("smart_summary_agent_reference_added", {});
         this.props.onSelect(task);
     };
 

@@ -3,7 +3,7 @@ import axios from "axios";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import { IconSearch, IconClose } from "@douyinfe/semi-icons";
 import { Bot, Check, ChevronDown, SlidersHorizontal, Upload } from "lucide-react";
-import { I18nContext, t, WKApp, WKButton } from "@octo/base";
+import { I18nContext, t, WKApp, WKButton, Dap } from "@octo/base";
 import { fetchMcpDetail, fetchMcpList, fetchMcpMine, fetchMcpTags, McpTagSuggestion } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
 import type { McpCategory, McpDetail, McpListItem } from "../types/mcp";
@@ -480,7 +480,11 @@ export default class McpMarketListPage extends Component<
   private handleKeyword = (value: string) => {
     this.setState({ keyword: value });
     if (this.searchTimer) clearTimeout(this.searchTimer);
-    this.searchTimer = setTimeout(() => this.loadData(), 300);
+    this.searchTimer = setTimeout(() => {
+      this.loadData();
+      // 埋点 317:遥测 fire-and-forget，放在 loadData 之后并用可选链守护，绝不阻断搜索主逻辑。
+      if (value.trim()) Dap?.shared?.track?.("market_searched", {});
+    }, 300);
   };
 
   private handleCategory = (key: string) => {
@@ -677,6 +681,7 @@ export default class McpMarketListPage extends Component<
             <div className="wk-mcp-publish-menu" ref={this.publishMenuRef}>
               <WKButton
                 variant="primary"
+                data-testid="mcp-publish-entry"
                 icon={<Upload size={15} />}
                 onClick={() =>
                   this.setState((prev) => ({ publishMenuOpen: !prev.publishMenuOpen }))
@@ -692,6 +697,7 @@ export default class McpMarketListPage extends Component<
                   <button
                     type="button"
                     role="menuitem"
+                    data-testid="mcp-publish-method-bot"
                     onClick={() =>
                       this.setState({ publishMenuOpen: false, botPublishVisible: true })
                     }
@@ -705,6 +711,7 @@ export default class McpMarketListPage extends Component<
                   <button
                     type="button"
                     role="menuitem"
+                    data-testid="mcp-publish-method-manual"
                     onClick={() =>
                       this.setState({ publishMenuOpen: false, createVisible: true })
                     }
@@ -726,6 +733,7 @@ export default class McpMarketListPage extends Component<
             {categories.map((cat) => (
               <button
                 key={cat.key}
+                data-testid="mcp-category-pill"
                 className={
                   (cat.key === "all" ? categoriesSelected.length === 0 : categoriesSelected.includes(cat.key))
                     ? "wk-mcp__pill wk-mcp__pill--active"

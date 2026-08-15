@@ -1071,6 +1071,13 @@ export class ChatContentPage extends Component<
                       className="wk-chat-conversation-header-right-item"
                       onClick={(e) => {
                         e.stopPropagation();
+                        // group_info_panel_opened:仅开面板(opening)且为群频道时发,props 恒空
+                        if (
+                          !this.state.showChannelSetting &&
+                          channel.channelType === ChannelTypeGroup
+                        ) {
+                          Dap.shared.track("group_info_panel_opened", {});
+                        }
                         this.setState((prevState) => {
                           const opening = !prevState.showChannelSetting;
                           return opening

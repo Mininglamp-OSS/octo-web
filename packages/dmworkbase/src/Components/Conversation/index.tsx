@@ -24,6 +24,7 @@ import { ForwardService, ForwardOptions, ForwardResult } from "../../Service/For
 import { interpretForwardResult, ForwardToastScope } from "../../Service/forwardResultToast";
 
 import Provider from "../../Service/Provider";
+import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
@@ -494,6 +495,7 @@ export class Conversation
           this.buildForwardOptions(),
         );
         this.showForwardResult(result, "targets");
+        Dap.shared.track("message_forwarded", {});
       } catch (e) {
         console.error("[forward] build content failed", e);
         const blockedMessageKey = forwardBlockedMessageKey(e);
@@ -1348,6 +1350,8 @@ export class Conversation
     );
 
     this.contextMenusContext.show(event);
+    // 破例:右键 contextmenu 走原生事件而非委托蒙版,命令式补点。props 恒空。
+    Dap.shared.track("message_context_menu_opened", {});
   }
   hideContextMenus(): void {
     this.contextMenusContext.hide();
@@ -2081,6 +2085,10 @@ export class Conversation
                   event.stopPropagation();
                   const wasExpanded = session.isExpanded;
                   this.vm.toggleFoldSession(session.sessionId);
+                  // 兼收起:仅「展开」态命令式补点,避免收起误报。props 恒空。
+                  if (!wasExpanded) {
+                    Dap.shared.track("thread_expanded", {});
+                  }
 
                   // 展开时,确保内容可见(无动画,下一帧立即滚动)
                   if (!wasExpanded) {
@@ -2762,6 +2770,7 @@ export class Conversation
                             );
                             // 多选 Toast 分母保持 messages × channels 语义（scope='messages'）。
                             this.showForwardResult(result, "messages");
+                            Dap.shared.track("message_multiselect_forwarded", {});
                           } catch (e) {
                             console.error("[forward] build content failed", e);
                             const blockedMessageKey = forwardBlockedMessageKey(e);
@@ -2793,6 +2802,7 @@ export class Conversation
                               this.buildForwardOptions(),
                             );
                             this.showForwardResult(result, "targets");
+                            Dap.shared.track("message_multiselect_forwarded", {});
                           } catch (e) {
                             console.error(
                               "[merge-forward] build content failed",
@@ -3619,6 +3629,7 @@ export class Conversation
                         .map((menus) => {
                           return {
                             title: menus.title,
+                            testid: menus.testid,
                             onClick: () => {
                               if (menus.onClick) {
                                 menus.onClick();
@@ -3915,16 +3926,17 @@ class MultiplePanel extends Component<MultiplePanelProps> {
     } = this.props;
     return (
       <div className="wk-multiplepanel">
-        <button className="wk-multiplepanel-btn" onClick={onForward}>
+        <button className="wk-multiplepanel-btn" data-testid="multiselect-forward-btn" onClick={onForward}>
           {t("base.conversation.multiplePanel.forwardOneByOne")}
         </button>
         <div className="wk-multiplepanel-sep" />
-        <button className="wk-multiplepanel-btn" onClick={onMergeForward}>
+        <button className="wk-multiplepanel-btn" data-testid="multiselect-mergeforward-btn" onClick={onMergeForward}>
           {t("base.conversation.multiplePanel.mergeForward")}
         </button>
         <div className="wk-multiplepanel-sep" />
         <button
           className="wk-multiplepanel-btn wk-multiplepanel-btn--danger"
+          data-testid="multiselect-delete-btn"
           onClick={onDelete}
         >
           {t("base.conversation.multiplePanel.delete")}

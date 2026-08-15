@@ -61,6 +61,7 @@ vi.mock("@octo/base", () => ({
     locale: "en-US",
     t: (key: string) => translations[key] ?? key,
   }),
+  Dap: { shared: { track: () => {} } },
 }));
 
 vi.mock("./Intro", () => ({

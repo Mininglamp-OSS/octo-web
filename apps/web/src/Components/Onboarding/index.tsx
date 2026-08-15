@@ -190,6 +190,11 @@ export const Onboarding: React.FC<OnboardingProps> = ({
   // 逐章埋点:记录进入当前章的时刻与上一章 id,用于算停留时长并在切章时结算上一章
   const chapterEnterAtRef = useRef<number>(0);
   const prevChapterRef = useRef<string | null>(null);
+  // onboarding_started:首挂 once 守卫,intro↔章节切换不重复发
+  const startedRef = useRef(false);
+  // onboarding_all_viewed:累计已浏览的不同章 id + 达标 once 守卫
+  const viewedChaptersRef = useRef<Set<string>>(new Set());
+  const allViewedEmittedRef = useRef(false);
   const [completionOrigin, setCompletionOrigin] = useState<{
     x: number;
     y: number;
@@ -239,6 +244,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     };
   }, []);
 
+  // onboarding_started:visible 首次为 true 时 once emit。两条入口(登录自动弹 /
+  // 设置重开 forceVisible)都经本组件挂载;startedRef 守卫防 intro↔章节切换重复。
+  useEffect(() => {
+    if (!visible || startedRef.current) return;
+    startedRef.current = true;
+    Dap.shared.track("onboarding_started", {});
+  }, [visible]);
+
   useEffect(() => {
     if (!visible || forceVisible) return;
     try {
@@ -263,13 +276,29 @@ export const Onboarding: React.FC<OnboardingProps> = ({
   useEffect(() => {
     // 仍在 intro 或不可见:不处于「章节视图」,不处理
     if (!visible || showIntro) return;
-    // 首次进入章节视图:只记录进入时刻与当前章,不 emit
+
+    // 进入某章:emit viewed(首进/切章都算),累计已浏览的不同章 id;
+    // 集齐所有章后 once emit all_viewed。总数取 onboardingSections.length。
+    const emitChapterViewed = () => {
+      Dap.shared.track("onboarding_chapter_viewed", { chapter_id: activeId });
+      viewedChaptersRef.current.add(activeId);
+      if (
+        !allViewedEmittedRef.current &&
+        viewedChaptersRef.current.size === onboardingSections.length
+      ) {
+        allViewedEmittedRef.current = true;
+        Dap.shared.track("onboarding_all_viewed", {});
+      }
+    };
+
+    // 首次进入章节视图:记录进入时刻与当前章,不 emit completed,但首进也算 viewed
     if (prevChapterRef.current === null) {
       prevChapterRef.current = activeId;
       chapterEnterAtRef.current = Date.now();
+      emitChapterViewed();
       return;
     }
-    // activeId 变了:给上一章 emit completed,再翻到当前章
+    // activeId 变了:给上一章 emit completed,再翻到当前章并 emit viewed
     if (prevChapterRef.current !== activeId) {
       Dap.shared.track("onboarding_chapter", {
         chapter_id: prevChapterRef.current,
@@ -278,8 +307,9 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       });
       prevChapterRef.current = activeId;
       chapterEnterAtRef.current = Date.now();
+      emitChapterViewed();
     }
-  }, [activeId, showIntro, visible]);
+  }, [activeId, showIntro, visible, onboardingSections.length]);
 
   const persistDismissed = () => {
     try {
@@ -312,6 +342,8 @@ export const Onboarding: React.FC<OnboardingProps> = ({
         duration_ms: Date.now() - chapterEnterAtRef.current,
       });
     }
+    // 非 final 分支的 × 是纯「关闭」(final 分支已转调 handleFinish 走完成)。
+    Dap.shared.track("onboarding_closed", {});
     persistDismissed();
     hideOnboarding();
   };
@@ -569,6 +601,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
           <div className="wk-onboarding-resource-links">
             <a
               className="wk-onboarding-open-source"
+              data-testid="onboarding-opensource-link"
               href={config.links.openSourceUrl}
               target="_blank"
               rel="noreferrer"
@@ -578,6 +611,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
             </a>
             <a
               className="wk-onboarding-open-source"
+              data-testid="onboarding-about-link"
               href={
                 locale === "en-US"
                   ? config.links.aboutMininglampUrl.enUS

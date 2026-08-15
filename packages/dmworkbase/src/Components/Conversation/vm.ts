@@ -102,6 +102,39 @@ export interface ConversationVMOptions {
 
 const PendingMessageOrderBase = Number.MAX_SAFE_INTEGER / 2
 
+/**
+ * botfather 命令前缀 → 事件名映射(§B)。仅当 channelID==="botfather" 时用于匹配
+ * content.text 的前缀选出事件名;绝不把正文存进 intent 或 props。
+ * /newbot 走既有 botCreateEntry 路径(bot_create_started),故不在此表。
+ * 各前缀互不为对方前缀,匹配顺序无关。
+ */
+const BOTFATHER_COMMAND_EVENTS: Array<[string, string]> = [
+    ["/quickstart", "botfather_quickstart_viewed"],
+    ["/setname", "bot_profile_edited"],
+    ["/setdescription", "bot_profile_edited"],
+    ["/mybots", "bot_list_viewed"],
+    ["/token", "bot_token_managed"],
+    ["/revoke", "bot_token_managed"],
+    ["/deletebot", "bot_deleted"],
+    ["/connect", "bot_connect_prompt_got"],
+    ["/disconnect", "bot_agent_disconnected"],
+    ["/pending", "bot_friend_request_handled"],
+    ["/approve", "bot_friend_request_handled"],
+    ["/reject", "bot_friend_request_handled"],
+    ["/help", "botfather_help_viewed"],
+    ["/cancel", "botfather_command_cancelled"],
+    ["/install", "chrome_plugin_install_triggered"],
+]
+
+/** 只判前缀选事件名。命中具体命令返回其事件,未命中但以 "/" 开头归兜底 botfather_command_sent。 */
+function matchBotfatherCommandEvent(text: string): string | undefined {
+    if (!text.startsWith("/")) return undefined
+    for (const [prefix, event] of BOTFATHER_COMMAND_EVENTS) {
+        if (text.startsWith(prefix)) return event
+    }
+    return "botfather_command_sent"
+}
+
 export default class ConversationVM extends ProviderListener {
 
     private static nextMessageContainerSeq = 0
@@ -2446,9 +2479,14 @@ export default class ConversationVM extends ProviderListener {
         // /newbot 只测前缀识别已知命令,不采集正文;意图里不含任何正文。
         {
             let botCreateEntry: string | undefined
+            let botCommandEvent: string | undefined
             if (SYSTEM_BOTS.has(channel.channelID) && content instanceof MessageText) {
-                if ((content.text || "").trim().startsWith("/newbot")) {
+                const text = (content.text || "").trim()
+                if (text.startsWith("/newbot")) {
                     botCreateEntry = "botfather_im"
+                } else {
+                    // 泛化:命令前缀→事件名(只判前缀选事件名,绝不把 content.text 存进 intent/props)
+                    botCommandEvent = matchBotfatherCommandEvent(text)
                 }
             }
             // 被 @ 的 AI bot 列表(供 ai_mentioned 补 bot_id/bot_type;system 判据仅 SYSTEM_BOTS,余为 custom)
@@ -2469,6 +2507,8 @@ export default class ConversationVM extends ProviderListener {
                 channelType: channel.channelType,
                 mentionAis: !!(mentionAny && mentionAny.ais),
                 botCreateEntry,
+                botCommandEvent,
+                isReply: !!(content as any).reply,
                 mentionedBots,
             })
         }

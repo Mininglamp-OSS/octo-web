@@ -131,6 +131,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     declare context: React.ContextType<typeof I18nContext>;
 
     private textareaRef = createRef<HTMLTextAreaElement>();
+    /** 埋点 295:主题输入去抖计时器，只记「发生了主题输入」，绝不采输入内容。 */
+    private themeTrackTimer: ReturnType<typeof setTimeout> | null = null;
 
     state: SummaryCreatePageState = {
         topic: "",
@@ -499,6 +501,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     private handleTemplateClick = (template: TopicTemplate) => {
+        // 埋点 296:套用主题模板（内置卡片与自定义卡片都汇流到此，隐私 props 恒空）。
+        Dap.shared.track("smart_summary_template_applied", {});
         const { t: translate } = this.context;
         const { text, range } = computeTemplateSelection(template, {
             topic: translate("summary.templates.custom.promptTopic"),
@@ -788,6 +792,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     handleSelectMode = (mode: 'normal' | 'agent') => {
         // 已在目标模式则短路，避免重复进入 agent 触发多余的历史拉取/状态重置。
         if (mode === this.state.mode) return;
+        // 埋点 294:总结模式切换（普通↔agent），短路之后发，避免重复点同模式虚发。
+        Dap.shared.track("smart_summary_mode_switched", {});
         if (mode === 'agent') {
             this.enterAgentMode();
         } else {
@@ -1167,6 +1173,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     : e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH);
                                 this.setState({ topic: nextTopic, templatePlaceholderRange: null });
                                 this.autoResizeTextarea();
+                                // 埋点 295:主题输入去抖 600ms 后发一次，仅在非空时发，不采内容。
+                                if (this.themeTrackTimer) clearTimeout(this.themeTrackTimer);
+                                this.themeTrackTimer = setTimeout(() => {
+                                    if (nextTopic.trim()) Dap.shared.track("smart_summary_theme_input", {});
+                                }, 600);
                             }}
                             onFocus={this.handleInputFocus}
                             placeholder={translate("summary.create.topicPlaceholder")}

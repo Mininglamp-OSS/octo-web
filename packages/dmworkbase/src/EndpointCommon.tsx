@@ -10,6 +10,8 @@ import { isChannelSearchEnabled } from "./features/channelSearch/feature";
 export class MessageContextMenus {
   title!: string;
   onClick?: () => void;
+  /** 测试锚点（kebab-case），透传到菜单项 <li> 的 data-testid，供埋点规则命中 */
+  testid?: string;
 }
 
 export class ShowConversationOptions {

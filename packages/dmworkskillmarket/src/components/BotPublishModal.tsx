@@ -64,6 +64,7 @@ export default function BotPublishModal({
       footer={
         <WKButton
           variant="primary"
+          data-testid="skill-bot-publish-copy"
           icon={copied ? <Check size={15} /> : <Copy size={15} />}
           onClick={handleCopy}
           disabled={!prompt}

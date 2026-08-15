@@ -24,6 +24,12 @@ import { templateForPathname } from './apiPath'
 // 锚点规则表(见 TrackRules.ts):点击委托 closest('[data-track]') 落空后的纯前端 fallback。
 // TrackRules 自身零依赖,不成环。
 import { TRACK_RULES, buildIndex, matchRoute, type TrackRule, type TrackRuleIndex } from './TrackRules'
+// 中央映射·path 通道(①,见 FetchRules.ts):把成功(2xx)的第一方请求 method+path 映射成
+// 整合表事件名再 track 一次。零依赖、零改组件;pathname 仅用于选事件名,绝不落库。
+import { FETCH_RULES, buildFetchIndex, matchFetchEvent, rawPathname, type FetchRuleIndex } from './FetchRules'
+// 中央映射·body 键通道(②,见 BodyRules.ts):对白名单端点 clone 请求体、只读顶层枚举键映射事件。
+// 受控放宽「不读正文」边界:只碰白名单端点、只读键不读值、只解析 JSON 串体、同源+2xx 才触发。
+import { BODY_RULES, buildBodyIndex, computeBodyEvent, type BodyRuleIndex } from './BodyRules'
 
 export type TrackPrimitive = string | number | boolean | null
 
@@ -954,21 +960,33 @@ class DapImpl {
 
     // ----------------------------------------------- 机制③ fetch / XHR 包裹
     private installHttpWrap(): void {
-        const emit = (rawUrl: string, method: string, status: number, durationMs: number) => {
+        // 中央映射索引:一次性构建,emit 闭包复用(installOnce('http') 保证只装一次)。
+        const fetchIndex: FetchRuleIndex = buildFetchIndex(FETCH_RULES)
+        const bodyIndex: BodyRuleIndex = buildBodyIndex(BODY_RULES)
+        // bodyEvent 在包裹处(能拿到请求体时)算好传入:body 键通道优先于 path 通道,避免重复计事件。
+        const emit = (rawUrl: string, method: string, status: number, durationMs: number, bodyEvent?: string) => {
             this.safe(() => {
                 if (!rawUrl) return
                 // 只采第一方(同源)API telemetry:跨域(预签名对象存储/第三方)路径含对象键/文件名,一律不采
                 if (!isFirstParty(rawUrl)) return
+                const m = (method || 'GET').toUpperCase()
                 // 量/错误率/延迟,不带 query、不带正文;路径按白名单收窄脱敏。
                 // **不从 URL 路径提取 object_id**:路径末段可能是一次性登录码 / 邀请 token / 对象键
                 // (见 PR #1320 review),原样取出即等于把凭证放进 telemetry。http_request 只保留
                 // 已脱敏的 path 维度,不再单列 object_id(path 已覆盖其可分析的信息)。
                 this.track('http_request', {
-                    method: (method || 'GET').toUpperCase(),
+                    method: m,
                     path: normalizePath(rawUrl),
                     status_bucket: statusBucket(status),
                     duration_ms: Math.round(durationMs),
                 })
+                // 中央映射(①path / ②body):仅在 **2xx**(动作确已发生)时补发一条映射事件。
+                // body 键通道优先(更具体);其次 path 通道。映射事件不带任何来自请求的值
+                // (无 object_id / query / 正文),故凭证 / 文件名不可能借此外泄。
+                if (status >= 200 && status < 300) {
+                    const mapped = bodyEvent ?? matchFetchEvent(fetchIndex, m, rawPathname(rawUrl))
+                    if (mapped) this.track(mapped, {})
+                }
             })
         }
 
@@ -989,9 +1007,13 @@ class DapImpl {
                 if (url && url.indexOf(BATCH_PATH) !== -1) {
                     return orig(input as RequestInfo, init)
                 }
+                // body 键通道:只在能拿到 JSON 字符串体时算(Request 对象体是流、只能异步读,跳过);
+                // computeBodyEvent 内部做白名单门 + 只读键,返回的只是本表里的事件名常量。
+                const reqBody = typeof init?.body === 'string' ? init.body : undefined
+                const bodyEvent = computeBodyEvent(bodyIndex, method || 'GET', url, reqBody)
                 return orig(input as RequestInfo, init)
                     .then((resp) => {
-                        emit(url, method || 'GET', resp.status, Date.now() - start)
+                        emit(url, method || 'GET', resp.status, Date.now() - start, bodyEvent)
                         return resp
                     })
                     .catch((err) => {
@@ -1022,6 +1044,14 @@ class DapImpl {
                 const url = this.__trackUrl || ''
                 const method = this.__trackMethod || 'GET'
                 if (url && url.indexOf(BATCH_PATH) === -1) {
+                    // body 键通道:axios 走 XHR,JSON payload 序列化为字符串体传入 send(args[0])。
+                    // 只在字符串体上算(Blob/FormData 上传等一律跳过);内部白名单门 + 只读键。
+                    const bodyEvent = computeBodyEvent(
+                        bodyIndex,
+                        method,
+                        url,
+                        typeof args[0] === 'string' ? (args[0] as string) : undefined,
+                    )
                     // 在闭包里定住 url/method/start(不在 loadend 时读实例字段,避免复用/
                     // 重 open 后读到串味的路径);once:true 保证复用实例多次 send 不累积监听
                     // (否则一个 loadend 会补发历史请求的 http_request,见 review P2)。
@@ -1036,7 +1066,7 @@ class DapImpl {
                         'loadend',
                         () => {
                             this.removeEventListener('abort', onAbort)
-                            if (!aborted) emit(url, method, this.status, Date.now() - start)
+                            if (!aborted) emit(url, method, this.status, Date.now() - start, bodyEvent)
                         },
                         { once: true },
                     )

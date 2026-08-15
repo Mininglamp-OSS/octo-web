@@ -35,6 +35,8 @@ export class ContextMenusData {
     children?: ContextMenusData[]
     /** 选中态（子菜单项右侧显示主题色 ✓） */
     checked?: boolean
+    /** 测试锚点（kebab-case），渲染到 <li> 的 data-testid，供埋点规则命中 */
+    testid?: string
 }
 
 // ── 内部：渲染单个图标 ──
@@ -206,6 +208,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         return (
             <li
                 key={i}
+                data-testid={m.testid}
                 className={classNames(m.danger && "wk-ctx-danger")}
                 onClick={(e) => {
                     if (hasChildren) {

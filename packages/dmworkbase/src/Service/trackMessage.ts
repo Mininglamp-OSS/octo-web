@@ -33,6 +33,10 @@ interface SendIntent {
     mentionAis: boolean
     /** 命中 botfather /newbot 时置为入口枚举 'botfather_im',否则 undefined */
     botCreateEntry?: string
+    /** 命中 botfather 其它命令前缀时置为对应事件名(§B),否则 undefined。只含事件名枚举,无正文。 */
+    botCommandEvent?: string
+    /** 该发送是否为回复(reply)。仅布尔,无正文。 */
+    isReply?: boolean
     /** 被 @ 的 AI bot 列表(供 ai_mentioned 补 bot_id/bot_type;type ∈ 'system'|'custom') */
     mentionedBots?: Array<{ id: string; type: string }>
 }
@@ -105,6 +109,10 @@ export function trackMessageSent(clientSeq: number | undefined): void {
         object_id: String(clientSeq), // client_seq 作 object_id
     }
     Dap.shared.track('message_sent', base)
+    // §IM 16:回复(reply)语义。props 恒空,不带正文/被回复消息内容。
+    if (intent.isReply) {
+        Dap.shared.track('message_replied', {})
+    }
     const bots = intent.mentionedBots || []
     if (intent.mentionAis || bots.length > 0) {
         if (bots.length > 0) {
@@ -123,6 +131,10 @@ export function trackMessageSent(clientSeq: number | undefined): void {
     if (intent.botCreateEntry) {
         // §5.4:started 语义,quality=submitted;进不了「创建成功」分母
         Dap.shared.track('bot_create_started', { entry: intent.botCreateEntry, object_id: base.object_id })
+    }
+    if (intent.botCommandEvent) {
+        // §B:发给 botfather 的命令按前缀映射的事件。props 恒空,绝不带 content.text。
+        Dap.shared.track(intent.botCommandEvent, {})
     }
 }
 

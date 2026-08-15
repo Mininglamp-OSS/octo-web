@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
 import { MoreHorizontal, AlertTriangle, Bot, Clock, FileText, UsersRound, X } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { useI18n, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
 import { getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel } from "../utils/summaryHelpers";
@@ -133,7 +133,11 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         <div
             data-testid={summaryTestIds.card(task.task_id)}
             className={`summary-card${active ? " summary-card--active" : ""}`}
-            onClick={() => onClick(task.task_id)}
+            onClick={() => {
+                // 埋点 305:点开一张总结卡片进入详情（动态 testid 无法走委托，命令式）。
+                Dap.shared.track("smart_summary_opened", {});
+                onClick(task.task_id);
+            }}
         >
             {task.needs_attention && <span className="summary-card-attention-dot" />}
             {/* Generating 状态：顶部显示 AI 分析中文案 */}

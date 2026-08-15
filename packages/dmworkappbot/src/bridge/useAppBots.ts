@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { SpaceService, WKApp } from "@octo/base"
+import { SpaceService, WKApp, Dap } from "@octo/base"
 import AppBotService from "../Service/AppBotService"
 import { filterAppBots, groupAppBots, toAppBotViewItem } from "./appBotList"
 import type { AppBotLoadState } from "./types"
@@ -72,6 +72,16 @@ export function useAppBots({ onSpaceChanged }: UseAppBotsOptions = {}) {
 
   const filteredBots = useMemo(() => filterAppBots(bots, keyword), [bots, keyword])
   const sections = useMemo(() => groupAppBots(filteredBots), [filteredBots])
+
+  // §336 apps_searched:纯客户端过滤,无请求、输入无 testid,故命令式去抖补点。
+  // 仅关键词非空时发,清空不计;props 恒空,不采关键词。
+  useEffect(() => {
+    if (!keyword.trim()) return
+    const timer = setTimeout(() => {
+      Dap.shared.track("apps_searched", {})
+    }, 400)
+    return () => clearTimeout(timer)
+  }, [keyword])
 
   return {
     state,

@@ -86,7 +86,68 @@ export function matchRoute(route: TrackRule['route'], current: string): boolean 
  *     closestTestid: 'automation-rule-row' },   // loose:靠 role 命中,无独立 testid
  */
 export const TRACK_RULES: TrackRule[] = [
-    // 待填:按对账 sheet(d_e8d2c5702b3b58abb5f85777)分模块逐条填,事件名以 sheet 为准 + 确认服务端已注册。
-    // 说明:config 驱动面(ChannelSetting/UserInfo 等走 <Sections> 的)改用 Row.trackEvent 覆盖,不走本表;
-    // 本表只吃 imperative JSX 面里「有现成 data-testid / role 可锚、且未挂 data-track」的节点。
+    // ---- A_rule:控件已带稳定 data-testid（dmworksummary summaryTestIds.*），只写规则、零改组件。
+    //      事件名以整合表 d_2c47796780d4efdd3c5aa8b3 为准，须先在服务端采集器注册（octo-dap 侧）。
+    { event: 'channel_summary_panel_opened', testid: 'summary-chat-panel-header-btn', on: 'click' },
+    { event: 'smart_summary_edit_opened', testid: 'summary-detail-edit-btn', on: 'click' },
+    { event: 'smart_summary_regenerate_dialog_opened', testid: 'summary-detail-regenerate-btn', on: 'click' },
+    { event: 'smart_summary_delete_dialog_opened', testid: 'summary-detail-delete-btn', on: 'click' },
+    { event: 'smart_summary_agent_message_sent', testid: 'summary-agent-send-btn', on: 'click' },
+    { event: 'smart_summary_agent_new_session', testid: 'summary-agent-new-session-btn', on: 'click' },
+
+    // ---- IM / 消息（dmworkbase）：右键菜单 testid 透传链 + 输入区控件（agent A）。
+    { event: 'message_copied', testid: 'ctx-message-copy', on: 'click' },
+    { event: 'message_forward_panel_opened', testid: 'ctx-message-forward', on: 'click' },
+    { event: 'message_subchannel_create_dialog_opened', testid: 'ctx-message-create-thread', on: 'click' },
+    { event: 'message_multiselect_started', testid: 'ctx-message-multiselect', on: 'click' },
+    // 20 号一个 event 两枚 testid（逐条转发 + 合并转发）。
+    { event: 'message_multiselect_forward_panel_opened', testid: 'multiselect-forward-btn', on: 'click' },
+    { event: 'message_multiselect_forward_panel_opened', testid: 'multiselect-mergeforward-btn', on: 'click' },
+    { event: 'message_multiselect_delete_dialog_opened', testid: 'multiselect-delete-btn', on: 'click' },
+    { event: 'channel_search_opened', testid: 'channel-search-entry', on: 'click' },
+    // 以下三枚为 toggle 型控件（开+关都触发 click）；spec 列为 ADD-TESTID，若只想计「打开」需后续加 gate。
+    { event: 'channel_search_filter_panel_opened', testid: 'channel-search-filter-trigger', on: 'click' },
+    { event: 'input_emoji_picker_opened', testid: 'input-emoji-btn', on: 'click' },
+    { event: 'input_sticker_sent', testid: 'input-sticker-item', on: 'click' },
+    { event: 'input_attachment_clicked', testid: 'input-attachment-btn', on: 'click' },
+    { event: 'input_expanded', testid: 'input-expand-btn', on: 'click' },
+
+    // ---- 群 / 联系人（dmworkcontacts 等，agent B）。
+    { event: 'group_qrcode_invite_link_copied', testid: 'group-qrcode-copy-invite-link-btn', on: 'click' },
+    { event: 'group_member_add_dialog_opened', testid: 'group-member-add-btn', on: 'click' },
+    { event: 'group_member_remove_dialog_opened', testid: 'group-member-remove-btn', on: 'click' },
+    { event: 'group_md_preview_toggled', testid: 'group-md-preview-btn', on: 'click' },
+    { event: 'webhook_create_dialog_opened', testid: 'webhook-create-btn', on: 'click' },
+    { event: 'webhook_edit_dialog_opened', testid: 'webhook-edit-btn', on: 'click' },
+    { event: 'group_admin_add_dialog_opened', testid: 'group-add-manager-btn', on: 'click' },
+    { event: 'group_bot_admin_add_dialog_opened', testid: 'group-add-bot-admin-btn', on: 'click' },
+    { event: 'group_dissolve_dialog_opened', testid: 'group-disband-btn', on: 'click' },
+    { event: 'group_bot_admin_remove_dialog_opened', testid: 'group-bot-admin-remove-btn', on: 'click' },
+
+    // ---- 市场 M11（dmworkmcp / dmworkskillmarket，agent C）。
+    { event: 'market_tab_switched', testid: 'market-sidebar-item', on: 'click' },
+    { event: 'market_category_filtered', testid: 'mcp-category-pill', on: 'click' },
+    { event: 'market_category_filtered', testid: 'skill-category-chip', on: 'click' },
+    { event: 'market_skill_sorted', testid: 'skill-sort-option', on: 'click' },
+    { event: 'market_skill_install_prompt_copied', testid: 'skill-install-copy', on: 'click' },
+    { event: 'market_mcp_connect_prompt_copied', testid: 'mcp-quickaccess-copy', on: 'click' },
+    { event: 'market_publish_entry_clicked', testid: 'mcp-publish-entry', on: 'click' },
+    { event: 'market_publish_entry_clicked', testid: 'skill-publish-entry', on: 'click' },
+    { event: 'market_publish_method_selected', testid: 'mcp-publish-method-bot', on: 'click', props: { method: 'bot' } },
+    { event: 'market_publish_method_selected', testid: 'mcp-publish-method-manual', on: 'click', props: { method: 'manual' } },
+    { event: 'market_publish_method_selected', testid: 'skill-publish-method-bot', on: 'click', props: { method: 'bot' } },
+    { event: 'market_publish_method_selected', testid: 'skill-publish-method-manual', on: 'click', props: { method: 'manual' } },
+    { event: 'market_bot_publish_prompt_copied', testid: 'skill-bot-publish-copy', on: 'click' },
+    // 331 MCP 侧走共享 PromptForwardActions；用 route 门与 Expert/squad(/mcp-market/experts) 消歧。
+    { event: 'market_bot_publish_prompt_copied', testid: 'mcp-bot-publish-copy', on: 'click', route: '/mcp-market/mcp' },
+
+    // ---- onboarding / 设置（agent D）。
+    { event: 'onboarding_opensource_clicked', testid: 'onboarding-opensource-link', on: 'click' },
+    { event: 'onboarding_about_clicked', testid: 'onboarding-about-link', on: 'click' },
+    { event: 'settings_onboarding_guide_reopened', testid: 'nav-settings-onboarding', on: 'click' },
+    { event: 'settings_notification_toggled', testid: 'nav-settings-notification-toggle', on: 'click' },
+    { event: 'my_info_opened', testid: 'nav-user-avatar', on: 'click' },
+
+    // whiteboard_bg_changed（testid board-canvas-color-control）在 octo-docs-module 独立仓，
+    // 需 route 消歧 + 跨仓版本联动，随该仓 PR 一并加，不在本仓盲填。
 ]

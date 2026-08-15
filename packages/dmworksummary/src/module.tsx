@@ -1,6 +1,6 @@
 import React from "react";
 import type { IModule } from "@octo/base";
-import { i18n, WKApp, Menus, t as translate } from "@octo/base";
+import { i18n, WKApp, Menus, t as translate, Dap } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
 import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
@@ -174,6 +174,8 @@ export class SummaryModule implements IModule {
                 menu.badge = getPendingInvitationBadge();
                 // 保留既有顶层入口行为：点击后直接进入新建总结页。
                 menu.onPress = () => {
+                    // 埋点 290:从 NavRail「总结」顶层入口进入模块（隐私 props 恒空）。
+                    Dap.shared.track("smart_summary_module_entered", {});
                     WKApp.routeLeft.popToRoot();
                     const page = WKApp.route.get("/summary/create");
                     if (page && React.isValidElement(page)) {

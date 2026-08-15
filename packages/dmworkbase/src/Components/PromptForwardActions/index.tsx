@@ -267,6 +267,7 @@ export default function PromptForwardActions({
 
   const copyButton = (
     <WKButton
+      data-testid="mcp-bot-publish-copy"
       variant="secondary"
       icon={copied ? <Check size={15} /> : <Copy size={15} />}
       onClick={handleCopy}

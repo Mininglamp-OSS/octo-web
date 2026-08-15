@@ -188,6 +188,7 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
             <IconClick
                 size="sm"
                 icon={typeof icon === 'string' ? <img src={icon} alt="" /> : icon}
+                data-testid="input-emoji-btn"
                 onClick={this.togglePanel}
             />
             {typeof document !== "undefined" ? ReactDOM.createPortal(overlay, document.body) : overlay}
@@ -582,6 +583,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                     {
                         isSticker ? stickers.map((sticker) => {
                             return <li key={sticker.sticker_id} className="wk-sticker-item"
+                                data-testid="input-sticker-item"
                                 onMouseEnter={(e) => this.scheduleStickerPreview(sticker, e.currentTarget)}
                                 onMouseLeave={this.onStickerLeave}
                                 onClick={(e) => {

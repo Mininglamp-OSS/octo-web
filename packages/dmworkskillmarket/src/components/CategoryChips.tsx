@@ -63,6 +63,7 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
       <button
         key={category.id}
         type="button"
+        data-testid="skill-category-chip"
         className={
           category.id === activeId
             ? `${className} is-active`
@@ -106,6 +107,7 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
                   key={category.id}
                   type="button"
                   role="menuitem"
+                  data-testid="skill-category-chip"
                   className={category.id === activeId ? "is-active" : undefined}
                   onClick={() => choose(category.id)}
                 >
@@ -117,6 +119,7 @@ export default function CategoryChips({ categories, activeId, onChange }: Catego
                   key={`mobile-${category.id}`}
                   type="button"
                   role="menuitem"
+                  data-testid="skill-category-chip"
                   className={
                     category.id === activeId
                       ? "skill-market-category-menu__mobile-only is-active"

@@ -120,6 +120,8 @@ export interface NavFlyoutMenuItemProps {
     active?: boolean;
     trailing?: React.ReactNode;
     className?: string;
+    /** 埋点锚点：透传到根 button，供 Dap 规则表 fallback 命中（可选，不传即原行为，向后兼容）。 */
+    "data-testid"?: string;
 }
 
 export function NavFlyoutMenuItem({
@@ -130,6 +132,7 @@ export function NavFlyoutMenuItem({
     active = false,
     trailing,
     className,
+    "data-testid": dataTestId,
 }: NavFlyoutMenuItemProps) {
     const itemClassName = [
         "wk-navrail__flyout-item",
@@ -143,6 +146,7 @@ export function NavFlyoutMenuItem({
         <button
             type="button"
             className={itemClassName}
+            data-testid={dataTestId}
             role={role}
             aria-checked={ariaChecked}
             onClick={onSelect}

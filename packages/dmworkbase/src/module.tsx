@@ -1008,6 +1008,7 @@ export default class BaseModule implements IModule {
 
         return {
           title: t("base.module.contextMenus.copy"),
+          testid: "ctx-message-copy",
           onClick: () => {
             const selectedText = context.getCachedSelectedText?.();
             // RichText(=14)：取顶层 plain（server 权威纯文本），避免对 content
@@ -1153,6 +1154,7 @@ export default class BaseModule implements IModule {
 
         return {
           title: t("base.module.contextMenus.forward"),
+          testid: "ctx-message-forward",
           onClick: () => {
             context.fowardMessageUI(message);
           },
@@ -1179,6 +1181,7 @@ export default class BaseModule implements IModule {
         }
         return {
           title: t("base.module.contextMenus.multiSelect"),
+          testid: "ctx-message-multiselect",
           onClick: () => {
             context.setEditOn(true);
           },
@@ -1290,6 +1293,7 @@ export default class BaseModule implements IModule {
         }
         return {
           title: t("base.module.contextMenus.createThread"),
+          testid: "ctx-message-create-thread",
           onClick: () => {
             // 使用消息内容作为默认名称，截取前20个字符
             const defaultName = (

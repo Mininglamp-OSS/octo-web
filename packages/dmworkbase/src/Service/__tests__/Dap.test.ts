@@ -298,6 +298,157 @@ describe('Dap — unsupported runtime stays disabled (desktop/file://)', () => {
     })
 })
 
+describe('Dap — 中央映射·path 通道(①):成功请求补发映射事件', () => {
+    let fetchMock: FetchMock
+    beforeEach(() => {
+        localStorage.clear()
+        fetchMock = okFetch()
+        // @ts-expect-error test stub
+        globalThis.fetch = fetchMock
+    })
+
+    /** 从自身上报批次里取所有事件名。 */
+    function eventNamesFromBatch(): string[] {
+        const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
+        if (!batchCall) return []
+        const body = JSON.parse((batchCall[1] as RequestInit).body as string)
+        return (body.events as Array<{ event_name: string }>).map((e) => e.event_name)
+    }
+
+    it('2xx 的第一方请求既发 http_request 又补发映射事件(POST /api/v1/docs → document_created)', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        const origin = location.origin
+        await globalThis.fetch(`${origin}/api/v1/docs`, { method: 'POST' })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        const names = eventNamesFromBatch()
+        expect(names).toContain('http_request')
+        expect(names).toContain('document_created')
+    })
+
+    it('4xx 不补发映射事件(动作未发生),但仍记 http_request', async () => {
+        const { Dap } = await freshTracker()
+        // 业务请求 404、自身上报批次 200:必须在 init 包裹前替换,否则包裹到的是旧 mock。
+        fetchMock = vi.fn((url: string) =>
+            Promise.resolve({ ok: url === BATCH_PATH, status: url === BATCH_PATH ? 200 : 404 } as Response),
+        )
+        // @ts-expect-error test stub
+        globalThis.fetch = fetchMock
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        await globalThis.fetch(`${location.origin}/api/v1/docs`, { method: 'POST' })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        const names = eventNamesFromBatch()
+        expect(names).toContain('http_request')
+        expect(names).not.toContain('document_created')
+    })
+
+    it('跨域请求即使 2xx 也不映射(与 http_request 同源边界一致)', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        await globalThis.fetch('https://other.example.com/api/v1/docs', { method: 'POST' })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        expect(eventNamesFromBatch()).not.toContain('document_created')
+    })
+})
+
+describe('Dap — 中央映射·body 键通道(②):按请求体顶层键补发映射事件', () => {
+    let fetchMock: FetchMock
+    beforeEach(() => {
+        localStorage.clear()
+        fetchMock = okFetch()
+        // @ts-expect-error test stub
+        globalThis.fetch = fetchMock
+    })
+
+    function eventNamesFromBatch(): string[] {
+        const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
+        if (!batchCall) return []
+        const body = JSON.parse((batchCall[1] as RequestInit).body as string)
+        return (body.events as Array<{ event_name: string }>).map((e) => e.event_name)
+    }
+
+    it('PUT /api/v1/groups/:id/setting {mute} → conversation_muted(2xx 补发,不泄露体值)', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+
+        await globalThis.fetch(`${location.origin}/api/v1/groups/g1/setting`, {
+            method: 'PUT',
+            body: JSON.stringify({ mute: 1, remark_secret: 'do-not-leak' }),
+        })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        const names = eventNamesFromBatch()
+        expect(names).toContain('http_request')
+        expect(names).toContain('conversation_muted')
+        // 体里的任何值都不得出现在上报里
+        const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
+        expect(JSON.stringify(batchCall![1]).includes('do-not-leak')).toBe(false)
+    })
+
+    it('body 通道优先于 path 通道(不重复计事件)', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+        // PUT /groups/:id 只在 body 表(name→改名);path 表无此项 → 只应有一个映射事件。
+        await globalThis.fetch(`${location.origin}/api/v1/groups/g1`, {
+            method: 'PUT',
+            body: JSON.stringify({ name: 'newname' }),
+        })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        const names = eventNamesFromBatch()
+        expect(names.filter((n) => n === 'group_name_edited')).toHaveLength(1)
+    })
+
+    it('非白名单端点不读体、不映射', async () => {
+        const { Dap } = await freshTracker()
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+        await globalThis.fetch(`${location.origin}/api/v1/not-whitelisted/x`, {
+            method: 'PUT',
+            body: JSON.stringify({ mute: 1 }),
+        })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        expect(eventNamesFromBatch()).not.toContain('conversation_muted')
+    })
+
+    it('4xx 不补发 body 映射事件', async () => {
+        const { Dap } = await freshTracker()
+        fetchMock = vi.fn((url: string) =>
+            Promise.resolve({ ok: url === BATCH_PATH, status: url === BATCH_PATH ? 200 : 403 } as Response),
+        )
+        // @ts-expect-error test stub
+        globalThis.fetch = fetchMock
+        Dap.shared.setEnabled(true)
+        Dap.shared.init()
+        await globalThis.fetch(`${location.origin}/api/v1/groups/g1/setting`, {
+            method: 'PUT',
+            body: JSON.stringify({ mute: 1 }),
+        })
+        Dap.shared.flush()
+        await Promise.resolve()
+
+        expect(eventNamesFromBatch()).not.toContain('conversation_muted')
+    })
+})
+
 describe('TrackRules — buildIndex / matchRoute (pure)', () => {
     it('buildIndex splits testid rules into the Map and role-only rules into loose', async () => {
         const { buildIndex } = await import('../TrackRules')
