@@ -167,7 +167,6 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
             <li key={item.id}>
               <button
                 type="button"
-                data-testid="market-sidebar-item"
                 className={
                   item.id === activeId
                     ? "wk-mcp-sidebar__item wk-mcp-sidebar__item--active"

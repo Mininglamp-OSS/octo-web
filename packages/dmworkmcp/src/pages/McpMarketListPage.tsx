@@ -743,7 +743,6 @@ export default class McpMarketListPage extends Component<
             {categories.map((cat) => (
               <button
                 key={cat.key}
-                data-testid="mcp-category-pill"
                 className={
                   (cat.key === "all" ? categoriesSelected.length === 0 : categoriesSelected.includes(cat.key))
                     ? "wk-mcp__pill wk-mcp__pill--active"

@@ -43,6 +43,7 @@ import ThreadIndicator, {
 } from "../../Components/ThreadIndicator";
 import { isMessageContinuation } from "../../Service/messageContinuity";
 import { isMessageSelectable } from "../../Service/messageSelection";
+import { trackMessageRevoked } from "../../Service/trackMessage";
 import { I18nContext } from "../../i18n";
 import { formatMessageTimestamp } from "../../Utils/time";
 import {
@@ -228,6 +229,12 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
   onMessageRevoke() {
     const { message } = this.props;
     this.conversationProvider.revokeMessage(message.message);
+    // 气泡撤回入口直接调低层 conversationProvider(绕过 vm.revokeMessage),故在此单独补点。
+    //   与会话菜单入口(vm.revokeMessage)共用命令式单通道,fetch 规则已删除,不会双计(见四审 P1-1)。
+    trackMessageRevoked(
+      message.message.clientSeq,
+      message.message.channel?.channelType ?? 0
+    );
   }
   onMultiple() {
     const { context } = this.props;

@@ -315,19 +315,19 @@ describe('Dap — 中央映射·path 通道(①):成功请求补发映射事件'
         return (body.events as Array<{ event_name: string }>).map((e) => e.event_name)
     }
 
-    it('2xx 的第一方请求既发 http_request 又补发映射事件(POST /api/v1/message/revoke → message_revoked)', async () => {
+    it('2xx 的第一方请求既发 http_request 又补发映射事件(POST /api/v1/user/login → user_login)', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.setEnabled(true)
         Dap.shared.init()
 
         const origin = location.origin
-        await globalThis.fetch(`${origin}/api/v1/message/revoke`, { method: 'POST' })
+        await globalThis.fetch(`${origin}/api/v1/user/login`, { method: 'POST' })
         Dap.shared.flush()
         await Promise.resolve()
 
         const names = eventNamesFromBatch()
         expect(names).toContain('http_request')
-        expect(names).toContain('message_revoked')
+        expect(names).toContain('user_login')
     })
 
     it('4xx 不补发映射事件(动作未发生),但仍记 http_request', async () => {

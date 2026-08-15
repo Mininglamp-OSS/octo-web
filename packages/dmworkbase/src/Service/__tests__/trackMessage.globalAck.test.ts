@@ -153,3 +153,41 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
         expect(named('message_sent')).toHaveLength(0)
     })
 })
+
+/**
+ * message_revoked 单通道契约(对应四审 P1-1 blocking):
+ *   撤回原先同时挂在 fetch 通道(FetchRules POST /message/revoke)与命令式 trackMessageRevoked 上,
+ *   会话菜单入口双发(fetch 空属性 + 命令式富属性)、气泡入口又只发 fetch 空属性,既双计又属性不一致。
+ *   修法:删除 fetch 规则,两个撤回入口(vm.revokeMessage / Messages/Base.onMessageRevoke)都调
+ *   trackMessageRevoked,统一收口到命令式单通道。此处断言每次撤回恰好补发一条、且带富属性。
+ */
+describe('trackMessage — message_revoked 命令式单通道 (四审 P1-1)', () => {
+    beforeEach(() => {
+        trackCalls.length = 0
+        enabled = true
+    })
+
+    function named(name: string) {
+        return trackCalls.filter((c) => c.name === name)
+    }
+
+    it('emits exactly one message_revoked with rich props per revoke', async () => {
+        const { trackMessageRevoked } = await freshTrack()
+
+        trackMessageRevoked(555, 2)
+
+        const revoked = named('message_revoked')
+        expect(revoked).toHaveLength(1)
+        expect(revoked[0].props).toEqual({ channel_type: 2, object_id: '555' })
+    })
+
+    it('object_id is null when clientSeq is missing (no content leak)', async () => {
+        const { trackMessageRevoked } = await freshTrack()
+
+        trackMessageRevoked(undefined, 1)
+
+        const revoked = named('message_revoked')
+        expect(revoked).toHaveLength(1)
+        expect(revoked[0].props).toEqual({ channel_type: 1, object_id: null })
+    })
+})

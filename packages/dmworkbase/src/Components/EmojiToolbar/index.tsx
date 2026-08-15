@@ -192,7 +192,6 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
             <IconClick
                 size="sm"
                 icon={typeof icon === 'string' ? <img src={icon} alt="" /> : icon}
-                data-testid="input-emoji-btn"
                 onClick={this.togglePanel}
             />
             {typeof document !== "undefined" ? ReactDOM.createPortal(overlay, document.body) : overlay}

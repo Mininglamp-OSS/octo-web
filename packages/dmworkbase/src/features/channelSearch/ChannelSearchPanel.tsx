@@ -333,7 +333,6 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
           <div className="wk-channel-search-filter-wrap" ref={filterWrapRef}>
             <button
               className="wk-channel-search-filter-trigger"
-              data-testid="channel-search-filter-trigger"
               type="button"
               onClick={toggleFilterOpen}
             >

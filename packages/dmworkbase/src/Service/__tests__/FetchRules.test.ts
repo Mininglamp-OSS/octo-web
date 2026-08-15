@@ -182,9 +182,14 @@ describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负
             'group_md_viewed',                     // 群设置面板随行拉取,编辑回读也重打 → 删除
             'group_webhook_panel_opened',          // 增删/重置 webhook 后回读刷新列表会重打 → 删除
             'market_card_viewed',                  // 卡片主体点击命令式(GET /:id 编辑也拉,fetch 层区分不了看/编)
+            'message_revoked',                     // 命令式单通道(两个撤回入口都调 trackMessageRevoked;fetch 规则会双计,见四审 P1-1)
         ])
         const leaked = FETCH_RULES.filter((r) => uiOnly.has(r.event)).map((r) => `${r.method} ${r.path} → ${r.event}`)
         expect(leaked, leaked.join('\n')).toEqual([])
+    })
+
+    it('POST /message/revoke 不产出 message_revoked(改命令式单通道,fetch+命令式会双计;见四审 P1-1)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/message/revoke')).toBeUndefined()
     })
 
     it('市场详情 GET /:id 不再产出 market_card_viewed(改命令式,fetch 层区分不了看/编;见二审 P2-1)', () => {

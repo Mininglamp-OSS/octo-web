@@ -125,7 +125,10 @@ export const FETCH_RULES: FetchRule[] = [
     // space_switched 不在此通道 —— POST /conversation/sync 是 WuKongIM SDK 的会话同步回调,连接/重连/冷启动
     //   都会触发,不只切换空间。改为 Pages/Main applySpaceSelection(切换确认后)命令式 track(见 review P1-3)。
     { method: 'POST', path: '/api/v1/space/join', event: 'space_join_new' },
-    { method: 'POST', path: '/api/v1/message/revoke', event: 'message_revoked' },
+    // message_revoked 不在此通道 —— 撤回成功后已由命令式 trackMessageRevoked 采集(带 channel_type/object_id
+    //   富属性),且两个撤回入口(会话菜单 vm.revokeMessage、气泡 Messages/Base.onMessageRevoke)都补点。
+    //   若此处再挂 POST /message/revoke 的 fetch 规则,会话菜单路径会双发(fetch 空属性 + 命令式富属性),
+    //   气泡路径又只发 fetch 空属性,属性还不一致。故删除 fetch 规则,统一收口到命令式单通道(见四审 P1-1)。
     { method: 'POST', path: '/api/v1/groups/:id/threads', event: 'message_subchannel_created' },
     { method: 'DELETE', path: '/api/v1/message', event: 'message_multiselect_deleted' },
     // channel_subchannel_panel_opened 不在此通道 —— GET /groups/:id/threads(threadList)在删除/归档/重试

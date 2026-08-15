@@ -1753,7 +1753,6 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             <IconClick
               size="sm"
               title={expanded ? t("base.messageInput.collapse") : t("base.messageInput.expand")}
-              data-testid="input-expand-btn"
               onClick={toggleExpand}
               icon={
                 expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />
