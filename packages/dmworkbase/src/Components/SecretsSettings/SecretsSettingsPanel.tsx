@@ -12,6 +12,7 @@ import WKModal, { wkConfirm } from "../WKModal";
 import WKButton from "../WKButton";
 import { useI18n } from "../../i18n";
 import SecretsService, { SecretListItem } from "../../Service/SecretsService";
+import { Dap } from "../../Service/Dap";
 import { extractErrorMsg } from "../../Service/APIClient";
 import SecretEditModal from "./SecretEditModal";
 import { formatRelativeFromNow } from "./relativeTime";
@@ -76,6 +77,13 @@ export default function SecretsSettingsPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    // 十二审 🔴 P1-2:settings_secrets_opened = 面板挂载 = 打开密钥设置一次。原挂在 GET /manager/secrets
+    //   的 2xx 通道,但该 GET 是列表加载,面板挂载/删除刷新/保存(onSaved)/错误重试都会重拉,一次打开 + N 次
+    //   增删改被计成 N+1 次「打开」。改由挂载命令式 track 一次(与 settings_voice_opened 同款)。
+    Dap.shared.track("settings_secrets_opened", {});
+  }, []);
 
   // 复制引用名（不是复制 key）——呼应聊天里「用我的 XX 密钥」的引用方式。
   const handleCopyName = useCallback(

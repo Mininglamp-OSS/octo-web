@@ -136,7 +136,11 @@ export const FETCH_RULES: FetchRule[] = [
     { method: 'POST', path: '/api/v1/user/emaillogin', event: 'user_login' },
     // space_switched 不在此通道 —— POST /conversation/sync 是 WuKongIM SDK 的会话同步回调,连接/重连/冷启动
     //   都会触发,不只切换空间。改为 Pages/Main applySpaceSelection(切换确认后)命令式 track(见 review P1-3)。
-    { method: 'POST', path: '/api/v1/space/join', event: 'space_join_new' },
+    // space_join_new 不在此通道(十二审 🔴 P1-4)—— POST /space/join 对**审批制**空间返回 2xx 但用户并未加入
+    //   (result.status === NEED_APPROVAL / PENDING,仅提交了申请)。path 规则对 2xx 一律计数,把「提交审批」
+    //   误记成「加入新空间」——即「2xx ≠ 业务成功」,与 summary 信封门是同类问题,path 通道表达不了业务码。
+    //   改为命令式:仅在 status 非审批态(真加入)时 track。收口点 = SpaceService.joinSpace(覆盖 JoinSpaceModal /
+    //   JoinSpacePage)+ Layout auto-join / InviteLanding 两处直发 POST 的成功分支(均在审批 early-return 之后)。
     // message_revoked 不在此通道 —— 撤回成功后已由命令式 trackMessageRevoked 采集(带 channel_type/object_id
     //   富属性)。撤回的唯一活入口是会话菜单 vm.revokeMessage(module.tsx 的 context.revokeMessage)。
     //   若此处再挂 POST /message/revoke 的 fetch 规则,会与命令式双发(fetch 空属性 + 命令式富属性)、属性不一致。
@@ -148,7 +152,13 @@ export const FETCH_RULES: FetchRule[] = [
     //   (实际渲染 ThreadPanel),永不触发;已改到 Pages/Chat/index.tsx 子区 header 开关的「仅开边沿」(见二审 P1-2)。
     // channel_search_tab_switched 不在此通道 —— POST /messages/_search_media|_search_files 每次「搜索」都发,
     //   一次输入去抖/翻页都会重打,请求成功 ≠ 切 tab。改由 ChannelSearchPanel activeTab 变化命令式 track(见二审 P1-4)。
-    { method: 'POST', path: '/api/v1/groups/:id/avatar', event: 'group_avatar_edited' },
+    // group_avatar_edited 不在此通道(十二审 🔴 P1-5)—— POST /groups/:id/avatar 有两个调用方:
+    //   (a) 真实「改群头像」= ChannelAvatar.saveUploadedAvatar(组件自持 HTTP 分支);
+    //   (b) 建群时上传头像 = groupCreateRuntime.uploadGroupAvatar —— 建群选了张图并不是「编辑头像」。
+    //   path 规则区分不了两者,建群会被误计成改头像。且真实手势自身还漏计:生成/清除头像走
+    //   updateChannelAvatarCustom(PUT groups/:id {avatar_text,avatar_color,clear_uploaded_avatar}),
+    //   群级 body 规则只判 name/notice、无 fallback → 那类编辑一个都不发。改为命令式:在 ChannelAvatar
+    //   两处「组件自持 HTTP」的编辑成功分支各单发一次(建群走 onFileUpload/onDraftSave 早返回,天然不发)。
     // group_qrcode_viewed 不在此通道 —— GET /groups/:id/qrcode 由二维码组件挂载即拉,含缩略图/刷新/重试重复打,
     //   请求成功 ≠ 用户主动查看。改由二维码入口点击命令式 track(见二审 P1-5)。
     { method: 'POST', path: '/api/v1/groups/:id/members', event: 'group_member_added' },
@@ -183,7 +193,12 @@ export const FETCH_RULES: FetchRule[] = [
     { method: 'DELETE', path: '/api/v1/groups/:id/bot_admin/:id', event: 'group_bot_admin_removed' },
     { method: 'DELETE', path: '/api/v1/groups/:id/disband', event: 'group_dissolved' },
     { method: 'PUT', path: '/api/v1/groups/:id/members/:id', event: 'group_nickname_edited' },
-    { method: 'POST', path: '/api/v1/message/offset', event: 'conversation_cleared' },
+    // conversation_cleared 不在此通道(十二审 🔴 P1-1)—— POST /api/v1/message/offset 是「清空会话消息」
+    //   的底层端点,但同一个 clearConversationMessages 也被**删好友**(module.tsx removeFriend onOk)顺带调用:
+    //   删好友时会清掉与该好友的会话消息,path 规则把它误计成一次「清空会话」。改为命令式:在两个真实的
+    //   「清空」手势成功后各单发一次(clearChannelSettingMessages 与 Pages/Chat/vm.clearMessages),删好友
+    //   路径直接调 provider、不经这两个入口,故保持静默。会话列表「关闭并清空」右键项经 vm.clearMessages,
+    //   已被覆盖(yujiawei 确认该项本就该计,非污染)。
     // conversation_left 不在此通道 —— 原 POST /groups/:id/exit + DELETE /conversations/:id/:id 两条 fetch 规则
     //   有三个语义缺陷(十一审 🔴):
     //   (a) 退群一次手势双发 —— exitChannelSettingGroup 先 exitChannel(POST exit)、随后 deleteConversation
@@ -203,15 +218,25 @@ export const FETCH_RULES: FetchRule[] = [
     { method: 'POST', path: '/api/v1/friend/apply', event: 'contact_add_friend_clicked' },
     // 注意:/api/v1/docs/* 全套(document_*)已移除 —— issue #1406 明确「24 个 octo-docs 模块事件(独立仓库/嵌入编辑器)
     //       不在本次范围」,且这些请求由**独立的 octo-docs 编辑器**发出,octo-web 运行时根本不发 → 抓不到(死规则)。
-    { method: 'GET', path: '/api/v1/app_bot/available', event: 'apps_module_entered' },
+    // apps_module_entered 不在此通道(十二审 🔴 P1-3)—— GET /app_bot/available 由 useAppBots 在**每次切换空间**
+    //   时经 mittBus "space-changed" 监听重拉(loadData),而 Apps 页首次访问后就常驻 DOM(MainContentLeft 只切
+    //   display 不卸载),所以用户打开过一次 Apps 后,在 Chat/Contacts 任意处切空间都会误发 apps_module_entered;
+    //   重试按钮是第三个触发源。反过来:组件常驻 → 从别处切回 Apps 不发 GET,真实再进入反而漏计。改为命令式:
+    //   在导航真正切到 Apps(menus.id === 'appbot')时计一次,与 contacts_module_entered 同款(桌面 NavRail +
+    //   低屏 tab 两处对称;重复点当前菜单不计)。
     { method: 'PUT', path: '/api/v1/user/language', event: 'language_switched' },
     // 注意:settings_menu_opened 不在此通道。/version.json 由 versionChecker 定时轮询(cache-bust),
     // 请求成功 ≠ 用户打开设置 —— 该事件改由「设置入口」点击(data-testid / 命令式 track)采集。
     { method: 'GET', path: '/api/v1/common/updater/web/1.0', event: 'settings_changelog_viewed' },
     // settings_voice_opened 不在此通道 —— GET /voice/local-config 由语音设置组件挂载即拉,且被设置页其他
     //   子面板/焦点刷新连带调用,请求成功 ≠ 用户打开语音设置。改由语音设置入口点击命令式 track(见二审 P1-3)。
-    { method: 'PUT', path: '/api/v1/voice/local-config', event: 'settings_voice_toggled' },
-    { method: 'GET', path: '/api/v1/manager/secrets', event: 'settings_secrets_opened' },
+    // settings_voice_toggled 不在此通道(十二审 P2)—— PUT /voice/local-config 被两个手势共用:真实开关
+    //   handleLocalToggle({enabled}) 与保存 URL 配置 handleLocalConfigSave(原样带 enabled),编辑 URL 被误计成
+    //   切换。改由 handleLocalToggle 成功后命令式 track(仅真实切换)。reset 走 POST /voice/local-config/reset,不受影响。
+    // settings_secrets_opened 不在此通道(十二审 🔴 P1-2)—— GET /api/v1/manager/secrets 是密钥面板的**列表加载**,
+    //   SecretsSettingsPanel.load() 在挂载、删除后刷新、新增/编辑保存后(onSaved)、以及错误态重试时都会重拉,
+    //   一次打开面板 + N 次增删改会被计成 N+1 次「打开」。改由面板挂载命令式 track 一次(与 settings_voice_opened
+    //   同款,见 VoiceSettingsPanel)。POST/PUT manager/secrets(真实写=配置)仍保留在下方。
     { method: 'POST', path: '/api/v1/manager/secrets', event: 'settings_secrets_configured' },
     { method: 'PUT', path: '/api/v1/manager/secrets/:id', event: 'settings_secrets_configured' },
     { method: 'POST', path: '/v1/auth/oidc/:seg/logout', event: 'user_logout' },

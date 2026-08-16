@@ -30,6 +30,7 @@ import {
   getBrowserUnreadConversationSync,
 } from "../../features/documentTitle";
 import { chatPageTitleController } from "./chatPageTitleController";
+import { Dap } from "../../Service/Dap";
 
 
 const TOP_CONVERSATION_SCORE_BOOST = 1000000000000;
@@ -485,6 +486,9 @@ export class ChatVM extends ProviderListener {
     await WKApp.conversationProvider.clearConversationMessages(
       conversationWrap.conversation
     );
+    // 十二审 🔴 P1-1:conversation_cleared 命令式收口的第二个真实手势(会话列表「清空聊天记录」/「关闭并清空」
+    //   右键项经此)。原 path 通道 POST /message/offset 会被删好友顺带清空误计,故移到两个真实清空入口单发。
+    Dap.shared.track("conversation_cleared", {});
     conversationWrap.conversation.lastMessage = undefined;
     conversationWrap.conversation.unread = 0;
     if (

@@ -143,6 +143,10 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       await VoiceService.shared.putLocalConfig({ enabled: checked });
       const newConfig = await VoiceService.shared.getConfig();
       setSharedVoiceConfig(newConfig);
+      // 十二审 P2:settings_voice_toggled 从 path 通道(PUT /voice/local-config)移到命令式。原 fetch 规则
+      //   对该 PUT 一律计数,但 handleLocalConfigSave(保存 URL 配置)会原样带上 enabled 再发同一 PUT,
+      //   编辑 endpoint URL 被误计成切换开关。真实「切换」只有此 handleLocalToggle,故仅在此单发。
+      Dap.shared.track('settings_voice_toggled', {});
     } catch {
       setLocalEnabled(prevEnabled);
       Toast.error(t('base.navRail.voiceSettings.operationFailed'));

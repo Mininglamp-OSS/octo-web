@@ -568,6 +568,10 @@ export async function clearChannelSettingMessages(params: {
     return;
   }
   await runtime.clearConversationMessages(conversation);
+  // 十二审 🔴 P1-1:conversation_cleared 从 path 通道(POST /message/offset)移到命令式。原 fetch 规则
+  //   会把**删好友**顺带的 clearConversationMessages(module.tsx removeFriend)误计成清空会话。真实「清空
+  //   群/会话消息」= 此处 clearConversationMessages 成功这一刻,单发一次;删好友走 provider 直连、不经此入口。
+  Dap.shared.track("conversation_cleared", {});
   conversation.lastMessage = undefined;
   runtime.invokeClearChannelMessages(params.channel);
 }

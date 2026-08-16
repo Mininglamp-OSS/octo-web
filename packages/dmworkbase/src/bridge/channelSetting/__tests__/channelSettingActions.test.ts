@@ -559,6 +559,7 @@ describe("channel setting actions", () => {
   });
 
   it("clears conversation messages when a conversation exists", async () => {
+    vi.mocked(Dap.shared.track).mockClear();
     const conversation = { lastMessage: { messageID: "m1" } };
     const runtime = createRuntime({
       findConversation: vi.fn(() => conversation),
@@ -572,9 +573,14 @@ describe("channel setting actions", () => {
     );
     expect(conversation.lastMessage).toBeUndefined();
     expect(runtime.invokeClearChannelMessages).toHaveBeenCalledWith(channel);
+    // 十二审 🔴 P1-1:清空是真实手势,成功后命令式单发 conversation_cleared(替代原 POST /message/offset
+    //   的 fetch 规则 —— 该端点被删好友顺带调用,path 通道会误计)。
+    expect(Dap.shared.track).toHaveBeenCalledTimes(1);
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_cleared", {});
   });
 
   it("does nothing when clearing messages without a conversation", async () => {
+    vi.mocked(Dap.shared.track).mockClear();
     const runtime = createRuntime({
       findConversation: vi.fn(() => undefined),
     });
@@ -586,6 +592,11 @@ describe("channel setting actions", () => {
 
     expect(runtime.clearConversationMessages).not.toHaveBeenCalled();
     expect(runtime.invokeClearChannelMessages).not.toHaveBeenCalled();
+    // 无会话 = 无清空动作,绝不发 conversation_cleared。
+    expect(Dap.shared.track).not.toHaveBeenCalledWith(
+      "conversation_cleared",
+      expect.anything()
+    );
   });
 
   it("exits a group and removes the local conversation even if delete fails", async () => {

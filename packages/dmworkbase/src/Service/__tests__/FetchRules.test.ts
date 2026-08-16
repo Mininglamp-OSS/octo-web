@@ -183,6 +183,13 @@ describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负
             'group_webhook_panel_opened',          // 增删/重置 webhook 后回读刷新列表会重打 → 删除
             'market_card_opened',                  // 卡片打开走卡根 data-track(DOM 委托,亦覆盖键盘);六审 C2 删除了并存的命令式 market_card_viewed(同一次打开双计)
             'message_revoked',                     // 命令式单通道(撤回入口调 trackMessageRevoked;fetch 规则会双计,见四审 P1-1)
+            // ↓ 十二审移出 path 通道、改命令式/UI 采集的事件(见十二审 P1-1..P1-5、P2)
+            'conversation_cleared',                // clearConversationMessages 也被删好友顺带调 → 命令式(两个真实清空手势)
+            'apps_module_entered',                 // GET /app_bot/available 每次切空间重拉 + Apps 页常驻 → 导航手势命令式
+            'space_join_new',                      // POST /space/join 对审批态返回 2xx(未加入)→ 业务码门控后命令式
+            'group_avatar_edited',                 // POST /groups/:id/avatar 建群上传也命中 → ChannelAvatar 编辑分支命令式
+            'settings_secrets_opened',             // GET /manager/secrets 列表加载(删除/保存/重试重拉)→ 面板挂载命令式
+            'settings_voice_toggled',              // PUT /voice/local-config 被保存 URL 配置共用 → 真实开关 handleLocalToggle 命令式
         ])
         const leaked = FETCH_RULES.filter((r) => uiOnly.has(r.event)).map((r) => `${r.method} ${r.path} → ${r.event}`)
         expect(leaked, leaked.join('\n')).toEqual([])
@@ -239,10 +246,11 @@ describe('FETCH_RULES — 二审(dap350)移出通道的端点钉死为「不产�
         expect(matchFetchEvent(idx, 'POST', '/api/v1/messages/_search_files')).toBeUndefined()
     })
 
-    it('GET /voice/local-config 不产出 settings_voice_opened(设置页焦点刷新会连带调)', () => {
-        // R2-C:改由 VoiceSettingsPanel 挂载命令式。PUT 仍保留 settings_voice_toggled(真实写=切换)。
+    it('GET /voice/local-config 不产出 settings_voice_opened;PUT 也不再产出 settings_voice_toggled(十二审 P2)', () => {
+        // R2-C:GET 改由 VoiceSettingsPanel 挂载命令式。十二审 P2:PUT 被保存 URL 配置的 handleLocalConfigSave
+        //   原样带 enabled 复用 → 编辑 URL 误计成切换;改由 handleLocalToggle 成功命令式,故 PUT 也钉为不产出。
         expect(matchFetchEvent(idx, 'GET', '/api/v1/voice/local-config')).toBeUndefined()
-        expect(matchFetchEvent(idx, 'PUT', '/api/v1/voice/local-config')).toBe('settings_voice_toggled')
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/voice/local-config')).toBeUndefined()
     })
 
     it('GET /groups/:id/qrcode|md|incoming-webhooks 不产出 view/open 事件(组件挂载/回读刷新重复打)', () => {
@@ -309,5 +317,39 @@ describe('FETCH_RULES — conversation_left 已移出 path 通道(十一审 🔴
     it('conversation_left 不再出现在 FETCH_RULES 任一条(整表扫描)', () => {
         const leaked = FETCH_RULES.filter((r) => r.event === 'conversation_left').map((r) => `${r.method} ${r.path}`)
         expect(leaked, leaked.join('\n')).toEqual([])
+    })
+})
+
+describe('FETCH_RULES — 十二审 🔴 五类「2xx ≠ 用户动作(且成功)」端点钉死为「不产出」(防回归)', () => {
+    // 十二审 caller-graph sweep 又发现五条同类:同一端点被多手势/刷新/审批态 2xx 触发,path 规则区分不了。
+    // 已分别改命令式(收口到真实手势/业务码门控)。下面把五个端点钉死为无 path 映射,并确认相邻的真实写仍在。
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('POST /message/offset 不产出 conversation_cleared(删好友顺带清空也命中,改两个真实清空手势命令式)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/message/offset')).toBeUndefined()
+    })
+
+    it('GET /app_bot/available 不产出 apps_module_entered(每次切空间重拉 + Apps 页常驻,改导航手势命令式)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/app_bot/available')).toBeUndefined()
+    })
+
+    it('POST /space/join 不产出 space_join_new(审批态返回 2xx 但未加入,改业务码门控后命令式)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/space/join')).toBeUndefined()
+    })
+
+    it('POST /groups/:id/avatar 不产出 group_avatar_edited(建群上传也命中,改 ChannelAvatar 编辑分支命令式)', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/groups/98765/avatar')).toBeUndefined()
+    })
+
+    it('GET /manager/secrets 不产出 settings_secrets_opened(列表加载被删除/保存/重试重拉,改面板挂载命令式)', () => {
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/manager/secrets')).toBeUndefined()
+    })
+
+    it('相邻真实写仍各自命中(移除只针对被污染的读/2xx,不误伤真实动作)', () => {
+        // 密钥「配置」= 新建/更新 secret,仍走 POST/PUT manager/secrets → settings_secrets_configured。
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/manager/secrets')).toBe('settings_secrets_configured')
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/manager/secrets/s1')).toBe('settings_secrets_configured')
+        // 群成员昵称编辑(与 conversation_cleared 注释相邻)不受影响。
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/groups/g1/members/u1')).toBe('group_nickname_edited')
     })
 })

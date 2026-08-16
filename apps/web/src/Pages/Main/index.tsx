@@ -291,6 +291,13 @@ export class MainPage extends Component<{}, MainPageState> {
                                                     if (menus.id === "contacts" && !isReentry) {
                                                         Dap.shared.track("contacts_module_entered", {});
                                                     }
+                                                    // 十二审 🔴 P1-3:apps_module_entered 同款移到导航手势。原挂
+                                                    // GET /app_bot/available,但 useAppBots 在每次切空间时重拉、且
+                                                    // Apps 页常驻 DOM,导致别处切空间误发、真实再进入漏计。此处在
+                                                    // 真正切到 Apps(menusId=appbot,非 reentry)时计一次。
+                                                    if (menus.id === "appbot" && !isReentry) {
+                                                        Dap.shared.track("apps_module_entered", {});
+                                                    }
                                                     vm.currentMenus = menus;
                                                     WKApp.currentMenuId = menus.id;
                                                     WKApp.route.syncPath(menus.routePath);

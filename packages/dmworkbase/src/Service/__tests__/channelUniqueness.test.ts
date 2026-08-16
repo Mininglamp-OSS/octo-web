@@ -146,6 +146,14 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
         expect(imperativeEvents.has('message_revoked')).toBe(true)
         // 六审 P4:钉死放宽后的正则确实抓到 Dap 内部 this.track('app_launched')(旧 `Dap.shared.` 前缀抓不到)。
         expect(imperativeEvents.has('app_launched')).toBe(true)
+        // 十二审:五类移出 path 通道、改命令式的事件必须被扫描抓到 —— 否则下面的「命令式 ⊥ 规则表」
+        // 互斥断言对它们形同虚设(有人把它们再塞回 FETCH_RULES 时不会红)。逐一钉死扫描确有覆盖。
+        expect(imperativeEvents.has('conversation_cleared')).toBe(true)      // channelSettingActions + Chat/vm
+        expect(imperativeEvents.has('apps_module_entered')).toBe(true)       // Main/index + tab_low_screen(apps/web)
+        expect(imperativeEvents.has('space_join_new')).toBe(true)           // SpaceService + Layout + InviteLanding
+        expect(imperativeEvents.has('group_avatar_edited')).toBe(true)       // ChannelAvatar 两个编辑分支
+        expect(imperativeEvents.has('settings_secrets_opened')).toBe(true)   // SecretsSettingsPanel 挂载
+        expect(imperativeEvents.has('settings_voice_toggled')).toBe(true)    // VoiceSettingsPanel handleLocalToggle
     })
 
     it('命令式站点事件名不得再出现在任何一张声明式规则表(否则跨通道双计)', () => {

@@ -27,6 +27,11 @@ export class TabLowScreen extends Component<TabLowScreenProps> {
                                 if (menus.id === "contacts" && !isReentry) {
                                     Dap.shared.track("contacts_module_entered", {})
                                 }
+                                // 十二审 🔴 P1-3:apps_module_entered 低屏路径与桌面 NavRail 对称,进 Apps 时计一次
+                                // (原 GET /app_bot/available 会被切空间重拉 / 常驻误计,见 Main/index.tsx)。
+                                if (menus.id === "appbot" && !isReentry) {
+                                    Dap.shared.track("apps_module_entered", {})
+                                }
                                 if (menus.onPress) {
                                     // Sync the URL before firing the custom
                                     // onPress. Some menu items only swap the
