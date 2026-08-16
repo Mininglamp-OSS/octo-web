@@ -141,6 +141,13 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
     }
 }
 
+/* 尊重系统「减少动态效果」偏好：停转仅保留静态指示（与本仓其他 spinner 一致）。 */
+@media (prefers-reduced-motion: reduce) {
+    .wk-bot-manage-search-spinner {
+        animation: none;
+    }
+}
+
 .wk-bot-manage-search-input {
     width: 100%;
     box-sizing: border-box;
@@ -277,6 +284,14 @@ button.wk-bot-manage-menu-row .wk-bot-manage-menu-right {
     color: var(--wk-text-tertiary);
     font-size: var(--wk-text-size-base);
     line-height: 1.6;
+}
+
+/* 搜索失败 inline 提示：挂在列表顶部（非全屏终态），搜索框仍在，用户可清空关键字重试。 */
+.wk-bot-manage-search-error {
+    padding: var(--wk-sp-3);
+    text-align: center;
+    color: var(--wk-color-danger);
+    font-size: var(--wk-text-size-sm);
 }
 
 .wk-bot-manage-loading {

@@ -62,6 +62,13 @@ export class MentionFreeVM extends ProviderListener {
     searching: boolean = false
     loadError: boolean = false
     isBackendMissing: boolean = false
+    /**
+     * 搜索（带关键字）重拉失败标志。区别于 loadError/isBackendMissing 的全屏终态：
+     * 搜索失败是**非终态**——保留已有列表与搜索框，只在列表内挂一条 inline 提示，
+     * 让用户始终能清空/改写关键字。若把用户输入的关键字失败也路由到全屏终态，搜索框
+     * 会消失、重试只能重发同一失败查询、导航返回也不自愈，用户被彻底困死（reviewer P1）。
+     */
+    searchError: boolean = false
     toggleFailed: boolean = false
     toggleErrorMessage: string = ""
 
@@ -120,6 +127,7 @@ export class MentionFreeVM extends ProviderListener {
         this.searching = false
         this.loadError = false
         this.isBackendMissing = false
+        this.searchError = false
         this.toggleFailed = false
         this.toggleErrorMessage = ""
         void this.loadGroups()
@@ -146,17 +154,31 @@ export class MentionFreeVM extends ProviderListener {
     }
 
     /**
-     * 组件卸载时调用：取消未触发的搜索 debounce。
+     * 组件卸载时调用：取消未触发的搜索 debounce，并作废任何在飞请求。
      *
-     * 关键：若取消时还有一个未生效的关键字（用户在 debounce 窗口内输入后立刻
-     * 导航返回），把 searchKeyword 回滚到已生效的 activeQuery。否则 VM 被上层
-     * Provider 复用、容器重新挂载（L3 pop 后再 push）时，输入框会显示这个从未
-     * 打到后端的关键字，而列表还是 activeQuery 对应的旧结果，造成「输入框 ↔ 列表」
-     * 不一致（reviewer #1082）。activeQuery 始终对应当前 groups，故回滚后二者一致。
+     * 两件事必须一起做，缺一都留下可见 bug：
+     *
+     * 1) **作废在飞请求**（generation 自增，与 setRobotId 对齐）。否则序列
+     *    「debounce 触发搜索 R1 在飞 → 再输入排下一个 debounce → 250ms 内导航返回」
+     *    里，dispose 只回滚了关键字，R1 却因未过期照常落地，把列表改成 R1 的过滤
+     *    子集，而输入框已回滚成 activeQuery——VM 被复用重挂后 groups 非空不补拉，
+     *    「输入框 ↔ 列表」再次错开且不自愈（reviewer P1，与 #1082 同族的残留竞态）。
+     *
+     * 2) **复位进行中标志**。被 generation 作废的 R1 回来后 isStale()=true，会跳过
+     *    自己 finally 里的 `searching/loading = false` 清理；若不在此处复位，searching
+     *    会永久卡 true，重挂后 loadMore 被 `if (this.searching) return` 永久挡死、
+     *    顶部 spinner 永转（reviewer 追加意见）。
+     *
+     * 3) **回滚未生效关键字**（仅当有待定 debounce）。activeQuery 始终对应当前 groups，
+     *    回滚后输入框与列表一致（reviewer #1082）。
      */
     dispose(): void {
         const hadPendingKeyword = this.searchDebounceHandle !== null
         this.clearSearchDebounce()
+        this.generation++
+        this.searching = false
+        this.loading = false
+        this.loadingMore = false
         if (hadPendingKeyword) {
             this.searchKeyword = this.activeQuery
         }
@@ -208,6 +230,7 @@ export class MentionFreeVM extends ProviderListener {
         this.loadingMore = false
         this.loadError = false
         this.isBackendMissing = false
+        this.searchError = false
         this.toggleFailed = false
         this.toggleErrorMessage = ""
         this.notifyListener()
@@ -226,14 +249,23 @@ export class MentionFreeVM extends ProviderListener {
             this.activeQuery = q
         } catch (e: any) {
             if (isStale()) return
-            this.groups = []
-            this.nextCursor = null
-            this.hasMore = false
-            this.activeQuery = q
-            if (e && typeof e === "object" && "status" in e && (e as any).status === 404) {
-                this.isBackendMissing = true
+            if (isSearch) {
+                // 搜索失败是非终态：保留已有列表、分页游标与 activeQuery（它们仍对应
+                // 上一次成功的结果），只翻转 inline 的 searchError。搜索框始终渲染，用户
+                // 可清空/改写关键字触发新的搜索（loadGroups 开头会清掉 searchError）。
+                // 绝不把带关键字的失败路由到全屏 loadError/backendMissing——那会抹掉
+                // 搜索框、令用户无法清空关键字（reviewer P1）。
+                this.searchError = true
             } else {
-                this.loadError = true
+                this.groups = []
+                this.nextCursor = null
+                this.hasMore = false
+                this.activeQuery = q
+                if (e && typeof e === "object" && "status" in e && (e as any).status === 404) {
+                    this.isBackendMissing = true
+                } else {
+                    this.loadError = true
+                }
             }
         } finally {
             if (!isStale()) {

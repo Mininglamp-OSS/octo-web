@@ -519,4 +519,104 @@ describe("MentionFreeVM 搜索接后端 q (debounce, WS-115)", () => {
         vm.dispose() // 无待定 debounce
         expect(vm.searchKeyword).toBe("abc")
     })
+
+    it("D3: dispose invalidates an in-flight search response and resets searching (no stale overwrite)", async () => {
+        // reviewer P1（与 #1082 同族的残留竞态）：搜索 R1 在飞 → 再输入排下一个 debounce
+        // → 卸载。dispose 必须①作废 R1（generation++）②复位 searching③回滚关键字，
+        // 否则 R1 迟到落地把列表改成过滤子集、与回滚后的空输入框错开，且 searching 卡
+        // true 令重挂后 loadMore 被永久挡死。
+        const firstPage = {
+            list: [grp({ group_no: "g1" }), grp({ group_no: "g2" })],
+            next_cursor: null,
+            has_more: false,
+        }
+        hoisted.get.mockResolvedValueOnce(firstPage) // 首屏未过滤
+
+        // 搜索 R1：受控挂起，卸载后才 resolve
+        let resolveR1: (v: unknown) => void = () => {}
+        const r1 = new Promise((res) => {
+            resolveR1 = res
+        })
+        hoisted.get.mockReturnValueOnce(r1 as never)
+
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups() // activeQuery="", groups=[g1,g2]
+
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250) // debounce 触发 R1（q="abc"），在飞
+        expect(vm.searching).toBe(true)
+
+        vm.setSearchKeyword("xyz") // 排下一个 debounce（hadPendingKeyword=true）
+        vm.dispose()
+
+        // 关键字回滚到 activeQuery("")，searching 立即复位
+        expect(vm.searchKeyword).toBe("")
+        expect(vm.searching).toBe(false)
+
+        // R1 迟到落地：被 isStale() 丢弃，不改 groups/activeQuery/searching
+        resolveR1({ list: [grp({ group_no: "g1" })], next_cursor: null, has_more: false })
+        await vi.advanceTimersByTimeAsync(500)
+
+        const { enabled, others } = vm.visibleGroups()
+        expect([...enabled, ...others].map((g) => g.group_no)).toEqual(["g1", "g2"])
+        expect(vm.searching).toBe(false)
+    })
+
+    it("E: a search failure is non-terminal — keeps list + search box, flags searchError not loadError", async () => {
+        // reviewer P1：带关键字的搜索失败若路由到全屏 loadError/backendMissing，搜索框会
+        // 消失，用户无法清空关键字、重试只能重发同一失败查询。改为 inline searchError：
+        // 保留列表与搜索框，用户可清空/改写关键字触发新搜索。
+        hoisted.get.mockResolvedValueOnce({
+            list: [grp({ group_no: "g1" }), grp({ group_no: "g2" })],
+            next_cursor: null,
+            has_more: false,
+        })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups() // 首屏成功，activeQuery=""
+
+        hoisted.get.mockRejectedValueOnce({ status: 500 })
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250)
+
+        // 非终态：searchError 置位，全屏终态标志均不置位
+        expect(vm.searchError).toBe(true)
+        expect(vm.loadError).toBe(false)
+        expect(vm.isBackendMissing).toBe(false)
+        expect(vm.searching).toBe(false)
+        // 列表保留（用户仍有上下文，搜索框始终可清空）
+        const kept = vm.visibleGroups()
+        expect(
+            [...kept.enabled, ...kept.others].map((g) => g.group_no),
+        ).toEqual(["g1", "g2"])
+
+        // 清空关键字重拉成功 → searchError 复位
+        hoisted.get.mockResolvedValueOnce({
+            list: [grp({ group_no: "g1" })],
+            next_cursor: null,
+            has_more: false,
+        })
+        vm.setSearchKeyword("")
+        await vi.advanceTimersByTimeAsync(250)
+        expect(vm.searchError).toBe(false)
+    })
+
+    it("E2: a 404 during search stays inline (searchError), not the backend-missing terminal screen", async () => {
+        // 搜索期间的 404 更可能是部署瞬时态，而非后端缺失；仍走 inline searchError，
+        // 保留搜索框，绝不把用户困进「功能即将上线」的无控件终态。
+        hoisted.get.mockResolvedValueOnce({
+            list: [grp({ group_no: "g1" })],
+            next_cursor: null,
+            has_more: false,
+        })
+        const vm = new MentionFreeVM("bot1")
+        await vm.loadGroups()
+
+        hoisted.get.mockRejectedValueOnce({ status: 404 })
+        vm.setSearchKeyword("abc")
+        await vi.advanceTimersByTimeAsync(250)
+
+        expect(vm.searchError).toBe(true)
+        expect(vm.isBackendMissing).toBe(false)
+        expect(vm.loadError).toBe(false)
+    })
 })
