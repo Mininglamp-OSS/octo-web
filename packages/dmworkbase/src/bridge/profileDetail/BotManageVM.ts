@@ -154,34 +154,34 @@ export class MentionFreeVM extends ProviderListener {
     }
 
     /**
-     * 组件卸载时调用：取消未触发的搜索 debounce，并作废任何在飞请求。
+     * 组件卸载时调用：取消未触发的搜索 debounce，并把 VM 复位成「按构造自洽」的状态，
+     * 好让被上层 Provider 复用的实例重新挂载后不出现「输入框 ↔ 列表」不一致。
      *
-     * 两件事必须一起做，缺一都留下可见 bug：
+     * 1) **作废在飞请求**（generation 自增，与 setRobotId 对齐）：让在飞的
+     *    loadGroups/loadMore/toggle 响应回来后 isStale() 判定为过期丢弃，不再落地。
      *
-     * 1) **作废在飞请求**（generation 自增，与 setRobotId 对齐）。否则序列
-     *    「debounce 触发搜索 R1 在飞 → 再输入排下一个 debounce → 250ms 内导航返回」
-     *    里，dispose 只回滚了关键字，R1 却因未过期照常落地，把列表改成 R1 的过滤
-     *    子集，而输入框已回滚成 activeQuery——VM 被复用重挂后 groups 非空不补拉，
-     *    「输入框 ↔ 列表」再次错开且不自愈（reviewer P1，与 #1082 同族的残留竞态）。
+     * 2) **复位进行中标志**：被 generation 作废的响应回来后会跳过自身 finally 的
+     *    `searching/loading = false` 清理；若不在此处复位，searching 会永久卡 true，
+     *    重挂后 loadMore 被 `if (this.searching) return` 永久挡死、顶部 spinner 永转。
      *
-     * 2) **复位进行中标志**。被 generation 作废的 R1 回来后 isStale()=true，会跳过
-     *    自己 finally 里的 `searching/loading = false` 清理；若不在此处复位，searching
-     *    会永久卡 true，重挂后 loadMore 被 `if (this.searching) return` 永久挡死、
-     *    顶部 spinner 永转（reviewer 追加意见）。
+     * 3) **清 inline 搜索失败标志**：否则复用 VM 重挂时会在旧列表上重现一条过期的
+     *    失败提示（remount 不补拉、setRobotId 同 bot 早返回，无动作即再次显示）。
      *
-     * 3) **回滚未生效关键字**（仅当有待定 debounce）。activeQuery 始终对应当前 groups，
-     *    回滚后输入框与列表一致（reviewer #1082）。
+     * 4) **无条件回滚 searchKeyword 到 activeQuery**：activeQuery 按构造始终对应当前
+     *    groups，故这是不变量而非特例——debounce 是否已触发、请求是否在飞都不影响。
+     *    旧逻辑「仅有待定定时器才回滚」漏掉了「debounce 已触发、请求在飞」这一支
+     *    （此时 searchDebounceHandle 已为 null）：dispose 丢弃响应却留下领先于
+     *    activeQuery/groups 的 searchKeyword，复用 VM 重挂后输入框永远显示旧关键字、
+     *    列表却是未过滤全量且分页也不带 q（reviewer P1，跨轮 desync 的收口）。
      */
     dispose(): void {
-        const hadPendingKeyword = this.searchDebounceHandle !== null
         this.clearSearchDebounce()
         this.generation++
         this.searching = false
         this.loading = false
         this.loadingMore = false
-        if (hadPendingKeyword) {
-            this.searchKeyword = this.activeQuery
-        }
+        this.searchError = false
+        this.searchKeyword = this.activeQuery
     }
 
     /**
@@ -249,14 +249,18 @@ export class MentionFreeVM extends ProviderListener {
             this.activeQuery = q
         } catch (e: any) {
             if (isStale()) return
-            if (isSearch) {
-                // 搜索失败是非终态：保留已有列表、分页游标与 activeQuery（它们仍对应
-                // 上一次成功的结果），只翻转 inline 的 searchError。搜索框始终渲染，用户
-                // 可清空/改写关键字触发新的搜索（loadGroups 开头会清掉 searchError）。
-                // 绝不把带关键字的失败路由到全屏 loadError/backendMissing——那会抹掉
-                // 搜索框、令用户无法清空关键字（reviewer P1）。
+            const hasKeyword = q.length > 0
+            if (isSearch || hasKeyword) {
+                // 搜索路径失败，或任何「关键字仍激活」的失败（含 remount 后带 q 的非 search
+                // 重拉）：一律走非终态 inline searchError——保留已有列表、分页游标与
+                // activeQuery（仍对应上一次成功结果或为空），搜索框始终渲染，用户可清空/
+                // 改写关键字触发新搜索。绝不把带关键字的失败路由到全屏 loadError/
+                // backendMissing——那会抹掉搜索框、令关键字不可清空，把用户困在只能重发同一
+                // 失败查询的死路（reviewer P1，跨轮不变量：关键字激活时必须始终可清空）。
                 this.searchError = true
             } else {
+                // 无关键字的首屏 / 切 bot / reload 失败：终态（初次加载失败没有可编辑的
+                // 搜索框需求）。此时 searchKeyword 必为空，故终态屏绝不会藏起激活的关键字。
                 this.groups = []
                 this.nextCursor = null
                 this.hasMore = false
