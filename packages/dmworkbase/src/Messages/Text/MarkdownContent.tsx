@@ -6,24 +6,19 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import Lightbox from "yet-another-react-lightbox";
-import Download from "yet-another-react-lightbox/plugins/download";
-import "yet-another-react-lightbox/styles.css";
+import Toast from "@douyinfe/semi-ui/lib/es/toast";
+import { Copy } from "lucide-react";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
 import "./markdown.css";
 import WKApp from "../../App";
 import { isSafeUrl } from "../../Utils/security";
 import { linkifySafeUrls } from "../../Utils/linkify";
-import { downloadFile } from "../../Utils/download";
+import { copyToClipboard } from "../../Utils/clipboard";
 import { t } from "../../i18n";
+import { ImagePreviewLightbox } from "../Image/ImagePreview";
 import { getMentionRenderState } from "./mentionRenderState";
-import {
-  isForwardDocCard,
-  middleEllipsizeUrl,
-  shouldEllipsizeLinkText,
-  type ParagraphChildKind,
-} from "./forwardClamp";
+import { isForwardDocCard, type ParagraphChildKind } from "./forwardClamp";
 
 export interface MentionInfo {
   name: string; // "@张三"（含@符号）
@@ -146,6 +141,8 @@ const baseRehypePlugins: any[] = [
   [rehypeSanitize, sanitizeSchema],
 ];
 
+const remarkGfmOptions = { singleTilde: false };
+
 /** 含 KaTeX 的 rehype 插件 */
 const mathRehypePlugins: any[] = [
   [rehypeHighlight, { aliases: { json5: "json" }, ignoreMissing: true }],
@@ -156,14 +153,14 @@ const mathRehypePlugins: any[] = [
 /** 基础 remark 插件（不含 math） */
 const baseRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
-  remarkGfm,
+  [remarkGfm, remarkGfmOptions],
   remarkBreaks,
 ];
 
 /** 含 math 的 remark 插件 */
 const mathRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
-  remarkGfm,
+  [remarkGfm, remarkGfmOptions],
   remarkBreaks,
   remarkMath,
 ];
@@ -303,37 +300,91 @@ function segmentText(
   return segments;
 }
 
+function reactNodeText(children: React.ReactNode): string {
+  if (children == null || typeof children === "boolean") return "";
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children);
+  }
+  if (Array.isArray(children)) return children.map(reactNodeText).join("");
+  if (React.isValidElement(children)) {
+    return reactNodeText((children.props as any)?.children);
+  }
+  return "";
+}
+
+const MarkdownCodeBlock: React.FC<{
+  children: React.ReactNode;
+  preProps: any;
+  isStreaming?: boolean;
+}> = ({ children, preProps, isStreaming = false }) => {
+  const [copying, setCopying] = useState(false);
+
+  const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (copying) return;
+
+    setCopying(true);
+    try {
+      const ok = await copyToClipboard(
+        reactNodeText(children).replace(/\n$/, "")
+      );
+      if (ok) {
+        Toast.success(t("base.message.markdown.copyCodeSuccess"));
+      } else {
+        Toast.warning(t("base.module.contextMenus.copyFailed"));
+      }
+    } catch {
+      Toast.warning(t("base.module.contextMenus.copyFailed"));
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  const copyLabel = t("base.message.markdown.copyCode");
+
+  return (
+    <div className="wk-markdown-pre-wrapper">
+      {!isStreaming && (
+        <button
+          type="button"
+          className="wk-markdown-code-copy"
+          aria-label={copyLabel}
+          title={copyLabel}
+          disabled={copying}
+          onClick={handleCopy}
+        >
+          <Copy size={14} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}
+      <pre {...preProps}>{children}</pre>
+    </div>
+  );
+};
+
 const baseComponents: any = {
   a: ({ href, children, ...props }: any) => {
-    // AC-13b (feature #511): middle-ellipsize the DISPLAY text only when it is itself a long bare
-    // URL (visible text === href). A normal `[title](link)` keeps its title untouched; the href is
-    // never modified. `title` tooltip carries the full URL so hover/copy still gets the whole link.
-    const text =
-      typeof children === "string"
-        ? children
-        : Array.isArray(children) && children.length === 1 && typeof children[0] === "string"
-          ? (children[0] as string)
-          : null;
-    if (text != null && shouldEllipsizeLinkText(text, href)) {
-      return (
-        <a href={href} target="_blank" rel="noopener noreferrer" title={text} {...props}>
-          {middleEllipsizeUrl(text)}
-        </a>
-      );
-    }
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
         {children}
       </a>
     );
   },
-  p: ({ node: _node, children, ...props }: any) => renderParagraph(children, props),
+  p: ({ node: _node, children, ...props }: any) =>
+    renderParagraph(children, props),
   pre: ({ children, ...props }: any) => (
-    <div className="wk-markdown-pre-wrapper">
-      <pre {...props}>{children}</pre>
-    </div>
+    <MarkdownCodeBlock preProps={props}>{children}</MarkdownCodeBlock>
   ),
   img: ({ src, alt }: any) => <MarkdownImage src={src} alt={alt} />,
+};
+
+const streamingBaseComponents: any = {
+  ...baseComponents,
+  pre: ({ children, ...props }: any) => (
+    <MarkdownCodeBlock preProps={props} isStreaming>
+      {children}
+    </MarkdownCodeBlock>
+  ),
 };
 
 /**
@@ -356,7 +407,10 @@ function plainText(children: React.ReactNode): string {
  * message's bold text is affected. The full title lives in the `title` attribute so PC hover /
  * mobile tap still reveals it in full while the visible text is clamped to 2 lines.
  */
-function renderParagraph(children: React.ReactNode, props: any): React.ReactElement {
+function renderParagraph(
+  children: React.ReactNode,
+  props: any
+): React.ReactElement {
   const arr = React.Children.toArray(children);
   const kinds: ParagraphChildKind[] = arr.map((c) => {
     if (typeof c === "string") return { text: c };
@@ -365,9 +419,11 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
       const cprops = (c.props ?? {}) as any;
       // Carry the visible text of bold/link runs so the detector can require the link label to
       // equal the bold title (the forward card duplicates the title as its anchor text).
-      if (type === "strong" || type === "b") return { isStrong: true, content: plainText(cprops.children) };
+      if (type === "strong" || type === "b")
+        return { isStrong: true, content: plainText(cprops.children) };
       if (type === "br") return { isBreak: true };
-      if (cprops.href != null || type === baseComponents.a) return { isLink: true, content: plainText(cprops.children) };
+      if (cprops.href != null || type === baseComponents.a)
+        return { isLink: true, content: plainText(cprops.children) };
     }
     return {};
   });
@@ -376,7 +432,10 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
   }
   // Clone the leading <strong> to carry the full-title tooltip + clamp class.
   const clamped = arr.map((c, i) => {
-    if (React.isValidElement(c) && ((c.type as any) === "strong" || (c.type as any) === "b")) {
+    if (
+      React.isValidElement(c) &&
+      ((c.type as any) === "strong" || (c.type as any) === "b")
+    ) {
       const cprops = c.props as any;
       // Read the title text array-safely: react-markdown 8.x always hands `strong` an ARRAY of
       // children (e.g. ["Quarterly plan"]), never a bare string, so the old
@@ -387,14 +446,19 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
       const full = plainText(cprops?.children) || undefined;
       return React.cloneElement(c as React.ReactElement<any>, {
         key: i,
-        className: `${cprops?.className ?? ""} wk-markdown-forward-title`.trim(),
+        className: `${
+          cprops?.className ?? ""
+        } wk-markdown-forward-title`.trim(),
         title: full,
       });
     }
     return c;
   });
   return (
-    <p {...props} className={`${props?.className ?? ""} wk-markdown-forward-card`.trim()}>
+    <p
+      {...props}
+      className={`${props?.className ?? ""} wk-markdown-forward-card`.trim()}
+    >
       {clamped}
     </p>
   );
@@ -403,7 +467,7 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
 /**
  * Markdown / RichText 正文内联图片：
  *  - url 安全校验（仅 http/https，挡 data:/javascript:/file: 等），不安全则降级为文本占位；
- *  - 点击打开 Lightbox 大图预览（与 ImageCell 行为一致，带下载）；
+ *  - 点击复用 ImageCell 的大图预览与底部工具栏；
  *  - src 经 datasource 处理，与其它图片渲染路径补全 base URL 保持一致。
  */
 const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
@@ -432,24 +496,11 @@ const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
         loading="lazy"
         onClick={() => setOpen(true)}
       />
-      <Lightbox
+      <ImagePreviewLightbox
         open={open}
         close={() => setOpen(false)}
         slides={[{ src: resolved, alt: alt || "" }]}
-        plugins={[Download]}
-        download={{
-          download: ({ slide }) => {
-            if (slide?.src) {
-              downloadFile(slide.src, alt || "image.png");
-            }
-          },
-        }}
-        carousel={{ finite: true }}
-        controller={{ closeOnBackdropClick: true }}
-        render={{
-          buttonPrev: () => null,
-          buttonNext: () => null,
-        }}
+        filename={alt || "image.png"}
       />
     </>
   );
@@ -565,7 +616,10 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     stableMentions.current.length > 0 || stableEmojis.current.length > 0;
 
   const components = useMemo(() => {
-    if (!hasTokens) return baseComponents;
+    const activeBaseComponents = isStreaming
+      ? streamingBaseComponents
+      : baseComponents;
+    if (!hasTokens) return activeBaseComponents;
     const process = (children: React.ReactNode) =>
       processTextChildren(
         children,
@@ -576,10 +630,18 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
       );
     const wrap =
       (Tag: string) =>
-      ({ node, children, ordered, checked, index, siblingCount, ...props }: any) =>
+      ({
+        node,
+        children,
+        ordered,
+        checked,
+        index,
+        siblingCount,
+        ...props
+      }: any) =>
         React.createElement(Tag, props, process(children));
     return {
-      ...baseComponents,
+      ...activeBaseComponents,
       p: wrap("p"),
       td: wrap("td"),
       th: wrap("th"),
@@ -597,6 +659,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     stableEmojis.current,
     stableOnMentionClick,
     isSend,
+    isStreaming,
   ]);
 
   // 根据是否启用数学公式 / markdown 选择插件

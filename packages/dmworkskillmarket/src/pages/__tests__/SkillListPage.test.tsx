@@ -55,7 +55,7 @@ const skill: Skill = {
 vi.mock("../../api/skillApi");
 
 const mineTabName = /我的|skillMarket\.list\.mine/;
-const categoryAriaLabel = /Skill 分类|skillMarket\.category\.ariaLabel/;
+const categoryAriaLabel = /技能分类|skillMarket\.category\.ariaLabel/;
 const searchPlaceholder =
   /搜索名称、描述\.\.\.|skillMarket\.filter\.searchNameDescription/;
 const tagFilterName = /标签|skillMarket\.filter\.tags/;
@@ -63,7 +63,7 @@ const tagSearchPlaceholder = /搜索标签|skillMarket\.filter\.searchTags/;
 const selectedTagsText = /已选择标签|skillMarket\.filter\.tagsSelected/;
 const noSelectedTagsText = /未选择标签|skillMarket\.filter\.noTagsSelected/;
 const clearFilterName = /清空|skillMarket\.filter\.clear/;
-const publishSkillName = /上架 Skill|skillMarket\.list\.publishSkill/;
+const publishSkillName = /上架技能|skillMarket\.list\.publishSkill/;
 const botPublishName = /Bot 上架|skillMarket\.publishMenu\.botTitle/;
 const manualPublishName = /手动上传|skillMarket\.publishMenu\.manualTitle/;
 const copyPromptName = /复制提示词|skillMarket\.botPublish\.copyBtn/;
@@ -78,7 +78,7 @@ const saveButtonName = /保存|skillMarket\.common\.save/;
 const displayNamePlaceholder =
   /请输入展示名称，最多20个字符|skillMarket\.form\.displayNamePlaceholder/;
 const emptyText = /暂无数据|skillMarket\.list\.empty/;
-const totalCountText = /共 1 个 Skill|skillMarket\.list\.totalCount/;
+const totalCountText = /共 1 个技能|skillMarket\.list\.totalCount/;
 
 async function switchToMineTab() {
   fireEvent.click(screen.getByRole("button", { name: mineTabName }));
@@ -155,6 +155,7 @@ describe("SkillListPage", () => {
       await vi.runOnlyPendingTimersAsync();
     });
 
+    vi.mocked(api.getCategories).mockClear();
     vi.mocked(api.getSkills).mockClear();
     fireEvent.change(screen.getByPlaceholderText(searchPlaceholder), {
       target: { value: "ci" },
@@ -166,6 +167,13 @@ describe("SkillListPage", () => {
       await vi.runOnlyPendingTimersAsync();
     });
 
+    expect(api.getCategories).toHaveBeenCalledWith(
+      expect.objectContaining({
+        q: "ci",
+        tags: [],
+        signal: expect.any(AbortSignal),
+      })
+    );
     expect(api.getSkills).toHaveBeenCalledWith(
       {
         q: "ci",
@@ -184,6 +192,8 @@ describe("SkillListPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: tagFilterName }));
     const tagOption = await screen.findByRole("option", { name: "纪要" });
+    vi.mocked(api.getCategories).mockClear();
+    vi.mocked(api.getSkills).mockClear();
     fireEvent.click(tagOption);
 
     expect(
@@ -194,13 +204,34 @@ describe("SkillListPage", () => {
       "true"
     );
     expect(screen.getByText(selectedTagsText)).toBeInTheDocument();
+    await waitFor(() => {
+      expect(api.getCategories).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: "",
+          tags: ["纪要"],
+          signal: expect.any(AbortSignal),
+        })
+      );
+      expect(api.getSkills).toHaveBeenCalledWith(
+        expect.objectContaining({ tags: ["纪要"] }),
+        expect.objectContaining({ signal: expect.any(AbortSignal) })
+      );
+    });
 
+    vi.mocked(api.getCategories).mockClear();
     fireEvent.click(screen.getByRole("button", { name: clearFilterName }));
 
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "纪要" })).toHaveAttribute(
         "aria-selected",
         "false"
+      );
+      expect(api.getCategories).toHaveBeenCalledWith(
+        expect.objectContaining({
+          q: "",
+          tags: [],
+          signal: expect.any(AbortSignal),
+        })
       );
     });
     expect(screen.getByText(noSelectedTagsText)).toBeInTheDocument();
@@ -267,7 +298,7 @@ describe("SkillListPage", () => {
     ).toBeInTheDocument();
     expect(
       screen.getByLabelText(
-        /选择 Skill 包文件|skillMarket\.upload\.selectFileAriaLabel/
+        /选择技能包文件|skillMarket\.upload\.selectFileAriaLabel/
       )
     ).toBeInTheDocument();
   });

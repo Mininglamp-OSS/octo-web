@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildRichTextMixedCandidate,
+  countSendPlanParts,
+  finishRichTextMixedSend,
   isImageFileForRichTextMixed,
 } from "../richTextMixedSend";
 
@@ -51,5 +53,43 @@ describe("buildRichTextMixedCandidate", () => {
   it("recognizes image files by extension when MIME is missing", () => {
     expect(isImageFileForRichTextMixed(file("screenshot.webp"))).toBe(true);
     expect(isImageFileForRichTextMixed(file("notes.txt"))).toBe(false);
+  });
+
+  it("reports a partial send when a top non-image sent before rich mixed failed", () => {
+    const onMessageSent = vi.fn();
+    const result = finishRichTextMixedSend(
+      true,
+      false,
+      ["pdf1"],
+      onMessageSent
+    );
+
+    expect(onMessageSent).toHaveBeenCalledTimes(1);
+    expect(result).toEqual({ editorConsumed: false, consumedTopIds: ["pdf1"] });
+  });
+
+  it("keeps top attachments and later editor blocks as separate guarded parts", () => {
+    const topFiles = [{ id: "pdf1", file: file("a.pdf", "application/pdf") }];
+    const editorBlocks = [{ type: "text" as const, text: "later text" }];
+
+    expect(countSendPlanParts(topFiles, editorBlocks, "later text", null)).toBe(
+      2
+    );
+  });
+
+  it("counts an aggregated rich-text compose as one guarded part", () => {
+    const topFiles = [{ id: "img1", file: file("a.png", "image/png") }];
+    const editorBlocks = [{ type: "text" as const, text: "caption" }];
+    const candidate = buildRichTextMixedCandidate(topFiles, editorBlocks);
+
+    expect(
+      countSendPlanParts(topFiles, editorBlocks, "caption", candidate)
+    ).toBe(1);
+  });
+
+  it("includes the reply bubble when attachments have no text block", () => {
+    const topFiles = [{ id: "pdf1", file: file("a.pdf", "application/pdf") }];
+
+    expect(countSendPlanParts(topFiles, [], "", null, true)).toBe(2);
   });
 });

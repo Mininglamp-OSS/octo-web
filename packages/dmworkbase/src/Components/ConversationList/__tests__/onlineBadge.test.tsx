@@ -76,9 +76,15 @@ beforeAll(async () => {
     ChannelTypeCommunityTopic: 3,
     EndpointID: {},
   }));
-  vi.doMock("../../../Service/Thread", () => ({
-    parseThreadChannelId: () => undefined,
-  }));
+  vi.doMock("../../../Service/Thread", async () => {
+    const actual = await vi.importActual<typeof import("../../../Service/Thread")>(
+      "../../../Service/Thread"
+    );
+    return {
+      ...actual,
+      parseThreadChannelId: () => undefined,
+    };
+  });
   vi.doMock("../../../Service/TypingManager", () => ({
     TypingManager: {
       shared: {

@@ -1,0 +1,374 @@
+.octo-mail-sidebar {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-base);
+  border-right: 1px solid var(--wk-border-subtle);
+  font-family: var(--wk-font-sans);
+}
+
+.octo-mail-sidebar button {
+  font: inherit;
+}
+
+.octo-mail-sidebar__brand {
+  min-height: var(--wk-sp-12);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: 0 var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.octo-mail-sidebar__brand-mark {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: var(--wk-r-sm);
+}
+
+.octo-mail-sidebar__brand-mark {
+  width: var(--wk-sp-7);
+  height: var(--wk-sp-7);
+  color: var(--wk-text-inverse);
+  background: var(--wk-brand-primary);
+}
+
+.octo-mail-sidebar__brand strong {
+  font: var(--wk-text-h3);
+}
+
+.octo-mail-sidebar__brand-beta {
+  display: inline-flex;
+  align-items: center;
+  height: var(--wk-sp-4);
+  padding: 0 var(--wk-sp-1-5);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-xs);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-elevated);
+  font-size: var(--wk-text-size-tiny);
+  font-weight: var(--wk-font-semibold);
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.octo-mail-sidebar__body {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  padding: var(--wk-sp-3);
+}
+
+.octo-mail-compose {
+  min-height: var(--wk-sp-10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  padding: 0 var(--wk-sp-4);
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  font-weight: var(--wk-font-semibold);
+}
+
+.octo-mail-compose:hover:not(:disabled) {
+  background: var(--wk-brand-primary-hover);
+}
+
+.octo-mail-compose:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.octo-mail-account-wrap {
+  position: relative;
+  margin: var(--wk-sp-3) 0 var(--wk-sp-2);
+}
+
+.octo-mail-account-button {
+  width: 100%;
+  min-height: calc(var(--wk-sp-12) + var(--wk-sp-3));
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--wk-sp-5);
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  color: var(--wk-text-primary);
+  text-align: left;
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  box-shadow: var(--wk-shadow-sm);
+  cursor: pointer;
+}
+
+.octo-mail-account-button:hover:not(:disabled) {
+  border-color: var(--wk-border-strong);
+}
+
+.octo-mail-account-button:disabled {
+  cursor: default;
+}
+
+.octo-mail-account-button > svg {
+  color: var(--wk-text-tertiary);
+  transition: transform 150ms ease;
+}
+
+.octo-mail-account-button > svg.is-open {
+  transform: rotate(180deg);
+}
+
+.octo-mail-account-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.octo-mail-account-copy strong,
+.octo-mail-account-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-mail-account-copy strong {
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-semibold);
+}
+
+.octo-mail-account-name {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1-5);
+}
+
+.octo-mail-account-name__icon {
+  width: var(--wk-sp-6);
+  height: var(--wk-sp-6);
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  color: var(--wk-brand-primary);
+  background: var(--wk-bg-selected);
+  border-radius: var(--wk-r-sm);
+}
+
+.octo-mail-account-copy > span {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-account-copy i {
+  width: var(--wk-sp-1-5);
+  height: var(--wk-sp-1-5);
+  flex: 0 0 auto;
+  background: var(--wk-text-tertiary);
+  border-radius: var(--wk-r-circle);
+}
+
+.octo-mail-account-copy i.is-connected {
+  background: var(--wk-color-success);
+}
+
+.octo-mail-account-popover {
+  position: absolute;
+  inset: calc(100% + var(--wk-sp-1)) 0 auto;
+  z-index: var(--wk-z-modal);
+  max-height: calc(var(--wk-sp-10) * 8);
+  padding: var(--wk-sp-2);
+  overflow-y: auto;
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  box-shadow: var(--wk-shadow-lg);
+}
+
+.octo-mail-account-popover__title {
+  display: block;
+  padding: var(--wk-sp-2);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  font-weight: var(--wk-font-semibold);
+}
+
+.octo-mail-account-option {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--wk-sp-5);
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-2);
+  color: var(--wk-text-primary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-account-option:hover,
+.octo-mail-account-option.is-selected {
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-account-option.is-selected {
+  color: var(--wk-brand-primary);
+}
+
+.octo-mail-address-management-entry {
+  min-height: var(--wk-sp-9);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  margin-bottom: var(--wk-sp-4);
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.octo-mail-address-management-entry > span {
+  min-width: 0;
+  flex: 1;
+}
+
+.octo-mail-address-management-entry:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-address-management-entry.is-active {
+  color: var(--wk-brand-primary);
+  background: var(--wk-bg-selected);
+  font-weight: var(--wk-font-semibold);
+}
+
+.octo-mail-sidebar__section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 var(--wk-sp-2) var(--wk-sp-2);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  font-weight: var(--wk-font-semibold);
+}
+
+.octo-mail-sidebar__section-heading button {
+  width: var(--wk-sp-7);
+  height: var(--wk-sp-7);
+  display: grid;
+  place-items: center;
+  color: var(--wk-text-tertiary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-sidebar__section-heading button:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-mailboxes {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+  overflow-y: auto;
+}
+
+.octo-mail-mailboxes > button {
+  min-height: var(--wk-sp-9);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.octo-mail-mailboxes > button:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-mailboxes > button.is-active {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-selected);
+  font-weight: var(--wk-font-semibold);
+}
+
+.octo-mail-mailboxes > button.is-active .octo-mail-mailboxes__count {
+  min-width: var(--wk-sp-6);
+  min-height: var(--wk-sp-5);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 var(--wk-sp-1);
+  color: var(--wk-text-inverse);
+  background: var(--wk-brand-primary);
+  border-radius: var(--wk-r-full);
+}
+
+.octo-mail-mailboxes__icon {
+  display: inline-flex;
+}
+
+.octo-mail-mailboxes__label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-mail-mailboxes__count {
+  color: var(--wk-text-tertiary);
+  font: var(--wk-text-mono-sm);
+}
+
+.octo-mail-sidebar-state {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-4);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-sidebar-state.is-error {
+  color: var(--wk-color-danger);
+}
+
+.is-spinning {
+  animation: octo-mail-spin 0.8s linear infinite;
+}
+
+@keyframes octo-mail-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

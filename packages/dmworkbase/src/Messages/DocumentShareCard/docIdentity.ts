@@ -1,0 +1,45 @@
+// 纯粹的 docId/spaceId 安全原语——零外部依赖（不引 i18n/wukongimjssdk），
+// 便于单测直接导入而不触发 semi-ui/i18n 的模块加载链。
+//
+// type-18 文档转发卡无发送者信任门、payload 全来自 wire，故 docId/spaceId 必须当
+// **不可信输入**处理：解码边界白名单校验、导航 URL 本地重建（不信任 wire url）。
+
+/** docId / spaceId 白名单：只允许 URL/path 安全字符，挡 `../`、`/`、scheme、空白、超长。 */
+const DOC_IDENTIFIER_RE = /^[A-Za-z0-9_-]{1,128}$/;
+
+/** 是否为合法 docId/spaceId。 */
+export function isValidDocIdentifier(v: unknown): v is string {
+  return typeof v === "string" && DOC_IDENTIFIER_RE.test(v);
+}
+
+/** 合法则原样返回，否则空串（用于解码边界收窄）。 */
+export function asDocIdentifier(v: unknown): string {
+  return isValidDocIdentifier(v) ? v : "";
+}
+
+/**
+ * 本地重建的**安全导航 URL**。P1-b：绝不信任 wire 传来的 `url`（`isSafeUrl` 只挡 scheme
+ * 不绑 origin，真预览 + 攻击者 url 可拼成可信钓鱼卡）。改为只用**已校验的 docId**拼相对路径
+ * （同源、无 scheme，天然安全）；docId 非法则返回空串，调用方不导航/不显链接。
+ *
+ * Phase-1 取消 `sp`（设计 §5.3）：普通文档链接不再携带文档 Space——接收端的 open-context
+ * 预检按 docId 在服务端解析文档归属，故这里只产出 `/d/{docId}`，不再拼 `?sp=`。
+ */
+export function buildDocNavUrl(docId: string): string {
+  if (!isValidDocIdentifier(docId)) return "";
+  return `/d/${encodeURIComponent(docId)}`;
+}
+
+// 类型仅用于签名，`import type` 在运行时被擦除，不会拉入 ui 组件的 React/CSS 加载链。
+import type { DocSharePermissionState, DocSharePreviewStatus } from "../../ui/DocumentShareCard";
+
+/**
+ * 权限态只由接收者的实时 ACL 结果驱动。预览接口仅证明可访问，
+ * 不返回真实角色，因此不能把消息 payload 中的授权意图当作当前权限。
+ */
+export function permissionState(status: DocSharePreviewStatus): DocSharePermissionState {
+  if (status === "denied") return "no_access";
+  if (status === "unavailable") return "unavailable";
+  if (status === "ready") return "reader";
+  return "checking";
+}

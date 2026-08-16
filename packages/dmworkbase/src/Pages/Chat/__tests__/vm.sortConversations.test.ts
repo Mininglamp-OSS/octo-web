@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest"
 
+const hoisted = vi.hoisted(() => ({
+    emit: vi.fn(),
+}))
+
 vi.mock("wukongimjssdk", () => ({
     default: {
         shared: () => ({
@@ -66,7 +70,7 @@ vi.mock("../../../App", () => ({
             notifyListener: () => {},
         },
         config: { appName: "Octo" },
-        mittBus: { emit: () => {}, on: () => {}, off: () => {} },
+        mittBus: { emit: hoisted.emit, on: () => {}, off: () => {} },
         menus: { refresh: () => {} },
         routeRight: { popToRoot: () => {} },
         endpointManager: { invoke: () => {} },
@@ -170,5 +174,16 @@ describe("ChatVM.sortConversations", () => {
             "old-pinned",
             "new-unpinned",
         ])
+    })
+})
+
+describe("ChatVM.reloadRequestConversationList", () => {
+    it("announces initial conversation hydration so unread title consumers recalculate", async () => {
+        const vm = new ChatVM()
+        hoisted.emit.mockClear()
+
+        await vm.reloadRequestConversationList()
+
+        expect(hoisted.emit).toHaveBeenCalledWith("conversation-list-refreshed")
     })
 })

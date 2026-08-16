@@ -1,6 +1,7 @@
 /* ── NavRail wrapper ── */
 .wk-navrail {
-    width: 56px;
+    width: 100%;
+    min-width: 0;
     flex-shrink: 0;
     height: 100%;
     background: var(--wk-bg-navrail);
@@ -15,6 +16,10 @@
     overflow: visible; /* dropdown 需要溢出 */
 }
 
+.wk-layout-tab-expanded .wk-navrail {
+    align-items: stretch;
+}
+
 /* ── Top user avatar ── */
 .wk-navrail__top {
     display: flex;
@@ -25,10 +30,29 @@
     padding-top: 16px;                 /* 头像顶部留白 */
 }
 
+.wk-layout-tab-expanded .wk-navrail__top {
+    align-items: stretch;
+    padding: var(--wk-sp-4, 16px) var(--wk-sp-3, 12px) 0;
+    margin-bottom: var(--wk-sp-2, 8px);
+}
+
 .wk-navrail__user-wrap {
-    position: relative;
     cursor: pointer;
     margin-bottom: 0;
+}
+
+.wk-layout-tab-expanded .wk-navrail__user-wrap {
+    display: flex;
+    align-items: center;
+    gap: var(--wk-sp-2, 8px);
+    min-width: 0;
+}
+
+.wk-navrail__user-avatar-wrap {
+    position: relative;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
 }
 
 .wk-navrail__user-avatar {
@@ -54,6 +78,22 @@
     height: 40px;
 }
 
+.wk-navrail__user-name {
+    display: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-semibold);
+    line-height: 1.4;
+}
+
+.wk-layout-tab-expanded .wk-navrail__user-name {
+    display: block;
+}
+
 /* ── Online status dot ── */
 .wk-navrail__user-status {
     position: absolute;
@@ -74,6 +114,11 @@
     background: var(--wk-border-subtle);
     margin: var(--wk-sp-2, 8px) 0;
     flex-shrink: 0;
+}
+
+.wk-layout-tab-expanded .wk-navrail__sep {
+    width: auto;
+    margin: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
 }
 
 /* ── Space switcher ── */
@@ -124,27 +169,79 @@
     color: var(--wk-text-tertiary);
 }
 
-/* ── Dropdown ── */
-.wk-navrail__dropdown-mask {
+/* ── Shared NavRail flyout ── */
+.wk-navrail__flyout-mask {
     position: fixed;
     inset: 0;
-    z-index: 100;
+    z-index: 190;
 }
 
-.wk-navrail__dropdown {
-    position: fixed;
-    bottom: 52px;
-    left: 12px;
+.wk-navrail__flyout {
+    background: var(--wk-bg-elevated);
+    border: 1px solid var(--wk-border-default);
+    border-radius: var(--wk-r-md, 10px);
+    box-shadow: var(--wk-shadow-lg);
+    z-index: 200;
+    overflow: hidden;
+    padding: var(--wk-sp-1, 4px) 0;
+    box-sizing: border-box;
+}
+
+.wk-navrail__flyout--sm {
+    width: 132px;
+    padding: var(--wk-sp-1, 4px);
+}
+
+.wk-navrail__flyout--md {
+    width: 224px;
+}
+
+.wk-navrail__flyout--lg {
     width: 240px;
     background: var(--wk-bg-surface);
-    border: 1px solid var(--wk-border-subtle);
+    border-color: var(--wk-border-subtle);
     border-radius: 8px;                /* Figma: cornerRadius=8 */
     box-shadow: var(--wk-shadow-dropdown);
-    z-index: 101;
-    overflow: hidden;
     display: flex;
     flex-direction: column;
-    padding: 4px 0;                    /* Figma: 上下 4px，左右 0（行内自带 padding） */
+}
+
+.wk-navrail__flyout-item {
+    width: 100%;
+    min-height: 32px;
+    padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
+    border: none;
+    border-radius: var(--wk-r-sm, 6px);
+    background: transparent;
+    color: var(--wk-text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--wk-sp-2, 8px);
+    font: var(--wk-text-sm);
+    letter-spacing: 0;
+    text-align: left;
+    transition: background var(--wk-dur-fast, 200ms);
+}
+
+.wk-navrail__flyout-item:hover,
+.wk-navrail__flyout-item:focus-visible,
+.wk-navrail__flyout-item--active {
+    background: var(--wk-bg-hover);
+    outline: none;
+}
+
+.wk-navrail__flyout-item-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-navrail__flyout-item-trailing {
+    display: inline-flex;
+    flex-shrink: 0;
+    color: var(--wk-brand-primary);
 }
 
 .wk-navrail__dropdown-title {
@@ -186,23 +283,46 @@
     flex: 1;
     justify-content: flex-start;
     padding: 8px 0;                    /* Figma: Frame 5 pad top:8 bottom:8 */
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.wk-layout-tab-expanded .wk-navrail__items {
+    align-items: stretch;
+    gap: var(--wk-sp-1, 4px);
+    padding: var(--wk-sp-2, 8px);
 }
 
 /* ── NavItem button ── */
 .wk-navrail__item {
     position: relative;
     width: 56px;                       /* Figma: IconItem 56x44 */
-    height: 44px;
+    height: 54px;
     border-radius: 0;
     border: none;
     background: transparent;
     color: var(--wk-icon-muted);       /* Figma: 未选中 30% 透明 */
     cursor: pointer;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: var(--wk-sp-1, 4px);
+    min-width: 0;
+    padding: var(--wk-sp-1, 4px) var(--wk-sp-0-5, 2px);
     transition: background var(--wk-dur-fast, 200ms) var(--wk-ease, cubic-bezier(0.16,1,0.3,1)),
                 color var(--wk-dur-fast, 200ms) var(--wk-ease, cubic-bezier(0.16,1,0.3,1));
+}
+
+.wk-layout-tab-expanded .wk-navrail__item {
+    width: 100%;
+    height: 38px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--wk-sp-2, 8px);
+    padding: 0 var(--wk-sp-3, 12px);
+    border-radius: var(--wk-r-md, 10px);
 }
 
 /* svg 图标统一 20×20，对齐设计稿 */
@@ -210,6 +330,33 @@
     width: 20px;
     height: 20px;
     flex-shrink: 0;
+}
+
+.wk-navrail__item-label {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding-inline: var(--wk-sp-1, 4px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: inherit;
+    font-size: var(--wk-text-size-tiny);
+    font-weight: var(--wk-font-medium);
+    line-height: 1.1;
+    text-align: center;
+}
+
+.wk-layout-tab-expanded .wk-navrail__item-label {
+    display: inline-flex;
+    width: auto;
+    max-width: none;
+    padding-inline: 0;
+    font-size: var(--wk-text-size-md);
+    line-height: 1;
+    text-align: left;
 }
 
 .wk-navrail__item:hover {
@@ -348,62 +495,13 @@
     font-weight: var(--wk-font-semibold);
 }
 
-.wk-navrail__language .semi-icon {
+.wk-navrail__language-menu .semi-icon {
     display: inline-flex;
-    font-size: 20px;
-}
-
-.wk-navrail__language-mask {
-    position: fixed;
-    inset: 0;
-    z-index: 190;
-}
-
-.wk-navrail__language-menu {
-    position: absolute;
-    left: calc(100% + 8px);
-    bottom: 0;
-    width: 132px;
-    padding: var(--wk-sp-1, 4px);
-    border: 1px solid var(--wk-border-default);
-    border-radius: var(--wk-r-md, 10px);
-    background: var(--wk-bg-elevated);
-    box-shadow: var(--wk-shadow-lg);
-    z-index: 201;
-}
-
-.wk-navrail__language-menu-item {
-    width: 100%;
-    min-height: 32px;
-    padding: 0 var(--wk-sp-2, 8px);
-    border: none;
-    border-radius: var(--wk-r-sm, 6px);
-    background: transparent;
-    color: var(--wk-text-primary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--wk-sp-2, 8px);
-    font: var(--wk-text-sm);
-    letter-spacing: 0;
-}
-
-.wk-navrail__language-menu-item:hover,
-.wk-navrail__language-menu-item--active {
-    background: var(--wk-bg-hover);
-}
-
-.wk-navrail__language-menu-item .semi-icon {
-    flex-shrink: 0;
-    color: var(--wk-brand-primary);
     font-size: 14px;
 }
 
-.wk-navrail__language-menu-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.wk-navrail__language-menu-item {
+    padding: 0 var(--wk-sp-2, 8px);
 }
 
 /* Figma: 选中态只有颜色变化，无背景，无指示条 */
@@ -432,13 +530,47 @@
     line-height: 1;
 }
 
+.wk-layout-tab-expanded .wk-navrail__badge {
+    top: 50%;
+    right: var(--wk-sp-2, 8px);
+    transform: translateY(-50%);
+}
+
 /* ── Bottom area ── */
 .wk-navrail__bottom {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;                          /* Figma: 间距 */
+    gap: 0;
     padding-bottom: 16px;
+}
+
+.wk-navrail__bottom .wk-navrail__item,
+.wk-navrail__bottom .wk-navrail__space-icon-btn {
+    width: 56px;
+    height: 54px;
+    padding: var(--wk-sp-1) var(--wk-sp-0-5);
+}
+
+.wk-navrail__bottom .wk-navrail__item > .wk-navrail__item-label {
+    display: none;
+}
+
+.wk-layout-tab-expanded .wk-navrail__bottom {
+    align-items: stretch;
+    gap: var(--wk-sp-2);
+    padding: 0 var(--wk-sp-2, 8px) var(--wk-sp-4, 16px);
+}
+
+.wk-layout-tab-expanded .wk-navrail__bottom .wk-navrail__item,
+.wk-layout-tab-expanded .wk-navrail__bottom .wk-navrail__space-icon-btn {
+    width: 100%;
+    height: 38px;
+    padding: 0 var(--wk-sp-3, 12px);
+}
+
+.wk-layout-tab-expanded .wk-navrail__bottom .wk-navrail__item-label {
+    display: inline-flex;
 }
 
 .wk-navrail__bottom > .wk-navrail__sep {
@@ -447,23 +579,36 @@
 
 /* ── Space icon button (bottom) ── */
 .wk-navrail__space-icon-btn {
-    width: 32px;                       /* Figma: 32x32 */
-    height: 32px;
+    width: 56px;
+    height: 54px;
     border-radius: 0;
     border: none;                      /* Figma: 无边框 */
     background: transparent;           /* Figma: 无底色 */
     color: var(--wk-icon-muted);       /* Figma: 同未选中态 */
     cursor: pointer;
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: var(--wk-sp-1, 4px);
     transition: background var(--wk-dur-fast, 200ms) var(--wk-ease, cubic-bezier(0.16,1,0.3,1)),
                 border-color var(--wk-dur-fast, 200ms) var(--wk-ease, cubic-bezier(0.16,1,0.3,1));
-    padding: 0;
+    padding: var(--wk-sp-1, 4px) var(--wk-sp-0-5, 2px);
+}
+
+.wk-layout-tab-expanded .wk-navrail__space-icon-btn {
+    width: 100%;
+    height: 38px;
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: var(--wk-sp-2, 8px);
+    padding: 0 var(--wk-sp-3, 12px);
+    border-radius: var(--wk-r-md, 10px);
 }
 
 .wk-navrail__space-icon-btn:hover {
     color: var(--wk-icon-default);
+    background: var(--wk-brand-tint-04);
 }
 
 /* ── Settings badge ── */
@@ -558,13 +703,14 @@
 /* ── 设置面板内版本更新提示 ── */
 .wk-navrail__settings-version-update {
     display: flex;
+    align-items: center;
     justify-content: space-between;
+    gap: var(--wk-sp-2, 8px);
+    padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
     border-bottom: 1px solid var(--wk-border-subtle);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-sm, 13px);
     cursor: default;
-}
-
-.wk-navrail__settings-list li.wk-navrail__settings-version-update:hover {
-    background: transparent;
 }
 
 .wk-navrail__settings-version-refresh {
@@ -584,37 +730,13 @@
 
 /* ── Settings panel (flyout) ── */
 .wk-navrail__settings-list {
-    position: fixed;
-    left: 56px;
-    bottom: var(--wk-sp-8, 32px);
-    width: 224px;
-    background: var(--wk-bg-elevated);
-    border: 1px solid var(--wk-border-default);
-    border-radius: var(--wk-r-md, 10px);
-    box-shadow: var(--wk-shadow-lg);
-    z-index: 200;
-    padding: var(--wk-sp-1, 4px) 0;
     list-style: none;
-    display: none;
 }
 
-.wk-navrail__settings-list.open {
-    display: block;
-}
-
-.wk-navrail__settings-list li {
+.wk-navrail__settings-list .wk-navrail__flyout-item {
+    border-radius: 0;
     padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
     font-size: var(--wk-text-size-sm, 13px);
-    color: var(--wk-text-primary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: var(--wk-sp-2, 8px);
-    transition: background var(--wk-dur-fast, 200ms);
-}
-
-.wk-navrail__settings-list li:hover {
-    background: var(--wk-bg-hover);
 }
 
 /* ── User avatar ── */

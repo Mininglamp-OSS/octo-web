@@ -8,12 +8,18 @@
 
 import type { Channel } from "wukongimjssdk"
 
-/** Roles a forwarder may grant when forwarding a doc — no commenter / admin (AC-3 / AC-16). */
-export type ForwardGrantRole = "reader" | "writer"
+/** Roles a forwarder may grant when forwarding a doc — no admin. */
+export type ForwardGrantRole = "reader" | "commenter" | "writer"
 
 /** The grant selection emitted on confirm — undefined when the switch is off. */
 export interface ForwardGrant {
   role: ForwardGrantRole
+  /**
+   * Bot uids the forwarder explicitly kept selected in the 授权区 Bot expander (feature: user+Bot
+   * grants). Empty/omitted → grant humans only. The host merges these onto the human snapshot at
+   * forward time; they are NEVER attached silently — only what the user left checked is carried.
+   */
+  botUids?: string[]
 }
 
 /**
@@ -39,14 +45,55 @@ export interface ForwardGrantConfig {
   onRoleChange(r: ForwardGrantRole): void
   /** "将授权给群当前 N 名成员" hint count, when a group target is selected. */
   targetMemberCount?: number
+  /**
+   * Bot expander state (feature: user+Bot grants). Present only when there is at least one Bot
+   * created by a selected person; the 授权区 renders a per-person expandable list so the forwarder
+   * can cancel individual Bots (default: all selected). Absent → no Bot row is shown (zero-Bot
+   * compatible). Resolution failures remain not-ready, expose retry, and block confirmation.
+   */
+  bots?: ForwardBotSnapshot
+}
+
+/** One person and the Bots they created among the selected forward targets. */
+export interface ForwardBotCreatorGroup {
+  /** Creator uid (a selected person / group member). */
+  uid: string
+  /** Display name for the creator, falling back to the uid. */
+  name: string
+  /** Bots this person created, each with its current selected state. */
+  bots: Array<{ uid: string; name: string; selected: boolean }>
+}
+
+/** Bot expander model the 授权区 renders (feature: user+Bot grants). */
+export interface ForwardBotSnapshot {
+  /**
+   * Whether the async resolve has completed for the CURRENT target/space. False while loading (or
+   * right after the target changed): callers must not carry any Bot until this is true, so a stale
+   * or in-flight resolve can never confirm old Bots.
+   */
+  ready: boolean
+  /** Resolve failed. Confirmation stays blocked until retry succeeds. */
+  error?: boolean
+  /** Retry the current target's Bot resolution after a recoverable failure. */
+  retry?: () => void
+  /** Distinct human uids in the resolved target snapshot ("N 人"). */
+  peopleCount: number
+  /** Currently-selected Bot count across all creators ("M Bot"). */
+  botCount: number
+  /** Per-creator Bot groups, rendered as expandable rows. */
+  groups: ForwardBotCreatorGroup[]
+  /** Toggle one Bot's selected state. */
+  toggleBot(uid: string): void
 }
 
 /** Per-run aggregate returned by the docs-injected grant executor (host aggregates N/M from it). */
 export interface ForwardGrantResult {
   granted: number
   failed: number
-  /** uids that failed to be granted (404 / 403), for the partial-failure hint. */
+  /** All uids that failed to be granted. */
   failures?: string[]
+  /** Uids permanently rejected by the API contract (HTTP 400). */
+  rejected?: string[]
 }
 
 /**
@@ -64,6 +111,24 @@ export interface DocForwardOpen {
   messageTitle: string
   /** Clickable link with the docId embedded. */
   link: string
+  /**
+   * Whether to send this forward as a DocumentShareCard (type-18) rather than a plain-text link.
+   * ONLY the "share document to chat" flow sets this true. Other forward entries that reuse this
+   * bridge — notably the html-doc "让 AI 处理" AI-instruction forward — carry a docId but must stay
+   * a plain-text message with their instruction-specific anchored link, so they leave this unset
+   * (Jerry-Xin blocker: docId presence alone must NOT trigger the card conversion).
+   */
+  shareAsCard?: boolean
+  /** docId — carried into the DocumentShareCard payload so the receiver can fetch an ACL-safe preview. */
+  docId?: string
+  /** The doc's space id (deep-link + preview both need it). */
+  spaceId?: string
+  /** Resource kind — doc/board/sheet — drives the card icon + which preview endpoint the cell calls. */
+  kind?: "doc" | "board" | "sheet"
+  /** Pre-resolved owner display name for the card eyebrow (optional). */
+  ownerName?: string
+  /** Pre-formatted "updated at" string for the card eyebrow (optional). */
+  updatedAt?: string
   /** Precomputed by docs: canManage(role) || currentUid === ownerId. */
   canGrant: boolean
   /** Grey-out hint for non-grantors. */
@@ -73,5 +138,5 @@ export interface DocForwardOpen {
   /** docs-injected executor; host awaits it BEFORE sending (先授权后发). */
   grantAccess?(uids: string[], role: ForwardGrantRole): Promise<ForwardGrantResult>
   /** Optional outcome callback (host already toasts; docs may use this for extra UI). */
-  onResult?(result: { sent: number; failed: number; grantFailures?: string[] }): void
+  onResult?(result: { sent: number; failed: number; grantFailures?: string[]; grantRejections?: string[] }): void
 }

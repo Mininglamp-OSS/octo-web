@@ -1,19 +1,17 @@
-import { ChatPage, EndpointCategory, WKApp, Menus, shouldSkipChannelForSpace, shouldSkipPersonConversationForSpace, t } from '@octo/base';
+import { addImChannelInfoListener, ChatPage, EndpointCategory, WKApp, Menus, t } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
 import './index.css';
 import AppLayout from '../Layout';
-import { WKSDK, ChannelTypePerson } from 'wukongimjssdk';
-import { setFaviconBadge, clearFaviconBadge } from '../utils/faviconBadge';
+import { WKSDK } from 'wukongimjssdk';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
-import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
-
-let _summaryBadgeCount = 0;
-let _badgeListenerSetup = false;
+import { createOctoDocumentTitleController } from '../features/documentTitle/octoDocumentTitle';
+import { IPC_CONVERSATION_UNREAD_COUNT } from '../../src-election/shared/ipc-channels';
+import { getElectronUnreadMessageCount } from './electronUnreadCount';
 
 /**
  * 全局 ?verified=1 处理：CAS 实名认证完成后 verify-service 会 302 回
@@ -48,10 +46,19 @@ function useRealnameVerifiedLandingHandler() {
 function App() {
   useRealnameVerifiedLandingHandler()
   useDeprecatedFriendApplyReddotCleanup()
+  useOctoDocumentTitle()
   registerMenus()
   return (
     <AppLayout />
   );
+}
+
+function useOctoDocumentTitle() {
+  useEffect(() => {
+    const controller = createOctoDocumentTitleController()
+    controller.start()
+    return () => controller.stop()
+  }, [])
 }
 
 function useDeprecatedFriendApplyReddotCleanup() {
@@ -82,6 +89,15 @@ function useDeprecatedFriendApplyReddotCleanup() {
   }, [isLogined, uid])
 }
 
+function syncElectronUnreadMessageCount() {
+  if ((window as any).__POWERED_ELECTRON__) {
+    (window as any).ipc.send(
+      IPC_CONVERSATION_UNREAD_COUNT,
+      getElectronUnreadMessageCount(),
+    )
+  }
+}
+
 let _menusRegistered = false
 async function registerMenus() {
   if (_menusRegistered) return
@@ -89,7 +105,14 @@ async function registerMenus() {
 
   WKSDK.shared().conversationManager.addConversationListener(() => {
     WKApp.menus.refresh()
+    syncElectronUnreadMessageCount()
   })
+  addImChannelInfoListener(WKSDK.shared(), syncElectronUnreadMessageCount)
+  WKApp.mittBus.on("conversation-list-refreshed", syncElectronUnreadMessageCount)
+
+  // The conversation list can be restored after registration; the listener
+  // above will send the subsequent snapshot in that case.
+  syncElectronUnreadMessageCount()
 
   WKApp.endpointManager.setMethod("menus.friendapply.change", () => {
     WKApp.menus.refresh()
@@ -97,46 +120,8 @@ async function registerMenus() {
     category: EndpointCategory.friendApplyDataChange,
   })
 
-  // Listen for summary badge count updates (emitted from dmworksummary)
-  if (!_badgeListenerSetup) {
-    _badgeListenerSetup = true;
-    WKApp.mittBus.on("summary-badge-update" as any, (payload: { count: number }) => {
-      _summaryBadgeCount = payload?.count ?? 0;
-      WKApp.menus.refresh();
-    });
-  }
-
   WKApp.menus.register("chat", (_context) => {
     const m = new Menus("chat", "/", t("app.nav.chat"), <ChatIcon />, <ChatIcon />)
-    let badge = 0;
-
-    for (const conversation of WKSDK.shared().conversationManager.conversations) {
-      const channelInfo = WKSDK.shared().channelManager.getChannelInfo(conversation.channel)
-      if (channelInfo?.mute) {
-        continue
-      }
-      // Space 过滤：复用 shouldSkipChannelForSpace 完整逻辑（含 channelSpaceMap 缓存）
-      if (shouldSkipChannelForSpace(conversation.channel)) {
-        continue
-      }
-      if (shouldSkipPersonConversationForSpace(conversation)) continue
-      // Person 频道在 Space 模式下优先使用 per-Space 未读计数
-      const currentSpaceId = WKApp.shared.currentSpaceId
-      if (currentSpaceId
-          && conversation.channel.channelType === ChannelTypePerson
-          && conversation.extra?.spaceUnread !== undefined) {
-        badge += conversation.extra.spaceUnread
-      } else {
-        badge += conversation.unread
-      }
-    }
-
-    // badge 和 favicon 角标已下线
-    clearFaviconBadge()
-
-    if ((window as any).__POWERED_ELECTRON__) {
-      (window as any).ipc.send("conversation-anager-unread-count", badge);
-    }
 
     return m
   }, 1000)
@@ -145,21 +130,6 @@ async function registerMenus() {
     const m = new Menus("contacts", "/contacts", t("app.nav.contacts"), <ContactsIcon />, <ContactsIcon />)
     return m
   }, 4000)
-
-  WKApp.menus.register("summary", (_context) => {
-    const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
-    if (_summaryBadgeCount > 0) {
-      m.badge = _summaryBadgeCount;
-    }
-    m.onPress = () => {
-      WKApp.routeLeft.popToRoot()
-      const page = WKApp.route.get("/summary/create")
-      if (page && React.isValidElement(page)) {
-        WKApp.routeRight.replaceToRoot(page)
-      }
-    }
-    return m
-  }, 5000)
 
   WKApp.route.register("/", () => {
     return <ChatPage></ChatPage>

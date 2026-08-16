@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { Dropdown, Modal } from "@douyinfe/semi-ui";
-import { MoreHorizontal, AlertTriangle, X } from "lucide-react";
+import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
+import { MoreHorizontal, AlertTriangle, Bot, Clock, FileText, UsersRound, X } from "lucide-react";
 import { useI18n } from "@octo/base";
 import WKApp from "@octo/base/src/App";
-import type { SummaryListItem } from "../types/summary";
-import { ParticipantStatus, TaskStatus } from "../types/summary";
-import { getStatusLabel } from "../utils/summaryHelpers";
+import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
+import { getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
+import { summaryTestIds } from "../utils/testIds";
 
 interface SummaryCardProps {
     task: SummaryListItem;
@@ -20,6 +20,7 @@ interface SummaryCardProps {
     onEdit?: (taskId: number) => void;
     onCancel?: (taskId: number) => void;
 }
+
 
 /** 相对时间格式化 */
 function formatRelativeTime(dateStr: string, t: (key: string, opts?: any) => string): string {
@@ -53,10 +54,12 @@ function getStatusColor(status: number): string | null {
             return "#FF8800";
         case TaskStatus.FAILED:
             return "#F65E58";
+        case TaskStatus.COMPLETED:
+            return "var(--wk-color-success)";
         case TaskStatus.CANCELLED:
             return "rgba(28, 28, 35, 0.4)";
         default:
-            return null; // COMPLETED 不显示状态文字
+            return null;
     }
 }
 
@@ -73,17 +76,38 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         || isPendingInvite;
 
     const displayTitle = deriveSummaryDisplayContent(task.topic || task.title || task.task_no);
+    // Keep the description truthy so an empty topic does not render a
+    // 4px-tall empty `.summary-card-desc`, and do NOT gate on length —
+    // `.summary-card-desc` already uses `-webkit-line-clamp: 2; overflow:
+    // hidden` (src/index.css:476-485), so a topic of any length clamps
+    // visually instead of vanishing outright at the 81st character.
+    const description = task.topic?.trim() || "";
+    const showDescription = description !== "" && description !== displayTitle;
     const displayStatus = displaysWaiting ? TaskStatus.PENDING : task.status;
     const statusColor = getStatusColor(displayStatus);
-    const statusText = displayStatus !== TaskStatus.COMPLETED ? getStatusLabel(displayStatus) : null;
+    const statusText = getStatusLabel(displayStatus);
 
     const isGenerating = task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING;
+    // 类型分类 — 单一 classifier 派生 label + icon + CSS class（R4 yj P2-2）。
+    const typeKind = getSummaryTypeKind(task);
+    const typeLabel = getSummaryTypeLabel(t, task);
     const sourceInfo = getSourceInfo(task, t);
     const relativeTime = formatRelativeTime(task.created_at, t);
     const isCreator = task.creator_id != null && task.creator_id === currentUid;
     const isParticipant = myParticipant != null;
+    // Bot-created summaries (trigger_type=BOT) are marked with the acting bot's
+    // name. The Bot tag keys off trigger_type so the summary stays visibly marked
+    // regardless of field availability; the "由 <bot> 创建" copy is only used when
+    // creator_bot_name is actually present. That field is added by the backend in
+    // octo-smart-summary#188 — until it ships, trigger_type=BOT tasks (producible
+    // since #181) carry no name, so we fall back to the normal creator/time copy
+    // instead of rendering "未知" (the two services deploy independently).
+    const isBotCreated = task.trigger_type === TriggerType.BOT || !!task.creator_bot_name;
+    const hasBotName = isBotCreated && !!task.creator_bot_name;
 
-    const timeText = isCreator
+    const timeText = hasBotName
+        ? t("summary.summaryCard.botCreatedAt", { values: { name: task.creator_bot_name!, time: relativeTime } })
+        : isCreator
         ? t("summary.summaryCard.youStartedAt", { values: { time: relativeTime } })
         : t("summary.summaryCard.startedAt", { values: { name: task.creator_name || t("summary.common.unknown"), time: relativeTime } });
 
@@ -107,6 +131,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
 
     return (
         <div
+            data-testid={summaryTestIds.card(task.task_id)}
             className={`summary-card${active ? " summary-card--active" : ""}`}
             onClick={() => onClick(task.task_id)}
         >
@@ -121,9 +146,9 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                 </div>
             )}
             {/* 源信息 + 状态文字（非 generating 时显示） */}
-            {!isGenerating && sourceInfo && (
+            {!isGenerating && (sourceInfo || statusText) && (
                 <div className="summary-card-top">
-                    <span className="summary-card-source">{sourceInfo}</span>
+                    {sourceInfo && <span className="summary-card-source">{sourceInfo}</span>}
                     {statusText && (
                         <span className="summary-card-status" style={{ color: statusColor ?? undefined }}>
                             {statusText}
@@ -132,16 +157,37 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                 </div>
             )}
 
-            {/* 标题 + 描述 */}
+            {/* 标题行：类型图标 + 标题；来源保持在上一行 */}
             <div className="summary-card-body">
-                <div className="summary-card-title">{displayTitle}</div>
-                {task.topic && task.topic !== displayTitle && (
-                    <div className="summary-card-desc">{task.topic}</div>
+                <div className="summary-card-title-row">
+                    <Tooltip content={typeLabel} position="top">
+                        <span
+                            className={`summary-card-type-icon summary-card-type-icon--${typeKind}`}
+                            role="img"
+                            aria-label={typeLabel}
+                            tabIndex={0}
+                        >
+                            {typeKind === 'agent' ? <Bot size={14} />
+                                : typeKind === 'scheduled' ? <Clock size={14} />
+                                : typeKind === 'multi' ? <UsersRound size={14} />
+                                : <FileText size={14} />}
+                        </span>
+                    </Tooltip>
+                    <div className="summary-card-title">{displayTitle}</div>
+                </div>
+                {showDescription && (
+                    <div className="summary-card-desc">{description}</div>
                 )}
             </div>
 
             {/* 底部：时间 + 操作菜单 */}
             <div className="summary-card-bottom">
+                {isBotCreated && (
+                    <span className="summary-card-bot-tag">
+                        <Bot size={11} />
+                        {t("summary.summaryCard.botTag")}
+                    </span>
+                )}
                 <span className="summary-card-time">{timeText}</span>
                 {(isCreator || (isParticipant && onLeave)) && (
                     <Dropdown
@@ -208,6 +254,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                         }
                     >
                         <button
+                            data-testid={summaryTestIds.cardMenu(task.task_id)}
                             type="button"
                             className="summary-card-more"
                             onClick={(e) => e.stopPropagation()}
@@ -226,12 +273,14 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
                     onClick={(e) => e.stopPropagation()}
                 >
                     <button
+                        data-testid={summaryTestIds.cardAcceptBtn(task.task_id)}
                         className="summary-card-respond-btn summary-card-respond-btn--accept"
                         onClick={() => onRespond(task.task_id, "accept")}
                     >
                         {t("summary.action.accept")}
                     </button>
                     <button
+                        data-testid={summaryTestIds.cardRejectBtn(task.task_id)}
                         className="summary-card-respond-btn summary-card-respond-btn--reject"
                         onClick={() => onRespond(task.task_id, "reject")}
                     >

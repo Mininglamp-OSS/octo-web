@@ -14,23 +14,17 @@ export const RANGE_THRESHOLD = 3;
  * Group-label formatting rule (per product spec):
  *   1  citation  -> single [N] badge (handled by remarkCitation, not here)
  *   2-3 citations -> comma joined:  [37,38,39]
- *   >3 citations  -> range:         [30-35]
+ *   >3 contiguous citations -> range: [30-35]
+ *   >3 gapped citations     -> list:  [1,6,7,8]
  */
 export function formatGroupLabel(indices: number[]): string {
     if (indices.length <= RANGE_THRESHOLD) {
         return indices.join(',');
     }
-    // Range form is only meaningful when the display indices are contiguous and
-    // strictly ascending. After reading-order renumbering a group's display
-    // indices can be reordered/gapped (e.g. [4,1,2,3] -> "4-3" backwards, or
-    // [1,3,4,5] -> "1-5" implying a [2] that isn't in the group), so fall back
-    // to the explicit comma list in those cases (#1003 review P2).
-    const contiguousAscending = indices.every(
-        (v, i) => i === 0 || v === indices[i - 1] + 1,
-    );
-    return contiguousAscending
-        ? `${indices[0]}-${indices[indices.length - 1]}`
-        : indices.join(',');
+    const sorted = [...new Set(indices)].sort((a, b) => a - b);
+    const contiguous = sorted.every((value, i) => i === 0 || value === sorted[i - 1] + 1);
+    if (sorted.length === 1) return `${sorted[0]}`;
+    return contiguous ? `${sorted[0]}-${sorted[sorted.length - 1]}` : sorted.join(',');
 }
 
 /**

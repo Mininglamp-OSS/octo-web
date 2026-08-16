@@ -4,6 +4,7 @@ import { I18nContext, t } from "@octo/base";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
+import { summaryTestIds } from "../utils/testIds";
 
 interface SummaryEditorProps {
     taskId: number;
@@ -12,7 +13,7 @@ interface SummaryEditorProps {
     onSave: () => void;
     onCancel: () => void;
     mode?: "team" | "personal" | "personal_draft";
-    exposeSave?: (fn: () => void) => void;
+    exposeSave?: (fn: (() => void) | null) => void;
 }
 
 interface SummaryEditorState {
@@ -41,6 +42,11 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
 
     componentWillUnmount() {
         window.removeEventListener("beforeunload", this.handleBeforeUnload);
+        // 清除父组件持有的 save 闭包，避免卸载后仍能通过陈旧引用写入
+        // （切换任务后点保存可能覆盖上一个任务内容）。
+        if (this.props.exposeSave) {
+            this.props.exposeSave(null);
+        }
     }
 
     private handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -113,6 +119,7 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
                 <div style={{ position: "relative" }}>
                     <textarea
                         ref={this.textareaRef}
+                        data-testid={summaryTestIds.editorTextarea}
                         className="summary-editor-textarea"
                         value={content}
                         onChange={this.handleChange}

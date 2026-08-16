@@ -1,11 +1,12 @@
 import React from "react";
 import { Tooltip } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
-import { Bot, Pencil, Trash2, UserRound } from "lucide-react";
+import { Bot, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
 import { IconGlyph } from "../utils/icon";
 import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
+import { isOfficialMcp } from "../utils/publisher";
 
 interface McpCardProps {
   item: McpListItem;
@@ -38,9 +39,10 @@ export function parseMatchReason(reason: string): { key: string; value?: string 
  *  the card itself doesn't already show (tool / usage_example / creator) —
  *  matches on name / description / tag are visible in the card body and
  *  don't need their own chip. */
-export function MatchReasons({ reasons }: { reasons: string[] }) {
+export function MatchReasons({ reasons, hideCreator = false }: { reasons: string[]; hideCreator?: boolean }) {
   const revealing = reasons.filter((reason) => {
     const type = reason.split(":", 1)[0];
+    if (hideCreator && type === "creator") return false;
     return type === "tool" || type === "usage_example" || type === "creator";
   });
   if (!revealing.length) return null;
@@ -89,17 +91,21 @@ export function resolveOwner(item: McpListItem): { botName?: string; humanName?:
 const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) => {
   const visibleTags = item.tags.slice(0, CARD_TAG_LIMIT);
   const overflowTags = item.tags.slice(CARD_TAG_LIMIT);
-  const owner = resolveOwner(item);
+  const isOfficial = isOfficialMcp(item);
+  const owner = isOfficial ? null : resolveOwner(item);
   // `.trim()` gates the fallback avatar so a whitespace-only icon string
   // (paste artifact, backend quirk) doesn't slip past the truthiness check
   // and render an empty box via IconGlyph.
   const hasIcon = !!item.icon?.trim();
   return (
     <div
-      className="wk-mcp-card"
+      className={`wk-mcp-card${isOfficial ? " wk-mcp-card--official" : ""}`}
       role="button"
       tabIndex={0}
       onClick={() => onClick(item)}
+      data-track="market_card_opened"
+      data-object-id={item.id}
+      data-track-item-type="mcp"
       onKeyDown={(e) => {
         // Don't hijack Enter/Space when the focused element is one of the
         // inner action buttons (pencil / trash) — those buttons handle the
@@ -133,7 +139,14 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
               {item.name}
             </h3>
           </div>
-          {owner && (
+          {isOfficial ? (
+            <div className="wk-mcp-card__meta-row">
+              <span className="wk-mcp-card__owner wk-mcp-card__owner--official">
+                <ShieldCheck className="wk-mcp-card__owner-official-icon" size={13} aria-hidden="true" />
+                <span className="wk-mcp-card__owner-name">{t("mcp.card.officialPublisher")}</span>
+              </span>
+            </div>
+          ) : owner ? (
             <div className="wk-mcp-card__meta-row">
               {owner.botName && (
                 <span className="wk-mcp-card__owner" title={owner.botName}>
@@ -151,7 +164,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
                 </span>
               )}
             </div>
-          )}
+          ) : null}
         </div>
       </div>
       <div className="wk-mcp-card__slogan">{item.slogan}</div>
@@ -182,7 +195,9 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
           </Tooltip>
         )}
       </div>
-      {item.matchReasons?.length ? <MatchReasons reasons={item.matchReasons} /> : null}
+      {item.matchReasons?.length ? (
+        <MatchReasons reasons={item.matchReasons} hideCreator={isOfficial} />
+      ) : null}
       <div className="wk-mcp-card__footer">
         <div className="wk-mcp-card__stats">
           <span
@@ -198,6 +213,12 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
           <div
             className="wk-mcp-card__footer-actions"
             onClick={(e) => e.stopPropagation()}
+            // The card root carries data-track="market_card_opened"; the global
+            // click delegate runs in capture phase, BEFORE this stopPropagation,
+            // so an edit/delete click here would still resolve closest('[data-track]')
+            // to the card and emit a false view. data-track-ignore makes the
+            // delegate skip any click landing inside this actions subtree.
+            data-track-ignore=""
           >
             {onEdit && (
               <button

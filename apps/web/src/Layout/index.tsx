@@ -1,9 +1,11 @@
 import React, { Component } from "react";
 import { WKApp, WKBase, Provider, ErrorBoundary, t } from "@octo/base"
+import { isBindEntry } from "@octo/login"
 import { listen } from '@tauri-apps/api/event'
 import { MainPage } from "../Pages/Main";
 import SpaceGate from "../Components/SpaceGate";
 import { Notification as NotificationUI, Button } from '@douyinfe/semi-ui';
+import { IconInfoCircle } from '@douyinfe/semi-icons';
 import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/updater'
 import { relaunch } from '@tauri-apps/api/process'
 import { os } from "@tauri-apps/api";
@@ -13,11 +15,21 @@ import { toJoinApprovalStatus } from "@octo/base";
 import InviteLanding from "../Components/InviteLanding";
 import JoinSpacePage from "../Components/JoinSpacePage";
 import JoinApprovalResult from "../Components/JoinApprovalResult";
-import { StandaloneDocPage, parseStandaloneDocId, isStandaloneDocPath, persistStandaloneReturn, consumeStandaloneReturn } from "@octo/docs";
+import { getEnterpriseStandaloneHandlers } from "virtual:octo-enterprise-modules";
 import { SummaryDetailPage, SummaryShareDetailPage } from "@dmwork/summary";
 import { adoptStoredSession, findSidForToken, clearSessionsWithToken } from "./recoverSession";
 import { buildPostLoginRedirectUrl } from "./postLoginRedirect";
-import { isLoopCliAuthorizePath, LOOP_CLI_AUTHORIZE_PATH } from "@octo/loop";
+import {
+    getMailAuthorizationSessionStorage,
+    isMailAuthorizePath,
+    mailAuthorizeCode,
+    mailAuthorizeMailbox,
+    mailAuthorizeSpaceId,
+    MAIL_AUTHORIZATION_RESOLVED_EVENT,
+    MAIL_AUTHORIZE_PATH,
+    resolveMailAuthorizeSearch,
+} from "@octo/mail";
+import { consumeStandaloneReturn, persistStandaloneReturn, clearStandaloneReturn } from "./standaloneReturn";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -113,8 +125,19 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
     onNeedJoinSpace!: () => void
     onJoinApproval!: (status: JoinApprovalStatus, inviteCode: string) => void
     private _spaceChecked = false; // 冷启动 Space 检测只跑一次
+    private onMailAuthorizationResolved = () => clearStandaloneReturn();
 
     componentDidMount() {
+        window.addEventListener(
+            MAIL_AUTHORIZATION_RESOLVED_EVENT,
+            this.onMailAuthorizationResolved,
+        );
+        if (isMailAuthorizePath(window.location.pathname)) {
+            // Stash once for a possible expired-session round trip. Keeping this
+            // out of render prevents a later AppLayout state update from
+            // recreating a return target that the authorization page resolved.
+            persistStandaloneReturn();
+        }
         // Wave 2: 无 Space 时触发 JoinSpacePage 覆盖层
         this.onNeedJoinSpace = () => {
             this.setState({ showJoinSpace: true });
@@ -128,7 +151,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         WKApp.endpoints.addOnJoinApproval(this.onJoinApproval);
 
         // T5: 冷启动已登录检测 — 用户直接打开 App 恢复登录态时，检查是否有 Space
-        if (WKApp.shared.isLogined()) {
+        if (
+            WKApp.shared.isLogined() &&
+            !isMailAuthorizePath(window.location.pathname)
+        ) {
             this.checkSpaceOnColdStart();
         }
 
@@ -165,6 +191,19 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 if (forwardSp) redirectQuery.set("sp", forwardSp)
                 if (forwardSpace) redirectQuery.set("space", forwardSpace)
             }
+            if (isMailAuthorizePath(window.location.pathname)) {
+                const authorizationSearch = resolveMailAuthorizeSearch(
+                    window.location.pathname,
+                    window.location.search,
+                    getMailAuthorizationSessionStorage(),
+                );
+                const authorizationCode = mailAuthorizeCode(authorizationSearch);
+                if (authorizationCode) redirectQuery.set("code", authorizationCode);
+                const authorizationMailbox = mailAuthorizeMailbox(authorizationSearch);
+                if (authorizationMailbox) redirectQuery.set("mailbox", authorizationMailbox);
+                const authorizationSpaceId = mailAuthorizeSpaceId(authorizationSearch);
+                if (authorizationSpaceId) redirectQuery.set("space_id", authorizationSpaceId);
+            }
             const redirectQs = redirectQuery.toString()
             const redirectSearch = redirectQs ? `?${redirectQs}` : ""
 
@@ -179,7 +218,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 // the URL clean: store the known bucket sid in SessionScope, then navigate to the
                 // sid-less return path. The reloaded page still hits the right sid-keyed session
                 // bucket, without exposing `?sid=` in the address bar.
-                const standaloneReturn = consumeStandaloneReturn();
+                const standaloneReturn = consumeStandaloneReturn([
+                    { match: isMailAuthorizePath, persistReturnOnAnonymous: true },
+                    ...getEnterpriseStandaloneHandlers(),
+                ]);
                 if (standaloneReturn) {
                     const sessionSid = findSidForToken(localStorage, WKApp.loginInfo.token || "");
                     if (sessionSid) setSessionSid(sessionSid);
@@ -264,6 +306,10 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
     }
 
     componentWillUnmount() {
+        window.removeEventListener(
+            MAIL_AUTHORIZATION_RESOLVED_EVENT,
+            this.onMailAuthorizationResolved,
+        );
         WKApp.endpoints.removeOnLogin(this.onLogin);
         WKApp.endpoints.removeOnNeedJoinSpace(this.onNeedJoinSpace);
         WKApp.endpoints.removeOnJoinApproval(this.onJoinApproval);
@@ -318,26 +364,28 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
 
     showUpdateUI(manifest: UpdateManifest) {
       const notifyID =  NotificationUI.info({
-            title: t("app.layout.update.newVersion", { values: { version: manifest.version } }),
+            className: "wk-octo-notification",
+            icon: <IconInfoCircle className="wk-octo-notification__icon" />,
+            title: <span className="wk-octo-notification__title">{t("app.layout.update.newVersion", { values: { version: manifest.version } })}</span>,
             duration: 0,
             content: (
-                <>
-                    <div>{manifest.body}</div>
-                    <div style={{ marginTop: 8 }}>
-                        <Button onClick={ async () => {
+                <div className="wk-octo-notification__content">
+                    <div className="wk-octo-notification__body">{manifest.body}</div>
+                    <div className="wk-octo-notification__actions">
+                        <Button className="wk-octo-notification__action" onClick={ async () => {
                            // install complete, restart app
                            if(await os.platform() !== "darwin") {
                                 await installUpdate()
                             }
                           await relaunch()
                         }}>{t("base.common.update")}</Button>
-                        <Button onClick={()=>{
+                        <Button className="wk-octo-notification__action" onClick={()=>{
                             NotificationUI.close(notifyID)
-                        }} type="secondary" style={{ marginLeft: 20 }}>
+                        }} type="secondary">
                             {t("app.layout.update.later")}
                         </Button>
                     </div>
-                </>
+                </div>
             ),
         })
     }
@@ -381,66 +429,60 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
         // otherwise the bind token gets silently dropped on the floor. Defense
         // in depth even though no documented flow constructs such a URL today.
         // PR #72 review yujiawei #2.
-        if (window.location.pathname === '/oidc/bind') {
+        // Two independent triggers on purpose:
+        //   - `pathname === '/oidc/bind'` covers browser flows where the URL
+        //     really lives on that path.
+        //   - `isBindEntry()` covers the Electron packaged shell, where the
+        //     bind callback is rewritten to `build/index.html?__octo_route=/oidc/bind&...`
+        //     by main/oidcRedirect, so `pathname` no longer matches.
+        // Either signal is authoritative on its own; both must render bind.
+        if (window.location.pathname === '/oidc/bind' || isBindEntry()) {
             const bindComponent = WKApp.route.get('/oidc/bind')
             if (bindComponent) {
                 return bindComponent
             }
         }
 
-        // The CLI authorization deep-link is a full-page flow outside the normal app shell.
-        // Reuse a single stored Octo session when the clean URL carries no sid-specific token.
-        if (isLoopCliAuthorizePath(window.location.pathname)) {
-            if (!WKApp.loginInfo.token) {
-                WKApp.loginInfo.load();
-            }
-            if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage(true);
-            }
+        if (isMailAuthorizePath(window.location.pathname)) {
+            if (!WKApp.loginInfo.token) WKApp.loginInfo.load();
+            if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
             if (WKApp.loginInfo.token) {
                 if (!WKApp.shared.currentSpaceId) {
                     const cachedSpaceId = localStorage.getItem("currentSpaceId") || "";
                     if (cachedSpaceId) WKApp.shared.currentSpaceId = cachedSpaceId;
                 }
-                const cliAuthorizeComponent = WKApp.route.get(LOOP_CLI_AUTHORIZE_PATH);
-                if (cliAuthorizeComponent) return cliAuthorizeComponent;
+                const mailAuthorizeComponent = WKApp.route.get(MAIL_AUTHORIZE_PATH, {
+                    onSessionExpired: clearExpiredStandaloneSessionAndReload,
+                });
+                if (mailAuthorizeComponent) return mailAuthorizeComponent;
             }
         }
 
-        // Standalone document deep-link (`/d/:docId`, octo-web #512): a shareable full-window
-        // doc view that lives OUTSIDE the app shell (no MainPage / NavRail), mounted with the
-        // same early-return interception the `?invite=` landing uses below. We claim the whole
-        // `/d` namespace (not just well-formed ids) so a malformed/empty id renders the
-        // standalone not-found terminal instead of silently falling through to the shell (AC-9).
-        //
-        // Auth: this branch renders before the Provider, so ensure the octo session is loaded
-        // for the page's GET /docs/{docId} preflight + collab-token exchange. A clean cold-load
-        // in a fresh tab carries no `?sid=`, so load() (sid-keyed) misses even a signed-in user's
-        // token — recover it from localStorage the way the invite branch does (AC-3). When the
-        // visitor is genuinely anonymous, fall through to the login screen rendered IN PLACE: the
-        // pathname stays `/d/:docId`, so onLogin derives basePath from it and bounces the user
-        // straight back to the doc (now with `?sid=`) after sign-in — the deep-link resumes
-        // instead of dead-ending (AC-11). SPA deep-link serving depends on the nginx try_files
-        // fallback (deployment concern, out of scope for this frontend change).
-        if (isStandaloneDocPath(window.location.pathname)) {
-            if (!WKApp.loginInfo.token) {
-                WKApp.loginInfo.load();
-            }
-            if (!WKApp.loginInfo.token) {
-                recoverOctoSessionFromStorage(true);
-            }
+        // Enterprise full-page deep-links live outside the normal app shell. The host only owns
+        // the generic lifecycle (recover a clean sid-less session, hand over the expired-session
+        // callback, and optionally stash an anonymous return target). Concrete routes are owned by
+        // private modules, so adding a new enterprise module does not require another host branch.
+        const enterpriseStandaloneHandlers = getEnterpriseStandaloneHandlers();
+        const enterpriseStandaloneHandler = enterpriseStandaloneHandlers.find((handler) =>
+            handler.match(window.location.pathname)
+        );
+        if (enterpriseStandaloneHandler) {
+            if (!WKApp.loginInfo.token) WKApp.loginInfo.load();
+            if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
             if (WKApp.loginInfo.token) {
-                const standaloneDocId = parseStandaloneDocId(window.location.pathname);
-                return <StandaloneDocPage docId={standaloneDocId} onSessionExpired={clearExpiredStandaloneSessionAndReload} />;
+                if (!WKApp.shared.currentSpaceId) {
+                    const cachedSpaceId = localStorage.getItem("currentSpaceId") || "";
+                    if (cachedSpaceId) WKApp.shared.currentSpaceId = cachedSpaceId;
+                }
+                const enterpriseStandalonePage = enterpriseStandaloneHandler.render({
+                    pathname: window.location.pathname,
+                    search: window.location.search,
+                    onSessionExpired: clearExpiredStandaloneSessionAndReload,
+                });
+                if (enterpriseStandalonePage) return enterpriseStandalonePage;
+            } else if (enterpriseStandaloneHandler.persistReturnOnAnonymous) {
+                persistStandaloneReturn();
             }
-            // Anonymous: stash the exact /d/:docId target so the post-login flow (local OR SSO/OIDC)
-            // can bounce the user back to the document instead of the app root, then fall through to
-            // the login screen (below) without navigating away. SessionScope keeps the session bucket
-            // available without exposing sid in the return URL. The standalone page itself only
-            // mounts once a token exists, so the anonymous path is the ONLY place this key gets
-            // written for a first-time visitor — onLogin consumes it via consumeStandaloneReturn.
-            persistStandaloneReturn();
-            // Anonymous: fall through to the login screen (below) without navigating away.
         }
 
         // Read-only shared summary deep-link (`/s/share/:shareId`). It uses the same
@@ -468,8 +510,15 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
             if (WKApp.loginInfo.token) {
                 applyStandaloneSummarySpaceFromQuery();
-                const standaloneTaskNo = parseStandaloneSummaryTaskNo(window.location.pathname);
-                return <SummaryDetailPage taskId={standaloneTaskNo ?? undefined} />;
+                const standaloneTaskNo = parseStandaloneSummaryTaskNo(
+                    window.location.pathname
+                );
+                return (
+                    <SummaryDetailPage
+                        taskId={standaloneTaskNo ?? undefined}
+                        emitSelection
+                    />
+                );
             }
             persistStandaloneReturn();
             // Anonymous: fall through to the login screen (below) without navigating away.

@@ -9,12 +9,19 @@
  * IM connect / channel info / messages 走 fake-provider, 不走 HTTP.
  *
  * URL 匹配约定: 用星号通配前缀 + 模块路径 (例 star-slash-common-slash-appconfig)
- * 兼容 apiClient.get 的多种前缀. 参考 loop-empty.ts 现有 handler 写法.
+ * 兼容 apiClient.get 的多种前缀.
  */
 import { http, HttpResponse } from "msw";
 
 const MOCK_UID = "e2e-user-1";
 const MOCK_SPACE_ID = "e2e-space-001";
+const MOCK_APP_CONFIG = {
+  docs_on: "0",
+  dmloop_on: "0",
+  dmpersonal_on: "0",
+  thread_on: false,
+  oidc_providers: [],
+};
 
 // Space fixture (单 space, 用户是 owner).
 const MOCK_SPACE = {
@@ -32,6 +39,12 @@ const MOCK_SPACE = {
 
 export const chatBaselineHandlers = [
   // === Common / config ===
+  http.get("*/api/v1/common/appconfig", () =>
+    HttpResponse.json(MOCK_APP_CONFIG)
+  ),
+  http.get("*/common/appconfig", () =>
+    HttpResponse.json(MOCK_APP_CONFIG)
+  ),
   // shape: { version, list: [{ key, name, url }] } - 见 packages/dmworkbase/src/Service/EmojiService.ts:30
   http.get("*/api/v1/common/emojis", () =>
     HttpResponse.json({ version: 0, list: [] })
@@ -51,6 +64,13 @@ export const chatBaselineHandlers = [
   // === User / device / avatar ===
   http.get("*/users/:uid/avatar", () =>
     // avatar 通常返 image bytes, 但业务只关心是否 200 - 给一个空 buffer 兜底.
+    HttpResponse.arrayBuffer(new Uint8Array([]).buffer, {
+      headers: { "content-type": "image/png" },
+    })
+  ),
+  http.get("*/groups/:groupNo/avatar", () =>
+    // 与 user avatar 同理: group logo 可能为空, 但请求本身不该漏到 Vite proxy
+    // (fake-provider 会为无 logo 的 group 派生 avatar 路径, 见 fake-provider.ts).
     HttpResponse.arrayBuffer(new Uint8Array([]).buffer, {
       headers: { "content-type": "image/png" },
     })
@@ -88,6 +108,12 @@ export const chatBaselineHandlers = [
   ),
   http.post("*/api/v1/message/channel/sync", () =>
     HttpResponse.json({ messages: [] })
+  ),
+  // showConversation() reads per-conversation metadata after opening a chat.
+  // Keep this in the baseline so a passing interaction cannot leak to Vite's
+  // dead CI proxy and become a false green.
+  http.post("*/conversations/:channelId/:channelType/extra", () =>
+    HttpResponse.json({})
   ),
 
   // === OBO / persona ===

@@ -15,6 +15,7 @@ import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
 import WKButton from "../WKButton";
 import type { UserInfoMetaItem } from "./UserInfoMetaList";
 import UserInfoView, { type UserInfoViewFooter } from "../../ui/profileDetail/UserInfoView";
+import ProfileOnlineStatus from "../../ui/profileDetail/ProfileOnlineStatus";
 
 
 export interface UserInfoProps extends HTMLProps<any> {
@@ -232,6 +233,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                     isBot={vm.channelInfo?.orgData?.robot === 1}
                     isRealnameVerified={vm.isRealnameVerified()}
                     metaItems={metaItems}
+                    status={!vm.isSelf() ? <ProfileOnlineStatus channelInfo={vm.channelInfo} /> : undefined}
                     showRemarkEditor={!vm.isSelf()}
                     editingRemark={vm.editingRemark}
                     remark={this.getRemark(vm)}

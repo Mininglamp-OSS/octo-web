@@ -1,14 +1,16 @@
-import { Sparkles, X, Plus } from "lucide-react";
+import { Sparkles, X, Plus, ChevronDown } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
+    Dropdown,
+    SplitButtonGroup,
     Toast,
     Typography,
     Tag,
     Tooltip,
     Modal,
 } from "@douyinfe/semi-ui";
-import { I18nContext, t } from "@octo/base";
+import { I18nContext, t, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -16,6 +18,7 @@ import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/Voic
 import * as api from "../api/summaryApi";
 import { getTopicTemplatesConfig, getTopicTemplates } from "../api/summaryApi";
 import { chatTypeToOriginChannelType, getOriginChannelType } from "../utils/channelType";
+import { markAgentSummaryNotificationEligible } from "../utils/groupSummaryNotify";
 import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
@@ -44,6 +47,7 @@ import { SummaryMode, SourceType } from "../types/summary";
 import { Channel, WKSDK } from "wukongimjssdk";
 import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
+import { summaryTestIds } from "../utils/testIds";
 
 const { Text } = Typography;
 
@@ -64,6 +68,8 @@ interface SummaryCreatePageProps {
     onClose?: () => void;
     /** 面板模式创建成功回调（替代 routeRight.push 详情页）。 */
     onSubmit?: (taskId: number) => void;
+    /** 打开总结创建的来源入口(埋点 source/entry_point,枚举值,非正文)。 */
+    source?: string;
 }
 
 interface SummaryCreatePageState {
@@ -195,11 +201,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         const actions = selectChat.parentElement;
         if (!actions) return;
-        const startBtn = actions.querySelector('.summary-workbench-start-btn');
+        const startGroup = actions.querySelector('.chat-summary-modal-split');
         const actionsWidth = actions.clientWidth;
-        const btnWidth = startBtn ? (startBtn as HTMLElement).offsetWidth : 0;
+        const groupWidth = startGroup ? (startGroup as HTMLElement).offsetWidth : 0;
         const gap = 24;
-        const width = actionsWidth - btnWidth - gap;
+        const width = actionsWidth - groupWidth - gap;
         selectChat.style.width = width + 'px';
         selectChat.style.flex = 'none';
         selectChat.style.maxWidth = width + 'px';
@@ -320,9 +326,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     }
 
     componentDidUpdate(prevProps: SummaryCreatePageProps, prevState: SummaryCreatePageState) {
-        if (prevState.selectedChats !== this.state.selectedChats) {
+        // selectedChats 或 mode 变化都会改变 start-group 宽度（mode=agent 时主按钮隐藏），
+        // 需要重算 select-chat 宽度与芯片溢出，避免残留上一次计算的宽度。
+        if (prevState.selectedChats !== this.state.selectedChats || prevState.mode !== this.state.mode) {
             this.updateSelectChatWidth();
             this.setState({ visibleChipCount: 999 }, () => this.updateVisibleChipCount());
+            // Agent→Normal 往返后 textarea 重新挂载（无内联高度），恢复按内容自动增高；
+            // 参与者 chip 区同样重新挂载，需按新宽度重算溢出。
+            this.autoResizeTextarea();
+            this.updateVisibleMemberChipCount();
         }
         if (prevState.selectedMembers !== this.state.selectedMembers) {
             this.setState({ visibleMemberChipCount: 999 }, () => this.updateVisibleMemberChipCount());
@@ -413,6 +425,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (creatingCustomTemplate) {
                 const template = await api.createCustomTopicTemplate({ label, description });
                 this.appendTemplateToState(template);
+                // 真创建成功后才 emit(§started-vs-created):挂在 Save 按钮点击上会把
+                // 被服务端拒绝/取消的尝试也计一次创建,虚高成功率。带 object_id 供归因。
+                Dap.shared.track("template_created", {
+                    object_id: template.id,
+                    template_type: "summary_topic",
+                });
                 Toast.success(t("summary.templates.custom.createSuccess"));
             } else if (editingTemplate?.is_custom) {
                 const template = await api.updateCustomTopicTemplate(editingTemplate.id, { label, description });
@@ -526,9 +544,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     autoResizeTextarea = () => {
         const el = this.textareaRef.current;
         if (!el) return;
-        // 整页模式：input-wrap 有固定 420px 高度，textarea height:100% 填满即可。
-        // 面板模式：input-wrap 无固定高度，需要按内容自动撑开。
-        if (!this.props.embedded) return;
+        // 输入框按内容自动撑开（CSS min/max-height 约束边界，见 index.css）。
         el.style.height = "auto";
         el.style.height = `${el.scrollHeight}px`;
     };
@@ -576,6 +592,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (!this.canSubmit()) return;
         const summaryTitle = deriveSummaryTitle(topic);
 
+        // smart_summary_started 收口在这里,而非「开始」按钮的声明式 data-track。按钮 onClick
+        // 是 handlePrimaryClick——agent 模式下它**不提交**(短路 return),但捕获阶段的 data-track
+        // 委托照样会触发,给 agent 模式记一条根本没发起的幻影 started(见 PR #1330 review blocker②)。
+        // 挪到通过 canSubmit、真正发起创建的唯一收口点(handleSubmit 目前仅由 handlePrimaryClick
+        // 的 normal 分支调用;无 Enter 提交路径),agent 模式(不经 handleSubmit)天然不误发。
+        // trigger_mode 恒为 'normal'(agent 分支永不到此),保留字段仅为口径显式、便于日后扩展。
+        Dap.shared.track('smart_summary_started', {
+            object_id: this.props.channel?.channelID,
+            source: this.props.source,
+            entry_point: this.props.source,
+            trigger_mode: this.state.mode,
+        });
+
         this.setState({ submitting: true, error: null });
         try {
             const params: CreateSummaryParams = {
@@ -607,6 +636,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             const result = await api.createSummary(params);
+            // 首次完成通知来源群(#1379):手动创建的任务也登记 eligibility。
+            // 完成快于首次 detail 轮询时,页面第一次看到的就是 COMPLETED
+            // (previousStatus === undefined),靠 transition 抓不到跳变;
+            // 登记后首次观察到 COMPLETED 即补发,标记只在创建时写入,
+            // 不会让历史任务追溯群发。
+            markAgentSummaryNotificationEligible(result.task_id);
 
             // If schedule is configured, create it in ONE step bound to the new task.
             // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
@@ -762,14 +797,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     handleOpenMemberSelector = () => {
         const { selectedChats } = this.state;
-        const { t } = this.context;
         const chat = selectedChats[0];
-        if (!chat) {
-            Toast.info(t("summary.create.selectChatFirst"));
-            return;
-        }
-        const channelType = chat.chat_type === "thread" ? 5 : chat.chat_type === "direct" ? 1 : 2;
-        const channel = new Channel(chat.chat_id, channelType);
+        const channel = chat
+            ? new Channel(chat.chat_id, chat.chat_type === "thread" ? 5 : chat.chat_type === "direct" ? 1 : 2)
+            : null;
         this.setState({
             showMemberSelector: true,
             memberSelectorChannel: channel,
@@ -788,6 +819,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /**
      * 进入 agent 模式：读 localStorage 拿 session_id → 拉历史回显。
      * 无历史（新会话）则照旧空白开场；session_id 仍惰性生成于首次发送。
+     * 注意：不再清空 selectedMembers —— 静默销毁用户已选的参与者是不可逆的
+     * 数据丢失。participants 泄漏在 payload 边界拦截（handleSaveAsSummary 在
+     * agent 模式下不提交 participants），切回「开始总结」时选择仍然保留。
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
@@ -852,6 +886,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (referencedTask) {
             return (
                 <div
+                    data-testid={summaryTestIds.agentRefCard}
                     className="summary-workbench-ref-card"
                     onClick={() => this.setState((prev) => ({ sidePanelOpen: !prev.sidePanelOpen }))}
                     style={{ cursor: 'pointer' }}
@@ -864,6 +899,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         {referencedTask.title || `task_id=${referencedTask.task_id}`}
                     </span>
                     <span
+                        data-testid={summaryTestIds.agentRefRemoveBtn}
                         className="summary-workbench-ref-card-remove"
                         onClick={(e) => {
                             // 阻止事件冒泡触发卡片 onClick (toggle SidePanel)
@@ -882,6 +918,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         return (
             <span
+                data-testid={summaryTestIds.agentRefEntry}
                 className="summary-workbench-ref-btn"
                 onClick={() => this.setState({ showReferencePicker: true })}
                 title={translate('summary.chatReference.buttonTip')}
@@ -923,7 +960,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 }));
             }
 
-            if (selectedMembers.length > 0) {
+            // Agent 模式无参与者入口，selectedMembers 只会残留自 normal 模式的选择，
+            // 不应随 agent 保存提交给后端（P1 回归）。泄漏在 payload 边界拦截，
+            // 而不是销毁表单状态——切回 normal 时选择仍然保留。
+            if (this.state.mode !== 'agent' && selectedMembers.length > 0) {
                 params.participants = selectedMembers.map((m) => ({ 
                     user_id: m.user_id,
                     user_name: m.name,
@@ -938,6 +978,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             const result = await api.createAgentSummary(params);
+            markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t('summary.create.agentSummaryCreated'));
 
@@ -983,12 +1024,24 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     Toast.error(t('summary.create.noOutputToSave'));
                     return false;
                 }
-                // 40001: origin_channel_id 反查失败(通常是引用总结退出重进后
-                // referencedTask 丢失,前端没发 referenced_task_ids,后端 fallback
-                // 借 origin 无路可走)。给友好文案指导用户下一步动作。
+                // 40001: origin_channel_id 反查失败。拆两个子因给不同文案
+                // （R4 ms P2-1）：
+                //   (a) referencedTask 还在：前端已把 referenced_task_ids 发过去，
+                //       后端继承兜底也失败 = 被引用总结本身没有 origin（老 agent
+                //       任务 / bot 创建的 owner-scoped 总结）。「重新选择 / 新会话」
+                //       文案对该子因无效——且前端不能显式传 origin：后端在
+                //       origin_channel_id 非 nil 时跳过 session trace 解析，会把
+                //       新总结归错频道（见 octo-smart-summary agent_summary.go
+                //       CreateAgentSummary 的 nil 分支优先级）。
+                //   (b) referencedTask 已丢（退出重进后前端没发 referenced_task_ids，
+                //       后端 fallback 无路可走）→ 沿用原「引用丢失」文案。
                 // 见 SUM-161 fast-follow · CHAT-REFERENCE-BASED-DESIGN-v1。
                 if (code === 40001) {
-                    Toast.error(t('summary.create.savedReferenceLostRetry'));
+                    if (this.state.referencedTask) {
+                        Toast.error(t('summary.create.savedNoOriginRetry'));
+                    } else {
+                        Toast.error(t('summary.create.savedReferenceLostRetry'));
+                    }
                     return false;
                 }
             }
@@ -1026,27 +1079,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         const templateEditorVisible = creatingCustomTemplate || !!editingTemplate;
 
         return (
-            <div className={`summary-workbench${this.props.embedded ? " summary-workbench--panel" : ""}`}>
+            <div data-testid={summaryTestIds.create} className={`summary-workbench${this.props.embedded ? " summary-workbench--panel" : ""}`}>
                 {/* Header */}
                 <div className="summary-workbench-header">
                     <span className="summary-workbench-header-emoji">🚀</span>
                     <span className="summary-workbench-title">{translate("summary.create.title")}</span>
-                    <div className="summary-workbench-mode-switch">
-                        <button
-                            type="button"
-                            className={`summary-workbench-mode-btn${mode === 'normal' ? ' summary-workbench-mode-btn--active' : ''}`}
-                            onClick={() => this.handleSelectMode('normal')}
-                        >
-                            {translate("summary.create.start")}
-                        </button>
-                        <button
-                            type="button"
-                            className={`summary-workbench-mode-btn${mode === 'agent' ? ' summary-workbench-mode-btn--active' : ''}`}
-                            onClick={() => this.handleSelectMode('agent')}
-                        >
-                            {translate("summary.create.agentStart")}
-                        </button>
-                    </div>
                 </div>
 
                 {/* Content card */}
@@ -1120,6 +1157,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         <>
                     <div className="summary-workbench-input-wrap">
                         <textarea
+                            data-testid={summaryTestIds.createTopic}
                             ref={this.textareaRef}
                             className="summary-workbench-textarea"
                             value={topic}
@@ -1187,6 +1225,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                         {translate("summary.templates.custom.myTemplatesTitleWithCount", { values: { count: customTemplates.length, limit: customTemplateLimit } })}
                                     </div>
                                     <Button
+                                        className="summary-template-create-btn"
                                         theme="borderless"
                                         size="small"
                                         icon={<Plus size={14} />}
@@ -1297,6 +1336,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 </div>
                             ) : (
                                 <button
+                                    data-testid={summaryTestIds.createSelectChat}
                                     type="button"
                                     className="summary-workbench-add-chat"
                                     onClick={() => this.setState({ showChatSelector: true })}
@@ -1305,7 +1345,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectChat")}</span>
                                 </button>
                             )}
-                            {/* 选择参与者 */}
+                            {/* 选择参与者（仅普通模式；Agent 模式不提供多人协作入口） */}
+                            {mode !== 'agent' && (
                             <div className="summary-workbench-chat-row">
                                 {selectedMembers.length > 0 && (
                                     <div className="summary-workbench-chat-chips" ref={this.memberChipsContainerRef}>
@@ -1343,6 +1384,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     </div>
                                 )}
                                 <button
+                                    data-testid={summaryTestIds.createSelectMembers}
                                     type="button"
                                     className="summary-workbench-add-chat"
                                     onClick={this.handleOpenMemberSelector}
@@ -1351,19 +1393,54 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     <span>{translate("summary.create.selectMembers")}</span>
                                 </button>
                             </div>
+                            )}
                         </div>
-                        {mode !== 'agent' && (
-                            <Button
-                                theme="solid"
-                                className="summary-workbench-start-btn"
-                                loading={submitting}
-                                disabled={!this.canSubmit() || submitting}
-                                onClick={this.handlePrimaryClick}
+                        {/* 右下角：默认「开始总结」主按钮 + 下拉切换总结方式（SplitButtonGroup，与 ChatSummaryNewModal 一致） */}
+                        <SplitButtonGroup className="chat-summary-modal-split">
+                            {mode !== 'agent' && (
+                                <Button
+                                    data-testid={summaryTestIds.createSubmit}
+                                    theme="solid"
+                                    loading={submitting}
+                                    disabled={!this.canSubmit() || submitting}
+                                    onClick={this.handlePrimaryClick}
+                                >
+                                    <Sparkles size={16} />
+                                    {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                                </Button>
+                            )}
+                            <Dropdown
+                                trigger="click"
+                                position="bottomRight"
+                                render={(
+                                    <Dropdown.Menu>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.createNormalTab}
+                                            active={mode !== 'agent'}
+                                            onClick={() => this.handleSelectMode('normal')}
+                                        >
+                                            {translate("summary.create.start")}
+                                        </Dropdown.Item>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.createAgentTab}
+                                            active={mode === 'agent'}
+                                            onClick={() => this.handleSelectMode('agent')}
+                                        >
+                                            {translate("summary.create.agentStart")}
+                                        </Dropdown.Item>
+                                    </Dropdown.Menu>
+                                )}
                             >
-                                <Sparkles size={16} />
-                                {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
-                            </Button>
-                        )}
+                                <Button
+                                    data-testid={summaryTestIds.createModeSwitch}
+                                    theme="solid"
+                                    icon={<ChevronDown size={16} />}
+                                    aria-label={translate("summary.create.switchMode")}
+                                    title={translate("summary.create.switchMode")}
+                                    disabled={submitting}
+                                />
+                            </Dropdown>
+                        </SplitButtonGroup>
                     </div>
                 </div>
 

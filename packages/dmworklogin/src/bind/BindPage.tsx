@@ -1,9 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { Button, Input, Spin, Toast } from '@douyinfe/semi-ui'
-import { WKApp } from '@octo/base'
+import { replaceWithShellDocument, WKApp } from '@octo/base'
+import { clearBindEntry } from './bindEntryState'
 import {
   clearPendingOidcLogin,
-  fetchHttpClient,
+  getOidcClient as getSharedOidcClient,
+  isElectronDesktop,
   OidcBindHttpError,
 } from '../oidc'
 import {
@@ -26,6 +28,10 @@ import { mapBindError, type BindEndpoint, type BindErrorDisplay } from './errorM
 import { loginT as t } from '../i18n'
 import './bind.css'
 
+// Thin wrapper over the shared `getOidcClient(apiURL)` — same runtime rule
+// (Electron packaged shell -> resolve /v1/... against WKApp.apiClient.config.apiURL,
+// browser -> use apiClient-relative), reused across BindPage + login_vm so a
+// future runtime split (e.g. Tauri) is a one-line change.
 type Stage =
   | { kind: 'init' }
   | { kind: 'loading_info' }
@@ -77,6 +83,19 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
   const entryRef = useRef<BindEntryParams | null>(null)
   const initRanRef = useRef(false)
 
+  async function getOidcClient() {
+    // Main-process validates the API origin inline on every IPC round-trip
+    // (see main/oidcRedirect.ts::validateOidcHttpRequest), so the separate
+    // "register origin" preflight has been removed. Keep the http(s) sanity
+    // check here so a bare `file://` API URL fails fast client-side rather
+    // than surfacing as an opaque IPC rejection later.
+    const apiURL = WKApp.apiClient.config.apiURL ?? ''
+    if (isElectronDesktop() && !/^https?:\/\//i.test(apiURL)) {
+      throw new Error('Invalid OIDC API URL')
+    }
+    return getSharedOidcClient(apiURL)
+  }
+
   const [stage, setStage] = useState<Stage>({ kind: 'init' })
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
@@ -124,7 +143,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     setStage({ kind: 'loading_info' })
     setInlineError(null)
     try {
-      const info = await fetchBindInfo(fetchHttpClient, params.token, apiOpts())
+      const info = await fetchBindInfo(await getOidcClient(), params.token, apiOpts())
       const createState = deriveCreateState(info)
       // 用户能进入选择阶段的条件: 至少有一个可用的 verify method OR create 可点.
       // create 被 block 但仍渲染原因文字时, 只要还有 verify methods 也能进 choose_method;
@@ -172,7 +191,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     try {
       const token = entryRef.current?.token
       if (!token) return
-      await sendBindOtp(fetchHttpClient, token, apiOpts())
+      await sendBindOtp(await getOidcClient(), token, apiOpts())
       setStage({ kind: 'verify_otp', info: stage.info, sent: true, sending: false })
       Toast.success(t('bind.otp.sent'))
     } catch (err) {
@@ -188,7 +207,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     setBusy(true)
     setInlineError(null)
     try {
-      await sendBindOtp(fetchHttpClient, token, apiOpts())
+      await sendBindOtp(await getOidcClient(), token, apiOpts())
       Toast.success(t('bind.otp.resent'))
       setStage({ ...stage, sent: true })
     } catch (err) {
@@ -217,7 +236,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     setBusy(true)
     setInlineError(null)
     try {
-      await verifyBindPassword(fetchHttpClient, token, identifier, password, apiOpts())
+      await verifyBindPassword(await getOidcClient(), token, identifier, password, apiOpts())
       // verify 通过后立即清密码, 不留在 React state 里
       setPassword('')
       await runConfirm(stage.info)
@@ -246,7 +265,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     setBusy(true)
     setInlineError(null)
     try {
-      await checkBindOtp(fetchHttpClient, token, otp, apiOpts())
+      await checkBindOtp(await getOidcClient(), token, otp, apiOpts())
       setOtp('')
       await runConfirm(stage.info)
     } catch (err) {
@@ -274,6 +293,22 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
   // a safe slug. Anything else falls through to the plain returnTo navigation.
   function finalizeBindSuccess(returnTo: string): void {
     setStage({ kind: 'success' })
+    clearBindEntry()
+
+    const navigateToReturnTo = () => {
+      if (isElectronDesktop()) {
+        // There is no HTTP pathname router in the packaged shell. Reload the
+        // trusted index document instead of resolving `/` or `/login` as a
+        // filesystem root such as file:///login.
+        replaceWithShellDocument()
+        return
+      }
+      try {
+        window.location.replace(returnTo)
+      } catch {
+        window.location.href = returnTo
+      }
+    }
 
     let pendingInvite: string | null = null
     try {
@@ -299,20 +334,14 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
       } catch (e) {
         console.warn('callOnLogin error suppressed:', e)
         // Last-resort fallback so the user isn't stranded on the success stage.
-        window.location.replace('/')
+        navigateToReturnTo()
       }
       return
     }
 
     // No invite — keep the original behaviour: short paint window then navigate
     // to the originally-requested return_to.
-    window.setTimeout(() => {
-      try {
-        window.location.replace(returnTo)
-      } catch {
-        window.location.href = returnTo
-      }
-    }, 200)
+    window.setTimeout(navigateToReturnTo, 200)
   }
 
   async function runConfirm(info: BindInfoResp): Promise<void> {
@@ -327,7 +356,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     }
     setStage({ kind: 'confirming', info })
     try {
-      const resp = await confirmBind(fetchHttpClient, token, apiOpts())
+      const resp = await confirmBind(await getOidcClient(), token, apiOpts())
       // login_resp 是 JSON-encoded string, JSON.parse 后与老 OIDC authstatus.result 同 schema.
       const data = parseLoginResp(resp.login_resp)
       // loginProvider 必须落到真实 IdP id, 下游 NavSettingsPanel /
@@ -361,7 +390,7 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
     }
     setStage({ kind: 'creating', info })
     try {
-      const resp = await createBind(fetchHttpClient, token, apiOpts())
+      const resp = await createBind(await getOidcClient(), token, apiOpts())
       // 与 confirm 同 schema 同 builder, login_resp 直接 parseLoginResp + applyLoginResp.
       const data = parseLoginResp(resp.login_resp)
       // 同 runConfirm — loginProvider 必须是真实 IdP id, 不是
@@ -379,6 +408,13 @@ const BindPage = ({ initialSearch }: BindPageProps) => {
 
   function goBackToLogin(): void {
     entryRef.current = null
+    clearBindEntry()
+    if (isElectronDesktop()) {
+      // Packaged Electron renders from file://; `/login` would otherwise
+      // resolve to file:///login instead of the app's index.html.
+      replaceWithShellDocument()
+      return
+    }
     window.location.replace('/login')
   }
 

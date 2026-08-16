@@ -8,6 +8,7 @@ import SearchService from "../../Service/SearchService";
 import { createSearchAssetResolver } from "../search/createSearchAssetResolver";
 import { activeGlobalSearchFilterCount } from "./filterState";
 import type {
+  DocSearchQuery,
   GlobalSearchChannelOption,
   GlobalSearchDataSource,
   GlobalSearchFileTypeCategory,
@@ -258,6 +259,7 @@ export function createGlobalSearchApiDataSource(
       result.items.forEach((item) => rememberSender(item.sender));
       return result;
     },
+    searchDocs: (query: DocSearchQuery) => SearchService.searchDocs(query),
   };
 }
 

@@ -103,6 +103,17 @@ describe("skillApiReal", () => {
     expect(headers).toEqual({ "Content-Type": "application/json" });
   });
 
+  it("getCategories forwards search and tag filters", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse([]));
+
+    await getCategories({ q: "CI", tags: ["CI", "质量"] });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("/market/api/v1/skill_categories?");
+    expect(url).toContain("q=CI");
+    expect(url).toContain("tags=CI%2C%E8%B4%A8%E9%87%8F");
+  });
+
   it("falls back to localStorage currentSpaceId when WKApp space is not hydrated", async () => {
     WKApp.shared.currentSpaceId = "";
     localStorage.setItem("currentSpaceId", "space-from-storage");

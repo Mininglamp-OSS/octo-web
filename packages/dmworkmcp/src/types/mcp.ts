@@ -90,7 +90,7 @@ export interface McpListItem {
    *  stays intact after a bot rename / delete. */
   createdByBotName?: string;
   transport?: McpTransport;
-  source?: "system" | "space" | "mine";
+  source?: McpSource;
   verificationStatus?: "verified" | "unverified" | "error";
   matchReasons?: string[];
   relevance?: number;
@@ -128,6 +128,8 @@ export interface McpDetail extends McpListItem {
  *  "import" is reserved for the Git-import path (#867). */
 export type McpCreatedByType = "human" | "bot" | "import";
 
+export type McpSource = "system" | "space" | "mine";
+
 /** A category filter option with its live count. */
 export interface McpCategory {
   key: string;
@@ -142,7 +144,7 @@ export interface ListMcpParams {
   categories?: string[];
   transports?: McpTransport[];
   visibilities?: McpVisibility[];
-  sources?: Array<"system" | "space" | "mine">;
+  sources?: McpSource[];
   verificationStatuses?: Array<"verified" | "unverified" | "error">;
   /** Provenance filter (mcp-v1.md §4.2; issue #894). Single-select today —
    *  the toolbar segmented control is one-of-three. Kept as a single value
@@ -241,7 +243,7 @@ export interface CreateMcpParams {
   notes?: string[];
 }
 
-export type McpVisibility = "public" | "private";
+export type McpVisibility = "public" | "private" | "system";
 
 /**
  * Payload for updating an existing MCP server entry (PATCH /mcps/{id}).

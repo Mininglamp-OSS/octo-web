@@ -803,7 +803,7 @@ describe("useForwardModal — grant switch defaults OFF (转发时授权 默认�
     it("honours the caller's defaultRole when the switch is turned on", async () => {
         const finished = vi.fn()
         hoisted.conversations = [makeConv("g1", CT_GROUP, "Group 1", { timestamp: 100 })]
-        const view = await renderForwardWithGrant(finished, { canGrant: true, defaultRole: "writer" })
+        const view = await renderForwardWithGrant(finished, { canGrant: true, defaultRole: "commenter" })
 
         const target = view.current.allItems.find((i) => i.channelID === "g1")!
         act(() => view.current.toggleSelect(target))
@@ -811,7 +811,7 @@ describe("useForwardModal — grant switch defaults OFF (转发时授权 默认�
         act(() => view.current.confirm())
 
         const [, grant] = finished.mock.calls[0]
-        expect(grant).toEqual({ role: "writer" })
+        expect(grant).toEqual({ role: "commenter" })
 
         view.unmount()
     })

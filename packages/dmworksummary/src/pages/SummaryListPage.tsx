@@ -11,13 +11,15 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp } from "@octo/base";
 import * as api from "../api/summaryApi";
+import { setPendingInvitationBadge } from "../utils/summaryMenuBadge";
 import type {
     SummaryListItem,
     ListSummariesParams,
     TaskStatusType,
 } from "../types/summary";
 import { TaskStatus } from "../types/summary";
-import { getStatusLabel } from "../utils/summaryHelpers";
+import { getStatusLabel, isTerminalStatus } from "../utils/summaryHelpers";
+import { summaryTestIds } from "../utils/testIds";
 import SummaryCard from "../components/SummaryCard";
 import SummaryCreatePage from "./SummaryCreatePage";
 import SummaryDetailPage from "./SummaryDetailPage";
@@ -76,23 +78,31 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     private searchTimer: ReturnType<typeof setTimeout> | null = null;
     private batchPollTimer: ReturnType<typeof setInterval> | null = null;
     private isBatchPolling = false;
-    private attentionCount = 0;
-    private attentionRefreshLoading = false;
+    private isRefreshing = false;
+    // Monotonic sequence bumped on every loadData() entry. An in-flight
+    // loadData captures the value pre-await; if it advanced during the
+    // request (user changed filter/keyword/space, or another loadData fired),
+    // the response is stale and we drop it instead of overwriting newer
+    // user-driven state. loadMore also captures pre-await and drops its
+    // batch on mismatch — closes loadMore-starts-first, loadData-bumps-after.
+    private loadDataSeq = 0;
+    // Synchronous "is a loadData in flight" flag. React 18 batching means
+    // this.state.loading is not visible immediately after setState from a
+    // promise continuation, so loadMore reading state.loading would miss a
+    // just-started loadData. Setting/clearing a plain field is synchronous
+    // and closes the loadData-starts-first, loadMore-scrolls-after ordering.
+    // Kept alongside loadDataSeq — the pair covers both interleavings.
+    private isLoadingData = false;
+    // Cleared by componentWillUnmount so any in-flight refresh's setState
+    // becomes a no-op instead of restarting maybeStartBatchPoll on a
+    // torn-down component.
+    private isMounted_ = false;
 
     private handleSpaceChanged_ = () => this.loadData();
 
     private handleListRefreshRequested_ = () => this.loadData();
 
     private handleTaskRegenerated_ = () => this.loadData();
-
-    private handleAttentionCountRefreshed_ = ({ count }: { count: number }) => {
-        const nextCount = count ?? 0;
-        if (nextCount === this.attentionCount || this.attentionRefreshLoading) return;
-        this.attentionRefreshLoading = true;
-        void this.loadData().finally(() => {
-            this.attentionRefreshLoading = false;
-        });
-    };
 
     private handleSummaryRead_ = (event: Event) => {
         const detail = (event as CustomEvent<{
@@ -102,14 +112,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }>).detail;
         const taskId = detail?.taskId;
         if (!detail || !taskId) return;
-        const current = this.state.items.find(item => item.task_id === taskId);
-        const nextNeedsAttention = detail.needsAttention ?? Boolean(current?.has_pending_invitation);
-        if (current?.needs_attention && !nextNeedsAttention) {
-            // Keep the local count aligned with the successful mark-read
-            // response so the next global poll does not trigger a redundant
-            // full-list reload and lose the user's scroll position.
-            this.attentionCount = Math.max(0, this.attentionCount - 1);
-        }
         this.setState(({ items }) => ({
             items: items.map(item => item.task_id === taskId
                 ? {
@@ -119,7 +121,6 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 }
                 : item),
         }));
-        this.emitBadgeUpdate();
     };
 
     private handleDetailActive_ = (event: Event) => {
@@ -143,10 +144,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     };
 
     componentDidMount() {
+        this.isMounted_ = true;
         this.loadData();
         WKApp.mittBus.on("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
-        WKApp.mittBus.on("summary-attention-count-refreshed" as any, this.handleAttentionCountRefreshed_);
         WKApp.mittBus.on("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
         window.addEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
         window.addEventListener("summary-read", this.handleSummaryRead_);
@@ -161,12 +162,12 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     }
 
     componentWillUnmount() {
+        this.isMounted_ = false;
         window.dispatchEvent(new CustomEvent("summary-list-unmount"));
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.stopBatchPoll();
         WKApp.mittBus.off("summary-space-changed", this.handleSpaceChanged_);
         WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated_);
-        WKApp.mittBus.off("summary-attention-count-refreshed" as any, this.handleAttentionCountRefreshed_);
         WKApp.mittBus.off("summary-list-refresh-requested" as any, this.handleListRefreshRequested_);
         window.removeEventListener("summary-task-regenerated", this.handleTaskRegenerated_);
         window.removeEventListener("summary-read", this.handleSummaryRead_);
@@ -174,7 +175,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         window.removeEventListener("summary-detail-inactive", this.handleDetailInactive_);
     }
 
-    async fetchData(): Promise<{ items: SummaryListItem[]; total: number; attention_count: number }> {
+    async fetchData(): Promise<{ items: SummaryListItem[]; total: number }> {
         const { page, pageSize, statusFilter, keyword } = this.state;
         const { channelId } = this.props;
         const params: ListSummariesParams = {
@@ -185,13 +186,29 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             origin_channel_id: channelId || undefined,
         };
         const resp = await api.listSummaries(params);
-        this.attentionCount = resp.attention_count ?? 0;
-        this.emitBadgeUpdate(resp.attention_count);
-        return { items: resp.items, total: resp.total, attention_count: resp.attention_count ?? 0 };
+        return { items: resp.items, total: resp.total };
     }
 
-    async loadData() {
-        this.setState({ loading: true, error: null, page: 1, hasMore: true });
+    async loadData(opts: { silent?: boolean } = {}) {
+        // Bump-and-capture sequence: this loadData's response is only allowed
+        // to commit if no newer loadData/filter change has started meanwhile.
+        // Extended in round-7 so loadMore also captures pre-await and drops
+        // its batch on mismatch. Round-8 added isLoadingData below because
+        // this sequence alone is asymmetric — a loadMore that starts AFTER
+        // loadData already bumped captures the already-bumped value and
+        // would still commit.
+        const seq = ++this.loadDataSeq;
+        const requestSpaceId = WKApp.shared.currentSpaceId;
+        this.isLoadingData = true;
+        // Only toggle loading. Do NOT pre-set page:1 / hasMore:true here —
+        // if the request fails in silent mode we would leave items at the
+        // old depth with page reset to 1, and the next loadMore would
+        // duplicate rows (round-6). Commit page/hasMore atomically with
+        // items on success instead.
+        // Silent refresh keeps the existing error banner if any (round-8
+        // yujiawei P2-2): a user-visible error the user already saw must
+        // not be erased by an automatic background refresh.
+        this.setState(opts.silent ? { loading: true } : { loading: true, error: null });
         try {
             const { pageSize, statusFilter, keyword } = this.state;
             const params: ListSummariesParams = {
@@ -202,18 +219,51 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 origin_channel_id: this.props.channelId || undefined,
             };
             const resp = await api.listSummaries(params);
-            this.attentionCount = resp.attention_count ?? 0;
+            if (seq !== this.loadDataSeq) return;
+            // Post-await mount check (round-8 yujiawei P2-3): the entry
+            // isMounted_ guard cannot cover the await window; React 18 will
+            // drop setState on an unmounted fiber but the callback would
+            // still be scheduled. Also bind the response to the Space that
+            // issued it so an unmounted/late list cannot commit stale data.
+            if (!this.isMounted_ || WKApp.shared.currentSpaceId !== requestSpaceId) return;
+            // #1359 只有全局列表拥有写 NavRail badge 的职责。后端 count 虽然是
+            // Space 级，但聊天侧栏是嵌入式 channel 实例，不应改写全局导航状态。
+            if (!this.props.channelId) {
+                setPendingInvitationBadge(resp.pending_invitation_count ?? 0);
+            }
             this.setState({
                 items: resp.items,
+                page: 1,
                 total: resp.total,
                 loading: false,
+                // Round-9 yujiawei P2-3: a silent refresh that succeeds
+                // must clear a pre-existing error banner too. Otherwise a
+                // failed user-driven load leaves a non-dismissable banner
+                // that sits above a perfectly fresh list.
+                error: null,
                 hasMore: resp.items.length < resp.total,
             }, () => {
-                this.maybeStartBatchPoll();
-                this.emitBadgeUpdate(resp.attention_count);
+                if (this.isMounted_) this.maybeStartBatchPoll();
             });
         } catch (err: any) {
+            if (seq !== this.loadDataSeq) return;
+            if (!this.isMounted_) return;
+            // Background refresh (silent=true) must not surface a network
+            // banner to an idle user — just clear loading and leave the last
+            // good list visible. A user-triggered loadData still shows the
+            // banner + Retry so they can act on the failure.
+            if (opts.silent) {
+                this.setState({ loading: false });
+                return;
+            }
             this.setState({ error: err.message || t("summary.common.loadingFailed"), loading: false });
+        } finally {
+            // Sequence-owned clear (round-9 yujiawei P2-2): with two
+            // overlapping loadData calls, the older stale one returning
+            // early at the seq check would otherwise clear the flag while
+            // the newer one is still in flight. Only the current loadData
+            // is allowed to release the guard.
+            if (seq === this.loadDataSeq) this.isLoadingData = false;
         }
     }
 
@@ -226,7 +276,17 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     };
 
     async loadMore() {
-        if (this.state.loadingMore || !this.state.hasMore || this.state.loading) return;
+        // isLoadingData is a synchronous flag set at loadData entry: closes
+        // the "loadData started first, scroll fires before React commits
+        // loading:true" ordering that reading state.loading would miss.
+        if (this.state.loadingMore || !this.state.hasMore
+            || this.state.loading || this.isLoadingData) return;
+        // Also capture loadDataSeq: if any loadData starts and bumps it
+        // while our request is in flight, the list will be reset under us
+        // and our appended batch would splice a hole. Discard on mismatch.
+        // The pair (isLoadingData at entry + seq at commit) closes both
+        // orderings — loadData-first, loadMore-first — deterministically.
+        const seq = this.loadDataSeq;
         this.setState({ loadingMore: true });
         try {
             const nextPage = this.state.page + 1;
@@ -239,6 +299,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 origin_channel_id: this.props.channelId || undefined,
             };
             const resp = await api.listSummaries(params);
+            if (seq !== this.loadDataSeq) {
+                this.setState({ loadingMore: false });
+                return;
+            }
             this.setState(prev => ({
                 items: [...prev.items, ...resp.items],
                 page: nextPage,
@@ -300,10 +364,32 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 return item;
             });
             if (changed) {
-                this.setState({ items: newItems }, () => {
-                    this.maybeStartBatchPoll();
-                    this.emitBadgeUpdate();
+                // #290：进入终态时，仅原地打 status 补丁不够——完成后 backend 才会
+                // 填/改标题、结果预览等字段，且列表加载后新建的任务不在轮询集合里。
+                // 因此终态变化触发一次全量刷新(委派给 loadData · 见 refreshListSilently)。
+                // 会短暂显示 spinner + 塌回 page 1—这是 loadData 的必然副作用,
+                // 换来 correct-by-construction 的过滤/space/loadMore 语义。
+                //
+                // 终态分支不落 local status 补丁(round-9 yujiawei P1):
+                // 早期版本先 patch 到 items 再 refresh · 但若 refresh 失败(silent
+                // 分支静默 return · 或被 isRefreshing 丢),items 已经写成 COMPLETED
+                // 会让 maybeStartBatchPoll 看到 active tasks 为空 → stopBatchPoll →
+                // 永远无法自动 retry · 卡片保留 stale 标题/预览。
+                // 保留 items 里的 non-terminal 状态,下次 poll tick 依然 detect
+                // change → 自动 retry refresh。渲染层因 loading:true 会 unmount
+                // 列表容器,用户看不到瞬时的 "still-non-terminal" 状态。
+                const hasTerminal = changedIds.some(id => {
+                    const u = updateMap.get(id);
+                    return !!u && isTerminalStatus(u.status);
                 });
+                if (hasTerminal) {
+                    void this.refreshListSilently();
+                } else {
+                    // 非终态（如 PENDING→PROCESSING）保留廉价的原地状态补丁即可。
+                    this.setState({ items: newItems }, () => {
+                        this.maybeStartBatchPoll();
+                    });
+                }
                 window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: changedIds } }));
             }
         } catch {
@@ -313,31 +399,37 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }
     }
 
+    /**
+     * 终态完成后刷新列表(#290)。委派给 loadData —— #290 原方案就是用 loadData()。
+     * 我们绕过它想避免 spinner + page collapse,但四轮 review 后结论是:
+     * offset-paged list 上做静默 refresh + merge/replace 都会在某个 route 破坏
+     * filter/space/loadMore 语义。loadData 是 "correct by construction" 姿势 ——
+     * spinner 一闪是合理的用户反馈,而且 loadData 恢复了旧 replace 模型的正确性:
+     * filter 变化时 fall-out 行会被丢掉、space 切换清空、loadMore 的分页游标
+     * 由 loadData 重置为 1(loadMore 的 stale-response guard 会 discard 过期 append)。
+     *
+     * `isRefreshing` 防重入(2s 轮询 tick 撞到 refresh 在跑就跳过);
+     * `isMounted_` 在进入 loadData 前短路。
+     *
+     * `silent: true` 让 loadData 在失败时不设 error banner(见 #290 review):
+     * 自动 refresh 不该给 idle 的用户弹网络错误。
+     */
+    private async refreshListSilently() {
+        if (this.isRefreshing) return;
+        if (!this.isMounted_) return;
+        this.isRefreshing = true;
+        try {
+            await this.loadData({ silent: true });
+        } finally {
+            this.isRefreshing = false;
+        }
+    }
+
     private stopBatchPoll() {
         if (this.batchPollTimer) {
             clearInterval(this.batchPollTimer);
             this.batchPollTimer = null;
         }
-    }
-
-    /**
-     * Fire badge update event — badge = count of WAITING_CONFIRM tasks
-     * (summary ready, waiting for user to confirm).
-     * Uses a separate unfiltered query so badge is independent of list filter.
-     */
-    private emitBadgeUpdate(count?: number) {
-        // Panel mode (channelId set): attention_count is channel-scoped, must not
-        // overwrite the global nav badge. Only the full-page route owns the badge.
-        if (this.props.channelId) return;
-        if (count != null) {
-            WKApp.mittBus.emit("summary-badge-update" as any, { count });
-            return;
-        }
-        api.listSummaries({ page_size: 1 }).then(resp => {
-            const count = resp.attention_count ?? 0;
-            this.attentionCount = count;
-            WKApp.mittBus.emit("summary-badge-update" as any, { count });
-        }).catch(() => { /* ignore */ });
     }
 
     handleStatusChange = (value: string | number) => {
@@ -383,7 +475,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 } else {
                     WKApp.routeRight.popToRoot();
                     WKApp.routeRight.push(
-                        <SummaryCreatePage onCreated={() => this.loadData()} />
+                        <SummaryCreatePage onCreated={() => this.loadData()} source="summary_list" />
                     );
                 }
             });
@@ -465,7 +557,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }
         WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(
-            <SummaryCreatePage onCreated={() => this.loadData()} />
+            <SummaryCreatePage onCreated={() => this.loadData()} source="summary_list" />
         );
     };
 
@@ -477,7 +569,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         const isPanel = Boolean(channelId);
 
         return (
-            <div className={`summary-list-page${isPanel ? " summary-list-page--panel" : ""}`}>
+            <div data-testid={summaryTestIds.list} className={`summary-list-page${isPanel ? " summary-list-page--panel" : ""}`}>
                 <div className="summary-list-header">
                     <h2 className="summary-list-title">
                         {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
@@ -486,6 +578,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         {isPanel && (
                             <Tooltip content={translate("summary.chatSummary.createNew")} position="bottom">
                                 <Button
+                                    className="summary-list-create-icon-btn"
                                     icon={<IconPlus />}
                                     theme="borderless"
                                     onClick={this.handleCreate}
@@ -502,6 +595,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         ) : (
                             <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
                                 <Button
+                                    data-testid={summaryTestIds.listCreate}
+                                    className="summary-list-create-icon-btn"
                                     icon={<IconPlus />}
                                     theme="borderless"
                                     onClick={this.handleCreate}
@@ -515,6 +610,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                     <div className="summary-list-search-wrap">
                         <IconSearch className="summary-list-search-icon" />
                         <input
+                            data-testid={summaryTestIds.listSearch}
                             className="summary-list-search-input"
                             placeholder={translate("summary.list.searchPlaceholder")}
                             value={keyword}
@@ -538,7 +634,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             </Dropdown.Menu>
                         }
                     >
-                        <div className="summary-list-status-trigger">
+                        <div data-testid={summaryTestIds.listStatusFilter} className="summary-list-status-trigger">
                             <span>{statusOptions.find((o) => o.value === (statusFilter ?? ""))?.label ?? statusOptions[0]?.label}</span>
                             <ChevronDown size={14} />
                         </div>
@@ -572,7 +668,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             <>
                                 <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
                                 <div className="summary-list-empty-desc">{translate("summary.chatSummary.emptyDescription")}</div>
-                                <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
                                     {translate("summary.chatSummary.createNew")}
                                 </Button>
                             </>
@@ -583,7 +679,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 <div className="summary-list-empty-desc">
                                     {translate("summary.list.emptyDesc")}
                                 </div>
-                                <Button theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
                                     {translate("summary.list.createFirst")}
                                 </Button>
                             </>
@@ -592,7 +688,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 )}
 
                 {!loading && items.length > 0 && (
-                    <div className="summary-list-content" onScroll={this.handleScroll}>
+                    <div data-testid={summaryTestIds.listContent} className="summary-list-content" onScroll={this.handleScroll}>
                         {items.map((item) => (
                             <SummaryCard
                                 key={item.task_id}

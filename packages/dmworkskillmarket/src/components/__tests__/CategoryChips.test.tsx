@@ -17,7 +17,7 @@ describe("CategoryChips", () => {
   it("keeps all first and the selected overflow category visible", () => {
     render(<CategoryChips categories={categories} activeId="quality" onChange={vi.fn()} />);
 
-    const list = screen.getByLabelText("Skill 分类");
+    const list = screen.getByLabelText("技能分类");
     const buttons = within(list).getAllByRole("button");
     expect(buttons[0]).toHaveTextContent("全部");
     expect(within(list).getByRole("button", { name: /洞察研究/ })).toBeInTheDocument();

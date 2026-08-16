@@ -52,10 +52,14 @@ vi.mock('@douyinfe/semi-icons', () => ({
     IconMinusCircle: () => null,
     IconExit: () => null,
 }));
+vi.mock('../../utils/summaryMenuBadge', () => ({
+    refreshPendingInvitationBadge: vi.fn(),
+}));
 
 import * as api from '../../api/summaryApi';
 import { WKApp } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
+import { refreshPendingInvitationBadge } from '../../utils/summaryMenuBadge';
 
 vi.mock('../../api/summaryApi');
 
@@ -67,6 +71,55 @@ function makePage(taskId: number | string) {
     };
     return page;
 }
+
+describe('SummaryDetailPage — 历史版本引用隐私', () => {
+    it('团队历史预览默认隐藏原始聊天引用', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            showVersionDetailModal: true,
+            versionDetailLoading: false,
+            versionDetail: {
+                result_id: 10,
+                version: 2,
+                content: 'team history [1]',
+                citations: [{ index: 1, content: 'private message' }],
+                team_citations: [],
+            },
+        };
+
+        const tree = (page as any).renderVersionPreview();
+        const citationText = collectElements(tree).find((el) => el.props?.content === 'team history [1]');
+        expect(citationText?.props.hidePlainCitations).toBe(true);
+    });
+});
+
+describe('SummaryDetailPage — 窄容器布局', () => {
+    it('窄容器下版本面板保持并排分栏，绝不退化为覆盖式遮挡正文 (#1360)', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            layoutWidth: 360,
+            loading: true,
+            detail: baseDetail({
+                result: { result_id: 2, version: 2, content: 'v2 body', citations: [] },
+            }) as any,
+            versionPanelOpen: true,
+            versionsLoading: false,
+            versions: [
+                { result_id: 1, version: 1, operation_type: 'generate', operation_note: '', generated_at: '', created_by: 'u1' },
+                { result_id: 2, version: 2, operation_type: 'edit', operation_note: '', generated_at: '', created_by: 'u1' },
+            ],
+        };
+        expect(() => page.render()).not.toThrow();
+        const html = JSON.stringify(page.render());
+        // 分栏面板本体仍在场（正文可见性由布局保证，不再被覆盖）
+        expect(html).toContain('version-panel');
+        // 覆盖式退化 + 遮罩必须彻底移除：它们就是 #1360 遮挡正文的根源
+        expect(html).not.toContain('version-panel-overlay');
+        expect(html).not.toContain('version-panel-scrim');
+    });
+});
 
 describe('SummaryDetailPage — 返回分享卡片所在群聊', () => {
     it('分享入口打开原总结时通知左侧列表选中同一个 task', () => {
@@ -134,9 +187,9 @@ describe('SummaryDetailPage — 返回分享卡片所在群聊', () => {
 
 it('keeps regeneration voice insertion within the 2000-character limit', () => {
     const page = makePage(1);
-    page.state = { ...page.state, regenerateTopic: '总'.repeat(1999) };
+    page.state = { ...page.state, regenerateMode: 'full', regenerateTopic: '总'.repeat(1999) };
 
-    (page as any).handleRegenerateTopicVoice('语音内容', 'insert', { from: 1999, to: 1999 });
+    (page as any).handleRegenerateInputVoice('语音内容', 'insert', { from: 1999, to: 1999 });
 
     expect(page.state.regenerateTopic).toHaveLength(2000);
     expect(page.state.regenerateTopic.endsWith('语')).toBe(true);
@@ -637,6 +690,22 @@ describe('SummaryDetailPage — 续修3/4: detail 写入路径切 task 迟到丢
         expect((page.state as any).detail.task_id).toBe(2);
         expect((page.state as any).detail.title).toBe('B-detail');
     });
+
+    it('keeps polling when batch status is terminal but detail still lags', async () => {
+        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 1, status: 2 }) as any,
+        );
+
+        const page = makePage(1);
+        page.state = { ...(page.state as any), lastKnownStatus: 2 };
+        const stopFallbackPoll = vi.spyOn(page as any, 'stopFallbackPoll');
+
+        await (page as any).doFallbackPollOnce();
+
+        expect((page.state as any).lastKnownStatus).toBe(2);
+        expect(stopFallbackPoll).not.toHaveBeenCalled();
+    });
 });
 
 // ─── 续修5/6/7（blocking）：schedule 用户操作路径切 task 迟到丢弃 ───
@@ -741,6 +810,7 @@ describe('SummaryDetailPage — 续修5/6/7: schedule 用户操作路径切 task
 
         // 不重拉 schedule 回显，confirmingSchedule 由 finally 复位。
         expect(api.getSchedule).not.toHaveBeenCalled();
+        expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
         expect((page.state as any).confirmingSchedule).toBe(false);
     });
 });
@@ -1274,7 +1344,6 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             scheduleItem: null,
             isEditing: false,
             members: [member('test-uid'), member('u_b')],
-            forwardingToMatter: false,
         };
         const header = (page as any).renderHeader();
         const json = JSON.stringify(header);
@@ -1714,7 +1783,6 @@ describe('v2 对齐：定时按钮集中到 header（从团队框/个人区移�
             scheduleItem: null,
             isEditing: false,
             members: [submittedMember('test-uid', '我', 'a'), submittedMember('u_b', '李四', 'b')],
-            forwardingToMatter: false,
         };
         const json = JSON.stringify((page as any).renderHeader());
         expect(json).toContain('summary.detail.setSchedule');
@@ -1754,6 +1822,87 @@ describe('v2 对齐：定时按钮集中到 header（从团队框/个人区移�
         const json = JSON.stringify((page as any).renderPersonalSummary());
         expect(json).not.toContain('summary.detail.setSchedule');
         expect(json).not.toContain('summary.detail.editSchedule');
+    });
+
+    it('completed agent/BY_PERSON summary renders its AI abstract before the body', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                summary_mode: SM_BY_PERSON,
+                status: COMPLETED,
+                trigger_type: 3,
+                participants: [{ user_id: 'test-uid' }],
+            }),
+            personalResult: {
+                worker_status: 2,
+                abstract: 'agent abstract',
+                content: 'agent summary body',
+                submitted_at: null,
+                citations: [],
+            } as any,
+            personalLoading: false,
+            personalExpanded: true,
+            members: [submittedMember('test-uid', '我', 'agent summary body')],
+        };
+
+        const json = JSON.stringify((page as any).renderPersonalSummary());
+        expect(json).toContain('"abstract":"agent abstract"');
+        expect(json).toContain('"content":"agent summary body"');
+        expect(json.indexOf('"abstract":"agent abstract"')).toBeLessThan(json.indexOf('"content":"agent summary body"'));
+    });
+
+    it('multi-collab BY_PERSON uses team versions instead of hiding version history', () => {
+        const page = makePage(1);
+        const teamVersions = [{ id: 11, version: 2 }, { id: 10, version: 1 }] as any;
+        page.state = {
+            ...(page.state as any),
+            detail: {
+                ...multiCollabDetail({ can_edit_team: true }),
+                result: { id: 11, version: 2, content: 'team summary' },
+            },
+            versions: teamVersions,
+            versionsLoading: false,
+            personalVersions: [{ id: 21, version: 2 }, { id: 20, version: 1 }] as any,
+            personalVersionsLoading: false,
+        };
+
+        const context = (page as any).getActiveVersionContext();
+        expect(context?.isPersonal).toBe(false);
+        expect(context?.versions).toBe(teamVersions);
+        expect(context?.canRestore).toBe(true);
+    });
+
+    it.each(['isEditing', 'editingTeamSummary', 'editingMyDraft', 'editingPersonalReport'])(
+        'hides version restore while %s is active',
+        (editingFlag) => {
+            const page = makePage(1);
+            page.state = {
+                ...(page.state as any),
+                detail: {
+                    ...multiCollabDetail({ can_edit_team: true }),
+                    result: { id: 11, version: 2, content: 'team summary' },
+                },
+                versions: [{ id: 11, version: 2 }, { id: 10, version: 1 }] as any,
+                versionsLoading: false,
+                [editingFlag]: true,
+            };
+
+            expect((page as any).getActiveVersionContext()).toBeNull();
+        },
+    );
+
+    it('refuses a stale restore callback while editing and preserves the draft', async () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            isEditing: true,
+            restoringVersionId: null,
+        };
+
+        await expect((page as any).handleRestoreVersion({ result_id: 10, version: 1 })).resolves.toBe(false);
+        expect(api.restoreSummaryVersion).not.toHaveBeenCalled();
+        expect((page.state as any).isEditing).toBe(true);
     });
 
     it('multi-collab: renderPersonalSummary does NOT render schedule button (it lives in header)', () => {

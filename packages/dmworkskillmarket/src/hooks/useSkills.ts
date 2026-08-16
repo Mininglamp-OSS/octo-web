@@ -58,7 +58,7 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
       try {
         const signal = controller.signal;
         const [categoryItems, page] = await Promise.all([
-          getCategories({ signal }),
+          getCategories({ q: debouncedQuery, tags: selectedTags, signal }),
           options.mine
             ? getMySkills(
                 {

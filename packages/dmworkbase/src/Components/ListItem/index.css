@@ -82,6 +82,16 @@ body[theme-mode=dark] .wk-list-item-title{
     margin-left: auto;
 }
 
+.wk-list-item-switch-copy {
+    min-width: 0;
+}
+
+.wk-list-item-switch-subtitle {
+    margin-top: var(--wk-sp-1);
+    color: var(--wk-color-font-tip);
+    font-size: var(--wk-text-size-sm);
+}
+
 .wk-list-item-subtitle {
     flex: 1;
     margin-left: 20px;

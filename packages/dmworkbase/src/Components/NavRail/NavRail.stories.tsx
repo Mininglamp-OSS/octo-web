@@ -2,10 +2,10 @@ import type { Meta, StoryObj } from "@storybook/react";
 import React from "react";
 import NavRail from "./index";
 import type { NavRailProps } from "./index";
+import NavBottom from "./NavBottom";
 import NavSpaceSwitcher from "./NavSpaceSwitcher";
-import SpaceItem from "../SpaceItem";
-import ActionListItem from "../ActionListItem";
-import { IconJoinSpace } from "./icons";
+import NavSettingsPanel from "./NavSettingsPanel";
+import { Menus } from "../../Service/Menus";
 import "../../theme/index.css";
 
 const mockSpaces = [
@@ -14,17 +14,35 @@ const mockSpaces = [
     { space_id: "s3", name: "研发中心", logo: "", member_count: 20, max_users: 0 },
 ] as any[];
 
+function Icon({ label }: { label: string }) {
+    return <span aria-hidden="true" style={{ fontSize: 16 }}>{label}</span>;
+}
+
+const messagesMenu = new Menus("messages", "/chat", "会话", <Icon label="💬" />, <Icon label="💬" />);
+const contactsMenu = new Menus("contacts", "/contacts", "通讯录", <Icon label="👥" />, <Icon label="👥" />);
+
 const defaultArgs: NavRailProps = {
+    menusList: [messagesMenu, contactsMenu],
+    currentMenus: messagesMenu,
+    settingSelected: false,
+    hasNewVersion: false,
+    showNewVersion: false,
+    showAppVersion: false,
+    showAppUpdate: false,
+    appUpdateProgress: 0,
+    showAppUpdateOperation: false,
     spaces: mockSpaces,
     currentSpaceId: "s1",
-    activeItem: "messages",
-    userName: "张三",
-    unreadCount: 0,
-    onSpaceSelect: (id) => console.log("space selected:", id),
-    onItemClick: (key) => console.log("nav item clicked:", key),
-    onJoinSpace: () => console.log("join space"),
-    onSettingsClick: () => console.log("settings"),
+    onMenuClick: (menus) => console.log("nav menu clicked:", menus.id),
+    onToggleSetting: () => console.log("settings toggled"),
+    onSetShowNewVersion: (v) => console.log("show new version:", v),
+    onSetShowAppVersion: (v) => console.log("show app version:", v),
+    onInstallUpdate: () => console.log("install update"),
+    onNotifyListener: () => console.log("notify listener"),
     onAvatarClick: () => console.log("avatar"),
+    onSpaceSelect: (id) => console.log("space selected:", id),
+    onJoinSpace: () => console.log("join space"),
+    onCreateSpace: () => console.log("create space"),
 };
 
 const meta: Meta<typeof NavRail> = {
@@ -57,53 +75,88 @@ export const Default: Story = {
     args: defaultArgs,
 };
 
-export const WithBadge: Story = {
-    args: { ...defaultArgs, unreadCount: 5 },
+export const SettingsFlyoutOpen: Story = {
+    name: "设置弹层（真实组件）",
+    args: { ...defaultArgs, settingSelected: true },
 };
 
-export const WithLargeBadge: Story = {
-    args: { ...defaultArgs, unreadCount: 120 },
+function BottomLanguageOpen() {
+    const containerRef = React.useRef<HTMLDivElement>(null);
+    React.useEffect(() => {
+        const button = containerRef.current?.querySelector<HTMLButtonElement>(".wk-navrail__language");
+        button?.click();
+    }, []);
+    return (
+        <div ref={containerRef} className="wk-navrail" style={{ height: 220, justifyContent: "flex-end" }}>
+            <NavBottom
+                spaces={mockSpaces as any[]}
+                currentSpaceId="s1"
+                onSpaceSelect={(id) => console.log("space selected:", id)}
+            />
+        </div>
+    );
+}
+
+export const LanguageFlyoutOpen: StoryObj = {
+    name: "语言弹层（真实组件）",
+    render: () => <BottomLanguageOpen />,
 };
 
-export const MultipleSpaces: Story = {
-    args: { ...defaultArgs, currentSpaceId: "s2" },
+function SpaceOpen() {
+    const containerRef = React.useRef<HTMLDivElement>(null);
+    React.useEffect(() => {
+        const button = containerRef.current?.querySelector<HTMLButtonElement>(".wk-navrail__space-icon-btn");
+        button?.click();
+    }, []);
+    return (
+        <div ref={containerRef} className="wk-navrail" style={{ height: 220, justifyContent: "flex-end" }}>
+            <NavSpaceSwitcher
+                spaces={mockSpaces as any[]}
+                currentSpaceId="s1"
+                onSpaceSelect={(id) => console.log("space selected:", id)}
+                onJoinSpace={() => console.log("join space")}
+                onCreateSpace={() => console.log("create space")}
+            />
+        </div>
+    );
+}
+
+export const SpaceFlyoutOpen: StoryObj = {
+    name: "Space 弹层（真实组件）",
+    render: () => <SpaceOpen />,
 };
 
-export const NoSpaces: Story = {
-    args: { ...defaultArgs, spaces: [], currentSpaceId: undefined },
-};
-
-// ── Space 弹窗独立 Story — 静态展开状态，无需 WKApp context ──
-export const SpaceDropdownOpen = {
-    name: "Space 弹窗（展开状态）",
-    render: () => (
-        <div style={{
-            width: "100vw", height: "100vh",
-            background: "var(--wk-bg-deep, #F0F1F5)",
-            display: "flex", alignItems: "flex-end",
-            paddingBottom: 52, paddingLeft: 12,
-        }}>
-            {/* 静态展开弹窗，不依赖 WKApp，直接复现设计稿样式 */}
-            <div className="wk-navrail__dropdown" style={{ position: "static", boxSizing: "border-box" }}>
-                <div className="wk-navrail__dropdown-title">切换 Space</div>
-                <div className="wk-navrail__dropdown-spaces">
-                    {mockSpaces.map((s, i) => (
-                        <SpaceItem
-                            key={s.space_id}
-                            name={s.name}
-                            avatarSize="xs"
-                            meta={s.max_users > 0
-                                ? `${s.member_count}/${s.max_users} 人`
-                                : `${s.member_count} 人`}
-                            selected={i === 0}
-                        />
-                    ))}
-                </div>
-                <div className="wk-navrail__dropdown-divider" />
-                <div className="wk-navrail__dropdown-actions">
-                    <ActionListItem icon={<IconJoinSpace />} label="加入 Space" variant="join" compact />
+function FlyoutComparison() {
+    const settingsTriggerRef = React.useRef<HTMLButtonElement>(null);
+    return (
+        <div style={{ display: "flex", gap: 260, alignItems: "flex-end", height: "100vh", padding: "0 0 80px 24px" }}>
+            <BottomLanguageOpen />
+            <div className="wk-navrail" style={{ height: 220, justifyContent: "flex-end" }}>
+                <div className="wk-navrail__settings-wrap">
+                    <button
+                        ref={settingsTriggerRef}
+                        type="button"
+                        className="wk-navrail__item"
+                        aria-label="设置"
+                        aria-haspopup="menu"
+                        aria-expanded
+                    >
+                        <Icon label="⚙️" />
+                    </button>
                 </div>
             </div>
+            <NavSettingsPanel
+                {...defaultArgs}
+                settingSelected
+                triggerRef={settingsTriggerRef}
+                onToggleSetting={() => console.log("settings toggled")}
+            />
+            <SpaceOpen />
         </div>
-    ),
+    );
+}
+
+export const FlyoutComparisonOpen: StoryObj = {
+    name: "语言 / 设置 / Space 弹层对照",
+    render: () => <FlyoutComparison />,
 };

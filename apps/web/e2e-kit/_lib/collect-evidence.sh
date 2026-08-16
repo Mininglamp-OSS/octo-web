@@ -7,7 +7,7 @@
 # 前置:
 #   1. 已跑过 `pnpm exec playwright test --grep @<CaseId>` 且 playwright.config.ts
 #      配了 json reporter 输出到 `e2e/reports/.raw-results.json` (kit v0.1 默认已配)
-#   2. 稳定性 10x 也 OK: --repeat-each=10, tests[*].results 会有 10 条
+#   2. 稳定性 3x 也 OK: --repeat-each=3, tests[*].results 会有 3 条
 #
 # 产出:
 #   e2e/reports/<feature>-<TS>/

@@ -177,7 +177,6 @@
         "scheduleFailed": "总结已创建，但定时更新配置失败",
         "success": "总结任务已创建",
         "selectChat": "选择聊天",
-        "selectChatFirst": "请先选择聊天",
         "selectedChats": "已选 {{count}} 个聊天",
         "selectMembers": "选择参与者",
         "selectedMembers": "已选 {{count}} 位参与者",
@@ -203,7 +202,8 @@
         "saving": "保存中...",
         "noOutputToSave": "当前对话还没有可保存的总结，请先与 AI 对话产出内容",
         "agentSummaryCreated": "AI 总结已保存",
-        "savedReferenceLostRetry": "保存失败：请重新选择引用总结，或点「新会话」重来"
+        "savedReferenceLostRetry": "保存失败：请重新选择引用总结，或点「新会话」重来",
+        "savedNoOriginRetry": "保存失败：该引用总结缺少来源频道，本次会话也未读取过频道。请更换有来源的引用总结，或开始新会话让 AI 先读取频道"
     },
     "chatSummary": {
         "panelTitle": "聊天内的智能总结",
@@ -392,6 +392,14 @@
     },
     "detail": {
         "defaultTitle": "总结详情",
+        "abstractTitle": "AI 摘要",
+        "versionPreviewTitle": "正在查看 V{{version}} 历史版本",
+        "versionPreviewDesc": "中部展示的是该版本的只读内容，恢复为新版本后才可以继续编辑。",
+        "versionPreviewBack": "返回当前",
+        "versionRecords": "版本记录",
+        "versionRetentionHint": "保留最近 {{count}} 个版本",
+        "versionPanelClose": "关闭版本记录",
+        "tocTitle": "本文目录",
         "submitSuccess": "已提交",
         "submitFailed": "提交失败",
         "regenerateStarted": "已开始重新生成",
@@ -402,9 +410,7 @@
         "partialForwardFailed": "部分频道转发失败 ({{failed}}/{{total}})",
         "forwarded": "已转发",
         "forwardToChat": "转发到聊天",
-        "forwardToMatter": "转发到 Matters",
         "noForwardContent": "暂无可转发的内容",
-        "forwardedToMatter": "已转发到「{{title}}」",
         "processingTitle": "正在生成总结...",
         "processingDesc": "这可能需要一些时间，请耐心等待",
         "aiThinking": "AI正在思考中...",
@@ -416,6 +422,7 @@
         "failedTitle": "总结生成失败",
         "taskNo": "任务编号：{{taskNo}}",
         "createdAt": "创建时间：{{time}}",
+        "botCreatedByFor": "由 {{bot}} 代 {{owner}} 创建",
         "contentTitle": "📝 总结内容",
         "edited": "已编辑",
         "generatedAt": "生成于 {{time}}",
@@ -443,7 +450,8 @@
         "waitingSubmit": "{{name}} · 等待提交...",
         "regenerate": "重新生成",
         "regenerateEditTitle": "修改提示词并重新生成",
-        "regenerateTopicLabel": "提示词",
+        "regenerateTopicLabel": "新的总结提示词",
+        "regenerateTopicPlaceholder": "例如：重新总结本周项目进展，重点说明风险、负责人和下一步计划。",
         "adjustSummaryTitle": "修改提示词并重新生成",
         "refineAction": "按意见调整",
         "refineSuccess": "修改成功，已更新到版本 {{version}}",
@@ -530,6 +538,8 @@
         "continueRefine": "继续优化"
     },
     "summaryCard": {
+        "agentType": "Agent 总结",
+        "quickType": "快速总结",
         "createdBy": "{{name}} 发起",
         "deleteTitle": "确认删除",
         "deleteContent": "确定要删除「{{title}}」吗？删除后历史版本也将一并清除。",
@@ -541,6 +551,8 @@
         "sourceFromMultiple": "来自{{name}}等{{count}}个群聊",
         "youStartedAt": "你发起于{{time}}",
         "startedAt": "{{name}}于{{time}}",
+        "botCreatedAt": "由 {{name}} 创建 · {{time}}",
+        "botTag": "Bot",
         "generating": "AI正在分析聊天记录...",
         "justNow": "刚刚",
         "minutesAgo": "{{count}}分钟前",
@@ -554,7 +566,9 @@
         "confirmDeleteTitle": "确认删除？",
         "confirmDeleteDesc": "删除后无法恢复",
         "confirmLeaveTitle": "确认退出？",
-        "confirmLeaveDesc": "退出后将不再参与该总结"
+        "confirmLeaveDesc": "退出后将不再参与该总结",
+        "scheduledType": "定时总结",
+        "multiPersonType": "多人总结"
     },
     "editor": {
         "saveSuccess": "保存成功",
@@ -575,14 +589,9 @@
         "jumpToOriginal": "跳转到原文 →",
         "source": "来源：{{source}}",
         "sourceDefault": "未知来源",
+        "multipleSources": "多个来源",
+        "referenceTag": "引用 [{{index}}]",
         "member": "成员：{{name}}"
-    },
-    "matterPicker": {
-        "loadFailed": "加载事项失败",
-        "title": "选择目标事项",
-        "searchPlaceholder": "搜索事项...",
-        "empty": "暂无可用事项",
-        "loadMore": "加载更多..."
     },
     "share": {
         "backToChat": "返回群聊",

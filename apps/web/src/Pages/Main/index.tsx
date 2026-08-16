@@ -12,6 +12,13 @@ import { Space, SpaceService } from "@octo/base";
 import { JoinSpaceModalConnected, NavRail, MeInfo, SpaceCreate } from "@octo/base";
 import { consumeJoinSuccessNotice, showJoinSuccessToast } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
+import {
+    requestGuardedSpaceChange,
+    publishInitialSpaceResolution,
+    resolveInitialSpace,
+} from "./spaceChange";
+import { requestGuardedMenuChange, requestProgrammaticMenuChange } from "./menuChange";
+import { requestMailWorkspaceSwitch } from "@octo/mail";
 
 // ─── MainContentLeft：纯路由渲染区（Sidebar + 内容） ───────────────────────
 
@@ -27,7 +34,7 @@ export class MainContentLeft extends Component<MainContentLeftProps> {
                 {vm.historyRoutePaths.map((routePath, i) => {
                     const Cpt = WKApp.route.get(routePath);
                     return (
-                        <div key={i} style={{ display: routePath === vm.currentMenus?.routePath ? "block" : "none", width: "100%", height: "100%" }}>
+                        <div key={i} data-page-id={routePath} style={{ display: routePath === vm.currentMenus?.routePath ? "block" : "none", width: "100%", height: "100%" }}>
                             {React.isValidElement(Cpt) ? Cpt : undefined}
                         </div>
                     );
@@ -91,19 +98,23 @@ export class MainPage extends Component<{}, MainPageState> {
 
         SpaceService.shared.getMySpaces().then(spaces => {
             this.setState({ allSpaces: spaces });
+            const previousSpaceId = WKApp.shared.currentSpaceId || "";
             const savedSpaceId = localStorage.getItem("currentSpaceId");
-            if (savedSpaceId && spaces.find(s => s.space_id === savedSpaceId)) {
-                WKApp.shared.currentSpaceId = savedSpaceId;
-            } else if (spaces.length > 0) {
-                WKApp.shared.currentSpaceId = spaces[0].space_id;
-                localStorage.setItem("currentSpaceId", spaces[0].space_id);
-                this.forceUpdate();
+            const selectedSpace = resolveInitialSpace(spaces, savedSpaceId);
+            if (selectedSpace) {
+                WKApp.shared.currentSpaceId = selectedSpace.space_id;
+                localStorage.setItem("currentSpaceId", selectedSpace.space_id);
             } else {
                 WKApp.shared.currentSpaceId = '';
                 WKApp.shared.spaceChecked = false;
                 localStorage.removeItem("currentSpaceId");
-                try { WKApp.shared.notifyListener(); } catch (_) {}
             }
+            publishInitialSpaceResolution(
+                previousSpaceId,
+                selectedSpace,
+                (event, space) => WKApp.mittBus.emit(event, space),
+            );
+            try { WKApp.shared.notifyListener(); } catch (_) {}
             // dmwork-web#1065: InviteLanding 走 window.location.href 跳转后，
             // Toast 无法跨 full-reload 存活。我们用 sessionStorage 把 notice 带过来，
             // 在主界面挂载、Space 列表就绪之后再弹出。放在 .then() 内确保 spaces 已加载，
@@ -149,7 +160,7 @@ export class MainPage extends Component<{}, MainPageState> {
         });
     }
 
-    handleSpaceSelected = (spaceId: string) => {
+    private applySpaceSelection = (spaceId: string) => {
         // 同步更新 currentSpaceId 与持久化，并立刻 emit space-changed，
         // 避免随后用户立即触发的"合并转发"等动作读到旧的 spaceId
         // （此前这些更新都放在 getMySpaces().then 内，存在网络 race）。
@@ -172,6 +183,15 @@ export class MainPage extends Component<{}, MainPageState> {
         }).catch(() => {
             Toast.error(t("app.main.spaceListRefreshFailed"));
         });
+    };
+
+    handleSpaceSelected = (spaceId: string) => {
+        requestGuardedSpaceChange(
+            spaceId,
+            WKApp.shared.currentSpaceId || "",
+            requestMailWorkspaceSwitch,
+            this.applySpaceSelection,
+        );
     };
 
     handleAvatarClick = () => {
@@ -249,22 +269,29 @@ export class MainPage extends Component<{}, MainPageState> {
                                         currentMenus={vm.currentMenus}
                                         onMenuClick={(menus) => {
                                             const prevMenuId = vm.currentMenus?.id;
-                                            vm.currentMenus = menus;
-                                            WKApp.currentMenuId = menus.id;
-                                            WKApp.route.syncPath(menus.routePath);
-                                            if (menus.onPress) {
-                                                menus.onPress();
-                                            } else {
-                                                WKApp.routeLeft.popToRoot();
-                                                const stayInChat = prevMenuId === "chat" && menus.id === "chat";
-                                                if (!stayInChat) {
-                                                    WKApp.routeRight.popToRoot();
+                                            requestGuardedMenuChange(
+                                                prevMenuId,
+                                                menus.id,
+                                                requestMailWorkspaceSwitch,
+                                                () => {
+                                                    vm.currentMenus = menus;
+                                                    WKApp.currentMenuId = menus.id;
+                                                    WKApp.route.syncPath(menus.routePath);
+                                                    if (menus.onPress) {
+                                                        menus.onPress();
+                                                    } else {
+                                                        WKApp.routeLeft.popToRoot();
+                                                        const stayInChat = prevMenuId === "chat" && menus.id === "chat";
+                                                        if (!stayInChat) {
+                                                            WKApp.routeRight.popToRoot();
+                                                        }
+                                                    }
+                                                    // MainContentLeft 把已访问路由都挂在 DOM 里 (靠 display
+                                                    // 切换可见性), 所以切回某个菜单时组件不会重新 mount。
+                                                    // 发 mitt 事件通知依赖数据新鲜度的页面主动 reload。
+                                                    WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: menus.id });
                                                 }
-                                            }
-                                            // MainContentLeft 把已访问路由都挂在 DOM 里 (靠 display
-                                            // 切换可见性), 所以切回某个菜单时组件不会重新 mount。
-                                            // 发 mitt 事件通知依赖数据新鲜度的页面主动 reload。
-                                            WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: menus.id });
+                                            );
                                         }}
                                         // 用户
                                         onAvatarClick={this.handleAvatarClick}
@@ -308,17 +335,24 @@ export class MainPage extends Component<{}, MainPageState> {
                                     WKApp.routeLeft.setPop = () => { context.pop(); };
                                     WKApp.routeLeft.setPopToRoot = () => { context.popToRoot(); };
                                     // Bind menu switch callback for showConversation
-                                    WKApp.switchToMenuById = (menuId: string) => {
+                                    WKApp.switchToMenuById = (menuId: string, afterSwitch?: () => void) => {
                                         const target = vm.menusList.find((m: any) => m.id === menuId);
-                                        if (target && vm.currentMenus?.id !== menuId) {
-                                            vm.currentMenus = target;
-                                            WKApp.currentMenuId = menuId;
-                                            WKApp.route.syncPath(target.routePath);
-                                            // NOTE: do NOT popToRoot() here. routeLeft is a shared
-                                            // stack across tabs; popping it would destroy the detail
-                                            // view (e.g. summary detail page) the user was on,
-                                            // breaking rendering when they later switch back.
-                                        }
+                                        if (!target) return;
+                                        requestProgrammaticMenuChange(
+                                            vm.currentMenus?.id,
+                                            menuId,
+                                            requestMailWorkspaceSwitch,
+                                            () => {
+                                                vm.currentMenus = target;
+                                                WKApp.currentMenuId = menuId;
+                                                WKApp.route.syncPath(target.routePath);
+                                                // NOTE: do NOT popToRoot() here. routeLeft is a shared
+                                                // stack across tabs; popping it would destroy the detail
+                                                // view (e.g. summary detail page) the user was on,
+                                                // breaking rendering when they later switch back.
+                                            },
+                                            afterSwitch,
+                                        );
                                     };
                                     // Keep currentMenuId in sync with initial / user-driven menu changes
                                     if (vm.currentMenus?.id && WKApp.currentMenuId !== vm.currentMenus.id) {

@@ -1,57 +1,158 @@
 import { describe, expect, it } from "vitest"
-import { shouldClearDraftAfterSend } from "../draftLifecycle"
+import { resolveDraftAfterSend, resolveDraftToPersist } from "../draftLifecycle"
 
-describe("shouldClearDraftAfterSend", () => {
-    it("clears the draft snapshot that belonged to the sent message", () => {
-        expect(shouldClearDraftAfterSend({
+describe("resolveDraftAfterSend", () => {
+    it("clears the unchanged remote draft after a successful send", () => {
+        expect(resolveDraftAfterSend({
             remoteDraft: "hello",
             remoteDraftAtSend: "hello",
             draftSavedAfterSend: false,
-        })).toBe(true)
+            sentDraft: "hello",
+            pendingDrafts: ["hello"],
+        })).toBe("")
     })
 
-    it("does not clear a live draft typed while the send is pending", () => {
-        expect(shouldClearDraftAfterSend({
-            liveDraft: "new draft",
+    it("does not touch live input typed after compose consumption", () => {
+        expect(resolveDraftAfterSend({
+            liveDraft: "hello",
             remoteDraft: "hello",
             remoteDraftAtSend: "hello",
             draftSavedAfterSend: false,
-        })).toBe(false)
+            sentDraft: "hello",
+            pendingDrafts: ["hello"],
+        })).toBeUndefined()
     })
 
-    it("does not clear a newer draft saved while the send is pending", () => {
-        expect(shouldClearDraftAfterSend({
-            remoteDraft: "hello",
-            remoteDraftAtSend: "hello",
+    it("does not clear a newer live draft even when its text equals the sent text", () => {
+        expect(resolveDraftAfterSend({
+            liveDraft: "same text",
+            remoteDraft: "",
+            remoteDraftAtSend: "",
+            draftSavedAfterSend: false,
+            sentDraft: "same text",
+            pendingDrafts: ["same text"],
+        })).toBeUndefined()
+    })
+
+    it("clears the provisional draft written for this send", () => {
+        expect(resolveDraftAfterSend({
+            remoteDraft: "A",
+            remoteDraftAtSend: "A",
             draftSavedAfterSend: true,
-            latestSavedDraft: "new draft",
-        })).toBe(false)
+            latestSavedDraft: "A",
+            latestSavedDraftSource: "pending",
+            sentDraft: "A",
+            pendingDrafts: ["A"],
+        })).toBe("")
     })
 
-    it("allows the clear when the only later save is an empty editor", () => {
-        expect(shouldClearDraftAfterSend({
-            remoteDraft: "hello",
-            remoteDraftAtSend: "hello",
+    it("reduces queued provisional drafts as each send succeeds", () => {
+        expect(resolveDraftAfterSend({
+            remoteDraft: "A\nB",
+            remoteDraftAtSend: "",
             draftSavedAfterSend: true,
-            latestSavedDraft: "",
-        })).toBe(true)
+            latestSavedDraft: "A\nB",
+            latestSavedDraftSource: "pending",
+            sentDraft: "A",
+            pendingDrafts: ["A", "B"],
+        })).toBe("B")
+
+        expect(resolveDraftAfterSend({
+            remoteDraft: "B",
+            remoteDraftAtSend: "",
+            draftSavedAfterSend: true,
+            latestSavedDraft: "B",
+            latestSavedDraftSource: "pending",
+            sentDraft: "B",
+            pendingDrafts: ["B"],
+        })).toBe("")
     })
 
-    it("clears an edited restored draft after it is sent", () => {
-        expect(shouldClearDraftAfterSend({
-            remoteDraft: "hello",
-            remoteDraftAtSend: "hello",
-            liveDraft: "",
-            draftSavedAfterSend: false,
-        })).toBe(true)
+    it("does not erase a later live draft saved while the send was pending", () => {
+        expect(resolveDraftAfterSend({
+            remoteDraft: "C",
+            remoteDraftAtSend: "",
+            draftSavedAfterSend: true,
+            latestSavedDraft: "C",
+            latestSavedDraftSource: "live",
+            sentDraft: "B",
+            pendingDrafts: ["B"],
+        })).toBeUndefined()
     })
 
-    it("does not clear a remote draft updated while the send is pending", () => {
-        expect(shouldClearDraftAfterSend({
-            remoteDraft: "remote new draft",
-            remoteDraftAtSend: "hello",
-            liveDraft: "",
+    it("does not mistake same-text live input for a provisional send draft", () => {
+        expect(resolveDraftAfterSend({
+            remoteDraft: "A",
+            remoteDraftAtSend: "",
+            draftSavedAfterSend: true,
+            latestSavedDraft: "A",
+            latestSavedDraftSource: "live",
+            sentDraft: "A",
+            pendingDrafts: ["A"],
+        })).toBeUndefined()
+    })
+
+    it("does not clear when the executing send does not own the first pending slot", () => {
+        expect(resolveDraftAfterSend({
+            remoteDraft: "A\nB",
+            remoteDraftAtSend: "",
+            draftSavedAfterSend: true,
+            latestSavedDraft: "A\nB",
+            latestSavedDraftSource: "pending",
+            sentDraft: "B",
+            pendingDrafts: ["A", "B"],
+        })).toBeUndefined()
+    })
+
+    it("does not let an attachment-only send consume the next text draft", () => {
+        expect(resolveDraftAfterSend({
+            remoteDraft: "B",
+            remoteDraftAtSend: "",
+            draftSavedAfterSend: true,
+            latestSavedDraft: "B",
+            latestSavedDraftSource: "pending",
+            sentDraft: "B",
+            pendingDrafts: ["", "B"],
+        })).toBeUndefined()
+    })
+
+    it("does not clear a remote draft changed outside this send", () => {
+        expect(resolveDraftAfterSend({
+            remoteDraft: "remote update",
+            remoteDraftAtSend: "A",
             draftSavedAfterSend: false,
-        })).toBe(false)
+            sentDraft: "A",
+            pendingDrafts: ["A"],
+        })).toBeUndefined()
+    })
+})
+
+describe("resolveDraftToPersist (octo-web#1280)", () => {
+    it("persists live input with live ownership", () => {
+        expect(resolveDraftToPersist({
+            liveDraft: "typing this",
+            pendingSendText: "",
+        })).toEqual({ draft: "typing this", source: "live" })
+    })
+
+    it("persists an in-flight compose as a provisional draft", () => {
+        expect(resolveDraftToPersist({
+            liveDraft: "",
+            pendingSendText: "message being sent",
+        })).toEqual({ draft: "message being sent", source: "pending" })
+    })
+
+    it("still lets live input win over an in-flight compose", () => {
+        expect(resolveDraftToPersist({
+            liveDraft: "next message",
+            pendingSendText: "message being sent",
+        })).toEqual({ draft: "next message", source: "live" })
+    })
+
+    it("persists an empty draft when nothing is live or pending", () => {
+        expect(resolveDraftToPersist({
+            liveDraft: "",
+            pendingSendText: "",
+        })).toEqual({ draft: "", source: "empty" })
     })
 })

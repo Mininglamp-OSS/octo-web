@@ -20,3 +20,12 @@
   color: var(--wk-icon-hover);
   background-color: var(--semi-color-fill-1);
 }
+
+.close-icon--disabled {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.close-icon--disabled .group-member-remove-icon {
+  cursor: default;
+}

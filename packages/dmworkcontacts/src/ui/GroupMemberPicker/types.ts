@@ -2,6 +2,7 @@ import type { GroupCreateCandidateContact } from "../../bridge/groupCreate/types
 
 export interface GroupMemberPickerProps {
   mode: "createGroup" | "addMember";
+  disabled?: boolean;
   candidates: GroupCreateCandidateContact[];
   selected: GroupCreateCandidateContact[];
   selectedUids: Set<string>;

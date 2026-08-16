@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useState } from "react";
 import { WKModal, WKButton, t } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
-import { Bot, UserRound } from "lucide-react";
+import { Bot, ShieldCheck, UserRound } from "lucide-react";
 import { deleteMcp, fetchMcpDetail } from "../api/mcpService";
 import { buildQuickStartTabs, TOKEN_PLACEHOLDER_RE } from "../api/quickStartTemplates";
 import type { McpDetail, McpQuickStart } from "../types/mcp";
 import { IconGlyph } from "../utils/icon";
 import { getMcpAvatarColor, getMcpAvatarText } from "../utils/mcpAvatar";
 import { resolveOwner } from "./McpCard";
+import { isOfficialMcp } from "../utils/publisher";
 
 interface McpDetailModalProps {
   /** The id of the MCP to show; null closes the modal. */
@@ -266,9 +267,17 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
           )}
         </div>
         {(() => {
-          const owner = resolveOwner(detail);
+          const isOfficial = isOfficialMcp(detail);
+          const owner = isOfficial ? null : resolveOwner(detail);
           const parts: React.ReactNode[] = [];
-          if (owner?.botName) {
+          if (isOfficial) {
+            parts.push(
+              <span key="official" className="wk-mcp-detail__owner wk-mcp-detail__owner--official">
+                <ShieldCheck className="wk-mcp-card__owner-official-icon" size={13} aria-hidden="true" />
+                <span className="wk-mcp-card__owner-name">{t("mcp.card.officialPublisher")}</span>
+              </span>
+            );
+          } else if (owner?.botName) {
             parts.push(
               <span key="bot" className="wk-mcp-detail__owner" title={owner.botName}>
                 <Bot className="wk-mcp-card__owner-bot-icon" size={13} aria-hidden="true" />

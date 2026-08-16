@@ -20,6 +20,9 @@ import type {
   ChannelSearchQuery,
   ChannelSearchResponse,
   ChannelSearchTab,
+  DocSearchItem,
+  DocSearchQuery,
+  DocSearchResponse,
   GlobalContentTab,
   GlobalSearchFileTypeCategory,
   GlobalSearchFilters,
@@ -374,6 +377,23 @@ export interface LegacyGlobalSearchResponse {
   messages: LegacyGlobalSearchMessage[];
 }
 
+// Coerce a doc search item's updatedAt to a plausible epoch-millis value, or
+// null. Backend contract is `number | null` (doc_meta.updated_at NOW(3)).
+// A bare `> 0` check would let a stray SECONDS value (e.g. 1.7e9 ≈ 1970 in ms)
+// or an absurdly large number through and render a wrong/Invalid date, so we
+// bound to (1e11, 1e14): ~1973-03 up to ~5138, which admits every real millis
+// timestamp while rejecting seconds-scale and garbage values. Anything outside
+// (missing, non-finite, or out of range) becomes null so
+// DocSearchPanel.formatUpdatedAt early-returns "" instead of a bad date.
+function coerceUpdatedAt(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 1e11 &&
+    value < 1e14
+    ? value
+    : null;
+}
+
 const SearchService = {
   async searchChannelMessages(
     query: ChannelSearchQuery,
@@ -423,6 +443,76 @@ const SearchService = {
         ? mapFilesResponse(resp, query, assets)
         : mapMessagesResponse(resp, query, assets);
     return foldResponse(items, pagination);
+  },
+
+  // Cloud-docs full-text search: octo-docs-backend `POST /api/v1/docs/search`.
+  // uid/spaceId are injected by the gateway (not sent from the client). The
+  // backend already applies MySQL-realtime visibility (incl. soft-delete
+  // exclusion), so the client renders items verbatim without any filtering.
+  //
+  // Contract confirmed against octo-docs-backend source (osClient.ts +
+  // api/routes/docs.ts searchDocsHandler). Request/response shape:
+  //   req:  { q, cursor?, pageSize }  (backend also accepts an optional
+  //         docType[] kind filter, but this UI has no doc-type facet so we
+  //         never send it — omitted => no filter on the backend.)
+  //   resp: { total, items: [{ docId, title, docType, updatedAt, spaceId, highlight? }], nextCursor? }
+  //   1. Pagination is keyset (search_after), NOT offset. We send the previous
+  //      response's `nextCursor` verbatim (omitted on the first page) and read
+  //      `nextCursor` back — an opaque base64url token wrapping the last hit's
+  //      OpenSearch sort values. It is present only while a further page exists,
+  //      so the pager stops on `!nextCursor` (never a `page * size >= total`
+  //      arithmetic that offset paging can get wrong under index churn).
+  //   2. `total` — exact post-visibility count (OS hits.total.value with
+  //      track_total_hits:true). Kept for display only; it does NOT drive the
+  //      stop condition, so a missing/garbage total can't forge hasMore.
+  //   3. `updatedAt` — `number | null` epoch millis (NOT ISO string; the
+  //      external Docs module has a different DocMeta REST endpoint, unrelated to search). Coerced below to
+  //      positive-millis-in-plausible-range-or-null so a stray seconds value or
+  //      garbage can't render as an Invalid Date.
+  //   4. `spaceId` — returned on every item; search is single-space scoped
+  //      (OS term space_id, injected by the gateway, never from the body).
+  //      Retained as result metadata; ordinary document links no longer serialize it.
+  async searchDocs(query: DocSearchQuery): Promise<DocSearchResponse> {
+    const body: Record<string, unknown> = {
+      q: query.keyword,
+      pageSize: query.pageSize,
+    };
+    // Keyset cursor: omit on the first page so the backend starts from the top.
+    if (query.cursor) body.cursor = query.cursor;
+    const resp = await APIClient.shared.post("docs/search", body);
+    const items = Array.isArray(resp?.items) ? resp.items : [];
+    // Per-item validation at the service boundary: the backend contract says
+    // docId/title are always present, but a malformed item would otherwise flow
+    // to key={docId} (React duplicate-key collisions on undefined) and
+    // buildDocLink({docId}) -> /d/undefined. Drop items missing a usable docId,
+    // and coerce updatedAt to positive-millis-or-null (contract fact #3).
+    // highlight is the one remaining OpenSearch-shaped field consumed directly
+    // (renderHighlight scans it as a string); a non-string value would throw on
+    // .length/.replace and take out the whole row. Coerce to string-or-undefined
+    // at the boundary so the panel only ever sees the contract shape.
+    const validItems = items
+      .filter(
+        (it: unknown): it is DocSearchItem =>
+          !!it &&
+          typeof (it as DocSearchItem).docId === "string" &&
+          (it as DocSearchItem).docId !== ""
+      )
+      .map((it: DocSearchItem) => ({
+        ...it,
+        updatedAt: coerceUpdatedAt(it.updatedAt),
+        highlight: typeof it.highlight === "string" ? it.highlight : undefined,
+      }));
+    const nextCursor =
+      typeof resp?.nextCursor === "string" && resp.nextCursor !== ""
+        ? resp.nextCursor
+        : undefined;
+    return {
+      // total is display-only under keyset paging; fall back to the visible
+      // count when absent (the pager relies on nextCursor, not total).
+      total: typeof resp?.total === "number" ? resp.total : validItems.length,
+      items: validItems,
+      nextCursor,
+    };
   },
 
   async getGlobalFileTypes(

@@ -21,6 +21,7 @@ export const TriggerType = {
     MANUAL: 1,
     SCHEDULED: 2,
     AGENT: 3,
+    BOT: 4,
 } as const;
 export type TriggerTypeType = typeof TriggerType[keyof typeof TriggerType];
 
@@ -105,6 +106,8 @@ export interface TeamCitationItem {
 /** 总结结果 */
 export interface SummaryResult {
     content: string;
+    /** Short AI-generated abstract (see backend Option-B generation). Empty → hide the callout. */
+    abstract?: string;
     total_msg_count: number;
     total_token_used: number;
     model_version: string;
@@ -149,6 +152,8 @@ export interface PersonalResult {
     worker_status: 0 | 1 | 2 | 3;
     workflow_stage?: WorkflowStage | "";
     content: string;
+    /** Short AI-generated abstract (Option-B). Empty → hide the callout. */
+    abstract?: string;
     citations?: CitationItem[];
     submitted_at: string | null;
     generated_at: string | null;
@@ -185,6 +190,9 @@ export interface SummaryListItem {
     participants?: Participant[];
     total_msg_count: number;
     creator_name?: string;
+    /** 若由 bot 代 owner 创建：acting bot 的 uid / 显示名(trigger_type=BOT)。 */
+    creator_bot_id?: string;
+    creator_bot_name?: string;
     origin_channel_id: string;
     origin_channel_type: number;
     created_at: string;
@@ -196,6 +204,17 @@ export interface SummaryListItem {
     current_result_id?: number | null;
     current_personal_version_id?: number | null;
     activity_at?: string | null;
+    /** 后端权威字段：该总结是否可被 Agent 引用 */
+    referenceable?: boolean;
+    /**
+     * 引用产物类型：team_result | personal_result | null。
+     * R4 yj P2-9: forward declarations for SUM-19; no reader in this
+     * package yet — the picker keeps only referenceable items, so there is
+     * no UI surface that could show a reason or artifact type.
+     */
+    reference_artifact_type?: string | null;
+    /** 不可引用原因（referenceable=false 时后端返回） */
+    reference_unavailable_reason?: string | null;
 }
 
 /** 详情 */
@@ -216,6 +235,10 @@ export interface SummaryDetail {
     schedule_id?: number | null;
     /** 任务创建者 user_id。详情页区分 creator/participant 视角的移除/退出按钮。 */
     creator_id?: string;
+    creator_name?: string;
+    /** 若由 bot 代 owner 创建:acting bot 的 uid / 显示名(trigger_type=BOT)。 */
+    creator_bot_id?: string;
+    creator_bot_name?: string;
     origin_channel_id: string;
     origin_channel_type: number;
     created_at: string;
@@ -223,6 +246,12 @@ export interface SummaryDetail {
     result_id?: number;
     result_edited_at?: string | null;
     result_is_edited?: boolean;
+    /** 后端权威字段：该总结是否可被 Agent 引用 */
+    referenceable?: boolean;
+    /** 引用产物类型：team_result | personal_result | null（前向声明，当前无读取方，见 SummaryListItem 同名字段注释，R4 yj P2-9） */
+    reference_artifact_type?: string | null;
+    /** 不可引用原因（referenceable=false 时后端返回；前向声明，同上） */
+    reference_unavailable_reason?: string | null;
     permissions?: {
         /** 旧字段，语义已迁移到 can_edit_team；前端勿用。 */
         can_edit: boolean;

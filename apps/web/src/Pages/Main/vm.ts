@@ -1,5 +1,7 @@
 import { WKApp, Menus, ProviderListener, normalizeRoutePath, startVersionCheck, t } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
+import { requestMailWorkspaceSwitch } from "@octo/mail";
+import { requestGuardedBrowserRouteChange } from "./menuChange";
 import { reconcileMenuState, resolvePendingRouteActivation } from "./menuReconcile";
 
 export default class MainVM extends ProviderListener {
@@ -64,6 +66,28 @@ export default class MainVM extends ProviderListener {
   // first appconfig load, then cleared. Any explicit user navigation also clears it (see the
   // currentMenus setter) so a late toggle never yanks the user off a view they chose.
   private _pendingRouteActivation?: string;
+  private _allowNextBrowserRouteChange = false;
+  private _onBrowserRouteGuard = (event: PopStateEvent) => {
+    if (this._allowNextBrowserRouteChange) {
+      this._allowNextBrowserRouteChange = false;
+      return;
+    }
+    const currentRoute = this._currentMenus?.routePath;
+    const targetRoute = normalizeRoutePath(window.location.pathname);
+    const targetMenu = this.findMenuForRoute(targetRoute);
+    if (!currentRoute || !targetMenu || targetMenu.id === this._currentMenus?.id) {
+      return;
+    }
+    requestGuardedBrowserRouteChange(
+      event,
+      requestMailWorkspaceSwitch,
+      () => window.history.pushState({}, "title", currentRoute),
+      () => {
+        this._allowNextBrowserRouteChange = true;
+        window.history.back();
+      }
+    );
+  };
   private _onBrowserRouteChange = () => {
     this.syncMenuFromBrowserPath();
   };
@@ -115,6 +139,7 @@ export default class MainVM extends ProviderListener {
         this.notifyListener();
       }
     });
+    window.addEventListener("popstate", this._onBrowserRouteGuard, true);
     window.addEventListener("popstate", this._onBrowserRouteChange);
 
     if ((window as any).__POWERED_ELECTRON__) {
@@ -196,6 +221,7 @@ export default class MainVM extends ProviderListener {
     this.ipcListeners = [];
     this.stopVersionCheck?.();
     this._unsubscribeMenuReconcile?.();
+    window.removeEventListener("popstate", this._onBrowserRouteGuard, true);
     window.removeEventListener("popstate", this._onBrowserRouteChange);
   }
 
@@ -218,6 +244,7 @@ export default class MainVM extends ProviderListener {
     WKApp.currentMenuId = target.id;
     this._pendingRouteActivation = undefined;
     this.notifyListener();
+    WKApp.mittBus.emit("wk:active-menu-changed", { menuId: target.id });
     WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: target.id });
     return true;
   }
@@ -259,6 +286,9 @@ export default class MainVM extends ProviderListener {
     this._currentMenus = result.currentMenu;
     this._historyRoutePaths = result.historyRoutePaths;
     WKApp.currentMenuId = result.currentMenu?.id;
+    WKApp.mittBus.emit("wk:active-menu-changed", {
+      menuId: result.currentMenu?.id,
+    });
     if (result.activeMenuVanished) {
       WKApp.routeRight.popToRoot();
     }
@@ -292,6 +322,9 @@ export default class MainVM extends ProviderListener {
     this._currentMenus = result.currentMenu;
     this._historyRoutePaths = result.historyRoutePaths;
     WKApp.currentMenuId = result.currentMenu?.id;
+    WKApp.mittBus.emit("wk:active-menu-changed", {
+      menuId: result.currentMenu?.id,
+    });
     // NB: unlike onMenuClick we deliberately do NOT WKApp.routeRight.popToRoot() here. The route
     // being activated (e.g. /docs) mounts fresh and populates the right pane itself via
     // replaceToRoot on mount; popping first would empty the shared queue and briefly flash the
@@ -338,6 +371,7 @@ export default class MainVM extends ProviderListener {
     // componentDidMount to decide whether to mount the right-pane page (see MarketSidebar.tsx:66),
     // so a missing id here is exactly why refreshing /mcp-market/mcp lands on an empty right pane.
     WKApp.currentMenuId = menus?.id;
+    WKApp.mittBus.emit("wk:active-menu-changed", { menuId: menus?.id });
     // An explicit menu selection (user click via onMenuClick, or switchToMenuById) cancels any
     // pending boot-route activation: the user has chosen a view, so a config-gated menu that
     // resolves later must not yank them off it. didMount sets _pendingRouteActivation only AFTER

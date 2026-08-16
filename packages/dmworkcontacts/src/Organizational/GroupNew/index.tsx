@@ -58,6 +58,8 @@ function GroupCreateFeature({
         Toast.warning(t("contacts.groupCreate.nameRequired")),
       onMembersRequired: () =>
         Toast.warning(t("contacts.groupNew.selectContactsWarning")),
+      onAvatarUploadFailed: () =>
+        Toast.warning(t("contacts.groupCreate.avatarUploadFailed")),
     },
   });
 
@@ -90,8 +92,10 @@ function GroupCreateFeature({
         groupName: model.groupName,
         avatarText: model.avatar.text,
         avatarColorIndex: model.avatar.colorIndex,
+        avatarFile: model.avatar.file,
         maxNameLength: GROUP_NAME_MAX_LENGTH,
         isAvatarEditorOpen: model.avatar.isEditorOpen,
+        isSubmitting: model.isSubmitting,
       }}
       memberPicker={{
         mode,

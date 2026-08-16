@@ -4,19 +4,129 @@
     background-color: var(--wk-bg-surface);
     width: 100%;
     height: 100%;
-    overflow: scroll;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+/*
+ * 成员列表返回时保留 animationend，让 WKViewQueue 继续按原逻辑清理栈顶，
+ * 但取消可见位移，避免标题已切回父页而内容仍横向退场造成闪动。
+ * 不改变 RoutePage/WKViewQueue 的入栈、退栈与数据刷新逻辑。
+ */
+.wk-viewqueue-view-out:has(.wk-subscrierlist) {
+    background: var(--wk-bg-surface);
+    animation-name: wk-subscriber-list-exit;
+    animation-duration: var(--wk-dur-fast);
+    animation-timing-function: var(--wk-ease);
+}
+
+@keyframes wk-subscriber-list-exit {
+    from,
+    to {
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+.wk-subscrierlist .wk-indextable-search-box {
+    height: auto;
+    margin: var(--wk-sp-3) var(--wk-sp-5) var(--wk-sp-2);
+    padding: var(--wk-sp-1-5) var(--wk-sp-2);
+    align-items: center;
+    background: var(--wk-bg-base);
+    border: 1px solid var(--wk-border-subtle);
+    border-radius: var(--wk-r-sm);
+}
+
+.wk-subscrierlist-title-inline {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: var(--wk-sp-3);
+    min-width: 0;
+    max-width: 100%;
+}
+
+.wk-channelsetting .wk-route-header-title-next:has(.wk-subscrierlist-title-inline) {
+    width: calc(100% - var(--wk-sp-8));
+}
+
+.wk-subscrierlist-title-label {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--wk-text-primary);
+    font-size: inherit;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.wk-subscrierlist-title-add {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: var(--wk-text-primary);
+    cursor: pointer;
+    font-size: var(--wk-text-size-md);
+    font-weight: 600;
+    line-height: var(--wk-sp-6);
+    padding: 0;
+    white-space: nowrap;
+}
+
+.wk-subscrierlist .wk-indextable-search-icon {
+    margin-left: 0;
+    color: var(--wk-text-tertiary);
+}
+
+.wk-subscrierlist-search-icon {
+    width: var(--wk-sp-4);
+    height: var(--wk-sp-4);
+}
+
+.wk-subscrierlist .wk-indextable-search-input {
+    flex: 1;
+    max-width: none;
+    margin-left: var(--wk-sp-2);
+}
+
+.wk-subscrierlist .wk-indextable-search-input input {
+    width: 100%;
+    height: auto;
+    padding: 0;
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
+    line-height: var(--wk-sp-5);
+}
+
+.wk-subscrierlist .wk-indextable-search-input input::placeholder {
+    color: var(--wk-text-tertiary);
 }
 
 .wk-subscrierlist-list-item {
     display: flex;
     align-items: center;
-    padding: 1rem;
+    gap: var(--wk-sp-3);
+    min-height: var(--wk-sp-12);
+    padding: var(--wk-sp-2) var(--wk-sp-5);
     cursor: pointer;
+    transition: background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-subscrierlist-list-item:hover {
+    background: var(--wk-bg-hover);
 }
 
 .wk-subscrierlist-item-avatar {
     position: relative;
     flex-shrink: 0;
+}
+
+.wk-subscrierlist-item-avatar .wk-avatar {
+    width: var(--wk-sp-8);
+    height: var(--wk-sp-8);
 }
 
 .wk-subscrierlist-item-online-badge {
@@ -26,13 +136,17 @@
 }
 
 .wk-subscrierlist-item-name {
-    margin-left: 1rem;
+    min-width: 0;
+    margin-left: 0;
     text-overflow: ellipsis;
     overflow: hidden;
     white-space: nowrap;
-    max-width: 10rem;
+    max-width: 16rem;
     display: flex;
     align-items: center;
+    gap: var(--wk-sp-1);
+    color: var(--wk-text-primary);
+    font-size: var(--wk-text-size-md);
 }
 
 .wk-subscrierlist-item-source {
@@ -57,13 +171,36 @@
 
 .wk-subscrierlist-item-content {
     display: flex;
+    min-width: 0;
     width: 100%;
-    justify-content: space-between;
+    align-items: center;
+    justify-content: flex-start;
+    gap: var(--wk-sp-1-5);
 }
 
 .wk-subscrierlist-item-desc {
-    font-size: 14px;
+    display: none;
+    flex-shrink: 0;
+    padding: var(--wk-sp-0-5) var(--wk-sp-1);
+    font-size: var(--wk-text-size-tiny);
+    font-weight: 600;
+    line-height: var(--wk-text-size-base);
+    border-radius: var(--wk-r-xs);
+}
+
+.wk-subscrierlist-item-desc-owner,
+.wk-subscrierlist-item-desc-manager {
+    display: inline-flex;
+}
+
+.wk-subscrierlist-item-desc-owner {
+    color: var(--wk-color-warning);
+    background: var(--wk-color-warning-bg);
+}
+
+.wk-subscrierlist-item-desc-manager {
     color: var(--wk-text-secondary);
+    background: var(--wk-bg-elevated);
 }
 
 .wk-subscrierlist-item-action {
@@ -71,4 +208,37 @@
     align-items: center;
     flex-shrink: 0;
     margin-left: 8px;
+}
+
+.wk-subscrierlist-item-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: calc(var(--wk-sp-6) + var(--wk-sp-1));
+    height: calc(var(--wk-sp-6) + var(--wk-sp-1));
+    flex-shrink: 0;
+    margin-left: auto;
+    border: 0;
+    border-radius: var(--wk-r-md);
+    background: transparent;
+    color: var(--wk-text-tertiary);
+    cursor: pointer;
+    line-height: 1;
+    transition: background var(--wk-dur-fast) var(--wk-ease),
+        color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-subscrierlist-item-remove:hover {
+    background: var(--wk-color-danger-bg);
+    color: var(--wk-color-danger);
+}
+
+.wk-subscrierlist-item-remove-icon {
+    width: var(--wk-text-size-lg);
+    height: var(--wk-text-size-lg);
+}
+
+.wk-subscrierlist-item-remove:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
 }

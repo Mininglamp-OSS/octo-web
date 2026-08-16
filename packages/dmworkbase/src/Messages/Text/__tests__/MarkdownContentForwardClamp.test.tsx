@@ -51,6 +51,8 @@ function renderContent(element: React.ReactElement) {
 
 describe("MarkdownContent — forwarded-doc title clamp gate (B3)", () => {
   const url = "https://octo.example.com/docs?space=demo&doc=d_1";
+  const longUrl =
+    "https://octo.example.com/docs?space=demo&folder=f_default&doc=d_verylongidentifier12345&token=abcdefghijklmnopqrstuvwxyz";
 
   it("clamps a genuine forward card `**title**\\n[title](link)`", () => {
     // remark-breaks turns the single newline into a <br>, so this is strong + break + link with the
@@ -97,5 +99,37 @@ describe("MarkdownContent — forwarded-doc title clamp gate (B3)", () => {
       <MarkdownContent content={`**Heading**\n[open here](${url})`} />
     );
     expect(root.querySelector(".wk-markdown-forward-card")).toBeNull();
+  });
+
+  it("renders a long bare-URL markdown link with complete visible text", () => {
+    const root = renderContent(
+      <MarkdownContent content={`[${longUrl}](${longUrl})`} />
+    );
+    const link = root.querySelector("a");
+    expect(link?.textContent).toBe(longUrl);
+    expect(link?.textContent).not.toContain("…");
+    expect(link?.getAttribute("href")).toBe(longUrl);
+  });
+
+  it("renders a plain-text long URL link with complete visible text", () => {
+    const root = renderContent(
+      <MarkdownContent content={longUrl} enableMarkdown={false} />
+    );
+    const link = root.querySelector("a");
+    expect(link?.textContent).toBe(longUrl);
+    expect(link?.textContent).not.toContain("…");
+    expect(link?.getAttribute("href")).toBe(longUrl);
+  });
+
+  it("keeps forward-card title clamp while showing the full URL label", () => {
+    const root = renderContent(
+      <MarkdownContent content={`**Quarterly plan**\n[${longUrl}](${longUrl})`} />
+    );
+    const card = root.querySelector(".wk-markdown-forward-card");
+    const link = root.querySelector("a");
+    expect(card).not.toBeNull();
+    expect(root.querySelector(".wk-markdown-forward-title")).not.toBeNull();
+    expect(link?.textContent).toBe(longUrl);
+    expect(link?.textContent).not.toContain("…");
   });
 });

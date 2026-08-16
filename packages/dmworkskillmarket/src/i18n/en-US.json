@@ -63,6 +63,7 @@
     "downloads": "Downloads"
   },
   "card": {
+    "platformPublisher": "Official",
     "editAriaLabel": "Edit {{name}}",
     "deleteAriaLabel": "Delete {{name}}",
     "statsAriaLabel": "Skill stats",

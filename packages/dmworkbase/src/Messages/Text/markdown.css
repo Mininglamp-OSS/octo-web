@@ -110,14 +110,62 @@
   border: 1px solid var(--wk-border-subtle);
 }
 
+body[theme-mode="dark"] .wk-markdown-pre-wrapper {
+  border-color: var(--wk-border-strong);
+}
+
 .wk-markdown pre {
   margin: 0;
-  padding: var(--wk-sp-3) var(--wk-sp-4);
+  padding: var(--wk-sp-3) calc(var(--wk-sp-4) + 36px) var(--wk-sp-3)
+    var(--wk-sp-4);
   overflow-x: auto;
   font-size: 0.875em;
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
   line-height: 1.5;
   /* highlight.js 的 github-dark 主题提供背景色 */
+}
+
+.wk-markdown-code-copy {
+  position: absolute;
+  top: var(--wk-sp-2);
+  right: var(--wk-sp-2);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-sm);
+  color: var(--semi-color-text-2);
+  background: var(--semi-color-bg-2);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-markdown-pre-wrapper:hover .wk-markdown-code-copy,
+.wk-markdown-code-copy:focus-visible {
+  opacity: 1;
+}
+
+.wk-markdown-code-copy:hover:not(:disabled),
+.wk-markdown-code-copy:focus-visible {
+  color: var(--semi-color-text-0);
+  background: var(--semi-color-fill-0);
+}
+
+.wk-markdown-code-copy:focus-visible {
+  outline: 2px solid var(--wk-border-glow);
+  outline-offset: 2px;
+}
+
+.wk-markdown-code-copy:disabled {
+  cursor: default;
+  opacity: 0.6;
 }
 
 .wk-markdown pre code {

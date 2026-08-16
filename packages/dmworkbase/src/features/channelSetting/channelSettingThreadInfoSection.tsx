@@ -17,12 +17,15 @@ import {
   getCurrentImChannelInfo,
 } from "../../im-runtime/currentChannelRuntime";
 import { t } from "../../i18n";
-import { ChannelSettingInfoRow } from "../../ui/ChannelSettingRows";
+import {
+  ChannelSettingInfoRow,
+  ChannelSettingInlineEditRow,
+} from "../../ui/ChannelSettingRows";
 import { ChannelSettingInputEditPush } from "./types";
 
 export function buildThreadInfoSection(
   context: RouteContext<ChannelSettingRouteData>,
-  inputEditPush: ChannelSettingInputEditPush
+  _inputEditPush: ChannelSettingInputEditPush
 ) {
   const data = context.routeData() as ChannelSettingRouteData;
   const { channel, channelInfo } = data;
@@ -49,37 +52,34 @@ export function buildThreadInfoSection(
       : "green";
   const rows: Row[] = [
     new Row({
-      cell: ChannelSettingInfoRow,
+      cell: ChannelSettingInlineEditRow,
       properties: {
         title: t("base.module.thread.name"),
-        value: threadName,
-        onClick: () => {
-          if (!threadInfo) return;
+        value: threadName || "",
+        placeholder: t("base.module.thread.name"),
+        maxCount: THREAD_NAME_MAX_LENGTH,
+        onStartEdit: () => {
+          if (!threadInfo) return false;
           if (!canEdit) {
             Toast.warning(t("base.module.thread.nameOnlyCreatorOrManager"));
-            return;
+            return false;
           }
-          inputEditPush(
-            context,
-            threadName || "",
-            async (value) => {
-              try {
-                await updateChannelSettingThreadName({
-                  channel,
-                  groupNo: threadInfo.groupNo,
-                  shortId: threadInfo.shortId,
-                  name: value,
-                });
-                data.refresh();
-              } catch (error: any) {
-                Toast.error(
-                  error?.msg || t("base.module.thread.saveFailedRetry")
-                );
-              }
-            },
-            t("base.module.thread.name"),
-            THREAD_NAME_MAX_LENGTH
-          );
+          return true;
+        },
+        onSave: async (value: string) => {
+          if (!threadInfo) return;
+          try {
+            await updateChannelSettingThreadName({
+              channel,
+              groupNo: threadInfo.groupNo,
+              shortId: threadInfo.shortId,
+              name: value,
+            });
+            data.refresh();
+          } catch (error: any) {
+            Toast.error(error?.msg || t("base.module.thread.saveFailedRetry"));
+            return false;
+          }
         },
       },
     }),
@@ -112,6 +112,38 @@ export function buildThreadInfoSection(
           title: t("base.module.thread.parentGroup"),
           value: parentInfo?.title || threadInfo.groupNo,
           onClick: () => WKApp.endpoints.showConversation(parentChannel),
+        },
+      })
+    );
+  }
+
+  if (
+    typeof thread?.member_count === "number" &&
+    Number.isFinite(thread.member_count) &&
+    thread.member_count >= 0
+  ) {
+    rows.push(
+      new Row({
+        cell: ChannelSettingInfoRow,
+        properties: {
+          title: t("base.module.thread.participantCount"),
+          value: t("base.module.thread.participantCountValue", {
+            values: { count: thread.member_count },
+          }),
+        },
+      })
+    );
+  }
+
+  if (typeof thread?.is_member === "boolean") {
+    rows.push(
+      new Row({
+        cell: ChannelSettingInfoRow,
+        properties: {
+          title: t("base.module.thread.participationStatus"),
+          value: thread.is_member
+            ? t("base.module.thread.participationStatusJoined")
+            : t("base.module.thread.participationStatusNotJoined"),
         },
       })
     );

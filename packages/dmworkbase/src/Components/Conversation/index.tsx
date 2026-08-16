@@ -43,7 +43,6 @@ import {
   ChannelTypeCommunityTopic,
 } from "../../Service/Const";
 import ConversationContext from "./context";
-import { subscriberDisplayName } from "../../Utils/displayName";
 import {
   buildMessageMentions as buildMentionRenderInfo,
   readMentionFlags,
@@ -53,7 +52,23 @@ import MessageInput, {
   MessageInputContext,
   EditorContentBlock,
 } from "../MessageInput";
-import { SendResultDetail } from "../MessageInput/sendFlow";
+import {
+  SendResultDetail,
+  SendDraftSnapshot,
+  SendProgressSnapshot,
+  SendTargetSnapshot,
+  UnsentEditorBlock,
+} from "../MessageInput/sendFlow";
+import {
+  captureSendTarget,
+  type CapturedSendTarget,
+} from "./sendTarget";
+import {
+  tryConsumeInitialCompose,
+  type ComposeHost,
+  type InitialCompose,
+  type InitialComposeState,
+} from "./initialCompose";
 import { BotCommand } from "../SlashCommandMenu";
 import ContextMenus, { ContextMenusContext } from "../ContextMenus";
 import classNames from "classnames";
@@ -72,6 +87,7 @@ import {
 } from "./foldSessionSummary";
 import {
   getScrollAnchorOffsetY,
+  shouldShowScrollToBottom,
   shouldPulldownOnWheel,
   TOP_HISTORY_TRIGGER_OFFSET,
 } from "./historyScroll";
@@ -92,12 +108,21 @@ import {
 } from "../../Messages/RichText/RichTextContent";
 import { formatMessageTimestamp } from "../../Utils/time";
 import { isSafeUrl } from "../../Utils/security";
+import {
+  isConversationViewportVisible,
+  isOwnedConversationSingleton,
+  shouldMarkConversationRead,
+} from "../../features/notifications";
 import { imageBlockToPasteFile } from "../MessageInput/richTextPaste";
 import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
-import { shouldClearDraftAfterSend } from "../../Utils/draftLifecycle";
+import {
+  DraftPersistenceSource,
+  resolveDraftAfterSend,
+  resolveDraftToPersist,
+} from "../../Utils/draftLifecycle";
 import {
   isSuccessfulSendAck,
   messageStatusWaitResult,
@@ -117,6 +142,8 @@ import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPrev
 import { I18nContext, t } from "../../i18n";
 import {
   buildRichTextMixedCandidate,
+  countSendPlanParts,
+  finishRichTextMixedSend,
   isImageFileForRichTextMixed,
 } from "./richTextMixedSend";
 import {
@@ -133,7 +160,6 @@ import {
   addImChannelInfoListener,
   fetchImChannelInfo,
   getImChannelInfo,
-  getImChannelSubscribers,
 } from "../../im-runtime/channelRuntime";
 import {
   SummaryCardContent,
@@ -181,92 +207,6 @@ function getEffectiveContent(message: Message): MessageContent {
     throw new SummaryCardForwardBlockedError();
   }
   return content;
-}
-
-/**
- * 从消息 content 里提取附件信息 (file_name + file_url), 供
- * POST /matters/extract 和 POST /matters/:id/timeline 使用。
- *
- * 覆盖的 content type (对齐 Service/Const.ts MessageContentTypeConst):
- *   - 文件 (8): FileContent { name, url, extension }
- *   - 图片 (2): ImageContent { name?, url } — 没 name 时合成 'image.{ext}'
- *   - 语音 (4): VoiceContent { url } — 合成 'voice.amr'
- *   - 小视频 (5): VideoContent { url } — 合成 'video.mp4'
- * 其它类型 (文本/卡片/gif/合并转发/系统消息等) 不返回附件, 因为它们要么没有
- * 文件 URL, 要么语义上不是 "消息附件"。
- *
- * 返回空数组, 不返回 null/undefined — 让调用方可以直接传给后端
- * (后端 json binding 接受空数组)。
- */
-function extractMessageAttachments(
-  m: Message | undefined | null
-): { file_name: string; file_url: string }[] {
-  if (!m || !m.content) return [];
-  const contentType = (m.content as { contentType?: number }).contentType;
-  const anyContent = m.content as Record<string, unknown>;
-  const url =
-    typeof anyContent.url === "string" ? (anyContent.url as string) : "";
-  // remoteUrl 是 MediaMessageContent 在 decode 后设置的真实 CDN URL, 优先用
-  const remoteUrl =
-    typeof anyContent.remoteUrl === "string"
-      ? (anyContent.remoteUrl as string)
-      : "";
-  const effectiveUrl = remoteUrl || url;
-  if (!effectiveUrl) return [];
-
-  const explicitName =
-    typeof anyContent.name === "string" ? (anyContent.name as string) : "";
-
-  switch (contentType) {
-    case MessageContentTypeConst.file: {
-      // 文件: 用真实文件名; 兜底合成
-      const ext =
-        typeof anyContent.extension === "string"
-          ? (anyContent.extension as string)
-          : "";
-      const fallback = ext ? `file.${ext}` : "file";
-      return [{ file_name: explicitName || fallback, file_url: effectiveUrl }];
-    }
-    case MessageContentTypeConst.image: {
-      // 图片一般没 name, 用 URL 末尾的文件名, 失败就合成 image.jpg
-      return [
-        {
-          file_name:
-            explicitName || guessFileNameFromUrl(effectiveUrl, "image.jpg"),
-          file_url: effectiveUrl,
-        },
-      ];
-    }
-    case MessageContentTypeConst.voice:
-      return [
-        {
-          file_name: guessFileNameFromUrl(effectiveUrl, "voice.amr"),
-          file_url: effectiveUrl,
-        },
-      ];
-    case MessageContentTypeConst.smallVideo:
-      return [
-        {
-          file_name: guessFileNameFromUrl(effectiveUrl, "video.mp4"),
-          file_url: effectiveUrl,
-        },
-      ];
-    default:
-      return [];
-  }
-}
-
-function guessFileNameFromUrl(url: string, fallback: string): string {
-  try {
-    const u = new URL(url, "http://x"); // 允许相对路径
-    const parts = u.pathname.split("/");
-    const last = parts[parts.length - 1];
-    // 必须有真正的文件名 (带扩展名), 否则用 fallback
-    if (last && last.includes(".")) return last;
-  } catch {
-    // ignore
-  }
-  return fallback;
 }
 
 /**
@@ -320,63 +260,6 @@ function offsetMentionEntities(
     }));
 }
 
-/**
- * 从 WuKongIM Message 对象解析发送人的展示名。
- *
- * WuKongIM SDK 的 Message 只带 fromUID, 不带 fromName; name 必须前端自己解析。
- * 参考 useMessageRow.ts + Messages/Base/index.tsx 的群成员名字解析路径:
- *
- *   1. 群消息: 从 channel runtime 拉群成员列表,
- *      按 uid 匹配后用 subscriberDisplayName (real_name(verified) > remark > name)
- *      — 群内用户大概率没开过 1v1, Person channelInfo 缓存常 miss,
- *      群成员列表缓存命中率高得多, 是主路径
- *   2. fallback: Person channelInfo.title (用户真开过 1v1 时才有)
- *   3. 最终兜底: 空串 (后端 from_uname optional)
- *
- * 注意: 这是同步函数, 不做 fetch; 拿不到就返回空。
- * 后端 LLM 接收到空 from_uname 时会用 from_uid 代替, 不会致命。
- */
-function resolveFromUName(m: Message | undefined | null): string {
-  if (!m || !m.fromUID) return "";
-  const fromUID = m.fromUID;
-
-  // 1. 优先从群成员列表拿 (群聊场景命中率最高)
-  try {
-    const ch = m.channel;
-    if (ch && ch.channelType === ChannelTypeGroup) {
-      const subs = getImChannelSubscribers(WKSDK.shared(), ch) as
-        | {
-            uid?: string;
-            name?: string;
-            remark?: string;
-            orgData?: Record<string, unknown>;
-          }[]
-        | null
-        | undefined;
-      const member = subs?.find((s) => s && s.uid === fromUID);
-      if (member) {
-        const name = subscriberDisplayName(member);
-        if (name) return name;
-      }
-    }
-  } catch {
-    // channelManager 未初始化 / 缓存 miss, 降级
-  }
-
-  // 2. Person channelInfo 兜底
-  try {
-    const info = getImChannelInfo(
-      WKSDK.shared(),
-      new Channel(fromUID, ChannelTypePerson)
-    );
-    if (info?.title) return info.title;
-  } catch {
-    // ignore
-  }
-
-  return "";
-}
-
 const foldSessionAvatarIcon = new URL(
   "./fold-session-avatar.svg",
   import.meta.url
@@ -402,6 +285,8 @@ const FoldImage: React.FC<{ src: string }> = ({ src }) => {
 
 export interface ConversationProps {
   channel: Channel;
+  /** 辅助会话（例如侧边 Thread）不占用主会话的全局单例。 */
+  isAuxiliary?: boolean;
   chatBg?: string; // 聊天背景
   shouldShowHistorySplit?: boolean;
   initLocateMessageSeq?: number;
@@ -416,6 +301,17 @@ export interface ConversationProps {
   inputNotice?: React.ReactNode;
   /** 当前会话发送完成后的回调。 */
   onMessageSent?: () => void;
+  /**
+   * 一次性初始编排（plan Task 4）：挂载/就绪后按 restoreDraft → addPendingAttachments → send
+   * 顺序装入并可自动发送恰好一次。同一 requestId 只消费一次；已有草稿/待发送附件则拒绝覆盖。
+   */
+  initialCompose?: InitialCompose;
+  /** 初始编排状态变化回调（prepared/sent/failed）。 */
+  onInitialComposeStateChange?: (
+    requestId: string,
+    state: InitialComposeState,
+    reason?: string
+  ) => void;
   /** 当前正在预览的文件消息 ID（用于文件卡片激活态） */
   activePreviewMessageId?: string | null;
 }
@@ -445,6 +341,7 @@ export class Conversation
   static contextType = I18nContext;
   declare context: React.ContextType<typeof I18nContext>;
 
+  private static openChannelOwner?: symbol;
   // 缓存各会话的引用/回复状态，切换会话时保留
   private static replyStateCache: Map<
     string,
@@ -462,20 +359,37 @@ export class Conversation
   private _dragFileCallback?: (file: File) => void;
   private _cachedSelectedText: string | null = null;
   private _beforeUnloadHandler: () => void;
-  private _matterSendMessageHandler?: (data: {
-    channelId: string;
-    channelType: number;
-  }) => void;
   private _guardId: symbol = Symbol("pendingAttachmentGuard");
   // 监听 channelInfo 变化：群解散时 status 翻转为 2，需重渲染以隐藏成员栏/置灰发送框
   private _channelInfoListener?: (channelInfo: ChannelInfo) => void;
   private _unsubscribeChannelInfoListener?: () => void;
   private draftSaveGeneration = 0;
   private latestSavedDraft = "";
+  private latestSavedDraftSource: DraftPersistenceSource = "empty";
   private _addAttachmentFn?: (
     files: File[],
     source?: "paste" | "upload"
-  ) => void;
+  ) => void | Promise<void>;
+  // plan Task 4: instance-level one-shot guard so a re-render / remount / prop re-pass of the
+  // SAME requestId never re-loads or re-sends the initial compose (§5 risk 1).
+  private _consumedComposeIds: Set<string> = new Set();
+  private _initialComposeGeneration = 0;
+  private _initialComposeMounted = false;
+  private readonly _openChannelOwner = Symbol("openChannelOwner");
+  private _ownedOpenChannel?: Channel;
+  private _lastAttentionCheckedMessageSeq = 0;
+  private _unsubscribeVmAttentionListener?: () => void;
+  private _attentionRefreshHandler = () => {
+    const run = () => this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+    else window.setTimeout(run, 0);
+  };
+  private _vmAttentionListener = () => {
+    const latestMessageSeq = this.vm.lastMessage?.messageSeq || 0;
+    if (latestMessageSeq <= this._lastAttentionCheckedMessageSeq) return;
+    this._lastAttentionCheckedMessageSeq = latestMessageSeq;
+    this._attentionRefreshHandler();
+  };
   private onOpenThreadPanel?: (
     threadChannelId: string,
     threadName: string
@@ -735,17 +649,23 @@ export class Conversation
    * 发送媒体消息并等待上传完成 + 服务端 ack 后才返回。
    * 保证多条消息严格顺序发送，且本地回显排序正确（每条消息的 messageSeq 确定后再发下一条）。
    * 超时 30s 自动 resolve（避免网络断开时永久阻塞）。
+   *
+   * 返回值语义 (octo-web#1280)：**是否已入队**（本地气泡已出现在消息列表），
+   * 不是「服务端已确认」。等待 ack 只为排序；ack 失败/超时的消息会带失败标记与
+   * 重发入口（Messages/Base + MediaMessageUploadTask.restart），若把它当失败上报，
+   * MessageInput 会把已经可见的内容塞回输入框（#1280 的主要投诉）。
    */
   private async sendMediaAndWait(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
+    onEnqueued?: () => void
   ): Promise<boolean> {
     // 非媒体消息（或无文件需上传）无需等待上传，直接发送并等 ack
     if (
       !(content instanceof MediaMessageContent) ||
       !(content as MediaMessageContent).file
     ) {
-      return this.sendTextAndWaitAck(content, channel);
+      return this.sendTextAndWaitAck(content, channel, onEnqueued);
     }
 
     const TIMEOUT = 30_000;
@@ -823,13 +743,19 @@ export class Conversation
     WKSDK.shared().chatManager.addMessageStatusListener(ackListener);
 
     // 发送消息（内部会 addTask → task.start()，所有 listener 已就绪）
+    let enqueued = false;
     let message: Message;
     try {
       message = await this.sendMessage(content, channel);
     } catch (err) {
+      // 未入队：调用方据此保留草稿供重试。
       done(false);
       throw err;
     }
+    // 已入队：本地气泡已经出现在消息列表里，之后无论上传/ack 成功与否，
+    // 用户都能在气泡上重发，输入框不应再把这条内容拿回来 (octo-web#1280)。
+    enqueued = true;
+    onEnqueued?.();
     clientSeq = message.clientSeq;
 
     // sendMessage 返回后主动检查
@@ -879,7 +805,14 @@ export class Conversation
       }
     }
 
-    return promise;
+    // 等 upload+ack 结果（或超时）只为保证发送顺序；对外只告知「是否已入队」。
+    const delivered = await promise;
+    if (!delivered) {
+      console.warn(
+        "[Conversation] media message not confirmed (upload/ack failed or timed out); the bubble keeps its failure state and can be resent"
+      );
+    }
+    return enqueued;
   }
 
   /**
@@ -887,10 +820,14 @@ export class Conversation
    * 用于连续发送多条消息时保证本地回显顺序与服务端一致：
    * 每条消息拿到 messageSeq 后 order 被正确设置，再发下一条时 fillOrder 不会乱。
    * 超时 10s 自动 resolve（文本消息不需要上传，ack 应该很快回来）。
+   *
+   * 返回值语义同 sendMediaAndWait (octo-web#1280)：**是否已入队**。ack 超时
+   * （慢网/丢 ack）不再上报失败，否则已经发出去的文字会被塞回输入框。
    */
   private async sendTextAndWaitAck(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
+    onEnqueued?: () => void
   ): Promise<boolean> {
     const TIMEOUT = 10_000;
     let settled = false;
@@ -931,13 +868,18 @@ export class Conversation
     };
     WKSDK.shared().chatManager.addMessageStatusListener(statusListener);
 
+    let enqueued = false;
     let message: Message;
     try {
       message = await this.sendMessage(content, channel);
     } catch (err) {
+      // 未入队（例如发送前编码抛错）→ 调用方保留草稿供重试。
       done(false);
       throw err;
     }
+    // 已入队：气泡已在消息列表，ack 结果只影响气泡状态，不影响输入框 (#1280)。
+    enqueued = true;
+    onEnqueued?.();
     clientSeq = message.clientSeq;
 
     // fallback：检查暂存的 ack 或已处理的 status
@@ -958,7 +900,14 @@ export class Conversation
       }
     }
 
-    return promise;
+    // 等 ack（或超时）只为保证发送顺序；对外只告知「是否已入队」。
+    const delivered = await promise;
+    if (!delivered) {
+      console.warn(
+        "[Conversation] text message not acked (failed or timed out); the bubble keeps its failure state and can be resent"
+      );
+    }
+    return enqueued;
   }
 
   /**
@@ -984,7 +933,8 @@ export class Conversation
    */
   private async sendRichTextMixed(
     editorBlocks: EditorContentBlock[],
-    reply?: Reply
+    reply?: Reply,
+    onEnqueued?: () => void
   ): Promise<boolean> {
     const channel = this.channel();
     const contentBlocks: RichTextBlock[] = [];
@@ -1097,7 +1047,7 @@ export class Conversation
       if (mentionEntities.length > 0) (mn as any).entities = mentionEntities;
       content.mention = mn;
     }
-    return this.sendTextAndWaitAck(content);
+    return this.sendTextAndWaitAck(content, undefined, onEnqueued);
   }
 
   scrollToBottom(animate?: boolean): void {
@@ -1265,10 +1215,10 @@ export class Conversation
     return this._messageInputContext?.getAttachmentFiles() || [];
   }
 
-  addPendingAttachments(
+  async addPendingAttachments(
     files: File[],
     source: "paste" | "upload" = "upload"
-  ): string | null {
+  ): Promise<string | null> {
     const BLOCKED_EXTENSIONS = [
       "exe",
       "bat",
@@ -1322,7 +1272,7 @@ export class Conversation
 
     // 调用编辑器的 addAttachment 方法插入附件节点
     if (this._addAttachmentFn) {
-      this._addAttachmentFn(incoming, source);
+      await this._addAttachmentFn(incoming, source);
     }
     return null;
   }
@@ -1335,6 +1285,47 @@ export class Conversation
   clearPendingAttachments(): void {
     // 附件现在由编辑器管理，清空编辑器内容时会自动清除
     // 此方法保留以兼容接口
+  }
+
+  /**
+   * 尝试消费一次性 initialCompose（plan Task 4）。
+   *
+   * 在 MessageInput 就绪（onContext 设好 _messageInputContext / _addAttachmentFn）后、以及收到新
+   * requestId 的 componentDidUpdate 中调用。真正的原子装入 + 去重逻辑在 initialCompose.ts 里，
+   * 这里只把 Conversation 的 MessageInput/附件能力适配成 ComposeHost。绝不绕过 MessageInput 直接 sendMessage。
+   */
+  private tryConsumeInitialCompose(): void {
+    const compose = this.props.initialCompose;
+    if (!compose) return;
+    if (this._consumedComposeIds.has(compose.requestId)) return;
+    // 未就绪（onContext 尚未回调）时不消费，等待下一次 ready-retry。
+    if (!this._messageInputContext) return;
+
+    const generation = this._initialComposeGeneration;
+    const channelKey = `${this.props.channel.channelID}:${this.props.channel.channelType}`;
+    const isLive = () =>
+      this._initialComposeMounted &&
+      generation === this._initialComposeGeneration &&
+      this.props.initialCompose?.requestId === compose.requestId &&
+      `${this.props.channel.channelID}:${this.props.channel.channelType}` === channelKey;
+    const host: ComposeHost = {
+      isReady: () => !!this._messageInputContext,
+      isLive,
+      currentDraftText: () => this._messageInputContext?.text() ?? "",
+      pendingAttachmentCount: () => this.getPendingAttachments().length,
+      restoreDraft: (text: string) => this._messageInputContext?.restoreDraft(text),
+      // 复用唯一附件权威校验（扩展名/100MB 总量），失败返回错误描述。
+      addPendingAttachments: (files: File[]) => this.addPendingAttachments(files),
+      // 经 MessageInput 发送（与回车发送同一路径），保留上传/ACK/失败保留语义。
+      send: () => this._messageInputContext?.send(),
+    };
+
+    void tryConsumeInitialCompose(
+      compose,
+      host,
+      this._consumedComposeIds,
+      this.props.onInitialComposeStateChange
+    );
   }
 
   channel(): Channel {
@@ -1407,16 +1398,27 @@ export class Conversation
   }
 
   componentDidMount() {
+    this._initialComposeMounted = true;
     const { channel, onContext } = this.props;
     if (onContext) {
       onContext(this);
     }
-    WKApp.shared.openChannel = channel;
+    if (!this.props.isAuxiliary) {
+      WKApp.shared.openChannel = channel;
+      this._ownedOpenChannel = channel;
+      Conversation.openChannelOwner = this._openChannelOwner;
+    }
 
-    // 注册附件发送守卫：返回 false 表示有未发送附件，需弹确认
-    WKApp.shared.pendingAttachmentGuard = () =>
-      this.getPendingAttachments().length === 0;
-    WKApp.shared.pendingAttachmentGuardId = this._guardId;
+    // 辅助 Thread 不覆盖主会话的全局附件守卫；否则开关侧栏会让主会话
+    // 的待发送附件失去离开确认，或被侧栏草稿反向阻塞。
+    if (!this.props.isAuxiliary) {
+      // 只保护「compose 已清空但本地气泡还没出现」的数据丢失窗口。消息一旦入队，
+      // 即使仍在等 upload/ack，也已有气泡承载失败与重试，不应再弹“未发送附件”确认。
+      WKApp.shared.pendingAttachmentGuard = () =>
+        this.getPendingAttachments().length === 0 &&
+        this.pendingPreEnqueueCount() === 0;
+      WKApp.shared.pendingAttachmentGuardId = this._guardId;
+    }
 
     if (this.vm.hasDraft()) {
       this.restoreDraft(this.vm.draft());
@@ -1430,30 +1432,17 @@ export class Conversation
       Conversation.replyStateCache.delete(channelKey);
     }
 
-    // Listen for matter-send-and-create: send current editor content (with mention), then clear
-    this._matterSendMessageHandler = (data: {
-      channelId: string;
-      channelType: number;
-    }) => {
-      const { channel } = this.props;
-      if (
-        data.channelId === channel.channelID &&
-        data.channelType === channel.channelType
-      ) {
-        this._messageInputContext?.send();
-      }
-    };
-    WKApp.mittBus.on(
-      "wk:matter-created-from-input",
-      this._matterSendMessageHandler
-    );
-
     this._exitMultipleModeHandler = () => {
       this.vm.editOn = false;
       this.vm.unCheckAllMessages();
       this.forceUpdate();
     };
     WKApp.mittBus.on("wk:exit-multiple-mode", this._exitMultipleModeHandler);
+    WKApp.mittBus.on("wk:app-foreground", this._attentionRefreshHandler);
+    WKApp.mittBus.on("wk:active-menu-changed", this._attentionRefreshHandler);
+    this._unsubscribeVmAttentionListener = this.vm.addListener(
+      this._vmAttentionListener
+    );
 
     window.addEventListener("beforeunload", this._beforeUnloadHandler);
 
@@ -1505,18 +1494,35 @@ export class Conversation
     this.vm.markUnread();
   }
 
-  componentWillUnmount() {
-    if (this._matterSendMessageHandler) {
-      WKApp.mittBus.off(
-        "wk:matter-created-from-input",
-        this._matterSendMessageHandler
-      );
-      this._matterSendMessageHandler = undefined;
+  componentDidUpdate(prevProps: ConversationProps) {
+    // 收到新的 initialCompose.requestId 时再次尝试消费（plan Task 4）。ready 前只记录 pending：
+    // tryConsumeInitialCompose 内部已判断 _messageInputContext 是否 ready 与 requestId 是否已消费，
+    // 所以相同 requestId 的重渲染不会重发。
+    const prev = prevProps.initialCompose?.requestId;
+    const next = this.props.initialCompose?.requestId;
+    const channelChanged =
+      prevProps.channel.channelID !== this.props.channel.channelID ||
+      prevProps.channel.channelType !== this.props.channel.channelType;
+    if (channelChanged || prev !== next) {
+      this._initialComposeGeneration += 1;
     }
+    if (next && next !== prev) {
+      this.tryConsumeInitialCompose();
+    }
+    this._vmAttentionListener();
+  }
+
+  componentWillUnmount() {
+    this._initialComposeMounted = false;
+    this._initialComposeGeneration += 1;
     if (this._exitMultipleModeHandler) {
       WKApp.mittBus.off("wk:exit-multiple-mode", this._exitMultipleModeHandler);
       this._exitMultipleModeHandler = undefined;
     }
+    WKApp.mittBus.off("wk:app-foreground", this._attentionRefreshHandler);
+    WKApp.mittBus.off("wk:active-menu-changed", this._attentionRefreshHandler);
+    this._unsubscribeVmAttentionListener?.();
+    this._unsubscribeVmAttentionListener = undefined;
     window.removeEventListener("beforeunload", this._beforeUnloadHandler);
     if (this._channelInfoListener) {
       this._unsubscribeChannelInfoListener?.();
@@ -1558,15 +1564,44 @@ export class Conversation
     }
     this.vm.markUnread();
     this.markConversationExtra();
-    WKApp.shared.openChannel = undefined;
-    WKSDK.shared().conversationManager.openConversation = undefined;
+    if (Conversation.openChannelOwner === this._openChannelOwner) {
+      if (
+        isOwnedConversationSingleton(
+          WKApp.shared.openChannel,
+          this._ownedOpenChannel
+        )
+      ) {
+        WKApp.shared.openChannel = undefined;
+      }
+      Conversation.openChannelOwner = undefined;
+    }
+    this._ownedOpenChannel = undefined;
+    this.vm.releaseOpenConversationOwnership();
+  }
+
+  private pendingPreEnqueueCount(): number {
+    return this.messageInputContext()?.pendingPreEnqueueCount?.() ?? 0;
+  }
+
+  private pendingSendText(): string {
+    return this.messageInputContext()?.pendingSendText?.() ?? "";
+  }
+
+  private pendingSendDrafts(): string[] {
+    return this.messageInputContext()?.pendingSendDrafts?.() ?? [];
   }
 
   markConversationExtra() {
-    let draft = this.messageInputContext()?.text();
+    // 不要用空草稿覆盖「已消费但还没入队」的内容 (octo-web#1280 review)：
+    // 输入框在发送开始时就被清空，离开会话时这里读到的是空串。
+    const { draft, source } = resolveDraftToPersist({
+      liveDraft: this.messageInputContext()?.text() || "",
+      pendingSendText: this.pendingSendText(),
+    });
     this.draftSaveGeneration += 1;
-    this.latestSavedDraft = draft || "";
-    void this.updateConversationExtra(draft || "");
+    this.latestSavedDraft = draft;
+    this.latestSavedDraftSource = source;
+    void this.updateConversationExtra(draft);
   }
 
   updateConversationExtra(draft: string) {
@@ -1618,26 +1653,29 @@ export class Conversation
 
   async clearDraftAfterSend(
     sendDraftGeneration: number,
-    remoteDraftAtSend: string
+    remoteDraftAtSend: string,
+    sentDraft: string
   ) {
     const remoteExtra = this.vm.currentConversation?.remoteExtra;
-    if (
-      !shouldClearDraftAfterSend({
-        liveDraft: this.messageInputContext()?.text() || "",
-        remoteDraft: remoteExtra?.draft || "",
-        remoteDraftAtSend,
-        draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
-        latestSavedDraft: this.latestSavedDraft,
-      })
-    ) {
+    const pendingDrafts = this.pendingSendDrafts();
+    const nextDraft = resolveDraftAfterSend({
+      liveDraft: this.messageInputContext()?.text() || "",
+      remoteDraft: remoteExtra?.draft || "",
+      remoteDraftAtSend,
+      draftSavedAfterSend: this.draftSaveGeneration !== sendDraftGeneration,
+      latestSavedDraft: this.latestSavedDraft,
+      latestSavedDraftSource: this.latestSavedDraftSource,
+      sentDraft,
+      pendingDrafts: pendingDrafts.length > 0 ? pendingDrafts : [sentDraft],
+    });
+    if (nextDraft === undefined) {
       return;
     }
 
-    if (remoteExtra) {
-      remoteExtra.draft = "";
-    }
+    this.latestSavedDraft = nextDraft;
+    this.latestSavedDraftSource = nextDraft ? "pending" : "empty";
     try {
-      await this.updateConversationExtra("");
+      await this.updateConversationExtra(nextDraft);
     } catch (err) {
       console.warn("[Conversation] clear draft after send failed", err);
     }
@@ -2004,6 +2042,11 @@ export class Conversation
       <div
         key={session.sessionId}
         id={session.anchorId}
+        data-message-seq={
+          !session.isExpanded && session.lastMessage.messageSeq > 0
+            ? session.lastMessage.messageSeq
+            : undefined
+        }
         className={classNames(
           "wk-message-item",
           "wk-message-item-fold-session",
@@ -2221,20 +2264,10 @@ export class Conversation
       this.vm.lastLocalMessageElement = this.getMessageElement(
         this.vm.lastMessage
       ); // 最新消息
-      if (this.vm.lastLocalMessageElement) {
-        // 如果有最新消息的dom则判断是否在可见范围内
-        if (
-          scrollOffsetTop >
-          this.vm.lastLocalMessageElement.clientHeight + 20
-        ) {
-          // 如果滚动距离超过了第一个元素则显示“滚动到底部”
-          this.vm.showScrollToBottomBtn = true;
-        } else {
-          this.vm.showScrollToBottomBtn = false;
-        }
-      } else {
-        this.vm.showScrollToBottomBtn = true;
-      }
+      this.vm.showScrollToBottomBtn = shouldShowScrollToBottom(
+        scrollOffsetTop,
+        this.vm.lastLocalMessageElement?.clientHeight
+      );
     }
 
     this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
@@ -2271,6 +2304,7 @@ export class Conversation
   // 上传已读数据
   uploadReadedIfNeed() {
     const viewport = document.getElementById(this.vm.messageContainerId);
+    if (!this.canRecordReadAttention(viewport)) return;
     const visiableMessages = this.allVisiableMessages(viewport);
     if (visiableMessages && visiableMessages.length > 0) {
       const unreadMessages = new Array<Message>();
@@ -2293,13 +2327,27 @@ export class Conversation
   // 更新已读位置和提醒项
   updateBrowseToMessageSeqAndReminderDoneIfNeed() {
     const viewport = document.getElementById(this.vm.messageContainerId);
+    if (!this.canRecordReadAttention(viewport)) return;
 
     this.updateBrowseToMessageSeq(viewport); // 更新已读位置
 
     this.updateReminderDoneIfNeed(viewport); // 更新提醒项
+    WKApp.mittBus.emit("wk:message-attention-state-changed");
   }
 
   // 更新已预览的位置
+  private canRecordReadAttention(viewport: HTMLElement | null): boolean {
+    const viewportVisible = isConversationViewportVisible(viewport, document);
+    return shouldMarkConversationRead({
+      chatModuleActive: WKApp.currentMenuId === "chat",
+      documentVisible: document.visibilityState === "visible",
+      windowFocused: document.hasFocus(),
+      currentConversation: viewport !== null,
+      // Callers below still select the actual visible messages within this viewport.
+      newMessageVisible: viewportVisible,
+    });
+  }
+
   updateBrowseToMessageSeq(viewport: HTMLElement | null) {
     const lastVisiableMessage = this.lastVisiableMessage(viewport); // 当前UI显示的最后一条可见的消息
     if (
@@ -2461,11 +2509,15 @@ export class Conversation
     }
 
     const targetScrollTop = viewport.scrollTop;
+    const viewportBottom = targetScrollTop + viewport.clientHeight;
     for (let index = 0; index < this.vm.messages.length; index++) {
       const message = this.vm.messages[index];
       const element = this.getMessageElement(message);
       if (element) {
-        if (element.offsetTop + element.clientHeight / 2 > targetScrollTop) {
+        if (
+          element.offsetTop < viewportBottom &&
+          element.offsetTop + element.clientHeight / 2 > targetScrollTop
+        ) {
           // message 要漏出来一半才算可见
           visiableMessages.push(message);
         }
@@ -2533,7 +2585,7 @@ export class Conversation
     if (this._dragDepth === 0) this.dragEnd();
   }
 
-  private handleConversationDrop(event: React.DragEvent): void {
+  private async handleConversationDrop(event: React.DragEvent): Promise<void> {
     // 无论拖入的是什么，drop 都强制复位计数与遮罩，杜绝遮罩残留。
     this._dragDepth = 0;
     this.dragEnd();
@@ -2541,7 +2593,7 @@ export class Conversation
     event.preventDefault();
 
     const items = Array.from(event.dataTransfer.items);
-    const files = Array.from(event.dataTransfer.files);
+    const files: File[] = Array.from(event.dataTransfer.files);
     if (files.length === 0) return; // types 声称有文件但实际取不到，安全兜底
     const hasDirectory = items.length
       ? items.some((it) => {
@@ -2553,7 +2605,7 @@ export class Conversation
       Toast.error(t("base.conversation.upload.folderUnsupported"));
       return;
     }
-    const err = this.addPendingAttachments(files);
+    const err = await this.addPendingAttachments(files);
     if (err) Toast.error(err);
   }
 
@@ -2588,7 +2640,9 @@ export class Conversation
     return (
       <Provider
         create={() => {
-          this.vm = new ConversationVM(channel, initLocateMessageSeq);
+          this.vm = new ConversationVM(channel, initLocateMessageSeq, {
+            registerAsOpenConversation: !this.props.isAuxiliary,
+          });
           return this.vm;
         }}
         render={(vm: ConversationVM) => {
@@ -2631,6 +2685,8 @@ export class Conversation
                   <div
                     className="wk-conversation-messages"
                     id={vm.messageContainerId}
+                    data-conversation-channel-id={channel.channelID}
+                    data-conversation-channel-type={channel.channelType}
                     onScroll={this.handleScroll.bind(this)}
                     onWheel={this.handleWheel.bind(this)}
                   >
@@ -2783,60 +2839,6 @@ export class Conversation
                         },
                       });
                     }}
-                    onAddToMatter={(anchor) => {
-                      const checkedMsgs = vm.getCheckedMessages();
-                      if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error(
-                          t("base.conversation.selection.selectMessageFirst")
-                        );
-                        return;
-                      }
-                      // 传 channel 信息给 MatterLinkMenu，用于按 channel 查询关联的 Matter
-                      const ch = this.props.channel;
-                      WKApp.mittBus.emit("wk:open-matter-link-menu", {
-                        anchor,
-                        channelId: ch.channelID,
-                        channelType: ch.channelType,
-                        messages: checkedMsgs.map((m: any) => ({
-                          messageSeq: m.messageSeq,
-                          messageID: m.messageID,
-                          fromUID: m.fromUID,
-                          fromUName: resolveFromUName(m),
-                          content:
-                            m.content?.conversationDigest ||
-                            m.content?.text ||
-                            "",
-                          timestamp: m.message?.timestamp || m.timestamp,
-                          attachments: extractMessageAttachments(m),
-                        })),
-                      });
-                    }}
-                    onCreateMatter={() => {
-                      const checkedMsgs = vm.getCheckedMessages();
-                      if (!checkedMsgs || checkedMsgs.length === 0) {
-                        Toast.error(
-                          t("base.conversation.selection.selectMessageFirst")
-                        );
-                        return;
-                      }
-                      const ch = this.props.channel;
-                      WKApp.mittBus.emit("wk:open-smart-create-modal", {
-                        channelId: ch.channelID,
-                        channelType: ch.channelType,
-                        messages: checkedMsgs.map((m: any) => ({
-                          messageSeq: m.messageSeq,
-                          messageID: m.messageID,
-                          fromUID: m.fromUID,
-                          fromUName: resolveFromUName(m),
-                          content:
-                            m.content?.conversationDigest ||
-                            m.content?.text ||
-                            "",
-                          timestamp: m.message?.timestamp,
-                          attachments: extractMessageAttachments(m),
-                        })),
-                      });
-                    }}
                   ></MultiplePanel>
                 </div>
                 <div
@@ -2886,13 +2888,13 @@ export class Conversation
                         addFn: (
                           files: File[],
                           source?: "paste" | "upload"
-                        ) => void
+                        ) => void | Promise<void>
                       ) => {
                         // 存储 addAttachment 方法，供外部调用
                         this._addAttachmentFn = addFn;
                       }}
-                      onAddPendingAttachments={(files, source) => {
-                        const err = this.addPendingAttachments(files, source);
+                      onAddPendingAttachments={async (files, source) => {
+                        const err = await this.addPendingAttachments(files, source);
                         if (err) {
                           Toast.error(err);
                           return false;
@@ -2913,31 +2915,6 @@ export class Conversation
                           />
                         ) : undefined
                       }
-                      onAltEnter={() => {
-                        const { channel } = this.props;
-                        // Alt+Enter creates task only in group and topic channels
-                        if (
-                          channel.channelType !== ChannelTypeGroup &&
-                          channel.channelType !== ChannelTypeCommunityTopic
-                        )
-                          return;
-                        const channelInfo = getImChannelInfo(
-                          WKSDK.shared(),
-                          channel
-                        );
-                        // 传原始文本（含 @[uid:name] 占位符），由 GlobalMatterModal 先 parse 再截断
-                        // 避免 slice 截断位置落在占位符中间导致 mention 残留乱码
-                        const rawText = (
-                          this._messageInputContext?.text() ?? ""
-                        ).trim();
-                        WKApp.mittBus.emit("wk:open-create-matter-modal", {
-                          channelId: channel.channelID,
-                          channelType: channel.channelType,
-                          channelName: channelInfo?.title,
-                          prefillTitle: rawText,
-                          clearOnConfirm: true,
-                        });
-                      }}
                       onExpandChange={(expanded) => {
                         this.setState({ inputExpanded: expanded });
                       }}
@@ -2953,6 +2930,9 @@ export class Conversation
                           ctx.insertText(this._pendingInsertText);
                           this._pendingInsertText = undefined;
                         }
+                        // MessageInput 就绪（context + _addAttachmentFn 已设）后才尝试一次性初始编排，
+                        // 避免在 componentDidMount 时 onContext / _addAttachmentFn 尚未 ready 就发送（plan Task 4）。
+                        this.tryConsumeInitialCompose();
                       }}
                       toolbar={this.chatToolbarUI()}
                       context={this}
@@ -3009,58 +2989,106 @@ export class Conversation
                           },
                         });
                       }}
+                      onCaptureSendTarget={() =>
+                        // 与 compose 同步取走 reply/edit 目标并收起横幅
+                        // (octo-web#1280)：排队发送不能再实时读 vm 上的状态。
+                        captureSendTarget<Message>({
+                          getReplyMessage: () => vm.currentReplyMessage,
+                          setReplyMessage: (m) => {
+                            vm.currentReplyMessage = m;
+                          },
+                          getHandlerType: () => vm.currentHandlerType,
+                          setHandlerType: (h) => {
+                            vm.currentHandlerType = h;
+                          },
+                        })
+                      }
+                      onCaptureSendDraft={() => ({
+                        generation: this.draftSaveGeneration,
+                        remoteDraft:
+                          this.vm.currentConversation?.remoteExtra?.draft || "",
+                      })}
                       onSend={async (
                         text: string,
                         mention?: MentionModel,
                         _attachments?: { id: string; file: File }[],
                         topFiles?: { id: string; file: File }[],
-                        editorBlocks?: EditorContentBlock[]
+                        editorBlocks?: EditorContentBlock[],
+                        sendTarget?: SendTargetSnapshot,
+                        sendDraft?: SendDraftSnapshot,
+                        sendProgress?: SendProgressSnapshot
                       ): Promise<boolean | SendResultDetail> => {
-                        // 返回值告诉 MessageInput 是否清空编辑器/附件：
-                        //   true  → 发送成功(或已消费)，清空草稿+附件；
-                        //   false → 发送失败，保留编辑器内容+图片引用供重试。
-                        // 关键：混排 (text+image) 上传失败时必须返回 false，否则
-                        // 用户整条消息会被同步清空丢失 (octo-web#227 Jerry-Xin P1)。
-                        const sendDraftGeneration = this.draftSaveGeneration;
+                        // 返回值告诉 MessageInput「已消费的 compose 是否保持消费」：
+                        //   true  → 消息已入队（本地气泡已在列表），输入框保持清空；
+                        //   false → 未入队，把内容还给输入框供重试。
+                        // 关键：混排 (text+image) 在入队前上传失败时必须返回 false，
+                        // 否则整条消息会丢 (octo-web#227)；反之，**已入队但 ack 失败/
+                        // 超时绝不能返回 false**，否则已经可见的内容会被塞回输入框
+                        // (octo-web#1280)。
+                        // This callback may run after waiting in the send queue,
+                        // so use the draft snapshot captured with the compose.
+                        const sendDraftGeneration =
+                          sendDraft?.generation ?? this.draftSaveGeneration;
                         const remoteDraftAtSend =
-                          this.vm.currentConversation?.remoteExtra?.draft || "";
+                          sendDraft?.remoteDraft ??
+                          this.vm.currentConversation?.remoteExtra?.draft ??
+                          "";
+                        const markEnqueued = () =>
+                          sendProgress?.markPartEnqueued();
                         VoiceFeedback.shared()?.submitAll(text);
 
                         // ── 回复/编辑处理 ──────────────
+                        // ⚠️ 必须用按键时同步取走的 sendTarget 快照，**绝不能**在这里
+                        // 实时读 vm.currentReplyMessage / currentHandlerType：发送被
+                        // 排队后这里可能晚几秒才执行，用户可能已经改了回复目标、甚至
+                        // 切到「编辑消息」——实时读会回复错消息或覆盖无关消息
+                        // (octo-web#1280 review)。
+                        // 兼容：老调用方没有传 sendTarget 时退回实时读取。
+                        const target =
+                          (sendTarget as CapturedSendTarget<Message> | undefined) ??
+                          captureSendTarget<Message>({
+                            getReplyMessage: () => vm.currentReplyMessage,
+                            setReplyMessage: (m) => {
+                              vm.currentReplyMessage = m;
+                            },
+                            getHandlerType: () => vm.currentHandlerType,
+                            setHandlerType: (h) => {
+                              vm.currentHandlerType = h;
+                            },
+                          });
+                        const targetMessage = target.replyMessage;
                         let reply: Reply | undefined;
-                        if (vm.currentReplyMessage) {
-                          if (vm.currentHandlerType === 2) {
-                            // 编辑消息
+                        if (targetMessage) {
+                          if (target.handlerType === 2) {
+                            sendProgress?.setExpectedParts(1);
+                            // 编辑消息。失败时抛出，让 MessageInput 把 compose 与
+                            // 编辑目标一起还原，用户重试仍是「编辑」而不是发新消息。
                             const editContent = new MessageText(text);
                             let json = editContent.encodeJSON();
                             json["type"] = MessageContentType.text;
                             await vm.editMessage(
-                              vm.currentReplyMessage.messageID,
-                              vm.currentReplyMessage.messageSeq,
-                              vm.currentReplyMessage.channel.channelID,
-                              vm.currentReplyMessage.channel.channelType,
+                              targetMessage.messageID,
+                              targetMessage.messageSeq,
+                              targetMessage.channel.channelID,
+                              targetMessage.channel.channelType,
                               JSON.stringify(json)
                             );
-                            vm.currentReplyMessage = undefined;
+                            markEnqueued();
                             // 编辑消息已提交，编辑器应清空。
                             return true;
                           }
                           reply = new Reply();
-                          reply.messageID = vm.currentReplyMessage.messageID;
-                          reply.messageSeq = vm.currentReplyMessage.messageSeq;
-                          reply.fromUID = vm.currentReplyMessage.fromUID;
+                          reply.messageID = targetMessage.messageID;
+                          reply.messageSeq = targetMessage.messageSeq;
+                          reply.fromUID = targetMessage.fromUID;
                           const channelInfo = getImChannelInfo(
                             WKSDK.shared(),
-                            new Channel(
-                              vm.currentReplyMessage.fromUID,
-                              ChannelTypePerson
-                            )
+                            new Channel(targetMessage.fromUID, ChannelTypePerson)
                           );
                           if (channelInfo) {
                             reply.fromName = channelInfo.title;
                           }
-                          reply.content = vm.currentReplyMessage.content;
-                          vm.currentReplyMessage = undefined;
+                          reply.content = targetMessage.content;
                         }
 
                         // ── 辅助：发送单张图片（读取预览+宽高） ──────────────
@@ -3124,7 +3152,9 @@ export class Conversation
                             img.src = previewUrl;
                           });
                           return this.sendMediaAndWait(
-                            new ImageContent(file, previewUrl, width, height)
+                            new ImageContent(file, previewUrl, width, height),
+                            undefined,
+                            markEnqueued
                           );
                         };
 
@@ -3155,7 +3185,9 @@ export class Conversation
                             return false;
                           }
                           return this.sendMediaAndWait(
-                            new FileContent(file, name, ext, file.size)
+                            new FileContent(file, name, ext, file.size),
+                            undefined,
+                            markEnqueued
                           );
                         };
 
@@ -3248,10 +3280,31 @@ export class Conversation
                         // 清掉这些已发文件、保留编辑器草稿，重试不会重复发送
                         // (octo-web#227 Jerry-Xin non-blocking)。
                         const consumedTopIds: string[] = [];
+                        // 编辑器 compose 里「未入队」的块（按文档顺序）：整条 compose
+                        // 已被 MessageInput 同步消费，只有精确回报这些块才能把它们放回
+                        // 编辑器，而不是连同已发出的内容一起丢掉 (octo-web#1280 review)。
+                        // 文本块也必须登记：sendTextAndWaitAck 在入队前失败会抛错，
+                        // 若此前已有块发出（anyMessageSent=true），异常被 per-block
+                        // catch 吞掉后这段文字既没发出、也不会被整体还原。
+                        const unsentEditorBlocks: UnsentEditorBlock[] = [];
                         const topFilesToSend = topFiles || [];
                         const mixedCandidate = buildRichTextMixedCandidate(
                           topFilesToSend,
                           editorBlocks
+                        );
+                        const replyNeedsOwnBubble =
+                          !!reply &&
+                          !mixedCandidate &&
+                          !editorBlocks?.some((block) => block.type === "text") &&
+                          text.trim() === "";
+                        sendProgress?.setExpectedParts(
+                          countSendPlanParts(
+                            topFilesToSend,
+                            editorBlocks,
+                            text,
+                            mixedCandidate,
+                            replyNeedsOwnBubble
+                          )
                         );
                         if (mixedCandidate) {
                           let mixedSent = false;
@@ -3259,7 +3312,8 @@ export class Conversation
                             if (
                               await this.sendRichTextMixed(
                                 mixedCandidate.blocks as EditorContentBlock[],
-                                reply
+                                reply,
+                                markEnqueued
                               )
                             ) {
                               mixedSent = true;
@@ -3283,14 +3337,16 @@ export class Conversation
                           if (mixedSent) {
                             await this.clearDraftAfterSend(
                               sendDraftGeneration,
-                              remoteDraftAtSend
+                              remoteDraftAtSend,
+                              sendDraft?.text ?? text
                             );
                           }
-                          this.props.onMessageSent?.();
-                          return {
-                            editorConsumed: mixedSent,
+                          return finishRichTextMixedSend(
+                            anyMessageSent,
+                            mixedSent,
                             consumedTopIds,
-                          };
+                            this.props.onMessageSent
+                          );
                         }
 
                         for (const { id, file } of topFilesToSend) {
@@ -3315,6 +3371,7 @@ export class Conversation
                         }
 
                         // ── 第二阶段：按编辑器文档顺序发送内容块（文本段和粘贴图片交替） ──
+                        let restoreReplyTarget = false;
                         if (editorBlocks && editorBlocks.length > 0) {
                           // 图文混排：同时含文本和图片、且无非图片文件块时，聚合成单条
                           // RichText(=14) 消息（而非拆成多条独立消息）。含 file 块或
@@ -3337,7 +3394,8 @@ export class Conversation
                               if (
                                 await this.sendRichTextMixed(
                                   editorBlocks,
-                                  reply
+                                  reply,
+                                  markEnqueued
                                 )
                               ) {
                                 mixedSent = true;
@@ -3361,24 +3419,26 @@ export class Conversation
                             if (mixedSent) {
                               await this.clearDraftAfterSend(
                                 sendDraftGeneration,
-                                remoteDraftAtSend
+                                remoteDraftAtSend,
+                                sendDraft?.text ?? text
                               );
                             }
-                            this.props.onMessageSent?.();
-                            // 返回 snapshot-aware 结果 (octo-web#227 Jerry-Xin
-                            // 第二轮)：
-                            //   • editorConsumed=mixedSent：混排失败时保留编辑器
-                            //     文本+图片，用户可整条重试；
+                            // 返回部分结果 (octo-web#227 → #1280)：
+                            //   • editorConsumed=mixedSent：混排未入队时把文本+图片
+                            //     还给编辑器，用户可整条重试；
                             //   • consumedTopIds：本次已发出的顶部附件 id。即使
-                            //     混排失败，这些文件也已发出，让 MessageInput 只
-                            //     清掉它们、不随编辑器草稿一起保留，避免重试重复。
-                            return {
-                              editorConsumed: mixedSent,
+                            //     混排失败，这些文件也已发出，MessageInput 不会把
+                            //     它们放回附件区，避免重试重复发送。
+                            return finishRichTextMixedSend(
+                              anyMessageSent,
+                              mixedSent,
                               consumedTopIds,
-                            };
+                              this.props.onMessageSent
+                            );
                           }
                           let isFirstTextBlock = true;
                           for (const block of editorBlocks) {
+                            let carriesReply = false;
                             try {
                               if (block.type === "text") {
                                 const msgContent = buildTextContent(
@@ -3388,19 +3448,45 @@ export class Conversation
                                 // 第一个文本块携带 reply 信息
                                 if (reply && isFirstTextBlock) {
                                   msgContent.reply = reply;
-                                  reply = undefined;
+                                  carriesReply = true;
                                 }
                                 isFirstTextBlock = false;
-                                if (await this.sendTextAndWaitAck(msgContent)) {
+                                if (
+                                  await this.sendTextAndWaitAck(
+                                    msgContent,
+                                    undefined,
+                                    markEnqueued
+                                  )
+                                ) {
                                   anyMessageSent = true;
+                                  if (carriesReply) reply = undefined;
+                                } else {
+                                  unsentEditorBlocks.push({
+                                    type: "text",
+                                    text: block.restoreText,
+                                  });
+                                  if (carriesReply) restoreReplyTarget = true;
                                 }
                               } else if (block.type === "image") {
                                 if (await sendImageFile(block.file)) {
                                   anyMessageSent = true;
+                                } else {
+                                  // 预检拒绝等未入队情形：记下这一块，让 MessageInput
+                                  // 只把它放回编辑器，其余已发内容保持消费
+                                  // (octo-web#1280 review)。
+                                  unsentEditorBlocks.push({
+                                    type: "attachment",
+                                    id: block.id,
+                                  });
                                 }
                               } else if (block.type === "file") {
                                 if (await sendFileAttachment(block.file)) {
                                   anyMessageSent = true;
+                                } else {
+                                  unsentEditorBlocks.push({
+                                    type: "attachment",
+                                    id: block.id,
+                                  });
                                 }
                               }
                             } catch (err) {
@@ -3408,6 +3494,14 @@ export class Conversation
                                 "[Conversation] editorBlock send failed:",
                                 err
                               );
+                              // 入队前抛错（解散守卫 / sendMessage 失败等）：文本块
+                              // 也要登记，否则它既没发出又不会被还原，内容直接消失。
+                              unsentEditorBlocks.push(
+                                block.type === "text"
+                                  ? { type: "text", text: block.restoreText }
+                                  : { type: "attachment", id: block.id }
+                              );
+                              if (carriesReply) restoreReplyTarget = true;
                               Toast.error(
                                 t("base.conversation.message.sendFailed")
                               );
@@ -3416,10 +3510,29 @@ export class Conversation
                           // 如果 reply 还没被消费（没有文本块），附加到一条空白消息;
                           // 但仅当本次确实发出了别的消息时,否则用户的所有附件都被
                           // 预检拒绝、却仍收到一条孤立的空回复气泡 (#119 Jerry-Xin)。
-                          if (reply && anyMessageSent) {
+                          if (reply && anyMessageSent && !restoreReplyTarget) {
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
-                            await this.sendTextAndWaitAck(emptyContent);
+                            try {
+                              if (
+                                await this.sendTextAndWaitAck(
+                                  emptyContent,
+                                  undefined,
+                                  markEnqueued
+                                )
+                              ) {
+                                reply = undefined;
+                              }
+                            } catch (err) {
+                              console.error(
+                                "[Conversation] empty reply send failed:",
+                                err
+                              );
+                              restoreReplyTarget = true;
+                              Toast.error(
+                                t("base.conversation.message.sendFailed")
+                              );
+                            }
                           }
                         } else {
                           // fallback：无 editorBlocks 时走旧逻辑（纯文本）
@@ -3428,27 +3541,63 @@ export class Conversation
                             if (reply) {
                               msgContent.reply = reply;
                             }
-                            if (await this.sendTextAndWaitAck(msgContent)) {
+                            if (
+                              await this.sendTextAndWaitAck(
+                                msgContent,
+                                undefined,
+                                markEnqueued
+                              )
+                            ) {
                               anyMessageSent = true;
                             }
                           } else if (reply && anyMessageSent) {
                             // 同上: 顶部附件全部被预检拒绝时不要补空回复
                             const emptyContent = new MessageText("");
                             emptyContent.reply = reply;
-                            await this.sendTextAndWaitAck(emptyContent);
+                            try {
+                              if (
+                                await this.sendTextAndWaitAck(
+                                  emptyContent,
+                                  undefined,
+                                  markEnqueued
+                                )
+                              ) {
+                                reply = undefined;
+                              }
+                            } catch (err) {
+                              console.error(
+                                "[Conversation] empty reply send failed:",
+                                err
+                              );
+                              restoreReplyTarget = true;
+                              Toast.error(
+                                t("base.conversation.message.sendFailed")
+                              );
+                            }
                           }
                         }
                         if (anyMessageSent) {
                           await this.clearDraftAfterSend(
                             sendDraftGeneration,
-                            remoteDraftAtSend
+                            remoteDraftAtSend,
+                            sendDraft?.text ?? text
                           );
                         }
-                        this.props.onMessageSent?.();
-                        // 与 clearDraftAfterSend 同口径：只有确实发出消息时才让
-                        // MessageInput 清空编辑器；全部失败/被预检拒绝时返回 false
-                        // 保留草稿可重试。
-                        return anyMessageSent;
+                        if (anyMessageSent) this.props.onMessageSent?.();
+                        // 返回真实的部分结果，而不是裸 boolean (octo-web#1280 review)：
+                        //   • editorConsumed=anyMessageSent：一条都没入队时整条 compose
+                        //     还给输入框可重试；
+                        //   • consumedTopIds：只有真正发出的顶部附件保持消费，被预检
+                        //     拒绝的会回到附件区（裸 true 会被当成「全部已消费」而丢掉）；
+                        //   • unsentEditorBlocks：编辑器内未入队的块（被拒的粘贴附件、
+                        //     入队前抛错的文本）按原顺序单独回到编辑器；已发出的块保持
+                        //     消费，所以重试不会重复发送。
+                        return {
+                          editorConsumed: anyMessageSent,
+                          consumedTopIds,
+                          unsentEditorBlocks,
+                          restoreSendTarget: restoreReplyTarget,
+                        };
                       }}
                     ></MessageInput>
                       </>
@@ -3755,20 +3904,14 @@ interface MultiplePanelProps {
   onForward?: () => void; // 逐条转发
   onMergeForward?: () => void; // 合并转发
   onDelete?: () => void; // 删除
-  onAddToMatter?: (anchor: HTMLElement) => void; // 添加到事项（传出按钮 DOM 给菜单定位）
-  onCreateMatter?: () => void; // 创建新事项
 }
 class MultiplePanel extends Component<MultiplePanelProps> {
-  private matterBtnRef = React.createRef<HTMLButtonElement>();
-
   render(): React.ReactNode {
     const {
       onClose,
       onForward,
       onMergeForward,
       onDelete,
-      onAddToMatter,
-      onCreateMatter,
     } = this.props;
     return (
       <div className="wk-multiplepanel">
@@ -3778,31 +3921,6 @@ class MultiplePanel extends Component<MultiplePanelProps> {
         <div className="wk-multiplepanel-sep" />
         <button className="wk-multiplepanel-btn" onClick={onMergeForward}>
           {t("base.conversation.multiplePanel.mergeForward")}
-        </button>
-        <div className="wk-multiplepanel-sep" />
-        {/* 创建新事项 — 从多选消息智能创建（PRD §3） */}
-        <button
-          className="wk-multiplepanel-btn wk-multiplepanel-btn--matter"
-          onClick={() => {
-            if (onCreateMatter) onCreateMatter();
-          }}
-          title={t("base.conversation.multiplePanel.createMatter")}
-        >
-          {t("base.conversation.multiplePanel.createMatter")}
-        </button>
-        <div className="wk-multiplepanel-sep" />
-        {/* 同步到事项 — 点击由调用方弹出菜单（dmworktodo 模块接管） */}
-        <button
-          ref={this.matterBtnRef}
-          className="wk-multiplepanel-btn wk-multiplepanel-btn--matter"
-          onClick={() => {
-            if (onAddToMatter && this.matterBtnRef.current) {
-              onAddToMatter(this.matterBtnRef.current);
-            }
-          }}
-          title={t("base.conversation.multiplePanel.syncToMatter")}
-        >
-          {t("base.conversation.multiplePanel.syncToMatter")}
         </button>
         <div className="wk-multiplepanel-sep" />
         <button

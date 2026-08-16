@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo } from "@octo/base"
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo, Dap } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
@@ -51,7 +51,7 @@ function OverflowTooltip({ text, children }: { text: string; children: React.Rea
 }
 
 const ITEM_HEIGHT = 44
-const LETTER_HEADER_HEIGHT = 24
+const LETTER_HEADER_HEIGHT = 28
 
 // 在线态 uid 归一化：Space 场景下列表持有的是带前缀 uid（s<spaceId>_<uid>），而
 // channelInfo 回包、onlineStatus WS 推送、channelInfoListener 回调用的都是去前缀 uid
@@ -602,6 +602,12 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private handleContactClick = (uid: string, isBot: boolean) => {
+        // contact_opened:补 is_bot / bot_type(system=botfather,余 custom;非 bot 为 null)
+        Dap.shared.track('contact_opened', {
+            object_id: uid,
+            is_bot: isBot,
+            bot_type: isBot ? (uid === 'botfather' ? 'system' : 'custom') : null,
+        })
         if (isBot && uid !== 'botfather') {
             this.setState({ botDetailUid: uid, botDetailVisible: true })
             return
@@ -642,7 +648,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     renderBotFatherBanner() {
         return (
             <div className="wk-contacts-botfather-banner" onClick={() => {
-                WKApp.endpoints.showConversation(new Channel("botfather", ChannelTypePerson))
+                // 走 handleContactClick 而非直接 showConversation:后者绕过 contact_opened
+                // 埋点(PR #1320 review P1-4)。handleContactClick('botfather', true) 会先补
+                // contact_opened(is_bot/bot_type),再执行同样的「直接进聊天」。
+                this.handleContactClick("botfather", true)
             }}>
                 <div className="wk-contacts-botfather-avatar">
                     <WKAvatar channel={new Channel("botfather", ChannelTypePerson)} />

@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Button, Spin } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
 import { Channel } from "wukongimjssdk";
-import { useI18n, WKApp } from "@octo/base";
+import { titleContextStore, useI18n, WKApp } from "@octo/base";
 import { getSummaryShare } from "../api/summaryApi";
 import { SourceType, type SummaryShareSnapshot } from "../types/summary";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
@@ -19,6 +19,31 @@ export default function SummaryShareDetailPage({ shareId, originChannel }: Summa
     const [snapshot, setSnapshot] = useState<SummaryShareSnapshot | null>(null);
     const [error, setError] = useState(false);
     const [reload, setReload] = useState(0);
+    const titleContextOwner = useRef(Symbol("summary-share-title-context"));
+
+    useEffect(() => {
+        if (!snapshot) {
+            titleContextStore.clear("summary", titleContextOwner.current);
+            return;
+        }
+        const moduleTitle =
+            WKApp.menus.menusList().find((menu) => menu.id === "summary")?.title ||
+            t("summary.menu.title");
+        const primaryTitle = snapshot.title?.trim();
+        if (!primaryTitle) {
+            titleContextStore.clear("summary", titleContextOwner.current);
+            return;
+        }
+        titleContextStore.set(
+            "summary",
+            {
+                primaryTitle,
+                moduleTitle,
+            },
+            titleContextOwner.current
+        );
+        return () => titleContextStore.clear("summary", titleContextOwner.current);
+    }, [locale, snapshot, t]);
 
     useEffect(() => {
         if (!shareId) { setError(true); return; }

@@ -78,9 +78,8 @@ export class EndpointCommon {
   }
 
   showConversation(channel: Channel, opts?: ShowConversationOptions) {
-    WKApp.shared.openChannel = channel;
-
     const dispatch = () => {
+      WKApp.shared.openChannel = channel;
       EndpointManager.shared.invoke(EndpointID.showConversation, {
         channel: channel,
         opts: opts,
@@ -93,8 +92,7 @@ export class EndpointCommon {
     // event. Without this delay the UI can end up in a broken state when
     // the user later switches back to another tab.
     if (WKApp.switchToMenuById && WKApp.currentMenuId !== "chat") {
-      WKApp.switchToMenuById("chat");
-      setTimeout(dispatch, 50);
+      WKApp.switchToMenuById("chat", () => setTimeout(dispatch, 50));
       return;
     }
 
@@ -305,51 +303,6 @@ export class EndpointCommon {
       },
       {
         category: EndpointCategory.organizational,
-      }
-    );
-  }
-
-  chatMatterPanel(channel: Channel, onClose: () => void): JSX.Element | undefined {
-    return EndpointManager.shared.invoke(EndpointCategory.chatMatterPanel, {
-      channel,
-      onClose,
-    });
-  }
-
-  registerChatMatterPanel(
-    sid: string,
-    callback: (param: any) => JSX.Element | undefined
-  ) {
-    EndpointManager.shared.setMethod(
-      EndpointCategory.chatMatterPanel,
-      (param) => {
-        return callback(param);
-      },
-      {
-        category: EndpointCategory.chatMatterPanel,
-      }
-    );
-  }
-
-  /** v0.7 Matter 详情面板（跟子区/文件预览/事项列表可并存） */
-  chatMatterDetailPanel(channel: Channel, onClose: () => void): JSX.Element | undefined {
-    return EndpointManager.shared.invoke(EndpointCategory.chatMatterDetailPanel, {
-      channel,
-      onClose,
-    });
-  }
-
-  registerChatMatterDetailPanel(
-    sid: string,
-    callback: (param: any) => JSX.Element | undefined
-  ) {
-    EndpointManager.shared.setMethod(
-      EndpointCategory.chatMatterDetailPanel,
-      (param) => {
-        return callback(param);
-      },
-      {
-        category: EndpointCategory.chatMatterDetailPanel,
       }
     );
   }

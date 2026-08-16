@@ -5,7 +5,7 @@ import React, {
   useCallback,
   useMemo,
 } from "react";
-import { X } from "lucide-react";
+import { LoaderCircle, X } from "lucide-react";
 import { useEditor, EditorContent, type JSONContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -40,7 +40,24 @@ import {
   videoPlayIcon,
 } from "./AttachmentNode";
 import { t as translate, useI18n } from "../../i18n";
-import { runSendWithCleanup, SendResultDetail } from "./sendFlow";
+import {
+  announceContextAfterSendReady,
+  createPendingSendTracker,
+  createSendQueue,
+  invokeReadySend,
+  runSendWithConsumedCompose,
+  SendQueue,
+  SendResultDetail,
+  SendDraftSnapshot,
+  SendProgressSnapshot,
+  SendTargetSnapshot,
+} from "./sendFlow";
+import {
+  composeSnapshotText,
+  consumeCompose,
+  ComposeDoc,
+  ComposeRestoreUnavailableError,
+} from "./composeConsume";
 import { extractOctoRichTextClipboardPayloadFromHtml } from "../../Utils/richTextClipboard";
 import {
   imageBlockToPasteFile,
@@ -53,7 +70,7 @@ import {
   getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
 
-const MAX_MESSAGE_LENGTH = 5000;
+import { MAX_MESSAGE_LENGTH } from "./constants";
 
 // placeholder 格式化所需的平台快捷键标识（模块级常量，避免重复计算）
 const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
@@ -97,7 +114,7 @@ function extractAttachmentsFromEditor(
  * 用于按顺序发送编辑器中穿插的文本和媒体。
  */
 export type EditorContentBlock =
-  | { type: "text"; text: string; mention?: MentionModel }
+  | { type: "text"; text: string; restoreText: string; mention?: MentionModel }
   | { type: "image"; id: string; file: File }
   | { type: "file"; id: string; file: File };
 
@@ -123,7 +140,7 @@ function extractOrderedBlocks(
     const joined = stripInvisibleChars(pendingTextParts.join(""));
     if (joined.trim() !== "") {
       const { content, mention } = formatMentionTextV2(joined);
-      blocks.push({ type: "text", text: content, mention });
+      blocks.push({ type: "text", text: content, restoreText: joined, mention });
     }
     pendingTextParts = [];
   }
@@ -193,8 +210,9 @@ function stripInvisibleChars(text: string): string {
  */
 function notifySecretPaste(detectedValue: string): void {
   Notification.warning({
-    title: translate("base.secrets.pasteGuard.title"),
-    content: translate("base.secrets.pasteGuard.content"),
+    className: "wk-octo-notification",
+    title: <span className="wk-octo-notification__title">{translate("base.secrets.pasteGuard.title")}</span>,
+    content: <span className="wk-octo-notification__body">{translate("base.secrets.pasteGuard.content")}</span>,
     duration: 8,
     showClose: true,
     onClick: () => {
@@ -216,17 +234,20 @@ export interface AttachmentFile {
 interface MessageInputProps {
   context: ConversationContext;
   /**
-   * 发送回调。返回值决定是否清空编辑器/附件：
-   *   - resolve `true`（或 `undefined`/`void`，向后兼容）→ 发送成功，清空编辑器
-   *     草稿与全部本次附件；
-   *   - resolve `false` → 发送失败/未发送，保留编辑器内容、附件引用与预览 URL；
+   * 发送回调。返回值决定「已消费的 compose 是否保持消费」：
+   *   - resolve `true`（或 `undefined`/`void`，向后兼容）→ 已入队，编辑器保持清空；
+   *   - resolve `false` → 未入队（预检拒绝 / 混排上传失败等），把 compose 还原
+   *     回编辑器与顶部附件区，供用户重试；
    *   - resolve `{ editorConsumed, consumedTopIds }` → 部分成功：可表达「顶部
-   *     附件已发出但编辑器混排失败需保留」，仅清掉已消费的 top 附件，避免重试
+   *     附件已发出但编辑器混排失败需还原」，只还原未发出的 top 附件，避免重试
    *     重复发送 (octo-web#227 Jerry-Xin non-blocking)。
-   * 必须在 send 内被 `await`，否则同步清理会先于异步发送结果丢掉混排草稿。
-   * 注意 (第二轮 octo-web#227)：清理是 snapshot-aware 的——onSend 返回成功后，
-   * 仅当编辑器内容仍等于发送时的快照才会清空；用户在 await 期间输入的新草稿
-   * 不会被旧 send 误删。
+   *
+   * 语义约定 (octo-web#1280)：`true` = **消息已入队并出现在消息列表**，不是
+   * 「服务端已 ack」。已入队但 ack 失败/超时的消息会带失败标记 + 重发入口，因此
+   * 绝不能返回 `false`——否则已经可见的内容会被塞回输入框（#1280 的现象之一）。
+   *
+   * compose 在 send 开始时就被同步消费（清空编辑器 + 移除本次顶部附件），失败
+   * 才还原，所以 await 期间用户新输入的草稿不会被旧 send 干扰。
    */
   onSend?: (
     text: string,
@@ -235,14 +256,29 @@ interface MessageInputProps {
     /** 顶部附件区文件（通过上传按钮添加），优先于编辑器内容发送 */
     topFiles?: AttachmentFile[],
     /** 编辑器中按文档顺序排列的内容块（文本段和粘贴图片交替） */
-    editorBlocks?: EditorContentBlock[]
+    editorBlocks?: EditorContentBlock[],
+    /**
+     * 本次发送的 reply/edit 目标，按下发送键时同步取走 (octo-web#1280)。
+     * 发送被排队时 vm 上的 reply/edit 状态可能已被用户改掉，onSend 必须用这个
+     * 快照而不是实时读取，否则可能回复错的消息、甚至编辑到无关消息。
+     */
+    sendTarget?: SendTargetSnapshot,
+    sendDraft?: SendDraftSnapshot,
+    sendProgress?: SendProgressSnapshot
   ) => void | boolean | SendResultDetail | Promise<void | boolean | SendResultDetail>;
+  /**
+   * 同步取走并清除 reply/edit 目标（横幅同时收起），返回的快照会被透传给
+   * onSend；发送未入队时 MessageInput 调 `restore()` 复位 (octo-web#1280)。
+   */
+  onCaptureSendTarget?: () => SendTargetSnapshot | undefined;
+  /** Capture draft state before this send enters the serial queue. */
+  onCaptureSendDraft?: () => Omit<SendDraftSnapshot, "text">;
   members?: Array<Subscriber>;
   onInputRef?: any;
   onInsertText?: (fnc: OnInsertFnc) => void;
   onAddMention?: (fnc: OnAddMentionFnc) => void;
   onAddAttachment?: (
-    fnc: (files: File[], source?: "paste" | "upload") => void
+    fnc: (files: File[], source?: "paste" | "upload") => void | Promise<void>
   ) => void;
   onAddPendingAttachments?: (
     files: File[],
@@ -301,6 +337,7 @@ import {
   serializeMentionMarker,
   stripTrustMark,
   parseDraftToContent,
+  parseConsumedTextToContent,
 } from "./mentionSendParse";
 import type { SendParseMember } from "./mentionSendParse";
 
@@ -338,10 +375,33 @@ export interface MessageInputContext {
   getAttachmentFiles: () => File[];
   text: () => string | undefined;
   focus: () => void;
-  /** Programmatically trigger send (same as pressing Enter) */
-  send: () => void;
+  /**
+   * Programmatically trigger send (same as pressing Enter).
+   *
+   * Returns the underlying send promise so an orchestrator (e.g. the Conversation initialCompose
+   * consumer) can await completion AND read the real outcome: the resolved boolean is
+   * `editorConsumed` — `true` when the compose was actually sent, `false` when the send was
+   * rejected / preserved as a draft (so the orchestrator can report 'failed' instead of a false
+   * 'sent'). `undefined` is only possible before the send handler is wired. Keyboard/Enter callers
+   * ignore the return value, so this does NOT change interactive send behaviour.
+   */
+  send: () => void | Promise<boolean | void> | undefined;
   /** Clear editor content without sending */
   clear: () => void;
+  /**
+   * Number of composes that were handed to `onSend` and have not settled yet
+   * (octo-web#1280).
+   *
+   * This covers both pre-enqueue and post-enqueue work so draft persistence and
+   * the visible pending preview retain each compose until `onSend` settles.
+   */
+  pendingSendCount: () => number;
+  /** Composes that have been consumed but do not have a local bubble yet. */
+  pendingPreEnqueueCount: () => number;
+  /** Plain text of unsettled composes in consumption order, including empties. */
+  pendingSendDrafts: () => string[];
+  /** Plain text of every unsettled compose, newest last. */
+  pendingSendText: () => string;
 }
 
 // MemberInfo / buildMentionRegex / parseMentionMarkers / buildMemberInfos live
@@ -397,6 +457,20 @@ interface TopAttachmentItem {
   previewUrl?: string;
 }
 
+interface PendingSendAttachmentPreview {
+  id: string;
+  name: string;
+  type: string;
+  previewUrl?: string;
+}
+
+interface PendingSendItem {
+  id: number;
+  text: string;
+  attachments: PendingSendAttachmentPreview[];
+  remainingPreEnqueueParts: number;
+}
+
 // 判断是否为图片类型（模块级别函数）
 function isImageFileType(file: File): boolean {
   if (file.type.startsWith("image/")) return true;
@@ -423,6 +497,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const attachmentFilesRef = useRef<Map<string, File>>(new Map());
   // 顶部附件区的附件列表（非图片文件 + 上传的图片）
   const [topAttachments, setTopAttachments] = useState<TopAttachmentItem[]>([]);
+  const topAttachmentsRef = useRef<TopAttachmentItem[]>([]);
 
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
@@ -471,9 +546,63 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   const isDirectChannelRef = useRef(
     props.context.channel().channelType === ChannelTypePerson,
   );
-  const sendRef = useRef<(() => void | Promise<void>) | null>(null);
-  // 发送进行中标志：onSend 现在被 await，发送窗口内防止重复触发 (octo-web#227)。
-  const sendingRef = useRef(false);
+  const sendRef = useRef<(() => Promise<boolean>) | null>(null);
+  // 键盘/Enter 是 fire-and-forget 调用：send() 的同步阶段（快照/清空/取 target）
+  // 若抛错会变成 unhandled rejection，这里统一兜住并提示 (#1280 review)。
+  const fireAndForgetSend = useCallback(() => {
+    try {
+      const result = sendRef.current?.();
+      if (result && typeof result.catch === "function") {
+        result.catch((err: unknown) => {
+          console.error("[MessageInput] send rejected", err);
+        });
+      }
+    } catch (err) {
+      console.error("[MessageInput] send threw synchronously", err);
+    }
+  }, []);
+  // 串行发送队列 (octo-web#1280)：compose 在 send 开始时就被同步消费，因此
+  // pending 期间的新发送不再被丢弃，只需排在前一条之后执行以保持消息顺序。
+  // 惰性创建，避免每次渲染都构造一个用不上的队列。
+  const sendQueueRef = useRef<SendQueue | null>(null);
+  const getSendQueue = useCallback((): SendQueue => {
+    if (!sendQueueRef.current) {
+      sendQueueRef.current = createSendQueue();
+    }
+    return sendQueueRef.current;
+  }, []);
+  // in-flight compose 登记表：完整集合保留到任务 settle，供草稿保存使用；可见
+  // 预览只包含尚未产生本地气泡的 compose，避免与消息列表重复展示。
+  const pendingSendsRef = useRef(createPendingSendTracker<PendingSendItem>());
+  const pendingSendSeqRef = useRef(0);
+  // 连续失败还原时的插入位置：已被更早的失败 send 放回的块数 / 附件数，
+  // 保证 A、B 依次失败后顺序仍是 A、B、<新草稿> 而不是倒过来 (#1280 review)。
+  const restoreOffsetsRef = useRef({ blocks: 0, topAttachments: 0 });
+  const [pendingPreEnqueueItems, setPendingPreEnqueueItems] = useState<
+    PendingSendItem[]
+  >([]);
+  const publishPendingSends = useCallback(() => {
+    setPendingPreEnqueueItems(pendingSendsRef.current.preEnqueueValues());
+  }, []);
+  const registerPendingSend = useCallback((item: PendingSendItem) => {
+    pendingSendsRef.current.register(item);
+    publishPendingSends();
+  }, [publishPendingSends]);
+  const setPendingSendExpectedParts = useCallback(
+    (id: number, count: number) => {
+      if (pendingSendsRef.current.setExpectedParts(id, count)) {
+        publishPendingSends();
+      }
+    },
+    [publishPendingSends]
+  );
+  const markPendingSendPartEnqueued = useCallback((id: number) => {
+    if (pendingSendsRef.current.markPartEnqueued(id)) publishPendingSends();
+  }, [publishPendingSends]);
+  const releasePendingSend = useCallback((id: number) => {
+    pendingSendsRef.current.release(id);
+    publishPendingSends();
+  }, [publishPendingSends]);
   const mentionActiveRef = useRef(false);
   // 表情前缀联想下拉激活标志，激活时 Enter 用于选中而非发送
   const emojiSuggestionActiveRef = useRef(false);
@@ -729,7 +858,8 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             previewUrl,
           };
 
-          setTopAttachments((prev) => [...prev, item]);
+          topAttachmentsRef.current = [...topAttachmentsRef.current, item];
+          setTopAttachments(topAttachmentsRef.current);
         }
       }
 
@@ -782,13 +912,10 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
   // 移除顶部附件区的附件
   const removeTopAttachment = useCallback((id: string) => {
-    setTopAttachments((prev) => {
-      const item = prev.find((a) => a.id === id);
-      if (item?.previewUrl) {
-        URL.revokeObjectURL(item.previewUrl);
-      }
-      return prev.filter((a) => a.id !== id);
-    });
+    const item = topAttachmentsRef.current.find((a) => a.id === id);
+    if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl);
+    topAttachmentsRef.current = topAttachmentsRef.current.filter((a) => a.id !== id);
+    setTopAttachments(topAttachmentsRef.current);
   }, []);
 
   // 监听顶部附件区变化，更新多行模式状态
@@ -818,7 +945,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
   // 组件卸载时清理顶部附件区的预览 URL，避免内存泄漏
   useEffect(() => {
     return () => {
-      topAttachments.forEach((item) => {
+      topAttachmentsRef.current.forEach((item) => {
         if (item.previewUrl) {
           URL.revokeObjectURL(item.previewUrl);
         }
@@ -856,46 +983,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       : [];
 
     // 顶部附件区的附件
-    const topFiles = topAttachments.map((a) => a.file);
+    const topFiles = topAttachmentsRef.current.map((a) => a.file);
 
     return [...editorFiles, ...topFiles];
-  }, [editor, topAttachments]);
+  }, [editor]);
 
-  // 导出 context 方法
-  useEffect(() => {
-    if (props.onInsertText) {
-      props.onInsertText(insertText);
-    }
-    if (props.onContext) {
-      props.onContext({
-        insertText,
-        insertContent: (content) => {
-          editor?.chain().focus("end").insertContent(content).run();
-        },
-        restoreDraft,
-        addMention,
-        addAttachment,
-        getAttachmentFiles,
-        text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
-        focus: () => editor?.commands.focus(),
-        send: () => sendRef.current?.(),
-        clear: () => {
-          editor?.commands.clearContent(true);
-          setTopAttachments((prev) => {
-            prev.forEach((item) => { if (item.previewUrl) URL.revokeObjectURL(item.previewUrl); });
-            return [];
-          });
-          attachmentFilesRef.current.clear();
-        },
-      });
-    }
-  }, [
-    editor,
-    props.onInsertText,
-    props.onContext,
-    addAttachment,
-    getAttachmentFiles,
-  ]);
 
   // 导出 addMention 方法
   useEffect(() => {
@@ -943,18 +1035,16 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     [editor]
   );
 
-  const send = useCallback(async () => {
-    if (!editor) return;
-    // 重入保护：onSend 现在被 await，发送期间可能再次触发 Enter/快捷键，
-    // 避免同一份草稿被发送两次 (octo-web#227)。
-    if (sendingRef.current) return;
+  const send = useCallback(async (): Promise<boolean> => {
+    if (!editor) return false;
 
     const text = editor.getText();
     if (text.length > MAX_MESSAGE_LENGTH) {
       Notification.error({
+        className: "wk-octo-notification",
         content: t("base.messageInput.validation.maxLength", { values: { max: MAX_MESSAGE_LENGTH } }),
       });
-      return;
+      return false;
     }
 
     // 从编辑器提取附件（粘贴的图片）
@@ -970,20 +1060,35 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       .filter((a): a is AttachmentFile => a !== null);
 
     // 顶部附件区文件（通过上传按钮添加）
-    const topAttachmentFiles: AttachmentFile[] = topAttachments.map((a) => ({
+    const topAttachmentFiles: AttachmentFile[] = topAttachmentsRef.current.map((a) => ({
       id: a.id,
       file: a.file,
     }));
 
     // 兼容旧 allAttachments（保留向后兼容）
     const allAttachments = [...editorAttachments, ...topAttachmentFiles];
+    const pendingAttachmentPreviews: PendingSendAttachmentPreview[] = [
+      ...attachmentAttrs.map(({ id, name, type, previewUrl }) => ({
+        id,
+        name,
+        type,
+        previewUrl,
+      })),
+      ...topAttachmentsRef.current.map(({ id, name, type, previewUrl }) => ({
+        id,
+        name,
+        type,
+        previewUrl,
+      })),
+    ];
 
     const hasText = text.trim() !== "";
     const hasAttachments = allAttachments.length > 0;
 
     // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
+    // 视为未发送（editorConsumed=false），供编排器判定真实结果。
     if (!props.onSend || (!hasText && !hasAttachments)) {
-      return;
+      return false;
     }
 
     // 从编辑器提取带格式的文本（包含 @[uid:name] 格式的 mention）。
@@ -994,80 +1099,201 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     // 提取编辑器中有序内容块（文本段和粘贴图片按文档顺序交替）
     const orderedBlocks = extractOrderedBlocks(editor, attachmentFilesRef.current);
 
-    // ⚠️ 关键修复 (octo-web#227, Jerry-Xin P1 第二轮)：
-    // round 1 已把同步清理改成「await onSend、仅成功才清」，避免混排上传失败
-    // 丢整条草稿。但 await 期间编辑器仍可编辑，onSend 可能耗时数秒（上传图片 +
-    // 等 ack），用户趁发送 pending 时打的下一条草稿，会被上一条 send 成功后的
-    // 清理误删。本轮改为 snapshot-aware：
-    //   • 发送前对编辑器文档拍 JSON 快照 (editorSnapshot)；成功回来时只有当
-    //     编辑器内容仍 === 快照（用户没开始新草稿）才 clearContent，否则保留。
-    //   • 顶部附件按本次实际消费的 id 精确移除，绝不 setTopAttachments([])
-    //     全清，等待期间新加的附件因此不丢。
-    //   • onSend 可返回 { editorConsumed, consumedTopIds } 表达「顶部附件已发、
-    //     但编辑器混排失败」，让已发文件不被重试重复 (Jerry-Xin non-blocking)。
-    // 编排逻辑在纯函数 runSendWithCleanup，便于单测覆盖各竞态场景。
-    const editorSnapshot = JSON.stringify(editor.getJSON());
-    const consumedAttachmentAttrs = attachmentAttrs;
-    const topItemsAtSend = topAttachments;
-    const allTopIds = topItemsAtSend.map((item) => item.id);
-    sendingRef.current = true;
-    try {
-      await runSendWithCleanup(
-        () =>
-          props.onSend!(
-            content,
-            mention,
-            allAttachments.length > 0 ? allAttachments : undefined,
-            topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
-            orderedBlocks.length > 0 ? orderedBlocks : undefined
-          ),
-        allTopIds,
-        {
-          isEditorUnchanged: () =>
-            JSON.stringify(editor.getJSON()) === editorSnapshot,
-          deleteEditorAttachmentRefs: () => {
-            consumedAttachmentAttrs.forEach((attr) => {
-              attachmentFilesRef.current.delete(attr.id);
-            });
-          },
-          revokeEditorPreviewUrls: () => {
-            consumedAttachmentAttrs.forEach((attr) => {
-              if (attr.previewUrl) {
-                URL.revokeObjectURL(attr.previewUrl);
-              }
-            });
-          },
-          clearEditor: () => editor.commands.clearContent(),
-          removeTopAttachments: (ids: string[]) => {
-            const idSet = new Set(ids);
-            // 先 revoke 被消费项的预览 URL（避免内存泄漏），用拍快照时的列表
-            // 取 previewUrl，再按 id 过滤当前 state——保留等待期间新加的附件。
-            topItemsAtSend.forEach((item: TopAttachmentItem) => {
-              if (idSet.has(item.id) && item.previewUrl) {
-                URL.revokeObjectURL(item.previewUrl);
-              }
-            });
-            setTopAttachments((prev: TopAttachmentItem[]) =>
-              prev.filter((a: TopAttachmentItem) => !idSet.has(a.id))
-            );
-          },
-          collapseExpanded: () => {
-            if (expanded) {
-              setExpanded(false);
-              props.onExpandChange?.(false);
-            }
-          },
+    // ⚠️ 关键修复 (octo-web#1280，承接 #227 两轮)：consume-first / restore-on-failure。
+    //
+    // #227 round 1 把同步清理改成「await onSend、仅成功才清」；round 2 再加
+    // snapshot 判定，避免旧 send 清掉用户在等待期间写的新草稿。但 round 2 是
+    // 「全清或全不清」：只要 await 期间文档变了，**已经发出去的内容也留在输入框**
+    // ——这正是 #1280 报的现象（消息已在聊天记录里，输入框还挂着缩略图/文字，
+    // 再按一次 Enter 还会重复发送）。
+    //
+    // 本轮改为：发送开始时就**同步消费** compose（拍快照 → 清空编辑器 → 移除
+    // 本次顶部附件 → 同步取走 reply/edit 目标），await 之后不再对「当前文档」做
+    // 任何判定：
+    //   • 成功 → UI 无需再动，只回收已发出部分的 File 引用与预览 URL；
+    //   • 失败（预检拒绝 / 混排上传失败等未入队情形）→ 把快照插回文档最前面、
+    //     未发出的顶部附件放回附件区、reply/edit 目标复位，round-1 的「失败不丢
+    //     草稿」保护仍然成立；用户在等待期间新写的草稿天然完整保留（round-2）。
+    // 同步消费与还原的实现在 composeConsume.ts（可用真实 Tiptap editor 单测），
+    // 结果编排在 sendFlow.ts 的 runSendWithConsumedCompose。
+    // reply/edit 目标必须与 compose 同步取走（见 SendTargetSnapshot 注释）。
+    const sendTarget = props.onCaptureSendTarget?.();
+    const sendDraftBaseline = props.onCaptureSendDraft?.();
+    // 本次消费会清空编辑器与本次附件，之前失败还原留下的偏移随之失效。
+    restoreOffsetsRef.current = { blocks: 0, topAttachments: 0 };
+    const expandedAtSend = expanded;
+    const handle = consumeCompose({
+      editor: {
+        getJSON: () => editor.getJSON() as ComposeDoc,
+        isEmpty: () => editor.isEmpty,
+        isDestroyed: () => editor.isDestroyed,
+        clearContent: () => editor.commands.clearContent(),
+        setContent: (doc) => editor.commands.setContent(doc as JSONContent),
+        insertContentAtBlock: (blockOffset, nodes) => {
+          // 把「第 n 个顶层块之前」换算成 ProseMirror 位置。
+          const docNode = editor.state.doc;
+          const limit = Math.min(blockOffset, docNode.childCount);
+          let pos = 0;
+          for (let i = 0; i < limit; i++) {
+            pos += docNode.child(i).nodeSize;
+          }
+          editor.commands.insertContentAt(pos, nodes as JSONContent[]);
+        },
+        appendContent: (nodes) =>
+          editor.commands.insertContent(nodes as JSONContent[]),
+        focusEnd: () => editor.commands.focus("end"),
+      },
+      attachmentFiles: attachmentFilesRef.current,
+      // 部分还原时把 @[uid:label] 还原成 mention 节点（与草稿恢复同一套解析）。
+      parseTextToNodes: (value) =>
+        (parseConsumedTextToContent(value).content ?? []) as ComposeDoc["content"] as never,
+      getTopAttachments: () => topAttachmentsRef.current,
+      setTopAttachments: (items) => {
+        topAttachmentsRef.current = items as TopAttachmentItem[];
+        setTopAttachments(topAttachmentsRef.current);
+      },
+      getRestoreOffsets: () => restoreOffsetsRef.current,
+      onRestored: ({ blocks, topAttachments }) => {
+        restoreOffsetsRef.current = {
+          blocks: restoreOffsetsRef.current.blocks + blocks,
+          topAttachments:
+            restoreOffsetsRef.current.topAttachments + topAttachments,
+        };
+      },
+      onRestoreCompose: () => {
+        // 整条 compose 回到输入框时，把 reply/edit 目标和展开态也一起复位，
+        // 否则「编辑消息」失败后重试会变成发一条新消息、大段草稿被挤在收起态里
+        // (#1280 review)。restore() 自身幂等，且用户已选新目标时不会覆盖。
+        sendTarget?.restore();
+        if (expandedAtSend) {
+          setExpanded(true);
+          props.onExpandChange?.(true);
         }
-      );
-    } finally {
-      sendingRef.current = false;
-    }
-  }, [editor, expanded, topAttachments, props.onSend, props.onExpandChange, t]);
+      },
+      onRestoreSendTarget: () => sendTarget?.restore(),
+      onRestoreError: (err, step) => {
+        // 内容既不在输入框也不在消息列表时必须让用户知道，不能静默丢失
+        // （典型触发：还原时会话已被切走、editor 已 destroy）。
+        console.error(`[MessageInput] compose ${step} failed`, err);
+        Notification.error({
+          className: "wk-octo-notification",
+          content:
+            err instanceof ComposeRestoreUnavailableError
+              ? t("base.messageInput.send.restoreFailed")
+              : t("base.conversation.message.sendFailed"),
+        });
+      },
+    });
+    const composeText = composeSnapshotText(handle.snapshot);
+    const pendingId = ++pendingSendSeqRef.current;
+    registerPendingSend({
+      id: pendingId,
+      text: composeText,
+      attachments: pendingAttachmentPreviews,
+      // Keep the guard closed until Conversation declares the real send plan.
+      remainingPreEnqueueParts: 1,
+    });
+    const sendDraft = sendDraftBaseline
+      ? { ...sendDraftBaseline, text: composeText }
+      : undefined;
+    const sendProgress: SendProgressSnapshot = {
+      setExpectedParts: (count) =>
+        setPendingSendExpectedParts(pendingId, count),
+      markPartEnqueued: () => markPendingSendPartEnqueued(pendingId),
+    };
 
-  // 更新 sendRef
+    if (expanded) {
+      setExpanded(false);
+      props.onExpandChange?.(false);
+    }
+
+    // 串行队列取代旧的重入保护：pending 期间的 Enter 不再被静默丢弃（#1280 的
+    // 「连点没反应」），而是排在前一条之后执行，消息顺序仍由 Conversation 等 ack
+    // 保证。onSend 未 settle 前把 compose 内容登记到 pendingSendsRef，供草稿
+    // 保存使用；「发送中」预览和切会话守卫只查看尚未产生本地气泡的条目。
+    return getSendQueue()
+      .enqueue(() =>
+        runSendWithConsumedCompose(
+          () =>
+            props.onSend!(
+              content,
+              mention,
+              allAttachments.length > 0 ? allAttachments : undefined,
+              topAttachmentFiles.length > 0 ? topAttachmentFiles : undefined,
+              orderedBlocks.length > 0 ? orderedBlocks : undefined,
+              sendTarget,
+              sendDraft,
+              sendProgress
+            ),
+          handle.ids,
+          handle.compose
+        )
+      )
+      .finally(() => releasePendingSend(pendingId));
+  }, [
+    editor,
+    expanded,
+    props.onSend,
+    props.onCaptureSendTarget,
+    props.onCaptureSendDraft,
+    props.onExpandChange,
+    getSendQueue,
+    registerPendingSend,
+    setPendingSendExpectedParts,
+    markPendingSendPartEnqueued,
+    releasePendingSend,
+    t,
+  ]);
+
+  // 先接好 sendRef，再导出 context。Conversation 会在 onContext 回调里同步消费
+  // initialCompose；两步必须处于同一 effect，避免首次无附件自动发送撞上空 sendRef。
   useEffect(() => {
-    sendRef.current = send;
-  }, [send]);
+    announceContextAfterSendReady(sendRef, send, () => {
+      props.onInsertText?.(insertText);
+      props.onContext?.({
+        insertText,
+        insertContent: (content) => {
+          editor?.chain().focus("end").insertContent(content).run();
+        },
+        restoreDraft,
+        addMention,
+        addAttachment,
+        getAttachmentFiles,
+        text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
+        focus: () => editor?.commands.focus(),
+        send: () => invokeReadySend(sendRef.current),
+        pendingSendCount: () => pendingSendsRef.current.values().length,
+        pendingPreEnqueueCount: () =>
+          pendingSendsRef.current.preEnqueueCount(),
+        pendingSendDrafts: () =>
+          pendingSendsRef.current.values().map((item) => item.text),
+        pendingSendText: () =>
+          pendingSendsRef.current.values()
+            .map((item) => item.text)
+            .filter((text) => text.trim() !== "")
+            .join("\n"),
+        clear: () => {
+          editor?.commands.clearContent(true);
+          topAttachmentsRef.current.forEach((item) => {
+            if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+          });
+          topAttachmentsRef.current = [];
+          setTopAttachments([]);
+          attachmentFilesRef.current.clear();
+        },
+      });
+    });
+  }, [
+    send,
+    editor,
+    props.onInsertText,
+    props.onContext,
+    insertText,
+    restoreDraft,
+    addMention,
+    addAttachment,
+    getAttachmentFiles,
+  ]);
 
   const getFilteredSlashCommands = useCallback((): BotCommand[] => {
     const { botCommands } = props;
@@ -1132,7 +1358,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
             handleSlashSelect(filtered[slashActiveIndex]);
           } else {
             setSlashMenuVisible(false);
-            sendRef.current?.();
+            fireAndForgetSend();
           }
           return true;
         }
@@ -1148,7 +1374,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       if (event.key === "Enter" && !event.shiftKey) {
         if (mentionActiveRef.current) return false;
         if (emojiSuggestionActiveRef.current) return false;
-        sendRef.current?.();
+        fireAndForgetSend();
         return true;
       }
 
@@ -1159,6 +1385,7 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
     slashActiveIndex,
     getFilteredSlashCommands,
     handleSlashSelect,
+    fireAndForgetSend,
   ]);
 
   const toggleExpand = useCallback(() => {
@@ -1202,6 +1429,56 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
       >
         {/* 引用/编辑条在卡片内部 */}
         {topView && <div className="wk-messageinput-topview">{topView}</div>}
+
+        {/* 发送中内容预览 (octo-web#1280)：输入框在发送开始时就被清空，实际文本
+            与附件保持可见；本地气泡出现后立即移除，避免同一内容重复展示。 */}
+        {pendingPreEnqueueItems.length > 0 && (
+          <div className="wk-messageinput-sending" aria-live="polite">
+            {pendingPreEnqueueItems.map((item) => (
+              <div className="wk-messageinput-sending-item" key={item.id}>
+                <LoaderCircle
+                  className="wk-messageinput-sending-spinner"
+                  role="img"
+                  aria-label={t("base.message.sending")}
+                />
+                {item.text && (
+                  <span
+                    className="wk-messageinput-sending-text"
+                    title={item.text}
+                  >
+                    {item.text}
+                  </span>
+                )}
+                {item.attachments.length > 0 && (
+                  <span className="wk-messageinput-sending-attachments">
+                    {item.attachments.map((attachment) =>
+                      attachment.previewUrl ? (
+                        <img
+                          key={attachment.id}
+                          className="wk-messageinput-sending-thumbnail"
+                          src={attachment.previewUrl}
+                          alt={attachment.name}
+                        />
+                      ) : (
+                        <span
+                          key={attachment.id}
+                          className="wk-messageinput-sending-file"
+                          title={attachment.name}
+                        >
+                          <img
+                            src={getFileIcon(attachment.name, attachment.type)}
+                            alt=""
+                          />
+                          <span>{attachment.name}</span>
+                        </span>
+                      )
+                    )}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* 顶部附件区（非图片文件 + 上传的图片） */}
         {topAttachments.length > 0 && (

@@ -4,6 +4,7 @@ import { I18nContext } from '@octo/base';
 import type { ChatMessage, ChatCandidate, AgentProgressEvent, AgentDoneEvent, AgentErrorEvent } from '../types/summary';
 import { agentChatStream, agentChat } from '../api/summaryApi';
 import { genSessionId } from '../utils/summaryHelpers';
+import { summaryTestIds } from '../utils/testIds';
 import './AgentChatPanel.css';
 
 interface AgentChatPanelProps {
@@ -356,12 +357,13 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         const isBusy = sending || isStreaming;
 
         return (
-            <div className="agent-chat-panel">
+            <div data-testid={summaryTestIds.agentPanel} className="agent-chat-panel">
                 {(onNewSession || referenceHeader) && (
                     <div className="agent-chat-panel-header">
                         {referenceHeader}
                         {onNewSession && (
                             <Button
+                                data-testid={summaryTestIds.agentNewSessionBtn}
                                 theme="borderless"
                                 size="small"
                                 disabled={isBusy}
@@ -401,6 +403,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 </div>
                 <div className="agent-chat-panel-input">
                     <textarea
+                        data-testid={summaryTestIds.agentInput}
                         className="agent-chat-textarea"
                         value={input}
                         placeholder={t('summary.create.agentChatPlaceholder')}
@@ -410,6 +413,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                         onKeyDown={this.handleKeyDown}
                     />
                     <Button
+                        data-testid={summaryTestIds.agentSendBtn}
                         theme="solid"
                         size="default"
                         loading={isBusy}
@@ -420,6 +424,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     </Button>
                     {canSave && (
                         <Button
+                            data-testid={summaryTestIds.agentSaveBtn}
                             size="default"
                             disabled={!this.hasAssistantOutput() || savingSummary}
                             loading={savingSummary}
@@ -439,8 +444,13 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     okText={t('summary.common.confirm')}
                     cancelText={t('summary.common.cancel')}
                     confirmLoading={savingSummary}
+                    okButtonProps={{ 'data-testid': summaryTestIds.agentSaveConfirmBtn } as any}
+                    modalRender={(node) => (
+                        <div data-testid={summaryTestIds.agentSaveDialog}>{node}</div>
+                    )}
                 >
                     <Input
+                        data-testid={summaryTestIds.agentSaveTitleInput}
                         placeholder={t('summary.create.titlePlaceholder')}
                         value={summaryTitle}
                         onChange={v => this.setState({ summaryTitle: v })}

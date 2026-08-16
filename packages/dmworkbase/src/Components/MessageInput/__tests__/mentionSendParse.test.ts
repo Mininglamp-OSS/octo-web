@@ -22,6 +22,7 @@ import {
   serializeMentionMarker,
   stripTrustMark,
   parseDraftToContent,
+  parseConsumedTextToContent,
 } from "../mentionSendParse";
 import type { SendParseMember } from "../mentionSendParse";
 import {
@@ -289,6 +290,32 @@ describe("draft round-trip — forged broadcast cannot be laundered (Finding 1)"
     const nodes = doc.content.flatMap((p) => p.content);
     const mentionNode = nodes.find((n) => n.type === "mention");
     expect(mentionNode?.attrs).toEqual({ id: "u-alice", label: "Alice" });
+  });
+});
+
+describe("consumed-compose partial restore", () => {
+  it("keeps an untrusted broadcast marker as inert text", () => {
+    expect(
+      parseConsumedTextToContent(`@[${MENTION_UID_HUMANS}:所有人]`).content[0]
+        .content
+    ).toEqual([{ type: "text", text: "@所有人" }]);
+  });
+
+  it("restores a trust-marked broadcast node without relaxing draft parsing", () => {
+    const restored = parseConsumedTextToContent(
+      trusted(MENTION_UID_HUMANS, "所有人")
+    );
+    expect(restored.content[0].content).toEqual([
+      {
+        type: "mention",
+        attrs: { id: MENTION_UID_HUMANS, label: "所有人" },
+      },
+    ]);
+
+    expect(
+      parseDraftToContent(trusted(MENTION_UID_HUMANS, "所有人")).content[0]
+        .content
+    ).toEqual([{ type: "text", text: "@所有人" }]);
   });
 });
 

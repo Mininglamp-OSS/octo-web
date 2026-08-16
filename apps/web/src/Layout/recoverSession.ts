@@ -141,7 +141,7 @@ export function findUniqueStoredSession(store: StorageLike): RecoveredSession | 
  *
  * Deliberately NOT a by-`sp` selection: token buckets store no space (see SESSION_KEY_PREFIXES) and
  * same-identity buckets are interchangeable anyway, so `sp` cannot and need not pick among them — it
- * stays the StandaloneDocPage preflight's space-addressing param only. The caller adopts this result
+   * stays the external standalone-doc preflight's space-addressing param only. The caller adopts this result
  * IN MEMORY ONLY (never persists it) so a multi-bucket pick is never mirrored into the cross-tab slot.
  */
 export function findSameIdentityStoredSession(store: StorageLike): RecoveredSession | null {

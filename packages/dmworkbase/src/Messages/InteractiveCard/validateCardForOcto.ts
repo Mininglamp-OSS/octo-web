@@ -15,8 +15,9 @@ import { RenderBudget } from "./guards";
  *
  * 注意分工（与整卡降级区分）：
  *   - Action.OpenUrl / selectAction 的 url 非法（javascript: 等）→ **整卡降级**（本函数 ok:false）；
- *   - Image.url / backgroundImage / iconUrl 非 https（混合内容）→ **不在此降级**，属 per-element
- *     处理（喂 SDK 前对 card 树做 URL 消毒，见 S4），本函数视其结构合法。
+ *   - Image.url / backgroundImage / iconUrl 不在图片面白名单（非 https 且非受限内联 SVG
+ *     data URL）→ **不在此降级**，属 per-element 处理（喂 SDK 前对 card 树做 URL 消毒，见 S4），
+ *     本函数视其结构合法。
  */
 
 export interface ValidateOptions {
@@ -133,9 +134,9 @@ function validateToggleVisibilityAction(
     throw new OctoInvalidCard("ToggleVisibility targetElements required");
   }
   for (const target of targets) {
-    // 每个 target 计入节点预算（与 facts / actions / columns / choices / images 一致），
-    // 对齐服务端 walker MAX_NODES 计数口径，防止巨量 target 数组绕过预算。
-    if (!ctx.budget.consume()) throw new OctoInvalidCard("node count exceeded");
+    // targetElements 是对已存在元素的引用，不是卡片树节点。服务端权威：
+    // octo-server/pkg/cardmsg/validate.go 的 walker.action() 只对 action bump，
+    // walker.toggleVisibility() 仅收集 targetRefs，由 resolveTargetRefs() 校验存在性。
     validateToggleTargetElement(target, ctx);
   }
 }

@@ -1,46 +1,16 @@
 import { describe, it, expect } from "vitest"
 import {
-  URL_ELLIPSIS_THRESHOLD,
   isUrlLike,
-  middleEllipsizeUrl,
-  shouldEllipsizeLinkText,
   isForwardDocCard,
   type ParagraphChildKind,
 } from "../forwardClamp"
 
-describe("forwardClamp — URL middle-ellipsis (AC-13b, contract 5)", () => {
-  it("leaves text at or below the threshold untouched", () => {
-    const short = "https://octo.example.com/docs?doc=d_1"
-    expect(short.length).toBeLessThanOrEqual(URL_ELLIPSIS_THRESHOLD)
-    expect(middleEllipsizeUrl(short)).toBe(short)
-  })
-
-  it("middle-ellipsizes a long URL as head30…tail20 (href-length preserving semantics)", () => {
-    const long = "https://octo.example.com/docs?space=demo&folder=f_default&doc=d_verylongidentifier12345"
-    expect(long.length).toBeGreaterThan(URL_ELLIPSIS_THRESHOLD)
-    const out = middleEllipsizeUrl(long)
-    expect(out).toBe(`${long.slice(0, 30)}…${long.slice(long.length - 20)}`)
-    expect(out).toContain("…")
-    // The ellipsized text is shorter than the source but keeps the recognizable head + tail.
-    expect(out.startsWith(long.slice(0, 30))).toBe(true)
-    expect(out.endsWith(long.slice(long.length - 20))).toBe(true)
-  })
-
+describe("forwardClamp — URL recognition", () => {
   it("isUrlLike accepts http(s) URLs and rejects plain titles", () => {
     expect(isUrlLike("https://a.com/x")).toBe(true)
     expect(isUrlLike("http://a.com")).toBe(true)
     expect(isUrlLike("Quarterly planning doc")).toBe(false)
     expect(isUrlLike("ftp://a.com")).toBe(false)
-  })
-
-  it("only ellipsizes when the visible text IS the (long) href — a titled link is untouched", () => {
-    const longUrl = "https://octo.example.com/docs?space=demo&folder=f_default&doc=d_verylongidentifier12345"
-    // Bare URL link: text === href → ellipsize.
-    expect(shouldEllipsizeLinkText(longUrl, longUrl)).toBe(true)
-    // Titled link `[title](link)`: visible text is the title, not the URL → never ellipsize.
-    expect(shouldEllipsizeLinkText("My document", longUrl)).toBe(false)
-    // Short bare URL: no ellipsis.
-    expect(shouldEllipsizeLinkText("https://a.com", "https://a.com")).toBe(false)
   })
 })
 

@@ -35,19 +35,11 @@ describe("docs_on appconfig web integration", () => {
     expect(source).toContain("notifyConfigChangeListeners");
   });
 
-  it("gates the Docs NavRail entry on docsOn and refreshes when appconfig arrives", () => {
-    const source = readRepoFile("packages/docs/src/module.tsx");
+  it("keeps the host-side docsOn contract for enterprise modules", () => {
+    const source = readRepoFile("apps/web/src/index.tsx");
 
-    // Menu factory returns the entry only when docsOn is true (else undefined → hidden).
-    expect(source).toContain("wk.remoteConfig?.docsOn");
-    // Subscribe to first load AND later changes, refreshing the NavRail each time. (Behavioral
-    // coverage of the gate flip lives in packages/docs/module.test.tsx; these assert the wiring
-    // is present.)
-    expect(source).toContain("rc.addListener(refreshMenus)");
-    expect(source).toContain("rc.addConfigChangeListener(refreshMenus)");
-    expect(source).toContain("wk.menus.refresh?.()");
-    // Honor the addListener contract: when appconfig already resolved before init, reflect the
-    // current docs_on immediately instead of waiting on a listener that would never fire (#536).
-    expect(source).toContain("rc.requestSuccess");
+    expect(source).toContain("registerEnterpriseModules");
+    expect(source).not.toContain("DocsModule");
+    expect(source).not.toMatch(/@octo\/docs/);
   });
 });

@@ -218,7 +218,7 @@ export default forwardRef((props: MentionListProps, ref) => {
         return true
       }
 
-      if (event.key === 'Enter') {
+      if (event.key === 'Enter' && !event.shiftKey) {
         enterHandler()
         return true
       }
@@ -266,7 +266,7 @@ export default forwardRef((props: MentionListProps, ref) => {
                   }}
                 />
               </div>
-              <div>
+              <div className="mention-list-item-content">
                 <strong>{item.name || item.display}</strong>
                 {/* @ 提醒选人弹窗的「@SpaceName」后缀（企微风格） */}
                 {item.sourceSpaceName && (
@@ -277,7 +277,9 @@ export default forwardRef((props: MentionListProps, ref) => {
                     @{item.sourceSpaceName}
                   </span>
                 )}
-                {item.isBot && <AiBadge size="small" />}
+                {item.isBot && (
+                  <AiBadge size="small" className="mention-list-item-ai-badge" />
+                )}
               </div>
             </div>
           )

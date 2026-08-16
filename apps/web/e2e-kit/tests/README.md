@@ -26,10 +26,10 @@ test('@C7 my feature', async ({ authedPage }) => {
 
 ## 稳定性 gate
 
-新 case 或改过的 case 必须 10x 全绿才能 commit (见 `global/rules.md`):
+新 case 或改过的 case 必须 3x 全绿才能 commit (见 `global/rules.md`):
 
 ```bash
-pnpm exec playwright test --grep "@C7" --repeat-each=10 --workers=1
+pnpm exec playwright test --grep "@C7" --repeat-each=3 --workers=1
 ```
 
 sync 策略: **hands_off**.

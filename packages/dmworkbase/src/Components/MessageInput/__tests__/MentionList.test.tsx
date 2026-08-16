@@ -94,6 +94,24 @@ describe("MentionList interaction mode", () => {
     expect(options[1].className).not.toContain("is-selected");
   });
 
+  it("renders bot badges with mention-list alignment classes", () => {
+    renderMentionList(vi.fn(), [
+      { uid: "uid-human", name: "Alice", icon: "avatar://alice" },
+      { uid: "uid-bot", name: "Bot Alpha", icon: "avatar://bot", isBot: true },
+    ]);
+
+    const [humanOption, botOption] = optionElements();
+    const content = botOption.querySelector(".mention-list-item-content");
+    const badge = botOption.querySelector(".ai-badge");
+
+    expect(content).not.toBeNull();
+    expect(content?.textContent).toContain("Bot Alpha");
+    expect(badge).not.toBeNull();
+    expect(badge?.classList.contains("ai-badge-small")).toBe(true);
+    expect(badge?.classList.contains("mention-list-item-ai-badge")).toBe(true);
+    expect(humanOption.querySelector(".ai-badge")).toBeNull();
+  });
+
   it("switches to mouse mode on pointer movement and uses click for mouse selection", () => {
     const command = vi.fn();
     renderMentionList(command);
@@ -283,6 +301,36 @@ describe("MentionList interaction mode", () => {
       ref.current.onKeyDown({ event: { key: "Enter" } });
     });
     expect(command).toHaveBeenCalledWith({ id: "uid-1", label: "Alice" });
+  });
+
+  it("lets Shift+Enter fall through without selecting a mention", () => {
+    const command = vi.fn();
+    const { ref } = renderMentionList(command);
+
+    let handled: boolean | undefined;
+    act(() => {
+      handled = ref.current.onKeyDown({
+        event: { key: "Enter", shiftKey: true },
+      });
+    });
+
+    expect(handled).toBe(false);
+    expect(command).not.toHaveBeenCalled();
+  });
+
+  it("lets Shift+Enter fall through when no mention result is visible", () => {
+    const command = vi.fn();
+    const { ref } = renderMentionList(command, []);
+
+    let handled: boolean | undefined;
+    act(() => {
+      handled = ref.current.onKeyDown({
+        event: { key: "Enter", shiftKey: true },
+      });
+    });
+
+    expect(handled).toBe(false);
+    expect(command).not.toHaveBeenCalled();
   });
 
   it("returns to the first keyboard item after the pointer leaves the list", () => {

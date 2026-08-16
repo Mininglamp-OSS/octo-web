@@ -451,11 +451,20 @@
 
 /* Mention 样式 */
 .wk-messageinput-editor .mention {
-  color: var(--wk-color-theme);
-  font-weight: 600;
+  color: var(--wk-text-mention-entity);
+  font-weight: 500;
+  background-color: var(--wk-accent-tint-08);
+  border-radius: var(--wk-r-mention-entity);
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
+}
+
+.wk-messageinput-editor .mention[data-id="-1"],
+.wk-messageinput-editor .mention[data-id="-2"],
+.wk-messageinput-editor .mention[data-id="-3"] {
+  color: var(--wk-text-accent, var(--wk-color-theme));
+  font-weight: 400;
   background-color: transparent;
-  border-radius: 0.25rem;
-  padding: 0 0.125rem;
+  padding: 0 var(--wk-sp-0-5);
 }
 
 /* Placeholder - Tiptap Placeholder 扩展 */
@@ -675,4 +684,96 @@
   height: var(--wk-sp-12);
   object-fit: cover;
   border-radius: var(--wk-r-sm);
+}
+
+/* ============================================
+   发送中提示（octo-web#1280）
+   compose 在发送开始时就被清出输入框，气泡出现前用这条提示告诉用户
+   「消息还在发送中」，避免误以为没发出去。
+   ============================================ */
+
+.wk-messageinput-sending {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+  max-height: calc(var(--wk-sp-8) * 2 + var(--wk-sp-2));
+  overflow-y: auto;
+  padding: 0 var(--wk-sp-1) var(--wk-sp-1);
+  margin-bottom: var(--wk-sp-1);
+  font-size: var(--wk-text-size-xs);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-messageinput-sending-item {
+  min-height: var(--wk-sp-6);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1) 0;
+  overflow: hidden;
+}
+
+.wk-messageinput-sending-spinner {
+  width: var(--wk-sp-4);
+  height: var(--wk-sp-4);
+  flex-shrink: 0;
+  color: var(--wk-text-tertiary);
+  animation: wk-messageinput-sending-spin calc(var(--wk-dur-slow) * 2) linear
+    infinite;
+}
+
+.wk-messageinput-sending-text {
+  min-width: 0;
+  flex: 1;
+  color: var(--wk-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wk-messageinput-sending-attachments {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.wk-messageinput-sending-thumbnail {
+  width: var(--wk-sp-6);
+  height: var(--wk-sp-6);
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--wk-r-sm);
+}
+
+.wk-messageinput-sending-file {
+  min-width: 0;
+  max-width: calc(var(--wk-sp-12) * 3);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  color: var(--wk-text-secondary);
+}
+
+.wk-messageinput-sending-file img {
+  width: var(--wk-sp-5);
+  height: var(--wk-sp-5);
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.wk-messageinput-sending-file span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes wk-messageinput-sending-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
