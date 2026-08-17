@@ -1,0 +1,123 @@
+.octo-ui-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--octo-ui-menu-item-gap);
+  width: 100%;
+  height: var(--octo-ui-menu-item-height);
+  padding: var(--octo-ui-menu-item-padding);
+  border: 0;
+  border-radius: var(--octo-ui-menu-item-radius);
+  background: var(--octo-ui-menu-item-bg);
+  color: var(--octo-ui-menu-item-text);
+  font-family: var(--octo-ui-font-sans);
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background-color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard);
+}
+
+.octo-ui-menu-item:hover:not(:disabled),
+.octo-ui-menu-item:focus-visible {
+  background: var(--octo-ui-menu-item-hover-bg);
+  outline: none;
+}
+
+.octo-ui-menu-item--compact:hover:not(:disabled),
+.octo-ui-menu-item--compact:focus-visible {
+  background: var(--octo-ui-menu-item-compact-hover-bg);
+}
+
+.octo-ui-menu-item:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--octo-ui-focus-ring);
+}
+
+.octo-ui-menu-item--selected {
+  background: var(--octo-ui-menu-item-selected-bg);
+}
+
+.octo-ui-menu-item--selected:hover:not(:disabled),
+.octo-ui-menu-item--selected:focus-visible {
+  background: var(--octo-ui-menu-item-selected-bg);
+}
+
+.octo-ui-menu-item--danger {
+  color: var(--octo-ui-menu-item-danger-text);
+}
+
+.octo-ui-menu-item:disabled {
+  color: var(--octo-ui-menu-item-disabled-text);
+  cursor: not-allowed;
+}
+
+.octo-ui-menu-item:disabled .octo-ui-menu-item__icon,
+.octo-ui-menu-item:disabled .octo-ui-menu-item__shortcut,
+.octo-ui-menu-item:disabled .octo-ui-menu-item__suffix {
+  opacity: 0.55;
+}
+
+.octo-ui-menu-item--compact {
+  height: var(--octo-ui-menu-item-compact-height);
+  padding: var(--octo-ui-menu-item-compact-padding);
+  gap: var(--octo-ui-menu-item-compact-gap);
+  border-radius: var(--octo-ui-menu-item-compact-radius);
+}
+
+.octo-ui-menu-item__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--octo-ui-menu-item-icon-size);
+  height: var(--octo-ui-menu-item-icon-size);
+  border-radius: var(--octo-ui-menu-item-icon-radius);
+  background: var(--octo-ui-menu-item-icon-bg);
+  color: var(--octo-ui-menu-item-icon-color);
+  flex: none;
+  overflow: hidden;
+}
+
+.octo-ui-menu-item--compact .octo-ui-menu-item__icon {
+  width: var(--octo-ui-menu-item-compact-icon-size);
+  height: var(--octo-ui-menu-item-compact-icon-size);
+  background: transparent;
+}
+
+.octo-ui-menu-item__icon svg {
+  width: var(--octo-ui-menu-item-suffix-size);
+  height: var(--octo-ui-menu-item-suffix-size);
+}
+
+.octo-ui-menu-item__label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: currentColor;
+  font-size: var(--octo-ui-menu-item-label-size);
+  font-weight: var(--octo-ui-menu-item-label-weight);
+  line-height: var(--octo-ui-menu-item-label-line-height);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-ui-menu-item--compact .octo-ui-menu-item__label {
+  font-weight: var(--octo-ui-menu-item-label-compact-weight);
+}
+
+.octo-ui-menu-item__shortcut {
+  flex: none;
+  color: var(--octo-ui-menu-item-shortcut-color);
+  font-size: var(--octo-ui-menu-item-shortcut-size);
+  line-height: var(--octo-ui-menu-item-suffix-size);
+  white-space: nowrap;
+}
+
+.octo-ui-menu-item__suffix {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--octo-ui-menu-item-suffix-size);
+  min-width: var(--octo-ui-menu-item-suffix-size);
+  color: var(--octo-ui-menu-item-suffix-color);
+  flex: none;
+}

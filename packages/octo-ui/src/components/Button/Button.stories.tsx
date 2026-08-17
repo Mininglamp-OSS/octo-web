@@ -31,7 +31,7 @@ export default meta
 type Story = StoryObj<typeof Button>
 
 const Row = ({ children }: { children: ReactNode }) => (
-  <div style={{ display: 'flex', gap: 'var(--wk-sp-3)', flexWrap: 'wrap', alignItems: 'center' }}>
+  <div style={{ display: 'flex', gap: 'var(--octo-ui-button-story-gap)', flexWrap: 'wrap', alignItems: 'center' }}>
     {children}
   </div>
 )
@@ -102,7 +102,7 @@ export const IconOnly: Story = {
 
 export const EdgeCases: Story = {
   render: () => (
-    <div style={{ display: 'grid', gap: 'var(--wk-sp-3)', maxWidth: 'min(100%, 420px)' }}>
+    <div style={{ display: 'grid', gap: 'var(--octo-ui-button-story-gap)', maxWidth: 'min(100%, 420px)' }}>
       <Button variant="secondary">A button with a longer label that stays on one line</Button>
       <Button variant="solid" icon={<span>+</span>}>Create shared component</Button>
       <Button variant="danger" loading>Deleting</Button>

@@ -2,162 +2,162 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--wk-sp-1);
-  height: calc(var(--wk-sp-6) + var(--wk-sp-1));
-  min-width: var(--wk-sp-12);
-  padding: 0 calc(var(--wk-sp-3) + var(--wk-sp-0-5));
+  gap: var(--octo-ui-button-gap);
+  height: var(--octo-ui-button-height);
+  min-width: var(--octo-ui-button-min-width);
+  padding: var(--octo-ui-button-padding);
   border: 1px solid transparent;
-  border-radius: var(--wk-r-full);
-  font-family: var(--wk-font-sans);
-  font-size: var(--wk-text-size-sm);
-  font-weight: var(--wk-font-medium);
-  line-height: var(--wk-leading-tight);
+  border-radius: var(--octo-ui-button-radius);
+  font-family: var(--octo-ui-font-sans);
+  font-size: var(--octo-ui-button-font-size);
+  font-weight: var(--octo-ui-button-font-weight);
+  line-height: var(--octo-ui-button-line-height);
   white-space: nowrap;
   text-decoration: none;
   cursor: pointer;
   user-select: none;
   transition:
-    background-color var(--wk-dur-fast) var(--wk-ease),
-    border-color var(--wk-dur-fast) var(--wk-ease),
-    box-shadow var(--wk-dur-fast) var(--wk-ease),
-    color var(--wk-dur-fast) var(--wk-ease);
+    background-color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    border-color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    box-shadow var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard);
 }
 
 .octo-ui-button:focus-visible {
-  outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
-  outline-offset: var(--wk-sp-0-5);
+  outline: 2px solid var(--octo-ui-focus-ring);
+  outline-offset: 2px;
 }
 
 .octo-ui-button--xs {
-  height: var(--wk-sp-6);
-  min-width: calc(var(--wk-sp-10) + var(--wk-sp-1));
-  padding: 0 var(--wk-sp-3);
+  height: var(--octo-ui-button-height-xs);
+  min-width: var(--octo-ui-button-min-width-xs);
+  padding: var(--octo-ui-button-padding-xs);
 }
 
 .octo-ui-button--icon-only {
-  width: var(--wk-sp-5);
-  height: var(--wk-sp-5);
-  min-width: var(--wk-sp-5);
+  width: var(--octo-ui-button-icon-only-size);
+  height: var(--octo-ui-button-icon-only-size);
+  min-width: var(--octo-ui-button-icon-only-size);
   padding-inline: 0;
-  border-radius: var(--wk-r-sm);
+  border-radius: var(--octo-ui-button-icon-only-radius);
 }
 
 .octo-ui-button--icon-only.octo-ui-button--xs {
-  width: var(--wk-sp-5);
-  min-width: var(--wk-sp-5);
-  height: var(--wk-sp-5);
+  width: var(--octo-ui-button-icon-only-size);
+  min-width: var(--octo-ui-button-icon-only-size);
+  height: var(--octo-ui-button-icon-only-size);
 }
 
 .octo-ui-button--solid {
-  background: var(--wk-brand-primary);
-  color: var(--wk-text-inverse);
+  background: var(--octo-ui-button-solid-bg);
+  color: var(--octo-ui-button-text-inverse);
 }
 
 .octo-ui-button--solid:hover:not(:disabled) {
-  background: var(--wk-brand-primary-hover);
+  background: var(--octo-ui-button-solid-bg-hover);
 }
 
 .octo-ui-button--solid:active:not(:disabled) {
-  background: var(--wk-brand-primary-hover);
+  background: var(--octo-ui-button-solid-bg-hover);
 }
 
 .octo-ui-button--brand {
-  background: var(--wk-color-accent);
-  color: var(--wk-text-inverse);
+  background: var(--octo-ui-button-brand-bg);
+  color: var(--octo-ui-button-text-inverse);
 }
 
 .octo-ui-button--brand:hover:not(:disabled) {
-  background: var(--wk-color-accent-hover);
+  background: var(--octo-ui-button-brand-bg-hover);
 }
 
 .octo-ui-button--brand:active:not(:disabled) {
-  background: var(--wk-color-accent-hover);
+  background: var(--octo-ui-button-brand-bg-hover);
 }
 
 .octo-ui-button--tint {
-  background: var(--wk-brand-tint-06);
+  background: var(--octo-ui-button-tint-bg);
   border-color: transparent;
-  color: var(--wk-brand-primary);
+  color: var(--octo-ui-button-tint-text);
 }
 
 .octo-ui-button--tint:hover:not(:disabled) {
-  background: var(--wk-brand-tint-08);
+  background: var(--octo-ui-button-tint-bg-hover);
 }
 
 .octo-ui-button--tint:active:not(:disabled) {
-  background: var(--wk-brand-tint-12);
+  background: var(--octo-ui-button-tint-bg-active);
 }
 
 .octo-ui-button--secondary {
-  background: var(--wk-bg-surface);
-  border-color: var(--wk-border-default);
-  color: var(--wk-text-primary);
+  background: var(--octo-ui-button-secondary-bg);
+  border-color: var(--octo-ui-button-secondary-border);
+  color: var(--octo-ui-button-secondary-text);
 }
 
 .octo-ui-button--secondary:hover:not(:disabled) {
-  background: var(--wk-bg-hover);
-  border-color: var(--wk-border-strong);
+  background: var(--octo-ui-button-secondary-bg-hover);
+  border-color: var(--octo-ui-button-secondary-border-hover);
 }
 
 .octo-ui-button--secondary:active:not(:disabled) {
-  background: var(--wk-bg-active);
+  background: var(--octo-ui-button-secondary-bg-active);
 }
 
 .octo-ui-button--text {
   background: transparent;
-  color: var(--wk-color-accent);
+  color: var(--octo-ui-button-text);
   min-width: 0;
 }
 
 .octo-ui-button--text:hover:not(:disabled) {
-  background: var(--wk-bg-hover);
-  color: var(--wk-color-accent-hover);
+  background: var(--octo-ui-button-text-bg-hover);
+  color: var(--octo-ui-button-text-hover);
 }
 
 .octo-ui-button--text:active:not(:disabled) {
-  background: var(--wk-bg-active);
+  background: var(--octo-ui-button-text-bg-active);
 }
 
 .octo-ui-button--danger-text {
   background: transparent;
   border-color: transparent;
-  color: var(--wk-color-danger);
+  color: var(--octo-ui-button-danger-text);
   min-width: 0;
 }
 
 .octo-ui-button--danger-text:hover:not(:disabled) {
-  background: var(--wk-color-danger-bg);
+  background: var(--octo-ui-button-danger-bg-soft);
 }
 
 .octo-ui-button--danger-text:active:not(:disabled) {
-  background: var(--wk-bg-active);
+  background: var(--octo-ui-button-text-bg-active);
 }
 
 .octo-ui-button--warning {
-  background: var(--wk-bg-surface);
-  border-color: var(--wk-color-danger-border);
-  color: var(--wk-color-danger);
+  background: var(--octo-ui-button-secondary-bg);
+  border-color: var(--octo-ui-button-danger-border);
+  color: var(--octo-ui-button-danger-text);
 }
 
 .octo-ui-button--warning:hover:not(:disabled) {
-  background: var(--wk-color-danger-bg);
+  background: var(--octo-ui-button-danger-bg-soft);
 }
 
 .octo-ui-button--warning:active:not(:disabled) {
-  background: var(--wk-color-danger-hover);
+  background: var(--octo-ui-button-danger-bg-hover);
 }
 
 .octo-ui-button--danger {
-  background: var(--wk-color-danger);
-  color: var(--wk-text-inverse);
+  background: var(--octo-ui-button-danger-bg);
+  color: var(--octo-ui-button-text-inverse);
 }
 
 .octo-ui-button--danger:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--wk-color-danger) 84%, var(--wk-brand-black));
+  background: var(--octo-ui-button-danger-bg-solid-hover);
 }
 
 .octo-ui-button--danger:active:not(:disabled) {
-  background: color-mix(in srgb, var(--wk-color-danger) 80%, var(--wk-brand-black));
+  background: var(--octo-ui-button-danger-bg-solid-active);
 }
 
 .octo-ui-button:disabled {
@@ -179,23 +179,23 @@
 
 .octo-ui-button__icon {
   flex-shrink: 0;
-  font-size: var(--wk-sp-4);
+  font-size: var(--octo-ui-button-icon-size);
   line-height: 1;
 }
 
 .octo-ui-button__spinner {
-  width: calc(var(--wk-sp-3) + var(--wk-sp-0-5));
-  height: calc(var(--wk-sp-3) + var(--wk-sp-0-5));
-  border: var(--wk-sp-0-5) solid currentColor;
+  width: var(--octo-ui-button-spinner-size);
+  height: var(--octo-ui-button-spinner-size);
+  border: var(--octo-ui-button-spinner-border-width) solid currentColor;
   border-top-color: transparent;
-  border-radius: var(--wk-r-full);
-  animation: octo-ui-button-spin var(--wk-dur-slow) linear infinite;
+  border-radius: var(--octo-ui-button-radius);
+  animation: octo-ui-button-spin var(--octo-ui-duration-slow) linear infinite;
   flex-shrink: 0;
 }
 
 .octo-ui-button--xs .octo-ui-button__spinner {
-  width: var(--wk-sp-3);
-  height: var(--wk-sp-3);
+  width: var(--octo-ui-button-spinner-size-xs);
+  height: var(--octo-ui-button-spinner-size-xs);
 }
 
 @keyframes octo-ui-button-spin {
