@@ -9,6 +9,7 @@
   "exports": {
     ".": {
       "types": "./src/index.d.ts",
+      "development": "./src/index.ts",
       "import": "./dist/index.js"
     },
     "./styles.css": "./dist/styles.css"
