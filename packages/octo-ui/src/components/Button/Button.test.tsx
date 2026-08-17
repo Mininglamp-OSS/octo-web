@@ -56,6 +56,8 @@ describe('Button', () => {
   })
 
   it.each([
+    ['bare button', {}, 'octo-ui-button--secondary'],
+    ['primary omitted theme', { type: 'primary' }, 'octo-ui-button--secondary'],
     ['primary solid', { type: 'primary', theme: 'solid' }, 'octo-ui-button--solid'],
     ['primary light', { type: 'primary', theme: 'light' }, 'octo-ui-button--secondary'],
     ['borderless', { theme: 'borderless' }, 'octo-ui-button--text'],
