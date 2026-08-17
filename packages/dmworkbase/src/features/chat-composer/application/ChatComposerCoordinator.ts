@@ -71,6 +71,7 @@ export class ChatComposerCoordinator<
     let consumed;
     try {
       consumed = editor.consume({
+        isRestoreTargetActive: () => host.isChannelActive(channelKey),
         getRestoreOffsets: (livePrefix) =>
           this.controller.getRestoreOffsets(livePrefix),
         onRestored: (offsets, restoredPrefix) =>

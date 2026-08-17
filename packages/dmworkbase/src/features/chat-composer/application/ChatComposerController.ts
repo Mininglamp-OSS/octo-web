@@ -86,12 +86,12 @@ export class ChatComposerController<TAttachment = unknown> {
     });
   }
 
-  pendingSendCount(): number {
-    return this.ledger.orderedPending().length;
+  pendingSendCount(channelKey?: string): number {
+    return this.ledger.pendingCount(channelKey);
   }
 
-  pendingPreEnqueueCount(): number {
-    return this.ledger.pendingPreEnqueueCount();
+  pendingPreEnqueueCount(channelKey?: string): number {
+    return this.ledger.pendingPreEnqueueCount(channelKey);
   }
 
   pendingSendDrafts(channelKey?: string): PendingSendDraft[] {

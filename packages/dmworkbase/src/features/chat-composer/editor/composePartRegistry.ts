@@ -54,6 +54,8 @@ export interface EditorComposePartExtension<
 > {
   id: string;
   priority?: number;
+  /** Built-in resources may dedupe repeated nodes that share one resource id. */
+  duplicatePolicy?: "reject" | "dedupe";
   /** Cross-instance recovery model. Custom extensions currently support snapshot only. */
   recovery?: "snapshot" | "attachment";
   canCapture: (node: EditorComposeNode) => boolean;
@@ -117,6 +119,7 @@ export class EditorComposePartRegistry {
       const part = this.captureNode(node, context);
       if (part) {
         if (ids.has(part.id)) {
+          if (this.extensionFor(part).duplicatePolicy === "dedupe") return;
           throw new Error(`duplicate editor compose part id: ${part.id}`);
         }
         ids.add(part.id);
@@ -243,17 +246,20 @@ export function registerDefaultEditorComposeParts(
   registry.register({
     id: "attachment",
     recovery: "attachment",
+    duplicatePolicy: "dedupe",
     canCapture: (node) => node.type === "attachment" && !!node.attrs?.id,
     capture: (node, context) => {
       const id = node.attrs?.id;
       if (!id) return undefined;
+      const file = context.attachmentFiles.get(id);
+      if (!file) return undefined;
       return {
         id,
         kind: "attachment",
         extensionId: "attachment",
         placement: "inline",
         node,
-        file: context.attachmentFiles.get(id),
+        file,
         previewUrl: node.attrs?.previewUrl,
       };
     },

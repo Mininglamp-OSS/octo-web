@@ -94,6 +94,8 @@ export interface ConsumeComposeOptions {
     items: TopAttachmentLike[],
     offset: number,
   ) => number;
+  /** Prevent a settled send from restoring into a different active channel. */
+  isRestoreTargetActive?: () => boolean;
   /** Injectable for tests / non-browser environments. */
   revokeObjectURL?: (url: string) => void;
   /**
@@ -200,6 +202,11 @@ export function consumeCompose(
   takeTopAttachments(topIds);
 
   const assertRestorable = () => {
+    if (opts.isRestoreTargetActive && !opts.isRestoreTargetActive()) {
+      throw new ComposeRestoreUnavailableError(
+        "editor is no longer active for the captured channel, compose cannot be restored",
+      );
+    }
     if (editor.isDestroyed()) {
       throw new ComposeRestoreUnavailableError();
     }

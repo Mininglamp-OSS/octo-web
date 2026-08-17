@@ -1,5 +1,6 @@
 import React from "react";
 import { act, render, waitFor } from "@testing-library/react";
+import { Notification } from "@douyinfe/semi-ui";
 import { Node } from "@tiptap/core";
 import {
   createChatSendOutcome,
@@ -176,5 +177,67 @@ describe("ChatComposer extension injection", () => {
       resolveSend?.(createChatSendOutcome({ editorConsumed: true }));
       await sendPromise;
     });
+  });
+
+  it("shows an error when custom editor content cannot be sent", async () => {
+    const extensions = createDefaultChatComposerExtensions();
+    extensions.editor.tiptap.push(
+      Node.create({
+        name: "unsupported",
+        group: "block",
+        atom: true,
+        addAttributes: () => ({ id: { default: "" } }),
+        parseHTML: () => [{ tag: "div[data-unsupported-node]" }],
+        renderHTML: ({ node }) => [
+          "div",
+          { "data-unsupported-node": node.attrs.id },
+        ],
+      }),
+    );
+    extensions.editor.composeParts.register({
+      id: "unsupported",
+      recovery: "snapshot",
+      canCapture: (node) => node.type === "unsupported",
+      capture: (node) => ({
+        id: String(node.attrs?.id),
+        kind: "unsupported",
+        extensionId: "unsupported",
+        node,
+      }),
+      restore: (part) => part.node,
+    });
+    const notify = vi
+      .spyOn(Notification, "error")
+      .mockImplementation(() => undefined as never);
+    const onSend = vi.fn(() => createChatSendOutcome());
+    let inputContext: MessageInputContext | undefined;
+    render(
+      <ChatComposer
+        host={createTestViewHost()}
+        extensions={extensions}
+        onContext={(value) => {
+          inputContext = value;
+        }}
+        onSend={onSend}
+      />,
+    );
+    await waitFor(() => expect(inputContext).toBeDefined());
+
+    let result: ChatComposerSendResult | undefined;
+    await act(async () => {
+      inputContext?.insertContent({
+        type: "unsupported",
+        attrs: { id: "unsupported-1" },
+      });
+      result = await inputContext?.send();
+    });
+
+    expect(result).toMatchObject({
+      kind: "rejected",
+      reason: "unsupported-content",
+    });
+    expect(notify).toHaveBeenCalled();
+    expect(onSend).not.toHaveBeenCalled();
+    notify.mockRestore();
   });
 });

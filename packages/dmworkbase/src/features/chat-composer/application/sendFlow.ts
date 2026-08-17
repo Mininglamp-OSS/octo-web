@@ -310,7 +310,14 @@ export async function settleConsumedCompose(
     } catch (err) {
       console.error(`[MessageInput] compose ${label} failed`, err);
       restoreErrors.push({ error: err, step: label });
-      compose.onRestoreError?.(err, label);
+      try {
+        compose.onRestoreError?.(err, label);
+      } catch (notifyError) {
+        console.error(
+          `[MessageInput] compose ${label} error notification failed`,
+          notifyError,
+        );
+      }
     }
   };
 

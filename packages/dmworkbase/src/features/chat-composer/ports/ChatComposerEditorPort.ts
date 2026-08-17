@@ -15,6 +15,8 @@ export interface ChatComposerRestorePrefix {
 }
 
 export interface ChatComposerConsumeContext {
+  /** Whether this editor still belongs to the channel captured for the send. */
+  isRestoreTargetActive(): boolean;
   getRestoreOffsets(
     livePrefix?: ChatComposerRestorePrefix,
   ): ChatComposerRestoreOffsets;

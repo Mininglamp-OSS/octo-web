@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ChatSendRequest } from "../../domain/types";
 import type { ChatSendExecution } from "../executeChatSendPlan";
+import { buildChatSendPlan } from "../buildChatSendPlan";
+import { executeChatSendPlan } from "../executeChatSendPlan";
 import { settleChatSendExecution } from "../settleChatSendExecution";
 
 function request(
@@ -36,7 +38,7 @@ describe("settleChatSendExecution", () => {
           { id: "b", file: new File(["b"], "b.txt") },
         ],
       }),
-      execution({ enqueuedPartIds: ["a"] }),
+      execution({ enqueuedPartIds: ["top:a"] }),
     );
 
     expect(result).toEqual({
@@ -135,7 +137,7 @@ describe("settleChatSendExecution", () => {
         text: "retry me",
         topFiles: [{ id: "top-1", file: new File(["x"], "x.txt") }],
       }),
-      execution({ enqueuedPartIds: ["top-1"] }),
+      execution({ enqueuedPartIds: ["top:top-1"] }),
     );
 
     expect(result).toMatchObject({
@@ -166,5 +168,27 @@ describe("settleChatSendExecution", () => {
     );
 
     expect(result.restoreSendTarget).toBe(true);
+  });
+
+  it("does not restore editor text after a successful edit", async () => {
+    const current = request({
+      text: "edited text",
+      editorBlocks: [
+        { type: "text", text: "edited text", restoreText: "edited text" },
+      ],
+      sendTarget: { handlerType: 2, replyMessage: "message-to-edit" },
+    });
+    const plan = buildChatSendPlan(current);
+    const completed = await executeChatSendPlan(plan, {
+      execute: async (operation) => ({ enqueuedPartIds: operation.partIds }),
+    });
+
+    expect(plan.operations[0].partIds).toEqual(["editor:0"]);
+    expect(settleChatSendExecution(current, completed)).toEqual({
+      editorConsumed: true,
+      consumedTopIds: [],
+      unsentEditorBlocks: [],
+      restoreSendTarget: false,
+    });
   });
 });

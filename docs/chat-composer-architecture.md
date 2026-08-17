@@ -208,7 +208,8 @@ schema validation
 
 约束：
 
-- part ID 在一个 editor document 内全局唯一，capture 期间不能临时生成新 ID；
+- 自定义 part ID 在一个 editor document 内必须全局唯一；内置附件节点会跳过无 backing file
+  的孤儿节点，并按资源 ID 去重重复节点；
 - payload 在 consume 前必须可 `structuredClone`，handler 仍需做 runtime validation；
 - 自定义 operation 默认不接收 reply target，只有 handler 能正确编码时才显式启用；
 - 当前自定义 part 只支持 snapshot recovery；拥有独立 `File`、object URL 或外部 lease 的扩展，
@@ -239,11 +240,12 @@ secret guard -> Octo RichText -> safe HTML links -> files/images -> plain text
 Keyboard 优先级：
 
 ```text
-IME -> active suggestion -> slash menu -> Alt+Enter -> Enter submit -> Shift+Enter
+IME -> slash menu -> Alt+Enter -> active suggestion -> Enter submit -> Shift+Enter
 ```
 
 语音异步任务绑定启动时的 host、space 和 lifecycle epoch；host/space 变化、取消或卸载后，旧结果
-不得写入新 composer。
+不得写入新 composer。Space setting 请求同时携带 `space_id` 和显式 `X-Space-Id`，确保异步 host
+切换期间 header 不会被当前全局 space 覆盖成另一个空间。
 
 ## 8. Conversation 边界与公共入口
 

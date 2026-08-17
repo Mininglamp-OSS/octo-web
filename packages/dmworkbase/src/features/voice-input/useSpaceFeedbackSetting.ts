@@ -113,7 +113,6 @@ export async function fetchAndApplySpaceSetting(
     if (
       feedbackUrl &&
       setting.voice_input_enabled === 1 &&
-      setting.voice_feedback_notice_acked === 1 &&
       setting.voice_feedback_on === 1
     ) {
       if (VoiceFeedback.shared()) {
@@ -209,8 +208,7 @@ export async function toggleVoiceFeedback(
 
   const feedbackAllowed =
     sharedState.loadedSpaceId === spaceId &&
-    sharedState.spaceSetting?.voice_input_enabled === 1 &&
-    sharedState.spaceSetting?.voice_feedback_notice_acked === 1;
+    sharedState.spaceSetting?.voice_input_enabled === 1;
 
   if (newValue === 0 || !feedbackAllowed) {
     VoiceFeedback.shared()?.disable();

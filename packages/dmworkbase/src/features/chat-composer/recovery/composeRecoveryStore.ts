@@ -27,6 +27,7 @@ export interface ComposeRecoveryStoreOptions<
   T extends ComposeRecoveryStoreRecord
 > {
   maxChannels?: number;
+  /** Soft cap; actively claimed records are never evicted and may exceed it temporarily. */
   maxRecordsPerChannel?: number;
   ttlMs?: number;
   now?: () => number;

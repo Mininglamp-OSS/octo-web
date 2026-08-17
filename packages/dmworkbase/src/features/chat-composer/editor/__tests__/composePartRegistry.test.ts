@@ -6,7 +6,8 @@ import {
 
 describe("EditorComposePartRegistry", () => {
   it("captures attachment nodes in document order", () => {
-    const file = new File(["x"], "image.png", { type: "image/png" });
+    const fileA = new File(["a"], "a.png", { type: "image/png" });
+    const fileB = new File(["b"], "b.png", { type: "image/png" });
     const registry = createDefaultEditorComposePartRegistry();
     const parts = registry.capture(
       {
@@ -24,15 +25,53 @@ describe("EditorComposePartRegistry", () => {
           },
         ],
       },
-      { attachmentFiles: new Map([["a", file]]) },
+      {
+        attachmentFiles: new Map([
+          ["a", fileA],
+          ["b", fileB],
+        ]),
+      },
     );
 
     expect(parts.map(({ id }) => id)).toEqual(["a", "b"]);
     expect(parts[0]).toMatchObject({
       kind: "attachment",
-      file,
+      file: fileA,
       previewUrl: "blob:a",
     });
+  });
+
+  it("skips attachment nodes without a backing File", () => {
+    const registry = createDefaultEditorComposePartRegistry();
+
+    expect(
+      registry.capture(
+        {
+          type: "doc",
+          content: [{ type: "attachment", attrs: { id: "orphan" } }],
+        },
+        { attachmentFiles: new Map() },
+      ),
+    ).toEqual([]);
+  });
+
+  it("deduplicates repeated built-in attachment nodes by resource id", () => {
+    const registry = createDefaultEditorComposePartRegistry();
+    const file = new File(["x"], "image.png", { type: "image/png" });
+
+    const parts = registry.capture(
+      {
+        type: "doc",
+        content: [
+          { type: "attachment", attrs: { id: "same" } },
+          { type: "attachment", attrs: { id: "same" } },
+        ],
+      },
+      { attachmentFiles: new Map([["same", file]]) },
+    );
+
+    expect(parts).toHaveLength(1);
+    expect(parts[0]).toMatchObject({ id: "same", file });
   });
 
   it("supports a higher-priority custom node extension", () => {

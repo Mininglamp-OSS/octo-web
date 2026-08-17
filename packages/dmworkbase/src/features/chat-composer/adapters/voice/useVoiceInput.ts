@@ -121,6 +121,7 @@ export default function useVoiceInput(
   const voiceFeedbackOnRef = useRef(0);
 
   const mountedRef = useRef(true);
+  const subscribedVoiceHostRef = useRef<ChatComposerVoiceHost | null>(null);
   const lifecycleEpochRef = useRef(0);
   const settingGenerationRef = useRef(0);
   const localProbeGenerationRef = useRef(0);
@@ -192,7 +193,6 @@ export default function useVoiceInput(
           voiceFeedbackOnRef.current =
             state.loadedSpaceId === spaceId &&
             state.spaceSetting?.voice_input_enabled === 1 &&
-            state.spaceSetting?.voice_feedback_notice_acked === 1 &&
             state.spaceSetting?.voice_feedback_on === 1
               ? 1
               : 0;
@@ -233,6 +233,18 @@ export default function useVoiceInput(
   }, [reconcileSpaceSetting]);
 
   useEffect(() => {
+    const previousHost = subscribedVoiceHostRef.current;
+    subscribedVoiceHostRef.current = voiceHost;
+    if (previousHost && previousHost !== voiceHost) {
+      const previousSpaceId = voiceContextSpaceIdRef.current;
+      lifecycleEpochRef.current += 1;
+      abortActiveOperation();
+      if (previousSpaceId) {
+        VoiceService.shared.clearVoiceContextCache(previousSpaceId);
+      }
+      reconcileSpaceSetting();
+    }
+
     const handleSpaceLifecycleChange = () => {
       const previousSpaceId = voiceContextSpaceIdRef.current;
       lifecycleEpochRef.current += 1;
@@ -251,7 +263,6 @@ export default function useVoiceInput(
       reconcileSpaceSetting();
     };
 
-    handleSpaceLifecycleChange();
     return voiceHost.subscribeSpaceChange(handleSpaceLifecycleChange);
   }, [voiceHost, abortActiveOperation, reconcileSpaceSetting]);
 
@@ -262,7 +273,6 @@ export default function useVoiceInput(
       voiceFeedbackOnRef.current =
         state.loadedSpaceId === spaceId &&
         state.spaceSetting?.voice_input_enabled === 1 &&
-        state.spaceSetting?.voice_feedback_notice_acked === 1 &&
         state.spaceSetting?.voice_feedback_on === 1
           ? 1
           : 0;
@@ -455,7 +465,6 @@ export default function useVoiceInput(
             return (
               state.loadedSpaceId === operation.spaceId &&
               state.spaceSetting?.voice_input_enabled === 1 &&
-              state.spaceSetting?.voice_feedback_notice_acked === 1 &&
               state.spaceSetting?.voice_feedback_on === 1
             );
           };

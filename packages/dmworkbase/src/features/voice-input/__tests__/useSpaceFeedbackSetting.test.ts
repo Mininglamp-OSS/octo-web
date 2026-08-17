@@ -80,7 +80,7 @@ describe("useSpaceFeedbackSetting helpers", () => {
     expect(mockVoiceFeedbackInit).not.toHaveBeenCalled();
   });
 
-  it("does not enable feedback before the notice is acknowledged", async () => {
+  it("preserves enabled feedback before the notice is acknowledged", async () => {
     mockGetSpaceSetting.mockResolvedValue({
       voice_input_enabled: 1,
       voice_feedback_on: 1,
@@ -89,10 +89,10 @@ describe("useSpaceFeedbackSetting helpers", () => {
 
     await fetchAndApplySpaceSetting("space-1", "https://fb.test", () => true);
 
-    expect(mockVoiceFeedbackInit).not.toHaveBeenCalled();
+    expect(mockVoiceFeedbackInit).toHaveBeenCalledWith("https://fb.test");
   });
 
-  it("does not enable a manual feedback toggle before acknowledgement", async () => {
+  it("preserves a manual feedback toggle before acknowledgement", async () => {
     const enable = vi.fn();
     const disable = vi.fn();
     mockVoiceFeedbackShared.mockReturnValue({ enable, disable });
@@ -108,9 +108,9 @@ describe("useSpaceFeedbackSetting helpers", () => {
 
     await toggleVoiceFeedback("space-1", 1, "https://fb.test");
 
-    expect(enable).not.toHaveBeenCalled();
+    expect(enable).toHaveBeenCalledWith("https://fb.test");
     expect(mockVoiceFeedbackInit).not.toHaveBeenCalled();
-    expect(disable).toHaveBeenCalledOnce();
+    expect(disable).not.toHaveBeenCalled();
   });
 
   it("deduplicates concurrent loads while the existing space request is active", async () => {

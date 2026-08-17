@@ -1813,7 +1813,11 @@ export class Conversation
   }
 
   private pendingPreEnqueueCount(): number {
-    return this.messageInputContext()?.pendingPreEnqueueCount?.() ?? 0;
+    return (
+      this.messageInputContext()?.pendingPreEnqueueCount?.(
+        this.composeRecoveryKey(),
+      ) ?? 0
+    );
   }
 
   private pendingSendDrafts(channelKey?: string): PendingSendDraft[] {
@@ -1900,40 +1904,42 @@ export class Conversation
   ) {
     const { channel, channelKey, vm } = context;
     const viewport = document.getElementById(vm.messageContainerId);
+    const remoteExtra = vm.currentConversation?.remoteExtra;
     const conversationLastMessageSeq = vm.conversationLastMessageSeq();
     const lastVisiableMessage = this.visiblePersistentMessage(
       viewport,
       true,
       vm
     );
-    let keepMessageSeq = 0;
-    let keepOffsetY = 0;
-    if (
-      conversationLastMessageSeq > 0 &&
-      lastVisiableMessage &&
-      lastVisiableMessage.messageSeq >= conversationLastMessageSeq
-    ) {
-      keepMessageSeq = 0;
-    } else {
-      const firstVisiableMessage = this.visiblePersistentMessage(
-        viewport,
-        false,
-        vm
-      );
-      const firstVisibleElement = firstVisiableMessage
-        ? this.getMessageElement(firstVisiableMessage, vm)
-        : null;
-      keepMessageSeq = firstVisiableMessage?.messageSeq || 0;
-      keepOffsetY =
-        viewport && firstVisibleElement
+    let keepMessageSeq = remoteExtra?.keepMessageSeq ?? 0;
+    let keepOffsetY = remoteExtra?.keepOffsetY ?? 0;
+    if (viewport) {
+      if (
+        conversationLastMessageSeq > 0 &&
+        lastVisiableMessage &&
+        lastVisiableMessage.messageSeq >= conversationLastMessageSeq
+      ) {
+        keepMessageSeq = 0;
+        keepOffsetY = 0;
+      } else {
+        const firstVisiableMessage = this.visiblePersistentMessage(
+          viewport,
+          false,
+          vm
+        );
+        const firstVisibleElement = firstVisiableMessage
+          ? this.getMessageElement(firstVisiableMessage, vm)
+          : null;
+        keepMessageSeq = firstVisiableMessage?.messageSeq || 0;
+        keepOffsetY = firstVisibleElement
           ? getScrollAnchorOffsetY({
               scrollTop: viewport.scrollTop,
               anchorOffsetTop: firstVisibleElement.offsetTop,
             })
           : 0;
+      }
     }
 
-    const remoteExtra = vm.currentConversation?.remoteExtra;
     if (remoteExtra) {
       remoteExtra.keepMessageSeq = keepMessageSeq;
       remoteExtra.keepOffsetY = keepOffsetY;

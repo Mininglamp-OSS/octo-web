@@ -11,7 +11,7 @@ import {
 import type { ChatSendExecution } from "./executeChatSendPlan";
 
 function topPartId(id: string, index: number): string {
-  return id || `top:${index}`;
+  return `top:${id || index}`;
 }
 
 function editorPartId(index: number): string {

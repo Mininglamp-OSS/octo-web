@@ -628,6 +628,23 @@ describe("runSendWithConsumedCompose — step isolation (#1280 review)", () => {
     ]);
   });
 
+  it("keeps restoring when the restore-error notifier throws", async () => {
+    const compose = makeCompose({ throwOn: "restoreTopAttachments" });
+    compose.onRestoreError = vi.fn(() => {
+      throw new Error("toast failed");
+    });
+
+    await expect(
+      runSendWithConsumedCompose(
+        vi.fn().mockResolvedValue(outcome()),
+        ids(["t1"], ["e1"]),
+        compose,
+      ),
+    ).resolves.toBe(false);
+
+    expect(compose.calls).toEqual(["restoreTopAttachments", "restoreEditor"]);
+  });
+
   it("never rejects, so the fire-and-forget Enter path cannot produce an unhandled rejection", async () => {
     const compose = makeCompose({ throwOn: "restoreEditor" });
     await expect(

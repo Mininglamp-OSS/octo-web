@@ -69,7 +69,7 @@ function editorPartId(index: number): string {
 }
 
 function topPartId(attachment: AttachmentFile, index: number): string {
-  return attachment.id || `top:${index}`;
+  return `top:${attachment.id || index}`;
 }
 
 function isNonEmptyText(block: EditorContentBlock): boolean {
@@ -79,9 +79,13 @@ function isNonEmptyText(block: EditorContentBlock): boolean {
 function buildEditOperation<TMessage>(
   request: ChatSendRequest<TMessage>
 ): ChatSendOperation<TMessage> {
+  const editorPartIds = (request.editorBlocks ?? []).flatMap((block, index) =>
+    isNonEmptyText(block) ? [editorPartId(index)] : [],
+  );
   return {
     kind: "edit_text",
-    partIds: [FALLBACK_TEXT_PART_ID],
+    partIds:
+      editorPartIds.length > 0 ? editorPartIds : [FALLBACK_TEXT_PART_ID],
     text: typeof request.text === "string" ? request.text : "",
     mention: request.mention,
     sendTarget: request.sendTarget,

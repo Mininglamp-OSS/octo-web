@@ -109,13 +109,16 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
     const enqueued = new Set(attempt.enqueuedPartIds);
     let changed = false;
     partIds.forEach((partId) => {
-      if (!expected.has(partId) || enqueued.has(partId)) return;
+      if (typeof partId !== "string" || partId.length === 0) return;
+      expected.add(partId);
+      if (enqueued.has(partId)) return;
       enqueued.add(partId);
       changed = true;
     });
     if (!changed) return false;
     this.attempts.set(attemptId, {
       ...attempt,
+      expectedPartIds: [...expected],
       enqueuedPartIds: [...enqueued],
     });
     return true;
@@ -139,10 +142,12 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
 
   orderedPreEnqueue(): ComposeAttempt<TAttachment>[] {
     return this.orderedPending().filter(
-      (attempt) =>
-        attempt.expectedPartIds.length === 0 ||
-        attempt.enqueuedPartIds.length < attempt.expectedPartIds.length,
+      (attempt) => attempt.enqueuedPartIds.length === 0,
     );
+  }
+
+  pendingCount(channelKey?: string): number {
+    return this.attemptsForChannel(this.orderedPending(), channelKey).length;
   }
 
   pendingDraftText(channelKey?: string): string {
@@ -170,8 +175,8 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
     );
   }
 
-  pendingPreEnqueueCount(): number {
-    return this.orderedPreEnqueue().length;
+  pendingPreEnqueueCount(channelKey?: string): number {
+    return this.attemptsForChannel(this.orderedPreEnqueue(), channelKey).length;
   }
 
   private createUniqueId(): string {

@@ -411,7 +411,6 @@ import {
   parseSendMentionText,
   serializeEditorTextNodeForSend,
   serializeMentionMarker,
-  stripTrustMark,
   parseDraftToContent,
   parseConsumedTextToContent,
 } from "../adapters/tiptap/mentionSendParse";
@@ -471,9 +470,9 @@ export interface MessageInputContext {
    * This covers both pre-enqueue and post-enqueue work so draft persistence and
    * the visible pending preview retain each compose until `onSend` settles.
    */
-  pendingSendCount: () => number;
+  pendingSendCount: (channelKey?: string) => number;
   /** Composes that have been consumed but do not have a local bubble yet. */
-  pendingPreEnqueueCount: () => number;
+  pendingPreEnqueueCount: (channelKey?: string) => number;
   /** Attempt-owned drafts of all unsettled composes, including empty drafts. */
   pendingSendDrafts: (channelKey?: string) => PendingSendDraft[];
   /** Attempt-owned drafts that have not produced all local bubbles yet. */
@@ -487,18 +486,16 @@ export interface MessageInputContext {
 
 // `trusted` is set on the send path so node-origin broadcast sentinels are
 // tagged with MENTION_TRUST_MARK (text-origin grammar is neutralized). The
-// draft/read path (`text()`) leaves it false → canonical, mark-free markers
-// that round-trip back into mention nodes on restore (octo-web#330).
+// draft/read path (`text()`) leaves mention markers untrusted while still
+// serializing safe link marks to Markdown so drafts retain their hrefs.
 function extractMentionsFromEditor(editor: any, trusted = false): string {
   const json = editor.getJSON();
   let result = "";
 
   function traverse(node: any) {
     if (node.type === "text") {
-      const serialized = trusted
-        ? serializeEditorTextNodeForSend(node)
-        : stripTrustMark(node.text || "");
-      if (trusted && serialized.startsWith("[")) {
+      const serialized = serializeEditorTextNodeForSend(node);
+      if (serialized.startsWith("[")) {
         result = escapeTrailingMarkdownImageBang(result);
       }
       result += serialized;
@@ -728,9 +725,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             mentionActiveRef.current = active;
           },
           {
-            onOpened: () => props.host.track("input_mention_opened"),
+            onOpened: () => hostRef.current.track("input_mention_opened"),
             onAiSelected: () =>
-              props.host.track("input_mention_ai_selected"),
+              hostRef.current.track("input_mention_ai_selected"),
           },
         ),
         renderLabel({ options, node }) {
@@ -860,7 +857,15 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   // source: 'upload' = 通过上传按钮选择的文件（放在顶部附件区）
   const addAttachment = useCallback(
     async (files: File[], source: "paste" | "upload" = "upload") => {
+      const lifecycle = pasteLifecycleRef.current;
+      const isAttachmentTargetActive = () =>
+        composerMountedRef.current &&
+        pasteLifecycleRef.current === lifecycle &&
+        !!editor &&
+        !editor.isDestroyed;
+
       for (const file of files) {
+        if (!isAttachmentTargetActive()) return;
         const id = createAttachmentId(file);
 
         // 判断是否为粘贴的图片（只有粘贴的图片才放入编辑器）
@@ -893,6 +898,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             previewUrl = URL.createObjectURL(file);
           } else if (isVideoFile(file)) {
             previewUrl = await generateVideoCover(file);
+            if (!isAttachmentTargetActive()) return;
           }
 
           const item: TopAttachmentItem = {
@@ -909,7 +915,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       }
 
       // 插入附件后切换到多行模式
-      setIsMultiLine(true);
+      if (isAttachmentTargetActive()) setIsMultiLine(true);
     },
     [attachmentStore, editor]
   );
@@ -926,19 +932,21 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       event.preventDefault();
 
       const addPastedAttachments = props.onAddPendingAttachments || addAttachment;
-      if (decision.kind === "files") {
-        Promise.resolve(addPastedAttachments(decision.files, "paste")).catch(
-          (err) => console.error("[MessageInput] pasted files failed", err),
-        );
-        return true;
-      }
-
-      const beforePasteContent = JSON.stringify(editor.getJSON());
       const pasteLifecycle = pasteLifecycleRef.current;
       const isPasteActive = () =>
         composerMountedRef.current &&
         pasteLifecycleRef.current === pasteLifecycle &&
         !editor.isDestroyed;
+      if (decision.kind === "files") {
+        if (isPasteActive()) {
+          Promise.resolve(addPastedAttachments(decision.files, "paste")).catch(
+            (err) => console.error("[MessageInput] pasted files failed", err),
+          );
+        }
+        return true;
+      }
+
+      const beforePasteContent = JSON.stringify(editor.getJSON());
       restoreOctoRichTextClipboardToEditor(
         decision.payload,
         editor,
@@ -1260,6 +1268,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       };
     } catch (err) {
       console.error("[MessageInput] editor compose part is not sendable", err);
+      Notification.error({
+        className: "wk-octo-notification",
+        content: t("base.conversation.message.sendFailed"),
+      });
       return rejectChatComposerSend("unsupported-content");
     }
     const pendingAttachmentPreviews: PendingSendAttachmentPreview[] = [
@@ -1326,15 +1338,11 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
           isChannelActive: (channelKey) => {
             return hostRef.current.getChannel().key === channelKey;
           },
-          captureSendTarget: () => props.onCaptureSendTarget?.(),
-          captureSendDraft: () => props.onCaptureSendDraft?.(),
           getExpanded: () => expanded,
           setExpanded: (nextExpanded) => {
             setExpanded(nextExpanded);
             props.onExpandChange?.(nextExpanded);
           },
-          send: props.onSend,
-          onSendSettled: props.onSendSettled,
           handoffRecovery: props.onComposeRecovery,
           notifyRestoreError: (err, step) => {
             console.error(`[MessageInput] compose ${step} failed`, err);
@@ -1352,6 +1360,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             consumeCompose({
               composePartRegistry: extensions.editor.composeParts,
               captured: capturedEditorCompose,
+              isRestoreTargetActive: context.isRestoreTargetActive,
               editor: {
                 getJSON: () => editor.getJSON() as ComposeDoc,
                 getRestoredBlockMarkerIds: () =>
@@ -1452,8 +1461,10 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         text: () => (editor ? extractMentionsFromEditor(editor) : undefined),
         focus: () => editor?.commands.focus(),
         send: () => invokeReadySend(sendRef.current),
-        pendingSendCount: () => controller.pendingSendCount(),
-        pendingPreEnqueueCount: () => controller.pendingPreEnqueueCount(),
+        pendingSendCount: (channelKey) =>
+          controller.pendingSendCount(channelKey),
+        pendingPreEnqueueCount: (channelKey) =>
+          controller.pendingPreEnqueueCount(channelKey),
         pendingSendDrafts: (channelKey) =>
           controller.pendingSendDrafts(channelKey),
         pendingPreEnqueueDrafts: (channelKey) =>

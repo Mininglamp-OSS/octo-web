@@ -205,6 +205,20 @@ afterEach(() => {
 });
 
 describe("useVoiceInput space lifecycle", () => {
+  it("does not tear down shared voice feedback on a plain mount", async () => {
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(
+        <Probe host={current.host} onTranscribed={() => undefined} />,
+        container
+      );
+    });
+
+    expect(mocks.voiceFeedbackDestroy).not.toHaveBeenCalled();
+    expect(mocks.resetSharedSpaceSetting).not.toHaveBeenCalled();
+  });
+
   it("reconciles the replacement host immediately", async () => {
     const first = createHost("space-a");
     const second = createHost("space-b");
@@ -374,7 +388,7 @@ describe("useVoiceInput space lifecycle", () => {
     expect(latest.isTranscribing).toBe(false);
   });
 
-  it("stops feedback after an unacknowledged setting notification", async () => {
+  it("preserves legacy feedback after an unacknowledged setting notification", async () => {
     const onTranscribeResult = vi.fn();
     let resolveVoiceContext!: (value: { has_context: boolean }) => void;
     mocks.voiceFeedbackShared = { onTranscribeResult };
@@ -431,7 +445,7 @@ describe("useVoiceInput space lifecycle", () => {
     });
 
     expect(mocks.transcribe).toHaveBeenCalledOnce();
-    expect(mocks.transcribe.mock.calls[0][8]).toBe(false);
-    expect(onTranscribeResult).not.toHaveBeenCalled();
+    expect(mocks.transcribe.mock.calls[0][8]).toBe(true);
+    expect(onTranscribeResult).toHaveBeenCalled();
   });
 });

@@ -92,8 +92,16 @@ describe("MessageInput clipboard integration", () => {
       html: '<p><a href="https://example.com/docs">Example</a> README.md</p>',
     });
     await waitFor(() =>
-      expect(inputContext?.text()).toBe("Example README.md"),
+      expect(inputContext?.text()).toBe(
+        "[Example](https://example.com/docs) README.md",
+      ),
     );
+
+    const draft = inputContext?.text() ?? "";
+    act(() => {
+      inputContext?.clear();
+      inputContext?.restoreDraft(draft);
+    });
 
     await act(async () => {
       await inputContext?.send();
@@ -129,7 +137,11 @@ describe("MessageInput clipboard integration", () => {
       plain: "!Example",
       html: '<p>!<a href="https://example.com/pixel.png">Example</a></p>',
     });
-    await waitFor(() => expect(inputContext?.text()).toBe("!Example"));
+    await waitFor(() =>
+      expect(inputContext?.text()).toBe(
+        "\\![Example](https://example.com/pixel.png)",
+      ),
+    );
 
     await act(async () => {
       await inputContext?.send();

@@ -63,7 +63,7 @@ describe("buildChatSendPlan", () => {
       operations: [
         {
           kind: "send_rich_text",
-          partIds: ["top-image", "editor:0", "editor:1"],
+          partIds: ["top:top-image", "editor:0", "editor:1"],
           blocks: [
             { type: "image", id: "top-image" },
             { type: "text", text: "caption" },
@@ -95,7 +95,7 @@ describe("buildChatSendPlan", () => {
     expect(plan.operations.some(({ kind }) => kind === "send_media")).toBe(
       false
     );
-    expect(plan.operations[0].partIds).toContain("top-image");
+    expect(plan.operations[0].partIds).toContain("top:top-image");
   });
 
   it("aggregates a top image with editor text even without an editor image", () => {
@@ -113,7 +113,7 @@ describe("buildChatSendPlan", () => {
     expect(plan.operations).toHaveLength(1);
     expect(plan.operations[0]).toMatchObject({
       kind: "send_rich_text",
-      partIds: ["top-image", "editor:0"],
+      partIds: ["top:top-image", "editor:0"],
       sendTarget,
       blocks: [
         { type: "image", id: "top-image" },
@@ -142,7 +142,7 @@ describe("buildChatSendPlan", () => {
     expect(plan.operations).toHaveLength(2);
     expect(plan.operations[0]).toMatchObject({
       kind: "send_media",
-      partIds: ["top-file"],
+      partIds: ["top:top-file"],
     });
     expect(plan.operations[0].sendTarget).toBeUndefined();
     expect(plan.operations[1]).toMatchObject({
@@ -183,7 +183,7 @@ describe("buildChatSendPlan", () => {
       "send_media",
     ]);
     expect(plan.operations.map(({ partIds }) => partIds[0])).toEqual([
-      "top-file",
+      "top:top-file",
       "editor:0",
       "editor:1",
       "editor:2",
@@ -299,6 +299,7 @@ describe("buildChatSendPlan", () => {
         mention,
         topFiles: [attachment("top-file", "file.pdf", "application/pdf")],
         editorBlocks: [
+          { type: "text", text: "edited", restoreText: "edited", mention },
           { type: "image", id: "image", file: file("image.png", "image/png") },
         ],
         sendTarget,
@@ -308,7 +309,7 @@ describe("buildChatSendPlan", () => {
     expect(plan.operations).toEqual([
       {
         kind: "edit_text",
-        partIds: ["text:0"],
+        partIds: ["editor:0"],
         text: "edited",
         mention,
         sendTarget,

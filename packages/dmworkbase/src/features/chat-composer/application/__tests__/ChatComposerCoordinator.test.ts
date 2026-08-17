@@ -545,6 +545,79 @@ describe("ChatComposerCoordinator", () => {
     expect(settled).toEqual(["channel-x:2", "channel-x:2"]);
   });
 
+  it("hands failed content to recovery instead of restoring into a switched channel", async () => {
+    const restoreCurrentEditor = vi.fn();
+    const handoffRecovery = vi.fn(() => true);
+    const handoffEditorRecovery = vi.fn();
+    let activeChannelKey = "channel-x:2";
+    const currentHost = host({
+      captureSendTransaction: () => {
+        const channelKey = activeChannelKey;
+        return {
+          channelKey,
+          captureSendTarget: () => undefined,
+          captureSendDraft: () => undefined,
+          send: async () => {
+            activeChannelKey = "channel-y:2";
+            return createChatSendOutcome();
+          },
+        };
+      },
+      isChannelActive: (channelKey) => channelKey === activeChannelKey,
+      handoffRecovery,
+    });
+    const editor: ChatComposerEditorPort = {
+      consume: (context) => {
+        const value = consumed(context, {
+          recovery: {
+            snapshot: {
+              type: "doc",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "channel x draft" }],
+                },
+              ],
+            },
+            editorAttachments: [],
+            editorObjectUrls: [],
+            topAttachments: [],
+          },
+        });
+        value.compose.restoreEditor = () => {
+          context.onRestoreCompose();
+          if (!context.isRestoreTargetActive()) {
+            throw new ComposeRestoreUnavailableError();
+          }
+          restoreCurrentEditor();
+        };
+        return value;
+      },
+      handoffRecovery: handoffEditorRecovery,
+    };
+
+    await new ChatComposerCoordinator(new ChatComposerController()).submit(
+      {
+        text: "channel x draft",
+        topFiles: [],
+        editorBlocks: [],
+        pendingAttachments: [],
+      },
+      { host: currentHost, editor },
+    );
+
+    expect(restoreCurrentEditor).not.toHaveBeenCalled();
+    expect(handoffRecovery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelKey: "channel-x:2",
+        snapshot: expect.objectContaining({ type: "doc" }),
+      }),
+    );
+    expect(handoffEditorRecovery).toHaveBeenCalledWith(
+      handoffRecovery.mock.calls[0][0],
+    );
+  });
+
   it("keeps consecutive queued failures before the live draft", async () => {
     const controller = new ChatComposerController();
     const coordinator = new ChatComposerCoordinator(controller);

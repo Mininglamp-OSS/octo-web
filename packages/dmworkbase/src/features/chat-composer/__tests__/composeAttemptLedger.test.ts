@@ -108,10 +108,10 @@ describe("ComposeAttemptLedger", () => {
     expect(state.markPartsEnqueued(attempt.id, ["a"])).toBe(true);
     expect(state.markPartsEnqueued(attempt.id, ["a"])).toBe(false);
     expect(state.markPartsEnqueued(attempt.id, ["b", "c"])).toBe(true);
-    expect(state.markPartsEnqueued(attempt.id, ["unknown"])).toBe(false);
+    expect(state.markPartsEnqueued(attempt.id, ["late"])).toBe(true);
     expect(state.orderedPending()[0]).toMatchObject({
-      expectedPartIds: ["a", "b", "c"],
-      enqueuedPartIds: ["a", "b", "c"],
+      expectedPartIds: ["a", "b", "c", "late"],
+      enqueuedPartIds: ["a", "b", "c", "late"],
     });
     expect(state.pendingPreEnqueueCount()).toBe(0);
   });
@@ -123,6 +123,36 @@ describe("ComposeAttemptLedger", () => {
     state.markPartsEnqueued(attempt.id, ["a", "b"]);
     state.setExpectedPartIds(attempt.id, ["c"]);
     expect(state.orderedPending()[0].expectedPartIds).toEqual(["c", "a", "b"]);
+  });
+
+  it("records enqueue progress even when a host omitted expected-part setup", () => {
+    const state = ledger();
+    const attempt = state.capture({ previewText: "mixed", draftText: "mixed" });
+
+    expect(state.markPartsEnqueued(attempt.id, ["a", "b"])).toBe(true);
+    expect(state.orderedPending()[0]).toMatchObject({
+      expectedPartIds: ["a", "b"],
+      enqueuedPartIds: ["a", "b"],
+    });
+  });
+
+  it("does not persist a full provisional draft after any part enqueues", () => {
+    const state = ledger();
+    const attempt = state.capture({ previewText: "mixed", draftText: "mixed" });
+    state.setExpectedPartIds(attempt.id, ["a", "b"]);
+    state.markPartsEnqueued(attempt.id, ["a"]);
+
+    expect(state.pendingDraftText()).toBe("");
+    expect(state.pendingPreEnqueueCount()).toBe(0);
+  });
+
+  it("filters pending counts by channel", () => {
+    const state = ledger();
+    state.capture({ channelKey: "a:2", previewText: "A", draftText: "A" });
+    state.capture({ channelKey: "b:2", previewText: "B", draftText: "B" });
+
+    expect(state.pendingCount("a:2")).toBe(1);
+    expect(state.pendingPreEnqueueCount("b:2")).toBe(1);
   });
 
   it("persists only drafts that have not produced all local bubbles", () => {

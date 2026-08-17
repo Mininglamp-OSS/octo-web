@@ -201,6 +201,7 @@ function harness(content?: unknown, top: TopAttachmentLike[] = []): Harness {
 function consume(
   h: Harness,
   composePartRegistry = createDefaultEditorComposePartRegistry(),
+  isRestoreTargetActive?: () => boolean,
 ) {
   // The component resets the offsets on every consume, because consuming clears
   // the editor and removes this send's attachments.
@@ -237,6 +238,7 @@ function consume(
       ];
       return fresh.length;
     },
+    isRestoreTargetActive,
     revokeObjectURL: (url) => h.revoked.push(url),
     parseTextToNodes: (value) =>
       parseConsumedTextToContent(value).content as ComposeDoc["content"] as never,
@@ -394,6 +396,8 @@ describe("consumeCompose — the composer is emptied synchronously", () => {
         para(attachment("img-2", "blob:2"), text("b")),
       ),
     );
+    h.files.set("img-1", new File(["1"], "1.png", { type: "image/png" }));
+    h.files.set("img-2", new File(["2"], "2.png", { type: "image/png" }));
 
     const handle = consume(h);
 
@@ -588,6 +592,35 @@ describe("consumeCompose — partial pasted-attachment failure", () => {
 });
 
 describe("consumeCompose — the editor is gone (channel switch mid-flight)", () => {
+  it("does not restore into a live editor after its channel becomes inactive", async () => {
+    const h = harness(doc(para(text("captured channel"))), [
+      { id: "t1", previewUrl: "blob:t1" },
+    ]);
+    let active = true;
+    const handle = consume(h, undefined, () => active);
+
+    active = false;
+
+    const ok = await runSendWithConsumedCompose(
+      () => outcome(),
+      handle.ids,
+      handle.compose,
+    );
+
+    expect(ok).toBe(false);
+    expect(h.errors.map(({ step }) => step)).toEqual([
+      "restoreTopAttachments",
+      "restoreEditor",
+    ]);
+    expect(
+      h.errors.every(
+        ({ err }) => err instanceof ComposeRestoreUnavailableError,
+      ),
+    ).toBe(true);
+    expect(h.editor.getText()).toBe("");
+    expect(h.top).toEqual([]);
+  });
+
   it("reports an unrestorable compose instead of silently dropping it", async () => {
     const h = harness(doc(para(text("lost?"))), [
       { id: "t1", previewUrl: "blob:t1" },
