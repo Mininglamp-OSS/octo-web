@@ -95,7 +95,8 @@ UI -> Ports <- Conversation Adapter -> SDK/Application Services
 5. 将 attempt 加入 controller 和串行队列。
 
 因此用户可以在上一条消息上传或等待 ack 时继续输入。后续发送捕获独立快照，不读取前一个
-attempt 的可变状态。
+attempt 的可变状态。若 editor consume 在 attempt 入队前失败，transaction abort 必须释放已捕获的
+draft revision lease；入队后的 lease 则统一在 settlement 中释放。
 
 ### 3.3 Plan、Transport 与 Settle
 

@@ -47,6 +47,7 @@ interface TestHostOverrides
   channelKey?: () => string;
   captureSendTarget?: ChatComposerSendTransaction["captureSendTarget"];
   captureSendDraft?: ChatComposerSendTransaction["captureSendDraft"];
+  onCaptureAborted?: ChatComposerSendTransaction["onCaptureAborted"];
   send?: ChatComposerSendTransaction["send"];
   onSendSettled?: ChatComposerSendTransaction["onSendSettled"];
 }
@@ -57,6 +58,7 @@ function host(overrides: TestHostOverrides = {}): ChatComposerHostPort {
     channelKey,
     captureSendTarget,
     captureSendDraft,
+    onCaptureAborted,
     send,
     onSendSettled,
     ...hostOverrides
@@ -68,6 +70,7 @@ function host(overrides: TestHostOverrides = {}): ChatComposerHostPort {
         channelKey: channelKey?.() ?? "channel-1:2",
         captureSendTarget: captureSendTarget ?? (() => undefined),
         captureSendDraft: captureSendDraft ?? (() => undefined),
+        onCaptureAborted,
         send:
           send ??
           (async () => createChatSendOutcome({ editorConsumed: true })),
@@ -810,7 +813,13 @@ describe("ChatComposerCoordinator", () => {
 
   it("restores a captured target when editor consumption throws", async () => {
     const restoreTarget = vi.fn();
-    const captureSendDraft = vi.fn();
+    const sendDraft = {
+      revision: 7,
+      remoteDraft: "remote",
+      protectedPendingAttemptIds: [] as string[],
+    };
+    const captureSendDraft = vi.fn(() => sendDraft);
+    const onCaptureAborted = vi.fn();
     const controller = new ChatComposerController();
     const coordinator = new ChatComposerCoordinator(controller);
     const editor: ChatComposerEditorPort = {
@@ -835,6 +844,7 @@ describe("ChatComposerCoordinator", () => {
               restore: restoreTarget,
             }),
             captureSendDraft,
+            onCaptureAborted,
           }),
           editor,
         }
@@ -843,6 +853,8 @@ describe("ChatComposerCoordinator", () => {
 
     expect(restoreTarget).toHaveBeenCalledOnce();
     expect(captureSendDraft).toHaveBeenCalledOnce();
+    expect(onCaptureAborted).toHaveBeenCalledOnce();
+    expect(onCaptureAborted).toHaveBeenCalledWith(sendDraft);
     expect(controller.pendingSendCount()).toBe(0);
   });
 });

@@ -12,6 +12,9 @@ export interface ChatComposerSendTransaction<TMessage = unknown> {
   channelKey: string;
   captureSendTarget(): SendTargetSnapshot<TMessage> | undefined;
   captureSendDraft(): Omit<SendDraftSnapshot, "draftText"> | undefined;
+  onCaptureAborted?(
+    sendDraft: Omit<SendDraftSnapshot, "draftText"> | undefined,
+  ): void;
   send(
     request: ChatSendRequest<TMessage>,
   ): ChatSendOutcome | Promise<ChatSendOutcome>;

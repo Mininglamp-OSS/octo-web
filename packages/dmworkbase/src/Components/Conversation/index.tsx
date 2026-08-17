@@ -603,6 +603,13 @@ export class Conversation
             ],
           };
         },
+        onCaptureAborted: (sendDraft) => {
+          if (!sendDraft) return;
+          composeRecoveryStore.releaseDraftRevision(
+            channelKey,
+            sendDraft.revision,
+          );
+        },
         send,
         onSendSettled: async (settlement) => {
           try {

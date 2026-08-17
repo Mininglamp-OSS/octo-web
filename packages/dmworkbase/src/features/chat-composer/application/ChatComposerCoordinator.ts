@@ -91,7 +91,11 @@ export class ChatComposerCoordinator<
       // the editor, so later queued failures must start a fresh restore prefix.
       this.controller.resetRestoreOffsets();
     } catch (error) {
-      if (host.isChannelActive(channelKey)) sendTarget?.restore();
+      try {
+        if (host.isChannelActive(channelKey)) sendTarget?.restore();
+      } finally {
+        transaction.onCaptureAborted?.(sendDraftBaseline);
+      }
       throw error;
     }
 
