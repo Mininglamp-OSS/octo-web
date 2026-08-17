@@ -9,6 +9,7 @@ export interface SpaceSetting {
 export async function getSpaceSetting(spaceId: string): Promise<SpaceSetting> {
   return APIClient.shared.get<SpaceSetting>("/user/space/setting", {
     param: { space_id: spaceId },
+    headers: { "X-Space-Id": spaceId },
   });
 }
 
@@ -18,5 +19,6 @@ export async function updateSpaceSetting(
 ): Promise<void> {
   return APIClient.shared.put("/user/space/setting", data, {
     param: { space_id: spaceId },
+    headers: { "X-Space-Id": spaceId },
   });
 }

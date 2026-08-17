@@ -7,8 +7,8 @@ import useSpaceFeedbackSetting, {
   acceptVoiceInput,
   disableVoiceInput,
   setSharedVoiceConfig,
-} from '../MessageInput/useSpaceFeedbackSetting';
-import VoiceFeedbackNotice from '../MessageInput/VoiceFeedbackNotice';
+} from '../../features/voice-input/useSpaceFeedbackSetting';
+import VoiceFeedbackNotice from '../../features/voice-input/VoiceFeedbackNotice';
 import WKApp from '../../App';
 import VoiceService from '../../Service/VoiceService';
 import { Dap } from '../../Service/Dap';
@@ -26,6 +26,24 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
   const [loading, setLoading] = useState(false);
   const [showNotice, setShowNotice] = useState(false);
   const spaceIdRef = useRef<string>('');
+  const consentGenerationRef = useRef(0);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const invalidateConsent = () => {
+      consentGenerationRef.current += 1;
+      spaceIdRef.current = '';
+      setShowNotice(false);
+      setLoading(false);
+    };
+    WKApp.mittBus.on('space-changed', invalidateConsent);
+    return () => {
+      mountedRef.current = false;
+      consentGenerationRef.current += 1;
+      WKApp.mittBus.off('space-changed', invalidateConsent);
+    };
+  }, []);
 
   useEffect(() => {
     // settings_voice_opened:面板挂载 = 打开语音设置一次。原挂在 GET /voice/local-config 的 2xx 通道,
@@ -81,6 +99,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
     if (!spaceId) return;
 
     if (checked) {
+      consentGenerationRef.current += 1;
       spaceIdRef.current = spaceId;
       setShowNotice(true);
     } else {
@@ -102,14 +121,21 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
   const handleNoticeAccept = useCallback(async (feedbackOn: boolean) => {
     const spaceId = spaceIdRef.current;
     if (!spaceId) return;
+    const consentGeneration = ++consentGenerationRef.current;
+    const isConsentCurrent = () =>
+      mountedRef.current &&
+      consentGenerationRef.current === consentGeneration &&
+      WKApp.shared.currentSpaceId === spaceId;
     setLoading(true);
     try {
-      await acceptVoiceInput(spaceId, feedbackOn);
-      setShowNotice(false);
+      await acceptVoiceInput(spaceId, feedbackOn, isConsentCurrent);
+      if (isConsentCurrent()) setShowNotice(false);
     } catch {
-      Toast.error(t('base.navRail.voiceSettings.operationFailed'));
+      if (isConsentCurrent()) {
+        Toast.error(t('base.navRail.voiceSettings.operationFailed'));
+      }
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [t]);
 
@@ -387,7 +413,11 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
       {showNotice && (
         <VoiceFeedbackNotice
           onAccept={handleNoticeAccept}
-          onCancel={() => setShowNotice(false)}
+          onCancel={() => {
+            consentGenerationRef.current += 1;
+            spaceIdRef.current = '';
+            setShowNotice(false);
+          }}
           feedbackPrivacyUrl={privacyUrl}
           feedbackUserAgreementUrl={agreementUrl}
         />

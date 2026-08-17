@@ -23,7 +23,9 @@ vi.mock("@douyinfe/semi-ui", () => ({
     error: vi.fn(),
     warning: vi.fn(),
   },
-  Dropdown: Object.assign(vi.fn(({ children }: any) => children), {
+  Dropdown: Object.assign(vi.fn(({ children, render }: any) => (
+    <>{children}{render}</>
+  )), {
     Menu: vi.fn(({ children }: any) => children),
     Item: vi.fn(({ children, onClick }: any) => {
       const React = require("react");
@@ -33,23 +35,67 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 vi.mock("@douyinfe/semi-icons", () => ({}));
 
+vi.mock("../../../../packages/dmworkbase/src/i18n", () => ({
+  useI18n: () => ({
+    t: (key: string) => ({
+      "base.voiceInput.status.transcribingDots": "转写中...",
+      "base.voiceInput.title.networkUnavailable": "网络不可用",
+      "base.voiceInput.mode.input": "语音输入",
+      "base.voiceInput.status.transcribing": "转写中",
+    } as Record<string, string>)[key] ?? key,
+  }),
+}));
+
 const mockSharedSpaceFeedbackState = {
-  spaceSetting: null as { voice_feedback_on?: number; voice_feedback_notice_acked?: number } | null,
+  spaceSetting: null as {
+    voice_input_enabled?: number;
+    voice_feedback_on?: number;
+    voice_feedback_notice_acked?: number;
+  } | null,
   loaded: false,
   apiAvailable: false,
   loadedSpaceId: null as string | null,
 };
 
-vi.mock("@octo/base/src/Components/MessageInput/VoiceFeedbackNotice", () => ({
+const mockAcceptVoiceInput = vi.fn();
+const mockNoticeProps = { current: null as any };
+const mockSpace = {
+  currentId: "space-1",
+  handlers: new Set<() => void>(),
+};
+
+vi.mock("@octo/base/src/App", () => ({
+  default: {
+    shared: {
+      get currentSpaceId() {
+        return mockSpace.currentId;
+      },
+    },
+    mittBus: {
+      on: (_event: string, handler: () => void) => mockSpace.handlers.add(handler),
+      off: (_event: string, handler: () => void) => mockSpace.handlers.delete(handler),
+    },
+  },
+}));
+
+vi.mock("../../../../packages/dmworkbase/src/features/voice-input/VoiceFeedbackNotice", () => ({
   default: (props: any) => {
     const React = require("react");
-    return React.createElement("div", { className: "voice-feedback-notice" });
+    mockNoticeProps.current = props;
+    return React.createElement(
+      "button",
+      {
+        className: "voice-feedback-notice",
+        onClick: () => props.onAccept(false),
+      },
+      "accept",
+    );
   },
 }));
 
 const mockVoiceConfig = { current: null as { feedback_url?: string } | null };
 
-vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
+vi.mock("../../../../packages/dmworkbase/src/features/voice-input/useSpaceFeedbackSetting", () => ({
   default: () => ({
     spaceSetting: mockSharedSpaceFeedbackState.spaceSetting,
     loaded: mockSharedSpaceFeedbackState.loaded,
@@ -59,6 +105,7 @@ vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => 
   }),
   getSharedSpaceFeedbackState: () => mockSharedSpaceFeedbackState,
   getSharedVoiceConfig: () => mockVoiceConfig.current,
+  acceptVoiceInput: (...args: unknown[]) => mockAcceptVoiceInput(...args),
 }));
 
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -90,6 +137,10 @@ describe("VoiceInputButton - rendering", () => {
     mockSharedSpaceFeedbackState.apiAvailable = false;
     mockSharedSpaceFeedbackState.loadedSpaceId = null;
     mockVoiceConfig.current = null;
+    mockAcceptVoiceInput.mockReset().mockResolvedValue(undefined);
+    mockNoticeProps.current = null;
+    mockSpace.currentId = "space-1";
+    mockSpace.handlers.clear();
     Object.defineProperty(navigator, "onLine", {
       value: true,
       writable: true,
@@ -237,6 +288,10 @@ describe("VoiceInputButton - interactions", () => {
     mockSharedSpaceFeedbackState.apiAvailable = false;
     mockSharedSpaceFeedbackState.loadedSpaceId = null;
     mockVoiceConfig.current = null;
+    mockAcceptVoiceInput.mockReset().mockResolvedValue(undefined);
+    mockNoticeProps.current = null;
+    mockSpace.currentId = "space-1";
+    mockSpace.handlers.clear();
     Object.defineProperty(navigator, "onLine", {
       value: true,
       writable: true,
@@ -249,6 +304,8 @@ describe("VoiceInputButton - interactions", () => {
   });
 
   it("should call startRecording on click", async () => {
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.spaceSetting = { voice_input_enabled: 1 };
     const mockStart = vi.fn();
     mockUseTextareaVoice.mockReturnValue(
       createMockReturn({ startRecording: mockStart })
@@ -267,6 +324,80 @@ describe("VoiceInputButton - interactions", () => {
     });
 
     expect(mockStart).toHaveBeenCalledWith("append_only");
+  });
+
+  it("does not start recording when consent completes after a space change", async () => {
+    let resolveConsent!: () => void;
+    mockAcceptVoiceInput.mockReturnValue(
+      new Promise<void>((resolve) => {
+        resolveConsent = resolve;
+      }),
+    );
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.apiAvailable = true;
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 0,
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 0,
+    };
+    const startRecording = vi.fn();
+    mockUseTextareaVoice.mockReturnValue(createMockReturn({ startRecording }));
+
+    const { container } = render(
+      <VoiceInputButton inputRef={createInputRef()} onTranscribed={vi.fn()} />,
+    );
+    fireEvent.click(container.querySelector(".wk-vib")!);
+    fireEvent.click(container.querySelector(".voice-feedback-notice")!);
+    const isSpaceActive = mockAcceptVoiceInput.mock.calls[0][2];
+
+    mockSpace.currentId = "space-2";
+    act(() => {
+      mockSpace.handlers.forEach((handler) => handler());
+    });
+    await act(async () => {
+      resolveConsent();
+      await Promise.resolve();
+    });
+
+    expect(isSpaceActive()).toBe(false);
+    expect(startRecording).not.toHaveBeenCalled();
+  });
+
+  it("ignores reopen attempts while consent is being saved", async () => {
+    let resolveConsent!: () => void;
+    mockAcceptVoiceInput
+      .mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          resolveConsent = resolve;
+        }),
+      )
+      .mockResolvedValueOnce(undefined);
+    mockSharedSpaceFeedbackState.loaded = true;
+    mockSharedSpaceFeedbackState.apiAvailable = true;
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 0,
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 0,
+    };
+
+    const { container } = render(
+      <VoiceInputButton inputRef={createInputRef()} onTranscribed={vi.fn()} />,
+    );
+    fireEvent.click(container.querySelector(".wk-vib")!);
+    fireEvent.click(container.querySelector(".voice-feedback-notice")!);
+
+    fireEvent.click(container.querySelector(".wk-vib")!);
+    expect(container.querySelector(".voice-feedback-notice")).toBeNull();
+    expect(mockAcceptVoiceInput).toHaveBeenCalledOnce();
+
+    await act(async () => {
+      resolveConsent();
+      await Promise.resolve();
+    });
+    fireEvent.click(container.querySelector(".wk-vib")!);
+    expect(container.querySelector(".voice-feedback-notice")).not.toBeNull();
+    fireEvent.click(container.querySelector(".voice-feedback-notice")!);
+    expect(mockAcceptVoiceInput).toHaveBeenCalledTimes(2);
   });
 
   it("should call stopRecordingAndTranscribe when clicking during recording", async () => {
@@ -388,6 +519,7 @@ describe("VoiceInputButton - interactions", () => {
 
 describe("VoiceInputButton - floating indicator", () => {
   beforeEach(() => {
+    mockUseTextareaVoice.mockReturnValue(createMockReturn());
     Object.defineProperty(navigator, "onLine", {
       value: true,
       writable: true,
@@ -469,11 +601,16 @@ describe("VoiceInputButton - floating indicator", () => {
 
 describe("VoiceInputButton - mode menu", () => {
   beforeEach(() => {
+    mockUseTextareaVoice.mockReturnValue(createMockReturn());
     mockSharedSpaceFeedbackState.spaceSetting = null;
     mockSharedSpaceFeedbackState.loaded = false;
     mockSharedSpaceFeedbackState.apiAvailable = false;
     mockSharedSpaceFeedbackState.loadedSpaceId = null;
     mockVoiceConfig.current = null;
+    mockAcceptVoiceInput.mockReset().mockResolvedValue(undefined);
+    mockNoticeProps.current = null;
+    mockSpace.currentId = "space-1";
+    mockSpace.handlers.clear();
     Object.defineProperty(navigator, "onLine", {
       value: true,
       writable: true,
@@ -519,6 +656,7 @@ describe("VoiceInputButton - mode menu", () => {
 
   it("should show feedback notice on handleModeSelect when notice not acked", async () => {
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 0,
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 0,
     };
@@ -551,6 +689,7 @@ describe("VoiceInputButton - mode menu", () => {
 
   it("should allow handleModeSelect when notice already acked", async () => {
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
     };
@@ -582,11 +721,16 @@ describe("VoiceInputButton - mode menu", () => {
 
 describe("VoiceInputButton - fail-closed when settings not loaded", () => {
   beforeEach(() => {
+    mockUseTextareaVoice.mockReturnValue(createMockReturn());
     mockSharedSpaceFeedbackState.spaceSetting = null;
     mockSharedSpaceFeedbackState.loaded = false;
     mockSharedSpaceFeedbackState.apiAvailable = false;
     mockSharedSpaceFeedbackState.loadedSpaceId = null;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
+    mockAcceptVoiceInput.mockReset().mockResolvedValue(undefined);
+    mockNoticeProps.current = null;
+    mockSpace.currentId = "space-1";
+    mockSpace.handlers.clear();
     Object.defineProperty(navigator, "onLine", {
       value: true,
       writable: true,
@@ -646,6 +790,7 @@ describe("VoiceInputButton - fail-closed when settings not loaded", () => {
     mockSharedSpaceFeedbackState.loaded = true;
     mockSharedSpaceFeedbackState.apiAvailable = true;
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
       voice_feedback_on: 0,
       voice_feedback_notice_acked: 0,
     };

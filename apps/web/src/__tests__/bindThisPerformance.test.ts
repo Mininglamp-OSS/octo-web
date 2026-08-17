@@ -13,11 +13,6 @@ import * as path from 'path';
 describe('Performance: Arrow function properties vs .bind(this) in render', () => {
   const componentsToCheck = [
     {
-      name: 'MessageInput',
-      path: 'packages/dmworkbase/src/Components/MessageInput/index.tsx',
-      methods: ['handleKeyPressed', 'handleChange'],
-    },
-    {
       name: 'VoiceCell',
       path: 'packages/dmworkbase/src/Messages/Voice/index.tsx',
       methods: ['playOrPauseVoice'],
@@ -66,19 +61,14 @@ describe('Performance: Arrow function properties vs .bind(this) in render', () =
   });
 
   describe('General render method patterns', () => {
-    it('should not have .bind(this) patterns in MessageInput render', () => {
+    it('should not have .bind(this) patterns in ChatComposer', () => {
       const filePath = path.resolve(
         __dirname,
-        '../../../../packages/dmworkbase/src/Components/MessageInput/index.tsx'
+        '../../../../packages/dmworkbase/src/features/chat-composer/ui/ChatComposer.tsx'
       );
       const content = fs.readFileSync(filePath, 'utf-8');
 
-      // Extract render method content (simplified check)
-      const renderMatch = content.match(/render\s*\(\)\s*\{[\s\S]*$/);
-      if (renderMatch) {
-        const renderContent = renderMatch[0];
-        expect(renderContent).not.toMatch(/\.bind\(this\)/);
-      }
+      expect(content).not.toMatch(/\.bind\(this\)/);
     });
 
     it('should not have .bind(this) patterns in WKAvatar render', () => {

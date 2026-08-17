@@ -22,7 +22,8 @@ const hoisted = vi.hoisted(() => {
   const toggleVoiceFeedback = vi.fn().mockResolvedValue(undefined);
   const toastError = vi.fn();
   const noticeMock = vi.fn();
-  return { updateSetting, acceptVoiceInput, enableVoiceInput, disableVoiceInput, toggleVoiceFeedback, toastError, noticeMock };
+  const spaceChangedHandlers: Array<() => void> = [];
+  return { updateSetting, acceptVoiceInput, enableVoiceInput, disableVoiceInput, toggleVoiceFeedback, toastError, noticeMock, spaceChangedHandlers };
 });
 
 let hookReturn: any;
@@ -43,7 +44,7 @@ function resetHookReturn() {
 
 resetHookReturn();
 
-vi.mock('../../MessageInput/useSpaceFeedbackSetting', () => ({
+vi.mock('../../../features/voice-input/useSpaceFeedbackSetting', () => ({
   default: () => hookReturn,
   toggleVoiceFeedback: (...args: any[]) => hoisted.toggleVoiceFeedback(...args),
   acceptVoiceInput: (...args: any[]) => hoisted.acceptVoiceInput(...args),
@@ -52,7 +53,15 @@ vi.mock('../../MessageInput/useSpaceFeedbackSetting', () => ({
 }));
 
 vi.mock('../../../App', () => ({
-  default: { shared: { currentSpaceId: 'space-1' } },
+  default: {
+    shared: { currentSpaceId: 'space-1' },
+    mittBus: {
+      on: vi.fn((_event: string, handler: () => void) => {
+        hoisted.spaceChangedHandlers.push(handler);
+      }),
+      off: vi.fn(),
+    },
+  },
   __esModule: true,
 }));
 
@@ -74,7 +83,7 @@ vi.mock('../../WKButton', () => ({
   __esModule: true,
 }));
 
-vi.mock('../../MessageInput/VoiceFeedbackNotice', () => ({
+vi.mock('../../../features/voice-input/VoiceFeedbackNotice', () => ({
   default: (props: any) => {
     hoisted.noticeMock(props);
     return React.createElement('div', { 'data-testid': 'voice-feedback-notice' },
@@ -103,6 +112,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
 }));
 
 import VoiceSettingsPanel from '../VoiceSettingsPanel';
+import WKApp from '../../../App';
 
 let container: HTMLDivElement;
 
@@ -116,6 +126,8 @@ beforeEach(() => {
   hoisted.toggleVoiceFeedback.mockReset().mockResolvedValue(undefined);
   hoisted.toastError.mockReset();
   hoisted.noticeMock.mockReset();
+  hoisted.spaceChangedHandlers.length = 0;
+  WKApp.shared.currentSpaceId = 'space-1';
   container = document.createElement('div');
   document.body.appendChild(container);
 });
@@ -182,7 +194,11 @@ describe('VoiceSettingsPanel', () => {
         (container.querySelector('[data-testid="notice-accept"]') as HTMLElement).click();
       });
       await flush();
-      expect(hoisted.acceptVoiceInput).toHaveBeenCalledWith('space-1', false);
+      expect(hoisted.acceptVoiceInput).toHaveBeenCalledWith(
+        'space-1',
+        false,
+        expect.any(Function),
+      );
     });
 
     it('calls acceptVoiceInput with feedbackOn=true when accepted with feedback', async () => {
@@ -195,7 +211,11 @@ describe('VoiceSettingsPanel', () => {
         (container.querySelector('[data-testid="notice-accept-feedback"]') as HTMLElement).click();
       });
       await flush();
-      expect(hoisted.acceptVoiceInput).toHaveBeenCalledWith('space-1', true);
+      expect(hoisted.acceptVoiceInput).toHaveBeenCalledWith(
+        'space-1',
+        true,
+        expect.any(Function),
+      );
     });
 
     it('hides notice after accept', async () => {
@@ -222,6 +242,36 @@ describe('VoiceSettingsPanel', () => {
       });
       expect(container.querySelector('[data-testid="voice-feedback-notice"]')).toBeNull();
       expect(hoisted.acceptVoiceInput).not.toHaveBeenCalled();
+    });
+
+    it('invalidates an in-flight consent when the space changes', async () => {
+      let resolveConsent!: () => void;
+      hoisted.acceptVoiceInput.mockReturnValue(
+        new Promise<void>((resolve) => {
+          resolveConsent = resolve;
+        }),
+      );
+      await renderPanel();
+      act(() => {
+        (container.querySelector('[data-testid="semi-switch"]') as HTMLElement).click();
+      });
+      await flush();
+      act(() => {
+        (container.querySelector('[data-testid="notice-accept"]') as HTMLElement).click();
+      });
+      const isConsentCurrent = hoisted.acceptVoiceInput.mock.calls[0][2];
+
+      WKApp.shared.currentSpaceId = 'space-2';
+      act(() => {
+        hoisted.spaceChangedHandlers.forEach((handler) => handler());
+      });
+      await act(async () => {
+        resolveConsent();
+        await Promise.resolve();
+      });
+
+      expect(isConsentCurrent()).toBe(false);
+      expect(container.querySelector('[data-testid="voice-feedback-notice"]')).toBeNull();
     });
   });
 

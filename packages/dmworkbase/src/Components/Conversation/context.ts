@@ -1,6 +1,6 @@
 import { Channel, Message, MessageContent } from "wukongimjssdk";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
-import { MessageInputContext } from "../MessageInput";
+import type { MessageInputContext } from "../../features/chat-composer";
 import { MessageWrap } from "../../Service/Model";
 
 export default interface ConversationContext {

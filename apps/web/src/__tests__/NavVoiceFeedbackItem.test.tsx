@@ -4,7 +4,7 @@ import React from "react";
 
 const mockUseSpaceFeedbackSetting = vi.fn();
 
-vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
+vi.mock("../../../../packages/dmworkbase/src/features/voice-input/useSpaceFeedbackSetting", () => ({
   default: () => mockUseSpaceFeedbackSetting(),
   ensureVoiceFeedbackLoaded: vi.fn().mockResolvedValue(undefined),
   toggleVoiceFeedback: vi.fn(),
