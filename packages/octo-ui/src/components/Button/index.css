@@ -104,6 +104,21 @@
   background: var(--wk-bg-active);
 }
 
+.octo-ui-button--danger-text {
+  background: transparent;
+  border-color: transparent;
+  color: var(--wk-color-danger);
+  min-width: 0;
+}
+
+.octo-ui-button--danger-text:hover:not(:disabled) {
+  background: var(--wk-color-danger-bg);
+}
+
+.octo-ui-button--danger-text:active:not(:disabled) {
+  background: var(--wk-bg-active);
+}
+
 .octo-ui-button--warning {
   background: var(--wk-bg-surface);
   border-color: var(--wk-color-danger-border);

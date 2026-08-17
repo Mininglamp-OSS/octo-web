@@ -12,6 +12,7 @@ const normalizeVariant = (
     if (variant === 'ghost') return 'text'
     return variant
   }
+  if (type === 'danger' && theme === 'borderless') return 'danger-text'
   if (type === 'danger') return theme === 'solid' ? 'danger' : 'warning'
   if (type === 'warning') return 'warning'
   if (theme === 'borderless') return 'text'

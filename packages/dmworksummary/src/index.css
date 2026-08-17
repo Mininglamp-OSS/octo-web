@@ -2602,10 +2602,36 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
 }
 
 /* 右下角按钮组：SplitButtonGroup（主按钮 + 模式下拉），与 ChatSummaryNewModal 一致。
-   chevron 触发按钮加紧凑 padding，避免默认 16px 左右 padding 撑宽图标按钮。 */
-.chat-summary-modal-split .semi-button:last-child {
-    padding-left: var(--wk-sp-2, 8px);
-    padding-right: var(--wk-sp-2, 8px);
+   Semi SplitButtonGroup 只会拼接 .semi-button 子元素；迁移到 @octo/ui 后
+   需要在本地补齐连接样式。 */
+.chat-summary-modal-split {
+    display: inline-flex;
+    align-items: stretch;
+}
+
+.chat-summary-modal-split .octo-ui-button {
+    border-radius: 0;
+    margin-right: 1px;
+}
+
+.chat-summary-modal-split .octo-ui-button:first-child {
+    border-top-left-radius: var(--wk-r-sm);
+    border-bottom-left-radius: var(--wk-r-sm);
+}
+
+.chat-summary-modal-split .octo-ui-button:last-child {
+    width: auto;
+    min-width: calc(var(--wk-sp-6) + var(--wk-sp-1));
+    height: calc(var(--wk-sp-6) + var(--wk-sp-1));
+    padding-left: var(--wk-sp-2);
+    padding-right: var(--wk-sp-2);
+    border-top-right-radius: var(--wk-r-sm);
+    border-bottom-right-radius: var(--wk-r-sm);
+    margin-right: 0;
+}
+
+.chat-summary-modal-split .octo-ui-button:only-child {
+    border-radius: var(--wk-r-sm);
 }
 
 @media (max-width: 600px) {
