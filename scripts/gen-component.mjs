@@ -6,24 +6,46 @@
  * 用法：
  *   pnpm gen:component MessageBubble
  *   pnpm gen:component MessageBubble --ui-only  # 只生成 ui/，不生成 bridge/
+ *   pnpm gen:component Button --package ui      # 生成 @octo/ui 组件
  *
  * 路径由 AGENTS.config.json 中的 ui_dir / bridge_dir 决定（如果配置存在），
  * 否则使用内置默认值。
  */
 
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs'
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs'
 import { join, dirname, relative } from 'node:path'
 import { config, ROOT_DIR } from './config.mjs'
 
 // ── Parse args ──
 const args = process.argv.slice(2)
-const flags = new Set(args.filter(a => a.startsWith('--')))
-const positional = args.filter(a => !a.startsWith('--'))
+const flags = new Set()
+const positional = []
+let targetPackage = 'default'
+
+for (let i = 0; i < args.length; i += 1) {
+  const arg = args[i]
+  if (arg === '--package') {
+    const value = args[i + 1]
+    if (!value || value.startsWith('--')) {
+      console.error('❌ --package 需要指定值。目前仅支持 --package ui。')
+      process.exit(1)
+    }
+    targetPackage = value
+    i += 1
+  } else if (arg.startsWith('--package=')) {
+    targetPackage = arg.slice('--package='.length)
+  } else if (arg.startsWith('--')) {
+    flags.add(arg)
+  } else {
+    positional.push(arg)
+  }
+}
 
 if (positional.length === 0) {
-  console.error('❌ 用法: pnpm gen:component <ComponentName> [--ui-only]')
+  console.error('❌ 用法: pnpm gen:component <ComponentName> [--ui-only] [--package ui]')
   console.error('')
   console.error('  --ui-only   只生成 ui/ 层，不生成 bridge/')
+  console.error('  --package ui 生成 @octo/ui 组件')
   console.error('')
   console.error(`  ui 目录:     ${relative(ROOT_DIR, config.uiDir)}`)
   console.error(`  bridge 目录: ${relative(ROOT_DIR, config.bridgeDir)}`)
@@ -31,7 +53,13 @@ if (positional.length === 0) {
 }
 
 const name = positional[0]
-const uiOnly = flags.has('--ui-only')
+const isOctoUiPackage = targetPackage === 'ui'
+const uiOnly = isOctoUiPackage || flags.has('--ui-only')
+
+if (targetPackage !== 'default' && !isOctoUiPackage) {
+  console.error(`❌ 不支持的 package: "${targetPackage}"。目前仅支持 --package ui。`)
+  process.exit(1)
+}
 
 // 校验命名：PascalCase
 if (!/^[A-Z][a-zA-Z0-9]+$/.test(name)) {
@@ -39,8 +67,12 @@ if (!/^[A-Z][a-zA-Z0-9]+$/.test(name)) {
   process.exit(1)
 }
 
-const uiDir = join(config.uiDir, name)
-const bridgeDir = join(config.bridgeDir, name)
+const uiBaseDir = isOctoUiPackage
+  ? join(ROOT_DIR, 'packages/octo-ui/src/components')
+  : config.uiDir
+const bridgeBaseDir = config.bridgeDir
+const uiDir = join(uiBaseDir, name)
+const bridgeDir = join(bridgeBaseDir, name)
 
 // ── 检查冲突 ──
 if (existsSync(uiDir)) {
@@ -55,7 +87,8 @@ if (!uiOnly && existsSync(bridgeDir)) {
 // ── 文件模板 ──
 
 const kebab = toKebab(name)
-const prefix = config.cssPrefix
+const prefix = isOctoUiPackage ? 'octo-ui' : config.cssPrefix
+const storyTitle = isOctoUiPackage ? `Octo UI/${name}` : `Base/${name}`
 
 const uiTypes = `export interface ${name}Props {
   className?: string
@@ -75,6 +108,7 @@ const ${name}: React.FC<${name}Props> = ({ className }) => {
 }
 
 export default ${name}
+export { ${name} }
 `
 
 const uiCss = `.${prefix}-${kebab} {
@@ -86,7 +120,7 @@ const uiStory = `import type { Meta, StoryObj } from '@storybook/react-vite'
 import ${name} from './index'
 
 const meta: Meta<typeof ${name}> = {
-  title: 'Base/${name}',
+  title: '${storyTitle}',
   component: ${name},
   parameters: {
     docs: {
@@ -107,8 +141,8 @@ export const Default: Story = {
 `
 
 // bridge/types.ts → ui/types.ts 的相对路径（从文件所在目录算）
-const bridgeFileDir = join(config.bridgeDir, name)        // bridge/<Name>/
-const uiTypesTarget = join(config.uiDir, name, 'types')   // ui/<Name>/types
+const bridgeFileDir = join(bridgeBaseDir, name)           // bridge/<Name>/
+const uiTypesTarget = join(uiBaseDir, name, 'types')      // ui/<Name>/types
 const uiRelFromBridge = relative(bridgeFileDir, uiTypesTarget)
 
 const bridgeTypes = `import type { ${name}Props } from '${uiRelFromBridge}'
@@ -146,9 +180,64 @@ function writeFile(filePath, content) {
   console.log(`  ✅ ${relative(ROOT_DIR, filePath)}`)
 }
 
+function appendLineIfMissing(filePath, line) {
+  const content = readFileSync(filePath, 'utf-8')
+  if (content.split(/\r?\n/).includes(line)) {
+    return
+  }
+  const nextContent = content.endsWith('\n')
+    ? `${content}${line}\n`
+    : `${content}\n${line}\n`
+  writeFileSync(filePath, nextContent, 'utf-8')
+  console.log(`  ✅ ${relative(ROOT_DIR, filePath)}`)
+}
+
+function insertImportIfMissing(filePath, line) {
+  const content = readFileSync(filePath, 'utf-8')
+  const lines = content.split(/\r?\n/)
+  if (lines.includes(line)) {
+    return
+  }
+
+  let insertAt = 0
+  let inBlockComment = false
+
+  while (insertAt < lines.length) {
+    const trimmed = lines[insertAt].trim()
+
+    if (inBlockComment) {
+      if (trimmed.includes('*/')) {
+        inBlockComment = false
+      }
+      insertAt += 1
+      continue
+    }
+
+    if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('@import ')) {
+      insertAt += 1
+      continue
+    }
+
+    if (trimmed.startsWith('/*')) {
+      if (!trimmed.includes('*/')) {
+        inBlockComment = true
+      }
+      insertAt += 1
+      continue
+    }
+
+    break
+  }
+
+  lines.splice(insertAt, 0, line)
+  writeFileSync(filePath, `${lines.join('\n').replace(/\n*$/, '')}\n`, 'utf-8')
+  console.log(`  ✅ ${relative(ROOT_DIR, filePath)}`)
+}
+
 console.log(`\n🔨 生成组件: ${name}\n`)
-console.log(`📁 ui:     ${relative(ROOT_DIR, config.uiDir)}`)
-console.log(`📁 bridge: ${relative(ROOT_DIR, config.bridgeDir)}\n`)
+console.log(`📦 package: ${isOctoUiPackage ? '@octo/ui' : 'default'}`)
+console.log(`📁 ui:      ${relative(ROOT_DIR, uiBaseDir)}`)
+console.log(`📁 bridge:  ${isOctoUiPackage ? '(跳过)' : relative(ROOT_DIR, bridgeBaseDir)}\n`)
 
 writeFile(join(uiDir, 'types.ts'), uiTypes)
 writeFile(join(uiDir, 'index.tsx'), uiIndex)
@@ -160,8 +249,29 @@ if (!uiOnly) {
   writeFile(join(bridgeDir, `${hookName}.ts`), bridgeHook)
 }
 
+if (isOctoUiPackage) {
+  appendLineIfMissing(
+    join(ROOT_DIR, 'packages/octo-ui/src/index.ts'),
+    `export { default as ${name} } from './components/${name}'`,
+  )
+  appendLineIfMissing(
+    join(ROOT_DIR, 'packages/octo-ui/src/index.ts'),
+    `export type { ${name}Props } from './components/${name}/types'`,
+  )
+  insertImportIfMissing(
+    join(ROOT_DIR, 'packages/octo-ui/src/styles/components.css'),
+    `@import '../components/${name}/index.css';`,
+  )
+}
+
 console.log(`\n✨ 完成！`)
-if (!uiOnly) {
+if (isOctoUiPackage) {
+  console.log(`\n下一步:`)
+  console.log(`  1. 编辑 packages/octo-ui/src/components/${name}/types.ts 定义 props`)
+  console.log(`  2. 实现 ${name} 组件和样式`)
+  console.log(`  3. pnpm --filter @octo/ui build`)
+  console.log(`  4. pnpm --filter @octo/web build-storybook 预览 Story`)
+} else if (!uiOnly) {
   console.log(`\n下一步:`)
   console.log(`  1. 编辑 ui/${name}/types.ts 定义 props`)
   console.log(`  2. 实现 ui/${name}/index.tsx 纯 UI`)

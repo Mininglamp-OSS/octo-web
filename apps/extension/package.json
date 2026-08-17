@@ -20,6 +20,7 @@
     "@octo/contacts": "workspace:*",
     "@octo/datasource": "workspace:*",
     "@octo/login": "workspace:*",
+    "@octo/ui": "workspace:*",
     "@douyinfe/semi-icons": "^2.93.0",
     "@douyinfe/semi-ui": "^2.93.0",
     "lucide-react": "^0.577.0",
