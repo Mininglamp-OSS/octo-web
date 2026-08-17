@@ -1,6 +1,5 @@
 import React from "react";
 import AITag from "../../ui/AITag";
-import "./index.css";
 
 export interface AiBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
     size?: "default" | "small";
