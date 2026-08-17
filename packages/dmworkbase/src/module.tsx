@@ -91,8 +91,10 @@ import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
 import { patchSdkDecodeForExternalFields } from "./Service/Convert";
 import { isMessageSelectable } from "./Service/messageSelection";
+import { isNotificationSuppressedContentType } from "./Service/messageNotification";
 import ConversationVM from "./Components/Conversation/vm";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
+import { SummaryNotifyCell, SummaryNotifyContent } from "./Messages/SummaryNotify";
 import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
@@ -320,6 +322,8 @@ export default class BaseModule implements IModule {
             return LocationCell;
           case MessageContentTypeConst.screenshot:
             return ScreenshotCell;
+          case MessageContentTypeConst.summaryNotify:
+            return SummaryNotifyCell;
           case MessageContentType.signalMessage: // 端对端加密错误消息
           case MessageContentTypeConst.approveGroupMember: // 审批群成员
             return ApproveGroupMemberCell;
@@ -389,6 +393,10 @@ export default class BaseModule implements IModule {
     registerCurrentImMessageContent(
       MessageContentTypeConst.screenshot,
       () => new ScreenshotContent()
+    );
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.summaryNotify,
+      () => new SummaryNotifyContent()
     );
     // 加入组织
     registerCurrentImMessageContent(
@@ -883,6 +891,10 @@ export default class BaseModule implements IModule {
       // 仅保留红点/未读数。IM 场景不受影响。
       return false;
     }
+    if (isNotificationSuppressedContentType(message.contentType)) {
+      // 群总结完成提示是会话内的被动系统提示，不弹桌面通知、不播提示音。
+      return false;
+    }
     if (isCurrentImSystemMessage(message.contentType)) {
       // 系统消息不发通知
       return false;
@@ -996,6 +1008,7 @@ export default class BaseModule implements IModule {
 
         return {
           title: t("base.module.contextMenus.copy"),
+          testid: "ctx-message-copy",
           onClick: () => {
             const selectedText = context.getCachedSelectedText?.();
             // RichText(=14)：取顶层 plain（server 权威纯文本），避免对 content
@@ -1141,6 +1154,7 @@ export default class BaseModule implements IModule {
 
         return {
           title: t("base.module.contextMenus.forward"),
+          testid: "ctx-message-forward",
           onClick: () => {
             context.fowardMessageUI(message);
           },
@@ -1167,6 +1181,7 @@ export default class BaseModule implements IModule {
         }
         return {
           title: t("base.module.contextMenus.multiSelect"),
+          testid: "ctx-message-multiselect",
           onClick: () => {
             context.setEditOn(true);
           },
@@ -1187,7 +1202,9 @@ export default class BaseModule implements IModule {
           title: t("base.module.contextMenus.revoke"),
           onClick: () => {
             context.revokeMessage(message).catch((err) => {
-              Toast.error(err.msg);
+              // 六审 P6:真正的 Error(网络 TypeError / throw Error)只有 .message 没有 .msg,
+              // 直接读 err?.msg 会弹空 toast;按 msg→message→兜底文案 依次取,确保有可读提示。
+              Toast.error(err?.msg || err?.message || t("base.module.contextMenus.revokeFailed"));
             });
           },
         });
@@ -1278,6 +1295,7 @@ export default class BaseModule implements IModule {
         }
         return {
           title: t("base.module.contextMenus.createThread"),
+          testid: "ctx-message-create-thread",
           onClick: () => {
             // 使用消息内容作为默认名称，截取前20个字符
             const defaultName = (

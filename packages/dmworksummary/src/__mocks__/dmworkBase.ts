@@ -99,3 +99,10 @@ export const Dap = {
 export const buildAcceptLanguage = () => 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7';
 
 export const isSafeUrl = (url: string) => /^https?:\/\//.test(url);
+
+export class SummaryNotifyContent {
+  fromUID = '';
+  fromName = '';
+}
+
+export const isConversationDisbanded = () => false;

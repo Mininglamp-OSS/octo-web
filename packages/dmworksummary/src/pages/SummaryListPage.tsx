@@ -9,7 +9,7 @@ import {
 } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
-import { I18nContext, t, WKApp } from "@octo/base";
+import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
 import { setPendingInvitationBadge } from "../utils/summaryMenuBadge";
 import type {
@@ -433,6 +433,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     }
 
     handleStatusChange = (value: string | number) => {
+        // 埋点 292:状态筛选切换（隐私 props 恒空，不采具体状态值）。
+        Dap.shared.track("smart_summary_status_filtered", {});
         const statusFilter = value === "" ? undefined : (value as TaskStatusType);
         this.setState({ statusFilter, page: 1 }, () => this.loadData());
     };
@@ -441,6 +443,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         this.setState({ keyword: value });
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.searchTimer = setTimeout(() => {
+            // 埋点 291:去抖后「发生了一次搜索」，仅在有关键词时发，绝不采关键词值。
+            if (value.trim()) Dap.shared.track("smart_summary_searched", {});
             this.setState({ page: 1 }, () => this.loadData());
         }, 400);
     };
@@ -551,6 +555,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     };
 
     handleCreate = () => {
+        // 「新建总结」意图:三处 create 控件都走这里(原先误用 GET /summary-templates 页面加载推断)。
+        Dap.shared.track("smart_summary_create_clicked", {});
         if (this.props.onCreateNew) {
             this.props.onCreateNew();
             return;

@@ -515,6 +515,15 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     color: var(--wk-color-info);
     background: var(--wk-color-info-bg);
 }
+/* R4 yj P2-2: 四种类型各自 icon/class，与 getSummaryTypeKind classifier 一致 */
+.summary-card-type-icon--scheduled {
+    color: var(--wk-color-warning);
+    background: var(--wk-color-warning-bg);
+}
+.summary-card-type-icon--multi {
+    color: var(--wk-color-success);
+    background: var(--wk-color-success-bg);
+}
 .summary-card-type-icon:hover,
 .summary-card-type-icon:focus-visible {
     color: var(--wk-text-primary);
@@ -2308,47 +2317,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     margin-bottom: 16px;
 }
 
-/* Mode switch (normal/agent) */
-.summary-workbench-mode-switch {
-    margin-left: auto;
-    display: flex;
-    gap: 0;
-    background: var(--semi-color-fill-0);
-    border: 1px solid transparent;
-    border-radius: var(--semi-border-radius-full);
-    padding: 2px;
-    flex-shrink: 0;
-}
-
-body[theme-mode="dark"] .summary-workbench-mode-switch {
-    background: var(--wk-bg-elevated);
-    border-color: var(--wk-border-default);
-}
-
-.summary-workbench-mode-btn {
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: var(--semi-font-size-small);
-    font-weight: 600;
-    line-height: 20px;
-    padding: 4px 12px;
-    border-radius: var(--semi-border-radius-full);
-    color: var(--wk-text-tertiary);
-    white-space: nowrap;
-    transition: background 0.15s, color 0.15s;
-}
-
-.summary-workbench-mode-btn--active {
-    background: var(--wk-bg-surface);
-    color: var(--wk-text-primary);
-}
-
-.summary-workbench-mode-btn:not(.summary-workbench-mode-btn--active):hover {
-    color: var(--wk-text-secondary);
-}
-
 .summary-workbench-header-emoji {
     font-size: 28px;
     line-height: 1;
@@ -2378,25 +2346,18 @@ body[theme-mode="dark"] .summary-workbench-mode-switch {
     min-height: 320px;
 }
 
-/* Input wrap - 420px fixed height (设计稿) */
+/* Input wrap - 高度随内容自动撑开，min/max 约束边界 */
 .summary-workbench-input-wrap {
     display: flex;
     flex-direction: column;
-    height: 420px;
     flex-shrink: 0;
-    overflow: hidden;
-}
-
-.summary-workbench-input-wrap > div:first-child {
-    position: relative;
-    flex: 1;
-    min-height: 0;
 }
 
 .summary-workbench-textarea {
     display: block;
     width: 100%;
-    height: 100%;
+    min-height: 200px;
+    max-height: 420px;
     border: none;
     outline: none;
     resize: none;
@@ -2458,8 +2419,7 @@ body[theme-mode="dark"] .summary-workbench-mode-switch {
 }
 
 /* 面板模式：输入框高度缩小 */
-.summary-workbench--panel .summary-workbench-input-wrap {
-    height: auto;
+.summary-workbench--panel .summary-workbench-textarea {
     min-height: 120px;
 }
 
@@ -2487,7 +2447,7 @@ body[theme-mode="dark"] .summary-workbench-mode-switch {
     gap: 12px;
 }
 
-.summary-workbench--panel .summary-workbench-start-btn {
+.summary-workbench--panel .chat-summary-modal-split {
     align-self: flex-end;
 }
 
@@ -2641,28 +2601,11 @@ body[theme-mode="dark"] .summary-workbench-mode-switch {
     margin-top: 4px;
 }
 
-/* Start button - 药丸形，active 状态深色白字，disabled 状态浅灰背景灰字+图标 */
-.summary-workbench-start-btn {
-    border-radius: 99px !important;
-    padding: 0 12px;
-    height: 32px;
-    font-size: 14px;
-    font-weight: 500;
-    flex-shrink: 0;
-}
-
-.summary-workbench-start-btn svg {
-    margin-right: 10px;
-}
-
-.summary-workbench-start-btn:disabled {
-    background-color: var(--wk-bg-elevated) !important;
-    color: var(--wk-text-disabled) !important;
-}
-
-.summary-workbench-start-btn:disabled svg {
-    color: var(--wk-text-disabled);
-    margin-right: 4px;
+/* 右下角按钮组：SplitButtonGroup（主按钮 + 模式下拉），与 ChatSummaryNewModal 一致。
+   chevron 触发按钮加紧凑 padding，避免默认 16px 左右 padding 撑宽图标按钮。 */
+.chat-summary-modal-split .semi-button:last-child {
+    padding-left: var(--wk-sp-2, 8px);
+    padding-right: var(--wk-sp-2, 8px);
 }
 
 @media (max-width: 600px) {
@@ -2672,7 +2615,7 @@ body[theme-mode="dark"] .summary-workbench-mode-switch {
         gap: 12px;
     }
 
-    .summary-workbench-start-btn {
+    .chat-summary-modal-split {
         align-self: flex-end;
     }
 }

@@ -62,6 +62,10 @@ interface ExpertBase {
   botName?: string;
   /** Human creator display name. */
   creatorName: string;
+  /** Detail-view count from resource_metrics (wire `view_count`). */
+  viewCount?: number;
+  /** Successful add-to-loop count from resource_metrics (wire `install_count`). */
+  installCount?: number;
   /** System prompt / instructions that define how the expert behaves. */
   instruction?: string;
   /** Raw MCP servers config (mcpServers JSON), as entered in the config editor. */
@@ -140,6 +144,8 @@ export const EXPERT_SQUADS: ExpertSquad[] = [
     createdByType: "bot",
     botName: "研发交付助手",
     creatorName: "林澈",
+    viewCount: 132,
+    installCount: 18,
     leader: "技术负责人",
     members: [
       { key: "product_analyst", templateId: "expert-product-analyst", name: "产品分析师", role: "澄清需求与验收标准", leader: false },
@@ -294,7 +300,7 @@ export const EXPERT_SQUADS: ExpertSquad[] = [
 ];
 
 export const EXPERT_AGENTS: ExpertAgent[] = [
-  { id: "backend-architect", kind: "agent", mine: true, shortName: "架构", name: "后端架构师", summary: "评审服务边界、数据模型和可靠性方案。", category: "研发工具", tags: ["架构评审", "可靠性"], publisher: "Octo Community", createdByType: "human", creatorName: "王决", instruction: "你是资深后端架构师。评审时先澄清业务约束与非功能需求，再从服务边界、数据模型、一致性与容量四个维度给出可执行建议，并标注风险与验证方式。", mcpConfig: '{\n  "mcpServers": {\n    "git": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-git"]\n    },\n    "postgres": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-postgres"]\n    }\n  }\n}', skills: [{ name: "架构评审清单" }, { name: "容量估算模板" }] },
+  { id: "backend-architect", kind: "agent", mine: true, shortName: "架构", name: "后端架构师", summary: "评审服务边界、数据模型和可靠性方案。", category: "研发工具", tags: ["架构评审", "可靠性"], publisher: "Octo Community", createdByType: "human", creatorName: "王决", viewCount: 86, installCount: 12, instruction: "你是资深后端架构师。评审时先澄清业务约束与非功能需求，再从服务边界、数据模型、一致性与容量四个维度给出可执行建议，并标注风险与验证方式。", mcpConfig: '{\n  "mcpServers": {\n    "git": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-git"]\n    },\n    "postgres": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-postgres"]\n    }\n  }\n}', skills: [{ name: "架构评审清单" }, { name: "容量估算模板" }] },
   { id: "code-reviewer", kind: "agent", shortName: "审查", name: "代码审查专家", summary: "围绕正确性、安全和可维护性输出可执行的审查意见。", category: "研发工具", tags: ["代码质量", "安全"], publisher: "Octo Community", createdByType: "bot", botName: "CodeReview Bot", creatorName: "李衡", instruction: "逐文件审查改动，按正确性 > 安全 > 可维护性排序给出问题，每条包含定位、原因和修复建议；无问题时明确说明。", mcpConfig: '{\n  "mcpServers": {\n    "git": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-git"]\n    }\n  }\n}', skills: [{ name: "安全审查规则" }] },
   { id: "market-researcher", kind: "agent", shortName: "研究", name: "市场研究员", summary: "从公开资料中提炼市场结构、竞品证据与关键趋势。", category: "营销策划", tags: ["竞品", "趋势"], publisher: "Octo Community", createdByType: "human", creatorName: "赵岚" },
   { id: "report-writer", kind: "agent", shortName: "报告", name: "经营报告助手", summary: "把结构化数据转成面向决策的经营汇报。", category: "办公提效", tags: ["汇报", "写作"], publisher: "Octo Community", createdByType: "bot", botName: "经营报告 Bot", creatorName: "钱悦" },

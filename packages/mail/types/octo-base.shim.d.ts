@@ -33,6 +33,14 @@ declare module "@octo/base" {
     ): Promise<unknown>;
   };
 
+  export const SpaceService: {
+    shared: {
+      getMySpaces(config?: {
+        suppressAuthExpiredLogout?: boolean;
+      }): Promise<Array<{ space_id: string; name?: string }>>;
+    };
+  };
+
   export interface ConfirmOptions {
     title?: string;
     content?: string | import("react").ReactNode;
@@ -61,6 +69,7 @@ declare module "@octo/base" {
   export const WKApp: {
     currentMenuId?: string;
     shared: { currentSpaceId?: string };
+    remoteConfig: { mailOn: boolean };
     route: {
       register(
         path: string,
@@ -69,7 +78,11 @@ declare module "@octo/base" {
       ): void;
     };
     menus: {
-      register(id: string, factory: () => Menus, order: number): void;
+      register(
+        id: string,
+        factory: () => Menus | undefined,
+        order: number
+      ): void;
     };
     routeLeft: { popToRoot(): void };
     routeRight: {

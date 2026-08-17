@@ -124,7 +124,10 @@ export class Subscribers extends Component<SubscribersProps> {
                   {vm.showAdd()
                     ? WKApp.endpoints.organizationalTool(
                         channel,
-                        <div className="wk-subscribers-item">
+                        <div
+                          className="wk-subscribers-item"
+                          data-testid="group-member-add-btn"
+                        >
                           <img
                             src={require("./assets/icon_add_more_gray.png")}
                             alt=""
@@ -135,6 +138,7 @@ export class Subscribers extends Component<SubscribersProps> {
                   {vm.showRemove() ? (
                     <div
                       className="wk-subscribers-item"
+                      data-testid="group-member-remove-btn"
                       onClick={() => {
                         if (onRemove) {
                           onRemove();

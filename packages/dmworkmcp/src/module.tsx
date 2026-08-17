@@ -1,6 +1,6 @@
 import React from "react";
 import type { IModule } from "@octo/base";
-import { ChatPage, i18n, I18nProvider, WKApp, Menus, t as translate } from "@octo/base";
+import { ChatPage, i18n, I18nProvider, WKApp, Menus, t as translate, Dap } from "@octo/base";
 import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "./pages/McpMarketListPage";
 import ExpertMarketListPage from "./pages/ExpertMarketListPage";
@@ -101,7 +101,11 @@ export class McpMarketModule implements IModule {
         // onPress (apps/web/src/App/index.tsx:154) — Main/index.tsx's default
         // click handler is bypassed when onPress is defined, so we own both
         // the left popToRoot and the right replaceToRoot here.
-        m.onPress = () => {
+        m.onPress = (reentry?: boolean) => {
+          // 重复点击已激活的市场菜单不计 module_entered(见二审 P2-4);宿主按 prevMenuId===id 传 reentry。
+          if (!reentry) {
+            Dap.shared.track("market_module_entered", {});
+          }
           WKApp.routeLeft.popToRoot();
           const page = WKApp.route.get("/mcp-market/mcp");
           if (page && React.isValidElement(page)) {

@@ -1,5 +1,6 @@
 import APIClient from "./APIClient"
 import { buildThreadChannelId, parseThreadChannelId, type Thread } from "./Thread"
+import { apiPath } from "./apiPath"
 
 export interface CreateThreadFromMessageReq {
   groupNo: string
@@ -23,14 +24,14 @@ const ThreadService = {
     if (sourceMessageId !== undefined) {
       body.source_message_id = sourceMessageId
     }
-    const resp = await APIClient.shared.post(`groups/${groupNo}/threads`, {
+    const resp = await APIClient.shared.post(apiPath`groups/${groupNo}/threads`, {
       ...body,
     })
     return normalizeThreadCreateResult(resp, groupNo)
   },
 
   createThreadFromMessage(req: CreateThreadFromMessageReq): Promise<ThreadCreateResult> {
-    return APIClient.shared.post(`groups/${req.groupNo}/threads`, {
+    return APIClient.shared.post(apiPath`groups/${req.groupNo}/threads`, {
       name: req.name,
       source_message_id: req.sourceMessageId,
       source_message_payload: req.sourceMessagePayload,

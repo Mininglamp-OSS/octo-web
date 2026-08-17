@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { WKApp, WKBase, Provider, ErrorBoundary, t } from "@octo/base"
+import { WKApp, WKBase, Provider, ErrorBoundary, t, Dap } from "@octo/base"
 import { isBindEntry } from "@octo/login"
 import { listen } from '@tauri-apps/api/event'
 import { MainPage } from "../Pages/Main";
@@ -278,6 +278,9 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                             if (!notice.crossSpace && spaceId) {
                                 localStorage.setItem('currentSpaceId', spaceId);
                             }
+                            // 十二审 🔴 P1-4:space_join_new 命令式,仅真加入时计(审批态已在上方 early-return)。
+                            //   此为 auto-join(登录时用 pendingInviteCode 直发 POST /space/join)的成功分支。
+                            Dap.shared.track("space_join_new", {});
                             goMain();
                         })
                         .catch((e: any) => {

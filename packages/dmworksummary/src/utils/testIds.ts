@@ -19,10 +19,10 @@ export const summaryTestIds = {
     createSelectChat: "summary-create-select-chat",
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
-    // Agent mode buttons on create page
+    // Mode switch dropdown on create page (trigger + menu items)
+    createModeSwitch: "summary-create-mode-switch",
     createAgentTab: "summary-create-agent-tab",
     createNormalTab: "summary-create-normal-tab",
-    createPanelStartBtn: "summary-create-panel-start-btn",
 
     // ── Chat selector modal ──
     chatSelectorModal: "summary-chat-selector-modal",

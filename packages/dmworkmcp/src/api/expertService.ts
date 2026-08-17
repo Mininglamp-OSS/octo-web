@@ -62,12 +62,18 @@ function delay<T>(value: T, ms = MOCK_DELAY_MS): Promise<T> {
 
 export type ExpertKindParam = "agent" | "squad";
 
+/** Catalog sort modes accepted by the marketplace list endpoints. `installs`
+ *  and `views` rank by the resource_metrics counters; `comprehensive` is the
+ *  backend's weighted blend of both plus a recency boost. */
+export type ExpertCatalogSort = "comprehensive" | "latest" | "installs" | "views";
+
 /** List query params shared by all four list endpoints (expert-v1.md §4.2). */
 export interface ListExpertParams {
   keyword?: string;
   /** Category NAME; "全部" / "all" disables the filter. */
   category?: string;
   tags?: string[];
+  sort?: ExpertCatalogSort;
   page?: number;
   pageSize?: number;
 }
@@ -158,7 +164,16 @@ expertAxios.interceptors.response.use(
     // dialog surfaces the error; the prefetch swallows it). A genuinely expired
     // session still logs out via the marketplace list calls the page makes.
     const url = (err?.config?.url as string | undefined) ?? "";
-    if (err?.response?.status === 401 && !url.startsWith(FLEET_BASE)) {
+    if (
+      err?.response?.status === 401 &&
+      !url.startsWith(FLEET_BASE) &&
+      // The view-tracking beacon is fire-and-forget: a 401 on it must never
+      // tear down the session (the page's list calls are the authoritative
+      // session probe and still log out on a genuinely expired token). Exact
+      // pathname match — a suffix check would also exempt any future URL that
+      // happens to end in /metrics/track.
+      url !== `${BASE}/metrics/track`
+    ) {
       WKApp.shared.logout();
     }
     return Promise.reject(err);
@@ -262,6 +277,7 @@ function buildListQuery(params: ListExpertParams): Record<string, unknown> {
     query.category = category;
   }
   if (params.tags?.length) query.tag = params.tags;
+  if (params.sort) query.sort = params.sort;
   query.page = params.page && params.page > 0 ? params.page : 1;
   query.page_size = params.pageSize && params.pageSize > 0 ? params.pageSize : 100;
   return query;
@@ -296,6 +312,22 @@ const getSquadReal = (id: string) =>
 
 const deleteExpertReal = (id: string) => del(`/experts/${encodeURIComponent(id)}`);
 const deleteSquadReal = (id: string) => del(`/squads/${encodeURIComponent(id)}`);
+
+/** POST /metrics/track — bump the backend view counter. Only detail views are
+ *  tracked (opening the modal), matching the skill market's semantics.
+ *  Fire-and-forget: every failure is swallowed here so no call site ever has
+ *  to remember to catch a rejection that carries no actionable signal. */
+async function trackExpertViewReal(kind: ExpertKindParam, id: string): Promise<void> {
+  try {
+    await expertAxios.post(`${BASE}/metrics/track`, {
+      resource_type: kind === "squad" ? "squad" : "expert",
+      resource_id: id,
+      event_type: "view",
+    });
+  } catch {
+    // A lost view must never block or break the detail view.
+  }
+}
 
 async function listExpertTagsReal(kind: ExpertKindParam): Promise<string[]> {
   const data = await get<{ name: string; count: number }[] | null>(
@@ -348,11 +380,28 @@ function paginate<T>(source: T[], params: ListExpertParams): { items: T[]; total
   return { items: source.slice(start, start + pageSize), total: source.length };
 }
 
+/** Mirror the backend's catalog ordering over the mock fixtures. `latest` (and
+ *  no sort) keeps the fixture order, which already plays newest-first. */
+function sortMockItems(items: ExpertItem[], sort?: ExpertCatalogSort): ExpertItem[] {
+  if (!sort || sort === "latest") return items;
+  const score = (item: ExpertItem): number => {
+    const installs = item.installCount ?? 0;
+    const views = item.viewCount ?? 0;
+    if (sort === "installs") return installs;
+    if (sort === "views") return views;
+    return installs * 5 + views;
+  };
+  return [...items].sort((a, b) => score(b) - score(a));
+}
+
 function listMockFrom(
   source: ExpertItem[],
   params: ListExpertParams
 ): Promise<ExpertListResult> {
-  const filtered = source.filter((item) => matchesFilters(item, params));
+  const filtered = sortMockItems(
+    source.filter((item) => matchesFilters(item, params)),
+    params.sort
+  );
   const { items, total } = paginate(filtered, params);
   return delay({ items, total });
 }
@@ -389,6 +438,13 @@ const deleteExpertMock = (id: string): Promise<void> => {
 const deleteSquadMock = (id: string): Promise<void> => {
   const idx = mockSquads.findIndex((s) => s.id === id);
   if (idx !== -1) mockSquads.splice(idx, 1);
+  return delay(undefined);
+};
+
+const trackExpertViewMock = (kind: ExpertKindParam, id: string): Promise<void> => {
+  const source: ExpertItem[] = kind === "squad" ? mockSquads : mockAgents;
+  const found = source.find((item) => item.id === id);
+  if (found) found.viewCount = (found.viewCount ?? 0) + 1;
   return delay(undefined);
 };
 
@@ -446,6 +502,13 @@ export function deleteExpert(id: string): Promise<void> {
 
 export function deleteSquad(id: string): Promise<void> {
   return USE_MOCK ? deleteSquadMock(id) : deleteSquadReal(id);
+}
+
+/** Record one detail view for an expert ("agent") or squad. Fire-and-forget:
+ *  never rejects — failures are swallowed inside (a lost view is meaningless
+ *  to the user and must not surface). */
+export function trackExpertView(kind: ExpertKindParam, id: string): Promise<void> {
+  return USE_MOCK ? trackExpertViewMock(kind, id) : trackExpertViewReal(kind, id);
 }
 
 /** GET /expert_tags?kind= — tag names for the current tab's popover. */

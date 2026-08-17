@@ -3,6 +3,7 @@ import { Space } from "wukongimjssdk";
 import NavSpaceSwitcher from "./NavSpaceSwitcher";
 import NavLanguageSwitcher from "./NavLanguageSwitcher";
 import { t } from "../../i18n";
+import { Dap } from "../../Service/Dap";
 
 export interface NavBottomProps {
     settingSelected?: boolean;
@@ -65,7 +66,11 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                         aria-label={t("base.navRail.settings")}
                         aria-haspopup="menu"
                         aria-expanded={!!settingSelected}
-                        onClick={onSettingsClick}
+                        onClick={() => {
+                            // 仅在「关→开」这一沿采集打开设置;点击本身是 toggle,关闭时不计。
+                            if (!settingSelected) Dap.shared.track("settings_menu_opened", {});
+                            onSettingsClick?.();
+                        }}
                     >
                         <IconSettings />
                         <span className="wk-navrail__item-label">{t("base.navRail.settings")}</span>

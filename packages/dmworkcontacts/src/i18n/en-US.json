@@ -19,6 +19,7 @@
   "groupNew.title.selectContacts": "Select contacts",
   "groupCreate.title": "New group chat",
   "groupCreate.avatarLabel": "Group avatar",
+  "groupCreate.avatarUploadFailed": "The group was created, but its avatar could not be uploaded. Try again in group settings.",
   "groupCreate.editAvatar": "Customize group avatar",
   "groupCreate.nameLabel": "Group name",
   "groupCreate.namePlaceholder": "e.g. Work, Study, Project name...",

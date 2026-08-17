@@ -268,5 +268,25 @@ describe("expertService add-to-loop wire contract", () => {
       })
     ).rejects.toBeTruthy();
     expect(mock.logout).not.toHaveBeenCalled();
+
+    // The fire-and-forget view beacon is exempt too: a 401 on it must never
+    // tear down the session.
+    await expect(
+      onRejected!({
+        config: { url: "/market/api/v1/metrics/track" },
+        response: { status: 401 },
+      })
+    ).rejects.toBeTruthy();
+    expect(mock.logout).not.toHaveBeenCalled();
+
+    // The exemption is an exact pathname match — a marketplace URL that merely
+    // ENDS in the beacon suffix is not the beacon and must still log out.
+    await expect(
+      onRejected!({
+        config: { url: "/market/api/v1/other/metrics/track" },
+        response: { status: 401 },
+      })
+    ).rejects.toBeTruthy();
+    expect(mock.logout).toHaveBeenCalledTimes(1);
   });
 });

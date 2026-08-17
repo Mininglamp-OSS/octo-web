@@ -576,6 +576,9 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
 
+        // contacts_searched:仅 keyword 非空(去抖后)发;不采 keyword
+        Dap.shared.track('contacts_searched', {})
+
         const { contacts, groups } = searchContacts(keyword, this.contactsSearchIndex)
 
         this.setState({
@@ -596,6 +599,10 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private toggleSection = (section: ContactsDirectorySectionKey) => {
         const willExpand = this.state.expandedSection !== section
+        // contacts_group_expanded:仅展开态发(gate willExpand),props 恒空(不带 section)
+        if (willExpand) {
+            Dap.shared.track('contacts_group_expanded', {})
+        }
         this.setState({
             expandedSection: willExpand ? section : null,
         })
@@ -632,6 +639,8 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private handleFilterChange = (mode: ContactFilterMode) => {
         if (this.state.filterMode === mode) return
+        // contacts_filter_switched:已 guard 同值;props 恒空(不带 mode)
+        Dap.shared.track('contacts_filter_switched', {})
         const { items, indexList, indexItemMap, listRows } = this.getIndex(mode)
         this.flatItems = items
         this.maybePrefetchSmallList()

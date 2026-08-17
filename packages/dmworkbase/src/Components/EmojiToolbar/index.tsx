@@ -6,6 +6,7 @@ import { Toast } from "@douyinfe/semi-ui";
 import { EndpointID } from "../../Service/Const";
 import WKApp from "../../App";
 import { Emoji, EmojiService } from "../../Service/EmojiService";
+import { Dap } from "../../Service/Dap";
 import { StickerItem } from "../../Service/DataSource/DataSource";
 import ConversationContext from "../Conversation/context";
 import { t } from "../../i18n";
@@ -133,6 +134,9 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
         if (this.state.show) {
             this.close()
         } else {
+            // input_emoji_picker_opened:仅在「打开」这一支计数。原 TrackRules 的 input-emoji-btn 点击
+            // 规则在开和关都触发(toggle),会把「关闭」也计成「打开」→ 翻倍(见 review P2-7)。已移除该规则。
+            Dap.shared.track("input_emoji_picker_opened", {})
             this.setState({ show: true, animationStart: true, panelPos: this.computePanelPos() })
             window.addEventListener("resize", this.onResize)
         }
@@ -582,6 +586,7 @@ export class EmojiPanel extends Component<EmojiPanelProps, EmojiPanelState> {
                     {
                         isSticker ? stickers.map((sticker) => {
                             return <li key={sticker.sticker_id} className="wk-sticker-item"
+                                data-testid="input-sticker-item"
                                 onMouseEnter={(e) => this.scheduleStickerPreview(sticker, e.currentTarget)}
                                 onMouseLeave={this.onStickerLeave}
                                 onClick={(e) => {

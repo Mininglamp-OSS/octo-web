@@ -167,7 +167,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                         {t("base.navRail.settingsPanel.changelog")}
                     </NavFlyoutMenuItem>
                     {onOpenOnboarding && (
-                        <NavFlyoutMenuItem onSelect={() => {
+                        <NavFlyoutMenuItem data-testid="nav-settings-onboarding" onSelect={() => {
                             onToggleSetting();
                             onOpenOnboarding();
                         }}>
@@ -184,7 +184,7 @@ export default class NavSettingsPanel extends Component<NavSettingsPanelProps, N
                             {t("base.navRail.settingsPanel.spaceManagement")}
                         </NavFlyoutMenuItem>
                     )}
-                    <NavFlyoutMenuItem onSelect={() => {
+                    <NavFlyoutMenuItem data-testid="nav-settings-notification-toggle" onSelect={() => {
                         onToggleSetting();
                         WKApp.shared.notificationIsClose = !WKApp.shared.notificationIsClose;
                     }}>

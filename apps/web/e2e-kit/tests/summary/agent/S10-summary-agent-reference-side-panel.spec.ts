@@ -26,6 +26,7 @@ test.describe("@S10 @p1 @summary @agent @summary-agent @summary-reference S10 �
     await authedPage.getByTestId(T.createEntry).click();
 
     await expect(authedPage.getByText("邀请同事一起总结信息")).toBeVisible({ timeout: 15_000 });
+    await authedPage.getByTestId(T.createModeSwitch).click();
     await authedPage.getByTestId(T.createAgentTab).click();
     await expect(
       authedPage.getByText("你好，我是总结助手，想总结什么尽管告诉我。")

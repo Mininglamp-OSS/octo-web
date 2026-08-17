@@ -2390,9 +2390,23 @@
 }
 
 .wk-mcp-expert-sort {
-  display: flex;
+  display: inline-flex;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+/* Pill segmented control, matching the skill market's sort switch. */
+.wk-mcp-expert-sort__options {
+  display: inline-flex;
   align-items: center;
   gap: var(--wk-sp-1);
+  max-width: 100%;
+  overflow-x: auto;
+  padding: var(--wk-sp-0-5);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-base);
+  box-shadow: inset 0 0 0 1px var(--wk-bg-surface);
 }
 
 .wk-mcp-expert-truncated {
@@ -2402,22 +2416,40 @@
 }
 
 .wk-mcp-expert-sort button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-0-5);
+  flex: 0 0 auto;
   height: 28px;
+  min-width: 54px;
   padding: 0 var(--wk-sp-3);
   border: 0;
   border-radius: var(--wk-r-full);
-  color: var(--wk-text-secondary);
   background: transparent;
+  color: var(--wk-text-secondary);
+  font-family: var(--wk-font-sans);
   font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--wk-dur-fast) var(--wk-ease),
+    color var(--wk-dur-fast) var(--wk-ease),
+    box-shadow var(--wk-dur-fast) var(--wk-ease);
 }
 
 .wk-mcp-expert-sort button:hover,
-.wk-mcp-expert-sort button.is-active {
-  color: var(--wk-text-primary);
-  background: var(--wk-brand-tint-06);
+.wk-mcp-expert-sort button:focus-visible {
+  outline: none;
+  background: var(--wk-bg-hover);
+  color: var(--wk-color-accent);
 }
 
 .wk-mcp-expert-sort button.is-active {
+  background: var(--wk-bg-surface);
+  color: var(--wk-color-accent);
+  box-shadow: var(--wk-shadow-sm);
   font-weight: var(--wk-font-semibold);
 }
 
@@ -2867,6 +2899,20 @@
   margin-top: var(--wk-sp-2);
   color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-sm);
+}
+
+/* 浏览量 / 安装量：跟卡片 footer 的 .wk-mcp-card__stat 同一套视觉。 */
+.wk-mcp-expert-detail__stats {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-expert-detail__stat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .wk-mcp-expert-detail__tabs {

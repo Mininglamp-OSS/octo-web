@@ -1,6 +1,7 @@
 import axios, { AxiosResponse } from "axios";
 import { buildAcceptLanguage } from "./apiLanguage";
 import { isAuthExpiredApiError, normalizeApiError, NormalizedApiError } from "./apiError";
+import { registerRequestTemplate } from "./apiPath";
 
 declare module "axios" {
     interface AxiosRequestConfig {
@@ -98,6 +99,12 @@ export default class APIClient {
         axios.interceptors.request.use(function (config) {
             config.headers = config.headers || {};
             config.headers["Accept-Language"] = buildAcceptLanguage();
+            // 埋点路由模板登记(见 apiPath.ts):唯一知道 baseURL 的地方,把 apiPath 产出的
+            // 具体路径与模板按最终 pathname 对齐,供 Dap http_request 上报稳定模板而非反解归一。
+            // 非 apiPath 路径无副作用;登记失败绝不影响请求本身。
+            try {
+                registerRequestTemplate(config.url, config.baseURL ?? axios.defaults.baseURL ?? undefined);
+            } catch { /* 埋点旁路,任何异常不得波及业务请求 */ }
             let token:string | undefined
             if(self.config.tokenCallback) {
                 token = self.config.tokenCallback()

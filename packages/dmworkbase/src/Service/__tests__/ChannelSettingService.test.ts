@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import {
   Channel,
   ChannelTypeGroup,
@@ -15,6 +17,7 @@ import {
   leaveThread,
   removeChannelSubscribers,
   transferChannelOwner,
+  uploadGroupAvatar,
   updateChannelAvatarCustom,
   updateChannelField,
   updateChannelSetting,
@@ -130,6 +133,23 @@ describe("ChannelSettingService", () => {
         members: ["bob"],
       },
     });
+  });
+
+  it("uploads a cropped group avatar through the group avatar endpoint", async () => {
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+
+    await uploadGroupAvatar("group-1", file);
+
+    expect(apiPost).toHaveBeenCalledWith(
+      "groups/group-1/avatar",
+      expect.any(FormData),
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 60_000,
+      }
+    );
+    const body = apiPost.mock.calls[0][1] as FormData;
+    expect(body.get("file")).toBe(file);
   });
 
   it("updates channel fields and subscriber attributes", async () => {

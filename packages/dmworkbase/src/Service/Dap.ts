@@ -18,6 +18,19 @@
  *   - 远程 kill switch:`enabled=false` 时 track/pageView 立即 return,清空队列,业务零影响。
  */
 
+// 唯一的模块依赖:埋点路由模板 registry(见 apiPath.ts)。apiPath 自身零依赖,不成环。
+// 供 normalizePath 优先命中调用处已知的路由模板,命中不了才退回本文件的白名单归一兜底。
+import { templateForPathname } from './apiPath'
+// 锚点规则表(见 TrackRules.ts):点击委托 closest('[data-track]') 落空后的纯前端 fallback。
+// TrackRules 自身零依赖,不成环。
+import { TRACK_RULES, buildIndex, matchRoute, type TrackRule, type TrackRuleIndex } from './TrackRules'
+// 中央映射·path 通道(①,见 FetchRules.ts):把成功(2xx)的第一方请求 method+path 映射成
+// 整合表事件名再 track 一次。零依赖、零改组件;pathname 仅用于选事件名,绝不落库。
+import { FETCH_RULES, buildFetchIndex, matchFetchEvent, rawPathname, type FetchRuleIndex } from './FetchRules'
+// 中央映射·body 键通道(②,见 BodyRules.ts):对白名单端点 clone 请求体、只读顶层枚举键映射事件。
+// 受控放宽「不读正文」边界:只碰白名单端点、只读键不读值、只解析 JSON 串体、同源+2xx 才触发。
+import { BODY_RULES, buildBodyIndex, computeBodyEvent, type BodyRuleIndex } from './BodyRules'
+
 export type TrackPrimitive = string | number | boolean | null
 
 /** 上报信封:每条事件出队前补齐(§2.4)。刻意不含 flow_id / actor_*。 */
@@ -140,15 +153,24 @@ const ROUTE_WORDS = new Set<string>([
 ])
 
 /**
- * 请求路径归一(§8 隐私边界:绝不泄文件名 / 对象键 / 用户名 / 凭证 / 正文)。**白名单路由词式**:
- * 每段只有命中 ROUTE_WORDS(声明过的静态路由词)才原样保留;其余一切一律占位符化——纯数字 /
- * 长 hex / uuid 记作 :id(仅为可读性,安全上等价),其余记作 :seg。默认即 mask,故用户名、
- * 一次性 login_authcode、邀请码、invite token、文件名、percent-encoded 段等都不可能进 telemetry。
+ * 请求路径归一(§8 隐私边界:绝不泄文件名 / 对象键 / 用户名 / 凭证 / 正文)。
+ *
+ * **优先**:命中调用处经 `apiPath` 登记的路由模板(见 apiPath.ts)——直接上报源码里的静态
+ * 路由模板(`/api/v1/spaces/:id/categories/:id`),字面业务段原样可见、变量段占位 :id,
+ * 同一 endpoint 无论 id 怎么变都是同一个稳定模板,且模板里从不含变量值,隐私天然安全。
+ *
+ * **兜底**(未经 apiPath 的请求 / 直接 axios / 第三方库):**白名单路由词式**归一——每段只有
+ * 命中 ROUTE_WORDS(声明过的静态路由词)才原样保留;其余一切一律占位符化——纯数字 / 长 hex /
+ * uuid 记作 :id(仅为可读性,安全上等价),其余记作 :seg。默认即 mask,故用户名、一次性
+ * login_authcode、邀请码、invite token、文件名、percent-encoded 段等都不可能进 telemetry。
  */
 function normalizePath(rawUrl: string): string {
     try {
         // 相对/绝对都能解析;base 仅用于补全,不进结果
         const u = new URL(rawUrl, 'http://x')
+        // 优先:调用处已知的路由模板(无损、稳定、隐私安全)。按 pathname 精确命中。
+        const template = templateForPathname(u.pathname)
+        if (template !== undefined) return template
         return u.pathname
             .split('/')
             .map((seg) => {
@@ -220,6 +242,12 @@ function isAbortError(err: unknown): boolean {
     return !!err && typeof err === 'object' && (err as { name?: string }).name === 'AbortError'
 }
 
+/**
+ * 点击委托 resolver 的归宿:命中的元素 + 事件名 + 可选静态 props。
+ * data-track 路径 event 取 dataset.track、props 省略;规则表路径 event/props 来自 TrackRule。
+ */
+type Resolved = { el: HTMLElement; event: string; props?: Record<string, TrackPrimitive> }
+
 class DapImpl {
     /** 会话内唯一;仅作为埋点事件 envelope 的 session_id 随上报发出(采集启用时才发)。纯内存,不落盘。 */
     readonly sessionId: string = genId()
@@ -237,6 +265,8 @@ class DapImpl {
     // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
     private enabled = false
     private started = false
+    // app_launched 一次性哨兵:整个页面生命周期只发一次「应用启动」。见 setEnabled 首启分支。
+    private launchTracked = false
     /**
      * 采集机制是否已装:**每个采集器一个 flag**,而非一个总开关。
      * 单一总开关下,若某个 install 抛错(总开关保持 false),下次 setEnabled(true) 会把
@@ -342,7 +372,26 @@ class DapImpl {
             // 首次启用:惰性装采集机制(dark 态从未装过),再补扫当前 DOM。
             this.installCollectors()
             this.rescanCurrent()
+            // app_launched **不在此发**(六审 P2):首次 setEnabled(true) 由 appconfig 回调驱动
+            //   (App.tsx:502-503),而 appconfig 在**登录页(未登录、无 token)**就会拉,此处发会
+            //   逼 envelope()→deviceId() 给匿名访客写持久 localStorage 标识 + 发一条无 token 上报,
+            //   破坏 Dap.ts:255-258 的「惰性创建」保证。改由 maybeTrackLaunch() 在**登录后拿到 token、
+            //   首个真正产出的事件到来时**补发一次(整生命周期仍仅一次,launchTracked 哨兵保证)。
         }
+    }
+
+    /**
+     * app_launched 惰性补发(六审 P2 / owner 决策 b):登录(currentToken 有值)后、采集开启、
+     * 且首个真正 track 到来时发一次「应用启动」。放在 track() 顶部——匿名登录页无 token 时不发,
+     * 从而不写 device_id、不产生无 token 上报;登录后首个鉴权事件(通常是 http_request / page 进入)
+     * 触发它,并排在该事件之前。launchTracked 哨兵保证整生命周期仅一次(停采→再启用亦不重复)。
+     */
+    private maybeTrackLaunch(): void {
+        if (this.launchTracked) return
+        if (!this.enabled) return
+        if (!this.currentToken()) return
+        this.launchTracked = true
+        this.track('app_launched', {})
     }
 
     /** 注入业务 token 取值回调(见 index.tsx)。上报请求据此带 `token` 头供后端鉴权归一 actor。 */
@@ -362,6 +411,7 @@ class DapImpl {
     /** 通用上报(蒙版内部自动调;破例点如消息补点也调它)。 */
     track(eventName: string, props?: Record<string, unknown>): void {
         if (!this.enabled || !eventName) return
+        this.maybeTrackLaunch() // 登录后首个事件时补发 app_launched(见其注释);哨兵防重入
         this.safe(() => {
             const clean = this.sanitizeProps(props)
             const objectId = this.pickObjectId(clean)
@@ -372,6 +422,7 @@ class DapImpl {
     /** page_view(MutationObserver 内部调,按 pageId 去重 + 结算上一页停留)。 */
     pageView(pageId: string, extra?: Record<string, unknown>): void {
         if (!this.enabled || !pageId) return
+        this.maybeTrackLaunch() // 首个鉴权页进入亦可触发 app_launched(排在 page_view 前)
         this.safe(() => {
             // 同页重复触发(菜单 setter + syncPath + mittBus 多次)只忽略,不重复计数(§3.2)
             if (this.lastPage && this.lastPage.pageId === pageId) return
@@ -578,28 +629,44 @@ class DapImpl {
     // ----------------------------------------------- 机制① 全局事件委托
 
     private installClickDelegation(): void {
-        // 解析被点/被激活元素归属的 [data-track],并施加 data-track-ignore 排除。
-        const resolveTracked = (target: HTMLElement | null): HTMLElement | null => {
+        // 规则表索引:安装时构建一次(此刻读 TRACK_RULES)。data-track 落空才查它,故对现有
+        // 声明式埋点零影响;表为空时 fallback 恒 miss,行为与旧实现完全一致。
+        const index = buildIndex(TRACK_RULES)
+        // 解析被点/被激活元素归属的埋点归宿:先 data-track(绝对优先),落空再查规则表 fallback。
+        // 返回从「元素」升级为 { el, event, props? }:data-track 命中时 event 取 dataset.track、
+        // 无静态 props;规则命中时 event / props 来自规则表。两路统一交给 fire()。
+        const resolveTracked = (
+            target: HTMLElement | null,
+            evType: 'click' | 'submit' | 'keydown',
+        ): Resolved | null => {
             if (!target || typeof target.closest !== 'function') return null
             const el = target.closest<HTMLElement>('[data-track]')
-            if (!el) return null
-            // 落在被显式标记「本次交互不代表该 data-track 动作」的子控件里则跳过:
-            // 如会话行(channel_opened)内的拖拽柄/展开线程标签、市场卡片 footer 的编辑/删除
-            // 按钮——它们 stopPropagation 表示「不代表该事件」,但捕获阶段先于 stopPropagation
-            // 执行,故改用 data-track-ignore 显式排除(ignore 须是被点元素到 tracked 元素之间的一层)。
-            const ignore = target.closest<HTMLElement>('[data-track-ignore]')
-            if (ignore && el !== ignore && el.contains(ignore)) return null
-            return el
+            if (el) {
+                // 落在被显式标记「本次交互不代表该 data-track 动作」的子控件里则跳过:
+                // 如会话行(channel_opened)内的拖拽柄/展开线程标签、市场卡片 footer 的编辑/删除
+                // 按钮——它们 stopPropagation 表示「不代表该事件」,但捕获阶段先于 stopPropagation
+                // 执行,故改用 data-track-ignore 显式排除(ignore 须是被点元素到 tracked 元素之间的一层)。
+                if (this.isTrackIgnored(target, el)) return null
+                const event = el.dataset.track
+                if (!event) return null
+                return { el, event }
+            }
+            // data-track 落空 → 规则表 fallback。只吃「没有 data-track」的节点 → 现有埋点零回归。
+            return this.resolveByRules(target, evType, index)
         }
-        const fire = (el: HTMLElement) => {
-            const name = el.dataset.track
-            if (!name) return
-            this.track(name, this.collectDatasetProps(el))
+        const fire = (r: Resolved) => {
+            if (!r.event) return
+            // 合并规则静态 props 与 collectDatasetProps(el)(读 data-*,不读 value/正文);
+            // 让运行时 data-object-id 等覆盖同名静态项。data-track 路径无静态 props,退化为原行为。
+            const dsProps = this.collectDatasetProps(r.el)
+            const props = r.props ? { ...r.props, ...dsProps } : dsProps
+            this.track(r.event, props)
         }
         const clickHandler = (e: Event) => {
             this.safe(() => {
-                const el = resolveTracked(e.target as HTMLElement | null)
-                if (el) fire(el)
+                const evType = e.type === 'submit' ? 'submit' : 'click'
+                const r = resolveTracked(e.target as HTMLElement | null, evType)
+                if (r) fire(r)
             })
         }
         // 键盘激活补采:role="button" 等**非原生**控件(如市场卡片 McpCard/SkillCard 是
@@ -607,14 +674,14 @@ class DapImpl {
         // 派发 click,声明式 click 委托整条漏采——键盘用户打开详情却无任何事件(见 PR #1320
         // review P1-4)。这里补一条 keydown:仅对**非原生可激活**的聚焦元素在 Enter/Space 时
         // 补发;原生 button/a[href]/input/select/textarea/summary 会自行合成 click(已被上面的
-        // 委托覆盖),显式排除以免双记。
+        // 委托覆盖),显式排除以免双记。规则表命中的节点走同一 resolver,故键盘激活同样能采到。
         const keydownHandler = (e: KeyboardEvent) => {
             this.safe(() => {
                 if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return
                 const target = e.target as HTMLElement | null
                 if (!target || this.isNativeActivatable(target)) return
-                const el = resolveTracked(target)
-                if (el) fire(el)
+                const r = resolveTracked(target, 'keydown')
+                if (r) fire(r)
             })
         }
         // 捕获阶段:即使业务层 stopPropagation 也能采到。
@@ -627,6 +694,120 @@ class DapImpl {
         document.addEventListener('click', clickHandler, true)
         document.addEventListener('submit', clickHandler, true)
         document.addEventListener('keydown', keydownHandler, true)
+    }
+
+    /**
+     * 规则表 fallback:从被点元素沿 parentElement 向上 walk,逐个祖先看 `data-testid`,用它查
+     * byTestid 主索引;再用 route + closestTestid + on + role 做 AND 约束消歧。命中数 >1 打 warn
+     * 取第一条。testid 主路径 miss 后,再走少量 loose(role/aria)线性兜底。全程只读 data-testid /
+     * role 属性,绝不读 value / 正文。
+     */
+    private resolveByRules(
+        target: HTMLElement,
+        evType: 'click' | 'submit' | 'keydown',
+        index: TrackRuleIndex,
+    ): Resolved | null {
+        const route = this.currentRoute()
+        // ① testid 主路径(O(1) 查 Map):第一个「有 data-testid 且规则命中」的祖先胜出。
+        let node: HTMLElement | null = target
+        while (node) {
+            const testid = node.dataset ? node.dataset.testid : undefined
+            if (testid) {
+                const rules = index.byTestid.get(testid)
+                if (rules && rules.length) {
+                    const el = node
+                    const matched = rules.filter(
+                        (r) =>
+                            matchRoute(r.route, route) &&
+                            this.matchOn(r.on, evType) &&
+                            this.matchClosest(el, r.closestTestid) &&
+                            this.matchRole(el, r.role),
+                    )
+                    if (matched.length) {
+                        if (matched.length > 1) this.warnAmbiguous(testid, matched)
+                        // data-track-ignore 复用:落在 ignore 子树里则视为「不代表该事件」,跳过。
+                        if (this.isTrackIgnored(target, el)) return null
+                        return { el, event: matched[0].event, props: matched[0].props }
+                    }
+                }
+            }
+            node = node.parentElement
+        }
+        // ② loose 兜底(线性,数量应很小):无 testid、靠 role/aria 命中。沿祖先找首个 role 匹配的元素。
+        for (const r of index.loose) {
+            if (!r.role) continue // loose 规则必须带 role,否则会匹配一切
+            let n: HTMLElement | null = target
+            while (n) {
+                const el = n
+                if (
+                    this.matchRole(el, r.role) &&
+                    matchRoute(r.route, route) &&
+                    this.matchOn(r.on, evType) &&
+                    this.matchClosest(el, r.closestTestid)
+                ) {
+                    if (this.isTrackIgnored(target, el)) return null
+                    return { el, event: r.event, props: r.props }
+                }
+                n = n.parentElement
+            }
+        }
+        return null
+    }
+
+    /** 当前路由(location.pathname);拿不到(SSR/测试无 DOM)返回空串 → 带 route 约束的规则一律不命中。 */
+    private currentRoute(): string {
+        try {
+            const loc = (globalThis as { location?: Location }).location
+            return loc && loc.pathname ? loc.pathname : ''
+        } catch {
+            return ''
+        }
+    }
+
+    /** on 约束:规则缺省 on → 三类交互都可;否则仅在指定交互类型触发。 */
+    private matchOn(on: TrackRule['on'], evType: 'click' | 'submit' | 'keydown'): boolean {
+        return !on || on === evType
+    }
+
+    /** closestTestid 约束:规则缺省 → 恒真;否则该元素需能 closest 到带此 data-testid 的祖先(消歧用)。 */
+    private matchClosest(el: HTMLElement, closestTestid?: string): boolean {
+        if (!closestTestid) return true
+        try {
+            return !!el.closest(`[data-testid="${closestTestid}"]`)
+        } catch {
+            return false
+        }
+    }
+
+    /** role 约束:规则缺省 → 恒真;否则该元素的 role 属性需精确等于它。 */
+    private matchRole(el: HTMLElement, role?: string): boolean {
+        if (!role) return true
+        return typeof el.getAttribute === 'function' && el.getAttribute('role') === role
+    }
+
+    /**
+     * data-track-ignore 排除(data-track 路径与规则表路径共用):被点元素最近的 data-track-ignore
+     * 若严格落在归宿元素 `el` 内部(el.contains(ignore) 且 el !== ignore),则本次交互「不代表该
+     * 事件」,跳过。
+     */
+    private isTrackIgnored(target: HTMLElement, el: HTMLElement): boolean {
+        const ignore = target.closest<HTMLElement>('[data-track-ignore]')
+        return !!ignore && el !== ignore && el.contains(ignore)
+    }
+
+    /**
+     * 规则表消歧告警:同一 data-testid 在当前约束下命中多条规则,取第一条并 warn,提示规则表
+     * 作者补 route/closestTestid/on 约束。仅为配置期质量信号,包在 try 里绝不抛、不影响业务。
+     */
+    private warnAmbiguous(testid: string, matched: TrackRule[]): void {
+        try {
+            const c = (globalThis as { console?: Console }).console
+            c?.warn?.(
+                `[Dap] ambiguous track rules for data-testid="${testid}" (${matched.length} matched); using "${matched[0].event}"`,
+            )
+        } catch {
+            /* ignore */
+        }
     }
 
     /**
@@ -802,21 +983,35 @@ class DapImpl {
 
     // ----------------------------------------------- 机制③ fetch / XHR 包裹
     private installHttpWrap(): void {
-        const emit = (rawUrl: string, method: string, status: number, durationMs: number) => {
+        // XHR proto.send 里的 this 是 XMLHttpRequest 实例,拿不到 DapImpl;用 dap 别名读 enabled。
+        const dap = this
+        // 中央映射索引:一次性构建,emit 闭包复用(installOnce('http') 保证只装一次)。
+        const fetchIndex: FetchRuleIndex = buildFetchIndex(FETCH_RULES)
+        const bodyIndex: BodyRuleIndex = buildBodyIndex(BODY_RULES)
+        // bodyEvent 在包裹处(能拿到请求体时)算好传入:body 键通道优先于 path 通道,避免重复计事件。
+        const emit = (rawUrl: string, method: string, status: number, durationMs: number, bodyEvent?: string) => {
             this.safe(() => {
                 if (!rawUrl) return
                 // 只采第一方(同源)API telemetry:跨域(预签名对象存储/第三方)路径含对象键/文件名,一律不采
                 if (!isFirstParty(rawUrl)) return
+                const m = (method || 'GET').toUpperCase()
                 // 量/错误率/延迟,不带 query、不带正文;路径按白名单收窄脱敏。
                 // **不从 URL 路径提取 object_id**:路径末段可能是一次性登录码 / 邀请 token / 对象键
                 // (见 PR #1320 review),原样取出即等于把凭证放进 telemetry。http_request 只保留
                 // 已脱敏的 path 维度,不再单列 object_id(path 已覆盖其可分析的信息)。
                 this.track('http_request', {
-                    method: (method || 'GET').toUpperCase(),
+                    method: m,
                     path: normalizePath(rawUrl),
                     status_bucket: statusBucket(status),
                     duration_ms: Math.round(durationMs),
                 })
+                // 中央映射(①path / ②body):仅在 **2xx**(动作确已发生)时补发一条映射事件。
+                // body 键通道优先(更具体);其次 path 通道。映射事件不带任何来自请求的值
+                // (无 object_id / query / 正文),故凭证 / 文件名不可能借此外泄。
+                if (status >= 200 && status < 300) {
+                    const mapped = bodyEvent ?? matchFetchEvent(fetchIndex, m, rawPathname(rawUrl))
+                    if (mapped) this.track(mapped, {})
+                }
             })
         }
 
@@ -837,9 +1032,19 @@ class DapImpl {
                 if (url && url.indexOf(BATCH_PATH) !== -1) {
                     return orig(input as RequestInfo, init)
                 }
+                // body 键通道:只在能拿到 JSON 字符串体时算(Request 对象体是流、只能异步读,跳过);
+                // computeBodyEvent 内部做白名单门 + 只读键,返回的只是本表里的事件名常量。
+                // P2-1:必须在**第一方(同源) + 已启用**时才读体 —— BodyRules.ts:17 承诺「跨域不读」,
+                // 且 kill switch(enabled=false)要连「读」一并停掉,不能只停 emit。这里把不变式落进代码,
+                // 不再只靠 emit 里的 isFirstParty 兜底(那只挡上报、挡不住 parse)。
+                const reqBody = typeof init?.body === 'string' ? init.body : undefined
+                const bodyEvent =
+                    this.enabled && isFirstParty(url)
+                        ? dap.safeCall(() => computeBodyEvent(bodyIndex, method || 'GET', url, reqBody))
+                        : undefined
                 return orig(input as RequestInfo, init)
                     .then((resp) => {
-                        emit(url, method || 'GET', resp.status, Date.now() - start)
+                        emit(url, method || 'GET', resp.status, Date.now() - start, bodyEvent)
                         return resp
                     })
                     .catch((err) => {
@@ -870,6 +1075,20 @@ class DapImpl {
                 const url = this.__trackUrl || ''
                 const method = this.__trackMethod || 'GET'
                 if (url && url.indexOf(BATCH_PATH) === -1) {
+                    // body 键通道:axios 走 XHR,JSON payload 序列化为字符串体传入 send(args[0])。
+                    // 只在字符串体上算(Blob/FormData 上传等一律跳过);内部白名单门 + 只读键。
+                    // P2-1:同 fetch —— 只在第一方 + 已启用时读体,把「跨域不读 / 停采即停读」落进代码。
+                    const bodyEvent =
+                        dap.enabled && isFirstParty(url)
+                            ? dap.safeCall(() =>
+                                  computeBodyEvent(
+                                      bodyIndex,
+                                      method,
+                                      url,
+                                      typeof args[0] === 'string' ? (args[0] as string) : undefined,
+                                  ),
+                              )
+                            : undefined
                     // 在闭包里定住 url/method/start(不在 loadend 时读实例字段,避免复用/
                     // 重 open 后读到串味的路径);once:true 保证复用实例多次 send 不累积监听
                     // (否则一个 loadend 会补发历史请求的 http_request,见 review P2)。
@@ -879,15 +1098,23 @@ class DapImpl {
                     // 若一直不触发就不会自动摘,复用实例多次正常完成会累积一串死监听(见 review P2)。
                     let aborted = false
                     const onAbort = () => { aborted = true }
+                    const onLoadEnd = () => {
+                        this.removeEventListener('abort', onAbort)
+                        if (!aborted) emit(url, method, this.status, Date.now() - start, bodyEvent)
+                    }
                     this.addEventListener('abort', onAbort, { once: true })
-                    this.addEventListener(
-                        'loadend',
-                        () => {
-                            this.removeEventListener('abort', onAbort)
-                            if (!aborted) emit(url, method, this.status, Date.now() - start)
-                        },
-                        { once: true },
-                    )
+                    this.addEventListener('loadend', onLoadEnd, { once: true })
+                    // P2-5:监听器在 native send() 之前挂上;若 send() 同步抛(如对已 open 的实例重复
+                    // send() 触发 InvalidStateError),这两个监听器会残留,等首个请求 loadend 时连带
+                    // 补发一次历史请求的 http_request。故 send 抛错时先摘掉两个监听器再重抛。
+                    try {
+                        // @ts-expect-error 透传原始参数
+                        return origSend.apply(this, args)
+                    } catch (e) {
+                        this.removeEventListener('abort', onAbort)
+                        this.removeEventListener('loadend', onLoadEnd)
+                        throw e
+                    }
                 }
                 // @ts-expect-error 透传原始参数
                 return origSend.apply(this, args)
@@ -927,6 +1154,20 @@ class DapImpl {
             fn()
         } catch {
             /* 埋点内部异常一律吞掉,不 console、不 toast、不外抛 */
+        }
+    }
+
+    /**
+     * safe 的取值版:执行 fn 并返回其值,内部抛错时降级为 undefined(绝不外抛)。
+     * 六审 P5:computeBodyEvent 在 fetch/XHR 拦截热路径里同步调用,虽已内含 try/catch,但它是外部
+     * 纯函数,一旦将来重构引入抛错(或 URL/JSON 极端输入),异常会顺着我们 wrap 的 fetch/send 冒泡、
+     * 污染宿主网络层。这里把「算 body 事件」也纳入 Dap「内部异常一律吞」的统一边界,埋点永不拖累业务请求。
+     */
+    private safeCall<T>(fn: () => T): T | undefined {
+        try {
+            return fn()
+        } catch {
+            return undefined
         }
     }
 }

@@ -17,6 +17,7 @@ import clazz from "classnames";
 import WKSDK, { Channel, ChannelInfo, ChannelTypePerson, Subscriber } from "wukongimjssdk";
 import hotkeys from "hotkeys-js";
 import WKApp from "../../App";
+import { Dap } from "../../Service/Dap";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import {
   MemberInfo,
@@ -1390,6 +1391,11 @@ const MessageInput: React.FC<MessageInputProps> = (props) => {
 
   const toggleExpand = useCallback(() => {
     const next = !expanded;
+    // input_expanded:仅在「展开」这一支计数。原 TrackRules 的 input-expand-btn 点击规则在展开和
+    // 收起都触发(toggle),会把「收起」也计成「展开」→ 翻倍(见 review P2-7)。已移除该规则。
+    if (next) {
+      Dap.shared.track("input_expanded", {});
+    }
     props.onExpandChange?.(next);
     setExpanded(next);
     if (next && editor) {

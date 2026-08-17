@@ -1,8 +1,10 @@
 import { defineConfig, loadEnv } from "vite";
 import {
+  agentMailBootstrapStrippedHeaders,
   agentMailProxyContext,
   agentMailProxyStrippedHeaders,
   browserMailProxyStrippedHeaders,
+  isAgentMailBootstrapPath,
   isAgentMailboxAuthorization,
   rewriteAgentMailProxyPath,
 } from "./src/mailProxy";
@@ -231,7 +233,10 @@ export default defineConfig(({ mode }) => {
           secure: false,
           rewrite: rewriteAgentMailProxyPath,
           bypass(request, response) {
-            if (isAgentMailboxAuthorization(request.headers.authorization)) {
+            if (
+              isAgentMailBootstrapPath(request.url || "") ||
+              isAgentMailboxAuthorization(request.headers.authorization)
+            ) {
               return undefined;
             }
             if (!response) return false;
@@ -248,8 +253,13 @@ export default defineConfig(({ mode }) => {
             return request.url || "/agent-mail-api";
           },
           configure(proxy) {
-            proxy.on("proxyReq", (proxyReq) => {
-              agentMailProxyStrippedHeaders.forEach((header) =>
+            proxy.on("proxyReq", (proxyReq, request) => {
+              const strippedHeaders = isAgentMailBootstrapPath(
+                request.url || ""
+              )
+                ? agentMailBootstrapStrippedHeaders
+                : agentMailProxyStrippedHeaders;
+              strippedHeaders.forEach((header) =>
                 proxyReq.removeHeader(header)
               );
             });

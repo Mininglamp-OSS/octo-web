@@ -10,6 +10,7 @@ import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context
 import { GroupRole } from "../../Service/Const";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
 import { ChannelField } from "../../Service/DataSource/DataSource";
+import { Dap } from "../../Service/Dap";
 import { GROUP_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import { Row } from "../../Service/Section";
 import { updateChannelSettingField } from "../../bridge/channelSetting/channelSettingActions";
@@ -105,6 +106,9 @@ export function GroupAvatarSettingRow({
   const openAvatarEditor = async () => {
     if (opening) return;
 
+    // 命令式上报:过了重入门(opening)才计一次,在途重复点击不再灌水
+    // (行需先 await 网络刷新才弹编辑器,见 PR #1390 review P1-2)。
+    Dap.shared.track("group_avatar_edit_opened");
     setOpening(true);
     try {
       const latestChannelInfo = await fetchCurrentImChannelInfo<
@@ -186,6 +190,7 @@ export function buildGroupProfileRows({
         value: channelInfo?.title || "",
         displayValue: groupName,
         placeholder: t("base.module.channelSettings.groupNamePlaceholder"),
+        trackEvent: "group_name_edit_opened",
         maxCount: GROUP_NAME_MAX_LENGTH,
         onStartEdit: () => {
           if (!data.isManagerOrCreatorOfMe) {
@@ -235,6 +240,7 @@ export function buildGroupProfileRows({
     }),
     new Row({
       cell: ChannelSettingIconRow,
+      trackEvent: "group_qrcode_viewed",
       properties: {
         title: t("base.module.channelSettings.groupQrCode"),
         icon: <QrCode className="wk-channelsetting-qrcode-icon" aria-hidden />,
@@ -255,6 +261,7 @@ export function buildGroupProfileRows({
         value: channelInfo?.orgData?.notice,
         multiline: true,
         placeholder: t("base.module.channelSettings.groupNotice"),
+        trackEvent: "group_announcement_edit_opened",
         maxCount: 400,
         allowEmpty: true,
         onStartEdit: () => {

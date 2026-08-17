@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { I18nContext, WKApp, apiFetchJson, computeAndSaveJoinSuccess, setSessionSid, t, toJoinApprovalStatus } from "@octo/base";
+import { I18nContext, WKApp, apiFetchJson, computeAndSaveJoinSuccess, setSessionSid, t, toJoinApprovalStatus, Dap } from "@octo/base";
 import type { JoinSpaceStatus } from "@octo/base";
 import { Button, Spin, Toast } from "@douyinfe/semi-ui";
 import { buildPostLoginRedirectUrl } from "../../Layout/postLoginRedirect";
@@ -259,6 +259,9 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
 
             const joinedSpaceId = result?.space_id || this.state.info?.space_id || "";
             const joinedSpaceName = this.state.info?.space_name || "";
+            // 十二审 🔴 P1-4:space_join_new 命令式,仅真加入时计(审批态 / need-space 已在上方 early-return)。
+            //   此为邀请落地页(登录前)直发 POST /space/join 的成功分支。
+            Dap.shared.track("space_join_new", {});
             // 统一经 computeAndSaveJoinSuccess 计算 crossSpace 并
             // 写 sessionStorage notice。Layout.onLogin 的 pendingInviteCode 分支也走
             // 同一 helper，保证两条路径的 toast 行为一致。
