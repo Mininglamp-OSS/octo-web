@@ -94,16 +94,16 @@ export class ChatComposerController<TAttachment = unknown> {
     return this.ledger.pendingPreEnqueueCount();
   }
 
-  pendingSendDrafts(): PendingSendDraft[] {
-    return this.ledger.orderedPendingDrafts();
+  pendingSendDrafts(channelKey?: string): PendingSendDraft[] {
+    return this.ledger.orderedPendingDrafts(channelKey);
   }
 
-  pendingPreEnqueueDrafts(): PendingSendDraft[] {
-    return this.ledger.orderedPreEnqueueDrafts();
+  pendingPreEnqueueDrafts(channelKey?: string): PendingSendDraft[] {
+    return this.ledger.orderedPreEnqueueDrafts(channelKey);
   }
 
-  pendingSendText(): string {
-    return this.ledger.pendingDraftText();
+  pendingSendText(channelKey?: string): string {
+    return this.ledger.pendingDraftText(channelKey);
   }
 
   resetRestoreOffsets(): void {

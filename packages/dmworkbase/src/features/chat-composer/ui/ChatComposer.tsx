@@ -54,6 +54,7 @@ import type {
   UnsentEditorBlock,
 } from "../domain";
 import { rejectChatComposerSend } from "../domain";
+import type { ChatComposerSendTransaction } from "../ports";
 import {
   ChatComposerAttachmentStore,
   type EditorComposePart,
@@ -323,6 +324,8 @@ export interface ChatComposerProps {
   onSend?: (
     request: ChatSendRequest<any>,
   ) => ChatSendOutcome | Promise<ChatSendOutcome>;
+  /** Capture an immutable channel/host boundary for one queued send attempt. */
+  onCaptureSendTransaction?: () => ChatComposerSendTransaction<any>;
   /**
    * 同步取走并清除 reply/edit 目标（横幅同时收起），返回的快照会被透传给
    * onSend；发送未入队时 MessageInput 调 `restore()` 复位 (octo-web#1280)。
@@ -472,11 +475,11 @@ export interface MessageInputContext {
   /** Composes that have been consumed but do not have a local bubble yet. */
   pendingPreEnqueueCount: () => number;
   /** Attempt-owned drafts of all unsettled composes, including empty drafts. */
-  pendingSendDrafts: () => PendingSendDraft[];
+  pendingSendDrafts: (channelKey?: string) => PendingSendDraft[];
   /** Attempt-owned drafts that have not produced all local bubbles yet. */
-  pendingPreEnqueueDrafts: () => PendingSendDraft[];
+  pendingPreEnqueueDrafts: (channelKey?: string) => PendingSendDraft[];
   /** Plain text of every unsettled compose, newest last. */
-  pendingSendText: () => string;
+  pendingSendText: (channelKey?: string) => string;
 }
 
 // MemberInfo / buildMentionRegex / parseMentionMarkers / buildMemberInfos live
@@ -1283,7 +1286,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
     // 没有 onSend 或没有任何内容时无需发送，直接退出（不清空，保持现状）。
     // 视为未发送（editorConsumed=false），供编排器判定真实结果。
-    if (!props.onSend) return rejectChatComposerSend("send-host-unavailable");
+    if (!props.onCaptureSendTransaction && !props.onSend) {
+      return rejectChatComposerSend("send-host-unavailable");
+    }
     if (!hasText && !hasAttachments && !hasEditorBlocks) {
       return rejectChatComposerSend("empty-compose");
     }
@@ -1306,8 +1311,17 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       },
       {
         host: {
-          channelKey: () => {
-            return hostRef.current.getChannel().key;
+          captureSendTransaction: () => {
+            if (props.onCaptureSendTransaction) {
+              return props.onCaptureSendTransaction();
+            }
+            return {
+              channelKey: hostRef.current.getChannel().key,
+              captureSendTarget: () => props.onCaptureSendTarget?.(),
+              captureSendDraft: () => props.onCaptureSendDraft?.(),
+              send: props.onSend!,
+              onSendSettled: props.onSendSettled,
+            };
           },
           isChannelActive: (channelKey) => {
             return hostRef.current.getChannel().key === channelKey;
@@ -1408,6 +1422,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     attachmentStore,
     expanded,
     props.onSend,
+    props.onCaptureSendTransaction,
     props.onCaptureSendTarget,
     props.onCaptureSendDraft,
     props.onComposeRecovery,
@@ -1439,10 +1454,11 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         send: () => invokeReadySend(sendRef.current),
         pendingSendCount: () => controller.pendingSendCount(),
         pendingPreEnqueueCount: () => controller.pendingPreEnqueueCount(),
-        pendingSendDrafts: () => controller.pendingSendDrafts(),
-        pendingPreEnqueueDrafts: () =>
-          controller.pendingPreEnqueueDrafts(),
-        pendingSendText: () => controller.pendingSendText(),
+        pendingSendDrafts: (channelKey) =>
+          controller.pendingSendDrafts(channelKey),
+        pendingPreEnqueueDrafts: (channelKey) =>
+          controller.pendingPreEnqueueDrafts(channelKey),
+        pendingSendText: (channelKey) => controller.pendingSendText(channelKey),
         clear: () => {
           editor?.commands.clearContent(true);
           attachmentStore.clear();

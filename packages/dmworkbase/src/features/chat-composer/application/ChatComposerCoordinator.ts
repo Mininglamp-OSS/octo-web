@@ -14,7 +14,11 @@ import {
   disposeComposeRecoveryObjectUrls,
   type ComposeRecoveryRecord,
 } from "../recovery";
-import type { ChatComposerEditorPort, ChatComposerHostPort } from "../ports";
+import type {
+  ChatComposerEditorPort,
+  ChatComposerHostPort,
+  ChatComposerSendTransaction,
+} from "../ports";
 import { ChatComposerController } from "./ChatComposerController";
 import {
   ComposeRestoreUnavailableError,
@@ -59,8 +63,9 @@ export class ChatComposerCoordinator<
     } catch {
       return rejectChatComposerSend("unsupported-content");
     }
-    const sendTarget = host.captureSendTarget();
-    const channelKey = host.channelKey();
+    const transaction = host.captureSendTransaction();
+    const sendTarget = transaction.captureSendTarget();
+    const { channelKey } = transaction;
     const expandedAtSend = host.getExpanded();
 
     let consumed;
@@ -88,9 +93,10 @@ export class ChatComposerCoordinator<
       throw error;
     }
 
-    const sendDraftBaseline = host.captureSendDraft();
+    const sendDraftBaseline = transaction.captureSendDraft();
     const draftText = composeSnapshotDraftText(consumed.snapshot);
     const attempt = this.controller.capture({
+      channelKey,
       previewText: composeSnapshotPreviewText(consumed.snapshot),
       draftText,
       editorBlocks,
@@ -112,7 +118,7 @@ export class ChatComposerCoordinator<
     return this.controller.enqueueAttempt(attemptId, async () => {
       const settlement = await settleConsumedCompose(
         () =>
-          host.send({
+          transaction.send({
             attemptId,
             text: input.text,
             mention: input.mention,
@@ -132,7 +138,7 @@ export class ChatComposerCoordinator<
       );
       try {
         if (ledgerSettlement) {
-          await host.onSendSettled?.({
+          await transaction.onSendSettled?.({
             attemptId,
             outcome: settlement.outcome,
             sendDraft,
@@ -171,7 +177,9 @@ export class ChatComposerCoordinator<
     attemptId: string;
     channelKey: string;
     expandedAtSend: boolean;
-    sendTarget: ReturnType<ChatComposerHostPort<TMessage>["captureSendTarget"]>;
+    sendTarget: ReturnType<
+      ChatComposerSendTransaction<TMessage>["captureSendTarget"]
+    >;
     consumed: ReturnType<ChatComposerEditorPort["consume"]>;
     settlement: Awaited<ReturnType<typeof settleConsumedCompose>>;
   }): ComposeRecoveryRecord | undefined {

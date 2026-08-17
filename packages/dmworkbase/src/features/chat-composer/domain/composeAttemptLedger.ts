@@ -7,6 +7,7 @@ import { cloneEditorContentBlocks } from "./types";
 
 export interface ComposeAttempt<TAttachment = unknown> {
   id: string;
+  channelKey: string;
   capturedAt: number;
   previewText: string;
   draftText: string;
@@ -17,6 +18,7 @@ export interface ComposeAttempt<TAttachment = unknown> {
 }
 
 export interface CaptureComposeAttempt<TAttachment = unknown> {
+  channelKey?: string;
   previewText: string;
   draftText: string;
   editorBlocks?: EditorContentBlock[];
@@ -58,6 +60,7 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
   capture(input: CaptureComposeAttempt<TAttachment>): ComposeAttempt<TAttachment> {
     const attempt: ComposeAttempt<TAttachment> = {
       id: this.createUniqueId(),
+      channelKey: input.channelKey ?? "",
       capturedAt: this.now(),
       previewText: input.previewText,
       draftText: input.draftText,
@@ -142,25 +145,29 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
     );
   }
 
-  pendingDraftText(): string {
-    return this.orderedPreEnqueueDrafts()
+  pendingDraftText(channelKey?: string): string {
+    return this.orderedPreEnqueueDrafts(channelKey)
       .map((attempt) => attempt.draftText)
       .filter((draft) => draft.trim() !== "")
       .join("\n");
   }
 
-  orderedPendingDrafts(): PendingSendDraft[] {
-    return this.orderedPending().map(({ id, draftText }) => ({
-      attemptId: id,
-      draftText,
-    }));
+  orderedPendingDrafts(channelKey?: string): PendingSendDraft[] {
+    return this.attemptsForChannel(this.orderedPending(), channelKey).map(
+      ({ id, draftText }) => ({
+        attemptId: id,
+        draftText,
+      }),
+    );
   }
 
-  orderedPreEnqueueDrafts(): PendingSendDraft[] {
-    return this.orderedPreEnqueue().map(({ id, draftText }) => ({
-      attemptId: id,
-      draftText,
-    }));
+  orderedPreEnqueueDrafts(channelKey?: string): PendingSendDraft[] {
+    return this.attemptsForChannel(this.orderedPreEnqueue(), channelKey).map(
+      ({ id, draftText }) => ({
+        attemptId: id,
+        draftText,
+      }),
+    );
   }
 
   pendingPreEnqueueCount(): number {
@@ -173,5 +180,14 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
       throw new Error(`duplicate or empty compose attempt id: ${id}`);
     }
     return id;
+  }
+
+  private attemptsForChannel(
+    attempts: ComposeAttempt<TAttachment>[],
+    channelKey?: string,
+  ): ComposeAttempt<TAttachment>[] {
+    return channelKey
+      ? attempts.filter((attempt) => attempt.channelKey === channelKey)
+      : attempts;
   }
 }

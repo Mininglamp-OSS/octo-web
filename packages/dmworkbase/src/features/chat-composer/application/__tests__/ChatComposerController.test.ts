@@ -28,6 +28,37 @@ describe("ChatComposerController", () => {
     expect(snapshots.at(-1)).toEqual([]);
   });
 
+  it("filters pending drafts by their captured channel", () => {
+    const controller = new ChatComposerController();
+    const first = controller.capture({
+      channelKey: "channel-x:2",
+      previewText: "x-1",
+      draftText: "x-1",
+    });
+    controller.capture({
+      channelKey: "channel-y:2",
+      previewText: "y-1",
+      draftText: "y-1",
+    });
+    controller.capture({
+      channelKey: "channel-x:2",
+      previewText: "x-2",
+      draftText: "x-2",
+    });
+    controller.setExpectedPartIds(first.id, ["text:0"]);
+    controller.markPartsEnqueued(first.id, ["text:0"]);
+
+    expect(controller.pendingSendDrafts("channel-x:2")).toEqual([
+      { attemptId: first.id, draftText: "x-1" },
+      { attemptId: expect.any(String), draftText: "x-2" },
+    ]);
+    expect(controller.pendingPreEnqueueDrafts("channel-x:2")).toEqual([
+      { attemptId: expect.any(String), draftText: "x-2" },
+    ]);
+    expect(controller.pendingSendText("channel-x:2")).toBe("x-2");
+    expect(controller.pendingSendText("channel-y:2")).toBe("y-1");
+  });
+
   it("serializes attempts and releases each one after its task settles", async () => {
     const controller = new ChatComposerController();
     const first = controller.capture({ previewText: "a", draftText: "a" });

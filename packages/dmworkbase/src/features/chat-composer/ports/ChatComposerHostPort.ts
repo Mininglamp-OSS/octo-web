@@ -7,20 +7,25 @@ import type {
 } from "../domain";
 import type { ComposeRecoveryRecord } from "../recovery";
 
-/** Host-owned state and side effects used by one composer send transaction. */
-export interface ChatComposerHostPort<TMessage = unknown> {
-  channelKey(): string;
-  isChannelActive(channelKey: string): boolean;
+/** Immutable host capabilities captured for one compose attempt. */
+export interface ChatComposerSendTransaction<TMessage = unknown> {
+  channelKey: string;
   captureSendTarget(): SendTargetSnapshot<TMessage> | undefined;
   captureSendDraft(): Omit<SendDraftSnapshot, "draftText"> | undefined;
-  getExpanded(): boolean;
-  setExpanded(expanded: boolean): void;
   send(
     request: ChatSendRequest<TMessage>,
   ): ChatSendOutcome | Promise<ChatSendOutcome>;
   onSendSettled?(
     settlement: ChatSendSettlement,
   ): void | Promise<void>;
+}
+
+/** Host-owned state and side effects used by one composer send transaction. */
+export interface ChatComposerHostPort<TMessage = unknown> {
+  captureSendTransaction(): ChatComposerSendTransaction<TMessage>;
+  isChannelActive(channelKey: string): boolean;
+  getExpanded(): boolean;
+  setExpanded(expanded: boolean): void;
   handoffRecovery?(recovery: ComposeRecoveryRecord): boolean;
   notifyRestoreError?(error: unknown, step: string): void;
 }

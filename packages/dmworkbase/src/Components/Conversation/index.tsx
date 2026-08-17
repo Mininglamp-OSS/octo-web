@@ -61,6 +61,7 @@ import {
   type ComposeRecoveryRecord,
   type RecoveredComposeHydration,
   type ChatSendSettlement,
+  type ChatComposerSendTransaction,
   type ChatComposerViewHost,
   type EditorContentBlock,
   type MessageInputContext,
@@ -330,6 +331,12 @@ interface ConversationState {
   recoveredComposes: ComposeRecoveryRecord[];
 }
 
+interface ConversationSendTransactionContext {
+  channel: Channel;
+  channelKey: string;
+  vm: ConversationVM;
+}
+
 const composeRecoveryStore = new ComposeRecoveryStore<ComposeRecoveryRecord>({
   dispose: disposeComposeRecoveryObjectUrls,
 });
@@ -464,28 +471,6 @@ export class Conversation
       },
     },
   };
-  private readonly _sendChatComposerRequest =
-    createConversationChatSendHandler<Message>(
-      {
-        conversation: this,
-        channel: () => this.channel(),
-        sendTextAndWaitAck: (content, onEnqueued) =>
-          this.sendTextAndWaitAck(content, undefined, onEnqueued),
-        sendMediaAndWait: (content, onEnqueued) =>
-          this.sendMediaAndWait(content, undefined, onEnqueued),
-        sendRichTextMixed: (blocks, reply, onEnqueued) =>
-          this.sendRichTextMixed(blocks, reply, onEnqueued),
-        resolveReplyFromName: (message) => {
-          const channelInfo = getImChannelInfo(
-            WKSDK.shared(),
-            new Channel(message.fromUID, ChannelTypePerson),
-          );
-          return channelInfo?.title || "";
-        },
-        submitVoiceFeedback: (text) => VoiceFeedback.shared()?.submitAll(text),
-      },
-      { operationRegistry: this._chatComposerExtensions.send.operations },
-    );
   private _attentionRefreshHandler = () => {
     const run = () => this.updateBrowseToMessageSeqAndReminderDoneIfNeed();
     if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
@@ -534,9 +519,119 @@ export class Conversation
     };
   }
 
+  private captureChatComposerSendTransaction =
+    (): ChatComposerSendTransaction<Message> => {
+      const vm = this.vm;
+      const channel = vm.channel;
+      const channelKey = this.composeRecoveryKey(channel);
+      const context: ConversationSendTransactionContext = {
+        channel,
+        channelKey,
+        vm,
+      };
+      const onMessageSent = this.props.onMessageSent;
+      const send = createConversationChatSendHandler<Message>(
+        {
+          conversation: {
+            sendMessage: (content) => this.sendMessage(content, channel, vm),
+            editMessage: (
+              messageID,
+              messageSeq,
+              channelID,
+              channelType,
+              content,
+            ) =>
+              vm.editMessage(
+                messageID,
+                messageSeq,
+                channelID,
+                channelType,
+                content,
+              ),
+          },
+          channel: () => channel,
+          sendTextAndWaitAck: (content, onEnqueued) =>
+            this.sendTextAndWaitAck(content, channel, onEnqueued, vm),
+          sendMediaAndWait: (content, onEnqueued) =>
+            this.sendMediaAndWait(content, channel, onEnqueued, vm),
+          sendRichTextMixed: (blocks, reply, onEnqueued) =>
+            this.sendRichTextMixed(
+              blocks,
+              reply,
+              onEnqueued,
+              channel,
+              vm,
+            ),
+          resolveReplyFromName: (message) => {
+            const channelInfo = getImChannelInfo(
+              WKSDK.shared(),
+              new Channel(message.fromUID, ChannelTypePerson),
+            );
+            return channelInfo?.title || "";
+          },
+          submitVoiceFeedback: (text) => VoiceFeedback.shared()?.submitAll(text),
+        },
+        { operationRegistry: this._chatComposerExtensions.send.operations },
+      );
+
+      return {
+        channelKey,
+        captureSendTarget: () =>
+          captureSendTarget<Message>({
+            getReplyMessage: () => vm.currentReplyMessage,
+            setReplyMessage: (message) => {
+              vm.currentReplyMessage = message;
+            },
+            getHandlerType: () => vm.currentHandlerType,
+            setHandlerType: (handlerType) => {
+              vm.currentHandlerType = handlerType;
+            },
+          }),
+        captureSendDraft: () => {
+          const remoteDraft = vm.currentConversation?.remoteExtra?.draft || "";
+          return {
+            revision: composeRecoveryStore.captureDraftRevision(
+              channelKey,
+              remoteDraft,
+            ),
+            remoteDraft,
+            protectedPendingAttemptIds: [
+              ...composeRecoveryStore.matchPendingDraft(
+                channelKey,
+                remoteDraft,
+              ),
+            ],
+          };
+        },
+        send,
+        onSendSettled: async (settlement) => {
+          try {
+            if (!settlement.outcome.editorConsumed) return;
+            if (!settlement.restoreFailed) {
+              await this.clearDraftAfterSend(settlement, context);
+            }
+            if (
+              this._initialComposeMounted &&
+              this.composeRecoveryKey() === channelKey
+            ) {
+              onMessageSent?.();
+            }
+          } finally {
+            if (settlement.sendDraft) {
+              composeRecoveryStore.releaseDraftRevision(
+                channelKey,
+                settlement.sendDraft.revision,
+              );
+            }
+          }
+        },
+      };
+    };
+
   async sendMessage(
     content: MessageContent,
-    channel?: Channel
+    channel?: Channel,
+    vm: ConversationVM = this.vm
   ): Promise<Message> {
     // const { channel } = this.props
     let c = channel;
@@ -549,7 +644,7 @@ export class Conversation
       Toast.error(t("base.conversation.disband.inputNotice"));
       return Promise.reject(new Error("group disbanded"));
     }
-    const message = await this.vm.sendMessage(content, c);
+    const message = await vm.sendMessage(content, c);
     return message;
   }
 
@@ -769,14 +864,15 @@ export class Conversation
   private async sendMediaAndWait(
     content: MessageContent,
     channel?: Channel,
-    onEnqueued?: () => void
+    onEnqueued?: () => void,
+    vm: ConversationVM = this.vm
   ): Promise<boolean> {
     // 非媒体消息（或无文件需上传）无需等待上传，直接发送并等 ack
     if (
       !(content instanceof MediaMessageContent) ||
       !(content as MediaMessageContent).file
     ) {
-      return this.sendTextAndWaitAck(content, channel, onEnqueued);
+      return this.sendTextAndWaitAck(content, channel, onEnqueued, vm);
     }
 
     const TIMEOUT = 30_000;
@@ -857,7 +953,7 @@ export class Conversation
     let enqueued = false;
     let message: Message;
     try {
-      message = await this.sendMessage(content, channel);
+      message = await this.sendMessage(content, channel, vm);
     } catch (err) {
       // 未入队：调用方据此保留草稿供重试。
       done(false);
@@ -938,7 +1034,8 @@ export class Conversation
   private async sendTextAndWaitAck(
     content: MessageContent,
     channel?: Channel,
-    onEnqueued?: () => void
+    onEnqueued?: () => void,
+    vm: ConversationVM = this.vm
   ): Promise<boolean> {
     const TIMEOUT = 10_000;
     let settled = false;
@@ -982,7 +1079,7 @@ export class Conversation
     let enqueued = false;
     let message: Message;
     try {
-      message = await this.sendMessage(content, channel);
+      message = await this.sendMessage(content, channel, vm);
     } catch (err) {
       // 未入队（例如发送前编码抛错）→ 调用方保留草稿供重试。
       done(false);
@@ -1045,9 +1142,10 @@ export class Conversation
   private async sendRichTextMixed(
     editorBlocks: EditorContentBlock[],
     reply?: Reply,
-    onEnqueued?: () => void
+    onEnqueued?: () => void,
+    channel: Channel = this.channel(),
+    vm: ConversationVM = this.vm
   ): Promise<boolean> {
-    const channel = this.channel();
     const contentBlocks: RichTextBlock[] = [];
 
     // 合并 mention（跨多个文本块）。
@@ -1158,7 +1256,7 @@ export class Conversation
       if (mentionEntities.length > 0) (mn as any).entities = mentionEntities;
       content.mention = mn;
     }
-    return this.sendTextAndWaitAck(content, undefined, onEnqueued);
+    return this.sendTextAndWaitAck(content, channel, onEnqueued, vm);
   }
 
   scrollToBottom(animate?: boolean): void {
@@ -1718,12 +1816,14 @@ export class Conversation
     return this.messageInputContext()?.pendingPreEnqueueCount?.() ?? 0;
   }
 
-  private pendingSendDrafts(): PendingSendDraft[] {
-    return this.messageInputContext()?.pendingSendDrafts?.() ?? [];
+  private pendingSendDrafts(channelKey?: string): PendingSendDraft[] {
+    return this.messageInputContext()?.pendingSendDrafts?.(channelKey) ?? [];
   }
 
-  private pendingPreEnqueueDrafts(): PendingSendDraft[] {
-    return this.messageInputContext()?.pendingPreEnqueueDrafts?.() ?? [];
+  private pendingPreEnqueueDrafts(channelKey?: string): PendingSendDraft[] {
+    return (
+      this.messageInputContext()?.pendingPreEnqueueDrafts?.(channelKey) ?? []
+    );
   }
 
   private composeRecoveryKey(channel = this.props.channel): string {
@@ -1774,12 +1874,13 @@ export class Conversation
   markConversationExtra() {
     // 不要用空草稿覆盖「已消费但还没入队」的内容 (octo-web#1280 review)：
     // 输入框在发送开始时就被清空，离开会话时这里读到的是空串。
-    const pendingDrafts = this.pendingPreEnqueueDrafts();
+    const channelKey = this.composeRecoveryKey();
+    const pendingDrafts = this.pendingPreEnqueueDrafts(channelKey);
     const { draft, source } = resolveDraftToPersist({
       liveDraft: this.messageInputContext()?.text() || "",
       pendingDrafts,
     });
-    composeRecoveryStore.recordDraft(this.composeRecoveryKey(), {
+    composeRecoveryStore.recordDraft(channelKey, {
       draft,
       source,
       pendingDrafts,
@@ -1789,10 +1890,22 @@ export class Conversation
     );
   }
 
-  updateConversationExtra(draft: string) {
-    const viewport = document.getElementById(this.vm.messageContainerId);
-    const conversationLastMessageSeq = this.vm.conversationLastMessageSeq();
-    const lastVisiableMessage = this.visiblePersistentMessage(viewport, true);
+  updateConversationExtra(
+    draft: string,
+    context: ConversationSendTransactionContext = {
+      channel: this.props.channel,
+      channelKey: this.composeRecoveryKey(),
+      vm: this.vm,
+    },
+  ) {
+    const { channel, channelKey, vm } = context;
+    const viewport = document.getElementById(vm.messageContainerId);
+    const conversationLastMessageSeq = vm.conversationLastMessageSeq();
+    const lastVisiableMessage = this.visiblePersistentMessage(
+      viewport,
+      true,
+      vm
+    );
     let keepMessageSeq = 0;
     let keepOffsetY = 0;
     if (
@@ -1804,10 +1917,11 @@ export class Conversation
     } else {
       const firstVisiableMessage = this.visiblePersistentMessage(
         viewport,
-        false
+        false,
+        vm
       );
       const firstVisibleElement = firstVisiableMessage
-        ? this.getMessageElement(firstVisiableMessage)
+        ? this.getMessageElement(firstVisiableMessage, vm)
         : null;
       keepMessageSeq = firstVisiableMessage?.messageSeq || 0;
       keepOffsetY =
@@ -1819,7 +1933,7 @@ export class Conversation
           : 0;
     }
 
-    const remoteExtra = this.vm.currentConversation?.remoteExtra;
+    const remoteExtra = vm.currentConversation?.remoteExtra;
     if (remoteExtra) {
       remoteExtra.keepMessageSeq = keepMessageSeq;
       remoteExtra.keepOffsetY = keepOffsetY;
@@ -1827,37 +1941,44 @@ export class Conversation
     }
 
     const update = {
-      channel: this.vm.channel,
+      channel,
       browseTo: 0,
       keepMessageSeq: keepMessageSeq,
       keepOffsetY,
       draft,
       version: 0,
     };
-    return composeDraftWriteQueue.enqueue(this.composeRecoveryKey(), () =>
+    return composeDraftWriteQueue.enqueue(channelKey, () =>
       WKApp.dataSource.channelDataSource.conversationExtraUpdate(update),
     );
   }
 
-  async clearDraftAfterSend(settlement: ChatSendSettlement) {
+  async clearDraftAfterSend(
+    settlement: ChatSendSettlement,
+    context: ConversationSendTransactionContext = {
+      channel: this.props.channel,
+      channelKey: this.composeRecoveryKey(),
+      vm: this.vm,
+    },
+  ) {
     const { attemptId, sendDraft } = settlement;
     if (!sendDraft) return;
+    const { channelKey, vm } = context;
     const remoteDraftAtSend = sendDraft.remoteDraft;
-    const remoteExtra = this.vm.currentConversation?.remoteExtra;
+    const remoteExtra = vm.currentConversation?.remoteExtra;
     const remoteDraft = remoteExtra?.draft || "";
-    const persistedDraft = composeRecoveryStore.draftState(
-      this.composeRecoveryKey(),
-    );
+    const persistedDraft = composeRecoveryStore.draftState(channelKey);
     if (!persistedDraft || persistedDraft.draft !== remoteDraft) return;
 
-    const pendingDrafts = this.pendingSendDrafts();
+    const pendingDrafts = this.pendingSendDrafts(channelKey);
+    const channelActive = this.composeRecoveryKey() === channelKey;
     const nextDraft = resolveDraftAfterSend({
       attemptId,
       protectedPendingAttemptIds:
         sendDraft.protectedPendingAttemptIds.filter((protectedAttemptId) =>
           persistedDraft.pendingAttemptIds.includes(protectedAttemptId),
         ),
-      liveDraft: this.messageInputContext()?.text() || "",
+      liveDraft: channelActive ? this.messageInputContext()?.text() || "" : "",
       remoteDraft,
       remoteDraftAtSend,
       draftSavedAfterSend: persistedDraft.revision !== sendDraft.revision,
@@ -1870,7 +1991,7 @@ export class Conversation
       return;
     }
 
-    composeRecoveryStore.recordDraft(this.composeRecoveryKey(), {
+    composeRecoveryStore.recordDraft(channelKey, {
       draft: nextDraft,
       source: nextDraft ? "pending" : "empty",
       pendingDrafts: pendingDrafts.filter(
@@ -1878,13 +1999,13 @@ export class Conversation
       ),
     });
     try {
-      await this.updateConversationExtra(nextDraft);
+      await this.updateConversationExtra(nextDraft, context);
     } catch (err) {
       console.warn("[Conversation] clear draft after send failed", err);
     }
-    if (this.vm.currentConversation) {
+    if (vm.currentConversation) {
       WKSDK.shared().conversationManager.notifyConversationListeners(
-        this.vm.currentConversation,
+        vm.currentConversation,
         ConversationAction.update
       );
     }
@@ -1894,14 +2015,17 @@ export class Conversation
     this.contextMenusContext.show(event);
   }
 
-  getMessageElement(message: Message | MessageWrap) {
+  getMessageElement(
+    message: Message | MessageWrap,
+    vm: ConversationVM = this.vm
+  ) {
     const foldSession =
       message.messageSeq && message.messageSeq > 0
-        ? this.vm.findFoldSessionByMessageSeq(message.messageSeq)
+        ? vm.findFoldSessionByMessageSeq(message.messageSeq)
         : undefined;
     if (foldSession?.isExpanded) {
       const expandedElement = document.getElementById(
-        this.vm.foldSessionMessageElementId(message),
+        vm.foldSessionMessageElementId(message),
       );
       if (expandedElement) {
         return expandedElement;
@@ -2665,13 +2789,17 @@ export class Conversation
     }
   }
 
-  private visiblePersistentMessage(vp: HTMLElement | null, fromEnd: boolean) {
-    if (!this.vm.messages || this.vm.messages.length === 0) {
+  private visiblePersistentMessage(
+    vp: HTMLElement | null,
+    fromEnd: boolean,
+    vm: ConversationVM = this.vm
+  ) {
+    if (!vm.messages || vm.messages.length === 0) {
       return;
     }
     let viewport = vp;
     if (!viewport) {
-      viewport = document.getElementById(this.vm.messageContainerId);
+      viewport = document.getElementById(vm.messageContainerId);
     }
     if (!viewport) {
       return;
@@ -2679,15 +2807,15 @@ export class Conversation
     const targetScrollTop = viewport.scrollTop;
     const scrollOffsetTop =
       viewport.scrollHeight - (targetScrollTop + viewport.clientHeight);
-    const start = fromEnd ? this.vm.messages.length - 1 : 0;
-    const end = fromEnd ? -1 : this.vm.messages.length;
+    const start = fromEnd ? vm.messages.length - 1 : 0;
+    const end = fromEnd ? -1 : vm.messages.length;
     const step = fromEnd ? -1 : 1;
     for (let index = start; index !== end; index += step) {
-      const message = this.vm.messages[index];
+      const message = vm.messages[index];
       if (!message.messageSeq || message.messageSeq <= 0) {
         continue;
       }
-      const element = this.getMessageElement(message);
+      const element = this.getMessageElement(message, vm);
       if (!element) {
         continue;
       }
@@ -3233,54 +3361,9 @@ export class Conversation
                           },
                         });
                       }}
-                      onCaptureSendTarget={() =>
-                        // 与 compose 同步取走 reply/edit 目标并收起横幅
-                        // (octo-web#1280)：排队发送不能再实时读 vm 上的状态。
-                        captureSendTarget<Message>({
-                          getReplyMessage: () => vm.currentReplyMessage,
-                          setReplyMessage: (m) => {
-                            vm.currentReplyMessage = m;
-                          },
-                          getHandlerType: () => vm.currentHandlerType,
-                          setHandlerType: (h) => {
-                            vm.currentHandlerType = h;
-                          },
-                        })
+                      onCaptureSendTransaction={
+                        this.captureChatComposerSendTransaction
                       }
-                      onCaptureSendDraft={() => {
-                        const remoteDraft =
-                          this.vm.currentConversation?.remoteExtra?.draft || "";
-                        return {
-                          revision: composeRecoveryStore.captureDraftRevision(
-                            this.composeRecoveryKey(),
-                            remoteDraft,
-                          ),
-                          remoteDraft,
-                          protectedPendingAttemptIds: [
-                            ...composeRecoveryStore.matchPendingDraft(
-                              this.composeRecoveryKey(),
-                              remoteDraft,
-                            ),
-                          ],
-                        };
-                      }}
-                      onSendSettled={async (settlement) => {
-                        try {
-                          if (!settlement.outcome.editorConsumed) return;
-                          if (!settlement.restoreFailed) {
-                            await this.clearDraftAfterSend(settlement);
-                          }
-                          this.props.onMessageSent?.();
-                        } finally {
-                          if (settlement.sendDraft) {
-                            composeRecoveryStore.releaseDraftRevision(
-                              this.composeRecoveryKey(),
-                              settlement.sendDraft.revision,
-                            );
-                          }
-                        }
-                      }}
-                      onSend={this._sendChatComposerRequest}
                     ></ChatComposer>
                       </>
                     )}

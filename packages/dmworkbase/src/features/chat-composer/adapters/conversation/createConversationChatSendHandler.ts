@@ -103,6 +103,7 @@ export function createConversationChatSendHandler<
     dependencies.toastError ?? ((message: string) => Toast.error(message));
 
   return async (request) => {
+    const channel = host.channel();
     host.submitVoiceFeedback?.(request.text);
 
     const sendImageFile = async (
@@ -112,7 +113,7 @@ export function createConversationChatSendHandler<
       try {
         await precheckUpload(
           file,
-          host.channel(),
+          channel,
           extension(file.name || ""),
         );
       } catch (error) {
@@ -152,7 +153,7 @@ export function createConversationChatSendHandler<
       const name = file.name || "unknown";
       const ext = extension(name);
       try {
-        await precheckUpload(file, host.channel(), ext);
+        await precheckUpload(file, channel, ext);
       } catch (error) {
         toastError(
           translate("base.conversation.upload.fileFailed", {

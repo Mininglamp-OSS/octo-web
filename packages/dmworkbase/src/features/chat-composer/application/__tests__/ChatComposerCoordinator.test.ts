@@ -4,6 +4,7 @@ import type {
   ChatComposerConsumeContext,
   ChatComposerEditorPort,
   ChatComposerHostPort,
+  ChatComposerSendTransaction,
 } from "../../ports";
 import { ChatComposerController } from "../ChatComposerController";
 import { ChatComposerCoordinator } from "../ChatComposerCoordinator";
@@ -40,18 +41,42 @@ function consumed(
   };
 }
 
-function host(
-  overrides: Partial<ChatComposerHostPort> = {}
-): ChatComposerHostPort {
+interface TestHostOverrides
+  extends Partial<Omit<ChatComposerHostPort, "captureSendTransaction">> {
+  captureSendTransaction?: () => ChatComposerSendTransaction;
+  channelKey?: () => string;
+  captureSendTarget?: ChatComposerSendTransaction["captureSendTarget"];
+  captureSendDraft?: ChatComposerSendTransaction["captureSendDraft"];
+  send?: ChatComposerSendTransaction["send"];
+  onSendSettled?: ChatComposerSendTransaction["onSendSettled"];
+}
+
+function host(overrides: TestHostOverrides = {}): ChatComposerHostPort {
+  const {
+    captureSendTransaction,
+    channelKey,
+    captureSendTarget,
+    captureSendDraft,
+    send,
+    onSendSettled,
+    ...hostOverrides
+  } = overrides;
   return {
-    channelKey: () => "channel-1:2",
+    captureSendTransaction:
+      captureSendTransaction ??
+      (() => ({
+        channelKey: channelKey?.() ?? "channel-1:2",
+        captureSendTarget: captureSendTarget ?? (() => undefined),
+        captureSendDraft: captureSendDraft ?? (() => undefined),
+        send:
+          send ??
+          (async () => createChatSendOutcome({ editorConsumed: true })),
+        onSendSettled,
+      })),
     isChannelActive: () => true,
-    captureSendTarget: () => undefined,
-    captureSendDraft: () => undefined,
     getExpanded: () => false,
     setExpanded: () => undefined,
-    send: async () => createChatSendOutcome({ editorConsumed: true }),
-    ...overrides,
+    ...hostOverrides,
   };
 }
 
@@ -182,8 +207,8 @@ describe("ChatComposerCoordinator", () => {
     ).resolves.toMatchObject({ editorConsumed: true });
 
     expect(order).toEqual([
-      "target",
       "channel",
+      "target",
       "expanded",
       "consume",
       "draft",
@@ -452,6 +477,72 @@ describe("ChatComposerCoordinator", () => {
       { text: "B", target: { id: "target-B" }, draftRevision: 2 },
     ]);
     expect(controller.pendingSendCount()).toBe(0);
+  });
+
+  it("keeps queued sends on the transaction captured before a channel switch", async () => {
+    const controller = new ChatComposerController();
+    const coordinator = new ChatComposerCoordinator(controller);
+    const sent: Array<{ channelKey: string; text: string }> = [];
+    const settled: string[] = [];
+    let activeChannelKey = "channel-x:2";
+    let resolveFirst!: (
+      outcome: ReturnType<typeof createChatSendOutcome>,
+    ) => void;
+    const firstResult = new Promise<ReturnType<typeof createChatSendOutcome>>(
+      (resolve) => {
+        resolveFirst = resolve;
+      },
+    );
+    const currentHost = host({
+      captureSendTransaction: () => {
+        const channelKey = activeChannelKey;
+        return {
+          channelKey,
+          captureSendTarget: () => undefined,
+          captureSendDraft: () => undefined,
+          send: async (request) => {
+            sent.push({ channelKey, text: request.text });
+            return request.text === "A"
+              ? firstResult
+              : createChatSendOutcome({ editorConsumed: true });
+          },
+          onSendSettled: () => {
+            settled.push(channelKey);
+          },
+        };
+      },
+    });
+    const editor: ChatComposerEditorPort = {
+      consume: (context) => consumed(context),
+      handoffRecovery: vi.fn(),
+    };
+    const submit = (text: string) =>
+      coordinator.submit(
+        {
+          text,
+          topFiles: [],
+          editorBlocks: [],
+          pendingAttachments: [],
+        },
+        { host: currentHost, editor },
+      );
+
+    const first = submit("A");
+    const second = submit("B");
+    activeChannelKey = "channel-y:2";
+
+    await Promise.resolve();
+    expect(sent).toEqual([{ channelKey: "channel-x:2", text: "A" }]);
+
+    resolveFirst(createChatSendOutcome({ editorConsumed: true }));
+    await first;
+    await second;
+
+    expect(sent).toEqual([
+      { channelKey: "channel-x:2", text: "A" },
+      { channelKey: "channel-x:2", text: "B" },
+    ]);
+    expect(settled).toEqual(["channel-x:2", "channel-x:2"]);
   });
 
   it("keeps consecutive queued failures before the live draft", async () => {
