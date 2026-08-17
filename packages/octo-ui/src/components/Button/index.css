@@ -153,11 +153,11 @@
 }
 
 .octo-ui-button--danger:hover:not(:disabled) {
-  background: var(--wk-color-danger-active);
+  background: color-mix(in srgb, var(--wk-color-danger) 84%, var(--wk-brand-black));
 }
 
 .octo-ui-button--danger:active:not(:disabled) {
-  background: var(--wk-color-danger-active);
+  background: color-mix(in srgb, var(--wk-color-danger) 80%, var(--wk-brand-black));
 }
 
 .octo-ui-button:disabled {
