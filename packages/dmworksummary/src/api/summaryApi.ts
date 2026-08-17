@@ -10,6 +10,7 @@ import type {
     ChatCandidate,
     CreateSummaryParams,
     CreateAgentSummaryParams,
+    CreateDocumentAgentSummaryParams,
     CreateScheduleParams,
     CustomTopicTemplatePayload,
     InferResult,
@@ -371,6 +372,33 @@ export async function createAgentSummary(
     // 补发 smart_summary_started(此前 agent 模式一次都不发,与 normal 模式不一致)。
     Dap.shared.track('smart_summary_started', trackProps);
     return data;
+}
+
+/** 创建文档 Agent 总结。POST /summary/api/v1/summaries/agent/document */
+export async function createDocumentAgentSummary(
+    params: CreateDocumentAgentSummaryParams,
+): Promise<{ task_id: number; task_no?: string; status: number; created_at?: string }> {
+    const resp = await summaryAxios.post(`${BASE}/summaries/agent/document`, params);
+    if (resp.data?.code !== 0) {
+        const err = new Error(resp.data?.message || 'create document agent summary failed') as Error & {
+            response?: { data?: { code?: number; message?: string } };
+        };
+        err.response = { data: resp.data };
+        throw err;
+    }
+    const data = resp.data?.data as {
+        task_id?: number; task_no?: string; status?: number; created_at?: string;
+    } | undefined;
+    if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
+        throw new Error(resp.data?.message || 'create document agent summary returned no task_id');
+    }
+    Dap.shared.track('smart_summary_started', { source: 'document_star' });
+    return {
+        task_id: data.task_id,
+        task_no: data.task_no,
+        status: data.status ?? 0,
+        created_at: data.created_at,
+    };
 }
 
 // Agent 交互式问答（非流式一问一答）。POST /summary/api/v1/agent/chat。

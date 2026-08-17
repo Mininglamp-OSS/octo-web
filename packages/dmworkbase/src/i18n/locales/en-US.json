@@ -981,6 +981,8 @@
   "docShareCard.permission.checking": "Checking",
   "docShareCard.createdBy": "Created by {{name}}",
   "docShareCard.copy": "Copy link",
+  "docShareCard.summary": "Summarize document",
+  "docShareCard.summaryBusy": "Summarizing",
   "docShareCard.open": "Open document",
   "docShareCard.placeholder.no_access.title": "Access required",
   "docShareCard.placeholder.no_access.desc": "Open the document to request access",

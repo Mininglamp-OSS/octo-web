@@ -981,6 +981,8 @@
   "docShareCard.permission.checking": "检查中",
   "docShareCard.createdBy": "{{name}} 创建",
   "docShareCard.copy": "复制链接",
+  "docShareCard.summary": "总结文档",
+  "docShareCard.summaryBusy": "总结中",
   "docShareCard.open": "打开文档",
   "docShareCard.placeholder.no_access.title": "需要访问权限",
   "docShareCard.placeholder.no_access.desc": "打开文档后可以申请访问",

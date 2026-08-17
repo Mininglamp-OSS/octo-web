@@ -1,4 +1,5 @@
 import React from "react";
+import { Sparkle } from "lucide-react";
 import "./index.css";
 
 export type DocShareKind = "doc" | "board" | "sheet";
@@ -30,6 +31,10 @@ export interface DocumentShareCardStrings {
   permissionLabel: string;
   /** 复制链接按钮的无障碍label。 */
   copyLabel: string;
+  /** 文档总结按钮的无障碍label。 */
+  summaryLabel: string;
+  /** 文档总结生成中的无障碍label。 */
+  summaryBusyLabel: string;
   /** 预览区（可点开文档）的无障碍label。 */
   openLabel: string;
 }
@@ -44,6 +49,8 @@ export interface DocumentShareCardProps {
   placeholder?: DocSharePlaceholder;
   onOpen?: () => void;
   onCopy?: () => void;
+  onSummary?: () => void;
+  isSummaryBusy?: boolean;
 }
 
 /** 权限态 → 角标/卡片色调。 */
@@ -172,7 +179,7 @@ function PreviewContent({ title, preview }: { title: string; preview: DocSharePr
  * 无 footer；预览区有内容显内容、无权限/失效/检查中显占位。仅 unavailable 禁用点击。
  */
 export function DocumentShareCard(props: DocumentShareCardProps): JSX.Element {
-  const { kind, title, state, strings, preview, placeholder, onOpen, onCopy } = props;
+  const { kind, title, state, strings, preview, placeholder, onOpen, onCopy, onSummary, isSummaryBusy } = props;
   const tone = toneOf(state);
   const disabled = state === "unavailable";
 
@@ -187,6 +194,16 @@ export function DocumentShareCard(props: DocumentShareCardProps): JSX.Element {
           {strings.subtitle ? <p>{strings.subtitle}</p> : null}
         </div>
         <span className={`document-permission is-${tone}`}>{strings.permissionLabel}</span>
+        <button
+          type="button"
+          className={`document-forward-summary${isSummaryBusy ? " is-busy" : ""}`}
+          aria-label={isSummaryBusy ? strings.summaryBusyLabel : strings.summaryLabel}
+          title={isSummaryBusy ? strings.summaryBusyLabel : strings.summaryLabel}
+          disabled={isSummaryBusy || disabled}
+          onClick={onSummary}
+        >
+          <Sparkle size={16} aria-hidden="true" />
+        </button>
         <button
           type="button"
           className="document-forward-copy"

@@ -1,4 +1,5 @@
 import React from "react";
+import { Toast } from "@douyinfe/semi-ui";
 import type { IModule } from "@octo/base";
 import { i18n, WKApp, Menus, t as translate, Dap } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
@@ -8,7 +9,7 @@ import SummaryShareDetailPage from "./pages/SummaryShareDetailPage";
 import SummarySharePreviewFeature from "./features/summaryShare/SummarySharePreviewFeature";
 import SummaryConfirmPage from "./pages/SummaryConfirmPage";
 import ScheduleListPage from "./pages/ScheduleListPage";
-import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
+import { createDocumentAgentSummary, getChatCandidates, getSummaryShare } from "./api/summaryApi";
 import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
 import { getPendingInvitationBadge, refreshPendingInvitationBadge } from "./utils/summaryMenuBadge";
@@ -22,7 +23,21 @@ import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
 let _spaceReadyHandler: (() => void) | null = null;
+let _documentSummaryHandler: ((payload: DocumentSummaryRequestPayload) => void) | null = null;
 const openingSummaryShares = new Set<string>();
+
+interface DocumentSummaryRequestPayload {
+    documentId?: string;
+    version?: string;
+    title?: string;
+    spaceId?: string;
+    onSettled?: () => void;
+}
+
+function makeDocumentSummaryIdempotencyKey(documentId: string, version?: string): string {
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    return `document:${documentId}:${version || "latest"}:${suffix}`;
+}
 
 function afterSummaryMenuSwitch(action: () => void) {
     if (WKApp.switchToMenuById && WKApp.currentMenuId !== "summary") {
@@ -206,6 +221,27 @@ export class SummaryModule implements IModule {
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
         WKApp.mittBus.on('space-ready', _spaceReadyHandler);
 
+        _documentSummaryHandler = (payload: DocumentSummaryRequestPayload) => {
+            const documentId = payload?.documentId?.trim();
+            if (!documentId) return;
+            if (payload.spaceId) WKApp.shared.currentSpaceId = payload.spaceId;
+            Toast.info(translate("summary.documentSummary.creating"));
+            void createDocumentAgentSummary({
+                document_refs: [{ document_id: documentId, version: payload.version || undefined }],
+                requirement: translate("summary.documentSummary.defaultRequirement"),
+                idempotency_key: makeDocumentSummaryIdempotencyKey(documentId, payload.version),
+            }).then((res) => {
+                Toast.success(translate("summary.documentSummary.created"));
+                WKApp.openSummaryDetail?.(res.task_id, payload.spaceId || WKApp.shared.currentSpaceId);
+            }).catch((err: unknown) => {
+                const message = err instanceof Error ? err.message : translate("summary.documentSummary.failed");
+                Toast.error(message || translate("summary.documentSummary.failed"));
+            }).finally(() => {
+                payload.onSettled?.();
+            });
+        };
+        WKApp.mittBus.on('wk:document-summary-request', _documentSummaryHandler);
+
         WKApp.searchChatCandidates = async (params) => {
             return getChatCandidates(params);
         };
@@ -244,6 +280,10 @@ if (import.meta.hot) {
         if (_spaceReadyHandler) {
             WKApp.mittBus.off('space-ready', _spaceReadyHandler);
             _spaceReadyHandler = null;
+        }
+        if (_documentSummaryHandler) {
+            WKApp.mittBus.off('wk:document-summary-request', _documentSummaryHandler);
+            _documentSummaryHandler = null;
         }
     });
 }

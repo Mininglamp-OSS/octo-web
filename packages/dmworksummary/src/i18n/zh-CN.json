@@ -212,6 +212,12 @@
         "back": "返回",
         "starTooltip": "智能总结"
     },
+    "documentSummary": {
+        "creating": "正在总结文档…",
+        "created": "文档总结已生成",
+        "failed": "文档总结失败，请稍后重试",
+        "defaultRequirement": "总结这份文档"
+    },
     "templates": {
         "project_progress": {
             "label": "汇总项目进展",

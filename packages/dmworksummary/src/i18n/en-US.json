@@ -212,6 +212,12 @@
         "back": "Back",
         "starTooltip": "AI Summary"
     },
+    "documentSummary": {
+        "creating": "Summarizing document...",
+        "created": "Document summary generated",
+        "failed": "Failed to summarize document. Please try again later.",
+        "defaultRequirement": "Summarize this document"
+    },
     "templates": {
         "project_progress": {
             "label": "Summarize project progress",

@@ -350,6 +350,16 @@ export interface CreateAgentSummaryParams {
     referenced_task_ids?: number[];
 }
 
+/** 文档 Agent 总结创建请求。 */
+export interface CreateDocumentAgentSummaryParams {
+    document_refs: Array<{
+        document_id: string;
+        version?: string;
+    }>;
+    requirement?: string;
+    idempotency_key: string;
+}
+
 /** Agent 对话单条消息（user 右气泡 / assistant 左气泡） */
 export interface ChatMessage {
     role: 'user' | 'assistant';

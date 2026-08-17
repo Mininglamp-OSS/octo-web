@@ -1,4 +1,5 @@
 import React from "react";
+import { WKApp } from "@octo/base";
 import MessageBase from "../Base";
 import { MessageBaseCellProps, MessageCell } from "../MessageCell";
 import { I18nContext } from "../../i18n";
@@ -17,6 +18,7 @@ import { fetchDocPreview } from "./preview";
 interface DocShareCardCellState {
   status: DocSharePreviewStatus;
   preview?: DocSharePreview;
+  summaryBusy: boolean;
 }
 
 /**
@@ -27,7 +29,7 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
   static contextType = I18nContext;
   declare context: React.ContextType<typeof I18nContext>;
 
-  state: DocShareCardCellState = { status: "loading" };
+  state: DocShareCardCellState = { status: "loading", summaryBusy: false };
   private aborter?: AbortController;
 
   componentDidMount(): void {
@@ -77,6 +79,20 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
     void navigator.clipboard?.writeText(`${window.location.origin}${rel}`);
   };
 
+  private handleSummary = (): void => {
+    if (this.state.summaryBusy) return;
+    const content = this.props.message.content as DocumentShareCardContent;
+    if (!content.docId) return;
+    this.setState({ summaryBusy: true });
+    WKApp.mittBus.emit('wk:document-summary-request', {
+      documentId: content.docId,
+      version: content.updatedAt || undefined,
+      title: content.title,
+      spaceId: content.spaceId,
+      onSettled: () => this.setState({ summaryBusy: false }),
+    });
+  };
+
   private buildStrings(content: DocumentShareCardContent, state: DocSharePermissionState): DocumentShareCardStrings {
     const { t } = this.context;
     return {
@@ -85,6 +101,8 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
         : undefined,
       permissionLabel: t(`base.docShareCard.permission.${state}`),
       copyLabel: t("base.docShareCard.copy"),
+      summaryLabel: t("base.docShareCard.summary"),
+      summaryBusyLabel: t("base.docShareCard.summaryBusy"),
       openLabel: t("base.docShareCard.open"),
     };
   }
@@ -146,6 +164,8 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
           placeholder={placeholder}
           onOpen={this.handleOpen}
           onCopy={this.handleCopy}
+          onSummary={this.handleSummary}
+          isSummaryBusy={this.state.summaryBusy}
         />
       </MessageBase>
     );

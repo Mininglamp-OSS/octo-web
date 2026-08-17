@@ -20,7 +20,7 @@
 
 .document-forward-card__header {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr) auto 28px;
+  grid-template-columns: 32px minmax(0, 1fr) auto 28px 28px;
   align-items: center;
   gap: var(--wk-sp-2);
   padding: 0 0 var(--wk-sp-3);
@@ -105,7 +105,8 @@
   background: var(--wk-brand-tint-06);
 }
 
-.document-forward-copy {
+.document-forward-copy,
+.document-forward-summary {
   display: grid;
   place-items: center;
   width: 28px;
@@ -118,13 +119,31 @@
   cursor: pointer;
 }
 
-.document-forward-copy:hover {
+.document-forward-copy:hover,
+.document-forward-summary:hover {
   background: var(--wk-bg-elevated);
 }
 
-.document-forward-copy .icon {
+.document-forward-summary:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.document-forward-summary.is-busy .icon,
+.document-forward-summary.is-busy svg {
+  animation: document-forward-summary-spin 1.2s linear infinite;
+}
+
+.document-forward-copy .icon,
+.document-forward-summary svg {
   width: 16px;
   height: 16px;
+}
+
+@keyframes document-forward-summary-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .document-forward-preview {
