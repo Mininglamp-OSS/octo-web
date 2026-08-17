@@ -65,6 +65,7 @@ export class ChatComposerCoordinator<
     }
     const transaction = host.captureSendTransaction();
     const sendTarget = transaction.captureSendTarget();
+    const sendDraftBaseline = transaction.captureSendDraft();
     const { channelKey } = transaction;
     const expandedAtSend = host.getExpanded();
 
@@ -94,7 +95,6 @@ export class ChatComposerCoordinator<
       throw error;
     }
 
-    const sendDraftBaseline = transaction.captureSendDraft();
     const draftText = composeSnapshotDraftText(consumed.snapshot);
     const attempt = this.controller.capture({
       channelKey,

@@ -209,9 +209,9 @@ describe("ChatComposerCoordinator", () => {
     expect(order).toEqual([
       "channel",
       "target",
+      "draft",
       "expanded",
       "consume",
-      "draft",
       "set-expanded:false",
       "send",
       "settled",
@@ -309,6 +309,58 @@ describe("ChatComposerCoordinator", () => {
     );
     expect(handoffEditorRecovery).toHaveBeenCalledWith(
       handoffRecovery.mock.calls[0][0]
+    );
+  });
+
+  it("captures the send draft before consume mutates host draft state", async () => {
+    let draft = {
+      revision: 7,
+      remoteDraft: "remote-before-consume",
+      protectedPendingAttemptIds: [] as string[],
+    };
+    const send = vi.fn(async () =>
+      createChatSendOutcome({ editorConsumed: true })
+    );
+    const coordinator = new ChatComposerCoordinator(
+      new ChatComposerController()
+    );
+    const editor: ChatComposerEditorPort = {
+      consume: (context) => {
+        draft = {
+          revision: 8,
+          remoteDraft: "remote-after-consume",
+          protectedPendingAttemptIds: [],
+        };
+        return consumed(context);
+      },
+      handoffRecovery: vi.fn(),
+    };
+
+    await coordinator.submit(
+      {
+        text: "hello",
+        topFiles: [],
+        editorBlocks: [],
+        pendingAttachments: [],
+      },
+      {
+        host: host({
+          captureSendDraft: () => ({ ...draft }),
+          send,
+        }),
+        editor,
+      }
+    );
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sendDraft: {
+          revision: 7,
+          remoteDraft: "remote-before-consume",
+          draftText: "hello",
+          protectedPendingAttemptIds: [],
+        },
+      })
     );
   });
 
@@ -790,7 +842,7 @@ describe("ChatComposerCoordinator", () => {
     ).rejects.toThrow("unsupported compose part");
 
     expect(restoreTarget).toHaveBeenCalledOnce();
-    expect(captureSendDraft).not.toHaveBeenCalled();
+    expect(captureSendDraft).toHaveBeenCalledOnce();
     expect(controller.pendingSendCount()).toBe(0);
   });
 });
