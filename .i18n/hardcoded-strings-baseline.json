@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-08-13T03:39:42.099Z",
+  "generatedAt": "2026-05-27T13:11:58.173Z",
   "candidateCount": 0,
   "signatureCount": 0,
   "ignoredFiles": [
@@ -19,78 +19,6 @@
     {
       "path": "packages/dmworkbase/src/Utils/mentionRender.ts",
       "reason": "Mention broadcast token helpers for @所有人/@所有AI. These literals are protocol/display tokens inserted into message content and covered by mention tests, not translatable UI copy in this pass."
-    },
-    {
-      "path": "packages/dmworkbase/src/Messages/RichText/RichTextContent.ts",
-      "reason": "RichText(=14) plain-generation image placeholder. This [图片] literal is a cross-platform wire-format token that must byte-match octo-lib RichTextImagePlaceholder (common/richtext.go) so server/mobile/web produce identical plain text; it is protocol data, not translatable UI copy."
-    },
-    {
-      "path": "packages/docs/src/export/docx/styles.ts",
-      "reason": "DOCX export font-family constants (微软雅黑). These are Word/WPS font identifiers that must byte-match the actual Windows font name so exported documents render Chinese text correctly; they are font resource names, not translatable UI copy."
-    },
-    {
-      "path": "packages/dmworkbase/src/Components/ChannelSearch/ChannelSearch.stories.mock.ts",
-      "reason": "Channel search Storybook fixture data with sample sender names, message bodies, filenames, and match reasons; not UI copy."
-    },
-    {
-      "path": "packages/docs/src/board/excalidrawDebrand.ts",
-      "reason": "Whiteboard de-brand helper. Its only CJK literal is BOARD_BRAND ('画布'), the fixed product word that replaces the upstream Excalidraw brand token at runtime; it is intentionally locale-invariant (a brand replacement, not translatable UI copy) and the docs package has no i18n namespace to key it against."
-    },
-    {
-      "path": "packages/docs/src/editor/fontFamilies.ts",
-      "reason": "Toolbar font-family presets. The only CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"微软雅黑\", \"宋体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it; they are font resource identifiers, not translatable UI copy (mirrors export/docx/styles.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
-    },
-    {
-      "path": "packages/docs/src/board/boardFontFamilies.ts",
-      "reason": "Board (Excalidraw) font-family catalogue. Its CJK literals are the localized family-name aliases inside the CSS font-family values (e.g. \"宋体\", \"黑体\") that must byte-match the native font name so browsers matching a font by its Chinese name still render it on the canvas; they are font resource identifiers, not translatable UI copy (same category as editor/fontFamilies.ts). The user-facing display name is localized separately via the labelKey i18n keys resolved with t()."
-    },
-    {
-      "path": "packages/docs/src/html-create/createHtmlTask.ts",
-      "reason": "Generated agent-facing publish prompt protocol. Its Chinese directives are copied or forwarded byte-for-byte to a Bot and are covered by protocol tests; modal UI labels and copy status remain localized in the docs namespace."
-    },
-    {
-      "path": "packages/docs/src/html-create/HtmlCreateService.ts",
-      "reason": "Generated copy-ready agent prompt for modifying the current HTML. Its Chinese directives are prompt content, not UI chrome; modal labels and status remain localized in the docs namespace."
-    },
-    {
-      "path": "packages/dmworkmcp/src/mock/mcpMock.ts",
-      "reason": "MCP Market demo fixtures (server names, slogans, descriptions, FAQ, notes). This is sample content data returned by the mock service layer, replaced wholesale by the real backend response later; it is not translatable UI chrome and has no i18n namespace key to bind to."
-    },
-    {
-      "path": "packages/dmworkmcp/src/api/quickStartTemplates.ts",
-      "reason": "Quick-start snippet generators. The CJK literals are fragments of the copy-ready prompt/CLI/JSON text (e.g. 名称/传输方式/鉴权 labels inside the generated instruction) that must byte-match what the user pastes into an agent client; they are generated code/prompt content, not translatable UI chrome."
-    },
-    {
-      "path": "packages/dmworkskillmarket/src/api/mockData.ts",
-      "reason": "Skill Market demo fixtures (category names, skill names, slogans, prompts, tags). Sample content data returned by the mock service layer, replaced wholesale by the real backend response later; not translatable UI chrome. Same category as dmworkmcp/src/mock/mcpMock.ts."
-    },
-    {
-      "path": "packages/dmworkskillmarket/src/__mocks__/dmworkBase.tsx",
-      "reason": "Vitest __mocks__ stub for @octo/base — provides a minimal fake t() and WKModal-shaped closer used only in unit tests. The single CJK literal ('关闭') is the test-mock modal close label and never surfaces in production UI."
-    },
-    {
-      "path": "packages/dmworkskillmarket/src/utils/installPrompt.ts",
-      "reason": "Agent prompt template for the octo-cli install flow. The CJK literals are fragments of the copy-ready prompt text that must byte-match what the user pastes into an agent client (Skill ID / Space ID / API 地址 labels + step-by-step instructions); they are generated agent-facing content, not translatable UI chrome. Same category as dmworkmcp/src/api/quickStartTemplates.ts."
-    },
-    {
-      "path": "packages/dmworkskillmarket/src/utils/botPublishPrompt.ts",
-      "reason": "Agent prompt template for the Bot publish flow. Same rationale as installPrompt.ts above — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
-    },
-    {
-      "path": "packages/dmworkskillmarket/src/utils/publisher.ts",
-      "reason": "Publisher classification helper. The Chinese literal is a backend identity value used to recognize administrator-created records, not user-facing UI copy; the displayed label is localized separately."
-    },
-    {
-      "path": "packages/dmworkmcp/src/utils/mcpBotPublishPrompt.ts",
-      "reason": "Agent prompt template for the MCP marketplace publish flow. Same rationale as dmworkskillmarket/src/utils/botPublishPrompt.ts — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
-    },
-    {
-      "path": "packages/dmworksummary/src/__mocks__/handlers.ts",
-      "reason": "MSW test fixture data with sample user names, titles, and message bodies; not UI copy."
-    },
-    {
-      "path": "packages/dmworksummary/src/utils/channelType.ts",
-      "reason": "Error message template with interpolation placeholder; already covered by runtime error handling with proper i18n."
     }
   ],
   "summary": {
