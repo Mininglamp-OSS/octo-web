@@ -127,13 +127,13 @@
 }
 
 /* Primary 按钮颜色统一 */
-.wk-join-space-btn.octo-ui-button--solid {
+.wk-join-space-btn.octo-ui-button--tint {
     background-color: var(--wk-color-primary, #1C1C23) !important;
     border-color: var(--wk-color-primary, #1C1C23) !important;
     color: #fff !important;
 }
 
-.wk-join-space-btn.octo-ui-button--solid:hover {
+.wk-join-space-btn.octo-ui-button--tint:hover {
     background-color: var(--wk-color-primary-hover, #4a59ae) !important;
     border-color: var(--wk-color-primary-hover, #4a59ae) !important;
 }

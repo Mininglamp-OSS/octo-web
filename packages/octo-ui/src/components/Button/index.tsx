@@ -17,7 +17,8 @@ const normalizeVariant = (
   if (type === 'warning') return 'warning'
   if (theme === 'borderless') return 'text'
   if (theme === 'solid' && !type) return 'solid'
-  if (type === 'primary') return theme === 'solid' ? 'solid' : 'secondary'
+  if (type === 'secondary' || type === 'tertiary') return 'secondary'
+  if (type === 'primary' || !type) return theme === 'solid' ? 'solid' : 'tint'
   return 'secondary'
 }
 

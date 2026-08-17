@@ -7,7 +7,7 @@ describe('Button', () => {
     const html = renderToStaticMarkup(<Button>Confirm</Button>)
 
     expect(html).toContain('octo-ui-button')
-    expect(html).toContain('octo-ui-button--secondary')
+    expect(html).toContain('octo-ui-button--tint')
     expect(html).toContain('octo-ui-button--sm')
     expect(html).toContain('Confirm')
     expect(html).toContain('type="button"')
@@ -56,10 +56,12 @@ describe('Button', () => {
   })
 
   it.each([
-    ['bare button', {}, 'octo-ui-button--secondary'],
-    ['primary omitted theme', { type: 'primary' }, 'octo-ui-button--secondary'],
+    ['bare button', {}, 'octo-ui-button--tint'],
+    ['primary omitted theme', { type: 'primary' }, 'octo-ui-button--tint'],
     ['primary solid', { type: 'primary', theme: 'solid' }, 'octo-ui-button--solid'],
-    ['primary light', { type: 'primary', theme: 'light' }, 'octo-ui-button--secondary'],
+    ['primary light', { type: 'primary', theme: 'light' }, 'octo-ui-button--tint'],
+    ['secondary light', { type: 'secondary', theme: 'light' }, 'octo-ui-button--secondary'],
+    ['tertiary solid', { type: 'tertiary', theme: 'solid' }, 'octo-ui-button--secondary'],
     ['borderless', { theme: 'borderless' }, 'octo-ui-button--text'],
     ['danger solid', { type: 'danger', theme: 'solid' }, 'octo-ui-button--danger'],
     ['danger borderless', { type: 'danger', theme: 'borderless' }, 'octo-ui-button--danger-text'],

@@ -74,6 +74,20 @@
   background: var(--wk-color-accent-hover);
 }
 
+.octo-ui-button--tint {
+  background: var(--wk-brand-tint-06);
+  border-color: transparent;
+  color: var(--wk-brand-primary);
+}
+
+.octo-ui-button--tint:hover:not(:disabled) {
+  background: var(--wk-brand-tint-08);
+}
+
+.octo-ui-button--tint:active:not(:disabled) {
+  background: var(--wk-brand-tint-12);
+}
+
 .octo-ui-button--secondary {
   background: var(--wk-bg-surface);
   border-color: var(--wk-border-default);

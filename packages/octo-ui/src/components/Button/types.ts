@@ -6,6 +6,7 @@ export type ButtonLegacyTheme = 'solid' | 'light' | 'borderless' | 'outline'
 export type ButtonVariant =
   | 'solid'
   | 'brand'
+  | 'tint'
   | 'secondary'
   | 'text'
   | 'warning'

@@ -15,7 +15,7 @@ const meta: Meta<typeof Button> = {
   argTypes: {
     variant: {
       control: 'radio',
-      options: ['solid', 'brand', 'secondary', 'text', 'warning', 'danger'],
+      options: ['solid', 'brand', 'tint', 'secondary', 'text', 'warning', 'danger'],
     },
     size: {
       control: 'radio',
@@ -49,6 +49,7 @@ export const Variants: Story = {
     <Row>
       <Button variant="solid">Solid</Button>
       <Button variant="brand">Brand</Button>
+      <Button variant="tint">Tint</Button>
       <Button variant="secondary">Secondary</Button>
       <Button variant="text">Text</Button>
       <Button variant="warning">Warning</Button>
