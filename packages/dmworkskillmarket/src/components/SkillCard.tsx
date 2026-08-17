@@ -273,7 +273,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
         // owner edit/delete click here would still resolve closest('[data-track]')
         // to the card and emit a false view. data-track-ignore makes the delegate
         // skip clicks inside the footer. The install button keeps its own
-        // data-track="skill_install_clicked" — closest() stops at the button, so
+        // data-track="market_skill_install_clicked" — closest() stops at the button, so
         // it is unaffected by an ancestor's ignore marker.
         data-track-ignore=""
       >
@@ -304,7 +304,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
                 hideDescriptionTooltip();
                 onInstall(skill);
               }}
-              data-track="skill_install_clicked"
+              data-track="market_skill_install_clicked"
               data-object-id={skill.id}
               data-track-item-type="skill"
             >

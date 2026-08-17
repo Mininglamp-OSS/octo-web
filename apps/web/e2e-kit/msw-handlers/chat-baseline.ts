@@ -68,6 +68,13 @@ export const chatBaselineHandlers = [
       headers: { "content-type": "image/png" },
     })
   ),
+  http.get("*/groups/:groupNo/avatar", () =>
+    // 与 user avatar 同理: group logo 可能为空, 但请求本身不该漏到 Vite proxy
+    // (fake-provider 会为无 logo 的 group 派生 avatar 路径, 见 fake-provider.ts).
+    HttpResponse.arrayBuffer(new Uint8Array([]).buffer, {
+      headers: { "content-type": "image/png" },
+    })
+  ),
   http.get("*/group/avatar_palette", () =>
     // 空 colors 会走前端 fallback palette, 但请求本身不该漏到 Vite proxy.
     HttpResponse.json({ size: 0, colors: [] })

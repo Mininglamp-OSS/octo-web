@@ -8,6 +8,7 @@ import Provider from "../../Service/Provider";
 import { ChannelQRCodeVM } from "./vm";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import { copyToClipboard } from "../../Utils/clipboard";
+import { Dap } from "../../Service/Dap";
 import { I18nContext } from "../../i18n";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
@@ -22,6 +23,8 @@ export default class ChannelQRCode extends Component<ChannelQRCodeProps> {
     handleCopyLink = async (link: string) => {
         const ok = await copyToClipboard(link)
         if (ok) {
+            // 六审 P2:复制成功后才计数(原 TrackRules 点击委托在 copy promise 落定前就发,失败也计)。
+            Dap.shared.track("group_qrcode_invite_link_copied", {})
             Toast.success(this.context.t("base.channelQRCode.copySuccess"))
         } else {
             Toast.error(this.context.t("base.channelQRCode.copyFailed"))

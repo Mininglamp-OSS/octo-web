@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
     return true;
   }),
   chatPage: vi.fn(() => null),
+  remoteConfig: { mailOn: true },
 }));
 
 vi.mock("@octo/base", () => {
@@ -36,6 +37,7 @@ vi.mock("@octo/base", () => {
       routeLeft: { popToRoot: state.popToRoot },
       routeRight: { replaceToRoot: state.replaceToRoot },
       mittBus: { emit: state.emit },
+      remoteConfig: state.remoteConfig,
     },
   };
 });
@@ -52,6 +54,7 @@ import MailModule from "./module";
 describe("MailModule integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    state.remoteConfig.mailOn = true;
   });
 
   it("registers /mail with the host shell and guards menu navigation", () => {
@@ -68,6 +71,10 @@ describe("MailModule integration", () => {
     const menuFactory = state.menuRegister.mock.calls.find(
       ([id]) => id === "mail"
     )?.[1];
+    state.remoteConfig.mailOn = false;
+    expect(menuFactory()).toBeUndefined();
+
+    state.remoteConfig.mailOn = true;
     const menu = menuFactory();
     menu.onPress();
 

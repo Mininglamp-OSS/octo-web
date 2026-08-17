@@ -21,9 +21,10 @@ import {
 import React, { Component, HTMLProps } from "react";
 import { isConversationDisbanded } from "../../Utils/groupDisband";
 import { ForwardService, ForwardOptions, ForwardResult } from "../../Service/ForwardService";
-import { interpretForwardResult, ForwardToastScope } from "../../Service/forwardResultToast";
+import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../../Service/forwardResultToast";
 
 import Provider from "../../Service/Provider";
+import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
@@ -451,18 +452,19 @@ export class Conversation
   private showForwardResult(
     result: ForwardResult,
     scope: ForwardToastScope,
-  ): void {
+  ): ForwardToastKind {
     const state = interpretForwardResult(result, scope);
-    if (state.kind === "success") return;
+    if (state.kind === "success") return "success";
     if (state.kind === "all-failed") {
       Toast.error(t("base.conversation.forward.allFailed"));
-      return;
+      return "all-failed";
     }
     Toast.error(
       t("base.conversation.forward.partialFailed", {
         values: { failed: state.failed, total: state.total },
       }),
     );
+    return "partial";
   }
 
   // 转发到当前会话时，需要保留本地"发送中"气泡（vm.fillOrder + addSendMessageToQueue）。
@@ -493,7 +495,9 @@ export class Conversation
           () => getEffectiveContent(message),
           this.buildForwardOptions(),
         );
-        this.showForwardResult(result, "targets");
+        const kind = this.showForwardResult(result, "targets");
+        // 全部目标失败(如群已解散)不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
+        if (kind !== "all-failed") Dap.shared.track("message_forwarded", {});
       } catch (e) {
         console.error("[forward] build content failed", e);
         const blockedMessageKey = forwardBlockedMessageKey(e);
@@ -1348,6 +1352,8 @@ export class Conversation
     );
 
     this.contextMenusContext.show(event);
+    // 破例:右键 contextmenu 走原生事件而非委托蒙版,命令式补点。props 恒空。
+    Dap.shared.track("message_context_menu_opened", {});
   }
   hideContextMenus(): void {
     this.contextMenusContext.hide();
@@ -2081,6 +2087,10 @@ export class Conversation
                   event.stopPropagation();
                   const wasExpanded = session.isExpanded;
                   this.vm.toggleFoldSession(session.sessionId);
+                  // 兼收起:仅「展开」态命令式补点,避免收起误报。props 恒空。
+                  if (!wasExpanded) {
+                    Dap.shared.track("thread_expanded", {});
+                  }
 
                   // 展开时,确保内容可见(无动画,下一帧立即滚动)
                   if (!wasExpanded) {
@@ -2761,7 +2771,9 @@ export class Conversation
                               this.buildForwardOptions({ messageMode: "parallel" }),
                             );
                             // 多选 Toast 分母保持 messages × channels 语义（scope='messages'）。
-                            this.showForwardResult(result, "messages");
+                            const kind = this.showForwardResult(result, "messages");
+                            // 全部失败不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
+                            if (kind !== "all-failed") Dap.shared.track("message_multiselect_forwarded", {});
                           } catch (e) {
                             console.error("[forward] build content failed", e);
                             const blockedMessageKey = forwardBlockedMessageKey(e);
@@ -2792,7 +2804,9 @@ export class Conversation
                               () => vm.buildMergeforwardContent(vm.getCheckedMessages()),
                               this.buildForwardOptions(),
                             );
-                            this.showForwardResult(result, "targets");
+                            const kind = this.showForwardResult(result, "targets");
+                            // 全部失败不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
+                            if (kind !== "all-failed") Dap.shared.track("message_multiselect_forwarded", {});
                           } catch (e) {
                             console.error(
                               "[merge-forward] build content failed",
@@ -3619,6 +3633,7 @@ export class Conversation
                         .map((menus) => {
                           return {
                             title: menus.title,
+                            testid: menus.testid,
                             onClick: () => {
                               if (menus.onClick) {
                                 menus.onClick();
@@ -3915,16 +3930,17 @@ class MultiplePanel extends Component<MultiplePanelProps> {
     } = this.props;
     return (
       <div className="wk-multiplepanel">
-        <button className="wk-multiplepanel-btn" onClick={onForward}>
+        <button className="wk-multiplepanel-btn" data-testid="multiselect-forward-btn" onClick={onForward}>
           {t("base.conversation.multiplePanel.forwardOneByOne")}
         </button>
         <div className="wk-multiplepanel-sep" />
-        <button className="wk-multiplepanel-btn" onClick={onMergeForward}>
+        <button className="wk-multiplepanel-btn" data-testid="multiselect-mergeforward-btn" onClick={onMergeForward}>
           {t("base.conversation.multiplePanel.mergeForward")}
         </button>
         <div className="wk-multiplepanel-sep" />
         <button
           className="wk-multiplepanel-btn wk-multiplepanel-btn--danger"
+          data-testid="multiselect-delete-btn"
           onClick={onDelete}
         >
           {t("base.conversation.multiplePanel.delete")}

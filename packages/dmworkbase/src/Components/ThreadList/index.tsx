@@ -37,6 +37,8 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
   }
 
   componentDidMount() {
+    // channel_subchannel_panel_opened 不在此处发:ThreadList 为死组件(实际渲染 ThreadPanel),
+    // 挂载埋点永不触发(见二审 P1-2)。已收口到 Pages/Chat/index.tsx 子区 header 开关的「仅开边沿」。
     this.vm.load()
   }
 

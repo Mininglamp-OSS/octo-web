@@ -16,7 +16,6 @@ import {
   MessageContentTypeConst,
   MessageReasonCode,
 } from "../../Service/Const";
-import { IConversationProvider } from "../../Service/DataSource/DataProvider";
 import WKApp from "../../App";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import {
@@ -70,14 +69,9 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
 
   channelInfoListener!: ChannelInfoListener;
   subscriberChangeListener!: (channel: Channel) => void;
-  conversationProvider: IConversationProvider;
   private unsubscribeChannelInfoListener?: () => void;
   private unsubscribeSubscriberChangeListener?: () => void;
 
-  constructor(props: any) {
-    super(props);
-    this.conversationProvider = WKApp.conversationProvider;
-  }
   componentDidMount() {
     const self = this;
 
@@ -223,15 +217,6 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     }
     newBubbleStyle.borderRadius = this.getBubbleRadius(hasContinue, message);
     return newBubbleStyle;
-  }
-
-  onMessageRevoke() {
-    const { message } = this.props;
-    this.conversationProvider.revokeMessage(message.message);
-  }
-  onMultiple() {
-    const { context } = this.props;
-    context.setEditOn(true);
   }
 
   onMessageDelete() {

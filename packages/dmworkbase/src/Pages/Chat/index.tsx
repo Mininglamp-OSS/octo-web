@@ -1050,6 +1050,20 @@ export class ChatContentPage extends Component<
                           className="wk-chat-conversation-header-right-item"
                           onClick={(e) => {
                             e.stopPropagation();
+                            // channel_subchannel_panel_opened:仅在「打开」边沿(当前子区列表未显示)且为
+                            // 群频道时发一次。原挂在 GET /groups/:id/threads 的 2xx 通道会被删除/归档/重试刷新
+                            // 反复触发;二审又发现改挂到 ThreadList.componentDidMount 是死组件(实际渲染的是
+                            // ThreadPanel),永不触发。收口到这个真正的子区 header 开关点(见二审 P1-2),
+                            // 与上方 group_info_panel_opened 同一「仅开边沿」写法,file-preview 复用 ThreadPanel 不误计。
+                            {
+                              const isThreadListVisibleNow =
+                                this.state.showThreadPanel &&
+                                !this.state.previewFile &&
+                                !this.state.activeThread;
+                              if (!isThreadListVisibleNow) {
+                                Dap.shared.track("channel_subchannel_panel_opened", {});
+                              }
+                            }
                             this.setState((prevState) => {
                               // 如果有文件预览或其他面板打开，视为"子区列表未显示"，点击应打开子区列表
                               const isThreadListVisible =
@@ -1070,6 +1084,13 @@ export class ChatContentPage extends Component<
                       className="wk-chat-conversation-header-right-item"
                       onClick={(e) => {
                         e.stopPropagation();
+                        // group_info_panel_opened:仅开面板(opening)且为群频道时发,props 恒空
+                        if (
+                          !this.state.showChannelSetting &&
+                          channel.channelType === ChannelTypeGroup
+                        ) {
+                          Dap.shared.track("group_info_panel_opened", {});
+                        }
                         this.setState((prevState) => {
                           const opening = !prevState.showChannelSetting;
                           return opening

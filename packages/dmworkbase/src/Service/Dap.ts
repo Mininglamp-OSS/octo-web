@@ -24,6 +24,12 @@ import { templateForPathname } from './apiPath'
 // 锚点规则表(见 TrackRules.ts):点击委托 closest('[data-track]') 落空后的纯前端 fallback。
 // TrackRules 自身零依赖,不成环。
 import { TRACK_RULES, buildIndex, matchRoute, type TrackRule, type TrackRuleIndex } from './TrackRules'
+// 中央映射·path 通道(①,见 FetchRules.ts):把成功(2xx)的第一方请求 method+path 映射成
+// 整合表事件名再 track 一次。零依赖、零改组件;pathname 仅用于选事件名,绝不落库。
+import { FETCH_RULES, buildFetchIndex, matchFetchEvent, rawPathname, type FetchRuleIndex } from './FetchRules'
+// 中央映射·body 键通道(②,见 BodyRules.ts):对白名单端点 clone 请求体、只读顶层枚举键映射事件。
+// 受控放宽「不读正文」边界:只碰白名单端点、只读键不读值、只解析 JSON 串体、同源+2xx 才触发。
+import { BODY_RULES, buildBodyIndex, computeBodyEvent, type BodyRuleIndex } from './BodyRules'
 
 export type TrackPrimitive = string | number | boolean | null
 
@@ -259,6 +265,8 @@ class DapImpl {
     // ship dark:默认不采,等 remoteConfig 显式启用(后端采集端就绪前一个请求都不发)
     private enabled = false
     private started = false
+    // app_launched 一次性哨兵:整个页面生命周期只发一次「应用启动」。见 setEnabled 首启分支。
+    private launchTracked = false
     /**
      * 采集机制是否已装:**每个采集器一个 flag**,而非一个总开关。
      * 单一总开关下,若某个 install 抛错(总开关保持 false),下次 setEnabled(true) 会把
@@ -364,7 +372,26 @@ class DapImpl {
             // 首次启用:惰性装采集机制(dark 态从未装过),再补扫当前 DOM。
             this.installCollectors()
             this.rescanCurrent()
+            // app_launched **不在此发**(六审 P2):首次 setEnabled(true) 由 appconfig 回调驱动
+            //   (App.tsx:502-503),而 appconfig 在**登录页(未登录、无 token)**就会拉,此处发会
+            //   逼 envelope()→deviceId() 给匿名访客写持久 localStorage 标识 + 发一条无 token 上报,
+            //   破坏 Dap.ts:255-258 的「惰性创建」保证。改由 maybeTrackLaunch() 在**登录后拿到 token、
+            //   首个真正产出的事件到来时**补发一次(整生命周期仍仅一次,launchTracked 哨兵保证)。
         }
+    }
+
+    /**
+     * app_launched 惰性补发(六审 P2 / owner 决策 b):登录(currentToken 有值)后、采集开启、
+     * 且首个真正 track 到来时发一次「应用启动」。放在 track() 顶部——匿名登录页无 token 时不发,
+     * 从而不写 device_id、不产生无 token 上报;登录后首个鉴权事件(通常是 http_request / page 进入)
+     * 触发它,并排在该事件之前。launchTracked 哨兵保证整生命周期仅一次(停采→再启用亦不重复)。
+     */
+    private maybeTrackLaunch(): void {
+        if (this.launchTracked) return
+        if (!this.enabled) return
+        if (!this.currentToken()) return
+        this.launchTracked = true
+        this.track('app_launched', {})
     }
 
     /** 注入业务 token 取值回调(见 index.tsx)。上报请求据此带 `token` 头供后端鉴权归一 actor。 */
@@ -384,6 +411,7 @@ class DapImpl {
     /** 通用上报(蒙版内部自动调;破例点如消息补点也调它)。 */
     track(eventName: string, props?: Record<string, unknown>): void {
         if (!this.enabled || !eventName) return
+        this.maybeTrackLaunch() // 登录后首个事件时补发 app_launched(见其注释);哨兵防重入
         this.safe(() => {
             const clean = this.sanitizeProps(props)
             const objectId = this.pickObjectId(clean)
@@ -394,6 +422,7 @@ class DapImpl {
     /** page_view(MutationObserver 内部调,按 pageId 去重 + 结算上一页停留)。 */
     pageView(pageId: string, extra?: Record<string, unknown>): void {
         if (!this.enabled || !pageId) return
+        this.maybeTrackLaunch() // 首个鉴权页进入亦可触发 app_launched(排在 page_view 前)
         this.safe(() => {
             // 同页重复触发(菜单 setter + syncPath + mittBus 多次)只忽略,不重复计数(§3.2)
             if (this.lastPage && this.lastPage.pageId === pageId) return
@@ -954,21 +983,35 @@ class DapImpl {
 
     // ----------------------------------------------- 机制③ fetch / XHR 包裹
     private installHttpWrap(): void {
-        const emit = (rawUrl: string, method: string, status: number, durationMs: number) => {
+        // XHR proto.send 里的 this 是 XMLHttpRequest 实例,拿不到 DapImpl;用 dap 别名读 enabled。
+        const dap = this
+        // 中央映射索引:一次性构建,emit 闭包复用(installOnce('http') 保证只装一次)。
+        const fetchIndex: FetchRuleIndex = buildFetchIndex(FETCH_RULES)
+        const bodyIndex: BodyRuleIndex = buildBodyIndex(BODY_RULES)
+        // bodyEvent 在包裹处(能拿到请求体时)算好传入:body 键通道优先于 path 通道,避免重复计事件。
+        const emit = (rawUrl: string, method: string, status: number, durationMs: number, bodyEvent?: string) => {
             this.safe(() => {
                 if (!rawUrl) return
                 // 只采第一方(同源)API telemetry:跨域(预签名对象存储/第三方)路径含对象键/文件名,一律不采
                 if (!isFirstParty(rawUrl)) return
+                const m = (method || 'GET').toUpperCase()
                 // 量/错误率/延迟,不带 query、不带正文;路径按白名单收窄脱敏。
                 // **不从 URL 路径提取 object_id**:路径末段可能是一次性登录码 / 邀请 token / 对象键
                 // (见 PR #1320 review),原样取出即等于把凭证放进 telemetry。http_request 只保留
                 // 已脱敏的 path 维度,不再单列 object_id(path 已覆盖其可分析的信息)。
                 this.track('http_request', {
-                    method: (method || 'GET').toUpperCase(),
+                    method: m,
                     path: normalizePath(rawUrl),
                     status_bucket: statusBucket(status),
                     duration_ms: Math.round(durationMs),
                 })
+                // 中央映射(①path / ②body):仅在 **2xx**(动作确已发生)时补发一条映射事件。
+                // body 键通道优先(更具体);其次 path 通道。映射事件不带任何来自请求的值
+                // (无 object_id / query / 正文),故凭证 / 文件名不可能借此外泄。
+                if (status >= 200 && status < 300) {
+                    const mapped = bodyEvent ?? matchFetchEvent(fetchIndex, m, rawPathname(rawUrl))
+                    if (mapped) this.track(mapped, {})
+                }
             })
         }
 
@@ -989,9 +1032,19 @@ class DapImpl {
                 if (url && url.indexOf(BATCH_PATH) !== -1) {
                     return orig(input as RequestInfo, init)
                 }
+                // body 键通道:只在能拿到 JSON 字符串体时算(Request 对象体是流、只能异步读,跳过);
+                // computeBodyEvent 内部做白名单门 + 只读键,返回的只是本表里的事件名常量。
+                // P2-1:必须在**第一方(同源) + 已启用**时才读体 —— BodyRules.ts:17 承诺「跨域不读」,
+                // 且 kill switch(enabled=false)要连「读」一并停掉,不能只停 emit。这里把不变式落进代码,
+                // 不再只靠 emit 里的 isFirstParty 兜底(那只挡上报、挡不住 parse)。
+                const reqBody = typeof init?.body === 'string' ? init.body : undefined
+                const bodyEvent =
+                    this.enabled && isFirstParty(url)
+                        ? dap.safeCall(() => computeBodyEvent(bodyIndex, method || 'GET', url, reqBody))
+                        : undefined
                 return orig(input as RequestInfo, init)
                     .then((resp) => {
-                        emit(url, method || 'GET', resp.status, Date.now() - start)
+                        emit(url, method || 'GET', resp.status, Date.now() - start, bodyEvent)
                         return resp
                     })
                     .catch((err) => {
@@ -1022,6 +1075,20 @@ class DapImpl {
                 const url = this.__trackUrl || ''
                 const method = this.__trackMethod || 'GET'
                 if (url && url.indexOf(BATCH_PATH) === -1) {
+                    // body 键通道:axios 走 XHR,JSON payload 序列化为字符串体传入 send(args[0])。
+                    // 只在字符串体上算(Blob/FormData 上传等一律跳过);内部白名单门 + 只读键。
+                    // P2-1:同 fetch —— 只在第一方 + 已启用时读体,把「跨域不读 / 停采即停读」落进代码。
+                    const bodyEvent =
+                        dap.enabled && isFirstParty(url)
+                            ? dap.safeCall(() =>
+                                  computeBodyEvent(
+                                      bodyIndex,
+                                      method,
+                                      url,
+                                      typeof args[0] === 'string' ? (args[0] as string) : undefined,
+                                  ),
+                              )
+                            : undefined
                     // 在闭包里定住 url/method/start(不在 loadend 时读实例字段,避免复用/
                     // 重 open 后读到串味的路径);once:true 保证复用实例多次 send 不累积监听
                     // (否则一个 loadend 会补发历史请求的 http_request,见 review P2)。
@@ -1031,15 +1098,23 @@ class DapImpl {
                     // 若一直不触发就不会自动摘,复用实例多次正常完成会累积一串死监听(见 review P2)。
                     let aborted = false
                     const onAbort = () => { aborted = true }
+                    const onLoadEnd = () => {
+                        this.removeEventListener('abort', onAbort)
+                        if (!aborted) emit(url, method, this.status, Date.now() - start, bodyEvent)
+                    }
                     this.addEventListener('abort', onAbort, { once: true })
-                    this.addEventListener(
-                        'loadend',
-                        () => {
-                            this.removeEventListener('abort', onAbort)
-                            if (!aborted) emit(url, method, this.status, Date.now() - start)
-                        },
-                        { once: true },
-                    )
+                    this.addEventListener('loadend', onLoadEnd, { once: true })
+                    // P2-5:监听器在 native send() 之前挂上;若 send() 同步抛(如对已 open 的实例重复
+                    // send() 触发 InvalidStateError),这两个监听器会残留,等首个请求 loadend 时连带
+                    // 补发一次历史请求的 http_request。故 send 抛错时先摘掉两个监听器再重抛。
+                    try {
+                        // @ts-expect-error 透传原始参数
+                        return origSend.apply(this, args)
+                    } catch (e) {
+                        this.removeEventListener('abort', onAbort)
+                        this.removeEventListener('loadend', onLoadEnd)
+                        throw e
+                    }
                 }
                 // @ts-expect-error 透传原始参数
                 return origSend.apply(this, args)
@@ -1079,6 +1154,20 @@ class DapImpl {
             fn()
         } catch {
             /* 埋点内部异常一律吞掉,不 console、不 toast、不外抛 */
+        }
+    }
+
+    /**
+     * safe 的取值版:执行 fn 并返回其值,内部抛错时降级为 undefined(绝不外抛)。
+     * 六审 P5:computeBodyEvent 在 fetch/XHR 拦截热路径里同步调用,虽已内含 try/catch,但它是外部
+     * 纯函数,一旦将来重构引入抛错(或 URL/JSON 极端输入),异常会顺着我们 wrap 的 fetch/send 冒泡、
+     * 污染宿主网络层。这里把「算 body 事件」也纳入 Dap「内部异常一律吞」的统一边界,埋点永不拖累业务请求。
+     */
+    private safeCall<T>(fn: () => T): T | undefined {
+        try {
+            return fn()
+        } catch {
+            return undefined
         }
     }
 }

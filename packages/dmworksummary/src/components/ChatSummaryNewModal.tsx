@@ -410,6 +410,12 @@ export default class ChatSummaryNewModal extends Component<
                 origin_channel_id: channel.channelID,
                 origin_channel_type: sourceType,
                 sources,
+            }, {
+                // 二审 P1:与 SummaryCreatePage 共用 api 层收口点,补齐维度 props 保持口径一致。
+                object_id: channel.channelID,
+                source: 'chat_new_modal',
+                entry_point: 'chat_new_modal',
+                trigger_mode: 'normal',
             });
             markAgentSummaryNotificationEligible(res.task_id);
 
@@ -631,6 +637,14 @@ export default class ChatSummaryNewModal extends Component<
                 sources,
                 origin_channel_id: channel.channelID,
                 origin_channel_type: getOriginChannelType(channel),
+            }, {
+                // 六审 P3:agent 保存入口此前漏传维度 props → smart_summary_started 在此路径
+                // 变成无维度事件,与上面 normal 路径(:412)及 SummaryCreatePage 口径不一致,
+                // 无法按 source/entry_point 归因。补齐,trigger_mode 标 agent 以区分两条创建路径。
+                object_id: channel.channelID,
+                source: 'chat_new_modal',
+                entry_point: 'chat_new_modal',
+                trigger_mode: 'agent',
             });
             markAgentSummaryNotificationEligible(res.task_id);
 

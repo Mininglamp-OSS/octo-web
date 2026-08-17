@@ -214,6 +214,7 @@ export default function ChannelWebhookPanel({
             variant="solid"
             size="sm"
             icon={<IconPlus />}
+            data-testid="webhook-create-btn"
             onClick={() => setEditTarget({ mode: "create" })}
           >
             {t("base.channelWebhook.add")}
@@ -250,6 +251,7 @@ export default function ChannelWebhookPanel({
           <Button
             variant="solid"
             icon={<IconPlus />}
+            data-testid="webhook-create-btn"
             onClick={() => setEditTarget({ mode: "create" })}
           >
             {t("base.channelWebhook.add")}

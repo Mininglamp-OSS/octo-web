@@ -57,7 +57,7 @@ vi.mock('../../utils/summaryMenuBadge', () => ({
 }));
 
 import * as api from '../../api/summaryApi';
-import { WKApp } from '@octo/base';
+import { WKApp, Dap } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshPendingInvitationBadge } from '../../utils/summaryMenuBadge';
 
@@ -705,6 +705,151 @@ describe('SummaryDetailPage — 续修3/4: detail 写入路径切 task 迟到丢
 
         expect((page.state as any).lastKnownStatus).toBe(2);
         expect(stopFallbackPoll).not.toHaveBeenCalled();
+    });
+});
+
+// ─── R3 blocker（Jerry-Xin 三审）：smart_summary_completed 在「状态订阅 + 兜底轮询」重叠下精确一次 ───
+//
+// 两路都在各自 await api.getSummaryDetail 之前捕获 prevStatus 快照(PROCESSING)，await 后同见
+// COMPLETED，故两路都能越过 prev!==new 边界守卫；stopFallbackPoll() 也取消不了已越过 await 的
+// tick。修复前二者会各发一次 smart_summary_completed（双计）。修复：以「已发 completed 的 taskId」
+// 为去重锚(completedTrackedTaskId)，先检出者写锚并发，后到者 id 相等即跳过——按 task 精确一次。
+describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under status-event + fallback race', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('emits smart_summary_completed once when both paths observe the same pending→completed transition', async () => {
+        // 四审 P1-2:必须让两路都真正「越过各自第一个 await 后仍持 prev=PROCESSING」才算复现竞态。
+        //   若像先前那样用 mockResolvedValue 预解析,状态订阅路径会一口气跑完(先 setState lastKnownStatus=3),
+        //   兜底轮询随后读到的 prevStatus 已是 3、prev===new 短路,根本走不到 emit —— 测试即便删掉去重锚也照过(空测)。
+        //   这里用「延迟兑现的 getSummaryDetail + 立即兑现的 batchStatus」把两路都钉在 getSummaryDetail 处:
+        //     · 状态订阅路径:同步读 previousStatus=2 → 停在 await getSummaryDetail(未兑现)。
+        //     · 兜底轮询路径:await batchStatus 立即兑现 → 此刻 lastKnownStatus 仍是 2(状态订阅尚未 setState)
+        //       → prev(2)!==new(3) 进入 → 也停在 await getSummaryDetail(未兑现)。
+        //   两路都已捕获 prev=2 且都停在同一处后,再兑现 detail:二者同见 COMPLETED、都会尝试 emit。
+        //   有去重锚 → 恰好 1 条;删掉两处 completedTrackedTaskId 判断 → 变 2 条(delete-the-fix 会红)。
+        let resolveDetail!: (v: unknown) => void;
+        const detailPromise = new Promise((res) => { resolveDetail = res; });
+        vi.mocked(api.getSummaryDetail).mockReturnValue(detailPromise as any);
+        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
+
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+
+            // 两路并发启动,但 detail 尚未兑现 → 都停在 await getSummaryDetail。
+            const p1 = (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+            const p2 = (page as any).doFallbackPollOnce();
+
+            // 宏任务边界:排空当前所有微任务(batchStatus 兑现 → 兜底轮询读到 prev=2 → 停在 getSummaryDetail)。
+            await new Promise((r) => setTimeout(r, 0));
+
+            // 此刻两路都已捕获 prev=2 并停在 getSummaryDetail;兑现之 → 二者同见 COMPLETED,同时争 emit。
+            resolveDetail(baseDetail({ task_id: 1, status: 3 }) as any);
+            await Promise.all([p1, p2]);
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(1);
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    it('re-tracks for a different task id (dedup is per-task, not global)', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 };
+
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            // 切到 task 2，重新经历 pending→completed：锚 id 不同 → 再计一次。
+            (page as any).props = { taskId: 2 };
+            page.state = { ...(page.state as any), lastKnownStatus: 2 };
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 2, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [2] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(2);
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    // 六审 P1b / 八审 🔴2：同一 taskId 的 regenerate。regenerate 把状态就地推回 PENDING 再重跑到
+    // COMPLETED，task id 不变。修复前 completedTrackedTaskId 只写不清 → 第二次完成命中 id 相等被跳过 →
+    // 只 1 条（flagship 漏斗 smart_summary_completed 系统性漏掉每一轮 regenerate 的完成）。
+    // 关键：产品的 regenerate 路径是 handleRegenerateConfirm 就地置 PENDING 后调 **this.loadDetail()**，
+    // 并不派发 summary-status-change。八审 🔴2 指出锚复位若只挂在状态订阅里,这条真实路径就绕过了它。
+    // 故 step ② 必须经 loadDetail(而非 handleStatusChangeEvent)驱动,才是产品真的会走的调用序列。
+    // delete-the-fix：去掉 loadDetail 里的锚维护(或 helper 的 else-if 复位),本用例退回 1 条即红。
+    it('re-tracks the SAME task after regenerate via the real loadDetail path: completed → pending(regenerate) → completed = 2 events (六审 P1b / 八审 🔴2)', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+            // loadDetail 的无关副作用(轮询/标题/日程/版本)与本锚断言无关,置空避免定时器/事件噪声。
+            (page as any).startFallbackPoll = () => {};
+            (page as any).stopFallbackPoll = () => {};
+            (page as any).stopSummaryStream = () => {};
+            (page as any).stopTeamSummaryStream = () => {};
+            (page as any).publishDetailTitle = () => {};
+            (page as any).loadSchedule = () => {};
+
+            // ① 首次完成：PROCESSING → COMPLETED（写锚 + 发一条），经真实状态订阅入口。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            // ② regenerate：走产品真实路径 loadDetail。此时 state.detail.task_id=1、lastKnownStatus=3(COMPLETED)，
+            //    loadDetail 拉到 WAITING_CONFIRM(非 COMPLETED) → 观测到 3→1 的状态沿 → 必须清锚。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 1 /* 非 COMPLETED */ }) as any);
+            await (page as any).loadDetail();
+
+            // ③ 二次完成：→ COMPLETED，同一 taskId。锚已复位 → 再发一条。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(2);
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    // 八审 🔴2 反向守卫：首次加载一条已完成总结(仅「查看」历史)**不得**计成一次新完成。
+    // previousStatus===undefined 时 loadDetail 不发 completed,否则每次翻阅历史都 +1,completed 超过 started。
+    it('does NOT emit completed on a fresh load of an already-COMPLETED summary (view ≠ completion, 八审 🔴2)', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            (page as any).startFallbackPoll = () => {};
+            (page as any).stopFallbackPoll = () => {};
+            (page as any).stopSummaryStream = () => {};
+            (page as any).stopTeamSummaryStream = () => {};
+            (page as any).publishDetailTitle = () => {};
+            (page as any).loadSchedule = () => {};
+            (page as any).loadVersions = () => {};
+
+            // state.detail 为空 → isSameTask=false → previousStatus=undefined（首屏）。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 /* COMPLETED */ }) as any);
+            await (page as any).loadDetail();
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(0);
+        } finally {
+            track.mockRestore();
+        }
     });
 });
 

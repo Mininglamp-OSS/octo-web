@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import axios from 'axios';
+import { Dap } from '@octo/base';
 
 const { mockGet, mockPost, mockPut, mockDelete, mockRequestUse, mockResponseUse } = vi.hoisted(() => ({
     mockGet: vi.fn(),
@@ -425,6 +426,92 @@ describe('summaryApi', () => {
             await expect(
                 agentChat({ message: '总结今天', session_id: 's-1' }),
             ).rejects.toThrow('x');
+        });
+    });
+
+    // 二审 P1「smart_summary_started 双发」+ P2-2 + P2-5:该事件唯一收口在 api 层的 envelope gate。
+    // 钉死:code===0 才发一次并带调用方 props;code≠0 / code===null 不发;agent 模式补发且业务失败不发。
+    // (页面/入口层已删直接 track,发射不再可能双计 —— 见 SummaryCreatePage.test。)
+    describe('smart_summary_started envelope gate (二审 P1/P2-2/P2-5)', () => {
+        // NB: 前面 describe 里跑过 vi.resetModules(),模块注册表已换新;必须从**当前**注册表取 Dap
+        // (与被测 summaryApi 同一份 @octo/base 实例),否则 spy 挂在旧单例上,track 抓不到(见 line 84 同款)。
+        it('emits once with the caller props when envelope code===0', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { code: 0, data: { task_id: 9 } } });
+            await createSummary({ topic: 't' } as any, { trigger_mode: 'normal', source: 'summary_home' });
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
+            expect(started[0][1]).toMatchObject({ trigger_mode: 'normal', source: 'summary_home' });
+            track.mockRestore();
+        });
+
+        it('does NOT emit when envelope code!==0 (HTTP200 + 逻辑失败)', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { code: 1, message: 'fail', data: null } });
+            await createSummary({ topic: 't' } as any, { trigger_mode: 'normal' });
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
+
+        it('does NOT emit when envelope code===null (空/网关信封,P2-5)', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { code: null, data: null } });
+            await createSummary({ topic: 't' } as any, {});
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
+
+        it('does NOT emit when envelope code 缺省(网关 HTML/{data:null},与 null 同失败签名,六审 P2)', async () => {
+            // summary 端点响应恒为 {code,message,data} 信封。缺 code 不是「后端没包信封」,而是这次响应
+            // 根本不是预期信封(200 的网关错误页 / 代理 HTML / {data:null})——与 code===null 同一失败签名,
+            // 不能计成动作成功。二审只堵了 null,漏了 undefined;此处钉死缺省也不发。
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { data: null } });
+            await createSummary({ topic: 't' } as any, {});
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
+
+        it('agent mode emits once after envelope success (P2-2)', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { code: 0, data: { task_id: 3, task_no: 'n', status: 1, created_at: 'x' } } });
+            await createAgentSummary({} as any, { trigger_mode: 'agent' });
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
+            expect(started[0][1]).toMatchObject({ trigger_mode: 'agent' });
+            track.mockRestore();
+        });
+
+        it('agent mode does NOT emit on business failure (code!==0)', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { code: 40004, message: 'no output', data: null } });
+            await expect(createAgentSummary({} as any, {})).rejects.toBeTruthy();
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
+
+        it('agent mode 缺 code 视为失败,不发也抛错(七审 P1:与 normal 路径同口径)', async () => {
+            // 一个带合法 task_id 但缺 envelope code 的响应:normal 路径已收紧到仅 code===0 才发,
+            // agent 路径此前放行 undefined 会误发且误清 chat。此处钉死缺 code 即失败,两路径不再漂移。
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { data: { task_id: 7, task_no: 'n', status: 1, created_at: 'x' } } });
+            await expect(createAgentSummary({} as any, { trigger_mode: 'agent' })).rejects.toBeTruthy();
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
         });
     });
 });

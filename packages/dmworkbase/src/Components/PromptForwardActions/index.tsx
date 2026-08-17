@@ -9,6 +9,8 @@ import WKApp from "../../App";
 import APIClient from "../../Service/APIClient";
 import { forwardPlainText } from "../../Service/ForwardService";
 import { copyToClipboard } from "../../Utils/clipboard";
+import { Dap } from "../../Service/Dap";
+import { matchRoute } from "../../Service/TrackRules";
 import "./index.css";
 
 /**
@@ -172,6 +174,21 @@ export default function PromptForwardActions({
     if (ok) {
       if (!mountedRef.current) return;
       setCopied(true);
+      // 八审 P2:改为「复制成功」后命令式 track。此前挂 TrackRules 点击委托(mcp-bot-publish-copy),
+      // 点击即发——即使 copyToClipboard 返回 false(非安全上下文/权限拒绝)也计一次。本共享组件也渲染在
+      // /mcp-market/experts(专家/专家团 发布),那里的复制不算 bot 发布,故沿用原规则的 route 门:仅
+      // /mcp-market/mcp 计。matchRoute + currentRoute 同源(location.pathname),与原 DOM 规则完全等价。
+      const route = (() => {
+        try {
+          const loc = (globalThis as { location?: Location }).location;
+          return loc && loc.pathname ? loc.pathname : "";
+        } catch {
+          return "";
+        }
+      })();
+      if (matchRoute("/mcp-market/mcp", route)) {
+        Dap.shared.track("market_bot_publish_prompt_copied", {});
+      }
       if (copiedTimerRef.current !== null) {
         window.clearTimeout(copiedTimerRef.current);
       }
@@ -267,6 +284,7 @@ export default function PromptForwardActions({
 
   const copyButton = (
     <Button
+      data-testid="mcp-bot-publish-copy"
       variant="secondary"
       icon={copied ? <Check size={15} /> : <Copy size={15} />}
       onClick={handleCopy}

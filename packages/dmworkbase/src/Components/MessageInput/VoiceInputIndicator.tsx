@@ -9,6 +9,7 @@ import { VoiceMode } from "../../Service/VoiceService";
 import VoiceFeedbackNotice from "./VoiceFeedbackNotice";
 import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "./useSpaceFeedbackSetting";
 import WKApp from "../../App";
+import { Dap } from "../../Service/Dap";
 import { useI18n } from "../../i18n";
 
 type ReplaceMode = "all" | "selection" | "insert";
@@ -203,6 +204,8 @@ export default function VoiceInputIndicator({
     }
     if (isRecording) {
       setIsPreparing(false);
+      // 录音真正开始:命令式补点。props 恒空。
+      Dap.shared.track("input_voice_recording_started", {});
     }
   }, [isRecording, cancelRecording]);
 

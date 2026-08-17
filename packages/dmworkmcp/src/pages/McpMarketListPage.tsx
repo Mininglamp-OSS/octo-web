@@ -3,7 +3,7 @@ import axios from "axios";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import { IconSearch, IconClose } from "@douyinfe/semi-icons";
 import { Bot, Check, ChevronDown, SlidersHorizontal, Upload } from "lucide-react";
-import { I18nContext, t, WKApp } from "@octo/base";
+import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import { Button } from "@octo/ui";
 import { fetchMcpDetail, fetchMcpList, fetchMcpMine, fetchMcpTags, McpTagSuggestion } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
@@ -394,6 +394,8 @@ export default class McpMarketListPage extends Component<
 
   private handleMode = (mode: ListMode) => {
     if (mode === this.state.mode) return;
+    // 用户切换「全部/我的」视图(已过同值 guard);原先误用 GET /mcps/mine 加载推断,而 mine 列表也用于建议/初始化。
+    Dap.shared.track("market_view_switched", {});
     // Full reset — tag suggestions are mode-scoped on the backend (see
     // /mcp_tags?mode=mine), so keeping stale suggestions after a tab switch
     // paints suggestions the just-loaded list can't produce. Mirrors
@@ -481,14 +483,23 @@ export default class McpMarketListPage extends Component<
   private handleKeyword = (value: string) => {
     this.setState({ keyword: value });
     if (this.searchTimer) clearTimeout(this.searchTimer);
-    this.searchTimer = setTimeout(() => this.loadData(), 300);
+    this.searchTimer = setTimeout(() => {
+      this.loadData();
+      // 埋点 317:遥测 fire-and-forget，放在 loadData 之后 —— 搜索主逻辑先落地;track() 内部
+      // 以 safe() 自吞异常(Dap 未初始化 / 测试未 mock 时静默),不回灌到本回调。
+      if (value.trim()) Dap.shared.track("market_searched", {});
+    }, 300);
   };
 
   private handleCategory = (key: string) => {
-    this.setState((prev) => ({
-      categoriesSelected:
-        key === "all" || prev.categoriesSelected[0] === key ? [] : [key],
-    }), () => this.loadData());
+    const prevSel = this.state.categoriesSelected;
+    const nextSel = key === "all" || prevSel[0] === key ? [] : [key];
+    // market_category_filtered:仅在选中分类实际变化时计一次。原 TrackRules 的 mcp-category-pill
+    // 点击规则对「重复点已选分类 / 空态点 all」也触发 → 虚增(见 review P2-7)。已移除该规则,改此处 gate。
+    if (nextSel[0] !== prevSel[0] || nextSel.length !== prevSel.length) {
+      Dap.shared.track("market_category_filtered", {});
+    }
+    this.setState({ categoriesSelected: nextSel }, () => this.loadData());
   };
 
   /** Multi-tag filter — clicking a tag in the popover toggles membership.
@@ -496,6 +507,8 @@ export default class McpMarketListPage extends Component<
    *  Refetches on every change; the tag popover stays open so the user can
    *  toggle several tags in one interaction. */
   private handleToggleTag = (tag: string) => {
+    // 用户点 tag 过滤(选/取消都算一次过滤动作);原先误用 GET /mcp_tags 加载 tag 列表推断。
+    Dap.shared.track("market_tag_filtered", {});
     this.setState((prev) => ({
       tagsSelected: prev.tagsSelected.includes(tag)
         ? prev.tagsSelected.filter((t) => t !== tag)
@@ -505,6 +518,8 @@ export default class McpMarketListPage extends Component<
 
   private handleClearTags = () => {
     if (this.state.tagsSelected.length === 0) return;
+    // 清空 tag 与逐个 toggle 改变同一 tagsSelected、触发同一 loadData(),同属过滤动作,一并计数(见二审 P2-3)。
+    Dap.shared.track("market_tag_filtered", {});
     this.setState({ tagsSelected: [] }, () => this.loadData());
   };
 
@@ -678,6 +693,7 @@ export default class McpMarketListPage extends Component<
             <div className="wk-mcp-publish-menu" ref={this.publishMenuRef}>
               <Button
                 variant="solid"
+                data-testid="mcp-publish-entry"
                 icon={<Upload size={15} />}
                 onClick={() =>
                   this.setState((prev) => ({ publishMenuOpen: !prev.publishMenuOpen }))
@@ -693,6 +709,7 @@ export default class McpMarketListPage extends Component<
                   <button
                     type="button"
                     role="menuitem"
+                    data-testid="mcp-publish-method-bot"
                     onClick={() =>
                       this.setState({ publishMenuOpen: false, botPublishVisible: true })
                     }
@@ -706,6 +723,7 @@ export default class McpMarketListPage extends Component<
                   <button
                     type="button"
                     role="menuitem"
+                    data-testid="mcp-publish-method-manual"
                     onClick={() =>
                       this.setState({ publishMenuOpen: false, createVisible: true })
                     }
@@ -777,7 +795,11 @@ export default class McpMarketListPage extends Component<
                         <McpCard
                           key={item.id}
                           item={item}
-                          onClick={(it) => this.setState({ detailId: it.id })}
+                          onClick={(it) => {
+                            // 六审 C2:卡片打开只保留卡根 data-track="market_card_opened"(DOM 委托,亦覆盖键盘),
+                            // 删除此处命令式 market_card_viewed —— 二者本是对「同一次打开」的双计(owner 决策:留 opened)。
+                            this.setState({ detailId: it.id });
+                          }}
                           onEdit={canManage ? this.handleEditFromCard : undefined}
                           onDelete={
                             canManage

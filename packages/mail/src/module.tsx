@@ -72,6 +72,7 @@ export default class MailModule implements IModule {
     WKApp.menus.register(
       "mail",
       () => {
+        if (!WKApp.remoteConfig.mailOn) return undefined;
         const menu = new Menus(
           "mail",
           "/mail",

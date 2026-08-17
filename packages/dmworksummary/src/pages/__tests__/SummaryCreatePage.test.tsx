@@ -248,7 +248,7 @@ describe('SummaryCreatePage templates', () => {
         expect(api.createSummary).toHaveBeenCalledWith(expect.objectContaining({
             topic: submittedTopic,
             title: '已语段',
-        }));
+        }), expect.any(Object));
     });
 
 });
@@ -768,6 +768,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         await act(async () => { await instance.handleSaveAsSummary('t'); });
         expect(api.createAgentSummary).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp-1', origin_channel_type: 1 }),
+            expect.any(Object),
         );
         expect(isAgentSummaryNotificationEligible(1)).toBe(true);
     });
@@ -784,6 +785,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         await act(async () => { await instance.handleSaveAsSummary('t'); });
         expect(api.createAgentSummary).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp____thr', origin_channel_type: 2 }),
+            expect.any(Object),
         );
     });
 
@@ -799,13 +801,13 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
     });
 });
 
-describe('SummaryCreatePage — smart_summary_started 收口 (PR #1330 blocker②)', () => {
-    // 事件已从「开始」按钮的声明式 data-track 挪进 handleSubmit(真正发起创建的收口点):
-    //   - agent 模式点主按钮 handlePrimaryClick 短路、不提交 → 不应记幻影 started;
-    //   - normal 模式提交(点按钮 / Enter 都汇入 handleSubmit)→ 恰一条 started,带 trigger_mode。
-    // 若把 data-track 退回按钮上,agent 模式点击就会误发一条 → 下面第一个断言变红(delete-the-fix)。
-    it('fires once from handleSubmit(normal) but NOT from an agent-mode primary click', async () => {
-        const spy = vi.spyOn(Dap.shared, 'track');
+describe('SummaryCreatePage — smart_summary_started 收口 (二审 P1:api 层单发)', () => {
+    // 二审 P1:started 事件的唯一发射点已下沉到 api 层(summaryApi.createSummary → envelope
+    // code===0 gate;见 summaryApi.test 的 envelope 用例)。页面不再直接 track,只负责:
+    //   - agent 模式点主按钮 handlePrimaryClick 短路,**不发起任何创建**(不调 createSummary/createAgentSummary);
+    //   - normal 模式提交(点按钮 / Enter 都汇入 handleSubmit)→ 恰调一次 createSummary,并带全维度 props。
+    // 因 api 被 mock,发射在此不可观测;此处钉「单次调用 + props 正确」,发射由 api 单测钉。
+    it('agent-mode primary click starts no creation; normal handleSubmit calls createSummary once with props', async () => {
         const ref = React.createRef<SummaryCreatePage>();
         await act(async () => {
             render(<SummaryCreatePage ref={ref} embedded onSubmit={vi.fn()} source="summary_home" />);
@@ -813,19 +815,20 @@ describe('SummaryCreatePage — smart_summary_started 收口 (PR #1330 blocker�
         });
         const instance = ref.current as any;
 
-        // agent 模式:主按钮短路,不发 started
+        // agent 模式:主按钮短路,不发起任何创建 → 无幻影 started
         await act(async () => { instance.setState({ mode: 'agent', topic: 'hi' }); });
-        spy.mockClear();
+        (api.createSummary as any).mockClear();
+        (api.createAgentSummary as any).mockClear();
         instance.handlePrimaryClick();
-        expect(spy.mock.calls.some((c: any[]) => c[0] === 'smart_summary_started')).toBe(false);
+        expect((api.createSummary as any)).not.toHaveBeenCalled();
+        expect((api.createAgentSummary as any)).not.toHaveBeenCalled();
 
-        // normal 模式:真正提交,收口点补发恰一条(带 trigger_mode / source)
+        // normal 模式:真正提交 → 恰调一次 createSummary,第二参带 trigger_mode / source(全维度 props)
         await act(async () => { instance.setState({ mode: 'normal', topic: 'hi' }); });
-        spy.mockClear();
+        (api.createSummary as any).mockClear();
         await act(async () => { await instance.handleSubmit(); });
-        const started = spy.mock.calls.filter((c: any[]) => c[0] === 'smart_summary_started');
-        expect(started).toHaveLength(1);
-        expect(started[0][1]).toMatchObject({ trigger_mode: 'normal', source: 'summary_home' });
-        spy.mockRestore();
+        expect((api.createSummary as any)).toHaveBeenCalledTimes(1);
+        const props = (api.createSummary as any).mock.calls[0][1];
+        expect(props).toMatchObject({ trigger_mode: 'normal', source: 'summary_home', entry_point: 'summary_home' });
     });
 });

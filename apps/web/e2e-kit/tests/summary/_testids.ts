@@ -23,9 +23,9 @@ export const T = {
     createSelectChat: "summary-create-select-chat",
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
+    createModeSwitch: "summary-create-mode-switch",
     createAgentTab: "summary-create-agent-tab",
     createNormalTab: "summary-create-normal-tab",
-    createPanelStartBtn: "summary-create-panel-start-btn",
 
     // Chat/member selector modal
     chatSelectorModal: "summary-chat-selector-modal",

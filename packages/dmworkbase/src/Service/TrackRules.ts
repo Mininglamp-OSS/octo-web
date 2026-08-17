@@ -86,7 +86,74 @@ export function matchRoute(route: TrackRule['route'], current: string): boolean 
  *     closestTestid: 'automation-rule-row' },   // loose:靠 role 命中,无独立 testid
  */
 export const TRACK_RULES: TrackRule[] = [
-    // 待填:按对账 sheet(d_e8d2c5702b3b58abb5f85777)分模块逐条填,事件名以 sheet 为准 + 确认服务端已注册。
-    // 说明:config 驱动面(ChannelSetting/UserInfo 等走 <Sections> 的)改用 Row.trackEvent 覆盖,不走本表;
-    // 本表只吃 imperative JSX 面里「有现成 data-testid / role 可锚、且未挂 data-track」的节点。
+    // ---- A_rule:控件已带稳定 data-testid（dmworksummary summaryTestIds.*），只写规则、零改组件。
+    //      事件名以整合表 d_2c47796780d4efdd3c5aa8b3 为准，须先在服务端采集器注册（octo-dap 侧）。
+    { event: 'channel_summary_panel_opened', testid: 'summary-chat-panel-header-btn', on: 'click' },
+    { event: 'smart_summary_edit_opened', testid: 'summary-detail-edit-btn', on: 'click' },
+    { event: 'smart_summary_regenerate_dialog_opened', testid: 'summary-detail-regenerate-btn', on: 'click' },
+    { event: 'smart_summary_delete_dialog_opened', testid: 'summary-detail-delete-btn', on: 'click' },
+    // smart_summary_agent_message_sent 不走本表 —— 点击规则漏 Enter 发送(焦点在 textarea,keydown
+    // fallback 会跳过原生可激活元素),已改为 AgentChatPanel.handleSend 里命令式 track(覆盖点击+Enter)。见 review P1-4。
+    { event: 'smart_summary_agent_new_session', testid: 'summary-agent-new-session-btn', on: 'click' },
+
+    // ---- IM / 消息（dmworkbase）：右键菜单 testid 透传链 + 输入区控件（agent A）。
+    { event: 'message_copied', testid: 'ctx-message-copy', on: 'click' },
+    { event: 'message_forward_panel_opened', testid: 'ctx-message-forward', on: 'click' },
+    { event: 'message_subchannel_create_dialog_opened', testid: 'ctx-message-create-thread', on: 'click' },
+    { event: 'message_multiselect_started', testid: 'ctx-message-multiselect', on: 'click' },
+    // 20 号一个 event 两枚 testid（逐条转发 + 合并转发）。
+    { event: 'message_multiselect_forward_panel_opened', testid: 'multiselect-forward-btn', on: 'click' },
+    { event: 'message_multiselect_forward_panel_opened', testid: 'multiselect-mergeforward-btn', on: 'click' },
+    { event: 'message_multiselect_delete_dialog_opened', testid: 'multiselect-delete-btn', on: 'click' },
+    { event: 'channel_search_opened', testid: 'channel-search-entry', on: 'click' },
+    // channel_search_filter_panel_opened / input_emoji_picker_opened / input_expanded 不在本表 ——
+    //   三者都是 toggle 控件(开+关同一个 click),点击规则会把「关」也计成「开」→ 翻倍。已改为各自
+    //   组件在「打开/展开」分支命令式 track(ChannelSearchPanel.toggleFilterOpen / EmojiToolbar.togglePanel /
+    //   MessageInput.toggleExpand),见 review P2-7。
+    { event: 'input_sticker_sent', testid: 'input-sticker-item', on: 'click' },
+    { event: 'input_attachment_clicked', testid: 'input-attachment-btn', on: 'click' },
+
+    // ---- 群 / 联系人（dmworkcontacts 等，agent B）。
+    // group_qrcode_invite_link_copied 不在本表 —— 点击委托在 copy promise 落定前就发、失败也计;
+    //   已改为 ChannelQRCode.handleCopyLink 的 ok 分支命令式 track(见六审 P2)。
+    { event: 'group_member_add_dialog_opened', testid: 'group-member-add-btn', on: 'click' },
+    { event: 'group_member_remove_dialog_opened', testid: 'group-member-remove-btn', on: 'click' },
+    { event: 'group_md_preview_toggled', testid: 'group-md-preview-btn', on: 'click' },
+    { event: 'webhook_create_dialog_opened', testid: 'webhook-create-btn', on: 'click' },
+    { event: 'webhook_edit_dialog_opened', testid: 'webhook-edit-btn', on: 'click' },
+    { event: 'group_admin_add_dialog_opened', testid: 'group-add-manager-btn', on: 'click' },
+    { event: 'group_bot_admin_add_dialog_opened', testid: 'group-add-bot-admin-btn', on: 'click' },
+    { event: 'group_dissolve_dialog_opened', testid: 'group-disband-btn', on: 'click' },
+    { event: 'group_bot_admin_remove_dialog_opened', testid: 'group-bot-admin-remove-btn', on: 'click' },
+
+    // ---- 市场 M11（dmworkmcp / dmworkskillmarket，agent C）。
+    // market_tab_switched / market_category_filtered 不在本表 —— 都是「重复点当前项」会经 DOM 委托
+    //   重复触发的选择型控件,已改为在切换 handler 里按「实际变化」gate 后命令式 track(MarketSidebar.handleClick /
+    //   McpMarketListPage.handleCategory / CategoryChips.choose),见 review P2-7。
+    // market_skill_sorted 不在本表 —— 每个排序项都挂无条件 onClick,DOM 委托会把「重复点当前排序」也计一次
+    //   (与 market_tab_switched 同类过计),且所有项事件相同、无法区分选了哪种排序;已改为 SkillListPage.setSort
+    //   按「实际变化」gate 后命令式 track,并带 props.sort 区分排序值(八审 P2)。
+    // market_skill_install_prompt_copied / market_mcp_connect_prompt_copied 不在本表 ——
+    //   点击委托在 clipboard.writeText promise 落定前就发、权限拒绝/非安全上下文也计;已分别改为
+    //   InstallPromptModal.handleCopy 的 .then 与 McpDetailModal.handleCopy 的 try 成功分支命令式 track(六审 P2)。
+    { event: 'market_publish_entry_clicked', testid: 'mcp-publish-entry', on: 'click' },
+    { event: 'market_publish_entry_clicked', testid: 'skill-publish-entry', on: 'click' },
+    { event: 'market_publish_method_selected', testid: 'mcp-publish-method-bot', on: 'click', props: { method: 'bot' } },
+    { event: 'market_publish_method_selected', testid: 'mcp-publish-method-manual', on: 'click', props: { method: 'manual' } },
+    { event: 'market_publish_method_selected', testid: 'skill-publish-method-bot', on: 'click', props: { method: 'bot' } },
+    { event: 'market_publish_method_selected', testid: 'skill-publish-method-manual', on: 'click', props: { method: 'manual' } },
+    // market_bot_publish_prompt_copied 不在本表 —— 与上面三条 *_copied 同因:点击委托在 clipboard 落定前
+    //   就发、失败也计。已改为复制成功后命令式 track:skill 侧 BotPublishModal.handleCopy 的 .then;MCP 侧走
+    //   共享 PromptForwardActions.handleCopy 的 ok 分支,并在组件内沿用原 route 门(/mcp-market/mcp,与
+    //   Expert/squad 的 /mcp-market/experts 消歧,matchRoute 同源)(八审 P2)。
+
+    // ---- onboarding / 设置（agent D）。
+    { event: 'onboarding_opensource_clicked', testid: 'onboarding-opensource-link', on: 'click' },
+    { event: 'onboarding_about_clicked', testid: 'onboarding-about-link', on: 'click' },
+    { event: 'settings_onboarding_guide_reopened', testid: 'nav-settings-onboarding', on: 'click' },
+    { event: 'settings_notification_toggled', testid: 'nav-settings-notification-toggle', on: 'click' },
+    { event: 'my_info_opened', testid: 'nav-user-avatar', on: 'click' },
+
+    // whiteboard_bg_changed（testid board-canvas-color-control）在 octo-docs-module 独立仓，
+    // 需 route 消歧 + 跨仓版本联动，随该仓 PR 一并加，不在本仓盲填。
 ]

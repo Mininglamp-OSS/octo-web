@@ -12,6 +12,7 @@ import {
   titleContextStore,
   SummaryNotifyContent,
   isConversationDisbanded,
+  Dap,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -284,6 +285,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
+    // R3 blocker（Jerry-Xin 三审）：smart_summary_completed 的 exactly-once 去重锚点。
+    // 状态订阅路径(:handleStatusChangeEvent)与兜底轮询路径(:doFallbackPollOnce)都在各自
+    // await 之前捕获 prevStatus 快照，stopFallbackPoll() 无法取消已越过 await 的 tick，故仅靠
+    // 「prev !== new 状态沿」判定不足以防双计：两路可各自读到 prev=RUNNING、await 后同见
+    // COMPLETED，双双越过边界守卫各发一次。以「已发 completed 的 taskId」为锚，先发者写锚，
+    // 后到者 id 相等即跳过——按 task 维度精确一次。task 切换后 id 不同，自然重新计一次。
+    private completedTrackedTaskId: number | null = null;
     // Blocking 5（跨 task 串台 / async race）：单调递增的「调度加载序列号」。
     // 每次发起一轮 detail+schedule 加载（loadDetail / 状态切换补拉 / 重新加载）都 bump，
     // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
@@ -295,6 +303,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private nextScheduleSeq(): number {
         this.scheduleLoadSeq += 1;
         return this.scheduleLoadSeq;
+    }
+
+    /**
+     * 「运行→完成」沿的 smart_summary_completed 单发 + regenerate 复位。状态订阅
+     * (handleStatusChangeEvent) 与兜底轮询(doFallbackPollOnce)两路共用本方法与
+     * completedTrackedTaskId 去重锚(见三审 R3):先检出者写锚并发,后到者 id 相等即跳过——
+     * 按 task 精确一次。**离开 COMPLETED**(如 regenerate 把状态就地推回 PENDING)时清锚,
+     * 使同一 taskId 的下一次完成能再计一次(见六审 P1b:原先锚只写不清 → 除首次外每轮 regenerate
+     * 的完成都命中 id 相等而被跳过,flagship 漏斗 smart_summary_completed 系统性漏计)。
+     * 两路必须走同一入口,避免各自内联再次跑偏(这正是三→六审反复回炉的同源)。
+     */
+    private trackSummaryCompletedOnce(status: TaskStatus, taskId: number) {
+        if (status === TaskStatus.COMPLETED) {
+            if (this.completedTrackedTaskId !== taskId) {
+                this.completedTrackedTaskId = taskId;
+                Dap.shared.track("smart_summary_completed", {});
+            }
+        } else if (this.completedTrackedTaskId === taskId) {
+            this.completedTrackedTaskId = null;
+        }
     }
 
     componentDidMount() {
@@ -636,6 +664,22 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 lastKnownStatus: detail.status,
                 workflowGateContent: false,
             });
+            // 八审 🔴2:loadDetail 也是 lastKnownStatus 的写入者(regenerate 走 handleRegenerateConfirm →
+            // 就地置 PENDING → this.loadDetail(),不经 summary-status-change 订阅)。此前它是唯一不维护
+            // completedTrackedTaskId 去重锚的写入者 → 离开 COMPLETED 时锚不清 → 同一 taskId 的下一次完成
+            // 命中 id 相等被跳过而丢事件(六审 P1b 的复位在这条真实 regenerate 路径上失效)。
+            // 按与两个状态订阅入口(handleStatusChangeEvent / doFallbackPollOnce)完全相同的「状态沿」语义
+            // 维护锚:仅在观测到状态变化时走 helper(COMPLETED 写锚+发一次,离开 COMPLETED 清锚)。
+            // **首次加载(previousStatus===undefined)不发**——打开一条历史已完成的总结属「查看」,不是一次
+            // 新完成;若在此发,completed 会随每次翻阅历史而超过 started(见八审 P2:首屏已完成的漏计是已知
+            // 方向性偏差,不能用「查看即完成」去补,否则引入更糟的高计)。
+            if (
+                previousStatus !== undefined &&
+                previousStatus !== detail.status &&
+                typeof detail.task_id === "number"
+            ) {
+                this.trackSummaryCompletedOnce(detail.status, detail.task_id);
+            }
             this.publishDetailTitle(detail);
             if (detail.status === TaskStatus.COMPLETED && detail.result_id) {
                 const markRead = api.markSummaryRead;
@@ -993,6 +1037,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             this.setState({ detail, lastKnownStatus: newStatus });
 
             if (previousStatus !== undefined && previousStatus !== newStatus) {
+                // 仅在「运行→完成」状态沿采集一次;原先误用 GET /summaries/:id,失败/进行中/导航等
+                // 一切 2xx 都会误报 completed。此处按 detail.status 状态转移判定,语义可靠。
+                // 单发/复位统一走 trackSummaryCompletedOnce(见三审 R3 单发、六审 P1b regenerate 复位)。
+                this.trackSummaryCompletedOnce(newStatus, requestTaskId);
                 if (
                     newStatus === TaskStatus.COMPLETED ||
                     newStatus === TaskStatus.FAILED ||
@@ -1066,6 +1114,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     if (this.taskId !== requestTaskId) return;
                     this.notifyGroupsOnCompletion(prevStatus, detail);
                     this.setState({ detail, lastKnownStatus: detail.status });
+                    // 与主状态订阅路径(:handleStatusChangeEvent)同一「运行→完成」沿采集一次。SSE 不可用时
+                    // 由本 fallback 轮询检出完成,若此处不发则 completed 漏计;单发/复位统一走
+                    // trackSummaryCompletedOnce(两路共用 completedTrackedTaskId 去重,见三审 R3、六审 P1b)。
+                    this.trackSummaryCompletedOnce(detail.status, requestTaskId);
                     if (
                         detail.status === TaskStatus.COMPLETED ||
                         detail.status === TaskStatus.FAILED ||
@@ -1835,6 +1887,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     openScheduleModal = () => {
+        // 埋点 308:打开定时总结配置弹窗（隐私 props 恒空）。
+        Dap.shared.track("smart_summary_timer_dialog_opened", {});
         const { scheduleItem } = this.state;
         // Blocking 1：is_active=false 的记录在交互上视为「无活动定时」，但仍回填
         // 原有周期/时刻，方便用户「重新启用」时不用从零填。保存逻辑（handleScheduleSave）
@@ -2257,6 +2311,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 两者的 content 语义都是"给用户看的最终交付文本",转发到聊天的姿势一致。
         const sourceContent = detail?.result?.content ?? personalResult?.content ?? '';
         if (!sourceContent.trim()) return;
+        // 埋点 310:打开「转发到聊天」的会话选择面板（有正文可转发时才算打开）。
+        Dap.shared.track("smart_summary_forward_panel_opened", {});
         WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
             const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
             const chunks = splitSummaryText(cleanContent);
@@ -2285,6 +2341,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             } else {
                 Toast.success(t("summary.detail.forwarded"));
             }
+            // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
+            if (state.kind !== "all-failed") Dap.shared.track("smart_summary_forwarded", {});
         }, t("summary.detail.forwardToChat"));
     };
 

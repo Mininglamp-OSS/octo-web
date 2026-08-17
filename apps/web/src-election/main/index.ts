@@ -41,6 +41,8 @@ import {
 import checkUpdate from './update';
 import { electronNotificationManager } from './notification';
 import { getRandomSid } from "./utils/search";
+import { isDriveRootFileNavigation } from "./fileRootGuard";
+import { INDEX_HTML, reloadShell } from "./reloadShell";
 import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractEndSessionRedirect, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 import { createTrustedShellDocumentTracker } from "./trustedShell";
 import { clearAuthSessionCookies } from "./clearAuthSession";
@@ -75,6 +77,29 @@ const oidcExpectedFlows = new WeakMap<BrowserWindow, OidcFlow>();
 const OIDC_FLOW_TTL_MS = 5 * 60 * 1000;
 
 const isDevelopment = !app.isPackaged && process.env.NODE_ENV !== "production";
+
+/* ---------- file:// drive-root navigation guard ---------- */
+
+/**
+ * Attach the file:// drive-root navigation guard to a BrowserWindow.
+ * Intercepts renderer-initiated navigations (will-navigate) that land on a
+ * drive root and redirects back to index.html without minting a new session
+ * sid (omitting the query lets SessionScope fall back to sessionStorage).
+ *
+ * NOTE: This function is only called from production code paths (the
+ * `!isDevelopment` branch), so no isDevelopment guard is needed here.
+ */
+function attachFileRootGuard(win: BrowserWindow, indexPath: string): void {
+  win.webContents.on("will-navigate", (event, url) => {
+    if (!isDriveRootFileNavigation(url)) return;
+    event.preventDefault();
+    // Omit query: a new random sid would clobber the established session
+    // (SessionScope.ensureSessionSid gives URL sid priority over storage).
+    win.loadFile(indexPath).catch((err) => {
+      console.error("[file-root-guard] loadFile failed:", err);
+    });
+  });
+}
 // dev 模式下渲染层 dev server 地址。端口需与 vite dev server 一致，
 // 默认 3000（对齐旧 dev-ele 脚本）；可用 VITE_DEV_SERVER_URL 覆盖，
 // 避免与机器上其它占用 3000 的进程（如 e2e vite）冲突。
@@ -92,7 +117,7 @@ const TRAY_FLASH_INTERVAL_MS = 1000;
 const TRUSTED_SHELL_DEV_ORIGIN = isDevelopment
   ? new URL(DEV_SERVER_URL).origin
   : undefined;
-const TRUSTED_SHELL_FILE_URL = pathToFileURL(join(__dirname, "../../build/index.html")).href;
+const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
 // A same-document history.pushState changes frame.url without creating a new
 // document. Track trust at document navigation time instead of re-evaluating
 // the current pathname for every IPC call, otherwise normal SPA routes such
@@ -716,12 +741,21 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
         type: "separator",
       },
       {
-        role: "reload",
         label: "刷新",
+        accelerator: "CmdOrCtrl+R",
+        click: (_item, focusedWindow) => {
+          // Reload through index.html only when the window is on a file://
+          // shell document (drive-root guard, see reloadShell). Non-shell
+          // documents (e.g. an IdP page mid-SSO) keep native reload.
+          if (focusedWindow) reloadShell(focusedWindow, false);
+        },
       },
       {
-        role: "forceReload",
         label: "强制刷新",
+        accelerator: "CmdOrCtrl+Shift+R",
+        click: (_item, focusedWindow) => {
+          if (focusedWindow) reloadShell(focusedWindow, true);
+        },
       },
     ],
   },
@@ -948,6 +982,7 @@ const createNewWindow = () => {
     const sid = getRandomSid();
     registerOidcReturnRedirect(newWindow, WEB_URL, sid);
     newWindow.loadFile(WEB_URL, { query: { sid } });
+    attachFileRootGuard(newWindow, WEB_URL);
   }
 
   // 为新窗口设置菜单（Windows 需要）
@@ -989,6 +1024,8 @@ const createMainWindow = async () => {
     const sid = getRandomSid();
     registerOidcReturnRedirect(mainWindow, WEB_URL, sid);
     mainWindow.loadFile(WEB_URL, { query: { sid } });
+    // Guard against file:// drive-root navigations (pushState "/" leak).
+    attachFileRootGuard(mainWindow, WEB_URL);
   }
 
   ipcMain.on("screenshots-start", (event, args) => {

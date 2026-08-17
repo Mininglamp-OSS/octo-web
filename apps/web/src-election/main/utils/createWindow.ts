@@ -1,6 +1,20 @@
 import { BrowserWindow, screen } from "electron";
 import { join } from "path";
 
+/**
+ * Returns true if `url` is a file:// navigation to a drive root.
+ * Mirrors the helper in main/index.ts (kept local to avoid circular imports).
+ */
+function isDriveRootFileNavigation(url: string): boolean {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return false; }
+  if (parsed.protocol !== "file:") return false;
+  const pathname = parsed.pathname || "";
+  if (pathname === "/") return true;
+  if (/^\/[A-Za-z]:\/?$/.test(pathname)) return true;
+  return false;
+}
+
 export function createWindow() {
   const NODE_ENV = process.env.NODE_ENV;
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -26,10 +40,19 @@ export function createWindow() {
     mainWin.show(); // 显示窗口
   });
 
-  if (NODE_ENV === "development") mainWin.loadURL("http://localhost:3000");
-  if (NODE_ENV !== "development") {
+  if (NODE_ENV === "development") {
+    mainWin.loadURL("http://localhost:3000");
+  } else {
     process.env.DIST_ELECTRON = join(__dirname, '../');
     const WEB_URL = join(process.env.DIST_ELECTRON, "../../build/index.html");
     mainWin.loadFile(WEB_URL);
+    // Guard against file:// drive-root navigations (pushState "/" leak).
+    mainWin.webContents.on("will-navigate", (event, url) => {
+      if (!isDriveRootFileNavigation(url)) return;
+      event.preventDefault();
+      mainWin.loadFile(WEB_URL).catch((err) => {
+        console.error("[file-root-guard] loadFile failed:", err);
+      });
+    });
   }
 }

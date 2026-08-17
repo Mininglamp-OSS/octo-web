@@ -1,7 +1,7 @@
 import { Button } from "@octo/ui";
 import React, { useEffect, useState } from "react";
 import { Bot, Check, Copy } from "lucide-react";
-import { t, useI18n, WKApp, WKModal } from "@octo/base";
+import { t, useI18n, WKApp, WKModal, Dap } from "@octo/base";
 import { resolveAPIBaseURL } from "../utils/installPrompt";
 import { getBotPublishPrompt } from "../utils/botPublishPrompt";
 
@@ -42,6 +42,10 @@ export default function BotPublishModal({
     void navigator.clipboard.writeText(prompt).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
+      // 八审 P2:改为复制成功后命令式 track。此前挂 TrackRules 点击委托(skill-bot-publish-copy),
+      // 会在 clipboard.writeText 落定前就发,且非安全上下文(navigator.clipboard 缺失)提前 return 时
+      // 什么都没复制却仍计一次(与六审已修的三条 *_copied 同源)。
+      Dap.shared.track("market_bot_publish_prompt_copied", {});
     });
   }
 
@@ -65,6 +69,7 @@ export default function BotPublishModal({
       footer={
         <Button
           variant="solid"
+          data-testid="skill-bot-publish-copy"
           icon={copied ? <Check size={15} /> : <Copy size={15} />}
           onClick={handleCopy}
           disabled={!prompt}

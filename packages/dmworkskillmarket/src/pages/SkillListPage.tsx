@@ -10,7 +10,7 @@ import {
   RefreshCw,
   Upload,
 } from "lucide-react";
-import { t, useI18n, WKApp } from "@octo/base";
+import { t, useI18n, WKApp, Dap } from "@octo/base";
 import type { Skill, SkillSort } from "../types/skill";
 import { useSkills } from "../hooks/useSkills";
 import BotPublishModal from "../components/BotPublishModal";
@@ -125,7 +125,25 @@ export default function SkillListPage() {
   }, [list]);
 
   function switchTab(next: TabId) {
+    if (next === tab) return;
+    // 用户切换视图 Tab;原先误用 GET /skills/mine 加载推断,而 mine 列表也用于建议/初始化。
+    Dap.shared.track("market_view_switched", {});
     setTab(next);
+  }
+
+  function handleSelectedTagsChange(next: string[]) {
+    // 用户增删 tag 过滤;原先误用 GET /skills/tags 加载 tag 列表推断。
+    Dap.shared.track("market_tag_filtered", {});
+    setSelectedTags(next);
+  }
+
+  function handleSortChange(next: SkillSort) {
+    // 八审 P2:原先每个排序项挂无条件 onClick + DOM 委托规则 market_skill_sorted,重复点当前排序也计一次
+    //   (选择型控件的过计),且所有项事件相同、区分不出选了哪种排序。改为按「实际变化」gate 后命令式 track,
+    //   并带 props.sort 记录排序值。
+    if (next === sort) return;
+    Dap.shared.track("market_skill_sorted", { sort: next });
+    setSort(next);
   }
 
   function handleDeleted() {
@@ -148,6 +166,8 @@ export default function SkillListPage() {
   }
 
   function openDetail(item: Skill) {
+    // 六审 C2:卡片打开只保留卡根 data-track="market_card_opened"(DOM 委托,亦覆盖键盘),
+    // 删除此处命令式 market_card_viewed —— 二者本是对「同一次打开」的双计(owner 决策:留 opened;与 mcp 侧对称)。
     setDetailId(item.id);
   }
 
@@ -190,12 +210,13 @@ export default function SkillListPage() {
             onChange={list.setQuery}
             placeholder={t("skillMarket.filter.searchNameDescription")}
             selectedTags={selectedTags}
-            onSelectedTagsChange={setSelectedTags}
+            onSelectedTagsChange={handleSelectedTagsChange}
             autoFocus
           />
           <div className="skill-market-publish-menu" ref={publishMenuRef}>
             <Button
               variant="solid"
+              data-testid="skill-publish-entry"
               icon={<Upload size={15} />}
               onClick={() => setPublishMenuOpen((open) => !open)}
               aria-haspopup="menu"
@@ -209,6 +230,7 @@ export default function SkillListPage() {
                 <button
                   type="button"
                   role="menuitem"
+                  data-testid="skill-publish-method-bot"
                   onClick={() => {
                     setPublishMenuOpen(false);
                     setBotPublishVisible(true);
@@ -223,6 +245,7 @@ export default function SkillListPage() {
                 <button
                   type="button"
                   role="menuitem"
+                  data-testid="skill-publish-method-manual"
                   onClick={() => {
                     setPublishMenuOpen(false);
                     setCreateVisible(true);
@@ -274,11 +297,12 @@ export default function SkillListPage() {
                     <button
                       key={option.value}
                       type="button"
+                      data-testid="skill-sort-option"
                       className={
                         sort === option.value ? "is-active" : undefined
                       }
                       aria-pressed={sort === option.value}
-                      onClick={() => setSort(option.value)}
+                      onClick={() => handleSortChange(option.value)}
                     >
                       <span>{t(option.labelKey)}</span>
                       {option.descending && <ArrowDown size={12} aria-hidden="true" />}

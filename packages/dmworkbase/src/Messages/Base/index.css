@@ -325,14 +325,6 @@ body[theme-mode=dark] .wk-message-base-bubble-box.recv .wk-message-base-bubble  
     flex-direction: column;
 }
 
-.popupMenusContaner {
-    display: none;
-}
-
-.wk-message-base-box:hover .popupMenusContaner {
-    display: block;
-}
-
 
 .wk-message-base-checkBox {
     display: flex;
