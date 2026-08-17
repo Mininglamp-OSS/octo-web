@@ -28,6 +28,27 @@ describe("ChatComposerController", () => {
     expect(snapshots.at(-1)).toEqual([]);
   });
 
+  it("keeps a multi-part attempt protected until every part enqueues", () => {
+    const controller = new ChatComposerController();
+    const attempt = controller.capture({
+      channelKey: "channel-x:2",
+      previewText: "file + text",
+      draftText: "file + text",
+    });
+    controller.setExpectedPartIds(attempt.id, ["editor:0", "text:0"]);
+    controller.markPartsEnqueued(attempt.id, ["editor:0"]);
+
+    expect(controller.pendingPreEnqueueCount("channel-x:2")).toBe(1);
+    expect(controller.pendingPreEnqueueDrafts("channel-x:2")).toEqual([
+      { attemptId: attempt.id, draftText: "file + text" },
+    ]);
+
+    controller.markPartsEnqueued(attempt.id, ["text:0"]);
+
+    expect(controller.pendingPreEnqueueCount("channel-x:2")).toBe(0);
+    expect(controller.pendingPreEnqueueDrafts("channel-x:2")).toEqual([]);
+  });
+
   it("filters pending drafts by their captured channel", () => {
     const controller = new ChatComposerController();
     const first = controller.capture({

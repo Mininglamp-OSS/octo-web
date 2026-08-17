@@ -141,8 +141,10 @@ export class ComposeAttemptLedger<TAttachment = unknown> {
   }
 
   orderedPreEnqueue(): ComposeAttempt<TAttachment>[] {
-    return this.orderedPending().filter(
-      (attempt) => attempt.enqueuedPartIds.length === 0,
+    return this.orderedPending().filter((attempt) =>
+      attempt.expectedPartIds.length === 0
+        ? attempt.enqueuedPartIds.length === 0
+        : attempt.enqueuedPartIds.length < attempt.expectedPartIds.length,
     );
   }
 

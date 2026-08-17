@@ -136,12 +136,16 @@ describe("ComposeAttemptLedger", () => {
     });
   });
 
-  it("does not persist a full provisional draft after any part enqueues", () => {
+  it("keeps a provisional draft until every expected part enqueues", () => {
     const state = ledger();
     const attempt = state.capture({ previewText: "mixed", draftText: "mixed" });
     state.setExpectedPartIds(attempt.id, ["a", "b"]);
     state.markPartsEnqueued(attempt.id, ["a"]);
 
+    expect(state.pendingDraftText()).toBe("mixed");
+    expect(state.pendingPreEnqueueCount()).toBe(1);
+
+    state.markPartsEnqueued(attempt.id, ["b"]);
     expect(state.pendingDraftText()).toBe("");
     expect(state.pendingPreEnqueueCount()).toBe(0);
   });
