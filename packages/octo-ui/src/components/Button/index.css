@@ -161,9 +161,7 @@
 }
 
 .octo-ui-button:disabled {
-  background: var(--wk-brand-tint-06);
-  border-color: transparent;
-  color: var(--wk-text-disabled);
+  opacity: 0.45;
   cursor: not-allowed;
   box-shadow: none;
 }
