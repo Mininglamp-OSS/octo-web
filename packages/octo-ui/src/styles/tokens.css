@@ -1,5 +1,6 @@
 /* Octo UI owns these tokens. WK variables are temporary host-theme inputs during migration. */
-:root {
+:root,
+body {
   --octo-ui-font-sans: var(--wk-font-sans, "PingFang SC", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   --octo-ui-focus-ring: var(--wk-border-glow, oklch(22.957% 0.01344 285.29 / 20%));
   --octo-ui-duration-fast: var(--wk-dur-fast, 150ms);
@@ -47,8 +48,8 @@
   --octo-ui-button-danger-border: var(--wk-color-danger-border, oklch(88.454% 0.05926 18.33));
   --octo-ui-button-danger-bg-hover: var(--wk-color-danger-hover, oklch(93.564% 0.0309 17.72));
   --octo-ui-button-danger-bg: var(--wk-color-danger, oklch(65.263% 0.20841 26.45));
-  --octo-ui-button-danger-bg-solid-hover: color-mix(in oklch, var(--octo-ui-button-danger-bg) 84%, oklch(22.957% 0.01344 285.29));
-  --octo-ui-button-danger-bg-solid-active: color-mix(in oklch, var(--octo-ui-button-danger-bg) 80%, oklch(22.957% 0.01344 285.29));
+  --octo-ui-button-danger-bg-solid-hover: color-mix(in srgb, var(--octo-ui-button-danger-bg) 84%, var(--wk-brand-black, oklch(22.957% 0.01344 285.29)));
+  --octo-ui-button-danger-bg-solid-active: color-mix(in srgb, var(--octo-ui-button-danger-bg) 80%, var(--wk-brand-black, oklch(22.957% 0.01344 285.29)));
   --octo-ui-button-text-inverse: var(--wk-text-inverse, oklch(100% 0 89.88));
 
   --octo-ui-menu-item-height: 40px;

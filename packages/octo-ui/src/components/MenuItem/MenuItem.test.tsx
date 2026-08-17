@@ -13,8 +13,18 @@ describe('MenuItem', () => {
     expect(html).toContain('data-icon="plus"')
     expect(html).toContain('Create')
     expect(html).toContain('⌘N')
-    expect(html).toContain('role="menuitem"')
+    expect(html).not.toContain('role=')
     expect(html).toContain('type="button"')
+  })
+
+  it('allows consumers to opt into menu roles without emitting invalid selected aria', () => {
+    const html = renderToStaticMarkup(
+      <MenuItem label="Create" role="menuitem" selected />,
+    )
+
+    expect(html).toContain('role="menuitem"')
+    expect(html).toContain('octo-ui-menu-item--selected')
+    expect(html).not.toContain('aria-selected')
   })
 
   it('supports selected, danger, disabled, compact, suffix, and custom className', () => {

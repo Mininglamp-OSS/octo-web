@@ -14,7 +14,6 @@ const MenuItem = forwardRef<HTMLButtonElement, MenuItemProps>(function MenuItem(
     children,
     className,
     type = 'button',
-    role = 'menuitem',
     ...rest
   },
   ref,
@@ -30,13 +29,11 @@ const MenuItem = forwardRef<HTMLButtonElement, MenuItemProps>(function MenuItem(
 
   return (
     <button
+      {...rest}
       ref={ref}
       className={classes}
       type={type}
-      role={role}
-      aria-selected={selected || undefined}
       disabled={disabled}
-      {...rest}
     >
       {icon ? <span className="octo-ui-menu-item__icon" aria-hidden="true">{icon}</span> : null}
       <span className="octo-ui-menu-item__label">{labelContent}</span>
