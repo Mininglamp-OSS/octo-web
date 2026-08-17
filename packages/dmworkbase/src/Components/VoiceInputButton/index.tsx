@@ -342,40 +342,11 @@ export default function VoiceInputButton({
     };
   }, [isVoiceEnabled, inputRef, clearShiftTimer, openConsent, t]);
 
-  if (!isVoiceEnabled) return null;
-
-  const handleVoiceClick = () => {
-    setShowMenu(false);
-    if (!canRecord) {
-      Toast.warning(t("base.voiceInput.error.networkUnavailable"));
-      return;
-    }
-    if (!inputRef.current) return;
-    if (!loaded) {
-      return;
-    }
-    if (spaceSetting?.voice_input_enabled !== 1) {
-      openConsent("append_only");
-      return;
-    }
-    onRecordingStart?.();
-    startRecording("append_only");
-  };
-
-  const handleModeSelect = (selectedMode: VoiceMode) => {
-    setShowMenu(false);
-    if (!canRecord || !inputRef.current) return;
-    if (!loaded) {
-      return;
-    }
-    if (spaceSetting?.voice_input_enabled !== 1) {
-      openConsent(selectedMode);
-      return;
-    }
-    onRecordingStart?.();
-    startRecording(selectedMode);
-  };
-
+  // NOTE: these hooks MUST stay above the `if (!isVoiceEnabled) return null`
+  // early return below. isVoiceEnabled flips from false to true once the voice
+  // config loads, so any hook placed after the early return would only run on
+  // the re-render, violating the Rules of Hooks (React error #310 /
+  // "Rendered more hooks than during the previous render").
   const handleConsentAccept = useCallback(async (feedbackOn: boolean) => {
     if (consentPendingRef.current) return;
     const consent = pendingConsentRef.current;
@@ -412,6 +383,40 @@ export default function VoiceInputButton({
     pendingModeRef.current = "append_only";
     setShowFeedbackNotice(false);
   }, []);
+
+  if (!isVoiceEnabled) return null;
+
+  const handleVoiceClick = () => {
+    setShowMenu(false);
+    if (!canRecord) {
+      Toast.warning(t("base.voiceInput.error.networkUnavailable"));
+      return;
+    }
+    if (!inputRef.current) return;
+    if (!loaded) {
+      return;
+    }
+    if (spaceSetting?.voice_input_enabled !== 1) {
+      openConsent("append_only");
+      return;
+    }
+    onRecordingStart?.();
+    startRecording("append_only");
+  };
+
+  const handleModeSelect = (selectedMode: VoiceMode) => {
+    setShowMenu(false);
+    if (!canRecord || !inputRef.current) return;
+    if (!loaded) {
+      return;
+    }
+    if (spaceSetting?.voice_input_enabled !== 1) {
+      openConsent(selectedMode);
+      return;
+    }
+    onRecordingStart?.();
+    startRecording(selectedMode);
+  };
 
   const handleStopClick = () => {
     stopRecordingAndTranscribe();
