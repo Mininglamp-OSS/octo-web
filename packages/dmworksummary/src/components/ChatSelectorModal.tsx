@@ -1,5 +1,6 @@
 import React, { Component, createRef } from "react";
-import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
+import { Checkbox, Spin, Empty } from "@douyinfe/semi-ui";
+import { Tag } from "@octo/ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
@@ -434,7 +435,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                             <AiBadge size="small" />
                         )}
                         {item.is_archived && (
-                            <Tag size="small" color="grey">{t("summary.chatSelector.archivedTag")}</Tag>
+                            <Tag size="small" tone="gray">{t("summary.chatSelector.archivedTag")}</Tag>
                         )}
                     </span>
                     {item.member_count !== null && (

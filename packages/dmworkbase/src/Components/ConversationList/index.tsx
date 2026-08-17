@@ -14,7 +14,7 @@ import {
   parseThreadChannelId,
 } from "../../Service/Thread";
 import React, { Component } from "react";
-import { Tag, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { ConversationWrap, MessageWrap } from "../../Service/Model";
 import { getTimeStringAutoShort2 } from "../../Utils/time";
 import classNames from "classnames";
@@ -37,6 +37,7 @@ import { RevokeCell } from "../../Messages/Revoke";
 import { FlameMessageCell } from "../../Messages/Flame";
 import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
+import AITag from "../../ui/AITag";
 import ConversationVM from "../Conversation/vm";
 import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
@@ -586,10 +587,10 @@ export default class ConversationList extends Component<
     if (foldPreview) {
       return (
         <span className="wk-ai-collab-preview">
-          <span className="wk-ai-collab-tag">
+          <AITag className="wk-ai-collab-tag">
             <span className="wk-ai-collab-pulse" />
             {t("base.conversationList.aiCollaborating")}
-          </span>
+          </AITag>
           <span className="wk-ai-collab-text">
             {t("base.conversationList.aiCollabCount", {
               values: {
@@ -813,13 +814,9 @@ export default class ConversationList extends Component<
                 </h3>
                 {conversationWrap.channel.channelType === ChannelTypeGroup &&
                   channelInfo?.orgData?.is_external_group === 1 && (
-                    <Tag
-                      size="small"
-                      color="purple"
-                      className="wk-conversationlist-item-external-tag"
-                    >
+                    <span className="wk-conversationlist-item-external-tag">
                       {t("base.conversationList.external")}
-                    </Tag>
+                    </span>
                   )}
                 {channelInfo?.orgData?.robot === 1 && <AiBadge />}
                 {channelInfo?.orgData.identityIcon ? (
