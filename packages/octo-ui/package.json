@@ -5,16 +5,19 @@
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "types": "./src/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
+      "types": "./src/index.d.ts",
       "import": "./dist/index.js"
     },
     "./styles.css": "./dist/styles.css"
   },
   "files": [
-    "dist"
+    "dist",
+    "src/index.d.ts",
+    "src/components/Button/types.ts",
+    "src/components/Tag/types.ts"
   ],
   "sideEffects": [
     "**/*.css"
