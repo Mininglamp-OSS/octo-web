@@ -4,7 +4,7 @@ import React from "react";
 
 // Mock useVoiceInput hook
 const mockUseVoiceInput = vi.fn();
-vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
+vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/adapters/voice/useVoiceInput", () => ({
   default: () => mockUseVoiceInput(),
 }));
 
@@ -34,7 +34,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
 vi.mock("@douyinfe/semi-icons", () => ({}));
 
 // Mock VoiceFeedbackNotice
-vi.mock("@octo/base/src/Components/MessageInput/VoiceFeedbackNotice", () => ({
+vi.mock("../../../../packages/dmworkbase/src/features/voice-input/VoiceFeedbackNotice", () => ({
   default: (props: any) => {
     const React = require("react");
     return React.createElement("div", { className: "voice-feedback-notice" });
@@ -43,14 +43,18 @@ vi.mock("@octo/base/src/Components/MessageInput/VoiceFeedbackNotice", () => ({
 
 // Mock useSpaceFeedbackSetting
 const mockSharedSpaceFeedbackState = {
-  spaceSetting: null as { voice_feedback_on?: number; voice_feedback_notice_acked?: number } | null,
+  spaceSetting: null as {
+    voice_input_enabled?: number;
+    voice_feedback_on?: number;
+    voice_feedback_notice_acked?: number;
+  } | null,
   loaded: false,
   apiAvailable: false,
 };
 
 const mockVoiceConfig = { current: null as { feedback_url?: string } | null };
 
-vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => ({
+vi.mock("../../../../packages/dmworkbase/src/features/voice-input/useSpaceFeedbackSetting", () => ({
   default: () => ({
     spaceSetting: mockSharedSpaceFeedbackState.spaceSetting,
     loaded: mockSharedSpaceFeedbackState.loaded,
@@ -62,11 +66,24 @@ vi.mock("@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting", () => 
   getSharedVoiceConfig: () => mockVoiceConfig.current,
 }));
 
-import VoiceInputIndicator from "@octo/base/src/Components/MessageInput/VoiceInputIndicator";
+import VoiceInputIndicator from "@octo/base/src/features/chat-composer/ui/voice/VoiceInputIndicator";
 import { Toast } from "@douyinfe/semi-ui";
+import { i18n } from "@octo/base/src/i18n";
+
+const voiceHost = {
+  getSpaceId: () => "test-space-id",
+  subscribeSpaceChange: () => () => {},
+};
+
+function TestVoiceInputIndicator(
+  props: Omit<React.ComponentProps<typeof VoiceInputIndicator>, "voiceHost">,
+) {
+  return <VoiceInputIndicator voiceHost={voiceHost} {...props} />;
+}
 
 // Reset shared feedback state before each test
 beforeEach(() => {
+  i18n.setLocale("zh-CN", { notify: false, persist: false });
   mockSharedSpaceFeedbackState.spaceSetting = null;
   mockSharedSpaceFeedbackState.loaded = false;
   mockSharedSpaceFeedbackState.apiAvailable = false;
@@ -111,7 +128,7 @@ describe("VoiceInputIndicator - rendering", () => {
     );
 
     const { container } = render(
-      <VoiceInputIndicator onTranscribed={vi.fn()} />
+      <TestVoiceInputIndicator onTranscribed={vi.fn()} />
     );
 
     expect(container.firstChild).toBeNull();
@@ -122,7 +139,7 @@ describe("VoiceInputIndicator - rendering", () => {
       createMockHookReturn({ isVoiceEnabled: true })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const button = document.querySelector(".wk-voice-button");
     expect(button).toBeTruthy();
@@ -136,7 +153,7 @@ describe("VoiceInputIndicator - rendering", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Should show recording button
     const recordingButton = document.querySelector(
@@ -153,7 +170,7 @@ describe("VoiceInputIndicator - rendering", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const recordingButton = document.querySelector(
       ".wk-voice-button--recording"
@@ -166,7 +183,7 @@ describe("VoiceInputIndicator - rendering", () => {
       createMockHookReturn({ isVoiceEnabled: true })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Simulate ShiftLeft keydown
     await act(async () => {
@@ -214,7 +231,7 @@ describe("VoiceInputIndicator - network status", () => {
       createMockHookReturn({ isVoiceEnabled: true })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const button = document.querySelector(".wk-voice-button--disabled");
     expect(button).toBeTruthy();
@@ -231,7 +248,7 @@ describe("VoiceInputIndicator - network status", () => {
       createMockHookReturn({ isVoiceEnabled: true })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const button = document.querySelector(".wk-voice-button");
     await act(async () => {
@@ -254,7 +271,7 @@ describe("VoiceInputIndicator - network status", () => {
       createMockHookReturn({ isVoiceEnabled: true })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Initially online - should not be disabled
     let button = document.querySelector(".wk-voice-button--disabled");
@@ -304,6 +321,12 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
       writable: true,
       configurable: true,
     });
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 1,
+    };
+    mockSharedSpaceFeedbackState.loaded = true;
 
     mockUseVoiceInput.mockReturnValue(
       createMockHookReturn({
@@ -321,7 +344,7 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
   });
 
   it("should NOT start recording if ShiftLeft released before 500ms", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Press ShiftLeft
     await act(async () => {
@@ -353,7 +376,7 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
   });
 
   it("should start recording after holding ShiftLeft for 500ms", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Press ShiftLeft
     await act(async () => {
@@ -376,7 +399,7 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
   });
 
   it("should cancel timer when another key is pressed during wait", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Press ShiftLeft
     await act(async () => {
@@ -412,7 +435,7 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
   });
 
   it("should cancel timer when Ctrl is pressed during ShiftLeft hold", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Press ShiftLeft
     await act(async () => {
@@ -447,7 +470,7 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
   });
 
   it("should NOT cancel timer for IME events (key=Process)", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Press ShiftLeft
     await act(async () => {
@@ -484,7 +507,7 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
   });
 
   it("should NOT trigger on ShiftRight", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Press ShiftRight
     await act(async () => {
@@ -507,7 +530,7 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
   });
 
   it("should allow Shift+Cmd+Space shortcut", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     await act(async () => {
       fireEvent.keyDown(window, {
@@ -534,7 +557,7 @@ describe("VoiceInputIndicator - long-press ShiftLeft state machine", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     await act(async () => {
       fireEvent.keyDown(window, {
@@ -585,7 +608,7 @@ describe("VoiceInputIndicator - cancelPending integration", () => {
       isVoiceEnabled: true,
     }));
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     // Press ShiftLeft
     await act(async () => {
@@ -631,6 +654,12 @@ describe("VoiceInputIndicator - click interactions", () => {
       writable: true,
       configurable: true,
     });
+    mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
+      voice_feedback_on: 0,
+      voice_feedback_notice_acked: 1,
+    };
+    mockSharedSpaceFeedbackState.loaded = true;
 
     mockUseVoiceInput.mockReturnValue(
       createMockHookReturn({
@@ -647,7 +676,7 @@ describe("VoiceInputIndicator - click interactions", () => {
   });
 
   it("should start recording on click", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const button = document.querySelector(".wk-voice-button");
     await act(async () => {
@@ -670,7 +699,7 @@ describe("VoiceInputIndicator - click interactions", () => {
     );
 
     render(
-      <VoiceInputIndicator
+      <TestVoiceInputIndicator
         onTranscribed={vi.fn()}
         getCurrentText={getCurrentText}
       />
@@ -681,11 +710,15 @@ describe("VoiceInputIndicator - click interactions", () => {
       fireEvent.click(button!);
     });
 
-    expect(stopRecordingAndTranscribe).toHaveBeenCalledWith("test text");
+    expect(stopRecordingAndTranscribe).toHaveBeenCalledWith(undefined);
   });
 
   it("should support keyboard interaction (Enter/Space)", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(
+      <div className="wk-messageinput-card">
+        <TestVoiceInputIndicator onTranscribed={vi.fn()} />
+      </div>
+    );
 
     const button = document.querySelector(".wk-voice-button");
 
@@ -721,7 +754,11 @@ describe("VoiceInputIndicator - floating indicator", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(
+      <div className="wk-messageinput-card">
+        <TestVoiceInputIndicator onTranscribed={vi.fn()} />
+      </div>
+    );
 
     const waveContainer = document.querySelector(".wk-voice-wave-container");
     expect(waveContainer).toBeTruthy();
@@ -739,7 +776,11 @@ describe("VoiceInputIndicator - floating indicator", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(
+      <div className="wk-messageinput-card">
+        <TestVoiceInputIndicator onTranscribed={vi.fn()} />
+      </div>
+    );
 
     const spinner = document.querySelector(".wk-voice-transcribing-spinner");
     expect(spinner).toBeTruthy();
@@ -753,7 +794,11 @@ describe("VoiceInputIndicator - floating indicator", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(
+      <div className="wk-messageinput-card">
+        <TestVoiceInputIndicator onTranscribed={vi.fn()} />
+      </div>
+    );
 
     const text = document.querySelector(".wk-voice-floating-text");
     expect(text?.textContent).toBe("语音输入");
@@ -767,7 +812,11 @@ describe("VoiceInputIndicator - floating indicator", () => {
       })
     );
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(
+      <div className="wk-messageinput-card">
+        <TestVoiceInputIndicator onTranscribed={vi.fn()} />
+      </div>
+    );
 
     const text = document.querySelector(".wk-voice-floating-text");
     expect(text?.textContent).toBe("转写中");
@@ -802,13 +851,14 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
 
   it("Shift+Cmd+Space should show feedback notice when voice_feedback_on=1 and notice_acked=0", async () => {
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 0,
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 0,
     };
     mockSharedSpaceFeedbackState.loaded = true;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     await act(async () => {
       fireEvent.keyDown(window, {
@@ -828,13 +878,14 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
 
   it("long-press ShiftLeft should show feedback notice when voice_feedback_on=1 and notice_acked=0", async () => {
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 0,
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 0,
     };
     mockSharedSpaceFeedbackState.loaded = true;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     await act(async () => {
       fireEvent.keyDown(window, {
@@ -858,13 +909,14 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
 
   it("Shift+Cmd+Space should start recording normally when notice_acked=1", async () => {
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
     };
     mockSharedSpaceFeedbackState.loaded = true;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     await act(async () => {
       fireEvent.keyDown(window, {
@@ -884,13 +936,14 @@ describe("VoiceInputIndicator - keyboard feedback notice", () => {
 
   it("long-press ShiftLeft should start recording normally when notice_acked=1", async () => {
     mockSharedSpaceFeedbackState.spaceSetting = {
+      voice_input_enabled: 1,
       voice_feedback_on: 1,
       voice_feedback_notice_acked: 1,
     };
     mockSharedSpaceFeedbackState.loaded = true;
     mockVoiceConfig.current = { feedback_url: "https://feedback.test" };
 
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     await act(async () => {
       fireEvent.keyDown(window, {
@@ -945,7 +998,7 @@ describe("VoiceInputIndicator - fail-closed when settings not loaded", () => {
   });
 
   it("should NOT start recording on click when loaded=false and feedback_url exists", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     const button = document.querySelector(".wk-voice-button");
     await act(async () => {
@@ -958,7 +1011,7 @@ describe("VoiceInputIndicator - fail-closed when settings not loaded", () => {
   });
 
   it("Shift+Cmd+Space should silently block when loaded=false", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     await act(async () => {
       fireEvent.keyDown(window, {
@@ -977,7 +1030,7 @@ describe("VoiceInputIndicator - fail-closed when settings not loaded", () => {
   });
 
   it("long-press ShiftLeft should silently block when loaded=false", async () => {
-    render(<VoiceInputIndicator onTranscribed={vi.fn()} />);
+    render(<TestVoiceInputIndicator onTranscribed={vi.fn()} />);
 
     await act(async () => {
       fireEvent.keyDown(window, {

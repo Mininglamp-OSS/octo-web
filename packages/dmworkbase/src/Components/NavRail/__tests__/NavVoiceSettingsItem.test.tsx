@@ -13,13 +13,25 @@ import { act } from 'react-dom/test-utils';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { i18n } from '../../../i18n';
 
-vi.mock('../../MessageInput/useSpaceFeedbackSetting', () => ({
+const hoisted = vi.hoisted(() => ({
   ensureVoiceFeedbackLoaded: vi.fn().mockResolvedValue(undefined),
+  spaceChangedHandlers: [] as Array<() => void>,
+}));
+
+vi.mock('../../../features/voice-input/useSpaceFeedbackSetting', () => ({
+  ensureVoiceFeedbackLoaded: (...args: any[]) =>
+    hoisted.ensureVoiceFeedbackLoaded(...args),
 }));
 
 vi.mock('../../../App', () => ({
   default: {
-    mittBus: { on: vi.fn(), off: vi.fn() },
+    shared: { currentSpaceId: 'space-1' },
+    mittBus: {
+      on: vi.fn((_event: string, handler: () => void) => {
+        hoisted.spaceChangedHandlers.push(handler);
+      }),
+      off: vi.fn(),
+    },
   },
   __esModule: true,
 }));
@@ -33,11 +45,15 @@ vi.mock('../VoiceSettingsPanel', () => ({
 }));
 
 import NavVoiceSettingsItem from '../NavVoiceSettingsItem';
+import WKApp from '../../../App';
 
 let container: HTMLDivElement;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  hoisted.ensureVoiceFeedbackLoaded.mockResolvedValue(undefined);
+  hoisted.spaceChangedHandlers.length = 0;
+  WKApp.shared.currentSpaceId = 'space-1';
   i18n.setLocale('zh-CN', { notify: false, persist: false });
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -87,5 +103,31 @@ describe('NavVoiceSettingsItem', () => {
     const closeBtn = container.querySelector('[data-testid="voice-settings-panel"] button')!;
     act(() => { (closeBtn as HTMLElement).click(); });
     expect(container.querySelector('[data-testid="voice-settings-panel"]')).toBeNull();
+  });
+
+  it('scopes A to B to A loads by generation and mount lifetime', async () => {
+    await act(async () => {
+      ReactDOM.render(
+        <ul><NavVoiceSettingsItem /></ul>,
+        container,
+      );
+    });
+    const handler = hoisted.spaceChangedHandlers[0];
+    const firstAPredicate = hoisted.ensureVoiceFeedbackLoaded.mock.calls[0][1];
+
+    WKApp.shared.currentSpaceId = 'space-2';
+    handler();
+    const bPredicate = hoisted.ensureVoiceFeedbackLoaded.mock.calls[1][1];
+
+    WKApp.shared.currentSpaceId = 'space-1';
+    handler();
+    const latestAPredicate = hoisted.ensureVoiceFeedbackLoaded.mock.calls[2][1];
+
+    expect(firstAPredicate()).toBe(false);
+    expect(bPredicate()).toBe(false);
+    expect(latestAPredicate()).toBe(true);
+
+    act(() => ReactDOM.unmountComponentAtNode(container));
+    expect(latestAPredicate()).toBe(false);
   });
 });

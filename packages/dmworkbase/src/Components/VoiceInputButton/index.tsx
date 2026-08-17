@@ -3,10 +3,10 @@ import { createPortal } from "react-dom";
 import { Toast, Dropdown } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useTextareaVoice, { ReplaceMode, SelectionRange } from "./useTextareaVoice";
-import type { ChatContextResult } from "../Conversation/chatContext";
+import type { ChatComposerVoiceContext } from "../../features/chat-composer/ports";
 import type { VoiceMode } from "../../Service/VoiceService";
-import VoiceFeedbackNotice from "../MessageInput/VoiceFeedbackNotice";
-import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../MessageInput/useSpaceFeedbackSetting";
+import VoiceFeedbackNotice from "../../features/voice-input/VoiceFeedbackNotice";
+import useSpaceFeedbackSetting, { getSharedSpaceFeedbackState, acceptVoiceInput } from "../../features/voice-input/useSpaceFeedbackSetting";
 import WKApp from "../../App";
 import { useI18n } from "../../i18n";
 import "./index.css";
@@ -23,13 +23,21 @@ const INDICATOR_HEIGHT = 48;
 const PREPARING_DELAY_MS = 300;
 const RECORDING_DELAY_MS = 500;
 
+const voiceHost = {
+  getSpaceId: () => WKApp.shared.currentSpaceId,
+  subscribeSpaceChange: (listener: () => void) => {
+    WKApp.mittBus.on("space-changed", listener);
+    return () => WKApp.mittBus.off("space-changed", listener);
+  },
+};
+
 export interface VoiceInputButtonProps {
   inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
   getCurrentText?: () => string;
   showModeMenu?: boolean;
   size?: "sm" | "md";
-  getChatContext?: () => ChatContextResult | Promise<ChatContextResult>;
+  getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
   className?: string;
   /** Called right before recording starts (useful for cancelling pending blur commits) */
   onRecordingStart?: () => void;
@@ -50,7 +58,42 @@ export default function VoiceInputButton({
   const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
   const pendingModeRef = useRef<VoiceMode>("append_only");
+  const mountedRef = useRef(true);
+  const consentGenerationRef = useRef(0);
+  const consentPendingRef = useRef(false);
+  const pendingConsentRef = useRef<{
+    generation: number;
+    spaceId: string;
+    mode: VoiceMode;
+  } | null>(null);
   const { spaceSetting, loaded, voiceConfig } = useSpaceFeedbackSetting();
+
+  const openConsent = useCallback((mode: VoiceMode) => {
+    if (consentPendingRef.current) return;
+    const spaceId = voiceHost.getSpaceId();
+    if (!spaceId) return;
+    const generation = ++consentGenerationRef.current;
+    pendingModeRef.current = mode;
+    pendingConsentRef.current = { generation, spaceId, mode };
+    setShowFeedbackNotice(true);
+  }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const invalidateConsent = () => {
+      consentGenerationRef.current += 1;
+      consentPendingRef.current = false;
+      pendingConsentRef.current = null;
+      pendingModeRef.current = "append_only";
+      setShowFeedbackNotice(false);
+    };
+    const unsubscribe = voiceHost.subscribeSpaceChange(invalidateConsent);
+    return () => {
+      mountedRef.current = false;
+      invalidateConsent();
+      unsubscribe();
+    };
+  }, []);
 
   const {
     isRecording,
@@ -61,6 +104,7 @@ export default function VoiceInputButton({
     isVoiceEnabled,
     localAvailable,
   } = useTextareaVoice({
+    voiceHost,
     inputRef,
     onTranscribed,
     getCurrentText,
@@ -219,7 +263,7 @@ export default function VoiceInputButton({
               return;
             }
             if (feedbackState.spaceSetting?.voice_input_enabled !== 1) {
-              setShowFeedbackNotice(true);
+              openConsent("append_only");
               return;
             }
             shiftRecordingRef.current = true;
@@ -296,7 +340,7 @@ export default function VoiceInputButton({
       window.removeEventListener("blur", handleBlurClear);
       clearShiftTimer();
     };
-  }, [isVoiceEnabled, inputRef, clearShiftTimer, t]);
+  }, [isVoiceEnabled, inputRef, clearShiftTimer, openConsent, t]);
 
   if (!isVoiceEnabled) return null;
 
@@ -311,8 +355,7 @@ export default function VoiceInputButton({
       return;
     }
     if (spaceSetting?.voice_input_enabled !== 1) {
-      pendingModeRef.current = "append_only";
-      setShowFeedbackNotice(true);
+      openConsent("append_only");
       return;
     }
     onRecordingStart?.();
@@ -326,13 +369,49 @@ export default function VoiceInputButton({
       return;
     }
     if (spaceSetting?.voice_input_enabled !== 1) {
-      pendingModeRef.current = selectedMode;
-      setShowFeedbackNotice(true);
+      openConsent(selectedMode);
       return;
     }
     onRecordingStart?.();
     startRecording(selectedMode);
   };
+
+  const handleConsentAccept = useCallback(async (feedbackOn: boolean) => {
+    if (consentPendingRef.current) return;
+    const consent = pendingConsentRef.current;
+    if (!consent) return;
+    const isConsentCurrent = () =>
+      mountedRef.current &&
+      pendingConsentRef.current === consent &&
+      consentGenerationRef.current === consent.generation &&
+      voiceHost.getSpaceId() === consent.spaceId;
+    if (!isConsentCurrent()) return;
+    consentPendingRef.current = true;
+    setShowFeedbackNotice(false);
+    try {
+      await acceptVoiceInput(consent.spaceId, feedbackOn, isConsentCurrent);
+    } catch {
+      if (isConsentCurrent()) {
+        Toast.error(t("base.voiceInput.error.operationFailed"));
+      }
+      return;
+    } finally {
+      if (consentGenerationRef.current === consent.generation) {
+        consentPendingRef.current = false;
+      }
+    }
+    if (!isConsentCurrent()) return;
+    pendingConsentRef.current = null;
+    onRecordingStart?.();
+    startRecording(consent.mode);
+  }, [onRecordingStart, startRecording, t]);
+
+  const handleConsentCancel = useCallback(() => {
+    consentGenerationRef.current += 1;
+    pendingConsentRef.current = null;
+    pendingModeRef.current = "append_only";
+    setShowFeedbackNotice(false);
+  }, []);
 
   const handleStopClick = () => {
     stopRecordingAndTranscribe();
@@ -456,23 +535,8 @@ export default function VoiceInputButton({
         </Dropdown>
         {showFeedbackNotice && (
           <VoiceFeedbackNotice
-            onAccept={async (feedbackOn) => {
-              setShowFeedbackNotice(false);
-              const spaceId = WKApp.shared.currentSpaceId;
-              try {
-                if (spaceId) {
-                  await acceptVoiceInput(spaceId, feedbackOn);
-                }
-              } catch {
-                Toast.error(t("base.voiceInput.error.operationFailed"));
-                return;
-              }
-              onRecordingStart?.();
-              startRecording(pendingModeRef.current);
-            }}
-            onCancel={() => {
-              setShowFeedbackNotice(false);
-            }}
+            onAccept={handleConsentAccept}
+            onCancel={handleConsentCancel}
             feedbackPrivacyUrl={voiceConfig?.feedback_privacy_url}
             feedbackUserAgreementUrl={voiceConfig?.feedback_user_agreement_url}
           />
@@ -502,23 +566,8 @@ export default function VoiceInputButton({
       </div>
       {showFeedbackNotice && (
         <VoiceFeedbackNotice
-          onAccept={async (feedbackOn) => {
-            setShowFeedbackNotice(false);
-            const spaceId = WKApp.shared.currentSpaceId;
-            try {
-              if (spaceId) {
-                await acceptVoiceInput(spaceId, feedbackOn);
-              }
-            } catch {
-              Toast.error(t("base.voiceInput.error.operationFailed"));
-              return;
-            }
-            onRecordingStart?.();
-            startRecording(pendingModeRef.current);
-          }}
-          onCancel={() => {
-            setShowFeedbackNotice(false);
-          }}
+          onAccept={handleConsentAccept}
+          onCancel={handleConsentCancel}
           feedbackPrivacyUrl={voiceConfig?.feedback_privacy_url}
           feedbackUserAgreementUrl={voiceConfig?.feedback_user_agreement_url}
         />

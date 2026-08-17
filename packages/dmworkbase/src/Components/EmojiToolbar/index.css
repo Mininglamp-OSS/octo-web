@@ -61,27 +61,12 @@ body[theme-mode=dark] .wk-emojitoolbar-emojipanel {
     visibility: visible;
 }
 
-.wk-emojitoolbar-emojipanel-hide {
-    animation: emojiPanelAnimationHide 0.25s;
-    -webkit-animation: emojiPanelAnimationHide 0.25s; /* Safari 与 Chrome */
-    visibility: visible;
-}
-
 @keyframes emojiPanelAnimationShow {
     from {
         transform: scale(0.5);
     }
     to {
         transform: scale(1);
-    }
-}
-
-@keyframes emojiPanelAnimationHide {
-    from {
-        transform: scale(1);
-    }
-    to {
-        transform: scale(0);
     }
 }
 
