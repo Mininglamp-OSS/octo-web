@@ -85,8 +85,8 @@
   box-shadow: none;
 }
 
-.octo-ui-radio-semi-focus,
-.octo-ui-radio-semi-focus-border {
+.octo-ui-radio-semi-inner-display.octo-ui-radio-semi-focus,
+.octo-ui-radio-semi-inner-display.octo-ui-radio-semi-focus-border {
   box-shadow: 0 0 0 var(--octo-ui-radio-focus-width) var(--octo-ui-focus-ring);
 }
 

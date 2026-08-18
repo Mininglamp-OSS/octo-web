@@ -32,10 +32,11 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
   return (
     <div className="wk-fm-grant">
       <div className="wk-fm-grant-row">
-        <label className="wk-fm-grant-switch">
-          <Checkbox checked={grant.enabled} onCheckedChange={() => grant.onEnabledChange(!grant.enabled)} />
-          <span className="wk-fm-grant-label">{t("base.forwardModal.grant.enableLabel")}</span>
-        </label>
+        <div className="wk-fm-grant-switch">
+          <Checkbox checked={grant.enabled} onCheckedChange={() => grant.onEnabledChange(!grant.enabled)}>
+            <span className="wk-fm-grant-label">{t("base.forwardModal.grant.enableLabel")}</span>
+          </Checkbox>
+        </div>
         <select
           className="wk-fm-grant-role"
           value={grant.role}
@@ -110,7 +111,7 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
                     </button>
                     {isExpanded &&
                       group.bots.map((bot) => (
-                        <label className="wk-fm-grant-bot" key={bot.uid}>
+                        <div className="wk-fm-grant-bot" key={bot.uid}>
                           <Checkbox
                             checked={bot.selected}
                             onCheckedChange={() => bots.toggleBot(bot.uid)}
@@ -120,9 +121,10 @@ export function GrantArea({ grant }: { grant: ForwardGrantConfig }) {
                                 : "base.forwardModal.grant.botUncheckedFor",
                               { values: { bot: bot.name, person: group.name } },
                             )}
-                          />
-                          <span className="wk-fm-grant-bot-name">{bot.name}</span>
-                        </label>
+                          >
+                            <span className="wk-fm-grant-bot-name">{bot.name}</span>
+                          </Checkbox>
+                        </div>
                       ))}
                   </div>
                 )

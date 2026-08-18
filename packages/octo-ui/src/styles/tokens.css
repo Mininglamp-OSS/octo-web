@@ -105,9 +105,9 @@ body {
   --octo-ui-checkbox-disabled-text: var(--wk-text-disabled, oklch(22.957% 0.01344 285.29 / 30%));
   --octo-ui-checkbox-bg: var(--wk-bg-surface, oklch(100% 0 89.88));
   --octo-ui-checkbox-border: var(--wk-brand-tint-15, oklch(22.957% 0.01344 285.29 / 15%));
-  --octo-ui-checkbox-border-hover: var(--wk-brand-tint-30, oklch(22.957% 0.01344 285.29 / 30%));
+  --octo-ui-checkbox-border-hover: var(--wk-brand-tint-35, oklch(22.957% 0.01344 285.29 / 35%));
   --octo-ui-checkbox-border-sm: var(--wk-brand-tint-35, oklch(22.957% 0.01344 285.29 / 35%));
-  --octo-ui-checkbox-border-hover-sm: var(--wk-brand-tint-50, oklch(22.957% 0.01344 285.29 / 50%));
+  --octo-ui-checkbox-border-hover-sm: var(--wk-brand-tint-35, oklch(22.957% 0.01344 285.29 / 35%));
   --octo-ui-checkbox-checked-bg: var(--wk-brand-primary, oklch(22.957% 0.01344 285.29));
   --octo-ui-checkbox-checked-border: var(--wk-brand-primary, oklch(22.957% 0.01344 285.29));
   --octo-ui-checkbox-check-color: var(--wk-text-inverse, oklch(100% 0 89.88));
@@ -116,8 +116,8 @@ body {
   --octo-ui-checkbox-indeterminate-radius: 1px;
   --octo-ui-checkbox-disabled-bg: var(--wk-brand-tint-06, oklch(22.957% 0.01344 285.29 / 6%));
   --octo-ui-checkbox-disabled-border: var(--wk-brand-tint-15, oklch(22.957% 0.01344 285.29 / 15%));
-  --octo-ui-checkbox-disabled-checked-bg: var(--wk-brand-tint-40, oklch(22.957% 0.01344 285.29 / 40%));
-  --octo-ui-checkbox-disabled-check-color: var(--wk-text-inverse, oklch(100% 0 89.88));
+  --octo-ui-checkbox-disabled-checked-bg: var(--wk-brand-tint-15, oklch(22.957% 0.01344 285.29 / 15%));
+  --octo-ui-checkbox-disabled-check-color: var(--wk-text-disabled, oklch(22.957% 0.01344 285.29 / 30%));
 
   --octo-ui-radio-gap: 8px;
   --octo-ui-radio-extra-gap: 2px;
@@ -139,12 +139,12 @@ body {
   --octo-ui-radio-disabled-text: var(--wk-text-disabled, oklch(22.957% 0.01344 285.29 / 30%));
   --octo-ui-radio-bg: var(--wk-bg-surface, oklch(100% 0 89.88));
   --octo-ui-radio-border: var(--wk-brand-tint-35, oklch(22.957% 0.01344 285.29 / 35%));
-  --octo-ui-radio-border-hover: var(--wk-brand-tint-50, oklch(22.957% 0.01344 285.29 / 50%));
+  --octo-ui-radio-border-hover: var(--wk-brand-tint-35, oklch(22.957% 0.01344 285.29 / 35%));
   --octo-ui-radio-checked-bg: var(--wk-brand-primary, oklch(22.957% 0.01344 285.29));
   --octo-ui-radio-checked-border: var(--wk-brand-primary, oklch(22.957% 0.01344 285.29));
   --octo-ui-radio-dot-color: var(--wk-text-inverse, oklch(100% 0 89.88));
   --octo-ui-radio-disabled-bg: var(--wk-brand-tint-06, oklch(22.957% 0.01344 285.29 / 6%));
   --octo-ui-radio-disabled-border: var(--wk-brand-tint-15, oklch(22.957% 0.01344 285.29 / 15%));
-  --octo-ui-radio-disabled-checked-bg: var(--wk-brand-tint-40, oklch(22.957% 0.01344 285.29 / 40%));
-  --octo-ui-radio-disabled-dot-color: var(--wk-text-inverse, oklch(100% 0 89.88));
+  --octo-ui-radio-disabled-checked-bg: var(--wk-brand-tint-15, oklch(22.957% 0.01344 285.29 / 15%));
+  --octo-ui-radio-disabled-dot-color: var(--wk-text-disabled, oklch(22.957% 0.01344 285.29 / 30%));
 }

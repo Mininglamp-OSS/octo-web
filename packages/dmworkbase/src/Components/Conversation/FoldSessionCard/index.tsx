@@ -208,6 +208,7 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
                 <Checkbox
                   className="wk-fold-session-card-summary-checkbox"
                   checked={summaryChecked}
+                  shape="circle"
                   onCheckedChange={(checked) => {
                     if (onSummaryToggleSelect) {
                       onSummaryToggleSelect(checked);

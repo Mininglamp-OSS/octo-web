@@ -69,10 +69,11 @@ describe('Radio', () => {
     expect(html).toContain('More details')
   })
 
-  it('does not expose Semi class names as the wrapper contract', () => {
+  it('uses Octo classes as the root styling contract', () => {
     const html = renderToStaticMarkup(<Radio name="status">Active</Radio>)
 
-    expect(html).not.toContain('semi-radio')
+    expect(html).toContain('octo-ui-radio')
+    expect(html).toContain('octo-ui-radio-semi')
   })
 })
 

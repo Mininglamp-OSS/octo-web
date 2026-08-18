@@ -1,6 +1,7 @@
 import type { CSSProperties, MouseEventHandler, ReactNode } from 'react'
 
 export type CheckboxSize = 'sm' | 'md'
+export type CheckboxShape = 'square' | 'circle'
 export type CheckboxValue = string | number | boolean
 export type CheckboxGroupDirection = 'horizontal' | 'vertical'
 
@@ -34,6 +35,7 @@ export interface CheckboxProps {
   indeterminate?: boolean
   name?: string
   role?: string
+  shape?: CheckboxShape
   size?: CheckboxSize
   style?: CSSProperties
   tabIndex?: number

@@ -85,6 +85,7 @@ const FoldSessionExpandedList: React.FC<FoldSessionExpandedListProps> = ({
                 <Checkbox
                   className="wk-fold-msg-checkbox"
                   checked={!!message.checked}
+                  shape="circle"
                   onCheckedChange={(checked) => {
                     onToggleSelect(message.message, checked);
                   }}

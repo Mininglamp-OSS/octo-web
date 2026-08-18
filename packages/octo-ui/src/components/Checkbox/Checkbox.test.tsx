@@ -5,7 +5,7 @@ import Checkbox, { CheckboxGroup } from './index'
 vi.mock('@douyinfe/semi-ui', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
   const Checkbox = React.forwardRef<HTMLSpanElement, any>(function MockCheckbox(
-    { checked, className, children, defaultChecked, disabled, extra, indeterminate, prefixCls, size, ...rest },
+    { checked, className, children, defaultChecked, disabled, extra, indeterminate, prefixCls, shape, size, ...rest },
     ref,
   ) {
     const isChecked = checked ?? defaultChecked
@@ -71,10 +71,10 @@ describe('Checkbox', () => {
     expect(html).toContain('More details')
   })
 
-  it('does not expose Semi class names as the wrapper contract', () => {
-    const html = renderToStaticMarkup(<Checkbox>Enable</Checkbox>)
+  it('supports a stable circle shape class', () => {
+    const html = renderToStaticMarkup(<Checkbox shape="circle">Enable</Checkbox>)
 
-    expect(html).not.toContain('semi-checkbox')
+    expect(html).toContain('octo-ui-checkbox--circle')
   })
 })
 

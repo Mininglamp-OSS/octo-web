@@ -59,7 +59,7 @@ export function SelectedRow({ item, onRemove, bots }: SelectedRowProps) {
         // cancelling/restoring here syncs everywhere immediately; there is no independent remove.
         <div className="wk-fm-selected-bots">
           {nested.map((bot) => (
-            <label className="wk-fm-selected-bot" key={bot.uid}>
+            <div className="wk-fm-selected-bot" key={bot.uid}>
               <Checkbox
                 checked={bot.selected}
                 onCheckedChange={() => bots?.toggleBot(bot.uid)}
@@ -67,10 +67,11 @@ export function SelectedRow({ item, onRemove, bots }: SelectedRowProps) {
                   bot.selected ? "base.forwardModal.grant.botCheckedFor" : "base.forwardModal.grant.botUncheckedFor",
                   { values: { bot: bot.name, person: item.displayName } },
                 )}
-              />
-              <span className="wk-fm-selected-bot-name">{bot.name}</span>
+              >
+                <span className="wk-fm-selected-bot-name">{bot.name}</span>
+              </Checkbox>
               <AiBadge size="small" />
-            </label>
+            </div>
           ))}
         </div>
       )}

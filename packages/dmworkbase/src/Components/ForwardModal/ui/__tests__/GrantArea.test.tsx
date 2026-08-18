@@ -16,24 +16,29 @@ vi.mock("../../../../i18n", () => ({
 vi.mock("@octo/ui", () => ({
   Checkbox: ({
     checked,
+    children,
     disabled,
     onCheckedChange,
     "aria-label": ariaLabel,
   }: {
     checked?: boolean;
+    children?: React.ReactNode;
     disabled?: boolean;
     onCheckedChange?: (checked: boolean) => void;
     "aria-label"?: string;
   }) => (
-    <div
-      role="checkbox"
-      aria-checked={!!checked}
-      aria-disabled={!!disabled}
-      aria-label={ariaLabel}
-      onClick={() => {
-        if (!disabled) onCheckedChange?.(!checked);
-      }}
-    />
+    <div>
+      <div
+        role="checkbox"
+        aria-checked={!!checked}
+        aria-disabled={!!disabled}
+        aria-label={ariaLabel}
+        onClick={() => {
+          if (!disabled) onCheckedChange?.(!checked);
+        }}
+      />
+      {children}
+    </div>
   ),
 }));
 

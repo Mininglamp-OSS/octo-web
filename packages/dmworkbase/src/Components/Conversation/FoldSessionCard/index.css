@@ -262,21 +262,6 @@
   gap: 0;
 }
 
-.wk-fold-session-card-summary-checkbox .octo-ui-checkbox-semi-inner-display {
-  border-radius: 50%;
-  background: transparent;
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--wk-text-primary) 15%, transparent);
-}
-
-.wk-fold-session-card-summary-checkbox:hover .octo-ui-checkbox-semi-inner-display {
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--wk-brand-primary) 40%, transparent);
-}
-
-.wk-fold-session-card-summary-checkbox.octo-ui-checkbox-semi-checked .octo-ui-checkbox-semi-inner-display {
-  background: var(--wk-brand-primary);
-  box-shadow: none;
-}
-
 .wk-fold-session-card-summary-main {
   min-width: 0;
   flex: 1;

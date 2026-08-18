@@ -537,13 +537,14 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                 </div>
                             )}
                             {mode !== "members" && (activeTab === "group" || activeTab === "followed") && (
-                                <label className="chat-selector-archived-toggle">
+                                <div className="chat-selector-archived-toggle">
                                     <Checkbox
                                         checked={includeArchived}
                                         onCheckedChange={this.handleIncludeArchivedChange}
-                                    />
-                                    <span>{t("summary.chatSelector.includeArchived")}</span>
-                                </label>
+                                    >
+                                        <span>{t("summary.chatSelector.includeArchived")}</span>
+                                    </Checkbox>
+                                </div>
                             )}
                             <div
                                 className="chat-selector-list"

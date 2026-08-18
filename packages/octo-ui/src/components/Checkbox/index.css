@@ -31,6 +31,10 @@
   --octo-ui-checkbox-current-check-width: var(--octo-ui-checkbox-check-width-md);
 }
 
+.octo-ui-checkbox--circle {
+  --octo-ui-checkbox-radius: 9999px;
+}
+
 .octo-ui-checkbox-semi-disabled {
   color: var(--octo-ui-checkbox-disabled-text);
   cursor: not-allowed;
@@ -95,8 +99,8 @@
   box-shadow: none;
 }
 
-.octo-ui-checkbox-semi-focus,
-.octo-ui-checkbox-semi-focus-border {
+.octo-ui-checkbox-semi-inner-display.octo-ui-checkbox-semi-focus,
+.octo-ui-checkbox-semi-inner-display.octo-ui-checkbox-semi-focus-border {
   box-shadow: 0 0 0 var(--octo-ui-checkbox-focus-width) var(--octo-ui-focus-ring);
 }
 

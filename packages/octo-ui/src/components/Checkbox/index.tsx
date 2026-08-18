@@ -11,6 +11,7 @@ const cx = (classes: Array<string | false | null | undefined>) => classes.filter
 const Checkbox = forwardRef<ComponentRef<typeof SemiCheckbox>, CheckboxProps>(function Checkbox(
   {
     size = 'md',
+    shape = 'square',
     className,
     onChange,
     onCheckedChange,
@@ -21,6 +22,7 @@ const Checkbox = forwardRef<ComponentRef<typeof SemiCheckbox>, CheckboxProps>(fu
   const classes = cx([
     'octo-ui-checkbox',
     `octo-ui-checkbox--${size}`,
+    `octo-ui-checkbox--${shape}`,
     className,
   ])
 
