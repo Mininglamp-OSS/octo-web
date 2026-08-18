@@ -1,4 +1,4 @@
-export type Visibility = "public" | "space" | "private";
+export type Visibility = "system" | "public" | "space" | "private";
 export type SkillSort = "comprehensive" | "latest" | "views" | "downloads";
 
 // ─── Frontend (camelCase) types ────────────────────────────────────────────

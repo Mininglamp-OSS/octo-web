@@ -94,11 +94,10 @@ describe("SkillDetailModal", () => {
     expect(screen.getByTitle("我")).toBeInTheDocument();
   });
 
-  it("shows platform attribution for administrator-created global skills", async () => {
+  it("shows platform attribution for system skills", async () => {
     vi.mocked(api.getSkill).mockResolvedValue({
       ...skill,
-      visibility: "public",
-      spaceId: undefined as unknown as string,
+      visibility: "system",
       ownerName: "超级管理员",
       creatorName: "超级管理员",
     });
@@ -109,6 +108,22 @@ describe("SkillDetailModal", () => {
     expect(screen.queryByText("超级管理员")).not.toBeInTheDocument();
     expect(screen.getByTitle("官方发布")).toBeInTheDocument();
     expect(container.querySelector(".skill-market-detail-header__platform-icon")).toBeInTheDocument();
+  });
+
+  it("does not treat historical public administrator skills as platform-published", async () => {
+    vi.mocked(api.getSkill).mockResolvedValue({
+      ...skill,
+      visibility: "public",
+      spaceId: "",
+      ownerName: "超级管理员",
+      creatorName: "超级管理员",
+    });
+
+    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
+
+    expect(await screen.findByText("test")).toBeInTheDocument();
+    expect(screen.queryByText("官方发布")).not.toBeInTheDocument();
+    expect(screen.getAllByText("超级管理员").length).toBeGreaterThan(0);
   });
 
   it("shows bot creator and owner with icons when they are different", async () => {

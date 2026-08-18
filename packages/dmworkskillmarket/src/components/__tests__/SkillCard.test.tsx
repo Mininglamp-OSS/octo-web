@@ -62,13 +62,12 @@ describe("SkillCard", () => {
     expect(screen.getByText("我")).toBeInTheDocument();
   });
 
-  it("shows platform attribution for administrator-created global skills", () => {
+  it("shows platform attribution for system skills", () => {
     const { container } = render(
       <SkillCard
         skill={{
           ...skill,
-          visibility: "public",
-          spaceId: undefined as unknown as string,
+          visibility: "system",
           ownerName: "超级管理员",
           creatorName: "超级管理员",
         }}
@@ -81,6 +80,25 @@ describe("SkillCard", () => {
     expect(screen.queryByText("超级管理员")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ci-helper 官方发布" })).toBeInTheDocument();
     expect(container.querySelector(".skill-market-card__owner-platform-icon")).toBeInTheDocument();
+  });
+
+  it("does not treat historical public administrator skills as platform-published", () => {
+    render(
+      <SkillCard
+        skill={{
+          ...skill,
+          visibility: "public",
+          spaceId: "",
+          ownerName: "超级管理员",
+          creatorName: "超级管理员",
+        }}
+        categories={categories}
+        onOpen={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByText("官方发布")).not.toBeInTheDocument();
+    expect(screen.getAllByText("超级管理员").length).toBeGreaterThan(0);
   });
 
   it("shows creator and owner when they are different", () => {
