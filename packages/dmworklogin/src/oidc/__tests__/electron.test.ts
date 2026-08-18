@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getOidcClient, isElectronDesktop } from '../electron'
+import { beginOidcAuthorize, endOidcAuthorize, getOidcClient, isElectronDesktop } from '../electron'
 import { OidcBindHttpError } from '../http'
 import { createFetchHttpClient, fetchHttpClient } from '../http'
 
@@ -19,6 +19,8 @@ describe('electron runtime helpers', () => {
       configurable: true,
       value: origLocation,
     })
+    delete (window as any).ipc
+    delete (window as any).octoElectron
   })
 
   it('detects Electron packaged shell via file:// protocol', () => {
@@ -68,6 +70,52 @@ describe('electron runtime helpers', () => {
         status: 409,
         msg: 'already_verified',
       })
+  })
+
+  it('prefers the typed octoElectron OIDC HTTP bridge over legacy ipc.invoke', async () => {
+    setProtocol('file:')
+    const httpRequest = vi.fn().mockResolvedValue({
+      __octoOidcHttpResponse: true,
+      ok: true,
+      status: 200,
+      body: { ok: true },
+    })
+    const invoke = vi.fn()
+    Object.defineProperty(window, 'octoElectron', {
+      configurable: true,
+      value: { oidc: { httpRequest } },
+    })
+    Object.defineProperty(window, 'ipc', { configurable: true, value: { invoke } })
+
+    const client = getOidcClient('https://api.example.com')
+    await expect(client.get('/v1/user/thirdlogin/authstatus')).resolves.toEqual({ ok: true })
+
+    expect(httpRequest).toHaveBeenCalledWith({
+      url: 'https://api.example.com/v1/user/thirdlogin/authstatus',
+      method: 'GET',
+    })
+    expect(invoke).not.toHaveBeenCalled()
+  })
+
+  it('uses the typed octoElectron OIDC authorize bridge when available', async () => {
+    const authorizeStart = vi.fn().mockResolvedValue({ ok: true })
+    const authorizeEnd = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(window, 'octoElectron', {
+      configurable: true,
+      value: { oidc: { authorizeStart, authorizeEnd } },
+    })
+
+    await expect(beginOidcAuthorize('https://api.example.com', 'code', 'aegis', 'https://idp.example.com/auth'))
+      .resolves.toEqual({ ok: true })
+    await endOidcAuthorize()
+
+    expect(authorizeStart).toHaveBeenCalledWith(
+      'https://api.example.com',
+      'code',
+      'aegis',
+      'https://idp.example.com/auth',
+    )
+    expect(authorizeEnd).toHaveBeenCalledOnce()
   })
 
   it('stops awaiting an in-flight IPC request when the caller aborts', async () => {

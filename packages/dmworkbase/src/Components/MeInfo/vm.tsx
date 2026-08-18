@@ -33,8 +33,7 @@ const LAB_MODE_STORAGE_KEY = "lab_mode_enabled";
  *   verify-service 翻译接口。
  * GH #1174：IdP 域名改为按环境从后端 appconfig 下发的
  *   `oidc_providers[].account_url` 字段读, 而非硬编码 prod URL。
- *   im-test 会拿到 `accounts-test.imocto.cn`, im-prod 拿到 `accounts.xming.ai`,
- *   和 NavSettingsPanel 「账户中心」入口口径一致。
+ *   测试/生产环境地址均由 appconfig 下发，和 NavSettingsPanel「账户中心」入口口径一致。
  *
  * GH #1180（Phase 2e 闭环）:im-test 实机发现原方案有 2 个闭环 bug,
  *   本 VM 的职责是把前端部分修好:
@@ -63,6 +62,10 @@ const LAB_MODE_STORAGE_KEY = "lab_mode_enabled";
  *     也是按环境下发的 IdP URL，老 App 客户端无需改动即可工作。
  */
 export class MeInfoVM extends ProviderListener {
+
+    constructor(private readonly onRealnameStatusChange?: (verified: boolean) => void) {
+        super()
+    }
 
     channelInfoListener!:ChannelInfoListener
     unsubscribeChannelInfoListener?: () => void
@@ -131,6 +134,7 @@ export class MeInfoVM extends ProviderListener {
     private syncRealnameFromOrgData(orgData: any) {
         const verified = isRealnameVerified(orgData)
         WKApp.loginInfo.realnameVerified = verified
+        this.onRealnameStatusChange?.(verified)
         if (verified && typeof orgData?.real_name === "string" && orgData.real_name.length > 0) {
             WKApp.loginInfo.realName = orgData.real_name
         } else {
@@ -181,8 +185,7 @@ export class MeInfoVM extends ProviderListener {
      * URL 解析口径（resolveRealnameVerifyUrl）：
      *   - 按 loginInfo.loginProvider 在 remoteConfig.oidcProviders 里查
      *     对应 provider 的 accountUrl, 拼 `${accountUrl}/profile/info?anchor=verification&return_to=…`。
-     *     与 NavSettingsPanel「账户中心」入口口径一致（accounts-test.imocto.cn
-     *     on im-test / accounts.xming.ai on im-prod, 后端下发）。
+ *     与 NavSettingsPanel「账户中心」入口口径一致（按环境由后端下发）。
      *   - loginProvider=local / 空 / provider 无 account_url / provider 不在
      *     下发列表里 → Toast 明示, 不跳转。严禁回退到任何硬编码 prod 域。
      *

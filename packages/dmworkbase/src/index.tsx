@@ -71,6 +71,7 @@ export * from './Utils/docLink'
 export * from './Utils/asyncCache'
 export * from './features/documentTitle'
 export * from './features/notifications'
+export * from './electron/desktopBridge'
 
 export { default as MessageBase } from "./Messages/Base"
 export  * from "./Messages/Image"
@@ -139,7 +140,7 @@ export { default as BotStore } from "./Pages/BotStore"
 export { default as GroupCard } from "./Components/GroupCard"
 export { default as NavRail } from "./Components/NavRail"
 export type { NavRailProps, NavRailItem } from "./Components/NavRail"
-export { startVersionCheck, checkVersionOnce } from "./Utils/versionChecker"
+export { startVersionCheck, checkVersionOnce, checkVersionOnceWithStatus } from "./Utils/versionChecker"
 export { isSafeUrl } from './Utils/security'
 // 外部成员/消息来源判定 resolver（纯函数）对外暴露，供 AssigneeEditor
 // 等包外组件在「按当前查看 Space 相对渲染」时复用，避免各自复制逻辑漂移。

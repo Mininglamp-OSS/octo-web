@@ -57,6 +57,12 @@ export const chatBaselineHandlers = [
   http.get("*/voice/config", () =>
     HttpResponse.json({ enable: 0, provider: "", config: {} })
   ),
+  http.get("*/api/v1/common/updater/android/1.0", () =>
+    HttpResponse.json({ url: "https://example.com/download/android" })
+  ),
+  http.get("*/api/v1/common/updater/ios/1.0.0", () =>
+    HttpResponse.json({ url: "https://example.com/download/ios" })
+  ),
   http.get("*/message/prohibit_words/sync", () =>
     HttpResponse.json({ version: 0, words: [] })
   ),
@@ -94,6 +100,10 @@ export const chatBaselineHandlers = [
     // 用户在 space 里的个人设置 (通知 / 免打扰 / hidden bots 等), 空对象兜底.
     HttpResponse.json({ mute: 0, hidden_bots: [], notify_level: 0 })
   ),
+  http.get("*/user/notification-pause", () =>
+    HttpResponse.json({ paused: false, paused_until: null, revision: 0, server_time: new Date().toISOString() })
+  ),
+  http.put("*/user/language", () => HttpResponse.json({})),
 
   // === Contacts / friends ===
   http.get("*/friend/sync", () => HttpResponse.json([])),

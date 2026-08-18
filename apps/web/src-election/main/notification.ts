@@ -1,5 +1,12 @@
 import { Notification, BrowserWindow, ipcMain } from "electron";
 import { Channel } from "wukongimjssdk";
+import {
+  IPC_NOTIFICATION_ACTION_CLICKED,
+  IPC_NOTIFICATION_CLICKED,
+  IPC_NOTIFICATION_CLOSE,
+  IPC_NOTIFICATION_CLOSE_ALL,
+  IPC_NOTIFICATION_SHOW,
+} from "../shared/ipc-channels";
 
 const isDevelopment = process.env.NODE_ENV !== "production";
 
@@ -45,6 +52,7 @@ class ElectronNotificationManager {
   private static instance: ElectronNotificationManager;
   private activeNotifications: Map<string, Notification> = new Map();
   private mainWindow: BrowserWindow | null = null;
+  private isTrustedSender: (event: Electron.IpcMainInvokeEvent) => boolean = () => false;
 
   private constructor() {
     this.setupIpcHandlers();
@@ -61,24 +69,32 @@ class ElectronNotificationManager {
     this.mainWindow = window;
   }
 
+  public setSenderGuard(guard: (event: Electron.IpcMainInvokeEvent) => boolean): void {
+    this.isTrustedSender = guard;
+  }
+
   private setupIpcHandlers(): void {
     // Handle notification requests from renderer process
-    ipcMain.handle('show-native-notification', async (_event, options: ElectronNotificationOptions) => {
-      return this.showNotification(options);
+    ipcMain.handle(IPC_NOTIFICATION_SHOW, async (event, options: ElectronNotificationOptions) => {
+      if (!this.isTrustedSender(event)) return false;
+      const ownerWindow = BrowserWindow.fromWebContents(event.sender);
+      return this.showNotification(options, ownerWindow || undefined);
     });
 
     // Handle notification close requests
-    ipcMain.handle('close-native-notification', async (_event, tag: string) => {
+    ipcMain.handle(IPC_NOTIFICATION_CLOSE, async (event, tag: string) => {
+      if (!this.isTrustedSender(event)) return;
       this.closeNotification(tag);
     });
 
     // Handle close all notifications
-    ipcMain.handle('close-all-native-notifications', async () => {
+    ipcMain.handle(IPC_NOTIFICATION_CLOSE_ALL, async (event) => {
+      if (!this.isTrustedSender(event)) return;
       this.closeAllNotifications();
     });
   }
 
-  public showNotification(options: ElectronNotificationOptions): boolean {
+  public showNotification(options: ElectronNotificationOptions, ownerWindow = this.mainWindow || undefined): boolean {
     try {
       // Close existing notification with same tag
       if (options.tag) {
@@ -97,16 +113,16 @@ class ElectronNotificationManager {
       // Set up event handlers
       notification.on('click', () => {
         debugLog('Notification clicked');
-        // Bring main window to front
-        if (this.mainWindow) {
-          if (this.mainWindow.isMinimized()) {
-            this.mainWindow.restore();
+        // Bring the window that created this notification to front.
+        if (ownerWindow && !ownerWindow.isDestroyed()) {
+          if (ownerWindow.isMinimized()) {
+            ownerWindow.restore();
           }
-          this.mainWindow.show();
-          this.mainWindow.focus();
+          ownerWindow.show();
+          ownerWindow.focus();
 
           // Send click event to renderer process with channel info
-          this.mainWindow.webContents.send('notification-clicked', {
+          ownerWindow.webContents.send(IPC_NOTIFICATION_CLICKED, {
             tag: options.tag,
             title: options.title,
             body: options.body,
@@ -129,8 +145,8 @@ class ElectronNotificationManager {
 
       notification.on('action', (_event, index) => {
         debugLog('Notification action clicked:', index);
-        if (this.mainWindow) {
-          this.mainWindow.webContents.send('notification-action-clicked', {
+        if (ownerWindow && !ownerWindow.isDestroyed()) {
+          ownerWindow.webContents.send(IPC_NOTIFICATION_ACTION_CLICKED, {
             tag: options.tag,
             actionIndex: index,
           });

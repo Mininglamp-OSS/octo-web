@@ -153,7 +153,7 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
         expect(imperativeEvents.has('space_join_new')).toBe(true)           // SpaceService + Layout + InviteLanding
         expect(imperativeEvents.has('group_avatar_edited')).toBe(true)       // ChannelAvatar 两个编辑分支
         expect(imperativeEvents.has('settings_secrets_opened')).toBe(true)   // SecretsSettingsPanel 挂载
-        expect(imperativeEvents.has('settings_voice_toggled')).toBe(true)    // VoiceSettingsPanel handleLocalToggle
+        expect(imperativeEvents.has('settings_voice_toggled')).toBe(true)    // settings center voice toggle/consent handlers
     })
 
     it('命令式站点事件名不得再出现在任何一张声明式规则表(否则跨通道双计)', () => {

@@ -1,13 +1,35 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
+  IPC_KEEP_AWAKE_GET,
+  IPC_KEEP_AWAKE_SET,
+  IPC_DEEP_LINK,
+  IPC_SHOW_CONVERSATIONS,
+  IPC_NOTIFICATION_ACTION_CLICKED,
+  IPC_NOTIFICATION_CLICKED,
+  IPC_NOTIFICATION_CLOSE,
+  IPC_NOTIFICATION_CLOSE_ALL,
+  IPC_NOTIFICATION_SHOW,
+  IPC_NOTIFICATION_TEST_ICON,
+  IPC_MEDIA_ACCESS_STATUS,
   IPC_OIDC_AUTHORIZE_START,
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
   IPC_OIDC_CLEAR_AUTH_SESSION,
+  IPC_RESTART_APP,
+  IPC_SCREENSHOTS_OK,
+  IPC_SCREENSHOTS_START,
+  IPC_UPDATE_AVAILABLE,
+  IPC_UPDATE_CHECK,
+  IPC_UPDATE_DOWNLOADED,
+  IPC_UPDATE_DOWNLOAD,
+  IPC_UPDATE_DOWNLOAD_PROGRESS,
+  IPC_UPDATE_ERROR,
+  IPC_UPDATE_INSTALL,
+  IPC_UPDATE_NOT_AVAILABLE,
+  IPC_WINDOW_IS_FOCUSED,
 } from "../shared/ipc-channels";
-
 // Keep the preload entry self-contained. Electron runs sandboxed preloads in
 // a restricted loader where relative CommonJS imports can fail even when the
 // imported file is present in app.asar. A failed preload means the whole IPC
@@ -92,21 +114,23 @@ if (!trustedShellAtLoad) {
 const isTrustedShell = () => trustedShellAtLoad;
 
 const ALLOWED_SEND_CHANNELS = [
-  "check-update",
-  "install-update",
-  "update-app",
+  IPC_UPDATE_CHECK,
+  IPC_UPDATE_INSTALL,
+  IPC_UPDATE_DOWNLOAD,
   IPC_CONVERSATION_UNREAD_COUNT,
-  "screenshots-start",
-  "restart-app",
+  IPC_SCREENSHOTS_START,
+  IPC_RESTART_APP,
 ];
 
 const ALLOWED_INVOKE_CHANNELS = [
-  "get-media-access-status",
-  "show-native-notification",
-  "close-native-notification",
-  "close-all-native-notifications",
-  "test-notification-icon",
-  "is-window-focused",
+  IPC_MEDIA_ACCESS_STATUS,
+  IPC_NOTIFICATION_SHOW,
+  IPC_NOTIFICATION_CLOSE,
+  IPC_NOTIFICATION_CLOSE_ALL,
+  IPC_NOTIFICATION_TEST_ICON,
+  IPC_WINDOW_IS_FOCUSED,
+  IPC_KEEP_AWAKE_GET,
+  IPC_KEEP_AWAKE_SET,
   IPC_OIDC_AUTHORIZE_START,
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_HTTP_REQUEST,
@@ -115,102 +139,150 @@ const ALLOWED_INVOKE_CHANNELS = [
 ];
 
 const ALLOWED_RECEIVE_CHANNELS = [
-  "notification-clicked",
-  "notification-action-clicked",
-  "screenshots-ok",
-  "deep-link",
-  "show-conversations",
-  "update-error",
-  "update-available",
-  "update-not-available",
-  "download-progress",
-  "update-downloaded",
+  IPC_NOTIFICATION_CLICKED,
+  IPC_NOTIFICATION_ACTION_CLICKED,
+  IPC_SCREENSHOTS_OK,
+  IPC_DEEP_LINK,
+  IPC_SHOW_CONVERSATIONS,
+  IPC_UPDATE_ERROR,
+  IPC_UPDATE_AVAILABLE,
+  IPC_UPDATE_NOT_AVAILABLE,
+  IPC_UPDATE_DOWNLOAD_PROGRESS,
+  IPC_UPDATE_DOWNLOADED,
 ];
 
 contextBridge.exposeInMainWorld("__POWERED_ELECTRON__", true);
 
-contextBridge.exposeInMainWorld("ipc", {
+const unavailable = () => Promise.reject(new Error("IPC unavailable outside app shell"));
+
+const sendAllowed = (channel: string, ...args: any[]) => {
+  if (!isTrustedShell()) return;
+  if (ALLOWED_SEND_CHANNELS.includes(channel)) {
+    ipcRenderer.send(channel, ...args);
+  } else {
+    console.warn(`[preload] Blocked send to unknown channel: ${channel}`);
+  }
+};
+
+const invokeAllowed = (channel: string, ...args: any[]): Promise<any> => {
+  if (!isTrustedShell()) return unavailable();
+  if (ALLOWED_INVOKE_CHANNELS.includes(channel)) {
+    return ipcRenderer.invoke(channel, ...args);
+  }
+  console.warn(`[preload] Blocked invoke to unknown channel: ${channel}`);
+  return Promise.reject(new Error(`IPC channel not allowed: ${channel}`));
+};
+
+const onAllowed = (
+  channel: string,
+  listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
+) => {
+  if (!isTrustedShell()) return;
+  if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
+    ipcRenderer.on(channel, listener);
+  } else {
+    console.warn(`[preload] Blocked listener on unknown channel: ${channel}`);
+  }
+};
+
+const onceAllowed = (
+  channel: string,
+  listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
+) => {
+  if (!isTrustedShell()) return;
+  if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
+    ipcRenderer.once(channel, listener);
+  } else {
+    console.warn(`[preload] Blocked listener on unknown channel: ${channel}`);
+  }
+};
+
+const removeListenerAllowed = (
+  channel: string,
+  listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
+) => {
+  if (!isTrustedShell()) return;
+  if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
+    ipcRenderer.removeListener(channel, listener);
+  } else {
+    console.warn(`[preload] Blocked removal on unknown channel: ${channel}`);
+  }
+};
+
+const ipcBridge = {
   send: (channel: string, ...args: any[]) => {
-    if (!isTrustedShell()) return;
-    if (ALLOWED_SEND_CHANNELS.includes(channel)) {
-      ipcRenderer.send(channel, ...args);
-    } else {
-      console.warn(`[preload] Blocked send to unknown channel: ${channel}`);
-    }
+    sendAllowed(channel, ...args);
   },
   invoke: (channel: string, ...args: any[]): Promise<any> => {
-    if (!isTrustedShell()) return Promise.reject(new Error("IPC unavailable outside app shell"));
-    if (ALLOWED_INVOKE_CHANNELS.includes(channel)) {
-      return ipcRenderer.invoke(channel, ...args);
-    }
-    console.warn(`[preload] Blocked invoke to unknown channel: ${channel}`);
-    return Promise.reject(new Error(`IPC channel not allowed: ${channel}`));
+    return invokeAllowed(channel, ...args);
   },
   on: (
     channel: string,
     listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
   ) => {
-    if (!isTrustedShell()) return;
-    if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
-      ipcRenderer.on(channel, listener);
-    } else {
-      console.warn(`[preload] Blocked listener on unknown channel: ${channel}`);
-    }
+    onAllowed(channel, listener);
   },
   once: (
     channel: string,
     listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
   ) => {
-    if (!isTrustedShell()) return;
-    if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
-      ipcRenderer.once(channel, listener);
-    } else {
-      console.warn(`[preload] Blocked listener on unknown channel: ${channel}`);
-    }
+    onceAllowed(channel, listener);
   },
   removeListener: (
     channel: string,
     listener: (event: Electron.IpcRendererEvent, ...args: any[]) => void
   ) => {
-    if (!isTrustedShell()) return;
-    if (ALLOWED_RECEIVE_CHANNELS.includes(channel)) {
-      ipcRenderer.removeListener(channel, listener);
-    } else {
-      console.warn(`[preload] Blocked removal on unknown channel: ${channel}`);
-    }
+    removeListenerAllowed(channel, listener);
   },
-});
+};
 
-// Expose native notification API
-contextBridge.exposeInMainWorld("electronNotification", {
-  show: (options: any) =>
-    isTrustedShell()
-      ? ipcRenderer.invoke("show-native-notification", options)
-      : Promise.reject(new Error("IPC unavailable outside app shell")),
-  close: (tag: string) =>
-    isTrustedShell()
-      ? ipcRenderer.invoke("close-native-notification", tag)
-      : Promise.reject(new Error("IPC unavailable outside app shell")),
-  closeAll: () =>
-    isTrustedShell()
-      ? ipcRenderer.invoke("close-all-native-notifications")
-      : Promise.reject(new Error("IPC unavailable outside app shell")),
+const notificationBridge = {
+  show: (options: any) => invokeAllowed(IPC_NOTIFICATION_SHOW, options),
+  close: (tag: string) => invokeAllowed(IPC_NOTIFICATION_CLOSE, tag),
+  closeAll: () => invokeAllowed(IPC_NOTIFICATION_CLOSE_ALL),
   onClicked: (callback: (data: any) => void) =>
     isTrustedShell()
-      ? subscribeDisposable(ipcRenderer, "notification-clicked", callback)
+      ? subscribeDisposable(ipcRenderer, IPC_NOTIFICATION_CLICKED, callback)
       : () => {},
   onActionClicked: (callback: (data: any) => void) =>
     isTrustedShell()
-      ? subscribeDisposable(ipcRenderer, "notification-action-clicked", callback)
+      ? subscribeDisposable(ipcRenderer, IPC_NOTIFICATION_ACTION_CLICKED, callback)
       : () => {},
+  testNotificationIcon: () => invokeAllowed(IPC_NOTIFICATION_TEST_ICON),
+};
+
+const octoElectron = {
+  ipc: ipcBridge,
+  oidc: {
+    authorizeStart: (apiURL, authcode, providerId, authorizeUrl) =>
+      invokeAllowed(IPC_OIDC_AUTHORIZE_START, apiURL, authcode, providerId, authorizeUrl),
+    authorizeEnd: () => invokeAllowed(IPC_OIDC_AUTHORIZE_END),
+    httpRequest: (request) => invokeAllowed(IPC_OIDC_HTTP_REQUEST, request),
+    openExternal: (url) => invokeAllowed(IPC_OIDC_OPEN_EXTERNAL, url),
+    clearAuthSession: () => invokeAllowed(IPC_OIDC_CLEAR_AUTH_SESSION),
+  },
+  notification: notificationBridge,
+  window: {
+    isFocused: () => invokeAllowed(IPC_WINDOW_IS_FOCUSED),
+  },
+  conversation: {
+    setUnreadCount: (count) => sendAllowed(IPC_CONVERSATION_UNREAD_COUNT, count),
+  },
+  system: {
+    startScreenshot: (args) => sendAllowed(IPC_SCREENSHOTS_START, args),
+    getMediaAccessStatus: (mediaType) => invokeAllowed(IPC_MEDIA_ACCESS_STATUS, mediaType),
+    restartApp: () => sendAllowed(IPC_RESTART_APP),
+  },
+};
+
+contextBridge.exposeInMainWorld("ipc", ipcBridge);
+contextBridge.exposeInMainWorld("octoElectron", octoElectron);
+
+// Expose native notification API
+contextBridge.exposeInMainWorld("electronNotification", {
+  ...notificationBridge,
   // Test notification icon
-  testNotificationIcon: () =>
-    isTrustedShell()
-      ? ipcRenderer.invoke("test-notification-icon")
-      : Promise.reject(new Error("IPC unavailable outside app shell")),
+  testNotificationIcon: notificationBridge.testNotificationIcon,
   // Query real window focus state from main process
-  isWindowFocused: () =>
-    isTrustedShell()
-      ? ipcRenderer.invoke("is-window-focused")
-      : Promise.reject(new Error("IPC unavailable outside app shell")),
+  isWindowFocused: octoElectron.window.isFocused,
 });

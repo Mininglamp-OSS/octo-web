@@ -5,7 +5,7 @@ import { Select, Spin, Toast } from '@douyinfe/semi-ui';
 // 主按钮纯文字, 避免锁定到任意一种登录方式让用户产生 "我没邮箱不能登" 的误判.
 import './login.css'
 import { QRCodeSVG } from 'qrcode.react';
-import { WKApp, Provider, useI18n } from "@octo/base"
+import { WKApp, Provider, useI18n, isElectronPowered } from "@octo/base"
 import type { Locale } from "@octo/base"
 import { LoginStatus, LoginType, LoginVM } from "./login_vm";
 import classNames from "classnames";
@@ -24,7 +24,7 @@ const ENTERPRISE_SSO_ENABLED =
 // Local Electron development keeps the password-login workflow, while plain
 // web development should still exercise the enterprise SSO entry point.
 const isElectronRuntime = typeof window !== 'undefined' && (
-    Boolean((window as any).__POWERED_ELECTRON__) ||
+    isElectronPowered() ||
     Boolean((window as any).__TAURI_IPC__) ||
     import.meta.env.VITE_ELECTRON_BUILD === 'true'
 )

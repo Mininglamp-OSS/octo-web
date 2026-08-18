@@ -109,6 +109,26 @@ describe("oidcLogout helpers", () => {
     });
   });
 
+  it("resolves Electron logout through typed OIDC bridge methods when available", async () => {
+    const httpRequest = vi.fn(async () => ({
+      __octoOidcHttpResponse: true,
+      ok: true,
+      status: 200,
+      body: { end_session_url: "https://accounts.example.com/end_session" },
+    }));
+    const fetcher = createOidcLogoutFetcher("https://api.example.com/v1/", { httpRequest });
+    expect(fetcher).toBeDefined();
+
+    await requestOidcLogout("corp/sso", "octo-token", fetcher);
+
+    expect(httpRequest).toHaveBeenCalledWith({
+      url: "https://api.example.com/v1/auth/oidc/corp%2Fsso/logout",
+      method: "POST",
+      body: undefined,
+      headers: { Accept: "application/json", token: "octo-token" },
+    });
+  });
+
   it("rejects failed backend logout responses", async () => {
     const fetcher = vi.fn(
       async () => new Response("login required", { status: 401 })
@@ -327,6 +347,29 @@ describe("performOidcUserInitiatedLogout", () => {
     expect(sfx.navigateExternal).not.toHaveBeenCalled();
     expect(sfx.markPostLogoutCleanup).not.toHaveBeenCalled();
     expect(sfx.fallbackLogout).not.toHaveBeenCalled();
+  });
+
+  it("packaged desktop: opens provider logout through typed OIDC bridge", async () => {
+    const sfx = makeSideEffects();
+    const openExternal = vi.fn(async () => ({ ok: true }));
+
+    const result = await performOidcUserInitiatedLogout(
+      buildDeps(
+        {
+          env: "desktop-shell",
+          ipc: { openExternal },
+          requestLogout: vi.fn(async () => ({
+            end_session_url: "https://accounts.example.com/end_session?id_token_hint=jwt",
+          })),
+        },
+        sfx,
+      ),
+    );
+
+    expect(result.kind).toBe("desktop-idp");
+    expect(openExternal).toHaveBeenCalledWith(
+      "https://accounts.example.com/end_session?id_token_hint=jwt",
+    );
   });
 
   it("packaged desktop: uses the hidden logout bridge without opening a browser", async () => {

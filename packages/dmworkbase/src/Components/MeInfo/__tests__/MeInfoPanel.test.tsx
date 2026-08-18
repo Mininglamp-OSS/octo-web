@@ -90,4 +90,15 @@ describe("MeInfoPanel", () => {
 
     expect(onShortNoTap).toHaveBeenCalledTimes(1)
   })
+
+  it("keeps real-name verification actionable in embedded settings", () => {
+    const onRealnameClick = vi.fn()
+    renderPanel(baseProps({ embedded: true, onRealnameClick }))
+
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: /Real-name verification\s*Verify now/ }))
+    })
+
+    expect(onRealnameClick).toHaveBeenCalledTimes(1)
+  })
 })

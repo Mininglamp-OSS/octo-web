@@ -271,6 +271,7 @@ export class MainPage extends Component<{}, MainPageState> {
                                         onJoinSpace={() => this.setState({ showJoinSpace: true })}
                                         onCreateSpace={() => this.setState({ showCreateSpace: true })}
                                         canManageSpace={canManageSpace}
+                                        onSpaceManagement={() => { window.location.href = "/space"; }}
                                         // 菜单
                                         menusList={vm.menusList}
                                         currentMenus={vm.currentMenus}
@@ -323,18 +324,12 @@ export class MainPage extends Component<{}, MainPageState> {
                                         // 设置
                                         settingSelected={vm.settingSelected}
                                         hasNewVersion={vm.hasNewVersion}
-                                        showNewVersion={vm.showNewVersion}
                                         showAppVersion={vm.showAppVersion}
                                         showAppUpdate={vm.showAppUpdate}
                                         appUpdateProgress={vm.appUpdateProgress}
                                         showAppUpdateOperation={vm.showAppUpdateOperation}
                                         lastVersionInfo={vm.lastVersionInfo}
                                         onToggleSetting={() => { vm.settingSelected = !vm.settingSelected; }}
-                                        onSetShowNewVersion={(v) => {
-                                            vm.showNewVersion = v;
-                                            if (!v) { vm.markVersionRead(); }
-                                            vm.notifyListener();
-                                        }}
                                         onSetShowAppVersion={(v) => {
                                             vm.showAppVersion = v;
                                             if (!v) { vm.markVersionRead(); }

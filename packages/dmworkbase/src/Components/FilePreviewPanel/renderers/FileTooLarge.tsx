@@ -1,6 +1,7 @@
 import React from "react";
 import { Download, FileWarning } from "lucide-react";
 import { formatFileSize } from "../config";
+import { downloadFile } from "../../../Utils/download";
 import { useI18n } from "../../../i18n";
 import "./FileTooLarge.css";
 
@@ -27,13 +28,7 @@ const FileTooLarge: React.FC<FileTooLargeProps> = ({
   const { t } = useI18n();
 
   const handleDownload = () => {
-    const a = document.createElement("a");
-    a.href = fileUrl;
-    a.download = fileName || "file";
-    a.target = "_blank";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void downloadFile(fileUrl, fileName || "file");
   };
 
   return (
@@ -51,7 +46,11 @@ const FileTooLarge: React.FC<FileTooLargeProps> = ({
           })}
         </p>
       </div>
-      <button className="wk-file-too-large__download-btn" onClick={handleDownload}>
+      <button
+        type="button"
+        className="wk-file-too-large__download-btn"
+        onClick={handleDownload}
+      >
         <Download size={16} />
         <span>{t("base.filePreview.downloadFile")}</span>
       </button>

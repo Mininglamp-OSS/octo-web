@@ -2,8 +2,13 @@ import mitt, { Emitter } from "mitt";
 import { getSessionSid, setSessionSid } from "./Service/SessionScope";
 import { replaceWithShellDocument } from "./Service/ShellDocument";
 import { runLogoutCleanup } from "./Service/logoutCleanup";
-
-const IPC_CLEAR_AUTH_SESSION = "octo:oidc:clear-auth-session";
+import {
+  clearElectronAuthSession as clearElectronAuthSessionBridge,
+  getElectronIpcBridge,
+  getOctoElectronBridge,
+  isElectronPowered,
+  isElectronShellBridgeAvailable,
+} from "./electron/desktopBridge";
 
 /** mittBus 全局事件类型表 */
 export type MittEvents = {
@@ -97,7 +102,7 @@ export type MittEvents = {
   /**
    * 打开「密钥 / Secrets」管理面板（YUJ-3539）。由聊天反向跳转（bot 消息里的
    * 「去添加密钥」按钮）或输入框防手滑提示触发；payload 可携带预填名字 / 明文，
-   * 接收方 NavSecretsSettingsItem 据此打开面板并预填新增弹窗（绝不自动发送/保存）。
+   * 设置中心据此打开密钥二级页并预填新增弹窗（绝不自动发送/保存）。
    */
   'wk:open-secrets': {
     create?: boolean;
@@ -967,7 +972,7 @@ export default class WKApp extends ProviderListener {
 
     // 是否是PC端
     if (
-      (window as any)?.__POWERED_ELECTRON__ ||
+      isElectronPowered() ||
       (window as any).__TAURI_IPC__
     ) {
       this.isPC = true;
@@ -1020,6 +1025,9 @@ export default class WKApp extends ProviderListener {
     });
 
     if (WKApp.loginInfo.isLogined()) {
+      // Module init runs before loginInfo.load(). Re-emit the auth lifecycle
+      // after restore so user-scoped stores bind to the loaded uid too.
+      WKApp.mittBus.emit("wk:auth-state-changed");
       this.startMain();
     }
 
@@ -1224,13 +1232,12 @@ export default class WKApp extends ProviderListener {
   }
 
   private async clearElectronAuthSession() {
-    if (
-      (window as any).__POWERED_ELECTRON__ &&
-      typeof (window as any).ipc?.invoke === "function"
-    ) {
+    if (isElectronPowered()) {
       try {
-        const result = await (window as any).ipc.invoke(IPC_CLEAR_AUTH_SESSION);
-        if (result?.ok !== true || result?.partial === true) {
+        const result = (await clearElectronAuthSessionBridge()) as
+          | { ok?: boolean; partial?: boolean }
+          | undefined;
+        if (result && (result.ok !== true || result.partial === true)) {
           console.warn("[auth] Electron auth-session cleanup was incomplete", result);
         }
       } catch {
@@ -1274,10 +1281,7 @@ export default class WKApp extends ProviderListener {
    * logout through the web redirect path.
    */
   private isElectronShell() {
-    return Boolean(
-      (window as any).__POWERED_ELECTRON__ &&
-      typeof (window as any).ipc?.invoke === "function",
-    );
+    return isElectronShellBridgeAvailable();
   }
 
   async logoutUserInitiated() {
@@ -1289,7 +1293,7 @@ export default class WKApp extends ProviderListener {
       loginProvider: WKApp.loginInfo.loginProvider,
       token: WKApp.loginInfo.token || "",
       apiURL: WKApp.apiClient.config.apiURL || "",
-      ipc: (window as any).ipc,
+      ipc: getOctoElectronBridge()?.oidc ?? getElectronIpcBridge(),
       env: this.isElectronShell() ? "desktop-shell" : "web",
       // Only forward the dev override when actually in a dev build; in
       // production `import.meta.env.DEV` is false and we must not read the
@@ -1342,7 +1346,7 @@ export default class WKApp extends ProviderListener {
       if (spaceId && uid.startsWith(`s${spaceId}_`)) {
         uid = uid.substring(spaceId.length + 2);
       }
-      if (!uid) uid = channel.channelID; // fallback
+      if (!uid) return "";
       return `${baseURL}users/${uid}/avatar?v=${avatarTag}`;
     } else if (channel.channelType === ChannelTypeGroup) {
       return `${baseURL}groups/${channel.channelID}/avatar?v=${avatarTag}`;
@@ -1357,6 +1361,7 @@ export default class WKApp extends ProviderListener {
   }
 
   avatarUser(uid: string) {
+    if (!uid) return "";
     const c = new Channel(uid, ChannelTypePerson);
     return this.avatarChannel(c);
   }

@@ -12,13 +12,17 @@ import {
   Task,
   TaskStatus,
   MessageStatus,
+  WKSDK,
+  ConnectStatus,
 } from "wukongimjssdk";
 import React, { ElementType } from "react";
 import { Smile, Scissors, ImagePlus, Paperclip, AtSign } from "lucide-react";
 import { Howl, Howler } from "howler";
 import WKApp, { FriendApply, FriendApplyState, ThemeMode } from "./App";
 import { isChannelSearchEnabled } from "./features/channelSearch/feature";
+import { voiceSettingsStore } from "./Service/VoiceSettingsStore";
 import ChatSearchEntryButton from "./features/channelSearch/ChatSearchEntryButton";
+import { isElectronPowered } from "./electron/desktopBridge";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
 import { InputEdit } from "./Components/InputEdit";
 import { ListItem, ListItemTip } from "./Components/ListItem";
@@ -77,6 +81,7 @@ import { isMessageReactionChannelSupported } from "./features/messageReaction/co
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast } from "@douyinfe/semi-ui";
 import { DefaultEmojiService } from "./Service/EmojiService";
+import { quickMuteStore } from "./Components/NavRail/QuickMuteStore";
 import IconClick from "./Components/IconClick";
 import EmojiToolbar from "./Components/EmojiToolbar";
 import MergeforwardContent, { MergeforwardCell } from "./Messages/Mergeforward";
@@ -262,6 +267,22 @@ export default class BaseModule implements IModule {
       WKApp.shared.logout();
     };
 
+    // 账号级快捷静音复用 WuKongIM CMD；回前台、网络恢复和重连时用 GET
+    // 校准，CMD 只作为低延迟更新，不承担最终一致性。
+    const refreshQuickMute = () => { void quickMuteStore.refresh().catch(() => undefined); };
+    voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
+    quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
+    WKApp.mittBus.on("wk:app-foreground", refreshQuickMute);
+    WKApp.mittBus.on("wk:auth-state-changed", () => {
+      quickMuteStore.reset();
+      voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
+      quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
+      refreshQuickMute();
+    });
+    if (typeof window !== "undefined") window.addEventListener("online", refreshQuickMute);
+    WKSDK.shared().connectManager.addConnectStatusListener((status) => {
+      if (status === ConnectStatus.Connected) refreshQuickMute();
+    });
     WKApp.endpointManager.setMethod(
       EndpointID.emojiService,
       () => DefaultEmojiService.shared
@@ -447,7 +468,9 @@ export default class BaseModule implements IModule {
       const cmdContent = message.content as CMDContent;
       const param = cmdContent.param;
 
-      if (cmdContent.cmd === "channelUpdate") {
+      if (cmdContent.cmd === "user.notification_pause.changed") {
+        quickMuteStore.applyRemoteCMD(param);
+      } else if (cmdContent.cmd === "channelUpdate") {
         // 频道信息更新——通用事件（改名/公告/头像/解散等都会触发）。
         // 使用 fetchChannelInfo 拉取最新状态：channelUpdate 无法区分是改名/公告/头像还是解散，
         // 不能盲目调用 syncGroupDisbandState（会把正常群标记为已解散）。
@@ -512,7 +535,7 @@ export default class BaseModule implements IModule {
         WKApp.shared.addFriendApply(friendApply);
         // 文档专注场景不播提示音（红点/未读仍会更新）；IM 场景不受影响。
         if (!isDocumentFocusScene()) {
-          this.tipsAudio();
+          void this.tipsAudio();
         }
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
@@ -698,7 +721,9 @@ export default class BaseModule implements IModule {
     );
   }
 
-  tipsAudio() {
+  async tipsAudio() {
+    const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
+    if (quickMuteState?.active) return;
     Howler.autoUnlock = false;
     if (!this.messageTone) {
       this.messageTone = new Howl({
@@ -716,7 +741,7 @@ export default class BaseModule implements IModule {
    * processMessageAttention.
    */
   private isElectronEnvironment(): boolean {
-    return !!(window as any).__POWERED_ELECTRON__;
+    return isElectronPowered();
   }
 
   private scheduleMessageAttention(
@@ -769,7 +794,8 @@ export default class BaseModule implements IModule {
       await coordinator.claimOnly(claim);
       return;
     }
-    if (!this.allowNotify(message)) return;
+    const initialDecision = await this.getNotifyDecision(message);
+    if (!initialDecision.showPopup && !initialDecision.playSound) return;
 
     let from = "";
     if (message.channel.channelType === ChannelTypeGroup) {
@@ -793,17 +819,39 @@ export default class BaseModule implements IModule {
       },
       subscribeSuppressionChanges: (listener) =>
         this.subscribeMessageAttentionChanges(listener),
-      isStillEligible: () =>
-        this.isAttentionContextCurrent(context) && this.allowNotify(message),
-      alert: () => {
+      isStillEligible: async () => {
+        if (!this.isAttentionContextCurrent(context)) return false;
+        const decision = await this.getNotifyDecision(message);
+        return decision.showPopup || decision.playSound;
+      },
+      alert: async () => {
         if (!this.isAttentionContextCurrent(context)) return;
-        void this.sendNotification(
-          message,
-          `${from}${message.content.conversationDigest}`
-        );
-        this.tipsAudio();
+        const decision = await this.getNotifyDecision(message);
+        if (decision.showPopup) {
+          await this.sendNotification(
+            message,
+            `${from}${message.content.conversationDigest}`
+          );
+        }
+        if (decision.playSound) await this.tipsAudio();
       },
     });
+  }
+
+  /**
+   * The single notification decision for incoming messages and sound-only
+   * attention. Visibility and single-alert coordination remain separate
+   * concerns; this only combines account/device policy with channel policy.
+   */
+  private async getNotifyDecision(message: Message): Promise<{ playSound: boolean; showPopup: boolean }> {
+    if (!this.allowNotify(message)) return { playSound: false, showPopup: false };
+    const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
+    if (quickMuteState?.active) {
+      return quickMuteState.scope === "sound"
+        ? { playSound: false, showPopup: true }
+        : { playSound: false, showPopup: false };
+    }
+    return { playSound: true, showPopup: true };
   }
 
   private isAttentionContextCurrent(

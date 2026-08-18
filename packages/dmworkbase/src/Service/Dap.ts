@@ -30,6 +30,7 @@ import { FETCH_RULES, buildFetchIndex, matchFetchEvent, rawPathname, type FetchR
 // 中央映射·body 键通道(②,见 BodyRules.ts):对白名单端点 clone 请求体、只读顶层枚举键映射事件。
 // 受控放宽「不读正文」边界:只碰白名单端点、只读键不读值、只解析 JSON 串体、同源+2xx 才触发。
 import { BODY_RULES, buildBodyIndex, computeBodyEvent, type BodyRuleIndex } from './BodyRules'
+import { isElectronPowered } from '../electron/desktopBridge'
 
 export type TrackPrimitive = string | number | boolean | null
 
@@ -216,11 +217,8 @@ function isSupportedRuntime(): boolean {
     try {
         const loc = (globalThis as { location?: Location }).location
         if (!loc || (loc.protocol !== 'http:' && loc.protocol !== 'https:')) return false
-        const w = globalThis as {
-            __TAURI_IPC__?: unknown
-            __POWERED_ELECTRON__?: unknown
-        }
-        if (w.__TAURI_IPC__ || w.__POWERED_ELECTRON__) return false
+        const w = globalThis as { __TAURI_IPC__?: unknown }
+        if (w.__TAURI_IPC__ || isElectronPowered()) return false
         if (import.meta.env.VITE_ELECTRON_BUILD === 'true') return false
         return true
     } catch {

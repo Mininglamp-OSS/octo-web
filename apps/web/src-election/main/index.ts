@@ -11,6 +11,7 @@ import {
   nativeImage,
   dialog,
   net,
+  powerSaveBlocker,
 } from "electron";
 import fs from "fs";
 import tmp from 'tmp';
@@ -21,11 +22,21 @@ import { pathToFileURL } from "url";
 import logo, { getNoMessageTrayIcon } from "./logo";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
+  IPC_KEEP_AWAKE_GET,
+  IPC_KEEP_AWAKE_SET,
+  IPC_DEEP_LINK,
   IPC_OIDC_AUTHORIZE_START,
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
   IPC_OIDC_CLEAR_AUTH_SESSION,
+  IPC_NOTIFICATION_TEST_ICON,
+  IPC_MEDIA_ACCESS_STATUS,
+  IPC_RESTART_APP,
+  IPC_SCREENSHOTS_OK,
+  IPC_SCREENSHOTS_START,
+  IPC_SHOW_CONVERSATIONS,
+  IPC_WINDOW_IS_FOCUSED,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
 import {
@@ -60,6 +71,72 @@ let isFullScreen = false;
 let isOsx = process.platform === "darwin";
 let isWin = process.platform === "win32";
 let isWindowFocusHandlerRegistered = false;
+let keepAwakeBlockerId: number | null = null;
+let keepAwakeEnabled = false;
+
+const keepAwakeSettingsPath = () => join(app.getPath("userData"), "keep-awake.json");
+const legacyKeepAwakeSettingsPath = () => join(app.getPath("userData"), "settings.json");
+
+function readKeepAwakePreference(): boolean {
+  for (const path of [keepAwakeSettingsPath(), legacyKeepAwakeSettingsPath()]) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(path, "utf8"));
+      if (typeof raw?.keepAwake === "boolean") return raw.keepAwake;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && !(error instanceof SyntaxError)) return false;
+    }
+  }
+  return false;
+}
+
+function writeKeepAwakePreference(enabled: boolean) {
+  const path = keepAwakeSettingsPath();
+  let settings: Record<string, unknown> = {};
+  try {
+    const raw = JSON.parse(fs.readFileSync(path, "utf8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error("Invalid keep-awake settings file");
+    }
+    settings = raw;
+  } catch (error) {
+    // A truncated/corrupt preference must not prevent the user from saving a
+    // new value; the next atomic write replaces it.
+  }
+  settings.keepAwake = enabled;
+  const tempPath = `${path}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(settings, null, 2));
+  try {
+    fs.renameSync(tempPath, path);
+  } catch (error) {
+    try { fs.unlinkSync(tempPath); } catch { /* best effort cleanup */ }
+    throw error;
+  }
+}
+
+function applyKeepAwake(enabled: boolean): boolean {
+  if (enabled && keepAwakeBlockerId === null) {
+    keepAwakeBlockerId = powerSaveBlocker.start("prevent-app-suspension");
+  } else if (!enabled && keepAwakeBlockerId !== null) {
+    if (powerSaveBlocker.isStarted(keepAwakeBlockerId)) {
+      powerSaveBlocker.stop(keepAwakeBlockerId);
+    }
+    keepAwakeBlockerId = null;
+  }
+  keepAwakeEnabled = enabled;
+  return keepAwakeEnabled;
+}
+
+function registerKeepAwakeHandlers() {
+  ipcMain.handle(IPC_KEEP_AWAKE_GET, () => keepAwakeEnabled);
+  ipcMain.handle(IPC_KEEP_AWAKE_SET, (_event, enabled: unknown) => {
+    if (typeof enabled !== "boolean") throw new Error("keep-awake value must be boolean");
+    writeKeepAwakePreference(enabled);
+    const applied = applyKeepAwake(enabled);
+    return applied;
+  });
+}
+
 type OidcFlow = {
   origin: string;
   authcode: string;
@@ -176,6 +253,16 @@ function resolveTrustedOidcSender(
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win.isDestroyed()) return undefined;
   return win;
+}
+
+function isTrustedShellIpcSender(
+  event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent,
+): boolean {
+  const frame = "senderFrame" in event ? event.senderFrame : undefined;
+  if (frame && frame.top !== frame) return false;
+  if (!trustedShellContents.has(event.sender)) return false;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return Boolean(win && !win.isDestroyed());
 }
 
 
@@ -596,7 +683,8 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
 const registerWindowFocusHandler = () => {
   if (isWindowFocusHandlerRegistered) return;
 
-  ipcMain.handle("is-window-focused", (event) => {
+  ipcMain.handle(IPC_WINDOW_IS_FOCUSED, (event) => {
+    if (!isTrustedShellIpcSender(event)) return false;
     // Query the window that owns the renderer making the request. This also
     // keeps focus suppression correct for auxiliary windows.
     const senderWindow = BrowserWindow.fromWebContents(event.sender);
@@ -689,7 +777,7 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
         accelerator: "Shift+Cmd+M",
         click() {
           mainWindow.show();
-          mainWindow.webContents.send("show-conversations");
+          mainWindow.webContents.send(IPC_SHOW_CONVERSATIONS);
         },
       },
       {
@@ -1028,13 +1116,15 @@ const createMainWindow = async () => {
     attachFileRootGuard(mainWindow, WEB_URL);
   }
 
-  ipcMain.on("screenshots-start", (event, args) => {
+  ipcMain.on(IPC_SCREENSHOTS_START, (event, args) => {
+    if (!isTrustedShellIpcSender(event)) return;
     console.log("main voip-message event", args);
     screenShotWindowId = event.sender.id;
     screenshots.startCapture();
   });
 
-  ipcMain.on("get-media-access-status", async (event, mediaType: 'camera' | 'microphone')=>{
+  ipcMain.handle(IPC_MEDIA_ACCESS_STATUS, async (event, mediaType: 'camera' | 'microphone')=>{
+    if (!isTrustedShellIpcSender(event)) return 'denied';
     console.log(mediaType)
     //检测麦克风权限是否开启
     const getMediaAccessStatus = systemPreferences.getMediaAccessStatus(mediaType);
@@ -1061,12 +1151,14 @@ const createMainWindow = async () => {
     updateTray(num, false); // 不需要闪烁，闪烁很消耗性能
   });
 
-  ipcMain.on("restart-app",()=>{
+  ipcMain.on(IPC_RESTART_APP,(event)=>{
+    if (!isTrustedShellIpcSender(event)) return;
     restartApp()
   })
 
   // Test notification handler for debugging (development only)
-  ipcMain.handle("test-notification-icon", () => {
+  ipcMain.handle(IPC_NOTIFICATION_TEST_ICON, (event) => {
+    if (!isTrustedShellIpcSender(event)) return false;
     if (!isDevelopment) return false;
     // Show a test notification
     electronNotificationManager.showNotification({
@@ -1084,6 +1176,7 @@ const createMainWindow = async () => {
 
   // Set up notification manager with main window
   electronNotificationManager.setMainWindow(mainWindow);
+  electronNotificationManager.setSenderGuard(isTrustedShellIpcSender);
 
   // 检查更新
   checkUpdate(mainWindow)
@@ -1127,7 +1220,7 @@ function onDeepLink(url: string) {
     console.warn("Deep link dropped: main window not ready:", url);
     return;
   }
-  mainWindow.webContents.send("deep-link", url);
+  mainWindow.webContents.send(IPC_DEEP_LINK, url);
 }
 
 app.setName(OCTO_CONFIG.name);
@@ -1164,6 +1257,7 @@ const userDataPlan = planUserDataMigration(
 if (userDataPlan.action !== "none") {
   app.setPath("userData", userDataPlan.oldDir);
 }
+keepAwakeEnabled = readKeepAwakePreference();
 
 // Migration dialogs. Round-6 P2-2: dialog.showErrorBox called before `ready`
 // degrades to stderr on Linux (documented in electron.d.ts), so every dialog
@@ -1415,6 +1509,8 @@ app.on("ready", () => {
     app.quit();
     return;
   }
+  registerKeepAwakeHandlers();
+  applyKeepAwake(keepAwakeEnabled);
   regShortcut();
   registerWindowFocusHandler();
   createMainWindow(); // 创建窗口
@@ -1435,7 +1531,7 @@ app.on("ready", () => {
     );
     if (isMainWindowFocusedWhenStartScreenshot) {
       if (result) {
-        mainWindow.webContents.send("screenshots-ok", result);
+        mainWindow.webContents.send(IPC_SCREENSHOTS_OK, result);
       }
       mainWindow.show();
       isMainWindowFocusedWhenStartScreenshot = false;
@@ -1446,7 +1542,7 @@ app.on("ready", () => {
       );
       if (tms.length > 0) {
         if (result) {
-          tms[0].webContents.send("screenshots-ok", result);
+          tms[0].webContents.send(IPC_SCREENSHOTS_OK, result);
         }
         tms[0].show();
       }

@@ -52,7 +52,6 @@ vi.mock('../../WKModal', () => ({
   __esModule: true,
 }));
 
-
 // Capture props passed into the child edit modal without rendering its internals.
 const editModalProps: any[] = [];
 vi.mock('../SecretEditModal', () => ({
@@ -124,5 +123,18 @@ describe('SecretsSettingsPanel deep-link prefill (one-shot)', () => {
 
     const last = editModalProps[editModalProps.length - 1];
     expect(last.prefillValue).toBeUndefined();
+  });
+
+  it('opens one create editor for a real mouse click', async () => {
+    act(() => { ReactDOM.render(React.createElement(SecretsSettingsPanel, { onClose: vi.fn() }), container); });
+    await flush();
+    const addBtn = container.querySelector('button') as HTMLButtonElement;
+    act(() => {
+      addBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      addBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      addBtn.click();
+    });
+    await flush();
+    expect(editModalProps).toHaveLength(1);
   });
 });

@@ -20,6 +20,7 @@ import "./SecretsSettings.css";
 
 export interface SecretsSettingsPanelProps {
   onClose: () => void;
+  embedded?: boolean;
   /** 深链落地：打开即弹新增弹窗，并按需预填名字/类型/明文 */
   initialCreate?: boolean;
   prefillName?: string;
@@ -40,6 +41,7 @@ type EditTarget =
  */
 export default function SecretsSettingsPanel({
   onClose,
+  embedded = false,
   initialCreate,
   prefillName,
   prefillValue,
@@ -59,6 +61,7 @@ export default function SecretsSettingsPanel({
 
   /** 手动新增：永远是干净的空表单，不带任何预填明文。 */
   const startCreate = useCallback(() => setEditTarget({ mode: "create" }), []);
+  const closeEditor = useCallback(() => setEditTarget(null), []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -135,16 +138,8 @@ export default function SecretsSettingsPanel({
     return `${created} · ${lastUsed}`;
   };
 
-  return (
-    <WKModal
-      visible
-      title={null}
-      onCancel={onClose}
-      options={{ closeOnEsc: true, maskClosable: true, closable: false }}
-      footer={null}
-      size="lg"
-      className="wk-secrets-modal"
-    >
+  const content = (
+    <>
       <div className="wk-secrets">
         {/* 头部：标题 + 副标题 + 新增 */}
         <div className="wk-secrets__header">
@@ -158,7 +153,7 @@ export default function SecretsSettingsPanel({
           <Button
             variant="solid"
             icon={<IconPlus />}
-            onClick={() => startCreate()}
+            onClick={(event) => { event.stopPropagation(); startCreate(); }}
           >
             {t("base.secrets.addButton")}
           </Button>
@@ -185,7 +180,7 @@ export default function SecretsSettingsPanel({
             <Button
               variant="solid"
               icon={<IconPlus />}
-              onClick={() => startCreate()}
+              onClick={(event) => { event.stopPropagation(); startCreate(); }}
             >
               {t("base.secrets.empty.action")}
             </Button>
@@ -197,22 +192,13 @@ export default function SecretsSettingsPanel({
                 <div className="wk-secrets__card-main">
                   <div className="wk-secrets__card-titlerow">
                     <span className="wk-secrets__card-name">{secret.display_name}</span>
-                    <span
-                      className={`wk-secrets__chip wk-secrets__chip--${secret.kind}`}
-                    >
-                      {secret.kind === "llm"
-                        ? t("base.secrets.kind.llm")
-                        : t("base.secrets.kind.external")}
+                    <span className={`wk-secrets__chip wk-secrets__chip--${secret.kind}`}>
+                      {secret.kind === "llm" ? t("base.secrets.kind.llm") : t("base.secrets.kind.external")}
                     </span>
                   </div>
                   <div className="wk-secrets__card-maskrow">
                     <code className="wk-secrets__mask">{secret.masked}</code>
-                    <button
-                      type="button"
-                      className="wk-secrets__copyref"
-                      onClick={() => handleCopyName(secret.display_name)}
-                      title={t("base.secrets.action.copyName")}
-                    >
+                    <button type="button" className="wk-secrets__copyref" onClick={() => handleCopyName(secret.display_name)} title={t("base.secrets.action.copyName")}>
                       <IconCopy size="small" />
                       {t("base.secrets.action.copyName")}
                     </button>
@@ -220,50 +206,41 @@ export default function SecretsSettingsPanel({
                   <div className="wk-secrets__card-meta">{renderMeta(secret)}</div>
                 </div>
                 <div className="wk-secrets__card-actions">
-                  <button
-                    type="button"
-                    className="wk-secrets__icon-btn"
-                    onClick={() => setEditTarget({ mode: "edit", secret })}
-                    title={t("base.secrets.action.edit")}
-                    aria-label={t("base.secrets.action.edit")}
-                  >
-                    <IconEdit />
-                  </button>
-                  <button
-                    type="button"
-                    className="wk-secrets__icon-btn"
-                    onClick={() => setEditTarget({ mode: "edit", secret })}
-                    title={t("base.secrets.action.updateKey")}
-                    aria-label={t("base.secrets.action.updateKey")}
-                  >
-                    <IconRefresh />
-                  </button>
-                  <button
-                    type="button"
-                    className="wk-secrets__icon-btn wk-secrets__icon-btn--danger"
-                    onClick={() => handleDelete(secret)}
-                    title={t("base.secrets.action.delete")}
-                    aria-label={t("base.secrets.action.delete")}
-                  >
-                    <IconDelete />
-                  </button>
+                  <button type="button" className="wk-secrets__icon-btn" onClick={(event) => { event.stopPropagation(); setEditTarget({ mode: "edit", secret }); }} title={t("base.secrets.action.edit")} aria-label={t("base.secrets.action.edit")}><IconEdit /></button>
+                  <button type="button" className="wk-secrets__icon-btn" onClick={(event) => { event.stopPropagation(); setEditTarget({ mode: "edit", secret }); }} title={t("base.secrets.action.updateKey")} aria-label={t("base.secrets.action.updateKey")}><IconRefresh /></button>
+                  <button type="button" className="wk-secrets__icon-btn wk-secrets__icon-btn--danger" onClick={(event) => { event.stopPropagation(); handleDelete(secret); }} title={t("base.secrets.action.delete")} aria-label={t("base.secrets.action.delete")}><IconDelete /></button>
                 </div>
               </li>
             ))}
           </ul>
         )}
       </div>
-
       {editTarget && (
         <SecretEditModal
           secret={editTarget.mode === "edit" ? editTarget.secret : undefined}
           existing={items}
           prefillName={editTarget.mode === "create" ? editTarget.prefillName : undefined}
           prefillValue={editTarget.mode === "create" ? editTarget.prefillValue : undefined}
-          onClose={() => setEditTarget(null)}
+          onClose={closeEditor}
           onSaved={() => void load()}
         />
       )}
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <WKModal
+      visible
+      title={null}
+      onCancel={onClose}
+      options={{ closeOnEsc: true, maskClosable: true, closable: false }}
+      footer={null}
+      size="lg"
+      className="wk-secrets-modal"
+    >
+      {content}
     </WKModal>
   );
 }
