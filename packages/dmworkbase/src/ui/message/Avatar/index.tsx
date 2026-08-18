@@ -50,7 +50,7 @@ export default function Avatar({
         className="wk-msg-avatar-img"
       />
       {showOnlineDot && isOnline && (
-        <Dot className="wk-msg-avatar-online-dot" />
+        <Dot tone="online" className="wk-msg-avatar-online-dot" />
       )}
     </div>
   )

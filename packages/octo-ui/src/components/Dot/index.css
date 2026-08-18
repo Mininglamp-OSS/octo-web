@@ -8,30 +8,34 @@
   vertical-align: middle;
 }
 
-.octo-ui-dot--default {
+:where(.octo-ui-dot--default) {
   --octo-ui-dot-size: var(--wk-sp-2);
 }
 
-.octo-ui-dot--small {
+:where(.octo-ui-dot--small) {
   --octo-ui-dot-size: var(--wk-sp-1-5);
 }
 
-.octo-ui-dot--neutral {
+:where(.octo-ui-dot--neutral) {
   --octo-ui-dot-color: var(--octo-ui-dot-neutral-color);
 }
 
-.octo-ui-dot--danger {
+:where(.octo-ui-dot--danger) {
   --octo-ui-dot-color: var(--octo-ui-dot-danger-color);
 }
 
-.octo-ui-dot--success {
+:where(.octo-ui-dot--success) {
   --octo-ui-dot-color: var(--octo-ui-dot-success-color);
 }
 
-.octo-ui-dot--warning {
+:where(.octo-ui-dot--warning) {
   --octo-ui-dot-color: var(--octo-ui-dot-warning-color);
 }
 
-.octo-ui-dot--info {
+:where(.octo-ui-dot--info) {
   --octo-ui-dot-color: var(--octo-ui-dot-info-color);
+}
+
+:where(.octo-ui-dot--online) {
+  --octo-ui-dot-color: var(--octo-ui-dot-online-color);
 }

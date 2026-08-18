@@ -13,11 +13,11 @@ describe('Dot', () => {
 
   it('supports size, tone, custom class, and HTML attributes', () => {
     const html = renderToStaticMarkup(
-      <Dot size="small" tone="success" className="custom" data-state="ready" />,
+      <Dot size="small" tone="online" className="custom" data-state="ready" />,
     )
 
     expect(html).toContain('octo-ui-dot--small')
-    expect(html).toContain('octo-ui-dot--success')
+    expect(html).toContain('octo-ui-dot--online')
     expect(html).toContain('custom')
     expect(html).toContain('data-state="ready"')
   })

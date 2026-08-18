@@ -103,7 +103,7 @@ export default class NavRail extends Component<NavRailProps> {
                                     <WKAvatar channel={userChannel} />
                                 </button>
                                 {isOnline && (
-                                    <Dot className="wk-navrail__user-status" />
+                                    <Dot tone="online" className="wk-navrail__user-status" />
                                 )}
                             </div>
                             <span className="wk-navrail__user-name">{userName}</span>

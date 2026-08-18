@@ -16,7 +16,7 @@ const meta: Meta<typeof Dot> = {
   argTypes: {
     tone: {
       control: 'radio',
-      options: ['neutral', 'danger', 'success', 'warning', 'info'],
+      options: ['neutral', 'danger', 'success', 'warning', 'info', 'online'],
     },
     size: { control: 'radio', options: ['default', 'small'] },
   },
@@ -25,7 +25,14 @@ const meta: Meta<typeof Dot> = {
 export default meta
 type Story = StoryObj<typeof Dot>
 
-const tones: DotTone[] = ['neutral', 'danger', 'success', 'warning', 'info']
+const tones: DotTone[] = [
+  'neutral',
+  'danger',
+  'success',
+  'warning',
+  'info',
+  'online',
+]
 
 export const Playground: Story = {
   args: { tone: 'danger', size: 'default', 'aria-label': 'Example status' },

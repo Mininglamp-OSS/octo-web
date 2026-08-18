@@ -10,6 +10,7 @@
   --octo-ui-dot-success-color: var(--wk-color-success);
   --octo-ui-dot-warning-color: var(--wk-color-warning);
   --octo-ui-dot-info-color: var(--wk-color-accent);
+  --octo-ui-dot-online-color: var(--wk-color-online);
 
   --octo-ui-tag-gap: var(--wk-sp-1);
   --octo-ui-tag-padding-y: var(--wk-sp-0-5);
