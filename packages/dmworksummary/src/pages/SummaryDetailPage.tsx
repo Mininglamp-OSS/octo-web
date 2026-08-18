@@ -1142,6 +1142,30 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </Button>
                     </div>
                 )}
+                {/* BY_PERSON 单人模式下 renderTeamSummary() 不显示（members.length <= 1），
+                    但 detail.result 可能仍有团队总结内容。在此提供复制/转文档入口。 */}
+                {detail?.result?.content && detail.result.content.trim() && (
+                    <div className="summary-detail-result-footer" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+                        <Button
+                            size="small"
+                            theme="borderless"
+                            icon={<Copy size={14} />}
+                            loading={this.state.copying}
+                            onClick={() => this.handleCopyContent(detail.result!.content)}
+                        >
+                            {t("summary.detail.copyTeamSummary")}
+                        </Button>
+                        <Button
+                            size="small"
+                            theme="borderless"
+                            icon={<FileText size={14} />}
+                            loading={this.state.convertingDoc}
+                            onClick={() => this.handleConvertToDoc(detail.result!.content, detail.title)}
+                        >
+                            {t("summary.detail.convertTeamSummary")}
+                        </Button>
+                    </div>
+                )}
             </div>
         );
     }

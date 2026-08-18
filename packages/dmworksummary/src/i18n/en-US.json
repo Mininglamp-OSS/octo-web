@@ -363,7 +363,9 @@
     "copyFailed": "Copy failed, please retry",
     "convertToDoc": "Convert to document",
     "convertSuccess": "Document created, redirecting...",
-    "convertFailed": "Conversion failed, please retry"
+    "convertFailed": "Conversion failed, please retry",
+    "copyTeamSummary": "Copy team summary",
+    "convertTeamSummary": "Convert team summary"
   },
   "summaryCard": {
     "createdBy": "Created by {{name}}",

@@ -363,7 +363,9 @@
     "copyFailed": "复制失败，请重试",
     "convertToDoc": "转为在线文档",
     "convertSuccess": "已创建文档，正在跳转...",
-    "convertFailed": "转换失败，请重试"
+    "convertFailed": "转换失败，请重试",
+    "copyTeamSummary": "复制团队总结",
+    "convertTeamSummary": "团队总结转文档"
   },
   "summaryCard": {
     "createdBy": "{{name}} 发起",
