@@ -856,6 +856,34 @@ describe("skillApiReal", () => {
     expect(skill.fileSize).toBe(0);
   });
 
+  it("preserves system visibility when mapping a skill response", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({
+        skill_id: "official-skill",
+        name: "Official Skill",
+        description: "Published by the platform",
+        category_id: "other",
+        tags: [],
+        owner_id: "admin",
+        owner_name: "Admin",
+        space_id: "",
+        visibility: "system",
+        version: "1.0.0",
+        readme_content: "# Official Skill",
+        file_name: "official-skill.zip",
+        file_url: "https://example.com/official-skill.zip",
+        file_size: 1024,
+        file_sha256: "abc",
+        created_at: "2026-08-18T00:00:00Z",
+        updated_at: "2026-08-18T00:00:00Z",
+      }),
+    );
+
+    const skill = await getSkill("official-skill");
+
+    expect(skill.visibility).toBe("system");
+  });
+
   it("getCategories passes signal to fetch and aborts correctly", async () => {
     const controller = new AbortController();
     mockFetch.mockImplementation(() => {

@@ -1,4 +1,5 @@
 export type Visibility = "system" | "public" | "space" | "private";
+export type WritableVisibility = Exclude<Visibility, "system">;
 export type SkillSort = "comprehensive" | "latest" | "views" | "downloads";
 
 // ─── Frontend (camelCase) types ────────────────────────────────────────────
@@ -73,7 +74,7 @@ export interface NewSkillForm {
   description: string;
   categoryId: string;
   tags: string[];
-  visibility: Visibility;
+  visibility: WritableVisibility;
   version?: string;
   changelog?: string;
   readmeContent: string;
@@ -89,7 +90,7 @@ export interface UpdateSkillForm {
   description?: string;
   categoryId?: string;
   tags?: string[];
-  visibility?: Visibility;
+  visibility?: WritableVisibility;
   version?: string;
   changelog?: string;
   readmeContent?: string;
