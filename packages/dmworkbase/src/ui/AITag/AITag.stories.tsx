@@ -57,11 +57,11 @@ export const DesignComparison: Story = {
       <div>
         <h3 style={{ marginBottom: '8px' }}>设计规范</h3>
         <ul style={{ fontSize: '14px', lineHeight: '1.6' }}>
-          <li>背景: linear-gradient(90deg, #44C5FB 0%, #7D58F5 100%)</li>
-          <li>文字: #FFFFFF, 11px, font-weight 500</li>
-          <li>圆角: 4px</li>
-          <li>内边距: 0 6px</li>
-          <li>高度: 18px</li>
+          <li>背景: linear-gradient(90deg, #41DFFF 0%, #6E7CF7 50%, #7F3BF5 100%)</li>
+          <li>文字: 白色, 12px, font-weight 500</li>
+          <li>圆角: 全圆角</li>
+          <li>内边距: 2px 8px</li>
+          <li>高度: 20px</li>
         </ul>
       </div>
     </div>

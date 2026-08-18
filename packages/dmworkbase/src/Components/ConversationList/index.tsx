@@ -14,7 +14,8 @@ import {
   parseThreadChannelId,
 } from "../../Service/Thread";
 import React, { Component } from "react";
-import { Tag, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
+import { Badge, Dot } from "@octo/ui";
 import { ConversationWrap, MessageWrap } from "../../Service/Model";
 import { getTimeStringAutoShort2 } from "../../Utils/time";
 import classNames from "classnames";
@@ -37,6 +38,7 @@ import { RevokeCell } from "../../Messages/Revoke";
 import { FlameMessageCell } from "../../Messages/Flame";
 import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
+import AITag from "../../ui/AITag";
 import ConversationVM from "../Conversation/vm";
 import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
@@ -214,9 +216,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
         </span>
       )}
       <span
-        className={`wk-conv-compact-icon${
-          totalUnread > 0 ? " wk-conv-compact-icon--reddot" : ""
-        }`}
+        className="wk-conv-compact-icon"
       >
         {isThread ? (
           <ThreadIcon size={13} />
@@ -226,6 +226,13 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
             channel={conversationWrap.channel}
           />
         )}
+        {totalUnread > 0 ? (
+          <Dot
+            size="small"
+            tone="danger"
+            className="wk-conv-compact-unread-dot"
+          />
+        ) : null}
         {!isThread && channelInfo && needShowOnlineStatus(channelInfo) ? (
           <OnlineStatusBadge tip={getOnlineTip(channelInfo)}></OnlineStatusBadge>
         ) : undefined}
@@ -270,9 +277,11 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
             </span>
           )}
           {totalUnread > 0 && !effectiveMute && (
-            <span className="wk-conv-compact-badge">
-              {totalUnread > 99 ? "99+" : totalUnread}
-            </span>
+            <Badge
+              count={totalUnread}
+              variant="soft"
+              className="wk-conv-compact-badge"
+            />
           )}
         </span>
       )}
@@ -586,10 +595,10 @@ export default class ConversationList extends Component<
     if (foldPreview) {
       return (
         <span className="wk-ai-collab-preview">
-          <span className="wk-ai-collab-tag">
+          <AITag className="wk-ai-collab-tag">
             <span className="wk-ai-collab-pulse" />
             {t("base.conversationList.aiCollaborating")}
-          </span>
+          </AITag>
           <span className="wk-ai-collab-text">
             {t("base.conversationList.aiCollabCount", {
               values: {
@@ -813,13 +822,9 @@ export default class ConversationList extends Component<
                 </h3>
                 {conversationWrap.channel.channelType === ChannelTypeGroup &&
                   channelInfo?.orgData?.is_external_group === 1 && (
-                    <Tag
-                      size="small"
-                      color="purple"
-                      className="wk-conversationlist-item-external-tag"
-                    >
+                    <span className="wk-conversationlist-item-external-tag">
                       {t("base.conversationList.external")}
-                    </Tag>
+                    </span>
                   )}
                 {channelInfo?.orgData?.robot === 1 && <AiBadge />}
                 {channelInfo?.orgData.identityIcon ? (
@@ -897,15 +902,15 @@ export default class ConversationList extends Component<
                     </span>
                   )}
                   {totalUnread > 0 && (
-                    <span
+                    <Badge
+                      count={totalUnread}
+                      variant="soft"
                       className={classNames(
                         "wk-conv-unread-num",
                         effectiveMute ? "wk-conv-unread-num--muted" : undefined,
                         unreadNudgeClass
                       )}
-                    >
-                      {totalUnread > 99 ? "99+" : totalUnread}
-                    </span>
+                    />
                   )}
                 </span>
               )}
@@ -1502,13 +1507,17 @@ interface OnlineStatusBadgeProps {
 export class OnlineStatusBadge extends Component<OnlineStatusBadgeProps> {
   render(): React.ReactNode {
     const { tip } = this.props;
+    if (!tip) {
+      return (
+        <Dot
+          tone="success"
+          className="wk-onlinestatusbadge wk-onlinestatusbadge-empty"
+        />
+      );
+    }
+
     return (
-      <div
-        className={classNames(
-          "wk-onlinestatusbadge",
-          !tip ? "wk-onlinestatusbadge-empty" : undefined
-        )}
-      >
+      <div className="wk-onlinestatusbadge">
         <div className="wk-onlinestatusbadge-content">
           <div className="wk-onlinestatusbadge-content-tip">{tip}</div>
         </div>

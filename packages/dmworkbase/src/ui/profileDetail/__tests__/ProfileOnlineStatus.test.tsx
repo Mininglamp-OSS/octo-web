@@ -101,6 +101,11 @@ describe("ProfileOnlineStatus", () => {
     const status = container.querySelector('[role="status"]');
     expect(status?.getAttribute("aria-label")).toBe("刚刚离线");
     expect(status?.textContent).toBe("刚刚离线");
+    expect(
+      status
+        ?.querySelector(".wk-profile-online-status-dot")
+        ?.classList.contains("octo-ui-dot--neutral")
+    ).toBe(true);
 
     act(() => {
       vi.setSystemTime(new Date("2026-07-29T12:01:00"));
@@ -110,5 +115,20 @@ describe("ProfileOnlineStatus", () => {
     expect(container.querySelector('[role="status"]')?.getAttribute("aria-label")).toBe(
       "离线 1 分钟前"
     );
+  });
+
+  it("maps online status to the shared success dot", () => {
+    act(() => {
+      ReactDOM.render(
+        <ProfileOnlineStatus channelInfo={{ online: true }} />,
+        container
+      );
+    });
+
+    expect(
+      container
+        .querySelector(".wk-profile-online-status-dot")
+        ?.classList.contains("octo-ui-dot--success")
+    ).toBe(true);
   });
 });

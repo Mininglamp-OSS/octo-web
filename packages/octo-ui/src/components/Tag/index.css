@@ -1,0 +1,220 @@
+.octo-ui-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: var(--octo-ui-tag-height);
+  gap: var(--octo-ui-tag-gap);
+  box-sizing: border-box;
+  padding: var(--octo-ui-tag-padding-y) var(--octo-ui-tag-padding-x);
+  border: 0;
+  border-radius: var(--wk-r-full);
+  background: var(--octo-ui-tag-bg);
+  color: var(--octo-ui-tag-color);
+  font-family: var(--wk-font-sans);
+  font-size: var(--octo-ui-tag-font-size);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--octo-ui-tag-line-height);
+  white-space: nowrap;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.octo-ui-tag--default {
+  --octo-ui-tag-height: var(--wk-sp-6);
+  --octo-ui-tag-font-size: var(--wk-text-size-md);
+  --octo-ui-tag-close-size: var(--wk-sp-4);
+}
+
+.octo-ui-tag--small {
+  --octo-ui-tag-height: var(--wk-sp-5);
+  --octo-ui-tag-font-size: var(--wk-text-size-sm);
+  --octo-ui-tag-close-size: var(--wk-sp-3);
+}
+
+.octo-ui-tag--xs {
+  --octo-ui-tag-height: var(--wk-sp-4);
+  --octo-ui-tag-font-size: var(--wk-text-size-tiny);
+  --octo-ui-tag-close-size: var(--wk-text-size-tiny);
+  --octo-ui-tag-gap: var(--wk-sp-0-5);
+  --octo-ui-tag-padding-y: 0;
+  --octo-ui-tag-padding-x: var(--wk-sp-1-5);
+  --octo-ui-tag-line-height: var(--wk-sp-4);
+}
+
+.octo-ui-tag--light {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-gray-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-gray-color);
+  --octo-ui-tag-close-color: var(--octo-ui-tag-muted-icon-color);
+}
+
+.octo-ui-tag--light.octo-ui-tag--gray {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-gray-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-gray-color);
+}
+
+.octo-ui-tag--light.octo-ui-tag--red {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-red-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-red-color);
+}
+
+.octo-ui-tag--light.octo-ui-tag--amber {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-amber-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-amber-color);
+}
+
+.octo-ui-tag--light.octo-ui-tag--green {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-green-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-green-color);
+}
+
+.octo-ui-tag--light.octo-ui-tag--blue {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-blue-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-blue-color);
+}
+
+.octo-ui-tag--light.octo-ui-tag--cyan {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-cyan-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-cyan-color);
+}
+
+.octo-ui-tag--light.octo-ui-tag--purple {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-purple-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-purple-color);
+}
+
+.octo-ui-tag--light.octo-ui-tag--orange {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-orange-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-orange-color);
+}
+
+.octo-ui-tag--light.octo-ui-tag--pink {
+  --octo-ui-tag-bg: var(--octo-ui-tag-light-pink-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-light-pink-color);
+}
+
+.octo-ui-tag--solid {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-dark-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-solid-color);
+  --octo-ui-tag-close-color: var(--octo-ui-tag-solid-color);
+}
+
+.octo-ui-tag--solid.octo-ui-tag--dark {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-dark-bg);
+}
+
+.octo-ui-tag--solid.octo-ui-tag--gray {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-gray-bg);
+}
+
+.octo-ui-tag--solid.octo-ui-tag--teal {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-teal-bg);
+}
+
+.octo-ui-tag--solid.octo-ui-tag--indigo {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-indigo-bg);
+}
+
+.octo-ui-tag--solid.octo-ui-tag--orange {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-orange-bg);
+}
+
+.octo-ui-tag--solid.octo-ui-tag--green {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-green-bg);
+}
+
+.octo-ui-tag--solid.octo-ui-tag--magenta {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-magenta-bg);
+}
+
+.octo-ui-tag--solid.octo-ui-tag--sky {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-sky-bg);
+}
+
+.octo-ui-tag--solid.octo-ui-tag--yellow {
+  --octo-ui-tag-bg: var(--octo-ui-tag-solid-yellow-bg);
+}
+
+.octo-ui-tag--pastel {
+  --octo-ui-tag-bg: var(--octo-ui-tag-pastel-yellow-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-pastel-color);
+  --octo-ui-tag-close-color: var(--octo-ui-tag-muted-icon-color);
+}
+
+.octo-ui-tag--pastel.octo-ui-tag--yellow {
+  --octo-ui-tag-bg: var(--octo-ui-tag-pastel-yellow-bg);
+}
+
+.octo-ui-tag--pastel.octo-ui-tag--cyan {
+  --octo-ui-tag-bg: var(--octo-ui-tag-pastel-cyan-bg);
+}
+
+.octo-ui-tag--pastel.octo-ui-tag--blue {
+  --octo-ui-tag-bg: var(--octo-ui-tag-pastel-blue-bg);
+}
+
+.octo-ui-tag--pastel.octo-ui-tag--purple {
+  --octo-ui-tag-bg: var(--octo-ui-tag-pastel-purple-bg);
+}
+
+.octo-ui-tag--pastel.octo-ui-tag--orange {
+  --octo-ui-tag-bg: var(--octo-ui-tag-pastel-orange-bg);
+}
+
+.octo-ui-tag--pastel.octo-ui-tag--peach {
+  --octo-ui-tag-bg: var(--octo-ui-tag-pastel-peach-bg);
+}
+
+.octo-ui-tag--pastel.octo-ui-tag--green {
+  --octo-ui-tag-bg: var(--octo-ui-tag-pastel-green-bg);
+}
+
+.octo-ui-tag--pastel.octo-ui-tag--red {
+  --octo-ui-tag-bg: var(--octo-ui-tag-pastel-red-bg);
+}
+
+.octo-ui-tag--ai {
+  --octo-ui-tag-bg: var(--octo-ui-tag-ai-bg);
+  --octo-ui-tag-color: var(--octo-ui-tag-ai-color);
+  --octo-ui-tag-close-color: var(--octo-ui-tag-ai-color);
+}
+
+.octo-ui-tag__icon,
+.octo-ui-tag__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.octo-ui-tag__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.octo-ui-tag__close {
+  width: var(--octo-ui-tag-close-size);
+  height: var(--octo-ui-tag-close-size);
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-r-full);
+  background: transparent;
+  color: var(--octo-ui-tag-close-color);
+  cursor: pointer;
+  font: inherit;
+}
+
+.octo-ui-tag__close:hover {
+  background: var(--octo-ui-tag-close-hover-bg);
+}
+
+.octo-ui-tag__close:focus-visible {
+  outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+  outline-offset: var(--wk-sp-0-5);
+}
+
+.octo-ui-tag__close svg {
+  width: var(--octo-ui-tag-close-size);
+  height: var(--octo-ui-tag-close-size);
+  display: block;
+}

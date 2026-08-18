@@ -12,6 +12,7 @@ import {
     type SummaryListItem,
 } from "../types/summary";
 import { t } from "@octo/base";
+import type { TagTone } from "@octo/ui";
 
 // crypto.randomUUID 在非安全上下文/旧环境可能不存在，降级生成一个唯一 id。
 export function genSessionId(): string {
@@ -165,16 +166,16 @@ export function getStatusLabel(status: TaskStatusType): string {
     }
 }
 
-/** 任务状态 → Semi Tag 颜色 */
-export function getStatusColor(status: TaskStatusType): string {
+/** 任务状态 → Tag 语义色 */
+export function getStatusColor(status: TaskStatusType): TagTone {
     switch (status) {
-        case TaskStatus.PENDING: return "grey";
+        case TaskStatus.PENDING: return "gray";
         case TaskStatus.WAITING_CONFIRM: return "amber";
         case TaskStatus.PROCESSING: return "blue";
         case TaskStatus.COMPLETED: return "green";
         case TaskStatus.FAILED: return "red";
-        case TaskStatus.CANCELLED: return "grey";
-        default: return "grey";
+        case TaskStatus.CANCELLED: return "gray";
+        default: return "gray";
     }
 }
 

@@ -1,0 +1,5 @@
+/* Foundation placeholder. Component styles are added in later PRs. */
+@import '../components/Button/index.css';
+@import '../components/Tag/index.css';
+@import '../components/Badge/index.css';
+@import '../components/Dot/index.css';
