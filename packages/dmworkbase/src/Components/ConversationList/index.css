@@ -304,20 +304,6 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 }
 
 .wk-ai-collab-tag {
-  font-size: var(--wk-text-size-xs);
-  padding: 1px 5px;
-  border-radius: var(--wk-r-xs);
-  background: linear-gradient(
-    135deg,
-    color-mix(in srgb, var(--wk-brand-primary) 12%, transparent),
-    color-mix(in srgb, var(--wk-color-success) 12%, transparent)
-  );
-  color: var(--wk-brand-primary);
-  font-weight: 600;
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
   margin-right: var(--wk-sp-1);
 }
 
@@ -811,8 +797,18 @@ body[theme-mode="dark"] .wk-conv-compact-thread-badge {
 /* ── 外部群角标 ── */
 /* 常规会话列表：群名后显示「外部」Tag（紫色，对齐 Subscribers/SubscriberList 视觉） */
 .wk-conversationlist-item-external-tag {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--wk-sp-4);
   margin-left: var(--wk-sp-1);
+  padding: 0 var(--wk-sp-1-5);
+  border-radius: var(--wk-r-full);
+  background: rgba(var(--semi-purple-5), 0.15);
+  color: rgba(var(--semi-purple-8), 1);
   font-size: var(--wk-text-size-tiny);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-sp-4);
   flex-shrink: 0;
 }
 

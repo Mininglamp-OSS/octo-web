@@ -196,22 +196,6 @@ body[theme-mode="dark"] .wk-conversation-content {
   font-weight: 500;
 }
 
-.wk-fold-session-tag {
-  font-size: 11px;
-  font-weight: 500;
-  color: #ffffff;
-  background: linear-gradient(90deg, #7b89f4 0%, #9d78f5 100%);
-  border: none;
-  padding: 0 6px;
-  border-radius: 4px;
-  height: 18px;
-  line-height: 16px;
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
 /* 标题行时间 */
 .wk-fold-session-time {
   font-size: 14px;
