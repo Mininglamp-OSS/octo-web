@@ -91,6 +91,14 @@ describe("expertService catalog sort wire contract", () => {
     expect(next?.baseURL).toBe("https://api.example.com");
   });
 
+  it("keeps web and dev marketplace requests same-origin when apiURL is relative", () => {
+    WKApp.apiClient.config.apiURL = "/api/v1/";
+
+    const next = mock.requestOnFulfilled?.({ headers: {} });
+
+    expect(next?.baseURL).toBe("");
+  });
+
   it("listExperts sends every sort mode as the ?sort param", async () => {
     for (const sort of SORTS) {
       await listExperts({ sort });

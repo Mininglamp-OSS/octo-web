@@ -1,12 +1,15 @@
 import childProcess from "node:child_process";
 import path from "node:path";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "vite";
 
+const require = createRequire(import.meta.url);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const appDir = path.resolve(scriptDir, "..");
 const viteEnv = loadEnv("production", appDir, "VITE_");
 const apiURL = process.env.VITE_API_URL || viteEnv.VITE_API_URL;
+const viteBin = path.join(path.dirname(require.resolve("vite/package.json")), "bin", "vite.js");
 
 if (!apiURL) {
   console.error(
@@ -16,16 +19,13 @@ if (!apiURL) {
   process.exit(1);
 }
 
-const child = childProcess.spawn("vite", ["build"], {
+const child = childProcess.spawn(process.execPath, [viteBin, "build"], {
   cwd: appDir,
   env: {
     ...process.env,
     VITE_ELECTRON_BUILD: "true",
-    VITE_ENABLE_ENTERPRISE_SSO:
-      process.env.VITE_ENABLE_ENTERPRISE_SSO || "true",
     VITE_API_URL: apiURL,
   },
-  shell: process.platform === "win32",
   stdio: "inherit",
 });
 
