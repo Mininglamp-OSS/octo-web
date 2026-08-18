@@ -20,6 +20,15 @@ export function genSessionId(): string {
         : 'sid-' + Date.now() + '-' + Math.random().toString(16).slice(2);
 }
 
+// WEB-03: 每次逻辑提交的幂等键 request_id。后端(SS-03)据 (uid, session_id,
+// request_id) 去重建 Run —— request_id 为空时整条 v2 链路(Run/Spec/finish_status)
+// 不激活。stream→fallback 的重试必须复用同一个,避免同一提交建两个 Run。
+export function genRequestId(): string {
+    return crypto?.randomUUID
+        ? crypto.randomUUID()
+        : 'req-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
+
 // ─── Agent 对话 session_id 持久化（「退出不丢」） ──────────────
 // session_id 写入 localStorage，按 channel/入口隔离，避免不同群会话串号。
 // 无 channelId 的入口（完整创建页无频道上下文）落到统一兜底 key。

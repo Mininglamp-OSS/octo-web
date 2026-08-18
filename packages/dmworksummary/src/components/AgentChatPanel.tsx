@@ -3,7 +3,7 @@ import { Button, Modal, Input, Toast } from '@douyinfe/semi-ui';
 import { I18nContext, Dap } from '@octo/base';
 import type { ChatMessage, ChatCandidate, AgentProgressEvent, AgentDoneEvent, AgentErrorEvent } from '../types/summary';
 import { agentChatStream, agentChat } from '../api/summaryApi';
-import { genSessionId } from '../utils/summaryHelpers';
+import { genSessionId, genRequestId } from '../utils/summaryHelpers';
 import { summaryTestIds } from '../utils/testIds';
 import './AgentChatPanel.css';
 
@@ -72,6 +72,10 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
 
     private listRef = createRef<HTMLDivElement>();
     private streamCloseHandle: (() => void) | null = null;
+    // WEB-03: run_id captured from the last agent response (SS-11). Forward-looking
+    // (the backend keys idempotency on request_id, not this) — kept for future
+    // run-aware UI / debugging.
+    private lastRunId: string | null = null;
 
     state: AgentChatPanelState = { 
         input: '', 
@@ -145,6 +149,11 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         // onAssistantMessage 的 sessionId 参数上抛让父组件同步持久化。
         // 见 CHAT-REFERENCE-BASED-DESIGN-v1: chat session 生命周期。
         const sessionId = propsSessionId || genSessionId();
+        // WEB-03: one idempotency key per logical submit. Reused across
+        // stream→fallback so a transient retry does NOT create a second Run
+        // (SS-03 dedupes on uid+session_id+request_id). Without it the whole v2
+        // pipeline (Run/Spec/finish_status/gaps) stays inert.
+        const requestId = genRequestId();
 
         this.setState({
             input: '',
@@ -169,6 +178,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 session_id: sessionId,
                 message: text,
                 profile,
+                request_id: requestId,
                 referenced_task_ids: refIds,
                 selected_channels: selectedChannels,
             }, {
@@ -203,6 +213,8 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 onDone: (evt: AgentDoneEvent) => {
                     const { t } = this.context;
                     const reply = evt.reply || t('summary.common.agentPanel.noReply');
+                    // WEB-03: capture run_id (SS-11) for forward-looking run-aware UI.
+                    this.lastRunId = evt.run_id ?? this.lastRunId;
                     // 优先用后端回传的 session_id(它可能对老 session 做过 canonicalize);
                     // 兜底用我们本地生成的 sessionId(和请求时发出去的一致,父组件据此持久化)。
                     onAssistantMessage?.(reply, evt.session_id || sessionId);
@@ -219,7 +231,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     this.streamCloseHandle = null;
                     // 仅传输层失败(transient: true)才重试,后端真实 error 不重试
                     if (evt.transient) {
-                        this.fallbackToNormalChat(text, sessionId, profile);
+                        this.fallbackToNormalChat(text, sessionId, profile, requestId);
                     }
                 },
             });
@@ -230,11 +242,11 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
             const { t } = this.context;
             console.error('[AgentChatPanel] SSE stream failed:', err);
             Toast.warning(t('summary.common.agentChat.streamInterrupted'));
-            this.fallbackToNormalChat(text, sessionId, profile);
+            this.fallbackToNormalChat(text, sessionId, profile, requestId);
         }
     };
 
-    private fallbackToNormalChat = async (text: string, sessionId: string, profile: string) => {
+    private fallbackToNormalChat = async (text: string, sessionId: string, profile: string, requestId: string) => {
         const { t } = this.context;
         const { onAssistantMessage } = this.props;
         try {
@@ -247,10 +259,13 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 session_id: sessionId,
                 message: text,
                 profile,
+                request_id: requestId,
                 referenced_task_ids: refIds,
                 selected_channels: this.requestSelectedChannels(),
             });
             const reply = result.reply || t('summary.common.agentPanel.noReply');
+            // WEB-03: capture run_id from the fallback response too (SS-11).
+            this.lastRunId = result.run_id ?? this.lastRunId;
             // 上抛 sessionId 让父组件持久化(和 SSE onDone 一致)
             onAssistantMessage?.(reply, result.session_id || sessionId);
         } catch (err: any) {

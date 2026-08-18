@@ -78,6 +78,42 @@ describe('AgentChatPanel SSE Mode', () => {
         })), { timeout: 2000 });
     });
 
+    it('generates a request_id and reuses it across stream→fallback (WEB-03)', async () => {
+        let streamRequestId: string | undefined;
+        (summaryApi.agentChatStream as any).mockImplementation((params: any, handlers: any) => {
+            streamRequestId = params.request_id;
+            setImmediate(() => handlers.onError({ code: 0, message: 'transport closed', transient: true }));
+            return { close: vi.fn() };
+        });
+        (summaryApi.agentChat as any).mockResolvedValue({ reply: 'ok', session_id: 's', run_id: 'run-1' });
+
+        render(
+            <I18nContext.Provider value={{ t: mockT, locale: 'zh-CN' }}>
+                <AgentChatPanel
+                    messages={[]}
+                    onSend={vi.fn()}
+                    sending={false}
+                    useStream
+                    sessionId="s"
+                    profile="summary"
+                    onUserMessage={vi.fn()}
+                    onAssistantMessage={vi.fn()}
+                />
+            </I18nContext.Provider>,
+        );
+        fireEvent.change(screen.getByPlaceholderText('summary.create.agentChatPlaceholder'), { target: { value: '总结' } });
+        fireEvent.click(screen.getByText('summary.create.send'));
+
+        await waitFor(() => expect(summaryApi.agentChat).toHaveBeenCalled(), { timeout: 2000 });
+        // request_id generated on the stream request…
+        expect(typeof streamRequestId).toBe('string');
+        expect(streamRequestId).toBeTruthy();
+        // …and the SAME id reused on the fallback (idempotent retry, one Run).
+        expect(summaryApi.agentChat).toHaveBeenCalledWith(
+            expect.objectContaining({ request_id: streamRequestId }),
+        );
+    });
+
     it('keeps old request behavior when no chat is selected', async () => {
         (summaryApi.agentChatStream as any).mockImplementation((params: any) => {
             expect(params.selected_channels).toBeUndefined();
