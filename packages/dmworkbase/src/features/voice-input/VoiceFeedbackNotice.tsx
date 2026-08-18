@@ -1,6 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Checkbox } from "@octo/ui";
 import React, { useState, useEffect } from "react";
-import { Checkbox, Spin } from "@douyinfe/semi-ui";
+import { Spin } from "@douyinfe/semi-ui";
 import DOMPurify from "dompurify";
 import WKModal from "../../Components/WKModal";
 import { getDocument } from "../../Service/DocumentService";
@@ -65,7 +65,7 @@ export default function VoiceFeedbackNotice({
           <div style={{ borderTop: "1px solid var(--semi-color-border)", margin: 0 }} />
           <Checkbox
             checked={feedbackChecked}
-            onChange={(e) => setFeedbackChecked(e.target.checked)}
+            onCheckedChange={setFeedbackChecked}
           >
             {t("base.navRail.voiceNotice.feedbackConsent")}
           </Checkbox>

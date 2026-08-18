@@ -2,7 +2,7 @@ import React from "react"
 import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import { X } from "lucide-react"
 import WKAvatar from "../../WKAvatar"
-import Checkbox from "../../Checkbox"
+import { Checkbox } from "@octo/ui"
 import AiBadge from "../../AiBadge"
 import { useI18n } from "../../../i18n"
 import type { ForwardItem } from "../ForwardModal"
@@ -62,8 +62,8 @@ export function SelectedRow({ item, onRemove, bots }: SelectedRowProps) {
             <label className="wk-fm-selected-bot" key={bot.uid}>
               <Checkbox
                 checked={bot.selected}
-                onCheck={() => bots?.toggleBot(bot.uid)}
-                ariaLabel={t(
+                onCheckedChange={() => bots?.toggleBot(bot.uid)}
+                aria-label={t(
                   bot.selected ? "base.forwardModal.grant.botCheckedFor" : "base.forwardModal.grant.botUncheckedFor",
                   { values: { bot: bot.name, person: item.displayName } },
                 )}

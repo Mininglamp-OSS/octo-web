@@ -1,5 +1,6 @@
 import React, { Component, createRef } from "react";
-import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
+import { Spin, Empty, Tag } from "@douyinfe/semi-ui";
+import { Checkbox } from "@octo/ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
@@ -539,7 +540,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                 <label className="chat-selector-archived-toggle">
                                     <Checkbox
                                         checked={includeArchived}
-                                        onChange={(e) => this.handleIncludeArchivedChange(e.target.checked)}
+                                        onCheckedChange={this.handleIncludeArchivedChange}
                                     />
                                     <span>{t("summary.chatSelector.includeArchived")}</span>
                                 </label>

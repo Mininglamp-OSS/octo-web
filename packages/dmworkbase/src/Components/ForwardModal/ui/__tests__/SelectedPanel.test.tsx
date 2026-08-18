@@ -21,23 +21,17 @@ vi.mock("wukongimjssdk", () => {
 vi.mock("../../../WKAvatar", () => ({ default: () => <div data-testid="avatar" /> }))
 vi.mock("../../../AiBadge", () => ({ default: () => <span data-testid="ai-badge" /> }))
 vi.mock("lucide-react", () => ({ X: () => <span data-testid="x-icon" /> }))
-vi.mock("../../../../i18n", () => ({
-  useI18n: () => ({
-    t: (key: string, opts?: { values?: Record<string, unknown> }) =>
-      opts?.values ? `${key}:${JSON.stringify(opts.values)}` : key,
-  }),
-}))
-vi.mock("../../../Checkbox", () => ({
-  default: ({
+vi.mock("@octo/ui", () => ({
+  Checkbox: ({
     checked,
     disabled,
-    onCheck,
-    ariaLabel,
+    onCheckedChange,
+    "aria-label": ariaLabel,
   }: {
     checked?: boolean
     disabled?: boolean
-    onCheck?: () => void
-    ariaLabel?: string
+    onCheckedChange?: (checked: boolean) => void
+    "aria-label"?: string
   }) => (
     <div
       role="checkbox"
@@ -45,10 +39,16 @@ vi.mock("../../../Checkbox", () => ({
       aria-disabled={!!disabled}
       aria-label={ariaLabel}
       onClick={() => {
-        if (!disabled) onCheck?.()
+        if (!disabled) onCheckedChange?.(!checked)
       }}
     />
   ),
+}))
+vi.mock("../../../../i18n", () => ({
+  useI18n: () => ({
+    t: (key: string, opts?: { values?: Record<string, unknown> }) =>
+      opts?.values ? `${key}:${JSON.stringify(opts.values)}` : key,
+  }),
 }))
 
 import { SelectedPanel } from "../SelectedPanel"

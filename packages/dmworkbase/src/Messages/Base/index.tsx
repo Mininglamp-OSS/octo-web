@@ -29,7 +29,7 @@ import {
 } from "../../Service/IncomingWebhook";
 import { css } from "@emotion/react";
 // import ClockLoader from "react-spinners/ClockLoader";
-import Checkbox from "../../Components/Checkbox";
+import { Checkbox } from "@octo/ui";
 import classNames from "classnames";
 import { Popconfirm } from "@douyinfe/semi-ui";
 import WKAvatar from "../../Components/WKAvatar";

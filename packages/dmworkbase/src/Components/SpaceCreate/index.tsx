@@ -1,6 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Checkbox } from "@octo/ui";
 import React, { Component } from "react";
-import { Toast, Checkbox } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import WKInput from "../WKInput";
 import { SpaceService } from "../../Service/SpaceService";
@@ -118,7 +118,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                         <div className="wk-spacecreate-field">
                             <Checkbox
                                 checked={joinMode === 1}
-                                onChange={(e) => this.setState({ joinMode: e.target.checked ? 1 : 0 })}
+                                onCheckedChange={(checked) => this.setState({ joinMode: checked ? 1 : 0 })}
                             >
                                 {t("base.spaceCreate.approvalRequired")}
                             </Checkbox>
