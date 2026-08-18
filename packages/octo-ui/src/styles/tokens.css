@@ -1,17 +1,5 @@
 /* Foundation placeholder. Component tokens are added in the component phase. */
 :root {
-  --octo-ui-badge-strong-bg: var(--wk-color-danger);
-  --octo-ui-badge-strong-color: var(--wk-color-white);
-  --octo-ui-badge-soft-bg: var(--wk-badge-danger-bg);
-  --octo-ui-badge-soft-color: var(--wk-badge-danger-text);
-
-  --octo-ui-dot-neutral-color: var(--wk-text-tertiary);
-  --octo-ui-dot-danger-color: var(--wk-color-danger);
-  --octo-ui-dot-success-color: var(--wk-color-success);
-  --octo-ui-dot-warning-color: var(--wk-color-warning);
-  --octo-ui-dot-info-color: var(--wk-color-accent);
-  --octo-ui-dot-online-color: var(--wk-color-online);
-
   --octo-ui-tag-gap: var(--wk-sp-1);
   --octo-ui-tag-padding-y: var(--wk-sp-0-5);
   --octo-ui-tag-padding-x: var(--wk-sp-2);

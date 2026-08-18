@@ -30,11 +30,23 @@
 }
 
 :where(.octo-ui-badge--strong) {
-  --octo-ui-badge-bg: var(--octo-ui-badge-strong-bg);
-  --octo-ui-badge-color: var(--octo-ui-badge-strong-color);
+  --octo-ui-badge-bg: var(
+    --octo-ui-badge-strong-bg,
+    var(--wk-color-danger)
+  );
+  --octo-ui-badge-color: var(
+    --octo-ui-badge-strong-color,
+    var(--wk-color-white)
+  );
 }
 
 :where(.octo-ui-badge--soft) {
-  --octo-ui-badge-bg: var(--octo-ui-badge-soft-bg);
-  --octo-ui-badge-color: var(--octo-ui-badge-soft-color);
+  --octo-ui-badge-bg: var(
+    --octo-ui-badge-soft-bg,
+    var(--wk-badge-danger-bg)
+  );
+  --octo-ui-badge-color: var(
+    --octo-ui-badge-soft-color,
+    var(--wk-badge-danger-text)
+  );
 }
