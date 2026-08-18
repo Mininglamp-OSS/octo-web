@@ -300,6 +300,10 @@ describe("MailAuthorizationPage return target lifecycle", () => {
 
   it("requires explicit confirmation when the link targets another Space", async () => {
     state.currentSpaceId = "space-b";
+    state.getMySpaces.mockResolvedValue([
+      { space_id: "space-a", name: "Product Space" },
+      { space_id: "space-b", name: "Current Space" },
+    ]);
     state.getAgentAuthorization.mockResolvedValue(authorization);
 
     render(<MailAuthorizationPage initialSearch={initialSearch} />);
@@ -307,6 +311,17 @@ describe("MailAuthorizationPage return target lifecycle", () => {
     const approve = await screen.findByRole("button", {
       name: "mail.authorization.approve",
     });
+    await waitFor(() =>
+      expect(state.t).toHaveBeenCalledWith(
+        "mail.authorization.spaceMismatchConfirmation",
+        {
+          values: {
+            currentSpaceName: "Current Space",
+            targetSpaceName: "Product Space",
+          },
+        }
+      )
+    );
     expect((approve as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(
       screen.getByRole("checkbox", {

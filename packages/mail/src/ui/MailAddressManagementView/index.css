@@ -480,14 +480,47 @@
 }
 
 .octo-mail-setup-dialog__methods button.is-active {
-  color: var(--wk-brand-primary);
-  background: var(--wk-bg-surface);
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary);
   box-shadow: var(--wk-shadow-sm);
+}
+
+.octo-mail-setup-dialog__methods button.is-active:hover {
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary-hover);
+}
+
+.octo-mail-setup-dialog__method-guide {
+  display: grid;
+  gap: var(--wk-sp-2);
+  margin: var(--wk-sp-3) 0 0;
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-base);
+  border-radius: var(--wk-r-md);
+  font-size: var(--wk-text-size-xs);
+  line-height: var(--wk-leading-loose);
+}
+
+.octo-mail-setup-dialog__method-guide div {
+  display: flex;
+  gap: var(--wk-sp-2);
+}
+
+.octo-mail-setup-dialog__method-guide dt,
+.octo-mail-setup-dialog__method-guide dd {
+  margin: 0;
+}
+
+.octo-mail-setup-dialog__method-guide dt {
+  flex: none;
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-semibold);
 }
 
 .octo-mail-setup-dialog__divider {
   height: 1px;
-  margin: var(--wk-sp-6) 0;
+  margin: var(--wk-sp-4) 0;
   background: var(--wk-border-subtle);
 }
 

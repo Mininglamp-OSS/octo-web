@@ -374,6 +374,38 @@ export default function MailAddressManagementView(
                 {t("mail.agentMailboxes.cliSetup")}
               </button>
             </div>
+            <dl className="octo-mail-setup-dialog__method-guide">
+              <div>
+                <dt>{t("mail.agentMailboxes.setupScenarioLabel")}</dt>
+                <dd>
+                  {t(
+                    props.setupMethod === "cli"
+                      ? "mail.agentMailboxes.cliSetupScenario"
+                      : "mail.agentMailboxes.openClawSetupScenario"
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>{t("mail.agentMailboxes.setupBenefitLabel")}</dt>
+                <dd>
+                  {t(
+                    props.setupMethod === "cli"
+                      ? "mail.agentMailboxes.cliSetupBenefit"
+                      : "mail.agentMailboxes.openClawSetupBenefit"
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>{t("mail.agentMailboxes.setupNoticeLabel")}</dt>
+                <dd>
+                  {t(
+                    props.setupMethod === "cli"
+                      ? "mail.agentMailboxes.cliSetupNotice"
+                      : "mail.agentMailboxes.openClawSetupNotice"
+                  )}
+                </dd>
+              </div>
+            </dl>
             <div className="octo-mail-setup-dialog__divider" />
             <h3>
               {t(

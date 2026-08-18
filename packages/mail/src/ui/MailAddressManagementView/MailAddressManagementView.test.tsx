@@ -101,6 +101,12 @@ describe("MailAddressManagementView automation mode", () => {
     expect(methods).toHaveLength(2);
     expect(methods[0]?.getAttribute("aria-pressed")).toBe("true");
     expect(methods[1]?.getAttribute("aria-pressed")).toBe("false");
+    expect(container.textContent).toContain(
+      "mail.agentMailboxes.openClawSetupScenario"
+    );
+    expect(container.textContent).not.toContain(
+      "mail.agentMailboxes.cliSetupScenario"
+    );
 
     act(() => {
       methods[1]?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
@@ -108,6 +114,25 @@ describe("MailAddressManagementView automation mode", () => {
     expect(onSetupMethodChange).toHaveBeenCalledWith("cli");
     expect(onCloseSetup).not.toHaveBeenCalled();
     expect(container.querySelector('[role="dialog"]')).not.toBeNull();
+
+    act(() => {
+      root.render(
+        <MailAddressManagementView {...setupProps} setupMethod="cli" />
+      );
+    });
+    const updatedMethods = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(
+        ".octo-mail-setup-dialog__methods button"
+      )
+    );
+    expect(updatedMethods[0]?.getAttribute("aria-pressed")).toBe("false");
+    expect(updatedMethods[1]?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.textContent).toContain(
+      "mail.agentMailboxes.cliSetupScenario"
+    );
+    expect(container.textContent).not.toContain(
+      "mail.agentMailboxes.openClawSetupScenario"
+    );
   });
 });
 
