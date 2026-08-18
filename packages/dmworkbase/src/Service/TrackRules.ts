@@ -154,6 +154,127 @@ export const TRACK_RULES: TrackRule[] = [
     { event: 'settings_notification_toggled', testid: 'nav-settings-notification-toggle', on: 'click' },
     { event: 'my_info_opened', testid: 'nav-user-avatar', on: 'click' },
 
-    // whiteboard_bg_changed（testid board-canvas-color-control）在 octo-docs-module 独立仓，
-    // 需 route 消歧 + 跨仓版本联动，随该仓 PR 一并加，不在本仓盲填。
+    // doc 画板类事件(whiteboard_bg_changed / element_added / zoomed / saved_to_file /
+    //   image_exported / help_viewed / asset_library_action)均由 octo-docs-module BoardShell 源码内
+    //   命令式 Dap.track,不进本表(toggle/来源无法靠点击委托区分)。唯一进本表的是 151 find_on_canvas
+    //   (Excalidraw 原生 toolbar-search),见下方 doc 段。
+
+    // ---- fleet(Loop,@dmwork/loop):testid 由 octo-loop-module 源码挂(dmloop/src)。fleet 源直编入
+    //      本 bundle(WKApp.shared.registerModule),Dap 全局 DOM 委托可命中;testid 前缀 loop-* 全局唯一,
+    //      无需 route 约束。事件名须已在 octo-dap 采集器注册。(dap350 §8 step4 / T1 复核)
+    //   A1/A2A3/B/C —— 侧边栏 + 任务板 + 任务详情菜单。
+    { event: 'workspace_switcher_opened', testid: 'loop-sidebar-ws-switcher', on: 'click' }, // 158
+    { event: 'workspace_create_clicked', testid: 'loop-sidebar-ws-create', on: 'click' }, // 160 下拉
+    { event: 'workspace_create_clicked', testid: 'loop-sidebar-ws-create-empty', on: 'click' }, // 160 空态
+    { event: 'task_create_dialog_opened', testid: 'loop-sidebar-new-issue', on: 'click' }, // 164 侧栏
+    { event: 'task_create_dialog_opened', testid: 'loop-issue-board-new-issue', on: 'click' }, // 164 工具栏
+    { event: 'task_create_dialog_opened', testid: 'loop-issue-board-empty-new-issue', on: 'click' }, // 164 空态
+    { event: 'my_tasks_viewed', testid: 'loop-sidebar-tab-myloop', on: 'click' }, // 163
+    { event: 'task_board_viewed', testid: 'loop-sidebar-tab-issue', on: 'click' }, // 166
+    { event: 'project_module_entered', testid: 'loop-sidebar-tab-project', on: 'click' }, // 186
+    { event: 'automation_module_entered', testid: 'loop-sidebar-tab-automation', on: 'click' }, // 201
+    // 222/243:专家/专家团经 workspaceTabs 侧栏 tab 进入(item.key=agent/squad),实际渲染元素即
+    //   loop-sidebar-tab-agent/squad;工作表原写 loop-nav-* 与实际约定不符 → 校正为实际 testid。
+    { event: 'expert_module_entered', testid: 'loop-sidebar-tab-agent', on: 'click' }, // 222
+    { event: 'expert_team_module_entered', testid: 'loop-sidebar-tab-squad', on: 'click' }, // 243
+    { event: 'workspace_settings_opened', testid: 'loop-sidebar-tab-settings', on: 'click' }, // 259
+    // 167 作用域 tab(全部/成员/专家)—— 同一事件三 testid。⚠️「重复点当前 tab」经 DOM 委托会再计一次
+    //     (同 octo-web market_tab_switched 的过计),已向 owner 标注待裁,暂按工作表 dom-testid。
+    { event: 'task_board_segment_switched', testid: 'loop-issue-scope-all', on: 'click' },
+    { event: 'task_board_segment_switched', testid: 'loop-issue-scope-members', on: 'click' },
+    { event: 'task_board_segment_switched', testid: 'loop-issue-scope-agents', on: 'click' },
+    // 168 视图切换(看板/分组/列表)—— 同上,同一事件三 testid,同「重复点」过计风险。
+    { event: 'task_board_view_switched', testid: 'loop-issue-view-board', on: 'click' },
+    { event: 'task_board_view_switched', testid: 'loop-issue-view-grouped', on: 'click' },
+    { event: 'task_board_view_switched', testid: 'loop-issue-view-list', on: 'click' },
+    { event: 'task_edit_properties_opened', testid: 'loop-idp-menu-edit-props', on: 'click' }, // 180
+    { event: 'task_subtask_create_dialog_opened', testid: 'loop-idp-menu-new-subtask', on: 'click' }, // 181 菜单
+    { event: 'task_subtask_create_dialog_opened', testid: 'loop-idp-subissue-add', on: 'click' }, // 181 子回路区 +
+    { event: 'task_delete_dialog_opened', testid: 'loop-idp-menu-delete', on: 'click' }, // 184
+    //   C —— 自动化模块(AutomationPage / AutopilotDetailPage)。backend-only(207)与无净锚点(219)已跳过。
+    { event: 'automation_create_dialog_opened', testid: 'automation-create-btn', on: 'click' }, // 202 头部
+    { event: 'automation_create_dialog_opened', testid: 'automation-create-btn-empty', on: 'click' }, // 202 空态(工作表未列,补齐,同 164 模式)
+    { event: 'automation_trigger_add_dialog_opened', testid: 'automation-trigger-add-btn', on: 'click' },
+    { event: 'automation_trigger_edit_dialog_opened', testid: 'automation-trigger-edit-btn', on: 'click' },
+    { event: 'automation_trigger_delete_dialog_opened', testid: 'automation-trigger-delete-btn', on: 'click' },
+    { event: 'automation_delete_dialog_opened', testid: 'automation-delete-btn', on: 'click' }, // 列表卡片 + 详情页同 testid
+    //   B —— 项目模块(ProjectPage / ProjectDetailPage / WebhooksSection / SettingsPage)。
+    //     命令式事件(project_status/priority/assignee_changed、project_detail_edited、
+    //     project/workspace_webhook_toggled/deleted、workspace_settings_tab_switched)在 dmloop 源码内
+    //     Dap.shared.track,不进本表。
+    { event: 'project_view_switched', testid: 'project-view-list', on: 'click' }, // 187
+    { event: 'project_view_switched', testid: 'project-view-card', on: 'click' }, // 187 同事件二 testid(本地视图切换,重复点当前项过计待裁)
+    { event: 'project_searched', testid: 'project-search-input' }, // 188 输入框
+    { event: 'project_create_dialog_opened', testid: 'project-create-btn', on: 'click' }, // 189 头部
+    { event: 'project_create_dialog_opened', testid: 'project-create-btn-empty', on: 'click' }, // 189 空态(工作表未列,补齐入口一致,同 164/202 模式)
+    { event: 'project_delete_dialog_opened', testid: 'project-row-delete-btn', on: 'click' }, // 199 列表+卡片同 testid
+    //   E —— 专家团模块(SquadPage / SquadDetailPage)。命令式(expert_team_leader_changed/
+    //     instruction_saved/archived/deleted)在源码内 track,不进本表。
+    { event: 'expert_team_tab_switched', testid: 'loop-squad-scope-mine', on: 'click' }, // 244 作用域 tab(重复点过计待裁)
+    { event: 'expert_team_tab_switched', testid: 'loop-squad-scope-all', on: 'click' },
+    // 245 筛选/排序:领队/创建人为运行时聚合的 actor,无静态语义值 → 按筛选维度给 testid;sort 为静态枚举逐项。
+    { event: 'expert_team_filtered', testid: 'loop-squad-filter-leader', on: 'click' },
+    { event: 'expert_team_filtered', testid: 'loop-squad-filter-creator', on: 'click' },
+    { event: 'expert_team_filtered', testid: 'loop-squad-filter-clear', on: 'click' },
+    { event: 'expert_team_filtered', testid: 'loop-squad-sort-name', on: 'click' },
+    { event: 'expert_team_filtered', testid: 'loop-squad-sort-members', on: 'click' },
+    { event: 'expert_team_filtered', testid: 'loop-squad-sort-created', on: 'click' },
+    { event: 'expert_team_filtered', testid: 'loop-squad-sort-dir', on: 'click' },
+    { event: 'expert_team_create_dialog_opened', testid: 'loop-squad-create-btn', on: 'click' }, // 246 头部+空态同 testid
+    { event: 'expert_team_member_add_dialog_opened', testid: 'loop-squad-add-member-btn', on: 'click' },
+    { event: 'expert_team_instruction_edit_opened', testid: 'loop-squad-instruction-editor', on: 'click' },
+    { event: 'expert_team_archive_dialog_opened', testid: 'loop-squad-archive-btn', on: 'click' },
+    { event: 'expert_team_delete_dialog_opened', testid: 'loop-squad-row-delete-btn', on: 'click' },
+    //   D —— 专家模块(AgentPage / AgentDetailPage)。命令式(expert_deleted/runtime_changed/
+    //     property_edited/instruction_saved/mcp_saved/skill_attached/skill_removed/env_var_added/
+    //     env_var_removed/archived)在源码内 track,不进本表。225/233/236 头部+空态同 testid。
+    { event: 'expert_tab_switched', testid: 'loop-agent-scope-mine', on: 'click' }, // 作用域 tab(重复点过计待裁)
+    { event: 'expert_tab_switched', testid: 'loop-agent-scope-all', on: 'click' },
+    { event: 'expert_tab_switched', testid: 'loop-agent-scope-archived', on: 'click' },
+    { event: 'expert_searched', testid: 'loop-agent-search-input' },
+    { event: 'expert_create_dialog_opened', testid: 'loop-agent-create-btn', on: 'click' }, // 头部+空态同 testid
+    { event: 'expert_run_history_viewed', testid: 'loop-agent-tab-profile', on: 'click' },
+    { event: 'expert_skill_add_dialog_opened', testid: 'loop-agent-add-skill-btn', on: 'click' }, // 头部+空态同 testid
+    { event: 'expert_env_var_add_dialog_opened', testid: 'loop-agent-add-env-btn', on: 'click' }, // 头部+空态同 testid
+    { event: 'expert_archive_dialog_opened', testid: 'loop-agent-archive-btn', on: 'click' },
+    //   M10 —— 个人/runtime/skill(dmpersonal:RuntimePage/SkillPage/SkillDetailPage/SkillFileViewer)。
+    //     命令式(runtime_install_command_copied、skill_searched、skill_create_method_switched、
+    //     skill_created[runtime 分支]、skill_create_failed、skill_file_added、skill_edit_preview_toggled)
+    //     在源码内 track,不进本表。268/273/276 跳过(宿主壳/无 polling 信号)。278 create-btn 头部+空态同 testid。
+    { event: 'runtime_tab_viewed', testid: 'dmpersonal-tab-runtime', on: 'click' },
+    { event: 'skills_tab_viewed', testid: 'dmpersonal-tab-skill', on: 'click' },
+    { event: 'runtime_add_computer_dialog_opened', testid: 'runtime-add-computer-btn', on: 'click' },
+    { event: 'runtime_machine_rename_dialog_opened', testid: 'runtime-rename-btn', on: 'click' },
+    { event: 'skill_create_dialog_opened', testid: 'skill-create-btn', on: 'click' }, // 头部+空态同 testid
+    { event: 'skill_file_opened', testid: 'skill-file-tree-item', on: 'click' },
+    { event: 'skill_delete_dialog_opened', testid: 'skill-delete-btn', on: 'click' },
+
+    // ---- doc(octo-docs-module,@octo/docs):源直编入本 bundle(同 fleet),Dap 全局委托可命中。
+    //      testid 由 docs 源码挂(src/editor、src/board)。命令式事件(document_edited/format_applied/
+    //      slash_command_used/comment_panel_opened + 全部 whiteboard_* + 全部 table_*)在 docs 源码内
+    //      Dap.track,不进本表。doc 视图统一在 /docs 路由下渲染(编辑器/表格/画板非独立 route)。
+    //   编辑器(EditorShell / Toolbar / DocMoreMenu):testid 均 doc-*/docs-* 自命名,全局唯一,无需 route。
+    { event: 'document_tab_switched', testid: 'docs-tab-recent', on: 'click' }, // 重复点当前 tab 过计待裁(同 fleet 作用域 tab)
+    { event: 'document_tab_switched', testid: 'docs-tab-mine', on: 'click' },
+    { event: 'document_comment_input_opened', testid: 'comment-bubble-start', route: '/docs', on: 'click' }, // 非 doc- 前缀,加 route 门防误配
+    { event: 'document_forward_panel_opened', testid: 'doc-forward-btn', on: 'click' },
+    { event: 'document_open_in_new_page', testid: 'doc-more-item-open-new-page', on: 'click' },
+    { event: 'document_history_viewed', testid: 'doc-more-item-history', on: 'click' },
+    { event: 'document_outline_toggled', testid: 'doc-outline-toggle', on: 'click' }, // toggle:开+关同 testid,重复触发待裁
+    // 139 插入:同一事件多 testid(image/file/table/bookmark/emoji/mention/details/callout/formula*/link)。
+    //   emoji 工作表未列但为真实插入项,已补;formula 拆 inline/block 两 testid(docs 代理核实)。
+    { event: 'document_insert_used', testid: 'doc-insert-image', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-file', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-table', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-bookmark', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-emoji', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-mention', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-details', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-callout', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-formula-inline', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-formula-block', on: 'click' },
+    { event: 'document_insert_used', testid: 'doc-insert-link', on: 'click' },
+    //   画板(BoardShell,Excalidraw):151 find_on_canvas 用 Excalidraw 原生 toolbar-search(泛名),
+    //     加 route:/docs 锁定;⚠️ Cmd+F 键盘打开查找不产生对该元素的点击 → 纯委托漏键盘路径(待裁)。
+    { event: 'whiteboard_find_on_canvas', testid: 'toolbar-search', route: '/docs', on: 'click' }, // 151
 ]

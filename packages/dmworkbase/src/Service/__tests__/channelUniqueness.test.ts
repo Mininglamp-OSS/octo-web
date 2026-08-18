@@ -244,6 +244,10 @@ describe('中央映射通道 —— 表内「一手势一事件」守卫(重复�
                 'webhook_url_reset',
                 'webhook_tested',
                 'webhook_deleted',
+                // dap350 §8 step3 fleet/doc 新增(单次手势只命中其一 / 有意 rollup):
+                'task_board_filtered',      // 169:同一「筛选/搜索」手势按 view 三选一(GET /issues|/grouped|/search)
+                'skill_created',            // 281:新建(POST /skills)与导入(POST /skills/import)同为「创建 skill」
+                'document_share_managed',   // doc:成员 GET/PUT/DELETE(/docs/:id/members[/:seg])归一「管理共享」
             ]),
         },
         {

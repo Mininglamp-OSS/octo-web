@@ -262,12 +262,84 @@ export const BODY_RULES: BodyRule[] = [
         ],
     },
 
-    // ==== 以下 body 键事件经源码核对**无法在 octo-web 落地**,不填本表(见 Phase 3 findings) ====
-    //  · /fleet/api/v1/* 的 issues / autopilots / agents / squads / webhook-subscriptions 全套
-    //    (task_* / project_* / automation_* / expert_* / workspace_* / skill_* / *_webhook_*):
-    //    请求由**独立的 octo-fleet SPA** 发出,octo-web 运行时(Dap 所在)根本不发这些请求 → 抓不到。
-    //  · /api/v1/docs/:id/attachments/presign 等编辑器事件(document_slash_command_used /
-    //    document_insert_used):由**独立的 octo-docs 编辑器**发出(packages/docs 为空壳)→ 抓不到。
+    // ==== fleet(Loop,@dmwork/loop 同窗内嵌,/fleet/api/v1/*)——T1 复核证伪旧「独立 SPA 抓不到」假设 ====
+    //   loop 模块 source-direct 编译进同一 bundle,axios(LOOP_API_BASE)底层走全局 XHR → body-clone 能拿到
+    //   字符串体。逐条对 octo-loop-module packages/dmloop/src/api/*.ts 真实 payload 核实(见 dap350 §7.3)。
+
+    // POST /fleet/api/v1/issues —— 新建任务 vs 子任务(CreateIssueModal → issueApi.createIssue):
+    //   顶层任务不传 parentIssueId(undefined,JSON 省略键);子任务传 parentIssueId=父 id(键存在)。
+    //   hasKeys(presence-only)判别安全:undefined 键被 JSON.stringify 省略,故仅子任务命中 182。
+    {
+        method: 'POST',
+        path: '/fleet/api/v1/issues',
+        discriminators: [{ event: 'task_subtask_created', hasKeys: ['parent_issue_id'] }],
+        fallbackEvent: 'task_created',
+    },
+
+    // PUT /fleet/api/v1/issues/:id —— 任务属性 inline 单键部分更新(requestStatus/requestAssign/详情右栏 patch):
+    //   status/priority/project_id 各单键;assignee 成对(assignee_id+assignee_type)。都没中 → 编辑标题/描述(175)。
+    //   (改父任务 patch{parent_issue_id} 也落 fallback→task_detail_edited,整合表无独立事件,可接受。)
+    {
+        method: 'PUT',
+        path: '/fleet/api/v1/issues/:id',
+        discriminators: [
+            { event: 'task_status_changed', hasKeys: ['status'] },
+            { event: 'task_priority_changed', hasKeys: ['priority'] },
+            { event: 'task_assignee_changed', hasKeys: ['assignee_id', 'assignee_type'] },
+            { event: 'task_project_changed', hasKeys: ['project_id'] },
+        ],
+        fallbackEvent: 'task_detail_edited',
+    },
+
+    // PATCH /fleet/api/v1/autopilots/:id —— 自动化属性单键更新(AutopilotDetailPage 各 inline 回调):
+    //   status(active/paused)=启停;description/title/project_id 各单键;executor 成对。键互不重叠,无兜底。
+    {
+        method: 'PATCH',
+        path: '/fleet/api/v1/autopilots/:id',
+        discriminators: [
+            { event: 'automation_enabled_toggled', equals: { key: 'status', values: ['active', 'paused'] } },
+            { event: 'automation_instruction_saved', hasKeys: ['description'] },
+            { event: 'automation_renamed', hasKeys: ['title'] },
+            { event: 'automation_executor_changed', hasKeys: ['assignee_type', 'assignee_id'] },
+            { event: 'automation_target_project_changed', hasKeys: ['project_id'] },
+        ],
+    },
+
+    // PATCH /fleet/api/v1/autopilots/:id/triggers/:id —— 触发器编辑 vs 启停(段数 7,与上条 PATCH 端点互斥):
+    //   编辑带 cron_expression(+timezone,无 enabled);启停仅带 enabled。互斥。
+    {
+        method: 'PATCH',
+        path: '/fleet/api/v1/autopilots/:id/triggers/:id',
+        discriminators: [
+            { event: 'automation_trigger_edited', hasKeys: ['cron_expression'] },
+            { event: 'automation_trigger_toggled', hasKeys: ['enabled'] },
+        ],
+    },
+
+    // POST /fleet/api/v1/squads/:id/members —— 添加专家团成员(squadApi.addMember,body{member_type,member_id,role})。
+    //   ⚠️ 与创建专家团时批量加成员(247)完全同形,前端无 batch 标识:靠中央映射时序分组区分,前端只 presence 打
+    //   (§9.3 唯一遗留外部确认项,不行则接受与 247 合一)。presence-only,member_id 值不外泄。
+    {
+        method: 'POST',
+        path: '/fleet/api/v1/squads/:id/members',
+        discriminators: [{ event: 'expert_team_member_added', hasKeys: ['member_id'] }],
+    },
+
+    // POST /fleet/api/v1/webhook-subscriptions —— 项目 vs 工作区 webhook(webhookApi.createWebhook 共用端点):
+    //   项目侧带 project_id 键(WebhooksSection 有 projectId prop),工作区侧不带 → fallback。
+    //   (启停/删除 197/198/266/267 body 无 scope,退各仓 imperative 靠组件 projectId prop 分流,不进本表。)
+    {
+        method: 'POST',
+        path: '/fleet/api/v1/webhook-subscriptions',
+        discriminators: [{ event: 'project_webhook_added', hasKeys: ['project_id'] }],
+        fallbackEvent: 'workspace_webhook_added',
+    },
+
+    // ==== 以下 body 键事件经源码核对**无法/不宜在 body 通道落地**,退前端 DOM/命令式 ====
+    //  · 178 task_attachment_added(POST /fleet/api/v1/upload-file):FormData/multipart 体,body 通道只解析
+    //    JSON 字符串体、multipart 跳过 → 读不到 issue_id 键;退各仓 imperative(正文附件成功分支)。(§核实新发现)
+    //  · doc 编辑器内事件(document_slash_command_used 138 / document_insert_used 139 / table_* / whiteboard_*):
+    //    多数无网络请求或走命令总线,退 octo-docs-module 命令式/testid(见 dap350 §9.3 G 类)。
     //  · POST /api/v1/message/channel/sync 的 6 个(channel_opened / subchannel_opened /
     //    channel_search_result_clicked / contact_message_clicked / botfather_opened /
     //    contacts_botfather_banner_clicked):sync body 顶层键恒定,判别位是**纯 UI 上下文**,
