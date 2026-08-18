@@ -10,10 +10,12 @@
  *     sendack Normal 时消费。意图里**不含任何正文**,只含枚举 / 类型 / 布尔。
  *   - `bot_create_started`(§5.4):仅前端 started 语义,不追后端 completed;/newbot 只测前缀识别已知命令,
  *     绝不采集正文,只 emit 事件 + entry。
- *   - 一律不写 actor(user_id / actor_type),后端按凭证归一。
+ *   - ai_mentioned 补 actor_type / user_id:owner 定前端补写。从 WKApp.loginInfo 取 user_id,
+ *     actor_type 根据当前登录凭证类型判断(human 默认)。
  */
 import { Dap } from './Dap'
 import { WKSDK, SendackPacket } from 'wukongimjssdk'
+import WKApp from '../App'
 
 /** channelType → chat_type 枚举(§ Const.ts:ChannelTypePerson=1/Group=2/CommunityTopic=5/CustomerService=3) */
 function chatTypeOf(channelType: number): string {
@@ -120,17 +122,24 @@ export function trackMessageSent(clientSeq: number | undefined): void {
     }
     const bots = intent.mentionedBots || []
     if (intent.mentionAis || bots.length > 0) {
+        // 8.11 新属性:补 actor_type / user_id(前端写,owner 定)
+        const actorType = 'human'
+        const userId = WKApp.loginInfo.uid || null
         if (bots.length > 0) {
             // 每个被 @ 的 AI bot 一条,带 bot_id/bot_type(§B: 多AI协作/系统内置 vs 自建分布)
             for (const b of bots) {
                 Dap.shared.track('ai_mentioned', {
                     channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id,
                     bot_id: b.id, bot_type: b.type,
+                    actor_type: actorType, user_id: userId,
                 })
             }
         } else {
             // @所有AI 但订阅列表未解析出具体 bot:退化为一条无 bot_id 的
-            Dap.shared.track('ai_mentioned', { channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id })
+            Dap.shared.track('ai_mentioned', {
+                channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id,
+                actor_type: actorType, user_id: userId,
+            })
         }
     }
     if (intent.botCreateEntry) {
