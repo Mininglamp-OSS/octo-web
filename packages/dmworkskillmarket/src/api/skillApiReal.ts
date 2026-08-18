@@ -4,7 +4,7 @@
  * This module communicates with the octo-marketplace backend. It maps
  * snake_case responses to camelCase frontend types.
  */
-import { API_BASE_URL } from "./constants";
+import { resolveSkillMarketApiBaseURL } from "./constants";
 import { WKApp, t, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
 import type {
   Category,
@@ -96,7 +96,7 @@ async function requestEnvelope<T>(
   init?: RequestInit,
   options?: { auth?: boolean }
 ): Promise<SuccessEnvelope<T>> {
-  const url = `${API_BASE_URL}${path}`;
+  const url = `${resolveSkillMarketApiBaseURL()}${path}`;
   const defaultHeaders =
     options?.auth === false
       ? { "Content-Type": "application/json" }
@@ -473,7 +473,7 @@ export function deleteSkill(id: string): Promise<void> {
 }
 
 export function getDownloadUrl(id: string): string {
-  return `${API_BASE_URL}/skills/${encodeURIComponent(id)}/download`;
+  return `${resolveSkillMarketApiBaseURL()}/skills/${encodeURIComponent(id)}/download`;
 }
 
 export async function downloadSkill(id: string): Promise<void> {

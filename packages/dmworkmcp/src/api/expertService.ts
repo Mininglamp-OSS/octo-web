@@ -40,11 +40,11 @@ import {
 // (isolated axios instance + interceptors + `{data:...}` envelope unwrapping).
 //
 // The real implementations target the octo-marketplace Expert catalog v1
-// (octo-marketplace/docs/api/expert-v1.md), mounted at /market/api/v1. Unlike
-// mcpService, requests stay SAME-ORIGIN (relative /market/api/v1/...): in dev
-// the vite proxy forwards /market to the local marketplace, in prod the gateway
-// routes it. We deliberately do NOT rewrite baseURL to the apiURL origin (which
-// in dev is a remote test server without the expert endpoints).
+// (octo-marketplace/docs/api/expert-v1.md), mounted at /market/api/v1. Web
+// builds stay same-origin so dev Vite proxy / production gateway can route it.
+// Packaged desktop builds have no same-origin gateway because the page runs
+// from file://, so the request interceptor resolves the relative mount against
+// WKApp.apiClient.config.apiURL's origin.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
@@ -136,10 +136,18 @@ const BASE = "/market/api/v1";
 // auth middleware also reads.
 const FLEET_BASE = "/fleet/api/v1";
 
+function resolveBaseURL(): string {
+  const apiURL = WKApp.apiClient?.config?.apiURL;
+  if (!apiURL) return "";
+  try {
+    return new URL(apiURL).origin;
+  } catch {
+    return "";
+  }
+}
+
 expertAxios.interceptors.request.use((config) => {
-  // Same-origin: leave baseURL empty so /market/api/v1/* is a relative path
-  // served by the app origin (dev proxy / prod gateway). Do NOT rewrite it to
-  // the apiURL origin — that host does not serve the expert endpoints in dev.
+  config.baseURL = resolveBaseURL();
   config.headers = config.headers ?? {};
   config.headers["Accept-Language"] = buildAcceptLanguage();
   const token = WKApp.loginInfo.token;

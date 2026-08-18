@@ -9,12 +9,19 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 // four visually-active but inert buttons).
 const mock = vi.hoisted(() => ({
   logout: vi.fn(),
+  requestOnFulfilled: undefined as
+    | ((config: Record<string, unknown>) => Record<string, unknown>)
+    | undefined,
   responseOnRejected: undefined as
     | ((err: unknown) => Promise<unknown>)
     | undefined,
   instance: {
     interceptors: {
-      request: { use: () => {} },
+      request: {
+        use: (onFulfilled: (config: Record<string, unknown>) => Record<string, unknown>) => {
+          mock.requestOnFulfilled = onFulfilled;
+        },
+      },
       response: {
         use: (
           _onFulfilled: unknown,
@@ -39,6 +46,7 @@ vi.mock("axios", () => ({
 
 vi.mock("@octo/base", () => ({
   WKApp: {
+    apiClient: { config: { apiURL: "/api/v1/" } },
     loginInfo: { token: "tok" },
     shared: { currentSpaceId: "sp", logout: mock.logout },
   },
@@ -49,6 +57,7 @@ vi.mock("@octo/base", () => ({
 
 import { listExperts, listSquads } from "./expertService";
 import type { ExpertCatalogSort } from "./expertService";
+import { WKApp } from "@octo/base";
 
 const SORTS: ExpertCatalogSort[] = [
   "comprehensive",
@@ -71,6 +80,15 @@ describe("expertService catalog sort wire contract", () => {
     mock.instance.get.mockResolvedValue({
       data: { data: [], pagination: { total: 0, page: 1, page_size: 100 } },
     });
+    WKApp.apiClient.config.apiURL = "/api/v1/";
+  });
+
+  it("resolves desktop marketplace requests against the API origin", () => {
+    WKApp.apiClient.config.apiURL = "https://api.example.com/v1/";
+
+    const next = mock.requestOnFulfilled?.({ headers: {} });
+
+    expect(next?.baseURL).toBe("https://api.example.com");
   });
 
   it("listExperts sends every sort mode as the ?sort param", async () => {
