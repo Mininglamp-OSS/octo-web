@@ -26,7 +26,7 @@
     "build-ele:linux": "npm-run-all clean:dist-ele build:electron compile:electron electron:build:linux verify:electron-runtime-deps",
     "build-ele:linux-arm64": "npm-run-all clean:dist-ele build:electron compile:electron electron:build:linux-arm64 verify:electron-runtime-deps",
     "build-ele": "npm-run-all clean:dist-ele build:electron compile:electron electron:build:all verify:electron-runtime-deps",
-    "clean:dist-ele": "rm -rf dist-ele",
+    "clean:dist-ele": "node -e \"require('fs').rmSync('dist-ele',{recursive:true,force:true})\"",
     "compile:electron": "tsc -p tsconfig.e.json && node scripts/compile-electron-preload.mjs",
     "compile:electron-preload": "node scripts/compile-electron-preload.mjs",
     "verify:electron-runtime-deps": "node scripts/verify-electron-runtime-deps.mjs",
