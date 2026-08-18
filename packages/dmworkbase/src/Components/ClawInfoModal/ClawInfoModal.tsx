@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Dot } from "@octo/ui";
 import { Spin, Empty, Tooltip } from "@douyinfe/semi-ui";
 import { IconClose } from "@douyinfe/semi-icons";
 import { Clock } from "lucide-react";
@@ -319,7 +320,17 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
                   className="claw-info-meta__status"
                   data-status={data?.runtime_info?.process_status || "unknown"}
                 >
-                  <span className="claw-info-meta__dot" />
+                  <Dot
+                    size="small"
+                    tone={
+                      data?.runtime_info?.process_status === "running"
+                        ? "success"
+                        : data?.runtime_info?.process_status === "idle"
+                        ? "warning"
+                        : "neutral"
+                    }
+                    className="claw-info-meta__dot"
+                  />
                   {data?.runtime_info?.process_status === "running"
                     ? t("base.claw.status.running")
                     : data?.runtime_info?.process_status === "idle"

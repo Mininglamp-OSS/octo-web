@@ -1,4 +1,4 @@
-import { Badge } from "@douyinfe/semi-ui";
+import { Badge } from "@octo/ui";
 import React from "react";
 import { Component, ReactNode } from "react";
 import "./index.css"
@@ -26,7 +26,7 @@ export default class IconListItem extends Component<IconListItemProps> {
                 </div>
                 {
                     badge && badge > 0 ? <div className="wk-iconlistitem-content-badge">
-                        <Badge count={badge} type="danger"></Badge>
+                        <Badge count={badge}></Badge>
                     </div> : undefined
                 }
             </div>

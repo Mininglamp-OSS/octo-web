@@ -101,7 +101,6 @@
     right: 0;
     width: 10px;
     height: 10px;
-    border-radius: var(--wk-r-circle, 50%);
     background: var(--wk-color-online);
     border: 2px solid var(--wk-bg-deep);
     pointer-events: none;

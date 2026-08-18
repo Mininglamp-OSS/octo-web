@@ -1,4 +1,5 @@
 import React from 'react';
+import { Dot } from '@octo/ui';
 import './ClawHealthCheckItem.css';
 
 export type HealthStatus = 'success' | 'warning' | 'error';
@@ -27,13 +28,16 @@ const ClawHealthCheckItem: React.FC<ClawHealthCheckItemProps> = ({
   className = '',
   'data-testid': testId = 'claw-health-check-item',
 }) => {
+  const dotTone = status === 'error' ? 'danger' : status;
+
   return (
     <div
       className={`health-chip ${className}`}
       data-testid={testId}
     >
-      <span
-        className={`hc-dot hc-dot--${status}`}
+      <Dot
+        tone={dotTone}
+        className="hc-dot"
         data-testid={`${testId}-dot`}
       />
       <span

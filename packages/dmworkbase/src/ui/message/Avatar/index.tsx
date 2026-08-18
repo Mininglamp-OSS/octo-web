@@ -1,4 +1,5 @@
 import React from 'react'
+import { Dot } from '@octo/ui'
 import { useI18n } from '../../../i18n'
 import './index.css'
 
@@ -49,7 +50,7 @@ export default function Avatar({
         className="wk-msg-avatar-img"
       />
       {showOnlineDot && isOnline && (
-        <span className="wk-msg-avatar-online-dot" />
+        <Dot tone="success" className="wk-msg-avatar-online-dot" />
       )}
     </div>
   )

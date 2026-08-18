@@ -15,25 +15,7 @@
 }
 
 .hc-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
   flex-shrink: 0;
-}
-
-/* 状态颜色：绿色 = 正常 */
-.hc-dot--success {
-  background: var(--green, #22c55e);
-}
-
-/* 状态颜色：黄色 = 警告 */
-.hc-dot--warning {
-  background: var(--yellow, #f59e0b);
-}
-
-/* 状态颜色：红色 = 错误 */
-.hc-dot--error {
-  background: var(--red, #ef4444);
 }
 
 .hc-label {

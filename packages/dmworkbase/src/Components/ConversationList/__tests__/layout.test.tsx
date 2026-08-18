@@ -248,6 +248,45 @@ describe("ConversationList unread indicators", () => {
     expect(indicators?.querySelector(".wk-conv-unread-num")?.textContent).toBe(
       "3"
     );
+    expect(
+      indicators
+        ?.querySelector(".wk-conv-unread-num")
+        ?.classList.contains("octo-ui-badge--soft")
+    ).toBe(true);
+  });
+
+  it("caps the shared unread badge at 99+", () => {
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          conversations={[makeConversation({ unread: 100 })] as any}
+        />,
+        container
+      );
+    });
+
+    expect(container.querySelector(".wk-conv-unread-num")?.textContent).toBe(
+      "99+"
+    );
+  });
+
+  it("uses the shared unread badge in compact mode", () => {
+    act(() => {
+      ReactDOM.render(
+        <ConversationList
+          compact
+          conversations={[makeConversation({ unread: 100 })] as any}
+        />,
+        container
+      );
+    });
+
+    const badge = container.querySelector(".wk-conv-compact-badge");
+    expect(badge?.classList.contains("octo-ui-badge--soft")).toBe(true);
+    expect(badge?.textContent).toBe("99+");
+    const unreadDot = container.querySelector(".wk-conv-compact-unread-dot");
+    expect(unreadDot?.classList.contains("octo-ui-dot--small")).toBe(true);
+    expect(unreadDot?.classList.contains("octo-ui-dot--danger")).toBe(true);
   });
 
   it("renders muted unread count under the time instead of on the avatar", () => {

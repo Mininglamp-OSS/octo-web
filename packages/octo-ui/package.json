@@ -18,7 +18,9 @@
     "dist",
     "src/index.d.ts",
     "src/components/Button/types.ts",
-    "src/components/Tag/types.ts"
+    "src/components/Tag/types.ts",
+    "src/components/Badge/types.ts",
+    "src/components/Dot/types.ts"
   ],
   "sideEffects": [
     "**/*.css"
