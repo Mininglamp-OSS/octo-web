@@ -42,6 +42,7 @@ import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
 import { wkConfirm } from "../WKModal";
 import { collapsedThreadUnread } from "./unread";
+import { Dap } from "../../Service/Dap";
 import {
   addImChannelInfoListener,
   fetchImChannelInfo,
@@ -917,10 +918,14 @@ export default class ConversationList extends Component<
   }
 
   onTop(channelInfo: ChannelInfo) {
+    const willPin = !channelInfo.top
     topChannelSetting({
       channel: channelInfo.channel,
-      top: !channelInfo.top,
+      top: willPin,
     })
+      .then(() => {
+        Dap.shared.track('conversation_pinned', { action: willPin ? 'pin' : 'unpin' })
+      })
       .catch((err) => {
         Toast.error(err?.msg);
       });
@@ -936,6 +941,7 @@ export default class ConversationList extends Component<
       mute: value,
     })
       .then(() => {
+        Dap.shared.track('conversation_muted', { action: value ? 'mute' : 'unmute' })
         // 直接重拉（不删缓存），新数据覆盖旧缓存，避免删除期间出现 loading 骨架
         fetchImChannelInfo(WKSDK.shared(), channelInfo.channel)
           .then(() => this.setState({}))
