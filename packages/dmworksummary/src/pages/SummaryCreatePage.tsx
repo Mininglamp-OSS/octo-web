@@ -616,6 +616,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             object_id: this.props.channel?.channelID,
             source: this.props.source,
             entry_point: this.props.source,
+            entry_source: this.props.source,
             trigger_mode: this.state.mode,
         };
 
@@ -999,6 +1000,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 object_id: this.props.channel?.channelID,
                 source: this.props.source,
                 entry_point: this.props.source,
+                entry_source: this.props.source,
                 trigger_mode: 'agent',
             });
             markAgentSummaryNotificationEligible(result.task_id);
