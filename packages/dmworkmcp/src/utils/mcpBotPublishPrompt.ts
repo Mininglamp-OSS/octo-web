@@ -1,3 +1,8 @@
+import {
+  isShellSafeSpaceId,
+  sanitizeShellSpaceId,
+} from "@octo/base/src/Utils/spaceId";
+
 export interface McpBotPublishPromptValues {
   spaceId?: string;
   apiBaseUrl?: string;
@@ -11,21 +16,13 @@ export interface McpBotPublishPromptValues {
 // poisoned localStorage fallback (see McpBotPublishModal.getCurrentSpaceId)
 // can't inject shell tokens into `--space ${spaceId}`. The prompt then falls
 // back to the `<space-id>` placeholder, forcing the operator to provide a real one.
-const SPACE_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
-
 /** Whether a caller-supplied space id is shell-safe: letters, digits, and the
  *  separators [._-] only (bounded length), never a bare `..` and never leading
  *  with `-`/`.` (which would parse as a flag or a traversal-shaped token when
  *  reaching `--space ${id}` / `--profile space-${id}`). Covers hex, UUIDv4, and
  *  readable slugs like `minglue_default`; rejects empty, spaces, and metachars. */
 export function isValidMcpSpaceId(raw?: string): boolean {
-  if (typeof raw !== "string") return false;
-  const v = raw.trim();
-  return SPACE_ID_RE.test(v) && v !== ".." && !/^[-.]/.test(v);
-}
-
-function sanitizeSpaceId(raw?: string): string {
-  return isValidMcpSpaceId(raw) ? (raw as string).trim() : "<space-id>";
+  return isShellSafeSpaceId(raw);
 }
 
 /** Normalize the API base URL: trust the configured API URL when it's a full
@@ -45,7 +42,7 @@ export function resolveMcpAPIBaseURL(apiURL: string, origin: string): string {
  *  workflow instead of a "Publish as a Bot" section that doesn't exist for
  *  MCP. */
 export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): string {
-  const spaceId = sanitizeSpaceId(values.spaceId);
+  const spaceId = sanitizeShellSpaceId(values.spaceId);
   const apiBaseUrl = values.apiBaseUrl?.trim() || "<api-base-url>";
 
   return `使用 octo-cli 内置的 \`octo-marketplace\` Skill，将指定 MCP 服务器上架到 OCTO Marketplace。

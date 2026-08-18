@@ -32,6 +32,7 @@ export interface MailAddressManagementViewProps {
   maxMailboxes: number | null;
   copiedId: string;
   createdMailbox: AgentMailbox | null;
+  setupMethod: "openclaw" | "cli";
   setupPrompt: string;
   promptCopied: boolean;
   disconnectingId: string;
@@ -47,6 +48,7 @@ export interface MailAddressManagementViewProps {
   onCreate: () => void;
   onCopy: (mailbox: AgentMailbox) => void;
   onCopySetupPrompt: () => void;
+  onSetupMethodChange: (method: "openclaw" | "cli") => void;
   onConnect: (mailbox: AgentMailbox) => void;
   onDisconnect: (mailbox: AgentMailbox) => void;
   onDelete: (mailbox: AgentMailbox) => void;
@@ -350,9 +352,43 @@ export default function MailAddressManagementView(
                 values: { address: props.createdMailbox.address },
               })}
             </p>
+            <div
+              className="octo-mail-setup-dialog__methods"
+              role="group"
+              aria-label={t("mail.agentMailboxes.setupMethod")}
+            >
+              <button
+                type="button"
+                aria-pressed={props.setupMethod === "openclaw"}
+                className={props.setupMethod === "openclaw" ? "is-active" : ""}
+                onClick={() => props.onSetupMethodChange("openclaw")}
+              >
+                {t("mail.agentMailboxes.openClawSetup")}
+              </button>
+              <button
+                type="button"
+                aria-pressed={props.setupMethod === "cli"}
+                className={props.setupMethod === "cli" ? "is-active" : ""}
+                onClick={() => props.onSetupMethodChange("cli")}
+              >
+                {t("mail.agentMailboxes.cliSetup")}
+              </button>
+            </div>
             <div className="octo-mail-setup-dialog__divider" />
-            <h3>{t("mail.agentMailboxes.copyPromptTitle")}</h3>
-            <p>{t("mail.agentMailboxes.copyPromptDescription")}</p>
+            <h3>
+              {t(
+                props.setupMethod === "cli"
+                  ? "mail.agentMailboxes.cliPromptTitle"
+                  : "mail.agentMailboxes.copyPromptTitle"
+              )}
+            </h3>
+            <p>
+              {t(
+                props.setupMethod === "cli"
+                  ? "mail.agentMailboxes.cliPromptDescription"
+                  : "mail.agentMailboxes.copyPromptDescription"
+              )}
+            </p>
             <pre>{props.setupPrompt}</pre>
             <button
               className="octo-mail-setup-dialog__copy"
@@ -368,7 +404,13 @@ export default function MailAddressManagementView(
             </button>
             <div className="octo-mail-setup-dialog__note">
               <Link2 size={15} />
-              <span>{t("mail.agentMailboxes.userChoosesAgent")}</span>
+              <span>
+                {t(
+                  props.setupMethod === "cli"
+                    ? "mail.agentMailboxes.cliSkillGuide"
+                    : "mail.agentMailboxes.userChoosesAgent"
+                )}
+              </span>
             </div>
           </section>
         </div>

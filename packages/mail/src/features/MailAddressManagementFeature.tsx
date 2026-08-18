@@ -1,5 +1,6 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n, UserService, WKApp } from "@octo/base";
+import { sanitizeShellSpaceId } from "@octo/base/src/Utils/spaceId";
 import MailService from "../Service/MailService";
 import type { AgentMailbox, AgentOutboundMode } from "../bridge/types";
 import { resolveAgentMailboxBotNames } from "../bridge/agentIdentity";
@@ -19,6 +20,8 @@ type PendingConfirmation = {
   mailbox: AgentMailbox;
 };
 
+type SetupMethod = "openclaw" | "cli";
+
 export default function MailAddressManagementFeature() {
   const { t } = useI18n();
   const [mailboxes, setMailboxes] = useState<AgentMailbox[]>([]);
@@ -33,6 +36,7 @@ export default function MailAddressManagementFeature() {
   const [createdMailbox, setCreatedMailbox] = useState<AgentMailbox | null>(
     null
   );
+  const [setupMethod, setSetupMethod] = useState<SetupMethod>("openclaw");
   const [promptCopied, setPromptCopied] = useState(false);
   const [disconnectingId, setDisconnectingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
@@ -40,6 +44,7 @@ export default function MailAddressManagementFeature() {
   const [pendingConfirmation, setPendingConfirmation] =
     useState<PendingConfirmation | null>(null);
   const [revision, setRevision] = useState(0);
+  const setupPromptCopyRevisionRef = useRef(0);
   const mailboxContext = useAgentMailboxContext();
 
   const reload = useCallback(() => setRevision((value) => value + 1), []);
@@ -73,6 +78,7 @@ export default function MailAddressManagementFeature() {
   }, [revision, t]);
 
   const currentSpaceId = (WKApp.shared.currentSpaceId || "").trim();
+  const setupPromptSpaceId = sanitizeShellSpaceId(currentSpaceId);
 
   const updateCurrentMailboxContext = (
     expectedMailboxId: string,
@@ -94,10 +100,23 @@ export default function MailAddressManagementFeature() {
   };
 
   const setupPrompt = createdMailbox
-    ? t("mail.agentMailboxes.setupPrompt", {
-        values: { address: createdMailbox.address, spaceId: currentSpaceId },
-      })
+    ? t(
+        setupMethod === "cli"
+          ? "mail.agentMailboxes.cliSetupPrompt"
+          : "mail.agentMailboxes.setupPrompt",
+        {
+          values: {
+            address: createdMailbox.address,
+            spaceId: setupPromptSpaceId,
+          },
+        }
+      )
     : "";
+
+  const resetSetupPromptCopy = () => {
+    setupPromptCopyRevisionRef.current += 1;
+    setPromptCopied(false);
+  };
 
   const create = async () => {
     if (
@@ -114,7 +133,8 @@ export default function MailAddressManagementFeature() {
       const mailbox = await MailService.createAgentMailbox(localpart.trim());
       setMailboxes((current) => [...current, mailbox]);
       setLocalpart("");
-      setPromptCopied(false);
+      setSetupMethod("openclaw");
+      resetSetupPromptCopy();
       setCreatedMailbox(mailbox);
       WKApp.mittBus.emit("mail-refresh" as never);
     } catch (reason) {
@@ -136,12 +156,17 @@ export default function MailAddressManagementFeature() {
   };
 
   const copySetupPrompt = async () => {
+    const copyRevision = ++setupPromptCopyRevisionRef.current;
     setActionError("");
     try {
       await navigator.clipboard.writeText(setupPrompt);
-      setPromptCopied(true);
+      if (setupPromptCopyRevisionRef.current === copyRevision) {
+        setPromptCopied(true);
+      }
     } catch (reason) {
-      setActionError(getErrorMessage(reason, t("mail.error.fallback")));
+      if (setupPromptCopyRevisionRef.current === copyRevision) {
+        setActionError(getErrorMessage(reason, t("mail.error.fallback")));
+      }
     }
   };
 
@@ -251,6 +276,7 @@ export default function MailAddressManagementFeature() {
       maxMailboxes={maxMailboxes}
       copiedId={copiedId}
       createdMailbox={createdMailbox}
+      setupMethod={setupMethod}
       setupPrompt={setupPrompt}
       promptCopied={promptCopied}
       disconnectingId={disconnectingId}
@@ -262,8 +288,13 @@ export default function MailAddressManagementFeature() {
       onCreate={() => void create()}
       onCopy={(mailbox) => void copy(mailbox)}
       onCopySetupPrompt={() => void copySetupPrompt()}
+      onSetupMethodChange={(method) => {
+        setSetupMethod(method);
+        resetSetupPromptCopy();
+      }}
       onConnect={(mailbox) => {
-        setPromptCopied(false);
+        setSetupMethod("openclaw");
+        resetSetupPromptCopy();
         setCreatedMailbox(mailbox);
       }}
       onDisconnect={(mailbox) =>
@@ -299,7 +330,10 @@ export default function MailAddressManagementFeature() {
       onManageRules={(mailbox) =>
         WKApp.routeRight.push(<MailRuleManagementFeature mailbox={mailbox} />)
       }
-      onCloseSetup={() => setCreatedMailbox(null)}
+      onCloseSetup={() => {
+        resetSetupPromptCopy();
+        setCreatedMailbox(null);
+      }}
       onRefresh={reload}
     />
   );

@@ -119,6 +119,8 @@ export interface MailRule {
   name: string;
   enabled: boolean;
   priority: number;
+  matchMode: "all" | "any";
+  conditions: MailRuleCondition[];
   matchFrom?: string;
   matchSubject?: string;
   forwardTargets: string[];
@@ -130,9 +132,26 @@ export interface MailRuleInput {
   name: string;
   enabled: boolean;
   priority: number;
+  matchMode: "all" | "any";
+  conditions: MailRuleCondition[];
   matchFrom?: string;
   matchSubject?: string;
   forwardTargets: string[];
+}
+
+export type MailRuleConditionField =
+  | "from"
+  | "to"
+  | "subject"
+  | "body"
+  | "subject_or_body";
+
+export type MailRuleConditionOperator = "contains" | "not_contains" | "equals";
+
+export interface MailRuleCondition {
+  field: MailRuleConditionField;
+  operator: MailRuleConditionOperator;
+  value: string;
 }
 
 export type MailRuleExecutionStatus =

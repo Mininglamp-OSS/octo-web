@@ -212,6 +212,19 @@ describe("MailService", () => {
       name: "VIP mail",
       enabled: true,
       priority: 0,
+      matchMode: "all" as const,
+      conditions: [
+        {
+          field: "from" as const,
+          operator: "contains" as const,
+          value: "vip@example.com",
+        },
+        {
+          field: "subject" as const,
+          operator: "contains" as const,
+          value: "urgent",
+        },
+      ],
       matchFrom: "vip@example.com",
       matchSubject: "urgent",
       forwardTargets: ["owner@example.com"],
