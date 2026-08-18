@@ -120,7 +120,7 @@
 }
 
 .document-forward-copy:hover,
-.document-forward-summary:hover {
+.document-forward-summary:not(:disabled):hover {
   background: var(--wk-bg-elevated);
 }
 
@@ -134,6 +134,11 @@
   animation: document-forward-summary-spin 1.2s linear infinite;
 }
 
+.document-forward-summary-placeholder {
+  width: 28px;
+  height: 28px;
+}
+
 .document-forward-copy .icon,
 .document-forward-summary svg {
   width: 16px;
@@ -143,6 +148,13 @@
 @keyframes document-forward-summary-spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-forward-summary.is-busy .icon,
+  .document-forward-summary.is-busy svg {
+    animation: none;
   }
 }
 

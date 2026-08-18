@@ -1,7 +1,7 @@
 import React from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import type { IModule } from "@octo/base";
-import { i18n, WKApp, Menus, t as translate, Dap } from "@octo/base";
+import { i18n, WKApp, Menus, t as translate, Dap, type DocumentSummaryRequestPayload } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
 import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
@@ -26,17 +26,9 @@ let _spaceReadyHandler: (() => void) | null = null;
 let _documentSummaryHandler: ((payload: DocumentSummaryRequestPayload) => void) | null = null;
 const openingSummaryShares = new Set<string>();
 
-interface DocumentSummaryRequestPayload {
-    documentId?: string;
-    version?: string;
-    title?: string;
-    spaceId?: string;
-    onSettled?: () => void;
-}
-
-function makeDocumentSummaryIdempotencyKey(documentId: string, version?: string): string {
+function makeDocumentSummaryIdempotencyKey(documentId: string): string {
     const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    return `document:${documentId}:${version || "latest"}:${suffix}`;
+    return `document:${documentId}:latest:${suffix}`;
 }
 
 function afterSummaryMenuSwitch(action: () => void) {
@@ -220,22 +212,30 @@ export class SummaryModule implements IModule {
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
         WKApp.mittBus.on('space-ready', _spaceReadyHandler);
+        WKApp.canCreateDocumentSummary = true;
 
         _documentSummaryHandler = (payload: DocumentSummaryRequestPayload) => {
             const documentId = payload?.documentId?.trim();
-            if (!documentId) return;
-            if (payload.spaceId) WKApp.shared.currentSpaceId = payload.spaceId;
+            if (!documentId) {
+                payload?.onSettled?.();
+                return;
+            }
             Toast.info(translate("summary.documentSummary.creating"));
             void createDocumentAgentSummary({
-                document_refs: [{ document_id: documentId, version: payload.version || undefined }],
+                document_refs: [{ document_id: documentId }],
                 requirement: translate("summary.documentSummary.defaultRequirement"),
-                idempotency_key: makeDocumentSummaryIdempotencyKey(documentId, payload.version),
-            }).then((res) => {
+                idempotency_key: makeDocumentSummaryIdempotencyKey(documentId),
+            }, { source: 'document_star' }, payload.spaceId).then(() => {
                 Toast.success(translate("summary.documentSummary.created"));
-                WKApp.openSummaryDetail?.(res.task_id, payload.spaceId || WKApp.shared.currentSpaceId);
+                if (payload.originChannel) {
+                    notifyChatSummaryCreated({
+                        channelID: payload.originChannel.channelId,
+                        channelType: payload.originChannel.channelType,
+                    });
+                }
             }).catch((err: unknown) => {
-                const message = err instanceof Error ? err.message : translate("summary.documentSummary.failed");
-                Toast.error(message || translate("summary.documentSummary.failed"));
+                console.warn("[summary] create document summary failed", err);
+                Toast.error(translate("summary.documentSummary.failed"));
             }).finally(() => {
                 payload.onSettled?.();
             });
@@ -285,6 +285,7 @@ if (import.meta.hot) {
             WKApp.mittBus.off('wk:document-summary-request', _documentSummaryHandler);
             _documentSummaryHandler = null;
         }
+        WKApp.canCreateDocumentSummary = false;
     });
 }
 

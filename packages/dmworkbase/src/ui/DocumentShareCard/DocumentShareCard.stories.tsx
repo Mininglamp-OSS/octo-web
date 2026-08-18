@@ -16,6 +16,8 @@ const strings = (over: Partial<DocumentShareCardStrings> = {}): DocumentShareCar
   subtitle: "Sophie 创建",
   permissionLabel: "可查看",
   copyLabel: "复制链接",
+  summaryLabel: "总结文档",
+  summaryBusyLabel: "总结中",
   openLabel: "打开文档",
   ...over,
 });

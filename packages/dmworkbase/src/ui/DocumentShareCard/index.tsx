@@ -194,16 +194,20 @@ export function DocumentShareCard(props: DocumentShareCardProps): JSX.Element {
           {strings.subtitle ? <p>{strings.subtitle}</p> : null}
         </div>
         <span className={`document-permission is-${tone}`}>{strings.permissionLabel}</span>
-        <button
-          type="button"
-          className={`document-forward-summary${isSummaryBusy ? " is-busy" : ""}`}
-          aria-label={isSummaryBusy ? strings.summaryBusyLabel : strings.summaryLabel}
-          title={isSummaryBusy ? strings.summaryBusyLabel : strings.summaryLabel}
-          disabled={isSummaryBusy || disabled}
-          onClick={onSummary}
-        >
-          <Sparkle size={16} aria-hidden="true" />
-        </button>
+        {onSummary ? (
+          <button
+            type="button"
+            className={`document-forward-summary${isSummaryBusy ? " is-busy" : ""}`}
+            aria-label={isSummaryBusy ? strings.summaryBusyLabel : strings.summaryLabel}
+            title={isSummaryBusy ? strings.summaryBusyLabel : strings.summaryLabel}
+            disabled={isSummaryBusy || disabled}
+            onClick={onSummary}
+          >
+            <Sparkle size={16} aria-hidden="true" />
+          </button>
+        ) : (
+          <span className="document-forward-summary-placeholder" aria-hidden="true" />
+        )}
         <button
           type="button"
           className="document-forward-copy"

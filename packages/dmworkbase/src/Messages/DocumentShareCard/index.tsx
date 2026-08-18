@@ -1,5 +1,5 @@
 import React from "react";
-import { WKApp } from "@octo/base";
+import WKApp from "../../App";
 import MessageBase from "../Base";
 import { MessageBaseCellProps, MessageCell } from "../MessageCell";
 import { I18nContext } from "../../i18n";
@@ -21,6 +21,10 @@ interface DocShareCardCellState {
   summaryBusy: boolean;
 }
 
+function canSummarizeDocument(state: DocSharePermissionState): boolean {
+  return Boolean(WKApp.canCreateDocumentSummary) && (state === "reader" || state === "commenter" || state === "writer");
+}
+
 /**
  * 文档转发卡片渲染 Cell（contentType=18）。挂载时按接收者本人权限即时拉 ACL-safe 首屏预览，
  * 无信任门（自定义内容类型，非 type-17 互动卡）。焦点/可见性重查让"别处授权后切回本页"自动更新。
@@ -31,6 +35,7 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
 
   state: DocShareCardCellState = { status: "loading", summaryBusy: false };
   private aborter?: AbortController;
+  private summarySettleTimer?: number;
 
   componentDidMount(): void {
     super.componentDidMount();
@@ -42,6 +47,7 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
 
   componentWillUnmount(): void {
     this.aborter?.abort();
+    if (this.summarySettleTimer) window.clearTimeout(this.summarySettleTimer);
     window.removeEventListener("focus", this.handleRecheck);
     document.removeEventListener("visibilitychange", this.handleVisibility);
     super.componentWillUnmount();
@@ -84,12 +90,21 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
     const content = this.props.message.content as DocumentShareCardContent;
     if (!content.docId) return;
     this.setState({ summaryBusy: true });
+    const settle = () => {
+      if (this.summarySettleTimer) {
+        window.clearTimeout(this.summarySettleTimer);
+        this.summarySettleTimer = undefined;
+      }
+      if (!this.aborter?.signal.aborted) this.setState({ summaryBusy: false });
+    };
+    this.summarySettleTimer = window.setTimeout(settle, 30000);
     WKApp.mittBus.emit('wk:document-summary-request', {
       documentId: content.docId,
-      version: content.updatedAt || undefined,
-      title: content.title,
       spaceId: content.spaceId,
-      onSettled: () => this.setState({ summaryBusy: false }),
+      originChannel: this.props.message.channel
+        ? { channelId: this.props.message.channel.channelID, channelType: this.props.message.channel.channelType }
+        : undefined,
+      onSettled: settle,
     });
   };
 
@@ -152,6 +167,7 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
     const state = permissionState(this.state.status);
     const strings = this.buildStrings(content, state);
     const { preview, placeholder } = this.buildPreviewOrPlaceholder(state);
+    const summaryAvailable = canSummarizeDocument(state);
 
     return (
       <MessageBase hiddeBubble={true} message={message} context={context}>
@@ -164,7 +180,7 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
           placeholder={placeholder}
           onOpen={this.handleOpen}
           onCopy={this.handleCopy}
-          onSummary={this.handleSummary}
+          onSummary={summaryAvailable ? this.handleSummary : undefined}
           isSummaryBusy={this.state.summaryBusy}
         />
       </MessageBase>

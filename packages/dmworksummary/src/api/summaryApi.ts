@@ -377,8 +377,14 @@ export async function createAgentSummary(
 /** 创建文档 Agent 总结。POST /summary/api/v1/summaries/agent/document */
 export async function createDocumentAgentSummary(
     params: CreateDocumentAgentSummaryParams,
+    trackProps: Record<string, unknown> = {},
+    spaceId?: string,
 ): Promise<{ task_id: number; task_no?: string; status: number; created_at?: string }> {
-    const resp = await summaryAxios.post(`${BASE}/summaries/agent/document`, params);
+    const resp = await summaryAxios.post(
+        `${BASE}/summaries/agent/document`,
+        params,
+        spaceId ? { headers: { 'X-Space-Id': spaceId } } : undefined,
+    );
     if (resp.data?.code !== 0) {
         const err = new Error(resp.data?.message || 'create document agent summary failed') as Error & {
             response?: { data?: { code?: number; message?: string } };
@@ -392,7 +398,7 @@ export async function createDocumentAgentSummary(
     if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
         throw new Error(resp.data?.message || 'create document agent summary returned no task_id');
     }
-    Dap.shared.track('smart_summary_started', { source: 'document_star' });
+    Dap.shared.track('smart_summary_started', trackProps);
     return {
         task_id: data.task_id,
         task_no: data.task_no,

@@ -6,6 +6,13 @@ import { runLogoutCleanup } from "./Service/logoutCleanup";
 const IPC_CLEAR_AUTH_SESSION = "octo:oidc:clear-auth-session";
 
 /** mittBus 全局事件类型表 */
+export interface DocumentSummaryRequestPayload {
+  documentId: string;
+  spaceId?: string;
+  originChannel?: { channelId: string; channelType: number };
+  onSettled?: () => void;
+}
+
 export type MittEvents = {
   "friend-applys-unread-count": number;
   "space-changed": unknown;
@@ -41,6 +48,8 @@ export type MittEvents = {
   "wk:close-thread-panel": undefined;
   "wk:toggle-summary-panel": { channelId: string; channelType: number; summaryPanelView: 'history' | 'new'; forceOpen?: boolean };
   "wk:open-summary-modal": { channelId: string; channelType: number };
+  /** 文档卡请求创建 Agent 文档总结；由 SummaryModule 提供消费方。 */
+  "wk:document-summary-request": DocumentSummaryRequestPayload;
   /** 主聊天框头部搜索入口点击：请求打开该频道的会话内搜索面板（与信息栏「查找聊天内容」同一效果）。 */
   "wk:open-channel-search": { channelId: string; channelType: number };
   "wk:switch-sidebar-tab": string;
@@ -824,6 +833,8 @@ export default class WKApp extends ProviderListener {
     originChannel?: { channelId: string; channelType: number },
   ) => void;
   static searchChatCandidates?: (params: { keyword?: string; chat_type?: string; space_id?: string }) => Promise<any[]>;
+  /** SummaryModule 注册后置 true；未挂载 summary 能力的运行时应隐藏文档总结入口。 */
+  static canCreateDocumentSummary?: boolean;
   // Transfer an IM file message into the drive's personal space. Set by
   // DriveModule.init(). Absent when the drive module isn't registered or the
   // `drive_on` remote flag is false — callers must guard on presence.

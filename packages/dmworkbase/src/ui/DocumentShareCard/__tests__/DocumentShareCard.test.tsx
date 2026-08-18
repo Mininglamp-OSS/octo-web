@@ -16,6 +16,8 @@ const strings = (over: Partial<DocumentShareCardStrings> = {}): DocumentShareCar
   subtitle: "Sophie 创建",
   permissionLabel: "可查看",
   copyLabel: "复制链接",
+  summaryLabel: "总结文档",
+  summaryBusyLabel: "总结中",
   openLabel: "打开文档",
   ...over,
 });
@@ -37,6 +39,10 @@ function baseProps(over: Partial<DocumentShareCardProps> = {}): DocumentShareCar
 function previewButtonDisabled(html: string): boolean {
   const m = html.match(/class="document-forward-preview"[^>]*/);
   return m ? m[0].includes("disabled") : /document-forward-preview[^>]*disabled/.test(html);
+}
+
+function summaryButtonMarkup(html: string): string {
+  return html.match(/class="document-forward-summary[^"]*"[^>]*>/)?.[0] ?? "";
 }
 
 describe("DocumentShareCard — 预览区主操作 disabled 门控", () => {
@@ -93,5 +99,18 @@ describe("DocumentShareCard — 预览区主操作 disabled 门控", () => {
     );
     expect(html).toContain("document-preview-placeholder");
     expect(html).toContain("需要访问权限");
+  });
+
+  it("总结入口未注册时保留占位列但不渲染按钮", () => {
+    const html = renderToStaticMarkup(<DocumentShareCard {...baseProps({ onSummary: undefined })} />);
+    expect(html).toContain("document-forward-summary-placeholder");
+    expect(html).not.toContain("总结文档");
+  });
+
+  it("总结中时按钮禁用并切换 aria-label", () => {
+    const html = renderToStaticMarkup(<DocumentShareCard {...baseProps({ onSummary: vi.fn(), isSummaryBusy: true })} />);
+    const summary = summaryButtonMarkup(html);
+    expect(summary).toContain("disabled");
+    expect(summary).toContain("总结中");
   });
 });
