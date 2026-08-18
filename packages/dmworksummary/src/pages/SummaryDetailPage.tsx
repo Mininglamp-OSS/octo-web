@@ -973,12 +973,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     /** 复制总结内容到剪贴板 */
-    handleCopyContent = async () => {
-        const { detail } = this.state;
-        if (!detail?.result?.content) return;
+    handleCopyContent = async (contentOverride?: string) => {
+        const { detail, personalResult } = this.state;
+        const content = contentOverride ?? detail?.result?.content;
+        if (!content) return;
         this.setState({ copying: true });
         try {
-            const ok = await api.copySummaryContent(detail.result.content);
+            const ok = await api.copySummaryContent(content);
             if (ok) {
                 Toast.success(this.context.t("summary.detail.copySuccess"));
             } else {
@@ -992,13 +993,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     /** 转为在线文档 */
-    handleConvertToDoc = async () => {
+    handleConvertToDoc = async (contentOverride?: string, titleOverride?: string) => {
         const { detail } = this.state;
-        if (!detail?.result?.content) return;
+        const content = contentOverride ?? detail?.result?.content;
+        if (!content) return;
         this.setState({ convertingDoc: true });
         try {
-            const title = detail.title || this.context.t("summary.detail.defaultTitle");
-            const { url } = await api.convertSummaryToDoc(title, detail.result.content);
+            const title = titleOverride ?? detail?.title ?? this.context.t("summary.detail.defaultTitle");
+            const { url } = await api.convertSummaryToDoc(title, content);
             Toast.success(this.context.t("summary.detail.convertSuccess"));
             // 在新标签页打开文档
             window.open(url, "_blank");
@@ -1055,7 +1057,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             theme="borderless"
                             icon={<Copy size={14} />}
                             loading={this.state.copying}
-                            onClick={this.handleCopyContent}
+                            onClick={() => this.handleCopyContent()}
                         >
                             {t("summary.detail.copy")}
                         </Button>
@@ -1064,7 +1066,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             theme="borderless"
                             icon={<FileText size={14} />}
                             loading={this.state.convertingDoc}
-                            onClick={this.handleConvertToDoc}
+                            onClick={() => this.handleConvertToDoc()}
                         >
                             {t("summary.detail.convertToDoc")}
                         </Button>
@@ -1116,6 +1118,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 {personalResult.content && (
                     <div className="summary-detail-content-box">
                         <CitationText content={personalResult.content} citations={personalResult.citations || []} />
+                    </div>
+                )}
+                {personalResult.content && (
+                    <div className="summary-detail-result-footer" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                        <Button
+                            size="small"
+                            theme="borderless"
+                            icon={<Copy size={14} />}
+                            loading={this.state.copying}
+                            onClick={() => this.handleCopyContent(personalResult.content)}
+                        >
+                            {t("summary.detail.copy")}
+                        </Button>
+                        <Button
+                            size="small"
+                            theme="borderless"
+                            icon={<FileText size={14} />}
+                            loading={this.state.convertingDoc}
+                            onClick={() => this.handleConvertToDoc(personalResult.content, detail?.title)}
+                        >
+                            {t("summary.detail.convertToDoc")}
+                        </Button>
                     </div>
                 )}
             </div>
@@ -1254,6 +1278,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         members={members}
                         hidePlainCitations
                     />
+                </div>
+                <div className="summary-detail-result-footer" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                    <Button
+                        size="small"
+                        theme="borderless"
+                        icon={<Copy size={14} />}
+                        loading={this.state.copying}
+                        onClick={() => this.handleCopyContent()}
+                    >
+                        {t("summary.detail.copy")}
+                    </Button>
+                    <Button
+                        size="small"
+                        theme="borderless"
+                        icon={<FileText size={14} />}
+                        loading={this.state.convertingDoc}
+                        onClick={() => this.handleConvertToDoc()}
+                    >
+                        {t("summary.detail.convertToDoc")}
+                    </Button>
                 </div>
             </div>
         );
