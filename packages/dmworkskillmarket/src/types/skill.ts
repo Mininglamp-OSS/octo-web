@@ -1,5 +1,5 @@
 export type Visibility = "system" | "public" | "space" | "private";
-export type WritableVisibility = Exclude<Visibility, "system">;
+export type WritableVisibility = Exclude<Visibility, "system" | "public">;
 export type SkillSort = "comprehensive" | "latest" | "views" | "downloads";
 
 // ─── Frontend (camelCase) types ────────────────────────────────────────────
