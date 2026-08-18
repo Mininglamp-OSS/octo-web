@@ -39,6 +39,8 @@ interface SendIntent {
     isReply?: boolean
     /** 被 @ 的 AI bot 列表(供 ai_mentioned 补 bot_id/bot_type;type ∈ 'system'|'custom') */
     mentionedBots?: Array<{ id: string; type: string }>
+    /** 消息 ID(供 message_replied 等事件补 message_id 属性) */
+    messageId?: string
 }
 
 /** 按 clientSeq 暂存发送意图,sendack 时消费。带上限防泄漏。 */
@@ -111,7 +113,10 @@ export function trackMessageSent(clientSeq: number | undefined): void {
     Dap.shared.track('message_sent', base)
     // §IM 16:回复(reply)语义。props 恒空,不带正文/被回复消息内容。
     if (intent.isReply) {
-        Dap.shared.track('message_replied', {})
+        Dap.shared.track('message_replied', {
+            object_id: base.object_id,
+            message_id: intent.messageId,
+        })
     }
     const bots = intent.mentionedBots || []
     if (intent.mentionAis || bots.length > 0) {

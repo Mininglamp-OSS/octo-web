@@ -706,7 +706,10 @@ export class Conversation
         );
         const kind = this.showForwardResult(result, "targets");
         // 全部目标失败(如群已解散)不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
-        if (kind !== "all-failed") Dap.shared.track("message_forwarded", {});
+        if (kind !== "all-failed") Dap.shared.track("message_forwarded", {
+            object_id: message.messageID,
+            message_id: message.messageID,
+        });
       } catch (e) {
         console.error("[forward] build content failed", e);
         const blockedMessageKey = forwardBlockedMessageKey(e);
