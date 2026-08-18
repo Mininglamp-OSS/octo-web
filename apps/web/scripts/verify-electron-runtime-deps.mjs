@@ -1,14 +1,27 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const packageJsonPath = path.resolve(scriptDir, "../package.json");
+const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+
+const criticalTransitiveRuntimeDeps = [
+  "builder-util-runtime",
+  "debug",
+  "fs-extra",
+  "js-yaml",
+  "node-screenshots",
+  "react-screenshots",
+  "semver",
+];
 
 const requiredRuntimeDeps = [
-  "electron-log",
-  "electron-screenshots",
-  "electron-updater",
-  "ms",
-  "tmp",
-  "wukongimjssdk",
-];
+  ...new Set([
+    ...Object.keys(packageJson.dependencies || {}),
+    ...criticalTransitiveRuntimeDeps,
+  ]),
+].sort();
 
 const distDir = path.resolve("dist-ele");
 
@@ -35,6 +48,21 @@ function collectAsarFiles(dir, result = []) {
   return result;
 }
 
+function getPackageEntry(nodeModules, packageName) {
+  if (packageName.startsWith("@")) {
+    const [scope, name] = packageName.split("/");
+    return nodeModules[scope]?.files?.[name];
+  }
+
+  return nodeModules[packageName];
+}
+
+function hasPackagedRuntimeFiles(nodeModules, packageName) {
+  const entry = getPackageEntry(nodeModules, packageName);
+  const files = entry?.files || {};
+  return Boolean(files["package.json"] && Object.keys(files).length > 1);
+}
+
 const asarFiles = collectAsarFiles(distDir);
 
 if (asarFiles.length === 0) {
@@ -47,7 +75,7 @@ let hasFailure = false;
 for (const asarPath of asarFiles) {
   const header = readAsarHeader(asarPath);
   const nodeModules = header.files?.node_modules?.files || {};
-  const missing = requiredRuntimeDeps.filter((dep) => !nodeModules[dep]);
+  const missing = requiredRuntimeDeps.filter((dep) => !hasPackagedRuntimeFiles(nodeModules, dep));
 
   if (missing.length > 0) {
     hasFailure = true;

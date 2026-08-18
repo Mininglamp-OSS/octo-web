@@ -2,7 +2,7 @@ diff --git a/out/binDownload.js b/out/binDownload.js
 index cd04879..19a50de 100644
 --- a/out/binDownload.js
 +++ b/out/binDownload.js
-@@ -66,6 +66,37 @@ function getCacheDirectory(isAvoidSystemOnWindows = false) {
+@@ -66,6 +66,43 @@ function getCacheDirectory(isAvoidSystemOnWindows = false) {
      }
      return path.join(homeDir, ".cache", appName);
  }
@@ -20,27 +20,33 @@ index cd04879..19a50de 100644
 +    "npm_package_config_electron_custom_filename",
 +    "ELECTRON_CUSTOM_FILENAME",
 +];
++let electronMirrorEnvQueue = Promise.resolve();
 +async function withElectronMirrorEnvHidden(callback) {
-+    const previousValues = new Map();
-+    for (const key of ELECTRON_MIRROR_ENV_KEYS) {
-+        if (Object.prototype.hasOwnProperty.call(process.env, key)) {
-+            previousValues.set(key, process.env[key]);
-+            delete process.env[key];
++    const run = async () => {
++        const previousValues = new Map();
++        for (const key of ELECTRON_MIRROR_ENV_KEYS) {
++            if (Object.prototype.hasOwnProperty.call(process.env, key)) {
++                previousValues.set(key, process.env[key]);
++                delete process.env[key];
++            }
 +        }
-+    }
-+    try {
-+        return await callback();
-+    }
-+    finally {
-+        for (const [key, value] of previousValues) {
-+            process.env[key] = value;
++        try {
++            return await callback();
 +        }
-+    }
++        finally {
++            for (const [key, value] of previousValues) {
++                process.env[key] = value;
++            }
++        }
++    };
++    const result = electronMirrorEnvQueue.then(run, run);
++    electronMirrorEnvQueue = result.catch(() => undefined);
++    return result;
 +}
  /**
   * Downloads an artifact from GitHub releases (convenience wrapper)
   */
-@@ -136,11 +167,11 @@ async function _downloadArtifact(baseUrl, releaseName, filenameWithExt, checksums
+@@ -136,11 +173,11 @@ async function _downloadArtifact(baseUrl, releaseName, filenameWithExt, checksums
          };
          builder_util_1.log.info({ release: releaseName, file: filenameWithExt }, "downloading");
          progressBar === null || progressBar === void 0 ? void 0 : progressBar.render();
@@ -86,7 +92,7 @@ index 0956d26..ffef9e8 100644
 +            // dropped from the asar while the build still exits 0.
 +            const notFound = this.cache.logSummary[moduleManager_1.LogMessageByKey.PKG_NOT_FOUND];
 +            if (notFound && notFound.length > 0) {
-+                throw new Error(`[app-builder-lib patch] pnpm production graph is incomplete — ${notFound.length} package(s) could not be located and were about to be silently dropped from the package: ${notFound.join(", ")}`);
++                throw new Error(`[app-builder-lib patch] pnpm production graph is incomplete - ${notFound.length} package(s) could not be located and were about to be silently dropped from the package: ${notFound.join(", ")}`);
 +            }
 +        }
          builder_util_1.log.debug({ packageName, depCount: this.nodeModules.length }, "node modules collection complete");
@@ -111,27 +117,6 @@ index 0956d26..ffef9e8 100644
 -//# sourceMappingURL=nodeModulesCollector.js.map
 \ No newline at end of file
 +//# sourceMappingURL=nodeModulesCollector.js.map
-diff --git a/out/node-module-collector/packageManager.js b/out/node-module-collector/packageManager.js
-index 8d0bba0..b5eccb9 100644
---- a/out/node-module-collector/packageManager.js
-+++ b/out/node-module-collector/packageManager.js
-@@ -26,6 +26,9 @@ const pmPathCache = {
-     [PM.TRAVERSAL]: undefined,
- };
- function resolveCommand(pm) {
-+    if (pm === PM.PNPM) {
-+        return "corepack pnpm";
-+    }
-     const fallback = pm === PM.YARN_BERRY ? "yarn" : pm;
-     if (process.platform !== "win32") {
-         return fallback;
-@@ -141,4 +144,4 @@ async function detectYarnBerry(cwd, version) {
-     }
-     return (_c = checkBerry()) !== null && _c !== void 0 ? _c : PM.YARN;
- }
--//# sourceMappingURL=packageManager.js.map
-\ No newline at end of file
-+//# sourceMappingURL=packageManager.js.map
 diff --git a/out/node-module-collector/pnpmNodeModulesCollector.js b/out/node-module-collector/pnpmNodeModulesCollector.js
 index 6025992..c961b2f 100644
 --- a/out/node-module-collector/pnpmNodeModulesCollector.js
