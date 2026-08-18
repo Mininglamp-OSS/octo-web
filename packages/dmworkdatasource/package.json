@@ -7,7 +7,7 @@
   },
   "dependencies": {
     "@octo/base": "workspace:*",
-    "axios": "^0.25.0",
+    "axios": "^1.19.0",
     "wukongimjssdk": "^1.3.5"
   }
 }
