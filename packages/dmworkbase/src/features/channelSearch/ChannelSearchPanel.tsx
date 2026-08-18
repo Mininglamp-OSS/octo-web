@@ -177,6 +177,9 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
 
   const handleLocate = useCallback(
     (item: ChannelSearchItem) => {
+      // Track when user clicks on a search result
+      Dap.shared.track("channel_search_result_clicked", {});
+
       const locateTarget = resolveChannelSearchLocateTarget(item, channel);
       if (!locateTarget) {
         return;

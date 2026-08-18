@@ -12,6 +12,7 @@ import {
   buildThreadChannelId,
 } from "../../Service/Thread";
 import { ThreadPanelVM, ThreadPanelState } from "./vm";
+import { Dap } from "../../Service/Dap";
 import {
   X,
   Plus,
@@ -1066,6 +1067,7 @@ export default class ThreadPanel extends Component<
     }
     if (!groupNo) return;
 
+    Dap.shared.track('channel_subchannel_create_dialog_opened', {})
     this.setState({ createDialogVisible: true, createError: null });
   };
 

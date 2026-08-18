@@ -246,6 +246,7 @@ export default function SkillListPage() {
                   role="menuitem"
                   data-testid="skill-publish-method-manual"
                   onClick={() => {
+                    Dap.shared.track("market_manual_publish_dialog_opened", {});
                     setPublishMenuOpen(false);
                     setCreateVisible(true);
                   }}

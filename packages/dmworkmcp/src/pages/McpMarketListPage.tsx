@@ -723,9 +723,10 @@ export default class McpMarketListPage extends Component<
                     type="button"
                     role="menuitem"
                     data-testid="mcp-publish-method-manual"
-                    onClick={() =>
+                    onClick={() => {
+                      Dap.shared.track("market_manual_publish_dialog_opened", {})
                       this.setState({ publishMenuOpen: false, createVisible: true })
-                    }
+                    }}
                   >
                     <Upload size={16} />
                     <span>
