@@ -1,14 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react";
-import {
-    Button,
-    Spin,
-    Toast,
-    Modal,
-    Switch,
-    Popconfirm,
-    Tag,
-    Banner,
-} from "@douyinfe/semi-ui";
+import { Spin, Toast, Modal, Switch, Popconfirm, Tag, Banner } from "@douyinfe/semi-ui";
 import {
     IconArrowLeft,
     IconPlus,

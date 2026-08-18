@@ -215,17 +215,17 @@ grep "^import" packages/dmworkbase/src/Components/ComponentName/index.tsx \
 ### Semi Design 使用规则
 
 ```tsx
-// Layer 1 ✅ — 封装 Semi，暴露自己的 props
-const WKButton: React.FC<WKButtonProps> = ({ variant, ...rest }) => { ... }
+// Layer 1 ✅ — 封装基础交互组件，暴露自己的 props
+import { Button } from '@octo/ui'
 
-// Layer 2 ✅ — 用 Layer 1，不直接用 Semi Button
-import WKButton from '../WKButton'
+// Layer 2 ✅ — 用 @octo/ui Button，不直接用 Semi Button
+import { Button } from '@octo/ui'
 
-// Layer 3 ✅ — 允许直接用 Semi，优先用 WK 封装版
+// Layer 3 ✅ — 允许直接用 Semi，优先用项目封装组件
 import { Notification } from '@douyinfe/semi-ui'
 
 // ❌ 任何层 — 禁止直接用 Semi 基础交互组件
-import { Button } from '@douyinfe/semi-ui'  // 用 WKButton 代替
+import { Button } from '@douyinfe/semi-ui'  // 用 @octo/ui Button 代替
 import { Checkbox } from '@douyinfe/semi-ui' // 用 Checkbox（本项目版）代替
 ```
 
@@ -233,7 +233,7 @@ import { Checkbox } from '@douyinfe/semi-ui' // 用 Checkbox（本项目版）�
 
 ```
 Layer 1 原子组件：
-  AiBadge / Search / WKButton / Checkbox / IconClick / InputEdit
+  AiBadge / Search / @octo/ui Button / Checkbox / IconClick / InputEdit
   WKInput / SpaceAvatar / ActionListItem
 
 Layer 2 布局/复合组件：

@@ -82,11 +82,6 @@ vi.mock("../../WKModal", () => ({
   __esModule: true,
 }));
 
-vi.mock("../../WKButton", () => ({
-  default: ({ children, onClick }: any) =>
-    React.createElement("button", { onClick }, children),
-  __esModule: true,
-}));
 
 vi.mock("../../../App", () => ({
   default: {

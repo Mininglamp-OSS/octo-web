@@ -52,12 +52,6 @@ vi.mock('../../WKModal', () => ({
   __esModule: true,
 }));
 
-vi.mock('../../WKButton', () => ({
-  default: ({ children, icon, ...props }: any) =>
-    React.createElement('button', props, icon, children),
-  __esModule: true,
-}));
-
 // Capture props passed into the child edit modal without rendering its internals.
 const editModalProps: any[] = [];
 vi.mock('../SecretEditModal', () => ({

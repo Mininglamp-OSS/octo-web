@@ -1,8 +1,9 @@
+import { Button } from "@octo/ui";
 import React, { Component, HTMLProps } from "react";
 import classNames from "classnames";
 import "./index.css"
 import RouteContext, { FinishButtonContext, RouteContextConfig } from "../../Service/Context";
-import { Button } from "@douyinfe/semi-ui";
+
 import WKViewQueueHeader from "../WKViewQueueHeader";
 import WKViewQueue, { WKViewQueueContext } from "../WKViewQueue";
 import { I18nContext } from "../../i18n";

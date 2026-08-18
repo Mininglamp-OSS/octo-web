@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
-import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
+import { t, useI18n, WKInput, WKModal } from "@octo/base";
 import type { Category, NewSkillForm } from "../types/skill";
 import { createSkill, getSkillTags, initUpload, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
@@ -423,8 +424,8 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
         className="skill-market-workflow-modal"
         footer={
           <>
-            <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
-            <WKButton variant="primary" onClick={() => void submit()} loading={saving} disabled={!canCreate}>{t("skillMarket.common.create")}</WKButton>
+            <Button variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</Button>
+            <Button variant="solid" onClick={() => void submit()} loading={saving} disabled={!canCreate}>{t("skillMarket.common.create")}</Button>
           </>
         }
       >
@@ -672,8 +673,8 @@ function ConfirmLeaveModal({
       size="md"
       footer={
         <>
-          <WKButton variant="secondary" onClick={onKeep}>{mode === "busy" ? t("skillMarket.confirm.keepUploading") : t("skillMarket.confirm.keepEditing")}</WKButton>
-          <WKButton variant="danger" onClick={onLeave}>{t("skillMarket.confirm.leave")}</WKButton>
+          <Button variant="secondary" onClick={onKeep}>{mode === "busy" ? t("skillMarket.confirm.keepUploading") : t("skillMarket.confirm.keepEditing")}</Button>
+          <Button variant="danger" onClick={onLeave}>{t("skillMarket.confirm.leave")}</Button>
         </>
       }
     >

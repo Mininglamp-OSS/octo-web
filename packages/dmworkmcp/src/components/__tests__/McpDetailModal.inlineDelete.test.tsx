@@ -23,7 +23,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Toast: { success: vi.fn(), error: vi.fn() },
   Spin: () => null,
 }));
-// WKModal renders footer + children inline; WKButton is a plain button.
+// WKModal renders footer + children inline.
 // wkConfirm is intentionally a throwing stub — if the component still called
 // it (the old modal-on-modal path), the test would blow up.
 vi.mock("@octo/base", () => ({
@@ -41,15 +41,6 @@ vi.mock("@octo/base", () => ({
       children,
       React.createElement("div", { "data-testid": "footer" }, footer)
     ),
-  WKButton: ({
-    children,
-    onClick,
-    disabled,
-  }: {
-    children: React.ReactNode;
-    onClick?: () => void;
-    disabled?: boolean;
-  }) => React.createElement("button", { onClick, disabled }, children),
   wkConfirm: () => {
     throw new Error(
       "wkConfirm should NOT be called after 方案A (no modal-on-modal)"

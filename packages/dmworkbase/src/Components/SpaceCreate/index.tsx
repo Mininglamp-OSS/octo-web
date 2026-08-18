@@ -1,10 +1,10 @@
+import { Button, Checkbox } from "@octo/ui";
 import React, { Component } from "react";
-import { Toast, Checkbox } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import WKInput from "../WKInput";
 import { SpaceService } from "../../Service/SpaceService";
 import { extractErrorMsg } from "../../Service/APIClient";
-import WKButton from "../WKButton";
 import InputEdit from "../InputEdit";
 import { I18nContext } from "../../i18n";
 import "./index.css";
@@ -87,9 +87,9 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                         </p>
                         <div className="wk-spacecreate-invite-link">
                             <WKInput value={inviteUrl} readOnly />
-                            <WKButton variant="secondary" onClick={this.handleCopyInvite}>
+                            <Button variant="secondary" onClick={this.handleCopyInvite}>
                                 {t("base.spaceCreate.copyLink")}
-                            </WKButton>
+                            </Button>
                         </div>
                     </div>
                 ) : (
@@ -118,16 +118,16 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                         <div className="wk-spacecreate-field">
                             <Checkbox
                                 checked={joinMode === 1}
-                                onChange={(e) => this.setState({ joinMode: e.target.checked ? 1 : 0 })}
+                                onCheckedChange={(checked) => this.setState({ joinMode: checked ? 1 : 0 })}
                             >
                                 {t("base.spaceCreate.approvalRequired")}
                             </Checkbox>
                         </div>
                         <div className="wk-spacecreate-actions">
-                            <WKButton variant="secondary" onClick={this.handleClose}>{t("base.common.cancel")}</WKButton>
-                            <WKButton variant="primary" loading={loading} onClick={this.handleCreate}>
+                            <Button variant="secondary" onClick={this.handleClose}>{t("base.common.cancel")}</Button>
+                            <Button variant="solid" loading={loading} onClick={this.handleCreate}>
                                 {t("base.spaceCreate.create")}
-                            </WKButton>
+                            </Button>
                         </div>
                     </div>
                 )}

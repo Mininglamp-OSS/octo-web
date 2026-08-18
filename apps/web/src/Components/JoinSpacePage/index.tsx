@@ -1,7 +1,8 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useState } from "react";
 import { SpaceCreate, WKApp, toJoinApprovalStatus, useI18n } from "@octo/base";
 import { SpaceService } from "@octo/base";
-import { Button, Input, Toast } from "@douyinfe/semi-ui";
+import { Input, Toast } from "@douyinfe/semi-ui";
 import { LogOut } from "lucide-react";
 import "./index.css";
 

@@ -1,6 +1,6 @@
 import classNames from "classnames";
 import React, { HTMLProps, ReactNode } from "react";
-import Checkbox from "../../Checkbox";
+import { Checkbox } from "@octo/ui";
 import { useI18n } from "../../../i18n";
 import "./index.css";
 
@@ -208,7 +208,8 @@ const FoldSessionCard: React.FC<FoldSessionCardProps> = ({
                 <Checkbox
                   className="wk-fold-session-card-summary-checkbox"
                   checked={summaryChecked}
-                  onChange={(checked) => {
+                  shape="circle"
+                  onCheckedChange={(checked) => {
                     if (onSummaryToggleSelect) {
                       onSummaryToggleSelect(checked);
                     }

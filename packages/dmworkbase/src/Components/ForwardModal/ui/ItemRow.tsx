@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react"
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
 import { Tag } from "@douyinfe/semi-ui"
-import Checkbox from "../../Checkbox"
+import { Checkbox } from "@octo/ui"
 import AiBadge from "../../AiBadge"
 import WKAvatar from "../../WKAvatar"
 import { useI18n } from "../../../i18n"
@@ -72,7 +72,7 @@ function ItemRowInner({ item, selected, flat, showMeta, onToggle, botPreview }: 
     >
       <Checkbox
         checked={selected}
-        onCheck={() => {}}
+        onCheckedChange={() => {}}
       />
       <div className="wk-fm-avatar-wrap">
         <WKAvatar channel={channel} lazy />
@@ -133,7 +133,7 @@ function ItemRowInner({ item, selected, flat, showMeta, onToggle, botPreview }: 
             // Display-only preview: the checkbox is disabled and unchecked. Selecting the person is
             // what defaults these on in the authoritative 授权区 (GrantArea), not this preview.
             <label className="wk-fm-item-bot" key={bot.uid}>
-              <Checkbox checked={false} disabled onCheck={() => {}} />
+              <Checkbox checked={false} disabled onCheckedChange={() => {}} />
               <span className="wk-fm-item-bot-name">{bot.name}</span>
               <AiBadge size="small" />
             </label>

@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { useState, useCallback } from "react";
-import { Button, Select, Input, InputNumber } from "@douyinfe/semi-ui";
+import { Select, Input, InputNumber } from "@douyinfe/semi-ui";
 import { useI18n } from "@octo/base";
 import { SummaryMode } from "../types/summary";
 import type {

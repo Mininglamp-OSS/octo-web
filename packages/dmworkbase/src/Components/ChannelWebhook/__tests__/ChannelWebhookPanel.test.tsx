@@ -49,11 +49,6 @@ vi.mock("../../WKModal", () => ({
   wkConfirm: hoisted.wkConfirm,
 }));
 
-vi.mock("../../WKButton", () => ({
-  default: ({ children, onClick }: any) =>
-    React.createElement("button", { onClick }, children),
-  __esModule: true,
-}));
 
 vi.mock("../../../i18n", () => ({
   useI18n: () => ({

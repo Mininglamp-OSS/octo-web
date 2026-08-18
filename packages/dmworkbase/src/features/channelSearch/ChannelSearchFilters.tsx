@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import React, {
   useCallback,
   useEffect,
@@ -7,7 +8,6 @@ import React, {
 } from "react";
 import { DatePicker } from "@douyinfe/semi-ui";
 import { CalendarDays, ChevronDown, X } from "lucide-react";
-import WKButton from "../../Components/WKButton";
 import { useI18n } from "../../i18n";
 import type {
   ChannelSearchDataSource,
@@ -491,19 +491,19 @@ const FilterPopover: React.FC<{
       </div>
 
       <div className="wk-channel-search-filter-actions">
-        <WKButton size="sm" variant="secondary" onClick={onClose}>
+        <Button size="sm" variant="secondary" onClick={onClose}>
           {t("base.common.cancel")}
-        </WKButton>
-        <WKButton
+        </Button>
+        <Button
           size="sm"
-          variant="primary"
+          variant="solid"
           onClick={() => {
             onApply(draft);
             onClose();
           }}
         >
           {t("base.common.ok")}
-        </WKButton>
+        </Button>
       </div>
     </div>
   );

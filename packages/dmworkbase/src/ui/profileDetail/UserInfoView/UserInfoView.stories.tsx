@@ -1,6 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import WKButton from "../../../Components/WKButton";
 import UserInfoView, {
   type UserInfoViewLabels,
   type UserInfoViewProps,
@@ -71,9 +71,9 @@ function UserInfoViewStory(args: Partial<UserInfoViewProps>) {
         savingRemark={false}
         sections={profileSections}
         footerAction={
-          <WKButton type="button" variant="primary">
+          <Button type="button" variant="solid">
             发送消息
-          </WKButton>
+          </Button>
         }
         labels={labels}
         onRemarkDraftChange={setRemarkDraft}
@@ -116,9 +116,9 @@ export const Stranger: Story = {
       { label: "Octo号", value: "octo_2048" },
     ],
     footerAction: (
-      <WKButton type="button" variant="secondary">
+      <Button type="button" variant="secondary">
         添加好友
-      </WKButton>
+      </Button>
     ),
   },
 };
@@ -135,9 +135,9 @@ export const Bot: Story = {
       { label: "Octo号", value: "bot_father" },
     ],
     footerAction: (
-      <WKButton type="button" variant="primary">
+      <Button type="button" variant="solid">
         添加好友
-      </WKButton>
+      </Button>
     ),
   },
 };

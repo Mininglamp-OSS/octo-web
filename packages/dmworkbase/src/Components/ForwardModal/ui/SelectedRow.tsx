@@ -2,7 +2,7 @@ import React from "react"
 import { Channel, ChannelTypePerson } from "wukongimjssdk"
 import { X } from "lucide-react"
 import WKAvatar from "../../WKAvatar"
-import Checkbox from "../../Checkbox"
+import { Checkbox } from "@octo/ui"
 import AiBadge from "../../AiBadge"
 import { useI18n } from "../../../i18n"
 import type { ForwardItem } from "../ForwardModal"
@@ -59,18 +59,19 @@ export function SelectedRow({ item, onRemove, bots }: SelectedRowProps) {
         // cancelling/restoring here syncs everywhere immediately; there is no independent remove.
         <div className="wk-fm-selected-bots">
           {nested.map((bot) => (
-            <label className="wk-fm-selected-bot" key={bot.uid}>
+            <div className="wk-fm-selected-bot" key={bot.uid}>
               <Checkbox
                 checked={bot.selected}
-                onCheck={() => bots?.toggleBot(bot.uid)}
-                ariaLabel={t(
+                onCheckedChange={() => bots?.toggleBot(bot.uid)}
+                aria-label={t(
                   bot.selected ? "base.forwardModal.grant.botCheckedFor" : "base.forwardModal.grant.botUncheckedFor",
                   { values: { bot: bot.name, person: item.displayName } },
                 )}
-              />
-              <span className="wk-fm-selected-bot-name">{bot.name}</span>
+              >
+                <span className="wk-fm-selected-bot-name">{bot.name}</span>
+              </Checkbox>
               <AiBadge size="small" />
-            </label>
+            </div>
           ))}
         </div>
       )}
