@@ -37,7 +37,6 @@ const ClawHealthCheckItem: React.FC<ClawHealthCheckItemProps> = ({
     >
       <Dot
         tone={dotTone}
-        className="hc-dot"
         data-testid={`${testId}-dot`}
       />
       <span

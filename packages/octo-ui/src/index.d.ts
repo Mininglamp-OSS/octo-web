@@ -1,4 +1,9 @@
-import type { FC, ReactNode } from 'react'
+import type {
+  FC,
+  ForwardRefExoticComponent,
+  ReactNode,
+  RefAttributes,
+} from 'react'
 
 import type { ButtonProps } from './components/Button/types'
 import type { TagProps } from './components/Tag/types'
@@ -24,8 +29,16 @@ export interface OctoUIProviderProps {
   children?: ReactNode
 }
 
-export declare const Button: FC<ButtonProps>
-export declare const Tag: FC<TagProps>
-export declare const Badge: FC<BadgeProps>
-export declare const Dot: FC<DotProps>
+export declare const Button: ForwardRefExoticComponent<
+  ButtonProps & RefAttributes<HTMLButtonElement>
+>
+export declare const Tag: ForwardRefExoticComponent<
+  TagProps & RefAttributes<HTMLSpanElement>
+>
+export declare const Badge: ForwardRefExoticComponent<
+  BadgeProps & RefAttributes<HTMLSpanElement>
+>
+export declare const Dot: ForwardRefExoticComponent<
+  DotProps & RefAttributes<HTMLSpanElement>
+>
 export declare const OctoUIProvider: FC<OctoUIProviderProps>

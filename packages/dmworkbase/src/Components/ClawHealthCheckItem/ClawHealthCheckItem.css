@@ -14,10 +14,6 @@
   min-width: 160px;
 }
 
-.hc-dot {
-  flex-shrink: 0;
-}
-
 .hc-label {
   font-size: 13px;
   color: rgba(0, 0, 0, 0.65);

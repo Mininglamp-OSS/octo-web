@@ -2,8 +2,8 @@
 :root {
   --octo-ui-badge-strong-bg: var(--wk-color-danger);
   --octo-ui-badge-strong-color: var(--wk-color-white);
-  --octo-ui-badge-soft-bg: var(--wk-color-danger-light);
-  --octo-ui-badge-soft-color: var(--wk-color-danger);
+  --octo-ui-badge-soft-bg: var(--wk-badge-danger-bg);
+  --octo-ui-badge-soft-color: var(--wk-badge-danger-text);
 
   --octo-ui-dot-neutral-color: var(--wk-text-tertiary);
   --octo-ui-dot-danger-color: var(--wk-color-danger);

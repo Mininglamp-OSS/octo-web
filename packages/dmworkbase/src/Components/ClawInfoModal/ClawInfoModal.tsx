@@ -329,7 +329,6 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
                         ? "warning"
                         : "neutral"
                     }
-                    className="claw-info-meta__dot"
                   />
                   {data?.runtime_info?.process_status === "running"
                     ? t("base.claw.status.running")

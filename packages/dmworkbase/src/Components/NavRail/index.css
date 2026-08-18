@@ -96,12 +96,12 @@
 
 /* ── Online status dot ── */
 .wk-navrail__user-status {
+    --octo-ui-dot-color: var(--wk-color-online);
+    --octo-ui-dot-size: 10px;
+
     position: absolute;
     bottom: 0;
     right: 0;
-    width: 10px;
-    height: 10px;
-    background: var(--wk-color-online);
     border: 2px solid var(--wk-bg-deep);
     pointer-events: none;
 }

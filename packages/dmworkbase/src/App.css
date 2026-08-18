@@ -205,7 +205,3 @@ html {
     overflow: hidden;
     text-overflow: ellipsis;
   }
-
-  body[theme-mode=dark] .semi-badge-count {
-    color: white;
-  }

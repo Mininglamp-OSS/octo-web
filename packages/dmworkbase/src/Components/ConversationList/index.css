@@ -207,8 +207,8 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 
 /* 时间下方未读数字 Badge：基础外观由 @octo/ui Badge 提供 */
 .wk-conv-unread-num--muted {
-  background: color-mix(in srgb, var(--wk-icon-muted) 14%, transparent);
-  color: var(--wk-icon-muted);
+  --octo-ui-badge-bg: color-mix(in srgb, var(--wk-icon-muted) 14%, transparent);
+  --octo-ui-badge-color: var(--wk-icon-muted);
 }
 
 .wk-conv-unread-num--nudge-a {
@@ -358,10 +358,10 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
 }
 
 .wk-onlinestatusbadge-empty {
+  --octo-ui-dot-size: 9px;
+
   right: -1px;
   bottom: -1px;
-  width: 9px;
-  height: 9px;
   padding: 0;
   border: 2px solid var(--wk-bg-base);
   box-sizing: border-box;

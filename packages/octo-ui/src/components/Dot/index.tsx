@@ -7,6 +7,10 @@ const Dot = forwardRef<HTMLSpanElement, DotProps>(function Dot(
     tone = 'neutral',
     className,
     'aria-label': ariaLabel,
+    'aria-labelledby': ariaLabelledBy,
+    title,
+    role,
+    'aria-hidden': ariaHidden,
     ...rest
   },
   ref,
@@ -20,13 +24,17 @@ const Dot = forwardRef<HTMLSpanElement, DotProps>(function Dot(
     .filter(Boolean)
     .join(' ')
 
+  const isLabelled = Boolean(ariaLabel || ariaLabelledBy || title)
+
   return (
     <span
       ref={ref}
       className={classes}
       aria-label={ariaLabel}
-      aria-hidden={ariaLabel ? undefined : true}
-      role={ariaLabel ? 'img' : undefined}
+      aria-labelledby={ariaLabelledBy}
+      aria-hidden={ariaHidden ?? (isLabelled ? undefined : true)}
+      title={title}
+      role={role ?? (isLabelled ? 'img' : undefined)}
       {...rest}
     />
   )

@@ -31,4 +31,19 @@ describe('Dot', () => {
     expect(html).toContain('role="img"')
     expect(html).not.toContain('aria-hidden')
   })
+
+  it('recognizes aria-labelledby and preserves explicit accessibility props', () => {
+    const labelled = renderToStaticMarkup(
+      <Dot aria-labelledby="status-text" />,
+    )
+    expect(labelled).toContain('aria-labelledby="status-text"')
+    expect(labelled).toContain('role="img"')
+    expect(labelled).not.toContain('aria-hidden')
+
+    const explicit = renderToStaticMarkup(
+      <Dot role="presentation" aria-hidden={false} />,
+    )
+    expect(explicit).toContain('role="presentation"')
+    expect(explicit).toContain('aria-hidden="false"')
+  })
 })
