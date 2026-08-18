@@ -118,6 +118,7 @@ import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import { t } from "./i18n";
 import { THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
 import ThreadService from "./Service/ThreadService";
+import { trackSubchannelCreated, inferMsgType } from "./bridge/thread/createThread";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -1409,6 +1410,11 @@ export default class BaseModule implements IModule {
                     sourceMessagePayload: sourcePayload,
                   });
                   Toast.success(t("base.module.createThread.success"));
+                  // 右键创建子区：带 from_msg_type（inferMsgType 映射）
+                  trackSubchannelCreated(resp, 'message_right_click', {
+                    fromMsgType: inferMsgType(message),
+                    title: threadName.trim(),
+                  });
                   if (resp && resp.channel_id) {
                     WKApp.mittBus.emit("wk:thread-created", {
                       groupNo: message.channel.channelID,
