@@ -262,6 +262,26 @@ function oidcProvidersEqual(
   });
 }
 
+/**
+ * 解析后端下发的 octo_assistant_uids 字段。后端可能下发数组或逗号分隔字符串，
+ * 前端统一转为 string[]。字段缺失或非数组/字符串时返回空数组。
+ */
+function parseOctoAssistantUids(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((v): v is string => typeof v === "string" && v.length > 0);
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+  }
+  return [];
+}
+
+/** 两个字符串数组是否相等（顺序敏感）。 */
+function stringArraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((v, i) => v === b[i]);
+}
+
 // StickerUploadLimits 解析同理抽到 ./Service/StickerUploadConfig：独立 leaf 文件,
 // 不拖 App.tsx 的重依赖链路, EmojiToolbar 的 vitest 可以直接测 parse 的边界情况。
 import {
@@ -383,6 +403,15 @@ export class WKRemoteConfig {
    */
   mailOn: boolean = false;
   /**
+   * Octo Assistant UID 列表。后端字段 octo_assistant_uids，来源 env
+   * DM_OCTO_ASSISTANT_UIDS。前端据此判别当前打开的应用 bot 是否为 Octo Assistant，
+   * 决定发 octo_assistant_opened 还是 app_opened 埋点事件（octo-dap S3 / YUJ-277）。
+   *
+   * 默认空数组（env 未设或后端未下发）。与 app_config.version 解耦，两个 appconfig
+   * 分支都下发，避免 version 缓存阻止 UID 列表更新。
+   */
+  octoAssistantUids: string[] = [];
+  /**
    * OIDC provider 元数据数组, 由后端 /v1/common/appconfig 的 oidc_providers 字段下发。
    * OIDC 关闭时为空数组。前端不再硬编码具体 IdP, 部署 env 切 provider。
    * 顶层 oidc_account_url / oidc_reset_password_url 是后端兼容老前端用的,新前端只读这里。
@@ -493,6 +522,7 @@ export class WKRemoteConfig {
       const previousDmpersonalOn = this.dmpersonalOn;
       const previousDriveOn = this.driveOn;
       const previousMailOn = this.mailOn;
+      const previousOctoAssistantUids = this.octoAssistantUids;
       const previousRequestFailed = this.requestFailed;
       const previousOidcProviders = this.oidcProviders;
       this.requestSuccess = true;
@@ -521,6 +551,9 @@ export class WKRemoteConfig {
       this.dmpersonalOn = parseRemoteBool(result["dmpersonal_on"]);
       this.driveOn = parseRemoteBool(result["drive_on"]);
       this.mailOn = parseRemoteBool(result["mail_on"]);
+      // Octo Assistant UID 列表：后端下发 octo_assistant_uids（逗号分隔字符串或数组），
+      // 前端据此判别当前打开的应用 bot 是否为 Octo Assistant（octo-dap S3 / YUJ-277）。
+      this.octoAssistantUids = parseOctoAssistantUids(result["octo_assistant_uids"]);
       this.oidcProviders = parseOidcProviders(result["oidc_providers"]);
       // 仅首次成功通知, 后续重新拉取(重连/手动刷新)不重复打扰订阅方。
       if (!wasSuccessful) this.notifyListeners();
@@ -542,6 +575,7 @@ export class WKRemoteConfig {
         previousDmpersonalOn !== this.dmpersonalOn ||
         previousDriveOn !== this.driveOn ||
         previousMailOn !== this.mailOn ||
+        !stringArraysEqual(previousOctoAssistantUids, this.octoAssistantUids) ||
         previousRequestFailed !== this.requestFailed ||
         !oidcProvidersEqual(previousOidcProviders, this.oidcProviders)
       ) {
