@@ -9,7 +9,6 @@ import RouteContext from "../../Service/Context";
 import { THREAD_NAME_MAX_LENGTH } from "../../Service/nameLimits";
 import { Row, Section } from "../../Service/Section";
 import { parseThreadChannelId, ThreadStatus } from "../../Service/Thread";
-import { canRenameThread } from "../../Service/threadPermission";
 import { isChannelDisbanded } from "../../Utils/groupDisband";
 import { updateChannelSettingThreadName } from "../../bridge/channelSetting/channelSettingActions";
 import {
@@ -37,7 +36,11 @@ export function buildThreadInfoSection(
     isChannelDisbanded(new Channel(threadInfo.groupNo, ChannelTypeGroup));
   const thread = channelInfo?.orgData?.thread as any;
   const threadName = channelInfo?.title;
-  const canEdit = canRenameThread(thread, threadInfo?.groupNo);
+  // 改名走「服务端为唯一权威」（WS-23）：前端不再用父群订阅缓存前置判定谁能改子区名
+  // （客户端只持有部分 roster，超级群父群仅缓存首页，任何本地 gate 都会误判合法成员）。
+  // 唯一保留的是纯 UI 状态：父群解散后不可改，与 ThreadPanel「更多菜单」isThreadMenuWritable
+  // 对齐（两处一致）；其余交由服务端裁决，错误经下方 onSave 的 Toast.error 呈现。
+  const canEdit = !disbanded;
   const statusTitle =
     thread?.status === ThreadStatus.Archived
       ? t("base.module.thread.status.archived")
@@ -60,8 +63,10 @@ export function buildThreadInfoSection(
         maxCount: THREAD_NAME_MAX_LENGTH,
         onStartEdit: () => {
           if (!threadInfo) return false;
+          // 唯一的前端拦截是父群已解散（纯 UI 状态，与 ThreadPanel 一致）——给一句诚实的
+          // 「现在无法改名」，不承诺稍后重试。其余成员一律放行，交服务端裁决 + onSave 的 Toast.error。
           if (!canEdit) {
-            Toast.warning(t("base.module.thread.nameOnlyCreatorOrManager"));
+            Toast.info(t("base.module.channelSettings.renameUnavailable"));
             return false;
           }
           return true;

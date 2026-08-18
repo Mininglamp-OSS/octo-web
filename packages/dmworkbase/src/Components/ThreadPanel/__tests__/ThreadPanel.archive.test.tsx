@@ -34,6 +34,7 @@ vi.mock("../../../App", () => ({
         threadGet: hoisted.threadGet,
         threadList: hoisted.threadList,
         channelFiles: vi.fn(),
+        subscriber: vi.fn(() => Promise.resolve(undefined)),
       },
     },
     loginInfo: { uid: "owner-uid" },
@@ -55,7 +56,8 @@ vi.mock("@douyinfe/semi-ui", () => ({
     close: hoisted.toastClose,
   },
   Spin: () => React.createElement("div", { "data-testid": "spin" }),
-  Popover: ({ children }: any) => React.createElement(React.Fragment, null, children),
+  Popover: ({ children, content }: any) =>
+    React.createElement(React.Fragment, null, children, content),
 }));
 
 vi.mock("react-virtuoso", () => ({
@@ -81,6 +83,10 @@ vi.mock("wukongimjssdk", () => {
         fetchChannelInfo: hoisted.fetchChannelInfo,
         setChannleInfoForCache: hoisted.setChannleInfoForCache,
         notifyListeners: hoisted.notifyListeners,
+        addSubscriberChangeListener: vi.fn(),
+        removeSubscriberChangeListener: vi.fn(),
+        notifySubscribeChangeListeners: vi.fn(),
+        subscribeCacheMap: new Map(),
       },
     }),
   };
@@ -216,6 +222,30 @@ describe("ThreadPanel inline archive button", () => {
     expect(conversationProps.channel).toMatchObject({
       channelID: ACTIVE_THREAD.channel_id,
     });
+  });
+
+  it("shows Edit name to an ordinary member but keeps Archive manager-only (WS-23 rename widened, archive gate unchanged)", async () => {
+    // 当前用户既非创建者也非群主/管理员：普通活跃成员
+    const ordinaryThread = { ...ACTIVE_THREAD, creator_uid: "someone-else" };
+    hoisted.threadGet.mockResolvedValue(ordinaryThread);
+    hoisted.threadList.mockResolvedValue([ordinaryThread]);
+    hoisted.getSubscribes.mockReturnValue([{ uid: "owner-uid", role: 0 }]);
+
+    render(
+      React.createElement(ThreadPanel, {
+        groupNo: "g1",
+        thread: ordinaryThread,
+        onClose: vi.fn(),
+        onThreadSelect: vi.fn(),
+      })
+    );
+
+    await waitFor(() => expect(hoisted.renderConversation).toHaveBeenCalled());
+
+    // 改名（服务端为唯一权威、前端只挡解散）→ 普通成员可见
+    expect(screen.getByText("编辑子区名称")).toBeTruthy();
+    // 归档仍限创建者/群主/管理员（canManageThread）→ 普通成员不可见
+    expect(screen.queryByText("归档子区")).toBeNull();
   });
 
   it("点击归档按钮调用 threadArchive 参数正确，并弹出撤销 Toast", async () => {
