@@ -652,7 +652,53 @@ export class Conversation
       return Promise.reject(new Error("group disbanded"));
     }
     const message = await vm.sendMessage(content, c);
+
+    // 埋点：octo_assistant_queried（octo-dap S3 / YUJ-277）
+    // 判别：当前会话是 1v1 且 bot.uid 在 octoAssistantUids 中
+    if (c.channelType === ChannelTypePerson) {
+      const botUid = c.channelID;
+      if (WKApp.remoteConfig.octoAssistantUids.includes(botUid)) {
+        const intentTag = this.classifyAssistantIntent(content);
+        Dap.shared.track("octo_assistant_queried", { intent_tag: intentTag });
+      }
+    }
+
     return message;
+  }
+
+  /**
+   * 启发式分类用户向 Octo Assistant 发送的消息意图（octo-dap S3 / YUJ-277）。
+   * 不采原文，只返回分类标签：
+   * - code_gen：含代码块（```）或代码关键词
+   * - summary：含"总结"/"摘要"/"概括"
+   * - analysis：含"分析"/"解读"
+   * - qa：含问号
+   * - other：其他
+   */
+  private classifyAssistantIntent(content: MessageContent): string {
+    if (!(content instanceof MessageText)) {
+      return "other";
+    }
+    const text = (content as MessageText).text || "";
+    if (!text) return "other";
+
+    // 代码生成：含代码块或代码关键词
+    if (text.includes("```") || /\b(code|function|class|import|export|const|let|var)\b/i.test(text)) {
+      return "code_gen";
+    }
+    // 摘要：含总结/摘要/概括
+    if (/总结|摘要|概括|summarize|summary/i.test(text)) {
+      return "summary";
+    }
+    // 分析：含分析/解读
+    if (/分析|解读|analyze|analysis/i.test(text)) {
+      return "analysis";
+    }
+    // 问答：含问号
+    if (text.includes("?") || text.includes("？")) {
+      return "qa";
+    }
+    return "other";
   }
 
   // 统一上报转发结果。区分「全部失败」与「部分失败（带计数）」，全部成功不提示。
