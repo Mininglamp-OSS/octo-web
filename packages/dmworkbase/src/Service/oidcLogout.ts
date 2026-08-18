@@ -35,6 +35,12 @@ const AUTH_STORAGE_KEYS = [
 const IPC_OIDC_HTTP_REQUEST = "oidc-http-request";
 export const IPC_OIDC_OPEN_EXTERNAL = "oidc-open-external";
 
+export interface DesktopOidcIpc {
+  invoke?: (channel: string, request: unknown) => Promise<unknown>;
+  httpRequest?: (request: unknown) => Promise<unknown>;
+  openExternal?: (url: string) => Promise<unknown>;
+}
+
 export interface OidcLogoutResponse {
   status?: number;
   end_session_url?: unknown;
@@ -172,11 +178,12 @@ export async function requestOidcLogout(
 
 export function createOidcLogoutFetcher(
   apiURL: string,
-  ipc:
-    | { invoke?: (channel: string, request: unknown) => Promise<unknown> }
-    | undefined
+  ipc: DesktopOidcIpc | undefined
 ): typeof fetch | undefined {
-  if (!/^https?:\/\//i.test(apiURL) || typeof ipc?.invoke !== "function")
+  if (
+    !/^https?:\/\//i.test(apiURL) ||
+    (typeof ipc?.httpRequest !== "function" && typeof ipc?.invoke !== "function")
+  )
     return undefined;
   return async (input, init) => {
     // Main-process validates the API origin inline on every IPC round-trip
@@ -199,12 +206,16 @@ export function createOidcLogoutFetcher(
         body = init.body;
       }
     }
-    const result = await ipc.invoke(IPC_OIDC_HTTP_REQUEST, {
+    const request = {
       url,
       method: init?.method || "POST",
       body,
       headers: init?.headers,
-    });
+    };
+    const result =
+      typeof ipc.httpRequest === "function"
+        ? await ipc.httpRequest(request)
+        : await ipc.invoke!(IPC_OIDC_HTTP_REQUEST, request);
     const envelope =
       result &&
       typeof result === "object" &&
@@ -298,11 +309,9 @@ export interface OidcUserInitiatedLogoutDeps {
   // API origin used to build the packaged-desktop IPC fetcher. Empty string
   // is treated as "no API URL configured", matching WKApp.apiClient.config.
   apiURL: string;
-  // Packaged desktop preload injects `window.ipc.invoke`; web renderer has
-  // no ipc. `undefined` on web is the normal case.
-  ipc:
-    | { invoke?: (channel: string, request: unknown) => Promise<unknown> }
-    | undefined;
+  // Packaged desktop preload injects `window.octoElectron.oidc` and keeps
+  // `window.ipc.invoke` for compatibility; web renderer has neither.
+  ipc: DesktopOidcIpc | undefined;
   // Discriminates the packaged file:// shell from a browser tab. Passed in
   // rather than read from `window.location.protocol` so tests do not have
   // to patch jsdom's location.
@@ -384,15 +393,17 @@ export async function performOidcUserInitiatedLogout(
       // Keep user-initiated logout inside the desktop app. The main process
       // runs the IdP end-session URL in a hidden window so the IdP session is
       // cleared without showing the browser/Web login page to the user.
-      const ipcInvoke = deps.ipc?.invoke;
-      if (typeof ipcInvoke !== "function") {
+      const openExternal =
+        typeof deps.ipc?.openExternal === "function"
+          ? deps.ipc.openExternal
+          : typeof deps.ipc?.invoke === "function"
+            ? (url: string) => deps.ipc!.invoke!(IPC_OIDC_OPEN_EXTERNAL, url)
+            : undefined;
+      if (!openExternal) {
         await deps.fallbackLogout();
         return { kind: "desktop-local", url: endSessionUrl };
       }
-      const opened = (await ipcInvoke(
-        IPC_OIDC_OPEN_EXTERNAL,
-        endSessionUrl
-      )) as { ok?: boolean } | undefined;
+      const opened = (await openExternal(endSessionUrl)) as { ok?: boolean } | undefined;
       if (opened?.ok !== true) {
         await deps.fallbackLogout();
         return { kind: "desktop-local", url: endSessionUrl };

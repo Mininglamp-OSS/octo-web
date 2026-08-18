@@ -1,6 +1,16 @@
 import type { OidcHttpClient, OidcRequestInit } from './api'
 import { createFetchHttpClient, fetchHttpClient, OidcBindHttpError } from './http'
 
+interface OidcDesktopBridge {
+  authorizeStart?: (apiURL: string, authcode: string, providerId: string, authorizeUrl: string) => Promise<unknown>
+  authorizeEnd?: () => Promise<unknown>
+  httpRequest?: (request: unknown) => Promise<unknown>
+}
+
+function getOidcDesktopBridge(): OidcDesktopBridge | undefined {
+  return typeof window === 'undefined' ? undefined : (window as any).octoElectron?.oidc
+}
+
 interface OidcIpcHttpResponse {
   __octoOidcHttpResponse: true
   ok: boolean
@@ -25,12 +35,18 @@ function errorMessage(body: unknown): string | undefined {
 }
 
 async function invokeOidcHttp<T>(
-  ipc: { invoke(channel: string, request: unknown): Promise<unknown> },
+  ipc: {
+    invoke?: (channel: string, request: unknown) => Promise<unknown>
+    httpRequest?: (request: unknown) => Promise<unknown>
+  },
   request: unknown,
   signal?: AbortSignal,
 ): Promise<T> {
   if (signal?.aborted) throw new DOMException('The operation was aborted', 'AbortError')
-  const pending = ipc.invoke(IPC_OIDC_HTTP_REQUEST, request)
+  const pending =
+    typeof ipc.httpRequest === 'function'
+      ? ipc.httpRequest(request)
+      : ipc.invoke!(IPC_OIDC_HTTP_REQUEST, request)
   const result = signal
     ? await new Promise<unknown>((resolve, reject) => {
         const onAbort = () => reject(new DOMException('The operation was aborted', 'AbortError'))
@@ -90,12 +106,21 @@ export async function beginOidcAuthorize(
   // and P1-1 in the review notes for the rationale.
   authorizeUrl: string,
 ): Promise<OidcAuthorizeStartResult> {
+  const oidc = getOidcDesktopBridge()
+  if (typeof oidc?.authorizeStart === 'function') {
+    return oidc.authorizeStart(apiURL, authcode, providerId, authorizeUrl) as Promise<OidcAuthorizeStartResult>
+  }
   const ipc = typeof window !== 'undefined' ? (window as any).ipc : undefined
   if (typeof ipc?.invoke !== 'function') return { ok: false, code: 'no-window' }
   return ipc.invoke(IPC_OIDC_AUTHORIZE_START, apiURL, authcode, providerId, authorizeUrl) as Promise<OidcAuthorizeStartResult>
 }
 
 export async function endOidcAuthorize(): Promise<void> {
+  const oidc = getOidcDesktopBridge()
+  if (typeof oidc?.authorizeEnd === 'function') {
+    try { await oidc.authorizeEnd() } catch { /* best effort cleanup */ }
+    return
+  }
   const ipc = typeof window !== 'undefined' ? (window as any).ipc : undefined
   if (typeof ipc?.invoke !== 'function') return
   try { await ipc.invoke(IPC_OIDC_AUTHORIZE_END) } catch { /* best effort cleanup */ }
@@ -113,8 +138,8 @@ export async function endOidcAuthorize(): Promise<void> {
  */
 export function getOidcClient(apiURL: string): OidcHttpClient {
   if (isElectronDesktop() && /^https?:\/\//i.test(apiURL)) {
-    const ipc = (window as any).ipc
-    if (typeof ipc?.invoke === 'function') {
+    const ipc = getOidcDesktopBridge() ?? (window as any).ipc
+    if (typeof ipc?.httpRequest === 'function' || typeof ipc?.invoke === 'function') {
       return {
         async get<T>(url: string, init?: OidcRequestInit): Promise<T> {
           const absoluteURL = new URL(url, apiURL.endsWith('/') ? apiURL : `${apiURL}/`).toString()

@@ -1,8 +1,26 @@
-import { WKApp, Menus, ProviderListener, normalizeRoutePath, startVersionCheck, t } from "@octo/base";
+import {
+  WKApp,
+  Menus,
+  ProviderListener,
+  normalizeRoutePath,
+  startVersionCheck,
+  t,
+  getElectronIpcBridge,
+  isElectronPowered,
+  sendElectronInstallUpdate,
+  sendElectronUpdateApp,
+} from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
 import { requestMailWorkspaceSwitch } from "@octo/mail";
 import { requestGuardedBrowserRouteChange } from "./menuChange";
 import { reconcileMenuState, resolvePendingRouteActivation } from "./menuReconcile";
+import {
+  IPC_UPDATE_AVAILABLE,
+  IPC_UPDATE_DOWNLOADED,
+  IPC_UPDATE_DOWNLOAD_PROGRESS,
+  IPC_UPDATE_ERROR,
+  IPC_UPDATE_NOT_AVAILABLE,
+} from "../../../src-election/shared/ipc-channels";
 
 export default class MainVM extends ProviderListener {
   private _currentMenus?: Menus;
@@ -142,7 +160,7 @@ export default class MainVM extends ProviderListener {
     window.addEventListener("popstate", this._onBrowserRouteGuard, true);
     window.addEventListener("popstate", this._onBrowserRouteChange);
 
-    if ((window as any).__POWERED_ELECTRON__) {
+    if (isElectronPowered()) {
       this.appUpdateInit();
     } else {
       // 轮询 /version.json 检测 Web 端新版本，有新版本时亮设置按钮气泡
@@ -168,17 +186,19 @@ export default class MainVM extends ProviderListener {
   }
 
   private addIpcListener(event: string, handler: (...args: any[]) => void) {
-    (window as any).ipc.on(event, handler);
+    const ipc = getElectronIpcBridge();
+    if (!ipc) return;
+    ipc.on(event, handler);
     this.ipcListeners.push({ event, handler });
   }
 
   appUpdateInit() {
     // 监听升级失败事件
-    this.addIpcListener("update-error", (event, message) => {
+    this.addIpcListener(IPC_UPDATE_ERROR, (event, message) => {
     });
     // 发现可用更新事件
-    this.addIpcListener("update-available", (event, message) => {
-      (window as any).ipc.send("update-app");
+    this.addIpcListener(IPC_UPDATE_AVAILABLE, (event, message) => {
+      sendElectronUpdateApp();
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
@@ -187,21 +207,21 @@ export default class MainVM extends ProviderListener {
       this.notifyListener();
     });
     // 没有可用更新事件
-    this.addIpcListener("update-not-available", (event, message) => {
+    this.addIpcListener(IPC_UPDATE_NOT_AVAILABLE, (event, message) => {
       this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
       this.showAppUpdateOperation = false;
       Toast.success(t("app.main.updateAlreadyLatest"));
     });
     // 更新下载进度事件
-    this.addIpcListener("download-progress", (event, message) => {
+    this.addIpcListener(IPC_UPDATE_DOWNLOAD_PROGRESS, (event, message) => {
       this.showAppUpdate = true;
       this.showAppUpdateOperation = false;
       this.appUpdateProgress = message;
       this.notifyListener();
     });
     // 监听下载完成事件
-    this.addIpcListener("update-downloaded", (event, message) => {
+    this.addIpcListener(IPC_UPDATE_DOWNLOADED, (event, message) => {
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
@@ -216,7 +236,7 @@ export default class MainVM extends ProviderListener {
   didUnMount(): void {
     // Clean up IPC listeners to prevent memory leaks
     for (const { event, handler } of this.ipcListeners) {
-      (window as any).ipc?.removeListener(event, handler);
+      getElectronIpcBridge()?.removeListener(event, handler);
     }
     this.ipcListeners = [];
     this.stopVersionCheck?.();
@@ -343,7 +363,7 @@ export default class MainVM extends ProviderListener {
 
   // 安装更新
   installUpdate() {
-    (window as any).ipc.send("install-update");
+    sendElectronInstallUpdate();
   }
 
   get menusList() {

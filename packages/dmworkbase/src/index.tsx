@@ -71,6 +71,7 @@ export * from './Utils/docLink'
 export * from './Utils/asyncCache'
 export * from './features/documentTitle'
 export * from './features/notifications'
+export * from './electron/desktopBridge'
 
 export { default as MessageBase } from "./Messages/Base"
 export  * from "./Messages/Image"
