@@ -177,7 +177,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       aria-label={ariaLabel}
       onClick={() => onOpen(skill)}
       onKeyDown={handleKeyDown}
-      data-track="market_card_opened"
+      data-track="market_card_viewed"
       data-object-id={skill.id}
       data-track-item-type="skill"
     >
