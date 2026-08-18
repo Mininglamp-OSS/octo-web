@@ -11,6 +11,7 @@ import {
     Popconfirm,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconMore, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconUser, IconPlus, IconMinusCircle, IconExit } from "@douyinfe/semi-icons";
+import { Copy, FileText } from "lucide-react";
 import { Channel, ChannelTypeGroup, ChannelTypePerson, MessageText, WKSDK } from "wukongimjssdk";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -81,6 +82,10 @@ interface SummaryDetailPageState {
     regenerateSubmitting: boolean;
     /** V5：schedule 级一次性确认提交中 */
     confirmingSchedule: boolean;
+    /** 复制总结内容中 */
+    copying: boolean;
+    /** 转为在线文档中 */
+    convertingDoc: boolean;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -115,6 +120,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         regenerateTopic: "",
         regenerateSubmitting: false,
         confirmingSchedule: false,
+        copying: false,
+        convertingDoc: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -965,6 +972,44 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
+    /** 复制总结内容到剪贴板 */
+    handleCopyContent = async () => {
+        const { detail } = this.state;
+        if (!detail?.result?.content) return;
+        this.setState({ copying: true });
+        try {
+            const ok = await api.copySummaryContent(detail.result.content);
+            if (ok) {
+                Toast.success(this.context.t("summary.detail.copySuccess"));
+            } else {
+                Toast.error(this.context.t("summary.detail.copyFailed"));
+            }
+        } catch {
+            Toast.error(this.context.t("summary.detail.copyFailed"));
+        } finally {
+            this.setState({ copying: false });
+        }
+    };
+
+    /** 转为在线文档 */
+    handleConvertToDoc = async () => {
+        const { detail } = this.state;
+        if (!detail?.result?.content) return;
+        this.setState({ convertingDoc: true });
+        try {
+            const title = detail.title || this.context.t("summary.detail.defaultTitle");
+            const { url } = await api.convertSummaryToDoc(title, detail.result.content);
+            Toast.success(this.context.t("summary.detail.convertSuccess"));
+            // 在新标签页打开文档
+            window.open(url, "_blank");
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : this.context.t("summary.detail.convertFailed");
+            Toast.error(msg);
+        } finally {
+            this.setState({ convertingDoc: false });
+        }
+    };
+
     renderCompleted() {
         const { detail } = this.state;
         const { t } = this.context;
@@ -1004,6 +1049,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
                         </span>
                     )}
+                    <div className="summary-detail-result-actions" style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                        <Button
+                            size="small"
+                            theme="borderless"
+                            icon={<Copy size={14} />}
+                            loading={this.state.copying}
+                            onClick={this.handleCopyContent}
+                        >
+                            {t("summary.detail.copy")}
+                        </Button>
+                        <Button
+                            size="small"
+                            theme="borderless"
+                            icon={<FileText size={14} />}
+                            loading={this.state.convertingDoc}
+                            onClick={this.handleConvertToDoc}
+                        >
+                            {t("summary.detail.convertToDoc")}
+                        </Button>
+                    </div>
                 </div>
             </div>
         );

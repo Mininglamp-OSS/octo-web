@@ -353,3 +353,69 @@ export async function getMemberCandidates(params?: { keyword?: string }): Promis
     const data = await get<MemberCandidate[]>('/summary-member-candidates', params as Record<string, unknown>);
     return data || [];
 }
+
+// ─── Document: Copy & Convert ──────────────────────────
+
+// 复制总结内容到剪贴板（纯前端，不走后端 API）。
+// 优先使用 navigator.clipboard.writeText，降级到 execCommand 兜底。
+export async function copySummaryContent(content: string): Promise<boolean> {
+    if (navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(content);
+            return true;
+        } catch {
+            // fall through to fallback
+        }
+    }
+    // execCommand 降级
+    try {
+        const textarea = document.createElement('textarea');
+        textarea.value = content;
+        textarea.readOnly = true;
+        textarea.style.position = 'fixed';
+        textarea.style.top = '0';
+        textarea.style.left = '0';
+        textarea.style.opacity = '0';
+        textarea.style.fontSize = '16px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return ok;
+    } catch {
+        return false;
+    }
+}
+
+// 创建在线文档（POST /api/v1/docs — docs-backend），返回 docId。
+// 调用者成为文档 owner/admin。
+export async function createDoc(title?: string): Promise<{ docId: string }> {
+    const resp = await WKApp.apiClient.post('/docs', { title: title || '' });
+    return { docId: (resp as { docId: string }).docId };
+}
+
+// 将 Markdown 内容导入到已有文档（POST /api/v1/docs/:docId/import/markdown — docs-backend）。
+// 后端原子替换文档内容；支持 .md/.markdown 格式。
+// 使用全局 axios（APIClient 拦截器自动注入 token / spaceId / Accept-Language）。
+export async function importMarkdownToDoc(docId: string, markdown: string): Promise<void> {
+    const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
+    const formData = new FormData();
+    formData.append('file', blob, 'summary.md');
+
+    // 走全局 axios（拦截器自动注入 auth headers）；axios 会自动设置 multipart/form-data boundary
+    const apiURL = WKApp.apiClient.config.apiURL;
+    const baseURL = apiURL || '/api/v1/';
+    await axios.post(`${baseURL}docs/${encodeURIComponent(docId)}/import/markdown`, formData, {
+        // 覆盖默认超时（导入可能较慢）
+        timeout: 30_000,
+    });
+}
+
+// 创建文档并导入 Markdown 内容，返回文档 ID 和跳转链接。
+export async function convertSummaryToDoc(title: string, markdown: string): Promise<{ docId: string; url: string }> {
+    const { docId } = await createDoc(title);
+    await importMarkdownToDoc(docId, markdown);
+    // docs 模块用 ?doc=<docId> 路由
+    const url = `/docs?doc=${encodeURIComponent(docId)}`;
+    return { docId, url };
+}

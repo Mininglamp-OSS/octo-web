@@ -357,7 +357,13 @@
     "leaveTask": "Leave collaboration",
     "leaveConfirm": "Leave this collaboration?",
     "leaveSuccess": "Left",
-    "leaveFailed": "Failed to leave"
+    "leaveFailed": "Failed to leave",
+    "copy": "Copy",
+    "copySuccess": "Copied to clipboard",
+    "copyFailed": "Copy failed, please retry",
+    "convertToDoc": "Convert to document",
+    "convertSuccess": "Document created, redirecting...",
+    "convertFailed": "Conversion failed, please retry"
   },
   "summaryCard": {
     "createdBy": "Created by {{name}}",

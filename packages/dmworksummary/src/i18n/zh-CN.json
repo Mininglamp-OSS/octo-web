@@ -357,7 +357,13 @@
     "leaveTask": "退出多人协作",
     "leaveConfirm": "确定退出该多人协作吗？",
     "leaveSuccess": "已退出",
-    "leaveFailed": "退出失败"
+    "leaveFailed": "退出失败",
+    "copy": "复制",
+    "copySuccess": "已复制到剪贴板",
+    "copyFailed": "复制失败，请重试",
+    "convertToDoc": "转为在线文档",
+    "convertSuccess": "已创建文档，正在跳转...",
+    "convertFailed": "转换失败，请重试"
   },
   "summaryCard": {
     "createdBy": "{{name}} 发起",
