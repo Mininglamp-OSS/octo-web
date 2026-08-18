@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import React, { Component, type HTMLProps } from "react";
@@ -12,7 +13,6 @@ import FriendApplyUI from "../FriendApply";
 import RouteContext, { type FinishButtonContext } from "../../Service/Context";
 import { I18nContext } from "../../i18n";
 import WKAvatarPreviewImage from "../WKAvatarPreviewImage";
-import WKButton from "../WKButton";
 import type { UserInfoMetaItem } from "./UserInfoMetaList";
 import UserInfoView, { type UserInfoViewFooter } from "../../ui/profileDetail/UserInfoView";
 import ProfileOnlineStatus from "../../ui/profileDetail/ProfileOnlineStatus";
@@ -95,19 +95,19 @@ export default class UserInfo extends Component<UserInfoProps> {
         const isFriend = vm.relation() === UserRelation.friend;
         if (spaceId && (!isBot || isFriend)) {
             // 非 Bot 成员或已加好友的 Bot：直接发消息
-            content = <WKButton type="button" variant="primary" onClick={() => {
+            content = <Button type="button" variant="solid" onClick={() => {
                 WKApp.shared.baseContext.hideUserInfo()
                 // WuKongIM DM 只认裸 uid
                 WKApp.endpoints.showConversation(new Channel(vm.uid, ChannelTypePerson))
-            }}>{t("base.userInfo.sendMessage")}</WKButton>
+            }}>{t("base.userInfo.sendMessage")}</Button>
         } else if (isFriend) {
-            content = <WKButton type="button" variant="primary" onClick={() => {
+            content = <Button type="button" variant="solid" onClick={() => {
                 WKApp.shared.baseContext.hideUserInfo()
                 WKApp.endpoints.showConversation(new Channel(vm.uid, ChannelTypePerson))
-            }}>{t("base.userInfo.sendMessage")}</WKButton>
+            }}>{t("base.userInfo.sendMessage")}</Button>
         } else if (isBot) {
             // Bot 未加好友：走好友申请流程（BotFather 通知创建者审核）
-            content = <WKButton type="button" variant="primary" onClick={() => {
+            content = <Button type="button" variant="solid" onClick={() => {
                 let msg = t("base.userInfo.botApplyMessage", {
                     values: { name: vm.displayName() },
                 })
@@ -138,12 +138,12 @@ export default class UserInfo extends Component<UserInfoProps> {
                         finishButtonContext.loading(false)
                     }
                 })
-            }}>{t("base.userInfo.addFriend")}</WKButton>
+            }}>{t("base.userInfo.addFriend")}</Button>
         } else {
             if (!vm.vercode || vm.vercode === "") { // 没有验证码，不显示添加好友按钮
                 return undefined
             }
-            content = <WKButton type="button" variant="secondary" onClick={() => {
+            content = <Button type="button" variant="secondary" onClick={() => {
                 // 好友申请默认文案里的自我介绍走 selfDisplayName()，
                 // 已实名用户用 "我是..." + real_name，对端更容易识别。
                 const myDisplayName = WKApp.loginInfo.selfDisplayName()
@@ -184,7 +184,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                         finishButtonContext.loading(false)
                     }
                 })
-            }} >{t("base.userInfo.addFriend")}</WKButton>
+            }} >{t("base.userInfo.addFriend")}</Button>
         }
 
         return { action: content }

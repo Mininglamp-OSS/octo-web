@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Switch, Tooltip, Toast } from '@douyinfe/semi-ui';
 import { IconHelpCircle } from '@douyinfe/semi-icons';
@@ -13,7 +14,6 @@ import WKApp from '../../App';
 import VoiceService from '../../Service/VoiceService';
 import { Dap } from '../../Service/Dap';
 import { useI18n } from '../../i18n';
-import WKButton from '../WKButton';
 import './VoiceSettingsPanel.css';
 
 interface VoiceSettingsPanelProps {
@@ -336,7 +336,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                     onChange={(e) => { setLocalProbeUrl(e.target.value); setLocalDirty(true); }}
                     className="wk-voice-settings__input"
                   />
-                  <WKButton
+                  <Button
                     size="sm"
                     variant="secondary"
                     onClick={handleTestProbe}
@@ -347,7 +347,7 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                     {probeTestStatus === 'loading' && t('base.navRail.voiceSettings.testingConnection')}
                     {probeTestStatus === 'success' && t('base.navRail.voiceSettings.connectionSuccess')}
                     {probeTestStatus === 'fail' && t('base.navRail.voiceSettings.connectionFailed')}
-                  </WKButton>
+                  </Button>
                 </div>
                 <div className="wk-voice-settings__field">
                   <label className="wk-voice-settings__field-label">
@@ -362,22 +362,22 @@ export default function VoiceSettingsPanel({ onClose }: VoiceSettingsPanelProps)
                   />
                 </div>
                 <div className="wk-voice-settings__actions">
-                  <WKButton
+                  <Button
                     size="sm"
                     variant="secondary"
                     onClick={handleLocalConfigReset}
                     disabled={localSaving}
                   >
                     {t('base.navRail.voiceSettings.restoreDefaults')}
-                  </WKButton>
-                  <WKButton
+                  </Button>
+                  <Button
                     size="sm"
-                    variant="primary"
+                    variant="solid"
                     onClick={handleLocalConfigSave}
                     disabled={localSaving || !localDirty}
                   >
                     {t('base.navRail.voiceSettings.save')}
-                  </WKButton>
+                  </Button>
                 </div>
               </div>
             )}

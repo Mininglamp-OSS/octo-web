@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useMemo, useState } from "react";
-import { WKModal, WKButton, t, Dap } from "@octo/base";
+import { WKModal, t, Dap } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
 import { Bot, ShieldCheck, UserRound } from "lucide-react";
@@ -101,9 +102,9 @@ const QuickAccess: React.FC<{ quickStart: McpQuickStart }> = ({
       </div>
       <div className="wk-mcp-code">
         <div className="wk-mcp-code__copy">
-          <WKButton size="sm" variant="ghost" onClick={handleCopy}>
+          <Button size="sm" variant="text" onClick={handleCopy}>
             {t("mcp.detail.copy")}
-          </WKButton>
+          </Button>
         </div>
         <pre className="wk-mcp-code__pre">{renderedContent}</pre>
       </div>
@@ -332,29 +333,29 @@ const McpDetailModal: React.FC<McpDetailModalProps> = ({
               <span className="wk-mcp-detail-actions__hint">
                 {t("mcp.delete.confirmBody")}
               </span>
-              <WKButton
+              <Button
                 variant="secondary"
                 disabled={deleting}
                 onClick={handleCancelDelete}
               >
                 {t("mcp.delete.cancel")}
-              </WKButton>
-              <WKButton
+              </Button>
+              <Button
                 variant="danger"
                 loading={deleting}
                 onClick={handleConfirmDelete}
               >
                 {t("mcp.delete.ok")}
-              </WKButton>
+              </Button>
             </div>
           ) : (
             <div className="wk-mcp-detail-actions">
-              <WKButton variant="danger" onClick={handleDeleteClick}>
+              <Button variant="danger" onClick={handleDeleteClick}>
                 {t("mcp.detail.delete")}
-              </WKButton>
-              <WKButton variant="primary" onClick={handleEdit}>
+              </Button>
+              <Button variant="solid" onClick={handleEdit}>
                 {t("mcp.detail.edit")}
-              </WKButton>
+              </Button>
             </div>
           )
         ) : null

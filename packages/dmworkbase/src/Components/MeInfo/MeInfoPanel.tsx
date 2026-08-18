@@ -1,8 +1,8 @@
+import { Button } from "@octo/ui";
 import { Input, Spin } from "@douyinfe/semi-ui";
 import { Camera, Check, ChevronRight, Edit3, QrCode } from "lucide-react";
 import React from "react";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";
-import WKButton from "../WKButton";
 
 interface MeInfoSectionProps {
     title: React.ReactNode;
@@ -176,7 +176,7 @@ export default function MeInfoPanel({
                             disabled={savingName}
                         />
                         <span className="wk-meinfo-name-actions">
-                            <WKButton
+                            <Button
                                 type="button"
                                 variant="secondary"
                                 size="sm"
@@ -184,16 +184,16 @@ export default function MeInfoPanel({
                                 onClick={onCancelName}
                             >
                                 {cancelLabel}
-                            </WKButton>
-                            <WKButton
+                            </Button>
+                            <Button
                                 type="button"
-                                variant="primary"
+                                variant="solid"
                                 size="sm"
                                 loading={savingName}
                                 onClick={onSaveName}
                             >
                                 {saveLabel}
-                            </WKButton>
+                            </Button>
                         </span>
                     </span> : <span className="wk-meinfo-row-value">{displayedNameValue}</span>}
                 </span>

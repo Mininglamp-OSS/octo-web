@@ -1,4 +1,4 @@
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Spin } from "@douyinfe/semi-ui";
 import classNames from "classnames";
 import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk";
 import React from "react";

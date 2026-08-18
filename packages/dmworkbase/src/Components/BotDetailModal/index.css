@@ -379,7 +379,7 @@
 }
 
 .wk-bot-detail-actions .wk-bot-detail-primary-action,
-.wk-bot-detail-actions .wk-btn {
+.wk-bot-detail-actions .octo-ui-button {
     width: 100%;
     height: var(--wk-profile-detail-action-height, var(--wk-sp-10));
 }

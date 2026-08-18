@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import React, { useRef, useState } from "react";
 import AvatarEditor from "react-avatar-editor";
-import { t, useI18n, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKModal } from "@octo/base";
 
 interface IconCropModalProps {
   visible: boolean;
@@ -32,8 +33,8 @@ export default function IconCropModal({ visible, file, onCancel, onConfirm }: Ic
       className="skill-market-crop-modal"
       footer={
         <div className="skill-market-crop-modal__footer">
-          <WKButton variant="secondary" onClick={onCancel}>{t("skillMarket.common.cancel")}</WKButton>
-          <WKButton variant="primary" onClick={handleSave}>{t("skillMarket.common.confirm")}</WKButton>
+          <Button variant="secondary" onClick={onCancel}>{t("skillMarket.common.cancel")}</Button>
+          <Button variant="solid" onClick={handleSave}>{t("skillMarket.common.confirm")}</Button>
         </div>
       }
     >
