@@ -38,3 +38,6 @@
     color: var(--wk-text-tertiary, #999);
     margin-top: 4px;
 }
+.wk-group-card-enter-btn {
+    width: 100%;
+}

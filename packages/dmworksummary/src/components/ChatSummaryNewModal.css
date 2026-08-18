@@ -186,12 +186,37 @@
     width: 100%;
 }
 
-/* 分裂按钮（开始总结 + 下拉切换 Agent 总结）。SplitButtonGroup 自带主体/箭头
-   连接样式，这里仅确保下拉箭头按钮不被文案撑开、与主体等高。
+/* 分裂按钮（开始总结 + 下拉切换 Agent 总结）。Semi SplitButtonGroup 只会
+   拼接 .semi-button 子元素；迁移到 @octo/ui 后需要在本地补齐连接样式。
    本规则刻意与 index.css 的同名规则共存：Storybook story 直接 import 本组件、
-   不加载 summary 包样式表（index.css），本地保留才能保证独立渲染的 chevron
-   padding 正确；两条规则内容一致、全局生效，重复是幂等的。 */
-.chat-summary-modal-split .semi-button:last-child {
-    padding-left: var(--wk-sp-2, 8px);
-    padding-right: var(--wk-sp-2, 8px);
+   不加载 summary 包样式表（index.css），本地保留才能保证独立渲染正确；
+   两条规则内容一致、全局生效，重复是幂等的。 */
+.chat-summary-modal-split {
+    display: inline-flex;
+    align-items: stretch;
+}
+
+.chat-summary-modal-split .octo-ui-button {
+    border-radius: 0;
+    margin-right: 1px;
+}
+
+.chat-summary-modal-split .octo-ui-button:first-child {
+    border-top-left-radius: var(--wk-r-sm);
+    border-bottom-left-radius: var(--wk-r-sm);
+}
+
+.chat-summary-modal-split .octo-ui-button:last-child {
+    width: auto;
+    min-width: calc(var(--wk-sp-6) + var(--wk-sp-1));
+    height: calc(var(--wk-sp-6) + var(--wk-sp-1));
+    padding-left: var(--wk-sp-2);
+    padding-right: var(--wk-sp-2);
+    border-top-right-radius: var(--wk-r-sm);
+    border-bottom-right-radius: var(--wk-r-sm);
+    margin-right: 0;
+}
+
+.chat-summary-modal-split .octo-ui-button:only-child {
+    border-radius: var(--wk-r-sm);
 }

@@ -1,6 +1,6 @@
+import { Button } from "@octo/ui";
 import React from "react";
 import { Popover, Spin } from "@douyinfe/semi-ui";
-import { WKButton } from "@octo/base";
 import { QRCodeSVG } from "qrcode.react";
 import { loginT as t } from "./i18n";
 import { useMobileDownloadUrl } from "./mobileDownloadUpdater";
@@ -38,9 +38,9 @@ export const IOSDownloadPopoverContent: React.FC<PopoverHoverProps> = (
         {status === "error" && (
           <div className="wk-login-mobile-download-state" role="alert">
             <span>{t("download.addressLoadFailed")}</span>
-            <WKButton type="button" variant="ghost" size="sm" onClick={retry}>
+            <Button type="button" variant="text" size="sm" onClick={retry}>
               {t("download.retry")}
-            </WKButton>
+            </Button>
           </div>
         )}
         {status === "ready" && <QRCodeSVG value={downloadUrl} size={104} />}

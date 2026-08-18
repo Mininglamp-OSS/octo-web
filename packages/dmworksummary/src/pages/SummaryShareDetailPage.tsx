@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useRef, useState } from "react";
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Spin } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
 import { Channel } from "wukongimjssdk";
 import { titleContextStore, useI18n, WKApp } from "@octo/base";

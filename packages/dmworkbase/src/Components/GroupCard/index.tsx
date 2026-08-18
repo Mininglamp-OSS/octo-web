@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react";
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Spin } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { Channel, ChannelTypeGroup, WKSDK } from "wukongimjssdk";
 import WKAvatar from "../WKAvatar";
@@ -99,7 +100,7 @@ export default class GroupCard extends Component<GroupCardProps, GroupCardState>
                         <Button
                             theme="solid"
                             type="primary"
-                            block
+                            className="wk-group-card-enter-btn"
                             onClick={this.handleEnterChat}
                             style={{ marginTop: 8 }}
                         >

@@ -1,8 +1,8 @@
+import { Button } from "@octo/ui";
 import React, { useState, useEffect } from "react";
 import { Checkbox, Spin } from "@douyinfe/semi-ui";
 import DOMPurify from "dompurify";
 import WKModal from "../../Components/WKModal";
-import WKButton from "../../Components/WKButton";
 import { getDocument } from "../../Service/DocumentService";
 import { useI18n } from "../../i18n";
 
@@ -70,10 +70,10 @@ export default function VoiceFeedbackNotice({
             {t("base.navRail.voiceNotice.feedbackConsent")}
           </Checkbox>
           <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-            <WKButton onClick={onCancel}>{t("base.common.cancel")}</WKButton>
-            <WKButton variant="primary" onClick={handleAccept} disabled={acceptDisabled}>
+            <Button onClick={onCancel}>{t("base.common.cancel")}</Button>
+            <Button variant="solid" onClick={handleAccept} disabled={acceptDisabled}>
               {t("base.navRail.voiceNotice.accept")}
-            </WKButton>
+            </Button>
           </div>
         </div>
       }

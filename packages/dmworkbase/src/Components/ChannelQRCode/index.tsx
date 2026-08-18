@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react";
 import { QRCodeSVG } from 'qrcode.react';
 import "./index.css"
@@ -5,7 +6,7 @@ import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";
 import Provider from "../../Service/Provider";
 import { ChannelQRCodeVM } from "./vm";
-import { Button, Spin, Toast } from "@douyinfe/semi-ui";
+import { Spin, Toast } from "@douyinfe/semi-ui";
 import { copyToClipboard } from "../../Utils/clipboard";
 import { Dap } from "../../Service/Dap";
 import { I18nContext } from "../../i18n";

@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Box, ImagePlus, Loader2, Upload, XCircle } from "lucide-react";
-import { t, useI18n, WKButton, WKInput, WKModal } from "@octo/base";
+import { t, useI18n, WKInput, WKModal } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { updateSkill, uploadIcon, initReupload, uploadFile, triggerParse, pollParse, getSkillTags } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
@@ -410,15 +411,15 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         className="skill-market-workflow-modal"
         footer={
           <>
-            <WKButton variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</WKButton>
-            <WKButton
-              variant="primary"
+            <Button variant="secondary" onClick={requestClose} disabled={saving}>{t("skillMarket.common.cancel")}</Button>
+            <Button
+              variant="solid"
               onClick={() => void submit()}
               loading={saving}
               disabled={!canSave}
             >
               {t("skillMarket.common.save")}
-            </WKButton>
+            </Button>
           </>
         }
       >
@@ -472,7 +473,7 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
             </div>
           )}
           {uploadStage === "error" && (
-            <WKButton variant="secondary" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reselect")}</WKButton>
+            <Button variant="secondary" onClick={() => fileInputRef.current?.click()}>{t("skillMarket.upload.reselect")}</Button>
           )}
 
           <div className="skill-market-form__version-section">
@@ -651,8 +652,8 @@ export default function EditSkillModal({ skill, categories, onClose, onUpdated }
         size="md"
         footer={
           <>
-            <WKButton variant="secondary" onClick={() => setConfirmClose(false)}>{t("skillMarket.confirm.keepEditing")}</WKButton>
-            <WKButton variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</WKButton>
+            <Button variant="secondary" onClick={() => setConfirmClose(false)}>{t("skillMarket.confirm.keepEditing")}</Button>
+            <Button variant="danger" onClick={confirmLeave}>{t("skillMarket.confirm.leave")}</Button>
           </>
         }
       >

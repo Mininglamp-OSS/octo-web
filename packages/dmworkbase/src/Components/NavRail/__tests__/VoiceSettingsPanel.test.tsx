@@ -77,11 +77,6 @@ vi.mock('../../WKModal', () => ({
   __esModule: true,
 }));
 
-vi.mock('../../WKButton', () => ({
-  default: ({ children, onClick, disabled }: any) =>
-    React.createElement('button', { onClick, disabled }, children),
-  __esModule: true,
-}));
 
 vi.mock('../../../features/voice-input/VoiceFeedbackNotice', () => ({
   default: (props: any) => {

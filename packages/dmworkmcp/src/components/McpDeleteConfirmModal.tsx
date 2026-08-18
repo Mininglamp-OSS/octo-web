@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useState } from "react";
 import { AlertTriangle } from "lucide-react";
-import { t, useI18n, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKModal } from "@octo/base";
 import type { McpListItem } from "../types/mcp";
 import { deleteMcp } from "../api/mcpService";
 
@@ -45,12 +46,12 @@ export default function McpDeleteConfirmModal({ item, onClose, onDeleted }: McpD
       title={t("mcp.delete.confirmTitle")}
       footer={
         <>
-          <WKButton variant="secondary" onClick={onClose} disabled={deleting}>
+          <Button variant="secondary" onClick={onClose} disabled={deleting}>
             {t("mcp.delete.cancel")}
-          </WKButton>
-          <WKButton variant="danger" onClick={() => void submit()} loading={deleting}>
+          </Button>
+          <Button variant="danger" onClick={() => void submit()} loading={deleting}>
             {t("mcp.delete.ok")}
-          </WKButton>
+          </Button>
         </>
       }
     >

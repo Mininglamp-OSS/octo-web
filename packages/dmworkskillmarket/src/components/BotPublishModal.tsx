@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useState } from "react";
 import { Bot, Check, Copy } from "lucide-react";
-import { t, useI18n, WKApp, WKButton, WKModal, Dap } from "@octo/base";
+import { t, useI18n, WKApp, WKModal, Dap } from "@octo/base";
 import { resolveAPIBaseURL } from "../utils/installPrompt";
 import { getBotPublishPrompt } from "../utils/botPublishPrompt";
 
@@ -66,8 +67,8 @@ export default function BotPublishModal({
         </div>
       }
       footer={
-        <WKButton
-          variant="primary"
+        <Button
+          variant="solid"
           data-testid="skill-bot-publish-copy"
           icon={copied ? <Check size={15} /> : <Copy size={15} />}
           onClick={handleCopy}
@@ -76,7 +77,7 @@ export default function BotPublishModal({
           {copied
             ? t("skillMarket.botPublish.copied")
             : t("skillMarket.botPublish.copyBtn")}
-        </WKButton>
+        </Button>
       }
     >
       <div className="skill-market-prompt-modal__body">

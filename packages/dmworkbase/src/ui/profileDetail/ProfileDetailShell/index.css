@@ -206,7 +206,7 @@
   box-sizing: border-box;
 }
 
-.wk-profile-detail-footer-action .wk-btn {
+.wk-profile-detail-footer-action .octo-ui-button {
   width: 100%;
   height: var(--wk-profile-detail-action-height);
 }

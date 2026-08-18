@@ -1,8 +1,8 @@
+import { Button } from "@octo/ui";
 import React from 'react'
 import { Modal } from '@douyinfe/semi-ui'
 import type { ConfirmProps, ModalReactProps } from '@douyinfe/semi-ui/modal'
 import { t } from '../../i18n'
-import WKButton from '../WKButton'
 
 type WKConfirmPending = 'ok' | 'cancel' | null
 
@@ -64,22 +64,22 @@ export function wkConfirm(props: WKConfirmProps) {
           )}
         </div>
         <div className="wk-modal-footer wk-modal-confirm-footer">
-          <WKButton
+          <Button
             variant="secondary"
             disabled={pending !== null}
             loading={pending === 'cancel'}
             onClick={(event) => runAction('cancel', event)}
           >
             {resolvedCancelText}
-          </WKButton>
-          <WKButton
-            variant={okType === 'danger' ? 'danger' : 'primary'}
+          </Button>
+          <Button
+            variant={okType === 'danger' ? 'danger' : 'solid'}
             disabled={pending !== null}
             loading={pending === 'ok'}
             onClick={(event) => runAction('ok', event)}
           >
             {resolvedOkText}
-          </WKButton>
+          </Button>
         </div>
       </div>
     )

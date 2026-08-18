@@ -16,11 +16,6 @@ vi.mock("../../RealnameVerifiedBadge", () => ({
   default: () => React.createElement("span", { "data-testid": "verified-badge" }),
 }))
 
-vi.mock("../../WKButton", () => ({
-  default: ({ children, ...props }: any) =>
-    React.createElement("button", props, children),
-}))
-
 let container: HTMLDivElement
 
 const baseProps = (overrides: Partial<MeInfoPanelProps> = {}): MeInfoPanelProps => ({
