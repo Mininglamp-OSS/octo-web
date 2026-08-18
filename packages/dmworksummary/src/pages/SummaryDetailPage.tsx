@@ -11,7 +11,7 @@ import {
     Dropdown,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
-import { Bot, ChevronDown, Check, X } from "lucide-react";
+import { Bot, ChevronDown, Check, X, Copy, FileText } from "lucide-react";
 import { Channel, MessageText } from "wukongimjssdk";
 import {
   I18nContext,
@@ -58,6 +58,7 @@ import {
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
+import { extractErrorMsg } from "@octo/base/src/Service/APIClient";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
@@ -145,6 +146,10 @@ interface SummaryDetailPageState {
     teamStreaming: boolean;
     teamStreamingContent: string;
     teamStreamError: string | null;
+    /** Issue #195: 复制总结内容中 */
+    copying: boolean;
+    /** Issue #195: 转为在线文档中 */
+    convertingDoc: boolean;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -268,6 +273,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         teamStreaming: false,
         teamStreamingContent: "",
         teamStreamError: null,
+        copying: false,
+        convertingDoc: false,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -2738,6 +2745,55 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
+    /** Issue #195: 复制总结内容到剪贴板 */
+    handleCopyContent = async (contentOverride?: string) => {
+        const { detail, personalResult } = this.state;
+        const content = contentOverride ?? detail?.result?.content;
+        if (!content) return;
+        this.setState({ copying: true });
+        try {
+            const ok = await api.copySummaryContent(content);
+            if (ok) {
+                Toast.success(this.context.t("summary.detail.copySuccess"));
+            } else {
+                Toast.error(this.context.t("summary.detail.copyFailed"));
+            }
+        } catch {
+            Toast.error(this.context.t("summary.detail.copyFailed"));
+        } finally {
+            this.setState({ copying: false });
+        }
+    };
+
+    /** Issue #195: 转为在线文档 */
+    handleConvertToDoc = async (contentOverride?: string, titleOverride?: string) => {
+        const { detail } = this.state;
+        const content = contentOverride ?? detail?.result?.content;
+        if (!content) return;
+        // 同步预开标签页，保留用户激活状态，避免浏览器拦截 popup
+        const tab = window.open("", "_blank");
+        this.setState({ convertingDoc: true });
+        try {
+            const title = titleOverride ?? detail?.title ?? this.context.t("summary.detail.defaultTitle");
+            const { url } = await api.convertSummaryToDoc(title, content);
+            Toast.success(this.context.t("summary.detail.convertSuccess"));
+            // 导航预开的标签页到文档 URL
+            if (tab) {
+                tab.location.href = url;
+            } else {
+                // popup 被拦截，回退到当前页导航
+                window.location.href = url;
+            }
+        } catch (err) {
+            // 关闭预开的空标签页
+            if (tab) tab.close();
+            const msg = extractErrorMsg(err) || this.context.t("summary.detail.convertFailed");
+            Toast.error(msg);
+        } finally {
+            this.setState({ convertingDoc: false });
+        }
+    };
+
     renderCompleted() {
         const { detail, isEditing } = this.state;
         const { t } = this.context;
@@ -2818,6 +2874,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
                             </span>
                         )}
+                        <div className="summary-detail-result-actions" style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+                            <Button
+                                size="small"
+                                theme="borderless"
+                                icon={<Copy size={14} />}
+                                loading={this.state.copying}
+                                onClick={() => this.handleCopyContent()}
+                            >
+                                {t("summary.detail.copy")}
+                            </Button>
+                            <Button
+                                size="small"
+                                theme="borderless"
+                                icon={<FileText size={14} />}
+                                loading={this.state.convertingDoc}
+                                onClick={() => this.handleConvertToDoc()}
+                            >
+                                {t("summary.detail.convertToDoc")}
+                            </Button>
+                        </div>
                     </div>
                 </>
             </div>
@@ -2964,6 +3040,52 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     title={t("summary.detail.abstractTitle")}
                                 />
                                 <CitationText content={personalResult.content} citations={personalResult.citations || []} />
+                            </div>
+                        )}
+                        {personalResult.content && (
+                            <div className="summary-detail-result-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                                <Button
+                                    size="small"
+                                    theme="borderless"
+                                    icon={<Copy size={14} />}
+                                    loading={this.state.copying}
+                                    onClick={() => this.handleCopyContent(personalResult.content)}
+                                >
+                                    {t("summary.detail.copy")}
+                                </Button>
+                                <Button
+                                    size="small"
+                                    theme="borderless"
+                                    icon={<FileText size={14} />}
+                                    loading={this.state.convertingDoc}
+                                    onClick={() => this.handleConvertToDoc(personalResult.content, detail?.title)}
+                                >
+                                    {t("summary.detail.convertToDoc")}
+                                </Button>
+                            </div>
+                        )}
+                        {/* BY_PERSON 单人模式下 renderTeamSummary() 不显示（members.length <= 1），
+                            但 detail.result 可能仍有团队总结内容。在此提供复制/转文档入口。 */}
+                        {detail?.result?.content?.trim() && (
+                            <div className="summary-detail-result-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
+                                <Button
+                                    size="small"
+                                    theme="borderless"
+                                    icon={<Copy size={14} />}
+                                    loading={this.state.copying}
+                                    onClick={() => this.handleCopyContent(detail.result!.content)}
+                                >
+                                    {t("summary.detail.copyTeamSummary")}
+                                </Button>
+                                <Button
+                                    size="small"
+                                    theme="borderless"
+                                    icon={<FileText size={14} />}
+                                    loading={this.state.convertingDoc}
+                                    onClick={() => this.handleConvertToDoc(detail.result!.content, detail.title)}
+                                >
+                                    {t("summary.detail.convertTeamSummary")}
+                                </Button>
                             </div>
                         )}
                     </>
@@ -3144,6 +3266,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         />
                     </div>
                 )}
+                <div className="summary-detail-result-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
+                    <Button
+                        size="small"
+                        theme="borderless"
+                        icon={<Copy size={14} />}
+                        loading={this.state.copying}
+                        onClick={() => this.handleCopyContent()}
+                    >
+                        {t("summary.detail.copy")}
+                    </Button>
+                    <Button
+                        size="small"
+                        theme="borderless"
+                        icon={<FileText size={14} />}
+                        loading={this.state.convertingDoc}
+                        onClick={() => this.handleConvertToDoc()}
+                    >
+                        {t("summary.detail.convertToDoc")}
+                    </Button>
+                </div>
             </div>
         );
     }

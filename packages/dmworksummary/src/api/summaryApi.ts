@@ -962,3 +962,106 @@ export async function getMemberCandidates(params?: { keyword?: string }): Promis
     const data = await get<MemberCandidate[]>('/summary-member-candidates', params as Record<string, unknown>);
     return data || [];
 }
+
+// ─── Copy & Convert to Document (Issue #195) ────────────────────────────
+
+/**
+ * 复制总结内容到剪贴板。
+ * 优先使用 navigator.clipboard.writeText；旧浏览器降级到 execCommand('copy')。
+ */
+export async function copySummaryContent(content: string): Promise<boolean> {
+    if (navigator.clipboard?.writeText) {
+        try {
+            await navigator.clipboard.writeText(content);
+            return true;
+        } catch {
+            // fallthrough to execCommand fallback
+        }
+    }
+    // execCommand 降级
+    let textarea: HTMLTextAreaElement | null = null;
+    try {
+        textarea = document.createElement('textarea');
+        textarea.value = content;
+        textarea.readOnly = true;
+        textarea.style.position = 'fixed';
+        textarea.style.top = '0';
+        textarea.style.left = '0';
+        textarea.style.opacity = '0';
+        textarea.style.fontSize = '16px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        return document.execCommand('copy');
+    } catch {
+        return false;
+    } finally {
+        // 无论 execCommand 是否抛异常都移除 textarea，避免 DOM 泄漏
+        if (textarea && textarea.parentNode) {
+            textarea.parentNode.removeChild(textarea);
+        }
+    }
+}
+
+/**
+ * 创建在线文档（POST /api/v1/docs — docs-backend），返回 docId。
+ * 调用者成为文档 owner/admin。
+ * 复用 WKApp.apiClient（bare-relative `/docs` 路径，继承 axios.defaults.baseURL）。
+ */
+export async function createDoc(title?: string): Promise<{ docId: string }> {
+    const resp = await WKApp.apiClient.post('/docs', { title: title || '' });
+    return { docId: (resp as { docId: string }).docId };
+}
+
+/**
+ * 将 Markdown 内容导入到已有文档（POST /api/v1/docs/:docId/import/markdown — docs-backend）。
+ *
+ * 后端使用 express.raw 中间件，接收 raw body（Content-Type: text/markdown），
+ * 不接受 multipart/form-data。需要 `x-octo-import-apply: true` header 触发服务端原子写入，
+ * 否则后端只做 parse-only 不落盘。
+ *
+ * 走全局 axios（APIClient 拦截器自动注入 token / X-Space-Id / Accept-Language），
+ * 使用 bare-relative 路径 `docs/:docId/import/markdown`（继承 axios.defaults.baseURL）。
+ */
+export async function importMarkdownToDoc(docId: string, markdown: string): Promise<void> {
+    await axios.post(
+        `docs/${encodeURIComponent(docId)}/import/markdown`,
+        markdown, // raw body, not FormData — backend uses express.raw
+        {
+            headers: {
+                'Content-Type': 'text/markdown; charset=utf-8',
+                'x-octo-import-apply': 'true',
+            },
+            timeout: 30_000,
+        },
+    );
+}
+
+/**
+ * 删除文档（DELETE /api/v1/docs/:docId — docs-backend）。
+ * 用于 import 失败时的 rollback，best-effort 不抛异常。
+ */
+async function deleteDocBestEffort(docId: string): Promise<void> {
+    try {
+        await WKApp.apiClient.delete(`/docs/${encodeURIComponent(docId)}`);
+    } catch {
+        // best-effort: rollback 失败不阻塞主流程
+    }
+}
+
+/**
+ * 创建文档并导入 Markdown 内容，返回文档 ID 和跳转链接。
+ * 如果 import 失败，自动删除已创建的空文档（rollback），避免残留孤儿文档。
+ */
+export async function convertSummaryToDoc(title: string, markdown: string): Promise<{ docId: string; url: string }> {
+    const { docId } = await createDoc(title);
+    try {
+        await importMarkdownToDoc(docId, markdown);
+    } catch (err) {
+        // rollback: import 失败时删除已创建的空文档，避免残留
+        await deleteDocBestEffort(docId);
+        throw err;
+    }
+    // docs 模块用 ?doc=<docId> 路由
+    const url = `/docs?doc=${encodeURIComponent(docId)}`;
+    return { docId, url };
+}

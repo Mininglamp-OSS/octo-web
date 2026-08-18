@@ -533,7 +533,15 @@
         "refineNotCreator": "你不是本总结的创建者，无法修改",
         "refineNoSnapshot": "本总结数据版本较老，无法增量修改",
         "refineFailed": "修改失败，请稍后重试",
-        "continueRefine": "继续优化"
+        "continueRefine": "继续优化",
+        "copy": "复制",
+        "copySuccess": "已复制到剪贴板",
+        "copyFailed": "复制失败，请重试",
+        "convertToDoc": "转为在线文档",
+        "convertSuccess": "已创建文档，正在跳转...",
+        "convertFailed": "转换失败，请重试",
+        "copyTeamSummary": "复制团队总结",
+        "convertTeamSummary": "团队总结转文档"
     },
     "summaryCard": {
         "agentType": "Agent 总结",
