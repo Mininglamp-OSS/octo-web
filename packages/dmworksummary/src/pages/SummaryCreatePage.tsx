@@ -207,9 +207,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         const actions = selectChat.parentElement;
         if (!actions) return;
-        const startGroup = actions.querySelector('.chat-summary-modal-split');
+        // 创建页右下角从「SplitButtonGroup(开始总结下拉)」收敛为单个 createSubmit 按钮，
+        // 宽度预留即减该按钮宽度（原逻辑减 .chat-summary-modal-split，已随下拉删除）。
+        const submitBtn = actions.querySelector('[data-testid="summary-create-submit"]');
         const actionsWidth = actions.clientWidth;
-        const groupWidth = startGroup ? (startGroup as HTMLElement).offsetWidth : 0;
+        const groupWidth = submitBtn ? (submitBtn as HTMLElement).offsetWidth : 0;
         const gap = 24;
         const width = actionsWidth - groupWidth - gap;
         selectChat.style.width = width + 'px';

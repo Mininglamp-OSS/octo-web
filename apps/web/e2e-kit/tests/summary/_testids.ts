@@ -23,9 +23,10 @@ export const T = {
     createSelectChat: "summary-create-select-chat",
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
-    createModeSwitch: "summary-create-mode-switch",
-    createAgentTab: "summary-create-agent-tab",
-    createNormalTab: "summary-create-normal-tab",
+    // Mode-select dropdown on the list-page "+" entry (mirror of prod testIds.ts)
+    listModeSwitch: "summary-list-mode-switch",
+    listNormalTab: "summary-list-normal-tab",
+    listAgentTab: "summary-list-agent-tab",
 
     // Chat/member selector modal
     chatSelectorModal: "summary-chat-selector-modal",

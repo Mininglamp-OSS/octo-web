@@ -372,7 +372,7 @@ describe('ChatSummaryNewModal', () => {
         });
 
         const footer = screen.getByTestId('modal-footer');
-        expect(footer.textContent).toContain('开始总结');
+        expect(footer.textContent).toContain('快速总结');
         expect(footer.textContent).not.toContain('添加成员');
         expect(footer.textContent).not.toContain('定时更新');
         expect(footer.textContent).not.toContain('总结并发到聊天');

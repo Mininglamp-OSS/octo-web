@@ -16,7 +16,7 @@ i18n.registerNamespace('summary', {
  * 聊天窗口内的「新建总结」弹窗。
  *
  * ⚠️ 本次改造点：底部 footer 由单按钮改为双按钮——
- *   [Agent 总结]（次按钮，左）+ [开始总结]（主按钮，右）。
+ *   [Agent 总结]（次按钮，左）+ [快速总结]（主按钮，右）。
  * 「Agent 总结」把输入框内容作为自然语言需求交给后端 agent（预留接口）。
  *
  * 说明：组件挂载时会尝试拉取远程模板（getTopicTemplates），Storybook 无后端，
@@ -30,7 +30,7 @@ const meta: Meta<typeof ChatSummaryNewModal> = {
         docs: {
             description: {
                 component:
-                    '聊天上下文内新建总结弹窗。footer 双按钮：Agent 总结（次）+ 开始总结（主）。',
+                    '聊天上下文内新建总结弹窗。footer 双按钮：Agent 总结（次）+ 快速总结（主）。',
             },
         },
     },
@@ -54,7 +54,7 @@ const baseArgs = {
 };
 
 /**
- * 默认态：空输入框，展示模板 + 双按钮（Agent 总结 / 开始总结）。
+ * 默认态：空输入框，展示模板 + 双按钮（Agent 总结 / 快速总结）。
  */
 export const Default: Story = {
     args: { ...baseArgs },
