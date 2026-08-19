@@ -1,7 +1,6 @@
 import { Channel, ChannelInfo, ChannelTypeGroup } from "wukongimjssdk";
 
 import WKApp from "../../App";
-import { Dap } from "../../Service/Dap";
 import {
   addChannelSubscribers as addChannelSubscribersApi,
   createChannel as createChannelApi,
