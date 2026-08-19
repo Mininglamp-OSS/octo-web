@@ -2,6 +2,7 @@ import WKApp from "../../App"
 import ThreadService, { type ThreadCreateResult } from "../../Service/ThreadService"
 import { buildThreadChannelId, parseThreadChannelId, type Thread } from "../../Service/Thread"
 import { Dap } from "../../Service/Dap"
+import { stripSpacePrefix } from "../../Service/SpacePrefix"
 import { MessageContentType } from "wukongimjssdk"
 import { MessageContentTypeConst } from "../../Service/Const"
 
@@ -105,9 +106,10 @@ export function trackSubchannelCreated(
     source,
     title_len_bucket: titleLenBucket,
   }
-  // spec 关键属性 channel_id = 父群 channelID（两个调用点各自传入；无则不发，避免 undefined）
+  // spec 关键属性 channel_id = 父群 channelID（两个调用点各自传入；无则不发，避免 undefined）。
+  // 归一 bare id(stripSpacePrefix):与本 PR 其余新事件同一 channel_id 口径,Space 部署下可跨事件 join。
   if (meta.channelId) {
-    props.channel_id = meta.channelId
+    props.channel_id = stripSpacePrefix(meta.channelId)
   }
   // from_msg_type 空值策略：顶栏路径不发该字段（空值，非 'none'）；右键路径用 inferMsgType 映射
   if (meta.fromMsgType) {

@@ -25,6 +25,10 @@ import "./index.css";
 import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
 import { Dap } from "../../Service/Dap";
+import {
+  subchannelOpenFromMount,
+  subchannelOpenFromThreadChange,
+} from "../../Service/subchannelOpenTracking";
 import ChannelSetting from "../../Components/ChannelSetting";
 import ChannelSearchPanel from "../../features/channelSearch/ChannelSearchPanel";
 import { createChannelSearchApiDataSource } from "../../bridge/channelSearch/createChannelSearchDataSource";
@@ -367,6 +371,9 @@ export class ChatContentPage extends Component<
         activeThread.channel_id,
         ChannelTypeCommunityTopic
       );
+      // 该子区已在面板打开(didUpdate 已发过 subchannel_opened),此处仅是视图切换 → 置 sentinel,
+      // 让子区页挂载时跳过重复发点(R10 P1-1)。
+      WKApp.shared.pendingSubchannelOpenTracked = threadChannel.channelID;
       WKApp.endpoints.showConversation(threadChannel);
       return;
     }
@@ -642,16 +649,20 @@ export class ChatContentPage extends Component<
       const parsed = parseThreadChannelId(channel.channelID);
       const parentGroupNo =
         channelInfo?.orgData?.parentGroupNo || parsed?.groupNo;
-      // subchannel_opened(入口一):本页以子区频道挂载 = 从会话列表点开子区行 / 文件预览
-      // showConversation(threadChannel) / 深链或路由恢复进子区。这些都会 remount ChatContentPage
-      // 走 componentDidMount(activeThread 初始 null,didUpdate 不跑),故必须在挂载处发。
-      // 会话列表子区行的 channel_opened DOM 规则已对子区行关闭(见 ConversationList/index.tsx),
-      // 两事件按手势划分、不重叠。props 需父群 channel_id + 子区 short_id,DOM 规则带不了 props → 命令式。
-      if (parentGroupNo && parsed?.shortId) {
-        Dap.shared.track("subchannel_opened", {
-          channel_id: parentGroupNo,
-          subchannel_id: parsed.shortId,
-        });
+      // subchannel_opened(入口一):本页以子区频道挂载 = 会话列表点子区行 / 文件预览
+      // showConversation(threadChannel) / 深链或路由恢复进子区。这些都会 remount 走 componentDidMount。
+      // 去重(R10 P1-1):若本次挂载来自「已打开面板子区」再导航(全屏/搜索/文件预览),didUpdate 已发过,
+      // 由 pendingSubchannelOpenTracked sentinel 抑制(one-shot 消费);直接从列表/深链挂载则照常发。
+      // channel_id/subchannel_id 归一与判空均在 subchannelOpenFromMount 内(bare id,strip 前缀)。
+      const suppressSubchannelOpen = WKApp.shared.pendingSubchannelOpenTracked;
+      WKApp.shared.pendingSubchannelOpenTracked = undefined;
+      const openEvent = subchannelOpenFromMount(
+        channel,
+        parentGroupNo,
+        suppressSubchannelOpen
+      );
+      if (openEvent) {
+        Dap.shared.track("subchannel_opened", openEvent);
       }
       if (parentGroupNo) {
         this.parentGroupChannel = new Channel(parentGroupNo, ChannelTypeGroup);
@@ -667,17 +678,16 @@ export class ChatContentPage extends Component<
     prevState: ChatContentPageState
   ) {
     // 子区打开(入口二:页内子区选择)——本页 channel 为父群、activeThread 身份(channel_id)变化即一次
-    // subchannel_opened,覆盖 onOpenThreadPanel / onThreadSelect 这类不 remount 只改 state 的页内入口,
-    // 按 channel_id 去重;文件预览不改 activeThread → 不误触发,关闭(→null)也不发。
-    // (从会话列表/预览/深链直接以子区频道挂载的入口由 componentDidMount 覆盖,两处不重叠:
-    //  挂载入口本页 channel 即子区、activeThread 恒 null 不进本分支。)
-    // sync body 顶层键判不出该 UI 上下文,退命令式采集(见 BodyRules.ts)。
-    const curThread = this.state.activeThread;
-    if (curThread && curThread.channel_id !== prevState.activeThread?.channel_id) {
-      Dap.shared.track("subchannel_opened", {
-        channel_id: curThread.group_no,
-        subchannel_id: curThread.short_id,
-      });
+    // subchannel_opened,覆盖 onOpenThreadPanel / onThreadSelect 这类不 remount 只改 state 的页内入口。
+    // 与挂载入口(入口一)的去重由 subchannelOpenFromMount 的 sentinel 负责:本支照发,若用户随后把该
+    // 子区导航成完整视图/搜索/文件预览触发 remount,挂载处凭 sentinel 跳过,故一次开子区手势只发一次。
+    // 文件预览等不改 activeThread → 不误发;关闭(→null)也不发。channel_id 归一/判空在 helper 内。
+    const openEvent = subchannelOpenFromThreadChange(
+      this.state.activeThread,
+      prevState.activeThread?.channel_id
+    );
+    if (openEvent) {
+      Dap.shared.track("subchannel_opened", openEvent);
     }
     const { channel } = this.props;
     const channelChanged =

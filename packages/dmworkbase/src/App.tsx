@@ -941,6 +941,13 @@ export default class WKApp extends ProviderListener {
   /** 待打开子区面板的群组 ID，ChatContentPage 挂载时检查并消费 */
   pendingThreadPanel?: string;
 
+  /**
+   * subchannel_opened 去重 sentinel：由「已打开面板子区」再导航(打开完整视图/页内搜索/
+   * 文件预览)的三个调用点写入目标子区 channelID，ChatContentPage 挂载时消费。命中则跳过
+   * 挂载处的 subchannel_opened(didUpdate 已发过)，保证一次开子区手势只发一次。见 #1452 R10 P1-1。
+   */
+  pendingSubchannelOpenTracked?: string;
+
   /** 待打开的具体子区，ChatContentPage 挂载时检查并消费 */
   pendingThread?: {
     groupNo: string;
