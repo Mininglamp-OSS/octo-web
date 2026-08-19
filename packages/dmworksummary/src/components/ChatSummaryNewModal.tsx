@@ -631,7 +631,7 @@ export default class ChatSummaryNewModal extends Component<
             // 语义),不再依赖后端从 tool_calls 反查。映射与传统路径 (getOriginChannelType)
             // 完全一致。
             const { channel } = this.props;
-            const res = await summaryApi.createAgentSummary({
+            const res = await summaryApi.saveAgentSummaryViaFinalize({
                 session_id: sessionId,
                 title,
                 sources,

@@ -994,9 +994,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 params.referenced_task_ids = [this.state.referencedTask.task_id];
             }
 
-            // smart_summary_started 由 createAgentSummary 在 envelope code===0 后补发(见二审 P1/P2-2),
-            // 与 normal 模式同一收口口径;trigger_mode 固定 'agent'。
-            const result = await api.createAgentSummary(params, {
+            // Session-Finalize v0:保存 = 让后端异步把整段会话已产出的片段合并成一篇
+            // (不再拷贝最后一条回复)。saveAgentSummaryViaFinalize 内部 finalize→轮询到 COMPLETED。
+            const result = await api.saveAgentSummaryViaFinalize(params, {
                 object_id: this.props.channel?.channelID,
                 source: this.props.source,
                 entry_point: this.props.source,

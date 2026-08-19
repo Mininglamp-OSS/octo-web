@@ -37,7 +37,7 @@ import type {
     CreateSummarySharesResponse,
     GetSummaryShareResponse,
 } from '../types/summary';
-import { SummaryMode } from '../types/summary';
+import { SummaryMode, TaskStatus } from '../types/summary';
 
 const summaryAxios = axios.create({ baseURL: '' });
 
@@ -372,7 +372,89 @@ export async function createAgentSummary(
     return data;
 }
 
-// Agent 交互式问答（非流式一问一答）。POST /summary/api/v1/agent/chat。
+// ---- Session-Finalize v0 (交付物落库) ----
+// 新落库语义:保存不再"拷贝 agent 最后一条回复",而是让后端异步把整段会话
+// 已产出的总结片段【合并成一篇】。前端:POST /finalize 拿 202+task_id,再轮询
+// 任务状态到 COMPLETED,然后照常跳详情。幂等键随请求头带上,重试不重复建。
+
+/** finalize 幂等键:每次"保存"生成一个,transient 重试可复用同一个。 */
+function genFinalizeRequestId(): string {
+    try {
+        const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+        if (c?.randomUUID) return `finalize_${c.randomUUID()}`;
+    } catch {
+        /* fall through to the non-crypto id */
+    }
+    return `finalize_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * POST /summaries/agent/finalize —— 异步定稿。返回 202 的 { task_id, status:"GENERATING" }。
+ * 走 summaryAxios + 显式校验 envelope(与 createAgentSummary 同口径:非0 code / 缺 task_id 抛错,
+ * 让 UI catch 后保留 chat)。40004(无可定稿内容)/40009(定稿在进行中)由上层 switch 处理。
+ */
+export async function finalizeAgentSummary(
+    params: CreateAgentSummaryParams,
+    idempotencyKey: string,
+): Promise<{ task_id: number; status: string }> {
+    const resp = await summaryAxios.post(`${BASE}/summaries/agent/finalize`, params, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+    });
+    if (resp.data?.code !== 0) {
+        const err = new Error(resp.data?.message || 'finalize agent summary failed') as Error & {
+            response?: { data?: { code?: number; message?: string } };
+        };
+        err.response = { data: resp.data };
+        throw err;
+    }
+    const data = resp.data?.data as { task_id: number; status: string } | undefined;
+    if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
+        throw new Error(resp.data?.message || 'finalize returned no task_id');
+    }
+    return data;
+}
+
+/**
+ * 轮询任务状态直到终态。COMPLETED → 返回详情;FAILED/CANCELLED → 抛错;超时 → 抛错。
+ * 合并生成通常几秒~数十秒,默认 1.5s 间隔、120s 超时。
+ */
+export async function pollAgentSummaryTask(
+    taskId: number,
+    opts: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<SummaryDetail> {
+    const intervalMs = opts.intervalMs ?? 1500;
+    const timeoutMs = opts.timeoutMs ?? 120000;
+    const deadline = Date.now() + timeoutMs;
+    const sleep = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms); });
+    for (;;) {
+        const detail = await getSummaryDetail(taskId);
+        if (detail.status === TaskStatus.COMPLETED) return detail;
+        if (detail.status === TaskStatus.FAILED || detail.status === TaskStatus.CANCELLED) {
+            throw new Error(`finalize task ${taskId} ended with status ${detail.status}`);
+        }
+        if (Date.now() >= deadline) {
+            throw new Error(`finalize task ${taskId} timed out (status ${detail.status})`);
+        }
+        await sleep(intervalMs);
+    }
+}
+
+/**
+ * 交付物保存(v0)—— createAgentSummary 的替代:finalize + 轮询到 COMPLETED。
+ * 返回 { task_id } 供调用点导航;失败/超时抛错(调用点 catch 后保留 chat)。
+ */
+export async function saveAgentSummaryViaFinalize(
+    params: CreateAgentSummaryParams,
+    trackProps: Record<string, unknown> = {},
+): Promise<{ task_id: number }> {
+    const accepted = await finalizeAgentSummary(params, genFinalizeRequestId());
+    // 与 createAgentSummary 同口径:一次"成功发起"即补发埋点。
+    Dap.shared.track('smart_summary_started', trackProps);
+    await pollAgentSummaryTask(accepted.task_id);
+    return { task_id: accepted.task_id };
+}
+
+
 // 不复用公共 post()：post() 只 `data?.data ?? data`，不校验业务 code，
 // HTTP200 + {code:非0,data:null} 会被当成功、undefined 追进气泡。这里自行
 // 校验 envelope，非0 code 或空 reply 时抛错，交给 UI 层 catch。
