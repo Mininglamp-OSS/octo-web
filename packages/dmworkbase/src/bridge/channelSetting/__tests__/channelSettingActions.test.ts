@@ -453,6 +453,26 @@ describe("channel setting actions", () => {
     expect(runtime.remarkChannel).toHaveBeenCalledWith(channel, "remark");
   });
 
+  it("emits imperative conversation_muted/pinned with the direction action (M3 收口点)", async () => {
+    // mute/pin 已从 BodyRules body 通道迁到本 funnel(覆盖列表右键 + 设置面板 + 子区设置,
+    // 单通道不双计)。此测钉死:成功后各发一次、action 方向随开关翻转。若有人把规则塞回
+    // BODY_RULES,channelUniqueness 的 self-check 会红;此处再钉命令式落点与 action 值。
+    vi.mocked(Dap.shared.track).mockClear();
+    const runtime = createRuntime();
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+    await muteChannelSetting({ channel, mute: false, runtime });
+    await topChannelSetting({ channel, top: true, runtime });
+    await topChannelSetting({ channel, top: false, runtime });
+
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "mute" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "unmute" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "pin" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "unpin" });
+    expect(Dap.shared.track).toHaveBeenCalledTimes(4);
+  });
+
   it("reapplies the latest saved thread mute after an older fetch resolves last", async () => {
     const oldFetch = deferred();
     const channel = new Channel(

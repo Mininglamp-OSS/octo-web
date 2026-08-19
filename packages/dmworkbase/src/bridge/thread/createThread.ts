@@ -68,10 +68,15 @@ export function inferMsgType(message: any): 'text' | 'reply' | 'image_file' | 'l
  * @param meta - { fromMsgType?: 'text' | 'reply' | 'image_file' | 'link', title?: string }
  */
 export function trackSubchannelCreated(
-  resp: ThreadCreateResult,
+  resp: ThreadCreateResult | null | undefined,
   source: 'channel_toolbar' | 'message_right_click',
   meta: { fromMsgType?: 'text' | 'reply' | 'image_file' | 'link'; title?: string }
 ): void {
+  // fail-closed:埋点绝不能改变业务行为。createThreadFromMessage 直接返回未 normalize 的
+  // 裸 API 结果(不同于走 normalizeThreadCreateResult 的 createThreadByName),2xx 空 body 时
+  // resp 可能为 null;若在此解引用 resp.channel_id 抛 TypeError,会被调用方的 try 吞掉,
+  // 把一次「子区已建成」误判为「创建失败」。故 helper 自身对空值早返回,覆盖全部调用点。
+  if (!resp) return
   // typecheck 安全：channel_id 可选，parseThreadChannelId 入参要 string
   const parsedShortId = resp.channel_id
     ? parseThreadChannelId(resp.channel_id)?.shortId

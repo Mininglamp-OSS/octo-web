@@ -476,12 +476,13 @@ describe('Dap — 中央映射·body 键通道(②):按请求体顶层键补发�
         Dap.shared.init()
         await globalThis.fetch(`${location.origin}/api/v1/not-whitelisted/x`, {
             method: 'PUT',
-            body: JSON.stringify({ mute: 1 }),
+            body: JSON.stringify({ save: 1 }),
         })
         Dap.shared.flush()
         await Promise.resolve()
 
-        expect(eventNamesFromBatch()).not.toContain('conversation_muted')
+        // save 在 */setting 白名单端点才映射;非白名单端点即便体里有 save 也不读、不映射。
+        expect(eventNamesFromBatch()).not.toContain('conversation_saved_to_contacts')
     })
 
     it('4xx 不补发 body 映射事件', async () => {
@@ -495,12 +496,13 @@ describe('Dap — 中央映射·body 键通道(②):按请求体顶层键补发�
         Dap.shared.init()
         await globalThis.fetch(`${location.origin}/api/v1/groups/g1/setting`, {
             method: 'PUT',
-            body: JSON.stringify({ mute: 1 }),
+            body: JSON.stringify({ save: 1 }),
         })
         Dap.shared.flush()
         await Promise.resolve()
 
-        expect(eventNamesFromBatch()).not.toContain('conversation_muted')
+        // 白名单端点 + 体里有 save,但 4xx → 不补发(只 2xx 才映射 body 事件)。
+        expect(eventNamesFromBatch()).not.toContain('conversation_saved_to_contacts')
     })
 })
 

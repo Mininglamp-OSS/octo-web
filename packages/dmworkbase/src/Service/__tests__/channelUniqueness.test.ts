@@ -149,6 +149,10 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
         // 十二审:五类移出 path 通道、改命令式的事件必须被扫描抓到 —— 否则下面的「命令式 ⊥ 规则表」
         // 互斥断言对它们形同虚设(有人把它们再塞回 FETCH_RULES 时不会红)。逐一钉死扫描确有覆盖。
         expect(imperativeEvents.has('conversation_cleared')).toBe(true)      // channelSettingActions + Chat/vm
+        // mute/pin 从 BODY_RULES 迁到 channelSettingActions 命令式(M3/B4)。钉死扫描抓到,
+        // 使下面「命令式 ⊥ 规则表」互斥断言对它们生效 —— 有人把它们塞回 BODY_RULES 即红。
+        expect(imperativeEvents.has('conversation_muted')).toBe(true)        // channelSettingActions.muteChannelSetting
+        expect(imperativeEvents.has('conversation_pinned')).toBe(true)       // channelSettingActions.topChannelSetting
         expect(imperativeEvents.has('apps_module_entered')).toBe(true)       // Main/index + tab_low_screen(apps/web)
         expect(imperativeEvents.has('space_join_new')).toBe(true)           // SpaceService + Layout + InviteLanding
         expect(imperativeEvents.has('group_avatar_edited')).toBe(true)       // ChannelAvatar 两个编辑分支

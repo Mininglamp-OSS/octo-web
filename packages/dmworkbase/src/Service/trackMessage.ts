@@ -13,7 +13,7 @@
  *   - ai_mentioned 补 actor_type / user_id:owner 定前端补写。user_id 由发送方(VM 生产者)
  *     从 WKApp.loginInfo 取好后经 intent 注入(见 SendIntent.userId),本 leaf service 不再
  *     静态 import App —— 否则会把 App.tsx 的重组件图拖进 SDK-mock 的单测,import 即炸。
- *     actor_type 根据当前登录凭证类型判断(human 默认)。
+ *     actor_type 目前恒为 'human'(前端发送侧只有人类凭证;bot 发送不走本路径),非运行时派生。
  */
 import { Dap } from './Dap'
 import { WKSDK, SendackPacket } from 'wukongimjssdk'
@@ -126,7 +126,8 @@ export function trackMessageSent(clientSeq: number | undefined): void {
     }
     const bots = intent.mentionedBots || []
     if (intent.mentionAis || bots.length > 0) {
-        // 8.11 新属性:补 actor_type / user_id(前端写,owner 定)
+        // 8.11 新属性:补 actor_type / user_id(前端写,owner 定)。actor_type 恒 'human'
+        // (发送侧只有人类凭证);user_id 由生产者经 intent 注入,避免 leaf import App。
         const actorType = 'human'
         const userId = intent.userId ?? null
         if (bots.length > 0) {
