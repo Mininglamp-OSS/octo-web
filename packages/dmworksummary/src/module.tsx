@@ -172,8 +172,11 @@ export class SummaryModule implements IModule {
                 // #1359 未处理邀请红点：badge 字段与 NavRail 渲染已存在，
                 // 此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
                 menu.badge = getPendingInvitationBadge();
-                // 点击「总结」进入列表页：模式选择位于列表页「+」下拉，
-                // 不再直达创建页，保证进入后 Agent 总结可达（创建页内已无模式切换）。
+                // 点击「总结」进入列表页：主区 SummaryListPage 已由 MainContentLeft 按
+                // currentMenus.routePath(/summary) 渲染（Menu 激活即挂载唯一实例）。
+                // 这里不再 replaceToRoot 页面——否则会在导航栈额外推入一份 /summary
+                // 造成列表页双实例（strict mode violation），只清空左/右导航栈，
+                // 与无 onPress 菜单的宿主默认分支（popToRoot both）行为一致。
                 menu.onPress = (reentry?: boolean) => {
                     // 埋点 290:从 NavRail「总结」顶层入口进入模块（隐私 props 恒空）。
                     // 重复点击已激活的总结菜单不计（reentry），宿主按 prevMenuId===id 传入（见二审 P2-4）。
@@ -181,10 +184,7 @@ export class SummaryModule implements IModule {
                         Dap.shared.track("smart_summary_module_entered", {});
                     }
                     WKApp.routeLeft.popToRoot();
-                    const page = WKApp.route.get("/summary");
-                    if (page && React.isValidElement(page)) {
-                        WKApp.routeRight.replaceToRoot(page);
-                    }
+                    WKApp.routeRight.popToRoot();
                 };
                 return menu;
             },

@@ -18,6 +18,7 @@ const state = vi.hoisted(() => ({
 vi.mock("@octo/base", () => ({
   i18n: { registerNamespace: vi.fn() },
   t: (key: string) => key,
+  Dap: { shared: { track: vi.fn() } },
   Menus: class {},
   WKApp: {
     get currentMenuId() {
@@ -28,7 +29,7 @@ vi.mock("@octo/base", () => ({
     },
     shared: state.shared,
     routeLeft: { popToRoot: state.popToRoot },
-    routeRight: { replaceToRoot: state.replaceToRoot, push: vi.fn() },
+    routeRight: { replaceToRoot: state.replaceToRoot, push: vi.fn(), popToRoot: state.popToRoot },
     route: { register: vi.fn() },
     menus: { register: vi.fn() },
     mittBus: { on: vi.fn(), off: vi.fn(), emit: vi.fn() },
@@ -151,6 +152,20 @@ describe("SummaryModule guarded menu switching", () => {
     registeredHandler("space-ready")();
 
     expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+  });
+
+  it("NavRail summary onPress clears both nav stacks without pushing a duplicate list page", () => {
+    // #1461 回归：菜单激活后主区 SummaryListPage 已由 MainContentLeft 按
+    // currentMenus.routePath(/summary) 渲染唯一实例，onPress 若再 replaceToRoot
+    // /summary 会造出双实例（e2e strict mode violation）。
+    const reg = vi.mocked(WKApp.menus.register);
+    const factory = reg.mock.calls.find(([id]) => id === "summary")?.[1] as () => { onPress?: (reentry?: boolean) => void };
+    expect(factory).toBeTruthy();
+    const menu = factory();
+    menu.onPress?.(false);
+
+    expect(state.popToRoot).toHaveBeenCalledTimes(2); // routeLeft + routeRight
+    expect(state.replaceToRoot).not.toHaveBeenCalled();
   });
 
   it("does not double-fetch when boot repairs Space before publishing ready", () => {
