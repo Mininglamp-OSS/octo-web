@@ -10,6 +10,7 @@ import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import WKApp from "@octo/base/src/App";
+import { SpaceService } from "@octo/base/src/Service/SpaceService";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
 import { summaryTestIds } from "../utils/testIds";
@@ -136,13 +137,22 @@ export default class ChatSelectorModal extends Component<Props, State> {
                     })),
                 });
             } else {
-                // 无选中聊天：加载全局联系人
-                const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
+                // 无选中聊天：候选来自当前 Space 的成员名册。
+                // 此前只读全局 WKApp.dataSource.contactsList，但该缓存常为空
+                // （通讯录页走 space/{id}/members 渲染，并不保证填充 contactsList），
+                // 于是「不先选群、直接选择参与者」时列表为空（issue #200）。
+                // 改为优先用 SpaceService.getRoster —— 带缓存的权威名册，正是
+                // 通讯录/转发面板/docs 成员选择器共用的同一个源；无 Space 时才退回
+                // contactsList。
+                const spaceId = WKApp.shared.currentSpaceId;
+                const list: any[] = spaceId
+                    ? await SpaceService.shared.getRoster(spaceId)
+                    : ((WKApp.dataSource as any)?.contactsList ?? []);
                 if (seq !== this.reqSeq) return;
                 const humans = list.filter((m: any) => {
-                    // Contacts 类型用 robot 字段，不是 is_bot
-                    const isRobot = m.robot === true || m.is_bot === true || isBot(m.uid || m.user_id || "");
-                    // 过滤黑名单联系人 (ContactsStatus.Blacklist = 2)
+                    // roster 用 robot(0/1)，contactsList 用 robot:boolean/is_bot，两者都覆盖
+                    const isRobot = m.robot === 1 || m.robot === true || m.is_bot === true || isBot(m.uid || m.user_id || "");
+                    // 过滤黑名单联系人 (ContactsStatus.Blacklist = 2)；roster 无此字段恒 false
                     const isBlacklisted = m.status === 2;
                     return !isRobot && !isBlacklisted;
                 });
