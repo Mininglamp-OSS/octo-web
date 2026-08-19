@@ -1492,6 +1492,15 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     max-width: 100%;
 }
 
+/* 总结结果下方的「复制 / 转为在线文档」操作行（octo-smart-summary#195）。
+   样式集中在这里，避免在多个渲染路径里重复内联 style。 */
+.summary-detail-result-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 8px;
+}
+
 .summary-detail-personal h3,
 .summary-detail-team h3,
 .summary-detail-members h3 {

@@ -542,8 +542,7 @@
         "convertToDoc": "Convert to document",
         "convertSuccess": "Document created, redirecting...",
         "convertFailed": "Conversion failed, please retry",
-        "copyTeamSummary": "Copy team summary",
-        "convertTeamSummary": "Convert team summary"
+        "convertPopupBlocked": "The browser blocked the new tab. Allow pop-ups and try again."
     },
     "summaryCard": {
         "agentType": "Agent summary",

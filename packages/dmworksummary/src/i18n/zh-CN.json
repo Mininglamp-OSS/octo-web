@@ -542,8 +542,7 @@
         "convertToDoc": "转为在线文档",
         "convertSuccess": "已创建文档，正在跳转...",
         "convertFailed": "转换失败，请重试",
-        "copyTeamSummary": "复制团队总结",
-        "convertTeamSummary": "团队总结转文档"
+        "convertPopupBlocked": "浏览器拦截了新标签页，请允许弹出窗口后重试"
     },
     "summaryCard": {
         "agentType": "Agent 总结",

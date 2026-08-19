@@ -106,3 +106,43 @@ export class SummaryNotifyContent {
 }
 
 export const isConversationDisbanded = () => false;
+
+/**
+ * APIClient.extractErrorMsg 的测试替身。真实实现从 axios error 的
+ * response.data.msg / message 里挑出可展示的文案，取不到时回退空串。
+ */
+export const extractErrorMsg = (err: unknown): string => {
+  const e = err as { response?: { data?: { msg?: string; message?: string } }; message?: string };
+  return e?.response?.data?.msg ?? e?.response?.data?.message ?? e?.message ?? '';
+};
+
+/** Utils/docLink.buildDocLink 的测试替身：与真实实现同形，emit `/d/:docId`。 */
+export const buildDocLink = ({ docId }: { docId: string }): string =>
+  `${typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''}/d/${encodeURIComponent(docId)}`;
+
+/** Utils/clipboard.copyToClipboard 的测试替身，默认成功；单测可 vi.spyOn 覆写。 */
+export const copyToClipboard = async (_text: string): Promise<boolean> => true;
+
+// ─── docs 能力端口（bridge/docs/docsPort）的测试替身 ───────────────────
+// 真实实现走 EndpointManager；测试里用可写的 registry，单测通过
+// __setDocsConvertHandler / __setDocsOn 控制端口是否可用。
+let __docsConvertHandler: ((p: { title: string; markdown: string }) => Promise<{ docId: string; url: string }>) | null = null;
+let __docsOn = false;
+
+export const __setDocsConvertHandler = (h: typeof __docsConvertHandler) => { __docsConvertHandler = h; };
+export const __setDocsOn = (v: boolean) => { __docsOn = v; };
+export const __resetDocsPort = () => { __docsConvertHandler = null; __docsOn = false; };
+
+export class DocsCapabilityUnavailableError extends Error {
+  constructor(message = 'docs capability unavailable') {
+    super(message);
+    this.name = 'DocsCapabilityUnavailableError';
+  }
+}
+
+export const isDocsConvertAvailable = (): boolean => __docsOn && !!__docsConvertHandler;
+
+export const convertMarkdownToDoc = async (params: { title: string; markdown: string }) => {
+  if (!isDocsConvertAvailable()) throw new DocsCapabilityUnavailableError();
+  return __docsConvertHandler!(params);
+};

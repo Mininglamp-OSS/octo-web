@@ -11,7 +11,7 @@ import {
     Dropdown,
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
-import { Bot, ChevronDown, Check, X, Copy, FileText } from "lucide-react";
+import { Bot, ChevronDown, Check, X } from "lucide-react";
 import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";
 import {
   I18nContext,
@@ -22,6 +22,13 @@ import {
   SummaryNotifyContent,
   isConversationDisbanded,
   Dap,
+  // CR: 必须走包的 public index，不能深路径 import `@octo/base/src/...`。
+  // dmworksummary 的 vitest.config.ts 末尾有一条**字符串** alias
+  // `@octo/base` -> `src/__mocks__/dmworkBase.ts`；字符串 alias 按前缀匹配，会把
+  // `@octo/base/src/Service/APIClient` 一并吃进 mock 文件里导致解析失败，
+  // 静默打断本包 4 个测试套件的 collection。
+  extractErrorMsg,
+  copyToClipboard,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -64,7 +71,7 @@ import {
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
-import { extractErrorMsg } from "@octo/base/src/Service/APIClient";
+import SummaryResultActions from "../components/SummaryResultActions";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
@@ -152,10 +159,13 @@ interface SummaryDetailPageState {
     teamStreaming: boolean;
     teamStreamingContent: string;
     teamStreamError: string | null;
-    /** Issue #195: 复制总结内容中 */
-    copying: boolean;
-    /** Issue #195: 转为在线文档中 */
-    convertingDoc: boolean;
+    /**
+     * octo-smart-summary#195: 当前正在复制 / 转文档的操作行 key。
+     * 用 key 而不是 boolean，是为了让多个挂载点各自独立 loading —— 否则转个人总结时
+     * 团队总结那一行的按钮也会跟着转圈。
+     */
+    copyingKey: string | null;
+    convertingKey: string | null;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -279,8 +289,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         teamStreaming: false,
         teamStreamingContent: "",
         teamStreamError: null,
-        copying: false,
-        convertingDoc: false,
+        copyingKey: null,
+        convertingKey: null,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -2848,52 +2858,69 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
-    /** Issue #195: 复制总结内容到剪贴板 */
-    handleCopyContent = async (contentOverride?: string) => {
-        const { detail, personalResult } = this.state;
-        const content = contentOverride ?? detail?.result?.content;
-        if (!content) return;
-        this.setState({ copying: true });
+    /** octo-smart-summary#195: 复制总结内容到剪贴板 */
+    handleCopyContent = async (content: string, key: string) => {
+        const text = content?.trim();
+        if (!text) return;
+        this.setState({ copyingKey: key });
         try {
-            const ok = await api.copySummaryContent(content);
+            // 复用 @octo/base 的 copyToClipboard：它已经处理了 execCommand 降级、
+            // iOS Safari 需要的 focus() + setSelectionRange() 兑底，以及 textarea 清理。
+            const ok = await copyToClipboard(content);
+            if (this.unmounted) return;
             if (ok) {
                 Toast.success(this.context.t("summary.detail.copySuccess"));
             } else {
                 Toast.error(this.context.t("summary.detail.copyFailed"));
             }
         } catch {
+            if (this.unmounted) return;
             Toast.error(this.context.t("summary.detail.copyFailed"));
         } finally {
-            this.setState({ copying: false });
+            if (!this.unmounted) this.setState({ copyingKey: null });
         }
     };
 
-    /** Issue #195: 转为在线文档 */
-    handleConvertToDoc = async (contentOverride?: string, titleOverride?: string) => {
-        const { detail } = this.state;
-        const content = contentOverride ?? detail?.result?.content;
-        if (!content) return;
-        // 同步预开标签页，保留用户激活状态，避免浏览器拦截 popup
-        const tab = window.open("", "_blank");
-        this.setState({ convertingDoc: true });
-        try {
-            const title = titleOverride ?? detail?.title ?? this.context.t("summary.detail.defaultTitle");
-            const { url } = await api.convertSummaryToDoc(title, content);
-            Toast.success(this.context.t("summary.detail.convertSuccess"));
-            // 导航预开的标签页到文档 URL
-            if (tab) {
-                tab.location.href = url;
-            } else {
-                // popup 被拦截，回退到当前页导航
-                window.location.href = url;
+    /** octo-smart-summary#195: 转为在线文档 */
+    handleConvertToDoc = async (content: string, title: string | undefined, key: string) => {
+        const text = content?.trim();
+        if (!text) return;
+        // 同步预开标签页，保留用户激活状态，避免浏览器拦截 popup。
+        // 对齐 Pages/Chat/index.tsx 的写法：先开 about:blank 拿到真实的“被拦/成功”信号
+        // （带 noopener 的 window.open 成功时也返回 null，没法 null-check），再手动置空 opener。
+        const opened = window.open("about:blank", "_blank");
+        if (opened) {
+            try {
+                opened.opener = null;
+            } catch {
+                // 个别沙箱会冻结 opener setter；about:blank 同源，残留风险可控，继续。
             }
+        }
+        this.setState({ convertingKey: key });
+        try {
+            const docTitle = title ?? this.context.t("summary.detail.defaultTitle");
+            const { url } = await api.convertSummaryToDoc(docTitle, content);
+            if (this.unmounted) {
+                if (opened && !opened.closed) opened.close();
+                return;
+            }
+            Toast.success(this.context.t("summary.detail.convertSuccess"));
+            if (opened && !opened.closed) {
+                // 预开的标签页还在 → 导航它。
+                opened.location.href = url;
+            } else if (!opened) {
+                // popup 被拦截：提示用户而不是整页跳走——此处可能正在编辑/浏览长文，
+                // location.href 会全量重载并丢掉滚动位置与页面状态。
+                Toast.warning(this.context.t("summary.detail.convertPopupBlocked"));
+            }
+            // opened 存在但已被用户关闭：文档已创建成功，success toast 已提示，不再强行跳转。
         } catch (err) {
-            // 关闭预开的空标签页
-            if (tab) tab.close();
+            if (opened && !opened.closed) opened.close();
+            if (this.unmounted) return;
             const msg = extractErrorMsg(err) || this.context.t("summary.detail.convertFailed");
             Toast.error(msg);
         } finally {
-            this.setState({ convertingDoc: false });
+            if (!this.unmounted) this.setState({ convertingKey: null });
         }
     };
 
@@ -2977,26 +3004,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
                             </span>
                         )}
-                        <div className="summary-detail-result-actions" style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                icon={<Copy size={14} />}
-                                loading={this.state.copying}
-                                onClick={() => this.handleCopyContent()}
-                            >
-                                {t("summary.detail.copy")}
-                            </Button>
-                            <Button
-                                size="small"
-                                theme="borderless"
-                                icon={<FileText size={14} />}
-                                loading={this.state.convertingDoc}
-                                onClick={() => this.handleConvertToDoc()}
-                            >
-                                {t("summary.detail.convertToDoc")}
-                            </Button>
-                        </div>
+                        {/* octo-smart-summary#195: 正在编辑（SummaryEditor）或预览历史版本时不渲染。
+                            上面的内容槽是三元，此时屏幕上显示的并不是 detail.result.content，
+                            再显示按钮会导出“看的是 v1、复制出来却是 v3”的内容。 */}
+                        {!isEditing && !this.state.showVersionDetailModal && (
+                            <SummaryResultActions
+                                testid="summary-actions-team-result"
+                                content={detail.result.content}
+                                title={detail.title}
+                                onCopy={(c) => this.handleCopyContent(c, "team-result")}
+                                onConvert={(c, title) => this.handleConvertToDoc(c, title, "team-result")}
+                                copying={this.state.copyingKey === "team-result"}
+                                converting={this.state.convertingKey === "team-result"}
+                            />
+                        )}
                     </div>
                 </>
             </div>
@@ -3145,52 +3166,25 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 <CitationText content={personalResult.content} citations={personalResult.citations || []} />
                             </div>
                         )}
-                        {personalResult.content && (
-                            <div className="summary-detail-result-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    icon={<Copy size={14} />}
-                                    loading={this.state.copying}
-                                    onClick={() => this.handleCopyContent(personalResult.content)}
-                                >
-                                    {t("summary.detail.copy")}
-                                </Button>
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    icon={<FileText size={14} />}
-                                    loading={this.state.convertingDoc}
-                                    onClick={() => this.handleConvertToDoc(personalResult.content, detail?.title)}
-                                >
-                                    {t("summary.detail.convertToDoc")}
-                                </Button>
-                            </div>
+                        {!isEditing && (
+                            <SummaryResultActions
+                                testid="summary-actions-personal-result"
+                                content={personalResult.content}
+                                title={detail?.title}
+                                onCopy={(c) => this.handleCopyContent(c, "personal-result")}
+                                onConvert={(c, title) => this.handleConvertToDoc(c, title, "personal-result")}
+                                copying={this.state.copyingKey === "personal-result"}
+                                converting={this.state.convertingKey === "personal-result"}
+                            />
                         )}
-                        {/* BY_PERSON 单人模式下 renderTeamSummary() 不显示（members.length <= 1），
-                            但 detail.result 可能仍有团队总结内容。在此提供复制/转文档入口。 */}
-                        {detail?.result?.content?.trim() && (
-                            <div className="summary-detail-result-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    icon={<Copy size={14} />}
-                                    loading={this.state.copying}
-                                    onClick={() => this.handleCopyContent(detail.result!.content)}
-                                >
-                                    {t("summary.detail.copyTeamSummary")}
-                                </Button>
-                                <Button
-                                    size="small"
-                                    theme="borderless"
-                                    icon={<FileText size={14} />}
-                                    loading={this.state.convertingDoc}
-                                    onClick={() => this.handleConvertToDoc(detail.result!.content, detail.title)}
-                                >
-                                    {t("summary.detail.convertTeamSummary")}
-                                </Button>
-                            </div>
-                        )}
+                        {/* CR: 这里原本还有一组「复制团队总结 / 团队总结转文档」按钮，已删除。
+                            单人 BY_PERSON 场景下 renderTeamSummary() 对 members.length <= 1 故意
+                            return null，即页面**刻意不展示团队总结正文**；却给这份不展示的内容
+                            挂操作按钮，用户会复制出自己从未在页面上见过的文字。另外两处门控谓词也不
+                            互补（此处看 participants，随 detail 同步返回；renderTeamSummary 看 members，
+                            是第二个异步请求），会出现重复渲染两组按钮或一组都没有。
+                            若确实需要单人也能看/复制团队总结，应先把正文展示出来（属产品变更，
+                            单开 issue），按钮跟着正文走。 */}
                     </>
                 )}
                 </>)}
@@ -3369,26 +3363,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         />
                     </div>
                 )}
-                <div className="summary-detail-result-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 8 }}>
-                    <Button
-                        size="small"
-                        theme="borderless"
-                        icon={<Copy size={14} />}
-                        loading={this.state.copying}
-                        onClick={() => this.handleCopyContent()}
-                    >
-                        {t("summary.detail.copy")}
-                    </Button>
-                    <Button
-                        size="small"
-                        theme="borderless"
-                        icon={<FileText size={14} />}
-                        loading={this.state.convertingDoc}
-                        onClick={() => this.handleConvertToDoc()}
-                    >
-                        {t("summary.detail.convertToDoc")}
-                    </Button>
-                </div>
+                {/* octo-smart-summary#195: 预览历史版本时不渲染——上面显示的是 versionDetail.content，
+                    而按钮导出的是最新版 detail.result.content。 */}
+                {!this.state.showVersionDetailModal && (
+                    <SummaryResultActions
+                        testid="summary-actions-team-collab"
+                        content={detail.result.content}
+                        title={detail.title}
+                        onCopy={(c) => this.handleCopyContent(c, "team-collab")}
+                        onConvert={(c, title) => this.handleConvertToDoc(c, title, "team-collab")}
+                        copying={this.state.copyingKey === "team-collab"}
+                        converting={this.state.convertingKey === "team-collab"}
+                    />
+                )}
             </div>
         );
     }
