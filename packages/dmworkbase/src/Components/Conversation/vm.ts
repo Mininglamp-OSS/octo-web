@@ -20,6 +20,7 @@ import {
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
+import { isReplyAuthorAi } from "./replyAiIdentity";
 import { rememberSendIntent, trackMessageRevoked } from "../../Service/trackMessage";
 import { SuperGroup } from "../../Utils/const";
 import { SystemContent } from "wukongimjssdk";
@@ -2515,13 +2516,10 @@ export default class ConversationVM extends ProviderListener {
                 if (bots.length > 0) mentionedBots = bots
             }
             // message_replied 的 is_ai_msg:被回复消息作者(content.reply.fromUID)是否 AI/bot。
-            // 查订阅者 robot 标记(与上面 @AI 判据一致)+ SYSTEM_BOTS 兜底;取不到作者或非 bot 则 false。
-            let isReplyToAi: boolean | undefined
-            const replyFromUid = (content.reply as any)?.fromUID
-            if (replyFromUid) {
-                const replySub = this.subscribers?.find((s: any) => s.uid === replyFromUid)
-                isReplyToAi = !!(replySub && replySub.orgData && replySub.orgData.robot === 1) || SYSTEM_BOTS.has(replyFromUid)
-            }
+            // 走 isReplyAuthorAi(按 uid 查 person channelInfo 的 robot 标记),DM/群统一 ——
+            // 不再查 this.subscribers(仅群/子区填充,DM 恒空会把 human↔AI DM 回复误判 false;见 #1452 review P1)。
+            const replyFromUid = content.reply?.fromUID
+            const isReplyToAi: boolean | undefined = content.reply ? isReplyAuthorAi(replyFromUid) : undefined
             rememberSendIntent(message.clientSeq, {
                 channelId: channel.channelID,
                 channelType: channel.channelType,
