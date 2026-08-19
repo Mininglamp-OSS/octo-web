@@ -13,7 +13,8 @@
  *   - ai_mentioned 补 actor_type / user_id:owner 定前端补写。user_id 由发送方(VM 生产者)
  *     从 WKApp.loginInfo 取好后经 intent 注入(见 SendIntent.userId),本 leaf service 不再
  *     静态 import App —— 否则会把 App.tsx 的重组件图拖进 SDK-mock 的单测,import 即炸。
- *     actor_type 目前恒为 'human'(前端发送侧只有人类凭证;bot 发送不走本路径),非运行时派生。
+ *     actor_type 目前恒为 'user'(前端发送侧只有人类凭证;bot 发送不走本路径),非运行时派生。
+ *     sink 顶层列口径:用户操作='user'、机器人操作='bot'(不用 'human')。
  */
 import { Dap } from './Dap'
 import { WKSDK, SendackPacket } from 'wukongimjssdk'
@@ -121,21 +122,22 @@ export function trackMessageSent(clientSeq: number | undefined): void {
     // §IM 16:回复(reply)语义。spec 关键属性 = {is_ai_msg, channel_id, actor_type}。
     // message_id = 被回复消息的 ID(纯标识,非正文);无 reply 上下文时 intent.messageId
     // 为 undefined,被 sanitizeProps 丢弃。is_ai_msg 由生产者查 subscriber robot 标记得出
-    // (被回复者是否 AI = 人机协作深度信号,驱动 T0/T1 分层);actor_type 恒 'human'(发送侧只有人类凭证)。
+    // (被回复者是否 AI = 人机协作深度信号,驱动 T0/T1 分层);actor_type 恒 'user'(发送侧只有人类凭证,
+    // sink 顶层列口径:用户操作='user'、机器人操作='bot';不用 'human')。
     if (intent.isReply) {
         Dap.shared.track('message_replied', {
             object_id: base.object_id,
             message_id: intent.messageId,
             channel_id: intent.channelId,
-            actor_type: 'human',
+            actor_type: 'user',
             is_ai_msg: intent.isReplyToAi ?? false,
         })
     }
     const bots = intent.mentionedBots || []
     if (intent.mentionAis || bots.length > 0) {
-        // 8.11 新属性:补 actor_type / user_id(前端写,owner 定)。actor_type 恒 'human'
-        // (发送侧只有人类凭证);user_id 由生产者经 intent 注入,避免 leaf import App。
-        const actorType = 'human'
+        // 8.11 新属性:补 actor_type / user_id(前端写,owner 定)。actor_type 恒 'user'
+        // (发送侧只有人类凭证;sink 口径 user/bot,不用 'human');user_id 由生产者经 intent 注入,避免 leaf import App。
+        const actorType = 'user'
         const userId = intent.userId ?? null
         if (bots.length > 0) {
             // 每个被 @ 的 AI bot 一条,带 bot_id/bot_type(§B: 多AI协作/系统内置 vs 自建分布)

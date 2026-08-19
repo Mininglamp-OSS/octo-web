@@ -120,6 +120,7 @@ import { THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
 import ThreadService from "./Service/ThreadService";
 import { trackSubchannelCreated, inferMsgType } from "./bridge/thread/createThread";
 import { Dap } from "./Service/Dap";
+import { isMessageAuthorAi } from "./Components/Conversation/replyAiIdentity";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -1060,6 +1061,14 @@ export default class BaseModule implements IModule {
           title: t("base.module.contextMenus.copy"),
           testid: "ctx-message-copy",
           onClick: () => {
+            // message_copied 由此命令式发,携 is_ai_msg(被复制消息作者是否 AI/bot,
+            // 与 message_replied/forwarded 同源判据)——DOM data-track 通道带不了消息上下文,
+            // 故从 TrackRules 迁出;区分 AI 消息复制漏斗(session.go ai_msg_copy)。见 #1452 review。
+            Dap.shared.track("message_copied", {
+              object_id: message.messageID,
+              message_id: message.messageID,
+              is_ai_msg: isMessageAuthorAi(message.fromUID),
+            });
             const selectedText = context.getCachedSelectedText?.();
             // RichText(=14)：取顶层 plain（server 权威纯文本），避免对 content
             // blocks 数组 stringify 丢字；text 消息走 content.text。

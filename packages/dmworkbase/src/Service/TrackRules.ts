@@ -97,7 +97,8 @@ export const TRACK_RULES: TrackRule[] = [
     { event: 'smart_summary_agent_new_session', testid: 'summary-agent-new-session-btn', on: 'click' },
 
     // ---- IM / 消息（dmworkbase）：右键菜单 testid 透传链 + 输入区控件（agent A）。
-    { event: 'message_copied', testid: 'ctx-message-copy', on: 'click' },
+    // message_copied 不在本表 —— 已改为 registerMessageContextMenus copy onClick 命令式,
+    // 携 is_ai_msg(DOM 通道拿不到消息作者上下文)。见 #1452 review ai_msg_copy。
     { event: 'message_forward_panel_opened', testid: 'ctx-message-forward', on: 'click' },
     { event: 'message_subchannel_create_dialog_opened', testid: 'ctx-message-create-thread', on: 'click' },
     { event: 'message_multiselect_started', testid: 'ctx-message-multiselect', on: 'click' },

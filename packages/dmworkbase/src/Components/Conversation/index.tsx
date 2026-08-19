@@ -26,6 +26,7 @@ import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../
 import Provider from "../../Service/Provider";
 import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
+import { isMessageAuthorAi } from "./replyAiIdentity";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
@@ -766,6 +767,9 @@ export class Conversation
         if (kind !== "all-failed") Dap.shared.track("message_forwarded", {
             object_id: message.messageID,
             message_id: message.messageID,
+            // is_ai_msg:被转发消息的作者是否 AI/bot(与 message_replied 同源判据),
+            // 供区分 AI 消息转发漏斗(session.go ai_msg_forward)。见 #1452 review。
+            is_ai_msg: isMessageAuthorAi(message.fromUID),
         });
       } catch (e) {
         console.error("[forward] build content failed", e);

@@ -140,7 +140,7 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
             object_id: '104',
             message_id: 'm-777',
             channel_id: 'g4',
-            actor_type: 'human',
+            actor_type: 'user',
             is_ai_msg: true,
         })
     })
@@ -151,7 +151,7 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
         // 回复一条人类消息:isReplyToAi 未置 → is_ai_msg=false
         rememberSendIntent(105, { channelId: 'g5', channelType: 2, mentionAis: false, isReply: true, messageId: 'm-1' })
         ackCb!({ reasonCode: 1, clientSeq: 105 })
-        expect(named('message_replied')[0].props).toMatchObject({ is_ai_msg: false, channel_id: 'g5', actor_type: 'human' })
+        expect(named('message_replied')[0].props).toMatchObject({ is_ai_msg: false, channel_id: 'g5', actor_type: 'user' })
 
         // 非回复发送:message_replied 根本不发
         rememberSendIntent(106, { channelId: 'g5', channelType: 2, mentionAis: false })
