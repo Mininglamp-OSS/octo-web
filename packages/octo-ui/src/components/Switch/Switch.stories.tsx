@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Switch from './index'
 
 const meta: Meta<typeof Switch> = {
@@ -32,6 +32,26 @@ const Stack = ({ children }: { children: React.ReactNode }) => (
     {children}
   </div>
 )
+
+const DarkTheme = ({ children }: { children: React.ReactNode }) => {
+  useEffect(() => {
+    const previousTheme = document.body.getAttribute('theme-mode')
+    document.body.setAttribute('theme-mode', 'dark')
+    return () => {
+      if (previousTheme) {
+        document.body.setAttribute('theme-mode', previousTheme)
+      } else {
+        document.body.removeAttribute('theme-mode')
+      }
+    }
+  }, [])
+
+  return (
+    <div style={{ background: 'var(--wk-bg-surface)', color: 'var(--wk-text-primary)', padding: 16 }}>
+      {children}
+    </div>
+  )
+}
 
 export const Playground: Story = {
   args: {
@@ -70,6 +90,30 @@ export const LoadingSizes: Story = {
       <Switch aria-label="Medium loading switch" size="md" loading />
       <Switch aria-label="Small loading switch" size="sm" loading />
     </div>
+  ),
+}
+
+export const TextLabels: Story = {
+  render: () => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+      <Switch aria-label="Text on switch" defaultChecked checkedText="ON" uncheckedText="OFF" />
+      <Switch aria-label="Unchecked text on switch" checkedText="ON" uncheckedText="OFF" />
+    </div>
+  ),
+}
+
+export const DarkStates: Story = {
+  render: () => (
+    <DarkTheme>
+      <Stack>
+        <Switch aria-label="Dark on" defaultChecked />
+        <Switch aria-label="Dark off" />
+        <Switch aria-label="Dark on disabled" checked disabled />
+        <Switch aria-label="Dark off disabled" disabled />
+        <Switch aria-label="Dark loading" loading />
+        <Switch aria-label="Dark text switch" checkedText="ON" uncheckedText="OFF" />
+      </Stack>
+    </DarkTheme>
   ),
 }
 

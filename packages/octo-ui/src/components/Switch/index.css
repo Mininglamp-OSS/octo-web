@@ -1,30 +1,30 @@
+/* Semi Switch has no prefixCls escape hatch, so scoped Semi selectors here are
+   intentional and use raised specificity to survive app/Storybook CSS order. */
 .octo-ui-switch {
   --octo-ui-switch-current-knob-size: var(--octo-ui-switch-knob-size-md);
   --octo-ui-switch-current-loading-icon-size: var(--octo-ui-switch-loading-icon-size-md);
 
-  display: inline-flex;
   position: relative;
   box-sizing: border-box;
   flex: 0 0 auto;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.octo-ui-switch.octo-ui-switch {
+  display: inline-flex;
   align-items: center;
   width: var(--octo-ui-switch-width-md);
   height: var(--octo-ui-switch-height-md);
   border: 0;
   border-radius: var(--octo-ui-switch-radius);
-  background: var(--octo-ui-switch-bg);
-  cursor: pointer;
-  vertical-align: middle;
+  background-color: var(--octo-ui-switch-bg);
   transition:
     background-color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
     box-shadow var(--octo-ui-duration-fast) var(--octo-ui-ease-standard);
 }
 
-.octo-ui-switch.octo-ui-switch {
-  display: inline-flex;
-  border: 0;
-}
-
-.octo-ui-switch--lg {
+.octo-ui-switch.octo-ui-switch--lg {
   --octo-ui-switch-current-knob-size: var(--octo-ui-switch-knob-size-lg);
   --octo-ui-switch-current-loading-icon-size: var(--octo-ui-switch-loading-icon-size-lg);
 
@@ -32,7 +32,7 @@
   height: var(--octo-ui-switch-height-lg);
 }
 
-.octo-ui-switch--sm {
+.octo-ui-switch.octo-ui-switch--sm {
   --octo-ui-switch-current-knob-size: var(--octo-ui-switch-knob-size-sm);
   --octo-ui-switch-current-loading-icon-size: var(--octo-ui-switch-loading-icon-size-sm);
 
@@ -42,12 +42,21 @@
 
 .octo-ui-switch.octo-ui-switch.semi-switch-checked {
   border: 0;
-  background: var(--octo-ui-switch-checked-bg);
+  background-color: var(--octo-ui-switch-checked-bg);
+}
+
+.octo-ui-switch.octo-ui-switch:hover:not(.semi-switch-disabled):not(.semi-switch-checked) {
+  background-color: var(--octo-ui-switch-bg-hover);
+}
+
+.octo-ui-switch.octo-ui-switch.semi-switch-checked:hover:not(.semi-switch-disabled) {
+  background-color: var(--octo-ui-switch-checked-bg-hover);
 }
 
 .octo-ui-switch.octo-ui-switch.semi-switch-disabled {
   border: 0;
-  background: var(--octo-ui-switch-disabled-bg);
+  background-color: var(--octo-ui-switch-disabled-bg);
+  box-shadow: inset 0 0 0 1px var(--octo-ui-switch-disabled-border);
   cursor: not-allowed;
 }
 
@@ -57,11 +66,12 @@
 
 .octo-ui-switch.octo-ui-switch.semi-switch-disabled.semi-switch-checked {
   border: 0;
-  background: var(--octo-ui-switch-disabled-checked-bg);
+  background-color: var(--octo-ui-switch-disabled-checked-bg);
 }
 
 .octo-ui-switch.octo-ui-switch.semi-switch-focus {
   border: 0;
+  outline: none;
   box-shadow: 0 0 0 var(--octo-ui-switch-focus-width) var(--octo-ui-focus-ring);
 }
 
@@ -92,7 +102,6 @@
 }
 
 .octo-ui-switch.octo-ui-switch.semi-switch-checked .semi-switch-knob,
-.octo-ui-switch.octo-ui-switch.semi-switch-active .semi-switch-knob,
 .octo-ui-switch.octo-ui-switch:active .semi-switch-knob {
   width: var(--octo-ui-switch-knob-size-md);
   height: var(--octo-ui-switch-knob-size-md);
@@ -127,7 +136,6 @@
 }
 
 .octo-ui-switch.octo-ui-switch--lg.semi-switch-checked .semi-switch-knob,
-.octo-ui-switch.octo-ui-switch--lg.semi-switch-active .semi-switch-knob,
 .octo-ui-switch.octo-ui-switch--lg:active .semi-switch-knob {
   width: var(--octo-ui-switch-knob-size-lg);
   height: var(--octo-ui-switch-knob-size-lg);
@@ -135,7 +143,6 @@
 }
 
 .octo-ui-switch.octo-ui-switch--sm.semi-switch-checked .semi-switch-knob,
-.octo-ui-switch.octo-ui-switch--sm.semi-switch-active .semi-switch-knob,
 .octo-ui-switch.octo-ui-switch--sm:active .semi-switch-knob {
   width: var(--octo-ui-switch-knob-size-sm);
   height: var(--octo-ui-switch-knob-size-sm);
@@ -168,24 +175,9 @@
   transform: translate(-50%, -50%);
 }
 
-.octo-ui-switch.octo-ui-switch .semi-switch-loading-spin svg {
+.octo-ui-switch.octo-ui-switch.semi-switch .semi-switch-loading-spin svg {
   width: var(--octo-ui-switch-current-loading-icon-size);
   height: var(--octo-ui-switch-current-loading-icon-size);
-}
-
-.octo-ui-switch.octo-ui-switch.octo-ui-switch--lg .semi-switch-loading-spin svg {
-  width: var(--octo-ui-switch-loading-icon-size-lg);
-  height: var(--octo-ui-switch-loading-icon-size-lg);
-}
-
-.octo-ui-switch.octo-ui-switch.octo-ui-switch--md .semi-switch-loading-spin svg {
-  width: var(--octo-ui-switch-loading-icon-size-md);
-  height: var(--octo-ui-switch-loading-icon-size-md);
-}
-
-.octo-ui-switch.octo-ui-switch.octo-ui-switch--sm .semi-switch-loading-spin svg {
-  width: var(--octo-ui-switch-loading-icon-size-sm);
-  height: var(--octo-ui-switch-loading-icon-size-sm);
 }
 
 .octo-ui-switch.octo-ui-switch .semi-switch-loading-spin .semi-spin-children {
@@ -196,9 +188,16 @@
 .octo-ui-switch .semi-switch-unchecked-text {
   display: inline-flex;
   align-items: center;
-  color: var(--octo-ui-switch-text);
   font-family: var(--octo-ui-font-sans);
   font-size: var(--octo-ui-switch-text-size);
   line-height: var(--octo-ui-switch-text-line-height);
   pointer-events: none;
+}
+
+.octo-ui-switch .semi-switch-checked-text {
+  color: var(--octo-ui-switch-checked-text);
+}
+
+.octo-ui-switch .semi-switch-unchecked-text {
+  color: var(--octo-ui-switch-unchecked-text);
 }

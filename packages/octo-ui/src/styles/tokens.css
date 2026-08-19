@@ -168,15 +168,19 @@ body {
   --octo-ui-switch-knob-checked-left-sm: 12px;
   --octo-ui-switch-radius: 9999px;
   --octo-ui-switch-focus-width: 3px;
-  --octo-ui-switch-bg: oklch(28.862% 0.01261 285.49 / 9%);
-  --octo-ui-switch-checked-bg: oklch(77.942% 0.18562 148.68);
-  --octo-ui-switch-disabled-bg: oklch(28.862% 0.01261 285.49 / 5%);
-  --octo-ui-switch-disabled-checked-bg: oklch(85.454% 0.14166 148.31);
-  --octo-ui-switch-knob-bg: oklch(100% 0 89.88);
+  --octo-ui-switch-bg: var(--wk-brand-tint-08, oklch(28.862% 0.01261 285.49 / 9%));
+  --octo-ui-switch-bg-hover: var(--wk-brand-tint-12, oklch(28.862% 0.01261 285.49 / 12%));
+  --octo-ui-switch-checked-bg: var(--wk-color-success, oklch(77.942% 0.18562 148.68));
+  --octo-ui-switch-checked-bg-hover: color-mix(in srgb, var(--octo-ui-switch-checked-bg) 88%, var(--wk-brand-black, oklch(22.957% 0.01344 285.29)));
+  --octo-ui-switch-disabled-bg: var(--wk-brand-tint-06, oklch(28.862% 0.01261 285.49 / 6%));
+  --octo-ui-switch-disabled-border: var(--wk-brand-tint-15, oklch(28.862% 0.01261 285.49 / 15%));
+  --octo-ui-switch-disabled-checked-bg: color-mix(in srgb, var(--octo-ui-switch-checked-bg) 28%, var(--wk-bg-surface, oklch(100% 0 89.88)));
+  --octo-ui-switch-knob-bg: var(--wk-bg-surface, oklch(100% 0 89.88));
   --octo-ui-switch-knob-shadow: 0 0 1px oklch(0% 0 0 / 30%), 0 4px 6px oklch(0% 0 0 / 10%);
   --octo-ui-switch-knob-shadow-sm: 0 0 1px oklch(0% 0 0 / 15%), 0 1px 6px oklch(0% 0 0 / 10%);
   --octo-ui-switch-disabled-knob-shadow: 0 0 1px oklch(0% 0 0 / 30%);
-  --octo-ui-switch-text: oklch(100% 0 89.88);
+  --octo-ui-switch-checked-text: var(--wk-text-inverse, oklch(100% 0 89.88));
+  --octo-ui-switch-unchecked-text: var(--wk-text-secondary, oklch(22.957% 0.01344 285.29 / 60%));
   --octo-ui-switch-text-size: 12px;
   --octo-ui-switch-text-line-height: 16px;
 }
