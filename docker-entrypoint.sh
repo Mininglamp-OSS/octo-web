@@ -29,8 +29,9 @@ export DOC_APP_URL
 DOCS_BACKEND_URL="${DOCS_BACKEND_URL%/}"
 export DOCS_BACKEND_URL
 
-# Runtime HTML source/diff switch. Only the literal "true" enables it.
-: "${OCTO_HTML_SOURCE_DIFF_ENABLED:=false}"
+# Runtime HTML source/diff switch. Defaults on; any value other than the
+# literal "true" (including "false") disables it.
+: "${OCTO_HTML_SOURCE_DIFF_ENABLED:=true}"
 if [ "$OCTO_HTML_SOURCE_DIFF_ENABLED" = "true" ]; then
   HTML_SOURCE_DIFF_JS=true
 else
