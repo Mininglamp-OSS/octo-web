@@ -17,7 +17,7 @@
 - fixture: `fixtures-authed`，本地 mock 模式已预置登录态、Space `e2e-space-001` 和中文 locale。
 - baseline MSW handler 已覆盖 app shell / chat bootstrap 所需接口。
 - Per-case MSW handler: `e2e-kit/msw-handlers/s11-summary-agent-continue-refine.ts`
-  - `GET */summary/api/v1/summaries` — 返回一条已完成 Agent 总结 `S11 Agent 原总结`。
+  - `GET */summary/api/v1/summaries` — 引用选择器（status=3=COMPLETED）返回一条已完成 Agent 总结 `S11 Agent 原总结`。
   - `GET */summary/api/v1/summaries/11011` — 返回对应详情，`trigger_type=3` 且包含正文 `S11 原总结风险清单`。
   - `POST */summary/api/v1/summaries/11011/read`、`GET */summary/api/v1/summaries/11011/versions` — 详情页后续请求兜底。
   - `GET */summary/api/v1/summary-templates` — 返回空模板列表和 `custom_template_limit`，供继续优化打开创建页时 mount。
@@ -42,7 +42,7 @@
 
 ## 反例
 
-- 如果详情页 `trigger_type` 不是 Agent，页面不应显示「继续优化」；本 case 会因找不到按钮失败。
+- 如果详情页 `referenceable` 不为 `true`（且非兼容回退的 Agent 类型），页面不应显示「继续优化」；本 case 会因找不到按钮失败。
 - 如果继续优化没有把当前 task 作为 `derivedFromTask` 传给创建页，Agent 工作台不会显示「已引用」卡片，case 应失败。
 - 如果引用侧栏漏 mock 详情接口，右侧面板会显示「加载失败」或 sanityCheck 报 401。
 

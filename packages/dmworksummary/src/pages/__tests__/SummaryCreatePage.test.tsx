@@ -3,6 +3,8 @@ import { render as rtlRender, screen, fireEvent, act } from '@testing-library/re
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import SummaryCreatePage from '../SummaryCreatePage';
 import * as api from '../../api/summaryApi';
+import { Dap } from '@octo/base';
+import { isAgentSummaryNotificationEligible } from '../../utils/groupSummaryNotify';
 
 import * as summaryHelpers from '../../utils/summaryHelpers';
 vi.mock('@douyinfe/semi-ui', () => ({
@@ -15,7 +17,10 @@ vi.mock('@douyinfe/semi-ui', () => ({
     Input: ({ value, onChange, ...rest }: any) => <input value={value} onChange={(e) => onChange?.(e.target.value)} {...rest} />,
     Modal: ({ children, visible, onOk, onCancel }: any) => visible ? <div data-testid="modal">{children}</div> : null,
     Typography: { Text: ({ children }: any) => <span>{children}</span> },
+    Tooltip: ({ children }: any) => <>{children}</>,
     Tag: ({ children }: any) => <span data-testid="tag">{children}</span>,
+    // Tooltip wraps several elements (SummaryCreatePage.tsx:1295); render children only.
+    Tooltip: ({ children }: any) => <>{children}</>,
     Avatar: ({ children }: any) => <span data-testid="avatar">{children}</span>,
     Modal: ({ children, visible }: any) => visible ? <div data-testid="modal">{children}</div> : null,
     SplitButtonGroup: ({ children, className }: any) => (
@@ -243,7 +248,7 @@ describe('SummaryCreatePage templates', () => {
         expect(api.createSummary).toHaveBeenCalledWith(expect.objectContaining({
             topic: submittedTopic,
             title: '已语段',
-        }));
+        }), expect.any(Object));
     });
 
 });
@@ -613,6 +618,49 @@ describe('SummaryCreatePage handleSubmit error handling', () => {
         expect(shown).toBe('保存失败：请重新选择引用总结，或点「新会话」重来');
         expect(result).toBe(false);
     });
+
+    // R4 ms P2-1: when referencedTask IS still in state, the backend borrow
+    // fallback also failed — the referenced summary itself has no origin.
+    // The "re-select / new session" copy is useless for that sub-cause, so
+    // the toast must use the dedicated no-origin wording instead.
+    it('shows no-origin toast for 40001 when referencedTask is still selected', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+
+        const err = {
+            response: { data: { code: 40001, message: 'origin_channel_id 未传且无法从 session 反查(session 无 fetch_channel 调用),也无引用总结可继承 origin' } },
+        };
+        (api.createAgentSummary as any).mockRejectedValueOnce(err);
+
+        const ref = React.createRef<any>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+
+        await act(async () => {
+            instance.setState({
+                sessionId: 'session-abc',
+                mode: 'agent',
+                messages: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'summary' }],
+                referencedTask: { task_id: 42, title: '老 Agent 总结', origin_channel_id: '', origin_channel_type: 1 },
+            });
+        });
+
+        (Toast.error as any).mockClear();
+
+        let result: boolean | undefined;
+        await act(async () => {
+            result = await instance.handleSaveAsSummary('a title');
+            await flushPromises();
+        });
+
+        expect(Toast.error).toHaveBeenCalled();
+        const shown = (Toast.error as any).mock.calls[0]?.[0] ?? '';
+        expect(shown).toBe('保存失败：该引用总结缺少来源频道，本次会话也未读取过频道。请更换有来源的引用总结，或开始新会话让 AI 先读取频道');
+        expect(result).toBe(false);
+    });
 });
 
 describe('SummaryCreatePage derivedFromTask cross-session isolation (#907 P1 Jerry-Xin)', () => {
@@ -695,6 +743,7 @@ describe('SummaryCreatePage derivedFromTask cross-session isolation (#907 P1 Jer
 describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        localStorage.clear();
         vi.spyOn(summaryHelpers, 'writeAgentChatSession').mockImplementation(() => {});
     });
 
@@ -719,7 +768,9 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         await act(async () => { await instance.handleSaveAsSummary('t'); });
         expect(api.createAgentSummary).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp-1', origin_channel_type: 1 }),
+            expect.any(Object),
         );
+        expect(isAgentSummaryNotificationEligible(1)).toBe(true);
     });
 
     it('maps a thread selectedChat[0] to origin_channel_type=2', async () => {
@@ -734,6 +785,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         await act(async () => { await instance.handleSaveAsSummary('t'); });
         expect(api.createAgentSummary).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp____thr', origin_channel_type: 2 }),
+            expect.any(Object),
         );
     });
 
@@ -746,5 +798,37 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         const arg = (api.createAgentSummary as any).mock.calls[0][0];
         expect(arg.origin_channel_id).toBeUndefined();
         expect(arg.origin_channel_type).toBeUndefined();
+    });
+});
+
+describe('SummaryCreatePage — smart_summary_started 收口 (二审 P1:api 层单发)', () => {
+    // 二审 P1:started 事件的唯一发射点已下沉到 api 层(summaryApi.createSummary → envelope
+    // code===0 gate;见 summaryApi.test 的 envelope 用例)。页面不再直接 track,只负责:
+    //   - agent 模式点主按钮 handlePrimaryClick 短路,**不发起任何创建**(不调 createSummary/createAgentSummary);
+    //   - normal 模式提交(点按钮 / Enter 都汇入 handleSubmit)→ 恰调一次 createSummary,并带全维度 props。
+    // 因 api 被 mock,发射在此不可观测;此处钉「单次调用 + props 正确」,发射由 api 单测钉。
+    it('agent-mode primary click starts no creation; normal handleSubmit calls createSummary once with props', async () => {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} embedded onSubmit={vi.fn()} source="summary_home" />);
+            await flushPromises();
+        });
+        const instance = ref.current as any;
+
+        // agent 模式:主按钮短路,不发起任何创建 → 无幻影 started
+        await act(async () => { instance.setState({ mode: 'agent', topic: 'hi' }); });
+        (api.createSummary as any).mockClear();
+        (api.createAgentSummary as any).mockClear();
+        instance.handlePrimaryClick();
+        expect((api.createSummary as any)).not.toHaveBeenCalled();
+        expect((api.createAgentSummary as any)).not.toHaveBeenCalled();
+
+        // normal 模式:真正提交 → 恰调一次 createSummary,第二参带 trigger_mode / source(全维度 props)
+        await act(async () => { instance.setState({ mode: 'normal', topic: 'hi' }); });
+        (api.createSummary as any).mockClear();
+        await act(async () => { await instance.handleSubmit(); });
+        expect((api.createSummary as any)).toHaveBeenCalledTimes(1);
+        const props = (api.createSummary as any).mock.calls[0][1];
+        expect(props).toMatchObject({ trigger_mode: 'normal', source: 'summary_home', entry_point: 'summary_home' });
     });
 });

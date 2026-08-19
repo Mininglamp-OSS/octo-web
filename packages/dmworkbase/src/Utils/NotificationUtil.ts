@@ -5,21 +5,11 @@ import { t } from "../i18n";
 import { getImChannelInfo } from "../im-runtime/channelRuntime";
 import { ChannelTypeCommunityTopic } from "../Service/Const";
 import { isEffectivelyMuted, parseThreadChannelId } from "../Service/Thread";
-
-// Extend window interface for Electron APIs
-declare global {
-  interface Window {
-    __POWERED_ELECTRON__?: boolean;
-    electronNotification?: {
-      show: (options: any) => Promise<boolean>;
-      close: (tag: string) => Promise<void>;
-      closeAll: () => Promise<void>;
-      onClicked: (callback: (data: any) => void) => (() => void) | void;
-      onActionClicked: (callback: (data: any) => void) => (() => void) | void;
-      isWindowFocused: () => Promise<boolean>;
-    };
-  }
-}
+import {
+  getElectronNotificationBridge,
+  getElectronWindowBridge,
+  isElectronPowered,
+} from "../electron/desktopBridge";
 
 type NotificationHandle = Notification & {
   dispose?: () => void;
@@ -144,7 +134,7 @@ export class NotificationUtil {
    * Check if Electron native notifications are available
    */
   private isElectronNativeNotificationAvailable(): boolean {
-    return !!(window.__POWERED_ELECTRON__ && window.electronNotification);
+    return isElectronPowered() && !!getElectronNotificationBridge();
   }
 
   /**
@@ -159,16 +149,14 @@ export class NotificationUtil {
    * decision immediately.
    */
   public async isWindowFocused(): Promise<boolean> {
-    if (
-      this.isElectronNativeNotificationAvailable() &&
-      window.electronNotification?.isWindowFocused
-    ) {
+    const electronWindow = getElectronWindowBridge();
+    if (this.isElectronNativeNotificationAvailable() && electronWindow) {
       if (this.focusQueryInFlight) {
         return this.focusQueryInFlight;
       }
       this.focusQueryInFlight = (async () => {
         try {
-          const value = await window.electronNotification!.isWindowFocused();
+          const value = await electronWindow.isFocused();
           return value;
         } catch {
           // IPC failure — fall back to document.hasFocus()
@@ -208,9 +196,8 @@ export class NotificationUtil {
           timeoutType: "default" as const,
         };
 
-        const success = await window.electronNotification!.show(
-          electronOptions
-        );
+        const electronNotification = getElectronNotificationBridge();
+        const success = await electronNotification!.show(electronOptions);
         if (success) {
           // Set up click handler for Electron notifications.
           // The listener is bound to a generation so it can be invalidated
@@ -219,7 +206,7 @@ export class NotificationUtil {
           let listenerInvalidated = false;
           if (options.onClick) {
             cleanupClickListener =
-              window.electronNotification!.onClicked((data: any) => {
+              electronNotification!.onClicked((data: any) => {
                 if (listenerInvalidated) return;
                 if (data.tag === options.tag) {
                   options.onClick!();
@@ -239,7 +226,7 @@ export class NotificationUtil {
             close: () => {
               invalidateAndCleanup();
               if (options.tag) {
-                window.electronNotification!.close(options.tag);
+                electronNotification!.close(options.tag);
               }
             },
             dispose: () => {

@@ -27,6 +27,7 @@ beforeEach(() => {
   mockFetch.mockReset();
   vi.stubGlobal("fetch", mockFetch);
   localStorage.clear();
+  WKApp.apiClient.config.apiURL = "/api/v1/";
   WKApp.loginInfo.token = "test-token";
   WKApp.shared.currentSpaceId = "space-123";
 });
@@ -101,6 +102,18 @@ describe("skillApiReal", () => {
 
     const headers = mockFetch.mock.calls[0][1].headers;
     expect(headers).toEqual({ "Content-Type": "application/json" });
+  });
+
+  it("resolves marketplace requests against the API origin for desktop builds", async () => {
+    WKApp.apiClient.config.apiURL = "https://api.example.com/v1/";
+    mockFetch.mockReturnValueOnce(jsonResponse([]));
+
+    await getCategories();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.example.com/market/api/v1/skill_categories",
+      expect.any(Object)
+    );
   });
 
   it("getCategories forwards search and tag filters", async () => {

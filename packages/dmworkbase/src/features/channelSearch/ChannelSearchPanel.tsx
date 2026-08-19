@@ -25,6 +25,7 @@ import type {
   ChannelSearchTab,
 } from "../../Service/SearchTypes";
 import WKApp from "../../App";
+import { Dap } from "../../Service/Dap";
 import { ChannelSearchFilterPopover as FilterPopover } from "./ChannelSearchFilters";
 import {
   ChannelSearchEmpty as SearchEmpty,
@@ -197,6 +198,11 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
 
   const toggleFilterOpen = () => {
     setOpenFileMenuId(null);
+    // channel_search_filter_panel_opened:仅在「打开」这一支计数。原 TrackRules 的
+    // channel-search-filter-trigger 点击规则在开和关都触发(toggle)→ 翻倍(见 review P2-7)。已移除该规则。
+    if (!filterOpen) {
+      Dap.shared.track("channel_search_filter_panel_opened", {});
+    }
     setFilterOpen((open) => !open);
   };
   const handleFileMenuOpenChange = useCallback(
@@ -316,7 +322,12 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
         activeTab={activeTab}
         onTabChange={(nextTab) => {
           const tab = tabs.find((candidate) => candidate === nextTab);
-          if (tab) setActiveTab(tab);
+          if (tab && tab !== activeTab) {
+            // channel_search_tab_switched:仅在 tab 真正切换时计一次。原挂在 POST
+            // /messages/_search_media|_search_files 的 2xx 通道,每次搜索/去抖/翻页都重打 → 过计数(见二审 P1-4)。
+            Dap.shared.track("channel_search_tab_switched", { tab });
+            setActiveTab(tab);
+          }
         }}
         actions={
           <div className="wk-channel-search-filter-wrap" ref={filterWrapRef}>

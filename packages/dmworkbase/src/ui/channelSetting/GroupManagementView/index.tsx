@@ -98,6 +98,9 @@ function GroupManagementMemberRow({
         <button
           type="button"
           className="wk-group-management-remove"
+          data-testid={
+            item.role === "botAdmin" ? "group-bot-admin-remove-btn" : undefined
+          }
           onClick={() => onRemove(item)}
           aria-label={`${labels.removeMember} ${labelText}`}
           title={labels.removeMember}
@@ -196,6 +199,7 @@ export default function GroupManagementView({
                 type="button"
                 variant="ghost"
                 size="sm"
+                data-testid="group-add-manager-btn"
                 onClick={onAddManager}
               >
                 {labels.addManager}
@@ -217,6 +221,7 @@ export default function GroupManagementView({
                 type="button"
                 variant="ghost"
                 size="sm"
+                data-testid="group-add-bot-admin-btn"
                 onClick={onAddBotAdmin}
               >
                 {labels.addBotAdmin}
@@ -243,11 +248,23 @@ export default function GroupManagementView({
                   {labels.allowNoMentionLabel}
                 </span>
                 <span className="wk-group-management-switch-control">
-                  <Switch
-                    checked={allowNoMention}
-                    loading={allowNoMentionSaving}
-                    onChange={onToggleAllowNoMention}
-                  />
+                  <span
+                    style={{ display: "contents" }}
+                    // While a save is in flight the Switch is `loading` and a
+                    // click toggles nothing, so it must not emit
+                    // group_setting_toggled. Drop the data-track attribute while
+                    // saving instead of always exporting it (the capture-phase
+                    // delegate keys off the attribute's presence).
+                    data-track={allowNoMentionSaving ? undefined : "group_setting_toggled"}
+                    data-track-setting-key="allow_no_mention"
+                    data-track-state={allowNoMention ? "off" : "on"}
+                  >
+                    <Switch
+                      checked={allowNoMention}
+                      loading={allowNoMentionSaving}
+                      onChange={onToggleAllowNoMention}
+                    />
+                  </span>
                 </span>
               </span>
               <span className="wk-group-management-setting-desc">
@@ -262,6 +279,7 @@ export default function GroupManagementView({
             <button
               type="button"
               className="wk-group-management-danger-row"
+              data-testid="group-disband-btn"
               onClick={onDisband}
             >
               <span className="wk-group-management-setting-main">

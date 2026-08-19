@@ -35,6 +35,12 @@ export class ContextMenusData {
     children?: ContextMenusData[]
     /** 选中态（子菜单项右侧显示主题色 ✓） */
     checked?: boolean
+    /**
+     * 测试锚点（kebab-case），渲染到 <li> 的 data-testid，供埋点规则命中。
+     * 仅用于叶子项:有 children 的父项点击只展开子菜单(stopPropagation + return,不触发 onClick),
+     * 给父项挂 testid 会让埋点规则在「仅展开」时误命中。父项请勿设 testid,把它挂到实际执行动作的叶子项上。
+     */
+    testid?: string
 }
 
 // ── 内部：渲染单个图标 ──
@@ -206,6 +212,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         return (
             <li
                 key={i}
+                data-testid={m.testid}
                 className={classNames(m.danger && "wk-ctx-danger")}
                 onClick={(e) => {
                     if (hasChildren) {

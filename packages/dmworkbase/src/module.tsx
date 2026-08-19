@@ -12,13 +12,17 @@ import {
   Task,
   TaskStatus,
   MessageStatus,
+  WKSDK,
+  ConnectStatus,
 } from "wukongimjssdk";
 import React, { ElementType } from "react";
 import { Smile, Scissors, ImagePlus, Paperclip, AtSign } from "lucide-react";
 import { Howl, Howler } from "howler";
 import WKApp, { FriendApply, FriendApplyState, ThemeMode } from "./App";
 import { isChannelSearchEnabled } from "./features/channelSearch/feature";
+import { voiceSettingsStore } from "./Service/VoiceSettingsStore";
 import ChatSearchEntryButton from "./features/channelSearch/ChatSearchEntryButton";
+import { isElectronPowered } from "./electron/desktopBridge";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
 import { InputEdit } from "./Components/InputEdit";
 import { ListItem, ListItemTip } from "./Components/ListItem";
@@ -77,6 +81,7 @@ import { isMessageReactionChannelSupported } from "./features/messageReaction/co
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast } from "@douyinfe/semi-ui";
 import { DefaultEmojiService } from "./Service/EmojiService";
+import { quickMuteStore } from "./Components/NavRail/QuickMuteStore";
 import IconClick from "./Components/IconClick";
 import EmojiToolbar from "./Components/EmojiToolbar";
 import MergeforwardContent, { MergeforwardCell } from "./Messages/Mergeforward";
@@ -91,8 +96,10 @@ import { TypingManager } from "./Service/TypingManager";
 import APIClient from "./Service/APIClient";
 import { patchSdkDecodeForExternalFields } from "./Service/Convert";
 import { isMessageSelectable } from "./Service/messageSelection";
+import { isNotificationSuppressedContentType } from "./Service/messageNotification";
 import ConversationVM from "./Components/Conversation/vm";
 import { ScreenshotCell, ScreenshotContent } from "./Messages/Screenshot";
+import { SummaryNotifyCell, SummaryNotifyContent } from "./Messages/SummaryNotify";
 import FileToolbar from "./Components/FileToolbar";
 import { ProhibitwordsService } from "./Service/ProhibitwordsService";
 import { ApproveGroupMemberCell } from "./Messages/ApproveGroupMember";
@@ -123,6 +130,7 @@ import { isEffectivelyMuted, parseThreadChannelId } from "./Service/Thread";
 import {
   getBrowserSingleAlertCoordinator,
   isConversationChannelVisible,
+  isDocumentFocusScene,
   isMessageElementVisible,
   isSameMessageAttentionSession,
   shouldSuppressImmediateAlert,
@@ -259,6 +267,22 @@ export default class BaseModule implements IModule {
       WKApp.shared.logout();
     };
 
+    // 账号级快捷静音复用 WuKongIM CMD；回前台、网络恢复和重连时用 GET
+    // 校准，CMD 只作为低延迟更新，不承担最终一致性。
+    const refreshQuickMute = () => { void quickMuteStore.refresh().catch(() => undefined); };
+    voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
+    quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
+    WKApp.mittBus.on("wk:app-foreground", refreshQuickMute);
+    WKApp.mittBus.on("wk:auth-state-changed", () => {
+      quickMuteStore.reset();
+      voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
+      quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
+      refreshQuickMute();
+    });
+    if (typeof window !== "undefined") window.addEventListener("online", refreshQuickMute);
+    WKSDK.shared().connectManager.addConnectStatusListener((status) => {
+      if (status === ConnectStatus.Connected) refreshQuickMute();
+    });
     WKApp.endpointManager.setMethod(
       EndpointID.emojiService,
       () => DefaultEmojiService.shared
@@ -319,6 +343,8 @@ export default class BaseModule implements IModule {
             return LocationCell;
           case MessageContentTypeConst.screenshot:
             return ScreenshotCell;
+          case MessageContentTypeConst.summaryNotify:
+            return SummaryNotifyCell;
           case MessageContentType.signalMessage: // 端对端加密错误消息
           case MessageContentTypeConst.approveGroupMember: // 审批群成员
             return ApproveGroupMemberCell;
@@ -389,6 +415,10 @@ export default class BaseModule implements IModule {
       MessageContentTypeConst.screenshot,
       () => new ScreenshotContent()
     );
+    registerCurrentImMessageContent(
+      MessageContentTypeConst.summaryNotify,
+      () => new SummaryNotifyContent()
+    );
     // 加入组织
     registerCurrentImMessageContent(
       MessageContentTypeConst.joinOrganization,
@@ -438,7 +468,9 @@ export default class BaseModule implements IModule {
       const cmdContent = message.content as CMDContent;
       const param = cmdContent.param;
 
-      if (cmdContent.cmd === "channelUpdate") {
+      if (cmdContent.cmd === "user.notification_pause.changed") {
+        quickMuteStore.applyRemoteCMD(param);
+      } else if (cmdContent.cmd === "channelUpdate") {
         // 频道信息更新——通用事件（改名/公告/头像/解散等都会触发）。
         // 使用 fetchChannelInfo 拉取最新状态：channelUpdate 无法区分是改名/公告/头像还是解散，
         // 不能盲目调用 syncGroupDisbandState（会把正常群标记为已解散）。
@@ -501,7 +533,10 @@ export default class BaseModule implements IModule {
         friendApply.unread = true;
         friendApply.createdAt = message.timestamp;
         WKApp.shared.addFriendApply(friendApply);
-        this.tipsAudio();
+        // 文档专注场景不播提示音（红点/未读仍会更新）；IM 场景不受影响。
+        if (!isDocumentFocusScene()) {
+          void this.tipsAudio();
+        }
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
         const toUID = param.to_uid;
@@ -686,7 +721,9 @@ export default class BaseModule implements IModule {
     );
   }
 
-  tipsAudio() {
+  async tipsAudio() {
+    const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
+    if (quickMuteState?.active) return;
     Howler.autoUnlock = false;
     if (!this.messageTone) {
       this.messageTone = new Howl({
@@ -704,7 +741,7 @@ export default class BaseModule implements IModule {
    * processMessageAttention.
    */
   private isElectronEnvironment(): boolean {
-    return !!(window as any).__POWERED_ELECTRON__;
+    return isElectronPowered();
   }
 
   private scheduleMessageAttention(
@@ -757,7 +794,8 @@ export default class BaseModule implements IModule {
       await coordinator.claimOnly(claim);
       return;
     }
-    if (!this.allowNotify(message)) return;
+    const initialDecision = await this.getNotifyDecision(message);
+    if (!initialDecision.showPopup && !initialDecision.playSound) return;
 
     let from = "";
     if (message.channel.channelType === ChannelTypeGroup) {
@@ -781,17 +819,39 @@ export default class BaseModule implements IModule {
       },
       subscribeSuppressionChanges: (listener) =>
         this.subscribeMessageAttentionChanges(listener),
-      isStillEligible: () =>
-        this.isAttentionContextCurrent(context) && this.allowNotify(message),
-      alert: () => {
+      isStillEligible: async () => {
+        if (!this.isAttentionContextCurrent(context)) return false;
+        const decision = await this.getNotifyDecision(message);
+        return decision.showPopup || decision.playSound;
+      },
+      alert: async () => {
         if (!this.isAttentionContextCurrent(context)) return;
-        void this.sendNotification(
-          message,
-          `${from}${message.content.conversationDigest}`
-        );
-        this.tipsAudio();
+        const decision = await this.getNotifyDecision(message);
+        if (decision.showPopup) {
+          await this.sendNotification(
+            message,
+            `${from}${message.content.conversationDigest}`
+          );
+        }
+        if (decision.playSound) await this.tipsAudio();
       },
     });
+  }
+
+  /**
+   * The single notification decision for incoming messages and sound-only
+   * attention. Visibility and single-alert coordination remain separate
+   * concerns; this only combines account/device policy with channel policy.
+   */
+  private async getNotifyDecision(message: Message): Promise<{ playSound: boolean; showPopup: boolean }> {
+    if (!this.allowNotify(message)) return { playSound: false, showPopup: false };
+    const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
+    if (quickMuteState?.active) {
+      return quickMuteState.scope === "sound"
+        ? { playSound: false, showPopup: true }
+        : { playSound: false, showPopup: false };
+    }
+    return { playSound: true, showPopup: true };
   }
 
   private isAttentionContextCurrent(
@@ -872,6 +932,15 @@ export default class BaseModule implements IModule {
   allowNotify(message: Message) {
     if (WKApp.shared.notificationIsClose) {
       // 用户关闭了通知
+      return false;
+    }
+    if (isDocumentFocusScene()) {
+      // 文档专注场景（独立文档页 /d/:docId、/ppt/d/:docId）：不弹 IM 桌面通知、不播提示音，
+      // 仅保留红点/未读数。IM 场景不受影响。
+      return false;
+    }
+    if (isNotificationSuppressedContentType(message.contentType)) {
+      // 群总结完成提示是会话内的被动系统提示，不弹桌面通知、不播提示音。
       return false;
     }
     if (isCurrentImSystemMessage(message.contentType)) {
@@ -987,6 +1056,7 @@ export default class BaseModule implements IModule {
 
         return {
           title: t("base.module.contextMenus.copy"),
+          testid: "ctx-message-copy",
           onClick: () => {
             const selectedText = context.getCachedSelectedText?.();
             // RichText(=14)：取顶层 plain（server 权威纯文本），避免对 content
@@ -1132,6 +1202,7 @@ export default class BaseModule implements IModule {
 
         return {
           title: t("base.module.contextMenus.forward"),
+          testid: "ctx-message-forward",
           onClick: () => {
             context.fowardMessageUI(message);
           },
@@ -1158,6 +1229,7 @@ export default class BaseModule implements IModule {
         }
         return {
           title: t("base.module.contextMenus.multiSelect"),
+          testid: "ctx-message-multiselect",
           onClick: () => {
             context.setEditOn(true);
           },
@@ -1178,7 +1250,9 @@ export default class BaseModule implements IModule {
           title: t("base.module.contextMenus.revoke"),
           onClick: () => {
             context.revokeMessage(message).catch((err) => {
-              Toast.error(err.msg);
+              // 六审 P6:真正的 Error(网络 TypeError / throw Error)只有 .message 没有 .msg,
+              // 直接读 err?.msg 会弹空 toast;按 msg→message→兜底文案 依次取,确保有可读提示。
+              Toast.error(err?.msg || err?.message || t("base.module.contextMenus.revokeFailed"));
             });
           },
         });
@@ -1269,6 +1343,7 @@ export default class BaseModule implements IModule {
         }
         return {
           title: t("base.module.contextMenus.createThread"),
+          testid: "ctx-message-create-thread",
           onClick: () => {
             // 使用消息内容作为默认名称，截取前20个字符
             const defaultName = (
@@ -1840,7 +1915,6 @@ export default class BaseModule implements IModule {
     );
 
     // 子区信息行沿用各自既有 builder 和权限/点击逻辑，只在展示层合并为同一信息卡。
-    // 当前未注册的免打扰、查找聊天内容等入口不得因 UI 参考图而补回。
     WKApp.shared.channelSettingRegister(
       "thread.overview",
       (context) => {
@@ -1852,9 +1926,7 @@ export default class BaseModule implements IModule {
       500
     );
 
-    // 子区设置说明：
-    // - 消息免打扰/聊天置顶：子区继承父群组设置，暂不支持单独配置
-    // - 成员管理：子区成员通过加入/离开操作，不支持手动添加
+    // 子区成员通过加入/离开操作，不支持手动添加。
     WKApp.shared.channelSettingRegister(
       "thread.actions",
       (context) => {

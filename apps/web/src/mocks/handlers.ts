@@ -5,9 +5,15 @@
 import { chatBaselineHandlers } from "../../e2e-kit/msw-handlers/chat-baseline";
 import { mcpOfficialHandlers } from "../../e2e-kit/msw-handlers/mcp-official";
 import { getEnterpriseMockHandlers } from "virtual:octo-enterprise-modules";
+import { http, HttpResponse } from "msw";
+
+const quickMuteStateHandler = http.get(/\/api\/v1\/user\/notification-pause$/, () =>
+  HttpResponse.json({ paused: false, paused_until: null, revision: 0, server_time: new Date().toISOString() }),
+);
 
 export const handlers = [
   ...getEnterpriseMockHandlers(),
   ...mcpOfficialHandlers,
   ...chatBaselineHandlers,
+  quickMuteStateHandler,
 ];

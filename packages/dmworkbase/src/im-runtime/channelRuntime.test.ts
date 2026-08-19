@@ -4,6 +4,8 @@ import {
   addImSubscriberChangeListener,
   deleteImChannelInfo,
   fetchImChannelInfo,
+  getPendingImChannelInfoFetch,
+  getPendingImChannelInfoFetches,
   getImChannelInfo,
   getImChannelSubscribersCacheRaw,
   getImChannelSubscriberOfMe,
@@ -79,6 +81,77 @@ describe("channelRuntime", () => {
 
     await expect(fetchImChannelInfo(sdk, channel)).resolves.toBe(channelInfo);
     expect(sdk.channelManager.getChannelInfo).toHaveBeenCalledWith(channel);
+  });
+
+  it("keeps SDK-deduped in-flight channel fetches visible until the original request settles", async () => {
+    const sdk = createSdk();
+    const channel = { channelID: "g1", channelType: 2 };
+    let resolveFirst!: (value: ImChannelInfoLike) => void;
+    const firstResult = new Promise<ImChannelInfoLike>((resolve) => {
+      resolveFirst = resolve;
+    });
+    sdk.channelManager.fetchChannelInfo
+      .mockReturnValueOnce(firstResult)
+      .mockResolvedValueOnce(undefined);
+
+    const firstFetch = fetchImChannelInfo(sdk, channel);
+    const dedupedFetch = fetchImChannelInfo(sdk, channel);
+
+    const pendingFetches = getPendingImChannelInfoFetch(sdk, channel);
+    let pendingSettled = false;
+    void pendingFetches?.then(() => {
+      pendingSettled = true;
+    });
+
+    await expect(dedupedFetch).resolves.toBeUndefined();
+    await Promise.resolve();
+    expect(pendingSettled).toBe(false);
+
+    resolveFirst({ channel, title: "Group" });
+    await firstFetch;
+    await pendingFetches;
+
+    expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
+  });
+
+  it("keeps every in-flight channel fetch visible when later fetches are not SDK-deduped", async () => {
+    const sdk = createSdk();
+    const channel = { channelID: "g1", channelType: 2 };
+    let resolveFirst!: (value: ImChannelInfoLike) => void;
+    let resolveSecond!: (value: ImChannelInfoLike) => void;
+    const firstResult = new Promise<ImChannelInfoLike>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResult = new Promise<ImChannelInfoLike>((resolve) => {
+      resolveSecond = resolve;
+    });
+    sdk.channelManager.fetchChannelInfo
+      .mockReturnValueOnce(firstResult)
+      .mockReturnValueOnce(secondResult);
+
+    const firstFetch = fetchImChannelInfo(sdk, channel);
+    const secondFetch = fetchImChannelInfo(sdk, channel);
+
+    const pendingFetches = getPendingImChannelInfoFetch(sdk, channel);
+    const pendingFetchList = getPendingImChannelInfoFetches(sdk, channel);
+    let pendingSettled = false;
+    void pendingFetches?.then(() => {
+      pendingSettled = true;
+    });
+    expect(pendingFetchList).toHaveLength(2);
+
+    resolveFirst({ channel, title: "Older" });
+    await firstFetch;
+    await Promise.resolve();
+
+    expect(pendingSettled).toBe(false);
+
+    resolveSecond({ channel, title: "Newer" });
+    await secondFetch;
+    await pendingFetches;
+
+    expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
+    expect(getPendingImChannelInfoFetches(sdk, channel)).toBeUndefined();
   });
 
   it("writes channel info to the SDK channel cache", () => {

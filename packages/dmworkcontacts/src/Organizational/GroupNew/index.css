@@ -245,10 +245,45 @@
   gap: 12px;
 }
 
+.group-create-avatar-image {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--wk-avatar-radius, 50%);
+  object-fit: cover;
+}
+
 .group-create-edit-avatar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--wk-color-theme);
   cursor: pointer;
+  font: inherit;
   font-size: 14px;
+}
+
+.group-create-edit-avatar:hover {
+  color: var(--wk-color-theme);
+  text-decoration: underline;
+}
+
+.group-create-edit-avatar:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+  text-decoration: none;
+}
+
+.group-create-edit-avatar:focus-visible {
+  outline: 2px solid var(--wk-color-theme);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.group-create-edit-avatar-icon {
+  flex-shrink: 0;
 }
 
 .group-create-members {

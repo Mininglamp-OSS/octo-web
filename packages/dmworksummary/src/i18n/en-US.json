@@ -202,7 +202,8 @@
         "saving": "Saving...",
         "noOutputToSave": "No summary content to save yet. Please chat with AI first to generate content.",
         "agentSummaryCreated": "AI summary saved",
-        "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session"
+        "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session",
+        "savedNoOriginRetry": "Save failed: the referenced summary has no source channel, and this session hasn't read any channel either. Pick a referenced summary with a source, or start a new session and let the AI read a channel first"
     },
     "chatSummary": {
         "panelTitle": "Summaries in this chat",
@@ -421,6 +422,7 @@
         "failedTitle": "Summary generation failed",
         "taskNo": "Task ID: {{taskNo}}",
         "createdAt": "Created: {{time}}",
+        "botCreatedByFor": "Created by {{bot}} on behalf of {{owner}}",
         "contentTitle": "📝 Summary content",
         "edited": "Edited",
         "generatedAt": "Generated {{time}}",
@@ -557,6 +559,8 @@
         "sourceFromMultiple": "From {{name}} and {{count}} other chats",
         "youStartedAt": "You started {{time}}",
         "startedAt": "{{name}} · {{time}}",
+        "botCreatedAt": "Created by {{name}} · {{time}}",
+        "botTag": "Bot",
         "generating": "AI is analyzing chat records...",
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
@@ -570,7 +574,9 @@
         "confirmDeleteTitle": "Delete?",
         "confirmDeleteDesc": "This cannot be undone.",
         "confirmLeaveTitle": "Leave?",
-        "confirmLeaveDesc": "You will no longer participate in this summary."
+        "confirmLeaveDesc": "You will no longer participate in this summary.",
+        "scheduledType": "Scheduled summary",
+        "multiPersonType": "Multi-person summary"
     },
     "editor": {
         "saveSuccess": "Saved",

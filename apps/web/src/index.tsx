@@ -4,7 +4,7 @@ import '@octo/base/src/theme/tokens.css';
 import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
-import  { BaseModule, I18nProvider, i18n, WKApp } from '@octo/base';
+import  { BaseModule, I18nProvider, i18n, WKApp, Dap, isElectronPowered } from '@octo/base';
 import  { LoginModule, BindModule } from '@octo/login';
 import  { DataSourceModule } from '@octo/datasource';
 import {ContactsModule} from '@octo/contacts';
@@ -12,9 +12,8 @@ import { SummaryModule } from '@dmwork/summary';
 import { McpMarketModule } from '@dmwork/mcp';
 import { SkillMarketModule } from '@dmwork/skillmarket';
 import { AppBotModule } from '@dmwork/appbot';
-import { DocsModule } from '@octo/docs';
 import { registerEnterpriseModules } from 'virtual:octo-enterprise-modules';
-import { DriveModule } from '@octo/drive';
+import { MailModule } from '@octo/mail';
 import { version as pkgVersion } from '../package.json';
 import appEnUS from './i18n/en-US.json';
 import appZhCN from './i18n/zh-CN.json';
@@ -28,7 +27,8 @@ import { LoopIcon } from './Components/Icons/LoopIcon';
 // preload 标记仍然保留，用于开发环境和 IPC 能力；但不能只依赖 preload 判断 API
 // 环境，否则 preload 加载异常时会误走 Web 分支，把 `/api/v1/` 解析成 `file:///api/v1/`。
 const isDesktopRuntime =
-  Boolean((window as any).__TAURI_IPC__ || (window as any).__POWERED_ELECTRON__) ||
+  Boolean((window as any).__TAURI_IPC__) ||
+  isElectronPowered() ||
   import.meta.env.VITE_ELECTRON_BUILD === "true" ||
   window.location.protocol === "file:"
 
@@ -55,6 +55,8 @@ if(isDesktopRuntime) {
 WKApp.apiClient.config.tokenCallback = ()=> {
   return WKApp.loginInfo.token
 }
+// 埋点上报通道带业务 token(后端据此鉴权并归一 actor)。回调注入避免 Dap import WKApp。
+Dap.shared.setTokenProvider(() => WKApp.loginInfo.token)
 // 由 APIClient request interceptor 读取当前 space_id，注入 X-Space-Id header。
 // 通过回调注入（而非在 APIClient 内 import WKApp）以避免循环依赖。GH #1038
 WKApp.apiClient.config.spaceIdCallback = () => {
@@ -85,9 +87,6 @@ WKApp.shared.registerModule(new SummaryModule()); // 智能总结模块
 WKApp.shared.registerModule(new McpMarketModule()); // MCP 市场模块
 WKApp.shared.registerModule(new SkillMarketModule()); // Skill 市场模块
 WKApp.shared.registerModule(new AppBotModule()); // App Bot 模块
-if (import.meta.env.VITE_DISABLE_BUILTIN_DOCS !== "1") {
-  WKApp.shared.registerModule(new DocsModule()); // Docs module
-}
 registerEnterpriseModules({
   registerModule: (module) => WKApp.shared.registerModule(module),
 });
@@ -96,7 +95,7 @@ registerEnterpriseModules({
 // branching on enterprise business ids inside the shared NavRail renderer.
 WKApp.menus.registerIconOverride("loop", <LoopIcon />);
 WKApp.menus.registerIconOverride("dmloop", <LoopIcon />);
-WKApp.shared.registerModule(new DriveModule()); // 网盘模块
+WKApp.shared.registerModule(new MailModule()); // Agent Mail workspace
 
 // e2e mock: 仅在 VITE_E2E_MOCK=1 时启动 MSW Service Worker.
 // dev / prod 完全走 tree-shake 分支, 无副作用. 必须在 startup() 之前 await,
@@ -146,6 +145,11 @@ async function main(): Promise<void> {
   await enableMocksIfE2E();
   await enableMockImIfE2E();
   WKApp.shared.startup(); // app启动
+  // 埋点蒙版底座(octo-dap 采集方案):启动时初始化一次,装事件委托 / MutationObserver /
+  // fetch-XHR 包裹 / 卸载兜底。默认 ship dark(fail-closed,不采),仅当 remoteConfig 下发
+  // tracking_enabled 为真时才开采;字段缺失 / false / 拉取失败一律不采,前端一个请求都不发
+  // (见 App.tsx requestConfig)。全程自吞异常,失败不影响业务。
+  Dap.shared.init();
 
   const container = document.getElementById("root")!;
   const root = createRoot(container);

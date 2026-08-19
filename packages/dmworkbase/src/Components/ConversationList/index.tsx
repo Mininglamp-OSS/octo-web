@@ -172,6 +172,8 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
     <div
       ref={setNodeRef}
       style={style}
+      data-track="channel_opened"
+      data-object-id={conversationWrap.channel.channelID}
       className={classNames(
         "wk-conv-compact-item",
         selected ? "wk-conv-compact-item--selected" : undefined,
@@ -196,6 +198,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
       {!isThread && (
         <span
           className="wk-conv-compact-drag-handle"
+          data-track-ignore
           {...attributes}
           {...listeners}
           onClick={(e) => e.stopPropagation()}
@@ -276,6 +279,7 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
       {hasThreads && (
         <span
           className="wk-conv-compact-thread-tag"
+          data-track-ignore
           aria-label={t("base.conversationList.toggleThreads")}
           onClick={(e) => {
             e.stopPropagation();
@@ -749,6 +753,8 @@ export default class ConversationList extends Component<
       <div
         ref={(node) => this.setConversationItemRef(conversationWrap, node)}
         key={conversationWrap.channel.getChannelKey()}
+        data-track="channel_opened"
+        data-object-id={conversationWrap.channel.channelID}
         onClick={() => {
           if (onClick) {
             onClick(conversationWrap);

@@ -177,6 +177,9 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       aria-label={ariaLabel}
       onClick={() => onOpen(skill)}
       onKeyDown={handleKeyDown}
+      data-track="market_card_opened"
+      data-object-id={skill.id}
+      data-track-item-type="skill"
     >
       <div className="skill-market-card__top">
         <span className="skill-market-card__icon">
@@ -262,7 +265,18 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
           </span>
         )}
       </div>
-      <div className="skill-market-card__footer" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="skill-market-card__footer"
+        onClick={(event) => event.stopPropagation()}
+        // The <article> root carries data-track="market_card_opened"; the global
+        // click delegate runs in capture phase, BEFORE this stopPropagation, so an
+        // owner edit/delete click here would still resolve closest('[data-track]')
+        // to the card and emit a false view. data-track-ignore makes the delegate
+        // skip clicks inside the footer. The install button keeps its own
+        // data-track="market_skill_install_clicked" — closest() stops at the button, so
+        // it is unaffected by an ancestor's ignore marker.
+        data-track-ignore=""
+      >
         <div className="skill-market-card__stats" aria-label={t("skillMarket.card.statsAriaLabel")}>
           <span
             className="skill-market-card__stat"
@@ -290,6 +304,9 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
                 hideDescriptionTooltip();
                 onInstall(skill);
               }}
+              data-track="market_skill_install_clicked"
+              data-object-id={skill.id}
+              data-track-item-type="skill"
             >
               {t("skillMarket.card.install")}
             </button>

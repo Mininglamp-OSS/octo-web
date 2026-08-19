@@ -200,6 +200,7 @@ export default class ChatSummaryPanel extends Component<
                                 embedded={true}
                                 onClose={this.handleBackToList}
                                 onSubmit={this.handleCreateSubmit}
+                                source="chat_aside"
                             />
                         </div>
                     </div>

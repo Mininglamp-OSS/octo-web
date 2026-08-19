@@ -1,6 +1,6 @@
 import React, { Component, createRef } from 'react';
 import { Button, Modal, Input, Toast } from '@douyinfe/semi-ui';
-import { I18nContext } from '@octo/base';
+import { I18nContext, Dap } from '@octo/base';
 import type { ChatMessage, ChatCandidate, AgentProgressEvent, AgentDoneEvent, AgentErrorEvent } from '../types/summary';
 import { agentChatStream, agentChat } from '../api/summaryApi';
 import { genSessionId } from '../utils/summaryHelpers';
@@ -114,9 +114,15 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         const text = this.state.input.trim();
         if (!text || this.props.sending || this.state.isStreaming) return;
 
+        // P1-4:单通道计一次「发消息」。此处覆盖点击(onClick)与 Enter(handleKeyDown)两条入口,
+        // 已移除 TrackRules 的 summary-agent-send-btn 点击规则(漏 Enter)与 FetchRules 的
+        // POST /agent/chat 2xx 规则(SSE 失败回退时会二次计数)。
+        // 六审 P2:发点须落在**确有一次发送**之后 —— SSE 路径的 !profile 守卫会拦掉发送并只弹错,
+        //   故 track 下沉到 startSSEStream 过守卫之后;非流式路径(onSend 无守卫)则在此就地发。
         if (this.props.useStream) {
             this.startSSEStream(text);
         } else {
+            Dap.shared.track("smart_summary_agent_message_sent", {});
             this.props.onSend(text);
             this.setState({ input: '' });
         }
@@ -130,6 +136,8 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
             Toast.error(t('summary.common.agentChat.errorMessage.sseNeedsProfile'));
             return;
         }
+        // 过 !profile 守卫 = 确有一次发送,在此命令式补点(见 handleSend 注释)。
+        Dap.shared.track("smart_summary_agent_message_sent", {});
 
         // Bug fix: props.sessionId 可能是空字符串(父组件的 setState 是异步的,
         // 首次交互时父组件从 onUserMessage 生成的新 sessionId 在同一 render

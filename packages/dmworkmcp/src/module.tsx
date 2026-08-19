@@ -1,8 +1,9 @@
 import React from "react";
 import type { IModule } from "@octo/base";
-import { ChatPage, i18n, I18nProvider, WKApp, Menus, t as translate } from "@octo/base";
+import { ChatPage, i18n, I18nProvider, WKApp, Menus, t as translate, Dap } from "@octo/base";
 import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "./pages/McpMarketListPage";
+import ExpertMarketListPage from "./pages/ExpertMarketListPage";
 import MarketSidebar from "./components/MarketSidebar";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
@@ -73,6 +74,14 @@ export class McpMarketModule implements IModule {
     // single source of truth for the Skills market URL.
     WKApp.route.register("/mcp-market/skills", () => <SkillListPage />, { hostShell: marketHostShell });
 
+    // Expert market tab — squads & single experts. Same static-first shell as
+    // the other markets: an additional /mcp-market/* route + a MarketSidebar
+    // entry, no new NavRail icon. Ungated like the MCP / Skills tabs: its
+    // /market/api/v1/experts|squads backend (octo-marketplace#51) is merged
+    // and deployed, and the /market/api/v1 nginx location fail-louds (503)
+    // when the marketplace is absent. See src/pages/ExpertMarketListPage.tsx.
+    WKApp.route.register("/mcp-market/experts", () => <ExpertMarketListPage />, { hostShell: marketHostShell });
+
     // 顶层 NavRail 菜单入口。sort=5003 紧跟在 summary(4002/5000) 之后，
     // 与既有 chat(1000)/contacts(4000) 图标栏共用同一注册机制
     // (WKApp.menus.register)，不新造导航体系。菜单 id "mcp-market" 与
@@ -92,7 +101,11 @@ export class McpMarketModule implements IModule {
         // onPress (apps/web/src/App/index.tsx:154) — Main/index.tsx's default
         // click handler is bypassed when onPress is defined, so we own both
         // the left popToRoot and the right replaceToRoot here.
-        m.onPress = () => {
+        m.onPress = (reentry?: boolean) => {
+          // 重复点击已激活的市场菜单不计 module_entered(见二审 P2-4);宿主按 prevMenuId===id 传 reentry。
+          if (!reentry) {
+            Dap.shared.track("market_module_entered", {});
+          }
           WKApp.routeLeft.popToRoot();
           const page = WKApp.route.get("/mcp-market/mcp");
           if (page && React.isValidElement(page)) {

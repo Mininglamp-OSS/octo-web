@@ -1,6 +1,6 @@
 import React from "react";
 import type { IModule } from "@octo/base";
-import { i18n, WKApp, Menus, t as translate } from "@octo/base";
+import { i18n, WKApp, Menus, t as translate, Dap } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
 import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
@@ -11,6 +11,7 @@ import ScheduleListPage from "./pages/ScheduleListPage";
 import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
 import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
+import { getPendingInvitationBadge, refreshPendingInvitationBadge } from "./utils/summaryMenuBadge";
 import { isSupportedChannelType } from "./utils/channelType";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
 import ChatSummaryPanel from "./components/ChatSummaryPanel";
@@ -20,7 +21,16 @@ import "./index.css";
 import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
+let _spaceReadyHandler: (() => void) | null = null;
 const openingSummaryShares = new Set<string>();
+
+function afterSummaryMenuSwitch(action: () => void) {
+    if (WKApp.switchToMenuById && WKApp.currentMenuId !== "summary") {
+        WKApp.switchToMenuById("summary", action);
+        return;
+    }
+    action();
+}
 
 /**
  * NavRail 顶层菜单图标（智能总结）。与 dmworkappbot 的菜单图标同构：
@@ -50,13 +60,14 @@ export class SummaryModule implements IModule {
         });
 
         WKApp.openSummaryDetail = (taskId: number | string, spaceId, originChannel) => {
-            // 卡片深链带的空间可能≠当前空间，路由前先切目标空间，与浏览器路由 applyStandaloneSummarySpaceFromQuery 对称。
-            if (spaceId) WKApp.shared.currentSpaceId = spaceId;
-            WKApp.switchToMenuById?.("summary");
-            WKApp.routeLeft.popToRoot();
-            WKApp.routeRight.replaceToRoot(
-                <SummaryDetailPage taskId={taskId} originChannel={originChannel} emitSelection />
-            );
+            afterSummaryMenuSwitch(() => {
+                // 卡片深链带的空间可能≠当前空间，路由前先切目标空间，与浏览器路由 applyStandaloneSummarySpaceFromQuery 对称。
+                if (spaceId) WKApp.shared.currentSpaceId = spaceId;
+                WKApp.routeLeft.popToRoot();
+                WKApp.routeRight.replaceToRoot(
+                    <SummaryDetailPage taskId={taskId} originChannel={originChannel} emitSelection />
+                );
+            });
         };
 
         WKApp.openSummarySharePreview = (shareId, spaceId, originChannel) => {
@@ -81,9 +92,8 @@ export class SummaryModule implements IModule {
         WKApp.openSummaryShareDetail = async (shareId, spaceId, originChannel) => {
             if (openingSummaryShares.has(shareId)) return;
             openingSummaryShares.add(shareId);
-            if (spaceId) WKApp.shared.currentSpaceId = spaceId;
             try {
-                const share = await getSummaryShare(shareId);
+                const share = await getSummaryShare(shareId, spaceId);
                 if (shouldOpenOriginalSummary(share) && WKApp.openSummaryDetail) {
                     WKApp.openSummaryDetail(
                         getOriginalSummaryTaskId(share),
@@ -98,13 +108,15 @@ export class SummaryModule implements IModule {
                 openingSummaryShares.delete(shareId);
             }
 
-            const query = spaceId ? `?sp=${encodeURIComponent(spaceId)}` : "";
-            window.history.pushState({}, "", `/s/share/${encodeURIComponent(shareId)}${query}`);
-            WKApp.switchToMenuById?.("summary");
-            WKApp.routeLeft.popToRoot();
-            WKApp.routeRight.replaceToRoot(
-                <SummaryShareDetailPage shareId={shareId} originChannel={originChannel} />
-            );
+            afterSummaryMenuSwitch(() => {
+                if (spaceId) WKApp.shared.currentSpaceId = spaceId;
+                const query = spaceId ? `?sp=${encodeURIComponent(spaceId)}` : "";
+                window.history.pushState({}, "", `/s/share/${encodeURIComponent(shareId)}${query}`);
+                WKApp.routeLeft.popToRoot();
+                WKApp.routeRight.replaceToRoot(
+                    <SummaryShareDetailPage shareId={shareId} originChannel={originChannel} />
+                );
+            });
         };
 
         WKApp.route.register("/summary", () => {
@@ -112,7 +124,7 @@ export class SummaryModule implements IModule {
         });
 
         WKApp.route.register("/summary/create", () => {
-            return <SummaryCreatePage />;
+            return <SummaryCreatePage source="summary_home" />;
         });
 
         // 详情页「继续优化」按钮 → 打开新的 chat + 预填引用。
@@ -122,7 +134,7 @@ export class SummaryModule implements IModule {
         window.addEventListener('summary-open-chat-with-reference', ((e: CustomEvent) => {
             const task = e.detail;
             if (!task || !task.task_id) return;
-            WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} />);
+            WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} source="detail_optimize" />);
         }) as EventListener);
 
         WKApp.route.register("/summary/detail", (param: any) => {
@@ -150,21 +162,49 @@ export class SummaryModule implements IModule {
         WKApp.menus.register(
             "summary",
             () => {
-                return new Menus(
+                const menu = new Menus(
                     "summary",
                     "/summary",
                     translate("summary.menu.title"),
                     <SummaryMenuIcon />,
                     <SummaryMenuIcon active />,
                 );
+                // #1359 未处理邀请红点：badge 字段与 NavRail 渲染已存在，
+                // 此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
+                menu.badge = getPendingInvitationBadge();
+                // 保留既有顶层入口行为：点击后直接进入新建总结页。
+                menu.onPress = (reentry?: boolean) => {
+                    // 埋点 290:从 NavRail「总结」顶层入口进入模块（隐私 props 恒空）。
+                    // 重复点击已激活的总结菜单不计（reentry），宿主按 prevMenuId===id 传入（见二审 P2-4）。
+                    if (!reentry) {
+                        Dap.shared.track("smart_summary_module_entered", {});
+                    }
+                    WKApp.routeLeft.popToRoot();
+                    const page = WKApp.route.get("/summary/create");
+                    if (page && React.isValidElement(page)) {
+                        WKApp.routeRight.replaceToRoot(page);
+                    }
+                };
+                return menu;
             },
             4002,
         );
 
+        let initialSpaceReady = false;
         _spaceChangedHandler = () => {
             WKApp.mittBus.emit('summary-space-changed');
+            // Main 冷启动若修正了缓存 Space，会先发 space-changed 再发
+            // space-ready；首刷统一交给 space-ready，避免同一次启动请求两次。
+            if (!initialSpaceReady) return;
+            refreshPendingInvitationBadge();
+        };
+        _spaceReadyHandler = () => {
+            initialSpaceReady = true;
+            // 此时登录态与 X-Space-Id 已就绪，安全执行一次冷启动首刷。
+            refreshPendingInvitationBadge();
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
+        WKApp.mittBus.on('space-ready', _spaceReadyHandler);
 
         WKApp.searchChatCandidates = async (params) => {
             return getChatCandidates(params);
@@ -200,6 +240,10 @@ if (import.meta.hot) {
         if (_spaceChangedHandler) {
             WKApp.mittBus.off('space-changed', _spaceChangedHandler);
             _spaceChangedHandler = null;
+        }
+        if (_spaceReadyHandler) {
+            WKApp.mittBus.off('space-ready', _spaceReadyHandler);
+            _spaceReadyHandler = null;
         }
     });
 }

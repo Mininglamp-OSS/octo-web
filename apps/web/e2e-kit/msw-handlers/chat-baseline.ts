@@ -57,6 +57,12 @@ export const chatBaselineHandlers = [
   http.get("*/voice/config", () =>
     HttpResponse.json({ enable: 0, provider: "", config: {} })
   ),
+  http.get("*/api/v1/common/updater/android/1.0", () =>
+    HttpResponse.json({ url: "https://example.com/download/android" })
+  ),
+  http.get("*/api/v1/common/updater/ios/1.0.0", () =>
+    HttpResponse.json({ url: "https://example.com/download/ios" })
+  ),
   http.get("*/message/prohibit_words/sync", () =>
     HttpResponse.json({ version: 0, words: [] })
   ),
@@ -64,6 +70,13 @@ export const chatBaselineHandlers = [
   // === User / device / avatar ===
   http.get("*/users/:uid/avatar", () =>
     // avatar 通常返 image bytes, 但业务只关心是否 200 - 给一个空 buffer 兜底.
+    HttpResponse.arrayBuffer(new Uint8Array([]).buffer, {
+      headers: { "content-type": "image/png" },
+    })
+  ),
+  http.get("*/groups/:groupNo/avatar", () =>
+    // 与 user avatar 同理: group logo 可能为空, 但请求本身不该漏到 Vite proxy
+    // (fake-provider 会为无 logo 的 group 派生 avatar 路径, 见 fake-provider.ts).
     HttpResponse.arrayBuffer(new Uint8Array([]).buffer, {
       headers: { "content-type": "image/png" },
     })
@@ -87,6 +100,10 @@ export const chatBaselineHandlers = [
     // 用户在 space 里的个人设置 (通知 / 免打扰 / hidden bots 等), 空对象兜底.
     HttpResponse.json({ mute: 0, hidden_bots: [], notify_level: 0 })
   ),
+  http.get("*/user/notification-pause", () =>
+    HttpResponse.json({ paused: false, paused_until: null, revision: 0, server_time: new Date().toISOString() })
+  ),
+  http.put("*/user/language", () => HttpResponse.json({})),
 
   // === Contacts / friends ===
   http.get("*/friend/sync", () => HttpResponse.json([])),

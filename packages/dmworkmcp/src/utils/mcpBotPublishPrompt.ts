@@ -1,26 +1,28 @@
+import {
+  isShellSafeSpaceId,
+  sanitizeShellSpaceId,
+} from "@octo/base/src/Utils/spaceId";
+
 export interface McpBotPublishPromptValues {
   spaceId?: string;
   apiBaseUrl?: string;
 }
 
-// Server-issued space IDs are hex — either the 32-char compact form
-// (`9f5fda183d94482cb49bca5024439105`) or the canonical 36-char UUIDv4
-// (`9f5fda18-3d94-482c-b49b-ca5024439105`). Reject anything else before
-// embedding into a shell command example so a poisoned localStorage
-// fallback value (see McpBotPublishModal.getCurrentSpaceId) can't inject
-// shell tokens like `$(whoami)` / `;` / backticks into `--space ${spaceId}`.
-// The prompt then falls back to the `<space-id>` placeholder, forcing the
-// operator to notice and provide a real one.
-const SPACE_ID_RE = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
-
-/** Whether a caller-supplied space id has a server-issued hex shape
- *  (compact 32-char or canonical 36-char UUIDv4). */
+// A space id is interpolated into shell command examples (`--space ${spaceId}`),
+// so it must not carry shell metacharacters. Server-issued space ids are
+// readable slugs — hex, UUIDv4, or names like `minglue_default` — i.e. letters,
+// digits, and the separators [._-]. Accept that safe, length-bounded character
+// set and reject anything else (spaces, `$`, `;`, backticks, quotes, …) so a
+// poisoned localStorage fallback (see McpBotPublishModal.getCurrentSpaceId)
+// can't inject shell tokens into `--space ${spaceId}`. The prompt then falls
+// back to the `<space-id>` placeholder, forcing the operator to provide a real one.
+/** Whether a caller-supplied space id is shell-safe: letters, digits, and the
+ *  separators [._-] only (bounded length), never a bare `..` and never leading
+ *  with `-`/`.` (which would parse as a flag or a traversal-shaped token when
+ *  reaching `--space ${id}` / `--profile space-${id}`). Covers hex, UUIDv4, and
+ *  readable slugs like `minglue_default`; rejects empty, spaces, and metachars. */
 export function isValidMcpSpaceId(raw?: string): boolean {
-  return typeof raw === "string" && SPACE_ID_RE.test(raw.trim());
-}
-
-function sanitizeSpaceId(raw?: string): string {
-  return isValidMcpSpaceId(raw) ? (raw as string).trim() : "<space-id>";
+  return isShellSafeSpaceId(raw);
 }
 
 /** Normalize the API base URL: trust the configured API URL when it's a full
@@ -40,7 +42,7 @@ export function resolveMcpAPIBaseURL(apiURL: string, origin: string): string {
  *  workflow instead of a "Publish as a Bot" section that doesn't exist for
  *  MCP. */
 export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): string {
-  const spaceId = sanitizeSpaceId(values.spaceId);
+  const spaceId = sanitizeShellSpaceId(values.spaceId);
   const apiBaseUrl = values.apiBaseUrl?.trim() || "<api-base-url>";
 
   return `使用 octo-cli 内置的 \`octo-marketplace\` Skill，将指定 MCP 服务器上架到 OCTO Marketplace。

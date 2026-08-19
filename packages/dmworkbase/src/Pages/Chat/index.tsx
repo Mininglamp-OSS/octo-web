@@ -24,6 +24,7 @@ import { ChatVM, handleGlobalSearchClick } from "./vm";
 import "./index.css";
 import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
+import { Dap } from "../../Service/Dap";
 import ChannelSetting from "../../Components/ChannelSetting";
 import ChannelSearchPanel from "../../features/channelSearch/ChannelSearchPanel";
 import { createChannelSearchApiDataSource } from "../../bridge/channelSearch/createChannelSearchDataSource";
@@ -1050,6 +1051,20 @@ export class ChatContentPage extends Component<
                           className="wk-chat-conversation-header-right-item"
                           onClick={(e) => {
                             e.stopPropagation();
+                            // channel_subchannel_panel_opened:仅在「打开」边沿(当前子区列表未显示)且为
+                            // 群频道时发一次。原挂在 GET /groups/:id/threads 的 2xx 通道会被删除/归档/重试刷新
+                            // 反复触发;二审又发现改挂到 ThreadList.componentDidMount 是死组件(实际渲染的是
+                            // ThreadPanel),永不触发。收口到这个真正的子区 header 开关点(见二审 P1-2),
+                            // 与上方 group_info_panel_opened 同一「仅开边沿」写法,file-preview 复用 ThreadPanel 不误计。
+                            {
+                              const isThreadListVisibleNow =
+                                this.state.showThreadPanel &&
+                                !this.state.previewFile &&
+                                !this.state.activeThread;
+                              if (!isThreadListVisibleNow) {
+                                Dap.shared.track("channel_subchannel_panel_opened", {});
+                              }
+                            }
                             this.setState((prevState) => {
                               // 如果有文件预览或其他面板打开，视为"子区列表未显示"，点击应打开子区列表
                               const isThreadListVisible =
@@ -1070,6 +1085,13 @@ export class ChatContentPage extends Component<
                       className="wk-chat-conversation-header-right-item"
                       onClick={(e) => {
                         e.stopPropagation();
+                        // group_info_panel_opened:仅开面板(opening)且为群频道时发,props 恒空
+                        if (
+                          !this.state.showChannelSetting &&
+                          channel.channelType === ChannelTypeGroup
+                        ) {
+                          Dap.shared.track("group_info_panel_opened", {});
+                        }
                         this.setState((prevState) => {
                           const opening = !prevState.showChannelSetting;
                           return opening
@@ -1587,7 +1609,14 @@ export default class ChatPage extends Component<any, ChatPageState> {
                                 const groupMenu = menus.find(
                                   (m) => m.key === "start-group"
                                 );
-                                if (groupMenu?.onClick) groupMenu.onClick();
+                                // 空态入口与「+」气泡里的 start-group 项(见 ChatMenusPopover
+                                // 的 data-track)触发同一 groupMenu.onClick,但此按钮无 data-track,
+                                // 声明式委托采不到(PR #1320 review P1-4)。两处互斥,这里补发一次
+                                // 与气泡项一致的 channel_create_started。
+                                if (groupMenu?.onClick) {
+                                  Dap.shared.track("channel_create_started");
+                                  groupMenu.onClick();
+                                }
                               }}
                             >
                               {t("base.chatPage.startGroup")}
@@ -1720,8 +1749,8 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     }}
                     onOpenDoc={(item) => {
                       // Open the clicked cloud-doc in the standalone `/d/:docId`
-                      // page, carrying the doc's real space on `?sp=` so the
-                      // preflight addresses the right space (buildDocLink). The
+                      // page. buildDocLink intentionally emits no Space locator;
+                      // authenticated open-context resolves canonical addressing. The
                       // `/d` namespace is intercepted by apps/web Layout OUTSIDE
                       // the app shell and is not a RouteManager route, so it can't
                       // be reached by an in-shell soft push — open it in a new tab
@@ -1823,6 +1852,7 @@ class ChatMenusPopover extends Component<
             return (
               <li
                 key={i}
+                data-track={c.key === "start-group" ? "channel_create_started" : undefined}
                 onClick={() => {
                   if (c.onClick) {
                     c.onClick();

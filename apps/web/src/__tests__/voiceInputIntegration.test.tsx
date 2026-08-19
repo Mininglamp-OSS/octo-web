@@ -6,8 +6,8 @@ import React, { useRef, useState } from "react";
 let capturedOnTranscribed: ((text: string) => void) | undefined;
 let capturedStartRecording: ReturnType<typeof vi.fn>;
 
-vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
-  default: (opts: { onTranscribed?: (text: string) => void }) => {
+vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/voice", () => ({
+  useVoiceInput: (opts: { onTranscribed?: (text: string) => void }) => {
     capturedOnTranscribed = opts?.onTranscribed;
     return {
       isRecording: false,

@@ -5,6 +5,8 @@ import { ChannelTypeCommunityTopic } from "./Const"
 import { parseThreadChannelId } from "./Thread"
 import { getImChannelInfo, getImChannelSubscribers } from "../im-runtime/channelRuntime"
 import { abortError, createAsyncCache } from "../Utils/asyncCache"
+import type { RequestConfig } from "./APIClient"
+import { Dap } from "./Dap"
 
 export type JoinSpaceStatus = "NEED_APPROVAL" | "PENDING"
 
@@ -280,8 +282,10 @@ const rosterCache = createAsyncCache<SpaceMember[]>({
 export class SpaceService {
     static shared = new SpaceService()
 
-    async getMySpaces(): Promise<Space[]> {
-        const resp = await WKApp.apiClient.get("space/my")
+    async getMySpaces(
+        config?: Pick<RequestConfig, "suppressAuthExpiredLogout">,
+    ): Promise<Space[]> {
+        const resp = await WKApp.apiClient.get("space/my", config)
         return resp || []
     }
 
@@ -314,8 +318,8 @@ export class SpaceService {
     // dmloop directory / SettingsPage 各自复制的分页逻辑，
     // 避免翻页上限相互漂移。
     //
-    // 注意默认上限是 100×50 = 5000。已知有 5760 人的空间（见 packages/docs
-    // octoweb 的 picker 截断修复），所以需要完整名册的调用方应改用 getRoster，
+    // 注意默认上限是 100×50 = 5000。已知有 5760 人的空间（见外部 Docs
+    // 模块的 picker 截断修复），所以需要完整名册的调用方应改用 getRoster，
     // 或显式传更大的 pageLimit。
     async getAllMembers(spaceId: string, pageLimit: number = 100, maxPages: number = 50, signal?: AbortSignal): Promise<SpaceMember[]> {
         if (!spaceId) return []
@@ -376,7 +380,16 @@ export class SpaceService {
     }
 
     async joinSpace(inviteCode: string): Promise<JoinSpaceResult> {
-        return WKApp.apiClient.post("space/join", { invite_code: inviteCode })
+        const result: JoinSpaceResult = await WKApp.apiClient.post("space/join", { invite_code: inviteCode })
+        // 十二审 🔴 P1-4:space_join_new 从 path 通道移到命令式,且**只在真加入时计**。审批制空间 POST /space/join
+        //   返回 2xx 但 status=NEED_APPROVAL/PENDING(仅提交申请,并未加入),path 规则会误计成加入。此处按业务码
+        //   门控:非审批态才发。这是 SpaceService 两个调用方(JoinSpaceModal / JoinSpacePage)的统一收口点;
+        //   「已是成员」在调用方 catch 里处理(重入为非 2xx)→ 不会到这、不误发。Layout/InviteLanding 直发 POST
+        //   不经此方法,各自在成功分支单独门控(见对应文件)。
+        if (result?.status !== "NEED_APPROVAL" && result?.status !== "PENDING") {
+            Dap.shared.track("space_join_new", {})
+        }
+        return result
     }
 
     async leaveSpace(spaceId: string): Promise<void> {

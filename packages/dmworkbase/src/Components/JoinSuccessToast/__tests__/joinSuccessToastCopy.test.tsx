@@ -50,7 +50,7 @@ describe('showJoinSuccessToast — copy de-duplication', () => {
         const text = renderedText(call.content);
         expect(text).toContain('已加入');
         expect(text).toContain('ExampleCorp');
-        expect(text).toContain('空间');
+        expect(text).toContain('组织');
         expect(text).not.toContain('群聊');
         expect(text).not.toContain('位于');
         const matches = text.match(/ExampleCorp/g) || [];

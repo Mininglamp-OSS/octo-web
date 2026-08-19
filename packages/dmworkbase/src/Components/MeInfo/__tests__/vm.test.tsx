@@ -53,7 +53,7 @@ const hoisted = vi.hoisted(() => {
           id: "xming",
           name: "xming",
           authorizePath: "/auth/oidc/xming/authorize",
-          accountUrl: "https://accounts-test.imocto.cn",
+          accountUrl: "https://accounts-test.example.com",
         },
       ],
     },
@@ -251,11 +251,11 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
       configurable: true,
       value: {
         ...originalLocation,
-        origin: "https://web-test.imocto.cn",
+        origin: "https://web-test.example.com",
         pathname: "/me",
         search: "",
         hash: "",
-        href: "https://web-test.imocto.cn/me",
+        href: "https://web-test.example.com/me",
       },
     })
   })
@@ -291,9 +291,9 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
 
     // 3. location.href 被赋值为完整 verifyUrl,含 return_to query
     expect(openedMock.location.href).toContain(
-      "https://accounts-test.imocto.cn/profile/info?anchor=verification",
+      "https://accounts-test.example.com/profile/info?anchor=verification",
     )
-    const expectedReturnTo = encodeURIComponent("https://web-test.imocto.cn/me?verified=1")
+    const expectedReturnTo = encodeURIComponent("https://web-test.example.com/me?verified=1")
     expect(openedMock.location.href).toContain(`return_to=${expectedReturnTo}`)
   })
 
@@ -308,11 +308,11 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
       configurable: true,
       value: {
         ...window.location,
-        origin: "https://web-test.imocto.cn",
+        origin: "https://web-test.example.com",
         pathname: "/me",
         search: "?sid=abc",
         hash: "",
-        href: "https://web-test.imocto.cn/me?sid=abc",
+        href: "https://web-test.example.com/me?sid=abc",
       },
     })
     const openedMock = { opener: {} as unknown, location: { href: "" } }
@@ -338,11 +338,11 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
       configurable: true,
       value: {
         ...window.location,
-        origin: "https://web-test.imocto.cn",
+        origin: "https://web-test.example.com",
         pathname: "/me",
         search: "",
         hash: "",
-        href: "https://web-test.imocto.cn/me",
+        href: "https://web-test.example.com/me",
       },
     })
     const openedMock = { opener: {} as unknown, location: { href: "" } }
@@ -354,7 +354,7 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
     const url = openedMock.location.href
     const match = String(url).match(/return_to=([^&]+)/)
     const decoded = decodeURIComponent(match![1])
-    expect(decoded).toBe("https://web-test.imocto.cn/me?verified=1")
+    expect(decoded).toBe("https://web-test.example.com/me?verified=1")
   })
 
   it("[Crit] URL 已有 verified=0 → 被覆盖为 verified=1 而非重复(URLSearchParams.set 语义)", () => {
@@ -362,11 +362,11 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
       configurable: true,
       value: {
         ...window.location,
-        origin: "https://web-test.imocto.cn",
+        origin: "https://web-test.example.com",
         pathname: "/me",
         search: "?verified=0&sid=xyz",
         hash: "",
-        href: "https://web-test.imocto.cn/me?verified=0&sid=xyz",
+        href: "https://web-test.example.com/me?verified=0&sid=xyz",
       },
     })
     const openedMock = { opener: {} as unknown, location: { href: "" } }
@@ -395,7 +395,7 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
     const locationAssign = vi.fn()
     Object.defineProperty(window.location, "href", {
       configurable: true,
-      get: () => "https://web-test.imocto.cn/me",
+      get: () => "https://web-test.example.com/me",
       set: locationAssign,
     })
 
@@ -448,7 +448,7 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
     new MeInfoVM().startRealnameVerify()
 
     // 导航仍然发生
-    expect(openedMock.location.href).toContain("https://accounts-test.imocto.cn/profile/info")
+    expect(openedMock.location.href).toContain("https://accounts-test.example.com/profile/info")
     expect(openedMock.location.href).toContain("return_to=")
     expect(hoisted.toastError).not.toHaveBeenCalled()
     expect(hoisted.toastWarning).not.toHaveBeenCalled()

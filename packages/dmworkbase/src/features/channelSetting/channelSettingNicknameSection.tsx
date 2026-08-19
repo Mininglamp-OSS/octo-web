@@ -35,6 +35,7 @@ export function buildMyGroupNicknameSection(
           placeholder: t(
             "base.module.channelSettings.myGroupNicknamePlaceholder"
           ),
+          trackEvent: "group_nickname_edit_opened",
           maxCount: 10,
           allowEmpty: true,
           onSave: async (value: string) => {

@@ -107,12 +107,12 @@ export default class SpaceList extends Component<SpaceListProps, SpaceListState>
         const { selectedSpaceId, onSelect, onCreateClick, onJoinClick } = this.props;
         const { spaces, loading, showJoinModal, showInviteModal, inviteCode,
                 inviteSpaceName, inviteLoading } = this.state;
+        const { t } = this.context;
 
         const selectedSpace = spaces.find(s => s.space_id === selectedSpaceId);
-        const headerLabel = selectedSpace ? selectedSpace.name : "Space";
+        const headerLabel = selectedSpace ? selectedSpace.name : t("base.navRail.spaceSwitcher.switch");
         const handleJoinEntry = onJoinClick ?? (() => this.setState({ showJoinModal: true }));
         const canCreateSpace = !WKApp.remoteConfig.disableUserCreateSpace;
-        const { t } = this.context;
 
         return (
             <div className="wk-spacelist">

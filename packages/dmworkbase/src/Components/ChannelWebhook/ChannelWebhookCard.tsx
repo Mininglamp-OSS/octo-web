@@ -83,7 +83,7 @@ export default function ChannelWebhookCard({
             </div>
             {manageable && (
                 <div className="wk-webhook-card__actions">
-                    <button type="button" className="wk-webhook-card__icon-btn" onClick={onEdit} title={labels.edit} aria-label={labels.edit}>
+                    <button type="button" className="wk-webhook-card__icon-btn" data-testid="webhook-edit-btn" onClick={onEdit} title={labels.edit} aria-label={labels.edit}>
                         <Edit3 aria-hidden="true" />
                     </button>
                     <button type="button" className="wk-webhook-card__icon-btn" onClick={onRegenerate} title={labels.regenerate} aria-label={labels.regenerate}>

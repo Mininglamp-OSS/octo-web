@@ -101,6 +101,7 @@ describe("shouldSkipChannelForSpace prefix logic", () => {
 // ---------------------------------------------------------------------------
 
 const mockState = vi.hoisted(() => ({
+    apiGet: vi.fn(),
     channelSpaceMap: new Map<string, string>(),
     channelMySourceSpaceMap: new Map<string, string>(),
     subscribesByChannel: new Map<string, any[]>(),
@@ -111,6 +112,9 @@ const mockState = vi.hoisted(() => ({
 
 vi.mock("../../App", () => ({
     default: {
+        apiClient: {
+            get: mockState.apiGet,
+        },
         shared: {
             get currentSpaceId() {
                 return mockState.currentSpaceId
@@ -149,12 +153,31 @@ vi.mock("wukongimjssdk", async () => {
     }
 })
 
-import { shouldSkipChannelForSpace } from "../SpaceService"
+import { shouldSkipChannelForSpace, SpaceService } from "../SpaceService"
 import { Channel, ChannelTypeGroup } from "wukongimjssdk"
 import { ChannelTypeCommunityTopic } from "../Const"
 
 const SPACE_A = "a".repeat(32)
 const SPACE_B = "b".repeat(32)
+
+describe("SpaceService.getMySpaces", () => {
+    beforeEach(() => {
+        mockState.apiGet.mockReset()
+    })
+
+    it("forwards standalone auth-expiry suppression to APIClient", async () => {
+        mockState.apiGet.mockResolvedValue([
+            { space_id: SPACE_A, name: "Product Space" },
+        ])
+
+        await expect(
+            SpaceService.shared.getMySpaces({ suppressAuthExpiredLogout: true }),
+        ).resolves.toEqual([{ space_id: SPACE_A, name: "Product Space" }])
+        expect(mockState.apiGet).toHaveBeenCalledWith("space/my", {
+            suppressAuthExpiredLogout: true,
+        })
+    })
+})
 
 describe("shouldSkipChannelForSpace — external group", () => {
     beforeEach(() => {

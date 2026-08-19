@@ -12,13 +12,16 @@ import {
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X, Copy, FileText } from "lucide-react";
-import { Channel, MessageText } from "wukongimjssdk";
+import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";
 import {
   I18nContext,
   t,
   ForwardService,
   interpretForwardResult,
   titleContextStore,
+  SummaryNotifyContent,
+  isConversationDisbanded,
+  Dap,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -28,11 +31,13 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
+import { sendGroupSummaryCompletionTips } from "../utils/groupSummaryNotify";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
+import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
 // RefineSection 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
 // (见 CHAT-REFERENCE-BASED-DESIGN-v1)
 import OverflowTooltip from "../components/OverflowTooltip";
@@ -55,6 +60,7 @@ import {
     scheduleToParams,
     formatScheduleSummary,
     shouldReactivateOnSave,
+    isReferenceable,
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
@@ -295,6 +301,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
+    // R3 blocker（Jerry-Xin 三审）：smart_summary_completed 的 exactly-once 去重锚点。
+    // 状态订阅路径(:handleStatusChangeEvent)与兜底轮询路径(:doFallbackPollOnce)都在各自
+    // await 之前捕获 prevStatus 快照，stopFallbackPoll() 无法取消已越过 await 的 tick，故仅靠
+    // 「prev !== new 状态沿」判定不足以防双计：两路可各自读到 prev=RUNNING、await 后同见
+    // COMPLETED，双双越过边界守卫各发一次。以「已发 completed 的 taskId」为锚，先发者写锚，
+    // 后到者 id 相等即跳过——按 task 维度精确一次。task 切换后 id 不同，自然重新计一次。
+    private completedTrackedTaskId: number | null = null;
     // Blocking 5（跨 task 串台 / async race）：单调递增的「调度加载序列号」。
     // 每次发起一轮 detail+schedule 加载（loadDetail / 状态切换补拉 / 重新加载）都 bump，
     // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
@@ -306,6 +319,26 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private nextScheduleSeq(): number {
         this.scheduleLoadSeq += 1;
         return this.scheduleLoadSeq;
+    }
+
+    /**
+     * 「运行→完成」沿的 smart_summary_completed 单发 + regenerate 复位。状态订阅
+     * (handleStatusChangeEvent) 与兜底轮询(doFallbackPollOnce)两路共用本方法与
+     * completedTrackedTaskId 去重锚(见三审 R3):先检出者写锚并发,后到者 id 相等即跳过——
+     * 按 task 精确一次。**离开 COMPLETED**(如 regenerate 把状态就地推回 PENDING)时清锚,
+     * 使同一 taskId 的下一次完成能再计一次(见六审 P1b:原先锚只写不清 → 除首次外每轮 regenerate
+     * 的完成都命中 id 相等而被跳过,flagship 漏斗 smart_summary_completed 系统性漏计)。
+     * 两路必须走同一入口,避免各自内联再次跑偏(这正是三→六审反复回炉的同源)。
+     */
+    private trackSummaryCompletedOnce(status: TaskStatus, taskId: number) {
+        if (status === TaskStatus.COMPLETED) {
+            if (this.completedTrackedTaskId !== taskId) {
+                this.completedTrackedTaskId = taskId;
+                Dap.shared.track("smart_summary_completed", {});
+            }
+        } else if (this.completedTrackedTaskId === taskId) {
+            this.completedTrackedTaskId = null;
+        }
     }
 
     componentDidMount() {
@@ -593,6 +626,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // loadSchedule（包括本函数下面发起的）都会被后续轮作废，不会回填到新 task。
         const seq = this.nextScheduleSeq();
         const requestTaskId = lookupId;
+        const isSameTask = typeof requestTaskId === "number"
+            ? this.state.detail?.task_id === requestTaskId
+            : this.state.detail?.task_no === requestTaskId;
+        const previousStatus = isSameTask ? this.state.lastKnownStatus : undefined;
         // F1：切 task / 重拉 detail 时复位全部编辑态，避免旧 task 编辑态（尤其
         // editingTeamSummary）被带入新 task——否则切到非 creator 新 task 会绕过权限进编辑器。
         // FE-1（切任务竞态）：开始新 task 加载时同步清空上一 task 的 personalResult/members，
@@ -636,12 +673,29 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const detail = await api.getSummaryDetail(lookupId);
             // detail 本身也可能是旧请求：期间切了 task / 又发了一轮 loadDetail 就丢弃。
             if (this.scheduleLoadSeq !== seq || this.detailLookupId !== requestTaskId) return;
+            this.notifyGroupsOnCompletion(previousStatus, detail);
             this.setState({
                 detail,
                 loading: false,
                 lastKnownStatus: detail.status,
                 workflowGateContent: false,
             });
+            // 八审 🔴2:loadDetail 也是 lastKnownStatus 的写入者(regenerate 走 handleRegenerateConfirm →
+            // 就地置 PENDING → this.loadDetail(),不经 summary-status-change 订阅)。此前它是唯一不维护
+            // completedTrackedTaskId 去重锚的写入者 → 离开 COMPLETED 时锚不清 → 同一 taskId 的下一次完成
+            // 命中 id 相等被跳过而丢事件(六审 P1b 的复位在这条真实 regenerate 路径上失效)。
+            // 按与两个状态订阅入口(handleStatusChangeEvent / doFallbackPollOnce)完全相同的「状态沿」语义
+            // 维护锚:仅在观测到状态变化时走 helper(COMPLETED 写锚+发一次,离开 COMPLETED 清锚)。
+            // **首次加载(previousStatus===undefined)不发**——打开一条历史已完成的总结属「查看」,不是一次
+            // 新完成;若在此发,completed 会随每次翻阅历史而超过 started(见八审 P2:首屏已完成的漏计是已知
+            // 方向性偏差,不能用「查看即完成」去补,否则引入更糟的高计)。
+            if (
+                previousStatus !== undefined &&
+                previousStatus !== detail.status &&
+                typeof detail.task_id === "number"
+            ) {
+                this.trackSummaryCompletedOnce(detail.status, detail.task_id);
+            }
             this.publishDetailTitle(detail);
             if (detail.status === TaskStatus.COMPLETED && detail.result_id) {
                 const markRead = api.markSummaryRead;
@@ -991,13 +1045,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // B members/personal 混搭串台）。迟到直接 return，后续 prevStatus 判断 / 成对
             // reload 都在这道守卫之后。
             const requestTaskId = this.taskId;
+            const previousStatus = this.state.lastKnownStatus;
             const detail = await api.getSummaryDetail(this.taskId);
             if (this.taskId !== requestTaskId) return;
-            const prevStatus = this.state.lastKnownStatus;
             const newStatus = detail.status;
+            this.notifyGroupsOnCompletion(previousStatus, detail);
             this.setState({ detail, lastKnownStatus: newStatus });
 
-            if (prevStatus !== undefined && prevStatus !== newStatus) {
+            if (previousStatus !== undefined && previousStatus !== newStatus) {
+                // 仅在「运行→完成」状态沿采集一次;原先误用 GET /summaries/:id,失败/进行中/导航等
+                // 一切 2xx 都会误报 completed。此处按 detail.status 状态转移判定,语义可靠。
+                // 单发/复位统一走 trackSummaryCompletedOnce(见三审 R3 单发、六审 P1b regenerate 复位)。
+                this.trackSummaryCompletedOnce(newStatus, requestTaskId);
                 if (
                     newStatus === TaskStatus.COMPLETED ||
                     newStatus === TaskStatus.FAILED ||
@@ -1069,11 +1128,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 try {
                     const detail = await api.getSummaryDetail(this.taskId);
                     if (this.taskId !== requestTaskId) return;
-                    this.setState({ detail, lastKnownStatus: newStatus });
+                    this.notifyGroupsOnCompletion(prevStatus, detail);
+                    this.setState({ detail, lastKnownStatus: detail.status });
+                    // 与主状态订阅路径(:handleStatusChangeEvent)同一「运行→完成」沿采集一次。SSE 不可用时
+                    // 由本 fallback 轮询检出完成,若此处不发则 completed 漏计;单发/复位统一走
+                    // trackSummaryCompletedOnce(两路共用 completedTrackedTaskId 去重,见三审 R3、六审 P1b)。
+                    this.trackSummaryCompletedOnce(detail.status, requestTaskId);
                     if (
-                        newStatus === TaskStatus.COMPLETED ||
-                        newStatus === TaskStatus.FAILED ||
-                        newStatus === TaskStatus.CANCELLED
+                        detail.status === TaskStatus.COMPLETED ||
+                        detail.status === TaskStatus.FAILED ||
+                        detail.status === TaskStatus.CANCELLED
                     ) {
                         this.stopFallbackPoll();
                         // 续修1：本轮刷新共用一个 seq，传给所有子加载（personal/members/schedule），
@@ -1105,6 +1169,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             clearInterval(this.fallbackPollTimer);
             this.fallbackPollTimer = null;
         }
+    }
+
+    private notifyGroupsOnCompletion(previousStatus: number | undefined, detail: SummaryDetail) {
+        void sendGroupSummaryCompletionTips(
+            previousStatus,
+            detail,
+            WKApp.loginInfo.uid,
+            TaskStatus.COMPLETED,
+            ChannelTypeGroup,
+            {
+                sendToChannel: async (channel, currentUserId) => {
+                    const content = new SummaryNotifyContent();
+                    content.fromUID = currentUserId;
+                    content.fromName = WKApp.loginInfo.selfDisplayName?.()
+                        || WKApp.loginInfo.name
+                        || currentUserId;
+                    await WKSDK.shared().chatManager.send(content, channel);
+                },
+                isDisbanded: isConversationDisbanded,
+                warn: (message, context) => console.warn(message, context),
+            },
+        );
     }
 
 
@@ -1817,6 +1903,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     openScheduleModal = () => {
+        // 埋点 308:打开定时总结配置弹窗（隐私 props 恒空）。
+        Dap.shared.track("smart_summary_timer_dialog_opened", {});
         const { scheduleItem } = this.state;
         // Blocking 1：is_active=false 的记录在交互上视为「无活动定时」，但仍回填
         // 原有周期/时刻，方便用户「重新启用」时不用从零填。保存逻辑（handleScheduleSave）
@@ -2185,6 +2273,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     /**
+     * 当前后端是否支持「继续优化」：兼容 referenceable 字段缺失的 legacy 路径。
+     * 抽取自原内联表达式（handleContinueRefine + render 按钮），统一调用点。
+     */
+    private canRefineCurrentDetail = (): boolean => {
+        const { detail } = this.state;
+        if (!detail) return false;
+        return isReferenceable(detail);
+    };
+
+    /**
      * 「继续优化」按钮 — 打开一个新的智能总结 chat session,预置引用当前总结。
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1: 详情页入口和顶栏「新总结」入口的语义
      * 完全等价 — 都是新起一次 chat 生产工作台,唯一差别是这里预填了引用。
@@ -2198,7 +2296,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      */
     handleContinueRefine = () => {
         const { detail } = this.state;
-        if (!detail || detail.trigger_type !== TriggerType.AGENT) return;
+        if (!detail) return;
+        if (!this.canRefineCurrentDetail()) return;
         const event = new CustomEvent('summary-open-chat-with-reference', {
             detail: {
                 task_id: detail.task_id,
@@ -2228,6 +2327,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 两者的 content 语义都是"给用户看的最终交付文本",转发到聊天的姿势一致。
         const sourceContent = detail?.result?.content ?? personalResult?.content ?? '';
         if (!sourceContent.trim()) return;
+        // 埋点 310:打开「转发到聊天」的会话选择面板（有正文可转发时才算打开）。
+        Dap.shared.track("smart_summary_forward_panel_opened", {});
         WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
             const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
             const chunks = splitSummaryText(cleanContent);
@@ -2256,6 +2357,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             } else {
                 Toast.success(t("summary.detail.forwarded"));
             }
+            // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
+            if (state.kind !== "all-failed") Dap.shared.track("smart_summary_forwarded", {});
         }, t("summary.detail.forwardToChat"));
     };
 
@@ -3935,6 +4038,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ confirmingSchedule: true });
         try {
             await api.confirmSchedule(scheduleItem.schedule_id);
+            // schedule 邀请也是 pending_invitation_count 的组成部分；确认成功后
+            // 立即按当前 Space 重算，即使等待期间用户已切到另一条总结。
+            refreshPendingInvitationBadge();
             // 迟到（已切 task）：不回显新 task（confirmingSchedule 由 finally 复位）。
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.scheduleConfirmed"));
@@ -4059,9 +4165,24 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {displayTitle}
                     </OverflowTooltip>
                     {this.renderScheduleSummary()}
+                    {/* Only render the "由 <bot> 代 <owner> 创建" subtitle once both
+                        names are present (backend fields from octo-smart-summary#188).
+                        Gating on trigger_type alone would show "由 未知 代 未知 创建"
+                        for bot summaries until that backend ships — the two services
+                        deploy independently, so we must not depend on their order. */}
+                    {detail && !!detail.creator_bot_name && !!detail.creator_name && (
+                        <div className="summary-detail-bot-created">
+                            {t("summary.detail.botCreatedByFor", {
+                                values: {
+                                    bot: detail.creator_bot_name,
+                                    owner: detail.creator_name,
+                                },
+                            })}
+                        </div>
+                    )}
                 </div>
                 <div className="summary-detail-header-actions">
-                    {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
+                    {detail && detail.status === TaskStatus.COMPLETED && this.canRefineCurrentDetail() && (
                         <Button
                             data-testid={summaryTestIds.detailContinueRefineBtn}
                             theme="solid"
@@ -4223,7 +4344,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <div data-testid={summaryTestIds.detailPage} className="summary-detail-page">
                 <div
                     ref={this.layoutRef}
-                    className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}${this.state.layoutWidth != null && this.state.layoutWidth > 0 && this.state.layoutWidth < SummaryDetailPage.TOC_MIN_LAYOUT_WIDTH ? " version-panel-overlay" : ""}`}
+                    className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}
                 >
                     <div className="summary-detail-content-wrapper">
                     {detail && !loading && this.renderHeader()}

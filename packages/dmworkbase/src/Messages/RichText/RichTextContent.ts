@@ -1,6 +1,15 @@
 import { MessageContent } from "wukongimjssdk";
 import { MessageContentTypeConst } from "../../Service/Const";
 import { t } from "../../i18n";
+import {
+  RichTextFilePlaceholder,
+  RichTextImagePlaceholder,
+} from "../../Utils/richTextProtocol";
+
+export {
+  RichTextFilePlaceholder,
+  RichTextImagePlaceholder,
+} from "../../Utils/richTextProtocol";
 
 /** RichText(=14) 图文混排 block 类型常量（与 octo-lib common/richtext.go 对齐）。 */
 export const RichTextBlockType = {
@@ -8,11 +17,6 @@ export const RichTextBlockType = {
   image: "image",
   file: "file",
 } as const;
-
-/** plain 生成时 image block 注入的占位符（与 octo-lib RichTextImagePlaceholder 对齐）。 */
-export const RichTextImagePlaceholder = "[图片]";
-/** plain 生成时 file block 注入的占位符。仅用于前端前向兼容展示，发送侧暂不构造 file block。 */
-export const RichTextFilePlaceholder = "[文件]";
 
 /**
  * RichText(=14) content 数组中的单个 block。

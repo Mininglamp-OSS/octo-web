@@ -7,13 +7,16 @@ export * from './Service/Thread'
 export * from './Service/Module'
 export * from './Service/Menus'
 export * from './Service/APIClient'
+export * from './Service/Dap'
 export * from './Service/apiLanguage'
 export * from './Service/apiFetch'
 export { default as Provider } from './Service/Provider'
 export * from './Service/Provider'
 export * from './Service/Route'
 export * from './Service/SessionScope'
+export * from './Service/ShellDocument'
 export * from './Service/RoutePath'
+export * from './Service/deviceFlags'
 export * from './Service/DataSource/DataProvider'
 export { default as ChatPage } from "./Pages/Chat"
 export * from './Components/ChannelSetting/context'
@@ -37,7 +40,7 @@ export * from './im-runtime/currentTaskRuntime'
 export * from './Components/WKLayout'
 
 export * from './Components/Conversation/context'
-export { MAX_MESSAGE_LENGTH } from './Components/MessageInput/constants'
+export * from './features/chat-composer'
 export type { default as ConversationContext} from './Components/Conversation/context'
 export { Conversation } from './Components/Conversation'
 export type { ConversationProps } from './Components/Conversation'
@@ -68,11 +71,14 @@ export * from './Utils/docLink'
 export * from './Utils/asyncCache'
 export * from './features/documentTitle'
 export * from './features/notifications'
+export * from './electron/desktopBridge'
 
 export { default as MessageBase } from "./Messages/Base"
 export  * from "./Messages/Image"
 export * from "./Messages/File"
 export * from "./Messages/Base"
+export * from "./Messages/SummaryNotify"
+export { isConversationDisbanded } from "./Utils/groupDisband"
 
 export * from "./Messages/MessageCell"
 
@@ -101,12 +107,19 @@ export { default as WKButton } from "./Components/WKButton"
 export { default as WKInput } from "./Components/WKInput"
 export { default as WKModal } from "./Components/WKModal"
 export type { WKModalProps, WKModalSize, WKModalFooterConfig } from "./Components/WKModal"
+export { default as PromptForwardActions } from "./Components/PromptForwardActions"
+export type { PromptForwardActionsProps } from "./Components/PromptForwardActions"
+export { default as PromptForwardModal } from "./Components/PromptForwardModal"
+export type { PromptForwardModalProps } from "./Components/PromptForwardModal"
 export { wkConfirm } from "./Components/WKModal"
 export type { WKConfirmProps } from "./Components/WKModal"
 export { default as GroupAvatarPreview } from "./Components/GroupAvatarPreview"
 export type { GroupAvatarPreviewProps } from "./Components/GroupAvatarPreview"
 export { default as GroupAvatarEditModal } from "./Components/GroupAvatarEditModal"
 export type { GroupAvatarEditModalProps, GroupAvatarEditResult } from "./Components/GroupAvatarEditModal"
+export { ChannelAvatar } from "./Components/ChannelAvatar"
+export type { ChannelAvatarDraft, ChannelAvatarProps } from "./Components/ChannelAvatar"
+export { uploadGroupAvatar } from "./Service/ChannelSettingService"
 export { fetchGroupAvatarPalette, getCachedPalette, colorAt, paletteSize } from "./Components/GroupAvatarPreview/palette"
 export type { GroupColorHex } from "./Components/GroupAvatarPreview/palette"
 export { colorIndexForName } from "./Components/GroupAvatarPreview/text"
@@ -117,7 +130,7 @@ export { default as SpaceMembers } from "./Components/SpaceMembers"
 export { default as SpaceSettings } from "./Components/SpaceSettings"
 export * from "./Service/SpaceService"
 export { default as UserService } from "./Service/UserService"
-export type { UserProfile } from "./Service/UserService"
+export type { UserProfile, UserProfileRequestOptions } from "./Service/UserService"
 
 export type { JoinApprovalStatus } from "./EndpointCommon"
 export { toJoinApprovalStatus } from "./EndpointCommon"
@@ -128,7 +141,7 @@ export { default as BotStore } from "./Pages/BotStore"
 export { default as GroupCard } from "./Components/GroupCard"
 export { default as NavRail } from "./Components/NavRail"
 export type { NavRailProps, NavRailItem } from "./Components/NavRail"
-export { startVersionCheck, checkVersionOnce } from "./Utils/versionChecker"
+export { startVersionCheck, checkVersionOnce, checkVersionOnceWithStatus } from "./Utils/versionChecker"
 export { isSafeUrl } from './Utils/security'
 // 外部成员/消息来源判定 resolver（纯函数）对外暴露，供 AssigneeEditor
 // 等包外组件在「按当前查看 Space 相对渲染」时复用，避免各自复制逻辑漂移。
@@ -155,6 +168,7 @@ export type { AgentCardData, FileGroup, FileItem, FileContent, FileContentRespon
 export { Channel, ChannelTypePerson } from 'wukongimjssdk'
 
 // Drive-transfer Space-prefix + supported-channel helpers used by both
-// dmworkbase (FileCell) and dmworkdrive (module.tsx). Single source of truth
+// dmworkbase (FileCell) and the private Drive module. Single source of truth
 // for the channel-normalisation contract (#1261 review round 6).
-export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel } from './Service/SpacePrefix'
+export { hasSpacePrefix, stripSpacePrefix, isDriveTransferSupportedChannel, normaliseImDriveChannelID, imDriveTransferSourceKey } from './Service/SpacePrefix'
+export { resolveCardActionChannelId } from './Messages/InteractiveCard/cardAction'

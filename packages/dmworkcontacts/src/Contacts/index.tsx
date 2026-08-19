@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo } from "@octo/base"
+import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo, Dap } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
@@ -576,6 +576,9 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
 
+        // contacts_searched:仅 keyword 非空(去抖后)发;不采 keyword
+        Dap.shared.track('contacts_searched', {})
+
         const { contacts, groups } = searchContacts(keyword, this.contactsSearchIndex)
 
         this.setState({
@@ -596,12 +599,22 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private toggleSection = (section: ContactsDirectorySectionKey) => {
         const willExpand = this.state.expandedSection !== section
+        // contacts_group_expanded:仅展开态发(gate willExpand),props 恒空(不带 section)
+        if (willExpand) {
+            Dap.shared.track('contacts_group_expanded', {})
+        }
         this.setState({
             expandedSection: willExpand ? section : null,
         })
     }
 
     private handleContactClick = (uid: string, isBot: boolean) => {
+        // contact_opened:补 is_bot / bot_type(system=botfather,余 custom;非 bot 为 null)
+        Dap.shared.track('contact_opened', {
+            object_id: uid,
+            is_bot: isBot,
+            bot_type: isBot ? (uid === 'botfather' ? 'system' : 'custom') : null,
+        })
         if (isBot && uid !== 'botfather') {
             this.setState({ botDetailUid: uid, botDetailVisible: true })
             return
@@ -626,6 +639,8 @@ export default class ContactsList extends Component<any, ContactsState> {
 
     private handleFilterChange = (mode: ContactFilterMode) => {
         if (this.state.filterMode === mode) return
+        // contacts_filter_switched:已 guard 同值;props 恒空(不带 mode)
+        Dap.shared.track('contacts_filter_switched', {})
         const { items, indexList, indexItemMap, listRows } = this.getIndex(mode)
         this.flatItems = items
         this.maybePrefetchSmallList()
@@ -642,7 +657,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     renderBotFatherBanner() {
         return (
             <div className="wk-contacts-botfather-banner" onClick={() => {
-                WKApp.endpoints.showConversation(new Channel("botfather", ChannelTypePerson))
+                // 走 handleContactClick 而非直接 showConversation:后者绕过 contact_opened
+                // 埋点(PR #1320 review P1-4)。handleContactClick('botfather', true) 会先补
+                // contact_opened(is_bot/bot_type),再执行同样的「直接进聊天」。
+                this.handleContactClick("botfather", true)
             }}>
                 <div className="wk-contacts-botfather-avatar">
                     <WKAvatar channel={new Channel("botfather", ChannelTypePerson)} />

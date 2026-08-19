@@ -3,6 +3,7 @@ import { render as rtlRender, screen, fireEvent, act } from '@testing-library/re
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import ChatSummaryNewModal from '../ChatSummaryNewModal';
 import * as summaryApi from '../../api/summaryApi';
+import { isAgentSummaryNotificationEligible } from '../../utils/groupSummaryNotify';
 
 import * as summaryHelpers from '../../utils/summaryHelpers';
 vi.mock('@douyinfe/semi-ui', () => ({
@@ -214,7 +215,7 @@ describe('ChatSummaryNewModal', () => {
         expect(summaryApi.createSummary).toHaveBeenCalledWith(expect.objectContaining({
             topic: submittedTopic,
             title: '已一段',
-        }));
+        }), expect.any(Object));
     });
 
     it('hides templates when input has content', async () => {
@@ -697,6 +698,7 @@ describe('ChatSummaryNewModal agent SSE session_id sync', () => {
 describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        localStorage.clear();
     });
 
     it('fills origin_channel_id + type from the channel prop (group → 1)', async () => {
@@ -724,6 +726,8 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
 
         expect(summaryApi.createAgentSummary).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'ch1', origin_channel_type: 1 }),
+            expect.any(Object),
         );
+        expect(isAgentSummaryNotificationEligible(1)).toBe(true);
     });
 });
