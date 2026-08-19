@@ -221,7 +221,9 @@ export const BODY_RULES: BodyRule[] = [
     },
 
     // PUT /api/v1/groups/:id/setting —— 会话/群设置单键部分更新(updateChannelSetting 发单键对象):
-    // mute→免打扰,top→置顶,remark→备注,save→存到通讯录,allow_no_mention→机器人免@。
+    // remark→备注,save→存到通讯录,allow_no_mention→机器人免@。
+    // (mute→免打扰 / top→置顶 已改为在 channelSettingActions.ts 成功回调里命令式 Dap 补点,
+    //  故此处不再声明式命中,避免与命令式路径双计;见 review M3/B4。)
     // (bridge/channelSetting/channelSettingActions.ts & groupManagementActions.ts)
     {
         method: 'PUT',

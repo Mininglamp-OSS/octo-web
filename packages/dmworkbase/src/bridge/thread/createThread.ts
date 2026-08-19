@@ -35,18 +35,21 @@ export function emitThreadCreated(groupNo: string, thread: ThreadCreateResult) {
  * 映射到 CSV:26 规范值：'text' | 'reply' | 'image_file' | 'link'
  */
 export function inferMsgType(message: any): 'text' | 'reply' | 'image_file' | 'link' | undefined {
-  const contentType = message?.contentType
+  const contentType = message?.content?.contentType ?? message?.contentType
+  // reply 优先:回复类消息即便正文是文本,也应归类为 'reply'(CSV:26)。reply 元数据
+  // 在 content.reply(MessageContent.reply),不在 message 顶层——旧代码查 message.reply
+  // /message.quote 永远取不到值,故 reply 分支从不触发(见 Conversation/vm.ts:1535 的
+  // message.content.reply.messageID 读法)。
+  if (message?.content?.reply?.messageID) {
+    return 'reply'
+  }
   if (contentType === MessageContentType.text || contentType === MessageContentTypeConst.richText) {
     return 'text'
   }
-  if (contentType === MessageContentType.image) {
+  // image(图片)与 file(文件, MessageContentTypeConst.file=8)同归 image_file 桶。
+  if (contentType === MessageContentType.image || contentType === MessageContentTypeConst.file) {
     return 'image_file'
   }
-  // reply 判断：如果有 reply 相关字段（根据实际消息结构调整）
-  if (message?.reply?.messageID || message?.quote?.messageID) {
-    return 'reply'
-  }
-  // link 判断：如果是链接卡片或包含 URL
   if (contentType === MessageContentTypeConst.interactiveCard) {
     return 'link'
   }

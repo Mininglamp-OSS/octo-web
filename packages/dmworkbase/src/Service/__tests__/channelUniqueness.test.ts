@@ -205,7 +205,8 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
  *
  * 白名单语义 = 该事件的多条规则是**同一次用户手势的不同作用域/入口**,产品上就该记同一事件:
  *   - 群/子区滚入(subchannel-inclusion policy,见 FetchRules 头):webhook_* / group_md_edited / group_name_edited
- *   - 会话设置跨群/DM/子区三作用域同构:conversation_muted / _pinned / _remark_edited / _saved_to_contacts
+ *   - 会话设置跨群/DM/子区三作用域同构:conversation_remark_edited / _saved_to_contacts
+ *     (mute/pin 已改命令式补点、退出 BODY 表,故不在此列;见 review M3/B4)
  *   - 登录双入口(账号 / 邮箱)同为一次登录:user_login
  *   - 密钥「配置」= 新建(POST)或更新(PUT)同一动作:settings_secrets_configured
  *   - 市场「发布」跨 mcp / skill 两个目录同一手势:market_manual_publish_submitted
@@ -258,8 +259,6 @@ describe('中央映射通道 —— 表内「一手势一事件」守卫(重复�
             ),
             allow: new Set([
                 'group_name_edited',
-                'conversation_muted',
-                'conversation_pinned',
                 'conversation_remark_edited',
                 'conversation_saved_to_contacts',
                 'webhook_enabled_toggled',

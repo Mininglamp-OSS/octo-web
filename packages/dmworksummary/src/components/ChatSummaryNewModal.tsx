@@ -644,6 +644,7 @@ export default class ChatSummaryNewModal extends Component<
                 object_id: channel.channelID,
                 source: 'chat_new_modal',
                 entry_point: 'chat_new_modal',
+                entry_source: 'chat_new_modal',
                 trigger_mode: 'agent',
             });
             markAgentSummaryNotificationEligible(res.task_id);

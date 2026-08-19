@@ -10,12 +10,13 @@
  *     sendack Normal 时消费。意图里**不含任何正文**,只含枚举 / 类型 / 布尔。
  *   - `bot_create_started`(§5.4):仅前端 started 语义,不追后端 completed;/newbot 只测前缀识别已知命令,
  *     绝不采集正文,只 emit 事件 + entry。
- *   - ai_mentioned 补 actor_type / user_id:owner 定前端补写。从 WKApp.loginInfo 取 user_id,
+ *   - ai_mentioned 补 actor_type / user_id:owner 定前端补写。user_id 由发送方(VM 生产者)
+ *     从 WKApp.loginInfo 取好后经 intent 注入(见 SendIntent.userId),本 leaf service 不再
+ *     静态 import App —— 否则会把 App.tsx 的重组件图拖进 SDK-mock 的单测,import 即炸。
  *     actor_type 根据当前登录凭证类型判断(human 默认)。
  */
 import { Dap } from './Dap'
 import { WKSDK, SendackPacket } from 'wukongimjssdk'
-import WKApp from '../App'
 
 /** channelType → chat_type 枚举(§ Const.ts:ChannelTypePerson=1/Group=2/CommunityTopic=5/CustomerService=3) */
 function chatTypeOf(channelType: number): string {
@@ -43,6 +44,8 @@ interface SendIntent {
     mentionedBots?: Array<{ id: string; type: string }>
     /** 消息 ID(供 message_replied 等事件补 message_id 属性) */
     messageId?: string
+    /** 当前登录用户 uid(供 ai_mentioned 补 user_id;由生产者从 WKApp.loginInfo 注入,避免 leaf import App) */
+    userId?: string | null
 }
 
 /** 按 clientSeq 暂存发送意图,sendack 时消费。带上限防泄漏。 */
@@ -113,7 +116,8 @@ export function trackMessageSent(clientSeq: number | undefined): void {
         object_id: String(clientSeq), // client_seq 作 object_id
     }
     Dap.shared.track('message_sent', base)
-    // §IM 16:回复(reply)语义。props 恒空,不带正文/被回复消息内容。
+    // §IM 16:回复(reply)语义。message_id = 被回复消息的 ID(纯标识,非正文/内容);
+    // 无 reply 上下文时 intent.messageId 为 undefined,被 sanitizeProps 丢弃。
     if (intent.isReply) {
         Dap.shared.track('message_replied', {
             object_id: base.object_id,
@@ -124,7 +128,7 @@ export function trackMessageSent(clientSeq: number | undefined): void {
     if (intent.mentionAis || bots.length > 0) {
         // 8.11 新属性:补 actor_type / user_id(前端写,owner 定)
         const actorType = 'human'
-        const userId = WKApp.loginInfo.uid || null
+        const userId = intent.userId ?? null
         if (bots.length > 0) {
             // 每个被 @ 的 AI bot 一条,带 bot_id/bot_type(§B: 多AI协作/系统内置 vs 自建分布)
             for (const b of bots) {

@@ -2521,6 +2521,12 @@ export default class ConversationVM extends ProviderListener {
                 botCreateEntry,
                 botCommandEvent,
                 isReply: !!content.reply,
+                // message_replied 的 message_id = 被回复消息的 ID(content.reply.messageID,
+                // 发送时即可得;server 侧新消息 id 此刻尚未分配)。无 reply 时 undefined,
+                // 但此时 isReply=false,message_replied 根本不发。
+                messageId: content.reply?.messageID,
+                // ai_mentioned 的 user_id 由生产者注入,避免 leaf service trackMessage 静态 import App
+                userId: WKApp.loginInfo.uid || null,
                 mentionedBots,
             })
         }

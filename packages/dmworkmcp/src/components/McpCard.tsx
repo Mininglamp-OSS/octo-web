@@ -103,7 +103,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
       role="button"
       tabIndex={0}
       onClick={() => onClick(item)}
-      data-track="market_card_viewed"
+      data-track="market_card_opened"
       data-object-id={item.id}
       data-track-item-type="mcp"
       onKeyDown={(e) => {

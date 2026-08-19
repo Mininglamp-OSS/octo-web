@@ -12,6 +12,14 @@ vi.mock("@octo/base", () => ({
       popToRoot: vi.fn(),
       replaceToRoot: vi.fn(),
     },
+    remoteConfig: {
+      octoAssistantUids: [],
+    },
+  },
+  Dap: {
+    shared: {
+      track: vi.fn(),
+    },
   },
 }))
 

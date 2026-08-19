@@ -145,7 +145,12 @@ export const FETCH_RULES: FetchRule[] = [
     //   富属性)。撤回的唯一活入口是会话菜单 vm.revokeMessage(module.tsx 的 context.revokeMessage)。
     //   若此处再挂 POST /message/revoke 的 fetch 规则,会与命令式双发(fetch 空属性 + 命令式富属性)、属性不一致。
     //   故删除 fetch 规则,统一收口到命令式单通道(见四审 P1-1;六审删除已死的气泡 onMessageRevoke 入口)。
-    { method: 'POST', path: '/api/v1/groups/:id/threads', event: 'message_subchannel_created' },
+    // subchannel_created 不在此通道 —— 子区创建成功后已由命令式 trackSubchannelCreated
+    //   采集(带 source/title_len_bucket/from_msg_type 富属性)。两个活入口都走同一 POST:
+    //   顶栏 createThreadByNameAndNotify('channel_toolbar')、右键 module.tsx('message_right_click')。
+    //   若此处再挂 POST /groups/:id/threads 的 fetch 规则,会与命令式双发(fetch 空属性 +
+    //   命令式富属性)、跨通道双计。channelUniqueness guard 只比事件名,rename 后的新名会绕过它,
+    //   故显式删除 fetch 规则,统一收口到命令式单通道(见 D1;与 message_revoked 同模式)。
     { method: 'DELETE', path: '/api/v1/message', event: 'message_multiselect_deleted' },
     // channel_subchannel_panel_opened 不在此通道 —— GET /groups/:id/threads(threadList)在删除/归档/重试
     //   刷新时也会再拉,请求成功 ≠ 打开面板。二审又发现原命令式落点 ThreadList.componentDidMount 为死组件

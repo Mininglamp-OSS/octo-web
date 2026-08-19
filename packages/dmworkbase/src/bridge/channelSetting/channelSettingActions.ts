@@ -1,6 +1,7 @@
 import { Channel, ChannelInfo, ChannelTypeGroup } from "wukongimjssdk";
 
 import WKApp from "../../App";
+import { Dap } from "../../Service/Dap";
 import {
   addChannelSubscribers as addChannelSubscribersApi,
   createChannel as createChannelApi,
@@ -502,6 +503,10 @@ export async function muteChannelSetting(params: {
   if (params.channel.channelType === ChannelTypeCommunityTopic) {
     syncThreadMuteCacheAfterSave(runtime, params.channel, params.mute);
   }
+  // conversation_muted 收口点:所有静音入口(会话列表右键、设置面板、子区设置)都经此,
+  // await 成功后单发,携带方向 action(mute/unmute)。此前挂在 BodyRules body 通道会双计,
+  // 已删除 body 规则;改到这里统一命令式单通道(见 M3)。
+  Dap.shared.track("conversation_muted", { action: params.mute ? "mute" : "unmute" });
 }
 
 export async function topChannelSetting(params: {
@@ -510,6 +515,9 @@ export async function topChannelSetting(params: {
   runtime?: ChannelSettingActionRuntime;
 }) {
   await runtimeOrDefault(params.runtime).topChannel(params.channel, params.top);
+  // conversation_pinned 收口点:同 conversation_muted,覆盖列表右键 + 设置面板置顶开关,
+  // await 成功后单发,携带方向 action(pin/unpin)(见 M3)。
+  Dap.shared.track("conversation_pinned", { action: params.top ? "pin" : "unpin" });
 }
 
 export async function saveChannelSetting(params: {
