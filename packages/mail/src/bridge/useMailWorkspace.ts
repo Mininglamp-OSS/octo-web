@@ -97,8 +97,6 @@ export default function useMailWorkspace(
   const foregroundRequestCountRef = useRef(0);
   const pendingForegroundRefreshRef = useRef(false);
   const errorSourceRef = useRef<WorkspaceErrorSource | null>(null);
-  const messagesRef = useRef(messages);
-  const selectedMessageIdRef = useRef(selectedMessageId);
 
   const clearWorkspaceError = useCallback((source?: WorkspaceErrorSource) => {
     if (source && errorSourceRef.current !== source) return;
@@ -112,11 +110,6 @@ export default function useMailWorkspace(
     },
     [fallbackError]
   );
-
-  useEffect(() => {
-    messagesRef.current = messages;
-    selectedMessageIdRef.current = selectedMessageId;
-  }, [messages, selectedMessageId]);
 
   const reload = useCallback(() => {
     pendingForegroundRefreshRef.current = true;
@@ -384,44 +377,16 @@ export default function useMailWorkspace(
           .then((response) => {
             if (request !== requestRef.current) return;
             const responseMessages = response.messages ?? [];
-            const selectedMessageId = selectedMessageIdRef.current;
-            const selectedMessage = messagesRef.current.find(
-              (message) => message.id === selectedMessageId
-            );
-            const preserveSelectedMessage =
-              messagesRefreshSilent &&
-              unreadOnly &&
-              selectedMessage &&
-              !selectedMessage.unread &&
-              !responseMessages.some(
-                (message) => message.id === selectedMessage.id
-              );
-            const nextMessages = preserveSelectedMessage
-              ? [...responseMessages]
-              : responseMessages;
-            if (preserveSelectedMessage) {
-              const previousIndex = messagesRef.current.findIndex(
-                (message) => message.id === selectedMessage.id
-              );
-              nextMessages.splice(
-                Math.min(Math.max(previousIndex, 0), nextMessages.length),
-                0,
-                selectedMessage
-              );
-            }
-            messagesRef.current = nextMessages;
-            setMessages(nextMessages);
+            setMessages(responseMessages);
             setTotal(response.total ?? 0);
             if (messagesRefreshSilent) clearWorkspaceError("messages");
-            setSelectedMessageId((current) => {
-              const nextSelectedMessageId =
-                current &&
-                nextMessages.some((message) => message.id === current)
-                  ? current
-                  : "";
-              selectedMessageIdRef.current = nextSelectedMessageId;
-              return nextSelectedMessageId;
-            });
+            setSelectedMessageId((current) =>
+              messagesRefreshSilent ||
+              (current &&
+                responseMessages.some((message) => message.id === current))
+                ? current
+                : ""
+            );
           })
           .catch((reason) => {
             if (controller.signal.aborted || request !== requestRef.current)

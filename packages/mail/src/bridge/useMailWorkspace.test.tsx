@@ -394,18 +394,48 @@ describe("useMailWorkspace read state", () => {
     await waitFor(() => expect(result.current.total).toBe(1));
     expect(result.current.selectedMessageId).toBe("E1");
     expect(result.current.messages.map((message) => message.id)).toEqual([
-      "E1",
       "E2",
     ]);
     expect(result.current.loading).toBe(false);
 
     act(() => result.current.reload());
-    await waitFor(() =>
-      expect(result.current.messages.map((message) => message.id)).toEqual([
-        "E2",
-      ])
-    );
-    expect(result.current.selectedMessageId).toBe("");
+    await waitFor(() => expect(result.current.selectedMessageId).toBe(""));
+    unmount();
+  });
+
+  it("keeps the selection when a silent refresh moves it off the page", async () => {
+    const { result, unmount } = renderHook(() => useMailWorkspace("fallback"));
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+    act(() => result.current.selectMessage("E1"));
+
+    testState.getState.mockResolvedValue("2");
+    testState.listMessages.mockResolvedValue({
+      messages: [
+        {
+          id: "E2",
+          mailbox: "Inbox",
+          subject: "New message",
+          from: "new@example.test",
+          to: ["agent@example.test"],
+          preview: "new body",
+          receivedAt: "2026-08-10T00:01:00Z",
+          size: 8,
+          keywords: [],
+          unread: true,
+        },
+      ],
+      total: 1,
+      offset: 0,
+      limit: 30,
+    });
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+
+    await waitFor(() => expect(result.current.messages[0]?.id).toBe("E2"));
+    expect(result.current.selectedMessageId).toBe("E1");
+    expect(result.current.loading).toBe(false);
+
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.selectedMessageId).toBe(""));
     unmount();
   });
 });
