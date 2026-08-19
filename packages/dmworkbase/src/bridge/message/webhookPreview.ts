@@ -18,7 +18,11 @@ function isTrustedFleetHost(url: URL, baseUrl: string): boolean {
   } catch {
     return false;
   }
-  return url.origin === base.origin || FLEET_PREVIEW_HOSTS.has(url.hostname);
+  // Some on-prem deployments are reached through HTTPS externally while the
+  // backend still emits the matching HTTP Fleet URL. Treat the same host as
+  // trusted across that protocol boundary, but keep rejecting other hosts and
+  // explicit ports.
+  return url.host === base.host || FLEET_PREVIEW_HOSTS.has(url.hostname);
 }
 
 function decodePathSegment(value: string): string {
