@@ -8,7 +8,11 @@ import type { MailAddressManagementViewProps } from "../ui/MailAddressManagement
 
 const state = vi.hoisted(() => ({
   emit: vi.fn(),
-  t: (key: string) => key,
+  t: vi.fn(
+    (key: string, _options?: { values?: Record<string, unknown> }): string =>
+      key
+  ),
+  sanitizeShellSpaceId: vi.fn((value: string) => value),
   getRegistration: vi.fn(),
   createMailbox: vi.fn(),
   revokeBinding: vi.fn(),
@@ -26,6 +30,10 @@ vi.mock("@octo/base", () => ({
     mittBus: { emit: state.emit },
     routeRight: { replaceToRoot: vi.fn(), push: vi.fn() },
   },
+}));
+
+vi.mock("@octo/base/src/Utils/spaceId", () => ({
+  sanitizeShellSpaceId: state.sanitizeShellSpaceId,
 }));
 
 vi.mock("../Service/MailService", () => ({
@@ -83,6 +91,8 @@ describe("MailAddressManagementFeature", () => {
     vi.clearAllMocks();
     resetAgentMailboxContextForTests();
     state.shared.currentSpaceId = "space-a";
+    state.t.mockImplementation((key: string) => key);
+    state.sanitizeShellSpaceId.mockImplementation((value: string) => value);
     state.viewProps = null;
     state.getRegistration.mockResolvedValue({
       mailboxes: [],
@@ -97,6 +107,10 @@ describe("MailAddressManagementFeature", () => {
       outboundMode: "manual_confirmation",
     });
     container = document.createElement("div");
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
     root = createRoot(container);
   });
 
@@ -121,6 +135,108 @@ describe("MailAddressManagementFeature", () => {
 
     expect(state.createMailbox).toHaveBeenCalledWith("support");
     expect(state.emit).toHaveBeenCalledWith("mail-refresh");
+  });
+
+  it("switches from the existing OpenClaw prompt to the CLI prompt", async () => {
+    await act(async () => {
+      root.render(<MailAddressManagementFeature />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    act(() => state.viewProps?.onConnect(mailboxB));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(state.viewProps).toMatchObject({
+      createdMailbox: mailboxB,
+      setupMethod: "openclaw",
+      setupPrompt: "mail.agentMailboxes.setupPrompt",
+    });
+
+    act(() => state.viewProps?.onSetupMethodChange("cli"));
+    expect(state.viewProps).toMatchObject({
+      createdMailbox: mailboxB,
+      setupMethod: "cli",
+      setupPrompt: "mail.agentMailboxes.cliSetupPrompt",
+    });
+
+    await act(async () => {
+      state.viewProps?.onCopySetupPrompt();
+      await Promise.resolve();
+    });
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "mail.agentMailboxes.cliSetupPrompt"
+    );
+  });
+
+  it("uses the shell-safe Space id for both setup prompts", async () => {
+    state.shared.currentSpaceId = "space;id";
+    state.sanitizeShellSpaceId.mockReturnValue("<space-id>");
+    state.t.mockImplementation((key, options) => {
+      if (
+        key === "mail.agentMailboxes.setupPrompt" ||
+        key === "mail.agentMailboxes.cliSetupPrompt"
+      ) {
+        return `${key}:${String(options?.values?.spaceId)}`;
+      }
+      return key;
+    });
+
+    await act(async () => {
+      root.render(<MailAddressManagementFeature />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    act(() => state.viewProps?.onConnect(mailboxB));
+    expect(state.sanitizeShellSpaceId).toHaveBeenCalledWith("space;id");
+    expect(state.viewProps?.setupPrompt).toBe(
+      "mail.agentMailboxes.setupPrompt:<space-id>"
+    );
+
+    act(() => state.viewProps?.onSetupMethodChange("cli"));
+    expect(state.viewProps?.setupPrompt).toBe(
+      "mail.agentMailboxes.cliSetupPrompt:<space-id>"
+    );
+  });
+
+  it("ignores a stale copy result after switching setup methods", async () => {
+    const clipboardWrite = deferred<void>();
+    vi.mocked(navigator.clipboard.writeText).mockReturnValue(
+      clipboardWrite.promise
+    );
+
+    await act(async () => {
+      root.render(<MailAddressManagementFeature />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    act(() => state.viewProps?.onConnect(mailboxB));
+    act(() => {
+      state.viewProps?.onCopySetupPrompt();
+      state.viewProps?.onSetupMethodChange("cli");
+    });
+
+    await act(async () => {
+      clipboardWrite.resolve();
+      await clipboardWrite.promise;
+    });
+
+    expect(state.viewProps).toMatchObject({
+      setupMethod: "cli",
+      promptCopied: false,
+    });
+
+    vi.mocked(navigator.clipboard.writeText).mockResolvedValue(undefined);
+    await act(async () => {
+      state.viewProps?.onCopySetupPrompt();
+      await Promise.resolve();
+    });
+    expect(state.viewProps?.promptCopied).toBe(true);
   });
 
   it.each(["disconnect", "automation", "delete"] as const)(

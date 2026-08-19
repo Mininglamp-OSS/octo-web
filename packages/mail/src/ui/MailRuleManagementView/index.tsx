@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   ArrowLeft,
@@ -15,6 +15,9 @@ import {
 import type {
   AgentMailbox,
   MailRule,
+  MailRuleCondition,
+  MailRuleConditionField,
+  MailRuleConditionOperator,
   MailRuleInput,
 } from "../../bridge/types";
 import { splitAddresses } from "../../utils";
@@ -40,40 +43,66 @@ export interface MailRuleManagementViewProps {
   onDelete: (rule: MailRule) => void;
 }
 
+interface EditorCondition extends MailRuleCondition {
+  editorId: string;
+}
+
+interface EditorTarget {
+  editorId: string;
+  value: string;
+}
+
 interface EditorState {
   ruleId?: string;
   name: string;
-  matchFrom: string;
-  matchSubject: string;
-  targets: string;
+  matchMode: "all" | "any";
+  conditions: EditorCondition[];
+  targets: EditorTarget[];
   enabled: boolean;
   priority: number;
 }
 
-const emptyEditor: EditorState = {
-  name: "",
-  matchFrom: "",
-  matchSubject: "",
-  targets: "",
-  enabled: true,
-  priority: 0,
-};
-
 function summarizeConditions(rule: MailRule, t: Translator): string {
-  const conditions: string[] = [];
-  if (rule.matchFrom) {
-    conditions.push(
-      t("mail.rules.summary.from", { values: { value: rule.matchFrom } })
-    );
-  }
-  if (rule.matchSubject) {
-    conditions.push(
-      t("mail.rules.summary.subject", {
-        values: { value: rule.matchSubject },
-      })
-    );
-  }
-  return conditions.join(t("mail.rules.summary.and"));
+  const conditions = effectiveConditions(rule).map((condition) =>
+    t("mail.rules.summary.condition", {
+      values: {
+        field: t(`mail.rules.${condition.field}`),
+        operator: t(`mail.rules.${condition.operator}`),
+        value: condition.value,
+      },
+    })
+  );
+  return conditions.join(
+    t(
+      rule.matchMode === "any"
+        ? "mail.rules.summary.or"
+        : "mail.rules.summary.and"
+    )
+  );
+}
+
+const conditionFields: MailRuleConditionField[] = [
+  "subject",
+  "body",
+  "subject_or_body",
+  "from",
+  "to",
+];
+
+function effectiveConditions(rule: MailRule): MailRuleCondition[] {
+  if (rule.conditions?.length) return rule.conditions;
+  return [
+    ...(rule.matchFrom
+      ? ([
+          { field: "from", operator: "equals", value: rule.matchFrom },
+        ] as MailRuleCondition[])
+      : []),
+    ...(rule.matchSubject
+      ? ([
+          { field: "subject", operator: "contains", value: rule.matchSubject },
+        ] as MailRuleCondition[])
+      : []),
+  ];
 }
 
 export default function MailRuleManagementView(
@@ -81,33 +110,88 @@ export default function MailRuleManagementView(
 ) {
   const { t } = props;
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const targets = useMemo(
-    () => splitAddresses(editor?.targets || ""),
-    [editor?.targets]
+  const [pendingDelete, setPendingDelete] = useState<MailRule | null>(null);
+  const editorRowSequenceRef = useRef(0);
+
+  const createEditorId = () => {
+    editorRowSequenceRef.current += 1;
+    return `mail-rule-editor-row-${editorRowSequenceRef.current}`;
+  };
+  const createEditorCondition = (
+    condition: MailRuleCondition
+  ): EditorCondition => ({ ...condition, editorId: createEditorId() });
+  const createEditorTarget = (value: string): EditorTarget => ({
+    value,
+    editorId: createEditorId(),
+  });
+  const createEmptyEditor = (): EditorState => ({
+    name: "",
+    matchMode: "all",
+    conditions: [
+      createEditorCondition({
+        field: "from",
+        operator: "contains",
+        value: "",
+      }),
+    ],
+    targets: [createEditorTarget("")],
+    enabled: true,
+    priority: 0,
+  });
+
+  const targets = useMemo(() => {
+    if (!editor) return [];
+    return editor.targets.flatMap((target) => splitAddresses(target.value));
+  }, [editor]);
+  const conditionsValid = Boolean(
+    editor &&
+      editor.conditions.length > 0 &&
+      editor.conditions.length <= conditionFields.length &&
+      new Set(editor.conditions.map((condition) => condition.field)).size ===
+        editor.conditions.length &&
+      editor.conditions.every((condition) => condition.value.trim())
+  );
+  const targetRowsValid = Boolean(
+    editor &&
+      editor.targets.length > 0 &&
+      editor.targets.every(
+        (target) =>
+          target.value.trim() !== "" &&
+          splitAddresses(target.value).length === 1
+      )
   );
   const valid = Boolean(
     editor?.name.trim() &&
-      (editor.matchFrom.trim() || editor.matchSubject.trim()) &&
+      conditionsValid &&
+      targetRowsValid &&
       targets.length > 0 &&
       targets.length <= 5
   );
 
   useEffect(() => {
-    if (!editor) return;
+    if (!editor && !pendingDelete) return;
     const close = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !props.saving) setEditor(null);
+      if (event.key !== "Escape") return;
+      if (pendingDelete) {
+        setPendingDelete(null);
+        return;
+      }
+      if (!props.saving) setEditor(null);
     };
     window.addEventListener("keydown", close);
     return () => window.removeEventListener("keydown", close);
-  }, [editor, props.saving]);
+  }, [editor, pendingDelete, props.saving]);
 
   const edit = (rule: MailRule) => {
     setEditor({
       ruleId: rule.id,
       name: rule.name,
-      matchFrom: rule.matchFrom || "",
-      matchSubject: rule.matchSubject || "",
-      targets: rule.forwardTargets.join(", "),
+      matchMode: rule.matchMode || "all",
+      conditions: effectiveConditions(rule).map(createEditorCondition),
+      targets:
+        rule.forwardTargets.length > 0
+          ? rule.forwardTargets.map(createEditorTarget)
+          : [createEditorTarget("")],
       enabled: rule.enabled,
       priority: rule.priority,
     });
@@ -120,8 +204,12 @@ export default function MailRuleManagementView(
         name: editor.name.trim(),
         enabled: editor.enabled,
         priority: editor.priority,
-        matchFrom: editor.matchFrom.trim() || undefined,
-        matchSubject: editor.matchSubject.trim() || undefined,
+        matchMode: editor.matchMode,
+        conditions: editor.conditions.map(({ field, operator, value }) => ({
+          field,
+          operator,
+          value: value.trim(),
+        })),
         forwardTargets: targets,
       },
       editor.ruleId
@@ -162,7 +250,7 @@ export default function MailRuleManagementView(
         <button
           className="octo-mail-rules__create"
           type="button"
-          onClick={() => setEditor({ ...emptyEditor })}
+          onClick={() => setEditor(createEmptyEditor())}
         >
           <Plus size={16} />
           {t("mail.rules.create")}
@@ -217,7 +305,10 @@ export default function MailRuleManagementView(
             </span>
             <strong>{t("mail.rules.emptyTitle")}</strong>
             <span>{t("mail.rules.emptyDescription")}</span>
-            <button type="button" onClick={() => setEditor({ ...emptyEditor })}>
+            <button
+              type="button"
+              onClick={() => setEditor(createEmptyEditor())}
+            >
               <Plus size={15} />
               {t("mail.rules.create")}
             </button>
@@ -284,7 +375,7 @@ export default function MailRuleManagementView(
                   type="button"
                   disabled={props.deletingId === rule.id}
                   aria-label={t("mail.actions.delete")}
-                  onClick={() => props.onDelete(rule)}
+                  onClick={() => setPendingDelete(rule)}
                 >
                   {props.deletingId === rule.id ? (
                     <LoaderCircle className="is-spinning" size={16} />
@@ -350,52 +441,250 @@ export default function MailRuleManagementView(
               <section className="octo-mail-rule-builder">
                 <header>
                   <strong>{t("mail.rules.conditionsTitle")}</strong>
-                  <span>{t("mail.rules.matchAll")}</span>
-                </header>
-                <p>{t("mail.rules.conditionsHint")}</p>
-                <label className="octo-mail-rule-builder__row">
-                  <span>{t("mail.rules.from")}</span>
-                  <span>{t("mail.rules.equals")}</span>
-                  <input
-                    value={editor.matchFrom}
-                    placeholder={t("mail.rules.fromPlaceholder")}
-                    onChange={(event) =>
-                      setEditor({ ...editor, matchFrom: event.target.value })
-                    }
-                  />
-                </label>
-                <label className="octo-mail-rule-builder__row">
-                  <span>{t("mail.rules.subject")}</span>
-                  <span>{t("mail.rules.contains")}</span>
-                  <input
-                    value={editor.matchSubject}
-                    placeholder={t("mail.rules.subjectPlaceholder")}
+                  <select
+                    aria-label={t("mail.rules.matchMode")}
+                    value={editor.matchMode}
                     onChange={(event) =>
                       setEditor({
                         ...editor,
-                        matchSubject: event.target.value,
+                        matchMode: event.target.value as "all" | "any",
                       })
                     }
-                  />
-                </label>
+                  >
+                    <option value="all">{t("mail.rules.matchAll")}</option>
+                    <option value="any">{t("mail.rules.matchAny")}</option>
+                  </select>
+                  <button
+                    type="button"
+                    disabled={
+                      editor.conditions.length >= conditionFields.length
+                    }
+                    onClick={() => {
+                      const next = conditionFields.find(
+                        (field) =>
+                          !editor.conditions.some(
+                            (condition) => condition.field === field
+                          )
+                      );
+                      if (next) {
+                        setEditor({
+                          ...editor,
+                          conditions: [
+                            ...editor.conditions,
+                            createEditorCondition({
+                              field: next,
+                              operator: "contains",
+                              value: "",
+                            }),
+                          ],
+                        });
+                      }
+                    }}
+                  >
+                    <Plus size={14} />
+                    {t("mail.rules.addCondition")}
+                  </button>
+                </header>
+                {editor.conditions.map((condition, index) => (
+                  <div
+                    className="octo-mail-rule-builder__row"
+                    key={condition.editorId}
+                  >
+                    <select
+                      aria-label={`${t("mail.rules.conditionType")} ${
+                        index + 1
+                      }`}
+                      value={condition.field}
+                      onChange={(event) => {
+                        const field = event.target
+                          .value as MailRuleConditionField;
+                        const nextConditions = [...editor.conditions];
+                        nextConditions[index] = {
+                          ...condition,
+                          field,
+                          operator:
+                            condition.operator === "equals" && field !== "from"
+                              ? "contains"
+                              : condition.operator,
+                        };
+                        setEditor({
+                          ...editor,
+                          conditions: nextConditions,
+                        });
+                      }}
+                    >
+                      <optgroup label={t("mail.rules.conditionGroupContent")}>
+                        {(["subject", "body", "subject_or_body"] as const).map(
+                          (field) => (
+                            <option
+                              value={field}
+                              key={field}
+                              disabled={
+                                field !== condition.field &&
+                                editor.conditions.some(
+                                  (item) => item.field === field
+                                )
+                              }
+                            >
+                              {t(`mail.rules.${field}`)}
+                            </option>
+                          )
+                        )}
+                      </optgroup>
+                      <optgroup label={t("mail.rules.conditionGroupPeople")}>
+                        {(["from", "to"] as const).map((field) => (
+                          <option
+                            value={field}
+                            key={field}
+                            disabled={
+                              field !== condition.field &&
+                              editor.conditions.some(
+                                (item) => item.field === field
+                              )
+                            }
+                          >
+                            {t(`mail.rules.${field}`)}
+                          </option>
+                        ))}
+                      </optgroup>
+                    </select>
+                    <select
+                      aria-label={`${t("mail.rules.conditionOperator")} ${
+                        index + 1
+                      }`}
+                      value={condition.operator}
+                      onChange={(event) => {
+                        const nextConditions = [...editor.conditions];
+                        nextConditions[index] = {
+                          ...condition,
+                          operator: event.target
+                            .value as MailRuleConditionOperator,
+                        };
+                        setEditor({ ...editor, conditions: nextConditions });
+                      }}
+                    >
+                      {condition.operator === "equals" ? (
+                        <option value="equals" hidden>
+                          {t("mail.rules.equals")}
+                        </option>
+                      ) : null}
+                      <option value="contains">
+                        {t("mail.rules.contains")}
+                      </option>
+                      <option value="not_contains">
+                        {t("mail.rules.not_contains")}
+                      </option>
+                    </select>
+                    <input
+                      aria-label={`${t(`mail.rules.${condition.field}`)} ${
+                        index + 1
+                      }`}
+                      value={condition.value}
+                      maxLength={500}
+                      placeholder={t(
+                        `mail.rules.${condition.field}Placeholder`
+                      )}
+                      onChange={(event) => {
+                        const nextConditions = [...editor.conditions];
+                        nextConditions[index] = {
+                          ...condition,
+                          value: event.target.value,
+                        };
+                        setEditor({
+                          ...editor,
+                          conditions: nextConditions,
+                        });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`${t("mail.rules.deleteCondition")} ${
+                        index + 1
+                      }`}
+                      onClick={() =>
+                        setEditor({
+                          ...editor,
+                          conditions: editor.conditions.filter(
+                            (_, itemIndex) => itemIndex !== index
+                          ),
+                        })
+                      }
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+                <p>
+                  {t("mail.rules.conditionsHint", {
+                    values: {
+                      count: editor.conditions.length,
+                      limit: conditionFields.length,
+                    },
+                  })}
+                </p>
               </section>
 
               <section className="octo-mail-rule-builder is-action">
                 <header>
                   <strong>{t("mail.rules.actionsTitle")}</strong>
-                </header>
-                <label className="octo-mail-rule-builder__row is-action">
-                  <span>{t("mail.rules.forwardTo")}</span>
-                  <textarea
-                    rows={2}
-                    value={editor.targets}
-                    placeholder={t("mail.rules.targetsPlaceholder")}
-                    onChange={(event) =>
-                      setEditor({ ...editor, targets: event.target.value })
+                  <button
+                    type="button"
+                    disabled={editor.targets.length >= 5}
+                    onClick={() =>
+                      setEditor({
+                        ...editor,
+                        targets: [...editor.targets, createEditorTarget("")],
+                      })
                     }
-                  />
-                </label>
-                <p className={targets.length > 5 ? "is-invalid" : undefined}>
+                  >
+                    <Plus size={14} />
+                    {t("mail.rules.addAction")}
+                  </button>
+                </header>
+                {editor.targets.map((target, index) => (
+                  <div
+                    className="octo-mail-rule-builder__row is-action"
+                    key={target.editorId}
+                  >
+                    <span>{t("mail.rules.forwardTo")}</span>
+                    <input
+                      aria-label={`${t("mail.rules.forwardTo")} ${index + 1}`}
+                      value={target.value}
+                      placeholder={t("mail.rules.targetPlaceholder")}
+                      onChange={(event) => {
+                        const nextTargets = [...editor.targets];
+                        nextTargets[index] = {
+                          ...target,
+                          value: event.target.value,
+                        };
+                        setEditor({ ...editor, targets: nextTargets });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`${t("mail.rules.deleteAction")} ${
+                        index + 1
+                      }`}
+                      onClick={() =>
+                        setEditor({
+                          ...editor,
+                          targets: editor.targets.filter(
+                            (_, itemIndex) => itemIndex !== index
+                          ),
+                        })
+                      }
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                ))}
+                <p
+                  className={
+                    targets.length > 5 || !targetRowsValid
+                      ? "is-invalid"
+                      : undefined
+                  }
+                >
                   {t("mail.rules.targetsHint", {
                     values: { count: targets.length },
                   })}
@@ -432,6 +721,57 @@ export default function MailRuleManagementView(
                   <LoaderCircle className="is-spinning" size={16} />
                 ) : null}
                 {t(editor.ruleId ? "mail.actions.save" : "mail.rules.create")}
+              </button>
+            </footer>
+          </section>
+        </div>
+      ) : null}
+
+      {pendingDelete ? (
+        <div
+          className="octo-mail-rule-confirm"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="octo-mail-rule-confirm-title"
+          aria-describedby="octo-mail-rule-confirm-description"
+        >
+          <button
+            className="octo-mail-rule-confirm__backdrop"
+            type="button"
+            aria-label={t("mail.actions.cancel")}
+            onClick={() => setPendingDelete(null)}
+          />
+          <section className="octo-mail-rule-confirm__panel">
+            <span className="octo-mail-rule-confirm__icon">
+              <Trash2 size={21} />
+            </span>
+            <div className="octo-mail-rule-confirm__content">
+              <h2 id="octo-mail-rule-confirm-title">
+                {t("mail.rules.deleteTitle")}
+              </h2>
+              <p id="octo-mail-rule-confirm-description">
+                {t("mail.rules.deleteConfirm", {
+                  values: { name: pendingDelete.name },
+                })}
+              </p>
+            </div>
+            <footer>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setPendingDelete(null)}
+              >
+                {t("mail.actions.cancel")}
+              </button>
+              <button
+                className="is-danger"
+                type="button"
+                onClick={() => {
+                  props.onDelete(pendingDelete);
+                  setPendingDelete(null);
+                }}
+              >
+                {t("mail.actions.delete")}
               </button>
             </footer>
           </section>

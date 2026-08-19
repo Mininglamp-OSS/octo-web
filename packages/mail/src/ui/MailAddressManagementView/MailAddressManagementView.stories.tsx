@@ -29,6 +29,9 @@ const copy: Record<string, string> = {
   "mail.agentMailboxes.connectTitle": "Agent 一键接入",
   "mail.agentMailboxes.createdTitle": "地址已创建，去接入 Agent",
   "mail.agentMailboxes.createdAddress": "邮箱地址：support@demo.octo.test",
+  "mail.agentMailboxes.setupMethod": "选择接入方式",
+  "mail.agentMailboxes.openClawSetup": "OpenClaw 接入",
+  "mail.agentMailboxes.cliSetup": "octo-cli 接入",
   "mail.agentMailboxes.copyPromptTitle": "复制提示词，发送给 Agent",
   "mail.agentMailboxes.copyPromptDescription":
     "请将以下提示词发送到你选择的 Bot 对话窗口，根据引导完成配置。",
@@ -82,6 +85,7 @@ const meta = {
     maxMailboxes: 2,
     copiedId: "",
     createdMailbox: null,
+    setupMethod: "openclaw",
     setupPrompt:
       "请使用已安装的 OCTO Agent Mail 插件，调用 mail_connect，并在我完成网页批准后调用 mail_connection_status。",
     promptCopied: false,
@@ -94,6 +98,7 @@ const meta = {
     onCreate: () => undefined,
     onCopy: () => undefined,
     onCopySetupPrompt: () => undefined,
+    onSetupMethodChange: () => undefined,
     onConnect: () => undefined,
     onDisconnect: () => undefined,
     onDelete: () => undefined,

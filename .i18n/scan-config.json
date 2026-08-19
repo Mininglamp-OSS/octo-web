@@ -77,10 +77,6 @@
       "reason": "Agent prompt template for the Bot publish flow. Same rationale as installPrompt.ts above — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
     },
     {
-      "path": "packages/dmworkskillmarket/src/utils/publisher.ts",
-      "reason": "Publisher classification helper. The Chinese literal is a backend identity value used to recognize administrator-created records, not user-facing UI copy; the displayed label is localized separately."
-    },
-    {
       "path": "packages/dmworkmcp/src/utils/mcpBotPublishPrompt.ts",
       "reason": "Agent prompt template for the MCP marketplace publish flow. Same rationale as dmworkskillmarket/src/utils/botPublishPrompt.ts — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
     },

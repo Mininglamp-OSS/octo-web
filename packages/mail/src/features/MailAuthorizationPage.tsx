@@ -54,6 +54,7 @@ export default function MailAuthorizationPage({
     () => mailAuthorizeSpaceId(initialSearch),
     [initialSearch]
   );
+  const currentSpaceId = (WKApp.shared.currentSpaceId || "").trim();
   const [authorization, setAuthorization] =
     useState<AgentAuthorizationView | null>(null);
   const authorizationRequestRef = useRef<
@@ -69,6 +70,7 @@ export default function MailAuthorizationPage({
   const [error, setError] = useState("");
   const [botDisplayName, setBotDisplayName] = useState("");
   const [targetSpaceName, setTargetSpaceName] = useState("");
+  const [currentSpaceName, setCurrentSpaceName] = useState("");
   const [spaceMismatchConfirmed, setSpaceMismatchConfirmed] = useState(false);
   const preserveForLoginRef = useRef(false);
   const sessionExpirationHandledRef = useRef(false);
@@ -104,6 +106,7 @@ export default function MailAuthorizationPage({
   useEffect(() => {
     if (!spaceId) {
       setTargetSpaceName("");
+      setCurrentSpaceName("");
       return;
     }
     let active = true;
@@ -112,15 +115,22 @@ export default function MailAuthorizationPage({
       .then((spaces) => {
         if (!active) return;
         const target = spaces.find((space) => space.space_id === spaceId);
+        const current = spaces.find(
+          (space) => space.space_id === currentSpaceId
+        );
         setTargetSpaceName((target?.name || "").trim());
+        setCurrentSpaceName((current?.name || "").trim());
       })
       .catch(() => {
-        if (active) setTargetSpaceName("");
+        if (active) {
+          setTargetSpaceName("");
+          setCurrentSpaceName("");
+        }
       });
     return () => {
       active = false;
     };
-  }, [spaceId]);
+  }, [currentSpaceId, spaceId]);
 
   useEffect(() => {
     const generation = ++unmountCleanupGenerationRef.current;
@@ -363,7 +373,6 @@ export default function MailAuthorizationPage({
     : authorization?.mailboxes ?? [];
   const connected = phase === "connected";
   const connecting = phase === "connecting";
-  const currentSpaceId = (WKApp.shared.currentSpaceId || "").trim();
   const spaceMismatch = Boolean(
     currentSpaceId && spaceId && currentSpaceId !== spaceId
   );
@@ -418,7 +427,10 @@ export default function MailAuthorizationPage({
             />
             <span>
               {t("mail.authorization.spaceMismatchConfirmation", {
-                values: { currentSpaceId, targetSpaceId: spaceId },
+                values: {
+                  currentSpaceName: currentSpaceName || currentSpaceId,
+                  targetSpaceName: targetSpaceName || spaceId,
+                },
               })}
             </span>
           </label>
