@@ -1017,3 +1017,161 @@ export async function getMemberCandidates(params?: { keyword?: string }): Promis
     const data = await get<MemberCandidate[]>('/summary-member-candidates', params as Record<string, unknown>);
     return data || [];
 }
+
+// ─── Document AI 速览 (ephemeral streaming preview) ───────────────────────────
+//
+// POST /summary/api/v1/summaries/document/preview — streams an AI 速览 for a single
+// document over SSE. Backend never persists anything (no Summary Task), so this is a
+// throwaway quick-glance, not a deliverable. Events: `delta` (content chunk), `done`,
+// `error`. Same SSE-over-POST consumption as agentChatStream (EventSource can't POST).
+
+export interface DocumentPreviewParams {
+    documentId: string;
+    version?: string;
+    /** Viewer's current space; falls back to WKApp.shared.currentSpaceId. */
+    spaceId?: string;
+}
+
+export interface DocumentPreviewHandlers {
+    /** A content chunk arrived — append to the rendered markdown. */
+    onDelta?: (text: string) => void;
+    /** Stream finished cleanly. */
+    onDone?: () => void;
+    /** Fetch/stream/generation failed, or the stream closed without `done`. */
+    onError?: (err: { code?: number; message: string }) => void;
+}
+
+export function streamDocumentPreview(
+    params: DocumentPreviewParams,
+    handlers: DocumentPreviewHandlers,
+): { close: () => void } {
+    let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+    let aborted = false;
+
+    const url = `${resolveSummaryBaseURL()}${BASE}/summaries/document/preview`;
+    const token = WKApp.loginInfo.token;
+    const spaceId = params.spaceId || WKApp.shared.currentSpaceId;
+
+    const dispatch = (event: string, data: string) => {
+        if (event === 'delta') {
+            try {
+                const parsed = JSON.parse(data) as { content?: string };
+                if (parsed.content) handlers.onDelta?.(parsed.content);
+            } catch {
+                // ignore malformed delta frame
+            }
+        } else if (event === 'done') {
+            handlers.onDone?.();
+        } else if (event === 'error') {
+            let message = '文档速览生成失败';
+            try {
+                const parsed = JSON.parse(data) as { content?: string; message?: string };
+                message = parsed.content || parsed.message || message;
+            } catch {
+                // keep default message
+            }
+            handlers.onError?.({ code: 50000, message });
+        }
+    };
+
+    (async () => {
+        try {
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+                'Accept': 'text/event-stream',
+                'Accept-Language': buildAcceptLanguage(),
+            };
+            if (token) headers['token'] = token;
+            if (spaceId) headers['X-Space-Id'] = spaceId;
+
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ document_id: params.documentId, version: params.version }),
+            });
+
+            if (resp.status === 401) {
+                WKApp.shared.logout();
+                handlers.onError?.({ code: 401, message: 'Unauthorized' });
+                return;
+            }
+            if (!resp.ok) {
+                const text = await resp.text();
+                let errMsg = `HTTP ${resp.status}`;
+                try {
+                    const json = JSON.parse(text);
+                    errMsg = json?.message || errMsg;
+                } catch {
+                    // non-JSON body; keep HTTP status
+                }
+                handlers.onError?.({ code: resp.status, message: errMsg });
+                return;
+            }
+            if (!resp.body) {
+                handlers.onError?.({ code: 50000, message: 'Response body is null' });
+                return;
+            }
+
+            reader = resp.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            let buffer = '';
+            let pendingEvent = '';
+            let pendingData = '';
+            let receivedDone = false;
+
+            while (!aborted) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                // Normalize CRLF/CR → LF before splitting on \n (see agentChatStream / SUM-850).
+                const lines = buffer.replace(/\r\n?/g, '\n').split('\n');
+                buffer = lines.pop() || '';
+                for (const line of lines) {
+                    if (line.startsWith('event:')) {
+                        pendingEvent = line.slice(6).trim();
+                    } else if (line.startsWith('data:')) {
+                        pendingData += (pendingData ? '\n' : '') + line.slice(5).trim();
+                    } else if (line === '') {
+                        if (pendingEvent && pendingData) {
+                            if (pendingEvent === 'done') receivedDone = true;
+                            dispatch(pendingEvent, pendingData);
+                        }
+                        pendingEvent = '';
+                        pendingData = '';
+                    }
+                }
+            }
+            // Tail flush for a final frame not terminated by a blank line.
+            if (!aborted) {
+                if (buffer) {
+                    const trailing = buffer.replace(/\r\n?/g, '\n');
+                    if (trailing.startsWith('event:')) {
+                        pendingEvent = trailing.slice(6).trim();
+                    } else if (trailing.startsWith('data:')) {
+                        pendingData += (pendingData ? '\n' : '') + trailing.slice(5).trim();
+                    }
+                }
+                if (pendingEvent && pendingData) {
+                    if (pendingEvent === 'done') receivedDone = true;
+                    dispatch(pendingEvent, pendingData);
+                }
+            }
+            if (!aborted && !receivedDone) {
+                handlers.onError?.({ code: 50000, message: 'stream closed without done' });
+            }
+        } catch (err: unknown) {
+            if (aborted) return; // user closed the panel — not an error
+            const msg = err instanceof Error ? err.message : String(err);
+            handlers.onError?.({ code: 50000, message: msg });
+        } finally {
+            reader?.releaseLock();
+        }
+    })();
+
+    return {
+        close: () => {
+            aborted = true;
+            reader?.cancel();
+        },
+    };
+}

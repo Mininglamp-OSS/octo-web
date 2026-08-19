@@ -2,6 +2,11 @@
   "name": "@dmwork/summary",
   "version": "1.0.0",
   "main": "src/index.tsx",
+  "exports": {
+    ".": "./src/index.tsx",
+    "./api": "./src/api/summaryApi.ts",
+    "./preview": "./src/preview/index.ts"
+  },
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc --noEmit"

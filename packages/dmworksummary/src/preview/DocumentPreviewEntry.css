@@ -1,0 +1,125 @@
+/* DocumentPreviewEntry — self-contained styles for the AI 速览 port.
+   All selectors are prefixed `dm-doc-preview-` to avoid colliding with the host. */
+
+.dm-doc-preview-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 28px;
+    padding: 0 10px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.dm-doc-preview-trigger:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+.dm-doc-preview-trigger.is-active {
+    background: rgba(59, 130, 246, 0.12);
+    color: #2563eb;
+}
+
+.dm-doc-preview-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.18);
+    display: flex;
+    justify-content: flex-end;
+}
+
+.dm-doc-preview-drawer {
+    width: 380px;
+    max-width: 92vw;
+    height: 100%;
+    background: #fff;
+    box-shadow: -2px 0 16px rgba(0, 0, 0, 0.12);
+    display: flex;
+    flex-direction: column;
+    animation: dm-doc-preview-slide-in 0.18s ease-out;
+}
+@keyframes dm-doc-preview-slide-in {
+    from { transform: translateX(24px); opacity: 0.6; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.dm-doc-preview-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+    flex: 0 0 auto;
+}
+.dm-doc-preview-title {
+    font-size: 14px;
+    font-weight: 600;
+}
+.dm-doc-preview-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dm-doc-preview-btn {
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid #e2e2e2;
+    border-radius: 6px;
+    background: #fff;
+    color: #333;
+    font-size: 12px;
+    cursor: pointer;
+}
+.dm-doc-preview-btn:hover {
+    background: #f5f5f5;
+}
+.dm-doc-preview-askbot {
+    border-color: #c7d2fe;
+    color: #2563eb;
+}
+
+.dm-doc-preview-body {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+    color: #1f2937;
+}
+.dm-doc-preview-hint {
+    color: #6b7280;
+    font-size: 13px;
+}
+.dm-doc-preview-error {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    color: #b91c1c;
+    font-size: 13px;
+}
+.dm-doc-preview-md :first-child {
+    margin-top: 0;
+}
+.dm-doc-preview-md h2 {
+    font-size: 15px;
+    margin: 14px 0 6px;
+}
+.dm-doc-preview-caret {
+    color: #9ca3af;
+    animation: dm-doc-preview-blink 1s steps(1) infinite;
+}
+@keyframes dm-doc-preview-blink {
+    50% { opacity: 0; }
+}
+
+.dm-doc-preview-foot {
+    flex: 0 0 auto;
+    padding: 12px 16px;
+    border-top: 1px solid #eee;
+}
