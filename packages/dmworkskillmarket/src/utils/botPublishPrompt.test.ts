@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { getBotPublishPrompt } from "./botPublishPrompt";
 
+const credentialDiscoveryBlock = [
+  "凭据查找仅限以下方式：",
+  "   当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明；",
+  "   环境变量 `OCTO_BOT_TOKEN`；",
+  "   当前工作目录 `.env` 中的 `OCTO_BOT_TOKEN`，且只读取该项。",
+].join("\n");
+
+function hasClosedCredentialDiscovery(prompt: string): boolean {
+  const start = prompt.indexOf("凭据查找仅限以下方式：");
+  const end = prompt.indexOf("\n   找到后", start);
+  return start >= 0 && end > start && prompt.slice(start, end) === credentialDiscoveryBlock;
+}
+
 describe("getBotPublishPrompt", () => {
   it("requires the user to provide an accessible package before publishing", () => {
     const prompt = getBotPublishPrompt({
@@ -14,14 +27,36 @@ describe("getBotPublishPrompt", () => {
     expect(prompt).toContain("Skill 包或 Skill 目录位置");
     expect(prompt).not.toContain("点击输入框旁");
     expect(prompt).not.toContain("拖入当前对话");
-    expect(prompt).toContain("用户提供前不要搜索磁盘或猜测路径");
+    expect(prompt).toContain("用户提供前不要为查找 Skill 包搜索磁盘或猜测路径");
     expect(prompt).not.toContain("<skill-package-path>");
     expect(prompt).not.toContain("<skill-zip-path>");
     expect(prompt).toContain("Space ID：`space-1`");
+    expect(prompt).toContain("OCTO_BOT_TOKEN");
+    expect(prompt).toContain(credentialDiscoveryBlock);
+    expect(hasClosedCredentialDiscovery(prompt)).toBe(true);
+    expect(prompt).not.toContain("~/.openclaw/");
+    expect(prompt).toContain("当前工作目录 `.env` 中的 `OCTO_BOT_TOKEN`，且只读取该项");
+    expect(prompt).toContain("或把该项以外的内容传入 stdin");
+    const promptWithExtraSource = prompt.replace("\n   找到后", "\n   其他来源；\n   找到后");
+    expect(hasClosedCredentialDiscovery(promptWithExtraSource)).toBe(false);
+    expect(prompt).toContain("octo-cli auth login");
+    expect(prompt).toContain("上述方式均无可用凭据时，立即停止自行查找并提示用户");
     expect(prompt).toContain('`skills.md` 中“Publish as a Bot”流程');
     expect(prompt).toContain("使用用户提供的附件、Skill 包路径或");
     expect(prompt).toContain("以上 Space ID、API 地址和可见范围是本次操作的权威输入");
     expect(prompt).not.toContain("在上传或覆盖现有 Skill 前，向用户展示");
     expect(prompt).not.toContain("go install github.com/Mininglamp-OSS/octo-cli");
+  });
+
+  it("falls back to a placeholder when spaceId is not shell-safe", () => {
+    const payload = "space-1$(whoami)";
+    const prompt = getBotPublishPrompt({
+      spaceId: payload,
+      apiBaseUrl: "https://octo.example.com/api",
+    });
+
+    expect(prompt).not.toContain(payload);
+    expect(prompt).toContain("- Space ID：`<space-id>`");
+    expect(prompt).toContain("--profile space-<space-id> --space <space-id>");
   });
 });

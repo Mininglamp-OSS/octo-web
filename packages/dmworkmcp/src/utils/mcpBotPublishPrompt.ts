@@ -56,20 +56,24 @@ export function getMcpBotPublishPrompt(values: McpBotPublishPromptValues = {}): 
 > 请提供要上架的 MCP 服务器信息（名称、传输方式 stdio/streamable-http/sse、URL 或启动命令、可选 headers / env），
 > 或提供一个 Agent 当前运行环境可访问的 MCP 配置文件路径。
 
-不要解释正在读取内容、复述本 Prompt 或逐步播报检查过程。用户提供前不要搜索磁盘或猜测路径。
+不要解释正在读取内容、复述本 Prompt 或逐步播报检查过程。用户提供前不要为查找 MCP 配置信息搜索磁盘或猜测路径。
 
 1. 运行 \`octo-cli version\`。如果未安装，运行
    \`npm install -g @mininglamp-oss/octo-cli@latest\`。
 
 2. 运行 \`octo-cli auth list\`，选择 \`space_id\` 等于 \`${spaceId}\` 的唯一 Profile。
-   如果不存在或无法唯一确定，从当前 Octo Channel 的安全环境或配置读取 Bot Token，
-   通过 stdin 登录或更新固定 Profile \`space-${spaceId}\`：
+   如果不存在或无法唯一确定，凭据查找仅限以下方式：
+   当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明；
+   环境变量 \`OCTO_BOT_TOKEN\`；
+   当前工作目录 \`.env\` 中的 \`OCTO_BOT_TOKEN\`，且只读取该项。
+   找到后，通过 stdin 登录或更新固定 Profile \`space-${spaceId}\`：
 
    \`\`\`bash
    <read-token> | octo-cli auth login --with-token --profile space-${spaceId} --space ${spaceId} --api-base-url ${apiBaseUrl}
    \`\`\`
 
-   不得输出 Token 或把 Token 放入命令参数。
+   不得输出 Token、把 Token 放入命令参数，或把该项以外的内容传入 stdin。
+   上述方式均无可用凭据时，立即停止自行查找并提示用户运行 \`octo-cli auth login\` 或为当前 Runtime 配置 Bot Token。
 
 3. 读取并遵循最新的 \`octo-marketplace\` Skill 中的 \`mcp.md\`：
 

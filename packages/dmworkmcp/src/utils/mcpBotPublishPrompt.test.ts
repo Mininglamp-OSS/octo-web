@@ -5,6 +5,19 @@ import {
   resolveMcpAPIBaseURL,
 } from "./mcpBotPublishPrompt";
 
+const credentialDiscoveryBlock = [
+  "凭据查找仅限以下方式：",
+  "   当前 Agent Runtime 已安装的 Skills、工具或凭据管理说明；",
+  "   环境变量 `OCTO_BOT_TOKEN`；",
+  "   当前工作目录 `.env` 中的 `OCTO_BOT_TOKEN`，且只读取该项。",
+].join("\n");
+
+function hasClosedCredentialDiscovery(prompt: string): boolean {
+  const start = prompt.indexOf("凭据查找仅限以下方式：");
+  const end = prompt.indexOf("\n   找到后", start);
+  return start >= 0 && end > start && prompt.slice(start, end) === credentialDiscoveryBlock;
+}
+
 describe("isValidMcpSpaceId — server space id gate", () => {
   it("accepts a canonical UUIDv4", () => {
     expect(isValidMcpSpaceId("11111111-2222-3333-4444-555555555555")).toBe(true);
@@ -97,6 +110,21 @@ describe("getMcpBotPublishPrompt — shell-safe interpolation", () => {
     // would then execute shell commands with the token in argv.
     const p = getMcpBotPublishPrompt({ spaceId: goodId });
     expect(p).toContain("不得输出 Token");
+  });
+
+  it("states runtime-neutral token lookup guidance", () => {
+    const p = getMcpBotPublishPrompt({ spaceId: goodId });
+    expect(p).toContain("OCTO_BOT_TOKEN");
+    expect(p).toContain(credentialDiscoveryBlock);
+    expect(hasClosedCredentialDiscovery(p)).toBe(true);
+    expect(p).not.toContain("~/.openclaw/");
+    expect(p).toContain("当前工作目录 `.env` 中的 `OCTO_BOT_TOKEN`，且只读取该项");
+    expect(p).toContain("或把该项以外的内容传入 stdin");
+    const promptWithExtraSource = p.replace("\n   找到后", "\n   其他来源；\n   找到后");
+    expect(hasClosedCredentialDiscovery(promptWithExtraSource)).toBe(false);
+    expect(p).toContain("octo-cli auth login");
+    expect(p).toContain("上述方式均无可用凭据时，立即停止自行查找并提示用户");
+    expect(p).toContain("用户提供前不要为查找 MCP 配置信息搜索磁盘或猜测路径");
   });
 
   it("uses the placeholder when apiBaseUrl is empty", () => {
