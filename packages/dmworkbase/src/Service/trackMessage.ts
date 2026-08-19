@@ -44,6 +44,8 @@ interface SendIntent {
     mentionedBots?: Array<{ id: string; type: string }>
     /** 消息 ID(供 message_replied 等事件补 message_id 属性) */
     messageId?: string
+    /** 被回复消息的作者是否为 AI/bot(供 message_replied 补 is_ai_msg;由生产者查 subscriber robot 标记得出) */
+    isReplyToAi?: boolean
     /** 当前登录用户 uid(供 ai_mentioned 补 user_id;由生产者从 WKApp.loginInfo 注入,避免 leaf import App) */
     userId?: string | null
 }
@@ -116,12 +118,17 @@ export function trackMessageSent(clientSeq: number | undefined): void {
         object_id: String(clientSeq), // client_seq 作 object_id
     }
     Dap.shared.track('message_sent', base)
-    // §IM 16:回复(reply)语义。message_id = 被回复消息的 ID(纯标识,非正文/内容);
-    // 无 reply 上下文时 intent.messageId 为 undefined,被 sanitizeProps 丢弃。
+    // §IM 16:回复(reply)语义。spec 关键属性 = {is_ai_msg, channel_id, actor_type}。
+    // message_id = 被回复消息的 ID(纯标识,非正文);无 reply 上下文时 intent.messageId
+    // 为 undefined,被 sanitizeProps 丢弃。is_ai_msg 由生产者查 subscriber robot 标记得出
+    // (被回复者是否 AI = 人机协作深度信号,驱动 T0/T1 分层);actor_type 恒 'human'(发送侧只有人类凭证)。
     if (intent.isReply) {
         Dap.shared.track('message_replied', {
             object_id: base.object_id,
             message_id: intent.messageId,
+            channel_id: intent.channelId,
+            actor_type: 'human',
+            is_ai_msg: intent.isReplyToAi ?? false,
         })
     }
     const bots = intent.mentionedBots || []

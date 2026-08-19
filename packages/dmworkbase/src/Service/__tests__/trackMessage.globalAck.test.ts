@@ -121,6 +121,44 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
         expect(mentioned.map((m) => m.props.bot_id)).toEqual(['bot-a', 'bot-b'])
     })
 
+    it('emits message_replied with spec 关键属性 {is_ai_msg, channel_id, actor_type} when isReply', async () => {
+        const { rememberSendIntent } = await freshTrack()
+
+        rememberSendIntent(104, {
+            channelId: 'g4',
+            channelType: 2,
+            mentionAis: false,
+            isReply: true,
+            messageId: 'm-777',
+            isReplyToAi: true,
+        })
+        ackCb!({ reasonCode: 1, clientSeq: 104 })
+
+        const replied = named('message_replied')
+        expect(replied).toHaveLength(1)
+        expect(replied[0].props).toMatchObject({
+            object_id: '104',
+            message_id: 'm-777',
+            channel_id: 'g4',
+            actor_type: 'human',
+            is_ai_msg: true,
+        })
+    })
+
+    it('message_replied is_ai_msg 缺省为 false(回复非 AI/无法解析作者时)且非 reply 不发', async () => {
+        const { rememberSendIntent } = await freshTrack()
+
+        // 回复一条人类消息:isReplyToAi 未置 → is_ai_msg=false
+        rememberSendIntent(105, { channelId: 'g5', channelType: 2, mentionAis: false, isReply: true, messageId: 'm-1' })
+        ackCb!({ reasonCode: 1, clientSeq: 105 })
+        expect(named('message_replied')[0].props).toMatchObject({ is_ai_msg: false, channel_id: 'g5', actor_type: 'human' })
+
+        // 非回复发送:message_replied 根本不发
+        rememberSendIntent(106, { channelId: 'g5', channelType: 2, mentionAis: false })
+        ackCb!({ reasonCode: 1, clientSeq: 106 })
+        expect(named('message_replied')).toHaveLength(1)
+    })
+
     // ---- fail-closed(对应 PR #1330 review 的 blocker①):dark 态零常驻,停采清缓存 ----
 
     it('disabled: binds NO sendack listener and remembers no intent (fail-closed, zero resident)', async () => {

@@ -466,10 +466,10 @@ describe("channel setting actions", () => {
     await topChannelSetting({ channel, top: true, runtime });
     await topChannelSetting({ channel, top: false, runtime });
 
-    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "mute" });
-    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "unmute" });
-    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "pin" });
-    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "unpin" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "mute", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "unmute", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "pin", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "unpin", channel_id: "group-1" });
     expect(Dap.shared.track).toHaveBeenCalledTimes(4);
   });
 

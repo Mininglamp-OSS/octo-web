@@ -2514,6 +2514,14 @@ export default class ConversationVM extends ProviderListener {
                 }
                 if (bots.length > 0) mentionedBots = bots
             }
+            // message_replied 的 is_ai_msg:被回复消息作者(content.reply.fromUID)是否 AI/bot。
+            // 查订阅者 robot 标记(与上面 @AI 判据一致)+ SYSTEM_BOTS 兜底;取不到作者或非 bot 则 false。
+            let isReplyToAi: boolean | undefined
+            const replyFromUid = (content.reply as any)?.fromUID
+            if (replyFromUid) {
+                const replySub = this.subscribers?.find((s: any) => s.uid === replyFromUid)
+                isReplyToAi = !!(replySub && replySub.orgData && replySub.orgData.robot === 1) || SYSTEM_BOTS.has(replyFromUid)
+            }
             rememberSendIntent(message.clientSeq, {
                 channelId: channel.channelID,
                 channelType: channel.channelType,
@@ -2525,6 +2533,7 @@ export default class ConversationVM extends ProviderListener {
                 // 发送时即可得;server 侧新消息 id 此刻尚未分配)。无 reply 时 undefined,
                 // 但此时 isReply=false,message_replied 根本不发。
                 messageId: content.reply?.messageID,
+                isReplyToAi,
                 // ai_mentioned 的 user_id 由生产者注入,避免 leaf service trackMessage 静态 import App
                 userId: WKApp.loginInfo.uid || null,
                 mentionedBots,

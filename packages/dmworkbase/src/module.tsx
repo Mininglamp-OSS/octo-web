@@ -1414,6 +1414,7 @@ export default class BaseModule implements IModule {
                   trackSubchannelCreated(resp, 'message_right_click', {
                     fromMsgType: inferMsgType(message),
                     title: threadName.trim(),
+                    channelId: message.channel.channelID,
                   });
                   if (resp && resp.channel_id) {
                     WKApp.mittBus.emit("wk:thread-created", {

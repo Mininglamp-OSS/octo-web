@@ -13,7 +13,7 @@ export async function createThreadByNameAndNotify(
   const result = await ThreadService.createThreadByName(groupNo, name, sourceMessageId)
   emitThreadCreated(groupNo, result)
   // 顶栏创建子区：不带 from_msg_type（空值策略）
-  trackSubchannelCreated(result, 'channel_toolbar', { title: name })
+  trackSubchannelCreated(result, 'channel_toolbar', { title: name, channelId: groupNo })
   return result
 }
 
@@ -65,12 +65,13 @@ export function inferMsgType(message: any): 'text' | 'reply' | 'image_file' | 'l
  *
  * @param resp - ThreadCreateResult
  * @param source - 'channel_toolbar' | 'message_right_click'（CSV:26 规范值）
- * @param meta - { fromMsgType?: 'text' | 'reply' | 'image_file' | 'link', title?: string }
+ * @param meta - { fromMsgType?: 'text' | 'reply' | 'image_file' | 'link', title?: string, channelId?: string }
+ *   channelId = 子区所属**父群** channelID（spec 关键属性 channel_id，非新建子区 id）。
  */
 export function trackSubchannelCreated(
   resp: ThreadCreateResult | null | undefined,
   source: 'channel_toolbar' | 'message_right_click',
-  meta: { fromMsgType?: 'text' | 'reply' | 'image_file' | 'link'; title?: string }
+  meta: { fromMsgType?: 'text' | 'reply' | 'image_file' | 'link'; title?: string; channelId?: string }
 ): void {
   // fail-closed:埋点绝不能改变业务行为。createThreadFromMessage 直接返回未 normalize 的
   // 裸 API 结果(不同于走 normalizeThreadCreateResult 的 createThreadByName),2xx 空 body 时
@@ -100,6 +101,10 @@ export function trackSubchannelCreated(
     subchannel_id: subchannelId,
     source,
     title_len_bucket: titleLenBucket,
+  }
+  // spec 关键属性 channel_id = 父群 channelID（两个调用点各自传入；无则不发，避免 undefined）
+  if (meta.channelId) {
+    props.channel_id = meta.channelId
   }
   // from_msg_type 空值策略：顶栏路径不发该字段（空值，非 'none'）；右键路径用 inferMsgType 映射
   if (meta.fromMsgType) {
