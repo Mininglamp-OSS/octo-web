@@ -7,7 +7,8 @@ import React, {
   useState,
 } from "react";
 import { Channel } from "wukongimjssdk";
-import { Switch, Toast } from "@douyinfe/semi-ui";
+import { Switch } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { IconAlertTriangle } from "@douyinfe/semi-icons";
 import WKModal from "../WKModal";
 import AiBadge from "../AiBadge";

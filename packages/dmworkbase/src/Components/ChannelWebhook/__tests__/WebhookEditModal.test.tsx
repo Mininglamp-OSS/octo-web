@@ -56,18 +56,22 @@ vi.mock("@douyinfe/semi-ui", () => {
     );
   Select.Option = ({ children }: any) =>
     React.createElement(React.Fragment, null, children);
-  const Switch = ({ checked, onChange }: any) =>
+  return {
+    Select,
+    Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
+  };
+});
+
+vi.mock("@octo/ui", () => ({
+  Button: ({ children, ...props }: any) =>
+    React.createElement("button", props, children),
+  Switch: ({ checked, onChange }: any) =>
     React.createElement("button", {
       "data-testid": "switch",
       "data-checked": String(!!checked),
       onClick: () => onChange(!checked),
-    });
-  return {
-    Select,
-    Switch,
-    Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
-  };
-});
+    }),
+}));
 
 vi.mock("@douyinfe/semi-icons", () => ({
   IconAlertTriangle: () =>

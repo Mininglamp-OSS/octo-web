@@ -1,6 +1,6 @@
 import { Button } from "@octo/ui";
 import React from "react";
-import { Switch } from "@douyinfe/semi-ui";
+import { Switch } from "@octo/ui";
 import "./index.css";
 
 export type GroupManagementMemberRole = "owner" | "manager" | "botAdmin";

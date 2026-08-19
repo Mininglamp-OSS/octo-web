@@ -1,6 +1,6 @@
 import React, { useState } from "react";
-import { Checkbox } from "@octo/ui";
-import { Spin, Switch, Toast } from "@douyinfe/semi-ui";
+import { Checkbox, Switch } from "@octo/ui";
+import { Spin, Toast } from "@douyinfe/semi-ui";
 import DOMPurify from "dompurify";
 import { QRCodeSVG } from "qrcode.react";
 import WKApp, { ThemeMode } from "../../App";

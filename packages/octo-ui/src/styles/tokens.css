@@ -147,4 +147,36 @@ body {
   --octo-ui-radio-disabled-border: var(--wk-brand-tint-15, oklch(22.957% 0.01344 285.29 / 15%));
   --octo-ui-radio-disabled-checked-bg: var(--wk-brand-tint-15, oklch(22.957% 0.01344 285.29 / 15%));
   --octo-ui-radio-disabled-dot-color: var(--wk-text-disabled, oklch(22.957% 0.01344 285.29 / 30%));
+
+  --octo-ui-switch-width-lg: 54px;
+  --octo-ui-switch-height-lg: 32px;
+  --octo-ui-switch-width-md: 40px;
+  --octo-ui-switch-height-md: 24px;
+  --octo-ui-switch-width-sm: 26px;
+  --octo-ui-switch-height-sm: 16px;
+  --octo-ui-switch-knob-size-lg: 24px;
+  --octo-ui-switch-knob-size-md: 18px;
+  --octo-ui-switch-knob-size-sm: 12px;
+  --octo-ui-switch-loading-icon-size-lg: 17px;
+  --octo-ui-switch-loading-icon-size-md: 13px;
+  --octo-ui-switch-loading-icon-size-sm: 8px;
+  --octo-ui-switch-knob-offset-lg: 4px;
+  --octo-ui-switch-knob-offset-md: 3px;
+  --octo-ui-switch-knob-offset-sm: 2px;
+  --octo-ui-switch-knob-checked-left-lg: 26px;
+  --octo-ui-switch-knob-checked-left-md: 19px;
+  --octo-ui-switch-knob-checked-left-sm: 12px;
+  --octo-ui-switch-radius: 9999px;
+  --octo-ui-switch-focus-width: 3px;
+  --octo-ui-switch-bg: oklch(28.862% 0.01261 285.49 / 9%);
+  --octo-ui-switch-checked-bg: oklch(77.942% 0.18562 148.68);
+  --octo-ui-switch-disabled-bg: oklch(28.862% 0.01261 285.49 / 5%);
+  --octo-ui-switch-disabled-checked-bg: oklch(85.454% 0.14166 148.31);
+  --octo-ui-switch-knob-bg: oklch(100% 0 89.88);
+  --octo-ui-switch-knob-shadow: 0 0 1px oklch(0% 0 0 / 30%), 0 4px 6px oklch(0% 0 0 / 10%);
+  --octo-ui-switch-knob-shadow-sm: 0 0 1px oklch(0% 0 0 / 15%), 0 1px 6px oklch(0% 0 0 / 10%);
+  --octo-ui-switch-disabled-knob-shadow: 0 0 1px oklch(0% 0 0 / 30%);
+  --octo-ui-switch-text: oklch(100% 0 89.88);
+  --octo-ui-switch-text-size: 12px;
+  --octo-ui-switch-text-line-height: 16px;
 }

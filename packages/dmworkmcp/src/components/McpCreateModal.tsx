@@ -1,7 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Switch } from "@octo/ui";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { WKModal, WKInput, t, Dap } from "@octo/base";
-import { Select, Switch, TextArea, Toast } from "@douyinfe/semi-ui";
+import { Select, TextArea, Toast } from "@douyinfe/semi-ui";
 import {
   createMcp,
   probeMcpTools,

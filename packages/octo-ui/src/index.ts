@@ -26,3 +26,9 @@ export type {
   RadioSize,
   RadioValue,
 } from './components/Radio/types'
+export { default as Switch } from './components/Switch'
+export type {
+  SwitchChangeEvent,
+  SwitchProps,
+  SwitchSize,
+} from './components/Switch/types'
