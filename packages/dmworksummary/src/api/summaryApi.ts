@@ -37,7 +37,7 @@ import type {
     CreateSummarySharesResponse,
     GetSummaryShareResponse,
 } from '../types/summary';
-import { SummaryMode, TaskStatus } from '../types/summary';
+import { SummaryMode } from '../types/summary';
 
 const summaryAxios = axios.create({ baseURL: '' });
 
@@ -415,33 +415,10 @@ export async function finalizeAgentSummary(
 }
 
 /**
- * 轮询任务状态直到终态。COMPLETED → 返回详情;FAILED/CANCELLED → 抛错;超时 → 抛错。
- * 合并生成通常几秒~数十秒,默认 1.5s 间隔、120s 超时。
- */
-export async function pollAgentSummaryTask(
-    taskId: number,
-    opts: { intervalMs?: number; timeoutMs?: number } = {},
-): Promise<SummaryDetail> {
-    const intervalMs = opts.intervalMs ?? 1500;
-    const timeoutMs = opts.timeoutMs ?? 120000;
-    const deadline = Date.now() + timeoutMs;
-    const sleep = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms); });
-    for (;;) {
-        const detail = await getSummaryDetail(taskId);
-        if (detail.status === TaskStatus.COMPLETED) return detail;
-        if (detail.status === TaskStatus.FAILED || detail.status === TaskStatus.CANCELLED) {
-            throw new Error(`finalize task ${taskId} ended with status ${detail.status}`);
-        }
-        if (Date.now() >= deadline) {
-            throw new Error(`finalize task ${taskId} timed out (status ${detail.status})`);
-        }
-        await sleep(intervalMs);
-    }
-}
-
-/**
- * 交付物保存(v0)—— createAgentSummary 的替代:finalize + 轮询到 COMPLETED。
- * 返回 { task_id } 供调用点导航;失败/超时抛错(调用点 catch 后保留 chat)。
+ * 交付物保存(v0)—— createAgentSummary 的替代:只发起 finalize(202),不阻塞等生成。
+ * 返回 { task_id } 供调用点导航;调用点照传统异步总结的做法跳详情页,由详情页自带的
+ * 轮询 + "生成中"状态(personalPollTimer / worker_status)展示进度、完成后渲染正文——
+ * 用户不再干等在保存界面。失败(40004 无内容等)抛错,调用点 catch 后保留 chat。
  */
 export async function saveAgentSummaryViaFinalize(
     params: CreateAgentSummaryParams,
@@ -450,7 +427,6 @@ export async function saveAgentSummaryViaFinalize(
     const accepted = await finalizeAgentSummary(params, genFinalizeRequestId());
     // 与 createAgentSummary 同口径:一次"成功发起"即补发埋点。
     Dap.shared.track('smart_summary_started', trackProps);
-    await pollAgentSummaryTask(accepted.task_id);
     return { task_id: accepted.task_id };
 }
 
