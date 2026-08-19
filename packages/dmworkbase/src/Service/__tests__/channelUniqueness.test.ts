@@ -153,6 +153,8 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
         // 使下面「命令式 ⊥ 规则表」互斥断言对它们生效 —— 有人把它们塞回 BODY_RULES 即红。
         expect(imperativeEvents.has('conversation_muted')).toBe(true)        // channelSettingActions.muteChannelSetting
         expect(imperativeEvents.has('conversation_pinned')).toBe(true)       // channelSettingActions.topChannelSetting
+        // allow_no_mention 从 BODY_RULES 迁到 groupManagementActions 命令式收口(带 channel_id+enabled;见 review B)。
+        expect(imperativeEvents.has('group_bot_free_mention_toggled')).toBe(true) // groupManagementActions.setGroupManagementAllowNoMention
         expect(imperativeEvents.has('apps_module_entered')).toBe(true)       // Main/index + tab_low_screen(apps/web)
         expect(imperativeEvents.has('space_join_new')).toBe(true)           // SpaceService + Layout + InviteLanding
         expect(imperativeEvents.has('group_avatar_edited')).toBe(true)       // ChannelAvatar 两个编辑分支

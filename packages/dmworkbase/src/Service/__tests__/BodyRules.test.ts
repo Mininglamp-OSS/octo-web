@@ -49,7 +49,9 @@ describe('BodyRules — 群资料/设置真实规则命中', () => {
         expect(s({ top: 1 })).toBeUndefined()
         expect(s({ remark: 'vip' })).toBe('conversation_remark_edited')
         expect(s({ save: 1 })).toBe('conversation_saved_to_contacts')
-        expect(s({ allow_no_mention: 1 })).toBe('group_bot_free_mention_toggled')
+        // allow_no_mention→group_bot_free_mention_toggled 已改为 groupManagementActions 收口点命令式补点
+        // (带 channel_id+enabled;body 通道拿不到这俩关键属性),不再声明式命中,避免双计(见 review B)。
+        expect(s({ allow_no_mention: 1 })).toBeUndefined()
     })
 
     it('关闭(值=0)不得记成开启:save 用 equals[1] 判值(见六审 P1a)', () => {
