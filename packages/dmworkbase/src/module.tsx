@@ -1357,8 +1357,9 @@ export default class BaseModule implements IModule {
           testid: "ctx-message-create-thread",
           onClick: () => {
             // 右键「创建子区」入口打开确认弹窗即计一次 dialog_opened,与 ThreadPanel 顶栏入口
-            // (ThreadPanel/index.tsx handleCreateThread)对齐——此前只有顶栏入口发该事件,右键路径漏发,
-            // 导致 subchannel_created 的 message_right_click 支没有对应的 dialog_opened 分母(#1452 review P2-7)。
+            // (ThreadPanel/index.tsx handleCreateThread)同一事件名——顶栏 + 右键统一到 channel_subchannel_create_dialog_opened。
+            // 同一 testid(ctx-message-create-thread)原有的 TrackRules DOM 规则(message_subchannel_create_dialog_opened)
+            // 已一并删除,避免同手势双记不同名(#1452 review P1)。
             Dap.shared.track('channel_subchannel_create_dialog_opened', {});
             // 使用消息内容作为默认名称，截取前20个字符
             const defaultName = (

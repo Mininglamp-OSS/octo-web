@@ -100,7 +100,9 @@ export const TRACK_RULES: TrackRule[] = [
     // message_copied 不在本表 —— 已改为 registerMessageContextMenus copy onClick 命令式,
     // 携 is_ai_msg(DOM 通道拿不到消息作者上下文)。见 #1452 review ai_msg_copy。
     { event: 'message_forward_panel_opened', testid: 'ctx-message-forward', on: 'click' },
-    { event: 'message_subchannel_create_dialog_opened', testid: 'ctx-message-create-thread', on: 'click' },
+    // message_subchannel_create_dialog_opened 不在本表 —— 右键「创建子区」入口已改为 module.tsx 命令式
+    // 发 channel_subchannel_create_dialog_opened(与顶栏 ThreadPanel 入口同一事件名,顶栏+右键统一口径)。
+    // 若此处保留 DOM 规则,同一次右键点击会既发 message_* 又发 channel_*,同手势双记不同名(guard 只查同名,漏网)。见 #1452 review P1。
     { event: 'message_multiselect_started', testid: 'ctx-message-multiselect', on: 'click' },
     // 20 号一个 event 两枚 testid（逐条转发 + 合并转发）。
     { event: 'message_multiselect_forward_panel_opened', testid: 'multiselect-forward-btn', on: 'click' },

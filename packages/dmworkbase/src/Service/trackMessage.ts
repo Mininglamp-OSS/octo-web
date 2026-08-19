@@ -90,8 +90,9 @@ function ensureGlobalAckListener(): void {
     if (ackListenerBound) return
     try {
         WKSDK.shared().chatManager.addMessageStatusListener((p: SendackPacket) => {
-            // reasonCode===1 = IM 服务端已受理(submitted 口径),与原 VM 路径判据一致
-            if (p && p.reasonCode === 1) trackMessageSent(p.clientSeq)
+            // reasonCode===1 = IM 服务端已受理(submitted 口径),与原 VM 路径判据一致。
+            // messageID = 服务端分配的消息 ID(BigNumber,纯标识非正文),转成字符串补进 message_sent.message_id。
+            if (p && p.reasonCode === 1) trackMessageSent(p.clientSeq, p.messageID != null ? String(p.messageID) : undefined)
         })
         ackListenerBound = true
         // 停采时清空 intents,使 kill switch 关闭后不留常驻缓存。监听本身无法从 WKSDK 摘除,
@@ -103,7 +104,7 @@ function ensureGlobalAckListener(): void {
 }
 
 /** sendack Normal(reasonCode===1)时调:发 message_sent(+ ai_mentioned / bot_create_started)。 */
-export function trackMessageSent(clientSeq: number | undefined): void {
+export function trackMessageSent(clientSeq: number | undefined, messageId?: string): void {
     if (!clientSeq) return
     // fail-closed:停采后即便常驻监听仍在、intents 已被清空,这里也直接 no-op(双保险)。
     if (!Dap.shared.isEnabled()) return
@@ -117,6 +118,9 @@ export function trackMessageSent(clientSeq: number | undefined): void {
         channel_type: intent.channelType,
         chat_type: chatType,
         object_id: String(clientSeq), // client_seq 作 object_id
+        // 服务端分配的消息 ID(sendack 才拿得到);无值时 sanitizeProps 丢弃。仅 message_sent 用,
+        // 下游 message_replied/ai_mentioned 只引用 base.object_id、不 spread base,故不受影响。
+        message_id: messageId,
     }
     Dap.shared.track('message_sent', base)
     // §IM 16:回复(reply)语义。spec 关键属性 = {is_ai_msg, channel_id, actor_type}。

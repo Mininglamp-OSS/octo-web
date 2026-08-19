@@ -173,6 +173,14 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     enabled: canSearch && !isComposing,
     search: searchPage,
     errorMessage: t("base.channelSearch.searchFailed"),
+    // 首页检索执行一次即计 channel_search_query(与后端 _search_ 首页请求 1:1);翻页不计。
+    // 判别位是 keyword 值 / 嵌套 filters(值级,被 sanitize 拦),故退命令式;绝不上报关键词。
+    onQueryStart: useCallback(() => {
+      Dap.shared.track("channel_search_query", {
+        channel_id: channel.channelID,
+        tab: activeTab,
+      });
+    }, [channel.channelID, activeTab]),
   });
 
   const handleLocate = useCallback(

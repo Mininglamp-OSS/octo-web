@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
  */
 
 const trackCalls: Array<{ name: string; props: Record<string, unknown> }> = []
-let ackCb: ((p: { reasonCode: number; clientSeq: number }) => void) | null = null
+let ackCb: ((p: { reasonCode: number; clientSeq: number; messageID?: unknown }) => void) | null = null
 let enabled = true
 let disableHook: (() => void) | null = null
 
@@ -37,7 +37,7 @@ vi.mock('wukongimjssdk', () => ({
         shared: () => ({
             chatManager: {
                 // 捕获常驻 sendack 监听:测试稍后手动触发它,模拟 sendack 到达
-                addMessageStatusListener: (cb: (p: { reasonCode: number; clientSeq: number }) => void) => {
+                addMessageStatusListener: (cb: (p: { reasonCode: number; clientSeq: number; messageID?: unknown }) => void) => {
                     ackCb = cb
                 },
             },
@@ -90,6 +90,29 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
         ackCb!({ reasonCode: 1, clientSeq: 101 }) // 重复 sendack
 
         expect(named('message_sent')).toHaveLength(1)
+    })
+
+    it('carries message_id from the sendack messageID', async () => {
+        const { rememberSendIntent } = await freshTrack()
+
+        rememberSendIntent(107, { channelId: 'g7', channelType: 2, mentionAis: false })
+        // 服务端分配的 messageID(BigNumber 语义,这里用带 toString 的对象模拟)
+        ackCb!({ reasonCode: 1, clientSeq: 107, messageID: { toString: () => '987654321' } })
+
+        const sent = named('message_sent')
+        expect(sent).toHaveLength(1)
+        expect(sent[0].props).toMatchObject({ object_id: '107', message_id: '987654321' })
+    })
+
+    it('omits message_id when the sendack has no messageID', async () => {
+        const { rememberSendIntent } = await freshTrack()
+
+        rememberSendIntent(108, { channelId: 'g8', channelType: 2, mentionAis: false })
+        ackCb!({ reasonCode: 1, clientSeq: 108 })
+
+        const sent = named('message_sent')
+        expect(sent).toHaveLength(1)
+        expect(sent[0].props.message_id).toBeUndefined()
     })
 
     it('ignores non-accepted sendack (reasonCode !== 1)', async () => {

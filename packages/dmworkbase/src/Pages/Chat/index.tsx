@@ -651,7 +651,20 @@ export class ChatContentPage extends Component<
     }
   }
 
-  componentDidUpdate(prevProps: ChatContentPageProps) {
+  componentDidUpdate(
+    prevProps: ChatContentPageProps,
+    prevState: ChatContentPageState
+  ) {
+    // 子区打开:activeThread 的身份(channel_id)变化即一次 subchannel_opened,覆盖三个入口
+    // (子区面板打开 / pendingThread / onThreadSelect),按 channel_id 去重;文件预览不改 activeThread → 不误触发,
+    // 关闭(→null)也不发。sync body 顶层键判不出该 UI 上下文,退命令式采集(见 BodyRules.ts)。
+    const curThread = this.state.activeThread;
+    if (curThread && curThread.channel_id !== prevState.activeThread?.channel_id) {
+      Dap.shared.track("subchannel_opened", {
+        channel_id: curThread.group_no,
+        subchannel_id: curThread.short_id,
+      });
+    }
     const { channel } = this.props;
     const channelChanged =
       channel.channelID !== prevProps.channel.channelID ||
