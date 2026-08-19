@@ -26,6 +26,8 @@ import type {
 } from "../../Service/SearchTypes";
 import WKApp from "../../App";
 import { Dap } from "../../Service/Dap";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
+import { hasEffectiveFilters } from "../../Service/SearchResultMapper";
 import { ChannelSearchFilterPopover as FilterPopover } from "./ChannelSearchFilters";
 import {
   ChannelSearchEmpty as SearchEmpty,
@@ -173,14 +175,18 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     enabled: canSearch && !isComposing,
     search: searchPage,
     errorMessage: t("base.channelSearch.searchFailed"),
-    // 首页检索执行一次即计 channel_search_query(与后端 _search_ 首页请求 1:1);翻页不计。
+    // channel_search_query = 用户真的检索了(首页执行且带 keyword 或有效 filter);翻页不计。
+    // 媒体/文件 tab 的 shouldRunSearch 恒 true,仅切 tab 也会触发首页请求 → 若不 gate 会以空 keyword
+    // 误发一次(#1452 P2-1)。故这里按「有 keyword 或有效 filter」再计,与 tab_switched 分开。
     // 判别位是 keyword 值 / 嵌套 filters(值级,被 sanitize 拦),故退命令式;绝不上报关键词。
+    // channel_id 归一 stripSpacePrefix:与后端 _search_ 请求(同样 strip)对齐,Space 部署下可 join(P2-3)。
     onQueryStart: useCallback(() => {
+      if (keyword.trim().length === 0 && !hasEffectiveFilters(filters)) return;
       Dap.shared.track("channel_search_query", {
-        channel_id: channel.channelID,
+        channel_id: stripSpacePrefix(channel.channelID),
         tab: activeTab,
       });
-    }, [channel.channelID, activeTab]),
+    }, [channel.channelID, activeTab, keyword, filters]),
   });
 
   const handleLocate = useCallback(

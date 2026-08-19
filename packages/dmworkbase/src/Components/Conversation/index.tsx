@@ -133,6 +133,7 @@ import {
   taskStatusWaitResult,
 } from "../../Utils/sendWaitResult";
 import { parseThreadChannelId } from "../../Service/Thread";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import { captureSelectionWithinContainer } from "./copySelection";
 import VoiceFeedback from "../../Service/VoiceFeedback";
@@ -659,7 +660,11 @@ export class Conversation
     // 只计文本发送 —— 贴图/文件/转发媒体等经同一 sendMessage 漏斗但不是「提问」,
     // 计进来会虚高 query 量并全部落 intent_tag=other(见 #1452 review P2)。
     if (c.channelType === ChannelTypePerson && content instanceof MessageText) {
-      const botUid = c.channelID;
+      // Space 部署下 Person channelID 形如 s<32hex>_<uid>,而 octoAssistantUids 存的是裸 uid
+      // (兄弟事件 octo_assistant_opened 走 bot.uid 裸值)。不 strip 则 includes() 恒 false,
+      // 进会话列表打开的助手 DM 永远不发 query,造成 opened 有、queried 无的畸形漏斗(#1452 P1-2)。
+      // stripSpacePrefix 对非 Space 部署幂等。
+      const botUid = stripSpacePrefix(c.channelID);
       if (WKApp.remoteConfig.octoAssistantUids.includes(botUid)) {
         const intentTag = this.classifyAssistantIntent(content);
         Dap.shared.track("octo_assistant_queried", { intent_tag: intentTag });

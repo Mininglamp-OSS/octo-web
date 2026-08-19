@@ -639,9 +639,20 @@ export class ChatContentPage extends Component<
     // 子区：预先获取父群组信息
     if (channel.channelType === ChannelTypeCommunityTopic) {
       const channelInfo = getImChannelInfo(WKSDK.shared(), channel);
+      const parsed = parseThreadChannelId(channel.channelID);
       const parentGroupNo =
-        channelInfo?.orgData?.parentGroupNo ||
-        parseThreadChannelId(channel.channelID)?.groupNo;
+        channelInfo?.orgData?.parentGroupNo || parsed?.groupNo;
+      // subchannel_opened(入口一):本页以子区频道挂载 = 从会话列表点开子区行 / 文件预览
+      // showConversation(threadChannel) / 深链或路由恢复进子区。这些都会 remount ChatContentPage
+      // 走 componentDidMount(activeThread 初始 null,didUpdate 不跑),故必须在挂载处发。
+      // 会话列表子区行的 channel_opened DOM 规则已对子区行关闭(见 ConversationList/index.tsx),
+      // 两事件按手势划分、不重叠。props 需父群 channel_id + 子区 short_id,DOM 规则带不了 props → 命令式。
+      if (parentGroupNo && parsed?.shortId) {
+        Dap.shared.track("subchannel_opened", {
+          channel_id: parentGroupNo,
+          subchannel_id: parsed.shortId,
+        });
+      }
       if (parentGroupNo) {
         this.parentGroupChannel = new Channel(parentGroupNo, ChannelTypeGroup);
         if (!getImChannelInfo(WKSDK.shared(), this.parentGroupChannel)) {
@@ -655,9 +666,12 @@ export class ChatContentPage extends Component<
     prevProps: ChatContentPageProps,
     prevState: ChatContentPageState
   ) {
-    // 子区打开:activeThread 的身份(channel_id)变化即一次 subchannel_opened,覆盖三个入口
-    // (子区面板打开 / pendingThread / onThreadSelect),按 channel_id 去重;文件预览不改 activeThread → 不误触发,
-    // 关闭(→null)也不发。sync body 顶层键判不出该 UI 上下文,退命令式采集(见 BodyRules.ts)。
+    // 子区打开(入口二:页内子区选择)——本页 channel 为父群、activeThread 身份(channel_id)变化即一次
+    // subchannel_opened,覆盖 onOpenThreadPanel / onThreadSelect 这类不 remount 只改 state 的页内入口,
+    // 按 channel_id 去重;文件预览不改 activeThread → 不误触发,关闭(→null)也不发。
+    // (从会话列表/预览/深链直接以子区频道挂载的入口由 componentDidMount 覆盖,两处不重叠:
+    //  挂载入口本页 channel 即子区、activeThread 恒 null 不进本分支。)
+    // sync body 顶层键判不出该 UI 上下文,退命令式采集(见 BodyRules.ts)。
     const curThread = this.state.activeThread;
     if (curThread && curThread.channel_id !== prevState.activeThread?.channel_id) {
       Dap.shared.track("subchannel_opened", {

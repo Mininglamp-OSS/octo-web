@@ -172,7 +172,9 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
     <div
       ref={setNodeRef}
       style={style}
-      data-track="channel_opened"
+      // 子区行不发 channel_opened:改由 Pages/Chat componentDidMount 命令式发 subchannel_opened
+      // (带父群 channel_id + 子区 short_id,DOM 规则带不了)。两事件按手势划分、不重叠。
+      data-track={isThread ? undefined : "channel_opened"}
       data-object-id={conversationWrap.channel.channelID}
       className={classNames(
         "wk-conv-compact-item",
@@ -753,7 +755,9 @@ export default class ConversationList extends Component<
       <div
         ref={(node) => this.setConversationItemRef(conversationWrap, node)}
         key={conversationWrap.channel.getChannelKey()}
-        data-track="channel_opened"
+        // 子区行不发 channel_opened:改由 Pages/Chat componentDidMount 命令式发 subchannel_opened。
+        // 两事件按手势划分、不重叠。
+        data-track={isThread ? undefined : "channel_opened"}
         data-object-id={conversationWrap.channel.channelID}
         onClick={() => {
           if (onClick) {
