@@ -12,8 +12,12 @@ export async function createThreadByNameAndNotify(
 ): Promise<ThreadCreateResult> {
   const result = await ThreadService.createThreadByName(groupNo, name, sourceMessageId)
   emitThreadCreated(groupNo, result)
-  // 顶栏创建子区：不带 from_msg_type（空值策略）
-  trackSubchannelCreated(result, 'channel_toolbar', { title: name, channelId: groupNo })
+  // source 由是否携带源消息推断:带 sourceMessageId = 从某条消息发起(消息菜单/右键),
+  // 否则 = 顶栏创建。此前三个调用方(ThreadCreateModal 会带 sourceMessageId)全被硬编码成
+  // channel_toolbar,把消息发起的创建误标为顶栏(见 #1452 review P2)。from_msg_type 仍走空值策略
+  // (这里只有 sourceMessageId 数字、拿不到消息体,无法映射;右键路径在 module.tsx 另行带上)。
+  const source = sourceMessageId != null ? 'message_right_click' : 'channel_toolbar'
+  trackSubchannelCreated(result, source, { title: name, channelId: groupNo })
   return result
 }
 

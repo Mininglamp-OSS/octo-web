@@ -276,10 +276,19 @@ function parseOctoAssistantUids(raw: unknown): string[] {
   return [];
 }
 
-/** 两个字符串数组是否相等（顺序敏感）。 */
+/** 两个字符串数组作为**无序集合**是否相等。octoAssistantUids 等 uid 名单语义上是集合,
+ * 顺序不代表变化;顺序敏感比较会把后端仅重排的下发误判为「变了」而触发无谓刷新(#1452 review P2-7)。
+ * 允许重复元素:按计数比较(而非仅 Set),两侧同一 uid 出现次数须一致。 */
 function stringArraysEqual(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false;
-  return a.every((v, i) => v === b[i]);
+  const counts = new Map<string, number>();
+  for (const v of a) counts.set(v, (counts.get(v) ?? 0) + 1);
+  for (const v of b) {
+    const n = counts.get(v);
+    if (!n) return false;
+    counts.set(v, n - 1);
+  }
+  return true;
 }
 
 // StickerUploadLimits 解析同理抽到 ./Service/StickerUploadConfig：独立 leaf 文件,

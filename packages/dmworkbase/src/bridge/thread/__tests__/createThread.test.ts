@@ -71,6 +71,28 @@ describe("createThread bridge", () => {
 
     expect(hoisted.mittBusEmit).not.toHaveBeenCalled()
   })
+
+  it("带 sourceMessageId → subchannel_created.source = message_right_click(消息发起,不再硬编码 toolbar)", async () => {
+    hoisted.createThreadByName.mockResolvedValueOnce({ short_id: "t3", channel_id: "group-a____t3" })
+
+    await createThreadByNameAndNotify("group-a", "Topic", 789)
+
+    expect(hoisted.dapTrack).toHaveBeenCalledWith(
+      "subchannel_created",
+      expect.objectContaining({ source: "message_right_click", subchannel_id: "t3", channel_id: "group-a" })
+    )
+  })
+
+  it("不带 sourceMessageId → subchannel_created.source = channel_toolbar(顶栏)", async () => {
+    hoisted.createThreadByName.mockResolvedValueOnce({ short_id: "t4", channel_id: "group-a____t4" })
+
+    await createThreadByNameAndNotify("group-a", "Topic")
+
+    expect(hoisted.dapTrack).toHaveBeenCalledWith(
+      "subchannel_created",
+      expect.objectContaining({ source: "channel_toolbar", subchannel_id: "t4" })
+    )
+  })
 })
 
 describe("trackSubchannelCreated 关键属性", () => {

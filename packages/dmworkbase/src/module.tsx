@@ -119,6 +119,7 @@ import { t } from "./i18n";
 import { THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
 import ThreadService from "./Service/ThreadService";
 import { trackSubchannelCreated, inferMsgType } from "./bridge/thread/createThread";
+import { Dap } from "./Service/Dap";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -1346,6 +1347,10 @@ export default class BaseModule implements IModule {
           title: t("base.module.contextMenus.createThread"),
           testid: "ctx-message-create-thread",
           onClick: () => {
+            // 右键「创建子区」入口打开确认弹窗即计一次 dialog_opened,与 ThreadPanel 顶栏入口
+            // (ThreadPanel/index.tsx handleCreateThread)对齐——此前只有顶栏入口发该事件,右键路径漏发,
+            // 导致 subchannel_created 的 message_right_click 支没有对应的 dialog_opened 分母(#1452 review P2-7)。
+            Dap.shared.track('channel_subchannel_create_dialog_opened', {});
             // 使用消息内容作为默认名称，截取前20个字符
             const defaultName = (
               message.content?.conversationDigest || ""

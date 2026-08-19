@@ -654,8 +654,10 @@ export class Conversation
     const message = await vm.sendMessage(content, c);
 
     // 埋点：octo_assistant_queried（octo-dap S3 / YUJ-277）
-    // 判别：当前会话是 1v1 且 bot.uid 在 octoAssistantUids 中
-    if (c.channelType === ChannelTypePerson) {
+    // 判别：当前会话是 1v1、bot.uid 在 octoAssistantUids 中,且本次发送是文本消息。
+    // 只计文本发送 —— 贴图/文件/转发媒体等经同一 sendMessage 漏斗但不是「提问」,
+    // 计进来会虚高 query 量并全部落 intent_tag=other(见 #1452 review P2)。
+    if (c.channelType === ChannelTypePerson && content instanceof MessageText) {
       const botUid = c.channelID;
       if (WKApp.remoteConfig.octoAssistantUids.includes(botUid)) {
         const intentTag = this.classifyAssistantIntent(content);
@@ -669,11 +671,15 @@ export class Conversation
   /**
    * 启发式分类用户向 Octo Assistant 发送的消息意图（octo-dap S3 / YUJ-277）。
    * 不采原文，只返回分类标签：
-   * - code_gen：含代码块（```）或代码关键词
    * - summary：含"总结"/"摘要"/"概括"
    * - analysis：含"分析"/"解读"
+   * - code_gen：含代码围栏(```)或明确的写码信号
    * - qa：含问号
    * - other：其他
+   *
+   * 顺序：显式意图动词(summary/analysis)先判,code_gen 收紧到「代码围栏或强代码信号」——
+   * 旧实现把 code_gen 排在最前且关键词含 code/let/const/var 等日常英文词,会把
+   * "总结一下这段 code" 误判 code_gen、把 "Let me know…" 误判 code_gen(见 #1452 review P2)。
    */
   private classifyAssistantIntent(content: MessageContent): string {
     if (!(content instanceof MessageText)) {
@@ -682,17 +688,22 @@ export class Conversation
     const text = (content as MessageText).text || "";
     if (!text) return "other";
 
-    // 代码生成：含代码块或代码关键词
-    if (text.includes("```") || /\b(code|function|class|import|export|const|let|var)\b/i.test(text)) {
-      return "code_gen";
-    }
-    // 摘要：含总结/摘要/概括
-    if (/总结|摘要|概括|summarize|summary/i.test(text)) {
+    // 摘要：含总结/摘要/概括（显式意图优先，避免被 code_gen 的宽泛词吞掉）
+    if (/总结|摘要|概括|summariz|summary/i.test(text)) {
       return "summary";
     }
     // 分析：含分析/解读
-    if (/分析|解读|analyze|analysis/i.test(text)) {
+    if (/分析|解读|analyz|analysis/i.test(text)) {
       return "analysis";
+    }
+    // 代码生成：需代码围栏，或明确的写码信号（收紧，不再用 code/let/const 等日常词误命中）
+    if (
+      text.includes("```") ||
+      /写(段|个|一)?代码|代码实现|生成代码|帮我(写|实现).*(函数|方法|代码|脚本)|报错|编译|\bdebug\b|\bfunction\b|\bclass\b|\bdef\b/i.test(
+        text
+      )
+    ) {
+      return "code_gen";
     }
     // 问答：含问号
     if (text.includes("?") || text.includes("？")) {

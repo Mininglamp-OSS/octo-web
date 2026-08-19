@@ -917,10 +917,11 @@ export default class ConversationList extends Component<
   }
 
   onTop(channelInfo: ChannelInfo) {
-    const willPin = !channelInfo.top
+    // 置顶埋点(conversation_pinned)已收口到 topChannelSetting 内部,这里不再本地派生 willPin
+    // 供埋点使用;仅按当前状态取反传入(#1452 review P2-7)。
     topChannelSetting({
       channel: channelInfo.channel,
-      top: willPin,
+      top: !channelInfo.top,
     })
       .catch((err) => {
         Toast.error(err?.msg);

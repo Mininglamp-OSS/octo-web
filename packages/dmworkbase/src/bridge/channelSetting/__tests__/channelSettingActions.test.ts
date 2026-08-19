@@ -473,6 +473,19 @@ describe("channel setting actions", () => {
     expect(Dap.shared.track).toHaveBeenCalledTimes(4);
   });
 
+  it("畸形子区 channelID(parseThreadChannelId 失败,updateChannelSetting 静默 no-op)→ 不发 mute/pin(#1452 P2)", async () => {
+    // ChannelTypeCommunityTopic 但 channelID 无法解析出 thread → updateChannelSetting 直接 return,
+    // 不发请求;埋点必须与之对齐,否则一次静默 no-op 也会计成一次 mute/pin(过计数)。
+    vi.mocked(Dap.shared.track).mockClear();
+    const runtime = createRuntime();
+    const channel = new Channel("not-a-thread-id", ChannelTypeCommunityTopic);
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+    await topChannelSetting({ channel, top: true, runtime });
+
+    expect(Dap.shared.track).not.toHaveBeenCalled();
+  });
+
   it("reapplies the latest saved thread mute after an older fetch resolves last", async () => {
     const oldFetch = deferred();
     const channel = new Channel(

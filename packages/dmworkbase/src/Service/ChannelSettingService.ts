@@ -57,6 +57,23 @@ export async function updateChannelSetting(
   }
 }
 
+/**
+ * updateChannelSetting 是否会真正发出一次 setting 请求。
+ *
+ * 该函数对 Group/Person 必发请求;CommunityTopic 仅在 channelID 能解析出 thread 时才发,
+ * 解析失败静默 return;其余频道类型直接落空返回 undefined。埋点(conversation_muted /
+ * conversation_pinned)必须与"确有请求发出"对齐——否则解析失败/未知类型的静默 no-op 也会
+ * 计一次 mute/pin,造成过计数(见 #1452 review P2)。此 helper 复刻上面的分支判定,供调用点前置门控。
+ */
+export function channelSettingRequestIssued(channel: Channel): boolean {
+  if (channel.channelType === ChannelTypeGroup) return true;
+  if (channel.channelType === ChannelTypePerson) return true;
+  if (channel.channelType === ChannelTypeCommunityTopic) {
+    return !!parseThreadChannelId(channel.channelID);
+  }
+  return false;
+}
+
 export function createChannel(
   uids: string[],
   options?: CreateChannelOptions

@@ -1062,6 +1062,9 @@ export default class ThreadPanel extends Component<
   private handleCreateThread = () => {
     const { groupNo, onCreateThread } = this.props;
     if (onCreateThread) {
+      // onCreateThread 分支把「打开创建弹窗 + dialog_opened 埋点」整体委托给父组件——
+      // 由父级自己的入口负责发 channel_subchannel_create_dialog_opened,这里不能再补发,
+      // 否则父级已发一次、此处再发一次会双计。当前无调用方传 onCreateThread(latent)(#1452 review P2-7)。
       onCreateThread();
       return;
     }

@@ -4,6 +4,7 @@ import WKApp from "../../App";
 import {
   addChannelSubscribers as addChannelSubscribersApi,
   createChannel as createChannelApi,
+  channelSettingRequestIssued,
   exitChannel as exitChannelApi,
   leaveThread as leaveThreadApi,
   removeChannelSubscribers as removeChannelSubscribersApi,
@@ -505,7 +506,11 @@ export async function muteChannelSetting(params: {
   // conversation_muted 收口点:所有静音入口(会话列表右键、设置面板、子区设置)都经此,
   // await 成功后单发,携带方向 action(mute/unmute)。此前挂在 BodyRules body 通道会双计,
   // 已删除 body 规则;改到这里统一命令式单通道(见 M3)。
-  Dap.shared.track("conversation_muted", { action: params.mute ? "mute" : "unmute", channel_id: params.channel.channelID });
+  // 门控:仅在 updateChannelSetting 确会发出请求时才计点。畸形子区 channelID(解析失败)或
+  // 未知频道类型走静默 no-op,不该计一次 mute(见 #1452 review P2)。
+  if (channelSettingRequestIssued(params.channel)) {
+    Dap.shared.track("conversation_muted", { action: params.mute ? "mute" : "unmute", channel_id: params.channel.channelID });
+  }
 }
 
 export async function topChannelSetting(params: {
@@ -515,8 +520,10 @@ export async function topChannelSetting(params: {
 }) {
   await runtimeOrDefault(params.runtime).topChannel(params.channel, params.top);
   // conversation_pinned 收口点:同 conversation_muted,覆盖列表右键 + 设置面板置顶开关,
-  // await 成功后单发,携带方向 action(pin/unpin)(见 M3)。
-  Dap.shared.track("conversation_pinned", { action: params.top ? "pin" : "unpin", channel_id: params.channel.channelID });
+  // await 成功后单发,携带方向 action(pin/unpin)(见 M3)。门控同上(见 #1452 review P2)。
+  if (channelSettingRequestIssued(params.channel)) {
+    Dap.shared.track("conversation_pinned", { action: params.top ? "pin" : "unpin", channel_id: params.channel.channelID });
+  }
 }
 
 export async function saveChannelSetting(params: {

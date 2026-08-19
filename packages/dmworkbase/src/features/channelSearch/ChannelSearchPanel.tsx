@@ -177,13 +177,13 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
 
   const handleLocate = useCallback(
     (item: ChannelSearchItem) => {
-      // Track when user clicks on a search result
-      Dap.shared.track("channel_search_result_clicked", {});
-
       const locateTarget = resolveChannelSearchLocateTarget(item, channel);
       if (!locateTarget) {
+        // 无法解析跳转目标(结果陈旧/畸形):点击什么都不发生,不计入点击(避免过计)。
         return;
       }
+      // 埋点:结果可跳转才算一次有效点击(移到 guard 之后,见 #1452 review P2)。
+      Dap.shared.track("channel_search_result_clicked", {});
       if (onLocateMessage) {
         onLocateMessage(item);
         return;
