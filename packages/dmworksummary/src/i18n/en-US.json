@@ -180,7 +180,7 @@
         "selectedChats": "{{count}} chats selected",
         "selectMembers": "Select participants",
         "selectedMembers": "{{count}} participants selected",
-        "start": "Start summary",
+        "start": "Quick summary",
         "agentStart": "Agent Summary",
         "agentSubmitting": "Agent summarizing...",
         "agentTopicPlaceholder": "Describe what you need summarized",

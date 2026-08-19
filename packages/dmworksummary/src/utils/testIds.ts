@@ -6,6 +6,10 @@ export const summaryTestIds = {
     listStatusFilter: "summary-list-status-filter",
     listCreate: "summary-list-create",
     createEntry: "summary-create-entry",
+    // Mode-select dropdown on the list-page "+" entry (trigger + menu items)
+    listModeSwitch: "summary-list-mode-switch",
+    listNormalTab: "summary-list-normal-tab",
+    listAgentTab: "summary-list-agent-tab",
 
     // ── Card (per-task) ──
     card: (taskId: number) => `summary-card-${taskId}`,
@@ -19,10 +23,6 @@ export const summaryTestIds = {
     createSelectChat: "summary-create-select-chat",
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
-    // Mode switch dropdown on create page (trigger + menu items)
-    createModeSwitch: "summary-create-mode-switch",
-    createAgentTab: "summary-create-agent-tab",
-    createNormalTab: "summary-create-normal-tab",
 
     // ── Chat selector modal ──
     chatSelectorModal: "summary-chat-selector-modal",

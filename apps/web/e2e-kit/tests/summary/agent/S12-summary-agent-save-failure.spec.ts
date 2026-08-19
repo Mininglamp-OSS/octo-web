@@ -25,8 +25,8 @@ test.describe("@S12 @p1 @summary @agent @summary-agent @summary-create @error-st
     await authedPage.getByTestId(T.createEntry).click();
 
     await expect(authedPage.getByText("邀请同事一起总结信息")).toBeVisible({ timeout: 15_000 });
-    await authedPage.getByTestId(T.createModeSwitch).click();
-    await authedPage.getByTestId(T.createAgentTab).click();
+    await authedPage.getByTestId(T.listModeSwitch).click();
+    await authedPage.getByTestId(T.listAgentTab).click();
     await authedPage.getByTestId(T.agentInput).fill("S12 生成保存失败测试内容");
     await authedPage.getByTestId(T.agentSendBtn).click();
 

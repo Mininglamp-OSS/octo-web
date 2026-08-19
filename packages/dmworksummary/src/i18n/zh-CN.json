@@ -180,7 +180,7 @@
         "selectedChats": "已选 {{count}} 个聊天",
         "selectMembers": "选择参与者",
         "selectedMembers": "已选 {{count}} 位参与者",
-        "start": "开始总结",
+        "start": "快速总结",
         "agentStart": "Agent 总结",
         "agentSubmitting": "Agent 总结中...",
         "agentTopicPlaceholder": "输入需要总结的需求",

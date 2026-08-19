@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import {
     Button,
     Dropdown,
+    SplitButtonGroup,
     Spin,
     Toast,
     Banner,
@@ -554,7 +555,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }, 300);
     };
 
-    handleCreate = () => {
+    handleCreate = (mode: "normal" | "agent" = "normal") => {
         // 「新建总结」意图:三处 create 控件都走这里(原先误用 GET /summary-templates 页面加载推断)。
         Dap.shared.track("smart_summary_create_clicked", {});
         if (this.props.onCreateNew) {
@@ -563,7 +564,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }
         WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(
-            <SummaryCreatePage onCreated={() => this.loadData()} source="summary_list" />
+            <SummaryCreatePage
+                onCreated={() => this.loadData()}
+                source="summary_list"
+                initialMode={mode}
+            />
         );
     };
 
@@ -600,13 +605,44 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             />
                         ) : (
                             <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
-                                <Button
-                                    data-testid={summaryTestIds.listCreate}
-                                    className="summary-list-create-icon-btn"
-                                    icon={<IconPlus />}
-                                    theme="borderless"
-                                    onClick={this.handleCreate}
-                                />
+                                <SplitButtonGroup className="summary-list-create-split">
+                                    <Button
+                                        data-testid={summaryTestIds.listCreate}
+                                        className="summary-list-create-icon-btn"
+                                        icon={<IconPlus />}
+                                        theme="borderless"
+                                        onClick={() => this.handleCreate("normal")}
+                                    />
+                                    <Dropdown
+                                        trigger="click"
+                                        position="bottomRight"
+                                        render={(
+                                            <Dropdown.Menu>
+                                                <Dropdown.Item
+                                                    data-testid={summaryTestIds.listNormalTab}
+                                                    onClick={() => this.handleCreate("normal")}
+                                                >
+                                                    {translate("summary.create.start")}
+                                                </Dropdown.Item>
+                                                <Dropdown.Item
+                                                    data-testid={summaryTestIds.listAgentTab}
+                                                    onClick={() => this.handleCreate("agent")}
+                                                >
+                                                    {translate("summary.create.agentStart")}
+                                                </Dropdown.Item>
+                                            </Dropdown.Menu>
+                                        )}
+                                    >
+                                        <Button
+                                            data-testid={summaryTestIds.listModeSwitch}
+                                            className="summary-list-create-icon-btn"
+                                            theme="borderless"
+                                            icon={<ChevronDown size={16} />}
+                                            aria-label={translate("summary.create.switchMode")}
+                                            title={translate("summary.create.switchMode")}
+                                        />
+                                    </Dropdown>
+                                </SplitButtonGroup>
                             </Tooltip>
                         )}
                     </div>
