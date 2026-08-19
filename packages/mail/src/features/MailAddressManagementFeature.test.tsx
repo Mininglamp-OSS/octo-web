@@ -137,6 +137,23 @@ describe("MailAddressManagementFeature", () => {
     expect(state.emit).toHaveBeenCalledWith("mail-refresh");
   });
 
+  it("refreshes the sidebar when the management view is refreshed", async () => {
+    await act(async () => {
+      root.render(<MailAddressManagementFeature />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    state.emit.mockClear();
+    await act(async () => {
+      state.viewProps?.onRefresh();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(state.emit).toHaveBeenCalledWith("mail-refresh");
+  });
+
   it("switches from the existing OpenClaw prompt to the CLI prompt", async () => {
     await act(async () => {
       root.render(<MailAddressManagementFeature />);

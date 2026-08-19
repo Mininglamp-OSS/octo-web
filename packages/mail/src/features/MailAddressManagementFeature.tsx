@@ -47,7 +47,10 @@ export default function MailAddressManagementFeature() {
   const setupPromptCopyRevisionRef = useRef(0);
   const mailboxContext = useAgentMailboxContext();
 
-  const reload = useCallback(() => setRevision((value) => value + 1), []);
+  const reload = useCallback(() => {
+    setRevision((value) => value + 1);
+    WKApp.mittBus.emit("mail-refresh" as never);
+  }, []);
 
   useEffect(() => {
     let active = true;

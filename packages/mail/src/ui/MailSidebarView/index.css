@@ -315,6 +315,17 @@
   background: var(--wk-bg-hover);
 }
 
+.octo-mail-mailboxes > button:disabled {
+  color: var(--wk-text-tertiary);
+  cursor: default;
+  opacity: 0.72;
+}
+
+.octo-mail-mailboxes > button:disabled:hover {
+  color: var(--wk-text-tertiary);
+  background: transparent;
+}
+
 .octo-mail-mailboxes > button.is-active {
   color: var(--wk-text-primary);
   background: var(--wk-bg-selected);

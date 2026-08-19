@@ -186,6 +186,24 @@ function mailboxContextConfig(
 }
 
 const MailService = {
+  async getState(
+    mailboxContextId: string,
+    signal?: AbortSignal
+  ): Promise<string> {
+    const response = await APIClient.shared.get<{ state?: unknown } | null>(
+      mailApiUrl("/state"),
+      mailboxContextConfig(mailboxContextId, { signal })
+    );
+    if (
+      !response ||
+      typeof response.state !== "string" ||
+      response.state.trim() === ""
+    ) {
+      throw new Error("Invalid mail state response");
+    }
+    return response.state;
+  },
+
   getIdentity(mailboxContextId: string): Promise<MailIdentity> {
     return APIClient.shared.get<MailIdentity>(
       mailApiUrl("/identity"),

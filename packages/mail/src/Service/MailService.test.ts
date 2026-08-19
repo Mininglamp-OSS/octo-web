@@ -51,6 +51,28 @@ describe("MailService", () => {
     });
   });
 
+  it("reads the lightweight account state through the selected mailbox", async () => {
+    api.get.mockResolvedValue({ state: "128" });
+
+    await expect(MailService.getState("42")).resolves.toBe("128");
+    expect(api.get).toHaveBeenCalledWith("/mail-api/webapi/v0/state", {
+      headers: { "X-Octo-Mailbox-ID": "42" },
+      timeout: MAIL_REQUEST_TIMEOUT_MS,
+      signal: undefined,
+    });
+  });
+
+  it("rejects an invalid account state response", async () => {
+    api.get.mockResolvedValueOnce({ state: 128 }).mockResolvedValueOnce(null);
+
+    await expect(MailService.getState("42")).rejects.toThrow(
+      "Invalid mail state response"
+    );
+    await expect(MailService.getState("42")).rejects.toThrow(
+      "Invalid mail state response"
+    );
+  });
+
   it("loads the authenticated mailbox identity", async () => {
     api.get.mockResolvedValue({ address: "agent@example.com" });
 
