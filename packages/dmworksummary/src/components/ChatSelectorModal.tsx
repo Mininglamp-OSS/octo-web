@@ -114,6 +114,10 @@ export default class ChatSelectorModal extends Component<Props, State> {
     async loadMembers() {
         const channel = this.props.channel;
         const seq = ++this.reqSeq;
+        // 参与者候选只含人类他人：两条路径都排除当前用户（自己）与机器人/AI，
+        // 与后端 contactsSync 的既有语义一致（datasource.ts 的 space 成员同步
+        // 也显式 `m.uid === loginInfo.uid continue` 排除自己）。
+        const myUid = WKApp.loginInfo?.uid;
         this.setState({ loading: true });
         try {
             if (channel) {
@@ -122,7 +126,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 await sdk.channelManager.syncSubscribes(channel);
                 if (seq !== this.reqSeq) return;
                 const subscribers = sdk.channelManager.getSubscribes(channel) || [];
-                const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid));
+                const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid) && m.uid !== myUid);
                 const roles = new Map<string, number>();
                 for (const m of humans) {
                     if (m.role != null) roles.set(m.uid, m.role);
@@ -150,11 +154,12 @@ export default class ChatSelectorModal extends Component<Props, State> {
                     : ((WKApp.dataSource as any)?.contactsList ?? []);
                 if (seq !== this.reqSeq) return;
                 const humans = list.filter((m: any) => {
-                    // roster 用 robot(0/1)，contactsList 用 robot:boolean/is_bot，两者都覆盖
-                    const isRobot = m.robot === 1 || m.robot === true || m.is_bot === true || isBot(m.uid || m.user_id || "");
+                    const uid = m.uid || m.user_id || "";
+                    // 只留人类：roster 用 robot(0/1)，contactsList 用 robot:boolean/is_bot，两者都覆盖
+                    const isRobot = m.robot === 1 || m.robot === true || m.is_bot === true || isBot(uid);
                     // 过滤黑名单联系人 (ContactsStatus.Blacklist = 2)；roster 无此字段恒 false
                     const isBlacklisted = m.status === 2;
-                    return !isRobot && !isBlacklisted;
+                    return !isRobot && !isBlacklisted && uid !== myUid;
                 });
                 this.setState({
                     memberRoles: new Map<string, number>(),

@@ -476,10 +476,12 @@ describe('ChatSelectorModal — members-mode candidate source (issue #200)', () 
         return utils!;
     }
 
-    it('无选中群聊时从 Space roster 加载候选，并过滤机器人', async () => {
+    it('无选中群聊时从 Space roster 加载候选，只留人类他人（过滤机器人与自己）', async () => {
+        // WKApp.loginInfo.uid 在 mock 里是 'test-uid'
         mockGetRoster.mockResolvedValue([
             { uid: 'u1', name: '张三', robot: 0 },
             { uid: 'bot1', name: '机器人助手', robot: 1 },
+            { uid: 'test-uid', name: '我自己', robot: 0 },
         ]);
 
         const utils = await openMembers();
@@ -487,6 +489,7 @@ describe('ChatSelectorModal — members-mode candidate source (issue #200)', () 
         expect(mockGetRoster).toHaveBeenCalledWith('space-123');
         expect(utils.getByText('张三')).toBeInTheDocument();
         expect(utils.queryByText('机器人助手')).not.toBeInTheDocument();
+        expect(utils.queryByText('我自己')).not.toBeInTheDocument();
     });
 
     it('无 currentSpaceId 时退回 contactsList，不调用 getRoster', async () => {
