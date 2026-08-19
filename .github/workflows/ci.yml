@@ -120,6 +120,10 @@ jobs:
         run: >-
           pnpm --filter @octo/base exec vitest run
           src/Components/PromptForwardActions
+      - name: Conversation reminder-done tests
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/Components/Conversation/__tests__/reminderDone.test.ts
       - name: Feature-flag gate tests
         run: >-
           pnpm --filter @octo/web exec vitest run

@@ -26,6 +26,7 @@ import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../
 import Provider from "../../Service/Provider";
 import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
+import { selectDoneReminderIDs, isReadToLatest } from "./reminderDone";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
@@ -2714,17 +2715,25 @@ export class Conversation
     if (!reminders || reminders.length === 0) {
       return;
     }
-    const doneReminderIDs: number[] = [];
-    for (const reminder of reminders) {
-      if (reminder.done) {
-        continue;
-      }
-      const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
-      if (message && this.isVisiableMessage(message.message, viewport)) {
-        doneReminderIDs.push(reminder.reminderID);
-        continue;
-      }
-    }
+    // 是否已真实读到会话最新。不能只靠 browseToMessageSeq >= lastMessage.messageSeq：
+    // 用户自己发消息时 self-send 快捷路径会把 browseToMessageSeq 强推到最新 seq，即使更早
+    // 历史没加载/没看过，会把没看见的 @ 静默标 done。改用真实渲染/加载状态判定（见
+    // isReadToLatest）：无更多历史待上拉，且最后一条消息真实渲染在视口内。
+    const readToLatest = isReadToLatest({
+      lastMessageSeq: this.vm.currentConversation?.lastMessage?.messageSeq,
+      lastVisibleSeq: this.lastVisiableMessage(viewport)?.messageSeq,
+      pullupHasMore: this.vm.pullupHasMore,
+    });
+
+    const doneReminderIDs = selectDoneReminderIDs(reminders, {
+      readToLatest,
+      isVisible: (reminder) => {
+        const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
+        return (
+          !!message && this.isVisiableMessage(message.message, viewport) === true
+        );
+      },
+    });
     if (doneReminderIDs.length > 0) {
       // Persist reminder done status to server via SDK (fixes #169)
       WKSDK.shared().reminderManager.done(doneReminderIDs);
