@@ -175,12 +175,8 @@ body {
   --octo-ui-switch-disabled-bg: var(--wk-brand-tint-06, oklch(28.862% 0.01261 285.49 / 6%));
   --octo-ui-switch-disabled-border: var(--wk-brand-tint-15, oklch(28.862% 0.01261 285.49 / 15%));
   --octo-ui-switch-disabled-checked-bg: color-mix(in srgb, var(--octo-ui-switch-checked-bg) 28%, var(--wk-bg-surface, oklch(100% 0 89.88)));
-  --octo-ui-switch-knob-bg: var(--wk-bg-surface, oklch(100% 0 89.88));
+  --octo-ui-switch-knob-bg: var(--wk-color-white, oklch(100% 0 89.88));
   --octo-ui-switch-knob-shadow: 0 0 1px oklch(0% 0 0 / 30%), 0 4px 6px oklch(0% 0 0 / 10%);
   --octo-ui-switch-knob-shadow-sm: 0 0 1px oklch(0% 0 0 / 15%), 0 1px 6px oklch(0% 0 0 / 10%);
   --octo-ui-switch-disabled-knob-shadow: 0 0 1px oklch(0% 0 0 / 30%);
-  --octo-ui-switch-checked-text: var(--wk-text-inverse, oklch(100% 0 89.88));
-  --octo-ui-switch-unchecked-text: var(--wk-text-secondary, oklch(22.957% 0.01344 285.29 / 60%));
-  --octo-ui-switch-text-size: 12px;
-  --octo-ui-switch-text-line-height: 16px;
 }

@@ -1,4 +1,4 @@
-import type { ChangeEvent, CSSProperties, MouseEventHandler, ReactNode } from 'react'
+import type { ChangeEvent, CSSProperties, MouseEventHandler } from 'react'
 
 export type SwitchSize = 'sm' | 'md' | 'lg'
 
@@ -11,7 +11,6 @@ export interface SwitchProps {
   'aria-label'?: string
   'aria-labelledby'?: string
   checked?: boolean
-  checkedText?: ReactNode
   className?: string
   defaultChecked?: boolean
   disabled?: boolean
@@ -19,7 +18,6 @@ export interface SwitchProps {
   loading?: boolean
   size?: SwitchSize
   style?: CSSProperties
-  uncheckedText?: ReactNode
   onChange?: (checked: boolean, event: SwitchChangeEvent) => void
   onCheckedChange?: (checked: boolean, event: SwitchChangeEvent) => void
   onMouseEnter?: MouseEventHandler<Element>

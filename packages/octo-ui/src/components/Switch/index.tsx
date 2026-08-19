@@ -12,15 +12,19 @@ const semiSizeByOctoSize: Record<SwitchSize, 'small' | 'default' | 'large'> = {
 }
 
 const Switch = forwardRef<ComponentRef<typeof SemiSwitch>, SwitchProps>(function Switch(
-  {
+  props,
+  ref,
+) {
+  const {
     size = 'md',
     className,
     onChange,
     onCheckedChange,
+    checkedText: _checkedText,
+    uncheckedText: _uncheckedText,
     ...rest
-  },
-  ref,
-) {
+  } = props as SwitchProps & { checkedText?: unknown; uncheckedText?: unknown }
+
   const classes = cx([
     'octo-ui-switch',
     `octo-ui-switch--${size}`,

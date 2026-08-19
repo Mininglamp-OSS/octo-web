@@ -133,7 +133,7 @@ describe('Switch with real Semi', () => {
     expect(getSwitchRoot(container).classList.contains('semi-switch-checked')).toBe(true)
   })
 
-  it('exposes the native switch input used by browser keyboard activation', () => {
+  it('exposes an enabled native switch input', () => {
     const { container } = render(
       <Switch aria-label="Keyboard switch" />,
     )

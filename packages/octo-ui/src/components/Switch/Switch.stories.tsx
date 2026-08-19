@@ -85,20 +85,18 @@ export const Sizes: Story = {
 
 export const LoadingSizes: Story = {
   render: () => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-      <Switch aria-label="Large loading switch" size="lg" loading />
-      <Switch aria-label="Medium loading switch" size="md" loading />
-      <Switch aria-label="Small loading switch" size="sm" loading />
-    </div>
-  ),
-}
-
-export const TextLabels: Story = {
-  render: () => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
-      <Switch aria-label="Text on switch" defaultChecked checkedText="ON" uncheckedText="OFF" />
-      <Switch aria-label="Unchecked text on switch" checkedText="ON" uncheckedText="OFF" />
-    </div>
+    <Stack>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+        <Switch aria-label="Large loading switch" size="lg" loading />
+        <Switch aria-label="Medium loading switch" size="md" loading />
+        <Switch aria-label="Small loading switch" size="sm" loading />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+        <Switch aria-label="Large checked loading switch" size="lg" checked loading />
+        <Switch aria-label="Medium checked loading switch" size="md" checked loading />
+        <Switch aria-label="Small checked loading switch" size="sm" checked loading />
+      </div>
+    </Stack>
   ),
 }
 
@@ -111,7 +109,6 @@ export const DarkStates: Story = {
         <Switch aria-label="Dark on disabled" checked disabled />
         <Switch aria-label="Dark off disabled" disabled />
         <Switch aria-label="Dark loading" loading />
-        <Switch aria-label="Dark text switch" checkedText="ON" uncheckedText="OFF" />
       </Stack>
     </DarkTheme>
   ),
