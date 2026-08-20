@@ -88,6 +88,13 @@ function registeredHandler(event: string): () => void {
   return call[1] as () => void;
 }
 
+function summaryMenuFactory(): () => { onPress?: (reentry?: boolean) => void } {
+  const reg = vi.mocked(WKApp.menus.register);
+  const factory = reg.mock.calls.find(([id]) => id === "summary")?.[1] as unknown as () => { onPress?: (reentry?: boolean) => void };
+  expect(factory).toBeTruthy();
+  return factory;
+}
+
 describe("SummaryModule guarded menu switching", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -162,10 +169,7 @@ describe("SummaryModule guarded menu switching", () => {
     // /summary 会造出双实例（e2e strict mode violation）。
     // 新需求：进入智能总结右栏默认展示新建总结页（取代欢迎占位页）——只推创建页，
     // 绝不推列表页。
-    const reg = vi.mocked(WKApp.menus.register);
-    const factory = reg.mock.calls.find(([id]) => id === "summary")?.[1] as () => { onPress?: (reentry?: boolean) => void };
-    expect(factory).toBeTruthy();
-    const menu = factory();
+    const menu = summaryMenuFactory()();
     menu.onPress?.(false);
 
     // 只清左栈；右栈由 replaceToRoot 直接落创建页。
@@ -176,6 +180,31 @@ describe("SummaryModule guarded menu switching", () => {
     expect(pushed.type).toBe(SummaryCreatePage); // 创建页，不是 SummaryListPage
     expect(pushed.props.source).toBe("summary_home");
     expect(pushed.props.initialMode).toBe("normal");
+    // P2-1/P2-5：key 必须存在且随每次进入变化——固定 key 会命中 WKViewQueue 的
+    // React 复用分支，重复点菜单不会「重置回默认创建页」。
+    expect(String(pushed.key).startsWith("home-normal-")).toBe(true);
+
+    // 再次进入：key 必须不同（强制重挂载，保证重置语义）。
+    menu.onPress?.(true);
+    expect(state.replaceToRoot).toHaveBeenCalledTimes(2);
+    const second = state.replaceToRoot.mock.calls[1][0] as React.ReactElement;
+    expect(second.key).not.toBe(pushed.key);
+  });
+
+  it("small screens (≤640px) keep landing on the list: no create page pushed into the overlay right pane", () => {
+    // P1-2：WKLayout 在 ≤640px 把右栏渲染为覆盖 NavRail 的 fixed 层（z-index 20 > 10），
+    // 创建页非面板模式没有返回控件，推入即困住用户。小屏应保持 popToRoot 旧行为。
+    const originalWidth = window.innerWidth;
+    Object.defineProperty(window, "innerWidth", { value: 600, configurable: true, writable: true });
+    try {
+      const menu = summaryMenuFactory()();
+      menu.onPress?.(false);
+
+      expect(state.popToRoot).toHaveBeenCalledTimes(2); // routeLeft + routeRight
+      expect(state.replaceToRoot).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window, "innerWidth", { value: originalWidth, configurable: true, writable: true });
+    }
   });
 
   it("does not double-fetch when boot repairs Space before publishing ready", () => {

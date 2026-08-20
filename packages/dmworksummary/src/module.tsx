@@ -13,16 +13,19 @@ import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
 import { getPendingInvitationBadge, refreshPendingInvitationBadge } from "./utils/summaryMenuBadge";
 import { isSupportedChannelType } from "./utils/channelType";
+import { SMALL_SCREEN_WIDTH } from "@octo/base/src/Components/WKLayout/layoutWidth";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
 import ChatSummaryPanel from "./components/ChatSummaryPanel";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 import "./index.css";
-import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
 let _spaceReadyHandler: (() => void) | null = null;
 const openingSummaryShares = new Set<string>();
+// NavRail 每次进入的序号：并入默认创建页元素的 key。key 若固定，重复点菜单时
+// React 会复用旧实例（WKViewQueue 按数组下标渲染），「重置回默认创建页」不生效。
+let summaryHomeEntrySeq = 0;
 
 function afterSummaryMenuSwitch(action: () => void) {
     if (WKApp.switchToMenuById && WKApp.currentMenuId !== "summary") {
@@ -185,8 +188,19 @@ export class SummaryModule implements IModule {
                         Dap.shared.track("smart_summary_module_entered", {});
                     }
                     WKApp.routeLeft.popToRoot();
+                    if (window.innerWidth <= SMALL_SCREEN_WIDTH) {
+                        // 小屏（≤640px）：WKLayout 把右栏渲染为盖住 NavRail 的 fixed 覆盖层
+                        // （z-index 20 > 10），而创建页非面板模式没有返回控件——推入创建页
+                        // 会困住用户。小屏保持原行为：落在列表，创建走「+」下拉。
+                        WKApp.routeRight.popToRoot();
+                        return;
+                    }
                     WKApp.routeRight.replaceToRoot(
-                        <SummaryCreatePage source="summary_home" key="normal" initialMode="normal" />
+                        <SummaryCreatePage
+                            source="summary_home"
+                            key={`home-normal-${++summaryHomeEntrySeq}`}
+                            initialMode="normal"
+                        />
                     );
                 };
                 return menu;

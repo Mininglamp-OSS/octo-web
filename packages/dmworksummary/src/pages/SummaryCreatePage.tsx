@@ -710,6 +710,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (this.props.embedded) {
                 this.props.onSubmit?.(result.task_id);
             } else {
+                // 非面板路径（NavRail 默认创建页 / /summary/create / 列表「+」）创建成功后
+                // 通知左侧列表刷新：新总结应立即出现在列表，而不是等切模块重进才可见。
+                // 面板路径由宿主 ChatSummaryPanel 自行派发，这里不重复。
+                WKApp.mittBus.emit("summary-list-refresh-requested" as any);
                 WKApp.routeRight.popToRoot();
                 WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
             }
@@ -1030,6 +1034,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (this.props.embedded) {
                 this.props.onSubmit?.(result.task_id);
             } else {
+                // 非面板路径：保存为总结成功后通知左侧列表刷新（同 handleSubmit）。
+                WKApp.mittBus.emit("summary-list-refresh-requested" as any);
                 WKApp.routeRight.popToRoot();
                 WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
             }

@@ -65,7 +65,10 @@ export async function registerS19SummaryListCancelTask(page: Page): Promise<void
       http.post("*/summary/api/v1/summaries/batch-status", () => {
         const state = (window as unknown as { __s19State__: { cancelled: boolean } }).__s19State__;
         return env({ tasks: [{ id: taskId, status: state.cancelled ? 5 : 2 }] });
-      })
+      }),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
+      )
     );
   }, [S19_TASK_ID]);
 }
