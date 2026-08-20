@@ -12,13 +12,13 @@ interface AgentChatPanelProps {
     onSend: (text: string) => void;
     sending: boolean;
     welcome?: string;
-    onSaveAsSummary?: (title: string) => Promise<boolean>;
+    onSaveAsSummary?: (title: string, requestId?: string) => Promise<boolean>;
     savingSummary?: boolean;
     onNewSession?: () => void;
     useStream?: boolean;
     sessionId?: string;
     profile?: string;
-    onAssistantMessage?: (text: string, sessionId?: string) => void;
+    onAssistantMessage?: (text: string, sessionId?: string, requestId?: string) => void;
     onUserMessage?: (text: string, sessionId?: string) => void;
     /**
      * 引用的已有总结 task_id 列表。仅在**首轮**(messages.length===0)时随
@@ -72,10 +72,9 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
 
     private listRef = createRef<HTMLDivElement>();
     private streamCloseHandle: (() => void) | null = null;
-    // WEB-03: run_id captured from the last agent response (SS-11). Forward-looking
-    // (the backend keys idempotency on request_id, not this) — kept for future
-    // run-aware UI / debugging.
-    private lastRunId: string | null = null;
+    // request_id for the most recent successful agent generation. Save uses it
+    // to bind the summary to the frozen v2 Run manifest for that turn.
+    private lastRequestId: string | null = null;
 
     state: AgentChatPanelState = { 
         input: '', 
@@ -166,14 +165,15 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         // 先本地追加 user 消息(纯 UI,不发请求)
         onUserMessage?.(text, sessionId);
 
-        try {
-            // 每轮都把引用传给后端(和 CHAT-REFERENCE-BASED-DESIGN-v1 多轮上下文修复对齐)。
-            // 后端每轮重新拼进 system prompt,让 agent 在多轮追问/迭代中始终能看到引用材料。
-            const refIds = this.props.referencedTaskIds && this.props.referencedTaskIds.length > 0
-                ? this.props.referencedTaskIds
-                : undefined;
-            const selectedChannels = this.requestSelectedChannels();
+        // 每轮都把引用传给后端(和 CHAT-REFERENCE-BASED-DESIGN-v1 多轮上下文修复对齐)。
+        // 这里先冻结本次 submit 的 scope，fallback 复用同一份，避免同一 request_id
+        // 下前后两次请求的 scope 发生漂移。
+        const refIds = this.props.referencedTaskIds && this.props.referencedTaskIds.length > 0
+            ? this.props.referencedTaskIds
+            : undefined;
+        const selectedChannels = this.requestSelectedChannels();
 
+        try {
             const { close } = agentChatStream({
                 session_id: sessionId,
                 message: text,
@@ -213,11 +213,10 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 onDone: (evt: AgentDoneEvent) => {
                     const { t } = this.context;
                     const reply = evt.reply || t('summary.common.agentPanel.noReply');
-                    // WEB-03: capture run_id (SS-11) for forward-looking run-aware UI.
-                    this.lastRunId = evt.run_id ?? this.lastRunId;
+                    this.lastRequestId = requestId;
                     // 优先用后端回传的 session_id(它可能对老 session 做过 canonicalize);
                     // 兜底用我们本地生成的 sessionId(和请求时发出去的一致,父组件据此持久化)。
-                    onAssistantMessage?.(reply, evt.session_id || sessionId);
+                    onAssistantMessage?.(reply, evt.session_id || sessionId, requestId);
                     this.setState({
                         isStreaming: false,
                         processExpanded: false,
@@ -229,9 +228,10 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     Toast.error(`${t('summary.common.agentChat.error')}: ${evt.message}`);
                     this.setState({ isStreaming: false });
                     this.streamCloseHandle = null;
-                    // 仅传输层失败(transient: true)才重试,后端真实 error 不重试
+                    // 仅传输层失败(transient: true)才重试；summaryApi 会在收到
+                    // 后端 error frame 后抑制 close-without-done 的二次 transient。
                     if (evt.transient) {
-                        this.fallbackToNormalChat(text, sessionId, profile, requestId);
+                        this.fallbackToNormalChat(text, sessionId, profile, requestId, refIds, selectedChannels);
                     }
                 },
             });
@@ -242,32 +242,33 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
             const { t } = this.context;
             console.error('[AgentChatPanel] SSE stream failed:', err);
             Toast.warning(t('summary.common.agentChat.streamInterrupted'));
-            this.fallbackToNormalChat(text, sessionId, profile, requestId);
+            this.fallbackToNormalChat(text, sessionId, profile, requestId, refIds, selectedChannels);
         }
     };
 
-    private fallbackToNormalChat = async (text: string, sessionId: string, profile: string, requestId: string) => {
+    private fallbackToNormalChat = async (
+        text: string,
+        sessionId: string,
+        profile: string,
+        requestId: string,
+        refIds?: number[],
+        selectedChannels?: ReturnType<AgentChatPanel['requestSelectedChannels']>,
+    ) => {
         const { t } = this.context;
         const { onAssistantMessage } = this.props;
         try {
-            // Fallback 也每轮带引用(和 SSE 主链一致)
-            const refIds = this.props.referencedTaskIds && this.props.referencedTaskIds.length > 0
-                ? this.props.referencedTaskIds
-                : undefined;
-
             const result = await agentChat({
                 session_id: sessionId,
                 message: text,
                 profile,
                 request_id: requestId,
                 referenced_task_ids: refIds,
-                selected_channels: this.requestSelectedChannels(),
+                selected_channels: selectedChannels,
             });
             const reply = result.reply || t('summary.common.agentPanel.noReply');
-            // WEB-03: capture run_id from the fallback response too (SS-11).
-            this.lastRunId = result.run_id ?? this.lastRunId;
+            this.lastRequestId = requestId;
             // 上抛 sessionId 让父组件持久化(和 SSE onDone 一致)
-            onAssistantMessage?.(reply, result.session_id || sessionId);
+            onAssistantMessage?.(reply, result.session_id || sessionId, requestId);
         } catch (err: any) {
             Toast.error(t('summary.common.createFailed'));
             console.error('[AgentChatPanel] Fallback agentChat failed:', err);
@@ -317,7 +318,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         }
         if (!this.props.onSaveAsSummary) return;
         
-        const success = await this.props.onSaveAsSummary(title);
+        const success = await this.props.onSaveAsSummary(title, this.lastRequestId || undefined);
         if (success) {
             this.setState({ showSaveDialog: false, summaryTitle: '' });
         }

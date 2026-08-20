@@ -208,6 +208,32 @@ data: {"reply":"r","session_id":"s1","run_id":"run-abc"}
         close();
     });
 
+    it('does not synthesize a transient close error after a backend error event', async () => {
+        const onError = vi.fn();
+        const sseData = `event: error
+data: {"code":50001,"message":"backend failed"}
+
+`;
+        const mockReader = {
+            read: vi.fn()
+                .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode(sseData) })
+                .mockResolvedValueOnce({ done: true, value: undefined }),
+            cancel: vi.fn(),
+            releaseLock: vi.fn(),
+        };
+        fetchMock.mockResolvedValueOnce({ ok: true, body: { getReader: () => mockReader } });
+
+        const { close } = agentChatStream(
+            { session_id: 's1', message: 'q', profile: 'summary', request_id: 'req-1' },
+            { onError },
+        );
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError).toHaveBeenCalledWith({ code: 50001, message: 'backend failed' });
+        close();
+    });
+
     it('should call onError when fetch fails', async () => {
         const onProgress = vi.fn();
         const onDone = vi.fn();

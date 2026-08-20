@@ -473,6 +473,7 @@ export function agentChatStream(
             let pendingEvent = '';
             let pendingData = '';
             let receivedDone = false;
+            let receivedError = false;
             while (!aborted) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -496,6 +497,8 @@ export function agentChatStream(
                         if (pendingEvent && pendingData) {
                             if (pendingEvent === 'done') {
                                 receivedDone = true;
+                            } else if (pendingEvent === 'error') {
+                                receivedError = true;
                             }
                             parseAndDispatch(pendingEvent, pendingData, handlers);
                         }
@@ -520,12 +523,14 @@ export function agentChatStream(
                 if (pendingEvent && pendingData) {
                     if (pendingEvent === 'done') {
                         receivedDone = true;
+                    } else if (pendingEvent === 'error') {
+                        receivedError = true;
                     }
                     parseAndDispatch(pendingEvent, pendingData, handlers);
                 }
             }
             // 流已关闭,但如果没收到 done 事件,触发错误让 UI 解锁
-            if (!aborted && !receivedDone) {
+            if (!aborted && !receivedDone && !receivedError) {
                 handlers.onError?.({ code: 50000, message: 'stream closed without done', transient: true });
             }
         } catch (err: unknown) {

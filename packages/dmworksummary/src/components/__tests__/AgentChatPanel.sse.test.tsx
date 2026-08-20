@@ -80,6 +80,7 @@ describe('AgentChatPanel SSE Mode', () => {
 
     it('generates a request_id and reuses it across stream→fallback (WEB-03)', async () => {
         let streamRequestId: string | undefined;
+        const onAssistantMessage = vi.fn();
         (summaryApi.agentChatStream as any).mockImplementation((params: any, handlers: any) => {
             streamRequestId = params.request_id;
             setImmediate(() => handlers.onError({ code: 0, message: 'transport closed', transient: true }));
@@ -97,7 +98,7 @@ describe('AgentChatPanel SSE Mode', () => {
                     sessionId="s"
                     profile="summary"
                     onUserMessage={vi.fn()}
-                    onAssistantMessage={vi.fn()}
+                    onAssistantMessage={onAssistantMessage}
                 />
             </I18nContext.Provider>,
         );
@@ -112,6 +113,113 @@ describe('AgentChatPanel SSE Mode', () => {
         expect(summaryApi.agentChat).toHaveBeenCalledWith(
             expect.objectContaining({ request_id: streamRequestId }),
         );
+        expect(onAssistantMessage).toHaveBeenCalledWith('ok', 's', streamRequestId);
+    });
+
+    it('gives each logical submit a distinct request_id (WEB-03)', async () => {
+        const seen: string[] = [];
+        (summaryApi.agentChatStream as any).mockImplementation((params: any, handlers: any) => {
+            seen.push(params.request_id);
+            setImmediate(() => handlers.onDone?.({ reply: 'ok', session_id: 's' }));
+            return { close: vi.fn() };
+        });
+
+        render(
+            <I18nContext.Provider value={{ t: mockT, locale: 'zh-CN' }}>
+                <AgentChatPanel
+                    messages={[]}
+                    onSend={vi.fn()}
+                    sending={false}
+                    useStream
+                    sessionId="s"
+                    profile="summary"
+                    onUserMessage={vi.fn()}
+                    onAssistantMessage={vi.fn()}
+                />
+            </I18nContext.Provider>,
+        );
+        const textarea = screen.getByPlaceholderText('summary.create.agentChatPlaceholder');
+        const send = screen.getByText('summary.create.send');
+
+        await act(async () => {
+            fireEvent.change(textarea, { target: { value: '第一轮' } });
+            fireEvent.click(send);
+        });
+        await waitFor(() => expect(seen).toHaveLength(1), { timeout: 2000 });
+
+        await act(async () => {
+            fireEvent.change(textarea, { target: { value: '第二轮' } });
+            fireEvent.click(send);
+        });
+        await waitFor(() => expect(seen).toHaveLength(2), { timeout: 2000 });
+
+        // Two genuinely distinct submits must NOT collapse into one backend Run.
+        expect(seen[0]).toBeTruthy();
+        expect(seen[1]).toBeTruthy();
+        expect(seen[0]).not.toBe(seen[1]);
+    });
+
+    it('binds save to the last SUCCESSFUL turn, not a later failed one (WEB-03)', async () => {
+        const onSaveAsSummary = vi.fn().mockResolvedValue(true);
+        const seen: string[] = [];
+        let call = 0;
+        (summaryApi.agentChatStream as any).mockImplementation((params: any, handlers: any) => {
+            seen.push(params.request_id);
+            call++;
+            // 1st submit succeeds; 2nd fails with a NON-transient backend error
+            // (no fallback), so it must not overwrite the bound request_id.
+            if (call === 1) {
+                setImmediate(() => handlers.onDone?.({ reply: 'good answer', session_id: 's' }));
+            } else {
+                setImmediate(() => handlers.onError?.({ code: 50001, message: 'backend failed' }));
+            }
+            return { close: vi.fn() };
+        });
+
+        const ref = React.createRef<AgentChatPanel>();
+        render(
+            <I18nContext.Provider value={{ t: mockT, locale: 'zh-CN' }}>
+                <AgentChatPanel
+                    ref={ref}
+                    messages={[{ role: 'assistant', content: 'good answer' } as ChatMessage]}
+                    onSend={vi.fn()}
+                    sending={false}
+                    useStream
+                    sessionId="s"
+                    profile="summary"
+                    onUserMessage={vi.fn()}
+                    onAssistantMessage={vi.fn()}
+                    onSaveAsSummary={onSaveAsSummary}
+                />
+            </I18nContext.Provider>,
+        );
+        const textarea = screen.getByPlaceholderText('summary.create.agentChatPlaceholder');
+        const send = screen.getByText('summary.create.send');
+
+        await act(async () => {
+            fireEvent.change(textarea, { target: { value: '第一轮' } });
+            fireEvent.click(send);
+        });
+        await waitFor(() => expect(seen).toHaveLength(1), { timeout: 2000 });
+
+        await act(async () => {
+            fireEvent.change(textarea, { target: { value: '第二轮' } });
+            fireEvent.click(send);
+        });
+        await waitFor(() => expect(seen).toHaveLength(2), { timeout: 2000 });
+
+        // Drive the real save-confirm path (the Semi Modal mock does not render okText).
+        const instance = ref.current as any;
+        await act(async () => {
+            instance.setState({ showSaveDialog: true, summaryTitle: '标题' });
+        });
+        await act(async () => {
+            await instance.handleSaveConfirm();
+        });
+
+        await waitFor(() => expect(onSaveAsSummary).toHaveBeenCalled(), { timeout: 2000 });
+        // The failed 2nd turn froze no manifest — save must still point at turn 1.
+        expect(onSaveAsSummary).toHaveBeenCalledWith('标题', seen[0]);
     });
 
     it('keeps old request behavior when no chat is selected', async () => {
@@ -273,10 +381,12 @@ describe('AgentChatPanel SSE Mode', () => {
 
     it('should pass session_id from onDone event to onAssistantMessage callback', async () => {
         let savedHandlers: any = null;
+        let streamRequestId: string | undefined;
         const onAssistantMessage = vi.fn();
 
         // Mock agentChatStream to capture handlers
         (summaryApi.agentChatStream as any).mockImplementation((params: any, handlers: any) => {
+            streamRequestId = params.request_id;
             savedHandlers = handlers;
             return { close: vi.fn() };
         });
@@ -319,7 +429,7 @@ describe('AgentChatPanel SSE Mode', () => {
         // Verify panel passes BOTH text and session_id to the callback
         // (Parent component is responsible for persisting and updating state)
         await waitFor(() => {
-            expect(onAssistantMessage).toHaveBeenCalledWith('Server response', 'server-session-xyz');
+            expect(onAssistantMessage).toHaveBeenCalledWith('Server response', 'server-session-xyz', streamRequestId);
         }, { timeout: 1000 });
     });
 
@@ -424,9 +534,11 @@ describe('AgentChatPanel SSE Mode', () => {
     it('should allow first send with empty sessionId and pass it to backend', async () => {
         const onUserMessage = vi.fn();
         const onAssistantMessage = vi.fn();
+        let streamRequestId: string | undefined;
         
         // Mock agentChatStream to capture params and simulate successful response
         (summaryApi.agentChatStream as any).mockImplementation((params: any, handlers: any) => {
+            streamRequestId = params.request_id;
             // P2.1: AgentChatPanel generates UUID when sessionId is empty
             expect(params.session_id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
             expect(params.message).toBe('First message');
@@ -471,7 +583,9 @@ describe('AgentChatPanel SSE Mode', () => {
         await waitFor(() => {
             expect(summaryApi.agentChatStream).toHaveBeenCalledWith(expect.objectContaining({ session_id: expect.any(String), message: 'First message', profile: 'summary' }), expect.any(Object));
             expect(onUserMessage).toHaveBeenCalledWith('First message', expect.any(String));
-            expect(onAssistantMessage).toHaveBeenCalledWith('Backend response', 'new-session-123');
+            // WEB-03: the generation turn's request_id rides along so the parent can
+            // persist it and bind the save call to that run's frozen manifest.
+            expect(onAssistantMessage).toHaveBeenCalledWith('Backend response', 'new-session-123', streamRequestId);
         }, { timeout: 1000 });
     });
 });

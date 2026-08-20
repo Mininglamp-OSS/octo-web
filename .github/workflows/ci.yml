@@ -103,6 +103,13 @@ jobs:
         run: |
           pnpm --filter @octo/base exec vitest run src/__tests__/EndpointCommon.menuSwitch.test.tsx
           pnpm --filter @dmwork/summary exec vitest run src/__tests__/module.menuSwitch.test.tsx
+      - name: Agent summary v2 run-binding tests (WEB-03)
+        run: >-
+          pnpm --filter @dmwork/summary exec vitest run
+          src/utils/__tests__/genRequestId.test.ts
+          src/utils/agentChatSession.test.ts
+          src/api/__tests__/agentChatStream.test.ts
+          src/components/__tests__/AgentChatPanel.sse.test.tsx
       - name: I18n check
         run: pnpm i18n:check
       - name: Voice and settings regression tests

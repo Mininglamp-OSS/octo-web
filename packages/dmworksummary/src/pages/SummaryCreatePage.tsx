@@ -43,7 +43,21 @@ import type {
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
 import { Channel, WKSDK } from "wukongimjssdk";
-import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
+import {
+    describeSchedule,
+    scheduleToParams,
+    genSessionId,
+    genRequestId,
+    readAgentChatSession,
+    writeAgentChatSession,
+    clearAgentChatSession,
+    readAgentChatReferenced,
+    writeAgentChatReferenced,
+    clearAgentChatReferenced,
+    readAgentChatRequestId,
+    writeAgentChatRequestId,
+    clearAgentChatRequestId,
+} from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -99,6 +113,7 @@ interface SummaryCreatePageState {
     // Agent 多轮问答：气泡 UI + session_id。后端按 session_id 持久化记忆，同一会话复用即可续上下文。
     messages: ChatMessage[];
     sessionId: string;
+    agentRequestId: string;
     /**
      * chat 引用的已有总结(单选,v1)。仅首轮生效,选中后随 first message 发给后端。
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1。
@@ -164,6 +179,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         savingSummary: false,
         messages: [],
         sessionId: '',
+        agentRequestId: '',
         referencedTask: null,
         showReferencePicker: false,
         previewTaskId: null,
@@ -314,10 +330,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             // 保存时血统被污染。所以进入时先原子清一遍 session · 再 write
             // 新 reference · 保证 storage 里的两条永远一致。
             clearAgentChatSession(this.agentChannelId());
+            clearAgentChatRequestId(this.agentChannelId());
             this.setState({
                 mode: 'agent',
                 referencedTask: this.props.derivedFromTask,
                 sessionId: '',
+                agentRequestId: '',
                 messages: [],
             });
             // 与 session_id 同生命周期持久化引用总结，避免 refresh/重进后
@@ -738,6 +756,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
         // 惰性生成 session_id，整会话复用。
         const sessionId = this.state.sessionId || genSessionId();
+        const requestId = genRequestId();
         // 持久化到 localStorage：关闭/刷新后再进来可按 session_id 拉回历史（「退出不丢」）。
         writeAgentChatSession(this.agentChannelId(), sessionId);
 
@@ -749,13 +768,20 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }));
 
         try {
-            const res = await api.agentChat({ message: trimmed, session_id: sessionId, profile: 'summary' });
+            const res = await api.agentChat({
+                message: trimmed,
+                session_id: sessionId,
+                profile: 'summary',
+                request_id: requestId,
+            });
             // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）。
             const nextSessionId = res.session_id || sessionId;
             writeAgentChatSession(this.agentChannelId(), nextSessionId);
+            writeAgentChatRequestId(this.agentChannelId(), requestId);
             this.setState((prev) => ({
                 messages: [...prev.messages, { role: 'assistant', content: res.reply }],
                 sessionId: nextSessionId,
+                agentRequestId: requestId,
             }));
         } catch (err: any) {
             // 失败：Toast + 追一条 assistant 错误气泡（让失败在对话流里可见）。
@@ -788,19 +814,23 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     /** SSE 模式：追加 assistant 消息(仅 UI,不发请求)。 */
-    handleAgentAssistantMessage = (text: string, sessionId?: string) => {
-        // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）
-        if (sessionId && sessionId !== this.state.sessionId) {
-            writeAgentChatSession(this.agentChannelId(), sessionId);
-            this.setState((prev) => ({
-                messages: [...prev.messages, { role: 'assistant', content: text }],
-                sessionId,
-            }));
-        } else {
-            this.setState((prev) => ({
-                messages: [...prev.messages, { role: 'assistant', content: text }],
-            }));
+    handleAgentAssistantMessage = (text: string, sessionId?: string, requestId?: string) => {
+        if (requestId) {
+            writeAgentChatRequestId(this.agentChannelId(), requestId);
         }
+        this.setState((prev) => {
+            const nextState: Pick<SummaryCreatePageState, 'messages'> & Partial<SummaryCreatePageState> = {
+                messages: [...prev.messages, { role: 'assistant', content: text }],
+            };
+            if (sessionId && sessionId !== prev.sessionId) {
+                writeAgentChatSession(this.agentChannelId(), sessionId);
+                nextState.sessionId = sessionId;
+            }
+            if (requestId) {
+                nextState.agentRequestId = requestId;
+            }
+            return nextState;
+        });
     };
     handlePrimaryClick = () => {
         if (this.state.mode !== 'agent') {
@@ -838,12 +868,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
+        const storedRequestId = readAgentChatRequestId(this.agentChannelId());
         // 恢复引用总结与 session 同生命周期：storage 里有 → 自动回填。
         // 无 → 保持 state 现值（可能是 mount 时 derivedFromTask 塞进来的）。
         const storedRef = readAgentChatReferenced(this.agentChannelId());
         this.setState((prev) => ({
             mode: 'agent',
             sessionId: stored || prev.sessionId,
+            agentRequestId: storedRequestId || prev.agentRequestId,
             referencedTask: storedRef
                 ? { task_id: storedRef.task_id, title: storedRef.title } as SummaryListItem
                 : prev.referencedTask,
@@ -872,6 +904,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /** 「新会话」：清 localStorage 的 session_id、清空消息，下次发送重新生成新 session_id。 */
     handleNewSession = () => {
         clearAgentChatSession(this.agentChannelId());
+        clearAgentChatRequestId(this.agentChannelId());
         // 引用总结跟 session 同生命周期 → 一起清。
         clearAgentChatReferenced(this.agentChannelId());
         // 作废在途历史拉取，避免旧会话历史回灌到新会话。
@@ -879,6 +912,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         this.setState({
             messages: [],
             sessionId: '',
+            agentRequestId: '',
             referencedTask: null,
             showReferencePicker: false,
             error: null,
@@ -942,9 +976,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。 */
-    handleSaveAsSummary = async (title: string): Promise<boolean> => {
+    handleSaveAsSummary = async (title: string, requestId?: string): Promise<boolean> => {
         const { sessionId, selectedChats, selectedMembers } = this.state;
         const { t } = this.context;
+        const agentRequestId = requestId || this.state.agentRequestId;
         
         if (!sessionId) {
             Toast.warning(t('summary.create.noOutputToSave'));
@@ -962,6 +997,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 session_id: sessionId,
                 title,
             };
+            if (agentRequestId) {
+                params.request_id = agentRequestId;
+            }
 
             if (selectedChats.length > 0) {
                 const origin = selectedChats[0];
@@ -1008,12 +1046,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             //   2. 重置组件内 state(messages/sessionId/referencedTask)
             //   3. 后端会在保存事务里 DELETE agent_message 表对应行
             clearAgentChatSession(this.agentChannelId());
+            clearAgentChatRequestId(this.agentChannelId());
             // 引用总结跟 session 同生命周期 → 一起清。
             clearAgentChatReferenced(this.agentChannelId());
             this.historyLoadToken++;
             this.setState({
                 messages: [],
                 sessionId: '',
+                agentRequestId: '',
                 referencedTask: null,
                 showReferencePicker: false,
             });

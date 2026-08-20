@@ -71,6 +71,44 @@ export function clearAgentChatSession(channelId?: string | null): void {
     }
 }
 
+// ─── Agent 对话 request_id 持久化（保存时绑定最后一次成功生成） ──────────────
+// request_id 与 session_id 同生命周期：它标识最近一次成功生成的交付轮次，
+// 保存为总结时需要带给后端以读取该轮冻结的 v2 manifest。
+const AGENT_CHAT_REQUEST_KEY_PREFIX = 'agent-chat-request:';
+
+/** 构造该入口最近一次成功 agent submit 的 request_id localStorage key。 */
+export function agentChatRequestIdKey(channelId?: string | null): string {
+    return AGENT_CHAT_REQUEST_KEY_PREFIX + (channelId || AGENT_CHAT_SESSION_FALLBACK);
+}
+
+/** 读取该入口最近一次成功 agent submit 的 request_id；无则返回空串。 */
+export function readAgentChatRequestId(channelId?: string | null): string {
+    try {
+        return localStorage.getItem(agentChatRequestIdKey(channelId)) || '';
+    } catch {
+        return '';
+    }
+}
+
+/** 写入最近一次成功 agent submit 的 request_id（空串跳过）。异常静默降级。 */
+export function writeAgentChatRequestId(channelId: string | null | undefined, requestId: string): void {
+    if (!requestId) return;
+    try {
+        localStorage.setItem(agentChatRequestIdKey(channelId), requestId);
+    } catch {
+        // localStorage 不可用时不持久化，不影响当前会话保存。
+    }
+}
+
+/** 清除该入口的 request_id（新会话 / 保存成功时与 session 一起清）。 */
+export function clearAgentChatRequestId(channelId?: string | null): void {
+    try {
+        localStorage.removeItem(agentChatRequestIdKey(channelId));
+    } catch {
+        // 同上，忽略。
+    }
+}
+
 // ─── Agent 对话 referencedTask 持久化（「退出不丢引用」） ──────────────
 // referencedTask 与 session_id 同生命周期：session 存活时它也存活，session
 // 清掉（新会话/保存成功）时它也被清。修 SUM-161 fast-follow：未保存的
