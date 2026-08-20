@@ -70,7 +70,7 @@ const DropdownItem = forwardRef<HTMLButtonElement, DropdownItemProps>(function D
 
     onSelect?.(event)
     if (!event.defaultPrevented && shouldCloseOnSelect) {
-      context.close()
+      window.setTimeout(context.close, 0)
     }
   }, [context, onClick, onSelect, shouldCloseOnSelect])
 
