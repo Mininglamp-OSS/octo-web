@@ -32,6 +32,10 @@ const isDesktopRuntime =
   import.meta.env.VITE_ELECTRON_BUILD === "true" ||
   window.location.protocol === "file:"
 
+if (isElectronPowered()) {
+  document.documentElement.dataset.octoDesktop = "1"
+}
+
 if(isDesktopRuntime) {
   // 开发环境的 Tauri/Electron 页面运行在 localhost:3000，走 Vite 同源代理，
   // 避免直接请求远程 API 时被浏览器 CORS 拦截。正式桌面包没有 Vite 代理，
