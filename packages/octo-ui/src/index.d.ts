@@ -9,6 +9,7 @@ import type { ButtonProps } from './components/Button/types'
 import type { TagProps } from './components/Tag/types'
 import type { BadgeProps } from './components/Badge/types'
 import type { DotProps } from './components/Dot/types'
+import type { TooltipProps } from './components/Tooltip/types'
 
 export type {
   ButtonProps,
@@ -25,6 +26,13 @@ export type {
 } from './components/Tag/types'
 export type { BadgeProps, BadgeSize, BadgeVariant } from './components/Badge/types'
 export type { DotProps, DotSize, DotTone } from './components/Dot/types'
+export type {
+  TooltipContent,
+  TooltipContentConfig,
+  TooltipLayout,
+  TooltipPlacement,
+  TooltipProps,
+} from './components/Tooltip/types'
 export interface OctoUIProviderProps {
   children?: ReactNode
 }
@@ -41,4 +49,5 @@ export declare const Badge: ForwardRefExoticComponent<
 export declare const Dot: ForwardRefExoticComponent<
   DotProps & RefAttributes<HTMLSpanElement>
 >
+export declare const Tooltip: FC<TooltipProps>
 export declare const OctoUIProvider: FC<OctoUIProviderProps>

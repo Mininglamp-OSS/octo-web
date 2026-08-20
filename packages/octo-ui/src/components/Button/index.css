@@ -88,6 +88,19 @@
   background: var(--wk-bg-active);
 }
 
+.octo-ui-button--text {
+  background: transparent;
+  color: var(--wk-color-accent);
+}
+
+.octo-ui-button--text:hover:not(:disabled) {
+  color: var(--wk-color-accent-hover);
+}
+
+.octo-ui-button--text:active:not(:disabled) {
+  color: var(--wk-color-accent-hover);
+}
+
 .octo-ui-button--danger {
   background: var(--wk-color-danger-bg);
   border-color: var(--wk-color-danger-border);

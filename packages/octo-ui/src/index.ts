@@ -15,3 +15,11 @@ export { default as Badge } from './components/Badge'
 export type { BadgeProps, BadgeSize, BadgeVariant } from './components/Badge/types'
 export { default as Dot } from './components/Dot'
 export type { DotProps, DotSize, DotTone } from './components/Dot/types'
+export { default as Tooltip } from './components/Tooltip'
+export type {
+  TooltipContent,
+  TooltipContentConfig,
+  TooltipLayout,
+  TooltipPlacement,
+  TooltipProps,
+} from './components/Tooltip/types'

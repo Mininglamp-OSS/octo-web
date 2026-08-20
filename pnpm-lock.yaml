@@ -601,6 +601,9 @@ importers:
       '@octo/base':
         specifier: workspace:*
         version: link:../dmworkbase
+      '@octo/ui':
+        specifier: workspace:*
+        version: link:../octo-ui
       '@tanstack/react-virtual':
         specifier: ^3.13.23
         version: 3.13.23(react-dom@17.0.2(react@17.0.2))(react@17.0.2)

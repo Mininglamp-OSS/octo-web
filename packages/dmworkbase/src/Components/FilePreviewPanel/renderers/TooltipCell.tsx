@@ -1,5 +1,5 @@
-import React, { useRef, useState, useEffect, useCallback, memo } from "react";
-import { Tooltip } from "@douyinfe/semi-ui";
+import React, { useRef, useState, useEffect, memo } from "react";
+import { Tooltip } from "@octo/ui";
 import "./TooltipCell.css";
 
 interface TooltipCellProps {
@@ -14,7 +14,6 @@ interface TooltipCellProps {
 export const TooltipCell = memo(function TooltipCell({ content }: TooltipCellProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [isTruncated, setIsTruncated] = useState(false);
-  const [visible, setVisible] = useState(false);
 
   // 内容是否非空（排除 null/undefined 以及空白字符串）
   const hasContent =
@@ -30,31 +29,21 @@ export const TooltipCell = memo(function TooltipCell({ content }: TooltipCellPro
     };
 
     checkTruncation();
+    const resizeObserver = typeof ResizeObserver === "undefined"
+      ? undefined
+      : new ResizeObserver(checkTruncation);
+    if (ref.current) resizeObserver?.observe(ref.current);
     window.addEventListener("resize", checkTruncation);
-    return () => window.removeEventListener("resize", checkTruncation);
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", checkTruncation);
+    };
   }, [content]);
-
-  // NOTE: 这里刻意使用 trigger="custom" 而非 trigger="hover"。
-  // hover 模式下 semi 会用内部状态挂载浮层，绕过受控的 visible，
-  // 当内容为空时会出现一个空的深色气泡（"乌云"）。改为受控后，
-  // 仅当元素确实溢出且有内容时才显示浮层。
-  const handleMouseEnter = useCallback(() => {
-    const el = ref.current;
-    if (el && el.scrollWidth > el.clientWidth && hasContent) {
-      setVisible(true);
-    }
-  }, [hasContent]);
-
-  const handleMouseLeave = useCallback(() => {
-    setVisible(false);
-  }, []);
 
   const cellContent = (
     <div
       ref={ref}
       className="wk-excel-tooltip-cell"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       {content}
     </div>
@@ -66,7 +55,7 @@ export const TooltipCell = memo(function TooltipCell({ content }: TooltipCellPro
   }
 
   return (
-    <Tooltip content={content} position="top" trigger="custom" visible={visible} showArrow>
+    <Tooltip content={content}>
       {cellContent}
     </Tooltip>
   );

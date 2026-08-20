@@ -5,8 +5,8 @@ import {
     Spin,
     Toast,
     Banner,
-    Tooltip,
 } from "@douyinfe/semi-ui";
+import { Tooltip } from "@octo/ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
@@ -582,7 +582,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                     </h2>
                     <div className="summary-list-header-actions">
                         {isPanel && (
-                            <Tooltip content={translate("summary.chatSummary.createNew")} position="bottom">
+                            <Tooltip content={translate("summary.chatSummary.createNew")} placement="bottom">
                                 <Button
                                     className="summary-list-create-icon-btn"
                                     icon={<IconPlus />}
@@ -599,7 +599,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 onClick={onClose}
                             />
                         ) : (
-                            <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
+                            <Tooltip content={translate("summary.list.createTooltip")} placement="bottom">
                                 <Button
                                     data-testid={summaryTestIds.listCreate}
                                     className="summary-list-create-icon-btn"

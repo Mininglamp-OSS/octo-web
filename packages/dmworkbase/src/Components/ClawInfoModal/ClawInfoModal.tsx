@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Dot } from "@octo/ui";
-import { Spin, Empty, Tooltip } from "@douyinfe/semi-ui";
+import { Dot, Tooltip } from "@octo/ui";
+import { Spin, Empty } from "@douyinfe/semi-ui";
 import { IconClose } from "@douyinfe/semi-icons";
 import { Clock } from "lucide-react";
 import WKModal from "../WKModal";
@@ -345,7 +345,7 @@ export default function ClawInfoModal({ botId, botName, visible, onClose }: Claw
                           time: getRelativeTime(data.last_report_at, format, t),
                         },
                       })}
-                      position="bottom"
+                      placement="bottom"
                     >
                       <span
                         className="claw-info-meta__report-time"

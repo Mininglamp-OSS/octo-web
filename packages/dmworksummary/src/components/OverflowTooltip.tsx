@@ -1,5 +1,5 @@
-import React, { useRef, useState, useCallback } from "react";
-import { Tooltip } from "@douyinfe/semi-ui";
+import React, { useEffect, useRef, useState } from "react";
+import { Tooltip } from "@octo/ui";
 
 interface OverflowTooltipProps {
     children: React.ReactNode;
@@ -12,45 +12,38 @@ interface OverflowTooltipProps {
 
 const OverflowTooltip: React.FC<OverflowTooltipProps> = ({ children, className, style, as: Component = "div", title, "data-testid": dataTestId }) => {
     const containerRef = useRef<HTMLElement>(null);
-    const [visible, setVisible] = useState(false);
+    const [isTruncated, setIsTruncated] = useState(false);
 
-    // NOTE: we intentionally use trigger="custom" instead of trigger="hover".
-    // With trigger="hover", semi binds its own mouseenter/focus handlers that mount
-    // the overlay from internal state and bypass the controlled `visible` prop. The
-    // content is now a stable, caller-supplied `title` string (not deferred state),
-    // so the overlay never mounts with empty content and never produces a stray empty
-    // dark bubble. Visibility depends solely on `visible`, which we flip on only when
-    // the title is actually overflowing.
-    const handleMouseEnter = useCallback(() => {
-        const el = containerRef.current;
-        if (el && el.scrollWidth > el.clientWidth) {
-            setVisible(true);
-        }
-    }, []);
+    useEffect(() => {
+        const checkTruncation = () => {
+            const el = containerRef.current;
+            setIsTruncated(Boolean(el && el.scrollWidth > el.clientWidth));
+        };
 
-    const handleMouseLeave = useCallback(() => {
-        setVisible(false);
-    }, []);
+        checkTruncation();
+        const resizeObserver = typeof ResizeObserver === "undefined"
+            ? undefined
+            : new ResizeObserver(checkTruncation);
+        if (containerRef.current) resizeObserver?.observe(containerRef.current);
+        window.addEventListener("resize", checkTruncation);
+        return () => {
+            resizeObserver?.disconnect();
+            window.removeEventListener("resize", checkTruncation);
+        };
+    }, [children, title]);
 
-    return (
-        <Tooltip
-            content={title ?? ""}
-            position="bottom"
-            trigger="custom"
-            visible={visible}
+    const content = (
+        <Component
+            ref={containerRef}
+            className={className}
+            style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...style }}
+            data-testid={dataTestId}
         >
-            <Component
-                ref={containerRef}
-                className={className}
-                style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...style }}
-                data-testid={dataTestId}
-                onMouseEnter={handleMouseEnter}
-                onMouseLeave={handleMouseLeave}
-            >
-                {children}
-            </Component>
-        </Tooltip>
+            {children}
+        </Component>
     );
+
+    return isTruncated && title ? <Tooltip content={title} placement="bottom">{content}</Tooltip> : content;
 };
 
 export default OverflowTooltip;

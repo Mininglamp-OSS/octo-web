@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
+import { Tooltip } from "@octo/ui";
+import { Dropdown, Modal } from "@douyinfe/semi-ui";
 import { MoreHorizontal, AlertTriangle, Bot, Clock, FileText, UsersRound, X } from "lucide-react";
 import { useI18n, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -164,7 +165,7 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
             {/* 标题行：类型图标 + 标题；来源保持在上一行 */}
             <div className="summary-card-body">
                 <div className="summary-card-title-row">
-                    <Tooltip content={typeLabel} position="top">
+                    <Tooltip content={typeLabel}>
                         <span
                             className={`summary-card-type-icon summary-card-type-icon--${typeKind}`}
                             role="img"

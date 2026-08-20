@@ -25,6 +25,12 @@ describe('Button', () => {
     expect(html).toContain('custom-button')
   })
 
+  it('supports the text button used by composed components', () => {
+    const html = renderToStaticMarkup(<Button variant="text">Learn more</Button>)
+
+    expect(html).toContain('octo-ui-button--text')
+  })
+
   it('disables the button and renders a spinner while loading', () => {
     const html = renderToStaticMarkup(<Button loading>Save</Button>)
 
