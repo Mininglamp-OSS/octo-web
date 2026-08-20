@@ -25,6 +25,12 @@
     padding-bottom: 6px;
 }
 
+.wk-slash-command-item .octo-ui-menu-item__label {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+}
+
 .wk-slash-command-item-content {
     display: flex;
     min-width: 0;
@@ -41,6 +47,8 @@
 .wk-slash-command-desc {
     font-size: 12px;
     color: var(--wk-text-tertiary);
+    overflow-wrap: anywhere;
+    white-space: normal;
 }
 
 .wk-slash-command-empty {

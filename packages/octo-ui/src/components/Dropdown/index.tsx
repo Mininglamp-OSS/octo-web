@@ -1,6 +1,6 @@
 import { Dropdown as SemiDropdown } from '@douyinfe/semi-ui'
 import { forwardRef, useCallback, useContext, useMemo, useState } from 'react'
-import type { MouseEvent, ReactNode } from 'react'
+import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import MenuItem from '../MenuItem'
 import { DropdownContext } from './context'
 import type {
@@ -20,26 +20,74 @@ function isDangerItem(item: Pick<DropdownItemConfig, 'danger' | 'type'>) {
   return item.danger || item.type === 'danger' || item.type === 'warning'
 }
 
-const DropdownMenu = forwardRef<HTMLDivElement, DropdownMenuProps>(function DropdownMenu(
-  { children, className, style, width, maxHeight },
+function getFocusableMenuItems(menu: HTMLElement) {
+  return Array.from(
+    menu.querySelectorAll<HTMLElement>('.octo-ui-dropdown-item-shell[aria-disabled="false"]'),
+  )
+}
+
+const DropdownMenu = forwardRef<HTMLUListElement, DropdownMenuProps>(function DropdownMenu(
+  { children, className, style, width, maxHeight, onKeyDown, ...rest },
   ref,
 ) {
+  const scrollable = maxHeight !== undefined
   const menuStyle = {
     ...style,
     ...(width === undefined ? null : { width }),
     ...(maxHeight === undefined ? null : { maxHeight }),
   }
 
+  const handleKeyDown = useCallback((event: KeyboardEvent<HTMLUListElement>) => {
+    onKeyDown?.(event)
+    if (event.defaultPrevented) return
+
+    const items = getFocusableMenuItems(event.currentTarget)
+    if (items.length === 0) return
+
+    const currentItem = (event.target as HTMLElement | null)?.closest<HTMLElement>('.octo-ui-dropdown-item-shell')
+    const currentIndex = currentItem ? items.indexOf(currentItem) : -1
+    let nextIndex = currentIndex
+
+    switch (event.key) {
+      case 'ArrowDown':
+        nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % items.length
+        break
+      case 'ArrowUp':
+        nextIndex = currentIndex < 0 ? items.length - 1 : (currentIndex - 1 + items.length) % items.length
+        break
+      case 'Home':
+        nextIndex = 0
+        break
+      case 'End':
+        nextIndex = items.length - 1
+        break
+      case 'Enter':
+      case ' ':
+        if (currentItem) {
+          event.preventDefault()
+          currentItem.querySelector<HTMLButtonElement>('button[role="menuitem"]')?.click()
+        }
+        return
+      default:
+        return
+    }
+
+    event.preventDefault()
+    items[nextIndex]?.focus()
+  }, [onKeyDown])
+
   return (
-    <div
+    <ul
+      {...rest}
       ref={ref}
       role="menu"
       aria-orientation="vertical"
-      className={joinClasses('octo-ui-dropdown-menu', className)}
+      className={joinClasses('octo-ui-dropdown-menu', scrollable && 'octo-ui-dropdown-menu--scrollable', className)}
+      onKeyDown={handleKeyDown}
       style={menuStyle}
     >
       {children}
-    </div>
+    </ul>
   )
 })
 
@@ -57,6 +105,9 @@ const DropdownItem = forwardRef<HTMLButtonElement, DropdownItemProps>(function D
     onSelect,
     onClick,
     className,
+    shellClassName,
+    submenu,
+    disabled,
     ...rest
   },
   ref,
@@ -75,24 +126,33 @@ const DropdownItem = forwardRef<HTMLButtonElement, DropdownItemProps>(function D
   }, [context, onClick, onSelect, shouldCloseOnSelect])
 
   return (
-    <MenuItem
-      {...rest}
-      ref={ref}
-      role={rest.role ?? 'menuitem'}
-      className={joinClasses(className, active ? 'octo-ui-dropdown-item--active' : undefined)}
-      size={size}
-      selected={selected ?? active}
-      danger={danger ?? isDangerItem({ danger, type })}
-      label={label ?? children}
-      onClick={handleClick}
-    />
+    <li
+      aria-disabled={disabled ? 'true' : 'false'}
+      className={joinClasses('octo-ui-dropdown-item-shell', shellClassName)}
+      data-octo-dropdown-item-key={itemKey}
+      role="none"
+      tabIndex={disabled ? undefined : -1}
+    >
+      <MenuItem
+        {...rest}
+        ref={ref}
+        role={rest.role ?? 'menuitem'}
+        className={joinClasses(className, active ? 'octo-ui-dropdown-item--active' : undefined)}
+        size={size}
+        selected={selected ?? active}
+        danger={danger ?? isDangerItem({ danger, type })}
+        disabled={disabled}
+        label={label ?? children}
+        onClick={handleClick}
+      />
+      {submenu}
+    </li>
   )
 })
 
 function DropdownDivider({ className, style }: DropdownDividerProps) {
   return (
-    <div
-      aria-hidden="true"
+    <li
       className={joinClasses('octo-ui-dropdown-divider', className)}
       role="separator"
       style={style}
@@ -148,6 +208,8 @@ function Dropdown({
   overlayClassName,
   style,
   overlayStyle,
+  width,
+  minWidth,
   disabled,
   motion,
   rePosKey,
@@ -170,11 +232,16 @@ function Dropdown({
   }), [closeOnSelect, setVisible])
 
   const overlayContent = overlay ?? render ?? (items ? renderItems(items, onAction) : null)
+  const rootStyle = {
+    ...overlayStyle,
+    ...(width === undefined ? null : { width }),
+    ...(minWidth === undefined ? null : { minWidth }),
+  }
   const renderContent = (
     <DropdownContext.Provider value={contextValue}>
       <div
         className={joinClasses('octo-ui-dropdown', overlayClassName)}
-        style={overlayStyle}
+        style={rootStyle}
       >
         {overlayContent}
       </div>

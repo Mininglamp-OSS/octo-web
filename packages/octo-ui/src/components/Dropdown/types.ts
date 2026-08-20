@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from 'react'
+import type { CSSProperties, HTMLAttributes, MouseEvent, ReactElement, ReactNode } from 'react'
 import type { MenuItemProps } from '../MenuItem/types'
 
 export type DropdownTrigger = 'hover' | 'focus' | 'click' | 'custom' | 'contextMenu'
@@ -56,16 +56,16 @@ export interface DropdownProps {
   overlayClassName?: string
   style?: CSSProperties
   overlayStyle?: CSSProperties
+  width?: CSSProperties['width']
+  minWidth?: CSSProperties['minWidth']
   disabled?: boolean
   motion?: boolean
   rePosKey?: string | number
   closeOnEsc?: boolean
 }
 
-export interface DropdownMenuProps {
+export interface DropdownMenuProps extends Omit<HTMLAttributes<HTMLUListElement>, 'children'> {
   children?: ReactNode
-  className?: string
-  style?: CSSProperties
   width?: number | string
   maxHeight?: number | string
 }
@@ -75,6 +75,8 @@ export interface DropdownItemProps extends Omit<MenuItemProps, 'onClick' | 'labe
   label?: ReactNode
   active?: boolean
   type?: DropdownItemConfig['type']
+  shellClassName?: string
+  submenu?: ReactNode
   closeOnSelect?: boolean
   onSelect?: (event: MouseEvent<HTMLButtonElement>) => void
   onClick?: (event: MouseEvent<HTMLButtonElement>) => void

@@ -21,14 +21,16 @@ const allowedSemiDropdownFiles = new Set([
   'packages/octo-ui/src/components/Dropdown/Dropdown.test.tsx',
 ])
 
+const allowedSemiDropdownStyleFiles = new Set()
+
 const legacyMenuSelectorPatterns = [
-  /\.wk-move-to-group-menu__item\b/,
-  /\.wk-move-to-group-menu__divider\b/,
-  /\.wk-slash-command-item-active\b/,
-  /\.wk-navrail__flyout-item\b/,
-  /\.wk-contextmenus\s+li\b/,
-  /\.wk-ctx-submenu\s+li\b/,
-  /\.semi-dropdown(?:-item|-menu)?\b/,
+  /\.wk-move-to-group-menu__item\b/g,
+  /\.wk-move-to-group-menu__divider\b/g,
+  /\.wk-slash-command-item-active\b/g,
+  /\.wk-navrail__flyout-item\b/g,
+  /\.wk-contextmenus\s+li\b/g,
+  /\.wk-ctx-submenu\s+li\b/g,
+  /\.semi-dropdown(?:-item|-menu)?\b/g,
 ]
 
 function extname(file) {
@@ -58,6 +60,17 @@ function lineNumber(source, index) {
   return source.slice(0, index).split('\n').length
 }
 
+function hasDropdownSpecifier(specifierSource) {
+  return specifierSource
+    .split(',')
+    .map((part) => part.trim().replace(/^type\s+/, '').replace(/\s+as\s+\w+$/, ''))
+    .includes('Dropdown')
+}
+
+function escapeRegExp(source) {
+  return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 const violations = []
 
 for (const scanRoot of scanRoots) {
@@ -68,20 +81,41 @@ for (const scanRoot of scanRoots) {
     const ext = extname(file)
 
     if (sourceExtensions.has(ext) && !allowedSemiDropdownFiles.has(rel)) {
-      const importPattern = /import\s*\{([\s\S]*?)\}\s*from\s*["']@douyinfe\/semi-ui["']/g
+      const namedImportPattern = /(?:^|\n)\s*import(?:\s+type)?\s*\{([^}]*)\}\s*from\s*["']@douyinfe\/semi-ui["']/g
+      const exportPattern = /(?:^|\n)\s*export(?:\s+type)?\s*\{([^}]*)\}\s*from\s*["']@douyinfe\/semi-ui["']/g
+      const namespaceImportPattern = /(?:^|\n)\s*import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s*["']@douyinfe\/semi-ui["']/g
+      const deepImportPattern = /(?:^|\n)\s*import(?:\s+type)?[\s\S]*?from\s*["']@douyinfe\/semi-ui\/[^"']*dropdown[^"']*["']/g
+      const sideEffectDeepImportPattern = /(?:^|\n)\s*import\s*["']@douyinfe\/semi-ui\/[^"']*dropdown[^"']*["']/g
       let match
-      while ((match = importPattern.exec(source))) {
-        const specifiers = match[1].split(',').map((part) => part.trim().replace(/\s+as\s+\w+$/, ''))
-        if (specifiers.includes('Dropdown')) {
+      while ((match = namedImportPattern.exec(source))) {
+        if (hasDropdownSpecifier(match[1])) {
           violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi Dropdown; use @octo/ui Dropdown`)
         }
       }
+      while ((match = exportPattern.exec(source))) {
+        if (hasDropdownSpecifier(match[1])) {
+          violations.push(`${rel}:${lineNumber(source, match.index)} re-exports Semi Dropdown; use @octo/ui Dropdown`)
+        }
+      }
+      while ((match = namespaceImportPattern.exec(source))) {
+        const namespaceUsage = new RegExp(`\\b${escapeRegExp(match[1])}\\.Dropdown\\b`)
+        if (namespaceUsage.test(source)) {
+          violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi namespace Dropdown; use @octo/ui Dropdown`)
+        }
+      }
+      while ((match = deepImportPattern.exec(source))) {
+        violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi Dropdown deep path; use @octo/ui Dropdown`)
+      }
+      while ((match = sideEffectDeepImportPattern.exec(source))) {
+        violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi Dropdown deep path; use @octo/ui Dropdown`)
+      }
     }
 
-    if (styleExtensions.has(ext)) {
+    if (styleExtensions.has(ext) && !allowedSemiDropdownStyleFiles.has(rel)) {
       for (const pattern of legacyMenuSelectorPatterns) {
-        const match = pattern.exec(source)
-        if (match) {
+        let match
+        pattern.lastIndex = 0
+        while ((match = pattern.exec(source))) {
           violations.push(`${rel}:${lineNumber(source, match.index)} keeps legacy menu selector ${pattern}`)
         }
       }

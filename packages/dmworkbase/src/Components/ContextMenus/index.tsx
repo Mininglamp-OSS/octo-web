@@ -210,57 +210,56 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
 
         const hasChildren = m.children && m.children.length > 0
 
-        return (
-            <div
-                key={i}
-                className="wk-ctx-item"
-            >
-                <Dropdown.Item
-                    data-testid={m.testid}
-                    danger={m.danger}
-                    icon={m.icon ? <CtxIcon path={m.icon} /> : undefined}
-                    suffix={hasChildren ? <ArrowIcon /> : undefined}
-                    closeOnSelect={!hasChildren}
-                    onSelect={(e) => {
-                        if (hasChildren) {
-                            e.stopPropagation()
-                            return
+        const submenu = hasChildren ? (
+            <div className="wk-ctx-submenu">
+                <Dropdown.Menu>
+                    {m.children!.map((child, ci) => {
+                        if (child.separator) {
+                            return <Dropdown.Divider key={ci} className="wk-ctx-sep" />
                         }
-                        this.hide()
-                        if (m.onClick) m.onClick()
-                    }}
-                >
-                    {m.title}
-                </Dropdown.Item>
-                {hasChildren && (
-                    <div className="wk-ctx-submenu">
-                        <Dropdown.Menu>
-                            {m.children!.map((child, ci) => {
-                                if (child.separator) {
-                                    return <Dropdown.Divider key={ci} className="wk-ctx-sep" />
-                                }
-                                return (
-                                    <Dropdown.Item
-                                        key={ci}
-                                        danger={child.danger}
-                                        icon={child.icon ? <CtxIcon path={child.icon} /> : undefined}
-                                        suffix={child.checked ? (
-                                            <span className="wk-ctx-checked">✓</span>
-                                        ) : undefined}
-                                        onSelect={(e) => {
-                                            e.stopPropagation()
-                                            this.hide()
-                                            if (child.onClick) child.onClick()
-                                        }}
-                                    >
-                                        {child.title}
-                                    </Dropdown.Item>
-                                )
-                            })}
-                        </Dropdown.Menu>
-                    </div>
-                )}
+                        return (
+                            <Dropdown.Item
+                                key={ci}
+                                danger={child.danger}
+                                icon={child.icon ? <CtxIcon path={child.icon} /> : undefined}
+                                suffix={child.checked ? (
+                                    <span className="wk-ctx-checked">✓</span>
+                                ) : undefined}
+                                onSelect={(e) => {
+                                    e.stopPropagation()
+                                    this.hide()
+                                    if (child.onClick) child.onClick()
+                                }}
+                            >
+                                {child.title}
+                            </Dropdown.Item>
+                        )
+                    })}
+                </Dropdown.Menu>
             </div>
+        ) : undefined
+
+        return (
+            <Dropdown.Item
+                key={i}
+                data-testid={m.testid}
+                danger={m.danger}
+                icon={m.icon ? <CtxIcon path={m.icon} /> : undefined}
+                suffix={hasChildren ? <ArrowIcon /> : undefined}
+                shellClassName="wk-ctx-item"
+                submenu={submenu}
+                closeOnSelect={!hasChildren}
+                onSelect={(e) => {
+                    if (hasChildren) {
+                        e.stopPropagation()
+                        return
+                    }
+                    this.hide()
+                    if (m.onClick) m.onClick()
+                }}
+            >
+                {m.title}
+            </Dropdown.Item>
         )
     }
 

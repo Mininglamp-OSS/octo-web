@@ -434,7 +434,7 @@ export default function VoiceInputButton({
     const currentText = getCurrentText?.() ?? "";
     const hasContent = currentText.trim().length > 0;
     const dropdownMenu = (
-      <Dropdown.Menu style={{ width: 140 }}>
+      <Dropdown.Menu width={140}>
         {VOICE_MODES.map((mode) => {
           const isEditMode = mode.value === "edit_only";
           const itemDisabled = isEditMode && !hasContent;
@@ -458,6 +458,7 @@ export default function VoiceInputButton({
           trigger="hover"
           position="topRight"
           render={dropdownMenu}
+          minWidth={140}
           visible={canRecord && !!inputRef.current ? showMenu : false}
           onVisibleChange={setShowMenu}
           spacing={4}

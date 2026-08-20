@@ -753,7 +753,7 @@ export default function VoiceInputIndicator({
   const isActive = showModeMenu;
 
   const dropdownMenu = (
-    <Dropdown.Menu style={{ width: 160 }}>
+    <Dropdown.Menu width={160}>
       {VOICE_MODES.map((mode) => (
         <Dropdown.Item
           key={mode.value}
@@ -771,6 +771,7 @@ export default function VoiceInputIndicator({
         trigger="hover"
         position="topRight"
         render={dropdownMenu}
+        minWidth={160}
         visible={canRecord ? showModeMenu : false}
         onVisibleChange={setShowModeMenu}
         spacing={4}
