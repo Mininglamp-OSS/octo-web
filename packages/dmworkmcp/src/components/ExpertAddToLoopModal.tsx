@@ -1,7 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Select } from "@octo/ui";
 import React, { useEffect, useState } from "react";
 import { WKModal, t, useI18n } from "@octo/base";
-import { Select, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import type { ExpertItem } from "../mock/expertMock";
 import {
   installExpertToLoop,

@@ -3,6 +3,7 @@
 @import '../components/Tag/index.css';
 @import '../components/MenuItem/index.css';
 @import '../components/Dropdown/index.css';
+@import '../components/Select/index.css';
 @import '../components/Checkbox/index.css';
 @import '../components/Radio/index.css';
 @import '../components/Switch/index.css';

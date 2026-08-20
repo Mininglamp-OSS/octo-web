@@ -17,6 +17,16 @@ export type {
   DropdownProps,
   DropdownTrigger,
 } from './components/Dropdown/types'
+export { default as Select } from './components/Select'
+export type {
+  SelectChangeValue,
+  SelectOption,
+  SelectOptionProps,
+  SelectProps,
+  SelectSize,
+  SelectStatus,
+  SelectValue,
+} from './components/Select/types'
 export { default as Checkbox, CheckboxGroup } from './components/Checkbox'
 export type {
   CheckboxChangeEvent,

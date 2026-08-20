@@ -1,0 +1,240 @@
+.octo-ui-select {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  width: var(--octo-ui-select-width);
+  min-width: 0;
+  min-height: var(--octo-ui-select-height);
+  border-radius: var(--octo-ui-select-radius);
+  background: var(--octo-ui-select-bg);
+  color: var(--octo-ui-select-text);
+  font-family: var(--octo-ui-font-sans);
+  font-size: var(--octo-ui-select-font-size);
+  line-height: var(--octo-ui-select-line-height);
+  cursor: pointer;
+  outline: none;
+  transition:
+    background-color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    box-shadow var(--octo-ui-duration-fast) var(--octo-ui-ease-standard);
+}
+
+.octo-ui-select:hover:not(.octo-ui-select--disabled) {
+  background: var(--octo-ui-select-bg-hover);
+}
+
+.octo-ui-select--focus,
+.octo-ui-select--open {
+  background: var(--octo-ui-select-bg-focus);
+  box-shadow: inset 0 0 0 1px var(--octo-ui-select-border-focus);
+}
+
+.octo-ui-select--open .octo-ui-select__arrow {
+  transform: rotate(180deg);
+}
+
+.octo-ui-select--disabled {
+  color: var(--octo-ui-select-disabled-text);
+  cursor: not-allowed;
+}
+
+.octo-ui-select--small {
+  --octo-ui-select-height: var(--octo-ui-select-height-sm);
+  --octo-ui-select-padding-x: var(--octo-ui-select-padding-x-sm);
+}
+
+.octo-ui-select--large {
+  --octo-ui-select-height: var(--octo-ui-select-height-lg);
+  --octo-ui-select-padding-x: var(--octo-ui-select-padding-x-lg);
+}
+
+.octo-ui-select--error {
+  box-shadow: inset 0 0 0 1px var(--octo-ui-select-error-border);
+}
+
+.octo-ui-select--warning {
+  box-shadow: inset 0 0 0 1px var(--octo-ui-select-warning-border);
+}
+
+.octo-ui-select__trigger-inner {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--octo-ui-select-gap);
+  width: 100%;
+  min-width: 0;
+  min-height: var(--octo-ui-select-height);
+  padding: var(--octo-ui-select-padding-y) var(--octo-ui-select-padding-x);
+}
+
+.octo-ui-select--multiple .octo-ui-select__trigger-inner {
+  padding-top: var(--octo-ui-select-chip-block-padding);
+  padding-bottom: var(--octo-ui-select-chip-block-padding);
+}
+
+.octo-ui-select__value {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.octo-ui-select__text,
+.octo-ui-select__placeholder,
+.octo-ui-select__chip-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-ui-select__placeholder {
+  color: var(--octo-ui-select-placeholder);
+}
+
+.octo-ui-select--disabled .octo-ui-select__placeholder,
+.octo-ui-select--disabled .octo-ui-select__arrow {
+  color: var(--octo-ui-select-disabled-text);
+}
+
+.octo-ui-select__arrow,
+.octo-ui-select__clear,
+.octo-ui-select__chip-remove {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--octo-ui-select-icon);
+}
+
+.octo-ui-select__arrow {
+  width: var(--octo-ui-select-icon-size);
+  height: var(--octo-ui-select-icon-size);
+  transition: transform var(--octo-ui-duration-fast) var(--octo-ui-ease-standard);
+}
+
+.octo-ui-select__clear,
+.octo-ui-select__chip-remove {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.octo-ui-select__clear {
+  width: var(--octo-ui-select-icon-size);
+  height: var(--octo-ui-select-icon-size);
+}
+
+.octo-ui-select__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--octo-ui-select-chip-gap);
+  min-width: 0;
+}
+
+.octo-ui-select__chip {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  height: var(--octo-ui-select-chip-height);
+  gap: var(--octo-ui-select-chip-gap);
+  padding: var(--octo-ui-select-chip-padding);
+  border-radius: var(--octo-ui-select-chip-radius);
+  background: var(--octo-ui-select-chip-bg);
+  color: var(--octo-ui-select-text);
+  font-size: var(--octo-ui-select-chip-font-size);
+  line-height: var(--octo-ui-select-chip-line-height);
+}
+
+.octo-ui-select__chip-remove {
+  width: var(--octo-ui-select-chip-remove-size);
+  height: var(--octo-ui-select-chip-remove-size);
+}
+
+.octo-ui-select-dropdown.octo-ui-select-dropdown {
+  box-sizing: border-box;
+  min-width: var(--octo-ui-select-dropdown-min-width);
+  max-width: var(--octo-ui-select-dropdown-max-width);
+  padding: var(--octo-ui-dropdown-padding);
+  border-radius: var(--octo-ui-dropdown-radius);
+  background: var(--octo-ui-dropdown-bg);
+  box-shadow: var(--octo-ui-dropdown-shadow);
+  color: var(--octo-ui-dropdown-text);
+  font-family: var(--octo-ui-font-sans);
+}
+
+.octo-ui-select-option {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: var(--octo-ui-select-option-gap);
+  min-width: 0;
+  height: var(--octo-ui-select-option-height);
+  padding: var(--octo-ui-select-option-padding);
+  border-radius: var(--octo-ui-select-option-radius);
+  color: var(--octo-ui-select-text);
+  cursor: pointer;
+  font-size: var(--octo-ui-select-font-size);
+  font-weight: 400;
+  line-height: var(--octo-ui-select-line-height);
+}
+
+.octo-ui-select-option:hover {
+  background: var(--octo-ui-select-option-hover-bg);
+}
+
+.octo-ui-select-option--selected {
+  background: var(--octo-ui-select-option-selected-bg);
+  font-weight: 500;
+}
+
+.octo-ui-select-option--disabled {
+  color: var(--octo-ui-select-disabled-text);
+  cursor: not-allowed;
+}
+
+.octo-ui-select-option--disabled:hover {
+  background: transparent;
+}
+
+.octo-ui-select-option__label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-ui-select-option__check {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--octo-ui-select-icon-size);
+  height: var(--octo-ui-select-icon-size);
+  color: var(--octo-ui-select-text);
+}
+
+.octo-ui-select-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--octo-ui-select-empty-gap);
+  min-height: var(--octo-ui-select-empty-height);
+  padding: var(--octo-ui-select-empty-padding);
+  color: var(--octo-ui-select-placeholder);
+  font-size: var(--octo-ui-select-font-size);
+  line-height: var(--octo-ui-select-line-height);
+}
+
+.octo-ui-select-empty__icon {
+  width: var(--octo-ui-select-empty-icon-size);
+  height: var(--octo-ui-select-empty-icon-size);
+  color: var(--octo-ui-select-empty-icon-color);
+  font-size: var(--octo-ui-select-empty-icon-size);
+}
+
+.octo-ui-select-empty__text {
+  color: var(--octo-ui-select-placeholder);
+}
