@@ -815,21 +815,33 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     /** SSE 模式：追加 assistant 消息(仅 UI,不发请求)。 */
     handleAgentAssistantMessage = (text: string, sessionId?: string, requestId?: string) => {
-        if (requestId) {
-            writeAgentChatRequestId(this.agentChannelId(), requestId);
-        }
+        let sessionChanged = false;
         this.setState((prev) => {
             const nextState: Pick<SummaryCreatePageState, 'messages'> & Partial<SummaryCreatePageState> = {
                 messages: [...prev.messages, { role: 'assistant', content: text }],
             };
             if (sessionId && sessionId !== prev.sessionId) {
-                writeAgentChatSession(this.agentChannelId(), sessionId);
+                sessionChanged = true;
                 nextState.sessionId = sessionId;
             }
             if (requestId) {
                 nextState.agentRequestId = requestId;
             }
             return nextState;
+        }, () => {
+            const channelId = this.agentChannelId();
+            const pairedSessionId = sessionId || this.state.sessionId;
+            // Persist the successful session/request pair after state commits.
+            // If two tabs still interleave these separate localStorage keys,
+            // the backend's full tuple lookup safely falls back to legacy mode.
+            if (sessionChanged && sessionId) {
+                writeAgentChatSession(channelId, sessionId);
+            } else if (requestId && pairedSessionId) {
+                writeAgentChatSession(channelId, pairedSessionId);
+            }
+            if (requestId) {
+                writeAgentChatRequestId(channelId, requestId);
+            }
         });
     };
     handlePrimaryClick = () => {

@@ -578,6 +578,7 @@ describe('SummaryCreatePage agent SSE session_id sync', () => {
         });
 
         expect(writeRequestSpy).toHaveBeenCalledWith(undefined, 'req-success-1');
+        expect(writeSessionSpy).toHaveBeenCalledWith(undefined, 'same-session-id');
         expect(instance.state.agentRequestId).toBe('req-success-1');
     });
 });

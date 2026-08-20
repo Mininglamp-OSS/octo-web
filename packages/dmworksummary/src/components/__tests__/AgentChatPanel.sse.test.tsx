@@ -288,6 +288,51 @@ describe('AgentChatPanel SSE Mode', () => {
         expect(onAssistantMessage).not.toHaveBeenCalled();
     });
 
+    it('stays busy until a transient stream fallback settles', async () => {
+        let resolveFallback: ((value: { reply: string; session_id: string }) => void) | undefined;
+        const onNewSession = vi.fn();
+
+        (summaryApi.agentChatStream as any).mockImplementation((_params: any, handlers: any) => {
+            setImmediate(() => handlers.onError({ code: 50000, message: 'transport closed', transient: true }));
+            return { close: vi.fn() };
+        });
+        (summaryApi.agentChat as any).mockImplementation(() => new Promise((resolve) => {
+            resolveFallback = resolve;
+        }));
+
+        render(
+            <I18nContext.Provider value={{ t: mockT, locale: 'zh-CN' }}>
+                <AgentChatPanel
+                    messages={[]}
+                    onSend={vi.fn()}
+                    sending={false}
+                    useStream
+                    sessionId="busy-session"
+                    profile="summary"
+                    onNewSession={onNewSession}
+                    onUserMessage={vi.fn()}
+                    onAssistantMessage={vi.fn()}
+                />
+            </I18nContext.Provider>,
+        );
+
+        const textarea = screen.getByPlaceholderText('summary.create.agentChatPlaceholder');
+        fireEvent.change(textarea, { target: { value: '需要回退' } });
+        fireEvent.click(screen.getByText('summary.create.send'));
+
+        await waitFor(() => expect(summaryApi.agentChat).toHaveBeenCalled(), { timeout: 2000 });
+        expect(textarea).toBeDisabled();
+        expect(screen.getByText('summary.create.newSession')).toBeDisabled();
+
+        await act(async () => {
+            resolveFallback?.({ reply: 'fallback reply', session_id: 'busy-session' });
+        });
+
+        await waitFor(() => expect(textarea).not.toBeDisabled(), { timeout: 2000 });
+        expect(screen.getByText('summary.create.newSession')).not.toBeDisabled();
+        expect(onNewSession).not.toHaveBeenCalled();
+    });
+
     it('should handle successful SSE stream completion', async () => {
         let savedHandlers: any = null;
         const onUserMessage = vi.fn();

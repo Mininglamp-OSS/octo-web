@@ -153,7 +153,7 @@ describe('ChatSummaryNewModal', () => {
             await flushPromises();
         });
 
-        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
+        expect(screen.getByText('试试下列模版')).toBeInTheDocument();
         expect(screen.getByTestId('template-weekly_report')).toBeInTheDocument();
         expect(screen.getByTestId('template-chat_content')).toBeInTheDocument();
     });
@@ -227,7 +227,7 @@ describe('ChatSummaryNewModal', () => {
         const input = screen.getByPlaceholderText('输入聊天内你想总结的主题');
         fireEvent.change(input, { target: { value: '测试主题' } });
 
-        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试下列模版')).not.toBeInTheDocument();
         expect(screen.queryByTestId('template-weekly_report')).not.toBeInTheDocument();
     });
 
@@ -239,10 +239,10 @@ describe('ChatSummaryNewModal', () => {
 
         const input = screen.getByPlaceholderText('输入聊天内你想总结的主题');
         fireEvent.change(input, { target: { value: '测试' } });
-        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试下列模版')).not.toBeInTheDocument();
 
         fireEvent.change(input, { target: { value: '' } });
-        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
+        expect(screen.getByText('试试下列模版')).toBeInTheDocument();
         expect(screen.getByTestId('template-weekly_report')).toBeInTheDocument();
     });
 
@@ -262,7 +262,7 @@ describe('ChatSummaryNewModal', () => {
 
         const templatesLabel = inputArea!.querySelector('.chat-summary-modal-templates-label');
         expect(templatesLabel).toBeInTheDocument();
-        expect(templatesLabel!.textContent).toBe('试试这些总结模板');
+        expect(templatesLabel!.textContent).toBe('试试下列模版');
 
         const templatesContainer = inputArea!.querySelector('.chat-summary-modal-templates');
         expect(templatesContainer).toBeInTheDocument();

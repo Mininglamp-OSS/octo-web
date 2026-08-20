@@ -234,6 +234,68 @@ data: {"code":50001,"message":"backend failed"}
         close();
     });
 
+    it('synthesizes a transient close error when an error frame is malformed', async () => {
+        const onDone = vi.fn();
+        const onError = vi.fn();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const sseData = `event: error
+data: {"code":50001
+
+`;
+        const mockReader = {
+            read: vi.fn()
+                .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode(sseData) })
+                .mockResolvedValueOnce({ done: true, value: undefined }),
+            cancel: vi.fn(),
+            releaseLock: vi.fn(),
+        };
+        fetchMock.mockResolvedValueOnce({ ok: true, body: { getReader: () => mockReader } });
+
+        const { close } = agentChatStream(
+            { session_id: 's1', message: 'q', profile: 'summary', request_id: 'req-1' },
+            { onDone, onError },
+        );
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        expect(onDone).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError).toHaveBeenCalledWith({
+            code: 50000,
+            message: 'stream closed without done',
+            transient: true,
+        });
+        expect(warn).toHaveBeenCalled();
+        close();
+    });
+
+    it('synthesizes a transient close error when the final done frame is truncated', async () => {
+        const onDone = vi.fn();
+        const onError = vi.fn();
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const mockReader = {
+            read: vi.fn()
+                .mockResolvedValueOnce({
+                    done: false,
+                    value: new TextEncoder().encode('event: done\ndata: {"reply":"partial'),
+                })
+                .mockResolvedValueOnce({ done: true, value: undefined }),
+            cancel: vi.fn(),
+            releaseLock: vi.fn(),
+        };
+        fetchMock.mockResolvedValueOnce({ ok: true, body: { getReader: () => mockReader } });
+
+        const { close } = agentChatStream(
+            { session_id: 's1', message: 'q', profile: 'summary' },
+            { onDone, onError },
+        );
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        expect(onDone).not.toHaveBeenCalled();
+        expect(onError).toHaveBeenCalledTimes(1);
+        expect(onError).toHaveBeenCalledWith(expect.objectContaining({ transient: true }));
+        close();
+    });
+
     it('should call onError when fetch fails', async () => {
         const onProgress = vi.fn();
         const onDone = vi.fn();

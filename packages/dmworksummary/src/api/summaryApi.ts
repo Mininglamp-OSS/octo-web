@@ -495,12 +495,14 @@ export function agentChatStream(
                     } else if (line === '') {
                         // 空行是帧边界,解析并分发
                         if (pendingEvent && pendingData) {
-                            if (pendingEvent === 'done') {
-                                receivedDone = true;
-                            } else if (pendingEvent === 'error') {
-                                receivedError = true;
+                            const dispatched = parseAndDispatch(pendingEvent, pendingData, handlers);
+                            if (dispatched) {
+                                if (pendingEvent === 'done') {
+                                    receivedDone = true;
+                                } else if (pendingEvent === 'error') {
+                                    receivedError = true;
+                                }
                             }
-                            parseAndDispatch(pendingEvent, pendingData, handlers);
                         }
                         pendingEvent = '';
                         pendingData = '';
@@ -521,12 +523,14 @@ export function agentChatStream(
                     buffer = '';
                 }
                 if (pendingEvent && pendingData) {
-                    if (pendingEvent === 'done') {
-                        receivedDone = true;
-                    } else if (pendingEvent === 'error') {
-                        receivedError = true;
+                    const dispatched = parseAndDispatch(pendingEvent, pendingData, handlers);
+                    if (dispatched) {
+                        if (pendingEvent === 'done') {
+                            receivedDone = true;
+                        } else if (pendingEvent === 'error') {
+                            receivedError = true;
+                        }
                     }
-                    parseAndDispatch(pendingEvent, pendingData, handlers);
                 }
             }
             // 流已关闭,但如果没收到 done 事件,触发错误让 UI 解锁
@@ -550,27 +554,28 @@ export function agentChatStream(
     };
 }
 
-/** 解析 SSE data 并分发到对应 handler */
-function parseAndDispatch(event: string, data: string, handlers: AgentStreamHandlers): void {
+/** 解析 SSE data 并分发；仅成功处理已知事件时返回 true。 */
+function parseAndDispatch(event: string, data: string, handlers: AgentStreamHandlers): boolean {
     try {
         const parsed = JSON.parse(data);
         switch (event) {
             case 'progress':
                 handlers.onProgress?.(parsed as AgentProgressEvent);
-                break;
+                return true;
             case 'done':
                 handlers.onDone?.(parsed as AgentDoneEvent);
-                break;
+                return true;
             case 'error':
                 handlers.onError?.(parsed as AgentErrorEvent);
-                break;
+                return true;
             default:
                 // 未知事件忽略
-                break;
+                return false;
         }
     } catch (err) {
         // JSON 解析失败,忽略该帧
         console.warn('Failed to parse SSE data:', data, err);
+        return false;
     }
 }
 

@@ -165,15 +165,17 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         // 先本地追加 user 消息(纯 UI,不发请求)
         onUserMessage?.(text, sessionId);
 
-        // 每轮都把引用传给后端(和 CHAT-REFERENCE-BASED-DESIGN-v1 多轮上下文修复对齐)。
-        // 这里先冻结本次 submit 的 scope，fallback 复用同一份，避免同一 request_id
-        // 下前后两次请求的 scope 发生漂移。
-        const refIds = this.props.referencedTaskIds && this.props.referencedTaskIds.length > 0
-            ? this.props.referencedTaskIds
-            : undefined;
-        const selectedChannels = this.requestSelectedChannels();
+        let refIds: number[] | undefined;
+        let selectedChannels: ReturnType<AgentChatPanel['requestSelectedChannels']>;
 
         try {
+            // 每轮都把引用传给后端(和 CHAT-REFERENCE-BASED-DESIGN-v1 多轮上下文修复对齐)。
+            // 在 try 内冻结本次 submit 的 scope，fallback 复用同一份，避免同一
+            // request_id 下前后两次请求的 scope 发生漂移；scope 构造异常也能解锁。
+            refIds = this.props.referencedTaskIds && this.props.referencedTaskIds.length > 0
+                ? [...this.props.referencedTaskIds]
+                : undefined;
+            selectedChannels = this.requestSelectedChannels();
             const { close } = agentChatStream({
                 session_id: sessionId,
                 message: text,
@@ -226,13 +228,14 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 onError: (evt: AgentErrorEvent) => {
                     const { t } = this.context;
                     Toast.error(`${t('summary.common.agentChat.error')}: ${evt.message}`);
-                    this.setState({ isStreaming: false });
                     this.streamCloseHandle = null;
                     // 仅传输层失败(transient: true)才重试；summaryApi 会在收到
                     // 后端 error frame 后抑制 close-without-done 的二次 transient。
                     if (evt.transient) {
                         this.fallbackToNormalChat(text, sessionId, profile, requestId, refIds, selectedChannels);
+                        return;
                     }
+                    this.setState({ isStreaming: false });
                 },
             });
 
