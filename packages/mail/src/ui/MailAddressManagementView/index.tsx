@@ -73,6 +73,14 @@ export default function MailAddressManagementView(
   props: MailAddressManagementViewProps
 ) {
   const { t } = props;
+  const normalizedLocalpart = props.localpart.trim();
+  const localpartValidationMessage = normalizedLocalpart
+    ? normalizedLocalpart.length < agentMailboxLocalpartMinLength
+      ? t("mail.addresses.localpartTooShort")
+      : !isValidAgentMailboxLocalpart(normalizedLocalpart)
+      ? t("mail.addresses.localpartInvalid")
+      : ""
+    : "";
   return (
     <main className="octo-mail-addresses">
       <section className="octo-mail-addresses__header">
@@ -287,6 +295,12 @@ export default function MailAddressManagementView(
                   disabled={props.mailboxes.length >= props.maxMailboxes}
                   minLength={agentMailboxLocalpartMinLength}
                   maxLength={agentMailboxLocalpartMaxLength}
+                  aria-invalid={Boolean(localpartValidationMessage)}
+                  aria-describedby={
+                    localpartValidationMessage
+                      ? "octo-mail-addresses-localpart-validation"
+                      : "octo-mail-addresses-create-hint"
+                  }
                   placeholder={t("mail.addresses.placeholder")}
                   onChange={(event) =>
                     props.onLocalpartChange(event.target.value.toLowerCase())
@@ -316,7 +330,20 @@ export default function MailAddressManagementView(
               {t("mail.addresses.create")}
             </button>
           </div>
-          <p className="octo-mail-addresses__hint">
+          {localpartValidationMessage ? (
+            <p
+              id="octo-mail-addresses-localpart-validation"
+              className="octo-mail-addresses__validation"
+              role="alert"
+            >
+              <AlertCircle size={14} />
+              {localpartValidationMessage}
+            </p>
+          ) : null}
+          <p
+            id="octo-mail-addresses-create-hint"
+            className="octo-mail-addresses__hint"
+          >
             {t("mail.addresses.createLimitHint", {
               values: {
                 count: props.mailboxes.length,

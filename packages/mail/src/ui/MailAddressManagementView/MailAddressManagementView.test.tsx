@@ -98,6 +98,29 @@ describe("MailAddressManagementView automation mode", () => {
     }
   );
 
+  it("explains why a short mailbox name cannot be created", () => {
+    const container = document.createElement("div");
+    const root = createRoot(container);
+    containers.push({ container, root });
+    document.body.appendChild(container);
+    const invalidProps = props(vi.fn());
+    invalidProps.localpart = "11";
+
+    act(() => {
+      root.render(<MailAddressManagementView {...invalidProps} />);
+    });
+
+    const input = container.querySelector("input");
+    const validation = container.querySelector(
+      "#octo-mail-addresses-localpart-validation"
+    );
+    expect(input?.getAttribute("aria-invalid")).toBe("true");
+    expect(input?.getAttribute("aria-describedby")).toBe(validation?.id);
+    expect(validation?.textContent).toContain(
+      "mail.addresses.localpartTooShort"
+    );
+  });
+
   it("offers CLI setup without changing or closing the existing setup dialog", () => {
     const onSetupMethodChange = vi.fn();
     const onCloseSetup = vi.fn();

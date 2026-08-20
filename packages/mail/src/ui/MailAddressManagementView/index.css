@@ -358,6 +358,16 @@
   font-size: var(--wk-text-size-xs);
 }
 
+.octo-mail-addresses__validation {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  margin: 0;
+  padding: 0 var(--wk-sp-5) var(--wk-sp-2);
+  color: var(--wk-color-danger);
+  font-size: var(--wk-text-size-xs);
+}
+
 .octo-mail-addresses__list-error {
   display: flex;
   align-items: center;
