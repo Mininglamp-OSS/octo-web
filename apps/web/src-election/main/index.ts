@@ -970,7 +970,6 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
       {
         label: `关于OCTO`,
       },
-      { label: "服务", role: "services" },
       { type: "separator" },
       {
         label: "退出",
