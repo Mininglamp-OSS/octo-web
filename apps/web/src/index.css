@@ -17,6 +17,13 @@
   --topbar-bg:    var(--wk-bg-base);
 }
 
+/* The native frame provides the traffic lights/title area. This renderer
+ * border completes the quiet, rounded desktop shell without changing Web. */
+html[data-octo-desktop] #root {
+  border: 1px solid var(--wk-border-default);
+  box-shadow: var(--wk-shadow-sm);
+}
+
 /**
 * =====================================
 * 滚动条美化
