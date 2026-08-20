@@ -612,7 +612,19 @@ export class ChatVM extends ProviderListener {
         const requestSpaceId = WKApp.shared.currentSpaceId
 
         // 先拉取数据，避免清空列表导致 UI 闪烁（fix #266）
-        const conversations = await WKSDK.shared().conversationManager.sync({})
+        let conversations: Conversation[] | undefined
+        try {
+            conversations = await WKSDK.shared().conversationManager.sync({})
+        } catch (error) {
+            // 只允许当前 Space 的请求结束自己的 loading；旧 Space 的迟到失败不能
+            // 提前结束新 Space 正在进行的同步。
+            if (WKApp.shared.currentSpaceId === requestSpaceId) {
+                this.loading = false
+                this.notifyListener()
+            }
+            console.error('[ChatVM] failed to sync conversations', error)
+            return
+        }
 
         // 回来已经不是本次请求对应的 Space —— 当前 Space 自有更新一次 sync,
         // 直接放弃本次结果。loading 留给新一次 sync 收尾,避免和 loading=false 冲突。

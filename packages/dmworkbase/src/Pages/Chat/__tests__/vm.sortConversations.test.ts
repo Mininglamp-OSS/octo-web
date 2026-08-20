@@ -203,3 +203,22 @@ describe("ChatVM.reloadRequestConversationList", () => {
         expect(notifyListener).toHaveBeenCalled()
     })
 })
+
+describe("ChatVM.requestConversationList", () => {
+    it("leaves loading and handles an active Space sync failure", async () => {
+        const vm = new ChatVM()
+        const notifyListener = vi.spyOn(vm, "notifyListener")
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+        hoisted.sync.mockRejectedValueOnce(new Error("sync failed"))
+
+        await vm.requestConversationList()
+
+        expect(vm.loading).toBe(false)
+        expect(notifyListener).toHaveBeenCalled()
+        expect(consoleError).toHaveBeenCalledWith(
+            "[ChatVM] failed to sync conversations",
+            expect.any(Error)
+        )
+        consoleError.mockRestore()
+    })
+})

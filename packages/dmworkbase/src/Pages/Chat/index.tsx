@@ -90,6 +90,7 @@ import { chatPageTitleController } from "./chatPageTitleController";
 import {
   shouldHideFollowUnreadBadge,
   shouldHideRecentUnreadBadge,
+  unreadContribution,
 } from "./sidebarUnreadBadge";
 
 // 消息 ACK 只代表发送成功；后端把归档子区恢复为活跃存在短暂异步窗口。
@@ -252,8 +253,11 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
     const unread = liveConv ? liveConv.unread || 0 : it.unread || 0;
     if (unread <= 0) return sum;
     const muteState = getItemMuteState(it);
-    if (!muteState.ready || muteState.muted) return sum;
-    return sum + unread;
+    return sum + unreadContribution({
+      unread,
+      muteAuthorityReady: muteState.ready,
+      muted: muteState.muted,
+    });
   }, 0);
 
   const recentUnread = conversations.reduce(
@@ -271,14 +275,13 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
         parentGroupNo,
         missingRecentMuteAuthority
       );
-      if (
-        !authority.channelInfo ||
-        (parentGroupNo && !authority.parentChannelInfo)
-      ) {
-        return sum;
-      }
-      if (isMutedForRecentConversation(c)) return sum;
-      return sum + unread;
+      return sum + unreadContribution({
+        unread,
+        muteAuthorityReady:
+          !!authority.channelInfo &&
+          (!parentGroupNo || !!authority.parentChannelInfo),
+        muted: isMutedForRecentConversation(c),
+      });
     },
     0
   );
@@ -310,19 +313,17 @@ const SidebarTabBarWithBadges: React.FC<SidebarTabBarWithBadgesProps> = ({
   const hideRecentUnread = shouldHideRecentUnreadBadge({
     recentLoading,
     followingLoading,
-    missingMuteAuthority: missingUnreadAuthority.size > 0,
   });
   const hideFollowUnread = shouldHideFollowUnreadBadge({
     recentLoading,
     followingLoading,
-    missingMuteAuthority: missingUnreadAuthority.size > 0,
   });
 
   return (
     <SidebarTabBar
       activeTab={activeTab}
-      // 最近、关注快照及相关频道的免打扰信息齐备后再显示 Tab 角标。
-      // 避免缺少免打扰过滤时先出现 99+，随后再校准为最终数字。
+      // 最近和关注快照齐备后再显示 Tab 角标；单个频道缺少免打扰信息时
+      // 只跳过该频道，不能把两个 Tab 的已知未读一起隐藏。
       followUnread={hideFollowUnread ? 0 : followUnread}
       recentUnread={hideRecentUnread ? 0 : recentUnread}
       onTabChange={onTabChange}
