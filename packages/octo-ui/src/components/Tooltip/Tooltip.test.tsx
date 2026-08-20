@@ -121,4 +121,15 @@ describe("Tooltip", () => {
     expect(disabled).toBe("<span>Disabled</span>");
     expect(blank).toBe("<span>Blank</span>");
   });
+
+  it("does not render plain objects passed by untyped consumers", () => {
+    const invalidContent = {} as unknown as ReactNode;
+    const html = renderToStaticMarkup(
+      <Tooltip content={invalidContent}>
+        <span>Invalid</span>
+      </Tooltip>
+    );
+
+    expect(html).toBe("<span>Invalid</span>");
+  });
 });

@@ -22,9 +22,18 @@ const SEMI_PLACEMENT = {
   "left-end": "leftBottom",
 } as const satisfies Record<TooltipPlacement, string>;
 
+const REACT_PORTAL_TYPE = Symbol.for("react.portal");
+
+function isReactPortal(content: object) {
+  return "$$typeof" in content && content.$$typeof === REACT_PORTAL_TYPE;
+}
+
 function hasNodeContent(content: TooltipContent) {
   if (content === null || content === undefined || content === false)
     return false;
+  if (typeof content === "object" && !Array.isArray(content)) {
+    return isValidElement(content) || isReactPortal(content);
+  }
   return typeof content !== "string" || content.trim().length > 0;
 }
 
