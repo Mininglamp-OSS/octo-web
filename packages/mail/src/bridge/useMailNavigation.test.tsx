@@ -295,6 +295,32 @@ describe("useMailNavigation", () => {
     expect(getAgentMailboxContext()).toBeNull();
   });
 
+  it("clears a stale mailbox error after a silent refresh succeeds", async () => {
+    const account = {
+      id: "11",
+      address: "agent@demo.octo.test",
+      connectState: "connected" as const,
+    };
+    const inbox = { id: "inbox", name: "Inbox", total: 3, unread: 1 };
+    testState.listAgentMailboxes.mockResolvedValue([account]);
+    testState.listMailboxes
+      .mockRejectedValueOnce(new Error("mailbox refresh failed"))
+      .mockResolvedValueOnce([inbox]);
+
+    const { result } = renderHook(() => useMailNavigation("fallback"));
+    await waitFor(() => expect(result.current.error).toBe("fallback"));
+    expect(result.current.mailboxes).toEqual([]);
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => expect(result.current.error).toBe(""));
+    expect(result.current.mailboxes).toEqual([inbox]);
+    expect(result.current.loading).toBe(false);
+  });
+
   it("coalesces visible and focus events into one binding refresh", async () => {
     let visibilityState: DocumentVisibilityState = "visible";
     vi.spyOn(document, "visibilityState", "get").mockImplementation(

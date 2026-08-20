@@ -179,6 +179,7 @@ export default function useMailNavigation(fallbackError: string) {
       .then((nextMailboxes) => {
         if (!active || request !== mailboxRequestRef.current) return;
         setMailboxes(nextMailboxes);
+        if (mailboxRefreshSilent) setError("");
       })
       .catch((reason) => {
         if (!active || request !== mailboxRequestRef.current) return;
