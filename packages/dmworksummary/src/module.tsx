@@ -13,16 +13,19 @@ import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
 import { getPendingInvitationBadge, refreshPendingInvitationBadge } from "./utils/summaryMenuBadge";
 import { isSupportedChannelType } from "./utils/channelType";
+import { SMALL_SCREEN_WIDTH } from "@octo/base/src/Components/WKLayout/layoutWidth";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
 import ChatSummaryPanel from "./components/ChatSummaryPanel";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 import "./index.css";
-import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
 let _spaceReadyHandler: (() => void) | null = null;
 const openingSummaryShares = new Set<string>();
+// NavRail 每次进入的序号：并入默认创建页元素的 key。key 若固定，重复点菜单时
+// React 会复用旧实例（WKViewQueue 按数组下标渲染），「重置回默认创建页」不生效。
+let summaryHomeEntrySeq = 0;
 
 function afterSummaryMenuSwitch(action: () => void) {
     if (WKApp.switchToMenuById && WKApp.currentMenuId !== "summary") {
@@ -172,11 +175,12 @@ export class SummaryModule implements IModule {
                 // #1359 未处理邀请红点：badge 字段与 NavRail 渲染已存在，
                 // 此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
                 menu.badge = getPendingInvitationBadge();
-                // 点击「总结」进入列表页：主区 SummaryListPage 已由 MainContentLeft 按
+                // 点击「总结」：主区 SummaryListPage 已由 MainContentLeft 按
                 // currentMenus.routePath(/summary) 渲染（Menu 激活即挂载唯一实例）。
-                // 这里不再 replaceToRoot 页面——否则会在导航栈额外推入一份 /summary
-                // 造成列表页双实例（strict mode violation），只清空左/右导航栈，
-                // 与无 onPress 菜单的宿主默认分支（popToRoot both）行为一致。
+                // 右栏默认展示新建总结页（取代原先的欢迎占位页）——产品要求进入
+                // 智能总结即落在创建页。注意只 replaceToRoot 创建页：列表页由
+                // MainContentLeft 持有，往 routeRight 再推一份 /summary 会造成列表页
+                // 双实例（#1461 e2e S1/S9/S11 strict mode violation 的教训）。
                 menu.onPress = (reentry?: boolean) => {
                     // 埋点 290:从 NavRail「总结」顶层入口进入模块（隐私 props 恒空）。
                     // 重复点击已激活的总结菜单不计（reentry），宿主按 prevMenuId===id 传入（见二审 P2-4）。
@@ -184,7 +188,20 @@ export class SummaryModule implements IModule {
                         Dap.shared.track("smart_summary_module_entered", {});
                     }
                     WKApp.routeLeft.popToRoot();
-                    WKApp.routeRight.popToRoot();
+                    if (window.innerWidth <= SMALL_SCREEN_WIDTH) {
+                        // 小屏（≤640px）：WKLayout 把右栏渲染为盖住 NavRail 的 fixed 覆盖层
+                        // （z-index 20 > 10），而创建页非面板模式没有返回控件——推入创建页
+                        // 会困住用户。小屏保持原行为：落在列表，创建走「+」下拉。
+                        WKApp.routeRight.popToRoot();
+                        return;
+                    }
+                    WKApp.routeRight.replaceToRoot(
+                        <SummaryCreatePage
+                            source="summary_home"
+                            key={`home-normal-${++summaryHomeEntrySeq}`}
+                            initialMode="normal"
+                        />
+                    );
                 };
                 return menu;
             },

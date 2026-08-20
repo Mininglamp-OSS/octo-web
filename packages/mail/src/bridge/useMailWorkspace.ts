@@ -6,6 +6,41 @@ import { getErrorMessage, hasKeyword } from "../utils";
 import { useAgentMailboxContext } from "./mailboxContext";
 
 const PAGE_SIZE = 30;
+const STATE_POLL_INTERVAL_MS = 10_000;
+const FULL_REFRESH_FALLBACK_INTERVAL_MS = 5 * 60_000;
+
+interface RefreshRequest {
+  revision: number;
+  silent: boolean;
+}
+
+type WorkspaceErrorSource = "resources" | "messages" | "mutation";
+
+function useSilentRefreshFlag(
+  request: RefreshRequest,
+  foregroundKey: unknown
+): boolean {
+  const previousRef = useRef<{
+    revision: number;
+    foregroundKey: unknown;
+    silent: boolean;
+  }>();
+  const previous = previousRef.current;
+  let silent = previous?.silent ?? false;
+
+  if (previous && !Object.is(previous.foregroundKey, foregroundKey)) {
+    silent = false;
+  } else if (!previous || previous.revision !== request.revision) {
+    silent = request.silent;
+  }
+
+  previousRef.current = {
+    revision: request.revision,
+    foregroundKey,
+    silent,
+  };
+  return silent;
+}
 
 export interface MailWorkspaceState {
   mailboxes: Mailbox[];
@@ -49,15 +84,51 @@ export default function useMailWorkspace(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [starringMessageIds, setStarringMessageIds] = useState<string[]>([]);
-  const [revision, setRevision] = useState(0);
+  const [refreshRequest, setRefreshRequest] = useState<RefreshRequest>({
+    revision: 0,
+    silent: false,
+  });
   const context = useAgentMailboxContext();
   const mailboxContextId = context?.mailbox.id || "";
   const requestRef = useRef(0);
   const resourcesRequestRef = useRef(0);
   const starringMessageIdsRef = useRef(new Set<string>());
+  const foregroundInteractionRef = useRef(0);
+  const foregroundRequestCountRef = useRef(0);
+  const pendingForegroundRefreshRef = useRef(false);
+  const errorSourceRef = useRef<WorkspaceErrorSource | null>(null);
 
-  const reload = useCallback(() => setRevision((value) => value + 1), []);
+  const clearWorkspaceError = useCallback((source?: WorkspaceErrorSource) => {
+    if (source && errorSourceRef.current !== source) return;
+    errorSourceRef.current = null;
+    setError("");
+  }, []);
+  const setWorkspaceError = useCallback(
+    (source: WorkspaceErrorSource, reason: unknown) => {
+      errorSourceRef.current = source;
+      setError(getErrorMessage(reason, fallbackError));
+    },
+    [fallbackError]
+  );
+
+  const reload = useCallback(() => {
+    pendingForegroundRefreshRef.current = true;
+    setRefreshRequest((current) => ({
+      revision: current.revision + 1,
+      silent: false,
+    }));
+  }, []);
+  const refreshSilently = useCallback(() => {
+    const silent =
+      foregroundRequestCountRef.current === 0 &&
+      !pendingForegroundRefreshRef.current;
+    setRefreshRequest((current) => ({
+      revision: current.revision + 1,
+      silent,
+    }));
+  }, []);
   const selectMailbox = useCallback((name: string) => {
+    foregroundInteractionRef.current += 1;
     setSelectedMailbox(name);
     setSelectedMessageId("");
     setMessages([]);
@@ -105,21 +176,24 @@ export default function useMailWorkspace(
         []
       ).catch((reason) => {
         applyReadState(true);
-        setError(getErrorMessage(reason, fallbackError));
+        setWorkspaceError("mutation", reason);
       });
     },
-    [fallbackError, mailboxContextId, selectedMailbox]
+    [mailboxContextId, selectedMailbox, setWorkspaceError]
   );
   const setSearch = useCallback((value: string) => {
+    foregroundInteractionRef.current += 1;
     setSearchState(value);
     setPageState(1);
   }, []);
   const setUnreadOnly = useCallback((value: boolean) => {
+    foregroundInteractionRef.current += 1;
     setUnreadOnlyState(value);
     setSelectedMessageId("");
     setPageState(1);
   }, []);
   const setPage = useCallback((value: number) => {
+    foregroundInteractionRef.current += 1;
     setPageState(Math.max(1, value));
   }, []);
   const toggleStar = useCallback(
@@ -153,7 +227,7 @@ export default function useMailWorkspace(
         starred ? ["\\Flagged"] : []
       )
         .catch((reason) => {
-          setError(getErrorMessage(reason, fallbackError));
+          setWorkspaceError("mutation", reason);
           reload();
         })
         .finally(() => {
@@ -163,7 +237,18 @@ export default function useMailWorkspace(
           );
         });
     },
-    [fallbackError, mailboxContextId, reload]
+    [mailboxContextId, reload, setWorkspaceError]
+  );
+
+  const resourcesRefreshSilent = useSilentRefreshFlag(
+    refreshRequest,
+    `${mailboxContextId}\u0000${
+      context?.mailbox.address || ""
+    }\u0000${fallbackError}`
+  );
+  const messagesRefreshSilent = useSilentRefreshFlag(
+    refreshRequest,
+    `${mailboxContextId}\u0000${fallbackError}\u0000${foregroundInteractionRef.current}`
   );
 
   useEffect(() => {
@@ -176,8 +261,8 @@ export default function useMailWorkspace(
     setUnreadOnlyState(false);
     starringMessageIdsRef.current.clear();
     setStarringMessageIds([]);
-    setError("");
-  }, [mailboxContextId]);
+    clearWorkspaceError();
+  }, [clearWorkspaceError, mailboxContextId]);
 
   useEffect(() => {
     if (!mailboxContextId) {
@@ -188,14 +273,28 @@ export default function useMailWorkspace(
       return undefined;
     }
     let active = true;
+    let foregroundActive = !resourcesRefreshSilent;
+    if (foregroundActive) {
+      foregroundRequestCountRef.current += 1;
+      pendingForegroundRefreshRef.current = false;
+    }
+    const finishForegroundRequest = () => {
+      if (!foregroundActive) return;
+      foregroundActive = false;
+      foregroundRequestCountRef.current = Math.max(
+        0,
+        foregroundRequestCountRef.current - 1
+      );
+    };
     const request = ++resourcesRequestRef.current;
-    setLoading(true);
+    if (!resourcesRefreshSilent) setLoading(true);
     setIdentity({ address: context?.mailbox.address || "" });
     setIdentityUnavailable(false);
     void MailService.listMailboxes(mailboxContextId)
       .then((nextMailboxes) => {
         if (!active || request !== resourcesRequestRef.current) return;
         setMailboxes(nextMailboxes);
+        if (resourcesRefreshSilent) clearWorkspaceError("resources");
         setSelectedMailbox((current) => {
           if (
             current &&
@@ -216,15 +315,26 @@ export default function useMailWorkspace(
       })
       .catch((reason) => {
         if (active && request === resourcesRequestRef.current) {
-          setError(getErrorMessage(reason, fallbackError));
-          setLoading(false);
+          if (!resourcesRefreshSilent) {
+            setWorkspaceError("resources", reason);
+            setLoading(false);
+          }
         }
-      });
+      })
+      .finally(finishForegroundRequest);
 
     return () => {
       active = false;
+      finishForegroundRequest();
     };
-  }, [context?.mailbox.address, fallbackError, mailboxContextId, revision]);
+  }, [
+    clearWorkspaceError,
+    context?.mailbox.address,
+    mailboxContextId,
+    refreshRequest.revision,
+    resourcesRefreshSilent,
+    setWorkspaceError,
+  ]);
 
   useEffect(() => {
     if (!mailboxContextId || !selectedMailbox) {
@@ -236,8 +346,23 @@ export default function useMailWorkspace(
 
     const request = ++requestRef.current;
     const controller = new AbortController();
-    setLoading(true);
-    setError("");
+    let foregroundActive = !messagesRefreshSilent;
+    if (foregroundActive) {
+      foregroundRequestCountRef.current += 1;
+      pendingForegroundRefreshRef.current = false;
+    }
+    const finishForegroundRequest = () => {
+      if (!foregroundActive) return;
+      foregroundActive = false;
+      foregroundRequestCountRef.current = Math.max(
+        0,
+        foregroundRequestCountRef.current - 1
+      );
+    };
+    if (!messagesRefreshSilent) {
+      setLoading(true);
+      clearWorkspaceError();
+    }
     const timer = window.setTimeout(
       () => {
         void MailService.listMessages({
@@ -251,11 +376,14 @@ export default function useMailWorkspace(
         })
           .then((response) => {
             if (request !== requestRef.current) return;
-            setMessages(response.messages ?? []);
+            const responseMessages = response.messages ?? [];
+            setMessages(responseMessages);
             setTotal(response.total ?? 0);
+            if (messagesRefreshSilent) clearWorkspaceError("messages");
             setSelectedMessageId((current) =>
-              current &&
-              response.messages?.some((message) => message.id === current)
+              messagesRefreshSilent ||
+              (current &&
+                responseMessages.some((message) => message.id === current))
                 ? current
                 : ""
             );
@@ -263,10 +391,13 @@ export default function useMailWorkspace(
           .catch((reason) => {
             if (controller.signal.aborted || request !== requestRef.current)
               return;
-            setError(getErrorMessage(reason, fallbackError));
+            if (!messagesRefreshSilent) {
+              setWorkspaceError("messages", reason);
+            }
           })
           .finally(() => {
             if (request === requestRef.current) setLoading(false);
+            finishForegroundRequest();
           });
       },
       search ? 250 : 0
@@ -275,16 +406,83 @@ export default function useMailWorkspace(
     return () => {
       window.clearTimeout(timer);
       controller.abort();
+      finishForegroundRequest();
     };
   }, [
-    fallbackError,
+    clearWorkspaceError,
     mailboxContextId,
+    messagesRefreshSilent,
     page,
-    revision,
+    refreshRequest.revision,
     search,
     selectedMailbox,
+    setWorkspaceError,
     unreadOnly,
   ]);
+
+  useEffect(() => {
+    if (!mailboxContextId) return undefined;
+
+    let active = true;
+    let polling = false;
+    let pollWhenSettled = false;
+    let knownState: string | null = null;
+    let stateController: AbortController | null = null;
+
+    const pollState = () => {
+      if (!active || polling || document.visibilityState === "hidden") {
+        return;
+      }
+      polling = true;
+      stateController = new AbortController();
+      void MailService.getState(mailboxContextId, stateController.signal)
+        .then((nextState) => {
+          if (!active || document.visibilityState === "hidden") return;
+          const changed = knownState === null || knownState !== nextState;
+          knownState = nextState;
+          if (changed) refreshSilently();
+        })
+        .catch(() => {
+          // State polling is an optimization. The low-frequency full refresh
+          // below remains the fail-safe when this lightweight request fails.
+        })
+        .finally(() => {
+          polling = false;
+          stateController = null;
+          if (pollWhenSettled) {
+            pollWhenSettled = false;
+            pollState();
+          }
+        });
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState !== "hidden") refreshSilently();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        stateController?.abort();
+        return;
+      }
+      if (polling) {
+        pollWhenSettled = true;
+        return;
+      }
+      pollState();
+    };
+    const stateInterval = window.setInterval(pollState, STATE_POLL_INTERVAL_MS);
+    const fallbackInterval = window.setInterval(
+      refreshWhenVisible,
+      FULL_REFRESH_FALLBACK_INTERVAL_MS
+    );
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      active = false;
+      stateController?.abort();
+      window.clearInterval(stateInterval);
+      window.clearInterval(fallbackInterval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [mailboxContextId, refreshSilently]);
 
   useEffect(() => {
     const refresh = () => reload();
@@ -302,7 +500,7 @@ export default function useMailWorkspace(
       setSearchState("");
       setUnreadOnlyState(false);
       setLoading(true);
-      setError("");
+      clearWorkspaceError();
       reload();
     };
     const handleMenu = (payload: { menuId?: string }) => {
@@ -316,7 +514,7 @@ export default function useMailWorkspace(
       WKApp.mittBus.off("wk:nav-menu-activated", handleMenu);
       WKApp.mittBus.off("space-changed", handleSpaceChanged);
     };
-  }, [reload]);
+  }, [clearWorkspaceError, reload]);
 
   const pageCount = useMemo(
     () => Math.max(1, Math.ceil(total / PAGE_SIZE)),

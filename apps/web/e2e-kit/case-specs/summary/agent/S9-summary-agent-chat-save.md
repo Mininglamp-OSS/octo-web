@@ -60,9 +60,9 @@
 
 ## 摸清依据
 
-- `packages/dmworksummary/src/module.tsx:122`: `/summary` 路由真实挂载 `SummaryListPage`；`module.tsx:176` NavRail「智能总结」`onPress` 进入 `/summary` 列表页。
-- `packages/dmworksummary/src/pages/SummaryListPage.tsx:558`: `handleCreate(mode)` 对非 onCreateNew 路径推入 `SummaryCreatePage`（`initialMode` 透传模式）；空态/头部「+」也汇聚于此。
-- `packages/dmworksummary/src/pages/SummaryListPage.tsx:594-631`: 列表页 header「+」`SplitButtonGroup`——主按钮「快速总结」+ 下拉含「Agent 总结」（`listModeSwitch`/`listAgentTab`）。
+- `packages/dmworksummary/src/module.tsx:122`: `/summary` 路由真实挂载 `SummaryListPage`；`module.tsx` NavRail「智能总结」`onPress` 进入列表页并把右栏 `replaceToRoot` 为新建总结页（默认 `initialMode="normal"`，取代欢迎占位页）。
+- `packages/dmworksummary/src/pages/SummaryListPage.tsx:559`: `handleCreate(mode)` 对非 onCreateNew 路径推入 `SummaryCreatePage`（`initialMode` 透传模式）；空态入口也汇聚于此。
+- `packages/dmworksummary/src/pages/SummaryListPage.tsx`: 列表页 header 为单一「+」按钮（`listModeSwitch`）——点击只弹下拉（快速总结 / Agent 总结，`listNormalTab`/`listAgentTab`），不再有独立的主按钮 + 箭头组合。
 - `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:76,145,327`: `initialMode="agent"` 时 mount 调用 `enterAgentMode()` 恢复历史 session 并回显。
 - `packages/dmworksummary/src/components/AgentChatPanel.tsx:159`: 发送时调用 `agentChatStream()`。
 - `packages/dmworksummary/src/components/AgentChatPanel.tsx:421`: 有 assistant 输出后渲染「保存为总结」按钮。

@@ -163,6 +163,51 @@ data: {"reply":"test result"}
         close();
     });
 
+    it('surfaces run_id in the done event (SS-11 v2 contract)', async () => {
+        const onDone = vi.fn();
+        const sseData = `event: done
+data: {"reply":"r","session_id":"s1","run_id":"run-abc"}
+
+`;
+        const mockReader = {
+            read: vi.fn()
+                .mockResolvedValueOnce({ done: false, value: new TextEncoder().encode(sseData) })
+                .mockResolvedValueOnce({ done: true, value: undefined }),
+            cancel: vi.fn(),
+            releaseLock: vi.fn(),
+        };
+        fetchMock.mockResolvedValueOnce({ ok: true, body: { getReader: () => mockReader } });
+
+        const { close } = agentChatStream(
+            { session_id: 's1', message: 'q', profile: 'summary' },
+            { onDone },
+        );
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        expect(onDone).toHaveBeenCalledWith({ reply: 'r', session_id: 's1', run_id: 'run-abc' });
+        close();
+    });
+
+    it('sends request_id and run_id in the request body when provided (SS-11)', async () => {
+        const mockReader = {
+            read: vi.fn().mockResolvedValueOnce({ done: true, value: undefined }),
+            cancel: vi.fn(),
+            releaseLock: vi.fn(),
+        };
+        fetchMock.mockResolvedValueOnce({ ok: true, body: { getReader: () => mockReader } });
+
+        const { close } = agentChatStream(
+            { session_id: 's1', message: 'q', profile: 'summary', request_id: 'req-1', run_id: 'run-1' },
+            { onDone: vi.fn(), onError: vi.fn() },
+        );
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+        expect(body.request_id).toBe('req-1');
+        expect(body.run_id).toBe('run-1');
+        close();
+    });
+
     it('should call onError when fetch fails', async () => {
         const onProgress = vi.fn();
         const onDone = vi.fn();

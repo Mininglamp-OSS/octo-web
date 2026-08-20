@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const testState = vi.hoisted(() => {
   const listeners = new Map<string, Set<(...args: unknown[]) => void>>();
@@ -48,6 +48,7 @@ vi.mock("../Service/MailService", () => ({
 
 import useMailNavigation from "./useMailNavigation";
 import {
+  getAgentMailboxContext,
   replaceAgentMailboxContext,
   resetAgentMailboxContextForTests,
 } from "./mailboxContext";
@@ -62,7 +63,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-describe("useMailNavigation Space isolation", () => {
+describe("useMailNavigation", () => {
   beforeEach(() => {
     testState.listeners.clear();
     testState.currentSpaceId = "space-a";
@@ -70,6 +71,11 @@ describe("useMailNavigation Space isolation", () => {
     testState.listMailboxes.mockReset();
     resetAgentMailboxContextForTests();
     window.sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
   });
 
   it("clears old state and ignores a stale mailbox-account response", async () => {
@@ -184,5 +190,167 @@ describe("useMailNavigation Space isolation", () => {
     });
 
     expect(result.current.selectedAgentMailbox?.id).toBe("12");
+  });
+
+  it("refreshes Agent mailbox binding after returning from an authorization tab", async () => {
+    const refreshedAccounts = deferred<
+      Array<{
+        id: string;
+        address: string;
+        connectState: "connected" | "unconnected";
+      }>
+    >();
+    testState.listAgentMailboxes
+      .mockResolvedValueOnce([
+        {
+          id: "11",
+          address: "agent@demo.octo.test",
+          connectState: "unconnected",
+        },
+      ])
+      .mockReturnValueOnce(refreshedAccounts.promise);
+    testState.listMailboxes.mockResolvedValue([]);
+
+    const { result, unmount } = renderHook(() => useMailNavigation("fallback"));
+    await waitFor(() =>
+      expect(result.current.selectedAgentMailbox?.connectState).toBe(
+        "unconnected"
+      )
+    );
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    act(() => window.dispatchEvent(new Event("focus")));
+    expect(testState.listAgentMailboxes).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    expect(testState.listAgentMailboxes).toHaveBeenCalledTimes(2);
+    expect(result.current.loading).toBe(false);
+
+    await act(async () => {
+      refreshedAccounts.resolve([
+        {
+          id: "11",
+          address: "agent@demo.octo.test",
+          connectState: "connected",
+        },
+      ]);
+      await refreshedAccounts.promise;
+    });
+
+    await waitFor(() =>
+      expect(result.current.selectedAgentMailbox?.connectState).toBe(
+        "connected"
+      )
+    );
+    expect(testState.listAgentMailboxes).toHaveBeenCalledTimes(2);
+    expect(result.current.loading).toBe(false);
+    unmount();
+  });
+
+  it("keeps existing navigation state when a background refresh fails", async () => {
+    const account = {
+      id: "11",
+      address: "agent@demo.octo.test",
+      connectState: "connected" as const,
+    };
+    const inbox = { id: "inbox", name: "Inbox", total: 3, unread: 1 };
+    testState.listAgentMailboxes
+      .mockResolvedValueOnce([account])
+      .mockRejectedValueOnce(new Error("background refresh failed"))
+      .mockRejectedValueOnce(new Error("manual refresh failed"));
+    testState.listMailboxes.mockResolvedValue([inbox]);
+
+    const { result } = renderHook(() => useMailNavigation("fallback"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.mailboxes).toEqual([inbox]);
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() =>
+      expect(testState.listAgentMailboxes).toHaveBeenCalledTimes(2)
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.agentMailboxes).toEqual([account]);
+    expect(result.current.selectedAgentMailbox).toEqual(account);
+    expect(result.current.mailboxes).toEqual([inbox]);
+    expect(getAgentMailboxContext()?.mailbox).toEqual(account);
+    expect(result.current.loading).toBe(false);
+    expect(result.current.error).toBe("");
+
+    act(() => testState.emit("mail-refresh"));
+
+    await waitFor(() => expect(result.current.error).toBe("fallback"));
+    expect(result.current.agentMailboxes).toEqual([]);
+    expect(result.current.selectedAgentMailbox).toBeNull();
+    expect(getAgentMailboxContext()).toBeNull();
+  });
+
+  it("clears a stale mailbox error after a silent refresh succeeds", async () => {
+    const account = {
+      id: "11",
+      address: "agent@demo.octo.test",
+      connectState: "connected" as const,
+    };
+    const inbox = { id: "inbox", name: "Inbox", total: 3, unread: 1 };
+    testState.listAgentMailboxes.mockResolvedValue([account]);
+    testState.listMailboxes
+      .mockRejectedValueOnce(new Error("mailbox refresh failed"))
+      .mockResolvedValueOnce([inbox]);
+
+    const { result } = renderHook(() => useMailNavigation("fallback"));
+    await waitFor(() => expect(result.current.error).toBe("fallback"));
+    expect(result.current.mailboxes).toEqual([]);
+
+    act(() => {
+      window.dispatchEvent(new Event("blur"));
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() => expect(result.current.error).toBe(""));
+    expect(result.current.mailboxes).toEqual([inbox]);
+    expect(result.current.loading).toBe(false);
+  });
+
+  it("coalesces visible and focus events into one binding refresh", async () => {
+    let visibilityState: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(
+      () => visibilityState
+    );
+    testState.listAgentMailboxes.mockResolvedValue([
+      {
+        id: "11",
+        address: "agent@demo.octo.test",
+        connectState: "unconnected",
+      },
+    ]);
+    testState.listMailboxes.mockResolvedValue([]);
+
+    const { unmount } = renderHook(() => useMailNavigation("fallback"));
+    await waitFor(() =>
+      expect(testState.listAgentMailboxes).toHaveBeenCalledTimes(1)
+    );
+
+    act(() => {
+      visibilityState = "hidden";
+      document.dispatchEvent(new Event("visibilitychange"));
+      visibilityState = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await waitFor(() =>
+      expect(testState.listAgentMailboxes).toHaveBeenCalledTimes(2)
+    );
+    unmount();
   });
 });

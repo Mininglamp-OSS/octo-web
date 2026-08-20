@@ -1,11 +1,9 @@
 import { Button, Dropdown } from "@octo/ui";
 import React, { Component } from "react";
 import {
-    SplitButtonGroup,
     Spin,
     Toast,
     Banner,
-    Tooltip,
 } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
@@ -86,6 +84,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     // user-driven state. loadMore also captures pre-await and drops its
     // batch on mismatch — closes loadMore-starts-first, loadData-bumps-after.
     private loadDataSeq = 0;
+    // 「+」每次新建的序号：并入 push 元素的 key，保证连续两次选同一模式也强制重挂载
+    // （见 handleCreate 注释）。key 只按 mode 时，同模式重选会命中 React 复用分支。
+    private createEntrySeq = 0;
     // Synchronous "is a loadData in flight" flag. React 18 batching means
     // this.state.loading is not visible immediately after setState from a
     // promise continuation, so loadMore reading state.loading would miss a
@@ -479,7 +480,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 } else {
                     WKApp.routeRight.popToRoot();
                     WKApp.routeRight.push(
-                        <SummaryCreatePage onCreated={() => this.loadData()} source="summary_list" />
+                        <SummaryCreatePage source="summary_list" />
                     );
                 }
             });
@@ -570,7 +571,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(
             <SummaryCreatePage
-                onCreated={() => this.loadData()}
+                // key 绑定「模式 + 每次新建序号」：从列表页选模式 = 发起一次全新创建。
+                // 只按模式做 key 时，连续两次选同模式（如 NavRail 默认创建页上再点
+                // 「+ → 快速总结」）会命中 React 复用分支——WKViewQueue 按数组下标渲染，
+                // 同类型同 key 组件不重挂载，state 不随新 initialMode 重读，界面无反馈。
+                key={`${mode}-${++this.createEntrySeq}`}
                 source="summary_list"
                 initialMode={mode}
             />
@@ -591,46 +596,40 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
                     </h2>
                     <div className="summary-list-header-actions">
-                        <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
-                            <SplitButtonGroup className="summary-list-create-split">
-                                <Button
-                                    data-testid={summaryTestIds.listCreate}
-                                    className="summary-list-create-icon-btn"
-                                    icon={<IconPlus />}
-                                    theme="borderless"
-                                    onClick={() => this.handleCreate("normal")}
-                                />
-                                <Dropdown
-                                    trigger="click"
-                                    position="bottomRight"
-                                    render={(
-                                        <Dropdown.Menu>
-                                            <Dropdown.Item
-                                                data-testid={summaryTestIds.listNormalTab}
-                                                onClick={() => this.handleCreate("normal")}
-                                            >
-                                                {translate("summary.create.start")}
-                                            </Dropdown.Item>
-                                            <Dropdown.Item
-                                                data-testid={summaryTestIds.listAgentTab}
-                                                onClick={() => this.handleCreate("agent")}
-                                            >
-                                                {translate("summary.create.agentStart")}
-                                            </Dropdown.Item>
-                                        </Dropdown.Menu>
-                                    )}
-                                >
-                                    <Button
-                                        data-testid={summaryTestIds.listModeSwitch}
-                                        className="summary-list-create-icon-btn"
-                                        theme="borderless"
-                                        icon={<ChevronDown size={16} />}
-                                        aria-label={translate("summary.create.switchMode")}
-                                        title={translate("summary.create.switchMode")}
-                                    />
-                                </Dropdown>
-                            </SplitButtonGroup>
-                        </Tooltip>
+                        {/* 单一「+」入口：点击只弹下拉（快速总结 / Agent 总结），
+                            不再是「主按钮直接建 + 独立箭头下拉」的组合按钮。
+                            不用 Semi Tooltip 包 Dropdown——Semi Tooltip 把 hover 处理器
+                            注入到直接子节点，Dropdown 不会把事件转发给触发按钮，
+                            hover 提示会失效；用原生 title + aria-label 兜底。 */}
+                        <Dropdown
+                            trigger="click"
+                            position="bottomRight"
+                            render={(
+                                <Dropdown.Menu>
+                                    <Dropdown.Item
+                                        data-testid={summaryTestIds.listNormalTab}
+                                        onClick={() => this.handleCreate("normal")}
+                                    >
+                                        {translate("summary.create.start")}
+                                    </Dropdown.Item>
+                                    <Dropdown.Item
+                                        data-testid={summaryTestIds.listAgentTab}
+                                        onClick={() => this.handleCreate("agent")}
+                                    >
+                                        {translate("summary.create.agentStart")}
+                                    </Dropdown.Item>
+                                </Dropdown.Menu>
+                            )}
+                        >
+                            <Button
+                                data-testid={summaryTestIds.listModeSwitch}
+                                className="summary-list-create-icon-btn"
+                                icon={<IconPlus />}
+                                theme="borderless"
+                                aria-label={translate("summary.list.createTooltip")}
+                                title={translate("summary.list.createTooltip")}
+                            />
+                        </Dropdown>
                         {isPanel && onClose && (
                             <Button
                                 icon={<X size={18} />}

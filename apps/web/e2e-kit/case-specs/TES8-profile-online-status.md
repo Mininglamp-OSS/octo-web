@@ -2,11 +2,11 @@
 
 ## Metadata
 
-- Case 类型：feature e2e
-- 目标模式：real page seed（chat 页 + Global Search + 资料弹窗）
+- Case 类型: feature e2e
+- 目标模式: real page seed（chat 页 + Global Search + 资料弹窗）
 - 登录状态：已登录 fixture
-- 优先级：P0
-- Tags：`@TES8 @p0 @chat @profile`
+- 优先级: P0
+- Tags: `@TES8 @p0 @chat @profile`
 
 ## 目标
 

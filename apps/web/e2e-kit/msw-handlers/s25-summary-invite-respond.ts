@@ -86,7 +86,10 @@ export async function registerS25SummaryInviteRespond(page: Page): Promise<void>
             { id: REJECT_TASK_ID, status: state.rejected ? 5 : 1 },
           ],
         });
-      })
+      }),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
+      )
     );
   }, { ACCEPT_TASK_ID: S25_ACCEPT_TASK_ID, REJECT_TASK_ID: S25_REJECT_TASK_ID });
 }

@@ -36,6 +36,14 @@ import { computeFollowDragSortItems, getSortableItemId } from "./dragSortAction"
 import { useI18n } from "../../i18n"
 import { wkConfirm } from "../WKModal"
 import { getImChannelInfo } from "../../im-runtime/channelRuntime"
+import {
+    FolderInput,
+    FolderPlus,
+    MessageCirclePlus,
+    Pencil,
+    StarOff,
+    Trash2,
+} from "lucide-react"
 
 // 兜底相关 helper 迁移至 ./categoriesFallback 独立模块，便于无依赖地单元测试。
 // 这里保留 re-export 以保持对外 API 不变（ConversationList.tsx / storybook 可直接从本模块引用）。
@@ -303,16 +311,14 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         visibleChildThreadsByParent.set(parentGroupNo, filterArchivedThreads(threads, threadSidebarStatus))
     }
 
-    // 构建右键菜单：取消关注 + 移出分组（有分组时，一级直接点击）+ 移到分组（一级，展开二级子菜单）
+    // 状态组：取消关注。ConversationList 会把它放在“清除未读”之后、免打扰之前。
     const buildExtraContextMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
         if (!conv) return []
-        
-        const menus: ContextMenusData[] = []
         const channel = conv.channel
-        
-        // 1. 取消关注（所有类型都支持）
-        const unfollowItem: ContextMenusData = {
+
+        return [{
             title: t("base.chatSidebar.context.unfollow"),
+            icon: StarOff,
             onClick: async () => {
                 try {
                     if (channel.channelType === ChannelTypeGroup) {
@@ -327,10 +333,15 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     console.error('[ConversationListGrouped] failed to unfollow conversation', err)
                 }
             }
-        }
-        menus.push(unfollowItem)
-        
-        // 2. 移到分组 / 移出分组（仅群聊）
+        }]
+    }
+
+    // 独立组：移动到分组。子区继承父群分组，不显示该项。
+    const buildTrailingContextMenus = (conv: ConversationWrap | undefined): ContextMenusData[] => {
+        if (!conv) return []
+        const menus: ContextMenusData[] = []
+        const channel = conv.channel
+
         if (channel.channelType === ChannelTypeGroup && categories.length > 0) {
             const groupNo = channel.channelID
             const currentCategoryId = categories.find(
@@ -348,18 +359,19 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             moveToChildren.push({ separator: true } as ContextMenusData)
             moveToChildren.push({
                 title: t("base.chatSidebar.context.createCategory"),
+                icon: FolderPlus,
                 onClick: () => onOpenCreateCategory({ kind: 'moveGroupToNewCategory', groupNo }),
             })
 
             const moveToItem: ContextMenusData = {
                 title: t("base.chatSidebar.context.moveToCategory"),
-                icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 15l3 3 3-3 M12 12v6",
+                icon: FolderInput,
                 children: moveToChildren,
             }
             menus.push(moveToItem)
         }
 
-        // 3. 移到分组（DM）—— 复用 followDM(peer_uid, category_id) 覆盖旧 category_id
+        // DM 复用 followDM(peer_uid, category_id) 覆盖旧 category_id。
         if (channel.channelType === ChannelTypePerson && categories.length > 0) {
             const peerUid = channel.channelID
             // 反查当前 DM 所在分组
@@ -389,13 +401,14 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
             moveToChildrenDm.push({ separator: true } as ContextMenusData)
             moveToChildrenDm.push({
                 title: t("base.chatSidebar.context.createCategory"),
+                icon: FolderPlus,
                 // DM 的"新分组"语义 = 用新分类 followDM,与 followConvToCategory
                 // 对 ChannelTypePerson 分支等价(都走 FollowService.followDM)。
                 onClick: () => onOpenCreateCategory({ kind: 'followToNewCategory', conv }),
             })
             menus.push({
                 title: t("base.chatSidebar.context.moveToCategory"),
-                icon: "M2 9V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-4 M12 3v5h5 M9 15l3 3 3-3 M12 12v6",
+                icon: FolderInput,
                 children: moveToChildrenDm,
             })
         }
@@ -420,6 +433,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     onClearMessages={onClearMessages}
                     onThreadOverflowClick={onThreadOverflowClick}
                     extraContextMenus={buildExtraContextMenus}
+                    trailingContextMenus={buildTrailingContextMenus}
                     hideCloseChat
                     disablePinSplit
                     hidePin
@@ -574,61 +588,32 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
     const buildCategoryContextMenus = (categoryId: string): ContextMenusData[] => {
         // 虚拟默认分组没有真实 UUID，无法 rename / delete / sort / create-group，直接屏蔽菜单
         if (isVirtualCategory(categoryId)) return []
-        // 用 effectiveCategories（=可见分组）做 idx，否则上/下移会跳到不可见 slot
-        const idx = effectiveCategories.findIndex(c => c.category_id === categoryId)
-        const cat = effectiveCategories[idx]
+        const cat = effectiveCategories.find(c => c.category_id === categoryId)
         if (!cat) return []
 
-        const upDownMenus: ContextMenusData[] = [
-            {
-                title: t("base.chatSidebar.context.moveUp"),
-                icon: "M18 15 12 9 6 15",
-                onClick: () => {
-                    if (idx <= 0) return
-                    const newIds = effectiveCategories.map(c => c.category_id as string)
-                    ;[newIds[idx - 1], newIds[idx]] = [newIds[idx], newIds[idx - 1]]
-                    onSortCategories([...newIds, ...hiddenRealCategoryIds])
-                },
-            },
-            {
-                title: t("base.chatSidebar.context.moveDown"),
-                icon: "M6 9l6 6 6-6",
-                onClick: () => {
-                    if (idx >= effectiveCategories.length - 1) return
-                    const newIds = effectiveCategories.map(c => c.category_id as string)
-                    ;[newIds[idx], newIds[idx + 1]] = [newIds[idx + 1], newIds[idx]]
-                    onSortCategories([...newIds, ...hiddenRealCategoryIds])
-                },
-            },
-        ]
-
-        // 默认分组：仅允许拖拽排序，屏蔽「重命名」和「删除分组」
-        if (cat.is_default) {
-            return upDownMenus
-        }
+        // 默认分组没有管理菜单；排序统一使用六点拖拽手柄。
+        if (cat.is_default) return []
 
         return [
             {
                 title: t("base.chatSidebar.context.startGroup"),
-                icon: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 8 0 4 4 0 0 0-8 0 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
+                icon: MessageCirclePlus,
                 onClick: () => {
                     onCreateGroupInCategory?.(categoryId)
                 },
             },
-            { separator: true } as ContextMenusData,
             {
                 title: t("base.chatSidebar.context.rename"),
-                icon: "M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z m-2-2 4 4",
+                icon: Pencil,
                 onClick: () => {
                     setRenamingCategoryId(categoryId)
                     setActiveCategoryId(null)
                 },
             },
-            ...upDownMenus,
             { separator: true } as ContextMenusData,
             {
                 title: t("base.chatSidebar.context.deleteCategory"),
-                icon: "M3 6h18 M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6 M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2",
+                icon: Trash2,
                 danger: true,
                 onClick: () => {
                     wkConfirm({

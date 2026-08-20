@@ -8,7 +8,6 @@ export const T = {
     listContent: "summary-list-content",
     listSearch: "summary-list-search",
     listStatusFilter: "summary-list-status-filter",
-    listCreate: "summary-list-create",
     createEntry: "summary-create-entry",
 
     // Card (per-task)
@@ -23,7 +22,7 @@ export const T = {
     createSelectChat: "summary-create-select-chat",
     createSelectMembers: "summary-create-select-members",
     createSubmit: "summary-create-submit",
-    // Mode-select dropdown on the list-page "+" entry (mirror of prod testIds.ts)
+    // Mode-select dropdown on the single list-page "+" entry (mirror of prod testIds.ts)
     listModeSwitch: "summary-list-mode-switch",
     listNormalTab: "summary-list-normal-tab",
     listAgentTab: "summary-list-agent-tab",

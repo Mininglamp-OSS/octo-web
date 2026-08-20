@@ -1,6 +1,6 @@
 import classNames from "classnames";
-import React from "react";
-import { Component, ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
+import React, { Component, ReactNode } from "react";
 import { Dropdown } from "@octo/ui";
 
 import "./index.css"
@@ -26,8 +26,8 @@ export interface ContextMenusContext {
 export class ContextMenusData {
     title!: string
     onClick?: () => void
-    /** SVG path 字符串，例如 'M3 6h18...' */
-    icon?: string
+    /** Lucide 图标组件 */
+    icon?: LucideIcon
     /** 危险操作（红色） */
     danger?: boolean
     /** 分隔线（此项时其他字段无效） */
@@ -45,12 +45,8 @@ export class ContextMenusData {
 }
 
 // ── 内部：渲染单个图标 ──
-function CtxIcon({ path }: { path: string }) {
-    return (
-        <svg className="ctx-icon" viewBox="0 0 24 24">
-            <path d={path} />
-        </svg>
-    )
+function CtxIcon({ icon: Icon }: { icon: LucideIcon }) {
+    return <Icon aria-hidden="true" className="ctx-icon" />
 }
 
 // ── 内部：箭头图标 ──
@@ -221,7 +217,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                             <Dropdown.Item
                                 key={ci}
                                 danger={child.danger}
-                                icon={child.icon ? <CtxIcon path={child.icon} /> : undefined}
+                                icon={child.icon ? <CtxIcon icon={child.icon} /> : undefined}
                                 suffix={child.checked ? (
                                     <span className="wk-ctx-checked">✓</span>
                                 ) : undefined}
@@ -244,7 +240,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                 key={i}
                 data-testid={m.testid}
                 danger={m.danger}
-                icon={m.icon ? <CtxIcon path={m.icon} /> : undefined}
+                icon={m.icon ? <CtxIcon icon={m.icon} /> : undefined}
                 suffix={hasChildren ? <ArrowIcon /> : undefined}
                 shellClassName="wk-ctx-item"
                 submenu={submenu}

@@ -36,7 +36,8 @@ import { Dap } from "../../Service/Dap";
 const TOP_CONVERSATION_SCORE_BOOST = 1000000000000;
 export class ChatVM extends ProviderListener {
   conversations: ConversationWrap[] = new Array();
-  loading: boolean = false; // 最近会话是否加载中
+  // 首次权威 conversation sync 完成前保持加载态，避免用未完成快照计算 Tab 未读角标。
+  loading: boolean = true; // 最近会话是否加载中
   private _connectTitle: string = ""; // 连接标题
   connectStatus: number = 0; // 0=disconnected, 1=connected, 2=connecting
   private _showChannelSetting: boolean = false; // 是否显示频道设置
@@ -611,7 +612,19 @@ export class ChatVM extends ProviderListener {
         const requestSpaceId = WKApp.shared.currentSpaceId
 
         // 先拉取数据，避免清空列表导致 UI 闪烁（fix #266）
-        const conversations = await WKSDK.shared().conversationManager.sync({})
+        let conversations: Conversation[] | undefined
+        try {
+            conversations = await WKSDK.shared().conversationManager.sync({})
+        } catch (error) {
+            // 只允许当前 Space 的请求结束自己的 loading；旧 Space 的迟到失败不能
+            // 提前结束新 Space 正在进行的同步。
+            if (WKApp.shared.currentSpaceId === requestSpaceId) {
+                this.loading = false
+                this.notifyListener()
+            }
+            console.error('[ChatVM] failed to sync conversations', error)
+            return
+        }
 
         // 回来已经不是本次请求对应的 Space —— 当前 Space 自有更新一次 sync,
         // 直接放弃本次结果。loading 留给新一次 sync 收尾,避免和 loading=false 冲突。
@@ -661,7 +674,15 @@ export class ChatVM extends ProviderListener {
 
     async reloadRequestConversationList() {
         const conversationWraps = new Array<ConversationWrap>()
-        const conversations = await WKSDK.shared().conversationManager.sync({})
+        let conversations: Conversation[] | undefined
+        try {
+            conversations = await WKSDK.shared().conversationManager.sync({})
+        } catch (error) {
+            // 冷启动失败时不能永久停在 loading；保留原 reject 语义交给调用方处理。
+            this.loading = false
+            this.notifyListener()
+            throw error
+        }
         // 先按 sync 响应预填 channelSpaceMap / channelMySourceSpaceMap
         // 再做 Space 过滤，避免老缓存缺失时落到 fail-closed 默认值。
         if (conversations && conversations.length > 0) {
@@ -681,6 +702,7 @@ export class ChatVM extends ProviderListener {
             }
         }
         this.conversations = conversationWraps
+        this.loading = false
         this.sortConversations()
 
         this.notifyListener()
