@@ -180,6 +180,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
+    // finalize 幂等键按「一次逻辑保存」持有：网络/超时后用户重试复用，确定结果后清空。
+    private pendingFinalizeIdempotencyKey: string | null = null;
+
+    private getOrCreateFinalizeIdempotencyKey(): string {
+        if (!this.pendingFinalizeIdempotencyKey) {
+            this.pendingFinalizeIdempotencyKey = api.genFinalizeRequestId();
+        }
+        return this.pendingFinalizeIdempotencyKey;
+    }
+
+    private clearFinalizeIdempotencyKey() {
+        this.pendingFinalizeIdempotencyKey = null;
+    }
 
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
     // 单独抽成方法便于与 ChatSummaryNewModal（按 channelID 隔离）保持对称。
@@ -314,6 +327,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             // 保存时血统被污染。所以进入时先原子清一遍 session · 再 write
             // 新 reference · 保证 storage 里的两条永远一致。
             clearAgentChatSession(this.agentChannelId());
+            this.clearFinalizeIdempotencyKey();
             this.setState({
                 mode: 'agent',
                 referencedTask: this.props.derivedFromTask,
@@ -876,6 +890,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /** 「新会话」：清 localStorage 的 session_id、清空消息，下次发送重新生成新 session_id。 */
     handleNewSession = () => {
         clearAgentChatSession(this.agentChannelId());
+        this.clearFinalizeIdempotencyKey();
         // 引用总结跟 session 同生命周期 → 一起清。
         clearAgentChatReferenced(this.agentChannelId());
         // 作废在途历史拉取，避免旧会话历史回灌到新会话。
@@ -1022,7 +1037,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 entry_point: this.props.source,
                 entry_source: this.props.source,
                 trigger_mode: 'agent',
+            }, {
+                idempotencyKey: this.getOrCreateFinalizeIdempotencyKey(),
             });
+            this.clearFinalizeIdempotencyKey();
             markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t(result.async_finalize ? 'summary.create.agentSummaryGenerating' : 'summary.create.agentSummaryCreated'));
@@ -1050,6 +1068,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 const code = axiosErr.response?.data?.code;
                 // 40004: session 无产出
                 if (code === 40004) {
+                    this.clearFinalizeIdempotencyKey();
                     Toast.error(t('summary.create.noOutputToSave'));
                     return false;
                 }
@@ -1060,8 +1079,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         Toast.warning(t('summary.create.agentSummaryAlreadyGenerating'));
                         markAgentSummaryNotificationEligible(taskId);
                         openCreatedSummary(taskId);
+                        this.clearFinalizeIdempotencyKey();
                         return true;
                     }
+                    this.clearFinalizeIdempotencyKey();
                     Toast.error(t('summary.create.agentSummaryAlreadyGenerating'));
                     return false;
                 }
@@ -1078,6 +1099,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 //       后端 fallback 无路可走）→ 沿用原「引用丢失」文案。
                 // 见 SUM-161 fast-follow · CHAT-REFERENCE-BASED-DESIGN-v1。
                 if (code === 40001) {
+                    this.clearFinalizeIdempotencyKey();
                     if (this.state.referencedTask) {
                         Toast.error(t('summary.create.savedNoOriginRetry'));
                     } else {

@@ -462,6 +462,27 @@ describe('summaryApi', () => {
             expect(res).toEqual({ task_id: 88, status: 'GENERATING' });
         });
 
+        it('lets callers provide a stable Idempotency-Key for retryable finalize saves', async () => {
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 202,
+                data: { code: 0, data: { task_id: 91, status: 'GENERATING' } },
+            });
+
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1', title: 't' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_stable_key' },
+            );
+
+            expect(mockPost).toHaveBeenCalledWith(
+                '/summary/api/v1/summaries/agent/finalize',
+                { session_id: 's1', title: 't' },
+                { headers: { 'Idempotency-Key': 'finalize_stable_key' } },
+            );
+            expect(res).toEqual({ task_id: 91, status: 'GENERATING', async_finalize: true });
+        });
+
         it('rejects unexpected finalize task status', async () => {
             const { finalizeAgentSummary } = await import('../summaryApi');
             mockPost.mockResolvedValueOnce({
@@ -495,7 +516,13 @@ describe('summaryApi', () => {
                 data: { code: 40004, message: 'no output', data: null },
             });
 
-            await expect(saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' })).rejects.toBeTruthy();
+            await expect(
+                saveAgentSummaryViaFinalize(
+                    { session_id: 's1' },
+                    { trigger_mode: 'agent' },
+                    { idempotencyKey: 'finalize_business_key' },
+                ),
+            ).rejects.toBeTruthy();
             expect(mockPost).toHaveBeenCalledTimes(1);
             expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
             track.mockRestore();
@@ -507,10 +534,43 @@ describe('summaryApi', () => {
             const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
             mockPost.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
 
-            await expect(saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' })).rejects.toThrow('Network Error');
+            await expect(
+                saveAgentSummaryViaFinalize(
+                    { session_id: 's1' },
+                    { trigger_mode: 'agent' },
+                    { idempotencyKey: 'finalize_network_key' },
+                ),
+            ).rejects.toThrow('Network Error');
             expect(mockPost).toHaveBeenCalledTimes(1);
             expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
             track.mockRestore();
+        });
+
+        it('sends the same Idempotency-Key when the caller retries after an ambiguous failure', async () => {
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 92, status: 'GENERATING' } },
+                });
+
+            await expect(
+                saveAgentSummaryViaFinalize(
+                    { session_id: 's1' },
+                    { trigger_mode: 'agent' },
+                    { idempotencyKey: 'finalize_retry_key' },
+                ),
+            ).rejects.toThrow('Network Error');
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_retry_key' },
+            );
+
+            expect(res).toEqual({ task_id: 92, status: 'GENERATING', async_finalize: true });
+            expect(mockPost.mock.calls[0][2]).toEqual({ headers: { 'Idempotency-Key': 'finalize_retry_key' } });
+            expect(mockPost.mock.calls[1][2]).toEqual({ headers: { 'Idempotency-Key': 'finalize_retry_key' } });
         });
 
         it('falls back to legacy createAgentSummary when finalize route is unsupported', async () => {
@@ -523,7 +583,11 @@ describe('summaryApi', () => {
                     data: { code: 0, data: { task_id: 89, task_no: 'n', status: 3, created_at: 'x' } },
                 });
 
-            const res = await saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' });
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_fallback_key' },
+            );
 
             expect(res).toEqual({ task_id: 89, async_finalize: false });
             expect(mockPost.mock.calls[0][0]).toBe('/summary/api/v1/summaries/agent/finalize');
@@ -542,7 +606,11 @@ describe('summaryApi', () => {
                 data: { code: 0, data: { task_id: 90, status: 'GENERATING' } },
             });
 
-            const res = await saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' });
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_track_key' },
+            );
 
             expect(res).toEqual({ task_id: 90, status: 'GENERATING', async_finalize: true });
             const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');

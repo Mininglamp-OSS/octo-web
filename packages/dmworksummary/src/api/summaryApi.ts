@@ -378,8 +378,8 @@ export async function createAgentSummary(
 // 再跳详情页由详情页轮询任务状态；若当前后端/测试环境还没有 finalize 路由，
 // 则兼容回退到既有 POST /summaries/agent，避免前后端发布顺序导致保存全量 404。
 
-/** finalize 幂等键:每次 saveAgentSummaryViaFinalize 调用生成一个。 */
-function genFinalizeRequestId(): string {
+/** finalize 幂等键:调用方按「一次逻辑保存」生成并在 transient retry 间复用。 */
+export function genFinalizeRequestId(): string {
     try {
         const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
         if (c?.randomUUID) return `finalize_${c.randomUUID()}`;
@@ -440,6 +440,14 @@ export interface SaveAgentSummaryResult {
     status?: string;
 }
 
+export interface SaveAgentSummaryOptions {
+    /**
+     * One key per logical save. UI callers that can be retried by the user should provide a stable key
+     * and keep it across ambiguous/network failures.
+     */
+    idempotencyKey: string;
+}
+
 /**
  * 交付物保存(v0)——优先发起 finalize(202),不阻塞等生成；若 finalize 路由不存在，
  * 回退到旧 createAgentSummary，保证前后端发布顺序不一致时仍能保存。
@@ -448,10 +456,11 @@ export interface SaveAgentSummaryResult {
  */
 export async function saveAgentSummaryViaFinalize(
     params: CreateAgentSummaryParams,
-    trackProps: Record<string, unknown> = {},
+    trackProps: Record<string, unknown>,
+    options: SaveAgentSummaryOptions,
 ): Promise<SaveAgentSummaryResult> {
     try {
-        const accepted = await finalizeAgentSummary(params, genFinalizeRequestId());
+        const accepted = await finalizeAgentSummary(params, options.idempotencyKey);
         // 与 createAgentSummary 同口径:一次"成功发起"即补发埋点。
         Dap.shared.track('smart_summary_started', trackProps);
         return { task_id: accepted.task_id, status: accepted.status, async_finalize: true };

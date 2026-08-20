@@ -103,6 +103,19 @@ export default class ChatSummaryNewModal extends Component<
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
+    // finalize 幂等键按「一次逻辑保存」持有：网络/超时后用户重试复用，确定结果后清空。
+    private pendingFinalizeIdempotencyKey: string | null = null;
+
+    private getOrCreateFinalizeIdempotencyKey(): string {
+        if (!this.pendingFinalizeIdempotencyKey) {
+            this.pendingFinalizeIdempotencyKey = summaryApi.genFinalizeRequestId();
+        }
+        return this.pendingFinalizeIdempotencyKey;
+    }
+
+    private clearFinalizeIdempotencyKey() {
+        this.pendingFinalizeIdempotencyKey = null;
+    }
 
     // localStorage key 按频道隔离，不同群各自的对话不串（见 summaryHelpers）。
     private agentChannelId(): string | undefined {
@@ -150,6 +163,7 @@ export default class ChatSummaryNewModal extends Component<
     componentDidUpdate(prevProps: ChatSummaryNewModalProps) {
         if (this.props.visible && !prevProps.visible) {
             const defaultChat = channelToChatCandidate(this.props.channel);
+            this.clearFinalizeIdempotencyKey();
             this.setState({
                 topic: '',
                 appliedTemplateLabel: '',
@@ -593,6 +607,7 @@ export default class ChatSummaryNewModal extends Component<
     /** 「新会话」：清 localStorage 的 session_id、清空消息，下次发送重新生成新 session_id。 */
     private handleNewSession = () => {
         clearAgentChatSession(this.agentChannelId());
+        this.clearFinalizeIdempotencyKey();
         // 作废在途历史拉取，避免旧会话历史回灌到新会话。
         this.historyLoadToken++;
         this.setState({ messages: [], sessionId: '' });
@@ -655,7 +670,10 @@ export default class ChatSummaryNewModal extends Component<
                 entry_point: 'chat_new_modal',
                 entry_source: 'chat_new_modal',
                 trigger_mode: 'agent',
+            }, {
+                idempotencyKey: this.getOrCreateFinalizeIdempotencyKey(),
             });
+            this.clearFinalizeIdempotencyKey();
             markAgentSummaryNotificationEligible(res.task_id);
 
             Toast.success(t(res.async_finalize ? 'summary.create.agentSummaryGenerating' : 'summary.create.agentSummaryCreated'));
@@ -669,6 +687,7 @@ export default class ChatSummaryNewModal extends Component<
                 const code = axiosErr.response?.data?.code;
                 // 40004: session 无产出
                 if (code === 40004) {
+                    this.clearFinalizeIdempotencyKey();
                     Toast.error(t('summary.create.noOutputToSave'));
                     return false;
                 }
@@ -678,8 +697,10 @@ export default class ChatSummaryNewModal extends Component<
                         Toast.warning(t('summary.create.agentSummaryAlreadyGenerating'));
                         markAgentSummaryNotificationEligible(taskId);
                         notifyCreatedSummary(taskId);
+                        this.clearFinalizeIdempotencyKey();
                         return true;
                     }
+                    this.clearFinalizeIdempotencyKey();
                     Toast.error(t('summary.create.agentSummaryAlreadyGenerating'));
                     return false;
                 }

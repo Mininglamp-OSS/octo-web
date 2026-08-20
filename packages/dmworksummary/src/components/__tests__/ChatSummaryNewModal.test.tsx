@@ -81,6 +81,7 @@ vi.mock('../../api/summaryApi', () => ({
     getTopicTemplatesConfig: vi.fn().mockResolvedValue({ templates: [], custom_template_limit: 30 }),
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
     createAgentSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
+    genFinalizeRequestId: vi.fn(() => 'finalize_test_key'),
     saveAgentSummaryViaFinalize: vi.fn().mockResolvedValue({ task_id: 1, async_finalize: false }),
     agentChat: vi.fn(),
     getAgentChatHistory: vi.fn().mockResolvedValue({ session_id: '', messages: [] }),
@@ -728,7 +729,49 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
         expect(summaryApi.saveAgentSummaryViaFinalize).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'ch1', origin_channel_type: 1 }),
             expect.any(Object),
+            expect.objectContaining({ idempotencyKey: 'finalize_test_key' }),
         );
         expect(isAgentSummaryNotificationEligible(1)).toBe(true);
+    });
+
+    it('reuses the finalize idempotency key after an ambiguous save failure', async () => {
+        (summaryApi.genFinalizeRequestId as any).mockReturnValueOnce('modal_retry_key');
+        (summaryApi.saveAgentSummaryViaFinalize as any)
+            .mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+            .mockResolvedValueOnce({ task_id: 102, async_finalize: true });
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={vi.fn()}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-retry' });
+        });
+        let firstResult = true;
+        await act(async () => {
+            firstResult = await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+        let secondResult = false;
+        await act(async () => {
+            secondResult = await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        const calls = (summaryApi.saveAgentSummaryViaFinalize as any).mock.calls;
+        expect(firstResult).toBe(false);
+        expect(secondResult).toBe(true);
+        expect(summaryApi.genFinalizeRequestId).toHaveBeenCalledTimes(1);
+        expect(calls[0][2]).toEqual({ idempotencyKey: 'modal_retry_key' });
+        expect(calls[1][2]).toEqual({ idempotencyKey: 'modal_retry_key' });
     });
 });

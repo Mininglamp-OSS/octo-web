@@ -62,6 +62,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
 vi.mock('../../api/summaryApi', () => ({
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
     createAgentSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
+    genFinalizeRequestId: vi.fn(() => 'finalize_test_key'),
     saveAgentSummaryViaFinalize: vi.fn().mockResolvedValue({ task_id: 1, async_finalize: false }),
     createSchedule: vi.fn().mockResolvedValue({}),
     getTopicTemplatesConfig: vi.fn().mockResolvedValue({ templates: [], custom_template_limit: 30 }),
@@ -762,6 +763,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(api.saveAgentSummaryViaFinalize).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp-1', origin_channel_type: 1 }),
             expect.any(Object),
+            expect.objectContaining({ idempotencyKey: 'finalize_test_key' }),
         );
         expect(isAgentSummaryNotificationEligible(1)).toBe(true);
     });
@@ -779,6 +781,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(api.saveAgentSummaryViaFinalize).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp____thr', origin_channel_type: 2 }),
             expect.any(Object),
+            expect.objectContaining({ idempotencyKey: 'finalize_test_key' }),
         );
     });
 
@@ -835,6 +838,37 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(localStorage.getItem('agent-chat-referenced:__workbench__')).toBeNull();
         expect(instance.state.sessionId).toBe('');
         expect(instance.state.referencedTask).toBeNull();
+    });
+
+    it('reuses the finalize idempotency key after an ambiguous save failure', async () => {
+        (api.genFinalizeRequestId as any).mockReturnValueOnce('finalize_retry_key');
+        (api.saveAgentSummaryViaFinalize as any)
+            .mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+            .mockResolvedValueOnce({ task_id: 101, async_finalize: true });
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                sessionId: 'sess-retry',
+                mode: 'agent',
+                selectedChats: [{ chat_id: 'grp-1', chat_type: 'group', name: 'G', member_count: 3 }],
+            });
+        });
+
+        let firstResult = true;
+        await act(async () => {
+            firstResult = await instance.handleSaveAsSummary('t');
+        });
+        let secondResult = false;
+        await act(async () => {
+            secondResult = await instance.handleSaveAsSummary('t');
+        });
+
+        const calls = (api.saveAgentSummaryViaFinalize as any).mock.calls;
+        expect(firstResult).toBe(false);
+        expect(secondResult).toBe(true);
+        expect(api.genFinalizeRequestId).toHaveBeenCalledTimes(1);
+        expect(calls[0][2]).toEqual({ idempotencyKey: 'finalize_retry_key' });
+        expect(calls[1][2]).toEqual({ idempotencyKey: 'finalize_retry_key' });
     });
 });
 
