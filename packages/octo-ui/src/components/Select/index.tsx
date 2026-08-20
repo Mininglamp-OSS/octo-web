@@ -92,7 +92,7 @@ function renderTrigger(props: Record<string, any>) {
   )
 }
 
-function renderEmptyContent(content: ReactNode = '暂无选项') {
+function renderEmptyContent(content: ReactNode = 'No options') {
   if (content === null || content === false) {
     return content
   }

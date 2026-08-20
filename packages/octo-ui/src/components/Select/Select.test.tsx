@@ -129,7 +129,7 @@ describe('Select', () => {
     expect(html).toContain('octo-ui-select--small')
     expect(html).toContain('octo-ui-select--error')
     expect(html).toContain('选择项目')
-    expect(html).toContain('暂无选项')
+    expect(html).toContain('No options')
     expect(html).toContain('octo-ui-select-empty__icon')
     expect(html).toContain('data-icon="inbox"')
   })
@@ -137,7 +137,7 @@ describe('Select', () => {
   it('wraps string empty content with the Octo empty state layout', () => {
     const html = renderToStaticMarkup(
       <Select
-        emptyContent="没有匹配的选项"
+        emptyContent="No matching options"
         placeholder="搜索结果"
         optionList={[]}
       />,
@@ -145,7 +145,7 @@ describe('Select', () => {
 
     expect(html).toContain('octo-ui-select-empty')
     expect(html).toContain('octo-ui-select-empty__text')
-    expect(html).toContain('没有匹配的选项')
+    expect(html).toContain('No matching options')
   })
 
   it('keeps children Option API available', () => {
