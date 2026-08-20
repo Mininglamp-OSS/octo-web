@@ -36,7 +36,8 @@ import { Dap } from "../../Service/Dap";
 const TOP_CONVERSATION_SCORE_BOOST = 1000000000000;
 export class ChatVM extends ProviderListener {
   conversations: ConversationWrap[] = new Array();
-  loading: boolean = false; // 最近会话是否加载中
+  // 首次权威 conversation sync 完成前保持加载态，避免用未完成快照计算 Tab 未读角标。
+  loading: boolean = true; // 最近会话是否加载中
   private _connectTitle: string = ""; // 连接标题
   connectStatus: number = 0; // 0=disconnected, 1=connected, 2=connecting
   private _showChannelSetting: boolean = false; // 是否显示频道设置
@@ -661,7 +662,15 @@ export class ChatVM extends ProviderListener {
 
     async reloadRequestConversationList() {
         const conversationWraps = new Array<ConversationWrap>()
-        const conversations = await WKSDK.shared().conversationManager.sync({})
+        let conversations: Conversation[] | undefined
+        try {
+            conversations = await WKSDK.shared().conversationManager.sync({})
+        } catch (error) {
+            // 冷启动失败时不能永久停在 loading；保留原 reject 语义交给调用方处理。
+            this.loading = false
+            this.notifyListener()
+            throw error
+        }
         // 先按 sync 响应预填 channelSpaceMap / channelMySourceSpaceMap
         // 再做 Space 过滤，避免老缓存缺失时落到 fail-closed 默认值。
         if (conversations && conversations.length > 0) {
@@ -681,6 +690,7 @@ export class ChatVM extends ProviderListener {
             }
         }
         this.conversations = conversationWraps
+        this.loading = false
         this.sortConversations()
 
         this.notifyListener()

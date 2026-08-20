@@ -6,6 +6,7 @@ import React from "react"
 import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { Star } from "lucide-react"
 import ContextMenus, { ContextMenusContext, ContextMenusData } from "../index"
 
 let container: HTMLDivElement
@@ -188,5 +189,22 @@ describe("ContextMenus rounded hover boundaries", () => {
         expect(rootList.querySelector(":scope > li:last-of-type")?.textContent).toBe("Delete")
         expect(submenu.querySelector(":scope > li:first-of-type")?.textContent).toBe("First group")
         expect(submenu.querySelector(":scope > li:last-of-type")?.textContent).toBe("Last group")
+    })
+})
+
+describe("ContextMenus Lucide icons", () => {
+    it("renders a Lucide component without changing the existing menu structure", () => {
+        act(() => {
+            ReactDOM.render(
+                <ContextMenus
+                    onContext={() => undefined}
+                    menus={[{ title: "Follow", icon: Star }]}
+                />,
+                container
+            )
+        })
+
+        expect(container.querySelector(".wk-contextmenus li .lucide-star.ctx-icon")).not.toBeNull()
+        expect(container.querySelector(".wk-contextmenus li")?.textContent).toBe("Follow")
     })
 })

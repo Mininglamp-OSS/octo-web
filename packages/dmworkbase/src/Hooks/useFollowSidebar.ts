@@ -43,6 +43,11 @@ export interface UseFollowSidebarResult {
 const NULL_CATEGORY = ""
 const THREAD_SIDEBAR_RELOAD_DELAYS_MS = [300, 1000, 2000]
 type LoadOptions = { silent?: boolean }
+type SidebarUnreadUpdate = {
+    channelId: string
+    channelType: number
+    unread: number
+}
 
 export function shouldReloadFollowSidebarForThreadConversation(args: {
     conversation?: Conversation | null
@@ -127,6 +132,26 @@ export function useFollowSidebar(): UseFollowSidebarResult {
         WKApp.mittBus.on("sidebar-reload" as any, handler)
         return () => { WKApp.mittBus.off("sidebar-reload" as any, handler) }
     }, [load])
+
+    // 写接口成功后先乐观更新关注侧栏，再由 sidebar-reload 用服务端快照校准。
+    // 否则静默重载期间仍会短暂显示旧未读（例如 5），用户会看到清除动作延迟生效。
+    useEffect(() => {
+        const handler = (update: SidebarUnreadUpdate) => {
+            if (!update?.channelId) return
+            const unread = Math.max(0, update.unread || 0)
+            setItems((current) => current.map((item) => {
+                if (
+                    item.channel_id !== update.channelId ||
+                    item.channel_type !== update.channelType
+                ) {
+                    return item
+                }
+                return item.unread === unread ? item : { ...item, unread }
+            }))
+        }
+        WKApp.mittBus.on("sidebar-unread-updated" as any, handler)
+        return () => { WKApp.mittBus.off("sidebar-unread-updated" as any, handler) }
+    }, [])
 
     useEffect(() => {
         requestedThreadReloadsRef.current.clear()

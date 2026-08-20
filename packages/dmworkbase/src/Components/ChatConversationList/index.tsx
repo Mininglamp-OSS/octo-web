@@ -22,6 +22,7 @@ import CreateCategoryModal from "../CreateCategoryModal"
 import { ContextMenusData } from "../ContextMenus"
 import { useI18n } from "../../i18n"
 import { getImChannelInfo } from "../../im-runtime/channelRuntime"
+import { FolderPlus, Star, StarOff } from "lucide-react"
 
 export function isMutedForRecentConversation(conv: ConversationWrap): boolean {
     const isThread = conv.channel.channelType === ChannelTypeCommunityTopic
@@ -263,6 +264,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                 // 已关注 → 显示「取消关注」
                 menus.push({
                     title: t("base.chatSidebar.context.unfollow"),
+                    icon: StarOff,
                     onClick: async () => {
                         const channel = conv.channel
                         try {
@@ -295,6 +297,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     if (parentFollowed) {
                         menus.push({
                             title: t("base.chatSidebar.context.addToFollow"),
+                            icon: Star,
                             onClick: async () => {
                                 try {
                                     await FollowService.followThread({ thread_channel_id: channel.channelID })
@@ -321,6 +324,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                         categoryItems.push({ separator: true } as ContextMenusData)
                         categoryItems.push({
                             title: t("base.chatSidebar.context.createCategory"),
+                            icon: FolderPlus,
                             onClick: () => {
                                 setPendingAction({ kind: 'followToNewCategory', conv })
                                 setCreateModalVisible(true)
@@ -329,6 +333,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
                         menus.push({
                             title: t("base.chatSidebar.context.addToFollow"),
+                            icon: Star,
                             children: categoryItems
                         })
                     }
@@ -350,6 +355,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                     categoryItems.push({ separator: true } as ContextMenusData)
                     categoryItems.push({
                         title: t("base.chatSidebar.context.createCategory"),
+                        icon: FolderPlus,
                         onClick: () => {
                             setPendingAction({ kind: 'followToNewCategory', conv })
                             setCreateModalVisible(true)
@@ -358,6 +364,7 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
 
                     menus.push({
                         title: t("base.chatSidebar.context.addToFollow"),
+                        icon: Star,
                         children: categoryItems
                     })
                 }

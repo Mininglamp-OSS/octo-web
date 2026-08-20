@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 
 const hoisted = vi.hoisted(() => ({
     emit: vi.fn(),
+    sync: vi.fn(() => Promise.resolve([])),
 }))
 
 vi.mock("wukongimjssdk", () => ({
@@ -11,7 +12,7 @@ vi.mock("wukongimjssdk", () => ({
                 conversations: [],
                 addConversationListener: () => {},
                 removeConversationListener: () => {},
-                sync: () => Promise.resolve([]),
+                sync: hoisted.sync,
             },
             connectManager: {
                 status: 0,
@@ -181,9 +182,24 @@ describe("ChatVM.reloadRequestConversationList", () => {
     it("announces initial conversation hydration so unread title consumers recalculate", async () => {
         const vm = new ChatVM()
         hoisted.emit.mockClear()
+        hoisted.sync.mockResolvedValueOnce([])
 
+        expect(vm.loading).toBe(true)
         await vm.reloadRequestConversationList()
 
+        expect(vm.loading).toBe(false)
         expect(hoisted.emit).toHaveBeenCalledWith("conversation-list-refreshed")
+    })
+
+    it("leaves the initial loading state when conversation hydration fails", async () => {
+        const vm = new ChatVM()
+        const notifyListener = vi.spyOn(vm, "notifyListener")
+        const error = new Error("sync failed")
+        hoisted.sync.mockRejectedValueOnce(error)
+
+        await expect(vm.reloadRequestConversationList()).rejects.toBe(error)
+
+        expect(vm.loading).toBe(false)
+        expect(notifyListener).toHaveBeenCalled()
     })
 })
