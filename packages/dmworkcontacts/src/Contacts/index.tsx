@@ -35,32 +35,45 @@ import type { ContactsSearchIndex } from "../bridge/contactsSearch/types";
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
     const [isTruncated, setIsTruncated] = useState(false)
     const textRef = useRef<HTMLSpanElement>(null)
-    useEffect(() => {
-        const checkTruncation = () => {
-            if (textRef.current) {
-                setIsTruncated(textRef.current.scrollWidth > textRef.current.clientWidth)
-            }
-        }
+    const resizeObserverRef = useRef<ResizeObserver | null>(null)
 
+    const checkTruncation = useCallback(() => {
+        if (textRef.current) {
+            setIsTruncated(textRef.current.scrollWidth > textRef.current.clientWidth)
+        }
+    }, [])
+
+    const setTextRef = useCallback((node: HTMLSpanElement | null) => {
+        resizeObserverRef.current?.disconnect()
+        resizeObserverRef.current = null
+        textRef.current = node
+        if (!node) return
+
+        if (typeof ResizeObserver !== "undefined") {
+            resizeObserverRef.current = new ResizeObserver(checkTruncation)
+            resizeObserverRef.current.observe(node)
+        }
+    }, [checkTruncation])
+
+    useEffect(() => {
         checkTruncation()
-        const resizeObserver = typeof ResizeObserver === "undefined"
-            ? undefined
-            : new ResizeObserver(checkTruncation)
-        if (textRef.current) resizeObserver?.observe(textRef.current)
+    }, [text, checkTruncation])
+
+    useEffect(() => {
         window.addEventListener("resize", checkTruncation)
         return () => {
-            resizeObserver?.disconnect()
+            resizeObserverRef.current?.disconnect()
             window.removeEventListener("resize", checkTruncation)
         }
-    }, [text])
+    }, [checkTruncation])
     const content = (
         <div className="wk-contacts-section-item-name">
-            <span ref={textRef} className="wk-contacts-section-item-text">{text}</span>
+            <span ref={setTextRef} className="wk-contacts-section-item-text">{text}</span>
             {children}
         </div>
     )
 
-    return <Tooltip content={text} placement="right" isDisabled={!isTruncated}>{content}</Tooltip>
+    return isTruncated ? <Tooltip content={text} placement="right">{content}</Tooltip> : content
 }
 
 const ITEM_HEIGHT = 44

@@ -96,6 +96,8 @@ const Tooltip = ({
 
   const isInactive = isDisabled || !hasContent;
 
+  if (isInactive) return children;
+
   const isHorizontalAction =
     contentConfig?.actions &&
     (contentConfig.layout ??
@@ -118,7 +120,6 @@ const Tooltip = ({
       showArrow={false}
       spacing={6}
       autoAdjustOverflow
-      visible={isInactive ? false : undefined}
       onVisibleChange={onVisibleChange}
     >
       {children}

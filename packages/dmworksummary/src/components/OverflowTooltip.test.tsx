@@ -1,13 +1,13 @@
 import React, { act } from "react";
-import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
+import { render as rtlRender, screen, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 import OverflowTooltip from "./OverflowTooltip";
 
 vi.mock("@octo/ui", () => ({
-    Tooltip: ({ children, content, isDisabled }: { children: React.ReactNode; content: React.ReactNode; isDisabled?: boolean }) => (
-        <div data-testid={isDisabled ? "tooltip-trigger" : "tooltip-wrapper"}>
+    Tooltip: ({ children, content, isDisabled }: { children: React.ReactNode; content: React.ReactNode; isDisabled?: boolean }) => isDisabled ? children : (
+        <div data-testid="tooltip-wrapper">
             {children}
-            {!isDisabled && <div data-testid="tooltip-content">{content}</div>}
+            <div data-testid="tooltip-content">{content}</div>
         </div>
     ),
 }));
@@ -33,7 +33,9 @@ class MockResizeObserver {
     }
 
     trigger(element: Element) {
-        if (this.elements.has(element)) this.callback([], this as unknown as ResizeObserver);
+        if (!this.elements.has(element)) return false;
+        this.callback([], this as unknown as ResizeObserver);
+        return true;
     }
 }
 
@@ -57,9 +59,13 @@ function mockOverflow(el: HTMLElement, overflowing: boolean) {
 }
 
 function triggerResize(el: HTMLElement) {
+    let triggerCount = 0;
     act(() => {
-        resizeObservers.forEach((observer) => observer.trigger(el));
+        resizeObservers.forEach((observer) => {
+            if (observer.trigger(el)) triggerCount += 1;
+        });
     });
+    return triggerCount;
 }
 
 describe("OverflowTooltip", () => {
@@ -104,20 +110,23 @@ describe("OverflowTooltip", () => {
         expect(screen.queryByTestId("tooltip-wrapper")).not.toBeInTheDocument();
     });
 
-    it("keeps observing the live element after truncation toggles", () => {
+    it("keeps observing the live element after truncation toggles", async () => {
         render(<OverflowTooltip title="Resize observed text">Resize observed text</OverflowTooltip>);
 
         const initialElement = screen.getByText("Resize observed text");
         Object.defineProperty(initialElement, "scrollWidth", { value: 200, configurable: true });
         Object.defineProperty(initialElement, "clientWidth", { value: 100, configurable: true });
-        triggerResize(initialElement);
+        expect(triggerResize(initialElement)).toBe(1);
         expect(screen.getByTestId("tooltip-wrapper")).toBeInTheDocument();
 
         const liveElement = screen.getByTestId("tooltip-wrapper").firstElementChild as HTMLElement;
         Object.defineProperty(liveElement, "scrollWidth", { value: 100, configurable: true });
-        triggerResize(liveElement);
+        Object.defineProperty(liveElement, "clientWidth", { value: 100, configurable: true });
+        expect(triggerResize(liveElement)).toBe(1);
 
-        expect(screen.queryByTestId("tooltip-wrapper")).not.toBeInTheDocument();
+        await waitFor(() => {
+            expect(screen.queryByTestId("tooltip-wrapper")).not.toBeInTheDocument();
+        });
     });
 
     it("renders correct element type when as prop is provided", () => {

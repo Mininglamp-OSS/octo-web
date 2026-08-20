@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, memo } from "react";
+import React, { useCallback, useRef, useState, useEffect, memo } from "react";
 import { Tooltip } from "@octo/ui";
 import "./TooltipCell.css";
 
@@ -13,6 +13,7 @@ interface TooltipCellProps {
  */
 export const TooltipCell = memo(function TooltipCell({ content }: TooltipCellProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [isTruncated, setIsTruncated] = useState(false);
 
   // 内容是否非空（排除 null/undefined 以及空白字符串）
@@ -21,37 +22,46 @@ export const TooltipCell = memo(function TooltipCell({ content }: TooltipCellPro
     content !== undefined &&
     !(typeof content === "string" && content.trim() === "");
 
-  useEffect(() => {
-    const checkTruncation = () => {
-      if (ref.current) {
-        setIsTruncated(ref.current.scrollWidth > ref.current.clientWidth);
-      }
-    };
+  const checkTruncation = useCallback(() => {
+    if (ref.current) {
+      setIsTruncated(ref.current.scrollWidth > ref.current.clientWidth);
+    }
+  }, []);
 
+  const setCellRef = useCallback((node: HTMLDivElement | null) => {
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
+    ref.current = node;
+    if (!node) return;
+
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserverRef.current = new ResizeObserver(checkTruncation);
+      resizeObserverRef.current.observe(node);
+    }
+  }, [checkTruncation]);
+
+  useEffect(() => {
     checkTruncation();
-    const resizeObserver = typeof ResizeObserver === "undefined"
-      ? undefined
-      : new ResizeObserver(checkTruncation);
-    if (ref.current) resizeObserver?.observe(ref.current);
+  }, [content, checkTruncation]);
+
+  useEffect(() => {
     window.addEventListener("resize", checkTruncation);
     return () => {
-      resizeObserver?.disconnect();
+      resizeObserverRef.current?.disconnect();
       window.removeEventListener("resize", checkTruncation);
     };
-  }, [content]);
+  }, [checkTruncation]);
 
   const cellContent = (
     <div
-      ref={ref}
+      ref={setCellRef}
       className="wk-excel-tooltip-cell"
     >
       {content}
     </div>
   );
 
-  return (
-    <Tooltip content={content} isDisabled={!isTruncated || !hasContent}>
-      {cellContent}
-    </Tooltip>
-  );
+  if (!isTruncated || !hasContent) return cellContent;
+
+  return <Tooltip content={content}>{cellContent}</Tooltip>;
 });
