@@ -64,10 +64,13 @@ function enhanceForgeChoiceCardHitAreas(target: HTMLElement): void {
     row.addEventListener("click", (event) => {
       const eventTarget = event.target;
       if (!(eventTarget instanceof Element)) return;
+      if (target.classList.contains("wk-interactive-card-sdk--readonly")) {
+        // CSS pointer-events 不会阻止 label 激活关联 input，显式取消默认行为。
+        event.preventDefault();
+        return;
+      }
       // input/label 已由 AdaptiveCards SDK 原生关联，避免二次切换 checkbox。
       if (eventTarget.closest("input, label")) return;
-      if (target.classList.contains("wk-interactive-card-sdk--readonly"))
-        return;
       const input = row.querySelector<HTMLInputElement>(
         'input[type="radio"], input[type="checkbox"]'
       );

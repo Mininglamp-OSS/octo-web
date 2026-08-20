@@ -154,6 +154,8 @@ describe("renderOctoCard", () => {
     const input = row?.querySelector<HTMLInputElement>("input");
     row?.click();
     expect(input?.checked).toBe(false);
+    row?.querySelector<HTMLLabelElement>("label")?.click();
+    expect(input?.checked).toBe(false);
 
     target.classList.remove("wk-interactive-card-sdk--readonly");
     row?.querySelector<HTMLLabelElement>("label")?.click();
