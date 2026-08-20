@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react";
-import { Modal, Select, Button, InputNumber, Toast, Banner } from "@douyinfe/semi-ui";
+import { Modal, Select, InputNumber, Toast, Banner } from "@douyinfe/semi-ui";
 import { I18nContext } from "@octo/base";
 import type { ScheduleConfig, ScheduleUnit } from "../types/summary";
 import { validateScheduleConfig } from "../utils/summaryHelpers";

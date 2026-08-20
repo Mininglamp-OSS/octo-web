@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Spin, Switch, Toast } from "@douyinfe/semi-ui";
+import { Checkbox, Switch } from "@octo/ui";
+import { Spin, Toast } from "@douyinfe/semi-ui";
 import DOMPurify from "dompurify";
 import { QRCodeSVG } from "qrcode.react";
 import WKApp, { ThemeMode } from "../../App";
@@ -17,7 +18,6 @@ import mininglampLogo from "../../assets/settings-center/mininglamp-logo.png";
 import { quickMuteStore } from "./QuickMuteStore";
 import { getMicrophonePermission, getVoiceShortcut, setMicrophonePermission, VOICE_PROTOCOL_VERSION, VOICE_SETTINGS_DEFAULTS, voiceSettingsStore, type VoiceSettings, type VoiceShortcut } from "../../Service/VoiceSettingsStore";
 import { getDocument } from "../../Service/DocumentService";
-import Checkbox from "../Checkbox";
 import { acceptVoiceInput } from "../../features/voice-input/useSpaceFeedbackSetting";
 import { Dap } from "../../Service/Dap";
 import { openElectronSystemSettings } from "../../electron/desktopBridge";
@@ -387,7 +387,7 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
       {consentContent && <div className="wk-settings-center__voice-consent-document" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(consentContent) }} />}
     </div>
     <div className="wk-settings-center__voice-consent-footer">
-      <Checkbox checked={consentChecked} onChange={setConsentChecked}>{t("base.navRail.voiceNotice.feedbackConsent")}</Checkbox>
+      <Checkbox checked={consentChecked} onCheckedChange={setConsentChecked}>{t("base.navRail.voiceNotice.feedbackConsent")}</Checkbox>
       <div className="wk-settings-center__voice-consent-actions"><button type="button" className="wk-settings-center__manage-button" onClick={() => setShowConsent(false)}>{t("base.common.cancel")}</button><button type="button" className="wk-settings-center__manage-button wk-settings-center__manage-button--primary" disabled={consentLoading || consentError || !consentContent} onClick={() => { void (async () => { const spaceId = WKApp.shared.currentSpaceId; if (spaceId) await acceptVoiceInput(spaceId, consentChecked, () => WKApp.shared.currentSpaceId === spaceId); voiceSettingsStore.acknowledge(); voiceSettingsStore.set({ enabled: true }); Dap.shared.track("settings_voice_toggled", { enabled: true }); setShowConsent(false); })().catch(() => Toast.error(t("base.navRail.settingsCenter.value.saveFailed"))); }}>{t("base.navRail.voiceNotice.accept")}</button></div>
     </div>
   </div>;

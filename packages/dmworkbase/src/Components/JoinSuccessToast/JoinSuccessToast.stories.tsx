@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import React from "react";
-import { Button } from "@douyinfe/semi-ui";
+
 import { showJoinSuccessToast, JoinSuccessToastOptions } from "./index";
 import "../../theme/index.css";
 import "./index.css";

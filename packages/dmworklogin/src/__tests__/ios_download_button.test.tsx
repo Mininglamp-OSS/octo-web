@@ -9,11 +9,6 @@ const { apiFetchJsonMock } = vi.hoisted(() => ({
   apiFetchJsonMock: vi.fn(),
 }));
 
-type MockWKButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: string;
-  size?: string;
-};
-
 vi.mock("@octo/base", () => ({
   apiFetchJson: apiFetchJsonMock,
   WKApp: {
@@ -21,8 +16,6 @@ vi.mock("@octo/base", () => ({
       config: { apiURL: "/api/v1/" },
     },
   },
-  WKButton: ({ children, ...props }: MockWKButtonProps) =>
-    React.createElement("button", props, children),
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({

@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import WKApp from "../../App";
 import React, { Component } from "react";
-import { Button, Progress, Spin, Toast } from "@douyinfe/semi-ui";
+import { Toast, Spin, Progress } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { t } from "../../i18n";
 import { i18n } from "../../i18n";

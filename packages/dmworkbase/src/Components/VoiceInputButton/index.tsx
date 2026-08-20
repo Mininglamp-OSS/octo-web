@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Toast, Dropdown } from "@douyinfe/semi-ui";
+import { Dropdown } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useTextareaVoice, { ReplaceMode, SelectionRange } from "./useTextareaVoice";
 import type { ChatContextResult } from "../Conversation/chatContext";

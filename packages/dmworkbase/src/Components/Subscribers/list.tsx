@@ -14,7 +14,7 @@ import {
 import WKAvatar, { isBot } from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import BotDetailModal from "../BotDetailModal";
-import { Checkbox } from "@douyinfe/semi-ui/lib/es/checkbox";
+import { Checkbox } from "@octo/ui";
 import { Tag, Toast } from "@douyinfe/semi-ui";
 import { GroupRole } from "../../Service/Const";
 import { debounce, throttle } from "../../Utils/rateLimit";

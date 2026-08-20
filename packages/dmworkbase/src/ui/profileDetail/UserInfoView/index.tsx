@@ -1,8 +1,8 @@
+import { Button } from "@octo/ui";
 import React from "react";
 import { Input, Spin } from "@douyinfe/semi-ui";
 import { IconEdit } from "@douyinfe/semi-icons";
 import Sections from "../../../Components/Sections";
-import WKButton from "../../../Components/WKButton";
 import AiBadge from "../../../Components/AiBadge";
 import RealnameVerifiedBadge from "../../../Components/RealnameVerifiedBadge";
 import type { UserInfoMetaItem } from "../../../Components/UserInfo/UserInfoMetaList";
@@ -121,7 +121,7 @@ function UserInfoView({
                     maxLength={30}
                   />
                   <div className="wk-userinfo-remark-actions">
-                    <WKButton
+                    <Button
                       type="button"
                       variant="secondary"
                       size="sm"
@@ -129,16 +129,16 @@ function UserInfoView({
                       onClick={onCancelEditRemark}
                     >
                       {labels.cancel}
-                    </WKButton>
-                    <WKButton
+                    </Button>
+                    <Button
                       type="button"
-                      variant="primary"
+                      variant="solid"
                       size="sm"
                       loading={savingRemark}
                       onClick={onSaveRemark}
                     >
                       {labels.save}
-                    </WKButton>
+                    </Button>
                   </div>
                 </div>
               ) : (

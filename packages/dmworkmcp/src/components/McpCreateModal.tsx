@@ -1,6 +1,7 @@
+import { Button, Switch } from "@octo/ui";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { WKModal, WKInput, WKButton, t, Dap } from "@octo/base";
-import { Select, Switch, TextArea, Toast } from "@douyinfe/semi-ui";
+import { WKModal, WKInput, t, Dap } from "@octo/base";
+import { Select, TextArea, Toast } from "@douyinfe/semi-ui";
 import {
   createMcp,
   probeMcpTools,
@@ -336,26 +337,26 @@ function KvEditor({
                 />
                 <span className="wk-mcp-kv__toggle-label">{toggleLabel}</span>
               </label>
-              <WKButton
+              <Button
                 size="sm"
-                variant="ghost"
+                variant="text"
                 onClick={() => remove(idx)}
                 aria-label={removeLabel}
               >
                 −
-              </WKButton>
+              </Button>
             </div>
           ))}
         </div>
       )}
-      <WKButton
+      <Button
         size="sm"
         variant="secondary"
         className="wk-mcp-kv__add"
         onClick={add}
       >
         + {addLabel}
-      </WKButton>
+      </Button>
     </div>
   );
 }
@@ -994,9 +995,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   const iconIsImage = !!iconPreview || isImageIcon(form.icon);
 
   const AddBtn = ({ onClick }: { onClick: () => void }) => (
-    <WKButton size="sm" variant="secondary" onClick={onClick}>
+    <Button size="sm" variant="secondary" onClick={onClick}>
       + {t("mcp.create.usageExampleAdd")}
-    </WKButton>
+    </Button>
   );
 
   const stepDefs = [
@@ -1141,16 +1142,16 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         <div className="wk-mcp-form-footer">
           <div>
             {step > 0 && (
-              <WKButton variant="secondary" onClick={goPrev}>
+              <Button variant="secondary" onClick={goPrev}>
                 ← {t("mcp.create.prev")}
-              </WKButton>
+              </Button>
             )}
           </div>
           <div className="wk-mcp-form-footer__right">
             {step < stepDefs.length - 1 ? (
-              <WKButton variant="primary" onClick={goNext}>
+              <Button variant="solid" onClick={goNext}>
                 {t("mcp.create.next")} →
-              </WKButton>
+              </Button>
             ) : (
               <>
                 {sharedSecretLeaks.length > 0 && (
@@ -1166,13 +1167,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                     })}
                   </span>
                 )}
-                <WKButton
-                  variant="primary"
+                <Button
+                  variant="solid"
                   loading={submitting}
                   onClick={handleSubmit}
                 >
                   {isEdit ? t("mcp.edit.submit") : t("mcp.create.submit")}
-                </WKButton>
+                </Button>
               </>
             )}
           </div>
@@ -1219,15 +1220,15 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                 </ul>
               )}
             <div className="wk-mcp-import-panel__actions">
-              <WKButton
+              <Button
                 variant="secondary"
                 disabled={!jsonRaw.trim()}
                 onClick={handleFormatJson}
               >
                 {t("mcp.create.import.format")}
-              </WKButton>
-              <WKButton
-                variant="primary"
+              </Button>
+              <Button
+                variant="solid"
                 disabled={
                   !jsonParseResult ||
                   !!jsonParseResult.error ||
@@ -1236,7 +1237,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                 onClick={handleApplyImport}
               >
                 {t("mcp.create.import.apply")}
-              </WKButton>
+              </Button>
             </div>
           </div>
         )}
@@ -1490,22 +1491,22 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
               desc={t("mcp.create.sectionToolsDesc")}
               action={
                 <div style={{ display: "flex", gap: "8px" }}>
-                  <WKButton size="sm" variant="secondary" onClick={addTool}>
+                  <Button size="sm" variant="secondary" onClick={addTool}>
                     + {t("mcp.create.toolAdd")}
-                  </WKButton>
+                  </Button>
                   {/* Probe only works in mock mode today; the marketplace REST
                       surface has no /probe and the Electron IPC (LSC-70) has not
                       landed. Hide the button when it would only fail so users
                       fall back to adding tools manually. */}
                   {isProbeAvailable && (
-                    <WKButton
+                    <Button
                       size="sm"
                       variant="secondary"
                       loading={probing}
                       onClick={handleProbe}
                     >
                       {t("mcp.create.probe")}
-                    </WKButton>
+                    </Button>
                   )}
                 </div>
               }
@@ -1520,13 +1521,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                     <div className="wk-mcp-tool-editor" key={idx}>
                       <div className="wk-mcp-tool-editor__head">
                         <span className="wk-mcp-row__index">#{idx + 1}</span>
-                        <WKButton
+                        <Button
                           size="sm"
-                          variant="ghost"
+                          variant="text"
                           onClick={() => removeTool(idx)}
                         >
                           {t("mcp.create.toolRemove")}
-                        </WKButton>
+                        </Button>
                       </div>
                       <WKInput
                         value={tool.name}
@@ -1575,13 +1576,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                           placeholder={t("mcp.create.usageExamplePlaceholder")}
                         />
                       </div>
-                      <WKButton
+                      <Button
                         size="sm"
-                        variant="ghost"
+                        variant="text"
                         onClick={() => removeExample(idx)}
                       >
                         {t("mcp.create.usageExampleRemove")}
-                      </WKButton>
+                      </Button>
                     </div>
                   ))}
                 </div>
@@ -1593,9 +1594,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
               title={t("mcp.create.sectionFaqs")}
               desc={t("mcp.create.sectionFaqsDesc")}
               action={
-                <WKButton size="sm" variant="secondary" onClick={addFaq}>
+                <Button size="sm" variant="secondary" onClick={addFaq}>
                   + {t("mcp.create.faqAdd")}
-                </WKButton>
+                </Button>
               }
             >
               {(form.faqs ?? []).length === 0 ? (
@@ -1610,13 +1611,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                         <span className="wk-mcp-faq-card__index">
                           #{idx + 1}
                         </span>
-                        <WKButton
+                        <Button
                           size="sm"
-                          variant="ghost"
+                          variant="text"
                           onClick={() => removeFaq(idx)}
                         >
                           {t("mcp.create.faqRemove")}
-                        </WKButton>
+                        </Button>
                       </div>
                       <WKInput
                         value={faq.question}
@@ -1642,9 +1643,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
               title={t("mcp.create.sectionNotes")}
               desc={t("mcp.create.sectionNotesDesc")}
               action={
-                <WKButton size="sm" variant="secondary" onClick={addNote}>
+                <Button size="sm" variant="secondary" onClick={addNote}>
                   + {t("mcp.create.notesAdd")}
-                </WKButton>
+                </Button>
               }
             >
               {(form.notes ?? []).length === 0 ? (
@@ -1664,13 +1665,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                           maxLength={MAXLEN.text}
                         />
                       </div>
-                      <WKButton
+                      <Button
                         size="sm"
-                        variant="ghost"
+                        variant="text"
                         onClick={() => removeNote(idx)}
                       >
                         {t("mcp.create.notesRemove")}
-                      </WKButton>
+                      </Button>
                     </div>
                   ))}
                 </div>

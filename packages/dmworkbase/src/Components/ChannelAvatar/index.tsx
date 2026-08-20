@@ -1,4 +1,5 @@
-import { Button, Toast } from "@douyinfe/semi-ui";
+import { Button } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { IconCamera } from "@douyinfe/semi-icons";
 import axios from "axios";
 import { Channel } from "wukongimjssdk";

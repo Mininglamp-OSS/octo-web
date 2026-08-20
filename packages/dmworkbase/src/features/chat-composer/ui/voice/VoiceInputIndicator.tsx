@@ -5,7 +5,8 @@ import React, {
   useCallback,
 } from "react";
 import { createPortal } from "react-dom";
-import { Toast, Dropdown } from "@douyinfe/semi-ui";
+import { Dropdown } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useVoiceInput from "../../adapters/voice/useVoiceInput";
 import "./voiceInput.css";

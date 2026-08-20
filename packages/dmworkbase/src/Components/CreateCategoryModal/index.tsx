@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { useState, useRef, useEffect } from "react"
-import { Modal, Input, Button } from "@douyinfe/semi-ui"
+import { Modal, Input } from "@douyinfe/semi-ui";
 import { useI18n } from "../../i18n"
 import "./index.css"
 

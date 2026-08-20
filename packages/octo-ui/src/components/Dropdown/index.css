@@ -1,0 +1,34 @@
+.octo-ui-dropdown {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-direction: column;
+  min-width: var(--octo-ui-dropdown-min-width);
+  max-width: var(--octo-ui-dropdown-max-width);
+  padding: var(--octo-ui-dropdown-padding);
+  border-radius: var(--octo-ui-dropdown-radius);
+  background: var(--octo-ui-dropdown-bg);
+  box-shadow: var(--octo-ui-dropdown-shadow);
+  color: var(--octo-ui-dropdown-text);
+  font-family: var(--octo-ui-font-sans);
+}
+
+.octo-ui-dropdown-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--octo-ui-dropdown-menu-gap);
+  min-width: 0;
+  max-height: var(--octo-ui-dropdown-menu-max-height);
+  overflow-y: auto;
+  outline: none;
+}
+
+.octo-ui-dropdown-divider {
+  flex: none;
+  height: 1px;
+  margin: var(--octo-ui-dropdown-divider-margin);
+  background: var(--octo-ui-dropdown-divider-bg);
+}
+
+.octo-ui-dropdown .octo-ui-menu-item {
+  border-radius: var(--octo-ui-dropdown-item-radius);
+}

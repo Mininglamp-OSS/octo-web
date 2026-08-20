@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import {
@@ -7,7 +8,6 @@ import {
   IconEyeClosed,
 } from "@douyinfe/semi-icons";
 import WKModal from "../WKModal";
-import WKButton from "../WKButton";
 import { useI18n } from "../../i18n";
 import SecretsService, {
   SecretKind,
@@ -122,17 +122,17 @@ export default function SecretEditModal({
       zIndex={1200}
       footer={
         <>
-          <WKButton variant="ghost" onClick={onClose} disabled={saving}>
+          <Button variant="text" onClick={onClose} disabled={saving}>
             {t("base.common.cancel")}
-          </WKButton>
-          <WKButton
-            variant="primary"
+          </Button>
+          <Button
+            variant="solid"
             onClick={handleSubmit}
             disabled={!canSubmit}
             loading={saving}
           >
             {t("base.common.save")}
-          </WKButton>
+          </Button>
         </>
       }
       className="wk-secrets-modal"

@@ -12,9 +12,8 @@
  * 本测试用真实的 React + Testing Library 组装 PersonaEdit，因为问题完全在
  * 组件层（VM 的 removeScope 行为没问题）。VM 行为另见 vm.test.ts。
  *
- * mock 策略对齐 vm.test.ts：apiClient + Toast 走 vi.hoisted；@douyinfe/semi-ui
- * Switch 用最小 stub（直接渲染 `<input type=checkbox>`）避免 jsdom 拉起整个
- * Semi 主题层。
+ * mock 策略对齐 vm.test.ts：apiClient + Toast 走 vi.hoisted；@octo/ui Switch
+ * 用最小 stub（直接渲染 `<input type=checkbox>`）避免 jsdom 拉起组件样式层。
  */
 
 import React from "react"
@@ -61,7 +60,15 @@ vi.mock("../../../Service/APIClient", () => ({
 }))
 
 vi.mock("@douyinfe/semi-ui", () => ({
-    // 最小 Switch stub：渲染一个普通 checkbox，避免拉起 Semi 的样式 / portal 系统。
+    Toast: {
+        error: hoisted.toastError,
+        warning: hoisted.toastWarning,
+        success: hoisted.toastSuccess,
+    },
+}))
+
+vi.mock("@octo/ui", () => ({
+    // 最小 Switch stub：渲染一个普通 checkbox，避免拉起组件样式 / portal 系统。
     Switch: (props: any) =>
         React.createElement("input", {
             type: "checkbox",
@@ -69,11 +76,6 @@ vi.mock("@douyinfe/semi-ui", () => ({
             onChange: (e: any) => props.onChange && props.onChange(e.target.checked),
             "data-testid": "persona-edit-global-switch",
         }),
-    Toast: {
-        error: hoisted.toastError,
-        warning: hoisted.toastWarning,
-        success: hoisted.toastSuccess,
-    },
 }))
 
 // VoiceInputButton 是 hooks-based 函数组件，会在本套 React 17 + RTL/react-dom 18

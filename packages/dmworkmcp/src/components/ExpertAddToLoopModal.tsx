@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useState } from "react";
-import { WKModal, WKButton, t, useI18n } from "@octo/base";
+import { WKModal, t, useI18n } from "@octo/base";
 import { Select, Toast } from "@douyinfe/semi-ui";
 import type { ExpertItem } from "../mock/expertMock";
 import {
@@ -171,12 +172,12 @@ export default function ExpertAddToLoopModal({
       title={t("mcp.expert.addToLoopTitle")}
       footer={
         <div className="wk-mcp-form-footer__right">
-          <WKButton variant="secondary" onClick={handleClose} disabled={submitting}>
+          <Button variant="secondary" onClick={handleClose} disabled={submitting}>
             {t("mcp.expert.cancel")}
-          </WKButton>
-          <WKButton variant="primary" onClick={handleConfirm} disabled={!canSubmit}>
+          </Button>
+          <Button variant="solid" onClick={handleConfirm} disabled={!canSubmit}>
             {submitting ? t("mcp.expert.installing") : t("mcp.expert.confirmInstall")}
-          </WKButton>
+          </Button>
         </div>
       }
     >

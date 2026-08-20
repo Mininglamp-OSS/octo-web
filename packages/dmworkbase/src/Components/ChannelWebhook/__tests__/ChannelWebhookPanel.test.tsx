@@ -31,13 +31,18 @@ const hoisted = vi.hoisted(() => ({
 
 vi.mock("@douyinfe/semi-ui", () => ({
   Spin: () => React.createElement("span", { "data-testid": "spin" }),
+  Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
+}));
+
+vi.mock("@octo/ui", () => ({
+  Button: ({ children, ...props }: any) =>
+    React.createElement("button", props, children),
   Switch: ({ checked, onChange, "aria-label": ariaLabel }: any) =>
     React.createElement("button", {
       "aria-label": ariaLabel,
       "data-checked": String(!!checked),
       onClick: () => onChange(!checked),
     }),
-  Toast: { success: hoisted.toastSuccess, error: hoisted.toastError },
 }));
 
 vi.mock("@douyinfe/semi-icons", () => ({
@@ -49,11 +54,6 @@ vi.mock("../../WKModal", () => ({
   wkConfirm: hoisted.wkConfirm,
 }));
 
-vi.mock("../../WKButton", () => ({
-  default: ({ children, onClick }: any) =>
-    React.createElement("button", { onClick }, children),
-  __esModule: true,
-}));
 
 vi.mock("../../../i18n", () => ({
   useI18n: () => ({
