@@ -73,8 +73,10 @@ vi.mock("../components/ChatSummaryStarButton", () => ({
 }));
 vi.mock("../components/ChatSummaryPanel", () => ({ default: () => null }));
 
+import React from "react";
 import { WKApp } from "@octo/base";
 import { getSummaryShare } from "../api/summaryApi";
+import SummaryCreatePage from "../pages/SummaryCreatePage";
 import { SummaryModule } from "../module";
 import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
 
@@ -154,18 +156,26 @@ describe("SummaryModule guarded menu switching", () => {
     expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
   });
 
-  it("NavRail summary onPress clears both nav stacks without pushing a duplicate list page", () => {
+  it("NavRail summary onPress opens the create page by default without pushing a duplicate list page", () => {
     // #1461 回归：菜单激活后主区 SummaryListPage 已由 MainContentLeft 按
     // currentMenus.routePath(/summary) 渲染唯一实例，onPress 若再 replaceToRoot
     // /summary 会造出双实例（e2e strict mode violation）。
+    // 新需求：进入智能总结右栏默认展示新建总结页（取代欢迎占位页）——只推创建页，
+    // 绝不推列表页。
     const reg = vi.mocked(WKApp.menus.register);
     const factory = reg.mock.calls.find(([id]) => id === "summary")?.[1] as () => { onPress?: (reentry?: boolean) => void };
     expect(factory).toBeTruthy();
     const menu = factory();
     menu.onPress?.(false);
 
-    expect(state.popToRoot).toHaveBeenCalledTimes(2); // routeLeft + routeRight
-    expect(state.replaceToRoot).not.toHaveBeenCalled();
+    // 只清左栈；右栈由 replaceToRoot 直接落创建页。
+    expect(state.popToRoot).toHaveBeenCalledTimes(1); // routeLeft only
+    expect(state.replaceToRoot).toHaveBeenCalledTimes(1);
+
+    const pushed = state.replaceToRoot.mock.calls[0][0] as React.ReactElement;
+    expect(pushed.type).toBe(SummaryCreatePage); // 创建页，不是 SummaryListPage
+    expect(pushed.props.source).toBe("summary_home");
+    expect(pushed.props.initialMode).toBe("normal");
   });
 
   it("does not double-fetch when boot repairs Space before publishing ready", () => {

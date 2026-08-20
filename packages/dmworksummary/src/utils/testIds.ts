@@ -4,9 +4,8 @@ export const summaryTestIds = {
     listContent: "summary-list-content",
     listSearch: "summary-list-search",
     listStatusFilter: "summary-list-status-filter",
-    listCreate: "summary-list-create",
     createEntry: "summary-create-entry",
-    // Mode-select dropdown on the list-page "+" entry (trigger + menu items)
+    // Mode-select dropdown on the single list-page "+" entry (trigger + menu items)
     listModeSwitch: "summary-list-mode-switch",
     listNormalTab: "summary-list-normal-tab",
     listAgentTab: "summary-list-agent-tab",
