@@ -571,6 +571,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(
             <SummaryCreatePage
+                // key 绑定模式：右侧已有创建页时再次选择模式需强制重挂载
+                // （WKViewQueue 按下标做 key，同类型组件会被复用，state.mode 不随
+                // 新 initialMode 重读 → 界面不切换）。从列表页选模式 = 发起一次新建。
+                key={mode}
                 onCreated={() => this.loadData()}
                 source="summary_list"
                 initialMode={mode}
