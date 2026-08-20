@@ -47,17 +47,15 @@ export default class SlashCommandMenu extends Component<SlashCommandMenuProps> {
         if (filtered.length === 0) {
             return (
                 <div className="wk-slash-command-menu">
-                    <Dropdown.Menu>
-                        <div className="wk-slash-command-empty">{this.context.t("base.slashCommand.noMatches")}</div>
-                    </Dropdown.Menu>
+                    <div className="wk-slash-command-empty">{this.context.t("base.slashCommand.noMatches")}</div>
                 </div>
             );
         }
 
         return (
             <div className="wk-slash-command-menu">
+                <div className="wk-slash-command-menu-header">{this.context.t("base.slashCommand.botCommands")}</div>
                 <Dropdown.Menu maxHeight={300}>
-                    <div className="wk-slash-command-menu-header">{this.context.t("base.slashCommand.botCommands")}</div>
                     {filtered.map((cmd, index) => (
                         <Dropdown.Item
                             key={cmd.command}

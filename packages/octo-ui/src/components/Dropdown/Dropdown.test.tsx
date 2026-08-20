@@ -129,7 +129,7 @@ describe('Dropdown', () => {
     expect(scrollHtml).toContain('max-height:120px')
   })
 
-  it('moves focus across enabled menu items with keyboard navigation', () => {
+  it('moves focus across enabled menu item buttons with keyboard navigation', () => {
     const onSelect = vi.fn()
     const { container } = renderInDom(
       <Dropdown.Menu>
@@ -140,7 +140,7 @@ describe('Dropdown', () => {
     )
 
     const items = Array.from(
-      container.querySelectorAll<HTMLElement>('.octo-ui-dropdown-item-shell[aria-disabled="false"]'),
+      container.querySelectorAll<HTMLButtonElement>('.octo-ui-dropdown-item-shell[aria-disabled="false"] > button[role="menuitem"]'),
     )
     expect(items).toHaveLength(2)
 
@@ -160,6 +160,41 @@ describe('Dropdown', () => {
       items[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
     })
     expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps root keyboard navigation out of nested submenu items', () => {
+    const { container } = renderInDom(
+      <Dropdown.Menu>
+        <Dropdown.Item
+          submenu={
+            <div hidden>
+              <Dropdown.Menu>
+                <Dropdown.Item>Nested one</Dropdown.Item>
+                <Dropdown.Item>Nested two</Dropdown.Item>
+              </Dropdown.Menu>
+            </div>
+          }
+        >
+          Move to
+        </Dropdown.Item>
+        <Dropdown.Item>Delete</Dropdown.Item>
+      </Dropdown.Menu>,
+    )
+
+    const rootItems = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(':scope > ul > .octo-ui-dropdown-item-shell > button[role="menuitem"]'),
+    )
+    const allItems = Array.from(container.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]'))
+
+    expect(rootItems.map((item) => item.textContent)).toEqual(['Move to', 'Delete'])
+    expect(allItems).toHaveLength(4)
+
+    act(() => {
+      rootItems[0].focus()
+      rootItems[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    })
+
+    expect(document.activeElement).toBe(rootItems[1])
   })
 
   it('defers close-on-select until after the item handler', () => {

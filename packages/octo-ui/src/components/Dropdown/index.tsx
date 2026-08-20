@@ -1,6 +1,6 @@
 import { Dropdown as SemiDropdown } from '@douyinfe/semi-ui'
 import { forwardRef, useCallback, useContext, useMemo, useState } from 'react'
-import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import type { FocusEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
 import MenuItem from '../MenuItem'
 import { DropdownContext } from './context'
 import type {
@@ -21,9 +21,9 @@ function isDangerItem(item: Pick<DropdownItemConfig, 'danger' | 'type'>) {
 }
 
 function getFocusableMenuItems(menu: HTMLElement) {
-  return Array.from(
-    menu.querySelectorAll<HTMLElement>('.octo-ui-dropdown-item-shell[aria-disabled="false"]'),
-  )
+  return Array.from(menu.querySelectorAll<HTMLButtonElement>(
+    ':scope > .octo-ui-dropdown-item-shell[aria-disabled="false"] > button[role="menuitem"]',
+  ))
 }
 
 const DropdownMenu = forwardRef<HTMLUListElement, DropdownMenuProps>(function DropdownMenu(
@@ -44,7 +44,7 @@ const DropdownMenu = forwardRef<HTMLUListElement, DropdownMenuProps>(function Dr
     const items = getFocusableMenuItems(event.currentTarget)
     if (items.length === 0) return
 
-    const currentItem = (event.target as HTMLElement | null)?.closest<HTMLElement>('.octo-ui-dropdown-item-shell')
+    const currentItem = (event.target as HTMLElement | null)?.closest<HTMLButtonElement>('button[role="menuitem"]')
     const currentIndex = currentItem ? items.indexOf(currentItem) : -1
     let nextIndex = currentIndex
 
@@ -65,7 +65,7 @@ const DropdownMenu = forwardRef<HTMLUListElement, DropdownMenuProps>(function Dr
       case ' ':
         if (currentItem) {
           event.preventDefault()
-          currentItem.querySelector<HTMLButtonElement>('button[role="menuitem"]')?.click()
+          currentItem.click()
         }
         return
       default:
@@ -125,18 +125,25 @@ const DropdownItem = forwardRef<HTMLButtonElement, DropdownItemProps>(function D
     }
   }, [context, onClick, onSelect, shouldCloseOnSelect])
 
+  const handleShellFocus = useCallback((event: FocusEvent<HTMLLIElement>) => {
+    if (event.target !== event.currentTarget) return
+    event.currentTarget.querySelector<HTMLButtonElement>('button[role="menuitem"]')?.focus()
+  }, [])
+
   return (
     <li
       aria-disabled={disabled ? 'true' : 'false'}
       className={joinClasses('octo-ui-dropdown-item-shell', shellClassName)}
       data-octo-dropdown-item-key={itemKey}
+      onFocus={handleShellFocus}
       role="none"
-      tabIndex={disabled ? undefined : -1}
     >
       <MenuItem
         {...rest}
         ref={ref}
+        aria-disabled={disabled ? 'true' : 'false'}
         role={rest.role ?? 'menuitem'}
+        tabIndex={disabled ? undefined : -1}
         className={joinClasses(className, active ? 'octo-ui-dropdown-item--active' : undefined)}
         size={size}
         selected={selected ?? active}
