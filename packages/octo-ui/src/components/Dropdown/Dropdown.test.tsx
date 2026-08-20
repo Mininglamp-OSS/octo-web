@@ -36,7 +36,7 @@ describe('Dropdown', () => {
         position="bottomRight"
         overlay={
           <Dropdown.Menu>
-            <Dropdown.Item selected>Rename</Dropdown.Item>
+            <Dropdown.Item active>Rename</Dropdown.Item>
             <Dropdown.Item danger disabled>Delete</Dropdown.Item>
             <Dropdown.Divider />
           </Dropdown.Menu>
@@ -50,6 +50,7 @@ describe('Dropdown', () => {
     expect(html).toContain('octo-ui-dropdown')
     expect(html).toContain('octo-ui-dropdown-menu')
     expect(html).toContain('octo-ui-menu-item--selected')
+    expect(html).toContain('octo-ui-dropdown-item--active')
     expect(html).toContain('octo-ui-menu-item--danger')
     expect(html).toContain('octo-ui-dropdown-divider')
     expect(html).toContain('data-trigger="click"')

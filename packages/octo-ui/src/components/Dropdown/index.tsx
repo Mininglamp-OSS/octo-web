@@ -56,6 +56,7 @@ const DropdownItem = forwardRef<HTMLButtonElement, DropdownItemProps>(function D
     closeOnSelect,
     onSelect,
     onClick,
+    className,
     ...rest
   },
   ref,
@@ -78,6 +79,7 @@ const DropdownItem = forwardRef<HTMLButtonElement, DropdownItemProps>(function D
       {...rest}
       ref={ref}
       role={rest.role ?? 'menuitem'}
+      className={joinClasses(className, active ? 'octo-ui-dropdown-item--active' : undefined)}
       size={size}
       selected={selected ?? active}
       danger={danger ?? isDangerItem({ danger, type })}
