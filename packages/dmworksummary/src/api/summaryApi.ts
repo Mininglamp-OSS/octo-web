@@ -374,10 +374,11 @@ export async function createAgentSummary(
 
 // ---- Session-Finalize v0 (交付物落库) ----
 // 新落库语义:保存不再"拷贝 agent 最后一条回复",而是让后端异步把整段会话
-// 已产出的总结片段【合并成一篇】。前端:POST /finalize 拿 202+task_id,再轮询
-// 任务状态到 COMPLETED,然后照常跳详情。幂等键随请求头带上,重试不重复建。
+// 已产出的总结片段【合并成一篇】。前端先尝试 POST /finalize 拿 202+task_id,
+// 再跳详情页由详情页轮询任务状态；若当前后端/测试环境还没有 finalize 路由，
+// 则兼容回退到既有 POST /summaries/agent，避免前后端发布顺序导致保存全量 404。
 
-/** finalize 幂等键:每次"保存"生成一个,transient 重试可复用同一个。 */
+/** finalize 幂等键:每次 saveAgentSummaryViaFinalize 调用生成一个。 */
 function genFinalizeRequestId(): string {
     try {
         const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
@@ -411,26 +412,60 @@ export async function finalizeAgentSummary(
     if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
         throw new Error(resp.data?.message || 'finalize returned no task_id');
     }
+    if (typeof resp.status === 'number' && resp.status !== 202) {
+        throw new Error(resp.data?.message || 'finalize returned unexpected http status');
+    }
+    if (data.status !== 'GENERATING') {
+        throw new Error(resp.data?.message || 'finalize returned unexpected task status');
+    }
     return data;
 }
 
+function isFinalizeUnsupportedError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    const maybeAxios = err as {
+        response?: { status?: number; data?: { code?: number; message?: string } };
+        code?: string;
+        message?: string;
+    };
+    const status = maybeAxios.response?.status;
+    if (status === 404 || status === 405 || status === 501) return true;
+    return false;
+}
+
+export interface SaveAgentSummaryResult {
+    task_id: number;
+    /** true = finalize accepted and detail page should show generation; false = legacy endpoint completed synchronously. */
+    async_finalize: boolean;
+    status?: string;
+}
+
 /**
- * 交付物保存(v0)—— createAgentSummary 的替代:只发起 finalize(202),不阻塞等生成。
- * 返回 { task_id } 供调用点导航;调用点照传统异步总结的做法跳详情页,由详情页自带的
- * 轮询 + "生成中"状态(personalPollTimer / worker_status)展示进度、完成后渲染正文——
- * 用户不再干等在保存界面。失败(40004 无内容等)抛错,调用点 catch 后保留 chat。
+ * 交付物保存(v0)——优先发起 finalize(202),不阻塞等生成；若 finalize 路由不存在，
+ * 回退到旧 createAgentSummary，保证前后端发布顺序不一致时仍能保存。
+ * finalize 成功仅代表"已开始生成"，调用点跳详情页后由详情页任务轮询展示进度。
+ * 业务失败(40004/40009 等)不回退，继续抛给调用点保留 chat 并展示明确文案。
  */
 export async function saveAgentSummaryViaFinalize(
     params: CreateAgentSummaryParams,
     trackProps: Record<string, unknown> = {},
-): Promise<{ task_id: number }> {
-    const accepted = await finalizeAgentSummary(params, genFinalizeRequestId());
-    // 与 createAgentSummary 同口径:一次"成功发起"即补发埋点。
-    Dap.shared.track('smart_summary_started', trackProps);
-    return { task_id: accepted.task_id };
+): Promise<SaveAgentSummaryResult> {
+    try {
+        const accepted = await finalizeAgentSummary(params, genFinalizeRequestId());
+        // 与 createAgentSummary 同口径:一次"成功发起"即补发埋点。
+        Dap.shared.track('smart_summary_started', trackProps);
+        return { task_id: accepted.task_id, status: accepted.status, async_finalize: true };
+    } catch (err) {
+        if (!isFinalizeUnsupportedError(err)) {
+            throw err;
+        }
+        const legacy = await createAgentSummary(params, trackProps);
+        return { task_id: legacy.task_id, async_finalize: false };
+    }
 }
 
 
+// Agent 交互式问答（非流式一问一答）。POST /summary/api/v1/agent/chat。
 // 不复用公共 post()：post() 只 `data?.data ?? data`，不校验业务 code，
 // HTTP200 + {code:非0,data:null} 会被当成功、undefined 追进气泡。这里自行
 // 校验 envelope，非0 code 或空 reply 时抛错，交给 UI 层 catch。

@@ -62,6 +62,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
 vi.mock('../../api/summaryApi', () => ({
     createSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
     createAgentSummary: vi.fn().mockResolvedValue({ task_id: 1 }),
+    saveAgentSummaryViaFinalize: vi.fn().mockResolvedValue({ task_id: 1, async_finalize: false }),
     createSchedule: vi.fn().mockResolvedValue({}),
     getTopicTemplatesConfig: vi.fn().mockResolvedValue({ templates: [], custom_template_limit: 30 }),
     updateMyTopicTemplate: vi.fn().mockResolvedValue({}),
@@ -100,7 +101,7 @@ describe('SummaryCreatePage templates', () => {
             await flushPromises();
         });
 
-        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
+        expect(screen.getByText('试试下列模版')).toBeInTheDocument();
         // v2: all builtin templates render directly (no "more templates" modal)
         expect(screen.getByText('汇总项目进展')).toBeInTheDocument();
         expect(screen.getByText('跟踪任务进度')).toBeInTheDocument();
@@ -125,7 +126,7 @@ describe('SummaryCreatePage templates', () => {
             fireEvent.change(textarea, { target: { value: '总结本周进展' } });
         });
 
-        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试下列模版')).not.toBeInTheDocument();
         expect(screen.queryByText('汇总项目进展')).not.toBeInTheDocument();
     });
 
@@ -142,7 +143,7 @@ describe('SummaryCreatePage templates', () => {
         const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
         expect(textarea.value).toBe('总结主题: 总结团队周报\n内容重点: 总结团队成员每周工作，按成员、重点进展、成果产出、风险问题、下周计划整理');
         // templates hidden after selection
-        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试下列模版')).not.toBeInTheDocument();
     });
 
     it('fills the topic frame from a project progress template', async () => {
@@ -566,7 +567,7 @@ describe('SummaryCreatePage handleSubmit error handling', () => {
     it('shows friendly toast for 40001 (referenced summary lost after refresh)', async () => {
         const { Toast } = await import('@douyinfe/semi-ui');
 
-        // Mock createAgentSummary to reject with axios-style 40001 error.
+        // Mock saveAgentSummaryViaFinalize to reject with axios-style 40001 error.
         // This is the exact shape the backend returns when
         //   session_id has no fetch_channel tool trace AND
         //   referenced_task_ids is empty AND
@@ -575,7 +576,7 @@ describe('SummaryCreatePage handleSubmit error handling', () => {
         const err = {
             response: { data: { code: 40001, message: 'origin_channel_id 未传且无法从 session 反查' } },
         };
-        (api.createAgentSummary as any).mockRejectedValueOnce(err);
+        (api.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce(err);
 
         const ref = React.createRef<any>();
         await act(async () => {
@@ -621,7 +622,7 @@ describe('SummaryCreatePage handleSubmit error handling', () => {
         const err = {
             response: { data: { code: 40001, message: 'origin_channel_id 未传且无法从 session 反查(session 无 fetch_channel 调用),也无引用总结可继承 origin' } },
         };
-        (api.createAgentSummary as any).mockRejectedValueOnce(err);
+        (api.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce(err);
 
         const ref = React.createRef<any>();
         await act(async () => {
@@ -758,7 +759,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
             });
         });
         await act(async () => { await instance.handleSaveAsSummary('t'); });
-        expect(api.createAgentSummary).toHaveBeenCalledWith(
+        expect(api.saveAgentSummaryViaFinalize).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp-1', origin_channel_type: 1 }),
             expect.any(Object),
         );
@@ -775,7 +776,7 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
             });
         });
         await act(async () => { await instance.handleSaveAsSummary('t'); });
-        expect(api.createAgentSummary).toHaveBeenCalledWith(
+        expect(api.saveAgentSummaryViaFinalize).toHaveBeenCalledWith(
             expect.objectContaining({ origin_channel_id: 'grp____thr', origin_channel_type: 2 }),
             expect.any(Object),
         );
@@ -787,16 +788,60 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
             instance.setState({ sessionId: 'sess-3', mode: 'agent', selectedChats: [] });
         });
         await act(async () => { await instance.handleSaveAsSummary('t'); });
-        const arg = (api.createAgentSummary as any).mock.calls[0][0];
+        const arg = (api.saveAgentSummaryViaFinalize as any).mock.calls[0][0];
         expect(arg.origin_channel_id).toBeUndefined();
         expect(arg.origin_channel_type).toBeUndefined();
+    });
+
+    it('keeps the agent session after async finalize is only accepted', async () => {
+        (api.saveAgentSummaryViaFinalize as any).mockResolvedValueOnce({ task_id: 99, async_finalize: true });
+        localStorage.setItem(WORKBENCH_KEY, 'sess-async');
+        localStorage.setItem('agent-chat-referenced:__workbench__', JSON.stringify({ task_id: 7, title: 'ref' }));
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                sessionId: 'sess-async',
+                mode: 'agent',
+                messages: [{ role: 'assistant', content: 'summary' }],
+                referencedTask: { task_id: 7, title: 'ref' },
+            });
+        });
+
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBe('sess-async');
+        expect(localStorage.getItem('agent-chat-referenced:__workbench__')).toBe(JSON.stringify({ task_id: 7, title: 'ref' }));
+        expect(instance.state.sessionId).toBe('sess-async');
+        expect(instance.state.referencedTask?.task_id).toBe(7);
+    });
+
+    it('clears the agent session after legacy fallback has synchronously saved', async () => {
+        (api.saveAgentSummaryViaFinalize as any).mockResolvedValueOnce({ task_id: 100, async_finalize: false });
+        localStorage.setItem(WORKBENCH_KEY, 'sess-legacy');
+        localStorage.setItem('agent-chat-referenced:__workbench__', JSON.stringify({ task_id: 8, title: 'ref' }));
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                sessionId: 'sess-legacy',
+                mode: 'agent',
+                messages: [{ role: 'assistant', content: 'summary' }],
+                referencedTask: { task_id: 8, title: 'ref' },
+            });
+        });
+
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBeNull();
+        expect(localStorage.getItem('agent-chat-referenced:__workbench__')).toBeNull();
+        expect(instance.state.sessionId).toBe('');
+        expect(instance.state.referencedTask).toBeNull();
     });
 });
 
 describe('SummaryCreatePage — smart_summary_started 收口 (二审 P1:api 层单发)', () => {
     // 二审 P1:started 事件的唯一发射点已下沉到 api 层(summaryApi.createSummary → envelope
     // code===0 gate;见 summaryApi.test 的 envelope 用例)。页面不再直接 track,只负责:
-    //   - agent 模式点主按钮 handlePrimaryClick 短路,**不发起任何创建**(不调 createSummary/createAgentSummary);
+    //   - agent 模式点主按钮 handlePrimaryClick 短路,**不发起任何创建**(不调 createSummary/saveAgentSummaryViaFinalize);
     //   - normal 模式提交(点按钮 / Enter 都汇入 handleSubmit)→ 恰调一次 createSummary,并带全维度 props。
     // 因 api 被 mock,发射在此不可观测;此处钉「单次调用 + props 正确」,发射由 api 单测钉。
     it('agent-mode primary click starts no creation; normal handleSubmit calls createSummary once with props', async () => {
@@ -810,10 +855,10 @@ describe('SummaryCreatePage — smart_summary_started 收口 (二审 P1:api 层�
         // agent 模式:主按钮短路,不发起任何创建 → 无幻影 started
         await act(async () => { instance.setState({ mode: 'agent', topic: 'hi' }); });
         (api.createSummary as any).mockClear();
-        (api.createAgentSummary as any).mockClear();
+        (api.saveAgentSummaryViaFinalize as any).mockClear();
         instance.handlePrimaryClick();
         expect((api.createSummary as any)).not.toHaveBeenCalled();
-        expect((api.createAgentSummary as any)).not.toHaveBeenCalled();
+        expect((api.saveAgentSummaryViaFinalize as any)).not.toHaveBeenCalled();
 
         // normal 模式:真正提交 → 恰调一次 createSummary,第二参带 trigger_mode / source(全维度 props)
         await act(async () => { instance.setState({ mode: 'normal', topic: 'hi' }); });

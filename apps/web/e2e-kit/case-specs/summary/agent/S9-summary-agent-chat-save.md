@@ -20,7 +20,8 @@
   - `GET */summary/api/v1/summaries` — 初始返回空列表，让用户从空态进入创建页。
   - `GET */summary/api/v1/summary-templates` — 返回空模板列表和 `custom_template_limit`，供创建页 mount。
   - `POST */summary/api/v1/agent/chat/stream` — 返回 `text/event-stream`，包含 progress 和 done 事件，done.reply 为 `S9 Agent 已整理项目风险和下周计划`。
-  - `POST */summary/api/v1/summaries/agent` — 返回 `{task_id:9901,task_no,status,created_at}`。
+  - `POST */summary/api/v1/summaries/agent/finalize` — 返回 `202 + {task_id:9901,status:"GENERATING"}`。
+  - `POST */summary/api/v1/summaries/agent` — legacy fallback，返回 `{task_id:9901,task_no,status,created_at}`。
   - `GET */summary/api/v1/summaries/9901` — 返回新保存的 Agent 总结详情 `S9 Agent 风险总结`。
   - `POST */summary/api/v1/summaries/9901/read`、`GET */summary/api/v1/summaries/9901/versions` — 详情页后续请求兜底。
 - 不需要 mock-im-runtime seed；本 case 通过 Agent chat 自身 mock 产出，不依赖真实聊天消息。
@@ -42,7 +43,7 @@
 - Agent 回复显示 `S9 Agent 已整理项目风险和下周计划`。
 - 回复出现后「保存为总结」按钮可点击。
 - 保存弹窗标题为「保存为总结」，标题输入框 placeholder 为「为这份总结起个标题」。
-- 保存成功后出现 toast「AI 总结已保存」。
+- finalize accepted 后出现 toast「AI 总结生成中，已打开详情页」。
 - 页面进入详情页，标题显示「S9 Agent 风险总结」。
 - 详情页显示「AI 摘要」和摘要内容「S9 Agent 总结已保存」。
 - 详情页正文显示「风险项需要提前暴露」。
@@ -66,7 +67,7 @@
 - `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:76,145,327`: `initialMode="agent"` 时 mount 调用 `enterAgentMode()` 恢复历史 session 并回显。
 - `packages/dmworksummary/src/components/AgentChatPanel.tsx:159`: 发送时调用 `agentChatStream()`。
 - `packages/dmworksummary/src/components/AgentChatPanel.tsx:421`: 有 assistant 输出后渲染「保存为总结」按钮。
-- `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:891`: `handleSaveAsSummary()` 调用 `createAgentSummary()`。
-- `packages/dmworksummary/src/api/summaryApi.ts:307`: `createAgentSummary()` 请求 `/summary/api/v1/summaries/agent` 并校验 `task_id`。
+- `packages/dmworksummary/src/pages/SummaryCreatePage.tsx`: `handleSaveAsSummary()` 调用 `saveAgentSummaryViaFinalize()`。
+- `packages/dmworksummary/src/api/summaryApi.ts`: `saveAgentSummaryViaFinalize()` 优先请求 `/summary/api/v1/summaries/agent/finalize`，缺路由时回退 `/summary/api/v1/summaries/agent`。
 - `packages/dmworksummary/src/api/summaryApi.ts:373`: `agentChatStream()` 请求 `/summary/api/v1/agent/chat/stream` 并消费 SSE progress/done 事件。
 - `packages/dmworksummary/src/i18n/zh-CN.json:184-205`: Agent 总结、保存为总结、保存成功等实际中文文案。

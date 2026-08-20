@@ -444,6 +444,114 @@ describe('summaryApi', () => {
         });
     });
 
+    describe('agent finalize save path', () => {
+        it('posts to finalize with Idempotency-Key and accepts only 202 + GENERATING', async () => {
+            const { finalizeAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 202,
+                data: { code: 0, data: { task_id: 88, status: 'GENERATING' } },
+            });
+
+            const res = await finalizeAgentSummary({ session_id: 's1', title: 't' }, 'finalize_test_key');
+
+            expect(mockPost).toHaveBeenCalledWith(
+                '/summary/api/v1/summaries/agent/finalize',
+                { session_id: 's1', title: 't' },
+                { headers: { 'Idempotency-Key': 'finalize_test_key' } },
+            );
+            expect(res).toEqual({ task_id: 88, status: 'GENERATING' });
+        });
+
+        it('rejects unexpected finalize task status', async () => {
+            const { finalizeAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 202,
+                data: { code: 0, data: { task_id: 88, status: 'FAILED' } },
+            });
+
+            await expect(finalizeAgentSummary({ session_id: 's1' }, 'finalize_test_key')).rejects.toThrow(
+                'finalize returned unexpected task status',
+            );
+        });
+
+        it('rejects non-202 finalize acceptance responses', async () => {
+            const { finalizeAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 200,
+                data: { code: 0, data: { task_id: 88, status: 'GENERATING' } },
+            });
+
+            await expect(finalizeAgentSummary({ session_id: 's1' }, 'finalize_test_key')).rejects.toThrow(
+                'finalize returned unexpected http status',
+            );
+        });
+
+        it('does not fallback on finalize business failure', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 200,
+                data: { code: 40004, message: 'no output', data: null },
+            });
+
+            await expect(saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' })).rejects.toBeTruthy();
+            expect(mockPost).toHaveBeenCalledTimes(1);
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
+
+        it('does not fallback on ambiguous network failure', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+
+            await expect(saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' })).rejects.toThrow('Network Error');
+            expect(mockPost).toHaveBeenCalledTimes(1);
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
+
+        it('falls back to legacy createAgentSummary when finalize route is unsupported', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockRejectedValueOnce(Object.assign(new Error('not found'), { response: { status: 404, data: { code: 404 } } }))
+                .mockResolvedValueOnce({
+                    data: { code: 0, data: { task_id: 89, task_no: 'n', status: 3, created_at: 'x' } },
+                });
+
+            const res = await saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' });
+
+            expect(res).toEqual({ task_id: 89, async_finalize: false });
+            expect(mockPost.mock.calls[0][0]).toBe('/summary/api/v1/summaries/agent/finalize');
+            expect(mockPost.mock.calls[1][0]).toBe('/summary/api/v1/summaries/agent');
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
+            track.mockRestore();
+        });
+
+        it('emits smart_summary_started once when finalize is accepted', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 202,
+                data: { code: 0, data: { task_id: 90, status: 'GENERATING' } },
+            });
+
+            const res = await saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' });
+
+            expect(res).toEqual({ task_id: 90, status: 'GENERATING', async_finalize: true });
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
+            expect(started[0][1]).toMatchObject({ trigger_mode: 'agent' });
+            track.mockRestore();
+        });
+    });
+
     // 二审 P1「smart_summary_started 双发」+ P2-2 + P2-5:该事件唯一收口在 api 层的 envelope gate。
     // 钉死:code===0 才发一次并带调用方 props;code≠0 / code===null 不发;agent 模式补发且业务失败不发。
     // (页面/入口层已删直接 track,发射不再可能双计 —— 见 SummaryCreatePage.test。)

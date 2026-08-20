@@ -729,7 +729,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /**
      * Agent 多轮交互问答。
      *
-     * 与 handleSubmit 的区别：不建 task / 不跳详情页 / 不调 createAgentSummary，
+     * 与 handleSubmit 的区别：不建 task / 不跳详情页 / 不调 agent summary save，
      * 只做「多轮气泡 UI + session_id」。同一会话复用同一 session_id，
      * 后端据此按会话持久化多轮记忆（滑窗保留最近若干轮），追问可续上下文。
      */
@@ -955,6 +955,26 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             return false;
         }
 
+        const openCreatedSummary = (taskId: number) => {
+            // dispatch 刷新事件。agent 整页入口下前端已不再持有具体 channel
+            // (origin 由后端从 tool_calls 反查),下游刷新监听按 taskId 走即可,
+            // channelId 传空串以保持事件字段结构不变、避免 undefined 引用崩溃。
+            const event = new CustomEvent('chat-summary-created', {
+                detail: { taskId, channelId: '' }
+            });
+            window.dispatchEvent(event);
+
+            if (this.props.embedded) {
+                this.props.onSubmit?.(taskId);
+            } else {
+                // 非面板路径：保存为总结成功后通知左侧列表刷新（同 handleSubmit）。
+                WKApp.mittBus.emit("summary-list-refresh-requested" as any);
+                WKApp.routeRight.popToRoot();
+                WKApp.routeRight.push(<SummaryDetailPage taskId={taskId} emitSelection />);
+            }
+            this.props.onCreated?.();
+        };
+
         this.setState({ savingSummary: true });
         try {
             // origin_channel_id / origin_channel_type：整页入口没有 channel prop，
@@ -994,8 +1014,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 params.referenced_task_ids = [this.state.referencedTask.task_id];
             }
 
-            // Session-Finalize v0:保存 = 让后端异步把整段会话已产出的片段合并成一篇
-            // (不再拷贝最后一条回复)。saveAgentSummaryViaFinalize 内部 finalize→轮询到 COMPLETED。
+            // Session-Finalize v0:优先让后端异步把整段会话已产出的片段合并成一篇。
+            // 若后端尚未发布 finalize 路由,api 层回退到 legacy createAgentSummary。
             const result = await api.saveAgentSummaryViaFinalize(params, {
                 object_id: this.props.channel?.channelID,
                 source: this.props.source,
@@ -1005,50 +1025,44 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             });
             markAgentSummaryNotificationEligible(result.task_id);
 
-            Toast.success(t('summary.create.agentSummaryCreated'));
+            Toast.success(t(result.async_finalize ? 'summary.create.agentSummaryGenerating' : 'summary.create.agentSummaryCreated'));
 
-            // 保存成功 → 销毁 chat session 工作台:
-            //   1. 清 localStorage 里的 session_id(不然下次进 agent 会误恢复空 session)
-            //   2. 重置组件内 state(messages/sessionId/referencedTask)
-            //   3. 后端会在保存事务里 DELETE agent_message 表对应行
-            clearAgentChatSession(this.agentChannelId());
-            // 引用总结跟 session 同生命周期 → 一起清。
-            clearAgentChatReferenced(this.agentChannelId());
-            this.historyLoadToken++;
-            this.setState({
-                messages: [],
-                sessionId: '',
-                referencedTask: null,
-                showReferencePicker: false,
-            });
-
-            // dispatch 刷新事件。agent 整页入口下前端已不再持有具体 channel
-            // (origin 由后端从 tool_calls 反查),下游刷新监听按 taskId 走即可,
-            // channelId 传空串以保持事件字段结构不变、避免 undefined 引用崩溃。
-            const event = new CustomEvent('chat-summary-created', {
-                detail: { taskId: result.task_id, channelId: '' }
-            });
-            window.dispatchEvent(event);
-            
-            // 跳转到详情页
-            if (this.props.embedded) {
-                this.props.onSubmit?.(result.task_id);
-            } else {
-                // 非面板路径：保存为总结成功后通知左侧列表刷新（同 handleSubmit）。
-                WKApp.mittBus.emit("summary-list-refresh-requested" as any);
-                WKApp.routeRight.popToRoot();
-                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
+            if (!result.async_finalize) {
+                // legacy 同步保存完成后才销毁本地 agent 工作台。async finalize 仅 202 accepted,
+                // 任务尚未终态前保留 session/referencedTask,避免生成失败后用户无路恢复。
+                clearAgentChatSession(this.agentChannelId());
+                clearAgentChatReferenced(this.agentChannelId());
+                this.historyLoadToken++;
+                this.setState({
+                    messages: [],
+                    sessionId: '',
+                    referencedTask: null,
+                    showReferencePicker: false,
+                });
             }
-            this.props.onCreated?.();
+
+            openCreatedSummary(result.task_id);
             return true;
         } catch (err: unknown) {
             // 类型守卫:axios 错误
             if (err && typeof err === 'object' && 'response' in err) {
-                const axiosErr = err as { response?: { data?: { code?: number } } };
+                const axiosErr = err as { response?: { data?: { code?: number; data?: { task_id?: number } } } };
                 const code = axiosErr.response?.data?.code;
                 // 40004: session 无产出
                 if (code === 40004) {
                     Toast.error(t('summary.create.noOutputToSave'));
+                    return false;
+                }
+                // 40009:已有 finalize 在进行中。若后端返回 task_id,直接带用户去进行中的详情页。
+                if (code === 40009) {
+                    const taskId = axiosErr.response?.data?.data?.task_id;
+                    if (typeof taskId === 'number' && taskId > 0) {
+                        Toast.warning(t('summary.create.agentSummaryAlreadyGenerating'));
+                        markAgentSummaryNotificationEligible(taskId);
+                        openCreatedSummary(taskId);
+                        return true;
+                    }
+                    Toast.error(t('summary.create.agentSummaryAlreadyGenerating'));
                     return false;
                 }
                 // 40001: origin_channel_id 反查失败。拆两个子因给不同文案

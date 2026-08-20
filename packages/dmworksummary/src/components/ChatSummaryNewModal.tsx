@@ -464,7 +464,7 @@ export default class ChatSummaryNewModal extends Component<
     /**
      * Agent 多轮交互问答。
      *
-     * 与 handleSubmit 的区别：不建 task / 不触发 onSubmit / 不调 createAgentSummary，
+     * 与 handleSubmit 的区别：不建 task / 不触发 onSubmit / 不调 agent summary save，
      * 只做「多轮气泡 UI + session_id」。与 SummaryCreatePage 逻辑一致：
      * 同一会话复用同一 session_id，后端据此持久化多轮记忆（滑窗保留最近若干轮），追问可续上下文。
      */
@@ -616,6 +616,15 @@ export default class ChatSummaryNewModal extends Component<
             return false;
         }
 
+        const notifyCreatedSummary = (taskId: number) => {
+            window.dispatchEvent(
+                new CustomEvent('chat-summary-created', {
+                    detail: { taskId, channelId: this.props.channel.channelID },
+                }),
+            );
+            onSubmit(taskId);
+        };
+
         this.setState({ savingSummary: true });
         try {
             // sources：若用户在别处显式选过 chats,把它们透传成 sources;否则不传。
@@ -649,26 +658,29 @@ export default class ChatSummaryNewModal extends Component<
             });
             markAgentSummaryNotificationEligible(res.task_id);
 
-            Toast.success(t('summary.create.agentSummaryCreated'));
+            Toast.success(t(res.async_finalize ? 'summary.create.agentSummaryGenerating' : 'summary.create.agentSummaryCreated'));
 
-            // dispatch 刷新事件。下游刷新监听按 taskId 走即可;channelId 传空串以
-            // 保持事件字段结构不变、避免 undefined 引用崩溃(origin 已在上面的
-            // createAgentSummary 请求里显式传给后端,与此刷新事件无关)。
-            window.dispatchEvent(
-                new CustomEvent('chat-summary-created', {
-                    detail: { taskId: res.task_id, channelId: '' },
-                }),
-            );
-            onSubmit(res.task_id);
+            notifyCreatedSummary(res.task_id);
             return true;
         } catch (err: unknown) {
             // 类型守卫:axios 错误
             if (err && typeof err === 'object' && 'response' in err) {
-                const axiosErr = err as { response?: { data?: { code?: number } } };
+                const axiosErr = err as { response?: { data?: { code?: number; data?: { task_id?: number } } } };
                 const code = axiosErr.response?.data?.code;
                 // 40004: session 无产出
                 if (code === 40004) {
                     Toast.error(t('summary.create.noOutputToSave'));
+                    return false;
+                }
+                if (code === 40009) {
+                    const taskId = axiosErr.response?.data?.data?.task_id;
+                    if (typeof taskId === 'number' && taskId > 0) {
+                        Toast.warning(t('summary.create.agentSummaryAlreadyGenerating'));
+                        markAgentSummaryNotificationEligible(taskId);
+                        notifyCreatedSummary(taskId);
+                        return true;
+                    }
+                    Toast.error(t('summary.create.agentSummaryAlreadyGenerating'));
                     return false;
                 }
             }

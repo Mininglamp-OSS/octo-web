@@ -329,6 +329,11 @@ export interface CreateAgentSummaryParams {
     /** 当前 agent 对话的 session_id */
     session_id: string;
     /**
+     * 可选:本次成功 agent 生成 turn 的 request_id。
+     * finalize 后端可据此把保存绑定到冻结的 Run manifest；legacy 后端会忽略该字段。
+     */
+    request_id?: string;
+    /**
      * 触发对话的频道 id。可选:agent 对话入口没有"选来源"控件,
      * 前端一般不传;后端会从 session 的 tool_calls 记录反查 agent
      * 实际读过的第一个 channel_id 作为 origin。
