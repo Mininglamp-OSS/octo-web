@@ -207,13 +207,12 @@ function wait(ms: number): Promise<void> {
 }
 
 /**
- * Reject presigned upload / download URLs whose scheme is not http(s), or
- * whose http-scheme host is not loopback. Blocks `javascript:` / `data:` /
- * `file:` / arbitrary non-web schemes before an anchor.href / xhr.open
- * accepts them.
+ * Reject presigned upload / download URLs whose scheme is not http(s).
+ * Blocks `javascript:` / `data:` / `file:` / arbitrary non-web schemes
+ * before an anchor.href / xhr.open accepts them.
  *
- * Scope: scheme-level only. `https://10.x` / `https://169.254.169.254`
- * still passes — internal-host filtering would need a marketplace-side
+ * Scope: scheme-level only. `http(s)://10.x` / `http(s)://169.254.169.254`
+ * still pass — internal-host filtering would need a marketplace-side
  * allowlist not shipped here. Blast radius stays bounded because the PUT
  * runs with no app credentials (bare XHR / no interceptors).
  */
@@ -224,12 +223,7 @@ function assertSafeExternalURL(raw: string): void {
   } catch {
     throw normalizeError({ code: "invalid_response", message: t("skillMarket.errors.invalidUrl") });
   }
-  if (u.protocol === "https:") return;
-  if (
-    u.protocol === "http:" &&
-    (u.hostname === "localhost" || u.hostname === "127.0.0.1")
-  )
-    return;
+  if (u.protocol === "https:" || u.protocol === "http:") return;
   throw normalizeError({
     code: "invalid_response",
     message: t("skillMarket.errors.urlSchemeNotAllowed"),
