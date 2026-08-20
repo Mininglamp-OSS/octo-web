@@ -1,6 +1,6 @@
 import { IconChevronDown, IconClear, IconInbox, IconTick } from '@douyinfe/semi-icons'
-import { Select as SemiSelect } from '@douyinfe/semi-ui'
-import { forwardRef, useCallback, useState } from 'react'
+import { LocaleConsumer, Select as SemiSelect } from '@douyinfe/semi-ui'
+import { Children, forwardRef, isValidElement, useCallback, useMemo, useState } from 'react'
 import type { ComponentRef, FocusEvent, ReactNode } from 'react'
 import type { SelectChangeValue, SelectOption, SelectOptionProps, SelectProps, SelectSize } from './types'
 
@@ -28,11 +28,13 @@ function renderTrigger(props: Record<string, any>) {
     value = [],
   } = props
   const {
-    clearable,
+    clearAriaLabel,
     multiple,
+    removeOptionAriaLabel,
     showArrow = true,
+    showClear,
     size = 'default',
-  } = componentProps as SelectProps
+  } = componentProps as SelectProps & { showClear?: boolean }
   const selectedItems = Array.isArray(value) ? value : []
   const hasValue = selectedItems.length > 0
 
@@ -47,11 +49,11 @@ function renderTrigger(props: Record<string, any>) {
                   <span className="octo-ui-select__chip-label">{getOptionLabel(item)}</span>
                   {!disabled ? (
                     <button
-                      aria-label="Remove selected option"
+                      aria-label={removeOptionAriaLabel}
                       className="octo-ui-select__chip-remove"
                       onClick={(event) => {
                         event.stopPropagation()
-                        onRemove?.(item)
+                        onRemove?.(item, event)
                       }}
                       tabIndex={-1}
                       type="button"
@@ -69,13 +71,13 @@ function renderTrigger(props: Record<string, any>) {
           <span className="octo-ui-select__placeholder">{placeholder}</span>
         )}
       </div>
-      {clearable && hasValue && !disabled ? (
+      {showClear && hasValue && !disabled ? (
         <button
-          aria-label="Clear selected option"
+          aria-label={clearAriaLabel}
           className="octo-ui-select__clear"
           onClick={(event) => {
             event.stopPropagation()
-            onClear?.()
+            onClear?.(event)
           }}
           tabIndex={-1}
           type="button"
@@ -92,7 +94,7 @@ function renderTrigger(props: Record<string, any>) {
   )
 }
 
-function renderEmptyContent(content: ReactNode = 'No options') {
+function renderEmptyContentNode(content: ReactNode) {
   if (content === null || content === false) {
     return content
   }
@@ -109,19 +111,50 @@ function renderEmptyContent(content: ReactNode = 'No options') {
   )
 }
 
-function renderOptionItem(option: Record<string, any>) {
+function renderEmptyContent(content: ReactNode) {
+  if (content === undefined) {
+    return (
+      <LocaleConsumer componentName="Select">
+        {(locale: { emptyText: ReactNode }) => renderEmptyContentNode(locale.emptyText)}
+      </LocaleConsumer>
+    )
+  }
+
+  return renderEmptyContentNode(content)
+}
+
+function getOptionMeta(children: ReactNode, options?: SelectOption[]) {
+  const meta = new Map<SelectOption['value'], Pick<SelectOption, 'showTick'>>()
+
+  options?.forEach((option) => {
+    meta.set(option.value, { showTick: option.showTick })
+  })
+
+  Children.forEach(children, (child) => {
+    if (!isValidElement<SelectOptionProps>(child)) {
+      return
+    }
+
+    meta.set(child.props.value, { showTick: child.props.showTick })
+  })
+
+  return meta
+}
+
+function renderOptionItem(option: Record<string, any>, optionMeta: Map<SelectOption['value'], Pick<SelectOption, 'showTick'>>) {
   const {
     className,
     disabled,
+    focused,
     label,
     selected,
-    showTick,
     children,
     value,
     onClick,
     onMouseEnter,
     style,
   } = option
+  const showTick = optionMeta.get(value)?.showTick
 
   return (
     <div
@@ -130,6 +163,7 @@ function renderOptionItem(option: Record<string, any>) {
       className={cx(
         'octo-ui-select-option',
         selected && 'octo-ui-select-option--selected',
+        focused && 'octo-ui-select-option--focused',
         disabled && 'octo-ui-select-option--disabled',
         className,
       )}
@@ -148,13 +182,7 @@ function renderOptionItem(option: Record<string, any>) {
   )
 }
 
-const SelectOptionComponent = function SelectOption({ children, label, ...rest }: SelectOptionProps) {
-  return (
-    <SemiSelect.Option {...rest} label={label ?? children}>
-      {children ?? label}
-    </SemiSelect.Option>
-  )
-}
+const SelectOptionComponent = SemiSelect.Option
 
 const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function Select(
   {
@@ -163,7 +191,6 @@ const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function
     dropdownClassName,
     dropdownMatchSelectWidth = true,
     emptyContent,
-    filter,
     maxHeight = DEFAULT_OPTION_LIST_MAX_HEIGHT,
     optionList,
     options,
@@ -183,6 +210,8 @@ const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function
 ) {
   const [open, setOpen] = useState(false)
   const [focused, setFocused] = useState(false)
+  const resolvedOptions = optionList ?? options
+  const optionMeta = useMemo(() => getOptionMeta(rest.children, resolvedOptions), [rest.children, resolvedOptions])
   const classes = cx(
     'octo-ui-select',
     sizeClass[size],
@@ -218,6 +247,10 @@ const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function
     onBlur?.(event)
   }, [onBlur])
 
+  const handleRenderOptionItem = useCallback((option: Record<string, any>) => (
+    renderOptionItem(option, optionMeta)
+  ), [optionMeta])
+
   return (
     <SemiSelect
       {...rest}
@@ -225,14 +258,17 @@ const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function
       arrowIcon={<IconChevronDown size="small" />}
       className={classes}
       clearIcon={<IconClear size="extra-small" />}
-      dropdownClassName={cx('octo-ui-select-dropdown', dropdownClassName)}
+      dropdownClassName={cx(
+        'octo-ui-select-dropdown',
+        !dropdownMatchSelectWidth && 'octo-ui-select-dropdown--bounded',
+        dropdownClassName,
+      )}
       dropdownMatchSelectWidth={dropdownMatchSelectWidth}
       emptyContent={renderEmptyContent(emptyContent)}
-      filter={filter as never}
       maxHeight={maxHeight}
-      optionList={optionList ?? options}
+      optionList={resolvedOptions}
       placeholder={placeholder}
-      renderOptionItem={renderOptionItem}
+      renderOptionItem={handleRenderOptionItem}
       showArrow={showArrow}
       showClear={clearable}
       size={size}
@@ -248,7 +284,7 @@ const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function
 })
 
 type SelectComponent = typeof Select & {
-  Option: typeof SelectOptionComponent
+  Option: typeof SemiSelect.Option
 }
 
 const ExportedSelect = Select as SelectComponent

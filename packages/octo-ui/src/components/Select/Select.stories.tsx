@@ -135,6 +135,8 @@ export const Multiple: Story = {
       <Select
         multiple
         clearable
+        clearAriaLabel="清空选择"
+        removeOptionAriaLabel="移除选项"
         value={value}
         onValueChange={(next) => setValue(Array.isArray(next) ? next : [])}
         optionList={roleOptions.slice(0, 4)}
@@ -160,6 +162,8 @@ export const MultipleManyOptions: Story = {
       <Select
         multiple
         clearable
+        clearAriaLabel="清空选择"
+        removeOptionAriaLabel="移除选项"
         defaultOpen
         maxHeight={260}
         value={value}

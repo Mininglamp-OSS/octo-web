@@ -93,7 +93,7 @@ const LoginLanguageSwitcher: React.FC = () => {
                 optionList={locales}
                 dropdownMatchSelectWidth={false}
                 position="bottomRight"
-                inputProps={{ 'aria-label': title }}
+                aria-label={title}
                 onChange={handleSelect}
             />
         </div>

@@ -153,14 +153,17 @@
 
 .octo-ui-select-dropdown.octo-ui-select-dropdown {
   box-sizing: border-box;
-  min-width: var(--octo-ui-select-dropdown-min-width);
-  max-width: var(--octo-ui-select-dropdown-max-width);
   padding: var(--octo-ui-dropdown-padding);
   border-radius: var(--octo-ui-dropdown-radius);
   background: var(--octo-ui-dropdown-bg);
   box-shadow: var(--octo-ui-dropdown-shadow);
   color: var(--octo-ui-dropdown-text);
   font-family: var(--octo-ui-font-sans);
+}
+
+.octo-ui-select-dropdown--bounded {
+  min-width: var(--octo-ui-select-dropdown-min-width);
+  max-width: var(--octo-ui-select-dropdown-max-width);
 }
 
 .octo-ui-select-option {
@@ -180,6 +183,10 @@
 }
 
 .octo-ui-select-option:hover {
+  background: var(--octo-ui-select-option-hover-bg);
+}
+
+.octo-ui-select-option--focused {
   background: var(--octo-ui-select-option-hover-bg);
 }
 

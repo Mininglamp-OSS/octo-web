@@ -1,4 +1,4 @@
-import type { CSSProperties, FocusEvent, KeyboardEvent, MouseEvent, ReactNode } from 'react'
+import type { CSSProperties, FocusEvent, ReactNode } from 'react'
 import type { DropdownPosition } from '../Dropdown/types'
 
 export type SelectValue = string | number
@@ -12,6 +12,7 @@ export interface SelectOption {
   children?: ReactNode
   disabled?: boolean
   className?: string
+  showTick?: boolean
   style?: CSSProperties
   [key: string]: unknown
 }
@@ -28,11 +29,11 @@ export interface SelectProps {
   'aria-labelledby'?: string
   'aria-required'?: boolean
   autoAdjustOverflow?: boolean
-  autoClearSearchValue?: boolean
   autoFocus?: boolean
   children?: ReactNode
   className?: string
   clearable?: boolean
+  clearAriaLabel?: string
   defaultOpen?: boolean
   defaultValue?: SelectChangeValue
   disabled?: boolean
@@ -40,21 +41,18 @@ export interface SelectProps {
   dropdownMatchSelectWidth?: boolean
   dropdownStyle?: CSSProperties
   emptyContent?: ReactNode
-  filter?: boolean | ((inputValue: string, option: SelectOption) => boolean)
   getPopupContainer?: () => HTMLElement
   id?: string
-  inputProps?: Record<string, unknown>
   loading?: boolean
   max?: number
   maxHeight?: number | string
-  maxTagCount?: number
   motion?: boolean
   multiple?: boolean
   optionList?: SelectOption[]
   options?: SelectOption[]
   placeholder?: ReactNode
   position?: DropdownPosition
-  searchPlaceholder?: string
+  removeOptionAriaLabel?: string
   showArrow?: boolean
   size?: SelectSize
   status?: SelectStatus
@@ -66,7 +64,6 @@ export interface SelectProps {
   onClear?: () => void
   onDropdownVisibleChange?: (visible: boolean) => void
   onFocus?: (event: FocusEvent) => void
-  onSearch?: (value: string, event: KeyboardEvent | MouseEvent) => void
   onSelect?: (value: SelectChangeValue, option: SelectOption) => void
   onValueChange?: (value: SelectChangeValue) => void
 }

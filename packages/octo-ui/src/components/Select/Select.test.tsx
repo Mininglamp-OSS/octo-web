@@ -57,7 +57,7 @@ vi.mock('@douyinfe/semi-ui', async () => {
         data-max-height={maxHeight}
       >
         {triggerRender?.({
-          componentProps: { multiple, showArrow, size: rest.size, clearable: showClear },
+          componentProps: { multiple, showArrow, size: rest.size, showClear },
           placeholder,
           value: selected,
         })}
@@ -72,7 +72,9 @@ vi.mock('@douyinfe/semi-ui', async () => {
   }) as any
   Select.Option = Option
 
-  return { Select }
+  const LocaleConsumer = ({ children }: any) => children({ emptyText: 'No options' })
+
+  return { LocaleConsumer, Select }
 })
 
 describe('Select', () => {
@@ -99,7 +101,9 @@ describe('Select', () => {
     const html = renderToStaticMarkup(
       <Select
         clearable
+        clearAriaLabel="Clear selection"
         multiple
+        removeOptionAriaLabel="Remove option"
         value={['frontend', 'design']}
         optionList={[
           { value: 'frontend', label: '前端' },
