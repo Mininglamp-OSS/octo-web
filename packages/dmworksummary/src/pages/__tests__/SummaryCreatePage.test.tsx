@@ -870,6 +870,35 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(calls[0][2]).toEqual({ idempotencyKey: 'finalize_retry_key' });
         expect(calls[1][2]).toEqual({ idempotencyKey: 'finalize_retry_key' });
     });
+
+    it('rotates the finalize idempotency key when the title changes after an ambiguous save failure', async () => {
+        (api.genFinalizeRequestId as any)
+            .mockReturnValueOnce('finalize_first_key')
+            .mockReturnValueOnce('finalize_second_key');
+        (api.saveAgentSummaryViaFinalize as any)
+            .mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+            .mockResolvedValueOnce({ task_id: 102, async_finalize: true });
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                sessionId: 'sess-retry',
+                mode: 'agent',
+                selectedChats: [{ chat_id: 'grp-1', chat_type: 'group', name: 'G', member_count: 3 }],
+            });
+        });
+
+        await act(async () => {
+            await instance.handleSaveAsSummary('first title');
+        });
+        await act(async () => {
+            await instance.handleSaveAsSummary('edited title');
+        });
+
+        const calls = (api.saveAgentSummaryViaFinalize as any).mock.calls;
+        expect(api.genFinalizeRequestId).toHaveBeenCalledTimes(2);
+        expect(calls[0][2]).toEqual({ idempotencyKey: 'finalize_first_key' });
+        expect(calls[1][2]).toEqual({ idempotencyKey: 'finalize_second_key' });
+    });
 });
 
 describe('SummaryCreatePage — smart_summary_started 收口 (二审 P1:api 层单发)', () => {

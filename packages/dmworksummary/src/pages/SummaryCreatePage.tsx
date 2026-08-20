@@ -180,18 +180,34 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
-    // finalize 幂等键按「一次逻辑保存」持有：网络/超时后用户重试复用，确定结果后清空。
-    private pendingFinalizeIdempotencyKey: string | null = null;
+    // finalize 幂等键按「同一请求 payload」持有：网络/超时后同 payload 重试复用，payload 变化则换 key。
+    private pendingFinalizeIdempotency: { key: string; fingerprint: string } | null = null;
 
-    private getOrCreateFinalizeIdempotencyKey(): string {
-        if (!this.pendingFinalizeIdempotencyKey) {
-            this.pendingFinalizeIdempotencyKey = api.genFinalizeRequestId();
+    private buildFinalizeFingerprint(params: CreateAgentSummaryParams): string {
+        return JSON.stringify({
+            session_id: params.session_id || '',
+            title: params.title || '',
+            origin_channel_id: params.origin_channel_id || '',
+            origin_channel_type: params.origin_channel_type ?? null,
+            sources: params.sources || [],
+            referenced_task_ids: params.referenced_task_ids || [],
+            participants: params.participants || [],
+            message_count: this.state.messages.length,
+        });
+    }
+
+    private getOrCreateFinalizeIdempotencyKey(fingerprint: string): string {
+        if (!this.pendingFinalizeIdempotency || this.pendingFinalizeIdempotency.fingerprint !== fingerprint) {
+            this.pendingFinalizeIdempotency = {
+                key: api.genFinalizeRequestId(),
+                fingerprint,
+            };
         }
-        return this.pendingFinalizeIdempotencyKey;
+        return this.pendingFinalizeIdempotency.key;
     }
 
     private clearFinalizeIdempotencyKey() {
-        this.pendingFinalizeIdempotencyKey = null;
+        this.pendingFinalizeIdempotency = null;
     }
 
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
@@ -1031,6 +1047,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
             // Session-Finalize v0:优先让后端异步把整段会话已产出的片段合并成一篇。
             // 若后端尚未发布 finalize 路由,api 层回退到 legacy createAgentSummary。
+            const finalizeFingerprint = this.buildFinalizeFingerprint(params);
             const result = await api.saveAgentSummaryViaFinalize(params, {
                 object_id: this.props.channel?.channelID,
                 source: this.props.source,
@@ -1038,9 +1055,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 entry_source: this.props.source,
                 trigger_mode: 'agent',
             }, {
-                idempotencyKey: this.getOrCreateFinalizeIdempotencyKey(),
+                idempotencyKey: this.getOrCreateFinalizeIdempotencyKey(finalizeFingerprint),
             });
-            this.clearFinalizeIdempotencyKey();
             markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t(result.async_finalize ? 'summary.create.agentSummaryGenerating' : 'summary.create.agentSummaryCreated'));
@@ -1060,6 +1076,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             openCreatedSummary(result.task_id);
+            this.clearFinalizeIdempotencyKey();
             return true;
         } catch (err: unknown) {
             // 类型守卫:axios 错误

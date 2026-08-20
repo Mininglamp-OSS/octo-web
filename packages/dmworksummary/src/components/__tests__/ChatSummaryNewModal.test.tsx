@@ -774,4 +774,43 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
         expect(calls[0][2]).toEqual({ idempotencyKey: 'modal_retry_key' });
         expect(calls[1][2]).toEqual({ idempotencyKey: 'modal_retry_key' });
     });
+
+    it('rotates the finalize idempotency key when the title changes after an ambiguous save failure', async () => {
+        (summaryApi.genFinalizeRequestId as any)
+            .mockReturnValueOnce('modal_first_key')
+            .mockReturnValueOnce('modal_second_key');
+        (summaryApi.saveAgentSummaryViaFinalize as any)
+            .mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+            .mockResolvedValueOnce({ task_id: 103, async_finalize: true });
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={vi.fn()}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-retry' });
+        });
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('first title');
+            await flushPromises();
+        });
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('edited title');
+            await flushPromises();
+        });
+
+        const calls = (summaryApi.saveAgentSummaryViaFinalize as any).mock.calls;
+        expect(summaryApi.genFinalizeRequestId).toHaveBeenCalledTimes(2);
+        expect(calls[0][2]).toEqual({ idempotencyKey: 'modal_first_key' });
+        expect(calls[1][2]).toEqual({ idempotencyKey: 'modal_second_key' });
+    });
 });

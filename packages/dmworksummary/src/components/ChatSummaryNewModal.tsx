@@ -103,18 +103,34 @@ export default class ChatSummaryNewModal extends Component<
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
-    // finalize 幂等键按「一次逻辑保存」持有：网络/超时后用户重试复用，确定结果后清空。
-    private pendingFinalizeIdempotencyKey: string | null = null;
+    // finalize 幂等键按「同一请求 payload」持有：网络/超时后同 payload 重试复用，payload 变化则换 key。
+    private pendingFinalizeIdempotency: { key: string; fingerprint: string } | null = null;
 
-    private getOrCreateFinalizeIdempotencyKey(): string {
-        if (!this.pendingFinalizeIdempotencyKey) {
-            this.pendingFinalizeIdempotencyKey = summaryApi.genFinalizeRequestId();
+    private buildFinalizeFingerprint(params: CreateAgentSummaryParams): string {
+        return JSON.stringify({
+            session_id: params.session_id || '',
+            title: params.title || '',
+            origin_channel_id: params.origin_channel_id || '',
+            origin_channel_type: params.origin_channel_type ?? null,
+            sources: params.sources || [],
+            referenced_task_ids: params.referenced_task_ids || [],
+            participants: params.participants || [],
+            message_count: this.state.messages.length,
+        });
+    }
+
+    private getOrCreateFinalizeIdempotencyKey(fingerprint: string): string {
+        if (!this.pendingFinalizeIdempotency || this.pendingFinalizeIdempotency.fingerprint !== fingerprint) {
+            this.pendingFinalizeIdempotency = {
+                key: summaryApi.genFinalizeRequestId(),
+                fingerprint,
+            };
         }
-        return this.pendingFinalizeIdempotencyKey;
+        return this.pendingFinalizeIdempotency.key;
     }
 
     private clearFinalizeIdempotencyKey() {
-        this.pendingFinalizeIdempotencyKey = null;
+        this.pendingFinalizeIdempotency = null;
     }
 
     // localStorage key 按频道隔离，不同群各自的对话不串（见 summaryHelpers）。
@@ -655,13 +671,15 @@ export default class ChatSummaryNewModal extends Component<
             // 语义),不再依赖后端从 tool_calls 反查。映射与传统路径 (getOriginChannelType)
             // 完全一致。
             const { channel } = this.props;
-            const res = await summaryApi.saveAgentSummaryViaFinalize({
+            const params: CreateAgentSummaryParams = {
                 session_id: sessionId,
                 title,
                 sources,
                 origin_channel_id: channel.channelID,
                 origin_channel_type: getOriginChannelType(channel),
-            }, {
+            };
+            const finalizeFingerprint = this.buildFinalizeFingerprint(params);
+            const res = await summaryApi.saveAgentSummaryViaFinalize(params, {
                 // 六审 P3:agent 保存入口此前漏传维度 props → smart_summary_started 在此路径
                 // 变成无维度事件,与上面 normal 路径(:412)及 SummaryCreatePage 口径不一致,
                 // 无法按 source/entry_point 归因。补齐,trigger_mode 标 agent 以区分两条创建路径。
@@ -671,14 +689,14 @@ export default class ChatSummaryNewModal extends Component<
                 entry_source: 'chat_new_modal',
                 trigger_mode: 'agent',
             }, {
-                idempotencyKey: this.getOrCreateFinalizeIdempotencyKey(),
+                idempotencyKey: this.getOrCreateFinalizeIdempotencyKey(finalizeFingerprint),
             });
-            this.clearFinalizeIdempotencyKey();
             markAgentSummaryNotificationEligible(res.task_id);
 
             Toast.success(t(res.async_finalize ? 'summary.create.agentSummaryGenerating' : 'summary.create.agentSummaryCreated'));
 
             notifyCreatedSummary(res.task_id);
+            this.clearFinalizeIdempotencyKey();
             return true;
         } catch (err: unknown) {
             // 类型守卫:axios 错误
