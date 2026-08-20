@@ -77,6 +77,27 @@ describe("MailAddressManagementView automation mode", () => {
     expect(createButton?.disabled).toBe(true);
   });
 
+  it.each(["bot1", "admin", "postmaster"])(
+    "disables mailbox creation for invalid name %s",
+    (localpart) => {
+      const container = document.createElement("div");
+      const root = createRoot(container);
+      containers.push({ container, root });
+      document.body.appendChild(container);
+      const invalidProps = props(vi.fn());
+      invalidProps.localpart = localpart;
+
+      act(() => {
+        root.render(<MailAddressManagementView {...invalidProps} />);
+      });
+
+      const createButton = Array.from(
+        container.querySelectorAll("button")
+      ).find((button) => button.textContent?.includes("mail.addresses.create"));
+      expect(createButton?.disabled).toBe(true);
+    }
+  );
+
   it("offers CLI setup without changing or closing the existing setup dialog", () => {
     const onSetupMethodChange = vi.fn();
     const onCloseSetup = vi.fn();

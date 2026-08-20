@@ -154,6 +154,25 @@ describe("MailAddressManagementFeature", () => {
     expect(state.emit).toHaveBeenCalledWith("mail-refresh");
   });
 
+  it.each(["bot1", "admin", "postmaster"])(
+    "does not submit invalid mailbox name %s",
+    async (localpart) => {
+      await act(async () => {
+        root.render(<MailAddressManagementFeature />);
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      act(() => state.viewProps?.onLocalpartChange(localpart));
+      await act(async () => {
+        state.viewProps?.onCreate();
+        await Promise.resolve();
+      });
+
+      expect(state.createMailbox).not.toHaveBeenCalled();
+    }
+  );
+
   it("switches from the existing OpenClaw prompt to the CLI prompt", async () => {
     await act(async () => {
       root.render(<MailAddressManagementFeature />);

@@ -146,7 +146,7 @@
   "mail.addresses.localpart": "Mailbox name",
   "mail.addresses.placeholder": "For example, alerts",
   "mail.addresses.create": "Create mailbox",
-  "mail.addresses.createHint": "Use lowercase letters, numbers, dots, hyphens, or underscores. After creation, connect any Bot you own.",
+  "mail.addresses.createHint": "Use 5–64 lowercase letters, numbers, dots, hyphens, or underscores. Reserved system names such as admin and postmaster are unavailable. After creation, connect any Bot you own.",
   "mail.addresses.createLimitHint": "Each Space allows up to {{limit}} Agent mailboxes; {{count}} created.",
   "mail.agentMailboxes.unconnected": "Agent not connected",
   "mail.agentMailboxes.connected": "Connected",

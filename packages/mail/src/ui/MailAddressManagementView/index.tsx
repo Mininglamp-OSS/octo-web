@@ -15,6 +15,11 @@ import {
   X,
 } from "lucide-react";
 import type { AgentMailbox, AgentOutboundMode } from "../../bridge/types";
+import {
+  agentMailboxLocalpartMaxLength,
+  agentMailboxLocalpartMinLength,
+  isValidAgentMailboxLocalpart,
+} from "../../utils";
 import "./index.css";
 
 interface Translator {
@@ -280,6 +285,8 @@ export default function MailAddressManagementView(
                 <input
                   value={props.localpart}
                   disabled={props.mailboxes.length >= props.maxMailboxes}
+                  minLength={agentMailboxLocalpartMinLength}
+                  maxLength={agentMailboxLocalpartMaxLength}
                   placeholder={t("mail.addresses.placeholder")}
                   onChange={(event) =>
                     props.onLocalpartChange(event.target.value.toLowerCase())
@@ -295,7 +302,7 @@ export default function MailAddressManagementView(
               type="button"
               disabled={
                 props.submitting ||
-                !props.localpart.trim() ||
+                !isValidAgentMailboxLocalpart(props.localpart) ||
                 !props.domain ||
                 props.mailboxes.length >= props.maxMailboxes
               }

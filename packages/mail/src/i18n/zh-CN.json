@@ -146,7 +146,7 @@
   "mail.addresses.localpart": "邮箱名称",
   "mail.addresses.placeholder": "例如 alerts",
   "mail.addresses.create": "创建邮箱",
-  "mail.addresses.createHint": "可使用小写字母、数字、点、短横线和下划线；创建后可选择任意自己的 Bot 完成接入。",
+  "mail.addresses.createHint": "名称需为 5–64 位，可使用小写字母、数字、点、短横线和下划线；不可使用 admin、postmaster 等系统保留名称。创建后可选择任意自己的 Bot 完成接入。",
   "mail.addresses.createLimitHint": "每个 Space 最多创建 {{limit}} 个 Agent 邮箱，当前已创建 {{count}} 个。",
   "mail.agentMailboxes.unconnected": "未接入 Agent",
   "mail.agentMailboxes.connected": "已接入",
