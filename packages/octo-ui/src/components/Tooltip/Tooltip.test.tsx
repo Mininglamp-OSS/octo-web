@@ -12,6 +12,7 @@ interface SemiTooltipMockProps {
   showArrow?: boolean;
   spacing?: number;
   autoAdjustOverflow?: boolean;
+  visible?: boolean;
 }
 
 vi.mock("@douyinfe/semi-ui", () => ({
@@ -25,6 +26,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
     showArrow,
     spacing,
     autoAdjustOverflow,
+    visible,
   }: SemiTooltipMockProps) => (
     <span
       className={className}
@@ -34,6 +36,7 @@ vi.mock("@douyinfe/semi-ui", () => ({
       data-show-arrow={String(showArrow)}
       data-spacing={spacing}
       data-auto-adjust={String(autoAdjustOverflow)}
+      data-visible={visible === undefined ? undefined : String(visible)}
     >
       <span data-testid="tooltip-content">{content}</span>
       {children}
@@ -106,7 +109,7 @@ describe("Tooltip", () => {
     expect(html).toContain('data-leave-delay="0"');
   });
 
-  it("does not mount an overlay for disabled or blank content", () => {
+  it("keeps the trigger hierarchy stable while disabling blank content", () => {
     const disabled = renderToStaticMarkup(
       <Tooltip content="Details" isDisabled>
         <span>Disabled</span>
@@ -118,7 +121,9 @@ describe("Tooltip", () => {
       </Tooltip>
     );
 
-    expect(disabled).toBe("<span>Disabled</span>");
-    expect(blank).toBe("<span>Blank</span>");
+    expect(disabled).toContain('data-visible="false"');
+    expect(disabled).toContain("<span>Disabled</span>");
+    expect(blank).toContain('data-visible="false"');
+    expect(blank).toContain("<span>Blank</span>");
   });
 });

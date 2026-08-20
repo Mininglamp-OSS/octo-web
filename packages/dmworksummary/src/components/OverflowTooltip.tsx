@@ -43,7 +43,7 @@ const OverflowTooltip: React.FC<OverflowTooltipProps> = ({ children, className, 
         </Component>
     );
 
-    return isTruncated && title ? <Tooltip content={title} placement="bottom">{content}</Tooltip> : content;
+    return <Tooltip content={title} placement="bottom" isDisabled={!isTruncated || !title}>{content}</Tooltip>;
 };
 
 export default OverflowTooltip;

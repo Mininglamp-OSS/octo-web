@@ -60,7 +60,7 @@ function OverflowTooltip({ text, children }: { text: string; children: React.Rea
         </div>
     )
 
-    return isTruncated ? <Tooltip content={text} placement="right">{content}</Tooltip> : content
+    return <Tooltip content={text} placement="right" isDisabled={!isTruncated}>{content}</Tooltip>
 }
 
 const ITEM_HEIGHT = 44

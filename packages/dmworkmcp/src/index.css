@@ -845,6 +845,15 @@
   padding: 2px 0;
 }
 
+.octo-ui-tooltip .wk-mcp-tag-overflow .wk-mcp-tag--accent {
+  background: color-mix(
+    in srgb,
+    var(--octo-ui-tooltip-action-color) 18%,
+    transparent
+  );
+  color: var(--octo-ui-tooltip-action-color);
+}
+
 .wk-mcp-card__slogan {
   min-height: 42px;
   margin: var(--wk-sp-3) 0 0;

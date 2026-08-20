@@ -49,13 +49,8 @@ export const TooltipCell = memo(function TooltipCell({ content }: TooltipCellPro
     </div>
   );
 
-  // 未截断或无内容时，直接返回裸单元格，不挂载 Tooltip，杜绝空气泡
-  if (!isTruncated || !hasContent) {
-    return cellContent;
-  }
-
   return (
-    <Tooltip content={content}>
+    <Tooltip content={content} isDisabled={!isTruncated || !hasContent}>
       {cellContent}
     </Tooltip>
   );

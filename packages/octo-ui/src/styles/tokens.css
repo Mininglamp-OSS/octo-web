@@ -54,8 +54,10 @@
   --octo-ui-tooltip-color: var(--wk-color-white);
   --octo-ui-tooltip-muted-color: rgba(255, 255, 255, 0.7);
   --octo-ui-tooltip-shortcut-color: #a7abb0;
+  --octo-ui-tooltip-action-color: var(--wk-purple-300);
+  --octo-ui-tooltip-action-hover-color: var(--wk-color-white);
   --octo-ui-tooltip-max-width: 320px;
-  --octo-ui-tooltip-line-height: var(--wk-sp-5);
+  --octo-ui-tooltip-line-height: 1.42857143;
 }
 
 body[theme-mode='dark'] {

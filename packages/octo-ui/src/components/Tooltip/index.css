@@ -67,3 +67,12 @@
 .octo-ui-tooltip__content--vertical .octo-ui-tooltip__actions {
   margin-top: var(--wk-sp-1);
 }
+
+.octo-ui-tooltip .octo-ui-button--text {
+  color: var(--octo-ui-tooltip-action-color);
+}
+
+.octo-ui-tooltip .octo-ui-button--text:hover:not(:disabled),
+.octo-ui-tooltip .octo-ui-button--text:active:not(:disabled) {
+  color: var(--octo-ui-tooltip-action-hover-color);
+}
