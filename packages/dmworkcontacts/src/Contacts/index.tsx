@@ -609,10 +609,10 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private handleContactClick = (uid: string, isBot: boolean) => {
-        // contact_opened:补 is_bot / bot_type(system=botfather,余 custom;非 bot 为 null)
+        // contact_opened:补 is_ai / bot_type(system=botfather,余 custom;非 bot 为 null)
         Dap.shared.track('contact_opened', {
             object_id: uid,
-            is_bot: isBot,
+            is_ai: isBot,
             bot_type: isBot ? (uid === 'botfather' ? 'system' : 'custom') : null,
         })
         if (isBot && uid !== 'botfather') {

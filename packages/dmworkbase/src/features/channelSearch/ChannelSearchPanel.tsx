@@ -26,6 +26,8 @@ import type {
 } from "../../Service/SearchTypes";
 import WKApp from "../../App";
 import { Dap } from "../../Service/Dap";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
+import { hasEffectiveFilters } from "../../Service/SearchResultMapper";
 import { ChannelSearchFilterPopover as FilterPopover } from "./ChannelSearchFilters";
 import {
   ChannelSearchEmpty as SearchEmpty,
@@ -173,14 +175,31 @@ const ChannelSearchPanel: React.FC<ChannelSearchPanelProps> = ({
     enabled: canSearch && !isComposing,
     search: searchPage,
     errorMessage: t("base.channelSearch.searchFailed"),
+    // channel_search_query = 用户真的检索了(首页执行且带 keyword 或有效 filter);翻页不计。
+    // 媒体/文件 tab 的 shouldRunSearch 恒 true,仅切 tab 也会触发首页请求 → 若不 gate 会以空 keyword
+    // 误发一次(#1452 P2-1)。故这里按「有 keyword 或有效 filter」再计,与 tab_switched 分开。
+    // 判别位是 keyword 值 / 嵌套 filters(值级,被 sanitize 拦),故退命令式;绝不上报关键词。
+    // channel_id 归一 stripSpacePrefix → bare id:与本 PR 其余新命令式事件同一 channel_id 口径,
+    // Space 部署下可跨事件 join。注意这不是「与后端 _search_ 对齐」——SearchService 发的是 raw
+    // channel.channelID(见 SearchService.ts,不 strip);此处刻意归一到 bare 供数仓 join(#1452 R10 P2-2)。
+    onQueryStart: useCallback(() => {
+      if (keyword.trim().length === 0 && !hasEffectiveFilters(filters)) return;
+      Dap.shared.track("channel_search_query", {
+        channel_id: stripSpacePrefix(channel.channelID),
+        tab: activeTab,
+      });
+    }, [channel.channelID, activeTab, keyword, filters]),
   });
 
   const handleLocate = useCallback(
     (item: ChannelSearchItem) => {
       const locateTarget = resolveChannelSearchLocateTarget(item, channel);
       if (!locateTarget) {
+        // 无法解析跳转目标(结果陈旧/畸形):点击什么都不发生,不计入点击(避免过计)。
         return;
       }
+      // 埋点:结果可跳转才算一次有效点击(移到 guard 之后,见 #1452 review P2)。
+      Dap.shared.track("channel_search_result_clicked", {});
       if (onLocateMessage) {
         onLocateMessage(item);
         return;

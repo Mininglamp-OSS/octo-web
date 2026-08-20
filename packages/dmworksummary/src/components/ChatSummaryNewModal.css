@@ -186,7 +186,7 @@
     width: 100%;
 }
 
-/* 分裂按钮（开始总结 + 下拉切换 Agent 总结）。Semi SplitButtonGroup 只会
+/* 分裂按钮（快速总结 + 下拉切换 Agent 总结）。Semi SplitButtonGroup 只会
    拼接 .semi-button 子元素；迁移到 @octo/ui 后需要在本地补齐连接样式。
    本规则刻意与 index.css 的同名规则共存：Storybook story 直接 import 本组件、
    不加载 summary 包样式表（index.css），本地保留才能保证独立渲染正确；

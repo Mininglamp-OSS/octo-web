@@ -10,7 +10,7 @@ import { updateUserLanguagePreference } from "../../Service/UserLanguageService"
 import { i18n, t } from "../../i18n";
 import { Locale } from "../../i18n/types";
 import type { SettingsItem } from "./settingsRegistry";
-import { createKeepAwakeAdapter, createNotificationAdapter } from "../../Runtime/adapters";
+import { createDesktopSettingsAdapter, createDownloadSettingsAdapter, createKeepAwakeAdapter, createNotificationAdapter, type DesktopSettings, type DownloadSettings } from "../../Runtime/adapters";
 import SettingsStatusTag from "./SettingsStatusTag";
 import { MeInfo } from "../MeInfo";
 import octoLogo from "../../assets/settings-center/octo-logo.png";
@@ -20,8 +20,9 @@ import { getMicrophonePermission, getVoiceShortcut, setMicrophonePermission, VOI
 import { getDocument } from "../../Service/DocumentService";
 import { acceptVoiceInput } from "../../features/voice-input/useSpaceFeedbackSetting";
 import { Dap } from "../../Service/Dap";
+import { openElectronSystemSettings } from "../../electron/desktopBridge";
 
-export function SettingsRow({ title, description, trailing, children }: { title: string; description?: string; trailing?: React.ReactNode; children?: React.ReactNode }) { return <div className="wk-settings-center__row"><div className="wk-settings-center__row-main"><div className="wk-settings-center__row-title">{title}</div>{description && <div className="wk-settings-center__row-description">{description}</div>}</div>{children ?? trailing}</div>; }
+export function SettingsRow({ title, description, trailing, children }: { title: string; description?: React.ReactNode; trailing?: React.ReactNode; children?: React.ReactNode }) { return <div className="wk-settings-center__row"><div className="wk-settings-center__row-main"><div className="wk-settings-center__row-title">{title}</div>{description && <div className="wk-settings-center__row-description">{description}</div>}</div>{children ?? trailing}</div>; }
 
 function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="wk-settings-center__settings-section"><h3>{title}</h3>{children}</section>; }
 
@@ -93,7 +94,7 @@ export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, o
     return <NotificationsSettingsPage environment={environment} />;
   }
   if (item?.id === "desktop-behavior") return <DesktopBehaviorSettingsPage environment={environment} />;
-  if (item?.id === "downloads") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.downloads.title")}><SettingsSection title={t("base.navRail.settingsCenter.section.downloads")}><SettingsRow title={t("base.navRail.settingsCenter.row.downloadDirectory")} description={t("base.navRail.settingsCenter.row.downloadDirectoryDescription")}><div className="wk-settings-center__download-location"><code>{t("base.navRail.settingsCenter.value.defaultDownloadPath")}</code><SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} /></div></SettingsRow><SettingsRow title={t("base.navRail.settingsCenter.row.askBeforeSaving")} description={t("base.navRail.settingsCenter.row.askBeforeSavingDescription")} trailing={<SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />} /></SettingsSection></SettingsPageFrame>;
+  if (item?.id === "downloads") return <DownloadsSettingsPage environment={environment} />;
   if (item?.id === "voice") return <VoiceInputSettingsPage environment={environment} />;
   if (item?.id === "shortcuts") return <ShortcutsSettingsPage environment={environment} />;
   if (item?.id === "devices") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.devices.title")}><div className="wk-settings-center__resource-sections">{settingsResourceGroups.map((group) => <ResourceSection key={group.titleKey} title={t(group.titleKey)} category={group.category}>{group.resources.map((resource) => <ResourceCard key={resource.id} {...resource} description={t(resource.descriptionKey)} statusLabel={t(resource.statusKey)} category={group.category} action={resource.url && resource.actionKey ? <a className="wk-settings-center__resource-action" href={resource.url} target="_blank" rel="noreferrer">↗ {t(resource.actionKey)}</a> : undefined} />)}</ResourceSection>)}</div></SettingsPageFrame>;
@@ -101,10 +102,22 @@ export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, o
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.fallback.title")} description={t("base.navRail.settingsCenter.page.fallback.description")}><SettingsRow title={t("base.navRail.settingsCenter.row.placeholder")} description={t("base.navRail.settingsCenter.placeholder")} /></SettingsPageFrame>;
 }
 
+function DownloadsSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
+  const adapter = React.useMemo(() => createDownloadSettingsAdapter(environment), [environment]);
+  const [settings, setSettings] = React.useState<DownloadSettings | null>(null);
+  const [saving, setSaving] = useState(false);
+  React.useEffect(() => { let active = true; if (!adapter) return () => { active = false; }; void adapter.get().then((next) => { if (active) setSettings(next); }).catch(() => undefined); return () => { active = false; }; }, [adapter]);
+  const update = async (patch: Pick<DownloadSettings, "askBeforeSaving">) => { if (!adapter) return; setSaving(true); try { setSettings(await adapter.set(patch)); } catch { Toast.error(t("base.navRail.settingsCenter.value.saveFailed")); } finally { setSaving(false); } };
+  const choose = async () => { if (!adapter) return; setSaving(true); try { setSettings(await adapter.chooseDirectory()); } catch { Toast.error(t("base.navRail.settingsCenter.value.saveFailed")); } finally { setSaving(false); } };
+  const unavailable = <SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />;
+  const directory = settings?.directory ?? t(environment.os === "macos" ? "base.navRail.settingsCenter.value.defaultDownloadPathMacos" : "base.navRail.settingsCenter.value.defaultDownloadPathWindows");
+  return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.downloads.title")}><SettingsSection title={t("base.navRail.settingsCenter.section.downloads")}><SettingsRow title={t("base.navRail.settingsCenter.row.downloadDirectory")} description={<><span>{t("base.navRail.settingsCenter.row.downloadDirectoryDescription")}</span><code className="wk-settings-center__download-path">{directory}</code></>} trailing={settings ? <button type="button" className="wk-settings-center__manage-button" disabled={saving} onClick={() => { void choose(); }}>{t("base.navRail.settingsCenter.action.change")}</button> : unavailable} /><SettingsRow title={t("base.navRail.settingsCenter.row.askBeforeSaving")} description={t("base.navRail.settingsCenter.row.askBeforeSavingDescription")} trailing={settings ? <Switch disabled={saving} checked={settings.askBeforeSaving} onChange={(checked) => { void update({ askBeforeSaving: checked }); }} aria-label={t("base.navRail.settingsCenter.row.askBeforeSaving")} /> : unavailable} /></SettingsSection></SettingsPageFrame>;
+}
+
 function ShortcutsSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
   const settings = useVoiceSettings();
   const os = getVoiceOs(environment);
-  return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.shortcuts.title")}><div className="wk-settings-center__shortcut-catalog"><section className="wk-settings-center__shortcut-group"><h3>{t("base.navRail.settingsCenter.shortcut.voice")}</h3><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.holdToTalk")} keys={[voiceShortcutLabel(getVoiceShortcut(settings, os), os), voiceModeLabel(settings.speakingMode)]} /><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.cancelVoice")} keys={["Esc"]} /></section></div></SettingsPageFrame>;
+  return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.shortcuts.title")} description={t("base.navRail.settingsCenter.page.shortcuts.description")}><div className="wk-settings-center__shortcut-catalog"><section className="wk-settings-center__shortcut-group"><h3>{t("base.navRail.settingsCenter.shortcut.voice")}</h3><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.holdToTalk")} keys={[voiceShortcutLabel(getVoiceShortcut(settings, os), os), voiceModeLabel(settings.speakingMode)]} /><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.cancelVoice")} keys={["Esc"]} /></section></div></SettingsPageFrame>;
 }
 
 function AccountSettingsPage({ accountCenterUrl, onSecrets }: { accountCenterUrl?: string; onSecrets?: () => void }) {
@@ -113,6 +126,9 @@ function AccountSettingsPage({ accountCenterUrl, onSecrets }: { accountCenterUrl
 }
 
 function DesktopBehaviorSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
+  const desktopSettingsAdapter = React.useMemo(() => createDesktopSettingsAdapter(environment), [environment]);
+  const [desktopSettings, setDesktopSettings] = React.useState<DesktopSettings | null>(null);
+  const [desktopSettingsSaving, setDesktopSettingsSaving] = useState(false);
   const keepAwakeAdapter = React.useMemo(() => createKeepAwakeAdapter(environment), [environment]);
   const [keepAwake, setKeepAwake] = useState(false);
   const [keepAwakeLoading, setKeepAwakeLoading] = useState(Boolean(keepAwakeAdapter));
@@ -147,17 +163,34 @@ function DesktopBehaviorSettingsPage({ environment }: { environment: import("../
     }
   };
 
+  React.useEffect(() => {
+    let active = true;
+    if (!desktopSettingsAdapter) return () => { active = false; };
+    void desktopSettingsAdapter.get().then((next) => { if (active) setDesktopSettings(next); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [desktopSettingsAdapter]);
+
+  const updateDesktopSettings = async (patch: Partial<DesktopSettings>) => {
+    if (!desktopSettingsAdapter) return;
+    setDesktopSettingsSaving(true);
+    try { setDesktopSettings(await desktopSettingsAdapter.set(patch)); }
+    catch { Toast.error(t("base.navRail.settingsCenter.value.saveFailed")); }
+    finally { setDesktopSettingsSaving(false); }
+  };
+
   const os = environment.os === "macos" ? "macos" : "windows";
+  const supportsSystemLifecycle = environment.os !== "linux";
+  const canConfigureWindowsBackground = environment.os !== "windows" || desktopSettings?.showOnTray !== false;
   const unavailable = <SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />;
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.desktopBehavior.title")}>
     <SettingsSection title={t("base.navRail.settingsCenter.section.display")}>
-      <SettingsRow title={t("base.navRail.settingsCenter.row.interfaceScale")} description={t("base.navRail.settingsCenter.row.interfaceScaleDescription")} trailing={unavailable} />
+      <SettingsRow title={t("base.navRail.settingsCenter.row.interfaceScale")} description={t("base.navRail.settingsCenter.row.interfaceScaleDescription")} trailing={desktopSettings ? <select className="wk-settings-center__demo-select" value={String(desktopSettings.zoomFactor)} disabled={desktopSettingsSaving} onChange={(event) => { void updateDesktopSettings({ zoomFactor: Number(event.target.value) }); }} aria-label={t("base.navRail.settingsCenter.row.interfaceScale")}><option value="0.8">80%</option><option value="0.9">90%</option><option value="1">100%</option><option value="1.1">110%</option><option value="1.25">125%</option></select> : unavailable} />
     </SettingsSection>
     <SettingsSection title={t("base.navRail.settingsCenter.section.system")}>
-      <SettingsRow title={t(os === "macos" ? "base.navRail.settingsCenter.row.launchAtLogin" : "base.navRail.settingsCenter.row.launchAtStartup")} description={t(os === "macos" ? "base.navRail.settingsCenter.row.launchAtLoginDescription" : "base.navRail.settingsCenter.row.launchAtStartupDescription")} trailing={unavailable} />
-      <SettingsRow title={t(os === "macos" ? "base.navRail.settingsCenter.row.menuBar" : "base.navRail.settingsCenter.row.systemTray")} description={t(os === "macos" ? "base.navRail.settingsCenter.row.menuBarDescription" : "base.navRail.settingsCenter.row.systemTrayDescription")} trailing={unavailable} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.keepAwake")} description={t("base.navRail.settingsCenter.row.keepAwakeDescription")} trailing={<Switch disabled={!keepAwakeAdapter || keepAwakeLoading || keepAwakeSaving} checked={keepAwake} onChange={(checked) => { void updateKeepAwake(checked); }} aria-label={t("base.navRail.settingsCenter.row.keepAwake")} />} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.closeWindowBehavior")} description={t("base.navRail.settingsCenter.row.closeWindowBehaviorDescription")} trailing={unavailable} />
+      <SettingsRow title={t(os === "macos" ? "base.navRail.settingsCenter.row.launchAtLogin" : "base.navRail.settingsCenter.row.launchAtStartup")} description={t(os === "macos" ? "base.navRail.settingsCenter.row.launchAtLoginDescription" : "base.navRail.settingsCenter.row.launchAtStartupDescription")} trailing={desktopSettings && supportsSystemLifecycle ? <Switch disabled={desktopSettingsSaving} checked={desktopSettings.launchAtLogin} onChange={(checked) => { void updateDesktopSettings({ launchAtLogin: checked }); }} aria-label={t(os === "macos" ? "base.navRail.settingsCenter.row.launchAtLogin" : "base.navRail.settingsCenter.row.launchAtStartup")} /> : unavailable} />
+      <SettingsRow title={t(os === "macos" ? "base.navRail.settingsCenter.row.menuBar" : "base.navRail.settingsCenter.row.systemTray")} description={t(os === "macos" ? "base.navRail.settingsCenter.row.menuBarDescription" : "base.navRail.settingsCenter.row.systemTrayDescription")} trailing={desktopSettings && supportsSystemLifecycle ? <Switch disabled={desktopSettingsSaving} checked={desktopSettings.showOnTray} onChange={(checked) => { void updateDesktopSettings({ showOnTray: checked }); }} aria-label={t(os === "macos" ? "base.navRail.settingsCenter.row.menuBar" : "base.navRail.settingsCenter.row.systemTray")} /> : unavailable} />
+      <SettingsRow title={t("base.navRail.settingsCenter.row.keepAwake")} description={t("base.navRail.settingsCenter.row.keepAwakeDescription")} trailing={keepAwakeAdapter ? <Switch disabled={keepAwakeLoading || keepAwakeSaving} checked={keepAwake} onChange={(checked) => { void updateKeepAwake(checked); }} aria-label={t("base.navRail.settingsCenter.row.keepAwake")} /> : unavailable} />
+      <SettingsRow title={t("base.navRail.settingsCenter.row.closeWindowBehavior")} description={t("base.navRail.settingsCenter.row.closeWindowBehaviorDescription")} trailing={desktopSettings && supportsSystemLifecycle && canConfigureWindowsBackground ? <select className="wk-settings-center__demo-select" value={desktopSettings.closeBehavior} disabled={desktopSettingsSaving} onChange={(event) => { void updateDesktopSettings({ closeBehavior: event.target.value as DesktopSettings["closeBehavior"] }); }} aria-label={t("base.navRail.settingsCenter.row.closeWindowBehavior")}><option value="background">{t("base.navRail.settingsCenter.value.continueInBackground")}</option><option value="quit">{t("base.navRail.settingsCenter.value.quitOcto")}</option></select> : unavailable} />
     </SettingsSection>
   </SettingsPageFrame>;
 }
@@ -168,11 +201,16 @@ function NotificationsSettingsPage({ environment }: { environment: import("../..
   const [muteScope, setMuteScope] = useState<"sound" | "sound-and-popup">("sound-and-popup");
   const [permission, setPermission] = useState(() => notificationAdapter.getPermission());
   const isDesktop = environment.target === "desktop";
-  const permissionLabel = permission === "unsupported" ? t("base.navRail.settingsCenter.value.unsupported") : permission === "denied" ? t("base.navRail.settingsCenter.value.denied") : permission === "granted" ? t("base.navRail.settingsCenter.value.granted") : t("base.navRail.settingsCenter.value.unauthorized");
+  const permissionLabel = permission === "unsupported" ? t("base.navRail.settingsCenter.value.unsupported") : permission === "managed" ? t("base.navRail.settingsCenter.value.systemManaged") : permission === "denied" ? t("base.navRail.settingsCenter.value.denied") : permission === "granted" ? t("base.navRail.settingsCenter.value.granted") : t("base.navRail.settingsCenter.value.unauthorized");
   const permissionTone: "success" | "attention" | "danger" | "neutral" = permission === "granted" ? "success" : permission === "denied" ? "danger" : permission === "default" ? "attention" : "neutral";
   const requestPermission = async () => {
     try { setPermission(await notificationAdapter.requestPermission()); }
     catch { Toast.error(t("base.navRail.settingsCenter.value.saveFailed")); }
+  };
+  const openNotificationSettings = async () => {
+    if (environment.target !== "desktop") return;
+    const opened = await openElectronSystemSettings("notifications").catch(() => false);
+    if (!opened) Toast.info(t("base.navRail.settingsCenter.row.systemPermissionDesktopDescription"));
   };
   React.useEffect(() => {
     let mounted = true;
@@ -186,7 +224,7 @@ function NotificationsSettingsPage({ environment }: { environment: import("../..
     </SettingsSection>
     <SettingsSection title={t("base.navRail.settingsCenter.section.desktopSystemNotifications")}>
       <SettingsRow title={t("base.navRail.settingsCenter.row.notificationOptions")} description={isDesktop ? t("base.navRail.settingsCenter.row.notificationOptionsDesktopDescription") : t("base.navRail.settingsCenter.row.notificationOptionsWebDescription")} trailing={<Switch checked={notificationsEnabled} onChange={(checked) => { setNotificationsEnabled(checked); WKApp.shared.notificationIsClose = !checked; }} aria-label={t("base.navRail.settingsCenter.row.notificationOptions")} />} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.systemPermission")} description={isDesktop ? t("base.navRail.settingsCenter.row.systemPermissionDesktopDescription") : t("base.navRail.settingsCenter.row.systemPermissionWebDescription")} trailing={<span className="wk-settings-center__row-actions"><SettingsStatusTag tone={permissionTone} label={permissionLabel} />{permission === "default" && <button type="button" className="wk-settings-center__manage-button" onClick={() => { void requestPermission(); }}>{t("base.navRail.settingsCenter.action.authorize")}</button>}</span>} />
+      <SettingsRow title={t("base.navRail.settingsCenter.row.systemPermission")} description={isDesktop ? t("base.navRail.settingsCenter.row.systemPermissionDesktopDescription") : t("base.navRail.settingsCenter.row.systemPermissionWebDescription")} trailing={<span className="wk-settings-center__row-actions"><SettingsStatusTag tone={permissionTone} label={permissionLabel} />{permission === "default" && <button type="button" className="wk-settings-center__manage-button" onClick={() => { void requestPermission(); }}>{t("base.navRail.settingsCenter.action.authorize")}</button>}{isDesktop && (permission === "denied" || permission === "managed") && <button type="button" className="wk-settings-center__manage-button" onClick={() => { void openNotificationSettings(); }}>{t("base.navRail.settingsCenter.action.openSystemSettings")}</button>}</span>} />
     </SettingsSection>
   </SettingsPageFrame>;
 }
@@ -328,7 +366,11 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
     setLocalDraft({ timeout: String(saved.localTimeoutMs), probe: saved.localProbeUrl, transcribe: saved.localTranscribeUrl });
     setLocalDirty(false);
   };
-  const showPermissionGuide = () => {
+  const showPermissionGuide = async () => {
+    if (environment.target === "desktop" && permission === "denied") {
+      const opened = await openElectronSystemSettings("microphone").catch(() => false);
+      if (opened) return;
+    }
     const key = environment.target === "web"
       ? "base.navRail.settingsCenter.row.microphoneGuideWeb"
       : os === "windows"
@@ -354,12 +396,12 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
   const voiceDescription = !settings.enabled ? t("base.navRail.settingsCenter.row.voiceInputEnabledDescription") : shortcut === "disabled" ? t("base.navRail.settingsCenter.voiceDescription.button") : settings.speakingMode === "toggle" ? t("base.navRail.settingsCenter.voiceDescription.toggle", { values: { shortcut: shortcutName } }) : t("base.navRail.settingsCenter.voiceDescription.hold", { values: { shortcut: shortcutName } });
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.voice.title")}>
     <SettingsSection title={t("base.navRail.settingsCenter.section.audioDevice")}>
-      <SettingsRow title={t("base.navRail.settingsCenter.row.microphoneInput")} description={t("base.navRail.settingsCenter.row.microphoneInputDescription")} trailing={<select className="wk-settings-center__demo-select" value={settings.microphoneDeviceId} onChange={(event) => voiceSettingsStore.set({ microphoneDeviceId: event.target.value })}><option value="">{t("base.navRail.settingsCenter.value.systemDefaultMicrophone")}</option>{devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label || t("base.navRail.settingsCenter.value.microphone")}</option>)}</select>} />
+      <SettingsRow title={t("base.navRail.settingsCenter.row.microphoneInput")} description={t("base.navRail.settingsCenter.row.microphoneInputDescription")} trailing={<select aria-label={t("base.navRail.settingsCenter.row.microphoneInput")} className="wk-settings-center__demo-select" value={settings.microphoneDeviceId} onChange={(event) => voiceSettingsStore.set({ microphoneDeviceId: event.target.value })}><option value="">{t("base.navRail.settingsCenter.value.systemDefaultMicrophone")}</option>{devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label || t("base.navRail.settingsCenter.value.microphone")}</option>)}</select>} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.microphonePermission")} description={permissionDescription} trailing={<span className="wk-settings-center__row-actions"><SettingsStatusTag tone={permissionTone} label={permissionLabel} />{(permission === "prompt" || permission === "denied") && <button type="button" className="wk-settings-center__manage-button" onClick={() => { if (permission === "denied") showPermissionGuide(); else void authorize(); }}>{permission === "denied" ? t(environment.target === "web" ? "base.navRail.settingsCenter.action.viewHowToEnable" : "base.navRail.settingsCenter.action.openSystemSettings") : t("base.navRail.settingsCenter.action.authorize")}</button>}</span>} />
     </SettingsSection>
     <SettingsSection title={t("base.navRail.settingsCenter.section.voiceSettings")}>
       <SettingsRow title={t("base.navRail.settingsCenter.row.voiceInputEnabled")} description={voiceDescription} trailing={<Switch checked={settings.enabled} onChange={toggle} />} />
-      {settings.enabled && <><SettingsRow title={t("base.navRail.settingsCenter.row.voiceShortcut")} trailing={<select className="wk-settings-center__demo-select" value={shortcut} onChange={(event) => voiceSettingsStore.set(os === "macos" ? { shortcutMacos: event.target.value as VoiceShortcut } : { shortcutWindows: event.target.value as VoiceShortcut })}><option value="alt-right">{voiceShortcutLabel("alt-right", os)}</option><option value="shift-right">{t("base.navRail.settingsCenter.value.rightShift")}</option><option value="shift-left">{t("base.navRail.settingsCenter.value.leftShift")}</option><option value="disabled">{t("base.navRail.settingsCenter.value.disabled")}</option></select>} /><SettingsRow title={t("base.navRail.settingsCenter.row.speakingMode")} trailing={<select disabled={shortcut === "disabled"} className="wk-settings-center__demo-select" value={settings.speakingMode} onChange={(event) => voiceSettingsStore.set({ speakingMode: event.target.value as VoiceSettings["speakingMode"] })}><option value="toggle">{t("base.navRail.settingsCenter.value.toggle")}</option><option value="hold">{t("base.navRail.settingsCenter.value.hold")}</option></select>} /><LocalVoiceSettings settings={settings} draft={localDraft} dirty={localDirty} setDraft={(next) => { setLocalDraft(next); setLocalDirty(true); }} probeStatus={probeStatus} setProbeStatus={setProbeStatus} onSave={saveLocalSettings} onReset={() => { setLocalDraft({ timeout: String(VOICE_SETTINGS_DEFAULTS.localTimeoutMs), probe: VOICE_SETTINGS_DEFAULTS.localProbeUrl, transcribe: VOICE_SETTINGS_DEFAULTS.localTranscribeUrl }); setLocalDirty(true); setProbeStatus("idle"); }} /></>}
+      {settings.enabled && <><SettingsRow title={t("base.navRail.settingsCenter.row.voiceShortcut")} trailing={<select aria-label={t("base.navRail.settingsCenter.row.voiceShortcut")} className="wk-settings-center__demo-select" value={shortcut} onChange={(event) => voiceSettingsStore.set(os === "macos" ? { shortcutMacos: event.target.value as VoiceShortcut } : { shortcutWindows: event.target.value as VoiceShortcut })}><option value="alt-right">{voiceShortcutLabel("alt-right", os)}</option><option value="shift-right">{t("base.navRail.settingsCenter.value.rightShift")}</option><option value="shift-left">{t("base.navRail.settingsCenter.value.leftShift")}</option><option value="disabled">{t("base.navRail.settingsCenter.value.disabled")}</option></select>} /><SettingsRow title={t("base.navRail.settingsCenter.row.speakingMode")} trailing={<select aria-label={t("base.navRail.settingsCenter.row.speakingMode")} disabled={shortcut === "disabled"} className="wk-settings-center__demo-select" value={settings.speakingMode} onChange={(event) => voiceSettingsStore.set({ speakingMode: event.target.value as VoiceSettings["speakingMode"] })}><option value="toggle">{t("base.navRail.settingsCenter.value.toggle")}</option><option value="hold">{t("base.navRail.settingsCenter.value.hold")}</option></select>} /><LocalVoiceSettings settings={settings} draft={localDraft} dirty={localDirty} setDraft={(next) => { setLocalDraft(next); setLocalDirty(true); }} probeStatus={probeStatus} setProbeStatus={setProbeStatus} onSave={saveLocalSettings} onReset={() => { setLocalDraft({ timeout: String(VOICE_SETTINGS_DEFAULTS.localTimeoutMs), probe: VOICE_SETTINGS_DEFAULTS.localProbeUrl, transcribe: VOICE_SETTINGS_DEFAULTS.localTranscribeUrl }); setLocalDirty(true); setProbeStatus("idle"); }} /></>}
     </SettingsSection>
   </SettingsPageFrame>;
 }

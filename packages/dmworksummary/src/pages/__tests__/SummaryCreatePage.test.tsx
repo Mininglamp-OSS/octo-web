@@ -5,6 +5,7 @@ import SummaryCreatePage from '../SummaryCreatePage';
 import * as api from '../../api/summaryApi';
 import { Dap } from '@octo/base';
 import { isAgentSummaryNotificationEligible } from '../../utils/groupSummaryNotify';
+import { summaryTestIds } from '../../utils/testIds';
 
 import * as summaryHelpers from '../../utils/summaryHelpers';
 vi.mock('@douyinfe/semi-ui', () => ({
@@ -240,7 +241,7 @@ describe('SummaryCreatePage templates', () => {
         const submittedTopic = textarea.value;
 
         await act(async () => {
-            const submit = document.querySelector('.summary-workbench-actions .chat-summary-modal-split > button') as HTMLButtonElement;
+            const submit = screen.getByTestId(summaryTestIds.createSubmit);
             fireEvent.click(submit);
             await flushPromises();
         });
@@ -362,7 +363,7 @@ describe('SummaryCreatePage agent session_id persistence + history rehydrate + n
         expect((api.agentChat as any).mock.calls[0][0].session_id).toBe(stored);
     });
 
-    it('restores session_id + history when switching into agent mode', async () => {
+    it('restores session_id + history when opened with initialMode="agent"', async () => {
         localStorage.setItem(WORKBENCH_KEY, 'restored-sid');
         (api.getAgentChatHistory as any).mockResolvedValue({
             session_id: 'restored-sid',
@@ -374,12 +375,8 @@ describe('SummaryCreatePage agent session_id persistence + history rehydrate + n
 
         const ref = React.createRef<SummaryCreatePage>();
         await act(async () => {
-            render(<SummaryCreatePage ref={ref} />);
-            await flushPromises();
-        });
-
-        await act(async () => {
-            (ref.current as any).handleSelectMode('agent');
+            // 创建页内已无模式切换：列表页「+」下拉选 Agent 后通过 initialMode 进入。
+            render(<SummaryCreatePage ref={ref} initialMode="agent" />);
             await flushPromises();
         });
 
@@ -397,12 +394,7 @@ describe('SummaryCreatePage agent session_id persistence + history rehydrate + n
 
         const ref = React.createRef<SummaryCreatePage>();
         await act(async () => {
-            render(<SummaryCreatePage ref={ref} />);
-            await flushPromises();
-        });
-
-        await act(async () => {
-            (ref.current as any).handleSelectMode('agent');
+            render(<SummaryCreatePage ref={ref} initialMode="agent" />);
             await flushPromises();
         });
 

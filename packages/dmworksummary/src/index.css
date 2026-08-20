@@ -2439,10 +2439,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     gap: 12px;
 }
 
-.summary-workbench--panel .chat-summary-modal-split {
-    align-self: flex-end;
-}
-
 /* Divider */
 .summary-workbench-divider {
     height: 1px;

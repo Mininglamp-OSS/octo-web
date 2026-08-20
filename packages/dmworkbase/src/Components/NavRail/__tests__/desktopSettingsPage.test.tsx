@@ -42,6 +42,12 @@ beforeEach(() => {
   i18n.setLocale("zh-CN", { notify: false, persist: false });
   keepAwake.getEnabled.mockClear();
   keepAwake.setEnabled.mockClear();
+  Object.defineProperty(window, "ipc", {
+    configurable: true,
+    value: { invoke: vi.fn(async (channel: string) => channel === "download-settings-get"
+      ? { directory: "/Users/nancy/Library/Application Support/Octo/Downloads/Shared Files", askBeforeSaving: false }
+      : undefined) },
+  });
   container = document.createElement("div");
   document.body.appendChild(container);
 });
@@ -49,6 +55,7 @@ beforeEach(() => {
 afterEach(() => {
   act(() => ReactDOM.unmountComponentAtNode(container));
   container.remove();
+  delete (window as Window & { ipc?: unknown }).ipc;
 });
 
 describe("SettingsPage desktop behavior", () => {
@@ -65,5 +72,23 @@ describe("SettingsPage desktop behavior", () => {
 
     expect(keepAwake.setEnabled).toHaveBeenCalledWith(true);
     expect(toggle.checked).toBe(true);
+  });
+
+  it("uses the resolved macOS download path from the native adapter", async () => {
+    act(() => ReactDOM.render(<SettingsPage item={{ id: "downloads", labelKey: "base.navRail.settingsCenter.item.downloads" }} environment={environment} />, container));
+    await flush();
+
+    expect(container.textContent).toContain("/Users/nancy/Library/Application Support/Octo/Downloads/Shared Files");
+    expect(container.textContent).toContain("新收到的文件保存到这里。改动只影响之后的下载，已有文件留在原处。");
+  });
+
+  it("shows Desktop voice shortcuts as read-only current client shortcuts", () => {
+    act(() => ReactDOM.render(<SettingsPage item={{ id: "shortcuts", labelKey: "base.navRail.settingsCenter.item.shortcuts" }} environment={environment} />, container));
+
+    expect(container.textContent).toContain("右 Option");
+    expect(container.textContent).toContain("点按");
+    expect(container.textContent).toContain("Esc");
+    expect(container.textContent).not.toContain("暂不支持");
+    expect(container.querySelector("button, select, input")).toBeNull();
   });
 });

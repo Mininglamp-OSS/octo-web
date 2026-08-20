@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState } from "react"
 import { Channel, ChannelInfo, ChannelTypePerson } from "wukongimjssdk"
 import {
   Conversation,
+  Dap,
   WKApp,
   createCurrentEmptyImConversation,
   findCurrentImConversation,
@@ -67,6 +68,19 @@ export async function openAppBotConversation(
 ) {
   await deps.applyBot(bot.uid)
   callbacks.onApplied?.()
+
+  // 埋点：判别是否为 Octo Assistant（octo-dap S3 / YUJ-277）
+  const isOctoAssistant = WKApp.remoteConfig.octoAssistantUids.includes(bot.uid)
+  if (isOctoAssistant) {
+    Dap.shared.track("octo_assistant_opened", {
+      source: "app_bot_list",
+    })
+  } else {
+    Dap.shared.track("app_opened", {
+      app_name: bot.displayName,
+      app_category: bot.scope,
+    })
+  }
 
   const channel = createAppBotChannel(bot)
   const info = createAppBotChannelInfo(bot, channel)

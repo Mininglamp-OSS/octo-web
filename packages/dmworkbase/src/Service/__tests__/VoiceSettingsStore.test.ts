@@ -1,4 +1,32 @@
-import { VOICE_SETTINGS_KEY, VOICE_PROTOCOL_VERSION, voiceSettingsStore } from "../VoiceSettingsStore";
+import { VOICE_SETTINGS_KEY, VOICE_PROTOCOL_VERSION, voiceSettingsStore, voiceShortcutMatches } from "../VoiceSettingsStore";
+
+describe("voiceShortcutMatches", () => {
+  it("matches standard code reporting", () => {
+    expect(voiceShortcutMatches({ code: "AltRight", key: "Alt", location: 2 }, "alt-right")).toBe(true);
+    expect(voiceShortcutMatches({ code: "ShiftRight", key: "Shift", location: 2 }, "shift-right")).toBe(true);
+    expect(voiceShortcutMatches({ code: "ShiftLeft", key: "Shift", location: 1 }, "shift-left")).toBe(true);
+  });
+
+  it("does not cross-match shortcuts", () => {
+    expect(voiceShortcutMatches({ code: "ShiftRight", key: "Shift", location: 2 }, "shift-left")).toBe(false);
+    expect(voiceShortcutMatches({ code: "ShiftLeft", key: "Shift", location: 1 }, "shift-right")).toBe(false);
+    expect(voiceShortcutMatches({ code: "AltRight", key: "Alt", location: 2 }, "shift-right")).toBe(false);
+    expect(voiceShortcutMatches({ code: "ShiftRight", key: "Shift", location: 2 }, "disabled")).toBe(false);
+  });
+
+  it("matches the Windows empty-code right Shift report", () => {
+    // Some Windows keyboard driver / IME combinations report the right Shift
+    // key with an empty code and location 0.
+    expect(voiceShortcutMatches({ code: "", key: "Shift", location: 0 }, "shift-right")).toBe(true);
+  });
+
+  it("does not treat the empty-code fallback as the left Shift", () => {
+    expect(voiceShortcutMatches({ code: "", key: "Shift", location: 0 }, "shift-left")).toBe(false);
+    // A left Shift press always reports ShiftLeft / location 1, so the
+    // fallback must not claim events that already carry a mapped code.
+    expect(voiceShortcutMatches({ code: "ShiftLeft", key: "Shift", location: 1 }, "shift-right")).toBe(false);
+  });
+});
 
 describe("voiceSettingsStore", () => {
   beforeEach(() => {

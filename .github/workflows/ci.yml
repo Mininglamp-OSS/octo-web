@@ -113,9 +113,13 @@ jobs:
         run: >-
           pnpm --filter @octo/base exec vitest run
           src/Service/__tests__/VoiceSettingsStore.test.ts
+          src/Components/NavRail/__tests__/secondarySettingsPages.test.tsx
           src/features/chat-composer/adapters/voice/useVoiceInput.test.tsx
           src/features/chat-composer/ui/voice/VoiceInputIndicator.test.tsx
           src/Components/VoiceInputButton/VoiceInputButton.test.tsx
+          src/Components/NavRail/__tests__/settingsPages.test.tsx
+          src/Components/NavRail/__tests__/desktopSettingsPage.test.tsx
+          src/Components/NavRail/__tests__/QuickMuteStore.test.ts
       - name: Skill Market tests
         run: pnpm --filter @dmwork/skillmarket test
       - name: MCP / Expert market tests

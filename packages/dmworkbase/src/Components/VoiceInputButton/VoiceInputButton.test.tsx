@@ -31,7 +31,8 @@ vi.mock("./useTextareaVoice", () => ({
   },
 }));
 
-vi.mock("../../Service/VoiceSettingsStore", () => ({
+vi.mock("../../Service/VoiceSettingsStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../Service/VoiceSettingsStore")>()),
   getVoiceShortcut: () => mocks.shortcut,
   voiceSettingsStore: {
     get: () => ({ enabled: mocks.settingsEnabled, speakingMode: mocks.speakingMode, shortcutWindows: mocks.shortcut, shortcutMacos: mocks.shortcut }),

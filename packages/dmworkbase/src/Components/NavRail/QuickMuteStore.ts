@@ -28,6 +28,8 @@ interface NotificationPauseResponse {
 }
 
 const QUICK_MUTE_SCOPE_KEY = "octo.quickMute.scope";
+const QUICK_MUTE_SCOPE_VERSION_KEY = "octo.quickMute.scope.version";
+const QUICK_MUTE_SCOPE_VERSION = "2";
 let quickMuteUserId = "";
 
 function scopeStorageKey(userId = quickMuteUserId) {
@@ -36,9 +38,16 @@ function scopeStorageKey(userId = quickMuteUserId) {
 
 function getStoredScope(userId = quickMuteUserId): QuickMuteState["scope"] {
   try {
-    return window.localStorage.getItem(scopeStorageKey(userId)) === "sound"
-      ? "sound"
-      : "sound-and-popup";
+    const key = scopeStorageKey(userId);
+    const versionKey = `${QUICK_MUTE_SCOPE_VERSION_KEY}.${userId ? encodeURIComponent(userId) : "default"}`;
+    const stored = window.localStorage.getItem(key);
+    if (window.localStorage.getItem(versionKey) !== QUICK_MUTE_SCOPE_VERSION) {
+      const migrated = "sound-and-popup" as const;
+      window.localStorage.setItem(key, migrated);
+      window.localStorage.setItem(versionKey, QUICK_MUTE_SCOPE_VERSION);
+      return migrated;
+    }
+    return stored === "sound" ? "sound" : "sound-and-popup";
   } catch {
     return "sound-and-popup";
   }
@@ -47,6 +56,7 @@ function getStoredScope(userId = quickMuteUserId): QuickMuteState["scope"] {
 function storeScope(scope: QuickMuteState["scope"], userId = quickMuteUserId) {
   try {
     window.localStorage.setItem(scopeStorageKey(userId), scope);
+    window.localStorage.setItem(`${QUICK_MUTE_SCOPE_VERSION_KEY}.${userId ? encodeURIComponent(userId) : "default"}`, QUICK_MUTE_SCOPE_VERSION);
   } catch {
     // Local storage can be unavailable in private browsing or test runtimes.
   }

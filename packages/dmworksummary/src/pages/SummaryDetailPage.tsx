@@ -306,19 +306,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     }
 
     /**
-     * 「运行→完成」沿的 smart_summary_completed 单发 + regenerate 复位。状态订阅
+     * 「运行→终态」沿的 smart_summary_completed 单发 + regenerate 复位。状态订阅
      * (handleStatusChangeEvent) 与兜底轮询(doFallbackPollOnce)两路共用本方法与
      * completedTrackedTaskId 去重锚(见三审 R3):先检出者写锚并发,后到者 id 相等即跳过——
-     * 按 task 精确一次。**离开 COMPLETED**(如 regenerate 把状态就地推回 PENDING)时清锚,
+     * 按 task 精确一次。终态含 COMPLETED / FAILED / CANCELLED 三态,以 result 字段区分。
+     * **离开终态**(如 regenerate 把状态就地推回 PENDING)时清锚,
      * 使同一 taskId 的下一次完成能再计一次(见六审 P1b:原先锚只写不清 → 除首次外每轮 regenerate
      * 的完成都命中 id 相等而被跳过,flagship 漏斗 smart_summary_completed 系统性漏计)。
      * 两路必须走同一入口,避免各自内联再次跑偏(这正是三→六审反复回炉的同源)。
      */
     private trackSummaryCompletedOnce(status: TaskStatus, taskId: number) {
-        if (status === TaskStatus.COMPLETED) {
+        // 终态三选一：完成 / 失败 / 取消，都算「一次结束」，按 result 区分。去重锚
+        // completedTrackedTaskId 仍按 task 维度精确一次（先到者写锚发送，后到者 id 相等即跳过）；
+        // 离开终态（如 regenerate 推回 PENDING）时清锚，使同一 taskId 的下一次结束能再计一次。
+        const result =
+            status === TaskStatus.COMPLETED ? "completed" :
+            status === TaskStatus.FAILED ? "failed" :
+            status === TaskStatus.CANCELLED ? "cancelled" :
+            null;
+        if (result) {
             if (this.completedTrackedTaskId !== taskId) {
                 this.completedTrackedTaskId = taskId;
-                Dap.shared.track("smart_summary_completed", {});
+                Dap.shared.track("smart_summary_completed", { result });
             }
         } else if (this.completedTrackedTaskId === taskId) {
             this.completedTrackedTaskId = null;

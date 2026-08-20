@@ -7,6 +7,7 @@ import type { ChatCandidate } from '../../types/summary';
 
 const mockGetChatCandidates = vi.fn();
 const mockSidebarSync = vi.fn();
+const mockGetRoster = vi.fn();
 
 vi.mock('../../api/summaryApi', () => ({
     getChatCandidates: (...args: any[]) => mockGetChatCandidates(...args),
@@ -23,6 +24,12 @@ vi.mock('@octo/base', async () => {
 vi.mock('@octo/base/src/Service/SidebarService', () => ({
     default: { sync: (...args: any[]) => mockSidebarSync(...args) },
     SidebarTargetType: { DM: 1, CHANNEL: 2, THREAD: 5 },
+}));
+
+// Members-mode candidate source (issue #200). getRoster is the cached Space
+// roster the component now reads when no chat is pre-selected.
+vi.mock('@octo/base/src/Service/SpaceService', () => ({
+    SpaceService: { shared: { getRoster: (...args: any[]) => mockGetRoster(...args) } },
 }));
 
 vi.mock('@octo/base/src/Components/AiBadge', () => ({
@@ -440,5 +447,58 @@ describe('ChatSelectorModal — sidebar sync behavior', () => {
         } finally {
             WKApp.shared.deviceId = original;
         }
+    });
+});
+
+describe('ChatSelectorModal — members-mode candidate source (issue #200)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        (WKApp as any).dataSource = undefined;
+    });
+
+    // Open in members mode with no pre-selected chat (channel=null) — the path
+    // that previously read an empty contactsList and showed 「暂无数据」.
+    async function openMembers() {
+        let utils: ReturnType<typeof rtlRender>;
+        await act(async () => {
+            utils = rtlRender(
+                <ChatSelectorModal {...baseProps} mode="members" channel={null} selectedMembers={[]} visible={false} />,
+                { legacyRoot: true },
+            );
+        });
+        await act(async () => {
+            utils!.rerender(
+                <ChatSelectorModal {...baseProps} mode="members" channel={null} selectedMembers={[]} visible={true} />,
+            );
+            await flushPromises();
+        });
+        return utils!;
+    }
+
+    it('无选中群聊时从 Space roster 加载候选，只留人类他人（过滤机器人与自己）', async () => {
+        // WKApp.loginInfo.uid 在 mock 里是 'test-uid'
+        mockGetRoster.mockResolvedValue([
+            { uid: 'u1', name: '张三', robot: 0 },
+            { uid: 'bot1', name: '机器人助手', robot: 1 },
+            { uid: 'test-uid', name: '我自己', robot: 0 },
+        ]);
+
+        const utils = await openMembers();
+
+        expect(mockGetRoster).toHaveBeenCalledWith('space-123');
+        expect(utils.getByText('张三')).toBeInTheDocument();
+        expect(utils.queryByText('机器人助手')).not.toBeInTheDocument();
+        expect(utils.queryByText('我自己')).not.toBeInTheDocument();
+    });
+
+    it('无 currentSpaceId 时退回 contactsList，不调用 getRoster', async () => {
+        WKApp.shared.currentSpaceId = '';
+        (WKApp as any).dataSource = { contactsList: [{ uid: 'c1', name: '李四', robot: false }] };
+
+        const utils = await openMembers();
+
+        expect(mockGetRoster).not.toHaveBeenCalled();
+        expect(utils.getByText('李四')).toBeInTheDocument();
     });
 });

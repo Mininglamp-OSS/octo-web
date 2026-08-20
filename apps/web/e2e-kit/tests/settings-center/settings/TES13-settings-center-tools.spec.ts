@@ -1,0 +1,27 @@
+/* eslint-disable no-undef */
+// spec: apps/web/e2e-kit/case-specs/settings-center/settings/TES13-settings-center-tools.md
+import { test, expect } from "../../../fixtures-authed";
+
+test("@TES13 @p1 @settings-center @tools 工具页展示快捷键和资源", async ({ authedPage }) => {
+  await authedPage.getByRole("button", { name: "设置" }).click();
+  await authedPage.getByRole("combobox", { name: "界面语言" }).selectOption("en-US");
+  const content = authedPage.getByTestId("settings-center-content");
+
+  await authedPage.getByTestId("settings-center-nav-shortcuts").click();
+  await expect(content).toContainText("Voice input");
+  await expect(content).toContainText("Hold to talk");
+  await expect(content).toContainText("Cancel voice input");
+  await expect(content).not.toContainText("New chat");
+  await expect(content).not.toContainText("Navigation");
+  await expect(content.locator(".wk-settings-center__shortcut-row")).toHaveCount(2);
+  await expect(content.locator("kbd")).toHaveCount(3);
+
+  await authedPage.getByTestId("settings-center-nav-devices").click();
+  for (const name of ["Android", "iPhone", "Windows", "macOS", "Octo Chrome Extension", "OpenClaw Plugin"]) {
+    await expect(content.getByText(name, { exact: true })).toBeVisible();
+  }
+  await expect(content).toContainText("Mobile");
+  await expect(content).toContainText("Extensions and connections");
+  await expect(content).toContainText("Source: ClawHub · GitHub");
+  await expect(authedPage.getByRole("link", { name: "Download from GitHub" })).toHaveAttribute("href", "https://github.com/Mininglamp-OSS/octo-android/releases/latest");
+});

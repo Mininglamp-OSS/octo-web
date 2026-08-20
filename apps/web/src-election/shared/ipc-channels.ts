@@ -13,6 +13,16 @@ export const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count"
 export const IPC_KEEP_AWAKE_GET = "keep-awake-get";
 export const IPC_KEEP_AWAKE_SET = "keep-awake-set";
 
+/** Renderer ↔ Main: persist and apply Desktop application behavior settings. */
+export const IPC_DESKTOP_SETTINGS_GET = "desktop-settings-get";
+export const IPC_DESKTOP_SETTINGS_SET = "desktop-settings-set";
+export const IPC_DOWNLOAD_SETTINGS_GET = "download-settings-get";
+export const IPC_DOWNLOAD_SETTINGS_SET = "download-settings-set";
+export const IPC_DOWNLOAD_DIRECTORY_CHOOSE = "download-directory-choose";
+export const IPC_DOWNLOAD_URL = "download-url";
+export const IPC_DOWNLOAD_STATUS = "download-status";
+export const IPC_OPEN_SYSTEM_SETTINGS = "open-system-settings";
+
 /** Renderer → Main: desktop system capabilities. */
 export const IPC_SCREENSHOTS_START = "screenshots-start";
 export const IPC_SCREENSHOTS_OK = "screenshots-ok";

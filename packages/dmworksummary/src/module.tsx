@@ -157,8 +157,8 @@ export class SummaryModule implements IModule {
         // 背景：之前 summary 只挂了路由 + 聊天窗口星标按钮，没有顶层可见菜单，
         // 导致「多人协作 / 多人定时」入口在主导航上找不到。菜单 id 须为 "summary"，
         // 与 WKApp.switchToMenuById("summary") 及 SummaryListPage 监听的 wk:nav-menu-activated
-        // (menuId === "summary") 保持一致；路由指向 /summary 列表页（列表页内「新建」
-        // 进入创建页，可选参与者 + 定时）。
+        // (menuId === "summary") 保持一致；路由指向 /summary 列表页（列表页内「+」下拉选择
+        // 总结方式：快速总结 / Agent 总结，进入对应创建页，可选参与者 + 定时）。
         WKApp.menus.register(
             "summary",
             () => {
@@ -172,7 +172,11 @@ export class SummaryModule implements IModule {
                 // #1359 未处理邀请红点：badge 字段与 NavRail 渲染已存在，
                 // 此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
                 menu.badge = getPendingInvitationBadge();
-                // 保留既有顶层入口行为：点击后直接进入新建总结页。
+                // 点击「总结」进入列表页：主区 SummaryListPage 已由 MainContentLeft 按
+                // currentMenus.routePath(/summary) 渲染（Menu 激活即挂载唯一实例）。
+                // 这里不再 replaceToRoot 页面——否则会在导航栈额外推入一份 /summary
+                // 造成列表页双实例（strict mode violation），只清空左/右导航栈，
+                // 与无 onPress 菜单的宿主默认分支（popToRoot both）行为一致。
                 menu.onPress = (reentry?: boolean) => {
                     // 埋点 290:从 NavRail「总结」顶层入口进入模块（隐私 props 恒空）。
                     // 重复点击已激活的总结菜单不计（reentry），宿主按 prevMenuId===id 传入（见二审 P2-4）。
@@ -180,10 +184,7 @@ export class SummaryModule implements IModule {
                         Dap.shared.track("smart_summary_module_entered", {});
                     }
                     WKApp.routeLeft.popToRoot();
-                    const page = WKApp.route.get("/summary/create");
-                    if (page && React.isValidElement(page)) {
-                        WKApp.routeRight.replaceToRoot(page);
-                    }
+                    WKApp.routeRight.popToRoot();
                 };
                 return menu;
             },

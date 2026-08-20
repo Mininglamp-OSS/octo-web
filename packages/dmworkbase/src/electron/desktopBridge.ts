@@ -64,6 +64,7 @@ const IPC_SCREENSHOTS_START = "screenshots-start";
 const IPC_MEDIA_ACCESS_STATUS = "get-media-access-status";
 const IPC_RESTART_APP = "restart-app";
 const IPC_OIDC_CLEAR_AUTH_SESSION = "octo:oidc:clear-auth-session";
+const IPC_OPEN_SYSTEM_SETTINGS = "open-system-settings";
 
 export function getOctoElectronBridge(): OctoElectronBridge | undefined {
   return typeof window === "undefined" ? undefined : window.octoElectron;
@@ -155,4 +156,8 @@ export function clearElectronAuthSession(): Promise<unknown> | undefined {
     return oidc.clearAuthSession();
   }
   return getElectronIpcBridge()?.invoke(IPC_OIDC_CLEAR_AUTH_SESSION);
+}
+
+export function openElectronSystemSettings(target: "microphone" | "notifications"): Promise<boolean> {
+  return getElectronIpcBridge()?.invoke(IPC_OPEN_SYSTEM_SETTINGS, target).then((result) => result === true) ?? Promise.resolve(false);
 }

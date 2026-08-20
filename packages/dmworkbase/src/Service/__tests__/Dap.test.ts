@@ -434,21 +434,21 @@ describe('Dap — 中央映射·body 键通道(②):按请求体顶层键补发�
         return (body.events as Array<{ event_name: string }>).map((e) => e.event_name)
     }
 
-    it('PUT /api/v1/groups/:id/setting {mute} → conversation_muted(2xx 补发,不泄露体值)', async () => {
+    it('PUT /api/v1/groups/:id/setting {save} → conversation_saved_to_contacts(2xx 补发,不泄露体值)', async () => {
         const { Dap } = await freshTracker()
         Dap.shared.setEnabled(true)
         Dap.shared.init()
 
         await globalThis.fetch(`${location.origin}/api/v1/groups/g1/setting`, {
             method: 'PUT',
-            body: JSON.stringify({ mute: 1, remark_secret: 'do-not-leak' }),
+            body: JSON.stringify({ save: 1, remark_secret: 'do-not-leak' }),
         })
         Dap.shared.flush()
         await Promise.resolve()
 
         const names = eventNamesFromBatch()
         expect(names).toContain('http_request')
-        expect(names).toContain('conversation_muted')
+        expect(names).toContain('conversation_saved_to_contacts')
         // 体里的任何值都不得出现在上报里
         const batchCall = fetchMock.mock.calls.find((c) => c[0] === BATCH_PATH)
         expect(JSON.stringify(batchCall![1]).includes('do-not-leak')).toBe(false)
@@ -476,12 +476,13 @@ describe('Dap — 中央映射·body 键通道(②):按请求体顶层键补发�
         Dap.shared.init()
         await globalThis.fetch(`${location.origin}/api/v1/not-whitelisted/x`, {
             method: 'PUT',
-            body: JSON.stringify({ mute: 1 }),
+            body: JSON.stringify({ save: 1 }),
         })
         Dap.shared.flush()
         await Promise.resolve()
 
-        expect(eventNamesFromBatch()).not.toContain('conversation_muted')
+        // save 在 */setting 白名单端点才映射;非白名单端点即便体里有 save 也不读、不映射。
+        expect(eventNamesFromBatch()).not.toContain('conversation_saved_to_contacts')
     })
 
     it('4xx 不补发 body 映射事件', async () => {
@@ -495,12 +496,13 @@ describe('Dap — 中央映射·body 键通道(②):按请求体顶层键补发�
         Dap.shared.init()
         await globalThis.fetch(`${location.origin}/api/v1/groups/g1/setting`, {
             method: 'PUT',
-            body: JSON.stringify({ mute: 1 }),
+            body: JSON.stringify({ save: 1 }),
         })
         Dap.shared.flush()
         await Promise.resolve()
 
-        expect(eventNamesFromBatch()).not.toContain('conversation_muted')
+        // 白名单端点 + 体里有 save,但 4xx → 不补发(只 2xx 才映射 body 事件)。
+        expect(eventNamesFromBatch()).not.toContain('conversation_saved_to_contacts')
     })
 })
 

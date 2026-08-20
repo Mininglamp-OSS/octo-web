@@ -1,8 +1,7 @@
-import { Button, Dropdown } from "@octo/ui";
-import { Sparkles, X, Plus, ChevronDown } from "lucide-react";
+import { Button } from "@octo/ui";
+import { Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
-    SplitButtonGroup,
     Toast,
     Typography,
     Tag,
@@ -69,6 +68,12 @@ interface SummaryCreatePageProps {
     onSubmit?: (taskId: number) => void;
     /** 打开总结创建的来源入口(埋点 source/entry_point,枚举值,非正文)。 */
     source?: string;
+    /**
+     * 初始总结方式。列表页「+」下拉选择后传入：
+     * "normal"=快速总结（默认），"agent"=Agent 总结。
+     * mount 时若为 agent 会自动进入 agent 模式（恢复历史 session）。
+     */
+    initialMode?: "normal" | "agent";
 }
 
 interface SummaryCreatePageState {
@@ -137,7 +142,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         topic: "",
         appliedTemplateLabel: "",
         customTemplateLimit: 30,
-        mode: 'normal',
+        mode: this.props.initialMode === "agent" ? "agent" : "normal",
         templates: TOPIC_TEMPLATES,
         templatePlaceholderRange: null,
         selectedChats: (() => {
@@ -202,9 +207,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         const actions = selectChat.parentElement;
         if (!actions) return;
-        const startGroup = actions.querySelector('.chat-summary-modal-split');
+        // 创建页右下角从「SplitButtonGroup(开始总结下拉)」收敛为单个 createSubmit 按钮，
+        // 宽度预留即减该按钮宽度（原逻辑减 .chat-summary-modal-split，已随下拉删除）。
+        const submitBtn = actions.querySelector('[data-testid="summary-create-submit"]');
         const actionsWidth = actions.clientWidth;
-        const groupWidth = startGroup ? (startGroup as HTMLElement).offsetWidth : 0;
+        const groupWidth = submitBtn ? (submitBtn as HTMLElement).offsetWidth : 0;
         const gap = 24;
         const width = actionsWidth - groupWidth - gap;
         selectChat.style.width = width + 'px';
@@ -319,6 +326,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 task_id: this.props.derivedFromTask.task_id,
                 title: this.props.derivedFromTask.title ?? '',
             });
+        } else if (this.props.initialMode === "agent") {
+            // 列表页「+」下拉选择 Agent 总结进入：恢复历史 session 并回显。
+            this.enterAgentMode();
         }
     }
 
@@ -615,6 +625,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             object_id: this.props.channel?.channelID,
             source: this.props.source,
             entry_point: this.props.source,
+            entry_source: this.props.source,
             trigger_mode: this.state.mode,
         };
 
@@ -794,19 +805,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     handlePrimaryClick = () => {
         if (this.state.mode !== 'agent') {
             void this.handleSubmit();
-        }
-    };
-
-    /** 下拉菜单选择模式：切到 agent 时从 localStorage 恢复 session_id 并回显历史。 */
-    handleSelectMode = (mode: 'normal' | 'agent') => {
-        // 已在目标模式则短路，避免重复进入 agent 触发多余的历史拉取/状态重置。
-        if (mode === this.state.mode) return;
-        // 埋点 294:总结模式切换（普通↔agent），短路之后发，避免重复点同模式虚发。
-        Dap.shared.track("smart_summary_mode_switched", {});
-        if (mode === 'agent') {
-            this.enterAgentMode();
-        } else {
-            this.setState({ mode });
         }
     };
 
@@ -998,6 +996,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 object_id: this.props.channel?.channelID,
                 source: this.props.source,
                 entry_point: this.props.source,
+                entry_source: this.props.source,
                 trigger_mode: 'agent',
             });
             markAgentSummaryNotificationEligible(result.task_id);
@@ -1422,52 +1421,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             </div>
                             )}
                         </div>
-                        {/* 右下角：默认「开始总结」主按钮 + 下拉切换总结方式（SplitButtonGroup，与 ChatSummaryNewModal 一致） */}
-                        <SplitButtonGroup className="chat-summary-modal-split">
-                            {mode !== 'agent' && (
-                                <Button
-                                    data-testid={summaryTestIds.createSubmit}
-                                    theme="solid"
-                                    loading={submitting}
-                                    disabled={!this.canSubmit() || submitting}
-                                    onClick={this.handlePrimaryClick}
-                                >
-                                    <Sparkles size={16} />
-                                    {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
-                                </Button>
-                            )}
-                            <Dropdown
-                                trigger="click"
-                                position="bottomRight"
-                                render={(
-                                    <Dropdown.Menu>
-                                        <Dropdown.Item
-                                            data-testid={summaryTestIds.createNormalTab}
-                                            active={mode !== 'agent'}
-                                            onClick={() => this.handleSelectMode('normal')}
-                                        >
-                                            {translate("summary.create.start")}
-                                        </Dropdown.Item>
-                                        <Dropdown.Item
-                                            data-testid={summaryTestIds.createAgentTab}
-                                            active={mode === 'agent'}
-                                            onClick={() => this.handleSelectMode('agent')}
-                                        >
-                                            {translate("summary.create.agentStart")}
-                                        </Dropdown.Item>
-                                    </Dropdown.Menu>
-                                )}
+                        {/* 右下角：主提交按钮。总结方式选择已上移到列表页「+」下拉，此处不再提供切换。 */}
+                        {mode !== 'agent' && (
+                            <Button
+                                data-testid={summaryTestIds.createSubmit}
+                                theme="solid"
+                                loading={submitting}
+                                disabled={!this.canSubmit() || submitting}
+                                onClick={this.handlePrimaryClick}
                             >
-                                <Button
-                                    data-testid={summaryTestIds.createModeSwitch}
-                                    theme="solid"
-                                    icon={<ChevronDown size={16} />}
-                                    aria-label={translate("summary.create.switchMode")}
-                                    title={translate("summary.create.switchMode")}
-                                    disabled={submitting}
-                                />
-                            </Dropdown>
-                        </SplitButtonGroup>
+                                <Sparkles size={16} />
+                                {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                            </Button>
+                        )}
                     </div>
                 </div>
 

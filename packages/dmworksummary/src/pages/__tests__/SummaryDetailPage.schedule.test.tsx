@@ -752,6 +752,8 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
 
             const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
             expect(completed).toHaveLength(1);
+            // 不只钉事件名:终态漏斗以 result 区分 completed/failed/cancelled,必须钉住 payload。
+            expect(completed[0][1]).toEqual({ result: 'completed' });
         } finally {
             track.mockRestore();
         }
@@ -778,6 +780,47 @@ describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under s
 
             const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
             expect(completed).toHaveLength(2);
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    // 终态不止 COMPLETED:FAILED(4)/CANCELLED(5) 同样是「一次结束」,以 result 区分。之前用例只跑
+    // COMPLETED,failed/cancelled 分支从无覆盖——若有人把 helper 的 result 三目改坏(如漏掉 FAILED),
+    // 现有测试全绿也发现不了。这里钉住:运行→FAILED / 运行→CANCELLED 各发一次且 result 值正确。
+    it('运行→FAILED 发一次 smart_summary_completed{result:failed}', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 4 /* FAILED */ }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(1);
+            expect(completed[0][1]).toEqual({ result: 'failed' });
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    it('运行→CANCELLED 发一次 smart_summary_completed{result:cancelled}', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 5 /* CANCELLED */ }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(1);
+            expect(completed[0][1]).toEqual({ result: 'cancelled' });
         } finally {
             track.mockRestore();
         }

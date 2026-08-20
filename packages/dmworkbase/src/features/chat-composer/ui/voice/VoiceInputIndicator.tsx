@@ -16,7 +16,7 @@ import type {
 } from "../../ports";
 import { VoiceMode } from "../../../../Service/VoiceService";
 import { useI18n } from "../../../../i18n";
-import { getVoiceShortcut, voiceSettingsStore } from "../../../../Service/VoiceSettingsStore";
+import { getVoiceShortcut, voiceSettingsStore, voiceShortcutMatches } from "../../../../Service/VoiceSettingsStore";
 
 type ReplaceMode = "all" | "selection" | "insert";
 
@@ -289,7 +289,6 @@ export default function VoiceInputIndicator({
     const os = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows" as const;
     const configuredShortcut = getVoiceShortcut(voiceSettings, os);
     if (configuredShortcut === "disabled") return;
-    const shortcutCode = configuredShortcut === "alt-right" ? "AltRight" : configuredShortcut === "shift-right" ? "ShiftRight" : "ShiftLeft";
     const modifiersValid = (event: KeyboardEvent) => configuredShortcut === "alt-right"
       ? !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.getModifierState("AltGraph")
       : !event.altKey && !event.ctrlKey && !event.metaKey;
@@ -307,7 +306,7 @@ export default function VoiceInputIndicator({
         return;
       }
 
-      if (e.code === shortcutCode && !e.repeat && modifiersValid(e)) {
+      if (voiceShortcutMatches(e, configuredShortcut) && !e.repeat && modifiersValid(e)) {
         if (voiceSettings.speakingMode === "toggle") {
           e.preventDefault();
           if (isRecordingRef.current) stopRecordingRef.current();
@@ -330,7 +329,7 @@ export default function VoiceInputIndicator({
 
       // Long-press configured shortcut: start after 500ms.
       if (
-        e.code === shortcutCode &&
+        voiceShortcutMatches(e, configuredShortcut) &&
         !e.repeat &&
         modifiersValid(e)
       ) {
@@ -366,7 +365,7 @@ export default function VoiceInputIndicator({
         return;
       }
 
-      if (shiftTimerRef.current !== null && e.code !== shortcutCode) {
+      if (shiftTimerRef.current !== null && !voiceShortcutMatches(e, configuredShortcut)) {
         // Modifier chord (Ctrl/Meta/Alt pressed): cancel voice intent
         if (
           e.code.startsWith("Control") ||
@@ -378,7 +377,7 @@ export default function VoiceInputIndicator({
         }
         // IME-related events: do not cancel timer
         const isIME =
-          e.code.startsWith("Shift") ||
+          e.key === "Shift" ||
           e.key === "Process" ||
           e.key === "Unidentified" ||
           e.isComposing;
@@ -400,14 +399,14 @@ export default function VoiceInputIndicator({
       }
 
       // ShiftLeft released while timer is pending: cancel (normal Shift press)
-      if (e.code === shortcutCode && shiftTimerRef.current !== null) {
+      if (voiceShortcutMatches(e, configuredShortcut) && shiftTimerRef.current !== null) {
         clearShiftTimer();
         return;
       }
 
       // ShiftLeft released while waiting for getUserMedia (recording not yet started)
       if (
-        e.code === shortcutCode &&
+        voiceShortcutMatches(e, configuredShortcut) &&
         shiftRecordingRef.current &&
         !isRecordingRef.current
       ) {
@@ -418,7 +417,7 @@ export default function VoiceInputIndicator({
 
       // ShiftLeft released after long-press recording started: stop recording
       if (
-        e.code === shortcutCode &&
+        voiceShortcutMatches(e, configuredShortcut) &&
         shiftRecordingRef.current &&
         isRecordingRef.current
       ) {

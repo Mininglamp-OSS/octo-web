@@ -26,6 +26,7 @@ import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../
 import Provider from "../../Service/Provider";
 import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
+import { isMessageAuthorAi } from "./replyAiIdentity";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
@@ -132,6 +133,7 @@ import {
   taskStatusWaitResult,
 } from "../../Utils/sendWaitResult";
 import { parseThreadChannelId } from "../../Service/Thread";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import { captureSelectionWithinContainer } from "./copySelection";
 import VoiceFeedback from "../../Service/VoiceFeedback";
@@ -652,7 +654,68 @@ export class Conversation
       return Promise.reject(new Error("group disbanded"));
     }
     const message = await vm.sendMessage(content, c);
+
+    // 埋点：octo_assistant_queried（octo-dap S3 / YUJ-277）
+    // 判别：当前会话是 1v1、bot.uid 在 octoAssistantUids 中,且本次发送是文本消息。
+    // 只计文本发送 —— 贴图/文件/转发媒体等经同一 sendMessage 漏斗但不是「提问」,
+    // 计进来会虚高 query 量并全部落 intent_tag=other(见 #1452 review P2)。
+    if (c.channelType === ChannelTypePerson && content instanceof MessageText) {
+      // Space 部署下 Person channelID 形如 s<32hex>_<uid>,而 octoAssistantUids 存的是裸 uid
+      // (兄弟事件 octo_assistant_opened 走 bot.uid 裸值)。不 strip 则 includes() 恒 false,
+      // 进会话列表打开的助手 DM 永远不发 query,造成 opened 有、queried 无的畸形漏斗(#1452 P1-2)。
+      // stripSpacePrefix 对非 Space 部署幂等。
+      const botUid = stripSpacePrefix(c.channelID);
+      if (WKApp.remoteConfig.octoAssistantUids.includes(botUid)) {
+        const intentTag = this.classifyAssistantIntent(content);
+        Dap.shared.track("octo_assistant_queried", { intent_tag: intentTag });
+      }
+    }
+
     return message;
+  }
+
+  /**
+   * 启发式分类用户向 Octo Assistant 发送的消息意图（octo-dap S3 / YUJ-277）。
+   * 不采原文，只返回分类标签：
+   * - summary：含"总结"/"摘要"/"概括"
+   * - analysis：含"分析"/"解读"
+   * - code_gen：含代码围栏(```)或明确的写码信号
+   * - qa：含问号
+   * - other：其他
+   *
+   * 顺序：显式意图动词(summary/analysis)先判,code_gen 收紧到「代码围栏或强代码信号」——
+   * 旧实现把 code_gen 排在最前且关键词含 code/let/const/var 等日常英文词,会把
+   * "总结一下这段 code" 误判 code_gen、把 "Let me know…" 误判 code_gen(见 #1452 review P2)。
+   */
+  private classifyAssistantIntent(content: MessageContent): string {
+    if (!(content instanceof MessageText)) {
+      return "other";
+    }
+    const text = (content as MessageText).text || "";
+    if (!text) return "other";
+
+    // 摘要：含总结/摘要/概括（显式意图优先，避免被 code_gen 的宽泛词吞掉）
+    if (/总结|摘要|概括|summariz|summary/i.test(text)) {
+      return "summary";
+    }
+    // 分析：含分析/解读
+    if (/分析|解读|analyz|analysis/i.test(text)) {
+      return "analysis";
+    }
+    // 代码生成：需代码围栏，或明确的写码信号（收紧，不再用 code/let/const 等日常词误命中）
+    if (
+      text.includes("```") ||
+      /写(段|个|一)?代码|代码实现|生成代码|帮我(写|实现).*(函数|方法|代码|脚本)|报错|编译|\bdebug\b|\bfunction\b|\bclass\b|\bdef\b/i.test(
+        text
+      )
+    ) {
+      return "code_gen";
+    }
+    // 问答：含问号
+    if (text.includes("?") || text.includes("？")) {
+      return "qa";
+    }
+    return "other";
   }
 
   // 统一上报转发结果。区分「全部失败」与「部分失败（带计数）」，全部成功不提示。
@@ -706,7 +769,13 @@ export class Conversation
         );
         const kind = this.showForwardResult(result, "targets");
         // 全部目标失败(如群已解散)不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
-        if (kind !== "all-failed") Dap.shared.track("message_forwarded", {});
+        if (kind !== "all-failed") Dap.shared.track("message_forwarded", {
+            object_id: message.messageID,
+            message_id: message.messageID,
+            // is_ai_msg:被转发消息的作者是否 AI/bot(与 message_replied 同源判据),
+            // 供区分 AI 消息转发漏斗(session.go ai_msg_forward)。见 #1452 review。
+            is_ai_msg: isMessageAuthorAi(message.fromUID),
+        });
       } catch (e) {
         console.error("[forward] build content failed", e);
         const blockedMessageKey = forwardBlockedMessageKey(e);

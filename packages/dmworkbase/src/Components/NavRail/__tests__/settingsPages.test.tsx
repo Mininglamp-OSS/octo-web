@@ -41,7 +41,7 @@ afterEach(() => {
 describe("SettingsPage notifications", () => {
   it("changes mute scope and persists notification toggle state", () => {
     act(() => ReactDOM.render(<SettingsPage item={{ id: "notifications", labelKey: "base.navRail.settingsCenter.item.notifications" }} environment={environment} />, container));
-    const scope = container.querySelector("select[aria-label=\"静音时关闭\"]") as HTMLSelectElement;
+    const scope = container.querySelector("select[aria-label=\"静音方式\"]") as HTMLSelectElement;
     act(() => {
       scope.value = "sound-and-popup";
       scope.dispatchEvent(new Event("change", { bubbles: true }));

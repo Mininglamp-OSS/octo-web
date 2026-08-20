@@ -129,12 +129,21 @@ describe('SecretsSettingsPanel deep-link prefill (one-shot)', () => {
     act(() => { ReactDOM.render(React.createElement(SecretsSettingsPanel, { onClose: vi.fn() }), container); });
     await flush();
     const addBtn = container.querySelector('button') as HTMLButtonElement;
-    act(() => {
-      addBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      addBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-      addBtn.click();
-    });
+    act(() => { addBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); });
+    act(() => { addBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 })); });
+    act(() => { addBtn.click(); });
     await flush();
     expect(editModalProps).toHaveLength(1);
+  });
+
+  it('does not open the create editor for a secondary mouse button', async () => {
+    act(() => { ReactDOM.render(React.createElement(SecretsSettingsPanel, { onClose: vi.fn() }), container); });
+    await flush();
+    const addBtn = container.querySelector('button') as HTMLButtonElement;
+    act(() => { addBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 2 })); });
+    act(() => { addBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 2 })); });
+    act(() => { addBtn.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 })); });
+    await flush();
+    expect(editModalProps).toHaveLength(0);
   });
 });

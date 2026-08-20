@@ -29,6 +29,19 @@ describe("parseWebhookIssuePreviewTarget", () => {
     });
   });
 
+  it("accepts a same-host Fleet link when only the protocol differs", () => {
+    expect(
+      parseWebhookIssuePreviewTarget(
+        "http://octo.example/fleet/team-a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).toEqual({
+      workspaceSlug: "team-a",
+      issueIdentifier: "OPS-9",
+      sourceUrl: "http://octo.example/fleet/team-a/issues/OPS-9",
+    });
+  });
+
   it("rejects unrelated and unsafe links", () => {
     expect(parseWebhookIssuePreviewTarget("https://example.com/docs/1")).toBeNull();
     expect(
@@ -40,6 +53,12 @@ describe("parseWebhookIssuePreviewTarget", () => {
     expect(parseWebhookIssuePreviewTarget("javascript:alert(1)")).toBeNull();
     expect(parseWebhookIssuePreviewTarget("https://example.com/fleet/a/issues"))
       .toBeNull();
+    expect(
+      parseWebhookIssuePreviewTarget(
+        "http://octo.example:8080/fleet/a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
   });
 });
 

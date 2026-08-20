@@ -10,7 +10,11 @@
  *     sendack Normal 时消费。意图里**不含任何正文**,只含枚举 / 类型 / 布尔。
  *   - `bot_create_started`(§5.4):仅前端 started 语义,不追后端 completed;/newbot 只测前缀识别已知命令,
  *     绝不采集正文,只 emit 事件 + entry。
- *   - 一律不写 actor(user_id / actor_type),后端按凭证归一。
+ *   - ai_mentioned 补 actor_type / user_id:owner 定前端补写。user_id 由发送方(VM 生产者)
+ *     从 WKApp.loginInfo 取好后经 intent 注入(见 SendIntent.userId),本 leaf service 不再
+ *     静态 import App —— 否则会把 App.tsx 的重组件图拖进 SDK-mock 的单测,import 即炸。
+ *     actor_type 目前恒为 'user'(前端发送侧只有人类凭证;bot 发送不走本路径),非运行时派生。
+ *     sink 顶层列口径:用户操作='user'、机器人操作='bot'(不用 'human')。
  */
 import { Dap } from './Dap'
 import { WKSDK, SendackPacket } from 'wukongimjssdk'
@@ -39,6 +43,12 @@ interface SendIntent {
     isReply?: boolean
     /** 被 @ 的 AI bot 列表(供 ai_mentioned 补 bot_id/bot_type;type ∈ 'system'|'custom') */
     mentionedBots?: Array<{ id: string; type: string }>
+    /** 消息 ID(供 message_replied 等事件补 message_id 属性) */
+    messageId?: string
+    /** 被回复消息的作者是否为 AI/bot(供 message_replied 补 is_ai_msg;由生产者查 subscriber robot 标记得出) */
+    isReplyToAi?: boolean
+    /** 当前登录用户 uid(供 ai_mentioned 补 user_id;由生产者从 WKApp.loginInfo 注入,避免 leaf import App) */
+    userId?: string | null
 }
 
 /** 按 clientSeq 暂存发送意图,sendack 时消费。带上限防泄漏。 */
@@ -80,8 +90,9 @@ function ensureGlobalAckListener(): void {
     if (ackListenerBound) return
     try {
         WKSDK.shared().chatManager.addMessageStatusListener((p: SendackPacket) => {
-            // reasonCode===1 = IM 服务端已受理(submitted 口径),与原 VM 路径判据一致
-            if (p && p.reasonCode === 1) trackMessageSent(p.clientSeq)
+            // reasonCode===1 = IM 服务端已受理(submitted 口径),与原 VM 路径判据一致。
+            // messageID = 服务端分配的消息 ID(BigNumber,纯标识非正文),转成字符串补进 message_sent.message_id。
+            if (p && p.reasonCode === 1) trackMessageSent(p.clientSeq, p.messageID != null ? String(p.messageID) : undefined)
         })
         ackListenerBound = true
         // 停采时清空 intents,使 kill switch 关闭后不留常驻缓存。监听本身无法从 WKSDK 摘除,
@@ -93,7 +104,7 @@ function ensureGlobalAckListener(): void {
 }
 
 /** sendack Normal(reasonCode===1)时调:发 message_sent(+ ai_mentioned / bot_create_started)。 */
-export function trackMessageSent(clientSeq: number | undefined): void {
+export function trackMessageSent(clientSeq: number | undefined, messageId?: string): void {
     if (!clientSeq) return
     // fail-closed:停采后即便常驻监听仍在、intents 已被清空,这里也直接 no-op(双保险)。
     if (!Dap.shared.isEnabled()) return
@@ -107,25 +118,46 @@ export function trackMessageSent(clientSeq: number | undefined): void {
         channel_type: intent.channelType,
         chat_type: chatType,
         object_id: String(clientSeq), // client_seq 作 object_id
+        // 服务端分配的消息 ID(sendack 才拿得到);无值时 sanitizeProps 丢弃。仅 message_sent 用,
+        // 下游 message_replied/ai_mentioned 只引用 base.object_id、不 spread base,故不受影响。
+        message_id: messageId,
     }
     Dap.shared.track('message_sent', base)
-    // §IM 16:回复(reply)语义。props 恒空,不带正文/被回复消息内容。
+    // §IM 16:回复(reply)语义。spec 关键属性 = {is_ai_msg, channel_id, actor_type}。
+    // message_id = 被回复消息的 ID(纯标识,非正文);无 reply 上下文时 intent.messageId
+    // 为 undefined,被 sanitizeProps 丢弃。is_ai_msg 由生产者查 subscriber robot 标记得出
+    // (被回复者是否 AI = 人机协作深度信号,驱动 T0/T1 分层);actor_type 恒 'user'(发送侧只有人类凭证,
+    // sink 顶层列口径:用户操作='user'、机器人操作='bot';不用 'human')。
     if (intent.isReply) {
-        Dap.shared.track('message_replied', {})
+        Dap.shared.track('message_replied', {
+            object_id: base.object_id,
+            message_id: intent.messageId,
+            channel_id: intent.channelId,
+            actor_type: 'user',
+            is_ai_msg: intent.isReplyToAi ?? false,
+        })
     }
     const bots = intent.mentionedBots || []
     if (intent.mentionAis || bots.length > 0) {
+        // 8.11 新属性:补 actor_type / user_id(前端写,owner 定)。actor_type 恒 'user'
+        // (发送侧只有人类凭证;sink 口径 user/bot,不用 'human');user_id 由生产者经 intent 注入,避免 leaf import App。
+        const actorType = 'user'
+        const userId = intent.userId ?? null
         if (bots.length > 0) {
             // 每个被 @ 的 AI bot 一条,带 bot_id/bot_type(§B: 多AI协作/系统内置 vs 自建分布)
             for (const b of bots) {
                 Dap.shared.track('ai_mentioned', {
                     channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id,
                     bot_id: b.id, bot_type: b.type,
+                    actor_type: actorType, user_id: userId,
                 })
             }
         } else {
             // @所有AI 但订阅列表未解析出具体 bot:退化为一条无 bot_id 的
-            Dap.shared.track('ai_mentioned', { channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id })
+            Dap.shared.track('ai_mentioned', {
+                channel_id: intent.channelId, chat_type: chatType, object_id: base.object_id,
+                actor_type: actorType, user_id: userId,
+            })
         }
     }
     if (intent.botCreateEntry) {

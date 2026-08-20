@@ -1,3 +1,5 @@
+import { VOICE_PROTOCOL_VERSION } from "./VoiceProtocol";
+
 export type VoiceShortcut = "alt-right" | "shift-right" | "shift-left" | "disabled";
 export type VoiceSpeakingMode = "toggle" | "hold";
 
@@ -15,7 +17,7 @@ export interface VoiceSettings {
 }
 
 export const VOICE_SETTINGS_KEY = "octo.voice-input.v1";
-export const VOICE_PROTOCOL_VERSION = "1.12";
+export { VOICE_PROTOCOL_VERSION };
 const LEGACY_SERVER_MIGRATION = "legacy-server-config-migrated";
 
 export const VOICE_SETTINGS_DEFAULTS: VoiceSettings = {
@@ -147,4 +149,32 @@ export const voiceSettingsStore = {
 
 export function getVoiceShortcut(settings: VoiceSettings, os: "windows" | "macos"): VoiceShortcut {
   return os === "macos" ? settings.shortcutMacos : settings.shortcutWindows;
+}
+
+/**
+ * Matches a keyboard event against the configured voice shortcut.
+ *
+ * On Windows, some keyboard driver / IME combinations report the right Shift
+ * key with an empty `code` and `location === 0` instead of the standard
+ * `ShiftRight` / `location === 2`. Matching only on `e.code === "ShiftRight"`
+ * silently drops the key there, so we fall back to `key === "Shift"` with an
+ * unmapped code: the left Shift key always reports `ShiftLeft` / `location
+ * 1`, so a Shift event with an empty code cannot be the left one. This
+ * fallback is based on the affected Windows driver behavior and is not
+ * independently verifiable on every keyboard / IME stack.
+ */
+export function voiceShortcutMatches(event: { code: string; key: string; location: number }, shortcut: VoiceShortcut): boolean {
+  switch (shortcut) {
+    case "alt-right":
+      return event.code === "AltRight";
+    case "shift-right":
+      return (
+        event.code === "ShiftRight" ||
+        (event.key === "Shift" && event.code === "" && event.location !== 1)
+      );
+    case "shift-left":
+      return event.code === "ShiftLeft";
+    default:
+      return false;
+  }
 }

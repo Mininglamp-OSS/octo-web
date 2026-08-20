@@ -1,6 +1,12 @@
 import { Button, Dropdown } from "@octo/ui";
 import React, { Component } from "react";
-import { Spin, Toast, Banner, Tooltip } from "@douyinfe/semi-ui";
+import {
+    SplitButtonGroup,
+    Spin,
+    Toast,
+    Banner,
+    Tooltip,
+} from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
@@ -23,7 +29,7 @@ interface SummaryListPageProps {
     /** Called when the user clicks the close button (panel mode only). */
     onClose?: () => void;
     /** Called when the user clicks "new summary" in panel mode. */
-    onCreateNew?: () => void;
+    onCreateNew?: (mode?: "normal" | "agent") => void;
     /** Called when a card is clicked in panel mode (instead of routeRight.push). */
     onViewDetail?: (taskId: number) => void;
 }
@@ -548,16 +554,26 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }, 300);
     };
 
-    handleCreate = () => {
+    handleCreate = (mode: "normal" | "agent" = "normal") => {
         // 「新建总结」意图:三处 create 控件都走这里(原先误用 GET /summary-templates 页面加载推断)。
         Dap.shared.track("smart_summary_create_clicked", {});
+        // 从「+」下拉显式选择 Agent 总结属于一次模式选择行为：创建页内切换已随本功能
+        // 上移到列表页「+」，补发模式事件以保留 smart_summary_mode_switched 埋点维度。
+        if (mode === "agent") {
+            Dap.shared.track("smart_summary_mode_switched", { to: "agent" });
+        }
         if (this.props.onCreateNew) {
-            this.props.onCreateNew();
+            // 面板模式：把所选模式透传给宿主（ChatSummaryPanel）供其 create 视图预置 initialMode。
+            this.props.onCreateNew(mode);
             return;
         }
         WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(
-            <SummaryCreatePage onCreated={() => this.loadData()} source="summary_list" />
+            <SummaryCreatePage
+                onCreated={() => this.loadData()}
+                source="summary_list"
+                initialMode={mode}
+            />
         );
     };
 
@@ -575,33 +591,53 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
                     </h2>
                     <div className="summary-list-header-actions">
-                        {isPanel && (
-                            <Tooltip content={translate("summary.chatSummary.createNew")} position="bottom">
+                        <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
+                            <SplitButtonGroup className="summary-list-create-split">
                                 <Button
+                                    data-testid={summaryTestIds.listCreate}
                                     className="summary-list-create-icon-btn"
                                     icon={<IconPlus />}
                                     theme="borderless"
-                                    onClick={this.handleCreate}
+                                    onClick={() => this.handleCreate("normal")}
                                 />
-                            </Tooltip>
-                        )}
-                        {isPanel && onClose ? (
+                                <Dropdown
+                                    trigger="click"
+                                    position="bottomRight"
+                                    render={(
+                                        <Dropdown.Menu>
+                                            <Dropdown.Item
+                                                data-testid={summaryTestIds.listNormalTab}
+                                                onClick={() => this.handleCreate("normal")}
+                                            >
+                                                {translate("summary.create.start")}
+                                            </Dropdown.Item>
+                                            <Dropdown.Item
+                                                data-testid={summaryTestIds.listAgentTab}
+                                                onClick={() => this.handleCreate("agent")}
+                                            >
+                                                {translate("summary.create.agentStart")}
+                                            </Dropdown.Item>
+                                        </Dropdown.Menu>
+                                    )}
+                                >
+                                    <Button
+                                        data-testid={summaryTestIds.listModeSwitch}
+                                        className="summary-list-create-icon-btn"
+                                        theme="borderless"
+                                        icon={<ChevronDown size={16} />}
+                                        aria-label={translate("summary.create.switchMode")}
+                                        title={translate("summary.create.switchMode")}
+                                    />
+                                </Dropdown>
+                            </SplitButtonGroup>
+                        </Tooltip>
+                        {isPanel && onClose && (
                             <Button
                                 icon={<X size={18} />}
                                 theme="borderless"
                                 type="tertiary"
                                 onClick={onClose}
                             />
-                        ) : (
-                            <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
-                                <Button
-                                    data-testid={summaryTestIds.listCreate}
-                                    className="summary-list-create-icon-btn"
-                                    icon={<IconPlus />}
-                                    theme="borderless"
-                                    onClick={this.handleCreate}
-                                />
-                            </Tooltip>
                         )}
                     </div>
                 </div>
@@ -668,7 +704,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             <>
                                 <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
                                 <div className="summary-list-empty-desc">{translate("summary.chatSummary.emptyDescription")}</div>
-                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={() => this.handleCreate("normal")} style={{ marginTop: 16 }}>
                                     {translate("summary.chatSummary.createNew")}
                                 </Button>
                             </>
@@ -679,7 +715,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 <div className="summary-list-empty-desc">
                                     {translate("summary.list.emptyDesc")}
                                 </div>
-                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={() => this.handleCreate("normal")} style={{ marginTop: 16 }}>
                                     {translate("summary.list.createFirst")}
                                 </Button>
                             </>

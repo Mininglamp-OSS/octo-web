@@ -45,9 +45,11 @@ vi.mock("../../adapters/voice/useVoiceInput", () => ({
 
 vi.mock("../../../../i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
+  I18nContext: React.createContext({ t: (key: string) => key }),
 }));
 
-vi.mock("../../../../Service/VoiceSettingsStore", () => ({
+vi.mock("../../../../Service/VoiceSettingsStore", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../../Service/VoiceSettingsStore")>()),
   getVoiceShortcut: () => mocks.shortcut,
   voiceSettingsStore: {
     get: () => ({ enabled: mocks.voiceEnabled, shortcutWindows: mocks.shortcut, shortcutMacos: mocks.shortcut, speakingMode: mocks.speakingMode }),
@@ -192,6 +194,43 @@ describe("VoiceInputIndicator click behavior", () => {
 
     act(() => window.dispatchEvent(new KeyboardEvent("keyup", { code, key: "Shift" })));
     expect(mocks.stopRecording).not.toHaveBeenCalled();
+  });
+
+  // Regression: on Windows some keyboard driver / IME combinations report the
+  // right Shift key with an empty `code` and location 0. The indicator must
+  // still start/stop toggle recording for it.
+  it("supports the Windows empty-code right Shift key for toggle recording", async () => {
+    mocks.voiceEnabled = true;
+    mocks.shortcut = "shift-right";
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "", key: "Shift", location: 0 })); });
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+
+    mocks.isRecording = true;
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "", key: "Shift", location: 0 })); });
+    expect(mocks.stopRecording).toHaveBeenCalledWith();
+  });
+
+  it("supports the Windows empty-code right Shift key for hold recording", async () => {
+    vi.useFakeTimers();
+    mocks.voiceEnabled = true;
+    mocks.shortcut = "shift-right";
+    mocks.speakingMode = "hold";
+    await act(async () => {
+      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
+    });
+
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "", key: "Shift", location: 0 })); });
+    act(() => vi.advanceTimersByTime(500));
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
+
+    mocks.isRecording = true;
+    act(() => { window.dispatchEvent(new KeyboardEvent("keyup", { code: "", key: "Shift", location: 0 })); });
+    expect(mocks.stopRecording).toHaveBeenCalledWith(undefined);
+    vi.useRealTimers();
   });
 
   it("uses append mode for toggle shortcuts even when text is selected", async () => {

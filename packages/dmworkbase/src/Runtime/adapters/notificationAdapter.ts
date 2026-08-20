@@ -1,7 +1,7 @@
 import { NotificationUtil } from "../../Utils/NotificationUtil";
 import type { RuntimeEnvironment } from "../runtimeEnvironment";
 
-export type NotificationPermissionState = NotificationPermission | "unsupported";
+export type NotificationPermissionState = NotificationPermission | "managed" | "unsupported";
 
 export interface NotificationAdapter {
   isSupported(): boolean;
@@ -30,11 +30,11 @@ class NativeNotificationAdapter extends WebNotificationAdapter {
   }
 
   getPermission(): NotificationPermissionState {
-    return this.isSupported() ? "granted" : "unsupported";
+    return this.isSupported() ? "managed" : "unsupported";
   }
 
   async requestPermission(): Promise<NotificationPermissionState> {
-    return this.isSupported() ? "granted" : "unsupported";
+    return this.isSupported() ? "managed" : "unsupported";
   }
 }
 

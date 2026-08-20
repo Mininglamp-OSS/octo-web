@@ -20,6 +20,7 @@ import {
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
+import { isReplyAuthorAi } from "./replyAiIdentity";
 import { rememberSendIntent, trackMessageRevoked } from "../../Service/trackMessage";
 import { SuperGroup } from "../../Utils/const";
 import { SystemContent } from "wukongimjssdk";
@@ -2514,6 +2515,11 @@ export default class ConversationVM extends ProviderListener {
                 }
                 if (bots.length > 0) mentionedBots = bots
             }
+            // message_replied 的 is_ai_msg:被回复消息作者(content.reply.fromUID)是否 AI/bot。
+            // 走 isReplyAuthorAi(按 uid 查 person channelInfo 的 robot 标记),DM/群统一 ——
+            // 不再查 this.subscribers(仅群/子区填充,DM 恒空会把 human↔AI DM 回复误判 false;见 #1452 review P1)。
+            const replyFromUid = content.reply?.fromUID
+            const isReplyToAi: boolean | undefined = content.reply ? isReplyAuthorAi(replyFromUid) : undefined
             rememberSendIntent(message.clientSeq, {
                 channelId: channel.channelID,
                 channelType: channel.channelType,
@@ -2521,6 +2527,13 @@ export default class ConversationVM extends ProviderListener {
                 botCreateEntry,
                 botCommandEvent,
                 isReply: !!content.reply,
+                // message_replied 的 message_id = 被回复消息的 ID(content.reply.messageID,
+                // 发送时即可得;server 侧新消息 id 此刻尚未分配)。无 reply 时 undefined,
+                // 但此时 isReply=false,message_replied 根本不发。
+                messageId: content.reply?.messageID,
+                isReplyToAi,
+                // ai_mentioned 的 user_id 由生产者注入,避免 leaf service trackMessage 静态 import App
+                userId: WKApp.loginInfo.uid || null,
                 mentionedBots,
             })
         }

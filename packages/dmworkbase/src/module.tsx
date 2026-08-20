@@ -118,6 +118,9 @@ import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import { t } from "./i18n";
 import { THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
 import ThreadService from "./Service/ThreadService";
+import { trackSubchannelCreated, inferMsgType } from "./bridge/thread/createThread";
+import { Dap } from "./Service/Dap";
+import { isMessageAuthorAi } from "./Components/Conversation/replyAiIdentity";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -535,7 +538,12 @@ export default class BaseModule implements IModule {
         WKApp.shared.addFriendApply(friendApply);
         // 文档专注场景不播提示音（红点/未读仍会更新）；IM 场景不受影响。
         if (!isDocumentFocusScene()) {
-          void this.tipsAudio();
+          void quickMuteStore.getState().then((quickMuteState) => {
+            if (!quickMuteState.active || quickMuteState.scope === "sound") {
+              return this.tipsAudio({ allowDuringQuickMute: true });
+            }
+            return undefined;
+          }).catch(() => this.tipsAudio({ allowDuringQuickMute: true }));
         }
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
@@ -721,9 +729,9 @@ export default class BaseModule implements IModule {
     );
   }
 
-  async tipsAudio() {
+  async tipsAudio(options: { allowDuringQuickMute?: boolean } = {}) {
     const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
-    if (quickMuteState?.active) return;
+    if (quickMuteState?.active && !options.allowDuringQuickMute) return;
     Howler.autoUnlock = false;
     if (!this.messageTone) {
       this.messageTone = new Howl({
@@ -833,7 +841,7 @@ export default class BaseModule implements IModule {
             `${from}${message.content.conversationDigest}`
           );
         }
-        if (decision.playSound) await this.tipsAudio();
+        if (decision.playSound) await this.tipsAudio({ allowDuringQuickMute: true });
       },
     });
   }
@@ -847,8 +855,10 @@ export default class BaseModule implements IModule {
     if (!this.allowNotify(message)) return { playSound: false, showPopup: false };
     const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
     if (quickMuteState?.active) {
+      // "sound" = keep sounds only (suppress the popup); the other scope
+      // mutes both sounds and popups.
       return quickMuteState.scope === "sound"
-        ? { playSound: false, showPopup: true }
+        ? { playSound: true, showPopup: false }
         : { playSound: false, showPopup: false };
     }
     return { playSound: true, showPopup: true };
@@ -1058,6 +1068,14 @@ export default class BaseModule implements IModule {
           title: t("base.module.contextMenus.copy"),
           testid: "ctx-message-copy",
           onClick: () => {
+            // message_copied 由此命令式发,携 is_ai_msg(被复制消息作者是否 AI/bot,
+            // 与 message_replied/forwarded 同源判据)——DOM data-track 通道带不了消息上下文,
+            // 故从 TrackRules 迁出;区分 AI 消息复制漏斗(session.go ai_msg_copy)。见 #1452 review。
+            Dap.shared.track("message_copied", {
+              object_id: message.messageID,
+              message_id: message.messageID,
+              is_ai_msg: isMessageAuthorAi(message.fromUID),
+            });
             const selectedText = context.getCachedSelectedText?.();
             // RichText(=14)：取顶层 plain（server 权威纯文本），避免对 content
             // blocks 数组 stringify 丢字；text 消息走 content.text。
@@ -1345,6 +1363,11 @@ export default class BaseModule implements IModule {
           title: t("base.module.contextMenus.createThread"),
           testid: "ctx-message-create-thread",
           onClick: () => {
+            // 右键「创建子区」入口打开确认弹窗即计一次 dialog_opened,与 ThreadPanel 顶栏入口
+            // (ThreadPanel/index.tsx handleCreateThread)同一事件名——顶栏 + 右键统一到 channel_subchannel_create_dialog_opened。
+            // 同一 testid(ctx-message-create-thread)原有的 TrackRules DOM 规则(message_subchannel_create_dialog_opened)
+            // 已一并删除,避免同手势双记不同名(#1452 review P1)。
+            Dap.shared.track('channel_subchannel_create_dialog_opened', {});
             // 使用消息内容作为默认名称，截取前20个字符
             const defaultName = (
               message.content?.conversationDigest || ""
@@ -1409,6 +1432,12 @@ export default class BaseModule implements IModule {
                     sourceMessagePayload: sourcePayload,
                   });
                   Toast.success(t("base.module.createThread.success"));
+                  // 右键创建子区：带 from_msg_type（inferMsgType 映射）
+                  trackSubchannelCreated(resp, 'message_right_click', {
+                    fromMsgType: inferMsgType(message),
+                    title: threadName.trim(),
+                    channelId: message.channel.channelID,
+                  });
                   if (resp && resp.channel_id) {
                     WKApp.mittBus.emit("wk:thread-created", {
                       groupNo: message.channel.channelID,
