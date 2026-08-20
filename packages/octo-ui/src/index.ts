@@ -6,6 +6,17 @@ export { default as Tag } from './components/Tag'
 export type { TagProps, TagSize, TagVariant } from './components/Tag/types'
 export { default as MenuItem } from './components/MenuItem'
 export type { MenuItemProps, MenuItemSize } from './components/MenuItem/types'
+export { default as Dropdown } from './components/Dropdown'
+export type {
+  DropdownDividerProps,
+  DropdownItemConfig,
+  DropdownItemKey,
+  DropdownItemProps,
+  DropdownMenuProps,
+  DropdownPosition,
+  DropdownProps,
+  DropdownTrigger,
+} from './components/Dropdown/types'
 export { default as Checkbox, CheckboxGroup } from './components/Checkbox'
 export type {
   CheckboxChangeEvent,

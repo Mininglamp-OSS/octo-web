@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import { Dropdown } from "@octo/ui";
 import { I18nContext } from "../../i18n";
 import "./index.css";
 
@@ -19,7 +20,7 @@ export default class SlashCommandMenu extends Component<SlashCommandMenuProps> {
     static contextType = I18nContext;
     declare context: React.ContextType<typeof I18nContext>;
 
-    private activeItemRef = React.createRef<HTMLDivElement>();
+    private activeItemRef = React.createRef<HTMLButtonElement>();
 
     componentDidUpdate(prevProps: SlashCommandMenuProps) {
         if (prevProps.activeIndex !== this.props.activeIndex && this.activeItemRef.current) {
@@ -46,28 +47,35 @@ export default class SlashCommandMenu extends Component<SlashCommandMenuProps> {
         if (filtered.length === 0) {
             return (
                 <div className="wk-slash-command-menu">
-                    <div className="wk-slash-command-empty">{this.context.t("base.slashCommand.noMatches")}</div>
+                    <Dropdown.Menu>
+                        <div className="wk-slash-command-empty">{this.context.t("base.slashCommand.noMatches")}</div>
+                    </Dropdown.Menu>
                 </div>
             );
         }
 
         return (
             <div className="wk-slash-command-menu">
-                <div className="wk-slash-command-menu-header">{this.context.t("base.slashCommand.botCommands")}</div>
-                {filtered.map((cmd, index) => (
-                    <div
-                        key={cmd.command}
-                        ref={index === activeIndex ? this.activeItemRef : undefined}
-                        className={`wk-slash-command-item${index === activeIndex ? " wk-slash-command-item-active" : ""}`}
-                        onMouseDown={(e) => {
-                            e.preventDefault();
-                            onSelect(cmd);
-                        }}
-                    >
-                        <div className="wk-slash-command-name">{cmd.command.startsWith('/') ? cmd.command : `/${cmd.command}`}</div>
-                        <div className="wk-slash-command-desc">{cmd.description}</div>
-                    </div>
-                ))}
+                <Dropdown.Menu maxHeight={300}>
+                    <div className="wk-slash-command-menu-header">{this.context.t("base.slashCommand.botCommands")}</div>
+                    {filtered.map((cmd, index) => (
+                        <Dropdown.Item
+                            key={cmd.command}
+                            ref={index === activeIndex ? this.activeItemRef : undefined}
+                            className="wk-slash-command-item"
+                            selected={index === activeIndex}
+                            onMouseDown={(e) => {
+                                e.preventDefault();
+                                onSelect(cmd);
+                            }}
+                        >
+                            <span className="wk-slash-command-item-content">
+                                <span className="wk-slash-command-name">{cmd.command.startsWith('/') ? cmd.command : `/${cmd.command}`}</span>
+                                <span className="wk-slash-command-desc">{cmd.description}</span>
+                            </span>
+                        </Dropdown.Item>
+                    ))}
+                </Dropdown.Menu>
             </div>
         );
     }

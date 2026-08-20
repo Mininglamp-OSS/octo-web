@@ -81,6 +81,19 @@ body {
   --octo-ui-menu-item-suffix-size: 16px;
   --octo-ui-menu-item-suffix-color: var(--wk-icon-default, oklch(22.957% 0.01344 285.29 / 60%));
 
+  --octo-ui-dropdown-min-width: 180px;
+  --octo-ui-dropdown-max-width: 320px;
+  --octo-ui-dropdown-padding: 4px;
+  --octo-ui-dropdown-radius: 6px;
+  --octo-ui-dropdown-bg: var(--wk-bg-surface, oklch(100% 0 89.88));
+  --octo-ui-dropdown-text: var(--wk-text-primary, oklch(22.957% 0.01344 285.29));
+  --octo-ui-dropdown-shadow: var(--wk-shadow-lg, 0 8px 24px oklch(0% 0 0 / 12%)), 0 0 0 1px var(--wk-border-subtle, oklch(0% 0 0 / 6%));
+  --octo-ui-dropdown-menu-gap: 0;
+  --octo-ui-dropdown-menu-max-height: min(320px, calc(100vh - 32px));
+  --octo-ui-dropdown-divider-bg: var(--wk-border-subtle, oklch(22.957% 0.01344 285.29 / 8%));
+  --octo-ui-dropdown-divider-margin: 4px 8px;
+  --octo-ui-dropdown-item-radius: 6px;
+
   --octo-ui-checkbox-gap: 8px;
   --octo-ui-checkbox-extra-gap: 2px;
   --octo-ui-checkbox-group-gap: 8px;

@@ -181,12 +181,14 @@ describe("ContextMenus rounded hover boundaries", () => {
             )
         })
 
-        const rootList = container.querySelector(".wk-contextmenus > ul")!
+        const rootMenu = container.querySelector(".wk-contextmenus [role='menu']")!
         const submenu = container.querySelector(".wk-ctx-submenu")!
+        const rootItems = rootMenu.querySelectorAll(":scope > .wk-ctx-item > button")
+        const submenuItems = submenu.querySelectorAll("button")
 
-        expect(rootList.querySelector(":scope > li:first-of-type")?.textContent).toContain("Move to")
-        expect(rootList.querySelector(":scope > li:last-of-type")?.textContent).toBe("Delete")
-        expect(submenu.querySelector(":scope > li:first-of-type")?.textContent).toBe("First group")
-        expect(submenu.querySelector(":scope > li:last-of-type")?.textContent).toBe("Last group")
+        expect(rootItems[0]?.textContent).toContain("Move to")
+        expect(rootItems[rootItems.length - 1]?.textContent).toBe("Delete")
+        expect(submenuItems[0]?.textContent).toBe("First group")
+        expect(submenuItems[submenuItems.length - 1]?.textContent).toBe("Last group")
     })
 })

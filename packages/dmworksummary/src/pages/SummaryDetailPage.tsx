@@ -1,6 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Dropdown } from "@octo/ui";
 import React, { Component } from "react";
-import { Spin, Toast, Banner, Tag, Modal, Popconfirm, Tooltip, Dropdown } from "@douyinfe/semi-ui";
+import { Spin, Toast, Banner, Tag, Modal, Popconfirm, Tooltip } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
 import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";

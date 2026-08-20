@@ -1,8 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Dropdown } from "@octo/ui";
 import { Sparkles, X, Plus, ChevronDown } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
-    Dropdown,
     SplitButtonGroup,
     Toast,
     Typography,

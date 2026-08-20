@@ -1,6 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Dropdown } from "@octo/ui";
 import React, { Component } from "react";
-import { Dropdown, Spin, Toast, Banner, Tooltip } from "@douyinfe/semi-ui";
+import { Spin, Toast, Banner, Tooltip } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";

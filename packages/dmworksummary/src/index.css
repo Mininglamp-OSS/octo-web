@@ -595,22 +595,14 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
 
 /* Dropdown menu */
 .summary-card-menu {
-    min-width: 160px !important;
-    padding: 4px 0 !important;
-    border-radius: 6px !important;
+    min-width: 160px;
 }
 
-.summary-card-menu .semi-dropdown-item {
+.summary-card-menu .octo-ui-menu-item {
     height: 36px;
-    padding: 8px 12px;
     font-size: 14px;
     font-weight: 400;
     line-height: 20px;
-}
-
-.summary-card-menu .semi-dropdown-item-danger,
-.summary-card-menu .semi-dropdown-item[data-type="danger"] {
-    color: var(--wk-color-error);
 }
 
 /* ========== Summary Confirm PopConfirm ========== */
