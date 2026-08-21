@@ -140,6 +140,11 @@ export function webhookPreviewClickHandler(
 ): ((event: React.MouseEvent) => void) | undefined {
   if (!openPreview || !webhookFromOfMessage(message)) return undefined;
   return (event) => {
+    // Handles BOTH left-click (click) and middle-click (auxclick, button === 1).
+    // Desktop users often middle-click a link expecting a new tab; for a fleet
+    // preview link that would bypass the in-app panel and open a raw window /
+    // browser navigation. Intercepting auxclick keeps the preview semantics:
+    // the fleet link opens the embedded task preview just like a left click.
     if (!(event.target instanceof Element)) return;
     const anchor = event.target.closest<HTMLAnchorElement>("a[href]");
     if (!anchor) return;

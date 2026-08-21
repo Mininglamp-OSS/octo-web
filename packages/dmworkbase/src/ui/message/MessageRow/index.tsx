@@ -78,6 +78,10 @@ export interface MessageRowProps {
   /** 消息正文点击事件，不覆盖头像、Header 与整行空白。 */
   onBodyClick?: (event: React.MouseEvent) => void
 
+  /** 消息正文中键(auxclick)事件：桌面端中键点击默认会走浏览器"新标签/裸跳"，
+   * 需在此拦截 webhook fleet 链接以保持应用内预览语义。 */
+  onBodyAuxClick?: (event: React.MouseEvent) => void
+
   /** 右键菜单打开时保持 hover 高亮 */
   isActive?: boolean
 
@@ -128,6 +132,7 @@ export default function MessageRow({
   onContextMenu,
   onClick,
   onBodyClick,
+  onBodyAuxClick,
   isActive,
   onAvatarClick,
   onSenderNameClick,
@@ -251,10 +256,11 @@ export default function MessageRow({
         
         {/* 消息体 */}
         <div className="wk-msg-row-body">
-          {!isSelecting && onBodyClick ? (
+          {!isSelecting && (onBodyClick || onBodyAuxClick) ? (
             <div
               className="wk-msg-row-body-hitarea"
               onClick={onBodyClick}
+              onAuxClick={onBodyAuxClick}
             >
               {children}
             </div>
