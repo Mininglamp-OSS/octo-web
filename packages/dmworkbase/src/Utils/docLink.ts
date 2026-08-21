@@ -2,6 +2,9 @@
 //
 // The link points at the STANDALONE doc page `${origin}/d/:docId` (XIN-450, boss decision
 // 2026-07-06), NOT the in-shell `/docs?...&doc=` route. This is the real fix for problem 2: the
+
+import APIClient from "../Service/APIClient";
+import { resolveWebOrigin } from "./webOrigin";
 // octo host's self-built RouteManager (dmworkbase Service/Route.tsx) handles `pageshow`/`popstate`
 // by re-pushing `window.location.pathname` ONLY — it UNCONDITIONALLY strips the query — so a
 // `?doc=` deep-link was wiped before the docs module mounted and the recipient landed on the empty
@@ -43,15 +46,22 @@ export interface DocLinkTarget {
   folder?: string
 }
 
+/**
+ * The authoritative web origin for renderer-built URLs that leave the app
+ * (share links, clipboard text, IdP return_to, the system-browser bridge).
+ * See Utils/webOrigin.ts for why an http(s) allowlist — not a denylist of
+ * known-bad file:// values — decides.
+ */
+export function webOrigin(): string {
+  return resolveWebOrigin(
+    typeof window === "undefined" ? undefined : window.location?.origin,
+    APIClient.shared?.config?.apiURL,
+  );
+}
+
 /** Origin for the doc link; empty under SSR/tests so the link degrades to a bare query path. */
 function origin(): string {
-  if (typeof window === "undefined" || !window.location) return "";
-  // file:// shells report window.location.origin as the string "null"
-  // (truthy but not an origin). Treat it as empty so buildDocLink emits a
-  // bare `/d/<docId>`; the desktop bridge resolves that against the API
-  // origin, and web callers get a root-relative URL as before.
-  const origin = window.location.origin;
-  return origin && origin !== "null" ? origin : "";
+  return webOrigin();
 }
 
 /**

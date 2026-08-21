@@ -11,6 +11,7 @@ import { t } from "../../i18n";
 import UserService from "../../Service/UserService";
 import { addImChannelInfoListener } from "../../im-runtime/channelRuntime";
 import { getElectronLinksBridge } from "../../electron/desktopBridge";
+import { isHttpOrigin, resolveWebOrigin } from "../../Utils/webOrigin";
 
 /**
  * 「实验性功能」入口在 MeInfo 默认隐藏 —— 通过连击「OCTO 号」行 5 次解锁
@@ -210,30 +211,30 @@ export class MeInfoVM extends ProviderListener {
         //   - 原 URL `/me`(无 query)→ returnTo `/me?verified=1`
         //   - 原 URL `/me?verified=0` → returnTo `/me?verified=1`(URLSearchParams.set 覆盖旧值)
         //   - hash 不带入 —— IdP 对超长 return_to / 含 fragment 的 URL 可能校验失败
+        // Round-8 (yujiawei B2 / Jerry-Xin B1): building return_to from
+        // window.location on the packaged file:// shell produced
+        // https://<api-host>/<asar-filesystem-path>/index.html?… — leaking
+        // local paths into IdP logs and landing on a 404, so ?verified=1
+        // never fired. The return target is now a real web route: the
+        // document origin+path when http(s), otherwise the API-origin /me
+        // route with the same query (the ?verified=1 landing handler works
+        // from any surface). resolveWebOrigin is the shared allowlist
+        // helper; WKApp.apiClient is the injected apiURL source (importing
+        // the APIClient singleton here would pull axios side effects into
+        // this module's unit-test import chain).
         const returnToParams = new URLSearchParams(window.location.search)
         returnToParams.set("verified", "1")
         const returnToQuery = returnToParams.toString()
-        // Round-6 (yujiawei P1-2): on the packaged file:// shell
-        // window.location.origin is the string "null", so the old
-        // `${origin}${pathname}` produced return_to=null/index.html?...
-        // which the IdP rejects/redirects and ?verified=1 never fires.
-        // Use the document origin when it is http(s), otherwise derive the
-        // return target from the API origin (WKApp.apiClient — deliberately
-        // NOT the APIClient singleton, which pulls axios side effects into
-        // this module's import chain and breaks unit tests).
         const docOrigin = window.location.origin
-        let returnToOrigin =
-            docOrigin && /^https?:/.test(docOrigin) ? docOrigin : ""
-        if (!returnToOrigin) {
-            try {
-                const apiURL = WKApp.apiClient?.config?.apiURL
-                if (apiURL) returnToOrigin = new URL(apiURL).origin
-            } catch {
-                // malformed apiURL — fall back to the raw document origin
-            }
-        }
-        if (!returnToOrigin) returnToOrigin = docOrigin
-        const returnTo = `${returnToOrigin}${window.location.pathname}${returnToQuery ? "?" + returnToQuery : ""}`
+        const webOriginValue = resolveWebOrigin(
+            docOrigin,
+            WKApp.apiClient?.config?.apiURL,
+        )
+        const returnTo = isHttpOrigin(docOrigin)
+            ? `${docOrigin}${window.location.pathname}${returnToQuery ? "?" + returnToQuery : ""}`
+            : webOriginValue
+              ? `${webOriginValue}/me${returnToQuery ? "?" + returnToQuery : ""}`
+              : `${docOrigin}${window.location.pathname}${returnToQuery ? "?" + returnToQuery : ""}`
 
         // 读按环境下发的 account_url —— 防止把 im-test 用户甩到 prod IdP。
         // 具体行为合约见 resolveRealnameVerifyUrl 的 JSDoc 和 __tests__/realnameVerifyUrl.test.ts。

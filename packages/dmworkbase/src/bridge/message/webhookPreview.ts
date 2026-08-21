@@ -9,6 +9,7 @@ import {
   isElectronPowered,
 } from "../../electron/desktopBridge";
 import { IPC_ASK_TRUST_FLEET_HOST } from "../../../../../apps/web/src-election/shared/ipc-channels";
+import { resolveWebOrigin } from "../../Utils/webOrigin";
 
 export interface WebhookIssuePreviewTarget {
   workspaceSlug: string;
@@ -179,17 +180,16 @@ export function openFleetLinkExternal(href: string): void {
 /**
  * Origin of the API the client is talking to (VITE_API_URL at build time),
  * or "" when unset/malformed. Desktop shells load over file:// where
- * window.location.origin is empty, so renderer code that builds absolute
- * URLs for the system browser (doc /d/ links, …) resolves against this.
+ * window.location.origin is not a web origin, so renderer code that builds
+ * absolute URLs for the system browser (doc /d/ links, …) resolves against
+ * this. Thin wrapper over Utils/webOrigin (doc origin when http(s), API
+ * origin otherwise).
  */
 export function apiUrlOrigin(): string {
-  try {
-    const apiURL = APIClient.shared?.config?.apiURL;
-    if (!apiURL) return "";
-    return new URL(apiURL).origin;
-  } catch {
-    return "";
-  }
+  return resolveWebOrigin(
+    typeof window === "undefined" ? undefined : window.location?.origin,
+    APIClient.shared?.config?.apiURL,
+  );
 }
 
 /**

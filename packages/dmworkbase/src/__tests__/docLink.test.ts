@@ -1,5 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { buildDocLink } from '../Utils/docLink'
+import { isHttpOrigin, resolveWebOrigin } from '../Utils/webOrigin'
+import APIClient from '../Service/APIClient'
+
+const apiConfig = APIClient.shared.config as unknown as { apiURL: string }
 
 describe('buildDocLink — standalone `/d/:docId` share form (Phase-1 no-sp reader)', () => {
   it('points at the standalone `/d/<docId>` page, not the in-shell `/docs?doc=` route', () => {
@@ -34,20 +38,64 @@ describe('buildDocLink — standalone `/d/:docId` share form (Phase-1 no-sp read
     expect(buildDocLink({ docId: 'a b' })).toBe('http://localhost:3000/d/a%20b')
   })
 
-  it('emits a root-relative /d/<docId> when the shell origin is "null" (file:// packaged build)', () => {
+  it('falls back to the API origin when the shell origin is "null" or "file://" (packaged build)', () => {
     // Packaged Electron shells load over file:// where window.location.origin
-    // is the truthy string "null" — a bare "null/d/<docId>" would open a 404
-    // in the browser. The desktop bridge resolves the root-relative form
-    // against the API origin (global-search doc open).
-    vi.stubGlobal('location', {
-      protocol: 'file:',
-      origin: 'null',
-      href: 'file:///app/index.html',
-    })
+    // is a literal non-origin string ("file://" on Electron 26, "null" on
+    // older specs/jsdom). Concatenating it produced file:///d/<docId> or
+    // null/d/<docId>; the shared allowlist helper must fall back to the API
+    // origin so the outgoing link is a real web URL.
+    const originalApiURL = apiConfig.apiURL
+    apiConfig.apiURL = 'https://im-test.deepminer.com.cn/api/v1/'
     try {
-      expect(buildDocLink({ docId: 'd_1' })).toBe('/d/d_1')
+      for (const badOrigin of ['null', 'file://']) {
+        vi.stubGlobal('location', { protocol: 'file:', origin: badOrigin, href: 'file:///app/index.html' })
+        expect(buildDocLink({ docId: 'd_1' })).toBe('https://im-test.deepminer.com.cn/d/d_1')
+        vi.unstubAllGlobals()
+      }
     } finally {
-      vi.unstubAllGlobals()
+      apiConfig.apiURL = originalApiURL
     }
+  })
+
+  it('degrades to a root-relative /d/<docId> when neither origin resolves', () => {
+    const originalApiURL = apiConfig.apiURL
+    apiConfig.apiURL = ''
+    try {
+      vi.stubGlobal('location', { protocol: 'file:', origin: 'null', href: 'file:///app/index.html' })
+      expect(buildDocLink({ docId: 'd_1' })).toBe('/d/d_1')
+      vi.unstubAllGlobals()
+    } finally {
+      apiConfig.apiURL = originalApiURL
+    }
+  })
+})
+
+describe('resolveWebOrigin / isHttpOrigin (pure)', () => {
+  it('accepts http(s) document origins as-is', () => {
+    expect(resolveWebOrigin('https://app.example.com', 'https://api.example.com/v1/')).toBe('https://app.example.com')
+    expect(resolveWebOrigin('http://localhost:3000', undefined)).toBe('http://localhost:3000')
+  })
+
+  it('falls back to the API origin for every non-http(s) document origin', () => {
+    // "file://" is what Electron 26 actually reports; "null" is the older
+    // spec/jsdom value. Both are truthy strings — a denylist of one misses
+    // the other, which is exactly the round-7/round-8 bug.
+    for (const bad of ['file://', 'null', 'about://', 'weird', '']) {
+      expect(resolveWebOrigin(bad, 'https://api.example.com/v1/')).toBe('https://api.example.com')
+    }
+  })
+
+  it('returns "" when neither side resolves', () => {
+    expect(resolveWebOrigin(undefined, undefined)).toBe('')
+    expect(resolveWebOrigin('file://', 'not-a-url')).toBe('')
+  })
+
+  it('isHttpOrigin is an http(s) allowlist', () => {
+    expect(isHttpOrigin('https://a.com')).toBe(true)
+    expect(isHttpOrigin('http://a.com:8080')).toBe(true)
+    expect(isHttpOrigin('file://')).toBe(false)
+    expect(isHttpOrigin('null')).toBe(false)
+    expect(isHttpOrigin(undefined)).toBe(false)
+    expect(isHttpOrigin('')).toBe(false)
   })
 })

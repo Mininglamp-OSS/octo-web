@@ -1,3 +1,4 @@
+import { webOrigin } from "../../Utils/docLink";
 import React from "react";
 import MessageBase from "../Base";
 import { MessageBaseCellProps, MessageCell } from "../MessageCell";
@@ -74,7 +75,7 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
     const content = this.props.message.content as DocumentShareCardContent;
     const rel = buildDocNavUrl(content.docId);
     if (!rel) return;
-    void navigator.clipboard?.writeText(`${window.location.origin}${rel}`);
+    void navigator.clipboard?.writeText(`${webOrigin()}${rel}`);
   };
 
   private buildStrings(content: DocumentShareCardContent, state: DocSharePermissionState): DocumentShareCardStrings {
