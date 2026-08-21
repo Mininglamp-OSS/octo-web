@@ -133,6 +133,18 @@ jobs:
           pnpm --filter @octo/login exec vitest run
           src/__tests__/ios_download_button.test.tsx
           src/__tests__/android_download_button.test.tsx
+      - name: Fleet preview link arbitration tests
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/bridge/message/__tests__/webhookPreview.test.ts
+          src/__tests__/docLink.test.ts
+          src/Components/MeInfo/__tests__/vm.test.tsx
+          src/Components/MeInfo/__tests__/realnameVerifyUrl.test.ts
+          src/ui/message/MessageRow/__tests__/MessageRow.test.tsx
+          src/Messages/Text/__tests__/MarkdownContentMention.test.tsx
+          src/Messages/RichText/__tests__/RichTextContent.test.ts
+          src/Messages/InteractiveCard/__tests__/InteractiveCardContent.test.ts
+          src/Messages/InteractiveCard/__tests__/cardMarkdown.test.tsx
       - name: Skill Market tests
         run: pnpm --filter @dmwork/skillmarket test
       - name: MCP / Expert market tests

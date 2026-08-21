@@ -213,7 +213,27 @@ export class MeInfoVM extends ProviderListener {
         const returnToParams = new URLSearchParams(window.location.search)
         returnToParams.set("verified", "1")
         const returnToQuery = returnToParams.toString()
-        const returnTo = `${window.location.origin}${window.location.pathname}${returnToQuery ? "?" + returnToQuery : ""}`
+        // Round-6 (yujiawei P1-2): on the packaged file:// shell
+        // window.location.origin is the string "null", so the old
+        // `${origin}${pathname}` produced return_to=null/index.html?...
+        // which the IdP rejects/redirects and ?verified=1 never fires.
+        // Use the document origin when it is http(s), otherwise derive the
+        // return target from the API origin (WKApp.apiClient — deliberately
+        // NOT the APIClient singleton, which pulls axios side effects into
+        // this module's import chain and breaks unit tests).
+        const docOrigin = window.location.origin
+        let returnToOrigin =
+            docOrigin && /^https?:/.test(docOrigin) ? docOrigin : ""
+        if (!returnToOrigin) {
+            try {
+                const apiURL = WKApp.apiClient?.config?.apiURL
+                if (apiURL) returnToOrigin = new URL(apiURL).origin
+            } catch {
+                // malformed apiURL — fall back to the raw document origin
+            }
+        }
+        if (!returnToOrigin) returnToOrigin = docOrigin
+        const returnTo = `${returnToOrigin}${window.location.pathname}${returnToQuery ? "?" + returnToQuery : ""}`
 
         // 读按环境下发的 account_url —— 防止把 im-test 用户甩到 prod IdP。
         // 具体行为合约见 resolveRealnameVerifyUrl 的 JSDoc 和 __tests__/realnameVerifyUrl.test.ts。

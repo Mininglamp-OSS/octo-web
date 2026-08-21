@@ -516,6 +516,18 @@ function registerFleetTrustHostHandler() {
       }
       const host = parsedUrl.host;
       if (readFleetTrustedHosts().includes(host)) return { trusted: true };
+      // Re-validate the fleet path shape here (the renderer did, but the
+      // main process is the trust authority and must not persist trust for
+      // a URL that was never a fleet deep link).
+      const segments = parsedUrl.pathname
+        .replace(/\/+$/, "")
+        .split("/")
+        .filter(Boolean);
+      const isFleetShape =
+        segments.length === 4 &&
+        segments[0] === "fleet" &&
+        segments[2] === "issues";
+      if (!isFleetShape) return { trusted: false };
       return { trusted: await promptFleetTrustOnce(win, host, parsedUrl.href) };
     }
   );

@@ -5,6 +5,7 @@ import { EndpointManager } from "../../Service/Module";
 import { EndpointCategory } from "../../Service/Const";
 import {
   getElectronIpcBridge,
+  getElectronLinksBridge,
   isElectronPowered,
 } from "../../electron/desktopBridge";
 import { IPC_ASK_TRUST_FLEET_HOST } from "../../../../../apps/web/src-election/shared/ipc-channels";
@@ -151,10 +152,22 @@ export async function askTrustFleetHost(sourceUrl: string): Promise<boolean> {
 
 /**
  * Open a fleet link in the system browser / new tab as the explicit fallback
- * for a rejected trust prompt. Exported so tests can observe the fallback
- * without fighting jsdom's non-configurable window.open.
+ * for a rejected trust prompt. On desktop this goes through the
+ * IPC_OPEN_EXTERNAL_URL bridge (sender-checked, http(s)-only, activation-
+ * independent — window.open after an await has lost user activation and may
+ * be suppressed by popup blockers); on web it falls back to window.open.
+ * Exported so tests can observe the fallback without fighting jsdom's
+ * non-configurable window.open.
  */
 export function openFleetLinkExternal(href: string): void {
+  const linksBridge = getElectronLinksBridge();
+  if (linksBridge) {
+    void linksBridge.openExternal(href).catch(() => {
+      // best-effort: the default action was already cancelled; failing to
+      // re-open must not throw
+    });
+    return;
+  }
   try {
     window.open(href, "_blank", "noopener,noreferrer");
   } catch {
@@ -200,8 +213,21 @@ export function isFleetPreviewSupported(): boolean {
  * re-render, which lets a re-render between the click and the trust prompt
  * resolve re-enter the prompt path and fan out a duplicate preview/fallback.
  * Keyed on sourceUrl, so the guard is naturally per-link across messages.
+ * A stale entry (IPC never settles, e.g. a wedged dialog) would lock the
+ * link forever, so entries time out after FLEET_PROMPT_TIMEOUT_MS.
  */
-const pendingFleetPrompts = new Set<string>();
+const pendingFleetPrompts = new Map<string, number>();
+const FLEET_PROMPT_TIMEOUT_MS = 30_000;
+
+function isPendingFleetPrompt(sourceUrl: string): boolean {
+  const startedAt = pendingFleetPrompts.get(sourceUrl);
+  if (startedAt === undefined) return false;
+  if (Date.now() - startedAt > FLEET_PROMPT_TIMEOUT_MS) {
+    pendingFleetPrompts.delete(sourceUrl);
+    return false;
+  }
+  return true;
+}
 
 /**
  * Route message-body clicks on Fleet issue deep links to the in-app task
@@ -258,8 +284,8 @@ export function fleetPreviewClickHandler(
       return;
     }
     void (async () => {
-      if (pendingFleetPrompts.has(target.sourceUrl)) return;
-      pendingFleetPrompts.add(target.sourceUrl);
+      if (isPendingFleetPrompt(target.sourceUrl)) return;
+      pendingFleetPrompts.set(target.sourceUrl, Date.now());
       try {
         const trusted = await askTrustFleetHost(target.sourceUrl);
         // Explicit fallback rather than "relying on the default action": the
