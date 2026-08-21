@@ -436,6 +436,49 @@ function rememberFleetTrustedHost(host: string): void {
   writeFleetTrustedHosts(Array.from(hosts));
 }
 
+// One prompt per host at a time: rapid clicks (or several unknown-host fleet
+// links clicked in succession) would otherwise stack independent native
+// modals, and concurrent rememberFleetTrustedHost writes race on the same
+// temp/target path. Concurrent callers await the same in-flight result.
+const inflightFleetTrustPrompts = new Map<string, Promise<boolean>>();
+
+async function promptFleetTrustOnce(
+  win: Electron.BrowserWindow,
+  host: string,
+  href: string,
+): Promise<boolean> {
+  const existing = inflightFleetTrustPrompts.get(host);
+  if (existing) return existing;
+  const prompt = (async (): Promise<boolean> => {
+    const { response, checkboxChecked } = await dialog.showMessageBox(win, {
+      type: "warning",
+      title: "信任此域名以打开任务预览？",
+      message: `是否允许在“${host}”下打开任务预览？`,
+      detail: `链接：${href}`,
+      buttons: ["允许", "拒绝"],
+      defaultId: 1, // 默认拒绝
+      cancelId: 1, // Esc / 关闭窗口也按"拒绝"处理，弹窗失败永远 fail-closed
+      checkboxLabel: "不再询问此域名",
+      checkboxChecked: false,
+    });
+    if (checkboxChecked && response === 0) {
+      try {
+        rememberFleetTrustedHost(host);
+      } catch {
+        // A storage failure must not convert the user's explicit 允许 into a
+        // reject: degrade to "trusted for this click, not remembered".
+      }
+    }
+    return response === 0;
+  })();
+  inflightFleetTrustPrompts.set(host, prompt);
+  try {
+    return await prompt;
+  } finally {
+    inflightFleetTrustPrompts.delete(host);
+  }
+}
+
 function registerFleetTrustHostHandler() {
   ipcMain.handle(
     IPC_ASK_TRUST_FLEET_HOST,
@@ -459,19 +502,7 @@ function registerFleetTrustHostHandler() {
 
       const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
       if (!win || win.isDestroyed()) return { trusted: false };
-      const { response, checkboxChecked } = await dialog.showMessageBox(win, {
-        type: "warning",
-        title: "信任此域名以打开任务预览？",
-        message: `是否允许在“${host}”下打开任务预览？`,
-        detail: `链接：${parsedUrl.href}`,
-        buttons: ["允许", "拒绝"],
-        defaultId: 1, // 默认拒绝
-        cancelId: 1, // Esc / 关闭窗口也按"拒绝"处理，弹窗失败永远 fail-closed
-        checkboxLabel: "不再询问此域名",
-        checkboxChecked: false,
-      });
-      if (checkboxChecked && response === 0) rememberFleetTrustedHost(host);
-      return { trusted: response === 0 };
+      return { trusted: await promptFleetTrustOnce(win, host, parsedUrl.href) };
     }
   );
 }

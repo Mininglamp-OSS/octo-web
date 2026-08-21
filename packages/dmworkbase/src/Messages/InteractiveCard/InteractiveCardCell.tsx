@@ -445,6 +445,13 @@ export class InteractiveCardCell extends MessageCell {
     const { plain, decision } = this.computeState();
     const agentProgress =
       decision.kind === "card" && isAgentProgressCard(decision.card);
+    // One handler reference shared by click and auxclick (the handler gates
+    // on event.button internally): avoids a per-render double allocation and
+    // keeps the two paths provably identical.
+    const onBodyLinkClick = webhookPreviewClickHandler(
+      message,
+      context.openWebhookPreview?.bind(context)
+    );
 
     return (
       <MessageRow
@@ -453,14 +460,8 @@ export class InteractiveCardCell extends MessageCell {
         isActive={context.isContextMenuOpen(message.message)}
         onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
         onSenderNameClick={() => context.showUser(message.fromUID)}
-        onBodyClick={webhookPreviewClickHandler(
-          message,
-          context.openWebhookPreview?.bind(context)
-        )}
-        onBodyAuxClick={webhookPreviewClickHandler(
-          message,
-          context.openWebhookPreview?.bind(context)
-        )}
+        onBodyClick={onBodyLinkClick}
+        onBodyAuxClick={onBodyLinkClick}
       >
         <div
           className={
