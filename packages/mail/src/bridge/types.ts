@@ -201,6 +201,7 @@ export interface MessageDetail extends MessageSummary {
   bcc?: string[];
   bodyText?: string;
   bodyHtml?: string;
+  bodyTruncated?: boolean;
   originalFrom?: string;
   sentBy?: string;
   attachments?: ReceivedAttachment[];
