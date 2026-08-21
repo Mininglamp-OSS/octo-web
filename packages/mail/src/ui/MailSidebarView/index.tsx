@@ -296,9 +296,11 @@ export default function MailSidebarView(props: MailSidebarViewProps) {
                   <span className="octo-mail-mailboxes__label">
                     {mailboxLabel(mailbox, t)}
                   </span>
-                  <span className="octo-mail-mailboxes__count">
-                    {mailbox.unread > 0 ? mailbox.unread : ""}
-                  </span>
+                  {mailbox.unread > 0 ? (
+                    <span className="octo-mail-mailboxes__count">
+                      {mailbox.unread}
+                    </span>
+                  ) : null}
                 </button>
               ))
             : null}

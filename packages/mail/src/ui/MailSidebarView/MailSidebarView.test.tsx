@@ -153,8 +153,8 @@ describe("MailSidebarView", () => {
       return button?.querySelector(".octo-mail-mailboxes__count")?.textContent;
     };
 
-    expect(countFor("Inbox")).toBe("");
+    expect(countFor("Inbox")).toBeUndefined();
     expect(countFor("Starred")).toBe("2");
-    expect(countFor("Sent")).toBe("");
+    expect(countFor("Sent")).toBeUndefined();
   });
 });
