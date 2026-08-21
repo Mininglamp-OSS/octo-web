@@ -276,26 +276,6 @@ const MailService = {
     return requireAgentMailbox(mailbox);
   },
 
-  async getAgentAuthorization(
-    code: string,
-    spaceId: string
-  ): Promise<AgentAuthorizationView> {
-    const view = await APIClient.shared.get<AgentAuthorizationViewWire>(
-      mailApiUrl(`/agent-auth/requests/${encodeURIComponent(code)}`),
-      {
-        headers: { "X-Space-ID": spaceId },
-        suppressAuthExpiredLogout: true,
-      }
-    );
-    return {
-      request: {
-        ...view.request,
-        outboundMode: resolveOutboundMode(view.request),
-      },
-      mailboxes: (view.mailboxes ?? []).map(normalizeAgentMailbox),
-    };
-  },
-
   async approveAgentAuthorization(
     code: string,
     mailboxId: string,
@@ -315,6 +295,26 @@ const MailService = {
       }
     );
     return requireAuthorizationApproval(approval);
+  },
+
+  async getAgentAuthorization(
+    code: string,
+    spaceId: string
+  ): Promise<AgentAuthorizationView> {
+    const view = await APIClient.shared.get<AgentAuthorizationViewWire>(
+      mailApiUrl(`/agent-auth/requests/${encodeURIComponent(code)}`),
+      {
+        headers: { "X-Space-ID": spaceId },
+        suppressAuthExpiredLogout: true,
+      }
+    );
+    return {
+      request: {
+        ...view.request,
+        outboundMode: resolveOutboundMode(view.request),
+      },
+      mailboxes: (view.mailboxes ?? []).map(normalizeAgentMailbox),
+    };
   },
 
   revokeAgentMailboxBinding(id: string): Promise<void> {

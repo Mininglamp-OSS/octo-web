@@ -104,6 +104,13 @@ export interface AgentAuthorizationRequest {
   requestedAt: string;
   expiresAt: string;
   pollIntervalSeconds?: number;
+  /**
+   * Server-owned authorization-record mode. Device authorization creation
+   * does not accept an outbound mode, and pending records default to manual
+   * confirmation. Owner approval persists the selected mode to the same
+   * record, so approved/exchanged reads expose the owner's actual grant here,
+   * not an Agent-requested value.
+   */
   outboundMode: AgentOutboundMode;
   /** @deprecated Compatibility projection during the local enum migration. */
   autoReplyEnabled?: boolean;
