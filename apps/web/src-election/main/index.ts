@@ -515,10 +515,10 @@ function registerFleetTrustHostHandler() {
         return { trusted: false };
       }
       const host = parsedUrl.host;
-      if (readFleetTrustedHosts().includes(host)) return { trusted: true };
-      // Re-validate the fleet path shape here (the renderer did, but the
-      // main process is the trust authority and must not persist trust for
-      // a URL that was never a fleet deep link).
+      // Re-validate the fleet path shape BEFORE the remembered-host
+      // short-circuit (the renderer checked too, but the main process is the
+      // trust authority): a remembered host must not mint `trusted: true`
+      // for a URL that was never a fleet deep link.
       const segments = parsedUrl.pathname
         .replace(/\/+$/, "")
         .split("/")
@@ -528,6 +528,7 @@ function registerFleetTrustHostHandler() {
         segments[0] === "fleet" &&
         segments[2] === "issues";
       if (!isFleetShape) return { trusted: false };
+      if (readFleetTrustedHosts().includes(host)) return { trusted: true };
       return { trusted: await promptFleetTrustOnce(win, host, parsedUrl.href) };
     }
   );
@@ -599,18 +600,29 @@ const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
  * the setWindowOpenHandler router and the IPC_OPEN_EXTERNAL_URL bridge.
  * Logs origin/pathname only — a message-body URL can carry query tokens that
  * must not end up in logs.
+ *
+ * The URL is parsed exactly once and openExternal receives `parsed.href`:
+ * WHATWG parsing strips embedded tabs/newlines and normalizes the form, so
+ * the OS handler never sees the raw renderer string.
  */
-function openUrlExternally(url: string): Promise<boolean> {
-  if (decideWindowOpen(url) !== "open-external") {
-    logExternalUrlRejection(url);
+function openUrlExternally(rawUrl: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    logExternalUrlRejection(rawUrl);
+    return Promise.resolve(false);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    logExternalUrlRejection(rawUrl);
     return Promise.resolve(false);
   }
   return shell
-    .openExternal(url)
+    .openExternal(parsed.href)
     .then(() => true)
     .catch((error) => {
       console.warn(
-        `[external-link] openExternal failed (${safeUrlLabel(url)}):`,
+        `[external-link] openExternal failed (${safeUrlLabel(rawUrl)}):`,
         error,
       );
       return false;

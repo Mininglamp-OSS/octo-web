@@ -99,6 +99,11 @@ export function parseFleetIssueLinkShape(
   } catch {
     return null;
   }
+  // Reject embedded userinfo (https://evil@trusted-host/…): the host
+  // comparison below would match the trusted host while the serialized
+  // href still carries the userinfo into the preview panel / fallback link.
+  // Userinfo is deprecated in URLs and never legitimate on a fleet link.
+  if (url.username !== "" || url.password !== "") return null;
   if (!isSafeUrl(url.href) || !isFleetIssuePathname(url)) return null;
   const segments = url.pathname.split("/").filter(Boolean);
   const workspaceSlug = decodePathSegment(segments[1] || "");

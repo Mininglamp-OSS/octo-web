@@ -196,6 +196,24 @@ describe("parseFleetIssueLinkShape (structure only, no trust)", () => {
     expect(parseFleetIssueLinkShape("https://example.com/docs/1")).toBeNull();
     expect(parseFleetIssueLinkShape("https://example.com/fleet/a/issues")).toBeNull();
   });
+
+  it("rejects embedded userinfo even on a trusted host", () => {
+    // https://evil@trusted-host/... would pass the host comparison while
+    // carrying the userinfo into the serialized href — reject at the shape
+    // parser so no trust path ever sees it.
+    expect(
+      parseFleetIssueLinkShape(
+        "https://evil@im.deepminer.com.cn/fleet/a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+    expect(
+      parseFleetIssueLinkShape(
+        "https://user:pass@im.deepminer.com.cn/fleet/a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+  });
 });
 
 describe("trustedFleetHosts", () => {
