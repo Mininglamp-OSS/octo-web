@@ -458,6 +458,7 @@ async function promptFleetTrustOnce(
       buttons: ["允许", "拒绝"],
       defaultId: 1, // 默认拒绝
       cancelId: 1, // Esc / 关闭窗口也按"拒绝"处理，弹窗失败永远 fail-closed
+      noLink: true, // plain buttons, no command-link Enter mapping
       checkboxLabel: "不再询问此域名",
       checkboxChecked: false,
     });
@@ -482,11 +483,19 @@ async function promptFleetTrustOnce(
 function registerFleetTrustHostHandler() {
   ipcMain.handle(
     IPC_ASK_TRUST_FLEET_HOST,
-    async (_event, rawUrl: unknown): Promise<{ trusted: boolean }> => {
-      // Validate inputs instead of trusting the renderer blindly. The host
-      // is derived from the validated URL here, never taken from the
-      // renderer, so a caller cannot cache-trust one host while displaying
-      // another.
+    async (event, rawUrl: unknown): Promise<{ trusted: boolean }> => {
+      // Sender check + window resolution follow the OIDC handlers: the native
+      // prompt must be owned by the window that asked (not whatever window
+      // happens to be focused), and untrusted senders get a flat rejection.
+      // This is the only handler that persists durable trust, so it must not
+      // depend on the caller for that invariant.
+      const win = resolveTrustedOidcSender(event);
+      if (!win) return { trusted: false };
+      // Validate the input instead of trusting the renderer blindly. The
+      // trust key is derived from the validated URL here, never taken from
+      // the renderer, so a caller cannot cache-trust one origin while
+      // displaying another. The key is `URL.host` (hostname + non-default
+      // port): remembering `x:8443` must not trust `x` or `x:9999`.
       if (typeof rawUrl !== "string") return { trusted: false };
       let parsedUrl: URL;
       try {
@@ -497,11 +506,8 @@ function registerFleetTrustHostHandler() {
       } catch {
         return { trusted: false };
       }
-      const host = parsedUrl.hostname;
+      const host = parsedUrl.host;
       if (readFleetTrustedHosts().includes(host)) return { trusted: true };
-
-      const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
-      if (!win || win.isDestroyed()) return { trusted: false };
       return { trusted: await promptFleetTrustOnce(win, host, parsedUrl.href) };
     }
   );
