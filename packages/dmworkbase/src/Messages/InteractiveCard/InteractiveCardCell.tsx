@@ -4,8 +4,8 @@ import { Toast } from "@douyinfe/semi-ui";
 import WKApp from "../../App";
 import { getMessageRow } from "../../bridge/message/useMessageRow";
 import {
+  fleetPreviewClickHandler,
   parseWebhookIssuePreviewTarget,
-  webhookPreviewClickHandler,
 } from "../../bridge/message/webhookPreview";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
@@ -448,8 +448,7 @@ export class InteractiveCardCell extends MessageCell {
     // One handler reference shared by click and auxclick (the handler gates
     // on event.button internally): avoids a per-render double allocation and
     // keeps the two paths provably identical.
-    const onBodyLinkClick = webhookPreviewClickHandler(
-      message,
+    const onBodyLinkClick = fleetPreviewClickHandler(
       context.openWebhookPreview?.bind(context)
     );
 

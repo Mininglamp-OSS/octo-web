@@ -1,7 +1,7 @@
 import React from "react";
 import WKApp from "../../App";
 import { getRichTextMessageUI } from "../../bridge/message/useRichTextMessageUI";
-import { webhookPreviewClickHandler } from "../../bridge/message/webhookPreview";
+import { fleetPreviewClickHandler } from "../../bridge/message/webhookPreview";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import MessageRow from "../../ui/message/MessageRow";
 import MixedContent from "../../ui/message/MixedContent";
@@ -52,8 +52,7 @@ export class RichTextCell extends MessageCell {
     // One handler reference shared by click and auxclick (the handler gates
     // on event.button internally): avoids a per-render double allocation and
     // keeps the two paths provably identical.
-    const onBodyLinkClick = webhookPreviewClickHandler(
-      message,
+    const onBodyLinkClick = fleetPreviewClickHandler(
       context.openWebhookPreview?.bind(context)
     );
 

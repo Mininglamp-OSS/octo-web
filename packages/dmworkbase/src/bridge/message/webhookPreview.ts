@@ -1,6 +1,4 @@
 import type React from "react";
-import type { MessageWrap } from "../../Service/Model";
-import { webhookFromOfMessage } from "../../Service/IncomingWebhook";
 import { isSafeUrl } from "../../Utils/security";
 import APIClient from "../../Service/APIClient";
 import {
@@ -164,9 +162,10 @@ export function openFleetLinkExternal(href: string): void {
 }
 
 /**
- * Route webhook-message clicks on Fleet issue deep links to the in-app task
- * preview panel. One shared handler covers left-click (`click`, button 0) and
- * middle-click (`auxclick`, button 1); the trust model is:
+ * Route message-body clicks on Fleet issue deep links to the in-app task
+ * preview panel — for BOTH webhook messages and plain user messages. One
+ * shared handler covers left-click (`click`, button 0) and middle-click
+ * (`auxclick`, button 1); the trust model is:
  * - statically trusted origin (same origin / static set / current API host)
  *   → open the preview immediately, fully synchronously;
  * - unknown origin on desktop → cancel the default action synchronously,
@@ -177,12 +176,11 @@ export function openFleetLinkExternal(href: string): void {
  *   the browser's default action (new tab) without preventDefault, which
  *   keeps popup-blocker heuristics (Safari) on our side.
  */
-export function webhookPreviewClickHandler(
-  message: MessageWrap,
+export function fleetPreviewClickHandler(
   openPreview?: (target: WebhookIssuePreviewTarget) => void,
   onRejectedFallback: (href: string) => void = openFleetLinkExternal,
 ): ((event: React.MouseEvent) => void) | undefined {
-  if (!openPreview || !webhookFromOfMessage(message)) return undefined;
+  if (!openPreview) return undefined;
   // Per-handler in-flight guard: a link whose trust prompt is still being
   // resolved must not fan out a second prompt / preview / fallback tab on a
   // repeated click (Firefox dispatches BOTH click and auxclick for a middle

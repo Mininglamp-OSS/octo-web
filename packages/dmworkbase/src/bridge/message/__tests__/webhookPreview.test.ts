@@ -5,7 +5,7 @@ import {
   parseFleetIssueLinkShape,
   parseWebhookIssuePreviewTarget,
   trustedFleetHosts,
-  webhookPreviewClickHandler,
+  fleetPreviewClickHandler,
 } from "../webhookPreview";
 import APIClient from "../../../Service/APIClient";
 import * as desktopBridge from "../../../electron/desktopBridge";
@@ -234,7 +234,7 @@ describe("trustedFleetHosts", () => {
   });
 });
 
-describe("webhookPreviewClickHandler", () => {
+describe("fleetPreviewClickHandler", () => {
   const flushAsync = () =>
     new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -247,10 +247,7 @@ describe("webhookPreviewClickHandler", () => {
 
   it("opens a trusted Fleet link immediately without prompting", async () => {
     const open = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open
-    )!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://octo.example/fleet/1/issues/WS-4";
 
@@ -268,10 +265,7 @@ describe("webhookPreviewClickHandler", () => {
 
   it("opens a static-fallback host link (same-origin impossible) without prompting", async () => {
     const open = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open
-    )!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     // The base here is jsdom's http://localhost, so same-origin can never
     // match; the static fallback host must still open the preview (this is
@@ -292,10 +286,7 @@ describe("webhookPreviewClickHandler", () => {
     window.__POWERED_ELECTRON__ = true;
 
     const open = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open
-    )!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
     const preventDefault = vi.fn();
@@ -314,11 +305,7 @@ describe("webhookPreviewClickHandler", () => {
 
     const open = vi.fn();
     const fallback = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open,
-      fallback
-    )!;
+    const handler = fleetPreviewClickHandler(open, fallback)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
     const preventDefault = vi.fn();
@@ -344,11 +331,7 @@ describe("webhookPreviewClickHandler", () => {
 
     const open = vi.fn();
     const fallback = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open,
-      fallback
-    )!;
+    const handler = fleetPreviewClickHandler(open, fallback)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
 
@@ -364,10 +347,7 @@ describe("webhookPreviewClickHandler", () => {
     window.__POWERED_ELECTRON__ = true;
 
     const open = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open
-    )!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/docs/1";
 
@@ -383,10 +363,7 @@ describe("webhookPreviewClickHandler", () => {
   it("does not intercept right-click (auxclick button 2) — context menu path", async () => {
     const ask = vi.spyOn(desktopBridge, "getElectronIpcBridge");
     const open = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open
-    )!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://octo.example/fleet/1/issues/WS-4";
 
@@ -403,10 +380,7 @@ describe("webhookPreviewClickHandler", () => {
     // middle click. Only the auxclick leg may act, so a single gesture opens
     // exactly one preview.
     const open = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open
-    )!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://octo.example/fleet/1/issues/WS-4";
 
@@ -415,25 +389,26 @@ describe("webhookPreviewClickHandler", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("does not intercept body text, unrelated links, or non-webhook messages", async () => {
+  it("does not intercept body text or unrelated links, and no preview callback means no handler", async () => {
     const open = vi.fn();
     const body = document.createElement("div");
     const unrelated = document.createElement("a");
     unrelated.href = "https://example.com/docs/1";
 
-    webhookPreviewClickHandler({ fromUID: "iwh_hook" } as any, open)!(clickEvent(body));
-    webhookPreviewClickHandler({ fromUID: "iwh_hook" } as any, open)!(clickEvent(unrelated));
-    expect(webhookPreviewClickHandler({ fromUID: "user" } as any, open)).toBeUndefined();
+    fleetPreviewClickHandler(open)!(clickEvent(body));
+    fleetPreviewClickHandler(open)!(clickEvent(unrelated));
+    // The handler is message-source-agnostic (webhook and plain user
+    // messages share it); without a preview callback there is nothing to
+    // route to, so the factory returns undefined and the MessageRow hit
+    // area is not rendered at all.
+    expect(fleetPreviewClickHandler(undefined)).toBeUndefined();
     await flushAsync();
     expect(open).not.toHaveBeenCalled();
   });
 
   it("intercepts middle-click (auxclick) on a trusted fleet link", async () => {
     const open = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open
-    )!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://octo.example/fleet/1/issues/WS-4";
 
@@ -451,10 +426,7 @@ describe("webhookPreviewClickHandler", () => {
 
   it("does not intercept middle-click on non-fleet links", async () => {
     const open = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open
-    )!;
+    const handler = fleetPreviewClickHandler(open)!;
     const unrelated = document.createElement("a");
     unrelated.href = "https://example.com/docs/1";
     const preventDefault = vi.fn();
@@ -480,11 +452,7 @@ describe("webhookPreviewClickHandler", () => {
 
     const open = vi.fn();
     const fallback = vi.fn();
-    const handler = webhookPreviewClickHandler(
-      { fromUID: "iwh_hook" } as any,
-      open,
-      fallback
-    )!;
+    const handler = fleetPreviewClickHandler(open, fallback)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
 

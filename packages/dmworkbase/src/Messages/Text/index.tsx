@@ -16,7 +16,7 @@ import { isMessageReactionChannelSupported } from "../../features/messageReactio
 import { getTextMessageUI } from "../../bridge/message/useTextMessageUI";
 import { isMessageSelectable } from "../../Service/messageSelection";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
-import { webhookPreviewClickHandler } from "../../bridge/message/webhookPreview";
+import { fleetPreviewClickHandler } from "../../bridge/message/webhookPreview";
 import "./index.css"
 
 /**
@@ -196,8 +196,7 @@ export class TextCell extends MessageCell {
             // One handler reference shared by click and auxclick (the handler
             // gates on event.button internally): avoids a per-render double
             // allocation and keeps the two paths provably identical.
-            const onBodyLinkClick = webhookPreviewClickHandler(
-                message,
+            const onBodyLinkClick = fleetPreviewClickHandler(
                 context.openWebhookPreview?.bind(context)
             )
 
