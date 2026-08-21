@@ -1,8 +1,9 @@
 /* eslint-disable no-undef */
 // C989: 顶部搜索 bot → 打开名片 → 点「发送消息」→ 断言外层搜索 modal 消失.
 // bug fix: TabContacts BotDetailModal.onChat 加 hideModal 调用.
-import { test, expect } from "../fixtures-authed";
-import { installMockImRuntime } from "../_kit/mock-im-runtime";
+// @spec apps/web/e2e-kit/case-specs/search/C989-search-close-on-bot-send-message.md
+import { test, expect } from "../../fixtures-authed";
+import { installMockImRuntime } from "../../_kit/mock-im-runtime";
 
 // bot fixture: **已加好友的 bot** (issue #989 复现场景).
 //   - TabContacts.renderItem 里 isBot(uid) === true 才走"点击开 BotDetailModal"分支;

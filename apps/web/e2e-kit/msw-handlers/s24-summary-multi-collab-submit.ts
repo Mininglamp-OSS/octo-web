@@ -139,6 +139,9 @@ export async function registerS24SummaryMultiCollabSubmit(page: Page): Promise<v
         const state = (window as unknown as { __s24State__: { submitted: boolean } }).__s24State__;
         return env(makePersonal(state.submitted));
       }),
+      http.get(`*/summary/api/v1/summaries/${TASK_ID}/personal-versions`, () =>
+        env({ versions: [], keep_limit: 3 })
+      ),
       http.get(`*/summary/api/v1/summaries/${TASK_ID}/members`, () => {
         const state = (window as unknown as { __s24State__: { submitted: boolean } }).__s24State__;
         return env(makeMembers(state.submitted));
