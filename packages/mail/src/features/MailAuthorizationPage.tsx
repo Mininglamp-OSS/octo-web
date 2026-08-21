@@ -490,9 +490,9 @@ export default function MailAuthorizationPage({
             <legend>{t("mail.authorization.permissionLegend")}</legend>
             <p className="mail-auth-card__status">
               {t(
-                request?.outboundMode === "automatic_send"
-                  ? "mail.authorization.requestedAutomatic"
-                  : "mail.authorization.requestedManual"
+                outboundMode === "automatic_send"
+                  ? "mail.authorization.selectedAutomatic"
+                  : "mail.authorization.selectedManual"
               )}
             </p>
             <label

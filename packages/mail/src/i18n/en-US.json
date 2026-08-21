@@ -81,6 +81,8 @@
   "mail.reader.sentBy": "Sent by {{sender}} on behalf of the original sender",
   "mail.reader.thread": "Messages in this thread",
   "mail.reader.threadCount": "Mail thread · {{count}} messages",
+  "mail.reader.htmlBody": "HTML email body",
+  "mail.reader.bodyTruncated": "This HTML email is too large to display here. Download the raw message to view the complete content.",
   "mail.reader.rawHint": "Download the raw message for complete headers and MIME content.",
   "mail.attachment.list": "Attachments",
   "mail.attachment.download": "Download attachment",
@@ -309,6 +311,6 @@
   "mail.authorization.approvalMismatch": "The server returned a different mailbox permission than the one you approved. Nothing was connected.",
   "mail.authorization.targetSpace": "Target Space: {{spaceName}}",
   "mail.authorization.spaceMismatchConfirmation": "This link targets Space {{targetSpaceName}}, but you are currently in Space {{currentSpaceName}}. I understand and want to authorize the target Space.",
-  "mail.authorization.requestedAutomatic": "The Agent requested automatic sending. For safety, this page starts with confirmation required; choose automatic sending only if you intend to grant it.",
-  "mail.authorization.requestedManual": "The Agent requested confirmation before every send."
+  "mail.authorization.selectedAutomatic": "Automatic sending is selected.",
+  "mail.authorization.selectedManual": "Confirmation before every send is selected."
 }
