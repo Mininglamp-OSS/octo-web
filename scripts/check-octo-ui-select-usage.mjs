@@ -83,25 +83,25 @@ for (const scanRoot of scanRoots) {
       let match
       while ((match = namedImportPattern.exec(source))) {
         if (hasSelectSpecifier(match[1])) {
-          violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi Select; use @octo/ui Select`)
+          violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi Select; use @octo/ui/select`)
         }
       }
       while ((match = exportPattern.exec(source))) {
         if (hasSelectSpecifier(match[1])) {
-          violations.push(`${rel}:${lineNumber(source, match.index)} re-exports Semi Select; use @octo/ui Select`)
+          violations.push(`${rel}:${lineNumber(source, match.index)} re-exports Semi Select; use @octo/ui/select`)
         }
       }
       while ((match = namespaceImportPattern.exec(source))) {
         const namespaceUsage = new RegExp(`\\b${escapeRegExp(match[1])}\\.Select\\b`)
         if (namespaceUsage.test(source)) {
-          violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi namespace Select; use @octo/ui Select`)
+          violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi namespace Select; use @octo/ui/select`)
         }
       }
       while ((match = deepImportPattern.exec(source))) {
-        violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi Select deep path; use @octo/ui Select`)
+        violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi Select deep path; use @octo/ui/select`)
       }
       while ((match = sideEffectDeepImportPattern.exec(source))) {
-        violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi Select deep path; use @octo/ui Select`)
+        violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi Select deep path; use @octo/ui/select`)
       }
     }
 

@@ -203,6 +203,8 @@ const SelectOptionComponent = function SelectOption({ children, label }: SelectO
   return <>{children ?? label}</>
 }
 
+// Semi collects Select.Option children by reading this static marker; the
+// component body is not used in normal option collection.
 ;(SelectOptionComponent as typeof SelectOptionComponent & { isSelectOption?: boolean }).isSelectOption = true
 
 const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function Select(
