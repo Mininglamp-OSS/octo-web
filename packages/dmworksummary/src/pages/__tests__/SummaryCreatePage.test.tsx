@@ -92,6 +92,16 @@ function flushPromises() {
     return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+}
+
 describe('SummaryCreatePage templates', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -928,6 +938,31 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(retryCalls[retryCalls.length - 1][2]).toEqual({ idempotencyKey: 'finalize_test_key' });
     });
 
+    it('persists the accepted task before an embedded handoff throws', async () => {
+        (api.saveAgentSummaryViaFinalize as any).mockResolvedValueOnce({ task_id: 211, async_finalize: true });
+        const onSubmit = vi.fn(() => {
+            throw new Error('embedded handoff failed');
+        });
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} embedded onSubmit={onSubmit} />);
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-handoff', mode: 'agent', selectedChats: [] });
+        });
+
+        let result = true;
+        await act(async () => {
+            result = await (ref.current as any).handleSaveAsSummary('t');
+        });
+
+        expect(result).toBe(false);
+        expect(onSubmit).toHaveBeenCalledWith(211);
+        expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 211 });
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(211);
+    });
+
     it('clears the workbench when a pending finalize is reconciled as COMPLETED', async () => {
         // R5 P1：async 保存后任务成功，重进 agent 模式不得重放已保存的对话。
         localStorage.setItem(WORKBENCH_KEY, 'sess-done');
@@ -948,6 +983,37 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(localStorage.getItem(FINALIZE_PENDING_KEY)).toBeNull();
         expect(instance.state.sessionId).toBe('');
         expect(instance.state.messages).toEqual([]);
+        expect(instance.state.pendingFinalizeTaskId).toBe(0);
+    });
+
+    it('keeps the workbench but clears pending when a successful reconcile cannot find the task', async () => {
+        const messages = [{ role: 'assistant', content: 'keep this draft' }];
+        const referencedTask = { task_id: 8, title: 'keep this reference' };
+        localStorage.setItem(WORKBENCH_KEY, 'sess-missing');
+        localStorage.setItem('agent-chat-referenced:__workbench__', JSON.stringify(referencedTask));
+        localStorage.setItem(FINALIZE_PENDING_KEY, JSON.stringify({ key: 'missing-key', fingerprint: 'f', taskId: 59 }));
+        (api.batchStatus as any).mockResolvedValueOnce([]);
+
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                mode: 'agent',
+                sessionId: 'sess-missing',
+                messages,
+                referencedTask,
+                pendingFinalizeTaskId: 59,
+            });
+        });
+        await act(async () => {
+            await (instance as any).reconcilePendingFinalize();
+        });
+
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBe('sess-missing');
+        expect(JSON.parse(localStorage.getItem('agent-chat-referenced:__workbench__') || 'null')).toEqual(referencedTask);
+        expect(localStorage.getItem(FINALIZE_PENDING_KEY)).toBeNull();
+        expect(instance.state.sessionId).toBe('sess-missing');
+        expect(instance.state.messages).toEqual(messages);
+        expect(instance.state.referencedTask).toEqual(referencedTask);
         expect(instance.state.pendingFinalizeTaskId).toBe(0);
     });
 
@@ -983,58 +1049,178 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(instance.state.pendingFinalizeTaskId).toBe(57);
     });
 
-    it('keeps the workbench untouched when the reconcile request fails', async () => {
+    it('seeds the save gate from storage while reconcile is pending and keeps it on request failure', async () => {
         localStorage.setItem(WORKBENCH_KEY, 'sess-offline');
         localStorage.setItem(FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 58 }));
-        (api.batchStatus as any).mockRejectedValueOnce(new Error('offline'));
+        const statusRequest = deferred<any[]>();
+        (api.batchStatus as any).mockReturnValueOnce(statusRequest.promise);
 
         const instance = await mountInstance();
+        let reconcilePromise!: Promise<void>;
         await act(async () => {
-            (instance as any).enterAgentMode();
+            reconcilePromise = (instance as any).reconcilePendingFinalize();
             await flushPromises();
+        });
+
+        expect(instance.state.pendingFinalizeTaskId).toBe(58);
+        expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 58 });
+
+        await act(async () => {
+            statusRequest.reject(new Error('offline'));
+            await reconcilePromise;
         });
 
         expect(localStorage.getItem(WORKBENCH_KEY)).toBe('sess-offline');
         expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 58 });
-        expect(instance.state.pendingFinalizeTaskId).toBe(0);
+        expect(instance.state.pendingFinalizeTaskId).toBe(58);
     });
 
-    it('40009 with task_id navigates to the in-flight task and records it as pending', async () => {
-        (api.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
-            response: { data: { code: 40009, data: { task_id: 321 } } },
-        });
+    it('does not let a stale missing-task reconcile clear a newer pending finalize', async () => {
+        localStorage.setItem(FINALIZE_PENDING_KEY, JSON.stringify({ key: 'old-key', fingerprint: 'old', taskId: 60 }));
+        const statusRequest = deferred<any[]>();
+        (api.batchStatus as any).mockReturnValueOnce(statusRequest.promise);
+
         const instance = await mountInstance();
+        let reconcilePromise!: Promise<void>;
         await act(async () => {
-            instance.setState({ sessionId: 'sess-40009', mode: 'agent', selectedChats: [] });
+            reconcilePromise = (instance as any).reconcilePendingFinalize();
+            await flushPromises();
+        });
+        expect(instance.state.pendingFinalizeTaskId).toBe(60);
+
+        localStorage.setItem(FINALIZE_PENDING_KEY, JSON.stringify({ key: 'new-key', fingerprint: 'new', taskId: 61 }));
+        await act(async () => {
+            instance.setState({ pendingFinalizeTaskId: 61 });
+            statusRequest.resolve([]);
+            await reconcilePromise;
         });
 
-        let result = false;
-        await act(async () => { result = await instance.handleSaveAsSummary('t'); });
-
-        expect(result).toBe(true);
-        expect(isAgentSummaryNotificationEligible(321)).toBe(true);
-        expect(instance.state.pendingFinalizeTaskId).toBe(321);
-        expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 321 });
+        expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toEqual({
+            key: 'new-key',
+            fingerprint: 'new',
+            taskId: 61,
+        });
+        expect(instance.state.pendingFinalizeTaskId).toBe(61);
     });
 
-    it('40009 without task_id errors with its own copy and does not claim a page was opened', async () => {
-        const { Toast } = await import('@douyinfe/semi-ui');
-        (Toast.error as any).mockClear();
+    it('40009 deleted_summary clears the stale pending without navigating and allows a fresh key', async () => {
+        const deletedTaskId = 9321;
+        const freshTaskId = 9322;
+        (api.genFinalizeRequestId as any)
+            .mockReturnValueOnce('deleted-bound-key')
+            .mockReturnValueOnce('fresh-key');
+        (api.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
+            response: {
+                data: {
+                    code: 40009,
+                    data: {
+                        task_id: deletedTaskId,
+                        reason: 'deleted_summary',
+                        recovery_action: 'start_new_summary',
+                    },
+                },
+            },
+        }).mockResolvedValueOnce({ task_id: freshTaskId, async_finalize: true });
+        localStorage.setItem(WORKBENCH_KEY, 'sess-deleted');
+        const onSubmit = vi.fn();
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} embedded onSubmit={onSubmit} />);
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-deleted', mode: 'agent', selectedChats: [] });
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+        });
+
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(isAgentSummaryNotificationEligible(deletedTaskId)).toBe(false);
+        expect(localStorage.getItem(FINALIZE_PENDING_KEY)).toBeNull();
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBe('sess-deleted');
+        expect((ref.current as any).state.sessionId).toBe('sess-deleted');
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(0);
+
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+        });
+
+        const calls = (api.saveAgentSummaryViaFinalize as any).mock.calls;
+        expect(calls[0][2]).toEqual({ idempotencyKey: 'deleted-bound-key' });
+        expect(calls[1][2]).toEqual({ idempotencyKey: 'fresh-key' });
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+        expect(onSubmit).toHaveBeenCalledWith(freshTaskId);
+        expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toMatchObject({
+            key: 'fresh-key',
+            taskId: freshTaskId,
+        });
+    });
+
+    it('unknown 40009 with task_id records a blocking pending state without navigating', async () => {
+        const unknownTaskId = 9323;
+        (api.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
+            response: {
+                data: {
+                    code: 40009,
+                    data: {
+                        task_id: unknownTaskId,
+                        reason: 'future_reason',
+                        recovery_action: 'future_action',
+                    },
+                },
+            },
+        });
+        const onSubmit = vi.fn();
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} embedded onSubmit={onSubmit} />);
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-40009-unknown', mode: 'agent', selectedChats: [] });
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+        });
+
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(isAgentSummaryNotificationEligible(unknownTaskId)).toBe(false);
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(unknownTaskId);
+        expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toMatchObject({
+            key: 'finalize_test_key',
+            taskId: unknownTaskId,
+        });
+    });
+
+    it('40009 without task_id keeps the key with a blocking sentinel and closes the save confirmation', async () => {
         (api.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
             response: { data: { code: 40009, data: null } },
         });
-        const instance = await mountInstance();
+        const onSubmit = vi.fn();
+        const ref = React.createRef<SummaryCreatePage>();
         await act(async () => {
-            instance.setState({ sessionId: 'sess-40009-bare', mode: 'agent', selectedChats: [] });
+            render(<SummaryCreatePage ref={ref} embedded onSubmit={onSubmit} />);
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-40009-bare', mode: 'agent', selectedChats: [] });
         });
 
-        let result = true;
-        await act(async () => { result = await instance.handleSaveAsSummary('t'); });
+        let result = false;
+        await act(async () => {
+            result = await (ref.current as any).handleSaveAsSummary('t');
+        });
 
-        expect(result).toBe(false);
-        expect(Toast.error).toHaveBeenCalledWith('上一篇 AI 总结还在生成中，请稍后再试');
-        expect(instance.state.pendingFinalizeTaskId).toBe(0);
-        expect(localStorage.getItem(FINALIZE_PENDING_KEY)).toBeNull();
+        expect(result).toBe(true);
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(-1);
+        expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toMatchObject({
+            key: 'finalize_test_key',
+            taskId: -1,
+        });
     });
 });
 

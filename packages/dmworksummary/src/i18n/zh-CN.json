@@ -206,6 +206,10 @@
         "agentSummaryAlreadyGenerating": "AI 总结正在生成，已打开详情页",
         "agentSummaryAlreadyGeneratingNoDetail": "上一篇 AI 总结还在生成中，请稍后再试",
         "agentSummaryGeneratingHint": "生成中…",
+        "agentSummaryPendingHint": "待确认…",
+        "agentSummaryDeletedRetry": "上一篇 AI 总结已不存在，请重新保存",
+        "agentSummaryPendingConfirm": "上一篇 AI 总结状态确认中，请稍候",
+        "agentSummaryPendingUnknown": "上一篇 AI 总结状态无法确认，请新建会话后继续",
         "savedReferenceLostRetry": "保存失败：请重新选择引用总结，或点「新会话」重来",
         "savedNoOriginRetry": "保存失败：该引用总结缺少来源频道，本次会话也未读取过频道。请更换有来源的引用总结，或开始新会话让 AI 先读取频道"
     },

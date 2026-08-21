@@ -350,6 +350,55 @@ describe('summaryApi', () => {
         });
     });
 
+    describe('batchStatus strict envelope', () => {
+        it('returns an empty task list only from a code 0 envelope', async () => {
+            const { batchStatus } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 200,
+                data: { code: 0, data: { tasks: [] } },
+            });
+
+            await expect(batchStatus([1, 2])).resolves.toEqual([]);
+            expect(mockPost).toHaveBeenCalledWith('/summary/api/v1/summaries/batch-status', {
+                task_ids: [1, 2],
+            });
+        });
+
+        it('rejects HTTP 200 with a non-zero business code', async () => {
+            const { batchStatus } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 200,
+                data: { code: 40009, message: 'batch status unavailable', data: null },
+            });
+
+            await expect(batchStatus([1])).rejects.toThrow('batch status unavailable');
+        });
+
+        it.each([
+            { code: 0, data: null },
+            { code: 0, data: {} },
+            { code: 0, data: { tasks: null } },
+            { data: { tasks: [] } },
+        ])('rejects a malformed success envelope: %j', async (data) => {
+            const { batchStatus } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ status: 200, data });
+
+            await expect(batchStatus([1])).rejects.toThrow();
+        });
+
+        it('keeps friendly HTTP errors and cancellation identity', async () => {
+            const { batchStatus } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce({
+                response: { status: 503, data: { message: 'status service unavailable' } },
+            });
+            await expect(batchStatus([1])).rejects.toThrow('status service unavailable');
+
+            const cancelErr = { __CANCEL__: true, message: 'canceled' };
+            mockPost.mockRejectedValueOnce(cancelErr);
+            await expect(batchStatus([1])).rejects.toBe(cancelErr);
+        });
+    });
+
     // 后端 is_active 返回 number(0/1)，前端多处用 `=== false` / `!== false` 严格判断。
     // 如果不归一，`0 === false` 为 false，会导致关闭后刷新仍被当作「定时生效」。
     describe('is_active normalization (number -> boolean)', () => {
@@ -630,6 +679,86 @@ describe('summaryApi', () => {
             const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
             expect(started).toHaveLength(1);
             expect(started[0][1]).toMatchObject({ trigger_mode: 'agent' });
+            track.mockRestore();
+        });
+
+        it('tracks one started event for the same key across 202 acceptance and 200 replay', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 95, status: 'GENERATING' } },
+                })
+                .mockResolvedValueOnce({
+                    status: 200,
+                    data: { code: 0, data: { task_id: 95, status: 'GENERATING' } },
+                });
+
+            const options = { idempotencyKey: 'finalize_track_replay_key' };
+            await saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' }, options);
+            await saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' }, options);
+
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
+            track.mockRestore();
+        });
+
+        it('tracks one started event for each different finalize key', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 96, status: 'GENERATING' } },
+                })
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 97, status: 'GENERATING' } },
+                });
+
+            await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_track_distinct_a' },
+            );
+            await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_track_distinct_b' },
+            );
+
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(2);
+            track.mockRestore();
+        });
+
+        it('does not reserve the finalize key until the request is accepted', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockResolvedValueOnce({
+                    status: 200,
+                    data: { code: 40004, message: 'no output', data: null },
+                })
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 98, status: 'GENERATING' } },
+                });
+            const options = { idempotencyKey: 'finalize_track_after_failure' };
+
+            await expect(
+                saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' }, options),
+            ).rejects.toThrow('no output');
+            await expect(
+                saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' }, options),
+            ).resolves.toMatchObject({ task_id: 98, async_finalize: true });
+
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
             track.mockRestore();
         });
 

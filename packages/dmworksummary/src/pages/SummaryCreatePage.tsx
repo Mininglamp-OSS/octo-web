@@ -108,8 +108,9 @@ interface SummaryCreatePageState {
     /** 引用选择器 Modal 打开状态 */
     showReferencePicker: boolean;
     /**
-     * 上一次 async finalize 已受理但尚未终态的 task_id（0 = 无）。非 0 时保存按钮
-     * 置灰：同一 session 重复 finalize 只会拿 40009，在 UI 层拦住更直接。
+     * 上一次 async finalize 的待结算状态：0 = 无，正数 = 可查询的 task_id，-1 =
+     * 后端确认冲突但未返回可查询 task。非 0 时冻结聊天与保存，避免换 payload 后
+     * mint 新 key 绕过同一逻辑保存。
      */
     pendingFinalizeTaskId: number;
     /**
@@ -213,7 +214,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     private getOrCreateFinalizeIdempotencyKey(fingerprint: string): string {
         const pending = this.getFinalizePending();
-        if (pending && pending.fingerprint === fingerprint) {
+        // 已受理（正 taskId）或已确认冲突但不可查询（-1）时，payload 即使变化也
+        // 不能换 key；否则用户继续聊天/改标题后会绕过后端幂等绑定再创建一篇。
+        if (pending && (pending.taskId !== 0 || pending.fingerprint === fingerprint)) {
             return pending.key;
         }
         const key = api.genFinalizeRequestId();
@@ -226,6 +229,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         const pending = this.getFinalizePending();
         if (!pending) return;
         writeAgentFinalizePending(this.agentChannelId(), { ...pending, taskId });
+    }
+
+    /** 40009 未返回 task_id：保留原 key，并用 -1 阻断后续 payload/key 轮换。 */
+    private markFinalizeUnresolved() {
+        this.markFinalizeAccepted(-1);
     }
 
     private clearFinalizeIdempotencyKey() {
@@ -896,6 +904,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
+        const pending = this.getFinalizePending();
         // 恢复引用总结与 session 同生命周期：storage 里有 → 自动回填。
         // 无 → 保持 state 现值（可能是 mount 时 derivedFromTask 塞进来的）。
         const storedRef = readAgentChatReferenced(this.agentChannelId());
@@ -905,6 +914,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             referencedTask: storedRef
                 ? { task_id: storedRef.task_id, title: storedRef.title } as SummaryListItem
                 : prev.referencedTask,
+            // 在 batchStatus 返回前先恢复阻断态，避免这段窗口里重放旧 key 或继续聊天。
+            pendingFinalizeTaskId: pending?.taskId ?? 0,
         }));
         if (stored) void this.loadAgentHistory(stored);
         void this.reconcilePendingFinalize();
@@ -917,24 +928,39 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
      *                legacy 同步路径的行为），同时堵死「从复活会话重复保存」。
      *   FAILED/CANCELLED → 保留会话让用户重试，仅清 pending（下次保存重新发起）。
      *   仍在生成 → 保留会话，保存按钮置灰（重复保存只会拿 40009）。
-     *   查不到/请求失败 → 保守：什么都不动，下次再对。
+     *   查询成功但任务缺失 → 该用户已无法再对帐（删除/不可见），仅清 pending，
+     *                         保留会话并让下一次保存 mint 新 key。
+     *   请求失败 → 保守保留 pending，下次再对。
      * 见 #1465 R5 P1。
      */
     private async reconcilePendingFinalize() {
         const pending = this.getFinalizePending();
-        if (!pending || pending.taskId <= 0) return;
-        let status: TaskStatusType | undefined;
+        if (!pending) return;
+        if (pending.taskId !== 0 && this.state.pendingFinalizeTaskId !== pending.taskId) {
+            this.setState({ pendingFinalizeTaskId: pending.taskId });
+        }
+        if (pending.taskId <= 0) return;
+        let task: { status: TaskStatusType } | undefined;
         try {
             const tasks = await api.batchStatus([pending.taskId]);
-            status = tasks.find((task) => task.id === pending.taskId)?.status;
+            task = tasks.find((item) => item.id === pending.taskId);
         } catch {
             // 网络/权限失败：保守保留，下次进入时再对。
             return;
         }
-        if (status === undefined) return;
         // 对帐期间用户可能已点「新会话」或又发起了一次保存 —— pending 变了就丢弃本次结果。
         const current = this.getFinalizePending();
         if (!current || current.key !== pending.key || current.taskId !== pending.taskId) return;
+
+        if (!task) {
+            // batchStatus 明确成功但该 id 不在结果中：任务已删除或当前用户不可再访问。
+            // 只清幂等绑定，保留 session/reference，让用户用新 key 重新保存。
+            clearAgentFinalizePending(this.agentChannelId());
+            this.setState({ pendingFinalizeTaskId: 0 });
+            return;
+        }
+
+        const status = task.status;
 
         if (status === TaskStatus.COMPLETED) {
             clearAgentChatSession(this.agentChannelId());
@@ -1054,6 +1080,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     handleSaveAsSummary = async (title: string): Promise<boolean> => {
         const { sessionId, selectedChats, selectedMembers } = this.state;
         const { t } = this.context;
+
+        // UI disabled 之外的命令式兜底：已受理/冲突待确认时不得通过直接调用再次保存。
+        if (this.state.savingSummary || this.state.pendingFinalizeTaskId !== 0) {
+            return true;
+        }
         
         if (!sessionId) {
             Toast.warning(t('summary.create.noOutputToSave'));
@@ -1132,6 +1163,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }, {
                 idempotencyKey: this.getOrCreateFinalizeIdempotencyKey(finalizeFingerprint),
             });
+
+            if (result.async_finalize) {
+                // 先持久化受理事实，再执行通知/导航等可能抛错的副作用。即使后续副作用
+                // 失败，reload 后仍能恢复 gate 并 reconcile，而不是重放成第二篇。
+                this.markFinalizeAccepted(result.task_id);
+                this.setState({ pendingFinalizeTaskId: result.task_id });
+            }
             markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t(result.async_finalize ? 'summary.create.agentSummaryGenerating' : 'summary.create.agentSummaryCreated'));
@@ -1151,13 +1189,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             openCreatedSummary(result.task_id);
-            if (result.async_finalize) {
-                // 任务已受理但未终态：把 task_id 跟幂等键一起落盘，下次进 agent 模式
-                // 由 reconcilePendingFinalize 对帐后再决定清/留（#1465 R5 P1）。不能在这里
-                // 直接 clear：那样重进工作台会重放已保存的对话并允许重复保存。
-                this.markFinalizeAccepted(result.task_id);
-                this.setState({ pendingFinalizeTaskId: result.task_id });
-            } else {
+            if (!result.async_finalize) {
                 this.clearFinalizeIdempotencyKey();
                 this.setState({ pendingFinalizeTaskId: 0 });
             }
@@ -1165,7 +1197,18 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         } catch (err: unknown) {
             // 类型守卫:axios 错误
             if (err && typeof err === 'object' && 'response' in err) {
-                const axiosErr = err as { response?: { data?: { code?: number; data?: { task_id?: number } } } };
+                const axiosErr = err as {
+                    response?: {
+                        data?: {
+                            code?: number;
+                            data?: {
+                                task_id?: number;
+                                reason?: string;
+                                recovery_action?: string;
+                            };
+                        };
+                    };
+                };
                 const code = axiosErr.response?.data?.code;
                 // 40004: session 无产出
                 if (code === 40004) {
@@ -1173,22 +1216,36 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     Toast.error(t('summary.create.noOutputToSave'));
                     return false;
                 }
-                // 40009:已有 finalize 在进行中。若后端返回 task_id,直接带用户去进行中的详情页。
                 if (code === 40009) {
-                    const taskId = axiosErr.response?.data?.data?.task_id;
+                    const conflict = axiosErr.response?.data?.data;
+                    const taskId = conflict?.task_id;
+                    const shouldStartNew = conflict?.reason === 'deleted_summary'
+                        || conflict?.recovery_action === 'start_new_summary';
+
+                    if (shouldStartNew) {
+                        // 后端明确说旧绑定已失效：清旧 key，但保留会话，下一次保存可安全
+                        // mint 新 key。绝不跳转/订阅已删除 task。
+                        this.clearFinalizeIdempotencyKey();
+                        this.setState({ pendingFinalizeTaskId: 0 });
+                        Toast.warning(t('summary.create.agentSummaryDeletedRetry'));
+                        return false;
+                    }
+
                     if (typeof taskId === 'number' && taskId > 0) {
-                        Toast.warning(t('summary.create.agentSummaryAlreadyGenerating'));
-                        markAgentSummaryNotificationEligible(taskId);
-                        openCreatedSummary(taskId);
-                        // 该任务仍在生成：记下来继续用 reconcile 对帐，并拦住重复保存。
+                        // finalize 的 40009 合同尚未稳定：有 id 也只记 pending 后对帐，
+                        // 不再假定它一定“正在生成”并立即导航。
                         this.markFinalizeAccepted(taskId);
                         this.setState({ pendingFinalizeTaskId: taskId });
+                        Toast.warning(t('summary.create.agentSummaryPendingConfirm'));
                         return true;
                     }
-                    this.clearFinalizeIdempotencyKey();
-                    // 无 task_id 时无处可跳 —— 不能用「已打开详情页」那句文案（R5 P2）。
-                    Toast.error(t('summary.create.agentSummaryAlreadyGeneratingNoDetail'));
-                    return false;
+
+                    // 后端确认冲突却不给 task_id：不能清 key 后放开保存，否则下一次会
+                    // mint 新 key 绕过仍在进行的逻辑保存。-1 只能由「新会话」解除。
+                    this.markFinalizeUnresolved();
+                    this.setState({ pendingFinalizeTaskId: -1 });
+                    Toast.error(t('summary.create.agentSummaryPendingUnknown'));
+                    return true;
                 }
                 // 40001: origin_channel_id 反查失败。拆两个子因给不同文案
                 // （R4 ms P2-1）：
@@ -1284,7 +1341,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     saveDisabledReason={
                                         this.state.pendingFinalizeTaskId > 0
                                             ? translate('summary.create.agentSummaryGeneratingHint')
-                                            : undefined
+                                            : this.state.pendingFinalizeTaskId < 0
+                                                ? translate('summary.create.agentSummaryPendingHint')
+                                                : undefined
                                     }
                                     onNewSession={this.handleNewSession}
                                     referencedTaskIds={

@@ -120,6 +120,16 @@ function flushPromises() {
     return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
+function deferred<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason?: unknown) => void;
+    const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+    });
+    return { promise, resolve, reject };
+}
+
 describe('ChatSummaryNewModal', () => {
     const defaultProps = {
         visible: true,
@@ -706,6 +716,23 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
         localStorage.clear();
     });
 
+    async function mountModal(onSubmit = vi.fn()) {
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={onSubmit}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+        return { ref, onSubmit };
+    }
+
     it('fills origin_channel_id + type from the channel prop (group → 1)', async () => {
         const ref = React.createRef<ChatSummaryNewModal>();
         await act(async () => {
@@ -848,6 +875,28 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
         expect((ref.current as any).state.pendingFinalizeTaskId).toBe(205);
     });
 
+    it('persists the accepted task before onSubmit throws', async () => {
+        (summaryApi.saveAgentSummaryViaFinalize as any).mockResolvedValueOnce({ task_id: 206, async_finalize: true });
+        const onSubmit = vi.fn(() => {
+            throw new Error('modal handoff failed');
+        });
+        const { ref } = await mountModal(onSubmit);
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-handoff' });
+        });
+
+        let result = true;
+        await act(async () => {
+            result = await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        expect(result).toBe(false);
+        expect(onSubmit).toHaveBeenCalledWith(206);
+        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 206 });
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(206);
+    });
+
     it('clears the agent session when a pending finalize is reconciled as COMPLETED', async () => {
         localStorage.setItem('agent-chat-session:ch1', 'sess-modal-done');
         localStorage.setItem(MODAL_FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 61 }));
@@ -878,6 +927,32 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
         expect((ref.current as any).state.pendingFinalizeTaskId).toBe(0);
     });
 
+    it('keeps the session and messages but clears pending when a successful reconcile cannot find the task', async () => {
+        const messages = [{ role: 'assistant', content: 'keep this modal draft' }];
+        localStorage.setItem('agent-chat-session:ch1', 'sess-modal-missing');
+        localStorage.setItem(MODAL_FINALIZE_PENDING_KEY, JSON.stringify({ key: 'missing-key', fingerprint: 'f', taskId: 63 }));
+        (summaryApi.batchStatus as any).mockResolvedValueOnce([]);
+
+        const { ref } = await mountModal();
+        await act(async () => {
+            (ref.current as any).setState({
+                mode: 'agent',
+                sessionId: 'sess-modal-missing',
+                messages,
+                pendingFinalizeTaskId: 63,
+            });
+        });
+        await act(async () => {
+            await (ref.current as any).reconcilePendingFinalize();
+        });
+
+        expect(localStorage.getItem('agent-chat-session:ch1')).toBe('sess-modal-missing');
+        expect(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY)).toBeNull();
+        expect((ref.current as any).state.sessionId).toBe('sess-modal-missing');
+        expect((ref.current as any).state.messages).toEqual(messages);
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(0);
+    });
+
     it('keeps the agent session while the pending finalize is still generating', async () => {
         localStorage.setItem('agent-chat-session:ch1', 'sess-modal-generating');
         localStorage.setItem(MODAL_FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 62 }));
@@ -905,26 +980,152 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
         expect((ref.current as any).state.pendingFinalizeTaskId).toBe(62);
     });
 
-    it('40009 with task_id notifies the in-flight task and records it as pending', async () => {
-        (summaryApi.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
-            response: { data: { code: 40009, data: { task_id: 421 } } },
-        });
-        const onSubmit = vi.fn();
-        const ref = React.createRef<ChatSummaryNewModal>();
+    it('seeds the save gate from storage while reconcile is pending and keeps it on request failure', async () => {
+        localStorage.setItem('agent-chat-session:ch1', 'sess-modal-offline');
+        localStorage.setItem(MODAL_FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 64 }));
+        const statusRequest = deferred<any[]>();
+        (summaryApi.batchStatus as any).mockReturnValueOnce(statusRequest.promise);
+
+        const { ref } = await mountModal();
+        let reconcilePromise!: Promise<void>;
         await act(async () => {
-            render(
-                <ChatSummaryNewModal
-                    visible
-                    channel={{ channelID: 'ch1', channelType: 2 }}
-                    onClose={vi.fn()}
-                    onSubmit={onSubmit}
-                    ref={ref}
-                />,
-            );
+            reconcilePromise = (ref.current as any).reconcilePendingFinalize();
             await flushPromises();
         });
+
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(64);
+        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 64 });
+
         await act(async () => {
-            (ref.current as any).setState({ sessionId: 'sess-modal-40009' });
+            statusRequest.reject(new Error('offline'));
+            await reconcilePromise;
+        });
+
+        expect(localStorage.getItem('agent-chat-session:ch1')).toBe('sess-modal-offline');
+        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 64 });
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(64);
+    });
+
+    it('does not let a stale missing-task reconcile clear a newer pending finalize', async () => {
+        localStorage.setItem(MODAL_FINALIZE_PENDING_KEY, JSON.stringify({ key: 'old-key', fingerprint: 'old', taskId: 65 }));
+        const statusRequest = deferred<any[]>();
+        (summaryApi.batchStatus as any).mockReturnValueOnce(statusRequest.promise);
+
+        const { ref } = await mountModal();
+        let reconcilePromise!: Promise<void>;
+        await act(async () => {
+            reconcilePromise = (ref.current as any).reconcilePendingFinalize();
+            await flushPromises();
+        });
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(65);
+
+        localStorage.setItem(MODAL_FINALIZE_PENDING_KEY, JSON.stringify({ key: 'new-key', fingerprint: 'new', taskId: 66 }));
+        await act(async () => {
+            (ref.current as any).setState({ pendingFinalizeTaskId: 66 });
+            statusRequest.resolve([]);
+            await reconcilePromise;
+        });
+
+        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toEqual({
+            key: 'new-key',
+            fingerprint: 'new',
+            taskId: 66,
+        });
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(66);
+    });
+
+    it('40009 deleted_summary clears the stale pending without notifying and allows a fresh key', async () => {
+        const deletedTaskId = 9421;
+        const freshTaskId = 9422;
+        (summaryApi.genFinalizeRequestId as any)
+            .mockReturnValueOnce('modal-deleted-bound-key')
+            .mockReturnValueOnce('modal-fresh-key');
+        (summaryApi.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
+            response: {
+                data: {
+                    code: 40009,
+                    data: {
+                        task_id: deletedTaskId,
+                        reason: 'deleted_summary',
+                        recovery_action: 'start_new_summary',
+                    },
+                },
+            },
+        }).mockResolvedValueOnce({ task_id: freshTaskId, async_finalize: true });
+        localStorage.setItem('agent-chat-session:ch1', 'sess-modal-deleted');
+        const { ref, onSubmit } = await mountModal();
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-deleted' });
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(isAgentSummaryNotificationEligible(deletedTaskId)).toBe(false);
+        expect(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY)).toBeNull();
+        expect(localStorage.getItem('agent-chat-session:ch1')).toBe('sess-modal-deleted');
+        expect((ref.current as any).state.sessionId).toBe('sess-modal-deleted');
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(0);
+
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        const calls = (summaryApi.saveAgentSummaryViaFinalize as any).mock.calls;
+        expect(calls[0][2]).toEqual({ idempotencyKey: 'modal-deleted-bound-key' });
+        expect(calls[1][2]).toEqual({ idempotencyKey: 'modal-fresh-key' });
+        expect(onSubmit).toHaveBeenCalledTimes(1);
+        expect(onSubmit).toHaveBeenCalledWith(freshTaskId);
+        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toMatchObject({
+            key: 'modal-fresh-key',
+            taskId: freshTaskId,
+        });
+    });
+
+    it('unknown 40009 with task_id records a blocking pending state without notifying', async () => {
+        const unknownTaskId = 9423;
+        (summaryApi.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
+            response: {
+                data: {
+                    code: 40009,
+                    data: {
+                        task_id: unknownTaskId,
+                        reason: 'future_reason',
+                        recovery_action: 'future_action',
+                    },
+                },
+            },
+        });
+        const { ref, onSubmit } = await mountModal();
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-40009-unknown' });
+        });
+
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(isAgentSummaryNotificationEligible(unknownTaskId)).toBe(false);
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(unknownTaskId);
+        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toMatchObject({
+            key: 'finalize_test_key',
+            taskId: unknownTaskId,
+        });
+    });
+
+    it('40009 without task_id keeps the key with a blocking sentinel and closes the save confirmation', async () => {
+        (summaryApi.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
+            response: { data: { code: 40009, data: null } },
+        });
+        const { ref, onSubmit } = await mountModal();
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-40009-bare' });
         });
 
         let result = false;
@@ -934,46 +1135,11 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
         });
 
         expect(result).toBe(true);
-        expect(onSubmit).toHaveBeenCalledWith(421);
-        expect(isAgentSummaryNotificationEligible(421)).toBe(true);
-        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(421);
-        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 421 });
-    });
-
-    it('40009 without task_id errors with its own copy and navigates nowhere', async () => {
-        const { Toast } = await import('@douyinfe/semi-ui');
-        (Toast.error as any).mockClear();
-        (summaryApi.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
-            response: { data: { code: 40009, data: null } },
-        });
-        const onSubmit = vi.fn();
-        const ref = React.createRef<ChatSummaryNewModal>();
-        await act(async () => {
-            render(
-                <ChatSummaryNewModal
-                    visible
-                    channel={{ channelID: 'ch1', channelType: 2 }}
-                    onClose={vi.fn()}
-                    onSubmit={onSubmit}
-                    ref={ref}
-                />,
-            );
-            await flushPromises();
-        });
-        await act(async () => {
-            (ref.current as any).setState({ sessionId: 'sess-modal-40009-bare' });
-        });
-
-        let result = true;
-        await act(async () => {
-            result = await (ref.current as any).handleSaveAsSummary('t');
-            await flushPromises();
-        });
-
-        expect(result).toBe(false);
         expect(onSubmit).not.toHaveBeenCalled();
-        expect(Toast.error).toHaveBeenCalledWith('上一篇 AI 总结还在生成中，请稍后再试');
-        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(0);
-        expect(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY)).toBeNull();
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(-1);
+        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toMatchObject({
+            key: 'finalize_test_key',
+            taskId: -1,
+        });
     });
 });

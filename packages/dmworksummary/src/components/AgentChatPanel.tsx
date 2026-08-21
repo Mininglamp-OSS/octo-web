@@ -115,9 +115,21 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         if (el) el.scrollTop = el.scrollHeight;
     };
 
+    private isChatBusy = (): boolean => {
+        return this.props.sending || this.state.isStreaming;
+    };
+
+    private isSendBlocked = (): boolean => {
+        return this.isChatBusy() || !!this.props.savingSummary || !!this.props.saveDisabledReason;
+    };
+
+    private isSaveBlocked = (): boolean => {
+        return this.isChatBusy() || !!this.props.savingSummary || !!this.props.saveDisabledReason;
+    };
+
     private handleSend = () => {
         const text = this.state.input.trim();
-        if (!text || this.props.sending || this.state.isStreaming) return;
+        if (!text || this.isSendBlocked()) return;
 
         // P1-4:单通道计一次「发消息」。此处覆盖点击(onClick)与 Enter(handleKeyDown)两条入口,
         // 已移除 TrackRules 的 summary-agent-send-btn 点击规则(漏 Enter)与 FetchRules 的
@@ -291,6 +303,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
 
     private handleOpenSaveDialog = () => {
         const { t } = this.context;
+        if (this.isSaveBlocked()) return;
         if (!this.hasAssistantOutput()) {
             Toast.warning(t('summary.create.noOutputToSave'));
             return;
@@ -299,6 +312,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
     };
 
     private handleSaveConfirm = async () => {
+        if (this.isSaveBlocked()) return;
         const { t } = this.context;
         const title = this.state.summaryTitle.trim();
         if (!title) {
@@ -311,6 +325,11 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         if (success) {
             this.setState({ showSaveDialog: false, summaryTitle: '' });
         }
+    };
+
+    private handleNewSession = () => {
+        if (this.isChatBusy() || this.props.savingSummary) return;
+        this.props.onNewSession?.();
     };
 
     private renderProcessPanel = () => {
@@ -368,6 +387,9 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         const canSave = this.hasAssistantOutput() && this.props.onSaveAsSummary;
 
         const isBusy = sending || isStreaming;
+        const sendBlocked = isBusy || !!savingSummary || !!saveDisabledReason;
+        const saveBlocked = isBusy || !!savingSummary || !!saveDisabledReason;
+        const newSessionBlocked = isBusy || !!savingSummary;
 
         return (
             <div data-testid={summaryTestIds.agentPanel} className="agent-chat-panel">
@@ -379,8 +401,8 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                                 data-testid={summaryTestIds.agentNewSessionBtn}
                                 theme="borderless"
                                 size="small"
-                                disabled={isBusy}
-                                onClick={onNewSession}
+                                disabled={newSessionBlocked}
+                                onClick={this.handleNewSession}
                             >
                                 {t('summary.create.newSession')}
                             </Button>
@@ -420,7 +442,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                         className="agent-chat-textarea"
                         value={input}
                         placeholder={t('summary.create.agentChatPlaceholder')}
-                        disabled={isBusy}
+                        disabled={sendBlocked}
                         rows={1}
                         onChange={(e) => this.setState({ input: e.target.value })}
                         onKeyDown={this.handleKeyDown}
@@ -430,7 +452,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                         theme="solid"
                         size="default"
                         loading={isBusy}
-                        disabled={isBusy || !input.trim()}
+                        disabled={sendBlocked || !input.trim()}
                         onClick={this.handleSend}
                     >
                         {t('summary.create.send')}
@@ -439,7 +461,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                         <Button
                             data-testid={summaryTestIds.agentSaveBtn}
                             size="default"
-                            disabled={!this.hasAssistantOutput() || savingSummary || !!saveDisabledReason}
+                            disabled={!this.hasAssistantOutput() || saveBlocked}
                             loading={savingSummary}
                             onClick={this.handleOpenSaveDialog}
                             style={{ marginLeft: 8 }}
@@ -457,7 +479,10 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     okText={t('summary.common.confirm')}
                     cancelText={t('summary.common.cancel')}
                     confirmLoading={savingSummary}
-                    okButtonProps={{ 'data-testid': summaryTestIds.agentSaveConfirmBtn } as any}
+                    okButtonProps={{
+                        'data-testid': summaryTestIds.agentSaveConfirmBtn,
+                        disabled: saveBlocked,
+                    } as any}
                     modalRender={(node) => (
                         <div data-testid={summaryTestIds.agentSaveDialog}>{node}</div>
                     )}

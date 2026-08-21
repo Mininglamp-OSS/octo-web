@@ -463,6 +463,39 @@ export interface SaveAgentSummaryOptions {
     idempotencyKey: string;
 }
 
+const FINALIZE_STARTED_STORAGE_PREFIX = 'octo:summary:finalize-started:';
+const trackedFinalizeStartedKeys = new Set<string>();
+
+/**
+ * finalize 的 202 首次受理和 200 幂等重放代表同一次逻辑保存，只能计一次 started。
+ * Set 覆盖当前模块生命周期，sessionStorage 覆盖同一标签页内的页面刷新/模块重载。
+ * 仅在 finalize 已通过完整受理校验后调用，因此失败请求不会占用幂等键。
+ */
+function trackFinalizeStartedOnce(
+    idempotencyKey: string,
+    trackProps: Record<string, unknown>,
+): void {
+    if (trackedFinalizeStartedKeys.has(idempotencyKey)) return;
+
+    const storageKey = `${FINALIZE_STARTED_STORAGE_PREFIX}${idempotencyKey}`;
+    try {
+        if (globalThis.sessionStorage?.getItem(storageKey) === '1') {
+            trackedFinalizeStartedKeys.add(idempotencyKey);
+            return;
+        }
+    } catch {
+        // sessionStorage may be unavailable (SSR, privacy mode, quota/security policy).
+    }
+
+    Dap.shared.track('smart_summary_started', trackProps);
+    trackedFinalizeStartedKeys.add(idempotencyKey);
+    try {
+        globalThis.sessionStorage?.setItem(storageKey, '1');
+    } catch {
+        // In-memory dedup still protects the current module lifecycle.
+    }
+}
+
 /**
  * 交付物保存(v0)——优先发起 finalize(202),不阻塞等生成；若 finalize 路由不存在，
  * 回退到旧 createAgentSummary，保证前后端发布顺序不一致时仍能保存。
@@ -476,8 +509,8 @@ export async function saveAgentSummaryViaFinalize(
 ): Promise<SaveAgentSummaryResult> {
     try {
         const accepted = await finalizeAgentSummary(params, options.idempotencyKey);
-        // 与 createAgentSummary 同口径:一次"成功发起"即补发埋点。
-        Dap.shared.track('smart_summary_started', trackProps);
+        // 与 createAgentSummary 同口径:一次"成功发起"即补发埋点；202/200 幂等重放只计一次。
+        trackFinalizeStartedOnce(options.idempotencyKey, trackProps);
         return { task_id: accepted.task_id, status: accepted.status, async_finalize: true };
     } catch (err) {
         if (!isFinalizeUnsupportedError(err)) {
@@ -967,10 +1000,31 @@ export async function removeMember(taskId: number, uid: string): Promise<void> {
 // ─── Status Management ─────────────────────────────────
 
 export async function batchStatus(taskIds: number[]): Promise<BatchStatusItem[]> {
-    const data = await post<BatchStatusResponse>('/summaries/batch-status', {
-        task_ids: taskIds,
-    });
-    return data?.tasks ?? [];
+    try {
+        const resp = await summaryAxios.post(`${BASE}/summaries/batch-status`, {
+            task_ids: taskIds,
+        });
+        const envelope = resp.data as {
+            code?: unknown;
+            message?: unknown;
+            data?: Partial<BatchStatusResponse> | null;
+        } | null | undefined;
+
+        if (envelope?.code !== 0) {
+            const message = typeof envelope?.message === 'string' && envelope.message
+                ? envelope.message
+                : 'batch status failed';
+            throw new Error(message);
+        }
+        if (!envelope.data || !Array.isArray(envelope.data.tasks)) {
+            throw new Error('batch status returned invalid response');
+        }
+        return envelope.data.tasks;
+    } catch (err) {
+        // Preserve cancellation identity so reconcile callers can distinguish abort from failure.
+        if (axios.isCancel(err)) throw err;
+        throw new Error(extractErrorMessage(err));
+    }
 }
 
 export async function cancelSummary(taskId: number): Promise<void> {
