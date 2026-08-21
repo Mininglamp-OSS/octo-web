@@ -159,3 +159,5 @@ jobs:
         run: pnpm lint
       - name: WKModal Semi override guard
         run: pnpm lint:wkmodal
+      - name: Octo UI Dropdown usage guard
+        run: pnpm lint:octo-dropdown
