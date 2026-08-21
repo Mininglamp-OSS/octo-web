@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  openFleetLinkExternal,
+  parseFleetIssueLinkShape,
   parseWebhookIssuePreviewTarget,
   trustedFleetHosts,
   webhookPreviewClickHandler,
@@ -9,7 +11,7 @@ import {
 import APIClient from "../../../Service/APIClient";
 import * as desktopBridge from "../../../electron/desktopBridge";
 
-describe("parseWebhookIssuePreviewTarget", () => {
+describe("parseWebhookIssuePreviewTarget (structure + static trust gate)", () => {
   it("parses absolute and relative Fleet issue links", () => {
     expect(
       parseWebhookIssuePreviewTarget(
@@ -51,19 +53,77 @@ describe("parseWebhookIssuePreviewTarget", () => {
     expect(parseWebhookIssuePreviewTarget("https://example.com/fleet/a/issues"))
       .toBeNull();
     expect(
-      parseWebhookIssuePreviewTarget("https://example.com/notfleet/a/issues/OPS-9")
+      parseWebhookIssuePreviewTarget(
+        "https://example.com/notfleet/a/issues/OPS-9"
+      )
     ).toBeNull();
     expect(
-      parseWebhookIssuePreviewTarget("https://example.com/fleet/a/notissues/OPS-9")
+      parseWebhookIssuePreviewTarget(
+        "https://example.com/fleet/a/notissues/OPS-9"
+      )
     ).toBeNull();
     expect(
       parseWebhookIssuePreviewTarget("https://example.com/fleet/a/issues/")
     ).toBeNull();
   });
 
-  it("explicit ports are structurally valid (trust decided by handler)", () => {
+  it("rejects an unknown host (card path must not open attacker fleet links)", () => {
+    // P1-1 regression: a webhook adaptive-card Action.OpenUrl on an unknown
+    // host must NOT reach the preview (the full parse keeps the trust gate).
     expect(
       parseWebhookIssuePreviewTarget(
+        "https://attacker.example/fleet/a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+  });
+
+  it("rejects a trusted host on a non-default port", () => {
+    // P2-2: trusted-host clause requires a default port; :9999 must fail
+    // even for a static/API-trusted hostname.
+    expect(
+      parseWebhookIssuePreviewTarget(
+        "https://im.deepminer.com.cn:9999/fleet/a/issues/OPS-9"
+      )
+    ).toBeNull();
+    expect(
+      parseWebhookIssuePreviewTarget(
+        "http://octo.example:8080/fleet/a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+  });
+
+  it("accepts a trusted host on the default port explicitly", () => {
+    // Note: URL normalizes the explicit :443 into the default port, so the
+    // parsed href drops it; the important assertion is that it is NOT rejected.
+    expect(
+      parseWebhookIssuePreviewTarget(
+        "https://im.deepminer.com.cn:443/fleet/a/issues/OPS-9"
+      )
+    ).toEqual({
+      workspaceSlug: "a",
+      issueIdentifier: "OPS-9",
+      sourceUrl: "https://im.deepminer.com.cn/fleet/a/issues/OPS-9",
+    });
+  });
+});
+
+describe("parseFleetIssueLinkShape (structure only, no trust)", () => {
+  it("parses any well-formed fleet link regardless of host", () => {
+    expect(
+      parseFleetIssueLinkShape(
+        "https://attacker.example/fleet/a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).toEqual({
+      workspaceSlug: "a",
+      issueIdentifier: "OPS-9",
+      sourceUrl: "https://attacker.example/fleet/a/issues/OPS-9",
+    });
+    // 非默认端口在形状层仍可解析（信任决策交给调用方）
+    expect(
+      parseFleetIssueLinkShape(
         "http://octo.example:8080/fleet/a/issues/OPS-9",
         "https://octo.example/chat"
       )
@@ -73,10 +133,22 @@ describe("parseWebhookIssuePreviewTarget", () => {
       sourceUrl: "http://octo.example:8080/fleet/a/issues/OPS-9",
     });
   });
+
+  it("rejects unsafe protocols and malformed paths", () => {
+    expect(parseFleetIssueLinkShape("javascript:alert(1)")).toBeNull();
+    expect(parseFleetIssueLinkShape("https://example.com/docs/1")).toBeNull();
+    expect(parseFleetIssueLinkShape("https://example.com/fleet/a/issues")).toBeNull();
+  });
 });
 
 describe("trustedFleetHosts", () => {
   const apiURLOf = () => (APIClient.shared.config as unknown as { apiURL: string });
+  const originalApiURL = apiURLOf().apiURL;
+
+  afterEach(() => {
+    // P2-5: restore the mutated apiURL so the suite is order-independent.
+    apiURLOf().apiURL = originalApiURL;
+  });
 
   it("includes the static fallback host", () => {
     expect(trustedFleetHosts()).toContain("im.deepminer.com.cn");
@@ -169,28 +241,37 @@ describe("webhookPreviewClickHandler", () => {
     expect(preventDefault).toHaveBeenCalled();
   });
 
-  it("leaves the link untouched when the user rejects the unknown host", async () => {
+  it("rejects the unknown host and explicitly opens the link externally", async () => {
     vi.spyOn(desktopBridge, "getElectronIpcBridge").mockReturnValue({
       invoke: vi.fn().mockResolvedValue({ trusted: false }),
     } as any);
     window.__POWERED_ELECTRON__ = true;
 
     const open = vi.fn();
+    const fallback = vi.fn();
     const handler = webhookPreviewClickHandler(
       { fromUID: "iwh_hook" } as any,
-      open
+      open,
+      fallback
     )!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
     const preventDefault = vi.fn();
-
+    // P1-2: default action is cancelled synchronously for fleet-shaped links;
+    // on rejection the handler consciously re-opens the link (fallback),
+    // rather than relying on a default that already fired.
     handler({
       target: anchor,
       preventDefault,
       stopPropagation: vi.fn(),
     } as any);
-    await vi.waitFor(() => expect(open).not.toHaveBeenCalled());
-    expect(preventDefault).not.toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(open).not.toHaveBeenCalled();
+      expect(fallback).toHaveBeenCalledWith(
+        "https://onprem.customer.com/fleet/1/issues/WS-4"
+      );
+    });
+    expect(preventDefault).toHaveBeenCalled();
   });
 
   it("does not prompt for non-fleet links on unknown hosts", async () => {
