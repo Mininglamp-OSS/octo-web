@@ -40,10 +40,11 @@ import type {
     TopicTemplate,
     SummaryListItem,
     CreateAgentSummaryParams,
+    TaskStatusType,
 } from "../types/summary";
-import { SummaryMode, SourceType } from "../types/summary";
+import { SummaryMode, SourceType, TaskStatus } from "../types/summary";
 import { Channel, WKSDK } from "wukongimjssdk";
-import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
+import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced, readAgentFinalizePending, writeAgentFinalizePending, clearAgentFinalizePending } from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -107,6 +108,11 @@ interface SummaryCreatePageState {
     /** 引用选择器 Modal 打开状态 */
     showReferencePicker: boolean;
     /**
+     * 上一次 async finalize 已受理但尚未终态的 task_id（0 = 无）。非 0 时保存按钮
+     * 置灰：同一 session 重复 finalize 只会拿 40009，在 UI 层拦住更直接。
+     */
+    pendingFinalizeTaskId: number;
+    /**
      * 预览 Modal 当前显示的 task_id。null = 未打开。
      * 见 CHAT-REFERENCE-PREVIEW-AND-RANGE-SAVE-v1 需求 1。
      *
@@ -166,6 +172,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         sessionId: '',
         referencedTask: null,
         showReferencePicker: false,
+        pendingFinalizeTaskId: 0,
         previewTaskId: null,
         sidePanelOpen: false,
         error: null,
@@ -180,8 +187,16 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
-    // finalize 幂等键按「同一请求 payload」持有：网络/超时后同 payload 重试复用，payload 变化则换 key。
-    private pendingFinalizeIdempotency: { key: string; fingerprint: string } | null = null;
+
+    /**
+     * finalize 幂等键按「同一请求 payload」持有：网络/超时后同 payload 重试复用，
+     * payload 变化则换 key。键与已受理的 task_id 一起落 localStorage，因为
+     * 「后端已受理但响应丢失」正是用户最可能刷新页面的场景 —— 只活在实例字段里
+     * 的话 reload 后会 mint 新 key，后端无从去重（#1465 R4/R5）。
+     */
+    private getFinalizePending(): { key: string; fingerprint: string; taskId: number } | null {
+        return readAgentFinalizePending(this.agentChannelId());
+    }
 
     private buildFinalizeFingerprint(params: CreateAgentSummaryParams): string {
         return JSON.stringify({
@@ -197,17 +212,24 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     }
 
     private getOrCreateFinalizeIdempotencyKey(fingerprint: string): string {
-        if (!this.pendingFinalizeIdempotency || this.pendingFinalizeIdempotency.fingerprint !== fingerprint) {
-            this.pendingFinalizeIdempotency = {
-                key: api.genFinalizeRequestId(),
-                fingerprint,
-            };
+        const pending = this.getFinalizePending();
+        if (pending && pending.fingerprint === fingerprint) {
+            return pending.key;
         }
-        return this.pendingFinalizeIdempotency.key;
+        const key = api.genFinalizeRequestId();
+        writeAgentFinalizePending(this.agentChannelId(), { key, fingerprint, taskId: 0 });
+        return key;
+    }
+
+    /** finalize 已被受理：记下 task_id，供下次进 agent 模式 reconcile 终态。 */
+    private markFinalizeAccepted(taskId: number) {
+        const pending = this.getFinalizePending();
+        if (!pending) return;
+        writeAgentFinalizePending(this.agentChannelId(), { ...pending, taskId });
     }
 
     private clearFinalizeIdempotencyKey() {
-        this.pendingFinalizeIdempotency = null;
+        clearAgentFinalizePending(this.agentChannelId());
     }
 
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
@@ -349,6 +371,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 referencedTask: this.props.derivedFromTask,
                 sessionId: '',
                 messages: [],
+                pendingFinalizeTaskId: 0,
             });
             // 与 session_id 同生命周期持久化引用总结，避免 refresh/重进后
             // referencedTask 只活在 React state 里而丢失 → 保存时 400。
@@ -864,7 +887,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     /**
-     * 进入 agent 模式：读 localStorage 拿 session_id → 拉历史回显。
+     * 进入 agent 模式：读 localStorage 拿 session_id → 拉历史回显，并惰性对帐上一次
+     * async finalize 的终态（见 reconcilePendingFinalize）。
      * 无历史（新会话）则照旧空白开场；session_id 仍惰性生成于首次发送。
      * 注意：不再清空 selectedMembers —— 静默销毁用户已选的参与者是不可逆的
      * 数据丢失。participants 泄漏在 payload 边界拦截（handleSaveAsSummary 在
@@ -883,6 +907,55 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 : prev.referencedTask,
         }));
         if (stored) void this.loadAgentHistory(stored);
+        void this.reconcilePendingFinalize();
+    }
+
+    /**
+     * async finalize 只拿到 202 accepted，当场不能销毁本地工作台（生成失败用户需要
+     * 能重试），但也不能永久保留。下次进 agent 模式时惰性对帐任务终态：
+     *   COMPLETED  → 交付物已落库，清 session/reference/pending，回到空白开局（对齐
+     *                legacy 同步路径的行为），同时堵死「从复活会话重复保存」。
+     *   FAILED/CANCELLED → 保留会话让用户重试，仅清 pending（下次保存重新发起）。
+     *   仍在生成 → 保留会话，保存按钮置灰（重复保存只会拿 40009）。
+     *   查不到/请求失败 → 保守：什么都不动，下次再对。
+     * 见 #1465 R5 P1。
+     */
+    private async reconcilePendingFinalize() {
+        const pending = this.getFinalizePending();
+        if (!pending || pending.taskId <= 0) return;
+        let status: TaskStatusType | undefined;
+        try {
+            const tasks = await api.batchStatus([pending.taskId]);
+            status = tasks.find((task) => task.id === pending.taskId)?.status;
+        } catch {
+            // 网络/权限失败：保守保留，下次进入时再对。
+            return;
+        }
+        if (status === undefined) return;
+        // 对帐期间用户可能已点「新会话」或又发起了一次保存 —— pending 变了就丢弃本次结果。
+        const current = this.getFinalizePending();
+        if (!current || current.key !== pending.key || current.taskId !== pending.taskId) return;
+
+        if (status === TaskStatus.COMPLETED) {
+            clearAgentChatSession(this.agentChannelId());
+            clearAgentChatReferenced(this.agentChannelId());
+            clearAgentFinalizePending(this.agentChannelId());
+            this.historyLoadToken++;
+            this.setState({
+                messages: [],
+                sessionId: '',
+                referencedTask: null,
+                showReferencePicker: false,
+                pendingFinalizeTaskId: 0,
+            });
+            return;
+        }
+        if (status === TaskStatus.FAILED || status === TaskStatus.CANCELLED) {
+            clearAgentFinalizePending(this.agentChannelId());
+            this.setState({ pendingFinalizeTaskId: 0 });
+            return;
+        }
+        this.setState({ pendingFinalizeTaskId: pending.taskId });
     }
 
     /**
@@ -916,6 +989,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             sessionId: '',
             referencedTask: null,
             showReferencePicker: false,
+            pendingFinalizeTaskId: 0,
             error: null,
         });
     };
@@ -987,11 +1061,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
 
         const openCreatedSummary = (taskId: number) => {
-            // dispatch 刷新事件。agent 整页入口下前端已不再持有具体 channel
-            // (origin 由后端从 tool_calls 反查),下游刷新监听按 taskId 走即可,
-            // channelId 传空串以保持事件字段结构不变、避免 undefined 引用崩溃。
+            // dispatch 刷新事件。面板模式下本页被 ChatSummaryPanel 内嵌且带真实 channel prop，
+            // agent 模式可达；下游 ChatSummaryStarButton 按 channelId 精确匹配才刷新，硬编码
+            // 空串会让面板内 agent 保存后星标一直陈旧（R5 P2）。与本组件 normal 路径取齐；
+            // 整页入口无 channel 时仍为空串，事件字段结构不变。
             const event = new CustomEvent('chat-summary-created', {
-                detail: { taskId, channelId: '' }
+                detail: { taskId, channelId: this.props.channel?.channelID ?? '' }
             });
             window.dispatchEvent(event);
 
@@ -1076,7 +1151,16 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             openCreatedSummary(result.task_id);
-            this.clearFinalizeIdempotencyKey();
+            if (result.async_finalize) {
+                // 任务已受理但未终态：把 task_id 跟幂等键一起落盘，下次进 agent 模式
+                // 由 reconcilePendingFinalize 对帐后再决定清/留（#1465 R5 P1）。不能在这里
+                // 直接 clear：那样重进工作台会重放已保存的对话并允许重复保存。
+                this.markFinalizeAccepted(result.task_id);
+                this.setState({ pendingFinalizeTaskId: result.task_id });
+            } else {
+                this.clearFinalizeIdempotencyKey();
+                this.setState({ pendingFinalizeTaskId: 0 });
+            }
             return true;
         } catch (err: unknown) {
             // 类型守卫:axios 错误
@@ -1096,11 +1180,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         Toast.warning(t('summary.create.agentSummaryAlreadyGenerating'));
                         markAgentSummaryNotificationEligible(taskId);
                         openCreatedSummary(taskId);
-                        this.clearFinalizeIdempotencyKey();
+                        // 该任务仍在生成：记下来继续用 reconcile 对帐，并拦住重复保存。
+                        this.markFinalizeAccepted(taskId);
+                        this.setState({ pendingFinalizeTaskId: taskId });
                         return true;
                     }
                     this.clearFinalizeIdempotencyKey();
-                    Toast.error(t('summary.create.agentSummaryAlreadyGenerating'));
+                    // 无 task_id 时无处可跳 —— 不能用「已打开详情页」那句文案（R5 P2）。
+                    Toast.error(t('summary.create.agentSummaryAlreadyGeneratingNoDetail'));
                     return false;
                 }
                 // 40001: origin_channel_id 反查失败。拆两个子因给不同文案
@@ -1194,6 +1281,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     welcome={translate("summary.create.agentChatWelcome")}
                                     onSaveAsSummary={this.handleSaveAsSummary}
                                     savingSummary={this.state.savingSummary}
+                                    saveDisabledReason={
+                                        this.state.pendingFinalizeTaskId > 0
+                                            ? translate('summary.create.agentSummaryGeneratingHint')
+                                            : undefined
+                                    }
                                     onNewSession={this.handleNewSession}
                                     referencedTaskIds={
                                         this.state.referencedTask

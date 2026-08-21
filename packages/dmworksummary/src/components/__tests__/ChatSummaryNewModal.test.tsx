@@ -85,6 +85,7 @@ vi.mock('../../api/summaryApi', () => ({
     saveAgentSummaryViaFinalize: vi.fn().mockResolvedValue({ task_id: 1, async_finalize: false }),
     agentChat: vi.fn(),
     getAgentChatHistory: vi.fn().mockResolvedValue({ session_id: '', messages: [] }),
+    batchStatus: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../TemplateCard', () => ({
@@ -698,6 +699,8 @@ describe('ChatSummaryNewModal agent SSE session_id sync', () => {
 });
 
 describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)', () => {
+    const MODAL_FINALIZE_PENDING_KEY = 'agent-finalize-pending:ch1';
+
     beforeEach(() => {
         vi.clearAllMocks();
         localStorage.clear();
@@ -812,5 +815,165 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
         expect(summaryApi.genFinalizeRequestId).toHaveBeenCalledTimes(2);
         expect(calls[0][2]).toEqual({ idempotencyKey: 'modal_first_key' });
         expect(calls[1][2]).toEqual({ idempotencyKey: 'modal_second_key' });
+    });
+
+    it('persists the finalize key + accepted task_id per channel across remounts', async () => {
+        // R4 P2 / R5 P1：键与已受理 task_id 落盘，弹窗关闭重开（等价 reload）不丢。
+        (summaryApi.saveAgentSummaryViaFinalize as any).mockResolvedValueOnce({ task_id: 205, async_finalize: true });
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={vi.fn()}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-persist' });
+        });
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toMatchObject({
+            key: 'finalize_test_key',
+            taskId: 205,
+        });
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(205);
+    });
+
+    it('clears the agent session when a pending finalize is reconciled as COMPLETED', async () => {
+        localStorage.setItem('agent-chat-session:ch1', 'sess-modal-done');
+        localStorage.setItem(MODAL_FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 61 }));
+        (summaryApi.batchStatus as any).mockResolvedValueOnce([{ id: 61, status: 3, progress: 100, updated_at: 'x' }]);
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={vi.fn()}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).enterAgentMode();
+            await flushPromises();
+        });
+
+        expect(summaryApi.batchStatus).toHaveBeenCalledWith([61]);
+        expect(localStorage.getItem('agent-chat-session:ch1')).toBeNull();
+        expect(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY)).toBeNull();
+        expect((ref.current as any).state.sessionId).toBe('');
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(0);
+    });
+
+    it('keeps the agent session while the pending finalize is still generating', async () => {
+        localStorage.setItem('agent-chat-session:ch1', 'sess-modal-generating');
+        localStorage.setItem(MODAL_FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 62 }));
+        (summaryApi.batchStatus as any).mockResolvedValueOnce([{ id: 62, status: 2, progress: 30, updated_at: 'x' }]);
+
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={vi.fn()}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).enterAgentMode();
+            await flushPromises();
+        });
+
+        expect(localStorage.getItem('agent-chat-session:ch1')).toBe('sess-modal-generating');
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(62);
+    });
+
+    it('40009 with task_id notifies the in-flight task and records it as pending', async () => {
+        (summaryApi.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
+            response: { data: { code: 40009, data: { task_id: 421 } } },
+        });
+        const onSubmit = vi.fn();
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={onSubmit}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-40009' });
+        });
+
+        let result = false;
+        await act(async () => {
+            result = await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        expect(result).toBe(true);
+        expect(onSubmit).toHaveBeenCalledWith(421);
+        expect(isAgentSummaryNotificationEligible(421)).toBe(true);
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(421);
+        expect(JSON.parse(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 421 });
+    });
+
+    it('40009 without task_id errors with its own copy and navigates nowhere', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        (Toast.error as any).mockClear();
+        (summaryApi.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
+            response: { data: { code: 40009, data: null } },
+        });
+        const onSubmit = vi.fn();
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={onSubmit}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-40009-bare' });
+        });
+
+        let result = true;
+        await act(async () => {
+            result = await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        expect(result).toBe(false);
+        expect(onSubmit).not.toHaveBeenCalled();
+        expect(Toast.error).toHaveBeenCalledWith('上一篇 AI 总结还在生成中，请稍后再试');
+        expect((ref.current as any).state.pendingFinalizeTaskId).toBe(0);
+        expect(localStorage.getItem(MODAL_FINALIZE_PENDING_KEY)).toBeNull();
     });
 });

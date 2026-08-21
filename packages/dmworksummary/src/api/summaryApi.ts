@@ -412,7 +412,9 @@ export async function finalizeAgentSummary(
     if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
         throw new Error(resp.data?.message || 'finalize returned no task_id');
     }
-    if (typeof resp.status === 'number' && resp.status !== 202) {
+    // 接受任意 2xx：幂等重放按惯例返 200 而非再一次 202，而重放正是本特性的
+    // 重试路径——只认 202 会把一次语义上成功的受理变成用户可见的失败（R5 P2）。
+    if (typeof resp.status === 'number' && (resp.status < 200 || resp.status >= 300)) {
         throw new Error(resp.data?.message || 'finalize returned unexpected http status');
     }
     if (data.status !== 'GENERATING') {
@@ -421,6 +423,14 @@ export async function finalizeAgentSummary(
     return data;
 }
 
+/**
+ * finalize 路由未发布 → 可安全回退 legacy。判定以「有无业务 envelope」为准而不是裸
+ * HTTP status，两个方向都要堵（R5 P2）：
+ *   - 后端用 HTTP 404 携带 {code:40004/40009} 表达业务条件时，不能静默改发 legacy
+ *     —— 那会绕过调用点的 40004/40009 处理，退回旧的「拷贝最后一条回复」语义；
+ *   - 网关把未路由路径包成 200 + {code:404} 时，虽然 HTTP 不是 404，也应回退，
+ *     否则保存在后端上线前会彻底砌掉。
+ */
 function isFinalizeUnsupportedError(err: unknown): boolean {
     if (!err || typeof err !== 'object') return false;
     const maybeAxios = err as {
@@ -428,6 +438,11 @@ function isFinalizeUnsupportedError(err: unknown): boolean {
         code?: string;
         message?: string;
     };
+    const envelopeCode = maybeAxios.response?.data?.code;
+    if (typeof envelopeCode === 'number' && envelopeCode !== 0) {
+        // 路由不存在的业务编码（网关包装）→ 回退；其余业务失败 → 不回退，抛给调用点。
+        return envelopeCode === 404 || envelopeCode === 405 || envelopeCode === 501;
+    }
     const status = maybeAxios.response?.status;
     if (status === 404 || status === 405 || status === 501) return true;
     return false;
@@ -472,7 +487,6 @@ export async function saveAgentSummaryViaFinalize(
         return { task_id: legacy.task_id, async_finalize: false };
     }
 }
-
 
 // Agent 交互式问答（非流式一问一答）。POST /summary/api/v1/agent/chat。
 // 不复用公共 post()：post() 只 `data?.data ?? data`，不校验业务 code，

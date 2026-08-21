@@ -495,10 +495,24 @@ describe('summaryApi', () => {
             );
         });
 
-        it('rejects non-202 finalize acceptance responses', async () => {
+        it('accepts a 200 finalize replay (idempotent retry) as an acceptance', async () => {
+            // 幂等重放按惯例返 200 而不是再一次 202，而重放正是本特性的重试路径（R5 P2）。
             const { finalizeAgentSummary } = await import('../summaryApi');
             mockPost.mockResolvedValueOnce({
                 status: 200,
+                data: { code: 0, data: { task_id: 88, status: 'GENERATING' } },
+            });
+
+            await expect(finalizeAgentSummary({ session_id: 's1' }, 'finalize_test_key')).resolves.toEqual({
+                task_id: 88,
+                status: 'GENERATING',
+            });
+        });
+
+        it('rejects a non-2xx finalize acceptance response', async () => {
+            const { finalizeAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 302,
                 data: { code: 0, data: { task_id: 88, status: 'GENERATING' } },
             });
 
@@ -617,6 +631,60 @@ describe('summaryApi', () => {
             expect(started).toHaveLength(1);
             expect(started[0][1]).toMatchObject({ trigger_mode: 'agent' });
             track.mockRestore();
+        });
+
+        it.each([405, 501])('falls back to legacy when finalize answers %i', async (status) => {
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockRejectedValueOnce(Object.assign(new Error('unsupported'), { response: { status } }))
+                .mockResolvedValueOnce({
+                    data: { code: 0, data: { task_id: 93, task_no: 'n', status: 3, created_at: 'x' } },
+                });
+
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: `finalize_fallback_${status}` },
+            );
+
+            expect(res).toEqual({ task_id: 93, async_finalize: false });
+            expect(mockPost.mock.calls[1][0]).toBe('/summary/api/v1/summaries/agent');
+        });
+
+        it('does not fall back when a 404 carries a business envelope', async () => {
+            // 后端若用 HTTP 404 表达 40009，改发 legacy 会绕过调用点的 40009 处理（R5 P2）。
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(Object.assign(new Error('gone'), {
+                response: { status: 404, data: { code: 40009, data: { task_id: 77 } } },
+            }));
+
+            await expect(
+                saveAgentSummaryViaFinalize(
+                    { session_id: 's1' },
+                    { trigger_mode: 'agent' },
+                    { idempotencyKey: 'finalize_404_business' },
+                ),
+            ).rejects.toMatchObject({ response: { data: { code: 40009 } } });
+            expect(mockPost).toHaveBeenCalledTimes(1);
+        });
+
+        it('falls back when a gateway wraps the unrouted path as 200 + code 404', async () => {
+            // 反方向：HTTP 不是 404 但 envelope 是 → 仍应回退，否则保存彻底砌掉（R5 P2）。
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockResolvedValueOnce({ status: 200, data: { code: 404, message: 'no route', data: null } })
+                .mockResolvedValueOnce({
+                    data: { code: 0, data: { task_id: 94, task_no: 'n', status: 3, created_at: 'x' } },
+                });
+
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_gateway_404' },
+            );
+
+            expect(res).toEqual({ task_id: 94, async_finalize: false });
+            expect(mockPost.mock.calls[1][0]).toBe('/summary/api/v1/summaries/agent');
         });
     });
 

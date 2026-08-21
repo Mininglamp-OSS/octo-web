@@ -204,6 +204,8 @@
         "agentSummaryCreated": "AI summary saved",
         "agentSummaryGenerating": "AI summary is generating. Detail page opened.",
         "agentSummaryAlreadyGenerating": "AI summary is already generating. Detail page opened.",
+        "agentSummaryAlreadyGeneratingNoDetail": "The previous AI summary is still generating. Please try again shortly.",
+        "agentSummaryGeneratingHint": "Generating…",
         "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session",
         "savedNoOriginRetry": "Save failed: the referenced summary has no source channel, and this session hasn't read any channel either. Pick a referenced summary with a source, or start a new session and let the AI read a channel first"
     },

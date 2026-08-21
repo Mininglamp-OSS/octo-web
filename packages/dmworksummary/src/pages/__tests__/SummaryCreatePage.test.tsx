@@ -73,6 +73,7 @@ vi.mock('../../api/summaryApi', () => ({
     deleteCustomTopicTemplate: vi.fn().mockResolvedValue(undefined),
     getTopicTemplates: vi.fn().mockResolvedValue([]),
     agentChat: vi.fn(),
+    batchStatus: vi.fn().mockResolvedValue([]),
     getAgentChatHistory: vi.fn().mockResolvedValue({ session_id: '', messages: [] }),
 }));
 
@@ -331,6 +332,7 @@ describe('SummaryCreatePage agent multi-turn session_id + single-flight', () => 
 
 // 完整创建页无频道上下文，session_id 落到统一兜底 key。
 const WORKBENCH_KEY = 'agent-chat-session:__workbench__';
+const FINALIZE_PENDING_KEY = 'agent-finalize-pending:__workbench__';
 
 describe('SummaryCreatePage agent session_id persistence + history rehydrate + new session', () => {
     beforeEach(() => {
@@ -898,6 +900,141 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         expect(api.genFinalizeRequestId).toHaveBeenCalledTimes(2);
         expect(calls[0][2]).toEqual({ idempotencyKey: 'finalize_first_key' });
         expect(calls[1][2]).toEqual({ idempotencyKey: 'finalize_second_key' });
+    });
+
+    it('persists the finalize key + accepted task_id so a reload reuses the same key', async () => {
+        // R4 P2：幂等键只活在实例字段时，reload 后会 mint 新 key，后端无法去重。
+        (api.saveAgentSummaryViaFinalize as any).mockResolvedValueOnce({ task_id: 210, async_finalize: true });
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ sessionId: 'sess-persist', mode: 'agent', selectedChats: [] });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+
+        const stored = JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null');
+        expect(stored).toMatchObject({ key: 'finalize_test_key', taskId: 210 });
+
+        // 新实例（等价 reload）同 payload 再保存一次 → 不重新 mint，复用同一把 key。
+        (api.genFinalizeRequestId as any).mockClear();
+        (api.saveAgentSummaryViaFinalize as any).mockResolvedValueOnce({ task_id: 210, async_finalize: true });
+        const reloaded = await mountInstance();
+        await act(async () => {
+            reloaded.setState({ sessionId: 'sess-persist', mode: 'agent', selectedChats: [] });
+        });
+        await act(async () => { await reloaded.handleSaveAsSummary('t'); });
+
+        expect(api.genFinalizeRequestId).not.toHaveBeenCalled();
+        const retryCalls = (api.saveAgentSummaryViaFinalize as any).mock.calls;
+        expect(retryCalls[retryCalls.length - 1][2]).toEqual({ idempotencyKey: 'finalize_test_key' });
+    });
+
+    it('clears the workbench when a pending finalize is reconciled as COMPLETED', async () => {
+        // R5 P1：async 保存后任务成功，重进 agent 模式不得重放已保存的对话。
+        localStorage.setItem(WORKBENCH_KEY, 'sess-done');
+        localStorage.setItem('agent-chat-referenced:__workbench__', JSON.stringify({ task_id: 7, title: 'ref' }));
+        localStorage.setItem(FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 55 }));
+        (api.batchStatus as any).mockResolvedValueOnce([{ id: 55, status: 3, progress: 100, updated_at: 'x' }]);
+
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ mode: 'normal' });
+            (instance as any).enterAgentMode();
+            await flushPromises();
+        });
+
+        expect(api.batchStatus).toHaveBeenCalledWith([55]);
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBeNull();
+        expect(localStorage.getItem('agent-chat-referenced:__workbench__')).toBeNull();
+        expect(localStorage.getItem(FINALIZE_PENDING_KEY)).toBeNull();
+        expect(instance.state.sessionId).toBe('');
+        expect(instance.state.messages).toEqual([]);
+        expect(instance.state.pendingFinalizeTaskId).toBe(0);
+    });
+
+    it('keeps the workbench and only drops pending when the finalize task FAILED', async () => {
+        localStorage.setItem(WORKBENCH_KEY, 'sess-failed');
+        localStorage.setItem(FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 56 }));
+        (api.batchStatus as any).mockResolvedValueOnce([{ id: 56, status: 4, progress: 0, updated_at: 'x' }]);
+
+        const instance = await mountInstance();
+        await act(async () => {
+            (instance as any).enterAgentMode();
+            await flushPromises();
+        });
+
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBe('sess-failed');
+        expect(localStorage.getItem(FINALIZE_PENDING_KEY)).toBeNull();
+        expect(instance.state.pendingFinalizeTaskId).toBe(0);
+    });
+
+    it('blocks a second save while the pending finalize is still generating', async () => {
+        localStorage.setItem(WORKBENCH_KEY, 'sess-generating');
+        localStorage.setItem(FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 57 }));
+        (api.batchStatus as any).mockResolvedValueOnce([{ id: 57, status: 2, progress: 40, updated_at: 'x' }]);
+
+        const instance = await mountInstance();
+        await act(async () => {
+            (instance as any).enterAgentMode();
+            await flushPromises();
+        });
+
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBe('sess-generating');
+        expect(localStorage.getItem(FINALIZE_PENDING_KEY)).not.toBeNull();
+        expect(instance.state.pendingFinalizeTaskId).toBe(57);
+    });
+
+    it('keeps the workbench untouched when the reconcile request fails', async () => {
+        localStorage.setItem(WORKBENCH_KEY, 'sess-offline');
+        localStorage.setItem(FINALIZE_PENDING_KEY, JSON.stringify({ key: 'k', fingerprint: 'f', taskId: 58 }));
+        (api.batchStatus as any).mockRejectedValueOnce(new Error('offline'));
+
+        const instance = await mountInstance();
+        await act(async () => {
+            (instance as any).enterAgentMode();
+            await flushPromises();
+        });
+
+        expect(localStorage.getItem(WORKBENCH_KEY)).toBe('sess-offline');
+        expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 58 });
+        expect(instance.state.pendingFinalizeTaskId).toBe(0);
+    });
+
+    it('40009 with task_id navigates to the in-flight task and records it as pending', async () => {
+        (api.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
+            response: { data: { code: 40009, data: { task_id: 321 } } },
+        });
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ sessionId: 'sess-40009', mode: 'agent', selectedChats: [] });
+        });
+
+        let result = false;
+        await act(async () => { result = await instance.handleSaveAsSummary('t'); });
+
+        expect(result).toBe(true);
+        expect(isAgentSummaryNotificationEligible(321)).toBe(true);
+        expect(instance.state.pendingFinalizeTaskId).toBe(321);
+        expect(JSON.parse(localStorage.getItem(FINALIZE_PENDING_KEY) || 'null')).toMatchObject({ taskId: 321 });
+    });
+
+    it('40009 without task_id errors with its own copy and does not claim a page was opened', async () => {
+        const { Toast } = await import('@douyinfe/semi-ui');
+        (Toast.error as any).mockClear();
+        (api.saveAgentSummaryViaFinalize as any).mockRejectedValueOnce({
+            response: { data: { code: 40009, data: null } },
+        });
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({ sessionId: 'sess-40009-bare', mode: 'agent', selectedChats: [] });
+        });
+
+        let result = true;
+        await act(async () => { result = await instance.handleSaveAsSummary('t'); });
+
+        expect(result).toBe(false);
+        expect(Toast.error).toHaveBeenCalledWith('上一篇 AI 总结还在生成中，请稍后再试');
+        expect(instance.state.pendingFinalizeTaskId).toBe(0);
+        expect(localStorage.getItem(FINALIZE_PENDING_KEY)).toBeNull();
     });
 });
 

@@ -14,6 +14,11 @@ interface AgentChatPanelProps {
     welcome?: string;
     onSaveAsSummary?: (title: string) => Promise<boolean>;
     savingSummary?: boolean;
+    /**
+     * 非空 = 保存按钮置灰，文案换成该值。用于「上一次 finalize 还在生成中」：
+     * 已受理未终态时重复保存只会拿到 40009，直接在 UI 层拦住更诚实。
+     */
+    saveDisabledReason?: string;
     onNewSession?: () => void;
     useStream?: boolean;
     sessionId?: string;
@@ -357,7 +362,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
     };
 
     render() {
-        const { messages, sending, welcome, savingSummary, onNewSession, referenceHeader } = this.props;
+        const { messages, sending, welcome, savingSummary, onNewSession, referenceHeader, saveDisabledReason } = this.props;
         const { input, showSaveDialog, summaryTitle, isStreaming } = this.state;
         const { t } = this.context;
         const canSave = this.hasAssistantOutput() && this.props.onSaveAsSummary;
@@ -434,12 +439,12 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                         <Button
                             data-testid={summaryTestIds.agentSaveBtn}
                             size="default"
-                            disabled={!this.hasAssistantOutput() || savingSummary}
+                            disabled={!this.hasAssistantOutput() || savingSummary || !!saveDisabledReason}
                             loading={savingSummary}
                             onClick={this.handleOpenSaveDialog}
                             style={{ marginLeft: 8 }}
                         >
-                            {t('summary.create.saveAsSummary')}
+                            {saveDisabledReason || t('summary.create.saveAsSummary')}
                         </Button>
                     )}
                 </div>
