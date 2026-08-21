@@ -1,7 +1,7 @@
 import React from 'react';
 import '@testing-library/jest-dom/vitest';
 import { cleanup, render as rtlRender, screen } from '@testing-library/react';
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import SummaryCard from './SummaryCard';
 import { ParticipantStatus, TaskStatus, TriggerType } from '../types/summary';
 
@@ -372,6 +372,49 @@ describe('SummaryCard creator vs participant footer (问题1)', () => {
         // creator_id 缺失 + 非参与者 → 既不删除也不退出。
         expect(screen.queryByTestId('delete-icon')).not.toBeInTheDocument();
         expect(screen.queryByTestId('exit-icon')).not.toBeInTheDocument();
+    });
+});
+
+describe('SummaryCard relative time fallback (issue #1440)', () => {
+    // 冻结时钟：formatRelativeTime 用真实 new Date()，不冻结断言会随真实时间漂移。
+    const NOW = '2026-08-18T12:00:00Z';
+    const daysAgoIso = (days: number) =>
+        new Date(new Date(NOW).getTime() - days * 86400 * 1000).toISOString();
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(NOW));
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('超过十天的总结显示具体日期而不是「X天前」', () => {
+        render(
+            <SummaryCard task={makeItem({ created_at: daysAgoIso(15) }) as any} onClick={noop} onDelete={noop} />,
+        );
+        // 本地时区下的绝对日期（formatDateOnly 用本地时间）。
+        const expected = (() => {
+            const d = new Date(daysAgoIso(15));
+            const pad = (n: number) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        })();
+        expect(screen.getByText(new RegExp(`于${expected}`))).toBeInTheDocument();
+        expect(screen.queryByText(/天前/)).not.toBeInTheDocument();
+    });
+
+    it('恰好十天仍显示相对时间（issue 要求是「超过」十天）', () => {
+        render(
+            <SummaryCard task={makeItem({ created_at: daysAgoIso(10) }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(screen.getByText(/10天前/)).toBeInTheDocument();
+    });
+
+    it('十天以内的总结保持相对时间', () => {
+        render(
+            <SummaryCard task={makeItem({ created_at: daysAgoIso(3) }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(screen.getByText(/3天前/)).toBeInTheDocument();
     });
 });
 
