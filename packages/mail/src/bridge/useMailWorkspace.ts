@@ -174,10 +174,14 @@ export default function useMailWorkspace(
         message.id,
         ["\\Seen"],
         []
-      ).catch((reason) => {
-        applyReadState(true);
-        setWorkspaceError("mutation", reason);
-      });
+      )
+        .then(() => {
+          WKApp.mittBus.emit("mail-navigation-refresh" as never);
+        })
+        .catch((reason) => {
+          applyReadState(true);
+          setWorkspaceError("mutation", reason);
+        });
     },
     [mailboxContextId, selectedMailbox, setWorkspaceError]
   );
