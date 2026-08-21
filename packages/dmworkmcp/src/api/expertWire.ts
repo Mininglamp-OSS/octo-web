@@ -13,6 +13,12 @@ import type {
   ExpertMember,
   ExpertSquad,
 } from "../mock/expertMock";
+import {
+  jsonAttachment,
+  rawAttachment,
+  type PluginDetailPluginWire,
+  type PluginListItemWire,
+} from "./pluginWire";
 
 // ─── Wire interfaces ────────────────────────────────────────────────────────
 
@@ -193,5 +199,110 @@ export function mapSquadDetail(raw: ExpertSquadDetailWire): ExpertSquad {
     },
     permission: raw.permission ?? "",
     checkResult: "supported",
+  };
+}
+
+// ─── Unified plugin wire mappers (octo-marketplace /plugins) ────────────────
+// The unified list item carries the manifest for display plus row-level
+// counters; detail assembly (attachments + relations fan-out) lives in
+// expertService — these are the pure projections.
+
+/** team/config.json attachment persisted for expert_team plugins. */
+export interface TeamConfigWire {
+  leader?: string;
+  strategies?: unknown[];
+  dependencies?: { blocking?: string[]; recommended?: string[] };
+  permission?: string;
+}
+
+/** expert/context.json attachment persisted for squad member snapshots. */
+export interface MemberContextWire {
+  member_key?: string;
+  template_id?: string;
+  role?: string;
+  is_leader?: boolean;
+}
+
+/** skill/ref.json attachment: legacy artifact pointers shared by backfill
+ *  and import. */
+export interface SkillRefWire {
+  file_name?: string;
+  file_size?: number;
+  file_url?: string;
+  files?: string[];
+  object_key?: string;
+  zip_object_key?: string;
+}
+
+/** The legacy short_name never survived into the unified manifest; derive a
+ *  compact logo glyph from the display name so ExpertCard's logo block keeps
+ *  rendering. */
+function deriveShortName(name: string): string {
+  return name.trim().slice(0, 2);
+}
+
+function commonFromPlugin(raw: PluginListItemWire, categoryName: string) {
+  const manifest = raw.manifest_json ?? {};
+  return {
+    shortName: deriveShortName(raw.plugin_name ?? ""),
+    name: raw.plugin_name ?? "",
+    summary: manifest.description ?? "",
+    category: categoryName,
+    tags: raw.tags ?? [],
+    publisher: raw.publisher ?? "",
+    visibility: raw.visibility,
+    createdByType: mapCreatedByType(raw.created_by_type),
+    botName: raw.created_by_bot_name,
+    creatorName: raw.creator_name ?? "",
+    viewCount: raw.view_count ?? 0,
+    installCount: raw.install_count ?? 0,
+  };
+}
+
+export function mapPluginAgentListItem(
+  raw: PluginListItemWire,
+  categoryName: string
+): ExpertAgent {
+  return {
+    id: raw.plugin_id,
+    kind: "agent",
+    ...commonFromPlugin(raw, categoryName),
+  };
+}
+
+export function mapPluginSquadListItem(
+  raw: PluginListItemWire,
+  categoryName: string
+): ExpertSquad {
+  return {
+    id: raw.plugin_id,
+    kind: "squad",
+    ...commonFromPlugin(raw, categoryName),
+    memberCount: raw.member_count ?? 0,
+    members: [],
+    leader: "",
+    dependencies: { blocking: [], recommended: [] },
+    permission: "",
+    checkResult: "supported",
+  };
+}
+
+/** Project one skill Plugin (an expert_skill relation target) onto the lazy
+ *  ExpertSkill detail shape the file browser reads. */
+export function fromSkillPlugin(
+  plugin: PluginDetailPluginWire
+): import("../mock/expertMock").ExpertSkill {
+  const ref = jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
+  const inlineMd = rawAttachment(plugin.plugin_json, "SKILL.md") !== undefined;
+  const managedZip = (plugin.plugin_json?.attachments ?? []).some(
+    (a) => a.path === "skill/package.zip" && a.content_type === "storage"
+  );
+  return {
+    name: plugin.plugin_name ?? "",
+    hasContent: inlineMd || !!ref.object_key,
+    canDownload: managedZip || !!ref.zip_object_key || !!ref.file_url,
+    fileName: ref.file_name,
+    fileSize: ref.file_size,
+    files: ref.files,
   };
 }

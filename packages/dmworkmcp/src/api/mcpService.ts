@@ -12,7 +12,19 @@ import type {
   McpQuickStart,
   UpdateMcpParams,
 } from "../types/mcp";
-import { toWireParams } from "./mcpWireParams";
+import { toPluginUpsert } from "./mcpWireParams";
+import {
+  SCENE_CODE,
+  splitUserSupplied,
+  jsonAttachment,
+  type OffsetPaginationWire,
+  type PluginCategoryWire,
+  type PluginDetailPluginWire,
+  type PluginDetailWire,
+  type PluginListItemWire,
+  type PluginVisibilityWire,
+  SECRET_PLACEHOLDER,
+} from "./pluginWire";
 import {
   MCP_CATEGORY_LABELS,
   MCP_CATEGORY_ORDER,
@@ -467,25 +479,6 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
   }
 }
 
-async function patch<T>(path: string, data?: unknown): Promise<T> {
-  try {
-    const resp = await mcpAxios.patch(`${BASE}${path}`, data);
-    return resp.data.data as T;
-  } catch (err) {
-    if (axios.isCancel(err)) throw err;
-    throw new Error(extractErrorMessage(err));
-  }
-}
-
-async function del(path: string): Promise<void> {
-  try {
-    await mcpAxios.delete(`${BASE}${path}`);
-  } catch (err) {
-    if (axios.isCancel(err)) throw err;
-    throw new Error(extractErrorMessage(err));
-  }
-}
-
 /**
  * Resolve a category label from the frontend i18n bundle. The backend returns
  * `{key,count}` only (mcp-v1.md §4.2); labels are the frontend's job so locales
@@ -499,224 +492,221 @@ function categoryLabel(key: string): string {
   return MCP_CATEGORY_LABELS[key] ?? key;
 }
 
-/** Wire shape of the list response before frontend label enrichment. */
-interface McpListItemWire {
-  mcp_id: string;
-  name: string;
-  slogan: string;
-  category: string;
-  icon: string;
-  tags: string[];
-  tool_count: number;
-  visibility?: McpListItem["visibility"];
-  creator_name?: string;
-  created_by_type?: McpListItem["createdByType"];
-  created_by_bot_uid?: string;
-  created_by_bot_name?: string;
-  transport?: McpListItem["transport"];
-  source?: McpListItem["source"];
-  verification_status?: McpListItem["verificationStatus"];
-  match_reasons?: string[];
-  relevance?: number;
-  updated_at?: string;
+/** One mcpServers entry inside the root mcp.json attachment (standard MCP
+ *  config document). User-supplied env/header values are persisted as ${KEY}
+ *  placeholders and blanked into userSupplied slots on read. */
+interface McpServerEntryWire {
+  type?: McpQuickStart["transport"];
+  url?: string;
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  headers?: Record<string, string>;
 }
 
-interface McpDetailWire extends McpListItemWire {
-  quick_start: {
-    transport: McpQuickStart["transport"];
-    server_name: string;
-    slug?: string;
-    url?: string;
-    command?: string;
-    args?: string[];
-    env?: Record<string, string>;
-    env_user_supplied?: string[];
-    headers?: Record<string, string>;
-    headers_user_supplied?: string[];
-    // Legacy marker (mcp-v1.md §5.2). No longer sent on new records —
-    // Bearer auth is expressed as an `Authorization` row + toggle ON —
-    // but pre-toggle records still carry `auth_type: "bearer"` without a
-    // matching `Authorization` header entry. mapDetail synthesizes the
-    // missing user-supplied entry so the copy-paste snippet keeps
-    // rendering an Authorization line for those records.
-    auth_type?: "bearer" | "none";
-  };
-  tools: McpDetail["tools"];
-  usage_examples: string[];
-  faqs: McpDetail["faqs"];
-  notes: string[];
-  created_at?: string;
-  updated_at?: string;
+interface McpJSONWire {
+  mcpServers?: Record<string, McpServerEntryWire>;
 }
 
-interface McpListResponseWire {
-  data: McpListItemWire[];
-  pagination: { total: number; page: number; page_size: number };
+interface PluginListResponseWire {
+  data: PluginListItemWire[];
+  pagination: OffsetPaginationWire;
 }
 
-function mapListItem(raw: McpListItemWire): McpListItem {
+/** Category maps for the connector taxonomy: the unified API keys categories
+ *  by UUID while the UI keeps using the legacy enum keys — the category NAME
+ *  is that key (enrich registration invariant), so both directions are pure
+ *  lookups. Cached per Space because the registration is global but a Space
+ *  switch should never serve a stale first response. */
+interface ConnectorCategoryMaps {
+  keyToId: Map<string, string>;
+  idToKey: Map<string, string>;
+  wire: PluginCategoryWire[];
+}
+
+let categoryMapsCache: { spaceId: string; promise: Promise<ConnectorCategoryMaps> } | null = null;
+
+async function fetchConnectorCategoriesWire(): Promise<PluginCategoryWire[]> {
+  const data = await get<PluginCategoryWire[] | null>(`/plugin_categories`, {
+    scene_code: SCENE_CODE,
+    plugin_type: "connector",
+  });
+  return Array.isArray(data) ? data : [];
+}
+
+function getConnectorCategoryMaps(): Promise<ConnectorCategoryMaps> {
+  const spaceId = WKApp.shared.currentSpaceId ?? "";
+  if (!categoryMapsCache || categoryMapsCache.spaceId !== spaceId) {
+    const promise = fetchConnectorCategoriesWire().then(buildCategoryMaps);
+    categoryMapsCache = { spaceId, promise };
+    // A failed load must not poison the cache for the session.
+    promise.catch(() => {
+      if (categoryMapsCache?.promise === promise) categoryMapsCache = null;
+    });
+  }
+  return categoryMapsCache.promise;
+}
+
+function buildCategoryMaps(wire: PluginCategoryWire[]): ConnectorCategoryMaps {
+  const keyToId = new Map<string, string>();
+  const idToKey = new Map<string, string>();
+  for (const category of wire) {
+    keyToId.set(category.name, category.category_id);
+    idToKey.set(category.category_id, category.name);
+  }
+  return { keyToId, idToKey, wire };
+}
+
+/** Unified plugin visibility → legacy McpVisibility. `space` was the legacy
+ *  "public within the Space" scope, which the UI labels public. */
+function mapVisibility(v: PluginVisibilityWire): McpListItem["visibility"] {
+  if (v === "system") return "system";
+  if (v === "private") return "private";
+  return "public";
+}
+
+function mapListItem(
+  raw: PluginListItemWire,
+  idToKey: Map<string, string>
+): McpListItem {
+  const manifest = raw.manifest_json ?? {};
   return {
-    id: raw.mcp_id,
-    name: raw.name ?? "",
+    id: raw.plugin_id,
+    name: raw.plugin_name ?? "",
     // Fall back to empty string / 0 so downstream renderers that call
     // .toLowerCase() (Highlight) or format the tool count don't crash on a
     // null field slipping in from a legacy record or partial response.
-    slogan: raw.slogan ?? "",
-    category: raw.category,
-    icon: raw.icon,
+    slogan: manifest.description ?? "",
+    category: (raw.category_id && idToKey.get(raw.category_id)) || "",
+    icon: raw.icon_url || raw.icon || "",
     tags: raw.tags ?? [],
     toolCount: raw.tool_count ?? 0,
-    visibility: raw.visibility,
+    visibility: mapVisibility(raw.visibility),
     creatorName: raw.creator_name,
     createdByType: raw.created_by_type,
-    createdByBotUid: raw.created_by_bot_uid,
+    createdByBotUid: raw.created_by_bot_id,
     createdByBotName: raw.created_by_bot_name,
-    transport: raw.transport, source: raw.source,
-    verificationStatus: raw.verification_status,
-    matchReasons: raw.match_reasons ?? [], relevance: raw.relevance,
+    matchReasons: [],
     updatedAt: raw.updated_at,
   };
 }
 
-function mapDetail(raw: McpDetailWire): McpDetail {
-  const item = mapListItem(raw);
-  // Guard against a missing `quick_start` block on the wire — while
-  // McpDetailWire types it as required, a null/absent value from a legacy
-  // record or a partial backend response would otherwise crash the whole
-  // detail-modal fetch with `Cannot read properties of null`. Fall back to
-  // an empty stdio-shaped block so the modal renders with an empty
-  // quick-access tab instead of blowing up.
-  const q = raw.quick_start ?? ({} as McpDetailWire["quick_start"]);
-  // Legacy-bearer migration shim: records created before the
-  // user_supplied toggle model expressed Bearer auth via
-  // `auth_type: "bearer"` alone, without a matching Authorization row.
-  // The snippet renderer no longer looks at auth_type, so without
-  // synthesizing an entry here those old snippets ship WITHOUT an
-  // Authorization line at all. Rebuild a user-supplied Authorization
-  // slot so consumers still see a placeholder to fill in. Only fires
-  // when the wire had no Authorization key already (any explicit row
-  // wins over the marker).
-  let headers = q.headers;
-  let headersUserSupplied = q.headers_user_supplied;
-  if (q.auth_type === "bearer") {
-    const hasAuthKey = !!(
-      headers &&
-      Object.keys(headers).some((k) => k.toLowerCase() === "authorization")
-    );
-    if (!hasAuthKey) {
-      headers = { ...(headers ?? {}), Authorization: "" };
-      headersUserSupplied = [
-        ...(headersUserSupplied ?? []),
-        "Authorization",
-      ];
-    }
-  }
+function mapDetail(
+  raw: PluginDetailPluginWire,
+  idToKey: Map<string, string>
+): McpDetail {
+  const item = mapListItem(raw, idToKey);
+  const manifest = raw.manifest_json ?? {};
+  const servers =
+    jsonAttachment<McpJSONWire>(raw.plugin_json, "mcp.json")?.mcpServers ?? {};
+  // One connector = one MCP server; the map key is the server name.
+  const serverName = Object.keys(servers)[0] ?? "";
+  const server = servers[serverName] ?? {};
+  const env = splitUserSupplied(server.env);
+  const headers = splitUserSupplied(server.headers);
   return {
     ...item,
     quickStart: {
-      transport: q.transport ?? "stdio",
-      serverName: q.server_name ?? raw.name ?? "",
-      slug: q.slug,
-      url: q.url,
-      command: q.command,
-      args: q.args,
-      env: q.env,
-      envUserSupplied: q.env_user_supplied,
-      headers,
-      headersUserSupplied,
+      transport: server.type ?? "stdio",
+      serverName: serverName || raw.plugin_name || "",
+      // The manifest machine name carries the legacy slug for connectors.
+      slug: manifest.name,
+      url: server.url,
+      command: server.command,
+      args: server.args,
+      env: env.values,
+      envUserSupplied: env.userSupplied,
+      headers: headers.values,
+      headersUserSupplied: headers.userSupplied,
     },
-    tools: raw.tools ?? [],
-    usageExamples: raw.usage_examples ?? [],
-    faqs: raw.faqs ?? [],
-    notes: raw.notes ?? [],
+    tools: jsonAttachment<McpDetail["tools"]>(raw.plugin_json, "connector/tools.json") ?? [],
+    usageExamples:
+      jsonAttachment<string[]>(raw.plugin_json, "connector/examples.json") ?? [],
+    faqs: jsonAttachment<McpDetail["faqs"]>(raw.plugin_json, "connector/faqs.json") ?? [],
+    notes: jsonAttachment<string[]>(raw.plugin_json, "connector/notes.json") ?? [],
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
   };
 }
 
+
 async function fetchMcpListReal(
   params: ListMcpParams
 ): Promise<ListMcpResponse> {
-  return fetchMcpListPath("/mcps", params);
+  return fetchMcpListPath("all", params);
 }
 
-/** GET /mcps/mine — same shape, restricted to owner=caller (mcp-v1.md §4.3). */
+/** mode=mine — same shape, restricted to owner=caller. */
 async function fetchMcpMineReal(
   params: ListMcpParams
 ): Promise<ListMcpResponse> {
-  return fetchMcpListPath("/mcps/mine", params);
+  return fetchMcpListPath("mine", params);
 }
 
-/** Shared list-body handling: build query, hit path, enrich labels. */
+/** Shared list-body handling against GET /plugins (plugin_type=connector). */
 async function fetchMcpListPath(
-  path: string,
+  mode: "all" | "mine",
   params: ListMcpParams
 ): Promise<ListMcpResponse> {
-  const query: Record<string, unknown> = {};
+  const query: Record<string, unknown> = {
+    scene_code: SCENE_CODE,
+    plugin_type: "connector",
+  };
+  if (mode === "mine") query.mode = "mine";
   const keyword = params.keyword?.trim();
-  if (keyword) query.keyword = keyword;
-  // `all` disables the filter server-side; send it verbatim per §0.
-  query.category = params.categories?.length ? params.categories[0] : (params.category ?? CATEGORY_KEY_ALL);
-  if (params.createdByType) {
-    query.created_by_type = params.createdByType;
-  }
-  // Relevance is only meaningful with a keyword — every row scores 0 otherwise,
-  // making the sort order arbitrary. When browsing, surface freshest first.
-  query.sort = keyword ? "relevance" : "updated";
-  // Multi-tag filter — mcp-v1.md §4.2 accepts `tag` as repeatable OR
-  // comma-separated. We use REPEATED params (`tag=a&tag=b&tag=c`) so a
-  // tag value that happens to contain a comma still round-trips intact;
-  // comma-joining would let the backend re-split "v1.0,beta" into two
-  // wrong tags and produce silent empty results.
+  if (keyword) query.q = keyword;
+  // The unified list has no relevance scoring; freshest-first covers both
+  // browse and search ordering.
+  query.sort = "updated";
+  // Multi-tag filter is AND; REPEATED params (`tag=a&tag=b`) so a tag value
+  // containing a comma still round-trips intact.
   if (params.tags?.length) {
     query.tag = params.tags;
   }
   const pageSize = params.limit && params.limit > 0 ? params.limit : 20;
   query.page_size = pageSize;
   query.page = Math.floor((params.offset ?? 0) / pageSize) + 1;
-  const categoryParams = buildMcpCategoryParams(
-    path === "/mcps/mine" ? "mine" : "all",
-    params,
-    keyword
+
+  // Categories double as the key↔UUID map, so the list request needs them
+  // first when a category filter is active. Counts are re-fetched per list
+  // load so pill numbers follow catalog changes (they no longer scope to the
+  // active keyword/tag filter — accepted in the unified switch).
+  // fetchConnectorCategoriesWire routes through get<T>() and therefore
+  // already classifies failures into McpListError.
+  const categoryWire = await fetchConnectorCategoriesWire();
+  const maps = buildCategoryMaps(categoryWire);
+  const categoryKey = params.categories?.length
+    ? params.categories[0]
+    : params.category ?? CATEGORY_KEY_ALL;
+  if (categoryKey && categoryKey !== CATEGORY_KEY_ALL) {
+    const categoryId = maps.keyToId.get(categoryKey);
+    if (categoryId) query.category_id = categoryId;
+  }
+  const resp = await executeMcpListRequest(() =>
+    mcpAxios.get<PluginListResponseWire>(`${BASE}/plugins`, { params: query })
   );
-  const [resp, categoryWire] = await executeMcpListRequest(() => Promise.all([
-      mcpAxios.get<McpListResponseWire>(`${BASE}${path}`, { params: query }),
-      mcpAxios
-        .get<{ data: { key: string; count: number }[] }>(`${BASE}/mcp_categories`, {
-          params: categoryParams,
-        })
-        .then((r) => r.data.data),
-    ]));
-  const items = (resp.data.data ?? []).map(mapListItem);
-  const categoryCounts = new Map(
-    categoryWire.map((item) => [item.key, item.count])
+  const items = (resp.data.data ?? []).map((raw) => mapListItem(raw, maps.idToKey));
+  const countsByKey = new Map(
+    categoryWire.map((c) => [c.name, c.plugin_count] as const)
   );
+  const allCount = categoryWire.reduce((sum, c) => sum + (c.plugin_count ?? 0), 0);
   const categories: McpCategory[] = MCP_CATEGORY_ORDER.map((key) => ({
     key,
     label: categoryLabel(key),
-    count: categoryCounts.get(key) ?? 0,
+    count: key === CATEGORY_KEY_ALL ? allCount : countsByKey.get(key) ?? 0,
   }));
   return { items, total: resp.data.pagination.total, categories };
 }
 
-export function buildMcpCategoryParams(
-  mode: "all" | "mine",
-  params: Pick<ListMcpParams, "createdByType" | "tags">,
-  keyword = ""
-): Record<string, unknown> {
-  // Category counts must honour the same keyword/tag/provenance scope as the
-  // item list. The active category filter is intentionally excluded so category
-  // pills remain useful for switching within the current search/tag result set.
-  const categoryParams: Record<string, unknown> = {};
-  if (mode === "mine") categoryParams.mode = "mine";
-  if (keyword) categoryParams.keyword = keyword;
-  if (params.createdByType) categoryParams.created_by_type = params.createdByType;
-  if (params.tags?.length) categoryParams.tag = params.tags;
-  return categoryParams;
-}
-
 async function fetchMcpDetailReal(id: string): Promise<McpDetail> {
-  return get<McpDetailWire>(`/mcps/${encodeURIComponent(id)}`).then(mapDetail);
+  const [detail, maps] = await Promise.all([
+    get<PluginDetailWire>(`/plugins/detail`, {
+      plugin_id: id,
+      include_relations: false,
+    }),
+    getConnectorCategoryMaps(),
+  ]);
+  return mapDetail(detail.plugin, maps.idToKey);
 }
 
 async function probeMcpToolsReal(
@@ -758,33 +748,59 @@ async function probeMcpToolsReal(
 }
 
 async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
-  // POST /mcps returns 201 with the full McpDetail; the frontend picks up `id`
-  // from the response (mcp-v1.md §4.1). Server derives id / creatorName /
-  // toolCount / timestamps and ignores any client-supplied values for them, so
-  // the flat create body is sent as-is (§3.3).
-  const detail = await post<McpDetailWire>("/mcps", toWireParams(params));
-  return { id: detail.mcp_id };
+  // POST /plugins/upsert creates the plugin, then publish registers
+  // its default-scene placement — without a placement row the new connector
+  // would be invisible to every scene-scoped list (including "mine").
+  const maps = await getConnectorCategoryMaps();
+  const categoryId = maps.keyToId.get(params.category);
+  const detail = await post<PluginDetailWire>(
+    "/plugins/upsert",
+    toPluginUpsert(params, { categoryId, visibility: "space" })
+  );
+  const pluginId = detail.plugin.plugin_id;
+  await post("/plugins/publish", {
+    plugin_id: pluginId,
+    version: "1.0.0",
+    placements: [
+      {
+        placement_code: SCENE_CODE,
+        ...(categoryId ? { category_id: categoryId } : {}),
+        is_visible: true,
+      },
+    ],
+  });
+  return { id: pluginId };
 }
 
-/** PATCH /mcps/{id} — owner-only partial update (mcp-v1.md §4.5). The UI
- *  always sends the full form, so every field is present and the backend
- *  effectively replaces all mutable fields; returns 200 with the updated
- *  McpDetail. 403 → forbidden, 404 → not_found are surfaced by the shared
- *  error mapper. */
+/** Full-replace update via upsert. The current visibility is fetched first so
+ *  the replace echo preserves it (legacy PATCH semantics); placement category
+ *  follows the current-state category server-side. */
 async function updateMcpReal(
   id: string,
   params: UpdateMcpParams
 ): Promise<McpDetail> {
-  return patch<McpDetailWire>(
-    `/mcps/${encodeURIComponent(id)}`,
-    toWireParams(params)
-  ).then(mapDetail);
+  const [current, maps] = await Promise.all([
+    get<PluginDetailWire>(`/plugins/detail`, {
+      plugin_id: id,
+      include_relations: false,
+    }),
+    getConnectorCategoryMaps(),
+  ]);
+  const categoryId = maps.keyToId.get(params.category);
+  const detail = await post<PluginDetailWire>(
+    "/plugins/upsert",
+    toPluginUpsert(params, {
+      pluginId: id,
+      categoryId,
+      visibility: current.plugin.visibility,
+    })
+  );
+  return mapDetail(detail.plugin, maps.idToKey);
 }
 
-/** DELETE /mcps/{id} — owner-only soft delete (mcp-v1.md §4.6). Returns
- *  204 No Content on success. */
+/** POST /plugins/delete — owner-only soft delete. */
 async function deleteMcpReal(id: string): Promise<void> {
-  return del(`/mcps/${encodeURIComponent(id)}`);
+  await post("/plugins/delete", { plugin_id: id });
 }
 
 /**
@@ -892,12 +908,12 @@ export interface McpTagSuggestion {
   count: number;
 }
 
-/** GET /market/api/v1/mcp_tags — tag suggestions for the search-bar
- *  popover. Backend aggregates across the caller's visible set (system +
- *  space rows), sorted by descending count. Empty `query` returns every
- *  visible tag; the backend clamps `limit` to [1, 100] with default 50.
- *  Pass `mode: "mine"` when the popover opens from the "我的" tab so
- *  suggestions match `GET /mcps/mine`. */
+/** GET /market/api/v1/plugin_tags — tag suggestions for the search-bar
+ *  popover, aggregated from connector Plugins visible to the caller,
+ *  sorted by descending count. Empty `query` returns every visible tag;
+ *  the backend clamps `limit` to [1, 100] with default 50. Pass
+ *  `mode: "mine"` when the popover opens from the "我的" tab so
+ *  suggestions match the mine-scoped list. */
 export function fetchMcpTags(
   query = "",
   opts: { signal?: AbortSignal; limit?: number; mode?: "all" | "mine" } = {}
@@ -952,7 +968,10 @@ async function fetchMcpTagsReal(
   query: string,
   opts: { signal?: AbortSignal; limit?: number; mode?: "all" | "mine" }
 ): Promise<McpTagSuggestion[]> {
-  const params: Record<string, unknown> = {};
+  const params: Record<string, unknown> = {
+    scene_code: SCENE_CODE,
+    plugin_type: "connector",
+  };
   if (query.trim()) params.q = query.trim();
   if (opts.limit && opts.limit > 0) params.limit = opts.limit;
   if (opts.mode === "mine") params.mode = "mine";
@@ -961,7 +980,7 @@ async function fetchMcpTagsReal(
   // helper re-throws axios cancels unchanged, so the caller's abort branch
   // still fires. Array.isArray guard covers a non-list envelope (`{}` or
   // `{data:null}`) surfacing as an empty suggestions list.
-  const data = await get<McpTagSuggestion[] | null>(`/mcp_tags`, params, {
+  const data = await get<McpTagSuggestion[] | null>(`/plugin_tags`, params, {
     signal: opts.signal,
   });
   return Array.isArray(data) ? data : [];

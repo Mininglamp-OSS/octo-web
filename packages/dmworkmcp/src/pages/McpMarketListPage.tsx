@@ -39,7 +39,7 @@ interface McpMarketListPageState {
    *  outside-click listener + Escape handler can toggle it. */
   tagFilterOpen: boolean;
   /** Fuzzy filter typed into the tag-popover search input. Debounced fetch
-   *  against `/mcp_tags` populates `tagSuggestions`. */
+   *  against `/plugin_tags` populates `tagSuggestions`. */
   tagQuery: string;
   /** Backend-supplied tag suggestions (mcp-v1.md §4.8). Repopulated whenever
    *  the popover opens or `tagQuery` changes; empty until the first fetch
@@ -239,7 +239,7 @@ export default class McpMarketListPage extends Component<
     return rows;
   }
 
-  /** Debounce + fire a /mcp_tags fetch, wiring the response into
+  /** Debounce + fire a /plugin_tags fetch, wiring the response into
    *  tagSuggestions. Cancels any in-flight request via AbortController so a
    *  fast typist doesn't clobber a fresh response with a stale one. */
   private scheduleTagFetch_() {
@@ -396,7 +396,7 @@ export default class McpMarketListPage extends Component<
     // 用户切换「全部/我的」视图(已过同值 guard);原先误用 GET /mcps/mine 加载推断,而 mine 列表也用于建议/初始化。
     Dap.shared.track("market_view_switched", {});
     // Full reset — tag suggestions are mode-scoped on the backend (see
-    // /mcp_tags?mode=mine), so keeping stale suggestions after a tab switch
+    // /plugin_tags?mode=mine), so keeping stale suggestions after a tab switch
     // paints suggestions the just-loaded list can't produce. Mirrors
     // handleSpaceChanged_ for the same reason.
     this.cancelTagFetch_();
@@ -506,7 +506,7 @@ export default class McpMarketListPage extends Component<
    *  Refetches on every change; the tag popover stays open so the user can
    *  toggle several tags in one interaction. */
   private handleToggleTag = (tag: string) => {
-    // 用户点 tag 过滤(选/取消都算一次过滤动作);原先误用 GET /mcp_tags 加载 tag 列表推断。
+    // 用户点 tag 过滤(选/取消都算一次过滤动作);原先误用 GET /plugin_tags 加载 tag 列表推断。
     Dap.shared.track("market_tag_filtered", {});
     this.setState((prev) => ({
       tagsSelected: prev.tagsSelected.includes(tag)
@@ -540,7 +540,7 @@ export default class McpMarketListPage extends Component<
       editingDetail,
     } = this.state;
 
-    // Tag popover options: backend-authoritative via /mcp_tags (mcp-v1.md
+    // Tag popover options: backend-authoritative via /plugin_tags (mcp-v1.md
     // §4.8). Union with tagsSelected so a chip the user selected before the
     // fetch completes (or from a stale query) still shows up so they can
     // un-select it. Cached on the class instance keyed on the identity of

@@ -1,8 +1,11 @@
 /**
  * Real HTTP client for the skill marketplace API.
  *
- * This module communicates with the octo-marketplace backend. It maps
- * snake_case responses to camelCase frontend types.
+ * Catalog reads and writes target the octo-marketplace UNIFIED plugin surface
+ * (`/plugins`, `/plugins/detail`, `/plugin_categories`, `/plugins/*`,
+ * plugin_type=skill); the upload → parse pipeline and tag suggestions keep
+ * their legacy endpoints on the same service. Snake_case wire shapes are
+ * mapped onto the unchanged camelCase frontend types.
  */
 import { resolveSkillMarketApiBaseURL } from "./constants";
 import { WKApp, t, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
@@ -11,19 +14,27 @@ import type {
   NewSkillForm,
   PagedResult,
   ParseStatusResult,
-  RawCategory,
-  RawPagedResult,
-  RawSkill,
   RawSkillTag,
-  RawSkillVersion,
   Skill,
   SkillListQuery,
+  SkillSort,
   SkillTag,
   SkillVersion,
   TriggerParseResult,
   UpdateSkillForm,
   UploadInitResult,
 } from "../types/skill";
+import {
+  SCENE_CODE,
+  goCanonicalJSON,
+  jsonAttachment,
+  rawAttachment,
+  type PluginAttachmentWire,
+  type PluginCategoryWire,
+  type PluginDetailPluginWire,
+  type PluginDetailWire,
+  type PluginListItemWire,
+} from "./pluginWire";
 
 interface SuccessEnvelope<T> {
   data: T;
@@ -94,7 +105,7 @@ function normalizeError(input: {
 async function requestEnvelope<T>(
   path: string,
   init?: RequestInit,
-  options?: { auth?: boolean }
+  options?: { auth?: boolean; skipAuthRedirect?: boolean }
 ): Promise<SuccessEnvelope<T>> {
   const url = `${resolveSkillMarketApiBaseURL()}${path}`;
   const defaultHeaders =
@@ -133,8 +144,10 @@ async function requestEnvelope<T>(
     throw normalizeError({ code: "network_error", message, details: err });
   }
 
-  // Handle 401 — redirect to login
-  if (res.status === 401) {
+  // Handle 401 — redirect to login. Fire-and-forget beacons opt out: a 401
+  // on a background metric must never tear down the session (the page's list
+  // calls are the authoritative session probe), mirroring the expert service.
+  if (res.status === 401 && !options?.skipAuthRedirect) {
     const loginPath =
       ((WKApp.loginInfo as unknown as Record<string, unknown>)?.loginUrl as
         | string
@@ -197,7 +210,7 @@ async function requestEnvelope<T>(
 async function request<T>(
   path: string,
   init?: RequestInit,
-  options?: { auth?: boolean }
+  options?: { auth?: boolean; skipAuthRedirect?: boolean }
 ): Promise<T> {
   return (await requestEnvelope<T>(path, init, options)).data;
 }
@@ -230,15 +243,25 @@ function assertSafeExternalURL(raw: string): void {
   });
 }
 
-// ─── Mappers ───────────────────────────────────────────────────────────────
+// ─── Mappers (unified plugin wire → frontend Skill shapes) ──────────────────
 
-function mapCategory(raw: RawCategory, index: number): Category {
+/** skill/ref.json attachment: artifact pointers shared by backfill and import. */
+interface SkillRefWire {
+  file_name?: string;
+  file_size?: number;
+  file_sha256?: string;
+  file_url?: string;
+  object_key?: string;
+  zip_object_key?: string;
+}
+
+function mapCategory(raw: PluginCategoryWire, index: number): Category {
   return {
-    id: raw.skill_category_id ?? raw.id ?? "",
+    id: raw.category_id,
     name: raw.name,
-    iconKey: raw.icon_key,
+    iconKey: raw.icon_key ?? "",
     sortOrder: index + 1,
-    skillCount: raw.skill_count,
+    skillCount: raw.plugin_count,
   };
 }
 
@@ -259,31 +282,57 @@ function normalizeTags(tags: unknown): string[] {
   return [];
 }
 
-function mapSkill(raw: RawSkill): Skill {
+function mapSkill(raw: PluginListItemWire): Skill {
+  const manifest = raw.manifest_json ?? {};
   return {
-    id: raw.skill_id ?? raw.id ?? "",
-    name: raw.name,
-    displayName: raw.display_name ?? "",
-    description: raw.description ?? "",
-    categoryId: raw.category_id,
+    id: raw.plugin_id,
+    // The manifest machine name is the legacy skill `name`; plugin_name is the
+    // display name.
+    name: manifest.name ?? raw.plugin_name ?? "",
+    displayName: raw.plugin_name ?? "",
+    description: manifest.description ?? "",
+    categoryId: raw.category_id ?? "",
     tags: normalizeTags(raw.tags),
     ownerId: raw.owner_id,
-    ownerName: raw.owner_name ?? "",
-    creatorId: raw.creator_id ?? raw.owner_id,
-    creatorName: raw.creator_name ?? raw.owner_name ?? "",
-    spaceId: raw.space_id,
-    visibility: raw.visibility ?? "space",
-    version: raw.version ?? "1.0.0",
-    readmeContent: raw.readme_content ?? "",
-    iconUrl: raw.icon_url ?? "",
-    fileName: raw.file_name ?? "",
-    fileUrl: raw.file_url ?? "",
-    fileSize: raw.file_size ?? 0,
-    fileSha256: raw.file_sha256,
+    // Backfill preserved the legacy owner display name in publisher.
+    ownerName: raw.publisher ?? "",
+    creatorId: raw.owner_id,
+    creatorName: raw.creator_name ?? raw.publisher ?? "",
+    spaceId: raw.space_id ?? "",
+    // The unified wire adds "system"; skills never use it, so anything outside
+    // the skill union degrades to the space default instead of leaking through.
+    visibility:
+      raw.visibility === "public" || raw.visibility === "private" || raw.visibility === "space"
+        ? raw.visibility
+        : "space",
+    version: raw.current_version ?? "1.0.0",
+    readmeContent: "",
+    iconUrl: raw.icon_url ?? raw.icon ?? "",
+    fileName: "",
+    fileUrl: "",
+    fileSize: 0,
+    fileSha256: undefined,
     viewCount: raw.view_count ?? 0,
     downloadCount: raw.download_count ?? 0,
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at,
+    createdAt: raw.created_at ?? "",
+    updatedAt: raw.updated_at ?? "",
+  };
+}
+
+function mapSkillDetail(plugin: PluginDetailPluginWire): Skill {
+  const base = mapSkill(plugin);
+  const ref =
+    jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
+  const managedZip = (plugin.plugin_json?.attachments ?? []).find(
+    (a) => a.path === "skill/package.zip" && a.content_type === "storage"
+  );
+  return {
+    ...base,
+    readmeContent: rawAttachment(plugin.plugin_json, "SKILL.md") ?? "",
+    fileName: ref.file_name ?? (managedZip ? "skill.zip" : ""),
+    fileUrl: managedZip?.storage_uri ?? ref.zip_object_key ?? ref.file_url ?? "",
+    fileSize: ref.file_size ?? managedZip?.content_size ?? 0,
+    fileSha256: ref.file_sha256,
   };
 }
 
@@ -291,17 +340,23 @@ function mapSkillTag(raw: RawSkillTag): SkillTag {
   return {
     name: raw.name,
     createdBy: raw.created_by,
-    createdAt: raw.created_at,
-    updatedAt: raw.updated_at,
+    createdAt: raw.created_at ?? "",
+    updatedAt: raw.updated_at ?? "",
   };
 }
 
-function mapPagedResult(raw: RawPagedResult<RawSkill>): PagedResult<Skill> {
-  return {
-    items: (raw.items ?? []).map(mapSkill),
-    nextCursor: raw.next_cursor,
-    total: raw.total ?? raw.items?.length ?? 0,
-  };
+/** Legacy SkillSort → unified list sort. */
+function mapSkillSort(sort?: SkillSort): string | undefined {
+  if (!sort) return undefined;
+  if (sort === "latest") return "newest";
+  return sort; // comprehensive / views / downloads match 1:1
+}
+
+/** The unified list paginates by page number; the cursor the UI threads
+ *  through is simply the next page rendered as an opaque string. */
+function cursorToPage(cursor?: string): number {
+  const page = Number.parseInt(cursor ?? "", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
 }
 
 // ─── Public API (same signatures as mock skillApi.ts) ──────────────────────
@@ -316,173 +371,254 @@ export interface CategoryListOptions extends RequestOptions {
 }
 
 export function getCategories(opts?: CategoryListOptions): Promise<Category[]> {
+  // The unified taxonomy has no keyword/tag-scoped counts; the q/tags options
+  // are accepted for signature compatibility and ignored (chips show catalog
+  // totals — accepted in the unified switch).
   const params = new URLSearchParams();
-  if (opts?.q) params.set("q", opts.q);
-  if (opts?.tags?.length) params.set("tags", opts.tags.join(","));
-  const qs = params.toString();
-  return request<RawCategory[]>(
-    `/skill_categories${qs ? `?${qs}` : ""}`,
+  params.set("scene_code", SCENE_CODE);
+  params.set("plugin_type", "skill");
+  return request<PluginCategoryWire[] | null>(
+    `/plugin_categories?${params.toString()}`,
     opts?.signal ? { signal: opts.signal } : undefined
-  ).then((items) => items.map(mapCategory));
+  ).then((items) => (items ?? []).map(mapCategory));
+}
+
+function buildPluginListParams(query: SkillListQuery, mine: boolean): URLSearchParams {
+  const params = new URLSearchParams();
+  params.set("scene_code", SCENE_CODE);
+  params.set("plugin_type", "skill");
+  if (mine) params.set("mode", "mine");
+  if (query.q) params.set("q", query.q);
+  if (query.categoryId && query.categoryId !== "all")
+    params.set("category_id", query.categoryId);
+  // Repeated `tag` params (AND semantics); repeat instead of comma-joining so
+  // a tag value containing a comma still round-trips intact.
+  for (const tag of query.tags ?? []) params.append("tag", tag);
+  const sort = mapSkillSort(query.sort);
+  if (sort) params.set("sort", sort);
+  params.set("page", String(cursorToPage(query.cursor)));
+  if (query.limit) params.set("page_size", String(query.limit));
+  return params;
+}
+
+function listPlugins(
+  query: SkillListQuery,
+  mine: boolean,
+  opts?: RequestOptions
+): Promise<PagedResult<Skill>> {
+  const params = buildPluginListParams(query, mine);
+  return requestEnvelope<PluginListItemWire[]>(
+    `/plugins?${params.toString()}`,
+    opts?.signal ? { signal: opts.signal } : undefined
+  ).then(({ data, pagination }) => {
+    const items = (data ?? []).map(mapSkill);
+    const page = pagination?.page ?? cursorToPage(query.cursor);
+    const pageSize = pagination?.page_size ?? query.limit ?? 20;
+    const total = pagination?.total ?? items.length;
+    return {
+      items,
+      // Synthesize the legacy opaque cursor from offset pagination: the next
+      // cursor is simply the next page number while more rows remain.
+      nextCursor: page * pageSize < total ? String(page + 1) : null,
+      total,
+    };
+  });
 }
 
 export function getSkills(
   query: SkillListQuery = {},
   opts?: RequestOptions
 ): Promise<PagedResult<Skill>> {
-  const params = new URLSearchParams();
-  if (query.q) params.set("q", query.q);
-  if (query.categoryId && query.categoryId !== "all")
-    params.set("category_id", query.categoryId);
-  if (query.tags?.length) params.set("tags", query.tags.join(","));
-  if (query.sort) params.set("sort", query.sort);
-  if (query.cursor) params.set("cursor", query.cursor);
-  if (query.limit) params.set("page_size", String(query.limit));
-  const qs = params.toString();
-  return requestEnvelope<RawSkill[]>(
-    `/skills${qs ? `?${qs}` : ""}`,
-    opts?.signal ? { signal: opts.signal } : undefined
-  ).then(({ data, pagination }) =>
-    mapPagedResult({
-      items: data,
-      next_cursor: pagination?.next_cursor ?? null,
-      total: pagination?.total,
-    })
-  );
+  return listPlugins(query, false, opts);
 }
 
 export function getMySkills(
   query: SkillListQuery = {},
   opts?: RequestOptions
 ): Promise<PagedResult<Skill>> {
-  const params = new URLSearchParams();
-  if (query.q) params.set("q", query.q);
-  // Forward category_id like getSkills does. Today the "我的" tab hides
-  // the category chip so this never lands non-empty, but silently dropping
-  // it would break the moment the UI adds a filter chip to that tab.
-  if (query.categoryId && query.categoryId !== "all")
-    params.set("category_id", query.categoryId);
-  if (query.tags?.length) params.set("tags", query.tags.join(","));
-  if (query.sort) params.set("sort", query.sort);
-  if (query.cursor) params.set("cursor", query.cursor);
-  if (query.limit) params.set("page_size", String(query.limit));
-  const qs = params.toString();
-  return requestEnvelope<RawSkill[]>(
-    `/skills/mine${qs ? `?${qs}` : ""}`,
-    opts?.signal ? { signal: opts.signal } : undefined
-  ).then(({ data, pagination }) =>
-    mapPagedResult({
-      items: data,
-      next_cursor: pagination?.next_cursor ?? null,
-      total: pagination?.total,
-    })
-  );
+  return listPlugins(query, true, opts);
 }
 
 export function getSkillTags(
   q = "",
   opts?: RequestOptions
 ): Promise<SkillTag[]> {
+  // Unified aggregation endpoint: tags come from skill Plugins visible to
+  // the caller ({name,count} rows); only `name` is consumed downstream.
   const params = new URLSearchParams();
+  params.set("scene_code", SCENE_CODE);
+  params.set("plugin_type", "skill");
   const query = q.trim();
   if (query) params.set("q", query);
-  params.set("page_size", "20");
-  const qs = params.toString();
-  return request<{ items: RawSkillTag[] }>(
-    `/skills/tags${qs ? `?${qs}` : ""}`,
+  params.set("limit", "20");
+  return request<Array<{ name: string; count: number }>>(
+    `/plugin_tags?${params.toString()}`,
     opts?.signal ? { signal: opts.signal } : undefined
-  ).then((data) => (data.items ?? []).map(mapSkillTag));
+  ).then((data) => (data ?? []).map((tag) => mapSkillTag({ name: tag.name })));
 }
 
 export function getSkill(id: string): Promise<Skill> {
-  return request<RawSkill>(`/skills/${encodeURIComponent(id)}`).then(mapSkill);
+  return request<PluginDetailWire>(
+    `/plugins/detail?plugin_id=${encodeURIComponent(id)}&include_relations=false`
+  ).then((detail) => mapSkillDetail(detail.plugin));
 }
 
 export async function trackSkillView(id: string): Promise<void> {
-  await request<Record<string, never>>("/metrics/track", {
-    method: "POST",
-    body: JSON.stringify({
-      resource_type: "skill",
-      resource_id: id,
-      event_type: "view",
-    }),
-  });
+  await request<Record<string, never>>(
+    "/metrics/track",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        resource_type: "plugin",
+        resource_id: id,
+        event_type: "view",
+      }),
+    },
+    { skipAuthRedirect: true }
+  );
 }
 
 /**
- * Fetch the SKILL.md content for the current version of a skill.
- * Returns the markdown string on success, or throws (404 means no SKILL.md available).
+ * Fetch the SKILL.md content for a skill. The unified endpoint serves both
+ * inlined attachments and legacy backfilled object pointers.
  */
 export async function getSkillMd(
   id: string,
   opts?: RequestOptions
 ): Promise<string> {
   return request<{ content: string }>(
-    `/skills/${encodeURIComponent(id)}/skill_md`,
+    `/plugins/skill_md?plugin_id=${encodeURIComponent(id)}`,
     opts?.signal ? { signal: opts.signal } : undefined
   ).then((data) => data.content ?? "");
 }
 
-export function createSkill(form: NewSkillForm): Promise<Skill> {
-  return request<RawSkill>("/skills", {
-    method: "POST",
-    body: JSON.stringify({
-      parse_task_id: form.parseTaskId,
-      name: form.name,
-      display_name: form.displayName,
-      description: form.description,
-      category_id: form.categoryId,
-      tags: form.tags,
-      visibility: form.visibility,
-      version: form.version,
-      changelog: form.changelog,
-      icon_url: form.iconUrl ?? "",
-    }),
-  }).then(mapSkill);
+/** Shared import body: the legacy parse pipeline's task id plus the document
+ *  fields; the marketplace turns it into a skill plugin (create or update). */
+function importBody(
+  form: NewSkillForm | UpdateSkillForm,
+  pluginId?: string
+): string {
+  return JSON.stringify({
+    parse_task_id: form.parseTaskId,
+    ...(pluginId ? { plugin_id: pluginId } : {}),
+    plugin_name: form.displayName || form.name,
+    name: form.name,
+    description: form.description,
+    category_id: form.categoryId || undefined,
+    tags: form.tags,
+    visibility: form.visibility,
+    version: form.version,
+    changelog: form.changelog,
+    icon: form.iconUrl ?? "",
+  });
 }
 
-export function updateSkill(id: string, form: UpdateSkillForm): Promise<Skill> {
-  const body: Record<string, unknown> = {};
-  if (form.parseTaskId !== undefined) body.parse_task_id = form.parseTaskId;
-  if (form.name !== undefined) body.name = form.name;
-  if (form.displayName !== undefined) body.display_name = form.displayName;
-  if (form.description !== undefined) body.description = form.description;
-  if (form.categoryId !== undefined) body.category_id = form.categoryId;
-  if (form.tags !== undefined) body.tags = form.tags;
-  if (form.visibility !== undefined) body.visibility = form.visibility;
-  if (form.version !== undefined) body.version = form.version;
-  if (form.changelog !== undefined) body.changelog = form.changelog;
-  if (form.iconUrl !== undefined) body.icon_url = form.iconUrl;
+export function createSkill(form: NewSkillForm): Promise<Skill> {
+  return request<PluginDetailWire>("/plugins/import", {
+    method: "POST",
+    body: importBody(form),
+  }).then((detail) => mapSkillDetail(detail.plugin));
+}
 
-  return request<RawSkill>(`/skills/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  }).then(mapSkill);
+export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Skill> {
+  // A reupload carries a fresh parse task: the import endpoint rebuilds the
+  // whole package server-side.
+  if (form.parseTaskId !== undefined) {
+    return request<PluginDetailWire>("/plugins/import", {
+      method: "POST",
+      body: importBody(form, id),
+    }).then((detail) => mapSkillDetail(detail.plugin));
+  }
+  // Metadata-only edit: the upsert is a full replace, so merge the form onto
+  // the current documents and re-embed the canonical manifest.
+  const current = await request<PluginDetailWire>(
+    `/plugins/detail?plugin_id=${encodeURIComponent(id)}&include_relations=false`
+  );
+  const plugin = current.plugin;
+  const manifest = plugin.manifest_json ?? {};
+  const displayName = form.displayName ?? plugin.plugin_name ?? "";
+  const name = form.name ?? manifest.name ?? plugin.plugin_name ?? "";
+  const description = form.description ?? manifest.description ?? "";
+  const tags = normalizeTags(form.tags ?? plugin.tags);
+  const visibility = form.visibility ?? plugin.visibility;
+  const icon = form.iconUrl !== undefined ? form.iconUrl : plugin.icon ?? "";
+  const categoryId =
+    form.categoryId !== undefined ? form.categoryId : plugin.category_id;
+  const newManifest = {
+    $schema: "cowork-plugin-manifest-1.0.json",
+    plugin_name: displayName,
+    plugin_type: "skill",
+    name,
+    description,
+    labels: tags,
+    examples: manifest.examples ?? [],
+  };
+  const manifestRaw = goCanonicalJSON(newManifest);
+  const manifestAttachment: PluginAttachmentWire = {
+    path: "manifest.json",
+    content_type: "raw",
+    mime_type: "application/json",
+    raw_content: manifestRaw,
+  };
+  const attachments: PluginAttachmentWire[] = (
+    plugin.plugin_json?.attachments ?? []
+  ).map((a) => (a.path === "manifest.json" ? manifestAttachment : a));
+  // Every package must embed exactly one canonical manifest; append it when a
+  // degraded record is missing the attachment instead of failing the upsert.
+  if (!attachments.some((a) => a.path === "manifest.json")) {
+    attachments.push(manifestAttachment);
+  }
+  const detail = await request<PluginDetailWire>("/plugins/upsert", {
+    method: "POST",
+    body: JSON.stringify({
+      plugin: {
+        plugin_id: id,
+        plugin_name: displayName,
+        plugin_type: "skill",
+        ...(categoryId ? { category_id: categoryId } : {}),
+        tags,
+        icon,
+        visibility,
+        manifest_json: newManifest,
+        plugin_json: {
+          $schema: "cowork-plugin-package-1.0.json",
+          attachments,
+        },
+      },
+      relations: [],
+    }),
+  });
+  // A version bump on a metadata edit publishes a fresh immutable snapshot
+  // (and rebuilds the default-scene placement, which follows the category).
+  if (form.version !== undefined && form.version !== plugin.current_version) {
+    await request<unknown>("/plugins/publish", {
+      method: "POST",
+      body: JSON.stringify({
+        plugin_id: id,
+        version: form.version,
+        changelog: form.changelog,
+        placements: [
+          {
+            placement_code: SCENE_CODE,
+            ...(categoryId ? { category_id: categoryId } : {}),
+            is_visible: true,
+          },
+        ],
+      }),
+    });
+  }
+  return mapSkillDetail(detail.plugin);
 }
 
 export function deleteSkill(id: string): Promise<void> {
-  return request<void>(`/skills/${encodeURIComponent(id)}`, {
-    method: "DELETE",
+  return request<{ deleted?: boolean }>("/plugins/delete", {
+    method: "POST",
+    body: JSON.stringify({ plugin_id: id }),
   }).then(() => undefined);
 }
 
 export function getDownloadUrl(id: string): string {
-  return `${resolveSkillMarketApiBaseURL()}/skills/${encodeURIComponent(id)}/download`;
-}
-
-export async function downloadSkill(id: string): Promise<void> {
-  const result = await request<{ download_url: string }>(
-    `/skills/${encodeURIComponent(id)}/download?format=json`
-  );
-  if (!result.download_url) {
-    throw normalizeError({ code: "invalid_response", message: t("skillMarket.errors.invalidDownloadUrl") });
-  }
-  assertSafeExternalURL(result.download_url);
-  const anchor = document.createElement("a");
-  anchor.href = result.download_url;
-  anchor.target = "_blank";
-  anchor.rel = "noopener noreferrer";
-  anchor.click();
+  return `${resolveSkillMarketApiBaseURL()}/plugins/download?plugin_id=${encodeURIComponent(id)}`;
 }
 
 // ─── Upload / Parse flow ───────────────────────────────────────────────────
@@ -656,45 +792,43 @@ export async function pollParse(taskId: string): Promise<ParseStatusResult> {
   throw normalizeError({ code: "parse_timeout", message: t("skillMarket.errors.parseTimeout") });
 }
 
-/** Reupload init for an existing skill. */
+/** Reupload init for an existing skill. The unified import consumes any
+ *  unbound parse task, so a reupload starts from the same presigned-upload
+ *  endpoint as a fresh create; the skill binding happens at import time via
+ *  plugin_id. */
 export function initReupload(
-  skillId: string,
+  _skillId: string,
   fileName: string,
   fileSize: number
 ): Promise<UploadInitResult> {
-  return request<{
-    skill_upload_id: string;
-    presigned_url: string;
-    method: string;
-    headers: Record<string, string>;
-    expires_in: number;
-  }>(`/skills/${encodeURIComponent(skillId)}/reuploads`, {
-    method: "POST",
-    body: JSON.stringify({ file_name: fileName, file_size: fileSize }),
-  }).then((raw) => ({
-    uploadId: raw.skill_upload_id,
-    presignedUrl: raw.presigned_url,
-    method: raw.method,
-    headers: raw.headers ?? {},
-    expiresIn: raw.expires_in,
-  }));
+  return initUpload(fileName, fileSize);
 }
 
-function mapVersion(raw: RawSkillVersion): SkillVersion {
+/** Version wire shape of GET /plugins/versions. */
+interface PluginVersionWire {
+  version_id: string;
+  plugin_id: string;
+  version: string;
+  changelog?: string;
+  created_by?: string;
+  created_at?: string;
+}
+
+function mapVersion(raw: PluginVersionWire): SkillVersion {
   return {
-    id: raw.skill_version_id ?? raw.id ?? "",
-    skillId: raw.skill_id,
+    id: raw.version_id,
+    skillId: raw.plugin_id,
     version: raw.version,
     changelog: raw.changelog ?? "",
-    storage: raw.storage ?? {},
-    changedBy: raw.changed_by ?? "",
-    createdAt: raw.created_at,
+    storage: { type: "s3" },
+    changedBy: raw.created_by ?? "",
+    createdAt: raw.created_at ?? "",
   };
 }
 
 /** Fetch version history for a skill. */
 export function listVersions(skillId: string): Promise<SkillVersion[]> {
-  return request<{ items: RawSkillVersion[] }>(
-    `/skills/${encodeURIComponent(skillId)}/versions`
-  ).then((data) => (data.items ?? []).map(mapVersion));
+  return request<PluginVersionWire[] | null>(
+    `/plugins/versions?plugin_id=${encodeURIComponent(skillId)}`
+  ).then((items) => (items ?? []).map(mapVersion));
 }

@@ -10,7 +10,7 @@ const api = useMock ? mockApi : realApi;
 
 // NOTE: `VITE_USE_MOCK` only swaps the 8 CRUD endpoints below. The upload /
 // parse / poll / download pipeline (initUpload / uploadFile / uploadIcon /
-// triggerParse / pollParse / initReupload / getDownloadUrl / downloadSkill)
+// triggerParse / pollParse / initReupload / getDownloadUrl)
 // is always bound to the real backend — the mock module has no upload
 // surface. A dev enabling mock mode still hits real network on the upload
 // step; use a real dev backend if you need the full flow.
@@ -31,5 +31,4 @@ export const triggerParse = realApi.triggerParse;
 export const pollParse = realApi.pollParse;
 export const initReupload = realApi.initReupload;
 export const getDownloadUrl = realApi.getDownloadUrl;
-export const downloadSkill = realApi.downloadSkill;
 export const getSkillMd = realApi.getSkillMd;

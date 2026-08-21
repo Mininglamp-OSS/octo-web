@@ -131,7 +131,7 @@ export default function SkillListPage() {
   }
 
   function handleSelectedTagsChange(next: string[]) {
-    // 用户增删 tag 过滤;原先误用 GET /skills/tags 加载 tag 列表推断。
+    // 用户增删 tag 过滤;原先误用 GET /plugin_tags 加载 tag 列表推断。
     Dap.shared.track("market_tag_filtered", {});
     setSelectedTags(next);
   }

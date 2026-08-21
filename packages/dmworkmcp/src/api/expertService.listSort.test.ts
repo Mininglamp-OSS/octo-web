@@ -99,21 +99,36 @@ describe("expertService catalog sort wire contract", () => {
     expect(next?.baseURL).toBe("");
   });
 
-  it("listExperts sends every sort mode as the ?sort param", async () => {
+  it("listExperts sends every sort mode as the mapped ?sort param", async () => {
+    const WIRE_SORT: Record<ExpertCatalogSort, string> = {
+      comprehensive: "comprehensive",
+      latest: "newest",
+      installs: "installs",
+      views: "views",
+    };
     for (const sort of SORTS) {
       await listExperts({ sort });
       const { url, params } = lastListCall();
-      expect(url).toBe("/market/api/v1/experts");
-      expect(params.sort).toBe(sort);
+      expect(url).toBe("/market/api/v1/plugins");
+      expect(params.scene_code).toBe("default");
+      expect(params.plugin_type).toBe("expert");
+      expect(params.sort).toBe(WIRE_SORT[sort]);
     }
   });
 
-  it("listSquads sends every sort mode as the ?sort param", async () => {
+  it("listSquads targets expert_team and maps every sort mode", async () => {
+    const WIRE_SORT: Record<ExpertCatalogSort, string> = {
+      comprehensive: "comprehensive",
+      latest: "newest",
+      installs: "installs",
+      views: "views",
+    };
     for (const sort of SORTS) {
       await listSquads({ sort });
       const { url, params } = lastListCall();
-      expect(url).toBe("/market/api/v1/squads");
-      expect(params.sort).toBe(sort);
+      expect(url).toBe("/market/api/v1/plugins");
+      expect(params.plugin_type).toBe("expert_team");
+      expect(params.sort).toBe(WIRE_SORT[sort]);
     }
   });
 

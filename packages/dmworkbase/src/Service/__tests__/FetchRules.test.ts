@@ -199,12 +199,22 @@ describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负
         expect(matchFetchEvent(idx, 'POST', '/api/v1/message/revoke')).toBeUndefined()
     })
 
-    it('市场详情 GET /:id 不再产出 market_card_viewed(改 DOM 采集,fetch 层区分不了看/编;见二审 P2-1)', () => {
-        // /:id 钉成 IGNORE:点卡片看详情已改卡根 data-track="market_card_opened"(DOM 委托);编辑(⋯→fetchDetail)
-        // 也拉同一 GET,不能在 fetch 层计成查看。versions 子资源不受影响(段数不同,语义仍成立)。
+    it('市场详情/列表不产出 market_card_viewed(改 DOM 采集,fetch 层区分不了看/编;见二审 P2-1)', () => {
+        // 2026-08-21 市场切统一插件接口:详情是字面路径 GET /plugins/detail(查看与编辑共用,仍不能在
+        // fetch 层计成查看,卡片打开走卡根 data-track="market_card_opened");旧 /mcps|skills/:id 不再发起。
+        // versions 子资源迁到 GET /plugins/versions,事件语义不变。
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/plugins')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/plugins/detail')).toBeUndefined()
         expect(matchFetchEvent(idx, 'GET', '/market/api/v1/mcps/42')).toBeUndefined()
         expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/42')).toBeUndefined()
-        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/skills/42/versions')).toBe('market_skill_version_history_viewed')
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/plugins/versions')).toBe('market_skill_version_history_viewed')
+    })
+
+    it('统一插件写端点:import/publish 计发布提交,upsert(新建/编辑同端点)刻意不映射', () => {
+        expect(matchFetchEvent(idx, 'POST', '/market/api/v1/plugins/import')).toBe('market_manual_publish_submitted')
+        expect(matchFetchEvent(idx, 'POST', '/market/api/v1/plugins/publish')).toBe('market_manual_publish_submitted')
+        expect(matchFetchEvent(idx, 'POST', '/market/api/v1/plugins/upsert')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/market/api/v1/plugin_tags')).toBeUndefined()
     })
 })
 

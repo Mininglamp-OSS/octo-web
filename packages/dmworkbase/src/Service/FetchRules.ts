@@ -267,12 +267,15 @@ export const FETCH_RULES: FetchRule[] = [
     //   (handleEditFromCard→fetchMcpDetail)拉,fetch 层无法区分看/编,编辑会被误计成查看(见二审 P2-1)。
     //   改由卡根 data-track="market_card_opened"(DOM 委托,亦覆盖键盘)采集;这里把 /:id 钉成 IGNORE,
     //   同时继续压过 mine/tags/versions。(六审 C2:已删除曾并存的命令式 market_card_viewed,避免同一次打开双计。)
-    { method: 'GET', path: '/market/api/v1/mcps/mine', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/skills/mine', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/skills/tags', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/mcps/:id', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/skills/:id', event: FETCH_IGNORE },
-    { method: 'GET', path: '/market/api/v1/skills/:id/versions', event: 'market_skill_version_history_viewed' },
-    { method: 'POST', path: '/market/api/v1/mcps', event: 'market_manual_publish_submitted' },
-    { method: 'POST', path: '/market/api/v1/skills', event: 'market_manual_publish_submitted' },
+    //   2026-08-21 市场切统一插件接口:旧 /mcps|skills/* 路径前端不再发起,规则整体换新。
+    //   新路径全部是字面段(无 :id 通配),不存在误吞,故旧的 mine/tags/:id IGNORE 钉子不再需要;
+    //   列表 GET /plugins、详情 GET /plugins/detail、标签 GET /plugin_tags 依旧不挂事件(同旧决策:
+    //   请求成功 ≠ 用户意图,卡片打开走 data-track="market_card_opened")。
+    //   market_manual_publish_submitted 的新映射:skill 新建/重传 = POST /plugins/import;MCP 新建
+    //   在 upsert 后必发 POST /plugins/publish。两者都是「发布提交」;副作用是 skill 版本 bump 的
+    //   publish 也会计入(语义上仍是发布提交,可接受)。纯元数据编辑只走 POST /plugins/upsert,
+    //   刻意不映射 —— upsert 新建/编辑同端点,fetch 层分不出意图(同 mcps/:id 看/编不可分的老问题)。
+    { method: 'GET', path: '/market/api/v1/plugins/versions', event: 'market_skill_version_history_viewed' },
+    { method: 'POST', path: '/market/api/v1/plugins/import', event: 'market_manual_publish_submitted' },
+    { method: 'POST', path: '/market/api/v1/plugins/publish', event: 'market_manual_publish_submitted' },
 ]
