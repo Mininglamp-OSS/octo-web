@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import React, {
   useCallback,
   useEffect,
@@ -9,7 +10,6 @@ import React, {
 import { DatePicker } from "@douyinfe/semi-ui";
 import { CalendarDays, Check } from "lucide-react";
 import { useI18n } from "../../i18n";
-import WKButton from "../WKButton";
 import FilterSearchSelect from "./FilterSearchSelect";
 import type { FilterSearchOption } from "./FilterSearchSelect";
 import type { ChannelSearchSender } from "../ChannelSearch/types";
@@ -939,12 +939,12 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
 
       {mode === "popover" && (
         <div className="wk-channel-search-filter-actions">
-          <WKButton size="sm" variant="secondary" onClick={clearAll}>
+          <Button size="sm" variant="secondary" onClick={clearAll}>
             {t("base.channelSearch.filter.clear")}
-          </WKButton>
-          <WKButton size="sm" variant="primary" onClick={apply}>
+          </Button>
+          <Button size="sm" variant="solid" onClick={apply}>
             {t("base.globalSearch.filter.apply")}
-          </WKButton>
+          </Button>
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
-import { Button } from "@douyinfe/semi-ui"
+import { Button } from "@octo/ui";
+
 import React from "react"
 import { Component, ReactNode } from "react"
 import WKApp,{ThemeMode} from "../../App"

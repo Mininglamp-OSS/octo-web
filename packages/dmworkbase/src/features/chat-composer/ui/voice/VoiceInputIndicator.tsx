@@ -5,7 +5,8 @@ import React, {
   useCallback,
 } from "react";
 import { createPortal } from "react-dom";
-import { Toast, Dropdown } from "@douyinfe/semi-ui";
+import { Dropdown } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useVoiceInput from "../../adapters/voice/useVoiceInput";
 import "./voiceInput.css";
@@ -752,7 +753,7 @@ export default function VoiceInputIndicator({
   const isActive = showModeMenu;
 
   const dropdownMenu = (
-    <Dropdown.Menu style={{ width: 160 }}>
+    <Dropdown.Menu width={160}>
       {VOICE_MODES.map((mode) => (
         <Dropdown.Item
           key={mode.value}
@@ -770,6 +771,7 @@ export default function VoiceInputIndicator({
         trigger="hover"
         position="topRight"
         render={dropdownMenu}
+        minWidth={160}
         visible={canRecord ? showModeMenu : false}
         onVisibleChange={setShowModeMenu}
         spacing={4}

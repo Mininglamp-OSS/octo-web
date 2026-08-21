@@ -1,7 +1,7 @@
 import React, { Component, ReactNode } from "react"
 import RouteContext from "../../Service/Context"
 import Provider, { IProviderListener } from "../../Service/Provider"
-import { Switch } from "@douyinfe/semi-ui"
+import { Switch } from "@octo/ui"
 import RoutePage from "../RoutePage"
 import { MyBot, OboGrant, PersonaSettingsVM } from "./vm"
 import PersonaEdit from "./PersonaEdit"

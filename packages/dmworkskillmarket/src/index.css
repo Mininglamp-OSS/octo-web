@@ -2398,7 +2398,7 @@
   }
 
   .skill-market-topbar__actions,
-  .skill-market-topbar__actions .wk-btn {
+  .skill-market-topbar__actions .octo-ui-button {
     width: 100%;
   }
 

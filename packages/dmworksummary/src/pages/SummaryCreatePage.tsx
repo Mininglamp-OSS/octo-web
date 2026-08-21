@@ -1,7 +1,7 @@
+import { Button } from "@octo/ui";
 import { Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
-    Button,
     Toast,
     Typography,
     Tag,

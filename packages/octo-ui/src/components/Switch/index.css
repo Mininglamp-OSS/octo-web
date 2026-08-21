@@ -1,0 +1,186 @@
+/* Semi Switch has no prefixCls escape hatch, so scoped Semi selectors here are
+   intentional and use raised specificity to survive app/Storybook CSS order. */
+.octo-ui-switch {
+  --octo-ui-switch-current-knob-size: var(--octo-ui-switch-knob-size-md);
+  --octo-ui-switch-current-loading-icon-size: var(--octo-ui-switch-loading-icon-size-md);
+
+  position: relative;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  cursor: pointer;
+  vertical-align: middle;
+}
+
+.octo-ui-switch.octo-ui-switch {
+  display: inline-flex;
+  align-items: center;
+  width: var(--octo-ui-switch-width-md);
+  height: var(--octo-ui-switch-height-md);
+  border: 0;
+  border-radius: var(--octo-ui-switch-radius);
+  background-color: var(--octo-ui-switch-bg);
+  transition:
+    background-color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    box-shadow var(--octo-ui-duration-fast) var(--octo-ui-ease-standard);
+}
+
+.octo-ui-switch.octo-ui-switch--lg {
+  --octo-ui-switch-current-knob-size: var(--octo-ui-switch-knob-size-lg);
+  --octo-ui-switch-current-loading-icon-size: var(--octo-ui-switch-loading-icon-size-lg);
+
+  width: var(--octo-ui-switch-width-lg);
+  height: var(--octo-ui-switch-height-lg);
+}
+
+.octo-ui-switch.octo-ui-switch--sm {
+  --octo-ui-switch-current-knob-size: var(--octo-ui-switch-knob-size-sm);
+  --octo-ui-switch-current-loading-icon-size: var(--octo-ui-switch-loading-icon-size-sm);
+
+  width: var(--octo-ui-switch-width-sm);
+  height: var(--octo-ui-switch-height-sm);
+}
+
+.octo-ui-switch.octo-ui-switch.semi-switch-checked {
+  border: 0;
+  background-color: var(--octo-ui-switch-checked-bg);
+}
+
+.octo-ui-switch.octo-ui-switch:hover:not(.semi-switch-disabled):not(.semi-switch-checked) {
+  background-color: var(--octo-ui-switch-bg-hover);
+}
+
+.octo-ui-switch.octo-ui-switch.semi-switch-checked:hover:not(.semi-switch-disabled) {
+  background-color: var(--octo-ui-switch-checked-bg-hover);
+}
+
+.octo-ui-switch.octo-ui-switch.semi-switch-disabled {
+  border: 0;
+  background-color: var(--octo-ui-switch-disabled-bg);
+  box-shadow: inset 0 0 0 1px var(--octo-ui-switch-disabled-border);
+  cursor: not-allowed;
+}
+
+.octo-ui-switch.octo-ui-switch:active {
+  border: 0;
+}
+
+.octo-ui-switch.octo-ui-switch.semi-switch-disabled.semi-switch-checked {
+  border: 0;
+  background-color: var(--octo-ui-switch-disabled-checked-bg);
+}
+
+.octo-ui-switch.octo-ui-switch.semi-switch-focus {
+  border: 0;
+  outline: none;
+  box-shadow: 0 0 0 var(--octo-ui-switch-focus-width) var(--octo-ui-focus-ring);
+}
+
+.octo-ui-switch .semi-switch-native-control {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: inherit;
+}
+
+.octo-ui-switch.octo-ui-switch .semi-switch-knob {
+  position: absolute;
+  top: var(--octo-ui-switch-knob-offset-md);
+  left: var(--octo-ui-switch-knob-offset-md);
+  right: auto;
+  width: var(--octo-ui-switch-knob-size-md);
+  height: var(--octo-ui-switch-knob-size-md);
+  border-radius: var(--octo-ui-switch-radius);
+  background: var(--octo-ui-switch-knob-bg);
+  box-shadow: var(--octo-ui-switch-knob-shadow);
+  transform: none;
+  transition:
+    left var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
+    box-shadow var(--octo-ui-duration-fast) var(--octo-ui-ease-standard);
+}
+
+.octo-ui-switch.octo-ui-switch.semi-switch.semi-switch-checked .semi-switch-knob,
+.octo-ui-switch.octo-ui-switch.semi-switch:active .semi-switch-knob {
+  width: var(--octo-ui-switch-knob-size-md);
+  height: var(--octo-ui-switch-knob-size-md);
+  transform: none;
+}
+
+.octo-ui-switch.octo-ui-switch--lg .semi-switch-knob {
+  top: var(--octo-ui-switch-knob-offset-lg);
+  left: var(--octo-ui-switch-knob-offset-lg);
+  width: var(--octo-ui-switch-knob-size-lg);
+  height: var(--octo-ui-switch-knob-size-lg);
+}
+
+.octo-ui-switch.octo-ui-switch--sm .semi-switch-knob {
+  top: var(--octo-ui-switch-knob-offset-sm);
+  left: var(--octo-ui-switch-knob-offset-sm);
+  width: var(--octo-ui-switch-knob-size-sm);
+  height: var(--octo-ui-switch-knob-size-sm);
+  box-shadow: var(--octo-ui-switch-knob-shadow-sm);
+}
+
+.octo-ui-switch.octo-ui-switch--md.semi-switch.semi-switch-checked .semi-switch-knob {
+  left: var(--octo-ui-switch-knob-checked-left-md);
+}
+
+.octo-ui-switch.octo-ui-switch--lg.semi-switch.semi-switch-checked .semi-switch-knob {
+  left: var(--octo-ui-switch-knob-checked-left-lg);
+}
+
+.octo-ui-switch.octo-ui-switch--sm.semi-switch.semi-switch-checked .semi-switch-knob {
+  left: var(--octo-ui-switch-knob-checked-left-sm);
+}
+
+.octo-ui-switch.octo-ui-switch--lg.semi-switch.semi-switch-checked .semi-switch-knob,
+.octo-ui-switch.octo-ui-switch--lg.semi-switch:active .semi-switch-knob {
+  width: var(--octo-ui-switch-knob-size-lg);
+  height: var(--octo-ui-switch-knob-size-lg);
+  transform: none;
+}
+
+.octo-ui-switch.octo-ui-switch--sm.semi-switch.semi-switch-checked .semi-switch-knob,
+.octo-ui-switch.octo-ui-switch--sm.semi-switch:active .semi-switch-knob {
+  width: var(--octo-ui-switch-knob-size-sm);
+  height: var(--octo-ui-switch-knob-size-sm);
+  transform: none;
+}
+
+.octo-ui-switch.semi-switch.semi-switch-disabled .semi-switch-knob {
+  border: 0;
+  box-shadow: var(--octo-ui-switch-disabled-knob-shadow);
+}
+
+.octo-ui-switch.octo-ui-switch.semi-switch .semi-switch-loading-spin.semi-spin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--octo-ui-switch-current-knob-size);
+  height: var(--octo-ui-switch-current-knob-size);
+  font-size: var(--octo-ui-switch-current-loading-icon-size);
+  transform: translate(-50%, -50%);
+}
+
+.octo-ui-switch.octo-ui-switch .semi-switch-loading-spin .semi-spin-wrapper {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--octo-ui-switch-current-knob-size);
+  height: var(--octo-ui-switch-current-knob-size);
+  transform: translate(-50%, -50%);
+}
+
+.octo-ui-switch.octo-ui-switch.semi-switch .semi-switch-loading-spin svg {
+  width: var(--octo-ui-switch-current-loading-icon-size);
+  height: var(--octo-ui-switch-current-loading-icon-size);
+}
+
+.octo-ui-switch.octo-ui-switch .semi-switch-loading-spin .semi-spin-children {
+  width: var(--octo-ui-switch-current-knob-size);
+}

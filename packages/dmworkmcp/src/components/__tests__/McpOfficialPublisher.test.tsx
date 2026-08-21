@@ -25,8 +25,6 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 vi.mock("@octo/base", () => ({
   t: (key: string) => (key === "mcp.card.officialPublisher" ? "官方发布" : key),
-  WKButton: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("button", null, children),
   WKModal: ({
     children,
     header,

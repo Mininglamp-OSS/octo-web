@@ -1,7 +1,7 @@
+import { Button } from "@octo/ui";
 import React from "react";
 import { IconGithubLogo } from "@douyinfe/semi-icons";
 import { Popover, Spin } from "@douyinfe/semi-ui";
-import { WKButton } from "@octo/base";
 import { QRCodeSVG } from "qrcode.react";
 import { loginT as t } from "./i18n";
 import {
@@ -61,9 +61,9 @@ export const AndroidDownloadPopoverContent: React.FC<PopoverHoverProps> = (
         {status === "error" && (
           <div className="wk-login-mobile-download-state" role="alert">
             <span>{t("download.addressLoadFailed")}</span>
-            <WKButton type="button" variant="ghost" size="sm" onClick={retry}>
+            <Button type="button" variant="text" size="sm" onClick={retry}>
               {t("download.retry")}
-            </WKButton>
+            </Button>
           </div>
         )}
         {status === "ready" && <QRCodeSVG value={downloadUrl} size={104} />}
@@ -87,17 +87,17 @@ export const AndroidDownloadPopoverContent: React.FC<PopoverHoverProps> = (
           {t("download.androidDirectDownload")}
         </span>
       )}
-      <WKButton
+      <Button
         type="button"
         className="wk-login-android-popover-manual-download"
-        variant="ghost"
+        variant="text"
         size="sm"
         icon={<IconGithubLogo aria-hidden="true" />}
         aria-label={t("download.openGithubReleases")}
         onClick={openAndroidReleases}
       >
         {t("download.githubManualDownload")}
-      </WKButton>
+      </Button>
     </div>
   );
 };

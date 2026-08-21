@@ -1,5 +1,5 @@
 import React from "react";
-import { Button } from "@douyinfe/semi-ui";
+import { Button } from "@octo/ui";
 import { useI18n, type JoinApprovalStatus } from "@octo/base";
 import "./index.css";
 
@@ -34,7 +34,7 @@ export default function JoinApprovalResult({ status, onDismiss }: JoinApprovalRe
                         : t("app.joinApproval.submittedDesc")}
                 </p>
                 <Button
-                    type="primary"
+                    variant="solid"
                     size="large"
                     className="wk-join-approval-btn"
                     onClick={onDismiss}

@@ -1,10 +1,11 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react";
 import { WKApp, WKBase, Provider, ErrorBoundary, t, Dap } from "@octo/base"
 import { isBindEntry } from "@octo/login"
 import { listen } from '@tauri-apps/api/event'
 import { MainPage } from "../Pages/Main";
 import SpaceGate from "../Components/SpaceGate";
-import { Notification as NotificationUI, Button } from '@douyinfe/semi-ui';
+import { Notification as NotificationUI } from '@douyinfe/semi-ui';
 import { IconInfoCircle } from '@douyinfe/semi-icons';
 import { checkUpdate, installUpdate, UpdateManifest } from '@tauri-apps/api/updater'
 import { relaunch } from '@tauri-apps/api/process'

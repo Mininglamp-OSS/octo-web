@@ -1,7 +1,7 @@
+import { Button } from "@octo/ui";
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import React from 'react'
 import WKNavHeader from './index'
-import WKButton from '../WKButton'
 
 const meta: Meta<typeof WKNavHeader> = {
   title: 'Base/WKNavHeader',
@@ -30,7 +30,7 @@ export const WithRightView: Story = {
     <WKNavHeader
       title="联系人"
       rightView={
-        <WKButton variant="primary" size="sm">+ 添加</WKButton>
+        <Button variant="solid" size="sm">+ 添加</Button>
       }
     />
   ),
@@ -43,8 +43,8 @@ export const WithMultipleActions: Story = {
       title="设置"
       rightView={
         <>
-          <WKButton variant="ghost" size="sm">取消</WKButton>
-          <WKButton variant="primary" size="sm">保存</WKButton>
+          <Button variant="text" size="sm">取消</Button>
+          <Button variant="solid" size="sm">保存</Button>
         </>
       }
     />
@@ -56,7 +56,7 @@ export const LongTitle: Story = {
   render: () => (
     <WKNavHeader
       title="这是一个非常非常非常非常长的标题，应该被截断显示"
-      rightView={<WKButton variant="ghost" size="sm">完成</WKButton>}
+      rightView={<Button variant="text" size="sm">完成</Button>}
     />
   ),
 }

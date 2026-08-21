@@ -13,22 +13,32 @@ vi.mock("../../../../i18n", () => ({
       opts?.values ? `${key}:${JSON.stringify(opts.values)}` : key,
   }),
 }));
-vi.mock("../../../Checkbox", () => ({
-  default: ({
+vi.mock("@octo/ui", () => ({
+  Checkbox: ({
     checked,
-    onCheck,
-    ariaLabel,
+    children,
+    disabled,
+    onCheckedChange,
+    "aria-label": ariaLabel,
   }: {
     checked?: boolean;
-    onCheck?: () => void;
-    ariaLabel?: string;
+    children?: React.ReactNode;
+    disabled?: boolean;
+    onCheckedChange?: (checked: boolean) => void;
+    "aria-label"?: string;
   }) => (
-    <div
-      role="checkbox"
-      aria-checked={!!checked}
-      aria-label={ariaLabel}
-      onClick={() => onCheck?.()}
-    />
+    <div>
+      <div
+        role="checkbox"
+        aria-checked={!!checked}
+        aria-disabled={!!disabled}
+        aria-label={ariaLabel}
+        onClick={() => {
+          if (!disabled) onCheckedChange?.(!checked);
+        }}
+      />
+      {children}
+    </div>
   ),
 }));
 

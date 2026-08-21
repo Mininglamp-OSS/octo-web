@@ -161,12 +161,14 @@ describe("login page presentation", () => {
     expect(source).not.toContain("t('migration.");
   });
 
-  it("uses the standard Semi Select for the login-page language selector", () => {
+  it("uses the Octo UI Select for the login-page language selector", () => {
     const source = readRepoFile("packages/dmworklogin/src/login.tsx");
     const zhCN = readRepoFile("packages/dmworklogin/src/i18n/zh-CN.json");
     const enUS = readRepoFile("packages/dmworklogin/src/i18n/en-US.json");
 
-    expect(source).toContain("Button, Select, Spin, Toast");
+    expect(source).toContain('import { Button } from "@octo/ui"');
+    expect(source).toContain('import Select from "@octo/ui/select"');
+    expect(source).toContain("Spin, Toast");
     expect(source).toContain('className="wk-login-language-select"');
     expect(source).toContain("optionList={locales}");
     expect(source).not.toContain("renderSelectedItem=");

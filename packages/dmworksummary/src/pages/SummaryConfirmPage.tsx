@@ -1,10 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react";
-import {
-    Button,
-    Spin,
-    Toast,
-    Banner,
-} from "@douyinfe/semi-ui";
+import { Spin, Toast, Banner } from "@douyinfe/semi-ui";
 import { IconArrowLeft } from "@douyinfe/semi-icons";
 import { I18nContext, t } from "@octo/base";
 import WKApp from "@octo/base/src/App";
