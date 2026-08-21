@@ -53,7 +53,10 @@ import { ChannelInfoListener } from "wukongimjssdk";
 import { ChatMenus } from "../../App";
 import ConversationContext from "../../Components/Conversation/context";
 import GlobalSearch from "../../features/globalSearch/GlobalSearchPanel";
-import { buildDocLink } from "../../Utils/docLink";
+import {
+  buildDocLink,
+  resolveDocLinkForExternalOpen,
+} from "../../Utils/docLink";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import SpaceList from "../../Components/SpaceList";
 import SpaceCreate from "../../Components/SpaceCreate";
@@ -86,10 +89,7 @@ import {
 } from "../../im-runtime/channelRuntime";
 import WebhookIssuePreviewPanel from "../../features/webhookMessagePreview/WebhookIssuePreviewPanel";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
-import {
-  apiUrlOrigin,
-  resolveDocLinkForExternalOpen,
-} from "../../bridge/message/webhookPreview";
+import { apiUrlOrigin } from "../../bridge/message/webhookPreview";
 import { closeChatRightPanels, openChatRightPanel } from "./rightPanelState";
 import { chatPageTitleController } from "./chatPageTitleController";
 import {
