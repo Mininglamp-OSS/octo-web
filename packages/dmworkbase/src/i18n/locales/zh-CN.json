@@ -221,6 +221,7 @@
   "botManage.mentionFree.searchPlaceholder": "搜索群名",
   "botManage.mentionFree.empty": "该 Bot 暂未加入任何群",
   "botManage.mentionFree.noSearchResult": "没有匹配的群",
+  "botManage.mentionFree.searchFailed": "搜索失败，请重试",
   "botManage.mentionFree.sectionEnabled": "已开启免@回答 ({{count}})",
   "botManage.mentionFree.sectionOthers": "其他群",
   "botManage.mentionFree.rowOn": "已开启免@回答",

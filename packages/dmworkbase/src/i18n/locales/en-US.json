@@ -221,6 +221,7 @@
   "botManage.mentionFree.searchPlaceholder": "Search group name",
   "botManage.mentionFree.empty": "This bot hasn't joined any groups yet",
   "botManage.mentionFree.noSearchResult": "No matching groups",
+  "botManage.mentionFree.searchFailed": "Search failed, please retry",
   "botManage.mentionFree.sectionEnabled": "Reply-without-@ enabled ({{count}})",
   "botManage.mentionFree.sectionOthers": "Other groups",
   "botManage.mentionFree.rowOn": "Reply without @ is enabled",

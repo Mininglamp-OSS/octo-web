@@ -144,6 +144,10 @@ jobs:
           pnpm --filter @octo/base exec vitest run
           src/Service/__tests__/APIClient.headers.test.ts
           src/Service/__tests__/APIClient.test.ts
+      - name: Bot manage mention-free search tests
+        run: |
+          pnpm --filter @octo/base exec vitest run src/bridge/profileDetail/__tests__/BotManageVM.test.ts src/Service/__tests__/BotManageService.test.ts
+          pnpm --filter @octo/web exec vitest run src/__tests__/components/BotManage.test.tsx
       - name: Electron main-process unit tests
         run: pnpm --filter @octo/web exec vitest run src-election src/__tests__/oidcLogoutWiring.test.ts
       - name: Type-check Electron main-process tests
