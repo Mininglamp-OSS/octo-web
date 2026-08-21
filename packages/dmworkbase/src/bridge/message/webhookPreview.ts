@@ -36,7 +36,9 @@ function decodePathSegment(value: string): string {
  * Lazily resolve the trusted fleet origins: the static set plus the origin
  * host (hostname[:port]) of the API the client is talking to (VITE_API_URL at
  * build time). Desktop clients load over file:// where same-origin comparison
- * against window.location is impossible ("null"), so the API host is the only
+ * against window.location is impossible (the origin is not a web origin —
+ * Chromium reports "file://", older specs/jsdom "null"), so the API host is
+ * the only
  * reliable per-deployment baseline; on-prem customers get previews for their
  * own server without hard-coding every customer domain.
  *

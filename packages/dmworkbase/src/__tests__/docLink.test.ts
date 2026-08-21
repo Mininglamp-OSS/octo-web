@@ -1,5 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildDocLink } from '../Utils/docLink'
+import {
+  buildDocLink,
+  resolveDocLinkForExternalOpen,
+} from '../Utils/docLink'
 import { isHttpOrigin, resolveWebOrigin } from '../Utils/webOrigin'
 import APIClient from '../Service/APIClient'
 
@@ -67,6 +70,24 @@ describe('buildDocLink — standalone `/d/:docId` share form (Phase-1 no-sp read
     } finally {
       apiConfig.apiURL = originalApiURL
     }
+  })
+})
+
+describe('resolveDocLinkForExternalOpen (desktop bridge normalization)', () => {
+  it('passes absolute http(s) links through untouched', () => {
+    expect(
+      resolveDocLinkForExternalOpen('https://im-test.example.com/d/d_1', 'https://api.example.com')
+    ).toBe('https://im-test.example.com/d/d_1')
+  })
+
+  it('resolves root-relative links against the API origin (file:// shell case)', () => {
+    expect(
+      resolveDocLinkForExternalOpen('/d/doc_1', 'https://im-test.example.com')
+    ).toBe('https://im-test.example.com/d/doc_1')
+  })
+
+  it('degrades to the input when no API origin is available', () => {
+    expect(resolveDocLinkForExternalOpen('/d/doc_1', '')).toBe('/d/doc_1')
   })
 })
 

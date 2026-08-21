@@ -65,6 +65,28 @@ function origin(): string {
 }
 
 /**
+ * Normalize a built doc link for handing to the external-open path (system
+ * browser bridge). buildDocLink emits an absolute http(s) URL when the
+ * document origin is a real web origin, and a root-relative `/d/<docId>` on
+ * file:// shells (see webOrigin) — the shell must resolve root-relative
+ * links against the API origin before openExternal. Absolute http(s) links
+ * pass through untouched; anything else is returned unchanged when no
+ * resolvable base is available (the caller degrades gracefully).
+ */
+export function resolveDocLinkForExternalOpen(
+  link: string,
+  apiOrigin: string,
+): string {
+  if (/^https?:/.test(link)) return link;
+  try {
+    return new URL(link, apiOrigin || undefined).href;
+  } catch {
+    // No usable base (SSR/tests/malformed config) — degrade to the input.
+    return link;
+  }
+}
+
+/**
  * Build `${origin}/d/<docId>` — the standalone doc-page share form (Phase-1 remove-`sp`, design
  * §5.3). The link carries ONLY the docId in the path and NO query: no `?sp=` (the doc's Space is
  * resolved server-side from the docId by the open-context reader) and no `?sid=` (the recipient's

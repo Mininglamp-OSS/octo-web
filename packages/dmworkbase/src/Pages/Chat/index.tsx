@@ -86,7 +86,10 @@ import {
 } from "../../im-runtime/channelRuntime";
 import WebhookIssuePreviewPanel from "../../features/webhookMessagePreview/WebhookIssuePreviewPanel";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
-import { apiUrlOrigin } from "../../bridge/message/webhookPreview";
+import {
+  apiUrlOrigin,
+  resolveDocLinkForExternalOpen,
+} from "../../bridge/message/webhookPreview";
 import { closeChatRightPanels, openChatRightPanel } from "./rightPanelState";
 import { chatPageTitleController } from "./chatPageTitleController";
 import {
@@ -1903,17 +1906,17 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       // setWindowOpenHandler routes everything to the system
                       // browser, so the web-era about:blank dance would never
                       // produce a usable window reference. buildDocLink emits
-                      // a RELATIVE /d/<docId> path (window.location.origin is
-                      // empty on the file:// shell), which the http(s)-only
-                      // bridge would reject — resolve against the API origin
-                      // so the standalone doc page opens in the browser.
+                      // a RELATIVE /d/<docId> path on file:// shells (the
+                      // webOrigin allowlist degrades there), which the
+                      // http(s)-only bridge would reject — resolve against
+                      // the API origin so the standalone doc page opens in
+                      // the browser.
                       const linksBridge = getElectronLinksBridge();
                       if (linksBridge) {
-                        const apiOrigin = apiUrlOrigin();
-                        const absoluteUrl =
-                          apiOrigin && !/^https?:/.test(url)
-                            ? new URL(url, apiOrigin).href
-                            : url;
+                        const absoluteUrl = resolveDocLinkForExternalOpen(
+                          url,
+                          apiUrlOrigin(),
+                        );
                         linksBridge
                           .openExternal(absoluteUrl)
                           .then((result) => {
