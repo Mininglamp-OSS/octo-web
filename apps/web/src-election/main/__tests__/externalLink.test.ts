@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isBlankPopupUrl, isExternalHttpUrl } from "../externalLink";
+import { decideWindowOpen, isExternalHttpUrl } from "../externalLink";
 
 describe("isExternalHttpUrl", () => {
   it("accepts http and https URLs", () => {
@@ -25,19 +25,27 @@ describe("isExternalHttpUrl", () => {
   });
 });
 
-describe("isBlankPopupUrl", () => {
-  it("accepts the about:blank shapes the renderer opens deliberately", () => {
-    // The two call sites (realname verification, global-search doc open) both
-    // call window.open("about:blank", "_blank") to get a truthful
-    // blocked/succeeded signal before navigating the reference.
-    expect(isBlankPopupUrl("about:blank")).toBe(true);
+describe("decideWindowOpen", () => {
+  it("routes http(s) popups to the system browser", () => {
+    expect(decideWindowOpen("https://example.com/docs/1")).toBe("open-external");
+    expect(decideWindowOpen("http://intranet.local:8080")).toBe("open-external");
   });
 
-  it("rejects every other URL, including other about: pages", () => {
-    expect(isBlankPopupUrl("about:srcdoc")).toBe(false);
-    expect(isBlankPopupUrl("https://example.com")).toBe(false);
-    expect(isBlankPopupUrl("javascript:alert(1)")).toBe(false);
-    expect(isBlankPopupUrl("")).toBe(false);
-    expect(isBlankPopupUrl("about:blank?evil=1")).toBe(false);
+  it("denies every non-http URL including about:blank (planted negatives)", () => {
+    // about:blank used to be allowed through for the renderer's
+    // blocked/succeeded dance; the two call sites were migrated to the
+    // IPC_OPEN_EXTERNAL_URL bridge, so any about:blank popup is now an
+    // attack surface to deny, not a feature to keep.
+    expect(decideWindowOpen("about:blank")).toBe("deny");
+    expect(decideWindowOpen("about:blank?evil=1")).toBe("deny");
+    expect(decideWindowOpen("about:srcdoc")).toBe("deny");
+    expect(decideWindowOpen("blob:https://example.com/uuid")).toBe("deny");
+    expect(decideWindowOpen("data:text/html,<script>1</script>")).toBe("deny");
+    expect(decideWindowOpen("file:///C:/Windows/System32/calc.exe")).toBe("deny");
+    expect(decideWindowOpen("javascript:alert(1)")).toBe("deny");
+    expect(decideWindowOpen("octo://deep-link")).toBe("deny");
+    expect(decideWindowOpen("shell:Documents")).toBe("deny");
+    expect(decideWindowOpen("")).toBe("deny");
+    expect(decideWindowOpen("not a url")).toBe("deny");
   });
 });

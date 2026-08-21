@@ -6,8 +6,10 @@ import {
   parseWebhookIssuePreviewTarget,
   trustedFleetHosts,
   fleetPreviewClickHandler,
+  isFleetPreviewSupported,
 } from "../webhookPreview";
 import APIClient from "../../../Service/APIClient";
+import { EndpointManager } from "../../../Service/Module";
 import * as desktopBridge from "../../../electron/desktopBridge";
 
 /** A synthetic `click` (button 0) unless overridden. */
@@ -243,6 +245,11 @@ describe("fleetPreviewClickHandler", () => {
     (APIClient.shared.config as unknown as { apiURL: string }).apiURL =
       "https://octo.example/v1/";
     window.__POWERED_ELECTRON__ = false;
+    // The handler is gated on a registered preview renderer
+    // (isFleetPreviewSupported); simulate an enterprise build that has one.
+    vi.spyOn(EndpointManager.shared, "getWithCategory").mockReturnValue([
+      {} as never,
+    ]);
   });
 
   it("opens a trusted Fleet link immediately without prompting", async () => {
@@ -404,6 +411,17 @@ describe("fleetPreviewClickHandler", () => {
     expect(fleetPreviewClickHandler(undefined)).toBeUndefined();
     await flushAsync();
     expect(open).not.toHaveBeenCalled();
+  });
+
+  it("is disabled entirely when no preview renderer is registered (OSS build)", async () => {
+    // P1-4: without a registered chatWebhookIssuePreview endpoint the panel
+    // would be a dead "unavailable" shell, so fleet links must keep their
+    // default behaviour instead of being intercepted. gate on the registry.
+    vi.spyOn(EndpointManager.shared, "getWithCategory").mockReturnValue(undefined);
+    const open = vi.fn();
+    const handler = fleetPreviewClickHandler(open);
+    expect(handler).toBeUndefined();
+    expect(isFleetPreviewSupported()).toBe(false);
   });
 
   it("intercepts middle-click (auxclick) on a trusted fleet link", async () => {

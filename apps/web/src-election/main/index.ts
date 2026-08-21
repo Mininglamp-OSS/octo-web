@@ -22,7 +22,7 @@ import { join, dirname, basename, extname } from "path";
 import { pathToFileURL } from "url";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import { isBlankPopupUrl, isExternalHttpUrl } from "./externalLink";
+import { isExternalHttpUrl } from "./externalLink";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_KEEP_AWAKE_GET,
@@ -422,7 +422,10 @@ function readFleetTrustedHosts(): string[] {
 
 function writeFleetTrustedHosts(hosts: string[]): void {
   const path = fleetTrustedHostsPath();
-  const tempPath = `${path}.${process.pid}.tmp`;
+  // Unique temp suffix: concurrent rememberFleetTrustedHost calls (different
+  // hosts prompting at the same time) share the same `${pid}.tmp` target and
+  // race on rename; a per-call suffix keeps the atomic-write invariant.
+  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
   fs.writeFileSync(tempPath, JSON.stringify(hosts, null, 2));
   try {
     fs.renameSync(tempPath, path);
@@ -626,21 +629,16 @@ function safeUrlLabel(url: string): string {
  * (openFleetLinkExternal → window.open) lands here and is routed to the
  * browser, which is exactly the intended "open externally" outcome.
  *
- * `about:blank` popups are allowed through deliberately: the renderer's
- * blocked/succeeded detection (realname verification, global-search doc
- * open) opens a blank window first, nulls the opener and then navigates the
- * reference to the real URL. The blank page itself carries no content; the
- * follow-up navigation is intercepted by a one-shot did-navigate listener on
- * the child window (routeBlankPopupNavigation), which redirects it to the
- * system browser and closes the child — security-equivalent to denying the
- * navigation outright, but without breaking the caller's null-check signal.
+ * Everything non-http(s) is denied without reaching the OS. The renderer
+ * features that used the web-era `window.open("about:blank")` dance
+ * (realname verification, global-search doc open) were migrated to the
+ * IPC_OPEN_EXTERNAL_URL bridge, so there is no legitimate about:blank
+ * popup left to exempt — and an allow branch would be a bypass surface
+ * (about:blank documents commit before any will-navigate listener can
+ * cancel them, and javascript:/hash navigations never fire will-navigate).
  */
 function attachExternalLinkRouter(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isBlankPopupUrl(url)) {
-      routeBlankPopupNavigation(win);
-      return { action: "allow" };
-    }
     if (isExternalHttpUrl(url)) {
       void openUrlExternally(url);
     } else {
@@ -648,42 +646,6 @@ function attachExternalLinkRouter(win: BrowserWindow): void {
     }
     return { action: "deny" };
   });
-}
-
-/**
- * Arm a one-shot did-navigate interceptor on windows created from an allowed
- * `about:blank` popup: the first http(s) navigation (the caller's
- * `opened.location.href = targetUrl` assignment) is cancelled, handed to the
- * system browser, and the child window closed. Non-http(s) navigations are
- * cancelled and the child closed too (deny by default). The listener is
- * armed on the parent's setWindowOpenHandler allow: the child window is
- * created synchronously afterwards, and 'did-create-window' on the parent is
- * the moment the child webContents exists.
- */
-function routeBlankPopupNavigation(parent: BrowserWindow): void {
-  const onChildCreated = (
-    child: Electron.BrowserWindow,
-    _details: Electron.DidCreateWindowDetails,
-  ) => {
-    parent.webContents.removeListener("did-create-window", onChildCreated);
-    const onNavigate = (event: Electron.Event, url: string) => {
-      event.preventDefault();
-      child.webContents.removeListener("did-navigate", onNavigate);
-      if (isExternalHttpUrl(url)) {
-        void openUrlExternally(url);
-      } else {
-        logExternalUrlRejection(url);
-      }
-      child.close();
-    };
-    child.webContents.on("did-navigate", onNavigate);
-    child.once("closed", () => {
-      child.webContents.removeListener("did-navigate", onNavigate);
-    });
-  };
-  // did-create-window lives on webContents (emitted after a window.open the
-  // setWindowOpenHandler allowed), NOT on BrowserWindow itself.
-  parent.webContents.on("did-create-window", onChildCreated);
 }
 
 function registerOpenExternalUrlHandler(): void {

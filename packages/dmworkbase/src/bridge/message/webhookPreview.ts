@@ -1,6 +1,8 @@
 import type React from "react";
 import { isSafeUrl } from "../../Utils/security";
 import APIClient from "../../Service/APIClient";
+import { EndpointManager } from "../../Service/Module";
+import { EndpointCategory } from "../../Service/Const";
 import {
   getElectronIpcBridge,
   isElectronPowered,
@@ -162,6 +164,46 @@ export function openFleetLinkExternal(href: string): void {
 }
 
 /**
+ * Origin of the API the client is talking to (VITE_API_URL at build time),
+ * or "" when unset/malformed. Desktop shells load over file:// where
+ * window.location.origin is empty, so renderer code that builds absolute
+ * URLs for the system browser (doc /d/ links, …) resolves against this.
+ */
+export function apiUrlOrigin(): string {
+  try {
+    const apiURL = APIClient.shared?.config?.apiURL;
+    if (!apiURL) return "";
+    return new URL(apiURL).origin;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * The fleet preview panel needs a registered renderer (the enterprise Loop
+ * module registers `chatWebhookIssuePreview`). Without one the click would
+ * open a dead "unavailable" panel instead of the link — so in OSS builds the
+ * handler is disabled entirely and fleet links keep their default behaviour
+ * (system browser on desktop / new tab on web). Kept as a function so tests
+ * can control the outcome via EndpointManager.
+ */
+export function isFleetPreviewSupported(): boolean {
+  return (
+    (EndpointManager.shared.getWithCategory(EndpointCategory.chatWebhookIssuePreview)
+      ?.length ?? 0) > 0
+  );
+}
+
+/**
+ * Module-scoped in-flight guard shared by every handler instance. A
+ * per-handler Set (created in the render factory) is rebuilt on each
+ * re-render, which lets a re-render between the click and the trust prompt
+ * resolve re-enter the prompt path and fan out a duplicate preview/fallback.
+ * Keyed on sourceUrl, so the guard is naturally per-link across messages.
+ */
+const pendingFleetPrompts = new Set<string>();
+
+/**
  * Route message-body clicks on Fleet issue deep links to the in-app task
  * preview panel — for BOTH webhook messages and plain user messages. One
  * shared handler covers left-click (`click`, button 0) and middle-click
@@ -181,11 +223,9 @@ export function fleetPreviewClickHandler(
   onRejectedFallback: (href: string) => void = openFleetLinkExternal,
 ): ((event: React.MouseEvent) => void) | undefined {
   if (!openPreview) return undefined;
-  // Per-handler in-flight guard: a link whose trust prompt is still being
-  // resolved must not fan out a second prompt / preview / fallback tab on a
-  // repeated click (Firefox dispatches BOTH click and auxclick for a middle
-  // click; impatient users double-click).
-  const pending = new Set<string>();
+  // OSS / any build without a registered preview renderer must not intercept
+  // fleet links (see isFleetPreviewSupported).
+  if (!isFleetPreviewSupported()) return undefined;
   return (event) => {
     // Filter by event type AND button: `click` must be the primary button (0),
     // `auxclick` must be the middle button (1). Firefox dispatches BOTH
@@ -218,8 +258,8 @@ export function fleetPreviewClickHandler(
       return;
     }
     void (async () => {
-      if (pending.has(target.sourceUrl)) return;
-      pending.add(target.sourceUrl);
+      if (pendingFleetPrompts.has(target.sourceUrl)) return;
+      pendingFleetPrompts.add(target.sourceUrl);
       try {
         const trusted = await askTrustFleetHost(target.sourceUrl);
         // Explicit fallback rather than "relying on the default action": the
@@ -233,7 +273,7 @@ export function fleetPreviewClickHandler(
         }
         openPreview(target);
       } finally {
-        pending.delete(target.sourceUrl);
+        pendingFleetPrompts.delete(target.sourceUrl);
       }
     })();
   };

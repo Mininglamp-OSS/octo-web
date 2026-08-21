@@ -246,6 +246,8 @@ export class MeInfoVM extends ProviderListener {
         // about:blank dance would never produce a usable window reference.
         const linksBridge = getElectronLinksBridge();
         if (linksBridge) {
+            // verifyUrl is always an absolute http(s) URL (resolved from the
+            // account_url provider config), so no origin normalization needed.
             linksBridge
                 .openExternal(verifyUrl)
                 .then((result) => {
