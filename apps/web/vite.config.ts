@@ -208,6 +208,16 @@ export default defineConfig(({ mode }) => {
       port: env.VITE_PORT ? Number(env.VITE_PORT) : 3000,
       host: env.VITE_HOST ?? true,
       proxy: {
+        // HTML 文档后端(octo-docs-html)。前端把它的 base 默认解析成 /docs-html,
+        // 没有这条代理时那些请求会落到 dev server 的 SPA 兜底页 —— 返回 200 + index.html,
+        // 看着像通了,其实一个接口都没到后端。本地实测就是这么被骗过一次的。
+        // 放在最前面:它的前缀比 /api/* 更具体,而 vite 按插入顺序匹配、第一个命中的前缀生效。
+        "/docs-html": {
+          target: env.VITE_OCTO_DOC_BASE || "http://127.0.0.1:4100",
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path: string) => path.replace(/^\/docs-html/, ""),
+        },
         // Agent Mail uses one stable browser path in every environment. The
         // development proxy selects the OCTO server origin through
         // configuration, while production uses the equivalent Nginx route.
