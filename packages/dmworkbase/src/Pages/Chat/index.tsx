@@ -16,6 +16,7 @@ import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
 import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
+import { getElectronLinksBridge } from "../../electron/desktopBridge";
 import WKButton from "../../Components/WKButton";
 import WKModal from "../../Components/WKModal";
 import { Columns2, ChevronRight } from "lucide-react";
@@ -1897,7 +1898,25 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         docId: item.docId,
                         space: item.spaceId,
                       });
-                      // window.open(url, "_blank", "noopener,noreferrer")
+                      // Desktop shell: use the dedicated IPC bridge —
+                      // setWindowOpenHandler routes everything to the system
+                      // browser, so the web-era about:blank dance would never
+                      // produce a usable window reference.
+                      const linksBridge = getElectronLinksBridge();
+                      if (linksBridge) {
+                        linksBridge
+                          .openExternal(url)
+                          .then((result) => {
+                            if (!result.ok) {
+                              Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            }
+                          })
+                          .catch(() => {
+                            Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                          });
+                        return;
+                      }
+                      // Web: window.open(url, "_blank", "noopener,noreferrer")
                       // cannot be null-checked: per MDN, passing the
                       // `noopener` feature makes window.open return null on
                       // SUCCESS too, so `if (!opened)` false-positives on

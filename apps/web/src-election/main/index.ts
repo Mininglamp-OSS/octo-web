@@ -22,7 +22,7 @@ import { join, dirname, basename, extname } from "path";
 import { pathToFileURL } from "url";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import { isExternalHttpUrl } from "./externalLink";
+import { isBlankPopupUrl, isExternalHttpUrl } from "./externalLink";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_KEEP_AWAKE_GET,
@@ -49,6 +49,7 @@ import {
   IPC_SHOW_CONVERSATIONS,
   IPC_WINDOW_IS_FOCUSED,
   IPC_ASK_TRUST_FLEET_HOST,
+  IPC_OPEN_EXTERNAL_URL,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
 import {
@@ -576,6 +577,43 @@ const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
 /* ---------- external link router ---------- */
 
 /**
+ * Open an http(s) URL in the system browser from the main process, shared by
+ * the setWindowOpenHandler router and the IPC_OPEN_EXTERNAL_URL bridge.
+ * Logs origin/pathname only — a message-body URL can carry query tokens that
+ * must not end up in logs.
+ */
+function openUrlExternally(url: string): Promise<boolean> {
+  if (!isExternalHttpUrl(url)) {
+    logExternalUrlRejection(url);
+    return Promise.resolve(false);
+  }
+  return shell
+    .openExternal(url)
+    .then(() => true)
+    .catch((error) => {
+      console.warn(
+        `[external-link] openExternal failed (${safeUrlLabel(url)}):`,
+        error,
+      );
+      return false;
+    });
+}
+
+function logExternalUrlRejection(url: string): void {
+  console.warn(`[external-link] denied non-http(s) URL (${safeUrlLabel(url)})`);
+}
+
+/** Origin + pathname only; never log query or fragment (token leakage). */
+function safeUrlLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return "(unparseable)";
+  }
+}
+
+/**
  * Route renderer-initiated window.open / target=_blank to the system browser.
  *
  * Message-body links render as `<a target="_blank" rel="noopener noreferrer">`
@@ -587,16 +625,86 @@ const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
  * renderer and never reach this handler; the explicit rejection fallback
  * (openFleetLinkExternal → window.open) lands here and is routed to the
  * browser, which is exactly the intended "open externally" outcome.
+ *
+ * `about:blank` popups are allowed through deliberately: the renderer's
+ * blocked/succeeded detection (realname verification, global-search doc
+ * open) opens a blank window first, nulls the opener and then navigates the
+ * reference to the real URL. The blank page itself carries no content; the
+ * follow-up navigation is intercepted by a one-shot did-navigate listener on
+ * the child window (routeBlankPopupNavigation), which redirects it to the
+ * system browser and closes the child — security-equivalent to denying the
+ * navigation outright, but without breaking the caller's null-check signal.
  */
 function attachExternalLinkRouter(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isBlankPopupUrl(url)) {
+      routeBlankPopupNavigation(win);
+      return { action: "allow" };
+    }
     if (isExternalHttpUrl(url)) {
-      void shell.openExternal(url).catch((error) => {
-        console.warn(`[external-link] openExternal failed for ${url}:`, error);
-      });
+      void openUrlExternally(url);
+    } else {
+      logExternalUrlRejection(url);
     }
     return { action: "deny" };
   });
+}
+
+/**
+ * Arm a one-shot did-navigate interceptor on windows created from an allowed
+ * `about:blank` popup: the first http(s) navigation (the caller's
+ * `opened.location.href = targetUrl` assignment) is cancelled, handed to the
+ * system browser, and the child window closed. Non-http(s) navigations are
+ * cancelled and the child closed too (deny by default). The listener is
+ * armed on the parent's setWindowOpenHandler allow: the child window is
+ * created synchronously afterwards, and 'did-create-window' on the parent is
+ * the moment the child webContents exists.
+ */
+function routeBlankPopupNavigation(parent: BrowserWindow): void {
+  const onChildCreated = (
+    child: Electron.BrowserWindow,
+    _details: Electron.DidCreateWindowDetails,
+  ) => {
+    parent.webContents.removeListener("did-create-window", onChildCreated);
+    const onNavigate = (event: Electron.Event, url: string) => {
+      event.preventDefault();
+      child.webContents.removeListener("did-navigate", onNavigate);
+      if (isExternalHttpUrl(url)) {
+        void openUrlExternally(url);
+      } else {
+        logExternalUrlRejection(url);
+      }
+      child.close();
+    };
+    child.webContents.on("did-navigate", onNavigate);
+    child.once("closed", () => {
+      child.webContents.removeListener("did-navigate", onNavigate);
+    });
+  };
+  // did-create-window lives on webContents (emitted after a window.open the
+  // setWindowOpenHandler allowed), NOT on BrowserWindow itself.
+  parent.webContents.on("did-create-window", onChildCreated);
+}
+
+function registerOpenExternalUrlHandler(): void {
+  ipcMain.handle(
+    IPC_OPEN_EXTERNAL_URL,
+    async (
+      event,
+      url: unknown,
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      const win = resolveTrustedOidcSender(event);
+      if (!win) return { ok: false, reason: "untrusted-sender" };
+      if (typeof url !== "string" || url === "") {
+        return { ok: false, reason: "invalid-url" };
+      }
+      if (!isExternalHttpUrl(url)) {
+        logExternalUrlRejection(url);
+        return { ok: false, reason: "non-http-url" };
+      }
+      return { ok: await openUrlExternally(url) };
+    },
+  );
 }
 
 // A same-document history.pushState changes frame.url without creating a new
@@ -1945,6 +2053,7 @@ app.on("ready", () => {
   registerKeepAwakeHandlers();
   applyKeepAwake(keepAwakeEnabled);
   registerFleetTrustHostHandler();
+  registerOpenExternalUrlHandler();
   registerDesktopSettingsHandlers();
   registerDownloadSettingsHandlers();
   registerDownloadHandler();

@@ -10,6 +10,7 @@ import { resolveRealnameVerifyUrl } from "./realnameVerifyUrl";
 import { t } from "../../i18n";
 import UserService from "../../Service/UserService";
 import { addImChannelInfoListener } from "../../im-runtime/channelRuntime";
+import { getElectronLinksBridge } from "../../electron/desktopBridge";
 
 /**
  * 「实验性功能」入口在 MeInfo 默认隐藏 —— 通过连击「OCTO 号」行 5 次解锁
@@ -239,6 +240,26 @@ export class MeInfoVM extends ProviderListener {
         }
         const verifyUrl = resolved.url
         // 新 tab 打开,必须能区分「真被浏览器拦截」vs「成功打开」。
+        //
+        // Desktop shell: use the dedicated IPC bridge — setWindowOpenHandler
+        // routes everything to the system browser, so the web-era
+        // about:blank dance would never produce a usable window reference.
+        const linksBridge = getElectronLinksBridge();
+        if (linksBridge) {
+            linksBridge
+                .openExternal(verifyUrl)
+                .then((result) => {
+                    if (!result.ok) {
+                        Toast.warning(t("base.me.realname.popupBlocked"))
+                    }
+                })
+                .catch(() => {
+                    Toast.warning(t("base.me.realname.popupBlocked"))
+                })
+            return
+        }
+        // Web: the about:blank dance stays. See the comment below for why
+        // `window.open(url, "_blank", "noopener,noreferrer")` is wrong here.
         //
         // Jerry R3 blocking:
         //   之前写法 `window.open(url, "_blank", "noopener,noreferrer")` 有致命坑 ——
