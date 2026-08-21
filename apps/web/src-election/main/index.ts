@@ -439,11 +439,12 @@ function rememberFleetTrustedHost(host: string): void {
 function registerFleetTrustHostHandler() {
   ipcMain.handle(
     IPC_ASK_TRUST_FLEET_HOST,
-    async (_event, rawUrl: unknown, host: unknown): Promise<{ trusted: boolean }> => {
-      // Validate inputs instead of trusting the renderer blindly.
-      if (typeof rawUrl !== "string" || typeof host !== "string" || host === "") {
-        return { trusted: false };
-      }
+    async (_event, rawUrl: unknown): Promise<{ trusted: boolean }> => {
+      // Validate inputs instead of trusting the renderer blindly. The host
+      // is derived from the validated URL here, never taken from the
+      // renderer, so a caller cannot cache-trust one host while displaying
+      // another.
+      if (typeof rawUrl !== "string") return { trusted: false };
       let parsedUrl: URL;
       try {
         parsedUrl = new URL(rawUrl);
@@ -453,6 +454,7 @@ function registerFleetTrustHostHandler() {
       } catch {
         return { trusted: false };
       }
+      const host = parsedUrl.hostname;
       if (readFleetTrustedHosts().includes(host)) return { trusted: true };
 
       const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
@@ -464,6 +466,7 @@ function registerFleetTrustHostHandler() {
         detail: `链接：${parsedUrl.href}`,
         buttons: ["允许", "拒绝"],
         defaultId: 1, // 默认拒绝
+        cancelId: 1, // Esc / 关闭窗口也按"拒绝"处理，弹窗失败永远 fail-closed
         checkboxLabel: "不再询问此域名",
         checkboxChecked: false,
       });
