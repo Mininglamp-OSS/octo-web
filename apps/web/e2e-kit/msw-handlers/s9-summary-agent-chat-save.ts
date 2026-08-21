@@ -145,6 +145,20 @@ export async function registerS9SummaryAgentChatSave(page: Page): Promise<void> 
           created_at: now,
         });
       }),
+      http.post("*/summary/api/v1/summaries/agent/finalize", async ({ request }: any) => {
+        const state = (window as unknown as { __s9State__: { saveCalls: number; saveBody: unknown } }).__s9State__;
+        state.saveCalls += 1;
+        // 记录请求体供 spec 断言：Agent 保存不得携带 participants（P1 回归）。
+        state.saveBody = await request.json();
+        return HttpResponse.json({
+          code: 0,
+          message: "ok",
+          data: {
+            task_id: taskId,
+            status: "GENERATING",
+          },
+        }, { status: 202 });
+      }),
       http.get("*/summary/api/v1/summaries/9901", () => env(detail)),
       http.post("*/summary/api/v1/summaries/9901/read", () =>
         env({ is_unread: false, has_pending_invitation: false, needs_attention: false })

@@ -372,6 +372,155 @@ export async function createAgentSummary(
     return data;
 }
 
+// ---- Session-Finalize v0 (交付物落库) ----
+// 新落库语义:保存不再"拷贝 agent 最后一条回复",而是让后端异步把整段会话
+// 已产出的总结片段【合并成一篇】。前端先尝试 POST /finalize 拿 202+task_id,
+// 再跳详情页由详情页轮询任务状态；若当前后端/测试环境还没有 finalize 路由，
+// 则兼容回退到既有 POST /summaries/agent，避免前后端发布顺序导致保存全量 404。
+
+/** finalize 幂等键:调用方按「一次逻辑保存」生成并在 transient retry 间复用。 */
+export function genFinalizeRequestId(): string {
+    try {
+        const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+        if (c?.randomUUID) return `finalize_${c.randomUUID()}`;
+    } catch {
+        /* fall through to the non-crypto id */
+    }
+    return `finalize_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * POST /summaries/agent/finalize —— 异步定稿。返回 202 的 { task_id, status:"GENERATING" }。
+ * 走 summaryAxios + 显式校验 envelope(与 createAgentSummary 同口径:非0 code / 缺 task_id 抛错,
+ * 让 UI catch 后保留 chat)。40004(无可定稿内容)/40009(定稿在进行中)由上层 switch 处理。
+ */
+export async function finalizeAgentSummary(
+    params: CreateAgentSummaryParams,
+    idempotencyKey: string,
+): Promise<{ task_id: number; status: string }> {
+    const resp = await summaryAxios.post(`${BASE}/summaries/agent/finalize`, params, {
+        headers: { 'Idempotency-Key': idempotencyKey },
+    });
+    if (resp.data?.code !== 0) {
+        const err = new Error(resp.data?.message || 'finalize agent summary failed') as Error & {
+            response?: { data?: { code?: number; message?: string } };
+        };
+        err.response = { data: resp.data };
+        throw err;
+    }
+    const data = resp.data?.data as { task_id: number; status: string } | undefined;
+    if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
+        throw new Error(resp.data?.message || 'finalize returned no task_id');
+    }
+    // 接受任意 2xx：幂等重放按惯例返 200 而非再一次 202，而重放正是本特性的
+    // 重试路径——只认 202 会把一次语义上成功的受理变成用户可见的失败（R5 P2）。
+    if (typeof resp.status === 'number' && (resp.status < 200 || resp.status >= 300)) {
+        throw new Error(resp.data?.message || 'finalize returned unexpected http status');
+    }
+    if (data.status !== 'GENERATING') {
+        throw new Error(resp.data?.message || 'finalize returned unexpected task status');
+    }
+    return data;
+}
+
+/**
+ * finalize 路由未发布 → 可安全回退 legacy。判定以「有无业务 envelope」为准而不是裸
+ * HTTP status，两个方向都要堵（R5 P2）：
+ *   - 后端用 HTTP 404 携带 {code:40004/40009} 表达业务条件时，不能静默改发 legacy
+ *     —— 那会绕过调用点的 40004/40009 处理，退回旧的「拷贝最后一条回复」语义；
+ *   - 网关把未路由路径包成 200 + {code:404} 时，虽然 HTTP 不是 404，也应回退，
+ *     否则保存在后端上线前会彻底砌掉。
+ */
+function isFinalizeUnsupportedError(err: unknown): boolean {
+    if (!err || typeof err !== 'object') return false;
+    const maybeAxios = err as {
+        response?: { status?: number; data?: { code?: number; message?: string } };
+        code?: string;
+        message?: string;
+    };
+    const envelopeCode = maybeAxios.response?.data?.code;
+    if (typeof envelopeCode === 'number' && envelopeCode !== 0) {
+        // 路由不存在的业务编码（网关包装）→ 回退；其余业务失败 → 不回退，抛给调用点。
+        return envelopeCode === 404 || envelopeCode === 405 || envelopeCode === 501;
+    }
+    const status = maybeAxios.response?.status;
+    if (status === 404 || status === 405 || status === 501) return true;
+    return false;
+}
+
+export interface SaveAgentSummaryResult {
+    task_id: number;
+    /** true = finalize accepted and detail page should show generation; false = legacy endpoint completed synchronously. */
+    async_finalize: boolean;
+    status?: string;
+}
+
+export interface SaveAgentSummaryOptions {
+    /**
+     * One key per logical save. UI callers that can be retried by the user should provide a stable key
+     * and keep it across ambiguous/network failures.
+     */
+    idempotencyKey: string;
+}
+
+const FINALIZE_STARTED_STORAGE_PREFIX = 'octo:summary:finalize-started:';
+const trackedFinalizeStartedKeys = new Set<string>();
+
+/**
+ * finalize 的 202 首次受理和 200 幂等重放代表同一次逻辑保存，只能计一次 started。
+ * Set 覆盖当前模块生命周期，sessionStorage 覆盖同一标签页内的页面刷新/模块重载。
+ * 仅在 finalize 已通过完整受理校验后调用，因此失败请求不会占用幂等键。
+ */
+function trackFinalizeStartedOnce(
+    idempotencyKey: string,
+    trackProps: Record<string, unknown>,
+): void {
+    if (trackedFinalizeStartedKeys.has(idempotencyKey)) return;
+
+    const storageKey = `${FINALIZE_STARTED_STORAGE_PREFIX}${idempotencyKey}`;
+    try {
+        if (globalThis.sessionStorage?.getItem(storageKey) === '1') {
+            trackedFinalizeStartedKeys.add(idempotencyKey);
+            return;
+        }
+    } catch {
+        // sessionStorage may be unavailable (SSR, privacy mode, quota/security policy).
+    }
+
+    Dap.shared.track('smart_summary_started', trackProps);
+    trackedFinalizeStartedKeys.add(idempotencyKey);
+    try {
+        globalThis.sessionStorage?.setItem(storageKey, '1');
+    } catch {
+        // In-memory dedup still protects the current module lifecycle.
+    }
+}
+
+/**
+ * 交付物保存(v0)——优先发起 finalize(202),不阻塞等生成；若 finalize 路由不存在，
+ * 回退到旧 createAgentSummary，保证前后端发布顺序不一致时仍能保存。
+ * finalize 成功仅代表"已开始生成"，调用点跳详情页后由详情页任务轮询展示进度。
+ * 业务失败(40004/40009 等)不回退，继续抛给调用点保留 chat 并展示明确文案。
+ */
+export async function saveAgentSummaryViaFinalize(
+    params: CreateAgentSummaryParams,
+    trackProps: Record<string, unknown>,
+    options: SaveAgentSummaryOptions,
+): Promise<SaveAgentSummaryResult> {
+    try {
+        const accepted = await finalizeAgentSummary(params, options.idempotencyKey);
+        // 与 createAgentSummary 同口径:一次"成功发起"即补发埋点；202/200 幂等重放只计一次。
+        trackFinalizeStartedOnce(options.idempotencyKey, trackProps);
+        return { task_id: accepted.task_id, status: accepted.status, async_finalize: true };
+    } catch (err) {
+        if (!isFinalizeUnsupportedError(err)) {
+            throw err;
+        }
+        const legacy = await createAgentSummary(params, trackProps);
+        return { task_id: legacy.task_id, async_finalize: false };
+    }
+}
+
 // Agent 交互式问答（非流式一问一答）。POST /summary/api/v1/agent/chat。
 // 不复用公共 post()：post() 只 `data?.data ?? data`，不校验业务 code，
 // HTTP200 + {code:非0,data:null} 会被当成功、undefined 追进气泡。这里自行
@@ -851,10 +1000,31 @@ export async function removeMember(taskId: number, uid: string): Promise<void> {
 // ─── Status Management ─────────────────────────────────
 
 export async function batchStatus(taskIds: number[]): Promise<BatchStatusItem[]> {
-    const data = await post<BatchStatusResponse>('/summaries/batch-status', {
-        task_ids: taskIds,
-    });
-    return data?.tasks ?? [];
+    try {
+        const resp = await summaryAxios.post(`${BASE}/summaries/batch-status`, {
+            task_ids: taskIds,
+        });
+        const envelope = resp.data as {
+            code?: unknown;
+            message?: unknown;
+            data?: Partial<BatchStatusResponse> | null;
+        } | null | undefined;
+
+        if (envelope?.code !== 0) {
+            const message = typeof envelope?.message === 'string' && envelope.message
+                ? envelope.message
+                : 'batch status failed';
+            throw new Error(message);
+        }
+        if (!envelope.data || !Array.isArray(envelope.data.tasks)) {
+            throw new Error('batch status returned invalid response');
+        }
+        return envelope.data.tasks;
+    } catch (err) {
+        // Preserve cancellation identity so reconcile callers can distinguish abort from failure.
+        if (axios.isCancel(err)) throw err;
+        throw new Error(extractErrorMessage(err));
+    }
 }
 
 export async function cancelSummary(taskId: number): Promise<void> {

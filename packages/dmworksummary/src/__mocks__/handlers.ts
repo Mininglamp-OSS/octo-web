@@ -37,8 +37,15 @@ export const summaryHandlers = [
         const body = await request.json() as any;
         const taskId = ++taskCounter;
         const now = new Date().toISOString();
-        mockTasks.set(taskId, { task_id: taskId, task_no: `AGENT-${Date.now()}`, title: body.requirement || 'Agent 总结', summary_mode: 2, status: 0, trigger_type: 2, time_range_start: now, time_range_end: now, sources: body.sources || [], participants: [], result: null, error_message: null, origin_channel_id: body.origin_channel_id || '', origin_channel_type: body.origin_channel_type || 1, created_at: now, updated_at: now });
+        mockTasks.set(taskId, { task_id: taskId, task_no: `AGENT-${Date.now()}`, title: body.title || body.requirement || 'Agent 总结', summary_mode: 1, status: 3, trigger_type: 3, time_range_start: now, time_range_end: now, sources: body.sources || [], participants: [], result: { content: '# Agent 总结', total_msg_count: 0, total_token_used: 0, model_version: 'mock', version: 1, generated_at: now }, error_message: null, origin_channel_id: body.origin_channel_id || '', origin_channel_type: body.origin_channel_type || 1, created_at: now, updated_at: now });
         return HttpResponse.json({ code: 0, message: 'success', data: { task_id: taskId } });
+    }),
+    http.post('/summary/api/v1/summaries/agent/finalize', async ({ request }) => {
+        const body = await request.json() as any;
+        const taskId = ++taskCounter;
+        const now = new Date().toISOString();
+        mockTasks.set(taskId, { task_id: taskId, task_no: `AGENT-${Date.now()}`, title: body.title || 'Agent 总结', summary_mode: 1, status: 2, trigger_type: 3, time_range_start: now, time_range_end: now, sources: body.sources || [], participants: [], result: null, error_message: null, origin_channel_id: body.origin_channel_id || '', origin_channel_type: body.origin_channel_type || 1, created_at: now, updated_at: now });
+        return HttpResponse.json({ code: 0, message: 'success', data: { task_id: taskId, status: 'GENERATING' } }, { status: 202 });
     }),
     // Agent 交互式问答（非流式一问一答）。mock 回显 message 并回传同一 session_id。
     http.post('/summary/api/v1/agent/chat', async ({ request }) => {

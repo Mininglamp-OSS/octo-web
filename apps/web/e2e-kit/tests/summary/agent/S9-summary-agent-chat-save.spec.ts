@@ -78,7 +78,7 @@ test.describe("@S9 @p0 @summary @agent @summary-agent @summary-create @summary-d
 
     // P1 回归：Agent 保存不携带 participants（payload 边界守卫 mode !== 'agent'）。
     // selectedMembers 不再被清空——往返切换后选择仍保留（见上方 Agent→Normal 断言）。
-    await expect(authedPage.getByText("AI 总结已保存")).toBeVisible({ timeout: 15_000 });
+    await expect(authedPage.getByText("AI 总结生成中，已打开详情页")).toBeVisible({ timeout: 15_000 });
     const saveBody = await authedPage.evaluate(
       () => (window as unknown as { __s9State__?: { saveBody: unknown } }).__s9State__?.saveBody
     );

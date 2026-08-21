@@ -19,7 +19,8 @@
   - `GET */summary/api/v1/summaries` — 初始返回空列表。
   - `GET */summary/api/v1/summary-templates` — 返回空模板列表和 `custom_template_limit`。
   - `POST */summary/api/v1/agent/chat/stream` — 返回 done 事件，reply 为 `S12 Agent 已生成可保存内容`。
-  - `POST */summary/api/v1/summaries/agent` — 返回 `{code:40004,message:"当前对话还没有可保存的总结，请先与 AI 对话产出内容",data:null}`。
+  - `POST */summary/api/v1/summaries/agent/finalize` — 返回 `{code:40004,message:"当前对话还没有可保存的总结，请先与 AI 对话产出内容",data:null}`。
+  - `POST */summary/api/v1/summaries/agent` — legacy fallback 同样返回 40004，确保失败态不跳详情。
 - 不需要 mock-im-runtime seed。
 
 ## 用户操作步骤
@@ -41,7 +42,7 @@
 
 ## 反例
 
-- 如果 `createAgentSummary()` 未校验业务 `code`，会误报保存成功并跳详情；本 case 会因仍期望对话气泡存在、且不期望详情标题出现而失败。
+- 如果 `saveAgentSummaryViaFinalize()` 未校验业务 `code`，会误报保存成功并跳详情；本 case 会因仍期望对话气泡存在、且不期望详情标题出现而失败。
 - 如果失败分支清空 chat session，用户气泡或 assistant 气泡会消失，case 应失败。
 - 如果失败后被 401 踢登录，sanityCheck 应报出 URL 在 `/login`。
 
@@ -51,8 +52,8 @@
 
 ## 摸清依据
 
-- `packages/dmworksummary/src/api/summaryApi.ts:307`: `createAgentSummary()` 显式校验 envelope `code` 和 `task_id`。
-- `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:891`: `handleSaveAsSummary()` 调用 `createAgentSummary()`。
-- `packages/dmworksummary/src/pages/SummaryCreatePage.tsx:972`: 保存失败 catch 分支保留当前 chat state。
+- `packages/dmworksummary/src/api/summaryApi.ts`: `saveAgentSummaryViaFinalize()` 显式校验 envelope `code` 和 `task_id`。
+- `packages/dmworksummary/src/pages/SummaryCreatePage.tsx`: `handleSaveAsSummary()` 调用 `saveAgentSummaryViaFinalize()`。
+- `packages/dmworksummary/src/pages/SummaryCreatePage.tsx`: 保存失败 catch 分支保留当前 chat state。
 - `packages/dmworksummary/src/components/AgentChatPanel.tsx:421`: 有 assistant 输出后渲染「保存为总结」按钮。
 - `packages/dmworksummary/src/i18n/zh-CN.json:203`: 无可保存产出的错误文案。
