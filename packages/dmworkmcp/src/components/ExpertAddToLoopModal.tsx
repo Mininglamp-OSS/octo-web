@@ -1,4 +1,5 @@
-import { Button, Select } from "@octo/ui";
+import { Button } from "@octo/ui";
+import Select from "@octo/ui/select";
 import React, { useEffect, useState } from "react";
 import { WKModal, t, useI18n } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";

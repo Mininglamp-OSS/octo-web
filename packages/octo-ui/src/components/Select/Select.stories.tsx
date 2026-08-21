@@ -19,7 +19,7 @@ const meta: Meta<typeof Select> = {
     },
     status: {
       control: 'radio',
-      options: ['default', 'error', 'warning', 'success'],
+      options: ['default', 'error', 'warning'],
     },
   },
 }

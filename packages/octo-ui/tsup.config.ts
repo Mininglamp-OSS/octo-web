@@ -6,6 +6,7 @@ import { defineConfig } from 'tsup'
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
+    select: 'src/components/Select/index.tsx',
   },
   format: ['esm'],
   dts: true,

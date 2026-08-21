@@ -1,5 +1,6 @@
 import { IconChevronDown, IconClear, IconInbox, IconTick } from '@douyinfe/semi-icons'
-import { LocaleConsumer, Select as SemiSelect } from '@douyinfe/semi-ui'
+import LocaleConsumer from '@douyinfe/semi-ui/lib/es/locale/localeConsumer'
+import SemiSelect from '@douyinfe/semi-ui/lib/es/select'
 import { Children, forwardRef, isValidElement, useCallback, useMemo, useState } from 'react'
 import type { ComponentRef, FocusEvent, ReactNode } from 'react'
 import type { SelectChangeValue, SelectOption, SelectOptionProps, SelectProps, SelectSize } from './types'
@@ -13,9 +14,35 @@ const sizeClass: Record<SelectSize, string> = {
 }
 
 const DEFAULT_OPTION_LIST_MAX_HEIGHT = 268
+const DEFAULT_CLEAR_ARIA_LABEL = 'Clear'
+const DEFAULT_REMOVE_OPTION_ARIA_LABEL = 'Remove'
+
+interface SelectLocale {
+  emptyText?: ReactNode
+}
+
+interface UploadLocale {
+  clear?: string
+}
+
+interface DialogueLocale {
+  delete?: string
+}
 
 function getOptionLabel(option: SelectOption) {
   return option.label ?? option.children ?? option.value
+}
+
+function getButtonAriaLabel(action: string | undefined, label?: ReactNode) {
+  if (label === undefined || label === null || label === '') {
+    return action
+  }
+
+  if (typeof label === 'string' || typeof label === 'number') {
+    return `${action} ${label}`
+  }
+
+  return action
 }
 
 function renderTrigger(props: Record<string, any>) {
@@ -49,13 +76,12 @@ function renderTrigger(props: Record<string, any>) {
                   <span className="octo-ui-select__chip-label">{getOptionLabel(item)}</span>
                   {!disabled ? (
                     <button
-                      aria-label={removeOptionAriaLabel}
+                      aria-label={getButtonAriaLabel(removeOptionAriaLabel, getOptionLabel(item))}
                       className="octo-ui-select__chip-remove"
                       onClick={(event) => {
                         event.stopPropagation()
                         onRemove?.(item, event)
                       }}
-                      tabIndex={-1}
                       type="button"
                     >
                       <IconClear aria-hidden="true" size="extra-small" />
@@ -79,7 +105,6 @@ function renderTrigger(props: Record<string, any>) {
             event.stopPropagation()
             onClear?.(event)
           }}
-          tabIndex={-1}
           type="button"
         >
           <IconClear aria-hidden="true" size="extra-small" />
@@ -111,16 +136,8 @@ function renderEmptyContentNode(content: ReactNode) {
   )
 }
 
-function renderEmptyContent(content: ReactNode) {
-  if (content === undefined) {
-    return (
-      <LocaleConsumer componentName="Select">
-        {(locale: { emptyText: ReactNode }) => renderEmptyContentNode(locale.emptyText)}
-      </LocaleConsumer>
-    )
-  }
-
-  return renderEmptyContentNode(content)
+function renderEmptyContent(content: ReactNode, locale: SelectLocale) {
+  return renderEmptyContentNode(content === undefined ? locale.emptyText : content)
 }
 
 function getOptionMeta(children: ReactNode, options?: SelectOption[]) {
@@ -182,12 +199,17 @@ function renderOptionItem(option: Record<string, any>, optionMeta: Map<SelectOpt
   )
 }
 
-const SelectOptionComponent = SemiSelect.Option
+const SelectOptionComponent = function SelectOption({ children, label }: SelectOptionProps) {
+  return <>{children ?? label}</>
+}
+
+;(SelectOptionComponent as typeof SelectOptionComponent & { isSelectOption?: boolean }).isSelectOption = true
 
 const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function Select(
   {
     className,
     clearable,
+    clearAriaLabel,
     dropdownClassName,
     dropdownMatchSelectWidth = true,
     emptyContent,
@@ -201,6 +223,7 @@ const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function
     onValueChange,
     onSelect,
     placeholder,
+    removeOptionAriaLabel,
     showArrow = true,
     size = 'default',
     status = 'default',
@@ -252,39 +275,55 @@ const Select = forwardRef<ComponentRef<typeof SemiSelect>, SelectProps>(function
   ), [optionMeta])
 
   return (
-    <SemiSelect
-      {...rest}
-      ref={ref}
-      arrowIcon={<IconChevronDown size="small" />}
-      className={classes}
-      clearIcon={<IconClear size="extra-small" />}
-      dropdownClassName={cx(
-        'octo-ui-select-dropdown',
-        !dropdownMatchSelectWidth && 'octo-ui-select-dropdown--bounded',
-        dropdownClassName,
+    <LocaleConsumer componentName="Select">
+      {(selectLocale: SelectLocale) => (
+        <LocaleConsumer componentName="Upload">
+          {(uploadLocale: UploadLocale) => (
+            <LocaleConsumer componentName="AIChatDialogue">
+              {(dialogueLocale: DialogueLocale) => (
+                <SemiSelect
+                  {...rest}
+                  {...{
+                    clearAriaLabel: clearAriaLabel ?? uploadLocale?.clear ?? DEFAULT_CLEAR_ARIA_LABEL,
+                    removeOptionAriaLabel: removeOptionAriaLabel ?? dialogueLocale?.delete ?? DEFAULT_REMOVE_OPTION_ARIA_LABEL,
+                  }}
+                  ref={ref}
+                  arrowIcon={<IconChevronDown size="small" />}
+                  className={classes}
+                  clearIcon={<IconClear size="extra-small" />}
+                  dropdownClassName={cx(
+                    'octo-ui-select-dropdown',
+                    !dropdownMatchSelectWidth && 'octo-ui-select-dropdown--bounded',
+                    dropdownClassName,
+                  )}
+                  dropdownMatchSelectWidth={dropdownMatchSelectWidth}
+                  emptyContent={renderEmptyContent(emptyContent, selectLocale)}
+                  maxHeight={maxHeight}
+                  optionList={resolvedOptions}
+                  placeholder={placeholder}
+                  renderOptionItem={handleRenderOptionItem}
+                  showArrow={showArrow}
+                  showClear={clearable}
+                  size={size}
+                  triggerRender={renderTrigger}
+                  validateStatus={status}
+                  onBlur={handleBlur}
+                  onChange={handleChange as never}
+                  onDropdownVisibleChange={handleDropdownVisibleChange}
+                  onFocus={handleFocus}
+                  onSelect={handleSelect as never}
+                />
+              )}
+            </LocaleConsumer>
+          )}
+        </LocaleConsumer>
       )}
-      dropdownMatchSelectWidth={dropdownMatchSelectWidth}
-      emptyContent={renderEmptyContent(emptyContent)}
-      maxHeight={maxHeight}
-      optionList={resolvedOptions}
-      placeholder={placeholder}
-      renderOptionItem={handleRenderOptionItem}
-      showArrow={showArrow}
-      showClear={clearable}
-      size={size}
-      triggerRender={renderTrigger}
-      validateStatus={status}
-      onBlur={handleBlur}
-      onChange={handleChange as never}
-      onDropdownVisibleChange={handleDropdownVisibleChange}
-      onFocus={handleFocus}
-      onSelect={handleSelect as never}
-    />
+    </LocaleConsumer>
   )
 })
 
 type SelectComponent = typeof Select & {
-  Option: typeof SemiSelect.Option
+  Option: typeof SelectOptionComponent
 }
 
 const ExportedSelect = Select as SelectComponent

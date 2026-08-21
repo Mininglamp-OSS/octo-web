@@ -52,6 +52,31 @@ body {
   --octo-ui-button-danger-bg-solid-active: color-mix(in srgb, var(--octo-ui-button-danger-bg) 80%, var(--wk-brand-black, oklch(22.957% 0.01344 285.29)));
   --octo-ui-button-text-inverse: var(--wk-text-inverse, oklch(100% 0 89.88));
 
+  --octo-ui-tag-gap: var(--wk-sp-1, 4px);
+  --octo-ui-tag-radius: var(--wk-r-xs, 4px);
+  --octo-ui-tag-font-family: var(--wk-font-sans, "PingFang SC", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  --octo-ui-tag-font-weight: var(--wk-font-medium, 500);
+  --octo-ui-tag-line-height: var(--wk-leading-tight, 1.25);
+  --octo-ui-tag-sm-min-height: calc(var(--wk-sp-4, 16px) + var(--wk-sp-0-5, 2px));
+  --octo-ui-tag-sm-padding: 0 var(--wk-sp-1-5, 6px);
+  --octo-ui-tag-sm-font-size: var(--wk-text-size-xs, 12px);
+  --octo-ui-tag-md-min-height: calc(var(--wk-sp-5, 20px) + var(--wk-sp-1, 4px));
+  --octo-ui-tag-md-padding: var(--wk-sp-0-5, 2px) var(--wk-sp-2, 8px);
+  --octo-ui-tag-md-font-size: var(--wk-text-size-sm, 12px);
+  --octo-ui-tag-neutral-bg: var(--wk-bg-elevated, oklch(98.51% 0 89.88));
+  --octo-ui-tag-neutral-border: var(--wk-border-default, oklch(22.957% 0.01344 285.29 / 8%));
+  --octo-ui-tag-neutral-text: var(--wk-text-secondary, oklch(22.957% 0.01344 285.29 / 60%));
+  --octo-ui-tag-brand-bg: var(--wk-bg-selected, oklch(22.957% 0.01344 285.29 / 6%));
+  --octo-ui-tag-brand-border: var(--wk-border-glow, oklch(22.957% 0.01344 285.29 / 20%));
+  --octo-ui-tag-brand-text: var(--wk-text-accent, oklch(55.235% 0.25402 292.64));
+  --octo-ui-tag-success-bg: var(--wk-color-success-bg, oklch(96.883% 0.03058 147.14));
+  --octo-ui-tag-success-text: var(--wk-color-success, oklch(77.942% 0.18562 148.68));
+  --octo-ui-tag-warning-bg: var(--wk-color-warning-bg, oklch(96.809% 0.0359 91.41));
+  --octo-ui-tag-warning-text: var(--wk-color-warning, oklch(73.869% 0.15987 75.24));
+  --octo-ui-tag-danger-bg: var(--wk-color-danger-bg, oklch(97.053% 0.01295 17.38));
+  --octo-ui-tag-danger-border: var(--wk-color-danger-border, oklch(88.454% 0.05926 18.33));
+  --octo-ui-tag-danger-text: var(--wk-color-danger, oklch(65.263% 0.20841 26.45));
+
   --octo-ui-menu-item-height: 40px;
   --octo-ui-menu-item-compact-height: 36px;
   --octo-ui-menu-item-padding: 4px 4px 4px 12px;
@@ -119,9 +144,6 @@ body {
   --octo-ui-select-icon-size: 16px;
   --octo-ui-select-dropdown-min-width: 180px;
   --octo-ui-select-dropdown-max-width: 320px;
-  --octo-ui-select-dropdown-max-height: 276px;
-  --octo-ui-select-dropdown-padding-block: 8px;
-  --octo-ui-select-option-list-max-height: 268px;
   --octo-ui-select-option-height: 36px;
   --octo-ui-select-option-padding: 0 12px;
   --octo-ui-select-option-gap: 8px;

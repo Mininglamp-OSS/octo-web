@@ -17,7 +17,6 @@ export type {
   DropdownProps,
   DropdownTrigger,
 } from './components/Dropdown/types'
-export { default as Select } from './components/Select'
 export type {
   SelectChangeValue,
   SelectOption,

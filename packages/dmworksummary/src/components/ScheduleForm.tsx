@@ -1,4 +1,5 @@
-import { Button, Select } from "@octo/ui";
+import { Button } from "@octo/ui";
+import Select from "@octo/ui/select";
 import React, { useState, useCallback } from "react";
 import { Input, InputNumber } from "@douyinfe/semi-ui";
 import { useI18n } from "@octo/base";

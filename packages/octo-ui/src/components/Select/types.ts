@@ -4,7 +4,7 @@ import type { DropdownPosition } from '../Dropdown/types'
 export type SelectValue = string | number
 export type SelectChangeValue = SelectValue | SelectValue[] | undefined
 export type SelectSize = 'small' | 'default' | 'large'
-export type SelectStatus = 'default' | 'error' | 'warning' | 'success'
+export type SelectStatus = 'default' | 'error' | 'warning'
 
 export interface SelectOption {
   value: SelectValue
@@ -25,7 +25,6 @@ export interface SelectProps {
   'aria-describedby'?: string
   'aria-errormessage'?: string
   'aria-invalid'?: boolean
-  'aria-label'?: string
   'aria-labelledby'?: string
   'aria-required'?: boolean
   autoAdjustOverflow?: boolean
@@ -45,7 +44,7 @@ export interface SelectProps {
   id?: string
   loading?: boolean
   max?: number
-  maxHeight?: number | string
+  maxHeight?: number
   motion?: boolean
   multiple?: boolean
   optionList?: SelectOption[]

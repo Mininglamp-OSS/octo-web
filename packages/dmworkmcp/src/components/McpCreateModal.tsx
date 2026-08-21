@@ -1,4 +1,5 @@
-import { Button, Select, Switch } from "@octo/ui";
+import { Button, Switch } from "@octo/ui";
+import Select from "@octo/ui/select";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { WKModal, WKInput, t, Dap } from "@octo/base";
 import { TextArea, Toast } from "@douyinfe/semi-ui";

@@ -150,11 +150,12 @@ Semi service components such as notifications or modals can be handled separatel
 
 ### Select
 
-Use `@octo/ui Select` for ordinary single-value and multiple-value pickers.
+Use `@octo/ui/select` for ordinary single-value and multiple-value pickers.
 
 - Prefer `optionList` for static options and `Select.Option` only when an existing call site already uses child options.
 - Keep option values to stable `string` or `number` identifiers.
 - Use `placeholder`, `disabled`, `emptyContent`, `clearable`, `multiple`, and `loading` for common form states.
+- `onChange` intentionally exposes the normalized value only; use `onSelect` when the selected option metadata is needed.
 - Do not import Semi `Select` directly outside `packages/octo-ui/src/components/Select`.
 - Do not migrate business selectors such as contact pickers, conversation pickers, or search panels unless their behavior already matches the base Select contract.
 

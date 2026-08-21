@@ -330,6 +330,18 @@
     z-index: 4;
 }
 
+.wk-login-language-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
 .wk-login-language-select {
     width: calc(var(--wk-sp-12) + var(--wk-sp-8));
     height: var(--wk-sp-8);

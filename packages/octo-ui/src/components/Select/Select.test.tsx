@@ -9,7 +9,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
   IconTick: ({ size }: { size?: string }) => <span data-icon="tick" data-size={size} />,
 }))
 
-vi.mock('@douyinfe/semi-ui', async () => {
+vi.mock('@douyinfe/semi-ui/lib/es/select', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
 
   const Option = ({ children, label, value, disabled }: any) => (
@@ -57,7 +57,14 @@ vi.mock('@douyinfe/semi-ui', async () => {
         data-max-height={maxHeight}
       >
         {triggerRender?.({
-          componentProps: { multiple, showArrow, size: rest.size, showClear },
+          componentProps: {
+            clearAriaLabel: rest.clearAriaLabel,
+            multiple,
+            removeOptionAriaLabel: rest.removeOptionAriaLabel,
+            showArrow,
+            size: rest.size,
+            showClear,
+          },
           placeholder,
           value: selected,
         })}
@@ -72,10 +79,20 @@ vi.mock('@douyinfe/semi-ui', async () => {
   }) as any
   Select.Option = Option
 
-  const LocaleConsumer = ({ children }: any) => children({ emptyText: 'No options' })
-
-  return { LocaleConsumer, Select }
+  return { default: Select }
 })
+
+vi.mock('@douyinfe/semi-ui/lib/es/locale/localeConsumer', () => ({
+  default: ({ children, componentName }: any) => {
+    const locales: Record<string, Record<string, string>> = {
+      AIChatDialogue: { delete: 'Delete' },
+      Select: { emptyText: 'No options' },
+      Upload: { clear: 'Clear' },
+    }
+
+    return children(locales[componentName] ?? {})
+  },
+}))
 
 describe('Select', () => {
   it('renders Octo trigger and option classes', () => {

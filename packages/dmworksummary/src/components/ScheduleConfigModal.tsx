@@ -1,4 +1,5 @@
-import { Button, Select } from "@octo/ui";
+import { Button } from "@octo/ui";
+import Select from "@octo/ui/select";
 import React, { Component } from "react";
 import { Modal, InputNumber, Toast, Banner } from "@douyinfe/semi-ui";
 import { I18nContext } from "@octo/base";
