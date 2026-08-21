@@ -31,36 +31,28 @@ function decodePathSegment(value: string): string {
 }
 
 /**
- * Lazily resolve the trusted fleet hosts: the static set plus the host of the
- * API the client is talking to (VITE_API_URL at build time). Desktop clients
- * load over file:// where same-origin comparison against window.location is
- * impossible ("null"), so the API host is the only reliable per-deployment
- * baseline; on-prem customers get previews for their own server without
- * hard-coding every customer domain.
+ * Lazily resolve the trusted fleet origins: the static set plus the origin
+ * host (hostname[:port]) of the API the client is talking to (VITE_API_URL at
+ * build time). Desktop clients load over file:// where same-origin comparison
+ * against window.location is impossible ("null"), so the API host is the only
+ * reliable per-deployment baseline; on-prem customers get previews for their
+ * own server without hard-coding every customer domain.
+ *
+ * Trust keys are `URL.host` values (hostname + non-default port). WHATWG URL
+ * normalizes an explicit default port away (`https://x:443/` → host "x"), so
+ * the key for an origin is stable whether or not the port was spelled out,
+ * and a non-default port (on-prem `:8443`) is part of the identity: trusting
+ * `x:8443` must never trust `x` or `x:9999`.
  */
 export function trustedFleetHosts(): Set<string> {
   const hosts = new Set(FLEET_PREVIEW_HOSTS);
   try {
     const apiURL = APIClient.shared?.config?.apiURL;
-    if (apiURL) hosts.add(new URL(apiURL).hostname);
+    if (apiURL) hosts.add(new URL(apiURL).host);
   } catch {
     // ignore malformed apiURL
   }
   return hosts;
-}
-
-/**
- * Port policy for trusted hosts: a trusted hostname only matches on its
- * default port (no explicit port, or the well-known http/https ports). Any
- * other port, e.g. https://im-test.deepminer.com.cn:9999/..., is treated as
- * untrusted so a trusted host cannot be re-pointed at an attacker service.
- */
-function isDefaultPort(url: URL): boolean {
-  const port = url.port;
-  if (port === "") return true;
-  if (url.protocol === "http:" && port === "80") return true;
-  if (url.protocol === "https:" && port === "443") return true;
-  return false;
 }
 
 function isTrustedFleetHost(url: URL, baseUrl: string): boolean {
@@ -70,13 +62,13 @@ function isTrustedFleetHost(url: URL, baseUrl: string): boolean {
   } catch {
     return false;
   }
-  // Same-host comparison also works across the http/https boundary (on-prem
+  // Same-origin comparison also works across the http/https boundary (on-prem
   // deployments reached externally via HTTPS while the backend emits HTTP
-  // Fleet URLs). Explicit ports are rejected: url.host includes the port, so
-  // a non-default port already fails this first clause; the trusted-host
-  // clause below additionally requires a default port.
+  // Fleet URLs). Both clauses compare full `URL.host` values (hostname +
+  // non-default port), so a trusted origin cannot be re-pointed at a
+  // different port on the same hostname — the port is part of the key.
   if (url.host === base.host) return true;
-  return trustedFleetHosts().has(url.hostname) && isDefaultPort(url);
+  return trustedFleetHosts().has(url.host);
 }
 
 function isFleetIssuePathname(url: URL): boolean {
@@ -158,20 +150,6 @@ export async function askTrustFleetHost(sourceUrl: string): Promise<boolean> {
 }
 
 /**
- * Trust decision for a click. Static/same-host trust wins immediately; for a
- * well-formed fleet link on an unknown host the user is asked once (Electron),
- * and the answer is remembered when they checked "never ask again".
- */
-async function isTrustedFleetHostAllowPrompt(
-  url: URL,
-  baseUrl: string,
-): Promise<boolean> {
-  if (isTrustedFleetHost(url, baseUrl)) return true;
-  if (!isFleetIssuePathname(url)) return false; // non-fleet links never prompt
-  return askTrustFleetHost(url.href);
-}
-
-/**
  * Open a fleet link in the system browser / new tab as the explicit fallback
  * for a rejected trust prompt. Exported so tests can observe the fallback
  * without fighting jsdom's non-configurable window.open.
@@ -186,9 +164,18 @@ export function openFleetLinkExternal(href: string): void {
 }
 
 /**
- * Only give Fleet issue deep links to the task preview panel. Structural
- * parsing (parseFleetIssueLinkShape) is sync; the trust decision is async
- * (static trust is sync-fast, an unknown host prompts on desktop).
+ * Route webhook-message clicks on Fleet issue deep links to the in-app task
+ * preview panel. One shared handler covers left-click (`click`, button 0) and
+ * middle-click (`auxclick`, button 1); the trust model is:
+ * - statically trusted origin (same origin / static set / current API host)
+ *   → open the preview immediately, fully synchronously;
+ * - unknown origin on desktop → cancel the default action synchronously,
+ *   resolve trust via the native prompt, and on rejection explicitly re-open
+ *   the link (the default action is already cancelled, it cannot "fall
+ *   through" on its own);
+ * - unknown origin on web → no prompt bridge exists, so the link is left to
+ *   the browser's default action (new tab) without preventDefault, which
+ *   keeps popup-blocker heuristics (Safari) on our side.
  */
 export function webhookPreviewClickHandler(
   message: MessageWrap,
@@ -196,45 +183,60 @@ export function webhookPreviewClickHandler(
   onRejectedFallback: (href: string) => void = openFleetLinkExternal,
 ): ((event: React.MouseEvent) => void) | undefined {
   if (!openPreview || !webhookFromOfMessage(message)) return undefined;
+  // Per-handler in-flight guard: a link whose trust prompt is still being
+  // resolved must not fan out a second prompt / preview / fallback tab on a
+  // repeated click (Firefox dispatches BOTH click and auxclick for a middle
+  // click; impatient users double-click).
+  const pending = new Set<string>();
   return (event) => {
-    // Handles BOTH left-click (click) and middle-click (auxclick, button === 1)
-    // with one shared handler: click carries button 0, a middle-click auxclick
-    // carries button 1. Desktop users often middle-click a link expecting a
-    // new tab; for a fleet preview link that would bypass the in-app panel and
-    // open a raw window / browser navigation, so intercepting auxclick keeps
-    // the preview semantics. auxclick ALSO fires for the secondary button
-    // (button 2, right click): its intent is the context menu (copy link
-    // address etc.) and must fall through untouched, so anything other than
-    // button 0/1 returns early.
-    if (event.button !== 0 && event.button !== 1) return;
+    // Filter by event type AND button: `click` must be the primary button (0),
+    // `auxclick` must be the middle button (1). Firefox dispatches BOTH
+    // click(button=1) and auxclick(button=1) for one middle click — without
+    // the type split the shared handler would run twice per gesture. The
+    // secondary button (2, right click) is never intercepted: its intent is
+    // the context menu (copy link address etc.).
+    const isAuxClick = event.type === "auxclick";
+    if (isAuxClick ? event.button !== 1 : event.button !== 0) return;
     if (!(event.target instanceof Element)) return;
     const anchor = event.target.closest<HTMLAnchorElement>("a[href]");
     if (!anchor) return;
     const baseUrl =
       typeof window === "undefined" ? "https://octo.invalid" : window.location.href;
-    // Decide the candidate synchronously and cancel the default action NOW:
-    // preventDefault after an await would be a no-op (the anchor already
-    // started navigating / opening a new tab), which is why the async trust
-    // resolution below must not be in charge of the first interception.
+    // Decide the candidate synchronously. Non-fleet links are never touched.
     const target = parseFleetIssueLinkShape(anchor.href, baseUrl);
     if (!target) return;
+    const staticallyTrusted =
+      parseWebhookIssuePreviewTarget(anchor.href, baseUrl) !== null;
+    // Web has no trust prompt: an unknown-origin fleet link goes to the
+    // browser default (new tab) untouched. preventDefault here would leave
+    // the fallback window.open() at the mercy of popup blockers.
+    if (!staticallyTrusted && !isElectronPowered()) return;
+    // Cancel the default action NOW, synchronously: preventDefault after an
+    // await would be a no-op (the anchor already navigated / opened a tab).
     event.preventDefault();
     event.stopPropagation();
-    void (async () => {
-      const trusted = await isTrustedFleetHostAllowPrompt(
-        new URL(anchor.href),
-        baseUrl,
-      );
-      // Explicit fallback rather than "relying on the default action": the
-      // default action was already cancelled above. Routed through the
-      // onRejectedFallback parameter (not a direct module-internal call) so
-      // tests can inject an observer; ESM internal bindings bypass the
-      // module namespace, making them invisible to vi.spyOn.
-      if (!trusted) {
-        onRejectedFallback(anchor.href);
-        return;
-      }
+    if (staticallyTrusted) {
       openPreview(target);
+      return;
+    }
+    void (async () => {
+      if (pending.has(target.sourceUrl)) return;
+      pending.add(target.sourceUrl);
+      try {
+        const trusted = await askTrustFleetHost(target.sourceUrl);
+        // Explicit fallback rather than "relying on the default action": the
+        // default action was already cancelled above. Routed through the
+        // onRejectedFallback parameter (not a direct module-internal call) so
+        // tests can inject an observer; ESM internal bindings bypass the
+        // module namespace, making them invisible to vi.spyOn.
+        if (!trusted) {
+          onRejectedFallback(target.sourceUrl);
+          return;
+        }
+        openPreview(target);
+      } finally {
+        pending.delete(target.sourceUrl);
+      }
     })();
   };
 }

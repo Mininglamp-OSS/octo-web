@@ -2,7 +2,6 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  openFleetLinkExternal,
   parseFleetIssueLinkShape,
   parseWebhookIssuePreviewTarget,
   trustedFleetHosts,
@@ -10,6 +9,21 @@ import {
 } from "../webhookPreview";
 import APIClient from "../../../Service/APIClient";
 import * as desktopBridge from "../../../electron/desktopBridge";
+
+/** A synthetic `click` (button 0) unless overridden. */
+const clickEvent = (target: Element, overrides: Record<string, unknown> = {}) =>
+  ({
+    target,
+    type: "click",
+    button: 0,
+    preventDefault: vi.fn(),
+    stopPropagation: vi.fn(),
+    ...overrides,
+  }) as any;
+
+/** A synthetic middle-button `auxclick` (button 1) unless overridden. */
+const auxClickEvent = (target: Element, overrides: Record<string, unknown> = {}) =>
+  clickEvent(target, { type: "auxclick", button: 1, ...overrides });
 
 describe("parseWebhookIssuePreviewTarget (structure + static trust gate)", () => {
   it("parses absolute and relative Fleet issue links", () => {
@@ -68,8 +82,8 @@ describe("parseWebhookIssuePreviewTarget (structure + static trust gate)", () =>
   });
 
   it("rejects an unknown host (card path must not open attacker fleet links)", () => {
-    // P1-1 regression: a webhook adaptive-card Action.OpenUrl on an unknown
-    // host must NOT reach the preview (the full parse keeps the trust gate).
+    // Round-1 P1-1 regression: a webhook adaptive-card Action.OpenUrl on an
+    // unknown host must NOT reach the preview (the full parse keeps the gate).
     expect(
       parseWebhookIssuePreviewTarget(
         "https://attacker.example/fleet/a/issues/OPS-9",
@@ -78,9 +92,10 @@ describe("parseWebhookIssuePreviewTarget (structure + static trust gate)", () =>
     ).toBeNull();
   });
 
-  it("rejects a trusted host on a non-default port", () => {
-    // P2-2: trusted-host clause requires a default port; :9999 must fail
-    // even for a static/API-trusted hostname.
+  it("trust keys include the port: a different port on the same hostname is NOT trusted", () => {
+    // Round-3 P1-1: trust is keyed on URL.host (hostname + non-default
+    // port). :9999 must fail even for a static/API-trusted hostname —
+    // otherwise a remembered `x` would silently trust `x:9999`.
     expect(
       parseWebhookIssuePreviewTarget(
         "https://im.deepminer.com.cn:9999/fleet/a/issues/OPS-9"
@@ -94,9 +109,9 @@ describe("parseWebhookIssuePreviewTarget (structure + static trust gate)", () =>
     ).toBeNull();
   });
 
-  it("accepts a trusted host on the default port explicitly", () => {
-    // Note: URL normalizes the explicit :443 into the default port, so the
-    // parsed href drops it; the important assertion is that it is NOT rejected.
+  it("accepts a trusted host with the default port spelled out (normalized away)", () => {
+    // URL normalizes the explicit :443 into the default port, so the parsed
+    // href drops it; the important assertion is that it is NOT rejected.
     expect(
       parseWebhookIssuePreviewTarget(
         "https://im.deepminer.com.cn:443/fleet/a/issues/OPS-9"
@@ -106,6 +121,46 @@ describe("parseWebhookIssuePreviewTarget (structure + static trust gate)", () =>
       issueIdentifier: "OPS-9",
       sourceUrl: "https://im.deepminer.com.cn/fleet/a/issues/OPS-9",
     });
+  });
+
+  it("auto-trusts an API origin on a non-default port — and only that port", () => {
+    // Round-3 P1-1 failure mode B: an on-prem deployment whose API origin
+    // carries a non-default port must get previews for ITS port, while the
+    // same hostname on the default port (or any other port) stays untrusted.
+    const apiURLOf = () =>
+      APIClient.shared.config as unknown as { apiURL: string };
+    const original = apiURLOf().apiURL;
+    apiURLOf().apiURL = "https://onprem.customer.com:8443/api/v1/";
+    try {
+      // the API port itself: trusted
+      expect(
+        parseWebhookIssuePreviewTarget(
+          "https://onprem.customer.com:8443/fleet/a/issues/OPS-9",
+          "https://octo.example/chat"
+        )
+      ).toEqual({
+        workspaceSlug: "a",
+        issueIdentifier: "OPS-9",
+        sourceUrl: "https://onprem.customer.com:8443/fleet/a/issues/OPS-9",
+      });
+      // same hostname, default port: NOT trusted
+      expect(
+        parseWebhookIssuePreviewTarget(
+          "https://onprem.customer.com/fleet/a/issues/OPS-9",
+          "https://octo.example/chat"
+        )
+      ).toBeNull();
+      // same hostname, another port: NOT trusted (a remembered
+      // `onprem.customer.com:8443` must not trust `:9999`)
+      expect(
+        parseWebhookIssuePreviewTarget(
+          "https://onprem.customer.com:9999/fleet/a/issues/OPS-9",
+          "https://octo.example/chat"
+        )
+      ).toBeNull();
+    } finally {
+      apiURLOf().apiURL = original;
+    }
   });
 });
 
@@ -146,7 +201,8 @@ describe("trustedFleetHosts", () => {
   const originalApiURL = apiURLOf().apiURL;
 
   afterEach(() => {
-    // P2-5: restore the mutated apiURL so the suite is order-independent.
+    // Round-3 P2-8: restore the mutated apiURL so the suite is
+    // order-independent.
     apiURLOf().apiURL = originalApiURL;
   });
 
@@ -156,6 +212,17 @@ describe("trustedFleetHosts", () => {
 
   it("includes the current API origin host", () => {
     apiURLOf().apiURL = "https://im-test.deepminer.com.cn/v1/";
+    expect(trustedFleetHosts()).toContain("im-test.deepminer.com.cn");
+  });
+
+  it("keeps a non-default API port as part of the trust key", () => {
+    apiURLOf().apiURL = "https://im-test.deepminer.com.cn:8443/v1/";
+    expect(trustedFleetHosts()).toContain("im-test.deepminer.com.cn:8443");
+    expect(trustedFleetHosts()).not.toContain("im-test.deepminer.com.cn");
+  });
+
+  it("normalizes an explicit default port away", () => {
+    apiURLOf().apiURL = "https://im-test.deepminer.com.cn:443/v1/";
     expect(trustedFleetHosts()).toContain("im-test.deepminer.com.cn");
   });
 
@@ -180,41 +247,39 @@ describe("webhookPreviewClickHandler", () => {
 
   it("opens a trusted Fleet link immediately without prompting", async () => {
     const open = vi.fn();
-    const message = { fromUID: "iwh_hook" } as any;
-    const handler = webhookPreviewClickHandler(message, open)!;
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open
+    )!;
     const anchor = document.createElement("a");
     anchor.href = "https://octo.example/fleet/1/issues/WS-4";
-    const preventDefault = vi.fn();
-    const stopPropagation = vi.fn();
 
-    handler({ target: anchor, button: 0, preventDefault, stopPropagation } as any);
+    const event = clickEvent(anchor);
+    handler(event);
     await vi.waitFor(() => expect(open).toHaveBeenCalled());
     expect(open).toHaveBeenCalledWith({
       workspaceSlug: "1",
       issueIdentifier: "WS-4",
       sourceUrl: "https://octo.example/fleet/1/issues/WS-4",
     });
-    expect(preventDefault).toHaveBeenCalled();
-    expect(stopPropagation).toHaveBeenCalled();
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(event.stopPropagation).toHaveBeenCalled();
   });
 
-  it("opens a static-fallback host link (desktop file://) without prompting", async () => {
+  it("opens a static-fallback host link (same-origin impossible) without prompting", async () => {
     const open = vi.fn();
     const handler = webhookPreviewClickHandler(
       { fromUID: "iwh_hook" } as any,
       open
     )!;
     const anchor = document.createElement("a");
-    // file:// base => same-origin impossible; static host must still pass.
+    // The base here is jsdom's http://localhost, so same-origin can never
+    // match; the static fallback host must still open the preview (this is
+    // the desktop file:// scenario: origin is null there).
     anchor.href = "https://im.deepminer.com.cn/fleet/1/issues/WS-4";
     const preventDefault = vi.fn();
 
-    handler({
-      target: anchor,
-      button: 0,
-      preventDefault,
-      stopPropagation: vi.fn(),
-    } as any);
+    handler(clickEvent(anchor, { preventDefault }));
     await vi.waitFor(() => expect(open).toHaveBeenCalled());
   });
 
@@ -235,12 +300,7 @@ describe("webhookPreviewClickHandler", () => {
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
     const preventDefault = vi.fn();
 
-    handler({
-      target: anchor,
-      button: 0,
-      preventDefault,
-      stopPropagation: vi.fn(),
-    } as any);
+    handler(clickEvent(anchor, { preventDefault }));
     await vi.waitFor(() => expect(open).toHaveBeenCalled());
     expect(ask).toHaveBeenCalled();
     expect(preventDefault).toHaveBeenCalled();
@@ -262,15 +322,10 @@ describe("webhookPreviewClickHandler", () => {
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
     const preventDefault = vi.fn();
-    // P1-2: default action is cancelled synchronously for fleet-shaped links;
-    // on rejection the handler consciously re-opens the link (fallback),
-    // rather than relying on a default that already fired.
-    handler({
-      target: anchor,
-      button: 0,
-      preventDefault,
-      stopPropagation: vi.fn(),
-    } as any);
+    // Round-1 P1-2: default action is cancelled synchronously for
+    // fleet-shaped links; on rejection the handler consciously re-opens the
+    // link (fallback), rather than relying on a default that already fired.
+    handler(clickEvent(anchor, { preventDefault }));
     await vi.waitFor(() => {
       expect(open).not.toHaveBeenCalled();
       expect(fallback).toHaveBeenCalledWith(
@@ -278,6 +333,30 @@ describe("webhookPreviewClickHandler", () => {
       );
     });
     expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it("leaves unknown-host fleet links to the browser default on web (no prompt bridge)", async () => {
+    // Round-3 P2-6: web renderers cannot ask, so an unknown-origin fleet
+    // link must NOT be preventDefault-ed — the anchor's default action (new
+    // tab) is the correct outcome and keeps popup-blocker heuristics happy.
+    const ask = vi.spyOn(desktopBridge, "getElectronIpcBridge");
+    window.__POWERED_ELECTRON__ = false;
+
+    const open = vi.fn();
+    const fallback = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open,
+      fallback
+    )!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
+
+    handler(clickEvent(anchor));
+    await flushAsync();
+    expect(open).not.toHaveBeenCalled();
+    expect(ask).not.toHaveBeenCalled();
+    expect(fallback).not.toHaveBeenCalled();
   });
 
   it("does not prompt for non-fleet links on unknown hosts", async () => {
@@ -291,21 +370,14 @@ describe("webhookPreviewClickHandler", () => {
     )!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/docs/1";
-    const preventDefault = vi.fn();
 
-    handler({
-      target: anchor,
-      button: 0,
-      preventDefault,
-      stopPropagation: vi.fn(),
-    } as any);
+    handler(clickEvent(anchor));
     // Flush the micro/task queue before the negative assertion so a wrongly
     // async continuation would have run (vi.waitFor-style negatives resolve
     // on their first tick and prove nothing).
     await flushAsync();
     expect(open).not.toHaveBeenCalled();
     expect(ask).not.toHaveBeenCalled();
-    expect(preventDefault).not.toHaveBeenCalled();
   });
 
   it("does not intercept right-click (auxclick button 2) — context menu path", async () => {
@@ -317,20 +389,30 @@ describe("webhookPreviewClickHandler", () => {
     )!;
     const anchor = document.createElement("a");
     anchor.href = "https://octo.example/fleet/1/issues/WS-4";
-    const preventDefault = vi.fn();
 
     // auxclick also fires for the secondary button; right-clicking a fleet
     // link (to copy the address) must fall through to the context menu.
-    handler({
-      target: anchor,
-      button: 2,
-      preventDefault,
-      stopPropagation: vi.fn(),
-    } as any);
+    handler(auxClickEvent(anchor, { button: 2 }));
     await flushAsync();
     expect(open).not.toHaveBeenCalled();
     expect(ask).not.toHaveBeenCalled();
-    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("ignores a middle-click's phantom click event (Firefox double dispatch)", async () => {
+    // Firefox dispatches BOTH click(button=1) and auxclick(button=1) for a
+    // middle click. Only the auxclick leg may act, so a single gesture opens
+    // exactly one preview.
+    const open = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open
+    )!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://octo.example/fleet/1/issues/WS-4";
+
+    handler(clickEvent(anchor, { button: 1 }));
+    await flushAsync();
+    expect(open).not.toHaveBeenCalled();
   });
 
   it("does not intercept body text, unrelated links, or non-webhook messages", async () => {
@@ -338,15 +420,9 @@ describe("webhookPreviewClickHandler", () => {
     const body = document.createElement("div");
     const unrelated = document.createElement("a");
     unrelated.href = "https://example.com/docs/1";
-    const event = (target: Element) => ({
-      target,
-      button: 0,
-      preventDefault: vi.fn(),
-      stopPropagation: vi.fn(),
-    }) as any;
 
-    webhookPreviewClickHandler({ fromUID: "iwh_hook" } as any, open)!(event(body));
-    webhookPreviewClickHandler({ fromUID: "iwh_hook" } as any, open)!(event(unrelated));
+    webhookPreviewClickHandler({ fromUID: "iwh_hook" } as any, open)!(clickEvent(body));
+    webhookPreviewClickHandler({ fromUID: "iwh_hook" } as any, open)!(clickEvent(unrelated));
     expect(webhookPreviewClickHandler({ fromUID: "user" } as any, open)).toBeUndefined();
     await flushAsync();
     expect(open).not.toHaveBeenCalled();
@@ -360,26 +436,20 @@ describe("webhookPreviewClickHandler", () => {
     )!;
     const anchor = document.createElement("a");
     anchor.href = "https://octo.example/fleet/1/issues/WS-4";
-    const preventDefault = vi.fn();
-    const stopPropagation = vi.fn();
 
-    handler({
-      target: anchor,
-      button: 1, // middle button
-      preventDefault,
-      stopPropagation,
-    } as any);
+    const event = auxClickEvent(anchor);
+    handler(event);
     await vi.waitFor(() => expect(open).toHaveBeenCalled());
     expect(open).toHaveBeenCalledWith({
       workspaceSlug: "1",
       issueIdentifier: "WS-4",
       sourceUrl: "https://octo.example/fleet/1/issues/WS-4",
     });
-    expect(preventDefault).toHaveBeenCalled();
-    expect(stopPropagation).toHaveBeenCalled();
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(event.stopPropagation).toHaveBeenCalled();
   });
 
-  it("does not intercept middle-click on non-fleet or unknown links", async () => {
+  it("does not intercept middle-click on non-fleet links", async () => {
     const open = vi.fn();
     const handler = webhookPreviewClickHandler(
       { fromUID: "iwh_hook" } as any,
@@ -389,15 +459,48 @@ describe("webhookPreviewClickHandler", () => {
     unrelated.href = "https://example.com/docs/1";
     const preventDefault = vi.fn();
 
-    handler({
-      target: unrelated,
-      button: 1,
-      preventDefault,
-      stopPropagation: vi.fn(),
-    } as any);
-    // Flush before the negative assertion (see the button-0 variant above).
+    handler(auxClickEvent(unrelated, { preventDefault }));
+    // Flush before the negative assertion (see the click variant above).
     await flushAsync();
     expect(open).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("fans out exactly one prompt for repeated clicks while trust is pending", async () => {
+    // Round-3 P2-4: a link whose trust prompt is still in flight must not
+    // queue a second prompt / preview / fallback tab on re-click.
+    let resolveAsk: (v: { trusted: boolean }) => void = () => {};
+    const invoke = vi.fn().mockImplementation(
+      () => new Promise<{ trusted: boolean }>((r) => (resolveAsk = r))
+    );
+    vi.spyOn(desktopBridge, "getElectronIpcBridge").mockReturnValue({
+      invoke,
+    } as any);
+    window.__POWERED_ELECTRON__ = true;
+
+    const open = vi.fn();
+    const fallback = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open,
+      fallback
+    )!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
+
+    handler(clickEvent(anchor));
+    handler(clickEvent(anchor)); // still pending: must be a no-op
+    handler(clickEvent(anchor)); // ditto
+    await flushAsync();
+    expect(invoke).toHaveBeenCalledTimes(1);
+
+    resolveAsk({ trusted: true });
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    expect(fallback).not.toHaveBeenCalled();
+
+    // After the prompt resolved the in-flight guard is released: a later
+    // click prompts again (and the main-process cache makes it cheap).
+    handler(clickEvent(anchor));
+    await vi.waitFor(() => expect(invoke).toHaveBeenCalledTimes(2));
   });
 });
