@@ -168,6 +168,9 @@ describe("trustedFleetHosts", () => {
 });
 
 describe("webhookPreviewClickHandler", () => {
+  const flushAsync = () =>
+    new Promise<void>((resolve) => setTimeout(resolve, 0));
+
   beforeEach(() => {
     vi.restoreAllMocks();
     (APIClient.shared.config as unknown as { apiURL: string }).apiURL =
@@ -184,7 +187,7 @@ describe("webhookPreviewClickHandler", () => {
     const preventDefault = vi.fn();
     const stopPropagation = vi.fn();
 
-    handler({ target: anchor, preventDefault, stopPropagation } as any);
+    handler({ target: anchor, button: 0, preventDefault, stopPropagation } as any);
     await vi.waitFor(() => expect(open).toHaveBeenCalled());
     expect(open).toHaveBeenCalledWith({
       workspaceSlug: "1",
@@ -208,6 +211,7 @@ describe("webhookPreviewClickHandler", () => {
 
     handler({
       target: anchor,
+      button: 0,
       preventDefault,
       stopPropagation: vi.fn(),
     } as any);
@@ -233,6 +237,7 @@ describe("webhookPreviewClickHandler", () => {
 
     handler({
       target: anchor,
+      button: 0,
       preventDefault,
       stopPropagation: vi.fn(),
     } as any);
@@ -262,6 +267,7 @@ describe("webhookPreviewClickHandler", () => {
     // rather than relying on a default that already fired.
     handler({
       target: anchor,
+      button: 0,
       preventDefault,
       stopPropagation: vi.fn(),
     } as any);
@@ -289,21 +295,52 @@ describe("webhookPreviewClickHandler", () => {
 
     handler({
       target: anchor,
+      button: 0,
       preventDefault,
       stopPropagation: vi.fn(),
     } as any);
-    await vi.waitFor(() => expect(open).not.toHaveBeenCalled());
+    // Flush the micro/task queue before the negative assertion so a wrongly
+    // async continuation would have run (vi.waitFor-style negatives resolve
+    // on their first tick and prove nothing).
+    await flushAsync();
+    expect(open).not.toHaveBeenCalled();
     expect(ask).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
   });
 
-  it("does not intercept body text, unrelated links, or non-webhook messages", () => {
+  it("does not intercept right-click (auxclick button 2) — context menu path", async () => {
+    const ask = vi.spyOn(desktopBridge, "getElectronIpcBridge");
+    const open = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open
+    )!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://octo.example/fleet/1/issues/WS-4";
+    const preventDefault = vi.fn();
+
+    // auxclick also fires for the secondary button; right-clicking a fleet
+    // link (to copy the address) must fall through to the context menu.
+    handler({
+      target: anchor,
+      button: 2,
+      preventDefault,
+      stopPropagation: vi.fn(),
+    } as any);
+    await flushAsync();
+    expect(open).not.toHaveBeenCalled();
+    expect(ask).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("does not intercept body text, unrelated links, or non-webhook messages", async () => {
     const open = vi.fn();
     const body = document.createElement("div");
     const unrelated = document.createElement("a");
     unrelated.href = "https://example.com/docs/1";
     const event = (target: Element) => ({
       target,
+      button: 0,
       preventDefault: vi.fn(),
       stopPropagation: vi.fn(),
     }) as any;
@@ -311,6 +348,7 @@ describe("webhookPreviewClickHandler", () => {
     webhookPreviewClickHandler({ fromUID: "iwh_hook" } as any, open)!(event(body));
     webhookPreviewClickHandler({ fromUID: "iwh_hook" } as any, open)!(event(unrelated));
     expect(webhookPreviewClickHandler({ fromUID: "user" } as any, open)).toBeUndefined();
+    await flushAsync();
     expect(open).not.toHaveBeenCalled();
   });
 
@@ -357,7 +395,9 @@ describe("webhookPreviewClickHandler", () => {
       preventDefault,
       stopPropagation: vi.fn(),
     } as any);
-    await vi.waitFor(() => expect(open).not.toHaveBeenCalled());
+    // Flush before the negative assertion (see the button-0 variant above).
+    await flushAsync();
+    expect(open).not.toHaveBeenCalled();
     expect(preventDefault).not.toHaveBeenCalled();
   });
 });

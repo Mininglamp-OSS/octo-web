@@ -193,6 +193,13 @@ export class TextCell extends MessageCell {
                 isSelected: selectable && !!message.checked,
                 onSelect: selectable ? (selected) => context.checkeMessage(message.message, selected) : undefined,
             })
+            // One handler reference shared by click and auxclick (the handler
+            // gates on event.button internally): avoids a per-render double
+            // allocation and keeps the two paths provably identical.
+            const onBodyLinkClick = webhookPreviewClickHandler(
+                message,
+                context.openWebhookPreview?.bind(context)
+            )
 
             return (
                 <MessageRow 
@@ -201,14 +208,8 @@ export class TextCell extends MessageCell {
                     isActive={context.isContextMenuOpen(message.message)}
                     onAvatarClick={(e) => context.onTapAvatar(message.fromUID, e)}
                     onSenderNameClick={() => context.showUser(message.fromUID)}
-                    onBodyClick={webhookPreviewClickHandler(
-                        message,
-                        context.openWebhookPreview?.bind(context)
-                    )}
-                    onBodyAuxClick={webhookPreviewClickHandler(
-                        message,
-                        context.openWebhookPreview?.bind(context)
-                    )}
+                    onBodyClick={onBodyLinkClick}
+                    onBodyAuxClick={onBodyLinkClick}
                 >
                     <div>
                         {message?.content?.reply && (
