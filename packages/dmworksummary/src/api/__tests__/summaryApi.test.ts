@@ -418,6 +418,21 @@ describe('summaryApi', () => {
             expect(res).toEqual({ reply: '总结如下…', session_id: 's-1' });
         });
 
+        it('surfaces run_id + passes request_id through (SS-11 v2 contract)', async () => {
+            const { agentChat } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                data: { code: 0, data: { reply: 'r', session_id: 's-1', run_id: 'run-xyz' } },
+            });
+            const res = await agentChat({ message: 'q', session_id: 's-1', request_id: 'req-9' });
+            // request_id flows through in the posted body (idempotency key).
+            expect(mockPost).toHaveBeenCalledWith(
+                '/summary/api/v1/agent/chat',
+                { message: 'q', session_id: 's-1', request_id: 'req-9' },
+                { timeout: 120000 },
+            );
+            expect(res).toEqual({ reply: 'r', session_id: 's-1', run_id: 'run-xyz' });
+        });
+
         it('throws on non-zero envelope code (no silent success)', async () => {
             const { agentChat } = await import('../summaryApi');
             mockPost.mockResolvedValueOnce({
@@ -490,6 +505,52 @@ describe('summaryApi', () => {
             expect(started).toHaveLength(1);
             expect(started[0][1]).toMatchObject({ trigger_mode: 'agent' });
             track.mockRestore();
+        });
+
+        it('returns finish_status + gaps when the v2 backend provides them (SS-11)', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                data: {
+                    code: 0,
+                    data: {
+                        task_id: 5, task_no: 'n5', status: 1, created_at: 'x',
+                        finish_status: 'PARTIAL',
+                        gaps: [{ kind: 'coverage', detail: '频道 X 未覆盖', error_code: 'COV_MISS' }],
+                    },
+                },
+            });
+            const res = await createAgentSummary({} as any, {});
+            expect(res.task_id).toBe(5);
+            expect(res.finish_status).toBe('PARTIAL');
+            expect(res.gaps).toEqual([{ kind: 'coverage', detail: '频道 X 未覆盖', error_code: 'COV_MISS' }]);
+            track.mockRestore();
+        });
+
+        it('omits finish_status/gaps for a legacy backend (SS-11 back-compat)', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { code: 0, data: { task_id: 6, task_no: 'n6', status: 1, created_at: 'x' } } });
+            const res = await createAgentSummary({} as any, {});
+            expect(res.task_id).toBe(6);
+            expect(res.finish_status).toBeUndefined();
+            expect(res.gaps).toBeUndefined();
+            track.mockRestore();
+        });
+
+        it('propagates 422/42200 FAILED with the code accessible (SS-07b/SS-11)', async () => {
+            const { createAgentSummary } = await import('../summaryApi');
+            // A FAILED verdict is HTTP 422 → axios rejects; the caller keeps the chat
+            // open and must be able to read err.response.data.code === 42200.
+            const axiosErr = Object.assign(new Error('failed'), {
+                response: { status: 422, data: { code: 42200, message: '总结未通过完成校验（FAILED），未保存' } },
+            });
+            mockPost.mockRejectedValueOnce(axiosErr);
+            await expect(createAgentSummary({} as any, {})).rejects.toMatchObject({
+                response: { data: { code: 42200 } },
+            });
         });
 
         it('agent mode does NOT emit on business failure (code!==0)', async () => {

@@ -10,6 +10,7 @@ import type {
     ChatCandidate,
     CreateSummaryParams,
     CreateAgentSummaryParams,
+    CreateAgentSummaryResult,
     CreateScheduleParams,
     CustomTopicTemplatePayload,
     InferResult,
@@ -339,7 +340,7 @@ export async function createSummary(
 export async function createAgentSummary(
     params: CreateAgentSummaryParams,
     trackProps: Record<string, unknown> = {},
-): Promise<{ task_id: number; task_no: string; status: number; created_at: string }> {
+): Promise<CreateAgentSummaryResult> {
     const resp = await summaryAxios.post(`${BASE}/summaries/agent`, params);
     const envelopeCode = resp.data?.code;
     // 七审 P1:与 trackOnEnvelopeSuccess 同口径,严格 code===0 才算成功。
@@ -359,9 +360,7 @@ export async function createAgentSummary(
     // 故只从 data 取;此前的 `?? resp.data` 回退是给「无信封裸响应」用的,而那正是 code===undefined 的情形,
     // 已在上面 :350 rejected —— 回退再也走不到(裸响应没有 task_id,反而会在下面 :361 抛),留着只会
     // 误导「仍支持裸响应」。去掉,语义与实际行为一致。
-    const data = resp.data?.data as {
-        task_id: number; task_no: string; status: number; created_at: string;
-    } | undefined;
+    const data = resp.data?.data as CreateAgentSummaryResult | undefined;
     if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
         // 后端返成功但 task_id 缺失/非法 —— 视为保存失败,不能清 chat
         throw new Error(resp.data?.message || 'create agent summary returned no task_id');
@@ -389,7 +388,8 @@ export async function agentChat(params: AgentChatParams): Promise<AgentChatResul
         if (!data?.reply) {
             throw new Error(resp.data?.message || 'agent chat failed');
         }
-        return { reply: data.reply, session_id: data.session_id };
+        // SS-11: surface run_id when present (V2 on); omitted by legacy backend.
+        return { reply: data.reply, session_id: data.session_id, run_id: data.run_id };
     } catch (err) {
         if (axios.isCancel(err)) throw err;
         if (err instanceof Error) throw err;

@@ -79,11 +79,15 @@ function userToChannelInfo(u: MockUserSeed): ChannelInfo {
   return info;
 }
 
-function toConversation(c: MockConversationSeed): Conversation {
+function toConversation(c: MockConversationSeed, messages: MockMessageSeed[]): Conversation {
   const conv = new Conversation();
   conv.channel = new Channel(c.channelId, c.channelType);
   conv.unread = c.unread ?? 0;
   conv.timestamp = c.timestamp ?? 0;
+  const lastMessage = messages
+    .filter((message) => message.channelId === c.channelId && message.channelType === c.channelType)
+    .sort((a, b) => b.messageSeq - a.messageSeq)[0];
+  if (lastMessage) conv.lastMessage = toMessage(lastMessage);
   (conv as any).extra = {
     top: c.stick ?? 0,
     categoryId: c.categoryId ?? null,
@@ -149,7 +153,8 @@ export function installFakeProvider(seed: MockSeed): void {
   // 3. 覆盖 provider 全部 callback
   const provider = sdk.config.provider;
 
-  provider.syncConversationsCallback = async () => seed.conversations.map(toConversation);
+  provider.syncConversationsCallback = async () =>
+    seed.conversations.map((conversation) => toConversation(conversation, seed.messages ?? []));
 
   provider.syncConversationExtrasCallback = async () => [];
 

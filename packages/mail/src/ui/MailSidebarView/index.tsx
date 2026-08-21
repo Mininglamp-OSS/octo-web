@@ -42,6 +42,21 @@ export interface MailSidebarViewProps {
   onSelectAgentMailbox: (mailbox: AgentMailbox) => void;
 }
 
+const emptyMailboxNavigation: Mailbox[] = [
+  { id: "empty-inbox", name: "Inbox", role: "inbox", total: 0, unread: 0 },
+  {
+    id: "empty-starred",
+    name: "Starred",
+    role: "starred",
+    total: 0,
+    unread: 0,
+  },
+  { id: "empty-drafts", name: "Drafts", role: "drafts", total: 0, unread: 0 },
+  { id: "empty-sent", name: "Sent", role: "sent", total: 0, unread: 0 },
+  { id: "empty-trash", name: "Trash", role: "trash", total: 0, unread: 0 },
+  { id: "empty-junk", name: "Junk", role: "junk", total: 0, unread: 0 },
+];
+
 function mailboxIcon(mailbox: Mailbox) {
   switch (inferMailboxRole(mailbox)) {
     case "inbox":
@@ -83,6 +98,14 @@ export default function MailSidebarView(props: MailSidebarViewProps) {
   const visibleMailboxes = mailboxes.filter(
     (mailbox) => inferMailboxRole(mailbox) !== "archive"
   );
+  const showEmptyMailboxNavigation =
+    !loading &&
+    !error &&
+    props.agentMailboxes.length === 0 &&
+    visibleMailboxes.length === 0;
+  const mailboxNavigation = showEmptyMailboxNavigation
+    ? emptyMailboxNavigation
+    : visibleMailboxes;
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
   const selectedAddress =
@@ -254,10 +277,11 @@ export default function MailSidebarView(props: MailSidebarViewProps) {
             </div>
           ) : null}
           {!loading && !error
-            ? visibleMailboxes.map((mailbox) => (
+            ? mailboxNavigation.map((mailbox) => (
                 <button
                   key={mailbox.id}
                   type="button"
+                  disabled={showEmptyMailboxNavigation}
                   className={
                     !props.addressManagementActive &&
                     mailbox.name === props.selectedMailbox

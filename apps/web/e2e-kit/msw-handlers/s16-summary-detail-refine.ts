@@ -99,7 +99,10 @@ export async function registerS16SummaryDetailRefine(page: Page): Promise<void> 
             "cache-control": "no-cache",
           },
         });
-      })
+      }),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
+      )
     );
   });
 }

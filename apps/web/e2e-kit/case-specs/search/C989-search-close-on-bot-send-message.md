@@ -5,8 +5,8 @@
 - Case 类型: feature flow
 - 目标模式: real-page seed
 - 登录状态: authed fixture
-- 优先级: P1 (回归守护 — 守护 issue #989 fix 不回退)
-- Tag: `@C989 @p1 @chat @chat-search @bot-detail`
+- 优先级: P0 (阻断 — 守护 issue #989 fix 不回退)
+- Tag: `@C989 @p0 @chat @chat-search @bot-detail`
 
 ## 目标
 

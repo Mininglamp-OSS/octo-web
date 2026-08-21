@@ -1,6 +1,6 @@
-# e2e MR gate: build once, run @p0 + @visual cases, junit 后处理判 business vs visual fail
+# e2e PR gate: build once, run the full Playwright suite, junit 后处理判 business vs visual fail
 # 姿势沿用 e2e-kit v0.4 依据 (docs/methodology/module-organization.md tag 层次):
-#   - @p0 阻断 (fail block PR)
+#   - 全量业务 case 阻断 (fail block PR)
 #   - @visual 视觉基线 (visual-only fail 不 block, 由 baseline update workflow 刷新)
 
 name: e2e
@@ -68,15 +68,15 @@ jobs:
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
-      - name: Run @p0 + @visual e2e
+      - name: Run full e2e suite
         working-directory: apps/web
         shell: bash
         run: |
-          E2E_LOG="e2e-kit/playwright-report/e2e-p0-visual.log"
+          E2E_LOG="e2e-kit/playwright-report/e2e-all.log"
           mkdir -p "$(dirname "$E2E_LOG")"
 
           set +e
-          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts --grep "@p0|@visual" 2>&1 | tee "$E2E_LOG"
+          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts 2>&1 | tee "$E2E_LOG"
           PW_EXIT=${PIPESTATUS[0]}
           set -e
 
@@ -102,7 +102,7 @@ jobs:
           PROXY_ERRORS=$(grep -c "http proxy error:" "$E2E_LOG" || true)
           echo ""
           echo "═════════════════════════════════════════════════════════════"
-          echo "📊 e2e @p0/@visual summary (playwright exit=$PW_EXIT):"
+          echo "📊 e2e full-suite summary (playwright exit=$PW_EXIT):"
           echo "   total tests:   $TOTAL_TESTS"
           echo "   total fail:    $TOTAL_FAIL"
           echo "   business fail: $BUSINESS_FAIL"
@@ -118,22 +118,19 @@ jobs:
 
           # 判定顺序 (fail-closed, PW_EXIT 检查在 visual allow 之前避免掩盖 crash):
           #  1. tests=0 → webServer / playwright 挂了根本没跑, block
-          #  2. tests < EXPECTED_TOTAL → 有 case 静默掉了 @p0/@visual tag / grep 漂了, block
+          #  2. tests < MIN_TESTS → test discovery unexpectedly narrowed, block
           #  3. skipped>0 → 有 case 没真执行, block
           #  4. Vite proxy error → MSW 漏 mock, case 虽过也是假绿, block
           #  5. 有业务 fail (含 @p0+@visual 交叉 case) → block
           #  6. PW_EXIT!=0 但 junit 无 business fail → playwright 本身 crash/OOM/timeout, block
           #  7. 仅视觉 fail (无 @p0 交叉) 且 playwright 干净退出 → allow
           #  8. 全绿 → success
-          EXPECTED_P0=6
-          EXPECTED_VISUAL=0
-          EXPECTED_TOTAL=$((EXPECTED_P0 + EXPECTED_VISUAL))
+          MIN_TESTS=80
           if [[ "$TOTAL_TESTS" -eq 0 ]]; then
             echo "❌ tests=0 (playwright 没跑起 test, 通常是 preview server timeout), block PR"
             exit 1
-          elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_TOTAL" ]]; then
-            echo "❌ tests=$TOTAL_TESTS < EXPECTED_TOTAL=$EXPECTED_TOTAL (有 case 掉了 @p0/@visual tag 或 grep 漂了), block PR"
-            echo "   若确认增减 gated case, 请同步调整 EXPECTED_P0 / EXPECTED_VISUAL."
+          elif [[ "$TOTAL_TESTS" -lt "$MIN_TESTS" ]]; then
+            echo "❌ tests=$TOTAL_TESTS < MIN_TESTS=$MIN_TESTS (全量 suite discovery 缩小), block PR"
             exit 1
           elif [[ "$SKIPPED" -gt 0 ]]; then
             echo "❌ skipped=$SKIPPED (有 case 没真执行), block PR"
@@ -162,7 +159,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-p0
+          name: playwright-report-all
           path: |
             apps/web/e2e-kit/playwright-report/
             apps/web/e2e-kit/test-results/

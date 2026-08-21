@@ -23,6 +23,7 @@ const REPORT_DIR = path.resolve(__dirname, "playwright-report", REPORT_STAMP);
 
 export default defineConfig({
   testDir: "./tests",
+  forbidOnly: Boolean(process.env.CI),
   fullyParallel: false,
   workers: 1,
   retries: 0,

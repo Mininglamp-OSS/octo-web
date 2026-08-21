@@ -1,7 +1,7 @@
 /* eslint-disable no-undef */
-// spec: apps/web/e2e-kit/case-specs/TES8-profile-online-status.md
-import { test, expect } from "../fixtures-authed";
-import { installMockImRuntime } from "../_kit/mock-im-runtime";
+// spec: apps/web/e2e-kit/case-specs/chat/profile/TES8-profile-online-status.md
+import { test, expect } from "../../../fixtures-authed";
+import { installMockImRuntime } from "../../../_kit/mock-im-runtime";
 
 const HUMAN_ONLINE_UID = "tes8-human-online";
 const HUMAN_OFFLINE_UID = "tes8-human-offline";

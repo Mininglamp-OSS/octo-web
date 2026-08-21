@@ -4,7 +4,7 @@ import { sanitizeShellSpaceId } from "@octo/base/src/Utils/spaceId";
 import MailService from "../Service/MailService";
 import type { AgentMailbox, AgentOutboundMode } from "../bridge/types";
 import { resolveAgentMailboxBotNames } from "../bridge/agentIdentity";
-import { getErrorMessage } from "../utils";
+import { getErrorMessage, isValidAgentMailboxLocalpart } from "../utils";
 import MailAddressManagementView from "../ui/MailAddressManagementView";
 import MailRuleManagementFeature from "./MailRuleManagementFeature";
 import MailRecordsFeature from "./MailRecordsFeature";
@@ -47,7 +47,10 @@ export default function MailAddressManagementFeature() {
   const setupPromptCopyRevisionRef = useRef(0);
   const mailboxContext = useAgentMailboxContext();
 
-  const reload = useCallback(() => setRevision((value) => value + 1), []);
+  const reload = useCallback(() => {
+    setRevision((value) => value + 1);
+    WKApp.mittBus.emit("mail-refresh" as never);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -120,7 +123,7 @@ export default function MailAddressManagementFeature() {
 
   const create = async () => {
     if (
-      !localpart.trim() ||
+      !isValidAgentMailboxLocalpart(localpart) ||
       !domain ||
       maxMailboxes === null ||
       submitting ||
