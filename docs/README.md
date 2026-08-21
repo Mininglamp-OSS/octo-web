@@ -7,6 +7,8 @@ This directory contains development guides and implementation notes for Octo Web
 - [`new-module-development-guide.md`](./new-module-development-guide.md) — required reading before adding a new business page,
   module, route entry, feature flow, or structured module migration. It defines the pre-work checklist, module layout,
   Service boundary, UI/data split, route rules, i18n/Story requirements, and PR acceptance checklist.
+- [`octo-ui-adoption-guide.md`](./octo-ui-adoption-guide.md) — guide for adding shared components to `@octo/ui` and
+  gradually replacing Semi, `dmworkbase`, and wk-style shared UI usage.
 - [`i18n-agent-guide.md`](./i18n-agent-guide.md) — required reading before changing user-visible copy or multilingual UI behavior.
 
 ## Implementation Notes

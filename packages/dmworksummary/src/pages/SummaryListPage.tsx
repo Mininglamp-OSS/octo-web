@@ -1,7 +1,7 @@
+import { Button, Dropdown } from "@octo/ui";
 import React, { Component } from "react";
 import {
-    Button,
-    Dropdown,
+    SplitButtonGroup,
     Spin,
     Toast,
     Banner,

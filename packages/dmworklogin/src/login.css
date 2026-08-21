@@ -440,7 +440,7 @@
     margin-top: 20px;
 }
 
-.wk-login-panel .wk-login-content-form-ok.semi-button {
+.wk-login-panel .wk-login-content-form-ok.octo-ui-button {
     width: 100%;
     border-radius: 10px;
     font-size: 15px;
@@ -848,7 +848,7 @@
     margin-bottom: 0 !important;
 }
 
-.wk-login-panel .wk-login-content-form-code-btn.semi-button {
+.wk-login-panel .wk-login-content-form-code-btn.octo-ui-button {
     min-width: 96px;
     white-space: nowrap;
     height: 46px;
@@ -1084,7 +1084,7 @@
 .wk-login-content-sso-divider::before { left: 0; }
 .wk-login-content-sso-divider::after { right: 0; }
 .wk-login-content-sso-divider span { background: #fff; padding: 0 8px; }
-.wk-login-panel .wk-login-content-sso-btn.semi-button {
+.wk-login-panel .wk-login-content-sso-btn.octo-ui-button {
     width: 100%;
     height: 46px;
     border-radius: 10px;
@@ -1095,14 +1095,13 @@
     background: #5b5be5;
     color: #fff;
 }
-.wk-login-panel .wk-login-content-sso-btn.semi-button:hover,
-.wk-login-panel .wk-login-content-sso-btn.semi-button:focus {
+.wk-login-panel .wk-login-content-sso-btn.octo-ui-button:hover,
+.wk-login-panel .wk-login-content-sso-btn.octo-ui-button:focus {
     background: #4848d4;
     border-color: #4848d4;
     color: #fff;
 }
-.wk-login-panel .wk-login-content-sso-btn.semi-button .semi-button-content,
-.wk-login-panel .wk-login-content-sso-btn.semi-button span {
+.wk-login-panel .wk-login-content-sso-btn.octo-ui-button span {
     color: #fff;
 }
 .wk-login-content-sso-btn-icon {
@@ -1111,7 +1110,7 @@
     color: #fff;
 }
 @media (max-width: 480px) {
-    .wk-login-content-sso-btn.semi-button {
+    .wk-login-content-sso-btn.octo-ui-button {
         height: 48px !important;
     }
 }
@@ -1135,7 +1134,7 @@
 }
 
 /* ---- SSO-first layout ---- */
-.wk-login-panel .wk-login-content-sso-primary.semi-button {
+.wk-login-panel .wk-login-content-sso-primary.octo-ui-button {
     width: 100%;
     height: 56px;
     margin-top: 16px;
@@ -1149,14 +1148,13 @@
     box-shadow: 0 var(--wk-sp-1) calc(var(--wk-sp-3) + var(--wk-sp-0-5)) var(--wk-sso-accent-shadow);
     transition: all 0.2s;
 }
-.wk-login-panel .wk-login-content-sso-primary.semi-button:hover,
-.wk-login-panel .wk-login-content-sso-primary.semi-button:focus {
+.wk-login-panel .wk-login-content-sso-primary.octo-ui-button:hover,
+.wk-login-panel .wk-login-content-sso-primary.octo-ui-button:focus {
     background: linear-gradient(135deg, var(--wk-sso-accent) 0%, var(--wk-sso-accent-strong) 100%);
     box-shadow: 0 var(--wk-sp-1-5) calc(var(--wk-sp-4) + var(--wk-sp-0-5)) var(--wk-sso-accent-shadow-hover);
     transform: translateY(-1px);
 }
-.wk-login-panel .wk-login-content-sso-primary.semi-button .semi-button-content,
-.wk-login-panel .wk-login-content-sso-primary.semi-button span {
+.wk-login-panel .wk-login-content-sso-primary.octo-ui-button span {
     color: var(--semi-color-white, #fff);
 }
 .wk-login-content-sso-primary-inner {

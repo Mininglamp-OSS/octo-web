@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { Switch } from "@douyinfe/semi-ui";
+import { Switch } from "@octo/ui";
+import "@octo/ui/styles.css";
 import "@octo/base/src/theme/tokens.css";
 import "./style.css";
 import {

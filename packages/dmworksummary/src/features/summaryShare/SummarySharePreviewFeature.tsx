@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useState } from "react";
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Spin } from "@douyinfe/semi-ui";
 import { IconClose } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import { getSummaryShare } from "../../api/summaryApi";

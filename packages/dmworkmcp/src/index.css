@@ -1353,7 +1353,7 @@
 /* ═══ Create form (redesigned) ═════════════════════════════════════════════
    Single-column, section-card layout — mirrors the density of SpaceCreate /
    WebhookEditModal but scales to a longer form via clearly demarcated cards.
-   Uses only WKInput / WKButton / Semi Select+TextArea (no new dependencies).
+   Uses only shared form controls / Semi Select+TextArea (no new dependencies).
    ═══════════════════════════════════════════════════════════════════════════ */
 
 .wk-mcp-form {

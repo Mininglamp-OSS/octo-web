@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component, useState, useEffect, useRef } from "react";
-import { Button, Select, Spin, Toast } from '@douyinfe/semi-ui';
+import { Select, Spin, Toast } from '@douyinfe/semi-ui';
 // 不引入特定渠道 icon (Mail / Phone 都不准确, Aegis 同时支持邮箱和手机号).
 // 主按钮纯文字, 避免锁定到任意一种登录方式让用户产生 "我没邮箱不能登" 的误判.
 import './login.css'

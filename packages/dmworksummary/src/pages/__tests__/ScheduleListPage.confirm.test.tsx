@@ -11,14 +11,19 @@ vi.mock('wukongimjssdk', () => ({
 vi.mock('@douyinfe/semi-ui', () => {
     const Passthrough = ({ children }: any) => children ?? null;
     return {
-        Button: Passthrough,
         Spin: Passthrough,
         Modal: Passthrough,
-        Switch: Passthrough,
         Popconfirm: Passthrough,
         Tag: Passthrough,
         Banner: Passthrough,
         Toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
+    };
+});
+vi.mock('@octo/ui', () => {
+    const Passthrough = ({ children }: any) => children ?? null;
+    return {
+        Button: Passthrough,
+        Switch: Passthrough,
     };
 });
 vi.mock('@douyinfe/semi-icons', () => ({

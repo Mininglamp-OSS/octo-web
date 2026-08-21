@@ -1,5 +1,6 @@
+import { Button, Dropdown } from "@octo/ui";
 import React, { Component, createRef } from 'react';
-import { Modal, Toast, Tag, Button, Dropdown, SplitButtonGroup } from '@douyinfe/semi-ui';
+import { Modal, Toast, Tag, SplitButtonGroup } from '@douyinfe/semi-ui';
 import { IconPlus, IconClock, IconChevronDown } from '@douyinfe/semi-icons';
 import { WKApp, I18nContext } from '@octo/base';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
@@ -723,7 +724,7 @@ export default class ChatSummaryNewModal extends Component<
                     {!isAgent && (
                         <Button
                             theme="solid"
-                            size="default"
+                            size="sm"
                             loading={anySubmitting}
                             disabled={!canSubmit}
                             onClick={this.handlePrimaryClick}
@@ -753,9 +754,10 @@ export default class ChatSummaryNewModal extends Component<
                     >
                         <Button
                             theme="solid"
-                            size="default"
+                            size="sm"
                             disabled={anySubmitting}
                             icon={<IconChevronDown />}
+                            iconOnly
                             aria-label={t('summary.create.switchMode')}
                         />
                     </Dropdown>

@@ -1,15 +1,6 @@
+import { Button, Dropdown } from "@octo/ui";
 import React, { Component } from "react";
-import {
-    Button,
-    Spin,
-    Toast,
-    Banner,
-    Tag,
-    Modal,
-    Popconfirm,
-    Tooltip,
-    Dropdown,
-} from "@douyinfe/semi-ui";
+import { Spin, Toast, Banner, Tag, Modal, Popconfirm, Tooltip } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
 import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";
@@ -3787,7 +3778,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div style={{ padding: "12px 16px", borderTop: "1px solid var(--semi-color-border)" }}>
                             <Button
                                 theme="solid"
-                                block
+                                className="summary-detail-add-member-confirm"
                                 loading={this.state.addingMember}
                                 onClick={async () => {
                                     const userIds = selectedItems.map((s: any) => s.uid).filter(Boolean);

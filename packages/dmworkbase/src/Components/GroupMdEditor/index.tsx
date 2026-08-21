@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react";
-import { Button, Spin } from "@douyinfe/semi-ui";
+import { Spin } from "@douyinfe/semi-ui";
 import { Toast } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk";
 import WKApp from "../../App";

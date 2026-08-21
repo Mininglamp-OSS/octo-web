@@ -1,0 +1,61 @@
+.octo-ui-dropdown {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex-direction: column;
+  min-width: var(--octo-ui-dropdown-min-width);
+  max-width: var(--octo-ui-dropdown-max-width);
+  padding: var(--octo-ui-dropdown-padding);
+  border-radius: var(--octo-ui-dropdown-radius);
+  background: var(--octo-ui-dropdown-bg);
+  box-shadow: var(--octo-ui-dropdown-shadow);
+  color: var(--octo-ui-dropdown-text);
+  font-family: var(--octo-ui-font-sans);
+}
+
+.octo-ui-dropdown-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--octo-ui-dropdown-menu-gap);
+  margin: 0;
+  min-width: 0;
+  outline: none;
+  padding: 0;
+  list-style: none;
+}
+
+.octo-ui-dropdown-menu--scrollable {
+  max-height: var(--octo-ui-dropdown-menu-max-height);
+  overflow-y: auto;
+}
+
+.octo-ui-dropdown-item-shell {
+  display: block;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  outline: none;
+}
+
+.octo-ui-dropdown-item-shell:focus-visible > .octo-ui-menu-item:not(:disabled) {
+  background: var(--octo-ui-menu-item-hover-bg);
+  box-shadow: inset 0 0 0 2px var(--octo-ui-focus-ring);
+}
+
+.octo-ui-dropdown-item-shell:focus-visible > .octo-ui-menu-item--compact:not(:disabled) {
+  background: var(--octo-ui-menu-item-compact-hover-bg);
+}
+
+.octo-ui-dropdown-item-shell:focus-visible > .octo-ui-menu-item--selected:not(:disabled) {
+  background: var(--octo-ui-menu-item-selected-bg);
+}
+
+.octo-ui-dropdown-divider {
+  flex: none;
+  height: 1px;
+  margin: var(--octo-ui-dropdown-divider-margin);
+  background: var(--octo-ui-dropdown-divider-bg);
+}
+
+.octo-ui-dropdown .octo-ui-menu-item {
+  border-radius: var(--octo-ui-dropdown-item-radius);
+}
