@@ -22,7 +22,7 @@ import { join, dirname, basename, extname } from "path";
 import { pathToFileURL } from "url";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
-import { isExternalHttpUrl } from "./externalLink";
+import { decideWindowOpen } from "./externalLink";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_KEEP_AWAKE_GET,
@@ -464,7 +464,10 @@ async function promptFleetTrustOnce(
       defaultId: 1, // 默认拒绝
       cancelId: 1, // Esc / 关闭窗口也按"拒绝"处理，弹窗失败永远 fail-closed
       noLink: true, // plain buttons, no command-link Enter mapping
-      checkboxLabel: "不再询问此域名",
+      // Allow-only semantics: the checkbox is persisted only when the user
+      // clicks 允许 (rememberFleetTrustedHost runs for response === 0), so
+      // the label must not promise "never ask again" for the reject side.
+      checkboxLabel: "允许并记住此域名",
       checkboxChecked: false,
     });
     if (checkboxChecked && response === 0) {
@@ -586,7 +589,7 @@ const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
  * must not end up in logs.
  */
 function openUrlExternally(url: string): Promise<boolean> {
-  if (!isExternalHttpUrl(url)) {
+  if (decideWindowOpen(url) !== "open-external") {
     logExternalUrlRejection(url);
     return Promise.resolve(false);
   }
@@ -639,7 +642,7 @@ function safeUrlLabel(url: string): string {
  */
 function attachExternalLinkRouter(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalHttpUrl(url)) {
+    if (decideWindowOpen(url) === "open-external") {
       void openUrlExternally(url);
     } else {
       logExternalUrlRejection(url);
@@ -660,7 +663,7 @@ function registerOpenExternalUrlHandler(): void {
       if (typeof url !== "string" || url === "") {
         return { ok: false, reason: "invalid-url" };
       }
-      if (!isExternalHttpUrl(url)) {
+      if (decideWindowOpen(url) !== "open-external") {
         logExternalUrlRejection(url);
         return { ok: false, reason: "non-http-url" };
       }

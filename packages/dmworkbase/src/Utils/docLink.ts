@@ -45,7 +45,13 @@ export interface DocLinkTarget {
 
 /** Origin for the doc link; empty under SSR/tests so the link degrades to a bare query path. */
 function origin(): string {
-  return typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''
+  if (typeof window === "undefined" || !window.location) return "";
+  // file:// shells report window.location.origin as the string "null"
+  // (truthy but not an origin). Treat it as empty so buildDocLink emits a
+  // bare `/d/<docId>`; the desktop bridge resolves that against the API
+  // origin, and web callers get a root-relative URL as before.
+  const origin = window.location.origin;
+  return origin && origin !== "null" ? origin : "";
 }
 
 /**
