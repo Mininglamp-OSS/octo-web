@@ -294,7 +294,15 @@ describe("MailAuthorizationPage return target lifecycle", () => {
     expect((manual as HTMLInputElement).checked).toBe(true);
     expect((automatic as HTMLInputElement).checked).toBe(false);
     expect(
-      screen.getByText("mail.authorization.requestedAutomatic")
+      screen.getByText("mail.authorization.selectedManual")
+    ).toBeTruthy();
+
+    fireEvent.click(automatic);
+
+    expect((manual as HTMLInputElement).checked).toBe(false);
+    expect((automatic as HTMLInputElement).checked).toBe(true);
+    expect(
+      screen.getByText("mail.authorization.selectedAutomatic")
     ).toBeTruthy();
   });
 
