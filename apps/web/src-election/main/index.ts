@@ -22,6 +22,7 @@ import { join, dirname, basename, extname } from "path";
 import { pathToFileURL } from "url";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
+import { isExternalHttpUrl } from "./externalLink";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_KEEP_AWAKE_GET,
@@ -571,6 +572,33 @@ const TRUSTED_SHELL_DEV_ORIGIN = isDevelopment
   ? new URL(DEV_SERVER_URL).origin
   : undefined;
 const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
+
+/* ---------- external link router ---------- */
+
+/**
+ * Route renderer-initiated window.open / target=_blank to the system browser.
+ *
+ * Message-body links render as `<a target="_blank" rel="noopener noreferrer">`
+ * anchors; Electron's default handling opens a raw BrowserWindow for them —
+ * no app chrome, a separate session/login state, and for deployment hosts
+ * other than the logged-in one a dead-end login page. Every desktop IM
+ * client instead hands such links to the user's browser. The in-app fleet
+ * preview panel is NOT affected: its clicks are preventDefault-ed in the
+ * renderer and never reach this handler; the explicit rejection fallback
+ * (openFleetLinkExternal → window.open) lands here and is routed to the
+ * browser, which is exactly the intended "open externally" outcome.
+ */
+function attachExternalLinkRouter(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (isExternalHttpUrl(url)) {
+      void shell.openExternal(url).catch((error) => {
+        console.warn(`[external-link] openExternal failed for ${url}:`, error);
+      });
+    }
+    return { action: "deny" };
+  });
+}
+
 // A same-document history.pushState changes frame.url without creating a new
 // document. Track trust at document navigation time instead of re-evaluating
 // the current pathname for every IPC call, otherwise normal SPA routes such
@@ -1431,6 +1459,7 @@ const getWindowConfig = () => {
 const createNewWindow = () => {
   const newWindow = new BrowserWindow(getWindowConfig());
   trackTrustedShellDocument(newWindow);
+  attachExternalLinkRouter(newWindow);
 
   newWindow.center();
   newWindow.webContents.on("did-finish-load", () => {
@@ -1470,6 +1499,7 @@ const createNewWindow = () => {
 const createMainWindow = async () => {
   mainWindow = new BrowserWindow(getWindowConfig());
   trackTrustedShellDocument(mainWindow);
+  attachExternalLinkRouter(mainWindow);
   mainWindow.center();
   mainWindow.webContents.on("did-finish-load", () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setZoomFactor(settings.zoomFactor);
