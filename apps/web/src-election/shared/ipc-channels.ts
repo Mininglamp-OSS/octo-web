@@ -58,6 +58,9 @@ export const IPC_NOTIFICATION_ACTION_CLICKED = "notification-action-clicked";
 /** Renderer → Main: query the real BrowserWindow focus state. */
 export const IPC_WINDOW_IS_FOCUSED = "is-window-focused";
 
+/** Renderer → Main: confirm trusting an unknown fleet host for issue previews. */
+export const IPC_ASK_TRUST_FLEET_HOST = "fleet:ask-trust-host";
+
 /** Renderer → Main: register the API origin expected for the OIDC callback. */
 export const IPC_OIDC_AUTHORIZE_START = "oidc-authorize-start";
 

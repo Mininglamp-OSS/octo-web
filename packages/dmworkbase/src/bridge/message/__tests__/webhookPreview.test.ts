@@ -1,10 +1,13 @@
 // @vitest-environment jsdom
 
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   parseWebhookIssuePreviewTarget,
+  trustedFleetHosts,
   webhookPreviewClickHandler,
 } from "../webhookPreview";
+import APIClient from "../../../Service/APIClient";
+import * as desktopBridge from "../../../electron/desktopBridge";
 
 describe("parseWebhookIssuePreviewTarget", () => {
   it("parses absolute and relative Fleet issue links", () => {
@@ -42,45 +45,175 @@ describe("parseWebhookIssuePreviewTarget", () => {
     });
   });
 
-  it("rejects unrelated and unsafe links", () => {
+  it("rejects unsafe protocols and malformed fleet paths", () => {
     expect(parseWebhookIssuePreviewTarget("https://example.com/docs/1")).toBeNull();
-    expect(
-      parseWebhookIssuePreviewTarget(
-        "https://example.com/fleet/a/issues/OPS-9",
-        "https://octo.example/chat"
-      )
-    ).toBeNull();
     expect(parseWebhookIssuePreviewTarget("javascript:alert(1)")).toBeNull();
     expect(parseWebhookIssuePreviewTarget("https://example.com/fleet/a/issues"))
       .toBeNull();
+    expect(
+      parseWebhookIssuePreviewTarget("https://example.com/notfleet/a/issues/OPS-9")
+    ).toBeNull();
+    expect(
+      parseWebhookIssuePreviewTarget("https://example.com/fleet/a/notissues/OPS-9")
+    ).toBeNull();
+    expect(
+      parseWebhookIssuePreviewTarget("https://example.com/fleet/a/issues/")
+    ).toBeNull();
+  });
+
+  it("explicit ports are structurally valid (trust decided by handler)", () => {
     expect(
       parseWebhookIssuePreviewTarget(
         "http://octo.example:8080/fleet/a/issues/OPS-9",
         "https://octo.example/chat"
       )
-    ).toBeNull();
+    ).toEqual({
+      workspaceSlug: "a",
+      issueIdentifier: "OPS-9",
+      sourceUrl: "http://octo.example:8080/fleet/a/issues/OPS-9",
+    });
+  });
+});
+
+describe("trustedFleetHosts", () => {
+  const apiURLOf = () => (APIClient.shared.config as unknown as { apiURL: string });
+
+  it("includes the static fallback host", () => {
+    expect(trustedFleetHosts()).toContain("im.deepminer.com.cn");
+  });
+
+  it("includes the current API origin host", () => {
+    apiURLOf().apiURL = "https://im-test.deepminer.com.cn/v1/";
+    expect(trustedFleetHosts()).toContain("im-test.deepminer.com.cn");
+  });
+
+  it("tolerates a missing or malformed apiURL", () => {
+    apiURLOf().apiURL = "";
+    expect(trustedFleetHosts()).toContain("im.deepminer.com.cn");
+    apiURLOf().apiURL = "not-a-url";
+    expect(trustedFleetHosts()).toContain("im.deepminer.com.cn");
   });
 });
 
 describe("webhookPreviewClickHandler", () => {
-  it("opens the exact Fleet link clicked in a webhook message", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    (APIClient.shared.config as unknown as { apiURL: string }).apiURL =
+      "https://octo.example/v1/";
+    window.__POWERED_ELECTRON__ = false;
+  });
+
+  it("opens a trusted Fleet link immediately without prompting", async () => {
     const open = vi.fn();
     const message = { fromUID: "iwh_hook" } as any;
     const handler = webhookPreviewClickHandler(message, open)!;
     const anchor = document.createElement("a");
-    anchor.href = "https://im.deepminer.com.cn/fleet/1/issues/WS-4";
+    anchor.href = "https://octo.example/fleet/1/issues/WS-4";
     const preventDefault = vi.fn();
     const stopPropagation = vi.fn();
 
     handler({ target: anchor, preventDefault, stopPropagation } as any);
-
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
     expect(open).toHaveBeenCalledWith({
       workspaceSlug: "1",
       issueIdentifier: "WS-4",
-      sourceUrl: "https://im.deepminer.com.cn/fleet/1/issues/WS-4",
+      sourceUrl: "https://octo.example/fleet/1/issues/WS-4",
     });
     expect(preventDefault).toHaveBeenCalled();
     expect(stopPropagation).toHaveBeenCalled();
+  });
+
+  it("opens a static-fallback host link (desktop file://) without prompting", async () => {
+    const open = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open
+    )!;
+    const anchor = document.createElement("a");
+    // file:// base => same-origin impossible; static host must still pass.
+    anchor.href = "https://im.deepminer.com.cn/fleet/1/issues/WS-4";
+    const preventDefault = vi.fn();
+
+    handler({
+      target: anchor,
+      preventDefault,
+      stopPropagation: vi.fn(),
+    } as any);
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
+  });
+
+  it("prompts for an unknown fleet host and opens after the user allows it", async () => {
+    const ask = vi
+      .spyOn(desktopBridge, "getElectronIpcBridge")
+      .mockReturnValue({
+        invoke: vi.fn().mockResolvedValue({ trusted: true }),
+      } as any);
+    window.__POWERED_ELECTRON__ = true;
+
+    const open = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open
+    )!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
+    const preventDefault = vi.fn();
+
+    handler({
+      target: anchor,
+      preventDefault,
+      stopPropagation: vi.fn(),
+    } as any);
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
+    expect(ask).toHaveBeenCalled();
+    expect(preventDefault).toHaveBeenCalled();
+  });
+
+  it("leaves the link untouched when the user rejects the unknown host", async () => {
+    vi.spyOn(desktopBridge, "getElectronIpcBridge").mockReturnValue({
+      invoke: vi.fn().mockResolvedValue({ trusted: false }),
+    } as any);
+    window.__POWERED_ELECTRON__ = true;
+
+    const open = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open
+    )!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
+    const preventDefault = vi.fn();
+
+    handler({
+      target: anchor,
+      preventDefault,
+      stopPropagation: vi.fn(),
+    } as any);
+    await vi.waitFor(() => expect(open).not.toHaveBeenCalled());
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
+
+  it("does not prompt for non-fleet links on unknown hosts", async () => {
+    const ask = vi.spyOn(desktopBridge, "getElectronIpcBridge");
+    window.__POWERED_ELECTRON__ = true;
+
+    const open = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open
+    )!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://onprem.customer.com/docs/1";
+    const preventDefault = vi.fn();
+
+    handler({
+      target: anchor,
+      preventDefault,
+      stopPropagation: vi.fn(),
+    } as any);
+    await vi.waitFor(() => expect(open).not.toHaveBeenCalled());
+    expect(ask).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 
   it("does not intercept body text, unrelated links, or non-webhook messages", () => {

@@ -47,6 +47,7 @@ import {
   IPC_SCREENSHOTS_START,
   IPC_SHOW_CONVERSATIONS,
   IPC_WINDOW_IS_FOCUSED,
+  IPC_ASK_TRUST_FLEET_HOST,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
 import {
@@ -401,6 +402,75 @@ function registerKeepAwakeHandlers() {
     const applied = applyKeepAwake(enabled);
     return applied;
   });
+}
+
+/* ---------- fleet preview trusted hosts ---------- */
+
+const fleetTrustedHostsPath = () => join(app.getPath("userData"), "fleet-trusted-hosts.json");
+
+function readFleetTrustedHosts(): string[] {
+  try {
+    const raw = JSON.parse(fs.readFileSync(fleetTrustedHostsPath(), "utf8"));
+    if (!Array.isArray(raw)) throw new Error("Invalid fleet-trusted-hosts file");
+    return raw.filter((h): h is string => typeof h === "string");
+  } catch {
+    return [];
+  }
+}
+
+function writeFleetTrustedHosts(hosts: string[]): void {
+  const path = fleetTrustedHostsPath();
+  const tempPath = `${path}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(hosts, null, 2));
+  try {
+    fs.renameSync(tempPath, path);
+  } catch (error) {
+    try { fs.unlinkSync(tempPath); } catch { /* best effort cleanup */ }
+    throw error;
+  }
+}
+
+function rememberFleetTrustedHost(host: string): void {
+  const hosts = new Set(readFleetTrustedHosts());
+  hosts.add(host);
+  writeFleetTrustedHosts(Array.from(hosts));
+}
+
+function registerFleetTrustHostHandler() {
+  ipcMain.handle(
+    IPC_ASK_TRUST_FLEET_HOST,
+    async (_event, rawUrl: unknown, host: unknown): Promise<{ trusted: boolean }> => {
+      // Validate inputs instead of trusting the renderer blindly.
+      if (typeof rawUrl !== "string" || typeof host !== "string" || host === "") {
+        return { trusted: false };
+      }
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(rawUrl);
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+          return { trusted: false };
+        }
+      } catch {
+        return { trusted: false };
+      }
+      if (readFleetTrustedHosts().includes(host)) return { trusted: true };
+
+      const win = BrowserWindow.getFocusedWindow() ?? mainWindow;
+      if (!win || win.isDestroyed()) return { trusted: false };
+      const { response, checkboxChecked } = await dialog.showMessageBox(win, {
+        type: "warning",
+        title: "信任此域名以打开任务预览？",
+        message: `是否允许在“${host}”下打开任务预览？`,
+        detail: `链接：${parsedUrl.href}`,
+        buttons: ["允许", "拒绝"],
+        defaultId: 1, // 默认拒绝
+        checkboxLabel: "不再询问此域名",
+        checkboxChecked: false,
+      });
+      if (checkboxChecked && response === 0) rememberFleetTrustedHost(host);
+      return { trusted: response === 0 };
+    }
+  );
 }
 
 type OidcFlow = {
@@ -1804,6 +1874,7 @@ app.on("ready", () => {
   }
   registerKeepAwakeHandlers();
   applyKeepAwake(keepAwakeEnabled);
+  registerFleetTrustHostHandler();
   registerDesktopSettingsHandlers();
   registerDownloadSettingsHandlers();
   registerDownloadHandler();
