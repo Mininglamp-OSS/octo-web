@@ -61,6 +61,10 @@ export class RichTextCell extends MessageCell {
           message,
           context.openWebhookPreview?.bind(context)
         )}
+        onBodyAuxClick={webhookPreviewClickHandler(
+          message,
+          context.openWebhookPreview?.bind(context)
+        )}
       >
         <div className="wk-message-richtext">
           {content.reply && (

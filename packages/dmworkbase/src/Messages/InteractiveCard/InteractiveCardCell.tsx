@@ -457,6 +457,10 @@ export class InteractiveCardCell extends MessageCell {
           message,
           context.openWebhookPreview?.bind(context)
         )}
+        onBodyAuxClick={webhookPreviewClickHandler(
+          message,
+          context.openWebhookPreview?.bind(context)
+        )}
       >
         <div
           className={

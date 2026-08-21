@@ -232,4 +232,51 @@ describe("webhookPreviewClickHandler", () => {
     expect(webhookPreviewClickHandler({ fromUID: "user" } as any, open)).toBeUndefined();
     expect(open).not.toHaveBeenCalled();
   });
+
+  it("intercepts middle-click (auxclick) on a trusted fleet link", async () => {
+    const open = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open
+    )!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://octo.example/fleet/1/issues/WS-4";
+    const preventDefault = vi.fn();
+    const stopPropagation = vi.fn();
+
+    handler({
+      target: anchor,
+      button: 1, // middle button
+      preventDefault,
+      stopPropagation,
+    } as any);
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
+    expect(open).toHaveBeenCalledWith({
+      workspaceSlug: "1",
+      issueIdentifier: "WS-4",
+      sourceUrl: "https://octo.example/fleet/1/issues/WS-4",
+    });
+    expect(preventDefault).toHaveBeenCalled();
+    expect(stopPropagation).toHaveBeenCalled();
+  });
+
+  it("does not intercept middle-click on non-fleet or unknown links", async () => {
+    const open = vi.fn();
+    const handler = webhookPreviewClickHandler(
+      { fromUID: "iwh_hook" } as any,
+      open
+    )!;
+    const unrelated = document.createElement("a");
+    unrelated.href = "https://example.com/docs/1";
+    const preventDefault = vi.fn();
+
+    handler({
+      target: unrelated,
+      button: 1,
+      preventDefault,
+      stopPropagation: vi.fn(),
+    } as any);
+    await vi.waitFor(() => expect(open).not.toHaveBeenCalled());
+    expect(preventDefault).not.toHaveBeenCalled();
+  });
 });

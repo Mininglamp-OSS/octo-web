@@ -205,6 +205,10 @@ export class TextCell extends MessageCell {
                         message,
                         context.openWebhookPreview?.bind(context)
                     )}
+                    onBodyAuxClick={webhookPreviewClickHandler(
+                        message,
+                        context.openWebhookPreview?.bind(context)
+                    )}
                 >
                     <div>
                         {message?.content?.reply && (
