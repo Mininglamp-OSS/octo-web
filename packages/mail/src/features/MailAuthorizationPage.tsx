@@ -61,9 +61,8 @@ export default function MailAuthorizationPage({
     AgentAuthorizationView["request"] | undefined
   >(undefined);
   const [mailboxId, setMailboxId] = useState("");
-  const [outboundMode, setOutboundMode] = useState<AgentOutboundMode>(
-    "manual_confirmation"
-  );
+  const [outboundMode, setOutboundMode] =
+    useState<AgentOutboundMode>("automatic_send");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [phase, setPhase] = useState<MailAuthorizationPhase>("approval");
@@ -167,7 +166,6 @@ export default function MailAuthorizationPage({
         );
         authorizationRequestRef.current = result.request;
         setAuthorization(result);
-        setOutboundMode("manual_confirmation");
         if (isAuthorizationExpired(result.request)) {
           setPhase("failed");
           setError(t("mail.authorization.expired"));
@@ -540,7 +538,7 @@ export default function MailAuthorizationPage({
             {selectedMailbox.address}
           </div>
         )}
-        {connected && outboundMode === "automatic_send" && (
+        {connected && request?.outboundMode === "automatic_send" && (
           <div className="mail-auth-card__status">
             {t("mail.authorization.automaticSendEnabled")}
           </div>
