@@ -446,6 +446,28 @@ describe("fleetPreviewClickHandler", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
+  it("does not intercept modifier-key clicks (Cmd/Ctrl/Shift/Alt — browser gestures)", async () => {
+    // Round-12 P1-3: modifier clicks are deliberate browser-navigation
+    // gestures (Cmd/Ctrl-click → new tab, Shift-click → new window,
+    // Alt-click → download). The handler must leave them untouched, not
+    // hijack them into the in-app panel.
+    const open = vi.fn();
+    const handler = fleetPreviewClickHandler(open)!;
+    const anchor = document.createElement("a");
+    anchor.href = "https://octo.example/fleet/1/issues/WS-4";
+    const preventDefault = vi.fn();
+    for (const mod of [
+      { metaKey: true },
+      { ctrlKey: true },
+      { shiftKey: true },
+      { altKey: true },
+    ]) {
+      handler(clickEvent(anchor, { ...mod, preventDefault }));
+      expect(open).not.toHaveBeenCalled();
+      expect(preventDefault).not.toHaveBeenCalled();
+    }
+  });
+
   it("does not intercept body text or unrelated links, and no preview callback means no handler", async () => {
     const open = vi.fn();
     const body = document.createElement("div");
@@ -463,15 +485,24 @@ describe("fleetPreviewClickHandler", () => {
     expect(open).not.toHaveBeenCalled();
   });
 
-  it("is disabled entirely when no preview renderer is registered (OSS build)", async () => {
-    // P1-4: without a registered chatWebhookIssuePreview endpoint the panel
-    // would be a dead "unavailable" shell, so fleet links must keep their
-    // default behaviour instead of being intercepted. gate on the registry.
+  it("stays mounted but never intercepts when no preview renderer is registered (OSS build)", async () => {
+    // P1-2 (round-12): the OSS gate must NOT make the handler undefined —
+    // MessageRow renders its hit-area wrapper only when a body handler is
+    // present, and webhook messages always had that wrapper pre-PR. The
+    // handler stays mounted and simply never intercepts.
     vi.spyOn(EndpointManager.shared, "getWithCategory").mockReturnValue(undefined);
     const open = vi.fn();
     const handler = fleetPreviewClickHandler(open);
-    expect(handler).toBeUndefined();
+    expect(handler).toBeDefined();
     expect(isFleetPreviewSupported()).toBe(false);
+    const anchor = document.createElement("a");
+    anchor.href = "https://octo.example/fleet/1/issues/WS-4";
+    const preventDefault = vi.fn();
+    handler!(clickEvent(anchor, { preventDefault }));
+    await flushAsync();
+    // no interception, no prompt, no preview — default behaviour untouched
+    expect(open).not.toHaveBeenCalled();
+    expect(preventDefault).not.toHaveBeenCalled();
   });
 
   it("intercepts middle-click (auxclick) on a trusted fleet link", async () => {

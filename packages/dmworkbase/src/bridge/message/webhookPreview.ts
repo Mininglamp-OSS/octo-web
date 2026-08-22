@@ -268,9 +268,15 @@ export function fleetPreviewClickHandler(
   onRejectedFallback: (href: string) => void = openFleetLinkExternal,
 ): ((event: React.MouseEvent) => void) | undefined {
   if (!openPreview) return undefined;
-  // OSS / any build without a registered preview renderer must not intercept
-  // fleet links (see isFleetPreviewSupported).
-  if (!isFleetPreviewSupported()) return undefined;
+  // OSS / any build without a registered preview renderer must not
+  // intercept fleet links (see isFleetPreviewSupported), BUT the handler
+  // must still exist: MessageRow renders its hit-area wrapper only when a
+  // body handler is present, and webhook messages always had that wrapper
+  // before this PR. Returning undefined here would strip the wrapper from
+  // every message in OSS builds (regression). The handler therefore stays
+  // mounted and simply never intercepts — links fall through to their
+  // default behaviour.
+  const previewSupported = isFleetPreviewSupported();
   return (event) => {
     // Filter by event type AND button: `click` must be the primary button (0),
     // `auxclick` must be the middle button (1). Firefox dispatches BOTH
@@ -280,6 +286,18 @@ export function fleetPreviewClickHandler(
     // the context menu (copy link address etc.).
     const isAuxClick = event.type === "auxclick";
     if (isAuxClick ? event.button !== 1 : event.button !== 0) return;
+    // Modifier-key clicks are deliberate browser-navigation gestures
+    // (Cmd/Ctrl-click → new tab, Shift-click → new window, Alt-click →
+    // download): the user explicitly opted out of in-app handling, so the
+    // link must keep its default behaviour untouched.
+    if (
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
     if (!(event.target instanceof Element)) return;
     const anchor = event.target.closest<HTMLAnchorElement>("a[href]");
     if (!anchor) return;
@@ -288,6 +306,10 @@ export function fleetPreviewClickHandler(
     // Decide the candidate synchronously. Non-fleet links are never touched.
     const target = parseFleetIssueLinkShape(anchor.href, baseUrl);
     if (!target) return;
+    // OSS / no preview renderer: the handler stays mounted (keeps the
+    // hit-area wrapper) but never intercepts — fleet links fall through to
+    // their default behaviour (system browser / new tab).
+    if (!previewSupported) return;
     const staticallyTrusted =
       parseWebhookIssuePreviewTarget(anchor.href, baseUrl) !== null;
     // Web has no trust prompt: an unknown-origin fleet link goes to the
