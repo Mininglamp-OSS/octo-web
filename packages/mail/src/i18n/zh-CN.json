@@ -81,6 +81,8 @@
   "mail.reader.sentBy": "由 {{sender}} 代发",
   "mail.reader.thread": "会话中的邮件",
   "mail.reader.threadCount": "邮件线程 · {{count}} 封",
+  "mail.reader.htmlBody": "HTML 邮件正文",
+  "mail.reader.bodyTruncated": "HTML 邮件正文未在此处直接展示。可下载原始邮件查看完整内容。",
   "mail.reader.rawHint": "可下载邮件原文查看完整头信息和 MIME 内容。",
   "mail.attachment.list": "附件",
   "mail.attachment.download": "下载附件",

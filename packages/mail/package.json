@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@octo/base": "workspace:*",
+    "dompurify": "^3.4.2",
     "lucide-react": "^0.577.0"
   },
   "devDependencies": {
