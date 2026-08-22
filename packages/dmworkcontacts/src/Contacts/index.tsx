@@ -620,9 +620,10 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
         if (uid === 'botfather') {
-            // BotFather 直接进聊天。botfather_opened 来源标记：本入口 = 通讯录顶端 BotFather 横幅
-            // (renderBotFatherBanner → handleContactClick('botfather'))。ChatContentPage 挂载时消费。
-            WKApp.shared.pendingBotfatherOpenEntry = "contact_banner"
+            // BotFather 直接进聊天。botfather_opened 的来源标记(pendingBotfatherOpenEntry)不在此处写:
+            // handleContactClick 有 4 个调用点(横幅 / 空间成员行 / 已加 AI 行 / 联系人·搜索行),只有横幅
+            // 语义上是 contact_banner。故 sentinel 由 renderBotFatherBanner 的 onClick 单独写,其余入口点到
+            // botfather 时不带标记 → ChatContentPage 挂载处落缺省 "conversation"。
             WKApp.endpoints.showConversation(new Channel(uid, ChannelTypePerson))
             return
         }
@@ -662,6 +663,10 @@ export default class ContactsList extends Component<any, ContactsState> {
                 // 走 handleContactClick 而非直接 showConversation:后者绕过 contact_opened
                 // 埋点(PR #1320 review P1-4)。handleContactClick('botfather', true) 会先补
                 // contact_opened(is_bot/bot_type),再执行同样的「直接进聊天」。
+                // botfather_opened 来源标记:仅本入口(顶端横幅)= contact_banner。在调用 handleContactClick
+                // 前写 sentinel,ChatContentPage 挂载时一次性消费;其余点到 botfather 的入口不写 → 缺省
+                // "conversation"。避免归因写在 handleContactClick 里被 4 个调用点共享而误标(PR #1510 P2-1)。
+                WKApp.shared.pendingBotfatherOpenEntry = "contact_banner"
                 this.handleContactClick("botfather", true)
             }}>
                 <div className="wk-contacts-botfather-avatar">
