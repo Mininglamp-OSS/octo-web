@@ -214,6 +214,38 @@ describe("parseFleetIssueLinkShape (structure only, no trust)", () => {
       )
     ).toBeNull();
   });
+
+  it("rejects percent-encoded separators that would change segments after decoding", () => {
+    // Round-10 P1-1: a 4-segment shape gate is bypassable with encoded
+    // separators — /fleet/a%2F..%2Fb/issues/c%0D%0Ad decodes into path
+    // traversal / CRLF afterwards. Decoded segments must match the safe
+    // allowlist (RFC 3986 unreserved + ~) or the link is rejected.
+    expect(
+      parseFleetIssueLinkShape(
+        "https://octo.example/fleet/a%2F..%2Fb/issues/c%0D%0Ad",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+    expect(
+      parseFleetIssueLinkShape(
+        "https://octo.example/fleet/..%2F..%2Fadmin/issues/..%2Fsecret",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+    expect(
+      parseFleetIssueLinkShape(
+        "https://octo.example/fleet/team%5C..%5Cadmin/issues/x",
+        "https://octo.example/chat"
+      )
+    ).toBeNull();
+    // legitimate unreserved chars still parse
+    expect(
+      parseFleetIssueLinkShape(
+        "https://octo.example/fleet/team-a/issues/OPS-9",
+        "https://octo.example/chat"
+      )
+    ).not.toBeNull();
+  });
 });
 
 describe("trustedFleetHosts", () => {

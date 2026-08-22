@@ -23,6 +23,7 @@ import { pathToFileURL } from "url";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
 import { decideWindowOpen } from "./externalLink";
+import { isFleetIssuePathShape } from "./fleetTrust";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_KEEP_AWAKE_GET,
@@ -515,19 +516,13 @@ function registerFleetTrustHostHandler() {
         return { trusted: false };
       }
       const host = parsedUrl.host;
-      // Re-validate the fleet path shape BEFORE the remembered-host
-      // short-circuit (the renderer checked too, but the main process is the
-      // trust authority): a remembered host must not mint `trusted: true`
-      // for a URL that was never a fleet deep link.
-      const segments = parsedUrl.pathname
-        .replace(/\/+$/, "")
-        .split("/")
-        .filter(Boolean);
-      const isFleetShape =
-        segments.length === 4 &&
-        segments[0] === "fleet" &&
-        segments[2] === "issues";
-      if (!isFleetShape) return { trusted: false };
+      // Re-validate the fleet path shape AND the decoded segment values
+      // BEFORE the remembered-host short-circuit (the renderer checked too,
+      // but the main process is the trust authority): a remembered host must
+      // not mint `trusted: true` for a URL that was never a fleet deep link,
+      // and a percent-encoded separator must not pass the shape gate and
+      // decode into path traversal afterwards.
+      if (!isFleetIssuePathShape(parsedUrl.pathname)) return { trusted: false };
       if (readFleetTrustedHosts().includes(host)) return { trusted: true };
       return { trusted: await promptFleetTrustOnce(win, host, parsedUrl.href) };
     }

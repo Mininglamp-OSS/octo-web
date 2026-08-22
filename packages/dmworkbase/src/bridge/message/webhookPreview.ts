@@ -24,12 +24,24 @@ export interface WebhookIssuePreviewTarget {
  */
 const FLEET_PREVIEW_HOSTS = new Set(["im.deepminer.com.cn"]);
 
-function decodePathSegment(value: string): string {
+/**
+ * RFC 3986 unreserved characters plus ~ — the only characters we accept in
+ * a decoded fleet segment. Anything else (encoded separators like %2F/%5C,
+ * CR/LF, .., whitespace) means the decoded value is NOT the same segment the
+ * shape gate matched, so the link is rejected: without this, a crafted
+ * /fleet/a%2F..%2Fb/issues/c%0D%0Ad would pass the 4-segment shape check and
+ * decode into path separators / traversal afterwards.
+ */
+const SAFE_FLEET_SEGMENT_RE = /^[A-Za-z0-9._~-]+$/;
+
+function decodePathSegment(value: string): string | null {
+  let decoded: string;
   try {
-    return decodeURIComponent(value);
+    decoded = decodeURIComponent(value);
   } catch {
-    return "";
+    return null;
   }
+  return SAFE_FLEET_SEGMENT_RE.test(decoded) ? decoded : null;
 }
 
 /**
