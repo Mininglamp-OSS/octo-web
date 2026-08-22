@@ -20,6 +20,7 @@ import {
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
+import { isBotfatherChannelID } from "../../Service/botfatherChannel";
 import { isReplyAuthorAi } from "./replyAiIdentity";
 import { rememberSendIntent, trackMessageRevoked } from "../../Service/trackMessage";
 import { SuperGroup } from "../../Utils/const";
@@ -2490,10 +2491,13 @@ export default class ConversationVM extends ProviderListener {
         {
             let botCreateEntry: string | undefined
             let botCommandEvent: string | undefined
-            // botfather 命令(/newbot、/help…)是 botfather 专属;门按 channelID==="botfather" 判,
-            // 与 BOTFATHER_COMMAND_EVENTS 注释(§B)对齐。不用 SYSTEM_BOTS.has():该集合未来加入其它
-            // 系统 bot 时会让别的 bot 的 /command 文本误命中 botfather 事件(见二审 nit)。
-            if (channel.channelID === "botfather" && content instanceof MessageText) {
+            // botfather 命令(/newbot、/help…)是 botfather 专属;门用 isBotfatherChannelID 后缀匹配,
+            // 与 BOTFATHER_COMMAND_EVENTS 注释(§B)及 botfather_opened 分母门**共用同一 helper** → 图两侧
+            // 同步。Space 部署下 channelID = s{spaceId}_botfather(spaceId 任意串),裸 "botfather" 只在无
+            // Space 时出现;不能用 stripSpacePrefix(正则只认 32-hex spaceId)。详见 Service/botfatherChannel.ts。
+            // 不用 SYSTEM_BOTS.has():该集合未来加入其它系统 bot 时会让别的 bot 的 /command 文本误命中
+            // botfather 事件(见二审 nit)。
+            if (isBotfatherChannelID(channel.channelID) && content instanceof MessageText) {
                 const text = (content.text || "").trim()
                 if (matchesCommandPrefix(text, "/newbot")) {
                     botCreateEntry = "botfather_im"
