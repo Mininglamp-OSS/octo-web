@@ -81,8 +81,6 @@ export default class BotStore extends Component<{}, BotStoreState> {
     }
 
     handleBotFatherChat = () => {
-        // botfather_opened 来源标记：本入口 = BotStore 顶部「与 BotFather 对话」。挂载处消费。
-        WKApp.shared.pendingBotfatherOpenEntry = "bot_store"
         WKApp.endpoints.showConversation(new Channel("botfather", ChannelTypePerson))
     }
 
