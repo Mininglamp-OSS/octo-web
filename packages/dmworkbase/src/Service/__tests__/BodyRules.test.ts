@@ -159,3 +159,55 @@ describe('BODY_RULES — 规则表不变量', () => {
         expect(computeBodyEvent(i, 'PUT', '/api/v1/x/other', JSON.stringify({ anything: 1 }))).toBe('wild_fallback')
     })
 })
+
+describe('BODY_RULES — fleet(Loop)body 键通道真实命中', () => {
+    const idx = buildBodyIndex(BODY_RULES)
+    const j = JSON.stringify
+
+    it('POST issues:带 parent_issue_id=子任务,否则兜底=新建任务', () => {
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/issues', j({ parent_issue_id: 'i1', title: 'x' }))).toBe('task_subtask_created')
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/issues', j({ title: 'x' }))).toBe('task_created')
+        // undefined 键被 JSON.stringify 省略,presence 判别不误命中。
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/issues', j({ title: 'x', parent_issue_id: undefined }))).toBe('task_created')
+    })
+
+    it('PUT issues/:id:单键 inline patch 各归属,其余兜底=详情编辑', () => {
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ status: 'done' }))).toBe('task_status_changed')
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ priority: 2 }))).toBe('task_priority_changed')
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ assignee_id: 'u1', assignee_type: 'user' }))).toBe('task_assignee_changed')
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ project_id: 'p1' }))).toBe('task_project_changed')
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ title: 'new', description: 'd' }))).toBe('task_detail_edited')
+        // 改父任务无独立事件,落兜底。
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/issues/i1', j({ parent_issue_id: 'i0' }))).toBe('task_detail_edited')
+    })
+
+    it('PATCH autopilots/:id:status 枚举=启停,其余单键各归属,无兜底', () => {
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ status: 'paused' }))).toBe('automation_enabled_toggled')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ status: 'active' }))).toBe('automation_enabled_toggled')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ description: 'x' }))).toBe('automation_instruction_saved')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ title: 'x' }))).toBe('automation_renamed')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ assignee_type: 'expert', assignee_id: 'e1' }))).toBe('automation_executor_changed')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ project_id: 'p1' }))).toBe('automation_target_project_changed')
+        // status 非枚举值(如非启停语义)不误命中启停,无兜底 → undefined。
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1', j({ status: 'archived' }))).toBeUndefined()
+    })
+
+    it('PATCH autopilots/:id/triggers/:id(段数 7,与 autopilots/:id 互斥):编辑 vs 启停', () => {
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1/triggers/t1', j({ cron_expression: '0 9 * * *', timezone: 'UTC' }))).toBe('automation_trigger_edited')
+        expect(computeBodyEvent(idx, 'PATCH', '/fleet/api/v1/autopilots/a1/triggers/t1', j({ enabled: false }))).toBe('automation_trigger_toggled')
+    })
+
+    it('POST squads/:id/members:presence 打 expert_team_member_added', () => {
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/squads/s1/members', j({ member_id: 'm1', member_type: 'user', role: 'x' }))).toBe('expert_team_member_added')
+    })
+
+    it('POST webhook-subscriptions:带 project_id=项目 webhook,否则兜底=工作区 webhook', () => {
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/webhook-subscriptions', j({ project_id: 'p1', url: 'u' }))).toBe('project_webhook_added')
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/webhook-subscriptions', j({ url: 'u' }))).toBe('workspace_webhook_added')
+    })
+
+    it('白名单门:未登记端点不读 body,返回 undefined', () => {
+        expect(computeBodyEvent(idx, 'POST', '/fleet/api/v1/projects', j({ name: 'x' }))).toBeUndefined()
+        expect(computeBodyEvent(idx, 'PUT', '/fleet/api/v1/skills/sk1', j({ name: 'x' }))).toBeUndefined()
+    })
+})

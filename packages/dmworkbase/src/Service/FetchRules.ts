@@ -221,8 +221,27 @@ export const FETCH_RULES: FetchRule[] = [
     // contact_opened 不在此通道 —— GET /users/:id 是通用 profile 拉取(bot profile / 内部查库都会打),
     //   已在 Contacts handleContactClick 命令式 track(联系人行点击);删除此处避免双计(见 review P2-3)。
     { method: 'POST', path: '/api/v1/friend/apply', event: 'contact_add_friend_clicked' },
-    // 注意:/api/v1/docs/* 全套(document_*)已移除 —— issue #1406 明确「24 个 octo-docs 模块事件(独立仓库/嵌入编辑器)
-    //       不在本次范围」,且这些请求由**独立的 octo-docs 编辑器**发出,octo-web 运行时根本不发 → 抓不到(死规则)。
+    // ---- doc(协作文档,@dmwork/docs 同窗内嵌,WKApp.apiClient bare-relative → /api/v1/docs/*)
+    //   T1 复核(2026-08-18):docs 模块 source-direct 编译进同一 octo-web bundle、共享全局 XHR,
+    //   Dap.installHttpWrap 能抓到。逐条对 octo-docs-module src/**/api.ts 真实端点核实(见 dap350 §4.3)。
+    //   119 document_module_entered:挂**唯一信号** GET /docs/recent/creators —— 进入文档 Tab 时才拉;
+    //     /docs、/docs/recent 被搜索(121 ?q=)/筛选(122 ?creator=&type=)共用,且 FetchRules 只按 pathname 匹配、
+    //     不读 query,三者 pathname 相同无法区分,故 121/122 退各仓 UI(搜索框防抖 / 筛选 onChange),不进本表。
+    { method: 'GET', path: '/api/v1/docs/recent/creators', event: 'document_module_entered' },
+    { method: 'POST', path: '/api/v1/docs', event: 'document_created' },
+    { method: 'POST', path: '/api/v1/docs/:id/view', event: 'document_opened' },
+    // 128 document_commented:ROOT 与 REPLY 都 POST /docs/:id/comments(comments/api.ts),path 层不分,
+    //   回复会一并计入「评论」(整合表语义为评论行为,可接受近似)。
+    { method: 'POST', path: '/api/v1/docs/:id/comments', event: 'document_commented' },
+    // 130 document_forwarded:生产恒调 batch(startDocForward→grantForwardMany→grantForwardBatch),
+    //   单发 POST /docs/:id/forward-grant 生产从不调用(§9.3 G 类纠偏),故只挂 /batch 变体。
+    { method: 'POST', path: '/api/v1/docs/:id/forward-grant/batch', event: 'document_forwarded' },
+    // 131 document_share_managed:MemberPanel 按需挂载,GET(打开管理成员)+PUT(改角色)+DELETE(移除)同归一事件。
+    { method: 'GET', path: '/api/v1/docs/:id/members', event: 'document_share_managed' },
+    { method: 'PUT', path: '/api/v1/docs/:id/members', event: 'document_share_managed' },
+    { method: 'DELETE', path: '/api/v1/docs/:id/members/:seg', event: 'document_share_managed' },
+    { method: 'GET', path: '/api/v1/docs/:id/export/file', event: 'document_exported' },
+    { method: 'DELETE', path: '/api/v1/docs/:id', event: 'document_deleted' },
     // apps_module_entered 不在此通道(十二审 🔴 P1-3)—— GET /app_bot/available 由 useAppBots 在**每次切换空间**
     //   时经 mittBus "space-changed" 监听重拉(loadData),而 Apps 页首次访问后就常驻 DOM(MainContentLeft 只切
     //   display 不卸载),所以用户打开过一次 Apps 后,在 Chat/Contacts 任意处切空间都会误发 apps_module_entered;
@@ -245,9 +264,59 @@ export const FETCH_RULES: FetchRule[] = [
     { method: 'POST', path: '/api/v1/manager/secrets', event: 'settings_secrets_configured' },
     { method: 'PUT', path: '/api/v1/manager/secrets/:id', event: 'settings_secrets_configured' },
     { method: 'POST', path: '/v1/auth/oidc/:seg/logout', event: 'user_logout' },
-    // ---- fleet(task/project/expert/skill/workspace/automation)全套已移除 ----
-    //   issue #1406 明确「133 个 octo-fleet 事件(独立 SPA)不在本次范围」;且这些 /fleet/api/v1/* 请求
-    //   由**独立的 octo-fleet SPA** 发出,octo-web 运行时(Dap 所在)根本不发这些请求 → 抓不到(死规则)。
+    // ---- fleet(Loop:task/project/automation/expert/squad/workspace/skill,@dmwork/loop 同窗内嵌)
+    //   T1 复核(2026-08-18):loop 模块 source-direct 编译进同一 octo-web bundle,axios baseURL
+    //   LOOP_API_BASE='/fleet/api/v1' 底层走全局 XHR → Dap.installHttpWrap 能抓到(浏览器观测前缀
+    //   /fleet/api/v1/*,/v1 剥前缀是 nginx→后端、浏览器不可见)。逐条对 octo-loop-module
+    //   packages/dmloop/src/api/*.ts 真实端点核实(见 dap350 §7.3)。
+    //   159 workspace_switched 不在本表 —— switchWorkspace 仅设 context + 重挂 tab(useLoopWorkspace.tsx:371),
+    //     无专属端点,后续 GET /issues 等归属 task_board_filtered 等,退各仓 UI(选工作区 onClick 命令式)。
+    // A1 工作区
+    { method: 'POST', path: '/fleet/api/v1/workspaces', event: 'workspace_created' },
+    // A2/A3 任务板:169 task_board_filtered 三端点(reload 按 view+keyword 分裂,§9.3 三端点同一事件);
+    //   grouped/search 为字面段,most-specific-wins 压过 :id(task_opened),测试有锁。
+    { method: 'GET', path: '/fleet/api/v1/issues', event: 'task_board_filtered' },
+    { method: 'GET', path: '/fleet/api/v1/issues/grouped', event: 'task_board_filtered' },
+    { method: 'GET', path: '/fleet/api/v1/issues/search', event: 'task_board_filtered' },
+    { method: 'GET', path: '/fleet/api/v1/issues/:id', event: 'task_opened' },
+    { method: 'POST', path: '/fleet/api/v1/issues/:id/comments', event: 'task_commented' },
+    { method: 'DELETE', path: '/fleet/api/v1/issues/:id', event: 'task_deleted' },
+    // B 项目
+    { method: 'POST', path: '/fleet/api/v1/projects', event: 'project_created' },
+    { method: 'GET', path: '/fleet/api/v1/projects/:id', event: 'project_opened' },
+    { method: 'DELETE', path: '/fleet/api/v1/projects/:id', event: 'project_deleted' },
+    // C 自动化
+    { method: 'POST', path: '/fleet/api/v1/autopilots', event: 'automation_created' },
+    { method: 'GET', path: '/fleet/api/v1/autopilots/:id', event: 'automation_opened' },
+    { method: 'DELETE', path: '/fleet/api/v1/autopilots/:id', event: 'automation_deleted' },
+    { method: 'POST', path: '/fleet/api/v1/autopilots/:id/trigger', event: 'automation_run_manually' },
+    { method: 'POST', path: '/fleet/api/v1/autopilots/:id/triggers', event: 'automation_trigger_added' },
+    { method: 'DELETE', path: '/fleet/api/v1/autopilots/:id/triggers/:id', event: 'automation_trigger_deleted' },
+    // D 专家
+    { method: 'POST', path: '/fleet/api/v1/agents', event: 'expert_created' },
+    { method: 'GET', path: '/fleet/api/v1/agents/:id', event: 'expert_opened' },
+    { method: 'POST', path: '/fleet/api/v1/agents/:id/restore', event: 'expert_unarchived' },
+    // E 专家团
+    { method: 'POST', path: '/fleet/api/v1/squads', event: 'expert_team_created' },
+    { method: 'GET', path: '/fleet/api/v1/squads/:id', event: 'expert_team_opened' },
+    { method: 'DELETE', path: '/fleet/api/v1/squads/:id/members', event: 'expert_team_member_removed' },
+    // F 工作区设置
+    { method: 'PATCH', path: '/fleet/api/v1/workspaces/:id', event: 'workspace_general_saved' },
+    { method: 'POST', path: '/fleet/api/v1/workspaces/:id/octo-members', event: 'workspace_member_added' },
+    { method: 'PATCH', path: '/fleet/api/v1/workspaces/:id/members/:id', event: 'workspace_member_role_changed' },
+    { method: 'DELETE', path: '/fleet/api/v1/workspaces/:id/members/:id', event: 'workspace_member_removed' },
+    // M10 运行时 / Skills
+    { method: 'PATCH', path: '/fleet/api/v1/runtimes/:id', event: 'runtime_machine_renamed' },
+    // 280 skill_runtime_skills_pulled:只挂 POST(受理),GET /local-skills/:id 是 900ms 轮询、pending 亦 2xx,勿计。
+    { method: 'POST', path: '/fleet/api/v1/runtimes/:id/local-skills', event: 'skill_runtime_skills_pulled' },
+    { method: 'GET', path: '/fleet/api/v1/skills/:id', event: 'skill_opened' },
+    { method: 'PUT', path: '/fleet/api/v1/skills/:id', event: 'skill_saved' },
+    { method: 'DELETE', path: '/fleet/api/v1/skills/:id', event: 'skill_deleted' },
+    // 281 skill_created:local(POST /skills)/web(POST /skills/import)是干净同步 path-rule;
+    //   runtime 子路径(POST /runtimes/:id/local-skills/import)仅"受理",真成功要轮询到 status==='completed',
+    //   走各仓 imperative(§9.3),不在本表。
+    { method: 'POST', path: '/fleet/api/v1/skills', event: 'skill_created' },
+    { method: 'POST', path: '/fleet/api/v1/skills/import', event: 'skill_created' },
     // ---- summary
     // 本模块**整体不在 path 通道**。两类原因:
     //  (1) GET 只证明「拉取」不证明「意图/结果」,改由 UI 采集:
