@@ -52,6 +52,7 @@ import ConversationVM from "../Conversation/vm";
 import { I18nContext, t, useI18n } from "../../i18n";
 import { formatDraftPreview } from "../../Utils/draftPreview";
 import { collapsedThreadUnread } from "./unread";
+import { shouldShowExternalBadge } from "./externalBadge";
 import {
   addImChannelInfoListener,
   fetchImChannelInfo,
@@ -155,6 +156,16 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
         new Channel(parentGroupNo, ChannelTypeGroup)
       )
     : undefined;
+  // 父群 channelInfo 未加载时主动拉取，加载完触发 re-render，
+  // 供有效静音语义与「外部」标记判定使用。
+  React.useEffect(() => {
+    if (parentGroupNo && !parentChannelInfo) {
+      void fetchImChannelInfo(
+        WKSDK.shared(),
+        new Channel(parentGroupNo, ChannelTypeGroup)
+      );
+    }
+  }, [parentGroupNo, !parentChannelInfo]);
   const effectiveMute = isEffectivelyMuted({
     isThread,
     channelInfo,
@@ -248,12 +259,15 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
           conversationWrap.channel.channelID
         )}
       </span>
-      {conversationWrap.channel.channelType === ChannelTypeGroup &&
-        channelInfo?.orgData?.is_external_group === 1 && (
-          <span className="wk-conv-compact-external-badge" aria-label={t("base.conversationList.externalGroup")}>
-            {t("base.conversationList.external")}
-          </span>
-        )}
+      {shouldShowExternalBadge(
+        conversationWrap.channel.channelType,
+        channelInfo,
+        parentChannelInfo
+      ) && (
+        <span className="wk-conv-compact-external-badge" aria-label={t("base.conversationList.externalGroup")}>
+          {t("base.conversationList.external")}
+        </span>
+      )}
       {effectiveMute && (
         <span className="wk-conv-compact-mute-icon">
           <svg
@@ -834,16 +848,19 @@ export default class ConversationList extends Component<
                   )}
                   {channelInfo?.orgData.displayName}
                 </h3>
-                {conversationWrap.channel.channelType === ChannelTypeGroup &&
-                  channelInfo?.orgData?.is_external_group === 1 && (
-                    <Tag
-                      size="small"
-                      color="purple"
-                      className="wk-conversationlist-item-external-tag"
-                    >
-                      {t("base.conversationList.external")}
-                    </Tag>
-                  )}
+                {shouldShowExternalBadge(
+                  conversationWrap.channel.channelType,
+                  channelInfo,
+                  parentChannelInfo
+                ) && (
+                  <Tag
+                    size="small"
+                    color="purple"
+                    className="wk-conversationlist-item-external-tag"
+                  >
+                    {t("base.conversationList.external")}
+                  </Tag>
+                )}
                 {channelInfo?.orgData?.robot === 1 && <AiBadge />}
                 {channelInfo?.orgData.identityIcon ? (
                   <img
