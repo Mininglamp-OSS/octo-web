@@ -15,6 +15,7 @@ test("@TES11 @p1 @settings-center @notifications 通知设置可交互", async (
   await expect(muteScope).toHaveValue("sound-and-popup");
   await muteScope.selectOption("sound");
   await expect(muteScope).toHaveValue("sound");
+  await expect(muteScope.locator("option:checked")).toHaveText("仅关闭通知弹窗");
 
   const notificationOptions = authedPage.getByRole("switch", { name: "通知选项" });
   await expect(notificationOptions).toBeChecked();
