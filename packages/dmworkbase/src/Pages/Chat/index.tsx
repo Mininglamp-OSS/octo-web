@@ -771,12 +771,17 @@ export class ChatContentPage extends Component<
     // 「切换」到 botfather:ChatContentPage 以 channel.getChannelKey()(channelID-channelType)为 React
     // key,任何频道切换都会换 key → remount → 重走 componentDidMount,故挂载处即唯一发点(无需 didUpdate
     // 补一路,那条 channelChanged 分支永不为真)。一次进入发一次。DAP「BotFather 命令使用分布」图分母 =
-    // 进入 botfather 会话的去重用户;actor_id 由 collector 附。entry 只需分母,恒传 "conversation"。
+    // 进入 botfather 会话的去重用户;actor_id 由 collector 附。
+    // entry 来源:各入口(通讯录顶端横幅 contact_banner / BotStore bot_store)在 showConversation 前写
+    // pendingBotfatherOpenEntry sentinel,此处一次性消费;未写入(会话列表点行 / 深链 / 路由恢复)缺省
+    // "conversation"。消费后即清,避免下一次非标记进入误带上一次来源。
     if (
       channel.channelType === ChannelTypePerson &&
       channel.channelID === "botfather"
     ) {
-      Dap.shared.track("botfather_opened", { entry: "conversation" });
+      const entry = WKApp.shared.pendingBotfatherOpenEntry || "conversation";
+      WKApp.shared.pendingBotfatherOpenEntry = undefined;
+      Dap.shared.track("botfather_opened", { entry });
     }
   }
 

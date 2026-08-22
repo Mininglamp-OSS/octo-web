@@ -620,7 +620,9 @@ export default class ContactsList extends Component<any, ContactsState> {
             return
         }
         if (uid === 'botfather') {
-            // BotFather 直接进聊天
+            // BotFather 直接进聊天。botfather_opened 来源标记：本入口 = 通讯录顶端 BotFather 横幅
+            // (renderBotFatherBanner → handleContactClick('botfather'))。ChatContentPage 挂载时消费。
+            WKApp.shared.pendingBotfatherOpenEntry = "contact_banner"
             WKApp.endpoints.showConversation(new Channel(uid, ChannelTypePerson))
             return
         }
