@@ -124,12 +124,17 @@
 .wk-contacts-group-tag {
     display: inline-flex;
     align-items: center;
-    padding: 1px 6px;
-    border-radius: var(--wk-r-xs);
-    font-size: 10px;
-    font-weight: 500;
-    background: var(--wk-bg-active, #E2E3EA);
-    color: var(--wk-text-secondary, #5C6070);
+    box-sizing: border-box;
+    flex-shrink: 0;
+    height: var(--wk-sp-5);
+    margin-left: var(--wk-sp-1);
+    padding: var(--wk-sp-0-5) var(--wk-sp-2);
+    border-radius: var(--wk-r-full);
+    font-size: var(--wk-text-size-sm);
+    font-weight: var(--wk-font-medium);
+    line-height: var(--wk-sp-5);
+    background: var(--octo-ui-tag-light-gray-bg);
+    color: var(--octo-ui-tag-light-gray-color);
 }
 
 .wk-contacts-accordion-body {

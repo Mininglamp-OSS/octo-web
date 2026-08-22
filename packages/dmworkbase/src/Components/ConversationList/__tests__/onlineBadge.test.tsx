@@ -185,6 +185,11 @@ describe("online badge in compact (favorites/group) list", () => {
     expect(
       compactItem?.querySelector(".wk-conv-compact-icon .wk-onlinestatusbadge")
     ).not.toBeNull();
+    expect(
+      compactItem?.querySelector(".wk-onlinestatusbadge")?.classList.contains(
+        "octo-ui-dot--success"
+      )
+    ).toBe(true);
   });
 
   it("does not render the badge for a long-offline entry in compact mode", () => {

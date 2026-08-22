@@ -1,5 +1,5 @@
-import React, { useRef, useState, useEffect, useCallback, memo } from "react";
-import { Tooltip } from "@douyinfe/semi-ui";
+import React, { useCallback, useRef, useState, useEffect, memo } from "react";
+import { Tooltip } from "@octo/ui";
 import "./TooltipCell.css";
 
 interface TooltipCellProps {
@@ -13,8 +13,8 @@ interface TooltipCellProps {
  */
 export const TooltipCell = memo(function TooltipCell({ content }: TooltipCellProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const [isTruncated, setIsTruncated] = useState(false);
-  const [visible, setVisible] = useState(false);
 
   // 内容是否非空（排除 null/undefined 以及空白字符串）
   const hasContent =
@@ -22,52 +22,46 @@ export const TooltipCell = memo(function TooltipCell({ content }: TooltipCellPro
     content !== undefined &&
     !(typeof content === "string" && content.trim() === "");
 
-  useEffect(() => {
-    const checkTruncation = () => {
-      if (ref.current) {
-        setIsTruncated(ref.current.scrollWidth > ref.current.clientWidth);
-      }
-    };
-
-    checkTruncation();
-    window.addEventListener("resize", checkTruncation);
-    return () => window.removeEventListener("resize", checkTruncation);
-  }, [content]);
-
-  // NOTE: 这里刻意使用 trigger="custom" 而非 trigger="hover"。
-  // hover 模式下 semi 会用内部状态挂载浮层，绕过受控的 visible，
-  // 当内容为空时会出现一个空的深色气泡（"乌云"）。改为受控后，
-  // 仅当元素确实溢出且有内容时才显示浮层。
-  const handleMouseEnter = useCallback(() => {
-    const el = ref.current;
-    if (el && el.scrollWidth > el.clientWidth && hasContent) {
-      setVisible(true);
+  const checkTruncation = useCallback(() => {
+    if (ref.current) {
+      setIsTruncated(ref.current.scrollWidth > ref.current.clientWidth);
     }
-  }, [hasContent]);
-
-  const handleMouseLeave = useCallback(() => {
-    setVisible(false);
   }, []);
+
+  const setCellRef = useCallback((node: HTMLDivElement | null) => {
+    resizeObserverRef.current?.disconnect();
+    resizeObserverRef.current = null;
+    ref.current = node;
+    if (!node) return;
+
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserverRef.current = new ResizeObserver(checkTruncation);
+      resizeObserverRef.current.observe(node);
+    }
+  }, [checkTruncation]);
+
+  useEffect(() => {
+    checkTruncation();
+  }, [content, checkTruncation]);
+
+  useEffect(() => {
+    window.addEventListener("resize", checkTruncation);
+    return () => {
+      resizeObserverRef.current?.disconnect();
+      window.removeEventListener("resize", checkTruncation);
+    };
+  }, [checkTruncation]);
 
   const cellContent = (
     <div
-      ref={ref}
+      ref={setCellRef}
       className="wk-excel-tooltip-cell"
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
     >
       {content}
     </div>
   );
 
-  // 未截断或无内容时，直接返回裸单元格，不挂载 Tooltip，杜绝空气泡
-  if (!isTruncated || !hasContent) {
-    return cellContent;
-  }
+  if (!isTruncated || !hasContent) return cellContent;
 
-  return (
-    <Tooltip content={content} position="top" trigger="custom" visible={visible} showArrow>
-      {cellContent}
-    </Tooltip>
-  );
+  return <Tooltip content={content}>{cellContent}</Tooltip>;
 });

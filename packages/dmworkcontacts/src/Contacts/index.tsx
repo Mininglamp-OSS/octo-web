@@ -5,7 +5,8 @@ import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
-import { Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Tooltip } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { ChevronRight, Users, Bot, UsersRound } from "lucide-react";
 
 import { Channel, ChannelTypePerson, ChannelTypeGroup, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
@@ -32,22 +33,47 @@ import {
 import type { ContactsSearchIndex } from "../bridge/contactsSearch/types";
 
 function OverflowTooltip({ text, children }: { text: string; children: React.ReactNode }) {
-    const [visible, setVisible] = useState(false)
+    const [isTruncated, setIsTruncated] = useState(false)
     const textRef = useRef<HTMLSpanElement>(null)
-    const onEnter = useCallback(() => {
-        if (textRef.current && textRef.current.scrollWidth > textRef.current.clientWidth) {
-            setVisible(true)
+    const resizeObserverRef = useRef<ResizeObserver | null>(null)
+
+    const checkTruncation = useCallback(() => {
+        if (textRef.current) {
+            setIsTruncated(textRef.current.scrollWidth > textRef.current.clientWidth)
         }
     }, [])
-    const onLeave = useCallback(() => setVisible(false), [])
-    return (
-        <Tooltip content={text} position="right" trigger="custom" visible={visible}>
-            <div className="wk-contacts-section-item-name" onMouseEnter={onEnter} onMouseLeave={onLeave}>
-                <span ref={textRef} className="wk-contacts-section-item-text">{text}</span>
-                {children}
-            </div>
-        </Tooltip>
+
+    const setTextRef = useCallback((node: HTMLSpanElement | null) => {
+        resizeObserverRef.current?.disconnect()
+        resizeObserverRef.current = null
+        textRef.current = node
+        if (!node) return
+
+        if (typeof ResizeObserver !== "undefined") {
+            resizeObserverRef.current = new ResizeObserver(checkTruncation)
+            resizeObserverRef.current.observe(node)
+        }
+    }, [checkTruncation])
+
+    useEffect(() => {
+        checkTruncation()
+    }, [text, checkTruncation])
+
+    useEffect(() => {
+        window.addEventListener("resize", checkTruncation)
+        return () => {
+            resizeObserverRef.current?.disconnect()
+            window.removeEventListener("resize", checkTruncation)
+        }
+    }, [checkTruncation])
+    const content = (
+        <div className="wk-contacts-section-item-name">
+            <span ref={setTextRef} className="wk-contacts-section-item-text">{text}</span>
+            {children}
+        </div>
     )
+
+    return isTruncated ? <Tooltip content={text} placement="right">{content}</Tooltip> : content
 }
 
 const ITEM_HEIGHT = 44

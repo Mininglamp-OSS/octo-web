@@ -3,14 +3,26 @@
  */
 
 .wk-ai-tag {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
-  height: 18px;
-  padding: 0 6px;
-  background: linear-gradient(90deg, #44C5FB 0%, #7D58F5 100%);
-  color: #FFFFFF;
-  font-size: 11px;
-  font-weight: 500;
-  border-radius: 4px;
+  flex-shrink: 0;
+  height: var(--wk-sp-5);
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-0-5) var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  background: var(--octo-ui-tag-ai-bg);
+  color: var(--octo-ui-tag-ai-color);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+  line-height: var(--wk-sp-5);
   white-space: nowrap;
+}
+
+.wk-ai-tag--xs {
+  height: var(--wk-sp-4);
+  gap: var(--wk-sp-0-5);
+  padding: 0 var(--wk-sp-1-5);
+  font-size: var(--wk-text-size-tiny);
+  line-height: var(--wk-sp-4);
 }
