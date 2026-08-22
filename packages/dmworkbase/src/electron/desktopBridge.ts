@@ -27,6 +27,11 @@ export interface DesktopWindowBridge {
   isFocused(): Promise<boolean>;
 }
 
+export interface DesktopLinksBridge {
+  /** Open an http(s) URL in the system browser; resolves {ok, reason?}. */
+  openExternal(url: string): Promise<{ ok: boolean; reason?: string }>;
+}
+
 export interface DesktopConversationBridge {
   setUnreadCount(count: number): void;
 }
@@ -42,6 +47,7 @@ export interface OctoElectronBridge {
   oidc: DesktopOidcBridge;
   notification: DesktopNotificationBridge;
   window: DesktopWindowBridge;
+  links: DesktopLinksBridge;
   conversation: DesktopConversationBridge;
   system: DesktopSystemBridge;
 }
@@ -92,6 +98,11 @@ export function getElectronWindowBridge(): DesktopWindowBridge | undefined {
 export function getElectronSystemBridge(): DesktopSystemBridge | undefined {
   if (typeof window === "undefined") return undefined;
   return window.octoElectron?.system;
+}
+
+export function getElectronLinksBridge(): DesktopLinksBridge | undefined {
+  if (typeof window === "undefined") return undefined;
+  return window.octoElectron?.links;
 }
 
 export function isElectronPowered(): boolean {

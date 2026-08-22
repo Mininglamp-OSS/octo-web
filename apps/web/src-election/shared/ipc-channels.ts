@@ -58,6 +58,21 @@ export const IPC_NOTIFICATION_ACTION_CLICKED = "notification-action-clicked";
 /** Renderer → Main: query the real BrowserWindow focus state. */
 export const IPC_WINDOW_IS_FOCUSED = "is-window-focused";
 
+/** Renderer → Main: confirm trusting an unknown fleet host for issue previews. */
+export const IPC_ASK_TRUST_FLEET_HOST = "fleet:ask-trust-host";
+
+/**
+ * Renderer → Main: open an arbitrary http(s) URL in the system browser.
+ *
+ * Distinct from IPC_OIDC_OPEN_EXTERNAL (which is an end-session-specific,
+ * hidden-window flow with an OIDC origin allowlist): this bridge is the
+ * generic external-link escape hatch for shell features whose web-era code
+ * used window.open + about:blank (realname verification, global search doc
+ * open). http(s) only — other schemes are rejected so an attacker-chosen
+ * protocol string never reaches the OS handler registry.
+ */
+export const IPC_OPEN_EXTERNAL_URL = "octo:open-external-url";
+
 /** Renderer → Main: register the API origin expected for the OIDC callback. */
 export const IPC_OIDC_AUTHORIZE_START = "oidc-authorize-start";
 

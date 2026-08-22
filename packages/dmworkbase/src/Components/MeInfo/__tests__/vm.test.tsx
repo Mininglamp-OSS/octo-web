@@ -333,6 +333,73 @@ describe("MeInfoVM.startRealnameVerify — window.open + return_to 合同", () =
     expect(decodedUrl.searchParams.get("verified")).toBe("1")
   })
 
+  // Round-8 (yujiawei B2 / Jerry-Xin B1): 打包 file:// shell 上 origin 是
+  // "null"/"file://"，return_to 必须落到 API origin 的 /me 路由——绝不能把
+  // asar 文件系统路径带进 IdP（本地路径泄漏 + 404 死路由）。
+  it("[Round-8] 打包 shell(origin='null' + asar pathname) → return_to 用 API origin 的 /me 路由,不带文件系统路径", () => {
+    const fakeApiConfig = hoisted.fakeWKApp.apiClient.config as { apiURL: string }
+    const originalApiURL = fakeApiConfig.apiURL
+    fakeApiConfig.apiURL = "https://api-test.example.com/api/v1/"
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        origin: "null",
+        pathname: "/C:/Users/someone/AppData/Local/Programs/OCTO/resources/app.asar/build/index.html",
+        search: "?sid=abc",
+        hash: "",
+        href: "file:///C:/Users/someone/AppData/Local/Programs/OCTO/resources/app.asar/build/index.html?sid=abc",
+      },
+    })
+    const openedMock = { opener: {} as unknown, location: { href: "" } }
+    const openSpy = vi.fn().mockReturnValue(openedMock as unknown as Window)
+    window.open = openSpy as unknown as typeof window.open
+
+    new MeInfoVM().startRealnameVerify()
+
+    const url = openedMock.location.href
+    const match = String(url).match(/return_to=([^&]+)/)
+    expect(match).not.toBeNull()
+    const decoded = decodeURIComponent(match![1])
+    const decodedUrl = new URL(decoded)
+    // API origin 的 /me 路由(fakeWKApp.apiClient.config.apiURL 是 https://api-test.example.com)
+    expect(decodedUrl.origin).toBe("https://api-test.example.com")
+    expect(decodedUrl.pathname).toBe("/me")
+    expect(decodedUrl.searchParams.get("sid")).toBe("abc")
+    expect(decodedUrl.searchParams.get("verified")).toBe("1")
+    // 文件系统路径绝不进 IdP
+    expect(decoded).not.toContain("app.asar")
+    expect(decoded).not.toContain("C:")
+    fakeApiConfig.apiURL = originalApiURL
+  })
+
+  it("[Round-8] file:// origin('file://' 字符串,Electron 26 实际值)同样走 API origin /me", () => {
+    const fakeApiConfig = hoisted.fakeWKApp.apiClient.config as { apiURL: string }
+    const originalApiURL = fakeApiConfig.apiURL
+    fakeApiConfig.apiURL = "https://api-test.example.com/api/v1/"
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...window.location,
+        origin: "file://",
+        pathname: "/app/index.html",
+        search: "",
+        hash: "",
+        href: "file:///app/index.html",
+      },
+    })
+    const openedMock = { opener: {} as unknown, location: { href: "" } }
+    const openSpy = vi.fn().mockReturnValue(openedMock as unknown as Window)
+    window.open = openSpy as unknown as typeof window.open
+
+    new MeInfoVM().startRealnameVerify()
+
+    const match = String(openedMock.location.href).match(/return_to=([^&]+)/)
+    const decoded = decodeURIComponent(match![1])
+    expect(decoded).toBe("https://api-test.example.com/me?verified=1")
+    fakeApiConfig.apiURL = originalApiURL
+  })
+
   it("[Crit] return_to 无 query 时只带 verified=1(单 param)", () => {
     Object.defineProperty(window, "location", {
       configurable: true,

@@ -16,6 +16,7 @@ import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
 import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
+import { getElectronLinksBridge } from "../../electron/desktopBridge";
 import WKButton from "../../Components/WKButton";
 import WKModal from "../../Components/WKModal";
 import { Columns2, ChevronRight } from "lucide-react";
@@ -52,7 +53,10 @@ import { ChannelInfoListener } from "wukongimjssdk";
 import { ChatMenus } from "../../App";
 import ConversationContext from "../../Components/Conversation/context";
 import GlobalSearch from "../../features/globalSearch/GlobalSearchPanel";
-import { buildDocLink } from "../../Utils/docLink";
+import {
+  buildDocLink,
+  resolveDocLinkForExternalOpen,
+} from "../../Utils/docLink";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import SpaceList from "../../Components/SpaceList";
 import SpaceCreate from "../../Components/SpaceCreate";
@@ -85,6 +89,7 @@ import {
 } from "../../im-runtime/channelRuntime";
 import WebhookIssuePreviewPanel from "../../features/webhookMessagePreview/WebhookIssuePreviewPanel";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
+import { apiUrlOrigin } from "../../bridge/message/webhookPreview";
 import { closeChatRightPanels, openChatRightPanel } from "./rightPanelState";
 import { chatPageTitleController } from "./chatPageTitleController";
 import {
@@ -1897,7 +1902,34 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         docId: item.docId,
                         space: item.spaceId,
                       });
-                      // window.open(url, "_blank", "noopener,noreferrer")
+                      // Desktop shell: use the dedicated IPC bridge —
+                      // setWindowOpenHandler routes everything to the system
+                      // browser, so the web-era about:blank dance would never
+                      // produce a usable window reference. buildDocLink emits
+                      // a RELATIVE /d/<docId> path on file:// shells (the
+                      // webOrigin allowlist degrades there), which the
+                      // http(s)-only bridge would reject — resolve against
+                      // the API origin so the standalone doc page opens in
+                      // the browser.
+                      const linksBridge = getElectronLinksBridge();
+                      if (linksBridge) {
+                        const absoluteUrl = resolveDocLinkForExternalOpen(
+                          url,
+                          apiUrlOrigin(),
+                        );
+                        linksBridge
+                          .openExternal(absoluteUrl)
+                          .then((result) => {
+                            if (!result.ok) {
+                              Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            }
+                          })
+                          .catch(() => {
+                            Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                          });
+                        return;
+                      }
+                      // Web: window.open(url, "_blank", "noopener,noreferrer")
                       // cannot be null-checked: per MDN, passing the
                       // `noopener` feature makes window.open return null on
                       // SUCCESS too, so `if (!opened)` false-positives on
