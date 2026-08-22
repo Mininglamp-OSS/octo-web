@@ -766,11 +766,12 @@ export class ChatContentPage extends Component<
       }
     }
 
-    // botfather_opened(入口一:挂载即 botfather 频道)——本页以 botfather DM 挂载 = 通讯录横幅/
-    // 联系人行点入(handleContactClick→showConversation)、BotStore 进入、深链或路由恢复,都会
-    // remount 走 componentDidMount。DAP「BotFather 命令使用分布」图分母 = 进入 botfather 会话的
-    // 去重用户,进入一次发一次即可(actor_id 由 collector 附)。与 didUpdate 入口天然不重:初次挂载
-    // 不触发 componentDidUpdate,页内切入 botfather 才走 didUpdate。entry 只需分母,恒传 "conversation"。
+    // botfather_opened:本页以 botfather DM 挂载 = 进入 botfather 会话。覆盖全部入口——通讯录横幅/
+    // 联系人行点入(handleContactClick→showConversation)、BotStore、深链、路由恢复,以及会话列表内
+    // 「切换」到 botfather:ChatContentPage 以 channel.getChannelKey()(channelID-channelType)为 React
+    // key,任何频道切换都会换 key → remount → 重走 componentDidMount,故挂载处即唯一发点(无需 didUpdate
+    // 补一路,那条 channelChanged 分支永不为真)。一次进入发一次。DAP「BotFather 命令使用分布」图分母 =
+    // 进入 botfather 会话的去重用户;actor_id 由 collector 附。entry 只需分母,恒传 "conversation"。
     if (
       channel.channelType === ChannelTypePerson &&
       channel.channelID === "botfather"
@@ -802,15 +803,6 @@ export class ChatContentPage extends Component<
 
     if (channelChanged) {
       chatPageTitleController.activate(channel, this.titlePageOwner);
-      // botfather_opened(入口二:页内切换到 botfather)——本页 channel 不 remount 只换 props 时
-      // (会话列表内切到 botfather DM)。channelChanged 天然去重(仅在频道身份变化的那一拍发一次),
-      // 与挂载入口(入口一)互斥:切入走这里,首挂载走 componentDidMount。entry 恒传 "conversation"。
-      if (
-        channel.channelType === ChannelTypePerson &&
-        channel.channelID === "botfather"
-      ) {
-        Dap.shared.track("botfather_opened", { entry: "conversation" });
-      }
       this._clearChannelSearchState();
       if (
         this.state.channelSearchPreviewFile ||
