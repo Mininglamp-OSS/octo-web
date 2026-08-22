@@ -535,7 +535,14 @@
         "refineNotCreator": "You are not the creator of this summary and cannot modify it",
         "refineNoSnapshot": "This summary data version is too old and cannot be refined",
         "refineFailed": "Refinement failed, please try again later",
-        "continueRefine": "Continue refining"
+        "continueRefine": "Continue refining",
+        "copy": "Copy",
+        "copySuccess": "Copied to clipboard",
+        "copyFailed": "Copy failed, please retry",
+        "convertToDoc": "Convert to document",
+        "convertSuccess": "Document created, redirecting...",
+        "convertFailed": "Conversion failed, please retry",
+        "convertPopupBlocked": "The browser blocked the new tab. Allow pop-ups and try again."
     },
     "summaryCard": {
         "agentType": "Agent summary",
