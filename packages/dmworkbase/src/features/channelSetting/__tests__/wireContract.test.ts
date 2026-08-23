@@ -36,6 +36,9 @@ const members: RawMember[] = [
   { uid: "bot_mine_c", role: 0, robot: 1, bot_owned_by_me: true },
   { uid: "bot_other_c", role: 0, robot: 1, bot_owned_by_me: false },
   { uid: "human_c", role: 0, robot: 0, bot_owned_by_me: false },
+  // 归我所有、但被提升为 Manager 的 bot：后端自助分支拒绝它，
+  // 因此 bot_owned_by_me 下发 false（而不是靠前端自己再判一次角色）。
+  { uid: "bot_mgr_c", role: 2, robot: 1, bot_owned_by_me: false },
 ];
 
 /** 按 IM SDK 的方式把报文原样铺进 orgData（datasource.ts / subscribers.ts 都是整份 spread）。 */
@@ -68,6 +71,10 @@ describe("wire contract · 真实 server 报文 → 前端判据", () => {
 
   it("他人名下的 bot → 不可移除", () => {
     expect(canRemove("bot_other_c")).toBe(false);
+  });
+
+  it("归我所有但担任 Manager 的 bot → 不可移除（后端已下发 false）", () => {
+    expect(canRemove("bot_mgr_c")).toBe(false);
   });
 
   it("人类成员与群主 → 不可移除", () => {
