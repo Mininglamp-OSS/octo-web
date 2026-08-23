@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { canRemoveChannelSettingSubscriber } from "../memberRemovalPermission";
-import realMembersResponse from "./__fixtures_members_contract.json";
 
 // 跨仓库契约校验（octo-web#1511 / octo-server#805）。
 //
@@ -20,7 +19,24 @@ type RawMember = {
   bot_owned_by_me?: boolean;
 };
 
-const members = realMembersResponse as RawMember[];
+// 取自 octo-server 在真实 MySQL + WuKongIM 栈上跑出的
+// GET /v1/groups/:group_no/members 响应，只保留与本契约相关的四个字段
+// （原始响应每个成员有 23 个字段，其余是自增 id、本次运行的时间戳等偶然值，
+// 落进仓库只会让人误以为它们有意义）。
+//
+// 重新生成：在 octo-server 侧跑
+//   go test ./modules/group/ -run TestBotOwnerSelfRemoval_MembersGetExposesBotOwnedByMe
+// 该用例断言的正是同一批字段；若后端改了字段名或类型，它与这里会同时变红。
+//
+// 场景：10000 是普通成员（当前查看者）；owner_other 是群主；
+// bot_mine_c 归 10000 所有；bot_other_c 归群主所有；human_c 是人类成员。
+const members: RawMember[] = [
+  { uid: "owner_other", role: 1, robot: 0, bot_owned_by_me: false },
+  { uid: "10000", role: 0, robot: 0, bot_owned_by_me: false },
+  { uid: "bot_mine_c", role: 0, robot: 1, bot_owned_by_me: true },
+  { uid: "bot_other_c", role: 0, robot: 1, bot_owned_by_me: false },
+  { uid: "human_c", role: 0, robot: 0, bot_owned_by_me: false },
+];
 
 /** 按 IM SDK 的方式把报文原样铺进 orgData（datasource.ts / subscribers.ts 都是整份 spread）。 */
 const toSubscriber = (m: RawMember) =>
