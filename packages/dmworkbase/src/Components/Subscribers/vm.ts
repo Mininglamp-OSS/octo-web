@@ -104,7 +104,28 @@ export class SubscribersVM extends ProviderListener {
         if(role === GroupRole.owner || role === GroupRole.manager) {
            return true
         }
-        return false
+        // 自助移除（octo-web#1511）：拥有群内 bot 的普通成员也需要一个入口。
+        //
+        // 不加这条的话该功能在多数群里根本够不着：普通成员唯一能打开成员列表的
+        // 路径是「查看全部」，而它只在 subscribers.length > shouldShowMemberNum()
+        // （普通成员为 20-1=19）时才渲染 —— 也就是说 19 人以下的群完全没有入口，
+        // 后端放行、bot_owned_by_me 也为 true，用户却点不到任何东西。
+        //
+        // 判据取自成员行的 bot_owned_by_me（严格 true，缺失按 false，与
+        // canRemoveChannelSettingSubscriber 同口径）。这里扫的是本地缓存的成员集，
+        // 对小群是完整的 —— 而小群正是上面那条路径失效的场景；大群本来就有
+        // 「查看全部」兜底，两者互补。
+        return this.ownsAnyBotInGroup()
+    }
+
+    ownsAnyBotInGroup() {
+        const subscribers = this.routeData.subscriberAll || this.routeData.subscribers
+        if(!subscribers || subscribers.length === 0) {
+            return false
+        }
+        return subscribers.some(
+            (subscriber) => subscriber?.orgData?.bot_owned_by_me === true
+        )
     }
 
     hasMoreSubscribers() {

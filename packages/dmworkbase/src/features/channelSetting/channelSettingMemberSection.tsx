@@ -37,15 +37,18 @@ export function canRemoveChannelSettingSubscriber(params: {
   if (!subscriber?.uid) return false;
   if (subscriber.uid === viewerUid) return false;
   if (subscriber.role === GroupRole.owner) return false;
-  // 自助移除（octo-web#1511）：不论查看者在群里是什么角色，都可以撤走自己名下的
-  // bot。放在角色判断之前，是因为普通成员的角色分支恒 false，会把这条挡掉。
-  // 上面两条否决保持优先：不能移除自己，也不能移除群主（即便群主是个 bot）。
-  if (isBotOwnedByViewer(subscriber)) return true;
   if (viewerRole === GroupRole.owner) return true;
   if (viewerRole === GroupRole.manager) {
     return subscriber.role === GroupRole.normal;
   }
-  return false;
+  // 自助移除（octo-web#1511）：普通成员可以撤走自己名下的 bot。
+  //
+  // 必须放在角色分支**之后**，精确镜像后端：memberRemove 的自助分支只在调用方
+  // 既非 Creator 也非 Manager 时才进入。若提到前面，一个「管理员 + 拥有一个被
+  // 提升为管理员的 bot」的组合会渲染出移除按钮，而后端走的是管理员路径、
+  // 直接回 ErrGroupCannotRemoveAdmin —— 按钮点了必报错。
+  // （managerAdd 不排除 robot，所以 bot 当管理员是构造得出来的。）
+  return isBotOwnedByViewer(subscriber);
 }
 
 export function buildChannelMembersSection(

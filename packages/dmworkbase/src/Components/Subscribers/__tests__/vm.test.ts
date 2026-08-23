@@ -135,4 +135,60 @@ describe("SubscribersVM", () => {
       "kept",
     ]);
   });
+
+  describe("showRemove", () => {
+    const makeVM = (routeData: any) =>
+      new SubscribersVM({ routeData: vi.fn(() => routeData) } as any);
+
+    it("shows the remove entry for owners and managers", () => {
+      for (const role of [1, 2]) {
+        const vm = makeVM({
+          channel,
+          subscribers: [],
+          subscriberAll: [],
+          subscriberOfMe: { uid: "owner", role },
+        });
+        expect(vm.showRemove()).toBe(true);
+      }
+    });
+
+    it("shows the remove entry to a normal member who owns a bot in the group", () => {
+      // octo-web#1511：不加这条，普通成员在 <=19 人的群里完全没有入口 ——
+      // 「查看全部」只在成员数超过 shouldShowMemberNum()（普通成员为 19）时才渲染。
+      const vm = makeVM({
+        channel,
+        subscribers: [],
+        subscriberAll: [
+          { uid: "peer", role: 0 },
+          { uid: "bot_mine", role: 0, orgData: { robot: 1, bot_owned_by_me: true } },
+        ],
+        subscriberOfMe: { uid: "me", role: 0 },
+      });
+      expect(vm.showRemove()).toBe(true);
+    });
+
+    it("hides the remove entry from a normal member with no bots of their own", () => {
+      const vm = makeVM({
+        channel,
+        subscribers: [],
+        subscriberAll: [
+          { uid: "peer", role: 0 },
+          { uid: "bot_theirs", role: 0, orgData: { robot: 1, bot_owned_by_me: false } },
+          { uid: "bot_stale", role: 0, orgData: { robot: 1 } },
+        ],
+        subscriberOfMe: { uid: "me", role: 0 },
+      });
+      expect(vm.showRemove()).toBe(false);
+    });
+
+    it("fails closed when the member cache is empty", () => {
+      const vm = makeVM({
+        channel,
+        subscribers: [],
+        subscriberAll: [],
+        subscriberOfMe: { uid: "me", role: 0 },
+      });
+      expect(vm.showRemove()).toBe(false);
+    });
+  });
 });
