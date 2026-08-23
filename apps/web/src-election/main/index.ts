@@ -24,6 +24,7 @@ import { pathToFileURL } from "url";
 import logo, { getNoMessageTrayIcon } from "./logo";
 import { decideWindowOpen } from "./externalLink";
 import { isFleetIssuePathShape } from "./fleetTrust";
+import { fleetTrustDialogCopy } from "./fleetTrustDialog";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_KEEP_AWAKE_GET,
@@ -455,20 +456,21 @@ async function promptFleetTrustOnce(
 ): Promise<boolean> {
   const existing = inflightFleetTrustPrompts.get(host);
   if (existing) return existing;
+  const copy = fleetTrustDialogCopy(app.getLocale(), host, href);
   const prompt = (async (): Promise<boolean> => {
     const { response, checkboxChecked } = await dialog.showMessageBox(win, {
       type: "warning",
-      title: "信任此域名以打开任务预览？",
-      message: `是否允许在“${host}”下打开任务预览？`,
-      detail: `链接：${href}`,
-      buttons: ["允许", "拒绝"],
-      defaultId: 1, // 默认拒绝
+      title: copy.title,
+      message: copy.message,
+      detail: copy.detail,
+      buttons: copy.buttons,
+      defaultId: 1, // 默认拒绝 / default deny
       cancelId: 1, // Esc / 关闭窗口也按"拒绝"处理，弹窗失败永远 fail-closed
       noLink: true, // plain buttons, no command-link Enter mapping
       // Allow-only semantics: the checkbox is persisted only when the user
-      // clicks 允许 (rememberFleetTrustedHost runs for response === 0), so
-      // the label must not promise "never ask again" for the reject side.
-      checkboxLabel: "允许并记住此域名",
+      // clicks 允许/Allow (rememberFleetTrustedHost runs for response === 0),
+      // so the label must not promise "never ask again" for the reject side.
+      checkboxLabel: copy.checkboxLabel,
       checkboxChecked: false,
     });
     if (checkboxChecked && response === 0) {
