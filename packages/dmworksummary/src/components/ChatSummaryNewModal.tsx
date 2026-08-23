@@ -4,8 +4,8 @@ import { IconPlus, IconClock, IconChevronDown } from '@douyinfe/semi-icons';
 import { WKApp, I18nContext } from '@octo/base';
 import VoiceInputButton from '@octo/base/src/Components/VoiceInputButton';
 import type { ReplaceMode, SelectionRange } from '@octo/base/src/Components/VoiceInputButton';
-import type { TopicTemplate, ChatCandidate, ScheduleConfig, CreateAgentSummaryParams, ChatMessage } from '../types/summary';
-import { SummaryMode } from '../types/summary';
+import type { TopicTemplate, ChatCandidate, ScheduleConfig, CreateAgentSummaryParams, ChatMessage, TaskStatusType } from '../types/summary';
+import { SummaryMode, TaskStatus } from '../types/summary';
 import { getSourceType, getOriginChannelType, chatTypeToOriginChannelType } from '../utils/channelType';
 import { markAgentSummaryNotificationEligible } from '../utils/groupSummaryNotify';
 import { channelToChatCandidate } from '../utils/channelConvert';
@@ -22,6 +22,9 @@ import {
     readAgentChatRequestId,
     writeAgentChatRequestId,
     clearAgentChatRequestId,
+    readAgentFinalizePending,
+    writeAgentFinalizePending,
+    clearAgentFinalizePending,
 } from '../utils/summaryHelpers';
 import * as summaryApi from '../api/summaryApi';
 import { getTopicTemplatesConfig } from '../api/summaryApi';
@@ -67,6 +70,11 @@ interface ChatSummaryNewModalState {
     messages: ChatMessage[];
     sessionId: string;
     agentRequestId: string;
+    /**
+     * 上一次 async finalize 的待结算状态：0 = 无，正数 = 可查询的 task_id，-1 =
+     * 后端确认冲突但未返回可查询 task。非 0 时冻结聊天与保存。
+     */
+    pendingFinalizeTaskId: number;
 }
 
 export default class ChatSummaryNewModal extends Component<
@@ -116,6 +124,55 @@ export default class ChatSummaryNewModal extends Component<
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
     private agentSendInFlight = false;
 
+    /**
+     * finalize 幂等键按「同一请求 payload」持有：网络/超时后同 payload 重试复用，
+     * payload 变化则换 key。键与已受理的 task_id 一起落 localStorage（按频道隔离），
+     * 使它能跨 reload / 跨组件实例存活 —— 见 SummaryCreatePage 同名方法与 #1465 R4/R5。
+     */
+    private getFinalizePending(): { key: string; fingerprint: string; taskId: number } | null {
+        return readAgentFinalizePending(this.agentChannelId());
+    }
+
+    private buildFinalizeFingerprint(params: CreateAgentSummaryParams): string {
+        return JSON.stringify({
+            session_id: params.session_id || '',
+            title: params.title || '',
+            origin_channel_id: params.origin_channel_id || '',
+            origin_channel_type: params.origin_channel_type ?? null,
+            sources: params.sources || [],
+            referenced_task_ids: params.referenced_task_ids || [],
+            participants: params.participants || [],
+            request_id: params.request_id || '',
+            message_count: this.state.messages.length,
+        });
+    }
+
+    private getOrCreateFinalizeIdempotencyKey(fingerprint: string): string {
+        const pending = this.getFinalizePending();
+        if (pending && (pending.taskId !== 0 || pending.fingerprint === fingerprint)) {
+            return pending.key;
+        }
+        const key = summaryApi.genFinalizeRequestId();
+        writeAgentFinalizePending(this.agentChannelId(), { key, fingerprint, taskId: 0 });
+        return key;
+    }
+
+    /** finalize 已被受理：记下 task_id，供下次进 agent 模式 reconcile 终态。 */
+    private markFinalizeAccepted(taskId: number) {
+        const pending = this.getFinalizePending();
+        if (!pending) return;
+        writeAgentFinalizePending(this.agentChannelId(), { ...pending, taskId });
+    }
+
+    /** 40009 未返回 task_id：保留原 key，并用 -1 阻断后续 payload/key 轮换。 */
+    private markFinalizeUnresolved() {
+        this.markFinalizeAccepted(-1);
+    }
+
+    private clearFinalizeIdempotencyKey() {
+        clearAgentFinalizePending(this.agentChannelId());
+    }
+
     // localStorage key 按频道隔离，不同群各自的对话不串（见 summaryHelpers）。
     private agentChannelId(): string | undefined {
         return this.props.channel?.channelID;
@@ -149,6 +206,7 @@ export default class ChatSummaryNewModal extends Component<
             messages: [],
             sessionId: '',
             agentRequestId: '',
+            pendingFinalizeTaskId: 0,
         };
     }
 
@@ -163,6 +221,9 @@ export default class ChatSummaryNewModal extends Component<
     componentDidUpdate(prevProps: ChatSummaryNewModalProps) {
         if (this.props.visible && !prevProps.visible) {
             const defaultChat = channelToChatCandidate(this.props.channel);
+            // 不在打开时清幂等键：它现在跟已受理的 task_id 一起落盘，开/关弹窗不应该
+            // 抛弃「上一次 finalize 还在生成」这个事实（payload 变了自然会换 key）。
+            // 改为惰性对帐上一次的终态（#1465 R5 P1）。
             this.setState({
                 topic: '',
                 appliedTemplateLabel: '',
@@ -187,6 +248,7 @@ export default class ChatSummaryNewModal extends Component<
                 agentRequestId: '',
             });
             void this.loadTemplates();
+            void this.reconcilePendingFinalize();
         }
     }
 
@@ -478,7 +540,7 @@ export default class ChatSummaryNewModal extends Component<
     /**
      * Agent 多轮交互问答。
      *
-     * 与 handleSubmit 的区别：不建 task / 不触发 onSubmit / 不调 createAgentSummary，
+     * 与 handleSubmit 的区别：不建 task / 不触发 onSubmit / 不调 agent summary save，
      * 只做「多轮气泡 UI + session_id」。与 SummaryCreatePage 逻辑一致：
      * 同一会话复用同一 session_id，后端据此持久化多轮记忆（滑窗保留最近若干轮），追问可续上下文。
      */
@@ -604,12 +666,68 @@ export default class ChatSummaryNewModal extends Component<
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
         const storedRequestId = readAgentChatRequestId(this.agentChannelId());
+        const pending = this.getFinalizePending();
         this.setState((prev) => ({
             mode: 'agent',
             sessionId: stored || prev.sessionId,
             agentRequestId: storedRequestId || prev.agentRequestId,
+            pendingFinalizeTaskId: pending?.taskId ?? 0,
         }));
         if (stored) void this.loadAgentHistory(stored);
+        void this.reconcilePendingFinalize();
+    }
+
+    /**
+     * async finalize 只拿到 202 accepted，当场不能销毁本地会话（生成失败用户需要能
+     * 重试），但也不能永久保留。下次进 agent 模式时惰性对帐任务终态：
+     *   COMPLETED  → 交付物已落库，清 session/pending，回到空白开局，堵死重复保存。
+     *   FAILED/CANCELLED → 保留会话让用户重试，仅清 pending。
+     *   仍在生成 → 保留会话，保存按钮置灰。
+     *   查询成功但任务缺失 → 仅清 pending，保留会话以便新 key 重试。
+     *   请求失败 → 保守保留 pending，下次再对。
+     * 与 SummaryCreatePage.reconcilePendingFinalize 同口径（本入口无 referencedTask）。
+     */
+    private async reconcilePendingFinalize() {
+        const pending = this.getFinalizePending();
+        if (!pending) return;
+        if (pending.taskId !== 0 && this.state.pendingFinalizeTaskId !== pending.taskId) {
+            this.setState({ pendingFinalizeTaskId: pending.taskId });
+        }
+        if (pending.taskId <= 0) return;
+        let task: { status: TaskStatusType } | undefined;
+        try {
+            const tasks = await summaryApi.batchStatus([pending.taskId]);
+            task = tasks.find((item) => item.id === pending.taskId);
+        } catch {
+            // 网络/权限失败：保守保留，下次进入时再对。
+            return;
+        }
+        // 对帐期间用户可能已点「新会话」或又发起了一次保存 —— pending 变了就丢弃本次结果。
+        const current = this.getFinalizePending();
+        if (!current || current.key !== pending.key || current.taskId !== pending.taskId) return;
+
+        if (!task) {
+            clearAgentFinalizePending(this.agentChannelId());
+            this.setState({ pendingFinalizeTaskId: 0 });
+            return;
+        }
+
+        const status = task.status;
+
+        if (status === TaskStatus.COMPLETED) {
+            clearAgentChatSession(this.agentChannelId());
+            clearAgentChatRequestId(this.agentChannelId());
+            clearAgentFinalizePending(this.agentChannelId());
+            this.historyLoadToken++;
+            this.setState({ messages: [], sessionId: '', agentRequestId: '', pendingFinalizeTaskId: 0 });
+            return;
+        }
+        if (status === TaskStatus.FAILED || status === TaskStatus.CANCELLED) {
+            clearAgentFinalizePending(this.agentChannelId());
+            this.setState({ pendingFinalizeTaskId: 0 });
+            return;
+        }
+        this.setState({ pendingFinalizeTaskId: pending.taskId });
     }
 
     /**
@@ -634,9 +752,10 @@ export default class ChatSummaryNewModal extends Component<
     private handleNewSession = () => {
         clearAgentChatSession(this.agentChannelId());
         clearAgentChatRequestId(this.agentChannelId());
+        this.clearFinalizeIdempotencyKey();
         // 作废在途历史拉取，避免旧会话历史回灌到新会话。
         this.historyLoadToken++;
-        this.setState({ messages: [], sessionId: '', agentRequestId: '' });
+        this.setState({ messages: [], sessionId: '', agentRequestId: '', pendingFinalizeTaskId: 0 });
     };
 
     /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。
@@ -653,10 +772,23 @@ export default class ChatSummaryNewModal extends Component<
         const { t } = this.context;
         const agentRequestId = requestId || this.state.agentRequestId;
 
+        if (this.state.savingSummary || this.state.pendingFinalizeTaskId !== 0) {
+            return true;
+        }
+
         if (!sessionId) {
             Toast.warning(t('summary.create.noOutputToSave'));
             return false;
         }
+
+        const notifyCreatedSummary = (taskId: number) => {
+            window.dispatchEvent(
+                new CustomEvent('chat-summary-created', {
+                    detail: { taskId, channelId: this.props.channel.channelID },
+                }),
+            );
+            onSubmit(taskId);
+        };
 
         this.setState({ savingSummary: true });
         try {
@@ -673,14 +805,16 @@ export default class ChatSummaryNewModal extends Component<
             // 语义),不再依赖后端从 tool_calls 反查。映射与传统路径 (getOriginChannelType)
             // 完全一致。
             const { channel } = this.props;
-            const res = await summaryApi.createAgentSummary({
+            const params: CreateAgentSummaryParams = {
                 session_id: sessionId,
                 ...(agentRequestId ? { request_id: agentRequestId } : {}),
                 title,
                 sources,
                 origin_channel_id: channel.channelID,
                 origin_channel_type: getOriginChannelType(channel),
-            }, {
+            };
+            const finalizeFingerprint = this.buildFinalizeFingerprint(params);
+            const res = await summaryApi.saveAgentSummaryViaFinalize(params, {
                 // 六审 P3:agent 保存入口此前漏传维度 props → smart_summary_started 在此路径
                 // 变成无维度事件,与上面 normal 路径(:412)及 SummaryCreatePage 口径不一致,
                 // 无法按 source/entry_point 归因。补齐,trigger_mode 标 agent 以区分两条创建路径。
@@ -689,32 +823,80 @@ export default class ChatSummaryNewModal extends Component<
                 entry_point: 'chat_new_modal',
                 entry_source: 'chat_new_modal',
                 trigger_mode: 'agent',
+            }, {
+                idempotencyKey: this.getOrCreateFinalizeIdempotencyKey(finalizeFingerprint),
             });
+
+            if (res.async_finalize) {
+                // onSubmit/事件分发可能抛错；先把受理 task 持久化，保证 reload 后仍可对帐。
+                this.markFinalizeAccepted(res.task_id);
+                this.setState({ pendingFinalizeTaskId: res.task_id });
+            } else {
+                // Legacy 已同步落库。先销毁本地会话再调用外部 onSubmit/事件分发；即使
+                // 外部回调抛错，也不能留下一个可再次保存、重复建 task 的工作台。
+                clearAgentChatSession(this.agentChannelId());
+                clearAgentChatRequestId(this.agentChannelId());
+                this.clearFinalizeIdempotencyKey();
+                this.historyLoadToken++;
+                this.setState({
+                    messages: [],
+                    sessionId: '',
+                    agentRequestId: '',
+                    pendingFinalizeTaskId: 0,
+                });
+            }
             markAgentSummaryNotificationEligible(res.task_id);
 
-            Toast.success(t('summary.create.agentSummaryCreated'));
+            Toast.success(t(res.async_finalize ? 'summary.create.agentSummaryGenerating' : 'summary.create.agentSummaryCreated'));
 
-            // dispatch 刷新事件。下游刷新监听按 taskId 走即可;channelId 传空串以
-            // 保持事件字段结构不变、避免 undefined 引用崩溃(origin 已在上面的
-            // createAgentSummary 请求里显式传给后端,与此刷新事件无关)。
-            window.dispatchEvent(
-                new CustomEvent('chat-summary-created', {
-                    detail: { taskId: res.task_id, channelId: '' },
-                }),
-            );
-            clearAgentChatRequestId(this.agentChannelId());
-            this.setState({ agentRequestId: '' });
-            onSubmit(res.task_id);
+            notifyCreatedSummary(res.task_id);
             return true;
         } catch (err: unknown) {
             // 类型守卫:axios 错误
             if (err && typeof err === 'object' && 'response' in err) {
-                const axiosErr = err as { response?: { data?: { code?: number } } };
+                const axiosErr = err as {
+                    response?: {
+                        data?: {
+                            code?: number;
+                            data?: {
+                                task_id?: number;
+                                reason?: string;
+                                recovery_action?: string;
+                            };
+                        };
+                    };
+                };
                 const code = axiosErr.response?.data?.code;
                 // 40004: session 无产出
                 if (code === 40004) {
+                    this.clearFinalizeIdempotencyKey();
                     Toast.error(t('summary.create.noOutputToSave'));
                     return false;
+                }
+                if (code === 40009) {
+                    const conflict = axiosErr.response?.data?.data;
+                    const taskId = conflict?.task_id;
+                    const shouldStartNew = conflict?.reason === 'deleted_summary'
+                        || conflict?.recovery_action === 'start_new_summary';
+
+                    if (shouldStartNew) {
+                        this.clearFinalizeIdempotencyKey();
+                        this.setState({ pendingFinalizeTaskId: 0 });
+                        Toast.warning(t('summary.create.agentSummaryDeletedRetry'));
+                        return false;
+                    }
+
+                    if (typeof taskId === 'number' && taskId > 0) {
+                        this.markFinalizeAccepted(taskId);
+                        this.setState({ pendingFinalizeTaskId: taskId });
+                        Toast.warning(t('summary.create.agentSummaryPendingConfirm'));
+                        return true;
+                    }
+
+                    this.markFinalizeUnresolved();
+                    this.setState({ pendingFinalizeTaskId: -1 });
+                    Toast.error(t('summary.create.agentSummaryPendingUnknown'));
+                    return true;
                 }
             }
             // 其他错误
@@ -834,6 +1016,13 @@ export default class ChatSummaryNewModal extends Component<
                                     welcome={t('summary.create.agentChatWelcome')}
                                     onSaveAsSummary={this.handleSaveAsSummary}
                                     savingSummary={this.state.savingSummary}
+                                    saveDisabledReason={
+                                        this.state.pendingFinalizeTaskId > 0
+                                            ? t('summary.create.agentSummaryGeneratingHint')
+                                            : this.state.pendingFinalizeTaskId < 0
+                                                ? t('summary.create.agentSummaryPendingHint')
+                                                : undefined
+                                    }
                                     onNewSession={this.handleNewSession}
                                     selectedChannels={selectedChats}
                                 />

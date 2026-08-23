@@ -350,6 +350,55 @@ describe('summaryApi', () => {
         });
     });
 
+    describe('batchStatus strict envelope', () => {
+        it('returns an empty task list only from a code 0 envelope', async () => {
+            const { batchStatus } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 200,
+                data: { code: 0, data: { tasks: [] } },
+            });
+
+            await expect(batchStatus([1, 2])).resolves.toEqual([]);
+            expect(mockPost).toHaveBeenCalledWith('/summary/api/v1/summaries/batch-status', {
+                task_ids: [1, 2],
+            });
+        });
+
+        it('rejects HTTP 200 with a non-zero business code', async () => {
+            const { batchStatus } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 200,
+                data: { code: 40009, message: 'batch status unavailable', data: null },
+            });
+
+            await expect(batchStatus([1])).rejects.toThrow('batch status unavailable');
+        });
+
+        it.each([
+            { code: 0, data: null },
+            { code: 0, data: {} },
+            { code: 0, data: { tasks: null } },
+            { data: { tasks: [] } },
+        ])('rejects a malformed success envelope: %j', async (data) => {
+            const { batchStatus } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ status: 200, data });
+
+            await expect(batchStatus([1])).rejects.toThrow();
+        });
+
+        it('keeps friendly HTTP errors and cancellation identity', async () => {
+            const { batchStatus } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce({
+                response: { status: 503, data: { message: 'status service unavailable' } },
+            });
+            await expect(batchStatus([1])).rejects.toThrow('status service unavailable');
+
+            const cancelErr = { __CANCEL__: true, message: 'canceled' };
+            mockPost.mockRejectedValueOnce(cancelErr);
+            await expect(batchStatus([1])).rejects.toBe(cancelErr);
+        });
+    });
+
     // 后端 is_active 返回 number(0/1)，前端多处用 `=== false` / `!== false` 严格判断。
     // 如果不归一，`0 === false` 为 false，会导致关闭后刷新仍被当作「定时生效」。
     describe('is_active normalization (number -> boolean)', () => {
@@ -441,6 +490,346 @@ describe('summaryApi', () => {
             await expect(
                 agentChat({ message: '总结今天', session_id: 's-1' }),
             ).rejects.toThrow('x');
+        });
+    });
+
+    describe('agent finalize save path', () => {
+        it('posts to finalize with Idempotency-Key and accepts a numeric task status', async () => {
+            const { finalizeAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 202,
+                data: { code: 0, data: { task_id: 88, status: 0 } },
+            });
+
+            const res = await finalizeAgentSummary({ session_id: 's1', title: 't' }, 'finalize_test_key');
+
+            expect(mockPost).toHaveBeenCalledWith(
+                '/summary/api/v1/summaries/agent/finalize',
+                { session_id: 's1', title: 't' },
+                { headers: { 'Idempotency-Key': 'finalize_test_key' } },
+            );
+            expect(res).toEqual({ task_id: 88, status: 0 });
+        });
+
+        it('lets callers provide a stable Idempotency-Key for retryable finalize saves', async () => {
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 202,
+                data: { code: 0, data: { task_id: 91, status: 0 } },
+            });
+
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1', title: 't' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_stable_key' },
+            );
+
+            expect(mockPost).toHaveBeenCalledWith(
+                '/summary/api/v1/summaries/agent/finalize',
+                { session_id: 's1', title: 't' },
+                { headers: { 'Idempotency-Key': 'finalize_stable_key' } },
+            );
+            expect(res).toEqual({ task_id: 91, status: 0, async_finalize: true });
+        });
+
+        it('rejects unexpected finalize task status', async () => {
+            const { finalizeAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 202,
+                data: { code: 0, data: { task_id: 88, status: 'GENERATING' } },
+            });
+
+            await expect(finalizeAgentSummary({ session_id: 's1' }, 'finalize_test_key')).rejects.toThrow(
+                'finalize returned unexpected task status',
+            );
+        });
+
+        it('accepts a 200 success response for replay compatibility', async () => {
+            const { finalizeAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 200,
+                data: { code: 0, data: { task_id: 88, status: 3 } },
+            });
+
+            await expect(finalizeAgentSummary({ session_id: 's1' }, 'finalize_test_key')).resolves.toEqual({
+                task_id: 88,
+                status: 3,
+            });
+        });
+
+        it.each([2, 3, 4, 5])('accepts real numeric replay task status %i', async (taskStatus) => {
+            const { finalizeAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 202,
+                data: { code: 0, data: { task_id: 88, status: taskStatus } },
+            });
+
+            await expect(finalizeAgentSummary({ session_id: 's1' }, 'finalize_test_key')).resolves.toEqual({
+                task_id: 88,
+                status: taskStatus,
+            });
+        });
+
+        it('rejects a non-2xx finalize acceptance response', async () => {
+            const { finalizeAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 302,
+                data: { code: 0, data: { task_id: 88, status: 0 } },
+            });
+
+            await expect(finalizeAgentSummary({ session_id: 's1' }, 'finalize_test_key')).rejects.toThrow(
+                'finalize returned unexpected http status',
+            );
+        });
+
+        it('does not fallback on finalize business failure', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 200,
+                data: { code: 40004, message: 'no output', data: null },
+            });
+
+            await expect(
+                saveAgentSummaryViaFinalize(
+                    { session_id: 's1' },
+                    { trigger_mode: 'agent' },
+                    { idempotencyKey: 'finalize_business_key' },
+                ),
+            ).rejects.toBeTruthy();
+            expect(mockPost).toHaveBeenCalledTimes(1);
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
+
+        it('does not fallback on ambiguous network failure', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }));
+
+            await expect(
+                saveAgentSummaryViaFinalize(
+                    { session_id: 's1' },
+                    { trigger_mode: 'agent' },
+                    { idempotencyKey: 'finalize_network_key' },
+                ),
+            ).rejects.toThrow('Network Error');
+            expect(mockPost).toHaveBeenCalledTimes(1);
+            expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
+            track.mockRestore();
+        });
+
+        it('sends the same Idempotency-Key when the caller retries after an ambiguous failure', async () => {
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockRejectedValueOnce(Object.assign(new Error('Network Error'), { code: 'ERR_NETWORK' }))
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 92, status: 2 } },
+                });
+
+            await expect(
+                saveAgentSummaryViaFinalize(
+                    { session_id: 's1' },
+                    { trigger_mode: 'agent' },
+                    { idempotencyKey: 'finalize_retry_key' },
+                ),
+            ).rejects.toThrow('Network Error');
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_retry_key' },
+            );
+
+            expect(res).toEqual({ task_id: 92, status: 2, async_finalize: true });
+            expect(mockPost.mock.calls[0][2]).toEqual({ headers: { 'Idempotency-Key': 'finalize_retry_key' } });
+            expect(mockPost.mock.calls[1][2]).toEqual({ headers: { 'Idempotency-Key': 'finalize_retry_key' } });
+        });
+
+        it('falls back to legacy createAgentSummary when finalize route is unsupported', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockRejectedValueOnce(Object.assign(new Error('not found'), { response: { status: 404, data: { code: 404 } } }))
+                .mockResolvedValueOnce({
+                    data: { code: 0, data: { task_id: 89, task_no: 'n', status: 3, created_at: 'x' } },
+                });
+
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_fallback_key' },
+            );
+
+            expect(res).toEqual({ task_id: 89, async_finalize: false });
+            expect(mockPost.mock.calls[0][0]).toBe('/summary/api/v1/summaries/agent/finalize');
+            expect(mockPost.mock.calls[1]).toEqual([
+                '/summary/api/v1/summaries/agent',
+                { session_id: 's1' },
+                { headers: { 'Idempotency-Key': 'finalize_fallback_key' } },
+            ]);
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
+            track.mockRestore();
+        });
+
+        it('emits smart_summary_started once when finalize is accepted', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                status: 202,
+                data: { code: 0, data: { task_id: 90, status: 0 } },
+            });
+
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_track_key' },
+            );
+
+            expect(res).toEqual({ task_id: 90, status: 0, async_finalize: true });
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
+            expect(started[0][1]).toMatchObject({ trigger_mode: 'agent' });
+            track.mockRestore();
+        });
+
+        it('tracks one started event for the same key across 202 acceptance and 200 replay', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 95, status: 0 } },
+                })
+                .mockResolvedValueOnce({
+                    status: 200,
+                    data: { code: 0, data: { task_id: 95, status: 3 } },
+                });
+
+            const options = { idempotencyKey: 'finalize_track_replay_key' };
+            await saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' }, options);
+            await saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' }, options);
+
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
+            track.mockRestore();
+        });
+
+        it('tracks one started event for each different finalize key', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 96, status: 0 } },
+                })
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 97, status: 0 } },
+                });
+
+            await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_track_distinct_a' },
+            );
+            await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_track_distinct_b' },
+            );
+
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(2);
+            track.mockRestore();
+        });
+
+        it('does not reserve the finalize key until the request is accepted', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockResolvedValueOnce({
+                    status: 200,
+                    data: { code: 40004, message: 'no output', data: null },
+                })
+                .mockResolvedValueOnce({
+                    status: 202,
+                    data: { code: 0, data: { task_id: 98, status: 0 } },
+                });
+            const options = { idempotencyKey: 'finalize_track_after_failure' };
+
+            await expect(
+                saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' }, options),
+            ).rejects.toThrow('no output');
+            await expect(
+                saveAgentSummaryViaFinalize({ session_id: 's1' }, { trigger_mode: 'agent' }, options),
+            ).resolves.toMatchObject({ task_id: 98, async_finalize: true });
+
+            const started = track.mock.calls.filter((c) => c[0] === 'smart_summary_started');
+            expect(started).toHaveLength(1);
+            track.mockRestore();
+        });
+
+        it.each([405, 501])('falls back to legacy when finalize answers %i', async (status) => {
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockRejectedValueOnce(Object.assign(new Error('unsupported'), { response: { status } }))
+                .mockResolvedValueOnce({
+                    data: { code: 0, data: { task_id: 93, task_no: 'n', status: 3, created_at: 'x' } },
+                });
+
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: `finalize_fallback_${status}` },
+            );
+
+            expect(res).toEqual({ task_id: 93, async_finalize: false });
+            expect(mockPost.mock.calls[1][0]).toBe('/summary/api/v1/summaries/agent');
+        });
+
+        it('does not fall back when a 404 carries a business envelope', async () => {
+            // 后端若用 HTTP 404 表达 40009，改发 legacy 会绕过调用点的 40009 处理（R5 P2）。
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(Object.assign(new Error('gone'), {
+                response: { status: 404, data: { code: 40009, data: { task_id: 77 } } },
+            }));
+
+            await expect(
+                saveAgentSummaryViaFinalize(
+                    { session_id: 's1' },
+                    { trigger_mode: 'agent' },
+                    { idempotencyKey: 'finalize_404_business' },
+                ),
+            ).rejects.toMatchObject({ response: { data: { code: 40009 } } });
+            expect(mockPost).toHaveBeenCalledTimes(1);
+        });
+
+        it('falls back when a gateway wraps the unrouted path as 200 + code 404', async () => {
+            // 反方向：HTTP 不是 404 但 envelope 是 → 仍应回退，否则保存彻底砌掉（R5 P2）。
+            const { saveAgentSummaryViaFinalize } = await import('../summaryApi');
+            mockPost
+                .mockResolvedValueOnce({ status: 200, data: { code: 404, message: 'no route', data: null } })
+                .mockResolvedValueOnce({
+                    data: { code: 0, data: { task_id: 94, task_no: 'n', status: 3, created_at: 'x' } },
+                });
+
+            const res = await saveAgentSummaryViaFinalize(
+                { session_id: 's1' },
+                { trigger_mode: 'agent' },
+                { idempotencyKey: 'finalize_gateway_404' },
+            );
+
+            expect(res).toEqual({ task_id: 94, async_finalize: false });
+            expect(mockPost.mock.calls[1][0]).toBe('/summary/api/v1/summaries/agent');
         });
     });
 

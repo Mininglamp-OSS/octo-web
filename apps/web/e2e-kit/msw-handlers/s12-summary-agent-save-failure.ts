@@ -54,6 +54,13 @@ export async function registerS12SummaryAgentSaveFailure(page: Page): Promise<vo
           message: "当前对话还没有可保存的总结，请先与 AI 对话产出内容",
           data: null,
         })
+      ),
+      http.post("*/summary/api/v1/summaries/agent/finalize", () =>
+        HttpResponse.json({
+          code: 40004,
+          message: "当前对话还没有可保存的总结，请先与 AI 对话产出内容",
+          data: null,
+        })
       )
     );
   });
