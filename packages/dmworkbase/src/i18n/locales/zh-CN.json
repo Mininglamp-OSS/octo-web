@@ -1166,6 +1166,8 @@
   "clipboard.imageUnsupported": "当前浏览器不支持复制图片，请长按图片另存",
   "subscribers.botAdmin": "Bot 管理员",
   "subscribers.addMember": "添加成员",
+  "subscribers.confirmRemoveBotContent": "确定将机器人 {{name}} 移出群聊吗？",
+  "subscribers.confirmRemoveBotTitle": "移出机器人",
   "subscribers.confirmRemoveContent": "确定移除 {{name}} 吗？",
   "subscribers.confirmRemoveTitle": "移除成员",
   "subscribers.groupMembersWithCount": "群成员（{{count}}）",

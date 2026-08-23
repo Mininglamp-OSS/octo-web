@@ -208,6 +208,26 @@ describe("channel setting section builders", () => {
     expect(config.showFinishButton).toBeUndefined();
   });
 
+  it("exposes removeAction to the view-all path too", () => {
+    // octo-web#1511：普通成员没有「移除成员」图标，只能从「查看全部」进成员列表。
+    // 该路径以前不带 removeAction，等于自助移除入口对普通成员完全不可达。
+    // 逐行是否显示仍由 canRemove 决定，故对不拥有 bot 的成员无可见变化。
+    const context = createContext({
+      channelInfo: { orgData: { member_count: 3 } },
+      subscriberOfMe: { uid: "bob", role: 0 },
+      subscribers: [
+        { uid: "alice", role: 1 },
+        { uid: "bob", role: 0 },
+      ],
+    });
+    const section = buildChannelMembersSection(context);
+
+    const { removeAction } = section?.rows?.[0].properties ?? {};
+    expect(removeAction).toBeTruthy();
+    expect(typeof removeAction.canRemove).toBe("function");
+    expect(typeof removeAction.onRemove).toBe("function");
+  });
+
   it("keeps member removal permissions scoped to the current manager role", () => {
     const owner = { uid: "owner", role: 1 } as any;
     const manager = { uid: "manager", role: 2 } as any;
@@ -253,6 +273,100 @@ describe("channel setting section builders", () => {
         viewerUid: "manager",
         viewerRole: 2,
         subscriber: manager,
+      })
+    ).toBe(false);
+  });
+
+  it("lets a normal member remove a bot they own", () => {
+    // octo-web#1511：普通成员（role 0）对自己名下的 bot 可移除；
+    // bot_owned_by_me 由后端 per-viewer 计算后下发到成员行的 orgData。
+    const myBot = {
+      uid: "bot_mine",
+      role: 0,
+      orgData: { robot: 1, bot_owned_by_me: true },
+    } as any;
+
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "normal",
+        viewerRole: 0,
+        subscriber: myBot,
+      })
+    ).toBe(true);
+  });
+
+  it("does not let a normal member remove bots they do not own", () => {
+    const othersBot = {
+      uid: "bot_theirs",
+      role: 0,
+      orgData: { robot: 1, bot_owned_by_me: false },
+    } as any;
+    const human = { uid: "peer", role: 0 } as any;
+
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "normal",
+        viewerRole: 0,
+        subscriber: othersBot,
+      })
+    ).toBe(false);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "normal",
+        viewerRole: 0,
+        subscriber: human,
+      })
+    ).toBe(false);
+  });
+
+  it("fails closed when bot_owned_by_me is missing", () => {
+    // /membersync 是按 version 的增量同步：本字段上线前已缓存的成员行不会带上它。
+    // 缺失必须退回改动前的行为（不可移除），绝不能误开权限。
+    const staleBotRow = { uid: "bot_stale", role: 0, orgData: { robot: 1 } } as any;
+    const noOrgData = { uid: "bot_no_org", role: 0 } as any;
+    const truthyButNotTrue = {
+      uid: "bot_truthy",
+      role: 0,
+      orgData: { robot: 1, bot_owned_by_me: 1 },
+    } as any;
+
+    for (const subscriber of [staleBotRow, noOrgData, truthyButNotTrue]) {
+      expect(
+        canRemoveChannelSettingSubscriber({
+          viewerUid: "normal",
+          viewerRole: 0,
+          subscriber,
+        })
+      ).toBe(false);
+    }
+  });
+
+  it("still refuses to remove the group owner and yourself, bot or not", () => {
+    // 两条否决优先于自助移除：即便某个 bot 被标成「我的」，
+    // 只要它是群主就不能移除；自己也不能移除自己。
+    const ownerBot = {
+      uid: "bot_owner",
+      role: 1,
+      orgData: { robot: 1, bot_owned_by_me: true },
+    } as any;
+    const selfBot = {
+      uid: "normal",
+      role: 0,
+      orgData: { robot: 1, bot_owned_by_me: true },
+    } as any;
+
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "normal",
+        viewerRole: 0,
+        subscriber: ownerBot,
+      })
+    ).toBe(false);
+    expect(
+      canRemoveChannelSettingSubscriber({
+        viewerUid: "normal",
+        viewerRole: 0,
+        subscriber: selfBot,
       })
     ).toBe(false);
   });

@@ -1166,6 +1166,8 @@
   "clipboard.imageUnsupported": "This browser does not support copying images. Long-press to save the image.",
   "subscribers.botAdmin": "Bot admin",
   "subscribers.addMember": "Add member",
+  "subscribers.confirmRemoveBotContent": "Remove the bot {{name}} from this group?",
+  "subscribers.confirmRemoveBotTitle": "Remove bot",
   "subscribers.confirmRemoveContent": "Remove {{name}} from this group?",
   "subscribers.confirmRemoveTitle": "Remove member",
   "subscribers.groupMembersWithCount": "Group members ({{count}})",
