@@ -167,6 +167,36 @@ describe("SubscribersVM", () => {
       expect(vm.showRemove()).toBe(true);
     });
 
+    it("fails closed on truthy-but-not-true bot_owned_by_me", () => {
+      // 变异证明这条此前没被覆盖：把 ownsAnyRemovableBotInGroup 里的 === true
+      // 放宽成 !!，22 个用例仍然全绿。/membersync 是增量同步，老缓存行不带这个
+      // 字段，降级方向必须是「退回改动前」，绝不能误开入口。
+      const vm = makeVM({
+        channel,
+        subscribers: [],
+        subscriberAll: [
+          { uid: "bot_truthy", role: 0, orgData: { robot: 1, bot_owned_by_me: 1 } },
+          { uid: "bot_str", role: 0, orgData: { robot: 1, bot_owned_by_me: "true" } },
+        ],
+        subscriberOfMe: { uid: "me", role: 0 },
+      });
+      expect(vm.showRemove()).toBe(false);
+    });
+
+    it("hides the entry when the only owned bot holds a group role", () => {
+      // 入口判据现在直接复用行判据，所以「我拥有、但担任管理员」的 bot 不再
+      // 点亮入口 —— 否则会是个点进去没有任何可移除项的死胡同。
+      const vm = makeVM({
+        channel,
+        subscribers: [],
+        subscriberAll: [
+          { uid: "bot_mgr", role: 2, orgData: { robot: 1, bot_owned_by_me: true } },
+        ],
+        subscriberOfMe: { uid: "me", role: 0 },
+      });
+      expect(vm.showRemove()).toBe(false);
+    });
+
     it("hides the remove entry from a normal member with no bots of their own", () => {
       const vm = makeVM({
         channel,

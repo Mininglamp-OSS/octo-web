@@ -7,49 +7,21 @@ import { SubscriberList } from "../../Components/Subscribers/list";
 import {
   ChannelTypeCommunityTopic,
   ChannelTypeCustomerService,
-  GroupRole,
 } from "../../Service/Const";
 import RouteContext from "../../Service/Context";
 import { Row, Section } from "../../Service/Section";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { t } from "../../i18n";
 import { removeChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
+import { canRemoveChannelSettingSubscriber as canRemoveSubscriber } from "./memberRemovalPermission";
 import WKApp from "../../App";
 
-/**
- * 当前查看者是否拥有这个 bot 成员（octo-web#1511）。
- *
- * 数据来自成员列表下发的 `bot_owned_by_me`，后端按 per-viewer 计算。
- * **必须 fail closed**：/membersync 是按 version 的增量同步，该字段上线前已缓存的
- * 成员行在其 version 变动前不会带上它。缺失 / 非严格 true 一律按「不拥有」处理，
- * 降级方向是退回改动前的行为，绝不能误开移除权限。
- */
-function isBotOwnedByViewer(subscriber: Subscriber): boolean {
-  return subscriber?.orgData?.bot_owned_by_me === true;
-}
-
-export function canRemoveChannelSettingSubscriber(params: {
-  viewerUid?: string;
-  viewerRole?: number;
-  subscriber: Subscriber;
-}) {
-  const { viewerUid, viewerRole = GroupRole.normal, subscriber } = params;
-  if (!subscriber?.uid) return false;
-  if (subscriber.uid === viewerUid) return false;
-  if (subscriber.role === GroupRole.owner) return false;
-  if (viewerRole === GroupRole.owner) return true;
-  if (viewerRole === GroupRole.manager) {
-    return subscriber.role === GroupRole.normal;
-  }
-  // 自助移除（octo-web#1511）：普通成员可以撤走自己名下的 bot。
-  //
-  // 必须放在角色分支**之后**，精确镜像后端：memberRemove 的自助分支只在调用方
-  // 既非 Creator 也非 Manager 时才进入。若提到前面，一个「管理员 + 拥有一个被
-  // 提升为管理员的 bot」的组合会渲染出移除按钮，而后端走的是管理员路径、
-  // 直接回 ErrGroupCannotRemoveAdmin —— 按钮点了必报错。
-  // （managerAdd 不排除 robot，所以 bot 当管理员是构造得出来的。）
-  return isBotOwnedByViewer(subscriber);
-}
+// 判定逻辑住在零依赖的叶子模块里，好让 Components/Subscribers/vm.ts 也能复用
+// （直接互相 import 会成环）。此处 re-export 保持既有引用路径不变。
+export {
+  canRemoveChannelSettingSubscriber,
+  isBotOwnedByViewer,
+} from "./memberRemovalPermission";
 
 export function buildChannelMembersSection(
   context: RouteContext<ChannelSettingRouteData>
@@ -75,7 +47,7 @@ export function buildChannelMembersSection(
   // （octo-web#1511）。逐行是否显示由 canRemove 判定，故对无 bot 的普通成员是无变化的。
   const removeAction = {
     canRemove: (subscriber: Subscriber) =>
-      canRemoveChannelSettingSubscriber({
+      canRemoveSubscriber({
         viewerUid: data.subscriberOfMe?.uid || WKApp.loginInfo.uid,
         viewerRole: data.subscriberOfMe?.role,
         subscriber,
