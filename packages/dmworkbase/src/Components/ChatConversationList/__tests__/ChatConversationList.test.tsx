@@ -1,3 +1,7 @@
+/**
+ * @vitest-environment jsdom
+ */
+
 import React from "react"
 import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
@@ -5,6 +9,8 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 
 let ChatConversationList: typeof import("../index").default
 let container: HTMLDivElement
+let mockCategories: Array<any> = []
+let latestExtraContextMenus: ((conversation: any) => Array<any>) | undefined
 
 beforeAll(async () => {
     vi.doMock("wukongimjssdk", () => ({
@@ -36,7 +42,7 @@ beforeAll(async () => {
 
     vi.doMock("../../../Hooks/useCategoryList", () => ({
         useCategoryList: () => ({
-            categories: [],
+            categories: mockCategories,
             isLoading: false,
             error: null,
             reload: vi.fn(),
@@ -87,13 +93,22 @@ beforeAll(async () => {
     }))
 
     vi.doMock("../../ConversationList", () => ({
-        default: ({ conversations }: { conversations: Array<any> }) => (
-            <div data-testid="conversation-list">
-                {conversations.map((conv) => (
-                    <span key={conv.channel.channelID}>{conv.channel.channelID}</span>
-                ))}
-            </div>
-        ),
+        default: ({
+            conversations,
+            extraContextMenus,
+        }: {
+            conversations: Array<any>
+            extraContextMenus?: (conversation: any) => Array<any>
+        }) => {
+            latestExtraContextMenus = extraContextMenus
+            return (
+                <div data-testid="conversation-list">
+                    {conversations.map((conv) => (
+                        <span key={conv.channel.channelID}>{conv.channel.channelID}</span>
+                    ))}
+                </div>
+            )
+        },
     }))
 
     ChatConversationList = (await import("../index")).default
@@ -101,6 +116,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
     vi.clearAllMocks()
+    mockCategories = []
+    latestExtraContextMenus = undefined
     container = document.createElement("div")
     document.body.appendChild(container)
 })
@@ -143,5 +160,83 @@ describe("ChatConversationList", () => {
 
         expect(container.textContent).toContain("stale-group")
         expect(container.textContent).toContain("recent-group")
+    })
+
+    it("does not add an orphan separator when no custom category exists", () => {
+        mockCategories = [{ category_id: "default", name: "默认分组", is_default: true }]
+        const conversation = makeGroupConversation("unfollowed-group", 1)
+
+        act(() => {
+            ReactDOM.render(
+                <ChatConversationList
+                    conversations={[conversation] as any}
+                    filter="all"
+                    onConversationClick={() => {}}
+                    onClearMessages={() => {}}
+                    onThreadOverflowClick={() => {}}
+                />,
+                container
+            )
+        })
+
+        const children = latestExtraContextMenus?.(conversation)?.[0]?.children
+        expect(children).toHaveLength(1)
+        expect(children?.[0]?.separator).not.toBe(true)
+        expect(children?.[0]?.title).toBe("base.chatSidebar.context.createCategory")
+    })
+
+    it("keeps one separator when at least one custom category exists", () => {
+        mockCategories = [
+            { category_id: "default", name: "默认分组", is_default: true },
+            { category_id: "engineering", name: "研发", is_default: false },
+        ]
+        const conversation = makeGroupConversation("unfollowed-group", 1)
+
+        act(() => {
+            ReactDOM.render(
+                <ChatConversationList
+                    conversations={[conversation] as any}
+                    filter="all"
+                    onConversationClick={() => {}}
+                    onClearMessages={() => {}}
+                    onThreadOverflowClick={() => {}}
+                />,
+                container
+            )
+        })
+
+        const children = latestExtraContextMenus?.(conversation)?.[0]?.children
+        expect(children?.map((item: any) => item.separator ? "separator" : item.title)).toEqual([
+            "研发",
+            "separator",
+            "base.chatSidebar.context.createCategory",
+        ])
+    })
+
+    it("applies the zero-category rule to a thread whose parent is not followed", () => {
+        const conversation = {
+            channel: { channelID: "thread-1", channelType: 5 },
+            channelInfo: { orgData: { parentGroupNo: "parent-group" } },
+            timestamp: 1,
+            unread: 0,
+        }
+
+        act(() => {
+            ReactDOM.render(
+                <ChatConversationList
+                    conversations={[conversation] as any}
+                    filter="all"
+                    onConversationClick={() => {}}
+                    onClearMessages={() => {}}
+                    onThreadOverflowClick={() => {}}
+                />,
+                container
+            )
+        })
+
+        const children = latestExtraContextMenus?.(conversation)?.[0]?.children
+        expect(children).toHaveLength(1)
+        expect(children?.[0]?.separator).not.toBe(true)
+        expect(children?.[0]?.title).toBe("base.chatSidebar.context.createCategory")
     })
 })
