@@ -21,11 +21,11 @@ import {
   ChannelSettingInfoRow,
   ChannelSettingInlineEditRow,
 } from "../../ui/ChannelSettingRows";
-import { ChannelSettingInputEditPush } from "./types";
+import { ChannelSettingTextEditPush } from "./types";
 
 export function buildThreadInfoSection(
   context: RouteContext<ChannelSettingRouteData>,
-  _inputEditPush: ChannelSettingInputEditPush
+  _textEditPush: ChannelSettingTextEditPush
 ) {
   const data = context.routeData() as ChannelSettingRouteData;
   const { channel, channelInfo } = data;

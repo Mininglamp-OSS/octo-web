@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component, ReactNode } from "react";
-import { Button } from '@douyinfe/semi-ui';
+
 import { FriendApplyState, WKApp, WKViewQueueHeader, Provider, I18nContext, t } from "@octo/base";
 import { FriendAdd } from "../FriendAdd";
 import { NewFriendVM } from "./vm";

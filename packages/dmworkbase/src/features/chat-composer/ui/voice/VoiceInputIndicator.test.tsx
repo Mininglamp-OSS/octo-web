@@ -75,8 +75,17 @@ vi.mock("@douyinfe/semi-ui", () => {
     children: React.ReactNode;
     onClick?: () => void;
   }) => <button onClick={onClick}>{children}</button>;
+  const Select = Object.assign(
+    ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+    {
+      Option: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+    },
+  );
+
   return {
     Dropdown,
+    LocaleConsumer: ({ children }: { children: (locale: { emptyText: string }) => React.ReactNode }) => children({ emptyText: "No options" }),
+    Select,
     Toast: {
       error: (...args: unknown[]) => mocks.toastError(...args),
       warning: (...args: unknown[]) => mocks.toastWarning(...args),

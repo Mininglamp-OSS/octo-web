@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import React, { useState, useCallback, useEffect } from "react";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import {
@@ -9,7 +10,6 @@ import {
   IconRefresh,
 } from "@douyinfe/semi-icons";
 import WKModal, { wkConfirm } from "../WKModal";
-import WKButton from "../WKButton";
 import { useI18n } from "../../i18n";
 import SecretsService, { SecretListItem } from "../../Service/SecretsService";
 import { Dap } from "../../Service/Dap";
@@ -165,15 +165,14 @@ export default function SecretsSettingsPanel({
             </h2>
             <p className="wk-secrets__subtitle">{t("base.secrets.subtitle")}</p>
           </div>
-          <WKButton
-            type="button"
-            variant="primary"
+          <Button
+            variant="solid"
             icon={<IconPlus />}
             onMouseDown={handleCreateMouseDown}
             onClick={handleCreateClick}
           >
             {t("base.secrets.addButton")}
-          </WKButton>
+          </Button>
         </div>
 
         {/* 列表主体 */}
@@ -184,9 +183,9 @@ export default function SecretsSettingsPanel({
         ) : error ? (
           <div className="wk-secrets__state">
             <p className="wk-secrets__state-text">{t("base.secrets.error.loadFailed")}</p>
-            <WKButton variant="secondary" onClick={() => void load()}>
+            <Button variant="secondary" onClick={() => void load()}>
               {t("base.secrets.retry")}
-            </WKButton>
+            </Button>
           </div>
         ) : items.length === 0 ? (
           <div className="wk-secrets__empty">
@@ -194,15 +193,14 @@ export default function SecretsSettingsPanel({
               <IconKey size="extra-large" />
             </div>
             <p className="wk-secrets__empty-text">{t("base.secrets.empty")}</p>
-            <WKButton
-              type="button"
-              variant="primary"
+            <Button
+              variant="solid"
               icon={<IconPlus />}
               onMouseDown={handleCreateMouseDown}
               onClick={handleCreateClick}
             >
               {t("base.secrets.empty.action")}
-            </WKButton>
+            </Button>
           </div>
         ) : (
           <ul className="wk-secrets__list">

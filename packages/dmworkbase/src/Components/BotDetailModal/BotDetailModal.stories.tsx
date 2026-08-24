@@ -1,8 +1,8 @@
+import { Button } from "@octo/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { IconAlertCircle, IconChevronRight, IconTickCircle } from "@douyinfe/semi-icons";
 import React from "react";
 import AiBadge from "../AiBadge";
-import WKButton from "../WKButton";
 import { ProfileDetailFooter } from "../../ui/profileDetail/ProfileDetailShell";
 import "./index.css";
 
@@ -134,9 +134,9 @@ function BotDetailPreview({
                 className="wk-bot-detail-footer"
                 actionClassName="wk-bot-detail-actions"
                 action={
-                    <WKButton type="button" variant="primary">
+                    <Button type="button" variant="solid">
                         {isFriend ? "发送消息" : "添加好友"}
-                    </WKButton>
+                    </Button>
                 }
             />
         </div>

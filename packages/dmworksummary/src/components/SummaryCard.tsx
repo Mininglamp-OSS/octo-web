@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
+import { Dropdown } from "@octo/ui";
+import { Modal, Tooltip } from "@douyinfe/semi-ui";
 import { MoreHorizontal, AlertTriangle, Bot, Clock, FileText, UsersRound, X } from "lucide-react";
 import { useI18n, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";

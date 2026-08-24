@@ -1,6 +1,6 @@
+import { Button, Checkbox, Input } from "@octo/ui";
 import React, { Component } from "react";
-import { Modal, Input, Checkbox, Button, Spin, Empty, Avatar } from "@douyinfe/semi-ui";
-import { IconSearch } from "@douyinfe/semi-icons";
+import { Modal, Spin, Empty, Avatar } from "@douyinfe/semi-ui";
 import { I18nContext } from "@octo/base";
 import { Dap } from "@octo/base";
 import type { MemberCandidate } from "../types/summary";
@@ -114,8 +114,7 @@ export default class MemberSelectorModal extends Component<Props, State> {
                 className="summary-selector-modal"
             >
                 <div className="summary-selector-modal-body">
-                    <Input
-                        prefix={<IconSearch />}
+                    <Input.Search
                         placeholder={t("summary.memberSelector.searchPlaceholder")}
                         value={keyword}
                         onChange={this.handleKeywordChange}

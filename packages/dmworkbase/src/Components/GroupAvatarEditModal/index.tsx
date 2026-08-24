@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react"
-import { Input } from "@douyinfe/semi-ui"
+import { Input } from "@octo/ui"
 import { IconTick } from "@douyinfe/semi-icons"
 import WKModal from "../WKModal"
 import { t } from "../../i18n"

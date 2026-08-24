@@ -1,0 +1,65 @@
+.octo-ui-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  gap: var(--octo-ui-tag-gap);
+  border: 1px solid transparent;
+  border-radius: var(--octo-ui-tag-radius);
+  font-family: var(--octo-ui-tag-font-family);
+  font-weight: var(--octo-ui-tag-font-weight);
+  line-height: var(--octo-ui-tag-line-height);
+  white-space: nowrap;
+  user-select: none;
+  vertical-align: middle;
+}
+
+.octo-ui-tag--sm {
+  min-height: var(--octo-ui-tag-sm-min-height);
+  padding: var(--octo-ui-tag-sm-padding);
+  font-size: var(--octo-ui-tag-sm-font-size);
+}
+
+.octo-ui-tag--md {
+  min-height: var(--octo-ui-tag-md-min-height);
+  padding: var(--octo-ui-tag-md-padding);
+  font-size: var(--octo-ui-tag-md-font-size);
+}
+
+.octo-ui-tag--neutral {
+  background: var(--octo-ui-tag-neutral-bg);
+  border-color: var(--octo-ui-tag-neutral-border);
+  color: var(--octo-ui-tag-neutral-text);
+}
+
+.octo-ui-tag--brand {
+  background: var(--octo-ui-tag-brand-bg);
+  border-color: var(--octo-ui-tag-brand-border);
+  color: var(--octo-ui-tag-brand-text);
+}
+
+.octo-ui-tag--success {
+  background: var(--octo-ui-tag-success-bg);
+  color: var(--octo-ui-tag-success-text);
+}
+
+.octo-ui-tag--warning {
+  background: var(--octo-ui-tag-warning-bg);
+  color: var(--octo-ui-tag-warning-text);
+}
+
+.octo-ui-tag--danger {
+  background: var(--octo-ui-tag-danger-bg);
+  border-color: var(--octo-ui-tag-danger-border);
+  color: var(--octo-ui-tag-danger-text);
+}
+
+.octo-ui-tag__icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.octo-ui-tag__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

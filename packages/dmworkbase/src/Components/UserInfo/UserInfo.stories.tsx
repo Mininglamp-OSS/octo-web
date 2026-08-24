@@ -1,7 +1,7 @@
+import { Button } from "@octo/ui";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { IconEdit } from "@douyinfe/semi-icons";
 import React from "react";
-import WKButton from "../WKButton";
 import UserInfoFooter from "./UserInfoFooter";
 import UserInfoHeader from "./UserInfoHeader";
 import type { UserInfoMetaItem } from "./UserInfoMetaList";
@@ -31,9 +31,9 @@ function UserInfoPreview({
     footer,
 }: UserInfoPreviewProps) {
     const action = footer === "message"
-        ? <WKButton type="button" variant="primary">发送消息</WKButton>
+        ? <Button type="button" variant="solid">发送消息</Button>
         : footer === "addFriend"
-            ? <WKButton type="button" variant="secondary">添加好友</WKButton>
+            ? <Button type="button" variant="secondary">添加好友</Button>
             : undefined;
     const hint = footer === "external" ? "外部成员仅可在群内交流" : undefined;
 

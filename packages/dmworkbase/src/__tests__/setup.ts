@@ -15,6 +15,20 @@ if (typeof HTMLCanvasElement !== "undefined") {
   });
 }
 
+class MockResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+if (typeof globalThis.ResizeObserver === "undefined") {
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    writable: true,
+    value: MockResizeObserver,
+  });
+}
+
 // Node 26 + vitest 4 + jsdom: jsdom no longer exposes `window.localStorage`
 // unless launched with `--localstorage-file`, and Node's built-in
 // `sessionStorage` is on globalThis but not mirrored onto `window`. Older

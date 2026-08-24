@@ -233,44 +233,6 @@
     flex-direction: column;
 }
 
-.wk-navrail__flyout-item {
-    width: 100%;
-    min-height: 32px;
-    padding: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);
-    border: none;
-    border-radius: var(--wk-r-sm, 6px);
-    background: transparent;
-    color: var(--wk-text-primary);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--wk-sp-2, 8px);
-    font: var(--wk-text-sm);
-    letter-spacing: 0;
-    text-align: left;
-    transition: background var(--wk-dur-fast, 200ms);
-}
-
-.wk-navrail__flyout-item:hover,
-.wk-navrail__flyout-item:focus-visible,
-.wk-navrail__flyout-item--active {
-    background: var(--wk-bg-hover);
-    outline: none;
-}
-
-.wk-navrail__flyout-item-label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.wk-navrail__flyout-item-trailing {
-    display: inline-flex;
-    flex-shrink: 0;
-    color: var(--wk-brand-primary);
-}
-
 .wk-navrail__dropdown-title {
     font-size: 12px;                   /* Figma: 12px Semibold */
     font-weight: 600;

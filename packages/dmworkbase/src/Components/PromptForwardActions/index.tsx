@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import { Toast } from "@douyinfe/semi-ui";
@@ -10,7 +11,6 @@ import { forwardPlainText } from "../../Service/ForwardService";
 import { copyToClipboard } from "../../Utils/clipboard";
 import { Dap } from "../../Service/Dap";
 import { matchRoute } from "../../Service/TrackRules";
-import WKButton from "../WKButton";
 import "./index.css";
 
 /**
@@ -283,7 +283,7 @@ export default function PromptForwardActions({
   );
 
   const copyButton = (
-    <WKButton
+    <Button
       data-testid="mcp-bot-publish-copy"
       variant="secondary"
       icon={copied ? <Check size={15} /> : <Copy size={15} />}
@@ -293,12 +293,12 @@ export default function PromptForwardActions({
       {copied
         ? t("base.promptForward.copied")
         : t("base.promptForward.copyPrompt")}
-    </WKButton>
+    </Button>
   );
 
   const forwardButton = (
-    <WKButton
-      variant="primary"
+    <Button
+      variant="solid"
       icon={<Send size={15} />}
       onClick={handleForward}
       disabled={!canForward}
@@ -307,7 +307,7 @@ export default function PromptForwardActions({
       {forwarding
         ? t("base.promptForward.forwarding")
         : t("base.promptForward.forwardToBot")}
-    </WKButton>
+    </Button>
   );
 
   if (layout === "split") {

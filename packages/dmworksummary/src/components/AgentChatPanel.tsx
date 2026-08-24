@@ -1,5 +1,7 @@
+import { Button } from "@octo/ui";
 import React, { Component, createRef } from 'react';
-import { Button, Modal, Input, Toast } from '@douyinfe/semi-ui';
+import { Input } from '@octo/ui';
+import { Modal, Toast } from '@douyinfe/semi-ui';
 import { I18nContext, Dap } from '@octo/base';
 import type { ChatMessage, ChatCandidate, AgentProgressEvent, AgentDoneEvent, AgentErrorEvent } from '../types/summary';
 import { agentChatStream, agentChat } from '../api/summaryApi';
@@ -442,7 +444,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     <Button
                         data-testid={summaryTestIds.agentSendBtn}
                         theme="solid"
-                        size="default"
+                        size="sm"
                         loading={isBusy}
                         disabled={isBusy || !input.trim()}
                         onClick={this.handleSend}
@@ -452,7 +454,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     {canSave && (
                         <Button
                             data-testid={summaryTestIds.agentSaveBtn}
-                            size="default"
+                            size="sm"
                             disabled={!this.hasAssistantOutput() || savingSummary}
                             loading={savingSummary}
                             onClick={this.handleOpenSaveDialog}

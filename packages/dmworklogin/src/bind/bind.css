@@ -78,6 +78,10 @@
     margin-bottom: 16px;
 }
 
+.wk-bind-method-button {
+    width: 100%;
+}
+
 /* "或" 分隔条, 把主操作 (Create) 与次操作 (Verify) 视觉切开. 中间一段灰线
    + 短文字, 比单纯空白更明确"这是另一条路径"而不是"重复选项". */
 .wk-bind-divider {
@@ -210,32 +214,32 @@
    黑按钮"按了没"的感知问题: 单纯改色觉察弱; 叠 transform + shadow
    形成层次. transform 100ms 比 color 160ms 短, 先动再亮, 节律自然.
    focus-visible 用紫色描边复用登录页品牌渐变端, 键盘可达. */
-.wk-bind .semi-button-primary {
+.wk-bind .octo-ui-button--solid {
     transition:
         background-color 160ms ease,
         box-shadow 160ms ease,
         transform 100ms ease;
 }
-.wk-bind .semi-button-primary:hover:not(:disabled):not(.semi-button-loading) {
+.wk-bind .octo-ui-button--solid:hover:not(:disabled):not(.octo-ui-button--loading) {
     box-shadow: 0 4px 12px rgba(28, 28, 35, 0.18);
     transform: translateY(-1px);
 }
-.wk-bind .semi-button-primary:active:not(:disabled) {
+.wk-bind .octo-ui-button--solid:active:not(:disabled) {
     transform: translateY(0);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.10);
 }
-.wk-bind .semi-button-primary:focus-visible {
+.wk-bind .octo-ui-button--solid:focus-visible {
     outline: 2px solid #7A5CFF;
     outline-offset: 2px;
 }
 
 /* 次按钮 (返回 / 默认 theme) hover: 仅做边框加深 + 微抬, 不抢主按钮戏 */
-.wk-bind .semi-button:not(.semi-button-primary) {
+.wk-bind .octo-ui-button:not(.octo-ui-button--solid) {
     transition: border-color 160ms ease, background-color 160ms ease, transform 100ms ease;
 }
-.wk-bind .semi-button:not(.semi-button-primary):hover:not(:disabled) {
+.wk-bind .octo-ui-button:not(.octo-ui-button--solid):hover:not(:disabled) {
     transform: translateY(-1px);
 }
-.wk-bind .semi-button:not(.semi-button-primary):active:not(:disabled) {
+.wk-bind .octo-ui-button:not(.octo-ui-button--solid):active:not(:disabled) {
     transform: translateY(0);
 }

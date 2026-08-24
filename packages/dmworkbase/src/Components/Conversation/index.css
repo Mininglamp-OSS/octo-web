@@ -265,27 +265,6 @@ body[theme-mode="dark"] .wk-conversation-content {
   gap: 0;
 }
 
-.wk-fold-msg-checkbox .wk-checkbox__box {
-  border-radius: 50%;
-  border-width: 2px;
-  border-color: color-mix(in srgb, var(--wk-text-primary) 15%, transparent);
-  background: transparent;
-}
-
-.wk-fold-msg-checkbox:hover .wk-checkbox__box {
-  border-color: color-mix(in srgb, var(--wk-brand-primary) 40%, transparent);
-}
-
-.wk-fold-msg-checkbox.wk-checkbox--checked .wk-checkbox__box {
-  background: var(--wk-brand-primary);
-  border-color: var(--wk-brand-primary);
-}
-
-.wk-fold-msg-checkbox .wk-checkbox__check {
-  width: 10px;
-  height: 10px;
-}
-
 .wk-fold-msg + .wk-fold-msg {
   margin-top: 12px;
 }

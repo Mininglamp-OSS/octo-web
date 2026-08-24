@@ -1,5 +1,6 @@
 import React, { Component } from "react";
-import { Input, Toast } from "@douyinfe/semi-ui";
+import { Input } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { I18nContext, SpaceService, WKModal, extractErrorMsg, t } from "@octo/base";
 import VoiceInputButton, { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import "./index.css";

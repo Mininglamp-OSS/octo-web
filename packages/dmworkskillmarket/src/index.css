@@ -2410,7 +2410,7 @@
   }
 
   .skill-market-topbar__actions,
-  .skill-market-topbar__actions .wk-btn {
+  .skill-market-topbar__actions .octo-ui-button {
     width: 100%;
   }
 
@@ -2531,7 +2531,7 @@
   align-items: start;
 }
 
-.skill-market-input-readonly .wk-input__inner {
+.skill-market-input-readonly input {
   background: var(--wk-bg-base);
   color: var(--wk-text-secondary);
   font-weight: 600;
