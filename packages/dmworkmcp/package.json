@@ -8,8 +8,8 @@
   "dependencies": {
     "@octo/base": "workspace:*",
     "@dmwork/skillmarket": "workspace:*",
-    "@douyinfe/semi-icons": "^2.93.0",
-    "@douyinfe/semi-ui": "^2.93.0",
+    "@douyinfe/semi-icons": "^2.102.0",
+    "@douyinfe/semi-ui": "^2.102.0",
     "axios": "^0.25.0",
     "classnames": "^2.3.1",
     "jszip": "^3.10.1",
