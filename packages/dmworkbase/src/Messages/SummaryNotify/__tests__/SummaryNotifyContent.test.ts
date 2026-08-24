@@ -36,7 +36,7 @@ vi.mock("../../../i18n", () => ({
 }));
 
 import { MessageContentTypeConst } from "../../../Service/Const";
-import { SummaryNotifyCell, SummaryNotifyContent } from "../index";
+import { SummaryNotifyCell, SummaryNotifyContent, SummaryTipContent } from "../index";
 
 describe("SummaryNotifyContent", () => {
   beforeEach(() => {
@@ -92,5 +92,38 @@ describe("SummaryNotifyContent", () => {
     const content = new SummaryNotifyContent();
     expect(content.tipForSender("me")).toBe("你总结了群聊内容");
     expect(content.conversationDigest).toBe("总结了群聊内容");
+  });
+});
+
+describe("SummaryTipContent (WK_TIP 2000 send-side)", () => {
+  it("uses content type 2000", () => {
+    const content = new SummaryTipContent();
+    expect(content.contentType).toBe(MessageContentTypeConst.summaryTip);
+    expect(MessageContentTypeConst.summaryTip).toBe(2000);
+  });
+
+  it("encodes the SystemContent placeholder payload with a locked zh-CN template", () => {
+    const content = new SummaryTipContent().setSender(" alice ", " Alice ");
+    expect(content.fromUID).toBe("alice");
+    expect(content.fromName).toBe("Alice");
+    expect(content.encodeJSON()).toEqual({
+      content: "{0}总结了群聊内容",
+      extra: [{ uid: "alice", name: "Alice" }],
+    });
+  });
+
+  it("decodes back from the SystemContent payload shape", () => {
+    const content = new SummaryTipContent();
+    content.decodeJSON({
+      content: "{0}总结了群聊内容",
+      extra: [{ uid: " bob ", name: " Bob " }],
+    });
+    expect(content.fromUID).toBe("bob");
+    expect(content.fromName).toBe("Bob");
+  });
+
+  it("exposes a readable conversation digest", () => {
+    const content = new SummaryTipContent().setSender("alice", "Alice");
+    expect(content.conversationDigest).toBe("Alice总结了群聊内容");
   });
 });

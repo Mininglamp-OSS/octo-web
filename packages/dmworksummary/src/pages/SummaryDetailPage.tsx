@@ -19,7 +19,7 @@ import {
   ForwardService,
   interpretForwardResult,
   titleContextStore,
-  SummaryNotifyContent,
+  SummaryTipContent,
   isConversationDisbanded,
   Dap,
 } from "@octo/base";
@@ -1182,11 +1182,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             ChannelTypeGroup,
             {
                 sendToChannel: async (channel, currentUserId) => {
-                    const content = new SummaryNotifyContent();
-                    content.fromUID = currentUserId;
-                    content.fromName = WKApp.loginInfo.selfDisplayName?.()
+                    const name = WKApp.loginInfo.selfDisplayName?.()
                         || WKApp.loginInfo.name
                         || currentUserId;
+                    // Iterate #1379: emit a WK_TIP (2000) system-range tip so
+                    // Web and native clients render it via their built-in
+                    // SystemContent path with no per-type adaptation.
+                    const content = new SummaryTipContent().setSender(currentUserId, name);
                     await WKSDK.shared().chatManager.send(content, channel);
                 },
                 isDisbanded: isConversationDisbanded,

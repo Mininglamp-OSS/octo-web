@@ -73,4 +73,16 @@ describe("isMessageContinuation", () => {
             msg("u1", 1_030, { contentType: MessageContentTypeConst.summaryNotify }),
         )).toBe(false)
     })
+
+    it("breaks on the WK_TIP (2000) summary completion tip", () => {
+        expect(isMessageContinuation(
+            msg("u1", 1_000, { contentType: MessageContentTypeConst.summaryTip }),
+            msg("u1", 1_030),
+        )).toBe(false)
+
+        expect(isMessageContinuation(
+            msg("u1", 1_000),
+            msg("u1", 1_030, { contentType: MessageContentTypeConst.summaryTip }),
+        )).toBe(false)
+    })
 })
