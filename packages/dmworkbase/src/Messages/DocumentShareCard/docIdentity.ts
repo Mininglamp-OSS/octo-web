@@ -39,10 +39,8 @@ import type { DocSharePermissionState, DocSharePreviewStatus } from "../../ui/Do
  */
 export function permissionState(status: DocSharePreviewStatus): DocSharePermissionState {
   if (status === "denied") return "no_access";
-  // "error" collapses into "unavailable": the open-source build lacks the document
-  // module so its preview request fails permanently — don't leave the card in
-  // "checking" forever.
-  if (status === "unavailable" || status === "error") return "unavailable";
+  if (status === "unavailable") return "unavailable";
+  if (status === "error") return "error";
   if (status === "ready") return "reader";
   return "checking";
 }

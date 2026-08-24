@@ -74,7 +74,7 @@ describe("permissionState — only live ACL controls the effective badge", () =>
     expect(permissionState("loading")).toBe("checking");
   });
 
-  it("error → unavailable (document module may not exist in the open-source build)", () => {
-    expect(permissionState("error")).toBe("unavailable");
+  it("error → error (preview failure may be transient)", () => {
+    expect(permissionState("error")).toBe("error");
   });
 });
