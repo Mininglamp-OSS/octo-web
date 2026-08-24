@@ -1,0 +1,135 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
+
+const root = process.cwd()
+const scanRoots = ['apps', 'packages']
+const sourceExtensions = new Set(['.ts', '.tsx', '.js', '.jsx'])
+const styleExtensions = new Set(['.css'])
+const ignoredSegments = new Set([
+  'node_modules',
+  'dist',
+  'build',
+  'build-e2e',
+  '.turbo',
+  '.vite',
+  '.output',
+  'public',
+])
+
+const allowedSemiDrawerFiles = new Set([
+  'packages/octo-ui/src/components/Drawer/index.tsx',
+  'packages/octo-ui/src/components/Drawer/Drawer.test.tsx',
+])
+
+const legacyDrawerSelectorPatterns = [
+  /\.semi-sidesheet(?:\b|-)/g,
+  /\.semi-drawer(?:\b|-)/g,
+]
+
+const allowedSemiDrawerStyleFiles = new Set([
+  'packages/octo-ui/src/components/Drawer/index.css',
+])
+
+function extname(file) {
+  const index = file.lastIndexOf('.')
+  return index >= 0 ? file.slice(index) : ''
+}
+
+function listFiles(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    if (ignoredSegments.has(entry)) continue
+    const full = join(dir, entry)
+    const stat = statSync(full)
+    if (stat.isDirectory()) {
+      listFiles(full, out)
+      continue
+    }
+
+    const ext = extname(entry)
+    if (sourceExtensions.has(ext) || styleExtensions.has(ext)) {
+      out.push(full)
+    }
+  }
+  return out
+}
+
+function lineNumber(source, index) {
+  return source.slice(0, index).split('\n').length
+}
+
+function specifiers(source) {
+  return source
+    .split(',')
+    .map((part) => part.trim().replace(/^type\s+/, '').replace(/\s+as\s+\w+$/, ''))
+}
+
+function hasDrawerSpecifier(specifierSource) {
+  const names = specifiers(specifierSource)
+  return names.includes('SideSheet') || names.includes('Drawer')
+}
+
+function escapeRegExp(source) {
+  return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+const violations = []
+
+for (const scanRoot of scanRoots) {
+  const absRoot = join(root, scanRoot)
+  for (const file of listFiles(absRoot)) {
+    const rel = relative(root, file)
+    const source = readFileSync(file, 'utf8')
+    const ext = extname(file)
+
+    if (sourceExtensions.has(ext) && !allowedSemiDrawerFiles.has(rel)) {
+      const namedImportPattern = /(?:^|\n)\s*import(?:\s+type)?\s*\{([^}]*)\}\s*from\s*["']@douyinfe\/semi-ui["']/g
+      const exportPattern = /(?:^|\n)\s*export(?:\s+type)?\s*\{([^}]*)\}\s*from\s*["']@douyinfe\/semi-ui["']/g
+      const namespaceImportPattern = /(?:^|\n)\s*import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s*["']@douyinfe\/semi-ui["']/g
+      const deepImportPattern = /(?:^|\n)\s*import(?:\s+type)?(?:[^;\n]|\n(?!\s*(?:import|export)\b))*?from\s*["']@douyinfe\/semi-ui\/[^"']*(?:sideSheet|drawer)[^"']*["']/g
+      const sideEffectDeepImportPattern = /(?:^|\n)\s*import\s*["']@douyinfe\/semi-ui\/[^"']*(?:sideSheet|drawer)[^"']*["']/g
+      let match
+      while ((match = namedImportPattern.exec(source))) {
+        if (hasDrawerSpecifier(match[1])) {
+          violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi SideSheet/Drawer; use @octo/ui Drawer`)
+        }
+      }
+      while ((match = exportPattern.exec(source))) {
+        if (hasDrawerSpecifier(match[1])) {
+          violations.push(`${rel}:${lineNumber(source, match.index)} re-exports Semi SideSheet/Drawer; use @octo/ui Drawer`)
+        }
+      }
+      while ((match = namespaceImportPattern.exec(source))) {
+        const namespaceUsage = new RegExp(`\\b${escapeRegExp(match[1])}\\.(?:SideSheet|Drawer)\\b`)
+        if (namespaceUsage.test(source)) {
+          violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi namespace SideSheet/Drawer; use @octo/ui Drawer`)
+        }
+      }
+      while ((match = deepImportPattern.exec(source))) {
+        violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi SideSheet/Drawer deep path; use @octo/ui Drawer`)
+      }
+      while ((match = sideEffectDeepImportPattern.exec(source))) {
+        violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi SideSheet/Drawer deep path; use @octo/ui Drawer`)
+      }
+    }
+
+    if (styleExtensions.has(ext) && !allowedSemiDrawerStyleFiles.has(rel)) {
+      for (const pattern of legacyDrawerSelectorPatterns) {
+        let match
+        pattern.lastIndex = 0
+        while ((match = pattern.exec(source))) {
+          violations.push(`${rel}:${lineNumber(source, match.index)} keeps legacy Drawer selector ${pattern}`)
+        }
+      }
+    }
+  }
+}
+
+if (violations.length > 0) {
+  console.error('Octo UI Drawer usage check failed:')
+  for (const violation of violations) {
+    console.error(`- ${violation}`)
+  }
+  process.exit(1)
+}
+
+console.log('Octo UI Drawer usage check passed.')

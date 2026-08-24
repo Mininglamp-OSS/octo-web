@@ -189,4 +189,4 @@ jobs:
       - name: WKModal Semi override guard
         run: pnpm lint:wkmodal
       - name: Octo UI Semi usage guards
-        run: pnpm lint:octo-dropdown && pnpm lint:octo-select && pnpm lint:octo-input
+        run: pnpm lint:octo-dropdown && pnpm lint:octo-select && pnpm lint:octo-input && pnpm lint:octo-drawer

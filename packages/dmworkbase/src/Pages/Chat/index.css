@@ -549,47 +549,15 @@
 }
 
 .wk-chat-channelsetting {
-  pointer-events: auto;
-  width: var(--wk-wdith-chat-channelsetting);
-  height: 100%;
-  transition: margin-right 150ms ease-in-out 0s;
-  position: absolute;
   z-index: 99;
-  top: 0;
-  right: 0;
-  border-left: var(--wk-line);
-  margin-right: calc(0px - var(--wk-wdith-chat-channelsetting));
-  background-color: var(--wk-color-secondary);
-
-  box-shadow: 0 0.25rem 0.5rem 0.125rem rgba(114, 114, 114, 0.25098); /* stylelint-disable-line */
-  border-left: none;
-}
-
-body[theme-mode="dark"] .wk-chat-channelsetting {
-  box-shadow: 0 0.25rem 0.5rem 0.125rem rgba(0, 0, 0, 0.25098); /* stylelint-disable-line */
 }
 
 .wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-content-chat {
   width: 100%;
 }
 
-.wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-channelsetting {
-  margin-right: 0px;
-}
-
 .wk-chat-channel-search-panel {
-  pointer-events: auto;
-  width: var(--wk-width-chat-search-panel);
-  height: 100%;
-  transition: margin-right 150ms ease-in-out 0s;
-  position: absolute;
   z-index: 100;
-  top: 0;
-  right: 0;
-  margin-right: calc(0px - var(--wk-width-chat-search-panel));
-  background-color: var(--wk-bg-surface);
-  border-left: 1px solid var(--wk-border-default);
-  overflow: hidden;
 }
 
 .wk-chat-channel-search-stack,
@@ -628,11 +596,6 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
 
 .wk-chat-content-right.wk-chat-channel-search-open .wk-chat-content-chat {
   width: calc(100% - var(--wk-width-chat-search-panel));
-}
-
-.wk-chat-content-right.wk-chat-channel-search-open
-  .wk-chat-channel-search-panel {
-  margin-right: 0px;
 }
 
 /* ============================================

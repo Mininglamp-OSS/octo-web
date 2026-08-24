@@ -62,3 +62,9 @@ export type {
   SwitchProps,
   SwitchSize,
 } from './components/Switch/types'
+export { default as Drawer } from './components/Drawer'
+export type {
+  DrawerPlacement,
+  DrawerProps,
+  DrawerSize,
+} from './components/Drawer/types'

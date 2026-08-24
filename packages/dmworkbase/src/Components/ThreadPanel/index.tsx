@@ -1,4 +1,5 @@
 import React, { Component, useState } from "react";
+import { Drawer } from "@octo/ui";
 import {
   Channel,
   ChannelTypePerson,
@@ -218,7 +219,7 @@ export default class ThreadPanel extends Component<
   declare context: React.ContextType<typeof I18nContext>;
 
   private vm: ThreadPanelVM | null = null;
-  private panelRef = React.createRef<HTMLDivElement>();
+  private panelRef = React.createRef<HTMLElement>();
   private dragStartX = 0;
   private dragStartWidth = 0;
   private lastPanelWidth = THREAD_DEFAULT_WIDTH;
@@ -2080,7 +2081,17 @@ export default class ThreadPanel extends Component<
         };
 
     return (
-      <div className="wk-thread-panel" ref={this.panelRef} style={panelStyle}>
+      <Drawer
+        ref={this.panelRef}
+        inline
+        open
+        bodyFlush
+        closable={false}
+        className="wk-thread-panel"
+        closeOnEsc={false}
+        width={isSmallScreen ? undefined : panelWidth}
+        style={panelStyle}
+      >
         {/* Left-edge splitter for resizing — hidden on small screens */}
         {!isSmallScreen && (
           <div
@@ -2130,7 +2141,7 @@ export default class ThreadPanel extends Component<
           )}
         </div>
         {isDragging && <div className="wk-thread-panel-drag-overlay" />}
-      </div>
+      </Drawer>
     );
   }
 }

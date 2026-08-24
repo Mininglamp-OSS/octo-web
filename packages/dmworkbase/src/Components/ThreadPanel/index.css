@@ -1,27 +1,7 @@
 /* ThreadPanel 右侧面板 */
 .wk-thread-panel {
-  pointer-events: auto;
   width: var(--wk-width-thread-panel);
-  height: 100%;
-  transition: margin-right 150ms ease-in-out 0s;
-  position: absolute;
   z-index: 100;
-  top: 0;
-  right: 0;
-  border-left: var(--wk-line);
-  margin-right: calc(0px - var(--wk-width-thread-panel));
-  background-color: var(--wk-bg-base);
-  box-shadow: var(--wk-shadow-md);
-  display: flex;
-  flex-direction: column;
-}
-
-body[theme-mode="dark"] .wk-thread-panel {
-  box-shadow: var(--wk-shadow-md);
-}
-
-.wk-chat-content-right.wk-chat-threadpanel-open .wk-thread-panel {
-  margin-right: 0;
 }
 
 .wk-thread-panel-main {

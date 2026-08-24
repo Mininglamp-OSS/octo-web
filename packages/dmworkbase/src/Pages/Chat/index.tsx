@@ -1,4 +1,5 @@
 import React, { Component, ReactNode } from "react";
+import { Drawer } from "@octo/ui";
 import { Conversation } from "../../Components/Conversation";
 import ConversationList, {
   ConvFilter,
@@ -1331,7 +1332,16 @@ export class ChatContentPage extends Component<
           </div>
         </div>
 
-        <div className={classNames("wk-chat-channelsetting")}>
+        <Drawer
+          inline
+          keepDOM
+          open={showChannelSetting}
+          bodyFlush
+          closable={false}
+          className="wk-chat-channelsetting"
+          closeOnEsc={false}
+          width="var(--wk-wdith-chat-channelsetting)"
+        >
           <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
             <ChannelSetting
               conversationContext={this.conversationContext}
@@ -1344,10 +1354,18 @@ export class ChatContentPage extends Component<
               }}
             ></ChannelSetting>
           </ErrorBoundary>
-        </div>
+        </Drawer>
 
         {showChannelSearch && (
-          <div className="wk-chat-channel-search-panel">
+          <Drawer
+            inline
+            open={showChannelSearch}
+            bodyFlush
+            closable={false}
+            className="wk-chat-channel-search-panel"
+            closeOnEsc={false}
+            width="var(--wk-width-chat-search-panel)"
+          >
             <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
               <div
                 className={classNames(
@@ -1388,7 +1406,7 @@ export class ChatContentPage extends Component<
                 )}
               </div>
             </ErrorBoundary>
-          </div>
+          </Drawer>
         )}
 
         {/* 统一侧边面板：子区 + 文件预览共用一个壳子（仅群聊） */}
