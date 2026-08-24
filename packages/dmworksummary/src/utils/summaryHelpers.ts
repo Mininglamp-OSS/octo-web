@@ -20,6 +20,15 @@ export function genSessionId(): string {
         : 'sid-' + Date.now() + '-' + Math.random().toString(16).slice(2);
 }
 
+// WEB-03: 每次逻辑提交的幂等键 request_id。后端(SS-03)据 (uid, session_id,
+// request_id) 去重建 Run —— request_id 为空时整条 v2 链路(Run/Spec/finish_status)
+// 不激活。stream→fallback 的重试必须复用同一个,避免同一提交建两个 Run。
+export function genRequestId(): string {
+    return crypto?.randomUUID
+        ? crypto.randomUUID()
+        : 'req-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
+
 // ─── Agent 对话 session_id 持久化（「退出不丢」） ──────────────
 // session_id 写入 localStorage，按 channel/入口隔离，避免不同群会话串号。
 // 无 channelId 的入口（完整创建页无频道上下文）落到统一兜底 key。
@@ -57,6 +66,44 @@ export function writeAgentChatSession(channelId: string | null | undefined, sess
 export function clearAgentChatSession(channelId?: string | null): void {
     try {
         localStorage.removeItem(agentChatSessionKey(channelId));
+    } catch {
+        // 同上，忽略。
+    }
+}
+
+// ─── Agent 对话 request_id 持久化（保存时绑定最后一次成功生成） ──────────────
+// request_id 与 session_id 同生命周期：它标识最近一次成功生成的交付轮次，
+// 保存为总结时需要带给后端以读取该轮冻结的 v2 manifest。
+const AGENT_CHAT_REQUEST_KEY_PREFIX = 'agent-chat-request:';
+
+/** 构造该入口最近一次成功 agent submit 的 request_id localStorage key。 */
+export function agentChatRequestIdKey(channelId?: string | null): string {
+    return AGENT_CHAT_REQUEST_KEY_PREFIX + (channelId || AGENT_CHAT_SESSION_FALLBACK);
+}
+
+/** 读取该入口最近一次成功 agent submit 的 request_id；无则返回空串。 */
+export function readAgentChatRequestId(channelId?: string | null): string {
+    try {
+        return localStorage.getItem(agentChatRequestIdKey(channelId)) || '';
+    } catch {
+        return '';
+    }
+}
+
+/** 写入最近一次成功 agent submit 的 request_id（空串跳过）。异常静默降级。 */
+export function writeAgentChatRequestId(channelId: string | null | undefined, requestId: string): void {
+    if (!requestId) return;
+    try {
+        localStorage.setItem(agentChatRequestIdKey(channelId), requestId);
+    } catch {
+        // localStorage 不可用时不持久化，不影响当前会话保存。
+    }
+}
+
+/** 清除该入口的 request_id（新会话 / 保存成功时与 session 一起清）。 */
+export function clearAgentChatRequestId(channelId?: string | null): void {
+    try {
+        localStorage.removeItem(agentChatRequestIdKey(channelId));
     } catch {
         // 同上，忽略。
     }

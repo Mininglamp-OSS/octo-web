@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 import { Checkbox, Switch } from "@octo/ui";
+import { ChevronRight, ExternalLink } from "lucide-react";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import DOMPurify from "dompurify";
 import { QRCodeSVG } from "qrcode.react";
 import WKApp, { ThemeMode } from "../../App";
-import APIClient from "../../Service/APIClient";
-import { sanitizeHttpUrl } from "../../Service/OidcConfig";
+import { apiFetchJson } from "../../Service/apiFetch";
+import { useMobileDownloadUrl } from "../../Service/mobileDownloadUpdater";
 import { updateUserLanguagePreference } from "../../Service/UserLanguageService";
 import { i18n, t } from "../../i18n";
 import { Locale } from "../../i18n/types";
@@ -29,10 +30,9 @@ function SettingsSection({ title, children }: { title: string; children: React.R
 export type ResourceStatus = "available" | "unavailable" | "coming-soon";
 type ResourceDefinition = {
   id: string;
-  title: string;
+  titleKey: string;
   descriptionKey: string;
   status: ResourceStatus;
-  statusKey: string;
   url?: string;
   actionKey?: string;
 };
@@ -43,24 +43,24 @@ export const settingsResourceGroups: ResourceGroup[] = [
     titleKey: "base.navRail.settingsCenter.resource.mobile",
     category: "clients",
     resources: [
-      { id: "android", title: "Android", descriptionKey: "base.navRail.settingsCenter.resource.androidDescription", status: "available", statusKey: "base.navRail.settingsCenter.resource.available", url: "https://github.com/Mininglamp-OSS/octo-android/releases/latest", actionKey: "base.navRail.settingsCenter.action.download" },
-      { id: "iphone", title: "iPhone", descriptionKey: "base.navRail.settingsCenter.resource.iosDescription", status: "coming-soon", statusKey: "base.navRail.settingsCenter.resource.appStorePending", actionKey: "base.navRail.settingsCenter.action.download" },
+      { id: "android", titleKey: "base.navRail.settingsCenter.resource.android", descriptionKey: "base.navRail.settingsCenter.resource.androidDescription", status: "available", url: "https://github.com/Mininglamp-OSS/octo-android/releases/latest", actionKey: "base.navRail.settingsCenter.action.download" },
+      { id: "iphone", titleKey: "base.navRail.settingsCenter.resource.iphone", descriptionKey: "base.navRail.settingsCenter.resource.iosDescription", status: "coming-soon", actionKey: "base.navRail.settingsCenter.action.download" },
     ],
   },
   {
     titleKey: "base.navRail.settingsCenter.resource.desktop",
     category: "clients",
     resources: [
-      { id: "windows", title: "Windows", descriptionKey: "base.navRail.settingsCenter.resource.windowsDescription", status: "coming-soon", statusKey: "base.navRail.settingsCenter.resource.comingSoon" },
-      { id: "macos", title: "macOS", descriptionKey: "base.navRail.settingsCenter.resource.macosDescription", status: "coming-soon", statusKey: "base.navRail.settingsCenter.resource.comingSoon" },
+      { id: "windows", titleKey: "base.navRail.settingsCenter.resource.windows", descriptionKey: "base.navRail.settingsCenter.resource.windowsDescription", status: "coming-soon" },
+      { id: "macos", titleKey: "base.navRail.settingsCenter.resource.macos", descriptionKey: "base.navRail.settingsCenter.resource.macosDescription", status: "coming-soon" },
     ],
   },
   {
     titleKey: "base.navRail.settingsCenter.resource.extensions",
     category: "resources",
     resources: [
-      { id: "chrome", title: "Octo Chrome Extension", descriptionKey: "base.navRail.settingsCenter.resource.chromeDescription", status: "coming-soon", statusKey: "base.navRail.settingsCenter.resource.comingSoon", actionKey: "base.navRail.settingsCenter.action.download" },
-      { id: "openclaw", title: "OpenClaw Plugin", descriptionKey: "base.navRail.settingsCenter.resource.openclawDescription", status: "coming-soon", statusKey: "base.navRail.settingsCenter.resource.comingSoon", actionKey: "base.navRail.settingsCenter.action.download" },
+      { id: "chrome", titleKey: "base.navRail.settingsCenter.resource.chrome", descriptionKey: "base.navRail.settingsCenter.resource.chromeDescription", status: "available", url: "https://chromewebstore.google.com/detail/octo-%E6%8F%92%E4%BB%B6%E7%89%88/nemameogpfkponoomeblkjcnbidgmndk", actionKey: "base.navRail.settingsCenter.action.install" },
+      { id: "openclaw", titleKey: "base.navRail.settingsCenter.resource.openclaw", descriptionKey: "base.navRail.settingsCenter.resource.openclawDescription", status: "available", url: "https://github.com/Mininglamp-OSS/openclaw-channel-octo", actionKey: "base.navRail.settingsCenter.action.viewProject" },
     ],
   },
 ];
@@ -70,22 +70,7 @@ const mobileUpdaterPaths: Record<string, string> = {
   iphone: "common/updater/ios/1.0.0",
 };
 
-function useMobileDownloadUrl(resourceId: string) {
-  const [url, setUrl] = useState<string>();
-  const path = mobileUpdaterPaths[resourceId];
-
-  React.useEffect(() => {
-    if (!path) return;
-    let active = true;
-    void APIClient.shared.get<{ url?: unknown }>(`/${path}`).then((result) => {
-      const safeUrl = sanitizeHttpUrl(result?.url);
-      if (active && safeUrl) setUrl(safeUrl);
-    }).catch(() => { if (active) setUrl(undefined); });
-    return () => { active = false; };
-  }, [path]);
-
-  return url;
-}
+const fetchMobileUpdater = (url: string, init?: RequestInit) => apiFetchJson(url, init);
 
 export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, onAbout, onChangelog, onOpenOnboarding }: { item?: SettingsItem; environment: import("../../Runtime").RuntimeEnvironment; accountCenterUrl?: string; onSecrets?: () => void; onAbout?: () => void; onChangelog?: () => void; onOpenOnboarding?: () => void }) {
   if (item?.id === "general") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.general.title")}><SettingsSection title={t("base.navRail.settingsCenter.section.displayLanguage")}><SettingsRow title={t("base.navRail.settingsCenter.row.language")} description={t("base.navRail.settingsCenter.row.languageDescription")} trailing={<select className="wk-settings-center__demo-select" aria-label={t("base.navRail.settingsCenter.row.language")} value={i18n.getLocale()} onChange={(event) => { const locale = event.target.value as Locale; i18n.setLocale(locale); if (WKApp.shared.isLogined()) void updateUserLanguagePreference(locale).catch(() => Toast.error(t("base.navRail.settingsCenter.value.saveFailed"))); }}><option value="zh-CN">{t("base.navRail.settingsCenter.language.zh")}</option><option value="en-US">{t("base.navRail.settingsCenter.language.en")}</option></select>} /><SettingsRow title={t("base.navRail.settingsCenter.row.darkMode")} description={t("base.navRail.settingsCenter.row.darkModeDescription")} trailing={<SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />} /></SettingsSection></SettingsPageFrame>;
@@ -97,7 +82,7 @@ export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, o
   if (item?.id === "downloads") return <DownloadsSettingsPage environment={environment} />;
   if (item?.id === "voice") return <VoiceInputSettingsPage environment={environment} />;
   if (item?.id === "shortcuts") return <ShortcutsSettingsPage environment={environment} />;
-  if (item?.id === "devices") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.devices.title")}><div className="wk-settings-center__resource-sections">{settingsResourceGroups.map((group) => <ResourceSection key={group.titleKey} title={t(group.titleKey)} category={group.category}>{group.resources.map((resource) => <ResourceCard key={resource.id} {...resource} description={t(resource.descriptionKey)} statusLabel={t(resource.statusKey)} category={group.category} action={resource.url && resource.actionKey ? <a className="wk-settings-center__resource-action" href={resource.url} target="_blank" rel="noreferrer">↗ {t(resource.actionKey)}</a> : undefined} />)}</ResourceSection>)}</div></SettingsPageFrame>;
+  if (item?.id === "devices") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.devices.title")} description={t("base.navRail.settingsCenter.page.devices.description")}><div className="wk-settings-center__resource-sections">{settingsResourceGroups.map((group) => <ResourceSection key={group.titleKey} title={t(group.titleKey)} category={group.category}>{group.resources.map((resource) => <ResourceCard key={resource.id} {...resource} title={t(resource.titleKey)} description={t(resource.descriptionKey)} category={group.category} action={resource.url && resource.actionKey ? <a className={`wk-settings-center__resource-action${group.category === "clients" ? " wk-settings-center__resource-action--client" : ""}`} href={resource.url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />{t(resource.actionKey)}</a> : undefined} />)}</ResourceSection>)}</div></SettingsPageFrame>;
   if (item?.id === "about") return <AboutSettingsPage onAbout={onAbout} onChangelog={onChangelog} onOpenOnboarding={onOpenOnboarding} />;
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.fallback.title")} description={t("base.navRail.settingsCenter.page.fallback.description")}><SettingsRow title={t("base.navRail.settingsCenter.row.placeholder")} description={t("base.navRail.settingsCenter.placeholder")} /></SettingsPageFrame>;
 }
@@ -122,7 +107,7 @@ function ShortcutsSettingsPage({ environment }: { environment: import("../../Run
 
 function AccountSettingsPage({ accountCenterUrl, onSecrets }: { accountCenterUrl?: string; onSecrets?: () => void }) {
   const [, setRealnameVerified] = React.useState(() => WKApp.loginInfo.realnameVerified === true);
-  return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.account.title")}><>{accountCenterUrl && <SettingsSection title={t("base.navRail.settingsCenter.section.accountSecurity")}><SettingsRow title={t("base.navRail.settingsCenter.row.accountCenter")} description={t("base.navRail.settingsCenter.row.accountCenterDescription")} trailing={<a className="wk-settings-center__external-link" href={accountCenterUrl} target="_blank" rel="noreferrer" aria-label={t("base.navRail.settingsCenter.row.accountCenter")}>↗</a>} /></SettingsSection>}<SettingsSection title={t("base.navRail.settingsCenter.section.profile")}><MeInfo onClose={() => undefined} embedded onRealnameStatusChange={setRealnameVerified} /></SettingsSection><SettingsSection title={t("base.navRail.settingsCenter.section.secrets")}><SettingsRow title={t("base.navRail.settingsCenter.row.manageSecrets")} description={t("base.navRail.settingsCenter.row.manageSecretsDescription")} trailing={<button type="button" className="wk-settings-center__manage-button" onClick={onSecrets}>{t("base.navRail.settingsCenter.action.manage")}</button>} /><SettingsRow title={t("base.navRail.settingsCenter.row.referenceSecrets")} description={t("base.navRail.settingsCenter.row.referenceSecretsDescription")} /></SettingsSection></></SettingsPageFrame>;
+  return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.account.title")}><>{accountCenterUrl && <SettingsSection title={t("base.navRail.settingsCenter.section.accountSecurity")}><SettingsRow title={t("base.navRail.settingsCenter.row.accountCenter")} description={t("base.navRail.settingsCenter.row.accountCenterDescription")} trailing={<a className="wk-settings-center__external-link" href={accountCenterUrl} target="_blank" rel="noreferrer" aria-label={t("base.navRail.settingsCenter.row.accountCenter")}><ExternalLink aria-hidden="true" /></a>} /></SettingsSection>}<SettingsSection title={t("base.navRail.settingsCenter.section.profile")}><MeInfo onClose={() => undefined} embedded onRealnameStatusChange={setRealnameVerified} /></SettingsSection><SettingsSection title={t("base.navRail.settingsCenter.section.secrets")}><SettingsRow title={t("base.navRail.settingsCenter.row.manageSecrets")} description={t("base.navRail.settingsCenter.row.manageSecretsDescription")} trailing={<button type="button" className="wk-settings-center__manage-button" onClick={onSecrets}>{t("base.navRail.settingsCenter.action.manage")}</button>} /><SettingsRow title={t("base.navRail.settingsCenter.row.referenceSecrets")} description={t("base.navRail.settingsCenter.row.referenceSecretsDescription")} /></SettingsSection></></SettingsPageFrame>;
 }
 
 function DesktopBehaviorSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
@@ -230,7 +215,7 @@ function NotificationsSettingsPage({ environment }: { environment: import("../..
 }
 function SettingsPageFrame({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) { return <div className="wk-settings-center__page"><header className="wk-settings-center__page-header"><h2>{title}</h2>{description && <p>{description}</p>}</header><section className="wk-settings-center__section-content">{children}</section></div>; }
 function AboutSettingsPage({ onAbout, onChangelog, onOpenOnboarding }: { onAbout?: () => void; onChangelog?: () => void; onOpenOnboarding?: () => void }) {
-  const externalLink = (label: string, href: string) => <a className="wk-settings-center__external-link" href={href} target="_blank" rel="noreferrer" aria-label={label}>↗</a>;
+  const externalLink = (label: string, href: string) => <a className="wk-settings-center__external-link" href={href} target="_blank" rel="noreferrer" aria-label={label}><ExternalLink aria-hidden="true" /></a>;
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.about.title")}>
     <div className="wk-settings-center__about-identity">
       <img className="wk-settings-center__about-logo" src={octoLogo} alt={t("base.navRail.settingsCenter.about.octoLogoAlt")} />
@@ -247,10 +232,10 @@ function AboutSettingsPage({ onAbout, onChangelog, onOpenOnboarding }: { onAbout
       <SettingsRow title={t("base.navRail.settingsCenter.row.openSource")} trailing={externalLink(t("base.navRail.settingsCenter.row.openSource"), "https://github.com/Mininglamp-OSS")} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.license")} trailing={externalLink(t("base.navRail.settingsCenter.row.license"), "https://github.com/Mininglamp-OSS/octo-web/blob/main/LICENSE")} />
     </SettingsSection>
-    <footer className="wk-settings-center__about-footer"><img className="wk-settings-center__mininglamp-logo" src={mininglampLogo} alt={t("base.navRail.settingsCenter.about.mininglampLogoAlt")} /><p>{t("base.navRail.settingsCenter.about.developedBy")}</p><div className="wk-settings-center__about-links"><a href="https://www.mininglamp.com/about/" target="_blank" rel="noreferrer">{t("base.navRail.settingsCenter.about.learnMininglamp")} ↗</a><a href="https://www.mininglamp.com/" target="_blank" rel="noreferrer">{t("base.navRail.settingsCenter.about.enterpriseSupport")} ↗</a></div></footer>
+    <footer className="wk-settings-center__about-footer"><img className="wk-settings-center__mininglamp-logo" src={mininglampLogo} alt={t("base.navRail.settingsCenter.about.mininglampLogoAlt")} /><p>{t("base.navRail.settingsCenter.about.developedBy")}</p><div className="wk-settings-center__about-links"><a href="https://www.mininglamp.com/about/" target="_blank" rel="noreferrer">{t("base.navRail.settingsCenter.about.learnMininglamp")}<ExternalLink aria-hidden="true" /></a><a href="https://www.mininglamp.com/" target="_blank" rel="noreferrer">{t("base.navRail.settingsCenter.about.enterpriseSupport")}<ExternalLink aria-hidden="true" /></a></div></footer>
   </SettingsPageFrame>;
 }
-function ChevronIcon() { return <svg className="wk-settings-center__chevron-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>; }
+function ChevronIcon() { return <ChevronRight className="wk-settings-center__chevron-icon" aria-hidden="true" />; }
 function ShortcutRow({ label, keys }: { label: string; keys: string[] }) { return <div className="wk-settings-center__shortcut-row"><span>{label}</span><span className="wk-settings-center__shortcut-keys">{keys.map((key) => <kbd key={key}>{key}</kbd>)}</span></div>; }
 function useVoiceSettings() {
   const [settings, setSettings] = React.useState<VoiceSettings>(() => voiceSettingsStore.get());
@@ -268,6 +253,7 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
   const [consentContent, setConsentContent] = React.useState<string | null>(null);
   const [consentLoading, setConsentLoading] = React.useState(false);
   const [consentError, setConsentError] = React.useState(false);
+  const [consentAccepting, setConsentAccepting] = React.useState(false);
   const [permission, setPermission] = React.useState<"granted" | "prompt" | "denied" | "unsupported">("unsupported");
   const [probeStatus, setProbeStatus] = React.useState<"idle" | "loading" | "success" | "failed">("idle");
   const [localDraft, setLocalDraft] = React.useState(() => ({ timeout: String(settings.localTimeoutMs), probe: settings.localProbeUrl, transcribe: settings.localTranscribeUrl }));
@@ -325,6 +311,8 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
   React.useEffect(() => {
     if (!showConsent) return;
     let cancelled = false;
+    setConsentChecked(false);
+    setConsentAccepting(false);
     setConsentLoading(true);
     setConsentError(false);
     setConsentContent(null);
@@ -334,6 +322,25 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
       .finally(() => { if (!cancelled) setConsentLoading(false); });
     return () => { cancelled = true; };
   }, [showConsent]);
+  const acceptConsent = async () => {
+    const spaceId = WKApp.shared.currentSpaceId;
+    if (!spaceId) {
+      Toast.error(t("base.navRail.settingsCenter.value.saveFailed"));
+      return;
+    }
+    setConsentAccepting(true);
+    try {
+      await acceptVoiceInput(spaceId, consentChecked, () => WKApp.shared.currentSpaceId === spaceId);
+      voiceSettingsStore.acknowledge();
+      voiceSettingsStore.set({ enabled: true });
+      Dap.shared.track("settings_voice_toggled", { enabled: true });
+      setShowConsent(false);
+    } catch {
+      Toast.error(t("base.navRail.settingsCenter.value.saveFailed"));
+    } finally {
+      setConsentAccepting(false);
+    }
+  };
   const toggle = (enabled: boolean) => {
     if (!enabled) {
       voiceSettingsStore.set({ enabled: false });
@@ -388,7 +395,7 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
     </div>
     <div className="wk-settings-center__voice-consent-footer">
       <Checkbox checked={consentChecked} onCheckedChange={setConsentChecked}>{t("base.navRail.voiceNotice.feedbackConsent")}</Checkbox>
-      <div className="wk-settings-center__voice-consent-actions"><button type="button" className="wk-settings-center__manage-button" onClick={() => setShowConsent(false)}>{t("base.common.cancel")}</button><button type="button" className="wk-settings-center__manage-button wk-settings-center__manage-button--primary" disabled={consentLoading || consentError || !consentContent} onClick={() => { void (async () => { const spaceId = WKApp.shared.currentSpaceId; if (spaceId) await acceptVoiceInput(spaceId, consentChecked, () => WKApp.shared.currentSpaceId === spaceId); voiceSettingsStore.acknowledge(); voiceSettingsStore.set({ enabled: true }); Dap.shared.track("settings_voice_toggled", { enabled: true }); setShowConsent(false); })().catch(() => Toast.error(t("base.navRail.settingsCenter.value.saveFailed"))); }}>{t("base.navRail.voiceNotice.accept")}</button></div>
+      <div className="wk-settings-center__voice-consent-actions"><button type="button" className="wk-settings-center__manage-button" onClick={() => setShowConsent(false)}>{t("base.common.cancel")}</button><button type="button" className="wk-settings-center__manage-button wk-settings-center__manage-button--primary" disabled={consentLoading || consentError || consentAccepting || !consentContent} onClick={() => { void acceptConsent(); }}>{t("base.navRail.voiceNotice.accept")}</button></div>
     </div>
   </div>;
   const shortcut = getVoiceShortcut(settings, os);
@@ -435,19 +442,18 @@ function ResourceBrandIcon({ id }: { id: string }) {
   if (id === "openclaw") return <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9.046 7.104a.527.527 0 110 1.055.527.527 0 010-1.055zM15.376 7.104a.528.528 0 110 1.056.528.528 0 010-1.056z"/><path fill="currentColor" fillRule="evenodd" d="M16.877 1.912c.58-.27 1.14-.323 1.616-.037a.317.317 0 01-.326.542c-.227-.136-.547-.153-1.022.068-.352.165-.765.45-1.234.866 2.683 1.17 4.4 3.5 5.148 5.921a6.421 6.421 0 00-.704.184c-.578.016-1.174.204-1.502.735-.338.55-.268 1.276.072 2.069l.005.012.007.014c.523 1.045 1.318 1.91 2.2 2.284-.912 3.274-3.44 6.144-5.972 6.988v2.109h-2.11v-2.11c-1.043.417-2.086.01-2.11 0v2.11h-2.11v-2.11c-2.531-.843-5.061-3.713-5.973-6.987.882-.373 1.678-1.238 2.2-2.284l.007-.014.006-.012c.34-.793.41-1.518.071-2.069-.327-.531-.923-.719-1.503-.735a6.409 6.409 0 00-.704-.183c.749-2.421 2.466-4.751 5.149-5.922-.47-.416-.88-.701-1.234-.866-.474-.221-.794-.204-1.021-.068a.318.318 0 01-.435-.109.317.317 0 01.109-.433c.476-.286 1.036-.233 1.615.037.49.229 1.031.628 1.621 1.182A9.924 9.924 0 0112 2.568c1.199 0 2.284.19 3.256.526.59-.554 1.13-.953 1.62-1.182zM8.835 6.577a1.266 1.266 0 100 2.532 1.266 1.266 0 000-2.532zm6.33 0a1.267 1.267 0 100 2.533 1.267 1.267 0 000-2.533z"/><path fill="currentColor" d="M.395 13.118c-.966-1.932-.163-3.863 2.41-3.365v-.001l.05.01c.084.018.17.038.26.06.033.009.067.017.1.027.084.022.168.048.255.076l.09.027c.528 0 .95.158 1.16.501.212.343.212.87-.105 1.61-.085.17-.178.333-.276.489l-.01.017a4.967 4.967 0 01-.62.791l-.019.02c-1.092 1.117-2.496 1.336-3.295-.262zM21.193 9.753c2.574-.5 3.378 1.433 2.411 3.365-.58 1.159-1.476 1.361-2.342.96l-.011-.005a2.419 2.419 0 01-.114-.056l-.019-.01a2.751 2.751 0 01-.115-.067l-.023-.014c-.035-.022-.071-.044-.106-.068l-.05-.035c-.55-.388-1.062-1.007-1.44-1.76-.276-.647-.311-1.132-.174-1.472.176-.439.636-.639 1.23-.639.032-.011.066-.02.099-.03.08-.026.16-.05.238-.072l.117-.03a5.502 5.502 0 01.3-.067z"/></svg>;
   return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M9 3.5c2.3 2.3 3.7 5.2 3.7 8.5s-1.4 6.2-3.7 8.5M15 3.5c-2.3 2.3-3.7 5.2-3.7 8.5s1.4 6.2 3.7 8.5M3.5 9h17M3.5 15h17" fill="none" stroke="currentColor" strokeWidth="1.2" /></svg>;
 }
-function ResourceCard({ id, title, description, status, statusLabel, category, action }: ResourceDefinition & { description: string; statusLabel: string; category: ResourceGroup["category"]; action?: React.ReactNode }) {
-  const tone = status === "available" ? "success" : status === "unavailable" ? "danger" : "neutral";
-  const qrUrl = useMobileDownloadUrl(id);
+function ResourceCard({ id, title, description, status, category, action }: ResourceDefinition & { title: string; description: string; category: ResourceGroup["category"]; action?: React.ReactNode }) {
+  const qrState = useMobileDownloadUrl(mobileUpdaterPaths[id], fetchMobileUpdater, WKApp.apiClient.config.apiURL);
   const isMobile = category === "clients" && (id === "android" || id === "iphone");
   if (category === "clients") {
     return <article className="wk-settings-center__resource-card wk-settings-center__resource-card--clients" data-resource-status={status}>
       <div className="wk-settings-center__client-head"><span className="wk-settings-center__resource-icon" aria-hidden="true"><ResourceBrandIcon id={id} /></span><h4>{title}</h4></div>
-      {isMobile ? <div className="wk-settings-center__resource-qr" aria-label={`${title} QR code`}>{qrUrl ? <QRCodeSVG value={qrUrl} size={104} /> : <span className="wk-settings-center__resource-qr-placeholder" aria-hidden="true" />}</div> : <div className="wk-settings-center__client-status">{description}</div>}
+      {isMobile ? <div className="wk-settings-center__resource-qr" aria-label={`${title} QR code`} aria-busy={qrState.status === "loading"}>{qrState.status === "ready" ? <QRCodeSVG value={qrState.downloadUrl} size={104} /> : qrState.status === "loading" ? <Spin /> : <div className="wk-settings-center__resource-qr-error" role="alert"><span>{t("base.navRail.settingsCenter.value.qrLoadFailed")}</span><button type="button" className="wk-settings-center__manage-button" onClick={qrState.retry}>{t("base.navRail.settingsCenter.action.retry")}</button></div>}</div> : <div className="wk-settings-center__client-status">{description}</div>}
       {action && <div className="wk-settings-center__resource-actions">{action}</div>}
     </article>;
   }
   return <article className="wk-settings-center__resource-card wk-settings-center__resource-card--resources" data-resource-status={status}>
     <div className="wk-settings-center__resource-identity"><span className="wk-settings-center__resource-icon" aria-hidden="true"><ResourceBrandIcon id={id} /></span><div className="wk-settings-center__resource-body"><h4>{title}</h4><p>{description}</p>{id === "openclaw" && <span className="wk-settings-center__resource-meta">{t("base.navRail.settingsCenter.resource.sourcePrefix")}ClawHub · GitHub</span>}</div></div>
-    <SettingsStatusTag tone={tone} label={statusLabel} />{action && <div className="wk-settings-center__resource-actions">{action}</div>}
+    {action && <div className="wk-settings-center__resource-actions">{action}</div>}
   </article>;
 }

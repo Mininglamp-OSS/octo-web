@@ -153,7 +153,7 @@ describe('ChatSummaryNewModal', () => {
             await flushPromises();
         });
 
-        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
+        expect(screen.getByText('试试下列模版')).toBeInTheDocument();
         expect(screen.getByTestId('template-weekly_report')).toBeInTheDocument();
         expect(screen.getByTestId('template-chat_content')).toBeInTheDocument();
     });
@@ -227,7 +227,7 @@ describe('ChatSummaryNewModal', () => {
         const input = screen.getByPlaceholderText('输入聊天内你想总结的主题');
         fireEvent.change(input, { target: { value: '测试主题' } });
 
-        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试下列模版')).not.toBeInTheDocument();
         expect(screen.queryByTestId('template-weekly_report')).not.toBeInTheDocument();
     });
 
@@ -239,10 +239,10 @@ describe('ChatSummaryNewModal', () => {
 
         const input = screen.getByPlaceholderText('输入聊天内你想总结的主题');
         fireEvent.change(input, { target: { value: '测试' } });
-        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试下列模版')).not.toBeInTheDocument();
 
         fireEvent.change(input, { target: { value: '' } });
-        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
+        expect(screen.getByText('试试下列模版')).toBeInTheDocument();
         expect(screen.getByTestId('template-weekly_report')).toBeInTheDocument();
     });
 
@@ -262,7 +262,7 @@ describe('ChatSummaryNewModal', () => {
 
         const templatesLabel = inputArea!.querySelector('.chat-summary-modal-templates-label');
         expect(templatesLabel).toBeInTheDocument();
-        expect(templatesLabel!.textContent).toBe('试试这些总结模板');
+        expect(templatesLabel!.textContent).toBe('试试下列模版');
 
         const templatesContainer = inputArea!.querySelector('.chat-summary-modal-templates');
         expect(templatesContainer).toBeInTheDocument();
@@ -729,5 +729,34 @@ describe('ChatSummaryNewModal agent save — explicit origin_channel_id (#930)',
             expect.any(Object),
         );
         expect(isAgentSummaryNotificationEligible(1)).toBe(true);
+    });
+
+    it('passes the successful agent request_id when saving', async () => {
+        const ref = React.createRef<ChatSummaryNewModal>();
+        await act(async () => {
+            render(
+                <ChatSummaryNewModal
+                    visible
+                    channel={{ channelID: 'ch1', channelType: 2 }}
+                    onClose={vi.fn()}
+                    onSubmit={vi.fn()}
+                    ref={ref}
+                />,
+            );
+            await flushPromises();
+        });
+
+        await act(async () => {
+            (ref.current as any).setState({ sessionId: 'sess-modal-1', agentRequestId: 'req-modal-1' });
+        });
+        await act(async () => {
+            await (ref.current as any).handleSaveAsSummary('t');
+            await flushPromises();
+        });
+
+        expect(summaryApi.createAgentSummary).toHaveBeenCalledWith(
+            expect.objectContaining({ session_id: 'sess-modal-1', request_id: 'req-modal-1' }),
+            expect.any(Object),
+        );
     });
 });

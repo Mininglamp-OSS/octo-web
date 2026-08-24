@@ -1,4 +1,5 @@
 import { Button } from "@octo/ui";
+import { webOrigin } from "../../Utils/docLink";
 import React, { useEffect, useRef, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import {
@@ -49,7 +50,7 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
     const rows = buildWebhookUrlRows(
         resp,
         WKApp.apiClient.config.apiURL || "/",
-        window.location.origin
+        webOrigin()
     );
     const nativeRow = rows.find((r) => r.key === "native");
 
@@ -66,7 +67,7 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
     const adapterExamples = buildWebhookAdapterExamples(
         resp,
         WKApp.apiClient.config.apiURL || "/",
-        window.location.origin
+        webOrigin()
     );
     // 兜底：老后端（#475 之前）不下发 adapter_examples 时，继续基于 urls 渲染写死示例。
     // wecom 即使后端下发示例也保持前端 curl：企微兼容体结构不同，不能被通用步骤替代。

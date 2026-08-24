@@ -22,6 +22,8 @@ import { join, dirname, basename, extname } from "path";
 import { pathToFileURL } from "url";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
+import { decideWindowOpen } from "./externalLink";
+import { isFleetIssuePathShape } from "./fleetTrust";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
   IPC_KEEP_AWAKE_GET,
@@ -47,6 +49,8 @@ import {
   IPC_SCREENSHOTS_START,
   IPC_SHOW_CONVERSATIONS,
   IPC_WINDOW_IS_FOCUSED,
+  IPC_ASK_TRUST_FLEET_HOST,
+  IPC_OPEN_EXTERNAL_URL,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
 import {
@@ -403,6 +407,128 @@ function registerKeepAwakeHandlers() {
   });
 }
 
+/* ---------- fleet preview trusted hosts ---------- */
+
+const fleetTrustedHostsPath = () => join(app.getPath("userData"), "fleet-trusted-hosts.json");
+
+function readFleetTrustedHosts(): string[] {
+  try {
+    const raw = JSON.parse(fs.readFileSync(fleetTrustedHostsPath(), "utf8"));
+    if (!Array.isArray(raw)) throw new Error("Invalid fleet-trusted-hosts file");
+    return raw.filter((h): h is string => typeof h === "string");
+  } catch {
+    return [];
+  }
+}
+
+function writeFleetTrustedHosts(hosts: string[]): void {
+  const path = fleetTrustedHostsPath();
+  // Unique temp suffix: concurrent rememberFleetTrustedHost calls (different
+  // hosts prompting at the same time) share the same `${pid}.tmp` target and
+  // race on rename; a per-call suffix keeps the atomic-write invariant.
+  const tempPath = `${path}.${process.pid}.${Date.now()}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(hosts, null, 2));
+  try {
+    fs.renameSync(tempPath, path);
+  } catch (error) {
+    try { fs.unlinkSync(tempPath); } catch { /* best effort cleanup */ }
+    throw error;
+  }
+}
+
+function rememberFleetTrustedHost(host: string): void {
+  const hosts = new Set(readFleetTrustedHosts());
+  hosts.add(host);
+  writeFleetTrustedHosts(Array.from(hosts));
+}
+
+// One prompt per host at a time: rapid clicks (or several unknown-host fleet
+// links clicked in succession) would otherwise stack independent native
+// modals, and concurrent rememberFleetTrustedHost writes race on the same
+// temp/target path. Concurrent callers await the same in-flight result.
+const inflightFleetTrustPrompts = new Map<string, Promise<boolean>>();
+
+async function promptFleetTrustOnce(
+  win: Electron.BrowserWindow,
+  host: string,
+  href: string,
+): Promise<boolean> {
+  const existing = inflightFleetTrustPrompts.get(host);
+  if (existing) return existing;
+  const prompt = (async (): Promise<boolean> => {
+    const { response, checkboxChecked } = await dialog.showMessageBox(win, {
+      type: "warning",
+      title: "信任此域名以打开任务预览？",
+      message: `是否允许在“${host}”下打开任务预览？`,
+      detail: `链接：${href}`,
+      buttons: ["允许", "拒绝"],
+      defaultId: 1, // 默认拒绝
+      cancelId: 1, // Esc / 关闭窗口也按"拒绝"处理，弹窗失败永远 fail-closed
+      noLink: true, // plain buttons, no command-link Enter mapping
+      // Allow-only semantics: the checkbox is persisted only when the user
+      // clicks 允许 (rememberFleetTrustedHost runs for response === 0), so
+      // the label must not promise "never ask again" for the reject side.
+      checkboxLabel: "允许并记住此域名",
+      checkboxChecked: false,
+    });
+    if (checkboxChecked && response === 0) {
+      try {
+        rememberFleetTrustedHost(host);
+      } catch {
+        // A storage failure must not convert the user's explicit 允许 into a
+        // reject: degrade to "trusted for this click, not remembered".
+      }
+    }
+    return response === 0;
+  })();
+  inflightFleetTrustPrompts.set(host, prompt);
+  try {
+    return await prompt;
+  } finally {
+    inflightFleetTrustPrompts.delete(host);
+  }
+}
+
+function registerFleetTrustHostHandler() {
+  ipcMain.handle(
+    IPC_ASK_TRUST_FLEET_HOST,
+    async (event, rawUrl: unknown): Promise<{ trusted: boolean }> => {
+      // Sender check + window resolution follow the OIDC handlers: the native
+      // prompt must be owned by the window that asked (not whatever window
+      // happens to be focused), and untrusted senders get a flat rejection.
+      // This is the only handler that persists durable trust, so it must not
+      // depend on the caller for that invariant.
+      const win = resolveTrustedOidcSender(event);
+      if (!win) return { trusted: false };
+      // Validate the input instead of trusting the renderer blindly. The
+      // trust key is derived from the validated URL here, never taken from
+      // the renderer, so a caller cannot cache-trust one origin while
+      // displaying another. The key is `URL.host` (hostname + non-default
+      // port): remembering `x:8443` must not trust `x` or `x:9999`.
+      if (typeof rawUrl !== "string") return { trusted: false };
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(rawUrl);
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+          return { trusted: false };
+        }
+      } catch {
+        return { trusted: false };
+      }
+      const host = parsedUrl.host;
+      // Re-validate the fleet path shape AND the decoded segment values
+      // BEFORE the remembered-host short-circuit (the renderer checked too,
+      // but the main process is the trust authority): a remembered host must
+      // not mint `trusted: true` for a URL that was never a fleet deep link,
+      // and a percent-encoded separator must not pass the shape gate and
+      // decode into path traversal afterwards.
+      if (!isFleetIssuePathShape(parsedUrl.pathname)) return { trusted: false };
+      if (readFleetTrustedHosts().includes(host)) return { trusted: true };
+      return { trusted: await promptFleetTrustOnce(win, host, parsedUrl.href) };
+    }
+  );
+}
+
 type OidcFlow = {
   origin: string;
   authcode: string;
@@ -461,6 +587,110 @@ const TRUSTED_SHELL_DEV_ORIGIN = isDevelopment
   ? new URL(DEV_SERVER_URL).origin
   : undefined;
 const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
+
+/* ---------- external link router ---------- */
+
+/**
+ * Open an http(s) URL in the system browser from the main process, shared by
+ * the setWindowOpenHandler router and the IPC_OPEN_EXTERNAL_URL bridge.
+ * Logs origin/pathname only — a message-body URL can carry query tokens that
+ * must not end up in logs.
+ *
+ * The URL is parsed exactly once and openExternal receives `parsed.href`:
+ * WHATWG parsing strips embedded tabs/newlines and normalizes the form, so
+ * the OS handler never sees the raw renderer string.
+ */
+function openUrlExternally(rawUrl: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    logExternalUrlRejection(rawUrl);
+    return Promise.resolve(false);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    logExternalUrlRejection(rawUrl);
+    return Promise.resolve(false);
+  }
+  return shell
+    .openExternal(parsed.href)
+    .then(() => true)
+    .catch((error) => {
+      console.warn(
+        `[external-link] openExternal failed (${safeUrlLabel(rawUrl)}):`,
+        error,
+      );
+      return false;
+    });
+}
+
+function logExternalUrlRejection(url: string): void {
+  console.warn(`[external-link] denied non-http(s) URL (${safeUrlLabel(url)})`);
+}
+
+/** Origin + pathname only; never log query or fragment (token leakage). */
+function safeUrlLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return "(unparseable)";
+  }
+}
+
+/**
+ * Route renderer-initiated window.open / target=_blank to the system browser.
+ *
+ * Message-body links render as `<a target="_blank" rel="noopener noreferrer">`
+ * anchors; Electron's default handling opens a raw BrowserWindow for them —
+ * no app chrome, a separate session/login state, and for deployment hosts
+ * other than the logged-in one a dead-end login page. Every desktop IM
+ * client instead hands such links to the user's browser. The in-app fleet
+ * preview panel is NOT affected: its clicks are preventDefault-ed in the
+ * renderer and never reach this handler; the explicit rejection fallback
+ * (openFleetLinkExternal → window.open) lands here and is routed to the
+ * browser, which is exactly the intended "open externally" outcome.
+ *
+ * Everything non-http(s) is denied without reaching the OS. The renderer
+ * features that used the web-era `window.open("about:blank")` dance
+ * (realname verification, global-search doc open) were migrated to the
+ * IPC_OPEN_EXTERNAL_URL bridge, so there is no legitimate about:blank
+ * popup left to exempt — and an allow branch would be a bypass surface
+ * (about:blank documents commit before any will-navigate listener can
+ * cancel them, and javascript:/hash navigations never fire will-navigate).
+ */
+function attachExternalLinkRouter(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (decideWindowOpen(url) === "open-external") {
+      void openUrlExternally(url);
+    } else {
+      logExternalUrlRejection(url);
+    }
+    return { action: "deny" };
+  });
+}
+
+function registerOpenExternalUrlHandler(): void {
+  ipcMain.handle(
+    IPC_OPEN_EXTERNAL_URL,
+    async (
+      event,
+      url: unknown,
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      const win = resolveTrustedOidcSender(event);
+      if (!win) return { ok: false, reason: "untrusted-sender" };
+      if (typeof url !== "string" || url === "") {
+        return { ok: false, reason: "invalid-url" };
+      }
+      if (decideWindowOpen(url) !== "open-external") {
+        logExternalUrlRejection(url);
+        return { ok: false, reason: "non-http-url" };
+      }
+      return { ok: await openUrlExternally(url) };
+    },
+  );
+}
+
 // A same-document history.pushState changes frame.url without creating a new
 // document. Track trust at document navigation time instead of re-evaluating
 // the current pathname for every IPC call, otherwise normal SPA routes such
@@ -1321,6 +1551,7 @@ const getWindowConfig = () => {
 const createNewWindow = () => {
   const newWindow = new BrowserWindow(getWindowConfig());
   trackTrustedShellDocument(newWindow);
+  attachExternalLinkRouter(newWindow);
 
   newWindow.center();
   newWindow.webContents.on("did-finish-load", () => {
@@ -1360,6 +1591,7 @@ const createNewWindow = () => {
 const createMainWindow = async () => {
   mainWindow = new BrowserWindow(getWindowConfig());
   trackTrustedShellDocument(mainWindow);
+  attachExternalLinkRouter(mainWindow);
   mainWindow.center();
   mainWindow.webContents.on("did-finish-load", () => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setZoomFactor(settings.zoomFactor);
@@ -1804,6 +2036,8 @@ app.on("ready", () => {
   }
   registerKeepAwakeHandlers();
   applyKeepAwake(keepAwakeEnabled);
+  registerFleetTrustHostHandler();
+  registerOpenExternalUrlHandler();
   registerDesktopSettingsHandlers();
   registerDownloadSettingsHandlers();
   registerDownloadHandler();

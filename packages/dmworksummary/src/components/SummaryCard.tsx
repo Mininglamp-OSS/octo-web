@@ -5,7 +5,7 @@ import { MoreHorizontal, AlertTriangle, Bot, Clock, FileText, UsersRound, X } fr
 import { useI18n, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
-import { getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel } from "../utils/summaryHelpers";
+import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -31,6 +31,10 @@ function formatRelativeTime(dateStr: string, t: (key: string, opts?: any) => str
     if (diff < 60) return t("summary.summaryCard.justNow");
     if (diff < 3600) return t("summary.summaryCard.minutesAgo", { values: { count: Math.floor(diff / 60) } });
     if (diff < 86400) return t("summary.summaryCard.hoursAgo", { values: { count: Math.floor(diff / 3600) } });
+    // 超过十天回落到具体日期（issue #1440）：「45天前」这类相对值对定位
+    // 总结已没有参考价值。阈值按 issue 取「超过」十天，与 dmworkbase
+    // relativeTime.ts 的「超过 N 天回落绝对日期」模式一致。
+    if (diff > 10 * 86400) return formatDateOnly(dateStr);
     return t("summary.summaryCard.daysAgo", { values: { count: Math.floor(diff / 86400) } });
 }
 

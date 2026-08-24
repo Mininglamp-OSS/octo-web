@@ -199,7 +199,8 @@ describe("IOSDownloadButton", () => {
     });
 
     expect(apiFetchJsonMock).toHaveBeenCalledWith(
-      "/api/v1/common/updater/ios/1.0.0"
+      "/api/v1/common/updater/ios/1.0.0",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(
       container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")

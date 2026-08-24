@@ -100,7 +100,7 @@ describe('SummaryCreatePage templates', () => {
             await flushPromises();
         });
 
-        expect(screen.getByText('试试这些总结模板')).toBeInTheDocument();
+        expect(screen.getByText('试试下列模版')).toBeInTheDocument();
         // v2: all builtin templates render directly (no "more templates" modal)
         expect(screen.getByText('汇总项目进展')).toBeInTheDocument();
         expect(screen.getByText('跟踪任务进度')).toBeInTheDocument();
@@ -125,7 +125,7 @@ describe('SummaryCreatePage templates', () => {
             fireEvent.change(textarea, { target: { value: '总结本周进展' } });
         });
 
-        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试下列模版')).not.toBeInTheDocument();
         expect(screen.queryByText('汇总项目进展')).not.toBeInTheDocument();
     });
 
@@ -142,7 +142,7 @@ describe('SummaryCreatePage templates', () => {
         const textarea = document.querySelector('.summary-workbench-textarea') as HTMLTextAreaElement;
         expect(textarea.value).toBe('总结主题: 总结团队周报\n内容重点: 总结团队成员每周工作，按成员、重点进展、成果产出、风险问题、下周计划整理');
         // templates hidden after selection
-        expect(screen.queryByText('试试这些总结模板')).not.toBeInTheDocument();
+        expect(screen.queryByText('试试下列模版')).not.toBeInTheDocument();
     });
 
     it('fills the topic frame from a project progress template', async () => {
@@ -446,15 +446,18 @@ describe('SummaryCreatePage agent session_id persistence + history rehydrate + n
 
 describe('SummaryCreatePage agent SSE session_id sync', () => {
     let writeSessionSpy: any;
+    let writeRequestSpy: any;
 
     beforeEach(() => {
         vi.clearAllMocks();
         // Spy on the actual writeAgentChatSession from summaryHelpers
         writeSessionSpy = vi.spyOn(summaryHelpers, 'writeAgentChatSession').mockImplementation(() => {});
+        writeRequestSpy = vi.spyOn(summaryHelpers, 'writeAgentChatRequestId').mockImplementation(() => {});
     });
 
     afterEach(() => {
         writeSessionSpy?.mockRestore();
+        writeRequestSpy?.mockRestore();
     });
 
     it('updates sessionId and persists when backend returns different session_id', async () => {
@@ -555,6 +558,28 @@ describe('SummaryCreatePage agent SSE session_id sync', () => {
         const lastMessage = instance.state.messages[instance.state.messages.length - 1];
         expect(lastMessage.role).toBe('assistant');
         expect(lastMessage.content).toBe('Server response');
+    });
+
+    it('persists request_id from the successful SSE generation turn', async () => {
+        const ref = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={ref} />);
+            await flushPromises();
+        });
+
+        const instance = ref.current as any;
+        await act(async () => {
+            instance.setState({ sessionId: 'same-session-id', mode: 'agent' });
+        });
+
+        await act(async () => {
+            instance.handleAgentAssistantMessage('Server response', 'same-session-id', 'req-success-1');
+            await flushPromises();
+        });
+
+        expect(writeRequestSpy).toHaveBeenCalledWith(undefined, 'req-success-1');
+        expect(writeSessionSpy).toHaveBeenCalledWith(undefined, 'same-session-id');
+        expect(instance.state.agentRequestId).toBe('req-success-1');
     });
 });
 
@@ -790,6 +815,23 @@ describe('SummaryCreatePage agent save — explicit origin_channel_id (#930)', (
         const arg = (api.createAgentSummary as any).mock.calls[0][0];
         expect(arg.origin_channel_id).toBeUndefined();
         expect(arg.origin_channel_type).toBeUndefined();
+    });
+
+    it('passes the successful agent request_id when saving', async () => {
+        const instance = await mountInstance();
+        await act(async () => {
+            instance.setState({
+                sessionId: 'sess-4',
+                mode: 'agent',
+                selectedChats: [],
+                agentRequestId: 'req-page-1',
+            });
+        });
+        await act(async () => { await instance.handleSaveAsSummary('t'); });
+        expect(api.createAgentSummary).toHaveBeenCalledWith(
+            expect.objectContaining({ session_id: 'sess-4', request_id: 'req-page-1' }),
+            expect.any(Object),
+        );
     });
 });
 

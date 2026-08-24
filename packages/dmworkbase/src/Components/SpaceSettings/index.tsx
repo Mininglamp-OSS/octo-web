@@ -1,3 +1,4 @@
+import { webOrigin } from "../../Utils/docLink";
 import React, { Component } from "react";
 import { Input, Toast } from "@douyinfe/semi-ui";
 import { IconCopy, IconLink } from "@douyinfe/semi-icons";
@@ -144,7 +145,7 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
 
     copyInviteLink = () => {
         const { inviteCode } = this.state;
-        const link = `${window.location.origin}/join/${inviteCode}`;
+        const link = `${webOrigin()}/join/${inviteCode}`;
         navigator.clipboard.writeText(link).then(() => {
             Toast.success(t("base.spaceSettings.inviteLinkCopied"));
         });

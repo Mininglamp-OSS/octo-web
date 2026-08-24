@@ -309,6 +309,6 @@
   "mail.authorization.approvalMismatch": "服务端返回的邮箱或权限与刚才确认的内容不一致，本次未完成接入。",
   "mail.authorization.targetSpace": "目标 Space：{{spaceName}}",
   "mail.authorization.spaceMismatchConfirmation": "当前所在 Space 为 {{currentSpaceName}}，但此链接将授权 Space {{targetSpaceName}}。我已了解，并确认授权目标 Space。",
-  "mail.authorization.requestedAutomatic": "Agent 请求自动发信。为保证安全，页面默认仍选择每次发信前确认；只有确实需要时再主动选择自动发信。",
-  "mail.authorization.requestedManual": "Agent 请求每次发信前都由你确认。"
+  "mail.authorization.selectedAutomatic": "当前选择允许 Agent 自动发信。",
+  "mail.authorization.selectedManual": "当前选择每次发信前都由你确认。"
 }
