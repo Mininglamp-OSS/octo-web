@@ -312,6 +312,51 @@ describe("skillApiReal", () => {
     expect(url).toContain("/market/api/v1/plugins/detail?plugin_id=ci-failure-map");
   });
 
+  it("getSkill derives file metadata from a tree-shaped package", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({
+        plugin: pluginSkillWire({
+          plugin_json: {
+            $schema: "cowork-plugin-package-1.0.json",
+            attachments: [
+              {
+                path: "SKILL.md",
+                content_type: "raw",
+                mime_type: "text/markdown",
+                raw_content: "# Tree",
+                content_size: 6,
+              },
+              {
+                path: "scripts/run.sh",
+                content_type: "raw",
+                mime_type: "text/x-shellscript",
+                raw_content: "echo hi",
+                content_size: 7,
+              },
+              {
+                path: "assets/logo.png",
+                content_type: "storage",
+                mime_type: "image/png",
+                storage_uri: "plugins/dev-space/attachments/skill-x-abc.png",
+                content_size: 20,
+              },
+            ],
+          },
+        }),
+        relations: [],
+      })
+    );
+
+    const skill = await getSkill("tree-skill");
+
+    expect(skill.readmeContent).toBe("# Tree");
+    // No legacy pointer: metadata is derived from the attachment tree.
+    expect(skill.fileName).toBe(`${skill.name}.zip`);
+    expect(skill.fileUrl).toBe("");
+    expect(skill.fileSize).toBe(33);
+    expect(skill.fileSha256).toBeUndefined();
+  });
+
   it("trackSkillView sends a best-effort view metric", async () => {
     mockFetch.mockReturnValueOnce(jsonResponse({}));
 

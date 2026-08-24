@@ -320,18 +320,36 @@ function mapSkill(raw: PluginListItemWire): Skill {
 
 function mapSkillDetail(plugin: PluginDetailPluginWire): Skill {
   const base = mapSkill(plugin);
-  const ref =
-    jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
-  const managedZip = (plugin.plugin_json?.attachments ?? []).find(
-    (a) => a.path === "skill/package.zip" && a.content_type === "storage"
+  const attachments = plugin.plugin_json?.attachments ?? [];
+  const isLegacy = attachments.some(
+    (a) => a.path === "skill/ref.json" || a.path === "skill/package.zip"
   );
+  if (isLegacy) {
+    const ref =
+      jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
+    const managedZip = attachments.find(
+      (a) => a.path === "skill/package.zip" && a.content_type === "storage"
+    );
+    return {
+      ...base,
+      readmeContent: rawAttachment(plugin.plugin_json, "SKILL.md") ?? "",
+      fileName: ref.file_name ?? (managedZip ? "skill.zip" : ""),
+      fileUrl: managedZip?.storage_uri ?? ref.zip_object_key ?? ref.file_url ?? "",
+      fileSize: ref.file_size ?? managedZip?.content_size ?? 0,
+      fileSha256: ref.file_sha256,
+    };
+  }
+  // Tree shape: files live directly in attachments; the download is rebuilt
+  // server-side, so metadata is derived from the tree rather than a pointer.
+  const hasFiles = attachments.some((a) => a.path !== "SKILL.md");
+  const totalSize = attachments.reduce((n, a) => n + (a.content_size ?? 0), 0);
   return {
     ...base,
     readmeContent: rawAttachment(plugin.plugin_json, "SKILL.md") ?? "",
-    fileName: ref.file_name ?? (managedZip ? "skill.zip" : ""),
-    fileUrl: managedZip?.storage_uri ?? ref.zip_object_key ?? ref.file_url ?? "",
-    fileSize: ref.file_size ?? managedZip?.content_size ?? 0,
-    fileSha256: ref.file_sha256,
+    fileName: hasFiles ? `${base.name}.zip` : "",
+    fileUrl: "",
+    fileSize: totalSize,
+    fileSha256: undefined,
   };
 }
 

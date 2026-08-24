@@ -334,21 +334,36 @@ export function mapPluginSquadListItem(
 }
 
 /** Project one skill Plugin (an expert_skill relation target) onto the lazy
- *  ExpertSkill detail shape the file browser reads. */
+ *  ExpertSkill detail shape the file browser reads. Tree-shaped skills expose
+ *  their files directly as attachments; a legacy skill/ref.json pointer is still
+ *  honored for not-yet-expanded rows. */
 export function fromSkillPlugin(
   plugin: PluginDetailPluginWire
 ): import("../mock/expertMock").ExpertSkill {
   const ref = jsonAttachment<SkillRefWire>(plugin.plugin_json, "skill/ref.json") ?? {};
+  const attachments = plugin.plugin_json?.attachments ?? [];
   const inlineMd = rawAttachment(plugin.plugin_json, "SKILL.md") !== undefined;
-  const managedZip = (plugin.plugin_json?.attachments ?? []).some(
+  const isLegacy = attachments.some(
+    (a) => a.path === "skill/ref.json" || a.path === "skill/package.zip"
+  );
+  // Tree shape: every attachment except SKILL.md is a real package file.
+  const treeFiles = attachments
+    .map((a) => a.path)
+    .filter((p) => p !== "SKILL.md");
+  const treeSize = attachments.reduce((n, a) => n + (a.content_size ?? 0), 0);
+  const managedZip = attachments.some(
     (a) => a.path === "skill/package.zip" && a.content_type === "storage"
   );
   return {
     name: plugin.plugin_name ?? "",
     hasContent: inlineMd || !!ref.object_key,
-    canDownload: managedZip || !!ref.zip_object_key || !!ref.file_url,
+    // A tree skill is downloadable (the backend rebuilds a zip) when it carries
+    // supporting files beyond SKILL.md; legacy skills need a resolvable pointer.
+    canDownload: isLegacy
+      ? managedZip || !!ref.zip_object_key || !!ref.file_url
+      : treeFiles.length > 0,
     fileName: ref.file_name,
-    fileSize: ref.file_size,
-    files: ref.files,
+    fileSize: isLegacy ? ref.file_size : treeSize,
+    files: isLegacy ? ref.files : treeFiles,
   };
 }
