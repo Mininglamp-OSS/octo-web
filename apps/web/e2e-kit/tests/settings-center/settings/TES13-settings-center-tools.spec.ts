@@ -1,8 +1,10 @@
 /* eslint-disable no-undef */
 // spec: apps/web/e2e-kit/case-specs/settings-center/settings/TES13-settings-center-tools.md
 import { test, expect } from "../../../fixtures-authed";
+import { prepareVoiceSettings } from "../voice/settings-center-voice-support";
 
 test("@TES13 @p1 @settings-center @tools 工具页展示快捷键和资源", async ({ authedPage }) => {
+  await prepareVoiceSettings(authedPage, { shortcutEnabled: true, speakingMode: "toggle" });
   await authedPage.getByRole("button", { name: "设置" }).click();
   await authedPage.getByRole("combobox", { name: "界面语言" }).selectOption("en-US");
   const content = authedPage.getByTestId("settings-center-content");

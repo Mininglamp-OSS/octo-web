@@ -466,7 +466,6 @@ function PersonaCreate(props: {
                             inputRef={promptRef}
                             onTranscribed={handleVoiceTranscribed}
                             getCurrentText={() => prompt}
-                            showModeMenu
                             size="sm"
                             className="wk-vib--textarea-corner"
                         />

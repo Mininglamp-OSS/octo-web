@@ -25,6 +25,7 @@ vi.mock("../../../Runtime/adapters", async (importOriginal) => ({
 }));
 
 import { i18n } from "../../../i18n";
+import { voiceSettingsStore } from "../../../Service/VoiceSettingsStore";
 import { SettingsPage } from "../settingsPages";
 
 const environment = {
@@ -40,6 +41,7 @@ const flush = async () => act(async () => { await Promise.resolve(); await Promi
 
 beforeEach(() => {
   i18n.setLocale("zh-CN", { notify: false, persist: false });
+  voiceSettingsStore.reset();
   keepAwake.getEnabled.mockClear();
   keepAwake.setEnabled.mockClear();
   Object.defineProperty(window, "ipc", {
@@ -83,6 +85,7 @@ describe("SettingsPage desktop behavior", () => {
   });
 
   it("shows Desktop voice shortcuts as read-only current client shortcuts", () => {
+    voiceSettingsStore.set({ enabled: true });
     act(() => ReactDOM.render(<SettingsPage item={{ id: "shortcuts", labelKey: "base.navRail.settingsCenter.item.shortcuts" }} environment={environment} />, container));
 
     expect(container.textContent).toContain("右 Option");

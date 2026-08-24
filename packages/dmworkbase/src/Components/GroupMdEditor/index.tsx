@@ -338,7 +338,6 @@ export class GroupMdEditor extends Component<
                 inputRef={this.textareaRef}
                 onTranscribed={this.handleVoiceTranscribed}
                 getCurrentText={() => this.state.content}
-                showModeMenu
                 size="md"
                 className="wk-vib--textarea-corner"
               />

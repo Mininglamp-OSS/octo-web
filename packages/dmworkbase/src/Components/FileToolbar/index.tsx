@@ -1,7 +1,7 @@
 import React from "react";
 import { Component, ReactNode, createRef } from "react";
 import ConversationContext from "../Conversation/context";
-import { Toast } from "@douyinfe/semi-ui";
+import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import IconClick from "../IconClick";
 import { t } from "../../i18n";
 
@@ -110,12 +110,12 @@ export default class FileToolbar extends Component<FileToolbarProps> {
 
     return (
       <div className="wk-filetoolbar" ref={this.containerRef}>
-        <IconClick
+        <Tooltip content={t("base.messageInput.toolbar.file")}><span><IconClick
           icon={typeof icon === "string" ? <img src={icon} alt="" /> : icon}
           data-testid="input-attachment-btn"
           onClick={this.chooseFile}
           size="sm"
-        />
+        /></span></Tooltip>
         <input
           onClick={this.onFileClick}
           onChange={this.onFileChange}

@@ -136,7 +136,6 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                                     inputRef={this.descriptionRef}
                                     onTranscribed={this.handleVoiceTranscribed}
                                     getCurrentText={() => this.state.description}
-                                    showModeMenu
                                     size="sm"
                                     className="wk-vib--textarea-corner"
                                 />

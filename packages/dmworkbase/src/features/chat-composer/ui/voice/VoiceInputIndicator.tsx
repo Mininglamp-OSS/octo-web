@@ -5,7 +5,7 @@ import React, {
   useCallback,
 } from "react";
 import { createPortal } from "react-dom";
-import { Toast, Dropdown } from "@douyinfe/semi-ui";
+import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useVoiceInput from "../../adapters/voice/useVoiceInput";
 import "./voiceInput.css";
@@ -13,9 +13,8 @@ import type {
   ChatComposerVoiceContext,
   ChatComposerVoiceHost,
 } from "../../ports";
-import { VoiceMode } from "../../../../Service/VoiceService";
 import { useI18n } from "../../../../i18n";
-import { getVoiceShortcut, voiceSettingsStore, voiceShortcutMatches } from "../../../../Service/VoiceSettingsStore";
+import { getMicrophonePermission, getVoiceShortcut, refreshMicrophonePermission, subscribeMicrophonePermission, voiceSettingsStore, voiceShortcutMatches } from "../../../../Service/VoiceSettingsStore";
 
 type ReplaceMode = "all" | "selection" | "insert";
 
@@ -49,59 +48,21 @@ interface VoiceInputIndicatorProps {
 const FLOATING_GAP = 20;
 const INDICATOR_HEIGHT = 48;
 
-// Long-press timing constants
-const PREPARING_DELAY_MS = 300;
-const RECORDING_DELAY_MS = 500;
-
-// 模式配置 - 匹配 Figma 设计：语音输入 / 语音编辑
-const VOICE_MODES: {
-  value: VoiceMode;
-  labelKey: string;
-  description: string;
-}[] = [
-  {
-    value: "append_only",
-    labelKey: "base.voiceInput.mode.input",
-    description: "",
-  },
-  {
-    value: "edit_only",
-    labelKey: "base.voiceInput.mode.edit",
-    description: "",
-  },
-];
-
 export default function VoiceInputIndicator({
   onRecordingStarted,
   voiceHost,
   onTranscribed,
-  getCurrentText,
-  getSelectedText,
-  getSelectionRange,
   getChatContext,
   checkIsInputActive,
 }: VoiceInputIndicatorProps) {
   const { t } = useI18n();
   const [voiceSettings, setVoiceSettings] = useState(() => voiceSettingsStore.get());
+  const [microphonePermission, setMicrophonePermission] = useState(() => getMicrophonePermission());
   useEffect(() => voiceSettingsStore.subscribe(setVoiceSettings), []);
-  // Voice mode menu state (不保存选中的模式，每次都是临时选择)
-  const [showModeMenu, setShowModeMenu] = useState(false);
-
-  // Long-press ShiftLeft state
-  const shiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const preparingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const shiftRecordingRef = useRef(false);
-  const cancelPendingRef = useRef(false);
-  const [isPreparing, setIsPreparing] = useState(false);
-
-  // 记录开始录音时是否有选中文本，用于决定替换模式
-  const hadSelectionRef = useRef(false);
-  // 记录开始录音时选中的文本内容（用于后续定位替换）
-  const savedSelectedTextRef = useRef<string | undefined>(undefined);
-  // 记录开始录音时选区的 ProseMirror 位置（优先使用位置替换，文本匹配作为兜底）
-  const savedSelectionRangeRef = useRef<SelectionRange | undefined>(undefined);
-  // 记录当前录音使用的模式（用于 onTranscribed 回调）
-  const recordingModeRef = useRef<VoiceMode>("append_only");
+  useEffect(() => subscribeMicrophonePermission(setMicrophonePermission), []);
+  useEffect(() => { void refreshMicrophonePermission(); }, []);
+  const shortcutStartedRef = useRef(false);
+  const holdShortcutDownRef = useRef(false);
   const {
     isRecording,
     isTranscribing,
@@ -109,32 +70,18 @@ export default function VoiceInputIndicator({
     stopRecordingAndTranscribe,
     cancelRecording,
     isVoiceEnabled,
-    currentMode,
     localAvailable,
   } = useVoiceInput({
     voiceHost,
     onTranscribed: (text: string) => {
-      // 根据模式和是否有选中文本决定替换方式
-      const mode = recordingModeRef.current;
-      if (mode === "edit_only") {
-        if (hadSelectionRef.current && savedSelectedTextRef.current) {
-          // 传递选区位置和文本内容，优先使用位置替换
-          onTranscribed(
-            text,
-            "selection",
-            savedSelectedTextRef.current,
-            savedSelectionRangeRef.current
-          );
-        } else {
-          onTranscribed(text, "all");
-        }
-      } else {
-        // 语音输入模式：插入到光标处
-        onTranscribed(text, "insert");
+      if (shortcutStartedRef.current) {
+        voiceSettingsStore.markShortcutLearned(/Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows", voiceSettings.speakingMode);
+        shortcutStartedRef.current = false;
       }
+      onTranscribed(text, "insert");
     },
     getChatContext,
-    mode: recordingModeRef.current,
+    mode: "append_only",
     onError: (error) => {
       // 麦克风权限被拒绝时显示中文提示
       if (
@@ -158,9 +105,7 @@ export default function VoiceInputIndicator({
       }
     },
     onRecordingFailed: () => {
-      shiftRecordingRef.current = false;
-      cancelPendingRef.current = false;
-      setIsPreparing(false);
+      // The hook owns recorder cleanup.
     },
   });
   useEffect(() => {
@@ -207,29 +152,9 @@ export default function VoiceInputIndicator({
   const isTranscribingRef = useRef(isTranscribing);
   isTranscribingRef.current = isTranscribing;
 
-  const clearShiftTimer = () => {
-    if (shiftTimerRef.current !== null) {
-      clearTimeout(shiftTimerRef.current);
-      shiftTimerRef.current = null;
-    }
-    if (preparingTimerRef.current !== null) {
-      clearTimeout(preparingTimerRef.current);
-      preparingTimerRef.current = null;
-    }
-    setIsPreparing(false);
-  };
-
-  // Handle transition from preparing/pending -> actual recording or auto-cancel.
+  // Handle transition to actual recording.
   useEffect(() => {
-    if (isRecording && cancelPendingRef.current) {
-      cancelPendingRef.current = false;
-      shiftRecordingRef.current = false;
-      setIsPreparing(false);
-      cancelRecording();
-      return;
-    }
     if (isRecording) {
-      setIsPreparing(false);
       onRecordingStarted?.();
     }
   }, [isRecording, cancelRecording, onRecordingStarted]);
@@ -281,245 +206,62 @@ export default function VoiceInputIndicator({
     };
   }, [isRecording, isTranscribing, updateFloatingPosition]);
 
-  // Keyboard shortcut follows the settings-center configuration.
+  // Fixed physical right Alt/Option shortcut.
   useEffect(() => {
-    if (!isVoiceEnabled || !voiceSettings.enabled) return;
-
-    const os = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows" as const;
-    const configuredShortcut = getVoiceShortcut(voiceSettings, os);
-    if (configuredShortcut === "disabled") return;
-    const modifiersValid = (event: KeyboardEvent) => configuredShortcut === "alt-right"
-      ? !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.getModifierState("AltGraph")
-      : !event.altKey && !event.ctrlKey && !event.metaKey;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 只处理当前活动输入框的快捷键（避免多个输入框同时响应）
-      if (checkIsInputActive && !checkIsInputActive()) {
+    if (!isVoiceEnabled || !voiceSettings.enabled || !voiceSettings.shortcutEnabled) return;
+    const shortcut = getVoiceShortcut(voiceSettings, /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows");
+    const validModifiers = (event: KeyboardEvent) => !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.getModifierState("AltGraph");
+    const start = () => {
+      if (!isOnlineRef.current && !localAvailableRef.current) {
+        Toast.warning(t("base.voiceInput.error.networkUnavailable"));
         return;
       }
-
-      // Esc to cancel recording
-      if (e.code === "Escape" && isRecordingRef.current) {
-        e.preventDefault();
+      shortcutStartedRef.current = true;
+      startRecordingRef.current("append_only");
+    };
+    const stop = () => stopRecordingRef.current();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (checkIsInputActive && !checkIsInputActive()) return;
+      if (event.code === "Escape" && isRecordingRef.current) {
+        event.preventDefault();
         cancelRecording();
         return;
       }
-
-      if (voiceShortcutMatches(e, configuredShortcut) && !e.repeat && modifiersValid(e)) {
-        if (voiceSettings.speakingMode === "toggle") {
-          e.preventDefault();
-          if (isRecordingRef.current) stopRecordingRef.current();
-          else if (!isTranscribingRef.current) {
-            if (!isOnlineRef.current && !localAvailableRef.current) {
-              Toast.warning(t("base.voiceInput.error.networkUnavailable"));
-              return;
-            }
-            const selectedText = getSelectedText?.();
-            const selectionRange = getSelectionRange?.();
-            hadSelectionRef.current = !!selectedText;
-            savedSelectedTextRef.current = selectedText;
-            savedSelectionRangeRef.current = selectionRange;
-            recordingModeRef.current = "append_only";
-            startRecordingRef.current("append_only");
-          }
-          return;
-        }
-      }
-
-      // Long-press configured shortcut: start after 500ms.
-      if (
-        voiceShortcutMatches(e, configuredShortcut) &&
-        !e.repeat &&
-        modifiersValid(e)
-      ) {
-        if (
-          !isRecordingRef.current &&
-          !isTranscribingRef.current &&
-          shiftTimerRef.current === null
-        ) {
-          cancelPendingRef.current = false;
-          preparingTimerRef.current = setTimeout(() => {
-            preparingTimerRef.current = null;
-            setIsPreparing(true);
-          }, PREPARING_DELAY_MS);
-          shiftTimerRef.current = setTimeout(() => {
-            shiftTimerRef.current = null;
-            // Check network status before starting
-            if (!isOnlineRef.current && !localAvailableRef.current) {
-              Toast.warning(t("base.voiceInput.error.networkUnavailable"));
-              setIsPreparing(false);
-              return;
-            }
-            shiftRecordingRef.current = true;
-            // 记录选中文本和位置
-            const selectedText = getSelectedText?.();
-            const selectionRange = getSelectionRange?.();
-            hadSelectionRef.current = !!selectedText;
-            savedSelectedTextRef.current = selectedText;
-            savedSelectionRangeRef.current = selectionRange;
-            recordingModeRef.current = "append_only";
-            startRecordingRef.current("append_only");
-          }, RECORDING_DELAY_MS);
-        }
-        return;
-      }
-
-      if (shiftTimerRef.current !== null && !voiceShortcutMatches(e, configuredShortcut)) {
-        // Modifier chord (Ctrl/Meta/Alt pressed): cancel voice intent
-        if (
-          e.code.startsWith("Control") ||
-          e.code.startsWith("Alt") ||
-          e.code.startsWith("Meta")
-        ) {
-          clearShiftTimer();
-          return;
-        }
-        // IME-related events: do not cancel timer
-        const isIME =
-          e.key === "Shift" ||
-          e.key === "Process" ||
-          e.key === "Unidentified" ||
-          e.isComposing;
-        if (!isIME) {
-          clearShiftTimer();
-        }
-      }
+      if (!voiceShortcutMatches(event, shortcut) || event.repeat || !validModifiers(event)) return;
+      event.preventDefault();
+      if (isTranscribingRef.current) return;
+      holdShortcutDownRef.current = voiceSettings.speakingMode === "hold";
+      if (voiceSettings.speakingMode === "toggle" && isRecordingRef.current) stop();
+      else if (!isRecordingRef.current) start();
     };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      // 如果正在录音，允许任何输入框停止录音（用户可能在录音时切换了输入框）
-      // 如果没在录音，只处理当前活动输入框的事件
-      if (
-        !isRecordingRef.current &&
-        checkIsInputActive &&
-        !checkIsInputActive()
-      ) {
-        return;
-      }
-
-      // ShiftLeft released while timer is pending: cancel (normal Shift press)
-      if (voiceShortcutMatches(e, configuredShortcut) && shiftTimerRef.current !== null) {
-        clearShiftTimer();
-        return;
-      }
-
-      // ShiftLeft released while waiting for getUserMedia (recording not yet started)
-      if (
-        voiceShortcutMatches(e, configuredShortcut) &&
-        shiftRecordingRef.current &&
-        !isRecordingRef.current
-      ) {
-        cancelPendingRef.current = true;
-        shiftRecordingRef.current = false;
-        return;
-      }
-
-      // ShiftLeft released after long-press recording started: stop recording
-      if (
-        voiceShortcutMatches(e, configuredShortcut) &&
-        shiftRecordingRef.current &&
-        isRecordingRef.current
-      ) {
-        shiftRecordingRef.current = false;
-        e.preventDefault();
-        // 语音输入模式不需要传 context_text
-        const contextText =
-          recordingModeRef.current === "edit_only"
-            ? getCurrentText?.()
-            : undefined;
-        stopRecordingRef.current(contextText);
-        return;
-      }
-
-      if (!isRecordingRef.current) return;
-      if (voiceSettings.speakingMode !== "hold") return;
-      // Stop recording when any modifier key is released (existing Shift+Cmd+Space flow)
-      if (e.key === "Shift" || e.key === "Meta" || e.key === "Control") {
-        // Don't stop if this was a long-press ShiftLeft release handled above
-        if (shiftRecordingRef.current) return;
-        e.preventDefault();
-        // 语音输入模式不需要传 context_text
-        const contextText =
-          recordingModeRef.current === "edit_only"
-            ? getCurrentText?.()
-            : undefined;
-        stopRecordingRef.current(contextText);
-      }
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (voiceSettings.speakingMode !== "hold" || !holdShortcutDownRef.current || !voiceShortcutMatches(event, shortcut)) return;
+      holdShortcutDownRef.current = false;
+      event.preventDefault();
+      stop();
     };
-
-    const handleBlurWhilePreparing = () => {
-      clearShiftTimer();
-    };
-
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", handleBlurWhilePreparing);
-
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", handleBlurWhilePreparing);
-      clearShiftTimer();
     };
-  }, [
-    isVoiceEnabled,
-    getCurrentText,
-    getSelectedText,
-    getSelectionRange,
-    cancelRecording,
-    t,
-    voiceSettings,
-  ]);
+  }, [isVoiceEnabled, voiceSettings, checkIsInputActive, cancelRecording, t]);
 
   // Window blur: auto-stop recording
   useEffect(() => {
     if (!isRecording) return;
     const handleBlur = () => {
-      // 语音输入模式不需要传 context_text
-      const contextText =
-        recordingModeRef.current === "edit_only"
-          ? getCurrentText?.()
-          : undefined;
-      stopRecordingAndTranscribe(contextText);
+      stopRecordingAndTranscribe();
     };
     window.addEventListener("blur", handleBlur);
     return () => window.removeEventListener("blur", handleBlur);
-  }, [isRecording, stopRecordingAndTranscribe, getCurrentText]);
+  }, [isRecording, stopRecordingAndTranscribe]);
 
   if (!isVoiceEnabled) return null;
 
-  // Handle mode selection - 点击菜单选项直接用该模式开始录音（不保存状态）
-  const handleModeSelect = (selectedMode: VoiceMode) => {
-    setShowModeMenu(false);
-
-    if (!voiceSettings.enabled) {
-      Toast.warning(t("base.voiceInput.error.disabled"));
-      return;
-    }
-    if (!isVoiceEnabled) {
-      Toast.warning(t("base.voiceInput.error.unavailable"));
-      return;
-    }
-
-    // 直接用选中的模式开始录音（不保存到 state）
-    if (canRecord) {
-      // 记录开始录音时是否有选中文本、选中文本内容、位置和使用的模式
-      const selectedText = getSelectedText?.();
-      const selectionRange = getSelectionRange?.();
-      hadSelectionRef.current = !!selectedText;
-      savedSelectedTextRef.current = selectedText;
-      savedSelectionRangeRef.current = selectionRange;
-      recordingModeRef.current = selectedMode;
-      startRecording(selectedMode);
-    } else {
-      Toast.warning(t("base.voiceInput.error.networkUnavailable"));
-    }
-  };
-
   // Handle click/keyboard for voice button
   const handleVoiceClick = () => {
-    setShowModeMenu(false);
-
     if (!canRecord) {
       Toast.warning(t("base.voiceInput.error.networkUnavailable"));
       return;
@@ -533,12 +275,7 @@ export default function VoiceInputIndicator({
       return;
     }
     // 点击麦克风 icon 固定使用语音输入模式
-    const selectedText = getSelectedText?.();
-    const selectionRange = getSelectionRange?.();
-    hadSelectionRef.current = !!selectedText;
-    savedSelectedTextRef.current = selectedText;
-    savedSelectionRangeRef.current = selectionRange;
-    recordingModeRef.current = "append_only";
+    shortcutStartedRef.current = false;
     startRecording("append_only");
   };
 
@@ -551,14 +288,7 @@ export default function VoiceInputIndicator({
 
   // Handle stop recording click/keyboard
   const handleStopClick = () => {
-    // 语音编辑模式：传递上下文（优先选中文字，否则全部内容）
-    // 语音输入模式：不需要传 context_text
-    let contextText: string | undefined;
-    if (currentMode === "edit_only") {
-      const selectedText = getSelectedText?.();
-      contextText = selectedText || getCurrentText?.();
-    }
-    stopRecordingAndTranscribe(contextText);
+    stopRecordingAndTranscribe();
   };
 
   const handleStopKeyDown = (e: React.KeyboardEvent) => {
@@ -575,7 +305,7 @@ export default function VoiceInputIndicator({
         <div className="wk-voice-button-group" ref={buttonGroupRef}>
           <div
             className="wk-voice-button wk-voice-button--recording"
-            title={t("base.voiceInput.status.transcribingDots")}
+            aria-label={t("base.voiceInput.status.transcribingDots")}
           >
             <Mic size={18} color="currentColor" />
           </div>
@@ -583,11 +313,7 @@ export default function VoiceInputIndicator({
       );
     }
 
-    // 语音编辑模式显示「编辑中」，语音输入模式显示「转写中」
-    const statusText =
-      currentMode === "edit_only"
-        ? t("base.voiceInput.status.editing")
-        : t("base.voiceInput.status.transcribing");
+    const statusText = t("base.voiceInput.status.organizing");
 
     const transcribingIndicator = (
       <div
@@ -612,11 +338,7 @@ export default function VoiceInputIndicator({
         <div className="wk-voice-button-group" ref={buttonGroupRef}>
           <div
             className="wk-voice-button wk-voice-button--recording"
-            title={
-              currentMode === "edit_only"
-                ? t("base.voiceInput.status.editingDots")
-                : t("base.voiceInput.status.transcribingDots")
-            }
+            aria-label={t("base.voiceInput.status.transcribingDots")}
           >
             <Mic size={18} color="currentColor" />
             <svg
@@ -647,7 +369,7 @@ export default function VoiceInputIndicator({
         >
           <div
             className="wk-voice-button wk-voice-button--recording"
-            title={t("base.voiceInput.action.stopRecording")}
+            aria-label={t("base.voiceInput.title.stop")}
             role="button"
             tabIndex={0}
           >
@@ -677,9 +399,7 @@ export default function VoiceInputIndicator({
       >
         <div className="wk-voice-floating-content">
           <span className="wk-voice-floating-text">
-            {currentMode === "edit_only"
-              ? t("base.voiceInput.mode.edit")
-              : t("base.voiceInput.mode.input")}
+            {t("base.voiceInput.mode.input")}
           </span>
         </div>
         <span className="wk-voice-floating-divider" />
@@ -703,7 +423,7 @@ export default function VoiceInputIndicator({
         >
           <div
             className="wk-voice-button wk-voice-button--recording"
-            title={t("base.voiceInput.action.stopRecording")}
+            aria-label={t("base.voiceInput.title.stop")}
             role="button"
             tabIndex={0}
           >
@@ -723,100 +443,34 @@ export default function VoiceInputIndicator({
     );
   }
 
-  if (isPreparing) {
-    return (
-      <div className="wk-voice-button-group" ref={buttonGroupRef}>
-        <div
-          className="wk-voice-button wk-voice-button--preparing"
-          title={t("base.voiceInput.status.preparingDots")}
-        >
-          <Mic size={18} color="currentColor" />
-          <svg
-            width="6"
-            height="4"
-            viewBox="0 0 6 4"
-            fill="currentColor"
-            className="wk-voice-arrow"
-          >
-            <path d="M0.5 0.5L3 3.5L5.5 0.5H0.5Z" />
-          </svg>
-        </div>
-      </div>
-    );
-  }
-
-  // 默认状态：显示麦克风按钮和下拉箭头（一体交互）
-  // hover 整个按钮 → 箭头向上 + 弹出选择框
-  // 直接点击 icon → 开始语音输入
-  // PRD: 无网络时话筒 icon 置灰，点击时 Toast「网络不可用，无法使用语音功能」
-  const isActive = showModeMenu;
-
-  const dropdownMenu = (
-    <Dropdown.Menu style={{ width: 160 }}>
-      {VOICE_MODES.map((mode) => (
-        <Dropdown.Item
-          key={mode.value}
-          onClick={() => handleModeSelect(mode.value)}
-        >
-          {t(mode.labelKey)}
-        </Dropdown.Item>
-      ))}
-    </Dropdown.Menu>
-  );
-
+  const os = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows";
+  const shortcutName = t(os === "macos" ? "base.navRail.settingsCenter.value.rightOption" : "base.navRail.settingsCenter.value.rightAlt");
+  const tooltipLabel = !canRecord
+    ? t("base.voiceInput.title.networkUnavailable")
+    : !voiceSettings.enabled
+      ? t("base.voiceInput.title.disabled")
+      : microphonePermission !== "granted"
+        ? t("base.voiceInput.title.microphoneUnavailable")
+        : t("base.voiceInput.title.input");
+  const showShortcutKey = canRecord && voiceSettings.enabled && voiceSettings.shortcutEnabled && microphonePermission === "granted";
   return (
-    <>
-      <Dropdown
-        trigger="hover"
-        position="topRight"
-        render={dropdownMenu}
-        visible={canRecord ? showModeMenu : false}
-        onVisibleChange={setShowModeMenu}
-        spacing={4}
+    <Tooltip content={<span className="wk-voice-tooltip-content"><span>{tooltipLabel}</span>{showShortcutKey && <kbd>{shortcutName}</kbd>}</span>}>
+      <div
+        className="wk-voice-button-group"
+        ref={buttonGroupRef}
+        onClick={handleVoiceClick}
+        onKeyDown={handleVoiceKeyDown}
+        style={{ cursor: canRecord ? "pointer" : "not-allowed" }}
       >
         <div
-          className={`wk-voice-button-group ${
-            isActive ? "wk-voice-button-group--active" : ""
-          }`}
-          ref={buttonGroupRef}
-          onClick={handleVoiceClick}
-          onKeyDown={handleVoiceKeyDown}
-          style={{
-            cursor: canRecord ? "pointer" : "not-allowed",
-          }}
+          className={`wk-voice-button ${!canRecord ? "wk-voice-button--disabled" : ""}`}
+          aria-label={tooltipLabel}
+          role="button"
+          tabIndex={canRecord ? 0 : -1}
         >
-          {/* 麦克风 + 箭头一体，点击整个区域开始录音 */}
-          <div
-            className={`wk-voice-button ${
-              !canRecord
-                ? "wk-voice-button--disabled"
-                : isActive
-                ? "wk-voice-button--active"
-                : ""
-            }`}
-            title={
-              canRecord
-                ? t("base.voiceInput.title.inputLongPress")
-                : t("base.voiceInput.title.networkUnavailable")
-            }
-            role="button"
-            tabIndex={canRecord ? 0 : -1}
-          >
-            <Mic size={18} color="currentColor" />
-            <svg
-              width="6"
-              height="4"
-              viewBox="0 0 6 4"
-              fill="currentColor"
-              className={`wk-voice-arrow ${
-                isActive ? "wk-voice-arrow--up" : ""
-              }`}
-            >
-              <path d="M0.5 0.5L3 3.5L5.5 0.5H0.5Z" />
-            </svg>
-          </div>
+          <Mic size={18} color="currentColor" />
         </div>
-      </Dropdown>
-    </>
+      </div>
+    </Tooltip>
   );
 }

@@ -4517,7 +4517,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 getCurrentText={() => (this.regenerateVoiceMode ?? this.state.regenerateMode) === "refine"
                                     ? this.state.refineFeedback
                                     : this.state.regenerateTopic}
-                                showModeMenu
                                 size="sm"
                                 className="wk-vib--textarea-corner"
                             />

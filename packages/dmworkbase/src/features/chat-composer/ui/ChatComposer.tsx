@@ -19,7 +19,7 @@ import {
   parseMentionMarkers,
 } from "../adapters/tiptap/mentionResolve";
 import "./ChatComposer.css";
-import { Notification } from "@douyinfe/semi-ui";
+import { Notification, Tooltip } from "@douyinfe/semi-ui";
 import SlashCommandMenu, { BotCommand } from "../../../Components/SlashCommandMenu";
 import VoiceInputIndicator from "./voice/VoiceInputIndicator";
 import { Maximize2, Minimize2 } from "lucide-react";
@@ -105,7 +105,7 @@ import type {
   ChatComposerViewHost,
   ChatComposerVoiceContext,
 } from "../ports";
-import { getVoiceShortcut, voiceSettingsStore, type VoiceSettings } from "../../../Service/VoiceSettingsStore";
+import { getMicrophonePermission, isShortcutLearned, refreshMicrophonePermission, subscribeMicrophonePermission, voiceSettingsStore, type VoiceSettings } from "../../../Service/VoiceSettingsStore";
 
 import { MAX_MESSAGE_LENGTH } from "../domain/constants";
 
@@ -124,25 +124,21 @@ function commonRecoveredTarget(
     : undefined;
 }
 
-// placeholder 格式化所需的平台快捷键标识（模块级常量，避免重复计算）
+/** 根据频道类型和名称生成 placeholder 文本 */
+function buildPlaceholder(name: string, t: typeof translate): string {
+  return name
+    ? t("base.messageInput.placeholder.directWithName", { values: { name } })
+    : t("base.messageInput.placeholder.direct");
+}
+
 const VOICE_OS = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows";
 
-/** 根据频道类型和名称生成 placeholder 文本 */
-function buildPlaceholder(isDirect: boolean, name: string, t: typeof translate, settings: VoiceSettings): string {
-  const taskShortcut = VOICE_OS === "macos" ? "⌥" : "Alt";
-  const base = isDirect
-    ? (name ? t("base.messageInput.placeholder.directWithName", { values: { name } }) : t("base.messageInput.placeholder.direct"))
-    : (name ? t("base.messageInput.placeholder.replyWithName", { values: { name, shortcut: taskShortcut } }) : t("base.messageInput.placeholder.reply", { values: { shortcut: taskShortcut } }));
-  const shortcut = getVoiceShortcut(settings, VOICE_OS);
-  if (!settings.enabled || shortcut === "disabled") return base;
-  const label = shortcut === "alt-right"
-    ? t(VOICE_OS === "macos" ? "base.navRail.settingsCenter.value.rightOption" : "base.navRail.settingsCenter.value.rightAlt")
-    : shortcut === "shift-right"
-      ? t("base.navRail.settingsCenter.value.rightShift")
-      : t("base.navRail.settingsCenter.value.leftShift");
-  return `${base}${settings.speakingMode === "hold"
-    ? t("base.messageInput.placeholder.voiceHold", { values: { shortcut: label } })
-    : t("base.messageInput.placeholder.voiceToggle", { values: { shortcut: label } })}`;
+function voiceShortcutHint(t: typeof translate, settings: VoiceSettings, permission: PermissionState): string | undefined {
+  if (!settings.enabled || !settings.shortcutEnabled || permission !== "granted" || isShortcutLearned(VOICE_OS, settings.speakingMode)) return undefined;
+  const shortcut = t(VOICE_OS === "macos" ? "base.navRail.settingsCenter.value.rightOption" : "base.navRail.settingsCenter.value.rightAlt");
+  return settings.speakingMode === "hold"
+    ? t("base.messageInput.shortcutHint.hold", { values: { shortcut } })
+    : t("base.messageInput.shortcutHint.toggle", { values: { shortcut } });
 }
 
 // 从编辑器中提取附件节点（纯函数，避免闭包问题）
@@ -375,8 +371,6 @@ export interface ChatComposerProps {
   botCommands?: BotCommand[];
   getChatContext?: () => ChatComposerVoiceContext | Promise<ChatComposerVoiceContext>;
   onExpandChange?: (expanded: boolean) => void;
-  /** Called when Alt+Enter is pressed in the editor */
-  onAltEnter?: () => void;
 }
 
 
@@ -578,6 +572,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [editorIsEmpty, setEditorIsEmpty] = useState(true);
   const [attachmentStore] = useState(
     () => new ChatComposerAttachmentStore<TopAttachmentItem>(),
   );
@@ -594,8 +589,11 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     PendingSendItem[]
   >([]);
   const [voiceSettings, setVoiceSettings] = useState(() => voiceSettingsStore.get());
+  const [microphonePermission, setMicrophonePermission] = useState(() => getMicrophonePermission());
 
   useEffect(() => voiceSettingsStore.subscribe(setVoiceSettings), []);
+  useEffect(() => subscribeMicrophonePermission(setMicrophonePermission), []);
+  useEffect(() => { void refreshMicrophonePermission(); }, []);
 
   useEffect(() => {
     composerMountedRef.current = true;
@@ -620,10 +618,8 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
     return buildPlaceholder(
-      channelSnapshot.isDirect,
       props.host.getChannelTitle() || "",
       t,
-      voiceSettings,
     );
   });
 
@@ -634,7 +630,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     const updateName = (name: string) => {
       if (aborted) return;
       if (props.host.getChannel().key !== channelKey) return;
-      setPlaceholder(buildPlaceholder(channelSnapshot.isDirect, name, t, voiceSettings));
+      setPlaceholder(buildPlaceholder(name, t));
     };
 
     updateName(props.host.getChannelTitle() || "");
@@ -773,6 +769,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       },
     },
     onUpdate: ({ editor }) => {
+      setEditorIsEmpty(editor.isEmpty);
       const text = stripInvisibleChars(editor.getText());
 
       // 检查 slash 命令
@@ -1561,8 +1558,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
         setSlashActiveIndex(decision.index);
       } else if (decision.kind === "select-slash") {
         handleSlashSelect(filteredSlashCommands[decision.index]);
-      } else if (decision.kind === "alt-enter") {
-        props.onAltEnter?.();
       } else {
         if (decision.closeSlash) setSlashMenuVisible(false);
         fireAndForgetSend();
@@ -1575,7 +1570,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     getFilteredSlashCommands,
     handleSlashSelect,
     fireAndForgetSend,
-    props.onAltEnter,
   ]);
 
   const toggleExpand = useCallback(() => {
@@ -1606,6 +1600,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     }
   }, [editor, onInputRef]);
 
+  const shortcutHint = voiceShortcutHint(t, voiceSettings, microphonePermission);
   return (
     <div
       className={clazz("wk-messageinput-box", {
@@ -1768,6 +1763,16 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 /
               </div>
             )}
+            {editor && editorIsEmpty && (
+              <div className={`wk-messageinput-placeholder-overlay${botCommands && botCommands.length > 0 ? " has-menu" : ""}`} aria-hidden="true">
+                <span className="wk-messageinput-placeholder-base">{placeholder}</span>
+                {shortcutHint && (
+                  <span className="wk-messageinput-shortcut-hint">
+                    {shortcutHint}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="wk-messageinput-editor">
               <EditorContent editor={editor} />
             </div>
@@ -1924,14 +1929,16 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             />
 
             {/* 展开/收起按钮 */}
-            <IconClick
-              size="sm"
-              title={expanded ? t("base.messageInput.collapse") : t("base.messageInput.expand")}
-              onClick={toggleExpand}
-              icon={
-                expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />
-              }
-            />
+            <Tooltip content={expanded ? t("base.messageInput.collapse") : t("base.messageInput.expand")}>
+              <span>
+                <IconClick
+                  size="sm"
+                  title={expanded ? t("base.messageInput.collapse") : t("base.messageInput.expand")}
+                  onClick={toggleExpand}
+                  icon={expanded ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                />
+              </span>
+            </Tooltip>
           </div>
         </div>
       </div>

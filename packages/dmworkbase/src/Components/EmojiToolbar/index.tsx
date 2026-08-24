@@ -2,7 +2,7 @@ import classNames from "classnames";
 import React from "react";
 import ReactDOM from "react-dom";
 import { Component, ReactNode } from "react";
-import { Toast } from "@douyinfe/semi-ui";
+import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import { EndpointID } from "../../Service/Const";
 import WKApp from "../../App";
 import { Emoji, EmojiService } from "../../Service/EmojiService";
@@ -182,11 +182,11 @@ export default class EmojiToolbar extends Component<EmojiToolbarProps, EmojiTool
             }
         </>
         return <div className="wk-emojitoolbar" ref={this.triggerRef}>
-            <IconClick
+            <Tooltip content={t("base.messageInput.toolbar.emoji")}><span><IconClick
                 size="sm"
                 icon={typeof icon === 'string' ? <img src={icon} alt="" /> : icon}
                 onClick={this.togglePanel}
-            />
+            /></span></Tooltip>
             {typeof document !== "undefined" ? ReactDOM.createPortal(overlay, document.body) : overlay}
         </div>
     }

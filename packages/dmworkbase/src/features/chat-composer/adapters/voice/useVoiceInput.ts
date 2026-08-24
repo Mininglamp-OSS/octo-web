@@ -438,7 +438,6 @@ export default function useVoiceInput(
         return;
       }
 
-      const capturedStartTime = startTimeRef.current;
       const capturedContextText = contextTextRef.current;
 
       recorder.onstop = async () => {
@@ -449,8 +448,7 @@ export default function useVoiceInput(
         setIsRecording(false);
 
         try {
-          const recordingDurationMs = Date.now() - capturedStartTime;
-          if (recordingDurationMs < 1000) {
+          if (blob.size === 0 || Date.now() - startTimeRef.current < 1000) {
             Toast.warning(t("base.voiceInput.error.noSpeech"));
             return;
           }

@@ -199,7 +199,6 @@ export default class SpaceSettings extends Component<SpaceSettingsProps, SpaceSe
                                     inputRef={this.descriptionRef}
                                     onTranscribed={this.handleVoiceTranscribed}
                                     getCurrentText={() => this.state.description}
-                                    showModeMenu
                                     size="sm"
                                     className="wk-vib--textarea-corner"
                                 />

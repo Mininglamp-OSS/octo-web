@@ -131,7 +131,7 @@ export const MentionLevels: Story = {
           交互实体（紫色+浅紫背景）
         </p>
         <TextContent
-          content="长按 fn+space → 悬浮气泡显示「语音编辑」（紫色）+ 话筒激活 → 开始录音 @牛爷爷"
+          content="按右 Alt → 悬浮气泡显示「语音输入」+ 话筒激活 → 开始录音 @牛爷爷"
           mentions={[{ name: '@牛爷爷', uid: 'user-3' }]}
           onMentionClick={(uid) => alert(uid)}
         />

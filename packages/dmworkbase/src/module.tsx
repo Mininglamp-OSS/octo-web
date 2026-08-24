@@ -79,7 +79,7 @@ import {
 import { messageReactionController } from "./features/messageReaction/runtime";
 import { isMessageReactionChannelSupported } from "./features/messageReaction/controller";
 import { LocationCell, LocationContent } from "./Messages/Location";
-import { Toast } from "@douyinfe/semi-ui";
+import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import { DefaultEmojiService } from "./Service/EmojiService";
 import { quickMuteStore } from "./Components/NavRail/QuickMuteStore";
 import IconClick from "./Components/IconClick";
@@ -1015,13 +1015,13 @@ export default class BaseModule implements IModule {
         return undefined;
       }
       return (
-        <IconClick
+          <Tooltip content={t("base.messageInput.toolbar.mention")}><span><IconClick
           size="sm"
           icon={<AtSign size={18} color="currentColor" />}
           onClick={() => {
             ctx.messageInputContext().insertText("@");
           }}
-        />
+          /></span></Tooltip>
       );
     });
 

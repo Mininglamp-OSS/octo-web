@@ -2,19 +2,52 @@ import type { Page } from "@playwright/test";
 import { VOICE_PROTOCOL_VERSION } from "@octo/base/src/Service/VoiceProtocol";
 
 export type VoiceSeed = {
-  shortcutWindows: "alt-right" | "shift-right" | "shift-left" | "disabled";
+  shortcutEnabled: boolean;
   speakingMode: "toggle" | "hold";
+  enabled?: boolean;
 };
 
 const VOICE_STORAGE_KEY = "octo.voice-input.v1.e2e-user-1";
 
-export async function prepareVoiceConversation(page: Page, settings: VoiceSeed, name: string): Promise<void> {
-  await page.addInitScript(({ key, settings: value, conversationName, protocolVersion }) => {
-    if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({
-      enabled: true,
+async function grantVoicePermission(page: Page): Promise<void> {
+  await page.context().grantPermissions(["microphone"], {
+    origin: new URL(process.env.E2E_BASE_URL ?? `http://localhost:${process.env.PW_PREVIEW_PORT ?? "3000"}`).origin,
+  });
+}
+
+export async function prepareVoiceSettings(page: Page, settings: VoiceSeed): Promise<void> {
+  await grantVoicePermission(page);
+  await page.addInitScript(({ key, settings: value, protocolVersion }) => {
+    localStorage.setItem(key, JSON.stringify({
+      enabled: value.enabled ?? true,
+      shortcutEnabled: value.shortcutEnabled,
       consent: { protocolVersion, ackedAt: "2026-01-01T00:00:00.000Z" },
-      shortcutWindows: value.shortcutWindows,
-      shortcutMacos: value.shortcutWindows,
+      shortcutWindows: "alt-right",
+      shortcutMacos: "alt-right",
+      speakingMode: value.speakingMode,
+      microphoneDeviceId: "",
+      localEnabled: false,
+      localTimeoutMs: 10000,
+      localProbeUrl: "http://localhost:8787/",
+      localTranscribeUrl: "http://localhost:8787/v1/voice/transcribe",
+    }));
+  }, { key: VOICE_STORAGE_KEY, settings, protocolVersion: VOICE_PROTOCOL_VERSION });
+  await page.reload();
+  await page.getByRole("button", { name: "设置" }).waitFor({ state: "visible", timeout: 15_000 });
+}
+
+export async function prepareVoiceConversation(page: Page, settings: VoiceSeed, name: string): Promise<void> {
+  await grantVoicePermission(page);
+  await page.addInitScript(({ key, settings: value, conversationName, protocolVersion }) => {
+    for (const os of ["windows", "macos"]) {
+      for (const mode of ["toggle", "hold"]) localStorage.removeItem(`${key}.learned.${os}.${mode}`);
+    }
+    if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({
+      enabled: value.enabled ?? true,
+      shortcutEnabled: value.shortcutEnabled,
+      consent: { protocolVersion, ackedAt: "2026-01-01T00:00:00.000Z" },
+      shortcutWindows: "alt-right",
+      shortcutMacos: "alt-right",
       speakingMode: value.speakingMode,
       microphoneDeviceId: "",
       localEnabled: false,
@@ -68,6 +101,10 @@ export async function closeSettings(page: Page): Promise<void> {
 }
 
 export async function getComposerPlaceholder(page: Page): Promise<string> {
-  const textbox = page.getByRole("textbox");
-  return (await textbox.locator("p[data-placeholder]").getAttribute("data-placeholder", { timeout: 1_000 })) ?? "";
+  return (await page.locator(".wk-messageinput-placeholder-base").textContent({ timeout: 1_000 })) ?? "";
+}
+
+export async function getComposerVoiceShortcutHint(page: Page): Promise<string> {
+  const hint = page.locator(".wk-messageinput-shortcut-hint");
+  return (await hint.count()) > 0 ? (await hint.innerText()) : "";
 }

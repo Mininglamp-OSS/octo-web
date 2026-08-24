@@ -145,7 +145,6 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
                                 }
                             }}
                             getCurrentText={() => this.state.content}
-                            showModeMenu
                             size="md"
                             className="wk-vib--textarea-corner"
                         />

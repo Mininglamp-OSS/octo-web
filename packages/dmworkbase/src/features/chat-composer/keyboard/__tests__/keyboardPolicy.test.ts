@@ -42,14 +42,12 @@ describe("composer keyboard policy", () => {
     ).toEqual({ kind: "pass" });
   });
 
-  it("sends on ordinary Enter and routes Alt+Enter separately", () => {
+  it("leaves Alt+Enter to the editor", () => {
     expect(decideComposerKeyboard(input())).toEqual({
       kind: "send",
       closeSlash: false,
     });
-    expect(
-      decideComposerKeyboard(input({ altKey: true })),
-    ).toEqual({ kind: "alt-enter" });
+    expect(decideComposerKeyboard(input({ altKey: true }))).toEqual({ kind: "pass" });
   });
 
   it("closes and navigates the slash menu with wrapping indices", () => {

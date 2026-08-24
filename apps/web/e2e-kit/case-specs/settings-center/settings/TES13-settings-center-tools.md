@@ -15,6 +15,7 @@
 ## 前置条件
 
 - fixture: `fixtures-authed` (E2E_TARGET=local, mock 默认装)
+- 通过用户作用域 voice settings seed 预置已启用且已开启快捷键的语音输入配置，确保快捷键页面具备展示条件。
 - Per-case handler: 无；设备二维码更新接口由 baseline handler 提供稳定响应。
 
 ## 用户操作步骤

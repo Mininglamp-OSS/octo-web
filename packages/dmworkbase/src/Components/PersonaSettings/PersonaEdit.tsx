@@ -217,7 +217,6 @@ export default class PersonaEdit extends Component<PersonaEditProps, PersonaEdit
                                             inputRef={this.promptRef}
                                             onTranscribed={this.handleVoiceTranscribed}
                                             getCurrentText={() => this.state.prompt}
-                                            showModeMenu
                                             size="sm"
                                             className="wk-vib--textarea-corner"
                                         />

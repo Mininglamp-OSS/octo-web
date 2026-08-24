@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   startRecording: vi.fn(),
   stopRecording: vi.fn(),
   cancelRecording: vi.fn(),
-  shortcut: "alt-right" as "alt-right" | "shift-right" | "shift-left",
+  shortcut: "alt-right" as "alt-right",
   speakingMode: "toggle" as "toggle" | "hold",
   isRecording: false,
 }));
@@ -98,19 +98,16 @@ describe("VoiceInputButton availability", () => {
     expect(mocks.stopRecording).toHaveBeenCalled();
   });
 
-  it("recognizes both configurable Shift shortcuts in hold mode", () => {
-    vi.useFakeTimers();
+  it("uses the fixed right Alt shortcut in hold mode", () => {
     mocks.settingsEnabled = true;
     mocks.speakingMode = "hold";
-    mocks.shortcut = "shift-right";
+    mocks.shortcut = "alt-right";
     input.focus();
     act(() => ReactDOM.render(<VoiceInputButton inputRef={{ current: input }} onTranscribed={() => undefined} />, container));
-    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "ShiftRight" })));
-    act(() => vi.advanceTimersByTime(500));
+    act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
     expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
-    act(() => window.dispatchEvent(new KeyboardEvent("keyup", { code: "ShiftRight", key: "Shift" })));
+    act(() => window.dispatchEvent(new KeyboardEvent("keyup", { code: "AltRight", key: "Alt" })));
     expect(mocks.stopRecording).toHaveBeenCalled();
-    vi.useRealTimers();
   });
 
   it("does not treat AltGraph as the Alt shortcut", () => {

@@ -866,7 +866,6 @@ export default class ChatSummaryNewModal extends Component<
                                         inputRef={this.inputRef}
                                         onTranscribed={this.handleVoiceTranscribed}
                                         getCurrentText={() => this.state.topic}
-                                        showModeMenu
                                         size="sm"
                                         className="wk-vib--textarea-corner"
                                     />

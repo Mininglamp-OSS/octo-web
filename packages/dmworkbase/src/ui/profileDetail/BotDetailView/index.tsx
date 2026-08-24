@@ -405,7 +405,6 @@ export function BotDetailView({
                   inputRef={descriptionRef}
                   onTranscribed={onDescriptionTranscribed}
                   getCurrentText={getCurrentDescriptionText}
-                  showModeMenu
                   size="sm"
                   className="wk-vib--textarea-corner"
                 />

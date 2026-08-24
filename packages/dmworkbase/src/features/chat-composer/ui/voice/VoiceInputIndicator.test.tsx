@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
   toastWarning: vi.fn(),
   voiceEnabled: false,
   speakingMode: "toggle" as "toggle" | "hold",
-  shortcut: "alt-right" as "alt-right" | "shift-right" | "shift-left",
+  shortcut: "alt-right" as "alt-right",
   isRecording: false,
   isTranscribing: false,
   cancelRecording: vi.fn(),
@@ -52,7 +52,8 @@ vi.mock("../../../../Service/VoiceSettingsStore", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../../Service/VoiceSettingsStore")>()),
   getVoiceShortcut: () => mocks.shortcut,
   voiceSettingsStore: {
-    get: () => ({ enabled: mocks.voiceEnabled, shortcutWindows: mocks.shortcut, shortcutMacos: mocks.shortcut, speakingMode: mocks.speakingMode }),
+    get: () => ({ enabled: mocks.voiceEnabled, shortcutEnabled: true, shortcutWindows: "alt-right", shortcutMacos: "alt-right", speakingMode: mocks.speakingMode }),
+    markShortcutLearned: vi.fn(),
     subscribe: (listener: (settings: unknown) => void) => { mocks.settingsListeners.add(listener); return () => mocks.settingsListeners.delete(listener); },
   },
 }));
@@ -60,23 +61,9 @@ vi.mock("../../../../Service/VoiceSettingsStore", async (importOriginal) => ({
 vi.mock("lucide-react", () => ({ Mic: () => <span /> }));
 
 vi.mock("@douyinfe/semi-ui", () => {
-  const Dropdown = ({
-    children,
-    render,
-  }: {
-    children: React.ReactNode;
-    render?: React.ReactNode;
-  }) => <>{children}{render}</>;
-  Dropdown.Menu = ({ children }: { children: React.ReactNode }) => <>{children}</>;
-  Dropdown.Item = ({
-    children,
-    onClick,
-  }: {
-    children: React.ReactNode;
-    onClick?: () => void;
-  }) => <button onClick={onClick}>{children}</button>;
+  const Tooltip = ({ children }: { children: React.ReactNode }) => <>{children}</>;
   return {
-    Dropdown,
+    Tooltip,
     Toast: {
       error: (...args: unknown[]) => mocks.toastError(...args),
       warning: (...args: unknown[]) => mocks.toastWarning(...args),
@@ -130,7 +117,7 @@ describe("VoiceInputIndicator click behavior", () => {
     expect(mocks.toastWarning).toHaveBeenCalledWith("base.voiceInput.error.disabled");
   });
 
-  it("starts the selected voice mode directly", async () => {
+  it("starts voice input directly from the microphone button", async () => {
     mocks.voiceEnabled = true;
     await act(async () => {
       ReactDOM.render(
@@ -139,20 +126,16 @@ describe("VoiceInputIndicator click behavior", () => {
       );
     });
 
-    const editMode = Array.from(container.querySelectorAll("button")).find(
-      (button) => button.textContent === "base.voiceInput.mode.edit",
-    ) as HTMLButtonElement;
     act(() => {
-      editMode.click();
+      (container.querySelector(".wk-voice-button-group") as HTMLElement).click();
     });
 
-    expect(mocks.startRecording).toHaveBeenCalledWith("edit_only");
+    expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
   });
 
   it("starts and stops hold-mode shortcut recording after the long press", async () => {
     mocks.voiceEnabled = true;
     mocks.speakingMode = "hold";
-    vi.useFakeTimers();
     await act(async () => {
       ReactDOM.render(
         <VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />,
@@ -161,12 +144,9 @@ describe("VoiceInputIndicator click behavior", () => {
     });
 
     act(() => window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight" })));
-    expect(mocks.startRecording).not.toHaveBeenCalled();
-    act(() => vi.advanceTimersByTime(500));
     expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
     act(() => window.dispatchEvent(new KeyboardEvent("keyup", { code: "AltRight" })));
-    expect(mocks.stopRecording).toHaveBeenCalledWith(undefined);
-    vi.useRealTimers();
+    expect(mocks.stopRecording).toHaveBeenCalledWith();
   });
 
   it("cancels an active recording when voice input is disabled", async () => {
@@ -181,56 +161,35 @@ describe("VoiceInputIndicator click behavior", () => {
     expect(mocks.cancelRecording).toHaveBeenCalled();
   });
 
-  it.each([
-    ["shift-right", "ShiftRight"],
-    ["shift-left", "ShiftLeft"],
-  ] as const)("does not stop toggle recording on %s keyup", async (shortcut, code) => {
+  it("uses the fixed right Alt shortcut for toggle recording", async () => {
     mocks.voiceEnabled = true;
-    mocks.shortcut = shortcut;
-    mocks.isRecording = true;
+    mocks.shortcut = "alt-right";
     await act(async () => {
       ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
     });
 
-    act(() => window.dispatchEvent(new KeyboardEvent("keyup", { code, key: "Shift" })));
-    expect(mocks.stopRecording).not.toHaveBeenCalled();
-  });
-
-  // Regression: on Windows some keyboard driver / IME combinations report the
-  // right Shift key with an empty `code` and location 0. The indicator must
-  // still start/stop toggle recording for it.
-  it("supports the Windows empty-code right Shift key for toggle recording", async () => {
-    mocks.voiceEnabled = true;
-    mocks.shortcut = "shift-right";
-    await act(async () => {
-      ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
-    });
-
-    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "", key: "Shift", location: 0 })); });
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight", key: "Alt" })); });
     expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
 
     mocks.isRecording = true;
-    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "", key: "Shift", location: 0 })); });
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight", key: "Alt" })); });
     expect(mocks.stopRecording).toHaveBeenCalledWith();
   });
 
-  it("supports the Windows empty-code right Shift key for hold recording", async () => {
-    vi.useFakeTimers();
+  it("uses the fixed right Alt shortcut for hold recording", async () => {
     mocks.voiceEnabled = true;
-    mocks.shortcut = "shift-right";
+    mocks.shortcut = "alt-right";
     mocks.speakingMode = "hold";
     await act(async () => {
       ReactDOM.render(<VoiceInputIndicator voiceHost={voiceHost} onTranscribed={() => undefined} />, container);
     });
 
-    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "", key: "Shift", location: 0 })); });
-    act(() => vi.advanceTimersByTime(500));
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { code: "AltRight", key: "Alt" })); });
     expect(mocks.startRecording).toHaveBeenCalledWith("append_only");
 
     mocks.isRecording = true;
-    act(() => { window.dispatchEvent(new KeyboardEvent("keyup", { code: "", key: "Shift", location: 0 })); });
-    expect(mocks.stopRecording).toHaveBeenCalledWith(undefined);
-    vi.useRealTimers();
+    act(() => { window.dispatchEvent(new KeyboardEvent("keyup", { code: "AltRight", key: "Alt" })); });
+    expect(mocks.stopRecording).toHaveBeenCalledWith();
   });
 
   it("uses append mode for toggle shortcuts even when text is selected", async () => {

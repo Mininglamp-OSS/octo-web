@@ -1263,7 +1263,6 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 inputRef={this.textareaRef}
                                 onTranscribed={this.handleVoiceTranscribed}
                                 getCurrentText={() => this.state.topic}
-                                showModeMenu
                                 size="sm"
                             />
                         </div>

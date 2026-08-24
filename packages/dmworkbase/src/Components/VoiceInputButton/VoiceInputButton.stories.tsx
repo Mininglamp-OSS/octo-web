@@ -20,7 +20,7 @@ const meta: Meta<typeof VoiceInputButton> = {
 - 必须传入 \`inputRef\`，指向一个已挂载的 \`<input>\` 或 \`<textarea>\`
 - 依赖 VoiceService 后端配置（\`/voice/config\`）——未启用时组件不渲染
 - 支持两种尺寸：\`sm\`（默认）和 \`md\`
-- 通过 \`showModeMenu\` 开启"语音输入/语音编辑"模式切换菜单
+- 点击麦克风直接开始语音输入，点击录音状态按钮结束
 - 可通过 \`className="wk-vib--textarea-corner"\` 绝对定位在 textarea 右上角
         `,
       },
@@ -114,12 +114,12 @@ export const Sizes: Story = {
 }
 
 // ── 带模式菜单 ──
-export const WithModeMenu: Story = {
-  name: '带模式菜单（showModeMenu）',
+export const WithExistingText: Story = {
+  name: '已有文本',
   parameters: {
     docs: {
       description: {
-        story: '启用 `showModeMenu` 后，hover 时显示"语音输入/语音编辑"下拉菜单。需要 textarea 有内容时语音编辑才可用。',
+        story: '已有文本不会改变语音输入按钮行为。',
       },
     },
   },
@@ -137,7 +137,6 @@ export const WithModeMenu: Story = {
             inputRef={inputRef}
             onTranscribed={(text) => console.log('transcribed:', text)}
             getCurrentText={() => inputRef.current?.value ?? ''}
-            showModeMenu
             size="md"
           />
         </div>
@@ -176,12 +175,12 @@ export const TextareaCorner: Story = {
 }
 
 // ── 空内容时编辑模式不可用 ──
-export const EmptyContentEditGuard: Story = {
-  name: '空内容时编辑模式禁用',
+export const EmptyContent: Story = {
+  name: '空内容',
   parameters: {
     docs: {
       description: {
-        story: '当 `showModeMenu` 开启且 `getCurrentText()` 返回空字符串时，"语音编辑"选项置灰不可点击。',
+        story: '空内容也可以直接开始语音输入。',
       },
     },
   },
@@ -199,7 +198,6 @@ export const EmptyContentEditGuard: Story = {
             inputRef={inputRef}
             onTranscribed={(text) => console.log('transcribed:', text)}
             getCurrentText={() => ''}
-            showModeMenu
             size="md"
           />
         </div>

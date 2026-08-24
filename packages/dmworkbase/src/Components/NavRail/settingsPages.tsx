@@ -16,7 +16,7 @@ import { MeInfo } from "../MeInfo";
 import octoLogo from "../../assets/settings-center/octo-logo.png";
 import mininglampLogo from "../../assets/settings-center/mininglamp-logo.png";
 import { quickMuteStore } from "./QuickMuteStore";
-import { getMicrophonePermission, getVoiceShortcut, setMicrophonePermission, VOICE_PROTOCOL_VERSION, VOICE_SETTINGS_DEFAULTS, voiceSettingsStore, type VoiceSettings, type VoiceShortcut } from "../../Service/VoiceSettingsStore";
+import { getMicrophonePermission, getVoiceShortcut, hasConfiguredVoiceShortcut, setMicrophonePermission, VOICE_PROTOCOL_VERSION, VOICE_SETTINGS_DEFAULTS, voiceSettingsStore, type VoiceSettings, type VoiceShortcut } from "../../Service/VoiceSettingsStore";
 import { getDocument } from "../../Service/DocumentService";
 import Checkbox from "../Checkbox";
 import { acceptVoiceInput } from "../../features/voice-input/useSpaceFeedbackSetting";
@@ -102,7 +102,8 @@ function DownloadsSettingsPage({ environment }: { environment: import("../../Run
 function ShortcutsSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
   const settings = useVoiceSettings();
   const os = getVoiceOs(environment);
-  return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.shortcuts.title")} description={t("base.navRail.settingsCenter.page.shortcuts.description")}><div className="wk-settings-center__shortcut-catalog"><section className="wk-settings-center__shortcut-group"><h3>{t("base.navRail.settingsCenter.shortcut.voice")}</h3><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.holdToTalk")} keys={[voiceShortcutLabel(getVoiceShortcut(settings, os), os), voiceModeLabel(settings.speakingMode)]} /><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.cancelVoice")} keys={["Esc"]} /></section></div></SettingsPageFrame>;
+  if (!hasConfiguredVoiceShortcut(settings, os)) return null;
+  return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.shortcuts.title")}><div className="wk-settings-center__shortcut-catalog"><section className="wk-settings-center__shortcut-group"><h3>{t("base.navRail.settingsCenter.shortcut.voice")}</h3><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.holdToTalk")} keys={[voiceShortcutLabel(getVoiceShortcut(settings, os), os), voiceModeLabel(settings.speakingMode)]} /><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.cancelVoice")} keys={["Esc"]} /></section></div></SettingsPageFrame>;
 }
 
 function AccountSettingsPage({ accountCenterUrl, onSecrets }: { accountCenterUrl?: string; onSecrets?: () => void }) {
@@ -243,7 +244,7 @@ function useVoiceSettings() {
   return settings;
 }
 function getVoiceOs(environment: import("../../Runtime").RuntimeEnvironment): "windows" | "macos" { return environment.os === "macos" || (environment.os === "unknown" && /Mac|iPhone|iPad/i.test(navigator.userAgent)) ? "macos" : "windows"; }
-function voiceShortcutLabel(shortcut: VoiceShortcut, os: "windows" | "macos") { return shortcut === "alt-right" ? t(os === "macos" ? "base.navRail.settingsCenter.value.rightOption" : "base.navRail.settingsCenter.value.rightAlt") : shortcut === "shift-right" ? t("base.navRail.settingsCenter.value.rightShift") : shortcut === "shift-left" ? t("base.navRail.settingsCenter.value.leftShift") : t("base.navRail.settingsCenter.value.disabled"); }
+function voiceShortcutLabel(shortcut: VoiceShortcut, os: "windows" | "macos") { return shortcut === "alt-right" ? t(os === "macos" ? "base.navRail.settingsCenter.value.rightOption" : "base.navRail.settingsCenter.value.rightAlt") : t("base.navRail.settingsCenter.value.disabled"); }
 function voiceModeLabel(mode: VoiceSettings["speakingMode"]) { return t(mode === "hold" ? "base.navRail.settingsCenter.value.hold" : "base.navRail.settingsCenter.value.toggle"); }
 function VoiceInputSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
   const settings = useVoiceSettings();
@@ -400,15 +401,24 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
   </div>;
   const shortcut = getVoiceShortcut(settings, os);
   const shortcutName = voiceShortcutLabel(shortcut, os);
-  const voiceDescription = !settings.enabled ? t("base.navRail.settingsCenter.row.voiceInputEnabledDescription") : shortcut === "disabled" ? t("base.navRail.settingsCenter.voiceDescription.button") : settings.speakingMode === "toggle" ? t("base.navRail.settingsCenter.voiceDescription.toggle", { values: { shortcut: shortcutName } }) : t("base.navRail.settingsCenter.voiceDescription.hold", { values: { shortcut: shortcutName } });
+  const voiceDescription = !settings.enabled
+    ? t("base.navRail.settingsCenter.row.voiceInputEnabledDescription")
+    : !settings.shortcutEnabled
+      ? t("base.navRail.settingsCenter.voiceDescription.button")
+      : t(
+        settings.speakingMode === "hold"
+          ? "base.navRail.settingsCenter.voiceDescription.hold"
+          : "base.navRail.settingsCenter.voiceDescription.toggle",
+        { values: { shortcut: shortcutName } },
+      );
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.voice.title")}>
-    <SettingsSection title={t("base.navRail.settingsCenter.section.audioDevice")}>
+    <SettingsSection title={t("base.navRail.settingsCenter.section.voiceDevice")}>
       <SettingsRow title={t("base.navRail.settingsCenter.row.microphoneInput")} description={t("base.navRail.settingsCenter.row.microphoneInputDescription")} trailing={<select aria-label={t("base.navRail.settingsCenter.row.microphoneInput")} className="wk-settings-center__demo-select" value={settings.microphoneDeviceId} onChange={(event) => voiceSettingsStore.set({ microphoneDeviceId: event.target.value })}><option value="">{t("base.navRail.settingsCenter.value.systemDefaultMicrophone")}</option>{devices.map((device) => <option key={device.deviceId} value={device.deviceId}>{device.label || t("base.navRail.settingsCenter.value.microphone")}</option>)}</select>} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.microphonePermission")} description={permissionDescription} trailing={<span className="wk-settings-center__row-actions"><SettingsStatusTag tone={permissionTone} label={permissionLabel} />{(permission === "prompt" || permission === "denied") && <button type="button" className="wk-settings-center__manage-button" onClick={() => { if (permission === "denied") showPermissionGuide(); else void authorize(); }}>{permission === "denied" ? t(environment.target === "web" ? "base.navRail.settingsCenter.action.viewHowToEnable" : "base.navRail.settingsCenter.action.openSystemSettings") : t("base.navRail.settingsCenter.action.authorize")}</button>}</span>} />
     </SettingsSection>
     <SettingsSection title={t("base.navRail.settingsCenter.section.voiceSettings")}>
       <SettingsRow title={t("base.navRail.settingsCenter.row.voiceInputEnabled")} description={voiceDescription} trailing={<Switch checked={settings.enabled} onChange={toggle} />} />
-      {settings.enabled && <><SettingsRow title={t("base.navRail.settingsCenter.row.voiceShortcut")} trailing={<select aria-label={t("base.navRail.settingsCenter.row.voiceShortcut")} className="wk-settings-center__demo-select" value={shortcut} onChange={(event) => voiceSettingsStore.set(os === "macos" ? { shortcutMacos: event.target.value as VoiceShortcut } : { shortcutWindows: event.target.value as VoiceShortcut })}><option value="alt-right">{voiceShortcutLabel("alt-right", os)}</option><option value="shift-right">{t("base.navRail.settingsCenter.value.rightShift")}</option><option value="shift-left">{t("base.navRail.settingsCenter.value.leftShift")}</option><option value="disabled">{t("base.navRail.settingsCenter.value.disabled")}</option></select>} /><SettingsRow title={t("base.navRail.settingsCenter.row.speakingMode")} trailing={<select aria-label={t("base.navRail.settingsCenter.row.speakingMode")} disabled={shortcut === "disabled"} className="wk-settings-center__demo-select" value={settings.speakingMode} onChange={(event) => voiceSettingsStore.set({ speakingMode: event.target.value as VoiceSettings["speakingMode"] })}><option value="toggle">{t("base.navRail.settingsCenter.value.toggle")}</option><option value="hold">{t("base.navRail.settingsCenter.value.hold")}</option></select>} /><LocalVoiceSettings settings={settings} draft={localDraft} dirty={localDirty} setDraft={(next) => { setLocalDraft(next); setLocalDirty(true); }} probeStatus={probeStatus} setProbeStatus={setProbeStatus} onSave={saveLocalSettings} onReset={() => { setLocalDraft({ timeout: String(VOICE_SETTINGS_DEFAULTS.localTimeoutMs), probe: VOICE_SETTINGS_DEFAULTS.localProbeUrl, transcribe: VOICE_SETTINGS_DEFAULTS.localTranscribeUrl }); setLocalDirty(true); setProbeStatus("idle"); }} /></>}
+      {settings.enabled && <><SettingsRow title={t("base.navRail.settingsCenter.row.voiceShortcut")} description={t(settings.speakingMode === "hold" ? "base.navRail.settingsCenter.voiceDescription.shortcutHold" : "base.navRail.settingsCenter.voiceDescription.shortcutToggle", { values: { shortcut: shortcutName } })} trailing={<Switch checked={settings.shortcutEnabled} onChange={(checked) => voiceSettingsStore.set({ shortcutEnabled: checked })} aria-label={t("base.navRail.settingsCenter.row.voiceShortcut")} />} />{settings.shortcutEnabled && <SettingsRow title={t("base.navRail.settingsCenter.row.speakingMode")} description={t("base.navRail.settingsCenter.voiceDescription.mode", { values: { shortcut: shortcutName } })} trailing={<select aria-label={t("base.navRail.settingsCenter.row.speakingMode")} className="wk-settings-center__demo-select" value={settings.speakingMode} onChange={(event) => voiceSettingsStore.set({ speakingMode: event.target.value as VoiceSettings["speakingMode"] })}><option value="toggle">{t("base.navRail.settingsCenter.value.toggleDescription")}</option><option value="hold">{t("base.navRail.settingsCenter.value.holdDescription")}</option></select>} />}<LocalVoiceSettings settings={settings} draft={localDraft} dirty={localDirty} setDraft={(next) => { setLocalDraft(next); setLocalDirty(true); }} probeStatus={probeStatus} setProbeStatus={setProbeStatus} onSave={saveLocalSettings} onReset={() => { setLocalDraft({ timeout: String(VOICE_SETTINGS_DEFAULTS.localTimeoutMs), probe: VOICE_SETTINGS_DEFAULTS.localProbeUrl, transcribe: VOICE_SETTINGS_DEFAULTS.localTranscribeUrl }); setLocalDirty(true); setProbeStatus("idle"); }} /></>}
     </SettingsSection>
   </SettingsPageFrame>;
 }

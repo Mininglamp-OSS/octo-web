@@ -3,29 +3,14 @@ import { VOICE_SETTINGS_KEY, VOICE_PROTOCOL_VERSION, voiceSettingsStore, voiceSh
 describe("voiceShortcutMatches", () => {
   it("matches standard code reporting", () => {
     expect(voiceShortcutMatches({ code: "AltRight", key: "Alt", location: 2 }, "alt-right")).toBe(true);
-    expect(voiceShortcutMatches({ code: "ShiftRight", key: "Shift", location: 2 }, "shift-right")).toBe(true);
-    expect(voiceShortcutMatches({ code: "ShiftLeft", key: "Shift", location: 1 }, "shift-left")).toBe(true);
   });
 
   it("does not cross-match shortcuts", () => {
-    expect(voiceShortcutMatches({ code: "ShiftRight", key: "Shift", location: 2 }, "shift-left")).toBe(false);
-    expect(voiceShortcutMatches({ code: "ShiftLeft", key: "Shift", location: 1 }, "shift-right")).toBe(false);
-    expect(voiceShortcutMatches({ code: "AltRight", key: "Alt", location: 2 }, "shift-right")).toBe(false);
+    expect(voiceShortcutMatches({ code: "ShiftRight", key: "Shift", location: 2 }, "alt-right")).toBe(false);
+    expect(voiceShortcutMatches({ code: "ShiftLeft", key: "Shift", location: 1 }, "alt-right")).toBe(false);
     expect(voiceShortcutMatches({ code: "ShiftRight", key: "Shift", location: 2 }, "disabled")).toBe(false);
   });
 
-  it("matches the Windows empty-code right Shift report", () => {
-    // Some Windows keyboard driver / IME combinations report the right Shift
-    // key with an empty code and location 0.
-    expect(voiceShortcutMatches({ code: "", key: "Shift", location: 0 }, "shift-right")).toBe(true);
-  });
-
-  it("does not treat the empty-code fallback as the left Shift", () => {
-    expect(voiceShortcutMatches({ code: "", key: "Shift", location: 0 }, "shift-left")).toBe(false);
-    // A left Shift press always reports ShiftLeft / location 1, so the
-    // fallback must not claim events that already carry a mapped code.
-    expect(voiceShortcutMatches({ code: "ShiftLeft", key: "Shift", location: 1 }, "shift-right")).toBe(false);
-  });
 });
 
 describe("voiceSettingsStore", () => {
@@ -36,8 +21,8 @@ describe("voiceSettingsStore", () => {
 
   it("defaults to disabled and persists validated local settings", () => {
     expect(voiceSettingsStore.get().enabled).toBe(false);
-    voiceSettingsStore.set({ enabled: true, shortcutWindows: "shift-left" });
-    expect(JSON.parse(localStorage.getItem(VOICE_SETTINGS_KEY)!).shortcutWindows).toBe("shift-left");
+    voiceSettingsStore.set({ enabled: true, shortcutEnabled: false });
+    expect(JSON.parse(localStorage.getItem(VOICE_SETTINGS_KEY)!).shortcutEnabled).toBe(false);
     expect(voiceSettingsStore.get().enabled).toBe(true);
   });
 
@@ -100,6 +85,21 @@ describe("voiceSettingsStore", () => {
     expect(restoredStore.get().enabled).toBe(true);
     expect(restoredStore.get().shortcutWindows).toBe("alt-right");
     expect(restoredStore.get().speakingMode).toBe("toggle");
+  });
+
+  it("preserves a legacy disabled shortcut during migration", async () => {
+    localStorage.setItem(VOICE_SETTINGS_KEY, JSON.stringify({
+      enabled: true,
+      consent: { protocolVersion: VOICE_PROTOCOL_VERSION, ackedAt: new Date().toISOString() },
+      shortcutWindows: "disabled",
+      shortcutMacos: "disabled",
+    }));
+    vi.resetModules();
+    const { voiceSettingsStore: restoredStore } = await import("../VoiceSettingsStore");
+
+    expect(restoredStore.get().shortcutEnabled).toBe(false);
+    expect(restoredStore.get().shortcutWindows).toBe("disabled");
+    expect(restoredStore.get().shortcutMacos).toBe("disabled");
   });
 
   it("rolls back the in-memory value when persistence fails", () => {

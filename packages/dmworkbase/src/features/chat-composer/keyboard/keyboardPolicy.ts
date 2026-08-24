@@ -17,7 +17,7 @@ export type ComposerKeyboardDecision =
   | { kind: "move-slash"; index: number }
   | { kind: "select-slash"; index: number }
   | { kind: "send"; closeSlash: boolean }
-  | { kind: "alt-enter" };
+  ;
 
 function normalizeIndex(index: number, count: number): number {
   if (count <= 0) return 0;
@@ -57,7 +57,7 @@ export function decideComposerKeyboard(
     return { kind: "pass" };
   }
 
-  if (input.key === "Enter" && input.altKey) return { kind: "alt-enter" };
+  if (input.key === "Enter" && input.altKey) return { kind: "pass" };
 
   if (input.key === "Enter" && !input.shiftKey) {
     if (input.mentionActive || input.emojiActive) return { kind: "pass" };

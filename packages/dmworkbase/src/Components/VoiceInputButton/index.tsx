@@ -1,26 +1,18 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Toast, Dropdown } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { Mic } from "lucide-react";
 import useTextareaVoice, { ReplaceMode, SelectionRange } from "./useTextareaVoice";
 import type { ChatContextResult } from "../Conversation/chatContext";
-import type { VoiceMode } from "../../Service/VoiceService";
 import { getVoiceShortcut, voiceSettingsStore, voiceShortcutMatches } from "../../Service/VoiceSettingsStore";
 import WKApp from "../../App";
 import { useI18n } from "../../i18n";
 import "./index.css";
 
-const VOICE_MODES: { value: VoiceMode; labelKey: string }[] = [
-  { value: "append_only", labelKey: "base.voiceInput.mode.input" },
-  { value: "edit_only", labelKey: "base.voiceInput.mode.edit" },
-];
-
 const FLOATING_GAP = 12;
 const FLOATING_WIDTH = 184;
 const FLOATING_HORIZONTAL_MARGIN = 8;
 const INDICATOR_HEIGHT = 48;
-const PREPARING_DELAY_MS = 300;
-const RECORDING_DELAY_MS = 500;
 
 const voiceHost = {
   getSpaceId: () => WKApp.shared.currentSpaceId,
@@ -34,7 +26,6 @@ export interface VoiceInputButtonProps {
   inputRef: React.RefObject<HTMLInputElement | HTMLTextAreaElement | null>;
   onTranscribed: (text: string, replaceMode: ReplaceMode, savedSelectionRange?: SelectionRange) => void;
   getCurrentText?: () => string;
-  showModeMenu?: boolean;
   size?: "sm" | "md";
   getChatContext?: () => ChatContextResult | Promise<ChatContextResult>;
   className?: string;
@@ -46,14 +37,12 @@ export default function VoiceInputButton({
   inputRef,
   onTranscribed,
   getCurrentText,
-  showModeMenu = false,
   size = "sm",
   getChatContext,
   className,
   onRecordingStart,
 }: VoiceInputButtonProps) {
   const { t } = useI18n();
-  const [showMenu, setShowMenu] = useState(false);
   const buttonRef = useRef<HTMLDivElement>(null);
   const [voiceSettings, setVoiceSettings] = useState(() => voiceSettingsStore.get());
   useEffect(() => voiceSettingsStore.subscribe(setVoiceSettings), []);
@@ -70,7 +59,6 @@ export default function VoiceInputButton({
     inputRef,
     onTranscribed,
     getCurrentText,
-    enableEditMode: showModeMenu,
     getChatContext,
     voiceHost,
   });
@@ -230,25 +218,15 @@ export default function VoiceInputButton({
           }
           return;
         }
-        if (
-          !isRecordingRef.current &&
-          !isTranscribingRef.current &&
-          shiftTimerRef.current === null
-        ) {
-          cancelPendingRef.current = false;
-          preparingTimerRef.current = setTimeout(() => {
-            preparingTimerRef.current = null;
-          }, PREPARING_DELAY_MS);
-          shiftTimerRef.current = setTimeout(() => {
-            shiftTimerRef.current = null;
-            if (!isOnlineRef.current && !localAvailableRef.current) {
-              Toast.warning(t("base.voiceInput.error.networkUnavailable"));
-              return;
-            }
-            if (!voiceSettings.enabled) return;
-            shiftRecordingRef.current = true;
-            startRecordingRef.current("append_only");
-          }, RECORDING_DELAY_MS);
+        if (!isRecordingRef.current && !isTranscribingRef.current) {
+          if (!isOnlineRef.current && !localAvailableRef.current) {
+            Toast.warning(t("base.voiceInput.error.networkUnavailable"));
+            return;
+          }
+          if (!voiceSettings.enabled) return;
+          shiftRecordingRef.current = true;
+          onRecordingStart?.();
+          startRecordingRef.current("append_only");
         }
         return;
       }
@@ -323,8 +301,6 @@ export default function VoiceInputButton({
   }, [isVoiceEnabled, inputRef, clearShiftTimer, t, voiceSettings]);
 
   const handleVoiceClick = () => {
-    setShowMenu(false);
-
     if (!isVoiceEnabled) {
       Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
@@ -340,21 +316,6 @@ export default function VoiceInputButton({
     }
     onRecordingStart?.();
     startRecording("append_only");
-  };
-
-  const handleModeSelect = (selectedMode: VoiceMode) => {
-    setShowMenu(false);
-    if (!isVoiceEnabled) {
-      Toast.warning(t("base.voiceInput.error.unavailable"));
-      return;
-    }
-    if (!canRecord || !inputRef.current) return;
-    if (!voiceSettings.enabled) {
-      Toast.warning(t("base.voiceInput.error.unavailable"));
-      return;
-    }
-    onRecordingStart?.();
-    startRecording(selectedMode);
   };
 
   const handleStopClick = () => {
@@ -413,7 +374,7 @@ export default function VoiceInputButton({
         >
           <div
             className="wk-vib__btn wk-vib__btn--recording"
-            title={isTranscribing
+            aria-label={isTranscribing
               ? t("base.voiceInput.status.transcribingDots")
               : t("base.voiceInput.action.stopRecording")}
             role="button"
@@ -429,60 +390,6 @@ export default function VoiceInputButton({
   // Default idle state
   if (!isVoiceEnabled) return null;
 
-  if (showModeMenu) {
-    const currentText = getCurrentText?.() ?? "";
-    const hasContent = currentText.trim().length > 0;
-    const dropdownMenu = (
-      <Dropdown.Menu style={{ width: 140 }}>
-        {VOICE_MODES.map((mode) => {
-          const isEditMode = mode.value === "edit_only";
-          const itemDisabled = isEditMode && !hasContent;
-          return (
-            <Dropdown.Item
-              key={mode.value}
-              onClick={() => !itemDisabled && handleModeSelect(mode.value)}
-              disabled={itemDisabled}
-              title={itemDisabled ? t("base.voiceInput.error.emptyCannotEdit") : undefined}
-            >
-              {t(mode.labelKey)}
-            </Dropdown.Item>
-          );
-        })}
-      </Dropdown.Menu>
-    );
-
-    return (
-      <>
-        <Dropdown
-          trigger="hover"
-          position="topRight"
-          render={dropdownMenu}
-          visible={canRecord && !!inputRef.current ? showMenu : false}
-          onVisibleChange={setShowMenu}
-          spacing={4}
-        >
-          <div
-            className={rootClasses}
-            ref={buttonRef}
-            onClick={handleVoiceClick}
-            style={{ cursor: isDisabled ? "not-allowed" : "pointer" }}
-          >
-            <div
-              className={`wk-vib__btn ${isDisabled ? "wk-vib__btn--disabled" : ""}`}
-              title={canRecord
-                ? t("base.voiceInput.title.input")
-                : t("base.voiceInput.title.networkUnavailable")}
-              role="button"
-              tabIndex={isDisabled ? -1 : 0}
-            >
-              <Mic size={iconSize} color="currentColor" />
-            </div>
-          </div>
-        </Dropdown>
-      </>
-    );
-  }
-
   return (
     <>
       <div
@@ -493,7 +400,7 @@ export default function VoiceInputButton({
       >
         <div
           className={`wk-vib__btn ${isDisabled ? "wk-vib__btn--disabled" : ""}`}
-          title={canRecord
+          aria-label={canRecord
             ? t("base.voiceInput.title.input")
             : t("base.voiceInput.title.networkUnavailable")}
           role="button"

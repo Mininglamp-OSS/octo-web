@@ -1,10 +1,12 @@
 import { VOICE_PROTOCOL_VERSION } from "./VoiceProtocol";
 
-export type VoiceShortcut = "alt-right" | "shift-right" | "shift-left" | "disabled";
+export type VoiceShortcut = "alt-right" | "disabled";
 export type VoiceSpeakingMode = "toggle" | "hold";
+export type VoiceOs = "windows" | "macos";
 
 export interface VoiceSettings {
   enabled: boolean;
+  shortcutEnabled: boolean;
   consent?: { protocolVersion: string; ackedAt: string };
   shortcutWindows: VoiceShortcut;
   shortcutMacos: VoiceShortcut;
@@ -19,9 +21,11 @@ export interface VoiceSettings {
 export const VOICE_SETTINGS_KEY = "octo.voice-input.v1";
 export { VOICE_PROTOCOL_VERSION };
 const LEGACY_SERVER_MIGRATION = "legacy-server-config-migrated";
+const shortcutLearnedKey = (os: VoiceOs, mode: VoiceSpeakingMode) => `${storageKey}.learned.${os}.${mode}`;
 
 export const VOICE_SETTINGS_DEFAULTS: VoiceSettings = {
   enabled: false,
+  shortcutEnabled: true,
   shortcutWindows: "alt-right",
   shortcutMacos: "alt-right",
   speakingMode: "toggle",
@@ -34,7 +38,6 @@ export const VOICE_SETTINGS_DEFAULTS: VoiceSettings = {
 
 const defaults = VOICE_SETTINGS_DEFAULTS;
 
-const validShortcuts = new Set<VoiceShortcut>(["alt-right", "shift-right", "shift-left", "disabled"]);
 const validModes = new Set<VoiceSpeakingMode>(["toggle", "hold"]);
 const listeners = new Set<(settings: VoiceSettings) => void>();
 const microphonePermissionListeners = new Set<(permission: PermissionState) => void>();
@@ -50,6 +53,22 @@ export function getMicrophonePermission(): PermissionState { return microphonePe
 export function subscribeMicrophonePermission(listener: (permission: PermissionState) => void): () => void {
   microphonePermissionListeners.add(listener);
   return () => microphonePermissionListeners.delete(listener);
+}
+
+export async function refreshMicrophonePermission(): Promise<PermissionState> {
+  if (!navigator.mediaDevices?.getUserMedia || !navigator.permissions?.query) {
+    setMicrophonePermission("prompt");
+    return "prompt";
+  }
+  try {
+    const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
+    const permission = status.state === "granted" || status.state === "denied" ? status.state : "prompt";
+    setMicrophonePermission(permission);
+    return permission;
+  } catch {
+    setMicrophonePermission("prompt");
+    return "prompt";
+  }
 }
 
 function normalizeLocalUrl(value: unknown, fallback: string): string {
@@ -72,8 +91,11 @@ function read(key = storageKey): VoiceSettings {
       ...defaults,
       ...value,
       enabled: value.enabled === true && value.consent?.protocolVersion === VOICE_PROTOCOL_VERSION,
-      shortcutWindows: validShortcuts.has(value.shortcutWindows as VoiceShortcut) ? value.shortcutWindows! : defaults.shortcutWindows,
-      shortcutMacos: validShortcuts.has(value.shortcutMacos as VoiceShortcut) ? value.shortcutMacos! : defaults.shortcutMacos,
+      shortcutEnabled: typeof value.shortcutEnabled === "boolean"
+        ? value.shortcutEnabled
+        : value.shortcutWindows !== "disabled" && value.shortcutMacos !== "disabled",
+      shortcutWindows: value.shortcutWindows === "disabled" ? "disabled" : defaults.shortcutWindows,
+      shortcutMacos: value.shortcutMacos === "disabled" ? "disabled" : defaults.shortcutMacos,
       speakingMode: validModes.has(value.speakingMode as VoiceSpeakingMode) ? value.speakingMode! : defaults.speakingMode,
       localTimeoutMs: typeof value.localTimeoutMs === "number" && value.localTimeoutMs > 0 ? value.localTimeoutMs : defaults.localTimeoutMs,
       microphoneDeviceId: typeof value.microphoneDeviceId === "string" ? value.microphoneDeviceId : "",
@@ -145,35 +167,35 @@ export const voiceSettingsStore = {
     listeners.add(listener);
     return () => listeners.delete(listener);
   },
+  isShortcutLearned(os: VoiceOs, mode: VoiceSpeakingMode): boolean {
+    try { return window.localStorage.getItem(shortcutLearnedKey(os, mode)) === "1"; } catch { return false; }
+  },
+  markShortcutLearned(os: VoiceOs, mode: VoiceSpeakingMode): void {
+    try { window.localStorage.setItem(shortcutLearnedKey(os, mode), "1"); } catch { /* optional hint state */ }
+    listeners.forEach((listener) => listener({ ...current }));
+  },
 };
 
 export function getVoiceShortcut(settings: VoiceSettings, os: "windows" | "macos"): VoiceShortcut {
-  return os === "macos" ? settings.shortcutMacos : settings.shortcutWindows;
+  if (!settings.shortcutEnabled) return "disabled";
+  return "alt-right";
+}
+
+export function hasConfiguredVoiceShortcut(settings: VoiceSettings, os: "windows" | "macos"): boolean {
+  return settings.enabled && getVoiceShortcut(settings, os) !== "disabled";
+}
+
+export function isShortcutLearned(os: VoiceOs, mode: VoiceSpeakingMode): boolean {
+  return voiceSettingsStore.isShortcutLearned(os, mode);
 }
 
 /**
- * Matches a keyboard event against the configured voice shortcut.
- *
- * On Windows, some keyboard driver / IME combinations report the right Shift
- * key with an empty `code` and `location === 0` instead of the standard
- * `ShiftRight` / `location === 2`. Matching only on `e.code === "ShiftRight"`
- * silently drops the key there, so we fall back to `key === "Shift"` with an
- * unmapped code: the left Shift key always reports `ShiftLeft` / `location
- * 1`, so a Shift event with an empty code cannot be the left one. This
- * fallback is based on the affected Windows driver behavior and is not
- * independently verifiable on every keyboard / IME stack.
+ * Matches the fixed physical right Alt/Option shortcut.
  */
 export function voiceShortcutMatches(event: { code: string; key: string; location: number }, shortcut: VoiceShortcut): boolean {
   switch (shortcut) {
     case "alt-right":
       return event.code === "AltRight";
-    case "shift-right":
-      return (
-        event.code === "ShiftRight" ||
-        (event.key === "Shift" && event.code === "" && event.location !== 1)
-      );
-    case "shift-left":
-      return event.code === "ShiftLeft";
     default:
       return false;
   }

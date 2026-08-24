@@ -106,6 +106,7 @@ vi.mock("../../../i18n", () => ({
 }));
 
 vi.mock("@douyinfe/semi-ui", () => ({
+    Tooltip: ({ children }: { children: React.ReactNode }) => React.createElement("div", null, children),
     Toast: {
         success: vi.fn(),
         error: (...a: unknown[]) => hoisted.toastError(...a),
@@ -224,7 +225,7 @@ describe("EmojiToolbar selection dismissal", () => {
             />,
         );
 
-        const trigger = container.querySelector(".wk-emojitoolbar > div") as HTMLElement;
+        const trigger = container.querySelector(".wk-emojitoolbar > div > span > div") as HTMLElement;
         act(() => trigger.click());
 
         return { insertText, sendMessage };
