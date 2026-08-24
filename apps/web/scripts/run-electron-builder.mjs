@@ -64,11 +64,14 @@ function cleanup() {
   for (const dir of createdTempDirs) {
     try {
       fs.rmSync(dir, { recursive: true, force: true });
-    } catch {
+    } catch (error) {
       // force:true does not suppress EBUSY/EPERM/EACCES (e.g. a builder
       // child still holding a handle on Windows). A cleanup failure must
       // never turn a successful build into a non-zero exit — the leaves
       // are unique to this run and safe to leave for OS reclaim.
+      console.warn(
+        `[run-electron-builder] failed to remove temp dir ${dir}: ${error.message}`,
+      );
     }
   }
 }
