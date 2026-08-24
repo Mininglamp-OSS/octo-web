@@ -13,7 +13,6 @@ const { fakeApp } = vi.hoisted(() => ({
     endpointManager: null as unknown as typeof EndpointManager.shared,
   },
 }))
-vi.mock('../../App', () => ({ default: fakeApp }))
 vi.mock('../App', () => ({ default: fakeApp }))
 fakeApp.endpointManager = EndpointManager.shared
 
@@ -72,6 +71,18 @@ describe('bridge/docs/docsPort', () => {
       await expect(convertMarkdownToDoc({ title: 't', markdown: '# hi' })).rejects.toBeInstanceOf(
         DocsCapabilityUnavailableError,
       )
+    })
+
+    it('已注册但 docsOn 关闭 → 同样抛 DocsCapabilityUnavailableError（契约：“端口未注册（或 docsOn 关闭）时抛”）', async () => {
+      const handler = vi.fn(async () => ({ docId: 'd1', url: '/d/d1' }))
+      fakeApp.remoteConfig.docsOn = false
+      EndpointManager.shared.setMethod(EndpointID.docsConvertMarkdown, handler)
+
+      await expect(convertMarkdownToDoc({ title: 't', markdown: '# hi' })).rejects.toBeInstanceOf(
+        DocsCapabilityUnavailableError,
+      )
+      // docsOn 关闭时后端可能压根没部署，请求不该发出去。
+      expect(handler).not.toHaveBeenCalled()
     })
 
     it('把 title / markdown 原样透传给实现方，并回传 docId + url', async () => {

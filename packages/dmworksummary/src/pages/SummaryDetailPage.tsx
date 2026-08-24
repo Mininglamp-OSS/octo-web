@@ -72,6 +72,7 @@ import {
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
 import SummaryResultActions from "../components/SummaryResultActions";
+import { stripCitationMarkers } from "../components/citationStrip";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
@@ -211,6 +212,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private tocSignature = "";
     private tocHeadingNodes: HTMLElement[] = [];
     private regenerateVoiceMode: RegenerateMode | null = null;
+    /** 转文档的同步重入闸（P1-b：semi-ui loading 不禁点，双击会创建两份文档）。 */
+    private convertInFlight = false;
 
     private handleRegenerateVoiceRecordingStart = () => {
         this.regenerateVoiceMode = this.state.regenerateMode;
@@ -2885,6 +2888,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     handleConvertToDoc = async (content: string, title: string | undefined, key: string) => {
         const text = content?.trim();
         if (!text) return;
+        // 同步重入闸：semi-ui@2.93 的 Button `loading` 纯装饰、不禁点（round-4 P1-b(i)），
+        // 双开两个总结各点一下会并发两次转文档请求、创建两份文档。已有请求在飞时直接忽略，
+        // 不用 convertingKey（它是渲染态，异步 setState 拦不住同一事件循环里的第二次点击）。
+        if (this.convertInFlight) return;
+        this.convertInFlight = true;
         // 同步预开标签页，保留用户激活状态，避免浏览器拦截 popup。
         // 对齐 Pages/Chat/index.tsx 的写法：先开 about:blank 拿到真实的“被拦/成功”信号
         // （带 noopener 的 window.open 成功时也返回 null，没法 null-check），再手动置空 opener。
@@ -2898,32 +2906,53 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         }
         this.setState({ convertingKey: key });
         try {
-            const docTitle = title ?? this.context.t("summary.detail.defaultTitle");
-            // 转文档时去掉引用序号标记（`[1]` / `[1,2]` / 团队 `[P1]`）——它们是总结正文
-            // 的引用锚,落到文档正文里是噪声。只删纯数字/P数字方括号,不误伤 markdown 链接。
-            const cleaned = content.replace(/\s?\[P?\d+(?:[,，]\s*P?\d+)*\]/g, "");
+            const docTitle = title || this.context.t("summary.detail.defaultTitle");
+            // 转文档时去掉引用序号标记（`[1]` / 团队 `[P1]`）——它们是总结正文
+            // 的引用锚,落到文档正文里是噪声。实现见 citationStrip.ts：与渲染侧权威正则
+            // 对齐，护住 markdown 链接 / 代码块 / 引用定义（round-4 P1-a）。
+            const cleaned = stripCitationMarkers(content);
             const { url } = await api.convertSummaryToDoc(docTitle, cleaned);
             if (this.unmounted) {
                 if (opened && !opened.closed) opened.close();
                 return;
             }
-            Toast.success(this.context.t("summary.detail.convertSuccess"));
             if (opened && !opened.closed) {
                 // 预开的标签页还在 → 导航它。
                 opened.location.href = url;
-            } else if (!opened) {
-                // popup 被拦截：提示用户而不是整页跳走——此处可能正在编辑/浏览长文，
-                // location.href 会全量重载并丢掉滚动位置与页面状态。
-                Toast.warning(this.context.t("summary.detail.convertPopupBlocked"));
+                Toast.success(this.context.t("summary.detail.convertSuccess"));
+            } else {
+                // popup 被拦（opened=null）或预开标签已被用户关掉（opened.closed）：
+                // 文档**已经创建成功**，不再喊“允许弹出后重试”——照做只会再造一份孤儿文档
+                // （round-4 P1-b(iii)）。给出文档直达链接，链接可点、文档不丢。
+                Toast.warning({
+                    duration: 8,
+                    content: (
+                        <span>
+                            {this.context.t("summary.detail.convertPopupBlocked")}{" "}
+                            <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="summary-detail-doc-popup-link"
+                            >
+                                {this.context.t("summary.detail.convertDocLink")}
+                            </a>
+                        </span>
+                    ),
+                });
             }
-            // opened 存在但已被用户关闭：文档已创建成功，success toast 已提示，不再强行跳转。
         } catch (err) {
             if (opened && !opened.closed) opened.close();
             if (this.unmounted) return;
             const msg = extractErrorMsg(err) || this.context.t("summary.detail.convertFailed");
             Toast.error(msg);
         } finally {
-            if (!this.unmounted) this.setState({ convertingKey: null });
+            // 只在 key 仍是自己时清：万一将来有并发路径覆写了 key，别把别人的
+            // loading 态顺手掐掉（round-4 P1-b(ii)）。
+            if (!this.unmounted && this.state.convertingKey === key) {
+                this.setState({ convertingKey: null });
+            }
+            this.convertInFlight = false;
         }
     };
 
@@ -3575,7 +3604,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         );
                     }
                     // need3：他人那条隐私收口（citations=[] 、清 [n]）不变；自己那条不被清洗，可正常显示引用。
-                    const displayContent = isMe ? content : content.replace(/\[\d+\]/g, '');
+                    // 统一走 stripCitationMarkers：与转文档同一实现（链接/代码感知），不再各写各的正则。
+                    const displayContent = isMe ? content : stripCitationMarkers(content);
                     const displayCitations = isMe ? (m.citations || []) : [];
                     const needsTruncate = displayContent.length > 100;
                     return (

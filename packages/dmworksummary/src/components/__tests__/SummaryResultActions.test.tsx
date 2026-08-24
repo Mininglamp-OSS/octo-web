@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, act } from '@testing-library/react';
 
 // 本包既有约定（参考 ChatSummaryStarButton.test.tsx）：单测里必须 mock 掉 semi-ui barrel。
 // 它会把 @tiptap/react 拉进 import 图，而 tiptap 在本仓的 React 17 dedupe 环境下
@@ -20,9 +20,9 @@ vi.mock('lucide-react', () => ({
 }));
 
 import SummaryResultActions from '../SummaryResultActions';
-// 这三个是 `src/__mocks__/dmworkBase.ts` 里的测试专用开关（vitest 把 `@octo/base`
+// 这四个是 `src/__mocks__/dmworkBase.ts` 里的测试专用开关（vitest 把 `@octo/base`
 // alias 到那个 mock），真实包里不存在，所以走 mock 路径导入以免 tsc 报找不到导出。
-import { __setDocsOn, __setDocsConvertHandler, __resetDocsPort } from '../../__mocks__/dmworkBase';
+import { __setDocsOn, __setDocsConvertHandler, __resetDocsPort, __fireConfigChangeListeners } from '../../__mocks__/dmworkBase';
 
 /**
  * 「复制 / 转为在线文档」操作行的可见性契约（octo-smart-summary#195）。
@@ -128,5 +128,22 @@ describe('SummaryResultActions', () => {
         // 第一个是复制，处于 loading；第二个是转文档，不受影响。
         expect(buttons[0].className).toMatch(/loading/);
         expect(buttons[1].className).not.toMatch(/loading/);
+    });
+
+    it('docsOn 运行期翻转时跟随 config change 广播刷新（round-4 P2-a）', () => {
+        // 先以 docsOn=false 挂载：按钮集合里只有复制。
+        __setDocsOn(false);
+        render(<SummaryResultActions content="hello" onCopy={noop} onConvert={noop} />);
+        expect(screen.queryByText('转为在线文档')).toBeNull();
+
+        // appconfig 到位 / docs_on 翻转为 true → 广播 → 转文档按钮补位。
+        __setDocsOn(true);
+        act(() => { __fireConfigChangeListeners(); });
+        expect(screen.getByText('转为在线文档')).toBeTruthy();
+
+        // 再翻回 false → 按钮撤掉，且组件没有留在旧状态。
+        __setDocsOn(false);
+        act(() => { __fireConfigChangeListeners(); });
+        expect(screen.queryByText('转为在线文档')).toBeNull();
     });
 });

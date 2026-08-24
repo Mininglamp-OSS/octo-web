@@ -77,6 +77,14 @@ export const WKApp = {
   apiClient: {},
   endpoints: { showConversation: () => {} },
   menus: { menusList: () => [], refresh: () => {} },
+  // remoteConfig 的最小测试替身：与真实 App.tsx 的 addConfigChangeListener(cb) => () => void 同形；
+  // __fireConfigChangeListeners() 模拟 appconfig 到位 / docs_on 翻转时的广播（round-4 P2-a）。
+  remoteConfig: {
+    addConfigChangeListener: (cb: () => void): (() => void) => {
+      __configChangeListeners.add(cb);
+      return () => { __configChangeListeners.delete(cb); };
+    },
+  },
 };
 
 export default WKApp;
@@ -131,7 +139,17 @@ let __docsOn = false;
 
 export const __setDocsConvertHandler = (h: typeof __docsConvertHandler) => { __docsConvertHandler = h; };
 export const __setDocsOn = (v: boolean) => { __docsOn = v; };
-export const __resetDocsPort = () => { __docsConvertHandler = null; __docsOn = false; };
+export const __resetDocsPort = () => {
+  __docsConvertHandler = null;
+  __docsOn = false;
+  __configChangeListeners.clear();
+};
+
+const __configChangeListeners = new Set<() => void>();
+/** 模拟 App.tsx 在 docs_on 等配置变化时的 notifyConfigChangeListeners() 广播。 */
+export const __fireConfigChangeListeners = () => {
+  for (const cb of [...__configChangeListeners]) cb();
+};
 
 export class DocsCapabilityUnavailableError extends Error {
   constructor(message = 'docs capability unavailable') {

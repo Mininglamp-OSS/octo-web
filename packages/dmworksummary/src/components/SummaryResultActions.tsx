@@ -1,7 +1,7 @@
 import React from "react";
 import { Button } from "@douyinfe/semi-ui";
 import { Copy, FileText } from "lucide-react";
-import { t, isDocsConvertAvailable } from "@octo/base";
+import { t, isDocsConvertAvailable, WKApp } from "@octo/base";
 
 /**
  * 总结结果下方的「复制 / 转为在线文档」操作行（octo-smart-summary#195）。
@@ -16,6 +16,11 @@ import { t, isDocsConvertAvailable } from "@octo/base";
  *
  * 可见性还有一条由调用方负责：正在编辑（SummaryEditor）或正在预览历史版本时
  * 整行都不该出现，否则按钮导出的是屏幕上没显示的那份内容。
+ *
+ * docs 能力是异步到位的：`docsOn` 从 appconfig 拉取，且运行期可翻转
+ * （App.tsx 在 docs_on 变化时广播）。因此这里像 Messages/File、ThreadPanel、
+ * EmojiToolbar 一样订阅 config change（round-4 P2-a），否则先于 appconfig
+ * 挂载的详情页会一直停在旧按钮集合上。
  */
 export interface SummaryResultActionsProps {
     /** 要复制 / 转文档的正文；空或全空白时整行不渲染。 */
@@ -46,11 +51,19 @@ const SummaryResultActions: React.FC<SummaryResultActionsProps> = ({
     testid,
 }) => {
     const text = content?.trim();
-    if (!text) return null;
 
     // docs 模块已从 OSS host 拆出（#1363）：端口没注册或 docs_on 关闭时，
     // 转文档必然失败，直接不渲染这个按钮。复制不依赖 docs，始终可用。
-    const canConvert = isDocsConvertAvailable();
+    // 订阅 remoteConfig 变化（docsOn 异步到位/运行期翻转），避免按钮集合停在旧状态。
+    const [canConvert, setCanConvert] = React.useState(() => isDocsConvertAvailable());
+    React.useEffect(() => {
+        const unsubscribe = WKApp.remoteConfig.addConfigChangeListener(() => {
+            setCanConvert(isDocsConvertAvailable());
+        });
+        return unsubscribe;
+    }, []);
+
+    if (!text) return null;
 
     return (
         <div

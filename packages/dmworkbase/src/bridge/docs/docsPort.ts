@@ -85,7 +85,10 @@ export async function convertMarkdownToDoc(
   params: ConvertMarkdownToDocParams,
 ): Promise<ConvertMarkdownToDocResult> {
   const endpoint = WKApp.endpointManager.get(EndpointID.docsConvertMarkdown);
-  if (!endpoint?.handler) {
+  // isDocsConvertAvailable() 同时校验 docsOn 与端口注册，和本文件头部契约
+  // （“端口未注册（或 docsOn 关闭）时抛”）保持一致；再保留 handler 存在性检查，
+  // 避免注册了空端点的极端情形静默通过（round-4 P2-b）。
+  if (!isDocsConvertAvailable() || !endpoint?.handler) {
     throw new DocsCapabilityUnavailableError();
   }
   return (await endpoint.handler(params)) as ConvertMarkdownToDocResult;
