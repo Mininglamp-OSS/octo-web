@@ -50,6 +50,8 @@ function createShimDir() {
 }
 
 const shimDir = createShimDir();
+// 0700 perms apply on POSIX only; win32 does not support chmod semantics
+// and the shim is consumed by cmd.exe which does not need them.
 if (process.platform !== "win32") {
   fs.chmodSync(shimDir, 0o700);
 }
@@ -60,7 +62,14 @@ const createdTempDirs = [shimDir];
 
 function cleanup() {
   for (const dir of createdTempDirs) {
-    fs.rmSync(dir, { recursive: true, force: true });
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // force:true does not suppress EBUSY/EPERM/EACCES (e.g. a builder
+      // child still holding a handle on Windows). A cleanup failure must
+      // never turn a successful build into a non-zero exit — the leaves
+      // are unique to this run and safe to leave for OS reclaim.
+    }
   }
 }
 
@@ -122,3 +131,13 @@ child.on("error", error => {
   console.error(`[run-electron-builder] failed to start electron-builder: ${error.message}`);
   process.exit(1);
 });
+
+// Clean up the unique leaves on interrupt too: without this, a Ctrl+C during
+// the build leaks octo-eb-* dirs under the repo tree / drive root (where the
+// OS never reclaims them, unlike os.tmpdir()).
+const handleInterrupt = (signal) => {
+  cleanup();
+  process.exit(128 + (signal === "SIGINT" ? 2 : 15));
+};
+process.on("SIGINT", () => handleInterrupt("SIGINT"));
+process.on("SIGTERM", () => handleInterrupt("SIGTERM"));
