@@ -17,7 +17,6 @@ import {
 } from "./expertWire";
 import type {
   MemberContextWire,
-  SkillRefWire,
 } from "./expertWire";
 import { parseTeamAgentsMarkdown } from "./expertWire";
 import type { ExpertMember, ExpertSkill } from "../mock/expertMock";

@@ -695,7 +695,7 @@ async function fetchMcpListPath(
     label: categoryLabel(key),
     count: key === CATEGORY_KEY_ALL ? allCount : countsByKey.get(key) ?? 0,
   }));
-  return { items, total: resp.data.pagination.total, categories };
+  return { items, total: resp.data.pagination?.total ?? items.length, categories };
 }
 
 async function fetchMcpDetailReal(id: string): Promise<McpDetail> {

@@ -362,7 +362,10 @@ export function fromSkillPlugin(
     canDownload: isLegacy
       ? managedZip || !!ref.zip_object_key || !!ref.file_url
       : treeFiles.length > 0,
-    fileName: ref.file_name,
+    // Tree skills have no ref.json, so synthesize a download filename from the
+    // plugin name (matching mapSkillDetail in the skill market); legacy skills
+    // keep the packaged file name from the pointer.
+    fileName: isLegacy ? ref.file_name : treeFiles.length > 0 ? `${plugin.plugin_name ?? "skill"}.zip` : undefined,
     fileSize: isLegacy ? ref.file_size : treeSize,
     files: isLegacy ? ref.files : treeFiles,
   };
