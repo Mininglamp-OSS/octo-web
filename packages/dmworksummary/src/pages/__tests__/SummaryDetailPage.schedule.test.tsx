@@ -60,6 +60,7 @@ import * as api from '../../api/summaryApi';
 import { WKApp, Dap } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshPendingInvitationBadge } from '../../utils/summaryMenuBadge';
+import { TriggerType } from '../../types/summary';
 
 vi.mock('../../api/summaryApi');
 
@@ -1517,6 +1518,20 @@ describe('SummaryDetailPage — 需求1: 多人详情页定时入口与 BY_GROUP
             detail: baseDetail({ summary_mode: 2, permissions: { can_edit: true, can_schedule: true } }),
             personalResult: null,
             isEditing: true,
+        };
+        expect((page as any).renderScheduleButton()).toBeNull();
+    });
+
+    it('Session-Finalize Agent summary does not expose traditional scheduling', () => {
+        const page = makePage(1);
+        page.state = {
+            ...(page.state as any),
+            detail: baseDetail({
+                summary_mode: 2,
+                trigger_type: TriggerType.AGENT_FINALIZE,
+                permissions: { can_edit: true, can_schedule: true },
+            }),
+            isEditing: false,
         };
         expect((page as any).renderScheduleButton()).toBeNull();
     });

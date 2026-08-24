@@ -45,6 +45,7 @@
 - 保存弹窗标题为「保存为总结」，标题输入框 placeholder 为「为这份总结起个标题」。
 - finalize accepted 后出现 toast「AI 总结生成中，已打开详情页」。
 - 页面进入详情页，标题显示「S9 Agent 风险总结」。
+- finalize 产物的 `trigger_type=5` 按 Agent 总结处理，详情页不显示传统「重新生成」入口。
 - 详情页显示「AI 摘要」和摘要内容「S9 Agent 总结已保存」。
 - 详情页正文显示「风险项需要提前暴露」。
 

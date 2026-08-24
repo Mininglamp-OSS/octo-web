@@ -22,6 +22,8 @@ export const TriggerType = {
     SCHEDULED: 2,
     AGENT: 3,
     BOT: 4,
+    /** Session-Finalize worker task; user-facing semantics are still Agent summary. */
+    AGENT_FINALIZE: 5,
 } as const;
 export type TriggerTypeType = typeof TriggerType[keyof typeof TriggerType];
 

@@ -51,7 +51,7 @@ import type {
     SummaryVersionDetail,
     SummaryVersionItem,
 } from "../types/summary";
-import { TaskStatus, SummaryMode, ParticipantStatus, TriggerType } from "../types/summary";
+import { TaskStatus, SummaryMode, ParticipantStatus } from "../types/summary";
 import {
     formatDate,
     canCancel,
@@ -61,6 +61,7 @@ import {
     formatScheduleSummary,
     shouldReactivateOnSave,
     isReferenceable,
+    isAgentSummaryTrigger,
 } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
@@ -2620,7 +2621,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         } = this.state;
         if (
             !detail ||
-            detail.trigger_type === TriggerType.AGENT ||
+            isAgentSummaryTrigger(detail.trigger_type) ||
             isEditing ||
             editingTeamSummary ||
             editingMyDraft ||
@@ -2856,7 +2857,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (!detail || !detail.result) return null;
         const canEdit = detail.status === TaskStatus.COMPLETED
             && !!detail.permissions?.can_edit
-            && detail.trigger_type !== TriggerType.AGENT
+            && !isAgentSummaryTrigger(detail.trigger_type)
             && !isEditing
             && !this.state.showVersionDetailModal;
         return (
@@ -2962,7 +2963,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private renderMySummaryHeader(canEdit: boolean) {
         const { detail, personalExpanded } = this.state;
         const { t } = this.context;
-        const isAgent = detail?.trigger_type === TriggerType.AGENT;
+        const isAgent = isAgentSummaryTrigger(detail?.trigger_type);
         return (
             <div className="summary-detail-section-header summary-detail-my-summary-header">
                 <button
@@ -3015,7 +3016,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const canEdit = !!detail
             && detail.status === TaskStatus.COMPLETED
             && !!detail.permissions?.can_edit
-            && detail.trigger_type !== TriggerType.AGENT
+            && !isAgentSummaryTrigger(detail.trigger_type)
             && !isEditing
             && !this.state.showVersionDetailModal;
         return (
@@ -3818,7 +3819,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         if (!detail?.permissions?.can_schedule || isEditing || editingTeamSummary || editingPersonalReport || editingMyDraft) return null;
         // Agent 总结不支持定时更新：schedule 到点会 trigger 传统 map-reduce pipeline，
         // 但 agent 总结产出是 chat 交互生成，无 replayable sources/participants。
-        if (detail?.trigger_type === TriggerType.AGENT) return null;
+        if (isAgentSummaryTrigger(detail?.trigger_type)) return null;
 
         // 任务3：hasSchedule 仅在存在且 is_active 时为 true。
         // 停用后文案回到「设置定时更新」。
@@ -4009,7 +4010,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // that load window a click would silently no-op. Disable until the fallback
         // content is in. Traditional workflow has detail.result inline, so it is never
         // gated here.
-        const isAgent = detail?.trigger_type === TriggerType.AGENT;
+        const isAgent = isAgentSummaryTrigger(detail?.trigger_type);
         const agentContentReady = !!this.state.personalResult?.content?.trim();
         const waitingForFallback = !!detail && isAgent && !detail.result?.content?.trim() && !agentContentReady;
 
@@ -4019,7 +4020,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const showCancel = !!detail && canCancel(detail.status);
         const showDelete = !!detail && isCreator;
         const showLeave = !!detail && isParticipant && !isCreator;
-        const canSchedule = !!detail?.permissions?.can_schedule && detail?.trigger_type !== TriggerType.AGENT && !this.state.isEditing && !this.state.editingTeamSummary;
+        const canSchedule = !!detail?.permissions?.can_schedule && !isAgentSummaryTrigger(detail?.trigger_type) && !this.state.isEditing && !this.state.editingTeamSummary;
         const scheduleItem = this.state.scheduleItem;
         const hasActiveSchedule = !!scheduleItem && scheduleItem.is_active !== false;
         const showSchedule = canSchedule;

@@ -311,15 +311,25 @@ export function getModeLabel(mode: SummaryModeType): string {
 }
 
 /**
+ * Both the synchronous Agent save route and the asynchronous Session-Finalize
+ * route produce user-facing Agent summaries. Keep that business classification
+ * separate from the backend trigger value used to route worker execution.
+ */
+export function isAgentSummaryTrigger(triggerType: number | null | undefined): boolean {
+    return triggerType === TriggerType.AGENT || triggerType === TriggerType.AGENT_FINALIZE;
+}
+
+/**
  * 总结是否可被 Agent 引用 — SummaryReferencePicker 与 SummaryDetailPage 共享。
  *
  * 当后端已部署 referenceable 字段时，以后端值为准。
  * 字段缺失时（后端未部署或 mock 未提供），回退到 legacy 行为：
- * 仅 trigger_type === AGENT 的总结可被引用。
+ * legacy 响应缺少 referenceable 时，Agent 同步保存(3)与
+ * Session-Finalize(5) 产物都按 Agent 总结处理。
  */
 export function isReferenceable(item: { referenceable?: boolean; trigger_type: number }): boolean {
     if (item.referenceable !== undefined) return item.referenceable === true;
-    return item.trigger_type === TriggerType.AGENT;
+    return isAgentSummaryTrigger(item.trigger_type);
 }
 
 /**
@@ -328,7 +338,7 @@ export function isReferenceable(item: { referenceable?: boolean; trigger_type: n
  * icon、CSS class 和 label 全部由这个 kind 派生，消除「四路 label 配两路
  * icon」的分裂（此前定时总结会渲染快速总结的 icon，aria-label 与视觉不符）。
  *
- * - agent: trigger_type === AGENT
+ * - agent: trigger_type === AGENT 或 AGENT_FINALIZE
  * - scheduled: trigger_type === SCHEDULED 或 schedule_id > 0（0 表示无 schedule）
  * - multi: trigger_type === MANUAL 且 participants.length > 1
  * - quick: trigger_type === MANUAL 且 participants.length <= 1，以及未知类型兜底
@@ -338,9 +348,8 @@ export type SummaryTypeKind = 'agent' | 'scheduled' | 'multi' | 'quick';
 export function getSummaryTypeKind(item: SummaryListItem): SummaryTypeKind {
     const isScheduled = item.trigger_type === TriggerType.SCHEDULED || (item.schedule_id != null && item.schedule_id > 0);
     if (isScheduled) return 'scheduled';
+    if (isAgentSummaryTrigger(item.trigger_type)) return 'agent';
     switch (item.trigger_type) {
-        case TriggerType.AGENT:
-            return 'agent';
         case TriggerType.MANUAL:
             return (item.participants?.length ?? 0) > 1 ? 'multi' : 'quick';
         default:

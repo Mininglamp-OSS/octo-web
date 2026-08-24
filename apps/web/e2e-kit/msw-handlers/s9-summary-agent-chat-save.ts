@@ -21,6 +21,8 @@ export async function registerS9SummaryAgentChatSave(page: Page): Promise<void> 
     const { worker, http, HttpResponse } = msw;
     const env = (data: unknown) => HttpResponse.json({ code: 0, message: "ok", data });
     const taskId = 9901;
+    const byPersonSummaryMode = 2;
+    const agentFinalizeTriggerType = 5;
     const now = "2026-08-06T09:10:00Z";
     const title = "S9 Agent 风险总结";
     const source = {
@@ -33,9 +35,9 @@ export async function registerS9SummaryAgentChatSave(page: Page): Promise<void> 
       task_no: "S9-TASK-9901",
       title,
       topic: title,
-      summary_mode: 1,
+      summary_mode: byPersonSummaryMode,
       status: 3,
-      trigger_type: 3,
+      trigger_type: agentFinalizeTriggerType,
       schedule_id: null,
       creator_id: "e2e-user-1",
       time_range_start: "2026-08-05T00:00:00Z",
@@ -54,7 +56,7 @@ export async function registerS9SummaryAgentChatSave(page: Page): Promise<void> 
       has_pending_submission: false,
       needs_attention: false,
       current_result_id: 8901,
-      current_personal_version_id: null,
+      current_personal_version_id: 990101,
       activity_at: "2026-08-06T09:12:00Z",
       result_id: 8901,
       result_edited_at: null,
@@ -160,6 +162,36 @@ export async function registerS9SummaryAgentChatSave(page: Page): Promise<void> 
         }, { status: 202 });
       }),
       http.get("*/summary/api/v1/summaries/9901", () => env(detail)),
+      http.get("*/summary/api/v1/summaries/9901/personal", () =>
+        env({
+          id: 990101,
+          version: 1,
+          worker_status: 2,
+          content:
+            "## S9 Agent 风险总结\n\n- 风险项需要提前暴露\n- 下周计划按负责人同步\n",
+          abstract: "S9 Agent 总结已保存，风险和计划已整理。",
+          citations: [],
+          submitted_at: now,
+          generated_at: "2026-08-06T09:12:00Z",
+          msg_count: 18,
+          current_version_id: 990101,
+        })
+      ),
+      http.get("*/summary/api/v1/summaries/9901/members", () =>
+        env({
+          members: [
+            {
+              user_id: "e2e-user-1",
+              user_name: "E2E Tester",
+              status: "submitted",
+              submitted_at: now,
+            },
+          ],
+        })
+      ),
+      http.get("*/summary/api/v1/summaries/9901/personal-versions", () =>
+        env({ versions: [], keep_limit: 3 })
+      ),
       http.post("*/summary/api/v1/summaries/9901/read", () =>
         env({ is_unread: false, has_pending_invitation: false, needs_attention: false })
       ),

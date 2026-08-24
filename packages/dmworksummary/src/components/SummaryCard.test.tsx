@@ -419,6 +419,19 @@ describe('SummaryCard relative time fallback (issue #1440)', () => {
 });
 
 describe('SummaryCard AI Generated Badge', () => {
+    it('trigger_type === AGENT_FINALIZE uses the Agent badge instead of Quick', () => {
+        render(
+            <SummaryCard
+                task={makeItem({ title: '定稿 Agent 总结', trigger_type: TriggerType.AGENT_FINALIZE }) as any}
+                onClick={noop}
+                onDelete={noop}
+            />,
+        );
+
+        expect(screen.getByRole('img', { name: 'Agent 总结' })).toBeInTheDocument();
+        expect(screen.queryByRole('img', { name: '快速总结' })).not.toBeInTheDocument();
+    });
+
     it('trigger_type === 3 (AGENT) 时显示对话生成徽标', () => {
         render(
             <SummaryCard
