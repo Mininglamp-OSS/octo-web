@@ -52,12 +52,6 @@
 
 .wk-message-summary-card__ai-tag {
   flex: none;
-  gap: var(--wk-sp-1);
-  padding: var(--wk-sp-0-5) var(--wk-sp-2);
-  border-radius: var(--wk-r-full);
-  background: var(--wk-ai-surface);
-  color: var(--wk-text-accent);
-  font-size: var(--wk-text-size-xs);
 }
 
 .wk-message-summary-card__meta {

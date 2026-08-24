@@ -79,7 +79,9 @@ import ContextMenus, { ContextMenusContext } from "../ContextMenus";
 import classNames from "classnames";
 import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
+import AITag from "../../ui/AITag";
 import { IconClose, IconEdit, IconReply } from "@douyinfe/semi-icons";
+import { Tooltip } from "@octo/ui";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import { wkConfirm } from "../WKModal";
 import { FlameMessageCell } from "../../Messages/Flame";
@@ -2414,11 +2416,10 @@ export class Conversation
         }
       );
       participantNameDisplay = (
-        <span className="wk-fold-session-participants-collapsed">
-          <span className="wk-fold-session-participant-name wk-fold-session-participant-name-ai">
-            {collapsedText}
-          </span>
-          <div className="wk-fold-session-tooltip">
+        <Tooltip
+          isDelayed
+          content={
+            <div className="wk-fold-session-tooltip-content">
             {participants.map((participant) => (
               <div
                 key={participant.id}
@@ -2432,8 +2433,15 @@ export class Conversation
                 </span>
               </div>
             ))}
-          </div>
-        </span>
+            </div>
+          }
+        >
+          <span className="wk-fold-session-participants-collapsed">
+            <span className="wk-fold-session-participant-name wk-fold-session-participant-name-ai">
+              {collapsedText}
+            </span>
+          </span>
+        </Tooltip>
       );
     } else {
       // 正常模式: 显示所有名字
@@ -2478,7 +2486,7 @@ export class Conversation
             <div className="wk-fold-session-title-row">
               <div className="wk-fold-session-participants">
                 {participantNameDisplay}
-                <span className="wk-fold-session-tag">{tagLabel}</span>
+                <AITag>{tagLabel}</AITag>
               </div>
               <span className="wk-fold-session-time">
                 {formatMessageTimestamp(session.lastMessage.timestamp)}

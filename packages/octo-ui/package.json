@@ -1,0 +1,55 @@
+{
+  "name": "@octo/ui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "files": [
+    "dist",
+    "src/index.d.ts",
+    "src/components/Button/types.ts",
+    "src/components/Tag/types.ts",
+    "src/components/Badge/types.ts",
+    "src/components/Dot/types.ts",
+    "src/components/Tooltip/types.ts"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "predev": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "peerDependencies": {
+    "@douyinfe/semi-icons": "^2.93.0",
+    "@douyinfe/semi-ui": "^2.93.0",
+    "react": ">=17 <19",
+    "react-dom": ">=17 <19"
+  },
+  "devDependencies": {
+    "@douyinfe/semi-icons": "^2.93.0",
+    "@douyinfe/semi-ui": "^2.93.0",
+    "@storybook/react-vite": "^10.3.3",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "postcss": "^8",
+    "postcss-import": "^16",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsup": "^8",
+    "vitest": "^4.1.5"
+  }
+}

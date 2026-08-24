@@ -1,5 +1,5 @@
 import React from "react";
-import "./index.css";
+import AITag from "../../ui/AITag";
 
 export interface AiBadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
     size?: "default" | "small";
@@ -11,7 +11,7 @@ const AiBadge: React.FC<AiBadgeProps> = ({ size = "default", className, children
         ? `ai-badge ${sizeClass} ${className}`
         : `ai-badge ${sizeClass}`;
 
-    return <span className={combinedClassName} {...props}>{children}</span>;
+    return <AITag size="xs" className={combinedClassName} {...props}>{children}</AITag>;
 };
 
 export default AiBadge;

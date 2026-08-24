@@ -3788,6 +3788,11 @@ body[theme-mode="dark"] .chat-selector-modal {
     white-space: nowrap;
 }
 
+.chat-selector-item-name > .ai-badge,
+.chat-selector-item-name > .octo-ui-tag {
+    margin-left: var(--wk-sp-1);
+}
+
 .chat-selector-right {
     width: 296px;
     flex-shrink: 0;

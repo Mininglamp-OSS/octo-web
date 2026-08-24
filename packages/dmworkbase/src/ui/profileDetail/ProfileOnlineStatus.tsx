@@ -1,4 +1,5 @@
 import React from "react";
+import { Dot } from "@octo/ui";
 import { i18n, t } from "../../i18n";
 import "./ProfileOnlineStatus.css";
 
@@ -137,7 +138,10 @@ function ProfileOnlineStatus({ channelInfo, className }: ProfileOnlineStatusProp
       aria-live="polite"
       aria-label={status.text}
     >
-      <span className="wk-profile-online-status-dot" aria-hidden="true" />
+      <Dot
+        tone={status.tone === "online" ? "success" : "neutral"}
+        className="wk-profile-online-status-dot"
+      />
       <span className="wk-profile-online-status-text">{status.text}</span>
     </div>
   );

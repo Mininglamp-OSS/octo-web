@@ -4,12 +4,13 @@ import {
     Spin,
     Toast,
     Banner,
-    Tag,
     Modal,
     Popconfirm,
     Tooltip,
     Dropdown,
 } from "@douyinfe/semi-ui";
+import { Tag } from "@octo/ui";
+import type { TagTone } from "@octo/ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
 import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";
@@ -2886,14 +2887,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-result-header">
                         <h3>{t("summary.detail.contentTitle")}</h3>
                         <div className="summary-detail-result-badges">
-                            <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
+                            <Tag tone="blue" size="small" icon={<IconHistory />}>
                                 {t("summary.common.version", { values: { version: detail.result.version } })}
                             </Tag>
-                            <Tag color="green" size="small">
+                            <Tag tone="green" size="small">
                                 {t("summary.common.messagesCount", { values: { count: detail.result.total_msg_count } })}
                             </Tag>
                             {detail.result_is_edited && detail.result_edited_at && (
-                                <Tag color="orange" size="small">{t("summary.detail.edited")}</Tag>
+                                <Tag tone="orange" size="small">{t("summary.detail.edited")}</Tag>
                             )}
                         </div>
                     </div>
@@ -3146,10 +3147,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-section-header">
                         <span>{t("summary.detail.previousTeamSummary")}</span>
                         <div className="summary-detail-section-badges">
-                            <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
+                            <Tag tone="blue" size="small" icon={<IconHistory />}>
                                 {t("summary.common.version", { values: { version: detail.result.version } })}
                             </Tag>
-                            <Tag color="grey" size="small" prefixIcon={<IconClock />} className="summary-detail-team-generated-time">
+                            <Tag tone="gray" size="small" icon={<IconClock />} className="summary-detail-team-generated-time">
                                 {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
                             </Tag>
                         </div>
@@ -3230,14 +3231,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <span>{t("summary.detail.teamSummary")}</span>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <div className="summary-detail-section-badges">
-                            <Tag color="cyan" size="small" prefixIcon={<IconUser />}>
+                            <Tag tone="cyan" size="small" icon={<IconUser />}>
                                 {t("summary.detail.submittedPeople", { values: { count: submittedCount } })}
                             </Tag>
-                            <Tag color="blue" size="small" prefixIcon={<IconHistory />}>
+                            <Tag tone="blue" size="small" icon={<IconHistory />}>
                                 {t("summary.common.version", { values: { version: detail.result.version } })}
                             </Tag>
                             {/* 团队总结当前版本的生成时间：与「版本」Tag 语义相邻，与 single 视图（985行）保持一致的容错（formatDate 对 null 返回 "-"）。 */}
-                            <Tag color="grey" size="small" prefixIcon={<IconClock />} className="summary-detail-team-generated-time">
+                            <Tag tone="gray" size="small" icon={<IconClock />} className="summary-detail-team-generated-time">
                                 {t("summary.detail.generatedAt", { values: { time: formatDate(detail.result.generated_at) } })}
                             </Tag>
                         </div>
@@ -3319,13 +3320,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 如果只有 1 个人（creator 自己），不显示成员状态区块
         if (members.length <= 1) return null;
 
-        const statusConfig: Record<string, { icon: React.ReactNode; label: string; type: "success" | "warning" | "danger" | "default" }> = {
-            pending: { icon: <IconClock />, label: t("summary.memberStatus.pending"), type: "warning" },
-            accepted: { icon: <IconTick />, label: t("summary.memberStatus.accepted"), type: "success" },
-            declined: { icon: <IconClose />, label: t("summary.memberStatus.declined"), type: "danger" },
-            processing: { icon: <IconInfoCircle />, label: t("summary.memberStatus.processing"), type: "default" },
-            completed: { icon: <IconTick />, label: t("summary.memberStatus.completed"), type: "success" },
-            submitted: { icon: <IconTick />, label: t("summary.memberStatus.submitted"), type: "success" },
+        const statusConfig: Record<string, { icon: React.ReactNode; label: string; tone: TagTone }> = {
+            pending: { icon: <IconClock />, label: t("summary.memberStatus.pending"), tone: "amber" },
+            accepted: { icon: <IconTick />, label: t("summary.memberStatus.accepted"), tone: "green" },
+            declined: { icon: <IconClose />, label: t("summary.memberStatus.declined"), tone: "red" },
+            processing: { icon: <IconInfoCircle />, label: t("summary.memberStatus.processing"), tone: "gray" },
+            completed: { icon: <IconTick />, label: t("summary.memberStatus.completed"), tone: "green" },
+            submitted: { icon: <IconTick />, label: t("summary.memberStatus.submitted"), tone: "green" },
         };
 
         return (
@@ -3343,7 +3344,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         return (
                             <div key={m.user_id} data-testid={summaryTestIds.detailMemberRow(m.user_id)} className="summary-detail-member-item">
                                 <span className="summary-detail-member-name">{m.user_name}</span>
-                                <Tag color={st.type} prefixIcon={st.icon} size="small">
+                                <Tag tone={st.tone} icon={st.icon} size="small">
                                     {st.label}
                                 </Tag>
                                 {isMe && m.status === "pending" && (
