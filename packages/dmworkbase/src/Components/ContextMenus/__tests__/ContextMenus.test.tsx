@@ -187,8 +187,46 @@ describe("ContextMenus rounded hover boundaries", () => {
 
         expect(rootList.querySelector(":scope > li:first-of-type")?.textContent).toContain("Move to")
         expect(rootList.querySelector(":scope > li:last-of-type")?.textContent).toBe("Delete")
-        expect(submenu.querySelector(":scope > li:first-of-type")?.textContent).toBe("First group")
-        expect(submenu.querySelector(":scope > li:last-of-type")?.textContent).toBe("Last group")
+        expect(submenu.querySelector(":scope > .wk-ctx-submenu-list > li:first-of-type")?.textContent).toBe("First group")
+        expect(submenu.querySelector(":scope > .wk-ctx-submenu-list > li:last-of-type")?.textContent).toBe("Last group")
+    })
+
+    it("keeps a long submenu inside the viewport and makes its list scrollable", () => {
+        act(() => {
+            ReactDOM.render(
+                <ContextMenus
+                    onContext={() => undefined}
+                    menus={[{
+                        title: "Add to favorites",
+                        children: Array.from({ length: 30 }, (_, index) => ({ title: `Group ${index + 1}` })),
+                    }]}
+                />,
+                container
+            )
+        })
+
+        const parentItem = container.querySelector<HTMLElement>(".wk-contextmenus > ul > li")!
+        const submenu = container.querySelector<HTMLElement>(".wk-ctx-submenu")!
+        const submenuList = container.querySelector<HTMLElement>(".wk-ctx-submenu-list")!
+        Object.defineProperty(submenuList, "scrollHeight", { configurable: true, value: 1200 })
+        vi.spyOn(parentItem, "getBoundingClientRect").mockReturnValue({
+            top: 740,
+            bottom: 780,
+            left: 0,
+            right: 160,
+            width: 160,
+            height: 40,
+            x: 0,
+            y: 740,
+            toJSON: () => ({}),
+        })
+
+        act(() => {
+            parentItem.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }))
+        })
+
+        expect(submenu.style.top).toBe("-732px")
+        expect(submenuList.querySelectorAll(":scope > li")).toHaveLength(30)
     })
 })
 
