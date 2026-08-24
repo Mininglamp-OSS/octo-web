@@ -2899,7 +2899,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ convertingKey: key });
         try {
             const docTitle = title ?? this.context.t("summary.detail.defaultTitle");
-            const { url } = await api.convertSummaryToDoc(docTitle, content);
+            // 转文档时去掉引用序号标记（`[1]` / `[1,2]` / 团队 `[P1]`）——它们是总结正文
+            // 的引用锚,落到文档正文里是噪声。只删纯数字/P数字方括号,不误伤 markdown 链接。
+            const cleaned = content.replace(/\s?\[P?\d+(?:[,，]\s*P?\d+)*\]/g, "");
+            const { url } = await api.convertSummaryToDoc(docTitle, cleaned);
             if (this.unmounted) {
                 if (opened && !opened.closed) opened.close();
                 return;
