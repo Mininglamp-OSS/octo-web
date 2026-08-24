@@ -3,7 +3,7 @@
   "promptForward.botLoading": "正在加载 Bot 列表…",
   "promptForward.botError": "Bot 列表加载失败",
   "promptForward.retry": "重试",
-  "promptForward.botEmpty": "当前空间还没有你创建的 Bot",
+  "promptForward.botEmpty": "当前组织还没有你创建的 Bot",
   "promptForward.noDescription": "暂无描述",
   "promptForward.copyPrompt": "复制提示词",
   "promptForward.copied": "已复制",

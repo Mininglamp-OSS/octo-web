@@ -61,7 +61,7 @@ export type OnboardingSection = {
   labelKey: string;
   titleKey: string;
   descriptionKey: string;
-  visualTitleKey: string;
+  imageAltKey?: string;
   image: string;
   imageFit?: "cover" | "contain";
   action?: OnboardingAction;
@@ -87,7 +87,7 @@ export type ResolvedOnboardingSection = OnboardingSection & {
   label: string;
   title: string;
   description: string;
-  visualTitle: string;
+  imageAlt: string;
 };
 
 type TranslateFn = (key: string) => string;
@@ -108,26 +108,25 @@ export const defaultOnboardingConfig: OnboardingConfig = {
   sections: [
     {
       id: "workspace",
-      labelKey: "app.onboarding.sections.workspace.label",
-      titleKey: "app.onboarding.sections.workspace.title",
-      descriptionKey: "app.onboarding.sections.workspace.description",
-      visualTitleKey: "app.onboarding.sections.workspace.visualTitle",
+      labelKey: "app.onboarding.sections.organization.label",
+      titleKey: "app.onboarding.sections.organization.title",
+      descriptionKey: "app.onboarding.sections.organization.description",
       image: workspaceImage,
     },
     {
       id: "subspaces",
-      labelKey: "app.onboarding.sections.subspaces.label",
-      titleKey: "app.onboarding.sections.subspaces.title",
-      descriptionKey: "app.onboarding.sections.subspaces.description",
-      visualTitleKey: "app.onboarding.sections.subspaces.visualTitle",
+      labelKey: "app.onboarding.sections.threads.label",
+      titleKey: "app.onboarding.sections.threads.title",
+      descriptionKey: "app.onboarding.sections.threads.description",
+      imageAltKey: "app.onboarding.sections.threads.imageAlt",
       image: subspacesImage,
     },
     {
       id: "favorites",
-      labelKey: "app.onboarding.sections.favorites.label",
-      titleKey: "app.onboarding.sections.favorites.title",
-      descriptionKey: "app.onboarding.sections.favorites.description",
-      visualTitleKey: "app.onboarding.sections.favorites.visualTitle",
+      labelKey: "app.onboarding.sections.following.label",
+      titleKey: "app.onboarding.sections.following.title",
+      descriptionKey: "app.onboarding.sections.following.description",
+      imageAltKey: "app.onboarding.sections.following.imageAlt",
       image: favoritesImage,
     },
     {
@@ -135,7 +134,7 @@ export const defaultOnboardingConfig: OnboardingConfig = {
       labelKey: "app.onboarding.sections.groupMd.label",
       titleKey: "app.onboarding.sections.groupMd.title",
       descriptionKey: "app.onboarding.sections.groupMd.description",
-      visualTitleKey: "app.onboarding.sections.groupMd.visualTitle",
+      imageAltKey: "app.onboarding.sections.groupMd.imageAlt",
       image: groupMdImage,
     },
     {
@@ -143,7 +142,7 @@ export const defaultOnboardingConfig: OnboardingConfig = {
       labelKey: "app.onboarding.sections.smartSummary.label",
       titleKey: "app.onboarding.sections.smartSummary.title",
       descriptionKey: "app.onboarding.sections.smartSummary.description",
-      visualTitleKey: "app.onboarding.sections.smartSummary.visualTitle",
+      imageAltKey: "app.onboarding.sections.smartSummary.imageAlt",
       image: smartSummaryImage,
     },
     {
@@ -151,7 +150,7 @@ export const defaultOnboardingConfig: OnboardingConfig = {
       labelKey: "app.onboarding.sections.webhook.label",
       titleKey: "app.onboarding.sections.webhook.title",
       descriptionKey: "app.onboarding.sections.webhook.description",
-      visualTitleKey: "app.onboarding.sections.webhook.visualTitle",
+      imageAltKey: "app.onboarding.sections.webhook.imageAlt",
       image: webhookImage,
     },
     {
@@ -159,7 +158,7 @@ export const defaultOnboardingConfig: OnboardingConfig = {
       labelKey: "app.onboarding.sections.browserExtension.label",
       titleKey: "app.onboarding.sections.browserExtension.title",
       descriptionKey: "app.onboarding.sections.browserExtension.description",
-      visualTitleKey: "app.onboarding.sections.browserExtension.visualTitle",
+      imageAltKey: "app.onboarding.sections.browserExtension.imageAlt",
       image: browserExtensionImage,
       action: {
         type: "external-link",
@@ -173,7 +172,7 @@ export const defaultOnboardingConfig: OnboardingConfig = {
       labelKey: "app.onboarding.sections.createBot.label",
       titleKey: "app.onboarding.sections.createBot.title",
       descriptionKey: "app.onboarding.sections.createBot.description",
-      visualTitleKey: "app.onboarding.sections.createBot.visualTitle",
+      imageAltKey: "app.onboarding.sections.createBot.imageAlt",
       image: createBotImage,
       action: {
         type: "finish",
@@ -214,13 +213,12 @@ export function resolveOnboardingSections(
       label: t(section.labelKey),
       title: t(section.titleKey),
       description: t(section.descriptionKey),
-      visualTitle: t(section.visualTitleKey),
+      imageAlt: section.imageAltKey ? t(section.imageAltKey) : "",
     }))
     .filter(
       (section) =>
         Boolean(section.label) &&
         Boolean(section.title) &&
-        Boolean(section.description) &&
-        Boolean(section.visualTitle)
+        Boolean(section.description)
     );
 }

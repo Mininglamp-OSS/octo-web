@@ -224,7 +224,7 @@
 }
 
 .wk-navrail__flyout--lg {
-    width: 240px;
+    width: 264px;
     background: var(--wk-bg-surface);
     border-color: var(--wk-border-subtle);
     border-radius: 8px;                /* Figma: cornerRadius=8 */
