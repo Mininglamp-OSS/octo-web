@@ -233,8 +233,8 @@ import { Checkbox } from '@douyinfe/semi-ui' // 用 Checkbox（本项目版）�
 
 ```
 Layer 1 原子组件：
-  AiBadge / Search / @octo/ui Button / Checkbox / IconClick / InputEdit
-  WKInput / SpaceAvatar / ActionListItem
+  AiBadge / Search / @octo/ui Button / @octo/ui Input / Checkbox / IconClick
+  SpaceAvatar / ActionListItem
 
 Layer 2 布局/复合组件：
   WKNavHeader / WKAvatar / WKViewQueue / WKViewQueueHeader / WKLayout

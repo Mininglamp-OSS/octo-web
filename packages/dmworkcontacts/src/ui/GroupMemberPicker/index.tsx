@@ -22,7 +22,7 @@ function GroupMemberPicker({
   const memberList = (
     <div className="wk-organizational-group-new-left">
       <div className="group-new-left-search">
-        <Input
+        <Input.Search
           className="group-new-left-search-input"
           placeholder={copy.searchPlaceholder}
           value={keyword}

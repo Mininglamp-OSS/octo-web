@@ -110,6 +110,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                                 value={description}
                                 placeholder={t("base.spaceCreate.descriptionPlaceholder")}
                                 maxCount={200}
+                                allowWrap={false}
                                 onChange={(v) => this.setState({ description: v })}
                             />
                         </div>

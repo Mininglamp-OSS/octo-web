@@ -17,7 +17,6 @@ import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
 import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
 import { getElectronLinksBridge } from "../../electron/desktopBridge";
-import WKButton from "../../Components/WKButton";
 import WKModal from "../../Components/WKModal";
 import { Columns2, ChevronRight } from "lucide-react";
 import ThreadIcon from "../../Components/Icons/ThreadIcon";

@@ -166,11 +166,13 @@ body {
   --octo-ui-select-chip-remove-size: 14px;
 
   --octo-ui-input-width: 240px;
-  --octo-ui-input-textarea-width: 320px;
+  --octo-ui-input-textarea-width: 100%;
   --octo-ui-input-height: 32px;
   --octo-ui-input-height-sm: 28px;
   --octo-ui-input-height-lg: 40px;
   --octo-ui-input-textarea-min-height: 80px;
+  --octo-ui-input-textarea-min-height-sm: 64px;
+  --octo-ui-input-textarea-min-height-lg: 96px;
   --octo-ui-input-radius: 6px;
   --octo-ui-input-radius-round: 9999px;
   --octo-ui-input-padding-x: 12px;

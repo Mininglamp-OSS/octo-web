@@ -1821,7 +1821,9 @@ export default class BaseModule implements IModule {
           }
         }}
         maxCount={maxCount}
-        allowWrap={allowWrap}
+        allowWrap={allowWrap ?? false}
+        autosize={{ minRows: 2, maxRows: 6 }}
+        showClear
       ></Input.TextArea>,
       new RouteContextConfig({
         showFinishButton: true,

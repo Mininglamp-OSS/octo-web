@@ -10,7 +10,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
 vi.mock('@douyinfe/semi-ui/lib/es/input', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
   const Input = React.forwardRef<HTMLInputElement, any>(function MockInput(
-    { className, prefix, suffix, validateStatus, value, defaultValue, onEnterPress, ...rest },
+    { className, prefix, suffix, validateStatus, value, defaultValue, onEnterPress, readonly, ...rest },
     ref,
   ) {
     return (
@@ -23,7 +23,7 @@ vi.mock('@douyinfe/semi-ui/lib/es/input', async () => {
           onKeyDown={(event) => {
             if (event.key === 'Enter') onEnterPress?.(event)
           }}
-          readOnly
+          readOnly={readonly}
         />
         {suffix}
       </span>
@@ -37,12 +37,12 @@ vi.mock('@douyinfe/semi-ui/lib/es/input/textarea', async () => {
   const React = await vi.importActual<typeof import('react')>('react')
   return {
     default: React.forwardRef<HTMLTextAreaElement, any>(function MockTextArea(
-      { className, validateStatus, value, defaultValue, ...rest },
+      { className, validateStatus, value, defaultValue, readonly, ...rest },
       ref,
     ) {
       return (
         <span data-status={validateStatus}>
-          <textarea {...rest} ref={ref} className={className} value={value ?? defaultValue} readOnly />
+          <textarea {...rest} ref={ref} className={className} value={value ?? defaultValue} readOnly={readonly} />
         </span>
       )
     }),

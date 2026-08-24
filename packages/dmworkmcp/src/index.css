@@ -1552,6 +1552,17 @@
   line-height: 1.5;
 }
 
+.wk-mcp-field .octo-ui-input,
+.wk-mcp-field .octo-ui-textarea,
+.wk-mcp-import-panel .octo-ui-textarea,
+.wk-mcp-kv__key,
+.wk-mcp-kv__value,
+.wk-mcp-row__grow .octo-ui-input,
+.wk-mcp-faq-card .octo-ui-input,
+.wk-mcp-faq-card .octo-ui-textarea {
+  width: 100%;
+}
+
 /* Side-by-side row inside a field (e.g. icon + name) */
 .wk-mcp-field-row {
   display: flex;

@@ -18,6 +18,10 @@
     gap: var(--wk-sp-1-5, 6px);
 }
 
+.wk-join-space-modal__field .octo-ui-input {
+    width: 100%;
+}
+
 .wk-join-space-modal__label {
     font-size: var(--wk-text-size-xs, 12px);
     font-weight: 600;

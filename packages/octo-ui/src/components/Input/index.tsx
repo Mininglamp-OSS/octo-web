@@ -25,8 +25,12 @@ function normalizeStatus(status?: InputStatus, validateStatus?: InputStatus, err
   return status ?? validateStatus ?? 'default'
 }
 
+function hasAffix(node: React.ReactNode) {
+  return node !== undefined && node !== null && node !== false
+}
+
 function renderAffix(node: React.ReactNode, position: 'prefix' | 'suffix') {
-  if (node === undefined || node === null || node === false) {
+  if (!hasAffix(node)) {
     return undefined
   }
 
@@ -70,6 +74,8 @@ const InputBase = forwardRef<ComponentRef<typeof SemiInput>, InputProps>(functio
     error,
     onEnterPress,
     prefix,
+    readOnly,
+    readonly,
     size = 'default',
     status,
     suffix,
@@ -84,13 +90,14 @@ const InputBase = forwardRef<ComponentRef<typeof SemiInput>, InputProps>(functio
     <SemiInput
       {...rest}
       ref={ref}
-      className={getInputClasses(className, size, resolvedStatus, disabled, false, Boolean(prefix), Boolean(suffix))}
+      className={getInputClasses(className, size, resolvedStatus, disabled, false, hasAffix(prefix), hasAffix(suffix))}
       disabled={disabled}
       prefix={renderAffix(prefix, 'prefix')}
+      readonly={readonly ?? readOnly}
       size={normalizeSize(size)}
       suffix={renderAffix(suffix, 'suffix')}
       validateStatus={resolvedStatus}
-      onEnterPress={onEnterPress as never}
+      onEnterPress={onEnterPress}
     />
   )
 })
@@ -101,6 +108,8 @@ const Search = forwardRef<ComponentRef<typeof SemiInput>, InputSearchProps>(func
     disabled,
     error,
     searchIcon,
+    readOnly,
+    readonly,
     size = 'default',
     status,
     suffix,
@@ -120,9 +129,10 @@ const Search = forwardRef<ComponentRef<typeof SemiInput>, InputSearchProps>(func
     <SemiInput
       {...rest}
       ref={ref}
-      className={getInputClasses(className, size, resolvedStatus, disabled, true, true, Boolean(suffix))}
+      className={getInputClasses(className, size, resolvedStatus, disabled, true, true, hasAffix(suffix))}
       disabled={disabled}
       prefix={prefix}
+      readonly={readonly ?? readOnly}
       size={normalizeSize(size)}
       suffix={renderAffix(suffix, 'suffix')}
       validateStatus={resolvedStatus}
@@ -143,6 +153,9 @@ const TextArea = forwardRef<ComponentRef<typeof SemiTextArea>, InputTextAreaProp
     onChange,
     onEnterPress,
     onKeyDown,
+    onPressEnter,
+    readOnly,
+    readonly,
     showCount,
     showCounter,
     size,
@@ -160,11 +173,14 @@ const TextArea = forwardRef<ComponentRef<typeof SemiTextArea>, InputTextAreaProp
   const showCountNode = showCount ?? showCounter ?? Boolean(maxCount)
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((disabledEnterStartNewLine || !allowWrap) && event.key === 'Enter') {
+    const isComposing = event.nativeEvent.isComposing
+    const isPlainEnter = event.key === 'Enter' && !event.shiftKey && !isComposing
+    if ((disabledEnterStartNewLine || !allowWrap) && isPlainEnter) {
       event.preventDefault()
     }
-    if (event.key === 'Enter') {
+    if (isPlainEnter) {
       onEnterPress?.(event)
+      onPressEnter?.(event)
     }
     onKeyDown?.(event)
   }
@@ -186,6 +202,8 @@ const TextArea = forwardRef<ComponentRef<typeof SemiTextArea>, InputTextAreaProp
         className="octo-ui-textarea__control"
         defaultValue={defaultValue}
         disabled={disabled}
+        getValueLength={getValueLength}
+        readonly={readonly ?? readOnly}
         validateStatus={resolvedStatus}
         value={value}
         onChange={(next, event) => {

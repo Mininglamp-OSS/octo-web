@@ -27,12 +27,12 @@
 }
 .wk-organizational-group-new-left
   .group-new-left-search
-  .group-new-left-search-input.semi-input-wrapper-focus {
+  .group-new-left-search-input:focus-within {
   border: var(--wk-color-theme) solid 1px;
 }
 .wk-organizational-group-new-left
   .group-new-left-search
-  .group-new-left-search-input.semi-input-wrapper-focus:active {
+  .group-new-left-search-input:active {
   border: var(--wk-color-theme) solid 1px;
 }
 /* 好友选择 */
@@ -307,30 +307,8 @@
    全部限定在 .group-create-members / .group-create-selected 作用域，
    这两个类仅创建弹窗存在；renderMemberLeft/renderSelectedList 虽与群设置
    「添加成员」弹窗共用 DOM，但那套不在此作用域内，故零影响。
-   搜索框图标也用纯 CSS 伪元素注入，不改共用的 <Input> JSX。
    ==================================================================== */
 
-/* 搜索框：胶囊形 + 左侧放大镜（对齐 wk-fm-search）。
-   图标用 mask + 主题色变量，颜色随主题/暗色模式变化，不写死色值。 */
-.group-create-members .group-new-left-search {
-  position: relative;
-}
-.group-create-members .group-new-left-search::before {
-  content: "";
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  width: 16px;
-  height: 16px;
-  transform: translateY(-50%);
-  z-index: 1;
-  pointer-events: none;
-  background-color: var(--semi-color-text-2);
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
-    no-repeat center / contain;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m21 21-4.3-4.3'/%3E%3C/svg%3E")
-    no-repeat center / contain;
-}
 .group-create-members .group-new-left-search .group-new-left-search-input {
   border-radius: 9999px;
   background: var(--semi-color-fill-1);
@@ -339,9 +317,8 @@
 .group-create-members
   .group-new-left-search
   .group-new-left-search-input
-  .semi-input {
+  input {
   background: transparent;
-  padding-left: 28px;
 }
 
 /* 列表行：行高/留白/hover 对齐 wk-fm-item（padding 4px、hover 极淡） */

@@ -33,6 +33,18 @@ afterEach(() => {
 })
 
 describe('Input.TextArea with real Semi', () => {
+  it('normalizes readOnly to Semi readonly for input and textarea', () => {
+    const { container } = render(
+      <>
+        <Input readOnly value="locked" />
+        <Input.TextArea readOnly value="locked" />
+      </>,
+    )
+
+    expect((container.querySelector('input') as HTMLInputElement).readOnly).toBe(true)
+    expect((container.querySelector('textarea') as HTMLTextAreaElement).readOnly).toBe(true)
+  })
+
   it('updates maxCount display for uncontrolled textareas', () => {
     const { container } = render(<Input.TextArea defaultValue="abc" maxCount={10} />)
     const textarea = container.querySelector('textarea') as HTMLTextAreaElement
@@ -58,5 +70,25 @@ describe('Input.TextArea with real Semi', () => {
     })
 
     expect(onEnterPress).toHaveBeenCalledTimes(1)
+  })
+
+  it('maps onPressEnter and skips composing or shifted Enter', () => {
+    const onEnterPress = vi.fn()
+    const onPressEnter = vi.fn()
+    const { container } = render(
+      <Input.TextArea allowWrap={false} onEnterPress={onEnterPress} onPressEnter={onPressEnter} />,
+    )
+    const textarea = container.querySelector('textarea') as HTMLTextAreaElement
+
+    act(() => {
+      const composingEnter = new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' })
+      Object.defineProperty(composingEnter, 'isComposing', { value: true })
+      textarea.dispatchEvent(composingEnter)
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter', shiftKey: true }))
+      textarea.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'Enter' }))
+    })
+
+    expect(onEnterPress).toHaveBeenCalledTimes(1)
+    expect(onPressEnter).toHaveBeenCalledTimes(1)
   })
 })

@@ -31,7 +31,7 @@ export interface InputProps extends NativeInputProps {
   insetLabelId?: string
   mode?: SemiInputProps['mode']
   onBlur?: (event: FocusEvent<HTMLInputElement>) => void
-  onChange?: (value: string, event: React.ChangeEvent<HTMLInputElement>) => void
+  onChange?: (value: string, event: ChangeEvent<HTMLInputElement>) => void
   onClear?: SemiInputProps['onClear']
   onEnterPress?: (event: KeyboardEvent<HTMLInputElement>) => void
   onFocus?: (event: FocusEvent<HTMLInputElement>) => void
@@ -46,7 +46,7 @@ export interface InputProps extends NativeInputProps {
   value?: string | number
 }
 
-export interface InputSearchProps extends Omit<InputProps, 'prefix' | 'round' | 'type'> {
+export interface InputSearchProps extends Omit<InputProps, 'prefix' | 'type'> {
   searchIcon?: ReactNode
 }
 
