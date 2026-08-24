@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { TextArea, Toast } from "@douyinfe/semi-ui";
+import { Input } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { t } from "../../i18n";
 import { wkConfirm } from "../../Components/WKModal/confirm";
 
@@ -65,7 +66,7 @@ function DenyReasonBody(props: {
           {t("base.message.interactiveCard.denyDialog.required")}
         </span>
       </div>
-      <TextArea
+            <Input.TextArea
         autosize={{ minRows: 3, maxRows: 6 }}
         maxLength={MAX_REASON}
         placeholder={t("base.message.interactiveCard.denyDialog.placeholder")}

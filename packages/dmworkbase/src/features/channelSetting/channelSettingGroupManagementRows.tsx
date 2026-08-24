@@ -24,13 +24,13 @@ import {
   ChannelSettingInfoRow,
   ChannelSettingInlineEditRow,
 } from "../../ui/ChannelSettingRows";
-import { ChannelSettingInputEditPush } from "./types";
+import { ChannelSettingTextEditPush } from "./types";
 import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
 
 interface BuildGroupManagementRowsOptions {
   context: RouteContext<ChannelSettingRouteData>;
   data: ChannelSettingRouteData;
-  inputEditPush: ChannelSettingInputEditPush;
+  textEditPush: ChannelSettingTextEditPush;
   disbanded: boolean;
 }
 

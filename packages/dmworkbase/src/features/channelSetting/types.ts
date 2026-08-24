@@ -1,6 +1,6 @@
 import RouteContext from "../../Service/Context";
 
-export type ChannelSettingInputEditPush = (
+export type ChannelSettingTextEditPush = (
   context: RouteContext<any>,
   defaultValue: string,
   onFinish: (value: string) => Promise<void>,

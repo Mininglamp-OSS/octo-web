@@ -6,11 +6,11 @@ import { Section } from "../../Service/Section";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { buildGroupManagementRows } from "./channelSettingGroupManagementRows";
 import { buildGroupProfileRows } from "./channelSettingGroupProfileRows";
-import { ChannelSettingInputEditPush } from "./types";
+import { ChannelSettingTextEditPush } from "./types";
 
 export function buildChannelGroupInfoSection(
   context: RouteContext<ChannelSettingRouteData>,
-  inputEditPush: ChannelSettingInputEditPush
+  textEditPush: ChannelSettingTextEditPush
 ) {
   const data = context.routeData() as ChannelSettingRouteData;
   if (data.channel.channelType !== ChannelTypeGroup) {
@@ -20,8 +20,8 @@ export function buildChannelGroupInfoSection(
   const disbanded = isGroupDisbanded(data.channelInfo);
   return new Section({
     rows: [
-      ...buildGroupProfileRows({ context, data, inputEditPush, disbanded }),
-      ...buildGroupManagementRows({ context, data, inputEditPush, disbanded }),
+      ...buildGroupProfileRows({ context, data, textEditPush, disbanded }),
+      ...buildGroupManagementRows({ context, data, textEditPush, disbanded }),
     ],
   });
 }

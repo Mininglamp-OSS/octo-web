@@ -1,6 +1,6 @@
-import { Button, Checkbox } from "@octo/ui";
+import { Button, Checkbox, Input } from "@octo/ui";
 import React, { Component } from "react";
-import { Modal, Input, Spin, Empty, Avatar } from "@douyinfe/semi-ui";
+import { Modal, Spin, Empty, Avatar } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { I18nContext } from "@octo/base";
 import { Dap } from "@octo/base";

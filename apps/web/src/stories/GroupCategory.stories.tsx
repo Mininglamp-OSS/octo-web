@@ -1,7 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Input } from "@octo/ui";
 import type { Meta, StoryObj } from '@storybook/react-vite'
 import React, { useState } from 'react'
-import { Input } from '@douyinfe/semi-ui';
 
 import ViewToggle from '../../../../packages/dmworkbase/src/Components/ViewToggle'
 import ConversationListGrouped from '../../../../packages/dmworkbase/src/Components/ConversationListGrouped'

@@ -1,5 +1,5 @@
-import { Button } from "@octo/ui";
-import { Input, Spin } from "@douyinfe/semi-ui";
+import { Button, Input } from "@octo/ui";
+import { Spin } from "@douyinfe/semi-ui";
 import { Camera, Check, ChevronRight, Edit3, QrCode } from "lucide-react";
 import React from "react";
 import RealnameVerifiedBadge from "../RealnameVerifiedBadge";

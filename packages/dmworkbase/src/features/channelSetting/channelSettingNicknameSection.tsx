@@ -8,11 +8,11 @@ import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { updateChannelSettingMyGroupNickname } from "../../bridge/channelSetting/channelSettingActions";
 import { t } from "../../i18n";
 import { ChannelSettingInlineEditRow } from "../../ui/ChannelSettingRows";
-import { ChannelSettingInputEditPush } from "./types";
+import { ChannelSettingTextEditPush } from "./types";
 
 export function buildMyGroupNicknameSection(
   context: RouteContext<ChannelSettingRouteData>,
-  _inputEditPush: ChannelSettingInputEditPush
+  _textEditPush: ChannelSettingTextEditPush
 ) {
   const data = context.routeData() as ChannelSettingRouteData;
   if (

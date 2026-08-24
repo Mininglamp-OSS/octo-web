@@ -2,6 +2,7 @@ import React from 'react';
 import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AgentChatPanel from '../AgentChatPanel';
+import { summaryTestIds } from '../../utils/testIds';
 
 // @octo/base 走 dmworkBase mock，其 I18nContext 默认值已带 t，直接渲染即可。
 vi.mock('@douyinfe/semi-ui', () => ({
@@ -26,14 +27,6 @@ vi.mock('@douyinfe/semi-ui', () => ({
                 </button>
             </div>
         ) : null,
-    Input: ({ value, onChange, placeholder }: any) => (
-        <input
-            data-testid="summary-title-input"
-            value={value}
-            onChange={(e) => onChange && onChange(e.target.value)}
-            placeholder={placeholder}
-        />
-    ),
     Toast: {
         warning: vi.fn(),
         error: vi.fn(),
@@ -109,7 +102,7 @@ describe('AgentChatPanel - Save as Summary', () => {
         fireEvent.click(saveButton);
 
         expect(screen.getByTestId('save-modal')).toBeInTheDocument();
-        expect(screen.getByTestId('summary-title-input')).toBeInTheDocument();
+        expect(screen.getByTestId(summaryTestIds.agentSaveTitleInput)).toBeInTheDocument();
     });
 
     it('空标题时点击确定应显示警告', async () => {
@@ -169,7 +162,7 @@ describe('AgentChatPanel - Save as Summary', () => {
         expect(screen.getByTestId('save-modal')).toBeInTheDocument();
         
         // 输入标题
-        const titleInput = screen.getByTestId('summary-title-input');
+        const titleInput = screen.getByTestId(summaryTestIds.agentSaveTitleInput);
         fireEvent.change(titleInput, { target: { value: '测试总结' } });
         expect(titleInput).toHaveValue('测试总结');
         
@@ -215,7 +208,7 @@ describe('AgentChatPanel - Save as Summary', () => {
         expect(screen.getByTestId('save-modal')).toBeInTheDocument();
         
         // 输入标题
-        const titleInput = screen.getByTestId('summary-title-input');
+        const titleInput = screen.getByTestId(summaryTestIds.agentSaveTitleInput);
         fireEvent.change(titleInput, { target: { value: '测试总结' } });
         expect(titleInput).toHaveValue('测试总结');
         

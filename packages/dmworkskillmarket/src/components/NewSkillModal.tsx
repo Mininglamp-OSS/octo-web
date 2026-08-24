@@ -1,7 +1,7 @@
-import { Button } from "@octo/ui";
+import { Button, Input } from "@octo/ui";
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, FileArchive, ImagePlus, Loader2, UploadCloud, XCircle } from "lucide-react";
-import { t, useI18n, WKInput, WKModal } from "@octo/base";
+import { t, useI18n, WKModal } from "@octo/base";
 import type { Category, NewSkillForm } from "../types/skill";
 import { createSkill, getSkillTags, initUpload, uploadFile, uploadIcon, triggerParse, pollParse } from "../api/skillApi";
 import { MAX_SKILL_TAGS, validateSkillTag, validateSkillTags } from "../utils/format";
@@ -494,11 +494,11 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
             <div className="skill-market-form__row">
               <label>
                 <span>{t("skillMarket.form.versionLabel")}<i className="skill-market-required">*</i></span>
-                <WKInput value={version} onChange={setVersion} placeholder={t("skillMarket.form.versionPlaceholder")} />
+                <Input value={version} onChange={setVersion} placeholder={t("skillMarket.form.versionPlaceholder")} />
               </label>
               <label>
                 <span>{t("skillMarket.form.changelogLabel")}<i className="skill-market-required">*</i></span>
-                <WKInput value={changelog} onChange={setChangelog} placeholder={t("skillMarket.form.changelogPlaceholder")} />
+                <Input value={changelog} onChange={setChangelog} placeholder={t("skillMarket.form.changelogPlaceholder")} />
               </label>
             </div>
           </div>
@@ -537,7 +537,7 @@ export default function NewSkillModal({ visible, categories, onClose, onCreated 
             />
             <label>
               <span>{t("skillMarket.form.displayName")}<i className="skill-market-required">*</i></span>
-              <WKInput value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
+              <Input value={displayName} onChange={(v: string) => setDisplayName(v.slice(0, 20))} placeholder={t("skillMarket.form.displayNamePlaceholder")} maxLength={20} />
             </label>
           </div>
           <div className="skill-market-form__row">

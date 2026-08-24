@@ -1,6 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Input } from "@octo/ui";
 import React, { useState, useCallback } from "react";
-import { Tag, Input } from "@douyinfe/semi-ui";
+import { Tag } from "@douyinfe/semi-ui";
 import { IconPlus } from "@douyinfe/semi-icons";
 import { useI18n } from "@octo/base";
 import "./SummarySelectors.css";

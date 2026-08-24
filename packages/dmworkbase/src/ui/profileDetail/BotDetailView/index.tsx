@@ -1,6 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Input } from "@octo/ui";
 import React from "react";
-import { Input, Spin } from "@douyinfe/semi-ui";
+import { Spin } from "@douyinfe/semi-ui";
 import {
   IconAlertCircle,
   IconCamera,

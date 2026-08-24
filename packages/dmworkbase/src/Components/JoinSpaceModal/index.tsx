@@ -1,7 +1,6 @@
-import { Button } from "@octo/ui";
+import { Button, Input } from "@octo/ui";
 import React from "react";
 import WKModal from "../WKModal";
-import WKInput from "../WKInput";
 import { useI18n } from "../../i18n";
 import "./index.css";
 
@@ -61,7 +60,7 @@ export default function JoinSpaceModal({
                     </p>
                     <div className="wk-join-space-modal__field">
                         <label className="wk-join-space-modal__label">{t("base.joinSpace.inviteCode")}</label>
-                        <WKInput
+                        <Input
                             size="lg"
                             placeholder={t("base.joinSpace.placeholder")}
                             value={code}

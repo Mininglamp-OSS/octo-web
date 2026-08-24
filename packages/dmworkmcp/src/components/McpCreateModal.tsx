@@ -1,8 +1,8 @@
-import { Button, Switch } from "@octo/ui";
+import { Button, Input, Switch } from "@octo/ui";
 import Select from "@octo/ui/select";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { WKModal, WKInput, t, Dap } from "@octo/base";
-import { TextArea, Toast } from "@douyinfe/semi-ui";
+import { WKModal, t, Dap } from "@octo/base";
+import { Toast } from "@douyinfe/semi-ui";
 import {
   createMcp,
   probeMcpTools,
@@ -315,14 +315,14 @@ function KvEditor({
         <div className="wk-mcp-kv__rows">
           {entries.map((e, idx) => (
             <div className="wk-mcp-kv__row" key={idx}>
-              <WKInput
+              <Input
                 className="wk-mcp-kv__key"
                 value={e.key}
                 onChange={(v) => setKey(idx, v)}
                 placeholder={keyPlaceholder}
                 maxLength={128}
               />
-              <WKInput
+              <Input
                 className="wk-mcp-kv__value"
                 value={e.value}
                 onChange={(v) => update(idx, { value: v })}
@@ -1199,7 +1199,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
             <div className="wk-mcp-import-panel__desc">
               {t("mcp.create.import.desc")}
             </div>
-            <TextArea
+            <Input.TextArea
               value={jsonRaw}
               onChange={setJsonRaw}
               rows={10}
@@ -1323,7 +1323,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
 
                 <div className="wk-mcp-field-row__grow">
                   <Field label={t("mcp.create.name")} required>
-                    <WKInput
+                    <Input
                       value={form.name}
                       onChange={handleNameChange}
                       placeholder={t("mcp.create.namePlaceholder")}
@@ -1337,7 +1337,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                 label={t("mcp.create.slug")}
                 hint={t("mcp.create.slugHint")}
               >
-                <WKInput
+                <Input
                   value={form.slug ?? ""}
                   onChange={handleSlugChange}
                   placeholder={t("mcp.create.slugPlaceholder")}
@@ -1364,7 +1364,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
               </div>
 
               <Field label={t("mcp.create.slogan")}>
-                <WKInput
+                <Input
                   value={form.slogan}
                   onChange={(v) => update("slogan", v)}
                   placeholder={t("mcp.create.sloganPlaceholder")}
@@ -1394,7 +1394,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
               {isRemote(form.transport) ? (
                 <>
                   <Field label={t("mcp.create.url")} required>
-                    <WKInput
+                    <Input
                       value={form.url ?? ""}
                       onChange={(v) => update("url", v)}
                       placeholder={t("mcp.create.urlPlaceholder")}
@@ -1405,7 +1405,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
               ) : (
                 <>
                   <Field label={t("mcp.create.command")} required>
-                    <WKInput
+                    <Input
                       value={form.command ?? ""}
                       onChange={(v) => update("command", v)}
                       placeholder={t("mcp.create.commandPlaceholder")}
@@ -1416,7 +1416,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                     label={t("mcp.create.args")}
                     hint={t("mcp.create.argsHint")}
                   >
-                    <TextArea
+                    <Input.TextArea
                       value={argsRaw}
                       onChange={setArgsRaw}
                       rows={3}
@@ -1530,13 +1530,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                           {t("mcp.create.toolRemove")}
                         </Button>
                       </div>
-                      <WKInput
+                      <Input
                         value={tool.name}
                         onChange={(v) => updateTool(idx, { name: v })}
                         placeholder={t("mcp.create.toolNamePlaceholder")}
                         maxLength={MAXLEN.toolName}
                       />
-                      <WKInput
+                      <Input
                         value={tool.description}
                         onChange={(v) => updateTool(idx, { description: v })}
                         placeholder={t("mcp.create.toolDescPlaceholder")}
@@ -1571,7 +1571,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                     <div className="wk-mcp-row" key={idx}>
                       <span className="wk-mcp-row__index">#{idx + 1}</span>
                       <div className="wk-mcp-row__grow">
-                        <WKInput
+                        <Input
                           value={ex}
                           onChange={(v) => updateExample(idx, v)}
                           placeholder={t("mcp.create.usageExamplePlaceholder")}
@@ -1620,13 +1620,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                           {t("mcp.create.faqRemove")}
                         </Button>
                       </div>
-                      <WKInput
+                      <Input
                         value={faq.question}
                         onChange={(v) => updateFaq(idx, { question: v })}
                         placeholder={t("mcp.create.faqQuestionPlaceholder")}
                         maxLength={MAXLEN.text}
                       />
-                      <TextArea
+                      <Input.TextArea
                         value={faq.answer}
                         onChange={(v) => updateFaq(idx, { answer: v })}
                         rows={2}
@@ -1659,7 +1659,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
                     <div className="wk-mcp-row" key={idx}>
                       <span className="wk-mcp-row__index">#{idx + 1}</span>
                       <div className="wk-mcp-row__grow">
-                        <WKInput
+                        <Input
                           value={note}
                           onChange={(v) => updateNote(idx, v)}
                           placeholder={t("mcp.create.notesPlaceholder")}

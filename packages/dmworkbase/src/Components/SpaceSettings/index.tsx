@@ -1,6 +1,7 @@
 import { webOrigin } from "../../Utils/docLink";
 import React, { Component } from "react";
-import { Input, Toast } from "@douyinfe/semi-ui";
+import { Input } from "@octo/ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { IconCopy, IconLink } from "@douyinfe/semi-icons";
 import { Space, SpaceService } from "../../Service/SpaceService";
 import { I18nContext, t } from "../../i18n";

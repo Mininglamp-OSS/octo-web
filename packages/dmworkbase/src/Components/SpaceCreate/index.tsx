@@ -1,11 +1,9 @@
-import { Button, Checkbox } from "@octo/ui";
+import { Button, Checkbox, Input } from "@octo/ui";
 import React, { Component } from "react";
 import { Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
-import WKInput from "../WKInput";
 import { SpaceService } from "../../Service/SpaceService";
 import { extractErrorMsg } from "../../Service/APIClient";
-import InputEdit from "../InputEdit";
 import { I18nContext } from "../../i18n";
 import "./index.css";
 
@@ -86,7 +84,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                             {t("base.spaceCreate.successInviteTip")}
                         </p>
                         <div className="wk-spacecreate-invite-link">
-                            <WKInput value={inviteUrl} readOnly />
+                            <Input value={inviteUrl} readOnly />
                             <Button variant="secondary" onClick={this.handleCopyInvite}>
                                 {t("base.spaceCreate.copyLink")}
                             </Button>
@@ -96,7 +94,7 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                     <div className="wk-spacecreate-form">
                         <div className="wk-spacecreate-field">
                             <label className="wk-spacecreate-label">{t("base.spaceCreate.name")}</label>
-                            <WKInput
+                            <Input
                                 placeholder={t("base.spaceCreate.namePlaceholder")}
                                 value={name}
                                 onChange={(v) => this.setState({ name: v })}
@@ -107,9 +105,9 @@ export default class SpaceCreate extends Component<SpaceCreateProps, SpaceCreate
                         </div>
                         <div className="wk-spacecreate-field">
                             <label className="wk-spacecreate-label">{t("base.spaceCreate.description")}</label>
-                            <InputEdit
+                            <Input.TextArea
                                 key={visible ? "open" : "closed"}
-                                defaultValue={description}
+                                value={description}
                                 placeholder={t("base.spaceCreate.descriptionPlaceholder")}
                                 maxCount={200}
                                 onChange={(v) => this.setState({ description: v })}

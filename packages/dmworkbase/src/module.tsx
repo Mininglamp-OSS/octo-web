@@ -24,7 +24,7 @@ import { voiceSettingsStore } from "./Service/VoiceSettingsStore";
 import ChatSearchEntryButton from "./features/channelSearch/ChatSearchEntryButton";
 import { isElectronPowered } from "./electron/desktopBridge";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
-import { InputEdit } from "./Components/InputEdit";
+import { Input } from "@octo/ui";
 import { ListItem, ListItemTip } from "./Components/ListItem";
 import { Card, CardCell } from "./Messages/Card";
 import { GifCell, GifContent } from "./Messages/Gif";
@@ -1484,7 +1484,7 @@ export default class BaseModule implements IModule {
               key: "userinfo.remark",
               title: t("base.module.userInfo.remark"),
               onClick: () => {
-                this.inputEditPush(
+                this.textEditPush(
                   context,
                   channelInfo?.orgData?.remark,
                   async (value) => {
@@ -1792,7 +1792,7 @@ export default class BaseModule implements IModule {
     );
   }
 
-  inputEditPush(
+  textEditPush(
     context: RouteContext<any>,
     defaultValue: string,
     onFinish: (value: string) => Promise<void>,
@@ -1805,7 +1805,7 @@ export default class BaseModule implements IModule {
     let value: string;
     let finishButtonContext: FinishButtonContext;
     context.push(
-      <InputEdit
+      <Input.TextArea
         className={className}
         defaultValue={defaultValue}
         placeholder={placeholder}
@@ -1816,13 +1816,13 @@ export default class BaseModule implements IModule {
           } else {
             finishButtonContext.disable(false);
           }
-          if (exceeded) {
+          if (maxCount && v.length > maxCount) {
             finishButtonContext.disable(true);
           }
         }}
         maxCount={maxCount}
         allowWrap={allowWrap}
-      ></InputEdit>,
+      ></Input.TextArea>,
       new RouteContextConfig({
         showFinishButton: true,
         onFinishContext: (finishBtnContext) => {
@@ -1840,7 +1840,7 @@ export default class BaseModule implements IModule {
     );
   }
 
-  channelSettingInputEditPush(
+  channelSettingTextEditPush(
     context: RouteContext<any>,
     defaultValue: string,
     onFinish: (value: string) => Promise<void>,
@@ -1849,7 +1849,7 @@ export default class BaseModule implements IModule {
     allowEmpty?: boolean,
     allowWrap?: boolean
   ) {
-    this.inputEditPush(
+    this.textEditPush(
       context,
       defaultValue,
       onFinish,
@@ -1871,7 +1871,7 @@ export default class BaseModule implements IModule {
       (context) => {
         return buildChannelGroupInfoSection(
           context,
-          this.channelSettingInputEditPush.bind(this)
+          this.channelSettingTextEditPush.bind(this)
         );
       },
       1000
@@ -1890,7 +1890,7 @@ export default class BaseModule implements IModule {
       (context) => {
         return buildMyGroupNicknameSection(
           context,
-          this.channelSettingInputEditPush.bind(this)
+          this.channelSettingTextEditPush.bind(this)
         );
       },
       4000
@@ -1949,7 +1949,7 @@ export default class BaseModule implements IModule {
       (context) => {
         return buildThreadOverviewSection(
           context,
-          this.channelSettingInputEditPush.bind(this)
+          this.channelSettingTextEditPush.bind(this)
         );
       },
       500

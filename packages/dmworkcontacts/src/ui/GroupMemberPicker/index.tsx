@@ -1,6 +1,6 @@
-import { Button, Checkbox, CheckboxGroup } from "@octo/ui";
+import { Button, Checkbox, CheckboxGroup, Input } from "@octo/ui";
 import React from "react";
-import { Input, Space } from "@douyinfe/semi-ui";
+import { Space } from "@douyinfe/semi-ui";
 
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";

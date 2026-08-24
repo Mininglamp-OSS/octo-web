@@ -29,21 +29,24 @@
     padding: 0 var(--wk-sp-3);
 }
 
-/* Semi Input 样式重置 */
-.wk-search-input .semi-input-wrapper {
+/* Search owns the outer shell; the nested Octo Input only supplies input behavior. */
+.wk-search-input .octo-ui-input.octo-ui-input {
+    width: 100%;
     height: 100%;
-    background-color: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
     padding: 0;
+    border: 0;
+    border-radius: var(--octo-ui-input-radius-round);
+    background-color: transparent;
+    box-shadow: none;
 }
 
-.wk-search-input .semi-input-wrapper-focus {
-    border: none !important;
-    box-shadow: none !important;
+.wk-search-input .octo-ui-input.octo-ui-input:focus-within {
+    border: 0;
+    background-color: transparent;
+    box-shadow: none;
 }
 
-.wk-search-input .semi-input {
+.wk-search-input .octo-ui-input .semi-input {
     background-color: transparent;
     color: var(--wk-text-primary);
     font-size: var(--wk-text-size-md);
@@ -51,6 +54,6 @@
     padding: 0;
 }
 
-.wk-search-input .semi-input::placeholder {
+.wk-search-input .octo-ui-input .semi-input::placeholder {
     color: var(--wk-text-tertiary);
 }

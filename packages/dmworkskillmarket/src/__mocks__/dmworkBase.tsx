@@ -1,26 +1,5 @@
 import React from "react";
 
-interface WKInputMockProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "size" | "prefix"> {
-  prefix?: React.ReactNode;
-  size?: string;
-  value?: string;
-  onChange?: (value: string) => void;
-}
-
-export function WKInput({ value, onChange, prefix, placeholder, size: _size, ...props }: WKInputMockProps) {
-  return (
-    <label>
-      {prefix}
-      <input
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange?.(event.target.value)}
-        {...props}
-      />
-    </label>
-  );
-}
-
 interface WKModalMockProps {
   visible: boolean;
   title?: React.ReactNode;

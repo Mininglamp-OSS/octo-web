@@ -1,4 +1,4 @@
-import { TextArea } from "@douyinfe/semi-ui";
+import { Input } from "@octo/ui";
 import React from "react";
 import { Component, ReactNode } from "react";
 import { I18nContext } from "../../i18n";
@@ -22,11 +22,11 @@ export default class FriendApplyUI extends Component<FriendApplyUIProps> {
                     {this.context.t("base.friendApply.sendRequest")}
                 </div>
                 <div className="wk-friendapply-content-message">
-                    <TextArea defaultValue={placeholder} onChange={(v)=>{
+                    <Input.TextArea defaultValue={placeholder} onChange={(v)=>{
                         if(onMessage) {
                             onMessage(v)
                         }
-                    }}></TextArea>
+                    }}></Input.TextArea>
                 </div>
             </div>
         </div>

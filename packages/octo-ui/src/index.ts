@@ -28,6 +28,14 @@ export type {
 } from './components/Select/types'
 // Select is exported from @octo/ui/select only. Keeping it out of the root
 // barrel prevents consumers with partial Semi mocks from loading Semi Select.
+export { default as Input } from './components/Input'
+export type {
+  InputProps,
+  InputSearchProps,
+  InputSize,
+  InputStatus,
+  InputTextAreaProps,
+} from './components/Input/types'
 export { default as Checkbox, CheckboxGroup } from './components/Checkbox'
 export type {
   CheckboxChangeEvent,

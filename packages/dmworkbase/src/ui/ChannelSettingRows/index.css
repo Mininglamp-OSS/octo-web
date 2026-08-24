@@ -11,11 +11,9 @@
   font-size: var(--wk-text-size-md);
 }
 
-.wk-channelsetting-inline-edit .semi-input-wrapper,
-.wk-channelsetting-inline-edit .semi-input-textarea-wrapper {
-  background: var(--wk-bg-surface);
-  border-color: var(--wk-border-strong);
-  border-radius: var(--wk-r-sm);
+.wk-channelsetting-inline-edit .octo-ui-input,
+.wk-channelsetting-inline-edit .octo-ui-textarea {
+  width: 100%;
 }
 
 .wk-channelsetting-inline-edit-clear {
