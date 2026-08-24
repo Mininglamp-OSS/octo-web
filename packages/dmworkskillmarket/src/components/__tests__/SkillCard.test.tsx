@@ -62,6 +62,7 @@ describe("SkillCard", () => {
     expect(screen.queryByText("我")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "ci-helper 官方发布" })).toBeInTheDocument();
     expect(container.querySelector(".skill-market-card__owner-platform-icon")).toBeInTheDocument();
+    expect(container.querySelector(".skill-market-card--official")).toBeInTheDocument();
   });
 
   it("shows creator and owner when they are different", () => {
