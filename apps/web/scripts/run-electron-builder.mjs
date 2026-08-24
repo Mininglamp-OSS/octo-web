@@ -17,32 +17,36 @@ const appDir = path.resolve(scriptDir, "..");
  * \Temp), the path is mojibake by the time cmd.exe executes it and the build
  * fails with "系统找不到指定的路径" (path not found).
  *
- * So the shim directory must stay ASCII-only on Windows. Prefer a directory
- * inside the repo (next to the workspace, which we do not control, but the
- * repo path itself is overwhelmingly ASCII in practice); fall back to the
- * drive root, and only use os.tmpdir() when it is already ASCII-safe.
+ * So the shim directory must stay ASCII-only on Windows. We create a UNIQUE
+ * leaf under an ASCII-safe parent via mkdtempSync (preserving the #1445
+ * hardening: per-build uniqueness, 0700 perms, exclusive writes, cleanup on
+ * exit/error). Parents are tried in order — repo-local cache, Windows drive
+ * root — and are NEVER deleted: only the unique leaf we create is cleaned
+ * up. The final fallback is the historical behaviour (mkdtempSync under
+ * os.tmpdir()), so a non-ASCII temp dir on Windows degrades to the old
+ * failure mode instead of deleting anything shared.
  */
 function createShimDir() {
-  const candidates = [
-    path.join(appDir, "node_modules", ".cache", "octo-electron-builder-shim"),
-    process.platform === "win32" ? path.join(path.parse(appDir).root, "octo-eb-shim") : null,
-    os.tmpdir(),
+  const parents = [
+    path.join(appDir, "node_modules", ".cache"),
+    process.platform === "win32" ? path.parse(appDir).root : null,
   ].filter(Boolean);
 
-  for (const [index, candidate] of candidates.entries()) {
-    const isAscii = /^[\x00-\x7F]*$/.test(candidate);
-    const usable = index === candidates.length - 1 ? true : isAscii;
-    if (!usable) continue;
+  for (const parent of parents) {
+    if (!/^[\x00-\x7F]*$/.test(parent)) continue;
     try {
-      fs.mkdirSync(candidate, { recursive: true });
-      fs.rmSync(candidate, { recursive: true, force: true });
-      fs.mkdirSync(candidate, { recursive: true });
-      return candidate;
+      fs.mkdirSync(parent, { recursive: true });
+      return fs.mkdtempSync(path.join(parent, "octo-eb-"));
     } catch {
-      // Not writable / not creatable — try the next candidate.
+      // Not writable / not creatable — try the next parent.
     }
   }
-  throw new Error("[run-electron-builder] unable to create an ASCII-safe shim directory");
+
+  // Historical behaviour (also the pre-#1445 location): a unique dir under
+  // the OS temp dir. On a non-ASCII Windows temp this still fails, but the
+  // failure is the same one this PR set out to fix — no shared data is
+  // touched.
+  return fs.mkdtempSync(path.join(os.tmpdir(), "octo-eb-"));
 }
 
 const shimDir = createShimDir();
@@ -50,8 +54,14 @@ if (process.platform !== "win32") {
   fs.chmodSync(shimDir, 0o700);
 }
 
+// Only ever delete the unique leaves WE created (never any shared parent):
+// shimDir plus the optional asciiSafeTmp leaf.
+const createdTempDirs = [shimDir];
+
 function cleanup() {
-  fs.rmSync(shimDir, { recursive: true, force: true });
+  for (const dir of createdTempDirs) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 const posixShim = path.join(shimDir, "pnpm");
@@ -70,12 +80,16 @@ fs.writeFileSync(windowsShim, "@echo off\r\ncorepack pnpm %*\r\n", {
 // reason. Only override when the current TMPDIR/TMP/TEMP contains non-ASCII
 // characters; otherwise leave the environment untouched.
 const childEnv = { ...process.env };
-const asciiSafeTmp = process.platform === "win32" ? path.join(path.parse(shimDir).root, "octo-eb-tmp") : null;
-if (asciiSafeTmp) {
+if (process.platform === "win32") {
   const hasNonAsciiTmp = [process.env.TMPDIR, process.env.TMP, process.env.TEMP]
     .some((value) => typeof value === "string" && /[^\x00-\x7F]/.test(value));
   if (hasNonAsciiTmp) {
-    fs.mkdirSync(asciiSafeTmp, { recursive: true });
+    // Reuse the shim's ASCII-safe parent (never the shim dir itself — that
+    // is removed by cleanup() while the child may still be writing temp
+    // files). mkdtempSync keeps it unique; cleanup() removes it on exit.
+    const shimParent = path.dirname(shimDir);
+    const asciiSafeTmp = fs.mkdtempSync(path.join(shimParent, "octo-eb-tmp-"));
+    createdTempDirs.push(asciiSafeTmp);
     childEnv.TMPDIR = asciiSafeTmp;
     childEnv.TMP = asciiSafeTmp;
     childEnv.TEMP = asciiSafeTmp;
