@@ -122,6 +122,12 @@ describe('SummaryReferencePicker', () => {
             expect(screen.queryByText('手动总结')).not.toBeInTheDocument();
         });
 
+        it('treats AGENT_FINALIZE as referenceable Agent output in legacy responses', async () => {
+            const item = makeItem({ referenceable: undefined, trigger_type: TriggerType.AGENT_FINALIZE });
+            renderPicker({ item });
+            await waitFor(() => expect(screen.getByText('测试总结')).toBeInTheDocument());
+        });
+
         it('hides non-completed items even if referenceable === true', async () => {
             const item = makeItem({ referenceable: true, status: TaskStatus.PROCESSING });
             renderPicker({ item });
@@ -134,6 +140,13 @@ describe('SummaryReferencePicker', () => {
             const item = makeItem({ referenceable: true, trigger_type: TriggerType.AGENT });
             renderPicker({ item });
             await waitFor(() => expect(screen.getByText('Agent 总结')).toBeInTheDocument());
+        });
+
+        it('renders Agent type label for trigger_type AGENT_FINALIZE', async () => {
+            const item = makeItem({ referenceable: true, trigger_type: TriggerType.AGENT_FINALIZE });
+            renderPicker({ item });
+            await waitFor(() => expect(screen.getByText('Agent 总结')).toBeInTheDocument());
+            expect(screen.queryByText('快速总结')).not.toBeInTheDocument();
         });
 
         it('renders Scheduled type label for trigger_type SCHEDULED', async () => {

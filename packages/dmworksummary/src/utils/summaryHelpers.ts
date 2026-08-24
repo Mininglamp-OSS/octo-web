@@ -189,6 +189,86 @@ export function clearAgentChatReferenced(channelId?: string | null): void {
     }
 }
 
+// ─── Agent finalize 待结算态（跨 reload / 跨组件实例） ──────────────
+// async finalize 只拿到 202 accepted，任务未终态，所以不能当场销毁本地
+// 工作台（生成失败用户需要能重试）。但也不能永久保留：任务成功后重进
+// agent 模式会把已保存的对话重放，且能从该会话再保存一次 → 同一 session
+// 生出第二篇总结（#1465 R5 P1）。因此把「已发起的 finalize」落盘，下次进
+// agent 模式时惰性 reconcile 任务状态再决定清/留。
+//
+// 幂等键一并落盘：它原本只活在组件实例字段里，而「后端已受理但响应
+// 丢失」正是用户最可能刷新页面的场景，reload 后新实例会 mint 新 key，后端
+// 无法去重。同一个桶里存 key + fingerprint + task_id，两个问题一起关掉。
+const AGENT_FINALIZE_PENDING_KEY_PREFIX = 'agent-finalize-pending:';
+
+/** 待结算的 finalize：幂等键 + 其 payload 指纹，以及已受理的 task_id。 */
+export interface PersistedFinalizePending {
+    /** 一次「逻辑保存」的幂等键；同 payload 重试（含 reload 后）复用。 */
+    key: string;
+    /** 该 key 对应的 payload 指纹；payload 变了就该换 key。 */
+    fingerprint: string;
+    /** finalize 已被受理的任务 id；尚未成功发起时为 0。 */
+    taskId: number;
+}
+
+/** 构造某入口的 pending finalize localStorage key。 */
+export function agentFinalizePendingKey(channelId?: string | null): string {
+    return AGENT_FINALIZE_PENDING_KEY_PREFIX + (channelId || AGENT_CHAT_SESSION_FALLBACK);
+}
+
+/** 读取待结算的 finalize；无/损坏返回 null。异常静默降级。 */
+export function readAgentFinalizePending(channelId?: string | null): PersistedFinalizePending | null {
+    try {
+        const raw = localStorage.getItem(agentFinalizePendingKey(channelId));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw) as unknown;
+        if (
+            parsed && typeof parsed === 'object'
+            && typeof (parsed as PersistedFinalizePending).key === 'string'
+            && (parsed as PersistedFinalizePending).key !== ''
+            && typeof (parsed as PersistedFinalizePending).fingerprint === 'string'
+            && typeof (parsed as PersistedFinalizePending).taskId === 'number'
+        ) {
+            return parsed as PersistedFinalizePending;
+        }
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/** 写入待结算的 finalize（null 清除）。异常静默降级。 */
+export function writeAgentFinalizePending(
+    channelId: string | null | undefined,
+    pending: PersistedFinalizePending | null,
+): void {
+    if (!pending || !pending.key) {
+        clearAgentFinalizePending(channelId);
+        return;
+    }
+    try {
+        localStorage.setItem(
+            agentFinalizePendingKey(channelId),
+            JSON.stringify({
+                key: pending.key,
+                fingerprint: pending.fingerprint,
+                taskId: pending.taskId,
+            }),
+        );
+    } catch {
+        // localStorage 不可用：降级回「仅实例内幂等」，不影响本次保存。
+    }
+}
+
+/** 清除待结算的 finalize（新会话/终态 reconcile 后用）。异常静默降级。 */
+export function clearAgentFinalizePending(channelId?: string | null): void {
+    try {
+        localStorage.removeItem(agentFinalizePendingKey(channelId));
+    } catch {
+        // 同上。
+    }
+}
+
 /** 周对应天数 */
 export const DAYS_PER_WEEK = 7;
 /** interval_days 上界（与后端 MaxIntervalDays 对齐） */
@@ -231,15 +311,25 @@ export function getModeLabel(mode: SummaryModeType): string {
 }
 
 /**
+ * Both the synchronous Agent save route and the asynchronous Session-Finalize
+ * route produce user-facing Agent summaries. Keep that business classification
+ * separate from the backend trigger value used to route worker execution.
+ */
+export function isAgentSummaryTrigger(triggerType: number | null | undefined): boolean {
+    return triggerType === TriggerType.AGENT || triggerType === TriggerType.AGENT_FINALIZE;
+}
+
+/**
  * 总结是否可被 Agent 引用 — SummaryReferencePicker 与 SummaryDetailPage 共享。
  *
  * 当后端已部署 referenceable 字段时，以后端值为准。
  * 字段缺失时（后端未部署或 mock 未提供），回退到 legacy 行为：
- * 仅 trigger_type === AGENT 的总结可被引用。
+ * legacy 响应缺少 referenceable 时，Agent 同步保存(3)与
+ * Session-Finalize(5) 产物都按 Agent 总结处理。
  */
 export function isReferenceable(item: { referenceable?: boolean; trigger_type: number }): boolean {
     if (item.referenceable !== undefined) return item.referenceable === true;
-    return item.trigger_type === TriggerType.AGENT;
+    return isAgentSummaryTrigger(item.trigger_type);
 }
 
 /**
@@ -248,7 +338,7 @@ export function isReferenceable(item: { referenceable?: boolean; trigger_type: n
  * icon、CSS class 和 label 全部由这个 kind 派生，消除「四路 label 配两路
  * icon」的分裂（此前定时总结会渲染快速总结的 icon，aria-label 与视觉不符）。
  *
- * - agent: trigger_type === AGENT
+ * - agent: trigger_type === AGENT 或 AGENT_FINALIZE
  * - scheduled: trigger_type === SCHEDULED 或 schedule_id > 0（0 表示无 schedule）
  * - multi: trigger_type === MANUAL 且 participants.length > 1
  * - quick: trigger_type === MANUAL 且 participants.length <= 1，以及未知类型兜底
@@ -258,9 +348,8 @@ export type SummaryTypeKind = 'agent' | 'scheduled' | 'multi' | 'quick';
 export function getSummaryTypeKind(item: SummaryListItem): SummaryTypeKind {
     const isScheduled = item.trigger_type === TriggerType.SCHEDULED || (item.schedule_id != null && item.schedule_id > 0);
     if (isScheduled) return 'scheduled';
+    if (isAgentSummaryTrigger(item.trigger_type)) return 'agent';
     switch (item.trigger_type) {
-        case TriggerType.AGENT:
-            return 'agent';
         case TriggerType.MANUAL:
             return (item.participants?.length ?? 0) > 1 ? 'multi' : 'quick';
         default:

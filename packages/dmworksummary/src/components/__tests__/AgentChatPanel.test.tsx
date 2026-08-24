@@ -1,5 +1,5 @@
 import React from 'react';
-import { render as rtlRender, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AgentChatPanel from '../AgentChatPanel';
 
@@ -10,14 +10,14 @@ vi.mock('@douyinfe/semi-ui', () => ({
             {children}
         </button>
     ),
-    Modal: ({ visible, children, onOk, onCancel, confirmLoading }: any) => 
+    Modal: ({ visible, children, onOk, onCancel, confirmLoading, okButtonProps }: any) =>
         visible ? (
             <div data-testid="save-modal">
                 {children}
                 <button 
                     data-testid="modal-ok" 
                     onClick={onOk} 
-                    disabled={confirmLoading}
+                    disabled={confirmLoading || okButtonProps?.disabled}
                 >
                     确定
                 </button>
@@ -59,6 +59,36 @@ describe('AgentChatPanel handleKeyDown (Bug1: IME 组字回车不发送)', () =>
         fireEvent.change(textarea, { target: { value: '你好' } });
         fireEvent.keyDown(textarea, { key: 'Enter', isComposing: false });
         expect(onSend).toHaveBeenCalledWith('你好');
+    });
+
+    it.each([
+        { name: '保存进行中', blockedProps: { savingSummary: true } },
+        { name: '已有待完成保存任务', blockedProps: { saveDisabledReason: '总结生成中' } },
+    ])('$name 时点击和 Enter 都不能发送', ({ blockedProps }) => {
+        const onSend = vi.fn();
+        const panelRef = React.createRef<AgentChatPanel>();
+        const { rerender } = rtlRender(
+            <AgentChatPanel ref={panelRef} messages={[]} onSend={onSend} sending={false} />,
+        );
+        const textarea = screen.getByPlaceholderText(/回车发送/);
+        fireEvent.change(textarea, { target: { value: '不能发送' } });
+
+        rerender(
+            <AgentChatPanel
+                ref={panelRef}
+                messages={[]}
+                onSend={onSend}
+                sending={false}
+                {...blockedProps}
+            />,
+        );
+
+        expect(textarea).toBeDisabled();
+        expect(screen.getByText('发送')).toBeDisabled();
+        fireEvent.keyDown(textarea, { key: 'Enter', isComposing: false });
+        fireEvent.click(screen.getByText('发送'));
+        (panelRef.current as any).handleSend();
+        expect(onSend).not.toHaveBeenCalled();
     });
 });
 
@@ -236,6 +266,63 @@ describe('AgentChatPanel - Save as Summary', () => {
         // 标题应该保留
         expect(titleInput).toHaveValue('测试总结');
     });
+
+    it('发送中保存按钮和确认 handler 都不能发起保存', () => {
+        const onSaveAsSummary = vi.fn().mockResolvedValue(true);
+        const panelRef = React.createRef<AgentChatPanel>();
+        const messages = [{ role: 'assistant' as const, content: '可保存内容' }];
+        const { rerender } = rtlRender(
+            <AgentChatPanel
+                ref={panelRef}
+                messages={messages}
+                onSend={vi.fn()}
+                sending={false}
+                onSaveAsSummary={onSaveAsSummary}
+            />,
+        );
+
+        fireEvent.click(screen.getByText('保存为总结'));
+        fireEvent.change(screen.getByTestId('summary-title-input'), { target: { value: '测试总结' } });
+        rerender(
+            <AgentChatPanel
+                ref={panelRef}
+                messages={messages}
+                onSend={vi.fn()}
+                sending
+                onSaveAsSummary={onSaveAsSummary}
+            />,
+        );
+
+        expect(screen.getByText('保存为总结')).toBeDisabled();
+        expect(screen.getByTestId('modal-ok')).toBeDisabled();
+        (panelRef.current as any).handleSaveConfirm();
+        expect(onSaveAsSummary).not.toHaveBeenCalled();
+    });
+
+    it('流式生成中保存按钮和确认 handler 都不能发起保存', () => {
+        const onSaveAsSummary = vi.fn().mockResolvedValue(true);
+        const panelRef = React.createRef<AgentChatPanel>();
+        rtlRender(
+            <AgentChatPanel
+                ref={panelRef}
+                messages={[{ role: 'assistant', content: '可保存内容' }]}
+                onSend={vi.fn()}
+                sending={false}
+                onSaveAsSummary={onSaveAsSummary}
+            />,
+        );
+
+        fireEvent.click(screen.getByText('保存为总结'));
+        fireEvent.change(screen.getByTestId('summary-title-input'), { target: { value: '测试总结' } });
+        act(() => {
+            panelRef.current?.setState({ isStreaming: true });
+        });
+
+        expect(screen.getByText('保存为总结')).toBeDisabled();
+        expect(screen.getByTestId('modal-ok')).toBeDisabled();
+        (panelRef.current as any).handleSaveConfirm();
+        expect(onSaveAsSummary).not.toHaveBeenCalled();
+    });
 });
 describe('AgentChatPanel 新会话 action', () => {
     it('不提供 onNewSession 时不渲染「新会话」按钮', () => {
@@ -260,5 +347,40 @@ describe('AgentChatPanel 新会话 action', () => {
         );
         const btn = screen.getByText('新会话') as HTMLButtonElement;
         expect(btn).toBeDisabled();
+    });
+
+    it('存在待完成保存任务时仍可新建会话', () => {
+        const onNewSession = vi.fn();
+        rtlRender(
+            <AgentChatPanel
+                messages={[]}
+                onSend={vi.fn()}
+                sending={false}
+                saveDisabledReason="总结生成中"
+                onNewSession={onNewSession}
+            />,
+        );
+        const btn = screen.getByText('新会话');
+        expect(btn).toBeEnabled();
+        fireEvent.click(btn);
+        expect(onNewSession).toHaveBeenCalledTimes(1);
+    });
+
+    it('保存中禁用「新会话」按钮并由 handler 拦截', () => {
+        const onNewSession = vi.fn();
+        const panelRef = React.createRef<AgentChatPanel>();
+        rtlRender(
+            <AgentChatPanel
+                ref={panelRef}
+                messages={[]}
+                onSend={vi.fn()}
+                sending={false}
+                savingSummary
+                onNewSession={onNewSession}
+            />,
+        );
+        expect(screen.getByText('新会话')).toBeDisabled();
+        (panelRef.current as any).handleNewSession();
+        expect(onNewSession).not.toHaveBeenCalled();
     });
 });
