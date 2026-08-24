@@ -1,6 +1,10 @@
 {
   "ignoredFiles": [
     {
+      "path": "packages/dmworkmcp/src/api/expertWire.ts",
+      "reason": "parseTeamAgentsMarkdown is the inverse of the backend's teamAgentsMarkdown renderer; the Chinese section markers (协作方式/策略/依赖/权限, - 阻塞:/- 推荐:) are wire-format tokens that must byte-match the backend, not translatable UI copy."
+    },
+    {
       "path": "packages/dmworkbase/src/Utils/pinYin.ts",
       "reason": "Pinyin search dictionary data, not UI copy."
     },

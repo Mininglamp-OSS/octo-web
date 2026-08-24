@@ -267,7 +267,8 @@ export const FETCH_RULES: FetchRule[] = [
     //   (handleEditFromCard→fetchMcpDetail)拉,fetch 层无法区分看/编,编辑会被误计成查看(见二审 P2-1)。
     //   改由卡根 data-track="market_card_opened"(DOM 委托,亦覆盖键盘)采集;这里把 /:id 钉成 IGNORE,
     //   同时继续压过 mine/tags/versions。(六审 C2:已删除曾并存的命令式 market_card_viewed,避免同一次打开双计。)
-    //   2026-08-21 市场切统一插件接口:旧 /mcps|skills/* 路径前端不再发起,规则整体换新。
+    //   2026-08-21 市场切统一插件接口:目录读写走 /plugins/*,规则整体换新。保留的工具端点
+    //   POST /mcps/_probe 与 POST /mcp_icon_uploads 仍会发起(非目录数据,无事件规则命中)。
     //   新路径全部是字面段(无 :id 通配),不存在误吞,故旧的 mine/tags/:id IGNORE 钉子不再需要;
     //   列表 GET /plugins、详情 GET /plugins/detail、标签 GET /plugin_tags 依旧不挂事件(同旧决策:
     //   请求成功 ≠ 用户意图,卡片打开走 data-track="market_card_opened")。

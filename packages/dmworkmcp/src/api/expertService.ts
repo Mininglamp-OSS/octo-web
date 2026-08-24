@@ -525,8 +525,8 @@ async function trackExpertViewReal(_kind: ExpertKindParam, id: string): Promise<
 
 async function listExpertTagsReal(kind: ExpertKindParam): Promise<string[]> {
   const data = await get<{ name: string; count: number }[] | null>(
-    "/expert_tags",
-    { kind }
+    "/plugin_tags",
+    { plugin_type: pluginTypeOf(kind) }
   );
   return Array.isArray(data) ? data.map((tag) => tag.name) : [];
 }

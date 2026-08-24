@@ -66,7 +66,9 @@ export function toPluginUpsert(
     name: slug || name,
     description: params.slogan ?? "",
     labels: tags,
-    examples: usage.map((input, i) => ({ title: `使用示例 ${i + 1}`, input })),
+    // Locale-neutral title: examples are persisted into manifest_json and read
+    // back by every client of the unified API, so this must not bake in a locale.
+    examples: usage.map((input, i) => ({ title: `Example ${i + 1}`, input })),
   };
   // The unified marketplace never persists secret VALUES. mcp.json is the
   // standard {"mcpServers": {...}} document: user-supplied env/header keys

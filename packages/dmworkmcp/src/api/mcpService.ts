@@ -655,9 +655,10 @@ async function fetchMcpListPath(
   if (mode === "mine") query.mode = "mine";
   const keyword = params.keyword?.trim();
   if (keyword) query.q = keyword;
-  // The unified list has no relevance scoring; freshest-first covers both
-  // browse and search ordering.
-  query.sort = "updated";
+  // The unified list has no relevance scoring; newest-first covers both browse
+  // and search ordering — matching expertService/skillApiReal (which map their
+  // "latest" onto "newest") and the backend's default sort.
+  query.sort = "newest";
   // Multi-tag filter is AND; REPEATED params (`tag=a&tag=b`) so a tag value
   // containing a comma still round-trips intact.
   if (params.tags?.length) {
