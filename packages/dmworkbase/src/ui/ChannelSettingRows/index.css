@@ -11,11 +11,6 @@
   font-size: var(--wk-text-size-md);
 }
 
-.wk-channelsetting-inline-edit .octo-ui-input,
-.wk-channelsetting-inline-edit .octo-ui-textarea {
-  width: 100%;
-}
-
 .wk-channelsetting-inline-edit-clear {
   display: inline-flex;
   align-items: center;

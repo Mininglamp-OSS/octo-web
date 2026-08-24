@@ -1,5 +1,4 @@
 import type {
-  ChangeEvent,
   CSSProperties,
   FocusEvent,
   InputHTMLAttributes,
@@ -15,6 +14,8 @@ export type InputStatus = 'default' | 'error' | 'warning' | 'success'
 
 type NativeInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'onInput' | 'prefix' | 'size' | 'value' | 'defaultValue'>
 type NativeTextAreaProps = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, 'onChange' | 'onInput' | 'prefix' | 'size' | 'value' | 'defaultValue'>
+type InputChangeEvent = Parameters<NonNullable<SemiInputProps['onChange']>>[1]
+type TextAreaChangeEvent = Parameters<NonNullable<SemiTextAreaProps['onChange']>>[1]
 
 export interface InputProps extends NativeInputProps {
   addonAfter?: ReactNode
@@ -31,7 +32,7 @@ export interface InputProps extends NativeInputProps {
   insetLabelId?: string
   mode?: SemiInputProps['mode']
   onBlur?: (event: FocusEvent<HTMLInputElement>) => void
-  onChange?: (value: string, event: ChangeEvent<HTMLInputElement>) => void
+  onChange?: (value: string, event: InputChangeEvent) => void
   onClear?: SemiInputProps['onClear']
   onEnterPress?: (event: KeyboardEvent<HTMLInputElement>) => void
   onFocus?: (event: FocusEvent<HTMLInputElement>) => void
@@ -62,7 +63,7 @@ export interface InputTextAreaProps extends NativeTextAreaProps {
   getValueLength?: SemiTextAreaProps['getValueLength']
   maxCount?: number
   onBlur?: (event: FocusEvent<HTMLTextAreaElement>) => void
-  onChange?: (value: string, event: ChangeEvent<HTMLTextAreaElement>) => void
+  onChange?: (value: string, event: TextAreaChangeEvent) => void
   onClear?: SemiTextAreaProps['onClear']
   onEnterPress?: (event: KeyboardEvent<HTMLTextAreaElement>) => void
   onFocus?: (event: FocusEvent<HTMLTextAreaElement>) => void

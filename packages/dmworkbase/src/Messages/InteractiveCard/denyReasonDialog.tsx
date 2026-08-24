@@ -66,7 +66,7 @@ function DenyReasonBody(props: {
           {t("base.message.interactiveCard.denyDialog.required")}
         </span>
       </div>
-            <Input.TextArea
+      <Input.TextArea
         autosize={{ minRows: 3, maxRows: 6 }}
         maxLength={MAX_REASON}
         placeholder={t("base.message.interactiveCard.denyDialog.placeholder")}

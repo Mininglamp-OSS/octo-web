@@ -1,5 +1,4 @@
-.octo-ui-input,
-.octo-ui-input.octo-ui-input {
+.octo-ui-input {
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -21,6 +20,18 @@
   transition:
     background-color var(--octo-ui-duration-fast) var(--octo-ui-ease-standard),
     box-shadow var(--octo-ui-duration-fast) var(--octo-ui-ease-standard);
+}
+
+.octo-ui-input.octo-ui-input {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--octo-ui-input-gap);
+  height: var(--octo-ui-input-height);
+  padding: 0 var(--octo-ui-input-padding-x);
+  border: 1px solid transparent;
+  border-radius: var(--octo-ui-input-radius);
+  background: var(--octo-ui-input-bg);
+  box-shadow: none;
 }
 
 .octo-ui-input:hover:not(.octo-ui-input--disabled) {

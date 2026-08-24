@@ -1809,7 +1809,7 @@ export default class BaseModule implements IModule {
         className={className}
         defaultValue={defaultValue}
         placeholder={placeholder}
-        onChange={(v, exceeded) => {
+        onChange={(v) => {
           value = v;
           if (!allowEmpty && (!value || value === "")) {
             finishButtonContext.disable(true);

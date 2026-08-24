@@ -165,7 +165,7 @@ body {
   --octo-ui-select-chip-line-height: 18px;
   --octo-ui-select-chip-remove-size: 14px;
 
-  --octo-ui-input-width: 240px;
+  --octo-ui-input-width: 100%;
   --octo-ui-input-textarea-width: 100%;
   --octo-ui-input-height: 32px;
   --octo-ui-input-height-sm: 28px;

@@ -210,7 +210,7 @@ const TextArea = forwardRef<ComponentRef<typeof SemiTextArea>, InputTextAreaProp
           if (value === undefined) {
             setUncontrolledValue(next)
           }
-          onChange?.(next, event as never)
+          onChange?.(next, event)
         }}
         onKeyDown={handleKeyDown}
       />

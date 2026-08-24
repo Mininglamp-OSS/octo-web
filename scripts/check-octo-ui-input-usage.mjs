@@ -26,7 +26,18 @@ const allowedSemiInputFiles = new Set([
 const legacyInputSelectorPatterns = [
   /\.wk-input(?:\b|__|-)/g,
   /\.wk-inputedit(?:\b|__|-)/g,
+  /\.semi-input(?:\b|-)/g,
 ]
+
+const allowedSemiInputSelectors = new Map([
+  [
+    'packages/dmworkcontacts/src/Organizational/GroupNew/index.css',
+    new Set([
+      '.organizational-tree .semi-input-wrapper-focus {',
+      '.organizational-tree .semi-input-wrapper-focus:active {',
+    ]),
+  ],
+])
 
 function extname(file) {
   const index = file.lastIndexOf('.')
@@ -70,6 +81,17 @@ function escapeRegExp(source) {
   return source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+function lineTextAt(source, index) {
+  const start = source.lastIndexOf('\n', index) + 1
+  const end = source.indexOf('\n', index)
+  return source.slice(start, end === -1 ? source.length : end).trim()
+}
+
+function isAllowedStyleSelector(rel, source, index) {
+  const allowedLines = allowedSemiInputSelectors.get(rel)
+  return Boolean(allowedLines?.has(lineTextAt(source, index)))
+}
+
 const violations = []
 
 for (const scanRoot of scanRoots) {
@@ -83,9 +105,9 @@ for (const scanRoot of scanRoots) {
       const namedImportPattern = /(?:^|\n)\s*import(?:\s+type)?\s*\{([^}]*)\}\s*from\s*["']@douyinfe\/semi-ui["']/g
       const exportPattern = /(?:^|\n)\s*export(?:\s+type)?\s*\{([^}]*)\}\s*from\s*["']@douyinfe\/semi-ui["']/g
       const namespaceImportPattern = /(?:^|\n)\s*import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s*["']@douyinfe\/semi-ui["']/g
-      const deepImportPattern = /(?:^|\n)\s*import(?:\s+type)?[\s\S]*?from\s*["']@douyinfe\/semi-ui\/[^"']*input[^"']*["']/g
+      const deepImportPattern = /(?:^|\n)\s*import(?:\s+type)?(?:[^;\n]|\n(?!\s*(?:import|export)\b))*?from\s*["']@douyinfe\/semi-ui\/[^"']*input[^"']*["']/g
       const sideEffectDeepImportPattern = /(?:^|\n)\s*import\s*["']@douyinfe\/semi-ui\/[^"']*input[^"']*["']/g
-      const legacyImportPattern = /(?:^|\n)\s*import[\s\S]*?from\s*["'][^"']*(?:WKInput|InputEdit)[^"']*["']/g
+      const legacyImportPattern = /(?:^|\n)\s*import(?:[^;\n]|\n(?!\s*(?:import|export)\b))*?from\s*["'][^"']*(?:WKInput|InputEdit)[^"']*["']/g
       let match
       while ((match = namedImportPattern.exec(source))) {
         if (hasInputSpecifier(match[1])) {
@@ -119,6 +141,9 @@ for (const scanRoot of scanRoots) {
         let match
         pattern.lastIndex = 0
         while ((match = pattern.exec(source))) {
+          if (isAllowedStyleSelector(rel, source, match.index)) {
+            continue
+          }
           violations.push(`${rel}:${lineNumber(source, match.index)} keeps legacy Input selector ${pattern}`)
         }
       }

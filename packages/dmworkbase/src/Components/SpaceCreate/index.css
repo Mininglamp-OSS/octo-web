@@ -6,11 +6,6 @@
     margin-bottom: 16px;
 }
 
-.wk-spacecreate-field .octo-ui-input,
-.wk-spacecreate-field .octo-ui-textarea {
-    width: 100%;
-}
-
 .wk-spacecreate-label {
     display: block;
     font-size: 13px;
@@ -44,5 +39,4 @@
 
 .wk-spacecreate-invite-link .octo-ui-input {
     flex: 1 1 auto;
-    width: 100%;
 }
