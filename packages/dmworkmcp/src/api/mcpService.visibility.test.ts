@@ -62,10 +62,12 @@ describe("toPluginUpsert", () => {
     expect(server.env).toEqual({ REGION: "us", DB_URI: "" });
   });
 
-  it("embeds a manifest.json attachment byte-equal to the submitted manifest", () => {
+  it("does not embed a manifest.json attachment (contract layout)", () => {
     const body = toPluginUpsert(form, { visibility: "space" });
-    const embedded = rawAttachment(body.plugin.plugin_json, "manifest.json");
-    expect(embedded).toBe(goCanonicalJSON(body.plugin.manifest_json));
+    expect(rawAttachment(body.plugin.plugin_json, "manifest.json")).toBeUndefined();
+    expect(
+      body.plugin.plugin_json.attachments.some((a) => a.path === "manifest.json")
+    ).toBe(false);
   });
 
   it("carries examples, faqs, and notes as connector attachments", () => {

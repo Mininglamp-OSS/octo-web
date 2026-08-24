@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
+import { parseTeamAgentsMarkdown } from "./expertWire";
 
 // Mirror of expertService.addToLoop.test.ts's axios mock: expertService creates
 // its own axios instance at module load, so mock the factory and pin the exact
@@ -135,5 +136,51 @@ describe("expertService catalog sort wire contract", () => {
   it("omits sort entirely when the caller does not set one", async () => {
     await listExperts();
     expect(lastListCall().params).not.toHaveProperty("sort");
+  });
+});
+
+describe("parseTeamAgentsMarkdown — 后端 teamAgentsMarkdown 的逆向解析", () => {
+  it("round-trips the deterministic team document", () => {
+    // 与 octo-marketplace internal/backfill/plugin/mapping.go teamAgentsMarkdown
+    // 的输出格式配对;改任一侧必须同步另一侧。
+    const doc = [
+      "# 产品研发专家团",
+      "",
+      "跨职能交付小组",
+      "",
+      "## 协作方式",
+      "",
+      "- Leader: 产品经理",
+      "",
+      "### 策略",
+      "1. 先澄清目标",
+      "2. 再评估风险",
+      "",
+      "### 依赖",
+      "- 阻塞: 需求文档",
+      "- 推荐: 设计稿",
+      "",
+      "### 权限",
+      "open",
+      "",
+    ].join("\n");
+    const parsed = parseTeamAgentsMarkdown(doc);
+    expect(parsed.leader).toBe("产品经理");
+    expect(parsed.strategies).toEqual(["先澄清目标", "再评估风险"]);
+    expect(parsed.dependencies).toEqual({
+      blocking: ["需求文档"],
+      recommended: ["设计稿"],
+    });
+    expect(parsed.permission).toBe("open");
+  });
+
+  it("returns empty config for minimal documents", () => {
+    const parsed = parseTeamAgentsMarkdown("# 团队\n\n## 协作方式\n");
+    expect(parsed).toEqual({
+      leader: "",
+      strategies: [],
+      dependencies: { blocking: [], recommended: [] },
+      permission: "",
+    });
   });
 });

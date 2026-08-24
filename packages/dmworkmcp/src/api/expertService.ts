@@ -18,8 +18,8 @@ import {
 import type {
   MemberContextWire,
   SkillRefWire,
-  TeamConfigWire,
 } from "./expertWire";
+import { parseTeamAgentsMarkdown } from "./expertWire";
 import type { ExpertMember, ExpertSkill } from "../mock/expertMock";
 import {
   SCENE_CODE,
@@ -446,9 +446,13 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
   const plugin = detail.plugin;
   const categoryName =
     (plugin.category_id && maps.idToName.get(plugin.category_id)) || "";
-  const config =
-    jsonAttachment<TeamConfigWire>(plugin.plugin_json, "team/config.json") ?? {};
-  const memberRels = liveRelations(detail.relations, "expert_team_member");
+  // Contract layout: the team package is a single AGENTS.md carrying the
+  // collaboration/dispatch config as deterministic prose; leadership also
+  // lives on member relations (is_leader).
+  const agents = parseTeamAgentsMarkdown(
+    rawAttachment(plugin.plugin_json, "AGENTS.md") ?? ""
+  );
+  const memberRels = liveRelations(detail.relations, "expert_team_expert");
   const skillIndex = new Map<string, string[]>();
   const members = await Promise.all(
     memberRels.map((rel) => loadSquadMember(rel, skillIndex))
@@ -458,15 +462,10 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
     ...mapPluginSquadListItem(plugin, categoryName),
     members,
     memberCount: members.length,
-    leader: config.leader ?? "",
-    strategies: (config.strategies ?? []).filter(
-      (s): s is string => typeof s === "string"
-    ),
-    dependencies: {
-      blocking: config.dependencies?.blocking ?? [],
-      recommended: config.dependencies?.recommended ?? [],
-    },
-    permission: config.permission ?? "",
+    leader: agents.leader || members.find((m) => m.leader)?.name || "",
+    strategies: agents.strategies,
+    dependencies: agents.dependencies,
+    permission: agents.permission,
     checkResult: "supported",
   };
 }

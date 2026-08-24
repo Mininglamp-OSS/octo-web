@@ -505,21 +505,14 @@ describe("skillApiReal", () => {
       path: string;
       raw_content?: string;
     }>;
-    const manifestAtt = attachments.find((a) => a.path === "manifest.json");
-    expect(manifestAtt?.raw_content).toBe(
-      JSON.stringify(body.plugin.manifest_json && {
-        $schema: "cowork-plugin-manifest-1.0.json",
-        description: "Analyze CI logs",
-        examples: [],
-        labels: ["新标签"],
-        name: "ci-failure-map",
-        plugin_name: "改名",
-        plugin_type: "skill",
-      })
-    );
+    // Contract layout: the stale embedded manifest.json is dropped and the
+    // rest of the package passes through untouched.
+    expect(attachments.some((a) => a.path === "manifest.json")).toBe(false);
     expect(attachments.find((a) => a.path === "SKILL.md")?.raw_content).toBe(
       "# keep me"
     );
+    expect(body.plugin.manifest_json.plugin_name).toBe("改名");
+    expect(body.plugin.manifest_json.labels).toEqual(["新标签"]);
   });
 
   it("initUpload maps backend presigned upload fields", async () => {

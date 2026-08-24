@@ -207,12 +207,50 @@ export function mapSquadDetail(raw: ExpertSquadDetailWire): ExpertSquad {
 // counters; detail assembly (attachments + relations fan-out) lives in
 // expertService — these are the pure projections.
 
-/** team/config.json attachment persisted for expert_team plugins. */
-export interface TeamConfigWire {
-  leader?: string;
-  strategies?: unknown[];
-  dependencies?: { blocking?: string[]; recommended?: string[] };
-  permission?: string;
+/** Structured view of the team package's AGENTS.md document. The contract
+ *  layout carries the collaboration/dispatch config as deterministic prose
+ *  (rendered by the marketplace backfill/repackage teamAgentsMarkdown); this
+ *  parser is its inverse and must track that format. */
+export interface TeamAgentsDoc {
+  leader: string;
+  strategies: string[];
+  dependencies: { blocking: string[]; recommended: string[] };
+  permission: string;
+}
+
+export function parseTeamAgentsMarkdown(text: string): TeamAgentsDoc {
+  const doc: TeamAgentsDoc = {
+    leader: "",
+    strategies: [],
+    dependencies: { blocking: [], recommended: [] },
+    permission: "",
+  };
+  let section = "";
+  for (const rawLine of (text ?? "").split("\n")) {
+    const line = rawLine.trim();
+    if (line.startsWith("### ")) {
+      section = line.slice(4).trim();
+      continue;
+    }
+    if (line.startsWith("- Leader:")) {
+      doc.leader = line.slice("- Leader:".length).trim();
+      continue;
+    }
+    if (section === "策略") {
+      const numbered = line.match(/^\d+\.\s+(.*)$/);
+      if (numbered) doc.strategies.push(numbered[1].trim());
+      continue;
+    }
+    if (section === "依赖") {
+      if (line.startsWith("- 阻塞:")) doc.dependencies.blocking.push(line.slice("- 阻塞:".length).trim());
+      if (line.startsWith("- 推荐:")) doc.dependencies.recommended.push(line.slice("- 推荐:".length).trim());
+      continue;
+    }
+    if (section === "权限" && line && !doc.permission) {
+      doc.permission = line;
+    }
+  }
+  return doc;
 }
 
 /** expert/context.json attachment persisted for squad member snapshots. */

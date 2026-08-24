@@ -553,21 +553,12 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
     labels: tags,
     examples: manifest.examples ?? [],
   };
-  const manifestRaw = goCanonicalJSON(newManifest);
-  const manifestAttachment: PluginAttachmentWire = {
-    path: "manifest.json",
-    content_type: "raw",
-    mime_type: "application/json",
-    raw_content: manifestRaw,
-  };
+  // Contract layout: the manifest lives only in manifest_json; any embedded
+  // manifest.json attachment on an older record is dropped, the rest of the
+  // package passes through untouched.
   const attachments: PluginAttachmentWire[] = (
     plugin.plugin_json?.attachments ?? []
-  ).map((a) => (a.path === "manifest.json" ? manifestAttachment : a));
-  // Every package must embed exactly one canonical manifest; append it when a
-  // degraded record is missing the attachment instead of failing the upsert.
-  if (!attachments.some((a) => a.path === "manifest.json")) {
-    attachments.push(manifestAttachment);
-  }
+  ).filter((a) => a.path !== "manifest.json");
   const detail = await request<PluginDetailWire>("/plugins/upsert", {
     method: "POST",
     body: JSON.stringify({

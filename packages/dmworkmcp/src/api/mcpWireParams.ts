@@ -84,10 +84,9 @@ export function toPluginUpsert(
     params.headersUserSupplied
   );
   if (headers) server.headers = headers;
+  // Contract layout: the manifest lives only in manifest_json — no embedded
+  // manifest.json attachment (the old byte-match rule is retired).
   const attachments: PluginAttachmentBody[] = [
-    // manifest.json must be BYTE-EQUAL to the server-canonicalized manifest;
-    // goCanonicalJSON reproduces Go's encoding of the manifest object above.
-    rawAtt("manifest.json", goCanonicalJSON(manifest)),
     rawAtt("mcp.json", goCanonicalJSON({ mcpServers: { [name]: server } })),
     rawAtt("connector/tools.json", goCanonicalJSON(params.tools ?? [])),
     rawAtt("connector/examples.json", goCanonicalJSON(usage)),
