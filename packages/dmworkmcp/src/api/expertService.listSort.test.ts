@@ -174,6 +174,26 @@ describe("parseTeamAgentsMarkdown — 后端 teamAgentsMarkdown 的逆向解析"
     expect(parsed.permission).toBe("open");
   });
 
+  it("ignores config-looking lines inside the summary prose", () => {
+    // A summary may echo "- Leader:" or numbered lines; only content after
+    // ## 协作方式 counts as config.
+    const doc = [
+      "# 团队",
+      "",
+      "介绍:",
+      "- Leader: 假领导",
+      "1. 假策略",
+      "",
+      "## 协作方式",
+      "",
+      "- Leader: 真领导",
+      "",
+    ].join("\n");
+    const parsed = parseTeamAgentsMarkdown(doc);
+    expect(parsed.leader).toBe("真领导");
+    expect(parsed.strategies).toEqual([]);
+  });
+
   it("returns empty config for minimal documents", () => {
     const parsed = parseTeamAgentsMarkdown("# 团队\n\n## 协作方式\n");
     expect(parsed).toEqual({

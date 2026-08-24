@@ -134,13 +134,10 @@ export function jsonAttachment<T>(
   }
 }
 
-/**
- * Serialize a value exactly like Go's `json.Marshal` of decoded JSON: object
- * keys sorted, no whitespace, and `<` `>` `&` U+2028 U+2029 escaped. The
- * upsert package must embed a `manifest.json` attachment whose raw_content is
- * BYTE-EQUAL to the server-canonicalized manifest, so this must reproduce the
- * Go encoding for the manifest we submit alongside it.
- */
+/** Stable serializer matching Go's json.Marshal encoding (sorted keys,
+ *  `<>&`/U+2028/U+2029 escapes): used to render deterministic JSON attachment
+ *  contents (mcp.json, connector/*.json). The retired manifest byte-match rule
+ *  no longer applies — packages carry no embedded manifest.json. */
 export function goCanonicalJSON(value: unknown): string {
   return escapeLikeGo(stringifySortedKeys(value));
 }

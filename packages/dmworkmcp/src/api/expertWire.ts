@@ -226,13 +226,21 @@ export function parseTeamAgentsMarkdown(text: string): TeamAgentsDoc {
     permission: "",
   };
   let section = "";
+  let inCollaboration = false;
   for (const rawLine of (text ?? "").split("\n")) {
     const line = rawLine.trim();
+    if (line.startsWith("## ")) {
+      // The summary prose precedes ## 协作方式; nothing before that heading
+      // may be interpreted as config (a summary line could echo "- Leader:").
+      inCollaboration = line.slice(3).trim() === "协作方式";
+      section = "";
+      continue;
+    }
     if (line.startsWith("### ")) {
       section = line.slice(4).trim();
       continue;
     }
-    if (line.startsWith("- Leader:")) {
+    if (inCollaboration && !section && line.startsWith("- Leader:")) {
       doc.leader = line.slice("- Leader:".length).trim();
       continue;
     }

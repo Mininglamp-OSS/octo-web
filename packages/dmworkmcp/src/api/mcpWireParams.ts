@@ -51,8 +51,8 @@ export function toPluginUpsert(
   const name = params.name.trim();
   const slug = slugifyServerName(params.slug?.trim() ? params.slug : name);
   // Pre-normalize exactly like the backend (trim, drop empties, dedupe) so
-  // the manifest.json attachment below stays byte-equal to the canonical
-  // manifest the server derives from the same labels.
+  // manifest_json.labels matches the tags column invariant the server
+  // enforces (tags == labels).
   const tags = [
     ...new Set((params.tags ?? []).map((t) => t.trim()).filter(Boolean)),
   ];

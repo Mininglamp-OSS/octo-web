@@ -26,7 +26,6 @@ import type {
 } from "../types/skill";
 import {
   SCENE_CODE,
-  goCanonicalJSON,
   jsonAttachment,
   rawAttachment,
   type PluginAttachmentWire,
