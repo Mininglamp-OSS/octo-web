@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 // 捕获 ChatVM.channelListener（didMount 里通过 channelManager.addListener 注册）。
 const hoisted = vi.hoisted(() => ({
     channelListener: undefined as undefined | ((channelInfo: any) => void),
+    conversationListener: undefined as undefined | ((conversation: any, action: string) => void),
     spaceChangedHandler: undefined as undefined | ((space: any) => void),
     activeMenuHandlers: new Set<(payload: { menuId?: string }) => void>(),
     removeChannelListener: vi.fn(),
@@ -15,7 +16,9 @@ vi.mock("wukongimjssdk", () => ({
         shared: () => ({
             conversationManager: {
                 conversations: [],
-                addConversationListener: () => {},
+                addConversationListener: (listener: (conversation: any, action: string) => void) => {
+                    hoisted.conversationListener = listener
+                },
                 removeConversationListener: () => {},
                 findConversation: () => undefined,
                 sync: () => Promise.resolve([]),
@@ -56,7 +59,7 @@ vi.mock("wukongimjssdk", () => ({
     ChannelTypeGroup: 2,
     ChannelTypePerson: 1,
     Conversation: class {},
-    ConversationAction: {},
+    ConversationAction: { add: "add", update: "update", remove: "remove" },
     ConnectStatus: { Connected: 1, Disconnect: 0 },
     Message: class {},
     MessageContent: class {},
@@ -192,7 +195,7 @@ describe("ChatVM.channelListener — CommunityTopic 子区同步 (issue #345)", 
         expect(notifySpy).toHaveBeenCalledTimes(1)
     })
 
-    it("子区在 conversations 中时也 notifyListener（既有 top 分支）", () => {
+    it("子区 channelInfo 更新不会覆盖 pinned 快照中的置顶状态", () => {
         const vm = mountVM()
         const threadChannel = {
             channelID: "g1____t2",
@@ -203,7 +206,7 @@ describe("ChatVM.channelListener — CommunityTopic 子区同步 (issue #345)", 
         vm.conversations = [
             {
                 channel: threadChannel,
-                extra: {},
+                extra: { top: 1 },
             } as any,
         ]
         const notifySpy = vi.spyOn(vm, "notifyListener")
@@ -214,6 +217,7 @@ describe("ChatVM.channelListener — CommunityTopic 子区同步 (issue #345)", 
         })
 
         expect(notifySpy).toHaveBeenCalledTimes(1)
+        expect(vm.conversations[0].extra.top).toBe(1)
     })
 
     it("非子区且不在 conversations 的群 channelInfo 不会走子区分支", () => {
@@ -253,6 +257,34 @@ describe("ChatVM.channelListener — CommunityTopic 子区同步 (issue #345)", 
 
         expect(hoisted.removeChannelListener).toHaveBeenCalledTimes(1)
         expect(hoisted.removeChannelListener).toHaveBeenCalledWith(hoisted.channelListener)
+    })
+})
+
+describe("ChatVM.conversationListener — child-thread pin state", () => {
+    it("keeps the persisted pin when an ordinary conversation update lacks pinned data", () => {
+        const vm = mountVM()
+        const channel = {
+            channelID: "g1____t4",
+            channelType: ChannelTypeCommunityTopic,
+            isEqual: (other: any) =>
+                other?.channelID === "g1____t4" && other?.channelType === ChannelTypeCommunityTopic,
+        }
+        vm.conversations = [
+            {
+                channel,
+                conversation: { channel, timestamp: 1, extra: { top: 1 } },
+                extra: { top: 1 },
+                timestamp: 1,
+            } as any,
+        ]
+        vi.spyOn(vm, "currentConversationListY").mockReturnValue(undefined)
+
+        hoisted.conversationListener!(
+            { channel, timestamp: 2, extra: { top: 0 } },
+            "update"
+        )
+
+        expect(vm.conversations[0].extra.top).toBe(1)
     })
 })
 
