@@ -21,6 +21,7 @@ vi.mock('@douyinfe/semi-ui/lib/es/sideSheet', async () => {
       size,
       visible,
       width,
+      disableScroll,
       ...rest
     },
     ref,
@@ -34,6 +35,7 @@ vi.mock('@douyinfe/semi-ui/lib/es/sideSheet', async () => {
         data-body-display={bodyStyle?.display}
         data-dialog-class={dialogClassName}
         data-height={height}
+        data-disable-scroll={String(disableScroll)}
         data-mask={String(mask)}
         data-placement={placement}
         data-size={size}
@@ -80,6 +82,7 @@ describe('Drawer', () => {
       <Drawer
         open
         bodyFlush
+        contentClassName="drawer-content"
         extra={<button type="button">More</button>}
         footer={<span className="octo-ui-drawer__footer-placeholder">回复...</span>}
         title="Thread"
@@ -90,6 +93,7 @@ describe('Drawer', () => {
     )
 
     expect(html).toContain('data-width="min(50vw, 520px)"')
+    expect(html).toContain('class="octo-ui-drawer__surface drawer-content"')
     expect(html).toContain('octo-ui-drawer__body--flush')
     expect(html).toContain('octo-ui-drawer__footer')
     expect(html).toContain('More')
@@ -99,6 +103,14 @@ describe('Drawer', () => {
     const html = renderToStaticMarkup(<Drawer visible={false} title="Legacy" />)
 
     expect(html).toContain('data-visible="false"')
+  })
+
+  it('does not lock page scroll by default but allows opt-in', () => {
+    const defaultDrawer = renderToStaticMarkup(<Drawer open title="Default scroll" />)
+    const blockingDrawer = renderToStaticMarkup(<Drawer open disableScroll title="Blocking scroll" />)
+
+    expect(defaultDrawer).toContain('data-disable-scroll="false"')
+    expect(blockingDrawer).toContain('data-disable-scroll="true"')
   })
 
   it('renders left placement with custom height for horizontal placements', () => {
@@ -120,8 +132,19 @@ describe('Drawer', () => {
 
     expect(html).toContain('octo-ui-drawer--inline')
     expect(html).toContain('data-octo-drawer-open="true"')
+    expect(html).toContain('data-octo-drawer-motion="true"')
     expect(html).toContain('width:360px')
     expect(html).toContain('Inline')
+  })
+
+  it('honors disabled motion in inline layout', () => {
+    const html = renderToStaticMarkup(
+      <Drawer inline open motion={false} title="Inline">
+        body
+      </Drawer>,
+    )
+
+    expect(html).toContain('data-octo-drawer-motion="false"')
   })
 
   it('keeps closed inline content mounted when requested', () => {
@@ -134,6 +157,7 @@ describe('Drawer', () => {
     expect(html).toContain('octo-ui-drawer--inline')
     expect(html).toContain('data-octo-drawer-open="false"')
     expect(html).toContain('aria-hidden="true"')
+    expect(html).toContain('inert=""')
     expect(html).toContain('hidden body')
   })
 })

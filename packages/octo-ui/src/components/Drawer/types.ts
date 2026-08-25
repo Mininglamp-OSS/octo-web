@@ -19,6 +19,7 @@ export interface DrawerProps {
   defaultOpen?: boolean
   /** @deprecated Use defaultOpen. */
   defaultVisible?: boolean
+  disableScroll?: boolean
   extra?: ReactNode
   footer?: ReactNode
   footerClassName?: string

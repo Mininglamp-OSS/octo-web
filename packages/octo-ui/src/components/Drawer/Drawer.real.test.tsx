@@ -43,6 +43,7 @@ describe('Drawer with real Semi SideSheet', () => {
     render(
       <Drawer
         open
+        contentClassName="drawer-real-content"
         motion={false}
         portalContainer={() => portal}
         title="聊天信息"
@@ -54,6 +55,7 @@ describe('Drawer with real Semi SideSheet', () => {
     )
 
     expect(portal.querySelector('.octo-ui-drawer')).not.toBeNull()
+    expect(portal.querySelector('.octo-ui-drawer__surface.drawer-real-content')).not.toBeNull()
     expect(portal.querySelector('.octo-ui-drawer__title')?.textContent).toBe('聊天信息')
 
     act(() => {
@@ -75,5 +77,33 @@ describe('Drawer with real Semi SideSheet', () => {
     )
 
     expect(portal.querySelector('.semi-sidesheet-mask')).toBeNull()
+  })
+
+  it('does not lock body scroll by default', () => {
+    render(
+      <Drawer open motion={false} title="Non blocking">
+        body
+      </Drawer>,
+    )
+
+    expect(document.body.style.overflow).toBe('')
+  })
+
+  it('closes inline drawers on Escape without passing a synthetic event impostor', () => {
+    const onClose = vi.fn()
+    const onOpenChange = vi.fn()
+
+    render(
+      <Drawer inline open title="Inline" onClose={onClose} onOpenChange={onOpenChange}>
+        body
+      </Drawer>,
+    )
+
+    act(() => {
+      window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }))
+    })
+
+    expect(onClose).toHaveBeenCalledWith(undefined)
+    expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 })

@@ -1338,6 +1338,7 @@ export class ChatContentPage extends Component<
           open={showChannelSetting}
           bodyFlush
           closable={false}
+          aria-label={t("base.chatPage.channelSettings")}
           className="wk-chat-channelsetting"
           closeOnEsc={false}
           width="var(--wk-wdith-chat-channelsetting)"
@@ -1362,6 +1363,7 @@ export class ChatContentPage extends Component<
             open={showChannelSearch}
             bodyFlush
             closable={false}
+            aria-label={t("base.chatPage.searchModuleName")}
             className="wk-chat-channel-search-panel"
             closeOnEsc={false}
             width="var(--wk-width-chat-search-panel)"

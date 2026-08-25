@@ -2087,6 +2087,7 @@ export default class ThreadPanel extends Component<
         open
         bodyFlush
         closable={false}
+        aria-label={t("base.chatPage.threadPanel")}
         className="wk-thread-panel"
         closeOnEsc={false}
         width={isSmallScreen ? undefined : panelWidth}

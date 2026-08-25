@@ -39,6 +39,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     contentClassName,
     defaultOpen,
     defaultVisible,
+    disableScroll = false,
     extra,
     footer,
     footerClassName,
@@ -104,7 +105,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     if (!inline || !actualOpen || !closeOnEsc) return
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === 'Escape') {
-        handleClose(event as unknown as KeyboardEvent<Element>)
+        handleClose()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -133,7 +134,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
   }, [closable, closeIcon, closeLabel, extra, handleClose, title])
 
   const bodyNode = (
-    <div className="octo-ui-drawer__surface">
+    <div className={cx('octo-ui-drawer__surface', contentClassName)}>
       {titleNode}
       <div className={cx('octo-ui-drawer__body', bodyFlush && 'octo-ui-drawer__body--flush', bodyClassName)}>
         {children}
@@ -156,8 +157,10 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
         aria-label={ariaLabel ?? (typeof title === 'string' ? title : undefined)}
         className={cx('octo-ui-drawer', 'octo-ui-drawer--inline', `octo-ui-drawer--${placement}`, className)}
         data-octo-drawer-open={actualOpen ? 'true' : 'false'}
+        data-octo-drawer-motion={motion ? 'true' : 'false'}
         data-octo-drawer-placement={placement}
         data-octo-drawer-size={size}
+        {...(!actualOpen ? { inert: '' } : {})}
         role="dialog"
         style={{
           height: drawerHeight,
@@ -166,7 +169,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
           ...style,
         }}
       >
-        <div className={cx('octo-ui-drawer__dialog', contentClassName)}>
+        <div className="octo-ui-drawer__dialog">
           {bodyNode}
         </div>
       </aside>
@@ -189,7 +192,8 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     className: cx('octo-ui-drawer', `octo-ui-drawer--${placement}`, className),
     closable: false,
     closeOnEsc,
-    dialogClassName: cx('octo-ui-drawer__dialog', contentClassName),
+    dialogClassName: 'octo-ui-drawer__dialog',
+    disableScroll,
     getPopupContainer: portalContainer,
     headerStyle: { display: 'none' },
     height: drawerHeight,
