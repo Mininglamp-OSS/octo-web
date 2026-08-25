@@ -17,6 +17,7 @@ import {
     publishInitialSpaceResolution,
 } from "./spaceChange";
 import {
+    clearLastSpaceId,
     persistActiveSpace,
     resolveInitialSpaceForUser,
 } from "../../features/spacePreference";
@@ -113,6 +114,7 @@ export class MainPage extends Component<{}, MainPageState> {
             } else {
                 WKApp.shared.currentSpaceId = '';
                 WKApp.shared.spaceChecked = false;
+                clearLastSpaceId(WKApp.loginInfo.uid);
                 localStorage.removeItem("currentSpaceId");
             }
             publishInitialSpaceResolution(

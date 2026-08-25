@@ -5,6 +5,7 @@ import {
   shouldPublishInitialSpaceChange,
 } from "../Pages/Main/spaceChange";
 import {
+  clearLastSpaceId,
   getLastSpaceStorageKey,
   persistActiveSpace,
   readLastSpaceId,
@@ -173,6 +174,26 @@ describe("per-user last Space persistence", () => {
     expect(resolveInitialSpaceForUser(spaces, "user-a", null, store)).toEqual(
       spaces[1]
     );
+  });
+
+  it("does not resurrect the last Space after an empty membership result", () => {
+    const values = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    };
+
+    persistActiveSpace("user-a", "space-a", store);
+    expect(resolveInitialSpaceForUser([], "user-a", "space-a", store)).toBe(
+      undefined
+    );
+
+    clearLastSpaceId("user-a", store);
+    store.removeItem("currentSpaceId");
+
+    expect(readLastSpaceId("user-a", store)).toBeNull();
+    expect(values.has("octo:last-space:user-a")).toBe(false);
   });
 
   it("degrades safely when browser storage is unavailable", () => {

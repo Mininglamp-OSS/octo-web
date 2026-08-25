@@ -77,6 +77,20 @@ export function persistActiveSpace(
   }
 }
 
+export function clearLastSpaceId(
+  uid: string | null | undefined,
+  store: Pick<Storage, "removeItem"> = localStorage
+): void {
+  const lastSpaceKey = getLastSpaceStorageKey(uid);
+  if (!lastSpaceKey) return;
+
+  try {
+    store.removeItem(lastSpaceKey);
+  } catch {
+    // Storage can be unavailable in privacy-restricted browser contexts.
+  }
+}
+
 export function resolveInitialSpace<T extends { space_id: string }>(
   spaces: T[],
   ...preferredSpaceIds: Array<string | null | undefined>
