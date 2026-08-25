@@ -80,14 +80,31 @@ export function trustedFleetHosts(): Set<string> {
  * union of the static fleet allowlist + API origin. Merge semantics; safe
  * to call repeatedly. No-op on web / without the IPC bridge.
  */
+const REPORT_TRUSTED_ORIGINS_RETRIES = 3;
+const REPORT_TRUSTED_ORIGINS_RETRY_DELAY_MS = 1000;
+
 export function reportTrustedOriginsToMain(): void {
   if (!isElectronPowered()) return;
   const ipc = getElectronIpcBridge();
   if (!ipc) return;
   const origins = Array.from(trustedFleetHosts());
-  ipc.invoke(IPC_SET_TRUSTED_ORIGINS, origins).catch(() => {
-    // best-effort: next call or next click will retry
-  });
+  // Real retry with backoff: the renderer calls this once at module level,
+  // which can race the main process's IPC handler registration (whenReady).
+  // A dropped invoke would leave the API origin unknown to the main process
+  // and every link on it would prompt — so retry before giving up.
+  const attempt = (remaining: number) => {
+    ipc
+      .invoke(IPC_SET_TRUSTED_ORIGINS, origins)
+      .catch(() => {
+        if (remaining > 1) {
+          setTimeout(
+            () => attempt(remaining - 1),
+            REPORT_TRUSTED_ORIGINS_RETRY_DELAY_MS,
+          );
+        }
+      });
+  };
+  attempt(REPORT_TRUSTED_ORIGINS_RETRIES);
 }
 
 function isTrustedFleetHost(url: URL, baseUrl: string): boolean {

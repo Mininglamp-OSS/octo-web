@@ -495,15 +495,17 @@ function registerSetTrustedOriginsHandler(): void {
     const set = getTrustedOrigins();
     for (const origin of origins) {
       if (typeof origin !== "string") continue;
+      // The renderer sends BARE URL.host strings (e.g. "im.deepminer.com.cn")
+      // from trustedFleetHosts() — NOT full URLs. new URL(origin) would
+      // throw on them and silently reject every legitimate entry, so parse
+      // against a fixed https:// prefix and keep only the host.
       let parsed: URL;
       try {
-        parsed = new URL(origin);
+        parsed = new URL(`https://${origin}`);
       } catch {
         continue;
       }
-      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-        continue;
-      }
+      if (parsed.host !== origin) continue;
       if (set.size >= MAX_TRUSTED_ORIGINS) break;
       set.add(parsed.host);
     }
