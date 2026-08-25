@@ -3603,9 +3603,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             </div>
                         );
                     }
-                    // need3：他人那条隐私收口（citations=[] 、清 [n]）不变；自己那条不被清洗，可正常显示引用。
-                    // 统一走 stripCitationMarkers：与转文档同一实现（链接/代码感知），不再各写各的正则。
-                    const displayContent = isMe ? content : stripCitationMarkers(content);
+                    // need3：他人那条隐私收口（citations=[]、清 [n]）保持原行为；自己那条
+                    // 不被清洗，可正常显示引用。Markdown 感知的清理由转文档路径单独负责。
+                    const displayContent = isMe ? content : content.replace(/\[\d+\]/g, '');
                     const displayCitations = isMe ? (m.citations || []) : [];
                     const needsTruncate = displayContent.length > 100;
                     return (

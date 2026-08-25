@@ -1,48 +1,129 @@
+import { decodeString } from 'micromark-util-decode-string';
+import remarkGfm from 'remark-gfm';
+import remarkParse from 'remark-parse';
+import { unified } from 'unified';
+import { visit } from 'unist-util-visit';
+
+interface SourceRange {
+    start: number;
+    end: number;
+}
+
+interface DecodedSourceUnit extends SourceRange {
+    value: string;
+}
+
+const markdownParser = unified().use(remarkParse).use(remarkGfm);
+const markerPatternSource = String.raw`\[(\d+)\](?!\()|\[P(\d{1,3})\]`;
+const trailingEntityWithoutSemicolon = /&(?:#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31})$/i;
+
+/** Map each decoded UTF-16 code unit back to its range in the markdown source. */
+function mapDecodedSource(rawText: string, decodedText: string): SourceRange[] | null {
+    const units: DecodedSourceUnit[] = [];
+    let cursor = 0;
+    const encodedToken = /\\[!-/:-@[-`{-~]|&(?:#(?:\d{1,7}|x[\da-f]{1,6})|[\da-z]{1,31});/gi;
+
+    const append = (value: string, start: number, end: number) => {
+        for (let index = 0; index < value.length; index += 1) {
+            units.push({ value: value[index], start, end });
+        }
+    };
+
+    let match: RegExpExecArray | null;
+    while ((match = encodedToken.exec(rawText)) !== null) {
+        for (let index = cursor; index < match.index; index += 1) {
+            append(rawText[index], index, index + 1);
+        }
+
+        append(decodeString(match[0]), match.index, match.index + match[0].length);
+        cursor = match.index + match[0].length;
+    }
+
+    for (let index = cursor; index < rawText.length; index += 1) {
+        append(rawText[index], index, index + 1);
+    }
+
+    // Continuation prefixes (`> `, list indentation, tabs) can sit inside a
+    // text node's source span without appearing in node.value. Align the AST
+    // value as a subsequence so those syntax bytes remain untouched.
+    const ranges: SourceRange[] = [];
+    let unitIndex = 0;
+    for (let valueIndex = 0; valueIndex < decodedText.length; valueIndex += 1) {
+        while (unitIndex < units.length && units[unitIndex].value !== decodedText[valueIndex]) {
+            unitIndex += 1;
+        }
+        if (unitIndex >= units.length) return null;
+        ranges.push({ start: units[unitIndex].start, end: units[unitIndex].end });
+        unitIndex += 1;
+    }
+
+    return ranges;
+}
+
 /**
- * 总结正文里引用锚点标记的清理（转在线文档 / 隐私收口时用）。
+ * Remove citation markers before converting a summary to an online document.
  *
- * 只剥离渲染侧认定为「引用锚点」的两种形态，且与渲染权威逐一对齐：
- *  - 用户引用 `\[(\d+)\](?!\()` —— 与 CitationText.tsx / citationFormat.ts:53 一致，
- *    `(?!\()` 明确排除 `[n](url)` markdown 链接；
- *  - 团队引用 `\[P(\d{1,3})\]` —— 与后端 `meta_processor.go` 的 `teamCitationRe`
- *    逐字节一致（三位封顶；后端 RE2 无 lookahead，团队正文为 LLM 纯文本、不会
- *    产出 `[P1](url)`，故按后端字面匹配，不加链接守卫）。
- *
- * 相对 head commit 86f6f7ba 的内联正则，这里修掉 round-4 P1-a 的三个缺陷：
- *  1. **不扫代码** —— 围栏块 / 行内代码里的 `[n]`（如 `items[0]`、`argv[1]`）
- *     从不被渲染成引用，清理同样整块跳过，不再把 `items[0]` 削成 `items`；
- *  2. **不碰链接与引用定义** —— `[1](url)`、行首 `[1]: url` 原样保留；
- *  3. **不吞换行** —— 不再用会匹配 `\n` 的 `\s?` 去吃前导空白，行首标记只删
- *     自身（外加一个水平空格），保住标题/列表等块结构。
- *
- * 分组形态 `[1,2]`、范围形态 `[30-35]` 是渲染期由 `formatGroupLabel`
- * （citationFormat.ts）从相邻单标记合成的，存储正文里不存在，故不识别、不剥离。
+ * Markdown is parsed with the same remark parser and grammar used by the
+ * renderer. We inspect only text nodes, so code, link destinations, definitions,
+ * and other non-text syntax stay untouched. Ranges are removed from the original
+ * source instead of stringifying the AST, preserving whitespace and formatting.
  */
 export function stripCitationMarkers(source: string): string {
     if (!source) return source;
 
-    // 单次扫描：受保护的区域（代码 / 链接 / 引用定义）命中后原样放回，
-    // 只有最后两个分支（真正的引用锚点）返回空串被删除。
-    const token = new RegExp(
-        [
-            // 围栏代码块，整块保护
-            '(?:^|\\n)[^\\S\\n]*```[\\s\\S]*?(?:```|$)',
-            // 行内代码，整段保护
-            '`[^`\\n]+`',
-            // markdown 链接 [text](url)，含与引用同形的 [1](url)
-            '\\[[^\\]\\n]*\\]\\([^)\\n]*\\)',
-            // 行首引用定义 [label]: url
-            '(?:^|\\n)[^\\S\\n]*\\[[^\\]\\n]*\\]:[^\\n]*',
-            // 用户引用 [n]：(?!\() 排除链接；尾随一个水平空格一并删，避免残留
-            '\\[(\\d+)\\](?!\\()[ \\t]?',
-            // 团队引用 [Pn]：与后端权威一致，三位封顶
-            '\\[P(\\d{1,3})\\][ \\t]?',
-        ].join('|'),
-        'g',
-    );
+    const tree = markdownParser.parse(source);
+    const removals: SourceRange[] = [];
 
-    return source.replace(token, (match, userNum, teamNum) => {
-        // 仅最后两个捕获组（引用锚点）删除；受保护 token 原样返回。
-        return userNum !== undefined || teamNum !== undefined ? '' : match;
+    visit(tree, 'text', (node: any) => {
+        const start = node.position?.start?.offset;
+        const positionEnd = node.position?.end?.offset;
+        if (typeof start !== 'number' || typeof positionEnd !== 'number') return;
+        if (start < 0 || positionEnd < start || positionEnd > source.length) return;
+        if (typeof node.value !== 'string') return;
+
+        // remark-parse@10 reports a terminal character reference's end offset
+        // immediately before its semicolon. Include it so decoded/source
+        // offsets still line up when a citation marker ends the document.
+        let sourceEnd = positionEnd;
+        if (
+            source[sourceEnd] === ';' &&
+            trailingEntityWithoutSemicolon.test(source.slice(start, sourceEnd))
+        ) {
+            sourceEnd += 1;
+        }
+
+        const rawText = source.slice(start, sourceEnd);
+        const sourceRanges = mapDecodedSource(rawText, node.value);
+
+        // `[1](url)` is a link node, so its brackets do not appear in this
+        // text-node range. Nested link text still follows the renderer exactly.
+        const markerPattern = new RegExp(markerPatternSource, 'g');
+        let match: RegExpExecArray | null;
+        if (!sourceRanges) {
+            while ((match = markerPattern.exec(rawText)) !== null) {
+                removals.push({
+                    start: start + match.index,
+                    end: start + match.index + match[0].length,
+                });
+            }
+            return;
+        }
+
+        while ((match = markerPattern.exec(node.value)) !== null) {
+            const first = sourceRanges[match.index];
+            const last = sourceRanges[match.index + match[0].length - 1];
+            if (!first || !last) continue;
+            removals.push({
+                start: start + first.start,
+                end: start + last.end,
+            });
+        }
     });
+
+    return removals
+        .sort((left, right) => right.start - left.start)
+        .reduce(
+            (result, range) => result.slice(0, range.start) + result.slice(range.end),
+            source,
+        );
 }
