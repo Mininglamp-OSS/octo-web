@@ -84,7 +84,10 @@ function dispatchContextMenu(element: Element) {
     return event
 }
 
-function renderContextMenus(onHide = vi.fn()) {
+function renderContextMenus(
+    onHide = vi.fn(),
+    menus: ContextMenusData[] = [{ title: "Copy", onClick: vi.fn() }],
+) {
     let context: ContextMenusContext | null = null
 
     act(() => {
@@ -102,7 +105,7 @@ function renderContextMenus(onHide = vi.fn()) {
                         context = nextContext
                     }}
                     onHide={onHide}
-                    menus={[{ title: "Copy", onClick: vi.fn() }]}
+                    menus={menus}
                 />
             </div>,
             container
@@ -158,6 +161,23 @@ describe("ContextMenus native contextmenu suppression", () => {
 })
 
 describe("ContextMenus rounded hover boundaries", () => {
+    it("clears a previous submenu offset before each open cycle", () => {
+        const { context } = renderContextMenus(vi.fn(), [{
+            title: "Add to favorites",
+            children: [{ title: "Group 1" }],
+        }])
+        const trigger = container.querySelector(".trigger")!
+        const submenu = container.querySelector<HTMLElement>(".wk-ctx-submenu")!
+        submenu.style.top = "-320px"
+
+        act(() => {
+            context?.hide()
+        })
+        dispatchContextMenu(trigger)
+
+        expect(submenu.style.top).toBe("")
+    })
+
     it("keeps the first and last menu items selectable around separators at every level", () => {
         act(() => {
             ReactDOM.render(

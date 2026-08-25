@@ -133,6 +133,10 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
             if (instance !== this && instance.isShow()) instance.hide()
         })
 
+        this.contextMenusRef
+            .querySelectorAll<HTMLElement>(".wk-ctx-submenu")
+            .forEach((submenu) => { submenu.style.top = "" })
+
         const clickX = event.clientX;
         const clickY = event.clientY;
 
