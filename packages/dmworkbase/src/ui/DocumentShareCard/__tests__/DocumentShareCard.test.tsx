@@ -97,3 +97,63 @@ describe("DocumentShareCard — 预览区主操作 disabled 门控", () => {
     expect(html).toContain("需要访问权限");
   });
 });
+
+/** 提取类型图标的 svg markup（用于区分不同 kind 的图形）。 */
+function typeIconMarkup(html: string): string {
+  const m = html.match(/<span class="document-forward-type-icon"[^>]*>([\s\S]*?)<\/span>/);
+  return m ? m[1] : "";
+}
+
+describe("DocumentShareCard — kind=html", () => {
+  // html 文档转发：有 reader 权限但该类型无预览（409 → empty → reader + 「暂无预览」占位）。
+  // 卡片必须能渲染、不能因未知 kind 崩溃，且类型图标仍在。
+  it("kind='html' 渲染不崩，类型图标存在", () => {
+    const html = renderToStaticMarkup(
+      <DocumentShareCard
+        {...baseProps({
+          kind: "html",
+          title: "周报.html",
+          state: "reader",
+          preview: undefined,
+          strings: strings({ permissionLabel: "可查看" }),
+          placeholder: { icon: "info", title: "暂无预览" },
+        })}
+      />,
+    );
+    expect(html).toContain("document-forward-type-icon");
+    expect(html).toContain("<svg");
+    expect(html).toContain("周报.html");
+    // empty → reader → 绿色基调，绝不能是红色 error 基调。
+    expect(html).toContain("document-forward-card is-success");
+    expect(html).toContain("暂无预览");
+  });
+
+  // html 有自己的图标，不能 fall-through 到默认 doc 图标（否则用户分不出这是 HTML 文档）。
+  it("kind='html' 的类型图标与 doc 不同", () => {
+    const render = (kind: DocumentShareCardProps["kind"]): string =>
+      renderToStaticMarkup(
+        <DocumentShareCard
+          {...baseProps({ kind, preview: undefined, placeholder: { icon: "info", title: "暂无预览" } })}
+        />,
+      );
+    const htmlIcon = typeIconMarkup(render("html"));
+    expect(htmlIcon).not.toBe("");
+    expect(htmlIcon).not.toBe(typeIconMarkup(render("doc")));
+    expect(htmlIcon).not.toBe(typeIconMarkup(render("board")));
+    expect(htmlIcon).not.toBe(typeIconMarkup(render("sheet")));
+  });
+
+  it("kind='html' 预览区仍可点（可打开文档）", () => {
+    const html = renderToStaticMarkup(
+      <DocumentShareCard
+        {...baseProps({
+          kind: "html",
+          state: "reader",
+          preview: undefined,
+          placeholder: { icon: "info", title: "暂无预览" },
+        })}
+      />,
+    );
+    expect(previewButtonDisabled(html)).toBe(false);
+  });
+});
