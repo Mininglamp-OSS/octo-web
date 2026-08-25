@@ -53,6 +53,7 @@ import {
 } from "../../im-runtime/channelRuntime";
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { isOwnedConversationSingleton } from "../../features/notifications/messageAttention";
+import { isSummaryTipContent } from "../../Messages/SummaryNotify/protocol";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -2069,6 +2070,10 @@ export default class ConversationVM extends ProviderListener {
         return messages.filter((m) => {
             // Only process system messages (content_type 1000-2000)
             if (m.contentType < 1000 || m.contentType > 2000) return true
+            // Summary-completion tips represent distinct tasks. Their visible
+            // text can be identical within five minutes, so the generic
+            // security-warning dedup must not collapse them.
+            if (isSummaryTipContent(m.content)) return true
             const content = m.content as SystemContent
             const text = content?.displayText
             if (!text) return true
