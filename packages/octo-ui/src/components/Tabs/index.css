@@ -57,6 +57,7 @@
   display: inline-flex;
   align-items: center;
   width: max-content;
+  max-width: 100%;
 }
 
 .octo-ui-tabs--segmented .octo-ui-tabs__list {
@@ -128,13 +129,21 @@
 }
 
 .octo-ui-tabs__tab:focus-visible {
-  border-radius: var(--wk-r-xs);
   outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
   outline-offset: calc(-1 * var(--wk-sp-0-5));
+}
+
+.octo-ui-tabs--line .octo-ui-tabs__tab:focus-visible {
+  border-radius: var(--wk-r-xs);
 }
 
 .octo-ui-tabs__panel {
   min-width: 0;
   color: var(--wk-text-primary);
   outline: none;
+}
+
+.octo-ui-tabs__panel:focus-visible {
+  outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+  outline-offset: calc(-1 * var(--wk-sp-0-5));
 }

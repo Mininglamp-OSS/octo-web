@@ -55,12 +55,14 @@ describe("Tabs", () => {
 
     const tablist = getByRole(container, "tablist", { name: "Example tabs" });
     const first = getByRole(container, "tab", { name: "First" });
+    const third = getByRole(container, "tab", { name: "Third" });
     const panel = getByRole(container, "tabpanel");
 
     expect(tablist.parentElement?.className).toContain("octo-ui-tabs--line");
     expect(tablist.parentElement?.className).toContain("octo-ui-tabs--md");
     expect(first.getAttribute("aria-selected")).toBe("true");
     expect(first.getAttribute("aria-controls")).toBe("example-panel-0");
+    expect(third.hasAttribute("aria-controls")).toBe(false);
     expect(panel.getAttribute("aria-labelledby")).toBe("example-tab-0");
     expect(panel.textContent).toBe("First panel");
   });

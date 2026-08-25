@@ -36,7 +36,7 @@ describe("ForwardModal TabsBar", () => {
     return onTabChange
   }
 
-  it("renders the four controlled forward filters with the compact line variant", () => {
+  it("renders the four controlled forward filters with the md line variant", () => {
     render("recent")
 
     const tablist = getByRole(container, "tablist", {

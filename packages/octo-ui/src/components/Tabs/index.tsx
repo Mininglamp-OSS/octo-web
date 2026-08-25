@@ -101,7 +101,7 @@ const Tabs = forwardRef<HTMLDivElement, TabsProps>(function Tabs(
               type="button"
               role="tab"
               aria-selected={isActive}
-              aria-controls={hasPanel ? panelId : undefined}
+              aria-controls={isActive && hasPanel ? panelId : undefined}
               aria-disabled={item.isDisabled || undefined}
               disabled={item.isDisabled}
               tabIndex={item.key === focusKey ? 0 : -1}
