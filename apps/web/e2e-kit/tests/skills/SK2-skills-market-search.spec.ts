@@ -22,7 +22,12 @@ test("@SK2 @p1 @skills @market @search Skills 市场搜索", async ({ authedPage
   });
   await search.fill("发布");
 
-  await expect(authedPage.getByText("共 1 个技能")).toBeVisible();
+  // Unified taxonomy: category counts (and thus the "共 N 个技能" summary, which
+  // binds to the active category's catalog skillCount) are catalog-wide and do
+  // NOT re-scope to the search query — getCategories intentionally drops `q`
+  // (owner-accepted in the unified switch). So the summary stays at the catalog
+  // total while only the card list narrows to the matching skill.
+  await expect(authedPage.getByText("共 2 个技能")).toBeVisible();
   await expect(
     authedPage.getByRole("button", { name: /release-risk-radar 官方发布/ })
   ).toBeVisible();
