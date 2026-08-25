@@ -62,6 +62,14 @@ export const IPC_WINDOW_IS_FOCUSED = "is-window-focused";
 export const IPC_ASK_TRUST_FLEET_HOST = "fleet:ask-trust-host";
 
 /**
+ * Renderer → Main: report the renderer-known trusted origins (static fleet
+ * allowlist + current API origin) so the main process can decide silent vs
+ * confirmed external opening without a prompt for origins the renderer
+ * already trusts. Idempotent; merge semantics.
+ */
+export const IPC_SET_TRUSTED_ORIGINS = "octo:set-trusted-origins";
+
+/**
  * Renderer → Main: open an arbitrary http(s) URL in the system browser.
  *
  * Distinct from IPC_OIDC_OPEN_EXTERNAL (which is an end-session-specific,

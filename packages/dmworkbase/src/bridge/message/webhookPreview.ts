@@ -8,7 +8,10 @@ import {
   getElectronLinksBridge,
   isElectronPowered,
 } from "../../electron/desktopBridge";
-import { IPC_ASK_TRUST_FLEET_HOST } from "../../../../../apps/web/src-election/shared/ipc-channels";
+import {
+  IPC_ASK_TRUST_FLEET_HOST,
+  IPC_SET_TRUSTED_ORIGINS,
+} from "../../../../../apps/web/src-election/shared/ipc-channels";
 import { resolveWebOrigin } from "../../Utils/webOrigin";
 
 export interface WebhookIssuePreviewTarget {
@@ -69,6 +72,23 @@ export function trustedFleetHosts(): Set<string> {
     // ignore malformed apiURL
   }
   return hosts;
+}
+
+/**
+ * Report the renderer-known trusted origins to the main process so it can
+ * open plain external links on those hosts silently (no confirm dialog).
+ * The main process cannot read APIClient config, so the renderer sends the
+ * union of the static fleet allowlist + API origin. Merge semantics; safe
+ * to call repeatedly. No-op on web / without the IPC bridge.
+ */
+export function reportTrustedOriginsToMain(): void {
+  if (!isElectronPowered()) return;
+  const ipc = getElectronIpcBridge();
+  if (!ipc) return;
+  const origins = Array.from(trustedFleetHosts());
+  ipc.invoke(IPC_SET_TRUSTED_ORIGINS, origins).catch(() => {
+    // best-effort: next call or next click will retry
+  });
 }
 
 function isTrustedFleetHost(url: URL, baseUrl: string): boolean {
@@ -156,17 +176,33 @@ export function parseWebhookIssuePreviewTarget(
  * (modal + optional "never ask again" persisted in userData). Non-Electron
  * renderers (web) have no dialog bridge and fall back to rejecting.
  */
-export async function askTrustFleetHost(sourceUrl: string): Promise<boolean> {
-  if (!isElectronPowered()) return false;
+/**
+ * Ask the main process how an untrusted-host fleet link should be handled.
+ *
+ * Returns one of:
+ *   - "preview": the host is now trusted (user ticked "trust this domain"
+ *     in a previous prompt, or it is a renderer-reported origin) — the
+ *     renderer should open the in-app task preview;
+ *   - "open": the user confirmed opening in the browser — the main process
+ *     has ALREADY opened the URL via openExternal, the renderer should do
+ *     nothing more;
+ *   - "cancel": user declined / fail-closed — nothing opens.
+ *
+ * Never throws; fail-closed on any IPC error.
+ */
+export async function askTrustFleetHost(
+  sourceUrl: string,
+): Promise<"preview" | "open" | "cancel"> {
+  if (!isElectronPowered()) return "cancel";
   const ipc = getElectronIpcBridge();
-  if (!ipc) return false;
+  if (!ipc) return "cancel";
   try {
     const result = (await ipc.invoke(IPC_ASK_TRUST_FLEET_HOST, sourceUrl)) as
-      | { trusted: boolean }
+      | { mode: "preview" | "open" | "cancel" }
       | undefined;
-    return result?.trusted === true;
+    return result?.mode ?? "cancel";
   } catch {
-    return false;
+    return "cancel";
   }
 }
 
@@ -328,17 +364,15 @@ export function fleetPreviewClickHandler(
       if (isPendingFleetPrompt(target.sourceUrl)) return;
       pendingFleetPrompts.set(target.sourceUrl, Date.now());
       try {
-        const trusted = await askTrustFleetHost(target.sourceUrl);
-        // Explicit fallback rather than "relying on the default action": the
-        // default action was already cancelled above. Routed through the
-        // onRejectedFallback parameter (not a direct module-internal call) so
-        // tests can inject an observer; ESM internal bindings bypass the
-        // module namespace, making them invisible to vi.spyOn.
-        if (!trusted) {
-          onRejectedFallback(target.sourceUrl);
-          return;
+        const mode = await askTrustFleetHost(target.sourceUrl);
+        if (mode === "preview") {
+          openPreview(target);
+        } else if (mode === "open") {
+          // The main process already opened the URL in the system browser
+          // after the user confirmed; nothing further to do here (the
+          // default action was cancelled synchronously).
         }
-        openPreview(target);
+        // "cancel": user declined — nothing opens.
       } finally {
         pendingFleetPrompts.delete(target.sourceUrl);
       }

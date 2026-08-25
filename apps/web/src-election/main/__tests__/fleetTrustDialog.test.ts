@@ -8,22 +8,22 @@ describe("fleetTrustDialogCopy", () => {
   it("returns zh copy for Chinese locales", () => {
     for (const locale of ["zh-CN", "zh-TW", "zh-Hans", "zh"]) {
       const copy = fleetTrustDialogCopy(locale, host, href);
-      expect(copy.title).toBe("信任此域名以打开任务预览？");
+      expect(copy.title).toBe("在浏览器中打开链接？");
       expect(copy.message).toContain(host);
       expect(copy.detail).toContain(href);
-      expect(copy.buttons).toEqual(["允许", "拒绝"]);
-      expect(copy.checkboxLabel).toBe("允许并记住此域名");
+      expect(copy.buttons).toEqual(["打开", "取消"]);
+      expect(copy.checkboxLabel).toBe("信任此域名，下次不再询问");
     }
   });
 
   it("returns en copy for non-Chinese locales", () => {
     for (const locale of ["en-US", "en-GB", "ja-JP", "fr-FR", "de-DE", "en"]) {
       const copy = fleetTrustDialogCopy(locale, host, href);
-      expect(copy.title).toBe("Trust this domain to open task previews?");
+      expect(copy.title).toBe("Open this link in the browser?");
       expect(copy.message).toContain(host);
       expect(copy.detail).toContain(href);
-      expect(copy.buttons).toEqual(["Allow", "Deny"]);
-      expect(copy.checkboxLabel).toBe("Allow and remember this domain");
+      expect(copy.buttons).toEqual(["Open", "Cancel"]);
+      expect(copy.checkboxLabel).toBe("Trust this domain and don't ask again");
     }
   });
 

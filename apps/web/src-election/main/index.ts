@@ -51,6 +51,7 @@ import {
   IPC_SHOW_CONVERSATIONS,
   IPC_WINDOW_IS_FOCUSED,
   IPC_ASK_TRUST_FLEET_HOST,
+  IPC_SET_TRUSTED_ORIGINS,
   IPC_OPEN_EXTERNAL_URL,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
@@ -443,23 +444,68 @@ function rememberFleetTrustedHost(host: string): void {
   writeFleetTrustedHosts(Array.from(hosts));
 }
 
-// One prompt per host at a time: rapid clicks (or several unknown-host fleet
+/* ---------- external-link trust policy (confirm unknown origins) ---------- */
+
+/**
+ * In-memory union of every origin the client trusts without prompting:
+ *   - hosts persisted in fleet-trusted-hosts.json (user "trust this domain");
+ *   - origins reported by the renderer (static fleet allowlist + API origin)
+ *     via IPC_SET_TRUSTED_ORIGINS — the main process cannot read the
+ *     renderer's APIClient config, so the renderer reports them on load.
+ * Keys are URL.host values (hostname + non-default port), matching the
+ * persisted file.
+ */
+const trustedOrigins = new Set<string>(readFleetTrustedHosts());
+
+function isTrustedOrigin(host: string): boolean {
+  return trustedOrigins.has(host);
+}
+
+function registerSetTrustedOriginsHandler(): void {
+  ipcMain.handle(IPC_SET_TRUSTED_ORIGINS, (_event, origins: unknown) => {
+    if (!Array.isArray(origins)) return;
+    for (const origin of origins) {
+      if (typeof origin === "string" && origin.length > 0) {
+        trustedOrigins.add(origin);
+      }
+    }
+  });
+}
+
+// One prompt per host at a time: rapid clicks (or several unknown-host
 // links clicked in succession) would otherwise stack independent native
 // modals, and concurrent rememberFleetTrustedHost writes race on the same
 // temp/target path. Concurrent callers await the same in-flight result.
-const inflightFleetTrustPrompts = new Map<string, Promise<boolean>>();
+const inflightExternalOpenConfirm = new Map<
+  string,
+  Promise<"open" | "cancel">
+>();
 
-async function promptFleetTrustOnce(
+/**
+ * Native confirm dialog for opening an unknown-origin URL in the system
+ * browser. Shared by the window-open router (plain external links) and the
+ * fleet link path (task links on untrusted hosts). Fail-closed: Esc/close =
+ * cancel = nothing opens. When the user ticks "trust this domain", the host
+ * is persisted and added to trustedOrigins — subsequent clicks on that host
+ * (task links → in-app preview, plain links → silent browser) skip the
+ * prompt. Per-host de-duplicated while in flight.
+ */
+async function confirmOpenExternalInBrowser(
   win: Electron.BrowserWindow,
-  host: string,
-  href: string,
-): Promise<boolean> {
-  const existing = inflightFleetTrustPrompts.get(host);
+  url: string,
+): Promise<"open" | "cancel"> {
+  let host = "";
+  try {
+    host = new URL(url).host;
+  } catch {
+    return Promise.resolve("cancel");
+  }
+  const existing = inflightExternalOpenConfirm.get(host);
   if (existing) return existing;
-  const copy = fleetTrustDialogCopy(app.getLocale(), host, href);
-  const prompt = (async (): Promise<boolean> => {
+  const copy = fleetTrustDialogCopy(app.getLocale(), host, url);
+  const prompt = (async (): Promise<"open" | "cancel"> => {
     const { response, checkboxChecked } = await dialog.showMessageBox(win, {
-      type: "warning",
+      type: "question",
       title: copy.title,
       message: copy.message,
       detail: copy.detail,
@@ -473,61 +519,72 @@ async function promptFleetTrustOnce(
       checkboxLabel: copy.checkboxLabel,
       checkboxChecked: false,
     });
-    if (checkboxChecked && response === 0) {
-      try {
-        rememberFleetTrustedHost(host);
-      } catch {
-        // A storage failure must not convert the user's explicit 允许 into a
-        // reject: degrade to "trusted for this click, not remembered".
+    if (response === 0) {
+      if (checkboxChecked) {
+        try {
+          rememberFleetTrustedHost(host);
+          trustedOrigins.add(host);
+        } catch {
+          // A storage failure must not convert the user's explicit 允许 into
+          // a reject: degrade to "trusted for this click, not remembered".
+        }
       }
+      return "open";
     }
-    return response === 0;
+    return "cancel";
   })();
-  inflightFleetTrustPrompts.set(host, prompt);
+  inflightExternalOpenConfirm.set(host, prompt);
   try {
     return await prompt;
   } finally {
-    inflightFleetTrustPrompts.delete(host);
+    inflightExternalOpenConfirm.delete(host);
   }
 }
 
 function registerFleetTrustHostHandler() {
   ipcMain.handle(
     IPC_ASK_TRUST_FLEET_HOST,
-    async (event, rawUrl: unknown): Promise<{ trusted: boolean }> => {
+    async (
+      event,
+      rawUrl: unknown,
+    ): Promise<{ mode: "preview" | "open" | "cancel" }> => {
       // Sender check + window resolution follow the OIDC handlers: the native
       // prompt must be owned by the window that asked (not whatever window
       // happens to be focused), and untrusted senders get a flat rejection.
-      // This is the only handler that persists durable trust, so it must not
-      // depend on the caller for that invariant.
       const win = resolveTrustedOidcSender(event);
-      if (!win) return { trusted: false };
+      if (!win) return { mode: "cancel" };
       // Validate the input instead of trusting the renderer blindly. The
       // trust key is derived from the validated URL here, never taken from
       // the renderer, so a caller cannot cache-trust one origin while
       // displaying another. The key is `URL.host` (hostname + non-default
       // port): remembering `x:8443` must not trust `x` or `x:9999`.
-      if (typeof rawUrl !== "string") return { trusted: false };
+      if (typeof rawUrl !== "string") return { mode: "cancel" };
       let parsedUrl: URL;
       try {
         parsedUrl = new URL(rawUrl);
         if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
-          return { trusted: false };
+          return { mode: "cancel" };
         }
       } catch {
-        return { trusted: false };
+        return { mode: "cancel" };
       }
       const host = parsedUrl.host;
       // Re-validate the fleet path shape AND the decoded segment values
-      // BEFORE the remembered-host short-circuit (the renderer checked too,
-      // but the main process is the trust authority): a remembered host must
-      // not mint `trusted: true` for a URL that was never a fleet deep link,
-      // and a percent-encoded separator must not pass the shape gate and
-      // decode into path traversal afterwards.
-      if (!isFleetIssuePathShape(parsedUrl.pathname)) return { trusted: false };
-      if (readFleetTrustedHosts().includes(host)) return { trusted: true };
-      return { trusted: await promptFleetTrustOnce(win, host, parsedUrl.href) };
-    }
+      // BEFORE the trust check (the renderer checked too, but the main
+      // process is the trust authority): a trusted host must not mint
+      // `preview` for a URL that was never a fleet deep link, and a
+      // percent-encoded separator must not pass the shape gate and decode
+      // into path traversal afterwards.
+      if (!isFleetIssuePathShape(parsedUrl.pathname)) return { mode: "cancel" };
+      // Trusted origin (persisted + renderer-reported) → in-app preview.
+      if (isTrustedOrigin(host)) return { mode: "preview" };
+      // Unknown origin → confirm opening in the browser (with optional
+      // "trust this domain" persistence). The main process opens the URL
+      // itself on confirmation.
+      const choice = await confirmOpenExternalInBrowser(win, parsedUrl.href);
+      if (choice === "open") void openUrlExternally(parsedUrl.href);
+      return choice === "open" ? { mode: "open" } : { mode: "cancel" };
+    },
   );
 }
 
@@ -663,11 +720,25 @@ function safeUrlLabel(url: string): string {
  */
 function attachExternalLinkRouter(win: BrowserWindow): void {
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (decideWindowOpen(url) === "open-external") {
-      void openUrlExternally(url);
-    } else {
+    if (decideWindowOpen(url) !== "open-external") {
       logExternalUrlRejection(url);
+      return { action: "deny" };
     }
+    let host = "";
+    try {
+      host = new URL(url).host;
+    } catch {
+      return { action: "deny" };
+    }
+    if (isTrustedOrigin(host)) {
+      void openUrlExternally(url);
+      return { action: "deny" };
+    }
+    // Unknown origin: confirm with the user before handing it to the
+    // browser (they may tick "trust this domain" to skip future prompts).
+    void confirmOpenExternalInBrowser(win, url).then((choice) => {
+      if (choice === "open") void openUrlExternally(url);
+    });
     return { action: "deny" };
   });
 }
@@ -2039,6 +2110,7 @@ app.on("ready", () => {
   registerKeepAwakeHandlers();
   applyKeepAwake(keepAwakeEnabled);
   registerFleetTrustHostHandler();
+  registerSetTrustedOriginsHandler();
   registerOpenExternalUrlHandler();
   registerDesktopSettingsHandlers();
   registerDownloadSettingsHandlers();

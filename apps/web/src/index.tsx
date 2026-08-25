@@ -18,6 +18,7 @@ import { version as pkgVersion } from '../package.json';
 import appEnUS from './i18n/en-US.json';
 import appZhCN from './i18n/zh-CN.json';
 import { resolveApiURL } from './apiURL';
+import { reportTrustedOriginsToMain } from '@octo/base/src/bridge/message/webhookPreview';
 import { LoopIcon } from './Components/Icons/LoopIcon';
 
 // VITE_API_URL 只填 origin（协议+域名+端口），不要带路径
@@ -51,6 +52,10 @@ if(isDesktopRuntime) {
     rawApiURL: import.meta.env.VITE_API_URL,
   })
 }
+
+// 上报 renderer 已知的可信 origin（静态 fleet 白名单 + API origin）到主进程，
+// 使主进程对外链打开做静默/确认决策。仅桌面端生效（web 无 IPC）。
+reportTrustedOriginsToMain();
 
 WKApp.apiClient.config.tokenCallback = ()=> {
   return WKApp.loginInfo.token
