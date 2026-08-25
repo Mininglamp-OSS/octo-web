@@ -51,7 +51,6 @@ import {
   IPC_SHOW_CONVERSATIONS,
   IPC_WINDOW_IS_FOCUSED,
   IPC_ASK_TRUST_FLEET_HOST,
-  IPC_SET_TRUSTED_ORIGINS,
   IPC_OPEN_EXTERNAL_URL,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
@@ -447,69 +446,56 @@ function rememberFleetTrustedHost(host: string): void {
 /* ---------- external-link trust policy (confirm unknown origins) ---------- */
 
 /**
- * In-memory union of every origin the client trusts without prompting:
+ * In-memory union of every origin the client trusts without prompting.
+ *
+ * Seeded (lazily, first access — NOT at module top level) from main-side
+ * authority only:
  *   - hosts persisted in fleet-trusted-hosts.json (user "trust this domain");
- *   - origins reported by the renderer (static fleet allowlist + API origin)
- *     via IPC_SET_TRUSTED_ORIGINS — the main process cannot read the
- *     renderer's APIClient config, so the renderer reports them on load.
+ *   - the API origin, from OIDC_API_ORIGIN (build-time electron-config.json /
+ *     VITE_API_URL — the SAME source the renderer's APIClient resolves);
+ *   - the static fleet allowlist (im.deepminer.com.cn), mirroring the
+ *     renderer's FLEET_PREVIEW_HOSTS.
+ *
+ * There is deliberately NO IPC channel for the renderer to add origins:
+ * the main process is the trust authority and must never accept trust
+ * nominations over an IPC argument (regardless of sender validation).
+ *
  * Keys are URL.host values (hostname + non-default port), matching the
  * persisted file.
  *
- * Seeded lazily (first access) — NOT at module top level: the persisted
+ * Seeded lazily on first access — NOT at module top level: the persisted
  * hosts file lives under app.getPath("userData"), which is only correct
  * after app.setName/setPath runs in whenReady. Reading it earlier would
  * seed from a stale/other-directory file and "trust this domain" would
  * silently not survive a restart (dev + migration scenarios).
  */
+const STATIC_FLEET_PREVIEW_HOSTS = new Set(["im.deepminer.com.cn"]);
+
 let trustedOrigins: Set<string> | null = null;
 
 function getTrustedOrigins(): Set<string> {
   if (trustedOrigins === null) {
-    trustedOrigins = new Set(readFleetTrustedHosts());
+    const seeds = new Set<string>();
+    // Persisted user trust.
+    readFleetTrustedHosts().forEach((host) => seeds.add(host));
+    // API origin (main-side authority — same build-time source as the
+    // renderer's apiURL).
+    if (OIDC_API_ORIGIN) {
+      try {
+        seeds.add(new URL(OIDC_API_ORIGIN).host);
+      } catch {
+        // ignore malformed origin
+      }
+    }
+    // Static fleet allowlist.
+    STATIC_FLEET_PREVIEW_HOSTS.forEach((host) => seeds.add(host));
+    trustedOrigins = seeds;
   }
   return trustedOrigins;
 }
 
 function isTrustedOrigin(host: string): boolean {
   return getTrustedOrigins().has(host);
-}
-
-/**
- * IPC_SET_TRUSTED_ORIGINS: merge renderer-reported trusted origins into the
- * in-memory set. This is the ONLY channel that can grow the trust set, so it
- * must not depend on the caller for invariants:
- *   - sender must be a trusted shell window (resolveTrustedOidcSender);
- *   - each entry is normalized: only http(s) URLs are accepted, and the key
- *     is the URL.host (hostname + non-default port) — never arbitrary
- *     strings, never "*";
- *   - the set is bounded (MAX_TRUSTED_ORIGINS) so a buggy renderer cannot
- *     grow it without limit.
- */
-const MAX_TRUSTED_ORIGINS = 1000;
-
-function registerSetTrustedOriginsHandler(): void {
-  ipcMain.handle(IPC_SET_TRUSTED_ORIGINS, (event, origins: unknown) => {
-    const win = resolveTrustedOidcSender(event);
-    if (!win) return;
-    if (!Array.isArray(origins)) return;
-    const set = getTrustedOrigins();
-    for (const origin of origins) {
-      if (typeof origin !== "string") continue;
-      // The renderer sends BARE URL.host strings (e.g. "im.deepminer.com.cn")
-      // from trustedFleetHosts() — NOT full URLs. new URL(origin) would
-      // throw on them and silently reject every legitimate entry, so parse
-      // against a fixed https:// prefix and keep only the host.
-      let parsed: URL;
-      try {
-        parsed = new URL(`https://${origin}`);
-      } catch {
-        continue;
-      }
-      if (parsed.host !== origin) continue;
-      if (set.size >= MAX_TRUSTED_ORIGINS) break;
-      set.add(parsed.host);
-    }
-  });
 }
 
 // One prompt per URL at a time: rapid clicks (or several unknown-host
@@ -2166,7 +2152,6 @@ app.on("ready", () => {
   registerKeepAwakeHandlers();
   applyKeepAwake(keepAwakeEnabled);
   registerFleetTrustHostHandler();
-  registerSetTrustedOriginsHandler();
   registerOpenExternalUrlHandler();
   registerDesktopSettingsHandlers();
   registerDownloadSettingsHandlers();
