@@ -267,6 +267,7 @@
     "name": "Name",
     "namePlaceholder": "e.g. GitHub MCP",
     "nameRequired": "Name is required",
+    "categoryRequired": "Please select a category",
     "slug": "Server slug",
     "slugHint": "Used as the key in the generated mcpServers JSON; lowercase letters, digits and hyphens only. Leave blank to derive it from the name.",
     "slugPlaceholder": "e.g. github-mcp",

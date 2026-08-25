@@ -297,7 +297,7 @@ function buildDetailFromCreate(id: string, params: CreateMcpParams): McpDetail {
     category: params.category,
     tags: params.tags ?? [],
     toolCount: params.tools.length,
-    icon: params.icon,
+    icon: params.icon ?? "",
     creatorName: WKApp.loginInfo?.name || "",
     quickStart,
     tools: params.tools,
@@ -568,6 +568,12 @@ async function resolveWriteCategory(
   key: string,
   maps: ConnectorCategoryMaps
 ): Promise<{ categoryId: string; maps: ConnectorCategoryMaps }> {
+  // An empty/unresolved category must fail closed immediately — degrading it
+  // into the refetch path would just refetch, miss, and throw the same error
+  // after a wasted round-trip. The modal surfaces this as a legible required-
+  // field error before submit (firstValidationError), so reaching here with an
+  // empty key is a defense-in-depth backstop.
+  if (!key) throw new Error(t("mcp.errors.invalidRequest"));
   const hit = maps.keyToId.get(key);
   if (hit) return { categoryId: hit, maps };
   categoryMapsCache = null;
@@ -838,18 +844,15 @@ async function updateMcpReal(
     params.category,
     maps
   );
-  // Echo the write-canonical icon. `params.icon` is the DISPLAY value the edit
-  // form seeds from mapDetail (`icon_url || icon`); when the user did not pick a
-  // new icon it is the presigned, expiring `icon_url`, which must never be
-  // persisted back into the canonical `icon` column. Detect an unchanged icon by
-  // comparing to the current display value and echo `current.plugin.icon`
-  // instead; a freshly-picked icon (a genuinely new value) is written through —
-  // mirroring the skill path (skillApiReal echoes plugin.icon).
-  const previousDisplayIcon = current.plugin.icon_url || current.plugin.icon || "";
+  // Icon write intent uses an explicit `undefined` sentinel end-to-end
+  // (mirrors the skill path's `form.iconUrl`). `undefined` = "leave the stored
+  // icon unchanged": echo the write-canonical `current.plugin.icon`, never the
+  // presigned, expiring display `icon_url`. Any other value is written through
+  // verbatim — including `""` to REMOVE the icon and a freshly-picked object
+  // key to set it. The "changed?" decision is made in the modal (where both
+  // sides come from the same fetch), so the service does no display comparison.
   const canonicalIcon =
-    params.icon && params.icon !== previousDisplayIcon
-      ? params.icon
-      : current.plugin.icon ?? "";
+    params.icon === undefined ? current.plugin.icon ?? "" : params.icon;
   const detail = await post<PluginDetailWire>(
     "/plugins/upsert",
     toPluginUpsert(
