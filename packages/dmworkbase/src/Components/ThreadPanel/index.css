@@ -29,6 +29,7 @@
   justify-content: space-between;
   padding: 0 var(--wk-sp-4);
   border-bottom: 1px solid var(--wk-border-default);
+  border-start-start-radius: var(--octo-ui-drawer-radius);
   background-color: var(--wk-bg-surface);
 }
 

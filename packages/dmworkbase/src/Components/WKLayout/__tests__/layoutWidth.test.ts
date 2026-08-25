@@ -10,6 +10,7 @@ import {
     THREAD_MIN_WIDTH,
     THREAD_MAX_WIDTH,
     THREAD_DEFAULT_WIDTH,
+    THREAD_CHAT_MIN_WIDTH,
     THREAD_STORAGE_KEY,
     SUMMARY_MIN_WIDTH,
     SUMMARY_MAX_WIDTH,
@@ -28,6 +29,7 @@ import {
     getNavRailDragWidth,
     restoreNavRailWidth,
     persistNavRailWidth,
+    getMaxThreadWidth,
     clampThreadWidth,
     restoreThreadWidth,
     persistThreadWidth,
@@ -168,6 +170,13 @@ describe('layoutWidth', () => {
 
             it('passes through valid values', () => {
                 expect(clampThreadWidth(500, 1600, 300)).toBe(500)
+            })
+
+            it('keeps a readable chat column in narrow desktop windows', () => {
+                // window=800, left=300 -> available=500, thread=260, chat=240
+                const maxThreadWidth = getMaxThreadWidth(800, 300)
+                expect(maxThreadWidth).toBe(500 - THREAD_CHAT_MIN_WIDTH)
+                expect(clampThreadWidth(480, 800, 300)).toBe(maxThreadWidth)
             })
         })
 

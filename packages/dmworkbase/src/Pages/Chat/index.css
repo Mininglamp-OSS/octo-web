@@ -235,8 +235,15 @@
 }
 
 .wk-chat-content-right {
-  --wk-width-chat-search-panel-effective: min(var(--wk-width-chat-search-panel), 100%);
-  --wk-width-thread-panel-effective: min(var(--wk-width-thread-panel), 100%);
+  --wk-width-chat-content-min: 240px;
+  --wk-width-chat-search-panel-effective: min(
+    var(--wk-width-chat-search-panel),
+    max(0px, calc(100% - var(--wk-width-chat-content-min)))
+  );
+  --wk-width-thread-panel-effective: min(
+    var(--wk-width-thread-panel),
+    max(0px, calc(100% - var(--wk-width-chat-content-min)))
+  );
 
   width: 100%;
   height: 100%;
@@ -552,7 +559,20 @@
 }
 
 .wk-chat-channelsetting {
-  z-index: 99;
+  z-index: var(--octo-ui-z-drawer, 100);
+}
+
+.wk-chat-channelsetting .octo-ui-drawer__dialog {
+  box-shadow: none;
+}
+
+.wk-chat-channelsetting[data-octo-drawer-open="true"] .octo-ui-drawer__dialog {
+  box-shadow: var(--octo-ui-drawer-shadow-right);
+}
+
+.wk-chat-channelsetting[data-octo-drawer-open="true"][data-octo-drawer-motion="true"] .octo-ui-drawer__dialog {
+  transition: transform 150ms var(--octo-ui-ease-standard, ease-in-out),
+    box-shadow 0s linear 150ms;
 }
 
 .wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-content-chat {
