@@ -381,9 +381,9 @@ export default class MessageBase extends Component<MessageBaseProps, any> {
     const isAi = this.isAiMessage();
     const showHead = this.needHead();
     const showAvatar = this.needAvatar();
-    const avatarClickable = showAvatar && !webhookFrom;
     const timeStr = formatMessageTimestamp(message.timestamp);
     const selectionMode = context.editOn();
+    const avatarClickable = showAvatar && !webhookFrom && !selectionMode;
     const selectable = isMessageSelectable(message);
 
     // 外部群成员来源标记：按当前查看 Space 相对渲染。
