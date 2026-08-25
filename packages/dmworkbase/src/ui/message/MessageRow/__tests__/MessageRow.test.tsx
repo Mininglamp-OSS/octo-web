@@ -12,6 +12,7 @@ vi.mock("../../../../i18n", () => ({
             const messages: Record<string, string> = {
                 "base.message.avatar.alt": "Avatar",
                 "base.message.edited": "已编辑",
+                "base.conversation.avatarMenu.open": "打开头像菜单",
                 "base.realnameVerified.title": "已完成实名认证",
                 "base.realnameVerified.label": "已实名",
             }
@@ -168,6 +169,38 @@ describe("MessageRow — selection mode interactions", () => {
 
         dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
         expect(onContextMenu).toHaveBeenCalledTimes(1)
+    })
+
+    it("keeps avatar right-click inside the avatar boundary", () => {
+        const onContextMenu = vi.fn()
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                onContextMenu={onContextMenu}
+                onAvatarClick={vi.fn()}
+            >
+                <div>message</div>
+            </MessageRow>
+        )
+
+        const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar")!, "contextmenu")
+        expect(event.defaultPrevented).toBe(true)
+        expect(onContextMenu).not.toHaveBeenCalled()
+    })
+
+    it("uses a native button for an actionable avatar", () => {
+        const onAvatarClick = vi.fn()
+        const root = renderRow(
+            <MessageRow {...baseProps} onAvatarClick={onAvatarClick}>
+                <div>message</div>
+            </MessageRow>
+        )
+
+        const button = root.querySelector<HTMLButtonElement>(".wk-msg-row-avatar-button")
+        expect(button?.tagName).toBe("BUTTON")
+        expect(button?.getAttribute("aria-label")).toBe("打开头像菜单")
+        act(() => button?.click())
+        expect(onAvatarClick).toHaveBeenCalledTimes(1)
     })
 })
 

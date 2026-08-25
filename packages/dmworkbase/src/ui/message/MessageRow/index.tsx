@@ -196,17 +196,37 @@ export default function MessageRow({
       )}
       
       {/* 头像（所有消息都在左侧） */}
-      <div className="wk-msg-row-avatar">
-        {showAvatar && (
+      <div
+        className="wk-msg-row-avatar"
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+      >
+        {showAvatar && (!isSelecting && !isWebhook && onAvatarClick ? (
+          <button
+            type="button"
+            className="wk-msg-row-avatar-button"
+            aria-label={t("base.conversation.avatarMenu.open", { values: { name: senderName } })}
+            onClick={onAvatarClick}
+          >
+            <Avatar
+              src={avatarUrl}
+              size={36}
+              isOnline={isOnline}
+              showOnlineDot
+              alt={senderName}
+            />
+          </button>
+        ) : (
           <Avatar
             src={avatarUrl}
             size={36}
             isOnline={isOnline}
             showOnlineDot
             alt={senderName}
-            onClick={isSelecting || isWebhook ? undefined : onAvatarClick}
           />
-        )}
+        ))}
         {/* 连续消息：头像占位,hover 时显示时间戳 */}
         {!showAvatar && isContinue && (
           <div className="wk-msg-row-avatar-placeholder">

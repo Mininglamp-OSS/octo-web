@@ -8,7 +8,7 @@ import { SidebarItem } from "../../Service/SidebarService"
 import { ConversationWrap } from "../../Service/Model"
 import ConversationList from "../ConversationList"
 import ConversationListWithCategory from "../ConversationListWithCategory"
-import ContextMenus, { ContextMenusContext, ContextMenusData } from "../ContextMenus"
+import ContextMenus, { ContextMenusContext, ContextMenusData, ContextMenusTrigger } from "../ContextMenus"
 import type { NewCategoryTarget } from "../ChatConversationList"
 import {
     DndContext,
@@ -577,6 +577,7 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
         return {
             id: cat.category_id,
             name: cat.is_default ? t("base.chatSidebar.defaultCategory") : cat.name,
+            hasManagementMenu: !isVirtualCategory(cat.category_id) && !cat.is_default,
             groupCount,
             isEmpty: groupCount === 0,
             unreadCount,
@@ -633,6 +634,28 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
 
     const categoryIds = effectiveCategories.map(c => `cat::${c.category_id}`)
 
+    const openCategoryMenu = (categoryId: string, trigger: ContextMenusTrigger) => {
+        trigger.preventDefault()
+        const menus = buildCategoryContextMenus(categoryId)
+        if (menus.length === 0) return
+
+        flushSync(() => {
+            setActiveCategoryId(categoryId)
+            setCategoryMenus(menus)
+        })
+        categoryCtxMenuRef.current?.show(trigger)
+        if (ctxMenuClearRef.current) {
+            document.removeEventListener('mousedown', ctxMenuClearRef.current, true)
+        }
+        const clear = () => {
+            setActiveCategoryId(null)
+            document.removeEventListener('mousedown', clear, true)
+            ctxMenuClearRef.current = null
+        }
+        ctxMenuClearRef.current = clear
+        document.addEventListener('mousedown', clear, true)
+    }
+
     // 找到正在拖拽的 conv item（用于 DragOverlay）
     const activeDragConv = activeDragData?.type === 'item'
         ? conversations.find(c => c.channel.channelID === activeDragData.channelID)
@@ -664,24 +687,16 @@ const ConversationListGrouped: React.FC<ConversationListGroupedProps> = ({
                     onRenameCancel={() => setRenamingCategoryId(null)}
                     onCategoryContextMenu={(categoryId, e) => {
                         e.preventDefault()
-                        // 虚拟默认分组不响应右键菜单（无可执行操作）
-                        if (isVirtualCategory(categoryId)) return
-                        const menus = buildCategoryContextMenus(categoryId)
-                        flushSync(() => {
-                            setActiveCategoryId(categoryId)
-                            setCategoryMenus(menus)
-                        })
-                        categoryCtxMenuRef.current?.show(e)
-                        if (ctxMenuClearRef.current) {
-                            document.removeEventListener('mousedown', ctxMenuClearRef.current, true)
+                        if (e.type === 'click') {
+                            const rect = e.currentTarget.getBoundingClientRect()
+                            openCategoryMenu(categoryId, {
+                                clientX: rect.right,
+                                clientY: rect.bottom,
+                                preventDefault: () => undefined,
+                            })
+                            return
                         }
-                        const clear = () => {
-                            setActiveCategoryId(null)
-                            document.removeEventListener('mousedown', clear, true)
-                            ctxMenuClearRef.current = null
-                        }
-                        ctxMenuClearRef.current = clear
-                        document.addEventListener('mousedown', clear, true)
+                        openCategoryMenu(categoryId, e)
                     }}
                 />
             </SortableContext>
