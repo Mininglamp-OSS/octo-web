@@ -319,10 +319,6 @@ export function fleetPreviewClickHandler(
         const mode = await askTrustFleetHost(target.sourceUrl);
         if (mode === "preview") {
           openPreview(target);
-        } else if (mode === "open") {
-          // The main process already opened the URL in the system browser
-          // after the user confirmed; nothing further to do here (the
-          // default action was cancelled synchronously).
         }
         // "cancel": user declined — nothing opens.
       } finally {
