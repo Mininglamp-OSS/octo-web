@@ -2073,6 +2073,9 @@ export default class ThreadPanel extends Component<
       showWebhookPanel,
     } = this.state;
     const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
+    const drawerWidth = isSmallScreen
+      ? "var(--wk-width-thread-panel)"
+      : panelWidth;
 
     const panelStyle = isSmallScreen
       ? undefined
@@ -2090,7 +2093,7 @@ export default class ThreadPanel extends Component<
         aria-label={t("base.chatPage.threadPanel")}
         className="wk-thread-panel"
         closeOnEsc={false}
-        width={isSmallScreen ? undefined : panelWidth}
+        width={drawerWidth}
         style={panelStyle}
       >
         {/* Left-edge splitter for resizing — hidden on small screens */}

@@ -24,9 +24,9 @@ export const NAV_RAIL_EXPANDED_THRESHOLD = NAV_RAIL_EXPANDED_WIDTH
 export const NAV_RAIL_STORAGE_KEY = 'wk-layout-navrail-width'
 
 // ── Right panel (thread panel) ──
-export const THREAD_MIN_WIDTH = 432
+export const THREAD_MIN_WIDTH = 480
 export const THREAD_MAX_WIDTH = 1600  // effective max is clamped by screen ratio
-export const THREAD_DEFAULT_WIDTH = 432
+export const THREAD_DEFAULT_WIDTH = 480
 export const THREAD_STORAGE_KEY = 'wk-thread-panel-width'
 
 // ── Right panel (smart summary panel) ──
