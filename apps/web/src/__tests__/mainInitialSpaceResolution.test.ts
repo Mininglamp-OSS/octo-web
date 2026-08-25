@@ -2,9 +2,15 @@ import { describe, expect, it, vi } from "vitest";
 import {
   publishInitialSpaceResolution,
   requestGuardedSpaceChange,
-  resolveInitialSpace,
   shouldPublishInitialSpaceChange,
 } from "../Pages/Main/spaceChange";
+import {
+  getLastSpaceStorageKey,
+  persistActiveSpace,
+  readLastSpaceId,
+  resolveInitialSpace,
+  resolveInitialSpaceForUser,
+} from "../features/spacePreference";
 import {
   requestGuardedBrowserRouteChange,
   requestGuardedMenuChange,
@@ -16,6 +22,58 @@ describe("MainPage initial Space resolution", () => {
     const spaces = [{ space_id: "space-a" }, { space_id: "space-b" }];
     expect(resolveInitialSpace(spaces, "stale-space")).toEqual(spaces[0]);
     expect(resolveInitialSpace(spaces, "space-b")).toEqual(spaces[1]);
+  });
+
+  it("restores the current user's last accessible Space", () => {
+    const spaces = [{ space_id: "space-a" }, { space_id: "space-b" }];
+
+    expect(resolveInitialSpace(spaces, null, "space-b")).toEqual(spaces[1]);
+  });
+
+  it("keeps explicit and current-session choices ahead of device history", () => {
+    const spaces = [
+      { space_id: "space-a" },
+      { space_id: "space-b" },
+      { space_id: "space-c" },
+    ];
+
+    expect(
+      resolveInitialSpace(spaces, "space-c", "space-b", "space-a")
+    ).toEqual(spaces[2]);
+  });
+
+  it("uses one user-scoped resolution path for session, current, and historical choices", () => {
+    const spaces = [
+      { space_id: "space-a" },
+      { space_id: "space-b" },
+      { space_id: "space-c" },
+    ];
+    const values = new Map<string, string>([
+      ["currentSpaceId", "space-b"],
+      ["octo:last-space:user-a", "space-c"],
+    ]);
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+    };
+
+    expect(
+      resolveInitialSpaceForUser(spaces, "user-a", "space-a", storage)
+    ).toEqual(spaces[0]);
+    expect(resolveInitialSpaceForUser(spaces, "user-a", null, storage)).toEqual(
+      spaces[1]
+    );
+    values.delete("currentSpaceId");
+    expect(resolveInitialSpaceForUser(spaces, "user-a", null, storage)).toEqual(
+      spaces[2]
+    );
+  });
+
+  it("ignores an inaccessible historical Space and uses the first accessible Space", () => {
+    const spaces = [{ space_id: "space-a" }, { space_id: "space-b" }];
+
+    expect(resolveInitialSpace(spaces, null, "removed-space")).toEqual(
+      spaces[0]
+    );
   });
 
   it("publishes the resolved Space only when startup changes the active Space", () => {
@@ -48,6 +106,49 @@ describe("MainPage initial Space resolution", () => {
   it("clears a stale Space when the user has no accessible Spaces", () => {
     expect(resolveInitialSpace([], "stale-space")).toBeUndefined();
     expect(shouldPublishInitialSpaceChange("stale-space", "")).toBe(false);
+  });
+});
+
+describe("per-user last Space persistence", () => {
+  it("isolates the last Space by uid while keeping currentSpaceId compatible", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+
+    persistActiveSpace("user-a", "space-a", storage);
+    persistActiveSpace("user-b", "space-b", storage);
+
+    expect(values.get("currentSpaceId")).toBe("space-b");
+    expect(readLastSpaceId("user-a", storage)).toBe("space-a");
+    expect(readLastSpaceId("user-b", storage)).toBe("space-b");
+  });
+
+  it("does not persist an account preference without a uid", () => {
+    const setItem = vi.fn();
+
+    persistActiveSpace("", "space-a", { setItem });
+
+    expect(setItem).toHaveBeenCalledOnce();
+    expect(setItem).toHaveBeenCalledWith("currentSpaceId", "space-a");
+    expect(getLastSpaceStorageKey("  ")).toBeUndefined();
+  });
+
+  it("degrades safely when browser storage is unavailable", () => {
+    const unavailableStorage = {
+      getItem: () => {
+        throw new Error("unavailable");
+      },
+      setItem: () => {
+        throw new Error("unavailable");
+      },
+    };
+
+    expect(() =>
+      persistActiveSpace("user-a", "space-a", unavailableStorage)
+    ).not.toThrow();
+    expect(readLastSpaceId("user-a", unavailableStorage)).toBeNull();
   });
 });
 
