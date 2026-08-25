@@ -23,3 +23,5 @@ export type {
   TooltipPlacement,
   TooltipProps,
 } from './components/Tooltip/types'
+export { default as Tabs } from './components/Tabs'
+export type { TabItem, TabsProps, TabsSize, TabsVariant } from './components/Tabs/types'

@@ -10,6 +10,7 @@ import type { TagProps } from './components/Tag/types'
 import type { BadgeProps } from './components/Badge/types'
 import type { DotProps } from './components/Dot/types'
 import type { TooltipProps } from './components/Tooltip/types'
+import type { TabsProps } from './components/Tabs/types'
 
 export type {
   ButtonProps,
@@ -33,6 +34,7 @@ export type {
   TooltipPlacement,
   TooltipProps,
 } from './components/Tooltip/types'
+export type { TabItem, TabsProps, TabsSize, TabsVariant } from './components/Tabs/types'
 export interface OctoUIProviderProps {
   children?: ReactNode
 }
@@ -50,4 +52,7 @@ export declare const Dot: ForwardRefExoticComponent<
   DotProps & RefAttributes<HTMLSpanElement>
 >
 export declare const Tooltip: FC<TooltipProps>
+export declare const Tabs: ForwardRefExoticComponent<
+  TabsProps & RefAttributes<HTMLDivElement>
+>
 export declare const OctoUIProvider: FC<OctoUIProviderProps>

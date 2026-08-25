@@ -58,9 +58,68 @@
   --octo-ui-tooltip-action-hover-color: var(--wk-color-white);
   --octo-ui-tooltip-max-width: 320px;
   --octo-ui-tooltip-line-height: 1.42857143;
+
+  --octo-ui-tabs-indicator-radius: 2px;
+  --octo-ui-tabs-active-color: var(--wk-neutral-850);
+  --octo-ui-tabs-text-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 60%,
+    transparent
+  );
+  --octo-ui-tabs-hover-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 80%,
+    transparent
+  );
+  --octo-ui-tabs-disabled-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 30%,
+    transparent
+  );
+  --octo-ui-tabs-segmented-bg: var(--wk-black-alpha-06);
+  --octo-ui-tabs-segmented-active-bg: var(--wk-bg-surface);
+  --octo-ui-tabs-segmented-text-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 40%,
+    transparent
+  );
+  --octo-ui-tabs-segmented-hover-bg: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 3%,
+    transparent
+  );
 }
 
 body[theme-mode='dark'] {
+  --octo-ui-tabs-active-color: var(--wk-text-primary);
+  --octo-ui-tabs-text-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 60%,
+    transparent
+  );
+  --octo-ui-tabs-hover-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 80%,
+    transparent
+  );
+  --octo-ui-tabs-disabled-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 30%,
+    transparent
+  );
+  --octo-ui-tabs-segmented-bg: var(--wk-white-alpha-06);
+  --octo-ui-tabs-segmented-active-bg: var(--wk-bg-surface);
+  --octo-ui-tabs-segmented-text-color: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 40%,
+    transparent
+  );
+  --octo-ui-tabs-segmented-hover-bg: color-mix(
+    in srgb,
+    var(--octo-ui-tabs-active-color) 3%,
+    transparent
+  );
+
   --octo-ui-tag-muted-icon-color: rgba(var(--semi-grey-9), 0.45);
   --octo-ui-tag-close-hover-bg: rgba(var(--semi-grey-9), 0.12);
 
