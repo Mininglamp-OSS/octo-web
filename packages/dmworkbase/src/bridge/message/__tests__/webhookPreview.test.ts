@@ -361,8 +361,7 @@ describe("fleetPreviewClickHandler", () => {
     window.__POWERED_ELECTRON__ = true;
 
     const open = vi.fn();
-    const fallback = vi.fn();
-    const handler = fleetPreviewClickHandler(open, fallback)!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
     const preventDefault = vi.fn();
@@ -372,7 +371,6 @@ describe("fleetPreviewClickHandler", () => {
     handler(clickEvent(anchor, { preventDefault }));
     await vi.waitFor(() => {
       expect(open).not.toHaveBeenCalled();
-      expect(fallback).not.toHaveBeenCalled();
     });
     expect(preventDefault).toHaveBeenCalled();
   });
@@ -385,8 +383,7 @@ describe("fleetPreviewClickHandler", () => {
     window.__POWERED_ELECTRON__ = false;
 
     const open = vi.fn();
-    const fallback = vi.fn();
-    const handler = fleetPreviewClickHandler(open, fallback)!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
 
@@ -394,7 +391,6 @@ describe("fleetPreviewClickHandler", () => {
     await flushAsync();
     expect(open).not.toHaveBeenCalled();
     expect(ask).not.toHaveBeenCalled();
-    expect(fallback).not.toHaveBeenCalled();
   });
 
   it("does not prompt for non-fleet links on unknown hosts", async () => {
@@ -549,8 +545,7 @@ describe("fleetPreviewClickHandler", () => {
     window.__POWERED_ELECTRON__ = true;
 
     const open = vi.fn();
-    const fallback = vi.fn();
-    const handler = fleetPreviewClickHandler(open, fallback)!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
 
@@ -562,7 +557,6 @@ describe("fleetPreviewClickHandler", () => {
 
     resolveAsk({ mode: "preview" });
     await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
-    expect(fallback).not.toHaveBeenCalled();
 
     // After the prompt resolved the in-flight guard is released: a later
     // click prompts again (and the main-process cache makes it cheap).

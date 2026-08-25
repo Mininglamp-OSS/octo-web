@@ -454,28 +454,69 @@ function rememberFleetTrustedHost(host: string): void {
  *     renderer's APIClient config, so the renderer reports them on load.
  * Keys are URL.host values (hostname + non-default port), matching the
  * persisted file.
+ *
+ * Seeded lazily (first access) — NOT at module top level: the persisted
+ * hosts file lives under app.getPath("userData"), which is only correct
+ * after app.setName/setPath runs in whenReady. Reading it earlier would
+ * seed from a stale/other-directory file and "trust this domain" would
+ * silently not survive a restart (dev + migration scenarios).
  */
-const trustedOrigins = new Set<string>(readFleetTrustedHosts());
+let trustedOrigins: Set<string> | null = null;
 
-function isTrustedOrigin(host: string): boolean {
-  return trustedOrigins.has(host);
+function getTrustedOrigins(): Set<string> {
+  if (trustedOrigins === null) {
+    trustedOrigins = new Set(readFleetTrustedHosts());
+  }
+  return trustedOrigins;
 }
 
+function isTrustedOrigin(host: string): boolean {
+  return getTrustedOrigins().has(host);
+}
+
+/**
+ * IPC_SET_TRUSTED_ORIGINS: merge renderer-reported trusted origins into the
+ * in-memory set. This is the ONLY channel that can grow the trust set, so it
+ * must not depend on the caller for invariants:
+ *   - sender must be a trusted shell window (resolveTrustedOidcSender);
+ *   - each entry is normalized: only http(s) URLs are accepted, and the key
+ *     is the URL.host (hostname + non-default port) — never arbitrary
+ *     strings, never "*";
+ *   - the set is bounded (MAX_TRUSTED_ORIGINS) so a buggy renderer cannot
+ *     grow it without limit.
+ */
+const MAX_TRUSTED_ORIGINS = 1000;
+
 function registerSetTrustedOriginsHandler(): void {
-  ipcMain.handle(IPC_SET_TRUSTED_ORIGINS, (_event, origins: unknown) => {
+  ipcMain.handle(IPC_SET_TRUSTED_ORIGINS, (event, origins: unknown) => {
+    const win = resolveTrustedOidcSender(event);
+    if (!win) return;
     if (!Array.isArray(origins)) return;
+    const set = getTrustedOrigins();
     for (const origin of origins) {
-      if (typeof origin === "string" && origin.length > 0) {
-        trustedOrigins.add(origin);
+      if (typeof origin !== "string") continue;
+      let parsed: URL;
+      try {
+        parsed = new URL(origin);
+      } catch {
+        continue;
       }
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        continue;
+      }
+      if (set.size >= MAX_TRUSTED_ORIGINS) break;
+      set.add(parsed.host);
     }
   });
 }
 
-// One prompt per host at a time: rapid clicks (or several unknown-host
+// One prompt per URL at a time: rapid clicks (or several unknown-host
 // links clicked in succession) would otherwise stack independent native
 // modals, and concurrent rememberFleetTrustedHost writes race on the same
 // temp/target path. Concurrent callers await the same in-flight result.
+// Keyed on the full href — two different URLs on the same host each get
+// their own prompt; the verdict is never reused across URLs the user has
+// not seen.
 const inflightExternalOpenConfirm = new Map<
   string,
   Promise<"open" | "cancel">
@@ -500,7 +541,10 @@ async function confirmOpenExternalInBrowser(
   } catch {
     return Promise.resolve("cancel");
   }
-  const existing = inflightExternalOpenConfirm.get(host);
+  // Keyed on the full href (see inflightExternalOpenConfirm): the user must
+  // never have a verdict they did not see applied to a different URL on the
+  // same host.
+  const existing = inflightExternalOpenConfirm.get(url);
   if (existing) return existing;
   const copy = fleetTrustDialogCopy(app.getLocale(), host, url);
   const prompt = (async (): Promise<"open" | "cancel"> => {
@@ -533,11 +577,11 @@ async function confirmOpenExternalInBrowser(
     }
     return "cancel";
   })();
-  inflightExternalOpenConfirm.set(host, prompt);
+  inflightExternalOpenConfirm.set(url, prompt);
   try {
     return await prompt;
   } finally {
-    inflightExternalOpenConfirm.delete(host);
+    inflightExternalOpenConfirm.delete(url);
   }
 }
 
@@ -736,9 +780,19 @@ function attachExternalLinkRouter(win: BrowserWindow): void {
     }
     // Unknown origin: confirm with the user before handing it to the
     // browser (they may tick "trust this domain" to skip future prompts).
-    void confirmOpenExternalInBrowser(win, url).then((choice) => {
-      if (choice === "open") void openUrlExternally(url);
-    });
+    void confirmOpenExternalInBrowser(win, url)
+      .then((choice) => {
+        if (choice === "open") void openUrlExternally(url);
+      })
+      .catch((error) => {
+        // The dialog can reject when its window is destroyed mid-prompt;
+        // fail closed (nothing opens) and never leave an unhandled
+        // rejection.
+        console.warn(
+          `[external-link] confirm dialog failed (${safeUrlLabel(url)}):`,
+          error,
+        );
+      });
     return { action: "deny" };
   });
 }
