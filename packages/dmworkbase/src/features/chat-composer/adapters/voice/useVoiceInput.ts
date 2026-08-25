@@ -15,7 +15,7 @@ import VoiceFeedback, {
   type AsrParams,
 } from "../../../../Service/VoiceFeedback";
 import LocalModelService from "../../../../Service/LocalModelService";
-import { voiceSettingsStore } from "../../../../Service/VoiceSettingsStore";
+import { setMicrophonePermission, voiceSettingsStore } from "../../../../Service/VoiceSettingsStore";
 import type {
   ChatComposerVoiceContext,
   ChatComposerVoiceHost,
@@ -370,9 +370,10 @@ export default function useVoiceInput(
           });
         } catch (errorValue) {
           if (!microphoneDeviceId || (errorValue as { name?: string })?.name !== "OverconstrainedError") throw errorValue;
-          voiceSettingsStore.set({ microphoneDeviceId: "" });
+          voiceSettingsStore.set({ microphoneDeviceId: "" }, { internal: true });
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
+        setMicrophonePermission("granted");
         if (!isOperationActive(operation)) {
           stream.getTracks().forEach((track) => track.stop());
           return;
@@ -403,6 +404,9 @@ export default function useVoiceInput(
         }, effectiveDuration * 1000);
       } catch (errorValue) {
         if (!isOperationActive(operation)) return;
+        if (["NotAllowedError", "SecurityError"].includes((errorValue as { name?: string })?.name ?? "")) {
+          setMicrophonePermission("denied");
+        }
         const error =
           errorValue instanceof Error
             ? errorValue

@@ -92,7 +92,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     const statusColor = getStatusColor(displayStatus);
     const statusText = getStatusLabel(displayStatus);
 
-    const isGenerating = task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING;
+    const isGenerating = !displaysWaiting
+        && (task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING);
     // 类型分类 — 单一 classifier 派生 label + icon + CSS class（R4 yj P2-2）。
     const typeKind = getSummaryTypeKind(task);
     const typeLabel = getSummaryTypeLabel(t, task);

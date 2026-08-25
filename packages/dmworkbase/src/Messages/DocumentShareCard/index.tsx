@@ -140,6 +140,15 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
         },
       };
     }
+    if (state === "error") {
+      return {
+        placeholder: {
+          icon: "warning",
+          title: t("base.docShareCard.placeholder.error.title"),
+          desc: t("base.docShareCard.placeholder.error.desc"),
+        },
+      };
+    }
     if (state === "checking") {
       return { placeholder: { icon: "info", title: t("base.docShareCard.placeholder.checking.title") } };
     }

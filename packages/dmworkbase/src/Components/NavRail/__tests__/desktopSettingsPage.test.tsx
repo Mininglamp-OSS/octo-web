@@ -25,6 +25,7 @@ vi.mock("../../../Runtime/adapters", async (importOriginal) => ({
 }));
 
 import { i18n } from "../../../i18n";
+import { voiceSettingsStore } from "../../../Service/VoiceSettingsStore";
 import { SettingsPage } from "../settingsPages";
 
 const environment = {
@@ -40,6 +41,7 @@ const flush = async () => act(async () => { await Promise.resolve(); await Promi
 
 beforeEach(() => {
   i18n.setLocale("zh-CN", { notify: false, persist: false });
+  voiceSettingsStore.set({ enabled: true });
   keepAwake.getEnabled.mockClear();
   keepAwake.setEnabled.mockClear();
   Object.defineProperty(window, "ipc", {

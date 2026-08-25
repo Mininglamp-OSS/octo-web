@@ -30,8 +30,8 @@ describe("voiceShortcutMatches", () => {
 
 describe("voiceSettingsStore", () => {
   beforeEach(() => {
-    localStorage.clear();
     voiceSettingsStore.reset();
+    localStorage.clear();
   });
 
   it("defaults to disabled and persists validated local settings", () => {
@@ -71,6 +71,71 @@ describe("voiceSettingsStore", () => {
     const unchanged = voiceSettingsStore.migrateServerConfig({ local_enabled: false, local_probe_url: "http://localhost:8888" });
     expect(unchanged.localEnabled).toBe(true);
     expect(unchanged.localProbeUrl).toBe("http://localhost:9999/");
+  });
+
+  it("migrates an enabled legacy space setting to the old voice defaults", () => {
+    voiceSettingsStore.setUserId("legacy-user");
+
+    const migrated = voiceSettingsStore.migrateLegacySpaceSetting(1, "legacy-space");
+
+    expect(migrated.enabled).toBe(true);
+    expect(migrated.shortcutWindows).toBe("shift-left");
+    expect(migrated.shortcutMacos).toBe("shift-left");
+    expect(migrated.speakingMode).toBe("hold");
+    expect(migrated.consent?.protocolVersion).toBe(VOICE_PROTOCOL_VERSION);
+    expect(migrated.consent?.ackedAt).toBeNull();
+    expect(migrated.consent?.migratedFrom).toBe("legacy-space-setting");
+    expect(localStorage.getItem(`${VOICE_SETTINGS_KEY}.legacy-user.legacy-space-setting-migrated.legacy-space`)).toBe("1");
+  });
+
+  it("does not overwrite an existing user setting during legacy migration", () => {
+    voiceSettingsStore.setUserId("legacy-user");
+    voiceSettingsStore.set({ enabled: false, shortcutWindows: "alt-right", speakingMode: "toggle" });
+
+    const current = voiceSettingsStore.migrateLegacySpaceSetting(1, "legacy-space");
+
+    expect(current.enabled).toBe(false);
+    expect(current.shortcutWindows).toBe("alt-right");
+    expect(current.speakingMode).toBe("toggle");
+  });
+
+  it("migrates the legacy space setting after local ASR config migration", () => {
+    voiceSettingsStore.setUserId("legacy-user");
+    voiceSettingsStore.migrateServerConfig({ local_enabled: false, local_timeout_ms: 5000 });
+
+    const migrated = voiceSettingsStore.migrateLegacySpaceSetting(1, "legacy-space");
+
+    expect(migrated.enabled).toBe(true);
+    expect(migrated.shortcutWindows).toBe("shift-left");
+    expect(migrated.speakingMode).toBe("hold");
+  });
+
+  it("keeps a pre-existing customized setting after server config migration", () => {
+    localStorage.setItem(`${VOICE_SETTINGS_KEY}.legacy-user`, JSON.stringify({
+      enabled: false,
+      consent: { protocolVersion: VOICE_PROTOCOL_VERSION, ackedAt: "2025-01-01T00:00:00.000Z" },
+      shortcutWindows: "alt-right",
+      shortcutMacos: "alt-right",
+      speakingMode: "toggle",
+      microphoneDeviceId: "",
+      localEnabled: false,
+    }));
+    voiceSettingsStore.setUserId("legacy-user");
+    voiceSettingsStore.migrateServerConfig({ local_enabled: false });
+    voiceSettingsStore.setUserId("legacy-user");
+
+    const current = voiceSettingsStore.migrateLegacySpaceSetting(1, "legacy-space");
+
+    expect(current.enabled).toBe(false);
+    expect(current.shortcutWindows).toBe("alt-right");
+    expect(current.speakingMode).toBe("toggle");
+  });
+
+  it("allows a later enabled space to migrate after a disabled space is loaded", () => {
+    voiceSettingsStore.setUserId("legacy-user");
+
+    expect(voiceSettingsStore.migrateLegacySpaceSetting(0, "disabled-space").enabled).toBe(false);
+    expect(voiceSettingsStore.migrateLegacySpaceSetting(1, "enabled-space").enabled).toBe(true);
   });
 
   it("isolates settings and consent by user id", () => {

@@ -43,7 +43,7 @@ vi.mock('@douyinfe/semi-icons', () => ({
 vi.mock('@douyinfe/semi-ui', () => ({
     Modal: ({ children, visible, footer }: any) =>
         visible ? (
-            <div data-testid="modal">
+            <div data-testid="summary-chat-selector-modal">
                 <div data-testid="modal-body">{children}</div>
                 <div data-testid="modal-footer">{footer}</div>
             </div>
@@ -58,29 +58,8 @@ vi.mock('@douyinfe/semi-ui', () => ({
     ),
     // Render each tab as a clickable control wired to onChange(itemKey) so tests
     // can drive tab switching.
-    Tabs: ({ children, onChange }: any) => (
-        <div data-testid="tabs">
-            {React.Children.map(children, (child: any) => (
-                <button
-                    data-testid={`tab-${child.props.itemKey}`}
-                    onClick={() => onChange?.(child.props.itemKey)}
-                >
-                    {child.props.tab}
-                </button>
-            ))}
-        </div>
-    ),
-    TabPane: ({ tab }: any) => <span>{tab}</span>,
-    Checkbox: ({ checked, disabled }: any) => (
-        <input type="checkbox" readOnly checked={!!checked} disabled={disabled} />
-    ),
-    Switch: ({ checked, onChange }: any) => (
-        <input
-            type="checkbox"
-            data-testid="include-archived-switch"
-            checked={!!checked}
-            onChange={(e: any) => onChange(e.target.checked)}
-        />
+    Checkbox: ({ checked, disabled, onChange }: any) => (
+        <input type="checkbox" readOnly checked={!!checked} disabled={disabled} onChange={onChange} />
     ),
     Button: ({ children, onClick, disabled }: any) => (
         <button onClick={onClick} disabled={disabled}>{children}</button>
@@ -92,6 +71,10 @@ vi.mock('@douyinfe/semi-ui', () => ({
 
 function flushPromises() {
     return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function getArchivedToggle(utils: ReturnType<typeof rtlRender>) {
+    return utils.container.querySelector('.chat-selector-archived-toggle input') as HTMLInputElement;
 }
 
 const TARGET_TYPE: Record<ChatCandidate['chat_type'], number> = {
@@ -164,8 +147,14 @@ async function open(initialCandidates: ChatCandidate[]) {
 }
 
 async function switchTab(utils: ReturnType<typeof rtlRender>, key: string) {
+    const labels: Record<string, string> = {
+        followed: '关注',
+        recent: '最近',
+        group: '全部群聊',
+        direct: '全部私聊',
+    };
     await act(async () => {
-        fireEvent.click(utils.getByTestId(`tab-${key}`));
+        fireEvent.click(utils.getByRole('button', { name: labels[key] }));
         await flushPromises();
     });
 }
@@ -191,7 +180,6 @@ describe('ChatSelectorModal — include-archived toggle', () => {
         const utils = await open([ACTIVE_THREAD]);
 
         expect(utils.getByText('包含已归档子区')).toBeInTheDocument();
-        expect(utils.getByText('默认不含已归档子区，开启后可选择归档子区')).toBeInTheDocument();
     });
 
     it('re-fetches with include_archived=true and renders an Archived tag when toggled on', async () => {
@@ -203,7 +191,7 @@ describe('ChatSelectorModal — include-archived toggle', () => {
         // backend returns the archived thread once the flag is set
         mockGetChatCandidates.mockResolvedValueOnce([ACTIVE_THREAD, ARCHIVED_THREAD]);
 
-        const toggle = utils.getByTestId('include-archived-switch');
+        const toggle = getArchivedToggle(utils);
         await act(async () => {
             fireEvent.click(toggle);
             await flushPromises();
@@ -222,7 +210,7 @@ describe('ChatSelectorModal — include-archived toggle', () => {
 
         // opt in to archived
         mockGetChatCandidates.mockResolvedValueOnce([ACTIVE_THREAD, ARCHIVED_THREAD]);
-        const toggle = utils.getByTestId('include-archived-switch');
+        const toggle = getArchivedToggle(utils);
         await act(async () => {
             fireEvent.click(toggle);
             await flushPromises();
@@ -248,7 +236,7 @@ describe('ChatSelectorModal — include-archived toggle', () => {
         expect(reopenArg?.include_archived).toBeFalsy();
 
         // and the Switch renders OFF
-        expect((utils.getByTestId('include-archived-switch') as HTMLInputElement).checked).toBe(false);
+        expect(getArchivedToggle(utils).checked).toBe(false);
     });
 
     it('drops a stale response when an earlier request resolves after a later one', async () => {
@@ -264,7 +252,7 @@ describe('ChatSelectorModal — include-archived toggle', () => {
         mockGetChatCandidates.mockReturnValueOnce(firstPromise);
         mockGetChatCandidates.mockReturnValueOnce(secondPromise);
 
-        const toggle = utils.getByTestId('include-archived-switch');
+        const toggle = getArchivedToggle(utils);
 
         // Kick off the first overlapping load (archived ON) — does not resolve yet.
         await act(async () => {
@@ -360,7 +348,7 @@ describe('ChatSelectorModal — recent tab', () => {
         expect(utils.getByText('Group B')).toBeInTheDocument();
         expect(utils.getByText('Group C')).toBeInTheDocument();
 
-        const body = utils.getByTestId('modal-body').textContent ?? '';
+        const body = utils.container.querySelector('.chat-selector-modal')?.textContent ?? '';
         const iB = body.indexOf('Group B');
         const iA = body.indexOf('Group A');
         const iC = body.indexOf('Group C');
@@ -423,7 +411,7 @@ describe('ChatSelectorModal — sidebar sync behavior', () => {
         const utils = await open([GROUP_A]);
 
         // modal renders, no throw
-        expect(utils.getByTestId('modal')).toBeInTheDocument();
+        expect(utils.getByTestId('summary-chat-selector-modal')).toBeInTheDocument();
         // followed tab (default) has an empty follow set → group filtered out
         expect(utils.queryByText('Group A')).not.toBeInTheDocument();
 
@@ -439,7 +427,7 @@ describe('ChatSelectorModal — sidebar sync behavior', () => {
             const utils = await open([GROUP_A]);
 
             expect(mockSidebarSync).not.toHaveBeenCalled();
-            expect(utils.getByTestId('modal')).toBeInTheDocument();
+            expect(utils.getByTestId('summary-chat-selector-modal')).toBeInTheDocument();
 
             // group tab still works (does not need the follow/recent sets)
             await switchTab(utils, 'group');

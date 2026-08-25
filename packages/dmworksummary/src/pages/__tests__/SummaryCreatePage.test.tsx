@@ -52,6 +52,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
 }));
 
 vi.mock('@douyinfe/semi-icons', () => ({
+    default: () => <span />,
     IconPlus: () => <span data-testid="icon-plus" />,
     IconClock: () => <span data-testid="icon-clock" />,
     IconUserGroup: () => <span data-testid="icon-user-group" />,

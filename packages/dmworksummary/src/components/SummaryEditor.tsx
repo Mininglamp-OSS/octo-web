@@ -11,7 +11,6 @@ interface SummaryEditorProps {
     baseResultId: number;
     initialContent: string;
     onSave: () => void;
-    onCancel: () => void;
     mode?: "team" | "personal" | "personal_draft";
     exposeSave?: (fn: (() => void) | null) => void;
 }
@@ -110,7 +109,6 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
     };
 
     render() {
-        const { onCancel } = this.props;
         const { content, saving } = this.state;
         const { t: translate } = this.context;
 

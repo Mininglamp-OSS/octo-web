@@ -25,6 +25,7 @@
 ## 预期结果
 
 - 页面显示 Help and about 和 Current version。
+- 版本信息卡片显示尚未检查状态和 Check for updates 按钮。
 - 页面显示 Welcome guide、Changelog、Feedback、Octo website、Octo open source 和 Open-source licenses 入口。
 - Feedback、Octo open source 和 Open-source licenses 链接存在正确的外部目标地址。
 

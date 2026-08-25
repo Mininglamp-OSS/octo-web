@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-import { downloadFile } from '@octo/base/src/Utils/download'
+vi.mock('@douyinfe/semi-ui', () => ({ Toast: { success: vi.fn(), error: vi.fn() } }))
 
-// Mock WKApp.apiClient
-vi.mock('@octo/base/src/App', () => ({
+vi.mock('../../App', () => ({
   default: {
     apiClient: {
       get: vi.fn(),
@@ -11,7 +10,8 @@ vi.mock('@octo/base/src/App', () => ({
   },
 }))
 
-import WKApp from '@octo/base/src/App'
+import { downloadFile } from '../download'
+import WKApp from '../../App'
 
 describe('downloadFile', () => {
   let capturedAnchor: HTMLAnchorElement | null = null

@@ -224,7 +224,7 @@
 }
 
 .wk-navrail__flyout--lg {
-    width: 240px;
+    width: 264px;
     background: var(--wk-bg-surface);
     border-color: var(--wk-border-subtle);
     border-radius: 8px;                /* Figma: cornerRadius=8 */
@@ -375,18 +375,6 @@
 }
 
 /* ── Changelog markdown ── */
-.wk-navrail__changelog-content {
-    max-height: calc(var(--wk-sp-10) * 10);
-    overflow: auto;
-    padding: var(--wk-sp-2) 0;
-}
-
-.wk-navrail__changelog-meta {
-    margin-bottom: var(--wk-sp-3);
-    color: var(--wk-text-tertiary);
-    font-size: var(--wk-text-size-base);
-}
-
 .wk-navrail__changelog-markdown {
     color: var(--wk-text-primary);
     font: var(--wk-text-body);

@@ -670,6 +670,18 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
+/* Platform-published cards get the same AI-tinted surface as
+   `.wk-mcp-card--official` in dmworkmcp so all markets read alike. */
+.skill-market-card--official {
+  border-color: var(--wk-ai-border);
+  background: var(--wk-ai-surface);
+}
+
+.skill-market-card--official:hover,
+.skill-market-card--official:focus-visible {
+  border-color: var(--wk-color-accent);
+}
+
 .skill-market-card__top {
   display: flex;
   align-items: flex-start;

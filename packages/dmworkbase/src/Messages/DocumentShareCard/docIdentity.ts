@@ -40,6 +40,7 @@ import type { DocSharePermissionState, DocSharePreviewStatus } from "../../ui/Do
 export function permissionState(status: DocSharePreviewStatus): DocSharePermissionState {
   if (status === "denied") return "no_access";
   if (status === "unavailable") return "unavailable";
+  if (status === "error") return "error";
   if (status === "ready") return "reader";
   return "checking";
 }

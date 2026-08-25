@@ -110,6 +110,14 @@ export async function registerChatLifecycleHandlers(page: Page): Promise<void> {
 }
 
 export async function registerChatLayoutSearchResult(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const w = globalThis as unknown as { __MSW_READY__?: boolean; __msw?: unknown };
+      return w.__MSW_READY__ === true && Boolean(w.__msw);
+    },
+    undefined,
+    { timeout: 15_000 },
+  );
   await page.evaluate(() => {
     type Msw = { worker: { use: (...handlers: unknown[]) => void }; http: { post: (path: string, resolver: () => unknown) => unknown }; HttpResponse: { json: (body: unknown) => unknown } };
     const msw = (window as unknown as { __msw?: Msw }).__msw;

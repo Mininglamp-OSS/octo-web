@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   probeLocal: vi.fn(),
   transcribeLocal: vi.fn(),
   setVoiceSettings: vi.fn(),
+  setMicrophonePermission: vi.fn(),
   getUserMedia: vi.fn(),
   toastWarning: vi.fn(),
   toastError: vi.fn(),
@@ -88,6 +89,7 @@ vi.mock("../../../../Service/LocalModelService", () => ({
 }));
 
 vi.mock("../../../../Service/VoiceSettingsStore", () => ({
+  setMicrophonePermission: (...args: unknown[]) => mocks.setMicrophonePermission(...args),
   voiceSettingsStore: {
     get: () => mocks.localVoiceSettings,
     set: (patch: Record<string, unknown>) => { Object.assign(mocks.localVoiceSettings, patch); mocks.setVoiceSettings(patch); return mocks.localVoiceSettings; },

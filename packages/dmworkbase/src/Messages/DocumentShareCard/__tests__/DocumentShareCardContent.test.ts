@@ -70,10 +70,11 @@ describe("permissionState — only live ACL controls the effective badge", () =>
     expect(permissionState("ready")).toBe("reader");
   });
 
-  it.each(["loading", "error"] as const)(
-    "%s → checking (access unconfirmed — never claims view access nor a grant)",
-    (status) => {
-      expect(permissionState(status)).toBe("checking");
-    },
-  );
+  it("loading → checking (access unconfirmed — never claims view access nor a grant)", () => {
+    expect(permissionState("loading")).toBe("checking");
+  });
+
+  it("error → error (preview failure may be transient)", () => {
+    expect(permissionState("error")).toBe("error");
+  });
 });

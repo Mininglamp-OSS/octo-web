@@ -17,17 +17,20 @@ import { MeInfo } from "../MeInfo";
 import octoLogo from "../../assets/settings-center/octo-logo.png";
 import mininglampLogo from "../../assets/settings-center/mininglamp-logo.png";
 import { quickMuteStore } from "./QuickMuteStore";
-import { getMicrophonePermission, getVoiceShortcut, setMicrophonePermission, VOICE_PROTOCOL_VERSION, VOICE_SETTINGS_DEFAULTS, voiceSettingsStore, type VoiceSettings, type VoiceShortcut } from "../../Service/VoiceSettingsStore";
+import { getMicrophonePermission, getVoiceShortcut, getVoiceShortcutLabelKey, shouldShowVoiceShortcuts, setMicrophonePermission, VOICE_PROTOCOL_VERSION, VOICE_SETTINGS_DEFAULTS, voiceSettingsStore, type VoiceSettings, type VoiceShortcut } from "../../Service/VoiceSettingsStore";
 import { getDocument } from "../../Service/DocumentService";
 import { acceptVoiceInput } from "../../features/voice-input/useSpaceFeedbackSetting";
 import { Dap } from "../../Service/Dap";
-import { openElectronSystemSettings } from "../../electron/desktopBridge";
+import { getElectronLinksBridge, openElectronSystemSettings } from "../../electron/desktopBridge";
+import { resolveWebOrigin } from "../../Utils/webOrigin";
+import type { VersionCheckResult } from "../../Utils/versionChecker";
 
 export function SettingsRow({ title, description, trailing, children }: { title: string; description?: React.ReactNode; trailing?: React.ReactNode; children?: React.ReactNode }) { return <div className="wk-settings-center__row"><div className="wk-settings-center__row-main"><div className="wk-settings-center__row-title">{title}</div>{description && <div className="wk-settings-center__row-description">{description}</div>}</div>{children ?? trailing}</div>; }
 
 function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="wk-settings-center__settings-section"><h3>{title}</h3>{children}</section>; }
 
 export type ResourceStatus = "available" | "unavailable" | "coming-soon";
+export type AboutUpdateStatus = { status: Extract<VersionCheckResult["status"], "latest" | "update" | "failed" | "skipped">; version?: string };
 type ResourceDefinition = {
   id: string;
   titleKey: string;
@@ -72,7 +75,7 @@ const mobileUpdaterPaths: Record<string, string> = {
 
 const fetchMobileUpdater = (url: string, init?: RequestInit) => apiFetchJson(url, init);
 
-export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, onAbout, onChangelog, onOpenOnboarding }: { item?: SettingsItem; environment: import("../../Runtime").RuntimeEnvironment; accountCenterUrl?: string; onSecrets?: () => void; onAbout?: () => void; onChangelog?: () => void; onOpenOnboarding?: () => void }) {
+export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, onAbout, aboutUpdateStatus, onOpenOnboarding }: { item?: SettingsItem; environment: import("../../Runtime").RuntimeEnvironment; accountCenterUrl?: string; onSecrets?: () => void; onAbout?: () => void; aboutUpdateStatus?: AboutUpdateStatus; onOpenOnboarding?: () => void }) {
   if (item?.id === "general") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.general.title")}><SettingsSection title={t("base.navRail.settingsCenter.section.displayLanguage")}><SettingsRow title={t("base.navRail.settingsCenter.row.language")} description={t("base.navRail.settingsCenter.row.languageDescription")} trailing={<select className="wk-settings-center__demo-select" aria-label={t("base.navRail.settingsCenter.row.language")} value={i18n.getLocale()} onChange={(event) => { const locale = event.target.value as Locale; i18n.setLocale(locale); if (WKApp.shared.isLogined()) void updateUserLanguagePreference(locale).catch(() => Toast.error(t("base.navRail.settingsCenter.value.saveFailed"))); }}><option value="zh-CN">{t("base.navRail.settingsCenter.language.zh")}</option><option value="en-US">{t("base.navRail.settingsCenter.language.en")}</option></select>} /><SettingsRow title={t("base.navRail.settingsCenter.row.darkMode")} description={t("base.navRail.settingsCenter.row.darkModeDescription")} trailing={<SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />} /></SettingsSection></SettingsPageFrame>;
   if (item?.id === "account") return <AccountSettingsPage accountCenterUrl={accountCenterUrl} onSecrets={onSecrets} />;
   if (item?.id === "notifications") {
@@ -83,7 +86,7 @@ export function SettingsPage({ item, environment, accountCenterUrl, onSecrets, o
   if (item?.id === "voice") return <VoiceInputSettingsPage environment={environment} />;
   if (item?.id === "shortcuts") return <ShortcutsSettingsPage environment={environment} />;
   if (item?.id === "devices") return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.devices.title")} description={t("base.navRail.settingsCenter.page.devices.description")}><div className="wk-settings-center__resource-sections">{settingsResourceGroups.map((group) => <ResourceSection key={group.titleKey} title={t(group.titleKey)} category={group.category}>{group.resources.map((resource) => <ResourceCard key={resource.id} {...resource} title={t(resource.titleKey)} description={t(resource.descriptionKey)} category={group.category} action={resource.url && resource.actionKey ? <a className={`wk-settings-center__resource-action${group.category === "clients" ? " wk-settings-center__resource-action--client" : ""}`} href={resource.url} target="_blank" rel="noreferrer"><ExternalLink aria-hidden="true" />{t(resource.actionKey)}</a> : undefined} />)}</ResourceSection>)}</div></SettingsPageFrame>;
-  if (item?.id === "about") return <AboutSettingsPage onAbout={onAbout} onChangelog={onChangelog} onOpenOnboarding={onOpenOnboarding} />;
+  if (item?.id === "about") return <AboutSettingsPage environment={environment} onAbout={onAbout} aboutUpdateStatus={aboutUpdateStatus} onOpenOnboarding={onOpenOnboarding} />;
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.fallback.title")} description={t("base.navRail.settingsCenter.page.fallback.description")}><SettingsRow title={t("base.navRail.settingsCenter.row.placeholder")} description={t("base.navRail.settingsCenter.placeholder")} /></SettingsPageFrame>;
 }
 
@@ -102,7 +105,8 @@ function DownloadsSettingsPage({ environment }: { environment: import("../../Run
 function ShortcutsSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
   const settings = useVoiceSettings();
   const os = getVoiceOs(environment);
-  return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.shortcuts.title")} description={t("base.navRail.settingsCenter.page.shortcuts.description")}><div className="wk-settings-center__shortcut-catalog"><section className="wk-settings-center__shortcut-group"><h3>{t("base.navRail.settingsCenter.shortcut.voice")}</h3><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.holdToTalk")} keys={[voiceShortcutLabel(getVoiceShortcut(settings, os), os), voiceModeLabel(settings.speakingMode)]} /><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.cancelVoice")} keys={["Esc"]} /></section></div></SettingsPageFrame>;
+  if (!shouldShowVoiceShortcuts(settings, os)) return null;
+  return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.shortcuts.title")}><div className="wk-settings-center__shortcut-catalog"><section className="wk-settings-center__shortcut-group"><h3>{t("base.navRail.settingsCenter.shortcut.voice")}</h3><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.holdToTalk")} keys={[t(getVoiceShortcutLabelKey(getVoiceShortcut(settings, os), os)), voiceModeLabel(settings.speakingMode)]} /><ShortcutRow label={t("base.navRail.settingsCenter.shortcut.cancelVoice")} keys={["Esc"]} /></section></div></SettingsPageFrame>;
 }
 
 function AccountSettingsPage({ accountCenterUrl, onSecrets }: { accountCenterUrl?: string; onSecrets?: () => void }) {
@@ -214,20 +218,55 @@ function NotificationsSettingsPage({ environment }: { environment: import("../..
   </SettingsPageFrame>;
 }
 function SettingsPageFrame({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) { return <div className="wk-settings-center__page"><header className="wk-settings-center__page-header"><h2>{title}</h2>{description && <p>{description}</p>}</header><section className="wk-settings-center__section-content">{children}</section></div>; }
-function AboutSettingsPage({ onAbout, onChangelog, onOpenOnboarding }: { onAbout?: () => void; onChangelog?: () => void; onOpenOnboarding?: () => void }) {
-  const externalLink = (label: string, href: string) => <a className="wk-settings-center__external-link" href={href} target="_blank" rel="noreferrer" aria-label={label}><ExternalLink aria-hidden="true" /></a>;
+function AboutSettingsPage({ environment, onAbout, aboutUpdateStatus = { status: "skipped" }, onOpenOnboarding }: { environment: import("../../Runtime").RuntimeEnvironment; onAbout?: () => void; aboutUpdateStatus?: AboutUpdateStatus; onOpenOnboarding?: () => void }) {
+  const productManualUrl = "/product-docs";
+  const runtimeLabel = t(environment.target === "desktop" ? "base.navRail.settingsCenter.about.desktop" : "base.navRail.settingsCenter.about.web");
+  const platformKey = environment.os === "macos" ? "base.navRail.settingsCenter.about.macos" : environment.os === "windows" ? "base.navRail.settingsCenter.about.windows" : environment.os === "linux" ? "base.navRail.settingsCenter.about.linux" : undefined;
+  const platformLabel = platformKey ? t(platformKey) : "";
+  const isDesktop = environment.target === "desktop";
+  const updateAvailable = aboutUpdateStatus.status === "update";
+  const statusTone = aboutUpdateStatus.status === "failed" ? "danger" : updateAvailable ? "attention" : aboutUpdateStatus.status === "latest" ? "success" : "neutral";
+  const statusLabel = aboutUpdateStatus.status === "failed" ? t("base.navRail.settingsCenter.value.updateCheckFailed") : updateAvailable ? t("base.navRail.settingsCenter.value.updateAvailable") : aboutUpdateStatus.status === "latest" ? t("base.navRail.settingsCenter.value.latestVersion") : t("base.navRail.settingsCenter.value.updateNotChecked");
+  const updateDescription = updateAvailable && aboutUpdateStatus.version
+    ? t("base.navRail.settingsCenter.about.updateAvailableDescription", { values: { version: aboutUpdateStatus.version } })
+    : aboutUpdateStatus.status === "failed"
+      ? t("base.navRail.settingsCenter.about.updateCheckFailedDescription")
+      : aboutUpdateStatus.status === "latest"
+        ? t("base.navRail.settingsCenter.about.latestVersionDescription")
+        : t("base.navRail.settingsCenter.about.webUpdateDescription");
+  const externalLink = (label: string, href: string) => {
+    const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+      const linksBridge = getElectronLinksBridge();
+      if (!linksBridge) return;
+
+      const webOrigin = resolveWebOrigin(window.location.origin, WKApp.apiClient?.config?.apiURL);
+      let absoluteUrl: string;
+      try {
+        absoluteUrl = new URL(href, webOrigin || undefined).href;
+      } catch {
+        return;
+      }
+      if (!/^https?:$/.test(new URL(absoluteUrl).protocol)) return;
+
+      event.preventDefault();
+      void linksBridge.openExternal(absoluteUrl).catch(() => undefined);
+    };
+
+    return <a className="wk-settings-center__external-link" href={href} target="_blank" rel="noreferrer" aria-label={label} onClick={handleClick}><ExternalLink aria-hidden="true" /></a>;
+  };
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.about.title")}>
     <div className="wk-settings-center__about-identity">
       <img className="wk-settings-center__about-logo" src={octoLogo} alt={t("base.navRail.settingsCenter.about.octoLogoAlt")} />
-      <div className="wk-settings-center__about-copy"><strong>Octo Web</strong><span>{t("base.navRail.settingsCenter.page.about.versionPrefix")}{t("base.navRail.settingsCenter.about.versionSeparator")}{WKApp.config.appVersion}</span></div>
-      <button type="button" className="wk-settings-center__about-update" onClick={onAbout}>{t("base.navRail.settingsCenter.action.checkUpdate")}</button>
+      <div className="wk-settings-center__about-copy"><strong>{isDesktop ? "Octo Desktop" : "Octo Web"}</strong><span>{[runtimeLabel, platformLabel, `${t("base.navRail.settingsCenter.page.about.versionPrefix")}${t("base.navRail.settingsCenter.about.versionSeparator")}${WKApp.config.appVersion}`].filter(Boolean).join(" · ")}</span>{!isDesktop && <span>{updateDescription}</span>}</div>
+      {!isDesktop && <div className="wk-settings-center__about-update-actions"><SettingsStatusTag tone={statusTone} label={statusLabel} /><button type="button" className="wk-settings-center__about-update" onClick={onAbout}>{updateAvailable ? t("base.navRail.settingsCenter.action.refresh") : t("base.navRail.settingsCenter.action.checkUpdate")}</button></div>}
     </div>
     <SettingsSection title={t("base.navRail.settingsCenter.section.help")}>
       <SettingsRow title={t("base.navRail.settingsCenter.row.guide")} trailing={onOpenOnboarding ? <button type="button" className="wk-settings-center__about-icon-button" onClick={onOpenOnboarding} aria-label={t("base.navRail.settingsCenter.row.guide")}><ChevronIcon /></button> : undefined} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.changelog")} description={t("base.navRail.settingsCenter.row.changelogDescription")} trailing={onChangelog ? <button type="button" className="wk-settings-center__about-icon-button" onClick={onChangelog} aria-label={t("base.navRail.settingsCenter.row.changelog")}><ChevronIcon /></button> : undefined} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.feedback")} trailing={externalLink(t("base.navRail.settingsCenter.row.feedback"), "https://github.com/Mininglamp-OSS/octo-web/issues/new")} />
     </SettingsSection>
     <SettingsSection title={t("base.navRail.settingsCenter.section.productInfo")}>
+      <SettingsRow title={t("base.navRail.settingsCenter.row.productManual")} trailing={externalLink(t("base.navRail.settingsCenter.row.productManual"), productManualUrl)} />
+      <SettingsRow title={t("base.navRail.settingsCenter.row.changelog")} trailing={externalLink(t("base.navRail.settingsCenter.row.changelog"), "/changelog")} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.officialWebsite")} trailing={externalLink(t("base.navRail.settingsCenter.row.officialWebsite"), "https://www.mininglamp.com/")} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.openSource")} trailing={externalLink(t("base.navRail.settingsCenter.row.openSource"), "https://github.com/Mininglamp-OSS")} />
       <SettingsRow title={t("base.navRail.settingsCenter.row.license")} trailing={externalLink(t("base.navRail.settingsCenter.row.license"), "https://github.com/Mininglamp-OSS/octo-web/blob/main/LICENSE")} />
@@ -242,8 +281,8 @@ function useVoiceSettings() {
   React.useEffect(() => voiceSettingsStore.subscribe(setSettings), []);
   return settings;
 }
-function getVoiceOs(environment: import("../../Runtime").RuntimeEnvironment): "windows" | "macos" { return environment.os === "macos" || (environment.os === "unknown" && /Mac|iPhone|iPad/i.test(navigator.userAgent)) ? "macos" : "windows"; }
-function voiceShortcutLabel(shortcut: VoiceShortcut, os: "windows" | "macos") { return shortcut === "alt-right" ? t(os === "macos" ? "base.navRail.settingsCenter.value.rightOption" : "base.navRail.settingsCenter.value.rightAlt") : shortcut === "shift-right" ? t("base.navRail.settingsCenter.value.rightShift") : shortcut === "shift-left" ? t("base.navRail.settingsCenter.value.leftShift") : t("base.navRail.settingsCenter.value.disabled"); }
+export function getVoiceOs(environment: import("../../Runtime").RuntimeEnvironment): "windows" | "macos" { return environment.os === "macos" || (environment.os === "unknown" && /Mac|iPhone|iPad/i.test(navigator.userAgent)) ? "macos" : "windows"; }
+function voiceShortcutLabel(shortcut: VoiceShortcut, os: "windows" | "macos") { return t(getVoiceShortcutLabelKey(shortcut, os)); }
 function voiceModeLabel(mode: VoiceSettings["speakingMode"]) { return t(mode === "hold" ? "base.navRail.settingsCenter.value.hold" : "base.navRail.settingsCenter.value.toggle"); }
 function VoiceInputSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
   const settings = useVoiceSettings();
@@ -272,7 +311,7 @@ function VoiceInputSettingsPage({ environment }: { environment: import("../../Ru
     setDevices(audioInputs);
     const selectedId = voiceSettingsStore.get().microphoneDeviceId;
     if (getMicrophonePermission() === "granted" && selectedId && !audioInputs.some((device) => device.deviceId === selectedId)) {
-      voiceSettingsStore.set({ microphoneDeviceId: "" });
+      voiceSettingsStore.set({ microphoneDeviceId: "" }, { internal: true });
     }
   }, []);
   const refreshPermission = React.useCallback(async () => {
@@ -448,7 +487,7 @@ function ResourceCard({ id, title, description, status, category, action }: Reso
   if (category === "clients") {
     return <article className="wk-settings-center__resource-card wk-settings-center__resource-card--clients" data-resource-status={status}>
       <div className="wk-settings-center__client-head"><span className="wk-settings-center__resource-icon" aria-hidden="true"><ResourceBrandIcon id={id} /></span><h4>{title}</h4></div>
-      {isMobile ? <div className="wk-settings-center__resource-qr" aria-label={`${title} QR code`} aria-busy={qrState.status === "loading"}>{qrState.status === "ready" ? <QRCodeSVG value={qrState.downloadUrl} size={104} /> : qrState.status === "loading" ? <Spin /> : <div className="wk-settings-center__resource-qr-error" role="alert"><span>{t("base.navRail.settingsCenter.value.qrLoadFailed")}</span><button type="button" className="wk-settings-center__manage-button" onClick={qrState.retry}>{t("base.navRail.settingsCenter.action.retry")}</button></div>}</div> : <div className="wk-settings-center__client-status">{description}</div>}
+      {isMobile ? <div className="wk-settings-center__resource-qr" aria-label={`${title} QR code`} aria-busy={qrState.status === "loading"}>{qrState.status === "ready" ? <QRCodeSVG value={qrState.downloadUrl} size={104} /> : qrState.status === "loading" ? <Spin /> : <div className="wk-settings-center__resource-qr-error" role="alert"><span>{t("base.navRail.settingsCenter.value.qrLoadFailed")}</span><button type="button" className="wk-settings-center__manage-button" onClick={qrState.retry}>{t("base.navRail.settingsCenter.action.retry")}</button></div>}</div> : <div className="wk-settings-center__client-status"><span>{description}</span>{status === "coming-soon" && <SettingsStatusTag tone="neutral" label={t("base.navRail.settingsCenter.value.comingSoon")} />}</div>}
       {action && <div className="wk-settings-center__resource-actions">{action}</div>}
     </article>;
   }

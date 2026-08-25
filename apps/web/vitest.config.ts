@@ -11,6 +11,7 @@ export default defineConfig({
       'react-dom': path.resolve(__dirname, 'node_modules/react-dom'),
       '@douyinfe/semi-ui': path.resolve(__dirname, 'node_modules/@douyinfe/semi-ui'),
       '@douyinfe/semi-icons': path.resolve(__dirname, 'node_modules/@douyinfe/semi-icons'),
+      'react-virtuoso': path.resolve(__dirname, 'src/__tests__/mocks/react-virtuoso.tsx'),
     },
   },
   test: {

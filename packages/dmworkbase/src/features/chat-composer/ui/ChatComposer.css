@@ -469,19 +469,54 @@
 
 /* Placeholder - Tiptap Placeholder 扩展 */
 .wk-messageinput-editor .ProseMirror p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder);
-  float: left;
-  color: var(--text-tertiary, #999);
-  pointer-events: none;
-  height: 0;
+  content: none;
 }
 
 .wk-messageinput-editor .ProseMirror.is-empty::before {
-  content: attr(data-placeholder);
-  float: left;
-  color: var(--text-tertiary, #999);
+  content: none;
+}
+
+.wk-messageinput-placeholder-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  overflow: hidden;
   pointer-events: none;
-  height: 0;
+  z-index: 1;
+  font: var(--wk-text-body);
+}
+
+.wk-messageinput-placeholder-overlay.has-menu {
+  left: calc(28px + var(--wk-sp-2));
+}
+
+.wk-messageinput-box--expanded .wk-messageinput-placeholder-overlay {
+  align-items: flex-start;
+}
+
+.wk-messageinput-placeholder-base {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+.wk-messageinput-shortcut-hint {
+  min-height: 20px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--wk-sp-1, 6px);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-xs);
+  background: var(--wk-bg-base);
+  color: var(--wk-text-tertiary);
+  font: var(--wk-text-caption);
+  white-space: nowrap;
 }
 
 /* ============================================

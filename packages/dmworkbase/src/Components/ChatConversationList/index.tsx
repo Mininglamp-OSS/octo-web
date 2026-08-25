@@ -321,7 +321,9 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                                     }
                                 }
                             }))
-                        categoryItems.push({ separator: true } as ContextMenusData)
+                        if (categoryItems.length > 0) {
+                            categoryItems.push({ separator: true } as ContextMenusData)
+                        }
                         categoryItems.push({
                             title: t("base.chatSidebar.context.createCategory"),
                             icon: FolderPlus,
@@ -352,7 +354,9 @@ const ChatConversationList: React.FC<ChatConversationListProps> = ({
                                 }
                             }
                         }))
-                    categoryItems.push({ separator: true } as ContextMenusData)
+                    if (categoryItems.length > 0) {
+                        categoryItems.push({ separator: true } as ContextMenusData)
+                    }
                     categoryItems.push({
                         title: t("base.chatSidebar.context.createCategory"),
                         icon: FolderPlus,

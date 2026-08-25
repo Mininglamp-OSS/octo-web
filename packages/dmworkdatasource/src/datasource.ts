@@ -492,6 +492,39 @@ export function shouldAttachUploadToken(uploadURL: string, apiBaseURL: string, l
     }
 }
 
+/**
+ * Resolve public object-storage paths for both web and packaged desktop shells.
+ *
+ * Web uses a same-origin `/file/...` route, while a packaged Electron page is
+ * loaded from `file://` and therefore has no usable HTTP origin. In that case
+ * the API origin is the only valid base (the API URL is absolute in desktop
+ * production builds).
+ */
+export function resolvePublicFileURL(
+    path: string,
+    apiBaseURL: string,
+    locationHref: string,
+): string {
+    const cleanPath = path.replace(/^file\/preview\//, "file/")
+    const candidateOrigins = [apiBaseURL, locationHref]
+
+    for (const candidate of candidateOrigins) {
+        try {
+            const url = new URL(candidate, locationHref || undefined)
+            if (url.protocol === "http:" || url.protocol === "https:") {
+                return `${url.origin}/${cleanPath}`
+            }
+        } catch {
+            // Try the next candidate. The API client still handles other paths.
+        }
+    }
+
+    // Keep a deterministic fallback for non-browser callers. In a real
+    // Electron release apiBaseURL is absolute, so this branch is only for
+    // incomplete mocks or unusual embedding environments.
+    return `${apiBaseURL}${cleanPath}`
+}
+
 // Isolated axios instance carrying NONE of the project request interceptors. The
 // shared global axios has a request interceptor (APIClient) that injects the
 // session token into EVERY call with no origin scoping; an upload to a
@@ -635,8 +668,8 @@ export class CommonDataSource implements ICommonDataSource {
         }
         // file/preview/* paths use public MinIO URL (no auth needed)
         if (path.startsWith('file/preview/')) {
-            const origin = typeof window !== 'undefined' ? window.location.origin : ''
-            return `${origin}/${path.replace(/^file\/preview\//, "file/")}`
+            const locationHref = typeof window !== 'undefined' ? window.location.href : ''
+            return resolvePublicFileURL(path, WKApp.apiClient.config.apiURL, locationHref)
         }
         // All other paths go through API (e.g. users/xxx/avatar)
         const baseURL = WKApp.apiClient.config.apiURL
@@ -651,8 +684,8 @@ export class CommonDataSource implements ICommonDataSource {
             }
         }
         if (path.startsWith('file/preview/')) {
-            const origin = typeof window !== 'undefined' ? window.location.origin : ''
-            return `${origin}/${path.replace(/^file\/preview\//, "file/")}`
+            const locationHref = typeof window !== 'undefined' ? window.location.href : ''
+            return resolvePublicFileURL(path, WKApp.apiClient.config.apiURL, locationHref)
         }
         const baseURL = WKApp.apiClient.config.apiURL
         return `${baseURL}${path}`

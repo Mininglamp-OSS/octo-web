@@ -7,6 +7,7 @@ import {
 import VoiceFeedback from "../../Service/VoiceFeedback";
 import VoiceService from "../../Service/VoiceService";
 import type { VoiceConfig } from "../../Service/VoiceService";
+import { voiceSettingsStore } from "../../Service/VoiceSettingsStore";
 
 export interface SpaceFeedbackState {
   spaceSetting: SpaceSetting | null;
@@ -108,6 +109,7 @@ export async function fetchAndApplySpaceSetting(
   try {
     const setting = await getSpaceSetting(spaceId);
     if (!isSpaceActive()) return;
+    voiceSettingsStore.migrateLegacySpaceSetting(setting.voice_input_enabled, spaceId);
     setSharedSpaceSetting(setting, true, spaceId);
 
     if (

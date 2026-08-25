@@ -61,6 +61,7 @@
 .wk-settings-center__about-copy { display: grid; min-width: 0; gap: 4px; }
 .wk-settings-center__about-copy strong { font-size: 16px; font-weight: 600; }
 .wk-settings-center__about-copy span { color: var(--wk-text-secondary); font-size: 12px; line-height: 1.5; }
+.wk-settings-center__about-update-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .wk-settings-center__about-update { min-height: 32px; padding: 0 12px; border: 1px solid var(--wk-border-default); border-radius: 6px; background: var(--wk-bg-surface); color: var(--wk-text-primary); cursor: pointer; font-size: 13px; white-space: nowrap; }
 .wk-settings-center__about-update:hover { background: var(--wk-bg-base); }
 .wk-settings-center__about-icon-button { display: inline-flex; width: 28px; height: 28px; align-items: center; justify-content: center; border: 0; background: transparent; color: var(--wk-text-tertiary); cursor: pointer; font-size: 24px; line-height: 1; }
@@ -134,7 +135,7 @@
 .wk-settings-center__client-head h4 { margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35; }
 .wk-settings-center__client-head .wk-settings-center__resource-icon { width: 20px; height: 20px; flex: 0 0 20px; }
 .wk-settings-center__client-head .wk-settings-center__resource-icon svg { width: 20px; height: 20px; }
-.wk-settings-center__client-status { margin-top: 8px; color: var(--wk-text-secondary); font-size: 12px; }
+.wk-settings-center__client-status { display: grid; justify-items: center; gap: 8px; margin-top: 8px; color: var(--wk-text-secondary); font-size: 12px; }
 .wk-settings-center__resource-qr { display: flex; width: 104px; height: 104px; align-items: center; justify-content: center; margin-top: 16px; padding: 0; border-radius: 8px; background: var(--wk-bg-base); overflow: hidden; }
 .wk-settings-center__resource-qr svg { display: block; width: 104px; height: 104px; }
 .wk-settings-center__resource-qr-placeholder { display: block; width: 100%; height: 100%; border-radius: 4px; background: var(--wk-bg-base); }

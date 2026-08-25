@@ -273,12 +273,25 @@ export class SubscriberList extends Component<
     const { removeAction } = this.props;
     if (!removeAction || !removeAction.canRemove(subscriber)) return;
     const name = this.getShowName(subscriber);
+    // Bot 成员用「移出机器人」措辞（octo-web#1511）：走到这一步的 bot 多半是
+    // 查看者自己的，而通用的「移除成员」读起来像在踢人。
+    const targetIsBot =
+      isBot(subscriber.uid) || subscriber?.orgData?.robot === 1;
 
     wkConfirm({
-      title: this.context.t("base.subscribers.confirmRemoveTitle"),
-      content: this.context.t("base.subscribers.confirmRemoveContent", {
-        values: { name },
-      }),
+      title: this.context.t(
+        targetIsBot
+          ? "base.subscribers.confirmRemoveBotTitle"
+          : "base.subscribers.confirmRemoveTitle"
+      ),
+      content: this.context.t(
+        targetIsBot
+          ? "base.subscribers.confirmRemoveBotContent"
+          : "base.subscribers.confirmRemoveContent",
+        {
+          values: { name },
+        }
+      ),
       okText: this.context.t("base.subscribers.remove"),
       okType: "danger",
       onOk: async () => {

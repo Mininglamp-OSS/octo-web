@@ -40,7 +40,7 @@ function previewButtonDisabled(html: string): boolean {
 }
 
 describe("DocumentShareCard — 预览区主操作 disabled 门控", () => {
-  it.each(["reader", "commenter", "writer", "no_access", "checking"] as const)(
+  it.each(["reader", "commenter", "writer", "no_access", "error", "checking"] as const)(
     "%s 状态预览区可点（非死按钮）",
     (state) => {
       const html = renderToStaticMarkup(
@@ -53,6 +53,8 @@ describe("DocumentShareCard — 预览区主操作 disabled 门控", () => {
                 ? { icon: "lock", title: "需要访问权限", desc: "打开文档后可以申请访问" }
                 : state === "checking"
                   ? { icon: "info", title: "正在确认访问权限…" }
+                  : state === "error"
+                    ? { icon: "warning", title: "预览暂时不可用" }
                   : undefined,
           })}
         />,

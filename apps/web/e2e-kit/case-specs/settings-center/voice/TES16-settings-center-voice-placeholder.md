@@ -30,13 +30,14 @@
 ## 预期结果
 
 - 语音设置页面显示快捷键为“左 Shift”、说话方式为“长按”。
-- 返回群聊后，输入框 placeholder 包含“按住左 Shift说话”。
+- 返回群聊后，输入框 placeholder 为“发送给 TES16 语音设置群”，并在同一行显示独立标签“按住左 Shift 进行语音输入”。
+- 输入框有文字时快捷键标签隐藏，清空后恢复。
 - 不出现“设置未保存”或加载失败提示。
 
 ## 反例
 
-- 若 ChatComposer 未订阅 voice settings store，返回群聊后 placeholder 仍不会包含“按住左 Shift说话”。
-- 若 hold/toggle 映射错误，placeholder 会显示“按左 Shift说话”，该结果不应通过本 case。
+- 若 ChatComposer 未订阅 voice settings store，返回群聊后快捷键标签不会同步更新。
+- 若标签没有从 placeholder 拆出，或 hold/toggle 映射错误，该结果不应通过本 case。
 
 ## 视觉基准
 
@@ -48,4 +49,4 @@
 - `packages/dmworkbase/src/Service/VoiceSettingsStore.ts:89-103`: 设置更新通知订阅者并持久化。
 - `packages/dmworkbase/src/features/chat-composer/ui/ChatComposer.tsx:596-598`: ChatComposer 订阅 `voiceSettingsStore`。
 - `packages/dmworkbase/src/features/chat-composer/ui/ChatComposer.tsx:620-647`: placeholder 随 voice settings 重算。
-- `packages/dmworkbase/src/i18n/locales/zh-CN.json:1267-1268`: toggle/hold placeholder 文案。
+- `packages/dmworkbase/src/i18n/locales/zh-CN.json`: placeholder 与快捷键标签文案。
