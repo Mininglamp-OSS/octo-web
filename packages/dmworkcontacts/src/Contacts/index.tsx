@@ -1,16 +1,15 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Component } from "react";
-import { Contacts, ContextMenus, ContextMenusContext, WKApp, WKBase, WKBaseContext, ErrorBoundary, WKModal, I18nContext, t, ForwardService, interpretForwardResult, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo, Dap } from "@octo/base"
+import { Contacts, WKApp, WKBase, ErrorBoundary, WKModal, I18nContext, t, addCurrentImChannelInfoListener, fetchCurrentImChannelInfo, getCurrentImChannelInfo, Dap } from "@octo/base"
 import "./index.css"
 import { toSimplized } from "@octo/base";
 import { getPinyin } from "@octo/base";
 import classnames from "classnames";
-import { Toast, Tooltip } from "@douyinfe/semi-ui";
+import { Tooltip } from "@douyinfe/semi-ui";
 import { ChevronRight, Users, Bot, UsersRound } from "lucide-react";
 
 import { Channel, ChannelTypePerson, ChannelTypeGroup, ChannelInfoListener, ChannelInfo } from "wukongimjssdk";
 import { ContactsListManager } from "../Service/ContactsListManager";
-import { Card } from "@octo/base/src/Messages/Card";
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import BotDetailModal from "@octo/base/src/Components/BotDetailModal";
@@ -163,7 +162,6 @@ function VirtualContactList({ rows, renderItem, initialScrollTop, onScrollTopCha
 
 export class ContactsState {
     keyword?: string
-    selectedItem?: Contacts
     currentSpace?: Space
     spaceMembers: SpaceMember[] = []
 
@@ -211,8 +209,6 @@ export default class ContactsList extends Component<any, ContactsState> {
     declare context: React.ContextType<typeof I18nContext>
 
     channelInfoListener!: ChannelInfoListener
-    contextMenusContext!: ContextMenusContext
-    baseContext!: WKBaseContext
     private spaceChangedHandler!: (space: any) => void
     private flatItems: Contacts[] = []
     private indexCache = new Map<ContactFilterMode, ContactIndexData>()
@@ -650,11 +646,6 @@ export default class ContactsList extends Component<any, ContactsState> {
         this.setState({ filterMode: mode, indexList, indexItemMap, listRows })
     }
 
-    _handleContextMenu(item: Contacts, event: React.MouseEvent) {
-        this.contextMenusContext.show(event)
-        this.setState({ selectedItem: item })
-    }
-
     // ─── Render Helpers ─────────────────────────────
 
     renderBotFatherBanner() {
@@ -887,8 +878,6 @@ export default class ContactsList extends Component<any, ContactsState> {
                 WKApp.shared.openChannel?.channelType === ChannelTypePerson && WKApp.shared.openChannel?.channelID === item.uid ? "wk-contacts-section-item-selected" : undefined
             )} onClick={() => {
                 this.handleContactClick(item.uid, item.robot === true)
-            }} onContextMenu={(e) => {
-                this._handleContextMenu(item, e)
             }}>
                 <div className="wk-contacts-section-item-avatar">
                     <WKAvatar channel={new Channel(item.uid, ChannelTypePerson)} />
@@ -909,9 +898,7 @@ export default class ContactsList extends Component<any, ContactsState> {
     render() {
         const { isSearching } = this.state
 
-        return <WKBase onContext={(baseCtx) => {
-            this.baseContext = baseCtx
-        }}>
+        return <WKBase>
             <ErrorBoundary moduleName={t("contacts.page.title")}>
                 <div className="wk-contacts">
                     <div className="wk-contacts-content">
@@ -926,47 +913,6 @@ export default class ContactsList extends Component<any, ContactsState> {
                             </ContactsDirectory>
                         )}
                     </div>
-
-                    <ContextMenus onContext={(context: ContextMenusContext) => {
-                        this.contextMenusContext = context
-                    }} menus={[{
-                        title: t("contacts.context.viewProfile"), onClick: () => {
-                            const { selectedItem } = this.state
-                            this.setState({ userInfoUid: selectedItem?.uid || "", userInfoVisible: true })
-                        }
-                    }, {
-                        title: t("contacts.context.shareToFriend"), onClick: () => {
-                            WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
-                                const { selectedItem } = this.state
-                                if (!channels || channels.length === 0) return
-                                // buildContent 每 channel 调一次 —— 名片本身无 per-channel 差异，
-                                // 但生成新实例避免 wrapSendContentForInjection 复用同一 content 引用。
-                                //
-                                // 注意行为变化：ForwardService 会给 person channel 注入 space_id
-                                // （与 vm.sendMessage / Summary 转发对齐，服务端 BotFather 依赖此字段
-                                // 识别用户当前 Space）。老代码走裸 chatManager.send 未注入 —— 属修正。
-                                const result = await ForwardService.send(
-                                    channels,
-                                    () => {
-                                        const card = new Card()
-                                        card.uid = selectedItem?.uid || ""
-                                        card.name = selectedItem?.name || ""
-                                        card.vercode = selectedItem?.vercode || ""
-                                        return card
-                                    },
-                                    { spaceId: WKApp.shared.currentSpaceId },
-                                )
-                                const state = interpretForwardResult(result, "targets")
-                                if (state.kind === "all-failed") {
-                                    Toast.error(t("contacts.share.failed"))
-                                } else if (state.kind === "partial") {
-                                    Toast.error(t("contacts.share.partialFailed", { values: { failed: state.failed, total: state.total } }))
-                                } else {
-                                    Toast.success(t("contacts.share.success"))
-                                }
-                            }, t("contacts.share.cardTitle"))
-                        }
-                    }]} />
 
                     <WKModal
                         title={null}

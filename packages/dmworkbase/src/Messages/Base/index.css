@@ -41,8 +41,18 @@
 .senderAvatar {
     width: 32px;
     height: 32px;
+    display: inline-flex;
+    padding: 0;
+    border: 0;
+    border-radius: var(--wk-avatar-radius, var(--wk-r-circle));
+    background: transparent;
     cursor: pointer;
     flex-shrink: 0;
+}
+
+.senderAvatar:focus-visible {
+    outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+    outline-offset: var(--wk-sp-0-5);
 }
 
 .senderAvatar-placeholder {

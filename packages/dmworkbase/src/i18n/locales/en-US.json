@@ -254,6 +254,8 @@
   "spaceSettings.saving": "Saving...",
   "spaceSettings.title": "Organization settings",
   "spaceSettings.validation.nameRequired": "Name is required",
+  "conversation.avatarMenu.mention": "Mention",
+  "conversation.avatarMenu.open": "Open avatar menu for {{name}}",
   "conversation.avatarMenu.viewUserInfo": "View profile",
   "conversation.deleteConfirm.confirm": "Confirm",
   "conversation.deleteConfirm.content": "Deleted messages will disappear from your conversation history, but other people in the conversation can still see them.",
