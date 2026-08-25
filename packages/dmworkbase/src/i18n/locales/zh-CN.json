@@ -1272,8 +1272,6 @@
   "messageInput.expand": "展开输入框",
   "messageInput.placeholder.direct": "发送消息",
   "messageInput.placeholder.directWithName": "发送给 {{name}}",
-  "messageInput.shortcutHint.toggle": "点按{{shortcut}} 开始语音输入",
-  "messageInput.shortcutHint.hold": "按住{{shortcut}} 进行语音输入",
   "messageInput.slashCommand": "斜杠命令",
   "messageInput.send.restoreFailed": "消息未发出，且内容已无法恢复",
   "messageInput.validation.maxLength": "输入内容长度不能大于{{max}}字符！",

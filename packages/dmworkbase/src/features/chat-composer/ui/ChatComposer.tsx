@@ -105,7 +105,6 @@ import type {
   ChatComposerViewHost,
   ChatComposerVoiceContext,
 } from "../ports";
-import { getMicrophonePermission, getVoiceShortcut, getVoiceShortcutLabelKey, isMicrophonePermissionUndetectable, refreshMicrophonePermission, subscribeMicrophonePermission, voiceSettingsStore, type VoiceSettings } from "../../../Service/VoiceSettingsStore";
 import { MAX_MESSAGE_LENGTH } from "../domain/constants";
 
 function commonRecoveredTarget(
@@ -123,23 +122,11 @@ function commonRecoveredTarget(
     : undefined;
 }
 
-// placeholder 格式化所需的平台快捷键标识（模块级常量，避免重复计算）
-const VOICE_OS = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows";
-
-/** 根据会话名称生成 placeholder 文本，快捷键提示由独立标签展示。 */
+/** 根据会话名称生成 placeholder 文本。快捷键说明位于设置中心。 */
 function buildPlaceholder(name: string, t: typeof translate): string {
   return name
     ? t("base.messageInput.placeholder.directWithName", { values: { name } })
     : t("base.messageInput.placeholder.direct");
-}
-
-function voiceShortcutHint(t: typeof translate, settings: VoiceSettings, permission: PermissionState, permissionUndetectable: boolean): string | undefined {
-  const shortcut = getVoiceShortcut(settings, VOICE_OS);
-  if (!settings.enabled || shortcut === "disabled" || (permission !== "granted" && !permissionUndetectable)) return undefined;
-  const label = t(getVoiceShortcutLabelKey(shortcut, VOICE_OS));
-  return settings.speakingMode === "hold"
-    ? t("base.messageInput.shortcutHint.hold", { values: { shortcut: label } })
-    : t("base.messageInput.shortcutHint.toggle", { values: { shortcut: label } });
 }
 
 // 从编辑器中提取附件节点（纯函数，避免闭包问题）
@@ -591,13 +578,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const [pendingPreEnqueueItems, setPendingPreEnqueueItems] = useState<
     PendingSendItem[]
   >([]);
-  const [voiceSettings, setVoiceSettings] = useState(() => voiceSettingsStore.get());
-  const [microphonePermission, setMicrophonePermission] = useState(() => getMicrophonePermission());
-
-  useEffect(() => voiceSettingsStore.subscribe(setVoiceSettings), []);
-  useEffect(() => subscribeMicrophonePermission(setMicrophonePermission), []);
-  useEffect(() => { void refreshMicrophonePermission(); }, []);
-
   useEffect(() => {
     composerMountedRef.current = true;
     const unsubscribe = attachmentStore.subscribe((items) => {
@@ -1595,8 +1575,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     !editorIsEmpty ||
     editorAttachments.length > 0 ||
     topAttachments.length > 0;
-  const shortcutHint = voiceShortcutHint(t, voiceSettings, microphonePermission, isMicrophonePermissionUndetectable());
-
   // 设置 inputRef
   useEffect(() => {
     if (onInputRef && editor) {
@@ -1769,7 +1747,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
             {!hasValue && (
               <div className={`wk-messageinput-placeholder-overlay${botCommands && botCommands.length > 0 ? " has-menu" : ""}`} aria-hidden="true">
                 <span className="wk-messageinput-placeholder-base">{placeholder}</span>
-                {shortcutHint && <span className="wk-messageinput-shortcut-hint">{shortcutHint}</span>}
               </div>
             )}
             <div className="wk-messageinput-editor">

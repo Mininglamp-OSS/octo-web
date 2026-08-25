@@ -19,7 +19,11 @@ export interface VoiceSettings {
 
 export const VOICE_SETTINGS_KEY = "octo.voice-input.v1";
 export { VOICE_PROTOCOL_VERSION };
-const LEGACY_SERVER_MIGRATION = "legacy-server-config-migrated";
+// This migration used to share the marker written by the /voice/config path.
+// Keep the old marker untouched, but use a source-specific marker so users who
+// opened v1.14.0 before /voice/local-config was imported are still migrated.
+const LEGACY_LOCAL_CONFIG_MIGRATION = "legacy-local-config-migrated";
+const LOCAL_SETTINGS_USER_CONFIGURED = "local-settings-user-configured";
 const LEGACY_SPACE_SETTING_MIGRATION = "legacy-space-setting-migrated";
 const USER_SETTINGS_MARKER = "user-configured";
 const legacySpaceMigrationKey = (spaceId: string) => `${storageKey}.${LEGACY_SPACE_SETTING_MIGRATION}.${encodeURIComponent(spaceId)}`;
@@ -97,6 +101,26 @@ function normalizeLocalUrl(value: unknown, fallback: string): string {
 
 let storageKey = VOICE_SETTINGS_KEY;
 
+function hasExplicitLocalSettings(): boolean {
+  try {
+    if (window.localStorage.getItem(`${storageKey}.${LOCAL_SETTINGS_USER_CONFIGURED}`) === "1") return true;
+    if (window.localStorage.getItem(`${storageKey}.${USER_SETTINGS_MARKER}`) !== "1") return false;
+    const stored = JSON.parse(window.localStorage.getItem(storageKey) || "null") as Partial<VoiceSettings> | null;
+    return Boolean(stored && (
+      stored.localEnabled === true ||
+      (typeof stored.localTimeoutMs === "number" && stored.localTimeoutMs !== defaults.localTimeoutMs) ||
+      (typeof stored.localProbeUrl === "string" && stored.localProbeUrl !== defaults.localProbeUrl) ||
+      (typeof stored.localTranscribeUrl === "string" && stored.localTranscribeUrl !== defaults.localTranscribeUrl)
+    ));
+  } catch {
+    return false;
+  }
+}
+
+function hasCompletedOrSkippedLocalMigration(): boolean {
+  return window.localStorage.getItem(`${storageKey}.${LEGACY_LOCAL_CONFIG_MIGRATION}`) === "1" || hasExplicitLocalSettings();
+}
+
 function read(key = storageKey): VoiceSettings {
   try {
     const value = JSON.parse(window.localStorage.getItem(key) || "null") as Partial<VoiceSettings> | null;
@@ -133,7 +157,12 @@ export const voiceSettingsStore = {
     };
     try {
       window.localStorage.setItem(storageKey, JSON.stringify(next));
-      if (!options.internal) window.localStorage.setItem(`${storageKey}.${USER_SETTINGS_MARKER}`, "1");
+      if (!options.internal) {
+        window.localStorage.setItem(`${storageKey}.${USER_SETTINGS_MARKER}`, "1");
+        if (Object.keys(patch).some((key) => key === "localEnabled" || key === "localTimeoutMs" || key === "localProbeUrl" || key === "localTranscribeUrl")) {
+          window.localStorage.setItem(`${storageKey}.${LOCAL_SETTINGS_USER_CONFIGURED}`, "1");
+        }
+      }
       current = next;
       listeners.forEach((listener) => listener({ ...current }));
       return { ...current };
@@ -150,6 +179,7 @@ export const voiceSettingsStore = {
     try {
       window.localStorage.removeItem(storageKey);
       window.localStorage.setItem(`${storageKey}.${USER_SETTINGS_MARKER}`, "1");
+      window.localStorage.setItem(`${storageKey}.${LOCAL_SETTINGS_USER_CONFIGURED}`, "1");
     } catch { /* unavailable storage */ }
     listeners.forEach((listener) => listener({ ...current }));
     return { ...current };
@@ -160,6 +190,13 @@ export const voiceSettingsStore = {
     listeners.forEach((listener) => listener({ ...current }));
     return { ...current };
   },
+  needsLocalConfigMigration(): boolean {
+    try {
+      return !hasCompletedOrSkippedLocalMigration();
+    } catch {
+      return true;
+    }
+  },
   migrateServerConfig(config: {
     local_enabled?: boolean;
     local_timeout_ms?: number;
@@ -167,14 +204,18 @@ export const voiceSettingsStore = {
     local_transcribe_url?: string;
   }): VoiceSettings {
     try {
-      if (window.localStorage.getItem(`${storageKey}.${LEGACY_SERVER_MIGRATION}`) === "1") return { ...current };
+      if (window.localStorage.getItem(`${storageKey}.${LEGACY_LOCAL_CONFIG_MIGRATION}`) === "1") return { ...current };
+      if (hasExplicitLocalSettings()) {
+        window.localStorage.setItem(`${storageKey}.${LEGACY_LOCAL_CONFIG_MIGRATION}`, "1");
+        return { ...current };
+      }
       const patch: Partial<VoiceSettings> = {};
       if (typeof config.local_enabled === "boolean") patch.localEnabled = config.local_enabled;
       if (typeof config.local_timeout_ms === "number" && config.local_timeout_ms > 0) patch.localTimeoutMs = config.local_timeout_ms;
       if (config.local_probe_url) patch.localProbeUrl = config.local_probe_url;
       if (config.local_transcribe_url) patch.localTranscribeUrl = config.local_transcribe_url;
       if (Object.keys(patch).length > 0) current = this.set(patch, { internal: true });
-      window.localStorage.setItem(`${storageKey}.${LEGACY_SERVER_MIGRATION}`, "1");
+      window.localStorage.setItem(`${storageKey}.${LEGACY_LOCAL_CONFIG_MIGRATION}`, "1");
     } catch { /* migration must not block voice input */ }
     return { ...current };
   },

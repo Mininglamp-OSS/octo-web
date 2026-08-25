@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getConfig: vi.fn(),
+  getLocalConfig: vi.fn(),
   getVoiceContext: vi.fn(),
   transcribe: vi.fn(),
   clearVoiceContextCache: vi.fn(),
@@ -19,6 +20,12 @@ const mocks = vi.hoisted(() => ({
   probeLocal: vi.fn(),
   transcribeLocal: vi.fn(),
   setVoiceSettings: vi.fn(),
+  migrateServerConfig: vi.fn((config: Record<string, unknown>) => {
+    if (typeof config.local_enabled === "boolean") mocks.localVoiceSettings.localEnabled = config.local_enabled;
+    if (typeof config.local_timeout_ms === "number") mocks.localVoiceSettings.localTimeoutMs = config.local_timeout_ms;
+    return mocks.localVoiceSettings;
+  }),
+  needsLocalConfigMigration: vi.fn(() => true),
   setMicrophonePermission: vi.fn(),
   getUserMedia: vi.fn(),
   toastWarning: vi.fn(),
@@ -58,6 +65,7 @@ vi.mock("../../../../Service/VoiceService", () => ({
   default: {
     shared: {
       getConfig: (...args: unknown[]) => mocks.getConfig(...args),
+      getLocalConfig: (...args: unknown[]) => mocks.getLocalConfig(...args),
       getVoiceContext: (...args: unknown[]) => mocks.getVoiceContext(...args),
       transcribe: (...args: unknown[]) => mocks.transcribe(...args),
       clearVoiceContextCache: (...args: unknown[]) =>
@@ -93,6 +101,8 @@ vi.mock("../../../../Service/VoiceSettingsStore", () => ({
   voiceSettingsStore: {
     get: () => mocks.localVoiceSettings,
     set: (patch: Record<string, unknown>) => { Object.assign(mocks.localVoiceSettings, patch); mocks.setVoiceSettings(patch); return mocks.localVoiceSettings; },
+    migrateServerConfig: (config: Record<string, unknown>) => mocks.migrateServerConfig(config),
+    needsLocalConfigMigration: () => mocks.needsLocalConfigMigration(),
     subscribe: () => () => {},
   },
 }));
@@ -205,6 +215,8 @@ beforeEach(() => {
     localTimeoutMs: 10000,
   });
   mocks.getConfig.mockResolvedValue({ enabled: true });
+  mocks.getLocalConfig.mockResolvedValue({ enabled: false, timeout_ms: null, probe_url: null, transcribe_url: null });
+  mocks.needsLocalConfigMigration.mockReturnValue(true);
   mocks.getVoiceContext.mockResolvedValue({ has_context: false });
   mocks.fetchAndApplySpaceSetting.mockResolvedValue(undefined);
   mocks.probeLocal.mockResolvedValue(false);
@@ -230,6 +242,57 @@ afterEach(() => {
 });
 
 describe("useVoiceInput space lifecycle", () => {
+  it("loads legacy local service settings for migration", async () => {
+    mocks.getLocalConfig.mockResolvedValue({
+      enabled: true,
+      timeout_ms: 5000,
+      probe_url: "http://127.0.0.1:9000/",
+      transcribe_url: "http://127.0.0.1:9000/v1/voice/transcribe",
+    });
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+      await flush();
+    });
+
+    expect(mocks.getLocalConfig).toHaveBeenCalledTimes(1);
+    expect(mocks.migrateServerConfig).toHaveBeenCalledWith(expect.objectContaining({ local_enabled: true, local_timeout_ms: 5000 }));
+  });
+
+  it("does not request legacy settings after migration is complete", async () => {
+    mocks.needsLocalConfigMigration.mockReturnValue(false);
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+      await flush();
+    });
+
+    expect(mocks.getLocalConfig).not.toHaveBeenCalled();
+  });
+
+  it("retries legacy local settings after a transient read failure", async () => {
+    mocks.getLocalConfig
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce({ enabled: true, timeout_ms: 5000, probe_url: null, transcribe_url: null });
+    const current = createHost("space-a");
+
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+      await flush();
+    });
+    act(() => { ReactDOM.unmountComponentAtNode(container); });
+    await act(async () => {
+      ReactDOM.render(<Probe host={current.host} onTranscribed={() => undefined} />, container);
+      await flush();
+    });
+
+    expect(mocks.getLocalConfig).toHaveBeenCalledTimes(2);
+    expect(mocks.migrateServerConfig).toHaveBeenCalledTimes(1);
+    expect(mocks.migrateServerConfig).toHaveBeenLastCalledWith(expect.objectContaining({ local_enabled: true, local_timeout_ms: 5000 }));
+  });
+
   it("applies local voice settings to the runtime model service", async () => {
     Object.assign(mocks.localVoiceSettings, {
       localEnabled: true,

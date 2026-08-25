@@ -338,7 +338,7 @@ describe("fleetPreviewClickHandler", () => {
     const ask = vi
       .spyOn(desktopBridge, "getElectronIpcBridge")
       .mockReturnValue({
-        invoke: vi.fn().mockResolvedValue({ trusted: true }),
+        invoke: vi.fn().mockResolvedValue({ mode: "preview" }),
       } as any);
     window.__POWERED_ELECTRON__ = true;
 
@@ -354,27 +354,23 @@ describe("fleetPreviewClickHandler", () => {
     expect(preventDefault).toHaveBeenCalled();
   });
 
-  it("rejects the unknown host and explicitly opens the link externally", async () => {
+  it("does nothing when the main process reports cancel (user declined)", async () => {
     vi.spyOn(desktopBridge, "getElectronIpcBridge").mockReturnValue({
-      invoke: vi.fn().mockResolvedValue({ trusted: false }),
+      invoke: vi.fn().mockResolvedValue({ mode: "cancel" }),
     } as any);
     window.__POWERED_ELECTRON__ = true;
 
     const open = vi.fn();
-    const fallback = vi.fn();
-    const handler = fleetPreviewClickHandler(open, fallback)!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
     const preventDefault = vi.fn();
-    // Round-1 P1-2: default action is cancelled synchronously for
-    // fleet-shaped links; on rejection the handler consciously re-opens the
-    // link (fallback), rather than relying on a default that already fired.
+    // The user declined the confirm dialog (or Esc closed it): nothing opens.
+    // The main process has already handled the dialog; the renderer must not
+    // fall back to window.open.
     handler(clickEvent(anchor, { preventDefault }));
     await vi.waitFor(() => {
       expect(open).not.toHaveBeenCalled();
-      expect(fallback).toHaveBeenCalledWith(
-        "https://onprem.customer.com/fleet/1/issues/WS-4"
-      );
     });
     expect(preventDefault).toHaveBeenCalled();
   });
@@ -387,8 +383,7 @@ describe("fleetPreviewClickHandler", () => {
     window.__POWERED_ELECTRON__ = false;
 
     const open = vi.fn();
-    const fallback = vi.fn();
-    const handler = fleetPreviewClickHandler(open, fallback)!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
 
@@ -396,7 +391,6 @@ describe("fleetPreviewClickHandler", () => {
     await flushAsync();
     expect(open).not.toHaveBeenCalled();
     expect(ask).not.toHaveBeenCalled();
-    expect(fallback).not.toHaveBeenCalled();
   });
 
   it("does not prompt for non-fleet links on unknown hosts", async () => {
@@ -540,9 +534,10 @@ describe("fleetPreviewClickHandler", () => {
   it("fans out exactly one prompt for repeated clicks while trust is pending", async () => {
     // Round-3 P2-4: a link whose trust prompt is still in flight must not
     // queue a second prompt / preview / fallback tab on re-click.
-    let resolveAsk: (v: { trusted: boolean }) => void = () => {};
+    let resolveAsk: (v: { mode: "preview" | "cancel" }) => void = () => {};
     const invoke = vi.fn().mockImplementation(
-      () => new Promise<{ trusted: boolean }>((r) => (resolveAsk = r))
+      () =>
+        new Promise<{ mode: "preview" | "cancel" }>((r) => (resolveAsk = r))
     );
     vi.spyOn(desktopBridge, "getElectronIpcBridge").mockReturnValue({
       invoke,
@@ -550,8 +545,7 @@ describe("fleetPreviewClickHandler", () => {
     window.__POWERED_ELECTRON__ = true;
 
     const open = vi.fn();
-    const fallback = vi.fn();
-    const handler = fleetPreviewClickHandler(open, fallback)!;
+    const handler = fleetPreviewClickHandler(open)!;
     const anchor = document.createElement("a");
     anchor.href = "https://onprem.customer.com/fleet/1/issues/WS-4";
 
@@ -561,9 +555,8 @@ describe("fleetPreviewClickHandler", () => {
     await flushAsync();
     expect(invoke).toHaveBeenCalledTimes(1);
 
-    resolveAsk({ trusted: true });
+    resolveAsk({ mode: "preview" });
     await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
-    expect(fallback).not.toHaveBeenCalled();
 
     // After the prompt resolved the in-flight guard is released: a later
     // click prompts again (and the main-process cache makes it cheap).

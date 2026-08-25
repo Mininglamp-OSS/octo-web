@@ -243,11 +243,6 @@ export default function useVoiceInput(
       .getConfig()
       .then((config: VoiceConfig) => {
         if (cancelled || !mountedRef.current) return;
-        const migratedSettings = voiceSettingsStore.migrateServerConfig?.(config) ?? voiceSettingsStore.get();
-        setIsVoiceEnabled(
-          config.enabled ||
-            migratedSettings.localEnabled,
-        );
         backendEnabledRef.current = config.enabled;
         maxFileSizeRef.current = config.max_file_size || 0;
         if (config.max_duration != null) {
@@ -256,6 +251,37 @@ export default function useVoiceInput(
         feedbackUrlRef.current = config.feedback_url;
         setSharedVoiceConfig(config);
         reconcileSpaceSetting(config.feedback_url);
+        setIsVoiceEnabled(config.enabled || voiceSettingsStore.get().localEnabled);
+
+        if (voiceSettingsStore.needsLocalConfigMigration?.() === false) return;
+
+        // Legacy local ASR settings live behind a separate endpoint. The new
+        // settings store must import those values before deciding whether the
+        // local engine is enabled; /voice/config only describes the remote
+        // speech service.
+        const localConfigPromise = VoiceService.shared.getLocalConfig?.();
+        const localConfigResult = localConfigPromise
+          ? localConfigPromise.then((localConfig) => ({ ok: true, localConfig })).catch(() => ({
+            ok: false,
+            localConfig: null,
+          }))
+          : Promise.resolve({ ok: false, localConfig: null });
+        return localConfigResult.then(({ ok, localConfig }) => {
+          if (cancelled || !mountedRef.current) return;
+          const migratedSettings = ok
+            ? voiceSettingsStore.migrateServerConfig?.(
+              localConfig
+                ? {
+                  local_enabled: localConfig.enabled,
+                  local_timeout_ms: localConfig.timeout_ms ?? undefined,
+                  local_probe_url: localConfig.probe_url ?? undefined,
+                  local_transcribe_url: localConfig.transcribe_url ?? undefined,
+                }
+                : {},
+            ) ?? voiceSettingsStore.get()
+            : voiceSettingsStore.get();
+          setIsVoiceEnabled(config.enabled || migratedSettings.localEnabled);
+        });
       })
       .catch(() => {
         if (cancelled || !mountedRef.current) return;

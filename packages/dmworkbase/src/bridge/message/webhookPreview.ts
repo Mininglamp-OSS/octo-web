@@ -5,7 +5,6 @@ import { EndpointManager } from "../../Service/Module";
 import { EndpointCategory } from "../../Service/Const";
 import {
   getElectronIpcBridge,
-  getElectronLinksBridge,
   isElectronPowered,
 } from "../../electron/desktopBridge";
 import { IPC_ASK_TRUST_FLEET_HOST } from "../../../../../apps/web/src-election/shared/ipc-channels";
@@ -156,43 +155,33 @@ export function parseWebhookIssuePreviewTarget(
  * (modal + optional "never ask again" persisted in userData). Non-Electron
  * renderers (web) have no dialog bridge and fall back to rejecting.
  */
-export async function askTrustFleetHost(sourceUrl: string): Promise<boolean> {
-  if (!isElectronPowered()) return false;
+/**
+ * Ask the main process how an untrusted-host fleet link should be handled.
+ *
+ * Returns one of:
+ *   - "preview": the host is now trusted (user ticked "trust this domain"
+ *     in a previous prompt, or it is a renderer-reported origin) — the
+ *     renderer should open the in-app task preview;
+ *   - "open": the user confirmed opening in the browser — the main process
+ *     has ALREADY opened the URL via openExternal, the renderer should do
+ *     nothing more;
+ *   - "cancel": user declined / fail-closed — nothing opens.
+ *
+ * Never throws; fail-closed on any IPC error.
+ */
+export async function askTrustFleetHost(
+  sourceUrl: string,
+): Promise<"preview" | "open" | "cancel"> {
+  if (!isElectronPowered()) return "cancel";
   const ipc = getElectronIpcBridge();
-  if (!ipc) return false;
+  if (!ipc) return "cancel";
   try {
     const result = (await ipc.invoke(IPC_ASK_TRUST_FLEET_HOST, sourceUrl)) as
-      | { trusted: boolean }
+      | { mode: "preview" | "open" | "cancel" }
       | undefined;
-    return result?.trusted === true;
+    return result?.mode ?? "cancel";
   } catch {
-    return false;
-  }
-}
-
-/**
- * Open a fleet link in the system browser / new tab as the explicit fallback
- * for a rejected trust prompt. On desktop this goes through the
- * IPC_OPEN_EXTERNAL_URL bridge (sender-checked, http(s)-only, activation-
- * independent — window.open after an await has lost user activation and may
- * be suppressed by popup blockers); on web it falls back to window.open.
- * Exported so tests can observe the fallback without fighting jsdom's
- * non-configurable window.open.
- */
-export function openFleetLinkExternal(href: string): void {
-  const linksBridge = getElectronLinksBridge();
-  if (linksBridge) {
-    void linksBridge.openExternal(href).catch(() => {
-      // best-effort: the default action was already cancelled; failing to
-      // re-open must not throw
-    });
-    return;
-  }
-  try {
-    window.open(href, "_blank", "noopener,noreferrer");
-  } catch {
-    // noop: caller has already cancelled the default action; failing to
-    // re-open must not break the click
+    return "cancel";
   }
 }
 
@@ -265,7 +254,6 @@ function isPendingFleetPrompt(sourceUrl: string): boolean {
  */
 export function fleetPreviewClickHandler(
   openPreview?: (target: WebhookIssuePreviewTarget) => void,
-  onRejectedFallback: (href: string) => void = openFleetLinkExternal,
 ): ((event: React.MouseEvent) => void) | undefined {
   if (!openPreview) return undefined;
   // OSS / any build without a registered preview renderer must not
@@ -328,17 +316,11 @@ export function fleetPreviewClickHandler(
       if (isPendingFleetPrompt(target.sourceUrl)) return;
       pendingFleetPrompts.set(target.sourceUrl, Date.now());
       try {
-        const trusted = await askTrustFleetHost(target.sourceUrl);
-        // Explicit fallback rather than "relying on the default action": the
-        // default action was already cancelled above. Routed through the
-        // onRejectedFallback parameter (not a direct module-internal call) so
-        // tests can inject an observer; ESM internal bindings bypass the
-        // module namespace, making them invisible to vi.spyOn.
-        if (!trusted) {
-          onRejectedFallback(target.sourceUrl);
-          return;
+        const mode = await askTrustFleetHost(target.sourceUrl);
+        if (mode === "preview") {
+          openPreview(target);
         }
-        openPreview(target);
+        // "cancel": user declined — nothing opens.
       } finally {
         pendingFleetPrompts.delete(target.sourceUrl);
       }

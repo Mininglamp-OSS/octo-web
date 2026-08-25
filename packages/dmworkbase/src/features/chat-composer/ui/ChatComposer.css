@@ -505,20 +505,6 @@
   color: var(--text-tertiary);
 }
 
-.wk-messageinput-shortcut-hint {
-  min-height: 20px;
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  padding: 0 var(--wk-sp-1, 6px);
-  border: 1px solid var(--wk-border-subtle);
-  border-radius: var(--wk-r-xs);
-  background: var(--wk-bg-base);
-  color: var(--wk-text-tertiary);
-  font: var(--wk-text-caption);
-  white-space: nowrap;
-}
-
 /* ============================================
    Attachment Node 样式（编辑器内附件卡片）
    ============================================ */

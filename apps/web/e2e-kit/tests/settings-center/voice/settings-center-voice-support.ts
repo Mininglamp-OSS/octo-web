@@ -78,8 +78,3 @@ export async function closeSettings(page: Page): Promise<void> {
 export async function getComposerPlaceholder(page: Page): Promise<string> {
   return (await page.locator(".wk-messageinput-placeholder-base").textContent({ timeout: 1_000 })) ?? "";
 }
-
-export async function getComposerVoiceShortcutHint(page: Page): Promise<string> {
-  const hint = page.locator(".wk-messageinput-shortcut-hint");
-  return (await hint.count()) > 0 ? await hint.innerText() : "";
-}

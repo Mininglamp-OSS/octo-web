@@ -1272,8 +1272,6 @@
   "messageInput.expand": "Expand input",
   "messageInput.placeholder.direct": "Send a message",
   "messageInput.placeholder.directWithName": "Send to {{name}}",
-  "messageInput.shortcutHint.toggle": "Press {{shortcut}} to dictate",
-  "messageInput.shortcutHint.hold": "Hold {{shortcut}} to dictate",
   "messageInput.slashCommand": "Slash commands",
   "messageInput.send.restoreFailed": "The message was not sent and its content could not be restored",
   "messageInput.validation.maxLength": "Message cannot exceed {{max}} characters.",

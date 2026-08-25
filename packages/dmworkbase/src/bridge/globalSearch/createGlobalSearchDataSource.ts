@@ -194,6 +194,11 @@ const moduleFileTypeCategoriesCache: {
   inFlight?: Promise<GlobalSearchFileTypeCategory[]>;
 } = {};
 
+export function resetGlobalSearchDataSourceCaches() {
+  moduleFileTypeCategoriesCache.value = undefined;
+  moduleFileTypeCategoriesCache.inFlight = undefined;
+}
+
 export function createGlobalSearchApiDataSource(
   options: CreateGlobalSearchApiDataSourceOptions = {}
 ): GlobalSearchDataSource {

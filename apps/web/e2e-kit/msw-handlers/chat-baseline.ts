@@ -97,6 +97,9 @@ export const chatBaselineHandlers = [
   http.get("*/voice/config", () =>
     HttpResponse.json({ enable: 0, provider: "", config: {} })
   ),
+  http.get("*/voice/local-config", () =>
+    HttpResponse.json({ enabled: false, timeout_ms: null, probe_url: null, transcribe_url: null })
+  ),
   http.get("*/api/v1/common/updater/android/1.0", () =>
     HttpResponse.json({ url: "https://example.com/download/android" })
   ),

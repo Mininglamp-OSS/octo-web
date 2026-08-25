@@ -1,11 +1,18 @@
 /**
- * Copy for the fleet trust dialog (unknown-host issue-preview prompt).
+ * Copy for the external-link trust dialog (unknown-host open confirmation).
  *
  * Main-process native dialogs cannot reach the renderer i18n bundle, so the
  * copy is resolved here from a locale string, mirroring the MIGRATION_DIALOGS
  * pattern in main/index.ts. Pure on purpose: callers pass the resolved
  * locale (typically `app.getLocale()` once `ready`), which keeps this module
  * unit-testable without mocking Electron.
+ *
+ * The same dialog serves two contexts:
+ *   - plain external links on unknown hosts → "open in browser?" confirm;
+ *   - fleet task links on unknown hosts → "open in browser?" confirm too
+ *     (the in-app preview only kicks in once the host is trusted).
+ * The copy therefore talks about opening the link, with "trust this domain"
+ * as the opt-in for skipping future prompts.
  */
 
 export interface FleetTrustDialogCopy {
@@ -26,18 +33,18 @@ const FLEET_TRUST_DIALOG: {
   en: FleetTrustDialogCopyFn;
 } = {
   zh: (host, href) => ({
-    title: "信任此域名以打开任务预览？",
-    message: `是否允许在“${host}”下打开任务预览？`,
+    title: "在浏览器中打开链接？",
+    message: `是否在浏览器中打开“${host}”的链接？`,
     detail: `链接：${href}`,
-    buttons: ["允许", "拒绝"],
-    checkboxLabel: "允许并记住此域名",
+    buttons: ["打开", "取消"],
+    checkboxLabel: "信任此域名，下次不再询问",
   }),
   en: (host, href) => ({
-    title: "Trust this domain to open task previews?",
-    message: `Allow task previews from “${host}”?`,
+    title: "Open this link in the browser?",
+    message: `Open the link from “${host}” in your browser?`,
     detail: `Link: ${href}`,
-    buttons: ["Allow", "Deny"],
-    checkboxLabel: "Allow and remember this domain",
+    buttons: ["Open", "Cancel"],
+    checkboxLabel: "Trust this domain and don't ask again",
   }),
 };
 

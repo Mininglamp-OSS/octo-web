@@ -23,6 +23,7 @@ const mockState = vi.hoisted(() => ({
   contactsList: [] as any[],
   loginUid: "self-uid",
   loginName: "Me",
+  getGlobalFileTypes: vi.fn(),
 }));
 
 vi.mock("../../../App", () => ({
@@ -71,12 +72,23 @@ vi.mock("wukongimjssdk", () => ({
   },
 }));
 
-import { createGlobalSearchApiDataSource } from "../dataSource";
+vi.mock("../../../Service/SearchService", () => ({
+  default: {
+    getGlobalFileTypes: mockState.getGlobalFileTypes,
+  },
+}));
+
+import {
+  createGlobalSearchApiDataSource,
+  resetGlobalSearchDataSourceCaches,
+} from "../dataSource";
 
 describe("loadSenderCandidates (via searchSenders)", () => {
   beforeEach(() => {
     mockState.commonDataSource = undefined;
     mockState.contactsList = [];
+    mockState.getGlobalFileTypes.mockReset();
+    resetGlobalSearchDataSourceCaches();
   });
 
   it("§1: maps ChannelInfo[] from commonDataSource.searchFriends into ChannelSearchSender", async () => {
@@ -211,5 +223,28 @@ describe("loadSenderCandidates (via searchSenders)", () => {
 
     const ds = createGlobalSearchApiDataSource();
     await expect(ds.searchSenders("")).resolves.toBeDefined();
+  });
+
+  it("reads file type categories from the configured cache", async () => {
+    const categories = [{ key: "image", label: "Images", exts: ["png"] }];
+    const cache = { get: vi.fn(() => categories), set: vi.fn() };
+    const ds = createGlobalSearchApiDataSource({ fileTypeCategoriesCache: cache });
+
+    await expect(ds.getFileTypeCategories()).resolves.toEqual(categories);
+
+    expect(mockState.getGlobalFileTypes).not.toHaveBeenCalled();
+    expect(cache.get).toHaveBeenCalledOnce();
+  });
+
+  it("writes fetched file type categories to the configured cache", async () => {
+    const categories = [{ key: "video", label: "Videos", exts: ["mp4"] }];
+    mockState.getGlobalFileTypes.mockResolvedValue(categories);
+    const cache = { get: vi.fn(() => undefined), set: vi.fn() };
+    const ds = createGlobalSearchApiDataSource({ fileTypeCategoriesCache: cache });
+
+    await expect(ds.getFileTypeCategories()).resolves.toEqual(categories);
+
+    expect(mockState.getGlobalFileTypes).toHaveBeenCalledOnce();
+    expect(cache.set).toHaveBeenCalledWith(categories);
   });
 });
