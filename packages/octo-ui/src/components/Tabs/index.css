@@ -57,6 +57,7 @@
   display: inline-flex;
   align-items: center;
   width: max-content;
+  max-width: 100%;
 }
 
 .octo-ui-tabs--segmented .octo-ui-tabs__list {
