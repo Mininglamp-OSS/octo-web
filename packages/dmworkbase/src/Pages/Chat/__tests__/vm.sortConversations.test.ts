@@ -160,6 +160,14 @@ function makeConversation(id: string, timestamp: number, top = 0): ConversationW
     } as any)
 }
 
+function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((resolvePromise) => {
+        resolve = resolvePromise
+    })
+    return { promise, resolve }
+}
+
 describe("ChatVM.sortConversations", () => {
     it("replaces vm.conversations with a newly sorted array so memoized recent lists recalculate", () => {
         const vm = new ChatVM()
@@ -214,6 +222,64 @@ describe("ChatVM.reloadRequestConversationList", () => {
 
         expect(vm.loading).toBe(false)
         expect(notifyListener).toHaveBeenCalled()
+    })
+
+    it("does not let a stale Space sync overwrite the active Space", async () => {
+        const vm = new ChatVM()
+        const spaceASync = deferred<any[]>()
+        const spaceAPins = deferred<any[]>()
+        const spaceAConversation = makeConversation("space-a", 100)
+        const spaceBConversation = makeConversation("space-b", 200)
+        ;(WKApp.shared as any).currentSpaceId = "space-a"
+        hoisted.sync
+            .mockReturnValueOnce(spaceASync.promise)
+            .mockResolvedValueOnce([spaceBConversation.conversation])
+        hoisted.pinnedList
+            .mockReturnValueOnce(spaceAPins.promise)
+            .mockResolvedValueOnce([])
+
+        const spaceARequest = vm.reloadRequestConversationList()
+        let spaceARequestSettled = false
+        void spaceARequest.then(() => {
+            spaceARequestSettled = true
+        })
+        ;(WKApp.shared as any).currentSpaceId = "space-b"
+        await vm.reloadRequestConversationList()
+
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
+
+        spaceASync.resolve([spaceAConversation.conversation])
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(spaceARequestSettled).toBe(true)
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
+    })
+
+    it("does not let a stale Space pinned snapshot overwrite the active Space", async () => {
+        const vm = new ChatVM()
+        const spaceAPins = deferred<any[]>()
+        const spaceAConversation = makeConversation("space-a", 100)
+        const spaceBConversation = makeConversation("space-b", 200)
+        ;(WKApp.shared as any).currentSpaceId = "space-a"
+        hoisted.sync
+            .mockResolvedValueOnce([spaceAConversation.conversation])
+            .mockResolvedValueOnce([spaceBConversation.conversation])
+        hoisted.pinnedList
+            .mockReturnValueOnce(spaceAPins.promise)
+            .mockResolvedValueOnce([])
+
+        const spaceARequest = vm.reloadRequestConversationList()
+        await Promise.resolve()
+        ;(WKApp.shared as any).currentSpaceId = "space-b"
+        await vm.reloadRequestConversationList()
+
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
+
+        spaceAPins.resolve([])
+        await spaceARequest
+
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
     })
 })
 

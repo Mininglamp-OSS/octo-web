@@ -155,6 +155,7 @@ vi.mock("../../../Utils/download", () => ({
 
 import { ChatVM } from "../vm"
 import WKApp from "../../../App"
+import { ConversationWrap } from "../../../Service/Model"
 import { chatPageTitleController } from "../chatPageTitleController"
 
 // 真实 Const 值：子区频道 channelType = 5
@@ -270,12 +271,11 @@ describe("ChatVM.conversationListener — child-thread pin state", () => {
                 other?.channelID === "g1____t4" && other?.channelType === ChannelTypeCommunityTopic,
         }
         vm.conversations = [
-            {
+            new ConversationWrap({
                 channel,
-                conversation: { channel, timestamp: 1, extra: { top: 1 } },
                 extra: { top: 1 },
                 timestamp: 1,
-            } as any,
+            } as any),
         ]
         vi.spyOn(vm, "currentConversationListY").mockReturnValue(undefined)
 

@@ -719,7 +719,8 @@ export class ChatVM extends ProviderListener {
     async reloadRequestConversationList() {
         const conversationWraps = new Array<ConversationWrap>()
         let conversations: Conversation[] | undefined
-        const pinnedChannelsPromise = WKApp.shared.currentSpaceId
+        const requestSpaceId = WKApp.shared.currentSpaceId
+        const pinnedChannelsPromise = requestSpaceId
             ? PinnedService.list().catch((error) => {
                 console.warn('[ChatVM] failed to load pinned channels', error)
                 return undefined
@@ -733,7 +734,13 @@ export class ChatVM extends ProviderListener {
             this.notifyListener()
             throw error
         }
+        if (WKApp.shared.currentSpaceId !== requestSpaceId) {
+            return
+        }
         const pinnedChannels = await pinnedChannelsPromise
+        if (WKApp.shared.currentSpaceId !== requestSpaceId) {
+            return
+        }
         // 先按 sync 响应预填 channelSpaceMap / channelMySourceSpaceMap
         // 再做 Space 过滤，避免老缓存缺失时落到 fail-closed 默认值。
         if (conversations && conversations.length > 0) {
