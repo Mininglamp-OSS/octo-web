@@ -69,4 +69,25 @@ describe("SpaceGate last organization restore", () => {
     expect(localStorage.getItem("currentSpaceId")).toBe("space-b");
     gate.componentWillUnmount();
   });
+
+  it("migrates and restores a legacy-only currentSpaceId on first load", async () => {
+    localStorage.setItem("currentSpaceId", "space-b");
+    mocks.getMySpaces.mockResolvedValue([
+      { space_id: "space-a" },
+      { space_id: "space-b" },
+    ]);
+    const gate = new SpaceGate({});
+    gate.forceUpdate = vi.fn();
+
+    gate.componentDidMount();
+    await vi.waitFor(() => {
+      expect(mocks.app.shared.currentSpaceId).toBe("space-b");
+    });
+
+    expect(localStorage.getItem("octo:last-space:user-a")).toBe("space-b");
+    expect(localStorage.getItem("octo:last-space-legacy-migration:v1")).toBe(
+      "1"
+    );
+    gate.componentWillUnmount();
+  });
 });

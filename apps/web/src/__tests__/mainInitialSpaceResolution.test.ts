@@ -42,7 +42,7 @@ describe("MainPage initial Space resolution", () => {
     ).toEqual(spaces[2]);
   });
 
-  it("uses one user-scoped resolution path and ignores the global legacy key", () => {
+  it("uses one user-scoped resolution path after legacy migration", () => {
     const spaces = [
       { space_id: "space-a" },
       { space_id: "space-b" },
@@ -54,6 +54,7 @@ describe("MainPage initial Space resolution", () => {
     ]);
     const store = {
       getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
     };
 
     expect(
@@ -110,6 +111,28 @@ describe("MainPage initial Space resolution", () => {
 });
 
 describe("per-user last Space persistence", () => {
+  it("migrates a legacy-only currentSpaceId to the current uid once", () => {
+    const values = new Map<string, string>([
+      ["currentSpaceId", "space-b"],
+    ]);
+    const store = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+    const spaces = [{ space_id: "space-a" }, { space_id: "space-b" }];
+
+    expect(resolveInitialSpaceForUser(spaces, "user-a", null, store)).toEqual(
+      spaces[1]
+    );
+    expect(values.get("octo:last-space:user-a")).toBe("space-b");
+    expect(values.get("octo:last-space-legacy-migration:v1")).toBe("1");
+
+    expect(resolveInitialSpaceForUser(spaces, "user-b", null, store)).toEqual(
+      spaces[0]
+    );
+    expect(values.has("octo:last-space:user-b")).toBe(false);
+  });
+
   it("isolates the last Space by uid while keeping currentSpaceId compatible", () => {
     const values = new Map<string, string>();
     const store = {
