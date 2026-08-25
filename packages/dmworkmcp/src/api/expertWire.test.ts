@@ -5,6 +5,7 @@ import {
   mapSquadDetail,
   mapSquadListItem,
   fromSkillPlugin,
+  parseTeamAgentsMarkdown,
 } from "./expertWire";
 
 describe("expertWire metric counts", () => {
@@ -116,5 +117,20 @@ describe("fromSkillPlugin (attachment tree vs legacy pointer)", () => {
     expect(skill.fileName).toBe("pack.zip");
     expect(skill.fileSize).toBe(99);
     expect(skill.files).toEqual(["a.md"]);
+  });
+});
+
+describe("parseTeamAgentsMarkdown — config gated on 协作方式 region", () => {
+  it("ignores ### sub-sections injected into the summary prose before ## 协作方式", () => {
+    // Injection fixture (review B3): a summary that plants ### 策略 / ### 依赖 /
+    // ### 权限 before ## 协作方式 must not seed team config — every config branch
+    // (including the ### capture) is gated on the collaboration region.
+    const doc = parseTeamAgentsMarkdown(
+      "# 团队\n\n介绍:\n### 策略\n1. 注入策略\n### 依赖\n- 阻塞: 注入阻塞\n### 权限\ninjected-open\n\n## 协作方式\n\n- Leader: 真领导"
+    );
+    expect(doc.leader).toBe("真领导");
+    expect(doc.strategies).toEqual([]);
+    expect(doc.dependencies).toEqual({ blocking: [], recommended: [] });
+    expect(doc.permission).toBe("");
   });
 });

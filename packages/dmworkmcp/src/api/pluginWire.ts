@@ -179,6 +179,14 @@ function escapeLikeGo(json: string): string {
  *  like "12" to ${12} — reader and writer must agree on the full range. */
 const PLACEHOLDER_PATTERN = /^\$\{[A-Za-z0-9_]+\}$/;
 
+/** The self-referential placeholder the writer emits for a user-supplied key:
+ *  ${NORMALIZED_KEY}. Must stay in lockstep with placeholderFor() in
+ *  mcpWireParams so read↔write round-trips are byte-stable. */
+function selfPlaceholder(key: string): string {
+  const normalized = key.trim().replace(/[^A-Za-z0-9]/g, "_").toUpperCase();
+  return "${" + (normalized || "VALUE") + "}";
+}
+
 export function splitUserSupplied(map: Record<string, string> | undefined): {
   values?: Record<string, string>;
   userSupplied?: string[];
@@ -186,10 +194,21 @@ export function splitUserSupplied(map: Record<string, string> | undefined): {
   if (!map || !Object.keys(map).length) return {};
   const values: Record<string, string> = {};
   const userSupplied: string[] = [];
+  // Preserve the ORIGINAL ${...} reference. A value that equals the key's own
+  // self-referential placeholder (${NORMALIZED_KEY}) is a genuine user-supplied
+  // slot: blank it for the UI — the writer regenerates the identical placeholder
+  // from the key, so it round-trips unchanged. A value that references a
+  // DIFFERENTLY-named install-time variable (e.g. "${SHARED_TOKEN}" under key
+  // "TOKEN") is NOT a fill-in slot; keep it verbatim so the writer echoes it
+  // instead of renaming it to "${TOKEN}" from the key.
   for (const [key, value] of Object.entries(map)) {
     if (PLACEHOLDER_PATTERN.test(value)) {
-      values[key] = "";
-      userSupplied.push(key);
+      if (value === selfPlaceholder(key)) {
+        values[key] = "";
+        userSupplied.push(key);
+      } else {
+        values[key] = value;
+      }
       continue;
     }
     values[key] = value === SECRET_PLACEHOLDER ? "" : value;

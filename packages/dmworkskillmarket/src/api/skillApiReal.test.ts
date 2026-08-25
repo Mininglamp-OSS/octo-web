@@ -560,6 +560,74 @@ describe("skillApiReal", () => {
     expect(body.plugin.manifest_json.labels).toEqual(["新标签"]);
   });
 
+  it("re-upload without a new icon omits icon so the stored icon is preserved", async () => {
+    // Regression (Jerry-Xin B2 / P1-10): EditSkillModal only sets iconUrl when a
+    // new icon is chosen, so a package-only re-upload has iconUrl === undefined.
+    // The import must NOT send icon:"" (a full-replace that wipes the stored
+    // icon) — it must omit icon entirely.
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
+    );
+
+    await updateSkill("ci-failure-map", {
+      parseTaskId: "task-reupload",
+      version: "1.1.0",
+      changelog: "repackage",
+    });
+
+    const [url, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    expect(url).toBe("/market/api/v1/plugins/import");
+    const body = JSON.parse(init.body as string);
+    expect(body.plugin_id).toBe("ci-failure-map");
+    expect("icon" in body).toBe(false);
+  });
+
+  it("re-upload with a fresh icon sends the new iconUrl", async () => {
+    mockFetch.mockReturnValueOnce(
+      jsonResponse({ plugin: pluginSkillWire(), relations: [] })
+    );
+
+    await updateSkill("ci-failure-map", {
+      parseTaskId: "task-reupload",
+      version: "1.1.0",
+      changelog: "repackage",
+      iconUrl: "icons/new.png",
+    });
+
+    const [, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    const body = JSON.parse(init.body as string);
+    expect(body.icon).toBe("icons/new.png");
+  });
+
+  it("metadata edit strips unsafe attachment paths from the resubmitted upsert", async () => {
+    const current = pluginSkillWire({
+      plugin_json: {
+        $schema: "cowork-plugin-package-1.0.json",
+        attachments: [
+          { path: "manifest.json", content_type: "raw", mime_type: "application/json", raw_content: "{}" },
+          { path: "SKILL.md", content_type: "raw", mime_type: "text/markdown", raw_content: "# keep" },
+          { path: "references/x.md", content_type: "raw", mime_type: "text/markdown", raw_content: "ref" },
+          { path: "../evil.md", content_type: "raw", mime_type: "text/markdown", raw_content: "escape" },
+          { path: "/abs.md", content_type: "raw", mime_type: "text/markdown", raw_content: "abs" },
+          { path: "a\\b.md", content_type: "raw", mime_type: "text/markdown", raw_content: "backslash" },
+          { path: "nested/../../deep.md", content_type: "raw", mime_type: "text/markdown", raw_content: "traverse" },
+        ],
+      },
+    });
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: current, relations: [] }));
+
+    await updateSkill("ci-failure-map", { displayName: "改名" });
+
+    const [url, init] = mockFetch.mock.calls[mockFetch.mock.calls.length - 1] as [string, RequestInit];
+    expect(url).toBe("/market/api/v1/plugins/upsert");
+    const body = JSON.parse(init.body as string);
+    const paths = (body.plugin.plugin_json.attachments as Array<{ path: string }>).map((a) => a.path);
+    // manifest.json dropped (contract), traversal/absolute/backslash paths rejected;
+    // only safe relative paths survive into the trusted write.
+    expect(paths).toEqual(["SKILL.md", "references/x.md"]);
+  });
+
   it("initUpload maps backend presigned upload fields", async () => {
     mockFetch.mockReturnValueOnce(
       jsonResponse({

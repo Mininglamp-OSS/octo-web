@@ -170,15 +170,12 @@ export default function SkillListPage() {
     setDetailId(item.id);
   }
 
-  // The paginated /skills response carries no real total, so list.total falls
-  // back to the loaded page size (e.g. 20). The /skill_categories counts are
-  // authoritative — on the skills tab show the active category's skillCount
-  // (for "全部" this equals the summed total shown in the chip). The "我的" tab
-  // has no category chips and a different scope, so keep list.total there.
-  const summaryTotal = mine
-    ? list.total
-    : list.categories.find((category) => category.id === list.categoryId)
-        ?.skillCount ?? list.total;
+  // The unified list response carries an accurate, filter-scoped
+  // pagination.total (surfaced as list.total). Bind the "共 N 个技能" headline to
+  // it on both tabs so the count re-scopes with an active search/tag filter and
+  // tracks the visible grid. The catalog category skillCount is search-invariant
+  // and would otherwise show the whole-category total after a search.
+  const summaryTotal = list.total;
 
   return (
     <div className="skill-market-page">

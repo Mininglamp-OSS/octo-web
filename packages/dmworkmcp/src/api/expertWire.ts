@@ -231,16 +231,21 @@ export function parseTeamAgentsMarkdown(text: string): TeamAgentsDoc {
     const line = rawLine.trim();
     if (line.startsWith("## ")) {
       // The summary prose precedes ## 协作方式; nothing before that heading
-      // may be interpreted as config (a summary line could echo "- Leader:").
+      // may be interpreted as config (a summary line could echo "- Leader:"
+      // or inject "### 策略"/"### 依赖"/"### 权限" sub-sections).
       inCollaboration = line.slice(3).trim() === "协作方式";
       section = "";
       continue;
     }
+    // Fail closed until the collaboration region opens: ignore every ### section
+    // capture and its content while outside ## 协作方式, so injected sub-headings
+    // in the summary prose can never seed team config.
+    if (!inCollaboration) continue;
     if (line.startsWith("### ")) {
       section = line.slice(4).trim();
       continue;
     }
-    if (inCollaboration && !section && line.startsWith("- Leader:")) {
+    if (!section && line.startsWith("- Leader:")) {
       doc.leader = line.slice("- Leader:".length).trim();
       continue;
     }

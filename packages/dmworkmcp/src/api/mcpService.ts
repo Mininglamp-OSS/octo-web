@@ -557,6 +557,26 @@ function buildCategoryMaps(wire: PluginCategoryWire[]): ConnectorCategoryMaps {
   return { keyToId, idToKey, wire };
 }
 
+/** Resolve a legacy category key to its unified UUID for a WRITE (create /
+ *  update). Fails closed: publishing with a NULL category_id would split-brain
+ *  plugins.category_id against the scene placement, so on a miss the taxonomy is
+ *  refetched once (the cache may predate a newly-added category) and, if still
+ *  unresolved, a descriptive error is thrown rather than writing no category.
+ *  Returns the resolved id plus the maps actually used (fresh after a refetch)
+ *  so callers can reuse idToKey for the response projection. */
+async function resolveWriteCategory(
+  key: string,
+  maps: ConnectorCategoryMaps
+): Promise<{ categoryId: string; maps: ConnectorCategoryMaps }> {
+  const hit = maps.keyToId.get(key);
+  if (hit) return { categoryId: hit, maps };
+  categoryMapsCache = null;
+  const fresh = await getConnectorCategoryMaps();
+  const refreshed = fresh.keyToId.get(key);
+  if (refreshed) return { categoryId: refreshed, maps: fresh };
+  throw new Error(t("mcp.errors.invalidRequest"));
+}
+
 /** Unified plugin visibility → legacy McpVisibility. `space` was the legacy
  *  "public within the Space" scope, which the UI labels public. */
 function mapVisibility(v: PluginVisibilityWire): McpListItem["visibility"] {
@@ -676,17 +696,9 @@ async function fetchMcpListPath(
   // already classifies failures into McpListError.
   const categoryWire = await fetchConnectorCategoriesWire();
   const maps = buildCategoryMaps(categoryWire);
-  const categoryKey = params.categories?.length
-    ? params.categories[0]
-    : params.category ?? CATEGORY_KEY_ALL;
-  if (categoryKey && categoryKey !== CATEGORY_KEY_ALL) {
-    const categoryId = maps.keyToId.get(categoryKey);
-    if (categoryId) query.category_id = categoryId;
-  }
-  const resp = await executeMcpListRequest(() =>
-    mcpAxios.get<PluginListResponseWire>(`${BASE}/plugins`, { params: query })
-  );
-  const items = (resp.data.data ?? []).map((raw) => mapListItem(raw, maps.idToKey));
+  // Category pills are independent of the list request, so build them up front:
+  // a fail-closed category miss can then still return the pills so the user can
+  // switch away from the unresolved filter.
   const countsByKey = new Map(
     categoryWire.map((c) => [c.name, c.plugin_count] as const)
   );
@@ -696,6 +708,24 @@ async function fetchMcpListPath(
     label: categoryLabel(key),
     count: key === CATEGORY_KEY_ALL ? allCount : countsByKey.get(key) ?? 0,
   }));
+  const categoryKey = params.categories?.length
+    ? params.categories[0]
+    : params.category ?? CATEGORY_KEY_ALL;
+  if (categoryKey && categoryKey !== CATEGORY_KEY_ALL) {
+    const categoryId = maps.keyToId.get(categoryKey);
+    if (categoryId) {
+      query.category_id = categoryId;
+    } else {
+      // Fail closed: an unresolvable category filter must NOT silently widen to
+      // the whole catalog (the list would then render every plugin as if
+      // unfiltered). Surface an explicit empty result while keeping the pills.
+      return { items: [], total: 0, categories };
+    }
+  }
+  const resp = await executeMcpListRequest(() =>
+    mcpAxios.get<PluginListResponseWire>(`${BASE}/plugins`, { params: query })
+  );
+  const items = (resp.data.data ?? []).map((raw) => mapListItem(raw, maps.idToKey));
   return { items, total: resp.data.pagination?.total ?? items.length, categories };
 }
 
@@ -753,23 +783,38 @@ async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
   // its default-scene placement — without a placement row the new connector
   // would be invisible to every scene-scoped list (including "mine").
   const maps = await getConnectorCategoryMaps();
-  const categoryId = maps.keyToId.get(params.category);
+  // Fail closed on an unresolved category so the plugin and its placement never
+  // split-brain on a NULL category_id.
+  const { categoryId } = await resolveWriteCategory(params.category, maps);
   const detail = await post<PluginDetailWire>(
     "/plugins/upsert",
     toPluginUpsert(params, { categoryId, visibility: "space" })
   );
   const pluginId = detail.plugin.plugin_id;
-  await post("/plugins/publish", {
-    plugin_id: pluginId,
-    version: "1.0.0",
-    placements: [
-      {
-        placement_code: SCENE_CODE,
-        ...(categoryId ? { category_id: categoryId } : {}),
-        is_visible: true,
-      },
-    ],
-  });
+  try {
+    await post("/plugins/publish", {
+      plugin_id: pluginId,
+      version: "1.0.0",
+      placements: [
+        {
+          placement_code: SCENE_CODE,
+          category_id: categoryId,
+          is_visible: true,
+        },
+      ],
+    });
+  } catch (err) {
+    // Compensating delete: the upsert already inserted the plugin row, but with
+    // no placement it is invisible to every scene-scoped list AND a retry (which
+    // sends no plugin_id) would insert a DUPLICATE. Delete the just-created
+    // plugin so a retry starts clean, then surface the original publish error.
+    try {
+      await post("/plugins/delete", { plugin_id: pluginId });
+    } catch {
+      // Best-effort cleanup — surface the publish failure regardless.
+    }
+    throw err;
+  }
   return { id: pluginId };
 }
 
@@ -787,16 +832,36 @@ async function updateMcpReal(
     }),
     getConnectorCategoryMaps(),
   ]);
-  const categoryId = maps.keyToId.get(params.category);
+  // Fail closed on an unresolved category (see resolveWriteCategory); reuse the
+  // maps it returns for the response projection so a refetch stays consistent.
+  const { categoryId, maps: resolvedMaps } = await resolveWriteCategory(
+    params.category,
+    maps
+  );
+  // Echo the write-canonical icon. `params.icon` is the DISPLAY value the edit
+  // form seeds from mapDetail (`icon_url || icon`); when the user did not pick a
+  // new icon it is the presigned, expiring `icon_url`, which must never be
+  // persisted back into the canonical `icon` column. Detect an unchanged icon by
+  // comparing to the current display value and echo `current.plugin.icon`
+  // instead; a freshly-picked icon (a genuinely new value) is written through —
+  // mirroring the skill path (skillApiReal echoes plugin.icon).
+  const previousDisplayIcon = current.plugin.icon_url || current.plugin.icon || "";
+  const canonicalIcon =
+    params.icon && params.icon !== previousDisplayIcon
+      ? params.icon
+      : current.plugin.icon ?? "";
   const detail = await post<PluginDetailWire>(
     "/plugins/upsert",
-    toPluginUpsert(params, {
-      pluginId: id,
-      categoryId,
-      visibility: current.plugin.visibility,
-    })
+    toPluginUpsert(
+      { ...params, icon: canonicalIcon },
+      {
+        pluginId: id,
+        categoryId,
+        visibility: current.plugin.visibility,
+      }
+    )
   );
-  return mapDetail(detail.plugin, maps.idToKey);
+  return mapDetail(detail.plugin, resolvedMaps.idToKey);
 }
 
 /** POST /plugins/delete — owner-only soft delete. */

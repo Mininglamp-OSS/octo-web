@@ -140,7 +140,10 @@ export function placeholderFor(key: string): string {
   return "${" + (normalized || "VALUE") + "}";
 }
 
-function placeholderSecretMap(
+/** Build the persisted env/header map from the form values and the
+ *  user-supplied key set. Exported so the secret round-trip contract can be
+ *  pinned in unit tests. */
+export function placeholderSecretMap(
   map: Record<string, string> | undefined,
   userSupplied: string[] | undefined
 ): Record<string, string> | undefined {
@@ -148,6 +151,10 @@ function placeholderSecretMap(
   if ((!map || !Object.keys(map).length) && !supplied.size) return undefined;
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(map ?? {})) {
+    // A user-supplied key regenerates its self-referential ${KEY} placeholder;
+    // every other value — including a cross-referential ${SHARED_TOKEN} that
+    // splitUserSupplied preserved verbatim — passes through unchanged, so no
+    // install-time variable is renamed on round-trip.
     out[key] = supplied.has(key)
       ? placeholderFor(key)
       : value === SECRET_PLACEHOLDER

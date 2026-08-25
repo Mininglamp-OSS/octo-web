@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { placeholderFor, toPluginUpsert } from "./mcpWireParams";
+import { placeholderFor, placeholderSecretMap, toPluginUpsert } from "./mcpWireParams";
 import { splitUserSupplied } from "./pluginWire";
 import { SECRET_PLACEHOLDER, goCanonicalJSON, rawAttachment } from "./pluginWire";
 import type { CreateMcpParams } from "../types/mcp";
@@ -129,6 +129,31 @@ describe("splitUserSupplied — placeholder read path", () => {
     expect(split.values).toEqual({
       REGION: "us",
       NOT_A_PLACEHOLDER: "${not a name}",
+    });
+  });
+});
+
+describe("secret placeholder round-trip — preserves the original reference", () => {
+  it("writes back ${SHARED_TOKEN} under key TOKEN unchanged (no rename to ${TOKEN})", () => {
+    // A cross-referential ${SHARED_TOKEN} is NOT a self-referential fill-in slot,
+    // so the reader keeps it verbatim (not blanked, not user-supplied)...
+    const read = splitUserSupplied({ TOKEN: "${SHARED_TOKEN}" });
+    expect(read.userSupplied).toBeUndefined();
+    expect(read.values).toEqual({ TOKEN: "${SHARED_TOKEN}" });
+
+    // ...and the writer echoes it through unchanged rather than renaming it.
+    const written = placeholderSecretMap(read.values, read.userSupplied);
+    expect(written).toEqual({ TOKEN: "${SHARED_TOKEN}" });
+  });
+
+  it("blanks and regenerates the self-referential ${KEY} slot stably", () => {
+    // A genuine user-supplied key reads as blank + user-supplied and the writer
+    // regenerates the identical ${KEY}, round-tripping without change.
+    const read = splitUserSupplied({ TOKEN: "${TOKEN}" });
+    expect(read.userSupplied).toEqual(["TOKEN"]);
+    expect(read.values).toEqual({ TOKEN: "" });
+    expect(placeholderSecretMap(read.values, read.userSupplied)).toEqual({
+      TOKEN: "${TOKEN}",
     });
   });
 });

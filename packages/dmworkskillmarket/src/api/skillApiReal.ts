@@ -244,6 +244,22 @@ function assertSafeExternalURL(raw: string): void {
 
 // ─── Mappers (unified plugin wire → frontend Skill shapes) ──────────────────
 
+/**
+ * Reject unsafe package attachment paths before they are echoed back into the
+ * trusted /plugins/upsert write on a metadata edit. A backend record could
+ * carry a poisoned path; drop anything that is empty, absolute, uses backslash
+ * separators, embeds a NUL byte, or contains a `..` traversal segment.
+ */
+function isSafeAttachmentPath(path: string | undefined): boolean {
+  if (typeof path !== "string") return false;
+  const trimmed = path.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith("/")) return false;
+  if (trimmed.includes("\\")) return false;
+  if (trimmed.includes("\0")) return false;
+  return !trimmed.split("/").some((segment) => segment === "..");
+}
+
 /** skill/ref.json attachment: artifact pointers shared by backfill and import. */
 interface SkillRefWire {
   file_name?: string;
@@ -298,10 +314,15 @@ function mapSkill(raw: PluginListItemWire): Skill {
     creatorId: raw.owner_id,
     creatorName: raw.creator_name ?? raw.publisher ?? "",
     spaceId: raw.space_id ?? "",
-    // The unified wire adds "system"; skills never use it, so anything outside
-    // the skill union degrades to the space default instead of leaking through.
+    // Preserve the unified wire's "system" visibility: a system-admin-published
+    // skill is official across every market (isPlatformPublishedSkill), so
+    // folding it into "space" would strip its 官方发布 badge and leak a creator
+    // name. Only genuinely unknown values degrade to the space default.
     visibility:
-      raw.visibility === "public" || raw.visibility === "private" || raw.visibility === "space"
+      raw.visibility === "public" ||
+      raw.visibility === "private" ||
+      raw.visibility === "space" ||
+      raw.visibility === "system"
         ? raw.visibility
         : "space",
     version: raw.current_version ?? "1.0.0",
@@ -515,7 +536,7 @@ function importBody(
   form: NewSkillForm | UpdateSkillForm,
   pluginId?: string
 ): string {
-  return JSON.stringify({
+  const body: Record<string, unknown> = {
     parse_task_id: form.parseTaskId,
     ...(pluginId ? { plugin_id: pluginId } : {}),
     plugin_name: form.displayName || form.name,
@@ -526,8 +547,15 @@ function importBody(
     visibility: form.visibility,
     version: form.version,
     changelog: form.changelog,
-    icon: form.iconUrl ?? "",
-  });
+  };
+  // On a re-upload (existing plugin_id) the import is a full replace, so an
+  // absent iconUrl means "icon unchanged" — omit `icon` entirely rather than
+  // sending "", which would wipe the stored icon (EditSkillModal only sets
+  // iconUrl when a new icon is picked). A fresh create keeps the "" default.
+  if (pluginId && form.iconUrl === undefined) {
+    return JSON.stringify(body);
+  }
+  return JSON.stringify({ ...body, icon: form.iconUrl ?? "" });
 }
 
 export function createSkill(form: NewSkillForm): Promise<Skill> {
@@ -572,10 +600,12 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
   };
   // Contract layout: the manifest lives only in manifest_json; any embedded
   // manifest.json attachment on an older record is dropped, the rest of the
-  // package passes through untouched.
+  // package passes through untouched — but only after each path is validated,
+  // since these come from the backend response and are fed straight back into
+  // the trusted upsert write (defense in depth against a poisoned record).
   const attachments: PluginAttachmentWire[] = (
     plugin.plugin_json?.attachments ?? []
-  ).filter((a) => a.path !== "manifest.json");
+  ).filter((a) => a.path !== "manifest.json" && isSafeAttachmentPath(a.path));
   const detail = await request<PluginDetailWire>("/plugins/upsert", {
     method: "POST",
     body: JSON.stringify({
