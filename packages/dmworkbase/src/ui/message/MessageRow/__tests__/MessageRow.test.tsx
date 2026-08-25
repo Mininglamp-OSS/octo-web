@@ -171,7 +171,7 @@ describe("MessageRow — selection mode interactions", () => {
         expect(onContextMenu).toHaveBeenCalledTimes(1)
     })
 
-    it("keeps avatar right-click inside the avatar boundary", () => {
+    it("suppresses right-click only on the actionable avatar button", () => {
         const onContextMenu = vi.fn()
         const root = renderRow(
             <MessageRow
@@ -183,9 +183,45 @@ describe("MessageRow — selection mode interactions", () => {
             </MessageRow>
         )
 
-        const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar")!, "contextmenu")
+        const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar-button")!, "contextmenu")
         expect(event.defaultPrevented).toBe(true)
         expect(onContextMenu).not.toHaveBeenCalled()
+    })
+
+    it("keeps the row context menu available from a continuation placeholder", () => {
+        const onContextMenu = vi.fn()
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                isContinue={true}
+                showAvatar={false}
+                onContextMenu={onContextMenu}
+            >
+                <div>message</div>
+            </MessageRow>
+        )
+
+        const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar-placeholder")!, "contextmenu")
+        expect(event.defaultPrevented).toBe(false)
+        expect(onContextMenu).toHaveBeenCalledTimes(1)
+    })
+
+    it("keeps the row context menu available from a non-actionable avatar", () => {
+        const onContextMenu = vi.fn()
+        const root = renderRow(
+            <MessageRow
+                {...baseProps}
+                isWebhook={true}
+                onContextMenu={onContextMenu}
+                onAvatarClick={vi.fn()}
+            >
+                <div>message</div>
+            </MessageRow>
+        )
+
+        const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar")!, "contextmenu")
+        expect(event.defaultPrevented).toBe(false)
+        expect(onContextMenu).toHaveBeenCalledTimes(1)
     })
 
     it("uses a native button for an actionable avatar", () => {

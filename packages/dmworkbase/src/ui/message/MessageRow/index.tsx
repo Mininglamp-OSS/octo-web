@@ -196,19 +196,17 @@ export default function MessageRow({
       )}
       
       {/* 头像（所有消息都在左侧） */}
-      <div
-        className="wk-msg-row-avatar"
-        onContextMenu={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-        }}
-      >
+      <div className="wk-msg-row-avatar">
         {showAvatar && (!isSelecting && !isWebhook && onAvatarClick ? (
           <button
             type="button"
             className="wk-msg-row-avatar-button"
             aria-label={t("base.conversation.avatarMenu.open", { values: { name: senderName } })}
             onClick={onAvatarClick}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
           >
             <Avatar
               src={avatarUrl}
