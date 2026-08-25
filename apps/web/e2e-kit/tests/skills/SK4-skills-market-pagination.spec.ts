@@ -6,7 +6,7 @@ import { test, expect } from "../../fixtures-authed";
 test("@SK4 @p1 @skills @market @pagination Skills 市场分页追加", async ({ authedPage }) => {
   const skillRequests: string[] = [];
   authedPage.on("request", (request) => {
-    if (request.url().includes("/api/v1/skills")) skillRequests.push(request.url());
+    if (request.url().includes("/plugins?")) skillRequests.push(request.url());
   });
   await authedPage.addInitScript(() => {
     sessionStorage.setItem("__e2e_scenario", "skill-market-pagination");
@@ -25,7 +25,7 @@ test("@SK4 @p1 @skills @market @pagination Skills 市场分页追加", async ({ 
   await expect(firstSkill).toBeVisible();
   await expect.poll(() => skillRequests.some((url) => !url.includes("cursor="))).toBe(true);
   await authedPage.locator(".skill-market-sentinel").scrollIntoViewIfNeeded();
-  await expect.poll(() => skillRequests.some((url) => url.includes("cursor=page-2"))).toBe(true);
+  await expect.poll(() => skillRequests.some((url) => url.includes("page=2"))).toBe(true);
   await expect(secondSkill).toBeVisible();
   await expect(authedPage.getByText("加载失败")).not.toBeVisible();
 });
