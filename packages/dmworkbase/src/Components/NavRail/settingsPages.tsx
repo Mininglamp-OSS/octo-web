@@ -19,13 +19,25 @@ import mininglampLogo from "../../assets/settings-center/mininglamp-logo.png";
 import { quickMuteStore } from "./QuickMuteStore";
 import { getMicrophonePermission, getVoiceShortcut, getVoiceShortcutLabelKey, shouldShowVoiceShortcuts, setMicrophonePermission, VOICE_PROTOCOL_VERSION, VOICE_SETTINGS_DEFAULTS, voiceSettingsStore, type VoiceSettings, type VoiceShortcut } from "../../Service/VoiceSettingsStore";
 import { getDocument } from "../../Service/DocumentService";
-import { acceptVoiceInput } from "../../features/voice-input/useSpaceFeedbackSetting";
+import { acceptVoiceInput, ensureVoiceFeedbackLoaded } from "../../features/voice-input/useSpaceFeedbackSetting";
 import { Dap } from "../../Service/Dap";
 import { getElectronLinksBridge, openElectronSystemSettings } from "../../electron/desktopBridge";
 import { resolveWebOrigin } from "../../Utils/webOrigin";
 import type { VersionCheckResult } from "../../Utils/versionChecker";
 
-export function SettingsRow({ title, description, trailing, children }: { title: string; description?: React.ReactNode; trailing?: React.ReactNode; children?: React.ReactNode }) { return <div className="wk-settings-center__row"><div className="wk-settings-center__row-main"><div className="wk-settings-center__row-title">{title}</div>{description && <div className="wk-settings-center__row-description">{description}</div>}</div>{children ?? trailing}</div>; }
+export function SettingsRow({ title, description, trailing, children, onClick }: { title: string; description?: React.ReactNode; trailing?: React.ReactNode; children?: React.ReactNode; onClick?: () => void }) {
+  const content = <><div className="wk-settings-center__row-main"><div className="wk-settings-center__row-title">{title}</div>{description && <div className="wk-settings-center__row-description">{description}</div>}</div>{children ?? trailing}</>;
+  return onClick
+    ? <button type="button" aria-label={title} className="wk-settings-center__row wk-settings-center__row--action" onClick={onClick}>{content}</button>
+    : <div className="wk-settings-center__row">{content}</div>;
+}
+
+function ExternalSettingsRow({ title, href, onClick }: { title: string; href: string; onClick?: (event: React.MouseEvent<HTMLAnchorElement>) => void }) {
+  return <a className="wk-settings-center__row wk-settings-center__row--link" href={href} target="_blank" rel="noreferrer" onClick={onClick}>
+    <div className="wk-settings-center__row-main"><div className="wk-settings-center__row-title">{title}</div></div>
+    <ExternalLink aria-hidden="true" />
+  </a>;
+}
 
 function SettingsSection({ title, children }: { title: string; children: React.ReactNode }) { return <section className="wk-settings-center__settings-section"><h3>{title}</h3>{children}</section>; }
 
@@ -252,7 +264,7 @@ function AboutSettingsPage({ environment, onAbout, aboutUpdateStatus = { status:
       void linksBridge.openExternal(absoluteUrl).catch(() => undefined);
     };
 
-    return <a className="wk-settings-center__external-link" href={href} target="_blank" rel="noreferrer" aria-label={label} onClick={handleClick}><ExternalLink aria-hidden="true" /></a>;
+    return <ExternalSettingsRow title={label} href={href} onClick={handleClick} />;
   };
   return <SettingsPageFrame title={t("base.navRail.settingsCenter.page.about.title")}>
     <div className="wk-settings-center__about-identity">
@@ -261,15 +273,15 @@ function AboutSettingsPage({ environment, onAbout, aboutUpdateStatus = { status:
       {!isDesktop && <div className="wk-settings-center__about-update-actions"><SettingsStatusTag tone={statusTone} label={statusLabel} /><button type="button" className="wk-settings-center__about-update" onClick={onAbout}>{updateAvailable ? t("base.navRail.settingsCenter.action.refresh") : t("base.navRail.settingsCenter.action.checkUpdate")}</button></div>}
     </div>
     <SettingsSection title={t("base.navRail.settingsCenter.section.help")}>
-      <SettingsRow title={t("base.navRail.settingsCenter.row.guide")} trailing={onOpenOnboarding ? <button type="button" className="wk-settings-center__about-icon-button" onClick={onOpenOnboarding} aria-label={t("base.navRail.settingsCenter.row.guide")}><ChevronIcon /></button> : undefined} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.feedback")} trailing={externalLink(t("base.navRail.settingsCenter.row.feedback"), "https://github.com/Mininglamp-OSS/octo-web/issues/new")} />
+      {onOpenOnboarding && <SettingsRow title={t("base.navRail.settingsCenter.row.guide")} onClick={onOpenOnboarding} trailing={<ChevronIcon />} />}
+      {externalLink(t("base.navRail.settingsCenter.row.feedback"), "https://github.com/Mininglamp-OSS/octo-web/issues/new")}
     </SettingsSection>
     <SettingsSection title={t("base.navRail.settingsCenter.section.productInfo")}>
-      <SettingsRow title={t("base.navRail.settingsCenter.row.productManual")} trailing={externalLink(t("base.navRail.settingsCenter.row.productManual"), productManualUrl)} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.changelog")} trailing={externalLink(t("base.navRail.settingsCenter.row.changelog"), "/changelog")} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.officialWebsite")} trailing={externalLink(t("base.navRail.settingsCenter.row.officialWebsite"), "https://www.mininglamp.com/")} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.openSource")} trailing={externalLink(t("base.navRail.settingsCenter.row.openSource"), "https://github.com/Mininglamp-OSS")} />
-      <SettingsRow title={t("base.navRail.settingsCenter.row.license")} trailing={externalLink(t("base.navRail.settingsCenter.row.license"), "https://github.com/Mininglamp-OSS/octo-web/blob/main/LICENSE")} />
+      {externalLink(t("base.navRail.settingsCenter.row.productManual"), productManualUrl)}
+      {externalLink(t("base.navRail.settingsCenter.row.changelog"), "/changelog")}
+      {externalLink(t("base.navRail.settingsCenter.row.officialWebsite"), "https://www.mininglamp.com/")}
+      {externalLink(t("base.navRail.settingsCenter.row.openSource"), "https://github.com/Mininglamp-OSS")}
+      {externalLink(t("base.navRail.settingsCenter.row.license"), "https://github.com/Mininglamp-OSS/octo-web/blob/main/LICENSE")}
     </SettingsSection>
     <footer className="wk-settings-center__about-footer"><img className="wk-settings-center__mininglamp-logo" src={mininglampLogo} alt={t("base.navRail.settingsCenter.about.mininglampLogoAlt")} /><p>{t("base.navRail.settingsCenter.about.developedBy")}</p><div className="wk-settings-center__about-links"><a href="https://www.mininglamp.com/about/" target="_blank" rel="noreferrer">{t("base.navRail.settingsCenter.about.learnMininglamp")}<ExternalLink aria-hidden="true" /></a><a href="https://www.mininglamp.com/" target="_blank" rel="noreferrer">{t("base.navRail.settingsCenter.about.enterpriseSupport")}<ExternalLink aria-hidden="true" /></a></div></footer>
   </SettingsPageFrame>;
@@ -286,6 +298,22 @@ function voiceShortcutLabel(shortcut: VoiceShortcut, os: "windows" | "macos") { 
 function voiceModeLabel(mode: VoiceSettings["speakingMode"]) { return t(mode === "hold" ? "base.navRail.settingsCenter.value.hold" : "base.navRail.settingsCenter.value.toggle"); }
 function VoiceInputSettingsPage({ environment }: { environment: import("../../Runtime").RuntimeEnvironment }) {
   const settings = useVoiceSettings();
+  React.useEffect(() => {
+    let active = true;
+    const load = () => {
+      const spaceId = WKApp.shared.currentSpaceId;
+      if (!spaceId || !active) return;
+      const userId = WKApp.loginInfo.uid;
+      if (userId) voiceSettingsStore.setUserId(userId);
+      void ensureVoiceFeedbackLoaded(spaceId, () => active && WKApp.shared.currentSpaceId === spaceId);
+    };
+    load();
+    WKApp.mittBus.on("wk:auth-state-changed", load);
+    return () => {
+      active = false;
+      WKApp.mittBus.off("wk:auth-state-changed", load);
+    };
+  }, []);
   const [devices, setDevices] = React.useState<MediaDeviceInfo[]>([]);
   const [showConsent, setShowConsent] = React.useState(false);
   const [consentChecked, setConsentChecked] = React.useState(false);

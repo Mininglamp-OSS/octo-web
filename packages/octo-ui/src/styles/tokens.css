@@ -301,6 +301,7 @@ body {
   --octo-ui-switch-disabled-knob-shadow: 0 0 1px oklch(0% 0 0 / 30%);
 
   --octo-ui-drawer-radius: 12px;
+  --octo-ui-z-drawer: 100;
   --octo-ui-drawer-radius-right: var(--octo-ui-drawer-radius) 0 0 var(--octo-ui-drawer-radius);
   --octo-ui-drawer-radius-left: 0 var(--octo-ui-drawer-radius) var(--octo-ui-drawer-radius) 0;
   --octo-ui-drawer-bg: var(--wk-bg-surface, oklch(100% 0 89.88));

@@ -31,7 +31,7 @@ export const THREAD_STORAGE_KEY = 'wk-thread-panel-width'
 
 // ── Right panel (smart summary panel) ──
 // Independent constants + storage key so the summary panel width never
-// collides with the thread panel's (THREAD_MIN_WIDTH=432 > summary default 360).
+// collides with the thread panel's (THREAD_MIN_WIDTH=480 > summary default 360).
 export const SUMMARY_MIN_WIDTH = 320
 export const SUMMARY_MAX_WIDTH = 720
 export const SUMMARY_DEFAULT_WIDTH = 360

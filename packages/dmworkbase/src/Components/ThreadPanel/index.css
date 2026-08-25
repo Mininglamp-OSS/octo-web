@@ -1,6 +1,7 @@
 /* ThreadPanel 右侧面板 */
 .wk-thread-panel {
-  width: var(--wk-width-thread-panel);
+  width: var(--wk-width-thread-panel-effective, var(--wk-width-thread-panel));
+  max-width: 100%;
   z-index: 100;
 }
 

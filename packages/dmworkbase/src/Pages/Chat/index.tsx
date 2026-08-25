@@ -1366,7 +1366,7 @@ export class ChatContentPage extends Component<
             aria-label={t("base.chatPage.searchModuleName")}
             className="wk-chat-channel-search-panel"
             closeOnEsc={false}
-            width="var(--wk-width-chat-search-panel)"
+            width="var(--wk-width-chat-search-panel-effective, var(--wk-width-chat-search-panel))"
           >
             <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
               <div

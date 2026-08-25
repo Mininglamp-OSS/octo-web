@@ -84,6 +84,7 @@ for (const scanRoot of scanRoots) {
     if (sourceExtensions.has(ext) && !allowedSemiDrawerFiles.has(rel)) {
       const namedImportPattern = /(?:^|\n)\s*import(?:\s+type)?\s*\{([^}]*)\}\s*from\s*["']@douyinfe\/semi-ui["']/g
       const exportPattern = /(?:^|\n)\s*export(?:\s+type)?\s*\{([^}]*)\}\s*from\s*["']@douyinfe\/semi-ui["']/g
+      const defaultImportPattern = /(?:^|\n)\s*import\s+([A-Za-z_$][\w$]*)(?:\s*,\s*\{[^}]*\})?\s+from\s*["']@douyinfe\/semi-ui["']/g
       const namespaceImportPattern = /(?:^|\n)\s*import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s*["']@douyinfe\/semi-ui["']/g
       const deepImportPattern = /(?:^|\n)\s*import(?:\s+type)?(?:[^;\n]|\n(?!\s*(?:import|export)\b))*?from\s*["']@douyinfe\/semi-ui\/[^"']*(?:sideSheet|drawer)[^"']*["']/g
       const deepExportPattern = /(?:^|\n)\s*export(?:\s+type)?(?:[^;\n]|\n(?!\s*(?:import|export)\b))*?from\s*["']@douyinfe\/semi-ui\/[^"']*(?:sideSheet|drawer)[^"']*["']/g
@@ -99,6 +100,12 @@ for (const scanRoot of scanRoots) {
       while ((match = exportPattern.exec(source))) {
         if (hasDrawerSpecifier(match[1])) {
           violations.push(`${rel}:${lineNumber(source, match.index)} re-exports Semi SideSheet/Drawer; use @octo/ui Drawer`)
+        }
+      }
+      while ((match = defaultImportPattern.exec(source))) {
+        const defaultUsage = new RegExp(`\\b${escapeRegExp(match[1])}\\.(?:SideSheet|Drawer)\\b`)
+        if (defaultUsage.test(source)) {
+          violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi default SideSheet/Drawer; use @octo/ui Drawer`)
         }
       }
       while ((match = namespaceImportPattern.exec(source))) {

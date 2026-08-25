@@ -2074,7 +2074,7 @@ export default class ThreadPanel extends Component<
     } = this.state;
     const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
     const drawerWidth = isSmallScreen
-      ? "var(--wk-width-thread-panel)"
+      ? "var(--wk-width-thread-panel-effective, var(--wk-width-thread-panel))"
       : panelWidth;
 
     const panelStyle = isSmallScreen

@@ -141,6 +141,11 @@ describe('layoutWidth', () => {
     })
 
     describe('thread panel', () => {
+        it('keeps the design-approved default width at 480px', () => {
+            expect(THREAD_MIN_WIDTH).toBe(480)
+            expect(THREAD_DEFAULT_WIDTH).toBe(480)
+        })
+
         describe('clampThreadWidth', () => {
             it('clamps below minimum', () => {
                 expect(clampThreadWidth(100, 1200, 300)).toBe(THREAD_MIN_WIDTH)
