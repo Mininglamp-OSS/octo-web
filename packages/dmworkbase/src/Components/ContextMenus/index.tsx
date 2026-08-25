@@ -133,6 +133,10 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
             if (instance !== this && instance.isShow()) instance.hide()
         })
 
+        this.contextMenusRef
+            .querySelectorAll<HTMLElement>(".wk-ctx-submenu")
+            .forEach((submenu) => { submenu.style.top = "" })
+
         const clickX = event.clientX;
         const clickY = event.clientY;
 
@@ -199,6 +203,24 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         ContextMenus.hideAll()
     }
 
+    _positionSubmenu(event: React.MouseEvent<HTMLLIElement>) {
+        const submenu = event.currentTarget.querySelector<HTMLElement>(":scope > .wk-ctx-submenu")
+        const submenuList = submenu?.querySelector<HTMLElement>(":scope > .wk-ctx-submenu-list")
+        if (!submenu || !submenuList) return
+
+        const VIEWPORT_MARGIN = 8
+        const SUBMENU_BORDER_HEIGHT = 2
+        const parentTop = event.currentTarget.getBoundingClientRect().top
+        const submenuHeight = Math.min(
+            submenuList.scrollHeight + SUBMENU_BORDER_HEIGHT,
+            window.innerHeight - VIEWPORT_MARGIN * 2,
+        )
+        const lowestTop = VIEWPORT_MARGIN - parentTop
+        const highestTop = window.innerHeight - VIEWPORT_MARGIN - parentTop - submenuHeight
+
+        submenu.style.top = `${Math.max(lowestTop, Math.min(0, highestTop))}px`
+    }
+
     _renderItem(m: ContextMenusData, i: number): ReactNode {
         if (m.separator) {
             return <Dropdown.Divider key={i} className="wk-ctx-sep" />
@@ -208,7 +230,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
 
         const submenu = hasChildren ? (
             <div className="wk-ctx-submenu">
-                <Dropdown.Menu>
+                <Dropdown.Menu className="wk-ctx-submenu-list">
                     {m.children!.map((child, ci) => {
                         if (child.separator) {
                             return <Dropdown.Divider key={ci} className="wk-ctx-sep" />
@@ -243,6 +265,9 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                 icon={m.icon ? <CtxIcon icon={m.icon} /> : undefined}
                 suffix={hasChildren ? <ArrowIcon /> : undefined}
                 shellClassName="wk-ctx-item"
+                shellProps={{
+                    onMouseEnter: hasChildren ? (event) => this._positionSubmenu(event) : undefined,
+                }}
                 submenu={submenu}
                 closeOnSelect={!hasChildren}
                 onSelect={(e) => {

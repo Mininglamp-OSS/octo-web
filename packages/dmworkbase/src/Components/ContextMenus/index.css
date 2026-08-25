@@ -65,7 +65,18 @@
     display: none;
 }
 
-.wk-ctx-item:hover > .wk-ctx-submenu {
+.wk-ctx-submenu-list {
+    max-height: calc(100vh - var(--wk-sp-4) - 2px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+body[theme-mode=dark] .wk-ctx-submenu {
+    background: var(--wk-bg-surface);
+    box-shadow: var(--wk-shadow-lg), var(--wk-shadow-sm);
+}
+
+.wk-contextmenus li:hover > .wk-ctx-submenu {
     display: block;
 }
 

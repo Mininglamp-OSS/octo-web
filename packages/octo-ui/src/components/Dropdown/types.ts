@@ -76,6 +76,7 @@ export interface DropdownItemProps extends Omit<MenuItemProps, 'onClick' | 'labe
   active?: boolean
   type?: DropdownItemConfig['type']
   shellClassName?: string
+  shellProps?: HTMLAttributes<HTMLLIElement>
   submenu?: ReactNode
   closeOnSelect?: boolean
   onSelect?: (event: MouseEvent<HTMLButtonElement>) => void

@@ -106,6 +106,7 @@ const DropdownItem = forwardRef<HTMLButtonElement, DropdownItemProps>(function D
     onClick,
     className,
     shellClassName,
+    shellProps,
     submenu,
     disabled,
     ...rest
@@ -126,14 +127,17 @@ const DropdownItem = forwardRef<HTMLButtonElement, DropdownItemProps>(function D
   }, [context, onClick, onSelect, shouldCloseOnSelect])
 
   const handleShellFocus = useCallback((event: FocusEvent<HTMLLIElement>) => {
+    shellProps?.onFocus?.(event)
+    if (event.defaultPrevented) return
     if (event.target !== event.currentTarget) return
     event.currentTarget.querySelector<HTMLButtonElement>('button[role="menuitem"]')?.focus()
-  }, [])
+  }, [shellProps])
 
   return (
     <li
+      {...shellProps}
       aria-disabled={disabled ? 'true' : 'false'}
-      className={joinClasses('octo-ui-dropdown-item-shell', shellClassName)}
+      className={joinClasses('octo-ui-dropdown-item-shell', shellClassName, shellProps?.className)}
       data-octo-dropdown-item-key={itemKey}
       onFocus={handleShellFocus}
       role="none"

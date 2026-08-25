@@ -4,7 +4,7 @@
 
 import React from "react"
 import ReactDOM from "react-dom"
-import { act } from "react-dom/test-utils"
+import { act, Simulate } from "react-dom/test-utils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { Star } from "lucide-react"
 import ContextMenus, { ContextMenusContext, ContextMenusData } from "../index"
@@ -84,7 +84,10 @@ function dispatchContextMenu(element: Element) {
     return event
 }
 
-function renderContextMenus(onHide = vi.fn()) {
+function renderContextMenus(
+    onHide = vi.fn(),
+    menus: ContextMenusData[] = [{ title: "Copy", onClick: vi.fn() }],
+) {
     let context: ContextMenusContext | null = null
 
     act(() => {
@@ -102,7 +105,7 @@ function renderContextMenus(onHide = vi.fn()) {
                         context = nextContext
                     }}
                     onHide={onHide}
-                    menus={[{ title: "Copy", onClick: vi.fn() }]}
+                    menus={menus}
                 />
             </div>,
             container
@@ -158,6 +161,23 @@ describe("ContextMenus native contextmenu suppression", () => {
 })
 
 describe("ContextMenus rounded hover boundaries", () => {
+    it("clears a previous submenu offset before each open cycle", () => {
+        const { context } = renderContextMenus(vi.fn(), [{
+            title: "Add to favorites",
+            children: [{ title: "Group 1" }],
+        }])
+        const trigger = container.querySelector(".trigger")!
+        const submenu = container.querySelector<HTMLElement>(".wk-ctx-submenu")!
+        submenu.style.top = "-320px"
+
+        act(() => {
+            context?.hide()
+        })
+        dispatchContextMenu(trigger)
+
+        expect(submenu.style.top).toBe("")
+    })
+
     it("keeps the first and last menu items selectable around separators at every level", () => {
         act(() => {
             ReactDOM.render(
@@ -191,6 +211,44 @@ describe("ContextMenus rounded hover boundaries", () => {
         expect(rootItems[rootItems.length - 1]?.textContent).toBe("Delete")
         expect(submenuItems[0]?.textContent).toBe("First group")
         expect(submenuItems[submenuItems.length - 1]?.textContent).toBe("Last group")
+    })
+
+    it("keeps a long submenu inside the viewport and makes its list scrollable", () => {
+        act(() => {
+            ReactDOM.render(
+                <ContextMenus
+                    onContext={() => undefined}
+                    menus={[{
+                        title: "Add to favorites",
+                        children: Array.from({ length: 30 }, (_, index) => ({ title: `Group ${index + 1}` })),
+                    }]}
+                />,
+                container
+            )
+        })
+
+        const parentItem = container.querySelector<HTMLElement>(".wk-contextmenus [role='menu'] > .wk-ctx-item")!
+        const submenu = container.querySelector<HTMLElement>(".wk-ctx-submenu")!
+        const submenuList = container.querySelector<HTMLElement>(".wk-ctx-submenu-list")!
+        Object.defineProperty(submenuList, "scrollHeight", { configurable: true, value: 1200 })
+        vi.spyOn(parentItem, "getBoundingClientRect").mockReturnValue({
+            top: 740,
+            bottom: 780,
+            left: 0,
+            right: 160,
+            width: 160,
+            height: 40,
+            x: 0,
+            y: 740,
+            toJSON: () => ({}),
+        })
+
+        act(() => {
+            Simulate.mouseEnter(parentItem)
+        })
+
+        expect(submenu.style.top).toBe("-732px")
+        expect(submenuList.querySelectorAll("button")).toHaveLength(30)
     })
 })
 
