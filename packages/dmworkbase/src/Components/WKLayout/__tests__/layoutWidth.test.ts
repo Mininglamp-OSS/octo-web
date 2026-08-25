@@ -154,13 +154,13 @@ describe('layoutWidth', () => {
             })
 
             it('limits to 50% of available space (window - left panel)', () => {
-                // window=1920, left=300 → available=1620 → max=810
-                expect(clampThreadWidth(1000, 1920, 300)).toBe(810)
+                // window=1920, nav=56, left=300 → available=1564 → max=782
+                expect(clampThreadWidth(1000, 1920, 300)).toBe(782)
             })
 
             it('ensures chat area gets at least 50% of available space', () => {
-                // window=1600, left=280 → available=1320 → max=660
-                expect(clampThreadWidth(900, 1600, 280)).toBe(660)
+                // window=1600, nav=56, left=280 → available=1264 → max=632
+                expect(clampThreadWidth(900, 1600, 280)).toBe(632)
             })
 
             it('caps at THREAD_MAX_WIDTH even if 50% would be higher', () => {
@@ -173,10 +173,15 @@ describe('layoutWidth', () => {
             })
 
             it('keeps a readable chat column in narrow desktop windows', () => {
-                // window=800, left=300 -> available=500, thread=260, chat=240
+                // window=800, nav=56, left=300 -> available=444, thread=204, chat=240
                 const maxThreadWidth = getMaxThreadWidth(800, 300)
-                expect(maxThreadWidth).toBe(500 - THREAD_CHAT_MIN_WIDTH)
+                expect(maxThreadWidth).toBe(800 - NAV_RAIL_DEFAULT_WIDTH - 300 - THREAD_CHAT_MIN_WIDTH)
                 expect(clampThreadWidth(480, 800, 300)).toBe(maxThreadWidth)
+            })
+
+            it('keeps the design width on small screens so CSS can clamp to the viewport', () => {
+                expect(getMaxThreadWidth(375, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(clampThreadWidth(100, 375, 300)).toBe(THREAD_DEFAULT_WIDTH)
             })
         })
 

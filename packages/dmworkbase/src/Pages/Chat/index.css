@@ -253,6 +253,9 @@
 
 @media screen and (max-width: 640px) {
   .wk-chat-content-right {
+    --wk-width-chat-search-panel-effective: min(var(--wk-width-chat-search-panel), 100%);
+    --wk-width-thread-panel-effective: min(var(--wk-width-thread-panel), 100%);
+
     width: 100%;
     position: fixed;
     left: 0;

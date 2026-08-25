@@ -101,7 +101,9 @@ export function persistNavRailWidth(width: number): void {
  * @returns Maximum allowed thread panel width
  */
 export function getMaxThreadWidth(windowWidth: number, leftPanelWidth = SPLITTER_DEFAULT_WIDTH): number {
-    const availableSpace = Math.max(0, windowWidth - leftPanelWidth)
+    if (windowWidth <= SMALL_SCREEN_WIDTH) return THREAD_DEFAULT_WIDTH
+
+    const availableSpace = Math.max(0, windowWidth - NAV_RAIL_DEFAULT_WIDTH - leftPanelWidth)
     const dynamicMax = Math.floor(availableSpace * 0.5)
     const designMax = Math.max(THREAD_MIN_WIDTH, Math.min(THREAD_MAX_WIDTH, dynamicMax))
     const constrainedMax = Math.max(0, availableSpace - THREAD_CHAT_MIN_WIDTH)
