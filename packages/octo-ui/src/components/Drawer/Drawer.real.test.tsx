@@ -89,6 +89,30 @@ describe('Drawer with real Semi SideSheet', () => {
     expect(document.body.style.overflow).toBe('')
   })
 
+  it('locks body scroll by default when masked', () => {
+    render(
+      <Drawer open mask motion={false} title="Blocking">
+        body
+      </Drawer>,
+    )
+
+    expect(document.body.style.overflow).toBe('hidden')
+  })
+
+  it('does not report a close during the first closed inline render', () => {
+    const afterClose = vi.fn()
+    const afterOpenChange = vi.fn()
+
+    render(
+      <Drawer inline keepDOM open={false} title="Inline" afterClose={afterClose} afterOpenChange={afterOpenChange}>
+        body
+      </Drawer>,
+    )
+
+    expect(afterClose).not.toHaveBeenCalled()
+    expect(afterOpenChange).not.toHaveBeenCalled()
+  })
+
   it('closes inline drawers on Escape without passing a synthetic event impostor', () => {
     const onClose = vi.fn()
     const onOpenChange = vi.fn()

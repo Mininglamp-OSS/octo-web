@@ -132,7 +132,7 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
                         <p className="wk-join-space-subtitle">{t("app.joinSpace.homeSubtitle")}</p>
                         <div className="wk-join-space-actions">
                             <Button
-                                type="primary"
+                                variant="solid"
                                 size="large"
                                 className="wk-join-space-btn"
                                 onClick={() => setView("join")}
@@ -171,7 +171,7 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
                             autoFocus
                         />
                         <Button
-                            type="primary"
+                            variant="solid"
                             size="large"
                             className="wk-join-space-btn wk-join-space-btn--full"
                             loading={verifyLoading}
@@ -199,7 +199,7 @@ export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
                                 : t("app.invite.memberCount", { values: { count: inviteInfo.member_count } })}
                         </div>
                         <Button
-                            type="primary"
+                            variant="solid"
                             size="large"
                             className="wk-join-space-btn wk-join-space-btn--full"
                             loading={joinLoading}

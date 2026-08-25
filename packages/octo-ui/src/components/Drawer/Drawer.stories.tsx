@@ -110,7 +110,7 @@ export const Playground: Story = {
 export const InfoPanel: Story = {
   render: () => (
     <div style={{ display: 'flex', height: 360, justifyContent: 'flex-end', overflow: 'hidden', background: 'var(--wk-bg-base)' }}>
-      <Drawer open motion={false} size="compact" title="聊天信息" bodyFlush>
+      <Drawer inline open motion={false} size="compact" title="聊天信息" bodyFlush>
         <SettingRow label="群聊名称" value="后端架构讨论" />
         <SettingRow label="群公告" value="未设置" />
         <SettingRow label="备注" value="哈哈哈哈哈哈哈哈哈哈哈哈哈哈" />
@@ -132,6 +132,7 @@ export const ThreadPanel: Story = {
     <div style={{ display: 'flex', height: 360, justifyContent: 'flex-end', overflow: 'hidden', background: 'var(--wk-bg-base)' }}>
       <Drawer
         open
+        inline
         motion={false}
         title="数据库选型"
         extra={<IconButton label="More"><MoreHorizontal size={16} /></IconButton>}
@@ -162,6 +163,7 @@ export const WidePanel: Story = {
     <div style={{ display: 'flex', height: 360, justifyContent: 'flex-end', overflow: 'hidden', background: 'var(--wk-bg-base)' }}>
       <Drawer
         open
+        inline
         motion={false}
         size="wide"
         title="数据库选型"

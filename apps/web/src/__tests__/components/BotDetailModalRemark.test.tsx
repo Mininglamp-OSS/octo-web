@@ -24,33 +24,41 @@ function deferred<T = void>() {
 vi.mock('@douyinfe/semi-ui', async () => {
     const React = await import('react');
     return {
-        Button: ({ children, onClick, disabled, loading, icon, ...props }: any) => (
-            <button {...props} onClick={onClick} disabled={disabled || loading}>
-                {icon}
-                {children}
-            </button>
-        ),
-        Input: ({ value, onChange, placeholder, maxLength }: any) => (
-            <input
-                value={value}
-                placeholder={placeholder}
-                maxLength={maxLength}
-                onChange={(event) => onChange(event.target.value)}
-            />
-        ),
-        TextArea: ({ value, onChange, placeholder }: any) => (
-            <textarea
-                value={value}
-                placeholder={placeholder}
-                onChange={(event) => onChange(event.target.value)}
-            />
-        ),
         Image: ({ src }: any) => <img alt="" src={src} />,
         Spin: () => <div data-testid="spin" />,
         Toast: {
             success: mocks.toastSuccess,
             error: mocks.toastError,
         },
+    };
+});
+
+vi.mock('@octo/ui', async () => {
+    const React = await import('react');
+    const Input = ({ value, onChange, placeholder, maxLength }: any) => (
+        <input
+            value={value}
+            placeholder={placeholder}
+            maxLength={maxLength}
+            onChange={(event) => onChange(event.target.value)}
+        />
+    );
+    Input.TextArea = ({ value, onChange, placeholder }: any) => (
+        <textarea
+            value={value}
+            placeholder={placeholder}
+            onChange={(event) => onChange(event.target.value)}
+        />
+    );
+
+    return {
+        Button: ({ children, onClick, disabled, loading, icon, ...props }: any) => (
+            <button {...props} onClick={onClick} disabled={disabled || loading}>
+                {icon}
+                {children}
+            </button>
+        ),
+        Input,
     };
 });
 

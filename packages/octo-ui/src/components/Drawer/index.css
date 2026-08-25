@@ -35,6 +35,10 @@
   visibility: hidden;
 }
 
+.octo-ui-drawer--inline[data-octo-drawer-open="false"][data-octo-drawer-motion="true"] {
+  transition: visibility 0s linear 150ms;
+}
+
 .octo-ui-drawer--inline[data-octo-drawer-motion="true"] .octo-ui-drawer__dialog {
   transition: transform 150ms var(--octo-ui-ease-standard, ease-in-out);
 }
@@ -58,6 +62,7 @@
 .octo-ui-drawer--inline[data-octo-drawer-open="true"] {
   visibility: visible;
   pointer-events: auto;
+  transition: visibility 0s linear 0s;
 }
 
 .octo-ui-drawer--inline[data-octo-drawer-open="true"] .octo-ui-drawer__dialog {

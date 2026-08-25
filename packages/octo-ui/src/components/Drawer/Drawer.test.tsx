@@ -14,7 +14,6 @@ vi.mock('@douyinfe/semi-ui/lib/es/sideSheet', async () => {
       bodyStyle,
       children,
       className,
-      dialogClassName,
       height,
       mask,
       placement,
@@ -33,7 +32,6 @@ vi.mock('@douyinfe/semi-ui/lib/es/sideSheet', async () => {
         ref={ref}
         className={className}
         data-body-display={bodyStyle?.display}
-        data-dialog-class={dialogClassName}
         data-height={height}
         data-disable-scroll={String(disableScroll)}
         data-mask={String(mask)}
@@ -60,7 +58,7 @@ describe('Drawer', () => {
 
     expect(html).toContain('octo-ui-drawer')
     expect(html).toContain('octo-ui-drawer--right')
-    expect(html).toContain('octo-ui-drawer__dialog')
+    expect(html).toContain('octo-ui-drawer__surface')
     expect(html).toContain('data-visible="true"')
     expect(html).toContain('data-mask="false"')
     expect(html).toContain('data-width="480"')
@@ -105,11 +103,13 @@ describe('Drawer', () => {
     expect(html).toContain('data-visible="false"')
   })
 
-  it('does not lock page scroll by default but allows opt-in', () => {
+  it('does not lock page scroll by default, locks masked drawers, and allows opt-in', () => {
     const defaultDrawer = renderToStaticMarkup(<Drawer open title="Default scroll" />)
+    const maskedDrawer = renderToStaticMarkup(<Drawer open mask title="Masked scroll" />)
     const blockingDrawer = renderToStaticMarkup(<Drawer open disableScroll title="Blocking scroll" />)
 
     expect(defaultDrawer).toContain('data-disable-scroll="false"')
+    expect(maskedDrawer).toContain('data-disable-scroll="true"')
     expect(blockingDrawer).toContain('data-disable-scroll="true"')
   })
 

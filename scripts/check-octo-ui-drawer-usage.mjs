@@ -88,6 +88,8 @@ for (const scanRoot of scanRoots) {
       const deepImportPattern = /(?:^|\n)\s*import(?:\s+type)?(?:[^;\n]|\n(?!\s*(?:import|export)\b))*?from\s*["']@douyinfe\/semi-ui\/[^"']*(?:sideSheet|drawer)[^"']*["']/g
       const deepExportPattern = /(?:^|\n)\s*export(?:\s+type)?(?:[^;\n]|\n(?!\s*(?:import|export)\b))*?from\s*["']@douyinfe\/semi-ui\/[^"']*(?:sideSheet|drawer)[^"']*["']/g
       const sideEffectDeepImportPattern = /(?:^|\n)\s*import\s*["']@douyinfe\/semi-ui\/[^"']*(?:sideSheet|drawer)[^"']*["']/g
+      const requireDeepImportPattern = /\brequire\(\s*["']@douyinfe\/semi-ui\/[^"']*(?:sideSheet|drawer)[^"']*["']\s*\)/g
+      const dynamicDeepImportPattern = /\bimport\(\s*["']@douyinfe\/semi-ui\/[^"']*(?:sideSheet|drawer)[^"']*["']\s*\)/g
       let match
       while ((match = namedImportPattern.exec(source))) {
         if (hasDrawerSpecifier(match[1])) {
@@ -113,6 +115,12 @@ for (const scanRoot of scanRoots) {
       }
       while ((match = sideEffectDeepImportPattern.exec(source))) {
         violations.push(`${rel}:${lineNumber(source, match.index)} imports Semi SideSheet/Drawer deep path; use @octo/ui Drawer`)
+      }
+      while ((match = requireDeepImportPattern.exec(source))) {
+        violations.push(`${rel}:${lineNumber(source, match.index)} requires Semi SideSheet/Drawer deep path; use @octo/ui Drawer`)
+      }
+      while ((match = dynamicDeepImportPattern.exec(source))) {
+        violations.push(`${rel}:${lineNumber(source, match.index)} dynamically imports Semi SideSheet/Drawer deep path; use @octo/ui Drawer`)
       }
     }
 

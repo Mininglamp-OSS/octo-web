@@ -76,10 +76,10 @@
 }
 
 .wk-join-space-btn {
-    width: 100% !important;
-    height: 44px !important;
-    font-size: 16px !important;
-    border-radius: 8px !important;
+    width: 100%;
+    --octo-ui-button-height: 44px;
+    --octo-ui-button-font-size: 16px;
+    --octo-ui-button-radius: 8px;
 }
 
 .wk-join-space-btn.wk-join-space-btn--full {
@@ -124,18 +124,6 @@
 
 .wk-join-space-logout-btn svg {
     flex: 0 0 auto;
-}
-
-/* Primary 按钮颜色统一 */
-.wk-join-space-btn.octo-ui-button--tint:not(:disabled) {
-    background-color: var(--wk-color-primary, #1C1C23) !important;
-    border-color: var(--wk-color-primary, #1C1C23) !important;
-    color: #fff !important;
-}
-
-.wk-join-space-btn.octo-ui-button--tint:hover:not(:disabled) {
-    background-color: var(--wk-color-primary-hover, #4a59ae) !important;
-    border-color: var(--wk-color-primary-hover, #4a59ae) !important;
 }
 
 /* 输入框 */

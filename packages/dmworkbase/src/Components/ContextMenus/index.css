@@ -76,7 +76,7 @@ body[theme-mode=dark] .wk-ctx-submenu {
     box-shadow: var(--wk-shadow-lg), var(--wk-shadow-sm);
 }
 
-.wk-contextmenus li:hover > .wk-ctx-submenu {
+.wk-contextmenus .wk-ctx-item:hover > .wk-ctx-submenu {
     display: block;
 }
 

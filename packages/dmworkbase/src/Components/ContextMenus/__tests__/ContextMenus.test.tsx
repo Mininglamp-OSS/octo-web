@@ -264,7 +264,7 @@ describe("ContextMenus Lucide icons", () => {
             )
         })
 
-        expect(container.querySelector(".wk-contextmenus li .lucide-star.ctx-icon")).not.toBeNull()
-        expect(container.querySelector(".wk-contextmenus li")?.textContent).toBe("Follow")
+        expect(container.querySelector(".wk-contextmenus .wk-ctx-item .lucide-star.ctx-icon")).not.toBeNull()
+        expect(container.querySelector(".wk-contextmenus .wk-ctx-item")?.textContent).toBe("Follow")
     })
 })

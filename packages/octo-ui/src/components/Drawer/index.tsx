@@ -39,7 +39,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     contentClassName,
     defaultOpen,
     defaultVisible,
-    disableScroll = false,
+    disableScroll,
     extra,
     footer,
     footerClassName,
@@ -67,11 +67,12 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
   ref,
 ) {
   const [internalOpen, setInternalOpen] = useState(defaultOpen ?? defaultVisible ?? false)
-  const previousOpenRef = useRef<boolean | undefined>(undefined)
   const controlledOpen = open ?? visible
   const actualOpen = controlledOpen ?? internalOpen
+  const previousOpenRef = useRef(actualOpen)
   const drawerWidth = width ?? (isVerticalPlacement(placement) ? widthBySize[size] : undefined)
   const drawerHeight = height ?? (!isVerticalPlacement(placement) ? widthBySize[size] : undefined)
+  const resolvedDisableScroll = disableScroll ?? mask
 
   const setOpen = useCallback((nextOpen: boolean) => {
     if (controlledOpen === undefined) {
@@ -177,7 +178,6 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
   }
 
   const sideSheetProps: SideSheetReactProps & {
-    dialogClassName?: string
     'data-octo-drawer-placement': DrawerProps['placement']
     'data-octo-drawer-size': DrawerSize
   } = {
@@ -192,8 +192,7 @@ const Drawer = forwardRef<ComponentRef<typeof SemiSideSheet> | HTMLElement, Draw
     className: cx('octo-ui-drawer', `octo-ui-drawer--${placement}`, className),
     closable: false,
     closeOnEsc,
-    dialogClassName: 'octo-ui-drawer__dialog',
-    disableScroll,
+    disableScroll: resolvedDisableScroll,
     getPopupContainer: portalContainer,
     headerStyle: { display: 'none' },
     height: drawerHeight,

@@ -300,9 +300,6 @@ body {
   --octo-ui-switch-knob-shadow-sm: 0 0 1px oklch(0% 0 0 / 15%), 0 1px 6px oklch(0% 0 0 / 10%);
   --octo-ui-switch-disabled-knob-shadow: 0 0 1px oklch(0% 0 0 / 30%);
 
-  --octo-ui-drawer-width-compact: 336px;
-  --octo-ui-drawer-width-default: 480px;
-  --octo-ui-drawer-width-wide: 664px;
   --octo-ui-drawer-radius: 12px;
   --octo-ui-drawer-radius-right: var(--octo-ui-drawer-radius) 0 0 var(--octo-ui-drawer-radius);
   --octo-ui-drawer-radius-left: 0 var(--octo-ui-drawer-radius) var(--octo-ui-drawer-radius) 0;
