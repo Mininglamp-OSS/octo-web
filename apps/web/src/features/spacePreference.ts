@@ -1,37 +1,39 @@
 const CURRENT_SPACE_STORAGE_KEY = "currentSpaceId";
 const LAST_SPACE_STORAGE_PREFIX = "octo:last-space:";
 
-export function getLastSpaceStorageKey(uid: string): string | undefined {
-  const normalizedUid = uid.trim();
+export function getLastSpaceStorageKey(
+  uid: string | null | undefined
+): string | undefined {
+  const normalizedUid = typeof uid === "string" ? uid.trim() : "";
   if (!normalizedUid) return undefined;
   return `${LAST_SPACE_STORAGE_PREFIX}${encodeURIComponent(normalizedUid)}`;
 }
 
 export function readLastSpaceId(
-  uid: string,
-  storage: Pick<Storage, "getItem"> = localStorage
+  uid: string | null | undefined,
+  store: Pick<Storage, "getItem"> = localStorage
 ): string | null {
   const key = getLastSpaceStorageKey(uid);
   if (!key) return null;
 
   try {
-    return storage.getItem(key);
+    return store.getItem(key);
   } catch {
     return null;
   }
 }
 
 export function persistActiveSpace(
-  uid: string,
+  uid: string | null | undefined,
   spaceId: string,
-  storage: Pick<Storage, "setItem"> = localStorage
+  store: Pick<Storage, "setItem"> = localStorage
 ): void {
   if (!spaceId) return;
 
   try {
-    storage.setItem(CURRENT_SPACE_STORAGE_KEY, spaceId);
+    store.setItem(CURRENT_SPACE_STORAGE_KEY, spaceId);
     const lastSpaceKey = getLastSpaceStorageKey(uid);
-    if (lastSpaceKey) storage.setItem(lastSpaceKey, spaceId);
+    if (lastSpaceKey) store.setItem(lastSpaceKey, spaceId);
   } catch {
     // Storage can be unavailable in privacy-restricted browser contexts.
   }
@@ -52,21 +54,13 @@ export function resolveInitialSpace<T extends { space_id: string }>(
 
 export function resolveInitialSpaceForUser<T extends { space_id: string }>(
   spaces: T[],
-  uid: string,
+  uid: string | null | undefined,
   activeSpaceId: string | null | undefined,
-  storage: Pick<Storage, "getItem"> = localStorage
+  store: Pick<Storage, "getItem"> = localStorage
 ): T | undefined {
-  let savedSpaceId: string | null = null;
-  try {
-    savedSpaceId = storage.getItem(CURRENT_SPACE_STORAGE_KEY);
-  } catch {
-    // The in-memory and fallback candidates still work without storage.
-  }
-
   return resolveInitialSpace(
     spaces,
     activeSpaceId,
-    savedSpaceId,
-    readLastSpaceId(uid, storage)
+    readLastSpaceId(uid, store)
   );
 }

@@ -18,6 +18,8 @@ const AUTH_STORAGE_PREFIXES = [
 
 const AUTH_STORAGE_KEYS = [
   "currentSpaceId",
+  // `octo:last-space:<uid>` is intentionally not cleared: it is a device
+  // preference used to restore the same account's last active organization.
   "pending_oidc_login",
   // One-time standalone authorization targets are owned by the account that
   // opened them and must not be replayed after another account signs in.

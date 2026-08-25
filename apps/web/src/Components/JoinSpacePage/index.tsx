@@ -3,6 +3,7 @@ import { SpaceCreate, WKApp, toJoinApprovalStatus, useI18n } from "@octo/base";
 import { SpaceService } from "@octo/base";
 import { Button, Input, Toast } from "@douyinfe/semi-ui";
 import { LogOut } from "lucide-react";
+import { persistActiveSpace } from "../../features/spacePreference";
 import "./index.css";
 
 type View = "home" | "join" | "join-confirm";
@@ -25,7 +26,7 @@ const ACCENT = "var(--wk-color-primary, #1C1C23)";
 const setCurrentSpace = (spaceId: string) => {
     if (!spaceId) return;
     WKApp.shared.currentSpaceId = spaceId;
-    localStorage.setItem("currentSpaceId", spaceId);
+    persistActiveSpace(WKApp.loginInfo.uid, spaceId);
 };
 
 export default function JoinSpacePage({ onSuccess }: JoinSpacePageProps) {
