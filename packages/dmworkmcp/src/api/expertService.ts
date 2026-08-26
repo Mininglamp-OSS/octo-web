@@ -33,6 +33,7 @@ import {
   type PluginRelationWire,
 } from "./pluginWire";
 import { CATEGORY_KEY_ALL } from "../utils/constants";
+import { createSkillFromScratch, type SkillDraftForm } from "@dmwork/skillmarket";
 import {
   ExpertListError,
   classifyExpertListError,
@@ -775,6 +776,80 @@ async function updateExpertReal(id: string, form: ExpertWriteForm): Promise<Expe
     })
   );
   return getExpertReal(id);
+}
+
+// ─── Unified-save materialization (draft children persisted on parent save) ──
+// The full-page editors hand back UNSAVED child drafts; the parent editor's save
+// materializes them (create) then creates the parent + relations, rolling back
+// any created plugin if a later step fails. Nothing is written until the parent
+// is saved, and a failed save leaves no orphans.
+
+/** Create each skill draft (private, unpublished). Returns the new plugin ids in
+ *  order; throws on the first failure so the caller can roll back. */
+export async function materializeSkillDrafts(drafts: SkillDraftForm[]): Promise<string[]> {
+  const ids: string[] = [];
+  for (const draft of drafts) {
+    const skill = await createSkillFromScratch(draft, { publishToScene: false });
+    ids.push(skill.id);
+  }
+  return ids;
+}
+
+/** Best-effort delete of plugins created during a failed unified save. Swallows
+ *  individual delete errors so the ORIGINAL save error surfaces. */
+export async function rollbackPlugins(ids: string[]): Promise<void> {
+  for (const id of [...ids].reverse()) {
+    try {
+      await deletePluginReal(id);
+    } catch {
+      /* keep unwinding; the original failure is what we re-throw */
+    }
+  }
+}
+
+/** Draft of an expert (used as a squad member): the expert form plus its bound
+ *  skills — already-persisted ids to keep + drafts to create. */
+export interface ExpertMemberDraft {
+  name: string;
+  summary: string;
+  category?: string;
+  tags: string[];
+  instruction: string;
+  mcpConfig: string;
+  existingSkillIds: string[];
+  draftSkills: SkillDraftForm[];
+}
+
+/** Persist a draft expert: materialize its draft skills, then create the expert
+ *  wired to all its skills. Returns the expert id + every plugin id created
+ *  (skills + expert) so a caller can roll back if a LATER step fails; a failure
+ *  inside here rolls back its own partial work before throwing.
+ *  `publishToScene:false` keeps squad members out of the discovery lists. */
+export async function materializeExpert(
+  draft: ExpertMemberDraft,
+  opts?: { publishToScene?: boolean }
+): Promise<{ id: string; createdPluginIds: string[] }> {
+  const createdSkillIds = await materializeSkillDrafts(draft.draftSkills);
+  const created = [...createdSkillIds];
+  try {
+    const { id } = await createExpertReal(
+      {
+        name: draft.name,
+        summary: draft.summary,
+        category: draft.category,
+        tags: draft.tags,
+        instruction: draft.instruction,
+        mcpConfig: draft.mcpConfig,
+        skillIds: [...draft.existingSkillIds, ...createdSkillIds],
+      },
+      { publishToScene: opts?.publishToScene ?? false }
+    );
+    created.push(id);
+    return { id, createdPluginIds: created };
+  } catch (err) {
+    await rollbackPlugins(created);
+    throw err;
+  }
 }
 
 // ─── Squad (专家团) write layer ──────────────────────────────────────────────

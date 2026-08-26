@@ -7,3 +7,7 @@ export { default as SkillListPage } from "./pages/SkillListPage";
 // Full-page skill editor, mounted as a whole-page route (no market sidebar)
 // by dmworkmcp's module at /mcp-market/skill-editor.
 export { default as SkillEditorPage } from "./pages/SkillEditorPage";
+// Skill create-from-scratch write helper + its draft shape, reused by dmworkmcp
+// to materialize expert-scoped skill drafts on the parent editor's save.
+export { createSkillFromScratch } from "./api/skillApi";
+export type { SkillDraftForm } from "./types/skill";

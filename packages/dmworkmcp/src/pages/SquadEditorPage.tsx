@@ -6,8 +6,11 @@ import {
   createSquad,
   getSquad,
   listExpertCategories,
+  materializeExpert,
+  rollbackPlugins,
   updateSquad,
   type ExpertCategoryCount,
+  type ExpertMemberDraft,
   type SquadWriteForm,
 } from "../api/expertService";
 
@@ -17,25 +20,31 @@ interface SquadEditorPageProps {
   squadId?: string;
 }
 
-/** A squad member row managed locally by the editor. `pluginId` is the member
- *  expert's own plugin id (the expert_team_expert relation target). */
-interface MemberRow {
-  pluginId: string;
-  name: string;
-  memberKey?: string;
-  role?: string;
-  leader: boolean;
-}
+/** A squad member: an already-persisted member expert, or an unsaved draft
+ *  created here and materialized on the squad's save. `localKey` is a stable
+ *  client id (drafts have no pluginId yet). */
+type SquadMember =
+  | {
+      kind: "existing";
+      localKey: string;
+      pluginId: string;
+      name: string;
+      memberKey?: string;
+      role?: string;
+      leader: boolean;
+    }
+  | { kind: "draft"; localKey: string; draft: ExpertMemberDraft; leader: boolean };
+
+const memberName = (m: SquadMember) => (m.kind === "existing" ? m.name : m.draft.name);
 
 const TOAST_MS = 2600;
 
 /**
- * Full-page squad (专家团) editor — create + edit — mirroring the marketing
- * prototype's team editor. Pushed into the market right pane via
- * WKApp.routeRight.push; returns via pop. Edits the team's self-contained
- * content: name/summary/category/tags + 团队指令 (AGENTS.md, verbatim) + a
- * member list. Members are squad-internal expert plugins created/edited through
- * the expert editor (ExpertEditorPage) and bound via expert_team_expert.
+ * Full-page squad (专家团) editor. Members are managed as drafts: "新建专家"
+ * opens the expert editor in draft mode (nothing persisted), and the squad's
+ * save materializes every draft member (its skills, then the member expert)
+ * first, then creates/updates the squad wired to all members — one atomic-ish
+ * save, rolled back if a step fails.
  */
 export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps) {
   useI18n();
@@ -54,10 +63,8 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
   const [tags, setTags] = useState<string[]>([]);
   const [tagDraft, setTagDraft] = useState("");
   const [instruction, setInstruction] = useState("");
-  const [members, setMembers] = useState<MemberRow[]>([]);
+  const [members, setMembers] = useState<SquadMember[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
-  /** Set once a create succeeds so the page flips to edit-in-place (no route
-   *  change — replaceToRoot would strand the user on the empty-state on back). */
   const [createdId, setCreatedId] = useState<string | null>(null);
 
   const editingId = squadId ?? createdId ?? undefined;
@@ -98,9 +105,11 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
         setCategory(s.category);
         setTags(s.tags ?? []);
         setInstruction(s.instruction ?? "");
-        const loaded = (s.members ?? [])
+        const loaded: SquadMember[] = (s.members ?? [])
           .filter((m) => m.pluginId)
           .map((m) => ({
+            kind: "existing",
+            localKey: m.pluginId as string,
             pluginId: m.pluginId as string,
             name: m.name,
             memberKey: m.key,
@@ -156,17 +165,16 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
   const addMember = () => {
     WKApp.routeRight.push(
       <ExpertEditorPage
-        mode="create"
-        publishToScene={false}
-        onCommitted={({ id, name: memberName }) => {
+        mode="draft"
+        onDraft={(draft) => {
           setMembers((prev) => [
             ...prev,
             // First member (or first after the leader was removed) becomes the
             // leader by default, since a squad always needs exactly one.
             {
-              pluginId: id,
-              name: memberName,
-              memberKey: id,
+              kind: "draft",
+              localKey: crypto.randomUUID(),
+              draft,
               leader: !prev.some((m) => m.leader),
             },
           ]);
@@ -176,25 +184,41 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
     );
   };
 
-  const editMember = (m: MemberRow) => {
+  const editMember = (m: SquadMember) => {
+    if (m.kind === "existing") {
+      WKApp.routeRight.push(
+        <ExpertEditorPage
+          mode="edit"
+          expertId={m.pluginId}
+          onCommitted={({ name: memberN }) => {
+            // Name lives on the member plugin, not the relation — just refresh
+            // the display; the relation is unchanged, so no dirty flag.
+            setMembers((prev) =>
+              prev.map((x) => (x.localKey === m.localKey ? { ...x, name: memberN } : x))
+            );
+          }}
+        />
+      );
+      return;
+    }
+    const localKey = m.localKey;
     WKApp.routeRight.push(
       <ExpertEditorPage
-        mode="edit"
-        expertId={m.pluginId}
-        onCommitted={({ id, name: memberName }) => {
-          // The member name lives on the member plugin, not the relation — just
-          // refresh the display; no squad relation change, so no dirty flag.
+        mode="draft"
+        initialDraft={m.draft}
+        onDraft={(draft) => {
           setMembers((prev) =>
-            prev.map((x) => (x.pluginId === id ? { ...x, name: memberName } : x))
+            prev.map((x) => (x.localKey === localKey && x.kind === "draft" ? { ...x, draft } : x))
           );
+          setDirty(true);
         }}
       />
     );
   };
 
-  const removeMember = (pluginId: string) => {
+  const removeMember = (localKey: string) => {
     setMembers((prev) => {
-      const next = prev.filter((x) => x.pluginId !== pluginId);
+      const next = prev.filter((x) => x.localKey !== localKey);
       // A leader is required: if the removed member was the leader, promote the
       // first remaining member so the squad always has exactly one.
       if (next.length && !next.some((m) => m.leader)) {
@@ -205,10 +229,9 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
     setDirty(true);
   };
 
-  /** Single-leader semantics: promote one member, clearing the rest. A leader is
-   *  required, so this only ever sets (never unsets). */
-  const setLeader = (pluginId: string) => {
-    setMembers((prev) => prev.map((x) => ({ ...x, leader: x.pluginId === pluginId })));
+  /** Single-leader semantics: promote one member, clearing the rest. */
+  const setLeader = (localKey: string) => {
+    setMembers((prev) => prev.map((x) => ({ ...x, leader: x.localKey === localKey })));
     setDirty(true);
   };
 
@@ -230,38 +253,74 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
       showToast(t("mcp.squad.editor.leaderRequired"));
       return;
     }
-    const form: SquadWriteForm = {
-      name: name.trim(),
-      summary,
-      category: category || undefined,
-      tags,
-      instruction,
-      members: members.map((m) => ({
-        pluginId: m.pluginId,
-        name: m.name,
-        memberKey: m.memberKey,
-        role: m.role,
-        isLeader: m.leader,
-      })),
-    };
+
     setSaving(true);
+    const allCreated: string[] = [];
+    const materializedByKey = new Map<string, string>();
     try {
+      // Materialize any draft members first (each: its skills, then the expert).
+      const memberInputs: SquadWriteForm["members"] = [];
+      for (const m of members) {
+        if (m.kind === "existing") {
+          memberInputs.push({
+            pluginId: m.pluginId,
+            name: m.name,
+            memberKey: m.memberKey,
+            role: m.role,
+            isLeader: m.leader,
+          });
+        } else {
+          const { id, createdPluginIds } = await materializeExpert(m.draft, {
+            publishToScene: false,
+          });
+          allCreated.push(...createdPluginIds);
+          materializedByKey.set(m.localKey, id);
+          memberInputs.push({ pluginId: id, name: m.draft.name, memberKey: id, isLeader: m.leader });
+        }
+      }
+
+      const form: SquadWriteForm = {
+        name: name.trim(),
+        summary,
+        category: category || undefined,
+        tags,
+        instruction,
+        members: memberInputs,
+      };
       if (isEditing && editingId) {
         await updateSquad(editingId, form);
       } else {
         const { id } = await createSquad(form);
         setCreatedId(id);
       }
+
+      // Convert now-persisted draft members into existing entries so a
+      // subsequent save doesn't re-create them.
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.kind === "draft"
+            ? {
+                kind: "existing",
+                localKey: m.localKey,
+                pluginId: materializedByKey.get(m.localKey) as string,
+                name: m.draft.name,
+                memberKey: materializedByKey.get(m.localKey),
+                leader: m.leader,
+              }
+            : m
+        )
+      );
       setDirty(false);
       showToast(t("mcp.squad.editor.saved"));
     } catch (err) {
+      if (allCreated.length) await rollbackPlugins(allCreated);
       showToast(err instanceof Error ? err.message : t("mcp.squad.editor.saveFailed"));
     } finally {
       setSaving(false);
     }
   };
 
-  const title = isEditing ? name || t("mcp.squad.editor.createTitle") : t("mcp.squad.editor.createTitle");
+  const title = name || t("mcp.squad.editor.createTitle");
 
   return (
     <div className="wk-mcp-expert-editor">
@@ -403,14 +462,14 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
             {members.length ? (
               <div className="wk-mcp-expert-editor__member-list">
                 {members.map((m) => (
-                  <div key={m.pluginId} className="wk-mcp-expert-editor__member-row">
+                  <div key={m.localKey} className="wk-mcp-expert-editor__member-row">
                     <div className="wk-mcp-expert-editor__member-main">
                       <span className="wk-mcp-expert-editor__member-avatar" aria-hidden="true">
-                        {(m.name || "?").trim().slice(0, 1)}
+                        {(memberName(m) || "?").trim().slice(0, 1)}
                       </span>
                       <div>
                         <div className="wk-mcp-expert-editor__member-title">
-                          {m.name}
+                          {memberName(m)}
                         </div>
                         <div className="wk-mcp-expert-editor__member-meta">
                           {t("mcp.squad.editor.memberResourceLabel")}
@@ -426,7 +485,7 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
                             : "wk-mcp-expert-editor__member-leader"
                         }
                         disabled={m.leader}
-                        onClick={() => setLeader(m.pluginId)}
+                        onClick={() => setLeader(m.localKey)}
                       >
                         {m.leader && <Crown size={13} aria-hidden="true" />}
                         {m.leader
@@ -436,7 +495,7 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
                       <button
                         type="button"
                         className="wk-mcp-expert-editor__member-link"
-                        aria-label={t("mcp.squad.editor.editMember", { values: { name: m.name } })}
+                        aria-label={t("mcp.squad.editor.editMember", { values: { name: memberName(m) } })}
                         onClick={() => editMember(m)}
                       >
                         <Pencil size={14} aria-hidden="true" />
@@ -445,8 +504,8 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
                       <button
                         type="button"
                         className="wk-mcp-expert-editor__member-link"
-                        aria-label={t("mcp.squad.editor.removeMember", { values: { name: m.name } })}
-                        onClick={() => removeMember(m.pluginId)}
+                        aria-label={t("mcp.squad.editor.removeMember", { values: { name: memberName(m) } })}
+                        onClick={() => removeMember(m.localKey)}
                       >
                         <Trash2 size={14} aria-hidden="true" />
                         {t("mcp.squad.editor.remove")}

@@ -1,42 +1,65 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { WKApp, WKButton, t, useI18n } from "@octo/base";
-import { SkillEditorPage } from "@dmwork/skillmarket";
+import { SkillEditorPage, type SkillDraftForm } from "@dmwork/skillmarket";
 import type { ExpertAgent } from "../mock/expertMock";
 import {
   createExpert,
   getExpert,
   listExpertCategories,
+  materializeSkillDrafts,
+  rollbackPlugins,
   updateExpert,
   type ExpertCategoryCount,
+  type ExpertMemberDraft,
   type ExpertWriteForm,
 } from "../api/expertService";
 
 interface ExpertEditorPageProps {
-  mode: "create" | "edit";
+  /** "create"/"edit" persist a standalone expert; "draft" hands an unsaved
+   *  member draft back to the squad editor (no network) — the squad's save
+   *  materializes it. */
+  mode: "create" | "edit" | "draft";
   /** Required when mode === "edit". */
   expertId?: string;
-  /** When set, this editor is a CHILD of another editor (e.g. the squad editor
-   *  creating a member). On a successful save the id+name are handed back and
-   *  the page pops itself, instead of the standalone edit-in-place behavior. */
+  /** Seeds "draft" mode when editing an already-added (unsaved) member draft. */
+  initialDraft?: ExpertMemberDraft;
+  /** "draft" mode: returns the member draft to the squad editor (no network). */
+  onDraft?: (draft: ExpertMemberDraft) => void;
+  /** "edit" mode child use (e.g. squad editing an EXISTING member): the saved
+   *  id+name are handed back and the page pops itself. */
   onCommitted?: (result: { id: string; name: string }) => void;
-  /** Forwarded to createExpert — squad members pass false so the member expert
-   *  is not scene-published (kept out of the expert discovery lists). */
-  publishToScene?: boolean;
 }
+
+/** A bound skill: an already-persisted plugin, or an unsaved draft created here
+ *  and materialized on the expert's save. */
+type BoundSkill =
+  | { kind: "existing"; pluginId: string; name: string }
+  | { kind: "draft"; localId: string; draft: SkillDraftForm };
+
+const skillKey = (s: BoundSkill) => (s.kind === "existing" ? s.pluginId : s.localId);
+const skillName = (s: BoundSkill) => (s.kind === "existing" ? s.name : s.draft.displayName);
 
 const TOAST_MS = 2600;
 
 /**
- * Full-page expert (agent) editor — create + edit — mirroring the marketing
- * prototype's Workspace-style editor. Pushed into the market right pane via
- * WKApp.routeRight.push; returns via pop. Edits the expert's self-contained
- * content: name/summary/category/tags + 指令 (AGENTS.md) + mcp 配置 (mcp.json).
- * Bound skills are shown here; creating/editing them opens the skill editor.
+ * Full-page expert (agent) editor. Bound skills are managed as drafts: "新建
+ * Skill" opens the skill editor which hands back a draft (nothing persisted),
+ * and the expert's save materializes every draft skill first, then creates/
+ * updates the expert wired to all its skills — one atomic-ish save, rolled back
+ * if a step fails. "draft" mode returns the whole expert as a member draft to
+ * the squad editor without persisting anything.
  */
-export default function ExpertEditorPage({ mode, expertId, onCommitted, publishToScene }: ExpertEditorPageProps) {
+export default function ExpertEditorPage({
+  mode,
+  expertId,
+  initialDraft,
+  onDraft,
+  onCommitted,
+}: ExpertEditorPageProps) {
   useI18n();
   const isEdit = mode === "edit";
+  const isDraftMode = mode === "draft";
 
   const [loading, setLoading] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
@@ -45,22 +68,29 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
-  const [name, setName] = useState("");
-  const [summary, setSummary] = useState("");
-  const [category, setCategory] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
+  const [name, setName] = useState(() => initialDraft?.name ?? "");
+  const [summary, setSummary] = useState(() => initialDraft?.summary ?? "");
+  const [category, setCategory] = useState(() => initialDraft?.category ?? "");
+  const [tags, setTags] = useState<string[]>(() => initialDraft?.tags ?? []);
   const [tagDraft, setTagDraft] = useState("");
-  const [instruction, setInstruction] = useState("");
-  const [mcpConfig, setMcpConfig] = useState("");
+  const [instruction, setInstruction] = useState(() => initialDraft?.instruction ?? "");
+  const [mcpConfig, setMcpConfig] = useState(() => initialDraft?.mcpConfig ?? "");
   const [expert, setExpert] = useState<ExpertAgent | null>(null);
-  /** Bound skills managed by the editor ({pluginId,name}); init from the loaded
-   *  expert, mutated by new/edit/remove. Persisted as expert_skill relations. */
-  const [skills, setSkills] = useState<Array<{ pluginId: string; name: string }>>([]);
+  const [skills, setSkills] = useState<BoundSkill[]>(() =>
+    initialDraft
+      ? [
+          ...initialDraft.existingSkillIds.map(
+            (pluginId): BoundSkill => ({ kind: "existing", pluginId, name: "" })
+          ),
+          ...initialDraft.draftSkills.map(
+            (draft): BoundSkill => ({ kind: "draft", localId: crypto.randomUUID(), draft })
+          ),
+        ]
+      : []
+  );
   const [categories, setCategories] = useState<string[]>([]);
-  /** Set once a create succeeds so the page flips to edit-in-place (subsequent
-   *  saves update instead of creating a duplicate) WITHOUT touching the route
-   *  stack — replaceToRoot would discard MyAssetsPage and strand the user on
-   *  the empty-state when they hit 返回. */
+  /** Set once a standalone create succeeds so the page flips to edit-in-place
+   *  WITHOUT touching the route stack. */
   const [createdId, setCreatedId] = useState<string | null>(null);
 
   const editingId = expertId ?? createdId ?? undefined;
@@ -106,7 +136,7 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
         setSkills(
           (e.skills ?? [])
             .filter((s) => s.pluginId)
-            .map((s) => ({ pluginId: s.pluginId as string, name: s.name }))
+            .map((s): BoundSkill => ({ kind: "existing", pluginId: s.pluginId as string, name: s.name }))
         );
         setDirty(false);
       })
@@ -152,30 +182,47 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
     WKApp.routeRight.push(
       <SkillEditorPage
         mode="create"
-        publishToScene={false}
-        onCommitted={({ id, name: skillName }) => {
-          setSkills((prev) => [...prev, { pluginId: id, name: skillName }]);
+        onDraft={(draft) => {
+          setSkills((prev) => [...prev, { kind: "draft", localId: crypto.randomUUID(), draft }]);
           setDirty(true);
         }}
       />
     );
   };
 
-  const editSkill = (skill: { pluginId: string; name: string }) => {
+  const editSkill = (skill: BoundSkill) => {
+    if (skill.kind === "existing") {
+      WKApp.routeRight.push(
+        <SkillEditorPage
+          skillId={skill.pluginId}
+          onCommitted={({ id, name: skillName }) =>
+            setSkills((prev) =>
+              prev.map((s) =>
+                s.kind === "existing" && s.pluginId === id ? { ...s, name: skillName } : s
+              )
+            )
+          }
+        />
+      );
+      return;
+    }
+    const localId = skill.localId;
     WKApp.routeRight.push(
       <SkillEditorPage
-        skillId={skill.pluginId}
-        onCommitted={({ id, name: skillName }) =>
+        mode="create"
+        initialDraft={skill.draft}
+        onDraft={(draft) => {
           setSkills((prev) =>
-            prev.map((s) => (s.pluginId === id ? { ...s, name: skillName } : s))
-          )
-        }
+            prev.map((s) => (s.kind === "draft" && s.localId === localId ? { ...s, draft } : s))
+          );
+          setDirty(true);
+        }}
       />
     );
   };
 
-  const removeSkill = (pluginId: string) => {
-    setSkills((prev) => prev.filter((s) => s.pluginId !== pluginId));
+  const removeSkill = (key: string) => {
+    setSkills((prev) => prev.filter((s) => skillKey(s) !== key));
     setDirty(true);
   };
 
@@ -189,64 +236,104 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
     WKApp.routeRight.pop();
   };
 
-  const save = async () => {
-    if (saving) return;
+  /** Shared validation for name + mcp.json; returns false (and toasts) if bad. */
+  const validate = (): boolean => {
     if (!name.trim()) {
       showToast(t("mcp.expert.editor.nameRequired"));
-      return;
+      return false;
     }
-    // mcp.json must be valid JSON (it's placeholdered + canonicalized server-side
-    // via the write layer, which JSON.parses it).
     if (mcpConfig.trim()) {
       try {
         JSON.parse(mcpConfig);
       } catch {
         showToast(t("mcp.expert.editor.mcpInvalid"));
-        return;
+        return false;
       }
     }
-    const form: ExpertWriteForm = {
-      name: name.trim(),
-      summary,
-      category: category || undefined,
-      tags,
-      instruction,
-      mcpConfig,
-      // The editor owns the bound-skill list, so always send it (expert_skill
-      // relations are a full replace: adds new, drops removed).
-      skillIds: skills.map((s) => s.pluginId),
-    };
+    return true;
+  };
+
+  const save = async () => {
+    if (saving) return;
+    if (!validate()) return;
+
+    // Draft mode (squad member): hand the whole expert back as a draft, no network.
+    if (isDraftMode) {
+      onDraft?.({
+        name: name.trim(),
+        summary,
+        category: category || undefined,
+        tags,
+        instruction,
+        mcpConfig,
+        existingSkillIds: skills.filter((s) => s.kind === "existing").map((s) => s.pluginId),
+        draftSkills: skills.filter((s) => s.kind === "draft").map((s) => s.draft),
+      });
+      WKApp.routeRight.pop();
+      return;
+    }
+
+    const draftEntries = skills.filter(
+      (s): s is Extract<BoundSkill, { kind: "draft" }> => s.kind === "draft"
+    );
+    const existingIds = skills
+      .filter((s): s is Extract<BoundSkill, { kind: "existing" }> => s.kind === "existing")
+      .map((s) => s.pluginId);
+
     setSaving(true);
+    let createdSkillIds: string[] = [];
     try {
+      // Materialize draft skills first (private, unpublished), then wire them.
+      createdSkillIds = await materializeSkillDrafts(draftEntries.map((d) => d.draft));
+      const form: ExpertWriteForm = {
+        name: name.trim(),
+        summary,
+        category: category || undefined,
+        tags,
+        instruction,
+        mcpConfig,
+        skillIds: [...existingIds, ...createdSkillIds],
+      };
+
+      let committedId: string;
       if (isEditing && editingId) {
         const updated = await updateExpert(editingId, form);
         setExpert(updated);
-        if (onCommitted) {
-          onCommitted({ id: editingId, name: form.name });
-          WKApp.routeRight.pop();
-          return;
-        }
+        committedId = editingId;
       } else {
-        const { id } = await createExpert(form, { publishToScene });
-        if (onCommitted) {
-          // Hand the new member back to the parent (squad) editor and return.
-          onCommitted({ id, name: form.name });
-          WKApp.routeRight.pop();
-          return;
-        }
-        // Flip to edit-in-place (no route change) so the next save updates.
+        const { id } = await createExpert(form);
         setCreatedId(id);
+        committedId = id;
+      }
+
+      // Convert now-persisted drafts into existing entries so a subsequent save
+      // doesn't re-create them.
+      const idByLocal = new Map(draftEntries.map((d, i) => [d.localId, createdSkillIds[i]]));
+      setSkills((prev) =>
+        prev.map((s) =>
+          s.kind === "draft"
+            ? { kind: "existing", pluginId: idByLocal.get(s.localId) as string, name: s.draft.displayName }
+            : s
+        )
+      );
+
+      if (onCommitted) {
+        onCommitted({ id: committedId, name: form.name });
+        WKApp.routeRight.pop();
+        return;
       }
       setDirty(false);
       showToast(t("mcp.expert.editor.saved"));
     } catch (err) {
+      // Roll back any skills created before the expert save failed.
+      if (createdSkillIds.length) await rollbackPlugins(createdSkillIds);
       showToast(err instanceof Error ? err.message : t("mcp.expert.editor.saveFailed"));
     } finally {
       setSaving(false);
     }
   };
 
-  const title = isEditing ? name || expert?.name : t("mcp.expert.editor.createTitle");
+  const title = name || (isEditing ? expert?.name : t("mcp.expert.editor.createTitle"));
 
   return (
     <div className="wk-mcp-expert-editor">
@@ -408,18 +495,15 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
             {skills.length ? (
               <div className="wk-mcp-expert-editor__resource-list">
                 {skills.map((skill) => (
-                  <div
-                    key={skill.pluginId}
-                    className="wk-mcp-expert-editor__resource"
-                  >
+                  <div key={skillKey(skill)} className="wk-mcp-expert-editor__resource">
                     <span className="wk-mcp-expert-editor__resource-name">
-                      {skill.name}
+                      {skillName(skill)}
                     </span>
                     <div className="wk-mcp-expert-editor__resource-actions">
                       <button
                         type="button"
                         className="wk-mcp-expert-editor__member-link"
-                        aria-label={t("mcp.expert.editor.editSkill", { values: { name: skill.name } })}
+                        aria-label={t("mcp.expert.editor.editSkill", { values: { name: skillName(skill) } })}
                         onClick={() => editSkill(skill)}
                       >
                         <Pencil size={14} aria-hidden="true" />
@@ -428,8 +512,8 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
                       <button
                         type="button"
                         className="wk-mcp-expert-editor__member-link"
-                        aria-label={t("mcp.expert.editor.removeSkill", { values: { name: skill.name } })}
-                        onClick={() => removeSkill(skill.pluginId)}
+                        aria-label={t("mcp.expert.editor.removeSkill", { values: { name: skillName(skill) } })}
+                        onClick={() => removeSkill(skillKey(skill))}
                       >
                         <Trash2 size={14} aria-hidden="true" />
                         {t("mcp.expert.editor.remove")}

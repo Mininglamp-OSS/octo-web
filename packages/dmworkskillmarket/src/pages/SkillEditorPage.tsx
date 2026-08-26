@@ -1,24 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Plus, Save, Settings, Upload } from "lucide-react";
 import { WKApp, WKButton, t, useI18n } from "@octo/base";
-import type { Category, EditableAttachment, Skill } from "../types/skill";
-import { getCategories, getSkillFiles, updateSkill, createSkillFromScratch } from "../api/skillApi";
+import type { Category, EditableAttachment, Skill, SkillDraftForm } from "../types/skill";
+import { getCategories, getSkillFiles, updateSkill } from "../api/skillApi";
 import SkillFileTree, { PROTECTED_PATHS } from "../components/SkillFileTree";
 import EditSkillModal from "../components/EditSkillModal";
 
 interface SkillEditorPageProps {
   /** Passed as the route `param` on navigation; falls back to the `?skillId=`
-   *  query so a page refresh keeps working. Absent in create mode. */
+   *  query so a page refresh keeps working. Absent in create/draft mode. */
   skillId?: string;
-  /** "create" starts a blank from-scratch skill; defaults to "edit". */
+  /** "create" starts a blank from-scratch skill that is NOT persisted here —
+   *  on save it hands a draft back via onDraft (the parent editor materializes
+   *  it on ITS save, for unified/atomic creation). Defaults to "edit". */
   mode?: "create" | "edit";
-  /** When set (child of another editor, e.g. the expert editor creating a bound
-   *  skill), the saved skill's id+name are handed back on save. In create mode
-   *  the page also pops itself after committing. */
+  /** Seeds create mode when editing an already-added (unsaved) draft. */
+  initialDraft?: SkillDraftForm;
+  /** create mode: returns the draft to the parent (no network). */
+  onDraft?: (draft: SkillDraftForm) => void;
+  /** edit mode: the saved skill's id+name are handed back on save so the parent
+   *  can refresh its label. */
   onCommitted?: (result: { id: string; name: string }) => void;
-  /** Forwarded to createSkillFromScratch — expert-scoped skills pass false so
-   *  the new skill isn't published to the discovery scene. */
-  publishToScene?: boolean;
 }
 
 const TOAST_MS = 2600;
@@ -41,8 +43,9 @@ function isSafePath(path: string): boolean {
 export default function SkillEditorPage({
   skillId,
   mode,
+  initialDraft,
+  onDraft,
   onCommitted,
-  publishToScene,
 }: SkillEditorPageProps) {
   useI18n();
   const isCreate = mode === "create";
@@ -77,9 +80,16 @@ export default function SkillEditorPage({
 
   const load = useCallback(async () => {
     if (isCreate) {
-      // Blank from-scratch skill: seed a single editable SKILL.md.
-      setAttachments([{ path: "SKILL.md", rawContent: "", readonly: false }]);
-      setActivePath("SKILL.md");
+      // Blank (or seeded-from-draft) from-scratch skill: no fetch, no persist.
+      const seeded = initialDraft?.attachments?.length
+        ? initialDraft.attachments
+        : [{ path: "SKILL.md", rawContent: "", readonly: false }];
+      setAttachments(seeded);
+      setActivePath(
+        seeded.find((a) => a.path === "SKILL.md")?.path ?? seeded[0]?.path ?? ""
+      );
+      setDisplayName(initialDraft?.displayName ?? "");
+      setDescription(initialDraft?.description ?? "");
       setLoading(false);
       setDirty(false);
       return;
@@ -191,26 +201,16 @@ export default function SkillEditorPage({
         showToast(t("skillMarket.editor.nameRequired"));
         return;
       }
-      setSaving(true);
-      try {
-        const created = await createSkillFromScratch(
-          {
-            displayName: name,
-            name,
-            description,
-            tags: [],
-            attachments,
-          },
-          { publishToScene }
-        );
-        onCommitted?.({ id: created.id, name: created.displayName || name });
-        WKApp.routeRight.pop();
-        return;
-      } catch {
-        showToast(t("skillMarket.editor.saveFailed"));
-      } finally {
-        setSaving(false);
-      }
+      // Hand the draft back to the parent — it is materialized (persisted) only
+      // when the parent editor saves, so nothing is written on abandon.
+      onDraft?.({
+        displayName: name,
+        name,
+        description,
+        tags: [],
+        attachments,
+      });
+      WKApp.routeRight.pop();
       return;
     }
     if (!skill) return;
