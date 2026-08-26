@@ -701,6 +701,53 @@ describe("MarkdownContent — 接收端保护：每条消息公式数量上限 (
   });
 });
 
+describe("MarkdownContent — 转义 \\$ 在容器/实体等场景仍保持 literal (reviewer P0-2 收口)", () => {
+  const cases: Array<[string, string]> = [
+    ["blockquote 多行续行内转义", "> pre line\n> literal \\$x_1\\$ here"],
+    ["list item 多行续行内转义", "- pre line\n  literal \\$x_1\\$ done"],
+    ["含实体的行内转义", "a &amp; \\$x_1\\$ b"],
+    ["多段落其一含转义", "para one\n\npay \\$x_1\\$ ok"],
+  ];
+  for (const [name, input] of cases) {
+    it(`${name}：\\$…\\$ 不被重新激活为定界符`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(visibleText(root)).toContain("$x_1$");
+    });
+  }
+
+  it("转义 \\$ 与真实反斜杠 \\\\$x^2$ 区分：字面反斜杠后是活公式", () => {
+    // \\$x^2$ = 字面反斜杠 + 活公式：应渲染公式，且保留一个反斜杠
+    const root = renderContent(<MarkdownContent content={"path \\\\$x^2$ end"} />);
+    expect(root.querySelector(".katex")).not.toBeNull();
+  });
+});
+
+describe("MarkdownContent — ```math 围栏与 $$ 走同一套上限 (reviewer P0-2/fence 收口)", () => {
+  it("合法 ```math 围栏渲染成 KaTeX", () => {
+    const root = renderContent(
+      <MarkdownContent content={"```math\n\\frac{a}{b}\n```"} />
+    );
+    expect(root.querySelector(".katex")).not.toBeNull();
+  });
+
+  it("超大 ```math 围栏超过渲染产物上限时退回代码块，不进 KaTeX", () => {
+    const body = "\\begin{matrix}" + "1 & ".repeat(900) + "1\\end{matrix}";
+    const root = renderContent(
+      <MarkdownContent content={"```math\n" + body + "\n```"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+  });
+
+  it("超长 ```math 围栏（超过块长上限）退回代码块", () => {
+    const body = "x_1 " + "a".repeat(4500);
+    const root = renderContent(
+      <MarkdownContent content={"```math\n" + body + "\n```"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+  });
+});
+
 describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。

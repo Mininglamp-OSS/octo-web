@@ -22,13 +22,13 @@ import { getMentionRenderState } from "./mentionRenderState";
 import { isForwardDocCard, type ParagraphChildKind } from "./forwardClamp";
 
 export interface MentionInfo {
-  name: string; // "@å¼ ä¸"ï¼å«@ç¬¦å·ï¼
+  name: string; // "@张三"（含@符号）
   uid: string;
 }
 
 export interface EmojiInfo {
-  key: string; // emoji ææ¬ keyï¼å¦ "[æåä½]" æ Unicode "ð"
-  url: string; // å¾ç URL
+  key: string; // emoji 文本 key，如 "[有品位]" 或 Unicode "😀"
+  url: string; // 图片 URL
 }
 
 interface MarkdownContentProps {
@@ -39,44 +39,44 @@ interface MarkdownContentProps {
   onMentionClick?: (uid: string) => void;
   emojis?: EmojiInfo[];
   /**
-   * æ¯å¦å¯ç¨æ°å­¦å¬å¼æ¸²æï¼KaTeXï¼ï¼é»è®¤ trueã
+   * 是否启用数学公式渲染（KaTeX），默认 true。
    *
-   * èå¤©æ¶æ¯é»è®¤è¯å« `$...$` è¡åä¸ `$$...$$` åçº§å¬å¼ï¼å¹¶ç¨åéå®å«ï¼{@link isAcceptableInlineMath}ï¼
-   * è¿æ»¤ IM æ­£æè¯¯å¹éï¼éé¢/åé/JSON/è·¯å¾ï¼ãä¸ºä¿è¯æ­£æé¶èèï¼è¡ååéæ¯ iOS æ´ä¸¥ï¼
-   * å« `/`ã`:`ãåå­æ¯åææ ãæå¤ä¸ªè¯å½¢ token ççæ®µææ­£æå¤çï¼çº¯ CJK ä¸ä¸å«çæ­£ TeX å½ä»¤
-   * ç `$éé¢_x$` ä¸æ¸²æï¼ä½å«å½ä»¤ç `$v_{\text{å¹³å}}$` ç§å¸¸æ¸²æãéè¦æ¾å®½ï¼å¦æ ç¹æ®å­ç¬¦ç
-   * ç®å `$a+b$`ï¼è§ {@link allowSingleDollarMath}ãæç¡®ä¸éè¦å¬å¼æ¶å¯ä¼  falseã
+   * 聊天消息默认识别 `$...$` 行内与 `$$...$$` 块级公式，并用候选守卫（{@link isAcceptableInlineMath}）
+   * 过滤 IM 正文误匹配（金额/变量/JSON/路径）。为保证正文零腐蚀，行内候选比 iOS 更严：
+   * 含 `/`、`:`、单字母反斜杠、或多个词形 token 的片段按正文处理；纯 CJK 且不含真正 TeX 命令
+   * 的 `$金额_x$` 不渲染，但含命令的 `$v_{\text{平均}}$` 照常渲染。需要放宽（如无特殊字符的
+   * 简单 `$a+b$`）见 {@link allowSingleDollarMath}。明确不需要公式时可传 false。
    */
   enableMath?: boolean;
   /**
-   * æ¯å¦è·³è¿ math-ish å®å«ãæ æ¡ä»¶è¯å«ææ `$...$` / `$$...$$` ä¸ºå¬å¼ï¼é»è®¤ falseã
+   * 是否跳过 math-ish 守卫、无条件识别所有 `$...$` / `$$...$$` 为公式，默认 false。
    *
-   * èå¤©é»è®¤è·¯å¾ï¼falseï¼è¯å« `$...$` / `$$...$$`ï¼ä½å¯¹é½ iOS ç¨ math-ish å®å«è¿æ»¤ï¼
-   * åªæåé¨å« `\ ^ _ { }` ä¹ä¸ççæ®µæå½å¬å¼æ¸²æï¼`$100`ã`$5-$10`ã`$HOME` ç­
-   * éé¢/shell åºæ¯ä¿æåæãææ¡£/ç¼è¾å¨ç­ä½èæ¾å¼ä¹¦åå¬å¼çåºæ¯å¯ä¼  true å³æå®å«ï¼
-   * è®© `$a+b$` è¿ç±»æ ç¹æ®å­ç¬¦çç®åå¬å¼ä¹æ¸²æã
+   * 聊天默认路径（false）识别 `$...$` / `$$...$$`，但对齐 iOS 用 math-ish 守卫过滤：
+   * 只有内部含 `\ ^ _ { }` 之一的片段才当公式渲染，`$100`、`$5-$10`、`$HOME` 等
+   * 金额/shell 场景保持原文。文档/编辑器等作者显式书写公式的场景可传 true 关掉守卫，
+   * 让 `$a+b$` 这类无特殊字符的简单公式也渲染。
    */
   allowSingleDollarMath?: boolean;
   /**
-   * æ¯å¦å¯ç¨ Markdown è¯­æ³æ¸²æï¼é»è®¤ trueã
-   * RichText(=14) MVP éçº¯ææ¬ï¼ä¼  false æ¶æçº¯ææ¬æ¸²æï¼ä¿çæ¢è¡/é¾æ¥/emoji/mentionï¼ï¼
-   * ä¸è§£ææ é¢/åè¡¨/è¡¨æ ¼/ä»£ç åç­ markdown è¯­æ³ï¼é¿å web æ¸² markdown èç§»å¨ç«¯ä¸æ¸²çè·¨ç«¯ä¸ä¸è´ã
+   * 是否启用 Markdown 语法渲染，默认 true。
+   * RichText(=14) MVP 锁纯文本：传 false 时按纯文本渲染（保留换行/链接/emoji/mention），
+   * 不解析标题/列表/表格/代码块等 markdown 语法，避免 web 渲 markdown 而移动端不渲的跨端不一致。
    */
   enableMarkdown?: boolean;
 }
 
 /**
- * å¨ GitHub é»è®¤ç½åååºç¡ä¸ï¼è¿½å  highlight.js éè¦ç class å±æ§ã
- * æ§è¡é¡ºåºï¼rehypeHighlight åçè²ï¼å  hljs-* classNameï¼ï¼
- * rehypeSanitize æåååºæ¸æ´ââç½ååéç hljs-* / language-* æçæ­£çæã
- * æ³¨æï¼react-markdown çè¾å¥æ¯ Markdown å­ç¬¦ä¸²ï¼remark ç´æ¥è§£ææå®å¨ ASTï¼
- * ä¸å­å¨æ³¨å¥ HTML çæºä¼ï¼æªå¼å¯ allowDangerousHtmlï¼ï¼æä»¥ highlight åè·ä¸ä¼å¼å¥é£é©ã
+ * 在 GitHub 默认白名单基础上，追加 highlight.js 需要的 class 属性。
+ * 执行顺序：rehypeHighlight 先着色（加 hljs-* className），
+ * rehypeSanitize 最后兜底清洗——白名单里的 hljs-* / language-* 才真正生效。
+ * 注意：react-markdown 的输入是 Markdown 字符串，remark 直接解析成安全 AST，
+ * 不存在注入 HTML 的机会（未开启 allowDangerousHtml），所以 highlight 先跑不会引入风险。
  */
 const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    // æ¾è¡ä»£ç åç language-* classï¼highlight.js å çï¼
+    // 放行代码块的 language-* class（highlight.js 加的）
     code: [
       ...(defaultSchema.attributes?.code ?? []),
       ["className", /^language-/, /^hljs/],
@@ -93,7 +93,7 @@ const sanitizeSchema = {
   },
 };
 
-/** åºç¡ rehype æä»¶ï¼ä¸å« KaTeXï¼ */
+/** 基础 rehype 插件（不含 KaTeX） */
 const baseRehypePlugins: any[] = [
   [rehypeHighlight, { aliases: { json5: "json" }, ignoreMissing: true }],
   [rehypeSanitize, sanitizeSchema],
@@ -105,19 +105,20 @@ const remarkGfmOptions = { singleTilde: false };
  * KaTeX runs after sanitize: user-derived AST is cleaned first, then trusted KaTeX output keeps
  * its required inline styles and MathML structure. Resource limits prevent pathological formulas.
  *
- * â ï¸ Security invariant: because sanitize no longer runs *after* KaTeX, `trust: false` is the only
+ * ⚠️ Security invariant: because sanitize no longer runs *after* KaTeX, `trust: false` is the only
  * thing keeping a formula from emitting raw HTML (e.g. `\href`, `\htmlClass`). Do NOT flip it to
- * true on this shared message path â that would turn arbitrary chat text into an HTML-injection sink.
+ * true on this shared message path — that would turn arbitrary chat text into an HTML-injection sink.
  *
  * Resource bounds (both below KaTeX defaults on purpose, since this renders untrusted chat text):
- *  - `maxSize: 10`  â clamps `\rule` / strut width+height so a single formula can't blow up layout.
- *  - `maxExpand: 100` â caps macro expansion against `\newcommand` bombs. Real formulas
+ *  - `maxSize: 10`  — clamps `\rule` / strut width+height so a single formula can't blow up layout.
+ *  - `maxExpand: 100` — caps macro expansion against `\newcommand` bombs. Real formulas
  *    (`aligned`, `pmatrix`, chained arrows, ~40-term user-macro expansions) stay well under 100;
  *    raise it only if a legitimate formula is observed hitting the cap.
  */
 const mathRehypePlugins: any[] = [
   [rehypeHighlight, { aliases: { json5: "json" }, ignoreMissing: true }],
   [rehypeSanitize, sanitizeSchema],
+  guardMathFencePlugin,
   [
     rehypeKatex,
     { strict: false, throwOnError: false, trust: false, maxSize: 10, maxExpand: 100 },
@@ -125,7 +126,48 @@ const mathRehypePlugins: any[] = [
   katexErrorToTextPlugin,
 ];
 
-/** æå hast èç¹ççº¯ææ¬åå®¹ã */
+/**
+ * ```` ```math ```` 围栏代码块会经 remark-rehype 变成 `<code class="language-math">`，rehype-katex
+ * 会把它当 display 公式直接渲染——绕过 scanner 的长度 / 数量 / 渲染产物上限。这里在 rehype-katex
+ * 之前用同一套 chokepoint 把关：内容需非空 + 含 math-ish + 不超块长上限 + KaTeX 可解析且渲染产物
+ * 不超上限；不满足就摘掉 `language-math` class，退回普通代码块（不进 KaTeX）。
+ */
+function guardMathFencePlugin() {
+  return (tree: any) => {
+    const visit = (node: any) => {
+      if (!node || !Array.isArray(node.children)) return;
+      for (const child of node.children) {
+        if (child?.type === "element" && child.tagName === "code") {
+          const cls = child.properties?.className;
+          const classes = Array.isArray(cls)
+            ? cls
+            : typeof cls === "string"
+            ? cls.split(/\s+/)
+            : [];
+          if (classes.includes("language-math")) {
+            const tex = hastNodeText(child).replace(/\n+$/, "");
+            const ok =
+              tex.trim().length > 0 &&
+              MATH_ISH_CHAR.test(tex) &&
+              tex.length <= MAX_BLOCK_MATH_LEN &&
+              katexAccepts(tex, true);
+            if (!ok) {
+              child.properties = child.properties || {};
+              child.properties.className = classes.filter(
+                (c: string) => c !== "language-math"
+              );
+            }
+            continue;
+          }
+        }
+        visit(child);
+      }
+    };
+    visit(tree);
+  };
+}
+
+/** 提取 hast 节点的纯文本内容。 */
 function hastNodeText(node: any): string {
   if (!node) return "";
   if (node.type === "text") return node.value || "";
@@ -134,9 +176,9 @@ function hastNodeText(node: any): string {
 }
 
 /**
- * KaTeX è§£æå¤±è´¥æ¶ï¼`throwOnError:false` ä¼æ¸²æ `.katex-error` çº¢å­ï¼æè¯¥èç¹éçº§æçº¯ææ¬ï¼
- * é¿åæ®éèå¤©éååºçº¢è²æ¥éãå±ç¤ºå¬å¼æºç åæï¼å»æçº¢è²æ ·å¼ï¼ï¼ä¸ãè¯¯å¹éä¸å¾åè½å°æ­£æã
- * çæ´ä½ç­ç¥ä¸è´ãå®å«å·²æ¡æç»å¤§å¤æ°æ­£æï¼æ­¤å¤åªåä½çè¢«å¤å®ä¸ºå¬å¼å´ KaTeX è§£æå¤±è´¥çå°æ°æåµã
+ * KaTeX 解析失败时（`throwOnError:false` 会渲染 `.katex-error` 红字）把该节点降级成纯文本，
+ * 避免普通聊天里冒出红色报错。展示公式源码原文（去掉红色样式），与「误匹配一律回落到正文」
+ * 的整体策略一致。守卫已挡掉绝大多数正文，此处只兜住真被判定为公式却 KaTeX 解析失败的少数情况。
  */
 function katexErrorToTextPlugin() {
   return (tree: any) => {
@@ -160,7 +202,7 @@ function katexErrorToTextPlugin() {
   };
 }
 
-/** åºç¡ remark æä»¶ï¼ä¸å« mathï¼ */
+/** 基础 remark 插件（不含 math） */
 const baseRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
   [remarkGfm, remarkGfmOptions],
@@ -168,24 +210,26 @@ const baseRemarkPlugins: any[] = [
 ];
 
 /**
- * èå¤©é»è®¤è·¯å¾ï¼ä¸ä½¿ç¨ remark-mathï¼æ¹ç¨èªç çåæ¬¡å·¦å°å³æ«æå¨ {@link mathScanPlugin}
- * ç´æ¥å¨ mdast ææ¬èç¹ä¸è¯å«å¬å¼ãç¸æ¯ãremark-math è´ªå©ªéå¯¹ + äºåè½¬ä¹æºç åéè§£æãï¼
- * æ«æå¨è½ï¼
- *  - éä¸ªåéç¬ç«å¤å®ï¼æç»æ¶åªè·³è¿æ¬ openerï¼åé¢ç `$` ä»è½å¼æ°å¬å¼ï¼â `costs $100 and $E=mc^2$`
- *    éçå¬å¼ä»æ¸²æï¼ä¸ä¼è¢«åé¢çè´§å¸ `$` åæå®çç¬¦ï¼ï¼
- *  - åªæ¹å¨è¢«æ¥åçå¬å¼å­ä¸²ï¼å¶ä½ææ¬ï¼å«å®çç¬¦ / è¿å­ç¬¦ / åææ  / `${VAR}`ï¼100% åæ ·ä¿çï¼
- *  - å¯¹æ¯ä¸ªåéåç¨ KaTeX é¢æ ¡éªï¼è§£æå¤±è´¥å°±æ´ä½æå­é¢ææ¬ä¿çï¼è¿å®çç¬¦ï¼ï¼ä¸äº§ççº¢å­ãä¸ä¸¢å­ç¬¦ã
- * åªå¤ç `text` èç¹ï¼è¡åä»£ç  / ä»£ç åæ¯ç¬ç«èç¹ï¼å¤©ç¶ä¸åå½±åã
- * æ«æå¿é¡»æå¨ remarkBreaks ä¹åï¼å¦å breaks ä¼æåçº§ `$$\nâ¦\n$$` çè½¯æ¢è¡ææå¤ä¸ªèç¹ï¼æ«ä¸å°æ´æ®µã
+ * 聊天默认路径：自研单次左到右扫描器 {@link mathScanPlugin} 直接在 mdast 文本节点上识别公式。
+ * 顺序要点：
+ *  - {@link escapeMaskPlugin} 必须排最前：它在 markdown 解析前把「源码里被反斜杠转义的 `$`」换成
+ *    哨兵字符（代码区不动），从根上稳定保存转义信息，避免解析后再从 source slice 反推（会在实体 /
+ *    软换行 / blockquote 续行处 fail-open，把 `\$` 重新激活成定界符）；
+ *  - mathScanPlugin 在 remarkBreaks 之前：否则 breaks 会把块级 `$$\n…\n$$` 的软换行拆散；
+ *  - {@link restoreSentinelPlugin} 最后把哨兵还原成字面 `$`。
+ * 行内代码 / 代码块是独立节点，天然不被 scanner 触碰。所有进入 KaTeX 的 route（行内 `$`、块级 `$$`、
+ * ```math 围栏）都过同一套长度 / 数量 / 渲染产物上限。
  */
 const mathRemarkPlugins: any[] = [
+  escapeMaskPlugin,
   rawHtmlAsTextPlugin,
   [remarkGfm, remarkGfmOptions],
   mathScanPlugin,
   remarkBreaks,
+  restoreSentinelPlugin,
 ];
 
-/** ææ¡£ / ç¼è¾å¨åºæ¯ï¼æ æ¡ä»¶è¯å«ææ `$...$` / `$$...$$`ï¼ä¸å å®å«ï¼ä½èæ¾å¼ä¹¦åå¬å¼ï¼ã */
+/** 文档 / 编辑器场景：无条件识别所有 `$...$` / `$$...$$`，不加守卫（作者显式书写公式）。 */
 const mathRemarkPluginsSingleDollar: any[] = [
   rawHtmlAsTextPlugin,
   [remarkGfm, remarkGfmOptions],
@@ -193,28 +237,28 @@ const mathRemarkPluginsSingleDollar: any[] = [
   remarkMath,
 ];
 
-/** math-ish åé¨å­ç¬¦ï¼ä¸ iOS WKLaTeXPreprocessor.hasMathChar å®å¨ä¸è´ã */
+/** math-ish 内部字符：与 iOS WKLaTeXPreprocessor.hasMathChar 完全一致。 */
 const MATH_ISH_CHAR = /[\\^_{}]/;
 
 /** CJK / 假名 / 谚文 / 全角标点（含 BMP 外汉字）：无命令的行内候选视为正文。 */
 const CJK_CHAR =
   /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}＀-￯]/u;
 
-/** è¡åå¬å¼åéé¿åº¦ä¸éï¼å¯¹é½ iOS ç blast-radius æ§å¶ã */
+/** 行内公式候选长度上限，对齐 iOS 的 blast-radius 控制。 */
 const MAX_INLINE_MATH_LEN = 200;
 
-/** å¤å­æ¯ TeX å½ä»¤ï¼å¦ \frac \eta \text \sum ââ åºç°å³è§ä¸ºæç¡®çå¬å¼æå¾ã */
+/** 多字母 TeX 命令，如 \frac \eta \text \sum —— 出现即视为明确的公式意图。 */
 const MULTI_LETTER_TEX_CMD = /\\[A-Za-z]{2,}/;
-/** åå­æ¯åææ ï¼\a \b \tâ¦ï¼ï¼æ´å Windows è·¯å¾ / è½¬ä¹ï¼èéè¡å TeX å½ä»¤ã */
+/** 单字母反斜杠（\a \b \t…）：更像 Windows 路径 / 转义，而非行内 TeX 命令。 */
 const SINGLE_LETTER_BACKSLASH = /\\[A-Za-z](?![A-Za-z])/;
 
-/** ä¸æ ï¼`^` åæ¥ group / å­æ¯æ°å­ / å½ä»¤ã */
+/** 上标：`^` 后接 group / 字母数字 / 命令。 */
 const TEX_SUPERSCRIPT = /\^(\{|[A-Za-z0-9]|\\)/;
-/** åå­ç¬¦åºçä¸æ ï¼åºå­ç¬¦åæ¯éå­æ¯æ°å­ï¼æé¤ snake_case çå¤å­æ¯æ®µï¼ï¼`_` åæ¥ group / å­æ¯æ°å­ / å½ä»¤ã */
+/** 单字符底的下标：底字符前是非字母数字（排除 snake_case 的多字母段），`_` 后接 group / 字母数字 / 命令。 */
 const TEX_SINGLE_CHAR_SUBSCRIPT = /(^|[^A-Za-z0-9])[A-Za-z0-9]_(\{|[A-Za-z0-9]|\\)/;
-/** åçº§ display å¬å¼é¿åº¦ä¸éï¼è¿é¿ï¼å¦ 4.8KBï¼KaTeX æ¸²æèæ¶ææ¾ï¼è¶éæææ¬å¤çã */
+/** 块级 display 公式长度上限：过长（如 4.8KB）KaTeX 渲染耗时明显，超限按文本处理。 */
 const MAX_BLOCK_MATH_LEN = 4096;
-/** KaTeX é¢æ ¡éª / æ¸²æéé¡¹ï¼ä¸ rehype-katex ä¸è´ï¼ä» throwOnError æå¼ç¨äºå¤å®ï¼ã */
+/** KaTeX 预校验 / 渲染选项（与 rehype-katex 一致，仅 throwOnError 打开用于判定）。 */
 const KATEX_VALIDATE_OPTS = {
   strict: false,
   throwOnError: true,
@@ -223,7 +267,7 @@ const KATEX_VALIDATE_OPTS = {
   maxExpand: 100,
 };
 
-/** åéåé¨æ¯å¦å«çæ­£ç TeX æé ï¼å¤å­æ¯å½ä»¤ / ä¸æ  / åå­ç¬¦åºä¸æ ï¼ã */
+/** 候选内部是否含真正的 TeX 构造（多字母命令 / 上标 / 单字符底下标）。 */
 function isTeXish(inner: string): boolean {
   return (
     MULTI_LETTER_TEX_CMD.test(inner) ||
@@ -233,26 +277,26 @@ function isTeXish(inner: string): boolean {
 }
 
 /**
- * è¡å `$â¦$` / `$$â¦$$` åéæ¯å¦æå¬å¼æ¥åãä»å«æä¸ª math-ish å­ç¬¦è¿è¿ä¸å¤ââIM æ­£æé
- * `_`ï¼snake_caseï¼ã`\`ï¼è·¯å¾ï¼ã`{}`ï¼`${VAR}` / JSONï¼ã`^`ã`:`ã`/` é½å¾å¸¸è§ãè¿éç¨
- * æ­£å TeX ç½åå + shell/path/prose è´åä¿¡å·åéæå³ï¼æ¯ iOS ç hasMathChar æ´ä¸¥ï¼ï¼
- *  - ä¸è·¨è¡ãé¿åº¦ â¤ 200ãéç©ºãå« math-ishï¼
- *  - æç»ä»¥ `{` å¼å¤´ï¼`${VAR}` / `${A}+${B}` è¿ç±» shell/CI/æ¨¡æ¿æå¼ï¼ï¼
- *  - æç»å« `/` `:`ï¼è·¯å¾ / URL / env / æ¯å¼ï¼ãåå­æ¯åææ  `\a`/`\b`ï¼è·¯å¾ / è½¬ä¹ï¼ï¼
- *  - å `$â¦$` è¦æ±å®çç¬¦ä¸¤ä¾§ç´§è´´éç©ºç½ï¼Pandocï¼ï¼`$$â¦$$` åè®¸ paddingï¼
- *  - å¿é¡»å«çæ­£ TeX æé ï¼æ å¤å­æ¯å½ä»¤æ¶åæç» CJK / â¥2 ä¸ªè¯å½¢ tokenï¼`for my var`ã`HOME DIR`ï¼ã
- * åèï¼æ å½ä»¤ççº¯ CJK è¡åå¬å¼ï¼`$éé¢_x$`ï¼ä¸æ¸²æï¼å«å½ä»¤ç `$v_{\text{å¹³å}}$` æ­£å¸¸æ¸²æã
+ * 行内 `$…$` / `$$…$$` 候选是否按公式接受。仅含某个 math-ish 字符远远不够——IM 正文里
+ * `_`（snake_case）、`\`（路径）、`{}`（`${VAR}` / JSON）、`^`、`:`、`/` 都很常见。这里用
+ * 正向 TeX 白名单 + shell/path/prose 负向信号双重把关（比 iOS 的 hasMathChar 更严）：
+ *  - 不跨行、长度 ≤ 200、非空、含 math-ish；
+ *  - 拒绝以 `{` 开头（`${VAR}` / `${A}+${B}` 这类 shell/CI/模板插值）；
+ *  - 拒绝含 `/` `:`（路径 / URL / env / 比值）、单字母反斜杠 `\a`/`\b`（路径 / 转义）；
+ *  - 单 `$…$` 要求定界符两侧紧贴非空白（Pandoc）；`$$…$$` 允许 padding；
+ *  - 必须含真正 TeX 构造；无多字母命令时再拒绝 CJK / ≥2 个词形 token（`for my var`、`HOME DIR`）。
+ * 取舍：无命令的纯 CJK 行内公式（`$金额_x$`）不渲染；含命令的 `$v_{\text{平均}}$` 正常渲染。
  */
 function isAcceptableInlineMath(inner: string, isDouble: boolean): boolean {
   if (/[\r\n]/.test(inner)) return false;
   if (inner.length > MAX_INLINE_MATH_LEN) return false;
   const core = inner.trim();
   if (core.length === 0) return false;
-  if (core.startsWith("{")) return false; // ${VAR} / ${A}+${B} shell/æ¨¡æ¿æå¼
+  if (core.startsWith("{")) return false; // ${VAR} / ${A}+${B} shell/模板插值
   if (!MATH_ISH_CHAR.test(core)) return false;
-  if (/[/:]/.test(core)) return false; // è·¯å¾ / URL / env / æ¯å¼
-  if (SINGLE_LETTER_BACKSLASH.test(core)) return false; // \a \b â è·¯å¾ / è½¬ä¹
-  if (!isDouble && (/^\s/.test(inner) || /\s$/.test(inner))) return false; // Pandoc é»æ¥
+  if (/[/:]/.test(core)) return false; // 路径 / URL / env / 比值
+  if (SINGLE_LETTER_BACKSLASH.test(core)) return false; // \a \b → 路径 / 转义
+  if (!isDouble && (/^\s/.test(inner) || /\s$/.test(inner))) return false; // Pandoc 邻接
   if (!isTeXish(core)) return false;
   if (!MULTI_LETTER_TEX_CMD.test(core)) {
     if (CJK_CHAR.test(core)) return false;
@@ -262,7 +306,7 @@ function isAcceptableInlineMath(inner: string, isDouble: boolean): boolean {
   return true;
 }
 
-/** KaTeX è½å¦è§£æè¯¥å¬å¼ï¼é¢æ ¡éªï¼å¤±è´¥åæ´ä½æå­é¢ææ¬ä¿çï¼ä¸äº§ççº¢å­ãä¸ä¸¢å®çç¬¦ï¼ã */
+/** KaTeX 能否解析该公式（预校验：失败则整体按字面文本保留，不产生红字、不丢定界符）。 */
 function katexAccepts(inner: string, displayMode: boolean): boolean {
   try {
     const html = katex.renderToString(inner, {
@@ -297,32 +341,97 @@ function isAnchoredDisplay(text: string, openIdx: number, closeIdx: number): boo
   return openerAtLineStart && closerAtLineEnd;
 }
 
-/**
- * 找出 value 里「源码中被反斜杠转义」的 `$` 下标（value 空间）。CommonMark 已把 `\$` 折叠成 `$`，
- * 纯扫 value 会把用户的 in-band escape hatch（`literal \$x_1\$`）重新当成定界符。这里用文本节点
- * 源码切片与 value 并行游走还原转义信息；遇实体等无法对齐时返回 null（安全降级，不误标转义）。
- */
-function findEscapedDollars(raw: string, value: string): Set<number> | null {
-  const escaped = new Set<number>();
-  const isPunct = (c: string) => /[!-/:-@[-`{-~]/.test(c);
-  let ri = 0;
-  let vi = 0;
-  while (ri < raw.length && vi < value.length) {
-    if (raw[ri] === "\\" && ri + 1 < raw.length && isPunct(raw[ri + 1])) {
-      if (value[vi] !== raw[ri + 1]) return null;
-      if (raw[ri + 1] === "$") escaped.add(vi);
-      ri += 2;
-      vi += 1;
-    } else {
-      if (value[vi] !== raw[ri]) return null;
-      ri += 1;
-      vi += 1;
-    }
+/** 私用区哨兵：代表「源码里被转义的 `$`」，扫描器视其为普通字符，最后再还原成字面 `$`。 */
+const MATH_ESCAPE_SENTINEL = "\uE000";
+
+/** 收集 code / inlineCode 节点的源码区间（转义遮罩时跳过，代码里的 `\$` 原样保留）。 */
+function collectCodeRanges(node: any, ranges: Array<[number, number]>): void {
+  if (!node) return;
+  if (node.type === "code" || node.type === "inlineCode") {
+    const s = node.position?.start?.offset;
+    const e = node.position?.end?.offset;
+    if (typeof s === "number" && typeof e === "number") ranges.push([s, e]);
+    return;
   }
-  return vi === value.length ? escaped : null;
+  if (Array.isArray(node.children)) {
+    for (const c of node.children) collectCodeRanges(c, ranges);
+  }
 }
 
-/** æé  mdast å¬å¼èç¹ï¼å¸¦ remark-rehype äº¤æ¥æéç hName/hProperties/hChildrenï¼ä¾ rehype-katex æ¸²æã */
+/** 把源码里（代码区外）被反斜杠转义的 `$` 换成哨兵；奇偶反斜杠计数区分 `\$`（转义）与 `\\$`（字面反斜杠+活 `$`）。 */
+function maskEscapedDollars(
+  source: string,
+  ranges: Array<[number, number]>
+): string {
+  const inCode = (off: number) =>
+    ranges.some(([s, e]) => off >= s && off < e);
+  const n = source.length;
+  let out = "";
+  let i = 0;
+  while (i < n) {
+    if (source[i] === "\\") {
+      let k = i;
+      while (k < n && source[k] === "\\") k += 1;
+      const runLen = k - i;
+      if (source[k] === "$" && runLen % 2 === 1 && !inCode(k)) {
+        out += "\\".repeat(runLen - 1) + MATH_ESCAPE_SENTINEL;
+        i = k + 1;
+        continue;
+      }
+      out += source.slice(i, k);
+      i = k;
+      continue;
+    }
+    out += source[i];
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * 在 markdown 解析前稳定保存转义信息：把源码里（代码区外）被反斜杠转义的 `$` 换成哨兵，再用同一
+ * processor 重新解析整篇。转义信息直接来自原始源码（看得到反斜杠），代码区间来自首次解析的 code
+ * 节点——不依赖解析后从 source slice 反推（那在实体 / 软换行 / blockquote 续行处会 fail-open）。
+ */
+function escapeMaskPlugin(this: any) {
+  const processor = this;
+  return (tree: any, file: any) => {
+    const source: string =
+      typeof file?.value === "string" ? file.value : String(file ?? "");
+    if (source.indexOf("\\$") === -1 || typeof processor?.parse !== "function") {
+      return;
+    }
+    const ranges: Array<[number, number]> = [];
+    collectCodeRanges(tree, ranges);
+    const masked = maskEscapedDollars(source, ranges);
+    if (masked === source) return;
+    const reparsed = processor.parse(masked);
+    tree.children = reparsed.children;
+  };
+}
+
+/** 把哨兵还原成字面 `$`（在 scanner 之后运行，确保被转义的 `$` 只作字面文本）。 */
+function restoreSentinelPlugin() {
+  return (tree: any) => {
+    const visit = (node: any) => {
+      if (!node || !Array.isArray(node.children)) return;
+      for (const child of node.children) {
+        if (
+          child?.type === "text" &&
+          typeof child.value === "string" &&
+          child.value.indexOf(MATH_ESCAPE_SENTINEL) !== -1
+        ) {
+          child.value = child.value.split(MATH_ESCAPE_SENTINEL).join("$");
+        } else {
+          visit(child);
+        }
+      }
+    };
+    visit(tree);
+  };
+}
+
+/** 构造 mdast 公式节点，带 remark-rehype 交接所需的 hName/hProperties/hChildren，供 rehype-katex 渲染。 */
 function makeMathNode(inner: string, display: boolean): any {
   return {
     type: display ? "math" : "inlineMath",
@@ -338,15 +447,11 @@ function makeMathNode(inner: string, display: boolean): any {
 }
 
 /**
- * åæ¬¡å·¦å°å³æ«æä¸æ®µææ¬ï¼è¯å« `$â¦$` / `$$â¦$$` å¬å¼ï¼è¿å mdast èç¹åºåï¼text / inlineMath / mathï¼ã
- * å³é®ï¼åéè¢«æç»æ¶åªè·³è¿æ¬ openerï¼åç§» openLenï¼ï¼åç»­ `$` ä»å¯å¼æ°åéââå æ­¤è´§å¸ `$100`
- * ä¸ä¼åæåé¢ `$E=mc^2$` çå®çç¬¦ï¼è¢«æç»çå®çç¬¦ä¸ææ¬ 100% åæ ·ä¿çã
+ * 单次左到右扫描一段文本，识别 `$…$` / `$$…$$` 公式，返回 mdast 节点序列（text / inlineMath / math）。
+ * 关键：候选被拒绝时只跳过本 opener（前移 openLen），后续 `$` 仍可开新候选——因此货币 `$100`
+ * 不会吃掉后面 `$E=mc^2$` 的定界符；被拒绝的定界符与文本 100% 原样保留。
  */
-function scanTextForMath(
-  text: string,
-  escaped: Set<number> | null,
-  ctx: { count: number }
-): any[] {
+function scanTextForMath(text: string, ctx: { count: number }): any[] {
   const out: any[] = [];
   let buf = "";
   const flush = () => {
@@ -358,30 +463,25 @@ function scanTextForMath(
   const n = text.length;
   let i = 0;
   while (i < n) {
-    if (text[i] !== "$" || escaped?.has(i)) {
+    if (text[i] !== "$") {
       buf += text[i];
       i += 1;
       continue;
     }
-    const isDouble = text[i + 1] === "$" && !escaped?.has(i + 1);
+    const isDouble = text[i + 1] === "$";
     const openLen = isDouble ? 2 : 1;
     let close = -1;
     let j = i + openLen;
     while (j < n) {
       if (isDouble) {
-        if (
-          text[j] === "$" &&
-          text[j + 1] === "$" &&
-          !escaped?.has(j) &&
-          !escaped?.has(j + 1)
-        ) {
+        if (text[j] === "$" && text[j + 1] === "$") {
           close = j;
           break;
         }
-        if (text[j] === "\n" && text[j + 1] === "\n") break; // ä¸è·¨ç©ºè¡
+        if (text[j] === "\n" && text[j + 1] === "\n") break; // 不跨空行
       } else {
-        if (text[j] === "\n") break; // å $ ä¸è·¨è¡
-        if (text[j] === "$" && !escaped?.has(j)) {
+        if (text[j] === "\n") break; // 单 $ 不跨行
+        if (text[j] === "$") {
           close = j;
           break;
         }
@@ -392,7 +492,7 @@ function scanTextForMath(
       const inner = text.slice(i + openLen, close);
       const hasNewline = inner.indexOf("\n") !== -1;
       const display =
-        isDouble && hasNewline && isAnchoredDisplay(text, i, close); // $$ è·¨è¡ â display blockï¼å¦åè¡å
+        isDouble && hasNewline && isAnchoredDisplay(text, i, close); // $$ 跨行 → display block；否则行内
       let accept: boolean;
       if (display) {
         accept =
@@ -420,7 +520,7 @@ function scanTextForMath(
         continue;
       }
     }
-    // æç»ï¼å®çç¬¦æå­é¢ææ¬ï¼åªåç§» openLenï¼åé¢ç `$` ä»è½å¼æ°åé
+    // 拒绝：定界符按字面文本，只前移 openLen，后面的 `$` 仍能开新候选
     buf += text.slice(i, i + openLen);
     i += openLen;
   }
@@ -429,13 +529,11 @@ function scanTextForMath(
 }
 
 /**
- * èªç å¬å¼æ«ææä»¶ï¼æ¿ä»£èå¤©è·¯å¾ç remark-mathï¼ãéå mdastï¼å¯¹æ¯ä¸ªå« `$` ç `text` èç¹è·
- * {@link scanTextForMath}ï¼æè¯å«åºçå¬å¼ææ inlineMath/math èç¹ãå¿é¡»å¨ remarkBreaks ä¹åè¿è¡ã
+ * 自研公式扫描插件（替代聊天路径的 remark-math）。遍历 mdast，对每个含 `$` 的 `text` 节点跑
+ * {@link scanTextForMath}，把识别出的公式拆成 inlineMath/math 节点。必须在 remarkBreaks 之前运行。
  */
 function mathScanPlugin() {
-  return (tree: any, file: any) => {
-    const source: string =
-      typeof file?.value === "string" ? file.value : String(file ?? "");
+  return (tree: any) => {
     const ctx = { count: 0 };
     const visit = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
@@ -446,15 +544,7 @@ function mathScanPlugin() {
           typeof child.value === "string" &&
           child.value.indexOf("$") !== -1
         ) {
-          const s = child.position?.start?.offset;
-          const e = child.position?.end?.offset;
-          const raw =
-            typeof s === "number" && typeof e === "number"
-              ? source.slice(s, e)
-              : null;
-          const escaped =
-            raw != null ? findEscapedDollars(raw, child.value) : null;
-          const parts = scanTextForMath(child.value, escaped, ctx);
+          const parts = scanTextForMath(child.value, ctx);
           if (parts.some((p) => p.type === "inlineMath" || p.type === "math")) {
             next.push(...parts);
           } else {
@@ -488,18 +578,18 @@ function rawHtmlAsTextPlugin() {
 }
 
 /**
- * çº¯ææ¬æ¨¡å¼ï¼enableMarkdown=falseï¼æä»¶ï¼
- *   - remark åªä¿ç remarkBreaksï¼æ¢è¡è½¬ <br>ï¼ï¼ä¸å¯ç¨ gfmï¼é¿å markdown è¯­æ³è§£æï¼
- *   - rehype åªä¿ç sanitize ååºæ¸æ´ã
- * éå escapeMarkdown è½¬ä¹ï¼æç»æçº¯ææ¬æ¸²æï¼ä¸ç§»å¨ç«¯ãä¸æ¸² markdownãå¯¹é½ï¼ã
+ * 纯文本模式（enableMarkdown=false）插件：
+ *   - remark 只保留 remarkBreaks（换行转 <br>），不启用 gfm，避免 markdown 语法解析；
+ *   - rehype 只保留 sanitize 兜底清洗。
+ * 配合 escapeMarkdown 转义，最终按纯文本渲染（与移动端「不渲 markdown」对齐）。
  */
 const plainRemarkPlugins: any[] = [remarkBreaks];
 const plainRehypePlugins: any[] = [[rehypeSanitize, sanitizeSchema]];
 
 /**
- * è½¬ä¹ markdown è¯­æ³å­ç¬¦ï¼ä½¿åå®¹æçº¯ææ¬æ¸²æï¼
- * åææ è½¬ä¹å react-markdown æ¸²ææ¶ä¼è¿åä¸ºåå­ç¬¦ï¼ä¸æ¾ç¤ºåææ ï¼ï¼
- * ä»èç¦ç¨æ é¢/å ç²/åè¡¨/ä»£ç å/è¡¨æ ¼/é¾æ¥ç­ä¸å markdown è¯­æ³ã
+ * 转义 markdown 语法字符，使内容按纯文本渲染：
+ * 反斜杠转义后 react-markdown 渲染时会还原为原字符（不显示反斜杠），
+ * 从而禁用标题/加粗/列表/代码块/表格/链接等一切 markdown 语法。
  */
 function escapeMarkdown(raw: string): string {
   return raw.replace(/[\\`*_{}[\]()#+\-.!>|~]/g, "\\$&");
@@ -521,13 +611,13 @@ function escapeMarkdownPreservingSafeLinks(raw: string): string {
 }
 
 /**
- * é¢å¤ç Markdown åå®¹ï¼
- * æç¬å ä¸è¡ç --- / === è¡¥åååç©ºè¡ï¼é¿åè¢«è§£ææ setext æ é¢ï¼h2/h1ï¼ã
- * è·³è¿ fenced code blockï¼```...```ï¼åçåå®¹ï¼é¿åè¯¯å¤ç YAML ç­ä»£ç ä¸­çåéçº¿ã
+ * 预处理 Markdown 内容：
+ * 把独占一行的 --- / === 补充前后空行，避免被解析成 setext 标题（h2/h1）。
+ * 跳过 fenced code block（```...```）内的内容，避免误处理 YAML 等代码中的分隔线。
  */
 function normalizeContent(raw: string): string {
-  // æå­ç¬¦ä¸²æ fenced code block ååï¼
-  // å¥æ°ç´¢å¼ = ä»£ç ååå®¹ï¼ä¿æåæ ·ï¼ï¼å¶æ°ç´¢å¼ = æ®éææ¬ï¼éè¦å¤çï¼
+  // 把字符串按 fenced code block 切分：
+  // 奇数索引 = 代码块内容（保持原样），偶数索引 = 普通文本（需要处理）
   const parts = raw.split(/(```[\s\S]*?```)/g);
   const processed = parts.map((part, i) => {
     if (i % 2 === 1) return part;
@@ -553,7 +643,7 @@ function segmentText(
     return [{ type: "text", content: text }];
   }
 
-  // åå¹¶ mention å emojiï¼æ key/name é¿åº¦éåºæåï¼é²æ­¢ç­ key æåå¹éï¼
+  // 合并 mention 和 emoji，按 key/name 长度降序排列（防止短 key 提前匹配）
   type Token =
     | { kind: "mention"; name: string; uid: string }
     | { kind: "emoji"; key: string; url: string };
@@ -696,7 +786,7 @@ const streamingBaseComponents: any = {
 /**
  * Flatten a React child into its plain text (strings + nested string arrays only). Used to read the
  * visible label of a bold/link run for the forward-card structure check; non-string nodes (nested
- * elements) contribute nothing, which is fine â a real forward title/anchor is a plain string.
+ * elements) contribute nothing, which is fine — a real forward title/anchor is a plain string.
  */
 function plainText(children: React.ReactNode): string {
   if (typeof children === "string") return children;
@@ -708,7 +798,7 @@ function plainText(children: React.ReactNode): string {
  * Paragraph renderer with the AC-13b forward-card title clamp (contract 5 structure heuristic).
  *
  * Safe passthrough for EVERY other message: it only adds the 2-line-clamp class + `title` tooltip
- * when the paragraph is exactly the forwarded-doc shape (leading bold title + a link â detected via
+ * when the paragraph is exactly the forwarded-doc shape (leading bold title + a link — detected via
  * {@link isForwardDocCard}). Anything else renders as a plain `<p>` unchanged, so no existing
  * message's bold text is affected. The full title lives in the `title` attribute so PC hover /
  * mobile tap still reveals it in full while the visible text is clamped to 2 lines.
@@ -745,7 +835,7 @@ function renderParagraph(
       const cprops = c.props as any;
       // Read the title text array-safely: react-markdown 8.x always hands `strong` an ARRAY of
       // children (e.g. ["Quarterly plan"]), never a bare string, so the old
-      // `typeof children === "string"` guard left `full` undefined â no `title` attribute â the
+      // `typeof children === "string"` guard left `full` undefined → no `title` attribute → the
       // hover tooltip silently vanished (XIN-450 P1). plainText() flattens the string/array/nested
       // shapes the same way the forward-card detector above does; `|| undefined` keeps the attribute
       // absent (rather than an empty `title=""`) when there is no text.
@@ -771,10 +861,10 @@ function renderParagraph(
 }
 
 /**
- * Markdown / RichText æ­£æåèå¾çï¼
- *  - url å®å¨æ ¡éªï¼ä» http/httpsï¼æ¡ data:/javascript:/file: ç­ï¼ï¼ä¸å®å¨åéçº§ä¸ºææ¬å ä½ï¼
- *  - ç¹å»å¤ç¨ ImageCell çå¤§å¾é¢è§ä¸åºé¨å·¥å·æ ï¼
- *  - src ç» datasource å¤çï¼ä¸å¶å®å¾çæ¸²æè·¯å¾è¡¥å¨ base URL ä¿æä¸è´ã
+ * Markdown / RichText 正文内联图片：
+ *  - url 安全校验（仅 http/https，挡 data:/javascript:/file: 等），不安全则降级为文本占位；
+ *  - 点击复用 ImageCell 的大图预览与底部工具栏；
+ *  - src 经 datasource 处理，与其它图片渲染路径补全 base URL 保持一致。
  */
 const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
   src,
@@ -782,10 +872,10 @@ const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
 }) => {
   const [open, setOpen] = useState(false);
   if (!src) return null;
-  // ç» datasource è§£æï¼è¡¥å¨ base URL / ç¸å¯¹è·¯å¾æ¹åï¼ï¼ä¸ ImageCell ä¸è´ã
+  // 经 datasource 解析（补全 base URL / 相对路径改写），与 ImageCell 一致。
   const resolved =
     WKApp.dataSource?.commonDataSource?.getImageURL?.(src) || src;
-  // å®å¨æ ¡éªï¼è§£æåå¿é¡»æ¯ http/https ç»å¯¹å°åï¼å¦åéçº§ä¸ºçº¯ææ¬å ä½ï¼ç»ä¸æ¸²æã
+  // 安全校验：解析后必须是 http/https 绝对地址，否则降级为纯文本占位，绝不渲染。
   if (!isSafeUrl(resolved)) {
     return (
       <span className="wk-markdown-img-unsafe">
@@ -813,8 +903,8 @@ const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
 };
 
 /**
- * éå½å¤ç React childrenï¼å°å¹é emoji/mention çææ¬èç¹æ¿æ¢ä¸ºå¯¹åºç React åç´ ã
- * å¨ ReactMarkdown æ¸²æåçç»ä»¶æ ä¸å·¥ä½ï¼ä¸ä¼ç ´åè¡¨æ ¼ç­åçº§ markdown ç»æã
+ * 递归处理 React children，将匹配 emoji/mention 的文本节点替换为对应的 React 元素。
+ * 在 ReactMarkdown 渲染后的组件树上工作，不会破坏表格等块级 markdown 结构。
  */
 function processTextChildren(
   children: React.ReactNode,
@@ -856,10 +946,10 @@ function processTextChildren(
     }
     if (React.isValidElement(child)) {
       const childProps = child.props as any;
-      // KaTeX æ¸²æè¾åºï¼.katex / .katex-display åå¶åé¨ MathMLãapplication/x-tex
-      // annotationï¼ä¸ååä¸å mention/emoji åæ®µï¼å¦åä¼æ mention <span>ï¼å« onClickï¼
-      // æ emoji <img> æè¿ MathML ç <mtext> ä¸ TeX annotationï¼äº§çæ æ MathMLã
-      // æ±¡æ copy-as-LaTeX ä¸æ éç¢è¯»å±ãå¬å¼åé¨ç `@åå­` / `[emoji]` åºä¿æå¬å¼åæã
+      // KaTeX 渲染输出（.katex / .katex-display 及其内部 MathML、application/x-tex
+      // annotation）不再向下做 mention/emoji 分段：否则会把 mention <span>（含 onClick）
+      // 或 emoji <img> 插进 MathML 的 <mtext> 与 TeX annotation，产生无效 MathML、
+      // 污染 copy-as-LaTeX 与无障碍读屏。公式内部的 `@名字` / `[emoji]` 应保持公式原文。
       const className =
         typeof childProps.className === "string" ? childProps.className : "";
       if (className.split(/\s+/).some((c) => c.startsWith("katex"))) {
@@ -981,7 +1071,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     isStreaming,
   ]);
 
-  // æ ¹æ®æ¯å¦å¯ç¨æ°å­¦å¬å¼ / markdown éæ©æä»¶
+  // 根据是否启用数学公式 / markdown 选择插件
   const remarkPlugins = !enableMarkdown
     ? plainRemarkPlugins
     : enableMath
