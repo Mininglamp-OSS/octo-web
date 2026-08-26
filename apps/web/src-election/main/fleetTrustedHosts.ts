@@ -23,6 +23,16 @@ export function normalizeTrustedHost(value: unknown): string | null {
     ) {
       return null;
     }
+    // WHATWG URL drops a scheme-default port (https://x:443 → host "x"),
+    // but the caller's URL may have carried that port under a different
+    // scheme (http://x:443 → host "x:443"). Trust keys must preserve every
+    // explicit port, otherwise approval of http://x:443 silently widens to
+    // bare x after a restart. Re-append an explicit trailing port when
+    // normalization stripped it.
+    const explicitPort = /:(\d+)$/.exec(raw);
+    if (explicitPort && !parsed.port) {
+      return `${parsed.hostname}:${explicitPort[1]}`;
+    }
     return parsed.host;
   } catch {
     return null;

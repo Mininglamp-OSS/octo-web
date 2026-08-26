@@ -430,8 +430,11 @@ function writeFleetTrustedHosts(hosts: Iterable<unknown>): void {
   writeTrustedHostsFile(fleetTrustedHostsPath(), hosts);
 }
 
-function rememberFleetTrustedHost(host: string): void {
-  addFleetTrustedHost(fleetTrustedHostsPath(), host);
+function rememberFleetTrustedHost(host: string): string {
+  const canonical = normalizeTrustedHost(host);
+  if (!canonical) throw new Error("invalid trusted host");
+  addFleetTrustedHost(fleetTrustedHostsPath(), canonical);
+  return canonical;
 }
 
 function removeFleetTrustedHostFromStore(host: string): string[] {
@@ -441,12 +444,20 @@ function removeFleetTrustedHostFromStore(host: string): string[] {
 function registerTrustedDomainsSettingsHandlers(): void {
   ipcMain.handle(IPC_TRUSTED_DOMAINS_GET, (event) => {
     if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
-    return readFleetTrustedHosts();
+    // Built-in seeds are not shown: they cannot be revoked and would only
+    // confuse the user if a remove button were offered for them.
+    return readFleetTrustedHosts().filter((host) => !isBuiltInTrustSeed(host));
   });
   ipcMain.handle(IPC_TRUSTED_DOMAIN_REMOVE, (event, host: unknown) => {
     if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
     const normalizedHost = normalizeTrustedHost(host);
     if (!normalizedHost) throw new Error("invalid trusted host");
+    // Provenance-aware: a host that is still covered by a built-in seed
+    // (static allowlist / API origin) is never revocable — neither from the
+    // persisted file nor from the live in-memory set.
+    if (isBuiltInTrustSeed(normalizedHost)) {
+      return readFleetTrustedHosts();
+    }
     const hosts = removeFleetTrustedHostFromStore(normalizedHost);
     trustedOrigins?.delete(normalizedHost);
     return hosts;
@@ -508,6 +519,23 @@ function isTrustedOrigin(host: string): boolean {
   return getTrustedOrigins().has(host);
 }
 
+/**
+ * Built-in trust seeds (static allowlist / API origin) are not user-managed:
+ * they must never appear in the trusted-domains list, and a remove request
+ * must never be able to revoke them from the live set.
+ */
+function isBuiltInTrustSeed(host: string): boolean {
+  if (STATIC_FLEET_PREVIEW_HOSTS.has(host)) return true;
+  if (OIDC_API_ORIGIN) {
+    try {
+      if (new URL(OIDC_API_ORIGIN).host === host) return true;
+    } catch {
+      // ignore malformed origin
+    }
+  }
+  return false;
+}
+
 // One prompt per URL at a time: rapid clicks (or several unknown-host
 // links clicked in succession) would otherwise stack independent native
 // modals, and concurrent rememberFleetTrustedHost writes race on the same
@@ -564,8 +592,11 @@ async function confirmOpenExternalInBrowser(
     if (response === 0) {
       if (checkboxChecked) {
         try {
-          rememberFleetTrustedHost(host);
-          trustedOrigins.add(host);
+          // Persist and seed the in-memory set with the SAME canonical key,
+          // otherwise the settings page lists one key while the live trust
+          // holds another, and removal silently fails for this session.
+          const canonical = rememberFleetTrustedHost(host);
+          trustedOrigins.add(canonical);
         } catch {
           // A storage failure must not convert the user's explicit 允许 into
           // a reject: degrade to "trusted for this click, not remembered".

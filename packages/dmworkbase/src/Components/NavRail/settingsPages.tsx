@@ -10,7 +10,8 @@ import { updateUserLanguagePreference } from "../../Service/UserLanguageService"
 import { i18n, t } from "../../i18n";
 import { Locale } from "../../i18n/types";
 import type { SettingsItem } from "./settingsRegistry";
-import { createDesktopSettingsAdapter, createDownloadSettingsAdapter, createKeepAwakeAdapter, createNotificationAdapter, createTrustedDomainsAdapter, type DesktopSettings, type DownloadSettings } from "../../Runtime/adapters";
+import type { VersionCheckResult } from "../../Utils/versionChecker";
+import { createDesktopSettingsAdapter, createDownloadSettingsAdapter, createKeepAwakeAdapter, createNotificationAdapter, type DesktopSettings, type DownloadSettings } from "../../Runtime/adapters";
 import SettingsStatusTag from "./SettingsStatusTag";
 import { MeInfo } from "../MeInfo";
 import octoLogo from "../../assets/settings-center/octo-logo.png";

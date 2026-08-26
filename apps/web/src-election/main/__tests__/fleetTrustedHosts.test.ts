@@ -18,7 +18,10 @@ describe("normalizeTrustedHost", () => {
   });
 
   it("normalizes an explicit default port away", () => {
-    expect(normalizeTrustedHost("example.com:443")).toBe("example.com");
+    expect(normalizeTrustedHost("example.com:443")).toBe("example.com:443");
+    expect(normalizeTrustedHost("[::1]:443")).toBe("[::1]:443");
+    expect(normalizeTrustedHost("example.com:80")).toBe("example.com:80");
+    expect(normalizeTrustedHost("onprem.example:8443")).toBe("onprem.example:8443");
   });
 
   it("rejects non-host strings", () => {
@@ -91,12 +94,22 @@ describe("fleetTrustedHosts store", () => {
     expect(readFleetTrustedHosts(filePath)).toEqual(["onprem.example:8443"]);
   });
 
-  it("keeps the port in the identity: removing the bare host does not remove the ported one", () => {
+  it("preserves the port in the identity: removing the bare host does not remove the ported one", () => {
     addFleetTrustedHost(filePath, "onprem.example:8443");
     expect(removeFleetTrustedHost(filePath, "onprem.example")).toEqual([
       "onprem.example:8443",
     ]);
     expect(readFleetTrustedHosts(filePath)).toEqual(["onprem.example:8443"]);
+  });
+
+  it("regression: an explicit :443 survives normalization (review P1-1)", () => {
+    // http://x.example:443 has URL.host "x.example:443"; re-normalizing that
+    // key must not silently widen trust to bare "x.example".
+    expect(normalizeTrustedHost("x.example:443")).toBe("x.example:443");
+    addFleetTrustedHost(filePath, "x.example:443");
+    expect(readFleetTrustedHosts(filePath)).toEqual(["x.example:443"]);
+    expect(removeFleetTrustedHost(filePath, "x.example:443")).toEqual([]);
+    expect(readFleetTrustedHosts(filePath)).toEqual([]);
   });
 
   it("removing an absent host is a no-op without rewriting the file", () => {
