@@ -1548,7 +1548,11 @@ export default class ConversationVM extends ProviderListener {
         if (finalTextWrap.send) return // 自己发的文本不触发
         if (finalTextWrap.message.streamNo) return // 流式分片非 final（正常已在上游早退，双保险）
         const text = (finalTextWrap.content as MessageText)?.text
-        if (!text || !text.trim()) return
+        // 严格类型保护：SDK MessageText.decodeJSON 不校验 content["content"] 类型，若 type=1
+        // payload 的 content 是 number/object/array，text 会是非字符串且 truthy，直接 .trim()
+        // 会抛 TypeError。本 hook 跑在 appendMessage/refreshMessages 之前、绕过 #465 畸形文本
+        // 归一化，且 SDK listener 无 error boundary——抛出会导致该消息不入会话并中断后续 listener。
+        if (typeof text !== "string" || !text.trim()) return
         const senderId = finalTextWrap.fromUID
         if (!senderId) return
 

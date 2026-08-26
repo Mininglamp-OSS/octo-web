@@ -32,6 +32,7 @@ vi.mock("../../../App", () => ({
         config: { pageSizeOfMessage: 30 },
         dataSource: { channelDataSource: { subscribers: () => Promise.resolve([]) } },
         mittBus: { on: () => {}, off: () => {} },
+        endpointManager: { setMethod: () => {}, removeMethod: () => {} },
         emojiService: { getImage: () => undefined },
         conversationProvider: {
             markConversationUnread: () => Promise.resolve(),
@@ -76,6 +77,23 @@ vi.mock("../../../Service/ProhibitwordsService", () => ({
     ProhibitwordsService: {
         shared: { filter: (text: unknown) => (typeof text === "string" ? text : ""), getProhibitwords: () => [] },
     },
+}))
+// didMount 装配 messageListener 时会连带初始化频道信息/成员同步等无关运行时；mock 掉
+// im-runtime 桥接，避免真实 SDK 的 provider 回调在异步链里抛未处理 rejection（与 ingest 无关）。
+vi.mock("../../../im-runtime/channelRuntime", () => ({
+    addImChannelInfoListener: () => () => {},
+    addImSubscriberChangeListener: () => () => {},
+    fetchImChannelInfo: () => Promise.resolve(undefined),
+    getImChannelInfo: () => undefined,
+    getImChannelSubscribers: () => [],
+    notifyImSubscriberChangeListeners: () => {},
+    setImChannelSubscribersCache: () => {},
+    syncImChannelSubscribers: () => {},
+}))
+vi.mock("../../../im-runtime/connectStatus", () => ({
+    addImConnectStatusListener: () => {},
+    handleImReconnectRefresh: () => {},
+    removeImConnectStatusListener: () => {},
 }))
 
 import ConversationVM from "../vm"
@@ -142,6 +160,28 @@ function makeFinalTextWrap(): MessageWrap {
     message.remoteExtra = new MessageExtra()
     message.content = new MessageText("任务战报：全部完成")
     return new MessageWrap(message)
+}
+
+/**
+ * 造一条 `content` 为非字符串的 type=1 消息（raw Message，用于跑真实 listener 路径）。
+ * 模拟 SDK `MessageText.decodeJSON` 未校验 `content["content"]` 类型时的畸形 payload：
+ * 服务端下发 number/object/array，`text` 非字符串却 truthy。
+ */
+function makeNonStringTextMessage(rawText: unknown): Message {
+    const message = new Message()
+    message.messageID = "bad-text-1"
+    message.messageSeq = 3
+    message.clientMsgNo = "bad-text-1"
+    message.timestamp = 300
+    message.fromUID = SENDER
+    message.channel = channel
+    message.status = MessageStatus.Normal
+    message.remoteExtra = new MessageExtra()
+    const content = new MessageText("placeholder")
+    // 绕过构造器类型：模拟 decodeJSON 把 content["content"] 直接赋给 text。
+    ;(content as unknown as { text: unknown }).text = rawText
+    message.content = content
+    return message
 }
 
 /** 建 VM，塞入一张卡 + 触发 final text 兜底，返回卡的 wrap（已 localFallbackApplied=true）。 */
@@ -243,5 +283,36 @@ describe("WS-99 client fallback finalize race", () => {
         cardWrap.progressUpdatedAtSec = 0
         vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
         expect(cardWrap.progressUpdatedAtSec).toBeGreaterThan(0)
+    })
+
+    it("非字符串 text 的 type=1 消息经真实 listener 不抛且仍能 append（P1 类型保护）", () => {
+        const vm: any = new ConversationVM(channel)
+        vm.didMount() // 装配真实 messageListener（走 stamp → maybeFinalize → append 全路径）
+        // 塞一张未终态卡，确保 hot path 会走到 text 判定；即便卡存在也不该因 text.trim 抛错。
+        const cardWrap = makeCardWrap("🤖 正在处理…")
+        cardWrap.progressUpdatedAtSec = 0
+        vm.messages.push(cardWrap)
+        vm.messagesOfOrigin.push(cardWrap)
+
+        // number 型 text truthy 但非字符串，旧代码会在 text.trim() 抛 TypeError，
+        // 导致消息不入会话并中断后续 listener。
+        const badMsg = makeNonStringTextMessage(123)
+        expect(() => vm.messageListener(badMsg)).not.toThrow()
+        // 消息仍进入会话（append 未被中断）。
+        expect(
+            vm.messagesOfOrigin.some((m: MessageWrap) => m.clientMsgNo === "bad-text-1")
+        ).toBe(true)
+        // 畸形文本不应触发兜底（text 非法直接早退）。
+        expect(cardWrap.localFallbackApplied).toBeFalsy()
+    })
+
+    it("object 型 text 的 type=1 消息经真实 listener 也不抛（类型保护覆盖 non-string truthy）", () => {
+        const vm: any = new ConversationVM(channel)
+        vm.didMount()
+        const badMsg = makeNonStringTextMessage({ nested: "obj" })
+        expect(() => vm.messageListener(badMsg)).not.toThrow()
+        expect(
+            vm.messagesOfOrigin.some((m: MessageWrap) => m.clientMsgNo === "bad-text-1")
+        ).toBe(true)
     })
 })
