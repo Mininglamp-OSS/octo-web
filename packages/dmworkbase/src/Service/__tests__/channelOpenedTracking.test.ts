@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ChannelTypePerson, ChannelTypeGroup } from "wukongimjssdk";
 import { ChannelTypeCommunityTopic } from "../Const";
-import { channelOpenedTrackPayload } from "../channelOpenedTracking";
+import { channelOpenedTrackPayload, resolveAiPeer } from "../channelOpenedTracking";
 
 describe("channelOpenedTrackPayload", () => {
   it("私聊行:channel_type=person + is_ai=true(对端为 AI/bot)", () => {
@@ -64,5 +64,48 @@ describe("channelOpenedTrackPayload", () => {
       channel_type: "person",
       is_ai: true,
     });
+  });
+});
+
+// review P1-1/P2-1:is_ai 的运行时派生(原先内联在 ConversationList,恰是有 bug 且没被测的那段)。
+describe("resolveAiPeer", () => {
+  it("非私聊(群)→ false,且不查 isAiUid", () => {
+    const isAiUid = vi.fn(() => true);
+    expect(
+      resolveAiPeer({ channelType: ChannelTypeGroup, channelID: "g1" }, undefined, isAiUid)
+    ).toBe(false);
+    expect(isAiUid).not.toHaveBeenCalled();
+  });
+
+  it("私聊 + channelInfo.robot===1 → true(用带前缀 channelInfo,短路不查 uid-list)", () => {
+    const isAiUid = vi.fn(() => false);
+    expect(
+      resolveAiPeer(
+        { channelType: ChannelTypePerson, channelID: "sa1b2c3d4e5f60718293a4b5c6d7e8f90_bot" },
+        { orgData: { robot: 1 } },
+        isAiUid
+      )
+    ).toBe(true);
+    expect(isAiUid).not.toHaveBeenCalled();
+  });
+
+  it("私聊 + 无 robot flag + Space 前缀 channelID → 以 stripSpacePrefix 后的裸 uid 查 isAiUid(修 P1-1)", () => {
+    const isAiUid = vi.fn((uid: string) => uid === "assistant-uid");
+    const got = resolveAiPeer(
+      { channelType: ChannelTypePerson, channelID: "sa1b2c3d4e5f60718293a4b5c6d7e8f90_assistant-uid" },
+      undefined,
+      isAiUid
+    );
+    // 关键:传给判据的是裸 uid,而非带前缀的 channelID(否则 octoAssistantUids.includes 恒 false)
+    expect(isAiUid).toHaveBeenCalledWith("assistant-uid");
+    expect(got).toBe(true);
+  });
+
+  it("私聊 + 无 robot + isAiUid 判否 → false", () => {
+    const isAiUid = vi.fn(() => false);
+    expect(
+      resolveAiPeer({ channelType: ChannelTypePerson, channelID: "human-uid" }, undefined, isAiUid)
+    ).toBe(false);
+    expect(isAiUid).toHaveBeenCalledWith("human-uid");
   });
 });

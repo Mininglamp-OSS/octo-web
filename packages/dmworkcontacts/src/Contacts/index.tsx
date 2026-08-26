@@ -634,10 +634,6 @@ export default class ContactsList extends Component<any, ContactsState> {
     }
 
     private handleGroupClick = (groupNo: string, name?: string, memberCount?: number) => {
-        // group_card_opened:通讯录内点群行弹出群名片(唯一收口点,两处群行 onClick 都走这里)。
-        // 与 contact_opened(打开人/机器人名片)对称;object_id 用原始 group_no(与该文件其他
-        // opened 事件同口径,不 stripSpacePrefix)。这里只是"打开卡片",从卡片进聊天另发 channel_opened。
-        Dap.shared.track('group_card_opened', { object_id: groupNo })
         this.setState({ groupCardVisible: true, groupCardGroupNo: groupNo, groupCardName: name, groupCardMemberCount: memberCount })
     }
 

@@ -1,5 +1,6 @@
 import { ChannelTypePerson, ChannelTypeGroup } from "wukongimjssdk";
 import { ChannelTypeCommunityTopic } from "./Const";
+import { stripSpacePrefix } from "./SpacePrefix";
 
 // channel_opened 采集决策 —— 抽成纯函数,便于直接单测(无需挂载 ConversationList / WKSDK)。
 // 本事件从 data-track 声明式改为命令式(见 PR:channel_opened→imperative),两处会话行 onClick
@@ -43,4 +44,26 @@ export function channelOpenedTrackPayload(
     payload.is_ai = isAiPeer;
   }
   return payload;
+}
+
+/**
+ * 私聊对端是否 AI(channel_opened 的 is_ai 派生)。抽成纯函数,便于直接单测这段**运行时派生**
+ * (原先内联在 ConversationList,review P1-1/P2-1:有 bug 的恰是这行、却没被测到)。
+ *
+ * - 仅 person(私聊)有意义;群 / 其他恒 false。
+ * - **robot flag 用带前缀的 channelInfo**:会话行本身按 `channelInfo.orgData.robot === 1` 渲染
+ *   AiBadge,channelInfo 以带前缀 channelID 为 key,口径与行内一致,且省一次 SDK 查。
+ * - **octoAssistantUids / SYSTEM_BOTS 判据要裸 uid** → 先 stripSpacePrefix:Space 部署 Person
+ *   channelID 形如 `s<32hex>_<uid>`,不 strip 则 includes/has 恒 false,助手 DM(私聊 AI 浓度的
+ *   分子)被系统性误标 is_ai:false。与兄弟事件 octo_assistant_opened(Conversation/index.tsx)同修法。
+ * - isAiUid 由调用方注入(生产传 isMessageAuthorAi):保持本函数纯,单测无需 mock 全局 WKSDK。
+ */
+export function resolveAiPeer(
+  channel: { channelType: number; channelID: string },
+  channelInfo: { orgData?: { robot?: number } } | null | undefined,
+  isAiUid: (uid: string) => boolean
+): boolean {
+  if (channel.channelType !== ChannelTypePerson) return false;
+  if (channelInfo?.orgData?.robot === 1) return true;
+  return isAiUid(stripSpacePrefix(channel.channelID));
 }

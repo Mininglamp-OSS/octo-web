@@ -64,7 +64,7 @@ import {
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { hideConversation } from "./hideConversation";
 import { Dap } from "../../Service/Dap";
-import { channelOpenedTrackPayload } from "../../Service/channelOpenedTracking";
+import { channelOpenedTrackPayload, resolveAiPeer } from "../../Service/channelOpenedTracking";
 import { isMessageAuthorAi } from "../Conversation/replyAiIdentity";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
@@ -198,6 +198,9 @@ const CompactGroupItem: React.FC<CompactGroupItemProps> = ({
     <div
       ref={setNodeRef}
       style={style}
+      // data-object-id 仅作 E2E 行定位 hook(chat-supplement/chat-layout-coverage.spec 用它选行),
+      // channel_opened 已改命令式采集、不再读它;保留以免破坏 Playwright @p1 用例(review P0-1)。
+      data-object-id={conversationWrap.channel.channelID}
       className={classNames(
         "wk-conv-compact-item",
         selected ? "wk-conv-compact-item--selected" : undefined,
@@ -568,16 +571,17 @@ export default class ConversationList extends Component<
   // channel_opened 命令式采集(原 data-track,改命令式以带布尔 is_ai / channel_type,
   // 见 channelOpenedTracking)。两处会话行 onClick(compact + flat)共用本方法。
   // - 子区行由 payload helper 返回 null 挡掉(→ subchannel_opened),等价旧 isThread 门控。
-  // - is_ai 仅私聊(ChannelTypePerson)算:对端 uid == channelID,判据复用 isMessageAuthorAi
-  //   (robot flag + octoAssistantUids + SYSTEM_BOTS,与 message_copied/forwarded/replied 同源);
+  // - is_ai 仅私聊(ChannelTypePerson)算:派生抽到 resolveAiPeer 纯函数(robot flag 用带前缀的
+  //   channelInfo,uid-list 判据用 stripSpacePrefix 后的裸 uid — 见该函数注释,修 Space 漏标 P1-1);
   //   缓存未拉到退化 false → 下限而非精确。群/其他不带 is_ai。
   // - 触发时机保持"点击即发"(与旧 data-track 捕获委托一致),object_id 保持原始 channelID。
   _trackChannelOpened(conversationWrap: ConversationWrap) {
     const channel = conversationWrap.channel;
-    const isAiPeer =
-      channel.channelType === ChannelTypePerson
-        ? isMessageAuthorAi(channel.channelID)
-        : false;
+    const isAiPeer = resolveAiPeer(
+      channel,
+      conversationWrap.channelInfo,
+      isMessageAuthorAi
+    );
     const payload = channelOpenedTrackPayload(channel, isAiPeer);
     if (payload) {
       Dap.shared.track("channel_opened", payload);
@@ -802,6 +806,8 @@ export default class ConversationList extends Component<
       <div
         ref={(node) => this.setConversationItemRef(conversationWrap, node)}
         key={conversationWrap.channel.getChannelKey()}
+        // data-object-id 仅作 E2E 行定位 hook(见 compact 分支注释);channel_opened 命令式采集不读它。
+        data-object-id={conversationWrap.channel.channelID}
         onClick={() => {
           this._trackChannelOpened(conversationWrap);
           if (onClick) {
