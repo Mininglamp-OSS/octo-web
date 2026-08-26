@@ -869,6 +869,13 @@
   white-space: nowrap;
 }
 
+/* Official/platform publisher reads in the accent color, matching the expert
+   market's "官方发布" (.wk-mcp-detail__owner--official). Icon inherits via
+   currentColor. */
+.skill-market-card__owner--official {
+  color: var(--wk-text-accent);
+}
+
 .skill-market-card__owner-bot-icon,
 .skill-market-card__owner-platform-icon,
 .skill-market-card__owner-user-icon {
@@ -1392,6 +1399,12 @@
   max-width: min(260px, 42%);
   color: var(--wk-text-tertiary) !important;
   font-weight: 500;
+}
+
+/* Official/platform publisher accent, matching the expert market. Needs
+   !important to beat the tertiary base rule above. */
+.skill-market-detail-header__owner--official {
+  color: var(--wk-text-accent) !important;
 }
 
 .skill-market-detail-header__owner > svg {

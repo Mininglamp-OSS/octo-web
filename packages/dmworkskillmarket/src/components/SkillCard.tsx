@@ -229,7 +229,14 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
               {skill.name}
             </span>
             {showOwner && (
-              <span className="skill-market-card__owner" title={ownerLabel}>
+              <span
+                className={
+                  isPlatformPublished
+                    ? "skill-market-card__owner skill-market-card__owner--official"
+                    : "skill-market-card__owner"
+                }
+                title={ownerLabel}
+              >
                 {isPlatformPublished ? (
                   <>
                     <ShieldCheck className="skill-market-card__owner-platform-icon" size={13} aria-hidden="true" />

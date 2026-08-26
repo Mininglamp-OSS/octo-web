@@ -311,7 +311,14 @@ export default function SkillDetailModal({
                 {showOwner && (
                   <>
                     <span className="skill-market-detail-header__separator">·</span>
-                    <span className="skill-market-detail-header__owner" title={ownerLabel}>
+                    <span
+                      className={
+                        isPlatformPublished
+                          ? "skill-market-detail-header__owner skill-market-detail-header__owner--official"
+                          : "skill-market-detail-header__owner"
+                      }
+                      title={ownerLabel}
+                    >
                       {isPlatformPublished ? (
                         <>
                           <ShieldCheck className="skill-market-detail-header__platform-icon" size={13} aria-hidden="true" />
