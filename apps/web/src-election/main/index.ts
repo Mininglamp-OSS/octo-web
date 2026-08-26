@@ -73,7 +73,7 @@ import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractE
 import { createTrustedShellDocumentTracker } from "./trustedShell";
 import { clearAuthSessionCookies } from "./clearAuthSession";
 import { DOWNLOAD_SETTINGS_VERSION, normalizeDownloadSettings, sanitizeDownloadFilename, type DownloadSettings } from "./downloadSettings";
-import { attachTrayPrimaryClick } from "./trayBehavior";
+import { attachTrayPrimaryClick, attachTraySecondaryMenu } from "./trayBehavior";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -1539,8 +1539,10 @@ function updateTray(unread?: number, isFlash = false): any {
         // Init tray icon
         tray = new Tray(trayIcon);
         // A primary click on the tray icon always restores the main window.
-        // Windows still exposes this menu on right-click via setContextMenu.
+        // Windows exposes this menu on right-click via setContextMenu. On
+        // macOS, keep primary click for restoring and open it on right-click.
         if (!isOsx) tray.setContextMenu(contextmenu);
+        else attachTraySecondaryMenu(tray, contextmenu);
         tray.setToolTip(OCTO_CONFIG.name);
 
         attachTrayPrimaryClick(tray, () => mainWindow);
