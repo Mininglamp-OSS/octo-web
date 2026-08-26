@@ -16,9 +16,9 @@ const TYPE_TABS: Array<{
   icon: React.ReactElement;
 }> = [
   { key: "skills", labelKey: "mcp.sidebar.skills", icon: <Sparkles size={15} aria-hidden="true" /> },
+  { key: "mcp", labelKey: "mcp.sidebar.mcp", icon: <Plug size={15} aria-hidden="true" /> },
   { key: "experts", labelKey: "mcp.expert.typeAgent", icon: <UserRound size={15} aria-hidden="true" /> },
   { key: "squads", labelKey: "mcp.expert.typeSquad", icon: <Users size={15} aria-hidden="true" /> },
-  { key: "mcp", labelKey: "mcp.sidebar.mcp", icon: <Plug size={15} aria-hidden="true" /> },
 ];
 
 /**
