@@ -3,12 +3,12 @@ import { WKModal, WKInput, WKButton, t, Dap } from "@octo/base";
 import { Select, Switch, TextArea, Toast } from "@douyinfe/semi-ui";
 import {
   createMcp,
+  listConnectorCategories,
   probeMcpTools,
   isProbeAvailable,
   updateMcp,
   uploadMcpIcon,
 } from "../api/mcpService";
-import { MCP_CATEGORY_LABELS, MCP_CATEGORY_ORDER } from "../mock/mcpMock";
 import {
   SECRET_PLACEHOLDER_SENTINEL,
   isSecretKey,
@@ -507,6 +507,9 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   editing,
 }) => {
   const [form, setForm] = useState<CreateMcpParams>(EMPTY);
+  /** Connector categories from the backend taxonomy (dynamic, matching the
+   *  discovery pills). Name is both value and label. */
+  const [categoryNames, setCategoryNames] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [probing, setProbing] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
@@ -553,6 +556,20 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   // otherwise reset to EMPTY so re-opening always starts fresh. Also drives
   // the "back to step 0 on every open" behavior so a partial previous session
   // doesn't leak into the next one.
+  // Load the connector category taxonomy when the modal opens.
+  useEffect(() => {
+    if (!visible) return;
+    let alive = true;
+    listConnectorCategories()
+      .then((names) => {
+        if (alive) setCategoryNames(names);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [visible]);
+
   useEffect(() => {
     if (!visible) return;
     if (editing) {
@@ -1004,15 +1021,15 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     return leaks;
   }, [headersEntries, envEntries]);
 
-  // ── Static options ─────────────────────────────────────────────────────
-  const categoryOptions = useMemo(
-    () =>
-      MCP_CATEGORY_ORDER.filter((k) => k !== "all").map((k) => ({
-        value: k,
-        label: MCP_CATEGORY_LABELS[k],
-      })),
-    []
-  );
+  // Category options come from the backend taxonomy (name = value = label). When
+  // editing an existing connector whose category isn't in the fetched list yet
+  // (or vanished), keep it selectable so the form doesn't silently drop it.
+  const categoryOptions = useMemo(() => {
+    const names = [...categoryNames];
+    const current = editing?.category;
+    if (current && !names.includes(current)) names.unshift(current);
+    return names.map((name) => ({ value: name, label: name }));
+  }, [categoryNames, editing]);
 
   const transportOptions = TRANSPORT_OPTIONS.map((tr) => ({
     value: tr,

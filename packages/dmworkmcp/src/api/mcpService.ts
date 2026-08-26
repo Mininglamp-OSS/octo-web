@@ -708,15 +708,18 @@ async function fetchMcpListPath(
   // Category pills are independent of the list request, so build them up front:
   // a fail-closed category miss can then still return the pills so the user can
   // switch away from the unresolved filter.
-  const countsByKey = new Map(
-    categoryWire.map((c) => [c.name, c.plugin_count] as const)
-  );
+  //
+  // Pills are built DYNAMICALLY from the backend taxonomy (matching the skill /
+  // expert markets) — the category NAME is both the key and the display label —
+  // so admin-defined connector categories surface without a frontend release.
+  // The leading 全部 pill is the only synthetic entry.
   const allCount = categoryWire.reduce((sum, c) => sum + (c.plugin_count ?? 0), 0);
-  const categories: McpCategory[] = MCP_CATEGORY_ORDER.map((key) => ({
-    key,
-    label: categoryLabel(key),
-    count: key === CATEGORY_KEY_ALL ? allCount : countsByKey.get(key) ?? 0,
-  }));
+  const categories: McpCategory[] = [
+    { key: CATEGORY_KEY_ALL, label: categoryLabel(CATEGORY_KEY_ALL), count: allCount },
+    ...[...categoryWire]
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      .map((c) => ({ key: c.name, label: c.name, count: c.plugin_count ?? 0 })),
+  ];
   const categoryKey = params.categories?.length
     ? params.categories[0]
     : params.category ?? CATEGORY_KEY_ALL;
@@ -968,6 +971,19 @@ export function fetchMcpMine(
   params: ListMcpParams = {}
 ): Promise<ListMcpResponse> {
   return USE_MOCK ? fetchMcpMineMock(params) : fetchMcpMineReal(params);
+}
+
+/** Connector category names for the create/edit form, in taxonomy order. Uses
+ *  the same dynamic backend taxonomy as the discovery pills (the name is both
+ *  value and label); the synthetic 全部 pill is excluded. */
+export function listConnectorCategories(): Promise<string[]> {
+  return USE_MOCK
+    ? Promise.resolve(MCP_CATEGORY_ORDER.filter((k) => k !== CATEGORY_KEY_ALL))
+    : fetchConnectorCategoriesWire().then((wire) =>
+        [...wire]
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+          .map((c) => c.name)
+      );
 }
 
 export function fetchMcpDetail(id: string): Promise<McpDetail> {
