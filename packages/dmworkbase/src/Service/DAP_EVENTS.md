@@ -6,9 +6,9 @@ the channel it fires on, the exact success condition, the negative/failure edge 
 NOT fire on, its reset/dedup rule, and the test that pins it.
 
 **Channels** (each event lives in exactly one — cross-channel duplication is a bug the
-`channelUniqueness` test guards against, **except registered exceptions** documented inline
-in their own row; today the only one is `channel_opened`'s data-track + imperative split,
-whose two entry points are runtime-disjoint — see that row):
+`channelUniqueness` test guards against; no registered exceptions remain — `channel_opened`
+was the last one and is now unified to a single **imperative** channel with two
+runtime-disjoint emit sites, see that row):
 - `fetch` — first-party same-origin 2xx on a path → event (FetchRules.ts). Path selects the name, never stored.
 - `body` — request-body top-level key/value → event (BodyRules.ts). `equals` discriminators whitelist the value; `hasKeys` is presence-only.
 - `track(testid)` — global capture-phase click/keyboard delegation on `data-testid` (TrackRules.ts).
@@ -27,8 +27,8 @@ uid。覆盖 `conversation_muted` / `conversation_pinned` / `channel_search_quer
 目的是让这些事件在 Space 部署下能按同一 `channel_id` 跨事件 join(否则同一频道在带前缀 / 不带
 前缀两种形态间对不上)。注意这**不是**与后端某接口对齐:`_search_` / group setting 等接口各自的
 strip 口径并不一致(`SearchService` 发 raw、`ChannelSettingService` 仅对 Person strip),故不能
-以「跟接口一致」为由——统一到 bare 是为数仓 join。**唯一例外**:既有已上线的 DOM 事件
-`channel_opened`(`data-object-id`)保留 **raw** channelID,不改其口径以免二次改变已发布指标的
+以「跟接口一致」为由——统一到 bare 是为数仓 join。**唯一例外**:既有已上线的
+`channel_opened`(`object_id`)保留 **raw** channelID,不改其口径以免二次改变已发布指标的
 序列(见该行);跨事件 join 到 `channel_opened` 需在查询侧自行 strip。
 
 **Infra events** (not user intents): `app_launched` (once, post-login — deferred so
@@ -98,7 +98,7 @@ scope: octo-docs, octo-fleet.
 
 | Event | Channel | Fires exactly when | Must NOT fire (negative/failure edge) | Reset/dedup | Pinning test |
 |---|---|---|---|---|---|
-| `channel_opened` | data-track (`ConversationList` row root) + imperative (`Contacts` GroupCard) | ①会话列表:User clicks a conversation row → opens the channel (`data-track` on row root, compact + list paths)。**子区行(`ChannelTypeCommunityTopic`)不发本事件**——`data-track` 按 `isThread` 门控,子区行改由 `subchannel_opened` 命令式覆盖。②通讯录:群聊名片「进入聊天」(`GroupCard.onEnterChat` 收口,`Contacts/index.tsx`)命令式发同名事件 —— 该路径经弹窗多层、点击委托兜不住,故补 | 子区行(→`subchannel_opened`);Clicks on `data-track-ignore` children of the row (drag handle, expand-thread tag) | `isThread` 门控 + `data-track-ignore` subtree exclusion; `data-object-id`=channelID(**raw,遗留口径**:本事件已上线,object_id 不做 stripSpacePrefix 以免二次改变已发布指标序列;跨事件 join 需查询侧自行 strip,见开头 channel_id 约定)。**双通道例外(本 PR)**:本事件现由 data-track(会话列表)+ imperative(通讯录 GroupCard)两通道发,是「each event one channel」的**登记在案的例外**——两条路径互斥不重叠:通讯录路径经 GroupCard→showConversation,**从不点击 ConversationList 行**,故同一「开群」手势只发一次,无 double-count。通讯录命令式 `object_id` 亦取 **raw** channelID,与会话列表口径一致。**⚠ 契约变更**:子区行不再发本事件 → Space/群里子区较多的会话列表其 `channel_opened` 量会下降;#1451 未要求此收窄,需 schema owner 签字确认(见 PR body S2) | Dap.trackIgnore.test.ts;dapEventCoverage.pins.test.ts(子区行不发) |
+| `channel_opened` | imperative(两处:`ConversationList` 行 onClick + `Contacts` GroupCard `onEnterChat`) | ①会话列表:点会话行打开频道 —— 行 onClick 调 `_trackChannelOpened`,compact + flat 两渲染路径;payload 决策抽到纯函数 `channelOpenedTracking.ts`。**子区行(`ChannelTypeCommunityTopic`)不发本事件**——helper 对子区返回 null,改由 `subchannel_opened` 命令式覆盖。②通讯录:群聊名片「进入聊天」(`GroupCard.onEnterChat`,`Contacts/index.tsx`)命令式发同名事件。props = `{object_id: 原始 channelID(raw), channel_type: person\|group\|other, is_ai?}`;`is_ai` **仅 person(私聊)行携带**:对端 uid==channelID,判据复用 `isMessageAuthorAi`(robot flag + octoAssistantUids + SYSTEM_BOTS;缓存未拉到退化 false → 下限非精确);群 / 其他及通讯录群聊路径不带 is_ai(空值非 false)。**私聊 AI 浓度 = is_ai=true 数 / channel_type=person 数** | 子区行(→`subchannel_opened`);compact 行内拖拽柄 / 展开子区标签(仍 `e.stopPropagation()`,冒泡到行 onClick 前即止 → 不触发采集) | 点击即发,无跨事件去重(与旧 data-track 语义一致);两处 emit 运行时互斥:通讯录路径经 `GroupCard→showConversation`,**从不点 ConversationList 行**,同一「开会话」手势只发一次,无 double-count → channel_opened 现为**单一命令式通道**(消除原 data-track+imperative 双通道例外)。`object_id`=原始 channelID(**raw,遗留口径**:本事件已上线,不做 stripSpacePrefix 以免二次改变已发布指标序列;查询侧 join 自行 strip,见开头 channel_id 约定)。**⚠ 通道迁移(本 PR)**:data-track→命令式并新增 is_ai/channel_type;触发时机(点击即发)与 object_id 口径均不变 → 已发布 channel_opened 序列连续、无断点 | channelOpenedTracking.test.ts(payload / is_ai / channel_type / 子区 null / raw object_id);dapEventCoverage.pins.test.ts(会话列表无 data-track + 两处 onClick 均接 _trackChannelOpened) |
 | `channel_search_opened` | track(testid) — `channel-search-entry` | User clicks the channel-search entry control → opens search | Ancestor with `data-track` (wins, table not consulted); keydown/submit (`on:'click'`); never reads value/innerText | `on:'click'` one-shot open, not a toggle → no double-fire | — |
 | `channel_summary_panel_opened` | track(testid) — `summary-chat-panel-header-btn` | User clicks the summary chat-panel header button → opens summary panel | Ancestor `data-track`; keydown/submit | `on:'click'` one-shot | TrackRules.rules.test.ts — `has a click rule $event → $testid` (+ `every A_rule testid is indexed under byTestid`) |
 | `group_admin_add_dialog_opened` | track(testid) — `group-add-manager-btn` | User clicks the add-manager button → opens admin-add dialog | Ancestor `data-track`; keydown/submit | `on:'click'` one-shot dialog open | — |
