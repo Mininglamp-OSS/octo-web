@@ -143,9 +143,9 @@ describe('layoutWidth', () => {
     })
 
     describe('thread panel', () => {
-        it('keeps the design-approved default width at 480px', () => {
-            expect(THREAD_MIN_WIDTH).toBe(480)
-            expect(THREAD_DEFAULT_WIDTH).toBe(480)
+        it('keeps the design-approved compact width at 336px', () => {
+            expect(THREAD_MIN_WIDTH).toBe(336)
+            expect(THREAD_DEFAULT_WIDTH).toBe(336)
         })
 
         describe('clampThreadWidth', () => {
@@ -172,11 +172,17 @@ describe('layoutWidth', () => {
                 expect(clampThreadWidth(500, 1600, 300)).toBe(500)
             })
 
-            it('keeps a readable chat column in narrow desktop windows', () => {
-                // window=800, nav=56, left=300 -> available=444, thread=204, chat=240
-                const maxThreadWidth = getMaxThreadWidth(800, 300)
-                expect(maxThreadWidth).toBe(800 - NAV_RAIL_DEFAULT_WIDTH - 300 - THREAD_CHAT_MIN_WIDTH)
-                expect(clampThreadWidth(480, 800, 300)).toBe(maxThreadWidth)
+            it('falls back to the compact overlay width in constrained desktop windows', () => {
+                expect(getMaxThreadWidth(641, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(getMaxThreadWidth(700, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(getMaxThreadWidth(800, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(getMaxThreadWidth(916, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(clampThreadWidth(480, 800, 300)).toBe(THREAD_DEFAULT_WIDTH)
+            })
+
+            it('starts reserving chat space once the compact drawer and chat floor both fit', () => {
+                expect(getMaxThreadWidth(932, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(clampThreadWidth(480, 932, 300)).toBe(THREAD_DEFAULT_WIDTH)
             })
 
             it('keeps the design width on small screens so CSS can clamp to the viewport', () => {

@@ -249,6 +249,8 @@
   height: 100%;
   display: flex;
   position: relative;
+  container-type: inline-size;
+  container-name: wk-chat-content-right;
 }
 
 @media screen and (max-width: 640px) {
@@ -631,6 +633,21 @@
 /* 子区/文件预览打开时，消息区宽度减去右侧面板宽度 */
 .wk-chat-content-right.wk-chat-threadpanel-open .wk-chat-content-chat {
   width: calc(100% - var(--wk-width-thread-panel-effective));
+}
+
+@container wk-chat-content-right (max-width: 575px) {
+  .wk-chat-channel-search-panel {
+    --wk-width-chat-search-panel-effective: min(var(--wk-width-chat-search-panel), 100%);
+  }
+
+  .wk-thread-panel {
+    --wk-width-thread-panel-effective: min(var(--wk-width-thread-panel), 100%);
+  }
+
+  .wk-chat-content-right.wk-chat-channel-search-open .wk-chat-content-chat,
+  .wk-chat-content-right.wk-chat-threadpanel-open .wk-chat-content-chat {
+    width: 100%;
+  }
 }
 
 .wk-chat-content-right.wk-chat-webhook-preview-open .wk-chat-content-chat {
