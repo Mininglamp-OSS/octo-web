@@ -1,4 +1,5 @@
 import { ProviderListener } from "../../Service/Provider"
+import { Dap } from "../../Service/Dap"
 import BotManageService, {
     type BotSettingItem,
     type BotSettingWriteItem,
@@ -288,6 +289,13 @@ export class BotCardSettingsVM extends ProviderListener {
     toggle(key: string, next: boolean): boolean {
         const row = this.snapshot().rows.find((item) => item.key === key)
         if (!row || row.disabled) return false
+        // card_message_setting_toggled:卡片消息设置开关收口点。写端点是批量 PUT robot/:id/settings,
+        //   一次覆盖多键、body 里分不出改了哪项 → FetchRules 拿不到 key/value,故在此命令式补,带 bot_id + key + 新值。
+        Dap.shared.track('card_message_setting_toggled', {
+            bot_id: this.robotId,
+            key,
+            enabled: next,
+        })
         if (!this.baseline.has(key)) {
             this.baseline.set(key, this.items.get(key))
         }

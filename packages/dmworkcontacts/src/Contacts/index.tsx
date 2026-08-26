@@ -959,6 +959,9 @@ export default class ContactsList extends Component<any, ContactsState> {
                         visible={this.state.groupCardVisible}
                         onClose={() => this.setState({ groupCardVisible: false })}
                         onEnterChat={(channel) => {
+                            // channel_opened:通讯录群聊名片「进入聊天」收口点。会话列表行用 data-track 发同名事件,
+                            // 但此路径经 GroupCard 弹窗多层,点击委托兜不住 → 命令式补,object_id 口径对齐(原始 channelID)。
+                            Dap.shared.track('channel_opened', { object_id: channel.channelID })
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ groupCardVisible: false })
                         }}
