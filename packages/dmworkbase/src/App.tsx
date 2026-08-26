@@ -1052,7 +1052,7 @@ export default class WKApp extends ProviderListener {
       );
       this._deviceFlagMigrationHandled = true;
       markDeviceFlagMigration(migrationSid);
-      WKApp.loginInfo.logout();
+      void this.clearLocalLoginState();
     } else if (!hasDeviceFlagMismatch && WKApp.loginInfo.isLogined()) {
       // A matching session supersedes any marker left by an interrupted boot.
       clearDeviceFlagMigration(migrationSid);

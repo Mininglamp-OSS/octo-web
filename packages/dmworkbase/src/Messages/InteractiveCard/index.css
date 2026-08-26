@@ -16,8 +16,10 @@
   flex-direction: column;
   gap: var(--wk-sp-1, 4px);
   /* 默认采用 standard(480px) 规格，避免卡片内容更新后因操作数量变化而跳宽；
-     宿主空间不足时收缩到 100%，由卡片内部的 auto/stretch/wrap 继续响应式布局。 */
-  width: min(480px, 100%);
+     宿主空间不足时由 max-width 收缩到 100%。父级命中区域是 fit-content，
+     这里不能用 width: min(480px, 100%)，否则百分比会跟随内容宽度自适应。 */
+  width: 480px;
+  max-width: 100%;
   min-width: 0;
 }
 

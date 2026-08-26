@@ -4,6 +4,7 @@ import { I18nContext, WKApp, apiFetchJson, computeAndSaveJoinSuccess, setSession
 import type { JoinSpaceStatus } from "@octo/base";
 import { Spin, Toast } from "@douyinfe/semi-ui";
 import { buildPostLoginRedirectUrl } from "../../Layout/postLoginRedirect";
+import { persistActiveSpace, readLastSpaceId } from "../../features/spacePreference";
 import "./index.css";
 
 interface InviteLandingProps {
@@ -233,7 +234,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             // dmwork-web#1065: 在调用 /space/join 前先记住用户「当前 Space」。
             // 多 Space 用户在非归属 Space 点邀请链接时，不应自动切换 currentSpaceId —
             // 必须由用户显式点 toast 里的「切换过去」才切。这里在改动前快照下来。
-            const prevCurrentSpaceId = localStorage.getItem("currentSpaceId") || "";
+            const prevCurrentSpaceId = WKApp.shared.currentSpaceId || readLastSpaceId(WKApp.loginInfo.uid) || "";
             const apiUrl = WKApp.apiClient.config.apiURL?.replace(/\/+$/, '');
             const result = await apiFetchJson<any>(`${apiUrl}/space/join`, {
                 method: 'POST',
@@ -278,7 +279,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
 
             // 硬约束：不自动切换 currentSpace。只有非跨 Space（或无历史 Space）时才更新。
             if (!crossSpace && joinedSpaceId) {
-                localStorage.setItem('currentSpaceId', joinedSpaceId);
+                persistActiveSpace(WKApp.loginInfo.uid, joinedSpaceId);
             }
             // 跳转回主界面（sid-clean 派：先把 sid 存到 SessionScope
             // sessionStorage，跳转 URL 就不再挂 `?sid=` 了。RouteManager 的

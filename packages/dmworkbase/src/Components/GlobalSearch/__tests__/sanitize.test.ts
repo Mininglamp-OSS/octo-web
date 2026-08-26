@@ -30,4 +30,18 @@ describe("sanitizeHighlight", () => {
   it("returns an empty string unchanged", () => {
     expect(sanitizeHighlight("")).toBe("");
   });
+
+  it("treats nullish runtime input as empty instead of throwing", () => {
+    expect(sanitizeHighlight(undefined as unknown as string)).toBe("");
+    expect(sanitizeHighlight(null as unknown as string)).toBe("");
+  });
+
+  it("escapes encoded mark text and mark-like tags with whitespace", () => {
+    expect(sanitizeHighlight("&lt;mark&gt;safe&lt;/mark&gt;")).toBe(
+      "&amp;lt;mark&amp;gt;safe&amp;lt;/mark&amp;gt;"
+    );
+    expect(sanitizeHighlight("< mark>not-mark</ mark>")).toBe(
+      "&lt; mark&gt;not-mark&lt;/ mark&gt;"
+    );
+  });
 });

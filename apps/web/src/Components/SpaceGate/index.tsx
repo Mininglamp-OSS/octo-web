@@ -5,6 +5,10 @@ import { SpaceService } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import { SpaceCreate } from "@octo/base";
 import { LogOut } from "lucide-react";
+import {
+    persistActiveSpace,
+    resolveInitialSpaceForUser,
+} from "../../features/spacePreference";
 import "./index.css";
 
 interface SpaceGateState {
@@ -44,11 +48,6 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
             }
             this.forceUpdate();
         });
-        const cached = localStorage.getItem("currentSpaceId");
-        if (cached) {
-            this.enterSpace(cached);
-            return;
-        }
         this.checkSpaces();
     }
 
@@ -72,7 +71,7 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
 
         WKApp.shared.currentSpaceId = spaceId;
         WKApp.shared.spaceChecked = true;
-        localStorage.setItem("currentSpaceId", spaceId);
+        persistActiveSpace(WKApp.loginInfo.uid, spaceId);
         try { WKApp.shared.notifyListener(); } catch (_) {}
 
         if (this._isMounted) {
@@ -90,8 +89,13 @@ export default class SpaceGate extends Component<{}, SpaceGateState> {
     checkSpaces = async () => {
         try {
             const spaces = await SpaceService.shared.getMySpaces();
-            if (spaces.length >= 1) {
-                this.enterSpace(spaces[0].space_id);
+            const selectedSpace = resolveInitialSpaceForUser(
+                spaces,
+                WKApp.loginInfo.uid,
+                WKApp.shared.currentSpaceId,
+            );
+            if (selectedSpace) {
+                this.enterSpace(selectedSpace.space_id);
             } else {
                 this.setState({ loading: false, noSpace: true });
             }

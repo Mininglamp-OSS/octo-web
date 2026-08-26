@@ -8,15 +8,6 @@ name: e2e
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "apps/web/**"
-      - "packages/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/e2e.yml"
-      - ".github/workflows/e2e-nightly.yml"
-      - ".github/workflows/e2e-baseline-bootstrap.yml"
-      - ".github/workflows/e2e-baseline-update.yml"
 
 permissions:
   contents: read
@@ -26,7 +17,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      # e2e=true when at least one changed file matches any positive path below.
+      # Positive filter uses dorny's default 'some' quantifier (predicate-quantifier
+      # intentionally unset): semantics = "some changed file matches some pattern".
+      # Do NOT copy ci.yml's 'every' quantifier — that is for negation patterns only;
+      # using 'every' here would drop mixed PRs (e.g. apps/web/** + README.md).
+      e2e: ${{ github.event_name == 'pull_request' && steps.filter.outputs.e2e || 'true' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@6852f92c20ea7fd3b0c25de3b5112db3a98da050 # v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            e2e:
+              - 'apps/web/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/e2e.yml'
+              - '.github/workflows/e2e-nightly.yml'
+              - '.github/workflows/e2e-baseline-bootstrap.yml'
+              - '.github/workflows/e2e-baseline-update.yml'
+
   install-build:
+    needs: [changes]
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4

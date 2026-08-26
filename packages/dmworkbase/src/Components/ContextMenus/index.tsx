@@ -17,8 +17,14 @@ export interface ContextMenusState {
     flipSubmenu: boolean
 }
 
+export interface ContextMenusTrigger {
+    clientX: number
+    clientY: number
+    preventDefault(): void
+}
+
 export interface ContextMenusContext {
-    show(event: React.MouseEvent<Element, MouseEvent>): void
+    show(event: ContextMenusTrigger): void
     hide(): void
     isShow(): boolean
 }
@@ -125,7 +131,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         this.props.onHide?.()
     }
 
-    show(event: React.MouseEvent<Element, MouseEvent>): void {
+    show(event: ContextMenusTrigger): void {
         event.preventDefault();
         if (!this.contextMenusRef) return
 

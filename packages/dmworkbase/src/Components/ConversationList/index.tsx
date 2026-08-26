@@ -65,6 +65,15 @@ import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { hideConversation } from "./hideConversation";
 export type ConvFilter = "all" | "human" | "ai" | "group" | "dm";
 
+export function isConversationPinned(conversationWrap: ConversationWrap): boolean {
+  if (
+    conversationWrap.channel.channelType === ChannelTypeCommunityTopic
+  ) {
+    return conversationWrap.extra?.top === 1;
+  }
+  return !!conversationWrap.channelInfo?.top;
+}
+
 // ── 在线态判定/渲染 helper ──────────────────────────────────────────────
 // 最近列表（非 compact）与关注/收藏列表（compact 的 CompactGroupItem）共用同一份
 // 判定与 tip 文案，保证两处在线圆点的数据源、阈值、文案完全一致，避免逻辑复制漂移。
@@ -786,7 +795,9 @@ export default class ConversationList extends Component<
         className={classNames(
           "wk-conversationlist-item",
           selected ? "wk-conversationlist-item-selected" : undefined,
-          channelInfo?.top ? "wk-conversationlist-item-top" : undefined,
+          isConversationPinned(conversationWrap)
+            ? "wk-conversationlist-item-top"
+            : undefined,
           totalUnread > 0
             ? "wk-conversationlist-item-unread"
             : undefined,
@@ -939,13 +950,30 @@ export default class ConversationList extends Component<
     );
   }
 
-  onTop(channelInfo: ChannelInfo) {
+  onTop(conversationWrap: ConversationWrap) {
+    const channelInfo = conversationWrap.channelInfo;
+    const isThread =
+      conversationWrap.channel.channelType === ChannelTypeCommunityTopic;
+    if (!isThread && !channelInfo) return;
+    const top = !isConversationPinned(conversationWrap);
     // 置顶埋点(conversation_pinned)已收口到 topChannelSetting 内部,这里不再本地派生 willPin
     // 供埋点使用;仅按当前状态取反传入(#1452 review P2-7)。
     topChannelSetting({
-      channel: channelInfo.channel,
-      top: !channelInfo.top,
+      channel: conversationWrap.channel,
+      top,
     })
+      .then(() => {
+        if (!isThread) return;
+        conversationWrap.conversation.extra =
+          conversationWrap.conversation.extra || {};
+        conversationWrap.conversation.extra.top = top ? 1 : 0;
+        if (channelInfo) channelInfo.top = top;
+        this.setState({});
+        WKSDK.shared().conversationManager.notifyConversationListeners(
+          conversationWrap.conversation,
+          ConversationAction.update
+        );
+      })
       .catch((err) => {
         Toast.error(err?.msg);
       });
@@ -1222,7 +1250,7 @@ export default class ConversationList extends Component<
     }
     const groupedPinned = grouped.filter((item) => {
       if ("type" in item) return false;
-      return (item as ConversationWrap).channelInfo?.top;
+      return isConversationPinned(item as ConversationWrap);
     });
 
     // 子区和溢出提示跟随父群组：如果父群组被置顶，把它的子区也移到置顶区
@@ -1251,7 +1279,7 @@ export default class ConversationList extends Component<
         }
       } else {
         const conv = item as ConversationWrap;
-        if (conv.channelInfo?.top) {
+        if (isConversationPinned(conv)) {
           finalPinned.push(item);
         } else if (compact && conv.channel.channelType === ChannelTypeCommunityTopic) {
           // compact 嵌套语义：子区跟随父群组
@@ -1364,16 +1392,17 @@ export default class ConversationList extends Component<
               : [];
 
             const menus: ContextMenusData[] = [];
+            const isPinned = conv ? isConversationPinned(conv) : false;
 
             // 1. 置顶 / 取消置顶（最近页个人、群聊和活跃子区）
             if (!this.props.hidePin) {
               menus.push({
-                title: channelInfo?.top
+                title: isPinned
                   ? t("base.conversationList.context.unpin")
                   : t("base.conversationList.context.pin"),
-                icon: channelInfo?.top ? PinOff : Pin,
+                icon: isPinned ? PinOff : Pin,
                 onClick: () => {
-                  if (channelInfo) this.onTop(channelInfo);
+                  if (conv) this.onTop(conv);
                 },
               });
             }

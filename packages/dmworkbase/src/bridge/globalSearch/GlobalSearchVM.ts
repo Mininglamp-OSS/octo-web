@@ -297,7 +297,7 @@ export default class GlobalSearchVM extends ProviderListener {
 
   // 加载更多消息
   loadMore() {
-    if (this.loadMoreing) {
+    if (this.loadMoreing || this.loadFinish) {
       return;
     }
     this.loadMoreing = true;

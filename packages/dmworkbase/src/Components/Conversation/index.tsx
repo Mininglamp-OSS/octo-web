@@ -75,12 +75,13 @@ import {
   type InitialComposeState,
 } from "./initialCompose";
 import { BotCommand } from "../SlashCommandMenu";
-import ContextMenus, { ContextMenusContext } from "../ContextMenus";
+import ContextMenus, { ContextMenusContext, type ContextMenusTrigger } from "../ContextMenus";
 import classNames from "classnames";
 import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
 import { IconClose, IconEdit, IconReply } from "@douyinfe/semi-icons";
 import { Toast, Spin } from "@douyinfe/semi-ui";
+import { AtSign, UserRound } from "lucide-react";
 import { wkConfirm } from "../WKModal";
 import { FlameMessageCell } from "../../Messages/Flame";
 import FoldSessionCard, { FoldSessionCardParticipant } from "./FoldSessionCard";
@@ -1408,7 +1409,17 @@ export class Conversation
       return;
     }
     this.vm.selectUID = uid;
-    this.avatarMenusContext.show(event);
+    let trigger: ContextMenusTrigger = event;
+    // Enter / Space 触发的原生 button click 没有指针坐标，改用按钮右下角定位。
+    if (event.detail === 0) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      trigger = {
+        clientX: rect.right,
+        clientY: rect.bottom,
+        preventDefault: () => undefined,
+      };
+    }
+    this.avatarMenusContext.show(trigger);
   }
 
   // 定位消息
@@ -3483,7 +3494,8 @@ export class Conversation
                 }}
                 menus={[
                   {
-                    title: "@TA",
+                    title: t("base.conversation.avatarMenu.mention"),
+                    icon: AtSign,
                     onClick: () => {
                       if (!this.vm.selectUID) {
                         return;
@@ -3505,6 +3517,7 @@ export class Conversation
                   },
                   {
                     title: t("base.conversation.avatarMenu.viewUserInfo"),
+                    icon: UserRound,
                     onClick: () => {
                       if (!this.vm.selectUID) {
                         return;

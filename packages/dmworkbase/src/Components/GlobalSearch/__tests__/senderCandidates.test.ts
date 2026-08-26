@@ -21,6 +21,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 const mockState = vi.hoisted(() => ({
   commonDataSource: undefined as any,
   contactsList: [] as any[],
+  conversations: [] as any[],
+  groupSaveList: vi.fn().mockResolvedValue([]),
   loginUid: "self-uid",
   loginName: "Me",
   getGlobalFileTypes: vi.fn(),
@@ -32,6 +34,9 @@ vi.mock("../../../App", () => ({
       return {
         commonDataSource: mockState.commonDataSource,
         contactsList: mockState.contactsList,
+        channelDataSource: {
+          groupSaveList: mockState.groupSaveList,
+        },
       };
     },
     get loginInfo() {
@@ -72,6 +77,17 @@ vi.mock("wukongimjssdk", () => ({
   },
 }));
 
+vi.mock("../../../im-runtime/currentConversationRuntime", () => ({
+  getCurrentImConversationsDirectly: () => mockState.conversations,
+}));
+
+vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
+  getCurrentImChannelInfo: (channel: any) => ({
+    orgData: { displayName: `info:${channel.channelID}` },
+    title: `title:${channel.channelID}`,
+  }),
+}));
+
 vi.mock("../../../Service/SearchService", () => ({
   default: {
     getGlobalFileTypes: mockState.getGlobalFileTypes,
@@ -87,6 +103,8 @@ describe("loadSenderCandidates (via searchSenders)", () => {
   beforeEach(() => {
     mockState.commonDataSource = undefined;
     mockState.contactsList = [];
+    mockState.conversations = [];
+    mockState.groupSaveList.mockReset().mockResolvedValue([]);
     mockState.getGlobalFileTypes.mockReset();
     resetGlobalSearchDataSourceCaches();
   });
@@ -246,5 +264,96 @@ describe("loadSenderCandidates (via searchSenders)", () => {
 
     expect(mockState.getGlobalFileTypes).toHaveBeenCalledOnce();
     expect(cache.set).toHaveBeenCalledWith(categories);
+  });
+
+  it("deduplicates readable group/thread channels, excludes DMs, and filters by keyword", async () => {
+    mockState.conversations = [
+      { channel: { channelID: "dm-1", channelType: 1 } },
+      { channel: { channelID: "group-1", channelType: 2 } },
+      { channel: { channelID: "group-1", channelType: 2 } },
+      { channel: { channelID: "thread-1", channelType: 5 } },
+    ];
+    const groups = [
+      {
+        channel: { channelID: "group-1", channelType: 2 },
+        title: "Duplicate",
+        orgData: { displayName: "Duplicate", group_no: "group-1" },
+      },
+      {
+        channel: { channelID: "group-2", channelType: 2 },
+        title: "Alpha",
+        orgData: { displayName: "Alpha", group_no: "group-2" },
+      },
+    ];
+    const ds = createGlobalSearchApiDataSource();
+    const groupSaveList = mockState.groupSaveList;
+    groupSaveList.mockResolvedValue(groups);
+
+    await expect(ds.searchChannels("")).resolves.toEqual([
+      {
+        channelId: "group-1",
+        channelType: 2,
+        name: "info:group-1",
+        avatarUrl: "avatar://ch/group-1/2",
+      },
+      {
+        channelId: "thread-1",
+        channelType: 5,
+        name: "info:thread-1",
+        avatarUrl: "avatar://ch/thread-1/5",
+      },
+      {
+        channelId: "group-2",
+        channelType: 2,
+        name: "Alpha",
+        avatarUrl: "avatar://ch/group-2/2",
+      },
+    ]);
+    expect(groupSaveList).toHaveBeenCalledOnce();
+  });
+
+  it("keeps recent readable channels when loading the group list fails", async () => {
+    mockState.conversations = [
+      { channel: { channelID: "group-1", channelType: 2 } },
+    ];
+    const ds = createGlobalSearchApiDataSource();
+    const groupSaveList = mockState.groupSaveList;
+    groupSaveList.mockRejectedValue(new Error("offline"));
+
+    await expect(ds.searchChannels("")).resolves.toMatchObject([
+      { channelId: "group-1", channelType: 2, name: "info:group-1" },
+    ]);
+  });
+
+  it("shares an in-flight file-type request between concurrent callers", async () => {
+    let resolve!: (value: unknown) => void;
+    mockState.getGlobalFileTypes.mockReturnValue(
+      new Promise((r) => {
+        resolve = r;
+      })
+    );
+    const ds = createGlobalSearchApiDataSource();
+    const first = ds.getFileTypeCategories();
+    const second = ds.getFileTypeCategories();
+    const categories = [{ key: "doc", label: "Docs", exts: ["docx"] }];
+
+    resolve(categories);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      categories,
+      categories,
+    ]);
+    expect(mockState.getGlobalFileTypes).toHaveBeenCalledOnce();
+  });
+
+  it("clears a failed file-type request so a later call can retry", async () => {
+    const categories = [{ key: "sheet", label: "Sheets", exts: ["xlsx"] }];
+    mockState.getGlobalFileTypes
+      .mockRejectedValueOnce(new Error("temporary failure"))
+      .mockResolvedValueOnce(categories);
+    const ds = createGlobalSearchApiDataSource();
+
+    await expect(ds.getFileTypeCategories()).resolves.toEqual([]);
+    await expect(ds.getFileTypeCategories()).resolves.toEqual(categories);
+    expect(mockState.getGlobalFileTypes).toHaveBeenCalledTimes(2);
   });
 });

@@ -156,6 +156,7 @@ export const chatBaselineHandlers = [
       server_time: new Date().toISOString(),
     })
   ),
+  http.get("*/api/v1/user/pinned", () => HttpResponse.json([])),
   http.put("*/user/language", () => HttpResponse.json({})),
 
   // === Contacts / friends ===

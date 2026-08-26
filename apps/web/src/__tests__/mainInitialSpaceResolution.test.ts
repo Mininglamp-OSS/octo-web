@@ -2,9 +2,16 @@ import { describe, expect, it, vi } from "vitest";
 import {
   publishInitialSpaceResolution,
   requestGuardedSpaceChange,
-  resolveInitialSpace,
   shouldPublishInitialSpaceChange,
 } from "../Pages/Main/spaceChange";
+import {
+  clearLastSpaceId,
+  getLastSpaceStorageKey,
+  persistActiveSpace,
+  readLastSpaceId,
+  resolveInitialSpace,
+  resolveInitialSpaceForUser,
+} from "../features/spacePreference";
 import {
   requestGuardedBrowserRouteChange,
   requestGuardedMenuChange,
@@ -16,6 +23,59 @@ describe("MainPage initial Space resolution", () => {
     const spaces = [{ space_id: "space-a" }, { space_id: "space-b" }];
     expect(resolveInitialSpace(spaces, "stale-space")).toEqual(spaces[0]);
     expect(resolveInitialSpace(spaces, "space-b")).toEqual(spaces[1]);
+  });
+
+  it("restores the current user's last accessible Space", () => {
+    const spaces = [{ space_id: "space-a" }, { space_id: "space-b" }];
+
+    expect(resolveInitialSpace(spaces, null, "space-b")).toEqual(spaces[1]);
+  });
+
+  it("keeps explicit and current-session choices ahead of device history", () => {
+    const spaces = [
+      { space_id: "space-a" },
+      { space_id: "space-b" },
+      { space_id: "space-c" },
+    ];
+
+    expect(
+      resolveInitialSpace(spaces, "space-c", "space-b", "space-a")
+    ).toEqual(spaces[2]);
+  });
+
+  it("uses one user-scoped resolution path after legacy migration", () => {
+    const spaces = [
+      { space_id: "space-a" },
+      { space_id: "space-b" },
+      { space_id: "space-c" },
+    ];
+    const values = new Map<string, string>([
+      ["currentSpaceId", "space-b"],
+      ["octo:last-space:user-a", "space-c"],
+    ]);
+    const store = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+
+    expect(
+      resolveInitialSpaceForUser(spaces, "user-a", "space-a", store)
+    ).toEqual(spaces[0]);
+    expect(resolveInitialSpaceForUser(spaces, "user-a", null, store)).toEqual(
+      spaces[2]
+    );
+    values.delete("octo:last-space:user-a");
+    expect(resolveInitialSpaceForUser(spaces, "user-a", null, store)).toEqual(
+      spaces[0]
+    );
+  });
+
+  it("ignores an inaccessible historical Space and uses the first accessible Space", () => {
+    const spaces = [{ space_id: "space-a" }, { space_id: "space-b" }];
+
+    expect(resolveInitialSpace(spaces, null, "removed-space")).toEqual(
+      spaces[0]
+    );
   });
 
   it("publishes the resolved Space only when startup changes the active Space", () => {
@@ -48,6 +108,108 @@ describe("MainPage initial Space resolution", () => {
   it("clears a stale Space when the user has no accessible Spaces", () => {
     expect(resolveInitialSpace([], "stale-space")).toBeUndefined();
     expect(shouldPublishInitialSpaceChange("stale-space", "")).toBe(false);
+  });
+});
+
+describe("per-user last Space persistence", () => {
+  it("migrates a legacy-only currentSpaceId to the current uid once", () => {
+    const values = new Map<string, string>([
+      ["currentSpaceId", "space-b"],
+    ]);
+    const store = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+    const spaces = [{ space_id: "space-a" }, { space_id: "space-b" }];
+
+    expect(resolveInitialSpaceForUser(spaces, "user-a", null, store)).toEqual(
+      spaces[1]
+    );
+    expect(values.get("octo:last-space:user-a")).toBe("space-b");
+    expect(values.get("octo:last-space-legacy-migration:v1")).toBe("1");
+
+    expect(resolveInitialSpaceForUser(spaces, "user-b", null, store)).toEqual(
+      spaces[0]
+    );
+    expect(values.has("octo:last-space:user-b")).toBe(false);
+  });
+
+  it("isolates the last Space by uid while keeping currentSpaceId compatible", () => {
+    const values = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+
+    persistActiveSpace("user-a", "space-a", store);
+    persistActiveSpace("user-b", "space-b", store);
+
+    expect(values.get("currentSpaceId")).toBe("space-b");
+    expect(readLastSpaceId("user-a", store)).toBe("space-a");
+    expect(readLastSpaceId("user-b", store)).toBe("space-b");
+  });
+
+  it("does not persist an account preference without a uid", () => {
+    const setItem = vi.fn();
+
+    persistActiveSpace("", "space-a", { setItem });
+
+    expect(setItem).toHaveBeenCalledOnce();
+    expect(setItem).toHaveBeenCalledWith("currentSpaceId", "space-a");
+    expect(getLastSpaceStorageKey("  ")).toBeUndefined();
+    expect(getLastSpaceStorageKey(undefined)).toBeUndefined();
+  });
+
+  it("restores the same user's last Space after logout clears currentSpaceId", () => {
+    const values = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+    };
+    const spaces = [{ space_id: "space-a" }, { space_id: "space-b" }];
+
+    persistActiveSpace("user-a", "space-b", store);
+    values.delete("currentSpaceId");
+
+    expect(resolveInitialSpaceForUser(spaces, "user-a", null, store)).toEqual(
+      spaces[1]
+    );
+  });
+
+  it("does not resurrect the last Space after an empty membership result", () => {
+    const values = new Map<string, string>();
+    const store = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    };
+
+    persistActiveSpace("user-a", "space-a", store);
+    expect(resolveInitialSpaceForUser([], "user-a", "space-a", store)).toBe(
+      undefined
+    );
+
+    clearLastSpaceId("user-a", store);
+    store.removeItem("currentSpaceId");
+
+    expect(readLastSpaceId("user-a", store)).toBeNull();
+    expect(values.has("octo:last-space:user-a")).toBe(false);
+  });
+
+  it("degrades safely when browser storage is unavailable", () => {
+    const unavailableStorage = {
+      getItem: () => {
+        throw new Error("unavailable");
+      },
+      setItem: () => {
+        throw new Error("unavailable");
+      },
+    };
+
+    expect(() =>
+      persistActiveSpace("user-a", "space-a", unavailableStorage)
+    ).not.toThrow();
+    expect(readLastSpaceId("user-a", unavailableStorage)).toBeNull();
   });
 });
 
