@@ -16,6 +16,7 @@ import BotDetailModal from "@octo/base/src/Components/BotDetailModal";
 import UserInfo from "@octo/base/src/Components/UserInfo";
 import GroupCard from "@octo/base/src/Components/GroupCard";
 import { Space, SpaceMember, SpaceService, hasSpacePrefix } from "@octo/base/src/Service/SpaceService";
+import { channelOpenedTrackPayload } from "@octo/base/src/Service/channelOpenedTracking";
 import { debounce } from "@octo/base/src/Utils/rateLimit";
 import { OnlineStatusBadge, needShowOnlineStatus, getOnlineTip } from "@octo/base/src/Components/ConversationList";
 import { useVirtualizer } from "@tanstack/react-virtual";
@@ -967,9 +968,11 @@ export default class ContactsList extends Component<any, ContactsState> {
                         visible={this.state.groupCardVisible}
                         onClose={() => this.setState({ groupCardVisible: false })}
                         onEnterChat={(channel) => {
-                            // channel_opened:通讯录群聊名片「进入聊天」收口点。会话列表行用 data-track 发同名事件,
-                            // 但此路径经 GroupCard 弹窗多层,点击委托兜不住 → 命令式补,object_id 口径对齐(原始 channelID)。
-                            Dap.shared.track('channel_opened', { object_id: channel.channelID })
+                            // channel_opened:通讯录群聊名片「进入聊天」收口点(群聊)。与会话列表行同为命令式采集,
+                            // 复用 channelOpenedTrackPayload 保证 object_id(原始 channelID)与 channel_type 口径一致。
+                            // 群聊无「对端 AI」语义 → 不带 is_ai(helper 仅 person 行携带)。
+                            const payload = channelOpenedTrackPayload(channel, false)
+                            if (payload) Dap.shared.track('channel_opened', payload)
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ groupCardVisible: false })
                         }}

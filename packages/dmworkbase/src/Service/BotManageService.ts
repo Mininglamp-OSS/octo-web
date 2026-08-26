@@ -17,6 +17,8 @@ export interface ListBotGroupsRequest {
   robotId: string
   limit: number
   cursor?: string | null
+  /** 后端 g.name LIKE %q% 全库搜索关键字；空串 / 仅空白不下发。 */
+  q?: string
 }
 
 /**
@@ -61,6 +63,10 @@ const BotManageService = {
     }
     if (request.cursor) {
       param.cursor = request.cursor
+    }
+    const q = (request.q || "").trim()
+    if (q) {
+      param.q = q
     }
     return APIClient.shared.get(apiPath`robot/${request.robotId}/groups`, { param })
   },

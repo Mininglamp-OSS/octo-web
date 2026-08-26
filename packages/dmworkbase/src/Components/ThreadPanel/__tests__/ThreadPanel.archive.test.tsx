@@ -34,6 +34,7 @@ vi.mock("../../../App", () => ({
         threadGet: hoisted.threadGet,
         threadList: hoisted.threadList,
         channelFiles: vi.fn(),
+        subscriber: vi.fn(() => Promise.resolve(undefined)),
       },
     },
     loginInfo: { uid: "owner-uid" },
@@ -55,7 +56,8 @@ vi.mock("@douyinfe/semi-ui", () => ({
     close: hoisted.toastClose,
   },
   Spin: () => React.createElement("div", { "data-testid": "spin" }),
-  Popover: ({ children }: any) => React.createElement(React.Fragment, null, children),
+  Popover: ({ children, content }: any) =>
+    React.createElement(React.Fragment, null, children, content),
 }));
 
 vi.mock("react-virtuoso", () => ({
@@ -81,6 +83,10 @@ vi.mock("wukongimjssdk", () => {
         fetchChannelInfo: hoisted.fetchChannelInfo,
         setChannleInfoForCache: hoisted.setChannleInfoForCache,
         notifyListeners: hoisted.notifyListeners,
+        addSubscriberChangeListener: vi.fn(),
+        removeSubscriberChangeListener: vi.fn(),
+        notifySubscribeChangeListeners: vi.fn(),
+        subscribeCacheMap: new Map(),
       },
     }),
   };
@@ -216,6 +222,56 @@ describe("ThreadPanel inline archive button", () => {
     expect(conversationProps.channel).toMatchObject({
       channelID: ACTIVE_THREAD.channel_id,
     });
+  });
+
+  it("shows Edit name to an ordinary member but keeps Archive manager-only (WS-23 rename widened, archive gate unchanged)", async () => {
+    // 当前用户既非创建者也非群主/管理员：普通活跃成员
+    const ordinaryThread = { ...ACTIVE_THREAD, creator_uid: "someone-else" };
+    hoisted.threadGet.mockResolvedValue(ordinaryThread);
+    hoisted.threadList.mockResolvedValue([ordinaryThread]);
+    hoisted.getSubscribes.mockReturnValue([{ uid: "owner-uid", role: 0 }]);
+
+    render(
+      React.createElement(ThreadPanel, {
+        groupNo: "g1",
+        thread: ordinaryThread,
+        onClose: vi.fn(),
+        onThreadSelect: vi.fn(),
+      })
+    );
+
+    await waitFor(() => expect(hoisted.renderConversation).toHaveBeenCalled());
+
+    // 改名（服务端为唯一权威）→ 普通成员可见
+    expect(screen.getByText("编辑子区名称")).toBeTruthy();
+    // 归档仍限创建者/群主/管理员（canManageThread）→ 普通成员不可见
+    expect(screen.queryByText("归档子区")).toBeNull();
+  });
+
+  it("keeps Edit name available when the parent group is disbanded, but hides Archive (server allows post-disband rename)", async () => {
+    // 当前用户是群主：若归档未被 disband 隐藏，本应可见——用它反衬「隐藏归档的是 disband，而非角色」
+    const thread = { ...ACTIVE_THREAD, creator_uid: "owner-uid" };
+    hoisted.threadGet.mockResolvedValue(thread);
+    hoisted.threadList.mockResolvedValue([thread]);
+    hoisted.getSubscribes.mockReturnValue([{ uid: "owner-uid", role: 1 }]);
+    // 父群已解散（orgData.status === GroupStatusDisband）
+    hoisted.getChannelInfo.mockReturnValue({ orgData: { status: 2 } });
+
+    render(
+      React.createElement(ThreadPanel, {
+        groupNo: "g1",
+        thread,
+        onClose: vi.fn(),
+        onThreadSelect: vi.fn(),
+      })
+    );
+
+    await waitFor(() => expect(hoisted.renderConversation).toHaveBeenCalled());
+
+    // 改名入口：解散后仍显示（服务端 UpdateName 允许 post-disband 改名，前端不再加 disband gate）
+    expect(screen.getByText("编辑子区名称")).toBeTruthy();
+    // 归档入口：解散后隐藏（isThreadMenuWritable 的 disband gate）——即便当前用户是群主
+    expect(screen.queryByText("归档子区")).toBeNull();
   });
 
   it("点击归档按钮调用 threadArchive 参数正确，并弹出撤销 Toast", async () => {

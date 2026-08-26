@@ -88,6 +88,7 @@ const conditionFields: MailRuleConditionField[] = [
   "from",
   "to",
 ];
+const maxConditions = 5;
 
 function effectiveConditions(rule: MailRule): MailRuleCondition[] {
   if (rule.conditions?.length) return rule.conditions;
@@ -146,9 +147,7 @@ export default function MailRuleManagementView(
   const conditionsValid = Boolean(
     editor &&
       editor.conditions.length > 0 &&
-      editor.conditions.length <= conditionFields.length &&
-      new Set(editor.conditions.map((condition) => condition.field)).size ===
-        editor.conditions.length &&
+      editor.conditions.length <= maxConditions &&
       editor.conditions.every((condition) => condition.value.trim())
   );
   const targetRowsValid = Boolean(
@@ -456,9 +455,7 @@ export default function MailRuleManagementView(
                   </select>
                   <button
                     type="button"
-                    disabled={
-                      editor.conditions.length >= conditionFields.length
-                    }
+                    disabled={editor.conditions.length >= maxConditions}
                     onClick={() => {
                       const next = conditionFields.find(
                         (field) =>
@@ -516,16 +513,7 @@ export default function MailRuleManagementView(
                       <optgroup label={t("mail.rules.conditionGroupContent")}>
                         {(["subject", "body", "subject_or_body"] as const).map(
                           (field) => (
-                            <option
-                              value={field}
-                              key={field}
-                              disabled={
-                                field !== condition.field &&
-                                editor.conditions.some(
-                                  (item) => item.field === field
-                                )
-                              }
-                            >
+                            <option value={field} key={field}>
                               {t(`mail.rules.${field}`)}
                             </option>
                           )
@@ -533,16 +521,7 @@ export default function MailRuleManagementView(
                       </optgroup>
                       <optgroup label={t("mail.rules.conditionGroupPeople")}>
                         {(["from", "to"] as const).map((field) => (
-                          <option
-                            value={field}
-                            key={field}
-                            disabled={
-                              field !== condition.field &&
-                              editor.conditions.some(
-                                (item) => item.field === field
-                              )
-                            }
-                          >
+                          <option value={field} key={field}>
                             {t(`mail.rules.${field}`)}
                           </option>
                         ))}
@@ -618,7 +597,7 @@ export default function MailRuleManagementView(
                   {t("mail.rules.conditionsHint", {
                     values: {
                       count: editor.conditions.length,
-                      limit: conditionFields.length,
+                      limit: maxConditions,
                     },
                   })}
                 </p>
