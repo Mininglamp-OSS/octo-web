@@ -4589,8 +4589,13 @@
   overflow-y: auto;
   padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-10);
   display: grid;
+  /* Full-width scroll area (scrollbar sits at the pane edge) with a single
+     centered content column, so a wide pane doesn't leave the form stranded on
+     the left with a large blank on the right. */
+  grid-template-columns: min(960px, 100%);
+  justify-content: center;
+  align-content: start;
   gap: var(--wk-sp-4);
-  width: min(960px, 100%);
 }
 
 .wk-mcp-expert-editor__hero {
