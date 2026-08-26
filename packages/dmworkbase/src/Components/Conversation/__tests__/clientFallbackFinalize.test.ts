@@ -201,4 +201,31 @@ describe("WS-99 client fallback finalize race", () => {
         vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 正在处理…"))])
         expect(cardWrap.localFallbackApplied).toBe(true)
     })
+
+    it("卡片在 pendingMessages（历史加载期间实时到达）时 final text 兜底仍生效", () => {
+        const vm: any = new ConversationVM(channel)
+        const cardWrap = makeCardWrap("🤖 正在处理…")
+        cardWrap.progressUpdatedAtSec = 0 // 远早于 now → 空闲足够
+        // 模拟 pullupHasMore 期间：卡片进缓冲区而非 messagesOfOrigin，messagesOfOrigin 为空。
+        vm.pendingMessages.push(cardWrap)
+        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        expect(cardWrap.localFallbackApplied).toBe(true)
+    })
+
+    it("只读扩展（read receipt）不刷新 progressUpdatedAtSec（空闲判定不被重置）", () => {
+        const { vm, cardWrap } = primeFallback()
+        // 兜底后收到只读扩展；stampProgressCardArrival 不应被调用，progressUpdatedAtSec 保持原值。
+        const before = cardWrap.progressUpdatedAtSec
+        const readReceipt = makeExtra() // 无 contentEdit
+        readReceipt.readedCount = 5
+        vm.updateMessageByMessageExtras([readReceipt])
+        expect(cardWrap.progressUpdatedAtSec).toBe(before)
+    })
+
+    it("卡片内容编辑帧会刷新 progressUpdatedAtSec", () => {
+        const { vm, cardWrap } = primeFallback()
+        cardWrap.progressUpdatedAtSec = 0
+        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
+        expect(cardWrap.progressUpdatedAtSec).toBeGreaterThan(0)
+    })
 })

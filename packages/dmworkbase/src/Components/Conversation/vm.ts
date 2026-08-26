@@ -1570,29 +1570,45 @@ export default class ConversationVM extends ProviderListener {
         const senderId = finalTextWrap.fromUID
         if (!senderId) return
 
+        // 该 assistant 最近一张 type=17 卡：只对这一张判定，不再往前看（对齐「最近一张」语义）。
+        const m = this.findLatestSenderCard(senderId)
+        if (!m) return
+        if (m.localFallbackApplied) return // 幂等
+        const card = this.resolveProgressCard(m)
+        if (!card) return
         const finalAtSec = Date.now() / 1000
-        for (let i = this.messagesOfOrigin.length - 1; i >= 0; i--) {
-            const m = this.messagesOfOrigin[i]
-            if (m.fromUID !== senderId) continue
-            if (m.contentType !== MessageContentTypeConst.interactiveCard) continue
-            // m = 该 assistant 最近一张 type=17 卡：只对这一张判定，不再往前看（对齐「最近一张」语义）。
-            if (m.localFallbackApplied) return // 幂等
-            const card = this.resolveProgressCard(m)
-            if (
-                card &&
-                isNonTerminalProgressCard(card) &&
-                isProgressCardIdleEnough(m.progressUpdatedAtSec, finalAtSec)
-            ) {
-                m.localFallbackApplied = true
-                const idleSec = finalAtSec - (m.progressUpdatedAtSec ?? finalAtSec)
-                console.debug(
-                    `[interactive-card] client fallback finalized stuck progress card sender=${senderId} messageID=${m.messageID} idleSec=${idleSec.toFixed(1)}`
-                )
-                this.rebuildRenderItems()
-                this.notifyListener()
-            }
-            return
+        if (
+            isNonTerminalProgressCard(card) &&
+            isProgressCardIdleEnough(m.progressUpdatedAtSec, finalAtSec)
+        ) {
+            m.localFallbackApplied = true
+            const idleSec = finalAtSec - (m.progressUpdatedAtSec ?? finalAtSec)
+            console.debug(
+                `[interactive-card] client fallback finalized stuck progress card sender=${senderId} messageID=${m.messageID} idleSec=${idleSec.toFixed(1)}`
+            )
+            this.rebuildRenderItems()
+            this.notifyListener()
         }
+    }
+
+    /**
+     * 找该 assistant（senderId）最近一张 type=17 卡，供 final-text 兜底判定。
+     * 严格按 senderId 匹配，多助理并发不误伤别人。历史加载（pullupHasMore）期间实时到达的卡片
+     * 与 final text 都进 pendingMessages，只扫 messagesOfOrigin 会找不到真实最新卡片、且 buffer
+     * flush 不重跑检测导致僵尸卡永久漏掉（评审 blocker）；pendingMessages 比 messagesOfOrigin
+     * 新，故先扫 pending 再扫 origin，各自从尾到头取最近一张。
+     */
+    private findLatestSenderCard(senderId: string): MessageWrap | undefined {
+        const scan = (list: MessageWrap[]): MessageWrap | undefined => {
+            for (let i = list.length - 1; i >= 0; i--) {
+                const m = list[i]
+                if (m.fromUID !== senderId) continue
+                if (m.contentType !== MessageContentTypeConst.interactiveCard) continue
+                return m
+            }
+            return undefined
+        }
+        return scan(this.pendingMessages) ?? scan(this.messagesOfOrigin)
     }
 
     // 更新消息扩展数据
@@ -1606,7 +1622,12 @@ export default class ConversationVM extends ProviderListener {
             if (message) {
                 message.message.remoteExtra = messageExtra
                 message.resetParts()
-                this.stampProgressCardArrival(message)
+                // 只在「卡片内容编辑帧」时刷新到达时刻。read receipt 等只读扩展（无 contentEdit）
+                // 不改 progressUpdatedAtSec，否则会重置 3s 空闲判定、把只触发一次的 final-text
+                // 兜底永久压掉（评审 blocker）。门控对齐 resolveEffectiveCardContent 的采用条件。
+                if (messageExtra.isEdit && messageExtra.contentEdit instanceof InteractiveCardContent) {
+                    this.stampProgressCardArrival(message)
+                }
                 // 权威终态帧到达即覆盖本地兜底注解：撤回「未收到显式终态」标记，让真实终态正常
                 // 渲染，闭环 client fallback race（评审 blocker）。只读扩展不判为终态，不误撤回。
                 if (message.localFallbackApplied && this.progressCardFrameIsTerminal(message)) {
