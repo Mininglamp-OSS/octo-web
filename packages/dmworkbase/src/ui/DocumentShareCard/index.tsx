@@ -15,7 +15,9 @@ export type DocSharePermissionState =
 
 /**
  * 首屏预览取数状态。
- * `empty` = 有访问权限、但该 doc_type 没有可渲染的预览（如 html 文档）——
+ * `empty` = **鉴权已通过**（reader 接口确认了访问权），但**没有可渲染的内容**——不绑定具体
+ * doc_type，既覆盖「该类型本来就没有预览」（409 `unsupported_doc_type`），也覆盖「有预览
+ * 能力但这次没抽到内容」（专属预览接口 200 + 空内容）。
  * 是**正常降级**，与 error（取数失败）严格区分：前者标绿显「暂无预览」，后者标红。
  */
 export type DocSharePreviewStatus =

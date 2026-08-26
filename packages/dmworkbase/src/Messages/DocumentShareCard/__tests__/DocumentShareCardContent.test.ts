@@ -78,10 +78,11 @@ describe("permissionState — only live ACL controls the effective badge", () =>
     expect(permissionState("error")).toBe("error");
   });
 
-  // empty 只来自 docs-backend 的 409 unsupported_doc_type，而 409 只能在
-  // requireDocRole(reader) **通过之后**才抛——所以 empty 在 ACL 上确证了 reader，
+  // empty = reader-protected 接口确认了访问权、但无可渲染内容。两条来源（409
+  // unsupported_doc_type；/html-preview 的 200 + 空 preview）都只能在
+  // requireDocRole(reader) **通过之后**发生——所以 empty 在 ACL 上确证了 reader，
   // 标绿「可查看」是准确结论，不是乐观猜测。
-  it("empty (409 unsupported_doc_type, raised only after the reader check passed) → reader", () => {
+  it("empty (both sources arise only after the reader check passed) → reader", () => {
     expect(permissionState("empty")).toBe("reader");
   });
 });
