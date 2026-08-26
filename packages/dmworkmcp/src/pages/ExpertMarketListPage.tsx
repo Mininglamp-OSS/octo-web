@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowDown, Check, HelpCircle, PackageOpen, Search, SlidersHorizontal, Upload, X } from "lucide-react";
-import { Tooltip } from "@douyinfe/semi-ui";
+import { Toast, Tooltip } from "@douyinfe/semi-ui";
 import { t, useI18n, WKApp, WKButton } from "@octo/base";
 import { EXPERT_CATEGORIES } from "../mock/expertMock";
 import type { ExpertItem } from "../mock/expertMock";
@@ -447,7 +447,7 @@ export default function ExpertMarketListPage({
         await deleteExpert(id);
       }
       await reload();
-      showToast(t("mcp.expert.deleteSuccess"));
+      Toast.success(t("mcp.expert.deleteSuccess"));
     } catch (err) {
       showToast(err instanceof Error ? err.message : t("mcp.expert.loadError"));
     }

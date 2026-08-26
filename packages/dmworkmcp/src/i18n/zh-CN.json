@@ -117,7 +117,7 @@
     "secretPlaceholderNoteSquad": "若团中成员配置了密钥，添加后请到对应成员的设置中补填真实密钥再使用。",
     "editAriaLabel": "编辑 {{name}}",
     "deleteAriaLabel": "删除 {{name}}",
-    "deleteSuccess": "已删除。",
+    "deleteSuccess": "已删除",
     "deleteConfirmTitle": "删除确认",
     "deleteConfirmBody": "删除后将从你的列表中移除，此操作不可撤销。",
     "deleteCancel": "取消",

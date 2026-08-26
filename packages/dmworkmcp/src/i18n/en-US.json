@@ -117,7 +117,7 @@
     "secretPlaceholderNoteSquad": "If any team member requires secrets, fill in the real values in that member's settings after adding before using it.",
     "editAriaLabel": "Edit {{name}}",
     "deleteAriaLabel": "Delete {{name}}",
-    "deleteSuccess": "Deleted.",
+    "deleteSuccess": "Deleted",
     "deleteConfirmTitle": "Delete confirmation",
     "deleteConfirmBody": "This removes it from your list. This can't be undone.",
     "deleteCancel": "Cancel",
