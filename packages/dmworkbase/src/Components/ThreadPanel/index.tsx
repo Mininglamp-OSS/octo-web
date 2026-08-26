@@ -31,6 +31,7 @@ import {
   canManageThread,
   isParentGroupManager,
 } from "../../Service/threadPermission";
+import { extractErrorMsg } from "../../Service/APIClient";
 import ChannelWebhookPanel from "../ChannelWebhook";
 import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
@@ -770,13 +771,12 @@ export default class ThreadPanel extends Component<
     return canManageThread(thread, this.props.groupNo!);
   }
 
-  // 改名 gate：WS-23 改名走「服务端为唯一权威」——前端不再用父群订阅缓存前置判定谁能改名
-  // （客户端只持有部分 roster，任何本地 gate 都会误判合法成员，反复触发 review 回归）。
-  // 这里只保留纯 UI 状态判定：父群未解散即显示「Edit name」入口（与右侧设置页 canEdit=!disbanded
-  // 同口径），保存时由服务端裁决、错误经 handleEditThread 的 Toast.error 呈现。归档仍走
-  // canManageThread（父群角色），两者在此拆开。
+  // 改名 gate：WS-23 改名走「服务端为唯一权威」——前端不做权限/状态前置判定。服务端
+  // UpdateName 在父群解散后仍允许改子区名（产品决策），故这里不再套 isThreadMenuWritable
+  // 的 disband gate（否则会与右侧设置页不一致、并回归 main）。有 groupNo 即显示「Edit name」，
+  // 保存失败由 handleEditThread 透传 error.msg 并保留弹窗。归档仍走 canManageThread（父群角色）。
   private canRenameThreadInPanel(): boolean {
-    return this.isThreadMenuWritable();
+    return !!this.props.groupNo;
   }
 
   private handleEditThread = () => {
@@ -805,11 +805,12 @@ export default class ThreadPanel extends Component<
           newName = inputRef.current?.value ?? thread.name;
           if (!newName || newName.trim() === "") {
             Toast.error(t("base.threadPanel.nameRequired"));
-            return;
+            // throw 让 wkConfirm 保留弹窗与用户草稿（其 onOk reject 分支不 destroy）
+            throw new Error("thread-name-empty");
           }
           if (newName.length > THREAD_NAME_MAX_LENGTH) {
             Toast.warning(t("base.threadCreate.nameMaxLength"));
-            return;
+            throw new Error("thread-name-too-long");
           }
           try {
             await WKApp.dataSource.channelDataSource.threadUpdate(
@@ -817,25 +818,30 @@ export default class ThreadPanel extends Component<
               thread.short_id,
               { name: newName.trim() }
             );
-            Toast.success(t("base.threadPanel.updateSuccess"));
-            // 刷新左侧列表
-            this.loadThreads();
-            // 更新详情页标题
-            this.setState({
-              vmState: {
-                ...this.state.vmState,
-                thread: { ...thread, name: newName.trim() },
-              },
-            });
-
-            // 清除 SDK 缓存，刷新 Chat header 展示的子区名称
-            this.refreshThreadChannelInfo({
-              ...thread,
-              name: newName.trim(),
-            });
-          } catch {
-            Toast.error(t("base.module.thread.saveFailedRetry"));
+          } catch (error) {
+            // 透传服务端拒绝原因，不吞错；rethrow 让 wkConfirm 保留弹窗与草稿，避免把
+            // 失败保存当成功关闭、丢失用户输入。
+            Toast.error(
+              extractErrorMsg(error) || t("base.module.thread.saveFailedRetry")
+            );
+            throw error;
           }
+          Toast.success(t("base.threadPanel.updateSuccess"));
+          // 刷新左侧列表
+          this.loadThreads();
+          // 更新详情页标题
+          this.setState({
+            vmState: {
+              ...this.state.vmState,
+              thread: { ...thread, name: newName.trim() },
+            },
+          });
+
+          // 清除 SDK 缓存，刷新 Chat header 展示的子区名称
+          this.refreshThreadChannelInfo({
+            ...thread,
+            name: newName.trim(),
+          });
         },
       });
     }, 100);

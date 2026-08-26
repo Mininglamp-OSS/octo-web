@@ -711,7 +711,6 @@
   "module.channelSettings.groupNamePlaceholder": "群名称",
   "module.channelSettings.groupNotice": "群公告",
   "module.channelSettings.groupNoticeOnlyManager": "只有管理者才能修改群公告",
-  "module.channelSettings.renameUnavailable": "当前无法修改名称",
   "module.channelSettings.ownerLeaveBlockedContent": "你是当前群主，退出群聊前需要先将群主转让给其他成员。",
   "module.channelSettings.ownerLeaveBlockedTitle": "请先转让群主",
   "module.channelSettings.groupQrCard": "群二维码名片",
