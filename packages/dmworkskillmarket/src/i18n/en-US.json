@@ -58,7 +58,7 @@
     "parseTimeout": "Parse timed out, please retry"
   },
   "list": {
-    "pageTitle": "Market · Skills",
+    "pageTitle": "Skills",
     "pageSubtitle": "Browse reusable skills and add them straight to your agents and workflows.",
     "mine": "Mine",
     "tabSkills": "All",

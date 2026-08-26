@@ -19,7 +19,7 @@
     "navAriaLabel": "我的资产类型"
   },
   "expert": {
-    "pageTitle": "市场 · 专家",
+    "pageTitle": "专家",
     "pageSubtitle": "浏览可安装到回路的专家与专家团,直接为你的工作区补充能力。",
     "editor": {
       "returnToMarket": "返回",
@@ -172,7 +172,7 @@
     "bot": "Bot 创建"
   },
   "list": {
-    "pageTitle": "市场 · 连接器",
+    "pageTitle": "连接器",
     "pageSubtitle": "浏览并接入连接器，为你的智能体扩展工具能力。",
     "desc": "浏览并接入连接器，为你的智能体扩展工具能力。",
     "create": "上架连接器",

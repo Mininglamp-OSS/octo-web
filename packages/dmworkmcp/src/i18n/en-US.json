@@ -19,7 +19,7 @@
     "navAriaLabel": "My asset type"
   },
   "expert": {
-    "pageTitle": "Market · Experts",
+    "pageTitle": "Experts",
     "pageSubtitle": "Browse experts and squads you can install into Loop to extend your workspace.",
     "editor": {
       "returnToMarket": "Back",
@@ -172,7 +172,7 @@
     "bot": "Bot"
   },
   "list": {
-    "pageTitle": "Market · Connectors",
+    "pageTitle": "Connectors",
     "pageSubtitle": "Browse and connect MCP servers to extend your agent's tools.",
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
     "create": "Publish MCP",
