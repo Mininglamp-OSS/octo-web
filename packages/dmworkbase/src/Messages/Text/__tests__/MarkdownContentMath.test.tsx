@@ -482,11 +482,12 @@ describe("MarkdownContent — 合法公式在收紧规则下仍渲染", () => {
 });
 
 describe("MarkdownContent — KaTeX 解析失败回落为正文，不显示 .katex-error 红字", () => {
-  it("无效公式被判为公式但解析失败时，降级为纯文本（不显示红字）", () => {
+  it("无效公式被判为公式但解析失败时，降级为纯文本（保留定界符、不显示红字）", () => {
     // `$\frac{a}$` 过守卫（含 \ 和 {}，单 $ 两端紧贴非空白），但缺第二个参数 → KaTeX 报错。
+    // 预校验失败 → 整体按字面文本保留，连 `$` 定界符一起（P1-1：旧 fallback 会丢定界符）。
     const root = renderContent(<MarkdownContent content={"试 $\\frac{a}$ 完"} />);
     expect(root.querySelector(".katex-error")).toBeNull();
-    expect(visibleText(root)).toContain("\\frac{a}");
+    expect(visibleText(root)).toContain("$\\frac{a}$");
   });
 
   it("合法公式不受 error 回落插件影响，正常渲染", () => {
@@ -552,6 +553,72 @@ describe("MarkdownContent — 含真正 TeX 命令时放宽（CJK 合法公式�
     const root = renderContent(<MarkdownContent content={"订单 $金额_x$ 备注"} />);
     expect(root.querySelector(".katex")).toBeNull();
     expect(visibleText(root)).toContain("金额_x");
+  });
+});
+
+describe("MarkdownContent — shell/CI/模板插值 ${VAR} 不被当公式 (reviewer P0-1)", () => {
+  const cases: string[] = [
+    "${VAR}",
+    "${A}+${B}",
+    "${VERSION}-${BUILD}",
+    "export ${HOME} then ${PATH}",
+    "run ${CI_COMMIT_SHA} now",
+  ];
+  for (const input of cases) {
+    it(`不误渲染且原样保留：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      const vt = visibleText(root);
+      expect(vt).toBe(input);
+      // 连字符不能被 KaTeX 变成 U+2212 减号
+      expect(vt).not.toContain("−");
+    });
+  }
+});
+
+describe("MarkdownContent — 价格+公式混排：货币不吃掉后面公式的定界符 (reviewer P1-2)", () => {
+  it("costs $100 and then $E=mc^2$ 里的公式仍渲染，货币原样", () => {
+    const root = renderContent(
+      <MarkdownContent content={"costs $100 and then $E=mc^2$"} />
+    );
+    expect(root.querySelector(".katex")).not.toBeNull();
+    expect(visibleText(root)).toContain("costs $100 and then");
+  });
+
+  it("报价 $100，公式 $x^2$ 同时成立", () => {
+    const root = renderContent(
+      <MarkdownContent content={"报价 $100，公式 $x^2$"} />
+    );
+    expect(root.querySelector(".katex")).not.toBeNull();
+    expect(visibleText(root)).toContain("$100");
+  });
+});
+
+describe("MarkdownContent — 段落里预先转义的 \\$ 不破坏其它 $ 的保护 (reviewer P1-3)", () => {
+  it("pay $100 and \\$200 ok 不丢 $、不留异常反斜杠、不渲染公式", () => {
+    const root = renderContent(
+      <MarkdownContent content={"pay $100 and \\$200 ok"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("$100");
+    expect(vt).toContain("$200");
+    expect(vt).not.toContain("\\");
+  });
+});
+
+describe("MarkdownContent — 超长 $$ block 超限回退为文本 (reviewer P2-8)", () => {
+  it("约 4.8KB 的 display math 超过长度上限时按文本处理，不渲染", () => {
+    const body = "x_1 + " + "a".repeat(4800); // 含 math-ish，但整体 > 4096
+    const root = renderContent(<MarkdownContent content={`$$\n${body}\n$$`} />);
+    expect(root.querySelector(".katex")).toBeNull();
+  });
+
+  it("正常长度的 display math 仍渲染", () => {
+    const root = renderContent(
+      <MarkdownContent content={"$$\n\\frac{a}{b}\n$$"} />
+    );
+    expect(root.querySelector(".katex-display")).not.toBeNull();
   });
 });
 
