@@ -157,7 +157,14 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
         onCommitted={({ id, name: memberName }) => {
           setMembers((prev) => [
             ...prev,
-            { pluginId: id, name: memberName, memberKey: id, leader: false },
+            // First member (or first after the leader was removed) becomes the
+            // leader by default, since a squad always needs exactly one.
+            {
+              pluginId: id,
+              name: memberName,
+              memberKey: id,
+              leader: !prev.some((m) => m.leader),
+            },
           ]);
           setDirty(true);
         }}
@@ -182,20 +189,22 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
   };
 
   const removeMember = (pluginId: string) => {
-    setMembers((prev) => prev.filter((x) => x.pluginId !== pluginId));
+    setMembers((prev) => {
+      const next = prev.filter((x) => x.pluginId !== pluginId);
+      // A leader is required: if the removed member was the leader, promote the
+      // first remaining member so the squad always has exactly one.
+      if (next.length && !next.some((m) => m.leader)) {
+        next[0] = { ...next[0], leader: true };
+      }
+      return next;
+    });
     setDirty(true);
   };
 
-  /** Single-leader semantics: promote one member (clearing the rest); clicking
-   *  the current leader again unsets it (no leader). */
-  const toggleLeader = (pluginId: string) => {
-    setMembers((prev) =>
-      prev.map((x) =>
-        x.pluginId === pluginId
-          ? { ...x, leader: !x.leader }
-          : { ...x, leader: false }
-      )
-    );
+  /** Single-leader semantics: promote one member, clearing the rest. A leader is
+   *  required, so this only ever sets (never unsets). */
+  const setLeader = (pluginId: string) => {
+    setMembers((prev) => prev.map((x) => ({ ...x, leader: x.pluginId === pluginId })));
     setDirty(true);
   };
 
@@ -210,6 +219,11 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
     if (saving) return;
     if (!name.trim()) {
       showToast(t("mcp.squad.editor.nameRequired"));
+      return;
+    }
+    // A squad must designate exactly one leader among its members.
+    if (members.length > 0 && !members.some((m) => m.leader)) {
+      showToast(t("mcp.squad.editor.leaderRequired"));
       return;
     }
     const form: SquadWriteForm = {
@@ -393,15 +407,9 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
                       <div>
                         <div className="wk-mcp-expert-editor__member-title">
                           {m.name}
-                          {m.leader && (
-                            <span className="wk-mcp-expert-editor__member-leader-badge">
-                              <Crown size={12} aria-hidden="true" />
-                              {t("mcp.squad.editor.leaderBadge")}
-                            </span>
-                          )}
                         </div>
                         <div className="wk-mcp-expert-editor__member-meta">
-                          {m.pluginId} · {t("mcp.squad.editor.memberResourceLabel")}
+                          {t("mcp.squad.editor.memberResourceLabel")}
                         </div>
                       </div>
                     </div>
@@ -413,10 +421,12 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
                             ? "wk-mcp-expert-editor__member-leader is-active"
                             : "wk-mcp-expert-editor__member-leader"
                         }
-                        onClick={() => toggleLeader(m.pluginId)}
+                        disabled={m.leader}
+                        onClick={() => setLeader(m.pluginId)}
                       >
+                        {m.leader && <Crown size={13} aria-hidden="true" />}
                         {m.leader
-                          ? t("mcp.squad.editor.unsetLeader")
+                          ? t("mcp.squad.editor.leaderBadge")
                           : t("mcp.squad.editor.setLeader")}
                       </button>
                       <button

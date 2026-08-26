@@ -464,7 +464,8 @@
       "editMember": "Edit {{name}}",
       "removeMember": "Remove {{name}}",
       "noMembers": "No members yet — click “New expert” to add one",
-      "leaveConfirm": "You have unsaved changes. Leave anyway?"
+      "leaveConfirm": "You have unsaved changes. Leave anyway?",
+      "leaderRequired": "Please set a leader for the squad"
     }
   }
 }
