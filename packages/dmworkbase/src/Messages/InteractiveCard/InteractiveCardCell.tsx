@@ -19,6 +19,10 @@ import {
   submitCardAction,
 } from "./cardAction";
 import { isAgentProgressCard } from "./cardLayout";
+import {
+  buildRenderedCardKey,
+  classifyCardReconcile,
+} from "./cardReconcile";
 import { InteractiveCardContent } from "./InteractiveCardContent";
 import { decideCardBody, type CardDecision } from "./renderDecision";
 import { resolveEffectiveCardContent } from "./resolveContent";
@@ -94,6 +98,12 @@ export class InteractiveCardCell extends MessageCell {
   private cardMountRef = React.createRef<HTMLDivElement>();
   /** 已挂载卡片的内容指纹；内容不变则不重挂载（保护后续输入交互态）。 */
   private renderedKey: string | null = null;
+  /**
+   * 已应用到挂载卡片的「客户端兜底已完成」态。**不进 renderedKey**：它只是本地标记翻转、
+   * 没有新 card frame 到达，若混进 key 会误走重挂载/重置分支（折叠已展开 timeline、作废在飞
+   * Submit）。单独追踪，仅在翻转时叠加 banner 视觉 + forceUpdate 刷 UI（评审 P1）。
+   */
+  private renderedFallbackFinalized = false;
   /** 组件是否仍挂载（异步回调卸载守卫）。 */
   private mounted = false;
   /**
@@ -187,11 +197,31 @@ export class InteractiveCardCell extends MessageCell {
       return;
     }
     const fallbackFinalized = this.isFallbackFinalized(decision.card);
-    const key = `${decision.renderProfile}:${
-      decision.allowInteractive ? "v2" : "v1"
-    }:${fallbackFinalized ? "fb:" : ""}${JSON.stringify(decision.card)}`;
-    if (key === this.renderedKey) return;
+    // renderedKey 只表达真实 card 内容/渲染 profile；本地兜底标记不进 key（评审 P1，见
+    // cardReconcile 模块头注释）。据此把本次 sync 分成 remount / fallback-only / noop 三类。
+    const key = buildRenderedCardKey(
+      decision.renderProfile,
+      decision.allowInteractive,
+      decision.card
+    );
+    const action = classifyCardReconcile(
+      this.renderedKey,
+      this.renderedFallbackFinalized,
+      key,
+      fallbackFinalized
+    );
+    if (action === "noop") return;
+    if (action === "fallback-only") {
+      // 内容未变、仅本地兜底标记翻转 → 只叠加 banner 视觉并刷 JSX，不重挂载、不重置交互态
+      // （不 submitGen++、不清 timer/submitting/submitError），避免折叠已展开 timeline、
+      // 静默放弃在飞 Action.Submit。复用现有 seam：enhanceMountedCard 带 fallbackFinalized。
+      this.renderedFallbackFinalized = fallbackFinalized;
+      this.enhanceMountedCard();
+      this.forceUpdate();
+      return;
+    }
     this.renderedKey = key;
+    this.renderedFallbackFinalized = fallbackFinalized;
     // 新帧到达：作废在飞提交（响应/超时不再生效）并重置交互态（loading/错误/超时）。
     const wasBusy = this.submitting || this.submitError !== null;
     this.submitGen++;

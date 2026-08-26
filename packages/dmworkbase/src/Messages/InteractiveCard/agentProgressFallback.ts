@@ -50,8 +50,9 @@ function elementText(node: unknown): string {
 }
 
 /**
- * 取进度卡 header 文案。specialized layout 契约：`body[0]` 为 ColumnSet，其 `columns[0].items`
- * 首个展示元素即 header（RichTextBlock 或 TextBlock）。结构异常时返回 null（保守，不触发）。
+ * 取进度卡 header 文案。specialized layout 契约：body 里首个 ColumnSet 的 `columns[0].items`
+ * 首个非空展示元素即 header（RichTextBlock 或 TextBlock）。按 type 查找 ColumnSet（不假设它一定
+ * 是 body[0]，容忍前置分隔/spacer 节点）；结构异常时返回 null（保守，不触发）。
  */
 export function getProgressCardHeaderText(
   card: Record<string, unknown>

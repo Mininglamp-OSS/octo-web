@@ -312,31 +312,39 @@ describe("WS-99 client fallback finalize race", () => {
     it("非字符串 text 的 type=1 消息经真实 listener 不抛且仍能 append（P1 类型保护）", () => {
         const vm: any = new ConversationVM(channel)
         vm.didMount() // 装配真实 messageListener（走 stamp → maybeFinalize → append 全路径）
-        // 塞一张未终态卡，确保 hot path 会走到 text 判定；即便卡存在也不该因 text.trim 抛错。
-        const cardWrap = makeCardWrap("🤖 正在处理…")
-        cardWrap.progressUpdatedAtSec = 0
-        vm.messages.push(cardWrap)
-        vm.messagesOfOrigin.push(cardWrap)
+        try {
+            // 塞一张未终态卡，确保 hot path 会走到 text 判定；即便卡存在也不该因 text.trim 抛错。
+            const cardWrap = makeCardWrap("🤖 正在处理…")
+            cardWrap.progressUpdatedAtSec = 0
+            vm.messages.push(cardWrap)
+            vm.messagesOfOrigin.push(cardWrap)
 
-        // number 型 text truthy 但非字符串，旧代码会在 text.trim() 抛 TypeError，
-        // 导致消息不入会话并中断后续 listener。
-        const badMsg = makeNonStringTextMessage(123)
-        expect(() => vm.messageListener(badMsg)).not.toThrow()
-        // 消息仍进入会话（append 未被中断）。
-        expect(
-            vm.messagesOfOrigin.some((m: MessageWrap) => m.clientMsgNo === "bad-text-1")
-        ).toBe(true)
-        // 畸形文本不应触发兜底（text 非法直接早退）。
-        expect(cardWrap.localFallbackApplied).toBeFalsy()
+            // number 型 text truthy 但非字符串，旧代码会在 text.trim() 抛 TypeError，
+            // 导致消息不入会话并中断后续 listener。
+            const badMsg = makeNonStringTextMessage(123)
+            expect(() => vm.messageListener(badMsg)).not.toThrow()
+            // 消息仍进入会话（append 未被中断）。
+            expect(
+                vm.messagesOfOrigin.some((m: MessageWrap) => m.clientMsgNo === "bad-text-1")
+            ).toBe(true)
+            // 畸形文本不应触发兜底（text 非法直接早退）。
+            expect(cardWrap.localFallbackApplied).toBeFalsy()
+        } finally {
+            vm.didUnMount() // 成对卸载：摘除注册到 SDK 单例上的 listener，避免跨用例泄漏。
+        }
     })
 
     it("object 型 text 的 type=1 消息经真实 listener 也不抛（类型保护覆盖 non-string truthy）", () => {
         const vm: any = new ConversationVM(channel)
         vm.didMount()
-        const badMsg = makeNonStringTextMessage({ nested: "obj" })
-        expect(() => vm.messageListener(badMsg)).not.toThrow()
-        expect(
-            vm.messagesOfOrigin.some((m: MessageWrap) => m.clientMsgNo === "bad-text-1")
-        ).toBe(true)
+        try {
+            const badMsg = makeNonStringTextMessage({ nested: "obj" })
+            expect(() => vm.messageListener(badMsg)).not.toThrow()
+            expect(
+                vm.messagesOfOrigin.some((m: MessageWrap) => m.clientMsgNo === "bad-text-1")
+            ).toBe(true)
+        } finally {
+            vm.didUnMount()
+        }
     })
 })

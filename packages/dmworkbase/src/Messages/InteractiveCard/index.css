@@ -312,14 +312,14 @@
   align-items: center;
   gap: var(--wk-sp-2, 8px);
   margin-bottom: var(--wk-sp-1, 4px);
-  font-size: 12px;
+  font-size: var(--wk-text-size-sm, 12px);
   color: var(--wk-color-warning, var(--wk-text-secondary));
 }
 
 .wk-interactive-card-fallback__tag {
   padding: 0 var(--wk-sp-1, 4px);
   border-radius: var(--wk-r-sm, 4px);
-  font-size: 11px;
+  font-size: var(--wk-text-size-xs, 11px);
   line-height: 1.6;
   color: var(--wk-text-secondary);
   background: var(--wk-fill-secondary, transparent);
@@ -331,6 +331,8 @@
   opacity: 0.92;
 }
 
+/* !important 是必需的：AdaptiveCards SDK 输出的 spinner/loading 元素带 inline/keyframe 动画，
+ * 常规选择器权重压不过；兜底后若不强制停掉，卡片仍在转圈，与「已完成」语义矛盾。 */
 .wk-interactive-card-progress--fallback [class*="spinner"],
 .wk-interactive-card-progress--fallback [class*="loading"] {
   animation: none !important;
