@@ -289,13 +289,6 @@ export class BotCardSettingsVM extends ProviderListener {
     toggle(key: string, next: boolean): boolean {
         const row = this.snapshot().rows.find((item) => item.key === key)
         if (!row || row.disabled) return false
-        // card_message_setting_toggled:卡片消息设置开关收口点。写端点是批量 PUT robot/:id/settings,
-        //   一次覆盖多键、body 里分不出改了哪项 → FetchRules 拿不到 key/value,故在此命令式补,带 bot_id + key + 新值。
-        Dap.shared.track('card_message_setting_toggled', {
-            bot_id: this.robotId,
-            key,
-            enabled: next,
-        })
         if (!this.baseline.has(key)) {
             this.baseline.set(key, this.items.get(key))
         }
@@ -434,6 +427,15 @@ export class BotCardSettingsVM extends ProviderListener {
                     // 「取消自定义」按钮消失 —— 用户在界面上再没有任何途径清掉那个
                     // 刚被创建的覆盖，且写失败不触发重拉，错状态会一直留着。
                     for (const [key, confirmed] of this.sending) {
+                        // card_message_setting_toggled:仅在批量 PUT 被服务端确认(2xx)后、逐 key 发。
+                        //   放这里而非 toggle():与 conversation_muted / group_bot_free_mention_toggled 一致——
+                        //   写失败(withRetry 耗尽 → catch → rollbackPending)不计;dropped(变只读)已在上面剔除,也不计。
+                        //   批量 PUT body 分不出改了哪项 → FetchRules 拿不到 key/value,故命令式带 bot_id + key + 新值。
+                        Dap.shared.track('card_message_setting_toggled', {
+                            bot_id: requestedUid,
+                            key,
+                            enabled: confirmed,
+                        })
                         if (this.queued.has(key)) {
                             this.baseline.set(
                                 key,

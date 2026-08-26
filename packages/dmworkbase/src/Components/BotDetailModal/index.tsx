@@ -3,7 +3,6 @@ import { Toast } from "@douyinfe/semi-ui";
 import WKModal from "../WKModal";
 import { Channel, ChannelTypePerson } from "wukongimjssdk";
 import WKApp from "../../App";
-import { Dap } from "../../Service/Dap";
 import WKAvatar from "../WKAvatar";
 import { WKAvatarEditor } from "../WKAvatarEditor";
 import { WKAvatarUploadPreview } from "../WKAvatarUploadPreview";
@@ -107,12 +106,6 @@ export default class BotDetailModal extends Component<BotDetailModalProps> {
 
     handleChat = () => {
         const { uid, onChat, onClose } = this.props;
-        // contact_message_clicked:AI 名片「发消息」收口点(通讯录 / 全局搜索两处入口共用此弹窗)。
-        Dap.shared.track('contact_message_clicked', {
-            object_id: uid,
-            contact_type: 'ai',
-            space_id: WKApp.shared.currentSpaceId,
-        })
         // WuKongIM DM 只认裸 uid
         onChat(new Channel(uid, ChannelTypePerson));
         onClose();

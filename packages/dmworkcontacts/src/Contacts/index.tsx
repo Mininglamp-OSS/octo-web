@@ -925,6 +925,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             <UserInfo
                                 uid={this.state.userInfoUid}
                                 onClose={() => this.setState({ userInfoVisible: false })}
+                                trackContactMessageEntry
                             />
                         )}
                     </WKModal>
@@ -947,6 +948,13 @@ export default class ContactsList extends Component<any, ContactsState> {
                             }
                         }}
                         onChat={(channel) => {
+                            // contact_message_clicked:通讯录 AI 名片「发消息」收口点(此 BotDetailModal 实例专属通讯录页,
+                            // 不同于全局共享实例)。channel.channelID = bot uid。
+                            Dap.shared.track('contact_message_clicked', {
+                                object_id: channel.channelID,
+                                contact_type: 'ai',
+                                space_id: WKApp.shared.currentSpaceId,
+                            })
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ botDetailVisible: false })
                         }}

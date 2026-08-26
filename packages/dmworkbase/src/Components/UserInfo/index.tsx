@@ -25,6 +25,9 @@ export interface UserInfoProps extends HTMLProps<any> {
     sections?: Section[]
     vercode?: string // 验证码，加好友需要，证明好友来源
     onClose?: () => void
+    // contact_message_clicked 埋点门控:UserInfo 是全局 profile 组件(会话内名片 / 黑名单 /
+    // WKBase 等处都渲染),默认不发。仅「通讯录」页自有的这个实例传 true,避免跨面 over-collect。
+    trackContactMessageEntry?: boolean
 }
 
 export default class UserInfo extends Component<UserInfoProps> {
@@ -98,23 +101,27 @@ export default class UserInfo extends Component<UserInfoProps> {
             // 非 Bot 成员或已加好友的 Bot：直接发消息
             content = <WKButton type="button" variant="primary" onClick={() => {
                 // contact_message_clicked:名片「发消息」发起会话。纯本地 showConversation 无 API,
-                // sync 请求体判别不了 → 命令式补。contact_type 区分真人/AI。
-                Dap.shared.track('contact_message_clicked', {
-                    object_id: vm.uid,
-                    contact_type: isBot ? 'ai' : 'user',
-                    space_id: spaceId,
-                })
+                // sync 请求体判别不了 → 命令式补。仅通讯录页实例(trackContactMessageEntry)才发,避免全局 over-collect。
+                if (this.props.trackContactMessageEntry) {
+                    Dap.shared.track('contact_message_clicked', {
+                        object_id: vm.uid,
+                        contact_type: isBot ? 'ai' : 'user',
+                        space_id: spaceId,
+                    })
+                }
                 WKApp.shared.baseContext.hideUserInfo()
                 // WuKongIM DM 只认裸 uid
                 WKApp.endpoints.showConversation(new Channel(vm.uid, ChannelTypePerson))
             }}>{t("base.userInfo.sendMessage")}</WKButton>
         } else if (isFriend) {
             content = <WKButton type="button" variant="primary" onClick={() => {
-                Dap.shared.track('contact_message_clicked', {
-                    object_id: vm.uid,
-                    contact_type: isBot ? 'ai' : 'user',
-                    space_id: spaceId,
-                })
+                if (this.props.trackContactMessageEntry) {
+                    Dap.shared.track('contact_message_clicked', {
+                        object_id: vm.uid,
+                        contact_type: isBot ? 'ai' : 'user',
+                        space_id: spaceId,
+                    })
+                }
                 WKApp.shared.baseContext.hideUserInfo()
                 WKApp.endpoints.showConversation(new Channel(vm.uid, ChannelTypePerson))
             }}>{t("base.userInfo.sendMessage")}</WKButton>
