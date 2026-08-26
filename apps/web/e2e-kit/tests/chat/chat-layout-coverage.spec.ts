@@ -49,6 +49,31 @@ async function openConversation(page: Parameters<typeof installMockImRuntime>[0]
   await expect(page.locator('[contenteditable="true"]')).toBeVisible({ timeout: 15_000 });
 }
 
+async function registerChannelSettingUserInfo(
+  page: Parameters<typeof installMockImRuntime>[0],
+) {
+  await page.evaluate(() => {
+    type Msw = {
+      worker: { use: (...handlers: unknown[]) => void };
+      http: { get: (path: string, resolver: () => unknown) => unknown };
+      HttpResponse: { json: (body: unknown) => unknown };
+    };
+    const msw = (window as unknown as { __msw?: Msw }).__msw;
+    if (!msw) throw new Error("[chat-layout] MSW worker 未就绪");
+    msw.worker.use(
+      msw.http.get("*/users/e2e-user-2", () =>
+        msw.HttpResponse.json({
+          uid: "e2e-user-2",
+          name: "E2E Sender",
+          short_no: "e2e-2001",
+          robot: 0,
+          extra: {},
+        }),
+      ),
+    );
+  });
+}
+
 
 test("@CH21 @p1 @chat @sidebar 顶部搜索和添加入口打开面板", async ({ authedPage }) => {
   await openChat(authedPage);
@@ -149,7 +174,27 @@ test("@CH23 @p1 @chat @conversation 详情顶部显示标题并打开群详情",
 test(
   "@CH43 @p1 @chat @conversation 群详情遮罩覆盖聊天浮动按钮",
   async ({ authedPage }) => {
-    await installMockImRuntime(authedPage, seed());
+    await installMockImRuntime(authedPage, {
+      ...seed(),
+      subscribers: [
+        {
+          uid: "e2e-user-1",
+          name: "E2E Tester",
+          channelId: GROUP_ID,
+          channelType: 2,
+          role: 1,
+          status: 1,
+        },
+        {
+          uid: "e2e-user-2",
+          name: "E2E Sender",
+          channelId: GROUP_ID,
+          channelType: 2,
+          status: 1,
+        },
+      ],
+    });
+    await registerChannelSettingUserInfo(authedPage);
     await openChat(authedPage);
     await authedPage
       .getByRole("button", { name: "最近", exact: true })
@@ -214,6 +259,31 @@ test(
     );
     expect(panelCoversScrollButton).toBe(true);
 
+    const member = panel
+      .locator(".wk-subscribers-item")
+      .filter({ hasText: "E2E Sender" });
+    await expect(member).toBeVisible();
+    await member.click();
+    const userInfoModal = authedPage
+      .locator(".semi-modal-content.wk-modal-content")
+      .filter({ hasText: "E2E Sender" });
+    await expect(userInfoModal).toBeVisible();
+    const userInfoAction = userInfoModal.locator("button").first();
+    await expect(userInfoAction).toBeVisible();
+    await userInfoAction.focus();
+    await authedPage.keyboard.press("Tab");
+    await expect
+      .poll(() =>
+        userInfoModal.evaluate((element) =>
+          element.contains(document.activeElement),
+        ),
+      )
+      .toBe(true);
+    await authedPage.keyboard.press("Escape");
+    await expect(userInfoModal).toBeHidden();
+    await expect(mask).toBeVisible();
+
+    await panel.focus();
     await authedPage.keyboard.press("Escape");
     await expect(mask).toHaveCount(0);
     await expect(channelSettingEntry).toBeFocused();
@@ -225,11 +295,7 @@ test(
       authedPage.locator(".wk-chat-content-right"),
     ).not.toHaveClass(/wk-chat-channelsetting-open/);
 
-    await channelSettingEntry.click();
-    await authedPage.getByTestId("chat-thread-panel-entry").dispatchEvent("click");
-    await expect(
-      authedPage.getByTestId("chat-channel-setting-mask"),
-    ).toHaveCount(0);
+    await authedPage.getByTestId("chat-thread-panel-entry").click();
     await expect(authedPage.getByText("子区", { exact: true })).toBeVisible();
   },
 );
