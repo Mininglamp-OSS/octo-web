@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from "vite";
+import path from "node:path";
 import {
   agentMailBootstrapStrippedHeaders,
   agentMailProxyContext,
@@ -24,6 +25,34 @@ export default defineConfig(({ mode }) => {
   const mailApiUrl = env.VITE_MAIL_API_URL || apiUrl || "http://127.0.0.1:8080";
   const agentMailApiUrl =
     env.VITE_AGENT_MAIL_API_URL || "http://127.0.0.1:8090";
+  const loopV3ApiOrigin =
+    env.VITE_LOOP_V3_API_ORIGIN || "http://127.0.0.1:8080";
+  const stripApiProxyPrefix = env.VITE_API_PROXY_STRIP_PREFIX === "true";
+  const enterpriseAliases: Array<{ find: string | RegExp; replacement: string }> = [];
+  if (env.VITE_LOOP_MODULE_ROOT) {
+    const loopPackageRoot = path.resolve(env.VITE_LOOP_MODULE_ROOT, "packages/dmloop");
+    enterpriseAliases.push(
+      { find: /^@dmwork\/loop$/, replacement: path.join(loopPackageRoot, "src/index.tsx") },
+      { find: /^@dmwork\/loop\//, replacement: `${loopPackageRoot}/` },
+      {
+        find: /^@dmwork\/personal$/,
+        replacement: path.resolve(env.VITE_LOOP_MODULE_ROOT, "packages/dmpersonal/src/index.tsx"),
+      }
+    );
+  }
+  if (env.VITE_LOOP_V3_MODULE_ROOT) {
+    const loopV3PackageRoot = path.resolve(env.VITE_LOOP_V3_MODULE_ROOT, "packages/dmloop-v3");
+    enterpriseAliases.push(
+      { find: /^@dmwork\/loop-v3$/, replacement: path.join(loopV3PackageRoot, "src/index.tsx") },
+      { find: /^@dmwork\/loop-v3\//, replacement: `${loopV3PackageRoot}/` }
+    );
+  }
+  if (env.VITE_LOOP_MODULE_ROOT || env.VITE_LOOP_V3_MODULE_ROOT) {
+    enterpriseAliases.push({
+      find: /^@octo\/base$/,
+      replacement: path.resolve(process.cwd(), "../../packages/dmworkbase/src/index.tsx"),
+    });
+  }
   const oidcTrustedOrigins = [
     ...new Set(
       (env.VITE_OIDC_TRUSTED_ORIGINS || "")
@@ -197,6 +226,7 @@ export default defineConfig(({ mode }) => {
       },
     ],
     resolve: {
+      alias: enterpriseAliases,
       extensions: [".mjs", ".js", ".mts", ".ts", ".jsx", ".tsx", ".json"],
       dedupe: ["react", "react-dom"],
     },
@@ -314,6 +344,9 @@ export default defineConfig(({ mode }) => {
           target: apiOrigin,
           changeOrigin: true,
           secure: false,
+          rewrite: stripApiProxyPrefix
+            ? (path: string) => path.replace(/^\/api/, "")
+            : undefined,
         },
         // Telemetry collector (octo-dap). The frontend POSTs to a neutral,
         // business-API-shaped path /v1/e/b (words like track/collect/beacon are on
@@ -335,6 +368,14 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_DRIVE_API_URL || apiOrigin,
           changeOrigin: true,
           secure: false,
+        },
+        // Loop V3 task service. Keep it separate from /v1, which belongs to
+        // the OCTO host API and is also used to verify Loop credentials.
+        "/loop-v3-api/v1": {
+          target: loopV3ApiOrigin,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path: string) => path.replace(/^\/loop-v3-api/, ""),
         },
         // OIDC SSO endpoints (backend mounts these at /v1/ directly, no /api prefix)
         "/v1/": {
