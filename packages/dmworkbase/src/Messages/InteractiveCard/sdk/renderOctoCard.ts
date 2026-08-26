@@ -54,9 +54,44 @@ export function createCardHostConfig(
     : buildOctoHostConfig(browserCssVarResolver(target));
 }
 
+function enhanceForgeChoiceCardHitAreas(target: HTMLElement): void {
+  const rows = target.querySelectorAll<HTMLElement>(
+    ".ac-choiceSetInput-expanded > div, .ac-choiceSetInput-multiSelect > div"
+  );
+  rows.forEach((row) => {
+    if (row.dataset.octoChoiceCardHitArea === "true") return;
+    row.dataset.octoChoiceCardHitArea = "true";
+    row.addEventListener("click", (event) => {
+      const eventTarget = event.target;
+      if (!(eventTarget instanceof Element)) return;
+      if (target.classList.contains("wk-interactive-card-sdk--readonly")) {
+        // CSS pointer-events 不会阻止 label 激活关联 input，显式取消默认行为。
+        event.preventDefault();
+        return;
+      }
+      // input/label 已由 AdaptiveCards SDK 原生关联，避免二次切换 checkbox。
+      if (eventTarget.closest("input, label")) return;
+      const input = row.querySelector<HTMLInputElement>(
+        'input[type="radio"], input[type="checkbox"]'
+      );
+      if (!input || input.disabled) return;
+      input.click();
+    });
+  });
+}
+
 export function enhanceRenderedOctoCard(options: RenderOctoCardOptions): void {
-  const { card, target, tableCopyLabel, onTableCopy } = options;
+  const {
+    card,
+    target,
+    tableCopyLabel,
+    onTableCopy,
+    renderProfile = "legacy",
+  } = options;
   enhanceAgentProgressLayout(card, target);
+  if (renderProfile === FORGE_RENDER_PROFILE) {
+    enhanceForgeChoiceCardHitAreas(target);
+  }
   if (tableCopyLabel && onTableCopy) {
     attachTableCopyButtons({
       card,
@@ -80,7 +115,7 @@ export function renderOctoCard(options: RenderOctoCardOptions): void {
   const ac = new AdaptiveCard();
   ac.hostConfig = createCardHostConfig(target, renderProfile);
   ac.onExecuteAction = (action) => onAction(action, ac);
-  // 图片类 URL 消毒（https-only），在 parse 前——SDK 自身不做 scheme 检查。
+  // 图片类 URL 消毒（https 或受限内联 SVG data URL），在 parse 前——SDK 自身不做 scheme 检查。
   ac.parse(sanitizeCardTree(card), createOctoSerializationContext());
   const rendered = ac.render();
   target.textContent = "";
@@ -92,6 +127,7 @@ export function renderOctoCard(options: RenderOctoCardOptions): void {
       onAction,
       tableCopyLabel,
       onTableCopy,
+      renderProfile,
     });
 }
 

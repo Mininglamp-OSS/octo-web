@@ -2,13 +2,16 @@
 //
 // The link points at the STANDALONE doc page `${origin}/d/:docId` (XIN-450, boss decision
 // 2026-07-06), NOT the in-shell `/docs?...&doc=` route. This is the real fix for problem 2: the
+
+import APIClient from "../Service/APIClient";
+import { resolveWebOrigin } from "./webOrigin";
 // octo host's self-built RouteManager (dmworkbase Service/Route.tsx) handles `pageshow`/`popstate`
 // by re-pushing `window.location.pathname` ONLY — it UNCONDITIONALLY strips the query — so a
 // `?doc=` deep-link was wiped before the docs module mounted and the recipient landed on the empty
 // document list / a login detour. By carrying the docId in the PATH, which the pathname-only
 // re-push PRESERVES, the shared link opens the target document directly: apps/web Layout intercepts
-// the whole `/d` namespace before the app shell and mounts StandaloneDocPage (which reads the id
-// from the path, runs a GET /docs/{docId} preflight, then mounts the collaborative editor). When
+// the whole `/d` namespace before the app shell and mounts the external standalone docs surface
+// (which reads the id from the path, runs a GET /docs/{docId} preflight, then mounts the editor). When
 // the recipient must sign in first, the anonymous Layout branch stashes the exact `/d/:docId`
 // target in sessionStorage (`octo.docs.standaloneReturn`) and the post-login flow bounces them back
 // to it — so deep-link direct-open AND login-return both land on the correct document.
@@ -31,44 +34,75 @@
 export interface DocLinkTarget {
   docId: string
   /**
-   * The document's REAL space id (doc_meta.space_id — a 32-hex docs-backend space, e.g.
-   * `105d4a60…`), known to the sharer at forward time (the in-shell EditorShell space prop, which
-   * is the live currentSpaceId). Embedded on the link as `?sp=` (XIN-501) so the recipient's
-   * standalone preflight can address `GET /docs/:docId` at the doc's own space. This is NOT the same
-   * value as the octo `?sid` token-bucket key: `?sp` is the docs space the backend matches against in
-   * requireDocRole's cross-space guard, whereas `?sid` (no longer minted on this link, XIN-513) only
-   * scoped the token store. Optional: a link built without it degrades to the recipient resolving the
-   * space from their own session.
+   * @deprecated Phase-1 remove-`sp` (design §5.3): ordinary document links no longer carry the
+   * doc's Space. The receiver's standalone preflight now resolves the doc's Space server-side from
+   * `docId` alone via `GET /docs/:docId/open-context`, so this field is IGNORED by buildDocLink and
+   * no `?sp=` is emitted. The field is retained (accepted-but-unused) purely so existing callers
+   * that still pass it compile unchanged during the cutover; it will be dropped once every caller
+   * stops supplying it. It never was the octo `?sid` token-bucket key — see the module note above.
    */
   space?: string
+  /** @deprecated Same as `space`: accepted-but-unused post Phase-1; no folder is emitted on the link. */
   folder?: string
+}
+
+/**
+ * The authoritative web origin for renderer-built URLs that leave the app
+ * (share links, clipboard text, IdP return_to, the system-browser bridge).
+ * See Utils/webOrigin.ts for why an http(s) allowlist — not a denylist of
+ * known-bad file:// values — decides.
+ */
+export function webOrigin(): string {
+  return resolveWebOrigin(
+    typeof window === "undefined" ? undefined : window.location?.origin,
+    APIClient.shared?.config?.apiURL,
+  );
 }
 
 /** Origin for the doc link; empty under SSR/tests so the link degrades to a bare query path. */
 function origin(): string {
-  return typeof window !== 'undefined' && window.location?.origin ? window.location.origin : ''
+  return webOrigin();
 }
 
 /**
- * Build `${origin}/d/<docId>` — the standalone doc-page share form — carrying, when available:
- *   - `?sp=<space id>`    the doc's REAL space (doc_meta.space_id) so the receiver's preflight
- *                         (`GET /docs/:docId`) addresses the doc's own space (XIN-501).
- *
- * The link deliberately carries NO `?sid=` (XIN-513): an already-logged-in recipient's session is
- * recovered from storage independently of the URL (apps/web Layout → recoverSession.ts
- * findStoredSessions scans the `token<sid>` buckets and adopts a valid session), so the token-bucket
- * sid does not need to ride on the shared link. `?sp` is still needed and DISTINCT: it is the space
- * the docs backend matches in requireDocRole's cross-space guard. XIN-497 reused `?sid` as the
- * preflight space, but a token-bucket sid never equals the doc's space_id, so the preflight 404'd
- * for every recipient (including the owner's own doc). Carrying the real space on its own `?sp` param
- * fixes that without touching the `token<sid>` logic. The receiver opens it → Layout intercepts the
- * `/d` namespace → the stored session is recovered → preflight against `?sp` → StandaloneDocPage
- * mounts the editor (reader / writer / forbidden-with-request / not-found / archived), all outside the
- * app shell and immune to the host's query-wiping re-push (the docId lives in the path, not the query).
+ * Normalize a built doc link for handing to the external-open path (system
+ * browser bridge). buildDocLink emits an absolute http(s) URL when the
+ * document origin is a real web origin, and a root-relative `/d/<docId>` on
+ * file:// shells (see webOrigin) — the shell must resolve root-relative
+ * links against the API origin before openExternal. Absolute http(s) links
+ * pass through untouched; anything else is returned unchanged when no
+ * resolvable base is available (the caller degrades gracefully).
  */
-export function buildDocLink({ docId, space }: DocLinkTarget): string {
-  const path = `/d/${encodeURIComponent(docId)}`
-  const docSpace = (space || '').trim()
-  const query = docSpace ? `?sp=${encodeURIComponent(docSpace)}` : ''
-  return `${origin()}${path}${query}`
+export function resolveDocLinkForExternalOpen(
+  link: string,
+  apiOrigin: string,
+): string {
+  if (/^https?:/.test(link)) return link;
+  try {
+    return new URL(link, apiOrigin || undefined).href;
+  } catch {
+    // No usable base (SSR/tests/malformed config) — degrade to the input.
+    return link;
+  }
+}
+
+/**
+ * Build `${origin}/d/<docId>` — the standalone doc-page share form (Phase-1 remove-`sp`, design
+ * §5.3). The link carries ONLY the docId in the path and NO query: no `?sp=` (the doc's Space is
+ * resolved server-side from the docId by the open-context reader) and no `?sid=` (the recipient's
+ * session is recovered from storage independently of the URL, XIN-513).
+ *
+ * This is the single source of truth for ordinary document links; every entry point (share panel,
+ * search, recent, Drive, chat card / forward, Doc / Sheet / Board, HTML) funnels through it, so the
+ * `sp` removal lands everywhere at once. It deliberately does NOT touch invite-token, drive-share,
+ * space-invite, PPT (`/ppt/d/:docId`) or summary (`/s/share`) links — those are separate namespaces
+ * with their own auth/Space chains (design §12.4).
+ *
+ * The receiver opens it → the host Layout intercepts the `/d` namespace → the stored session is
+ * recovered → the standalone docs surface runs the docId-first open-context preflight and mounts
+ * reader / writer / forbidden-with-request / not-found / archived states, all outside
+ * the app shell and immune to the host's query-wiping re-push (the docId lives in the path).
+ */
+export function buildDocLink({ docId }: DocLinkTarget): string {
+  return `${origin()}/d/${encodeURIComponent(docId)}`
 }

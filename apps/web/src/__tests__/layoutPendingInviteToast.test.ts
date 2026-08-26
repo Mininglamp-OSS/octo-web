@@ -9,9 +9,9 @@
  *
  * 本测试通过 grep 锁定 Layout.tsx 在 pendingInviteCode 分支中：
  * 1. 共用 computeAndSaveJoinSuccess helper（与 InviteLanding 行为一致）
- * 2. 在 /space/join 之前快照 prevCurrentSpaceId
+ * 2. 在 /space/join 之前按当前 UID 快照 prevCurrentSpaceId
  * 3. 预取 invite 信息以带上 space_name
- * 4. 只有 !crossSpace 时才写 localStorage.currentSpaceId（不自动切换）
+ * 4. 只有 !crossSpace 时才持久化当前组织（不自动切换）
  */
 import * as fs from 'fs';
 import * as path from 'path';
@@ -30,8 +30,8 @@ describe('Layout.onLogin — pendingInviteCode path shares joinSuccessNotice', (
     });
 
     it('snapshots prevCurrentSpaceId before calling /space/join', () => {
-        expect(layout).toMatch(/prevCurrentSpaceId\s*=\s*localStorage\.getItem\(\s*["']currentSpaceId["']/);
-        const snapIdx = layout.search(/prevCurrentSpaceId\s*=\s*localStorage/);
+        expect(layout).toMatch(/prevCurrentSpaceId\s*=\s*WKApp\.shared\.currentSpaceId\s*\|\|\s*readLastSpaceId/);
+        const snapIdx = layout.search(/prevCurrentSpaceId\s*=\s*WKApp\.shared\.currentSpaceId/);
         const joinIdx = layout.search(/post\(\s*`\/space\/join`/);
         expect(snapIdx).toBeGreaterThan(0);
         expect(joinIdx).toBeGreaterThan(snapIdx);
@@ -47,8 +47,13 @@ describe('Layout.onLogin — pendingInviteCode path shares joinSuccessNotice', (
     });
 
     it('does NOT auto-switch currentSpaceId when crossSpace is true', () => {
-        // Only set localStorage.currentSpaceId when !notice.crossSpace
+        // Only persist the active organization when !notice.crossSpace
         expect(layout).toMatch(/if\s*\(\s*!notice\.crossSpace\s*&&\s*spaceId\s*\)/);
+        expect(layout).toMatch(/persistActiveSpace\(WKApp\.loginInfo\.uid,\s*spaceId\)/);
+    });
+
+    it('uses prefetched invite info when the already-member error omits space_id', () => {
+        expect(layout).toMatch(/e\?\.space_id\s*\|\|\s*inviteInfo\?\.space_id/);
     });
 
     it('still removes pendingInviteCode on success so we do not loop', () => {

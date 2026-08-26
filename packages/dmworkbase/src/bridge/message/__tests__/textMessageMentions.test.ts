@@ -164,4 +164,40 @@ describe("buildTextMessageMentions", () => {
 
         expect(mentions).toEqual([{ name: "@所有人", uid: "all" }])
     })
+
+    it("ignores malformed or non-mention entities and keeps valid ordering", () => {
+        const mentions = buildTextMessageMentions({
+            parts: [],
+            content: {
+                text: "@张三 普通文本 @李四",
+                mention: {
+                    entities: [
+                        { uid: "bad", offset: -1, length: 3 },
+                        { uid: "not-a-mention", offset: 4, length: 4 },
+                        { uid: "uid_li", offset: 9, length: 3 },
+                        { uid: "uid_zhang", offset: 0, length: 3 },
+                    ],
+                },
+            },
+            partMentionType: PART_TYPE_MENTION,
+        })
+
+        expect(mentions).toEqual([
+            { name: "@张三", uid: "uid_zhang" },
+            { name: "@李四", uid: "uid_li" },
+        ])
+    })
+
+    it("does not consume legacy member uids for ordinary text or broadcast tokens", () => {
+        const mentions = buildTextMessageMentions({
+            parts: [],
+            content: {
+                text: "alice@example.com @所有人",
+                mention: { uids: ["uid_should_not_bind"], humans: 1 },
+            },
+            partMentionType: PART_TYPE_MENTION,
+        })
+
+        expect(mentions).toEqual([{ name: "@所有人", uid: "all" }])
+    })
 })

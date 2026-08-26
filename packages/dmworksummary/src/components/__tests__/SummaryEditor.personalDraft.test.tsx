@@ -41,6 +41,7 @@ vi.mock('../../api/summaryApi', () => api);
 import SummaryEditor from '../SummaryEditor';
 
 function renderEditor(onSave: () => void, mode: 'team' | 'personal' | 'personal_draft' = 'personal_draft') {
+    let save: (() => void) | null = null;
     render(
         <SummaryEditor
             taskId={42}
@@ -49,13 +50,13 @@ function renderEditor(onSave: () => void, mode: 'team' | 'personal' | 'personal_
             onSave={onSave}
             onCancel={() => {}}
             mode={mode}
+            exposeSave={(fn) => { save = fn; }}
         />,
     );
     const textarea = screen.getByRole('textbox') as HTMLTextAreaElement;
     // content !== initialContent -> hasChanges true -> Save enabled.
     fireEvent.change(textarea, { target: { value: 'my draft body [1]' } });
-    const saveBtn = screen.getByText('保存').closest('button') as HTMLButtonElement;
-    return { textarea, saveBtn };
+    return { textarea, save: () => save?.() };
 }
 
 describe('SummaryEditor mode="personal_draft" (v2 GLM-F4 + F1 wiring)', () => {
@@ -66,10 +67,9 @@ describe('SummaryEditor mode="personal_draft" (v2 GLM-F4 + F1 wiring)', () => {
     it('success path routes to personalDraftSummary, then onSave + success toast', async () => {
         api.personalDraftSummary.mockResolvedValue(undefined);
         const onSave = vi.fn();
-        const { saveBtn } = renderEditor(onSave);
-        expect(saveBtn.disabled).toBe(false);
+        const { save } = renderEditor(onSave);
 
-        fireEvent.click(saveBtn);
+        await save();
 
         await waitFor(() => {
             expect(api.personalDraftSummary).toHaveBeenCalledWith(42, 'my draft body [1]');
@@ -87,9 +87,9 @@ describe('SummaryEditor mode="personal_draft" (v2 GLM-F4 + F1 wiring)', () => {
         conflict.status = 409;
         api.personalDraftSummary.mockRejectedValue(conflict);
         const onSave = vi.fn();
-        const { saveBtn } = renderEditor(onSave);
+        const { save } = renderEditor(onSave);
 
-        fireEvent.click(saveBtn);
+        await save();
 
         // GLM-F4: draft mode picks the NEW key draftAlreadySubmitted
         // ("该总结已提交，已为你刷新"), NOT the generic contentUpdated
@@ -107,9 +107,9 @@ describe('SummaryEditor mode="personal_draft" (v2 GLM-F4 + F1 wiring)', () => {
         boom.status = 500;
         api.personalDraftSummary.mockRejectedValue(boom);
         const onSave = vi.fn();
-        const { saveBtn } = renderEditor(onSave);
+        const { save } = renderEditor(onSave);
 
-        fireEvent.click(saveBtn);
+        await save();
 
         await waitFor(() => {
             expect(Toast.error).toHaveBeenCalled();

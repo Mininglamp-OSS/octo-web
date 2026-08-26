@@ -23,7 +23,7 @@
   right: 0;
   top: -2px;
   bottom: -2px;
-  background-color: rgba(28, 28, 35, 0.04);
+  background-color: var(--wk-bg-legacy-card);
   opacity: 0;
   transition: opacity 0.2s;
   pointer-events: none;
@@ -93,6 +93,20 @@
   flex-shrink: 0;
 }
 
+.wk-msg-row-avatar-button {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-avatar-radius, var(--wk-r-circle));
+  background: transparent;
+  cursor: pointer;
+}
+
+.wk-msg-row-avatar-button:focus-visible {
+  outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+  outline-offset: var(--wk-sp-0-5);
+}
+
 /**
  * 连续消息的头像占位符（hover 时显示时间）
  */
@@ -148,12 +162,12 @@
 
 .wk-msg-row-timestamp {
   font-size: 12px;
-  color: rgba(28, 28, 35, 0.4);
+  color: var(--wk-text-legacy-tertiary);
 }
 
 .wk-msg-row-edited {
   font-size: 12px;
-  color: rgba(28, 28, 35, 0.4);
+  color: var(--wk-text-legacy-tertiary);
   opacity: 1;
 }
 
@@ -162,7 +176,7 @@
  */
 .wk-msg-row-timestamp-hover {
   font-size: 10px;
-  color: rgba(28, 28, 35, 0.4);
+  color: var(--wk-text-legacy-tertiary);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.2s;

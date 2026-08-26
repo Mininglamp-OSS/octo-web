@@ -1,0 +1,278 @@
+{
+  "body": [
+    {
+      "items": [
+        {
+          "columns": [
+            {
+              "items": [
+                {
+                  "columns": [
+                    {
+                      "items": [
+                        {
+                          "size": "Small",
+                          "spacing": "None",
+                          "text": "Reasoning",
+                          "type": "TextBlock",
+                          "weight": "Bolder",
+                          "wrap": true
+                        }
+                      ],
+                      "type": "Column",
+                      "width": "auto"
+                    },
+                    {
+                      "items": [
+                        {
+                          "altText": "展开",
+                          "id": "reasoning_toggle_collapsed",
+                          "isVisible": false,
+                          "selectAction": {
+                            "id": "reasoning_toggle",
+                            "targetElements": [
+                              "trace_panel",
+                              "collapsed_panel",
+                              "reasoning_toggle_collapsed",
+                              "reasoning_toggle_expanded"
+                            ],
+                            "type": "Action.ToggleVisibility"
+                          },
+                          "size": "Small",
+                          "spacing": "None",
+                          "type": "Image",
+                          "url": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221em%22%20height%3D%221em%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23a1a6ab%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22m6%209l6%206l6-6%22%2F%3E%3C%2Fsvg%3E",
+                          "width": "14px"
+                        },
+                        {
+                          "altText": "收起",
+                          "id": "reasoning_toggle_expanded",
+                          "isVisible": true,
+                          "selectAction": {
+                            "id": "reasoning_toggle_expanded_action",
+                            "targetElements": [
+                              "trace_panel",
+                              "collapsed_panel",
+                              "reasoning_toggle_collapsed",
+                              "reasoning_toggle_expanded"
+                            ],
+                            "type": "Action.ToggleVisibility"
+                          },
+                          "size": "Small",
+                          "spacing": "None",
+                          "type": "Image",
+                          "url": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221em%22%20height%3D%221em%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23a1a6ab%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22m18%2015l-6-6l-6%206%22%2F%3E%3C%2Fsvg%3E",
+                          "width": "14px"
+                        }
+                      ],
+                      "type": "Column",
+                      "verticalContentAlignment": "Center",
+                      "width": "auto"
+                    }
+                  ],
+                  "spacing": "None",
+                  "type": "ColumnSet"
+                },
+                {
+                  "color": "Accent",
+                  "size": "Small",
+                  "spacing": "None",
+                  "text": "Thinking",
+                  "type": "TextBlock",
+                  "wrap": true
+                }
+              ],
+              "type": "Column",
+              "width": "stretch"
+            }
+          ],
+          "id": "reasoning_header",
+          "spacing": "None",
+          "type": "ColumnSet"
+        },
+        {
+          "id": "trace_panel",
+          "isVisible": true,
+          "items": [
+            {
+              "id": "reasoning_phase_0",
+              "items": [
+                {
+                  "columns": [
+                    {
+                      "items": [
+                        {
+                          "size": "Small",
+                          "spacing": "None",
+                          "text": "Check the environment before answering.",
+                          "type": "TextBlock",
+                          "wrap": true
+                        }
+                      ],
+                      "type": "Column",
+                      "verticalContentAlignment": "Center",
+                      "width": "stretch"
+                    },
+                    {
+                      "items": [
+                        {
+                          "altText": "展开工具",
+                          "id": "reasoning_tools_toggle_collapsed_0",
+                          "isVisible": true,
+                          "selectAction": {
+                            "id": "reasoning_tools_toggle_action_0",
+                            "targetElements": [
+                              "reasoning_tools_panel_0",
+                              "reasoning_tools_toggle_collapsed_0",
+                              "reasoning_tools_toggle_expanded_0"
+                            ],
+                            "type": "Action.ToggleVisibility"
+                          },
+                          "size": "Small",
+                          "spacing": "None",
+                          "type": "Image",
+                          "url": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221em%22%20height%3D%221em%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23a1a6ab%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22m6%209l6%206l6-6%22%2F%3E%3C%2Fsvg%3E",
+                          "width": "14px"
+                        },
+                        {
+                          "altText": "收起工具",
+                          "id": "reasoning_tools_toggle_expanded_0",
+                          "isVisible": false,
+                          "selectAction": {
+                            "id": "reasoning_tools_toggle_expanded_action_0",
+                            "targetElements": [
+                              "reasoning_tools_panel_0",
+                              "reasoning_tools_toggle_collapsed_0",
+                              "reasoning_tools_toggle_expanded_0"
+                            ],
+                            "type": "Action.ToggleVisibility"
+                          },
+                          "size": "Small",
+                          "spacing": "None",
+                          "type": "Image",
+                          "url": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%221em%22%20height%3D%221em%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22none%22%20stroke%3D%22%23a1a6ab%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%20stroke-width%3D%222%22%20d%3D%22m18%2015l-6-6l-6%206%22%2F%3E%3C%2Fsvg%3E",
+                          "width": "14px"
+                        }
+                      ],
+                      "type": "Column",
+                      "verticalContentAlignment": "Center",
+                      "width": "auto"
+                    }
+                  ],
+                  "spacing": "None",
+                  "type": "ColumnSet"
+                },
+                {
+                  "id": "reasoning_tools_panel_0",
+                  "isVisible": false,
+                  "items": [
+                    {
+                      "columns": [
+                        {
+                          "items": [],
+                          "type": "Column",
+                          "width": "8px"
+                        },
+                        {
+                          "items": [
+                            {
+                              "color": "Accent",
+                              "size": "Small",
+                              "spacing": "None",
+                              "text": "●",
+                              "type": "TextBlock"
+                            }
+                          ],
+                          "type": "Column",
+                          "verticalContentAlignment": "Center",
+                          "width": "auto"
+                        },
+                        {
+                          "items": [
+                            {
+                              "size": "Small",
+                              "spacing": "None",
+                              "text": "exec",
+                              "type": "TextBlock",
+                              "wrap": true
+                            }
+                          ],
+                          "spacing": "Small",
+                          "type": "Column",
+                          "verticalContentAlignment": "Center",
+                          "width": "auto"
+                        },
+                        {
+                          "items": [
+                            {
+                              "isSubtle": true,
+                              "size": "Small",
+                              "spacing": "None",
+                              "text": "sleep",
+                              "type": "TextBlock",
+                              "wrap": true
+                            }
+                          ],
+                          "spacing": "Small",
+                          "type": "Column",
+                          "verticalContentAlignment": "Center",
+                          "width": "stretch"
+                        }
+                      ],
+                      "spacing": "None",
+                      "type": "ColumnSet"
+                    }
+                  ],
+                  "spacing": "Small",
+                  "type": "Container"
+                }
+              ],
+              "spacing": "None",
+              "type": "Container"
+            },
+            {
+              "color": "Accent",
+              "size": "Small",
+              "spacing": "Medium",
+              "text": "◌  Working through…",
+              "type": "TextBlock",
+              "wrap": true
+            }
+          ],
+          "spacing": "Medium",
+          "type": "Container"
+        },
+        {
+          "id": "collapsed_panel",
+          "isVisible": false,
+          "items": [
+            {
+              "isSubtle": true,
+              "size": "Small",
+              "spacing": "None",
+              "text": "Reasoning in progress · open to follow along",
+              "type": "TextBlock",
+              "wrap": true
+            }
+          ],
+          "spacing": "Small",
+          "type": "Container"
+        }
+      ],
+      "spacing": "None",
+      "style": "emphasis",
+      "type": "Container"
+    }
+  ],
+  "metadata": {
+    "octo": {
+      "protocol": "octo-card@1.0",
+      "template": {
+        "id": "ai.reasoning-process",
+        "version": "0.4.0"
+      }
+    }
+  },
+  "type": "AdaptiveCard",
+  "version": "1.5"
+}

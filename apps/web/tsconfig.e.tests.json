@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.e.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": [
+    "src-election/main/userDataMigration.ts",
+    "src-election/**/__tests__/**/*.ts"
+  ],
+  "exclude": ["node_modules", "src"]
+}

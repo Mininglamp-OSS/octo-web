@@ -3,9 +3,9 @@ import { resolveAegisRegisterUrl } from '../loginMigrationNoticeUrl'
 
 describe('resolveAegisRegisterUrl', () => {
   it.each([
-    ['https://accounts.xming.ai', 'https://accounts.xming.ai/register'],
-    ['https://accounts-test.imocto.cn', 'https://accounts-test.imocto.cn/register'],
-    ['https://accounts-test.imocto.cn/', 'https://accounts-test.imocto.cn/register'],
+    ['https://accounts.example.com', 'https://accounts.example.com/register'],
+    ['https://accounts-test.example.com', 'https://accounts-test.example.com/register'],
+    ['https://accounts-test.example.com/', 'https://accounts-test.example.com/register'],
   ])('builds the register URL from appconfig account_url %s', (accountUrl, expected) => {
     expect(resolveAegisRegisterUrl(accountUrl)).toBe(expected)
   })

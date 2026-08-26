@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { WKModal, WKInput, WKButton, t } from "@octo/base";
+import { WKModal, WKInput, WKButton, t, Dap } from "@octo/base";
 import { Select, Switch, TextArea, Toast } from "@douyinfe/semi-ui";
 import {
   createMcp,
@@ -1106,6 +1106,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     Toast.success(
       t("mcp.create.import.applied", { values: { count: importPreviewCount } })
     );
+    Dap.shared.track("market_manual_publish_json_imported", {});
     setCreateMode("manual");
     setStep(0);
   };

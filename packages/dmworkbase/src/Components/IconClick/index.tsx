@@ -9,6 +9,8 @@ export interface IconClickProps {
   /** 尺寸，影响 padding */
   size?: 'sm' | 'md'
   title?: string
+  /** 埋点锚点：透传到根节点，供 Dap 规则表 fallback 命中（可选，不传即原行为，向后兼容）。 */
+  'data-testid'?: string
 }
 
 const IconClick: React.FC<IconClickProps> = ({
@@ -18,6 +20,7 @@ const IconClick: React.FC<IconClickProps> = ({
   className,
   size = 'md',
   title,
+  'data-testid': dataTestId,
 }) => {
   const cls = [
     'wk-iconclick',
@@ -29,6 +32,7 @@ const IconClick: React.FC<IconClickProps> = ({
   return (
     <div
       className={cls}
+      data-testid={dataTestId}
       onClick={() => { if (!disabled && onClick) onClick() }}
       role="button"
       aria-disabled={disabled}

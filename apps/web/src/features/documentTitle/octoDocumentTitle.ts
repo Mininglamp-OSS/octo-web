@@ -162,6 +162,10 @@ export function createOctoDocumentTitleController(): DocumentTitleController {
       // still need the same account-level unread snapshot for their title prefix.
       if (menuId === "chat" || (!menuId && pathname === "/")) return;
       await WKSDK.shared().conversationManager.sync({});
+      // sync() replaces the SDK conversation cache without notifying its
+      // conversation listeners. Broadcast the same event used by Chat so
+      // consumers such as the Electron tray receive the restored snapshot.
+      WKApp.mittBus.emit("conversation-list-refreshed");
     },
   });
 }

@@ -69,17 +69,22 @@ vi.mock('wukongimjssdk', () => {
         }
     }
 
-    return {
+    const WKSDK = {
+        shared: () => ({
+            channelManager: {
+                fetchChannelInfo: mocks.fetchChannelInfo,
+                addListener: vi.fn(),
+                removeListener: vi.fn(),
+            },
+        }),
+    };
+    const sdk = {
         Channel,
         ChannelTypePerson: 1,
-        WKSDK: {
-            shared: () => ({
-                channelManager: {
-                    fetchChannelInfo: mocks.fetchChannelInfo,
-                },
-            }),
-        },
+        WKSDK,
+        shared: WKSDK.shared,
     };
+    return { default: sdk, ...sdk };
 });
 
 vi.mock('../../../../../packages/dmworkbase/src/App', () => ({
@@ -101,6 +106,16 @@ vi.mock('../../../../../packages/dmworkbase/src/App', () => ({
         mittBus: {
             on: vi.fn(),
             off: vi.fn(),
+        },
+    },
+}));
+
+vi.mock('../../../../../packages/dmworkbase/src/Service/APIClient', () => ({
+    default: {
+        shared: {
+            get: mocks.apiGet,
+            put: mocks.apiPut,
+            post: mocks.apiPost,
         },
     },
 }));
@@ -157,6 +172,7 @@ vi.mock('../../../../../packages/dmworkbase/src/i18n', async () => {
     const translate = (key: string) => dict[key.replace(/^base\./, '')] || key;
     return {
         I18nContext: React.createContext({ t: translate }),
+        i18n: { subscribe: vi.fn(() => () => undefined) },
         t: translate,
     };
 });
@@ -272,6 +288,7 @@ describe('BotDetailModal remark editing', () => {
         );
 
         expect(await screen.findByText('Bot Two')).toBeInTheDocument();
+        const channelInfoCallsBeforeStaleSaveResolves = mocks.fetchChannelInfo.mock.calls.length;
 
         await act(async () => {
             saveRemark.resolve();
@@ -280,6 +297,6 @@ describe('BotDetailModal remark editing', () => {
 
         expect(screen.queryByText('Old Alias')).not.toBeInTheDocument();
         expect(mocks.toastSuccess).not.toHaveBeenCalledWith('Remark updated');
-        expect(mocks.fetchChannelInfo).not.toHaveBeenCalled();
+        expect(mocks.fetchChannelInfo.mock.calls.length).toBe(channelInfoCallsBeforeStaleSaveResolves);
     });
 });

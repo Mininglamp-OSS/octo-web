@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { X, FolderOpen } from "lucide-react";
 import { ConversationFile } from "./FilePreviewHeader";
 import { formatFileSize, isImageType } from "./config";
-import { getFileIcon as getFileIconUrl } from "../MessageInput/AttachmentNode";
+import { getFileIcon as getFileIconUrl } from "../../Utils/fileIcon";
 import { useI18n } from "../../i18n";
 import type { I18nFormatter } from "../../i18n";
 import "./FileListPanel.css";

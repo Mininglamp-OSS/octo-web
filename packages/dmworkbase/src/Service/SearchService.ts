@@ -466,13 +466,12 @@ const SearchService = {
   //      track_total_hits:true). Kept for display only; it does NOT drive the
   //      stop condition, so a missing/garbage total can't forge hasMore.
   //   3. `updatedAt` — `number | null` epoch millis (NOT ISO string; the
-  //      `string` in packages/docs/src/pages/docsApi.ts is a different REST
-  //      DocMeta endpoint, unrelated to search). Coerced below to
+  //      external Docs module has a different DocMeta REST endpoint, unrelated to search). Coerced below to
   //      positive-millis-in-plausible-range-or-null so a stray seconds value or
   //      garbage can't render as an Invalid Date.
   //   4. `spaceId` — returned on every item; search is single-space scoped
-  //      (OS term space_id, injected by the gateway, never from the body). We
-  //      pass it through unchanged for buildDocLink's `?sp=`.
+  //      (OS term space_id, injected by the gateway, never from the body).
+  //      Retained as result metadata; ordinary document links no longer serialize it.
   async searchDocs(query: DocSearchQuery): Promise<DocSearchResponse> {
     const body: Record<string, unknown> = {
       q: query.keyword,

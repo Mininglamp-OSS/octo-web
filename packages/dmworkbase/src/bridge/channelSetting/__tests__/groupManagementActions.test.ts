@@ -1,6 +1,12 @@
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 import { describe, expect, it, vi } from "vitest";
 
+const hoisted = vi.hoisted(() => ({ dapTrack: vi.fn() }));
+
+vi.mock("../../../Service/Dap", () => ({
+  Dap: { shared: { track: hoisted.dapTrack } },
+}));
+
 vi.mock("../../../App", () => ({
   default: {
     dataSource: {
@@ -152,9 +158,22 @@ describe("group management actions", () => {
     expect(runtime.syncDisbandState).toHaveBeenCalledWith(channel);
   });
 
+  it("does not mutate local disband state when the disband request fails", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+    const runtime = createRuntime({
+      disbandGroup: vi.fn(() => Promise.reject(new Error("disband failed"))),
+    });
+
+    await expect(disbandGroupManagementGroup({ channel, runtime })).rejects.toThrow(
+      "disband failed"
+    );
+    expect(runtime.syncDisbandState).not.toHaveBeenCalled();
+  });
+
   it("sets allow-no-mention and then refreshes channel info", async () => {
     const channel = new Channel("group-1", ChannelTypeGroup);
     const runtime = createRuntime();
+    hoisted.dapTrack.mockReset();
 
     await setGroupManagementAllowNoMention({
       allow: false,
@@ -164,6 +183,37 @@ describe("group management actions", () => {
 
     expect(runtime.setAllowNoMention).toHaveBeenCalledWith(false, channel);
     expect(runtime.fetchChannelInfo).toHaveBeenCalledWith(channel);
+    // group_bot_free_mention_toggled 收口点:命中此唯一写入入口即命令式补点,带 channel_id+enabled。
+    expect(hoisted.dapTrack).toHaveBeenCalledWith("group_bot_free_mention_toggled", {
+      channel_id: "group-1",
+      enabled: false,
+    });
+  });
+
+  it("does not track or refresh when allow-no-mention saving fails", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+    const runtime = createRuntime({
+      setAllowNoMention: vi.fn(() => Promise.reject(new Error("save failed"))),
+    });
+    hoisted.dapTrack.mockReset();
+
+    await expect(
+      setGroupManagementAllowNoMention({ allow: true, channel, runtime })
+    ).rejects.toThrow("save failed");
+
+    expect(runtime.fetchChannelInfo).not.toHaveBeenCalled();
+    expect(hoisted.dapTrack).not.toHaveBeenCalled();
+  });
+
+  it("propagates member removal failures without hiding the rejected operation", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+    const runtime = createRuntime({
+      removeManagers: vi.fn(() => Promise.reject(new Error("remove failed"))),
+    });
+
+    await expect(
+      removeGroupManagementManager({ channel, uid: "alice", runtime })
+    ).rejects.toThrow("remove failed");
   });
 
   it("reads allow-no-mention from current channel info", () => {

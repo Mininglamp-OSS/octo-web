@@ -52,10 +52,15 @@ vi.mock('@douyinfe/semi-icons', () => ({
     IconMinusCircle: () => null,
     IconExit: () => null,
 }));
+vi.mock('../../utils/summaryMenuBadge', () => ({
+    refreshPendingInvitationBadge: vi.fn(),
+}));
 
 import * as api from '../../api/summaryApi';
-import { WKApp } from '@octo/base';
+import { WKApp, Dap } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
+import { refreshPendingInvitationBadge } from '../../utils/summaryMenuBadge';
+import { summaryTestIds } from '../../utils/testIds';
 
 vi.mock('../../api/summaryApi');
 
@@ -91,11 +96,29 @@ describe('SummaryDetailPage — 历史版本引用隐私', () => {
 });
 
 describe('SummaryDetailPage — 窄容器布局', () => {
-    it('渲染版本面板 overlay class 时不会引用未定义的宽度常量', () => {
+    it('窄容器下版本面板保持并排分栏，绝不退化为覆盖式遮挡正文 (#1360)', () => {
         const page = makePage(1);
-        page.state = { ...(page.state as any), layoutWidth: 360, loading: true };
+        page.state = {
+            ...(page.state as any),
+            layoutWidth: 360,
+            loading: true,
+            detail: baseDetail({
+                result: { result_id: 2, version: 2, content: 'v2 body', citations: [] },
+            }) as any,
+            versionPanelOpen: true,
+            versionsLoading: false,
+            versions: [
+                { result_id: 1, version: 1, operation_type: 'generate', operation_note: '', generated_at: '', created_by: 'u1' },
+                { result_id: 2, version: 2, operation_type: 'edit', operation_note: '', generated_at: '', created_by: 'u1' },
+            ],
+        };
         expect(() => page.render()).not.toThrow();
-        expect(JSON.stringify(page.render())).toContain('version-panel-overlay');
+        const html = JSON.stringify(page.render());
+        // 分栏面板本体仍在场（正文可见性由布局保证，不再被覆盖）
+        expect(html).toContain('version-panel');
+        // 覆盖式退化 + 遮罩必须彻底移除：它们就是 #1360 遮挡正文的根源
+        expect(html).not.toContain('version-panel-overlay');
+        expect(html).not.toContain('version-panel-scrim');
     });
 });
 
@@ -122,45 +145,17 @@ describe('SummaryDetailPage — 返回分享卡片所在群聊', () => {
         }
     });
 
-    it('仅携带来源会话时展示入口，并返回该会话', () => {
+    it('详情头部当前不再渲染返回群聊入口', () => {
         const page = new SummaryDetailPage({
             taskId: 1,
             originChannel: { channelId: 'alice', channelType: 1 },
         } as any);
         (page as any).context = { t: (key: string) => key };
         page.state = { ...page.state, detail: baseDetail() as any };
-        const showConversation = vi.fn();
-        const previous = (WKApp as any).endpoints.showConversation;
-        (WKApp as any).endpoints.showConversation = showConversation;
-
-        try {
-            const header = (page as any).renderHeader();
-            const inner = Array.isArray(header.props.children)
-                ? header.props.children[0]
-                : header.props.children;
-            const backButton = inner.props.children[0];
-            expect(backButton.props.children).toBe('summary.share.backToChat');
-
-            backButton.props.onClick();
-            expect(showConversation).toHaveBeenCalledWith(expect.objectContaining({
-                channelID: 'alice',
-                channelType: 1,
-            }));
-        } finally {
-            (WKApp as any).endpoints.showConversation = previous;
-        }
-    });
-
-    it('普通总结入口不展示返回群聊', () => {
-        const page = makePage(1);
-        page.state = { ...page.state, detail: baseDetail() as any };
-
         const header = (page as any).renderHeader();
-        const inner = Array.isArray(header.props.children)
-            ? header.props.children[0]
-            : header.props.children;
-        expect(inner.props.children[0]).toBeNull();
+        expect(JSON.stringify(header)).not.toContain('summary.share.backToChat');
     });
+
 });
 
 it('keeps regeneration voice insertion within the 2000-character limit', () => {
@@ -668,6 +663,210 @@ describe('SummaryDetailPage — 续修3/4: detail 写入路径切 task 迟到丢
         expect((page.state as any).detail.task_id).toBe(2);
         expect((page.state as any).detail.title).toBe('B-detail');
     });
+
+    it('keeps polling when batch status is terminal but detail still lags', async () => {
+        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
+        vi.mocked(api.getSummaryDetail).mockResolvedValue(
+            baseDetail({ task_id: 1, status: 2 }) as any,
+        );
+
+        const page = makePage(1);
+        page.state = { ...(page.state as any), lastKnownStatus: 2 };
+        const stopFallbackPoll = vi.spyOn(page as any, 'stopFallbackPoll');
+
+        await (page as any).doFallbackPollOnce();
+
+        expect((page.state as any).lastKnownStatus).toBe(2);
+        expect(stopFallbackPoll).not.toHaveBeenCalled();
+    });
+});
+
+// ─── R3 blocker（Jerry-Xin 三审）：smart_summary_completed 在「状态订阅 + 兜底轮询」重叠下精确一次 ───
+//
+// 两路都在各自 await api.getSummaryDetail 之前捕获 prevStatus 快照(PROCESSING)，await 后同见
+// COMPLETED，故两路都能越过 prev!==new 边界守卫；stopFallbackPoll() 也取消不了已越过 await 的
+// tick。修复前二者会各发一次 smart_summary_completed（双计）。修复：以「已发 completed 的 taskId」
+// 为去重锚(completedTrackedTaskId)，先检出者写锚并发，后到者 id 相等即跳过——按 task 精确一次。
+describe('SummaryDetailPage — R3: smart_summary_completed exactly-once under status-event + fallback race', () => {
+    beforeEach(() => vi.clearAllMocks());
+
+    it('emits smart_summary_completed once when both paths observe the same pending→completed transition', async () => {
+        // 四审 P1-2:必须让两路都真正「越过各自第一个 await 后仍持 prev=PROCESSING」才算复现竞态。
+        //   若像先前那样用 mockResolvedValue 预解析,状态订阅路径会一口气跑完(先 setState lastKnownStatus=3),
+        //   兜底轮询随后读到的 prevStatus 已是 3、prev===new 短路,根本走不到 emit —— 测试即便删掉去重锚也照过(空测)。
+        //   这里用「延迟兑现的 getSummaryDetail + 立即兑现的 batchStatus」把两路都钉在 getSummaryDetail 处:
+        //     · 状态订阅路径:同步读 previousStatus=2 → 停在 await getSummaryDetail(未兑现)。
+        //     · 兜底轮询路径:await batchStatus 立即兑现 → 此刻 lastKnownStatus 仍是 2(状态订阅尚未 setState)
+        //       → prev(2)!==new(3) 进入 → 也停在 await getSummaryDetail(未兑现)。
+        //   两路都已捕获 prev=2 且都停在同一处后,再兑现 detail:二者同见 COMPLETED、都会尝试 emit。
+        //   有去重锚 → 恰好 1 条;删掉两处 completedTrackedTaskId 判断 → 变 2 条(delete-the-fix 会红)。
+        let resolveDetail!: (v: unknown) => void;
+        const detailPromise = new Promise((res) => { resolveDetail = res; });
+        vi.mocked(api.getSummaryDetail).mockReturnValue(detailPromise as any);
+        vi.mocked(api.batchStatus).mockResolvedValue([{ id: 1, status: 3 }] as any);
+
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+
+            // 两路并发启动,但 detail 尚未兑现 → 都停在 await getSummaryDetail。
+            const p1 = (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+            const p2 = (page as any).doFallbackPollOnce();
+
+            // 宏任务边界:排空当前所有微任务(batchStatus 兑现 → 兜底轮询读到 prev=2 → 停在 getSummaryDetail)。
+            await new Promise((r) => setTimeout(r, 0));
+
+            // 此刻两路都已捕获 prev=2 并停在 getSummaryDetail;兑现之 → 二者同见 COMPLETED,同时争 emit。
+            resolveDetail(baseDetail({ task_id: 1, status: 3 }) as any);
+            await Promise.all([p1, p2]);
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(1);
+            // 不只钉事件名:终态漏斗以 result 区分 completed/failed/cancelled,必须钉住 payload。
+            expect(completed[0][1]).toEqual({ result: 'completed' });
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    it('re-tracks for a different task id (dedup is per-task, not global)', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 };
+
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            // 切到 task 2，重新经历 pending→completed：锚 id 不同 → 再计一次。
+            (page as any).props = { taskId: 2 };
+            page.state = { ...(page.state as any), lastKnownStatus: 2 };
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 2, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [2] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(2);
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    // 终态不止 COMPLETED:FAILED(4)/CANCELLED(5) 同样是「一次结束」,以 result 区分。之前用例只跑
+    // COMPLETED,failed/cancelled 分支从无覆盖——若有人把 helper 的 result 三目改坏(如漏掉 FAILED),
+    // 现有测试全绿也发现不了。这里钉住:运行→FAILED / 运行→CANCELLED 各发一次且 result 值正确。
+    it('运行→FAILED 发一次 smart_summary_completed{result:failed}', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 4 /* FAILED */ }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(1);
+            expect(completed[0][1]).toEqual({ result: 'failed' });
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    it('运行→CANCELLED 发一次 smart_summary_completed{result:cancelled}', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 5 /* CANCELLED */ }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(1);
+            expect(completed[0][1]).toEqual({ result: 'cancelled' });
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    // 六审 P1b / 八审 🔴2：同一 taskId 的 regenerate。regenerate 把状态就地推回 PENDING 再重跑到
+    // COMPLETED，task id 不变。修复前 completedTrackedTaskId 只写不清 → 第二次完成命中 id 相等被跳过 →
+    // 只 1 条（flagship 漏斗 smart_summary_completed 系统性漏掉每一轮 regenerate 的完成）。
+    // 关键：产品的 regenerate 路径是 handleRegenerateConfirm 就地置 PENDING 后调 **this.loadDetail()**，
+    // 并不派发 summary-status-change。八审 🔴2 指出锚复位若只挂在状态订阅里,这条真实路径就绕过了它。
+    // 故 step ② 必须经 loadDetail(而非 handleStatusChangeEvent)驱动,才是产品真的会走的调用序列。
+    // delete-the-fix：去掉 loadDetail 里的锚维护(或 helper 的 else-if 复位),本用例退回 1 条即红。
+    it('re-tracks the SAME task after regenerate via the real loadDetail path: completed → pending(regenerate) → completed = 2 events (六审 P1b / 八审 🔴2)', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            page.state = { ...(page.state as any), lastKnownStatus: 2 /* PROCESSING */ };
+            // loadDetail 的无关副作用(轮询/标题/日程/版本)与本锚断言无关,置空避免定时器/事件噪声。
+            (page as any).startFallbackPoll = () => {};
+            (page as any).stopFallbackPoll = () => {};
+            (page as any).stopSummaryStream = () => {};
+            (page as any).stopTeamSummaryStream = () => {};
+            (page as any).publishDetailTitle = () => {};
+            (page as any).loadSchedule = () => {};
+
+            // ① 首次完成：PROCESSING → COMPLETED（写锚 + 发一条），经真实状态订阅入口。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            // ② regenerate：走产品真实路径 loadDetail。此时 state.detail.task_id=1、lastKnownStatus=3(COMPLETED)，
+            //    loadDetail 拉到 WAITING_CONFIRM(非 COMPLETED) → 观测到 3→1 的状态沿 → 必须清锚。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 1 /* 非 COMPLETED */ }) as any);
+            await (page as any).loadDetail();
+
+            // ③ 二次完成：→ COMPLETED，同一 taskId。锚已复位 → 再发一条。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 }) as any);
+            await (page as any).handleStatusChangeEvent(
+                new CustomEvent('summary-status-change', { detail: { taskIds: [1] } }),
+            );
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(2);
+        } finally {
+            track.mockRestore();
+        }
+    });
+
+    // 八审 🔴2 反向守卫：首次加载一条已完成总结(仅「查看」历史)**不得**计成一次新完成。
+    // previousStatus===undefined 时 loadDetail 不发 completed,否则每次翻阅历史都 +1,completed 超过 started。
+    it('does NOT emit completed on a fresh load of an already-COMPLETED summary (view ≠ completion, 八审 🔴2)', async () => {
+        const track = vi.spyOn(Dap.shared, 'track');
+        try {
+            const page = makePage(1);
+            (page as any).startFallbackPoll = () => {};
+            (page as any).stopFallbackPoll = () => {};
+            (page as any).stopSummaryStream = () => {};
+            (page as any).stopTeamSummaryStream = () => {};
+            (page as any).publishDetailTitle = () => {};
+            (page as any).loadSchedule = () => {};
+            (page as any).loadVersions = () => {};
+
+            // state.detail 为空 → isSameTask=false → previousStatus=undefined（首屏）。
+            vi.mocked(api.getSummaryDetail).mockResolvedValueOnce(baseDetail({ task_id: 1, status: 3 /* COMPLETED */ }) as any);
+            await (page as any).loadDetail();
+
+            const completed = track.mock.calls.filter((c) => c[0] === 'smart_summary_completed');
+            expect(completed).toHaveLength(0);
+        } finally {
+            track.mockRestore();
+        }
+    });
 });
 
 // ─── 续修5/6/7（blocking）：schedule 用户操作路径切 task 迟到丢弃 ───
@@ -772,6 +971,7 @@ describe('SummaryDetailPage — 续修5/6/7: schedule 用户操作路径切 task
 
         // 不重拉 schedule 回显，confirmingSchedule 由 finally 复位。
         expect(api.getSchedule).not.toHaveBeenCalled();
+        expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
         expect((page.state as any).confirmingSchedule).toBe(false);
     });
 });
@@ -1528,12 +1728,13 @@ describe('批次B 需求3：参与者报告自己那条有编辑（can_edit_pers
             expandedReports: { 'test-uid': true, u_b: true },
             members: [
                 { ...submittedMember('test-uid', '我', '我的报告 [5]'), citations: [{ index: 5, sender: 's', content: 'c', sent_at: '', source: '' }] },
-                submittedMember('u_b', '李四', '李四的报告 [1]'),
+                submittedMember('u_b', '李四', '李四的报告 [1] [P1]'),
             ],
         };
         const json = JSON.stringify((page as any).renderParticipantReports());
         // 他人 [1] 被清；自己 [5] 保留（不被隐私清洗）。
         expect(json).not.toContain('[1]');
+        expect(json).toContain('[P1]');
         expect(json).toContain('[5]');
     });
 
@@ -1568,28 +1769,28 @@ describe('批次B 需求3：参与者报告自己那条有编辑（can_edit_pers
 describe('批次B 需求4：团队总结编辑按钮 gate=can_edit_team（仅 creator）', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('team edit button rendered when can_edit_team=true', () => {
+    it('团队编辑按钮在正文 header 中渲染', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
-            detail: multiCollabDetail({ can_edit_team: true }),
+            detail: multiCollabDetail({ can_edit: true, can_edit_team: true }),
             members: [submittedMember('test-uid', '我', 'a'), submittedMember('u_b', '李四', 'b')],
             editingTeamSummary: false,
         };
-        const json = JSON.stringify((page as any).renderTeamSummary());
-        expect(json).toContain('summary.detail.editTeamSummary');
+        const json = JSON.stringify((page as any).renderCompleted());
+        expect(json).toContain(summaryTestIds.detailEditBtn);
     });
 
     it('team edit button NOT rendered for non-creator (can_edit_team=false)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
-            detail: multiCollabDetail({ can_edit_team: false }),
+            detail: multiCollabDetail({ can_edit: false, can_edit_team: false }),
             members: [submittedMember('test-uid', '我', 'a'), submittedMember('u_b', '李四', 'b')],
             editingTeamSummary: false,
         };
-        const json = JSON.stringify((page as any).renderTeamSummary());
-        expect(json).not.toContain('summary.detail.editTeamSummary');
+        const json = JSON.stringify((page as any).renderCompleted());
+        expect(json).not.toContain(summaryTestIds.detailEditBtn);
     });
 
     it('team edit inline editor uses default (team) mode → editSummary path', () => {
@@ -1762,7 +1963,6 @@ describe('v2 对齐：定时按钮集中到 header（从团队框/个人区移�
         const json = JSON.stringify((page as any).renderTeamSummary());
         expect(json).not.toContain('summary.detail.setSchedule');
         expect(json).not.toContain('summary.detail.editSchedule');
-        expect(json).toContain('summary.detail.editTeamSummary');
     });
 
     it('single-person BY_PERSON: schedule button no longer in renderPersonalSummary (moved to header)', () => {
@@ -1901,18 +2101,13 @@ describe('批次B 需求7：成员状态区「添加成员」按钮 gate=can_add
         expect(json).not.toContain('summary.detail.addMember');
     });
 
-    it('handleAddMemberConfirm calls api.addMembers with user_ids then loadDetail', async () => {
-        vi.mocked(api.addMembers).mockResolvedValue(undefined as any);
-        vi.mocked(api.getSummaryDetail).mockResolvedValue(multiCollabDetail({ can_add_member: true }) as any);
-
+    it('creator 可以打开添加成员面板', () => {
         const page = makePage(1);
         page.state = { ...(page.state as any), detail: multiCollabDetail({ can_add_member: true }) };
-
-        await (page as any).handleAddMemberConfirm([{ user_id: 'u_new', name: 'n', avatar: '', department: '' }]);
-
-        expect(api.addMembers).toHaveBeenCalledWith(1, ['u_new']);
-        // 成功后 loadDetail 刷新（getSummaryDetail 被再次调用）。
-        expect(api.getSummaryDetail).toHaveBeenCalled();
+        const push = vi.spyOn(WKApp.routeRight, 'push');
+        (page as any).handleOpenAddMember();
+        expect(push).toHaveBeenCalled();
+        push.mockRestore();
     });
 
     it('addMembers API posts {user_ids:[...]}', async () => {
@@ -2005,9 +2200,9 @@ describe('批次B 回炉 F1：编辑态互斥 / 切 task 复位 / 编辑分支�
             editingTeamSummary: true,
         };
         const json = JSON.stringify((page as any).renderTeamSummary());
-        // 进 editor：team 模式，initialContent=团队内容，且无只读 content-box。
+        // 当前编辑器由 content-box 布局容器包裹。
         expect(json).toContain('team content');
-        expect(json).not.toContain('summary-detail-content-box');
+        expect(json).toContain('summary-detail-content-box');
     });
 });
 

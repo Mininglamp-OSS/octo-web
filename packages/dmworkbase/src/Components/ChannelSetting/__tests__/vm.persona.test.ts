@@ -77,11 +77,12 @@ vi.mock("wukongimjssdk", () => ({
     WKSDK: { shared: () => ({ channelManager: hoisted.channelManager }) },
     Channel: class {
         constructor(public channelID: string, public channelType: number) {}
-        isEqual(): boolean {
-            return false
+        isEqual(other: { channelID: string; channelType: number }): boolean {
+            return this.channelID === other.channelID && this.channelType === other.channelType
         }
     },
     ChannelInfo: class {},
+    ChannelTypeGroup: 2,
     ChannelTypePerson: 1,
     __esModule: true,
 }))
@@ -115,6 +116,15 @@ beforeEach(() => {
     hoisted.del.mockReset()
     hoisted.put.mockReset()
     hoisted.toastError.mockReset()
+    hoisted.channelManager.fetchChannelInfo.mockReset()
+    hoisted.channelManager.getChannelInfo.mockReset()
+    hoisted.channelManager.getChannelInfo.mockReturnValue(undefined)
+    hoisted.channelManager.getSubscribes.mockReset()
+    hoisted.channelManager.getSubscribes.mockReturnValue([])
+    hoisted.channelManager.addListener.mockClear()
+    hoisted.channelManager.removeListener.mockClear()
+    hoisted.channelManager.addSubscriberChangeListener.mockClear()
+    hoisted.channelManager.removeSubscriberChangeListener.mockClear()
     clearPersonaActiveCache()
 })
 
@@ -247,6 +257,62 @@ describe("ChannelSettingVM.didUnMount — async safety", () => {
         await p
         expect(notifySpy).not.toHaveBeenCalled()
         expect(vm._oboScopeLoaded).toBe(false)
+    })
+})
+
+describe("ChannelSettingVM — thread parent channel lifecycle", () => {
+    it("loads an uncached parent once and rerenders when it resolves", async () => {
+        const threadChannel: any = {
+            channelID: "group-1____thread-1",
+            channelType: 5,
+            isEqual: (other: any) =>
+                other.channelID === "group-1____thread-1" && other.channelType === 5,
+        }
+        hoisted.get.mockReturnValue(new Promise(() => {}))
+        hoisted.channelManager.getChannelInfo.mockReturnValue(undefined)
+        hoisted.channelManager.fetchChannelInfo.mockResolvedValue(undefined)
+        const vm = new ChannelSettingVM(threadChannel)
+        const notifySpy = vi.spyOn(vm, "notifyListener")
+
+        vm.didMount()
+        notifySpy.mockClear()
+        await vi.waitFor(() => {
+            expect(hoisted.channelManager.fetchChannelInfo).toHaveBeenCalledWith(
+                expect.objectContaining({ channelID: "group-1", channelType: 2 }),
+            )
+        })
+        await vi.waitFor(() => expect(notifySpy).toHaveBeenCalled())
+        vm.didUnMount()
+    })
+
+    it("rerenders when the cached parent channel changes", () => {
+        const threadChannel: any = {
+            channelID: "group-1____thread-1",
+            channelType: 5,
+            isEqual: (other: any) =>
+                other.channelID === "group-1____thread-1" && other.channelType === 5,
+        }
+        hoisted.get.mockReturnValue(new Promise(() => {}))
+        hoisted.channelManager.getChannelInfo.mockImplementation((channel) =>
+            channel.channelType === 2
+                ? { channel, title: "Parent group", mute: false }
+                : undefined,
+        )
+        hoisted.channelManager.fetchChannelInfo.mockResolvedValue(undefined)
+        const vm = new ChannelSettingVM(threadChannel)
+        const notifySpy = vi.spyOn(vm, "notifyListener")
+
+        vm.didMount()
+        notifySpy.mockClear()
+        vm.channelInfoListener({
+            channel: {
+                isEqual: (other: any) =>
+                    other.channelID === "group-1" && other.channelType === 2,
+            },
+        } as any)
+
+        expect(notifySpy).toHaveBeenCalledTimes(1)
+        vm.didUnMount()
     })
 })
 

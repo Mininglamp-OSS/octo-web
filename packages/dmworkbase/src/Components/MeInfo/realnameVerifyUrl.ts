@@ -3,14 +3,11 @@
 // 一堆副作用 import 拖下水）。
 //
 // 业务背景（GH #1174）：
-//   Phase 2a/2b/2c 三端 PR 把 IdP verification URL 硬编码成 prod 域
-//   `https://accounts.xming.ai/profile/info?anchor=verification`。im-test
-//   实机测试时「去认证」按钮会把用户甩到 prod IdP；im-test 环境正确域名是
-//   `accounts-test.imocto.cn`。
+//   Phase 2a/2b/2c 三端 PR 曾把 IdP verification URL 硬编码成 prod 域，导致
+//   测试环境跳错地址。
 //
 //   后端早已按环境下发了正确域名：`/v1/common/appconfig` 的
-//   `oidc_providers[].account_url` 字段 —— im-test 返 `accounts-test.imocto.cn`,
-//   im-prod 返 `accounts.xming.ai`。Web 端 NavSettingsPanel「账户中心」入口
+//   `oidc_providers[].account_url` 字段。Web 端 NavSettingsPanel「账户中心」入口
 //   已经在走这条链, 是前端既有正路。这里把「去认证」入口也迁到同一条链上。
 //
 // Phase 2e 闭环追加：
@@ -45,7 +42,7 @@ export type ResolveRealnameVerifyUrlResult =
  * 「账户中心」入口口径统一。
  *
  * accountUrl 末尾斜杠去重（`replace(/\/+$/,'')`）是为了防 backend 下发
- * `https://accounts-test.imocto.cn/` 导致最终拼出 `//profile/info?...` 这种
+ * 带尾斜杠的账号中心地址导致最终拼出 `//profile/info?...` 这种
  * 协议相对 URL（浏览器会当 `https://profile/...` 的站点跳）。
  *
  * returnTo:必传非空字符串,会 `encodeURIComponent` 后拼在 query 末尾。

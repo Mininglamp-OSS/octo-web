@@ -5,6 +5,8 @@ import { WKApp, I18nContext } from '@octo/base';
 import { Sparkle } from 'lucide-react';
 import * as summaryApi from '../api/summaryApi';
 
+import { summaryTestIds } from '../utils/testIds';
+
 interface ChatSummaryStarButtonProps {
     channel: { channelID: string; channelType: number };
 }
@@ -126,6 +128,7 @@ export default class ChatSummaryStarButton extends Component<
         const { t } = this.context;
         return (
             <div
+                data-testid={summaryTestIds.chatPanelHeaderBtn}
                 onClick={(e) => {
                     e.stopPropagation();
                     void this.handleClick();

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { clearStandaloneReturn, consumeStandaloneReturn, persistStandaloneReturn } from "../standaloneReturn";
+import { isMailAuthorizePath } from "../../../../../packages/mail/src/authorizationSession";
+import { consumeStandaloneReturn, persistStandaloneReturn } from "../standaloneReturn";
 
 const KEY = "octo.docs.standaloneReturn";
 
@@ -9,18 +10,15 @@ afterEach(() => {
 });
 
 describe("standalone return target", () => {
-    it("persists the current path and query", () => {
-        window.history.replaceState(null, "", "/loop/cli-authorize?code=abc");
+    it("persists the current path, query, and hash", () => {
+        window.history.replaceState(null, "", "/loop/cli-authorize?code=abc#resume");
 
         persistStandaloneReturn();
 
-        expect(window.sessionStorage.getItem(KEY)).toBe("/loop/cli-authorize?code=abc");
+        expect(window.sessionStorage.getItem(KEY)).toBe("/loop/cli-authorize?code=abc#resume");
     });
 
-    it("keeps existing docs and summary return targets valid", () => {
-        window.sessionStorage.setItem(KEY, "/d/d_abc?sp=space1");
-        expect(consumeStandaloneReturn()).toBe("/d/d_abc?sp=space1");
-
+    it("keeps built-in summary return targets valid", () => {
         window.sessionStorage.setItem(KEY, "/s/TN_abc?sp=space1");
         expect(consumeStandaloneReturn()).toBe("/s/TN_abc?sp=space1");
 
@@ -28,35 +26,17 @@ describe("standalone return target", () => {
         expect(consumeStandaloneReturn()).toBe("/s/share/share_abc?sp=space1");
     });
 
-    it("accepts the exact drive share / invite landing shapes (PR#1146 N2)", () => {
-        for (const good of [
-            "/drive/s/sh_abc",
-            "/drive/s/sh_abc/",
-            "/drive/invite/tok-9_x",
-            "/drive/invite/tok_1?foo=bar",
-        ]) {
-            window.sessionStorage.setItem(KEY, good);
-            expect(consumeStandaloneReturn()).toBe(good);
-        }
-    });
+    it("returns an anonymous Mail authorization deep link after off-path login", () => {
+        const target = "/mail/authorize?code=ABCD-1234&mailbox=bot%40mail.imocto.cn&space_id=space-a";
+        window.history.replaceState(null, "", target);
+        persistStandaloneReturn();
 
-    it("rejects drive paths that smuggle structure or miss the exact s/invite shape (N2)", () => {
-        for (const bad of [
-            "/drive/invite/a/b", // extra path segment
-            "/drive/s/a%2Fb", // encoded slash → decodes to a/b
-            "/drive/s/a%5Cb", // encoded backslash
-            "/drive/s/%", // malformed %-escape
-            "/drive/s/%zz", // malformed %-escape
-            "/drive/s/", // empty token
-            "/drive/s", // no token segment
-            "/drive/foo/x", // wrong action
-            "/drive", // namespace root
-            "/drive/s/a/../../settings", // traversal
-        ]) {
-            window.sessionStorage.setItem(KEY, bad);
-            expect(consumeStandaloneReturn()).toBeNull();
-            expect(window.sessionStorage.getItem(KEY)).toBeNull();
-        }
+        window.history.replaceState(null, "", "/login");
+
+        expect(consumeStandaloneReturn([{
+            match: isMailAuthorizePath,
+            persistReturnOnAnonymous: true,
+        }])).toBe(target);
     });
 
     it("accepts enterprise return targets only when a persistent handler owns the path", () => {
@@ -80,17 +60,19 @@ describe("standalone return target", () => {
         ).toBeNull();
     });
 
-    it("clearStandaloneReturn deletes the key without navigating or consuming (R9 P1)", () => {
-        const href = window.location.href;
-        window.sessionStorage.setItem(KEY, "/drive/invite/tok_1");
+    it("requires enterprise handlers for removed feature return targets", () => {
+        window.sessionStorage.setItem(KEY, "/d/d_abc?sp=space1");
+        expect(consumeStandaloneReturn()).toBeNull();
 
-        clearStandaloneReturn();
-
-        expect(window.sessionStorage.getItem(KEY)).toBeNull(); // key gone
-        expect(window.location.href).toBe(href); // no navigation
-        // Idempotent: a second clear (or clearing when nothing is stashed) is a harmless no-op.
-        expect(() => clearStandaloneReturn()).not.toThrow();
-        expect(consumeStandaloneReturn()).toBeNull(); // nothing left for onLogin to replay
+        window.sessionStorage.setItem(KEY, "/d/d_abc?sp=space1");
+        expect(
+            consumeStandaloneReturn([
+                {
+                    match: (pathname) => pathname === "/d/d_abc",
+                    persistReturnOnAnonymous: true,
+                },
+            ])
+        ).toBe("/d/d_abc?sp=space1");
     });
 
     it("rejects off-origin and control-character return targets", () => {

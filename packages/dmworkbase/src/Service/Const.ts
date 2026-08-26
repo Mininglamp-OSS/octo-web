@@ -9,6 +9,9 @@ export  class  EndpointID {
   static clearChannelMessages :string = "clearChannelMessages" // 清空某个频道消息
   static emojiService = "emojiService" // emoji服务
   static messageNotify = "messageNotify" // 消息通知
+  // docs 能力端口：markdown 转在线文档。由已闭源的 docs 模块在自己的 init() 里注册实现，
+  // OSS 侧只通过 bridge/docs/docsPort 调用，不直连 docs-backend REST。
+  static docsConvertMarkdown = "docs.convertMarkdown"
 }
 
 export class EndpointCategory {
@@ -68,6 +71,7 @@ export class MessageContentTypeConst {
   static newGroupOwner: number = 1008 // 新的管理员
   static approveGroupMember: number = 1009 // 审批群成员
   static screenshot:number = 20 // 截屏消息
+  static summaryNotify:number = 21 // 群内总结完成提示
 
   // 音频通话消息号段 9900 - 9999
   static rtcResult:number = 9989 // 音视频通话结果

@@ -180,7 +180,7 @@
         "selectedChats": "{{count}} chats selected",
         "selectMembers": "Select participants",
         "selectedMembers": "{{count}} participants selected",
-        "start": "Start summary",
+        "start": "Quick summary",
         "agentStart": "Agent Summary",
         "agentSubmitting": "Agent summarizing...",
         "agentTopicPlaceholder": "Describe what you need summarized",
@@ -202,7 +202,8 @@
         "saving": "Saving...",
         "noOutputToSave": "No summary content to save yet. Please chat with AI first to generate content.",
         "agentSummaryCreated": "AI summary saved",
-        "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session"
+        "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session",
+        "savedNoOriginRetry": "Save failed: the referenced summary has no source channel, and this session hasn't read any channel either. Pick a referenced summary with a source, or start a new session and let the AI read a channel first"
     },
     "chatSummary": {
         "panelTitle": "Summaries in this chat",
@@ -421,6 +422,7 @@
         "failedTitle": "Summary generation failed",
         "taskNo": "Task ID: {{taskNo}}",
         "createdAt": "Created: {{time}}",
+        "botCreatedByFor": "Created by {{bot}} on behalf of {{owner}}",
         "contentTitle": "📝 Summary content",
         "edited": "Edited",
         "generatedAt": "Generated {{time}}",
@@ -436,7 +438,6 @@
         "memberStatus": "Member status",
         "participantReports": "Participant reports",
         "editMyReport": "Edit",
-        "editTeamSummary": "Edit",
         "adjustTeamSummary": "Adjust team summary",
         "addMember": "Add member",
         "addMemberSuccess": "Member added",
@@ -533,7 +534,26 @@
         "refineNotCreator": "You are not the creator of this summary and cannot modify it",
         "refineNoSnapshot": "This summary data version is too old and cannot be refined",
         "refineFailed": "Refinement failed, please try again later",
-        "continueRefine": "Continue refining"
+        "continueRefine": "Continue refining",
+        "copy": "Copy",
+        "copySuccess": "Copied to clipboard",
+        "copyFailed": "Copy failed, please retry",
+        "convertToDoc": "Convert to document",
+        "convertSuccess": "Document created, redirecting...",
+        "convertFailed": "Conversion failed, please retry",
+        "convertPopupBlocked": "The browser blocked the new tab. The document was created.",
+        "convertDocLink": "Open document",
+        "convertErrSchema": "The content uses a format that is not supported yet (e.g. inline code inside bold). Please adjust and retry",
+        "convertErrParse": "Could not parse the content. Please check the formatting and retry",
+        "convertErrTooLarge": "The content exceeds the single-document limit. Please split it and retry",
+        "convertErrAttachment": "An attachment in the content is no longer available. Please remove it and retry",
+        "convertErrStale": "The document was modified by someone else. Please refresh and retry",
+        "convertErrPermission": "You do not have permission to create or edit this document",
+        "convertErrNotFound": "The document does not exist or has been deleted",
+        "convertErrBusy": "Too many requests. Please retry in a moment",
+        "convertErrEmpty": "The content is empty and cannot be converted",
+        "convertErrEncoding": "The content encoding is invalid and cannot be converted",
+        "convertErrDocType": "This document type does not support body import"
     },
     "summaryCard": {
         "agentType": "Agent summary",
@@ -549,6 +569,8 @@
         "sourceFromMultiple": "From {{name}} and {{count}} other chats",
         "youStartedAt": "You started {{time}}",
         "startedAt": "{{name}} · {{time}}",
+        "botCreatedAt": "Created by {{name}} · {{time}}",
+        "botTag": "Bot",
         "generating": "AI is analyzing chat records...",
         "justNow": "just now",
         "minutesAgo": "{{count}}m ago",
@@ -562,7 +584,9 @@
         "confirmDeleteTitle": "Delete?",
         "confirmDeleteDesc": "This cannot be undone.",
         "confirmLeaveTitle": "Leave?",
-        "confirmLeaveDesc": "You will no longer participate in this summary."
+        "confirmLeaveDesc": "You will no longer participate in this summary.",
+        "scheduledType": "Scheduled summary",
+        "multiPersonType": "Multi-person summary"
     },
     "editor": {
         "saveSuccess": "Saved",

@@ -8,6 +8,8 @@ import {
 } from "./content";
 import { Onboarding } from ".";
 
+const { dapTrack } = vi.hoisted(() => ({ dapTrack: vi.fn() }));
+
 const { runOnboardingViewTransition, viewTransitionState } = vi.hoisted(() => {
   const viewTransitionState: { onFinished?: () => void } = {};
 
@@ -32,16 +34,17 @@ const { runOnboardingViewTransition, viewTransitionState } = vi.hoisted(() => {
 const translations: Record<string, string> = {
   "app.onboarding.dialog.introAria": "Octo onboarding introduction",
   "app.onboarding.intro.actions.skip": "Skip",
-  "app.onboarding.sections.workspace.description":
+  "app.onboarding.sections.organization.description":
     "Workspace lead\nShared context\nHuman and AI coordination",
   "app.onboarding.sections.createBot.label": "Create your Bot",
   "app.onboarding.sections.createBot.title": "Create your Bot",
   "app.onboarding.sections.createBot.description":
     "Create your first Bot in BotFather and start using Octo.",
-  "app.onboarding.sections.createBot.visualTitle":
+  "app.onboarding.sections.createBot.imageAlt":
     "Cursor hovering over the BotFather entry",
   "app.onboarding.actions.finish": "Finish",
   "app.onboarding.actions.completed": "Completed",
+  "app.onboarding.actions.closeAria": "Close",
 };
 
 const storageValues = new Map<string, string>();
@@ -61,6 +64,7 @@ vi.mock("@octo/base", () => ({
     locale: "en-US",
     t: (key: string) => translations[key] ?? key,
   }),
+  Dap: { shared: { track: dapTrack } },
 }));
 
 vi.mock("./Intro", () => ({
@@ -78,6 +82,7 @@ vi.mock("./viewTransition", () => ({
 describe("Onboarding", () => {
   beforeEach(() => {
     runOnboardingViewTransition.mockClear();
+    dapTrack.mockClear();
     delete viewTransitionState.onFinished;
     localStorageMock.clear();
     Object.defineProperty(window, "localStorage", {
@@ -143,6 +148,11 @@ describe("Onboarding", () => {
     expect(screen.getByText("Human and AI coordination")).toHaveClass(
       "wk-onboarding-description-support-line"
     );
+
+    const decorativeImage = document.querySelector(".wk-onboarding-image");
+    const mediaFrame = document.querySelector(".wk-onboarding-media-frame");
+    expect(decorativeImage).toHaveAttribute("alt", "");
+    expect(mediaFrame).not.toHaveAttribute("aria-label");
   });
 
   it("preloads the remaining directory images after the first image renders", () => {
@@ -199,5 +209,47 @@ describe("Onboarding", () => {
       )
     ).toHaveClass("wk-onboarding-description-lead");
     expect(screen.getByRole("button", { name: "Finish" })).toBeInTheDocument();
+  });
+
+  // 九审 🔴:activeId 初值 "workspace" 若被 resolveOnboardingSections 过滤掉,activeSection
+  // 会回退到首个已解析章;终态事件(exited/completed)的 chapter_id 必须报实际显示章 id,
+  // 而不是漂到已过滤的 "workspace"(否则与 onboarding_chapter_viewed 报的 id 不一致)。
+  const chapterCalls = () =>
+    dapTrack.mock.calls.filter((call) => call[0] === "onboarding_chapter");
+
+  it("closes with the displayed chapter id when the default section is filtered out", () => {
+    const config = {
+      ...defaultOnboardingConfig,
+      sections: defaultOnboardingConfig.sections.map((section) =>
+        section.id === "workspace" ? { ...section, enabled: false } : section
+      ),
+    };
+
+    render(<Onboarding forceVisible skipIntro config={config} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+
+    const exited = chapterCalls().find((call) => call[1].outcome === "exited");
+    expect(exited?.[1].chapter_id).toBe("subspaces");
+    expect(exited?.[1].chapter_id).not.toBe("workspace");
+  });
+
+  it("finishes with the displayed chapter id when only the final section resolves", () => {
+    const config = {
+      ...defaultOnboardingConfig,
+      sections: defaultOnboardingConfig.sections.map((section) =>
+        section.id === "create-bot" ? section : { ...section, enabled: false }
+      ),
+    };
+
+    render(<Onboarding forceVisible skipIntro config={config} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+
+    const completed = chapterCalls().find(
+      (call) => call[1].outcome === "completed"
+    );
+    expect(completed?.[1].chapter_id).toBe("create-bot");
+    expect(completed?.[1].chapter_id).not.toBe("workspace");
   });
 });

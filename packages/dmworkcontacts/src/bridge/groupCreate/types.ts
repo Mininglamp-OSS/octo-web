@@ -48,6 +48,7 @@ export interface GroupCreateRuntime {
     uids: string[],
     options?: GroupCreateSubmitOptions
   ): Promise<{ group_no?: string } | undefined>;
+  uploadGroupAvatar(groupNo: string, file: File): Promise<void>;
   getAvatarUser(uid: string): string;
   getContactsList(): GroupCreateContactRecord[];
   getCurrentChannelInfo(channel: Channel): any;

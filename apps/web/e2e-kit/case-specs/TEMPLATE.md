@@ -59,9 +59,9 @@
 
 ## 视觉基准
 
-<默认: "不建 pixel baseline; 用 getByRole/getByText 断言结构". 只有强视觉断言 (theme / layout / illustration) 才建 baseline, 用 toHaveScreenshot() + 记录 baseline 路径.>
+<默认: "不建 pixel baseline; 用 getByRole/getByText 断言结构". 只有强视觉断言 (theme / layout / illustration) 才建 baseline。fork PR 暂不提交本地生成 PNG；需要 same-repo/CI baseline workflow 生成 canonical baseline 后再启用 @visual。>
 
-不建 pixel baseline; 用 `getByRole('article')` + `getByText` 断言结构.
+不建 pixel baseline; 用 `getByRole` + `getByText` 断言结构。若必须建 baseline, 记录 CI baseline workflow/路径。
 
 ## 摸清依据
 

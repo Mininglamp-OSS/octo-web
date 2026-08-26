@@ -60,7 +60,7 @@ describe("SkillDetailModal", () => {
     expect(screen.queryByText(/Agent 安装|skillMarket\.detail\.installTitle/)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /复制安装 Prompt|skillMarket\.detail\.copyPrompt/ })).not.toBeInTheDocument();
     expect(screen.queryByText("meeting-note-cleaner.zip")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /下载 Skill 包|skillMarket\.detail\.downloadBtn/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /下载技能包|skillMarket\.detail\.downloadBtn/ })).not.toBeInTheDocument();
   });
 
   it("does not show visibility metadata", async () => {
@@ -84,29 +84,14 @@ describe("SkillDetailModal", () => {
     expect(screen.queryByText("4 KB")).not.toBeInTheDocument();
   });
 
-  it("shows publisher metadata for public skills", async () => {
+  it("renders public skills as platform-published", async () => {
     vi.mocked(api.getSkill).mockResolvedValue({ ...skill, visibility: "public" });
-
-    render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
-
-    expect(await screen.findByText("test")).toBeInTheDocument();
-    expect(screen.getByTitle("meeting-note-cleaner")).toBeInTheDocument();
-    expect(screen.getByTitle("我")).toBeInTheDocument();
-  });
-
-  it("shows platform attribution for administrator-created global skills", async () => {
-    vi.mocked(api.getSkill).mockResolvedValue({
-      ...skill,
-      visibility: "public",
-      spaceId: undefined as unknown as string,
-      ownerName: "超级管理员",
-      creatorName: "超级管理员",
-    });
 
     const { container } = render(<SkillDetailModal skillId={skill.id} categories={categories} onClose={vi.fn()} />);
 
     expect(await screen.findByText("官方发布")).toBeInTheDocument();
-    expect(screen.queryByText("超级管理员")).not.toBeInTheDocument();
+    expect(screen.getByTitle("meeting-note-cleaner")).toBeInTheDocument();
+    expect(screen.queryByText("我")).not.toBeInTheDocument();
     expect(screen.getByTitle("官方发布")).toBeInTheDocument();
     expect(container.querySelector(".skill-market-detail-header__platform-icon")).toBeInTheDocument();
   });

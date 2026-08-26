@@ -14,6 +14,12 @@ export type ForwardGrantRole = "reader" | "commenter" | "writer"
 /** The grant selection emitted on confirm — undefined when the switch is off. */
 export interface ForwardGrant {
   role: ForwardGrantRole
+  /**
+   * Bot uids the forwarder explicitly kept selected in the 授权区 Bot expander (feature: user+Bot
+   * grants). Empty/omitted → grant humans only. The host merges these onto the human snapshot at
+   * forward time; they are NEVER attached silently — only what the user left checked is carried.
+   */
+  botUids?: string[]
 }
 
 /**
@@ -39,6 +45,45 @@ export interface ForwardGrantConfig {
   onRoleChange(r: ForwardGrantRole): void
   /** "将授权给群当前 N 名成员" hint count, when a group target is selected. */
   targetMemberCount?: number
+  /**
+   * Bot expander state (feature: user+Bot grants). Present only when there is at least one Bot
+   * created by a selected person; the 授权区 renders a per-person expandable list so the forwarder
+   * can cancel individual Bots (default: all selected). Absent → no Bot row is shown (zero-Bot
+   * compatible). Resolution failures remain not-ready, expose retry, and block confirmation.
+   */
+  bots?: ForwardBotSnapshot
+}
+
+/** One person and the Bots they created among the selected forward targets. */
+export interface ForwardBotCreatorGroup {
+  /** Creator uid (a selected person / group member). */
+  uid: string
+  /** Display name for the creator, falling back to the uid. */
+  name: string
+  /** Bots this person created, each with its current selected state. */
+  bots: Array<{ uid: string; name: string; selected: boolean }>
+}
+
+/** Bot expander model the 授权区 renders (feature: user+Bot grants). */
+export interface ForwardBotSnapshot {
+  /**
+   * Whether the async resolve has completed for the CURRENT target/space. False while loading (or
+   * right after the target changed): callers must not carry any Bot until this is true, so a stale
+   * or in-flight resolve can never confirm old Bots.
+   */
+  ready: boolean
+  /** Resolve failed. Confirmation stays blocked until retry succeeds. */
+  error?: boolean
+  /** Retry the current target's Bot resolution after a recoverable failure. */
+  retry?: () => void
+  /** Distinct human uids in the resolved target snapshot ("N 人"). */
+  peopleCount: number
+  /** Currently-selected Bot count across all creators ("M Bot"). */
+  botCount: number
+  /** Per-creator Bot groups, rendered as expandable rows. */
+  groups: ForwardBotCreatorGroup[]
+  /** Toggle one Bot's selected state. */
+  toggleBot(uid: string): void
 }
 
 /** Per-run aggregate returned by the docs-injected grant executor (host aggregates N/M from it). */

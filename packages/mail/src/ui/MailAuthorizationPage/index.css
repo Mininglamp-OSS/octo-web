@@ -1,0 +1,198 @@
+.mail-auth-page {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--wk-sp-10) var(--wk-sp-5);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+}
+
+.mail-auth-card {
+  width: min(520px, 100%);
+  padding: var(--wk-sp-8);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-lg);
+  background: var(--wk-bg-base);
+  box-shadow: var(--wk-shadow-lg);
+}
+
+.mail-auth-card__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: var(--wk-sp-5);
+  border-radius: var(--wk-r-lg);
+  color: var(--wk-brand-primary);
+  background: var(--wk-brand-gradient-subtle);
+}
+
+.mail-auth-card h1 {
+  margin: 0;
+  font: var(--wk-text-h2);
+}
+
+.mail-auth-card__description {
+  margin: var(--wk-sp-3) 0 var(--wk-sp-6);
+  color: var(--wk-text-tertiary);
+  line-height: 1.6;
+}
+
+.mail-auth-client,
+.mail-auth-approved-mailbox,
+.mail-auth-code {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+}
+
+.mail-auth-code {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--wk-sp-1) var(--wk-sp-3);
+  margin-top: var(--wk-sp-3);
+}
+
+.mail-auth-code span,
+.mail-auth-code small {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.mail-auth-code small {
+  grid-column: 2;
+}
+
+.mail-auth-client div,
+.mail-auth-client span,
+.mail-auth-mailbox span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mail-auth-client span,
+.mail-auth-mailbox small {
+  margin-top: var(--wk-sp-1);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.mail-auth-mailboxes {
+  display: grid;
+  gap: var(--wk-sp-3);
+  margin: var(--wk-sp-6) 0;
+  padding: 0;
+  border: 0;
+}
+
+.mail-auth-mailboxes legend {
+  margin-bottom: var(--wk-sp-3);
+  font-weight: 600;
+}
+
+.mail-auth-automation {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-elevated);
+  cursor: pointer;
+}
+
+.mail-auth-automation span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mail-auth-automation small {
+  margin-top: var(--wk-sp-1);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  line-height: 1.5;
+}
+
+.mail-auth-automation:hover,
+.mail-auth-automation.is-selected {
+  border-color: var(--wk-brand-primary);
+  background: var(--wk-brand-gradient-subtle);
+}
+
+.mail-auth-permissions {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.mail-auth-mailbox {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-md);
+  cursor: pointer;
+}
+
+.mail-auth-mailbox:hover,
+.mail-auth-mailbox.is-selected {
+  border-color: var(--wk-brand-primary);
+  background: var(--wk-brand-gradient-subtle);
+}
+
+.mail-auth-card__button {
+  width: 100%;
+  min-height: 42px;
+  margin-top: var(--wk-sp-5);
+  border: 0;
+  border-radius: var(--wk-r-md);
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.mail-auth-card__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.mail-auth-card__error,
+.mail-auth-card__empty,
+.mail-auth-card__status {
+  margin-top: var(--wk-sp-4);
+  padding: var(--wk-sp-3);
+  border-radius: var(--wk-r-md);
+  color: var(--wk-color-error);
+  background: var(--wk-color-error-bg);
+}
+
+.mail-auth-card__status,
+.mail-auth-card__empty {
+  color: var(--wk-text-tertiary);
+  background: var(--wk-bg-elevated);
+}
+
+.mail-auth-space-confirmation {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: var(--wk-sp-3);
+  margin-top: var(--wk-sp-3);
+  padding: var(--wk-sp-3);
+  border: 1px solid var(--wk-color-warning);
+  border-radius: var(--wk-r-md);
+  color: var(--wk-text-secondary);
+  background: var(--wk-color-warning-bg);
+  line-height: 1.5;
+  cursor: pointer;
+}

@@ -19,10 +19,20 @@ import {
   type ChannelSettingActionRuntime,
 } from "../channelSettingActions";
 import { ChannelField } from "../../../Service/DataSource/DataSource";
-import { SubscriberStatus } from "../../../Service/Const";
+import {
+  ChannelTypeCommunityTopic,
+  SubscriberStatus,
+} from "../../../Service/Const";
+import { Dap } from "../../../Service/Dap";
 
 vi.mock("../../../App", () => ({
   default: {},
+}));
+
+// 十一审 🔴:conversation_left 改命令式,退群/退子区在 exitChannel/leaveThread 成功后单发。
+// mock Dap 以断言 emit;顺带避免加载真实 Dap 的浏览器副作用。
+vi.mock("../../../Service/Dap", () => ({
+  Dap: { shared: { track: vi.fn() } },
 }));
 
 vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
@@ -31,6 +41,7 @@ vi.mock("../../../im-runtime/currentChannelRuntime", () => ({
   fetchCurrentImChannelInfo: vi.fn(),
   getCurrentImChannelSubscribers: vi.fn(() => []),
   getCurrentImChannelSubscribersCacheRaw: vi.fn(() => undefined),
+  getPendingCurrentImChannelInfoFetches: vi.fn(() => undefined),
   markCurrentImChannelSubscribersLocallyRemoved: vi.fn(),
   notifyCurrentImSubscriberChangeListeners: vi.fn(),
   setCurrentImChannelSubscribersCache: vi.fn(),
@@ -52,6 +63,8 @@ function createRuntime(
       Promise.resolve({ uid, name: `member:${uid}` })
     ),
     getCurrentChannelSubscribers: vi.fn(() => []),
+    getCurrentChannelInfo: vi.fn(() => undefined),
+    getPendingChannelInfoFetches: vi.fn(() => undefined),
     getCurrentChannelSubscribersRaw: vi.fn(() => undefined),
     findConversation: vi.fn(),
     getLoginUid: vi.fn(() => "self"),
@@ -66,7 +79,10 @@ function createRuntime(
     clearRemovedChannelSubscribers: vi.fn(),
     markRemovedChannelSubscribers: vi.fn(),
     notifyCurrentChannelSubscribers: vi.fn(),
+    notifyCurrentChannelInfo: vi.fn(),
+    setPinnedChannel: vi.fn(() => Promise.resolve()),
     setCurrentChannelSubscribers: vi.fn(),
+    setCurrentChannelInfo: vi.fn(),
     syncCurrentChannelSubscribers: vi.fn(() => Promise.resolve()),
     topChannel: vi.fn(() => Promise.resolve()),
     transferOwner: vi.fn(() => Promise.resolve()),
@@ -438,6 +454,144 @@ describe("channel setting actions", () => {
     expect(runtime.remarkChannel).toHaveBeenCalledWith(channel, "remark");
   });
 
+  it("uses the dedicated pinned contract for child threads", async () => {
+    const runtime = createRuntime();
+    const channel = new Channel(
+      "group-1____thread-1",
+      ChannelTypeCommunityTopic
+    );
+
+    await topChannelSetting({ channel, top: true, runtime });
+    await topChannelSetting({ channel, top: false, runtime });
+
+    expect(runtime.setPinnedChannel).toHaveBeenNthCalledWith(1, channel, true);
+    expect(runtime.setPinnedChannel).toHaveBeenNthCalledWith(2, channel, false);
+    expect(runtime.topChannel).not.toHaveBeenCalled();
+  });
+
+  it("emits imperative conversation_muted/pinned with the direction action (M3 收口点)", async () => {
+    // mute/pin 已从 BodyRules body 通道迁到本 funnel(覆盖列表右键 + 设置面板 + 子区设置,
+    // 单通道不双计)。此测钉死:成功后各发一次、action 方向随开关翻转。若有人把规则塞回
+    // BODY_RULES,channelUniqueness 的 self-check 会红;此处再钉命令式落点与 action 值。
+    vi.mocked(Dap.shared.track).mockClear();
+    const runtime = createRuntime();
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+    await muteChannelSetting({ channel, mute: false, runtime });
+    await topChannelSetting({ channel, top: true, runtime });
+    await topChannelSetting({ channel, top: false, runtime });
+
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "mute", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "unmute", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "pin", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "unpin", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledTimes(4);
+  });
+
+  it("畸形子区 channelID(parseThreadChannelId 失败,updateChannelSetting 静默 no-op)→ 不发 mute/pin(#1452 P2)", async () => {
+    // ChannelTypeCommunityTopic 但 channelID 无法解析出 thread → updateChannelSetting 直接 return,
+    // 不发请求;埋点必须与之对齐,否则一次静默 no-op 也会计成一次 mute/pin(过计数)。
+    vi.mocked(Dap.shared.track).mockClear();
+    const runtime = createRuntime();
+    const channel = new Channel("not-a-thread-id", ChannelTypeCommunityTopic);
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+    await topChannelSetting({ channel, top: true, runtime });
+
+    expect(Dap.shared.track).not.toHaveBeenCalled();
+  });
+
+  it("reapplies the latest saved thread mute after an older fetch resolves last", async () => {
+    const oldFetch = deferred();
+    const channel = new Channel(
+      "group-1____thread-1",
+      ChannelTypeCommunityTopic
+    );
+    let cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    const runtime = createRuntime({
+      getCurrentChannelInfo: vi.fn(() => cachedChannelInfo),
+      getPendingChannelInfoFetches: vi.fn(() => [oldFetch.promise]),
+    });
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+
+    expect(cachedChannelInfo.mute).toBe(true);
+    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
+
+    // The SDK's older request lands after the PUT and replaces the cache object.
+    cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    oldFetch.resolve();
+    await oldFetch.promise;
+    await Promise.resolve();
+
+    expect(cachedChannelInfo.mute).toBe(true);
+    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(2);
+    expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledTimes(2);
+  });
+
+  it("repairs after each older thread info fetch settles", async () => {
+    const firstOldFetch = deferred();
+    const secondOldFetch = deferred();
+    const channel = new Channel(
+      "group-1____thread-1",
+      ChannelTypeCommunityTopic
+    );
+    let cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    const runtime = createRuntime({
+      getCurrentChannelInfo: vi.fn(() => cachedChannelInfo),
+      getPendingChannelInfoFetches: vi.fn(() => [
+        firstOldFetch.promise,
+        secondOldFetch.promise,
+      ]),
+    });
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(1);
+
+    cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    firstOldFetch.resolve();
+    await firstOldFetch.promise;
+    await Promise.resolve();
+
+    expect(cachedChannelInfo.mute).toBe(true);
+    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(2);
+
+    cachedChannelInfo = {
+      channel,
+      mute: false,
+      orgData: { thread: { status: 1, mute: 0 } },
+    } as any;
+    secondOldFetch.resolve();
+    await secondOldFetch.promise;
+    await Promise.resolve();
+
+    expect(cachedChannelInfo.mute).toBe(true);
+    expect(cachedChannelInfo.orgData.thread.mute).toBe(1);
+    expect(runtime.setCurrentChannelInfo).toHaveBeenCalledTimes(3);
+    expect(runtime.notifyCurrentChannelInfo).toHaveBeenCalledTimes(3);
+  });
+
   it("transfers owner and refreshes subscriber and channel caches", async () => {
     const runtime = createRuntime();
     const channel = new Channel("group-1", ChannelTypeGroup);
@@ -454,6 +608,7 @@ describe("channel setting actions", () => {
   });
 
   it("clears conversation messages when a conversation exists", async () => {
+    vi.mocked(Dap.shared.track).mockClear();
     const conversation = { lastMessage: { messageID: "m1" } };
     const runtime = createRuntime({
       findConversation: vi.fn(() => conversation),
@@ -467,9 +622,14 @@ describe("channel setting actions", () => {
     );
     expect(conversation.lastMessage).toBeUndefined();
     expect(runtime.invokeClearChannelMessages).toHaveBeenCalledWith(channel);
+    // 十二审 🔴 P1-1:清空是真实手势,成功后命令式单发 conversation_cleared(替代原 POST /message/offset
+    //   的 fetch 规则 —— 该端点被删好友顺带调用,path 通道会误计)。
+    expect(Dap.shared.track).toHaveBeenCalledTimes(1);
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_cleared", {});
   });
 
   it("does nothing when clearing messages without a conversation", async () => {
+    vi.mocked(Dap.shared.track).mockClear();
     const runtime = createRuntime({
       findConversation: vi.fn(() => undefined),
     });
@@ -481,9 +641,15 @@ describe("channel setting actions", () => {
 
     expect(runtime.clearConversationMessages).not.toHaveBeenCalled();
     expect(runtime.invokeClearChannelMessages).not.toHaveBeenCalled();
+    // 无会话 = 无清空动作,绝不发 conversation_cleared。
+    expect(Dap.shared.track).not.toHaveBeenCalledWith(
+      "conversation_cleared",
+      expect.anything()
+    );
   });
 
   it("exits a group and removes the local conversation even if delete fails", async () => {
+    vi.mocked(Dap.shared.track).mockClear();
     const onDeleteConversationError = vi.fn();
     const runtime = createRuntime({
       deleteConversation: vi.fn(() =>
@@ -503,6 +669,10 @@ describe("channel setting actions", () => {
     expect(runtime.removeLocalConversationAndCloseIfOpen).toHaveBeenCalledWith(
       channel
     );
+    // 十一审 🔴:conversation_left 在 exitChannel 成功后单发一次,且**不依赖** deleteConversation
+    //   是否成功(此处 delete 主动 reject 仍须 emit),命令式单通道、退群仅计一次。
+    expect(Dap.shared.track).toHaveBeenCalledTimes(1);
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_left", {});
   });
 
   it("updates thread name then refreshes channel info", async () => {
@@ -525,6 +695,7 @@ describe("channel setting actions", () => {
   });
 
   it("leaves a thread and removes local conversation", async () => {
+    vi.mocked(Dap.shared.track).mockClear();
     const runtime = createRuntime();
     const channel = new Channel("group-1@thread", 12);
 
@@ -538,6 +709,29 @@ describe("channel setting actions", () => {
     expect(runtime.deleteConversation).toHaveBeenCalledWith(channel);
     expect(runtime.removeLocalConversationAndCloseIfOpen).toHaveBeenCalledWith(
       channel
+    );
+    // 十一审 🔴:退子区同样在 leaveThread 成功后命令式单发 conversation_left。
+    expect(Dap.shared.track).toHaveBeenCalledTimes(1);
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_left", {});
+  });
+
+  it("updates thread name without emitting conversation_left (改名非退出)", async () => {
+    // 防串扰:改名走 updateThread,绝不能误发 conversation_left(退出事件)。
+    vi.mocked(Dap.shared.track).mockClear();
+    const runtime = createRuntime();
+    const channel = new Channel("group-1@thread", 12);
+
+    await updateChannelSettingThreadName({
+      channel,
+      groupNo: "group-1",
+      shortId: "T-1",
+      name: "Renamed",
+      runtime,
+    });
+
+    expect(Dap.shared.track).not.toHaveBeenCalledWith(
+      "conversation_left",
+      expect.anything()
     );
   });
 });

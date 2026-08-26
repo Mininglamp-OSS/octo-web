@@ -12,13 +12,22 @@ import {
 } from "@douyinfe/semi-ui";
 import { IconEdit, IconSend, IconClock, IconTick, IconClose, IconInfoCircle, IconHistory, IconRefresh, IconUser, IconPlus, IconMinusCircle, IconExit, IconDelete, IconMore } from "@douyinfe/semi-icons";
 import { Bot, ChevronDown, Check, X } from "lucide-react";
-import { Channel, MessageText } from "wukongimjssdk";
+import WKSDK, { Channel, ChannelTypeGroup, MessageText } from "wukongimjssdk";
 import {
   I18nContext,
   t,
   ForwardService,
   interpretForwardResult,
   titleContextStore,
+  SummaryNotifyContent,
+  isConversationDisbanded,
+  Dap,
+  // CR: 必须走包的 public index，不能深路径 import `@octo/base/src/...`。
+  // dmworksummary 的 vitest.config.ts 末尾有一条**字符串** alias
+  // `@octo/base` -> `src/__mocks__/dmworkBase.ts`；字符串 alias 按前缀匹配，会把
+  // `@octo/base/src/Service/APIClient` 一并吃进 mock 文件里导致解析失败，
+  // 静默打断本包 4 个测试套件的 collection。
+  copyToClipboard,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
@@ -28,11 +37,14 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
+import { convertDocErrorMessage } from "../utils/convertDocError";
+import { sendGroupSummaryCompletionTips } from "../utils/groupSummaryNotify";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
+import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
 // RefineSection 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
 // (见 CHAT-REFERENCE-BASED-DESIGN-v1)
 import OverflowTooltip from "../components/OverflowTooltip";
@@ -55,8 +67,12 @@ import {
     scheduleToParams,
     formatScheduleSummary,
     shouldReactivateOnSave,
+    isReferenceable,
 } from "../utils/summaryHelpers";
+import { summaryTestIds } from "../utils/testIds";
 import CitationText from "../components/CitationText";
+import SummaryResultActions from "../components/SummaryResultActions";
+import { stripCitationMarkers } from "../components/citationStrip";
 import SelectedSourcesPanel from "../components/SelectedSourcesPanel";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import SummaryEditor from "../components/SummaryEditor";
@@ -144,6 +160,13 @@ interface SummaryDetailPageState {
     teamStreaming: boolean;
     teamStreamingContent: string;
     teamStreamError: string | null;
+    /**
+     * octo-smart-summary#195: 当前正在复制 / 转文档的操作行 key。
+     * 用 key 而不是 boolean，是为了让多个挂载点各自独立 loading —— 否则转个人总结时
+     * 团队总结那一行的按钮也会跟着转圈。
+     */
+    copyingKey: string | null;
+    convertingKey: string | null;
 }
 
 const INTER_MESSAGE_DELAY_MS = 200;
@@ -189,6 +212,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private tocSignature = "";
     private tocHeadingNodes: HTMLElement[] = [];
     private regenerateVoiceMode: RegenerateMode | null = null;
+    /** 转文档的同步重入闸（P1-b：semi-ui loading 不禁点，双击会创建两份文档）。 */
+    private convertInFlight = false;
 
     private handleRegenerateVoiceRecordingStart = () => {
         this.regenerateVoiceMode = this.state.regenerateMode;
@@ -267,6 +292,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         teamStreaming: false,
         teamStreamingContent: "",
         teamStreamError: null,
+        copyingKey: null,
+        convertingKey: null,
     };
 
     private personalPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -287,6 +314,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private listPageActive = false;
     private lastEventTime = 0;
     private isPersonalPolling = false;
+    // R3 blocker（Jerry-Xin 三审）：smart_summary_completed 的 exactly-once 去重锚点。
+    // 状态订阅路径(:handleStatusChangeEvent)与兜底轮询路径(:doFallbackPollOnce)都在各自
+    // await 之前捕获 prevStatus 快照，stopFallbackPoll() 无法取消已越过 await 的 tick，故仅靠
+    // 「prev !== new 状态沿」判定不足以防双计：两路可各自读到 prev=RUNNING、await 后同见
+    // COMPLETED，双双越过边界守卫各发一次。以「已发 completed 的 taskId」为锚，先发者写锚，
+    // 后到者 id 相等即跳过——按 task 维度精确一次。task 切换后 id 不同，自然重新计一次。
+    private completedTrackedTaskId: number | null = null;
     // Blocking 5（跨 task 串台 / async race）：单调递增的「调度加载序列号」。
     // 每次发起一轮 detail+schedule 加载（loadDetail / 状态切换补拉 / 重新加载）都 bump，
     // loadSchedule 在 setState 前用「发起时捕获的 seq」与最新 seq 比对：不一致说明期间
@@ -298,6 +332,35 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     private nextScheduleSeq(): number {
         this.scheduleLoadSeq += 1;
         return this.scheduleLoadSeq;
+    }
+
+    /**
+     * 「运行→终态」沿的 smart_summary_completed 单发 + regenerate 复位。状态订阅
+     * (handleStatusChangeEvent) 与兜底轮询(doFallbackPollOnce)两路共用本方法与
+     * completedTrackedTaskId 去重锚(见三审 R3):先检出者写锚并发,后到者 id 相等即跳过——
+     * 按 task 精确一次。终态含 COMPLETED / FAILED / CANCELLED 三态,以 result 字段区分。
+     * **离开终态**(如 regenerate 把状态就地推回 PENDING)时清锚,
+     * 使同一 taskId 的下一次完成能再计一次(见六审 P1b:原先锚只写不清 → 除首次外每轮 regenerate
+     * 的完成都命中 id 相等而被跳过,flagship 漏斗 smart_summary_completed 系统性漏计)。
+     * 两路必须走同一入口,避免各自内联再次跑偏(这正是三→六审反复回炉的同源)。
+     */
+    private trackSummaryCompletedOnce(status: TaskStatus, taskId: number) {
+        // 终态三选一：完成 / 失败 / 取消，都算「一次结束」，按 result 区分。去重锚
+        // completedTrackedTaskId 仍按 task 维度精确一次（先到者写锚发送，后到者 id 相等即跳过）；
+        // 离开终态（如 regenerate 推回 PENDING）时清锚，使同一 taskId 的下一次结束能再计一次。
+        const result =
+            status === TaskStatus.COMPLETED ? "completed" :
+            status === TaskStatus.FAILED ? "failed" :
+            status === TaskStatus.CANCELLED ? "cancelled" :
+            null;
+        if (result) {
+            if (this.completedTrackedTaskId !== taskId) {
+                this.completedTrackedTaskId = taskId;
+                Dap.shared.track("smart_summary_completed", { result });
+            }
+        } else if (this.completedTrackedTaskId === taskId) {
+            this.completedTrackedTaskId = null;
+        }
     }
 
     componentDidMount() {
@@ -585,6 +648,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // loadSchedule（包括本函数下面发起的）都会被后续轮作废，不会回填到新 task。
         const seq = this.nextScheduleSeq();
         const requestTaskId = lookupId;
+        const isSameTask = typeof requestTaskId === "number"
+            ? this.state.detail?.task_id === requestTaskId
+            : this.state.detail?.task_no === requestTaskId;
+        const previousStatus = isSameTask ? this.state.lastKnownStatus : undefined;
         // F1：切 task / 重拉 detail 时复位全部编辑态，避免旧 task 编辑态（尤其
         // editingTeamSummary）被带入新 task——否则切到非 creator 新 task 会绕过权限进编辑器。
         // FE-1（切任务竞态）：开始新 task 加载时同步清空上一 task 的 personalResult/members，
@@ -628,12 +695,29 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             const detail = await api.getSummaryDetail(lookupId);
             // detail 本身也可能是旧请求：期间切了 task / 又发了一轮 loadDetail 就丢弃。
             if (this.scheduleLoadSeq !== seq || this.detailLookupId !== requestTaskId) return;
+            this.notifyGroupsOnCompletion(previousStatus, detail);
             this.setState({
                 detail,
                 loading: false,
                 lastKnownStatus: detail.status,
                 workflowGateContent: false,
             });
+            // 八审 🔴2:loadDetail 也是 lastKnownStatus 的写入者(regenerate 走 handleRegenerateConfirm →
+            // 就地置 PENDING → this.loadDetail(),不经 summary-status-change 订阅)。此前它是唯一不维护
+            // completedTrackedTaskId 去重锚的写入者 → 离开 COMPLETED 时锚不清 → 同一 taskId 的下一次完成
+            // 命中 id 相等被跳过而丢事件(六审 P1b 的复位在这条真实 regenerate 路径上失效)。
+            // 按与两个状态订阅入口(handleStatusChangeEvent / doFallbackPollOnce)完全相同的「状态沿」语义
+            // 维护锚:仅在观测到状态变化时走 helper(COMPLETED 写锚+发一次,离开 COMPLETED 清锚)。
+            // **首次加载(previousStatus===undefined)不发**——打开一条历史已完成的总结属「查看」,不是一次
+            // 新完成;若在此发,completed 会随每次翻阅历史而超过 started(见八审 P2:首屏已完成的漏计是已知
+            // 方向性偏差,不能用「查看即完成」去补,否则引入更糟的高计)。
+            if (
+                previousStatus !== undefined &&
+                previousStatus !== detail.status &&
+                typeof detail.task_id === "number"
+            ) {
+                this.trackSummaryCompletedOnce(detail.status, detail.task_id);
+            }
             this.publishDetailTitle(detail);
             if (detail.status === TaskStatus.COMPLETED && detail.result_id) {
                 const markRead = api.markSummaryRead;
@@ -983,13 +1067,18 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // B members/personal 混搭串台）。迟到直接 return，后续 prevStatus 判断 / 成对
             // reload 都在这道守卫之后。
             const requestTaskId = this.taskId;
+            const previousStatus = this.state.lastKnownStatus;
             const detail = await api.getSummaryDetail(this.taskId);
             if (this.taskId !== requestTaskId) return;
-            const prevStatus = this.state.lastKnownStatus;
             const newStatus = detail.status;
+            this.notifyGroupsOnCompletion(previousStatus, detail);
             this.setState({ detail, lastKnownStatus: newStatus });
 
-            if (prevStatus !== undefined && prevStatus !== newStatus) {
+            if (previousStatus !== undefined && previousStatus !== newStatus) {
+                // 仅在「运行→完成」状态沿采集一次;原先误用 GET /summaries/:id,失败/进行中/导航等
+                // 一切 2xx 都会误报 completed。此处按 detail.status 状态转移判定,语义可靠。
+                // 单发/复位统一走 trackSummaryCompletedOnce(见三审 R3 单发、六审 P1b regenerate 复位)。
+                this.trackSummaryCompletedOnce(newStatus, requestTaskId);
                 if (
                     newStatus === TaskStatus.COMPLETED ||
                     newStatus === TaskStatus.FAILED ||
@@ -1061,11 +1150,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 try {
                     const detail = await api.getSummaryDetail(this.taskId);
                     if (this.taskId !== requestTaskId) return;
-                    this.setState({ detail, lastKnownStatus: newStatus });
+                    this.notifyGroupsOnCompletion(prevStatus, detail);
+                    this.setState({ detail, lastKnownStatus: detail.status });
+                    // 与主状态订阅路径(:handleStatusChangeEvent)同一「运行→完成」沿采集一次。SSE 不可用时
+                    // 由本 fallback 轮询检出完成,若此处不发则 completed 漏计;单发/复位统一走
+                    // trackSummaryCompletedOnce(两路共用 completedTrackedTaskId 去重,见三审 R3、六审 P1b)。
+                    this.trackSummaryCompletedOnce(detail.status, requestTaskId);
                     if (
-                        newStatus === TaskStatus.COMPLETED ||
-                        newStatus === TaskStatus.FAILED ||
-                        newStatus === TaskStatus.CANCELLED
+                        detail.status === TaskStatus.COMPLETED ||
+                        detail.status === TaskStatus.FAILED ||
+                        detail.status === TaskStatus.CANCELLED
                     ) {
                         this.stopFallbackPoll();
                         // 续修1：本轮刷新共用一个 seq，传给所有子加载（personal/members/schedule），
@@ -1097,6 +1191,28 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             clearInterval(this.fallbackPollTimer);
             this.fallbackPollTimer = null;
         }
+    }
+
+    private notifyGroupsOnCompletion(previousStatus: number | undefined, detail: SummaryDetail) {
+        void sendGroupSummaryCompletionTips(
+            previousStatus,
+            detail,
+            WKApp.loginInfo.uid,
+            TaskStatus.COMPLETED,
+            ChannelTypeGroup,
+            {
+                sendToChannel: async (channel, currentUserId) => {
+                    const content = new SummaryNotifyContent();
+                    content.fromUID = currentUserId;
+                    content.fromName = WKApp.loginInfo.selfDisplayName?.()
+                        || WKApp.loginInfo.name
+                        || currentUserId;
+                    await WKSDK.shared().chatManager.send(content, channel);
+                },
+                isDisbanded: isConversationDisbanded,
+                warn: (message, context) => console.warn(message, context),
+            },
+        );
     }
 
 
@@ -1809,6 +1925,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     openScheduleModal = () => {
+        // 埋点 308:打开定时总结配置弹窗（隐私 props 恒空）。
+        Dap.shared.track("smart_summary_timer_dialog_opened", {});
         const { scheduleItem } = this.state;
         // Blocking 1：is_active=false 的记录在交互上视为「无活动定时」，但仍回填
         // 原有周期/时刻，方便用户「重新启用」时不用从零填。保存逻辑（handleScheduleSave）
@@ -2177,6 +2295,16 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
     };
 
     /**
+     * 当前后端是否支持「继续优化」：兼容 referenceable 字段缺失的 legacy 路径。
+     * 抽取自原内联表达式（handleContinueRefine + render 按钮），统一调用点。
+     */
+    private canRefineCurrentDetail = (): boolean => {
+        const { detail } = this.state;
+        if (!detail) return false;
+        return isReferenceable(detail);
+    };
+
+    /**
      * 「继续优化」按钮 — 打开一个新的智能总结 chat session,预置引用当前总结。
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1: 详情页入口和顶栏「新总结」入口的语义
      * 完全等价 — 都是新起一次 chat 生产工作台,唯一差别是这里预填了引用。
@@ -2190,7 +2318,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
      */
     handleContinueRefine = () => {
         const { detail } = this.state;
-        if (!detail || detail.trigger_type !== TriggerType.AGENT) return;
+        if (!detail) return;
+        if (!this.canRefineCurrentDetail()) return;
         const event = new CustomEvent('summary-open-chat-with-reference', {
             detail: {
                 task_id: detail.task_id,
@@ -2220,6 +2349,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         // 两者的 content 语义都是"给用户看的最终交付文本",转发到聊天的姿势一致。
         const sourceContent = detail?.result?.content ?? personalResult?.content ?? '';
         if (!sourceContent.trim()) return;
+        // 埋点 310:打开「转发到聊天」的会话选择面板（有正文可转发时才算打开）。
+        Dap.shared.track("smart_summary_forward_panel_opened", {});
         WKApp.shared.baseContext.showConversationSelect(async (channels: Channel[]) => {
             const cleanContent = sourceContent.replace(/\[\d+\]/g, '').replace(/  +/g, ' ').trim();
             const chunks = splitSummaryText(cleanContent);
@@ -2248,6 +2379,8 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             } else {
                 Toast.success(t("summary.detail.forwarded"));
             }
+            // 埋点 311:总结已转发（只要不是全部失败即算一次成功转发；隐私 props 恒空）。
+            if (state.kind !== "all-failed") Dap.shared.track("smart_summary_forwarded", {});
         }, t("summary.detail.forwardToChat"));
     };
 
@@ -2737,6 +2870,110 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         );
     }
 
+    /** octo-smart-summary#195: 复制总结内容到剪贴板 */
+    handleCopyContent = async (content: string, key: string) => {
+        const text = content?.trim();
+        if (!text) return;
+        this.setState({ copyingKey: key });
+        try {
+            // 复用 @octo/base 的 copyToClipboard：它已经处理了 execCommand 降级、
+            // iOS Safari 需要的 focus() + setSelectionRange() 兑底，以及 textarea 清理。
+            const ok = await copyToClipboard(content);
+            if (this.unmounted) return;
+            if (ok) {
+                Toast.success(this.context.t("summary.detail.copySuccess"));
+            } else {
+                Toast.error(this.context.t("summary.detail.copyFailed"));
+            }
+        } catch {
+            if (this.unmounted) return;
+            Toast.error(this.context.t("summary.detail.copyFailed"));
+        } finally {
+            // 只在 key 仍是自己时清，和 handleConvertToDoc 的 finally 同构：copyingKey 是
+            // 全页共享的单值，两行（个人/团队）先后点复制时，先完成的那次会把后一次
+            // 的 spinner 一起掐灭，后者看起来「点了没反应」。
+            if (!this.unmounted && this.state.copyingKey === key) {
+                this.setState({ copyingKey: null });
+            }
+        }
+    };
+
+    /** octo-smart-summary#195: 转为在线文档 */
+    handleConvertToDoc = async (content: string, title: string | undefined, key: string) => {
+        const text = content?.trim();
+        if (!text) return;
+        // 同步重入闸：semi-ui@2.93 的 Button `loading` 纯装饰、不禁点（round-4 P1-b(i)），
+        // 双开两个总结各点一下会并发两次转文档请求、创建两份文档。已有请求在飞时直接忽略，
+        // 不用 convertingKey（它是渲染态，异步 setState 拦不住同一事件循环里的第二次点击）。
+        if (this.convertInFlight) return;
+        this.convertInFlight = true;
+        // 同步预开标签页，保留用户激活状态，避免浏览器拦截 popup。
+        // 对齐 Pages/Chat/index.tsx 的写法：先开 about:blank 拿到真实的“被拦/成功”信号
+        // （带 noopener 的 window.open 成功时也返回 null，没法 null-check），再手动置空 opener。
+        const opened = window.open("about:blank", "_blank");
+        if (opened) {
+            try {
+                opened.opener = null;
+            } catch {
+                // 个别沙箱会冻结 opener setter；about:blank 同源，残留风险可控，继续。
+            }
+        }
+        this.setState({ convertingKey: key });
+        try {
+            const docTitle = title || this.context.t("summary.detail.defaultTitle");
+            // 转文档时去掉引用序号标记（`[1]` / 团队 `[P1]`）——它们是总结正文
+            // 的引用锚,落到文档正文里是噪声。实现见 citationStrip.ts：与渲染侧权威正则
+            // 对齐，护住 markdown 链接 / 代码块 / 引用定义（round-4 P1-a）。
+            const cleaned = stripCitationMarkers(content);
+            const { url } = await api.convertSummaryToDoc(docTitle, cleaned);
+            if (this.unmounted) {
+                if (opened && !opened.closed) opened.close();
+                return;
+            }
+            if (opened && !opened.closed) {
+                // 预开的标签页还在 → 导航它。
+                opened.location.href = url;
+                Toast.success(this.context.t("summary.detail.convertSuccess"));
+            } else {
+                // popup 被拦（opened=null）或预开标签已被用户关掉（opened.closed）：
+                // 文档**已经创建成功**，不再喊“允许弹出后重试”——照做只会再造一份孤儿文档
+                // （round-4 P1-b(iii)）。给出文档直达链接，链接可点、文档不丢。
+                Toast.warning({
+                    duration: 8,
+                    content: (
+                        <span>
+                            {this.context.t("summary.detail.convertPopupBlocked")}{" "}
+                            <a
+                                href={url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="summary-detail-doc-popup-link"
+                            >
+                                {this.context.t("summary.detail.convertDocLink")}
+                            </a>
+                        </span>
+                    ),
+                });
+            }
+        } catch (err) {
+            if (opened && !opened.closed) opened.close();
+            if (this.unmounted) return;
+            // 刻意不走 extractErrorMsg：host 的 normalizeApiError 只识别 401/403/404/429/5xx,
+            // docs-backend 的 422/413/412/409 全部被归一化成「未知错误」——一个**非空**字符串,
+            // 于是 `extractErrorMsg(err) || convertFailed` 里 `||` 右边永远不执行,更具体的原因
+            // 全被吞掉。convertDocErrorMessage 直接读 err.response.data.error（docs 模块的
+            // toApiErrorEnvelope 保证它在),认不出时才回落 convertFailed。
+            Toast.error(convertDocErrorMessage(err, this.context.t));
+        } finally {
+            // 只在 key 仍是自己时清：万一将来有并发路径覆写了 key，别把别人的
+            // loading 态顺手掐掉（round-4 P1-b(ii)）。
+            if (!this.unmounted && this.state.convertingKey === key) {
+                this.setState({ convertingKey: null });
+            }
+            this.convertInFlight = false;
+        }
+    };
+
     renderCompleted() {
         const { detail, isEditing } = this.state;
         const { t } = this.context;
@@ -2791,7 +3028,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 baseResultId={detail.result_id || 0}
                                 initialContent={detail.result.content || ""}
                                 onSave={this.handleEditSave}
-                                onCancel={this.handleEditCancel}
                                 exposeSave={(fn) => { this.editorSaveFn = fn; }}
                             />
                         </div>
@@ -2817,6 +3053,20 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 {t("summary.detail.lastEditedAt", { values: { time: formatDate(detail.result_edited_at) } })}
                             </span>
                         )}
+                        {/* octo-smart-summary#195: 正在编辑（SummaryEditor）或预览历史版本时不渲染。
+                            上面的内容槽是三元，此时屏幕上显示的并不是 detail.result.content，
+                            再显示按钮会导出“看的是 v1、复制出来却是 v3”的内容。 */}
+                        {!isEditing && !this.state.showVersionDetailModal && (
+                            <SummaryResultActions
+                                testid="summary-actions-team-result"
+                                content={detail.result.content}
+                                title={detail.title}
+                                onCopy={(c) => this.handleCopyContent(c, "team-result")}
+                                onConvert={(c, title) => this.handleConvertToDoc(c, title, "team-result")}
+                                copying={this.state.copyingKey === "team-result"}
+                                converting={this.state.convertingKey === "team-result"}
+                            />
+                        )}
                     </div>
                 </>
             </div>
@@ -2832,6 +3082,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 </div>
                 {canEdit && (
                     <Button
+                        data-testid={summaryTestIds.detailEditBtn}
                         className="summary-detail-inline-edit"
                         size="small"
                         theme="borderless"
@@ -2951,7 +3202,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     baseResultId={this.state.detail?.result_id || 0}
                                     initialContent={personalResult.content || ""}
                                     onSave={this.handleEditSave}
-                                    onCancel={this.handleEditCancel}
                                     exposeSave={(fn) => { this.editorSaveFn = fn; }}
                                 />
                             </div>
@@ -2964,6 +3214,25 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 <CitationText content={personalResult.content} citations={personalResult.citations || []} />
                             </div>
                         )}
+                        {!isEditing && (
+                            <SummaryResultActions
+                                testid="summary-actions-personal-result"
+                                content={personalResult.content}
+                                title={detail?.title}
+                                onCopy={(c) => this.handleCopyContent(c, "personal-result")}
+                                onConvert={(c, title) => this.handleConvertToDoc(c, title, "personal-result")}
+                                copying={this.state.copyingKey === "personal-result"}
+                                converting={this.state.convertingKey === "personal-result"}
+                            />
+                        )}
+                        {/* CR: 这里原本还有一组「复制团队总结 / 团队总结转文档」按钮，已删除。
+                            单人 BY_PERSON 场景下 renderTeamSummary() 对 members.length <= 1 故意
+                            return null，即页面**刻意不展示团队总结正文**；却给这份不展示的内容
+                            挂操作按钮，用户会复制出自己从未在页面上见过的文字。另外两处门控谓词也不
+                            互补（此处看 participants，随 detail 同步返回；renderTeamSummary 看 members，
+                            是第二个异步请求），会出现重复渲染两组按钮或一组都没有。
+                            若确实需要单人也能看/复制团队总结，应先把正文展示出来（属产品变更，
+                            单开 issue），按钮跟着正文走。 */}
                     </>
                 )}
                 </>)}
@@ -3087,7 +3356,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             baseResultId={detail.result_id}
                             initialContent={detail.result.content || ""}
                             onSave={this.handleEditTeamSave}
-                            onCancel={this.handleEditTeamCancel}
                             exposeSave={(fn) => { this.editorSaveFn = fn; }}
                         />
                     </div>
@@ -3141,6 +3409,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             hidePlainCitations
                         />
                     </div>
+                )}
+                {/* octo-smart-summary#195: 预览历史版本时不渲染——上面显示的是 versionDetail.content，
+                    而按钮导出的是最新版 detail.result.content。 */}
+                {!this.state.showVersionDetailModal && (
+                    <SummaryResultActions
+                        testid="summary-actions-team-collab"
+                        content={detail.result.content}
+                        title={detail.title}
+                        onCopy={(c) => this.handleCopyContent(c, "team-collab")}
+                        onConvert={(c, title) => this.handleConvertToDoc(c, title, "team-collab")}
+                        copying={this.state.copyingKey === "team-collab"}
+                        converting={this.state.convertingKey === "team-collab"}
+                    />
                 )}
             </div>
         );
@@ -3196,7 +3477,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const { t } = this.context;
         if (membersLoading) {
             return (
-                <div className="summary-detail-members">
+                <div data-testid={summaryTestIds.detailMembersSection} className="summary-detail-members">
                     {this.renderMemberStatusHeader()}
                     <Spin size="small" />
                 </div>
@@ -3215,7 +3496,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         };
 
         return (
-            <div className="summary-detail-members">
+            <div data-testid={summaryTestIds.detailMembersSection} className="summary-detail-members">
                 {this.renderMemberStatusHeader()}
                 <div className="summary-detail-members-list">
                     {members.map((m) => {
@@ -3227,7 +3508,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             !isMe &&
                             m.user_id !== detail?.creator_id;
                         return (
-                            <div key={m.user_id} className="summary-detail-member-item">
+                            <div key={m.user_id} data-testid={summaryTestIds.detailMemberRow(m.user_id)} className="summary-detail-member-item">
                                 <span className="summary-detail-member-name">{m.user_name}</span>
                                 <Tag color={st.type} prefixIcon={st.icon} size="small">
                                     {st.label}
@@ -3331,13 +3612,13 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     baseResultId={detail?.result_id ?? 0}
                                     initialContent={content}
                                     onSave={this.handleEditPersonalReportSave}
-                                    onCancel={this.handleEditPersonalReportCancel}
                                     exposeSave={(fn) => { this.editorSaveFn = fn; }}
                                 />
                             </div>
                         );
                     }
-                    // need3：他人那条隐私收口（citations=[] 、清 [n]）不变；自己那条不被清洗，可正常显示引用。
+                    // need3：他人那条隐私收口（citations=[]、清 [n]）保持原行为；自己那条
+                    // 不被清洗，可正常显示引用。Markdown 感知的清理由转文档路径单独负责。
                     const displayContent = isMe ? content : content.replace(/\[\d+\]/g, '');
                     const displayCitations = isMe ? (m.citations || []) : [];
                     const needsTruncate = displayContent.length > 100;
@@ -3448,6 +3729,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             return (
                 <div
                     key="__my_pending_submit_editing__"
+                    data-testid={summaryTestIds.detailMyPendingRow}
                     className="summary-detail-participant-report-item summary-detail-my-pending-row"
                 >
                     <div className="summary-detail-participant-report-header">
@@ -3459,7 +3741,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         baseResultId={detail.result_id ?? 0}
                         initialContent={myContent}
                         onSave={this.handleEditMyDraftSave}
-                        onCancel={this.handleEditMyDraftCancel}
                         exposeSave={(fn) => { this.editorSaveFn = fn; }}
                     />
                 </div>
@@ -3468,12 +3749,14 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         return (
             <div
                 key="__my_pending_submit__"
+                data-testid={summaryTestIds.detailMyPendingRow}
                 className="summary-detail-participant-report-item summary-detail-my-pending-row"
             >
                 <div className="summary-detail-participant-report-header">
                     <span>{t("summary.detail.mySubmitRowName")}</span>
                     {/* OCT-21：提交前编辑入口。文案复用 summary.common.edit；按钮放在「提交给全部」左侧。 */}
                     <Button
+                        data-testid={summaryTestIds.detailMyDraftEditBtn}
                         size="small"
                         theme="borderless"
                         icon={<IconEdit />}
@@ -3483,6 +3766,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         {t("summary.common.edit")}
                     </Button>
                     <Button
+                        data-testid={summaryTestIds.detailSubmitMyBtn}
                         size="small"
                         theme="solid"
                         style={{ marginLeft: 8 }}
@@ -3787,6 +4071,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ confirmingSchedule: true });
         try {
             await api.confirmSchedule(scheduleItem.schedule_id);
+            // schedule 邀请也是 pending_invitation_count 的组成部分；确认成功后
+            // 立即按当前 Space 重算，即使等待期间用户已切到另一条总结。
+            refreshPendingInvitationBadge();
             // 迟到（已切 task）：不回显新 task（confirmingSchedule 由 finally 复位）。
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.scheduleConfirmed"));
@@ -3907,14 +4194,30 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             <>
             <div className="summary-detail-title-row">
                 <div className="summary-detail-header-title-wrap">
-                    <OverflowTooltip as="h2" className="summary-detail-title" title={displayTitle}>
+                    <OverflowTooltip as="h2" data-testid={summaryTestIds.detailTitle} className="summary-detail-title" title={displayTitle}>
                         {displayTitle}
                     </OverflowTooltip>
                     {this.renderScheduleSummary()}
+                    {/* Only render the "由 <bot> 代 <owner> 创建" subtitle once both
+                        names are present (backend fields from octo-smart-summary#188).
+                        Gating on trigger_type alone would show "由 未知 代 未知 创建"
+                        for bot summaries until that backend ships — the two services
+                        deploy independently, so we must not depend on their order. */}
+                    {detail && !!detail.creator_bot_name && !!detail.creator_name && (
+                        <div className="summary-detail-bot-created">
+                            {t("summary.detail.botCreatedByFor", {
+                                values: {
+                                    bot: detail.creator_bot_name,
+                                    owner: detail.creator_name,
+                                },
+                            })}
+                        </div>
+                    )}
                 </div>
                 <div className="summary-detail-header-actions">
-                    {detail && detail.status === TaskStatus.COMPLETED && detail.trigger_type === TriggerType.AGENT && (
+                    {detail && detail.status === TaskStatus.COMPLETED && this.canRefineCurrentDetail() && (
                         <Button
+                            data-testid={summaryTestIds.detailContinueRefineBtn}
                             theme="solid"
                             type="primary"
                             onClick={this.handleContinueRefine}
@@ -3928,6 +4231,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         const versionPanelActive = this.state.versionPanelOpen;
                         return (
                             <Button
+                                data-testid={summaryTestIds.detailVersionTrigger}
                                 className={`summary-version-trigger${versionPanelActive ? " is-active" : ""}`}
                                 theme="borderless"
                                 type="tertiary"
@@ -3976,6 +4280,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                     {showRegenerate && !showRetry && (
                         <Button
+                            data-testid={summaryTestIds.detailRegenerateBtn}
                             className="summary-detail-header-btn"
                             theme="borderless"
                             type="tertiary"
@@ -3987,6 +4292,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                     {showRetry && (
                         <Button
+                            data-testid={summaryTestIds.detailRetryBtn}
                             className="summary-detail-header-btn"
                             theme="borderless"
                             type="tertiary"
@@ -3998,6 +4304,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     )}
                     {showDelete && (
                         <Button
+                            data-testid={summaryTestIds.detailDeleteBtn}
                             className="summary-detail-header-btn summary-detail-header-btn--danger"
                             theme="borderless"
                             type="danger"
@@ -4007,6 +4314,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 title: t("summary.summaryCard.deleteTitle"),
                                 content: t("summary.summaryCard.deleteContent", { values: { title: detail?.title || detail?.task_no || "" } }),
                                 onOk: this.handleDeleteTask,
+                                okButtonProps: { 'data-testid': summaryTestIds.deleteConfirmOkBtn } as any,
                             })}
                         />
                     )}
@@ -4066,10 +4374,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         const hasToc = this.shouldShowToc();
 
         return (
-            <div className="summary-detail-page">
+            <div data-testid={summaryTestIds.detailPage} className="summary-detail-page">
                 <div
                     ref={this.layoutRef}
-                    className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}${this.state.layoutWidth != null && this.state.layoutWidth > 0 && this.state.layoutWidth < SummaryDetailPage.TOC_MIN_LAYOUT_WIDTH ? " version-panel-overlay" : ""}`}
+                    className={`summary-detail-layout${this.isVersionPanelActuallyOpen() ? " has-version-panel" : ""}${hasToc ? " has-toc" : ""}`}
                 >
                     <div className="summary-detail-content-wrapper">
                     {detail && !loading && this.renderHeader()}
@@ -4241,6 +4549,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     <div className="summary-detail-footer">
                         <button
                             type="button"
+                            data-testid={summaryTestIds.editorCancelBtn}
                             className="summary-detail-footer-btn summary-detail-footer-btn--cancel"
                             onClick={() => {
                                 if (this.state.editingTeamSummary) {
@@ -4258,6 +4567,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </button>
                         <button
                             type="button"
+                            data-testid={summaryTestIds.editorSaveBtn}
                             className="summary-detail-footer-btn summary-detail-footer-btn--save"
                             onClick={() => {
                                 if (this.editorSaveFn) {
@@ -4297,6 +4607,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                     centered
                     maskClosable
                     onCancel={this.handleRegenerateCancel}
+                    modalRender={(node) => (
+                        <div data-testid={summaryTestIds.regenerateModal}>{node}</div>
+                    )}
                 >
                     <div className="summary-confirm-body">
                         <div className="summary-confirm-main">
@@ -4348,6 +4661,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         <div className="summary-regenerate-textarea-wrap">
                             <textarea
                                 id="summary-regenerate-input"
+                                data-testid={summaryTestIds.regenerateInput}
                                 ref={this.regenerateTopicRef}
                                 className="summary-regenerate-textarea"
                                 rows={3}
@@ -4381,11 +4695,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         </div>
                     </div>
                     <div className="summary-confirm-footer">
-                        <button type="button" className="summary-confirm-btn summary-confirm-btn--cancel" onClick={this.handleRegenerateCancel}>
+                        <button data-testid={summaryTestIds.regenerateCancelBtn} type="button" className="summary-confirm-btn summary-confirm-btn--cancel" onClick={this.handleRegenerateCancel}>
                             {t("summary.common.cancel")}
                         </button>
                         <button
                             type="button"
+                            data-testid={summaryTestIds.regenerateSubmitBtn}
                             className="summary-confirm-btn summary-confirm-btn--dark"
                             disabled={this.state.regenerateSubmitting || (this.state.regenerateMode === "refine" && !this.hasRegenerateRefineBaseResult()) || !(this.state.regenerateMode === "refine"
                                 ? this.state.refineFeedback.trim()

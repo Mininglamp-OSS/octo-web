@@ -14,7 +14,7 @@ function IconBuilding() {
     );
 }
 
-import { IconCreateSpace, IconJoinSpace, IconChevronRight } from "./icons";
+import { IconCreateSpace, IconJoinSpace, IconSpaceManagement, IconChevronRight } from "./icons";
 
 export interface NavSpaceSwitcherProps {
     spaces: Space[];
@@ -22,6 +22,7 @@ export interface NavSpaceSwitcherProps {
     onSpaceSelect: (spaceId: string) => void;
     onJoinSpace?: () => void;
     onCreateSpace?: () => void;
+    onSpaceManagement?: () => void;
 }
 
 interface NavSpaceSwitcherState {
@@ -61,7 +62,7 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
     };
 
     render() {
-        const { spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace } = this.props;
+        const { spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace, onSpaceManagement } = this.props;
         const { open } = this.state;
         const { t } = this.context;
         const current = spaces.find(s => s.space_id === currentSpaceId);
@@ -80,6 +81,9 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                     onClick={this.handleToggle}
                 >
                     <IconBuilding />
+                    <span className="wk-navrail__item-label">
+                        {current?.name ?? t("base.navRail.spaceSwitcher.switch")}
+                    </span>
                 </button>
 
                 <NavFlyout
@@ -114,7 +118,7 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                             />
                         ))}
                     </div>
-                    {(onJoinSpace || canCreateSpace) && (
+                    {(onJoinSpace || onSpaceManagement || canCreateSpace) && (
                         <>
                             <div className="wk-navrail__dropdown-divider" />
                             <div className="wk-navrail__dropdown-actions">
@@ -125,6 +129,15 @@ export default class NavSpaceSwitcher extends Component<NavSpaceSwitcherProps, N
                                         compact
                                         trailing={<IconChevronRight />}
                                         onClick={() => { this.handleClose(); onJoinSpace(); }}
+                                    />
+                                )}
+                                {onSpaceManagement && (
+                                    <ActionListItem
+                                        icon={<IconSpaceManagement />}
+                                        label={t("base.navRail.spaceSwitcher.spaceManagement")}
+                                        compact
+                                        trailing={<IconChevronRight />}
+                                        onClick={() => { this.handleClose(); onSpaceManagement(); }}
                                     />
                                 )}
                                 {canCreateSpace && (

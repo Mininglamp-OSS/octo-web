@@ -53,8 +53,8 @@ vi.mock('../../WKModal', () => ({
 }));
 
 vi.mock('../../WKButton', () => ({
-  default: ({ children, onClick, disabled, icon }: any) =>
-    React.createElement('button', { onClick, disabled }, icon, children),
+  default: ({ children, icon, ...props }: any) =>
+    React.createElement('button', props, icon, children),
   __esModule: true,
 }));
 
@@ -129,5 +129,27 @@ describe('SecretsSettingsPanel deep-link prefill (one-shot)', () => {
 
     const last = editModalProps[editModalProps.length - 1];
     expect(last.prefillValue).toBeUndefined();
+  });
+
+  it('opens one create editor for a real mouse click', async () => {
+    act(() => { ReactDOM.render(React.createElement(SecretsSettingsPanel, { onClose: vi.fn() }), container); });
+    await flush();
+    const addBtn = container.querySelector('button') as HTMLButtonElement;
+    act(() => { addBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 })); });
+    act(() => { addBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 0 })); });
+    act(() => { addBtn.click(); });
+    await flush();
+    expect(editModalProps).toHaveLength(1);
+  });
+
+  it('does not open the create editor for a secondary mouse button', async () => {
+    act(() => { ReactDOM.render(React.createElement(SecretsSettingsPanel, { onClose: vi.fn() }), container); });
+    await flush();
+    const addBtn = container.querySelector('button') as HTMLButtonElement;
+    act(() => { addBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 2 })); });
+    act(() => { addBtn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 2 })); });
+    act(() => { addBtn.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 })); });
+    await flush();
+    expect(editModalProps).toHaveLength(0);
   });
 });

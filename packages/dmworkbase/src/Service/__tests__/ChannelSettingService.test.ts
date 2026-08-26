@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import {
   Channel,
   ChannelTypeGroup,
@@ -15,6 +17,8 @@ import {
   leaveThread,
   removeChannelSubscribers,
   transferChannelOwner,
+  uploadGroupAvatar,
+  updateChannelAvatarCustom,
   updateChannelField,
   updateChannelSetting,
   updateChannelSubscriberAttr,
@@ -33,6 +37,9 @@ vi.mock("../APIClient", () => ({
 
 vi.mock("../SpacePrefix", () => ({
   hasSpacePrefix: vi.fn((id: string) => id.startsWith("s123_")),
+  stripSpacePrefix: vi.fn((id: string) =>
+    id.startsWith("s123_") ? id.substring(id.indexOf("_") + 1) : id
+  ),
 }));
 
 const apiDelete = APIClient.shared.delete as unknown as ReturnType<typeof vi.fn>;
@@ -128,6 +135,23 @@ describe("ChannelSettingService", () => {
     });
   });
 
+  it("uploads a cropped group avatar through the group avatar endpoint", async () => {
+    const file = new File(["avatar"], "avatar.png", { type: "image/png" });
+
+    await uploadGroupAvatar("group-1", file);
+
+    expect(apiPost).toHaveBeenCalledWith(
+      "groups/group-1/avatar",
+      expect.any(FormData),
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+        timeout: 60_000,
+      }
+    );
+    const body = apiPost.mock.calls[0][1] as FormData;
+    expect(body.get("file")).toBe(file);
+  });
+
   it("updates channel fields and subscriber attributes", async () => {
     const channel = new Channel("group-1", ChannelTypeGroup);
 
@@ -142,11 +166,48 @@ describe("ChannelSettingService", () => {
     });
   });
 
+  it("updates group avatar text and optional color", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    await updateChannelAvatarCustom(channel, {
+      avatarText: "Team",
+      avatarColor: 3,
+      clearUploadedAvatar: true,
+    });
+    await updateChannelAvatarCustom(channel, {
+      avatarText: "",
+      avatarColor: "",
+    });
+    await updateChannelAvatarCustom(channel, {
+      avatarText: "Only",
+    });
+    await updateChannelAvatarCustom(channel, {
+      avatarColor: 4,
+    });
+
+    expect(apiPut).toHaveBeenNthCalledWith(1, "groups/group-1", {
+      avatar_text: "Team",
+      avatar_color: "3",
+      clear_uploaded_avatar: "1",
+    });
+    expect(apiPut).toHaveBeenNthCalledWith(2, "groups/group-1", {
+      avatar_text: "",
+      avatar_color: "",
+    });
+    expect(apiPut).toHaveBeenNthCalledWith(3, "groups/group-1", {
+      avatar_text: "Only",
+    });
+    expect(apiPut).toHaveBeenNthCalledWith(4, "groups/group-1", {
+      avatar_color: "4",
+    });
+  });
+
   it("keeps person-only group mutations as no-op for compatibility", async () => {
     const channel = new Channel("alice", ChannelTypePerson);
 
     await transferChannelOwner(channel, "bob");
     await updateChannelSubscriberAttr(channel, "alice", { remark: "A" });
+    await updateChannelAvatarCustom(channel, { avatarText: "Team" });
     await exitChannel(channel);
 
     expect(apiPost).not.toHaveBeenCalled();

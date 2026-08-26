@@ -7,7 +7,7 @@ import * as path from 'path';
  * 这组 grep 断言锁定 InviteLanding、MainPage、helper、toast 组件的关键行为：
  * 1. InviteLanding 在 /space/join 前快照 prevCurrentSpaceId
  * 2. 根据 groupSpaceId !== currentSpaceId 判定 crossSpace
- * 3. 跨 Space 时不写 localStorage.currentSpaceId（不自动切换）
+ * 3. 跨 Space 时不持久化当前组织（不自动切换）
  * 4. 把 notice 写入 sessionStorage，MainPage 挂载时消费
  * 5. 切换按钮调用 handleSpaceSelected 显式切
  */
@@ -31,11 +31,11 @@ describe('InviteLanding + MainPage — dmwork-web#1065 cross-space toast', () =>
     });
 
     it('InviteLanding snapshots prevCurrentSpaceId before /space/join', () => {
-        expect(inviteLanding).toMatch(/prevCurrentSpaceId\s*=\s*localStorage\.getItem\(\s*["']currentSpaceId["']/);
+        expect(inviteLanding).toMatch(/prevCurrentSpaceId\s*=\s*WKApp\.shared\.currentSpaceId\s*\|\|\s*readLastSpaceId/);
         // The snapshot line must precede the actual fetch — prevent regression that reads
         // localStorage AFTER join (which wouldn't reflect the user's "pre-join" space).
-        const snapIdx = inviteLanding.search(/prevCurrentSpaceId\s*=\s*localStorage/);
-        const joinIdx = inviteLanding.search(/fetch\(\s*`[^`]*\/space\/join`/);
+        const snapIdx = inviteLanding.search(/prevCurrentSpaceId\s*=\s*WKApp\.shared\.currentSpaceId/);
+        const joinIdx = inviteLanding.search(/apiFetchJson<any>\(\s*`\$\{apiUrl\}\/space\/join`/);
         expect(snapIdx).toBeGreaterThan(0);
         expect(joinIdx).toBeGreaterThan(snapIdx);
     });
@@ -53,8 +53,9 @@ describe('InviteLanding + MainPage — dmwork-web#1065 cross-space toast', () =>
     });
 
     it('InviteLanding does NOT auto-switch currentSpaceId when crossSpace is true', () => {
-        // Only set localStorage.currentSpaceId when !crossSpace
+        // Only persist the active organization when !crossSpace
         expect(inviteLanding).toMatch(/if\s*\(\s*!crossSpace\s*&&\s*joinedSpaceId\s*\)/);
+        expect(inviteLanding).toMatch(/persistActiveSpace\(WKApp\.loginInfo\.uid,\s*joinedSpaceId\)/);
     });
 
     it('InviteLanding no longer calls Toast.success directly (toast now lives on main page)', () => {

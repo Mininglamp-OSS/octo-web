@@ -1,9 +1,9 @@
 import React from 'react';
 import '@testing-library/jest-dom/vitest';
-import { cleanup, render as rtlRender, screen } from '@testing-library/react';
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { cleanup, fireEvent, render as rtlRender, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import SummaryCard from './SummaryCard';
-import { ParticipantStatus, TaskStatus } from '../types/summary';
+import { ParticipantStatus, TaskStatus, TriggerType } from '../types/summary';
 
 vi.mock('@octo/base', async () => {
     const actual = await vi.importActual<Record<string, unknown>>('../__mocks__/dmworkBase');
@@ -36,7 +36,20 @@ vi.mock('@douyinfe/semi-ui', () => ({
         info: () => null,
         error: () => null,
     }),
-    Dropdown: Object.assign(({ children }: any) => <>{children}</>, {
+    Dropdown: Object.assign(({ children, render, visible, onVisibleChange }: any) => {
+        const child = React.Children.only(children);
+        return (
+            <>
+                {React.cloneElement(child, {
+                    onClick: (event: any) => {
+                        child.props.onClick?.(event);
+                        onVisibleChange?.(!visible);
+                    },
+                })}
+                {visible ? render : null}
+            </>
+        );
+    }, {
         Menu: ({ children }: any) => <>{children}</>,
         Item: ({ children, onClick }: any) => (
             <button onClick={onClick as any}>{children}</button>
@@ -45,6 +58,7 @@ vi.mock('@douyinfe/semi-ui', () => ({
 }));
 
 vi.mock('@douyinfe/semi-icons', () => ({
+    default: () => <svg />,
     IconDelete: () => <svg data-testid="delete-icon" />,
     IconExit: () => <svg data-testid="exit-icon" />,
 }));
@@ -59,6 +73,10 @@ vi.mock('./OverflowTooltip', () => ({
 
 function render(ui: React.ReactElement, options?: any) {
     return rtlRender(ui, { legacyRoot: true, ...options });
+}
+
+function openCardMenu(taskId = 1) {
+    fireEvent.click(screen.getByTestId(`summary-card-menu-${taskId}`));
 }
 
 function makeItem(overrides: Record<string, unknown> = {}) {
@@ -89,6 +107,37 @@ function makeItem(overrides: Record<string, unknown> = {}) {
 const noop = () => {};
 
 afterEach(cleanup);
+
+describe('SummaryCard bot-created marker', () => {
+    it('bot 创建时显示 Bot 小标与「由 <bot> 创建」', () => {
+        render(
+            <SummaryCard task={makeItem({ trigger_type: TriggerType.BOT, creator_bot_name: '周报助手' }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(screen.getByText('Bot')).toBeInTheDocument();
+        expect(screen.getByText(/由 周报助手 创建/)).toBeInTheDocument();
+    });
+
+    it('bot 创建但后端未透出 creator_bot_name 时：仍显示 Bot 小标，但回退旧创建者文案而非「未知」', () => {
+        // 复现 octo-smart-summary#188 上线前的真实生产形态：trigger_type=BOT
+        // （自 #181 起可达）但 API 不返回 creator_bot_name。此前会渲染「由 未知 创建」。
+        render(
+            <SummaryCard task={makeItem({ trigger_type: TriggerType.BOT, creator_id: 'someone-else' }) as any} onClick={noop} onDelete={noop} />,
+        );
+        // Bot 小标由 trigger_type 驱动，名字缺失也应显示
+        expect(screen.getByText('Bot')).toBeInTheDocument();
+        // 名字缺失时不得再渲染「未知」创建者文案
+        expect(screen.queryByText(/未知/)).not.toBeInTheDocument();
+        // 回退到旧的 creator/time 文案（startedAt = "{name}于{time}"）
+        expect(screen.getByText(/张三于/)).toBeInTheDocument();
+    });
+
+    it('人发起的总结不显示 Bot 小标', () => {
+        render(
+            <SummaryCard task={makeItem({ trigger_type: 1 }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(screen.queryByText('Bot')).not.toBeInTheDocument();
+    });
+});
 
 describe('SummaryCard attention dot', () => {
     it('needs_attention=true 时显示关注红点', () => {
@@ -124,7 +173,7 @@ describe('SummaryCard status badge', () => {
             />,
         );
 
-        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.PENDING));
+        expect(screen.getByText('等待中')).toBeInTheDocument();
     });
 
     it('无待响应邀请时仍显示任务本身的状态', () => {
@@ -136,7 +185,7 @@ describe('SummaryCard status badge', () => {
             />,
         );
 
-        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.PROCESSING));
+        expect(screen.getByText('AI正在分析聊天记录...')).toBeInTheDocument();
     });
 
     it('定时任务首次邀请仅根据待邀请标记显示等待中', () => {
@@ -153,7 +202,7 @@ describe('SummaryCard status badge', () => {
             />,
         );
 
-        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.PENDING));
+        expect(screen.getByText('等待中')).toBeInTheDocument();
     });
 
     it('个人总结已生成但尚未提交时显示等待中', () => {
@@ -172,7 +221,7 @@ describe('SummaryCard status badge', () => {
             />,
         );
 
-        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.PENDING));
+        expect(screen.getByText('等待中')).toBeInTheDocument();
     });
 
     it('单人总结不使用待提交标记覆盖任务完成状态', () => {
@@ -188,7 +237,7 @@ describe('SummaryCard status badge', () => {
             />,
         );
 
-        expect(screen.getByTestId('status-badge')).toHaveTextContent(String(TaskStatus.COMPLETED));
+        expect(screen.getByText('已完成')).toBeInTheDocument();
     });
 });
 
@@ -212,46 +261,19 @@ describe('SummaryCard display title', () => {
     });
 });
 
-describe('SummaryCard isScheduledTask', () => {
-    it('schedule_id > 0 时使用定时删除确认文案', () => {
+describe('SummaryCard delete confirmation', () => {
+    it('uses the current delete confirmation copy', () => {
         render(
             <SummaryCard
-                task={makeItem({ title: '定时总结', schedule_id: 5, trigger_type: 1 }) as any}
+                task={makeItem({ title: '手动总结' }) as any}
                 onClick={noop}
                 onDelete={noop}
             />,
         );
 
-        const content = screen.getByTestId('popconfirm-content');
-        expect(content).toHaveTextContent('是定时更新的总结');
-        expect(content).not.toHaveTextContent('历史版本也将一并清除');
-    });
-
-    it('trigger_type === 2 且无 schedule_id 时走兜底定时分支', () => {
-        render(
-            <SummaryCard
-                task={makeItem({ title: '调度生成总结', schedule_id: undefined, trigger_type: 2 }) as any}
-                onClick={noop}
-                onDelete={noop}
-            />,
-        );
-
-        const content = screen.getByTestId('popconfirm-content');
-        expect(content).toHaveTextContent('是定时更新的总结');
-    });
-
-    it('普通手动任务使用普通删除确认文案', () => {
-        render(
-            <SummaryCard
-                task={makeItem({ title: '手动总结', schedule_id: undefined, trigger_type: 1 }) as any}
-                onClick={noop}
-                onDelete={noop}
-            />,
-        );
-
-        const content = screen.getByTestId('popconfirm-content');
-        expect(content).toHaveTextContent('历史版本也将一并清除');
-        expect(content).not.toHaveTextContent('是定时更新的总结');
+        openCardMenu();
+        fireEvent.click(screen.getByText('删除'));
+        expect(screen.getByText('删除后无法恢复')).toBeInTheDocument();
     });
 });
 
@@ -268,11 +290,10 @@ describe('SummaryCard creator vs participant footer (问题1)', () => {
                 onLeave={onLeave}
             />,
         );
-        // 删除图标存在，退出图标不存在。
-        expect(screen.getByTestId('delete-icon')).toBeInTheDocument();
-        expect(screen.queryByTestId('exit-icon')).not.toBeInTheDocument();
-        const content = screen.getByTestId('popconfirm-content');
-        expect(content).toHaveTextContent('确定要删除');
+        openCardMenu();
+        expect(screen.getByText('删除')).toBeInTheDocument();
+        fireEvent.click(screen.getByText('删除'));
+        expect(screen.getByText('删除后无法恢复')).toBeInTheDocument();
     });
 
     it('非 creator 参与者看到退出按钮 + 退出文案', () => {
@@ -292,11 +313,10 @@ describe('SummaryCard creator vs participant footer (问题1)', () => {
                 onLeave={onLeave}
             />,
         );
-        // 退出图标存在，删除图标不存在。
-        expect(screen.getByTestId('exit-icon')).toBeInTheDocument();
-        expect(screen.queryByTestId('delete-icon')).not.toBeInTheDocument();
-        const content = screen.getByTestId('popconfirm-content');
-        expect(content).toHaveTextContent('退出后将不再参与该多人协作');
+        openCardMenu();
+        expect(screen.getByText('退出')).toBeInTheDocument();
+        fireEvent.click(screen.getByText('退出'));
+        expect(screen.getByText(/退出后将不再参与/)).toBeInTheDocument();
     });
 
     // FE-2（fail-safe）：creator_id 缺失（null/undefined）时【不】当 creator，
@@ -318,10 +338,8 @@ describe('SummaryCard creator vs participant footer (问题1)', () => {
                 onLeave={onLeave}
             />,
         );
-        // creator_id 缺失 → 不当 creator → 不显示删除按钮。
-        expect(screen.queryByTestId('delete-icon')).not.toBeInTheDocument();
-        // 作为参与者只显示退出。
-        expect(screen.getByTestId('exit-icon')).toBeInTheDocument();
+        openCardMenu();
+        expect(screen.getByText('退出')).toBeInTheDocument();
     });
 
     it('creator_id 为 undefined 时，非参与者不显示删除也不显示退出（fail-safe，无破坏性入口）', () => {
@@ -338,14 +356,55 @@ describe('SummaryCard creator vs participant footer (问题1)', () => {
                 onLeave={onLeave}
             />,
         );
-        // creator_id 缺失 + 非参与者 → 既不删除也不退出。
-        expect(screen.queryByTestId('delete-icon')).not.toBeInTheDocument();
-        expect(screen.queryByTestId('exit-icon')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('summary-card-menu-1')).not.toBeInTheDocument();
+    });
+});
+
+describe('SummaryCard relative time fallback (issue #1440)', () => {
+    // 冻结时钟：formatRelativeTime 用真实 new Date()，不冻结断言会随真实时间漂移。
+    const NOW = '2026-08-18T12:00:00Z';
+    const daysAgoIso = (days: number) =>
+        new Date(new Date(NOW).getTime() - days * 86400 * 1000).toISOString();
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(NOW));
+    });
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
+    it('超过十天的总结显示具体日期而不是「X天前」', () => {
+        render(
+            <SummaryCard task={makeItem({ created_at: daysAgoIso(15) }) as any} onClick={noop} onDelete={noop} />,
+        );
+        // 本地时区下的绝对日期（formatDateOnly 用本地时间）。
+        const expected = (() => {
+            const d = new Date(daysAgoIso(15));
+            const pad = (n: number) => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        })();
+        expect(screen.getByText(new RegExp(`于${expected}`))).toBeInTheDocument();
+        expect(screen.queryByText(/天前/)).not.toBeInTheDocument();
+    });
+
+    it('恰好十天仍显示相对时间（issue 要求是「超过」十天）', () => {
+        render(
+            <SummaryCard task={makeItem({ created_at: daysAgoIso(10) }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(screen.getByText(/10天前/)).toBeInTheDocument();
+    });
+
+    it('十天以内的总结保持相对时间', () => {
+        render(
+            <SummaryCard task={makeItem({ created_at: daysAgoIso(3) }) as any} onClick={noop} onDelete={noop} />,
+        );
+        expect(screen.getByText(/3天前/)).toBeInTheDocument();
     });
 });
 
 describe('SummaryCard AI Generated Badge', () => {
-    it('trigger_type === 3 (AGENT) 时显示对话生成徽标', () => {
+    it('trigger_type === 3 (AGENT) 时显示 Agent 总结图标', () => {
         render(
             <SummaryCard
                 task={makeItem({ title: '对话生成总结', trigger_type: 3 }) as any}
@@ -354,10 +413,7 @@ describe('SummaryCard AI Generated Badge', () => {
             />,
         );
 
-        // 检查对话生成徽标 Tag 组件是否存在
-        const aiTag = screen.getByTestId('ai-tag');
-        expect(aiTag).toBeInTheDocument();
-        expect(aiTag).toHaveTextContent('🤖');
+        expect(screen.getByRole('img', { name: 'Agent 总结' })).toBeInTheDocument();
     });
 
     it('trigger_type === 1 (MANUAL) 时不显示对话生成徽标', () => {

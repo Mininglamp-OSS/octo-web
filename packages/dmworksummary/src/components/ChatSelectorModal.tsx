@@ -3,14 +3,17 @@ import { Checkbox, Spin, Empty, Tag } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { X } from "lucide-react";
 import { I18nContext } from "@octo/base";
+import { Dap } from "@octo/base";
 import WKAvatar, { isBot } from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
 import { Channel, ChannelTypePerson, WKSDK } from "wukongimjssdk";
 import type { ChatCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import WKApp from "@octo/base/src/App";
+import { SpaceService } from "@octo/base/src/Service/SpaceService";
 import SidebarService, { SidebarTargetType } from "@octo/base/src/Service/SidebarService";
 import { MAX_CHAT_SELECT } from "../constants/limits";
+import { summaryTestIds } from "../utils/testIds";
 
 interface MemberCandidate {
     uid: string;
@@ -111,6 +114,10 @@ export default class ChatSelectorModal extends Component<Props, State> {
     async loadMembers() {
         const channel = this.props.channel;
         const seq = ++this.reqSeq;
+        // 参与者候选只含人类他人：两条路径都排除当前用户（自己）与机器人/AI，
+        // 与后端 contactsSync 的既有语义一致（datasource.ts 的 space 成员同步
+        // 也显式 `m.uid === loginInfo.uid continue` 排除自己）。
+        const myUid = WKApp.loginInfo?.uid;
         this.setState({ loading: true });
         try {
             if (channel) {
@@ -119,7 +126,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                 await sdk.channelManager.syncSubscribes(channel);
                 if (seq !== this.reqSeq) return;
                 const subscribers = sdk.channelManager.getSubscribes(channel) || [];
-                const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid));
+                const humans = subscribers.filter((m: any) => !m.is_bot && !isBot(m.uid) && m.uid !== myUid);
                 const roles = new Map<string, number>();
                 for (const m of humans) {
                     if (m.role != null) roles.set(m.uid, m.role);
@@ -134,15 +141,25 @@ export default class ChatSelectorModal extends Component<Props, State> {
                     })),
                 });
             } else {
-                // 无选中聊天：加载全局联系人
-                const list: any[] = (WKApp.dataSource as any)?.contactsList ?? [];
+                // 无选中聊天：候选来自当前 Space 的成员名册。
+                // 此前只读全局 WKApp.dataSource.contactsList，但该缓存常为空
+                // （通讯录页走 space/{id}/members 渲染，并不保证填充 contactsList），
+                // 于是「不先选群、直接选择参与者」时列表为空（issue #200）。
+                // 改为优先用 SpaceService.getRoster —— 带缓存的权威名册，正是
+                // 通讯录/转发面板/docs 成员选择器共用的同一个源；无 Space 时才退回
+                // contactsList。
+                const spaceId = WKApp.shared.currentSpaceId;
+                const list: any[] = spaceId
+                    ? await SpaceService.shared.getRoster(spaceId)
+                    : ((WKApp.dataSource as any)?.contactsList ?? []);
                 if (seq !== this.reqSeq) return;
                 const humans = list.filter((m: any) => {
-                    // Contacts 类型用 robot 字段，不是 is_bot
-                    const isRobot = m.robot === true || m.is_bot === true || isBot(m.uid || m.user_id || "");
-                    // 过滤黑名单联系人 (ContactsStatus.Blacklist = 2)
+                    const uid = m.uid || m.user_id || "";
+                    // 只留人类：roster 用 robot(0/1)，contactsList 用 robot:boolean/is_bot，两者都覆盖
+                    const isRobot = m.robot === 1 || m.robot === true || m.is_bot === true || isBot(uid);
+                    // 过滤黑名单联系人 (ContactsStatus.Blacklist = 2)；roster 无此字段恒 false
                     const isBlacklisted = m.status === 2;
-                    return !isRobot && !isBlacklisted;
+                    return !isRobot && !isBlacklisted && uid !== myUid;
                 });
                 this.setState({
                     memberRoles: new Map<string, number>(),
@@ -224,6 +241,8 @@ export default class ChatSelectorModal extends Component<Props, State> {
             this.setState({ localSelected: localSelected.filter((s) => s.chat_id !== item.chat_id) });
         } else {
             if (localSelected.length >= maxSelect) return;
+            // 仅「选中」(add)一沿采集,取消勾选不计;原先误用 GET /summary-chat-candidates 列表加载推断。
+            Dap.shared.track("smart_summary_scope_channel_selected", {});
             this.setState({ localSelected: [...localSelected, item] });
         }
     };
@@ -493,7 +512,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
         if (!visible) return null;
 
         return (
-            <div className="chat-selector-overlay" onClick={onCancel}>
+            <div data-testid={summaryTestIds.chatSelectorModal} className="chat-selector-overlay" onClick={onCancel}>
                 <div className="chat-selector-modal" onClick={(e) => e.stopPropagation()}>
                     {/* Header */}
                     <div className="chat-selector-header">
@@ -510,6 +529,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                             <div className="chat-selector-search">
                                 <IconSearch className="chat-selector-search-icon" />
                                 <input
+                                    data-testid={summaryTestIds.chatSelectorSearchInput}
                                     className="chat-selector-search-input"
                                     placeholder={t("summary.chatSelector.searchPlaceholder")}
                                     value={keyword}
@@ -521,6 +541,7 @@ export default class ChatSelectorModal extends Component<Props, State> {
                                     {currentTabs.map((tab) => (
                                         <button
                                             key={tab.key}
+                                            data-testid={tab.key === "group" ? summaryTestIds.chatSelectorAllGroupsTab : undefined}
                                             className={`chat-selector-tab${activeTab === tab.key ? " chat-selector-tab--active" : ""}`}
                                             onClick={() => this.handleTabChange(tab.key)}
                                         >
@@ -611,7 +632,12 @@ export default class ChatSelectorModal extends Component<Props, State> {
                         <button type="button" className="chat-selector-btn chat-selector-btn--cancel" onClick={onCancel}>
                             {t("summary.common.cancel")}
                         </button>
-                        <button type="button" className="chat-selector-btn chat-selector-btn--confirm" onClick={this.handleConfirm}>
+                        <button
+                            type="button"
+                            data-testid={mode === "members" ? summaryTestIds.memberSelectorConfirmBtn : summaryTestIds.chatSelectorConfirmBtn}
+                            className="chat-selector-btn chat-selector-btn--confirm"
+                            onClick={this.handleConfirm}
+                        >
                             {t("summary.common.confirm")}
                         </button>
                     </div>

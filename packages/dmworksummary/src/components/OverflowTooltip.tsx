@@ -7,9 +7,10 @@ interface OverflowTooltipProps {
     style?: React.CSSProperties;
     as?: React.ElementType;
     title?: string;
+    "data-testid"?: string;
 }
 
-const OverflowTooltip: React.FC<OverflowTooltipProps> = ({ children, className, style, as: Component = "div", title }) => {
+const OverflowTooltip: React.FC<OverflowTooltipProps> = ({ children, className, style, as: Component = "div", title, "data-testid": dataTestId }) => {
     const containerRef = useRef<HTMLElement>(null);
     const [visible, setVisible] = useState(false);
 
@@ -42,6 +43,7 @@ const OverflowTooltip: React.FC<OverflowTooltipProps> = ({ children, className, 
                 ref={containerRef}
                 className={className}
                 style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", ...style }}
+                data-testid={dataTestId}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
             >

@@ -9,11 +9,14 @@
     height: 100%;
     display: flex;
     overflow: hidden;
+    position: relative;
 }
 
 .wk-layout-tab {
     width: var(--wk-width-layout-tab);
     height: 100%;
+    flex-shrink: 0;
+    min-width: 0;
 }
 
 .wk-layout-content {
@@ -71,6 +74,34 @@
     border-radius: var(--wk-r-full);
 }
 
+.wk-layout-nav-splitter {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: var(--wk-width-layout-tab);
+    width: 12px;
+    margin-left: -6px;
+    cursor: col-resize;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wk-layout-nav-splitter-line {
+    width: 0;
+    height: 100%;
+    transition: width var(--wk-dur-fast) var(--wk-ease),
+                background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-layout-nav-splitter:hover .wk-layout-nav-splitter-line,
+.wk-layout-nav-splitter-active .wk-layout-nav-splitter-line {
+    width: 3px;
+    background: var(--wk-brand-primary);
+    border-radius: var(--wk-r-full);
+}
+
 /* Overlay during drag to prevent content from stealing mouse events */
 .wk-layout-drag-overlay {
     position: fixed;
@@ -110,6 +141,10 @@
     }
 
     .wk-layout-splitter {
+        display: none;
+    }
+
+    .wk-layout-nav-splitter {
         display: none;
     }
 

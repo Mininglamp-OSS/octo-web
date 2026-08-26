@@ -42,10 +42,9 @@ export function escapeForwardLinkDestination(link: string): string {
  * #511 problem 1 (option A, boss-approved): the recipient must be able to *see*
  * the true destination URL on the card and click it, not just a title-labelled
  * anchor that hides the URL behind the `href`. So the link label is the real URL
- * (host + path + query), which stays clickable to the same destination and, being
- * a bare-URL link (visible text === href), is middle-ellipsized for compactness by
- * MarkdownContent's `a` renderer while the full URL remains in the href + title
- * tooltip (AC-13b). The bold title is retained on the line above.
+ * (host + path + query), which stays clickable to the same destination and remains
+ * complete in visible text so selecting/copying the rendered message preserves the
+ * full URL. The bold title is retained on the line above.
  *
  * The URL is app-generated (buildDocLink) and carries no Markdown-structural
  * characters, so it is safe to use verbatim as the link label; only the

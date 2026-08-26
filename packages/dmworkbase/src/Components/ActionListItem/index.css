@@ -104,6 +104,10 @@ body[theme-mode=dark] .wk-action-list-item:hover {
     font-size: 14px;                   /* Figma: 14px */
     font-weight: 400;                  /* Figma: fw 400 */
     color: rgba(28, 28, 35, 1.00);    /* Figma: 纯黑 */
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .wk-action-list-item--compact .wk-action-list-item__desc {

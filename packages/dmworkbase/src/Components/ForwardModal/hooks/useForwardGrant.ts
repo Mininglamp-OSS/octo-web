@@ -20,6 +20,8 @@ export interface UseForwardGrantResult {
   grantRole: ForwardGrantRole
   setGrantEnabled: (v: boolean) => void
   setGrantRole: (r: ForwardGrantRole) => void
+  /** Record the currently-selected Bot uids so confirm() can carry them in the grant payload. */
+  setGrantBotUids: (uids: string[]) => void
   /** 供 confirm() 读取当前授权快照：未激活或未开启时返回 undefined。 */
   readConfirmPayload: () => ForwardGrant | undefined
 }
@@ -40,16 +42,22 @@ export function useForwardGrant(options?: UseForwardGrantOptions): UseForwardGra
     [defaultRole],
   )
 
-  const stateRef = useRef<{ active: boolean; enabled: boolean; role: ForwardGrantRole }>({
+  const stateRef = useRef<{ active: boolean; enabled: boolean; role: ForwardGrantRole; botUids: string[] }>({
     active,
     enabled: grantEnabled,
     role: grantRole,
+    botUids: [],
   })
-  stateRef.current = { active, enabled: grantEnabled, role: grantRole }
+  stateRef.current = { ...stateRef.current, active, enabled: grantEnabled, role: grantRole }
+
+  const setGrantBotUids = useCallback((uids: string[]) => {
+    stateRef.current.botUids = uids
+  }, [])
 
   const readConfirmPayload = useCallback((): ForwardGrant | undefined => {
-    const { active: a, enabled, role } = stateRef.current
-    return a && enabled ? { role } : undefined
+    const { active: a, enabled, role, botUids } = stateRef.current
+    // Only carry a non-empty botUids so a bot-free forward emits the exact legacy `{ role }` shape.
+    return a && enabled ? (botUids.length > 0 ? { role, botUids } : { role }) : undefined
   }, [])
 
   return {
@@ -57,6 +65,7 @@ export function useForwardGrant(options?: UseForwardGrantOptions): UseForwardGra
     grantRole,
     setGrantEnabled,
     setGrantRole,
+    setGrantBotUids,
     readConfirmPayload,
   }
 }

@@ -1,7 +1,9 @@
 import React, { Component } from "react";
-import { I18nContext, WKApp, apiFetchJson, computeAndSaveJoinSuccess, setSessionSid, t, toJoinApprovalStatus } from "@octo/base";
+import { I18nContext, WKApp, apiFetchJson, computeAndSaveJoinSuccess, setSessionSid, t, toJoinApprovalStatus, Dap } from "@octo/base";
 import type { JoinSpaceStatus } from "@octo/base";
 import { Button, Spin, Toast } from "@douyinfe/semi-ui";
+import { buildPostLoginRedirectUrl } from "../../Layout/postLoginRedirect";
+import { persistActiveSpace, readLastSpaceId } from "../../features/spacePreference";
 import "./index.css";
 
 interface InviteLandingProps {
@@ -231,7 +233,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             // dmwork-web#1065: 在调用 /space/join 前先记住用户「当前 Space」。
             // 多 Space 用户在非归属 Space 点邀请链接时，不应自动切换 currentSpaceId —
             // 必须由用户显式点 toast 里的「切换过去」才切。这里在改动前快照下来。
-            const prevCurrentSpaceId = localStorage.getItem("currentSpaceId") || "";
+            const prevCurrentSpaceId = WKApp.shared.currentSpaceId || readLastSpaceId(WKApp.loginInfo.uid) || "";
             const apiUrl = WKApp.apiClient.config.apiURL?.replace(/\/+$/, '');
             const result = await apiFetchJson<any>(`${apiUrl}/space/join`, {
                 method: 'POST',
@@ -258,6 +260,9 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
 
             const joinedSpaceId = result?.space_id || this.state.info?.space_id || "";
             const joinedSpaceName = this.state.info?.space_name || "";
+            // 十二审 🔴 P1-4:space_join_new 命令式,仅真加入时计(审批态 / need-space 已在上方 early-return)。
+            //   此为邀请落地页(登录前)直发 POST /space/join 的成功分支。
+            Dap.shared.track("space_join_new", {});
             // 统一经 computeAndSaveJoinSuccess 计算 crossSpace 并
             // 写 sessionStorage notice。Layout.onLogin 的 pendingInviteCode 分支也走
             // 同一 helper，保证两条路径的 toast 行为一致。
@@ -273,7 +278,7 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
 
             // 硬约束：不自动切换 currentSpace。只有非跨 Space（或无历史 Space）时才更新。
             if (!crossSpace && joinedSpaceId) {
-                localStorage.setItem('currentSpaceId', joinedSpaceId);
+                persistActiveSpace(WKApp.loginInfo.uid, joinedSpaceId);
             }
             // 跳转回主界面（sid-clean 派：先把 sid 存到 SessionScope
             // sessionStorage，跳转 URL 就不再挂 `?sid=` 了。RouteManager 的
@@ -285,7 +290,14 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
             if (sid) setSessionSid(sid);
             // 使用安全的 basePath，避免当 pathname 为 /api/ 时跳到后端 API 路径（#1006）
             const basePath = this.getAppBasePath();
-            window.location.href = `${window.location.origin}${basePath}/`;
+            // file:// (Electron 桌面端) 下不能跳到 ${origin}${basePath}/（该路径不存在会白屏），
+            // 复用 buildPostLoginRedirectUrl 保留当前 index.html 路径、只改 query。
+            window.location.href = buildPostLoginRedirectUrl(
+                window.location.href,
+                window.location.origin,
+                basePath,
+                ""
+            );
         } catch (e: any) {
             const body = this.getApiErrorData(e);
             if (this.isNeedSpaceResponse(this.getApiErrorStatus(e), body)) {
@@ -318,7 +330,13 @@ export default class InviteLanding extends Component<InviteLandingProps, InviteL
         // 使用安全的 basePath，避免硬编码 /web 导致部署路径不匹配，
         // 同时剥离 /api 前缀防止登录页被错误托管在后端 API 路径下（#1006）
         const basePath = this.getAppBasePath();
-        window.location.href = `${window.location.origin}${basePath}/?invite=${encodeURIComponent(this.props.inviteCode)}&action=login`;
+        // file:// (Electron 桌面端) 下复用 buildPostLoginRedirectUrl 保留当前 index.html 路径、只改 query。
+        window.location.href = buildPostLoginRedirectUrl(
+            window.location.href,
+            window.location.origin,
+            basePath,
+            `?invite=${encodeURIComponent(this.props.inviteCode)}&action=login`
+        );
     }
 
     /**

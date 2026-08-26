@@ -52,6 +52,19 @@ describe("UserService", () => {
     })
   })
 
+  it("lets standalone callers suppress the global expired-session logout", async () => {
+    apiGet.mockResolvedValueOnce({ uid: "bot-1" })
+
+    await UserService.getUserProfile("bot-1", undefined, {
+      suppressAuthExpiredLogout: true,
+    })
+
+    expect(apiGet).toHaveBeenCalledWith("users/bot-1", {
+      param: { group_no: "" },
+      suppressAuthExpiredLogout: true,
+    })
+  })
+
   it("updateRemark calls friend remark endpoint", async () => {
     apiPut.mockResolvedValueOnce(undefined)
 

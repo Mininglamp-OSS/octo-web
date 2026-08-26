@@ -1,9 +1,10 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 
-const { mockOnTranscribeResult, mockLocalTranscribe } = vi.hoisted(() => ({
+const { mockOnTranscribeResult, mockLocalTranscribe, feedbackState } = vi.hoisted(() => ({
   mockOnTranscribeResult: vi.fn(),
   mockLocalTranscribe: vi.fn(),
+  feedbackState: { enabled: false },
 }));
 
 // Mock WKApp
@@ -58,13 +59,18 @@ vi.mock("@octo/base/src/Service/LocalModelService", () => ({
 
 // Mock useSpaceFeedbackSetting helpers
 vi.mock(
-  "@octo/base/src/Components/MessageInput/useSpaceFeedbackSetting",
+  "../../../../packages/dmworkbase/src/features/voice-input/useSpaceFeedbackSetting",
   () => ({
     fetchAndApplySpaceSetting: vi.fn().mockResolvedValue(undefined),
     resetSharedSpaceSetting: vi.fn(),
     setSharedVoiceConfig: vi.fn(),
     getSharedSpaceFeedbackState: () => ({
-      spaceSetting: { voice_feedback_on: 1, voice_feedback_notice_acked: 1 },
+      spaceSetting: {
+        voice_input_enabled: 1,
+        voice_feedback_on: feedbackState.enabled ? 1 : 0,
+        voice_feedback_notice_acked: 1,
+      },
+      loadedSpaceId: "test-space-id",
     }),
     getSharedVoiceConfig: () => null,
     subscribe: vi.fn(() => vi.fn()),
@@ -74,7 +80,23 @@ vi.mock(
 import WKApp from "@octo/base/src/App";
 import VoiceService from "@octo/base/src/Service/VoiceService";
 import LocalModelService from "@octo/base/src/Service/LocalModelService";
-import useVoiceInput from "@octo/base/src/Components/MessageInput/useVoiceInput";
+import useVoiceInput, {
+  type UseVoiceInputOptions,
+} from "@octo/base/src/features/chat-composer/adapters/voice/useVoiceInput";
+
+const voiceHost = {
+  getSpaceId: () => WKApp.shared.currentSpaceId,
+  subscribeSpaceChange: (listener: () => void) => {
+    WKApp.mittBus.on("space-changed", listener);
+    return () => WKApp.mittBus.off("space-changed", listener);
+  },
+};
+
+function useTestVoiceInput(
+  options: Omit<UseVoiceInputOptions, "voiceHost"> = {},
+) {
+  return useVoiceInput({ voiceHost, ...options });
+}
 
 // Mock MediaRecorder
 class MockMediaRecorder {
@@ -126,6 +148,7 @@ function setupMocks() {
 
 describe("useVoiceInput", () => {
   beforeEach(() => {
+    feedbackState.enabled = false;
     vi.useFakeTimers();
     setupMocks();
     WKApp.shared.currentSpaceId = "test-space-id";
@@ -148,7 +171,7 @@ describe("useVoiceInput", () => {
   });
 
   it("should fetch voice config on mount", async () => {
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await vi.runAllTimersAsync();
@@ -163,7 +186,7 @@ describe("useVoiceInput", () => {
       new Error("fail")
     );
 
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await vi.runAllTimersAsync();
@@ -179,7 +202,7 @@ describe("useVoiceInput", () => {
       max_file_size: 3145728,
     });
 
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await vi.runAllTimersAsync();
@@ -189,14 +212,14 @@ describe("useVoiceInput", () => {
   });
 
   it("should start in non-recording state", () => {
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     expect(result.current.isRecording).toBe(false);
     expect(result.current.isTranscribing).toBe(false);
   });
 
   it("should set isRecording to true when startRecording is called", async () => {
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await result.current.startRecording();
@@ -213,7 +236,7 @@ describe("useVoiceInput", () => {
     vi.mocked(navigator.mediaDevices.getUserMedia).mockRejectedValue(mockError);
     const onError = vi.fn();
 
-    const { result } = renderHook(() => useVoiceInput({ onError }));
+    const { result } = renderHook(() => useTestVoiceInput({ onError }));
 
     await act(async () => {
       await result.current.startRecording();
@@ -229,7 +252,7 @@ describe("useVoiceInput", () => {
       max_file_size: 3145728,
     } as any);
 
-    const { result } = renderHook(() => useVoiceInput({ maxDuration: 5 }));
+    const { result } = renderHook(() => useTestVoiceInput({ maxDuration: 5 }));
 
     await act(async () => {
       await vi.runAllTimersAsync();
@@ -250,7 +273,7 @@ describe("useVoiceInput", () => {
   });
 
   it("should cancel recording and reset state", async () => {
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await result.current.startRecording();
@@ -266,7 +289,7 @@ describe("useVoiceInput", () => {
   });
 
   it("should not start recording if already recording", async () => {
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await result.current.startRecording();
@@ -299,7 +322,7 @@ describe("useVoiceInput", () => {
   });
 
   it("should cleanup on unmount", async () => {
-    const { result, unmount } = renderHook(() => useVoiceInput());
+    const { result, unmount } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await result.current.startRecording();
@@ -347,7 +370,7 @@ describe("useVoiceInput - getChatContext", () => {
     });
 
     const { result } = renderHook(() =>
-      useVoiceInput({
+      useTestVoiceInput({
         getChatContext,
         onTranscribed: vi.fn(),
       })
@@ -379,7 +402,7 @@ describe("useVoiceInput - getChatContext", () => {
     });
 
     const { result } = renderHook(() =>
-      useVoiceInput({
+      useTestVoiceInput({
         getChatContext,
         onTranscribed: vi.fn(),
       })
@@ -424,7 +447,7 @@ describe("useVoiceInput - getChatContext", () => {
     });
 
     const { result } = renderHook(() =>
-      useVoiceInput({
+      useTestVoiceInput({
         getChatContext,
         onTranscribed: vi.fn(),
       })
@@ -459,7 +482,7 @@ describe("useVoiceInput - getChatContext", () => {
 
   it("should handle undefined getChatContext gracefully", async () => {
     const { result } = renderHook(() =>
-      useVoiceInput({
+      useTestVoiceInput({
         onTranscribed: vi.fn(),
       })
     );
@@ -578,7 +601,7 @@ describe("useVoiceInput - window blur handling", () => {
   it("should register blur listener while recording", async () => {
     const addSpy = vi.spyOn(window, "addEventListener");
 
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await result.current.startRecording();
@@ -625,7 +648,7 @@ describe("useVoiceInput - personal voice context", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useVoiceInput({ onTranscribed, getChatContext })
+      useTestVoiceInput({ onTranscribed, getChatContext })
     );
 
     await act(async () => {
@@ -672,7 +695,7 @@ describe("useVoiceInput - personal voice context", () => {
       chatContext: undefined,
     }));
 
-    const { result } = renderHook(() => useVoiceInput({ getChatContext }));
+    const { result } = renderHook(() => useTestVoiceInput({ getChatContext }));
 
     await act(async () => {
       await result.current.startRecording();
@@ -716,7 +739,7 @@ describe("useVoiceInput - personal voice context", () => {
       chatContext: undefined,
     }));
 
-    const { result } = renderHook(() => useVoiceInput({ getChatContext }));
+    const { result } = renderHook(() => useTestVoiceInput({ getChatContext }));
 
     await act(async () => {
       await result.current.startRecording();
@@ -756,7 +779,7 @@ describe("useVoiceInput - personal voice context", () => {
       chatContext: undefined,
     }));
 
-    const { result } = renderHook(() => useVoiceInput({ getChatContext }));
+    const { result } = renderHook(() => useTestVoiceInput({ getChatContext }));
 
     await act(async () => {
       await result.current.startRecording();
@@ -786,7 +809,7 @@ describe("useVoiceInput - personal voice context", () => {
   it("should not query voice context when not in Space mode", async () => {
     WKApp.shared.currentSpaceId = "";
 
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await result.current.startRecording();
@@ -807,7 +830,7 @@ describe("useVoiceInput - personal voice context", () => {
       m: "g3fp",
     });
 
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await result.current.startRecording();
@@ -846,7 +869,7 @@ describe("useVoiceInput - personal voice context", () => {
   });
 
   it("should register space-changed handler on mittBus", () => {
-    renderHook(() => useVoiceInput());
+    renderHook(() => useTestVoiceInput());
 
     expect(WKApp.mittBus.on).toHaveBeenCalledWith(
       "space-changed",
@@ -868,7 +891,7 @@ describe("useVoiceInput - personal voice context", () => {
     });
     const onError = vi.fn();
 
-    const { result } = renderHook(() => useVoiceInput({ onError }));
+    const { result } = renderHook(() => useTestVoiceInput({ onError }));
 
     await act(async () => {
       await vi.runAllTimersAsync();
@@ -899,7 +922,7 @@ describe("useVoiceInput - personal voice context", () => {
       })
     );
 
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await result.current.startRecording();
@@ -949,7 +972,7 @@ describe("useVoiceInput - max duration config", () => {
       max_file_size: 3145728,
     });
 
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await vi.runAllTimersAsync();
@@ -981,7 +1004,7 @@ describe("useVoiceInput - max duration config", () => {
       max_file_size: 3145728,
     });
 
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await vi.runAllTimersAsync();
@@ -1013,7 +1036,7 @@ describe("useVoiceInput - max duration config", () => {
       max_file_size: 3145728,
     });
 
-    const { result } = renderHook(() => useVoiceInput());
+    const { result } = renderHook(() => useTestVoiceInput());
 
     await act(async () => {
       await vi.runAllTimersAsync();
@@ -1050,7 +1073,7 @@ describe("useVoiceInput - max duration config", () => {
       max_file_size: 3145728,
     });
 
-    const { result } = renderHook(() => useVoiceInput({ maxDuration: 10 }));
+    const { result } = renderHook(() => useTestVoiceInput({ maxDuration: 10 }));
 
     await act(async () => {
       await vi.runAllTimersAsync();
@@ -1078,6 +1101,7 @@ describe("useVoiceInput - max duration config", () => {
 
 describe("useVoiceInput - notifyFeedback asrParams", () => {
   beforeEach(() => {
+    feedbackState.enabled = true;
     vi.useFakeTimers();
     setupMocks();
     WKApp.shared.currentSpaceId = "test-space-id";
@@ -1109,7 +1133,7 @@ describe("useVoiceInput - notifyFeedback asrParams", () => {
     });
 
     const { result } = renderHook(() =>
-      useVoiceInput({ onTranscribed: vi.fn() }),
+      useTestVoiceInput({ onTranscribed: vi.fn() }),
     );
 
     await act(async () => {
@@ -1153,7 +1177,7 @@ describe("useVoiceInput - notifyFeedback asrParams", () => {
     });
 
     const { result } = renderHook(() =>
-      useVoiceInput({ onTranscribed: vi.fn() }),
+      useTestVoiceInput({ onTranscribed: vi.fn() }),
     );
 
     await act(async () => {
@@ -1203,7 +1227,7 @@ describe("useVoiceInput - notifyFeedback asrParams", () => {
     });
 
     const { result } = renderHook(() =>
-      useVoiceInput({ onTranscribed: vi.fn(), getChatContext }),
+      useTestVoiceInput({ onTranscribed: vi.fn(), getChatContext }),
     );
 
     await act(async () => {

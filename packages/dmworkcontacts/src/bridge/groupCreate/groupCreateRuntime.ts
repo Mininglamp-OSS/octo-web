@@ -10,6 +10,7 @@ import {
   setCurrentImChannelSubscribersCache,
   SubscriberStatus,
   syncCurrentImChannelSubscribers,
+  uploadGroupAvatar as uploadGroupAvatarApi,
   WKApp,
 } from "@octo/base";
 import { SuperGroup } from "@octo/base/src/Utils/const";
@@ -36,6 +37,13 @@ function createDefaultGroupCreateRuntime(): GroupCreateRuntime {
     },
     createChannel(uids, options) {
       return WKApp.dataSource.channelDataSource.createChannel(uids, options);
+    },
+    uploadGroupAvatar(groupNo, file) {
+      return uploadGroupAvatarApi(groupNo, file).then(() => {
+        WKApp.shared.changeChannelAvatarTag(
+          new Channel(groupNo, ChannelTypeGroup)
+        );
+      });
     },
     getAvatarUser(uid) {
       return WKApp.shared.avatarUser(uid);
@@ -342,6 +350,8 @@ export async function submitGroupCreateAction(params: {
   channel: GroupCreateChannelInput;
   selectedUids: string[];
   createOptions?: GroupCreateSubmitOptions;
+  avatarFile?: File;
+  onAvatarUploadFailed?: () => void;
   keepSidebarTab?: boolean;
   runtime?: GroupCreateRuntime;
 }) {
@@ -353,10 +363,21 @@ export async function submitGroupCreateAction(params: {
       params.createOptions
     );
     if (result?.group_no) {
+      let avatarUploadFailed = false;
+      if (params.avatarFile) {
+        try {
+          await runtime.uploadGroupAvatar(result.group_no, params.avatarFile);
+        } catch {
+          avatarUploadFailed = true;
+        }
+      }
       runtime.showConversation(
         new Channel(result.group_no, ChannelTypeGroup),
         params.keepSidebarTab ? { fromSidebarList: true } : undefined
       );
+      if (avatarUploadFailed) {
+        params.onAvatarUploadFailed?.();
+      }
     }
     return result;
   }

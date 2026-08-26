@@ -1,6 +1,6 @@
 # 由 e2e-kit sync 维护, 请勿手动改 kit_version / installed_optionals / template_checksums 字段
 kit_name: e2e-kit
-kit_version: 0.4.2
+kit_version: 0.4.9
 kit_source: https://codex.mlamp.cn/e2e/e2e-kit
 
 # 已装 optional 层 (由 --with-optional 追加, 追加不移除)
@@ -9,10 +9,10 @@ installed_optionals:
 
 # 每次 sync 时更新的 template checksum, 用于判"接入方是否改过某模板文件"
 template_checksums:
-  case-specs/TEMPLATE.md: bd3acb9a79984e630c22aa1f46667390
-  fixtures-authed.ts: 4f7da7ede980985ea2b46d5829016c1e
   .github/workflows/e2e.yml.template: c1baa97459908a509a753ff61b336b4e
   .gitlab-ci.yml.template: d3f32d4ca4d51ff84e92c9e2488a47c7
+  case-specs/TEMPLATE.md: a63ea27cd9e1c1587403912fa4c81fb9
+  fixtures-authed.ts: 4f7da7ede980985ea2b46d5829016c1e
   playwright.ci.config.ts: 8ffc630f52cce6cfd9061dfb6e88bcbd
   playwright.config.ts: 46ca199b2b90122014cd1b7fc559eeba
-  tests/example.spec.ts: 15371f6e6d3ec8aecaa86985981c9593
+  tests/example.spec.ts: 7aa527a9ecabac1c7bd1ad63b9f0255c

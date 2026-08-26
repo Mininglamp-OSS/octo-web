@@ -40,7 +40,7 @@
  * 当前会话时通过 `opts.onSent` 显式把消息回填到 sendQueue（见调用点）。
  */
 
-import WKSDK, { Channel, Message, MessageContent, Setting } from "wukongimjssdk";
+import WKSDK, { Channel, Message, MessageContent, MessageText, Setting } from "wukongimjssdk";
 import { isConversationDisbanded } from "../Utils/groupDisband";
 import { wrapSendContentForInjection } from "../Utils/sendContentProxy";
 import { applyMsgLevelExternalFieldsWithFallback } from "./Convert";
@@ -316,4 +316,25 @@ export class ForwardService {
 
         return result;
     }
+}
+
+/**
+ * Forward one plain-text message to each channel.
+ *
+ * WHY this exists: an external feature package may need to forward text it composed itself
+ * — a prompt for an agent, say — but that package deliberately cannot import `wukongimjssdk` (only
+ * `@octo/base` may, per the docs seam contract), so it cannot build a `MessageText` to hand to
+ * {@link ForwardService.send}. This is the thinnest possible seam over that gap: construct the
+ * content here and delegate everything else (disband skip, per-channel accounting, `space_id`
+ * injection, partial-failure result) to `send`, unchanged.
+ *
+ * Prefer {@link ForwardService.send} directly whenever the caller CAN build its own content — this
+ * wrapper adds nothing but the `MessageText` construction.
+ */
+export async function forwardPlainText(
+    channels: Channel[],
+    text: string,
+    opts: ForwardOptions = {},
+): Promise<ForwardResult> {
+    return ForwardService.send(channels, () => new MessageText(text), opts);
 }
