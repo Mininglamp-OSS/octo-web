@@ -93,13 +93,39 @@ interface ConvertMarkdownToDocResult {
 
 | 情况 | 期望行为 |
 |---|---|
-| 创建文档失败 | 直接抛出，OSS 侧会用 `extractErrorMsg` 取 `response.data.msg` 展示 |
+| 创建文档失败 | 直接抛出，OSS 侧按下面的「错误形状」映射文案 |
 | 导入失败（确定性 HTTP 错误，有 `err.response`） | 删除已创建的空文档，再抛出 |
 | 导入失败（超时 / 网络错误，无 `err.response`） | **不要删**，直接抛出 |
 | 端口未注册 | OSS 侧抛 `DocsCapabilityUnavailableError`；正常路径不会走到（UI 已 gate） |
 
 回滚判据放在实现方，是因为只有它知道自己的超时配置和后端的原子性语义。
 OSS 侧不做任何补偿调用，契约测试里钉死了这一点。
+
+#### 错误形状（实现方需要满足）
+
+抛出的错误请保留原始 HTTP 响应，形状如下：
+
+```ts
+{
+  response: {
+    status: number,            // HTTP 状态码
+    data: { error: string },   // docs-backend 的错误码，例如 "schema_incompatible"
+  }
+}
+```
+
+**不要**只抛一个已经归一化过的 message。原因是 host 的 `normalizeApiError`
+（`packages/dmworkbase/src/Service/apiError.ts`）只识别 401/403/404/429/5xx，
+docs-backend 的 422/413/412/409 会被一律归成「未知错误」——而且那是个**非空**字符串，
+会把 `extractErrorMsg(err) || 兜底文案` 里的兜底整个短路掉。用户于是对着一个
+确定性失败（同样的内容重试多少次都是同样的 422）反复点按钮，看不到任何可操作的信息。
+
+OSS 侧读这个字段的地方是 `packages/dmworksummary/src/utils/convertDocError.ts`，
+它把错误码映射成具体文案；认不出错误码时退回 HTTP 状态码；再认不出才用通用文案。
+所以形状不符**不会报错**，只会退化成通用文案——这是「有则更好」，不是硬依赖。
+
+注意这是一处**刻意的、有记录的耦合**：`docsPort.ts` 本身不认识 docs-backend，
+这张表是唯一把后端错误码写进契约的地方。新增错误码时两边一起改。
 
 ### 可用性判定
 

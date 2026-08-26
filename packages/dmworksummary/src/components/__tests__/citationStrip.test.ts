@@ -33,6 +33,41 @@ describe('stripCitationMarkers', () => {
             expect(stripCitationMarkers(input)).toBe(input);
         });
 
+        // 自动链接的 URL 本身就是 link 节点下唯一的 text 子节点，`visit(tree,'text')`
+        // 会直接走进目的地址。删掉其中的 `[n]` 等于改写链接目标 —— 而这在屏幕上看不出来：
+        // 渲染器做同样的文本替换，但 `<a href>` 保留完整 URL，链接照样能点。转出去的文档
+        // 没有 href 兜底，被改坏的字符串**就是**链接本身，且会被持久化。
+        // 见 isAutolinkDestination。
+        describe('自动链接目的地不可改写', () => {
+            it.each([
+                ['GFM 裸链接', 'Source: https://wiki.corp/page?ids[1]=42&x=1 more [1]\n',
+                    'Source: https://wiki.corp/page?ids[1]=42&x=1 more \n'],
+                ['<> 自动链接', 'see <https://x.com/a[1]b>\n', 'see <https://x.com/a[1]b>\n'],
+                ['www 自动链接', 'www.example.com/a[1]b and [2]\n', 'www.example.com/a[1]b and \n'],
+            ])('%s', (_, input, expected) => {
+                expect(stripCitationMarkers(input)).toBe(expected);
+            });
+
+            // 对照组：普通 [label](dest) 链接的**文字**仍然要剥离 —— 那是读者看得见的正文，
+            // 不是目的地址。所以守卫刻意匹配自动链接的形状，而不是笼统地跳过 parent.type==='link'。
+            it('普通链接的文字仍然剥离，目的地址本就安全', () => {
+                expect(stripCitationMarkers('[see [1] more](http://u.com)\n'))
+                    .toBe('[see  more](http://u.com)\n');
+                expect(stripCitationMarkers('[label](http://u.com/a[1]b) and [2]\n'))
+                    .toBe('[label](http://u.com/a[1]b) and \n');
+            });
+
+            // 记录一个**未修复**的邻近情形，避免下一个人误以为它也被覆盖了。
+            // `<a[1]b@x.com>` 里的 `[1]` 打断了自动链接的识别：remark 解析成
+            // text `"mail <a[1]"` + link(mailto:b@x.com) + text `">"`，被删的 `[1]`
+            // 落在**纯文本**节点里，不在目的地址上，所以上面的守卫按设计不会拦它。
+            // 后果是 href 从 `mailto:b@x.com` 变成 `mailto:ab@x.com`。两种取舍都说得通
+            // （剥离后的结果恰好是用户本来想写的邮箱），此处先钉住现状。
+            it('[n] 打断邮箱自动链接时走纯文本路径（现状，非目的地改写）', () => {
+                expect(stripCitationMarkers('mail <a[1]b@x.com>\n')).toBe('mail <ab@x.com>\n');
+            });
+        });
+
         it.each([
             ['tilde fence', '~~~js\nitems[0]\n~~~\n结论[P1]', '~~~js\nitems[0]\n~~~\n结论'],
             ['indented code', '    items[0]\n\n结论[1]', '    items[0]\n\n结论'],

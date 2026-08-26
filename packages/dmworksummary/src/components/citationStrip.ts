@@ -61,12 +61,45 @@ function mapDecodedSource(rawText: string, decodedText: string): SourceRange[] |
 }
 
 /**
+ * True when `node` is the DESTINATION text of an autolink rather than ordinary prose.
+ *
+ * In mdast a GFM literal autolink (`https://x/y`), an `<...>` autolink and an email
+ * autolink are all `link` nodes whose ONLY child is a text node holding the URL itself.
+ * A `visit(tree, 'text')` walk therefore steps straight into the destination, and deleting
+ * a `[n]` from it rewrites the link target. On screen that is invisible — the renderer
+ * substitutes the same text but the `<a href>` keeps the full URL — but the converted
+ * document has no href to fall back on: the corrupted string IS the link, and it is
+ * persisted. A working link in the summary becomes a dead one in the document, silently.
+ *
+ * Deliberately matched on the autolink SHAPE, not on `parent.type === 'link'`: an inline
+ * `[label](dest)` link also parents its label text, and stripping markers out of link
+ * TEXT is correct — that text is prose the reader sees. Only the destination is off-limits.
+ * The three URL forms mirror how remark normalizes each autolink flavour:
+ *   `<https://x/y>` / `https://x/y` -> url === value
+ *   `<a@b.com>` / `a@b.com`         -> url === 'mailto:' + value
+ *   `www.x.com/y`                   -> url === 'http://' + value  (checked via '//' + value)
+ */
+function isAutolinkDestination(node: unknown, parent: unknown): boolean {
+    if (!parent || typeof parent !== 'object') return false;
+    const link = parent as { type?: unknown; url?: unknown; children?: unknown };
+    if (link.type !== 'link') return false;
+    if (!Array.isArray(link.children) || link.children.length !== 1) return false;
+    if (link.children[0] !== node) return false;
+    const url = link.url;
+    const value = (node as { value?: unknown } | null)?.value;
+    if (typeof url !== 'string' || typeof value !== 'string') return false;
+    return url === value || url === `mailto:${value}` || url.endsWith(`//${value}`);
+}
+
+/**
  * Remove citation markers before converting a summary to an online document.
  *
  * Markdown is parsed with the same remark parser and grammar used by the
- * renderer. We inspect only text nodes, so code, link destinations, definitions,
- * and other non-text syntax stay untouched. Ranges are removed from the original
- * source instead of stringifying the AST, preserving whitespace and formatting.
+ * renderer. We inspect only text nodes, so code, inline-link destinations,
+ * definitions, and other non-text syntax stay untouched — plus autolink
+ * destinations, which ARE text nodes and so need the explicit guard below
+ * (see isAutolinkDestination). Ranges are removed from the original source
+ * instead of stringifying the AST, preserving whitespace and formatting.
  */
 export function stripCitationMarkers(source: string): string {
     if (!source) return source;
@@ -74,7 +107,9 @@ export function stripCitationMarkers(source: string): string {
     const tree = markdownParser.parse(source);
     const removals: SourceRange[] = [];
 
-    visit(tree, 'text', (node: any) => {
+    visit(tree, 'text', (node: any, _index, parent: any) => {
+        // An autolink's URL is its own text child; editing it rewrites the link target.
+        if (isAutolinkDestination(node, parent)) return;
         const start = node.position?.start?.offset;
         const positionEnd = node.position?.end?.offset;
         if (typeof start !== 'number' || typeof positionEnd !== 'number') return;

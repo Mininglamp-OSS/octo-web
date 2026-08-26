@@ -137,6 +137,7 @@ jobs:
           src/components/__tests__/citationStrip.test.ts
           src/components/__tests__/SummaryResultActions.test.tsx
           src/api/__tests__/summaryApi.test.ts
+          src/utils/convertDocError.test.ts
       - name: Electron main-process unit tests
         run: pnpm --filter @octo/web exec vitest run src-election src/__tests__/oidcLogoutWiring.test.ts
       - name: Type-check Electron main-process tests

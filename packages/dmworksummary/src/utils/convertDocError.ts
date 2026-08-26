@@ -15,9 +15,15 @@
  * 案例见 2026-08-26：正文里一句 `**还没有 `summary` 命令**` 触发 422
  * schema_incompatible，从 UI 上完全看不出和那句话有关。
  *
- * 错误码是拿得到的：docs 模块的 `toApiErrorEnvelope` 会把原始 axios 错误的
- * `{ status, data }` 提升到 `err.response`，所以 `err.response.data.error` 一路都在，
- * 只是此前没有人读它。本模块负责读出来并翻译。
+ * 错误码是拿得到的：docs 模块（闭源，本仓库之外）在把 host 的 rejection 转交给调用方前，
+ * 会把原始 axios 错误的 `{ status, data }` 提升到 `err.response`，所以
+ * `err.response.data.error` 一路都在，只是此前没有人读它。本模块负责读出来并翻译。
+ *
+ * 注意这个字段**不是** `docsPort.ts` 契约的一部分——那个端口的存在意义正是让 OSS 侧不认识
+ * docs-backend。这里读它是一处刻意的、有记录的耦合：契约只承诺「实现方内部的失败原样透传」，
+ * 没承诺错误长什么样。已在 `docs/integration/docs-convert-port.md` 的错误约定表里把这个形状
+ * 写成实现方需要满足的要求，两边才不会各说各话。形状不符时本模块一律退回通用文案，
+ * 不会因此报错——耦合是「有则更好」，不是硬依赖。
  *
  * 匹配顺序：先按后端错误码精确匹配（信息量最大），再退化到 HTTP 状态码（后端换了新码
  * 时至少还能说对大类），最后才回到 `convertFailed` 通用文案。

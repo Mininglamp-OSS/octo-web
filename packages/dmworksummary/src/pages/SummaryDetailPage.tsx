@@ -2880,7 +2880,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             if (this.unmounted) return;
             Toast.error(this.context.t("summary.detail.copyFailed"));
         } finally {
-            if (!this.unmounted) this.setState({ copyingKey: null });
+            // 只在 key 仍是自己时清，和 handleConvertToDoc 的 finally 同构：copyingKey 是
+            // 全页共享的单值，两行（个人/团队）先后点复制时，先完成的那次会把后一次
+            // 的 spinner 一起掐灭，后者看起来「点了没反应」。
+            if (!this.unmounted && this.state.copyingKey === key) {
+                this.setState({ copyingKey: null });
+            }
         }
     };
 
