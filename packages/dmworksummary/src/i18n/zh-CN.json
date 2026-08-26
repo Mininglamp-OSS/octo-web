@@ -205,6 +205,58 @@
         "savedReferenceLostRetry": "保存失败：请重新选择引用总结，或点「新会话」重来",
         "savedNoOriginRetry": "保存失败：该引用总结缺少来源频道，本次会话也未读取过频道。请更换有来源的引用总结，或开始新会话让 AI 先读取频道"
     },
+    "workbench": {
+        "title": "总结助手",
+        "subtitle": "选择聊天、参与者或模板，也可以直接描述你的总结需求",
+        "empty": "告诉我你想总结什么，我会根据已选内容为你处理",
+        "context": {
+            "chat": "聊天",
+            "participant": "参与者",
+            "template": "模板",
+            "timeRange": "时间范围",
+            "remove": "移除 {{label}}"
+        },
+        "composer": {
+            "send": "发送"
+        },
+        "actions": {
+            "confirmWorkflow": "确认并邀请参与者",
+            "savePreview": "保存为总结",
+            "viewSummary": "查看总结",
+            "viewProgress": "查看进度",
+            "continueChat": "继续沟通"
+        },
+        "card": {
+            "teamConfirmationTitle": "确认多人总结任务",
+            "teamConfirmationBadge": "多人总结",
+            "workflowStartedTitle": "总结任务已发起",
+            "workflowStartedBadge": "生成中",
+            "workflowCompletedTitle": "总结已生成",
+            "workflowCompletedBadge": "已保存",
+            "previewTitle": "总结预览 · 第 {{version}} 版",
+            "previewBadge": "预览草稿",
+            "revisionBadge": "修改稿",
+            "staleBadge": "范围已变更",
+            "participants": "参与者",
+            "template": "模板",
+            "timeRange": "时间范围",
+            "requirement": "总结要求",
+            "taskId": "任务 ID",
+            "assumptions": "生成依据"
+        },
+        "placeholder": {
+            "initial": "描述你想总结的内容和要求",
+            "chatSelected": "描述你希望如何总结已选聊天，我会先生成预览供你调整",
+            "participantsSelected": "描述或补充多人总结要求，我会据此准备任务",
+            "structuredReady": "可直接发送生成正式总结，也可以继续补充要求",
+            "teamConfirmation": "可继续补充要求，或确认并邀请参与者",
+            "workflowRunning": "任务已发起，你可以继续提问或查看进度",
+            "workflowCompleted": "总结已生成，你可以继续提问或开始新的总结",
+            "preview": "继续提出修改要求，满意后保存为总结",
+            "scopeChanged": "总结范围已变更，请发送新需求以更新结果",
+            "sending": "正在处理你的需求…"
+        }
+    },
     "chatSummary": {
         "panelTitle": "聊天内的智能总结",
         "createNew": "新建总结",

@@ -205,6 +205,58 @@
         "savedReferenceLostRetry": "Save failed: please re-select the referenced summary, or start a new session",
         "savedNoOriginRetry": "Save failed: the referenced summary has no source channel, and this session hasn't read any channel either. Pick a referenced summary with a source, or start a new session and let the AI read a channel first"
     },
+    "workbench": {
+        "title": "Summary assistant",
+        "subtitle": "Select chats, participants, or a template, or describe what you need summarized",
+        "empty": "Tell me what you want to summarize, and I'll work with the context you've selected",
+        "context": {
+            "chat": "Chats",
+            "participant": "Participants",
+            "template": "Template",
+            "timeRange": "Time range",
+            "remove": "Remove {{label}}"
+        },
+        "composer": {
+            "send": "Send"
+        },
+        "actions": {
+            "confirmWorkflow": "Confirm and invite participants",
+            "savePreview": "Save as summary",
+            "viewSummary": "View summary",
+            "viewProgress": "View progress",
+            "continueChat": "Continue chat"
+        },
+        "card": {
+            "teamConfirmationTitle": "Confirm team summary task",
+            "teamConfirmationBadge": "Team summary",
+            "workflowStartedTitle": "Summary task started",
+            "workflowStartedBadge": "Generating",
+            "workflowCompletedTitle": "Summary generated",
+            "workflowCompletedBadge": "Saved",
+            "previewTitle": "Summary preview · Version {{version}}",
+            "previewBadge": "Preview draft",
+            "revisionBadge": "Revision",
+            "staleBadge": "Scope changed",
+            "participants": "Participants",
+            "template": "Template",
+            "timeRange": "Time range",
+            "requirement": "Summary request",
+            "taskId": "Task ID",
+            "assumptions": "Generation assumptions"
+        },
+        "placeholder": {
+            "initial": "Describe what you want summarized and how",
+            "chatSelected": "Describe how to summarize the selected chats, and I'll create a preview you can refine",
+            "participantsSelected": "Describe or refine the team summary request, and I'll prepare the task",
+            "structuredReady": "Send now to generate the final summary, or add more instructions",
+            "teamConfirmation": "Add more instructions, or confirm and invite participants",
+            "workflowRunning": "The task has started. You can ask a follow-up or view its progress",
+            "workflowCompleted": "The summary is ready. You can ask a follow-up or start a new summary",
+            "preview": "Request changes, or save the preview as a summary when you're satisfied",
+            "scopeChanged": "The summary scope changed. Send a new request to update the result",
+            "sending": "Working on your request…"
+        }
+    },
     "chatSummary": {
         "panelTitle": "Summaries in this chat",
         "createNew": "New summary",
