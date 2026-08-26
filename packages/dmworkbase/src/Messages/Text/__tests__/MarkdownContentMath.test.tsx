@@ -414,6 +414,88 @@ describe("MarkdownContent — 被拒绝的公式无损还原：不丢正文/meta
   });
 });
 
+describe("MarkdownContent — 含 _ \\ {} ^ 的 IM 正文仍不被吞 (reviewer P0)", () => {
+  // 只看「两枚 $ 之间是否含某个 math-ish 字符」不够：snake_case / 路径 / JSON / 变量正文
+  // 天然含 `_ \ {} ^`。收紧候选（Pandoc 邻接 + 不跨行 + 长度上限 + CJK）后这些正文必须保持原样。
+  const sameLine: string[] = [
+    "export $MY_VAR and $OTHER_VAR",
+    "订单金额 $1,200，备注 order_id=88，退款 $300",
+    "付了 $100，用了 snake_case 变量，又付 $200",
+    "价格 $100，路径 C:\\tmp\\bin，另 $200",
+    "预算 $500 见 a_b_c 实付 $600",
+  ];
+  for (const input of sameLine) {
+    it(`同线正文不误渲染、$ 不丢：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      const vt = visibleText(root);
+      // 每个美元金额都要原样保留（不能被吞掉分隔符）
+      const dollars = input.match(/\$\d[\d,]*/g) ?? [];
+      for (const d of dollars) expect(vt).toContain(d);
+    });
+  }
+
+  it("ASCII-only 变量正文可见文本与输入完全一致", () => {
+    const input = "export $MY_VAR and $OTHER_VAR";
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toBe(input);
+  });
+
+  it("跨行正文不被吞成单个公式、三行不压成一行", () => {
+    // reviewer 跨行复现：中间行含 my_var（_），旧规则会把 $100…my_var…$200 吞成一个 KaTeX run。
+    const root = renderContent(
+      <MarkdownContent content={"第一行 $100\n第二行 my_var\n第三行 $200"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("第一行");
+    expect(vt).toContain("第二行");
+    expect(vt).toContain("第三行");
+    expect(vt).toContain("my_var");
+    expect(vt).toContain("$100");
+    expect(vt).toContain("$200");
+  });
+
+  it("超长（>200 字符）行内候选按正文处理，不吞进公式", () => {
+    const longMid = "a_" + "x".repeat(250); // 含 _，但整体远超 200 字符上限
+    const input = `$${longMid}$`;
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("x".repeat(250));
+  });
+});
+
+describe("MarkdownContent — 合法公式在收紧规则下仍渲染", () => {
+  const ok: Array<[string, string]> = [
+    ["单 $E=mc^2$", "值 $E=mc^2$ 结束"],
+    ["单 $x_1$", "设 $x_1$"],
+    ["内部带空格 $a + b^2$", "式 $a + b^2$ 完"],
+    ["行内 $$ \\eta_{avg} $$（双美元允许 padding）", "结果 $$ \\eta_{avg} $$ 完"],
+  ];
+  for (const [name, content] of ok) {
+    it(`仍渲染：${name}`, () => {
+      const root = renderContent(<MarkdownContent content={content} />);
+      expect(root.querySelector(".katex")).not.toBeNull();
+    });
+  }
+});
+
+describe("MarkdownContent — KaTeX 解析失败回落为正文，不显示 .katex-error 红字", () => {
+  it("无效公式被判为公式但解析失败时，降级为纯文本（不显示红字）", () => {
+    // `$\frac{a}$` 过守卫（含 \ 和 {}，单 $ 两端紧贴非空白），但缺第二个参数 → KaTeX 报错。
+    const root = renderContent(<MarkdownContent content={"试 $\\frac{a}$ 完"} />);
+    expect(root.querySelector(".katex-error")).toBeNull();
+    expect(visibleText(root)).toContain("\\frac{a}");
+  });
+
+  it("合法公式不受 error 回落插件影响，正常渲染", () => {
+    const root = renderContent(<MarkdownContent content={"$\\frac{a}{b}$"} />);
+    expect(root.querySelector(".katex")).not.toBeNull();
+    expect(root.querySelector(".katex-error")).toBeNull();
+  });
+});
+
 describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。

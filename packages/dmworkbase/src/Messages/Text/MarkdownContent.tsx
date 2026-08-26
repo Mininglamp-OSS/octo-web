@@ -117,7 +117,43 @@ const mathRehypePlugins: any[] = [
     rehypeKatex,
     { strict: false, throwOnError: false, trust: false, maxSize: 10, maxExpand: 100 },
   ],
+  katexErrorToTextPlugin,
 ];
+
+/** 提取 hast 节点的纯文本内容。 */
+function hastNodeText(node: any): string {
+  if (!node) return "";
+  if (node.type === "text") return node.value || "";
+  if (Array.isArray(node.children)) return node.children.map(hastNodeText).join("");
+  return "";
+}
+
+/**
+ * KaTeX 解析失败时（`throwOnError:false` 会渲染 `.katex-error` 红字）把该节点降级成纯文本，
+ * 避免普通聊天里冒出红色报错。展示公式源码原文（去掉红色样式），与「误匹配一律回落到正文」
+ * 的整体策略一致。守卫已挡掉绝大多数正文，此处只兜住真被判定为公式却 KaTeX 解析失败的少数情况。
+ */
+function katexErrorToTextPlugin() {
+  return (tree: any) => {
+    const visit = (node: any) => {
+      if (!node || !Array.isArray(node.children)) return;
+      node.children = node.children.map((child: any) => {
+        const cls = child?.properties?.className;
+        const classes = Array.isArray(cls)
+          ? cls
+          : typeof cls === "string"
+          ? cls.split(/\s+/)
+          : [];
+        if (child?.type === "element" && classes.includes("katex-error")) {
+          return { type: "text", value: hastNodeText(child) };
+        }
+        visit(child);
+        return child;
+      });
+    };
+    visit(tree);
+  };
+}
 
 /** 基础 remark 插件（不含 math） */
 const baseRemarkPlugins: any[] = [
@@ -154,19 +190,55 @@ const mathRemarkPluginsSingleDollar: any[] = [
 /** math-ish 内部字符：与 iOS WKLaTeXPreprocessor.hasMathChar 完全一致。 */
 const MATH_ISH_CHAR = /[\\^_{}]/;
 
+/** CJK / 全角字符：出现在行内公式候选里视为 IM 正文，不当公式。 */
+const CJK_CHAR =
+  /[぀-ヿ㐀-鿿豈-﫿가-힯＀-￯]/;
+
+/** 行内公式候选长度上限，对齐 iOS 的 blast-radius 控制。 */
+const MAX_INLINE_MATH_LEN = 200;
+
+/**
+ * 判断一个 remark-math 公式节点是否真的按公式渲染。仅含某个 math-ish 字符还不够——普通 IM
+ * 正文里 `_`（snake_case）、`\`（路径）、`{}`（JSON）、`^` 很常见，只看这个会把货币/变量/路径
+ * 正文吞进 KaTeX。这里对齐 iOS 收紧 candidate：
+ *  - value 必须非空（去空白后）且含 math-ish 字符（`\ ^ _ { }`）；
+ *  - 块级 `$$…$$`（node.type==="math"，fence 独占行、意图明确、可跨多行）保持宽松，满足上面即可；
+ *  - 行内 `$…$` / `$$…$$` 额外约束候选：不跨行（对齐 iOS 在 `\n` 断开）、长度 ≤ 200、不含 CJK/全角；
+ *    单 `$…$` 再要求定界符两侧紧贴非空白（Pandoc 规则），挡住 `$MY_VAR and $OTHER`（收尾定界符
+ *    前是空格）这类正文被误配成公式。
+ */
+function keepAsMath(node: any, source: string): boolean {
+  const value: string = node?.value ?? "";
+  if (value.trim().length === 0) return false;
+  if (!MATH_ISH_CHAR.test(value)) return false;
+  if (node.type === "math") return true; // 块级 display 公式：意图明确，保持宽松
+  // 行内公式候选收紧
+  if (/[\r\n]/.test(value)) return false;
+  if (value.length > MAX_INLINE_MATH_LEN) return false;
+  if (CJK_CHAR.test(value)) return false;
+  const start = node?.position?.start?.offset;
+  const isDoubleDollar =
+    typeof start === "number" &&
+    source[start] === "$" &&
+    source[start + 1] === "$";
+  if (!isDoubleDollar && (!/^\S/.test(value) || !/\S$/.test(value))) {
+    return false;
+  }
+  return true;
+}
+
 /**
  * iOS 对齐的 math-ish 守卫（镜像 `WKLaTeXPreprocessor.hasMathChar`），无损实现。
  *
  * remark-math 会把每段配对的 `$...$` / `$$...$$` 都 token 成公式节点。本插件在首次解析后拿到
- * 这些节点的源码区间，对「value 为空、或内容不含 `\ ^ _ { }` 任一字符」的节点，把其区间内的
- * 每个 `$` 转义（加反斜杠），再用同一 processor `this.parse` 重新解析整篇，替换语法树。
- * 于是：
+ * 这些节点的源码区间，对{@link keepAsMath} 判定为「非公式」的节点，把其区间内的每个 `$` 转义
+ * （加反斜杠），再用同一 processor `this.parse` 重新解析整篇，替换语法树。于是：
  *   - `$E=mc^2$`（含 `^`）、`$$\frac{a}{b}$$`（含 `\{}`）→ 不动，正常渲染为 KaTeX；
  *   - `$100`、`$5-$10`、`$$100 too expensive`（value 为空、文本在 meta 里）、未闭合的流式前缀、
- *     `> $foo\n> bar$`（跨行 blockquote）等普通正文 → `$` 被转义，重解析后是纯文本。正文、开
- *     fence 同行文本（node.meta）、换行结构、blockquote/list 容器标记全部由 remark 原样保留——
- *     零重建、零丢失（对比只用 node.value 重拼会吞掉 meta、伪造闭合 fence；只用 source.slice
- *     会把容器 continuation marker 切进正文）。
+ *     `export $MY_VAR and $OTHER`、`$100…my_var…$200`（跨行）、`> $foo\n> bar$` 等普通正文 →
+ *     `$` 被转义，重解析后是纯文本。正文、开 fence 同行文本（node.meta）、换行结构、
+ *     blockquote/list 容器标记全部由 remark 原样保留——零重建、零丢失（对比只用 node.value 重拼
+ *     会吞掉 meta、伪造闭合 fence；只用 source.slice 会把容器 continuation marker 切进正文）。
  *
  * 代码块 / 行内代码里的 `$` 不会被 remark-math token 成公式节点，天然不在处理范围内。
  * 守卫在数组里排最前，重解析出的新树仍会经过其后的 rawHtml / gfm / breaks 转换。
@@ -181,12 +253,7 @@ function mathGuardPlugin(this: any) {
       if (!node || !Array.isArray(node.children)) return;
       for (const child of node.children) {
         if (child?.type === "inlineMath" || child?.type === "math") {
-          // 仅当公式内容非空且含 math-ish 字符才保留渲染。空 value（未闭合的流式前缀、
-          // 或 `$$100 too expensive` 这类把同行文本收进 node.meta 而 value 为空的节点）
-          // 一律按普通文本转义，避免渲染成空白 / 流式时空白闪烁。
-          const value: string = child.value ?? "";
-          const mathish = value.trim().length > 0 && MATH_ISH_CHAR.test(value);
-          if (!mathish) {
+          if (!keepAsMath(child, source)) {
             const start = child.position?.start?.offset;
             const end = child.position?.end?.offset;
             if (typeof start === "number" && typeof end === "number") {
