@@ -616,7 +616,13 @@ export async function revokeSummaryShare(shareId: string): Promise<void> {
 export async function markSummaryRead(
     taskId: number,
     cursors: { team_result_id?: number; personal_version_id?: number },
-): Promise<{ is_unread: boolean; has_pending_invitation: boolean; needs_attention: boolean }> {
+): Promise<{
+    is_unread: boolean;
+    has_pending_invitation: boolean;
+    /** 读 ≠ 提交：标读不清除它，红点留到真的 /submit（owner 2026-08-26） */
+    has_pending_submission?: boolean;
+    needs_attention: boolean;
+}> {
     return post(`/summaries/${taskId}/read`, cursors);
 }
 

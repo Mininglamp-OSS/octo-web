@@ -44,7 +44,7 @@ import SummaryConfirmPage from "./SummaryConfirmPage";
 import * as api from "../api/summaryApi";
 import { SUMMARY_INPUT_MAX_LENGTH } from "../constants/limits";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
-import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
+import { refreshSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 // RefineSection 已移除 — 反馈修改改为在智能总结 chat 里引用总结迭代
 // (见 CHAT-REFERENCE-BASED-DESIGN-v1)
 import OverflowTooltip from "../components/OverflowTooltip";
@@ -963,6 +963,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // may remain PROCESSING. Status polling cannot detect that change, so explicitly
             // notify the list to reload.
             window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskIds: [this.taskId] } }));
+            // has_pending_submission 现在也计入 attention_count，而侧边栏红点只由
+            // 全局列表回写；列表未挂载（聊天内打开详情 / 深链直进）时没人刷它。
+            // 与邀请确认同理，提交后主动重算一次 space 级计数。
+            refreshSummaryAttentionBadge();
         } catch (err: any) {
             Toast.error(err.message || t("summary.detail.submitFailed"));
         }
@@ -980,6 +984,9 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             // （携 taskIds，与现有广播机制一致）供详情页自身及其他潜在监听者。
             window.dispatchEvent(new CustomEvent("summary-status-change", { detail: { taskIds: [this.taskId] } }));
             window.dispatchEvent(new CustomEvent("summary-task-regenerated", { detail: { taskIds: [this.taskId] } }));
+            // 接受/拒绝都消除了本条的待处理邀请，侧边栏计数需重算（与
+            // SummaryConfirmPage 同一语义；详情页是另一个应答入口）。
+            refreshSummaryAttentionBadge();
         } catch (err: any) {
             Toast.error(err.message || t("summary.common.operationFailed"));
         }
@@ -4073,7 +4080,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
             await api.confirmSchedule(scheduleItem.schedule_id);
             // schedule 邀请也是 pending_invitation_count 的组成部分；确认成功后
             // 立即按当前 Space 重算，即使等待期间用户已切到另一条总结。
-            refreshPendingInvitationBadge();
+            refreshSummaryAttentionBadge();
             // 迟到（已切 task）：不回显新 task（confirmingSchedule 由 finally 复位）。
             if (this.taskId !== requestTaskId) return;
             Toast.success(t("summary.detail.scheduleConfirmed"));

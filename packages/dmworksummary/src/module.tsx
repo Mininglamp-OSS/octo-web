@@ -11,7 +11,7 @@ import ScheduleListPage from "./pages/ScheduleListPage";
 import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
 import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
-import { getPendingInvitationBadge, refreshPendingInvitationBadge } from "./utils/summaryMenuBadge";
+import { getSummaryAttentionBadge, refreshSummaryAttentionBadge } from "./utils/summaryAttentionBadge";
 import { isSupportedChannelType } from "./utils/channelType";
 import { SMALL_SCREEN_WIDTH } from "@octo/base/src/Components/WKLayout/layoutWidth";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
@@ -174,7 +174,7 @@ export class SummaryModule implements IModule {
                 );
                 // #1359 未处理邀请红点：badge 字段与 NavRail 渲染已存在，
                 // 此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
-                menu.badge = getPendingInvitationBadge();
+                menu.badge = getSummaryAttentionBadge();
                 // 点击「总结」：主区 SummaryListPage 已由 MainContentLeft 按
                 // currentMenus.routePath(/summary) 渲染（Menu 激活即挂载唯一实例）。
                 // 右栏默认展示新建总结页（取代原先的欢迎占位页）——产品要求进入
@@ -214,12 +214,12 @@ export class SummaryModule implements IModule {
             // Main 冷启动若修正了缓存 Space，会先发 space-changed 再发
             // space-ready；首刷统一交给 space-ready，避免同一次启动请求两次。
             if (!initialSpaceReady) return;
-            refreshPendingInvitationBadge();
+            refreshSummaryAttentionBadge();
         };
         _spaceReadyHandler = () => {
             initialSpaceReady = true;
             // 此时登录态与 X-Space-Id 已就绪，安全执行一次冷启动首刷。
-            refreshPendingInvitationBadge();
+            refreshSummaryAttentionBadge();
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
         WKApp.mittBus.on('space-ready', _spaceReadyHandler);

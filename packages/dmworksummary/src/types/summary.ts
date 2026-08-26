@@ -509,9 +509,12 @@ export interface ListSummariesParams {
 export interface ListSummariesResponse {
     items: SummaryListItem[];
     total: number;
+    /** 未读 ∪ 未处理邀请 ∪ 待提交，与卡片 needs_attention 同源；侧边栏红点取此值 */
     attention_count: number;
     unread_count: number;
     pending_invitation_count: number;
+    /** 多人总结中个人总结已生成但未 /submit 的条数 */
+    pending_submission_count?: number;
 }
 
 /** 定时配置参与者（participant_config 内嵌，含 V5 一次性确认态） */

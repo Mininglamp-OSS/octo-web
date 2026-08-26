@@ -84,6 +84,30 @@ describe('SummaryListPage summary-read synchronization', () => {
         expect((page.state as any).items[1]).toMatchObject({ is_unread: false, needs_attention: false });
     });
 
+    // Reading is not submitting (owner decision 2026-08-26). A server that
+    // returns needsAttention keeps the dot; the legacy fallback path must not
+    // undo it either, or opening the detail page silently drops the "your turn
+    // to submit" signal for every multi-person summary.
+    it('keeps the dot for a pending submission, both from the server flag and the fallback', () => {
+        const page = makePage([
+            { task_id: 1, is_unread: true, has_pending_invitation: false, has_pending_submission: true, needs_attention: true },
+            { task_id: 2, is_unread: true, has_pending_invitation: false, has_pending_submission: true, needs_attention: true },
+        ]);
+
+        // Server-provided needsAttention (MarkSummaryRead re-derives it including
+        // the submission signal).
+        (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
+            detail: { taskId: 1, isUnread: false, needsAttention: true },
+        }));
+        // Legacy/omitted needsAttention: the fallback must consider both signals.
+        (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
+            detail: { taskId: 2, isUnread: false },
+        }));
+
+        expect((page.state as any).items[0]).toMatchObject({ is_unread: false, needs_attention: true });
+        expect((page.state as any).items[1]).toMatchObject({ is_unread: false, needs_attention: true });
+    });
+
     it('ignores events without a taskId', () => {
         const page = makePage([{ task_id: 1, is_unread: true, needs_attention: true }]);
 

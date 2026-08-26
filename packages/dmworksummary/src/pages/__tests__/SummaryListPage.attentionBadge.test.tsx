@@ -1,7 +1,7 @@
 /**
- * SummaryListPage 侧边栏邀请红点接线测试 (#1359)。
+ * SummaryListPage 侧边栏待关注红点接线测试 (#1359)。
  *
- * 只有全局列表 loadData 成功时才用 pending_invitation_count 同步 NavRail；
+ * 只有全局列表 loadData 成功时才用 attention_count 同步 NavRail；
  * 聊天侧栏是嵌入式 channel 实例，不拥有全局导航状态。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -30,7 +30,7 @@ vi.mock('../../api/summaryApi');
 import * as api from '../../api/summaryApi';
 import { WKApp } from '@octo/base';
 import SummaryListPage from '../SummaryListPage';
-import { getPendingInvitationBadge, setPendingInvitationBadge } from '../../utils/summaryMenuBadge';
+import { getSummaryAttentionBadge, setSummaryAttentionBadge } from '../../utils/summaryAttentionBadge';
 
 function deferred<T>() {
     let resolve!: (value: T) => void;
@@ -62,80 +62,81 @@ function makePage(props: Record<string, unknown> = {}) {
     return page;
 }
 
-describe('SummaryListPage — 侧边栏邀请红点同步 (#1359)', () => {
+describe('SummaryListPage — 侧边栏待关注红点同步 (#1359)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         WKApp.shared.currentSpaceId = 'space-123';
-        setPendingInvitationBadge(0);
+        setSummaryAttentionBadge(0);
     });
 
-    it('全局列表 loadData 用后端 pending_invitation_count 同步红点', async () => {
+    it('全局列表 loadData 用后端 attention_count 同步红点', async () => {
         vi.mocked(api.listSummaries).mockResolvedValue({
             items: [],
             total: 0,
-            attention_count: 0,
-            unread_count: 0,
-            pending_invitation_count: 3,
+            attention_count: 3,
+            unread_count: 1,
+            pending_invitation_count: 1,
+            pending_submission_count: 1,
         } as any);
 
         const page = makePage();
         await (page as any).loadData();
 
-        expect(getPendingInvitationBadge()).toBe(3);
+        expect(getSummaryAttentionBadge()).toBe(3);
     });
 
     it('聊天侧栏（带 channelId）不覆盖全局 Space badge', async () => {
         vi.mocked(api.listSummaries).mockResolvedValue({
             items: [],
             total: 0,
-            attention_count: 0,
-            unread_count: 0,
-            pending_invitation_count: 9,
+            attention_count: 9,
+            unread_count: 9,
+            pending_invitation_count: 0,
         } as any);
 
-        setPendingInvitationBadge(2);
+        setSummaryAttentionBadge(2);
         const page = makePage({ channelId: 'ch-1' });
         await (page as any).loadData();
 
-        expect(getPendingInvitationBadge()).toBe(2);
+        expect(getSummaryAttentionBadge()).toBe(2);
     });
 
-    it('后端未返回 pending_invitation_count 时红点归零', async () => {
+    it('后端未返回 attention_count 时红点归零', async () => {
         vi.mocked(api.listSummaries).mockResolvedValue({ items: [], total: 0 } as any);
 
-        setPendingInvitationBadge(4);
+        setSummaryAttentionBadge(4);
         const page = makePage();
         await (page as any).loadData();
 
-        expect(getPendingInvitationBadge()).toBe(0);
+        expect(getSummaryAttentionBadge()).toBe(0);
     });
 
     it('跨 Space 的迟到列表响应不覆盖新 Space badge', async () => {
         const response = deferred<any>();
         vi.mocked(api.listSummaries).mockReturnValueOnce(response.promise);
-        setPendingInvitationBadge(2);
+        setSummaryAttentionBadge(2);
 
         WKApp.shared.currentSpaceId = 'space-a';
         const page = makePage();
         const pending = (page as any).loadData();
         WKApp.shared.currentSpaceId = 'space-b';
-        response.resolve({ items: [], total: 0, pending_invitation_count: 9 });
+        response.resolve({ items: [], total: 0, attention_count: 9 });
         await pending;
 
-        expect(getPendingInvitationBadge()).toBe(2);
+        expect(getSummaryAttentionBadge()).toBe(2);
     });
 
     it('卸载后的列表响应不再写全局 badge', async () => {
         const response = deferred<any>();
         vi.mocked(api.listSummaries).mockReturnValueOnce(response.promise);
-        setPendingInvitationBadge(2);
+        setSummaryAttentionBadge(2);
 
         const page = makePage();
         const pending = (page as any).loadData();
         (page as any).isMounted_ = false;
-        response.resolve({ items: [], total: 0, pending_invitation_count: 9 });
+        response.resolve({ items: [], total: 0, attention_count: 9 });
         await pending;
 
-        expect(getPendingInvitationBadge()).toBe(2);
+        expect(getSummaryAttentionBadge()).toBe(2);
     });
 });

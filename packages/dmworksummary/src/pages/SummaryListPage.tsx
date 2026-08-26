@@ -10,7 +10,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
-import { setPendingInvitationBadge } from "../utils/summaryMenuBadge";
+import { setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type {
     SummaryListItem,
     ListSummariesParams,
@@ -119,7 +119,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 ? {
                     ...item,
                     is_unread: detail.isUnread ?? false,
-                    needs_attention: detail.needsAttention ?? Boolean(item.has_pending_invitation),
+                    // 后端只在旧版本省略 needsAttention；兼容回退必须覆盖全部
+                    // 非未读信号，否则标读会误清邀请/待提交红点。尤其是待提交：
+                    // 看过 ≠ 已提交（owner 2026-08-26），红点应留到真的 /submit。
+                    needs_attention: detail.needsAttention
+                        ?? (Boolean(item.has_pending_invitation) || Boolean(item.has_pending_submission)),
                 }
                 : item),
         }));
@@ -231,7 +235,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             // #1359 只有全局列表拥有写 NavRail badge 的职责。后端 count 虽然是
             // Space 级，但聊天侧栏是嵌入式 channel 实例，不应改写全局导航状态。
             if (!this.props.channelId) {
-                setPendingInvitationBadge(resp.pending_invitation_count ?? 0);
+                setSummaryAttentionBadge(resp.attention_count ?? 0);
             }
             this.setState({
                 items: resp.items,

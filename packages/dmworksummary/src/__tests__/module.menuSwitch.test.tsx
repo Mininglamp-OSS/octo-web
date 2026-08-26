@@ -61,9 +61,9 @@ vi.mock("../features/summaryShare/navigation", () => ({
 vi.mock("../utils/chatSummaryActions", () => ({
   notifyChatSummaryCreated: vi.fn(),
 }));
-vi.mock("../utils/summaryMenuBadge", () => ({
-  getPendingInvitationBadge: () => 0,
-  refreshPendingInvitationBadge: vi.fn(),
+vi.mock("../utils/summaryAttentionBadge", () => ({
+  getSummaryAttentionBadge: () => 0,
+  refreshSummaryAttentionBadge: vi.fn(),
 }));
 vi.mock("../utils/channelType", () => ({
   isSupportedChannelType: () => true,
@@ -78,7 +78,7 @@ import { WKApp } from "@octo/base";
 import { getSummaryShare } from "../api/summaryApi";
 import SummaryCreatePage from "../pages/SummaryCreatePage";
 import { SummaryModule } from "../module";
-import { refreshPendingInvitationBadge } from "../utils/summaryMenuBadge";
+import { refreshSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 
 function registeredHandler(event: string): () => void {
   const call = vi.mocked(WKApp.mittBus.on).mock.calls.find(
@@ -160,7 +160,7 @@ describe("SummaryModule guarded menu switching", () => {
   it("refreshes the invitation badge once when the initial Space becomes ready", () => {
     registeredHandler("space-ready")();
 
-    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
   });
 
   it("NavRail summary onPress opens the create page by default without pushing a duplicate list page", () => {
@@ -209,12 +209,12 @@ describe("SummaryModule guarded menu switching", () => {
 
   it("does not double-fetch when boot repairs Space before publishing ready", () => {
     registeredHandler("space-changed")();
-    expect(refreshPendingInvitationBadge).not.toHaveBeenCalled();
+    expect(refreshSummaryAttentionBadge).not.toHaveBeenCalled();
 
     registeredHandler("space-ready")();
-    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(1);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);
 
     registeredHandler("space-changed")();
-    expect(refreshPendingInvitationBadge).toHaveBeenCalledTimes(2);
+    expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(2);
   });
 });
