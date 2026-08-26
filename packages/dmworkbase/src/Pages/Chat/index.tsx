@@ -1313,7 +1313,7 @@ export class ChatContentPage extends Component<
                       tabIndex={0}
                       aria-controls="chat-channel-setting-panel"
                       aria-expanded={showChannelSetting}
-                      aria-label={t("base.chatPage.channelSettings")}
+                      aria-label={t("base.channelSetting.title")}
                       onClick={(e) => {
                         e.stopPropagation();
                         if (!this.state.showChannelSetting) {
