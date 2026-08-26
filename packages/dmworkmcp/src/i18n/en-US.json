@@ -194,7 +194,10 @@
     "mode": {
       "all": "All",
       "mine": "Mine"
-    }
+    },
+    "sortAriaLabel": "Connector sort",
+    "sortLatest": "Latest",
+    "sortHottest": "Hottest"
   },
   "publishMenu": {
     "botTitle": "Publish via Bot",

@@ -194,7 +194,10 @@
     "mode": {
       "all": "全部",
       "mine": "我的"
-    }
+    },
+    "sortAriaLabel": "连接器排序",
+    "sortLatest": "最新",
+    "sortHottest": "最热"
   },
   "publishMenu": {
     "botTitle": "Bot 上架",

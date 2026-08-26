@@ -132,6 +132,9 @@ export type McpCreatedByType = "human" | "bot" | "import";
 
 export type McpSource = "system" | "space" | "mine";
 
+/** Connector (MCP) discovery sort options. */
+export type McpSort = "latest" | "hottest";
+
 /** A category filter option with its live count. */
 export interface McpCategory {
   key: string;
@@ -154,7 +157,10 @@ export interface ListMcpParams {
    *  by widening the type when the UX actually needs it. */
   createdByType?: McpCreatedByType;
   tags?: string[];
-  sort?: "relevance" | "updated" | "verified";
+  /** Discovery sort. "latest" → backend `newest`, "hottest" → backend
+   *  `installs` (install-count popularity). The unified plugin list supports
+   *  both for the connector plugin type. */
+  sort?: McpSort;
   /** Page size; backend clamps to [1, 100], defaulting to 20 when 0/absent. */
   limit?: number;
   /** Row offset; defaults to 0. */

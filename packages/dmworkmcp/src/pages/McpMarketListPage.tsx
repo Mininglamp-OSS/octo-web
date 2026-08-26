@@ -6,7 +6,7 @@ import { Bot, Check, ChevronDown, SlidersHorizontal, Upload } from "lucide-react
 import { I18nContext, t, WKApp, WKButton, Dap } from "@octo/base";
 import { fetchMcpDetail, fetchMcpList, fetchMcpMine, fetchMcpTags, McpTagSuggestion } from "../api/mcpService";
 import { mcpListErrorI18nKey } from "../api/mcpListError";
-import type { McpCategory, McpDetail, McpListItem } from "../types/mcp";
+import type { McpCategory, McpDetail, McpListItem, McpSort } from "../types/mcp";
 import McpCard from "../components/McpCard";
 import McpDetailModal from "../components/McpDetailModal";
 import McpCreateModal from "../components/McpCreateModal";
@@ -46,6 +46,9 @@ interface McpMarketListPageState {
    *  resolves. */
   tagSuggestions: McpTagSuggestion[];
   mode: ListMode;
+  /** Discovery sort (market variant only). Default 最热 (install popularity),
+   *  matching the skill/expert markets. */
+  sort: McpSort;
   offset: number;
   total: number;
   detailId: string | null;
@@ -99,6 +102,7 @@ export default class McpMarketListPage extends Component<
     tagQuery: "",
     tagSuggestions: [],
     mode: "all",
+    sort: "hottest",
     offset: 0,
     total: 0,
     detailId: null,
@@ -317,6 +321,7 @@ export default class McpMarketListPage extends Component<
         keyword: this.state.keyword,
         categories: this.state.categoriesSelected,
         tags: this.state.tagsSelected,
+        sort: this.state.sort,
         limit: PAGE_SIZE,
         offset: 0,
       });
@@ -366,6 +371,7 @@ export default class McpMarketListPage extends Component<
         keyword: this.state.keyword,
         categories: this.state.categoriesSelected,
         tags: this.state.tagsSelected,
+        sort: this.state.sort,
         limit: PAGE_SIZE,
         offset,
       });
@@ -483,6 +489,12 @@ export default class McpMarketListPage extends Component<
       // 以 safe() 自吞异常(Dap 未初始化 / 测试未 mock 时静默),不回灌到本回调。
       if (value.trim()) Dap.shared.track("market_searched", {});
     }, 300);
+  };
+
+  private handleSortChange = (sort: McpSort) => {
+    if (sort === this.state.sort) return;
+    this.setState({ sort }, () => this.loadData());
+    Dap.shared.track("market_mcp_sorted", { sort_by: sort });
   };
 
   private handleCategory = (key: string) => {
@@ -769,6 +781,33 @@ export default class McpMarketListPage extends Component<
               </div>
             ) : (
               <>
+                {this.props.variant !== "mine" && (
+                  // Reuses the expert market's sort styling (same package) so the
+                  // three markets read alike. 最新 → newest, 最热 → install popularity.
+                  <div className="wk-mcp-expert-result-summary">
+                    <div
+                      className="wk-mcp-expert-sort"
+                      aria-label={t("mcp.list.sortAriaLabel")}
+                    >
+                      <div className="wk-mcp-expert-sort__options">
+                        {([
+                          ["latest", "mcp.list.sortLatest"],
+                          ["hottest", "mcp.list.sortHottest"],
+                        ] as Array<[McpSort, string]>).map(([value, labelKey]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            className={this.state.sort === value ? "is-active" : ""}
+                            aria-pressed={this.state.sort === value}
+                            onClick={() => this.handleSortChange(value)}
+                          >
+                            <span>{t(labelKey)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {items.length === 0 ? (
                   <div className="wk-mcp__state">{t("mcp.list.empty")}</div>
                 ) : (

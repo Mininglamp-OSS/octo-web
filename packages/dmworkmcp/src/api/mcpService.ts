@@ -682,10 +682,12 @@ async function fetchMcpListPath(
   if (mode === "mine") query.mode = "mine";
   const keyword = params.keyword?.trim();
   if (keyword) query.q = keyword;
-  // The unified list has no relevance scoring; newest-first covers both browse
-  // and search ordering — matching expertService/skillApiReal (which map their
-  // "latest" onto "newest") and the backend's default sort.
-  query.sort = "newest";
+  // Discovery sort maps onto the unified plugin list (see
+  // internal/repository/plugin/read.go): "latest" → newest, "hottest" →
+  // installs (install-count popularity). Default newest for callers that omit
+  // sort, preserving the historical browse order.
+  query.sort =
+    params.sort === "hottest" ? "installs" : params.sort === "latest" ? "newest" : "newest";
   // Multi-tag filter is AND; REPEATED params (`tag=a&tag=b`) so a tag value
   // containing a comma still round-trips intact.
   if (params.tags?.length) {
