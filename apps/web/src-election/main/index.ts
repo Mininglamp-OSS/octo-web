@@ -814,6 +814,11 @@ function registerOpenExternalUrlHandler(): void {
 const trustedShellContents = new WeakSet<Electron.WebContents>();
 
 function trackTrustedShellDocument(win: BrowserWindow) {
+  // Keep the WebContents reference captured while the window is alive. During
+  // app.exit(), Electron can emit navigation/destruction events after the
+  // BrowserWindow has already been destroyed; reading `win.webContents` from
+  // those callbacks throws "Object has been destroyed".
+  const webContents = win.webContents;
   const isTrustedDocument = (url: string) =>
     isTrustedSenderUrl(url, TRUSTED_SHELL_DEV_ORIGIN, TRUSTED_SHELL_FILE_URL);
   const tracker = createTrustedShellDocumentTracker(isTrustedDocument);
@@ -826,17 +831,17 @@ function trackTrustedShellDocument(win: BrowserWindow) {
   ) => {
     tracker.update(url, isMainFrame);
     if (tracker.isTrusted()) {
-      trustedShellContents.add(win.webContents);
+      trustedShellContents.add(webContents);
     } else {
-      trustedShellContents.delete(win.webContents);
+      trustedShellContents.delete(webContents);
     }
   };
   // Trust follows committed main-frame documents only. A will-navigate or
   // will-redirect can be cancelled (for example by an external-protocol
   // link), in which case revoking here would permanently disable IPC for the
   // still-visible shell because no did-frame-navigate event restores it.
-  win.webContents.on("did-frame-navigate", updateTrust);
-  win.webContents.once("destroyed", () => trustedShellContents.delete(win.webContents));
+  webContents.on("did-frame-navigate", updateTrust);
+  webContents.once("destroyed", () => trustedShellContents.delete(webContents));
 }
 
 // Guards every OIDC IPC handler against callers that are not our own
