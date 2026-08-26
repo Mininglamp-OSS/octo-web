@@ -10,7 +10,7 @@ import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
-import { setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
+import { beginSummaryAttentionRead, commitSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 import type {
     SummaryListItem,
     ListSummariesParams,
@@ -119,19 +119,18 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             items: items.map(item => {
                 if (item.task_id !== taskId) return item;
                 // 看过 ≠ 已提交（owner 2026-08-26）：标读不清除待提交红点。
-                // 优先用服务端刚回的 hasPendingSubmission（MarkSummaryRead 现在会返回），
+                // 优先用服务端刚回的 hasPendingSubmission（MarkSummaryRead 新版会返回），
                 // 它比列表里可能已陈旧的 item.has_pending_submission 新。
                 const pendingSubmission = detail.hasPendingSubmission ?? item.has_pending_submission;
                 return {
                     ...item,
                     is_unread: detail.isUnread ?? false,
                     has_pending_submission: pendingSubmission,
-                    // 后端只在旧版本省略 needsAttention；兼容回退必须覆盖全部
-                    // 非未读信号，否则标读会误清邀请/待提交红点。
-                    // ⚠️ 旧后端的 needs_attention 不含待提交，会返回 false 并赢过 ??，
-                    // 所以这里额外 OR 一次：只要确实欠着提交，红点就不该掉。
-                    needs_attention: (detail.needsAttention
-                        ?? (Boolean(item.has_pending_invitation) || Boolean(pendingSubmission)))
+                    // 两个信号分开处理：
+                    // ・邀请：新后端的 needsAttention 已包含它；旧后端省略字段时回退到卡片标记。
+                    // ・待提交：旧后端的 needs_attention 【不】含它，会返回 false 并赢过 ??，
+                    //   所以它必须在 ?? 之外单独 OR，否则标读会误清用户确实欠着的提交。
+                    needs_attention: (detail.needsAttention ?? Boolean(item.has_pending_invitation))
                         || Boolean(pendingSubmission),
                 };
             }),
@@ -214,6 +213,11 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // would still commit.
         const seq = ++this.loadDataSeq;
         const requestSpaceId = WKApp.shared.currentSpaceId;
+        // 领一个待关注计数的读取号，必须在 await 之前：号码代表“这份数据是
+        // 什么时候向服务端要的”。列表与 page_size=1 探测是两个并行写者，按发出
+        // 时刻排序；否则一个先发后到、快照更旧的列表响应会盖掉用户刚触发的
+        // 正确探测（读/提交/应答），红点卡在陈值。
+        const attentionTicket = this.props.channelId ? null : beginSummaryAttentionRead();
         this.isLoadingData = true;
         // Only toggle loading. Do NOT pre-set page:1 / hasMore:true here —
         // if the request fails in silent mode we would leave items at the
@@ -243,8 +247,10 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             if (!this.isMounted_ || WKApp.shared.currentSpaceId !== requestSpaceId) return;
             // #1359 只有全局列表拥有写 NavRail badge 的职责。后端 count 虽然是
             // Space 级，但聊天侧栏是嵌入式 channel 实例，不应改写全局导航状态。
-            if (!this.props.channelId) {
-                setSummaryAttentionBadge(resp.attention_count ?? 0);
+            // 用发请求前领的 ticket 提交：期间若有更新的读取发出，本次就是陈旧
+            // 快照，丢弃即可——那个更新的读取会带回正确值。
+            if (attentionTicket !== null) {
+                commitSummaryAttentionBadge(attentionTicket, resp.attention_count ?? 0);
             }
             this.setState({
                 items: resp.items,

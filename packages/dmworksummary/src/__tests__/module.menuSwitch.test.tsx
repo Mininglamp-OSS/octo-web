@@ -64,6 +64,7 @@ vi.mock("../utils/chatSummaryActions", () => ({
 vi.mock("../utils/summaryAttentionBadge", () => ({
   getSummaryAttentionBadge: () => 0,
   refreshSummaryAttentionBadge: vi.fn(),
+  setSummaryAttentionBadge: vi.fn(),
 }));
 vi.mock("../utils/channelType", () => ({
   isSupportedChannelType: () => true,
@@ -78,7 +79,7 @@ import { WKApp } from "@octo/base";
 import { getSummaryShare } from "../api/summaryApi";
 import SummaryCreatePage from "../pages/SummaryCreatePage";
 import { SummaryModule } from "../module";
-import { refreshSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
+import { refreshSummaryAttentionBadge, setSummaryAttentionBadge } from "../utils/summaryAttentionBadge";
 
 function registeredHandler(event: string): () => void {
   const call = vi.mocked(WKApp.mittBus.on).mock.calls.find(
@@ -216,5 +217,27 @@ describe("SummaryModule guarded menu switching", () => {
 
     registeredHandler("space-changed")();
     expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(2);
+  });
+
+  it("zeroes the badge on a Space switch so a failed refresh cannot show the previous Space's count", () => {
+    // The refresh fails silently by design (the badge is a nicety, not worth a
+    // toast). Without zeroing first, that failure mode is "another Space's
+    // number" rather than "no number" — far more misleading now that the count
+    // means unread ∪ invitations ∪ pending submissions rather than invitations
+    // alone.
+    registeredHandler("space-ready")();
+    vi.mocked(setSummaryAttentionBadge).mockClear();
+
+    registeredHandler("space-changed")();
+
+    expect(setSummaryAttentionBadge).toHaveBeenCalledWith(0);
+  });
+
+  it("does not zero the badge on the cold-start space-changed that precedes space-ready", () => {
+    // Boot may emit space-changed before space-ready; that path deliberately
+    // defers to space-ready, so it must not clear the badge either.
+    registeredHandler("space-changed")();
+
+    expect(setSummaryAttentionBadge).not.toHaveBeenCalled();
   });
 });

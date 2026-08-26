@@ -23,25 +23,45 @@ import * as api from '../api/summaryApi';
  * 已接线 setRefresh → forceUpdate），NavRail 即重绘。
  */
 let summaryAttentionBadge = 0;
-let refreshSeq = 0;
-// 在飞请求按 Space 缓存。只合并同一 Space 的并发拉取；跨 Space 绝不复用，
-// 否则切空间后的调用会拿到上一个 Space 的计数。
-let inFlight: { spaceId: string; promise: Promise<void> } | null = null;
+// 计数读取的单调取号。写入按【请求发出时刻】排序，而不是按响应到达顺序：
+// 只有“自己发出后再没人发过新读取”的响应才能落盘。两个写者（全局列表
+// loadData 与 page_size=1 探测）共用同一个号段，否则先发后到的旧快照会盖
+// 掉新值。
+let issueSeq = 0;
 
 export function getSummaryAttentionBadge(): number {
     return summaryAttentionBadge;
 }
 
 /**
- * 更新计数并刷新 NavRail。相同值不重复触发，避免宿主 forceUpdate
+ * 领取一个读取号。必须在发起请求【之前】调用，因为号码代表的是
+ * “这份数据是什么时候向服务端要的”。在 await 之后才取号等于把到达顺序
+ * 当成发出顺序，正是本机制要避开的错。
+ */
+export function beginSummaryAttentionRead(): number {
+    return ++issueSeq;
+}
+
+/**
+ * 用领号时拿到的 ticket 提交一个读取结果。期间若有更新的读取被发出，
+ * 本次结果就是陈旧快照，丢弃——那个更新的读取会带回正确值。
+ * 若它失败，按“静默失败保持旧值”的一贯策略，宁可不刷也不写旧数。
+ */
+export function commitSummaryAttentionBadge(ticket: number, count: number): void {
+    if (ticket !== issueSeq) return;
+    setSummaryAttentionBadge(count);
+}
+
+/**
+ * 直接设值（不参与排序）。相同值不重复触发，避免宿主 forceUpdate
  * 风暴（docs/module.tsx 注释：宿主 re-render 是高频 sync priority）。
  *
- * 写入同时作废掉在飞的 refresh（共用 refreshSeq）：全局列表的响应携带完整
- * 分页数据，至少与并发的 page_size=1 探测同鲜。不共用序号的话，两个写者
- * 只是“碰巧现在返回同一个数”，而不是真的有序。
+ * ⚠️ 它【不】推进 issueSeq。曾经推过，目的是让列表写入作废在飞探测，
+ * 但那是按到达顺序作废：一个发出更早、携带更旧快照的 loadData 响应（甚至
+ * 是值没变的 no-op 写入）会把刚发出的正确探测杀掉，红点卡在陈值。
+ * 现在排序一律走 beginSummaryAttentionRead / commitSummaryAttentionBadge。
  */
 export function setSummaryAttentionBadge(count: number): void {
-    refreshSeq++;
     const next = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
     if (next === summaryAttentionBadge) return;
     summaryAttentionBadge = next;
@@ -53,27 +73,24 @@ export function setSummaryAttentionBadge(count: number): void {
  * 失败静默：红点是锦上添花，网络异常不应打扰用户（与 SummaryListPage
  * silent refresh 同样的克制原则）。
  *
- * 同 Space 并发合并：一次变更常常同时触发多个入口（如提交后既发
- * summary-task-regenerated 让列表重拉、又直接调本函数兼顾列表未挂载的
- * 情况），共用同一个在飞请求，避免发出两个等价的 page_size=1 查询。
+ * ⚠️ 每次调用都真的发一个请求，【不】合并并发。曾经按同 Space 合并过，
+ * 为的是省一个 page_size=1 的 GET，但那是错的：后来者的变更可能在在飞请求
+ * 发出【之后】才提交，复用它就是拿一份早于自己变更的快照。最常见的路径
+ * 就会撞上：打开一条 BY_PERSON 总结会发两次 markSummaryRead（loadDetail 一次，
+ * 它调的 loadPersonalResult 再一次），而后端 unread = 团队未读 【OR】个人未读，
+ * 第一次读根本清不掉计数——合并后第二次刷新直接被吞，红点全没了导航栏却
+ * 还显示着数字。省一个轻量 GET 不值这个代价。
  */
 export async function refreshSummaryAttentionBadge(): Promise<void> {
     const spaceId = WKApp.shared.currentSpaceId;
     if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return;
-    if (inFlight && inFlight.spaceId === spaceId) return inFlight.promise;
 
-    const seq = ++refreshSeq;
-    const promise = (async () => {
-        try {
-            const resp = await api.listSummaries({ page: 1, page_size: 1 });
-            if (seq !== refreshSeq || WKApp.shared.currentSpaceId !== spaceId) return;
-            setSummaryAttentionBadge(resp.attention_count ?? 0);
-        } catch {
-            // 静默失败，保持旧值。
-        } finally {
-            if (inFlight?.promise === promise) inFlight = null;
-        }
-    })();
-    inFlight = { spaceId, promise };
-    return promise;
+    const ticket = beginSummaryAttentionRead();
+    try {
+        const resp = await api.listSummaries({ page: 1, page_size: 1 });
+        if (WKApp.shared.currentSpaceId !== spaceId) return;
+        commitSummaryAttentionBadge(ticket, resp.attention_count ?? 0);
+    } catch {
+        // 静默失败，保持旧值。
+    }
 }

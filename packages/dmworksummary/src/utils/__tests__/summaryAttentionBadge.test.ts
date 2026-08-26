@@ -17,6 +17,8 @@ import {
     getSummaryAttentionBadge,
     setSummaryAttentionBadge,
     refreshSummaryAttentionBadge,
+    beginSummaryAttentionRead,
+    commitSummaryAttentionBadge,
 } from '../summaryAttentionBadge';
 
 import { WKApp } from '@octo/base';
@@ -152,5 +154,104 @@ describe('summaryAttentionBadge (#1359)', () => {
         responseA.resolve({ attention_count: 9 });
         await pendingA;
         expect(getSummaryAttentionBadge()).toBe(2);
+    });
+});
+
+// 写入必须按【请求发出时刻】排序，不是按响应到达顺序。两个写者（全局列表
+// loadData 与 page_size=1 探测）并行存活，而且打开一条 BY_PERSON 总结天然会发
+// 两次 markSummaryRead（loadDetail 一次，loadPersonalResult 再一次），所以这里的
+// 交错是日常路径而非边界情况。
+describe('summaryAttentionBadge — 按发出时刻排序', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        WKApp.shared.currentSpaceId = 'space-123';
+        WKApp.loginInfo.uid = 'test-uid';
+        vi.spyOn(WKApp.loginInfo, 'isLogined').mockReturnValue(true);
+        vi.spyOn(WKApp.menus, 'refresh').mockImplementation(() => {});
+        setSummaryAttentionBadge(0);
+        vi.mocked(WKApp.menus.refresh).mockClear();
+    });
+
+    // 回归：曾经按同 Space 合并在飞请求，第二个调用直接复用第一个的 promise。
+    // 但第二次变更（个人未读标读）是在第一个请求【发出之后】才提交的，而后端
+    // unread = 团队未读 OR 个人未读，所以第一次探测的快照里计数还没降——复用它
+    // 就是拿一份早于自己变更的陈旧值，且不会再补一次请求。
+    it('在飞期间发起的刷新会另发请求，并以后发者为准', async () => {
+        const first = deferred<any>();
+        const second = deferred<any>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(first.promise)
+            .mockReturnValueOnce(second.promise);
+
+        const pendingFirst = refreshSummaryAttentionBadge();   // 团队标读后
+        const pendingSecond = refreshSummaryAttentionBadge();  // 个人标读后
+
+        expect(api.listSummaries).toHaveBeenCalledTimes(2);
+
+        // 早发的探测带回变更前的快照，不得落盘。
+        first.resolve({ attention_count: 1 });
+        await pendingFirst;
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        second.resolve({ attention_count: 0 });
+        await pendingSecond;
+        expect(getSummaryAttentionBadge()).toBe(0);
+    });
+
+    it('后发的探测先返回时，早发的陈旧响应不得覆盖它', async () => {
+        const first = deferred<any>();
+        const second = deferred<any>();
+        vi.mocked(api.listSummaries)
+            .mockReturnValueOnce(first.promise)
+            .mockReturnValueOnce(second.promise);
+
+        const pendingFirst = refreshSummaryAttentionBadge();
+        const pendingSecond = refreshSummaryAttentionBadge();
+
+        second.resolve({ attention_count: 2 });
+        await pendingSecond;
+        expect(getSummaryAttentionBadge()).toBe(2);
+
+        first.resolve({ attention_count: 7 });
+        await pendingFirst;
+        expect(getSummaryAttentionBadge()).toBe(2);
+    });
+
+    // 回归：setSummaryAttentionBadge 曾经无条件 refreshSeq++，连值没变的 no-op 写入
+    // 都会把刚发出的探测杀掉。一个什么都没改的写者不应该能作废更新的读取。
+    it('直接设值（含 no-op）不会作废在飞探测', async () => {
+        const probe = deferred<any>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(probe.promise);
+        setSummaryAttentionBadge(3);
+
+        const pending = refreshSummaryAttentionBadge();
+        // 列表写入一个相同值（no-op），不得影响探测。
+        setSummaryAttentionBadge(3);
+
+        probe.resolve({ attention_count: 2 });
+        await pending;
+        expect(getSummaryAttentionBadge()).toBe(2);
+    });
+
+    // 列表在发请求前领 ticket：它的快照早于探测，就算先返回也不能盖。
+    it('先领号的列表写入不能覆盖后领号的探测', async () => {
+        const probe = deferred<any>();
+        vi.mocked(api.listSummaries).mockReturnValueOnce(probe.promise);
+
+        const listTicket = beginSummaryAttentionRead();   // 列表先发请求
+        const pending = refreshSummaryAttentionBadge();   // 用户随后标读
+
+        commitSummaryAttentionBadge(listTicket, 3);       // 列表先返回，快照更旧
+        expect(getSummaryAttentionBadge()).toBe(0);
+
+        probe.resolve({ attention_count: 2 });
+        await pending;
+        expect(getSummaryAttentionBadge()).toBe(2);
+    });
+
+    it('后领号的列表写入可以落盘', () => {
+        const ticket = beginSummaryAttentionRead();
+        commitSummaryAttentionBadge(ticket, 5);
+        expect(getSummaryAttentionBadge()).toBe(5);
     });
 });
