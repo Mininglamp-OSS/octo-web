@@ -26,7 +26,7 @@ import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../
 import Provider from "../../Service/Provider";
 import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
-import { selectDoneReminderIDs, isReadToLatest } from "./reminderDone";
+import { selectDoneReminderIDs } from "./reminderDone";
 import { isMessageAuthorAi } from "./replyAiIdentity";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
@@ -2800,18 +2800,19 @@ export class Conversation
     if (!reminders || reminders.length === 0) {
       return;
     }
-    // 是否已真实读到会话最新。不能只靠 browseToMessageSeq >= lastMessage.messageSeq：
-    // 用户自己发消息时 self-send 快捷路径会把 browseToMessageSeq 强推到最新 seq，即使更早
-    // 历史没加载/没看过，会把没看见的 @ 静默标 done。改用真实渲染/加载状态判定（见
-    // isReadToLatest）：无更多历史待上拉，且最后一条消息真实渲染在视口内。
-    const readToLatest = isReadToLatest({
-      lastMessageSeq: this.vm.currentConversation?.lastMessage?.messageSeq,
-      lastVisibleSeq: this.lastVisiableMessage(viewport)?.messageSeq,
-      pullupHasMore: this.vm.pullupHasMore,
-    });
+    // 是否已读到会话最新。用 #1408 指定的信号：browseToMessageSeq >= lastMessage.messageSeq，
+    // 与 vm 的已读语义一致（含自己发消息时把 browseToMessageSeq 推进到最新的快捷路径——发消息
+    // 本就意味着读到最新）。这是“读到最新”而非“那条历史 @ 在视口里”：#1408 的 Fix A 就是要在
+    // 读到最新时把被挤出视口的历史 mention 一并标 done，否则角标永久亮着。lastMessageSeq > 0
+    // 排除尚未拿到 sendack 的空 seq 窗口。
+    const lastMessageSeq = this.vm.currentConversation?.lastMessage?.messageSeq;
+    const scrolledToBottom =
+      typeof lastMessageSeq === "number" &&
+      lastMessageSeq > 0 &&
+      this.vm.browseToMessageSeq >= lastMessageSeq;
 
     const doneReminderIDs = selectDoneReminderIDs(reminders, {
-      readToLatest,
+      scrolledToBottom,
       isVisible: (reminder) => {
         const message = this.vm.findMessageWithMessageSeq(reminder.messageSeq);
         return (

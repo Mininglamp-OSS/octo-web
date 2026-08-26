@@ -31,6 +31,7 @@ import {
   MessageStatus,
   MessageTask,
   MessageText,
+  ReminderType,
   TaskStatus,
   WKSDK,
   Channel,
@@ -1321,6 +1322,68 @@ describe("Conversation attachment and viewport helpers", () => {
     ;(conversation as any).isVisiableMessage = vi.fn(() => true)
     conversation.updateReminderDoneIfNeed({} as any)
     expect(done).toHaveBeenCalledWith([1])
+    done.mockRestore()
+  })
+
+  it("sweeps off-screen mention reminders once read to latest (#1408 wiring)", () => {
+    // 组件级 wiring：验证 browseToMessageSeq >= lastMessage.messageSeq 这条判据确实喂给了
+    // scrolledToBottom 分支，并且只把 mention 兜底、入群申请按可见性处理。
+    const conversation = new Conversation({ channel })
+    const done = vi
+      .spyOn(WKSDK.shared().reminderManager, "done")
+      .mockImplementation(() => {})
+    ;(conversation as any).vm = {
+      messages: [{ message: { messageSeq: 30 } }],
+      browseToMessageSeq: 30,
+      currentConversation: {
+        lastMessage: { messageSeq: 30 },
+        reminders: [
+          // 历史 @，早已滚出视口、消息未加载
+          { reminderID: 1, messageSeq: 10, reminderType: ReminderType.ReminderTypeMentionMe, done: false },
+          // 历史入群申请，同样不在视口内 —— 不能被兜底清掉
+          { reminderID: 2, messageSeq: 15, reminderType: ReminderType.ReminderTypeApplyJoinGroup, done: false },
+          // 视口内可见的最新一条 @
+          { reminderID: 3, messageSeq: 30, reminderType: ReminderType.ReminderTypeMentionMe, done: false },
+        ],
+      },
+      findMessageWithMessageSeq: vi.fn((seq: number) =>
+        seq === 30 ? { message: { messageSeq: 30 } } : undefined
+      ),
+    }
+    ;(conversation as any).isVisiableMessage = vi.fn(
+      (m: any) => m.messageSeq === 30
+    )
+    conversation.updateReminderDoneIfNeed({} as any)
+    expect(done).toHaveBeenCalledWith([1, 3])
+    done.mockRestore()
+  })
+
+  it("does not sweep off-screen mentions when not yet read to latest (#1408 wiring)", () => {
+    const conversation = new Conversation({ channel })
+    const done = vi
+      .spyOn(WKSDK.shared().reminderManager, "done")
+      .mockImplementation(() => {})
+    ;(conversation as any).vm = {
+      messages: [{ message: { messageSeq: 30 } }],
+      // 还没读到最新：browseToMessageSeq < lastMessage.messageSeq
+      browseToMessageSeq: 20,
+      currentConversation: {
+        lastMessage: { messageSeq: 30 },
+        reminders: [
+          { reminderID: 1, messageSeq: 10, reminderType: ReminderType.ReminderTypeMentionMe, done: false },
+          { reminderID: 3, messageSeq: 30, reminderType: ReminderType.ReminderTypeMentionMe, done: false },
+        ],
+      },
+      findMessageWithMessageSeq: vi.fn((seq: number) =>
+        seq === 30 ? { message: { messageSeq: 30 } } : undefined
+      ),
+    }
+    ;(conversation as any).isVisiableMessage = vi.fn(
+      (m: any) => m.messageSeq === 30
+    )
+    conversation.updateReminderDoneIfNeed({} as any)
+    // 只有视口内可见的最新 @ 被标 done，历史 @ 保留
+    expect(done).toHaveBeenCalledWith([3])
     done.mockRestore()
   })
 
