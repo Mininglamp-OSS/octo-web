@@ -1538,24 +1538,6 @@ export default class ConversationVM extends ProviderListener {
     }
 
     /**
-     * 该 type=17 卡当前有效帧是否已「终态」——用于收到权威新帧后撤回本地兜底注解。
-     * 终态 = 有效卡不再是「未终态 progress 卡」：要么命中终态标记（✅/⚠️/…），要么已不是
-     * agent_progress 卡（如终态+回答合并帧剥离了 layout metadata）。只读扩展（read receipt 等，
-     * 无 contentEdit）不改变有效卡，仍判为非终态，不会误撤回兜底。
-     */
-    private progressCardFrameIsTerminal(messageWrap: MessageWrap): boolean {
-        if (messageWrap.contentType !== MessageContentTypeConst.interactiveCard) {
-            return false
-        }
-        const content = messageWrap.content
-        if (!(content instanceof InteractiveCardContent)) {
-            return false
-        }
-        const effective = resolveEffectiveCardContent(content, messageWrap.message.remoteExtra)
-        return !isNonTerminalProgressCard(effective.card)
-    }
-
-    /**
      * 收到某 assistant 的 type=1 final text 后的客户端兜底：若该 assistant 最近一张 type=17 卡是
      * 「未终态」的 progress 卡、且距其最后一次帧到达已空闲够久，则把它降级显示为「已完成（未收到
      * 显式终态）」。严格按 senderId 匹配「最近一张卡」，多助理并发不误伤别人；只叠加本地 UI 态，
@@ -1622,16 +1604,20 @@ export default class ConversationVM extends ProviderListener {
             if (message) {
                 message.message.remoteExtra = messageExtra
                 message.resetParts()
-                // 只在「卡片内容编辑帧」时刷新到达时刻。read receipt 等只读扩展（无 contentEdit）
-                // 不改 progressUpdatedAtSec，否则会重置 3s 空闲判定、把只触发一次的 final-text
-                // 兜底永久压掉（评审 blocker）。门控对齐 resolveEffectiveCardContent 的采用条件。
+                // 只处理「卡片内容编辑帧」（isEdit + InteractiveCardContent contentEdit）；read
+                // receipt 等只读扩展不含 contentEdit，不改有效卡，既不刷新到达时刻、也不撤回本地
+                // 兜底注解。门控对齐 resolveEffectiveCardContent 的采用条件。
                 if (messageExtra.isEdit && messageExtra.contentEdit instanceof InteractiveCardContent) {
+                    // 卡片内容又前进了一帧：刷新到达时刻，供 final-text 兜底重新做空闲判定，
+                    // 避免只读扩展重置 3s 空闲判定把单次 final-text 兜底永久压掉（评审 blocker）。
                     this.stampProgressCardArrival(message)
-                }
-                // 权威终态帧到达即覆盖本地兜底注解：撤回「未收到显式终态」标记，让真实终态正常
-                // 渲染，闭环 client fallback race（评审 blocker）。只读扩展不判为终态，不误撤回。
-                if (message.localFallbackApplied && this.progressCardFrameIsTerminal(message)) {
-                    message.localFallbackApplied = false
+                    // 权威内容编辑帧说明卡片有了新状态，之前叠加的本地兜底注解（「已完成（未收到
+                    // 显式终态）」）已失真，一律撤回：终态帧走正常终态渲染；非终态帧说明卡片又活了，
+                    // 清掉 flag 后可由后续 final text + 空闲判定重新触发，闭环「内容在前进却仍标注
+                    // 已兜底完成」的自相矛盾态（P2-1 终态 + P2-6 非终态）。
+                    if (message.localFallbackApplied) {
+                        message.localFallbackApplied = false
+                    }
                 }
             }
         }

@@ -4,9 +4,11 @@
  * WS-99 client-fallback race 闭环回归。
  *
  * 兜底逻辑：收到某 assistant 的 final text 后把它最近一张「未终态」progress 卡本地标记为
- * `localFallbackApplied`（渲染层显示「未收到显式终态」banner）。本 suite 覆盖评审 blocker——
- * 当权威终态帧随后到达（走 `updateMessageByMessageExtras` 的 contentEdit）时，必须撤回该本地
- * 标记，让真实终态正常渲染；而只读扩展（read receipt，无 contentEdit）不得误撤回。
+ * `localFallbackApplied`（渲染层显示「未收到显式终态」banner）。本 suite 覆盖评审 blocker/P2——
+ * 当权威内容编辑帧（`updateMessageByMessageExtras` 的 contentEdit，无论终态还是非终态）随后到达
+ * 时，卡片内容已前进、兜底注解失真，必须撤回该本地标记（终态帧走正常终态渲染；非终态帧说明卡片
+ * 又活了，撤回后可由后续 final text + 空闲判定重新触发）；而只读扩展（read receipt，无 contentEdit）
+ * 不改内容，不得误撤回、也不得刷新空闲判定。
  *
  * 与 malformedMessageRender.test 一样用 REAL SDK + REAL MessageWrap + REAL
  * InteractiveCardContent，只 mock 掉 ConversationVM 构造所需的重型 App/Service 单例。
@@ -196,9 +198,23 @@ describe("WS-99 client fallback finalize race", () => {
         expect(cardWrap.localFallbackApplied).toBe(true)
     })
 
-    it("仍为进行中的新帧（🤖）不误撤回兜底标记", () => {
+    it("非终态内容编辑帧（🤖 卡片又活了）到达后撤回兜底标记（P2-6）", () => {
         const { vm, cardWrap } = primeFallback()
-        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 正在处理…"))])
+        expect(cardWrap.localFallbackApplied).toBe(true)
+        // 兜底后卡片又收到权威的非终态编辑帧：内容已前进，兜底注解失真，必须撤回，
+        // 避免「内容在动却仍标注已兜底完成」的自相矛盾态。
+        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
+        expect(cardWrap.localFallbackApplied).toBe(false)
+    })
+
+    it("卡片又活了并再次卡住后，后续 final text 能重新触发兜底（P2-6 闭环）", () => {
+        const { vm, cardWrap } = primeFallback()
+        // 非终态编辑帧撤回兜底。
+        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
+        expect(cardWrap.localFallbackApplied).toBe(false)
+        // 再次陷入卡死（把到达时刻推回过去），新的 final text 应重新触发兜底。
+        cardWrap.progressUpdatedAtSec = 0
+        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
         expect(cardWrap.localFallbackApplied).toBe(true)
     })
 
