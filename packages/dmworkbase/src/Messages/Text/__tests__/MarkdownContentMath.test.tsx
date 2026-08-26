@@ -273,6 +273,35 @@ describe("MarkdownContent — 代码内的 $ / $$ 永远不当公式（守卫范
   });
 });
 
+describe("MarkdownContent — 公式内部不被 mention/emoji 分段污染 (reviewer addendum P2)", () => {
+  it("KaTeX 输出层不注入 mention span / emoji img，MathML / annotation 保持纯净", () => {
+    // "mc" 命中 annotation 里的 E=mc^2：修复前 processTextChildren 会递归进 .katex
+    // 子树，把 mention <span>/emoji <img> 插进 MathML <mtext> 与 x-tex annotation。
+    const root = renderContent(
+      <MarkdownContent
+        content={"你好 @小明 看公式 $$E=mc^2$$"}
+        mentions={[
+          { name: "@小明", uid: "u1" },
+          { name: "mc", uid: "u2" },
+        ]}
+        emojis={[{ key: "mc", url: "http://example.com/e.png" }]}
+      />
+    );
+    const katex = root.querySelector(".katex");
+    expect(katex).not.toBeNull();
+    // 公式内部不得出现被注入的 mention/emoji 标记（MathML 里连普通 span 都不该有）
+    expect(katex!.querySelector(".katex-mathml span")).toBeNull();
+    expect(katex!.querySelector("img")).toBeNull();
+    expect(katex!.querySelector(".mention-entity")).toBeNull();
+    expect(katex!.querySelector(".wk-message-text-richemoji")).toBeNull();
+    // 公式外的真实 mention 仍正常渲染（修复只跳过 .katex 子树，不影响正文分段）
+    const mentionEls = Array.from(root.querySelectorAll(".mention-entity"));
+    expect(mentionEls.length).toBe(1);
+    expect(mentionEls[0].textContent).toBe("@小明");
+    expect(katex!.contains(mentionEls[0])).toBe(false);
+  });
+});
+
 describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。

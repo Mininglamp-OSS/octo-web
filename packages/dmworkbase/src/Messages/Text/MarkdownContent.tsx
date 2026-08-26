@@ -99,6 +99,16 @@ const remarkGfmOptions = { singleTilde: false };
 /**
  * KaTeX runs after sanitize: user-derived AST is cleaned first, then trusted KaTeX output keeps
  * its required inline styles and MathML structure. Resource limits prevent pathological formulas.
+ *
+ * ⚠️ Security invariant: because sanitize no longer runs *after* KaTeX, `trust: false` is the only
+ * thing keeping a formula from emitting raw HTML (e.g. `\href`, `\htmlClass`). Do NOT flip it to
+ * true on this shared message path — that would turn arbitrary chat text into an HTML-injection sink.
+ *
+ * Resource bounds (both below KaTeX defaults on purpose, since this renders untrusted chat text):
+ *  - `maxSize: 10`  — clamps `\rule` / strut width+height so a single formula can't blow up layout.
+ *  - `maxExpand: 100` — caps macro expansion against `\newcommand` bombs. Real formulas
+ *    (`aligned`, `pmatrix`, chained arrows, ~40-term user-macro expansions) stay well under 100;
+ *    raise it only if a legitimate formula is observed hitting the cap.
  */
 const mathRehypePlugins: any[] = [
   [rehypeHighlight, { aliases: { json5: "json" }, ignoreMissing: true }],
@@ -566,18 +576,30 @@ function processTextChildren(
         return seg.content;
       });
     }
-    if (React.isValidElement(child) && (child.props as any).children != null) {
-      return React.cloneElement(
-        child as React.ReactElement<any>,
-        {},
-        processTextChildren(
-          (child.props as any).children,
-          mentions,
-          emojis,
-          onMentionClick,
-          isSend
-        )
-      );
+    if (React.isValidElement(child)) {
+      const childProps = child.props as any;
+      // KaTeX 渲染输出（.katex / .katex-display 及其内部 MathML、application/x-tex
+      // annotation）不再向下做 mention/emoji 分段：否则会把 mention <span>（含 onClick）
+      // 或 emoji <img> 插进 MathML 的 <mtext> 与 TeX annotation，产生无效 MathML、
+      // 污染 copy-as-LaTeX 与无障碍读屏。公式内部的 `@名字` / `[emoji]` 应保持公式原文。
+      const className =
+        typeof childProps.className === "string" ? childProps.className : "";
+      if (className.split(/\s+/).some((c) => c.startsWith("katex"))) {
+        return child;
+      }
+      if (childProps.children != null) {
+        return React.cloneElement(
+          child as React.ReactElement<any>,
+          {},
+          processTextChildren(
+            childProps.children,
+            mentions,
+            emojis,
+            onMentionClick,
+            isSend
+          )
+        );
+      }
     }
     return child;
   });
