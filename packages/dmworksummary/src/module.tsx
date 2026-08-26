@@ -1,4 +1,5 @@
 import React from "react";
+import WKSDK, { ConnectStatus } from "wukongimjssdk";
 import type { IModule } from "@octo/base";
 import { i18n, WKApp, Menus, t as translate, Dap } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
@@ -12,6 +13,7 @@ import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
 import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
 import { getSummaryAttentionBadge, refreshSummaryAttentionBadge, setSummaryAttentionBadge } from "./utils/summaryAttentionBadge";
+import { createAttentionSync, shouldRefreshForMessage, type AttentionSync } from "./utils/summaryAttentionSync";
 import { isSupportedChannelType } from "./utils/channelType";
 import { SMALL_SCREEN_WIDTH } from "@octo/base/src/Components/WKLayout/layoutWidth";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
@@ -22,6 +24,12 @@ import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
 let _spaceReadyHandler: (() => void) | null = null;
+// 外部事件→红点同步。模块级单例，与上面两个 handler 同生命周期。
+let _attentionSync: AttentionSync | null = null;
+let _visibilityHandler: (() => void) | null = null;
+let _focusHandler: (() => void) | null = null;
+let _imMessageHandler: ((message: unknown) => void) | null = null;
+let _imConnectHandler: ((status: unknown) => void) | null = null;
 const openingSummaryShares = new Set<string>();
 // NavRail 每次进入的序号：并入默认创建页元素的 key。key 若固定，重复点菜单时
 // React 会复用旧实例（WKViewQueue 按数组下标渲染），「重置回默认创建页」不生效。
@@ -228,6 +236,44 @@ export class SummaryModule implements IModule {
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
         WKApp.mittBus.on('space-ready', _spaceReadyHandler);
 
+        // ═══ 外部事件唤醒红点 ═══
+        // 上面两个 handler 只盖住“本人切 Space / 冷启动”，其余刷新点全在详情页与
+        // 确认页的本人动作上。别人拉你进多人总结、或总结在后台跑完时，本地没有
+        // 任何动作，角标就不动——用户必须手动刷新页面才看得到。详见
+        // utils/summaryAttentionSync.ts 头部注释。
+        _attentionSync = createAttentionSync({ refresh: refreshSummaryAttentionBadge });
+
+        // 回到标签页 / 重新聚焦。邀请场景没有 IM 推送可依赖（产品定下邀请不发 IM），
+        // 靠的就是这两条。两个事件常常相继触发，由去抖合并成一次。
+        _visibilityHandler = () => {
+            if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+            _attentionSync?.trigger();
+        };
+        _focusHandler = () => _attentionSync?.trigger();
+        if (typeof document !== 'undefined') {
+            document.addEventListener('visibilitychange', _visibilityHandler);
+        }
+        if (typeof window !== 'undefined') {
+            window.addEventListener('focus', _focusHandler);
+        }
+
+        // IM 侧两条：收到群内总结完成提示（type-21 或 PR1534 之后的 WK_TIP 2000），
+        // 以及重连成功后补齐离线期间的变更。用 try/catch 包住：红点是锦上添花，
+        // 它的接线失败绝不应该把模块注册整个带崩（例如测试/嵌入环境里 SDK 未就绪）。
+        try {
+            const sdk = WKSDK.shared();
+            _imMessageHandler = (message: unknown) => {
+                if (shouldRefreshForMessage(message)) _attentionSync?.trigger();
+            };
+            sdk.chatManager.addMessageListener(_imMessageHandler as any);
+            _imConnectHandler = (status: unknown) => {
+                if (status === ConnectStatus.Connected) _attentionSync?.trigger();
+            };
+            sdk.connectManager.addConnectStatusListener(_imConnectHandler as any);
+        } catch {
+            // SDK 不可用（未登录 / 测试环境）时静默降级：仍有 visibility/focus 兑底。
+        }
+
         WKApp.searchChatCandidates = async (params) => {
             return getChatCandidates(params);
         };
@@ -267,6 +313,27 @@ if (import.meta.hot) {
             WKApp.mittBus.off('space-ready', _spaceReadyHandler);
             _spaceReadyHandler = null;
         }
+        // 外部事件监听也要拆，否则每次热更都会叠一层，一个 visibilitychange
+        // 最后会打出 N 个请求。
+        if (_visibilityHandler && typeof document !== 'undefined') {
+            document.removeEventListener('visibilitychange', _visibilityHandler);
+        }
+        _visibilityHandler = null;
+        if (_focusHandler && typeof window !== 'undefined') {
+            window.removeEventListener('focus', _focusHandler);
+        }
+        _focusHandler = null;
+        try {
+            const sdk = WKSDK.shared();
+            if (_imMessageHandler) sdk.chatManager.removeMessageListener(_imMessageHandler as any);
+            if (_imConnectHandler) sdk.connectManager.removeConnectStatusListener(_imConnectHandler as any);
+        } catch {
+            // 与注册处对称：SDK 不可用时无需拆。
+        }
+        _imMessageHandler = null;
+        _imConnectHandler = null;
+        _attentionSync?.cancel();
+        _attentionSync = null;
     });
 }
 

@@ -733,13 +733,19 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 hasPendingSubmission: attention.has_pending_submission,
                             },
                         }));
-                        // 读是 attention_count 最频繁的减少来源（后端 unread 项直接降），
-                        // 而侧边栏只由全局列表 loadData 回写，summary-read 不触发
-                        // loadData。不刷的话：读完三条未读，三个红点都消失、导航栏依旧
-                        // 显示 3，直到切模块或切 Space 才自愈。放在详情页而非列表的
-                        // handleSummaryRead_，因为列表未挂载（聊天侧栏/深链）时同样需要刷。
-                        refreshSummaryAttentionBadge();
                     }
+                    // 读是 attention_count 最频繁的减少来源（后端 unread 项直接降），
+                    // 而侧边栏只由全局列表 loadData 回写，summary-read 不触发
+                    // loadData。不刷的话：读完三条未读，三个红点都消失、导航栏依旧
+                    // 显示 3，直到切模块或切 Space 才自愈。放在详情页而非列表的
+                    // handleSummaryRead_，因为列表未挂载（聊天侧栏/深链）时同样需要刷。
+                    //
+                    // ❗ 刷新在 task 守卫【之外】（CR round-5 P2-2）：服务端的读已经提交，
+                    // attention_count 已经降了。守卫拦的是“这条响应还属不属于当前 task”，
+                    // 对卡片事件是对的；但计数是 **Space 级** 的，与是哪条 task 无关。
+                    // 放在守卫内的话，用户在往返期间点开另一条总结，这次读就永远不会
+                    // 反映到导航栏。refresh 自带 Space 守卫与 ticket 排序，重复调用安全。
+                    refreshSummaryAttentionBadge();
                 }).catch(() => { /* keep unread on failure */ });
             }
             if (detail.status === TaskStatus.COMPLETED && detail.result) {
@@ -881,9 +887,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 hasPendingSubmission: attention.has_pending_submission,
                             },
                         }));
-                        // 同上：标读降低了后端 attention_count，必须重新拉一次侧边栏计数。
-                        refreshSummaryAttentionBadge();
                     }
+                    // 同上：标读降低了后端 attention_count，必须重新拉一次侧边栏计数；
+                    // 同样放在 task 守卫之外，因为计数是 Space 级的（CR round-5 P2-2）。
+                    refreshSummaryAttentionBadge();
                 }).catch(() => { /* keep unread on failure */ });
             }
             if (result.content?.trim()) {
