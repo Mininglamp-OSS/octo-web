@@ -1577,9 +1577,7 @@ export default class BaseModule implements IModule {
           onClick: () => {
             void WKApp.saveMessageToDriveAt?.(params).then(() => {
               Toast.success(t("base.messageFile.saveToDriveSuccess"));
-            }).catch(() => {
-              Toast.error(t("base.messageFile.saveToDriveFailed"));
-            });
+            }).catch(() => undefined);
           },
         };
       },

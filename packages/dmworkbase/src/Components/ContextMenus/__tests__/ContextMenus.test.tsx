@@ -323,15 +323,40 @@ describe("ContextMenus keyboard navigation", () => {
 
     it("does not override focus intentionally moved by an executed action", () => {
         const actionTarget = document.createElement("input")
-        renderContextMenus(vi.fn(), [{
+        const { context } = renderContextMenus(vi.fn(), [{
             title: "Reply",
             onClick: () => actionTarget.focus(),
         }])
         container.prepend(actionTarget)
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
 
         const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
         act(() => item.click())
 
         expect(document.activeElement).toBe(actionTarget)
+    })
+
+    it("keeps the original return target when an open menu is shown again", () => {
+        const { context } = renderContextMenus()
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
+
+        act(() => context?.show({
+            clientX: 140,
+            clientY: 100,
+            preventDefault: vi.fn(),
+        }))
+        act(() => context?.hide())
+
+        expect(document.activeElement).toBe(trigger)
     })
 })

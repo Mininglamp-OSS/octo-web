@@ -144,9 +144,11 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         event.preventDefault();
         if (!this.contextMenusRef) return
 
-        this._returnFocus = document.activeElement instanceof HTMLElement
-            ? document.activeElement
-            : undefined
+        if (!this.state.showContextMenus) {
+            this._returnFocus = document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : undefined
+        }
 
         ContextMenus._instances.forEach((instance) => {
             if (instance !== this && instance.isShow()) instance.hide()
