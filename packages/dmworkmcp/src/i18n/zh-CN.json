@@ -4,12 +4,52 @@
   },
   "sidebar": {
     "header": "市场",
+    "brandGlyph": "市",
+    "tagline": "让能力被发现和使用",
+    "footnote": "这里呈现可发现、可发布、可引用的资产。",
     "mcp": "连接器",
     "skills": "技能",
     "experts": "专家",
-    "expertsBadge": "回路"
+    "expertsBadge": "回路",
+    "mine": "我的"
+  },
+  "mine": {
+    "pageTitle": "我的",
+    "pageSubtitle": "管理你创建的技能、专家与连接器,并按需发布到市场。",
+    "navAriaLabel": "我的资产类型"
   },
   "expert": {
+    "pageTitle": "市场 · 专家",
+    "pageSubtitle": "浏览可安装到回路的专家与专家团,直接为你的工作区补充能力。",
+    "editor": {
+      "returnToMarket": "返回",
+      "save": "保存",
+      "saved": "已保存",
+      "saveFailed": "保存失败,请重试",
+      "loading": "加载中…",
+      "loadFailed": "加载专家失败",
+      "noExpert": "未指定专家,请从「我的」重新进入",
+      "createTitle": "新建专家",
+      "nameRequired": "请填写专家名称",
+      "editName": "编辑名称",
+      "editDesc": "编辑描述",
+      "namePlaceholder": "专家名称",
+      "descPlaceholder": "一句话描述这个专家能做什么",
+      "basicInfo": "基本信息",
+      "category": "分类",
+      "categoryPlaceholder": "选择分类",
+      "tags": "标签",
+      "tagPlaceholder": "输入后回车添加",
+      "removeTag": "移除标签 {{name}}",
+      "instructionHint": "用 Markdown 编写专家的系统指令(AGENTS.md)",
+      "mcpHint": "填写 mcp.json(连接器配置);密钥会自动替换为 ${VAR} 占位",
+      "mcpInvalid": "mcp.json 不是合法 JSON",
+      "newSkill": "新建 Skill",
+      "noSkills": "还没有包含的 Skill",
+      "skillsAfterCreate": "保存后可在此新建只属于该专家的 Skill",
+      "skillsComingSoon": "包内 Skill 编辑即将支持",
+      "leaveConfirm": "有未保存的修改,确定离开吗?"
+    },
     "typeSquad": "专家团",
     "typeAgent": "专家",
     "typeMine": "我的",
@@ -131,6 +171,8 @@
     "bot": "Bot 创建"
   },
   "list": {
+    "pageTitle": "市场 · 连接器",
+    "pageSubtitle": "浏览并接入连接器，为你的智能体扩展工具能力。",
     "desc": "浏览并接入连接器，为你的智能体扩展工具能力。",
     "create": "上架连接器",
     "searchPlaceholder": "搜索名称、描述...",
@@ -183,6 +225,8 @@
   },
   "card": {
     "officialPublisher": "官方发布",
+    "connect": "连接",
+    "connectAriaLabel": "连接 {{name}}",
     "matchReason": {
       "name": "命中名称",
       "description": "命中简介",

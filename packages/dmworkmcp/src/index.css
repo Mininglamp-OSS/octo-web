@@ -21,15 +21,33 @@
    action cluster (primary button + search) on the right, single border-
    bottom separator. Keeps the two market pages visually consistent under
    the shared "/mcp-market" shell. */
-.wk-mcp__topbar {
+.wk-mcp__hero {
   flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--wk-sp-4);
   min-height: 64px;
-  padding: var(--wk-sp-3) var(--wk-sp-6);
-  border-bottom: 1px solid var(--wk-border-subtle);
+  padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-4);
+}
+
+.wk-mcp__hero-title {
+  min-width: 0;
+}
+
+.wk-mcp__hero-title h1 {
+  margin: 0;
+  color: var(--wk-text-strong);
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: 1.2;
+}
+
+.wk-mcp__hero-subtitle {
+  margin: var(--wk-sp-1) 0 0;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-base);
+  line-height: 1.4;
 }
 
 .wk-mcp__topbar-actions {
@@ -182,11 +200,15 @@
   white-space: pre-wrap;
 }
 
-/* Underline-style tabs — matches skill-market-tabs. Active tab uses
-   --wk-text-accent with a 2px underline pseudo-element. */
+/* Underline-style tabs — matches skill-market-tabs. Its own full-width strip
+   below the hero; the bottom border is the underline track the active tab's
+   ::after sits on. Active tab uses --wk-text-accent with a 2px underline. */
 .wk-mcp__tabs {
+  flex: none;
   display: flex;
   gap: 0;
+  padding: 0 var(--wk-sp-6);
+  border-bottom: 1px solid var(--wk-border-subtle);
 }
 
 .wk-mcp__tabs button {
@@ -575,16 +597,17 @@
 }
 
 .wk-mcp__pill--active {
-  background: var(--wk-brand-primary);
-  border-color: var(--wk-brand-primary);
-  color: var(--wk-text-inverse);
+  background: var(--wk-brand-tint-08);
+  border-color: var(--wk-brand-tint-15);
+  color: var(--wk-brand-primary);
+  font-weight: var(--wk-font-semibold);
 }
 
 .wk-mcp__pill--active:hover,
 .wk-mcp__pill--active:focus-visible {
-  background: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  border-color: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  color: var(--wk-text-inverse);
+  background: var(--wk-brand-tint-12);
+  border-color: var(--wk-brand-tint-15);
+  color: var(--wk-brand-primary);
 }
 
 .wk-mcp__pill-count {
@@ -624,19 +647,20 @@
 /* ── Card grid ───────────────────────────────────────────────────────────── */
 .wk-mcp__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--wk-sp-4);
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: var(--wk-sp-3);
 }
 
 .wk-mcp-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 184px;
-  padding: var(--wk-sp-3);
+  min-height: 174px;
+  padding: var(--wk-sp-4);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
-  background: var(--wk-bg-base);
+  background: var(--wk-bg-surface);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   cursor: pointer;
   transition: border-color var(--wk-dur-fast) var(--wk-ease),
@@ -672,13 +696,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 48px;
-  width: 48px;
-  height: 48px;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
   border-radius: var(--wk-r-md);
   background: var(--wk-bg-elevated);
   color: var(--wk-icon-default);
-  font-size: 24px;
+  font-size: 22px;
   overflow: hidden;
 }
 
@@ -704,7 +728,44 @@
   gap: 5px;
   flex: 1;
   min-width: 0;
-  min-height: 48px;
+  min-height: 42px;
+}
+
+/* Hover-revealed primary action (连接) — top-right, mirrors the prototype's
+   single card action. Opens the detail modal (same as a card click), so it
+   is NOT data-track-ignore'd: the click still resolves to the card's
+   market_card_opened track. */
+.wk-mcp-card__primary-action {
+  position: absolute;
+  top: var(--wk-sp-3);
+  right: var(--wk-sp-3);
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  height: 28px;
+  padding: 0 var(--wk-sp-3);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: var(--wk-text-strong);
+  color: var(--wk-bg-surface);
+  font: var(--wk-font-semibold) var(--wk-text-size-sm) / 1 var(--wk-font-sans);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--wk-dur-fast) var(--wk-ease),
+    transform var(--wk-dur-fast) var(--wk-ease),
+    background var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-card__primary-action:hover {
+  background: var(--wk-text-primary);
+}
+
+.wk-mcp-card:hover .wk-mcp-card__primary-action,
+.wk-mcp-card:focus-within .wk-mcp-card__primary-action {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .wk-mcp-card__title-row {
@@ -746,8 +807,8 @@
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  color: var(--wk-color-accent);
-  font-weight: 600;
+  color: var(--wk-text-tertiary);
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -794,8 +855,9 @@
   min-width: 0;
   padding: 3px 8px;
   border-radius: var(--wk-r-full);
-  background: var(--wk-bg-elevated);
-  color: var(--wk-text-tertiary);
+  border: 1px solid var(--wk-border-default);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1053,6 +1115,25 @@
   white-space: nowrap;
 }
 
+.wk-mcp-detail-header__version {
+  position: absolute;
+  top: var(--wk-sp-4);
+  right: calc(var(--wk-sp-4) + var(--wk-sp-8) + var(--wk-sp-2));
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-full);
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .wk-mcp-detail-header__meta {
   display: inline-flex;
   align-items: center;
@@ -1074,8 +1155,8 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  color: var(--wk-color-accent);
-  font-weight: 600;
+  color: var(--wk-text-tertiary);
+  font-weight: 500;
 }
 
 /* 工具数量图标行：跟卡片 footer 和 Skills 的 stats 视觉语言一致。
@@ -1106,7 +1187,7 @@
 .wk-mcp-section__title {
   font-size: var(--wk-text-size-md);
   font-weight: var(--wk-font-semibold);
-  color: var(--wk-text-primary);
+  color: var(--wk-text-strong);
   margin: 0 0 var(--wk-sp-2) 0;
 }
 
@@ -1281,16 +1362,47 @@
   color: var(--wk-text-primary);
 }
 
-.wk-mcp-sidebar__header {
+.wk-mcp-sidebar__brand {
   flex: none;
-  height: 56px;
   display: flex;
   align-items: center;
-  padding: 0 var(--wk-sp-5);
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-5) var(--wk-sp-5) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-mcp-sidebar__brand-glyph {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-brand-primary);
+  color: var(--wk-text-on-brand);
+  font-size: var(--wk-text-size-lg);
+  font-weight: var(--wk-font-bold);
+  line-height: 1;
+}
+
+.wk-mcp-sidebar__brand-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.wk-mcp-sidebar__brand-text strong {
+  color: var(--wk-text-strong);
   font-size: var(--wk-text-size-lg);
   font-weight: var(--wk-font-semibold);
-  color: var(--wk-text-primary);
-  border-bottom: 1px solid var(--wk-border-subtle);
+  line-height: 1.2;
+}
+
+.wk-mcp-sidebar__brand-text small {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  line-height: 1.4;
 }
 
 .wk-mcp-sidebar__list {
@@ -1319,6 +1431,27 @@
   transition: background var(--wk-dur-fast) var(--wk-ease);
 }
 
+.wk-mcp-sidebar__item-left {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-sidebar__item-icon {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-sidebar__item-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .wk-mcp-sidebar__badge {
   flex: 0 0 auto;
   padding: 1px var(--wk-sp-2);
@@ -1338,6 +1471,139 @@
 .wk-mcp-sidebar__item--active,
 .wk-mcp-sidebar__item--active:hover {
   background: var(--wk-brand-tint-06);
+}
+
+.wk-mcp-sidebar__item--active .wk-mcp-sidebar__item-icon {
+  color: var(--wk-brand-primary);
+}
+
+.wk-mcp-sidebar__footnote {
+  flex: none;
+  padding: var(--wk-sp-4) var(--wk-sp-5);
+  border-top: 1px solid var(--wk-border-subtle);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  line-height: 1.6;
+}
+
+/* ── 我的 (MyAssetsPage) — hero + type sub-tabs hosting a market page in
+   variant="mine". The mounted page fills __panel and scrolls internally. ─── */
+.wk-mcp-mine {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--wk-bg-surface);
+}
+
+.wk-mcp-mine__hero {
+  flex: none;
+  min-height: 64px;
+  padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-4);
+}
+
+.wk-mcp-mine__hero-title h1 {
+  margin: 0;
+  color: var(--wk-text-strong);
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: 1.2;
+}
+
+.wk-mcp-mine__hero-subtitle {
+  margin: var(--wk-sp-1) 0 0;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-base);
+  line-height: 1.4;
+}
+
+.wk-mcp-mine__tabs {
+  flex: none;
+  display: flex;
+  gap: var(--wk-sp-5);
+  padding: 0 var(--wk-sp-6);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-mcp-mine__tabs button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-medium);
+  cursor: pointer;
+  transition: color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-mcp-mine__tabs button:hover {
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-mine__tab-icon {
+  display: inline-flex;
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-mine__tabs button.is-active {
+  color: var(--wk-brand-primary);
+  font-weight: var(--wk-font-semibold);
+}
+
+.wk-mcp-mine__tabs button.is-active .wk-mcp-mine__tab-icon {
+  color: var(--wk-brand-primary);
+}
+
+.wk-mcp-mine__tabs button.is-active::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--wk-brand-primary);
+  border-radius: 1px;
+}
+
+.wk-mcp-mine__panel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The mounted market page (variant="mine") fills the panel; its own hero row
+   keeps only the search + publish actions, so trim its top padding a touch. */
+.wk-mcp-mine__panel > .wk-mcp,
+.wk-mcp-mine__panel > .wk-mcp-expert-page,
+.wk-mcp-mine__panel > .skill-market-page {
+  flex: 1;
+  min-height: 0;
+}
+
+/* variant="mine" hides each page's own title, so lift its search + create
+   actions up onto the 我的 hero row (top-right of the mine container) instead
+   of leaving them as a separate left-aligned row under the type tabs. */
+.wk-mcp-mine__panel .wk-mcp__hero,
+.wk-mcp-mine__panel .wk-mcp-expert-topbar,
+.wk-mcp-mine__panel .skill-market-topbar {
+  position: absolute;
+  top: var(--wk-sp-4);
+  right: var(--wk-sp-6);
+  left: auto;
+  z-index: 2;
+  width: auto;
+  min-height: 0;
+  padding: 0;
+  justify-content: flex-end;
 }
 
 /* ── Image icons (card + detail) ────────────────────────────────────────── */
@@ -2017,9 +2283,27 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--wk-sp-4);
-  min-height: 56px;
-  padding: var(--wk-sp-2) var(--wk-sp-6);
-  border-bottom: 1px solid var(--wk-border-default);
+  min-height: 64px;
+  padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-4);
+}
+
+.wk-mcp-expert-hero-title {
+  min-width: 0;
+}
+
+.wk-mcp-expert-hero-title h1 {
+  margin: 0;
+  color: var(--wk-text-strong);
+  font-size: var(--wk-text-size-3xl);
+  font-weight: var(--wk-font-bold);
+  line-height: 1.2;
+}
+
+.wk-mcp-expert-hero-subtitle {
+  margin: var(--wk-sp-1) 0 0;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-base);
+  line-height: 1.4;
 }
 
 .wk-mcp-expert-tabs {
@@ -2284,6 +2568,8 @@
   display: flex;
   align-items: center;
   gap: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-6);
+  border-bottom: 1px solid var(--wk-border-default);
 }
 
 .wk-mcp-expert-help {
@@ -2355,16 +2641,16 @@
 }
 
 .wk-mcp-expert-category[aria-pressed="true"] {
-  color: var(--wk-text-inverse);
+  color: var(--wk-brand-primary);
   font-weight: var(--wk-font-semibold);
-  background: var(--wk-brand-primary);
-  border-color: var(--wk-brand-primary);
+  background: var(--wk-brand-tint-08);
+  border-color: var(--wk-brand-tint-15);
 }
 
 .wk-mcp-expert-category[aria-pressed="true"]:hover {
-  background: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  border-color: var(--wk-brand-primary-hover, var(--wk-brand-primary));
-  color: var(--wk-text-inverse);
+  background: var(--wk-brand-tint-12);
+  border-color: var(--wk-brand-tint-15);
+  color: var(--wk-brand-primary);
 }
 
 .wk-mcp-expert-category__count {
@@ -2455,35 +2741,8 @@
 
 .wk-mcp-expert-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-  gap: var(--wk-sp-4);
-}
-
-/* 添加到回路 — dark primary pill (matches the skill market's 安装 button). */
-.wk-mcp-expert-card__add-loop {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 26px;
-  min-width: 76px;
-  padding: 0 var(--wk-sp-3);
-  border: 1px solid transparent;
-  border-radius: var(--wk-r-full);
-  background: var(--wk-text-strong);
-  color: var(--wk-bg-base);
-  font: 500 12px/1 var(--wk-font-sans);
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.wk-mcp-expert-card__add-loop:hover {
-  background: var(--wk-text-primary);
-}
-
-.wk-mcp-expert-card__add-loop:focus-visible {
-  outline: none;
-  border-color: var(--wk-border-strong);
+  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  gap: var(--wk-sp-3);
 }
 
 /* -------- 添加到回路 dialog -------- */
@@ -2626,8 +2885,9 @@
   height: 20px;
   padding: 0 var(--wk-sp-1-5);
   border-radius: var(--wk-r-full);
-  color: var(--wk-color-accent);
-  background: var(--wk-accent-tint-08);
+  border: 1px solid var(--wk-border-default);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
   font-size: var(--wk-text-size-sm);
   font-weight: var(--wk-font-medium);
 }
@@ -2733,7 +2993,7 @@
   align-items: center;
   gap: var(--wk-sp-1);
   min-width: 0;
-  color: var(--wk-color-accent);
+  color: var(--wk-text-tertiary);
   font-size: var(--wk-text-size-sm);
 }
 
@@ -2746,7 +3006,7 @@
 
 .wk-mcp-expert-owner__item > svg {
   flex: 0 0 auto;
-  color: var(--wk-color-accent);
+  color: var(--wk-text-tertiary);
 }
 
 .wk-mcp-expert-owner__name {
@@ -4250,4 +4510,305 @@
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* ── Full-page expert editor (ExpertEditorPage) ─────────────────────────────
+   White content surface (--wk-bg-surface). Pushed into the market right pane;
+   topbar + hero + config blocks (指令 / mcp / 基本信息 / 包含的Skills). */
+.wk-mcp-expert-editor {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-expert-editor__topbar {
+  flex: none;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-4);
+  padding: var(--wk-sp-2) var(--wk-sp-6);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.wk-mcp-expert-editor__crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  min-width: 0;
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-expert-editor__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  height: 30px;
+  padding: 0 var(--wk-sp-2);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: var(--wk-text-secondary);
+  font: inherit;
+  font-weight: var(--wk-font-medium);
+  cursor: pointer;
+}
+
+.wk-mcp-expert-editor__back:hover {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-expert-editor__crumb-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--wk-text-strong);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mcp-expert-editor__state {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-8);
+  color: var(--wk-text-tertiary);
+}
+
+.wk-mcp-expert-editor__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-10);
+  display: grid;
+  gap: var(--wk-sp-4);
+  width: min(960px, 100%);
+}
+
+.wk-mcp-expert-editor__hero {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-expert-editor__avatar {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--wk-r-lg);
+  border: 1px solid var(--wk-border-subtle);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-2xl);
+  font-weight: var(--wk-font-bold);
+}
+
+.wk-mcp-expert-editor__hero-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.wk-mcp-expert-editor__title-input {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  padding: 2px var(--wk-sp-2);
+  margin-left: calc(-1 * var(--wk-sp-2));
+  color: var(--wk-text-strong);
+  font: var(--wk-font-bold) var(--wk-text-size-2xl) / 1.2 var(--wk-font-sans);
+  outline: none;
+}
+
+.wk-mcp-expert-editor__desc-input {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  padding: 2px var(--wk-sp-2);
+  margin-left: calc(-1 * var(--wk-sp-2));
+  color: var(--wk-text-secondary);
+  font: var(--wk-text-size-base) / 1.6 var(--wk-font-sans);
+  resize: none;
+  outline: none;
+}
+
+.wk-mcp-expert-editor__title-input:hover,
+.wk-mcp-expert-editor__desc-input:hover {
+  border-color: var(--wk-border-subtle);
+}
+
+.wk-mcp-expert-editor__title-input:focus,
+.wk-mcp-expert-editor__desc-input:focus {
+  border-color: var(--wk-color-accent);
+}
+
+.wk-mcp-expert-editor__block {
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  padding: var(--wk-sp-4);
+  display: grid;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-expert-editor__block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-expert-editor__block-title {
+  color: var(--wk-text-strong);
+  font-size: var(--wk-text-size-md);
+  font-weight: var(--wk-font-semibold);
+}
+
+.wk-mcp-expert-editor__chip {
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-bg-elevated);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+}
+
+.wk-mcp-expert-editor__fields {
+  display: grid;
+  gap: var(--wk-sp-3);
+}
+
+.wk-mcp-expert-editor__field {
+  display: grid;
+  gap: var(--wk-sp-1);
+}
+
+.wk-mcp-expert-editor__field > span {
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-mcp-expert-editor__field select {
+  height: 36px;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  padding: 0 var(--wk-sp-3);
+  outline: none;
+}
+
+.wk-mcp-expert-editor__tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  min-height: 36px;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+}
+
+.wk-mcp-expert-editor__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  height: 24px;
+  padding: 0 var(--wk-sp-1) 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-brand-tint-08);
+  color: var(--wk-brand-primary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.wk-mcp-expert-editor__tag button {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: var(--wk-r-full);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.wk-mcp-expert-editor__tags input {
+  flex: 1;
+  min-width: 80px;
+  border: 0;
+  background: transparent;
+  color: var(--wk-text-primary);
+  outline: none;
+}
+
+.wk-mcp-expert-editor__code {
+  width: 100%;
+  min-height: 200px;
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+  color: var(--wk-text-primary);
+  padding: var(--wk-sp-3);
+  font: var(--wk-text-size-sm) / 1.7 var(--wk-font-mono);
+  resize: vertical;
+  outline: none;
+}
+
+.wk-mcp-expert-editor__code:focus {
+  border-color: var(--wk-color-accent);
+}
+
+.wk-mcp-expert-editor__resource-list {
+  display: grid;
+  gap: var(--wk-sp-2);
+}
+
+.wk-mcp-expert-editor__resource {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: 0 var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-expert-editor__empty {
+  padding: var(--wk-sp-4);
+  color: var(--wk-text-tertiary);
+  text-align: center;
+}
+
+.wk-mcp-expert-editor__toast {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: var(--wk-z-dropdown, 1000);
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--wk-sp-4);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-text-strong);
+  color: var(--wk-bg-surface);
+  box-shadow: var(--wk-shadow-md);
 }

@@ -13,6 +13,9 @@ interface SkillCardProps {
   onEdit?: (skill: Skill) => void;
   onDelete?: (skill: Skill) => void;
   onInstall?: (skill: Skill) => void;
+  /** Show the footer stats row (views/downloads). Discovery hides it; the 我的
+   *  view keeps it. Defaults to true so existing callers/tests are unchanged. */
+  showStats?: boolean;
 }
 
 const CARD_VISIBLE_TAG_LIMIT = 3;
@@ -72,7 +75,7 @@ export function getDescriptionTooltipStyle(
   return { left, top, maxWidth, maxHeight };
 }
 
-export default function SkillCard({ skill, categories: _categories, onOpen, onEdit, onDelete, onInstall }: SkillCardProps) {
+export default function SkillCard({ skill, categories: _categories, onOpen, onEdit, onDelete, onInstall, showStats = true }: SkillCardProps) {
   useI18n();
   void _categories;
   const [imgError, setImgError] = useState(false);
@@ -86,6 +89,9 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
   const hiddenTagCount = Math.max(0, skill.tags.length - visibleTags.length);
   const hiddenTags = skill.tags.slice(visibleTags.length);
   const isOwnerCard = Boolean(onEdit || onDelete);
+  // The footer holds stats + owner actions; render it only when there is
+  // something to show (stats in the 我的 view, or owner edit/delete).
+  const showFooter = showStats || isOwnerCard;
   const descriptionTooltipId = `skill-card-desc-${skill.id}`;
   const displayName = skill.displayName || skill.name;
   const isPlatformPublished = isPlatformPublishedSkill(skill);
@@ -181,6 +187,22 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
       data-object-id={skill.id}
       data-track-item-type="skill"
     >
+      {!isOwnerCard && onInstall && (
+        <button
+          type="button"
+          className="skill-market-card__install skill-market-card__primary-action"
+          onClick={(event) => {
+            event.stopPropagation();
+            hideDescriptionTooltip();
+            onInstall(skill);
+          }}
+          data-track="market_skill_install_clicked"
+          data-object-id={skill.id}
+          data-track-item-type="skill"
+        >
+          {t("skillMarket.card.install")}
+        </button>
+      )}
       <div className="skill-market-card__top">
         <span className="skill-market-card__icon">
           {skill.iconUrl && !imgError ? (
@@ -197,11 +219,6 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
         <div className="skill-market-card__header">
           <div className="skill-market-card__title-row">
             <h3 title={displayName}>{displayName}</h3>
-            {skill.version && (
-              <span className="skill-market-card__version" title={`v${skill.version}`}>
-                v{skill.version}
-              </span>
-            )}
           </div>
           <div className="skill-market-card__meta-row">
             <span className="skill-market-card__name" title={skill.name}>
@@ -265,6 +282,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
           </span>
         )}
       </div>
+      {showFooter && (
       <div
         className="skill-market-card__footer"
         onClick={(event) => event.stopPropagation()}
@@ -277,6 +295,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
         // it is unaffected by an ancestor's ignore marker.
         data-track-ignore=""
       >
+        {showStats && (
         <div className="skill-market-card__stats" aria-label={t("skillMarket.card.statsAriaLabel")}>
           <span
             className="skill-market-card__stat"
@@ -295,22 +314,8 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
             {downloadCount}
           </span>
         </div>
+        )}
         <div className="skill-market-card__footer-actions">
-          {!isOwnerCard && onInstall && (
-            <button
-              type="button"
-              className="skill-market-card__install"
-              onClick={() => {
-                hideDescriptionTooltip();
-                onInstall(skill);
-              }}
-              data-track="market_skill_install_clicked"
-              data-object-id={skill.id}
-              data-track-item-type="skill"
-            >
-              {t("skillMarket.card.install")}
-            </button>
-          )}
           {isOwnerCard && (
             <>
               {onEdit && (
@@ -345,6 +350,7 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
           )}
         </div>
       </div>
+      )}
     </article>
   );
 }

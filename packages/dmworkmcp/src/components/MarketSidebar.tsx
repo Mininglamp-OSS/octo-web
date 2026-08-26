@@ -1,43 +1,58 @@
 import React, { Component } from "react";
+import { Plug, Sparkles, UserRound, Users } from "lucide-react";
 import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "../pages/McpMarketListPage";
 import ExpertMarketListPage from "../pages/ExpertMarketListPage";
+import MyAssetsPage from "../pages/MyAssetsPage";
 
 interface MarketItem {
   id: string;
   routePath: string;
   label: () => string;
+  /** Leading glyph for the sidebar row — a lucide icon that reads the market's
+   *  asset kind at a glance (connector / skill / expert). */
+  icon: React.ReactElement;
   /** Optional pill shown to the right of the label (e.g. "回路" on experts,
    *  signalling the catalog feeds the Loop module). */
   badge?: () => string;
   render: () => React.ReactElement;
 }
 
-// Order below controls the sidebar tab order. Keep MCP first — it's the
-// original tenant of "/mcp-market" and the NavRail's onPress boots into it.
-// Skills was folded in from the standalone /skill-market module (which now
-// only registers i18n + this page) so users see a single "市场" entry with
-// two tabs, not two navrail icons.
+// Order below controls the sidebar tab order — matches the marketing
+// prototype: 专家 → 技能 → 连接器 → 我的. The NavRail menu's onPress still boots
+// the right pane into /mcp-market/mcp (see module.tsx), independent of this
+// order; this array only drives the sidebar's visual order + the path-miss
+// fallback.
 const MARKET_ITEMS: MarketItem[] = [
   {
-    id: "mcp",
-    routePath: "/mcp-market/mcp",
-    label: () => t("mcp.sidebar.mcp"),
-    render: () => <McpMarketListPage />,
+    id: "experts",
+    routePath: "/mcp-market/experts",
+    label: () => t("mcp.sidebar.experts"),
+    icon: <Users size={16} aria-hidden="true" />,
+    badge: () => t("mcp.sidebar.expertsBadge"),
+    render: () => <ExpertMarketListPage />,
   },
   {
     id: "skills",
     routePath: "/mcp-market/skills",
     label: () => t("mcp.sidebar.skills"),
+    icon: <Sparkles size={16} aria-hidden="true" />,
     render: () => <SkillListPage />,
   },
   {
-    id: "experts",
-    routePath: "/mcp-market/experts",
-    label: () => t("mcp.sidebar.experts"),
-    badge: () => t("mcp.sidebar.expertsBadge"),
-    render: () => <ExpertMarketListPage />,
+    id: "mcp",
+    routePath: "/mcp-market/mcp",
+    label: () => t("mcp.sidebar.mcp"),
+    icon: <Plug size={16} aria-hidden="true" />,
+    render: () => <McpMarketListPage />,
+  },
+  {
+    id: "mine",
+    routePath: "/mcp-market/mine",
+    label: () => t("mcp.sidebar.mine"),
+    icon: <UserRound size={16} aria-hidden="true" />,
+    render: () => <MyAssetsPage />,
   },
 ];
 
@@ -159,8 +174,14 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
     const { activeId } = this.state;
     return (
       <div className="wk-mcp-sidebar">
-        <div className="wk-mcp-sidebar__header">
-          {t("mcp.sidebar.header")}
+        <div className="wk-mcp-sidebar__brand">
+          <span className="wk-mcp-sidebar__brand-glyph" aria-hidden="true">
+            {t("mcp.sidebar.brandGlyph")}
+          </span>
+          <span className="wk-mcp-sidebar__brand-text">
+            <strong>{t("mcp.sidebar.header")}</strong>
+            <small>{t("mcp.sidebar.tagline")}</small>
+          </span>
         </div>
         <ul className="wk-mcp-sidebar__list">
           {MARKET_ITEMS.map((item) => (
@@ -174,7 +195,10 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
                 }
                 onClick={() => this.handleClick(item)}
               >
-                <span className="wk-mcp-sidebar__item-label">{item.label()}</span>
+                <span className="wk-mcp-sidebar__item-left">
+                  <span className="wk-mcp-sidebar__item-icon">{item.icon}</span>
+                  <span className="wk-mcp-sidebar__item-label">{item.label()}</span>
+                </span>
                 {item.badge && WKApp.remoteConfig?.dmloopOn && (
                   <span className="wk-mcp-sidebar__badge">{item.badge()}</span>
                 )}
@@ -182,6 +206,7 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
             </li>
           ))}
         </ul>
+        <div className="wk-mcp-sidebar__footnote">{t("mcp.sidebar.footnote")}</div>
       </div>
     );
   }

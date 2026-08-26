@@ -66,11 +66,21 @@ interface McpMarketListPageState {
 }
 
 /**
+ * Rendering variant. "market" (default) is the discovery catalog. "mine" is the
+ * personal-assets view mounted inside MyAssetsPage: it forces the mine data
+ * source, hides the in-page tab strip + hero title (MyAssetsPage owns those),
+ * and exposes manage actions on every card.
+ */
+interface McpMarketListPageProps {
+  variant?: "market" | "mine";
+}
+
+/**
  * Top-level MCP Market page. Rendered full-width in the main content area
  * (no secondary sidebar) when the "mcp-market" NavRail entry is active.
  */
 export default class McpMarketListPage extends Component<
-  {},
+  McpMarketListPageProps,
   McpMarketListPageState
 > {
   static contextType = I18nContext;
@@ -108,7 +118,11 @@ export default class McpMarketListPage extends Component<
   private bodyRef = React.createRef<HTMLDivElement>();
 
   componentDidMount() {
-    this.setState(parseMcpListQuery(window.location.search), () => this.loadData());
+    const parsed = parseMcpListQuery(window.location.search);
+    this.setState(
+      { ...parsed, mode: this.props.variant === "mine" ? "mine" : "all" },
+      () => this.loadData()
+    );
     WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated_);
     WKApp.mittBus.on("space-changed", this.handleSpaceChanged_);
   }
@@ -391,25 +405,6 @@ export default class McpMarketListPage extends Component<
     }
   };
 
-  private handleMode = (mode: ListMode) => {
-    if (mode === this.state.mode) return;
-    // 用户切换「全部/我的」视图(已过同值 guard);原先误用 GET /mcps/mine 加载推断,而 mine 列表也用于建议/初始化。
-    Dap.shared.track("market_view_switched", {});
-    // Full reset — tag suggestions are mode-scoped on the backend (see
-    // /plugin_tags?mode=mine), so keeping stale suggestions after a tab switch
-    // paints suggestions the just-loaded list can't produce. Mirrors
-    // handleSpaceChanged_ for the same reason.
-    this.cancelTagFetch_();
-    this.setState({
-      mode,
-      categoriesSelected: [],
-      tagsSelected: [],
-      tagFilterOpen: false,
-      tagQuery: "",
-      tagSuggestions: [],
-    }, () => this.loadData());
-  };
-
   /** Patch a single row after a successful edit — keeps scroll position
    *  intact (a full loadData() would reset offset to 0 and rebuild the grid).
    *  Category-pill counts may go slightly stale until the next full reload,
@@ -559,19 +554,13 @@ export default class McpMarketListPage extends Component<
 
     return (
       <div className="wk-mcp">
-        <header className="wk-mcp__topbar">
-          <nav className="wk-mcp__tabs" aria-label={t("mcp.list.navLabel")}>
-            {(["all", "mine"] as ListMode[]).map((k) => (
-              <button
-                key={k}
-                type="button"
-                className={k === mode ? "is-active" : ""}
-                onClick={() => this.handleMode(k)}
-              >
-                {t(`mcp.list.mode.${k}`)}
-              </button>
-            ))}
-          </nav>
+        <header className="wk-mcp__hero">
+          {this.props.variant !== "mine" && (
+            <div className="wk-mcp__hero-title">
+              <h1>{t("mcp.list.pageTitle")}</h1>
+              <p className="wk-mcp__hero-subtitle">{t("mcp.list.pageSubtitle")}</p>
+            </div>
+          )}
           <div className="wk-mcp__topbar-actions">
             <div className="wk-mcp__search">
               <div className="wk-mcp__search-control">
@@ -689,6 +678,7 @@ export default class McpMarketListPage extends Component<
                 </div>
               </div>
             </div>
+            {this.props.variant === "mine" && (
             <div className="wk-mcp-publish-menu" ref={this.publishMenuRef}>
               <WKButton
                 variant="primary"
@@ -737,6 +727,7 @@ export default class McpMarketListPage extends Component<
                 </div>
               )}
             </div>
+            )}
           </div>
         </header>
 
@@ -806,6 +797,7 @@ export default class McpMarketListPage extends Component<
                               ? (it) => this.setState({ deletingItem: it })
                               : undefined
                           }
+                          showStats={this.props.variant === "mine"}
                         />
                       ))}
                     </div>

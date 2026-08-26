@@ -66,6 +66,8 @@ interface ExpertBase {
   viewCount?: number;
   /** Successful add-to-loop count from resource_metrics (wire `install_count`). */
   installCount?: number;
+  /** Current published version (wire `current_version`), shown in the detail. */
+  version?: string;
   /** System prompt / instructions that define how the expert behaves. */
   instruction?: string;
   /** Raw MCP servers config (mcpServers JSON), as entered in the config editor. */

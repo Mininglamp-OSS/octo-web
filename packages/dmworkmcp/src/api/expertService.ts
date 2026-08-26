@@ -22,9 +22,11 @@ import { parseTeamAgentsMarkdown } from "./expertWire";
 import type { ExpertMember, ExpertSkill } from "../mock/expertMock";
 import {
   SCENE_CODE,
+  goCanonicalJSON,
   jsonAttachment,
   rawAttachment,
   type OffsetPaginationWire,
+  type PluginAttachmentWire,
   type PluginCategoryWire,
   type PluginDetailWire,
   type PluginListItemWire,
@@ -508,6 +510,251 @@ async function deletePluginReal(id: string): Promise<void> {
 const deleteExpertReal = deletePluginReal;
 const deleteSquadReal = deletePluginReal;
 
+// ─── Expert write layer (create / update via /plugins/upsert) ───────────────
+// No frontend write path existed before this (experts were bot-authored). The
+// backend accepts the same unified upsert body as skills/MCP for
+// plugin_type:"expert". An expert's editable content is self-contained in its
+// own plugin: manifest_json (name/description/tags) + plugin_json.attachments
+// (AGENTS.md = instruction, mcp.json = mcp config) + relations (expert_skill).
+
+/** Fields the full-page expert editor writes. `category` is the category NAME
+ *  (resolved to an id here); `skillIds` are expert_skill relation targets. */
+export interface ExpertWriteForm {
+  name: string;
+  summary: string;
+  category?: string;
+  tags: string[];
+  /** Stored write-canonical icon value (object key), or "" / undefined. */
+  icon?: string;
+  /** AGENTS.md content (system prompt). */
+  instruction: string;
+  /** mcp.json raw text; parsed + secret-placeholdered + canonicalized on save. */
+  mcpConfig: string;
+  /** expert_skill relation targets, in display order. Omit to PRESERVE the
+   *  expert's current bound skills on update (the first-pass editor doesn't
+   *  touch relations); an array REPLACES them. */
+  skillIds?: string[];
+}
+
+async function postWrite<T>(path: string, body: unknown): Promise<T> {
+  try {
+    const resp = await expertAxios.post(`${BASE}${path}`, body);
+    return resp.data.data as T;
+  } catch (err) {
+    if (axios.isCancel(err)) throw err;
+    throw new Error(extractErrorMessage(err));
+  }
+}
+
+const SECRET_CONTAINERS = new Set(["env", "headers", "secrets", "credentials"]);
+
+/** A value the backend accepts verbatim in a secret container (already a
+ *  reference, not a literal secret). */
+function isSecretReference(value: string): boolean {
+  return /^\$\{[^}]+\}$/.test(value) || /^(env|secret|vault|ref):\/\//.test(value);
+}
+
+/** Build a `${VAR}` install-time placeholder from a name hint. */
+function secretPlaceholder(nameHint: string): string {
+  const safe = String(nameHint || "SECRET").toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  return `\${${safe || "SECRET"}}`;
+}
+
+/** Redact EVERY leaf string reachable inside a secret container, regardless of
+ *  nesting/array/string shape — the pasted mcp.json is hostile input, so
+ *  redaction must not depend on the value's shape. Non-string leaves
+ *  (number/bool/null) are not secrets and pass through. */
+function redactSecretValue(value: unknown, nameHint: string): unknown {
+  if (typeof value === "string") {
+    return value.trim() && !isSecretReference(value.trim())
+      ? secretPlaceholder(nameHint)
+      : value;
+  }
+  if (Array.isArray(value)) return value.map((v) => redactSecretValue(v, nameHint));
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = redactSecretValue(v, k);
+    }
+    return out;
+  }
+  return value;
+}
+
+/** Replace literal string values inside env/headers/secrets/credentials with a
+ *  `${VAR}` install-time placeholder — never persist raw secret VALUES (project
+ *  security rule; the unified surface is a client-side control). */
+function placeholderSecrets(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(placeholderSecrets);
+  if (node && typeof node === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+      if (SECRET_CONTAINERS.has(key)) {
+        // Redact the ENTIRE container value (object/array/string/nested), not
+        // just its direct string children — a crafted shape must not leak.
+        out[key] = redactSecretValue(value, key);
+      } else {
+        out[key] = placeholderSecrets(value);
+      }
+    }
+    return out;
+  }
+  return node;
+}
+
+/** Serialize the mcp.json editor text: parse (throws on invalid JSON so the
+ *  page can surface a clear error), placeholder secrets, canonicalize. Empty
+ *  input yields "" so the attachment is omitted. Exported for the redaction
+ *  contract test — it is the security boundary that must never leak plaintext. */
+export function serializeMcpConfig(raw: string): string {
+  const trimmed = (raw ?? "").trim();
+  if (!trimmed) return "";
+  return goCanonicalJSON(placeholderSecrets(JSON.parse(trimmed)));
+}
+
+function expertAttachments(form: ExpertWriteForm): PluginAttachmentWire[] {
+  const attachments: PluginAttachmentWire[] = [
+    {
+      path: "AGENTS.md",
+      content_type: "raw",
+      mime_type: "text/markdown",
+      raw_content: form.instruction ?? "",
+    },
+  ];
+  const mcp = serializeMcpConfig(form.mcpConfig);
+  if (mcp) {
+    attachments.push({
+      path: "mcp.json",
+      content_type: "raw",
+      mime_type: "application/json",
+      raw_content: mcp,
+    });
+  }
+  return attachments;
+}
+
+function expertUpsertBody(
+  form: ExpertWriteForm,
+  opts: {
+    pluginId?: string;
+    categoryId?: string;
+    icon: string;
+    visibility: string;
+    relations: Array<{ relation_type: string; target_plugin_id: string; sort_order: number }>;
+  }
+) {
+  const manifest = {
+    $schema: "cowork-plugin-manifest-1.0.json",
+    plugin_name: form.name,
+    plugin_type: "expert",
+    name: form.name,
+    description: form.summary,
+    labels: form.tags,
+    examples: [],
+  };
+  return {
+    plugin: {
+      ...(opts.pluginId ? { plugin_id: opts.pluginId } : {}),
+      plugin_name: form.name,
+      plugin_type: "expert",
+      ...(opts.categoryId ? { category_id: opts.categoryId } : {}),
+      tags: form.tags,
+      icon: opts.icon,
+      visibility: opts.visibility,
+      manifest_json: manifest,
+      plugin_json: {
+        $schema: "cowork-plugin-package-1.0.json",
+        attachments: expertAttachments(form),
+      },
+    },
+    relations: opts.relations,
+  };
+}
+
+/** Build expert_skill relation rows from an ordered list of skill plugin ids. */
+function expertSkillRelations(skillIds: string[]) {
+  return skillIds.map((targetPluginId, index) => ({
+    relation_type: "expert_skill",
+    target_plugin_id: targetPluginId,
+    sort_order: index,
+  }));
+}
+
+async function resolveExpertCategoryId(name?: string): Promise<string | undefined> {
+  if (!name) return undefined;
+  const maps = await getExpertCategoryMaps("expert");
+  return maps.nameToId.get(name) ?? undefined;
+}
+
+/** Create a new expert. Upsert then publish the default-scene placement (an
+ *  unplaced plugin is invisible to every scene-scoped list, incl. "mine"); a
+ *  failed publish is rolled back so a retry starts clean (mirrors createMcpReal). */
+async function createExpertReal(form: ExpertWriteForm): Promise<{ id: string }> {
+  const categoryId = await resolveExpertCategoryId(form.category);
+  const detail = await postWrite<PluginDetailWire>(
+    "/plugins/upsert",
+    expertUpsertBody(form, {
+      categoryId,
+      icon: form.icon ?? "",
+      visibility: "space",
+      relations: expertSkillRelations(form.skillIds ?? []),
+    })
+  );
+  const pluginId = detail.plugin.plugin_id;
+  try {
+    await postWrite("/plugins/publish", {
+      plugin_id: pluginId,
+      version: "1.0.0",
+      placements: [
+        {
+          placement_code: SCENE_CODE,
+          ...(categoryId ? { category_id: categoryId } : {}),
+          is_visible: true,
+        },
+      ],
+    });
+  } catch (err) {
+    try {
+      await postWrite("/plugins/delete", { plugin_id: pluginId });
+    } catch {
+      /* best-effort cleanup — surface the publish failure regardless */
+    }
+    throw err;
+  }
+  return { id: pluginId };
+}
+
+/** Full-replace update via upsert. Echo the stored write-canonical icon when
+ *  the form didn't pick a new one, preserve the current visibility, and PRESERVE
+ *  the current expert_skill relations unless the form supplies a new set. */
+async function updateExpertReal(id: string, form: ExpertWriteForm): Promise<ExpertAgent> {
+  const current = await get<PluginDetailWire>("/plugins/detail", {
+    plugin_id: id,
+    include_relations: true,
+  });
+  const categoryId = await resolveExpertCategoryId(form.category);
+  const icon = form.icon !== undefined ? form.icon : current.plugin.icon ?? "";
+  const relations = form.skillIds
+    ? expertSkillRelations(form.skillIds)
+    : liveRelations(current.relations, "expert_skill").map((rel, index) => ({
+        relation_type: "expert_skill",
+        target_plugin_id: rel.target_plugin_id,
+        sort_order: index,
+      }));
+  await postWrite<PluginDetailWire>(
+    "/plugins/upsert",
+    expertUpsertBody(form, {
+      pluginId: id,
+      categoryId,
+      icon,
+      visibility: current.plugin.visibility,
+      relations,
+    })
+  );
+  return getExpertReal(id);
+}
+
+
 /** POST /metrics/track — bump the plugin view counter. Fire-and-forget:
  *  every failure is swallowed here so no call site ever has to remember to
  *  catch a rejection that carries no actionable signal. */
@@ -692,6 +939,15 @@ export function deleteExpert(id: string): Promise<void> {
 
 export function deleteSquad(id: string): Promise<void> {
   return USE_MOCK ? deleteSquadMock(id) : deleteSquadReal(id);
+}
+
+/** Create / update an expert via the unified upsert. Real-backend only (the
+ *  expert mock has no write surface — mirrors the skill upload pipeline). */
+export function createExpert(form: ExpertWriteForm): Promise<{ id: string }> {
+  return createExpertReal(form);
+}
+export function updateExpert(id: string, form: ExpertWriteForm): Promise<ExpertAgent> {
+  return updateExpertReal(id, form);
 }
 
 /** Record one detail view for an expert ("agent") or squad. Fire-and-forget:

@@ -23,6 +23,7 @@ import { expertListErrorI18nKey } from "../api/expertListError";
 import ExpertCard from "../components/ExpertCard";
 import ExpertDetailModal from "../components/ExpertDetailModal";
 import ExpertBotPublishModal from "../components/ExpertBotPublishModal";
+import ExpertEditorPage from "./ExpertEditorPage";
 import ExpertDeleteConfirmModal from "../components/ExpertDeleteConfirmModal";
 import ExpertAddToLoopModal from "../components/ExpertAddToLoopModal";
 
@@ -66,7 +67,22 @@ function matchesQuery(item: ExpertItem, q: string): boolean {
  * Clicking a card fetches the full detail (list items are projections) and
  * opens the shared detail modal.
  */
-export default function ExpertMarketListPage() {
+/**
+ * Rendering variant. "market" (default) = discovery catalog (专家/专家团 tabs).
+ * "mine" = personal assets mounted inside MyAssetsPage — forces the mine view,
+ * hides the in-page tab strip + hero title. `mineType` narrows the mine view to
+ * a single section so MyAssetsPage can split 专家 / 专家团 into their own tabs;
+ * omitted = both sections stacked.
+ */
+interface ExpertMarketListPageProps {
+  variant?: "market" | "mine";
+  mineType?: "agent" | "squad";
+}
+
+export default function ExpertMarketListPage({
+  variant = "market",
+  mineType,
+}: ExpertMarketListPageProps = {}) {
   useI18n();
   // Loop(回路) feature gate. The install flow (添加到回路), its explainer, and the
   // Loop-target prefetch all depend on octo-fleet being deployed; until ops flips
@@ -91,7 +107,9 @@ export default function ExpertMarketListPage() {
       for (const unsub of unsubscribers) unsub();
     };
   }, []);
-  const [kind, setKind] = useState<ExpertKind>("agent");
+  const [kind, setKind] = useState<ExpertKind>(
+    variant === "mine" ? "mine" : "agent"
+  );
   const [category, setCategory] = useState<string>(ALL_CATEGORY);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<ExpertCatalogSort>("comprehensive");
@@ -424,10 +442,13 @@ export default function ExpertMarketListPage() {
   // needed here — the Bot reads the current record and asks the user for the
   // fields to change, so no hydrate is required.
   const handleEdit = (item: ExpertItem) => {
-    setEditTarget({
-      id: item.id,
-      kind: item.kind === "squad" ? "squad" : "agent",
-    });
+    // Agents open the full-page editor; squads still use the bot-authored flow
+    // (the squad member/leader editor is a follow-up).
+    if (item.kind === "squad") {
+      setEditTarget({ id: item.id, kind: "squad" });
+      return;
+    }
+    WKApp.routeRight.push(<ExpertEditorPage mode="edit" expertId={item.id} />);
   };
 
   const handleConfirmDelete = async (id: string) => {
@@ -455,47 +476,12 @@ export default function ExpertMarketListPage() {
   return (
     <div className="wk-mcp-expert-page">
       <header className="wk-mcp-expert-topbar">
-        <div className="wk-mcp-expert-topbar__left">
-          <nav className="wk-mcp-expert-tabs" aria-label={t("mcp.expert.navAriaLabel")}>
-            <button
-              type="button"
-              className={kind === "agent" ? "is-active" : ""}
-              onClick={() => setKind("agent")}
-            >
-              {t("mcp.expert.typeAgent")}
-            </button>
-            <button
-              type="button"
-              className={kind === "squad" ? "is-active" : ""}
-              onClick={() => setKind("squad")}
-            >
-              {t("mcp.expert.typeSquad")}
-            </button>
-            <button
-              type="button"
-              className={kind === "mine" ? "is-active" : ""}
-              onClick={() => setKind("mine")}
-            >
-              {t("mcp.expert.typeMine")}
-            </button>
-          </nav>
-          {loopOn && (
-            <Tooltip
-              content={t("mcp.expert.loopIntro")}
-              className="wk-mcp-tooltip-light"
-              mouseEnterDelay={100}
-              position="bottomLeft"
-            >
-              <button
-                type="button"
-                className="wk-mcp-expert-help"
-                aria-label={t("mcp.expert.loopIntro")}
-              >
-                <HelpCircle size={16} aria-hidden="true" />
-              </button>
-            </Tooltip>
-          )}
-        </div>
+        {variant !== "mine" && (
+          <div className="wk-mcp-expert-hero-title">
+            <h1>{t("mcp.expert.pageTitle")}</h1>
+            <p className="wk-mcp-expert-hero-subtitle">{t("mcp.expert.pageSubtitle")}</p>
+          </div>
+        )}
         <div className="wk-mcp-expert-topbar__actions">
           <div className="wk-mcp-expert-search">
             <Search size={16} aria-hidden="true" />
@@ -607,14 +593,18 @@ export default function ExpertMarketListPage() {
               </div>
             )}
           </div>
-          {kind !== "mine" && (
+          {variant === "mine" && (
             <div className="wk-mcp-expert-publish">
               <WKButton
                 variant="primary"
                 icon={<Upload size={15} />}
-                onClick={() => setBotPublishOpen(true)}
+                onClick={() =>
+                  mineType === "squad"
+                    ? setBotPublishOpen(true)
+                    : WKApp.routeRight.push(<ExpertEditorPage mode="create" />)
+                }
               >
-                {kind === "squad"
+                {mineType === "squad"
                   ? t("mcp.expert.publish")
                   : t("mcp.expert.publishAgent")}
               </WKButton>
@@ -622,6 +612,43 @@ export default function ExpertMarketListPage() {
           )}
         </div>
       </header>
+
+      {variant !== "mine" && (
+        <div className="wk-mcp-expert-topbar__left">
+          <nav className="wk-mcp-expert-tabs" aria-label={t("mcp.expert.navAriaLabel")}>
+            <button
+              type="button"
+              className={kind === "agent" ? "is-active" : ""}
+              onClick={() => setKind("agent")}
+            >
+              {t("mcp.expert.typeAgent")}
+            </button>
+            <button
+              type="button"
+              className={kind === "squad" ? "is-active" : ""}
+              onClick={() => setKind("squad")}
+            >
+              {t("mcp.expert.typeSquad")}
+            </button>
+          </nav>
+          {loopOn && (
+            <Tooltip
+              content={t("mcp.expert.loopIntro")}
+              className="wk-mcp-tooltip-light"
+              mouseEnterDelay={100}
+              position="bottomLeft"
+            >
+              <button
+                type="button"
+                className="wk-mcp-expert-help"
+                aria-label={t("mcp.expert.loopIntro")}
+              >
+                <HelpCircle size={16} aria-hidden="true" />
+              </button>
+            </Tooltip>
+          )}
+        </div>
+      )}
 
       {kind !== "mine" && (
         <section className="wk-mcp-expert-filter-bar">
@@ -659,10 +686,13 @@ export default function ExpertMarketListPage() {
           </div>
         ) : kind === "mine" ? (
           <div className="wk-mcp-expert-mine">
+            {mineType !== "agent" && (
             <section className="wk-mcp-expert-mine-section">
-              <h2 className="wk-mcp-expert-mine-title">
-                <span>{t("mcp.expert.mineSquadsTitle")}</span>
-              </h2>
+              {!mineType && (
+                <h2 className="wk-mcp-expert-mine-title">
+                  <span>{t("mcp.expert.mineSquadsTitle")}</span>
+                </h2>
+              )}
               {mySquadsData.length < mySquadsTotal && (
                 <p className="wk-mcp-expert-truncated" role="note">
                   {t("mcp.expert.truncatedNotice", {
@@ -680,6 +710,7 @@ export default function ExpertMarketListPage() {
                       onAddToLoop={loopOn ? openAddToLoop : undefined}
                       onEdit={handleEdit}
                       onDelete={setDeleteTarget}
+                      showStats={variant === "mine"}
                     />
                   ))}
                 </div>
@@ -689,10 +720,14 @@ export default function ExpertMarketListPage() {
                 </p>
               )}
             </section>
+            )}
+            {mineType !== "squad" && (
             <section className="wk-mcp-expert-mine-section">
-              <h2 className="wk-mcp-expert-mine-title">
-                <span>{t("mcp.expert.mineAgentsTitle")}</span>
-              </h2>
+              {!mineType && (
+                <h2 className="wk-mcp-expert-mine-title">
+                  <span>{t("mcp.expert.mineAgentsTitle")}</span>
+                </h2>
+              )}
               {myAgentsData.length < myAgentsTotal && (
                 <p className="wk-mcp-expert-truncated" role="note">
                   {t("mcp.expert.truncatedNotice", {
@@ -710,6 +745,7 @@ export default function ExpertMarketListPage() {
                       onAddToLoop={loopOn ? openAddToLoop : undefined}
                       onEdit={handleEdit}
                       onDelete={setDeleteTarget}
+                      showStats={variant === "mine"}
                     />
                   ))}
                 </div>
@@ -719,6 +755,7 @@ export default function ExpertMarketListPage() {
                 </p>
               )}
             </section>
+            )}
           </div>
         ) : (
           <>
@@ -760,6 +797,7 @@ export default function ExpertMarketListPage() {
                     item={item}
                     onOpen={openDetail}
                     onAddToLoop={loopOn ? openAddToLoop : undefined}
+                    showStats={variant === "mine"}
                   />
                 ))}
               </div>
@@ -793,7 +831,7 @@ export default function ExpertMarketListPage() {
       />
       <ExpertBotPublishModal
         visible={botPublishOpen}
-        kind={kind === "squad" ? "squad" : "agent"}
+        kind={mineType === "squad" ? "squad" : "agent"}
         mode="create"
         onClose={() => setBotPublishOpen(false)}
         onToast={showToast}

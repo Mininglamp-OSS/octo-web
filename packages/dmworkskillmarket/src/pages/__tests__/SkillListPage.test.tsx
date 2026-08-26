@@ -54,7 +54,6 @@ const skill: Skill = {
 
 vi.mock("../../api/skillApi");
 
-const mineTabName = /我的|skillMarket\.list\.mine/;
 const categoryAriaLabel = /技能分类|skillMarket\.category\.ariaLabel/;
 const searchPlaceholder =
   /搜索名称、描述\.\.\.|skillMarket\.filter\.searchNameDescription/;
@@ -79,10 +78,6 @@ const displayNamePlaceholder =
   /请输入展示名称，最多20个字符|skillMarket\.form\.displayNamePlaceholder/;
 const emptyText = /暂无数据|skillMarket\.list\.empty/;
 const totalCountText = /共 1 个技能|skillMarket\.list\.totalCount/;
-
-async function switchToMineTab() {
-  fireEvent.click(screen.getByRole("button", { name: mineTabName }));
-}
 
 describe("SkillListPage", () => {
   let spaceChangedHandler: (() => void) | undefined;
@@ -124,15 +119,16 @@ describe("SkillListPage", () => {
     vi.restoreAllMocks();
   });
 
-  it("shows exposed owner actions only on the mine tab", async () => {
-    const { container } = render(<SkillListPage />);
+  it("shows exposed owner actions only in the mine variant", async () => {
+    const { container, unmount } = render(<SkillListPage />);
 
     expect(
       await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
     ).toBeInTheDocument();
     expect(container.querySelector(".skill-market-card__action-button")).not.toBeInTheDocument();
+    unmount();
 
-    await switchToMineTab();
+    render(<SkillListPage variant="mine" />);
 
     expect(screen.queryByLabelText(categoryAriaLabel)).not.toBeInTheDocument();
     expect(
@@ -285,7 +281,7 @@ describe("SkillListPage", () => {
   });
 
   it("opens the publish menu and keeps manual upload on the existing modal", async () => {
-    render(<SkillListPage />);
+    render(<SkillListPage variant="mine" />);
 
     fireEvent.click(screen.getByRole("button", { name: publishSkillName }));
     expect(
@@ -310,7 +306,7 @@ describe("SkillListPage", () => {
       value: { writeText },
     });
 
-    render(<SkillListPage />);
+    render(<SkillListPage variant="mine" />);
 
     fireEvent.click(screen.getByRole("button", { name: publishSkillName }));
     fireEvent.click(screen.getByRole("menuitem", { name: botPublishName }));
@@ -340,7 +336,7 @@ describe("SkillListPage", () => {
   });
 
   it("shows persisted stats without an optimistic view-count increment", async () => {
-    render(<SkillListPage />);
+    render(<SkillListPage variant="mine" />);
 
     const card = await screen.findByRole("button", {
       name: "meeting-note-cleaner 我",
@@ -362,8 +358,7 @@ describe("SkillListPage", () => {
   });
 
   it("confirms deletion and removes the skill through the API", async () => {
-    render(<SkillListPage />);
-    await switchToMineTab();
+    render(<SkillListPage variant="mine" />);
 
     fireEvent.click(await screen.findByRole("button", { name: deleteSkillName }));
     expect(screen.getByText(deleteConfirmText)).toBeInTheDocument();
@@ -377,8 +372,7 @@ describe("SkillListPage", () => {
   });
 
   it("closes the detail modal when deleting a skill from within it", async () => {
-    render(<SkillListPage />);
-    await switchToMineTab();
+    render(<SkillListPage variant="mine" />);
 
     fireEvent.click(
       await screen.findByRole("button", { name: "meeting-note-cleaner 我" })
@@ -425,8 +419,7 @@ describe("SkillListPage", () => {
       .mockResolvedValueOnce(skill)
       .mockResolvedValueOnce(updatedSkill);
 
-    render(<SkillListPage />);
-    await switchToMineTab();
+    render(<SkillListPage variant="mine" />);
 
     fireEvent.click(
       await screen.findByRole("button", { name: "meeting-note-cleaner 我" })

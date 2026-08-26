@@ -2,6 +2,33 @@
   "menu": {
     "title": "技能"
   },
+  "editor": {
+    "returnToMine": "返回我的",
+    "settings": "设置",
+    "save": "保存",
+    "saving": "保存中",
+    "saved": "已保存",
+    "saveFailed": "保存失败,请重试",
+    "loading": "加载中…",
+    "loadFailed": "加载技能失败",
+    "noSkill": "未指定技能,请从「我的」重新进入",
+    "editName": "编辑名称",
+    "editDesc": "编辑描述",
+    "filesHeader": "文件 ({{count}})",
+    "newFile": "新建文件",
+    "newFileName": "新文件.md",
+    "deleteFile": "删除 {{name}}",
+    "filePath": "文件路径",
+    "codeArea": "文件内容",
+    "noFile": "选择左侧文件开始编辑",
+    "readonlyFile": "该文件为二进制/存储文件,暂不支持在线编辑",
+    "uploadTitle": "上传文件",
+    "uploadHint": "拖入或选择文本文件(Markdown、YAML、Python、JSON 等)",
+    "leaveConfirm": "有未保存的修改,确定离开吗?",
+    "legacyTitle": "打包上传的技能",
+    "legacyNotice": "该技能为整包上传,暂不支持在线逐文件编辑。可在设置中重新上传技能包。",
+    "reupload": "重新上传技能包"
+  },
   "sidebar": {
     "header": "技能市场",
     "nav": "技能市场导航"
@@ -29,6 +56,8 @@
     "parseTimeout": "解析超时，请重试"
   },
   "list": {
+    "pageTitle": "市场 · 技能",
+    "pageSubtitle": "浏览可复用的技能,直接添加到你的智能体与工作流。",
     "mine": "我的",
     "tabSkills": "全部",
     "publish": "上架",

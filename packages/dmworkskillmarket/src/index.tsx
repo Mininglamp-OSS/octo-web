@@ -4,3 +4,6 @@ export { SkillMarketModule } from "./module";
 // Keeps the coupling to a single named export instead of dmworkmcp reaching
 // into the internal folder tree.
 export { default as SkillListPage } from "./pages/SkillListPage";
+// Full-page skill editor, mounted as a whole-page route (no market sidebar)
+// by dmworkmcp's module at /mcp-market/skill-editor.
+export { default as SkillEditorPage } from "./pages/SkillEditorPage";

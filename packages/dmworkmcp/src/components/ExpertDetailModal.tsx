@@ -156,6 +156,11 @@ export default function ExpertDetailModal({ item, onClose }: ExpertDetailModalPr
           </span>
         </div>
       </div>
+      {item.version && (
+        <span className="wk-mcp-detail-header__version" title={`v${item.version}`}>
+          v{item.version}
+        </span>
+      )}
     </div>
   );
 

@@ -1,7 +1,7 @@
 import React from "react";
 import { Tooltip } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
-import { Bot, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
+import { Bot, Pencil, Plug, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import type { McpListItem } from "../types/mcp";
 import { t } from "@octo/base";
 import { IconGlyph } from "../utils/icon";
@@ -13,6 +13,8 @@ interface McpCardProps {
   onClick: (item: McpListItem) => void;
   onEdit?: (item: McpListItem) => void;
   onDelete?: (item: McpListItem) => void;
+  /** Show the footer stats row. Discovery hides it; the 我的 view keeps it. */
+  showStats?: boolean;
 }
 
 /** Parse a backend `match_reasons` entry into an i18n key + optional value.
@@ -88,7 +90,7 @@ export function resolveOwner(item: McpListItem): { botName?: string; humanName?:
 }
 
 /** A single MCP server card in the list grid. */
-const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) => {
+const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete, showStats = true }) => {
   const visibleTags = item.tags.slice(0, CARD_TAG_LIMIT);
   const overflowTags = item.tags.slice(CARD_TAG_LIMIT);
   const isOfficial = isOfficialMcp(item);
@@ -120,6 +122,18 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
         }
       }}
     >
+      <button
+        type="button"
+        className="wk-mcp-card__primary-action"
+        aria-label={t("mcp.card.connectAriaLabel", { values: { name: item.name } })}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClick(item);
+        }}
+      >
+        <Plug size={14} aria-hidden="true" />
+        {t("mcp.card.connect")}
+      </button>
       <div className="wk-mcp-card__top">
         <div className="wk-mcp-card__icon">
           {hasIcon ? (
@@ -170,7 +184,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
       <div className="wk-mcp-card__slogan">{item.slogan}</div>
       <div className="wk-mcp-card__tags">
         {visibleTags.map((tag) => (
-          <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
+          <span key={tag} className="wk-mcp-tag">
             {tag}
           </span>
         ))}
@@ -179,7 +193,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
             content={
               <div className="wk-mcp-tag-overflow">
                 {overflowTags.map((tag) => (
-                  <span key={tag} className="wk-mcp-tag wk-mcp-tag--accent">
+                  <span key={tag} className="wk-mcp-tag">
                     {tag}
                   </span>
                 ))}
@@ -198,7 +212,9 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
       {item.matchReasons?.length ? (
         <MatchReasons reasons={item.matchReasons} hideCreator={isOfficial} />
       ) : null}
+      {(showStats || onEdit || onDelete) && (
       <div className="wk-mcp-card__footer">
+        {showStats && (
         <div className="wk-mcp-card__stats">
           <span
             className="wk-mcp-card__stat"
@@ -209,6 +225,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
             {item.toolCount}
           </span>
         </div>
+        )}
         {(onEdit || onDelete) && (
           <div
             className="wk-mcp-card__footer-actions"
@@ -251,6 +268,7 @@ const McpCard: React.FC<McpCardProps> = ({ item, onClick, onEdit, onDelete }) =>
           </div>
         )}
       </div>
+      )}
     </div>
   );
 };

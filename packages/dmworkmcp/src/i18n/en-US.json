@@ -4,12 +4,52 @@
   },
   "sidebar": {
     "header": "Markets",
+    "brandGlyph": "M",
+    "tagline": "Make capabilities discoverable and usable",
+    "footnote": "Assets here are discoverable, publishable, and referenceable.",
     "mcp": "MCP",
     "skills": "Skills",
     "experts": "Experts",
-    "expertsBadge": "Loop"
+    "expertsBadge": "Loop",
+    "mine": "Mine"
+  },
+  "mine": {
+    "pageTitle": "Mine",
+    "pageSubtitle": "Manage the skills, experts and connectors you created, and publish them to the market.",
+    "navAriaLabel": "My asset type"
   },
   "expert": {
+    "pageTitle": "Market · Experts",
+    "pageSubtitle": "Browse experts and squads you can install into Loop to extend your workspace.",
+    "editor": {
+      "returnToMarket": "Back",
+      "save": "Save",
+      "saved": "Saved",
+      "saveFailed": "Save failed, please retry",
+      "loading": "Loading…",
+      "loadFailed": "Failed to load expert",
+      "noExpert": "No expert specified — reopen from Mine",
+      "createTitle": "New expert",
+      "nameRequired": "Please enter an expert name",
+      "editName": "Edit name",
+      "editDesc": "Edit description",
+      "namePlaceholder": "Expert name",
+      "descPlaceholder": "Describe what this expert does in one line",
+      "basicInfo": "Basic info",
+      "category": "Category",
+      "categoryPlaceholder": "Select a category",
+      "tags": "Tags",
+      "tagPlaceholder": "Type and press Enter",
+      "removeTag": "Remove tag {{name}}",
+      "instructionHint": "Write the expert's system instruction (AGENTS.md) in Markdown",
+      "mcpHint": "Provide mcp.json (connector config); secrets are replaced with ${VAR} placeholders",
+      "mcpInvalid": "mcp.json is not valid JSON",
+      "newSkill": "New skill",
+      "noSkills": "No bundled skills yet",
+      "skillsAfterCreate": "After saving you can create skills scoped to this expert",
+      "skillsComingSoon": "Bundled-skill editing coming soon",
+      "leaveConfirm": "You have unsaved changes. Leave anyway?"
+    },
     "typeSquad": "Squads",
     "typeAgent": "Experts",
     "typeMine": "Mine",
@@ -131,6 +171,8 @@
     "bot": "Bot"
   },
   "list": {
+    "pageTitle": "Market · Connectors",
+    "pageSubtitle": "Browse and connect MCP servers to extend your agent's tools.",
     "desc": "Browse and connect MCP servers to extend your agent's tools.",
     "create": "Publish MCP",
     "searchPlaceholder": "Search name or description...",
@@ -183,6 +225,8 @@
   },
   "card": {
     "officialPublisher": "Official publisher",
+    "connect": "Connect",
+    "connectAriaLabel": "Connect {{name}}",
     "matchReason": {
       "name": "Matched name",
       "description": "Matched summary",

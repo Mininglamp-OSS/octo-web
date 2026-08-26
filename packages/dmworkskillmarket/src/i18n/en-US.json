@@ -2,6 +2,33 @@
   "menu": {
     "title": "Skills"
   },
+  "editor": {
+    "returnToMine": "Back to Mine",
+    "settings": "Settings",
+    "save": "Save",
+    "saving": "Saving",
+    "saved": "Saved",
+    "saveFailed": "Save failed, please retry",
+    "loading": "Loading…",
+    "loadFailed": "Failed to load skill",
+    "noSkill": "No skill specified — reopen from Mine",
+    "editName": "Edit name",
+    "editDesc": "Edit description",
+    "filesHeader": "Files ({{count}})",
+    "newFile": "New file",
+    "newFileName": "new-file.md",
+    "deleteFile": "Delete {{name}}",
+    "filePath": "File path",
+    "codeArea": "File content",
+    "noFile": "Select a file on the left to edit",
+    "readonlyFile": "Binary / storage file — not editable inline",
+    "uploadTitle": "Upload files",
+    "uploadHint": "Drop or pick text files (Markdown, YAML, Python, JSON, …)",
+    "leaveConfirm": "You have unsaved changes. Leave anyway?",
+    "legacyTitle": "Packaged skill",
+    "legacyNotice": "This skill was uploaded as a package and can't be edited per file. Reupload the package from Settings.",
+    "reupload": "Reupload package"
+  },
   "sidebar": {
     "header": "Skill Market",
     "nav": "Skill Market Navigation"
@@ -29,6 +56,8 @@
     "parseTimeout": "Parse timed out, please retry"
   },
   "list": {
+    "pageTitle": "Market · Skills",
+    "pageSubtitle": "Browse reusable skills and add them straight to your agents and workflows.",
     "mine": "Mine",
     "tabSkills": "All",
     "publish": "Publish",

@@ -22,8 +22,18 @@ import SearchBar from "../components/SearchBar";
 import SkillCard from "../components/SkillCard";
 import SkillCardSkeleton from "../components/SkillCardSkeleton";
 import SkillDetailModal from "../components/SkillDetailModal";
+import SkillEditorPage from "./SkillEditorPage";
 
 type TabId = "skills" | "mine";
+
+/**
+ * Rendering variant. "market" (default) = discovery catalog. "mine" = personal
+ * assets mounted inside MyAssetsPage — forces the mine data source, hides the
+ * in-page tab strip + hero title, and shows manage actions on every card.
+ */
+interface SkillListPageProps {
+  variant?: "market" | "mine";
+}
 
 const TOAST_DURATION = 3000;
 const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boolean }> = [
@@ -33,9 +43,9 @@ const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boo
   { value: "views", labelKey: "skillMarket.sort.views", descending: true },
 ];
 
-export default function SkillListPage() {
+export default function SkillListPage({ variant = "market" }: SkillListPageProps = {}) {
   useI18n();
-  const [tab, setTab] = useState<TabId>("skills");
+  const [tab] = useState<TabId>(variant === "mine" ? "mine" : "skills");
   const mine = tab === "mine";
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sort, setSort] = useState<SkillSort>("comprehensive");
@@ -123,13 +133,6 @@ export default function SkillListPage() {
     return () => observer.disconnect();
   }, [list]);
 
-  function switchTab(next: TabId) {
-    if (next === tab) return;
-    // 用户切换视图 Tab;原先误用 GET /skills/mine 加载推断,而 mine 列表也用于建议/初始化。
-    Dap.shared.track("market_view_switched", {});
-    setTab(next);
-  }
-
   function handleSelectedTagsChange(next: string[]) {
     // 用户增删 tag 过滤;原先误用 GET /plugin_tags 加载 tag 列表推断。
     Dap.shared.track("market_tag_filtered", {});
@@ -164,6 +167,13 @@ export default function SkillListPage() {
     setDetailRefreshKey((current) => current + 1);
   }
 
+  /** Open a personal skill in the full-page editor. Pushes the editor into the
+   *  market's right pane (same navigation model as MarketSidebar / the summary
+   *  detail pages); the editor pops back to the 我的 list on return. */
+  function openSkillEditor(skill: Skill) {
+    WKApp.routeRight.push(<SkillEditorPage skillId={skill.id} />);
+  }
+
   function openDetail(item: Skill) {
     // 六审 C2:卡片打开只保留卡根 data-track="market_card_opened"(DOM 委托,亦覆盖键盘),
     // 删除此处命令式 market_card_viewed —— 二者本是对「同一次打开」的双计(owner 决策:留 opened;与 mcp 侧对称)。
@@ -180,25 +190,12 @@ export default function SkillListPage() {
   return (
     <div className="skill-market-page">
       <header className="skill-market-topbar">
-        <nav
-          className="skill-market-tabs"
-          aria-label={t("skillMarket.list.navAriaLabel")}
-        >
-          <button
-            type="button"
-            className={tab === "skills" ? "is-active" : ""}
-            onClick={() => switchTab("skills")}
-          >
-            {t("skillMarket.list.tabSkills")}
-          </button>
-          <button
-            type="button"
-            className={tab === "mine" ? "is-active" : ""}
-            onClick={() => switchTab("mine")}
-          >
-            {t("skillMarket.list.mine")}
-          </button>
-        </nav>
+        {variant !== "mine" && (
+          <div className="skill-market-hero-title">
+            <h1>{t("skillMarket.list.pageTitle")}</h1>
+            <p className="skill-market-hero-subtitle">{t("skillMarket.list.pageSubtitle")}</p>
+          </div>
+        )}
         <div className="skill-market-topbar__actions">
           <SearchBar
             ref={searchInputRef}
@@ -209,6 +206,7 @@ export default function SkillListPage() {
             onSelectedTagsChange={handleSelectedTagsChange}
             autoFocus
           />
+          {variant === "mine" && (
           <div className="skill-market-publish-menu" ref={publishMenuRef}>
             <WKButton
               variant="primary"
@@ -257,6 +255,7 @@ export default function SkillListPage() {
               </div>
             )}
           </div>
+          )}
         </div>
       </header>
 
@@ -348,9 +347,10 @@ export default function SkillListPage() {
                 skill={skill}
                 categories={list.categories}
                 onOpen={openDetail}
-                onEdit={mine ? setEditing : undefined}
+                onEdit={mine ? openSkillEditor : undefined}
                 onDelete={mine ? setDeleting : undefined}
                 onInstall={(item) => setInstallSkillId(item.id)}
+                showStats={mine}
               />
             ))}
           </div>

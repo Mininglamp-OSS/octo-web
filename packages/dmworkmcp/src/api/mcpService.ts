@@ -646,6 +646,7 @@ function mapDetail(
     notes: jsonAttachment<string[]>(raw.plugin_json, "connector/notes.json") ?? [],
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
+    version: raw.current_version ?? "",
   };
 }
 

@@ -11,11 +11,13 @@ import { resolveSkillMarketApiBaseURL } from "./constants";
 import { WKApp, t, DEFAULT_REQUEST_TIMEOUT_MS } from "@octo/base";
 import type {
   Category,
+  EditableAttachment,
   NewSkillForm,
   PagedResult,
   ParseStatusResult,
   RawSkillTag,
   Skill,
+  SkillFilesResult,
   SkillListQuery,
   SkillSort,
   SkillTag,
@@ -501,6 +503,36 @@ export function getSkill(id: string): Promise<Skill> {
   ).then((detail) => mapSkillDetail(detail.plugin));
 }
 
+/**
+ * Load a skill's editable file tree for the full-page editor. Preserves
+ * `plugin_json.attachments` (which `getSkill`/`mapSkillDetail` discard): `raw`
+ * files become editable text, `storage` (binary/zip) files are marked
+ * read-only. Legacy zip-package skills report `isLegacy` so the editor can fall
+ * back to the reupload flow. Paths are validated (defense in depth) and the
+ * embedded `manifest.json`, if any, is hidden — the manifest lives in
+ * `manifest_json`, not the tree.
+ */
+export function getSkillFiles(id: string): Promise<SkillFilesResult> {
+  return request<PluginDetailWire>(
+    `/plugins/detail?plugin_id=${encodeURIComponent(id)}&include_relations=false`
+  ).then((detail) => {
+    const plugin = detail.plugin;
+    const raw = plugin.plugin_json?.attachments ?? [];
+    const isLegacy = raw.some(
+      (a) => a.path === "skill/ref.json" || a.path === "skill/package.zip"
+    );
+    const attachments: EditableAttachment[] = raw
+      .filter((a) => a.path !== "manifest.json" && isSafeAttachmentPath(a.path))
+      .map((a) => ({
+        path: a.path,
+        rawContent: a.content_type === "raw" ? a.raw_content ?? "" : undefined,
+        mimeType: a.mime_type,
+        readonly: a.content_type !== "raw",
+      }));
+    return { skill: mapSkillDetail(plugin), attachments, isLegacy };
+  });
+}
+
 export async function trackSkillView(id: string): Promise<void> {
   await request<Record<string, never>>(
     "/metrics/track",
@@ -603,9 +635,36 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
   // package passes through untouched — but only after each path is validated,
   // since these come from the backend response and are fed straight back into
   // the trusted upsert write (defense in depth against a poisoned record).
-  const attachments: PluginAttachmentWire[] = (
-    plugin.plugin_json?.attachments ?? []
-  ).filter((a) => a.path !== "manifest.json" && isSafeAttachmentPath(a.path));
+  //
+  // When the full-page editor supplies `form.attachments`, that edited tree
+  // replaces the pass-through: `raw` files are re-emitted with the new text,
+  // while read-only (`storage`) files are preserved verbatim from the current
+  // record (the editor never carries their storage_uri). Same path validation.
+  let attachments: PluginAttachmentWire[];
+  if (form.attachments) {
+    const originalByPath = new Map(
+      (plugin.plugin_json?.attachments ?? []).map((a) => [a.path, a])
+    );
+    attachments = form.attachments
+      .filter((a) => a.path !== "manifest.json" && isSafeAttachmentPath(a.path))
+      .map((a): PluginAttachmentWire | null => {
+        if (a.readonly) {
+          // Preserve the original storage attachment untouched.
+          return originalByPath.get(a.path) ?? null;
+        }
+        return {
+          path: a.path,
+          content_type: "raw",
+          raw_content: a.rawContent ?? "",
+          ...(a.mimeType ? { mime_type: a.mimeType } : {}),
+        };
+      })
+      .filter((a): a is PluginAttachmentWire => a !== null);
+  } else {
+    attachments = (plugin.plugin_json?.attachments ?? []).filter(
+      (a) => a.path !== "manifest.json" && isSafeAttachmentPath(a.path)
+    );
+  }
   const detail = await request<PluginDetailWire>("/plugins/upsert", {
     method: "POST",
     body: JSON.stringify({
