@@ -353,3 +353,88 @@ describe('FETCH_RULES — 十二审 🔴 五类「2xx ≠ 用户动作(且成功
         expect(matchFetchEvent(idx, 'PUT', '/api/v1/groups/g1/members/u1')).toBe('group_nickname_edited')
     })
 })
+
+describe('FETCH_RULES — fleet(Loop)path 通道(T1 同窗内嵌,/fleet/api/v1/*)', () => {
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('任务板 / 任务:169 三端点同一事件,171 :id 打开', () => {
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues')).toBe('task_board_filtered')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/grouped')).toBe('task_board_filtered')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/search')).toBe('task_board_filtered')
+        // most-specific-wins:grouped/search 字面段压过 :id,不落 task_opened。
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/issues/i123')).toBe('task_opened')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/issues/i123/comments')).toBe('task_commented')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/issues/i123')).toBe('task_deleted')
+    })
+
+    it('项目 / 自动化 CRUD + trigger vs triggers 字面消歧', () => {
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/projects')).toBe('project_created')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/projects/p1')).toBe('project_opened')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/projects/p1')).toBe('project_deleted')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/autopilots')).toBe('automation_created')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/autopilots/a1')).toBe('automation_opened')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/autopilots/a1')).toBe('automation_deleted')
+        // 手动运行(trigger,单数)vs 新增触发器(triggers,复数):字面段区分。
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/autopilots/a1/trigger')).toBe('automation_run_manually')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/autopilots/a1/triggers')).toBe('automation_trigger_added')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/autopilots/a1/triggers/t1')).toBe('automation_trigger_deleted')
+    })
+
+    it('专家 / 专家团 / 工作区设置 / skill', () => {
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/agents')).toBe('expert_created')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/agents/ag1')).toBe('expert_opened')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/agents/ag1/restore')).toBe('expert_unarchived')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/squads')).toBe('expert_team_created')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/squads/s1')).toBe('expert_team_opened')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/squads/s1/members')).toBe('expert_team_member_removed')
+        expect(matchFetchEvent(idx, 'PATCH', '/fleet/api/v1/workspaces/w1')).toBe('workspace_general_saved')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/workspaces/w1/octo-members')).toBe('workspace_member_added')
+        expect(matchFetchEvent(idx, 'PATCH', '/fleet/api/v1/workspaces/w1/members/m1')).toBe('workspace_member_role_changed')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/workspaces/w1/members/m1')).toBe('workspace_member_removed')
+        expect(matchFetchEvent(idx, 'PATCH', '/fleet/api/v1/runtimes/r1')).toBe('runtime_machine_renamed')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/runtimes/r1/local-skills')).toBe('skill_runtime_skills_pulled')
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/skills/sk1')).toBe('skill_opened')
+        expect(matchFetchEvent(idx, 'PUT', '/fleet/api/v1/skills/sk1')).toBe('skill_saved')
+        expect(matchFetchEvent(idx, 'DELETE', '/fleet/api/v1/skills/sk1')).toBe('skill_deleted')
+        // 281 local/web 两端点同一事件。
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/skills')).toBe('skill_created')
+        expect(matchFetchEvent(idx, 'POST', '/fleet/api/v1/skills/import')).toBe('skill_created')
+    })
+
+    it('轮询/列表类不产出:GET /skills(列表)、GET local-skills/:id(900ms 轮询)不映射', () => {
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/skills')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/runtimes/r1/local-skills/x1')).toBeUndefined()
+        // 159 workspace_switched 无专属端点,不在本表(退各仓 UI)。
+        expect(matchFetchEvent(idx, 'GET', '/fleet/api/v1/workspaces')).toBeUndefined()
+    })
+})
+
+describe('FETCH_RULES — doc path 通道(T1 同窗内嵌,/api/v1/docs/*)', () => {
+    const idx = buildFetchIndex(FETCH_RULES)
+
+    it('进入只挂唯一信号 creators;/docs、/docs/recent(搜索/筛选共用)不映射', () => {
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/recent/creators')).toBe('document_module_entered')
+        // 121 搜索 / 122 筛选带 ?q=/?creator= 打到 /docs、/docs/recent,pathname 与进入相同 → 不映射(退 UI)。
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/recent')).toBeUndefined()
+    })
+
+    it('创建 / 打开 / 评论 / 转发(batch)/ 导出 / 删除', () => {
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs')).toBe('document_created')
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs/d1/view')).toBe('document_opened')
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs/d1/comments')).toBe('document_commented')
+        // 130 G 类纠偏:恒调 batch,单发不映射。
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs/d1/forward-grant/batch')).toBe('document_forwarded')
+        expect(matchFetchEvent(idx, 'POST', '/api/v1/docs/d1/forward-grant')).toBeUndefined()
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/d1/export/file')).toBe('document_exported')
+        expect(matchFetchEvent(idx, 'DELETE', '/api/v1/docs/d1')).toBe('document_deleted')
+    })
+
+    it('成员管理 GET/PUT/DELETE 归一 document_share_managed;creators 不被 :id/members 误吞', () => {
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/d1/members')).toBe('document_share_managed')
+        expect(matchFetchEvent(idx, 'PUT', '/api/v1/docs/d1/members')).toBe('document_share_managed')
+        expect(matchFetchEvent(idx, 'DELETE', '/api/v1/docs/d1/members/u1')).toBe('document_share_managed')
+        // /docs/recent/creators 段数同 /docs/:id/members,但字面 recent≠:id 消歧:creators 只落 module_entered。
+        expect(matchFetchEvent(idx, 'GET', '/api/v1/docs/recent/creators')).toBe('document_module_entered')
+    })
+})
