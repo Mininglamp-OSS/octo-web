@@ -11,9 +11,12 @@
 //      后所有 block 形态（多行 / blockquote / list / CRLF）都能正常解析、不再崩。
 //   2. 渲染顺序 highlight → sanitize → katex：KaTeX 输出不二次 sanitize，保住定位用的
 //      内联 style（strut/pstrut），修复分数/矩阵塌陷。
-//   3. `singleDollarTextMath: false` 关单 `$`：货币/shell/区间正文不被误配对成公式。
+//   3. iOS 对齐的 math-ish 守卫（mathGuardPlugin）：默认路径识别 `$...$` / `$$...$$`，
+//      但只有内部含 `\ ^ _ { }` 之一的片段才当公式，`$100` / `$5-$10` / `cost $$5 and $$10`
+//      等金额/shell 正文保持原文。与 iOS WKLaTeXPreprocessor.hasMathChar 行为一致，
+//      从而 `$E=mc^2$` 两端都渲染、货币两端都不误触发。
 //   4. `maxSize`/`maxExpand`/`trust:false`：兜 DoS/布局炸弹，且不产生可执行 HTML。
-// 文档/编辑器等需要单 `$` 的场景可显式传 allowSingleDollarMath。
+// 文档/编辑器等要“无守卫、简单 $a+b$ 也渲染”的场景可显式传 allowSingleDollarMath。
 
 import React from "react";
 import ReactDOM from "react-dom";
@@ -50,6 +53,36 @@ function renderContent(element: React.ReactElement) {
   });
   return container;
 }
+
+/** KaTeX 会额外挂一份仅无障碍用的 MathML 镜像（.katex-mathml），比对可见文本时要剔除。 */
+function visibleText(root: HTMLElement): string {
+  const clone = root.cloneNode(true) as HTMLElement;
+  clone
+    .querySelectorAll(".katex-mathml")
+    .forEach((n) => n.parentNode?.removeChild(n));
+  return clone.textContent ?? "";
+}
+
+describe("MarkdownContent — #1089 手动验收字符串必须渲染 (WS-117)", () => {
+  // 直接用 issue #1089 验收区写死的那条消息：单 $E=mc^2$ + 块级 $$\frac{a}{b}$$，
+  // Web 端应看到两处渲染后的公式（对齐 iOS）。
+  it("单 $E=mc^2$ 与 $$\\frac{a}{b}$$ 同条消息各渲染一处公式", () => {
+    const root = renderContent(
+      <MarkdownContent content={"质能方程 $E=mc^2$ 与 $$\\frac{a}{b}$$"} />
+    );
+    expect(root.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("默认路径下单 $E=mc^2$ 渲染成 KaTeX 节点（含 ^，是真公式）", () => {
+    const root = renderContent(<MarkdownContent content={"值 $E=mc^2$ 结束"} />);
+    expect(root.querySelector(".katex")).not.toBeNull();
+  });
+
+  it("默认路径下 $x_1$（含下标 _）渲染成 KaTeX 节点", () => {
+    const root = renderContent(<MarkdownContent content={"设 $x_1$ 为初值"} />);
+    expect(root.querySelector(".katex")).not.toBeNull();
+  });
+});
 
 describe("MarkdownContent — $$...$$ 公式渲染 (WS-117 / GH#1089)", () => {
   it("行内 $$E=mc^2$$ 渲染成 KaTeX 节点", () => {
@@ -105,6 +138,27 @@ describe("MarkdownContent — block/flow 公式不再崩 + display 模式 (revie
     expect(root.querySelector(".katex")).toBeNull();
     expect(root.textContent).toContain("正在计算");
   });
+
+  it("流式：同一实例从未闭合 $$ 前缀 → 补全后正常渲染公式", () => {
+    // 复用同一个 container / 同一组件实例，先渲染半截 $$ 再补全，验证未闭合定界符
+    // 不会污染后续渲染（reviewer P2#2）。
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    act(() => {
+      ReactDOM.render(
+        <MarkdownContent content={"推导 $$\\frac{a}"} isStreaming />,
+        container
+      );
+    });
+    expect(container.querySelector(".katex")).toBeNull();
+    act(() => {
+      ReactDOM.render(
+        <MarkdownContent content={"推导 $$\\frac{a}{b}$$"} isStreaming />,
+        container
+      );
+    });
+    expect(container.querySelector(".katex")).not.toBeNull();
+  });
 });
 
 describe("MarkdownContent — KaTeX 布局定位样式不被 sanitize 剥掉", () => {
@@ -128,7 +182,7 @@ describe("MarkdownContent — KaTeX 布局定位样式不被 sanitize 剥掉", (
 });
 
 describe("MarkdownContent — 安全 / DoS 边界", () => {
-  it("maxSize 把 \\rule 超大尺寸夹到有界值", () => {
+  it("maxSize 把 \\rule 超大尺寸夹到有界值（高与宽都夹）", () => {
     const root = renderContent(
       <MarkdownContent content={"$$\\rule{99999em}{99999em}$$"} />
     );
@@ -137,6 +191,15 @@ describe("MarkdownContent — 安全 / DoS 边界", () => {
     for (const s of struts) {
       expect(parseFloat(s.style.height || "0")).toBeLessThanOrEqual(10);
     }
+    // 宽度同样被 maxSize 夹住（reviewer P2#3：不能只断言高度）。
+    const rule = root.querySelector<HTMLElement>(".rule");
+    if (rule) {
+      expect(
+        parseFloat(rule.style.borderRightWidth || "0")
+      ).toBeLessThanOrEqual(10);
+    }
+    // 夹尺寸后仍然是正常渲染，不应退化成 KaTeX 错误节点。
+    expect(root.querySelector(".katex-error")).toBeNull();
   });
 
   it("trust:false 下 \\href{javascript:...} 不产生可执行 href", () => {
@@ -152,7 +215,8 @@ describe("MarkdownContent — 安全 / DoS 边界", () => {
   });
 });
 
-describe("MarkdownContent — 成对/单个 $ 正文不被误渲成公式 (reviewer 阻塞点)", () => {
+describe("MarkdownContent — 单 $ 正文不被误渲成公式 (reviewer 阻塞点)", () => {
+  // 这些都是「配对的单 $，但内部无 \\ ^ _ { } 数学字符」的普通正文：math-ish 守卫应还原原文。
   const cases: string[] = [
     "价格是 $100",
     "price is $5-$10",
@@ -165,23 +229,63 @@ describe("MarkdownContent — 成对/单个 $ 正文不被误渲成公式 (revie
     it(`不误渲染且正文完整：${JSON.stringify(input)}`, () => {
       const root = renderContent(<MarkdownContent content={input} />);
       expect(root.querySelector(".katex")).toBeNull();
-      expect(root.textContent).toBe(input);
+      expect(visibleText(root)).toBe(input);
     });
   }
 });
 
-describe("MarkdownContent — allowSingleDollarMath 显式开启单 $ (文档/编辑器场景)", () => {
-  it("开启后行内 $E=mc^2$ 渲染成 KaTeX 节点", () => {
+describe("MarkdownContent — 成对 $$ 正文不被误渲成公式 (reviewer §3 阻塞点)", () => {
+  // 上一轮把默认收窄到 $$ only 并没堵住正文误配对：内部无数学字符的 $$...$$ 仍会吃字重排。
+  // math-ish 守卫对 $ 与 $$ 一视同仁，这些普通正文必须原样保留。
+  const cases: string[] = [
+    "花了 $$100，又花了 $$200",
+    "cost $$5 and $$10",
+    "echo $$ then echo $$ again",
+    "US$$50 vs HK$$50",
+    "预算 $$1000 万，实际 $$1200 万",
+  ];
+  for (const input of cases) {
+    it(`不误渲染且正文完整：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(visibleText(root)).toBe(input);
+    });
+  }
+});
+
+describe("MarkdownContent — 代码内的 $ / $$ 永远不当公式（守卫范围仅正文）", () => {
+  it("行内代码 `echo $$` 原样保留、不渲染公式", () => {
     const root = renderContent(
-      <MarkdownContent content={"值 $E=mc^2$ 结束"} allowSingleDollarMath />
+      <MarkdownContent content={"跑一下 `echo $$ pid` 看看"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(root.querySelector("code")?.textContent).toContain("echo $$ pid");
+  });
+
+  it("围栏代码块内 $$ 原样保留、不渲染公式", () => {
+    const root = renderContent(
+      <MarkdownContent content={"```sh\necho $$ then echo $$ again\n```"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(root.querySelector("pre")?.textContent).toContain(
+      "echo $$ then echo $$ again"
+    );
+  });
+});
+
+describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
+  it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
+    // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。
+    const root = renderContent(
+      <MarkdownContent content={"值 $a+b$ 结束"} allowSingleDollarMath />
     );
     expect(root.querySelector(".katex")).not.toBeNull();
   });
 
-  it("默认（不开启）时单 $E=mc^2$ 按纯文本、不渲染公式", () => {
-    const root = renderContent(<MarkdownContent content={"值 $E=mc^2$ 结束"} />);
+  it("默认路径下 $a+b$（无数学字符）按纯文本、不渲染公式", () => {
+    const root = renderContent(<MarkdownContent content={"值 $a+b$ 结束"} />);
     expect(root.querySelector(".katex")).toBeNull();
-    expect(root.textContent).toBe("值 $E=mc^2$ 结束");
+    expect(visibleText(root)).toBe("值 $a+b$ 结束");
   });
 
   it("enableMath={false} 时即便有 $$ 也不渲染公式", () => {

@@ -39,12 +39,17 @@ interface MarkdownContentProps {
   emojis?: EmojiInfo[];
   /**
    * 是否启用数学公式渲染（KaTeX），默认 true。
-   * 聊天消息默认识别 `$$...$$` 行内及块级公式；明确不需要时可传 false。
+   * 聊天消息默认识别 `$...$` 行内与 `$$...$$` 块级公式（对齐 iOS 用 math-ish 守卫
+   * 过滤金额/shell 误匹配）；明确不需要时可传 false。
    */
   enableMath?: boolean;
   /**
-   * 是否额外识别单 `$...$` 行内公式，默认 false。
-   * 单美元语法与金额、shell 变量天然歧义，仅在明确需要时开启。
+   * 是否跳过 math-ish 守卫、无条件识别所有 `$...$` / `$$...$$` 为公式，默认 false。
+   *
+   * 聊天默认路径（false）识别 `$...$` / `$$...$$`，但对齐 iOS 用 math-ish 守卫过滤：
+   * 只有内部含 `\ ^ _ { }` 之一的片段才当公式渲染，`$100`、`$5-$10`、`$HOME` 等
+   * 金额/shell 场景保持原文。文档/编辑器等作者显式书写公式的场景可传 true 关掉守卫，
+   * 让 `$a+b$` 这类无特殊字符的简单公式也渲染。
    */
   allowSingleDollarMath?: boolean;
   /**
@@ -111,21 +116,72 @@ const baseRemarkPlugins: any[] = [
   remarkBreaks,
 ];
 
-/** 默认只识别 `$$...$$`，避免把金额和 shell 变量误判为公式。 */
+/**
+ * 聊天默认路径：识别 `$...$` / `$$...$$`，但用 iOS 对齐的 math-ish 守卫
+ * ({@link mathGuardPlugin}) 过滤掉金额 / shell 等误匹配。守卫必须排在 remarkMath 之后。
+ */
 const mathRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
   [remarkGfm, remarkGfmOptions],
   remarkBreaks,
-  [remarkMath, { singleDollarTextMath: false }],
+  remarkMath,
+  mathGuardPlugin,
 ];
 
-/** 明确允许时同时识别 `$...$` 和 `$$...$$`。 */
+/** 文档 / 编辑器场景：无条件识别所有 `$...$` / `$$...$$`，不加守卫（作者显式书写公式）。 */
 const mathRemarkPluginsSingleDollar: any[] = [
   rawHtmlAsTextPlugin,
   [remarkGfm, remarkGfmOptions],
   remarkBreaks,
   remarkMath,
 ];
+
+/** math-ish 内部字符：与 iOS WKLaTeXPreprocessor.hasMathChar 完全一致。 */
+const MATH_ISH_CHAR = /[\\^_{}]/;
+
+/**
+ * iOS 对齐的 math-ish 守卫（镜像 `WKLaTeXPreprocessor.hasMathChar`）。
+ *
+ * remark-math 会把每一段配对的 `$...$` / `$$...$$` 都 token 成公式节点。本插件在其后运行，
+ * 把「内部不含 `\ ^ _ { }` 任一字符」的公式节点还原成源码原文：
+ *   - `$E=mc^2$`（含 `^`）、`$$\frac{a}{b}$$`（含 `\{}`）→ 保留，正常渲染为 KaTeX；
+ *   - `价格是 $100`（未配对）、`$5-$10`、`cost $$5 and $$10`、`$HOME/bin:$PATH` → 还原原文。
+ * 这样既满足 #1089「`$E=mc^2$` 应渲染」的验收，又与 iOS 行为一致，避免普通文本里的
+ * 美元符号被吃掉重排。公式节点只由 remark-math 产生（代码块 / 行内代码是独立节点，
+ * 不会被 remark-math 触碰），所以守卫天然不影响代码内容。
+ */
+function mathGuardPlugin() {
+  return (tree: any, file: any) => {
+    const source: string =
+      typeof file?.value === "string" ? file.value : String(file ?? "");
+    const literalFrom = (node: any): string => {
+      const start = node?.position?.start?.offset;
+      const end = node?.position?.end?.offset;
+      if (typeof start === "number" && typeof end === "number") {
+        return source.slice(start, end);
+      }
+      // position 缺失时的兜底：按节点类型补回定界符，避免丢内容。
+      const fence = node?.type === "math" ? "$$" : "$";
+      return `${fence}${node?.value ?? ""}${fence}`;
+    };
+    const visit = (node: any) => {
+      if (!node || !Array.isArray(node.children)) return;
+      node.children = node.children.map((child: any) => {
+        if (child?.type === "inlineMath" || child?.type === "math") {
+          if (MATH_ISH_CHAR.test(child.value ?? "")) return child;
+          const literal = literalFrom(child);
+          // 块级 math 处于块级位置，还原成段落包裹的文本；行内 math 直接还原成文本节点。
+          return child.type === "math"
+            ? { type: "paragraph", children: [{ type: "text", value: literal }] }
+            : { type: "text", value: literal };
+        }
+        visit(child);
+        return child;
+      });
+    };
+    visit(tree);
+  };
+}
 
 function rawHtmlAsTextPlugin() {
   return (tree: any) => {
