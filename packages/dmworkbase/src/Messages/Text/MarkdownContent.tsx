@@ -265,11 +265,61 @@ function isAcceptableInlineMath(inner: string, isDouble: boolean): boolean {
 /** KaTeX è½å¦è§£æè¯¥å¬å¼ï¼é¢æ ¡éªï¼å¤±è´¥åæ´ä½æå­é¢ææ¬ä¿çï¼ä¸äº§ççº¢å­ãä¸ä¸¢å®çç¬¦ï¼ã */
 function katexAccepts(inner: string, displayMode: boolean): boolean {
   try {
-    katex.renderToString(inner, { ...KATEX_VALIDATE_OPTS, displayMode });
+    const html = katex.renderToString(inner, {
+      ...KATEX_VALIDATE_OPTS,
+      displayMode,
+    });
+    // 渲染后 HTML 长度上限：接收端保护，挡住病态公式放大成 MB 级 HTML / 数万 DOM 节点。
+    if (html.length > MAX_RENDERED_MATH_LEN) return false;
     return true;
   } catch {
     return false;
   }
+}
+
+/** 单条公式渲染后 HTML 长度上限（约 3.8KB 输入可膨胀到 >1MB / 3 万 DOM 节点）。 */
+const MAX_RENDERED_MATH_LEN = 60000;
+/** 单条消息公式数量上限：超出后其余候选按文本处理。 */
+const MAX_FORMULAS_PER_MESSAGE = 32;
+
+/**
+ * display `$$…$$` 是否为「行锚定块」：opener 所在行 `$$` 前只有空白（行首），closer 所在行 `$$`
+ * 后只有空白（行尾）。只有锚定块才当 display 公式；否则是跨软换行的普通 prose（`cost $$5 for\n…$$`），
+ * 交回行内路径由 isAcceptableInlineMath 拦截，避免把 shell/prose 吞成 display math。
+ */
+function isAnchoredDisplay(text: string, openIdx: number, closeIdx: number): boolean {
+  let a = openIdx - 1;
+  while (a >= 0 && (text[a] === " " || text[a] === "\t")) a -= 1;
+  const openerAtLineStart = a < 0 || text[a] === "\n";
+  let b = closeIdx + 2;
+  while (b < text.length && (text[b] === " " || text[b] === "\t")) b += 1;
+  const closerAtLineEnd = b >= text.length || text[b] === "\n";
+  return openerAtLineStart && closerAtLineEnd;
+}
+
+/**
+ * 找出 value 里「源码中被反斜杠转义」的 `$` 下标（value 空间）。CommonMark 已把 `\$` 折叠成 `$`，
+ * 纯扫 value 会把用户的 in-band escape hatch（`literal \$x_1\$`）重新当成定界符。这里用文本节点
+ * 源码切片与 value 并行游走还原转义信息；遇实体等无法对齐时返回 null（安全降级，不误标转义）。
+ */
+function findEscapedDollars(raw: string, value: string): Set<number> | null {
+  const escaped = new Set<number>();
+  const isPunct = (c: string) => /[!-/:-@[-`{-~]/.test(c);
+  let ri = 0;
+  let vi = 0;
+  while (ri < raw.length && vi < value.length) {
+    if (raw[ri] === "\\" && ri + 1 < raw.length && isPunct(raw[ri + 1])) {
+      if (value[vi] !== raw[ri + 1]) return null;
+      if (raw[ri + 1] === "$") escaped.add(vi);
+      ri += 2;
+      vi += 1;
+    } else {
+      if (value[vi] !== raw[ri]) return null;
+      ri += 1;
+      vi += 1;
+    }
+  }
+  return vi === value.length ? escaped : null;
 }
 
 /** æé  mdast å¬å¼èç¹ï¼å¸¦ remark-rehype äº¤æ¥æéç hName/hProperties/hChildrenï¼ä¾ rehype-katex æ¸²æã */
@@ -292,7 +342,11 @@ function makeMathNode(inner: string, display: boolean): any {
  * å³é®ï¼åéè¢«æç»æ¶åªè·³è¿æ¬ openerï¼åç§» openLenï¼ï¼åç»­ `$` ä»å¯å¼æ°åéââå æ­¤è´§å¸ `$100`
  * ä¸ä¼åæåé¢ `$E=mc^2$` çå®çç¬¦ï¼è¢«æç»çå®çç¬¦ä¸ææ¬ 100% åæ ·ä¿çã
  */
-function scanTextForMath(text: string): any[] {
+function scanTextForMath(
+  text: string,
+  escaped: Set<number> | null,
+  ctx: { count: number }
+): any[] {
   const out: any[] = [];
   let buf = "";
   const flush = () => {
@@ -304,25 +358,30 @@ function scanTextForMath(text: string): any[] {
   const n = text.length;
   let i = 0;
   while (i < n) {
-    if (text[i] !== "$") {
+    if (text[i] !== "$" || escaped?.has(i)) {
       buf += text[i];
       i += 1;
       continue;
     }
-    const isDouble = text[i + 1] === "$";
+    const isDouble = text[i + 1] === "$" && !escaped?.has(i + 1);
     const openLen = isDouble ? 2 : 1;
     let close = -1;
     let j = i + openLen;
     while (j < n) {
       if (isDouble) {
-        if (text[j] === "$" && text[j + 1] === "$") {
+        if (
+          text[j] === "$" &&
+          text[j + 1] === "$" &&
+          !escaped?.has(j) &&
+          !escaped?.has(j + 1)
+        ) {
           close = j;
           break;
         }
         if (text[j] === "\n" && text[j + 1] === "\n") break; // ä¸è·¨ç©ºè¡
       } else {
         if (text[j] === "\n") break; // å $ ä¸è·¨è¡
-        if (text[j] === "$") {
+        if (text[j] === "$" && !escaped?.has(j)) {
           close = j;
           break;
         }
@@ -332,7 +391,8 @@ function scanTextForMath(text: string): any[] {
     if (close >= i + openLen) {
       const inner = text.slice(i + openLen, close);
       const hasNewline = inner.indexOf("\n") !== -1;
-      const display = isDouble && hasNewline; // $$ è·¨è¡ â display blockï¼å¦åè¡å
+      const display =
+        isDouble && hasNewline && isAnchoredDisplay(text, i, close); // $$ è·¨è¡ â display blockï¼å¦åè¡å
       let accept: boolean;
       if (display) {
         accept =
@@ -340,11 +400,22 @@ function scanTextForMath(text: string): any[] {
           MATH_ISH_CHAR.test(inner) &&
           inner.length <= MAX_BLOCK_MATH_LEN;
       } else {
-        accept = isAcceptableInlineMath(inner, isDouble);
+        // 行内：定界符不能紧贴单词字符（挡 shell 多变量 `echo $X_1,$Y_2`——闭定界符后紧跟
+        // 标识符，说明它其实是下一个 $var 的开定界符，而非公式收尾）。
+        const before = i > 0 ? text[i - 1] : "";
+        const after = close + openLen < n ? text[close + openLen] : "";
+        const wordAdjacent =
+          /[A-Za-z0-9]/.test(before) || /[A-Za-z0-9_]/.test(after);
+        accept = !wordAdjacent && isAcceptableInlineMath(inner, isDouble);
       }
-      if (accept && katexAccepts(inner, display)) {
+      if (
+        accept &&
+        ctx.count < MAX_FORMULAS_PER_MESSAGE &&
+        katexAccepts(inner, display)
+      ) {
         flush();
         out.push(makeMathNode(inner, display));
+        ctx.count += 1;
         i = close + openLen;
         continue;
       }
@@ -362,7 +433,10 @@ function scanTextForMath(text: string): any[] {
  * {@link scanTextForMath}ï¼æè¯å«åºçå¬å¼ææ inlineMath/math èç¹ãå¿é¡»å¨ remarkBreaks ä¹åè¿è¡ã
  */
 function mathScanPlugin() {
-  return (tree: any) => {
+  return (tree: any, file: any) => {
+    const source: string =
+      typeof file?.value === "string" ? file.value : String(file ?? "");
+    const ctx = { count: 0 };
     const visit = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
       const next: any[] = [];
@@ -372,7 +446,15 @@ function mathScanPlugin() {
           typeof child.value === "string" &&
           child.value.indexOf("$") !== -1
         ) {
-          const parts = scanTextForMath(child.value);
+          const s = child.position?.start?.offset;
+          const e = child.position?.end?.offset;
+          const raw =
+            typeof s === "number" && typeof e === "number"
+              ? source.slice(s, e)
+              : null;
+          const escaped =
+            raw != null ? findEscapedDollars(raw, child.value) : null;
+          const parts = scanTextForMath(child.value, escaped, ctx);
           if (parts.some((p) => p.type === "inlineMath" || p.type === "math")) {
             next.push(...parts);
           } else {

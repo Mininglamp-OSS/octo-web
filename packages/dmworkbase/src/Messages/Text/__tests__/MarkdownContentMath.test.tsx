@@ -622,6 +622,85 @@ describe("MarkdownContent — 超长 $$ block 超限回退为文本 (reviewer P2
   });
 });
 
+describe("MarkdownContent — 跨软换行的非锚定 $$ 不吞成 display math (reviewer P0-1)", () => {
+  const cases: Array<[string, string[]]> = [
+    ["cost $$5 for\nmy_var is $$10", ["5 for", "my_var is", "$$"]],
+    ["note $$a for\nfoo bar $$b end", ["a for", "foo bar", "$$"]],
+  ];
+  for (const [input, tokens] of cases) {
+    it(`非行首/行尾锚定的 $$ 按文本处理：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      const vt = visibleText(root);
+      for (const tk of tokens) expect(vt).toContain(tk);
+    });
+  }
+
+  it("真正行锚定的 $$ block 仍渲染成 display", () => {
+    const root = renderContent(
+      <MarkdownContent content={"$$\n\\frac{a}{b}\n$$"} />
+    );
+    expect(root.querySelector(".katex-display")).not.toBeNull();
+  });
+});
+
+describe("MarkdownContent — markdown 转义的 \\$ 保持 literal，不被重新激活为定界符 (reviewer P0-2)", () => {
+  it("literal \\$x_1\\$ 原样显示，不渲染公式", () => {
+    const root = renderContent(
+      <MarkdownContent content={"literal \\$x_1\\$ end"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("$x_1$");
+  });
+
+  it("一端转义 \\$ 时另一端普通 $ 不被错误配对", () => {
+    const root = renderContent(
+      <MarkdownContent content={"pay \\$5 then $x^2$ ok"} />
+    );
+    // 转义的 \$5 保持 literal，真正的 $x^2$ 仍渲染
+    expect(root.querySelector(".katex")).not.toBeNull();
+    expect(visibleText(root)).toContain("$5");
+  });
+});
+
+describe("MarkdownContent — 短 shell/env 变量不被当行内公式 (reviewer P1-1)", () => {
+  const cases: string[] = [
+    "echo $X_1,$Y_2",
+    "echo $A_1+$B_2",
+    "vars $a_1;$b_2 end",
+  ];
+  for (const input of cases) {
+    it(`不误渲染且 $ 保留：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      const vt = visibleText(root);
+      for (const v of input.match(/\$[A-Za-z]_?\d?/g) ?? []) {
+        expect(vt).toContain(v);
+      }
+    });
+  }
+
+  it("真正的单变量下标 $x_1$（两侧非单词字符）仍渲染", () => {
+    const root = renderContent(<MarkdownContent content={"设 $x_1$ 为初值"} />);
+    expect(root.querySelector(".katex")).not.toBeNull();
+  });
+});
+
+describe("MarkdownContent — 接收端保护：每条消息公式数量上限 (reviewer P1-2)", () => {
+  it("一条消息里 40 个公式最多渲染 32 个，其余按文本", () => {
+    const input = Array.from({ length: 40 }, () => "$x^2$").join(" ");
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelectorAll(".katex").length).toBe(32);
+  });
+
+  it("输入合法但渲染产物过大的公式按文本处理（渲染后 HTML 上限）", () => {
+    // 900 列矩阵：输入约 3.6KB（未超 4096 块长上限），但 KaTeX 渲染出 >500KB HTML。
+    const body = "\\begin{matrix}" + "1 & ".repeat(900) + "1\\end{matrix}";
+    const root = renderContent(<MarkdownContent content={`$$\n${body}\n$$`} />);
+    expect(root.querySelector(".katex")).toBeNull();
+  });
+});
+
 describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。
