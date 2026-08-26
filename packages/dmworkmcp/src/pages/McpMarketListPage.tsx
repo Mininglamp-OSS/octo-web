@@ -529,6 +529,7 @@ export default class McpMarketListPage extends Component<
       tagsSelected,
       tagFilterOpen,
       mode,
+      total,
       detailId,
       createVisible,
       editingDetail,
