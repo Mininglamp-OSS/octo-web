@@ -305,4 +305,33 @@ describe("ContextMenus keyboard navigation", () => {
         expect(context?.isShow()).toBe(false)
         expect(document.activeElement).toBe(trigger)
     })
+
+    it("restores the previously focused element after a mouse-opened menu closes", () => {
+        const { context } = renderContextMenus()
+        const composer = document.createElement("input")
+        container.prepend(composer)
+        act(() => {
+            context?.hide()
+            composer.focus()
+        })
+
+        dispatchContextMenu(container.querySelector(".trigger")!)
+        act(() => context?.hide())
+
+        expect(document.activeElement).toBe(composer)
+    })
+
+    it("does not override focus intentionally moved by an executed action", () => {
+        const actionTarget = document.createElement("input")
+        renderContextMenus(vi.fn(), [{
+            title: "Reply",
+            onClick: () => actionTarget.focus(),
+        }])
+        container.prepend(actionTarget)
+
+        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        act(() => item.click())
+
+        expect(document.activeElement).toBe(actionTarget)
+    })
 })

@@ -57,8 +57,8 @@ body[theme-mode=dark] .wk-contextmenus {
 
 .wk-contextmenus li:focus-visible {
     background: var(--wk-bg-hover);
-    outline: 2px solid var(--wk-brand-primary);
-    outline-offset: -2px;
+    outline: var(--wk-sp-0-5) solid var(--wk-brand-primary);
+    outline-offset: calc(-1 * var(--wk-sp-0-5));
 }
 
 .wk-contextmenus ul > li:first-of-type {

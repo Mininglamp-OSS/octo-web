@@ -131,7 +131,10 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
     hide(): void {
         this.setState({ showContextMenus: false }, () => {
             ContextMenus._syncDocumentContextMenuGuard()
-            if (this._returnFocus?.isConnected) this._returnFocus.focus()
+            const activeElement = document.activeElement
+            const focusStayedInMenu = activeElement === document.body
+                || Boolean(activeElement && this.contextMenusRef?.contains(activeElement))
+            if (focusStayedInMenu && this._returnFocus?.isConnected) this._returnFocus.focus()
             this._returnFocus = undefined
         })
         this.props.onHide?.()
@@ -141,10 +144,8 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         event.preventDefault();
         if (!this.contextMenusRef) return
 
-        const activeElement = document.activeElement
-        this._returnFocus = event.currentTarget instanceof HTMLElement
-            && activeElement === event.currentTarget
-            ? event.currentTarget
+        this._returnFocus = document.activeElement instanceof HTMLElement
+            ? document.activeElement
             : undefined
 
         ContextMenus._instances.forEach((instance) => {

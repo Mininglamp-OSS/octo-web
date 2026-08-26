@@ -27,18 +27,14 @@ export function buildGroupedMessageContextMenus(
   const groups = GROUP_ORDER
     .map((group) => actions
       .filter((action) => (action.group ?? "processing") === group)
-      .sort((left, right) => actionOrder(left.actionKey) - actionOrder(right.actionKey)))
+      .sort((left, right) => actionOrder(left.actionKey ?? "") - actionOrder(right.actionKey ?? "")))
     .filter((group) => group.length > 0);
 
   return groups.flatMap((group, groupIndex) => [
     ...(groupIndex > 0 ? [{ separator: true } as ContextMenusData] : []),
     ...group.map((action) => ({
+      ...action,
       actionKey: action.actionKey,
-      title: action.title,
-      icon: action.icon,
-      danger: action.danger,
-      testid: action.testid,
-      onClick: action.onClick,
     })),
   ]);
 }
