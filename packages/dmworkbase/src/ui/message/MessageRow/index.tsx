@@ -78,6 +78,10 @@ export interface MessageRowProps {
   /** 消息正文点击事件，不覆盖头像、Header 与整行空白。 */
   onBodyClick?: (event: React.MouseEvent) => void
 
+  /** 消息正文中键(auxclick)事件：桌面端中键点击默认会走浏览器"新标签/裸跳"，
+   * 需在此拦截 webhook fleet 链接以保持应用内预览语义。 */
+  onBodyAuxClick?: (event: React.MouseEvent) => void
+
   /** 右键菜单打开时保持 hover 高亮 */
   isActive?: boolean
 
@@ -128,6 +132,7 @@ export default function MessageRow({
   onContextMenu,
   onClick,
   onBodyClick,
+  onBodyAuxClick,
   isActive,
   onAvatarClick,
   onSenderNameClick,
@@ -192,16 +197,34 @@ export default function MessageRow({
       
       {/* 头像（所有消息都在左侧） */}
       <div className="wk-msg-row-avatar">
-        {showAvatar && (
+        {showAvatar && (!isSelecting && !isWebhook && onAvatarClick ? (
+          <button
+            type="button"
+            className="wk-msg-row-avatar-button"
+            aria-label={t("base.conversation.avatarMenu.open", { values: { name: senderName } })}
+            onClick={onAvatarClick}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+            }}
+          >
+            <Avatar
+              src={avatarUrl}
+              size={36}
+              isOnline={isOnline}
+              showOnlineDot
+              alt={senderName}
+            />
+          </button>
+        ) : (
           <Avatar
             src={avatarUrl}
             size={36}
             isOnline={isOnline}
             showOnlineDot
             alt={senderName}
-            onClick={isSelecting || isWebhook ? undefined : onAvatarClick}
           />
-        )}
+        ))}
         {/* 连续消息：头像占位,hover 时显示时间戳 */}
         {!showAvatar && isContinue && (
           <div className="wk-msg-row-avatar-placeholder">
@@ -251,10 +274,11 @@ export default function MessageRow({
         
         {/* 消息体 */}
         <div className="wk-msg-row-body">
-          {!isSelecting && onBodyClick ? (
+          {!isSelecting && (onBodyClick || onBodyAuxClick) ? (
             <div
               className="wk-msg-row-body-hitarea"
               onClick={onBodyClick}
+              onAuxClick={onBodyAuxClick}
             >
               {children}
             </div>

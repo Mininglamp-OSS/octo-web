@@ -27,8 +27,10 @@ const copy: Record<string, string> = {
   "mail.rules.edit": "编辑规则",
   "mail.rules.when": "当",
   "mail.rules.then": "则",
-  "mail.rules.summary.from": "发件人包含 vip@example.com",
-  "mail.rules.summary.subject": "主题包含 紧急",
+  "mail.rules.from": "发件人",
+  "mail.rules.subject": "主题",
+  "mail.rules.equals": "等于",
+  "mail.rules.contains": "包含",
   "mail.rules.summary.and": "，并且",
   "mail.rules.summary.forward": "转发到 owner@example.com",
   "mail.error.title": "邮箱暂时不可用",
@@ -51,6 +53,11 @@ const meta = {
         name: "VIP 客户紧急邮件",
         enabled: true,
         priority: 10,
+        matchMode: "all",
+        conditions: [
+          { field: "from", operator: "equals", value: "vip@example.com" },
+          { field: "subject", operator: "contains", value: "紧急" },
+        ],
         matchFrom: "vip@example.com",
         matchSubject: "紧急",
         forwardTargets: ["owner@example.com"],
@@ -62,6 +69,10 @@ const meta = {
         name: "账单邮件",
         enabled: false,
         priority: 0,
+        matchMode: "all",
+        conditions: [
+          { field: "subject", operator: "contains", value: "invoice" },
+        ],
         matchSubject: "invoice",
         forwardTargets: ["finance@example.com"],
         createdAt: "2026-07-29T09:00:00Z",
@@ -73,7 +84,12 @@ const meta = {
     actionError: "",
     saving: false,
     deletingId: "",
-    t: (key: string) => copy[key] || key,
+    t: (key: string, options?: { values?: Record<string, unknown> }) =>
+      key === "mail.rules.summary.condition"
+        ? `${String(options?.values?.field)}${String(
+            options?.values?.operator
+          )}${String(options?.values?.value)}`
+        : copy[key] || key,
     onBack: () => undefined,
     onRefresh: () => undefined,
     onSave: async () => true,

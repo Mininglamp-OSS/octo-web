@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
  */
 
 const trackCalls: Array<{ name: string; props: Record<string, unknown> }> = []
-let ackCb: ((p: { reasonCode: number; clientSeq: number }) => void) | null = null
+let ackCb: ((p: { reasonCode: number; clientSeq: number; messageID?: unknown }) => void) | null = null
 let enabled = true
 let disableHook: (() => void) | null = null
 
@@ -37,7 +37,7 @@ vi.mock('wukongimjssdk', () => ({
         shared: () => ({
             chatManager: {
                 // 捕获常驻 sendack 监听:测试稍后手动触发它,模拟 sendack 到达
-                addMessageStatusListener: (cb: (p: { reasonCode: number; clientSeq: number }) => void) => {
+                addMessageStatusListener: (cb: (p: { reasonCode: number; clientSeq: number; messageID?: unknown }) => void) => {
                     ackCb = cb
                 },
             },
@@ -92,6 +92,29 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
         expect(named('message_sent')).toHaveLength(1)
     })
 
+    it('carries message_id from the sendack messageID', async () => {
+        const { rememberSendIntent } = await freshTrack()
+
+        rememberSendIntent(107, { channelId: 'g7', channelType: 2, mentionAis: false })
+        // 服务端分配的 messageID(BigNumber 语义,这里用带 toString 的对象模拟)
+        ackCb!({ reasonCode: 1, clientSeq: 107, messageID: { toString: () => '987654321' } })
+
+        const sent = named('message_sent')
+        expect(sent).toHaveLength(1)
+        expect(sent[0].props).toMatchObject({ object_id: '107', message_id: '987654321' })
+    })
+
+    it('omits message_id when the sendack has no messageID', async () => {
+        const { rememberSendIntent } = await freshTrack()
+
+        rememberSendIntent(108, { channelId: 'g8', channelType: 2, mentionAis: false })
+        ackCb!({ reasonCode: 1, clientSeq: 108 })
+
+        const sent = named('message_sent')
+        expect(sent).toHaveLength(1)
+        expect(sent[0].props.message_id).toBeUndefined()
+    })
+
     it('ignores non-accepted sendack (reasonCode !== 1)', async () => {
         const { rememberSendIntent } = await freshTrack()
 
@@ -119,6 +142,44 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
         const mentioned = named('ai_mentioned')
         expect(mentioned).toHaveLength(2)
         expect(mentioned.map((m) => m.props.bot_id)).toEqual(['bot-a', 'bot-b'])
+    })
+
+    it('emits message_replied with spec 关键属性 {is_ai_msg, channel_id, actor_type} when isReply', async () => {
+        const { rememberSendIntent } = await freshTrack()
+
+        rememberSendIntent(104, {
+            channelId: 'g4',
+            channelType: 2,
+            mentionAis: false,
+            isReply: true,
+            messageId: 'm-777',
+            isReplyToAi: true,
+        })
+        ackCb!({ reasonCode: 1, clientSeq: 104 })
+
+        const replied = named('message_replied')
+        expect(replied).toHaveLength(1)
+        expect(replied[0].props).toMatchObject({
+            object_id: '104',
+            message_id: 'm-777',
+            channel_id: 'g4',
+            actor_type: 'user',
+            is_ai_msg: true,
+        })
+    })
+
+    it('message_replied is_ai_msg 缺省为 false(回复非 AI/无法解析作者时)且非 reply 不发', async () => {
+        const { rememberSendIntent } = await freshTrack()
+
+        // 回复一条人类消息:isReplyToAi 未置 → is_ai_msg=false
+        rememberSendIntent(105, { channelId: 'g5', channelType: 2, mentionAis: false, isReply: true, messageId: 'm-1' })
+        ackCb!({ reasonCode: 1, clientSeq: 105 })
+        expect(named('message_replied')[0].props).toMatchObject({ is_ai_msg: false, channel_id: 'g5', actor_type: 'user' })
+
+        // 非回复发送:message_replied 根本不发
+        rememberSendIntent(106, { channelId: 'g5', channelType: 2, mentionAis: false })
+        ackCb!({ reasonCode: 1, clientSeq: 106 })
+        expect(named('message_replied')).toHaveLength(1)
     })
 
     // ---- fail-closed(对应 PR #1330 review 的 blocker①):dark 态零常驻,停采清缓存 ----
@@ -151,5 +212,43 @@ describe('trackMessage — global sendack listener survives channel switch (P1-3
 
         // intents 被清 + trackMessageSent 的 isEnabled 门,双保险:一条都不发
         expect(named('message_sent')).toHaveLength(0)
+    })
+})
+
+/**
+ * message_revoked 单通道契约(对应四审 P1-1 blocking):
+ *   撤回原先同时挂在 fetch 通道(FetchRules POST /message/revoke)与命令式 trackMessageRevoked 上,
+ *   会话菜单入口双发(fetch 空属性 + 命令式富属性),既双计又属性不一致。
+ *   修法:删除 fetch 规则,撤回的唯一活入口 vm.revokeMessage 调 trackMessageRevoked,统一收口到命令式
+ *   单通道(六审已删除从未接线的气泡 onMessageRevoke 死入口)。此处断言每次撤回恰好补发一条、且带富属性。
+ */
+describe('trackMessage — message_revoked 命令式单通道 (四审 P1-1)', () => {
+    beforeEach(() => {
+        trackCalls.length = 0
+        enabled = true
+    })
+
+    function named(name: string) {
+        return trackCalls.filter((c) => c.name === name)
+    }
+
+    it('emits exactly one message_revoked with rich props per revoke', async () => {
+        const { trackMessageRevoked } = await freshTrack()
+
+        trackMessageRevoked(555, 2)
+
+        const revoked = named('message_revoked')
+        expect(revoked).toHaveLength(1)
+        expect(revoked[0].props).toEqual({ channel_type: 2, object_id: '555' })
+    })
+
+    it('object_id is null when clientSeq is missing (no content leak)', async () => {
+        const { trackMessageRevoked } = await freshTrack()
+
+        trackMessageRevoked(undefined, 1)
+
+        const revoked = named('message_revoked')
+        expect(revoked).toHaveLength(1)
+        expect(revoked[0].props).toEqual({ channel_type: 1, object_id: null })
     })
 })

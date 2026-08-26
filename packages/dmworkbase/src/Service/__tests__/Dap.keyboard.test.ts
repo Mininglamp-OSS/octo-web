@@ -99,7 +99,7 @@ describe('Dap — keyboard activation of non-native role=button emits, native do
         Dap.shared.setEnabled(true)
 
         const btn = document.createElement('button')
-        btn.setAttribute('data-track', 'skill_install_clicked')
+        btn.setAttribute('data-track', 'market_skill_install_clicked')
         btn.setAttribute('data-object-id', 'skill-1')
         document.body.appendChild(btn)
 
@@ -109,7 +109,7 @@ describe('Dap — keyboard activation of non-native role=button emits, native do
         btn.dispatchEvent(new Event('click', { bubbles: true }))
 
         Dap.shared.flush()
-        expect(events('skill_install_clicked')).toHaveLength(1)
+        expect(events('market_skill_install_clicked')).toHaveLength(1)
     })
 
     it('keydown over a native child inside a non-native card does not fire the card (native synthesizes its own click)', async () => {

@@ -135,7 +135,36 @@ const ENDPOINT: Record<DocShareKind, string> = {
   doc: "content",
   board: "scene",
   sheet: "sheet",
+  // html **故意**打 /content，虽然它没有专属预览端点。docs-backend 的 docContent 是
+  // 先跑 requireDocRole(reader)、通过后才撞 doc_type 闸抛 409 `unsupported_doc_type`，
+  // 所以这一枪被当作纯粹的 **ACL 探针**：409 `unsupported_doc_type` 就是“有 reader 权限、
+  // 但此类型无预览”（→ empty），403/404 依旧是无权限/失效。注意 409 **不止这一种**
+  // （见 requestPreview 的错误码分派），只有这个码能推出 reader。零新端点、ACL 语义不丢，
+  // 且未来任何新 doc_type 自动兜住。
+  html: "content",
 };
+
+/**
+ * 从 APIClient reject 出来的错误里取 docs-backend 的 **wire 错误码**。
+ *
+ * 为什么不能读 `rejected.code` / `normalized.code`：docs-backend 这批 GET 预览接口返回的是
+ * `{ error: "unsupported_doc_type" }`，`error` 是**字符串**；而 apiError.ts 的
+ * `isV2ErrorEnvelope` 要求 `data.error` 是**对象**才认作 v2 信封，所以这个响应走 legacy
+ * 分支，两个 `code` 字段恒为 undefined。判别码只能从原始 axios error 上取
+ * （`APIClientRejectedError.error` 即原始 axios error，见 Service/APIClient.ts 拦截器）。
+ * 同款先例：dmworkmcp/src/api/mcpService.ts、expertService.ts 的 extractErrorMessage。
+ */
+function wireErrorCode(e: unknown): string | undefined {
+  if (!e || typeof e !== "object") return undefined;
+  const raw = (e as { error?: unknown }).error;
+  if (!raw || typeof raw !== "object") return undefined;
+  const response = (raw as { response?: unknown }).response;
+  if (!response || typeof response !== "object") return undefined;
+  const data = (response as { data?: unknown }).data;
+  if (!data || typeof data !== "object") return undefined;
+  const code = (data as { error?: unknown }).error;
+  return typeof code === "string" && code !== "" ? code : undefined;
+}
 
 async function requestPreview(
   kind: DocShareKind,
@@ -150,6 +179,10 @@ async function requestPreview(
         param: spaceId ? { sp: spaceId } : undefined,
       } as any,
     );
+    // html 没有可渲染的首屏预览，body 形状也不是 ProseMirror doc——绝不能拿去
+    // parseDocPreview 解析。防御性分支：今天 backend 必回 409、走不到这里，但哪天
+    // 它给 html 开了 200，也只能得出 empty（有权限无预览），不能崩也不能乱渲染。
+    if (kind === "html") return { status: "empty" };
     const preview =
       kind === "doc"
         ? parseDocPreview(body)
@@ -161,6 +194,23 @@ async function requestPreview(
     const status = (e as { status?: number })?.status;
     if (status === 403) return { status: "denied" };
     if (status === 404 || status === 410) return { status: "unavailable" };
+    // 409 **不是单一语义**，同一批 GET 预览接口至少吐三类，必须按 wire 错误码分派，
+    // 否则会把「已归档」和「数据损坏」一起吞成绿色「可查看」（fail-open 状态误判）：
+    //   • unsupported_doc_type（docContent.ts / docSheet.ts / docScene.ts）——doc_type 闸在
+    //     requireDocRole(reader) **通过之后**才跑，故它确证「有 reader 权限、只是此类型无
+    //     预览」，是正常降级 → empty（卡片标绿 + 「暂无预览」占位）。
+    //   • conflict（guard.ts 的 requireDocRole，鉴权通过后发现 meta.status === 2）——文档
+    //     **已归档** → unavailable，与 404/410 同类（文案「可能已被删除或归档」正好吻合）。
+    //   • sheet_snapshot_invalid / board_snapshot_invalid（GET 路径）——真实的数据损坏/契约
+    //     违例，后端明确 fail-closed → 必须保持 error（红色），不能被吞成绿色。
+    // 兜底方向是 **fail-closed**：任何其它 409、以及**取不到错误码**的 409，一律 error。
+    // 宁可多显示一次红色，也不能把未知状态标成「可查看」。
+    if (status === 409) {
+      const code = wireErrorCode(e);
+      if (code === "unsupported_doc_type") return { status: "empty" };
+      if (code === "conflict") return { status: "unavailable" };
+      return { status: "error" };
+    }
     return { status: "error" };
   }
 }
@@ -201,12 +251,15 @@ function cacheKey(
 
 /**
  * 拉取一份 ACL-safe 首屏预览。信任边界由 **docs 后端 reader 接口**把守（requireDocRole）：
- * 无权限 → 403 → denied；文档删/锁/归档 → 404/410 → unavailable；其余错误 → error。
+ * 无权限 → 403 → denied；文档删/锁 → 404/410 → unavailable；有 reader 权限但该类型无预览 →
+ * 409 `unsupported_doc_type` → empty；文档已归档 → 409 `conflict` → unavailable；
+ * 其余错误（含**其它 409**，如 snapshot_invalid 这类后端 fail-closed 的数据损坏）→ error。
  * space 用显式 X-Space-Id 头传文档自身 space（文档可能不在当前 space）。
  *
- * 去重 + 缓存（P2-4）：并发同 key 共享一个在飞请求；成功/无权限/失效结果缓存 30s，
- * error 不缓存（可能是瞬时故障，允许下次重试）。`signal` 保留以兼容调用方，但共享请求
- * 不按单个调用方 abort（Cell 侧已用自身 aborted 标志守 setState，卸载后不写状态）。
+ * 去重 + 缓存（P2-4）：并发同 key 共享一个在飞请求；成功/无权限/失效/无预览结果缓存 30s
+ * （empty 和 ready 一样是**稳定结论**，doc_type 不会在 TTL 内变），error 不缓存（可能是瞬时
+ * 故障，允许下次重试）。`signal` 保留以兼容调用方，但共享请求不按单个调用方 abort
+ * （Cell 侧已用自身 aborted 标志守 setState，卸载后不写状态）。
  */
 export async function fetchDocPreview(
   kind: DocShareKind,

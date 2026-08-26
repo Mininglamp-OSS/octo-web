@@ -29,6 +29,16 @@ describe("OIDC logout wiring", () => {
     expect(cleanupIdx).toBeLessThan(loadIdx);
   });
 
+  it("clears active organization state during forced device migration logout", () => {
+    const source = readRepoFile("packages/dmworkbase/src/App.tsx");
+    const mismatchBranch = source.match(
+      /if \(!this\._deviceFlagMigrationHandled[\s\S]*?} else if \(!hasDeviceFlagMismatch/
+    )?.[0];
+
+    expect(mismatchBranch).toContain("void this.clearLocalLoginState()");
+    expect(mismatchBranch).not.toContain("WKApp.loginInfo.logout()");
+  });
+
   it("delegates user-initiated OIDC logout to the extracted helper", () => {
     const appSource = readRepoFile("packages/dmworkbase/src/App.tsx");
     const navSource = readRepoFile("packages/dmworkbase/src/Components/NavRail/NavSettingsPanel.tsx");

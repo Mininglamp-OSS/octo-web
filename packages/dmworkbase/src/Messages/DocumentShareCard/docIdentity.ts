@@ -40,6 +40,14 @@ import type { DocSharePermissionState, DocSharePreviewStatus } from "../../ui/Do
 export function permissionState(status: DocSharePreviewStatus): DocSharePermissionState {
   if (status === "denied") return "no_access";
   if (status === "unavailable") return "unavailable";
+  if (status === "error") return "error";
   if (status === "ready") return "reader";
+  // empty 只来自 docs-backend 的 409 `unsupported_doc_type`（**已收窄**：其它 409 —— 归档的
+  // `conflict` 走 unavailable、snapshot_invalid 等走 error —— 都到不了这里）。而那道 doc_type
+  // 闸在 requireDocRole(reader) **之后**才跑，换言之，能拿到这个码就意味着调用者已通过
+  // reader 校验；后端也没有任何「无权限却返回 409」的路径。所以 empty 在 ACL 上**确证**了
+  // reader 权限，标绿「可查看」是准确结论，不是乐观猜测；卡片随后自然落到「暂无预览」
+  // 占位，而不是红色错误态。
+  if (status === "empty") return "reader";
   return "checking";
 }

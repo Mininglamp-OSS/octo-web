@@ -2,6 +2,7 @@ import React from "react";
 import SyntaxHighlighter from "react-syntax-highlighter";
 import { BaseRendererProps } from "../types";
 import { RenderMode, formatFileSize } from "../config";
+import { downloadFile } from "../../../Utils/download";
 import { useI18n } from "../../../i18n";
 import "./CodeRenderer.css";
 import "./code-highlight.css";
@@ -64,13 +65,13 @@ const CodeRendererBase: React.FC<CodeRendererBaseProps> = ({
             values: { size: formatFileSize(fileSize) },
           })}
         </span>
-        <a
-          href={file.url}
-          download={file.name}
+        <button
+          type="button"
+          onClick={() => void downloadFile(file.url, file.name || "file")}
           className="wk-file-preview-code-renderer__download-btn"
         >
           {t("base.filePreview.downloadFile")}
-        </a>
+        </button>
       </div>
     );
   }

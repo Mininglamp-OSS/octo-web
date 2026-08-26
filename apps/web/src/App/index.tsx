@@ -1,4 +1,4 @@
-import { addImChannelInfoListener, ChatPage, EndpointCategory, WKApp, Menus, t } from '@octo/base';
+import { addImChannelInfoListener, ChatPage, EndpointCategory, WKApp, Menus, t, isElectronPowered, sendElectronConversationUnreadCount } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
@@ -10,7 +10,6 @@ import { ContactsIcon } from '../Components/Icons/ContactsIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
 import { createOctoDocumentTitleController } from '../features/documentTitle/octoDocumentTitle';
-import { IPC_CONVERSATION_UNREAD_COUNT } from '../../src-election/shared/ipc-channels';
 import { getElectronUnreadMessageCount } from './electronUnreadCount';
 
 /**
@@ -90,11 +89,8 @@ function useDeprecatedFriendApplyReddotCleanup() {
 }
 
 function syncElectronUnreadMessageCount() {
-  if ((window as any).__POWERED_ELECTRON__) {
-    (window as any).ipc.send(
-      IPC_CONVERSATION_UNREAD_COUNT,
-      getElectronUnreadMessageCount(),
-    )
+  if (isElectronPowered()) {
+    sendElectronConversationUnreadCount(getElectronUnreadMessageCount())
   }
 }
 

@@ -53,7 +53,10 @@ export async function registerS21SummaryListLoadMore(page: Page): Promise<void> 
         const url = new URL(request.url);
         const page = Number(url.searchParams.get("page") || "1");
         return env({ items: page >= 2 ? secondPage : firstPage, total: 21, attention_count: 0, unread_count: 0, pending_invitation_count: 0 });
-      })
+      }),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
+      )
     );
   });
 }

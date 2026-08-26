@@ -26,7 +26,6 @@ const defaultArgs: NavRailProps = {
     currentMenus: messagesMenu,
     settingSelected: false,
     hasNewVersion: false,
-    showNewVersion: false,
     showAppVersion: false,
     showAppUpdate: false,
     appUpdateProgress: 0,
@@ -35,7 +34,6 @@ const defaultArgs: NavRailProps = {
     currentSpaceId: "s1",
     onMenuClick: (menus) => console.log("nav menu clicked:", menus.id),
     onToggleSetting: () => console.log("settings toggled"),
-    onSetShowNewVersion: (v) => console.log("show new version:", v),
     onSetShowAppVersion: (v) => console.log("show app version:", v),
     onInstallUpdate: () => console.log("install update"),
     onNotifyListener: () => console.log("notify listener"),
@@ -148,7 +146,6 @@ function FlyoutComparison() {
             <NavSettingsPanel
                 {...defaultArgs}
                 settingSelected
-                triggerRef={settingsTriggerRef}
                 onToggleSetting={() => console.log("settings toggled")}
             />
             <SpaceOpen />

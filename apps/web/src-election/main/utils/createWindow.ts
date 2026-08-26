@@ -31,7 +31,9 @@ export function createWindow() {
     webPreferences: {
       // 加载脚本
       preload: join(__dirname, "../..", "preload", "index.js"),
-      nodeIntegration: true,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
     },
   });
 

@@ -65,10 +65,10 @@ module.exports = {
     iconSize: 100, // 安装图标大小
     // 安装窗口中包含的项目和配置
     contents: [
-      { x: 380, y: 280, type: "link", path: "/Applications" },
-      { x: 110, y: 280, type: "file" },
+      { x: 410, y: 220, type: "link", path: "/Applications" },
+      { x: 140, y: 220, type: "file" },
     ],
-    window: { width: 500, height: 500 }, // 安装窗口大小
+    window: { width: 560, height: 380 }, // 安装窗口大小
   },
   win: {
     icon: "resources/icons/icon.ico",

@@ -28,6 +28,7 @@ const labels: BotManageViewLabels = {
   reload: "重新加载",
   searchPlaceholder: "搜索群聊",
   noSearchResult: "没有匹配的群聊",
+  searchFailed: "搜索失败，请重试",
   empty: "暂无群聊",
   sectionEnabled: (count) => `已开启免@回答 (${count})`,
   sectionOthers: "其他群聊",
@@ -211,8 +212,10 @@ function MentionFreeStory(args: Partial<MentionFreeListViewProps>) {
       <MentionFreeListView
         labels={labels}
         loading={false}
+        searching={false}
         backendMissing={false}
         loadError={false}
+        searchError={false}
         searchKeyword={searchKeyword}
         enabledGroups={enabled}
         otherGroups={others}
@@ -325,6 +328,10 @@ export const NoSearchResult: StoryObj<typeof MentionFreeStory> = {
 
 export const LoadingMore: StoryObj<typeof MentionFreeStory> = {
   render: () => <MentionFreeStory loadingMore />,
+};
+
+export const Searching: StoryObj<typeof MentionFreeStory> = {
+  render: () => <MentionFreeStory searchKeyword="eng" searching />,
 };
 
 export const LongGroupName: StoryObj<typeof MentionFreeStory> = {

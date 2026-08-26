@@ -6,8 +6,8 @@ import React, { useRef, useState } from "react";
 let capturedOnTranscribed: ((text: string) => void) | undefined;
 let capturedStartRecording: ReturnType<typeof vi.fn>;
 
-vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
-  default: (opts: { onTranscribed?: (text: string) => void }) => {
+vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/voice", () => ({
+  useVoiceInput: (opts: { onTranscribed?: (text: string) => void }) => {
     capturedOnTranscribed = opts?.onTranscribed;
     return {
       isRecording: false,
@@ -19,6 +19,29 @@ vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
       currentMode: "append_only",
       localAvailable: false,
     };
+  },
+}));
+
+vi.mock("@octo/base/src/Components/VoiceInputButton/useTextareaVoice", () => ({
+  default: (opts: { onTranscribed?: (text: string) => void }) => {
+    capturedOnTranscribed = opts?.onTranscribed;
+    return {
+      isRecording: false,
+      isTranscribing: false,
+      startRecording: capturedStartRecording,
+      stopRecordingAndTranscribe: vi.fn(),
+      cancelRecording: vi.fn(),
+      isVoiceEnabled: true,
+      localAvailable: false,
+    };
+  },
+}));
+
+vi.mock("@octo/base/src/Service/VoiceSettingsStore", () => ({
+  getVoiceShortcut: () => "alt-right",
+  voiceSettingsStore: {
+    get: () => ({ enabled: true }),
+    subscribe: () => () => undefined,
   },
 }));
 
@@ -36,6 +59,11 @@ vi.mock("@douyinfe/semi-ui", () => ({
     Menu: vi.fn(({ children }: any) => children),
     Item: vi.fn(({ children }: any) => children),
   }),
+}));
+
+vi.mock("react-virtuoso", () => ({
+  Virtuoso: () => null,
+  TableVirtuoso: () => null,
 }));
 
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";

@@ -108,6 +108,9 @@ export async function registerS18SummaryListPollCompleted(page: Page): Promise<v
       ),
       http.get("*/summary/api/v1/summaries/18018/versions", () =>
         env({ versions: [], keep_limit: 3 })
+      ),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
       )
     );
   });

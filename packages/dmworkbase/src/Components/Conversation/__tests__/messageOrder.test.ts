@@ -467,6 +467,56 @@ describe("ConversationVM message ordering", () => {
         expect(vm.loading).toBe(false)
     })
 
+    it("clears loading when locating an unloaded message fails", async () => {
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("locate failed"))
+        const vm = new ConversationVM(channel)
+
+        await expect(vm.requestMessagesAroundMessageSeq(56)).rejects.toThrow("locate failed")
+
+        expect(vm.loading).toBe(false)
+    })
+
+    it("clears loading state when the initial message sync fails", async () => {
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("sync failed"))
+        const vm = new ConversationVM(channel)
+
+        await expect(vm.syncMessages()).rejects.toThrow("sync failed")
+
+        expect(vm.loading).toBe(false)
+    })
+
+    it("clears loading state when loading older or newer messages fails", async () => {
+        const vm = new ConversationVM(channel)
+        vm.messagesOfOrigin = [wrap({ clientMsgNo: "oldest", messageSeq: 5 })]
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("history failed"))
+
+        await expect(vm.pulldownMessages()).rejects.toThrow("history failed")
+        expect(vm.loading).toBe(false)
+
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("newer failed"))
+        await expect(vm.pullupMessages()).rejects.toThrow("newer failed")
+        expect(vm.loading).toBe(false)
+    })
+
+    it("does not enter loading state when there is no newer message to load", async () => {
+        const vm = new ConversationVM(channel)
+
+        await vm.pullupMessages()
+
+        expect(vm.loading).toBe(false)
+        expect(sdkState.syncMessages).not.toHaveBeenCalled()
+    })
+
+    it("does not start a second history load while one is in progress", async () => {
+        const vm = new ConversationVM(channel)
+        vm.messagesOfOrigin = [wrap({ clientMsgNo: "latest", messageSeq: 5 })]
+        vm.loading = true
+
+        await Promise.all([vm.pulldownMessages(), vm.pullupMessages()])
+
+        expect(sdkState.syncMessages).not.toHaveBeenCalled()
+    })
+
     it("scrolls to the expanded row when locating a message inside a fold session", () => {
         const vm = new ConversationVM(channel)
         const message = wrap({ clientMsgNo: "msg-10", messageSeq: 10, timestamp: 100 })

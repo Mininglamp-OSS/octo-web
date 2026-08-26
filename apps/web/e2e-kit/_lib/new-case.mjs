@@ -9,7 +9,7 @@
  * **接入方需改的占位** (脚本顶部 config 常量):
  *   - CASE_SPECS_DIR / TESTS_DIR / HANDLERS_DIR  — 项目路径 (默认对齐 kit v0.4 扁平布局)
  *   - FIXTURES_IMPORT_PATH / MOCK_IM_IMPORT_PATH / SANITY_IMPORT_PATH / HANDLERS_IMPORT_ROOT
- *                       — import 路径 (相对 e2e-kit/ 根)
+ *                       — import 路径 (相对 e2e 根)
  *   - USE_MOCK_IM      — 是否装 mock-im-runtime (默认 **false**; 项目装了 mock-im-wksdk optional 后改成 true)
  *   - USE_SANITY       — 是否装 sanity helper (默认 true, 无 sanity 关掉)
  *   - FMT_CMD          — 生成后自动 fmt 命令 (默认 null, 项目要用 prettier 之类改这里)
@@ -41,9 +41,9 @@
  *     --tags "@p1 @matter @matter-list" --http-mock --im-seed
  *
  * 产出 (以默认路径 + 上例参数为例):
- *   e2e-kit/case-specs/matter/list/M5-matter-list-filter.md
- *   e2e-kit/tests/matter/list/M5-matter-list-filter.spec.ts
- *   e2e-kit/msw-handlers/m5-matter-list-filter.ts   (**默认生成**, 传 --no-http-mock 关掉)
+ *   <e2e-root>/case-specs/matter/list/M5-matter-list-filter.md
+ *   <e2e-root>/tests/matter/list/M5-matter-list-filter.spec.ts
+ *   <e2e-root>/msw-handlers/m5-matter-list-filter.ts   (**默认生成**, 传 --no-http-mock 关掉)
  *
  * --no-http-mock → 不出 handler, test 骨架也不 register handler.
  * --no-im-seed → test 骨架不装 mock IM runtime.
@@ -53,23 +53,25 @@
 import { writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve, relative } from "node:path";
 import { spawnSync } from "node:child_process";
+import { resolveE2ERoot } from "./target-layout.mjs";
 
 // ---------- config (接入方按需改) ----------
 //
-// **octo-web 当前布局**:
-//   e2e-kit/fixtures-authed.ts        (template 落根)
-//   e2e-kit/_kit/mock-im-runtime/     (overwrite 落 _kit/)
-//   e2e-kit/_lib/sanity.ts            (overwrite 落 _lib/)
-//   e2e-kit/msw-handlers/             (hands_off 目录, kit 首次落 README 占位)
+// **默认值对齐 kit v0.4 sync 产物的扁平布局**:
+//   <e2e-root>/fixtures-authed.ts        (template 落根)
+//   <e2e-root>/_kit/mock-im-runtime/     (overwrite 落 _kit/)
+//   <e2e-root>/_lib/sanity.ts            (overwrite 落 _lib/)
+//   <e2e-root>/msw-handlers/             (hands_off 目录, kit 首次落 README 占位)
 //
-// 其他接入方可按自身布局修改下面常量.
+// 若接入方项目采用其他布局 (例如 e2e-research 的 shared/), 改下面常量即可.
 
 const REPO_ROOT = process.cwd();
-const CASE_SPECS_DIR = resolve(REPO_ROOT, "e2e-kit/case-specs");
-const TESTS_DIR = resolve(REPO_ROOT, "e2e-kit/tests");
-const HANDLERS_DIR = resolve(REPO_ROOT, "e2e-kit/msw-handlers");
+const E2E_ROOT = resolveE2ERoot(REPO_ROOT);
+const CASE_SPECS_DIR = resolve(E2E_ROOT, "case-specs");
+const TESTS_DIR = resolve(E2E_ROOT, "tests");
+const HANDLERS_DIR = resolve(E2E_ROOT, "msw-handlers");
 
-// import path segments (相对 e2e-kit/ 根). test 到根的相对前缀由 upToE2eRoot() 算.
+// import path segments (相对 e2e 根). test 到根的相对前缀由 upToE2eRoot() 算.
 const FIXTURES_IMPORT_PATH = "fixtures-authed";
 const MOCK_IM_IMPORT_PATH = "_kit/mock-im-runtime";
 const SANITY_IMPORT_PATH = "_lib/sanity";
@@ -79,7 +81,7 @@ const USE_MOCK_IM = false; // 项目装了 mock-im-wksdk optional 后, 改成 tr
 const USE_SANITY = true;
 const FMT_CMD = null; // 例: ["pnpm", "exec", "prettier", "--write"]
 
-// test 到 e2e-kit/ 根的相对前缀. tests/[module/[sub/]]<file>.spec.ts → depth 决定 ../ 个数.
+// test 到 e2e 根的相对前缀. tests/[module/[sub/]]<file>.spec.ts → depth 决定 ../ 个数.
 function upToE2eRoot(moduleName, subModule) {
   const depth = 1 + (moduleName ? 1 : 0) + (subModule ? 1 : 0);
   return "../".repeat(depth);
@@ -276,13 +278,7 @@ const testTemplate = `/* eslint-disable no-undef -- e2e code runs in Node */
  * ${caseId}: **待补** 一句话主线 + 反例守护点.
  */
 import { test, expect } from "${sharedRoot}${FIXTURES_IMPORT_PATH}";
-${withHttpMock ? `import { ${registerFnName} } from "${sharedRoot}${HANDLERS_IMPORT_ROOT}/${caseId.toLowerCase()}-${slug}";\n` : ""}${withImSeed ? `import { installMockImRuntime } from "${sharedRoot}${MOCK_IM_IMPORT_PATH}";\n` : ""}${USE_SANITY ? `import { startRequestMonitor, sanityCheck, type SanityConfig } from "${sharedRoot}${SANITY_IMPORT_PATH}";\n` : ""}
-${USE_SANITY ? `const sanityConfig: SanityConfig = {
-  realHosts: ["127.0.0.1:9", "mock.e2e.local"],
-  apiPrefixRe: /^\\/(api|summary\\/api)(\\/|$)/,
-  loginPathRe: /\\/login(\\?|$)/,
-};
-` : ""}
+${withHttpMock ? `import { ${registerFnName} } from "${sharedRoot}${HANDLERS_IMPORT_ROOT}/${caseId.toLowerCase()}-${slug}";\n` : ""}${withImSeed ? `import { installMockImRuntime } from "${sharedRoot}${MOCK_IM_IMPORT_PATH}";\n` : ""}${USE_SANITY ? `import { startRequestMonitor, sanityCheck, type SanityConfig } from "${sharedRoot}${SANITY_IMPORT_PATH}";\n` : ""}${USE_SANITY ? `const sanityConfig: SanityConfig = {\n  realHosts: ["127.0.0.1:9", "mock.e2e.local"],\n  apiPrefixRe: /^\\/(api|summary\\/api)(\\/|$)/,\n  loginPathRe: /\\/login(\\?|$)/,\n};\n` : ""}
 
 test.describe("${tags} ${caseId} — **待补** case 描述", () => {
   test("**待补** 一句话操作 + 预期", async ({ authedPage }) => {
@@ -290,8 +286,7 @@ test.describe("${tags} ${caseId} — **待补** case 描述", () => {
     // 若忘删, batch 跑 (--grep @p0 等) 会 skip 而不是假绿.
     test.fixme(true, "scaffolder 骨架, 待作者补真实操作步骤 + UI 断言");
 
-${USE_SANITY ? `    const ctx = startRequestMonitor(authedPage, sanityConfig);
-` : ""}${withHttpMock ? `\n    await ${registerFnName}(authedPage);\n` : ""}${withImSeed ? `
+${USE_SANITY ? `    const ctx = startRequestMonitor(authedPage, sanityConfig);\n` : ""}${withHttpMock ? `\n    await ${registerFnName}(authedPage);\n` : ""}${withImSeed ? `
     await installMockImRuntime(authedPage, {
       currentUid: "e2e-user-1",
       spaceId: "e2e-space-001",
@@ -327,10 +322,8 @@ import type { Page } from "@playwright/test";
  */
 
 export async function ${registerFnName}(page: Page): Promise<void> {
-  // Browser context boundary: only explicit data and window globals cross evaluate.
   await page.evaluate(
     () => {
-      // 这里只使用显式传入参数和浏览器全局变量, 不引用 Node 模块变量.
       const msw = (window as unknown as {
         __msw?: {
           worker: { use: (...h: unknown[]) => void };
@@ -360,7 +353,7 @@ export async function ${registerFnName}(page: Page): Promise<void> {
         //   return HttpResponse.json({ code: 0, message: "ok", data: {} });
         // }),
       );
-    }
+    },
   );
 }
 `;

@@ -11,7 +11,18 @@ import { markAgentSummaryNotificationEligible } from '../utils/groupSummaryNotif
 import { channelToChatCandidate } from '../utils/channelConvert';
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from '../utils/templateResolver';
 
-import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession } from '../utils/summaryHelpers';
+import {
+    describeSchedule,
+    scheduleToParams,
+    genSessionId,
+    genRequestId,
+    readAgentChatSession,
+    writeAgentChatSession,
+    clearAgentChatSession,
+    readAgentChatRequestId,
+    writeAgentChatRequestId,
+    clearAgentChatRequestId,
+} from '../utils/summaryHelpers';
 import * as summaryApi from '../api/summaryApi';
 import { getTopicTemplatesConfig } from '../api/summaryApi';
 import { TOPIC_TEMPLATES } from '../constants/templates';
@@ -55,6 +66,7 @@ interface ChatSummaryNewModalState {
     // Agent 多轮问答：气泡 UI + session_id。后端按 session_id 持久化记忆，同一会话复用即可续上下文。
     messages: ChatMessage[];
     sessionId: string;
+    agentRequestId: string;
 }
 
 export default class ChatSummaryNewModal extends Component<
@@ -136,6 +148,7 @@ export default class ChatSummaryNewModal extends Component<
             savingTemplate: false,
             messages: [],
             sessionId: '',
+            agentRequestId: '',
         };
     }
 
@@ -171,6 +184,7 @@ export default class ChatSummaryNewModal extends Component<
                 savingTemplate: false,
                 messages: [],
                 sessionId: '',
+                agentRequestId: '',
             });
             void this.loadTemplates();
         }
@@ -409,6 +423,13 @@ export default class ChatSummaryNewModal extends Component<
                 origin_channel_id: channel.channelID,
                 origin_channel_type: sourceType,
                 sources,
+            }, {
+                // 二审 P1:与 SummaryCreatePage 共用 api 层收口点,补齐维度 props 保持口径一致。
+                object_id: channel.channelID,
+                source: 'chat_new_modal',
+                entry_point: 'chat_new_modal',
+                entry_source: 'chat_new_modal',
+                trigger_mode: 'normal',
             });
             markAgentSummaryNotificationEligible(res.task_id);
 
@@ -470,6 +491,7 @@ export default class ChatSummaryNewModal extends Component<
 
         // 惰性生成 session_id，整会话复用。
         const sessionId = this.state.sessionId || genSessionId();
+        const requestId = genRequestId();
         // 持久化到 localStorage：关闭弹窗/刷新后再进来可按 session_id 拉回历史（「退出不丢」）。
         writeAgentChatSession(this.agentChannelId(), sessionId);
 
@@ -480,13 +502,20 @@ export default class ChatSummaryNewModal extends Component<
         }));
 
         try {
-            const res = await summaryApi.agentChat({ message: trimmed, session_id: sessionId, profile: 'summary' });
+            const res = await summaryApi.agentChat({
+                message: trimmed,
+                session_id: sessionId,
+                profile: 'summary',
+                request_id: requestId,
+            });
             // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）。
             const nextSessionId = res.session_id || sessionId;
             writeAgentChatSession(this.agentChannelId(), nextSessionId);
+            writeAgentChatRequestId(this.agentChannelId(), requestId);
             this.setState((prev) => ({
                 messages: [...prev.messages, { role: 'assistant', content: res.reply }],
                 sessionId: nextSessionId,
+                agentRequestId: requestId,
             }));
         } catch (err: unknown) {
             // 失败：Toast + 追一条 assistant 错误气泡（让失败在对话流里可见）。
@@ -520,19 +549,35 @@ export default class ChatSummaryNewModal extends Component<
     };
 
     /** SSE 模式：追加 assistant 消息(仅 UI,不发请求)。 */
-    private handleAgentAssistantMessage = (text: string, sessionId?: string) => {
-        // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）
-        if (sessionId && sessionId !== this.state.sessionId) {
-            writeAgentChatSession(this.agentChannelId(), sessionId);
-            this.setState((prev) => ({
+    private handleAgentAssistantMessage = (text: string, sessionId?: string, requestId?: string) => {
+        let sessionChanged = false;
+        this.setState((prev) => {
+            const nextState: Pick<ChatSummaryNewModalState, 'messages'> & Partial<ChatSummaryNewModalState> = {
                 messages: [...prev.messages, { role: 'assistant', content: text }],
-                sessionId,
-            }));
-        } else {
-            this.setState((prev) => ({
-                messages: [...prev.messages, { role: 'assistant', content: text }],
-            }));
-        }
+            };
+            if (sessionId && sessionId !== prev.sessionId) {
+                sessionChanged = true;
+                nextState.sessionId = sessionId;
+            }
+            if (requestId) {
+                nextState.agentRequestId = requestId;
+            }
+            return nextState;
+        }, () => {
+            const channelId = this.agentChannelId();
+            const pairedSessionId = sessionId || this.state.sessionId;
+            // Persist the successful session/request pair after state commits.
+            // If two tabs still interleave these separate localStorage keys,
+            // the backend's full tuple lookup safely falls back to legacy mode.
+            if (sessionChanged && sessionId) {
+                writeAgentChatSession(channelId, sessionId);
+            } else if (requestId && pairedSessionId) {
+                writeAgentChatSession(channelId, pairedSessionId);
+            }
+            if (requestId) {
+                writeAgentChatRequestId(channelId, requestId);
+            }
+        });
     };
     /** 主按钮点击：normal 走普通提交；agent 输入走面板底部输入框，主按钮无需提交。 */
     private handlePrimaryClick = () => {
@@ -558,9 +603,11 @@ export default class ChatSummaryNewModal extends Component<
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
+        const storedRequestId = readAgentChatRequestId(this.agentChannelId());
         this.setState((prev) => ({
             mode: 'agent',
             sessionId: stored || prev.sessionId,
+            agentRequestId: storedRequestId || prev.agentRequestId,
         }));
         if (stored) void this.loadAgentHistory(stored);
     }
@@ -586,9 +633,10 @@ export default class ChatSummaryNewModal extends Component<
     /** 「新会话」：清 localStorage 的 session_id、清空消息，下次发送重新生成新 session_id。 */
     private handleNewSession = () => {
         clearAgentChatSession(this.agentChannelId());
+        clearAgentChatRequestId(this.agentChannelId());
         // 作废在途历史拉取，避免旧会话历史回灌到新会话。
         this.historyLoadToken++;
-        this.setState({ messages: [], sessionId: '' });
+        this.setState({ messages: [], sessionId: '', agentRequestId: '' });
     };
 
     /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。
@@ -599,10 +647,11 @@ export default class ChatSummaryNewModal extends Component<
      * agent_message 的 tool_calls 反查作为 fallback(见 agent_summary.go
      * resolveOriginChannelFromSession)。
      */
-    handleSaveAsSummary = async (title: string): Promise<boolean> => {
+    handleSaveAsSummary = async (title: string, requestId?: string): Promise<boolean> => {
         const { sessionId, selectedChats } = this.state;
         const { onSubmit } = this.props;
         const { t } = this.context;
+        const agentRequestId = requestId || this.state.agentRequestId;
 
         if (!sessionId) {
             Toast.warning(t('summary.create.noOutputToSave'));
@@ -626,10 +675,20 @@ export default class ChatSummaryNewModal extends Component<
             const { channel } = this.props;
             const res = await summaryApi.createAgentSummary({
                 session_id: sessionId,
+                ...(agentRequestId ? { request_id: agentRequestId } : {}),
                 title,
                 sources,
                 origin_channel_id: channel.channelID,
                 origin_channel_type: getOriginChannelType(channel),
+            }, {
+                // 六审 P3:agent 保存入口此前漏传维度 props → smart_summary_started 在此路径
+                // 变成无维度事件,与上面 normal 路径(:412)及 SummaryCreatePage 口径不一致,
+                // 无法按 source/entry_point 归因。补齐,trigger_mode 标 agent 以区分两条创建路径。
+                object_id: channel.channelID,
+                source: 'chat_new_modal',
+                entry_point: 'chat_new_modal',
+                entry_source: 'chat_new_modal',
+                trigger_mode: 'agent',
             });
             markAgentSummaryNotificationEligible(res.task_id);
 
@@ -643,6 +702,8 @@ export default class ChatSummaryNewModal extends Component<
                     detail: { taskId: res.task_id, channelId: '' },
                 }),
             );
+            clearAgentChatRequestId(this.agentChannelId());
+            this.setState({ agentRequestId: '' });
             onSubmit(res.task_id);
             return true;
         } catch (err: unknown) {

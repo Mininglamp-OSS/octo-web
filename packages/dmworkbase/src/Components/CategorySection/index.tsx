@@ -18,6 +18,7 @@ export interface CategorySectionProps {
     isCollapsed: boolean
     onToggle: () => void
     onContextMenu?: (e: React.MouseEvent) => void
+    onMoreClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
     children?: React.ReactNode
     isActive?: boolean   // 右键菜单打开时高亮
     isEditing?: boolean  // 行内重命名编辑态
@@ -32,6 +33,7 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
     isCollapsed,
     onToggle,
     onContextMenu,
+    onMoreClick,
     children,
     isActive,
     isEditing,
@@ -76,6 +78,7 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
                 isEmpty={isEmpty}
                 onToggle={onToggle}
                 onContextMenu={onContextMenu}
+                onMoreClick={onMoreClick}
                 isActive={isActive}
                 isEditing={isEditing}
                 onRenameConfirm={onRenameConfirm}
@@ -107,6 +110,7 @@ const CategorySectionStatic: React.FC<CategorySectionProps> = ({
     isCollapsed,
     onToggle,
     onContextMenu,
+    onMoreClick,
     children,
     isActive,
     isEditing,
@@ -127,6 +131,7 @@ const CategorySectionStatic: React.FC<CategorySectionProps> = ({
                 isEmpty={isEmpty}
                 onToggle={onToggle}
                 onContextMenu={onContextMenu}
+                onMoreClick={onMoreClick}
                 isActive={isActive}
                 isEditing={isEditing}
                 onRenameConfirm={onRenameConfirm}

@@ -1,4 +1,5 @@
 import { ProviderListener } from "../../Service/Provider"
+import { Dap } from "../../Service/Dap"
 import BotManageService, {
     type BotSettingItem,
     type BotSettingWriteItem,
@@ -426,6 +427,15 @@ export class BotCardSettingsVM extends ProviderListener {
                     // 「取消自定义」按钮消失 —— 用户在界面上再没有任何途径清掉那个
                     // 刚被创建的覆盖，且写失败不触发重拉，错状态会一直留着。
                     for (const [key, confirmed] of this.sending) {
+                        // card_message_setting_toggled:仅在批量 PUT 被服务端确认(2xx)后、逐 key 发。
+                        //   放这里而非 toggle():与 conversation_muted / group_bot_free_mention_toggled 一致——
+                        //   写失败(withRetry 耗尽 → catch → rollbackPending)不计;dropped(变只读)已在上面剔除,也不计。
+                        //   批量 PUT body 分不出改了哪项 → FetchRules 拿不到 key/value,故命令式带 bot_id + key + 新值。
+                        Dap.shared.track('card_message_setting_toggled', {
+                            bot_id: requestedUid,
+                            key,
+                            enabled: confirmed,
+                        })
                         if (this.queued.has(key)) {
                             this.baseline.set(
                                 key,

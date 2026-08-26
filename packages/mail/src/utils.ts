@@ -1,6 +1,34 @@
 import { extractErrorMsg } from "@octo/base/src/Service/APIClient";
 import type { MessageDetail } from "./bridge/types";
 
+export const agentMailboxLocalpartMinLength = 5;
+export const agentMailboxLocalpartMaxLength = 64;
+
+const agentMailboxLocalpartPattern = /^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$/;
+const reservedAgentMailboxLocalparts = new Set([
+  "abuse",
+  "admin",
+  "administrator",
+  "hostmaster",
+  "mailer-daemon",
+  "noc",
+  "postmaster",
+  "root",
+  "security",
+  "webmaster",
+]);
+
+export function isValidAgentMailboxLocalpart(value: string): boolean {
+  const localpart = value.trim().toLowerCase();
+  return (
+    localpart.length >= agentMailboxLocalpartMinLength &&
+    localpart.length <= agentMailboxLocalpartMaxLength &&
+    agentMailboxLocalpartPattern.test(localpart) &&
+    !localpart.includes("..") &&
+    !reservedAgentMailboxLocalparts.has(localpart)
+  );
+}
+
 export function getErrorMessage(error: unknown, fallback: string): string {
   return extractErrorMsg(error) || fallback;
 }

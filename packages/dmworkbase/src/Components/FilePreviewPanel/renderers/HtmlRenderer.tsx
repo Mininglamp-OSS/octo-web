@@ -12,6 +12,7 @@ import { isFileTooLarge, getRenderMode, formatFileSize } from "../config";
 import { useFileContent } from "../hooks/useFileContent";
 import { RendererState } from "./RendererState";
 import FileTooLarge from "./FileTooLarge";
+import { downloadFile } from "../../../Utils/download";
 import { useI18n } from "../../../i18n";
 import "./HtmlRenderer.css";
 import "./code-highlight.css";
@@ -143,13 +144,7 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
   }, [handleViewModeChange, onError, t]);
 
   const handleDownload = useCallback(() => {
-    const a = document.createElement("a");
-    a.href = file.url;
-    a.download = file.name || "file.html";
-    a.target = "_blank";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void downloadFile(file.url, file.name || "file.html");
   }, [file.name, file.url]);
 
   // 监听来自 iframe 的 postMessage
@@ -181,7 +176,8 @@ const HtmlRenderer: React.FC<HtmlRendererProps> = ({
       if (event.data?.type === "html-render-error") {
         const errorMsg = t("base.filePreview.html.renderError", {
           values: {
-            message: event.data.message || t("base.filePreview.html.unknownError"),
+            message:
+              event.data.message || t("base.filePreview.html.unknownError"),
           },
         });
         setRenderError(errorMsg);

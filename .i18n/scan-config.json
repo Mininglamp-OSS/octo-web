@@ -17,8 +17,12 @@
       "reason": "Mention broadcast token helpers for @所有人/@所有AI. These literals are protocol/display tokens inserted into message content and covered by mention tests, not translatable UI copy in this pass."
     },
     {
-      "path": "packages/dmworkbase/src/Messages/RichText/RichTextContent.ts",
-      "reason": "RichText(=14) plain-generation image placeholder. This [图片] literal is a cross-platform wire-format token that must byte-match octo-lib RichTextImagePlaceholder (common/richtext.go) so server/mobile/web produce identical plain text; it is protocol data, not translatable UI copy."
+      "path": "packages/dmworkbase/src/Utils/mentionProtocol.ts",
+      "reason": "Canonical @所有人/@所有AI labels shared by composer parsing, clipboard guards, drafts, and message rendering. These literals are stable mention protocol tokens, not translatable UI copy."
+    },
+    {
+      "path": "packages/dmworkbase/src/Utils/richTextProtocol.ts",
+      "reason": "RichText(=14) [图片]/[文件] plain-text placeholders shared across send, render, and clipboard paths. These cross-platform wire-format tokens must remain stable and are not translatable UI copy."
     },
     {
       "path": "packages/docs/src/export/docx/styles.ts",
@@ -71,10 +75,6 @@
     {
       "path": "packages/dmworkskillmarket/src/utils/botPublishPrompt.ts",
       "reason": "Agent prompt template for the Bot publish flow. Same rationale as installPrompt.ts above — generated prompt content pasted into an agent client, must byte-match; not translatable UI chrome."
-    },
-    {
-      "path": "packages/dmworkskillmarket/src/utils/publisher.ts",
-      "reason": "Publisher classification helper. The Chinese literal is a backend identity value used to recognize administrator-created records, not user-facing UI copy; the displayed label is localized separately."
     },
     {
       "path": "packages/dmworkmcp/src/utils/mcpBotPublishPrompt.ts",

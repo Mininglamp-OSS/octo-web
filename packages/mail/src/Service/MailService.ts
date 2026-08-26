@@ -186,6 +186,24 @@ function mailboxContextConfig(
 }
 
 const MailService = {
+  async getState(
+    mailboxContextId: string,
+    signal?: AbortSignal
+  ): Promise<string> {
+    const response = await APIClient.shared.get<{ state?: unknown } | null>(
+      mailApiUrl("/state"),
+      mailboxContextConfig(mailboxContextId, { signal })
+    );
+    if (
+      !response ||
+      typeof response.state !== "string" ||
+      response.state.trim() === ""
+    ) {
+      throw new Error("Invalid mail state response");
+    }
+    return response.state;
+  },
+
   getIdentity(mailboxContextId: string): Promise<MailIdentity> {
     return APIClient.shared.get<MailIdentity>(
       mailApiUrl("/identity"),
@@ -258,26 +276,6 @@ const MailService = {
     return requireAgentMailbox(mailbox);
   },
 
-  async getAgentAuthorization(
-    code: string,
-    spaceId: string
-  ): Promise<AgentAuthorizationView> {
-    const view = await APIClient.shared.get<AgentAuthorizationViewWire>(
-      mailApiUrl(`/agent-auth/requests/${encodeURIComponent(code)}`),
-      {
-        headers: { "X-Space-ID": spaceId },
-        suppressAuthExpiredLogout: true,
-      }
-    );
-    return {
-      request: {
-        ...view.request,
-        outboundMode: resolveOutboundMode(view.request),
-      },
-      mailboxes: (view.mailboxes ?? []).map(normalizeAgentMailbox),
-    };
-  },
-
   async approveAgentAuthorization(
     code: string,
     mailboxId: string,
@@ -297,6 +295,26 @@ const MailService = {
       }
     );
     return requireAuthorizationApproval(approval);
+  },
+
+  async getAgentAuthorization(
+    code: string,
+    spaceId: string
+  ): Promise<AgentAuthorizationView> {
+    const view = await APIClient.shared.get<AgentAuthorizationViewWire>(
+      mailApiUrl(`/agent-auth/requests/${encodeURIComponent(code)}`),
+      {
+        headers: { "X-Space-ID": spaceId },
+        suppressAuthExpiredLogout: true,
+      }
+    );
+    return {
+      request: {
+        ...view.request,
+        outboundMode: resolveOutboundMode(view.request),
+      },
+      mailboxes: (view.mailboxes ?? []).map(normalizeAgentMailbox),
+    };
   },
 
   revokeAgentMailboxBinding(id: string): Promise<void> {
@@ -466,6 +484,17 @@ const MailService = {
     return APIClient.shared.post(
       mailApiUrl(`/messages/${encodeURIComponent(id)}/forward`),
       input,
+      mailboxContextConfig(mailboxContextId)
+    );
+  },
+
+  restoreNotJunk(
+    mailboxContextId: string,
+    id: string
+  ): Promise<{ updated: string; senderAddress: string }> {
+    return APIClient.shared.post(
+      mailApiUrl(`/messages/${encodeURIComponent(id)}/not-junk`),
+      {},
       mailboxContextConfig(mailboxContextId)
     );
   },

@@ -19,6 +19,7 @@ export interface BotManageViewLabels {
   reload: string;
   searchPlaceholder: string;
   noSearchResult: string;
+  searchFailed: string;
   empty: string;
   sectionEnabled: (count: number) => string;
   sectionOthers: string;
@@ -43,8 +44,10 @@ export interface BotManageViewProps {
 export interface MentionFreeListViewProps {
   labels: BotManageViewLabels;
   loading: boolean;
+  searching: boolean;
   backendMissing: boolean;
   loadError: boolean;
+  searchError: boolean;
   searchKeyword: string;
   enabledGroups: BotManageGroupItem[];
   otherGroups: BotManageGroupItem[];
@@ -146,8 +149,10 @@ function BotManageMenuItem({
 export function MentionFreeListView({
   labels,
   loading,
+  searching,
   backendMissing,
   loadError,
+  searchError,
   searchKeyword,
   enabledGroups,
   otherGroups,
@@ -219,6 +224,13 @@ export function MentionFreeListView({
           onChange={(e) => onSearchKeywordChange(e.target.value)}
           data-testid="bot-manage-mention-search"
         />
+        {searching && (
+          <span
+            className="wk-bot-manage-search-spinner"
+            data-testid="bot-manage-mention-searching"
+            aria-hidden="true"
+          />
+        )}
       </div>
       <div
         className="wk-bot-manage-list"
@@ -226,7 +238,17 @@ export function MentionFreeListView({
         onScroll={handleScroll}
         data-testid="bot-manage-mention-list"
       >
-        {isEmpty && (
+        {searchError && !searching && (
+          <div
+            className="wk-bot-manage-search-error"
+            role="alert"
+            data-testid="bot-manage-mention-search-error"
+          >
+            {labels.searchFailed}
+          </div>
+        )}
+
+        {isEmpty && !searching && !searchError && (
           <div className="wk-bot-manage-empty">
             {searchKeyword.trim() ? labels.noSearchResult : labels.empty}
           </div>

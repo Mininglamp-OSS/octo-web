@@ -24,6 +24,24 @@ export type {
 } from "./seed-types";
 
 export async function installMockImRuntime(page: Page, seed: MockSeed): Promise<void> {
+  // Also register the seed for the next document. This is needed by preview/CI
+  // runs where the app mounts before a case-specific seed is installed; the
+  // current-document evaluate below keeps the helper convenient for cases that
+  // do not reload.
+  await page.addInitScript((seedJson: MockSeed) => {
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      const install = (globalThis as { __installMockImRuntime__?: (s: MockSeed) => void })
+        .__installMockImRuntime__;
+      if (typeof install === "function") {
+        install(seedJson);
+        clearInterval(timer);
+      } else if (tries > 200) {
+        clearInterval(timer);
+      }
+    }, 100);
+  }, seed);
   await page.waitForFunction(
     () =>
       typeof (globalThis as { __installMockImRuntime__?: unknown }).__installMockImRuntime__ ===

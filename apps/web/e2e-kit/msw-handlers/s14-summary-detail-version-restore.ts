@@ -134,7 +134,10 @@ export async function registerS14SummaryDetailVersionRestore(page: Page): Promis
         const state = (window as unknown as { __s14State__: { restored: boolean } }).__s14State__;
         state.restored = true;
         return env({ task_id: taskId, result_id: restoredResultId, version: 3 });
-      })
+      }),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
+      )
     );
   });
 }

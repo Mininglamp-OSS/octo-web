@@ -9,6 +9,9 @@ export  class  EndpointID {
   static clearChannelMessages :string = "clearChannelMessages" // 清空某个频道消息
   static emojiService = "emojiService" // emoji服务
   static messageNotify = "messageNotify" // 消息通知
+  // docs 能力端口：markdown 转在线文档。由已闭源的 docs 模块在自己的 init() 里注册实现，
+  // OSS 侧只通过 bridge/docs/docsPort 调用，不直连 docs-backend REST。
+  static docsConvertMarkdown = "docs.convertMarkdown"
 }
 
 export class EndpointCategory {

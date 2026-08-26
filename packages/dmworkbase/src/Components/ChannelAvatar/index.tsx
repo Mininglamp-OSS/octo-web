@@ -7,6 +7,7 @@ import { Component } from "react";
 import WKApp from "../../App";
 import RouteContext from "../../Service/Context";
 import { updateChannelAvatarCustom } from "../../Service/ChannelSettingService";
+import { Dap } from "../../Service/Dap";
 import { WKAvatarEditor } from "../WKAvatarEditor";
 import { I18nContext } from "../../i18n";
 import { canvasToPngFile, isAvatarFileTooLarge } from "../avatarUpload";
@@ -231,6 +232,10 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
             })
             WKApp.shared.changeChannelAvatarTag(channel)
             void fetchCurrentImChannelInfo(channel)
+            // 十二审 🔴 P1-5:生成/清除头像走 PUT groups/:id {avatar_text,avatar_color,clear_uploaded_avatar},
+            //   群级 body 规则只判 name/notice、无 fallback,原本这类编辑一个都不发(漏计)。此分支仅在
+            //   onDraftSave 未设置(= 真实编辑,非建群)时到达,命令式补发 group_avatar_edited。
+            Dap.shared.track("group_avatar_edited", {})
             this.closePage()
         } catch (error) {
             console.error('Custom avatar update failed:', error);
@@ -294,6 +299,10 @@ export class ChannelAvatar extends Component<ChannelAvatarProps, ChannelAvatarSt
                 WKApp.shared.changeChannelAvatarTag(channel)
                 // 触发 channelInfoListener，通知 Chat 等组件刷新头像
                 void fetchCurrentImChannelInfo(channel)
+                // 十二审 🔴 P1-5:group_avatar_edited 从 path 通道(POST /groups/:id/avatar)移到命令式。
+                //   仅此「组件自持 HTTP」的编辑分支发;建群走 onFileUpload(上面 if 分支)→ 天然不发,避免建群
+                //   选图被误计成改头像。
+                Dap.shared.track("group_avatar_edited", {})
             }
             this.closePage()
         } catch {

@@ -15,6 +15,16 @@ if (typeof HTMLCanvasElement !== "undefined") {
   });
 }
 
+// ProseMirror calls getClientRects while restoring a selection. jsdom does
+// not provide the geometry API, so keep the test DOM usable without hiding
+// application errors behind a global error handler.
+if (typeof Element !== "undefined" && typeof Element.prototype.getClientRects !== "function") {
+  Object.defineProperty(Element.prototype, "getClientRects", {
+    configurable: true,
+    value: () => [],
+  });
+}
+
 // Node 26 + vitest 4 + jsdom: jsdom no longer exposes `window.localStorage`
 // unless launched with `--localstorage-file`, and Node's built-in
 // `sessionStorage` is on globalThis but not mirrored onto `window`. Older
