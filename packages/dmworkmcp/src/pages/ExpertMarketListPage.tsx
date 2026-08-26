@@ -391,9 +391,6 @@ export default function ExpertMarketListPage({
   // many results are actually rendered (items.length); with no filter show the
   // backend catalog total (which may exceed the loaded slice — see the
   // truncation notice above).
-  const hasActiveFilter =
-    Boolean(query.trim()) || category !== ALL_CATEGORY || selectedTags.length > 0;
-  const summaryCount = hasActiveFilter ? items.length : activeTotal;
 
   // List items are projections — fetch the full detail before opening the
   // detail modal / install prompt / editor so members, instruction, mcpConfig
@@ -750,9 +747,6 @@ export default function ExpertMarketListPage({
         ) : (
           <>
             <div className="wk-mcp-expert-result-summary">
-              <span aria-live="polite">
-                {t("mcp.expert.totalCount", { values: { count: summaryCount } })}
-              </span>
               <div className="wk-mcp-expert-sort" aria-label={t("mcp.expert.sortAriaLabel")}>
                 <div className="wk-mcp-expert-sort__options">
                   {SORT_OPTIONS.map((option) => (

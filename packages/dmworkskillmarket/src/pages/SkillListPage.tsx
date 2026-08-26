@@ -178,13 +178,6 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
     setDetailId(item.id);
   }
 
-  // The unified list response carries an accurate, filter-scoped
-  // pagination.total (surfaced as list.total). Bind the "共 N 个技能" headline to
-  // it on both tabs so the count re-scopes with an active search/tag filter and
-  // tracks the visible grid. The catalog category skillCount is search-invariant
-  // and would otherwise show the whole-category total after a search.
-  const summaryTotal = list.total;
-
   return (
     <div className="skill-market-page">
       <header className="skill-market-topbar">
@@ -274,18 +267,12 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
       </section>
 
       <main className="skill-market-content">
-        {!list.loading && !list.error && (
+        {!list.loading && !list.error && !mine && (
           <div className="skill-market-result-summary">
-            <span className="skill-market-result-summary__total" aria-live="polite">
-              {t("skillMarket.list.totalCount", {
-                values: { count: summaryTotal },
-              })}
-            </span>
-            {!mine && (
-              <div
-                className="skill-market-sort"
-                aria-label={t("skillMarket.sort.ariaLabel")}
-              >
+            <div
+              className="skill-market-sort"
+              aria-label={t("skillMarket.sort.ariaLabel")}
+            >
                 <div className="skill-market-sort__options">
                   {SORT_OPTIONS.map((option) => (
                     <button
@@ -304,7 +291,6 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
                   ))}
                 </div>
               </div>
-            )}
           </div>
         )}
         {list.loading && (

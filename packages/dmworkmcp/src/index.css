@@ -2668,7 +2668,7 @@
 .wk-mcp-expert-result-summary {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--wk-sp-4);
   margin-bottom: var(--wk-sp-4);
   color: var(--wk-text-tertiary);

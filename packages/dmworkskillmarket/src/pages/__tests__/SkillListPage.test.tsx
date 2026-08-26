@@ -77,7 +77,6 @@ const saveButtonName = /保存|skillMarket\.common\.save/;
 const displayNamePlaceholder =
   /请输入展示名称，最多20个字符|skillMarket\.form\.displayNamePlaceholder/;
 const emptyText = /暂无数据|skillMarket\.list\.empty/;
-const totalCountText = /共 1 个技能|skillMarket\.list\.totalCount/;
 
 describe("SkillListPage", () => {
   let spaceChangedHandler: (() => void) | undefined;
@@ -341,7 +340,6 @@ describe("SkillListPage", () => {
     const card = await screen.findByRole("button", {
       name: "meeting-note-cleaner 我",
     });
-    expect(screen.getByText(totalCountText)).toBeInTheDocument();
     expect(screen.getByLabelText(/浏览次数：2|Views: 2/)).toHaveTextContent(
       "2"
     );

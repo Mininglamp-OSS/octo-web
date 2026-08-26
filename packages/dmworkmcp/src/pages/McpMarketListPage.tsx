@@ -529,7 +529,6 @@ export default class McpMarketListPage extends Component<
       tagsSelected,
       tagFilterOpen,
       mode,
-      total,
       detailId,
       createVisible,
       editingDetail,
@@ -769,14 +768,6 @@ export default class McpMarketListPage extends Component<
               </div>
             ) : (
               <>
-                <div className="wk-mcp__result-summary">
-                  <span
-                    className="wk-mcp__result-summary-total"
-                    aria-live="polite"
-                  >
-                    {t("mcp.list.total", { values: { count: total } })}
-                  </span>
-                </div>
                 {items.length === 0 ? (
                   <div className="wk-mcp__state">{t("mcp.list.empty")}</div>
                 ) : (
