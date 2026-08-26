@@ -149,10 +149,11 @@ function guardMathFencePlugin() {
             : [];
           if (classes.includes("language-math")) {
             const tex = hastNodeText(child).replace(/\n+$/, "");
+            // ```math 是作者显式意图，不套用行内启发式 MATH_ISH_CHAR；只受非空 + 块长上限 +
+            // 每条消息公式数上限 + KaTeX 可解析且渲染产物不超上限约束。
             const ok =
               ctx.count < MAX_FORMULAS_PER_MESSAGE &&
               tex.trim().length > 0 &&
-              MATH_ISH_CHAR.test(tex) &&
               tex.length <= MAX_BLOCK_MATH_LEN &&
               katexAccepts(tex, true);
             if (ok) {
@@ -347,8 +348,14 @@ function isAnchoredDisplay(text: string, openIdx: number, closeIdx: number): boo
   return openerAtLineStart && closerAtLineEnd;
 }
 
-/** 私用区哨兵：代表「源码里被转义的 `$`」，扫描器视其为普通字符，最后再还原成字面 `$`。 */
-const MATH_ESCAPE_SENTINEL = "\uE000";
+function pickMathSentinel(source: string): string | null {
+  const present = new Set(source);
+  for (let cp = 0xe000; cp <= 0xf8ff; cp += 1) {
+    const ch = String.fromCharCode(cp);
+    if (!present.has(ch)) return ch;
+  }
+  return null;
+}
 
 /** 收集 code / inlineCode 节点的源码区间（转义遮罩时跳过，代码里的 `\$` 原样保留）。 */
 function collectCodeRanges(node: any, ranges: Array<[number, number]>): void {
@@ -367,7 +374,8 @@ function collectCodeRanges(node: any, ranges: Array<[number, number]>): void {
 /** 把源码里（代码区外）被反斜杠转义的 `$` 换成哨兵；奇偶反斜杠计数区分 `\$`（转义）与 `\\$`（字面反斜杠+活 `$`）。 */
 function maskEscapedDollars(
   source: string,
-  ranges: Array<[number, number]>
+  ranges: Array<[number, number]>,
+  sentinel: string
 ): string {
   const inCode = (off: number) =>
     ranges.some(([s, e]) => off >= s && off < e);
@@ -380,7 +388,7 @@ function maskEscapedDollars(
       while (k < n && source[k] === "\\") k += 1;
       const runLen = k - i;
       if (source[k] === "$" && runLen % 2 === 1 && !inCode(k)) {
-        out += "\\".repeat(runLen - 1) + MATH_ESCAPE_SENTINEL;
+        out += "\\".repeat(runLen - 1) + sentinel;
         i = k + 1;
         continue;
       }
@@ -407,14 +415,15 @@ function escapeMaskPlugin(this: any) {
     if (source.indexOf("\\$") === -1 || typeof processor?.parse !== "function") {
       return;
     }
-    // 避免与用户原文里已存在的哨兵字符冲突：若源码已含哨兵，放弃 mask（绝不改写用户内容）。
-    if (source.indexOf(MATH_ESCAPE_SENTINEL) !== -1) return;
+    // 动态挑选源码中不存在的哨兵，避免与用户原文里的 PUA 字符冲突（既不漏 mask，也不误改用户内容）。
+    const sentinel = pickMathSentinel(source);
+    if (!sentinel) return;
     const ranges: Array<[number, number]> = [];
     collectCodeRanges(tree, ranges);
-    const masked = maskEscapedDollars(source, ranges);
+    const masked = maskEscapedDollars(source, ranges, sentinel);
     if (masked === source) return;
-    // out-of-band 标记：只有确实注入了哨兵，restore 才会运行，避免无条件改写用户原文里的 PUA 字符。
-    (file.data ||= {}).mathMasked = true;
+    // 经 file.data 把本次选用的哨兵传给 restore（其存在与否即「是否 mask 过」的 out-of-band 标记）。
+    (file.data ||= {}).mathSentinel = sentinel;
     const reparsed = processor.parse(masked);
     tree.children = reparsed.children;
   };
@@ -428,13 +437,14 @@ function escapeMaskPlugin(this: any) {
  */
 function restoreSentinelPlugin() {
   return (tree: any, file: any) => {
-    if (!file?.data?.mathMasked) return;
-    const fix = (s: string) => s.split(MATH_ESCAPE_SENTINEL).join("$");
+    const sentinel: string | undefined = file?.data?.mathSentinel;
+    if (!sentinel) return;
+    const fix = (s: string) => s.split(sentinel).join("$");
     const visit = (node: any) => {
       if (!node) return;
       for (const key of ["value", "url", "title", "alt"]) {
         const v = node[key];
-        if (typeof v === "string" && v.indexOf(MATH_ESCAPE_SENTINEL) !== -1) {
+        if (typeof v === "string" && v.indexOf(sentinel) !== -1) {
           node[key] = fix(v);
         }
       }

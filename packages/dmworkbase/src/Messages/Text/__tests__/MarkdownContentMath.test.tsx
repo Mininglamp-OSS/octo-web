@@ -1,22 +1,21 @@
 // @vitest-environment jsdom
 //
 // WS-117 / GH#1089 — Web 端消息里的 LaTeX 公式必须渲染（iOS 已渲染，只要一端渲染
-// 所有端都渲染）。消息正文走 MarkdownContent 默认路径（enableMath 默认 true）。
+// 所有端都渲染），同时不能腐蚀普通 IM 正文（货币 / shell / 路径 / ${VAR} / JSON / 中文）。
 //
-// 关键修复（reviewer 阻塞点）：
-//   1. 依赖对齐 —— react-markdown@8 用的是 mdast-util-from-markdown@1（micromark v1），
-//      而 remark-math@6 依赖 micromark-extension-math@3（micromark v2），二者不兼容，
-//      block(flow) 公式解析会崩：`Cannot read properties of undefined (reading
-//      'mathFlowInside')`。降到 remark-math@5（micromark-extension-math@2，匹配 v1 栈）
-//      后所有 block 形态（多行 / blockquote / list / CRLF）都能正常解析、不再崩。
-//   2. 渲染顺序 highlight → sanitize → katex：KaTeX 输出不二次 sanitize，保住定位用的
-//      内联 style（strut/pstrut），修复分数/矩阵塌陷。
-//   3. iOS 对齐的 math-ish 守卫（mathGuardPlugin）：默认路径识别 `$...$` / `$$...$$`，
-//      但只有内部含 `\ ^ _ { }` 之一的片段才当公式，`$100` / `$5-$10` / `cost $$5 and $$10`
-//      等金额/shell 正文保持原文。与 iOS WKLaTeXPreprocessor.hasMathChar 行为一致，
-//      从而 `$E=mc^2$` 两端都渲染、货币两端都不误触发。
-//   4. `maxSize`/`maxExpand`/`trust:false`：兜 DoS/布局炸弹，且不产生可执行 HTML。
-// 文档/编辑器等要“无守卫、简单 $a+b$ 也渲染”的场景可显式传 allowSingleDollarMath。
+// 架构（聊天默认路径，enableMath 默认 true）：不使用 remark-math 的贪婪配对，改为自研单次
+// 左到右扫描器直接在 mdast 文本节点上识别公式，所有进入 KaTeX 的 route（行内 $、行内/块级
+// $$、```math 围栏）统一过同一套 guard 与上限：
+//   1. 正向 TeX 白名单（多字母命令 / 上标 / 单字符底下标）+ 负向 shell/path/prose 信号
+//      （${…}、/ :、单字母反斜杠、定界符紧贴单词字符、跨软换行非锚定 $$、无命令的 CJK / ≥2 词形 token）。
+//   2. 转义在解析前稳定保存：escapeMaskPlugin 用「源码中不存在的动态 PUA 哨兵」遮罩被转义的 $，
+//      经 file.data 传给 restoreSentinelPlugin 还原（覆盖 value/url/title/alt）；哨兵动态挑选，
+//      绝不与用户原文里的 PUA 字符冲突。
+//   3. KaTeX 预校验 + 接收端上限：解析失败整条按字面保留（含定界符、无红字）；渲染后 HTML >60KB
+//      或单条消息公式数 >32 拒绝（$ / $$ / ```math 共享同一 per-render 计数）。
+//   4. 依赖对齐 remark-math ^6→^5（仅 allowSingleDollarMath 文档/编辑器路径使用）；渲染顺序
+//      highlight → sanitize → fence-guard → katex；trust:false / maxSize:10 / maxExpand:100。
+// 文档/编辑器等要「无守卫、简单 $a+b$ 也渲染」的场景可显式传 allowSingleDollarMath。
 
 import React from "react";
 import ReactDOM from "react-dom";
@@ -802,11 +801,16 @@ describe("MarkdownContent — 用户原文里的 U+E000 不被无条件改写 (r
     expect(vt).toBe("hello  world");
   });
 
-  it("含 U+E000 又含 \\$x^2\\$ 时不腐蚀 U+E000（放弃 mask 以保内容）", () => {
+  it("含 U+E000 又含 \\$x^2\\$ 时：转义公式仍按字面、U+E000 保留", () => {
+    // reviewer 复现：icon U+E000 tail \\$x^2\\$ done —— 动态哨兵避开 U+E000，
+    // 转义的 \\$x^2\\$ 不被重新激活成公式，且 U+E000 原样保留。
     const root = renderContent(
-      <MarkdownContent content={"a  b \\$x^2\\$ c"} />
+      <MarkdownContent content={"icon  tail \\$x^2\\$ done"} />
     );
-    expect(visibleText(root)).toContain("");
+    expect(root.querySelector(".katex")).toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("$x^2$");
+    expect(vt).toContain("");
   });
 });
 
