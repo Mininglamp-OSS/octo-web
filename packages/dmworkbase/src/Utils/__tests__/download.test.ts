@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
-import { downloadFile } from '@octo/base/src/Utils/download'
+vi.mock('@douyinfe/semi-ui', () => ({ Toast: { success: vi.fn(), error: vi.fn() } }))
 
-// Mock WKApp.apiClient
-vi.mock('@octo/base/src/App', () => ({
+vi.mock('../../App', () => ({
   default: {
     apiClient: {
       get: vi.fn(),
@@ -11,13 +10,15 @@ vi.mock('@octo/base/src/App', () => ({
   },
 }))
 
-import WKApp from '@octo/base/src/App'
+import { downloadFile, getPresignedDownloadUrl, getPresignedPreviewUrl } from '../download'
+import WKApp from '../../App'
 
 describe('downloadFile', () => {
   let capturedAnchor: HTMLAnchorElement | null = null
 
   beforeEach(() => {
     capturedAnchor = null
+    vi.resetAllMocks()
     vi.spyOn(document.body, 'appendChild').mockImplementation((node: Node) => {
       capturedAnchor = node as HTMLAnchorElement
       ;(node as HTMLAnchorElement).click = vi.fn()
@@ -68,5 +69,28 @@ describe('downloadFile', () => {
   it('does nothing for javascript: URL', async () => {
     await downloadFile('javascript:alert(1)', 'photo.png')
     expect(capturedAnchor).toBeNull()
+  })
+
+  it('uses the original URL when the download helper returns no signed URL', async () => {
+    vi.mocked(WKApp.apiClient.get).mockResolvedValue({})
+
+    await expect(getPresignedDownloadUrl('/files/a.txt', 'a.txt')).resolves.toBe('/files/a.txt')
+  })
+
+  it('requests inline disposition for preview URLs', async () => {
+    vi.mocked(WKApp.apiClient.get).mockResolvedValue({ url: 'https://cdn.example.com/preview' })
+
+    await expect(getPresignedPreviewUrl('/files/a.pdf', 'a.pdf')).resolves.toBe('https://cdn.example.com/preview')
+    expect(WKApp.apiClient.get).toHaveBeenCalledWith(
+      'file/download/url?path=%2Ffiles%2Fa.pdf&filename=a.pdf&disposition=inline'
+    )
+  })
+
+  it('downloads same-origin URLs without requesting a presigned URL', async () => {
+    await downloadFile('/files/a.txt', 'a.txt')
+
+    expect(WKApp.apiClient.get).not.toHaveBeenCalled()
+    expect(capturedAnchor).not.toBeNull()
+    expect(capturedAnchor!.href).toBe(`${window.location.origin}/files/a.txt`)
   })
 })

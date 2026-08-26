@@ -17,6 +17,7 @@ vi.mock("react-dom", async () => {
 
 vi.mock("@douyinfe/semi-ui", () => ({
   Button: ({ children, ...props }: any) => <button {...props}>{children}</button>,
+  Modal: ({ children }: any) => <div>{children}</div>,
   Toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn() },
   Typography: { Text: ({ children }: any) => <span>{children}</span> },
   Tag: ({ children }: any) => <span>{children}</span>,
@@ -31,12 +32,25 @@ vi.mock("@douyinfe/semi-icons", () => ({
   IconPlus: () => <span>+</span>,
 }));
 
+vi.mock("react-virtuoso", () => ({
+  Virtuoso: () => null,
+  TableVirtuoso: () => null,
+}));
+
 vi.mock("@octo/base/src/App", () => ({
   default: {
     routeRight: {
       popToRoot: vi.fn(),
       push: vi.fn(),
     },
+  },
+}));
+
+vi.mock("@octo/base/src/Service/VoiceSettingsStore", () => ({
+  getVoiceShortcut: () => "alt-right",
+  voiceSettingsStore: {
+    get: () => ({ enabled: true }),
+    subscribe: () => () => undefined,
   },
 }));
 
@@ -105,24 +119,23 @@ describe("SummaryCreatePage - voice input", () => {
     expect(voiceBtn).toBeTruthy();
   });
 
-  it("should position VoiceInputButton at top-right of textarea using wk-vib--textarea-corner class", () => {
+  it("should render VoiceInputButton in the topic character-count area", () => {
     const { container } = render(<SummaryCreatePage />);
 
-    const voiceBtn = container.querySelector(".wk-vib--textarea-corner");
+    const voiceBtn = container.querySelector(".wk-vib");
     expect(voiceBtn).toBeTruthy();
 
-    // Voice button should be inside a position: relative wrapper
     const wrapper = voiceBtn?.parentElement;
-    expect(wrapper?.style.position).toBe("relative");
+    expect(wrapper?.className).toBe("summary-workbench-char-count");
   });
 
   it("should render voice button within same container as textarea", () => {
     const { container } = render(<SummaryCreatePage />);
 
     const textarea = container.querySelector("textarea");
-    const voiceBtn = container.querySelector(".wk-vib--textarea-corner");
+    const voiceBtn = container.querySelector(".wk-vib");
 
-    // Both should share the same parent (position: relative wrapper)
-    expect(textarea?.parentElement).toBe(voiceBtn?.parentElement);
+    expect(textarea?.parentElement?.className).toBe("summary-workbench-input-wrap");
+    expect(voiceBtn?.parentElement?.parentElement).toBe(textarea?.parentElement);
   });
 });

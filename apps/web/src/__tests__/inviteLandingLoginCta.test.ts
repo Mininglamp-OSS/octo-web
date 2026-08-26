@@ -14,9 +14,8 @@ describe('InviteLanding — dmwork-web#1047 login CTA for unauthenticated users'
         expect(sourceCode).toContain('登录后加入');
     });
 
-    it('guides unauthenticated users with a hint near the CTA', () => {
-        // Hint copy that explains login/register is required
-        expect(sourceCode).toMatch(/登录或注册后.*加入/);
+    it('guides unauthenticated users with a translated hint near the CTA', () => {
+        expect(sourceCode).toContain('app.invite.loginHint');
     });
 
     it('exposes a stable test id on the unauthenticated CTA', () => {

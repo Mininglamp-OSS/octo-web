@@ -232,7 +232,6 @@ export const FETCH_RULES: FetchRule[] = [
     { method: 'PUT', path: '/api/v1/user/language', event: 'language_switched' },
     // 注意:settings_menu_opened 不在此通道。/version.json 由 versionChecker 定时轮询(cache-bust),
     // 请求成功 ≠ 用户打开设置 —— 该事件改由「设置入口」点击(data-testid / 命令式 track)采集。
-    { method: 'GET', path: '/api/v1/common/updater/web/1.0', event: 'settings_changelog_viewed' },
     // settings_voice_opened 不在此通道 —— GET /voice/local-config 由语音设置组件挂载即拉,且被设置页其他
     //   子面板/焦点刷新连带调用,请求成功 ≠ 用户打开语音设置。改由语音设置入口点击命令式 track(见二审 P1-3)。
     // settings_voice_toggled 不在此通道(十二审 P2)—— PUT /voice/local-config 被两个手势共用:真实开关

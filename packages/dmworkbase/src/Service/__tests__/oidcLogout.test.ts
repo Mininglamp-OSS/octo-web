@@ -212,6 +212,7 @@ describe("oidcLogout helpers", () => {
     sessionStorage.setItem("theme-mode", "dark");
     localStorage.setItem("tokenabc", "t");
     localStorage.setItem("currentSpaceId", "s1");
+    localStorage.setItem("octo:last-space:user-a", "s1");
     localStorage.setItem("i18n_lang", "zh-CN");
 
     clearAuthStorage();
@@ -227,6 +228,7 @@ describe("oidcLogout helpers", () => {
     expect(sessionStorage.getItem("octo.docs.standaloneReturn")).toBeNull();
     expect(localStorage.getItem("tokenabc")).toBeNull();
     expect(localStorage.getItem("currentSpaceId")).toBeNull();
+    expect(localStorage.getItem("octo:last-space:user-a")).toBe("s1");
     expect(sessionStorage.getItem("theme-mode")).toBe("dark");
     expect(localStorage.getItem("i18n_lang")).toBe("zh-CN");
   });

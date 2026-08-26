@@ -8,8 +8,14 @@ test("@TES16 @p1 @settings-center @voice @chat @consumer 设置语音后对话�
 
   await content.getByRole("combobox", { name: "快捷键" }).selectOption("shift-left");
   await content.getByRole("combobox", { name: "说话方式" }).selectOption("hold");
-  await expect(content).toContainText("按住左 Shift说话");
+  await expect(content).toContainText("按住左 Shift 说话，松开结束");
 
   await closeSettings(authedPage);
-  await expect.poll(() => getComposerPlaceholder(authedPage)).toContain("按住左 Shift说话");
+  await expect.poll(() => getComposerPlaceholder(authedPage)).toBe("发送给 TES16 语音设置群");
+  await expect(authedPage.locator(".wk-messageinput-shortcut-hint")).toHaveCount(0);
+
+  await authedPage.getByRole("textbox").fill("测试");
+  await expect(authedPage.locator(".wk-messageinput-shortcut-hint")).toHaveCount(0);
+  await authedPage.getByRole("textbox").fill("");
+  await expect(authedPage.locator(".wk-messageinput-shortcut-hint")).toHaveCount(0);
 });

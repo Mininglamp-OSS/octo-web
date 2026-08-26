@@ -29,12 +29,14 @@ import WKSDK, {
   ChannelInfo,
   ChannelTypeGroup,
   ChannelTypePerson,
+  CMDContent,
   ConnectStatus,
   Conversation,
   Message,
   MessageText,
   Subscriber,
 } from "wukongimjssdk";
+import { WKApp } from "@octo/base";
 import type {
   MockConversationSeed,
   MockGroupSeed,
@@ -226,6 +228,33 @@ export function installFakeProvider(seed: MockSeed): void {
   provider.syncRemindersCallback = async () => [];
   provider.reminderDoneCallback = async () => undefined;
   provider.messageReadedCallback = async () => undefined;
+
+  // The real datasource receives revoke/edit as IM command + message-extra push.
+  // Keep the e2e runtime on that same observable path instead of making the UI
+  // infer success from the HTTP response alone.
+  const conversationProvider = WKApp.conversationProvider as any;
+  if (conversationProvider) {
+    const revokeState = conversationProvider.__e2eRevokeState ?? {
+      original: conversationProvider.revokeMessage?.bind(conversationProvider),
+      currentUid: seed.currentUid,
+    };
+    revokeState.currentUid = seed.currentUid;
+    conversationProvider.__e2eRevokeState = revokeState;
+    if (!conversationProvider.__e2eRevokeWrapperInstalled) {
+      conversationProvider.revokeMessage = async (message: Message) => {
+        await revokeState.original?.(message);
+        const command = new Message();
+        command.channel = message.channel;
+        command.fromUID = revokeState.currentUid;
+        const content = new CMDContent();
+        content.cmd = "messageRevoke";
+        content.param = { message_id: message.messageID };
+        command.content = content;
+        sdk.chatManager.notifyCMDListeners(command);
+      };
+      conversationProvider.__e2eRevokeWrapperInstalled = true;
+    }
+  }
 
   // 4. short-circuit connect → Connected
   const conn = sdk.connectManager;

@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "src/index.tsx",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage --coverage.include='src/**/*.{ts,tsx}' --coverage.exclude='src/**/__tests__/**' --coverage.exclude='**/*.test.{ts,tsx}' --coverage.exclude='**/*.stories.{ts,tsx}' --coverage.reportOnFailure"
   },
   "dependencies": {
     "@mlt-org/octo-card-profile-octo-chat": "1.2.0-rc.2",

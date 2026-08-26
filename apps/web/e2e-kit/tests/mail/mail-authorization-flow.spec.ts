@@ -8,7 +8,7 @@ async function enableMail(page: import("@playwright/test").Page) {
 }
 
 test.describe("@MA1 @p1 @mail @mail-authorization", () => {
-  test("缺少 Space 显示重新接入提示", async ({ authedPage }) => {
+  test("缺少组织信息显示重新接入提示", async ({ authedPage }) => {
     await enableMail(authedPage);
     await authedPage.goto("/mail/authorize?code=E2E-CODE&sid=e2etest");
     await expect(
@@ -16,7 +16,7 @@ test.describe("@MA1 @p1 @mail @mail-authorization", () => {
     ).toBeVisible();
     await expect(
       authedPage.getByText(
-        "授权链接缺少 Space 信息，请返回邮箱管理页重新发起接入。",
+        "授权链接缺少组织信息，请返回邮箱管理页重新发起接入。",
         {
           exact: true,
         }

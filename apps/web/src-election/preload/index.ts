@@ -25,6 +25,8 @@ import {
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
   IPC_OIDC_CLEAR_AUTH_SESSION,
+  IPC_ASK_TRUST_FLEET_HOST,
+  IPC_OPEN_EXTERNAL_URL,
   IPC_RESTART_APP,
   IPC_SCREENSHOTS_OK,
   IPC_SCREENSHOTS_START,
@@ -151,6 +153,8 @@ const ALLOWED_INVOKE_CHANNELS = [
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
   IPC_OIDC_CLEAR_AUTH_SESSION,
+  IPC_ASK_TRUST_FLEET_HOST,
+  IPC_OPEN_EXTERNAL_URL,
 ];
 
 const ALLOWED_RECEIVE_CHANNELS = [
@@ -280,6 +284,12 @@ const octoElectron = {
   notification: notificationBridge,
   window: {
     isFocused: () => invokeAllowed(IPC_WINDOW_IS_FOCUSED),
+  },
+  links: {
+    // Generic http(s)-only external opener for shell features whose web-era
+    // code used window.open + about:blank (realname verification, global
+    // search doc open). Distinct from oidc.openExternal (end-session flow).
+    openExternal: (url) => invokeAllowed(IPC_OPEN_EXTERNAL_URL, url),
   },
   conversation: {
     setUnreadCount: (count) => sendAllowed(IPC_CONVERSATION_UNREAD_COUNT, count),

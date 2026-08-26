@@ -54,6 +54,28 @@ describe("DocumentShareCardContent.decodeJSON — untrusted-wire narrowing", () 
     expect(c.permission).toBe("reader");
   });
 
+  // html 必须在 KINDS 白名单里：否则 asKind 会把 wire 里的 html **静默降级**回 doc，
+  // 发送侧就算传了 kind 也白传，接收端依旧当普通文档处理。
+  it("keeps kind='html' (must NOT silently downgrade to 'doc')", () => {
+    const c = new DocumentShareCardContent();
+    c.decodeJSON({ doc_id: "d_1", kind: "html", title: "T" });
+    expect(c.kind).toBe("html");
+  });
+
+  it("round-trips kind='html' through encodeJSON → decodeJSON", () => {
+    const src = new DocumentShareCardContent();
+    src.docId = "d_1";
+    src.kind = "html";
+    src.title = "周报.html";
+
+    const wire = src.encodeJSON();
+    expect(wire.kind).toBe("html");
+
+    const dst = new DocumentShareCardContent();
+    dst.decodeJSON(wire);
+    expect(dst.kind).toBe("html");
+  });
+
   it("tolerates non-string / missing fields without throwing", () => {
     const c = new DocumentShareCardContent();
     expect(() => c.decodeJSON({ doc_id: 123, title: null })).not.toThrow();

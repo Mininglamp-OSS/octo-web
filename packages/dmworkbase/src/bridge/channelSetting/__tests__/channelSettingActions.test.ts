@@ -80,6 +80,7 @@ function createRuntime(
     markRemovedChannelSubscribers: vi.fn(),
     notifyCurrentChannelSubscribers: vi.fn(),
     notifyCurrentChannelInfo: vi.fn(),
+    setPinnedChannel: vi.fn(() => Promise.resolve()),
     setCurrentChannelSubscribers: vi.fn(),
     setCurrentChannelInfo: vi.fn(),
     syncCurrentChannelSubscribers: vi.fn(() => Promise.resolve()),
@@ -451,6 +452,21 @@ describe("channel setting actions", () => {
     expect(runtime.topChannel).toHaveBeenCalledWith(channel, true);
     expect(runtime.saveChannel).toHaveBeenCalledWith(channel, false);
     expect(runtime.remarkChannel).toHaveBeenCalledWith(channel, "remark");
+  });
+
+  it("uses the dedicated pinned contract for child threads", async () => {
+    const runtime = createRuntime();
+    const channel = new Channel(
+      "group-1____thread-1",
+      ChannelTypeCommunityTopic
+    );
+
+    await topChannelSetting({ channel, top: true, runtime });
+    await topChannelSetting({ channel, top: false, runtime });
+
+    expect(runtime.setPinnedChannel).toHaveBeenNthCalledWith(1, channel, true);
+    expect(runtime.setPinnedChannel).toHaveBeenNthCalledWith(2, channel, false);
+    expect(runtime.topChannel).not.toHaveBeenCalled();
   });
 
   it("emits imperative conversation_muted/pinned with the direction action (M3 收口点)", async () => {

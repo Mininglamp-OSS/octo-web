@@ -4,6 +4,10 @@ import {
     readAgentChatSession,
     writeAgentChatSession,
     clearAgentChatSession,
+    agentChatRequestIdKey,
+    readAgentChatRequestId,
+    writeAgentChatRequestId,
+    clearAgentChatRequestId,
 } from './summaryHelpers';
 
 describe('agent chat session_id localStorage helpers', () => {
@@ -44,5 +48,22 @@ describe('agent chat session_id localStorage helpers', () => {
         clearAgentChatSession('ch1');
         expect(readAgentChatSession('ch1')).toBe('');
         expect(readAgentChatSession('ch2')).toBe('sid-2');
+    });
+
+    it('persists the last successful request_id per channel', () => {
+        expect(agentChatRequestIdKey('ch1')).toBe('agent-chat-request:ch1');
+        expect(agentChatRequestIdKey()).toBe('agent-chat-request:__workbench__');
+        writeAgentChatRequestId('ch1', 'req-1');
+        writeAgentChatRequestId('ch2', 'req-2');
+        expect(readAgentChatRequestId('ch1')).toBe('req-1');
+        expect(readAgentChatRequestId('ch2')).toBe('req-2');
+        clearAgentChatRequestId('ch1');
+        expect(readAgentChatRequestId('ch1')).toBe('');
+        expect(readAgentChatRequestId('ch2')).toBe('req-2');
+    });
+
+    it('does not persist an empty request_id', () => {
+        writeAgentChatRequestId('ch1', '');
+        expect(localStorage.getItem('agent-chat-request:ch1')).toBeNull();
     });
 });

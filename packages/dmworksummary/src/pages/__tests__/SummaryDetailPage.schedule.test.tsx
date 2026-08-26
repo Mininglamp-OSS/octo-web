@@ -60,6 +60,7 @@ import * as api from '../../api/summaryApi';
 import { WKApp, Dap } from '@octo/base';
 import SummaryDetailPage from '../SummaryDetailPage';
 import { refreshPendingInvitationBadge } from '../../utils/summaryMenuBadge';
+import { summaryTestIds } from '../../utils/testIds';
 
 vi.mock('../../api/summaryApi');
 
@@ -144,45 +145,17 @@ describe('SummaryDetailPage — 返回分享卡片所在群聊', () => {
         }
     });
 
-    it('仅携带来源会话时展示入口，并返回该会话', () => {
+    it('详情头部当前不再渲染返回群聊入口', () => {
         const page = new SummaryDetailPage({
             taskId: 1,
             originChannel: { channelId: 'alice', channelType: 1 },
         } as any);
         (page as any).context = { t: (key: string) => key };
         page.state = { ...page.state, detail: baseDetail() as any };
-        const showConversation = vi.fn();
-        const previous = (WKApp as any).endpoints.showConversation;
-        (WKApp as any).endpoints.showConversation = showConversation;
-
-        try {
-            const header = (page as any).renderHeader();
-            const inner = Array.isArray(header.props.children)
-                ? header.props.children[0]
-                : header.props.children;
-            const backButton = inner.props.children[0];
-            expect(backButton.props.children).toBe('summary.share.backToChat');
-
-            backButton.props.onClick();
-            expect(showConversation).toHaveBeenCalledWith(expect.objectContaining({
-                channelID: 'alice',
-                channelType: 1,
-            }));
-        } finally {
-            (WKApp as any).endpoints.showConversation = previous;
-        }
-    });
-
-    it('普通总结入口不展示返回群聊', () => {
-        const page = makePage(1);
-        page.state = { ...page.state, detail: baseDetail() as any };
-
         const header = (page as any).renderHeader();
-        const inner = Array.isArray(header.props.children)
-            ? header.props.children[0]
-            : header.props.children;
-        expect(inner.props.children[0]).toBeNull();
+        expect(JSON.stringify(header)).not.toContain('summary.share.backToChat');
     });
+
 });
 
 it('keeps regeneration voice insertion within the 2000-character limit', () => {
@@ -1795,28 +1768,28 @@ describe('批次B 需求3：参与者报告自己那条有编辑（can_edit_pers
 describe('批次B 需求4：团队总结编辑按钮 gate=can_edit_team（仅 creator）', () => {
     beforeEach(() => vi.clearAllMocks());
 
-    it('team edit button rendered when can_edit_team=true', () => {
+    it('团队编辑按钮在正文 header 中渲染', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
-            detail: multiCollabDetail({ can_edit_team: true }),
+            detail: multiCollabDetail({ can_edit: true, can_edit_team: true }),
             members: [submittedMember('test-uid', '我', 'a'), submittedMember('u_b', '李四', 'b')],
             editingTeamSummary: false,
         };
-        const json = JSON.stringify((page as any).renderTeamSummary());
-        expect(json).toContain('summary.detail.editTeamSummary');
+        const json = JSON.stringify((page as any).renderCompleted());
+        expect(json).toContain(summaryTestIds.detailEditBtn);
     });
 
     it('team edit button NOT rendered for non-creator (can_edit_team=false)', () => {
         const page = makePage(1);
         page.state = {
             ...(page.state as any),
-            detail: multiCollabDetail({ can_edit_team: false }),
+            detail: multiCollabDetail({ can_edit: false, can_edit_team: false }),
             members: [submittedMember('test-uid', '我', 'a'), submittedMember('u_b', '李四', 'b')],
             editingTeamSummary: false,
         };
-        const json = JSON.stringify((page as any).renderTeamSummary());
-        expect(json).not.toContain('summary.detail.editTeamSummary');
+        const json = JSON.stringify((page as any).renderCompleted());
+        expect(json).not.toContain(summaryTestIds.detailEditBtn);
     });
 
     it('team edit inline editor uses default (team) mode → editSummary path', () => {
@@ -1989,7 +1962,6 @@ describe('v2 对齐：定时按钮集中到 header（从团队框/个人区移�
         const json = JSON.stringify((page as any).renderTeamSummary());
         expect(json).not.toContain('summary.detail.setSchedule');
         expect(json).not.toContain('summary.detail.editSchedule');
-        expect(json).toContain('summary.detail.editTeamSummary');
     });
 
     it('single-person BY_PERSON: schedule button no longer in renderPersonalSummary (moved to header)', () => {
@@ -2128,18 +2100,13 @@ describe('批次B 需求7：成员状态区「添加成员」按钮 gate=can_add
         expect(json).not.toContain('summary.detail.addMember');
     });
 
-    it('handleAddMemberConfirm calls api.addMembers with user_ids then loadDetail', async () => {
-        vi.mocked(api.addMembers).mockResolvedValue(undefined as any);
-        vi.mocked(api.getSummaryDetail).mockResolvedValue(multiCollabDetail({ can_add_member: true }) as any);
-
+    it('creator 可以打开添加成员面板', () => {
         const page = makePage(1);
         page.state = { ...(page.state as any), detail: multiCollabDetail({ can_add_member: true }) };
-
-        await (page as any).handleAddMemberConfirm([{ user_id: 'u_new', name: 'n', avatar: '', department: '' }]);
-
-        expect(api.addMembers).toHaveBeenCalledWith(1, ['u_new']);
-        // 成功后 loadDetail 刷新（getSummaryDetail 被再次调用）。
-        expect(api.getSummaryDetail).toHaveBeenCalled();
+        const push = vi.spyOn(WKApp.routeRight, 'push');
+        (page as any).handleOpenAddMember();
+        expect(push).toHaveBeenCalled();
+        push.mockRestore();
     });
 
     it('addMembers API posts {user_ids:[...]}', async () => {
@@ -2232,9 +2199,9 @@ describe('批次B 回炉 F1：编辑态互斥 / 切 task 复位 / 编辑分支�
             editingTeamSummary: true,
         };
         const json = JSON.stringify((page as any).renderTeamSummary());
-        // 进 editor：team 模式，initialContent=团队内容，且无只读 content-box。
+        // 当前编辑器由 content-box 布局容器包裹。
         expect(json).toContain('team content');
-        expect(json).not.toContain('summary-detail-content-box');
+        expect(json).toContain('summary-detail-content-box');
     });
 });
 

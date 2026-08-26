@@ -1,8 +1,10 @@
 /* eslint-disable no-undef */
 // spec: apps/web/e2e-kit/case-specs/settings-center/settings/TES13-settings-center-tools.md
 import { test, expect } from "../../../fixtures-authed";
+import { prepareVoiceConversation } from "../voice/settings-center-voice-support";
 
 test("@TES13 @p1 @settings-center @tools 工具页展示快捷键和资源", async ({ authedPage }) => {
+  await prepareVoiceConversation(authedPage, { shortcutWindows: "alt-right", speakingMode: "hold" }, "TES13 工具页群");
   await authedPage.getByRole("button", { name: "设置" }).click();
   await authedPage.getByRole("combobox", { name: "界面语言" }).selectOption("en-US");
   const content = authedPage.getByTestId("settings-center-content");
@@ -20,8 +22,14 @@ test("@TES13 @p1 @settings-center @tools 工具页展示快捷键和资源", asy
   for (const name of ["Android", "iPhone", "Windows", "macOS", "Octo Chrome Extension", "OpenClaw Plugin"]) {
     await expect(content.getByText(name, { exact: true })).toBeVisible();
   }
+  const desktopSection = content.locator("section").filter({ hasText: /^Desktop/ });
+  const desktopCards = desktopSection.locator('[data-resource-status="coming-soon"]');
+  await expect(desktopCards).toHaveCount(2);
+  await expect(desktopCards).toHaveText([/Coming soon/, /Coming soon/]);
   await expect(content).toContainText("Mobile");
   await expect(content).toContainText("Extensions and connections");
   await expect(content).toContainText("Source: ClawHub · GitHub");
   await expect(authedPage.getByRole("link", { name: "Download from GitHub" })).toHaveAttribute("href", "https://github.com/Mininglamp-OSS/octo-android/releases/latest");
+  await expect(authedPage.getByRole("link", { name: "Go to download" })).toHaveAttribute("href", "https://chromewebstore.google.com/detail/octo-%E6%8F%92%E4%BB%B6%E7%89%88/nemameogpfkponoomeblkjcnbidgmndk");
+  await expect(authedPage.getByRole("link", { name: "View project" })).toHaveAttribute("href", "https://github.com/Mininglamp-OSS/openclaw-channel-octo");
 });

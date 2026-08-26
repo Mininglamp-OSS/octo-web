@@ -329,6 +329,12 @@ export interface CreateAgentSummaryParams {
     /** 当前 agent 对话的 session_id */
     session_id: string;
     /**
+     * 最近一次成功 agent submit 的幂等键。保存时后端用
+     * (user_id, session_id, request_id) 找回该轮冻结的 v2 Run manifest。
+     * 可选，旧后端忽略。
+     */
+    request_id?: string;
+    /**
      * 触发对话的频道 id。可选:agent 对话入口没有"选来源"控件,
      * 前端一般不传;后端会从 session 的 tool_calls 记录反查 agent
      * 实际读过的第一个 channel_id 作为 origin。
@@ -407,10 +413,7 @@ export interface AgentChatParams {
      * 后端据此去重(同 request_id 不重复建 Run/执行工具)。可选,旧后端忽略。
      */
     request_id?: string;
-    /**
-     * v2 契约:续跑一个已存在的 Run。首轮由后端在响应里返回 run_id,
-     * 前端在同一 session 的后续提交带回。可选,旧后端忽略。
-     */
+    /** v2 预留:后端可能返回 run_id；当前保存链路使用 request_id 绑定 Run。 */
     run_id?: string;
     /** 用户在 UI 中明确选定、希望 agent 默认处理的聊天。 */
     selected_channels?: Array<Pick<ChatCandidate, 'chat_id' | 'chat_type' | 'name' | 'is_archived'>>;

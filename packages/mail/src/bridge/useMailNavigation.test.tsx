@@ -251,6 +251,33 @@ describe("useMailNavigation", () => {
     unmount();
   });
 
+  it("refreshes mailbox unread counts without showing a loading state", async () => {
+    const account = {
+      id: "11",
+      address: "agent@demo.octo.test",
+      connectState: "connected" as const,
+    };
+    testState.listAgentMailboxes.mockResolvedValue([account]);
+    testState.listMailboxes
+      .mockResolvedValueOnce([
+        { id: "drafts", name: "Drafts", total: 1, unread: 1 },
+      ])
+      .mockResolvedValueOnce([
+        { id: "drafts", name: "Drafts", total: 1, unread: 0 },
+      ]);
+
+    const { result, unmount } = renderHook(() => useMailNavigation("fallback"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.mailboxes[0]?.unread).toBe(1);
+
+    act(() => testState.emit("mail-navigation-refresh"));
+
+    expect(result.current.loading).toBe(false);
+    await waitFor(() => expect(result.current.mailboxes[0]?.unread).toBe(0));
+    expect(result.current.loading).toBe(false);
+    unmount();
+  });
+
   it("keeps existing navigation state when a background refresh fails", async () => {
     const account = {
       id: "11",

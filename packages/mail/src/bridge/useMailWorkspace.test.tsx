@@ -95,6 +95,7 @@ describe("useMailWorkspace read state", () => {
       ["\\Seen"],
       []
     );
+    expect(testState.emit).toHaveBeenCalledWith("mail-navigation-refresh");
     expect(testState.emit).not.toHaveBeenCalledWith("mail-refresh");
 
     unmount();

@@ -15,7 +15,7 @@ import VoiceFeedback, {
   type AsrParams,
 } from "../../../../Service/VoiceFeedback";
 import LocalModelService from "../../../../Service/LocalModelService";
-import { voiceSettingsStore } from "../../../../Service/VoiceSettingsStore";
+import { setMicrophonePermission, voiceSettingsStore } from "../../../../Service/VoiceSettingsStore";
 import type {
   ChatComposerVoiceContext,
   ChatComposerVoiceHost,
@@ -243,11 +243,6 @@ export default function useVoiceInput(
       .getConfig()
       .then((config: VoiceConfig) => {
         if (cancelled || !mountedRef.current) return;
-        const migratedSettings = voiceSettingsStore.migrateServerConfig?.(config) ?? voiceSettingsStore.get();
-        setIsVoiceEnabled(
-          config.enabled ||
-            migratedSettings.localEnabled,
-        );
         backendEnabledRef.current = config.enabled;
         maxFileSizeRef.current = config.max_file_size || 0;
         if (config.max_duration != null) {
@@ -256,6 +251,37 @@ export default function useVoiceInput(
         feedbackUrlRef.current = config.feedback_url;
         setSharedVoiceConfig(config);
         reconcileSpaceSetting(config.feedback_url);
+        setIsVoiceEnabled(config.enabled || voiceSettingsStore.get().localEnabled);
+
+        if (voiceSettingsStore.needsLocalConfigMigration?.() === false) return;
+
+        // Legacy local ASR settings live behind a separate endpoint. The new
+        // settings store must import those values before deciding whether the
+        // local engine is enabled; /voice/config only describes the remote
+        // speech service.
+        const localConfigPromise = VoiceService.shared.getLocalConfig?.();
+        const localConfigResult = localConfigPromise
+          ? localConfigPromise.then((localConfig) => ({ ok: true, localConfig })).catch(() => ({
+            ok: false,
+            localConfig: null,
+          }))
+          : Promise.resolve({ ok: false, localConfig: null });
+        return localConfigResult.then(({ ok, localConfig }) => {
+          if (cancelled || !mountedRef.current) return;
+          const migratedSettings = ok
+            ? voiceSettingsStore.migrateServerConfig?.(
+              localConfig
+                ? {
+                  local_enabled: localConfig.enabled,
+                  local_timeout_ms: localConfig.timeout_ms ?? undefined,
+                  local_probe_url: localConfig.probe_url ?? undefined,
+                  local_transcribe_url: localConfig.transcribe_url ?? undefined,
+                }
+                : {},
+            ) ?? voiceSettingsStore.get()
+            : voiceSettingsStore.get();
+          setIsVoiceEnabled(config.enabled || migratedSettings.localEnabled);
+        });
       })
       .catch(() => {
         if (cancelled || !mountedRef.current) return;
@@ -370,9 +396,10 @@ export default function useVoiceInput(
           });
         } catch (errorValue) {
           if (!microphoneDeviceId || (errorValue as { name?: string })?.name !== "OverconstrainedError") throw errorValue;
-          voiceSettingsStore.set({ microphoneDeviceId: "" });
+          voiceSettingsStore.set({ microphoneDeviceId: "" }, { internal: true });
           stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         }
+        setMicrophonePermission("granted");
         if (!isOperationActive(operation)) {
           stream.getTracks().forEach((track) => track.stop());
           return;
@@ -403,6 +430,9 @@ export default function useVoiceInput(
         }, effectiveDuration * 1000);
       } catch (errorValue) {
         if (!isOperationActive(operation)) return;
+        if (["NotAllowedError", "SecurityError"].includes((errorValue as { name?: string })?.name ?? "")) {
+          setMicrophonePermission("denied");
+        }
         const error =
           errorValue instanceof Error
             ? errorValue

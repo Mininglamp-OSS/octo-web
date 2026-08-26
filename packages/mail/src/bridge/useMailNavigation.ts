@@ -222,12 +222,14 @@ export default function useMailNavigation(fallbackError: string) {
       reload();
     };
     WKApp.mittBus.on("mail-refresh" as never, reload);
+    WKApp.mittBus.on("mail-navigation-refresh" as never, refreshSilently);
     WKApp.mittBus.on("space-changed", handleSpaceChanged);
     return () => {
       WKApp.mittBus.off("mail-refresh" as never, reload);
+      WKApp.mittBus.off("mail-navigation-refresh" as never, refreshSilently);
       WKApp.mittBus.off("space-changed", handleSpaceChanged);
     };
-  }, [reload]);
+  }, [refreshSilently, reload]);
 
   useEffect(() => {
     let inactive = document.visibilityState === "hidden";

@@ -94,4 +94,67 @@ describe("MailSidebarView", () => {
       ).toBe(true);
     }
   });
+
+  it("shows unread counts and hides total counts when a mailbox is fully read", () => {
+    const { container } = render(
+      <MailSidebarView
+        mailboxes={[
+          { id: "inbox", name: "Inbox", role: "inbox", total: 12, unread: 0 },
+          {
+            id: "starred",
+            name: "Starred",
+            role: "starred",
+            total: 4,
+            unread: 2,
+          },
+          { id: "sent", name: "Sent", role: "sent", total: 9, unread: 0 },
+        ]}
+        agentMailboxes={[]}
+        selectedAgentMailbox={null}
+        identity={null}
+        identityUnavailable
+        selectedMailbox="Inbox"
+        addressManagementActive={false}
+        loading={false}
+        error=""
+        t={(key) =>
+          ({
+            "mail.header.title": "Agent Mail",
+            "mail.header.beta": "Beta",
+            "mail.identity.unavailable": "Mailbox address unavailable",
+            "mail.identity.switchLabel": "Switch active mailbox",
+            "mail.actions.compose": "Compose",
+            "mail.addresses.manage": "Manage Agent mailboxes",
+            "mail.navigation.mailboxes": "Mailboxes",
+            "mail.actions.refresh": "Refresh",
+            "mail.mailbox.inbox": "Inbox",
+            "mail.mailbox.starred": "Starred",
+            "mail.mailbox.sent": "Sent",
+          }[key] || key)
+        }
+        onCompose={() => undefined}
+        onManageAddresses={() => undefined}
+        onRefresh={() => undefined}
+        onSelectMailbox={() => undefined}
+        onSelectAgentMailbox={() => undefined}
+      />
+    );
+
+    const countFor = (label: string) => {
+      const button = Array.from(
+        container.querySelectorAll<HTMLButtonElement>(
+          ".octo-mail-mailboxes > button"
+        )
+      ).find(
+        (candidate) =>
+          candidate.querySelector(".octo-mail-mailboxes__label")
+            ?.textContent === label
+      );
+      return button?.querySelector(".octo-mail-mailboxes__count")?.textContent;
+    };
+
+    expect(countFor("Inbox")).toBeUndefined();
+    expect(countFor("Starred")).toBe("2");
+    expect(countFor("Sent")).toBeUndefined();
+  });
 });

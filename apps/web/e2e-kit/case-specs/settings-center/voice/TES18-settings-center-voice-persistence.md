@@ -21,14 +21,14 @@
 ## 用户操作步骤
 
 1. 在设置中心“语音输入”中选择“左 Shift”和“长按”。
-2. 关闭设置中心，确认对话输入框显示“按住左 Shift说话”。
+2. 关闭设置中心，确认对话输入框 placeholder 为“发送给 TES18 持久化群”，不展示快捷键语音输入说明。
 3. 刷新页面并重新打开同一个群聊。
 4. 观察输入框 placeholder。
 
 ## 预期结果
 
-- 刷新前输入框显示“按住左 Shift说话”。
-- 刷新后重新进入同一会话，输入框仍显示“按住左 Shift说话”。
+- 刷新前输入框 placeholder 正确显示，且不展示快捷键语音说明。
+- 刷新后重新进入同一会话，placeholder 仍正确显示，且不展示快捷键语音说明。
 - 设置中心重新打开时仍显示“左 Shift”和“长按”。
 
 ## 反例
@@ -45,4 +45,4 @@
 - `packages/dmworkbase/src/Service/VoiceSettingsStore.ts:17-30,65-80`: 用户作用域 key、默认值和 localStorage 读取。
 - `packages/dmworkbase/src/Service/VoiceSettingsStore.ts:89-123`: 写入、订阅和按用户切换恢复。
 - `packages/dmworkbase/src/Components/NavRail/settingsPages.tsx:338-348`: 设置页消费并展示持久化后的值。
-- `packages/dmworkbase/src/features/chat-composer/ui/ChatComposer.tsx:620-647`: 对话 placeholder 根据恢复后的设置重算。
+- `packages/dmworkbase/src/features/chat-composer/ui/ChatComposer.tsx`: 对话 placeholder 根据恢复后的会话重算。

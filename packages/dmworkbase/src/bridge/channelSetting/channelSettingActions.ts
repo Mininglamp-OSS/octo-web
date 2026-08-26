@@ -37,6 +37,7 @@ import {
 import { patchImChannelInfoOrgData } from "../../im-runtime/channelRuntime";
 import { Dap } from "../../Service/Dap";
 import { stripSpacePrefix } from "../../Service/SpacePrefix";
+import PinnedService from "../../Service/PinnedService";
 import {
   findCurrentImConversation,
   removeCurrentImConversation,
@@ -74,6 +75,7 @@ export interface ChannelSettingActionRuntime {
   markRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
   notifyCurrentChannelSubscribers(channel: Channel): void;
   notifyCurrentChannelInfo(channelInfo: ChannelInfo): void;
+  setPinnedChannel(channel: Channel, top: boolean): Promise<void>;
   setCurrentChannelInfo(channelInfo: ChannelInfo): void;
   setCurrentChannelSubscribers(
     channel: Channel,
@@ -194,6 +196,9 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     },
     notifyCurrentChannelInfo(channelInfo) {
       notifyCurrentImChannelInfoListeners(channelInfo);
+    },
+    setPinnedChannel(channel, top) {
+      return top ? PinnedService.add(channel) : PinnedService.remove(channel);
     },
     setCurrentChannelSubscribers(channel, subscribers) {
       setCurrentImChannelSubscribersCache(channel, subscribers);
@@ -519,7 +524,12 @@ export async function topChannelSetting(params: {
   top: boolean;
   runtime?: ChannelSettingActionRuntime;
 }) {
-  await runtimeOrDefault(params.runtime).topChannel(params.channel, params.top);
+  const runtime = runtimeOrDefault(params.runtime);
+  if (params.channel.channelType === ChannelTypeCommunityTopic) {
+    await runtime.setPinnedChannel(params.channel, params.top);
+  } else {
+    await runtime.topChannel(params.channel, params.top);
+  }
   // conversation_pinned 收口点:同 conversation_muted,覆盖列表右键 + 设置面板置顶开关,
   // await 成功后单发,携带方向 action(pin/unpin)(见 M3)。门控同上(见 #1452 review P2)。
   if (channelSettingRequestIssued(params.channel)) {

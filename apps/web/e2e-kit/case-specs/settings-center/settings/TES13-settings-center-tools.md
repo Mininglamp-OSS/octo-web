@@ -28,8 +28,11 @@
 - 键盘快捷键页显示 Voice input、Hold to talk 和 Cancel voice input。
 - 键盘快捷键页不显示 New chat 或 Navigation。
 - 设备页显示 Android、iPhone、Windows、macOS、Octo Chrome Extension 和 OpenClaw Plugin。
+- Windows 和 macOS 桌面端卡片显示 `Coming soon` 状态标签。
 - 设备页显示 Mobile 和 Extensions and connections 分组。
 - Android 下载链接指向 Octo Android releases 页面。
+- Chrome Extension 的“Go to download”链接指向 Chrome Web Store。
+- OpenClaw Plugin 的“View project”链接指向 `Mininglamp-OSS/openclaw-channel-octo` GitHub 仓库。
 
 ## 反例
 

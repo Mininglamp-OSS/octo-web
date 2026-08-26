@@ -17,8 +17,14 @@ export interface ContextMenusState {
     flipSubmenu: boolean
 }
 
+export interface ContextMenusTrigger {
+    clientX: number
+    clientY: number
+    preventDefault(): void
+}
+
 export interface ContextMenusContext {
-    show(event: React.MouseEvent<Element, MouseEvent>): void
+    show(event: ContextMenusTrigger): void
     hide(): void
     isShow(): boolean
 }
@@ -125,13 +131,17 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         this.props.onHide?.()
     }
 
-    show(event: React.MouseEvent<Element, MouseEvent>): void {
+    show(event: ContextMenusTrigger): void {
         event.preventDefault();
         if (!this.contextMenusRef) return
 
         ContextMenus._instances.forEach((instance) => {
             if (instance !== this && instance.isShow()) instance.hide()
         })
+
+        this.contextMenusRef
+            .querySelectorAll<HTMLElement>(".wk-ctx-submenu")
+            .forEach((submenu) => { submenu.style.top = "" })
 
         const clickX = event.clientX;
         const clickY = event.clientY;
@@ -199,6 +209,24 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
         ContextMenus.hideAll()
     }
 
+    _positionSubmenu(event: React.MouseEvent<HTMLLIElement>) {
+        const submenu = event.currentTarget.querySelector<HTMLElement>(":scope > .wk-ctx-submenu")
+        const submenuList = submenu?.querySelector<HTMLElement>(":scope > .wk-ctx-submenu-list")
+        if (!submenu || !submenuList) return
+
+        const VIEWPORT_MARGIN = 8
+        const SUBMENU_BORDER_HEIGHT = 2
+        const parentTop = event.currentTarget.getBoundingClientRect().top
+        const submenuHeight = Math.min(
+            submenuList.scrollHeight + SUBMENU_BORDER_HEIGHT,
+            window.innerHeight - VIEWPORT_MARGIN * 2,
+        )
+        const lowestTop = VIEWPORT_MARGIN - parentTop
+        const highestTop = window.innerHeight - VIEWPORT_MARGIN - parentTop - submenuHeight
+
+        submenu.style.top = `${Math.max(lowestTop, Math.min(0, highestTop))}px`
+    }
+
     _renderItem(m: ContextMenusData, i: number): ReactNode {
         if (m.separator) {
             return <div key={i} className="wk-ctx-sep" />
@@ -211,6 +239,7 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                 key={i}
                 data-testid={m.testid}
                 className={classNames(m.danger && "wk-ctx-danger")}
+                onMouseEnter={hasChildren ? (event) => this._positionSubmenu(event) : undefined}
                 onClick={(e) => {
                     if (hasChildren) {
                         e.stopPropagation()
@@ -225,35 +254,37 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                 {hasChildren && (
                     <>
                         <ArrowIcon />
-                        <ul className="wk-ctx-submenu">
-                            {m.children!.map((child, ci) => {
-                                if (child.separator) {
-                                    return <div key={ci} className="wk-ctx-sep" />
-                                }
-                                return (
-                                    <li
-                                        key={ci}
-                                        onClick={(e) => {
-                                            e.stopPropagation()
-                                            this.hide()
-                                            if (child.onClick) child.onClick()
-                                        }}
-                                    >
-                                        {child.icon && <CtxIcon icon={child.icon} />}
-                                        <span style={{ flex: 1 }}>{child.title}</span>
-                                        {child.checked && (
-                                            <span style={{
-                                                color: 'var(--wk-brand-primary, #1C1C23)',
-                                                fontSize: 13,
-                                                fontWeight: 600,
-                                                flexShrink: 0,
-                                                marginLeft: 4,
-                                            }}>✓</span>
-                                        )}
-                                    </li>
-                                )
-                            })}
-                        </ul>
+                        <div className="wk-ctx-submenu">
+                            <ul className="wk-ctx-submenu-list">
+                                {m.children!.map((child, ci) => {
+                                    if (child.separator) {
+                                        return <div key={ci} className="wk-ctx-sep" />
+                                    }
+                                    return (
+                                        <li
+                                            key={ci}
+                                            onClick={(e) => {
+                                                e.stopPropagation()
+                                                this.hide()
+                                                if (child.onClick) child.onClick()
+                                            }}
+                                        >
+                                            {child.icon && <CtxIcon icon={child.icon} />}
+                                            <span style={{ flex: 1 }}>{child.title}</span>
+                                            {child.checked && (
+                                                <span style={{
+                                                    color: 'var(--wk-brand-primary, #1C1C23)',
+                                                    fontSize: 13,
+                                                    fontWeight: 600,
+                                                    flexShrink: 0,
+                                                    marginLeft: 4,
+                                                }}>✓</span>
+                                            )}
+                                        </li>
+                                    )
+                                })}
+                            </ul>
+                        </div>
                     </>
                 )}
             </li>

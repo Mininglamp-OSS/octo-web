@@ -31,9 +31,29 @@ import {
 } from "../../features/documentTitle";
 import { chatPageTitleController } from "./chatPageTitleController";
 import { Dap } from "../../Service/Dap";
+import PinnedService, { PinnedChannelItem } from "../../Service/PinnedService";
 
 
 const TOP_CONVERSATION_SCORE_BOOST = 1000000000000;
+
+export function applyPinnedThreadSnapshot(
+    conversations: Conversation[],
+    pinnedChannels: PinnedChannelItem[] | undefined,
+) {
+    if (!pinnedChannels) return
+
+    const pinnedThreadIds = new Set(
+        pinnedChannels
+            .filter((item) => item.channel_type === ChannelTypeCommunityTopic)
+            .map((item) => item.channel_id)
+    )
+    for (const conversation of conversations) {
+        if (conversation.channel.channelType !== ChannelTypeCommunityTopic) continue
+        conversation.extra = conversation.extra || {}
+        conversation.extra.top = pinnedThreadIds.has(conversation.channel.channelID) ? 1 : 0
+    }
+}
+
 export class ChatVM extends ProviderListener {
   conversations: ConversationWrap[] = new Array();
   // 首次权威 conversation sync 完成前保持加载态，避免用未完成快照计算 Tab 未读角标。
@@ -300,6 +320,15 @@ export class ChatVM extends ProviderListener {
                 if (shouldSkipPersonConversationForSpace(conversation)) return
                 const existConversation = this.findConversation(conversation.channel)
                 if (existConversation) {
+                    if (
+                        conversation.channel.channelType === ChannelTypeCommunityTopic &&
+                        existConversation.extra?.top === 1
+                    ) {
+                        // 普通会话实时更新不携带 /user/pinned 的子区置顶状态，保留当前
+                        // 已从 pinned 快照恢复的值，避免一条新消息把子区重新打回未置顶。
+                        conversation.extra = conversation.extra || {}
+                        conversation.extra.top = 1
+                    }
                     existConversation.conversation = conversation
                     // WS 更新后有条件清除 spaceLastMessage (#783)
                     // 只在新消息属于当前 Space 时清除（有更新的实时消息可用）
@@ -343,7 +372,11 @@ export class ChatVM extends ProviderListener {
             }
             const conversation = this.findConversation(channelInfo.channel)
             if (conversation) {
-                conversation.extra.top = channelInfo.top ? 1 : 0
+                // 子区置顶由 /user/pinned 持久化；子区 channelInfo 的 setting 响应只含
+                // mute，不得用缺省的 channelInfo.top=false 覆盖已加载的置顶快照。
+                if (channelInfo.channel.channelType !== ChannelTypeCommunityTopic) {
+                    conversation.extra.top = channelInfo.top ? 1 : 0
+                }
                 this.sortConversations()
                 this.notifyListener()
             } else if (channelInfo.channel.channelType === ChannelTypeCommunityTopic) {
@@ -610,6 +643,12 @@ export class ChatVM extends ProviderListener {
         // B 的回包可能晚于 C 的回包到达;如果直接写入会把 C 的 cache 覆盖成 B 的
         // (甚至空数组,见 dmworkdatasource/module.ts 的 stale guard)。
         const requestSpaceId = WKApp.shared.currentSpaceId
+        const pinnedChannelsPromise = requestSpaceId
+            ? PinnedService.list().catch((error) => {
+                console.warn('[ChatVM] failed to load pinned channels', error)
+                return undefined
+            })
+            : Promise.resolve(undefined)
 
         // 先拉取数据，避免清空列表导致 UI 闪烁（fix #266）
         let conversations: Conversation[] | undefined
@@ -631,6 +670,10 @@ export class ChatVM extends ProviderListener {
         if (WKApp.shared.currentSpaceId !== requestSpaceId) {
             return
         }
+        const pinnedChannels = await pinnedChannelsPromise
+        if (WKApp.shared.currentSpaceId !== requestSpaceId) {
+            return
+        }
 
         // _pendingSpaceConversations 是 ChatVM 自己的延迟队列,跟 SDK cache 无关,
         // 切 Space 时清掉避免旧 Space 排队中的 incoming 落入新 Space 视图。
@@ -640,6 +683,7 @@ export class ChatVM extends ProviderListener {
         // 写入缓存。这样 shouldSkipChannelForSpace 命中率最大化，下游实时消息
         // 也能立即用到，避免 fail-open 误展示其他 Space 的群。
         if (conversations && conversations.length > 0) {
+            applyPinnedThreadSnapshot(conversations, pinnedChannels)
             this.prefillSpaceMapsFromSync(conversations)
         }
 
@@ -675,6 +719,13 @@ export class ChatVM extends ProviderListener {
     async reloadRequestConversationList() {
         const conversationWraps = new Array<ConversationWrap>()
         let conversations: Conversation[] | undefined
+        const requestSpaceId = WKApp.shared.currentSpaceId
+        const pinnedChannelsPromise = requestSpaceId
+            ? PinnedService.list().catch((error) => {
+                console.warn('[ChatVM] failed to load pinned channels', error)
+                return undefined
+            })
+            : Promise.resolve(undefined)
         try {
             conversations = await WKSDK.shared().conversationManager.sync({})
         } catch (error) {
@@ -683,9 +734,17 @@ export class ChatVM extends ProviderListener {
             this.notifyListener()
             throw error
         }
+        if (WKApp.shared.currentSpaceId !== requestSpaceId) {
+            return
+        }
+        const pinnedChannels = await pinnedChannelsPromise
+        if (WKApp.shared.currentSpaceId !== requestSpaceId) {
+            return
+        }
         // 先按 sync 响应预填 channelSpaceMap / channelMySourceSpaceMap
         // 再做 Space 过滤，避免老缓存缺失时落到 fail-closed 默认值。
         if (conversations && conversations.length > 0) {
+            applyPinnedThreadSnapshot(conversations, pinnedChannels)
             this.prefillSpaceMapsFromSync(conversations)
         }
         if (conversations && conversations.length > 0) {

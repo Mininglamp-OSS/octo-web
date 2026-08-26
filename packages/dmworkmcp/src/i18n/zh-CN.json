@@ -147,7 +147,7 @@
   },
   "errors": {
     "nameTaken": "此名称已被占用",
-    "slugTaken": "此服务标识 (slug) 在当前空间已被占用",
+    "slugTaken": "此服务标识 (slug) 在当前组织已被占用",
     "slugInvalid": "服务标识 (slug) 只能包含小写字母、数字与连字符，且 1-64 位",
     "forbidden": "无权操作该连接器",
     "notFound": "连接器不存在或已被删除",
@@ -156,7 +156,7 @@
     "invalidRequest": "请求参数不合法",
     "probeUnsupported": "服务器不支持此传输方式的探测（stdio 需在桌面客户端探测）",
     "unauthorized": "登录已过期，请重新登录",
-    "forbiddenSpace": "当前空间无权访问",
+    "forbiddenSpace": "当前组织无权访问",
     "internal": "服务器繁忙，请稍后重试"
   },
   "category": {

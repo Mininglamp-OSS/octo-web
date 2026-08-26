@@ -7,6 +7,7 @@ import {
 import VoiceFeedback from "../../Service/VoiceFeedback";
 import VoiceService from "../../Service/VoiceService";
 import type { VoiceConfig } from "../../Service/VoiceService";
+import { voiceSettingsStore } from "../../Service/VoiceSettingsStore";
 
 export interface SpaceFeedbackState {
   spaceSetting: SpaceSetting | null;
@@ -108,6 +109,7 @@ export async function fetchAndApplySpaceSetting(
   try {
     const setting = await getSpaceSetting(spaceId);
     if (!isSpaceActive()) return;
+    voiceSettingsStore.migrateLegacySpaceSetting(setting.voice_input_enabled, spaceId);
     setSharedSpaceSetting(setting, true, spaceId);
 
     if (
@@ -166,21 +168,18 @@ export function ensureVoiceFeedbackLoaded(
     settingLoadEpoch === epoch && [...activePredicates].some(isActive);
   let promise!: Promise<void>;
   promise = (async () => {
+    let config: VoiceConfig | null = null;
     try {
-      if (!configPromise) {
-        configPromise = VoiceService.shared.getConfig();
-      }
-      const config = await configPromise;
-      if (!isLoadActive()) return;
-
-      setSharedVoiceConfig(config);
-      await fetchAndApplySpaceSetting(
-        spaceId,
-        config.feedback_url,
-        isLoadActive
-      );
+      if (!configPromise) configPromise = VoiceService.shared.getConfig();
+      config = await configPromise;
+      if (isLoadActive()) setSharedVoiceConfig(config);
     } catch {
+      // The space setting is still authoritative for legacy migration even
+      // when the optional voice config endpoint is unavailable.
       configPromise = null;
+    }
+    if (isLoadActive()) {
+      await fetchAndApplySpaceSetting(spaceId, config?.feedback_url, isLoadActive);
     }
   })().finally(() => {
     if (inflightSettingLoads.get(spaceId)?.promise === promise) {

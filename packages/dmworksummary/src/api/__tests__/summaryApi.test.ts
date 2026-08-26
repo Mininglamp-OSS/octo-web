@@ -507,6 +507,19 @@ describe('summaryApi', () => {
             track.mockRestore();
         });
 
+        it('passes request_id through on agent save so the backend can bind the Run manifest', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { code: 0, data: { task_id: 4, task_no: 'n', status: 1, created_at: 'x' } } });
+            await createAgentSummary({ session_id: 's1', title: 't', request_id: 'req-save-1' }, {});
+            expect(mockPost).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({ session_id: 's1', title: 't', request_id: 'req-save-1' }),
+            );
+            track.mockRestore();
+        });
+
         it('returns finish_status + gaps when the v2 backend provides them (SS-11)', async () => {
             const { Dap } = await import('@octo/base');
             const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);

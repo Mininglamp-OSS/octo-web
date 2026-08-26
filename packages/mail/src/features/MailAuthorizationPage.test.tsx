@@ -71,6 +71,7 @@ const authorization = {
 describe("MailAuthorizationPage return target lifecycle", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    state.t = vi.fn((key: string) => key);
     state.currentSpaceId = "space-a";
     window.history.replaceState(null, "", `/mail/authorize${initialSearch}`);
     sessionStorage.clear();
@@ -86,7 +87,7 @@ describe("MailAuthorizationPage return target lifecycle", () => {
     state.approveAgentAuthorization.mockResolvedValue({
       approved: true,
       mailboxId: "42",
-      outboundMode: "manual_confirmation",
+      outboundMode: "automatic_send",
     });
   });
 
@@ -134,7 +135,7 @@ describe("MailAuthorizationPage return target lifecycle", () => {
       expect(state.approveAgentAuthorization).toHaveBeenCalledWith(
         "ABCD-1234",
         "42",
-        "manual_confirmation",
+        "automatic_send",
         "space-a"
       )
     );
@@ -223,7 +224,27 @@ describe("MailAuthorizationPage return target lifecycle", () => {
 
     await waitFor(() => expect(resolved).toHaveBeenCalledTimes(1));
     expect(sessionStorage.length).toBe(0);
+    expect(
+      screen.queryByText("mail.authorization.automaticSendEnabled")
+    ).toBeNull();
     window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+  });
+
+  it("shows the automatic-send status for an exchanged automatic grant", async () => {
+    state.getAgentAuthorization.mockResolvedValue({
+      ...authorization,
+      request: {
+        ...authorization.request,
+        status: "exchanged",
+        outboundMode: "automatic_send",
+      },
+    });
+
+    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+
+    expect(
+      await screen.findByText("mail.authorization.automaticSendEnabled")
+    ).toBeTruthy();
   });
 
   it("hands an approval 401 to the same expired-session recovery", async () => {
@@ -276,26 +297,58 @@ describe("MailAuthorizationPage return target lifecycle", () => {
     window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
   });
 
-  it("does not preselect automatic sending merely because the Agent requested it", async () => {
+  it("defaults to automatic sending and still allows manual confirmation", async () => {
+    state.approveAgentAuthorization.mockResolvedValue({
+      approved: true,
+      mailboxId: "42",
+      outboundMode: "manual_confirmation",
+    });
     state.getAgentAuthorization.mockResolvedValue({
       ...authorization,
       request: {
         ...authorization.request,
-        outboundMode: "automatic_send",
+        outboundMode: "manual_confirmation",
       },
     });
 
-    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+    const view = render(
+      <MailAuthorizationPage initialSearch={initialSearch} />
+    );
 
     const manual = await screen.findByRole("radio", {
       name: /manualReviewTitle/,
     });
     const automatic = screen.getByRole("radio", { name: /automaticSendTitle/ });
+    expect((manual as HTMLInputElement).checked).toBe(false);
+    expect((automatic as HTMLInputElement).checked).toBe(true);
+    expect(
+      screen.getByText("mail.authorization.selectedAutomatic")
+    ).toBeTruthy();
+
+    fireEvent.click(manual);
+
     expect((manual as HTMLInputElement).checked).toBe(true);
     expect((automatic as HTMLInputElement).checked).toBe(false);
-    expect(
-      screen.getByText("mail.authorization.requestedAutomatic")
-    ).toBeTruthy();
+    expect(screen.getByText("mail.authorization.selectedManual")).toBeTruthy();
+
+    state.t = vi.fn((key: string) => key);
+    view.rerender(<MailAuthorizationPage initialSearch={initialSearch} />);
+    await waitFor(() =>
+      expect(state.getAgentAuthorization).toHaveBeenCalledTimes(2)
+    );
+    expect((manual as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "mail.authorization.approve" })
+    );
+    await waitFor(() =>
+      expect(state.approveAgentAuthorization).toHaveBeenCalledWith(
+        "ABCD-1234",
+        "42",
+        "manual_confirmation",
+        "space-a"
+      )
+    );
   });
 
   it("requires explicit confirmation when the link targets another Space", async () => {

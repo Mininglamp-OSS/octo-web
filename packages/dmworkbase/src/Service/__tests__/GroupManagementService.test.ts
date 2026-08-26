@@ -127,4 +127,13 @@ describe("GroupManagementService", () => {
     expect(apiDelete).toHaveBeenCalledTimes(1);
     expect(apiDelete).toHaveBeenCalledWith("groups/group-1/disband");
   });
+
+  it("normalizes a malformed list response to an empty list", async () => {
+    const channel = new Channel("group-1", ChannelTypeGroup);
+    apiGet.mockResolvedValue({ data: [] });
+
+    await expect(
+      listGroupManagementSubscribers({ channel, request: { page: 1 } })
+    ).resolves.toEqual([]);
+  });
 });

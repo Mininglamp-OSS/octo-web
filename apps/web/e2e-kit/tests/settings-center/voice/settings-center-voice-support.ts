@@ -4,14 +4,22 @@ import { VOICE_PROTOCOL_VERSION } from "@octo/base/src/Service/VoiceProtocol";
 export type VoiceSeed = {
   shortcutWindows: "alt-right" | "shift-right" | "shift-left" | "disabled";
   speakingMode: "toggle" | "hold";
+  enabled?: boolean;
 };
 
 const VOICE_STORAGE_KEY = "octo.voice-input.v1.e2e-user-1";
 
+async function grantVoicePermission(page: Page): Promise<void> {
+  await page.context().grantPermissions(["microphone"], {
+    origin: new URL(process.env.E2E_BASE_URL ?? `http://localhost:${process.env.PW_PREVIEW_PORT ?? "3000"}`).origin,
+  });
+}
+
 export async function prepareVoiceConversation(page: Page, settings: VoiceSeed, name: string): Promise<void> {
+  await grantVoicePermission(page);
   await page.addInitScript(({ key, settings: value, conversationName, protocolVersion }) => {
     if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify({
-      enabled: true,
+      enabled: value.enabled ?? true,
       consent: { protocolVersion, ackedAt: "2026-01-01T00:00:00.000Z" },
       shortcutWindows: value.shortcutWindows,
       shortcutMacos: value.shortcutWindows,
@@ -68,6 +76,5 @@ export async function closeSettings(page: Page): Promise<void> {
 }
 
 export async function getComposerPlaceholder(page: Page): Promise<string> {
-  const textbox = page.getByRole("textbox");
-  return (await textbox.locator("p[data-placeholder]").getAttribute("data-placeholder", { timeout: 1_000 })) ?? "";
+  return (await page.locator(".wk-messageinput-placeholder-base").textContent({ timeout: 1_000 })) ?? "";
 }

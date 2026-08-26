@@ -948,6 +948,13 @@ export default class WKApp extends ProviderListener {
    */
   pendingSubchannelOpenTracked?: string;
 
+  /**
+   * botfather_opened 来源标记：进入 botfather 会话的入口调用点(通讯录顶端 BotFather 横幅)
+   * 在 showConversation 前写入 entry 枚举，ChatContentPage 挂载时一次性消费并附到 botfather_opened
+   * 的 props.entry。未写入(会话列表点行 / 深链 / 路由恢复)→ 缺省 "conversation"。
+   */
+  pendingBotfatherOpenEntry?: string;
+
   /** 待打开的具体子区，ChatContentPage 挂载时检查并消费 */
   pendingThread?: {
     groupNo: string;
@@ -1045,7 +1052,7 @@ export default class WKApp extends ProviderListener {
       );
       this._deviceFlagMigrationHandled = true;
       markDeviceFlagMigration(migrationSid);
-      WKApp.loginInfo.logout();
+      void this.clearLocalLoginState();
     } else if (!hasDeviceFlagMismatch && WKApp.loginInfo.isLogined()) {
       // A matching session supersedes any marker left by an interrupted boot.
       clearDeviceFlagMigration(migrationSid);

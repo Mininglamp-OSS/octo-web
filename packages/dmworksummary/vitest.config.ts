@@ -22,6 +22,11 @@ export default defineConfig({
     globals: true,
     setupFiles: ['src/__tests__/setup.ts'],
     css: false,
+    server: {
+      deps: {
+        inline: [/@tiptap\/react/, /@douyinfe\/semi-ui/, /@douyinfe\/semi-icons/],
+      },
+    },
   },
   resolve: {
     dedupe: ['react', 'react-dom'],
@@ -38,6 +43,7 @@ export default defineConfig({
       { find: /^@octo\/base\/src\/Components\/Subscribers\/list$/, replacement: path.resolve(__dirname, 'src/__mocks__/SubscriberList.tsx') },
       { find: /^@octo\/base\/src\/Components\/RoutePage$/, replacement: path.resolve(__dirname, 'src/__mocks__/RoutePage.tsx') },
       { find: '@octo/base', replacement: path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts') },
+      { find: 'react-virtuoso', replacement: path.resolve(__dirname, 'src/__mocks__/react-virtuoso.tsx') },
       { find: /^@testing-library\/react$/, replacement: testingLibraryReact },
       { find: /^react-dom\/(.*)/, replacement: reactDom18 + '/$1' },
       { find: /^react-dom$/, replacement: reactDom18 },

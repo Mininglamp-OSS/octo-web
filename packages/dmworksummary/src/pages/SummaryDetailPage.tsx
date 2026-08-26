@@ -2904,7 +2904,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 baseResultId={detail.result_id || 0}
                                 initialContent={detail.result.content || ""}
                                 onSave={this.handleEditSave}
-                                onCancel={this.handleEditCancel}
                                 exposeSave={(fn) => { this.editorSaveFn = fn; }}
                             />
                         </div>
@@ -3065,7 +3064,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     baseResultId={this.state.detail?.result_id || 0}
                                     initialContent={personalResult.content || ""}
                                     onSave={this.handleEditSave}
-                                    onCancel={this.handleEditCancel}
                                     exposeSave={(fn) => { this.editorSaveFn = fn; }}
                                 />
                             </div>
@@ -3201,7 +3199,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                             baseResultId={detail.result_id}
                             initialContent={detail.result.content || ""}
                             onSave={this.handleEditTeamSave}
-                            onCancel={this.handleEditTeamCancel}
                             exposeSave={(fn) => { this.editorSaveFn = fn; }}
                         />
                     </div>
@@ -3445,7 +3442,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                     baseResultId={detail?.result_id ?? 0}
                                     initialContent={content}
                                     onSave={this.handleEditPersonalReportSave}
-                                    onCancel={this.handleEditPersonalReportCancel}
                                     exposeSave={(fn) => { this.editorSaveFn = fn; }}
                                 />
                             </div>
@@ -3574,7 +3570,6 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                         baseResultId={detail.result_id ?? 0}
                         initialContent={myContent}
                         onSave={this.handleEditMyDraftSave}
-                        onCancel={this.handleEditMyDraftCancel}
                         exposeSave={(fn) => { this.editorSaveFn = fn; }}
                     />
                 </div>

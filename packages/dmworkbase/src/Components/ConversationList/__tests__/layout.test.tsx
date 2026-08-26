@@ -19,6 +19,8 @@ let ConversationList: typeof import("../index").default;
 let container: HTMLDivElement;
 const apiPut = vi.fn();
 const toastError = vi.fn();
+const notifyConversationListeners = vi.fn();
+const topChannelSetting = vi.fn(() => Promise.resolve());
 
 class MockChannel {
   channelID: string;
@@ -51,6 +53,9 @@ beforeAll(async () => {
           fetchChannelInfo: vi.fn(),
           getChannelInfo: vi.fn(),
         },
+        conversationManager: {
+          notifyConversationListeners,
+        },
       }),
     };
 
@@ -60,6 +65,7 @@ beforeAll(async () => {
       Channel: MockChannel,
       ChannelTypePerson: 1,
       ChannelTypeGroup: 2,
+      ConversationAction: { update: "update" },
       ReminderType: {
         ReminderTypeMentionMe: 1,
       },
@@ -154,6 +160,11 @@ beforeAll(async () => {
         mute: vi.fn(() => Promise.resolve()),
       },
     },
+  }));
+
+  vi.doMock("../../../bridge/channelSetting/channelSettingActions", () => ({
+    muteChannelSetting: vi.fn(() => Promise.resolve()),
+    topChannelSetting,
   }));
 
   vi.doMock("../../../Service/Model", () => ({
@@ -569,6 +580,60 @@ describe("ConversationList context-menu matrix", () => {
       "base.chatSidebar.context.unfollow",
       "base.conversationList.context.mute",
     ]);
+  });
+
+  it("updates a Recent child thread immediately after the persisted pin succeeds", async () => {
+    const thread = makeCompactConversation(
+      "group-a____thread-a",
+      3,
+      "group-a"
+    ) as any;
+    thread.conversation = {
+      channel: thread.channel,
+      extra: { top: 0 },
+    };
+    thread.extra = thread.conversation.extra;
+
+    act(() => {
+      ReactDOM.render(
+        <ConversationList conversations={[thread]} />,
+        container
+      );
+    });
+    openContextMenu(".wk-conversationlist-item");
+
+    expect(currentMenuOrder()[0]).toBe("base.conversationList.context.pin");
+    await act(async () => {
+      (container.querySelector(
+        '[data-menu-title="base.conversationList.context.pin"]'
+      ) as HTMLElement).click();
+      await Promise.resolve();
+    });
+
+    expect(topChannelSetting).toHaveBeenCalledWith({
+      channel: thread.channel,
+      top: true,
+    });
+    expect(thread.conversation.extra.top).toBe(1);
+    expect(notifyConversationListeners).toHaveBeenCalledWith(
+      thread.conversation,
+      expect.anything()
+    );
+    expect(currentMenuOrder()[0]).toBe("base.conversationList.context.unpin");
+
+    await act(async () => {
+      (container.querySelector(
+        '[data-menu-title="base.conversationList.context.unpin"]'
+      ) as HTMLElement).click();
+      await Promise.resolve();
+    });
+
+    expect(topChannelSetting).toHaveBeenLastCalledWith({
+      channel: thread.channel,
+      top: false,
+    });
+    expect(thread.conversation.extra.top).toBe(0);
+    expect(currentMenuOrder()[0]).toBe("base.conversationList.context.pin");
   });
 
   it("keeps unread state and reports an error when clear-unread fails", async () => {

@@ -8,18 +8,23 @@ const { appState } = vi.hoisted(() => ({
   appState: {
     shared: { notificationIsClose: false, currentSpaceId: "space-1", isLogined: () => false },
     loginInfo: { realnameVerified: false },
+    mittBus: { on: vi.fn(), off: vi.fn() },
     config: { appVersion: "test" },
     apiClient: { config: { apiURL: "https://example.test" } },
   },
 }));
-const { acceptVoiceInputMock } = vi.hoisted(() => ({
+const { acceptVoiceInputMock, ensureVoiceFeedbackLoadedMock } = vi.hoisted(() => ({
   acceptVoiceInputMock: vi.fn(async () => undefined),
+  ensureVoiceFeedbackLoadedMock: vi.fn(async () => undefined),
 }));
 
 vi.mock("../../../App", () => ({ default: appState, ThemeMode: {} }));
 vi.mock("../../MeInfo", () => ({ MeInfo: () => <div data-testid="me-info" /> }));
 vi.mock("../../../Service/DocumentService", () => ({ getDocument: vi.fn(async () => ({ content: "<p>语音服务说明</p>" })) }));
-vi.mock("../../../features/voice-input/useSpaceFeedbackSetting", () => ({ acceptVoiceInput: acceptVoiceInputMock }));
+vi.mock("../../../features/voice-input/useSpaceFeedbackSetting", () => ({
+  acceptVoiceInput: acceptVoiceInputMock,
+  ensureVoiceFeedbackLoaded: ensureVoiceFeedbackLoadedMock,
+}));
 
 import { i18n } from "../../../i18n";
 import { voiceSettingsStore } from "../../../Service/VoiceSettingsStore";
@@ -57,11 +62,13 @@ describe("secondary settings pages", () => {
   });
 
   it("renders voice settings in the settings center", () => {
+    ensureVoiceFeedbackLoadedMock.mockClear();
     act(() => ReactDOM.render(<SettingsPage item={{ id: "voice", labelKey: "base.navRail.settingsCenter.item.voice" }} environment={environment} />, container));
     expect(container.textContent).toContain("语音输入");
     expect(container.textContent).toContain("音频设备");
     expect(container.textContent).not.toContain("OctoASR");
     expect(container.textContent).not.toContain("管理麦克风、快捷键和语音识别方式");
+    expect(ensureVoiceFeedbackLoadedMock).toHaveBeenCalledWith("space-1", expect.any(Function));
   });
 
   it("allows enabling voice input without opting into feedback sharing", async () => {

@@ -7,7 +7,7 @@
   "context.viewProfile": "View profile",
   "empty.ai": "No AI added yet. Browse all contacts to add one.",
   "empty.groups": "No group chats yet. Create one to get started.",
-  "empty.members": "This Space has no members yet",
+  "empty.members": "This organization has no members yet",
   "filter.all": "All",
   "filter.humans": "People",
   "friendAdd.myShortNo": "My {{appName}} ID: {{shortNo}}",

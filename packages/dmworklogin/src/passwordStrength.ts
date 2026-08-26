@@ -93,7 +93,7 @@ export function evaluatePasswordStrength(password: string): PasswordStrengthResu
     ];
     const colors = ['#ff4d4f', '#ff7a45', '#faad14', '#52c41a', '#389e0d'];
 
-    // Password is valid if meets minimum length (strength indicator is advisory only)
+    // Password strength is advisory; the submission gate is the minimum length.
     const isValid = password.length >= MIN_PASSWORD_LENGTH;
 
     return {

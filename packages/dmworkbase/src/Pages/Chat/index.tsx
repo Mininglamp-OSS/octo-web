@@ -16,6 +16,7 @@ import Provider from "../../Service/Provider";
 import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
 import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
+import { getElectronLinksBridge } from "../../electron/desktopBridge";
 import WKButton from "../../Components/WKButton";
 import WKModal from "../../Components/WKModal";
 import { Columns2, ChevronRight } from "lucide-react";
@@ -25,6 +26,7 @@ import "./index.css";
 import { ConversationWrap } from "../../Service/Model";
 import WKApp, { ThemeMode } from "../../App";
 import { Dap } from "../../Service/Dap";
+import { isBotfatherChannelID } from "../../Service/botfatherChannel";
 import {
   subchannelOpenFromMount,
   subchannelOpenFromThreadChange,
@@ -52,7 +54,10 @@ import { ChannelInfoListener } from "wukongimjssdk";
 import { ChatMenus } from "../../App";
 import ConversationContext from "../../Components/Conversation/context";
 import GlobalSearch from "../../features/globalSearch/GlobalSearchPanel";
-import { buildDocLink } from "../../Utils/docLink";
+import {
+  buildDocLink,
+  resolveDocLinkForExternalOpen,
+} from "../../Utils/docLink";
 import { ShowConversationOptions } from "../../EndpointCommon";
 import SpaceList from "../../Components/SpaceList";
 import SpaceCreate from "../../Components/SpaceCreate";
@@ -85,6 +90,7 @@ import {
 } from "../../im-runtime/channelRuntime";
 import WebhookIssuePreviewPanel from "../../features/webhookMessagePreview/WebhookIssuePreviewPanel";
 import type { WebhookIssuePreviewTarget } from "../../bridge/message/webhookPreview";
+import { apiUrlOrigin } from "../../bridge/message/webhookPreview";
 import { closeChatRightPanels, openChatRightPanel } from "./rightPanelState";
 import { chatPageTitleController } from "./chatPageTitleController";
 import {
@@ -765,6 +771,27 @@ export class ChatContentPage extends Component<
         }
       }
     }
+
+    // botfather_opened:本页以 botfather DM 挂载 = 进入 botfather 会话。覆盖全部入口——通讯录横幅/
+    // 联系人行点入(handleContactClick→showConversation)、深链、路由恢复,以及会话列表内
+    // 「切换」到 botfather:ChatContentPage 以 channel.getChannelKey()(channelID-channelType)为 React
+    // key,任何频道切换都会换 key → remount → 重走 componentDidMount,故挂载处即唯一发点(无需 didUpdate
+    // 补一路,那条 channelChanged 分支永不为真)。一次进入发一次。DAP「BotFather 命令使用分布」图分母 =
+    // 进入 botfather 会话的去重用户;actor_id 由 collector 附。
+    // 门用后缀匹配 isBotfatherChannelID:Space 部署下 channelID = s{spaceId}_botfather(spaceId 任意
+    // 串,如 sminglue_default_botfather),裸 "botfather" 只在无 Space 时出现。判定与分子(vm.ts botfather
+    // 命令)共用同一 helper,保证图两侧同步。详见 Service/botfatherChannel.ts。
+    // entry 来源:各入口(通讯录顶端横幅 contact_banner)在 showConversation 前写 pendingBotfatherOpenEntry
+    // sentinel,此处一次性消费;未写入(会话列表点行 / 深链 / 路由恢复)缺省 "conversation"。消费后即清,
+    // 避免下一次非标记进入误带上一次来源。
+    if (
+      channel.channelType === ChannelTypePerson &&
+      isBotfatherChannelID(channel.channelID)
+    ) {
+      const entry = WKApp.shared.pendingBotfatherOpenEntry || "conversation";
+      WKApp.shared.pendingBotfatherOpenEntry = undefined;
+      Dap.shared.track("botfather_opened", { entry });
+    }
   }
 
   componentDidUpdate(
@@ -1179,6 +1206,7 @@ export class ChatContentPage extends Component<
                       channel.channelType === ChannelTypeGroup &&
                       WKApp.remoteConfig.threadOn && (
                         <div
+                          data-testid="chat-thread-panel-entry"
                           className="wk-chat-conversation-header-right-item"
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1213,6 +1241,7 @@ export class ChatContentPage extends Component<
                         </div>
                       )}
                     <div
+                      data-testid="chat-channel-setting-entry"
                       className="wk-chat-conversation-header-right-item"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1603,6 +1632,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                     <div className="wk-chat-header-actions">
                       <NavSignalBadge showText />
                       <div
+                        data-testid="chat-global-search-entry"
                         className="wk-chat-header-btn"
                         onClick={() => {
                           vm.showGlobalSearch = true;
@@ -1660,6 +1690,7 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         }
                       >
                         <div
+                          data-testid="chat-add-entry"
                           className="wk-chat-header-btn"
                           onClick={() => {
                             vm.showAddPopover = !vm.showAddPopover;
@@ -1893,7 +1924,34 @@ export default class ChatPage extends Component<any, ChatPageState> {
                         docId: item.docId,
                         space: item.spaceId,
                       });
-                      // window.open(url, "_blank", "noopener,noreferrer")
+                      // Desktop shell: use the dedicated IPC bridge —
+                      // setWindowOpenHandler routes everything to the system
+                      // browser, so the web-era about:blank dance would never
+                      // produce a usable window reference. buildDocLink emits
+                      // a RELATIVE /d/<docId> path on file:// shells (the
+                      // webOrigin allowlist degrades there), which the
+                      // http(s)-only bridge would reject — resolve against
+                      // the API origin so the standalone doc page opens in
+                      // the browser.
+                      const linksBridge = getElectronLinksBridge();
+                      if (linksBridge) {
+                        const absoluteUrl = resolveDocLinkForExternalOpen(
+                          url,
+                          apiUrlOrigin(),
+                        );
+                        linksBridge
+                          .openExternal(absoluteUrl)
+                          .then((result) => {
+                            if (!result.ok) {
+                              Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                            }
+                          })
+                          .catch(() => {
+                            Toast.warning(t("base.globalSearch.docs.popupBlocked"));
+                          });
+                        return;
+                      }
+                      // Web: window.open(url, "_blank", "noopener,noreferrer")
                       // cannot be null-checked: per MDN, passing the
                       // `noopener` feature makes window.open return null on
                       // SUCCESS too, so `if (!opened)` false-positives on
