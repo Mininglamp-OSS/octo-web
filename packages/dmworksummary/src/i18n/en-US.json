@@ -543,7 +543,18 @@
         "convertSuccess": "Document created, redirecting...",
         "convertFailed": "Conversion failed, please retry",
         "convertPopupBlocked": "The browser blocked the new tab. The document was created.",
-        "convertDocLink": "Open document"
+        "convertDocLink": "Open document",
+        "convertErrSchema": "The content uses a format that is not supported yet (e.g. inline code inside bold). Please adjust and retry",
+        "convertErrParse": "Could not parse the content. Please check the formatting and retry",
+        "convertErrTooLarge": "The content exceeds the single-document limit. Please split it and retry",
+        "convertErrAttachment": "An attachment in the content is no longer available. Please remove it and retry",
+        "convertErrStale": "The document was modified by someone else. Please refresh and retry",
+        "convertErrPermission": "You do not have permission to create or edit this document",
+        "convertErrNotFound": "The document does not exist or has been deleted",
+        "convertErrBusy": "Too many requests. Please retry in a moment",
+        "convertErrEmpty": "The content is empty and cannot be converted",
+        "convertErrEncoding": "The content encoding is invalid and cannot be converted",
+        "convertErrDocType": "This document type does not support body import"
     },
     "summaryCard": {
         "agentType": "Agent summary",

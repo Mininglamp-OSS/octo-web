@@ -27,7 +27,6 @@ import {
   // `@octo/base` -> `src/__mocks__/dmworkBase.ts`；字符串 alias 按前缀匹配，会把
   // `@octo/base/src/Service/APIClient` 一并吃进 mock 文件里导致解析失败，
   // 静默打断本包 4 个测试套件的 collection。
-  extractErrorMsg,
   copyToClipboard,
 } from "@octo/base";
 import WKApp from "@octo/base/src/App";
@@ -38,6 +37,7 @@ import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
 import RoutePage from "@octo/base/src/Components/RoutePage";
 import { Channel as WkChannel } from "wukongimjssdk";
 import { splitSummaryText } from "../utils/splitMessage";
+import { convertDocErrorMessage } from "../utils/convertDocError";
 import { sendGroupSummaryCompletionTips } from "../utils/groupSummaryNotify";
 import { applyRegenerateVoiceInput } from "../utils/regenerateInput";
 import SummaryConfirmPage from "./SummaryConfirmPage";
@@ -2944,8 +2944,12 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         } catch (err) {
             if (opened && !opened.closed) opened.close();
             if (this.unmounted) return;
-            const msg = extractErrorMsg(err) || this.context.t("summary.detail.convertFailed");
-            Toast.error(msg);
+            // 刻意不走 extractErrorMsg：host 的 normalizeApiError 只识别 401/403/404/429/5xx,
+            // docs-backend 的 422/413/412/409 全部被归一化成「未知错误」——一个**非空**字符串,
+            // 于是 `extractErrorMsg(err) || convertFailed` 里 `||` 右边永远不执行,更具体的原因
+            // 全被吞掉。convertDocErrorMessage 直接读 err.response.data.error（docs 模块的
+            // toApiErrorEnvelope 保证它在),认不出时才回落 convertFailed。
+            Toast.error(convertDocErrorMessage(err, this.context.t));
         } finally {
             // 只在 key 仍是自己时清：万一将来有并发路径覆写了 key，别把别人的
             // loading 态顺手掐掉（round-4 P1-b(ii)）。
