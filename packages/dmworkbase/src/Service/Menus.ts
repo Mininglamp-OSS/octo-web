@@ -60,10 +60,13 @@ export class Menus {
   icon!: JSX.Element;
   selectedIcon!: JSX.Element
   routePath!: string;
-  onPress?: () => void;
+  // reentry=true 表示点击的是当前已激活菜单(重复点击,无实际导航)。宿主(Main/index.tsx、
+  // tab_low_screen.tsx)据 prevMenuId===menus.id 传入,供 onPress 里的 *_module_entered 埋点
+  // 短路,避免重复点击膨胀计数(见二审 P2-4)。
+  onPress?: (reentry?: boolean) => void;
   badge?: number
 
-  constructor(id: string, routePath: string, title: string, icon: JSX.Element, selectedIcon: JSX.Element, onPress?: () => void) {
+  constructor(id: string, routePath: string, title: string, icon: JSX.Element, selectedIcon: JSX.Element, onPress?: (reentry?: boolean) => void) {
     this.id = id
     this.title = title
     this.icon = icon

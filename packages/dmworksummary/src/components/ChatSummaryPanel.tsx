@@ -24,6 +24,8 @@ interface ChatSummaryPanelState {
     view: 'list' | 'detail' | 'create';
     selectedTaskId: number | null;
     isDragging: boolean;
+    /** 面板内创建页的初始总结方式：由列表页「+」下拉选择后透传。 */
+    createMode: 'normal' | 'agent';
 }
 
 export default class ChatSummaryPanel extends Component<
@@ -41,7 +43,7 @@ export default class ChatSummaryPanel extends Component<
     constructor(props: ChatSummaryPanelProps) {
         super(props);
         const initialView = props.summaryPanelView === 'new' ? 'create' : 'list';
-        this.state = { view: initialView, selectedTaskId: null, isDragging: false };
+        this.state = { view: initialView, selectedTaskId: null, isDragging: false, createMode: 'normal' };
     }
 
     componentDidMount() {
@@ -122,8 +124,8 @@ export default class ChatSummaryPanel extends Component<
         persistSummaryWidth(SUMMARY_DEFAULT_WIDTH);
     };
 
-    private handleCreateNew = () => {
-        this.setState({ view: 'create', selectedTaskId: null });
+    private handleCreateNew = (mode?: 'normal' | 'agent') => {
+        this.setState({ view: 'create', selectedTaskId: null, createMode: mode ?? 'normal' });
     };
 
     private handleViewDetail = (taskId: number) => {
@@ -201,6 +203,7 @@ export default class ChatSummaryPanel extends Component<
                                 onClose={this.handleBackToList}
                                 onSubmit={this.handleCreateSubmit}
                                 source="chat_aside"
+                                initialMode={this.state.createMode}
                             />
                         </div>
                     </div>

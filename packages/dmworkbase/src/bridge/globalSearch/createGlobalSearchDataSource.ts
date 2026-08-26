@@ -79,13 +79,13 @@ async function loadReadableChannelOptions(
     const myGroups =
       (await WKApp.dataSource.channelDataSource.groupSaveList?.()) ?? [];
     for (const g of myGroups as Array<any>) {
-      const channelId = g?.channel?.channelID || g?.channelID || g?.group_no;
+      const channelId = g?.channel?.channelID || g?.orgData?.group_no;
       const channelType = g?.channel?.channelType ?? ChannelTypeGroup;
       if (!channelId) continue;
       push({
         channelId,
         channelType,
-        name: g?.displayName || g?.name || channelId,
+        name: g?.orgData?.displayName || g?.title || channelId,
         avatarUrl: WKApp.shared.avatarChannel(
           new Channel(channelId, channelType)
         ),
@@ -193,6 +193,11 @@ const moduleFileTypeCategoriesCache: {
   value?: GlobalSearchFileTypeCategory[];
   inFlight?: Promise<GlobalSearchFileTypeCategory[]>;
 } = {};
+
+export function resetGlobalSearchDataSourceCaches() {
+  moduleFileTypeCategoriesCache.value = undefined;
+  moduleFileTypeCategoriesCache.inFlight = undefined;
+}
 
 export function createGlobalSearchApiDataSource(
   options: CreateGlobalSearchApiDataSourceOptions = {}

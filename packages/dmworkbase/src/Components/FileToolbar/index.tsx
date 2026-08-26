@@ -112,6 +112,7 @@ export default class FileToolbar extends Component<FileToolbarProps> {
       <div className="wk-filetoolbar" ref={this.containerRef}>
         <IconClick
           icon={typeof icon === "string" ? <img src={icon} alt="" /> : icon}
+          data-testid="input-attachment-btn"
           onClick={this.chooseFile}
           size="sm"
         />

@@ -7,6 +7,9 @@ const hoisted = vi.hoisted(() => {
     const apiDelete = vi.fn()
     const mittEmit = vi.fn()
     const deleteChannelInfo = vi.fn()
+    const deleteImChannelInfo = vi.fn((sdk: { channelManager: { deleteChannelInfo: (channel: unknown) => void } }, channel: unknown) => {
+        sdk.channelManager.deleteChannelInfo(channel)
+    })
     const removeConversation = vi.fn()
     // axios doubles: `sharedPost` is the global (interceptor-bearing) axios.post;
     // `isolatedPost` is the post() of the axios.create() instance datasource.ts
@@ -21,6 +24,7 @@ const hoisted = vi.hoisted(() => {
         apiDelete,
         mittEmit,
         deleteChannelInfo,
+        deleteImChannelInfo,
         removeConversation,
         sharedPost,
         isolatedPost,
@@ -60,6 +64,7 @@ vi.mock("@octo/base", () => ({
     GroupRole: {},
     RequestConfig: class {},
     WKApp: hoisted.mockWKApp,
+    deleteImChannelInfo: hoisted.deleteImChannelInfo,
     IncomingWebhookService: {
         list: (groupNo: string, threadShortId?: string) =>
             hoisted.apiGet(threadShortId
@@ -120,7 +125,7 @@ vi.mock("wukongimjssdk", () => ({
     },
 }))
 
-import { ChannelDataSource, CommonDataSource, shouldAttachUploadToken } from "./datasource"
+import { ChannelDataSource, CommonDataSource, resolvePublicFileURL, shouldAttachUploadToken } from "./datasource"
 import { Channel } from "wukongimjssdk"
 
 describe("ChannelDataSource.threadDelete", () => {
@@ -251,6 +256,38 @@ describe("shouldAttachUploadToken (sticker upload same-origin guard)", () => {
 
     it("withholds on a malformed upload URL", () => {
         expect(shouldAttachUploadToken("http://[::::", "/api/v1/", loc)).toBe(false)
+    })
+})
+
+describe("resolvePublicFileURL (web and packaged Electron)", () => {
+    it("uses the web document origin when the API URL is relative", () => {
+        expect(
+            resolvePublicFileURL(
+                "file/preview/sticker/u/x.png",
+                "/api/v1/",
+                "https://app.example.com/chat",
+            ),
+        ).toBe("https://app.example.com/file/sticker/u/x.png")
+    })
+
+    it("uses the absolute API origin when the document is packaged under file://", () => {
+        expect(
+            resolvePublicFileURL(
+                "file/preview/sticker/u/x.png",
+                "https://im.deepminer.com.cn/v1/",
+                "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html",
+            ),
+        ).toBe("https://im.deepminer.com.cn/file/sticker/u/x.png")
+    })
+
+    it("does not generate a null/file URL for a packaged shell", () => {
+        const resolved = resolvePublicFileURL(
+            "file/preview/sticker/u/x.png",
+            "https://im.deepminer.com.cn/v1/",
+            "file:///Applications/OCTO.app/Contents/Resources/app.asar/build/index.html",
+        )
+        expect(resolved).not.toContain("null/file/")
+        expect(resolved).not.toContain("file:///file/")
     })
 })
 

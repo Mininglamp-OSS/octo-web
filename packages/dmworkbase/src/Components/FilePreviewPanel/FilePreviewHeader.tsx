@@ -7,7 +7,8 @@ import {
   IconClose,
   IconDropdown,
 } from "./icons";
-import { getFileIcon as getFileIconUrl } from "../MessageInput/AttachmentNode";
+import { getFileIcon as getFileIconUrl } from "../../Utils/fileIcon";
+import { downloadFile } from "../../Utils/download";
 import { FilePreviewInfo } from "./types";
 import { isImageType } from "./config";
 import { useI18n } from "../../i18n";
@@ -286,14 +287,7 @@ const FilePreviewHeader: React.FC<FilePreviewHeaderProps> = ({
     if (onDownload) {
       onDownload();
     } else {
-      // 默认下载行为
-      const a = document.createElement("a");
-      a.href = file.url;
-      a.download = file.name || "file";
-      a.target = "_blank";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      void downloadFile(file.url, file.name || "file");
     }
   };
 

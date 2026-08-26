@@ -19,6 +19,7 @@ export default function ChatSearchEntryButton({
     <IconClick
       size="sm"
       icon={<Search size={20} />}
+      data-testid="channel-search-entry"
       title={t("base.module.channelSettings.messageHistory")}
       onClick={() => {
         WKApp.mittBus.emit("wk:open-channel-search", {

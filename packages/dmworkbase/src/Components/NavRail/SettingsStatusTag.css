@@ -1,0 +1,21 @@
+.wk-settings-status-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 2px 9px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.wk-settings-status-tag--success { color: var(--wk-color-success); background: var(--wk-color-success-bg); }
+.wk-settings-status-tag--attention { color: var(--wk-color-warning); background: var(--wk-color-warning-bg); }
+.wk-settings-status-tag--danger { color: var(--wk-color-danger); background: var(--wk-color-danger-bg); }
+.wk-settings-status-tag--neutral { color: var(--wk-text-tertiary); background: var(--wk-bg-base); }
+
+
+@media (prefers-reduced-motion: reduce) {
+  .wk-settings-status-tag { transition: none; }
+}

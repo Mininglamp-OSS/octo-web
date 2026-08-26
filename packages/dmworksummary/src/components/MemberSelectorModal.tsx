@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import { Modal, Input, Checkbox, Button, Spin, Empty, Avatar } from "@douyinfe/semi-ui";
 import { IconSearch } from "@douyinfe/semi-icons";
 import { I18nContext } from "@octo/base";
+import { Dap } from "@octo/base";
 import type { MemberCandidate } from "../types/summary";
 import * as api from "../api/summaryApi";
 import "./SummarySelectors.css";
@@ -73,6 +74,8 @@ export default class MemberSelectorModal extends Component<Props, State> {
         if (existing) {
             this.setState({ localSelected: localSelected.filter((s) => s.user_id !== item.user_id) });
         } else {
+            // 仅「选中」(add)一沿采集,取消勾选不计;原先误用 GET /summary-member-candidates 列表加载推断。
+            Dap.shared.track("smart_summary_scope_participant_selected", {});
             this.setState({ localSelected: [...localSelected, item] });
         }
     };

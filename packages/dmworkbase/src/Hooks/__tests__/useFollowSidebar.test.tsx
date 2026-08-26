@@ -9,6 +9,7 @@ const hoisted = vi.hoisted(() => {
         threadCreatedListener: undefined as undefined | ((event: any) => void),
         threadDeletedListener: undefined as undefined | ((event: any) => void),
         sidebarReloadListener: undefined as undefined | ((event: any) => void),
+        sidebarUnreadUpdatedListener: undefined as undefined | ((event: any) => void),
     }
     const sync = vi.fn()
     const addConversationListener = vi.fn((listener: (conversation: any, action: any) => void) => {
@@ -43,6 +44,8 @@ const hoisted = vi.hoisted(() => {
                         state.threadDeletedListener = listener
                     } else if (event === "sidebar-reload") {
                         state.sidebarReloadListener = listener
+                    } else if (event === "sidebar-unread-updated") {
+                        state.sidebarUnreadUpdatedListener = listener
                     }
                 }),
                 off: vi.fn((event: string, listener: (event: any) => void) => {
@@ -52,6 +55,8 @@ const hoisted = vi.hoisted(() => {
                         state.threadDeletedListener = undefined
                     } else if (event === "sidebar-reload" && state.sidebarReloadListener === listener) {
                         state.sidebarReloadListener = undefined
+                    } else if (event === "sidebar-unread-updated" && state.sidebarUnreadUpdatedListener === listener) {
+                        state.sidebarUnreadUpdatedListener = undefined
                     }
                 }),
             },
@@ -130,6 +135,7 @@ describe("useFollowSidebar", () => {
         hoisted.state.threadCreatedListener = undefined
         hoisted.state.threadDeletedListener = undefined
         hoisted.state.sidebarReloadListener = undefined
+        hoisted.state.sidebarUnreadUpdatedListener = undefined
         hoisted.sync.mockReset()
         hoisted.addConversationListener.mockClear()
         hoisted.removeConversationListener.mockClear()
@@ -253,6 +259,34 @@ describe("useFollowSidebar", () => {
         expect(latest?.isLoading).toBe(false)
         // 拿到最新已读快照，关注 tab 角标可归零
         expect(latest?.items.find((it) => it.target_id === "group-a")?.unread).toBe(0)
+    })
+
+    it("clears a followed item's unread immediately before the server snapshot reload finishes", async () => {
+        let latest: ReturnType<typeof useFollowSidebar> | undefined
+        const groupItemUnread = { ...groupItem, unread: 5 }
+        hoisted.sync.mockResolvedValueOnce({
+            items: [groupItemUnread],
+            follow_version: 1,
+            version: 1,
+        })
+
+        await act(async () => {
+            ReactDOM.render(<Probe onValue={(value) => { latest = value }} />, container)
+            await flushMicrotasks()
+        })
+
+        expect(latest?.items[0]?.unread).toBe(5)
+
+        act(() => {
+            hoisted.state.sidebarUnreadUpdatedListener?.({
+                channelId: "group-a",
+                channelType: 2,
+                unread: 0,
+            })
+        })
+
+        expect(latest?.items[0]?.unread).toBe(0)
+        expect(hoisted.sync).toHaveBeenCalledTimes(1)
     })
 
     it("refreshes the followed sidebar when a thread is deleted", async () => {

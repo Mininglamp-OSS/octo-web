@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { Button, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { I18nContext, t } from "@octo/base";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
@@ -11,7 +11,6 @@ interface SummaryEditorProps {
     baseResultId: number;
     initialContent: string;
     onSave: () => void;
-    onCancel: () => void;
     mode?: "team" | "personal" | "personal_draft";
     exposeSave?: (fn: (() => void) | null) => void;
 }
@@ -110,7 +109,6 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
     };
 
     render() {
-        const { onCancel } = this.props;
         const { content, saving } = this.state;
         const { t: translate } = this.context;
 

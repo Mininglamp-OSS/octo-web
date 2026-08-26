@@ -3,10 +3,14 @@ import * as path from 'path';
 
 describe('InviteLanding security: no hardcoded verification code', () => {
     let sourceCode: string;
+    let loginViewModelSource: string;
 
     beforeAll(() => {
         const filePath = path.join(__dirname, '../Components/InviteLanding/index.tsx');
         sourceCode = fs.readFileSync(filePath, 'utf-8');
+        loginViewModelSource = fs.readFileSync(
+            path.join(__dirname, '../../../../packages/dmworklogin/src/login_vm.tsx'),
+            'utf-8');
     });
 
     describe('registration API', () => {
@@ -16,25 +20,23 @@ describe('InviteLanding security: no hardcoded verification code', () => {
             expect(sourceCode).not.toMatch(hardcodedCodePattern);
         });
 
-        it('should use usernameregister API instead of register with code', () => {
-            // Verify that we use the usernameregister endpoint
-            expect(sourceCode).toContain('user/usernameregister');
-        });
-
         it('should not use user/register endpoint with code parameter', () => {
             // The old vulnerable pattern was: user/register with code: "123456"
             const vulnerablePattern = /user\/register.*code/s;
             expect(sourceCode).not.toMatch(vulnerablePattern);
         });
 
-        it('should include flag parameter for usernameregister', () => {
-            // usernameregister API requires flag parameter
-            expect(sourceCode).toMatch(/flag\s*:\s*1/);
+        it('does not embed registration implementation in the invite landing page', () => {
+            expect(sourceCode).not.toContain('user/usernameregister');
+            expect(sourceCode).not.toContain('user/register');
         });
 
-        it('should include name parameter for usernameregister', () => {
-            // usernameregister API requires name parameter
-            expect(sourceCode).toMatch(/name\s*:/);
+        it('keeps the registration flow on the username-registration endpoint', () => {
+            const requestRegister = loginViewModelSource.match(
+                /async requestRegister\([\s\S]*?\n\s*}\n\s*\n\s*async requestRegisterSendCode/,
+            )?.[0];
+            expect(requestRegister).toContain('user/usernameregister');
+            expect(requestRegister).not.toContain('user/register');
         });
     });
 

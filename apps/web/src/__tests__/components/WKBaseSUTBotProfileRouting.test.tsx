@@ -92,6 +92,7 @@ vi.mock('wukongimjssdk', () => {
         Channel,
         ChannelTypePerson: 1,
         ChannelTypeGroup: 2,
+        MessageContent: class {},
     };
 });
 

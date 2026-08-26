@@ -31,7 +31,6 @@ export default class RouteManager {
   // Absent path → path is not shell-scoped → renderCurrentPath falls back to
   // the pre-fix behaviour (restContent(handlerResult)).
   private hostShells: Map<string, () => JSX.Element> = new Map();
-
   private handlePopState = () => {
     RouteManager.shared.renderCurrentPath(window.location.pathname)
   }

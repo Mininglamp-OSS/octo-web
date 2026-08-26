@@ -110,6 +110,25 @@ describe("MailRecordsFeature composer sessions", () => {
     resetAgentMailboxContextForTests();
   });
 
+  it("keeps the reader open when a silent refresh moves the selection off-page", () => {
+    const selectMessage = vi.fn();
+    state.workspace = { ...state.workspace, selectMessage };
+    const { rerender } = render(<MailRecordsFeature initialRole="drafts" />);
+    expect(screen.getByRole("button", { name: "edit draft" })).toBeTruthy();
+    selectMessage.mockClear();
+
+    state.workspace = {
+      ...state.workspace,
+      messages: [{ id: "E2" }],
+      selectedMessageId: "E1",
+      selectMessage,
+    };
+    rerender(<MailRecordsFeature initialRole="drafts" />);
+
+    expect(screen.getByRole("button", { name: "edit draft" })).toBeTruthy();
+    expect(selectMessage).not.toHaveBeenCalled();
+  });
+
   it("starts a clean composer when Compose replaces an edited Draft", () => {
     render(<MailRecordsFeature initialRole="drafts" />);
 

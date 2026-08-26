@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getMessageText, hasKeyword, splitAddresses } from "./utils";
+import {
+  getMessageText,
+  hasKeyword,
+  isValidAgentMailboxLocalpart,
+  splitAddresses,
+} from "./utils";
 
 describe("mail utilities", () => {
   it("splits recipient input without empty entries", () => {
@@ -10,6 +15,19 @@ describe("mail utilities", () => {
 
   it("matches protocol keywords case-insensitively", () => {
     expect(hasKeyword(["\\SEEN", "\\Flagged"], "\\seen")).toBe(true);
+  });
+
+  it.each([
+    ["agent", true],
+    ["support", true],
+    ["agent.alerts_1", true],
+    ["bot1", false],
+    ["admin", false],
+    ["POSTMASTER", false],
+    ["agent..alerts", false],
+    ["a".repeat(65), false],
+  ] as const)("validates Agent mailbox name %s", (localpart, expected) => {
+    expect(isValidAgentMailboxLocalpart(localpart)).toBe(expected);
   });
 
   it("prefers plain text bodies", () => {

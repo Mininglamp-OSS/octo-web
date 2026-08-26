@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { t } from "@octo/base";
+import { t, Dap } from "@octo/base";
 import type { Category, Skill, SkillSort } from "../types/skill";
 import { getCategories, getMySkills, getSkills } from "../api/skillApi";
 
@@ -136,6 +136,9 @@ export function useSkills(options: UseSkillsOptions = {}): UseSkillsResult {
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedQuery(query);
+      // 埋点 317:遥测 fire-and-forget，放在 setDebouncedQuery 之后 —— debounce 主逻辑先落地;
+      // track() 内部以 safe() 自吞异常(Dap 未初始化 / 测试未 mock 时静默),不回灌到本回调。
+      if (query.trim()) Dap.shared.track("market_searched", {});
     }, 300);
     return () => window.clearTimeout(timer);
   }, [query]);

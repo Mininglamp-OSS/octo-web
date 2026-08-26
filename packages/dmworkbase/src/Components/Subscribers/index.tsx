@@ -8,7 +8,7 @@ import { SubscribersVM } from "./vm";
 import IndexTable, { IndexTableItem } from "../IndexTable";
 import WKBase, { WKBaseContext } from "../WKBase";
 import RouteContext, { RouteContextConfig } from "../../Service/Context";
-import { SubscriberList } from "./list";
+import { SubscriberList, SubscriberListProps } from "./list";
 import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { isRealnameVerified } from "../../Utils/displayName";
 import { GroupRole } from "../../Service/Const";
@@ -22,6 +22,15 @@ export interface SubscribersProps {
   channel: any;
   onAdd?: () => void;
   onRemove?: () => void;
+  /**
+   * 透传给「查看全部」打开的成员列表（octo-web#1511）。
+   *
+   * 之前这条路径不带 removeAction，移除按钮只存在于群主/管理员专用的
+   * 「移除成员」图标路径里；普通成员即使拥有某个 bot 也没有任何入口。
+   * 逐行是否渲染仍由 removeAction.canRemove 决定，因此对不拥有 bot 的
+   * 普通成员没有任何可见变化。
+   */
+  removeAction?: SubscriberListProps["removeAction"];
 }
 
 export class Subscribers extends Component<SubscribersProps> {
@@ -88,7 +97,7 @@ export class Subscribers extends Component<SubscribersProps> {
   }
 
   render() {
-    const { context, onAdd, onRemove, channel } = this.props;
+    const { context, onAdd, onRemove, channel, removeAction } = this.props;
     return (
       <Provider
         create={() => {
@@ -124,7 +133,10 @@ export class Subscribers extends Component<SubscribersProps> {
                   {vm.showAdd()
                     ? WKApp.endpoints.organizationalTool(
                         channel,
-                        <div className="wk-subscribers-item">
+                        <div
+                          className="wk-subscribers-item"
+                          data-testid="group-member-add-btn"
+                        >
                           <img
                             src={require("./assets/icon_add_more_gray.png")}
                             alt=""
@@ -135,6 +147,7 @@ export class Subscribers extends Component<SubscribersProps> {
                   {vm.showRemove() ? (
                     <div
                       className="wk-subscribers-item"
+                      data-testid="group-member-remove-btn"
                       onClick={() => {
                         if (onRemove) {
                           onRemove();
@@ -155,6 +168,7 @@ export class Subscribers extends Component<SubscribersProps> {
                       context.push(
                         <SubscriberList
                           channel={channel}
+                          removeAction={removeAction}
                           localSearch={createChannelSettingMemberSearch(
                             vm.subscribers
                           )}

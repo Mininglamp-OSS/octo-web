@@ -2,7 +2,7 @@
 import React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@octo/base", () => ({
+vi.mock("@octo/base", async () => ({
     // Provide a `default` export for SummaryDetailPage.renderHeader's
     // `WKApp.loginInfo.uid` read; @octo/base exports the WKApp singleton
     // as default, so the mock has to as well or the render throws
@@ -12,8 +12,12 @@ vi.mock("@octo/base", () => ({
     t: (key: string) => key,
     ForwardService: {},
     interpretForwardResult: vi.fn(),
+    I18nContext: React.createContext({ t: (key: string) => key }),
 }));
-vi.mock("@octo/base/src/App", () => ({ default: { loginInfo: {} } }));
+vi.mock("@octo/base/src/App", () => ({
+    default: { loginInfo: {} },
+    I18nContext: React.createContext({ t: (key: string) => key }),
+}));
 vi.mock("@octo/base/src/Components/VoiceInputButton", () => ({ default: () => null }));
 vi.mock("@octo/base/src/Service/Context", () => ({ default: React.createContext(null) }));
 vi.mock("@octo/base/src/Components/Subscribers/list", () => ({ SubscriberList: () => null }));
@@ -45,7 +49,10 @@ vi.mock("@douyinfe/semi-ui", () => {
     };
 });
 
-vi.mock("@douyinfe/semi-icons", () => ({}));
+vi.mock("@douyinfe/semi-icons", () => ({
+    IconChevronDown: () => null,
+    default: () => null,
+}));
 vi.mock("../../api/summaryApi");
 
 import * as api from "../../api/summaryApi";

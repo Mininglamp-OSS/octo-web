@@ -1492,6 +1492,23 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     max-width: 100%;
 }
 
+/* 总结结果下方的「复制 / 转为在线文档」操作行（octo-smart-summary#195）。
+   样式集中在这里，避免在多个渲染路径里重复内联 style。 */
+.summary-detail-result-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    /* 作为 flex 子项不再撑 margin-top：外层 .summary-detail-result-footer 已有
+       margin-top:12px 统一控节奏，再叠 8px 会把按钮顶出时间戳基线（round-4 P2-c）。 */
+}
+
+/* popup 被拦 / 预开标签已关时的提示 toast 里的文档直达链接（round-4 P1-b(iii)）：
+   文档已创建成功，给可点链接而不是让用户“允许弹出后重试”再造一份。 */
+.summary-detail-doc-popup-link {
+    color: var(--wk-brand-primary, var(--semi-color-primary));
+    text-decoration: underline;
+}
+
 .summary-detail-personal h3,
 .summary-detail-team h3,
 .summary-detail-members h3 {
@@ -2445,10 +2462,6 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
-}
-
-.summary-workbench--panel .chat-summary-modal-split {
-    align-self: flex-end;
 }
 
 /* Divider */

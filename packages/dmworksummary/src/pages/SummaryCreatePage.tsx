@@ -1,9 +1,7 @@
-import { Sparkles, X, Plus, ChevronDown } from "lucide-react";
+import { Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
-    Dropdown,
-    SplitButtonGroup,
     Toast,
     Typography,
     Tag,
@@ -45,7 +43,21 @@ import type {
 } from "../types/summary";
 import { SummaryMode, SourceType } from "../types/summary";
 import { Channel, WKSDK } from "wukongimjssdk";
-import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
+import {
+    describeSchedule,
+    scheduleToParams,
+    genSessionId,
+    genRequestId,
+    readAgentChatSession,
+    writeAgentChatSession,
+    clearAgentChatSession,
+    readAgentChatReferenced,
+    writeAgentChatReferenced,
+    clearAgentChatReferenced,
+    readAgentChatRequestId,
+    writeAgentChatRequestId,
+    clearAgentChatRequestId,
+} from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -70,6 +82,12 @@ interface SummaryCreatePageProps {
     onSubmit?: (taskId: number) => void;
     /** 打开总结创建的来源入口(埋点 source/entry_point,枚举值,非正文)。 */
     source?: string;
+    /**
+     * 初始总结方式。列表页「+」下拉选择后传入：
+     * "normal"=快速总结（默认），"agent"=Agent 总结。
+     * mount 时若为 agent 会自动进入 agent 模式（恢复历史 session）。
+     */
+    initialMode?: "normal" | "agent";
 }
 
 interface SummaryCreatePageState {
@@ -95,6 +113,7 @@ interface SummaryCreatePageState {
     // Agent 多轮问答：气泡 UI + session_id。后端按 session_id 持久化记忆，同一会话复用即可续上下文。
     messages: ChatMessage[];
     sessionId: string;
+    agentRequestId: string;
     /**
      * chat 引用的已有总结(单选,v1)。仅首轮生效,选中后随 first message 发给后端。
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1。
@@ -131,12 +150,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     declare context: React.ContextType<typeof I18nContext>;
 
     private textareaRef = createRef<HTMLTextAreaElement>();
+    /** 埋点 295:主题输入去抖计时器，只记「发生了主题输入」，绝不采输入内容。 */
+    private themeTrackTimer: ReturnType<typeof setTimeout> | null = null;
 
     state: SummaryCreatePageState = {
         topic: "",
         appliedTemplateLabel: "",
         customTemplateLimit: 30,
-        mode: 'normal',
+        mode: this.props.initialMode === "agent" ? "agent" : "normal",
         templates: TOPIC_TEMPLATES,
         templatePlaceholderRange: null,
         selectedChats: (() => {
@@ -158,6 +179,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         savingSummary: false,
         messages: [],
         sessionId: '',
+        agentRequestId: '',
         referencedTask: null,
         showReferencePicker: false,
         previewTaskId: null,
@@ -201,9 +223,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         const actions = selectChat.parentElement;
         if (!actions) return;
-        const startGroup = actions.querySelector('.chat-summary-modal-split');
+        // 创建页右下角从「SplitButtonGroup(开始总结下拉)」收敛为单个 createSubmit 按钮，
+        // 宽度预留即减该按钮宽度（原逻辑减 .chat-summary-modal-split，已随下拉删除）。
+        const submitBtn = actions.querySelector('[data-testid="summary-create-submit"]');
         const actionsWidth = actions.clientWidth;
-        const groupWidth = startGroup ? (startGroup as HTMLElement).offsetWidth : 0;
+        const groupWidth = submitBtn ? (submitBtn as HTMLElement).offsetWidth : 0;
         const gap = 24;
         const width = actionsWidth - groupWidth - gap;
         selectChat.style.width = width + 'px';
@@ -306,10 +330,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             // 保存时血统被污染。所以进入时先原子清一遍 session · 再 write
             // 新 reference · 保证 storage 里的两条永远一致。
             clearAgentChatSession(this.agentChannelId());
+            clearAgentChatRequestId(this.agentChannelId());
             this.setState({
                 mode: 'agent',
                 referencedTask: this.props.derivedFromTask,
                 sessionId: '',
+                agentRequestId: '',
                 messages: [],
             });
             // 与 session_id 同生命周期持久化引用总结，避免 refresh/重进后
@@ -318,11 +344,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 task_id: this.props.derivedFromTask.task_id,
                 title: this.props.derivedFromTask.title ?? '',
             });
+        } else if (this.props.initialMode === "agent") {
+            // 列表页「+」下拉选择 Agent 总结进入：恢复历史 session 并回显。
+            this.enterAgentMode();
         }
     }
 
     componentWillUnmount() {
         this.chipResizeObserver?.disconnect();
+        // 防抖计时器若不清，卸载后仍可能补发 smart_summary_theme_input（用户已离开页面）。
+        if (this.themeTrackTimer) {
+            clearTimeout(this.themeTrackTimer);
+            this.themeTrackTimer = null;
+        }
     }
 
     componentDidUpdate(prevProps: SummaryCreatePageProps, prevState: SummaryCreatePageState) {
@@ -499,6 +533,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     private handleTemplateClick = (template: TopicTemplate) => {
+        // 埋点 296:套用主题模板（内置卡片与自定义卡片都汇流到此，隐私 props 恒空）。
+        Dap.shared.track("smart_summary_template_applied", {});
         const { t: translate } = this.context;
         const { text, range } = computeTemplateSelection(template, {
             topic: translate("summary.templates.custom.promptTopic"),
@@ -590,20 +626,26 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     handleSubmit = async () => {
         const { topic, selectedChats, selectedMembers, scheduleConfig } = this.state;
         if (!this.canSubmit()) return;
+        // 八审 P2:提交即取消未触发的主题输入去抖 —— 用户已从「填主题」进到「生成」,
+        // 600ms 后再补发 smart_summary_theme_input 会把一次已转化的输入多计一次。
+        if (this.themeTrackTimer) {
+            clearTimeout(this.themeTrackTimer);
+            this.themeTrackTimer = null;
+        }
         const summaryTitle = deriveSummaryTitle(topic);
 
-        // smart_summary_started 收口在这里,而非「开始」按钮的声明式 data-track。按钮 onClick
-        // 是 handlePrimaryClick——agent 模式下它**不提交**(短路 return),但捕获阶段的 data-track
-        // 委托照样会触发,给 agent 模式记一条根本没发起的幻影 started(见 PR #1330 review blocker②)。
-        // 挪到通过 canSubmit、真正发起创建的唯一收口点(handleSubmit 目前仅由 handlePrimaryClick
-        // 的 normal 分支调用;无 Enter 提交路径),agent 模式(不经 handleSubmit)天然不误发。
-        // trigger_mode 恒为 'normal'(agent 分支永不到此),保留字段仅为口径显式、便于日后扩展。
-        Dap.shared.track('smart_summary_started', {
+        // smart_summary_started 收口在 api 层(summaryApi.createSummary → envelope code===0 gate),
+        // 不在此页面/按钮发 —— 因为 HTTP200+code≠0 是逻辑失败,只有 api 层看得到 code,且多入口
+        // (本页 normal / ChatSummaryNewModal / agent 模式)共用一个收口点才能计数与 props 一致
+        // (见二审 P1「smart_summary_started 双发」)。此处只把维度 props 透传给 createSummary。
+        // trigger_mode 恒为 'normal'(agent 分支走 handleAgentSubmit,永不到此)。
+        const startedProps = {
             object_id: this.props.channel?.channelID,
             source: this.props.source,
             entry_point: this.props.source,
+            entry_source: this.props.source,
             trigger_mode: this.state.mode,
-        });
+        };
 
         this.setState({ submitting: true, error: null });
         try {
@@ -635,7 +677,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 params.summary_mode = SummaryMode.BY_PERSON;
             }
 
-            const result = await api.createSummary(params);
+            const result = await api.createSummary(params, startedProps);
             // 首次完成通知来源群(#1379):手动创建的任务也登记 eligibility。
             // 完成快于首次 detail 轮询时,页面第一次看到的就是 COMPLETED
             // (previousStatus === undefined),靠 transition 抓不到跳变;
@@ -686,6 +728,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (this.props.embedded) {
                 this.props.onSubmit?.(result.task_id);
             } else {
+                // 非面板路径（NavRail 默认创建页 / /summary/create / 列表「+」）创建成功后
+                // 通知左侧列表刷新：新总结应立即出现在列表，而不是等切模块重进才可见。
+                // 面板路径由宿主 ChatSummaryPanel 自行派发，这里不重复。
+                WKApp.mittBus.emit("summary-list-refresh-requested" as any);
                 WKApp.routeRight.popToRoot();
                 WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
             }
@@ -714,6 +760,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
         // 惰性生成 session_id，整会话复用。
         const sessionId = this.state.sessionId || genSessionId();
+        const requestId = genRequestId();
         // 持久化到 localStorage：关闭/刷新后再进来可按 session_id 拉回历史（「退出不丢」）。
         writeAgentChatSession(this.agentChannelId(), sessionId);
 
@@ -725,13 +772,20 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }));
 
         try {
-            const res = await api.agentChat({ message: trimmed, session_id: sessionId, profile: 'summary' });
+            const res = await api.agentChat({
+                message: trimmed,
+                session_id: sessionId,
+                profile: 'summary',
+                request_id: requestId,
+            });
             // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）。
             const nextSessionId = res.session_id || sessionId;
             writeAgentChatSession(this.agentChannelId(), nextSessionId);
+            writeAgentChatRequestId(this.agentChannelId(), requestId);
             this.setState((prev) => ({
                 messages: [...prev.messages, { role: 'assistant', content: res.reply }],
                 sessionId: nextSessionId,
+                agentRequestId: requestId,
             }));
         } catch (err: any) {
             // 失败：Toast + 追一条 assistant 错误气泡（让失败在对话流里可见）。
@@ -764,34 +818,39 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     /** SSE 模式：追加 assistant 消息(仅 UI,不发请求)。 */
-    handleAgentAssistantMessage = (text: string, sessionId?: string) => {
-        // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）
-        if (sessionId && sessionId !== this.state.sessionId) {
-            writeAgentChatSession(this.agentChannelId(), sessionId);
-            this.setState((prev) => ({
+    handleAgentAssistantMessage = (text: string, sessionId?: string, requestId?: string) => {
+        let sessionChanged = false;
+        this.setState((prev) => {
+            const nextState: Pick<SummaryCreatePageState, 'messages'> & Partial<SummaryCreatePageState> = {
                 messages: [...prev.messages, { role: 'assistant', content: text }],
-                sessionId,
-            }));
-        } else {
-            this.setState((prev) => ({
-                messages: [...prev.messages, { role: 'assistant', content: text }],
-            }));
-        }
+            };
+            if (sessionId && sessionId !== prev.sessionId) {
+                sessionChanged = true;
+                nextState.sessionId = sessionId;
+            }
+            if (requestId) {
+                nextState.agentRequestId = requestId;
+            }
+            return nextState;
+        }, () => {
+            const channelId = this.agentChannelId();
+            const pairedSessionId = sessionId || this.state.sessionId;
+            // Persist the successful session/request pair after state commits.
+            // If two tabs still interleave these separate localStorage keys,
+            // the backend's full tuple lookup safely falls back to legacy mode.
+            if (sessionChanged && sessionId) {
+                writeAgentChatSession(channelId, sessionId);
+            } else if (requestId && pairedSessionId) {
+                writeAgentChatSession(channelId, pairedSessionId);
+            }
+            if (requestId) {
+                writeAgentChatRequestId(channelId, requestId);
+            }
+        });
     };
     handlePrimaryClick = () => {
         if (this.state.mode !== 'agent') {
             void this.handleSubmit();
-        }
-    };
-
-    /** 下拉菜单选择模式：切到 agent 时从 localStorage 恢复 session_id 并回显历史。 */
-    handleSelectMode = (mode: 'normal' | 'agent') => {
-        // 已在目标模式则短路，避免重复进入 agent 触发多余的历史拉取/状态重置。
-        if (mode === this.state.mode) return;
-        if (mode === 'agent') {
-            this.enterAgentMode();
-        } else {
-            this.setState({ mode });
         }
     };
 
@@ -825,12 +884,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
+        const storedRequestId = readAgentChatRequestId(this.agentChannelId());
         // 恢复引用总结与 session 同生命周期：storage 里有 → 自动回填。
         // 无 → 保持 state 现值（可能是 mount 时 derivedFromTask 塞进来的）。
         const storedRef = readAgentChatReferenced(this.agentChannelId());
         this.setState((prev) => ({
             mode: 'agent',
             sessionId: stored || prev.sessionId,
+            agentRequestId: storedRequestId || prev.agentRequestId,
             referencedTask: storedRef
                 ? { task_id: storedRef.task_id, title: storedRef.title } as SummaryListItem
                 : prev.referencedTask,
@@ -859,6 +920,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /** 「新会话」：清 localStorage 的 session_id、清空消息，下次发送重新生成新 session_id。 */
     handleNewSession = () => {
         clearAgentChatSession(this.agentChannelId());
+        clearAgentChatRequestId(this.agentChannelId());
         // 引用总结跟 session 同生命周期 → 一起清。
         clearAgentChatReferenced(this.agentChannelId());
         // 作废在途历史拉取，避免旧会话历史回灌到新会话。
@@ -866,6 +928,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         this.setState({
             messages: [],
             sessionId: '',
+            agentRequestId: '',
             referencedTask: null,
             showReferencePicker: false,
             error: null,
@@ -929,9 +992,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。 */
-    handleSaveAsSummary = async (title: string): Promise<boolean> => {
+    handleSaveAsSummary = async (title: string, requestId?: string): Promise<boolean> => {
         const { sessionId, selectedChats, selectedMembers } = this.state;
         const { t } = this.context;
+        const agentRequestId = requestId || this.state.agentRequestId;
         
         if (!sessionId) {
             Toast.warning(t('summary.create.noOutputToSave'));
@@ -949,6 +1013,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 session_id: sessionId,
                 title,
             };
+            if (agentRequestId) {
+                params.request_id = agentRequestId;
+            }
 
             if (selectedChats.length > 0) {
                 const origin = selectedChats[0];
@@ -977,7 +1044,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 params.referenced_task_ids = [this.state.referencedTask.task_id];
             }
 
-            const result = await api.createAgentSummary(params);
+            // smart_summary_started 由 createAgentSummary 在 envelope code===0 后补发(见二审 P1/P2-2),
+            // 与 normal 模式同一收口口径;trigger_mode 固定 'agent'。
+            const result = await api.createAgentSummary(params, {
+                object_id: this.props.channel?.channelID,
+                source: this.props.source,
+                entry_point: this.props.source,
+                entry_source: this.props.source,
+                trigger_mode: 'agent',
+            });
             markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t('summary.create.agentSummaryCreated'));
@@ -987,12 +1062,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             //   2. 重置组件内 state(messages/sessionId/referencedTask)
             //   3. 后端会在保存事务里 DELETE agent_message 表对应行
             clearAgentChatSession(this.agentChannelId());
+            clearAgentChatRequestId(this.agentChannelId());
             // 引用总结跟 session 同生命周期 → 一起清。
             clearAgentChatReferenced(this.agentChannelId());
             this.historyLoadToken++;
             this.setState({
                 messages: [],
                 sessionId: '',
+                agentRequestId: '',
                 referencedTask: null,
                 showReferencePicker: false,
             });
@@ -1009,6 +1086,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (this.props.embedded) {
                 this.props.onSubmit?.(result.task_id);
             } else {
+                // 非面板路径：保存为总结成功后通知左侧列表刷新（同 handleSubmit）。
+                WKApp.mittBus.emit("summary-list-refresh-requested" as any);
                 WKApp.routeRight.popToRoot();
                 WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
             }
@@ -1167,6 +1246,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     : e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH);
                                 this.setState({ topic: nextTopic, templatePlaceholderRange: null });
                                 this.autoResizeTextarea();
+                                // 埋点 295:主题输入去抖 600ms 后发一次，仅在非空时发，不采内容。
+                                if (this.themeTrackTimer) clearTimeout(this.themeTrackTimer);
+                                this.themeTrackTimer = setTimeout(() => {
+                                    if (nextTopic.trim()) Dap.shared.track("smart_summary_theme_input", {});
+                                }, 600);
                             }}
                             onFocus={this.handleInputFocus}
                             placeholder={translate("summary.create.topicPlaceholder")}
@@ -1395,52 +1479,19 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                             </div>
                             )}
                         </div>
-                        {/* 右下角：默认「开始总结」主按钮 + 下拉切换总结方式（SplitButtonGroup，与 ChatSummaryNewModal 一致） */}
-                        <SplitButtonGroup className="chat-summary-modal-split">
-                            {mode !== 'agent' && (
-                                <Button
-                                    data-testid={summaryTestIds.createSubmit}
-                                    theme="solid"
-                                    loading={submitting}
-                                    disabled={!this.canSubmit() || submitting}
-                                    onClick={this.handlePrimaryClick}
-                                >
-                                    <Sparkles size={16} />
-                                    {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
-                                </Button>
-                            )}
-                            <Dropdown
-                                trigger="click"
-                                position="bottomRight"
-                                render={(
-                                    <Dropdown.Menu>
-                                        <Dropdown.Item
-                                            data-testid={summaryTestIds.createNormalTab}
-                                            active={mode !== 'agent'}
-                                            onClick={() => this.handleSelectMode('normal')}
-                                        >
-                                            {translate("summary.create.start")}
-                                        </Dropdown.Item>
-                                        <Dropdown.Item
-                                            data-testid={summaryTestIds.createAgentTab}
-                                            active={mode === 'agent'}
-                                            onClick={() => this.handleSelectMode('agent')}
-                                        >
-                                            {translate("summary.create.agentStart")}
-                                        </Dropdown.Item>
-                                    </Dropdown.Menu>
-                                )}
+                        {/* 右下角：主提交按钮。总结方式选择已上移到列表页「+」下拉，此处不再提供切换。 */}
+                        {mode !== 'agent' && (
+                            <Button
+                                data-testid={summaryTestIds.createSubmit}
+                                theme="solid"
+                                loading={submitting}
+                                disabled={!this.canSubmit() || submitting}
+                                onClick={this.handlePrimaryClick}
                             >
-                                <Button
-                                    data-testid={summaryTestIds.createModeSwitch}
-                                    theme="solid"
-                                    icon={<ChevronDown size={16} />}
-                                    aria-label={translate("summary.create.switchMode")}
-                                    title={translate("summary.create.switchMode")}
-                                    disabled={submitting}
-                                />
-                            </Dropdown>
-                        </SplitButtonGroup>
+                                <Sparkles size={16} />
+                                {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                            </Button>
+                        )}
                     </div>
                 </div>
 

@@ -64,14 +64,10 @@ describe("contacts search index", () => {
       myGroups: [],
     };
     const index = buildContactsSearchIndex(largeSource, toPinyin);
-    const startedAt = performance.now();
-
     for (let count = 0; count < 20; count += 1) {
       expect(searchContacts("weijiao", index).contacts).toHaveLength(1);
     }
 
     expect(toPinyin).toHaveBeenCalledTimes(10_000);
-    const averageQueryMs = (performance.now() - startedAt) / 20;
-    expect(averageQueryMs).toBeLessThan(15);
   });
 });

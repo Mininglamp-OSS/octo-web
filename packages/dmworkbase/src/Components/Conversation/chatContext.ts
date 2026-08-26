@@ -1,5 +1,6 @@
 import { t } from "../../i18n"
 import { isRealnameVerified } from "../../Utils/displayName"
+import type { ChatComposerVoiceContext } from "../../features/chat-composer/ports"
 
 const ChannelTypeGroup = 2
 const ChannelTypePerson = 1
@@ -28,12 +29,7 @@ export interface ChatContextChannelInfo {
     orgData?: { remark?: string }
 }
 
-export interface ChatContextResult {
-    memberContext?: string   // "聊天成员：张三，小张,..." — undefined for DM
-    chatContext?: string     // "[channel label]\n[Alice]: hi\n[Bob]: hello"
-    channelType?: number     // pass-through for VoiceService to send as channel_type
-    selfName?: string        // 当前说话人的各层名字（去重 + "，" 连接），供 FormData self_name 使用
-}
+export type ChatContextResult = ChatComposerVoiceContext
 
 // 收集某人的三层名字（实名 > 群昵称 > 昵称），去重保序后作为「独立条目」返回。
 // 后端转写 prompt 把 <member_vocabulary> 里每个逗号分隔条目当作一个完整名字

@@ -263,7 +263,8 @@ describe("AndroidDownloadButton", () => {
     });
 
     expect(apiFetchJsonMock).toHaveBeenCalledWith(
-      "/api/v1/common/updater/android/1.0"
+      "/api/v1/common/updater/android/1.0",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(
       container.querySelector("[data-qr-value]")?.getAttribute("data-qr-value")

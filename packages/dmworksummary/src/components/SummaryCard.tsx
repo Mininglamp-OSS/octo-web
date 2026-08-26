@@ -1,10 +1,10 @@
 import React, { useState } from "react";
 import { Dropdown, Modal, Tooltip } from "@douyinfe/semi-ui";
 import { MoreHorizontal, AlertTriangle, Bot, Clock, FileText, UsersRound, X } from "lucide-react";
-import { useI18n } from "@octo/base";
+import { useI18n, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
 import { ParticipantStatus, TaskStatus, TriggerType, type SummaryListItem } from "../types/summary";
-import { getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel } from "../utils/summaryHelpers";
+import { formatDateOnly, getStatusLabel, getSummaryTypeKind, getSummaryTypeLabel } from "../utils/summaryHelpers";
 import { deriveSummaryDisplayContent } from "../utils/templateResolver";
 import { summaryTestIds } from "../utils/testIds";
 
@@ -30,6 +30,10 @@ function formatRelativeTime(dateStr: string, t: (key: string, opts?: any) => str
     if (diff < 60) return t("summary.summaryCard.justNow");
     if (diff < 3600) return t("summary.summaryCard.minutesAgo", { values: { count: Math.floor(diff / 60) } });
     if (diff < 86400) return t("summary.summaryCard.hoursAgo", { values: { count: Math.floor(diff / 3600) } });
+    // 超过十天回落到具体日期（issue #1440）：「45天前」这类相对值对定位
+    // 总结已没有参考价值。阈值按 issue 取「超过」十天，与 dmworkbase
+    // relativeTime.ts 的「超过 N 天回落绝对日期」模式一致。
+    if (diff > 10 * 86400) return formatDateOnly(dateStr);
     return t("summary.summaryCard.daysAgo", { values: { count: Math.floor(diff / 86400) } });
 }
 
@@ -87,7 +91,8 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
     const statusColor = getStatusColor(displayStatus);
     const statusText = getStatusLabel(displayStatus);
 
-    const isGenerating = task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING;
+    const isGenerating = !displaysWaiting
+        && (task.status === TaskStatus.PENDING || task.status === TaskStatus.PROCESSING);
     // 类型分类 — 单一 classifier 派生 label + icon + CSS class（R4 yj P2-2）。
     const typeKind = getSummaryTypeKind(task);
     const typeLabel = getSummaryTypeLabel(t, task);
@@ -133,7 +138,11 @@ const SummaryCard: React.FC<SummaryCardProps> = ({ task, active, onClick, onDele
         <div
             data-testid={summaryTestIds.card(task.task_id)}
             className={`summary-card${active ? " summary-card--active" : ""}`}
-            onClick={() => onClick(task.task_id)}
+            onClick={() => {
+                // 埋点 305:点开一张总结卡片进入详情（动态 testid 无法走委托，命令式）。
+                Dap.shared.track("smart_summary_opened", {});
+                onClick(task.task_id);
+            }}
         >
             {task.needs_attention && <span className="summary-card-attention-dot" />}
             {/* Generating 状态：顶部显示 AI 分析中文案 */}

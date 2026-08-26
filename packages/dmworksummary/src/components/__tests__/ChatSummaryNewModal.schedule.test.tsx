@@ -7,6 +7,9 @@ vi.mock('wukongimjssdk', () => ({
     ChannelTypeGroup: 2,
     ChannelTypePerson: 1,
     MessageText: class {},
+    MessageContent: class {},
+    MediaMessageContent: class {},
+    MessageContentType: { text: 1, image: 2, video: 3, file: 4, voice: 5, location: 6, command: 7, unknown: 0 },
     WKSDK: { shared: () => ({ chatManager: { send: vi.fn() } }) },
 }));
 vi.mock('@douyinfe/semi-ui', () => {
@@ -19,8 +22,11 @@ vi.mock('@douyinfe/semi-ui', () => {
     };
 });
 vi.mock('@douyinfe/semi-icons', () => ({
+    default: () => null,
     IconPlus: () => null,
     IconClock: () => null,
+    IconChevronDown: () => null,
+    IconAlertTriangle: () => null,
 }));
 
 // 与现有 ChatSummaryNewModal.test.tsx 一致：mock 掉 channelType，绕过 @octo/base 的

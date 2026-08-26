@@ -6,6 +6,7 @@
   },
   "include": [
     "src-election/main/userDataMigration.ts",
+    "src-election/main/fleetTrustedHosts.ts",
     "src-election/**/__tests__/**/*.ts"
   ],
   "exclude": ["node_modules", "src"]
