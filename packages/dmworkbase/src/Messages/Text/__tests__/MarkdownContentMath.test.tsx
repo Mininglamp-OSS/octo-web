@@ -343,6 +343,77 @@ describe("MarkdownContent — 被守卫拒绝的 $$ block 在容器内不泄漏�
   });
 });
 
+describe("MarkdownContent — 被拒绝的公式无损还原：不丢正文/meta、不泄漏容器标记 (reviewer P0/P1)", () => {
+  // P0：开 fence 同行文本会被 remark-math 收进 node.meta，value 为空。旧实现只用 node.value
+  // 重拼会渲染成空 `$$\n\n$$`，吞掉用户正文。新实现转义后重解析，正文原样保留。
+  const p0Cases: string[] = [
+    "$$100 too expensive",
+    "$$ TODO: discuss tomorrow",
+    "报价 $$100 有点贵",
+  ];
+  for (const input of p0Cases) {
+    it(`开 fence 同行文本(meta)不被吞、原样显示：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(visibleText(root)).toBe(input);
+    });
+  }
+
+  it("blockquote 内无闭合 fence 的 `> $$cost estimate` 不渲染、不泄漏 `>`", () => {
+    const root = renderContent(
+      <MarkdownContent content={"> $$cost estimate"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("$$cost estimate");
+    expect(vt).not.toContain(">");
+  });
+
+  it("P1：跨行 inline math 在 blockquote 内不把 `> ` 泄漏进正文", () => {
+    // reviewer 例子：`> $foo` / `> bar$`，内部无数学字符 → 被拒。旧 slice 还原会显示
+    // `$foo\n> bar$`，把容器 marker 漏进正文；新实现转义后重解析，remark 正确处理容器。
+    const root = renderContent(
+      <MarkdownContent content={"> $foo\n> bar$"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("$foo");
+    expect(vt).toContain("bar$");
+    expect(vt).not.toContain(">");
+  });
+
+  it("流式 `$$E=mc^2$$` 的中间前缀显示为文本、不空白闪烁，补全后渲染公式", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    // 中间前缀：未闭合，value 为空 → 按文本显示（不空白）
+    act(() => {
+      ReactDOM.render(
+        <MarkdownContent content={"结果 $$E=mc^"} isStreaming />,
+        container
+      );
+    });
+    expect(container.querySelector(".katex")).toBeNull();
+    expect(visibleText(container)).toContain("$$E=mc^");
+    // 补全后：value 非空且含 ^ → 渲染 KaTeX
+    act(() => {
+      ReactDOM.render(
+        <MarkdownContent content={"结果 $$E=mc^2$$"} isStreaming />,
+        container
+      );
+    });
+    expect(container.querySelector(".katex")).not.toBeNull();
+  });
+
+  it("同条消息里合法公式渲染、旁边的误匹配美元正文保持原样", () => {
+    const root = renderContent(
+      <MarkdownContent content={"公式 $x^2$ 花了 $$5 and $$10"} />
+    );
+    expect(root.querySelector(".katex")).not.toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("花了 $$5 and $$10");
+  });
+});
+
 describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。

@@ -127,15 +127,20 @@ const baseRemarkPlugins: any[] = [
 ];
 
 /**
- * 聊天默认路径：识别 `$...$` / `$$...$$`，但用 iOS 对齐的 math-ish 守卫
- * ({@link mathGuardPlugin}) 过滤掉金额 / shell 等误匹配。守卫必须排在 remarkMath 之后。
+ * 聊天默认路径：识别 `$...$` / `$$...$$`，用 iOS 对齐的 math-ish 守卫
+ * ({@link mathGuardPlugin}) 过滤金额 / shell 等误匹配。
+ *
+ * 守卫必须排在最前：它会转义误匹配区间的 `$` 后用同一 processor 重新解析整篇，
+ * 因此其后的 rawHtml / gfm / breaks 转换需要作用在这棵重解析出来的新树上。
+ * remarkMath 只在 `.use` 时注册 micromark 扩展（无 transform），列在数组任意位置都会
+ * 参与首次解析与守卫内部的 `this.parse` 重解析。
  */
 const mathRemarkPlugins: any[] = [
+  mathGuardPlugin,
   rawHtmlAsTextPlugin,
   [remarkGfm, remarkGfmOptions],
   remarkBreaks,
   remarkMath,
-  mathGuardPlugin,
 ];
 
 /** 文档 / 编辑器场景：无条件识别所有 `$...$` / `$$...$$`，不加守卫（作者显式书写公式）。 */
@@ -150,53 +155,60 @@ const mathRemarkPluginsSingleDollar: any[] = [
 const MATH_ISH_CHAR = /[\\^_{}]/;
 
 /**
- * iOS 对齐的 math-ish 守卫（镜像 `WKLaTeXPreprocessor.hasMathChar`）。
+ * iOS 对齐的 math-ish 守卫（镜像 `WKLaTeXPreprocessor.hasMathChar`），无损实现。
  *
- * remark-math 会把每一段配对的 `$...$` / `$$...$$` 都 token 成公式节点。本插件在其后运行，
- * 把「内部不含 `\ ^ _ { }` 任一字符」的公式节点还原成源码原文：
- *   - `$E=mc^2$`（含 `^`）、`$$\frac{a}{b}$$`（含 `\{}`）→ 保留，正常渲染为 KaTeX；
- *   - `价格是 $100`（未配对）、`$5-$10`、`cost $$5 and $$10`、`$HOME/bin:$PATH` → 还原原文。
- * 这样既满足 #1089「`$E=mc^2$` 应渲染」的验收，又与 iOS 行为一致，避免普通文本里的
- * 美元符号被吃掉重排。公式节点只由 remark-math 产生（代码块 / 行内代码是独立节点，
- * 不会被 remark-math 触碰），所以守卫天然不影响代码内容。
+ * remark-math 会把每段配对的 `$...$` / `$$...$$` 都 token 成公式节点。本插件在首次解析后拿到
+ * 这些节点的源码区间，对「value 为空、或内容不含 `\ ^ _ { }` 任一字符」的节点，把其区间内的
+ * 每个 `$` 转义（加反斜杠），再用同一 processor `this.parse` 重新解析整篇，替换语法树。
+ * 于是：
+ *   - `$E=mc^2$`（含 `^`）、`$$\frac{a}{b}$$`（含 `\{}`）→ 不动，正常渲染为 KaTeX；
+ *   - `$100`、`$5-$10`、`$$100 too expensive`（value 为空、文本在 meta 里）、未闭合的流式前缀、
+ *     `> $foo\n> bar$`（跨行 blockquote）等普通正文 → `$` 被转义，重解析后是纯文本。正文、开
+ *     fence 同行文本（node.meta）、换行结构、blockquote/list 容器标记全部由 remark 原样保留——
+ *     零重建、零丢失（对比只用 node.value 重拼会吞掉 meta、伪造闭合 fence；只用 source.slice
+ *     会把容器 continuation marker 切进正文）。
+ *
+ * 代码块 / 行内代码里的 `$` 不会被 remark-math token 成公式节点，天然不在处理范围内。
+ * 守卫在数组里排最前，重解析出的新树仍会经过其后的 rawHtml / gfm / breaks 转换。
  */
-function mathGuardPlugin() {
+function mathGuardPlugin(this: any) {
+  const processor = this;
   return (tree: any, file: any) => {
     const source: string =
       typeof file?.value === "string" ? file.value : String(file ?? "");
-    // 行内 math 用源码切片还原，忠实保留原定界符（`$…$` vs 行内 `$$…$$`）与原文；
-    // 行内节点不跨越 blockquote/list 的行首 continuation marker，切片是安全的。
-    const inlineLiteral = (node: any): string => {
-      const start = node?.position?.start?.offset;
-      const end = node?.position?.end?.offset;
-      if (typeof start === "number" && typeof end === "number") {
-        return source.slice(start, end);
-      }
-      return `$${node?.value ?? ""}$`; // position 缺失兜底
-    };
-    const visit = (node: any) => {
+    const escapeAt = new Set<number>();
+    const collect = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
-      node.children = node.children.map((child: any) => {
+      for (const child of node.children) {
         if (child?.type === "inlineMath" || child?.type === "math") {
-          if (MATH_ISH_CHAR.test(child.value ?? "")) return child;
-          if (child.type === "math") {
-            // 块级 math 用 node.value 重拼 `$$` fence，绝不能用 source.slice：块级公式若在
-            // blockquote / list 容器内，源码切片会把行首的 `> ` / 缩进等 continuation
-            // marker 一起切进来，泄漏进 quoted 正文（Jerry-Xin blocker）。node.value 已是
-            // 剥掉容器标记后的纯公式内容，重拼出用户原本写的 `$$ / … / $$`。
-            const value = child.value ?? "";
-            return {
-              type: "paragraph",
-              children: [{ type: "text", value: `$$\n${value}\n$$` }],
-            };
+          // 仅当公式内容非空且含 math-ish 字符才保留渲染。空 value（未闭合的流式前缀、
+          // 或 `$$100 too expensive` 这类把同行文本收进 node.meta 而 value 为空的节点）
+          // 一律按普通文本转义，避免渲染成空白 / 流式时空白闪烁。
+          const value: string = child.value ?? "";
+          const mathish = value.trim().length > 0 && MATH_ISH_CHAR.test(value);
+          if (!mathish) {
+            const start = child.position?.start?.offset;
+            const end = child.position?.end?.offset;
+            if (typeof start === "number" && typeof end === "number") {
+              for (let i = start; i < end; i++) {
+                if (source[i] === "$") escapeAt.add(i);
+              }
+            }
           }
-          return { type: "text", value: inlineLiteral(child) };
+        } else {
+          collect(child);
         }
-        visit(child);
-        return child;
-      });
+      }
     };
-    visit(tree);
+    collect(tree);
+    if (escapeAt.size === 0 || typeof processor?.parse !== "function") return;
+    let masked = "";
+    for (let i = 0; i < source.length; i++) {
+      if (escapeAt.has(i)) masked += "\\";
+      masked += source[i];
+    }
+    const reparsed = processor.parse(masked);
+    tree.children = reparsed.children;
   };
 }
 
