@@ -133,7 +133,10 @@ const mathRehypePlugins: any[] = [
  * 不超上限；不满足就摘掉 `language-math` class，退回普通代码块（不进 KaTeX）。
  */
 function guardMathFencePlugin() {
-  return (tree: any) => {
+  return (tree: any, file: any) => {
+    // 与 scanner 共享同一 per-render 公式计数（file.data 在 remark→rehype 同一 VFile 上贯通），
+    // 让 ```math 围栏与 $ / $$ route 一起计入 MAX_FORMULAS_PER_MESSAGE。
+    const ctx = ((file.data ||= {}).mathCtx ||= { count: 0 });
     const visit = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
       for (const child of node.children) {
@@ -147,11 +150,14 @@ function guardMathFencePlugin() {
           if (classes.includes("language-math")) {
             const tex = hastNodeText(child).replace(/\n+$/, "");
             const ok =
+              ctx.count < MAX_FORMULAS_PER_MESSAGE &&
               tex.trim().length > 0 &&
               MATH_ISH_CHAR.test(tex) &&
               tex.length <= MAX_BLOCK_MATH_LEN &&
               katexAccepts(tex, true);
-            if (!ok) {
+            if (ok) {
+              ctx.count += 1;
+            } else {
               child.properties = child.properties || {};
               child.properties.className = classes.filter(
                 (c: string) => c !== "language-math"
@@ -401,31 +407,38 @@ function escapeMaskPlugin(this: any) {
     if (source.indexOf("\\$") === -1 || typeof processor?.parse !== "function") {
       return;
     }
+    // 避免与用户原文里已存在的哨兵字符冲突：若源码已含哨兵，放弃 mask（绝不改写用户内容）。
+    if (source.indexOf(MATH_ESCAPE_SENTINEL) !== -1) return;
     const ranges: Array<[number, number]> = [];
     collectCodeRanges(tree, ranges);
     const masked = maskEscapedDollars(source, ranges);
     if (masked === source) return;
+    // out-of-band 标记：只有确实注入了哨兵，restore 才会运行，避免无条件改写用户原文里的 PUA 字符。
+    (file.data ||= {}).mathMasked = true;
     const reparsed = processor.parse(masked);
     tree.children = reparsed.children;
   };
 }
 
-/** 把哨兵还原成字面 `$`（在 scanner 之后运行，确保被转义的 `$` 只作字面文本）。 */
+/**
+ * 把哨兵还原成字面 `$`。仅在 {@link escapeMaskPlugin} 确实注入过哨兵时运行（out-of-band 标记），
+ * 否则跳过——避免无条件改写用户原文里的 Private Use Area 字符。还原覆盖所有可能承载哨兵的字符串
+ * 字段：text / inlineMath / math 的 `value`，以及 link / image / definition 的 `url` / `title` / `alt`
+ * （否则 `[go](…/a\$b)` 会把哨兵泄漏进 href）。
+ */
 function restoreSentinelPlugin() {
-  return (tree: any) => {
+  return (tree: any, file: any) => {
+    if (!file?.data?.mathMasked) return;
+    const fix = (s: string) => s.split(MATH_ESCAPE_SENTINEL).join("$");
     const visit = (node: any) => {
-      if (!node || !Array.isArray(node.children)) return;
-      for (const child of node.children) {
-        if (
-          child?.type === "text" &&
-          typeof child.value === "string" &&
-          child.value.indexOf(MATH_ESCAPE_SENTINEL) !== -1
-        ) {
-          child.value = child.value.split(MATH_ESCAPE_SENTINEL).join("$");
-        } else {
-          visit(child);
+      if (!node) return;
+      for (const key of ["value", "url", "title", "alt"]) {
+        const v = node[key];
+        if (typeof v === "string" && v.indexOf(MATH_ESCAPE_SENTINEL) !== -1) {
+          node[key] = fix(v);
         }
       }
+      if (Array.isArray(node.children)) node.children.forEach(visit);
     };
     visit(tree);
   };
@@ -533,8 +546,9 @@ function scanTextForMath(text: string, ctx: { count: number }): any[] {
  * {@link scanTextForMath}，把识别出的公式拆成 inlineMath/math 节点。必须在 remarkBreaks 之前运行。
  */
 function mathScanPlugin() {
-  return (tree: any) => {
-    const ctx = { count: 0 };
+  return (tree: any, file: any) => {
+    // 与 ```math 围栏共享同一 per-render 计数（见 guardMathFencePlugin）。
+    const ctx = ((file.data ||= {}).mathCtx ||= { count: 0 });
     const visit = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
       const next: any[] = [];

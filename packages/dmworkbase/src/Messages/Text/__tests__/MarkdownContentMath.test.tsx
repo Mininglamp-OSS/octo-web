@@ -748,6 +748,68 @@ describe("MarkdownContent — ```math 围栏与 $$ 走同一套上限 (reviewer 
   });
 });
 
+describe("MarkdownContent — ```math 围栏计入每条消息公式上限 (reviewer P1-1)", () => {
+  it("40 个 ```math 围栏最多渲染 32 个，其余退回代码块", () => {
+    const input = Array.from({ length: 40 }, () => "```math\nx^2\n```").join(
+      "\n\n"
+    );
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelectorAll(".katex").length).toBe(32);
+  });
+
+  it("$ 公式与 ```math 围栏共享同一计数（合计不超 32）", () => {
+    const inline = Array.from({ length: 20 }, () => "$x^2$").join(" ");
+    const fences = Array.from({ length: 20 }, () => "```math\nx^2\n```").join(
+      "\n\n"
+    );
+    const root = renderContent(
+      <MarkdownContent content={inline + "\n\n" + fences} />
+    );
+    expect(root.querySelectorAll(".katex").length).toBe(32);
+  });
+});
+
+describe("MarkdownContent — escape 哨兵不泄漏到 link/image 属性 (reviewer P1-2)", () => {
+  it("链接目标里的 \\$ 还原成字面 $，不留哨兵/百分号编码", () => {
+    const root = renderContent(
+      <MarkdownContent content={"[go](https://example.com/a\\$b)"} />
+    );
+    const a = root.querySelector("a");
+    const href = a?.getAttribute("href") ?? "";
+    expect(href).toContain("a$b");
+    expect(href).not.toContain("");
+    expect(href).not.toContain("%EE%80%80");
+  });
+
+  it("图片 src 与 alt 里的 \\$ 还原成字面 $", () => {
+    const root = renderContent(
+      <MarkdownContent content={"![pic \\$x](https://ex.com/i\\$m.png)"} />
+    );
+    const img = root.querySelector("img");
+    expect(img?.getAttribute("src") ?? "").toContain("i$m.png");
+    expect(img?.getAttribute("src") ?? "").not.toContain("");
+    expect(img?.getAttribute("alt") ?? "").toContain("$x");
+  });
+});
+
+describe("MarkdownContent — 用户原文里的 U+E000 不被无条件改写 (reviewer P1-3)", () => {
+  it("消息含 PUA U+E000 且无 \\$ 时，U+E000 原样保留（不变成 $）", () => {
+    const root = renderContent(
+      <MarkdownContent content={"hello  world"} />
+    );
+    const vt = visibleText(root);
+    expect(vt).toContain("");
+    expect(vt).toBe("hello  world");
+  });
+
+  it("含 U+E000 又含 \\$x^2\\$ 时不腐蚀 U+E000（放弃 mask 以保内容）", () => {
+    const root = renderContent(
+      <MarkdownContent content={"a  b \\$x^2\\$ c"} />
+    );
+    expect(visibleText(root)).toContain("");
+  });
+});
+
 describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。
