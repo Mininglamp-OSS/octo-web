@@ -39,8 +39,12 @@ interface MarkdownContentProps {
   emojis?: EmojiInfo[];
   /**
    * 是否启用数学公式渲染（KaTeX），默认 true。
-   * 聊天消息默认识别 `$...$` 行内与 `$$...$$` 块级公式（对齐 iOS 用 math-ish 守卫
-   * 过滤金额/shell 误匹配）；明确不需要时可传 false。
+   *
+   * 聊天消息默认识别 `$...$` 行内与 `$$...$$` 块级公式，并用候选守卫（{@link keepAsMath}）
+   * 过滤 IM 正文误匹配（金额/变量/JSON/路径）。为保证正文零腐蚀，行内候选比 iOS 更严：
+   * 含 `/`、`:`、单字母反斜杠、或多个词形 token 的片段按正文处理；纯 CJK 且不含真正 TeX 命令
+   * 的 `$金额_x$` 不渲染，但含命令的 `$v_{\text{平均}}$` 照常渲染。需要放宽（如无特殊字符的
+   * 简单 `$a+b$`）见 {@link allowSingleDollarMath}。明确不需要公式时可传 false。
    */
   enableMath?: boolean;
   /**
@@ -197,32 +201,62 @@ const CJK_CHAR =
 /** 行内公式候选长度上限，对齐 iOS 的 blast-radius 控制。 */
 const MAX_INLINE_MATH_LEN = 200;
 
+/** 多字母 TeX 命令，如 \frac \eta \text \sum —— 出现即视为明确的公式意图。 */
+const MULTI_LETTER_TEX_CMD = /\\[A-Za-z]{2,}/;
+/** 单字母反斜杠（\a \b \t…）：更像 Windows 路径 / 转义，而非行内 TeX 命令。 */
+const SINGLE_LETTER_BACKSLASH = /\\[A-Za-z](?![A-Za-z])/;
+
 /**
- * 判断一个 remark-math 公式节点是否真的按公式渲染。仅含某个 math-ish 字符还不够——普通 IM
- * 正文里 `_`（snake_case）、`\`（路径）、`{}`（JSON）、`^` 很常见，只看这个会把货币/变量/路径
- * 正文吞进 KaTeX。这里对齐 iOS 收紧 candidate：
- *  - value 必须非空（去空白后）且含 math-ish 字符（`\ ^ _ { }`）；
- *  - 块级 `$$…$$`（node.type==="math"，fence 独占行、意图明确、可跨多行）保持宽松，满足上面即可；
- *  - 行内 `$…$` / `$$…$$` 额外约束候选：不跨行（对齐 iOS 在 `\n` 断开）、长度 ≤ 200、不含 CJK/全角；
- *    单 `$…$` 再要求定界符两侧紧贴非空白（Pandoc 规则），挡住 `$MY_VAR and $OTHER`（收尾定界符
- *    前是空格）这类正文被误配成公式。
+ * 判断一个 remark-math 公式节点是否真的按公式渲染。
+ *
+ * 只看「span 里有没有某个 math-ish 字符」远远不够——普通 IM 正文里 `_`（snake_case）、`\`（路径）、
+ * `{}`（JSON）、`^` 很常见，会把货币/变量/JSON/路径正文吞进 KaTeX。这里对候选做形态约束（比 iOS
+ * WKLaTeXPreprocessor 更严；iOS 的 `$…$` 扫描其实只看 hasMathChar，同样会腐蚀 `$MY_VAR and $` 这类
+ * 英文正文，Web 侧要求正文零腐蚀）：
+ *
+ * - 块级 `$$…$$`（node.type==="math"，fence 独占行、意图明确、可跨多行）保持宽松：非空 + math-ish。
+ * - 行内 `$…$` / `$$…$$`（含 Gap A：inline `$$` 同样受约束）——先 trim 掉 padding，再要求：
+ *     不跨行、长度 ≤ 200、非空、含 math-ish 字符；
+ *     不含 `/` `:`（路径 / URL / env / 比值分隔符）；
+ *     不含单字母反斜杠 `\b`/`\a`（Windows 路径 / 转义，而非行内命令）；
+ *     单 `$…$` 还要求定界符两侧紧贴非空白（Pandoc 规则）；
+ *   然后按「是否含真正的多字母 TeX 命令」分流（Gap B：不只看首尾字符，看内容形态）：
+ *     - 含 `\frac`/`\text`/`\eta` 等 → 明确公式，放宽（`$v_{\text{平均}}$` 这类含中文的合法公式照常渲染）；
+ *     - 不含真命令 → 拒绝含 CJK、或含 ≥2 个「词形 token」(`[A-Za-z]{2,}`) 的 span，
+ *       挡住 `paid $$100 for my_var then $$200`、`$HOME_DIR/$SUB_DIR`、`$FOO_BAR/$BAZ_QUX` 等正文。
+ *
+ * 取舍：不含真命令的纯 CJK 行内公式（如 `$金额_x$`）不渲染；含命令的 `$v_{\text{平均}}$` 正常渲染。
+ * 单字母变量 `$y$`（无 math-ish 字符）本就不渲染，与 iOS 一致，建议写 `\(y\)` / `$$…$$`。
  */
 function keepAsMath(node: any, source: string): boolean {
-  const value: string = node?.value ?? "";
-  if (value.trim().length === 0) return false;
-  if (!MATH_ISH_CHAR.test(value)) return false;
-  if (node.type === "math") return true; // 块级 display 公式：意图明确，保持宽松
+  const raw: string = node?.value ?? "";
+  if (node.type === "math") {
+    // 块级 display 公式：意图明确，保持宽松
+    return raw.trim().length > 0 && MATH_ISH_CHAR.test(raw);
+  }
   // 行内公式候选收紧
-  if (/[\r\n]/.test(value)) return false;
-  if (value.length > MAX_INLINE_MATH_LEN) return false;
-  if (CJK_CHAR.test(value)) return false;
+  if (/[\r\n]/.test(raw)) return false;
+  if (raw.length > MAX_INLINE_MATH_LEN) return false;
+  const core = raw.trim();
+  if (core.length === 0) return false;
+  if (!MATH_ISH_CHAR.test(core)) return false;
+  // 单 $…$ 需 Pandoc 邻接（定界符两侧紧贴非空白）；$$…$$ 允许 padding（已 trim）
   const start = node?.position?.start?.offset;
   const isDoubleDollar =
     typeof start === "number" &&
     source[start] === "$" &&
     source[start + 1] === "$";
-  if (!isDoubleDollar && (!/^\S/.test(value) || !/\S$/.test(value))) {
-    return false;
+  if (!isDoubleDollar && (/^\s/.test(raw) || /\s$/.test(raw))) return false;
+  // 路径 / URL / env / 比值分隔符 → 普通文本
+  if (/[/:]/.test(core)) return false;
+  // 单字母反斜杠（\a \b …）→ 更像路径 / 转义
+  if (SINGLE_LETTER_BACKSLASH.test(core)) return false;
+  // 有真正的多字母 TeX 命令时放宽；否则用形态信号挡住 word-shaped prose
+  if (!MULTI_LETTER_TEX_CMD.test(core)) {
+    if (CJK_CHAR.test(core)) return false;
+    // 去掉命令后统计「词形 token」；≥2 视为正文（"for my var" / "HOME DIR" 等）
+    const proseWords = core.replace(/\\[A-Za-z]+/g, " ").match(/[A-Za-z]{2,}/g);
+    if (proseWords && proseWords.length >= 2) return false;
   }
   return true;
 }

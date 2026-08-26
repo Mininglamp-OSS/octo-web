@@ -496,6 +496,65 @@ describe("MarkdownContent — KaTeX 解析失败回落为正文，不显示 .kat
   });
 });
 
+describe("MarkdownContent — inline $$ 与无空格 shell/path prose 不被吞 (reviewer Gap A/B)", () => {
+  // Gap A：inline $$…$$ 也要受候选约束（英文正文没有 CJK 兜底）。
+  const gapA: string[] = [
+    "paid $$100 for my_var then $$200",
+    "cost $$5 for a_b and $$10",
+  ];
+  for (const input of gapA) {
+    it(`inline $$ 英文正文不误渲染：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      const vt = visibleText(root);
+      for (const n of input.match(/\d+/g) ?? []) expect(vt).toContain(n);
+    });
+  }
+
+  it("inline $$ 英文正文保留中间词（不吞成 100formyvarthen200）", () => {
+    const root = renderContent(
+      <MarkdownContent content={"paid $$100 for my_var then $$200"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("for my_var then");
+    expect(vt).toContain("100");
+    expect(vt).toContain("200");
+  });
+
+  // Gap B：无空格的 shell/env/path 正文（首尾字符紧贴非空白，但内容形态明显是正文）。
+  const gapB: Array<[string, string[]]> = [
+    ["$HOME_DIR/$SUB_DIR", ["HOME_DIR", "SUB_DIR"]],
+    ["$FOO_BAR/$BAZ_QUX", ["FOO_BAR", "BAZ_QUX"]],
+    ["use $PATH_A:$PATH_B now", ["PATH_A", "PATH_B"]],
+    ["ratio $1_000/$2_000 ok", ["1_000", "2_000"]],
+    ["C:\\a$X_1\\b$Y_2", ["X_1", "Y_2"]],
+  ];
+  for (const [input, tokens] of gapB) {
+    it(`无空格 shell/path 正文不误渲染：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      const vt = visibleText(root);
+      for (const tk of tokens) expect(vt).toContain(tk);
+    });
+  }
+});
+
+describe("MarkdownContent — 含真正 TeX 命令时放宽（CJK 合法公式仍渲染）", () => {
+  it("$v_{\\text{平均}}$（含 \\text 命令）照常渲染成 KaTeX", () => {
+    const root = renderContent(
+      <MarkdownContent content={"速度 $v_{\\text{平均}}$ 是关键"} />
+    );
+    expect(root.querySelector(".katex")).not.toBeNull();
+  });
+
+  it("纯 CJK 且无命令的 $金额_x$ 不渲染（视为正文）", () => {
+    const root = renderContent(<MarkdownContent content={"订单 $金额_x$ 备注"} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("金额_x");
+  });
+});
+
 describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。
