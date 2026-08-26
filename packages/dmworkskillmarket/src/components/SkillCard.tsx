@@ -225,9 +225,6 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
             <h3 title={displayName}>{displayName}</h3>
           </div>
           <div className="skill-market-card__meta-row">
-            <span className="skill-market-card__name" title={skill.name}>
-              {skill.name}
-            </span>
             {showOwner && (
               <span
                 className={
