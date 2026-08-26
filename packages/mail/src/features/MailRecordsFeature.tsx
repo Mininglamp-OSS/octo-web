@@ -198,6 +198,14 @@ export default function MailRecordsFeature({
               workspace.selectMessage(nextMessage?.id || "");
               workspace.reload();
             }}
+            onRestoredFromJunk={() => {
+              setRemovedMessageId(selectedMessage.id);
+              const nextMessage = workspace.messages.find(
+                (message) => message.id !== selectedMessage.id
+              );
+              workspace.selectMessage(nextMessage?.id || "");
+              workspace.reload();
+            }}
             onDraftSent={() => {
               workspace.selectMessage("");
               selectTarget("sent");

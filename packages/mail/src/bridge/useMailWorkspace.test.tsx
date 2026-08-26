@@ -181,7 +181,85 @@ describe("useMailWorkspace read state", () => {
       "42",
       expect.any(AbortSignal)
     );
+    expect(testState.emit).toHaveBeenCalledWith("mail-navigation-refresh");
 
+    unmount();
+  });
+
+  it("retries a state refresh when the matching workspace request was superseded", async () => {
+    const { result, unmount } = renderHook(() => useMailWorkspace("fallback"));
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+
+    let resolveSupersededMailboxes!: (value: never[]) => void;
+    let resolveSupersededMessages!: (value: {
+      messages: never[];
+      total: number;
+      offset: number;
+      limit: number;
+    }) => void;
+    const supersededMailboxes = new Promise<never[]>((resolve) => {
+      resolveSupersededMailboxes = resolve;
+    });
+    const supersededMessages = new Promise<{
+      messages: never[];
+      total: number;
+      offset: number;
+      limit: number;
+    }>((resolve) => {
+      resolveSupersededMessages = resolve;
+    });
+
+    testState.getState.mockResolvedValue("2");
+    testState.listMailboxes.mockImplementationOnce(() => supersededMailboxes);
+    testState.listMessages.mockImplementationOnce(() => supersededMessages);
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+
+    await waitFor(() =>
+      expect(testState.listMailboxes).toHaveBeenCalledTimes(2)
+    );
+    await waitFor(() =>
+      expect(testState.listMessages).toHaveBeenCalledTimes(2)
+    );
+
+    act(() => result.current.reload());
+    await waitFor(() =>
+      expect(testState.listMailboxes).toHaveBeenCalledTimes(3)
+    );
+    await waitFor(() =>
+      expect(testState.listMessages).toHaveBeenCalledTimes(3)
+    );
+
+    testState.listMailboxes.mockResolvedValue([
+      { id: "inbox", name: "Inbox", total: 2, unread: 2 },
+      { id: "junk", name: "Junk", total: 1, unread: 1 },
+    ]);
+    testState.listMessages.mockResolvedValue({
+      messages: [
+        {
+          id: "E2",
+          mailbox: "Inbox",
+          subject: "New message",
+          from: "new@example.test",
+          to: ["agent@example.test"],
+          preview: "new body",
+          receivedAt: "2026-08-10T00:01:00Z",
+          size: 8,
+          keywords: [],
+          unread: true,
+        },
+      ],
+      total: 1,
+      offset: 0,
+      limit: 30,
+    });
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+
+    await waitFor(() => expect(result.current.messages[0]?.id).toBe("E2"));
+    expect(result.current.mailboxes[0]?.unread).toBe(2);
+    expect(result.current.mailboxes[1]?.unread).toBe(1);
+
+    resolveSupersededMailboxes([]);
+    resolveSupersededMessages({ messages: [], total: 0, offset: 0, limit: 30 });
     unmount();
   });
 
