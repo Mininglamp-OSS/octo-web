@@ -284,6 +284,7 @@ export class GroupMdEditor extends Component<
               <Button
                 type={mode === "preview" ? "primary" : "tertiary"}
                 size="small"
+                data-testid="group-md-preview-btn"
                 onClick={() => this.setState({ mode: "preview" })}
               >
                 {t("base.groupMd.preview")}

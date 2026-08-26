@@ -31,4 +31,14 @@ export {
 } from './poller'
 export type { PollAuthStatusOptions } from './poller'
 
-export { fetchHttpClient, OidcBindHttpError } from './http'
+export { fetchHttpClient, createFetchHttpClient, OidcBindHttpError } from './http'
+
+export {
+  IPC_OIDC_AUTHORIZE_START,
+  IPC_OIDC_AUTHORIZE_END,
+  beginOidcAuthorize,
+  endOidcAuthorize,
+  getOidcClient,
+  isElectronDesktop,
+} from './electron'
+export type { OidcAuthorizeStartResult } from './electron'

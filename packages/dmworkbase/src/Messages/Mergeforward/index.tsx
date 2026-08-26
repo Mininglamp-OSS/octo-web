@@ -26,6 +26,56 @@ import { fetchImChannelInfo, getImChannelInfo } from "../../im-runtime/channelRu
 
 import "./index.css";
 
+function isRecord(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function mergeMentionIntoPayload(payload: Record<string, any>, content: MessageContent) {
+  const rawMention = isRecord(content.contentObj?.mention)
+    ? content.contentObj.mention
+    : undefined;
+  const payloadMention = isRecord(payload.mention) ? payload.mention : undefined;
+  const decodedMention = content.mention as any;
+
+  if (!rawMention && !payloadMention && !decodedMention) {
+    return payload;
+  }
+
+  const mention = {
+    ...(rawMention ?? {}),
+    ...(payloadMention ?? {}),
+  };
+
+  if (decodedMention) {
+    if (decodedMention.all === true || decodedMention.all === 1) {
+      mention.all = 1;
+    } else if (decodedMention.all === false && mention.all === undefined) {
+      mention.all = 0;
+    }
+    if (Array.isArray(decodedMention.uids)) {
+      mention.uids = decodedMention.uids;
+    }
+    if (Array.isArray(decodedMention.entities)) {
+      mention.entities = decodedMention.entities;
+    }
+    if (decodedMention.humans !== undefined) {
+      mention.humans = decodedMention.humans;
+    }
+    if (decodedMention.ais !== undefined) {
+      mention.ais = decodedMention.ais;
+    }
+  }
+
+  if (Object.keys(mention).length === 0) {
+    return payload;
+  }
+
+  return {
+    ...payload,
+    mention,
+  };
+}
+
 // users 新增外部来源字段。后端在合并转发归档时填充，前端透传即可。
 export interface MergeforwardUser {
   uid: string;
@@ -199,16 +249,18 @@ export default class MergeforwardContent extends MessageContent {
   }
 
   messageToMap(message: Message): any {
-    // Use contentObj if available, otherwise fall back to encodeJSON()
-    let payload = message.content.contentObj;
-    if (!payload) {
-      payload = { ...message.content.encodeJSON(), type: message.content.contentType };
-    } else if (payload.type === undefined) {
-      // 防护性检查：确保 contentObj 包含 type 字段
-      // 正常情况下 contentObj 来自服务器 payload，应包含 type
-      // 但某些边缘情况可能导致丢失，这里兼容处理
-      payload = { ...payload, type: message.content.contentType };
-    }
+    // Start from encodeJSON() so locally-created messages keep their full
+    // payload even when contentObj only carries injected metadata.
+    const encodedPayload = {
+      ...message.content.encodeJSON(),
+      type: message.content.contentType,
+    };
+    const payload = mergeMentionIntoPayload(
+      isRecord(message.content.contentObj)
+        ? { ...encodedPayload, ...message.content.contentObj }
+        : encodedPayload,
+      message.content,
+    );
     return {
       message_id: message.messageID,
       from_uid: message.fromUID ?? "",
@@ -375,6 +427,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               mergeforwardContent={content}
               visible={showList}
               onClose={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
+              onMentionClick={(uid) => context.showUser(uid)}
               goBackRef={this.goBackRef}
               onNavigateChange={({ title, canGoBack }) =>
                 this.setState({ navTitle: title, canGoBack })
@@ -408,7 +461,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
               <p>{this.context.t("base.mergeForward.chatHistory")}</p>
               <p>
                 {" "}
-                <MessageTrail message={message} timeStyle={{ color: "#999" }} />
+                <MessageTrail message={message} timeStyle={{ color: "var(--wk-text-tertiary)" }} />
               </p>
             </div>
           </div>
@@ -455,6 +508,7 @@ export class MergeforwardCell extends MessageCell<any, MergeforwardCellState> {
             mergeforwardContent={content}
             visible={showList}
             onClose={() => this.setState({ showList: false, canGoBack: false, navTitle: "" })}
+            onMentionClick={(uid) => context.showUser(uid)}
             goBackRef={this.goBackRef}
             onNavigateChange={({ title, canGoBack }) =>
               this.setState({ navTitle: title, canGoBack })

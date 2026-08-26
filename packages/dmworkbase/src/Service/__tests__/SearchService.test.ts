@@ -182,4 +182,126 @@ describe("SearchService request boundaries", () => {
       only_message: 1,
     });
   });
+
+  it("posts cloud-docs search with the {q,pageSize} body (no cursor on the first page) and normalizes the response", async () => {
+    postMock.mockResolvedValue({
+      total: 2,
+      items: [
+        { docId: "d1", title: "A", docType: "doc", updatedAt: 1 },
+        { docId: "d2", title: "B", docType: "sheet", updatedAt: 2 },
+      ],
+      nextCursor: "cur-2",
+    });
+
+    const result = await SearchService.searchDocs({
+      keyword: "spec",
+      pageSize: 20,
+    });
+
+    // First page: cursor omitted entirely (backend starts from the top).
+    expect(postMock).toHaveBeenCalledWith("docs/search", {
+      q: "spec",
+      pageSize: 20,
+    });
+    expect(result).toEqual({
+      total: 2,
+      items: [
+        { docId: "d1", title: "A", docType: "doc", updatedAt: null },
+        { docId: "d2", title: "B", docType: "sheet", updatedAt: null },
+      ],
+      nextCursor: "cur-2",
+    });
+  });
+
+  it("sends the cursor in the body only when provided (next page)", async () => {
+    postMock.mockResolvedValue({ total: 0, items: [] });
+    await SearchService.searchDocs({
+      keyword: "x",
+      pageSize: 20,
+      cursor: "cur-2",
+    });
+    expect(postMock).toHaveBeenCalledWith("docs/search", {
+      q: "x",
+      pageSize: 20,
+      cursor: "cur-2",
+    });
+  });
+
+  it("nextCursor: reads a non-empty string, else undefined; total falls back to the visible item count", async () => {
+    // Keyset paging: the pager stops on !nextCursor, so an absent/empty/non-string
+    // nextCursor must normalize to undefined. total is display-only; when it is
+    // missing or non-numeric we fall back to the visible item count (never
+    // Infinity — that was the offset-era hack the pager no longer needs).
+    postMock.mockResolvedValue({
+      items: [{ docId: "d1", title: "A", docType: "doc", updatedAt: 0 }],
+    });
+    const noTotal = await SearchService.searchDocs({ keyword: "x", pageSize: 20 });
+    expect(noTotal.total).toBe(1);
+    expect(noTotal.nextCursor).toBeUndefined();
+    expect(noTotal.items).toEqual([
+      { docId: "d1", title: "A", docType: "doc", updatedAt: null },
+    ]);
+
+    postMock.mockResolvedValue({ total: "nope", nextCursor: "" });
+    const bad = await SearchService.searchDocs({ keyword: "x", pageSize: 20 });
+    expect(bad).toEqual({ total: 0, items: [], nextCursor: undefined });
+  });
+
+  it("coerces highlight to string-or-undefined (a non-string can't reach renderHighlight)", async () => {
+    postMock.mockResolvedValue({
+      total: 4,
+      items: [
+        { docId: "a", title: "A", docType: "doc", highlight: "<em>hit</em>" }, // string kept
+        { docId: "b", title: "B", docType: "doc", highlight: 123 }, // number -> undefined
+        { docId: "c", title: "C", docType: "doc", highlight: { x: 1 } }, // object -> undefined
+        { docId: "d", title: "D", docType: "doc" }, // absent -> undefined
+      ],
+    });
+    const result = await SearchService.searchDocs({ keyword: "x", pageSize: 20 });
+    expect(result.items.map((it) => it.highlight)).toEqual([
+      "<em>hit</em>",
+      undefined,
+      undefined,
+      undefined,
+    ]);
+  });
+
+  it("coerces updatedAt to plausible-millis-or-null (contract: number | null)", async () => {
+    postMock.mockResolvedValue({
+      total: 5,
+      items: [
+        { docId: "a", title: "A", docType: "doc", updatedAt: 1710000000000 }, // valid millis
+        { docId: "b", title: "B", docType: "doc", updatedAt: 0 }, // falsy -> null
+        { docId: "c", title: "C", docType: "doc", updatedAt: 1700000000 }, // seconds-scale -> null
+        { docId: "d", title: "D", docType: "doc", updatedAt: "2024-01-01" }, // non-number -> null
+        { docId: "e", title: "E", docType: "doc", updatedAt: null }, // null stays null
+      ],
+    });
+    const result = await SearchService.searchDocs({ keyword: "x", pageSize: 20 });
+    expect(result.items.map((it) => it.updatedAt)).toEqual([
+      1710000000000,
+      null,
+      null,
+      null,
+      null,
+    ]);
+  });
+
+  it("drops items missing a usable docId so /d/undefined and key collisions are impossible", async () => {
+    postMock.mockResolvedValue({
+      total: 3,
+      items: [
+        { docId: "d1", title: "A", docType: "doc", updatedAt: 0 },
+        { title: "no id", docType: "doc", updatedAt: 0 },
+        { docId: "", title: "empty id", docType: "doc", updatedAt: 0 },
+      ],
+    });
+    const result = await SearchService.searchDocs({ keyword: "x", pageSize: 20 });
+    // updatedAt:0 is coerced to null per the number|null contract.
+    expect(result.items).toEqual([{ docId: "d1", title: "A", docType: "doc", updatedAt: null }]);
+    // total is display-only and passed through verbatim under keyset paging;
+    // there is no rawItemCount channel anymore — the pager relies on nextCursor.
+    expect(result.total).toBe(3);
+    expect(result.nextCursor).toBeUndefined();
+  });
 });

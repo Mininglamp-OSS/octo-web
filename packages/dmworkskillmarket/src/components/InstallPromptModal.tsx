@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Check, Copy, Terminal } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import { buildInstallPrompt, resolveAPIBaseURL } from "../utils/installPrompt";
+import { Dap } from "@octo/base";
 
 interface InstallPromptModalProps {
   skillId: string | null;
@@ -23,6 +24,8 @@ export default function InstallPromptModal({ skillId, onClose }: InstallPromptMo
   function handleCopy() {
     if (!prompt || !navigator.clipboard?.writeText) return;
     void navigator.clipboard.writeText(prompt).then(() => {
+      // 六审 P2:写剪贴板 resolve 后才计数(原点击委托在 promise 落定前就发,权限拒绝/非安全上下文也计)。
+      Dap.shared.track("market_skill_install_prompt_copied", {});
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

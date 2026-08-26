@@ -46,15 +46,17 @@ const citationSchema = {
     tagNames: [...(defaultSchema.tagNames || []), 'citation', 'citationgroup', 'teamcitation'],
     attributes: {
         ...defaultSchema.attributes,
+        // Allow GFM column alignment (`:--:` / `--:`) to survive sanitization so
+        // tables render centered/right-aligned columns instead of dropping align.
+        th: [...(defaultSchema.attributes?.th || []), 'align'],
+        td: [...(defaultSchema.attributes?.td || []), 'align'],
         citation: ['index', 'displayindex', 'badgekey'],
         citationgroup: ['indices', 'displayindices', 'badgekey'],
         teamcitation: ['index', 'badgekey'],
     },
 };
 
-function remarkCitation(citations: CitationItem[]) {
-    const getChannelId = (idx: number) => citations.find(c => c.index === idx)?.channel_id;
-
+function remarkCitation() {
     return (tree: any) => {
         // Build the reading-order display map from the visible text nodes only
         // (visit 'text' never enters code / inlineCode), in document order — so
@@ -89,11 +91,11 @@ function remarkCitation(citations: CitationItem[]) {
                 const m = matches[i];
                 const textBetween = node.value.slice(prev.end, m.start);
                 const isAdjacent = textBetween.trim() === '';
-                const prevChId = getChannelId(prev.citationIndex);
-                const curChId = getChannelId(m.citationIndex);
-                const sameChannel = !!prevChId && !!curChId && prevChId === curChId;
 
-                if (isAdjacent && sameChannel) {
+                // Adjacent markers form one visual citation group regardless of
+                // source channel. The badge label is a reading-order summary of
+                // the references; clicking it still exposes every source item.
+                if (isAdjacent) {
                     cur.end = m.end;
                     cur.indices.push(m.citationIndex);
                 } else {
@@ -213,6 +215,13 @@ function markdownComponents(
     disableTeamMemberPreview: boolean,
 ): any {
     return {
+        // Wrap tables so wide ones scroll horizontally inside a bordered
+        // container instead of breaking the reading column layout.
+        table: ({ node, ...props }: any) => (
+            <div className="summary-markdown-table-wrap">
+                <table {...props} />
+            </div>
+        ),
         citation: ({ node, ...props }: any) => {
             const idx = node?.properties?.index ?? props?.index;
             const displayIdx = node?.properties?.displayindex ?? props?.displayindex;
@@ -284,7 +293,7 @@ const CitationText: React.FC<CitationTextProps> = ({
     // — only the label the badge renders differs from the internal index. The
     // reading-order map is built inside remarkCitation from the AST text nodes
     // (so code-span `[n]` never pollutes numbering — #1003 P1).
-    const citationPlugin = () => remarkCitation(citations);
+    const citationPlugin = () => remarkCitation();
     const remarkPlugins: any[] = [remarkGfm, remarkBreaks];
     if (hasCitations) remarkPlugins.push(citationPlugin);
     if (hasTeamCitations) remarkPlugins.push(remarkTeamCitation);

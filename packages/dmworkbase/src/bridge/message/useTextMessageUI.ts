@@ -88,7 +88,7 @@ export function getTextMessageUI(
     // 自定义表情(含服务端 url)按清单判定;不再用本地 /emoji/custom_ 路径子串
     // (对 CDN/绝对 url 失效)。旧实现未提供该方法时回退到原判断。
     (WKApp.emojiService.isCustomEmoji?.(emojis[0].key) ??
-      emojis[0].url.includes("/emoji/custom_"));
+      emojis[0].url.includes("emoji/custom_"));
 
   // 获取纯文本内容（优先使用编辑后的内容）
   const effectiveContent = getEffectiveContent(message) as any;
@@ -143,7 +143,7 @@ export function useTextMessageUI(message: MessageWrap) {
       emojis.length === 1 &&
       // 自定义表情(含服务端 url)按清单判定;不再用本地 /emoji/custom_ 路径子串。
       (WKApp.emojiService.isCustomEmoji?.(emojis[0].key) ??
-        emojis[0].url.includes("/emoji/custom_"));
+        emojis[0].url.includes("emoji/custom_"));
 
     // 获取纯文本内容（优先使用编辑后的内容）
     const effectiveContent = getEffectiveContent(message) as any;

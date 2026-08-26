@@ -37,6 +37,18 @@ describe("hasGlobalSearchCriteria", () => {
     expect(hasGlobalSearchCriteria("files", "", fileFilters)).toBe(true);
     expect(hasGlobalSearchCriteria("messages", "", fileFilters)).toBe(false);
   });
+
+  it("ignores whitespace-only keywords and non-positive file ranges", () => {
+    const defaults = defaultGlobalSearchFilters();
+    expect(hasGlobalSearchCriteria("messages", "  \t", defaults)).toBe(false);
+    expect(
+      hasGlobalSearchCriteria(
+        "files",
+        "",
+        withOverrides({ fileSizeMin: 0, fileSizeMax: -1 })
+      )
+    ).toBe(false);
+  });
 });
 
 describe("activeGlobalSearchFilterCount", () => {
@@ -157,10 +169,49 @@ describe("selectedGlobalSearchFilterValueCount", () => {
     ).toBe(2);
   });
 
+  it("counts selected file type categories instead of expanded extensions when provided", () => {
+    expect(
+      selectedGlobalSearchFilterValueCount(
+        withOverrides({
+          fileExts: [
+            "txt",
+            "log",
+            "md",
+            "markdown",
+            "gif",
+            "mp4",
+            "mov",
+            "avi",
+          ],
+          datePreset: "last_30_days",
+        }),
+        { fileTypeCategoryCount: 4 }
+      )
+    ).toBe(5);
+  });
+
+  it("falls back to expanded file extensions when file category count is absent", () => {
+    expect(
+      selectedGlobalSearchFilterValueCount(
+        withOverrides({
+          fileExts: ["txt", "log", "md"],
+        })
+      )
+    ).toBe(3);
+  });
+
   it("counts group + thread backend values as one visible group option", () => {
     expect(
       selectedGlobalSearchFilterValueCount(
         withOverrides({ channelTypes: [2, 5] })
+      )
+    ).toBe(1);
+  });
+
+  it("counts a thread-only channel selection as one visible group option", () => {
+    expect(
+      selectedGlobalSearchFilterValueCount(
+        withOverrides({ channelTypes: [5] })
       )
     ).toBe(1);
   });

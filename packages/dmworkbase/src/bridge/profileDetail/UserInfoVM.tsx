@@ -17,6 +17,7 @@ import { resolveExternalForViewer } from "../../Utils/externalViewer";
 import { isRealnameVerified, displayName as resolveDisplayName } from "../../Utils/displayName";
 import { parseThreadChannelId } from "../../Service/Thread";
 import {
+  addCurrentImChannelInfoListener,
   addCurrentImSubscriberChangeListener,
   fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
@@ -42,6 +43,7 @@ export class UserInfoVM extends ProviderListener {
   vercode?: string;
   subscriberChangeListener?: SubscriberChangeListener;
   unsubscribeSubscriberChangeListener?: () => void;
+  unsubscribeChannelInfoListener?: () => void;
   editingRemark = false;
   remarkDraft = "";
   savingRemark = false;
@@ -78,6 +80,17 @@ export class UserInfoVM extends ProviderListener {
     }
 
     this.reloadFromChannelInfo();
+    this.unsubscribeChannelInfoListener = addCurrentImChannelInfoListener(
+      (channelInfo: ChannelInfo) => {
+        if (
+          channelInfo.channel?.channelID === this.uid &&
+          channelInfo.channel?.channelType === ChannelTypePerson
+        ) {
+          this.mergeChannelInfo(channelInfo);
+          this.notifyListener();
+        }
+      }
+    );
 
     this.reloadChannelInfo();
   }
@@ -86,6 +99,8 @@ export class UserInfoVM extends ProviderListener {
     this.mounted = false;
     this.unsubscribeSubscriberChangeListener?.();
     this.unsubscribeSubscriberChangeListener = undefined;
+    this.unsubscribeChannelInfoListener?.();
+    this.unsubscribeChannelInfoListener = undefined;
   }
 
   getRemark() {
@@ -318,6 +333,17 @@ export class UserInfoVM extends ProviderListener {
     return WKApp.loginInfo.uid === this.uid;
   }
 
+  mergeChannelInfo(channelInfo: ChannelInfo) {
+    this.channelInfo = {
+      ...(this.channelInfo || channelInfo),
+      ...channelInfo,
+      orgData: {
+        ...(this.channelInfo?.orgData || {}),
+        ...(channelInfo.orgData || {}),
+      },
+    } as ChannelInfo;
+  }
+
   /**
    * 相对当前查看 Space 判断该用户是否为"外部"。
    *
@@ -364,7 +390,14 @@ export class UserInfoVM extends ProviderListener {
 
   async reloadChannelInfo() {
     const res = await UserService.getUserProfile(this.uid, this.profileGroupNo());
-    this.channelInfo = Convert.userToChannelInfo(res);
+    const profileChannelInfo = Convert.userToChannelInfo(res);
+    const cachedChannelInfo = getCurrentImChannelInfo(
+      new Channel(this.uid, ChannelTypePerson)
+    );
+    this.channelInfo = profileChannelInfo;
+    if (cachedChannelInfo) {
+      this.mergeChannelInfo(cachedChannelInfo);
+    }
     if (!this.vercode || this.vercode === "") {
       if (res.vercode && res.vercode !== "") {
         this.vercode = res.vercode

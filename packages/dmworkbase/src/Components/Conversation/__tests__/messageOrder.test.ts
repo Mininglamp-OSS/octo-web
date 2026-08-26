@@ -6,6 +6,12 @@ const sdkState = vi.hoisted(() => ({
     sendingQueues: new Map<number, unknown>(),
     channelInfos: new Map<string, any>(),
     syncMessages: vi.fn(),
+    conversation: null as any,
+    openConversation: undefined as any,
+    notifyConversationListeners: vi.fn(),
+    scrollToBottom: vi.fn(),
+    markConversationUnread: vi.fn(() => Promise.resolve()),
+    emit: vi.fn(),
 }))
 
 vi.mock("wukongimjssdk", () => {
@@ -45,8 +51,14 @@ vi.mock("wukongimjssdk", () => {
                     notifySubscribeChangeListeners: () => {},
                 },
                 conversationManager: {
-                    findConversation: () => null,
-                    notifyConversationListeners: () => {},
+                    get openConversation() {
+                        return sdkState.openConversation
+                    },
+                    set openConversation(value: any) {
+                        sdkState.openConversation = value
+                    },
+                    findConversation: () => sdkState.conversation,
+                    notifyConversationListeners: sdkState.notifyConversationListeners,
                     addConversationListener: () => {},
                     removeConversationListener: () => {},
                 },
@@ -95,9 +107,9 @@ vi.mock("../../../App", () => ({
         loginInfo: { uid: "me" },
         config: { pageSizeOfMessage: 30 },
         dataSource: { channelDataSource: { subscribers: () => Promise.resolve([]) } },
-        mittBus: { on: () => {}, off: () => {} },
+        mittBus: { on: () => {}, off: () => {}, emit: sdkState.emit },
         conversationProvider: {
-            markConversationUnread: () => Promise.resolve(),
+            markConversationUnread: sdkState.markConversationUnread,
             syncMessages: sdkState.syncMessages,
         },
         shared: { currentSpaceId: "", notifyMessageDeleteListener: () => {} },
@@ -118,7 +130,7 @@ vi.mock("../../../Service/Provider", () => ({
         didUnMount() {}
     },
 }))
-vi.mock("react-scroll", () => ({ animateScroll: { scrollToBottom: () => {} }, scroller: { scrollTo: () => {} } }))
+vi.mock("react-scroll", () => ({ animateScroll: { scrollToBottom: sdkState.scrollToBottom }, scroller: { scrollTo: () => {} } }))
 vi.mock("../../../Service/Const", () => ({
     EndpointID: {},
     MessageContentTypeConst: { time: 1001, historySplit: 1002, rtcData: 1003 },
@@ -219,6 +231,13 @@ describe("ConversationVM message ordering", () => {
         sdkState.sendingQueues.clear()
         sdkState.channelInfos.clear()
         sdkState.syncMessages.mockReset()
+        sdkState.conversation = null
+        sdkState.openConversation = undefined
+        sdkState.notifyConversationListeners.mockReset()
+        sdkState.scrollToBottom.mockReset()
+        sdkState.markConversationUnread.mockReset()
+        sdkState.markConversationUnread.mockResolvedValue(undefined)
+        sdkState.emit.mockReset()
         document.body.innerHTML = ""
     })
 
@@ -229,6 +248,105 @@ describe("ConversationVM message ordering", () => {
         expect(first.messageContainerId).toMatch(/^viewport-\d+$/)
         expect(second.messageContainerId).toMatch(/^viewport-\d+$/)
         expect(first.messageContainerId).not.toBe(second.messageContainerId)
+    })
+
+    it("keeps a fully unread conversation unread until the visible-message gate advances browseTo", async () => {
+        const vm = new ConversationVM(channel)
+        const latest = wrap({
+            clientMsgNo: "remote-3",
+            messageSeq: 3,
+            timestamp: 300,
+            fromUID: "u1",
+        })
+        sdkState.conversation = {
+            channel,
+            unread: 3,
+            extra: {},
+        }
+        vm.unreadCount = 3
+        vm.browseToMessageSeq = 0
+        vm.lastMessage = latest
+
+        await vm.refreshNewMsgCount()
+
+        expect(vm.unreadCount).toBe(3)
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
+
+        // Conversation advances browseTo only after its foreground + viewport
+        // checks pass. Once that happens, the same calculation clears unread.
+        vm.browseToMessageSeq = 3
+        await vm.refreshNewMsgCount()
+        expect(vm.unreadCount).toBe(0)
+        expect(sdkState.markConversationUnread).toHaveBeenCalledWith(channel, 0)
+    })
+
+    it("counts the first remote message when browseTo is still zero", async () => {
+        const vm = new ConversationVM(channel)
+        sdkState.conversation = {
+            channel,
+            unread: 0,
+            extra: {},
+        }
+        vm.browseToMessageSeq = 0
+        vm.lastMessage = wrap({
+            clientMsgNo: "remote-1",
+            messageSeq: 1,
+            timestamp: 100,
+            fromUID: "u1",
+        })
+
+        await vm.refreshNewMsgCount()
+
+        expect(vm.unreadCount).toBe(1)
+        expect(sdkState.conversation.unread).toBe(1)
+    })
+
+    it("does not let an auxiliary VM claim the SDK open conversation", () => {
+        const primaryConversation = { channel: new Channel("group-1", 2) }
+        const threadConversation = { channel: new Channel("thread-1", 6) }
+        sdkState.openConversation = primaryConversation
+        const auxiliary = new ConversationVM(
+            threadConversation.channel,
+            undefined,
+            { registerAsOpenConversation: false },
+        )
+
+        ;(auxiliary as any).claimOpenConversation(threadConversation)
+
+        expect(sdkState.openConversation).toBe(primaryConversation)
+        auxiliary.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBe(primaryConversation)
+    })
+
+    it("only releases the exact SDK open conversation owned by the VM", () => {
+        const ownedConversation = { channel: new Channel("group-1", 2) }
+        const replacement = { channel: new Channel("group-1", 2) }
+        const primary = new ConversationVM(ownedConversation.channel)
+
+        ;(primary as any).claimOpenConversation(ownedConversation)
+        expect(sdkState.openConversation).toBe(ownedConversation)
+
+        sdkState.openConversation = replacement
+        primary.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBe(replacement)
+
+        ;(primary as any).claimOpenConversation(ownedConversation)
+        primary.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBeUndefined()
+    })
+
+    it("does not let an older VM clear a newer owner's shared conversation object", () => {
+        const sharedConversation = { channel: new Channel("group-1", 2) }
+        const older = new ConversationVM(sharedConversation.channel)
+        const newer = new ConversationVM(sharedConversation.channel)
+
+        ;(older as any).claimOpenConversation(sharedConversation)
+        ;(newer as any).claimOpenConversation(sharedConversation)
+        older.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBe(sharedConversation)
+
+        newer.releaseOpenConversationOwnership()
+        expect(sdkState.openConversation).toBeUndefined()
     })
 
     it("sorts no-seq messages with invalid order after sequenced messages", () => {
@@ -347,6 +465,56 @@ describe("ConversationVM message ordering", () => {
         expect(refreshMessages.mock.calls[0][0].map((message: any) => message.messageSeq)).toEqual([55, 56, 57])
         expect(vm.pulldownFinished).toBe(false)
         expect(vm.loading).toBe(false)
+    })
+
+    it("clears loading when locating an unloaded message fails", async () => {
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("locate failed"))
+        const vm = new ConversationVM(channel)
+
+        await expect(vm.requestMessagesAroundMessageSeq(56)).rejects.toThrow("locate failed")
+
+        expect(vm.loading).toBe(false)
+    })
+
+    it("clears loading state when the initial message sync fails", async () => {
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("sync failed"))
+        const vm = new ConversationVM(channel)
+
+        await expect(vm.syncMessages()).rejects.toThrow("sync failed")
+
+        expect(vm.loading).toBe(false)
+    })
+
+    it("clears loading state when loading older or newer messages fails", async () => {
+        const vm = new ConversationVM(channel)
+        vm.messagesOfOrigin = [wrap({ clientMsgNo: "oldest", messageSeq: 5 })]
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("history failed"))
+
+        await expect(vm.pulldownMessages()).rejects.toThrow("history failed")
+        expect(vm.loading).toBe(false)
+
+        sdkState.syncMessages.mockRejectedValueOnce(new Error("newer failed"))
+        await expect(vm.pullupMessages()).rejects.toThrow("newer failed")
+        expect(vm.loading).toBe(false)
+    })
+
+    it("does not enter loading state when there is no newer message to load", async () => {
+        const vm = new ConversationVM(channel)
+
+        await vm.pullupMessages()
+
+        expect(vm.loading).toBe(false)
+        expect(sdkState.syncMessages).not.toHaveBeenCalled()
+    })
+
+    it("does not start a second history load while one is in progress", async () => {
+        const vm = new ConversationVM(channel)
+        vm.messagesOfOrigin = [wrap({ clientMsgNo: "latest", messageSeq: 5 })]
+        vm.loading = true
+
+        await Promise.all([vm.pulldownMessages(), vm.pullupMessages()])
+
+        expect(sdkState.syncMessages).not.toHaveBeenCalled()
     })
 
     it("scrolls to the expanded row when locating a message inside a fold session", () => {
@@ -571,5 +739,67 @@ describe("ConversationVM message ordering", () => {
 
         expect(() => vm.updateReplyMessageContent({ messageID: "m1", contentEdit: "edited" } as any)).not.toThrow()
         expect(replyMsg.content.reply.content).toBe("edited")
+    })
+
+    it("clears stale unread state when the down arrow already points to the latest loaded message (#1173)", async () => {
+        const vm = new ConversationVM(channel)
+        const latest = wrap({
+            clientMsgNo: "latest",
+            messageSeq: 10,
+            timestamp: 100,
+            content: { text: "latest" },
+            fromUID: "u1",
+        })
+        sdkState.conversation = {
+            channel,
+            lastMessage: latest.message,
+            unread: 1,
+        }
+        vm.messagesOfOrigin = [latest]
+        vm.lastMessage = latest
+        vm.browseToMessageSeq = 9
+        vm.unreadCount = 1
+        vm.showScrollToBottomBtn = true
+
+        await vm.onDownArrow()
+
+        expect(sdkState.scrollToBottom).toHaveBeenCalled()
+        expect(vm.browseToMessageSeq).toBe(10)
+        expect(vm.unreadCount).toBe(0)
+        expect(vm.showScrollToBottomBtn).toBe(false)
+        expect(sdkState.markConversationUnread).toHaveBeenCalledWith(channel, 0)
+    })
+
+    it("keeps unread state when the server has a newer message that is not loaded yet (#1173)", async () => {
+        const vm = new ConversationVM(channel)
+        const loaded = wrap({
+            clientMsgNo: "loaded",
+            messageSeq: 10,
+            timestamp: 100,
+            content: { text: "loaded" },
+            fromUID: "u1",
+        })
+        sdkState.conversation = {
+            channel,
+            lastMessage: rawMessage(11),
+            unread: 1,
+        }
+        vm.messagesOfOrigin = [loaded]
+        vm.lastMessage = loaded
+        vm.browseToMessageSeq = 9
+        vm.unreadCount = 1
+        vm.showScrollToBottomBtn = true
+        const requestLatest = vi
+            .spyOn(vm, "requestMessagesOfFirstPage")
+            .mockResolvedValue(undefined as any)
+
+        await vm.onDownArrow()
+
+        expect(requestLatest).toHaveBeenCalledWith(0)
+        expect(sdkState.scrollToBottom).not.toHaveBeenCalled()
+        expect(vm.browseToMessageSeq).toBe(9)
+        expect(vm.unreadCount).toBe(1)
+        expect(vm.showScrollToBottomBtn).toBe(true)
+        expect(sdkState.markConversationUnread).not.toHaveBeenCalled()
     })
 })

@@ -1,3 +1,6 @@
+import { webOrigin } from "../../Utils/docLink";
+import { apiUrlOrigin } from "../../bridge/message/webhookPreview";
+import { getElectronLinksBridge } from "../../electron/desktopBridge";
 import React from "react";
 import MessageBase from "../Base";
 import { MessageBaseCellProps, MessageCell } from "../MessageCell";
@@ -64,17 +67,32 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
 
   private handleOpen = (): void => {
     const content = this.props.message.content as DocumentShareCardContent;
-    // P1-b：不信任 wire url，用已校验的 docId/spaceId 本地重建同源相对路径再导航。
-    const url = buildDocNavUrl(content.docId, content.spaceId);
-    if (url) window.open(url, "_blank", "noopener,noreferrer");
+    // P1-b：不信任 wire url，用已校验的 docId 本地重建同源相对路径再导航（Phase-1 已去 sp）。
+    const url = buildDocNavUrl(content.docId);
+    if (!url) return;
+    // Desktop shell: window.open is denied by the external-link router —
+    // route through the IPC bridge (activation-independent) instead.
+    const linksBridge = getElectronLinksBridge();
+    if (linksBridge) {
+      // buildDocNavUrl emits a root-relative path; resolve against the web
+      // origin so the http(s)-only bridge accepts it.
+      const apiOrigin = apiUrlOrigin();
+      const absoluteUrl =
+        apiOrigin && !/^https?:/.test(url) ? new URL(url, apiOrigin).href : url;
+      void linksBridge.openExternal(absoluteUrl).catch(() => {
+        // best-effort; keep silent like the old window.open path
+      });
+      return;
+    }
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
-  /** 复制文档链接：用已校验 docId/spaceId 在本源重建绝对链接（不回显 wire url，安全且可分享）。 */
+  /** 复制文档链接：用已校验 docId 在本源重建绝对链接（不回显 wire url，安全且可分享；无 sp）。 */
   private handleCopy = (): void => {
     const content = this.props.message.content as DocumentShareCardContent;
-    const rel = buildDocNavUrl(content.docId, content.spaceId);
+    const rel = buildDocNavUrl(content.docId);
     if (!rel) return;
-    void navigator.clipboard?.writeText(`${window.location.origin}${rel}`);
+    void navigator.clipboard?.writeText(`${webOrigin()}${rel}`);
   };
 
   private buildStrings(content: DocumentShareCardContent, state: DocSharePermissionState): DocumentShareCardStrings {
@@ -90,14 +108,18 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
   }
 
   /**
-   * 决定预览区显内容还是占位：有权限(reader/writer)+取数就绪+有内容 → 显首屏预览；
+   * 决定预览区显内容还是占位：实时 ACL 确认可访问且有内容 → 显首屏预览；
    * 否则给占位（无权限→申请引导 / 失效 / 检查中 / 空文档），与 octo 原型一致，ACL-safe。
    */
   private buildPreviewOrPlaceholder(
     state: DocSharePermissionState,
   ): { preview?: DocSharePreview; placeholder?: DocSharePlaceholder } {
     const { t } = this.context;
-    if ((state === "reader" || state === "writer") && this.state.status === "ready" && this.state.preview) {
+    if (
+      (state === "reader" || state === "commenter" || state === "writer") &&
+      this.state.status === "ready" &&
+      this.state.preview
+    ) {
       return { preview: this.state.preview };
     }
     if (state === "no_access") {
@@ -115,6 +137,15 @@ export class DocumentShareCardCell extends MessageCell<MessageBaseCellProps> {
           icon: "warning",
           title: t("base.docShareCard.placeholder.unavailable.title"),
           desc: t("base.docShareCard.placeholder.unavailable.desc"),
+        },
+      };
+    }
+    if (state === "error") {
+      return {
+        placeholder: {
+          icon: "warning",
+          title: t("base.docShareCard.placeholder.error.title"),
+          desc: t("base.docShareCard.placeholder.error.desc"),
         },
       };
     }

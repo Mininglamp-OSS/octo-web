@@ -4,12 +4,18 @@ import {
   addImSubscriberChangeListener,
   deleteImChannelInfo,
   fetchImChannelInfo,
+  getPendingImChannelInfoFetch,
+  getPendingImChannelInfoFetches,
   getImChannelInfo,
+  getImChannelSubscribersCacheRaw,
   getImChannelSubscriberOfMe,
   getImChannelSubscribers,
+  getImChannelLocallyRemovedSubscriberUids,
   getImSubscribeCacheMap,
+  clearImChannelSubscribersLocallyRemoved,
   notifyImChannelInfoListeners,
   notifyImSubscriberChangeListeners,
+  markImChannelSubscribersLocallyRemoved,
   patchImChannelInfoOrgData,
   setImChannelSubscribersCache,
   setImChannelInfoCache,
@@ -77,6 +83,77 @@ describe("channelRuntime", () => {
     expect(sdk.channelManager.getChannelInfo).toHaveBeenCalledWith(channel);
   });
 
+  it("keeps SDK-deduped in-flight channel fetches visible until the original request settles", async () => {
+    const sdk = createSdk();
+    const channel = { channelID: "g1", channelType: 2 };
+    let resolveFirst!: (value: ImChannelInfoLike) => void;
+    const firstResult = new Promise<ImChannelInfoLike>((resolve) => {
+      resolveFirst = resolve;
+    });
+    sdk.channelManager.fetchChannelInfo
+      .mockReturnValueOnce(firstResult)
+      .mockResolvedValueOnce(undefined);
+
+    const firstFetch = fetchImChannelInfo(sdk, channel);
+    const dedupedFetch = fetchImChannelInfo(sdk, channel);
+
+    const pendingFetches = getPendingImChannelInfoFetch(sdk, channel);
+    let pendingSettled = false;
+    void pendingFetches?.then(() => {
+      pendingSettled = true;
+    });
+
+    await expect(dedupedFetch).resolves.toBeUndefined();
+    await Promise.resolve();
+    expect(pendingSettled).toBe(false);
+
+    resolveFirst({ channel, title: "Group" });
+    await firstFetch;
+    await pendingFetches;
+
+    expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
+  });
+
+  it("keeps every in-flight channel fetch visible when later fetches are not SDK-deduped", async () => {
+    const sdk = createSdk();
+    const channel = { channelID: "g1", channelType: 2 };
+    let resolveFirst!: (value: ImChannelInfoLike) => void;
+    let resolveSecond!: (value: ImChannelInfoLike) => void;
+    const firstResult = new Promise<ImChannelInfoLike>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResult = new Promise<ImChannelInfoLike>((resolve) => {
+      resolveSecond = resolve;
+    });
+    sdk.channelManager.fetchChannelInfo
+      .mockReturnValueOnce(firstResult)
+      .mockReturnValueOnce(secondResult);
+
+    const firstFetch = fetchImChannelInfo(sdk, channel);
+    const secondFetch = fetchImChannelInfo(sdk, channel);
+
+    const pendingFetches = getPendingImChannelInfoFetch(sdk, channel);
+    const pendingFetchList = getPendingImChannelInfoFetches(sdk, channel);
+    let pendingSettled = false;
+    void pendingFetches?.then(() => {
+      pendingSettled = true;
+    });
+    expect(pendingFetchList).toHaveLength(2);
+
+    resolveFirst({ channel, title: "Older" });
+    await firstFetch;
+    await Promise.resolve();
+
+    expect(pendingSettled).toBe(false);
+
+    resolveSecond({ channel, title: "Newer" });
+    await secondFetch;
+    await pendingFetches;
+
+    expect(getPendingImChannelInfoFetch(sdk, channel)).toBeUndefined();
+    expect(getPendingImChannelInfoFetches(sdk, channel)).toBeUndefined();
+  });
+
   it("writes channel info to the SDK channel cache", () => {
     const sdk = createSdk();
     const channelInfo = {
@@ -100,7 +177,9 @@ describe("channelRuntime", () => {
 
     notifyImChannelInfoListeners(sdk, channelInfo);
 
-    expect(sdk.channelManager.notifyListeners).toHaveBeenCalledWith(channelInfo);
+    expect(sdk.channelManager.notifyListeners).toHaveBeenCalledWith(
+      channelInfo
+    );
   });
 
   it("returns an unsubscribe when adding a channel info listener", () => {
@@ -181,6 +260,61 @@ describe("channelRuntime", () => {
     setImChannelSubscribersCache(sdk, channel, subscribers);
 
     expect(sdk.channelManager.subscribeCacheMap.get("2@g1")).toBe(subscribers);
+  });
+
+  it("filters locally removed subscribers from reads while keeping raw cache writes authoritative", () => {
+    const sdk = createSdk();
+    const channel = {
+      channelID: "g-local-remove",
+      channelType: 2,
+      getChannelKey: () => "2@g-local-remove",
+    };
+    const subscribers = [{ uid: "owner" }, { uid: "removed" }];
+
+    markImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+    sdk.channelManager.getSubscribes.mockReturnValue(subscribers);
+
+    expect(getImChannelSubscribers(sdk, channel)).toEqual([{ uid: "owner" }]);
+    expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([
+      "removed",
+    ]);
+
+    setImChannelSubscribersCache(sdk, channel, subscribers);
+    expect(
+      sdk.channelManager.subscribeCacheMap.get("2@g-local-remove")
+    ).toEqual(subscribers);
+    expect(getImChannelSubscribersCacheRaw(sdk, channel)).toBe(subscribers);
+
+    setImChannelSubscribersCache(sdk, channel, [{ uid: "owner" }]);
+    expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([
+      "removed",
+    ]);
+    clearImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+    expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
+  });
+
+  it("expires local removal filters after the stale-response window", () => {
+    vi.useFakeTimers();
+    try {
+      const sdk = createSdk();
+      const channel = {
+        channelID: "g-local-remove-ttl",
+        channelType: 2,
+        getChannelKey: () => "2@g-local-remove-ttl",
+      };
+      const subscribers = [{ uid: "owner" }, { uid: "removed" }];
+      sdk.channelManager.getSubscribes.mockReturnValue(subscribers);
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
+      markImChannelSubscribersLocallyRemoved(channel, ["removed"]);
+      expect(getImChannelSubscribers(sdk, channel)).toEqual([{ uid: "owner" }]);
+
+      vi.setSystemTime(new Date("2026-01-01T00:00:30.001Z"));
+      expect(getImChannelLocallyRemovedSubscriberUids(channel)).toEqual([]);
+      expect(getImChannelSubscribers(sdk, channel)).toBe(subscribers);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("returns an unsubscribe when adding a subscriber change listener", () => {

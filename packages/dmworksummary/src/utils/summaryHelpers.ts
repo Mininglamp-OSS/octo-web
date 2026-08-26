@@ -3,11 +3,13 @@ import {
     TaskStatus,
     SourceType,
     ParticipantStatus,
+    TriggerType,
     type TaskStatusType,
     type SummaryModeType,
     type SourceTypeValue,
     type ScheduleConfig,
     type ScheduleItem,
+    type SummaryListItem,
 } from "../types/summary";
 import { t } from "@octo/base";
 
@@ -16,6 +18,15 @@ export function genSessionId(): string {
     return crypto?.randomUUID
         ? crypto.randomUUID()
         : 'sid-' + Date.now() + '-' + Math.random().toString(16).slice(2);
+}
+
+// WEB-03: 每次逻辑提交的幂等键 request_id。后端(SS-03)据 (uid, session_id,
+// request_id) 去重建 Run —— request_id 为空时整条 v2 链路(Run/Spec/finish_status)
+// 不激活。stream→fallback 的重试必须复用同一个,避免同一提交建两个 Run。
+export function genRequestId(): string {
+    return crypto?.randomUUID
+        ? crypto.randomUUID()
+        : 'req-' + Date.now() + '-' + Math.random().toString(16).slice(2);
 }
 
 // ─── Agent 对话 session_id 持久化（「退出不丢」） ──────────────
@@ -55,6 +66,44 @@ export function writeAgentChatSession(channelId: string | null | undefined, sess
 export function clearAgentChatSession(channelId?: string | null): void {
     try {
         localStorage.removeItem(agentChatSessionKey(channelId));
+    } catch {
+        // 同上，忽略。
+    }
+}
+
+// ─── Agent 对话 request_id 持久化（保存时绑定最后一次成功生成） ──────────────
+// request_id 与 session_id 同生命周期：它标识最近一次成功生成的交付轮次，
+// 保存为总结时需要带给后端以读取该轮冻结的 v2 manifest。
+const AGENT_CHAT_REQUEST_KEY_PREFIX = 'agent-chat-request:';
+
+/** 构造该入口最近一次成功 agent submit 的 request_id localStorage key。 */
+export function agentChatRequestIdKey(channelId?: string | null): string {
+    return AGENT_CHAT_REQUEST_KEY_PREFIX + (channelId || AGENT_CHAT_SESSION_FALLBACK);
+}
+
+/** 读取该入口最近一次成功 agent submit 的 request_id；无则返回空串。 */
+export function readAgentChatRequestId(channelId?: string | null): string {
+    try {
+        return localStorage.getItem(agentChatRequestIdKey(channelId)) || '';
+    } catch {
+        return '';
+    }
+}
+
+/** 写入最近一次成功 agent submit 的 request_id（空串跳过）。异常静默降级。 */
+export function writeAgentChatRequestId(channelId: string | null | undefined, requestId: string): void {
+    if (!requestId) return;
+    try {
+        localStorage.setItem(agentChatRequestIdKey(channelId), requestId);
+    } catch {
+        // localStorage 不可用时不持久化，不影响当前会话保存。
+    }
+}
+
+/** 清除该入口的 request_id（新会话 / 保存成功时与 session 一起清）。 */
+export function clearAgentChatRequestId(channelId?: string | null): void {
+    try {
+        localStorage.removeItem(agentChatRequestIdKey(channelId));
     } catch {
         // 同上，忽略。
     }
@@ -181,6 +230,68 @@ export function getModeLabel(mode: SummaryModeType): string {
     return mode === SummaryMode.BY_GROUP ? t("summary.mode.byGroup") : t("summary.mode.byPerson");
 }
 
+/**
+ * 总结是否可被 Agent 引用 — SummaryReferencePicker 与 SummaryDetailPage 共享。
+ *
+ * 当后端已部署 referenceable 字段时，以后端值为准。
+ * 字段缺失时（后端未部署或 mock 未提供），回退到 legacy 行为：
+ * 仅 trigger_type === AGENT 的总结可被引用。
+ */
+export function isReferenceable(item: { referenceable?: boolean; trigger_type: number }): boolean {
+    if (item.referenceable !== undefined) return item.referenceable === true;
+    return item.trigger_type === TriggerType.AGENT;
+}
+
+/**
+ * 总结类型分类 — 单一 classifier（R4 yj P2-2）。
+ *
+ * icon、CSS class 和 label 全部由这个 kind 派生，消除「四路 label 配两路
+ * icon」的分裂（此前定时总结会渲染快速总结的 icon，aria-label 与视觉不符）。
+ *
+ * - agent: trigger_type === AGENT
+ * - scheduled: trigger_type === SCHEDULED 或 schedule_id > 0（0 表示无 schedule）
+ * - multi: trigger_type === MANUAL 且 participants.length > 1
+ * - quick: trigger_type === MANUAL 且 participants.length <= 1，以及未知类型兜底
+ */
+export type SummaryTypeKind = 'agent' | 'scheduled' | 'multi' | 'quick';
+
+export function getSummaryTypeKind(item: SummaryListItem): SummaryTypeKind {
+    const isScheduled = item.trigger_type === TriggerType.SCHEDULED || (item.schedule_id != null && item.schedule_id > 0);
+    if (isScheduled) return 'scheduled';
+    switch (item.trigger_type) {
+        case TriggerType.AGENT:
+            return 'agent';
+        case TriggerType.MANUAL:
+            return (item.participants?.length ?? 0) > 1 ? 'multi' : 'quick';
+        default:
+            return 'quick';
+    }
+}
+
+/**
+ * 总结类型标签 — SummaryReferencePicker 与 SummaryCard 共享。
+ * 由 getSummaryTypeKind 单一 classifier 派生，保证 label/icon 一致。
+ *
+ * @param t i18n 翻译函数
+ * @param item 总结列表项
+ */
+export function getSummaryTypeLabel(
+    t: (key: string, opts?: any) => string,
+    item: SummaryListItem,
+): string {
+    switch (getSummaryTypeKind(item)) {
+        case 'scheduled':
+            return t("summary.summaryCard.scheduledType");
+        case 'agent':
+            return t("summary.summaryCard.agentType");
+        case 'multi':
+            return t("summary.summaryCard.multiPersonType");
+        case 'quick':
+        default:
+            return t("summary.summaryCard.quickType");
+    }
+}
+
 /** 信息来源类型 → 显示文本 */
 export function getSourceTypeLabel(type: SourceTypeValue): string {
     switch (type) {
@@ -266,13 +377,18 @@ export function canCancel(status: TaskStatusType): boolean {
     );
 }
 
-/** 任务是否可以重新生成 */
-export function canRegenerate(status: TaskStatusType): boolean {
+/** 任务是否已进入终态（不再变化 · COMPLETED / FAILED / CANCELLED）。 */
+export function isTerminalStatus(status: TaskStatusType): boolean {
     return (
         status === TaskStatus.COMPLETED ||
         status === TaskStatus.FAILED ||
         status === TaskStatus.CANCELLED
     );
+}
+
+/** 任务是否可以重新生成 */
+export function canRegenerate(status: TaskStatusType): boolean {
+    return isTerminalStatus(status);
 }
 
 /** 删除：自定义 cron 新建/编辑入口已彻底下线，interval(天/周/月) 为唯一对外口径。

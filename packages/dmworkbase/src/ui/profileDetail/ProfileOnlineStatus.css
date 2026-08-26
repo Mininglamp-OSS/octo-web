@@ -1,0 +1,31 @@
+.wk-profile-online-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  margin-top: var(--wk-sp-1);
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-normal);
+}
+
+.wk-profile-online-status-dot {
+  width: var(--wk-sp-2);
+  height: var(--wk-sp-2);
+  flex: 0 0 auto;
+  border-radius: var(--wk-r-circle);
+}
+
+.wk-profile-online-status--online {
+  color: var(--wk-color-success, #22a06b);
+}
+
+.wk-profile-online-status--online .wk-profile-online-status-dot {
+  background: var(--wk-color-success, #22a06b);
+}
+
+.wk-profile-online-status--offline {
+  color: var(--wk-text-tertiary);
+}
+
+.wk-profile-online-status--offline .wk-profile-online-status-dot {
+  background: var(--wk-text-tertiary);
+}

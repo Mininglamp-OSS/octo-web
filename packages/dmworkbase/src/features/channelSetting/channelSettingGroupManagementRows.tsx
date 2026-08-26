@@ -20,7 +20,10 @@ import {
   transferChannelSettingOwner,
 } from "../../bridge/channelSetting/channelSettingActions";
 import { I18nText, t } from "../../i18n";
-import { ChannelSettingInfoRow } from "../../ui/ChannelSettingRows";
+import {
+  ChannelSettingInfoRow,
+  ChannelSettingInlineEditRow,
+} from "../../ui/ChannelSettingRows";
 import { ChannelSettingInputEditPush } from "./types";
 import { createChannelSettingMemberSearch } from "./channelSettingMemberSearch";
 
@@ -49,6 +52,7 @@ function buildTransferOwnerRow(
   let selectedItems: Subscriber[] = [];
   return new Row({
     cell: ChannelSettingInfoRow,
+    trackEvent: "group_transfer_dialog_opened",
     properties: {
       title: t("base.module.channelSettings.transferOwner"),
       onClick: () => {
@@ -120,7 +124,6 @@ function buildTransferOwnerRow(
 export function buildGroupManagementRows({
   context,
   data,
-  inputEditPush,
   disbanded,
 }: BuildGroupManagementRowsOptions): Row[] {
   const { channel, channelInfo } = data;
@@ -135,6 +138,7 @@ export function buildGroupManagementRows({
     rows.push(
       new Row({
         cell: ChannelSettingInfoRow,
+        trackEvent: "group_md_viewed",
         properties: {
           title: "GROUP.md",
           value: hasGroupMd
@@ -158,6 +162,7 @@ export function buildGroupManagementRows({
       }),
       new Row({
         cell: ChannelSettingInfoRow,
+        trackEvent: "group_webhook_panel_opened",
         properties: {
           title: t("base.module.channelSettings.incomingWebhook"),
           onClick: () => {
@@ -185,6 +190,7 @@ export function buildGroupManagementRows({
       rows.push(
         new Row({
           cell: ChannelSettingInfoRow,
+          trackEvent: "group_management_page_opened",
           properties: {
             title: t("base.module.channelSettings.groupManagement"),
             onClick: () => {
@@ -208,26 +214,21 @@ export function buildGroupManagementRows({
 
   rows.push(
     new Row({
-      cell: ChannelSettingInfoRow,
+      cell: ChannelSettingInlineEditRow,
       properties: {
         title: t("base.module.channelSettings.remark"),
-        value: channelInfo?.orgData?.remark,
-        onClick: () => {
-          inputEditPush(
-            context,
-            channelInfo?.orgData?.remark || "",
-            (value) =>
-              remarkChannelSetting({ channel, remark: value })
-                .then(() => data.refresh())
-                .catch((error) => {
-                  Toast.error(error?.msg);
-                  throw error;
-                }),
-            t("base.module.channelSettings.remarkPlaceholder"),
-            15,
-            true
-          );
-        },
+        value: channelInfo?.orgData?.remark || "",
+        placeholder: t("base.module.channelSettings.remarkPlaceholder"),
+        trackEvent: "conversation_remark_edit_opened",
+        maxCount: 15,
+        allowEmpty: true,
+        onSave: (value: string) =>
+          remarkChannelSetting({ channel, remark: value })
+            .then(() => data.refresh())
+            .catch((error) => {
+              Toast.error(error?.msg);
+              throw error;
+            }),
       },
     })
   );

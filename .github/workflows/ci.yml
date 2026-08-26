@@ -68,6 +68,32 @@ jobs:
               - '!.github/ISSUE_TEMPLATE/**'
 
 
+  unit-tests:
+    needs: [changes]
+    if: |
+      (github.event_name != 'pull_request' || !github.event.pull_request.draft) &&
+      needs.changes.outputs.code == 'true'
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+        with:
+          run_install: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run workspace unit tests
+        run: pnpm turbo run test --concurrency=1 --filter=!@octo/base
+      - name: Enforce @octo/base coverage threshold
+        run: pnpm --filter @octo/base test:coverage
+
   build:
     needs: [changes]
     if: |
@@ -86,18 +112,107 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Agent Mail tests
+        run: pnpm --filter @octo/mail test
+      - name: Agent Mail typecheck
+        run: pnpm --filter @octo/mail typecheck
+      - name: Agent Mail app tests
+        run: >-
+          pnpm --filter @octo/web exec vitest run
+          src/__tests__/mailAuthorizationLayout.test.ts
+          src/__tests__/mailAuthorizeDeepLink.test.ts
+          src/__tests__/mailProxyParity.test.ts
+          src/__tests__/mainInitialSpaceResolution.test.ts
+          src/__tests__/nginxEnvsubst.test.ts
+          src/Layout/__tests__/standaloneReturn.test.ts
+      - name: Agent Mail host navigation tests
+        run: |
+          pnpm --filter @octo/base exec vitest run src/__tests__/EndpointCommon.menuSwitch.test.tsx
+          pnpm --filter @dmwork/summary exec vitest run src/__tests__/module.menuSwitch.test.tsx
+      - name: Agent summary v2 run-binding tests (WEB-03)
+        run: >-
+          pnpm --filter @dmwork/summary exec vitest run
+          src/utils/__tests__/genRequestId.test.ts
+          src/utils/agentChatSession.test.ts
+          src/api/__tests__/agentChatStream.test.ts
+          src/api/__tests__/summaryApi.test.ts
+          src/components/__tests__/AgentChatPanel.test.tsx
+          src/components/__tests__/AgentChatPanel.sse.test.tsx
+          src/components/__tests__/ChatSummaryNewModal.test.tsx
+          src/pages/__tests__/SummaryCreatePage.test.tsx
       - name: I18n check
         run: pnpm i18n:check
+      - name: Voice and settings regression tests
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/Service/__tests__/VoiceSettingsStore.test.ts
+          src/Components/NavRail/__tests__/secondarySettingsPages.test.tsx
+          src/features/chat-composer/adapters/voice/useVoiceInput.test.tsx
+          src/features/chat-composer/ui/voice/VoiceInputIndicator.test.tsx
+          src/Components/VoiceInputButton/VoiceInputButton.test.tsx
+          src/Components/NavRail/__tests__/settingsPages.test.tsx
+          src/Service/__tests__/mobileDownloadUpdater.test.ts
+          src/Components/NavRail/__tests__/desktopSettingsPage.test.tsx
+          src/Components/NavRail/__tests__/QuickMuteStore.test.ts
+      - name: Mobile download regression tests
+        run: >-
+          pnpm --filter @octo/login exec vitest run
+          src/__tests__/ios_download_button.test.tsx
+          src/__tests__/android_download_button.test.tsx
+      - name: Fleet preview link arbitration tests
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/bridge/message/__tests__/webhookPreview.test.ts
+          src/__tests__/docLink.test.ts
+          src/Components/MeInfo/__tests__/vm.test.tsx
+          src/Components/MeInfo/__tests__/realnameVerifyUrl.test.ts
+          src/ui/message/MessageRow/__tests__/MessageRow.test.tsx
+          src/Messages/Text/__tests__/MarkdownContentMention.test.tsx
+          src/Messages/RichText/__tests__/RichTextContent.test.ts
+          src/Messages/InteractiveCard/__tests__/InteractiveCardContent.test.ts
+          src/Messages/InteractiveCard/__tests__/cardMarkdown.test.tsx
       - name: Skill Market tests
         run: pnpm --filter @dmwork/skillmarket test
-      - name: Unified import/export unit tests
+      - name: MCP / Expert market tests
+        run: pnpm --filter @dmwork/mcp test
+      - name: Shared prompt-forward component tests
         run: >-
-          pnpm --filter @octo/docs exec vitest run
-          src/editor/EditorShell.test.tsx
-          src/editor/fontFamilies.verify.test.ts
-          src/editor/importFlow.markdown.test.ts
-          src/pages/docsApi.export.test.ts
-          src/pages/docsApi.import.test.ts
+          pnpm --filter @octo/base exec vitest run
+          src/Components/PromptForwardActions
+      - name: Feature-flag gate tests
+        run: >-
+          pnpm --filter @octo/web exec vitest run
+          src/__tests__/driveOn.test.ts
+      - name: APIClient request interceptor tests
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/Service/__tests__/APIClient.headers.test.ts
+          src/Service/__tests__/APIClient.test.ts
+      - name: Smart summary unit tests
+        run: >-
+          pnpm --filter @octo/base exec vitest run
+          src/__tests__/docsPort.test.ts
+          && pnpm --filter @dmwork/summary exec vitest run
+          src/components/__tests__/citationStrip.test.ts
+          src/components/__tests__/SummaryResultActions.test.tsx
+          src/api/__tests__/summaryApi.test.ts
+          src/utils/convertDocError.test.ts
+      - name: Electron main-process unit tests
+        run: pnpm --filter @octo/web exec vitest run src-election src/__tests__/oidcLogoutWiring.test.ts
+      - name: Type-check Electron main-process tests
+        run: pnpm --filter @octo/web exec tsc -p tsconfig.e.tests.json
+      - name: Build and compile Electron artifact
+        run: |
+          VITE_API_URL=https://api.example.com VITE_OIDC_TRUSTED_ORIGINS=https://idp.example.com pnpm --filter @octo/web run build:electron
+          pnpm --filter @octo/web run compile:electron
+          test -s apps/web/build/electron-config.json
+          node -e 'const c=require("./apps/web/build/electron-config.json"); if (!/^https?:\/\//.test(c.oidcApiOrigin)) process.exit(1)'
+          node -e 'const c=require("./apps/web/build/electron-config.json"); if (!Array.isArray(c.oidcEndSessionOrigins) || !c.oidcEndSessionOrigins.includes("https://idp.example.com")) { console.error("oidcEndSessionOrigins missing IdP origin:", JSON.stringify(c.oidcEndSessionOrigins)); process.exit(1); }'
+          node <<'NODE'
+          const fs = require("fs");
+          const source = fs.readFileSync("apps/web/out-election/preload/index.js", "utf8");
+          if (/\brequire\(["']\.\.?[\\/]/.test(source)) process.exit(1);
+          NODE
       - name: Build
         run: pnpm build
       - name: Lint

@@ -20,11 +20,12 @@ interface HarnessProps {
     nextCursor?: string;
     hasMore: boolean;
   }>;
+  onQueryStart?: () => void;
 }
 
 let latest: ReturnType<typeof useSearchPagination<Item>>;
 
-function Harness({ enabled, query, request }: HarnessProps) {
+function Harness({ enabled, query, request, onQueryStart }: HarnessProps) {
   const search = useCallback(
     (cursor?: string) => request(query, cursor),
     [query, request]
@@ -33,6 +34,7 @@ function Harness({ enabled, query, request }: HarnessProps) {
     enabled,
     search,
     errorMessage: "failed",
+    onQueryStart,
   });
   return null;
 }
@@ -124,5 +126,40 @@ describe("useSearchPagination", () => {
       await flush();
     });
     expect(latest.response.items).toEqual([{ id: "new" }]);
+  });
+
+  it("onQueryStart fires on first-page search, not on pagination", async () => {
+    const onQueryStart = vi.fn();
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce({
+        items: [{ id: "a" }],
+        nextCursor: "c1",
+        hasMore: true,
+      })
+      .mockResolvedValueOnce({ items: [{ id: "b" }], hasMore: false });
+
+    act(() => {
+      ReactDOM.render(
+        <Harness enabled query="q" request={request} onQueryStart={onQueryStart} />,
+        container
+      );
+    });
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    await act(flush);
+
+    // 首页检索执行一次 → onQueryStart 恰一次
+    expect(request).toHaveBeenCalledWith("q", undefined);
+    expect(onQueryStart).toHaveBeenCalledTimes(1);
+
+    // 翻页(带 cursor)不应再计
+    await act(async () => {
+      latest.loadNextPage();
+      await flush();
+    });
+    expect(request).toHaveBeenCalledWith("q", "c1");
+    expect(onQueryStart).toHaveBeenCalledTimes(1);
   });
 });

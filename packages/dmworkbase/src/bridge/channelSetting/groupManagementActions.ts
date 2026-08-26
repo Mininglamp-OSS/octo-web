@@ -2,6 +2,8 @@ import { Channel, ChannelInfo, Subscriber } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import { GroupRole } from "../../Service/Const";
+import { Dap } from "../../Service/Dap";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import { updateChannelSetting } from "../../Service/ChannelSettingService";
 import {
   addGroupManagementManagers as addGroupManagementManagersApi,
@@ -197,6 +199,14 @@ export async function setGroupManagementAllowNoMention(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   await runtime.setAllowNoMention(params.allow, params.channel);
+  // group_bot_free_mention_toggled 收口点:唯一写入入口(GroupManagement 面板开关)经此。
+  // 关键属性 channel_id + enabled 只有前端上下文才拿得到(body 通道按隐私边界只发事件名、
+  // 不带 allow_no_mention 值),故移到命令式收口;BodyRules 里对应判别子已删,避免双计。见 review B/M。
+  // channel_id 归一 bare id(stripSpacePrefix):与本 PR 其余新事件同一口径,Space 部署下可跨事件 join。
+  Dap.shared.track("group_bot_free_mention_toggled", {
+    channel_id: stripSpacePrefix(params.channel.channelID),
+    enabled: params.allow,
+  });
   await runtime.fetchChannelInfo(params.channel);
 }
 

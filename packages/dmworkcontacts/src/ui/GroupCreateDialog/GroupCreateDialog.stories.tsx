@@ -33,6 +33,7 @@ const common = {
     avatarColorIndex: 1,
     maxNameLength: 20,
     isAvatarEditorOpen: false,
+    isSubmitting: false,
   },
   memberPicker: {
     mode: "createGroup" as const,
@@ -65,6 +66,28 @@ const common = {
 };
 
 export const CreateGroup: Story = { args: { ...common, mode: "createGroup" } };
+
+export const AvatarEditorOpen: Story = {
+  args: {
+    ...common,
+    mode: "createGroup",
+    form: {
+      ...common.form,
+      isAvatarEditorOpen: true,
+    },
+  },
+};
+
+export const Submitting: Story = {
+  args: {
+    ...common,
+    mode: "createGroup",
+    form: {
+      ...common.form,
+      isSubmitting: true,
+    },
+  },
+};
 
 export const AddMembers: Story = {
   args: {

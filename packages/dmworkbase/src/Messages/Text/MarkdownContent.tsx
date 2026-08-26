@@ -6,24 +6,19 @@ import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import Lightbox from "yet-another-react-lightbox";
-import Download from "yet-another-react-lightbox/plugins/download";
-import "yet-another-react-lightbox/styles.css";
+import Toast from "@douyinfe/semi-ui/lib/es/toast";
+import { Copy } from "lucide-react";
 import "highlight.js/styles/github-dark.css";
 import "katex/dist/katex.min.css";
 import "./markdown.css";
 import WKApp from "../../App";
 import { isSafeUrl } from "../../Utils/security";
 import { linkifySafeUrls } from "../../Utils/linkify";
-import { downloadFile } from "../../Utils/download";
+import { copyToClipboard } from "../../Utils/clipboard";
 import { t } from "../../i18n";
+import { ImagePreviewLightbox } from "../Image/ImagePreview";
 import { getMentionRenderState } from "./mentionRenderState";
-import {
-  isForwardDocCard,
-  middleEllipsizeUrl,
-  shouldEllipsizeLinkText,
-  type ParagraphChildKind,
-} from "./forwardClamp";
+import { isForwardDocCard, type ParagraphChildKind } from "./forwardClamp";
 
 export interface MentionInfo {
   name: string; // "@张三"（含@符号）
@@ -44,17 +39,12 @@ interface MarkdownContentProps {
   emojis?: EmojiInfo[];
   /**
    * 是否启用数学公式渲染（KaTeX），默认 true。
-   * 消息正文默认渲染 `$$...$$`（行内 + 块级），与 iOS 端保持一致
-   * （只要一端渲染所有端都渲染）。单 `$` 行内公式默认关闭，见 {@link allowSingleDollarMath}。
-   * 仅在明确不需要公式的场景传 false。
+   * 聊天消息默认识别 `$$...$$` 行内及块级公式；明确不需要时可传 false。
    */
   enableMath?: boolean;
   /**
    * 是否额外识别单 `$...$` 行内公式，默认 false。
-   * 默认关闭是因为聊天正文里成对单 `$`（货币区间 `$5-$10`、费用 `$5 and $10`、
-   * shell/环境变量 `$HOME/bin:$PATH`）会被 remark-math 误配对成公式、损坏正文，
-   * 而单 `$` 与这些语义天然歧义、无可靠 heuristic 区分。仅文档/编辑器等
-   * 明确需要单 `$` 且可接受该风险的场景才显式传 true。
+   * 单美元语法与金额、shell 变量天然歧义，仅在明确需要时开启。
    */
   allowSingleDollarMath?: boolean;
   /**
@@ -66,37 +56,30 @@ interface MarkdownContentProps {
 }
 
 /**
- * Sanitize 白名单。
- * 数学路径的执行顺序为 highlight → sanitize → katex（见 {@link mathRehypePlugins}）：
- * 先给代码块加 hljs-* / language-*，再 sanitize 清洗**用户**内容，最后 rehypeKatex
- * 生成可信 DOM。KaTeX 的输出不再二次 sanitize，所以本 schema 只需放行两类东西：
- *   1. highlight.js 的 hljs-* / language-* class；
- *   2. remark-math 交给 rehype-katex 的 math 标记 —— remark-math@5 输出
- *      `<span class="math math-inline">`（行内）与 `<div class="math math-display">`（块级），
- *      放行这两个 class 后 rehype-katex 才能识别并替换成公式。
- * 无需再穷举 KaTeX 自身的 class / SVG / MathML 标签（它们在 sanitize 之后才生成）。
- *
- * 安全性依赖 rehypeKatex 的 `trust: false`：KaTeX 不会输出可执行 HTML / 事件属性，
- * `\href{javascript:...}` 在 trust:false 下只渲染成惰性错误文本（`javascript:` 仅出现在
- * 不可执行的 MathML `<annotation>` 源码里，不产生 `href` 属性）。此外 react-markdown 未开
- * allowDangerousHtml，原始 HTML 已由 rawHtmlAsTextPlugin 转成文本，不存在注入 HTML 的入口。
+ * 在 GitHub 默认白名单基础上，追加 highlight.js 需要的 class 属性。
+ * 执行顺序：rehypeHighlight 先着色（加 hljs-* className），
+ * rehypeSanitize 最后兜底清洗——白名单里的 hljs-* / language-* 才真正生效。
+ * 注意：react-markdown 的输入是 Markdown 字符串，remark 直接解析成安全 AST，
+ * 不存在注入 HTML 的机会（未开启 allowDangerousHtml），所以 highlight 先跑不会引入风险。
  */
 const sanitizeSchema = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
-    // 代码块的 language-* / hljs-* class（highlight.js 加的）
+    // 放行代码块的 language-* class（highlight.js 加的）
     code: [
       ...(defaultSchema.attributes?.code ?? []),
       ["className", /^language-/, /^hljs/],
     ],
-    // hljs 语法高亮 token + remark-math 行内 math 标记
+    // highlight.js token + remark-math handoff classes. KaTeX runs after sanitize.
     span: [
       ...(defaultSchema.attributes?.span ?? []),
       ["className", /^hljs/, "math", "math-inline"],
     ],
-    // remark-math 块级 math 标记
-    div: [...(defaultSchema.attributes?.div ?? []), ["className", "math", "math-display"]],
+    div: [
+      ...(defaultSchema.attributes?.div ?? []),
+      ["className", "math", "math-display"],
+    ],
   },
 };
 
@@ -106,13 +89,11 @@ const baseRehypePlugins: any[] = [
   [rehypeSanitize, sanitizeSchema],
 ];
 
+const remarkGfmOptions = { singleTilde: false };
+
 /**
- * 含 KaTeX 的 rehype 插件。
- * 顺序 highlight → sanitize → **katex**：先 sanitize 清洗用户内容，再让 rehypeKatex
- * 生成公式 DOM。KaTeX 输出不经二次 sanitize，所以布局赖以定位的内联 style / strut /
- * MathML 不会被剥掉——修复此前 sanitize 跑在 katex 之后导致分数/矩阵垂直塌陷的问题。
- * `maxSize` / `maxExpand` 兜 `\rule` 超大尺寸与 `\def` 宏展开的 DoS / 布局炸弹；
- * `trust: false` 保证不输出可执行 HTML（见 {@link sanitizeSchema} 安全说明）。
+ * KaTeX runs after sanitize: user-derived AST is cleaned first, then trusted KaTeX output keeps
+ * its required inline styles and MathML structure. Resource limits prevent pathological formulas.
  */
 const mathRehypePlugins: any[] = [
   [rehypeHighlight, { aliases: { json5: "json" }, ignoreMissing: true }],
@@ -126,33 +107,22 @@ const mathRehypePlugins: any[] = [
 /** 基础 remark 插件（不含 math） */
 const baseRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
-  remarkGfm,
+  [remarkGfm, remarkGfmOptions],
   remarkBreaks,
 ];
 
-/**
- * 含 math 的 remark 插件（仅 `$$...$$`）。
- * `singleDollarTextMath: false` 关掉单 `$` 行内公式：聊天正文里的货币区间
- * （`$5-$10`）、费用对比（`$5 and $10`）、shell/环境变量（`$HOME/bin:$PATH`）
- * 都含成对单 `$`，若开启单 `$` 行内公式会被 remark-math 误配对、损坏正文。
- * 单 `$` 与货币/变量语义天然歧义，无可靠 heuristic 区分，故聊天默认只认 `$$`
- * （`$$...$$` 行内与块级均可渲染，覆盖真实公式消息）。
- */
+/** 默认只识别 `$$...$$`，避免把金额和 shell 变量误判为公式。 */
 const mathRemarkPlugins: any[] = [
   rawHtmlAsTextPlugin,
-  remarkGfm,
+  [remarkGfm, remarkGfmOptions],
   remarkBreaks,
   [remarkMath, { singleDollarTextMath: false }],
 ];
 
-/**
- * 含 math 的 remark 插件（`$...$` 与 `$$...$$` 都认）。
- * 仅供文档/编辑器等明确需要单 `$` 行内公式、且不担心货币误渲的场景显式开启
- * （`allowSingleDollarMath`），聊天消息不用。
- */
+/** 明确允许时同时识别 `$...$` 和 `$$...$$`。 */
 const mathRemarkPluginsSingleDollar: any[] = [
   rawHtmlAsTextPlugin,
-  remarkGfm,
+  [remarkGfm, remarkGfmOptions],
   remarkBreaks,
   remarkMath,
 ];
@@ -292,37 +262,91 @@ function segmentText(
   return segments;
 }
 
+function reactNodeText(children: React.ReactNode): string {
+  if (children == null || typeof children === "boolean") return "";
+  if (typeof children === "string" || typeof children === "number") {
+    return String(children);
+  }
+  if (Array.isArray(children)) return children.map(reactNodeText).join("");
+  if (React.isValidElement(children)) {
+    return reactNodeText((children.props as any)?.children);
+  }
+  return "";
+}
+
+const MarkdownCodeBlock: React.FC<{
+  children: React.ReactNode;
+  preProps: any;
+  isStreaming?: boolean;
+}> = ({ children, preProps, isStreaming = false }) => {
+  const [copying, setCopying] = useState(false);
+
+  const handleCopy = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (copying) return;
+
+    setCopying(true);
+    try {
+      const ok = await copyToClipboard(
+        reactNodeText(children).replace(/\n$/, "")
+      );
+      if (ok) {
+        Toast.success(t("base.message.markdown.copyCodeSuccess"));
+      } else {
+        Toast.warning(t("base.module.contextMenus.copyFailed"));
+      }
+    } catch {
+      Toast.warning(t("base.module.contextMenus.copyFailed"));
+    } finally {
+      setCopying(false);
+    }
+  };
+
+  const copyLabel = t("base.message.markdown.copyCode");
+
+  return (
+    <div className="wk-markdown-pre-wrapper">
+      {!isStreaming && (
+        <button
+          type="button"
+          className="wk-markdown-code-copy"
+          aria-label={copyLabel}
+          title={copyLabel}
+          disabled={copying}
+          onClick={handleCopy}
+        >
+          <Copy size={14} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}
+      <pre {...preProps}>{children}</pre>
+    </div>
+  );
+};
+
 const baseComponents: any = {
   a: ({ href, children, ...props }: any) => {
-    // AC-13b (feature #511): middle-ellipsize the DISPLAY text only when it is itself a long bare
-    // URL (visible text === href). A normal `[title](link)` keeps its title untouched; the href is
-    // never modified. `title` tooltip carries the full URL so hover/copy still gets the whole link.
-    const text =
-      typeof children === "string"
-        ? children
-        : Array.isArray(children) && children.length === 1 && typeof children[0] === "string"
-          ? (children[0] as string)
-          : null;
-    if (text != null && shouldEllipsizeLinkText(text, href)) {
-      return (
-        <a href={href} target="_blank" rel="noopener noreferrer" title={text} {...props}>
-          {middleEllipsizeUrl(text)}
-        </a>
-      );
-    }
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
         {children}
       </a>
     );
   },
-  p: ({ node: _node, children, ...props }: any) => renderParagraph(children, props),
+  p: ({ node: _node, children, ...props }: any) =>
+    renderParagraph(children, props),
   pre: ({ children, ...props }: any) => (
-    <div className="wk-markdown-pre-wrapper">
-      <pre {...props}>{children}</pre>
-    </div>
+    <MarkdownCodeBlock preProps={props}>{children}</MarkdownCodeBlock>
   ),
   img: ({ src, alt }: any) => <MarkdownImage src={src} alt={alt} />,
+};
+
+const streamingBaseComponents: any = {
+  ...baseComponents,
+  pre: ({ children, ...props }: any) => (
+    <MarkdownCodeBlock preProps={props} isStreaming>
+      {children}
+    </MarkdownCodeBlock>
+  ),
 };
 
 /**
@@ -345,7 +369,10 @@ function plainText(children: React.ReactNode): string {
  * message's bold text is affected. The full title lives in the `title` attribute so PC hover /
  * mobile tap still reveals it in full while the visible text is clamped to 2 lines.
  */
-function renderParagraph(children: React.ReactNode, props: any): React.ReactElement {
+function renderParagraph(
+  children: React.ReactNode,
+  props: any
+): React.ReactElement {
   const arr = React.Children.toArray(children);
   const kinds: ParagraphChildKind[] = arr.map((c) => {
     if (typeof c === "string") return { text: c };
@@ -354,9 +381,11 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
       const cprops = (c.props ?? {}) as any;
       // Carry the visible text of bold/link runs so the detector can require the link label to
       // equal the bold title (the forward card duplicates the title as its anchor text).
-      if (type === "strong" || type === "b") return { isStrong: true, content: plainText(cprops.children) };
+      if (type === "strong" || type === "b")
+        return { isStrong: true, content: plainText(cprops.children) };
       if (type === "br") return { isBreak: true };
-      if (cprops.href != null || type === baseComponents.a) return { isLink: true, content: plainText(cprops.children) };
+      if (cprops.href != null || type === baseComponents.a)
+        return { isLink: true, content: plainText(cprops.children) };
     }
     return {};
   });
@@ -365,7 +394,10 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
   }
   // Clone the leading <strong> to carry the full-title tooltip + clamp class.
   const clamped = arr.map((c, i) => {
-    if (React.isValidElement(c) && ((c.type as any) === "strong" || (c.type as any) === "b")) {
+    if (
+      React.isValidElement(c) &&
+      ((c.type as any) === "strong" || (c.type as any) === "b")
+    ) {
       const cprops = c.props as any;
       // Read the title text array-safely: react-markdown 8.x always hands `strong` an ARRAY of
       // children (e.g. ["Quarterly plan"]), never a bare string, so the old
@@ -376,14 +408,19 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
       const full = plainText(cprops?.children) || undefined;
       return React.cloneElement(c as React.ReactElement<any>, {
         key: i,
-        className: `${cprops?.className ?? ""} wk-markdown-forward-title`.trim(),
+        className: `${
+          cprops?.className ?? ""
+        } wk-markdown-forward-title`.trim(),
         title: full,
       });
     }
     return c;
   });
   return (
-    <p {...props} className={`${props?.className ?? ""} wk-markdown-forward-card`.trim()}>
+    <p
+      {...props}
+      className={`${props?.className ?? ""} wk-markdown-forward-card`.trim()}
+    >
       {clamped}
     </p>
   );
@@ -392,7 +429,7 @@ function renderParagraph(children: React.ReactNode, props: any): React.ReactElem
 /**
  * Markdown / RichText 正文内联图片：
  *  - url 安全校验（仅 http/https，挡 data:/javascript:/file: 等），不安全则降级为文本占位；
- *  - 点击打开 Lightbox 大图预览（与 ImageCell 行为一致，带下载）；
+ *  - 点击复用 ImageCell 的大图预览与底部工具栏；
  *  - src 经 datasource 处理，与其它图片渲染路径补全 base URL 保持一致。
  */
 const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
@@ -421,24 +458,11 @@ const MarkdownImage: React.FC<{ src?: string; alt?: string }> = ({
         loading="lazy"
         onClick={() => setOpen(true)}
       />
-      <Lightbox
+      <ImagePreviewLightbox
         open={open}
         close={() => setOpen(false)}
         slides={[{ src: resolved, alt: alt || "" }]}
-        plugins={[Download]}
-        download={{
-          download: ({ slide }) => {
-            if (slide?.src) {
-              downloadFile(slide.src, alt || "image.png");
-            }
-          },
-        }}
-        carousel={{ finite: true }}
-        controller={{ closeOnBackdropClick: true }}
-        render={{
-          buttonPrev: () => null,
-          buttonNext: () => null,
-        }}
+        filename={alt || "image.png"}
       />
     </>
   );
@@ -555,7 +579,10 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     stableMentions.current.length > 0 || stableEmojis.current.length > 0;
 
   const components = useMemo(() => {
-    if (!hasTokens) return baseComponents;
+    const activeBaseComponents = isStreaming
+      ? streamingBaseComponents
+      : baseComponents;
+    if (!hasTokens) return activeBaseComponents;
     const process = (children: React.ReactNode) =>
       processTextChildren(
         children,
@@ -566,10 +593,18 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
       );
     const wrap =
       (Tag: string) =>
-      ({ node, children, ordered, checked, index, siblingCount, ...props }: any) =>
+      ({
+        node,
+        children,
+        ordered,
+        checked,
+        index,
+        siblingCount,
+        ...props
+      }: any) =>
         React.createElement(Tag, props, process(children));
     return {
-      ...baseComponents,
+      ...activeBaseComponents,
       p: wrap("p"),
       td: wrap("td"),
       th: wrap("th"),
@@ -587,6 +622,7 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
     stableEmojis.current,
     stableOnMentionClick,
     isSend,
+    isStreaming,
   ]);
 
   // 根据是否启用数学公式 / markdown 选择插件

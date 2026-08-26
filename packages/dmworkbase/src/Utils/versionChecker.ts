@@ -136,20 +136,27 @@ export function startVersionCheck(options: VersionCheckOptions): () => void {
  * 供 NavSettingsPanel 等按需触发的场景使用
  * 返回 serverVersion（有新版本时）或 null（无新版本 / 检测失败）
  */
-export async function checkVersionOnce(): Promise<string | null> {
-    const currentVersion = import.meta.env.VITE_APP_VERSION as string | undefined
-    if (!currentVersion || currentVersion === 'dev') return null
+export type VersionCheckResult = { status: "latest" | "update" | "failed" | "skipped"; version?: string };
+
+export async function checkVersionOnceWithStatus(): Promise<VersionCheckResult> {
+  const currentVersion = import.meta.env.VITE_APP_VERSION as string | undefined
+    if (!currentVersion || currentVersion === 'dev') return { status: "skipped" }
 
     try {
         const res = await fetch('/version.json?_=' + Date.now(), {
             cache: 'no-store',
             signal: AbortSignal.timeout(5000),
         })
-        if (!res.ok) return null
+        if (!res.ok) return { status: "failed" }
         const data = await res.json()
-        if (typeof data?.version !== 'string' || !data.version) return null
-        return data.version !== currentVersion ? data.version : null
+        if (typeof data?.version !== 'string' || !data.version) return { status: "failed" }
+        return data.version !== currentVersion ? { status: "update", version: data.version } : { status: "latest" }
     } catch {
-        return null
+        return { status: "failed" }
     }
+}
+
+export async function checkVersionOnce(): Promise<string | null> {
+    const result = await checkVersionOnceWithStatus();
+    return result.status === "update" ? result.version ?? null : null;
 }

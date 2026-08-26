@@ -16,6 +16,29 @@
         "build/**"
       ]
     },
+    "@octo/web#build": {
+      "outputs": [
+        "build/**"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "../../pnpm-lock.yaml",
+        "../../packages/dmworkappbot/**",
+        "../../packages/dmworkbase/**",
+        "../../packages/dmworkcontacts/**",
+        "../../packages/dmworkdatasource/**",
+        "../../packages/dmworklogin/**",
+        "../../packages/mail/**",
+        "../../packages/dmworkmcp/**",
+        "../../packages/dmworkskillmarket/**",
+        "../../packages/dmworksummary/**",
+        "!../../packages/**/node_modules/**",
+        "!../../packages/**/build/**",
+        "!../../packages/**/dist/**",
+        "!../../packages/**/coverage/**",
+        "!../../packages/**/.turbo/**"
+      ]
+    },
     "build-ele": {
       "outputs": [
         "dist-ele/**"

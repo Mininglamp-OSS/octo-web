@@ -1,5 +1,6 @@
 import React from "react"
 import CategoryHeader from "../CategoryHeader"
+import { useDndContext } from "@dnd-kit/core"
 import { useSortable } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 import { useI18n } from "../../i18n"
@@ -17,6 +18,7 @@ export interface CategorySectionProps {
     isCollapsed: boolean
     onToggle: () => void
     onContextMenu?: (e: React.MouseEvent) => void
+    onMoreClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
     children?: React.ReactNode
     isActive?: boolean   // 右键菜单打开时高亮
     isEditing?: boolean  // 行内重命名编辑态
@@ -31,6 +33,7 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
     isCollapsed,
     onToggle,
     onContextMenu,
+    onMoreClick,
     children,
     isActive,
     isEditing,
@@ -38,6 +41,7 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
     onRenameCancel,
 }) => {
     const { t } = useI18n()
+    const { active } = useDndContext()
     // useSortable：分组整体排序（同时作为 droppable，接受 group item 的 drop）
     const {
         attributes,
@@ -57,12 +61,13 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
     }
 
     const isEmpty = category.isEmpty ?? (!children || (Array.isArray(children) && children.length === 0))
+    const showDropOver = isOver && active?.data.current?.type === 'category'
 
     return (
         <div
             ref={setNodeRef}
             style={style}
-            className={`wk-category-section${isOver ? ' wk-category-section--drop-over' : ''}${isDragging ? ' wk-category-section--dragging' : ''}`}
+            className={`wk-category-section${showDropOver ? ' wk-category-section--drop-over' : ''}${isDragging ? ' wk-category-section--dragging' : ''}`}
         >
             <CategoryHeader
                 name={category.name}
@@ -73,6 +78,7 @@ const CategorySectionInner: React.FC<CategorySectionProps> = ({
                 isEmpty={isEmpty}
                 onToggle={onToggle}
                 onContextMenu={onContextMenu}
+                onMoreClick={onMoreClick}
                 isActive={isActive}
                 isEditing={isEditing}
                 onRenameConfirm={onRenameConfirm}
@@ -104,6 +110,7 @@ const CategorySectionStatic: React.FC<CategorySectionProps> = ({
     isCollapsed,
     onToggle,
     onContextMenu,
+    onMoreClick,
     children,
     isActive,
     isEditing,
@@ -124,6 +131,7 @@ const CategorySectionStatic: React.FC<CategorySectionProps> = ({
                 isEmpty={isEmpty}
                 onToggle={onToggle}
                 onContextMenu={onContextMenu}
+                onMoreClick={onMoreClick}
                 isActive={isActive}
                 isEditing={isEditing}
                 onRenameConfirm={onRenameConfirm}

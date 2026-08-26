@@ -1,4 +1,5 @@
 import APIClient from "./APIClient";
+import { apiPath } from "./apiPath";
 
 /**
  * 群入站 Webhook（Incoming Webhook）类型与纯工具函数。
@@ -136,10 +137,17 @@ type IncomingWebhookListResponse =
 /** 群/子区入站 Webhook 的 HTTP 边界。 */
 export const IncomingWebhookService = {
     basePath(groupNo: string, threadShortId?: string): string {
-        const groupPath = `groups/${encodeURIComponent(groupNo)}`;
+        // apiPath 只做模板旁挂、不编码插值段，故 id 段须在此显式 encodeURIComponent，
+        // 否则含 / ? # 空格的 id 会改变 wire 上的路径语义（见 PR #1390 review P0-1）。
         return threadShortId
-            ? `${groupPath}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks`
-            : `${groupPath}/incoming-webhooks`;
+            ? apiPath`groups/${encodeURIComponent(groupNo)}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks`
+            : apiPath`groups/${encodeURIComponent(groupNo)}/incoming-webhooks`;
+    },
+
+    itemPath(groupNo: string, webhookId: string, threadShortId?: string): string {
+        return threadShortId
+            ? apiPath`groups/${encodeURIComponent(groupNo)}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks/${encodeURIComponent(webhookId)}`
+            : apiPath`groups/${encodeURIComponent(groupNo)}/incoming-webhooks/${encodeURIComponent(webhookId)}`;
     },
 
     async list(groupNo: string, threadShortId?: string): Promise<IncomingWebhook[]> {
@@ -156,19 +164,27 @@ export const IncomingWebhookService = {
     },
 
     update(groupNo: string, webhookId: string, request: IncomingWebhookUpsertReq, threadShortId?: string): Promise<IncomingWebhook> {
-        return APIClient.shared.put(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}`, request);
+        return APIClient.shared.put(this.itemPath(groupNo, webhookId, threadShortId), request);
     },
 
     delete(groupNo: string, webhookId: string, threadShortId?: string): Promise<void> {
-        return APIClient.shared.delete(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}`);
+        return APIClient.shared.delete(this.itemPath(groupNo, webhookId, threadShortId));
     },
 
     regenerate(groupNo: string, webhookId: string, threadShortId?: string): Promise<IncomingWebhookCreateResp> {
-        return APIClient.shared.post(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}/regenerate`);
+        return APIClient.shared.post(
+            threadShortId
+                ? apiPath`groups/${encodeURIComponent(groupNo)}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks/${encodeURIComponent(webhookId)}/regenerate`
+                : apiPath`groups/${encodeURIComponent(groupNo)}/incoming-webhooks/${encodeURIComponent(webhookId)}/regenerate`
+        );
     },
 
     test(groupNo: string, webhookId: string, threadShortId?: string): Promise<void> {
-        return APIClient.shared.post(`${this.basePath(groupNo, threadShortId)}/${encodeURIComponent(webhookId)}/test`);
+        return APIClient.shared.post(
+            threadShortId
+                ? apiPath`groups/${encodeURIComponent(groupNo)}/threads/${encodeURIComponent(threadShortId)}/incoming-webhooks/${encodeURIComponent(webhookId)}/test`
+                : apiPath`groups/${encodeURIComponent(groupNo)}/incoming-webhooks/${encodeURIComponent(webhookId)}/test`
+        );
     },
 };
 

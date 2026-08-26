@@ -14,6 +14,15 @@ export const SPLITTER_MAX_WIDTH = 360
 export const SPLITTER_DEFAULT_WIDTH = 300
 export const SPLITTER_STORAGE_KEY = 'wk-layout-left-width'
 
+// ── Global NavRail ──
+export const NAV_RAIL_COLLAPSED_WIDTH = 56
+export const NAV_RAIL_MIN_WIDTH = 56
+export const NAV_RAIL_EXPANDED_WIDTH = 180
+export const NAV_RAIL_MAX_WIDTH = NAV_RAIL_EXPANDED_WIDTH
+export const NAV_RAIL_DEFAULT_WIDTH = 56
+export const NAV_RAIL_EXPANDED_THRESHOLD = NAV_RAIL_EXPANDED_WIDTH
+export const NAV_RAIL_STORAGE_KEY = 'wk-layout-navrail-width'
+
 // ── Right panel (thread panel) ──
 export const THREAD_MIN_WIDTH = 432
 export const THREAD_MAX_WIDTH = 1600  // effective max is clamped by screen ratio
@@ -53,6 +62,30 @@ export function restoreWidth(): number {
 
 export function persistWidth(width: number): void {
     persistStoredWidth(SPLITTER_STORAGE_KEY, width)
+}
+
+// ── Global NavRail helpers ──
+
+export function clampNavRailWidth(width: number, containerWidth: number): number {
+    const max = getMaxWidth(containerWidth, NAV_RAIL_MIN_WIDTH, NAV_RAIL_MAX_WIDTH, 0.3)
+    const snapThreshold = (NAV_RAIL_COLLAPSED_WIDTH + NAV_RAIL_EXPANDED_WIDTH) / 2
+    return width >= snapThreshold ? max : NAV_RAIL_COLLAPSED_WIDTH
+}
+
+export function getNavRailDragWidth(startWidth: number, delta: number): number {
+    if (delta === 0) return clampNavRailWidth(startWidth, Number.POSITIVE_INFINITY)
+    return delta > 0 ? NAV_RAIL_EXPANDED_WIDTH : NAV_RAIL_COLLAPSED_WIDTH
+}
+
+export function restoreNavRailWidth(): number {
+    return clampNavRailWidth(
+        restoreStoredWidth(NAV_RAIL_STORAGE_KEY, NAV_RAIL_MIN_WIDTH, NAV_RAIL_MAX_WIDTH, NAV_RAIL_DEFAULT_WIDTH),
+        Number.POSITIVE_INFINITY,
+    )
+}
+
+export function persistNavRailWidth(width: number): void {
+    persistStoredWidth(NAV_RAIL_STORAGE_KEY, clampNavRailWidth(width, Number.POSITIVE_INFINITY))
 }
 
 // ── Right (thread) panel helpers ──

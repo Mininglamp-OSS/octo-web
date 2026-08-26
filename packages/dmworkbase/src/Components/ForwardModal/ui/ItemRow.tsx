@@ -1,4 +1,4 @@
-import React, { useMemo } from "react"
+import React, { useMemo, useState } from "react"
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk"
 import { Tag } from "@douyinfe/semi-ui"
 import Checkbox from "../../Checkbox"
@@ -7,6 +7,18 @@ import WKAvatar from "../../WKAvatar"
 import { useI18n } from "../../../i18n"
 import { ChannelTypeCommunityTopic } from "../../../Service/Const"
 import type { ForwardItem } from "../ForwardModal"
+import type { ForwardBotPreviewItem } from "../hooks"
+
+/**
+ * Person-row Bot PREVIEW binding (UX #4). Present only when the caller opts into grants and the
+ * shared Space-Bot catalog is ready. `botsFor` returns the Bots a person created (whole-space Bots
+ * only ever surface under their creator, never under a group/thread row). Preview is display-only:
+ * expanding never selects the target and its Bot controls are disabled; the 授权区 stays
+ * authoritative for the actual grant selection.
+ */
+export interface ForwardBotPreview {
+  botsFor: (creatorUid: string) => ForwardBotPreviewItem[]
+}
 
 /**
  * 左列列表项。三种视图模式：
@@ -23,6 +35,8 @@ export interface ItemRowProps {
   flat: boolean
   showMeta: boolean
   onToggle: (item: ForwardItem) => void
+  /** Person-row Bot preview (UX #4). Absent → no expander (既有转发路径零回归). */
+  botPreview?: ForwardBotPreview
 }
 
 function getKindLabel(item: ForwardItem, t: ReturnType<typeof useI18n>["t"]): string {
@@ -35,8 +49,9 @@ function getKindLabel(item: ForwardItem, t: ReturnType<typeof useI18n>["t"]): st
   return t("base.forwardModal.kindGroup")
 }
 
-function ItemRowInner({ item, selected, flat, showMeta, onToggle }: ItemRowProps) {
+function ItemRowInner({ item, selected, flat, showMeta, onToggle, botPreview }: ItemRowProps) {
   const { t } = useI18n()
+  const [expanded, setExpanded] = useState(false)
   // 只依赖 channelID / channelType 的 Channel 引用；同一 item 复用同一实例,
   // 避免每次渲染都 new Channel(...) 让 WKAvatar 判断 prop 变化重渲。
   const channel = useMemo(
@@ -45,7 +60,12 @@ function ItemRowInner({ item, selected, flat, showMeta, onToggle }: ItemRowProps
   )
   const kindLabel = showMeta ? getKindLabel(item, t) : ""
   const isExternalGroup = item.channelType === ChannelTypeGroup && item.isExternal
-  return (
+  // Bot preview is a PERSON-only affordance: whole-space Bots surface under their creator, never
+  // under a group/thread row (UX #4). A thread person row (isThread) is not a plain person peer.
+  const isPerson = item.channelType === ChannelTypePerson && !item.isThread
+  const previewBots = isPerson && botPreview ? botPreview.botsFor(item.channelID) : []
+  const hasPreview = previewBots.length > 0
+  const row = (
     <div
       className={`wk-fm-item${!flat && item.parentChannelID ? " wk-fm-item--child" : ""}${flat ? " wk-fm-item--flat" : ""}${selected ? " wk-fm-item--selected" : ""}`}
       onClick={() => onToggle(item)}
@@ -63,6 +83,23 @@ function ItemRowInner({ item, selected, flat, showMeta, onToggle }: ItemRowProps
           {showMeta && item.isAI && <AiBadge size="small" />}
         </div>
       </div>
+      {hasPreview && (
+        // Separate control: toggling the preview must NOT select/deselect the target (UX #4).
+        <button
+          type="button"
+          className="wk-fm-item-bot-expand"
+          aria-expanded={expanded}
+          aria-label={t(expanded ? "base.forwardModal.hideBotsPreview" : "base.forwardModal.showBotsPreview", {
+            values: { count: previewBots.length },
+          })}
+          onClick={(e) => {
+            e.stopPropagation()
+            setExpanded((v) => !v)
+          }}
+        >
+          <span className="wk-fm-item-bot-chevron" aria-hidden="true" />
+        </button>
+      )}
       {showMeta && (
         <div className="wk-fm-item-meta">
           <span>{kindLabel}</span>
@@ -84,6 +121,25 @@ function ItemRowInner({ item, selected, flat, showMeta, onToggle }: ItemRowProps
         </Tag>
       )}
       {!showMeta && item.isAI && <AiBadge />}
+    </div>
+  )
+  if (!hasPreview) return row
+  return (
+    <div className="wk-fm-item-wrap">
+      {row}
+      {expanded && (
+        <div className="wk-fm-item-bots">
+          {previewBots.map((bot) => (
+            // Display-only preview: the checkbox is disabled and unchecked. Selecting the person is
+            // what defaults these on in the authoritative 授权区 (GrantArea), not this preview.
+            <label className="wk-fm-item-bot" key={bot.uid}>
+              <Checkbox checked={false} disabled onCheck={() => {}} />
+              <span className="wk-fm-item-bot-name">{bot.name}</span>
+              <AiBadge size="small" />
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

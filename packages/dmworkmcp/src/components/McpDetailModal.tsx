@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { WKModal, WKButton, t } from "@octo/base";
+import { WKModal, WKButton, t, Dap } from "@octo/base";
 import { Toast, Spin } from "@douyinfe/semi-ui";
 import { IconWrenchStroked } from "@douyinfe/semi-icons";
 import { Bot, ShieldCheck, UserRound } from "lucide-react";
@@ -42,6 +42,8 @@ const QuickAccess: React.FC<{ quickStart: McpQuickStart }> = ({
     if (!current) return;
     try {
       await navigator.clipboard.writeText(current.content);
+      // 六审 P2:写剪贴板成功后才计数(原点击委托在 promise 落定前就发,失败/权限拒绝也计)。
+      Dap.shared.track("market_mcp_connect_prompt_copied", {});
       Toast.success(t("mcp.detail.copied"));
     } catch {
       Toast.error(t("mcp.detail.copyFailed"));

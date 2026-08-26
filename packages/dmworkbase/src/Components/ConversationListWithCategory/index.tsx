@@ -13,6 +13,7 @@ export interface CategoryData {
     unreadCount?: number
     conversations: React.ReactNode
     isEmpty?: boolean     // 无群聊时为 true
+    hasManagementMenu?: boolean
 }
 
 export interface ConversationListWithCategoryProps {
@@ -102,6 +103,9 @@ const ConversationListWithCategory: React.FC<ConversationListWithCategoryProps> 
                         isCollapsed={isCollapsed(cat.id)}
                         onToggle={() => toggleCollapse(cat.id)}
                         onContextMenu={onCategoryContextMenu ? (e) => onCategoryContextMenu(cat.id, e) : undefined}
+                        onMoreClick={cat.hasManagementMenu && onCategoryContextMenu
+                            ? (e) => onCategoryContextMenu(cat.id, e)
+                            : undefined}
                         isActive={activeCategoryId === cat.id}
                         isEditing={renamingCategoryId === cat.id}
                         onRenameConfirm={onRenameConfirm ? (newName) => onRenameConfirm(cat.id, newName) : undefined}

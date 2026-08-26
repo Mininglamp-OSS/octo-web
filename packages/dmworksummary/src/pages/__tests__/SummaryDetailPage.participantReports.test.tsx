@@ -1,6 +1,7 @@
 import React from 'react';
 import { render as rtlRender } from '@testing-library/react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { titleContextStore } from '@octo/base';
 
 // OCT-16 / upstream #495 regression: renderParticipantReports() rendering verdict
 // for declined / pending / submitted combinations.
@@ -306,5 +307,57 @@ describe('SummaryDetailPage workflow processing card', () => {
         expect(text).toContain('Filter content');
         expect(text).toContain('Analyze content');
         expect(text).toContain('Generate summary');
+    });
+});
+
+describe('SummaryDetailPage title context', () => {
+    it('re-publishes the active detail title when the locale changes', () => {
+        const page = new SummaryDetailPage({ taskId: 1, emitSelection: true });
+        const detail = {
+            task_id: 1,
+            topic: 'Quarterly review',
+            title: 'Fallback title',
+        } as any;
+        page.context = { t, locale: 'en-US' } as any;
+        page.state = { ...page.state, detail };
+        const setTitle = vi.spyOn(titleContextStore, 'set');
+
+        (page as any).publishDetailTitle(detail);
+        expect(setTitle).toHaveBeenCalledOnce();
+        expect(setTitle.mock.calls[0][1]).toMatchObject({
+            primaryTitle: 'Quarterly review',
+        });
+
+        page.context = { t, locale: 'zh-CN' } as any;
+        page.componentDidUpdate(
+            { taskId: 1, emitSelection: true },
+            page.state,
+        );
+
+        expect(setTitle).toHaveBeenCalledTimes(2);
+        setTitle.mockRestore();
+        titleContextStore.clear('summary');
+    });
+
+    it('falls back to the module title when the detail has no semantic name', () => {
+        const page = new SummaryDetailPage({ taskId: 1, emitSelection: true });
+        page.context = { t, locale: 'zh-CN' } as any;
+
+        (page as any).publishDetailTitle({
+            task_id: 1,
+            topic: 'Existing title',
+            title: '',
+        });
+        expect(titleContextStore.get('summary')).toMatchObject({
+            primaryTitle: 'Existing title',
+        });
+
+        (page as any).publishDetailTitle({
+            task_id: 1,
+            topic: '   ',
+            title: '',
+        });
+
+        expect(titleContextStore.get('summary')).toBeUndefined();
     });
 });

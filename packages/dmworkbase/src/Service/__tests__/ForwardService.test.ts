@@ -41,6 +41,15 @@ vi.mock("wukongimjssdk", () => {
     class MessageContent {
         mention?: { humans?: number; ais?: number }
     }
+    // forwardPlainText builds one of these per channel; the tests below assert the text
+    // actually reaches the content handed to send().
+    class MessageText extends MessageContent {
+        text: string
+        constructor(text: string) {
+            super()
+            this.text = text
+        }
+    }
     class Message {
         content?: any
         channel?: any
@@ -63,6 +72,7 @@ vi.mock("wukongimjssdk", () => {
         Channel,
         Setting,
         MessageContent,
+        MessageText,
         Message,
         ChannelTypeGroup: 2,
         ChannelTypePerson: 1,
@@ -88,7 +98,7 @@ vi.mock("../Utils/groupDisband", () => ({
 }))
 
 import { Channel } from "wukongimjssdk"
-import { ForwardService } from "../ForwardService"
+import { ForwardService, forwardPlainText } from "../ForwardService"
 
 const CT_PERSON = 1
 const CT_GROUP = 2
@@ -383,5 +393,77 @@ describe("ForwardService.send — interMessageDelayMs", () => {
         await promise
         expect(sdkState.send).toHaveBeenCalledTimes(2)
         vi.useRealTimers()
+    })
+})
+
+// forwardPlainText is the seam an external feature package uses when it cannot import wukongimjssdk itself.
+// It is a thin wrapper, so what actually needs locking down is that the caller's text
+// really becomes the MessageText handed to send() — the docs-side tests can only see a mock of this
+// function, so without these cases nothing verifies the text ever reaches the wire.
+describe("forwardPlainText", () => {
+    it("wraps the caller's text in a MessageText per channel and sends to each", async () => {
+        sdkState.send.mockResolvedValue({ messageID: "m" })
+        const channels = [new Channel("bot1", CT_PERSON), new Channel("bot2", CT_PERSON)]
+
+        const result = await forwardPlainText(channels, "docs doc get <docId>")
+
+        expect(result).toEqual({
+            targets: 2,
+            failedTargets: 0,
+            messageAttempts: 2,
+            failedMessages: 0,
+            disbanded: 0,
+            failures: [],
+        })
+        expect(sdkState.send).toHaveBeenCalledTimes(2)
+        // The content reaching the wire must carry the exact text, unmodified.
+        for (const call of sdkState.send.mock.calls) {
+            expect(call[0].__original.text).toBe("docs doc get <docId>")
+        }
+        expect(sdkState.send.mock.calls.map((c: any[]) => c[1].channelID)).toEqual(["bot1", "bot2"])
+    })
+
+    it("builds a fresh content per channel (no shared instance across targets)", async () => {
+        sdkState.send.mockResolvedValue({ messageID: "m" })
+        const channels = [new Channel("bot1", CT_PERSON), new Channel("bot2", CT_PERSON)]
+
+        await forwardPlainText(channels, "hello")
+
+        const [first, second] = sdkState.send.mock.calls.map((c: any[]) => c[0].__original)
+        expect(first).not.toBe(second)
+    })
+
+    it("forwards opts through to send (space_id injection is not bypassed)", async () => {
+        sdkState.send.mockResolvedValue({ messageID: "m" })
+
+        await forwardPlainText([new Channel("bot1", CT_PERSON)], "hi", { spaceId: "s_1" })
+
+        expect(proxyState.wrap).toHaveBeenCalledTimes(1)
+        expect(proxyState.wrap.mock.calls[0][1]).toMatchObject({ spaceId: "s_1" })
+    })
+
+    it("preserves partial-failure accounting from send", async () => {
+        sdkState.send
+            .mockRejectedValueOnce(new Error("boom"))
+            .mockResolvedValueOnce({ messageID: "m" })
+
+        const result = await forwardPlainText(
+            [new Channel("bot1", CT_PERSON), new Channel("bot2", CT_PERSON)],
+            "hi",
+        )
+
+        expect(result.targets).toBe(2)
+        expect(result.failedTargets).toBe(1)
+        expect(result.failedMessages).toBe(1)
+        expect(result.failures[0]).toMatchObject({ channelID: "bot1", reason: "send-error" })
+    })
+
+    it("empty text still sends (guard belongs to the caller, not this seam)", async () => {
+        sdkState.send.mockResolvedValue({ messageID: "m" })
+
+        await forwardPlainText([new Channel("bot1", CT_PERSON)], "")
+
+        expect(sdkState.send).toHaveBeenCalledTimes(1)
+        expect(sdkState.send.mock.calls[0][0].__original.text).toBe("")
     })
 })

@@ -1,4 +1,6 @@
 import React, { useRef, useEffect } from "react"
+import { Tooltip } from "@douyinfe/semi-ui"
+import { GripVertical, MoreHorizontal } from "lucide-react"
 import { useI18n } from "../../i18n"
 import "./index.css"
 
@@ -11,6 +13,7 @@ export interface CategoryHeaderProps {
     isEmpty?: boolean
     onToggle: () => void
     onContextMenu?: (e: React.MouseEvent) => void
+    onMoreClick?: (e: React.MouseEvent<HTMLButtonElement>) => void
     // 右键菜单打开时高亮
     isActive?: boolean
     // 行内重命名
@@ -32,6 +35,7 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
     isEmpty,
     onToggle,
     onContextMenu,
+    onMoreClick,
     isActive,
     isEditing,
     onRenameConfirm,
@@ -139,14 +143,7 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
                     {...dragHandleListeners}
                     onClick={e => e.stopPropagation()}
                 >
-                    <svg width="10" height="14" viewBox="0 0 10 14" fill="none">
-                        <circle cx="3" cy="3" r="1.2" fill="currentColor" />
-                        <circle cx="7" cy="3" r="1.2" fill="currentColor" />
-                        <circle cx="3" cy="7" r="1.2" fill="currentColor" />
-                        <circle cx="7" cy="7" r="1.2" fill="currentColor" />
-                        <circle cx="3" cy="11" r="1.2" fill="currentColor" />
-                        <circle cx="7" cy="11" r="1.2" fill="currentColor" />
-                    </svg>
+                    <GripVertical size={14} aria-hidden="true" />
                 </span>
             )}
             <span className={`wk-category-header__arrow${isCollapsed ? " wk-category-header__arrow--collapsed" : ""}`}>
@@ -172,6 +169,22 @@ const CategoryHeader: React.FC<CategoryHeaderProps> = ({
                         <span className="wk-category-header__badge wk-category-header__badge--mention">@</span>
                     )}
                 </span>
+            )}
+            {onMoreClick && (
+                <Tooltip content={t("base.threadPanel.moreActions")} position="top">
+                    <button
+                        type="button"
+                        className="wk-category-header__more"
+                        aria-label={t("base.threadPanel.moreActions")}
+                        onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            onMoreClick(e)
+                        }}
+                    >
+                        <MoreHorizontal size={16} aria-hidden="true" />
+                    </button>
+                </Tooltip>
             )}
         </div>
     )

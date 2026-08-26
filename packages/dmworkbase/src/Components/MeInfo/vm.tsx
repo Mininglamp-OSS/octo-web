@@ -10,6 +10,8 @@ import { resolveRealnameVerifyUrl } from "./realnameVerifyUrl";
 import { t } from "../../i18n";
 import UserService from "../../Service/UserService";
 import { addImChannelInfoListener } from "../../im-runtime/channelRuntime";
+import { getElectronLinksBridge } from "../../electron/desktopBridge";
+import { isHttpOrigin, resolveWebOrigin } from "../../Utils/webOrigin";
 
 /**
  * 「实验性功能」入口在 MeInfo 默认隐藏 —— 通过连击「OCTO 号」行 5 次解锁
@@ -33,8 +35,7 @@ const LAB_MODE_STORAGE_KEY = "lab_mode_enabled";
  *   verify-service 翻译接口。
  * GH #1174：IdP 域名改为按环境从后端 appconfig 下发的
  *   `oidc_providers[].account_url` 字段读, 而非硬编码 prod URL。
- *   im-test 会拿到 `accounts-test.imocto.cn`, im-prod 拿到 `accounts.xming.ai`,
- *   和 NavSettingsPanel 「账户中心」入口口径一致。
+ *   测试/生产环境地址均由 appconfig 下发，和 NavSettingsPanel「账户中心」入口口径一致。
  *
  * GH #1180（Phase 2e 闭环）:im-test 实机发现原方案有 2 个闭环 bug,
  *   本 VM 的职责是把前端部分修好:
@@ -63,6 +64,10 @@ const LAB_MODE_STORAGE_KEY = "lab_mode_enabled";
  *     也是按环境下发的 IdP URL，老 App 客户端无需改动即可工作。
  */
 export class MeInfoVM extends ProviderListener {
+
+    constructor(private readonly onRealnameStatusChange?: (verified: boolean) => void) {
+        super()
+    }
 
     channelInfoListener!:ChannelInfoListener
     unsubscribeChannelInfoListener?: () => void
@@ -131,6 +136,7 @@ export class MeInfoVM extends ProviderListener {
     private syncRealnameFromOrgData(orgData: any) {
         const verified = isRealnameVerified(orgData)
         WKApp.loginInfo.realnameVerified = verified
+        this.onRealnameStatusChange?.(verified)
         if (verified && typeof orgData?.real_name === "string" && orgData.real_name.length > 0) {
             WKApp.loginInfo.realName = orgData.real_name
         } else {
@@ -181,8 +187,7 @@ export class MeInfoVM extends ProviderListener {
      * URL 解析口径（resolveRealnameVerifyUrl）：
      *   - 按 loginInfo.loginProvider 在 remoteConfig.oidcProviders 里查
      *     对应 provider 的 accountUrl, 拼 `${accountUrl}/profile/info?anchor=verification&return_to=…`。
-     *     与 NavSettingsPanel「账户中心」入口口径一致（accounts-test.imocto.cn
-     *     on im-test / accounts.xming.ai on im-prod, 后端下发）。
+ *     与 NavSettingsPanel「账户中心」入口口径一致（按环境由后端下发）。
      *   - loginProvider=local / 空 / provider 无 account_url / provider 不在
      *     下发列表里 → Toast 明示, 不跳转。严禁回退到任何硬编码 prod 域。
      *
@@ -206,10 +211,30 @@ export class MeInfoVM extends ProviderListener {
         //   - 原 URL `/me`(无 query)→ returnTo `/me?verified=1`
         //   - 原 URL `/me?verified=0` → returnTo `/me?verified=1`(URLSearchParams.set 覆盖旧值)
         //   - hash 不带入 —— IdP 对超长 return_to / 含 fragment 的 URL 可能校验失败
+        // Round-8 (yujiawei B2 / Jerry-Xin B1): building return_to from
+        // window.location on the packaged file:// shell produced
+        // https://<api-host>/<asar-filesystem-path>/index.html?… — leaking
+        // local paths into IdP logs and landing on a 404, so ?verified=1
+        // never fired. The return target is now a real web route: the
+        // document origin+path when http(s), otherwise the API-origin /me
+        // route with the same query (the ?verified=1 landing handler works
+        // from any surface). resolveWebOrigin is the shared allowlist
+        // helper; WKApp.apiClient is the injected apiURL source (importing
+        // the APIClient singleton here would pull axios side effects into
+        // this module's unit-test import chain).
         const returnToParams = new URLSearchParams(window.location.search)
         returnToParams.set("verified", "1")
         const returnToQuery = returnToParams.toString()
-        const returnTo = `${window.location.origin}${window.location.pathname}${returnToQuery ? "?" + returnToQuery : ""}`
+        const docOrigin = window.location.origin
+        const webOriginValue = resolveWebOrigin(
+            docOrigin,
+            WKApp.apiClient?.config?.apiURL,
+        )
+        const returnTo = isHttpOrigin(docOrigin)
+            ? `${docOrigin}${window.location.pathname}${returnToQuery ? "?" + returnToQuery : ""}`
+            : webOriginValue
+              ? `${webOriginValue}/me${returnToQuery ? "?" + returnToQuery : ""}`
+              : `${docOrigin}${window.location.pathname}${returnToQuery ? "?" + returnToQuery : ""}`
 
         // 读按环境下发的 account_url —— 防止把 im-test 用户甩到 prod IdP。
         // 具体行为合约见 resolveRealnameVerifyUrl 的 JSDoc 和 __tests__/realnameVerifyUrl.test.ts。
@@ -236,6 +261,28 @@ export class MeInfoVM extends ProviderListener {
         }
         const verifyUrl = resolved.url
         // 新 tab 打开,必须能区分「真被浏览器拦截」vs「成功打开」。
+        //
+        // Desktop shell: use the dedicated IPC bridge — setWindowOpenHandler
+        // routes everything to the system browser, so the web-era
+        // about:blank dance would never produce a usable window reference.
+        const linksBridge = getElectronLinksBridge();
+        if (linksBridge) {
+            // verifyUrl is always an absolute http(s) URL (resolved from the
+            // account_url provider config), so no origin normalization needed.
+            linksBridge
+                .openExternal(verifyUrl)
+                .then((result) => {
+                    if (!result.ok) {
+                        Toast.warning(t("base.me.realname.popupBlocked"))
+                    }
+                })
+                .catch(() => {
+                    Toast.warning(t("base.me.realname.popupBlocked"))
+                })
+            return
+        }
+        // Web: the about:blank dance stays. See the comment below for why
+        // `window.open(url, "_blank", "noopener,noreferrer")` is wrong here.
         //
         // Jerry R3 blocking:
         //   之前写法 `window.open(url, "_blank", "noopener,noreferrer")` 有致命坑 ——

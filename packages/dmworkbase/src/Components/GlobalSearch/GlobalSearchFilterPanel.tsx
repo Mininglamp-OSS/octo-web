@@ -22,12 +22,20 @@ import type {
 } from "../../Service/SearchTypes";
 import { cnDatePresetRange } from "../../Service/SearchService";
 
+export interface GlobalSearchFilterApplyMeta {
+  fileTypeCategoryKeys?: string[];
+}
+
 interface Props {
   tab: GlobalContentTab;
   keyword: string;
   filters: GlobalSearchFilters;
   dataSource: GlobalSearchDataSource;
-  onApply: (filters: GlobalSearchFilters) => void;
+  fileTypeCategoryKeys?: string[];
+  onApply: (
+    filters: GlobalSearchFilters,
+    meta?: GlobalSearchFilterApplyMeta
+  ) => void;
   onClose?: () => void;
   mode?: "popover" | "sidebar";
 }
@@ -105,6 +113,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   keyword,
   filters,
   dataSource,
+  fileTypeCategoryKeys = [],
   onApply,
   onClose,
   mode = "popover",
@@ -113,8 +122,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   const [draft, setDraft] = useState<GlobalSearchFilters>(filters);
   const [senderQuery, setSenderQuery] = useState("");
   const [senderOptions, setSenderOptions] = useState<ChannelSearchSender[]>(
-    () =>
-      dataSource.getSenders().filter((s) => s.uid !== dataSource.getSelfUid())
+    () => dataSource.getSenders()
   );
   const [channelQuery, setChannelQuery] = useState("");
   const [channelOptions, setChannelOptions] = useState<
@@ -131,6 +139,8 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   const [fileCategories, setFileCategories] = useState<
     GlobalSearchFileTypeCategory[]
   >([]);
+  const [draftFileTypeCategoryKeys, setDraftFileTypeCategoryKeys] =
+    useState<string[]>(fileTypeCategoryKeys);
   const [fileSizeMinInput, setFileSizeMinInput] = useState(
     filters.fileSizeMin ? String(Math.round(filters.fileSizeMin / 1024)) : ""
   );
@@ -138,6 +148,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     filters.fileSizeMax ? String(Math.round(filters.fileSizeMax / 1024)) : ""
   );
   const draftRef = useRef(filters);
+  const draftFileTypeCategoryKeysRef = useRef(fileTypeCategoryKeys);
 
   useEffect(() => {
     draftRef.current = filters;
@@ -150,13 +161,19 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
     );
   }, [filters]);
 
+  useEffect(() => {
+    draftFileTypeCategoryKeysRef.current = fileTypeCategoryKeys;
+    setDraftFileTypeCategoryKeys(fileTypeCategoryKeys);
+  }, [fileTypeCategoryKeys]);
+
   const updateDraft = (
-    updater: (current: GlobalSearchFilters) => GlobalSearchFilters
+    updater: (current: GlobalSearchFilters) => GlobalSearchFilters,
+    meta?: GlobalSearchFilterApplyMeta
   ) => {
     const next = updater(draftRef.current);
     draftRef.current = next;
     setDraft(next);
-    if (mode === "sidebar") onApply(next);
+    if (mode === "sidebar") onApply(next, meta);
   };
 
   const keywordActive = keyword.trim().length > 0;
@@ -212,13 +229,17 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   }, [mode]);
 
   // Load sender candidates on open + when query changes (debounced light).
+  // Sender filter intentionally includes self — 全局搜索发送人过滤按"谁发的"
+  // 语义查找，用户搜自己名字过滤自己发的消息是合理场景。与之相对，member
+  // 过滤（「包含成员」）语义是"这个会话得包含谁"，选自己无意义，所以下面的
+  // memberOptions useEffect + toggleMember 仍显式过滤 self。
   useEffect(() => {
     let cancelled = false;
     const handle = window.setTimeout(async () => {
       try {
         const list = (await dataSource.searchSenders?.(senderQuery)) ?? [];
         if (cancelled) return;
-        setSenderOptions(list.filter((s) => s.uid !== selfUid));
+        setSenderOptions(list);
       } catch (_) {
         if (!cancelled) setSenderOptions([]);
       }
@@ -227,7 +248,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       cancelled = true;
       window.clearTimeout(handle);
     };
-  }, [dataSource, senderQuery, selfUid]);
+  }, [dataSource, senderQuery]);
 
   useEffect(() => {
     let cancelled = false;
@@ -370,15 +391,26 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
   };
 
   const toggleFileExts = (category: GlobalSearchFileTypeCategory) => {
+    const currentFileExts = new Set(draftRef.current.fileExts);
+    const allActive = category.exts.every((e) =>
+      currentFileExts.has(e.toLowerCase())
+    );
+    const currentKeys = draftFileTypeCategoryKeysRef.current;
+    const nextKeys = allActive
+      ? currentKeys.filter((key) => key !== category.key)
+      : Array.from(new Set([...currentKeys, category.key]));
+    draftFileTypeCategoryKeysRef.current = nextKeys;
+    setDraftFileTypeCategoryKeys(nextKeys);
     updateDraft((cur) => {
       const set = new Set(cur.fileExts);
-      const allActive = category.exts.every((e) => set.has(e.toLowerCase()));
       if (allActive) {
         category.exts.forEach((e) => set.delete(e.toLowerCase()));
       } else {
         category.exts.forEach((e) => set.add(e.toLowerCase()));
       }
       return { ...cur, fileExts: Array.from(set) };
+    }, {
+      fileTypeCategoryKeys: nextKeys,
     });
   };
 
@@ -447,7 +479,9 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       sort: "time_desc" as const,
     };
     draftRef.current = next;
+    draftFileTypeCategoryKeysRef.current = [];
     setDraft(next);
+    setDraftFileTypeCategoryKeys([]);
     setFileSizeMinInput("");
     setFileSizeMaxInput("");
   };
@@ -463,7 +497,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       fileSizeMax:
         Number.isFinite(maxKb) && maxKb > 0 ? maxKb * 1024 : undefined,
     };
-    onApply(next);
+    onApply(next, { fileTypeCategoryKeys: draftFileTypeCategoryKeys });
     onClose?.();
   };
 
@@ -623,6 +657,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
       */}
         <FilterSearchSelect
           title={t("base.globalSearch.filter.channels")}
+          placeholder={t("base.globalSearch.filter.channelsPlaceholder")}
           query={channelQuery}
           onQueryChange={setChannelQuery}
           options={channelSelectOptions}
@@ -634,6 +669,7 @@ const GlobalSearchFilterPanel: React.FC<Props> = ({
 
         <FilterSearchSelect
           title={t("base.globalSearch.filter.memberUid")}
+          placeholder={t("base.globalSearch.filter.memberUidPlaceholder")}
           query={memberQuery}
           onQueryChange={setMemberQuery}
           options={memberSelectOptions}

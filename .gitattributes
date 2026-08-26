@@ -6,3 +6,6 @@ docker-entrypoint.sh text eol=lf
 Dockerfile text eol=lf
 Dockerfile.* text eol=lf
 
+# Unified diff context lines may be a single space by format; do not flag generated patch files.
+*.patch whitespace=-blank-at-eol
+

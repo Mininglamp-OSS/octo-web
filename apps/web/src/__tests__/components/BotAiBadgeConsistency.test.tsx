@@ -77,8 +77,7 @@ describe("Bot AI Badge Consistency (Issue #215)", () => {
             // Verify robot.png is NOT set as identityIcon
             expect(content).not.toMatch(/identityIcon.*robot\.png/);
 
-            // Verify the comment indicates AiBadge should be used instead
-            expect(content).toMatch(/robot.*identit(y|ies).*AiBadge|AiBadge.*robot/i);
+            // The datasource no longer assigns identity icons for bot records.
         });
 
         it("should only set identityIcon for official and visitor categories", async () => {

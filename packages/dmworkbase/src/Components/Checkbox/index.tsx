@@ -9,6 +9,8 @@ export interface CheckboxProps {
   onCheck?: () => void
   className?: string
   children?: React.ReactNode
+  /** Accessible name for a checkbox with no visible <label> text association (icon-only rows). */
+  ariaLabel?: string
 }
 
 const Checkbox: React.FC<CheckboxProps> = ({
@@ -18,6 +20,7 @@ const Checkbox: React.FC<CheckboxProps> = ({
   onCheck,
   className,
   children,
+  ariaLabel,
 }) => {
   const handleClick = () => {
     if (disabled) return
@@ -32,6 +35,7 @@ const Checkbox: React.FC<CheckboxProps> = ({
       role="checkbox"
       aria-checked={checked}
       aria-disabled={disabled}
+      aria-label={ariaLabel}
       tabIndex={disabled ? -1 : 0}
       onKeyDown={(e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); handleClick() } }}
     >

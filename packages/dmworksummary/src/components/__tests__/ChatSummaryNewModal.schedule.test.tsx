@@ -7,6 +7,9 @@ vi.mock('wukongimjssdk', () => ({
     ChannelTypeGroup: 2,
     ChannelTypePerson: 1,
     MessageText: class {},
+    MessageContent: class {},
+    MediaMessageContent: class {},
+    MessageContentType: { text: 1, image: 2, video: 3, file: 4, voice: 5, location: 6, command: 7, unknown: 0 },
     WKSDK: { shared: () => ({ chatManager: { send: vi.fn() } }) },
 }));
 vi.mock('@douyinfe/semi-ui', () => {
@@ -19,8 +22,11 @@ vi.mock('@douyinfe/semi-ui', () => {
     };
 });
 vi.mock('@douyinfe/semi-icons', () => ({
+    default: () => null,
     IconPlus: () => null,
     IconClock: () => null,
+    IconChevronDown: () => null,
+    IconAlertTriangle: () => null,
 }));
 
 // 与现有 ChatSummaryNewModal.test.tsx 一致：mock 掉 channelType，绕过 @octo/base 的
@@ -31,6 +37,10 @@ vi.mock('../../utils/channelType', () => ({
 
 import * as summaryApi from '../../api/summaryApi';
 import ChatSummaryNewModal from '../ChatSummaryNewModal';
+import {
+    isAgentSummaryNotificationEligible,
+    resetGroupSummaryNotifyRuntimeForTests,
+} from '../../utils/groupSummaryNotify';
 
 // 回归测试：聊天框右上角入口的「新建智能总结」弹窗，配置了定时后必须仿照完整页，
 // 用「一步式」createSchedule —— 参数直接带 scope='task' + task_id，由后端在一个
@@ -42,6 +52,8 @@ describe('ChatSummaryNewModal — schedule binding on create', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        localStorage.clear();
+        resetGroupSummaryNotifyRuntimeForTests();
     });
 
     function makeModal(scheduleConfig: any) {
@@ -84,13 +96,15 @@ describe('ChatSummaryNewModal — schedule binding on create', () => {
     });
 
     it('does not call createSchedule when no schedule configured', async () => {
-        vi.mocked(summaryApi.createSummary).mockResolvedValue({ task_id: 1 } as any);
+        const TASK_ID = 9004;
+        vi.mocked(summaryApi.createSummary).mockResolvedValue({ task_id: TASK_ID } as any);
 
         const { modal } = makeModal(null);
         await (modal as any).handleSubmit();
 
         expect(summaryApi.createSummary).toHaveBeenCalledTimes(1);
         expect(summaryApi.createSchedule).not.toHaveBeenCalled();
+        expect(isAgentSummaryNotificationEligible(TASK_ID)).toBe(true);
     });
 
     it('on schedule create failure (Error):透出后端 message, 主流程不阻断 onSubmit 仍调用', async () => {

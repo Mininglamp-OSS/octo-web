@@ -24,6 +24,11 @@ export type ImChannelInfoFetchResult<TChannelInfo> =
   | undefined
   | void;
 
+const pendingChannelInfoFetches = new WeakMap<
+  object,
+  Map<string, Set<Promise<ImChannelInfoFetchResult<ImChannelInfoLike>>>>
+>();
+
 export interface ImChannelManagerRuntime<
   TChannel extends ImChannelLike = ImChannelLike,
   TChannelInfo extends ImChannelInfoLike = ImChannelInfoLike
@@ -64,7 +69,7 @@ export type ImSubscriberChangeListener = (event: any) => void;
 
 export interface ImChannelSubscribersRuntimeSdk<
   TChannel extends ImChannelLike = ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 > {
   channelManager: {
     getSubscribes: (channel: TChannel) => TSubscriber[] | undefined | null;
@@ -79,11 +84,56 @@ export interface ImChannelSubscribersRuntimeSdk<
 }
 
 export interface ImSubscribeCacheRuntimeSdk<
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 > {
   channelManager: {
     subscribeCacheMap: Map<string, TSubscriber[]>;
   };
+}
+
+const LOCALLY_REMOVED_SUBSCRIBER_TTL_MS = 30 * 1000;
+const locallyRemovedSubscriberUids = new Map<string, Map<string, number>>();
+
+function channelKey(channel: ImChannelLike) {
+  const maybeCacheKey = channel as Partial<ImChannelCacheKeyLike>;
+  return maybeCacheKey.getChannelKey
+    ? maybeCacheKey.getChannelKey()
+    : `${channel.channelType}@${channel.channelID}`;
+}
+
+function validUids(uids: Array<string | undefined>) {
+  return uids.filter((uid): uid is string => !!uid);
+}
+
+function removedUidSet(channel: ImChannelLike) {
+  const key = channelKey(channel);
+  const removed = locallyRemovedSubscriberUids.get(key);
+  if (!removed || removed.size === 0) return undefined;
+
+  const now = Date.now();
+  removed.forEach((expiresAt, uid) => {
+    if (expiresAt <= now) {
+      removed.delete(uid);
+    }
+  });
+  if (removed.size === 0) {
+    locallyRemovedSubscriberUids.delete(key);
+    return undefined;
+  }
+  return new Set(removed.keys());
+}
+
+function filterLocallyRemovedSubscribers<
+  TChannel extends ImChannelLike,
+  TSubscriber extends ImSubscriberLike
+>(channel: TChannel, subscribers: TSubscriber[]) {
+  const removed = removedUidSet(channel);
+  if (!removed || removed.size === 0) return subscribers;
+
+  const filtered = subscribers.filter(
+    (subscriber) => !removed.has(subscriber?.uid || "")
+  );
+  return filtered.length === subscribers.length ? subscribers : filtered;
 }
 
 export function getImChannelInfo<
@@ -97,11 +147,68 @@ export function fetchImChannelInfo<
   TChannel extends ImChannelLike,
   TChannelInfo extends ImChannelInfoLike
 >(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channel: TChannel) {
-  return Promise.resolve(sdk.channelManager.fetchChannelInfo(channel)).then(
-    (channelInfo) => {
-      return channelInfo || sdk.channelManager.getChannelInfo(channel);
-    }
+  const promise = Promise.resolve(
+    sdk.channelManager.fetchChannelInfo(channel)
+  ).then((channelInfo) => {
+    return channelInfo || sdk.channelManager.getChannelInfo(channel);
+  });
+
+  // Keep pending fetches observable without changing any caller's return timing,
+  // so successful writes can repair late stale reads after all current fetches settle.
+  const manager = sdk.channelManager as object;
+  let pendingByChannel = pendingChannelInfoFetches.get(manager);
+  if (!pendingByChannel) {
+    pendingByChannel = new Map();
+    pendingChannelInfoFetches.set(manager, pendingByChannel);
+  }
+
+  const key = channelKey(channel);
+  let pendingFetches = pendingByChannel.get(key);
+  if (!pendingFetches) {
+    pendingFetches = new Set();
+    pendingByChannel.set(key, pendingFetches);
+  }
+  const trackedPromise =
+    promise as Promise<ImChannelInfoFetchResult<ImChannelInfoLike>>;
+  pendingFetches.add(trackedPromise);
+  void promise
+    .finally(() => {
+      const currentFetches = pendingByChannel?.get(key);
+      currentFetches?.delete(trackedPromise);
+      if (currentFetches?.size === 0) {
+        pendingByChannel.delete(key);
+      }
+    })
+    .catch(() => undefined);
+
+  return promise;
+}
+
+export function getPendingImChannelInfoFetch<
+  TChannel extends ImChannelLike,
+  TChannelInfo extends ImChannelInfoLike
+>(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channel: TChannel) {
+  const pendingSnapshot = getPendingImChannelInfoFetches<TChannel, TChannelInfo>(
+    sdk,
+    channel
   );
+  if (!pendingSnapshot) return undefined;
+
+  return Promise.allSettled(pendingSnapshot).then(() => undefined);
+}
+
+export function getPendingImChannelInfoFetches<
+  TChannel extends ImChannelLike,
+  TChannelInfo extends ImChannelInfoLike
+>(sdk: ImChannelRuntimeSdk<TChannel, TChannelInfo>, channel: TChannel) {
+  const pendingFetches = pendingChannelInfoFetches
+    .get(sdk.channelManager as object)
+    ?.get(channelKey(channel));
+  if (!pendingFetches || pendingFetches.size === 0) return undefined;
+
+  return Array.from(pendingFetches) as Array<
+    Promise<ImChannelInfoFetchResult<TChannelInfo>>
+  >;
 }
 
 export function setImChannelInfoCache<
@@ -140,17 +247,20 @@ export function deleteImChannelInfo<TChannel extends ImChannelLike>(
 
 export function getImChannelSubscribers<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
   channel: TChannel
 ) {
-  return sdk.channelManager.getSubscribes(channel) || [];
+  return filterLocallyRemovedSubscribers(
+    channel,
+    sdk.channelManager.getSubscribes(channel) || []
+  );
 }
 
 export function getImChannelSubscriberOfMe<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
   channel: TChannel
@@ -160,7 +270,7 @@ export function getImChannelSubscriberOfMe<
 
 export function syncImChannelSubscribers<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
   channel: TChannel
@@ -168,26 +278,66 @@ export function syncImChannelSubscribers<
   return Promise.resolve(sdk.channelManager.syncSubscribes(channel));
 }
 
-export function getImSubscribeCacheMap<TSubscriber = ImSubscriberLike>(
-  sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>
-) {
+export function getImSubscribeCacheMap<
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
+>(sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>) {
   return sdk.channelManager.subscribeCacheMap;
+}
+
+export function getImChannelSubscribersCacheRaw<
+  TChannel extends ImChannelCacheKeyLike,
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
+>(sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>, channel: TChannel) {
+  return sdk.channelManager.subscribeCacheMap.get(channel.getChannelKey());
 }
 
 export function setImChannelSubscribersCache<
   TChannel extends ImChannelCacheKeyLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImSubscribeCacheRuntimeSdk<TSubscriber>,
   channel: TChannel,
   subscribers: TSubscriber[]
 ) {
-  sdk.channelManager.subscribeCacheMap.set(channel.getChannelKey(), subscribers);
+  sdk.channelManager.subscribeCacheMap.set(
+    channel.getChannelKey(),
+    subscribers
+  );
+}
+
+export function markImChannelSubscribersLocallyRemoved<
+  TChannel extends ImChannelLike
+>(channel: TChannel, uids: string[]) {
+  const nextUids = validUids(uids);
+  if (nextUids.length === 0) return;
+  const key = channelKey(channel);
+  const expiresAt = Date.now() + LOCALLY_REMOVED_SUBSCRIBER_TTL_MS;
+  const removed =
+    locallyRemovedSubscriberUids.get(key) || new Map<string, number>();
+  nextUids.forEach((uid) => removed.set(uid, expiresAt));
+  locallyRemovedSubscriberUids.set(key, removed);
+}
+
+export function clearImChannelSubscribersLocallyRemoved<
+  TChannel extends ImChannelLike
+>(channel: TChannel, uids: string[]) {
+  const removed = locallyRemovedSubscriberUids.get(channelKey(channel));
+  if (!removed) return;
+  validUids(uids).forEach((uid) => removed.delete(uid));
+  if (removed.size === 0) {
+    locallyRemovedSubscriberUids.delete(channelKey(channel));
+  }
+}
+
+export function getImChannelLocallyRemovedSubscriberUids<
+  TChannel extends ImChannelLike
+>(channel: TChannel) {
+  return Array.from(removedUidSet(channel) || []);
 }
 
 export function addImSubscriberChangeListener<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
 >(
   sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
   listener: ImSubscriberChangeListener
@@ -200,17 +350,17 @@ export function addImSubscriberChangeListener<
 
 export function notifyImSubscriberChangeListeners<
   TChannel extends ImChannelLike,
-  TSubscriber = ImSubscriberLike
->(sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>, channel: TChannel) {
+  TSubscriber extends ImSubscriberLike = ImSubscriberLike
+>(
+  sdk: ImChannelSubscribersRuntimeSdk<TChannel, TSubscriber>,
+  channel: TChannel
+) {
   sdk.channelManager.notifySubscribeChangeListeners(channel);
 }
 
 export function patchImChannelInfoOrgData<
   TChannelInfo extends ImChannelInfoLike
->(
-  channelInfo: TChannelInfo,
-  patch: Record<string, any>
-) {
+>(channelInfo: TChannelInfo, patch: Record<string, any>) {
   channelInfo.orgData = {
     ...(channelInfo.orgData || {}),
     ...patch,

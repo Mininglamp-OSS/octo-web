@@ -1,4 +1,4 @@
-import { WKApp, WKLayout, Provider, WKModal, t } from "@octo/base";
+import { WKApp, WKLayout, Provider, WKModal, t, Dap } from "@octo/base";
 import React, { Component } from "react";
 import "./index.css"
 import MainVM from "./vm";
@@ -12,6 +12,17 @@ import { Space, SpaceService } from "@octo/base";
 import { JoinSpaceModalConnected, NavRail, MeInfo, SpaceCreate } from "@octo/base";
 import { consumeJoinSuccessNotice, showJoinSuccessToast } from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
+import {
+    requestGuardedSpaceChange,
+    publishInitialSpaceResolution,
+} from "./spaceChange";
+import {
+    clearLastSpaceId,
+    persistActiveSpace,
+    resolveInitialSpaceForUser,
+} from "../../features/spacePreference";
+import { requestGuardedMenuChange, requestProgrammaticMenuChange } from "./menuChange";
+import { requestMailWorkspaceSwitch } from "@octo/mail";
 
 // ─── MainContentLeft：纯路由渲染区（Sidebar + 内容） ───────────────────────
 
@@ -27,7 +38,7 @@ export class MainContentLeft extends Component<MainContentLeftProps> {
                 {vm.historyRoutePaths.map((routePath, i) => {
                     const Cpt = WKApp.route.get(routePath);
                     return (
-                        <div key={i} style={{ display: routePath === vm.currentMenus?.routePath ? "block" : "none", width: "100%", height: "100%" }}>
+                        <div key={i} data-page-id={routePath} style={{ display: routePath === vm.currentMenus?.routePath ? "block" : "none", width: "100%", height: "100%" }}>
                             {React.isValidElement(Cpt) ? Cpt : undefined}
                         </div>
                     );
@@ -91,19 +102,27 @@ export class MainPage extends Component<{}, MainPageState> {
 
         SpaceService.shared.getMySpaces().then(spaces => {
             this.setState({ allSpaces: spaces });
-            const savedSpaceId = localStorage.getItem("currentSpaceId");
-            if (savedSpaceId && spaces.find(s => s.space_id === savedSpaceId)) {
-                WKApp.shared.currentSpaceId = savedSpaceId;
-            } else if (spaces.length > 0) {
-                WKApp.shared.currentSpaceId = spaces[0].space_id;
-                localStorage.setItem("currentSpaceId", spaces[0].space_id);
-                this.forceUpdate();
+            const previousSpaceId = WKApp.shared.currentSpaceId || "";
+            const selectedSpace = resolveInitialSpaceForUser(
+                spaces,
+                WKApp.loginInfo.uid,
+                previousSpaceId,
+            );
+            if (selectedSpace) {
+                WKApp.shared.currentSpaceId = selectedSpace.space_id;
+                persistActiveSpace(WKApp.loginInfo.uid, selectedSpace.space_id);
             } else {
                 WKApp.shared.currentSpaceId = '';
                 WKApp.shared.spaceChecked = false;
+                clearLastSpaceId(WKApp.loginInfo.uid);
                 localStorage.removeItem("currentSpaceId");
-                try { WKApp.shared.notifyListener(); } catch (_) {}
             }
+            publishInitialSpaceResolution(
+                previousSpaceId,
+                selectedSpace,
+                (event, space) => WKApp.mittBus.emit(event, space),
+            );
+            try { WKApp.shared.notifyListener(); } catch (_) {}
             // dmwork-web#1065: InviteLanding 走 window.location.href 跳转后，
             // Toast 无法跨 full-reload 存活。我们用 sessionStorage 把 notice 带过来，
             // 在主界面挂载、Space 列表就绪之后再弹出。放在 .then() 内确保 spaces 已加载，
@@ -149,12 +168,19 @@ export class MainPage extends Component<{}, MainPageState> {
         });
     }
 
-    handleSpaceSelected = (spaceId: string) => {
+    private applySpaceSelection = (spaceId: string) => {
+        // space_switched:改由此处(切换守卫通过、真正 apply 的唯一入口)命令式 track,而非
+        //   POST /conversation/sync 的 2xx 通道 —— 那是 WuKongIM SDK 的会话同步回调,连接/重连/
+        //   冷启动都会触发,不只切空间(见 review P1-3)。仅在目标与当前不同(确有切换)时计一次。
+        const prevSpaceId = WKApp.shared.currentSpaceId || "";
+        if (spaceId && spaceId !== prevSpaceId) {
+            Dap.shared.track("space_switched", {});
+        }
         // 同步更新 currentSpaceId 与持久化，并立刻 emit space-changed，
         // 避免随后用户立即触发的"合并转发"等动作读到旧的 spaceId
         // （此前这些更新都放在 getMySpaces().then 内，存在网络 race）。
         WKApp.shared.currentSpaceId = spaceId;
-        localStorage.setItem("currentSpaceId", spaceId);
+        persistActiveSpace(WKApp.loginInfo.uid, spaceId);
         const existing = this.state.allSpaces.find(s => s.space_id === spaceId);
         if (existing) {
             WKApp.mittBus.emit("space-changed", existing);
@@ -172,6 +198,15 @@ export class MainPage extends Component<{}, MainPageState> {
         }).catch(() => {
             Toast.error(t("app.main.spaceListRefreshFailed"));
         });
+    };
+
+    handleSpaceSelected = (spaceId: string) => {
+        requestGuardedSpaceChange(
+            spaceId,
+            WKApp.shared.currentSpaceId || "",
+            requestMailWorkspaceSwitch,
+            this.applySpaceSelection,
+        );
     };
 
     handleAvatarClick = () => {
@@ -244,27 +279,52 @@ export class MainPage extends Component<{}, MainPageState> {
                                         onJoinSpace={() => this.setState({ showJoinSpace: true })}
                                         onCreateSpace={() => this.setState({ showCreateSpace: true })}
                                         canManageSpace={canManageSpace}
+                                        onSpaceManagement={() => { window.location.href = "/space"; }}
                                         // 菜单
                                         menusList={vm.menusList}
                                         currentMenus={vm.currentMenus}
                                         onMenuClick={(menus) => {
                                             const prevMenuId = vm.currentMenus?.id;
-                                            vm.currentMenus = menus;
-                                            WKApp.currentMenuId = menus.id;
-                                            WKApp.route.syncPath(menus.routePath);
-                                            if (menus.onPress) {
-                                                menus.onPress();
-                                            } else {
-                                                WKApp.routeLeft.popToRoot();
-                                                const stayInChat = prevMenuId === "chat" && menus.id === "chat";
-                                                if (!stayInChat) {
-                                                    WKApp.routeRight.popToRoot();
+                                            requestGuardedMenuChange(
+                                                prevMenuId,
+                                                menus.id,
+                                                requestMailWorkspaceSwitch,
+                                                () => {
+                                                    // contacts_module_entered:在导航真正切到联系人时计一次,
+                                                    // 而非 GET /robot/my_bots 的 2xx 通道 —— 那个端点 BotStore/
+                                                    // PersonaSettings 也会调,拉取 ≠ 进模块(见 review P2-4)。
+                                                    // 不改成 onPress:onPress 会顶替默认导航(此处 popToRoot /
+                                                    // 低屏 route.push 两条路径不同),故就近在导航回调里按 id 计。
+                                                    // 重复点击当前菜单(reentry)不计,与 onPress 类模块统一口径(见二审 P2-4)。
+                                                    const isReentry = prevMenuId === menus.id;
+                                                    if (menus.id === "contacts" && !isReentry) {
+                                                        Dap.shared.track("contacts_module_entered", {});
+                                                    }
+                                                    // 十二审 🔴 P1-3:apps_module_entered 同款移到导航手势。原挂
+                                                    // GET /app_bot/available,但 useAppBots 在每次切空间时重拉、且
+                                                    // Apps 页常驻 DOM,导致别处切空间误发、真实再进入漏计。此处在
+                                                    // 真正切到 Apps(menusId=appbot,非 reentry)时计一次。
+                                                    if (menus.id === "appbot" && !isReentry) {
+                                                        Dap.shared.track("apps_module_entered", {});
+                                                    }
+                                                    vm.currentMenus = menus;
+                                                    WKApp.currentMenuId = menus.id;
+                                                    WKApp.route.syncPath(menus.routePath);
+                                                    if (menus.onPress) {
+                                                        menus.onPress(isReentry);
+                                                    } else {
+                                                        WKApp.routeLeft.popToRoot();
+                                                        const stayInChat = prevMenuId === "chat" && menus.id === "chat";
+                                                        if (!stayInChat) {
+                                                            WKApp.routeRight.popToRoot();
+                                                        }
+                                                    }
+                                                    // MainContentLeft 把已访问路由都挂在 DOM 里 (靠 display
+                                                    // 切换可见性), 所以切回某个菜单时组件不会重新 mount。
+                                                    // 发 mitt 事件通知依赖数据新鲜度的页面主动 reload。
+                                                    WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: menus.id });
                                                 }
-                                            }
-                                            // MainContentLeft 把已访问路由都挂在 DOM 里 (靠 display
-                                            // 切换可见性), 所以切回某个菜单时组件不会重新 mount。
-                                            // 发 mitt 事件通知依赖数据新鲜度的页面主动 reload。
-                                            WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: menus.id });
+                                            );
                                         }}
                                         // 用户
                                         onAvatarClick={this.handleAvatarClick}
@@ -272,18 +332,12 @@ export class MainPage extends Component<{}, MainPageState> {
                                         // 设置
                                         settingSelected={vm.settingSelected}
                                         hasNewVersion={vm.hasNewVersion}
-                                        showNewVersion={vm.showNewVersion}
                                         showAppVersion={vm.showAppVersion}
                                         showAppUpdate={vm.showAppUpdate}
                                         appUpdateProgress={vm.appUpdateProgress}
                                         showAppUpdateOperation={vm.showAppUpdateOperation}
                                         lastVersionInfo={vm.lastVersionInfo}
                                         onToggleSetting={() => { vm.settingSelected = !vm.settingSelected; }}
-                                        onSetShowNewVersion={(v) => {
-                                            vm.showNewVersion = v;
-                                            if (!v) { vm.markVersionRead(); }
-                                            vm.notifyListener();
-                                        }}
                                         onSetShowAppVersion={(v) => {
                                             vm.showAppVersion = v;
                                             if (!v) { vm.markVersionRead(); }
@@ -308,17 +362,24 @@ export class MainPage extends Component<{}, MainPageState> {
                                     WKApp.routeLeft.setPop = () => { context.pop(); };
                                     WKApp.routeLeft.setPopToRoot = () => { context.popToRoot(); };
                                     // Bind menu switch callback for showConversation
-                                    WKApp.switchToMenuById = (menuId: string) => {
+                                    WKApp.switchToMenuById = (menuId: string, afterSwitch?: () => void) => {
                                         const target = vm.menusList.find((m: any) => m.id === menuId);
-                                        if (target && vm.currentMenus?.id !== menuId) {
-                                            vm.currentMenus = target;
-                                            WKApp.currentMenuId = menuId;
-                                            WKApp.route.syncPath(target.routePath);
-                                            // NOTE: do NOT popToRoot() here. routeLeft is a shared
-                                            // stack across tabs; popping it would destroy the detail
-                                            // view (e.g. summary detail page) the user was on,
-                                            // breaking rendering when they later switch back.
-                                        }
+                                        if (!target) return;
+                                        requestProgrammaticMenuChange(
+                                            vm.currentMenus?.id,
+                                            menuId,
+                                            requestMailWorkspaceSwitch,
+                                            () => {
+                                                vm.currentMenus = target;
+                                                WKApp.currentMenuId = menuId;
+                                                WKApp.route.syncPath(target.routePath);
+                                                // NOTE: do NOT popToRoot() here. routeLeft is a shared
+                                                // stack across tabs; popping it would destroy the detail
+                                                // view (e.g. summary detail page) the user was on,
+                                                // breaking rendering when they later switch back.
+                                            },
+                                            afterSwitch,
+                                        );
                                     };
                                     // Keep currentMenuId in sync with initial / user-driven menu changes
                                     if (vm.currentMenus?.id && WKApp.currentMenuId !== vm.currentMenus.id) {

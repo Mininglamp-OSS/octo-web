@@ -50,7 +50,7 @@ describe('showJoinSuccessToast — copy de-duplication', () => {
         const text = renderedText(call.content);
         expect(text).toContain('已加入');
         expect(text).toContain('ExampleCorp');
-        expect(text).toContain('空间');
+        expect(text).toContain('组织');
         expect(text).not.toContain('群聊');
         expect(text).not.toContain('位于');
         const matches = text.match(/ExampleCorp/g) || [];
@@ -88,5 +88,30 @@ describe('showJoinSuccessToast — copy de-duplication', () => {
         const text = renderedText(recorded[0].content);
         expect(text).toContain('产品群');
         expect(text).not.toContain('ExampleCorp');
+    });
+
+    it('group kind keeps the group copy when entity and space names match', () => {
+        showJoinSuccessToast({
+            entityName: 'ExampleCorp',
+            spaceName: 'ExampleCorp',
+            kind: 'group',
+            crossSpace: true,
+        });
+        const text = renderedText(recorded[0].content);
+        expect(text).toContain('群聊');
+        expect(text).toContain('位于');
+        expect(text).toContain('切换过去');
+    });
+
+    it('group kind uses the group copy for a same-space join', () => {
+        showJoinSuccessToast({
+            entityName: 'ExampleCorp',
+            spaceName: 'ExampleCorp',
+            kind: 'group',
+            crossSpace: false,
+        });
+        const text = renderedText(recorded[0].content);
+        expect(text).toContain('群聊');
+        expect(text).not.toContain('组织');
     });
 });

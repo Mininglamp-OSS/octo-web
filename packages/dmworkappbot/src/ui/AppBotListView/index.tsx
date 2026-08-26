@@ -98,7 +98,7 @@ const AppBotListView: React.FC<AppBotListViewProps> = ({
   return (
     <div className="appbot-list-view">
       <div className="appbot-page-header">
-        <div className="appbot-page-title">{title}</div>
+        <div className="appbot-page-title" data-testid="appbot-page-title">{title}</div>
         <input
           type="search"
           className="appbot-search-input"

@@ -54,8 +54,8 @@ describe("useForwardGrant", () => {
   })
 
   it("uses caller-provided defaultRole when specified", () => {
-    render({ canGrant: true, defaultRole: "writer" })
-    expect(latest.grantRole).toBe("writer")
+    render({ canGrant: true, defaultRole: "commenter" })
+    expect(latest.grantRole).toBe("commenter")
   })
 
   it("resets role to defaultRole whenever the switch is turned back on (AC-4 / AC-15)", () => {
@@ -91,11 +91,40 @@ describe("useForwardGrant", () => {
     expect(latest.readConfirmPayload()).toEqual({ role: "writer" })
   })
 
+  it("emits commenter when selected", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantRole("commenter"))
+    expect(latest.readConfirmPayload()).toEqual({ role: "commenter" })
+  })
+
   it("readConfirmPayload keeps a stable identity across renders (safe for stable confirm)", () => {
     render({ canGrant: true })
     const first = latest.readConfirmPayload
     act(() => latest.setGrantEnabled(true))
     const second = latest.readConfirmPayload
     expect(second).toBe(first)
+  })
+
+  it("carries selected botUids in the payload when active AND enabled", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantBotUids(["b_1", "b_2"]))
+    expect(latest.readConfirmPayload()).toEqual({ role: "reader", botUids: ["b_1", "b_2"] })
+  })
+
+  it("omits botUids from the payload when none are selected (legacy { role } shape)", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantBotUids([]))
+    expect(latest.readConfirmPayload()).toEqual({ role: "reader" })
+  })
+
+  it("drops botUids once the grant switch is turned off", () => {
+    render({ canGrant: true })
+    act(() => latest.setGrantEnabled(true))
+    act(() => latest.setGrantBotUids(["b_1"]))
+    act(() => latest.setGrantEnabled(false))
+    expect(latest.readConfirmPayload()).toBeUndefined()
   })
 })

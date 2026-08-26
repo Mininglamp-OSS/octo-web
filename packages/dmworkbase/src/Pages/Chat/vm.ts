@@ -26,28 +26,55 @@ import {
     fetchImChannelInfo,
     getImChannelInfo,
 } from "../../im-runtime/channelRuntime";
+import {
+  getBrowserUnreadConversationSync,
+} from "../../features/documentTitle";
+import { chatPageTitleController } from "./chatPageTitleController";
+import { Dap } from "../../Service/Dap";
+import PinnedService, { PinnedChannelItem } from "../../Service/PinnedService";
 
 
 const TOP_CONVERSATION_SCORE_BOOST = 1000000000000;
+
+export function applyPinnedThreadSnapshot(
+    conversations: Conversation[],
+    pinnedChannels: PinnedChannelItem[] | undefined,
+) {
+    if (!pinnedChannels) return
+
+    const pinnedThreadIds = new Set(
+        pinnedChannels
+            .filter((item) => item.channel_type === ChannelTypeCommunityTopic)
+            .map((item) => item.channel_id)
+    )
+    for (const conversation of conversations) {
+        if (conversation.channel.channelType !== ChannelTypeCommunityTopic) continue
+        conversation.extra = conversation.extra || {}
+        conversation.extra.top = pinnedThreadIds.has(conversation.channel.channelID) ? 1 : 0
+    }
+}
+
 export class ChatVM extends ProviderListener {
-    conversations: ConversationWrap[] = new Array()
-    loading: boolean = false // 最近会话是否加载中
-    private _connectTitle: string = "" // 连接标题
-    connectStatus: number = 0 // 0=disconnected, 1=connected, 2=connecting
-    private _showChannelSetting: boolean = false // 是否显示频道设置
-    private _selectedConversation?: ConversationWrap // 选中的最近会话
-    private _showAddPopover = false // 点击添加按钮弹出的popover
-    private connectStatusListener!: ConnectStatusListener
-    private conversationListener!: ConversationListener
-    private channelListener!: ChannelInfoListener
-    private unsubscribeChannelInfoListener?: () => void
-    private messageDeleteListener!: MessageDeleteListener
-    private conversationListID = "wk-conversationlist"
-    private _showGlobalSearch = false // 是否显示全局搜索
-    private _selectedSpace?: Space // 选中的 Space
-    private _showSpaceCreate = false // 是否显示创建 Space 弹窗
-    private _spaceMemberUids: Set<string> = new Set() // 当前 space 的成员 uid 集合
-    private _pendingSpaceConversations: Map<string, Conversation> = new Map() // 等待 channelInfo 的新群会话
+  conversations: ConversationWrap[] = new Array();
+  // 首次权威 conversation sync 完成前保持加载态，避免用未完成快照计算 Tab 未读角标。
+  loading: boolean = true; // 最近会话是否加载中
+  private _connectTitle: string = ""; // 连接标题
+  connectStatus: number = 0; // 0=disconnected, 1=connected, 2=connecting
+  private _showChannelSetting: boolean = false; // 是否显示频道设置
+  private _selectedConversation?: ConversationWrap; // 选中的最近会话
+  private _showAddPopover = false; // 点击添加按钮弹出的popover
+  private activeMenuChangedHandler?: (payload: { menuId?: string }) => void;
+  private connectStatusListener!: ConnectStatusListener;
+  private conversationListener!: ConversationListener;
+  private channelListener!: ChannelInfoListener;
+  private unsubscribeChannelInfoListener?: () => void;
+  private messageDeleteListener!: MessageDeleteListener;
+  private conversationListID = "wk-conversationlist";
+  private _showGlobalSearch = false; // 是否显示全局搜索
+  private _selectedSpace?: Space; // 选中的 Space
+  private _showSpaceCreate = false; // 是否显示创建 Space 弹窗
+  private _spaceMemberUids: Set<string> = new Set(); // 当前 space 的成员 uid 集合
+  private _pendingSpaceConversations: Map<string, Conversation> = new Map(); // 等待 channelInfo 的新群会话
     // 子区(CommunityTopic) sidebar-only 关注项的最近一次 thread.status 快照，按 channelID。
     // 仅用于 channelListener 里收敛重渲染：status 未变化时跳过 notifyListener（N2）。
     private _lastThreadStatusByChannel: Map<string, number | undefined> = new Map()
@@ -71,8 +98,8 @@ export class ChatVM extends ProviderListener {
     }
 
     set selectedConversation(v: ConversationWrap | undefined) {
-        this._selectedConversation = v
-        this.notifyListener()
+    this._selectedConversation = v;
+    this.notifyListener();
     }
 
     set showChannelSetting(v: boolean) {
@@ -149,6 +176,15 @@ export class ChatVM extends ProviderListener {
     private spaceChangedHandler?: (space: any) => void
 
     didMount(): void {
+        this.activeMenuChangedHandler = ({ menuId }) => {
+            if (menuId === "chat") return
+            chatPageTitleController.clear()
+            WKApp.shared.openChannel = undefined
+            this._showChannelSetting = false
+            this.selectedConversation = undefined
+        }
+        WKApp.mittBus.on("wk:active-menu-changed", this.activeMenuChangedHandler)
+
         // 监听 Space 切换（来自全局顶栏 SpaceList）
         this.spaceChangedHandler = (_space: any) => {
             // 确保 currentSpaceId 已更新（防止事件时序问题）
@@ -157,6 +193,7 @@ export class ChatVM extends ProviderListener {
             }
             WKSDK.shared().conversationManager.conversations = []
             this._pendingSpaceConversations.clear()
+            chatPageTitleController.clear()
             this.selectedConversation = undefined // 清空选中的会话
             WKApp.shared.openChannel = undefined // 清空全局打开的频道
             this._showChannelSetting = false // 关闭频道设置面板
@@ -283,6 +320,15 @@ export class ChatVM extends ProviderListener {
                 if (shouldSkipPersonConversationForSpace(conversation)) return
                 const existConversation = this.findConversation(conversation.channel)
                 if (existConversation) {
+                    if (
+                        conversation.channel.channelType === ChannelTypeCommunityTopic &&
+                        existConversation.extra?.top === 1
+                    ) {
+                        // 普通会话实时更新不携带 /user/pinned 的子区置顶状态，保留当前
+                        // 已从 pinned 快照恢复的值，避免一条新消息把子区重新打回未置顶。
+                        conversation.extra = conversation.extra || {}
+                        conversation.extra.top = 1
+                    }
                     existConversation.conversation = conversation
                     // WS 更新后有条件清除 spaceLastMessage (#783)
                     // 只在新消息属于当前 Space 时清除（有更新的实时消息可用）
@@ -326,7 +372,11 @@ export class ChatVM extends ProviderListener {
             }
             const conversation = this.findConversation(channelInfo.channel)
             if (conversation) {
-                conversation.extra.top = channelInfo.top ? 1 : 0
+                // 子区置顶由 /user/pinned 持久化；子区 channelInfo 的 setting 响应只含
+                // mute，不得用缺省的 channelInfo.top=false 覆盖已加载的置顶快照。
+                if (channelInfo.channel.channelType !== ChannelTypeCommunityTopic) {
+                    conversation.extra.top = channelInfo.top ? 1 : 0
+                }
                 this.sortConversations()
                 this.notifyListener()
             } else if (channelInfo.channel.channelType === ChannelTypeCommunityTopic) {
@@ -383,11 +433,21 @@ export class ChatVM extends ProviderListener {
 
     }
     didUnMount(): void {
-        removeImConnectStatusListener(WKSDK.shared(), this.connectStatusListener)
-        WKSDK.shared().conversationManager.removeConversationListener(this.conversationListener)
-        this.unsubscribeChannelInfoListener?.()
-        this.unsubscribeChannelInfoListener = undefined
-        WKApp.shared.removeMessageDeleteListener(this.messageDeleteListener)
+    chatPageTitleController.clear();
+    if (this.activeMenuChangedHandler) {
+      WKApp.mittBus.off(
+        "wk:active-menu-changed",
+        this.activeMenuChangedHandler
+      );
+      this.activeMenuChangedHandler = undefined;
+    }
+    removeImConnectStatusListener(WKSDK.shared(), this.connectStatusListener);
+    WKSDK.shared().conversationManager.removeConversationListener(
+      this.conversationListener
+    );
+    this.unsubscribeChannelInfoListener?.();
+    this.unsubscribeChannelInfoListener = undefined;
+    WKApp.shared.removeMessageDeleteListener(this.messageDeleteListener);
         if (this.spaceChangedHandler) {
             WKApp.mittBus.off('space-changed', this.spaceChangedHandler)
         }
@@ -457,12 +517,35 @@ export class ChatVM extends ProviderListener {
         if (!conversationWrap) {
             return
         }
-        await WKApp.conversationProvider.clearConversationMessages(conversationWrap.conversation)
-        conversationWrap.conversation.lastMessage = undefined
-        conversationWrap.conversation.unread = 0
-        WKApp.endpointManager.invoke(EndpointID.clearChannelMessages, channel)
-        this.sortConversations()
-        this.notifyListener()
+    await WKApp.conversationProvider.clearConversationMessages(
+      conversationWrap.conversation
+    );
+    // 十二审 🔴 P1-1:conversation_cleared 命令式收口的第二个真实手势(会话列表「清空聊天记录」/「关闭并清空」
+    //   右键项经此)。原 path 通道 POST /message/offset 会被删好友顺带清空误计,故移到两个真实清空入口单发。
+    Dap.shared.track("conversation_cleared", {});
+    conversationWrap.conversation.lastMessage = undefined;
+    conversationWrap.conversation.unread = 0;
+    if (
+      WKApp.shared.currentSpaceId &&
+      channel.channelType === ChannelTypePerson &&
+      conversationWrap.conversation.extra?.spaceUnread !== undefined
+    ) {
+      conversationWrap.conversation.extra.spaceUnread = 0;
+    }
+    WKSDK.shared().conversationManager.notifyConversationListeners(
+      conversationWrap.conversation,
+      ConversationAction.update
+    );
+    getBrowserUnreadConversationSync().publish({
+      accountId: WKApp.loginInfo.uid,
+      spaceId: WKApp.shared.currentSpaceId || "",
+      channelId: channel.channelID,
+      channelType: channel.channelType,
+      unread: 0,
+    });
+    WKApp.endpointManager.invoke(EndpointID.clearChannelMessages, channel);
+    this.sortConversations();
+    this.notifyListener();
     }
 
     setConnectTitleWithConnectStatus(connectStatus: ConnectStatus) {
@@ -560,12 +643,34 @@ export class ChatVM extends ProviderListener {
         // B 的回包可能晚于 C 的回包到达;如果直接写入会把 C 的 cache 覆盖成 B 的
         // (甚至空数组,见 dmworkdatasource/module.ts 的 stale guard)。
         const requestSpaceId = WKApp.shared.currentSpaceId
+        const pinnedChannelsPromise = requestSpaceId
+            ? PinnedService.list().catch((error) => {
+                console.warn('[ChatVM] failed to load pinned channels', error)
+                return undefined
+            })
+            : Promise.resolve(undefined)
 
         // 先拉取数据，避免清空列表导致 UI 闪烁（fix #266）
-        const conversations = await WKSDK.shared().conversationManager.sync({})
+        let conversations: Conversation[] | undefined
+        try {
+            conversations = await WKSDK.shared().conversationManager.sync({})
+        } catch (error) {
+            // 只允许当前 Space 的请求结束自己的 loading；旧 Space 的迟到失败不能
+            // 提前结束新 Space 正在进行的同步。
+            if (WKApp.shared.currentSpaceId === requestSpaceId) {
+                this.loading = false
+                this.notifyListener()
+            }
+            console.error('[ChatVM] failed to sync conversations', error)
+            return
+        }
 
         // 回来已经不是本次请求对应的 Space —— 当前 Space 自有更新一次 sync,
         // 直接放弃本次结果。loading 留给新一次 sync 收尾,避免和 loading=false 冲突。
+        if (WKApp.shared.currentSpaceId !== requestSpaceId) {
+            return
+        }
+        const pinnedChannels = await pinnedChannelsPromise
         if (WKApp.shared.currentSpaceId !== requestSpaceId) {
             return
         }
@@ -578,6 +683,7 @@ export class ChatVM extends ProviderListener {
         // 写入缓存。这样 shouldSkipChannelForSpace 命中率最大化，下游实时消息
         // 也能立即用到，避免 fail-open 误展示其他 Space 的群。
         if (conversations && conversations.length > 0) {
+            applyPinnedThreadSnapshot(conversations, pinnedChannels)
             this.prefillSpaceMapsFromSync(conversations)
         }
 
@@ -612,10 +718,33 @@ export class ChatVM extends ProviderListener {
 
     async reloadRequestConversationList() {
         const conversationWraps = new Array<ConversationWrap>()
-        const conversations = await WKSDK.shared().conversationManager.sync({})
+        let conversations: Conversation[] | undefined
+        const requestSpaceId = WKApp.shared.currentSpaceId
+        const pinnedChannelsPromise = requestSpaceId
+            ? PinnedService.list().catch((error) => {
+                console.warn('[ChatVM] failed to load pinned channels', error)
+                return undefined
+            })
+            : Promise.resolve(undefined)
+        try {
+            conversations = await WKSDK.shared().conversationManager.sync({})
+        } catch (error) {
+            // 冷启动失败时不能永久停在 loading；保留原 reject 语义交给调用方处理。
+            this.loading = false
+            this.notifyListener()
+            throw error
+        }
+        if (WKApp.shared.currentSpaceId !== requestSpaceId) {
+            return
+        }
+        const pinnedChannels = await pinnedChannelsPromise
+        if (WKApp.shared.currentSpaceId !== requestSpaceId) {
+            return
+        }
         // 先按 sync 响应预填 channelSpaceMap / channelMySourceSpaceMap
         // 再做 Space 过滤，避免老缓存缺失时落到 fail-closed 默认值。
         if (conversations && conversations.length > 0) {
+            applyPinnedThreadSnapshot(conversations, pinnedChannels)
             this.prefillSpaceMapsFromSync(conversations)
         }
         if (conversations && conversations.length > 0) {
@@ -632,11 +761,13 @@ export class ChatVM extends ProviderListener {
             }
         }
         this.conversations = conversationWraps
+        this.loading = false
         this.sortConversations()
 
         this.notifyListener()
 
         WKApp.menus.refresh()
+        WKApp.mittBus.emit('conversation-list-refreshed')
     }
 }
 
@@ -644,6 +775,23 @@ export class ChatVM extends ProviderListener {
 export async function handleGlobalSearchClick(item: any, type: string,hideModal?:()=>void) {
     if (type === "contacts") {
         if (item.channel_type === ChannelTypePerson) {
+            // 联系人 tab 点击自己：无条件走资料页，不查 follow、不开"自己和自己"会话。
+            // 后端 GetUserDetail 对 self 的 follow 判定不可靠：非 friend 时会用
+            // GetCommonSpaceID(loginUID, uid) 兜底，而 self 和 self 永远在同一
+            // Space —— 结果 follow 恒为 1，原逻辑因此走 showConversation 打开
+            // 「自己和自己」的私聊，这不是用户搜自己的产品意图（对齐微信/Slack：
+            // 搜自己应看资料页）。后端 notes-to-self 通道仍是合法的，只是不
+            // 通过这个入口触发它。（不锁 octo-server 行号，重构会挪。）
+            if (item.channel_id === WKApp.loginInfo.uid) {
+                // self 分支不调 hideModal():用户搜自己看一眼资料多半只是好奇/
+                // 查证,并没完成主要检索意图,不应把搜索面板收掉——UserInfo
+                // 弹层直接叠在全局搜索面板之上,关掉 UserInfo 后能顺畅继续搜
+                // 其他人。与他人点击(follow=1 开会话/follow=0 开资料页)的
+                // hideModal 语义有意不对称:开会话是"检索完成、转移注意力",
+                // 开自己资料是"顺手一看、还没完成"。
+                WKApp.shared.baseContext.showUserInfo(item.channel_id, new Channel(item.channel_id, item.channel_type))
+                return
+            }
             // 个人频道/Bot：通过 users API 检查好友关系
             try {
                 const resp = await WKApp.apiClient.get(`users/${item.channel_id}`)

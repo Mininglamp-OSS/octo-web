@@ -514,6 +514,43 @@
     width: 100%;
 }
 
+.wk-login-content-phonelogin--primary {
+    min-height: calc(var(--wk-sp-12) * 6);
+}
+
+.wk-login-content-config-status {
+    min-height: calc(var(--wk-sp-12) * 6);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    gap: var(--wk-sp-2);
+}
+
+.wk-login-content-config-status-title {
+    color: var(--semi-color-text-0);
+    font-size: var(--wk-text-size-lg);
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.wk-login-content-config-status-sub {
+    color: var(--semi-color-text-2);
+    font-size: var(--wk-text-size-sm);
+    line-height: 1.5;
+}
+
+.wk-login-content-sso-config-fallback {
+    margin-bottom: var(--wk-sp-4);
+    padding: var(--wk-sp-3);
+    border: 1px solid color-mix(in srgb, var(--semi-color-warning) 35%, transparent);
+    border-radius: var(--wk-r-sm);
+    background: color-mix(in srgb, var(--semi-color-warning) 10%, transparent);
+    color: var(--semi-color-text-1);
+    font-size: var(--wk-text-size-sm);
+    line-height: 1.5;
+}
+
 /* ---- QR scan panel ---- */
 .wk-login-content-scanlogin {
     display: none;

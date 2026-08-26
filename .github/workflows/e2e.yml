@@ -1,6 +1,6 @@
-# e2e MR gate: build once, run @p0 + @visual cases, junit 后处理判 business vs visual fail
+# e2e PR gate: build once, run the full Playwright suite, junit 后处理判 business vs visual fail
 # 姿势沿用 e2e-kit v0.4 依据 (docs/methodology/module-organization.md tag 层次):
-#   - @p0 阻断 (fail block PR)
+#   - 全量业务 case 阻断 (fail block PR)
 #   - @visual 视觉基线 (visual-only fail 不 block, 由 baseline update workflow 刷新)
 
 name: e2e
@@ -8,15 +8,6 @@ name: e2e
 on:
   pull_request:
     branches: [main]
-    paths:
-      - "apps/web/**"
-      - "packages/**"
-      - "package.json"
-      - "pnpm-lock.yaml"
-      - ".github/workflows/e2e.yml"
-      - ".github/workflows/e2e-nightly.yml"
-      - ".github/workflows/e2e-baseline-bootstrap.yml"
-      - ".github/workflows/e2e-baseline-update.yml"
 
 permissions:
   contents: read
@@ -26,7 +17,42 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      # e2e=true when at least one changed file matches any positive path below.
+      # Positive filter uses dorny's default 'some' quantifier (predicate-quantifier
+      # intentionally unset): semantics = "some changed file matches some pattern".
+      # Do NOT copy ci.yml's 'every' quantifier — that is for negation patterns only;
+      # using 'every' here would drop mixed PRs (e.g. apps/web/** + README.md).
+      e2e: ${{ github.event_name == 'pull_request' && steps.filter.outputs.e2e || 'true' }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@6852f92c20ea7fd3b0c25de3b5112db3a98da050 # v3
+        id: filter
+        if: github.event_name == 'pull_request'
+        with:
+          filters: |
+            e2e:
+              - 'apps/web/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/e2e.yml'
+              - '.github/workflows/e2e-nightly.yml'
+              - '.github/workflows/e2e-baseline-bootstrap.yml'
+              - '.github/workflows/e2e-baseline-update.yml'
+
   install-build:
+    needs: [changes]
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -68,15 +94,15 @@ jobs:
           cache: "pnpm"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --prefer-offline
-      - name: Run @p0 + @visual e2e
+      - name: Run full e2e suite
         working-directory: apps/web
         shell: bash
         run: |
-          E2E_LOG="e2e-kit/playwright-report/e2e-p0-visual.log"
+          E2E_LOG="e2e-kit/playwright-report/e2e-all.log"
           mkdir -p "$(dirname "$E2E_LOG")"
 
           set +e
-          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts --grep "@p0|@visual" 2>&1 | tee "$E2E_LOG"
+          pnpm exec playwright test --config=e2e-kit/playwright.ci.config.ts 2>&1 | tee "$E2E_LOG"
           PW_EXIT=${PIPESTATUS[0]}
           set -e
 
@@ -102,7 +128,7 @@ jobs:
           PROXY_ERRORS=$(grep -c "http proxy error:" "$E2E_LOG" || true)
           echo ""
           echo "═════════════════════════════════════════════════════════════"
-          echo "📊 e2e @p0/@visual summary (playwright exit=$PW_EXIT):"
+          echo "📊 e2e full-suite summary (playwright exit=$PW_EXIT):"
           echo "   total tests:   $TOTAL_TESTS"
           echo "   total fail:    $TOTAL_FAIL"
           echo "   business fail: $BUSINESS_FAIL"
@@ -118,22 +144,19 @@ jobs:
 
           # 判定顺序 (fail-closed, PW_EXIT 检查在 visual allow 之前避免掩盖 crash):
           #  1. tests=0 → webServer / playwright 挂了根本没跑, block
-          #  2. tests < EXPECTED_TOTAL → 有 case 静默掉了 @p0/@visual tag / grep 漂了, block
+          #  2. tests < MIN_TESTS → test discovery unexpectedly narrowed, block
           #  3. skipped>0 → 有 case 没真执行, block
           #  4. Vite proxy error → MSW 漏 mock, case 虽过也是假绿, block
           #  5. 有业务 fail (含 @p0+@visual 交叉 case) → block
           #  6. PW_EXIT!=0 但 junit 无 business fail → playwright 本身 crash/OOM/timeout, block
           #  7. 仅视觉 fail (无 @p0 交叉) 且 playwright 干净退出 → allow
           #  8. 全绿 → success
-          EXPECTED_P0=29
-          EXPECTED_VISUAL=2
-          EXPECTED_TOTAL=$((EXPECTED_P0 + EXPECTED_VISUAL))
+          MIN_TESTS=80
           if [[ "$TOTAL_TESTS" -eq 0 ]]; then
             echo "❌ tests=0 (playwright 没跑起 test, 通常是 preview server timeout), block PR"
             exit 1
-          elif [[ "$TOTAL_TESTS" -lt "$EXPECTED_TOTAL" ]]; then
-            echo "❌ tests=$TOTAL_TESTS < EXPECTED_TOTAL=$EXPECTED_TOTAL (有 case 掉了 @p0/@visual tag 或 grep 漂了), block PR"
-            echo "   若确认减 case, 请同步下调 EXPECTED_P0 / EXPECTED_VISUAL."
+          elif [[ "$TOTAL_TESTS" -lt "$MIN_TESTS" ]]; then
+            echo "❌ tests=$TOTAL_TESTS < MIN_TESTS=$MIN_TESTS (全量 suite discovery 缩小), block PR"
             exit 1
           elif [[ "$SKIPPED" -gt 0 ]]; then
             echo "❌ skipped=$SKIPPED (有 case 没真执行), block PR"
@@ -162,7 +185,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-p0
+          name: playwright-report-all
           path: |
             apps/web/e2e-kit/playwright-report/
             apps/web/e2e-kit/test-results/

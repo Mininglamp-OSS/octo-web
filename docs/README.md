@@ -12,6 +12,8 @@ This directory contains development guides and implementation notes for Octo Web
 ## Implementation Notes
 
 - [`channel-search-ui-implementation.md`](./channel-search-ui-implementation.md) — implementation notes for channel-level chat search UI.
+- [`chat-composer-architecture.md`](./chat-composer-architecture.md) — current architecture and developer guide for the
+  chat composer, send transaction, recovery lifecycle, UI boundaries, and extensible editor/message rendering.
 
 ## Assets
 

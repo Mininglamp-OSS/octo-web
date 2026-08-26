@@ -33,12 +33,16 @@ export function formatFileSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
+// Hoisted: Intl.NumberFormat construction (locale + options resolution) is far
+// more expensive than .format(), and cards call this twice per render.
+const compactNumber = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
 export function formatCount(count: number): string {
   const safeCount = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
-  return new Intl.NumberFormat(undefined, {
-    notation: "compact",
-    maximumFractionDigits: 1,
-  }).format(safeCount);
+  return compactNumber.format(safeCount);
 }
 
 export function formatRelativeTime(iso: string, baseDate = new Date()): string {

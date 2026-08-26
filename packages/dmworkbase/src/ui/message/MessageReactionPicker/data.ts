@@ -49,25 +49,25 @@ export const DEFAULT_TOKENS: PickerEmoji[] = [
   {
     key: BUILTIN_CUSTOM_EMOJI_KEYS.mission,
     char: BUILTIN_CUSTOM_EMOJI_KEYS.mission,
-    image: "/emoji/custom_mission.png",
+    image: `${import.meta.env.BASE_URL}emoji/custom_mission.png`,
     nameKey: "base.reaction.emoji.mission",
   },
   {
     key: BUILTIN_CUSTOM_EMOJI_KEYS.action,
     char: BUILTIN_CUSTOM_EMOJI_KEYS.action,
-    image: "/emoji/custom_action.png",
+    image: `${import.meta.env.BASE_URL}emoji/custom_action.png`,
     nameKey: "base.reaction.emoji.action",
   },
   {
     key: BUILTIN_CUSTOM_EMOJI_KEYS.taste,
     char: BUILTIN_CUSTOM_EMOJI_KEYS.taste,
-    image: "/emoji/custom_taste.png",
+    image: `${import.meta.env.BASE_URL}emoji/custom_taste.png`,
     nameKey: "base.reaction.emoji.taste",
   },
   {
     key: BUILTIN_CUSTOM_EMOJI_KEYS.shangfang,
     char: BUILTIN_CUSTOM_EMOJI_KEYS.shangfang,
-    image: "/emoji/custom_shangfang.png",
+    image: `${import.meta.env.BASE_URL}emoji/custom_shangfang.png`,
     nameKey: "base.reaction.emoji.shangfang",
   },
 ];

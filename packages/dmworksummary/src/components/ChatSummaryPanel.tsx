@@ -10,6 +10,7 @@ import { X, ChevronLeft } from 'lucide-react';
 import SummaryListPage from '../pages/SummaryListPage';
 import SummaryCreatePage from '../pages/SummaryCreatePage';
 import SummaryDetailPage from '../pages/SummaryDetailPage';
+import { summaryTestIds } from '../utils/testIds';
 
 interface ChatSummaryPanelProps {
     visible: boolean;
@@ -23,6 +24,8 @@ interface ChatSummaryPanelState {
     view: 'list' | 'detail' | 'create';
     selectedTaskId: number | null;
     isDragging: boolean;
+    /** 面板内创建页的初始总结方式：由列表页「+」下拉选择后透传。 */
+    createMode: 'normal' | 'agent';
 }
 
 export default class ChatSummaryPanel extends Component<
@@ -40,7 +43,7 @@ export default class ChatSummaryPanel extends Component<
     constructor(props: ChatSummaryPanelProps) {
         super(props);
         const initialView = props.summaryPanelView === 'new' ? 'create' : 'list';
-        this.state = { view: initialView, selectedTaskId: null, isDragging: false };
+        this.state = { view: initialView, selectedTaskId: null, isDragging: false, createMode: 'normal' };
     }
 
     componentDidMount() {
@@ -121,8 +124,8 @@ export default class ChatSummaryPanel extends Component<
         persistSummaryWidth(SUMMARY_DEFAULT_WIDTH);
     };
 
-    private handleCreateNew = () => {
-        this.setState({ view: 'create', selectedTaskId: null });
+    private handleCreateNew = (mode?: 'normal' | 'agent') => {
+        this.setState({ view: 'create', selectedTaskId: null, createMode: mode ?? 'normal' });
     };
 
     private handleViewDetail = (taskId: number) => {
@@ -152,7 +155,7 @@ export default class ChatSummaryPanel extends Component<
         const isCreate = view === 'create';
 
         return (
-            <div ref={this.rootRef} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div ref={this.rootRef} data-testid={summaryTestIds.chatPanel} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 {/* 左边缘分隔条：拖动调宽，双击重置默认宽度（复用 thread 面板样式） */}
                 <div
                     className={`wk-thread-panel-splitter${isDragging ? ' wk-thread-panel-splitter-active' : ''}`}
@@ -181,10 +184,11 @@ export default class ChatSummaryPanel extends Component<
 
                 {/* 创建视图：返回按钮 + 内嵌创建表单（复用 SummaryCreatePage embedded） */}
                 {isCreate && (
-                    <div className="wk-summary-panel-detail">
+                    <div data-testid={summaryTestIds.chatPanelDetailInPanel} className="wk-summary-panel-detail">
                         <div className="wk-summary-panel-detail-back">
                             <button
                                 type="button"
+                                data-testid={summaryTestIds.chatPanelBackBtn}
                                 className="wk-summary-panel-detail-back-btn"
                                 onClick={this.handleBackToList}
                             >
@@ -198,6 +202,8 @@ export default class ChatSummaryPanel extends Component<
                                 embedded={true}
                                 onClose={this.handleBackToList}
                                 onSubmit={this.handleCreateSubmit}
+                                source="chat_aside"
+                                initialMode={this.state.createMode}
                             />
                         </div>
                     </div>
@@ -205,10 +211,11 @@ export default class ChatSummaryPanel extends Component<
 
                 {/* 详情视图：复用整页 SummaryDetailPage，外层加面板级返回栏 */}
                 {isDetail && (
-                    <div className="wk-summary-panel-detail">
+                    <div data-testid={summaryTestIds.chatPanelDetailInPanel} className="wk-summary-panel-detail">
                         <div className="wk-summary-panel-detail-back">
                             <button
                                 type="button"
+                                data-testid={summaryTestIds.chatPanelBackBtn}
                                 className="wk-summary-panel-detail-back-btn"
                                 onClick={this.handleBack}
                             >

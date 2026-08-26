@@ -68,22 +68,18 @@ export function isParentGroupManager(groupNo: string | undefined): boolean {
 }
 
 /**
- * 子区设置页「改名」入口（module.tsx 的 thread.base.info）的权限判定。
+ * 群名 / 子区名改名的前端不再做权限 gate（WS-23，2026-08 定案）。
  *
- * 与归档入口（{@link shouldShowThreadArchiveAction}）共享同一份父群口径
- * {@link canManageThread}：创建者 / 父群群主 / 父群管理员可改名。改名不像归档那样
- * 有状态门槛（Active/Archived），所以这里不做 status 过滤。
+ * 背景：服务端 octo-server #542 已把「仅改 name」放开给任意活跃人类成员，并对龙虾 /
+ * 黑名单 / 外部 / 非成员 fail-closed 拒绝。前端曾试图用父群订阅缓存复刻这份判定，但客户端
+ * 只持有部分 roster（超级群父群只缓存首页 100 人，且普通会话切换 / reconnect 会重写缓存），
+ * 任何基于该缓存的 gate 都会对不在缓存里的合法成员误判 false，反复触发 review 回归。
  *
- * 之所以抽成独立纯函数（而非在 module.tsx 内联判断），是为了让改名 gate 可被单测
- * 直接锁定，避免再次回退到 data.isManagerOrCreatorOfMe —— 它读子区频道成员缓存，
- * 从未同步、对非创建者的群主/管理员恒为 false，会在前端误拦他们（见 issue #394）。
+ * 定案：改名走「服务端为唯一权威」——前端不再前置判定谁能改名，改名入口对成员一律开放
+ * （解散群等纯 UI 状态由调用点自行隐藏），保存时由服务端裁决，错误经调用点已有的
+ * Toast.error(err.msg) 呈现。因此这里不再导出 canRenameGroup / canRenameThread。
+ * 归档 / webhook 等仍走下方 canManageThread / isParentGroupManager（父群角色口径，另议）。
  */
-export function canRenameThread(
-  thread: { creator_uid?: string } | null | undefined,
-  groupNo: string | undefined
-): boolean {
-  return canManageThread(thread, groupNo ?? "");
-}
 
 /**
  * ChannelSetting「子区管理」入口（module.tsx 的 thread.actions，即 issue #283 的

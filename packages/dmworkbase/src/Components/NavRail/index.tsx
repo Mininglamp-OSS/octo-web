@@ -18,7 +18,6 @@ export interface NavRailVMProps {
     currentMenus?: Menus;
     settingSelected: boolean;
     hasNewVersion: boolean;
-    showNewVersion: boolean;
     showAppVersion: boolean;
     showAppUpdate: boolean;
     appUpdateProgress: number;
@@ -26,7 +25,6 @@ export interface NavRailVMProps {
     lastVersionInfo?: { appVersion: string; updateDesc: string };
     onMenuClick: (menus: Menus) => void;
     onToggleSetting: () => void;
-    onSetShowNewVersion: (v: boolean) => void;
     onSetShowAppVersion: (v: boolean) => void;
     onInstallUpdate: () => void;
     onNotifyListener: () => void;
@@ -41,8 +39,9 @@ export interface NavRailVMProps {
     onSpaceSelect: (spaceId: string) => void;
     onJoinSpace?: () => void;
     onCreateSpace?: () => void;
-    /** 是否在设置菜单中显示「空间管理」入口（仅 owner/admin 可见） */
+    /** 是否显示「Space 管理」入口（仅 owner/admin 可见） */
     canManageSpace?: boolean;
+    onSpaceManagement?: () => void;
     /** 用户关闭版本更新气泡时的回调 */
     onDismissNewVersion?: () => void;
 }
@@ -50,13 +49,14 @@ export interface NavRailVMProps {
 export interface NavRailProps extends NavRailVMProps {}
 
 export default class NavRail extends Component<NavRailProps> {
+    private settingsButtonRef = React.createRef<HTMLButtonElement>();
+
     render() {
         const {
             menusList,
             currentMenus,
             settingSelected,
             hasNewVersion,
-            showNewVersion,
             showAppVersion,
             showAppUpdate,
             appUpdateProgress,
@@ -64,7 +64,6 @@ export default class NavRail extends Component<NavRailProps> {
             lastVersionInfo,
             onMenuClick,
             onToggleSetting,
-            onSetShowNewVersion,
             onSetShowAppVersion,
             onInstallUpdate,
             onNotifyListener,
@@ -78,8 +77,10 @@ export default class NavRail extends Component<NavRailProps> {
             onJoinSpace,
             onCreateSpace,
             canManageSpace = false,
+            onSpaceManagement,
         } = this.props;
         const userChannel = new Channel(WKApp.loginInfo.uid || "", ChannelTypePerson);
+        const userName = WKApp.loginInfo.name || WKApp.loginInfo.uid || t("base.navRail.me");
 
         return (
             <>
@@ -87,16 +88,20 @@ export default class NavRail extends Component<NavRailProps> {
                     {/* 顶部：用户头像（含在线状态点） */}
                     <div className="wk-navrail__top">
                         <div className="wk-navrail__user-wrap">
-                            <button
-                                type="button"
-                                className="wk-navrail__user-avatar"
-                                title={t("base.navRail.me")}
-                                aria-label={t("base.navRail.me")}
-                                onClick={onAvatarClick}
-                            >
-                                <WKAvatar channel={userChannel} />
-                            </button>
-                            {isOnline && <div className="wk-navrail__user-status" />}
+                            <div className="wk-navrail__user-avatar-wrap">
+                                <button
+                                    type="button"
+                                    className="wk-navrail__user-avatar"
+                                    data-testid="nav-user-avatar"
+                                    title={t("base.navRail.me")}
+                                    aria-label={t("base.navRail.me")}
+                                    onClick={onAvatarClick}
+                                >
+                                    <WKAvatar channel={userChannel} />
+                                </button>
+                                {isOnline && <div className="wk-navrail__user-status" />}
+                            </div>
+                            <span className="wk-navrail__user-name">{userName}</span>
                         </div>
                     </div>
 
@@ -111,6 +116,7 @@ export default class NavRail extends Component<NavRailProps> {
                                 label={menus.title}
                                 active={menus.id === currentMenus?.id}
                                 badge={menus.badge && menus.badge > 0 ? menus.badge : undefined}
+                                trackObjectId={menus.routePath}
                                 onClick={() => onMenuClick(menus)}
                             />
                         ))}
@@ -119,6 +125,7 @@ export default class NavRail extends Component<NavRailProps> {
                     {/* 底部：分割线 + 设置 + Space */}
                     <NavBottom
                         settingSelected={settingSelected}
+                        settingsButtonRef={this.settingsButtonRef}
                         hasNewVersion={hasNewVersion}
                         onSettingsClick={onToggleSetting}
                         onDismissNewVersion={onDismissNewVersion}
@@ -127,22 +134,19 @@ export default class NavRail extends Component<NavRailProps> {
                         onSpaceSelect={onSpaceSelect}
                         onJoinSpace={onJoinSpace}
                         onCreateSpace={onCreateSpace}
+                        onSpaceManagement={canManageSpace ? onSpaceManagement : undefined}
                     />
                 </nav>
 
                 {/* 设置面板 + Modals（挂在 nav 外，避免 overflow 裁剪） */}
                 <NavSettingsPanel
                     settingSelected={settingSelected}
-                    hasNewVersion={hasNewVersion}
-                    canManageSpace={canManageSpace}
-                    showNewVersion={showNewVersion}
                     showAppVersion={showAppVersion}
                     showAppUpdate={showAppUpdate}
                     appUpdateProgress={appUpdateProgress}
                     showAppUpdateOperation={showAppUpdateOperation}
                     lastVersionInfo={lastVersionInfo}
                     onToggleSetting={onToggleSetting}
-                    onSetShowNewVersion={onSetShowNewVersion}
                     onSetShowAppVersion={onSetShowAppVersion}
                     onInstallUpdate={onInstallUpdate}
                     onNotifyListener={onNotifyListener}
@@ -156,7 +160,6 @@ export default class NavRail extends Component<NavRailProps> {
 }
 
 export { NavSpaceSwitcher, NavItem, NavBottom };
-export { default as NavLanguageSwitcher } from "./NavLanguageSwitcher";
 export type { NavItemProps } from "./NavItem";
 export type { NavSpaceSwitcherProps } from "./NavSpaceSwitcher";
 export type { NavBottomProps } from "./NavBottom";

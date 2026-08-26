@@ -2,6 +2,7 @@ import React, { useMemo } from "react"
 import { useI18n } from "../../i18n"
 import type { ChatSelectorTab } from "../ChatSelector/tabFilter"
 import type { ForwardGrantConfig } from "./grant"
+import type { ForwardBotPreview } from "./ui/ItemRow"
 import {
   Footer,
   GrantArea,
@@ -48,6 +49,12 @@ export interface ForwardModalProps {
    * 既有转发路径（Conversation / Chat / Summary）不传 → 授权区不渲染，零回归。
    */
   grant?: ForwardGrantConfig
+  /**
+   * Person-row Bot preview (UX #4). Present only when the caller opts into grants; lets an
+   * unselected person candidate be expanded to inspect their Bots (display-only). Absent → no
+   * expander (既有转发路径零回归).
+   */
+  botPreview?: ForwardBotPreview
 }
 
 /**
@@ -70,6 +77,7 @@ export function ForwardModal({
   onTabChange,
   onItemVisible,
   grant,
+  botPreview,
 }: ForwardModalProps) {
   const { t } = useI18n()
   const sourceForSelected = allItems ?? items
@@ -99,20 +107,33 @@ export function ForwardModal({
             showMeta={recentFlatList}
             onToggleSelect={onToggleSelect}
             onItemVisible={onItemVisible}
+            botPreview={botPreview}
           />
         </div>
 
         <div className="wk-fm-divider" />
 
         <div className="wk-fm-right">
-          <SelectedPanel selectedItems={selectedItems} onRemove={onToggleSelect} />
+          {/* Right panel shares the ONE authoritative Bot snapshot (Scope C): when the grant switch
+              is on, a selected person shows their selected/default Bots nested, synced with the
+              授权区. Off / group / thread targets stay flat. */}
+          <SelectedPanel
+            selectedItems={selectedItems}
+            onRemove={onToggleSelect}
+            bots={grant?.enabled ? grant.bots : undefined}
+          />
         </div>
       </div>
 
       {/* 授权区（opt-in）：仅当调用方传入 grant 时渲染，插在内容区与 Footer 之间。 */}
       {grant && <GrantArea grant={grant} />}
 
-      <Footer selectedCount={selectedIDs.length} onConfirm={onConfirm} onCancel={onCancel} />
+      <Footer
+        selectedCount={selectedIDs.length}
+        confirmDisabled={!!grant?.enabled && !!grant.bots && !grant.bots.ready}
+        onConfirm={onConfirm}
+        onCancel={onCancel}
+      />
     </div>
   )
 }
