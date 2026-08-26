@@ -75,7 +75,7 @@ export function inferMsgType(message: any): 'text' | 'reply' | 'image_file' | 'l
 export function trackSubchannelCreated(
   resp: ThreadCreateResult | null | undefined,
   source: 'channel_toolbar' | 'message_right_click',
-  meta: { fromMsgType?: 'text' | 'reply' | 'image_file' | 'link'; title?: string; channelId?: string }
+  meta: { fromMsgType?: 'text' | 'reply' | 'image_file' | 'link'; title?: string; channelId?: string; isAiMsg?: boolean }
 ): void {
   // fail-closed:埋点绝不能改变业务行为。createThreadFromMessage 直接返回未 normalize 的
   // 裸 API 结果(不同于走 normalizeThreadCreateResult 的 createThreadByName),2xx 空 body 时
@@ -114,6 +114,13 @@ export function trackSubchannelCreated(
   // from_msg_type 空值策略：顶栏路径不发该字段（空值，非 'none'）；右键路径用 inferMsgType 映射
   if (meta.fromMsgType) {
     props.from_msg_type = meta.fromMsgType
+  }
+  // is_ai_msg：右键从源消息创建子区时，该源消息作者是否 AI/bot（与 message_copied /
+  // message_forwarded / message_replied 同源判据 isMessageAuthorAi）。顶栏路径无源消息 →
+  // 不传该字段（空值，非 false），故只有右键路径带。缓存读:作者 channelInfo 未拉取时退化为
+  // false → 该属性是下限而非精确计数（与既有消息类事件口径一致）。
+  if (typeof meta.isAiMsg === 'boolean') {
+    props.is_ai_msg = meta.isAiMsg
   }
 
   Dap.shared.track('subchannel_created', props)

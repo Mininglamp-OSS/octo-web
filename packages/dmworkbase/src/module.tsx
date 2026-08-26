@@ -1432,11 +1432,12 @@ export default class BaseModule implements IModule {
                     sourceMessagePayload: sourcePayload,
                   });
                   Toast.success(t("base.module.createThread.success"));
-                  // 右键创建子区：带 from_msg_type（inferMsgType 映射）
+                  // 右键创建子区：带 from_msg_type（inferMsgType 映射）+ is_ai_msg（源消息作者是否 AI/bot）
                   trackSubchannelCreated(resp, 'message_right_click', {
                     fromMsgType: inferMsgType(message),
                     title: threadName.trim(),
                     channelId: message.channel.channelID,
+                    isAiMsg: isMessageAuthorAi(message.fromUID),
                   });
                   if (resp && resp.channel_id) {
                     WKApp.mittBus.emit("wk:thread-created", {
