@@ -106,7 +106,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                     Dap.shared.track('contact_message_clicked', {
                         object_id: vm.uid,
                         contact_type: isBot ? 'ai' : 'user',
-                        space_id: spaceId,
+                        space_id: spaceId || undefined,
                     })
                 }
                 WKApp.shared.baseContext.hideUserInfo()
@@ -119,7 +119,7 @@ export default class UserInfo extends Component<UserInfoProps> {
                     Dap.shared.track('contact_message_clicked', {
                         object_id: vm.uid,
                         contact_type: isBot ? 'ai' : 'user',
-                        space_id: spaceId,
+                        space_id: spaceId || undefined,
                     })
                 }
                 WKApp.shared.baseContext.hideUserInfo()

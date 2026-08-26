@@ -953,7 +953,7 @@ export default class ContactsList extends Component<any, ContactsState> {
                             Dap.shared.track('contact_message_clicked', {
                                 object_id: channel.channelID,
                                 contact_type: 'ai',
-                                space_id: WKApp.shared.currentSpaceId,
+                                space_id: WKApp.shared.currentSpaceId || undefined,
                             })
                             WKApp.endpoints.showConversation(channel)
                             this.setState({ botDetailVisible: false })
