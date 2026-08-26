@@ -46,8 +46,8 @@ interface McpMarketListPageState {
    *  resolves. */
   tagSuggestions: McpTagSuggestion[];
   mode: ListMode;
-  /** Discovery sort (market variant only). Default 最热 (install popularity),
-   *  matching the skill/expert markets. */
+  /** Discovery sort (market variant only). Default 最新 (newest), matching the
+   *  skill/expert markets. */
   sort: McpSort;
   offset: number;
   total: number;
@@ -102,7 +102,7 @@ export default class McpMarketListPage extends Component<
     tagQuery: "",
     tagSuggestions: [],
     mode: "all",
-    sort: "hottest",
+    sort: "latest",
     offset: 0,
     total: 0,
     detailId: null,

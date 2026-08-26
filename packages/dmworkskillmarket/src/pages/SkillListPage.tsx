@@ -46,7 +46,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   const [tab] = useState<TabId>(variant === "mine" ? "mine" : "skills");
   const mine = tab === "mine";
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [sort, setSort] = useState<SkillSort>("downloads");
+  const [sort, setSort] = useState<SkillSort>("latest");
   const list = useSkills({ mine, selectedTags, sort });
   const refreshRef = useRef(list.refresh);
   const [createVisible, setCreateVisible] = useState(false);

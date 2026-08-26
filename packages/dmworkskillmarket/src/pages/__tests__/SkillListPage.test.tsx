@@ -174,7 +174,7 @@ describe("SkillListPage", () => {
         q: "ci",
         categoryId: "all",
         tags: [],
-        sort: "downloads",
+        sort: "latest",
         cursor: undefined,
         limit: 20,
       },
@@ -239,11 +239,11 @@ describe("SkillListPage", () => {
     ).toBeInTheDocument();
     vi.mocked(api.getSkills).mockClear();
 
-    fireEvent.click(screen.getByRole("button", { name: "最新" }));
+    fireEvent.click(screen.getByRole("button", { name: "最热" }));
 
     await waitFor(() => {
       expect(api.getSkills).toHaveBeenCalledWith(
-        expect.objectContaining({ sort: "latest" }),
+        expect.objectContaining({ sort: "downloads" }),
         expect.objectContaining({ signal: expect.any(AbortSignal) })
       );
     });
@@ -270,7 +270,7 @@ describe("SkillListPage", () => {
           q: "",
           categoryId: "all",
           tags: [],
-          sort: "downloads",
+          sort: "latest",
           cursor: undefined,
           limit: 20,
         },

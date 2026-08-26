@@ -110,7 +110,7 @@ export default function ExpertMarketListPage({
   );
   const [category, setCategory] = useState<string>(ALL_CATEGORY);
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<ExpertCatalogSort>("installs");
+  const [sort, setSort] = useState<ExpertCatalogSort>("latest");
   const [selected, setSelected] = useState<ExpertItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
