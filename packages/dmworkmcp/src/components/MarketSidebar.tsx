@@ -33,19 +33,19 @@ const MARKET_ITEMS: MarketItem[] = [
     render: () => <SkillListPage />,
   },
   {
+    id: "mcp",
+    routePath: "/mcp-market/mcp",
+    label: () => t("mcp.sidebar.mcp"),
+    icon: <Plug size={16} aria-hidden="true" />,
+    render: () => <McpMarketListPage />,
+  },
+  {
     id: "experts",
     routePath: "/mcp-market/experts",
     label: () => t("mcp.sidebar.experts"),
     icon: <Users size={16} aria-hidden="true" />,
     badge: () => t("mcp.sidebar.expertsBadge"),
     render: () => <ExpertMarketListPage />,
-  },
-  {
-    id: "mcp",
-    routePath: "/mcp-market/mcp",
-    label: () => t("mcp.sidebar.mcp"),
-    icon: <Plug size={16} aria-hidden="true" />,
-    render: () => <McpMarketListPage />,
   },
   {
     id: "mine",

@@ -1491,6 +1491,7 @@
   flex: none;
   min-height: 64px;
   padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-subtle);
 }
 
 .wk-mcp-mine__hero-title h1 {
