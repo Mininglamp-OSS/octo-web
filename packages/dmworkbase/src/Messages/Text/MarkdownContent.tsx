@@ -164,26 +164,33 @@ function mathGuardPlugin() {
   return (tree: any, file: any) => {
     const source: string =
       typeof file?.value === "string" ? file.value : String(file ?? "");
-    const literalFrom = (node: any): string => {
+    // 行内 math 用源码切片还原，忠实保留原定界符（`$…$` vs 行内 `$$…$$`）与原文；
+    // 行内节点不跨越 blockquote/list 的行首 continuation marker，切片是安全的。
+    const inlineLiteral = (node: any): string => {
       const start = node?.position?.start?.offset;
       const end = node?.position?.end?.offset;
       if (typeof start === "number" && typeof end === "number") {
         return source.slice(start, end);
       }
-      // position 缺失时的兜底：按节点类型补回定界符，避免丢内容。
-      const fence = node?.type === "math" ? "$$" : "$";
-      return `${fence}${node?.value ?? ""}${fence}`;
+      return `$${node?.value ?? ""}$`; // position 缺失兜底
     };
     const visit = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
       node.children = node.children.map((child: any) => {
         if (child?.type === "inlineMath" || child?.type === "math") {
           if (MATH_ISH_CHAR.test(child.value ?? "")) return child;
-          const literal = literalFrom(child);
-          // 块级 math 处于块级位置，还原成段落包裹的文本；行内 math 直接还原成文本节点。
-          return child.type === "math"
-            ? { type: "paragraph", children: [{ type: "text", value: literal }] }
-            : { type: "text", value: literal };
+          if (child.type === "math") {
+            // 块级 math 用 node.value 重拼 `$$` fence，绝不能用 source.slice：块级公式若在
+            // blockquote / list 容器内，源码切片会把行首的 `> ` / 缩进等 continuation
+            // marker 一起切进来，泄漏进 quoted 正文（Jerry-Xin blocker）。node.value 已是
+            // 剥掉容器标记后的纯公式内容，重拼出用户原本写的 `$$ / … / $$`。
+            const value = child.value ?? "";
+            return {
+              type: "paragraph",
+              children: [{ type: "text", value: `$$\n${value}\n$$` }],
+            };
+          }
+          return { type: "text", value: inlineLiteral(child) };
         }
         visit(child);
         return child;

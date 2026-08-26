@@ -302,6 +302,47 @@ describe("MarkdownContent — 公式内部不被 mention/emoji 分段污染 (rev
   });
 });
 
+describe("MarkdownContent — 被守卫拒绝的 $$ block 在容器内不泄漏容器标记 (Jerry-Xin blocker)", () => {
+  it("blockquote 内被拒绝的 $$ block 还原时不带 `> ` continuation marker", () => {
+    // 内部 "plain" 无数学字符 → 守卫拒绝。旧实现用 source.slice 还原会把 `> ` 一起切出来，
+    // 显示成 `$$ / > plain / > $$`；修复后用 node.value 重拼，应还原用户原本的 `$$ / plain / $$`。
+    const root = renderContent(
+      <MarkdownContent content={"> $$\n> plain\n> $$"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("plain");
+    expect(vt).toContain("$$");
+    // 关键断言：不得把 blockquote 的 `>` 容器标记泄漏进正文
+    expect(vt).not.toContain(">");
+  });
+
+  it("blockquote 内被拒绝的多行 $$ block 也不带容器标记", () => {
+    const root = renderContent(
+      <MarkdownContent content={"> $$\n> line one\n> line two\n> $$"} />
+    );
+    expect(root.querySelector(".katex")).toBeNull();
+    const vt = visibleText(root);
+    expect(vt).toContain("line one");
+    expect(vt).toContain("line two");
+    expect(vt).not.toContain(">");
+  });
+
+  it("blockquote 内含数学字符的 $$ block 仍正常 KaTeX 渲染（被接受路径不受影响）", () => {
+    const root = renderContent(
+      <MarkdownContent content={"> $$\n> \\frac{a}{b}\n> $$"} />
+    );
+    expect(root.querySelector(".katex")).not.toBeNull();
+    expect(root.querySelector(".katex-display")).not.toBeNull();
+  });
+
+  it("顶层被拒绝的 $$ block 还原成文本、不渲染公式", () => {
+    const root = renderContent(<MarkdownContent content={"$$\nplain\n$$"} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("plain");
+  });
+});
+
 describe("MarkdownContent — allowSingleDollarMath 关掉守卫 (文档/编辑器场景)", () => {
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。
