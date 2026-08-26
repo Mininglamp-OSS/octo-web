@@ -96,6 +96,23 @@ describe("EmojiService load() 拉取服务端 manifest", () => {
     expect(cached.list).toHaveLength(3)
   })
 
+  it("file/preview 表情路径在桌面包中使用 API origin，不拼成 file:// 路径", async () => {
+    const originalApiURL = APIClient.shared.config.apiURL
+    APIClient.shared.config.apiURL = "https://im.deepminer.com.cn/v1/"
+    apiGet.mockResolvedValueOnce({
+      version: 8,
+      list: [{ key: "[服务端贴图]", name: "服务端贴图", url: "file/preview/emoji/u/x.png" }],
+    })
+
+    try {
+      const svc = freshService()
+      await svc.load?.()
+      expect(svc.getImage("[服务端贴图]")).toBe("https://im.deepminer.com.cn/file/emoji/u/x.png")
+    } finally {
+      APIClient.shared.config.apiURL = originalApiURL
+    }
+  })
+
   it("过滤空/非法 key：空分支绝不进正则（防零宽匹配渲染死循环）", async () => {
     const manifest = {
       version: 9,

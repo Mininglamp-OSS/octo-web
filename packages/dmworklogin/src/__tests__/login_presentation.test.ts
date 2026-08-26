@@ -32,13 +32,13 @@ describe("login page presentation", () => {
     const enUS = readRepoFile("packages/dmworklogin/src/i18n/en-US.json");
 
     expect(source).toContain(
-      "const ssoConfigPending = ENTERPRISE_SSO_ENABLED && !WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed"
+      "const ssoConfigPending = OIDC_ENABLED && !WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed"
     );
     expect(source).toContain(
-      "const ssoConfigFallback = ENTERPRISE_SSO_ENABLED && WKApp.remoteConfig.requestFailed"
+      "const ssoConfigFallback = OIDC_ENABLED && WKApp.remoteConfig.requestFailed"
     );
     expect(source).toContain(
-      "const showSsoLogin = ENTERPRISE_SSO_ENABLED && !ssoConfigPending && !ssoConfigFallback && hasSsoProvider"
+      "const showSsoLogin = OIDC_ENABLED && !ssoConfigPending && !ssoConfigFallback && hasSsoProvider"
     );
     expect(source).toContain("aria-busy={ssoConfigPending}");
     expect(source).toContain('role="status"');

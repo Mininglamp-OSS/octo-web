@@ -43,6 +43,7 @@ export async function registerS10SummaryAgentReferenceSidePanel(page: Page): Pro
       current_result_id: 100101,
       current_personal_version_id: null,
       activity_at: "2026-08-06T10:12:00Z",
+      referenceable: true,
     };
     const detail = {
       ...listItem,
@@ -79,7 +80,11 @@ export async function registerS10SummaryAgentReferenceSidePanel(page: Page): Pro
     worker.use(
       http.get("*/summary/api/v1/summaries", ({ request }: any) => {
         const url = new URL(request.url);
-        const isReferencePicker = url.searchParams.get("trigger_type") === "3";
+        // Discriminate picker vs list-page requests:
+        // - Picker always sends status=3 (COMPLETED); list page sends other statuses or none.
+        // - We check status=3 as the picker signal (more robust than page_size).
+        const status = url.searchParams.get("status");
+        const isReferencePicker = status === "3";
         return env({
           items: isReferencePicker ? [listItem] : [],
           total: isReferencePicker ? 1 : 0,

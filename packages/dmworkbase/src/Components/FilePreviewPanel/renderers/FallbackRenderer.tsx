@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { BaseRendererProps } from "../types";
 import { formatFileSize } from "../config";
+import { downloadFile } from "../../../Utils/download";
 import { useI18n } from "../../../i18n";
 import "./FallbackRenderer.css";
 
@@ -71,13 +72,7 @@ const FallbackRenderer: React.FC<FallbackRendererProps> = ({ file }) => {
 
     setLoading(true);
     try {
-      const a = document.createElement("a");
-      a.href = file.url;
-      a.download = file.name || "file";
-      a.target = "_blank";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      await downloadFile(file.url, file.name || "file");
     } finally {
       // 模拟下载延迟，给用户反馈
       setTimeout(() => setLoading(false), 500);
@@ -112,6 +107,7 @@ const FallbackRenderer: React.FC<FallbackRendererProps> = ({ file }) => {
 
         {/* 下载按钮 */}
         <button
+          type="button"
           className="wk-file-preview-fallback-renderer__download-btn"
           onClick={handleDownload}
           disabled={loading}

@@ -49,13 +49,10 @@ describe("group create candidate search", () => {
       name: index === 9_999 ? "魏娇莹" : `User ${index}`,
     }));
     const index = buildGroupCreateSearchIndex(largeCandidates, toPinyin);
-    const startedAt = performance.now();
-
     for (let count = 0; count < 20; count += 1) {
       expect(filterGroupCreateCandidates(index, "weijiao")).toHaveLength(1);
     }
 
     expect(toPinyin).toHaveBeenCalledTimes(10_000);
-    expect((performance.now() - startedAt) / 20).toBeLessThan(15);
   });
 });

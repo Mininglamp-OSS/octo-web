@@ -1,5 +1,5 @@
 import React from 'react';
-import { render as rtlRender, screen, act } from '@testing-library/react';
+import { render as rtlRender, screen, act, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ChatSummaryHistory from '../ChatSummaryHistory';
 
@@ -23,6 +23,9 @@ vi.mock('../../api/summaryApi', () => ({
 }));
 
 vi.mock('../../utils/summaryHelpers', () => ({
+    formatDateOnly: (value: string) => value.slice(0, 10),
+    getSummaryTypeKind: () => 'quick',
+    getSummaryTypeLabel: (t: (key: string) => string) => t('summary.summaryCard.quickType'),
     getStatusLabel: (status: number) => {
         const labels: Record<number, string> = { 0: '待处理', 1: '待确认', 2: '进行中', 3: '已完成', 4: '失败', 5: '已取消' };
         return labels[status] ?? '未知';
@@ -50,6 +53,24 @@ vi.mock('@douyinfe/semi-ui', () => ({
             {children}
         </span>
     ),
+    Dropdown: Object.assign(({ children, render, visible, onVisibleChange }: any) => {
+        const child = React.Children.only(children);
+        return <>
+            {React.cloneElement(child, {
+                onClick: (event: any) => {
+                    child.props.onClick?.(event);
+                    onVisibleChange?.(!visible);
+                },
+            })}
+            {visible ? render : null}
+        </>;
+    }, {
+        Menu: ({ children }: any) => <>{children}</>,
+        Item: ({ children, onClick }: any) => <button onClick={onClick}>{children}</button>,
+    }),
+    Modal: Object.assign(({ children, visible }: any) => visible ? <>{children}</> : null, {
+        confirm: () => null,
+    }),
 }));
 
 vi.mock('@douyinfe/semi-icons', () => ({
@@ -117,12 +138,8 @@ describe('ChatSummaryHistory', () => {
             await flushPromises();
         });
 
-        const tags = screen.getAllByTestId('status-tag');
-        expect(tags).toHaveLength(2);
-        expect(tags[0]).toHaveTextContent('已完成');
-        expect(tags[0].dataset.color).toBe('green');
-        expect(tags[1]).toHaveTextContent('进行中');
-        expect(tags[1].dataset.color).toBe('blue');
+        expect(screen.getByText('已完成')).toBeInTheDocument();
+        expect(screen.getByText('AI正在分析聊天记录...')).toBeInTheDocument();
     });
 
     it('renders title, creator, date, and status via SummaryCard', async () => {
@@ -142,12 +159,9 @@ describe('ChatSummaryHistory', () => {
         });
 
         expect(screen.getByText('已完成任务')).toBeInTheDocument();
-        // Subtitle matches the tab: "{name} 发起" with no source count.
-        expect(screen.getByText(/李四 发起/)).toBeInTheDocument();
+        expect(screen.getByText('你发起于2026-01-01')).toBeInTheDocument();
         expect(screen.queryByText(/个来源/)).not.toBeInTheDocument();
-        // Date is the YYYY-MM-DD prefix, not an HH:MM time.
-        expect(screen.getByText('2026-01-01')).toBeInTheDocument();
-        expect(screen.getByTestId('status-tag')).toBeInTheDocument();
+        expect(screen.getByText('已完成')).toBeInTheDocument();
     });
 
     it('falls back to task_no when title is empty', async () => {
@@ -187,7 +201,13 @@ describe('ChatSummaryHistory', () => {
         });
 
         await act(async () => {
-            screen.getByTestId('popconfirm').click();
+            fireEvent.click(screen.getByTestId('summary-card-menu-7'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('删除'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('删除'));
             await flushPromises();
         });
 
@@ -217,7 +237,13 @@ describe('ChatSummaryHistory', () => {
         });
 
         await act(async () => {
-            screen.getByTestId('popconfirm').click();
+            fireEvent.click(screen.getByTestId('summary-card-menu-7'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('删除'));
+        });
+        await act(async () => {
+            fireEvent.click(screen.getByText('删除'));
             await flushPromises();
         });
 
@@ -273,14 +299,14 @@ describe('ChatSummaryHistory', () => {
                 await vi.advanceTimersByTimeAsync(0);
             });
 
-            expect(screen.getByTestId('status-tag')).toHaveTextContent('进行中');
+            expect(screen.getByText('AI正在分析聊天记录...')).toBeInTheDocument();
 
             await act(async () => {
                 await vi.advanceTimersByTimeAsync(5000);
             });
 
             expect(mockBatchStatus).toHaveBeenCalledWith([1]);
-            expect(screen.getByTestId('status-tag')).toHaveTextContent('已完成');
+            expect(screen.getByText('已完成')).toBeInTheDocument();
         });
 
         it('stops polling after status transitions to terminal', async () => {

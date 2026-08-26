@@ -11,7 +11,6 @@ interface ImportMetaEnv {
   readonly VITE_ENABLE_ENTERPRISE_SSO?: string
   // Dev-only override for OIDC logout callback when using a remote backend from localhost.
   readonly VITE_OIDC_POST_LOGOUT_REDIRECT_URI?: string
-  readonly VITE_DISABLE_BUILTIN_DOCS?: string
 }
 
 interface ImportMeta {

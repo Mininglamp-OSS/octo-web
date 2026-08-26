@@ -90,6 +90,21 @@ export function groupAvatarLines(text: string): string[] {
   return [chars.slice(0, top).join(""), chars.slice(top).join("")]
 }
 
+// 单行数字/拉丁文字按字符数缩放，避免四位文字在大尺寸预览中溢出头像。
+export function avatarTextFontSize(size: number, lines: string[]): number {
+  const maxLineLength = Math.max(...lines.map((line) => [...line].length), 1)
+  const ratio = lines.length > 1
+    ? 0.3
+    : maxLineLength >= 4
+      ? 0.27
+      : maxLineLength === 3
+        ? 0.33
+        : maxLineLength === 2
+          ? 0.4
+          : 0.48
+  return Math.max(12, Math.round(size * ratio))
+}
+
 // colorIndexForName 在用户未选色时按群名稳定派生一个色板下标，使预览有颜色且随名稳定。
 // 注意：服务端默认色按 group_no 派生（建群前无 group_no），故此处仅用于**预览**——
 // 未自定义颜色时建群后服务端的实际色可能与预览略有不同（详见 brief caveat C1）。
@@ -100,4 +115,26 @@ export function colorIndexForName(name: string, size: number): number {
     h = (h * 31 + (ch.codePointAt(0) ?? 0)) >>> 0
   }
   return h % size
+}
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256)
+  for (let i = 0; i < table.length; i += 1) {
+    let value = i
+    for (let bit = 0; bit < 8; bit += 1) {
+      value = (value >>> 1) ^ ((value & 1) ? 0xedb88320 : 0)
+    }
+    table[i] = value >>> 0
+  }
+  return table
+})()
+
+// Mirrors the server's GroupStyleForSeed: CRC32(seed) modulo palette size.
+export function colorIndexForSeed(seed: string, size: number): number {
+  if (size <= 0) return 0
+  let crc = 0xffffffff
+  for (const byte of new TextEncoder().encode(seed)) {
+    crc = (crc >>> 8) ^ CRC32_TABLE[(crc ^ byte) & 0xff]
+  }
+  return ((crc ^ 0xffffffff) >>> 0) % size
 }

@@ -1,3 +1,5 @@
+import type { ChatComposerSendResult } from '../../features/chat-composer'
+
 // One-shot initial-compose consumer for Conversation (plan Task 4 / §5.1–§5.3).
 //
 // This is the pure, framework-free core of "load a text + attachments into the composer once and
@@ -42,14 +44,9 @@ export interface ComposeHost {
   /** Stage attachments; resolves only after they are visible to send. */
   addPendingAttachments(files: File[]): string | null | Promise<string | null>
   /**
-   * Trigger send through MessageInput (never a direct sendMessage). May be async.
-   *
-   * Resolves to the real send outcome: `true`/void when the compose was actually sent,
-   * `false` (or `{ editorConsumed: false }`) when the send was rejected and the draft was
-   * preserved (a FAILED send, not a success). The consumer maps a falsy/editorConsumed:false
-   * result to 'failed' so a preserved-draft send is never mis-reported as 'sent'.
+   * Trigger send through ChatComposer (never a direct sendMessage).
    */
-  send(): void | boolean | { editorConsumed: boolean } | Promise<void | boolean | { editorConsumed: boolean }>
+  send(): Promise<ChatComposerSendResult>
 }
 
 export interface ConsumeResult {
@@ -115,8 +112,13 @@ export async function tryConsumeInitialCompose(
     }
 
     const result = await host.send()
-    if (!interpretSendResult(result)) {
-      const reason = 'send-rejected'
+    if (result.kind === 'rejected') {
+      const reason = result.reason
+      emit?.(compose.requestId, 'failed', reason)
+      return { consumed: true, state: 'failed', reason }
+    }
+    if (!result.editorConsumed) {
+      const reason = 'send-attempt-failed'
       emit?.(compose.requestId, 'failed', reason)
       return { consumed: true, state: 'failed', reason }
     }
@@ -127,23 +129,4 @@ export async function tryConsumeInitialCompose(
     emit?.(compose.requestId, 'failed', reason)
     return { consumed: true, state: 'failed', reason }
   }
-}
-
-/**
- * Map the loose `host.send()` return into a boolean "was the compose actually sent?".
- *
- * void / true            → sent (legacy void-returning send path keeps working).
- * false                  → not sent (draft preserved = send rejected).
- * { editorConsumed }     → the editorConsumed flag.
- * null / undefined       → sent for compatibility with legacy void-returning hosts.
- */
-export function interpretSendResult(
-  result: void | boolean | { editorConsumed: boolean } | undefined,
-): boolean {
-  if (result === undefined || result === null) return true
-  if (typeof result === 'boolean') return result
-  if (typeof result === 'object' && 'editorConsumed' in result) {
-    return result.editorConsumed === true
-  }
-  return true
 }

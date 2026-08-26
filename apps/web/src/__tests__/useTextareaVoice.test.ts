@@ -9,8 +9,8 @@ const mockStopRecordingAndTranscribe = vi.fn();
 const mockCancelRecording = vi.fn();
 let capturedOnTranscribed: ((text: string) => void) | undefined;
 
-vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
-  default: (opts: { onTranscribed?: (text: string) => void }) => {
+vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/voice", () => ({
+  useVoiceInput: (opts: { onTranscribed?: (text: string) => void }) => {
     capturedOnTranscribed = opts?.onTranscribed;
     return {
       isRecording: false,
@@ -25,7 +25,20 @@ vi.mock("@octo/base/src/Components/MessageInput/useVoiceInput", () => ({
   },
 }));
 
-import useTextareaVoice from "@octo/base/src/Components/VoiceInputButton/useTextareaVoice";
+import useTextareaVoice, {
+  type UseTextareaVoiceOptions,
+} from "@octo/base/src/Components/VoiceInputButton/useTextareaVoice";
+
+const voiceHost = {
+  getSpaceId: () => "test-space-id",
+  subscribeSpaceChange: () => () => {},
+};
+
+function useTestTextareaVoice(
+  options: Omit<UseTextareaVoiceOptions, "voiceHost">,
+) {
+  return useTextareaVoice({ voiceHost, ...options });
+}
 
 describe("useTextareaVoice", () => {
   beforeEach(() => {
@@ -37,6 +50,7 @@ describe("useTextareaVoice", () => {
     overrides: Partial<HTMLTextAreaElement> = {}
   ): React.RefObject<HTMLTextAreaElement> {
     const el = {
+      value: "",
       selectionStart: 0,
       selectionEnd: 0,
       ...overrides,
@@ -49,7 +63,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     expect(result.current.isRecording).toBe(false);
@@ -62,7 +76,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -77,7 +91,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -92,7 +106,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -115,7 +129,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -134,7 +148,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -153,7 +167,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {
@@ -169,7 +183,7 @@ describe("useTextareaVoice", () => {
     const getCurrentText = vi.fn().mockReturnValue("current content");
 
     const { result } = renderHook(() =>
-      useTextareaVoice({
+      useTestTextareaVoice({
         inputRef,
         onTranscribed,
         getCurrentText,
@@ -196,7 +210,7 @@ describe("useTextareaVoice", () => {
     const getCurrentText = vi.fn().mockReturnValue("current content");
 
     const { result } = renderHook(() =>
-      useTextareaVoice({
+      useTestTextareaVoice({
         inputRef,
         onTranscribed,
         getCurrentText,
@@ -219,7 +233,7 @@ describe("useTextareaVoice", () => {
     const onTranscribed = vi.fn();
 
     const { result } = renderHook(() =>
-      useTextareaVoice({ inputRef, onTranscribed })
+      useTestTextareaVoice({ inputRef, onTranscribed })
     );
 
     act(() => {

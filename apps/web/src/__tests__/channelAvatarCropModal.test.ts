@@ -22,9 +22,9 @@ describe("ChannelAvatar crop presentation", () => {
     })
 
     it("keeps upload loading and close guards on the modal", () => {
-        expect(source).toContain("isOkLoading: uploading")
-        expect(source).toContain("maskClosable: !uploading")
-        expect(source).toContain("closeOnEsc: !uploading")
+        expect(source).toContain("isOkLoading: converting")
+        expect(source).toContain("maskClosable: !converting")
+        expect(source).toContain("closeOnEsc: !converting")
     })
 
     it("keeps the crop canvas square instead of independently compressing its height", () => {

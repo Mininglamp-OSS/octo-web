@@ -1,13 +1,30 @@
 import React from "react";
 import "./index.css";
 
-export type DocShareKind = "doc" | "board" | "sheet";
+export type DocShareKind = "doc" | "board" | "sheet" | "html";
 
 /** viewer 视角的权限态（由 Cell 依据实时 ACL 取数结果给出）。 */
-export type DocSharePermissionState = "reader" | "commenter" | "writer" | "no_access" | "unavailable" | "checking";
+export type DocSharePermissionState =
+  | "reader"
+  | "commenter"
+  | "writer"
+  | "no_access"
+  | "unavailable"
+  | "error"
+  | "checking";
 
-/** 首屏预览取数状态。 */
-export type DocSharePreviewStatus = "loading" | "ready" | "denied" | "unavailable" | "error";
+/**
+ * 首屏预览取数状态。
+ * `empty` = 有访问权限、但该 doc_type 没有可渲染的预览（如 html 文档）——
+ * 是**正常降级**，与 error（取数失败）严格区分：前者标绿显「暂无预览」，后者标红。
+ */
+export type DocSharePreviewStatus =
+  | "loading"
+  | "ready"
+  | "denied"
+  | "unavailable"
+  | "error"
+  | "empty";
 
 /** ACL 校验后的首屏预览数据，按 kind 区分。 */
 export type DocSharePreview =
@@ -50,7 +67,7 @@ export interface DocumentShareCardProps {
 function toneOf(state: DocSharePermissionState): "success" | "warning" | "error" | "neutral" {
   if (state === "reader" || state === "commenter" || state === "writer") return "success";
   if (state === "no_access") return "warning";
-  if (state === "unavailable") return "error";
+  if (state === "unavailable" || state === "error") return "error";
   return "neutral";
 }
 
@@ -69,6 +86,14 @@ function KindIcon({ kind }: { kind: DocShareKind }): JSX.Element {
       <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
         <rect x="4" y="4" width="16" height="16" rx="2" />
         <path d="M4 10h16M4 15h16M10 4v16" />
+      </svg>
+    );
+  }
+  if (kind === "html") {
+    return (
+      <svg className="icon" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="4" width="18" height="16" rx="2" />
+        <path d="M9 10l-2.5 2L9 14M15 10l2.5 2L15 14M13 9l-2 6" />
       </svg>
     );
   }
@@ -169,7 +194,7 @@ function PreviewContent({ title, preview }: { title: string; preview: DocSharePr
 /**
  * 文档转发卡片纯展示组件（1:1 复刻 octo 原型 document-forward-card）：
  * 头部（类型图标 · 标题+副标题 · 权限角标 · 复制按钮）+ 一整块可点击的首屏预览（点击打开文档）。
- * 无 footer；预览区有内容显内容、无权限/失效/检查中显占位。仅 unavailable 禁用点击。
+ * 无 footer；预览区有内容显内容、无权限/失效/暂时失败/检查中显占位。仅 unavailable 禁用点击。
  */
 export function DocumentShareCard(props: DocumentShareCardProps): JSX.Element {
   const { kind, title, state, strings, preview, placeholder, onOpen, onCopy } = props;

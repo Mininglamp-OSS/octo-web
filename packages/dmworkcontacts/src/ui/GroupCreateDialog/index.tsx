@@ -1,11 +1,18 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Input } from "@douyinfe/semi-ui";
+import { Pencil } from "lucide-react";
+import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 
-import { GroupAvatarEditModal, GroupAvatarPreview, WKModal } from "@octo/base";
+import { ChannelAvatar, GroupAvatarPreview, WKModal } from "@octo/base";
 
 import GroupMemberPicker from "../GroupMemberPicker";
 import type { GroupCreateDialogProps } from "./types";
 import "./index.css";
+
+const GROUP_CREATE_DRAFT_CHANNEL = new Channel(
+  "group-create-avatar-draft",
+  ChannelTypeGroup
+);
 
 function GroupCreateDialog({
   mode,
@@ -16,6 +23,18 @@ function GroupCreateDialog({
   actions,
 }: GroupCreateDialogProps) {
   const isCreate = mode === "createGroup";
+  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string>();
+  const onCancel = form.isSubmitting ? () => undefined : actions.onCancel;
+
+  useEffect(() => {
+    if (!form.avatarFile) {
+      setAvatarPreviewUrl(undefined);
+      return;
+    }
+    const nextUrl = URL.createObjectURL(form.avatarFile);
+    setAvatarPreviewUrl(nextUrl);
+    return () => URL.revokeObjectURL(nextUrl);
+  }, [form.avatarFile]);
 
   return (
     <>
@@ -25,30 +44,51 @@ function GroupCreateDialog({
           className="wk-main-modal-group-create"
           visible={isOpen}
           title={copy.title}
-          options={{ closable: true, maskClosable: false }}
-          onCancel={actions.onCancel}
+          options={{
+            closable: !form.isSubmitting,
+            maskClosable: false,
+            closeOnEsc: !form.isSubmitting,
+          }}
+          onCancel={onCancel}
           footerConfig={{
             onOk: actions.onConfirm,
             okText: copy.confirm,
             cancelText: copy.cancel,
+            isCancelDisabled: form.isSubmitting,
+            isOkLoading: form.isSubmitting,
           }}
         >
           <div className="group-create-body">
             <div className="group-create-field">
               <div className="group-create-label">{copy.avatarLabel}</div>
               <div className="group-create-avatar-row">
-                <GroupAvatarPreview
-                  avatarText={form.avatarText}
-                  colorIndex={form.avatarColorIndex}
-                  name={form.groupName}
-                  size={48}
-                />
-                <span
+                {avatarPreviewUrl ? (
+                  <img
+                    className="group-create-avatar-image"
+                    src={avatarPreviewUrl}
+                    alt=""
+                  />
+                ) : (
+                  <GroupAvatarPreview
+                    avatarText={form.avatarText}
+                    colorIndex={form.avatarColorIndex}
+                    name={form.groupName}
+                    size={48}
+                  />
+                )}
+                <button
+                  type="button"
                   className="group-create-edit-avatar"
                   onClick={actions.onOpenAvatarEditor}
+                  disabled={form.isSubmitting}
                 >
+                  <Pencil
+                    size={16}
+                    className="group-create-edit-avatar-icon"
+                    aria-hidden="true"
+                  />
                   {copy.editAvatar}
-                </span>
+                </button>
               </div>
             </div>
 
@@ -61,6 +101,7 @@ function GroupCreateDialog({
                 maxLength={form.maxNameLength}
                 placeholder={copy.namePlaceholder}
                 onChange={actions.onGroupNameChange}
+                disabled={form.isSubmitting}
               />
               <div
                 className={`group-create-input-count ${
@@ -78,7 +119,10 @@ function GroupCreateDialog({
                 {copy.membersLabel}
               </div>
               <div className="group-create-members">
-                <GroupMemberPicker {...memberPicker} />
+                <GroupMemberPicker
+                  {...memberPicker}
+                  disabled={form.isSubmitting}
+                />
               </div>
             </div>
           </div>
@@ -95,16 +139,20 @@ function GroupCreateDialog({
         </WKModal>
       )}
 
-      <GroupAvatarEditModal
-        visible={form.isAvatarEditorOpen}
-        name={form.groupName}
-        initialAvatarText={form.avatarText}
-        initialColorIndex={form.avatarColorIndex}
-        onCancel={actions.onCloseAvatarEditor}
-        onSave={(result) =>
-          actions.onSaveAvatar(result.avatarText, result.colorIndex)
-        }
-      />
+      {isCreate && (
+        <ChannelAvatar
+          channel={GROUP_CREATE_DRAFT_CHANNEL}
+          showUpload
+          visible={form.isAvatarEditorOpen}
+          groupName={form.groupName}
+          initialAvatarText={form.avatarText}
+          initialColorIndex={form.avatarColorIndex}
+          initialUploadFile={form.avatarFile}
+          colorSeed=""
+          onClose={actions.onCloseAvatarEditor}
+          onDraftSave={actions.onSaveAvatar}
+        />
+      )}
     </>
   );
 }

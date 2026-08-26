@@ -72,17 +72,12 @@ describe('EmojiService RegExp caching', () => {
         expect(regex.test("hello")).toBe(false);
     });
 
-    it('should not create new RegExp on subsequent calls (performance)', () => {
+    it('should reuse the cached RegExp for repeated calls', () => {
         const service = new TestEmojiService();
 
-        // Call emojiRegExp many times - should be fast due to caching
-        const startTime = performance.now();
-        for (let i = 0; i < 10000; i++) {
-            service.emojiRegExp();
-        }
-        const endTime = performance.now();
+        const first = service.emojiRegExp();
+        for (let i = 0; i < 10000; i++) service.emojiRegExp();
 
-        // Should complete in less than 100ms due to caching
-        expect(endTime - startTime).toBeLessThan(100);
+        expect(service.emojiRegExp()).toBe(first);
     });
 });

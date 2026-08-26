@@ -134,9 +134,9 @@ function validateToggleVisibilityAction(
     throw new OctoInvalidCard("ToggleVisibility targetElements required");
   }
   for (const target of targets) {
-    // 每个 target 计入节点预算（与 facts / actions / columns / choices / images 一致），
-    // 对齐服务端 walker MAX_NODES 计数口径，防止巨量 target 数组绕过预算。
-    if (!ctx.budget.consume()) throw new OctoInvalidCard("node count exceeded");
+    // targetElements 是对已存在元素的引用，不是卡片树节点。服务端权威：
+    // octo-server/pkg/cardmsg/validate.go 的 walker.action() 只对 action bump，
+    // walker.toggleVisibility() 仅收集 targetRefs，由 resolveTargetRefs() 校验存在性。
     validateToggleTargetElement(target, ctx);
   }
 }

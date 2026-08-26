@@ -1,9 +1,10 @@
-import { Channel, ChannelTypeGroup } from "wukongimjssdk";
+import { Channel, ChannelInfo, ChannelTypeGroup } from "wukongimjssdk";
 
 import WKApp from "../../App";
 import {
   addChannelSubscribers as addChannelSubscribersApi,
   createChannel as createChannelApi,
+  channelSettingRequestIssued,
   exitChannel as exitChannelApi,
   leaveThread as leaveThreadApi,
   removeChannelSubscribers as removeChannelSubscribersApi,
@@ -13,18 +14,30 @@ import {
   updateChannelSubscriberAttr,
   updateThread as updateThreadApi,
 } from "../../Service/ChannelSettingService";
-import { EndpointID, SubscriberStatus } from "../../Service/Const";
+import {
+  ChannelTypeCommunityTopic,
+  EndpointID,
+  SubscriberStatus,
+} from "../../Service/Const";
 import {
   clearCurrentImChannelSubscribersLocallyRemoved,
   deleteCurrentImChannelInfo,
   fetchCurrentImChannelInfo,
+  getCurrentImChannelInfo,
+  getPendingCurrentImChannelInfoFetches,
   getCurrentImChannelSubscribers,
   getCurrentImChannelSubscribersCacheRaw,
   markCurrentImChannelSubscribersLocallyRemoved,
+  notifyCurrentImChannelInfoListeners,
   notifyCurrentImSubscriberChangeListeners,
+  setCurrentImChannelInfoCache,
   setCurrentImChannelSubscribersCache,
   syncCurrentImChannelSubscribers,
 } from "../../im-runtime/currentChannelRuntime";
+import { patchImChannelInfoOrgData } from "../../im-runtime/channelRuntime";
+import { Dap } from "../../Service/Dap";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
+import PinnedService from "../../Service/PinnedService";
 import {
   findCurrentImConversation,
   removeCurrentImConversation,
@@ -43,6 +56,8 @@ export interface ChannelSettingActionRuntime {
     uid: string
   ): Promise<ChannelSettingSubscriber | undefined>;
   getCurrentChannelSubscribers(channel: Channel): ChannelSettingSubscriber[];
+  getCurrentChannelInfo(channel: Channel): ChannelInfo | undefined;
+  getPendingChannelInfoFetches(channel: Channel): Promise<unknown>[] | undefined;
   getCurrentChannelSubscribersRaw(
     channel: Channel
   ): ChannelSettingSubscriber[] | undefined;
@@ -59,6 +74,9 @@ export interface ChannelSettingActionRuntime {
   clearRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
   markRemovedChannelSubscribers(channel: Channel, uids: string[]): void;
   notifyCurrentChannelSubscribers(channel: Channel): void;
+  notifyCurrentChannelInfo(channelInfo: ChannelInfo): void;
+  setPinnedChannel(channel: Channel, top: boolean): Promise<void>;
+  setCurrentChannelInfo(channelInfo: ChannelInfo): void;
   setCurrentChannelSubscribers(
     channel: Channel,
     subscribers: ChannelSettingSubscriber[]
@@ -122,6 +140,12 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     getCurrentChannelSubscribers(channel) {
       return getCurrentImChannelSubscribers(channel);
     },
+    getCurrentChannelInfo(channel) {
+      return getCurrentImChannelInfo<Channel, ChannelInfo>(channel);
+    },
+    getPendingChannelInfoFetches(channel) {
+      return getPendingCurrentImChannelInfoFetches(channel);
+    },
     getCurrentChannelSubscribersRaw(channel) {
       return getCurrentImChannelSubscribersCacheRaw(channel);
     },
@@ -170,8 +194,17 @@ function defaultRuntime(): ChannelSettingActionRuntime {
     notifyCurrentChannelSubscribers(channel) {
       notifyCurrentImSubscriberChangeListeners(channel);
     },
+    notifyCurrentChannelInfo(channelInfo) {
+      notifyCurrentImChannelInfoListeners(channelInfo);
+    },
+    setPinnedChannel(channel, top) {
+      return top ? PinnedService.add(channel) : PinnedService.remove(channel);
+    },
     setCurrentChannelSubscribers(channel, subscribers) {
       setCurrentImChannelSubscribersCache(channel, subscribers);
+    },
+    setCurrentChannelInfo(channelInfo) {
+      setCurrentImChannelInfoCache(channelInfo);
     },
     syncCurrentChannelSubscribers(channel) {
       return syncCurrentImChannelSubscribers(channel);
@@ -192,6 +225,61 @@ function defaultRuntime(): ChannelSettingActionRuntime {
       return updateThreadApi(groupNo, shortId, data);
     },
   };
+}
+
+const threadMuteCacheSyncVersions = new Map<string, number>();
+
+function patchThreadMuteCache(
+  runtime: ChannelSettingActionRuntime,
+  channel: Channel,
+  mute: boolean
+) {
+  const channelInfo = runtime.getCurrentChannelInfo(channel);
+  if (!channelInfo) return;
+
+  channelInfo.mute = mute;
+  patchImChannelInfoOrgData(channelInfo, {
+    thread: {
+      ...(channelInfo.orgData?.thread || {}),
+      mute: mute ? 1 : 0,
+    },
+  });
+  runtime.setCurrentChannelInfo(channelInfo);
+  runtime.notifyCurrentChannelInfo(channelInfo);
+}
+
+function syncThreadMuteCacheAfterSave(
+  runtime: ChannelSettingActionRuntime,
+  channel: Channel,
+  mute: boolean
+) {
+  const channelKey = channel.getChannelKey();
+  const version = (threadMuteCacheSyncVersions.get(channelKey) || 0) + 1;
+  threadMuteCacheSyncVersions.set(channelKey, version);
+
+  const pendingFetches = runtime.getPendingChannelInfoFetches(channel);
+  patchThreadMuteCache(runtime, channel, mute);
+
+  if (!pendingFetches || pendingFetches.length === 0) {
+    if (threadMuteCacheSyncVersions.get(channelKey) === version) {
+      threadMuteCacheSyncVersions.delete(channelKey);
+    }
+    return;
+  }
+
+  let remainingFetches = pendingFetches.length;
+  pendingFetches.forEach((pendingFetch) => {
+    void pendingFetch
+      .catch(() => undefined)
+      .then(() => {
+        if (threadMuteCacheSyncVersions.get(channelKey) !== version) return;
+        patchThreadMuteCache(runtime, channel, mute);
+        remainingFetches -= 1;
+        if (remainingFetches === 0) {
+          threadMuteCacheSyncVersions.delete(channelKey);
+        }
+      });
+  });
 }
 
 async function refreshChannelStateAfterMemberMutation(
@@ -416,10 +504,19 @@ export async function muteChannelSetting(params: {
   mute: boolean;
   runtime?: ChannelSettingActionRuntime;
 }) {
-  await runtimeOrDefault(params.runtime).muteChannel(
-    params.channel,
-    params.mute
-  );
+  const runtime = runtimeOrDefault(params.runtime);
+  await runtime.muteChannel(params.channel, params.mute);
+  if (params.channel.channelType === ChannelTypeCommunityTopic) {
+    syncThreadMuteCacheAfterSave(runtime, params.channel, params.mute);
+  }
+  // conversation_muted 收口点:所有静音入口(会话列表右键、设置面板、子区设置)都经此,
+  // await 成功后单发,携带方向 action(mute/unmute)。此前挂在 BodyRules body 通道会双计,
+  // 已删除 body 规则;改到这里统一命令式单通道(见 M3)。
+  // 门控:仅在 updateChannelSetting 确会发出请求时才计点。畸形子区 channelID(解析失败)或
+  // 未知频道类型走静默 no-op,不该计一次 mute(见 #1452 review P2)。
+  if (channelSettingRequestIssued(params.channel)) {
+    Dap.shared.track("conversation_muted", { action: params.mute ? "mute" : "unmute", channel_id: stripSpacePrefix(params.channel.channelID) });
+  }
 }
 
 export async function topChannelSetting(params: {
@@ -427,7 +524,17 @@ export async function topChannelSetting(params: {
   top: boolean;
   runtime?: ChannelSettingActionRuntime;
 }) {
-  await runtimeOrDefault(params.runtime).topChannel(params.channel, params.top);
+  const runtime = runtimeOrDefault(params.runtime);
+  if (params.channel.channelType === ChannelTypeCommunityTopic) {
+    await runtime.setPinnedChannel(params.channel, params.top);
+  } else {
+    await runtime.topChannel(params.channel, params.top);
+  }
+  // conversation_pinned 收口点:同 conversation_muted,覆盖列表右键 + 设置面板置顶开关,
+  // await 成功后单发,携带方向 action(pin/unpin)(见 M3)。门控同上(见 #1452 review P2)。
+  if (channelSettingRequestIssued(params.channel)) {
+    Dap.shared.track("conversation_pinned", { action: params.top ? "pin" : "unpin", channel_id: stripSpacePrefix(params.channel.channelID) });
+  }
 }
 
 export async function saveChannelSetting(params: {
@@ -486,6 +593,10 @@ export async function clearChannelSettingMessages(params: {
     return;
   }
   await runtime.clearConversationMessages(conversation);
+  // 十二审 🔴 P1-1:conversation_cleared 从 path 通道(POST /message/offset)移到命令式。原 fetch 规则
+  //   会把**删好友**顺带的 clearConversationMessages(module.tsx removeFriend)误计成清空会话。真实「清空
+  //   群/会话消息」= 此处 clearConversationMessages 成功这一刻,单发一次;删好友走 provider 直连、不经此入口。
+  Dap.shared.track("conversation_cleared", {});
   conversation.lastMessage = undefined;
   runtime.invokeClearChannelMessages(params.channel);
 }
@@ -497,6 +608,11 @@ export async function exitChannelSettingGroup(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   await runtime.exitChannel(params.channel);
+  // 十一审 🔴:conversation_left 从 path 通道(POST groups/:id/exit + DELETE conversations/:id/:id)
+  //   移到命令式。原两条 fetch 规则会:退群一次手势双发(exit + 随后的 deleteConversation 都命中)、
+  //   把「关闭会话」(onCloseChat 走同一 DELETE,与退出无关)误计成退出、且子区退出仅靠兜底 DELETE 偶发命中。
+  //   真正的「退群」= exitChannel 成功这一刻,故在此按成功单发一次;不依赖后续 best-effort 的 deleteConversation。
+  Dap.shared.track("conversation_left", {});
   await runtime.deleteConversation(params.channel).catch((err) => {
     params.onDeleteConversationError?.(err);
   });
@@ -526,6 +642,9 @@ export async function leaveChannelSettingThread(params: {
 }) {
   const runtime = runtimeOrDefault(params.runtime);
   await runtime.leaveThread(params.shortId);
+  // 十一审 🔴:子区退出同群退出——原 path 通道靠兜底 DELETE conversations/:id/:id 偶发命中,
+  //   与「关闭会话」共用同一 DELETE 且依赖 catch 是否触发,漏计/误计。命令式在 leaveThread 成功后单发。
+  Dap.shared.track("conversation_left", {});
   await runtime.deleteConversation(params.channel).catch((err) => {
     params.onDeleteConversationError?.(err);
   });

@@ -1,7 +1,6 @@
-import { MediaMessageContent, WKSDK, Task, TaskStatus, MessageStatus } from "wukongimjssdk"
+import { WKSDK, Task, TaskStatus, MessageStatus } from "wukongimjssdk"
 import React from "react"
 import WKApp from "../../App"
-import { MessageContentTypeConst } from "../../Service/Const"
 import MessageBase from "../Base"
 import { MessageCell } from "../MessageCell"
 import { Toast } from "@douyinfe/semi-ui"
@@ -13,61 +12,12 @@ import { getImageMessageUI } from "../../bridge/message/useImageMessageUI"
 import { isMessageSelectable } from "../../Service/messageSelection"
 import { t } from "../../i18n"
 import { ImagePreviewLightbox } from "./ImagePreview"
+import { ImageContent } from "./ImageContent"
 
 export { ImagePreviewLightbox, ImagePreviewToolbar } from "./ImagePreview"
+export { ImageContent } from "./ImageContent"
 
 const SMALL_FILE_THRESHOLD = 1024 * 1024 // 1MB 以下不显示进度覆盖层
-
-export class ImageContent extends MediaMessageContent {
-    width!: number
-    height!: number
-    url!: string
-    imgData?: string
-    caption?: string
-    mentionUids?: string[]
-    name?: string
-    constructor(file?: File, imgData?: string, width?: number, height?: number, caption?: string, mentionUids?: string[]) {
-        super()
-        this.file = file
-        this.imgData = imgData
-        this.width = width || 0
-        this.height = height || 0
-        this.caption = caption
-        this.mentionUids = mentionUids
-        if (file) {
-            this.name = file.name
-        }
-    }
-    decodeJSON(content: any) {
-        this.width = content["width"] || 0
-        this.height = content["height"] || 0
-        this.url = content["url"] || ''
-        this.caption = content["caption"] || ''
-        this.mentionUids = content["mention_uids"] || []
-        this.name = content["name"] || undefined
-        this.remoteUrl = this.url
-    }
-    encodeJSON() {
-        const json: Record<string, unknown> = { "width": this.width || 0, "height": this.height || 0, "url": this.remoteUrl || "" }
-        if (this.caption) {
-            json["caption"] = this.caption
-        }
-        if (this.mentionUids && this.mentionUids.length > 0) {
-            json["mention_uids"] = this.mentionUids
-        }
-        if (this.name) {
-            json["name"] = this.name
-        }
-        return json
-    }
-    get contentType() {
-        return MessageContentTypeConst.image
-    }
-    get conversationDigest() {
-        return t("base.message.digest.image")
-    }
-}
-
 
 interface ImageCellState {
     showPreview: boolean

@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import { WKApp, buildAcceptLanguage } from '@octo/base';
+import { WKApp, buildAcceptLanguage, Dap, convertMarkdownToDoc } from '@octo/base';
 import type {
     AgentChatHistory,
     AgentChatParams,
@@ -10,6 +10,7 @@ import type {
     ChatCandidate,
     CreateSummaryParams,
     CreateAgentSummaryParams,
+    CreateAgentSummaryResult,
     CreateScheduleParams,
     CustomTopicTemplatePayload,
     InferResult,
@@ -66,7 +67,10 @@ summaryAxios.interceptors.request.use((config) => {
         config.headers['token'] = token;
     }
     const spaceId = WKApp.shared.currentSpaceId;
-    if (spaceId) {
+    const hasExplicitSpace = Object.keys(config.headers).some(
+        (name) => name.toLowerCase() === 'x-space-id',
+    );
+    if (spaceId && !hasExplicitSpace) {
         config.headers['X-Space-Id'] = spaceId;
     }
     return config;
@@ -111,9 +115,29 @@ async function get<T>(path: string, params?: Record<string, unknown>, config?: A
     }
 }
 
-async function post<T>(path: string, data?: unknown): Promise<T> {
+// P1-5:summary 走 {code,message,data} 信封 —— HTTP200 + code≠0 是**逻辑失败**(见本文件 agentChat 注)。
+// 故「动作成功」类事件不能挂 FetchRules 的 2xx 通道(否则失败也计成成功,成功率被失败率隐性冲高)。
+// 改为在此按业务码 gate:仅 code===0(明确成功)才命令式 track 一次。
+// 放在 api 层 = 天然去重(同一动作多入口共用一个 api 函数,只计一次),且是唯一能看到 code 的位置
+// (公共 post/put/del 只 unwrap .data、不看 code,页面成功回调已丢失 code)。
+// 二审 P2-5:code===null 不当成功(常见于「{code:null,data:null} 空信封」或网关/HTML 被解析成无 code)。
+// 六审 P2:code===undefined 同样不当成功。summary 端点响应恒为 {code,message,data} 信封,**缺 code**
+// 意味着这不是预期信封(网关 HTML+200 / {data:null} / 代理错误页)——与 null 同一失败签名,不能计成成功。
+// 仅 code===0 才 track。successProps 由调用方按事件语义传入(单一收口点,见二审 P1「双发」)。
+function trackOnEnvelopeSuccess(
+    resp: { data?: { code?: number } },
+    event?: string,
+    props: Record<string, unknown> = {},
+): void {
+    if (!event) return;
+    const code = resp?.data?.code;
+    if (code === 0) Dap.shared.track(event, props);
+}
+
+async function post<T>(path: string, data?: unknown, successEvent?: string, successProps: Record<string, unknown> = {}): Promise<T> {
     try {
         const resp = await summaryAxios.post(`${BASE}${path}`, data);
+        trackOnEnvelopeSuccess(resp, successEvent, successProps);
         return resp.data?.data ?? resp.data;
     } catch (err) {
         if (axios.isCancel(err)) throw err;
@@ -121,9 +145,10 @@ async function post<T>(path: string, data?: unknown): Promise<T> {
     }
 }
 
-async function put<T>(path: string, data?: unknown): Promise<T> {
+async function put<T>(path: string, data?: unknown, successEvent?: string, successProps: Record<string, unknown> = {}): Promise<T> {
     try {
         const resp = await summaryAxios.put(`${BASE}${path}`, data);
+        trackOnEnvelopeSuccess(resp, successEvent, successProps);
         return resp.data?.data ?? resp.data;
     } catch (err) {
         if (axios.isCancel(err)) throw err;
@@ -131,9 +156,10 @@ async function put<T>(path: string, data?: unknown): Promise<T> {
     }
 }
 
-async function del<T>(path: string): Promise<T> {
+async function del<T>(path: string, successEvent?: string, successProps: Record<string, unknown> = {}): Promise<T> {
     try {
         const resp = await summaryAxios.delete(`${BASE}${path}`);
+        trackOnEnvelopeSuccess(resp, successEvent, successProps);
         return resp.data?.data ?? resp.data;
     } catch (err) {
         if (axios.isCancel(err)) throw err;
@@ -287,8 +313,15 @@ export async function streamSummary(
     }, options.onEvent);
 }
 
-export async function createSummary(params: CreateSummaryParams): Promise<{ task_id: number }> {
-    return post('/summaries', params);
+// 二审 P1「smart_summary_started 双发」修复:本事件的**唯一**收口点在 api 层(envelope code===0 才发),
+// 而非页面/按钮。因为「HTTP200 + code≠0」是逻辑失败,只有 api 层能看到 code(见 trackOnEnvelopeSuccess)。
+// 各创建入口(SummaryCreatePage normal / ChatSummaryNewModal / agent 模式)把维度 props 传进来,
+// 由这里按业务码 gate 后发一次 —— 计数与 props 在所有入口一致。
+export async function createSummary(
+    params: CreateSummaryParams,
+    trackProps: Record<string, unknown> = {},
+): Promise<{ task_id: number }> {
+    return post('/summaries', params, 'smart_summary_started', trackProps);
 }
 
 /**
@@ -306,24 +339,36 @@ export async function createSummary(params: CreateSummaryParams): Promise<{ task
  */
 export async function createAgentSummary(
     params: CreateAgentSummaryParams,
-): Promise<{ task_id: number; task_no: string; status: number; created_at: string }> {
+    trackProps: Record<string, unknown> = {},
+): Promise<CreateAgentSummaryResult> {
     const resp = await summaryAxios.post(`${BASE}/summaries/agent`, params);
     const envelopeCode = resp.data?.code;
-    if (envelopeCode !== 0 && envelopeCode !== undefined) {
-        // 业务失败（如 40004 session 无产出）——保留 envelope code 让上层 switch
+    // 七审 P1:与 trackOnEnvelopeSuccess 同口径,严格 code===0 才算成功。
+    // summary 端点响应恒为 {code,message,data} 信封,缺 code(===undefined)与 code===null 同属
+    // 「非预期信封」失败签名(网关 HTML+200 / 代理错误页 / {data:null})。此前这里放行 undefined,
+    // 而 normal 路径的 gate 已收紧到仅 code===0,两条创建路径就此不一致:一个带 task_id 但缺 code 的响应
+    // 会让 agent 模式误发 smart_summary_started 且误清 chat,normal 模式却不发。统一为 code!==0 即失败。
+    if (envelopeCode !== 0) {
+        // 业务失败（如 40004 session 无产出）或缺/空信封——保留 envelope code 让上层 switch
         const err = new Error(resp.data?.message || 'create agent summary failed') as Error & {
             response?: { data?: { code?: number; message?: string } };
         };
         err.response = { data: resp.data };
         throw err;
     }
-    const data = (resp.data?.data ?? resp.data) as {
-        task_id: number; task_no: string; status: number; created_at: string;
-    } | undefined;
+    // 八审 P2:走到这里 envelope code 已判定成功(仅 code===0),响应必是预期信封 {code,message,data}。
+    // 故只从 data 取;此前的 `?? resp.data` 回退是给「无信封裸响应」用的,而那正是 code===undefined 的情形,
+    // 已在上面 :350 rejected —— 回退再也走不到(裸响应没有 task_id,反而会在下面 :361 抛),留着只会
+    // 误导「仍支持裸响应」。去掉,语义与实际行为一致。
+    const data = resp.data?.data as CreateAgentSummaryResult | undefined;
     if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
         // 后端返成功但 task_id 缺失/非法 —— 视为保存失败,不能清 chat
         throw new Error(resp.data?.message || 'create agent summary returned no task_id');
     }
+    // 二审 P1/P2-2:agent 模式也是一条「成功发起」。走到这里 envelope code 已判定成功
+    // (仅 code===0,缺/空/非零信封均已在上面抛出),与传统 createSummary 的 gate 同口径,
+    // 补发 smart_summary_started(此前 agent 模式一次都不发,与 normal 模式不一致)。
+    Dap.shared.track('smart_summary_started', trackProps);
     return data;
 }
 
@@ -343,7 +388,8 @@ export async function agentChat(params: AgentChatParams): Promise<AgentChatResul
         if (!data?.reply) {
             throw new Error(resp.data?.message || 'agent chat failed');
         }
-        return { reply: data.reply, session_id: data.session_id };
+        // SS-11: surface run_id when present (V2 on); omitted by legacy backend.
+        return { reply: data.reply, session_id: data.session_id, run_id: data.run_id };
     } catch (err) {
         if (axios.isCancel(err)) throw err;
         if (err instanceof Error) throw err;
@@ -427,6 +473,7 @@ export function agentChatStream(
             let pendingEvent = '';
             let pendingData = '';
             let receivedDone = false;
+            let receivedError = false;
             while (!aborted) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -448,10 +495,14 @@ export function agentChatStream(
                     } else if (line === '') {
                         // 空行是帧边界,解析并分发
                         if (pendingEvent && pendingData) {
-                            if (pendingEvent === 'done') {
-                                receivedDone = true;
+                            const dispatched = parseAndDispatch(pendingEvent, pendingData, handlers);
+                            if (dispatched) {
+                                if (pendingEvent === 'done') {
+                                    receivedDone = true;
+                                } else if (pendingEvent === 'error') {
+                                    receivedError = true;
+                                }
                             }
-                            parseAndDispatch(pendingEvent, pendingData, handlers);
                         }
                         pendingEvent = '';
                         pendingData = '';
@@ -472,14 +523,18 @@ export function agentChatStream(
                     buffer = '';
                 }
                 if (pendingEvent && pendingData) {
-                    if (pendingEvent === 'done') {
-                        receivedDone = true;
+                    const dispatched = parseAndDispatch(pendingEvent, pendingData, handlers);
+                    if (dispatched) {
+                        if (pendingEvent === 'done') {
+                            receivedDone = true;
+                        } else if (pendingEvent === 'error') {
+                            receivedError = true;
+                        }
                     }
-                    parseAndDispatch(pendingEvent, pendingData, handlers);
                 }
             }
             // 流已关闭,但如果没收到 done 事件,触发错误让 UI 解锁
-            if (!aborted && !receivedDone) {
+            if (!aborted && !receivedDone && !receivedError) {
                 handlers.onError?.({ code: 50000, message: 'stream closed without done', transient: true });
             }
         } catch (err: unknown) {
@@ -499,27 +554,28 @@ export function agentChatStream(
     };
 }
 
-/** 解析 SSE data 并分发到对应 handler */
-function parseAndDispatch(event: string, data: string, handlers: AgentStreamHandlers): void {
+/** 解析 SSE data 并分发；仅成功处理已知事件时返回 true。 */
+function parseAndDispatch(event: string, data: string, handlers: AgentStreamHandlers): boolean {
     try {
         const parsed = JSON.parse(data);
         switch (event) {
             case 'progress':
                 handlers.onProgress?.(parsed as AgentProgressEvent);
-                break;
+                return true;
             case 'done':
                 handlers.onDone?.(parsed as AgentDoneEvent);
-                break;
+                return true;
             case 'error':
                 handlers.onError?.(parsed as AgentErrorEvent);
-                break;
+                return true;
             default:
                 // 未知事件忽略
-                break;
+                return false;
         }
     } catch (err) {
         // JSON 解析失败,忽略该帧
         console.warn('Failed to parse SSE data:', data, err);
+        return false;
     }
 }
 
@@ -545,8 +601,12 @@ export async function createSummaryShares(
     });
 }
 
-export async function getSummaryShare(shareId: string): Promise<GetSummaryShareResponse> {
-    return get(`/summary-shares/${encodeURIComponent(shareId)}`);
+export async function getSummaryShare(shareId: string, spaceId?: string): Promise<GetSummaryShareResponse> {
+    return get(
+        `/summary-shares/${encodeURIComponent(shareId)}`,
+        undefined,
+        spaceId ? { headers: { 'X-Space-Id': spaceId } } : undefined,
+    );
 }
 
 export async function revokeSummaryShare(shareId: string): Promise<void> {
@@ -561,11 +621,11 @@ export async function markSummaryRead(
 }
 
 export async function deleteSummary(taskId: number): Promise<void> {
-    return del(`/summaries/${taskId}`);
+    return del(`/summaries/${taskId}`, 'smart_summary_deleted');
 }
 
 export async function regenerateSummary(taskId: number, body?: { topic?: string }): Promise<{ task_id: number }> {
-    return post(`/summaries/${taskId}/regenerate`, body);
+    return post(`/summaries/${taskId}/regenerate`, body, 'smart_summary_regenerated');
 }
 
 export async function streamRefineSummary(
@@ -619,7 +679,11 @@ export async function regeneratePersonalSummary(
     taskId: number,
     body?: { topic?: string },
 ): Promise<{ task_id: number; result_id: number; status: number }> {
-    return post(`/summaries/${taskId}/personal-regenerate`, body);
+    // 八审 P2:BY_PERSON 多人协作的「个人报告」整条重生成,与 regenerateSummary(团队整体重生成)
+    // 同属一次 full regenerate,漏斗 smart_summary_regenerated 必须计入,否则 dialog_opened→regenerated
+    // 比值只反映埋点覆盖而非用户行为。走 post() 的 code===0 gate,与团队路径同口径。
+    // (注:refine-by-feedback 是「反馈微调」的另一种交互,不是 full regenerate,不计本事件;见 DAP_EVENTS.md。)
+    return post(`/summaries/${taskId}/personal-regenerate`, body, 'smart_summary_regenerated');
 }
 
 export async function streamRefinePersonalSummary(
@@ -721,6 +785,7 @@ export async function editSummary(
             content,
             base_result_id: baseResultId,
         });
+        trackOnEnvelopeSuccess(resp, 'smart_summary_edited');
         return resp.data?.data ?? resp.data;
     } catch (err: unknown) {
         // Preserve cancellation identity so callers can use axios.isCancel(err)
@@ -887,7 +952,7 @@ export async function resetMyTopicTemplate(templateId: string): Promise<TopicTem
 }
 
 export async function createCustomTopicTemplate(payload: CustomTopicTemplatePayload): Promise<TopicTemplate> {
-    const data = await post<{ template: TopicTemplate }>('/summary-templates/my', payload);
+    const data = await post<{ template: TopicTemplate }>('/summary-templates/my', payload, 'smart_summary_custom_template_created');
     return data.template;
 }
 
@@ -924,7 +989,7 @@ export async function getSchedule(scheduleId: number): Promise<ScheduleItem> {
 }
 
 export async function createSchedule(params: CreateScheduleParams): Promise<ScheduleItem> {
-    return normalizeScheduleItem(await post<ScheduleItem>('/summary-schedules', params));
+    return normalizeScheduleItem(await post<ScheduleItem>('/summary-schedules', params, 'smart_summary_timer_configured'));
 }
 
 export async function listSchedules(): Promise<ScheduleItem[]> {
@@ -933,7 +998,7 @@ export async function listSchedules(): Promise<ScheduleItem[]> {
 }
 
 export async function updateSchedule(scheduleId: number, params: UpdateScheduleParams): Promise<ScheduleItem> {
-    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params));
+    return normalizeScheduleItem(await put<ScheduleItem>(`/summary-schedules/${scheduleId}`, params, 'smart_summary_timer_configured'));
 }
 
 export async function deleteSchedule(scheduleId: number): Promise<void> {
@@ -961,4 +1026,22 @@ export async function getChatCandidates(params?: { keyword?: string; chat_type?:
 export async function getMemberCandidates(params?: { keyword?: string }): Promise<MemberCandidate[]> {
     const data = await get<MemberCandidate[]>('/summary-member-candidates', params as Record<string, unknown>);
     return data || [];
+}
+// ─── Copy & Convert to Document (octo-smart-summary#195) ────────────────
+
+/**
+ * 转为在线文档。
+ *
+ * 注意这里**不含任何 docs-backend REST 调用**：`packages/docs` 已在
+ * `#1363 feat: detach docs module from oss host` 之后从本仓库移除并被 oss-module-guard
+ * 禁止加回，OSS 侧直连它的 REST 端点会在没有部署 docs-backend 的形态下必然失败。
+ * 实际的「建文档 → 导入 markdown →（失败时）回滚」全部由闭源 docs 模块在
+ * `EndpointID.docsConvertMarkdown` 端口后面实现，跳转链接也由它用 buildDocLink 生成。
+ *
+ * 端口未接线（docsOn 关闭或 docs 模块不在当前 bundle 里）时抛
+ * DocsCapabilityUnavailableError —— 但调用方本就该用 isDocsConvertAvailable() 提前
+ * 隐藏入口，正常路径上不会走到这个分支。
+ */
+export async function convertSummaryToDoc(title: string, markdown: string): Promise<{ docId: string; url: string }> {
+    return convertMarkdownToDoc({ title, markdown });
 }

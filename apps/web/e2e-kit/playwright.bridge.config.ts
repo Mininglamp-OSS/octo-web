@@ -53,7 +53,6 @@ export default defineConfig({
       VITE_PORT: PORT,
       VITE_E2E_MOCK: "1",
       VITE_E2E_MOCK_IM: "1",
-      VITE_DISABLE_BUILTIN_DOCS: process.env.VITE_DISABLE_BUILTIN_DOCS ?? "",
       VITE_ENTERPRISE_MODULES_ENTRY: MODULE_ENTRY,
       VITE_ENTERPRISE_FS_ALLOW: process.env.E2E_ENTERPRISE_FS_ALLOW ?? [
         MODULE_ROOT,

@@ -1,8 +1,8 @@
 import React, { Component } from "react";
 import { Space } from "wukongimjssdk";
 import NavSpaceSwitcher from "./NavSpaceSwitcher";
-import NavLanguageSwitcher from "./NavLanguageSwitcher";
 import { t } from "../../i18n";
+import QuickMuteSidebar from "./QuickMuteSidebar";
 
 export interface NavBottomProps {
     settingSelected?: boolean;
@@ -18,6 +18,7 @@ export interface NavBottomProps {
     onSpaceSelect: (spaceId: string) => void;
     onJoinSpace?: () => void;
     onCreateSpace?: () => void;
+    onSpaceManagement?: () => void;
 }
 
 interface NavBottomState {
@@ -45,7 +46,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
     }
 
     render() {
-        const { onSettingsClick, settingsButtonRef, settingSelected, hasNewVersion, onDismissNewVersion, spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace } = this.props;
+        const { onSettingsClick, settingsButtonRef, settingSelected, hasNewVersion, onDismissNewVersion, spaces, currentSpaceId, onSpaceSelect, onJoinSpace, onCreateSpace, onSpaceManagement } = this.props;
         const { bubbleVisible } = this.state;
 
         return (
@@ -53,7 +54,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                 {/* 设置上方分割线 */}
                 <div className="wk-navrail__sep" />
 
-                <NavLanguageSwitcher />
+                <QuickMuteSidebar />
 
                 {/* 设置按钮 + 气泡 */}
                 <div className="wk-navrail__settings-wrap">
@@ -114,6 +115,7 @@ export default class NavBottom extends Component<NavBottomProps, NavBottomState>
                     onSpaceSelect={onSpaceSelect}
                     onJoinSpace={onJoinSpace}
                     onCreateSpace={onCreateSpace}
+                    onSpaceManagement={onSpaceManagement}
                 />
             </div>
         );

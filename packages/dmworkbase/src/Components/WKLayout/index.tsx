@@ -49,9 +49,25 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
     private dragStartX = 0
     private dragStartWidth = 0
     private lastWidth = SPLITTER_DEFAULT_WIDTH
+    private preferredWidth: number | null = null
     private lastNavRailWidth = NAV_RAIL_DEFAULT_WIDTH
+    private activeDraggingTarget?: "nav" | "content"
     private cachedContainerWidth = 1200  // updated in mount + resize
     private cachedLayoutWidth = 1200
+    private preferredWidthListener = (event: Event) => {
+        const requested = (event as CustomEvent<{ width?: number | null }>).detail?.width
+        if (typeof requested === "number" && Number.isFinite(requested)) {
+            const width = clampWidth(requested, this.cachedContainerWidth)
+            this.preferredWidth = width
+            this.lastWidth = width
+            this.setState({ leftWidth: width })
+            return
+        }
+        const width = restoreWidth()
+        this.preferredWidth = null
+        this.lastWidth = width
+        this.setState({ leftWidth: width })
+    }
 
     constructor(props: any) {
         super(props)
@@ -70,6 +86,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
 
     componentDidMount() {
         window.addEventListener("resize", this.gResize)
+        window.addEventListener("wk:layout-left-width", this.preferredWidthListener)
         this.updateContainerWidth()
 
         this.routeLister = ()=>{
@@ -80,6 +97,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
 
     componentWillUnmount() {
         window.removeEventListener("resize", this.gResize)
+        window.removeEventListener("wk:layout-left-width", this.preferredWidthListener)
         this.rightContext.removeRouteListener(this.routeLister)
         document.removeEventListener('mousemove', this.onDragMove)
         document.removeEventListener('mouseup', this.onDragEnd)
@@ -112,6 +130,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         e.preventDefault()
         this.dragStartX = e.clientX
         this.dragStartWidth = this.lastWidth
+        this.activeDraggingTarget = "content"
         this.setState({ isDragging: true, draggingTarget: "content" })
         document.addEventListener('mousemove', this.onDragMove)
         document.addEventListener('mouseup', this.onDragEnd)
@@ -132,6 +151,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         e.preventDefault()
         this.dragStartX = e.clientX
         this.dragStartWidth = this.lastNavRailWidth
+        this.activeDraggingTarget = "nav"
         this.setState({ isDragging: true, draggingTarget: "nav" })
         document.addEventListener('mousemove', this.onDragMove)
         document.addEventListener('mouseup', this.onDragEnd)
@@ -144,7 +164,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
 
     private onDragMove = (e: MouseEvent) => {
         const delta = e.clientX - this.dragStartX
-        if (this.state.draggingTarget === "nav") {
+        if (this.activeDraggingTarget === "nav") {
             const newWidth = clampNavRailWidth(getNavRailDragWidth(this.dragStartWidth, delta), this.cachedLayoutWidth)
             this.lastNavRailWidth = newWidth
 
@@ -192,7 +212,8 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
         window.removeEventListener('blur', this.onDragEnd)
         document.body.style.cursor = ''
         document.body.style.userSelect = ''
-        const { draggingTarget } = this.state
+        const draggingTarget = this.activeDraggingTarget
+        this.activeDraggingTarget = undefined
         if (!draggingTarget) {
             this.setState({ isDragging: false })
             return
@@ -205,7 +226,7 @@ export class WKLayout extends Component<WKLayoutProps, WKLayoutState>{
             return
         }
         this.setState({ leftWidth: this.lastWidth, isDragging: false, draggingTarget: undefined })
-        persistWidth(this.lastWidth)
+        if (this.preferredWidth === null) persistWidth(this.lastWidth)
     }
 
     render() {

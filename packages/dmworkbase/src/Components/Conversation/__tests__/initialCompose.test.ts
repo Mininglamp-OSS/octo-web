@@ -5,6 +5,23 @@ import {
   type InitialCompose,
   type InitialComposeState,
 } from '../initialCompose.ts'
+import type { ChatComposerSendResult } from '../../../features/chat-composer'
+
+const attemptedSend = (editorConsumed = true): ChatComposerSendResult => ({
+  kind: 'attempted',
+  attemptId: 'attempt-1',
+  editorConsumed,
+  outcome: {
+    editorConsumed,
+    consumedTopIds: [],
+    unsentEditorBlocks: [],
+    restoreSendTarget: false,
+  },
+})
+
+const rejectedSend = (
+  reason: Extract<ChatComposerSendResult, { kind: 'rejected' }>['reason'],
+): ChatComposerSendResult => ({ kind: 'rejected', editorConsumed: false, reason })
 
 // A programmable fake of the composer surface. Records the exact call order so tests can assert
 // restoreDraft → addPendingAttachments → send (plan §5.1).
@@ -12,7 +29,7 @@ function makeHost(
   over: Partial<ComposeHost> & {
     attachErr?: string
     sendThrows?: boolean
-    sendResult?: boolean | { editorConsumed: boolean }
+    sendResult?: ChatComposerSendResult
   } = {},
 ) {
   const order: string[] = []
@@ -32,7 +49,7 @@ function makeHost(
     send: vi.fn(async () => {
       order.push('send')
       if (over.sendThrows) throw new Error('send-failed')
-      return over.sendResult
+      return over.sendResult ?? attemptedSend()
     }),
   }
   return host
@@ -196,51 +213,51 @@ describe('tryConsumeInitialCompose', () => {
     expect(res.state).toBe('prepared')
   })
 
-  it('reports failed (but stays consumed) when send throws', async () => {
+  it('reports failed and stays consumed when send throws because delivery may have started', async () => {
     const host = makeHost({ sendThrows: true })
     const consumed = new Set<string>()
     const res = await tryConsumeInitialCompose(compose(), host, consumed)
     expect(res.state).toBe('failed')
     expect(res.reason).toBe('send-failed')
-    // Still consumed — a failed send must not auto-retry on the next render (user retries manually).
     expect(consumed.has('req-1')).toBe(true)
+    const retry = makeHost({ sendResult: attemptedSend() })
+    const recovered = await tryConsumeInitialCompose(compose(), retry, consumed)
+    expect(recovered.consumed).toBe(false)
+    expect(retry.send).not.toHaveBeenCalled()
   })
 
-  // P1 fix: host.send returning a falsy outcome (draft preserved = send rejected) must be
-  // reported as 'failed', not mis-reported as a successful 'sent'.
-  it('reports failed (not sent) when send resolves false (draft preserved / rejected)', async () => {
-    const host = makeHost({ sendResult: false })
+  it('preserves the explicit reason when send is rejected before an attempt', async () => {
+    const host = makeHost({ sendResult: rejectedSend('message-too-long') })
     const emit = vi.fn()
     const res = await tryConsumeInitialCompose(compose(), host, new Set(), emit)
     expect(host.send).toHaveBeenCalledTimes(1)
     expect(res.state).toBe('failed')
-    expect(res.reason).toBe('send-rejected')
-    expect(emit).toHaveBeenCalledWith('req-1', 'failed', 'send-rejected')
+    expect(res.reason).toBe('message-too-long')
+    expect(emit).toHaveBeenCalledWith('req-1', 'failed', 'message-too-long')
     // Must NOT have emitted a bogus 'sent'.
     expect(emit).not.toHaveBeenCalledWith('req-1', 'sent')
   })
 
-  it('reports failed when send resolves { editorConsumed: false }', async () => {
-    const host = makeHost({ sendResult: { editorConsumed: false } })
+  it('reports an attempted send that preserves the editor separately', async () => {
+    const host = makeHost({ sendResult: attemptedSend(false) })
     const res = await tryConsumeInitialCompose(compose(), host, new Set())
-    expect(res.state).toBe('failed')
-    expect(res.reason).toBe('send-rejected')
+    expect(res).toMatchObject({
+      consumed: true,
+      state: 'failed',
+      reason: 'send-attempt-failed',
+    })
   })
 
-  it('reports sent when send resolves true', async () => {
-    const host = makeHost({ sendResult: true })
-    const res = await tryConsumeInitialCompose(compose(), host, new Set())
-    expect(res.state).toBe('sent')
+  it('never re-arms a successful send', async () => {
+    const consumed = new Set<string>()
+    const host = makeHost({ sendResult: attemptedSend() })
+    await tryConsumeInitialCompose(compose(), host, consumed)
+    await tryConsumeInitialCompose(compose(), host, consumed)
+    expect(host.send).toHaveBeenCalledTimes(1)
   })
 
-  it('reports sent when send resolves { editorConsumed: true }', async () => {
-    const host = makeHost({ sendResult: { editorConsumed: true } })
-    const res = await tryConsumeInitialCompose(compose(), host, new Set())
-    expect(res.state).toBe('sent')
-  })
-
-  it('treats a void send resolution as sent (legacy void-returning send path)', async () => {
-    const host = makeHost() // send returns undefined
+  it('reports sent when the explicit send result consumes the editor', async () => {
+    const host = makeHost({ sendResult: attemptedSend() })
     const res = await tryConsumeInitialCompose(compose(), host, new Set())
     expect(res.state).toBe('sent')
   })

@@ -4,7 +4,7 @@ import {
     MENTION_UID_AIS,
     MENTION_UID_HUMANS,
     MENTION_UID_LEGACY_ALL,
-} from "./mentionRender"
+} from "./mentionProtocol"
 
 export function formatDraftPreview(draft: string): string {
     if (!draft) return ""

@@ -1,4 +1,4 @@
-import { addImChannelInfoListener, ChatPage, EndpointCategory, WKApp, Menus, t } from '@octo/base';
+import { addImChannelInfoListener, ChatPage, EndpointCategory, WKApp, Menus, t, isElectronPowered, sendElectronConversationUnreadCount } from '@octo/base';
 import { ContactsList } from '@octo/contacts';
 import React, { useEffect } from 'react';
 // lucide icons replaced with filled SVGs per Figma
@@ -7,11 +7,9 @@ import AppLayout from '../Layout';
 import { WKSDK } from 'wukongimjssdk';
 import { ChatIcon } from '../Components/Icons/ChatIcon';
 import { ContactsIcon } from '../Components/Icons/ContactsIcon';
-import { SummaryIcon } from '../Components/Icons/SummaryIcon';
 import { Toast } from '@douyinfe/semi-ui';
 import { clearDeprecatedFriendApplyReddotOnce } from './friendApplyReddotCleanup';
 import { createOctoDocumentTitleController } from '../features/documentTitle/octoDocumentTitle';
-import { IPC_CONVERSATION_UNREAD_COUNT } from '../../src-election/shared/ipc-channels';
 import { getElectronUnreadMessageCount } from './electronUnreadCount';
 
 /**
@@ -91,11 +89,8 @@ function useDeprecatedFriendApplyReddotCleanup() {
 }
 
 function syncElectronUnreadMessageCount() {
-  if ((window as any).__POWERED_ELECTRON__) {
-    (window as any).ipc.send(
-      IPC_CONVERSATION_UNREAD_COUNT,
-      getElectronUnreadMessageCount(),
-    )
+  if (isElectronPowered()) {
+    sendElectronConversationUnreadCount(getElectronUnreadMessageCount())
   }
 }
 
@@ -131,18 +126,6 @@ async function registerMenus() {
     const m = new Menus("contacts", "/contacts", t("app.nav.contacts"), <ContactsIcon />, <ContactsIcon />)
     return m
   }, 4000)
-
-  WKApp.menus.register("summary", (_context) => {
-    const m = new Menus("summary", "/summary", t("app.nav.summary"), <SummaryIcon />, <SummaryIcon />)
-    m.onPress = () => {
-      WKApp.routeLeft.popToRoot()
-      const page = WKApp.route.get("/summary/create")
-      if (page && React.isValidElement(page)) {
-        WKApp.routeRight.replaceToRoot(page)
-      }
-    }
-    return m
-  }, 5000)
 
   WKApp.route.register("/", () => {
     return <ChatPage></ChatPage>

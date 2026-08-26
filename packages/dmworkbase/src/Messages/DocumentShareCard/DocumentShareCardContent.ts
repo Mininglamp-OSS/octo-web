@@ -3,13 +3,15 @@ import { MessageContentTypeConst } from "../../Service/Const";
 import { t } from "../../i18n";
 import { asDocIdentifier } from "./docIdentity";
 
-/** 转发的资源类型。与 docs 后端 /d/:docId 的三条内容线对应。 */
-export type DocShareKind = "doc" | "board" | "sheet";
+/** 转发的资源类型。与 docs 后端 /d/:docId 的内容线对应（html = HTML 文档，无首屏预览）。 */
+export type DocShareKind = "doc" | "board" | "sheet" | "html";
 
 /** 转发时授予接收者的权限（forwardGrant 的结果，只承载展示语义）。 */
 export type DocSharePermission = "reader" | "commenter" | "writer";
 
-const KINDS: DocShareKind[] = ["doc", "board", "sheet"];
+// html 必须入白名单：否则 asKind() 会把 wire 里的 "html" 静默降级回 "doc"，
+// 发送侧传了 kind 也无效，接收端拿不到真实类型。
+const KINDS: DocShareKind[] = ["doc", "board", "sheet", "html"];
 const PERMISSIONS: DocSharePermission[] = ["reader", "commenter", "writer"];
 
 /** 从 unknown 安全取字符串（SDK decodeJSON 签名为 any，一律按 unknown 收窄）。 */
@@ -41,11 +43,11 @@ function asPermission(v: unknown): DocSharePermission {
  * reader 接口（/content、/scene、/sheet）现取，无权限则接口 403/404、卡片落 no_access 态。
  */
 export class DocumentShareCardContent extends MessageContent {
-  /** 文档 id，映射 /d/{docId}?sp={spaceId}。 */
+  /** 文档 id，映射 /d/{docId}（Phase-1 已取消 sp）。 */
   docId = "";
-  /** 文档所属 space id（预览与 deep-link 都要）。 */
+  /** 文档所属 space id（仍用于 ACL-safe 首屏预览；deep-link 不再携带）。 */
   spaceId = "";
-  /** 资源类型：doc/board/sheet。 */
+  /** 资源类型：doc/board/sheet/html。 */
   kind: DocShareKind = "doc";
   /** 转发时的文档标题快照（已由发送侧转义/截断）。 */
   title = "";

@@ -29,9 +29,55 @@ vi.mock('wukongimjssdk', () => ({
     }),
   },
   ChannelTypePerson: 1,
+  ChannelTypeGroup: 2,
 }))
 
 vi.mock('@octo/base', () => ({
+  ChannelTypeCommunityTopic: 5,
+  ThreadStatus: { Active: 1, Archived: 2, Deleted: 3 },
+  Channel: class {
+    constructor(public channelID: string, public channelType: number) {}
+  },
+  parseThreadChannelId: (channelID: string) => {
+    const parts = channelID.split('____')
+    return parts.length === 2 ? { groupNo: parts[0], shortId: parts[1] } : null
+  },
+  isEffectivelyMuted: ({ isThread, channelInfo, parentChannelInfo }: any) => {
+    if (!isThread) return Boolean(channelInfo?.mute)
+    return Boolean(parentChannelInfo?.mute) || channelInfo?.orgData?.thread?.mute === 1
+  },
+  ConversationWrap: class {
+    conversation: any
+    constructor(conversation: any) {
+      this.conversation = conversation
+    }
+    get unread() {
+      if (
+        currentSpaceId &&
+        this.conversation.channel.channelType === 1 &&
+        this.conversation.extra?.spaceUnread !== undefined
+      ) {
+        return this.conversation.extra.spaceUnread
+      }
+      const rawUnread = this.conversation.unread
+      if (rawUnread === 0) return 0
+
+      if (
+        currentSpaceId &&
+        this.conversation.channel.channelType === 1 &&
+        this.conversation.channel.channelID === 'botfather' &&
+        !this.conversation.lastMessage?.content?.contentObj?.space_id
+      ) {
+        return 0
+      }
+
+      const systemContentTypes = new Set([1002, 1003, 1005, 1008, 1009])
+      if (rawUnread === 1 && systemContentTypes.has(this.conversation.lastMessage?.contentType)) {
+        return 0
+      }
+      return rawUnread
+    }
+  },
   WKApp: {
     get shared() { return { currentSpaceId } },
   },
@@ -59,7 +105,7 @@ describe('getElectronUnreadMessageCount', () => {
     expect(getElectronUnreadMessageCount()).toBe(0)
   })
 
-  it('sums unread counts across normal conversations', () => {
+  it('sums effective unread messages across normal conversations', () => {
     mockConversations.push(
       { channel: { channelType: 0 }, unread: 3, extra: undefined },
       { channel: { channelType: 0 }, unread: 5, extra: undefined },
@@ -137,5 +183,92 @@ describe('getElectronUnreadMessageCount', () => {
   it('floors fractional unread values', () => {
     mockConversations.push({ channel: { channelType: 0 }, unread: 2.9, extra: undefined })
     expect(getElectronUnreadMessageCount()).toBe(2)
+  })
+
+  it('excludes archived and deleted threads', () => {
+    const archivedThread = {
+      channel: { channelID: 'group-1____thread-1', channelType: 5 },
+      unread: 4,
+    }
+    const deletedThread = {
+      channel: { channelID: 'group-1____thread-2', channelType: 5 },
+      unread: 6,
+    }
+    mockGetChannelInfo.mockImplementation((channel: any) => {
+      if (channel === archivedThread.channel) {
+        return { orgData: { thread: { status: 2 } } }
+      }
+      if (channel === deletedThread.channel) {
+        return { orgData: { thread: { status: 3 } } }
+      }
+      return undefined
+    })
+    mockConversations.push(archivedThread, deletedThread, {
+      channel: { channelType: 0 },
+      unread: 3,
+    })
+
+    expect(getElectronUnreadMessageCount()).toBe(3)
+  })
+
+  it('excludes a thread when its parent group is muted', () => {
+    const threadChannel = { channelID: 'group-1____thread-1', channelType: 5 }
+    mockGetChannelInfo.mockImplementation((channel: any) => {
+      if (channel === threadChannel) return { orgData: { thread: { mute: 0 } } }
+      if (channel.channelID === 'group-1' && channel.channelType === 2) {
+        return { mute: 1 }
+      }
+      return undefined
+    })
+    mockConversations.push(
+      { channel: threadChannel, unread: 8 },
+      { channel: { channelType: 0 }, unread: 2 },
+    )
+
+    expect(getElectronUnreadMessageCount()).toBe(2)
+  })
+
+  it('excludes a thread with its own mute enabled', () => {
+    const threadChannel = { channelID: 'group-1____thread-1', channelType: 5 }
+    mockGetChannelInfo.mockImplementation((channel: any) => {
+      if (channel === threadChannel) return { orgData: { thread: { mute: 1 } } }
+      return undefined
+    })
+    mockConversations.push(
+      { channel: threadChannel, unread: 8 },
+      { channel: { channelType: 0 }, unread: 2 },
+    )
+
+    expect(getElectronUnreadMessageCount()).toBe(2)
+  })
+
+  it('excludes a system-message unread count of one', () => {
+    mockConversations.push(
+      {
+        channel: { channelType: 0 },
+        unread: 1,
+        lastMessage: { contentType: 1002 },
+      },
+      { channel: { channelType: 0 }, unread: 2 },
+    )
+
+    expect(getElectronUnreadMessageCount()).toBe(2)
+  })
+
+  it('excludes BotFather unread without a Space id in Space mode', () => {
+    currentSpaceId = 'space-1'
+    mockConversations.push(
+      {
+        channel: { channelID: 'botfather', channelType: 1 },
+        unread: 7,
+      },
+      {
+        channel: { channelID: 'botfather', channelType: 1 },
+        unread: 3,
+        lastMessage: { content: { contentObj: { space_id: 'space-1' } } },
+      },
+    )
+
+    expect(getElectronUnreadMessageCount()).toBe(3)
   })
 })

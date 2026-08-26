@@ -47,7 +47,7 @@ verify_dmg() {
     echo "   📱 Found app bundle: $(basename "$app_bundle")"
     
     # Check main binary
-    local main_binary="$app_bundle/Contents/MacOS/DMWork"
+    local main_binary="$app_bundle/Contents/MacOS/OCTO"
     if [[ -f "$main_binary" ]]; then
         echo "   🔍 Main binary architecture:"
         local arch_info=$(lipo -info "$main_binary" 2>/dev/null)

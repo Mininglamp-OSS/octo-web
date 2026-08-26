@@ -1,0 +1,703 @@
+.octo-mail-addresses {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-4);
+  padding: var(--wk-sp-4);
+  overflow-y: auto;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-base);
+  font-family: var(--wk-font-sans);
+}
+
+.octo-mail-addresses button,
+.octo-mail-addresses input,
+.octo-mail-addresses select {
+  font: inherit;
+}
+
+.octo-mail-addresses__header,
+.octo-mail-addresses__card {
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-lg);
+  box-shadow: var(--wk-shadow-sm);
+}
+
+.octo-mail-addresses__header {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-5);
+}
+
+.octo-mail-addresses__header-mark {
+  width: var(--wk-sp-10);
+  height: var(--wk-sp-10);
+  display: grid;
+  place-items: center;
+  color: var(--wk-brand-primary);
+  background: var(--wk-bg-selected);
+  border-radius: var(--wk-r-md);
+}
+
+.octo-mail-addresses__header > span:nth-child(2) {
+  min-width: 0;
+  flex: 1;
+}
+
+.octo-mail-addresses__header h1,
+.octo-mail-addresses__header p {
+  margin: 0;
+}
+
+.octo-mail-addresses__header h1 {
+  font: var(--wk-text-h2);
+}
+
+.octo-mail-addresses__header p {
+  margin-top: var(--wk-sp-1);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.octo-mail-addresses__header > button,
+.octo-mail-address-row > button {
+  width: var(--wk-sp-8);
+  height: var(--wk-sp-8);
+  display: grid;
+  place-items: center;
+  color: var(--wk-text-secondary);
+  background: transparent;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-addresses__header > button:hover,
+.octo-mail-address-row > button:hover:not(:disabled) {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-addresses__card {
+  overflow: hidden;
+}
+
+.octo-mail-addresses__card > header {
+  min-height: var(--wk-sp-12);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--wk-sp-5);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.octo-mail-addresses__card > header > span {
+  display: flex;
+  align-items: baseline;
+  gap: var(--wk-sp-2);
+}
+
+.octo-mail-addresses__card > header strong {
+  font: var(--wk-text-h3);
+}
+
+.octo-mail-addresses__card > header small {
+  color: var(--wk-text-tertiary);
+}
+
+.octo-mail-addresses__list {
+  display: flex;
+  flex-direction: column;
+}
+
+.octo-mail-address-row {
+  min-height: calc(var(--wk-sp-10) + var(--wk-sp-4));
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-2) var(--wk-sp-5);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.octo-mail-address-row:last-child {
+  border-bottom: 0;
+}
+
+.octo-mail-address-row__icon {
+  width: var(--wk-sp-8);
+  height: var(--wk-sp-8);
+  display: grid;
+  place-items: center;
+  color: var(--wk-brand-primary);
+  background: var(--wk-bg-selected);
+  border-radius: var(--wk-r-sm);
+}
+
+.octo-mail-address-row__body {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+}
+
+.octo-mail-address-row__body strong {
+  overflow: hidden;
+  font-size: var(--wk-text-size-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-mail-address-row__body small {
+  color: var(--wk-text-tertiary);
+}
+
+.octo-mail-address-row__badge {
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-base);
+  border-radius: var(--wk-r-full);
+  font-size: var(--wk-text-size-tiny);
+}
+
+.octo-mail-address-row__badge.is-connected {
+  color: var(--wk-color-success);
+  background: var(--wk-color-success-bg);
+}
+
+.octo-mail-address-row__current {
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  color: var(--wk-brand-primary);
+  background: var(--wk-bg-selected);
+  border-radius: var(--wk-r-full);
+  font-size: var(--wk-text-size-tiny);
+  font-weight: var(--wk-font-semibold);
+  white-space: nowrap;
+}
+
+.octo-mail-address-row > button.octo-mail-address-row__switch {
+  width: auto;
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-brand-primary);
+  white-space: nowrap;
+}
+
+.octo-mail-address-row > button.octo-mail-address-row__rules {
+  width: auto;
+  display: inline-flex;
+  gap: var(--wk-sp-1);
+  padding: 0 var(--wk-sp-2);
+  white-space: nowrap;
+}
+
+.octo-mail-address-row__automation {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-base);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  white-space: nowrap;
+}
+
+.octo-mail-address-row__automation.is-auto {
+  color: var(--wk-color-success);
+  background: var(--wk-color-success-bg);
+  border-color: var(--wk-color-success);
+}
+
+.octo-mail-address-row__automation > svg {
+  margin-left: var(--wk-sp-2);
+}
+
+.octo-mail-address-row__automation select {
+  height: var(--wk-sp-8);
+  padding: 0 var(--wk-sp-7) 0 var(--wk-sp-2);
+  color: inherit;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  cursor: pointer;
+}
+
+.octo-mail-address-row__automation select:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.octo-mail-address-row > button.octo-mail-address-row__connect {
+  width: auto;
+  display: inline-flex;
+  gap: var(--wk-sp-1);
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+  white-space: nowrap;
+}
+
+.octo-mail-address-row
+  > button.octo-mail-address-row__connect:hover:not(:disabled) {
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary-hover);
+}
+
+.octo-mail-address-row > button.is-danger:hover:not(:disabled) {
+  color: var(--wk-color-danger);
+  background: var(--wk-color-danger-light);
+}
+
+.octo-mail-address-row > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.octo-mail-addresses__state {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-6);
+  color: var(--wk-text-tertiary);
+}
+
+.octo-mail-addresses__state.is-error svg {
+  color: var(--wk-color-danger);
+}
+
+.octo-mail-addresses__state button {
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  color: var(--wk-text-primary);
+  background: transparent;
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-addresses__form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--wk-sp-3);
+  padding: var(--wk-sp-5) var(--wk-sp-5) var(--wk-sp-2);
+}
+
+.octo-mail-addresses__form label {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+}
+
+.octo-mail-addresses__input {
+  min-height: var(--wk-sp-10);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  background: var(--wk-bg-base);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+}
+
+.octo-mail-addresses__input:focus-within {
+  border-color: var(--wk-border-strong);
+}
+
+.octo-mail-addresses__input input {
+  min-width: 0;
+  height: 100%;
+  flex: 1;
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-primary);
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.octo-mail-addresses__input > span {
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+  border-left: 1px solid var(--wk-border-default);
+  white-space: nowrap;
+}
+
+.octo-mail-addresses__form > button {
+  min-height: var(--wk-sp-10);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: 0 var(--wk-sp-4);
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-addresses__form > button:hover:not(:disabled) {
+  background: var(--wk-brand-primary-hover);
+}
+
+.octo-mail-addresses__form > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.octo-mail-addresses__hint {
+  margin: 0;
+  padding: 0 var(--wk-sp-5) var(--wk-sp-5);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-addresses__validation {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  margin: 0;
+  padding: 0 var(--wk-sp-5) var(--wk-sp-2);
+  color: var(--wk-color-danger);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-addresses__list-error {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  margin: 0;
+  padding: var(--wk-sp-3) var(--wk-sp-5);
+  color: var(--wk-color-danger);
+  border-top: 1px solid var(--wk-border-subtle);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-setup-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wk-z-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--wk-sp-5);
+}
+
+.octo-mail-setup-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: var(--wk-brand-tint-35);
+  border: 0;
+  cursor: default;
+}
+
+.octo-mail-setup-dialog__panel {
+  position: relative;
+  width: min(calc(var(--wk-sp-10) * 12), 100%);
+  height: min(calc(var(--wk-sp-10) * 18), calc(100vh - var(--wk-sp-10)));
+  display: flex;
+  flex-direction: column;
+  padding: var(--wk-sp-8);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-lg);
+  box-shadow: var(--wk-shadow-lg);
+}
+
+.octo-mail-setup-dialog__close {
+  position: absolute;
+  top: var(--wk-sp-4);
+  right: var(--wk-sp-4);
+  width: var(--wk-sp-8);
+  height: var(--wk-sp-8);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--wk-text-tertiary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-setup-dialog__close:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-setup-dialog__success {
+  color: var(--wk-color-success);
+}
+
+.octo-mail-setup-dialog h2,
+.octo-mail-setup-dialog h3,
+.octo-mail-setup-dialog p {
+  margin: 0;
+}
+
+.octo-mail-setup-dialog h2 {
+  margin-top: var(--wk-sp-4);
+  font: var(--wk-text-h2);
+}
+
+.octo-mail-setup-dialog h3 {
+  margin-bottom: var(--wk-sp-1);
+  font: var(--wk-text-h3);
+}
+
+.octo-mail-setup-dialog p {
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-loose);
+}
+
+.octo-mail-setup-dialog p.octo-mail-setup-dialog__address {
+  margin-top: var(--wk-sp-1);
+}
+
+.octo-mail-setup-dialog__methods {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--wk-sp-1);
+  margin-top: var(--wk-sp-5);
+  padding: var(--wk-sp-1);
+  background: var(--wk-bg-base);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+}
+
+.octo-mail-setup-dialog__methods button {
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-setup-dialog__methods button:hover {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-setup-dialog__methods button.is-active {
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary);
+  box-shadow: var(--wk-shadow-sm);
+}
+
+.octo-mail-setup-dialog__methods button.is-active:hover {
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary-hover);
+}
+
+.octo-mail-setup-dialog__method-guide {
+  display: grid;
+  gap: var(--wk-sp-2);
+  margin: var(--wk-sp-3) 0 0;
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-base);
+  border-radius: var(--wk-r-md);
+  font-size: var(--wk-text-size-xs);
+  line-height: var(--wk-leading-loose);
+}
+
+.octo-mail-setup-dialog__method-guide div {
+  display: flex;
+  gap: var(--wk-sp-2);
+}
+
+.octo-mail-setup-dialog__method-guide dt,
+.octo-mail-setup-dialog__method-guide dd {
+  margin: 0;
+}
+
+.octo-mail-setup-dialog__method-guide dt {
+  flex: none;
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-semibold);
+}
+
+.octo-mail-setup-dialog__divider {
+  height: 1px;
+  margin: var(--wk-sp-4) 0;
+  background: var(--wk-border-subtle);
+}
+
+.octo-mail-setup-dialog pre {
+  min-height: 0;
+  flex: 1;
+  margin: var(--wk-sp-4) 0;
+  padding: var(--wk-sp-4);
+  overflow: auto;
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-base);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  font: inherit;
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-loose);
+  white-space: pre-wrap;
+}
+
+.octo-mail-setup-dialog__copy {
+  min-height: var(--wk-sp-10);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--wk-sp-2);
+  padding: 0 var(--wk-sp-4);
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary);
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-setup-dialog__copy:hover {
+  background: var(--wk-brand-primary-hover);
+}
+
+.octo-mail-setup-dialog__note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-4);
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+  line-height: var(--wk-leading-loose);
+}
+
+.octo-mail-setup-dialog__note svg {
+  flex: none;
+  margin-top: var(--wk-sp-1);
+}
+
+.octo-mail-confirm-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wk-z-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--wk-sp-5);
+}
+
+.octo-mail-confirm-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: var(--wk-brand-tint-35);
+  border: 0;
+  cursor: default;
+}
+
+.octo-mail-confirm-dialog__panel {
+  position: relative;
+  width: min(calc(var(--wk-sp-10) * 11), 100%);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--wk-sp-4);
+  padding: var(--wk-sp-6);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-lg);
+  box-shadow: var(--wk-shadow-lg);
+}
+
+.octo-mail-confirm-dialog__icon {
+  width: var(--wk-sp-10);
+  height: var(--wk-sp-10);
+  display: grid;
+  place-items: center;
+  color: var(--wk-brand-primary);
+  background: var(--wk-bg-selected);
+  border-radius: var(--wk-r-full);
+}
+
+.octo-mail-confirm-dialog__icon.is-danger {
+  color: var(--wk-color-danger);
+  background: var(--wk-color-danger-light);
+}
+
+.octo-mail-confirm-dialog__content h2,
+.octo-mail-confirm-dialog__content p {
+  margin: 0;
+}
+
+.octo-mail-confirm-dialog__content h2 {
+  font: var(--wk-text-h3);
+}
+
+.octo-mail-confirm-dialog__content p {
+  margin-top: var(--wk-sp-2);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-loose);
+}
+
+.octo-mail-confirm-dialog footer {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-2);
+}
+
+.octo-mail-confirm-dialog footer button {
+  min-width: calc(var(--wk-sp-10) * 2);
+  min-height: var(--wk-sp-9);
+  padding: 0 var(--wk-sp-4);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-confirm-dialog footer button:hover {
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-confirm-dialog footer button.is-primary {
+  color: var(--wk-text-on-brand);
+  background: var(--wk-brand-primary);
+  border-color: var(--wk-brand-primary);
+}
+
+.octo-mail-confirm-dialog footer button.is-primary:hover {
+  background: var(--wk-brand-primary-hover);
+}
+
+.octo-mail-confirm-dialog footer button.is-danger {
+  color: var(--wk-text-on-brand);
+  background: var(--wk-color-danger);
+  border-color: var(--wk-color-danger);
+}
+
+.octo-mail-confirm-dialog footer button.is-danger:hover {
+  background: var(--wk-color-danger-active);
+}
+
+@media (max-width: 760px) {
+  .octo-mail-addresses__form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .octo-mail-address-row__badge {
+    display: none;
+  }
+}

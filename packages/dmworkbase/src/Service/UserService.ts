@@ -5,6 +5,11 @@ export interface UserProfile {
   [key: string]: any
 }
 
+export interface UserProfileRequestOptions {
+  /** Let standalone pages preserve their deep link while they recover a 401. */
+  suppressAuthExpiredLogout?: boolean
+}
+
 export interface FriendApplyRequest {
   uid: string
   remark: string
@@ -19,9 +24,16 @@ export interface UpdateCurrentUserPayload {
 }
 
 const UserService = {
-  getUserProfile(uid: string, groupNo?: string): Promise<UserProfile> {
+  getUserProfile(
+    uid: string,
+    groupNo?: string,
+    options?: UserProfileRequestOptions,
+  ): Promise<UserProfile> {
     return APIClient.shared.get(`users/${uid}`, {
       param: { group_no: groupNo || "" },
+      ...(options?.suppressAuthExpiredLogout !== undefined
+        ? { suppressAuthExpiredLogout: options.suppressAuthExpiredLogout }
+        : {}),
     })
   },
 

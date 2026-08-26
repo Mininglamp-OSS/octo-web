@@ -14,6 +14,11 @@ declare module "virtual:octo-enterprise-modules" {
 
   export interface EnterpriseStandaloneHandler {
     id: string;
+    /**
+     * Security-relevant route allowlist for enterprise full-page surfaces. When
+     * persistReturnOnAnonymous is true, the host also uses this matcher to
+     * decide whether a stored post-login return target may be replayed.
+     */
     match(pathname: string): boolean;
     render(context: EnterpriseStandaloneHandlerContext): ReactElement | null;
     persistReturnOnAnonymous?: boolean;

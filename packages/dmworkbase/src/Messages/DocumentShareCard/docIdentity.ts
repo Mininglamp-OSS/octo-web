@@ -19,13 +19,15 @@ export function asDocIdentifier(v: unknown): string {
 
 /**
  * 本地重建的**安全导航 URL**。P1-b：绝不信任 wire 传来的 `url`（`isSafeUrl` 只挡 scheme
- * 不绑 origin，真预览 + 攻击者 url 可拼成可信钓鱼卡）。改为只用**已校验的 docId/spaceId**
- * 拼相对路径（同源、无 scheme，天然安全）；docId 非法则返回空串，调用方不导航/不显链接。
+ * 不绑 origin，真预览 + 攻击者 url 可拼成可信钓鱼卡）。改为只用**已校验的 docId**拼相对路径
+ * （同源、无 scheme，天然安全）；docId 非法则返回空串，调用方不导航/不显链接。
+ *
+ * Phase-1 取消 `sp`（设计 §5.3）：普通文档链接不再携带文档 Space——接收端的 open-context
+ * 预检按 docId 在服务端解析文档归属，故这里只产出 `/d/{docId}`，不再拼 `?sp=`。
  */
-export function buildDocNavUrl(docId: string, spaceId: string): string {
+export function buildDocNavUrl(docId: string): string {
   if (!isValidDocIdentifier(docId)) return "";
-  const sp = isValidDocIdentifier(spaceId) ? `?sp=${encodeURIComponent(spaceId)}` : "";
-  return `/d/${encodeURIComponent(docId)}${sp}`;
+  return `/d/${encodeURIComponent(docId)}`;
 }
 
 // 类型仅用于签名，`import type` 在运行时被擦除，不会拉入 ui 组件的 React/CSS 加载链。
@@ -38,6 +40,14 @@ import type { DocSharePermissionState, DocSharePreviewStatus } from "../../ui/Do
 export function permissionState(status: DocSharePreviewStatus): DocSharePermissionState {
   if (status === "denied") return "no_access";
   if (status === "unavailable") return "unavailable";
+  if (status === "error") return "error";
   if (status === "ready") return "reader";
+  // empty 只来自 docs-backend 的 409 `unsupported_doc_type`（**已收窄**：其它 409 —— 归档的
+  // `conflict` 走 unavailable、snapshot_invalid 等走 error —— 都到不了这里）。而那道 doc_type
+  // 闸在 requireDocRole(reader) **之后**才跑，换言之，能拿到这个码就意味着调用者已通过
+  // reader 校验；后端也没有任何「无权限却返回 409」的路径。所以 empty 在 ACL 上**确证**了
+  // reader 权限，标绿「可查看」是准确结论，不是乐观猜测；卡片随后自然落到「暂无预览」
+  // 占位，而不是红色错误态。
+  if (status === "empty") return "reader";
   return "checking";
 }

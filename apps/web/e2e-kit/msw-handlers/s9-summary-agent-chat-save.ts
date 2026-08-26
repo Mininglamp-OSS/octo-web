@@ -86,10 +86,11 @@ export async function registerS9SummaryAgentChatSave(page: Page): Promise<void> 
       },
     };
 
-    (window as unknown as { __s9State__: { listCalls: number; streamCalls: number; saveCalls: number } }).__s9State__ = {
+    (window as unknown as { __s9State__: { listCalls: number; streamCalls: number; saveCalls: number; saveBody: unknown } }).__s9State__ = {
       listCalls: 0,
       streamCalls: 0,
       saveCalls: 0,
+      saveBody: null,
     };
 
     worker.use(
@@ -100,6 +101,12 @@ export async function registerS9SummaryAgentChatSave(page: Page): Promise<void> 
       }),
       http.get("*/summary/api/v1/summary-templates", () =>
         env({ templates: [], custom_template_limit: 30 })
+      ),
+      http.get("*/summary/api/v1/summary-chat-candidates", () =>
+        env([{ chat_id: "s9-agent-project-group", chat_type: "group", name: "S9 Agent 项目群", member_count: 2, is_archived: false }])
+      ),
+      http.post("*/sidebar/sync", () =>
+        HttpResponse.json({ items: [], version: 0, follow_version: 0 })
       ),
       http.get("*/summary/api/v1/agent/chat/history", ({ request }: any) => {
         const url = new URL(request.url);
@@ -126,9 +133,11 @@ export async function registerS9SummaryAgentChatSave(page: Page): Promise<void> 
           },
         });
       }),
-      http.post("*/summary/api/v1/summaries/agent", () => {
-        const state = (window as unknown as { __s9State__: { saveCalls: number } }).__s9State__;
+      http.post("*/summary/api/v1/summaries/agent", async ({ request }: any) => {
+        const state = (window as unknown as { __s9State__: { saveCalls: number; saveBody: unknown } }).__s9State__;
         state.saveCalls += 1;
+        // 记录请求体供 spec 断言：Agent 保存不得携带 participants（P1 回归）。
+        state.saveBody = await request.json();
         return env({
           task_id: taskId,
           task_no: "S9-TASK-9901",

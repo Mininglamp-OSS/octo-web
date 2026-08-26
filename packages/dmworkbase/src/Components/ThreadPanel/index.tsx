@@ -12,6 +12,7 @@ import {
   buildThreadChannelId,
 } from "../../Service/Thread";
 import { ThreadPanelVM, ThreadPanelState } from "./vm";
+import { Dap } from "../../Service/Dap";
 import {
   X,
   Plus,
@@ -698,6 +699,9 @@ export default class ThreadPanel extends Component<
         thread.channel_id,
         ChannelTypeCommunityTopic
       );
+      // 该子区已在面板打开(didUpdate 已发过 subchannel_opened),打开完整视图仅是视图切换 →
+      // 置 sentinel,子区页挂载时跳过重复发点(R10 P1-1)。
+      WKApp.shared.pendingSubchannelOpenTracked = threadChannel.channelID;
       WKApp.endpoints.showConversation(threadChannel);
       this.props.onClose();
     } catch {
@@ -726,6 +730,11 @@ export default class ThreadPanel extends Component<
     opts.openChannelSearch = true;
     opts.fromSidebarList = true;
     this.setState({ showMoreMenu: false });
+    // 该子区已在面板打开(didUpdate 已发过 subchannel_opened),打开页内搜索会 remount 子区页,
+    // 手势是「开搜索」而非「开子区」→ 置 sentinel,挂载时跳过重复发点(R10 P1-1)。
+    if (threadChannel) {
+      WKApp.shared.pendingSubchannelOpenTracked = threadChannel.channelID;
+    }
     WKApp.endpoints.showConversation(threadChannel, opts);
     this.props.onClose();
   };
@@ -1080,11 +1089,15 @@ export default class ThreadPanel extends Component<
   private handleCreateThread = () => {
     const { groupNo, onCreateThread } = this.props;
     if (onCreateThread) {
+      // onCreateThread 分支把「打开创建弹窗 + dialog_opened 埋点」整体委托给父组件——
+      // 由父级自己的入口负责发 channel_subchannel_create_dialog_opened,这里不能再补发,
+      // 否则父级已发一次、此处再发一次会双计。当前无调用方传 onCreateThread(latent)(#1452 review P2-7)。
       onCreateThread();
       return;
     }
     if (!groupNo) return;
 
+    Dap.shared.track('channel_subchannel_create_dialog_opened', {})
     this.setState({ createDialogVisible: true, createError: null });
   };
 

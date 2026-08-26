@@ -1,0 +1,246 @@
+diff --git a/out/binDownload.js b/out/binDownload.js
+index cd04879..19a50de 100644
+--- a/out/binDownload.js
++++ b/out/binDownload.js
+@@ -66,6 +66,41 @@ function getCacheDirectory(isAvoidSystemOnWindows = false) {
+     }
+     return path.join(homeDir, ".cache", appName);
+ }
++const ELECTRON_MIRROR_ENV_KEYS = ["mirror", "nightlyMirror", "customDir", "customFilename", "customVersion"]
++    .flatMap(name => {
++        const snake = name.replace(/([a-z])([A-Z])/g, (_, a, b) => `${a}_${b}`).toLowerCase();
++        return [
++            `npm_config_electron_${name.toLowerCase()}`,
++            `NPM_CONFIG_ELECTRON_${snake.toUpperCase()}`,
++            `npm_config_electron_${snake}`,
++            `npm_package_config_electron_${name}`,
++            `npm_package_config_electron_${snake}`,
++            `ELECTRON_${snake.toUpperCase()}`,
++        ];
++    });
++let electronMirrorEnvQueue = Promise.resolve();
++async function withElectronMirrorEnvHidden(callback) {
++    const run = async () => {
++        const previousValues = new Map();
++        for (const key of ELECTRON_MIRROR_ENV_KEYS) {
++            if (Object.prototype.hasOwnProperty.call(process.env, key)) {
++                previousValues.set(key, process.env[key]);
++                delete process.env[key];
++            }
++        }
++        try {
++            return await callback();
++        }
++        finally {
++            for (const [key, value] of previousValues) {
++                process.env[key] = value;
++            }
++        }
++    };
++    const result = electronMirrorEnvQueue.then(run, run);
++    electronMirrorEnvQueue = result.catch(() => undefined);
++    return result;
++}
+ /**
+  * Downloads an artifact from GitHub releases (convenience wrapper)
+  */
+@@ -136,11 +173,11 @@ async function _downloadArtifact(baseUrl, releaseName, filenameWithExt, checksums
+         };
+         builder_util_1.log.info({ release: releaseName, file: filenameWithExt }, "downloading");
+         progressBar === null || progressBar === void 0 ? void 0 : progressBar.render();
+-        const downloadedFile = await get.downloadArtifact({
++        const downloadedFile = await withElectronMirrorEnvHidden(() => get.downloadArtifact({
+             ...details,
+             ...options,
+             isGeneric: true,
+-        });
++        }));
+         await tar.extract({
+             file: downloadedFile,
+             cwd: extractDir,
+diff --git a/out/node-module-collector/nodeModulesCollector.js b/out/node-module-collector/nodeModulesCollector.js
+index 0956d26..ffef9e8 100644
+--- a/out/node-module-collector/nodeModulesCollector.js
++++ b/out/node-module-collector/nodeModulesCollector.js
+@@ -46,7 +46,18 @@ class NodeModulesCollector {
+      * 6. Resolving and returning module information
+      */
+     async getNodeModules({ packageName }) {
+-        const tree = await this.getDependenciesTree(this.installOptions.manager);
++        const shouldFilterPnpm = this.installOptions.manager === packageManager_1.PM.PNPM && packageName;
++        const tree = await this.getDependenciesTree(this.installOptions.manager, shouldFilterPnpm ? packageName : undefined);
++        if (shouldFilterPnpm && !tree) {
++            throw new Error(`[app-builder-lib patch] pnpm returned no dependency tree while packaging "${packageName}"`);
++        }
++        if (shouldFilterPnpm && tree.name !== packageName) {
++            // Some pnpm invocations from workspace package directories can
++            // return the workspace root package tree. Packaging that tree omits
++            // the Electron app package's own runtime dependencies, so fail
++            // before building a production graph for the wrong package.
++            throw new Error(`[app-builder-lib patch] pnpm returned dependency tree for "${tree.name}" while packaging "${packageName}"`);
++        }
+         await this.collectAllDependencies(tree, packageName);
+         const realTree = this.getTreeFromWorkspaces(tree, packageName);
+         await this.extractProductionDependencyGraph(realTree, packageName);
+@@ -54,6 +62,16 @@ class NodeModulesCollector {
+             check: builder_util_1.log.isDebugEnabled,
+         });
+         await this._getNodeModules(hoisterResult.dependencies, this.nodeModules);
++        if (this.installOptions.manager === packageManager_1.PM.PNPM) {
++            // Upstream bug: https://github.com/electron-userland/electron-builder/issues/10064
++            // Fail loudly if the pnpm production graph is incomplete. PKG_NOT_FOUND
++            // entries are otherwise only warned about and the package is silently
++            // dropped from the asar while the build still exits 0.
++            const notFound = this.cache.logSummary[moduleManager_1.LogMessageByKey.PKG_NOT_FOUND];
++            if (notFound && notFound.length > 0) {
++                throw new Error(`[app-builder-lib patch] pnpm production graph is incomplete - ${notFound.length} package(s) could not be located and were about to be silently dropped from the package: ${notFound.join(", ")}`);
++            }
++        }
+         builder_util_1.log.debug({ packageName, depCount: this.nodeModules.length }, "node modules collection complete");
+         return { nodeModules: this.nodeModules, logSummary: this.cache.logSummary };
+     }
+@@ -64,9 +82,9 @@ class NodeModulesCollector {
+      * the output to a temporary file. Includes retry logic to handle transient failures such as
+      * incomplete JSON output or missing files. Will retry up to 1 time with exponential backoff.
+      */
+-    async getDependenciesTree(pm) {
++    async getDependenciesTree(pm, packageName) {
+         const command = (0, packageManager_1.getPackageManagerCommand)(pm);
+-        const args = this.getArgs();
++        const args = this.getArgs(packageName);
+         const tempOutputFile = await this.tempDirManager.getTempFile({
+             prefix: path.basename(command, path.extname(command)),
+             suffix: "output.json",
+@@ -343,4 +361,4 @@ class NodeModulesCollector {
+     }
+ }
+ exports.NodeModulesCollector = NodeModulesCollector;
+-//# sourceMappingURL=nodeModulesCollector.js.map
+\ No newline at end of file
++//# sourceMappingURL=nodeModulesCollector.js.map
+diff --git a/out/node-module-collector/pnpmNodeModulesCollector.js b/out/node-module-collector/pnpmNodeModulesCollector.js
+index 6025992..c961b2f 100644
+--- a/out/node-module-collector/pnpmNodeModulesCollector.js
++++ b/out/node-module-collector/pnpmNodeModulesCollector.js
+@@ -12,9 +12,16 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+             lockfile: "pnpm-lock.yaml",
+         };
+     }
+-    getArgs() {
+-        return ["list", "--prod", "--json", "--depth", "Infinity", "--silent", "--loglevel=error"];
++    getArgs(packageName) {
++        const args = ["list", "--prod", "--json", "--depth", "Infinity", "--silent", "--loglevel=error"];
++        return packageName ? ["--filter", packageName, ...args] : args;
+     }
++    // Upstream bug: https://github.com/electron-userland/electron-builder/issues/10064
++    // pnpm 10's `pnpm list --prod` tree does not always expand every transitive
++    // production dependency, so the collector can silently drop packages from the
++    // packaged set (observed: electron-screenshots -> debug -> ms missing from
++    // app.asar while the build exits 0). This patch re-resolves missing deps and
++    // makes unresolvable *required* deps fail the build instead of disappearing.
+     async extractProductionDependencyGraph(tree, dependencyId) {
+         if (this.productionGraph[dependencyId]) {
+             return;
+@@ -24,11 +31,28 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+         const { packageJson } = (await this.cache.locatePackageVersion({ pkgName: packageName, parentDir: this.rootDir, requiredRange: tree.version })) || {};
+         const all = packageJson ? { ...packageJson.dependencies, ...packageJson.optionalDependencies } : { ...tree.dependencies, ...tree.optionalDependencies };
+         const optional = packageJson ? { ...packageJson.optionalDependencies } : {};
+-        const deps = { ...(tree.dependencies || {}), ...(tree.optionalDependencies || {}) };
++        const declaredDeps = packageJson ? { ...packageJson.dependencies, ...packageJson.optionalDependencies } : { ...(tree.dependencies || {}), ...(tree.optionalDependencies || {}) };
++        const treeDeps = { ...(tree.dependencies || {}), ...(tree.optionalDependencies || {}) };
+         this.productionGraph[dependencyId] = { dependencies: [] };
+-        const depPromises = Object.entries(deps).map(async ([packageName, dependency]) => {
+-            // First check if it's in production dependencies
+-            if (!all[packageName]) {
++        const depPromises = Object.entries(declaredDeps).map(async ([packageName, range]) => {
++            // declaredDeps and all are built from the same expression, so this
++            // filter is always true; it is kept only as a defensive guard.
++            const dependency = treeDeps[packageName] || (await this.resolveMissingDep(packageName, range));
++            if (dependency == null) {
++                // A required dependency the collector cannot resolve must fail
++                // the build - silently dropping it produces a green package that
++                // dies at runtime with Cannot find module. Only genuine optional
++                // dependencies may be skipped.
++                if (optional[packageName]) {
++                    return undefined;
++                }
++                throw new Error(`[app-builder-lib patch] cannot resolve required dependency "${packageName}" (range "${range}") for packaging`);
++            }
++            if (dependency.unparseable) {
++                // The range is not semver at all (npm: alias, git+ URL, workspace:*),
++                // so we cannot assert anything about it. pnpm itself resolved it at
++                // install time; do not fail the build over something we cannot judge.
++                builder_util_1.log.warn({ packageName, range }, `[app-builder-lib patch] cannot assert dependency "${packageName}" - range "${range}" is not semver-parsable; skipping`);
+                 return undefined;
+             }
+             // Then check if optional dependency path exists (using actual resolved path)
+@@ -44,14 +68,58 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+             return childDependencyId;
+         });
+         const collectedDependencies = [];
+-        for (const dep of depPromises) {
+-            const result = await dep;
+-            if (result !== undefined) {
+-                collectedDependencies.push(result);
++        const settled = await Promise.allSettled(depPromises);
++        for (const result of settled) {
++            // Fail with the first actionable rejection; allSettled guarantees every
++            // sibling promise is observed, so no unhandled-rejection crash can
++            // replace our error message.
++            if (result.status === "rejected") {
++                throw result.reason;
++            }
++            if (result.value !== undefined) {
++                collectedDependencies.push(result.value);
+             }
+         }
+         this.productionGraph[dependencyId] = { dependencies: collectedDependencies };
+     }
++    async resolveMissingDep(packageName, range) {
++        const pkg = await this.cache.locatePackageVersion({ pkgName: packageName, parentDir: this.rootDir, requiredRange: range });
++        if (pkg && pkg.packageJson && pkg.packageJson.version) {
++            return { version: pkg.packageJson.version };
++        }
++        // Fallback: pnpm list did not expand this dependency. Gather candidate
++        // versions from allDependencies and pick the highest one satisfying
++        // `range`. The previous first-prefix-match ignored `range` and could
++        // silently package the wrong version when the same package exists at
++        // several versions in the monorepo (e.g. debug/ms/semver). Note this
++        // resolves relative to the monorepo root rather than the declaring
++        // package's own link; where several satisfying versions coexist the
++        // packaged copy can differ from what the parent resolves at runtime.
++        const candidates = [];
++        for (const key of this.allDependencies.keys()) {
++            if (key.startsWith(packageName + "@")) {
++                candidates.push(key.substring(packageName.length + 1));
++            }
++        }
++        if (candidates.length === 0) {
++            return null;
++        }
++        const semver = require("semver");
++        // maxSatisfying swallows invalid-range TypeErrors and returns null, so
++        // distinguish "range is not semver at all" (npm: alias, git+ URL,
++        // workspace:*) from "range is valid but nothing satisfies it". The former
++        // means we cannot assert anything and must not fail the build on it.
++        if (!semver.validRange(range)) {
++            return { unparseable: true };
++        }
++        const best = semver.maxSatisfying(candidates, range);
++        if (best) {
++            return { version: best };
++        }
++        builder_util_1.log.warn({ packageName, range, candidates }, `[app-builder-lib patch] no installed version of "${packageName}" satisfies range "${range}" - the build will fail if it is a required dependency, and skip it if it is optional`);
++        return null;
++    }
++
+     async collectAllDependencies(tree) {
+         var _a, _b;
+         // Collect regular dependencies
+@@ -74,4 +142,4 @@ class PnpmNodeModulesCollector extends nodeModulesCollector_1.NodeModulesCollect
+     }
+ }
+ exports.PnpmNodeModulesCollector = PnpmNodeModulesCollector;
+-//# sourceMappingURL=pnpmNodeModulesCollector.js.map
+\ No newline at end of file
++//# sourceMappingURL=pnpmNodeModulesCollector.js.map

@@ -1,5 +1,6 @@
 import axios from "axios"
 import APIClient from "./APIClient"
+import { apiPath } from "./apiPath"
 
 export interface BotProfile {
   bot_creator_uid?: string
@@ -21,11 +22,11 @@ export interface BotFriendApplyRequest {
 
 const BotProfileService = {
   getBotProfile(uid: string): Promise<BotProfile> {
-    return APIClient.shared.get(`users/${uid}`)
+    return APIClient.shared.get(apiPath`users/${uid}`)
   },
 
   updateDescription(uid: string, description: string): Promise<void> {
-    return APIClient.shared.put(`robot/${uid}/description`, { description })
+    return APIClient.shared.put(apiPath`robot/${uid}/description`, { description })
   },
 
   updateRemark(uid: string, remark: string): Promise<void> {

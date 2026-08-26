@@ -1,0 +1,449 @@
+// @vitest-environment jsdom
+
+import React from "react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const state = vi.hoisted(() => ({
+  getAgentAuthorization: vi.fn(),
+  approveAgentAuthorization: vi.fn(),
+  getUserProfile: vi.fn(),
+  getMySpaces: vi.fn(),
+  currentSpaceId: "space-a",
+  t: vi.fn((key: string) => key),
+}));
+
+vi.mock("@octo/base", () => ({
+  useI18n: () => ({ t: state.t }),
+  UserService: { getUserProfile: state.getUserProfile },
+  SpaceService: { shared: { getMySpaces: state.getMySpaces } },
+  WKApp: {
+    shared: {
+      get currentSpaceId() {
+        return state.currentSpaceId;
+      },
+    },
+  },
+}));
+
+vi.mock("../Service/MailService", () => ({
+  default: {
+    getAgentAuthorization: state.getAgentAuthorization,
+    approveAgentAuthorization: state.approveAgentAuthorization,
+  },
+}));
+
+import {
+  MAIL_AUTHORIZATION_RESOLVED_EVENT,
+  resolveMailAuthorizeSearch,
+} from "../authorizationSession";
+import MailAuthorizationPage from "./MailAuthorizationPage";
+
+const initialSearch =
+  "?code=ABCD-1234&mailbox=bot%40mail.imocto.cn&space_id=space-a";
+
+const authorization = {
+  request: {
+    userCode: "ABCD-1234",
+    botId: "bot-1",
+    botProfile: "Mailbox Bot",
+    status: "pending" as const,
+    requestedAt: "2026-08-11T00:00:00Z",
+    expiresAt: "2099-08-11T01:00:00Z",
+    outboundMode: "manual_confirmation" as const,
+  },
+  mailboxes: [
+    {
+      id: "42",
+      address: "bot@mail.imocto.cn",
+      connectState: "unconnected" as const,
+      outboundMode: "manual_confirmation" as const,
+    },
+  ],
+};
+
+describe("MailAuthorizationPage return target lifecycle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    state.t = vi.fn((key: string) => key);
+    state.currentSpaceId = "space-a";
+    window.history.replaceState(null, "", `/mail/authorize${initialSearch}`);
+    sessionStorage.clear();
+    resolveMailAuthorizeSearch(
+      "/mail/authorize",
+      initialSearch,
+      sessionStorage
+    );
+    state.getUserProfile.mockResolvedValue({ name: "Mailbox Bot" });
+    state.getMySpaces.mockResolvedValue([
+      { space_id: "space-a", name: "Product Space" },
+    ]);
+    state.approveAgentAuthorization.mockResolvedValue({
+      approved: true,
+      mailboxId: "42",
+      outboundMode: "automatic_send",
+    });
+  });
+
+  afterEach(() => cleanup());
+
+  it("keeps the return target while owner approval is still pending", async () => {
+    const resolved = vi.fn();
+    state.getAgentAuthorization.mockResolvedValue(authorization);
+    window.addEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+
+    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+
+    await waitFor(() =>
+      expect(state.getAgentAuthorization).toHaveBeenCalledTimes(1)
+    );
+    await waitFor(() =>
+      expect(state.getUserProfile).toHaveBeenCalledWith("bot-1", undefined, {
+        suppressAuthExpiredLogout: true,
+      })
+    );
+    expect(resolved).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("octo.mail.authorize.pending-search")).toBe(
+      initialSearch
+    );
+    window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+  });
+
+  it("shows the target Space name while retaining the Space id for approval", async () => {
+    state.getAgentAuthorization.mockResolvedValue(authorization);
+
+    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+
+    await waitFor(() =>
+      expect(state.t).toHaveBeenCalledWith("mail.authorization.targetSpace", {
+        values: { spaceName: "Product Space" },
+      })
+    );
+    expect(state.getMySpaces).toHaveBeenCalledWith({
+      suppressAuthExpiredLogout: true,
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "mail.authorization.approve" })
+    );
+    await waitFor(() =>
+      expect(state.approveAgentAuthorization).toHaveBeenCalledWith(
+        "ABCD-1234",
+        "42",
+        "automatic_send",
+        "space-a"
+      )
+    );
+  });
+
+  it("keeps the return target through the React StrictMode effect replay", async () => {
+    const resolved = vi.fn();
+    state.getAgentAuthorization.mockResolvedValue(authorization);
+    window.addEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+
+    render(
+      <React.StrictMode>
+        <MailAuthorizationPage initialSearch={initialSearch} />
+      </React.StrictMode>
+    );
+
+    await waitFor(() =>
+      expect(state.getAgentAuthorization).toHaveBeenCalledTimes(2)
+    );
+    await Promise.resolve();
+    expect(resolved).not.toHaveBeenCalled();
+    expect(sessionStorage.length).toBe(1);
+    window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+  });
+
+  it("preserves return targets when Space lookup and Mail authorization both see an expired session", async () => {
+    const resolved = vi.fn();
+    const sessionExpired = vi.fn();
+    state.getMySpaces.mockRejectedValue({
+      status: 401,
+      code: "err.shared.auth.token_expired",
+    });
+    state.getAgentAuthorization.mockRejectedValue({
+      status: 401,
+      code: "err.shared.auth.token_expired",
+    });
+    window.addEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+    sessionStorage.setItem(
+      "octo.docs.standaloneReturn",
+      `/mail/authorize${initialSearch}`
+    );
+
+    render(
+      <MailAuthorizationPage
+        initialSearch={initialSearch}
+        onSessionExpired={sessionExpired}
+      />
+    );
+
+    await waitFor(() => expect(sessionExpired).toHaveBeenCalledTimes(1));
+    expect(state.getMySpaces).toHaveBeenCalledWith({
+      suppressAuthExpiredLogout: true,
+    });
+    await Promise.resolve();
+    expect(resolved).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("octo.mail.authorize.pending-search")).toBe(
+      initialSearch
+    );
+    expect(sessionStorage.getItem("octo.docs.standaloneReturn")).toBe(
+      `/mail/authorize${initialSearch}`
+    );
+    window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+  });
+
+  it("clears the host return target after a terminal non-login error", async () => {
+    const resolved = vi.fn();
+    state.getAgentAuthorization.mockRejectedValue({ status: 403 });
+    window.addEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+
+    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+
+    await waitFor(() => expect(resolved).toHaveBeenCalledTimes(1));
+    expect(sessionStorage.length).toBe(0);
+    window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+  });
+
+  it("clears both return targets when an already exchanged request loads", async () => {
+    const resolved = vi.fn();
+    state.getAgentAuthorization.mockResolvedValue({
+      ...authorization,
+      request: { ...authorization.request, status: "exchanged" },
+    });
+    window.addEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+
+    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+
+    await waitFor(() => expect(resolved).toHaveBeenCalledTimes(1));
+    expect(sessionStorage.length).toBe(0);
+    expect(
+      screen.queryByText("mail.authorization.automaticSendEnabled")
+    ).toBeNull();
+    window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+  });
+
+  it("shows the automatic-send status for an exchanged automatic grant", async () => {
+    state.getAgentAuthorization.mockResolvedValue({
+      ...authorization,
+      request: {
+        ...authorization.request,
+        status: "exchanged",
+        outboundMode: "automatic_send",
+      },
+    });
+
+    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+
+    expect(
+      await screen.findByText("mail.authorization.automaticSendEnabled")
+    ).toBeTruthy();
+  });
+
+  it("hands an approval 401 to the same expired-session recovery", async () => {
+    const resolved = vi.fn();
+    const sessionExpired = vi.fn();
+    state.getAgentAuthorization.mockResolvedValue(authorization);
+    state.approveAgentAuthorization.mockRejectedValue({
+      status: 401,
+      code: "err.shared.auth.token_expired",
+    });
+    window.addEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+
+    render(
+      <MailAuthorizationPage
+        initialSearch={initialSearch}
+        onSessionExpired={sessionExpired}
+      />
+    );
+    await screen.findByRole("button", { name: "mail.authorization.approve" });
+    fireEvent.click(
+      screen.getByRole("button", { name: "mail.authorization.approve" })
+    );
+
+    await waitFor(() =>
+      expect(state.approveAgentAuthorization).toHaveBeenCalledTimes(1)
+    );
+    expect(sessionExpired).toHaveBeenCalledTimes(1);
+    expect(resolved).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem("octo.mail.authorize.pending-search")).toBe(
+      initialSearch
+    );
+    window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+  });
+
+  it("clears pending authorization state when the page is left normally", async () => {
+    const resolved = vi.fn();
+    state.getAgentAuthorization.mockResolvedValue(authorization);
+    window.addEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+
+    const view = render(
+      <MailAuthorizationPage initialSearch={initialSearch} />
+    );
+    await waitFor(() =>
+      expect(state.getAgentAuthorization).toHaveBeenCalledTimes(1)
+    );
+    view.unmount();
+
+    await waitFor(() => expect(resolved).toHaveBeenCalledTimes(1));
+    expect(sessionStorage.length).toBe(0);
+    window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+  });
+
+  it("defaults to automatic sending and still allows manual confirmation", async () => {
+    state.approveAgentAuthorization.mockResolvedValue({
+      approved: true,
+      mailboxId: "42",
+      outboundMode: "manual_confirmation",
+    });
+    state.getAgentAuthorization.mockResolvedValue({
+      ...authorization,
+      request: {
+        ...authorization.request,
+        outboundMode: "manual_confirmation",
+      },
+    });
+
+    const view = render(
+      <MailAuthorizationPage initialSearch={initialSearch} />
+    );
+
+    const manual = await screen.findByRole("radio", {
+      name: /manualReviewTitle/,
+    });
+    const automatic = screen.getByRole("radio", { name: /automaticSendTitle/ });
+    expect((manual as HTMLInputElement).checked).toBe(false);
+    expect((automatic as HTMLInputElement).checked).toBe(true);
+    expect(
+      screen.getByText("mail.authorization.selectedAutomatic")
+    ).toBeTruthy();
+
+    fireEvent.click(manual);
+
+    expect((manual as HTMLInputElement).checked).toBe(true);
+    expect((automatic as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByText("mail.authorization.selectedManual")).toBeTruthy();
+
+    state.t = vi.fn((key: string) => key);
+    view.rerender(<MailAuthorizationPage initialSearch={initialSearch} />);
+    await waitFor(() =>
+      expect(state.getAgentAuthorization).toHaveBeenCalledTimes(2)
+    );
+    expect((manual as HTMLInputElement).checked).toBe(true);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "mail.authorization.approve" })
+    );
+    await waitFor(() =>
+      expect(state.approveAgentAuthorization).toHaveBeenCalledWith(
+        "ABCD-1234",
+        "42",
+        "manual_confirmation",
+        "space-a"
+      )
+    );
+  });
+
+  it("requires explicit confirmation when the link targets another Space", async () => {
+    state.currentSpaceId = "space-b";
+    state.getMySpaces.mockResolvedValue([
+      { space_id: "space-a", name: "Product Space" },
+      { space_id: "space-b", name: "Current Space" },
+    ]);
+    state.getAgentAuthorization.mockResolvedValue(authorization);
+
+    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+
+    const approve = await screen.findByRole("button", {
+      name: "mail.authorization.approve",
+    });
+    await waitFor(() =>
+      expect(state.t).toHaveBeenCalledWith(
+        "mail.authorization.spaceMismatchConfirmation",
+        {
+          values: {
+            currentSpaceName: "Current Space",
+            targetSpaceName: "Product Space",
+          },
+        }
+      )
+    );
+    expect((approve as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: /mail.authorization.spaceMismatchConfirmation/,
+      })
+    );
+    expect((approve as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("fails closed when the server echoes a different grant", async () => {
+    state.getAgentAuthorization.mockResolvedValue(authorization);
+    state.approveAgentAuthorization.mockResolvedValue({
+      approved: true,
+      mailboxId: "different-mailbox",
+      outboundMode: "manual_confirmation",
+    });
+
+    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: "mail.authorization.approve",
+      })
+    );
+
+    expect(
+      await screen.findByText("mail.authorization.approvalMismatch")
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "mail.authorization.approve" })
+    ).toBeTruthy();
+  });
+
+  it("does not destroy the OCTO session for an unclassified Mail 401", async () => {
+    const resolved = vi.fn();
+    const sessionExpired = vi.fn();
+    state.getAgentAuthorization.mockRejectedValue({
+      status: 401,
+      code: "unauthorized",
+      msg: "mail authorization failed",
+    });
+    window.addEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+
+    render(
+      <MailAuthorizationPage
+        initialSearch={initialSearch}
+        onSessionExpired={sessionExpired}
+      />
+    );
+
+    await waitFor(() => expect(resolved).toHaveBeenCalledTimes(1));
+    expect(sessionExpired).not.toHaveBeenCalled();
+    expect(sessionStorage.length).toBe(0);
+    window.removeEventListener(MAIL_AUTHORIZATION_RESOLVED_EVENT, resolved);
+  });
+
+  it("rejects an authorization request whose deadline has passed", async () => {
+    state.getAgentAuthorization.mockResolvedValue({
+      ...authorization,
+      request: {
+        ...authorization.request,
+        expiresAt: "2000-01-01T00:00:00Z",
+      },
+    });
+
+    render(<MailAuthorizationPage initialSearch={initialSearch} />);
+
+    expect(await screen.findByText("mail.authorization.expired")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: "mail.authorization.approve" })
+    ).toBeNull();
+  });
+});

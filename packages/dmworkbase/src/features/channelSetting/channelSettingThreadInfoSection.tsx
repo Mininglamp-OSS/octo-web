@@ -122,5 +122,37 @@ export function buildThreadInfoSection(
     );
   }
 
+  if (
+    typeof thread?.member_count === "number" &&
+    Number.isFinite(thread.member_count) &&
+    thread.member_count >= 0
+  ) {
+    rows.push(
+      new Row({
+        cell: ChannelSettingInfoRow,
+        properties: {
+          title: t("base.module.thread.participantCount"),
+          value: t("base.module.thread.participantCountValue", {
+            values: { count: thread.member_count },
+          }),
+        },
+      })
+    );
+  }
+
+  if (typeof thread?.is_member === "boolean") {
+    rows.push(
+      new Row({
+        cell: ChannelSettingInfoRow,
+        properties: {
+          title: t("base.module.thread.participationStatus"),
+          value: thread.is_member
+            ? t("base.module.thread.participationStatusJoined")
+            : t("base.module.thread.participationStatusNotJoined"),
+        },
+      })
+    );
+  }
+
   return new Section({ title: t("base.module.thread.info"), rows });
 }

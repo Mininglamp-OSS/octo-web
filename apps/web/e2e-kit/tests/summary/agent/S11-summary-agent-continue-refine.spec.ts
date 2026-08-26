@@ -35,7 +35,8 @@ test.describe("@S11 @p0 @summary @agent @summary-agent @summary-detail @summary-
     await expect(
       authedPage.getByText("你好，我是总结助手，想总结什么尽管告诉我。")
     ).toBeVisible({ timeout: 15_000 });
-    await expect(authedPage.getByTestId(T.createAgentTab)).toHaveClass(/active/);
+    // 「继续优化」直接进入 agent 模式（创建页内不再提供模式下拉）。
+    await expect(authedPage.getByTestId(T.agentInput)).toBeVisible();
     const referenceCard = authedPage.getByTestId(T.agentRefCard);
     await expect(referenceCard.getByText("已引用")).toBeVisible();
     await expect(referenceCard.getByText("S11 Agent 原总结", { exact: true })).toBeVisible();

@@ -36,6 +36,24 @@
     white-space: nowrap;
 }
 
+.summary-reference-picker-item-main {
+    width: 100%;
+}
+
+.summary-reference-picker-item-type {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    background: var(--semi-color-fill-1);
+    color: var(--semi-color-text-1);
+}
+
+.summary-reference-picker-item-sep {
+    margin: 0 4px;
+    color: var(--semi-color-text-3);
+}
+
 .summary-reference-picker-item-meta {
     font-size: 12px;
     color: var(--semi-color-text-2);

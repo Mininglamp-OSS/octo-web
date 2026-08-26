@@ -7,6 +7,9 @@ vi.mock('wukongimjssdk', () => ({
     ChannelTypeGroup: 2,
     ChannelTypePerson: 1,
     MessageText: class {},
+    MessageContent: class {},
+    MediaMessageContent: class {},
+    MessageContentType: { text: 1, image: 2, video: 3, file: 4, voice: 5, location: 6, command: 7, unknown: 0 },
     WKSDK: { shared: () => ({ chatManager: { send: vi.fn() } }) },
 }));
 vi.mock('@douyinfe/semi-ui', () => {
@@ -27,10 +30,12 @@ vi.mock('@douyinfe/semi-ui', () => {
     };
 });
 vi.mock('@douyinfe/semi-icons', () => ({
+    default: () => null,
     IconPlus: () => null,
     IconClock: () => null,
     IconUserGroup: () => null,
     IconChevronDown: () => null,
+    IconAlertTriangle: () => null,
 }));
 
 import WKApp from '@octo/base/src/App';

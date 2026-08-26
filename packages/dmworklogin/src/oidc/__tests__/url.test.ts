@@ -21,6 +21,11 @@ describe('buildAuthorizeURL', () => {
     expect(qs.get('flag')).toBe('1')
   })
 
+  it('supports the PC device flag for Electron authorize URLs', () => {
+    const url = buildAuthorizeURL(acmeSso, 'desktop-authcode', '/login', 'https://api.example.com', '2')
+    expect(new URL(url).searchParams.get('flag')).toBe('2')
+  })
+
   it('uses custom return_to when provided', () => {
     const url = buildAuthorizeURL(acmeSso, 'abc', '/login?next=/home')
     const qs = new URLSearchParams(url.split('?')[1])
@@ -31,12 +36,22 @@ describe('buildAuthorizeURL', () => {
     const url = buildAuthorizeURL(acmeSso, 'a b&c')
     expect(url).toContain('authcode=a+b%26c')
   })
+
+  it('resolves the authorize path against the Electron API origin', () => {
+    const url = buildAuthorizeURL(acmeSso, 'abc', '/login', 'https://api.example.com')
+    expect(url.startsWith('https://api.example.com/v1/auth/oidc/acme-sso/authorize?')).toBe(true)
+  })
 })
 
 describe('parseOidcUrlState', () => {
   it('detects oidc_error=1', () => {
     expect(parseOidcUrlState('?oidc_error=1').error).toBe(true)
     expect(parseOidcUrlState('foo=bar&oidc_error=1').error).toBe(true)
+  })
+
+  it('detects standard OAuth error callbacks', () => {
+    expect(parseOidcUrlState('?error=access_denied').error).toBe(true)
+    expect(parseOidcUrlState('?error=access_denied&error_description=cancelled').error).toBe(true)
   })
 
   it('returns error=false for clean query', () => {

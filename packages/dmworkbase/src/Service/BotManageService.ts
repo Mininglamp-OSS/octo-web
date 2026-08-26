@@ -1,4 +1,5 @@
 import APIClient from "./APIClient"
+import { apiPath } from "./apiPath"
 
 export interface BotGroupItem {
   group_no: string
@@ -61,19 +62,19 @@ const BotManageService = {
     if (request.cursor) {
       param.cursor = request.cursor
     }
-    return APIClient.shared.get(`robot/${request.robotId}/groups`, { param })
+    return APIClient.shared.get(apiPath`robot/${request.robotId}/groups`, { param })
   },
 
   enableMentionFree(robotId: string, groupNo: string): Promise<void> {
     return APIClient.shared.put(
-      `robot/${robotId}/groups/${groupNo}/mention_pref`,
+      apiPath`robot/${robotId}/groups/${groupNo}/mention_pref`,
       { no_mention: 1 },
     )
   },
 
   disableMentionFree(robotId: string, groupNo: string): Promise<void> {
     return APIClient.shared.delete(
-      `robot/${robotId}/groups/${groupNo}/mention_pref`,
+      apiPath`robot/${robotId}/groups/${groupNo}/mention_pref`,
     )
   },
 
@@ -88,7 +89,7 @@ const BotManageService = {
    * 它是代码里拼出来的带点号常量，编码一下更稳妥。这个不对称是既有约定，不是笔误。
    */
   listSettings(robotId: string): Promise<BotSettingsListResponse> {
-    return APIClient.shared.get(`robot/${robotId}/settings`)
+    return APIClient.shared.get(apiPath`robot/${robotId}/settings`)
   },
 
   /**
@@ -99,7 +100,7 @@ const BotManageService = {
     robotId: string,
     items: BotSettingWriteItem[],
   ): Promise<void> {
-    return APIClient.shared.put(`robot/${robotId}/settings`, { items })
+    return APIClient.shared.put(apiPath`robot/${robotId}/settings`, { items })
   },
 
   /**
@@ -111,7 +112,7 @@ const BotManageService = {
    */
   deleteSetting(robotId: string, key: string): Promise<void> {
     return APIClient.shared.delete(
-      `robot/${robotId}/settings/${encodeURIComponent(key)}`,
+      apiPath`robot/${robotId}/settings/${encodeURIComponent(key)}`,
     )
   },
 }

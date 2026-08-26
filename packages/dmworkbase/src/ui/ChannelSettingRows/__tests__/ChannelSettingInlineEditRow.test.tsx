@@ -1,8 +1,9 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ChannelSettingInlineEditRow } from "../index";
+import { Dap } from "../../../Service/Dap";
 
 vi.mock("@douyinfe/semi-icons", () => ({
   IconClear: () => <span aria-hidden="true">x</span>,
@@ -58,6 +59,16 @@ vi.mock("../../../Components/ListItem", () => ({
 vi.mock("../../../i18n", () => ({
   t: (key: string) => key,
 }));
+
+vi.mock("../../../Service/Dap", () => ({
+  Dap: { shared: { track: vi.fn() } },
+}));
+
+const trackMock = vi.mocked(Dap.shared.track);
+
+beforeEach(() => {
+  trackMock.mockClear();
+});
 
 describe("ChannelSettingInlineEditRow", () => {
   it("clears an existing value and saves the empty nickname", async () => {
@@ -303,5 +314,42 @@ describe("ChannelSettingInlineEditRow", () => {
     expect(screen.getByDisplayValue("")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "base.common.save" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(""));
+  });
+
+  // PR #1390 review P2-3:上报改为命令式,须每次成功打开恰发一次,且权限门拒绝时零上报。
+  it("fires the track event exactly once per open, not on the row wrapper", () => {
+    const { container } = render(
+      <ChannelSettingInlineEditRow
+        title="Group name"
+        value="Old name"
+        trackEvent="group_name_edit_opened"
+        onSave={vi.fn(() => Promise.resolve())}
+      />
+    );
+
+    expect(
+      container.querySelectorAll("[data-track]").length
+    ).toBe(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Group name" }));
+
+    expect(trackMock).toHaveBeenCalledTimes(1);
+    expect(trackMock).toHaveBeenCalledWith("group_name_edit_opened");
+  });
+
+  it("does not fire the track event when the start guard rejects editing", () => {
+    render(
+      <ChannelSettingInlineEditRow
+        title="Group name"
+        value="Protected name"
+        trackEvent="group_name_edit_opened"
+        onStartEdit={vi.fn(() => false)}
+        onSave={vi.fn(() => Promise.resolve())}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Group name" }));
+
+    expect(trackMock).not.toHaveBeenCalled();
   });
 });

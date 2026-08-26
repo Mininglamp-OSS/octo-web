@@ -72,7 +72,7 @@ echo "🔍 Verifying architecture-specific binaries..."
 verify_dmg_architecture() {
     local dmg_file="$1"
     local expected_arch="$2"
-    local mount_point="/tmp/dmwork_verify_${expected_arch}_$$"
+    local mount_point="/tmp/octo_verify_${expected_arch}_$$"
     
     echo "  📱 Verifying $expected_arch DMG: $(basename "$dmg_file")"
     
@@ -81,7 +81,7 @@ verify_dmg_architecture() {
     if hdiutil attach "$dmg_file" -mountpoint "$mount_point" -quiet 2>/dev/null; then
         local app_bundle=$(find "$mount_point" -name "*.app" | head -1)
         if [ -n "$app_bundle" ]; then
-            local binary_path="$app_bundle/Contents/MacOS/DMWork"
+            local binary_path="$app_bundle/Contents/MacOS/OCTO"
             if [ -f "$binary_path" ]; then
                 local archs=$(lipo -info "$binary_path" 2>/dev/null || echo "Could not read architectures")
                 echo "     🏗️  Binary architectures: $archs"

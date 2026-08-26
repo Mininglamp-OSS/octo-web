@@ -5,12 +5,12 @@ import {
     Spin,
     Toast,
     Banner,
-    Tooltip,
 } from "@douyinfe/semi-ui";
 import { IconSearch, IconPlus } from "@douyinfe/semi-icons";
 import { X, ChevronDown } from "lucide-react";
-import { I18nContext, t, WKApp } from "@octo/base";
+import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import * as api from "../api/summaryApi";
+import { setPendingInvitationBadge } from "../utils/summaryMenuBadge";
 import type {
     SummaryListItem,
     ListSummariesParams,
@@ -28,7 +28,7 @@ interface SummaryListPageProps {
     /** Called when the user clicks the close button (panel mode only). */
     onClose?: () => void;
     /** Called when the user clicks "new summary" in panel mode. */
-    onCreateNew?: () => void;
+    onCreateNew?: (mode?: "normal" | "agent") => void;
     /** Called when a card is clicked in panel mode (instead of routeRight.push). */
     onViewDetail?: (taskId: number) => void;
 }
@@ -85,6 +85,9 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     // user-driven state. loadMore also captures pre-await and drops its
     // batch on mismatch — closes loadMore-starts-first, loadData-bumps-after.
     private loadDataSeq = 0;
+    // 「+」每次新建的序号：并入 push 元素的 key，保证连续两次选同一模式也强制重挂载
+    // （见 handleCreate 注释）。key 只按 mode 时，同模式重选会命中 React 复用分支。
+    private createEntrySeq = 0;
     // Synchronous "is a loadData in flight" flag. React 18 batching means
     // this.state.loading is not visible immediately after setState from a
     // promise continuation, so loadMore reading state.loading would miss a
@@ -197,6 +200,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         // loadData already bumped captures the already-bumped value and
         // would still commit.
         const seq = ++this.loadDataSeq;
+        const requestSpaceId = WKApp.shared.currentSpaceId;
         this.isLoadingData = true;
         // Only toggle loading. Do NOT pre-set page:1 / hasMore:true here —
         // if the request fails in silent mode we would leave items at the
@@ -221,8 +225,14 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             // Post-await mount check (round-8 yujiawei P2-3): the entry
             // isMounted_ guard cannot cover the await window; React 18 will
             // drop setState on an unmounted fiber but the callback would
-            // still be scheduled. Explicit check makes the guarantee ours.
-            if (!this.isMounted_) return;
+            // still be scheduled. Also bind the response to the Space that
+            // issued it so an unmounted/late list cannot commit stale data.
+            if (!this.isMounted_ || WKApp.shared.currentSpaceId !== requestSpaceId) return;
+            // #1359 只有全局列表拥有写 NavRail badge 的职责。后端 count 虽然是
+            // Space 级，但聊天侧栏是嵌入式 channel 实例，不应改写全局导航状态。
+            if (!this.props.channelId) {
+                setPendingInvitationBadge(resp.pending_invitation_count ?? 0);
+            }
             this.setState({
                 items: resp.items,
                 page: 1,
@@ -425,6 +435,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
     }
 
     handleStatusChange = (value: string | number) => {
+        // 埋点 292:状态筛选切换（隐私 props 恒空，不采具体状态值）。
+        Dap.shared.track("smart_summary_status_filtered", {});
         const statusFilter = value === "" ? undefined : (value as TaskStatusType);
         this.setState({ statusFilter, page: 1 }, () => this.loadData());
     };
@@ -433,6 +445,8 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         this.setState({ keyword: value });
         if (this.searchTimer) clearTimeout(this.searchTimer);
         this.searchTimer = setTimeout(() => {
+            // 埋点 291:去抖后「发生了一次搜索」，仅在有关键词时发，绝不采关键词值。
+            if (value.trim()) Dap.shared.track("smart_summary_searched", {});
             this.setState({ page: 1 }, () => this.loadData());
         }, 400);
     };
@@ -467,7 +481,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                 } else {
                     WKApp.routeRight.popToRoot();
                     WKApp.routeRight.push(
-                        <SummaryCreatePage onCreated={() => this.loadData()} />
+                        <SummaryCreatePage source="summary_list" />
                     );
                 }
             });
@@ -542,14 +556,30 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         }, 300);
     };
 
-    handleCreate = () => {
+    handleCreate = (mode: "normal" | "agent" = "normal") => {
+        // 「新建总结」意图:三处 create 控件都走这里(原先误用 GET /summary-templates 页面加载推断)。
+        Dap.shared.track("smart_summary_create_clicked", {});
+        // 从「+」下拉显式选择 Agent 总结属于一次模式选择行为：创建页内切换已随本功能
+        // 上移到列表页「+」，补发模式事件以保留 smart_summary_mode_switched 埋点维度。
+        if (mode === "agent") {
+            Dap.shared.track("smart_summary_mode_switched", { to: "agent" });
+        }
         if (this.props.onCreateNew) {
-            this.props.onCreateNew();
+            // 面板模式：把所选模式透传给宿主（ChatSummaryPanel）供其 create 视图预置 initialMode。
+            this.props.onCreateNew(mode);
             return;
         }
         WKApp.routeRight.popToRoot();
         WKApp.routeRight.push(
-            <SummaryCreatePage onCreated={() => this.loadData()} />
+            <SummaryCreatePage
+                // key 绑定「模式 + 每次新建序号」：从列表页选模式 = 发起一次全新创建。
+                // 只按模式做 key 时，连续两次选同模式（如 NavRail 默认创建页上再点
+                // 「+ → 快速总结」）会命中 React 复用分支——WKViewQueue 按数组下标渲染，
+                // 同类型同 key 组件不重挂载，state 不随新 initialMode 重读，界面无反馈。
+                key={`${mode}-${++this.createEntrySeq}`}
+                source="summary_list"
+                initialMode={mode}
+            />
         );
     };
 
@@ -567,33 +597,47 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
                     </h2>
                     <div className="summary-list-header-actions">
-                        {isPanel && (
-                            <Tooltip content={translate("summary.chatSummary.createNew")} position="bottom">
-                                <Button
-                                    className="summary-list-create-icon-btn"
-                                    icon={<IconPlus />}
-                                    theme="borderless"
-                                    onClick={this.handleCreate}
-                                />
-                            </Tooltip>
-                        )}
-                        {isPanel && onClose ? (
+                        {/* 单一「+」入口：点击只弹下拉（快速总结 / Agent 总结），
+                            不再是「主按钮直接建 + 独立箭头下拉」的组合按钮。
+                            不用 Semi Tooltip 包 Dropdown——Semi Tooltip 把 hover 处理器
+                            注入到直接子节点，Dropdown 不会把事件转发给触发按钮，
+                            hover 提示会失效；用原生 title + aria-label 兜底。 */}
+                        <Dropdown
+                            trigger="click"
+                            position="bottomRight"
+                            render={(
+                                <Dropdown.Menu>
+                                    <Dropdown.Item
+                                        data-testid={summaryTestIds.listNormalTab}
+                                        onClick={() => this.handleCreate("normal")}
+                                    >
+                                        {translate("summary.create.start")}
+                                    </Dropdown.Item>
+                                    <Dropdown.Item
+                                        data-testid={summaryTestIds.listAgentTab}
+                                        onClick={() => this.handleCreate("agent")}
+                                    >
+                                        {translate("summary.create.agentStart")}
+                                    </Dropdown.Item>
+                                </Dropdown.Menu>
+                            )}
+                        >
+                            <Button
+                                data-testid={summaryTestIds.listModeSwitch}
+                                className="summary-list-create-icon-btn"
+                                icon={<IconPlus />}
+                                theme="borderless"
+                                aria-label={translate("summary.list.createTooltip")}
+                                title={translate("summary.list.createTooltip")}
+                            />
+                        </Dropdown>
+                        {isPanel && onClose && (
                             <Button
                                 icon={<X size={18} />}
                                 theme="borderless"
                                 type="tertiary"
                                 onClick={onClose}
                             />
-                        ) : (
-                            <Tooltip content={translate("summary.list.createTooltip")} position="bottom">
-                                <Button
-                                    data-testid={summaryTestIds.listCreate}
-                                    className="summary-list-create-icon-btn"
-                                    icon={<IconPlus />}
-                                    theme="borderless"
-                                    onClick={this.handleCreate}
-                                />
-                            </Tooltip>
                         )}
                     </div>
                 </div>
@@ -660,7 +704,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             <>
                                 <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
                                 <div className="summary-list-empty-desc">{translate("summary.chatSummary.emptyDescription")}</div>
-                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={() => this.handleCreate("normal")} style={{ marginTop: 16 }}>
                                     {translate("summary.chatSummary.createNew")}
                                 </Button>
                             </>
@@ -671,7 +715,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 <div className="summary-list-empty-desc">
                                     {translate("summary.list.emptyDesc")}
                                 </div>
-                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={this.handleCreate} style={{ marginTop: 16 }}>
+                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={() => this.handleCreate("normal")} style={{ marginTop: 16 }}>
                                     {translate("summary.list.createFirst")}
                                 </Button>
                             </>

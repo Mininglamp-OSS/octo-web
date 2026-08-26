@@ -4,7 +4,7 @@ import { Button, Select, Spin, Toast } from '@douyinfe/semi-ui';
 // 主按钮纯文字, 避免锁定到任意一种登录方式让用户产生 "我没邮箱不能登" 的误判.
 import './login.css'
 import { QRCodeSVG } from 'qrcode.react';
-import { WKApp, Provider, useI18n } from "@octo/base"
+import { WKApp, Provider, useI18n, isElectronPowered } from "@octo/base"
 import type { Locale } from "@octo/base"
 import { LoginStatus, LoginType, LoginVM } from "./login_vm";
 import classNames from "classnames";
@@ -20,6 +20,14 @@ import loginLogo from "./assets/login-logo.png";
 
 const ENTERPRISE_SSO_ENABLED =
     import.meta.env.VITE_ENABLE_ENTERPRISE_SSO === 'true'
+// Local Electron development keeps the password-login workflow, while plain
+// web development should still exercise the enterprise SSO entry point.
+const isElectronRuntime = typeof window !== 'undefined' && (
+    isElectronPowered() ||
+    Boolean((window as any).__TAURI_IPC__) ||
+    import.meta.env.VITE_ELECTRON_BUILD === 'true'
+)
+const OIDC_ENABLED = ENTERPRISE_SSO_ENABLED && (!import.meta.env.DEV || !isElectronRuntime)
 // Register URL 从当前 provider 的 accountUrl 派生，避免把 test/prod 用户带到
 // 错误的 IdP 环境。若后续接入新的 OIDC provider 或非 Aegis 登录方式，入口配置
 // 应改为由 appconfig 下发。
@@ -103,6 +111,8 @@ const OidcResumeEffect: React.FC<{ vm: LoginVM }> = ({ vm }) => {
             try {
                 const url = new URL(window.location.href)
                 url.searchParams.delete('oidc_error')
+                url.searchParams.delete('error')
+                url.searchParams.delete('error_description')
                 window.history.replaceState({}, '', url.toString())
             } catch {
                 /* noop */
@@ -440,9 +450,9 @@ class Login extends Component<any, LoginState> {
             // 按 loginInfo.loginProvider 路由各自的 reset URL, 同步检查 login.tsx:513。
             const ssoProvider = getSSOProviders()[0]
             const hasSsoProvider = !!ssoProvider
-            const ssoConfigPending = ENTERPRISE_SSO_ENABLED && !WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed
-            const ssoConfigFallback = ENTERPRISE_SSO_ENABLED && WKApp.remoteConfig.requestFailed
-            const showSsoLogin = ENTERPRISE_SSO_ENABLED && !ssoConfigPending && !ssoConfigFallback && hasSsoProvider
+            const ssoConfigPending = OIDC_ENABLED && !WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed
+            const ssoConfigFallback = OIDC_ENABLED && WKApp.remoteConfig.requestFailed
+            const showSsoLogin = OIDC_ENABLED && !ssoConfigPending && !ssoConfigFallback && hasSsoProvider
             const showDefaultSloganSub = !showSsoLogin
             const renderLocalPasswordLogin = () => (
                 <div className="wk-login-content-form">
@@ -551,8 +561,8 @@ class Login extends Component<any, LoginState> {
 
                 {/* Right form panel */}
                 <div className="wk-login-panel">
-                    {ENTERPRISE_SSO_ENABLED && <OidcResumeEffect vm={vm} />}
-                    {ENTERPRISE_SSO_ENABLED && <OidcResumingOverlay vm={vm} />}
+                    {OIDC_ENABLED && <OidcResumeEffect vm={vm} />}
+                    {OIDC_ENABLED && <OidcResumingOverlay vm={vm} />}
                     {/* 顶部小面包屑: 紫色圆点 + 当前登录目标. 给到达 /login 的人一个
                         "我在哪 / 这个表单会把我送去哪" 的轻确认, 不抢主标题视觉权重. */}
                     <div className="wk-login-panel-breadcrumb">
@@ -698,7 +708,7 @@ class Login extends Component<any, LoginState> {
                         <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.forgetPassword ? "block" : "none" }}>
                             <div className="wk-login-content-slogan">{t('reset.title')}</div>
                             <div className="wk-login-content-slogan-sub">{t('reset.sub')}</div>
-                            {ENTERPRISE_SSO_ENABLED && ssoProvider?.resetPasswordUrl && (
+                            {OIDC_ENABLED && ssoProvider?.resetPasswordUrl && (
                                 <div className="wk-login-content-form-oidc-hint">
                                     {t('reset.oidcHintPrefix')}
                                     <a

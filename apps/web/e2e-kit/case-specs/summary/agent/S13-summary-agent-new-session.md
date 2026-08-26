@@ -16,7 +16,7 @@
 
 - fixture: `fixtures-authed`，本地 mock 模式已预置登录态、Space `e2e-space-001` 和中文 locale。
 - Per-case MSW handler: `e2e-kit/msw-handlers/s13-summary-agent-new-session.ts`
-  - `GET */summary/api/v1/summaries` — 普通列表入口返回空；引用选择器带 `trigger_type=3` 时返回 `S13 可引用总结`。
+  - `GET */summary/api/v1/summaries` — 普通列表入口返回空；引用选择器（status=3=COMPLETED）返回 `S13 可引用总结`。
   - `GET */summary/api/v1/summaries/13013` — 返回引用 side panel 详情兜底。
   - `GET */summary/api/v1/summary-templates` — 返回空模板列表。
   - `GET */summary/api/v1/agent/chat/history` — 返回空历史。
@@ -24,10 +24,9 @@
 
 ## 用户操作步骤
 
-1. 从默认 app shell 点击主导航「智能总结」。
-2. 在空态点击「创建第一份总结」进入创建页。
-3. 切换到「Agent 总结」。
-4. 点击「引用总结」，选择 `S13 可引用总结`。
+1. 从默认 app shell 点击主导航「智能总结」，进入总结列表页（空态）。
+2. 点击列表页右上角「+」下拉，选择「Agent 总结」直接进入 Agent 会话。
+3. 点击「引用总结」，选择 `S13 可引用总结`。
 5. 发送 `S13 第一轮问题` 并等待 Agent 回复。
 6. 点击「新会话」。
 
