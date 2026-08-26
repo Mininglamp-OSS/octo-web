@@ -27,7 +27,9 @@
     "leaveConfirm": "有未保存的修改,确定离开吗?",
     "legacyTitle": "打包上传的技能",
     "legacyNotice": "该技能为整包上传,暂不支持在线逐文件编辑。可在设置中重新上传技能包。",
-    "reupload": "重新上传技能包"
+    "reupload": "重新上传技能包",
+    "nameRequired": "请填写技能名称",
+    "createTitle": "新建技能"
   },
   "sidebar": {
     "header": "技能市场",

@@ -10,6 +10,7 @@ import {
   trackSkillView,
   getSkillMd,
   createSkill,
+  createSkillFromScratch,
   updateSkill,
   deleteSkill,
   initUpload,
@@ -1190,5 +1191,49 @@ describe("skillApiReal", () => {
         name: "AbortError",
       });
     });
+  });
+});
+
+describe("createSkillFromScratch", () => {
+  const draft = {
+    displayName: "Team Notes",
+    name: "team-notes",
+    description: "notes helper",
+    tags: ["office"],
+    attachments: [
+      { path: "SKILL.md", rawContent: "# hi", readonly: false },
+      { path: "../evil.md", rawContent: "x", readonly: false },
+    ],
+  };
+
+  it("upserts a private skill from the edited tree (no publish by default)", async () => {
+    mockFetch.mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire() }));
+
+    await createSkillFromScratch(draft);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    const [url, init] = mockFetch.mock.calls[0];
+    expect(url).toContain("/plugins/upsert");
+    const body = JSON.parse(init.body);
+    expect(body.plugin.plugin_id).toBeUndefined();
+    expect(body.plugin.plugin_type).toBe("skill");
+    expect(body.plugin.visibility).toBe("private");
+    expect(body.plugin.manifest_json.plugin_type).toBe("skill");
+    expect(body.relations).toEqual([]);
+    // Path traversal is filtered; only the safe SKILL.md survives, as raw.
+    expect(body.plugin.plugin_json.attachments).toEqual([
+      { path: "SKILL.md", content_type: "raw", raw_content: "# hi" },
+    ]);
+  });
+
+  it("publishes the scene placement when publishToScene is true", async () => {
+    mockFetch
+      .mockReturnValueOnce(jsonResponse({ plugin: pluginSkillWire() }))
+      .mockReturnValueOnce(jsonResponse({}));
+
+    await createSkillFromScratch(draft, { publishToScene: true });
+
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+    expect(mockFetch.mock.calls[1][0]).toContain("/plugins/publish");
   });
 });

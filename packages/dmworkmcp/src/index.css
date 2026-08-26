@@ -4790,11 +4790,26 @@
   min-height: 40px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--wk-sp-2);
   padding: 0 var(--wk-sp-3);
   border: 1px solid var(--wk-border-subtle);
   border-radius: var(--wk-r-md);
   color: var(--wk-text-primary);
+}
+
+.wk-mcp-expert-editor__resource-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mcp-expert-editor__resource-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
 }
 
 .wk-mcp-expert-editor__empty {

@@ -46,9 +46,11 @@
       "mcpInvalid": "mcp.json 不是合法 JSON",
       "newSkill": "新建 Skill",
       "noSkills": "还没有包含的 Skill",
-      "skillsAfterCreate": "保存后可在此新建只属于该专家的 Skill",
-      "skillsComingSoon": "包内 Skill 编辑即将支持",
-      "leaveConfirm": "有未保存的修改,确定离开吗?"
+      "leaveConfirm": "有未保存的修改,确定离开吗?",
+      "edit": "编辑",
+      "remove": "移除",
+      "editSkill": "编辑 {{name}}",
+      "removeSkill": "移除 {{name}}"
     },
     "typeSquad": "专家团",
     "typeAgent": "专家",

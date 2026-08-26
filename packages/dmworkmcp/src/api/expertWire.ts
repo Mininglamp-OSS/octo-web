@@ -362,6 +362,7 @@ export function fromSkillPlugin(
   );
   return {
     name: plugin.plugin_name ?? "",
+    pluginId: plugin.plugin_id,
     hasContent: inlineMd || !!ref.object_key,
     // A tree skill is downloadable (the backend rebuilds a zip) when it carries
     // supporting files beyond SKILL.md; legacy skills need a resolvable pointer.

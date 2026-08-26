@@ -33,3 +33,4 @@ export const initReupload = realApi.initReupload;
 export const getDownloadUrl = realApi.getDownloadUrl;
 export const getSkillMd = realApi.getSkillMd;
 export const getSkillFiles = realApi.getSkillFiles;
+export const createSkillFromScratch = realApi.createSkillFromScratch;

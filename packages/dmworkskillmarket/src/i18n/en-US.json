@@ -27,7 +27,9 @@
     "leaveConfirm": "You have unsaved changes. Leave anyway?",
     "legacyTitle": "Packaged skill",
     "legacyNotice": "This skill was uploaded as a package and can't be edited per file. Reupload the package from Settings.",
-    "reupload": "Reupload package"
+    "reupload": "Reupload package",
+    "nameRequired": "Please enter a skill name",
+    "createTitle": "New skill"
   },
   "sidebar": {
     "header": "Skill Market",

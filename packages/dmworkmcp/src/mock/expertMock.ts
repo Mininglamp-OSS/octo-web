@@ -18,6 +18,9 @@
  */
 export interface ExpertSkill {
   name: string;
+  /** The bound skill's own plugin id (expert_skill relation target). Lets the
+   *  expert editor open it for editing and preserve/rebuild the relation. */
+  pluginId?: string;
   hasContent?: boolean;
   canDownload?: boolean;
   fileName?: string;

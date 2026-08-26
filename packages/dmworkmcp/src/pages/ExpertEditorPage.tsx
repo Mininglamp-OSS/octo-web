@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Plus, Save, X } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { WKApp, WKButton, t, useI18n } from "@octo/base";
+import { SkillEditorPage } from "@dmwork/skillmarket";
 import type { ExpertAgent } from "../mock/expertMock";
 import {
   createExpert,
@@ -52,6 +53,9 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
   const [instruction, setInstruction] = useState("");
   const [mcpConfig, setMcpConfig] = useState("");
   const [expert, setExpert] = useState<ExpertAgent | null>(null);
+  /** Bound skills managed by the editor ({pluginId,name}); init from the loaded
+   *  expert, mutated by new/edit/remove. Persisted as expert_skill relations. */
+  const [skills, setSkills] = useState<Array<{ pluginId: string; name: string }>>([]);
   const [categories, setCategories] = useState<string[]>([]);
   /** Set once a create succeeds so the page flips to edit-in-place (subsequent
    *  saves update instead of creating a duplicate) WITHOUT touching the route
@@ -99,6 +103,11 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
         setTags(e.tags ?? []);
         setInstruction(e.instruction ?? "");
         setMcpConfig(e.mcpConfig ?? "");
+        setSkills(
+          (e.skills ?? [])
+            .filter((s) => s.pluginId)
+            .map((s) => ({ pluginId: s.pluginId as string, name: s.name }))
+        );
         setDirty(false);
       })
       .catch(() => {
@@ -139,6 +148,37 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
     setDirty(true);
   };
 
+  const addSkill = () => {
+    WKApp.routeRight.push(
+      <SkillEditorPage
+        mode="create"
+        publishToScene={false}
+        onCommitted={({ id, name: skillName }) => {
+          setSkills((prev) => [...prev, { pluginId: id, name: skillName }]);
+          setDirty(true);
+        }}
+      />
+    );
+  };
+
+  const editSkill = (skill: { pluginId: string; name: string }) => {
+    WKApp.routeRight.push(
+      <SkillEditorPage
+        skillId={skill.pluginId}
+        onCommitted={({ id, name: skillName }) =>
+          setSkills((prev) =>
+            prev.map((s) => (s.pluginId === id ? { ...s, name: skillName } : s))
+          )
+        }
+      />
+    );
+  };
+
+  const removeSkill = (pluginId: string) => {
+    setSkills((prev) => prev.filter((s) => s.pluginId !== pluginId));
+    setDirty(true);
+  };
+
   const glyph = useMemo(
     () => (name || expert?.shortName || "?").trim().slice(0, 1),
     [name, expert]
@@ -172,7 +212,9 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
       tags,
       instruction,
       mcpConfig,
-      // skillIds omitted → preserve current bound skills on update.
+      // The editor owns the bound-skill list, so always send it (expert_skill
+      // relations are a full replace: adds new, drops removed).
+      skillIds: skills.map((s) => s.pluginId),
     };
     setSaving(true);
     try {
@@ -359,32 +401,46 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
               <div className="wk-mcp-expert-editor__block-title">
                 {t("mcp.expert.skillsTitle")}
               </div>
-              <WKButton
-                icon={<Plus size={15} />}
-                disabled={!isEdit}
-                onClick={() => {
-                  if (expert) openExpertSkillEditor(expert, showToast);
-                }}
-              >
+              <WKButton icon={<Plus size={15} />} onClick={addSkill}>
                 {t("mcp.expert.editor.newSkill")}
               </WKButton>
             </div>
-            {expert?.skills?.length ? (
+            {skills.length ? (
               <div className="wk-mcp-expert-editor__resource-list">
-                {expert.skills.map((skill, index) => (
+                {skills.map((skill) => (
                   <div
-                    key={`${skill.name}-${index}`}
+                    key={skill.pluginId}
                     className="wk-mcp-expert-editor__resource"
                   >
-                    <span>{skill.name}</span>
+                    <span className="wk-mcp-expert-editor__resource-name">
+                      {skill.name}
+                    </span>
+                    <div className="wk-mcp-expert-editor__resource-actions">
+                      <button
+                        type="button"
+                        className="wk-mcp-expert-editor__member-link"
+                        aria-label={t("mcp.expert.editor.editSkill", { values: { name: skill.name } })}
+                        onClick={() => editSkill(skill)}
+                      >
+                        <Pencil size={14} aria-hidden="true" />
+                        {t("mcp.expert.editor.edit")}
+                      </button>
+                      <button
+                        type="button"
+                        className="wk-mcp-expert-editor__member-link"
+                        aria-label={t("mcp.expert.editor.removeSkill", { values: { name: skill.name } })}
+                        onClick={() => removeSkill(skill.pluginId)}
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                        {t("mcp.expert.editor.remove")}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
               <div className="wk-mcp-expert-editor__empty">
-                {isEdit
-                  ? t("mcp.expert.editor.noSkills")
-                  : t("mcp.expert.editor.skillsAfterCreate")}
+                {t("mcp.expert.editor.noSkills")}
               </div>
             )}
           </section>
@@ -394,9 +450,4 @@ export default function ExpertEditorPage({ mode, expertId, onCommitted, publishT
       {toast && <div className="wk-mcp-expert-editor__toast">{toast}</div>}
     </div>
   );
-}
-
-/** Placeholder for the expert-scoped skill create/edit flow (wired next). */
-function openExpertSkillEditor(_expert: ExpertAgent, showToast: (m: string) => void) {
-  showToast(t("mcp.expert.editor.skillsComingSoon"));
 }

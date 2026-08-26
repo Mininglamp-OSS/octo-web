@@ -46,9 +46,11 @@
       "mcpInvalid": "mcp.json is not valid JSON",
       "newSkill": "New skill",
       "noSkills": "No bundled skills yet",
-      "skillsAfterCreate": "After saving you can create skills scoped to this expert",
-      "skillsComingSoon": "Bundled-skill editing coming soon",
-      "leaveConfirm": "You have unsaved changes. Leave anyway?"
+      "leaveConfirm": "You have unsaved changes. Leave anyway?",
+      "edit": "Edit",
+      "remove": "Remove",
+      "editSkill": "Edit {{name}}",
+      "removeSkill": "Remove {{name}}"
     },
     "typeSquad": "Squads",
     "typeAgent": "Experts",
