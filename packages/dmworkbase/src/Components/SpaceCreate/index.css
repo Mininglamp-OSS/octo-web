@@ -36,3 +36,7 @@
     gap: 8px;
     align-items: center;
 }
+
+.wk-spacecreate-invite-link .octo-ui-input {
+    flex: 1 1 auto;
+}

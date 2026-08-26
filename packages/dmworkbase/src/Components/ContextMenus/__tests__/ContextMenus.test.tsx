@@ -4,7 +4,7 @@
 
 import React from "react"
 import ReactDOM from "react-dom"
-import { act } from "react-dom/test-utils"
+import { act, Simulate } from "react-dom/test-utils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { Star } from "lucide-react"
 import ContextMenus, { ContextMenusContext, ContextMenusData } from "../index"
@@ -202,13 +202,15 @@ describe("ContextMenus rounded hover boundaries", () => {
             )
         })
 
-        const rootList = container.querySelector(".wk-contextmenus > ul")!
+        const rootMenu = container.querySelector(".wk-contextmenus [role='menu']")!
         const submenu = container.querySelector(".wk-ctx-submenu")!
+        const rootItems = rootMenu.querySelectorAll(":scope > .wk-ctx-item > button")
+        const submenuItems = submenu.querySelectorAll("button")
 
-        expect(rootList.querySelector(":scope > li:first-of-type")?.textContent).toContain("Move to")
-        expect(rootList.querySelector(":scope > li:last-of-type")?.textContent).toBe("Delete")
-        expect(submenu.querySelector(":scope > .wk-ctx-submenu-list > li:first-of-type")?.textContent).toBe("First group")
-        expect(submenu.querySelector(":scope > .wk-ctx-submenu-list > li:last-of-type")?.textContent).toBe("Last group")
+        expect(rootItems[0]?.textContent).toContain("Move to")
+        expect(rootItems[rootItems.length - 1]?.textContent).toBe("Delete")
+        expect(submenuItems[0]?.textContent).toBe("First group")
+        expect(submenuItems[submenuItems.length - 1]?.textContent).toBe("Last group")
     })
 
     it("keeps a long submenu inside the viewport and makes its list scrollable", () => {
@@ -225,7 +227,7 @@ describe("ContextMenus rounded hover boundaries", () => {
             )
         })
 
-        const parentItem = container.querySelector<HTMLElement>(".wk-contextmenus > ul > li")!
+        const parentItem = container.querySelector<HTMLElement>(".wk-contextmenus [role='menu'] > .wk-ctx-item")!
         const submenu = container.querySelector<HTMLElement>(".wk-ctx-submenu")!
         const submenuList = container.querySelector<HTMLElement>(".wk-ctx-submenu-list")!
         Object.defineProperty(submenuList, "scrollHeight", { configurable: true, value: 1200 })
@@ -242,11 +244,11 @@ describe("ContextMenus rounded hover boundaries", () => {
         })
 
         act(() => {
-            parentItem.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }))
+            Simulate.mouseEnter(parentItem)
         })
 
         expect(submenu.style.top).toBe("-732px")
-        expect(submenuList.querySelectorAll(":scope > li")).toHaveLength(30)
+        expect(submenuList.querySelectorAll("button")).toHaveLength(30)
     })
 })
 
@@ -262,7 +264,7 @@ describe("ContextMenus Lucide icons", () => {
             )
         })
 
-        expect(container.querySelector(".wk-contextmenus li .lucide-star.ctx-icon")).not.toBeNull()
-        expect(container.querySelector(".wk-contextmenus li")?.textContent).toBe("Follow")
+        expect(container.querySelector(".wk-contextmenus .wk-ctx-item .lucide-star.ctx-icon")).not.toBeNull()
+        expect(container.querySelector(".wk-contextmenus .wk-ctx-item")?.textContent).toBe("Follow")
     })
 })

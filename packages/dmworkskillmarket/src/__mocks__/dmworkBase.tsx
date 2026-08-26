@@ -1,42 +1,5 @@
 import React from "react";
 
-interface WKButtonMockProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  icon?: React.ReactNode;
-  iconOnly?: boolean;
-  loading?: boolean;
-  variant?: string;
-}
-
-export function WKButton({ children, icon, iconOnly, loading, disabled, ...props }: WKButtonMockProps) {
-  return (
-    <button disabled={disabled || loading} {...props}>
-      {loading ? "loading" : icon}
-      {!iconOnly && children}
-    </button>
-  );
-}
-
-interface WKInputMockProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "onChange" | "size" | "prefix"> {
-  prefix?: React.ReactNode;
-  size?: string;
-  value?: string;
-  onChange?: (value: string) => void;
-}
-
-export function WKInput({ value, onChange, prefix, placeholder, size: _size, ...props }: WKInputMockProps) {
-  return (
-    <label>
-      {prefix}
-      <input
-        value={value}
-        placeholder={placeholder}
-        onChange={(event) => onChange?.(event.target.value)}
-        {...props}
-      />
-    </label>
-  );
-}
-
 interface WKModalMockProps {
   visible: boolean;
   title?: React.ReactNode;

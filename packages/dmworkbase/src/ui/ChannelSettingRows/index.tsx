@@ -1,4 +1,4 @@
-import { Button, Input, TextArea } from "@douyinfe/semi-ui";
+import { Button, Input } from "@octo/ui";
 import { IconClear } from "@douyinfe/semi-icons";
 import React, { useEffect, useRef, useState } from "react";
 
@@ -189,7 +189,7 @@ export function ChannelSettingInlineEditRow({
     <div className="wk-channelsetting-inline-edit">
       <div className="wk-channelsetting-inline-edit-title">{title}</div>
       {multiline ? (
-        <TextArea
+        <Input.TextArea
           {...inputProps}
           showClear
           onClear={() => {

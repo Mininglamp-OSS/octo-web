@@ -1,5 +1,6 @@
 import React, { Component } from 'react';
-import { Modal, Input, List, Empty, Spin, Toast } from '@douyinfe/semi-ui';
+import { Input } from '@octo/ui';
+import { Modal, List, Empty, Spin, Toast } from '@douyinfe/semi-ui';
 import { IconClose, IconLink } from '@douyinfe/semi-icons';
 import { listSummaries } from '../api/summaryApi';
 import type { SummaryListItem } from '../types/summary';

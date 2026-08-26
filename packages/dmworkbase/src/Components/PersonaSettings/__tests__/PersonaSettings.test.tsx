@@ -62,9 +62,16 @@ vi.mock("../../../Service/APIClient", () => ({
 vi.mock("@douyinfe/semi-ui", () => ({
     Button: (props: any) =>
         React.createElement("button", { ...props, "data-testid": props["data-testid"] || "btn" }, props.children),
+    Toast: {
+        error: hoisted.toastError,
+        warning: hoisted.toastWarning,
+    },
+}))
+
+vi.mock("@octo/ui", () => ({
     // v2 (octo-web#73)：PersonaCard 现在内嵌 Switch 用作 active toggle。
     // 与 PersonaEdit.test 同款最小 stub —— 直接渲染原生 checkbox，
-    // 避免拉起 Semi 主题 / portal 层，同时让测试能用 fireEvent.click 触发 onChange。
+    // 避免拉起组件样式 / portal 层，同时让测试能用 fireEvent.click 触发 onChange。
     Switch: (props: any) =>
         React.createElement("input", {
             type: "checkbox",
@@ -72,10 +79,6 @@ vi.mock("@douyinfe/semi-ui", () => ({
             onChange: (e: any) => props.onChange && props.onChange(e.target.checked),
             "data-testid": props["data-testid"] || "persona-list-switch",
         }),
-    Toast: {
-        error: hoisted.toastError,
-        warning: hoisted.toastWarning,
-    },
 }))
 
 import PersonaSettings from "../index"

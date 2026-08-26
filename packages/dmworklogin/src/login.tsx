@@ -1,5 +1,7 @@
+import { Button } from "@octo/ui";
+import Select from "@octo/ui/select";
 import React, { Component, useState, useEffect, useRef } from "react";
-import { Button, Select, Spin, Toast } from '@douyinfe/semi-ui';
+import { Spin, Toast } from '@douyinfe/semi-ui';
 // 不引入特定渠道 icon (Mail / Phone 都不准确, Aegis 同时支持邮箱和手机号).
 // 主按钮纯文字, 避免锁定到任意一种登录方式让用户产生 "我没邮箱不能登" 的误判.
 import './login.css'
@@ -43,10 +45,13 @@ function openAegisRegister(registerUrl: string | undefined) {
     if (nextWindow) nextWindow.opener = null
 }
 
-const LoginLanguageSwitcher: React.FC = () => {
+let loginLanguageLabelSeq = 0
+
+export const LoginLanguageSwitcher: React.FC = () => {
     const { locale, setLocale, t } = useI18n()
     const languageContainerRef = useRef<HTMLDivElement>(null)
     const pointerLanguageSelectionRef = useRef(false)
+    const [labelId] = useState(() => `wk-login-language-label-${++loginLanguageLabelSeq}`)
     const nextLocale = getNextLocale(locale)
     const title = t(nextLocale === "en-US"
         ? "base.navRail.language.switchToEnglish"
@@ -84,6 +89,7 @@ const LoginLanguageSwitcher: React.FC = () => {
                 pointerLanguageSelectionRef.current = false
             }}
         >
+            <span id={labelId} className="wk-login-language-label">{title}</span>
             <Select
                 className="wk-login-language-select"
                 size="small"
@@ -92,7 +98,7 @@ const LoginLanguageSwitcher: React.FC = () => {
                 optionList={locales}
                 dropdownMatchSelectWidth={false}
                 position="bottomRight"
-                inputProps={{ 'aria-label': title }}
+                aria-labelledby={labelId}
                 onChange={handleSelect}
             />
         </div>

@@ -1,4 +1,5 @@
 import React, { Component, useState } from "react";
+import { Drawer } from "@octo/ui";
 import {
   Channel,
   ChannelTypePerson,
@@ -218,7 +219,7 @@ export default class ThreadPanel extends Component<
   declare context: React.ContextType<typeof I18nContext>;
 
   private vm: ThreadPanelVM | null = null;
-  private panelRef = React.createRef<HTMLDivElement>();
+  private panelRef = React.createRef<HTMLElement>();
   private dragStartX = 0;
   private dragStartWidth = 0;
   private lastPanelWidth = THREAD_DEFAULT_WIDTH;
@@ -365,11 +366,9 @@ export default class ThreadPanel extends Component<
     );
     this.lastPanelWidth = newWidth;
 
-    // Direct DOM update — no React re-render during drag
+    // Direct CSS variable update — no React re-render during drag
     const panel = this.panelRef.current;
     if (panel) {
-      panel.style.width = newWidth + "px";
-      // Update CSS variable on parent for chat area calc
       panel.parentElement?.style.setProperty(
         "--wk-width-thread-panel",
         newWidth + "px"
@@ -387,10 +386,15 @@ export default class ThreadPanel extends Component<
   };
 
   private onPanelDoubleClick = () => {
-    this.lastPanelWidth = THREAD_DEFAULT_WIDTH;
-    this.setState({ panelWidth: THREAD_DEFAULT_WIDTH });
-    persistThreadWidth(THREAD_DEFAULT_WIDTH);
-    this.syncCssVariable(THREAD_DEFAULT_WIDTH);
+    const resetWidth = clampThreadWidth(
+      THREAD_DEFAULT_WIDTH,
+      window.innerWidth,
+      this.getLeftPanelWidth()
+    );
+    this.lastPanelWidth = resetWidth;
+    this.setState({ panelWidth: resetWidth });
+    persistThreadWidth(resetWidth);
+    this.syncCssVariable(resetWidth);
   };
 
   /** Keep --wk-width-thread-panel in sync so chat area calc stays correct */
@@ -2064,7 +2068,6 @@ export default class ThreadPanel extends Component<
     const { filePreview } = this.props;
     const {
       view,
-      panelWidth,
       isDragging,
       isFilePanelOpen,
       conversationFiles,
@@ -2072,15 +2075,20 @@ export default class ThreadPanel extends Component<
       showWebhookPanel,
     } = this.state;
     const isSmallScreen = window.innerWidth <= SMALL_SCREEN_WIDTH;
-
-    const panelStyle = isSmallScreen
-      ? undefined
-      : {
-          width: `${panelWidth}px`,
-        };
+    const drawerWidth = "var(--wk-width-thread-panel-effective, var(--wk-width-thread-panel))";
 
     return (
-      <div className="wk-thread-panel" ref={this.panelRef} style={panelStyle}>
+      <Drawer
+        ref={this.panelRef}
+        inline
+        open
+        bodyFlush
+        closable={false}
+        aria-label={t("base.chatPage.threadPanel")}
+        className="wk-thread-panel"
+        closeOnEsc={false}
+        width={drawerWidth}
+      >
         {/* Left-edge splitter for resizing — hidden on small screens */}
         {!isSmallScreen && (
           <div
@@ -2130,7 +2138,7 @@ export default class ThreadPanel extends Component<
           )}
         </div>
         {isDragging && <div className="wk-thread-panel-drag-overlay" />}
-      </div>
+      </Drawer>
     );
   }
 }

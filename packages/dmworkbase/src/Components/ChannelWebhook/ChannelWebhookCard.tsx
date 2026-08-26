@@ -1,5 +1,5 @@
 import React from "react";
-import { Switch } from "@douyinfe/semi-ui";
+import { Switch } from "@octo/ui";
 import { Edit3, RefreshCw, Send, Trash2 } from "lucide-react";
 import {
     IncomingWebhook,
@@ -73,7 +73,7 @@ export default function ChannelWebhookCard({
                 </div>
                 {manageable && (
                     <Switch
-                        size="small"
+                        size="sm"
                         checked={enabled}
                         loading={toggling}
                         onChange={onToggle}

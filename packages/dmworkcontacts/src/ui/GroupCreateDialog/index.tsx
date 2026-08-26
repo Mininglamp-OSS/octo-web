@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Input } from "@douyinfe/semi-ui";
+import { Input } from "@octo/ui";
 import { Pencil } from "lucide-react";
 import { Channel, ChannelTypeGroup } from "wukongimjssdk";
 

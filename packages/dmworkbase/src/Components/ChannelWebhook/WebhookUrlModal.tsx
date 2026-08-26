@@ -1,3 +1,4 @@
+import { Button } from "@octo/ui";
 import { webOrigin } from "../../Utils/docLink";
 import React, { useEffect, useRef, useState } from "react";
 import { Toast } from "@douyinfe/semi-ui";
@@ -9,7 +10,6 @@ import {
     IconTickCircle,
 } from "@douyinfe/semi-icons";
 import WKModal from "../WKModal";
-import WKButton from "../WKButton";
 import WKApp from "../../App";
 import { useI18n } from "../../i18n";
 import { copyToClipboard } from "../../Utils/clipboard";
@@ -400,9 +400,9 @@ export default function WebhookUrlModal({ resp, onClose }: WebhookUrlModalProps)
             size="lg"
             options={{ closeOnEsc: false, maskClosable: false }}
             footer={
-                <WKButton variant="primary" onClick={onClose}>
+                <Button variant="solid" onClick={onClose}>
                     {t("base.channelWebhook.url.done")}
-                </WKButton>
+                </Button>
             }
             className="wk-webhook-modal"
         >

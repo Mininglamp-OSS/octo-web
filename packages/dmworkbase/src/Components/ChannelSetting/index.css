@@ -16,6 +16,7 @@
     padding: 0.5rem 0.8125rem;
     display: flex;
     align-items: center;
+    border-start-start-radius: var(--octo-ui-drawer-radius);
 }
 
 .wk-channelsetting-close {

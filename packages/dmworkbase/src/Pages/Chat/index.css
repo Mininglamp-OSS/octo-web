@@ -235,14 +235,29 @@
 }
 
 .wk-chat-content-right {
+  --wk-width-chat-content-min: 240px;
+  --wk-width-chat-search-panel-effective: min(
+    var(--wk-width-chat-search-panel),
+    max(0px, calc(100% - var(--wk-width-chat-content-min)))
+  );
+  --wk-width-thread-panel-effective: min(
+    var(--wk-width-thread-panel),
+    max(0px, calc(100% - var(--wk-width-chat-content-min)))
+  );
+
   width: 100%;
   height: 100%;
   display: flex;
   position: relative;
+  container-type: inline-size;
+  container-name: wk-chat-content-right;
 }
 
 @media screen and (max-width: 640px) {
   .wk-chat-content-right {
+    --wk-width-chat-search-panel-effective: min(var(--wk-width-chat-search-panel), 100%);
+    --wk-width-thread-panel-effective: min(var(--wk-width-thread-panel), 100%);
+
     width: 100%;
     position: fixed;
     left: 0;
@@ -549,47 +564,28 @@
 }
 
 .wk-chat-channelsetting {
-  pointer-events: auto;
-  width: var(--wk-wdith-chat-channelsetting);
-  height: 100%;
-  transition: margin-right 150ms ease-in-out 0s;
-  position: absolute;
-  z-index: 99;
-  top: 0;
-  right: 0;
-  border-left: var(--wk-line);
-  margin-right: calc(0px - var(--wk-wdith-chat-channelsetting));
-  background-color: var(--wk-color-secondary);
-
-  box-shadow: 0 0.25rem 0.5rem 0.125rem rgba(114, 114, 114, 0.25098); /* stylelint-disable-line */
-  border-left: none;
+  z-index: var(--octo-ui-z-drawer, 100);
 }
 
-body[theme-mode="dark"] .wk-chat-channelsetting {
-  box-shadow: 0 0.25rem 0.5rem 0.125rem rgba(0, 0, 0, 0.25098); /* stylelint-disable-line */
+.wk-chat-channelsetting .octo-ui-drawer__dialog {
+  box-shadow: none;
+}
+
+.wk-chat-channelsetting[data-octo-drawer-open="true"] .octo-ui-drawer__dialog {
+  box-shadow: var(--octo-ui-drawer-shadow-right);
+}
+
+.wk-chat-channelsetting[data-octo-drawer-open="true"][data-octo-drawer-motion="true"] .octo-ui-drawer__dialog {
+  transition: transform 150ms var(--octo-ui-ease-standard, ease-in-out),
+    box-shadow 0s linear 150ms;
 }
 
 .wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-content-chat {
   width: 100%;
 }
 
-.wk-chat-content-right.wk-chat-channelsetting-open .wk-chat-channelsetting {
-  margin-right: 0px;
-}
-
 .wk-chat-channel-search-panel {
-  pointer-events: auto;
-  width: var(--wk-width-chat-search-panel);
-  height: 100%;
-  transition: margin-right 150ms ease-in-out 0s;
-  position: absolute;
   z-index: 100;
-  top: 0;
-  right: 0;
-  margin-right: calc(0px - var(--wk-width-chat-search-panel));
-  background-color: var(--wk-bg-surface);
-  border-left: 1px solid var(--wk-border-default);
-  overflow: hidden;
 }
 
 .wk-chat-channel-search-stack,
@@ -627,12 +623,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
 }
 
 .wk-chat-content-right.wk-chat-channel-search-open .wk-chat-content-chat {
-  width: calc(100% - var(--wk-width-chat-search-panel));
-}
-
-.wk-chat-content-right.wk-chat-channel-search-open
-  .wk-chat-channel-search-panel {
-  margin-right: 0px;
+  width: calc(100% - var(--wk-width-chat-search-panel-effective));
 }
 
 /* ============================================
@@ -641,7 +632,22 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
 
 /* 子区/文件预览打开时，消息区宽度减去右侧面板宽度 */
 .wk-chat-content-right.wk-chat-threadpanel-open .wk-chat-content-chat {
-  width: calc(100% - var(--wk-width-thread-panel));
+  width: calc(100% - var(--wk-width-thread-panel-effective));
+}
+
+@container wk-chat-content-right (max-width: 575px) {
+  .wk-chat-channel-search-panel {
+    --wk-width-chat-search-panel-effective: min(var(--wk-width-chat-search-panel), 100%);
+  }
+
+  .wk-thread-panel {
+    --wk-width-thread-panel-effective: min(var(--wk-width-thread-panel), 100%);
+  }
+
+  .wk-chat-content-right.wk-chat-channel-search-open .wk-chat-content-chat,
+  .wk-chat-content-right.wk-chat-threadpanel-open .wk-chat-content-chat {
+    width: 100%;
+  }
 }
 
 .wk-chat-content-right.wk-chat-webhook-preview-open .wk-chat-content-chat {

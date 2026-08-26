@@ -16,6 +16,9 @@ vi.mock("@douyinfe/semi-ui", () => ({
 }));
 
 vi.mock("@douyinfe/semi-icons", () => ({
+  IconEyeClosed: () => <span />,
+  IconEyeOpened: () => <span />,
+  IconSearchStroked: () => <span />,
   IconTick: () => <span />,
 }));
 

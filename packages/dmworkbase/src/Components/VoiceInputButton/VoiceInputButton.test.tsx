@@ -43,10 +43,21 @@ vi.mock("../../Service/VoiceSettingsStore", async (importOriginal) => ({
 vi.mock("../../App", () => ({ default: { shared: { currentSpaceId: "space-a" }, mittBus: { on: vi.fn(), off: vi.fn() } } }));
 vi.mock("../../i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 vi.mock("lucide-react", () => ({ Mic: () => <span /> }));
-vi.mock("@douyinfe/semi-ui", () => ({
-  Toast: { warning: (...args: unknown[]) => mocks.toastWarning(...args), error: vi.fn() },
-  Dropdown: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
+vi.mock("@douyinfe/semi-ui", () => {
+  const Select = Object.assign(
+    ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+    {
+      Option: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+    },
+  );
+
+  return {
+    Toast: { warning: (...args: unknown[]) => mocks.toastWarning(...args), error: vi.fn() },
+    Dropdown: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+    LocaleConsumer: ({ children }: { children: (locale: { emptyText: string }) => React.ReactNode }) => children({ emptyText: "No options" }),
+    Select,
+  };
+});
 
 import VoiceInputButton from "./index";
 

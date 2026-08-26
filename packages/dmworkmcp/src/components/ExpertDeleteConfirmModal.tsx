@@ -1,6 +1,7 @@
+import { Button } from "@octo/ui";
 import React from "react";
 import { AlertTriangle } from "lucide-react";
-import { t, useI18n, WKButton, WKModal } from "@octo/base";
+import { t, useI18n, WKModal } from "@octo/base";
 import type { ExpertItem } from "../mock/expertMock";
 
 interface ExpertDeleteConfirmModalProps {
@@ -34,12 +35,12 @@ export default function ExpertDeleteConfirmModal({
       title={t("mcp.expert.deleteConfirmTitle")}
       footer={
         <>
-          <WKButton variant="secondary" onClick={onClose}>
+          <Button variant="secondary" onClick={onClose}>
             {t("mcp.expert.deleteCancel")}
-          </WKButton>
-          <WKButton variant="danger" onClick={submit}>
+          </Button>
+          <Button variant="danger" onClick={submit}>
             {t("mcp.expert.deleteOk")}
-          </WKButton>
+          </Button>
         </>
       }
     >

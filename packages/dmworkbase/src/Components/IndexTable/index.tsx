@@ -1,4 +1,4 @@
-import { Checkbox } from "@douyinfe/semi-ui/lib/es/checkbox";
+import { Checkbox } from "@octo/ui";
 import React, { Component } from "react";
 import { getPinyin } from "../../Utils/pinYin";
 import { toSimplized } from "../../Utils/t2s";

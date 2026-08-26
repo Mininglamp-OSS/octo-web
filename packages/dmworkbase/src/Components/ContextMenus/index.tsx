@@ -1,7 +1,7 @@
 import classNames from "classnames";
 import type { LucideIcon } from "lucide-react";
-import React, { HTMLProps } from "react";
-import { Component, ReactNode } from "react";
+import React, { Component, ReactNode } from "react";
+import { Dropdown } from "@octo/ui";
 
 import "./index.css"
 
@@ -229,18 +229,54 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
 
     _renderItem(m: ContextMenusData, i: number): ReactNode {
         if (m.separator) {
-            return <div key={i} className="wk-ctx-sep" />
+            return <Dropdown.Divider key={i} className="wk-ctx-sep" />
         }
 
         const hasChildren = m.children && m.children.length > 0
 
+        const submenu = hasChildren ? (
+            <div className="wk-ctx-submenu">
+                <Dropdown.Menu className="wk-ctx-submenu-list">
+                    {m.children!.map((child, ci) => {
+                        if (child.separator) {
+                            return <Dropdown.Divider key={ci} className="wk-ctx-sep" />
+                        }
+                        return (
+                            <Dropdown.Item
+                                key={ci}
+                                danger={child.danger}
+                                icon={child.icon ? <CtxIcon icon={child.icon} /> : undefined}
+                                suffix={child.checked ? (
+                                    <span className="wk-ctx-checked">✓</span>
+                                ) : undefined}
+                                onSelect={(e) => {
+                                    e.stopPropagation()
+                                    this.hide()
+                                    if (child.onClick) child.onClick()
+                                }}
+                            >
+                                {child.title}
+                            </Dropdown.Item>
+                        )
+                    })}
+                </Dropdown.Menu>
+            </div>
+        ) : undefined
+
         return (
-            <li
+            <Dropdown.Item
                 key={i}
                 data-testid={m.testid}
-                className={classNames(m.danger && "wk-ctx-danger")}
-                onMouseEnter={hasChildren ? (event) => this._positionSubmenu(event) : undefined}
-                onClick={(e) => {
+                danger={m.danger}
+                icon={m.icon ? <CtxIcon icon={m.icon} /> : undefined}
+                suffix={hasChildren ? <ArrowIcon /> : undefined}
+                shellClassName="wk-ctx-item"
+                shellProps={{
+                    onMouseEnter: hasChildren ? (event) => this._positionSubmenu(event) : undefined,
+                }}
+                submenu={submenu}
+                closeOnSelect={!hasChildren}
+                onSelect={(e) => {
                     if (hasChildren) {
                         e.stopPropagation()
                         return
@@ -249,45 +285,8 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                     if (m.onClick) m.onClick()
                 }}
             >
-                {m.icon && <CtxIcon icon={m.icon} />}
-                <span style={{ flex: 1 }}>{m.title}</span>
-                {hasChildren && (
-                    <>
-                        <ArrowIcon />
-                        <div className="wk-ctx-submenu">
-                            <ul className="wk-ctx-submenu-list">
-                                {m.children!.map((child, ci) => {
-                                    if (child.separator) {
-                                        return <div key={ci} className="wk-ctx-sep" />
-                                    }
-                                    return (
-                                        <li
-                                            key={ci}
-                                            onClick={(e) => {
-                                                e.stopPropagation()
-                                                this.hide()
-                                                if (child.onClick) child.onClick()
-                                            }}
-                                        >
-                                            {child.icon && <CtxIcon icon={child.icon} />}
-                                            <span style={{ flex: 1 }}>{child.title}</span>
-                                            {child.checked && (
-                                                <span style={{
-                                                    color: 'var(--wk-brand-primary, #1C1C23)',
-                                                    fontSize: 13,
-                                                    fontWeight: 600,
-                                                    flexShrink: 0,
-                                                    marginLeft: 4,
-                                                }}>✓</span>
-                                            )}
-                                        </li>
-                                    )
-                                })}
-                            </ul>
-                        </div>
-                    </>
-                )}
-            </li>
+                {m.title}
+            </Dropdown.Item>
         )
     }
 
@@ -302,9 +301,9 @@ export default class ContextMenus extends Component<ContextMenusProps, ContextMe
                     style={{ transformOrigin: `-3px ${contextOrigin}px` }}
                     onContextMenuCapture={this._handleContextMenu}
                 >
-                    <ul>
+                    <Dropdown.Menu>
                         {menus && menus.map((m, i) => this._renderItem(m, i))}
-                    </ul>
+                    </Dropdown.Menu>
                 </div>
                 <div
                     className="wk-contextmenus-mask"

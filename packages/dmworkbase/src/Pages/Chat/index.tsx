@@ -1,4 +1,5 @@
 import React, { Component, ReactNode } from "react";
+import { Drawer } from "@octo/ui";
 import { Conversation } from "../../Components/Conversation";
 import ConversationList, {
   ConvFilter,
@@ -17,7 +18,6 @@ import { ErrorBoundary } from "../../Components/ErrorBoundary";
 
 import { Spin, Popover, Toast } from "@douyinfe/semi-ui";
 import { getElectronLinksBridge } from "../../electron/desktopBridge";
-import WKButton from "../../Components/WKButton";
 import WKModal from "../../Components/WKModal";
 import { Columns2, ChevronRight } from "lucide-react";
 import ThreadIcon from "../../Components/Icons/ThreadIcon";
@@ -1332,7 +1332,17 @@ export class ChatContentPage extends Component<
           </div>
         </div>
 
-        <div className={classNames("wk-chat-channelsetting")}>
+        <Drawer
+          inline
+          keepDOM
+          open={showChannelSetting}
+          bodyFlush
+          closable={false}
+          aria-label={t("base.chatPage.channelSettings")}
+          className="wk-chat-channelsetting"
+          closeOnEsc={false}
+          width="var(--wk-wdith-chat-channelsetting)"
+        >
           <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
             <ChannelSetting
               conversationContext={this.conversationContext}
@@ -1345,10 +1355,19 @@ export class ChatContentPage extends Component<
               }}
             ></ChannelSetting>
           </ErrorBoundary>
-        </div>
+        </Drawer>
 
         {showChannelSearch && (
-          <div className="wk-chat-channel-search-panel">
+          <Drawer
+            inline
+            open={showChannelSearch}
+            bodyFlush
+            closable={false}
+            aria-label={t("base.chatPage.searchModuleName")}
+            className="wk-chat-channel-search-panel"
+            closeOnEsc={false}
+            width="var(--wk-width-chat-search-panel-effective, var(--wk-width-chat-search-panel))"
+          >
             <ErrorBoundary moduleName={t("base.chatPage.searchModuleName")}>
               <div
                 className={classNames(
@@ -1389,7 +1408,7 @@ export class ChatContentPage extends Component<
                 )}
               </div>
             </ErrorBoundary>
-          </div>
+          </Drawer>
         )}
 
         {/* 统一侧边面板：子区 + 文件预览共用一个壳子（仅群聊） */}

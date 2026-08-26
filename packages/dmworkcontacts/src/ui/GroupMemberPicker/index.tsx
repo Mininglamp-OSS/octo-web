@@ -1,11 +1,6 @@
+import { Button, Checkbox, CheckboxGroup, Input } from "@octo/ui";
 import React from "react";
-import {
-  Button,
-  Checkbox,
-  CheckboxGroup,
-  Input,
-  Space,
-} from "@douyinfe/semi-ui";
+import { Space } from "@douyinfe/semi-ui";
 
 import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import AiBadge from "@octo/base/src/Components/AiBadge";
@@ -27,7 +22,7 @@ function GroupMemberPicker({
   const memberList = (
     <div className="wk-organizational-group-new-left">
       <div className="group-new-left-search">
-        <Input
+        <Input.Search
           className="group-new-left-search-input"
           placeholder={copy.searchPlaceholder}
           value={keyword}
@@ -43,7 +38,7 @@ function GroupMemberPicker({
               style={{ width: "100%" }}
               value={Array.from(selectedUids)}
               disabled={disabled}
-              onChange={(values) => {
+              onValueChange={(values) => {
                 const next = new Set(values);
                 candidates.forEach((member) => {
                   if (next.has(member.uid) !== selectedUids.has(member.uid)) {

@@ -10,6 +10,7 @@ import {
     THREAD_MIN_WIDTH,
     THREAD_MAX_WIDTH,
     THREAD_DEFAULT_WIDTH,
+    THREAD_CHAT_MIN_WIDTH,
     THREAD_STORAGE_KEY,
     SUMMARY_MIN_WIDTH,
     SUMMARY_MAX_WIDTH,
@@ -28,6 +29,7 @@ import {
     getNavRailDragWidth,
     restoreNavRailWidth,
     persistNavRailWidth,
+    getMaxThreadWidth,
     clampThreadWidth,
     restoreThreadWidth,
     persistThreadWidth,
@@ -141,19 +143,24 @@ describe('layoutWidth', () => {
     })
 
     describe('thread panel', () => {
+        it('keeps the design-approved compact width at 336px', () => {
+            expect(THREAD_MIN_WIDTH).toBe(336)
+            expect(THREAD_DEFAULT_WIDTH).toBe(336)
+        })
+
         describe('clampThreadWidth', () => {
             it('clamps below minimum', () => {
                 expect(clampThreadWidth(100, 1200, 300)).toBe(THREAD_MIN_WIDTH)
             })
 
             it('limits to 50% of available space (window - left panel)', () => {
-                // window=1920, left=300 → available=1620 → max=810
-                expect(clampThreadWidth(1000, 1920, 300)).toBe(810)
+                // window=1920, nav=56, left=300 → available=1564 → max=782
+                expect(clampThreadWidth(1000, 1920, 300)).toBe(782)
             })
 
             it('ensures chat area gets at least 50% of available space', () => {
-                // window=1600, left=280 → available=1320 → max=660
-                expect(clampThreadWidth(900, 1600, 280)).toBe(660)
+                // window=1600, nav=56, left=280 → available=1264 → max=632
+                expect(clampThreadWidth(900, 1600, 280)).toBe(632)
             })
 
             it('caps at THREAD_MAX_WIDTH even if 50% would be higher', () => {
@@ -163,6 +170,24 @@ describe('layoutWidth', () => {
 
             it('passes through valid values', () => {
                 expect(clampThreadWidth(500, 1600, 300)).toBe(500)
+            })
+
+            it('falls back to the compact overlay width in constrained desktop windows', () => {
+                expect(getMaxThreadWidth(641, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(getMaxThreadWidth(700, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(getMaxThreadWidth(800, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(getMaxThreadWidth(916, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(clampThreadWidth(480, 800, 300)).toBe(THREAD_DEFAULT_WIDTH)
+            })
+
+            it('starts reserving chat space once the compact drawer and chat floor both fit', () => {
+                expect(getMaxThreadWidth(932, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(clampThreadWidth(480, 932, 300)).toBe(THREAD_DEFAULT_WIDTH)
+            })
+
+            it('keeps the design width on small screens so CSS can clamp to the viewport', () => {
+                expect(getMaxThreadWidth(375, 300)).toBe(THREAD_DEFAULT_WIDTH)
+                expect(clampThreadWidth(100, 375, 300)).toBe(THREAD_DEFAULT_WIDTH)
             })
         })
 

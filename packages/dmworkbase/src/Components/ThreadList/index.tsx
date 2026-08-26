@@ -1,5 +1,6 @@
+import { Button } from "@octo/ui";
 import React, { Component } from "react"
-import { Button, Spin, Toast, Tooltip } from "@douyinfe/semi-ui"
+import { Spin, Toast, Tooltip } from "@douyinfe/semi-ui";
 import { Channel } from "wukongimjssdk"
 import { UserPlus, LogOut, Trash2 } from "lucide-react"
 import { Thread, ThreadStatus } from "../../Service/Thread"
@@ -191,6 +192,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
                         size="small"
                         type="tertiary"
                         icon={<LogOut size={14} />}
+                        iconOnly
                         aria-label={t("base.module.thread.leave")}
                         onClick={(e) => this.handleLeave(thread, e)}
                       />
@@ -201,6 +203,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
                         size="small"
                         type="primary"
                         icon={<UserPlus size={14} />}
+                        iconOnly
                         aria-label={t("base.threadList.joinThread")}
                         onClick={(e) => this.handleJoin(thread, e)}
                       />
@@ -212,6 +215,7 @@ export class ThreadList extends Component<ThreadListProps, ThreadListState> {
                         size="small"
                         type="danger"
                         icon={<Trash2 size={14} />}
+                        iconOnly
                         aria-label={t("base.threadPanel.delete")}
                         className="wk-thread-item-action-btn"
                         onClick={(e) => this.handleDelete(thread, e)}

@@ -137,7 +137,7 @@
     box-sizing: border-box;
 }
 
-.wk-userinfo-footer-sendbutton .wk-btn {
+.wk-userinfo-footer-sendbutton .octo-ui-button {
     min-width: calc(var(--wk-sp-12) * 3);
     height: var(--wk-userinfo-action-height);
 }

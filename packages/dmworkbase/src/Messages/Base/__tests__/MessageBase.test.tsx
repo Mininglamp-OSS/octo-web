@@ -26,6 +26,13 @@ vi.mock("../../../i18n", async () => {
 })
 
 vi.mock("@douyinfe/semi-ui", () => ({
+  Checkbox: ({ children, prefixCls: _prefixCls, ...props }: React.InputHTMLAttributes<HTMLInputElement> & { prefixCls?: string }) => (
+    <label>
+      <input type="checkbox" {...props} />
+      {children}
+    </label>
+  ),
+  CheckboxGroup: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   Popconfirm: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }))
 
