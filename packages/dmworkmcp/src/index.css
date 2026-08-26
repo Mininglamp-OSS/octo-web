@@ -287,25 +287,6 @@
   flex-wrap: nowrap;
 }
 
-/* 结果摘要行 — 与 dmworkskillmarket 的 .skill-market-result-summary
-   视觉一致：位于卡片网格上方，展示总数（可扩展为排序等）。 */
-.wk-mcp__result-summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--wk-sp-3);
-  flex-wrap: wrap;
-  min-height: 36px;
-  margin-bottom: var(--wk-sp-3);
-  color: var(--wk-text-tertiary);
-  font: 500 13px/1.4 var(--wk-font-sans);
-}
-
-.wk-mcp__result-summary-total {
-  flex: 0 0 auto;
-  color: var(--wk-text-secondary);
-}
-
 .wk-mcp__search {
   min-width: 0;
   width: 360px;

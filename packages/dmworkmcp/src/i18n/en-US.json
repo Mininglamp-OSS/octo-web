@@ -77,7 +77,6 @@
     "memberCount": "{{count}} experts",
     "viewCountTitle": "{{count}} views",
     "installCountTitle": "Added to Loop {{count}} times",
-    "totalCount": "{{count}} total",
     "truncatedNotice": "Showing the first {{count}} — narrow with search or category",
     "sortAriaLabel": "Sort by",
     "sortComprehensive": "Recommended",
@@ -191,7 +190,6 @@
     "empty": "No matching MCP servers",
     "loadMore": "Scroll down to load more",
     "reachedEnd": "You've reached the end",
-    "total": "Total {{count}} MCPs",
     "navLabel": "MCP marketplace navigation",
     "mode": {
       "all": "All",

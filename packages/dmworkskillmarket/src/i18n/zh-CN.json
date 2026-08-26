@@ -68,7 +68,6 @@
     "errorTitle": "加载失败",
     "retry": "重试",
     "empty": "暂无数据",
-    "totalCount": "共 {{count}} 个技能",
     "loadMore": "继续加载...",
     "deleted": "已删除",
     "created": "创建成功",

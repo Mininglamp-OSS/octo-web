@@ -68,7 +68,6 @@
     "errorTitle": "Failed to load",
     "retry": "Retry",
     "empty": "No data",
-    "totalCount": "Total {{count}} Skills",
     "loadMore": "Load more...",
     "deleted": "Deleted",
     "created": "Created successfully",

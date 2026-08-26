@@ -98,17 +98,21 @@ export default function SquadEditorPage({ mode, squadId }: SquadEditorPageProps)
         setCategory(s.category);
         setTags(s.tags ?? []);
         setInstruction(s.instruction ?? "");
-        setMembers(
-          (s.members ?? [])
-            .filter((m) => m.pluginId)
-            .map((m) => ({
-              pluginId: m.pluginId as string,
-              name: m.name,
-              memberKey: m.key,
-              role: m.role,
-              leader: !!m.leader,
-            }))
-        );
+        const loaded = (s.members ?? [])
+          .filter((m) => m.pluginId)
+          .map((m) => ({
+            pluginId: m.pluginId as string,
+            name: m.name,
+            memberKey: m.key,
+            role: m.role,
+            leader: !!m.leader,
+          }));
+        // A leader is required: a squad authored before this rule (or by a bot)
+        // may carry no leader — promote the first member so save isn't blocked.
+        if (loaded.length && !loaded.some((m) => m.leader)) {
+          loaded[0] = { ...loaded[0], leader: true };
+        }
+        setMembers(loaded);
         setDirty(false);
       })
       .catch(() => {
