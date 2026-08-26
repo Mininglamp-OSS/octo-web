@@ -24,6 +24,9 @@ import * as api from '../api/summaryApi';
  */
 let summaryAttentionBadge = 0;
 let refreshSeq = 0;
+// 在飞请求按 Space 缓存。只合并同一 Space 的并发拉取；跨 Space 绝不复用，
+// 否则切空间后的调用会拿到上一个 Space 的计数。
+let inFlight: { spaceId: string; promise: Promise<void> } | null = null;
 
 export function getSummaryAttentionBadge(): number {
     return summaryAttentionBadge;
@@ -32,8 +35,13 @@ export function getSummaryAttentionBadge(): number {
 /**
  * 更新计数并刷新 NavRail。相同值不重复触发，避免宿主 forceUpdate
  * 风暴（docs/module.tsx 注释：宿主 re-render 是高频 sync priority）。
+ *
+ * 写入同时作废掉在飞的 refresh（共用 refreshSeq）：全局列表的响应携带完整
+ * 分页数据，至少与并发的 page_size=1 探测同鲜。不共用序号的话，两个写者
+ * 只是“碰巧现在返回同一个数”，而不是真的有序。
  */
 export function setSummaryAttentionBadge(count: number): void {
+    refreshSeq++;
     const next = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
     if (next === summaryAttentionBadge) return;
     summaryAttentionBadge = next;
@@ -44,17 +52,28 @@ export function setSummaryAttentionBadge(count: number): void {
  * 拉取当前 space 的待关注数并更新红点。
  * 失败静默：红点是锦上添花，网络异常不应打扰用户（与 SummaryListPage
  * silent refresh 同样的克制原则）。
+ *
+ * 同 Space 并发合并：一次变更常常同时触发多个入口（如提交后既发
+ * summary-task-regenerated 让列表重拉、又直接调本函数兼顾列表未挂载的
+ * 情况），共用同一个在飞请求，避免发出两个等价的 page_size=1 查询。
  */
 export async function refreshSummaryAttentionBadge(): Promise<void> {
-    const seq = ++refreshSeq;
     const spaceId = WKApp.shared.currentSpaceId;
     if (!WKApp.loginInfo.isLogined() || !WKApp.loginInfo.uid || !spaceId) return;
+    if (inFlight && inFlight.spaceId === spaceId) return inFlight.promise;
 
-    try {
-        const resp = await api.listSummaries({ page: 1, page_size: 1 });
-        if (seq !== refreshSeq || WKApp.shared.currentSpaceId !== spaceId) return;
-        setSummaryAttentionBadge(resp.attention_count ?? 0);
-    } catch {
-        // 静默失败，保持旧值。
-    }
+    const seq = ++refreshSeq;
+    const promise = (async () => {
+        try {
+            const resp = await api.listSummaries({ page: 1, page_size: 1 });
+            if (seq !== refreshSeq || WKApp.shared.currentSpaceId !== spaceId) return;
+            setSummaryAttentionBadge(resp.attention_count ?? 0);
+        } catch {
+            // 静默失败，保持旧值。
+        } finally {
+            if (inFlight?.promise === promise) inFlight = null;
+        }
+    })();
+    inFlight = { spaceId, promise };
+    return promise;
 }

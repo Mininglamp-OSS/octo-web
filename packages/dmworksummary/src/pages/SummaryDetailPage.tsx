@@ -730,8 +730,15 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 taskId: detail.task_id,
                                 isUnread: attention.is_unread,
                                 needsAttention: attention.needs_attention,
+                                hasPendingSubmission: attention.has_pending_submission,
                             },
                         }));
+                        // 读是 attention_count 最频繁的减少来源（后端 unread 项直接降），
+                        // 而侧边栏只由全局列表 loadData 回写，summary-read 不触发
+                        // loadData。不刷的话：读完三条未读，三个红点都消失、导航栏依旧
+                        // 显示 3，直到切模块或切 Space 才自愈。放在详情页而非列表的
+                        // handleSummaryRead_，因为列表未挂载（聊天侧栏/深链）时同样需要刷。
+                        refreshSummaryAttentionBadge();
                     }
                 }).catch(() => { /* keep unread on failure */ });
             }
@@ -871,8 +878,11 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                                 taskId: requestTaskId,
                                 isUnread: attention.is_unread,
                                 needsAttention: attention.needs_attention,
+                                hasPendingSubmission: attention.has_pending_submission,
                             },
                         }));
+                        // 同上：标读降低了后端 attention_count，必须重新拉一次侧边栏计数。
+                        refreshSummaryAttentionBadge();
                     }
                 }).catch(() => { /* keep unread on failure */ });
             }
@@ -4078,7 +4088,7 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
         this.setState({ confirmingSchedule: true });
         try {
             await api.confirmSchedule(scheduleItem.schedule_id);
-            // schedule 邀请也是 pending_invitation_count 的组成部分；确认成功后
+            // schedule 邀请也是 attention_count 的组成部分；确认成功后
             // 立即按当前 Space 重算，即使等待期间用户已切到另一条总结。
             refreshSummaryAttentionBadge();
             // 迟到（已切 task）：不回显新 task（confirmingSchedule 由 finally 复位）。

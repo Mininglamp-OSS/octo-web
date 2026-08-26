@@ -111,21 +111,30 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             taskId: number;
             isUnread?: boolean;
             needsAttention?: boolean;
+            hasPendingSubmission?: boolean;
         }>).detail;
         const taskId = detail?.taskId;
         if (!detail || !taskId) return;
         this.setState(({ items }) => ({
-            items: items.map(item => item.task_id === taskId
-                ? {
+            items: items.map(item => {
+                if (item.task_id !== taskId) return item;
+                // 看过 ≠ 已提交（owner 2026-08-26）：标读不清除待提交红点。
+                // 优先用服务端刚回的 hasPendingSubmission（MarkSummaryRead 现在会返回），
+                // 它比列表里可能已陈旧的 item.has_pending_submission 新。
+                const pendingSubmission = detail.hasPendingSubmission ?? item.has_pending_submission;
+                return {
                     ...item,
                     is_unread: detail.isUnread ?? false,
+                    has_pending_submission: pendingSubmission,
                     // 后端只在旧版本省略 needsAttention；兼容回退必须覆盖全部
-                    // 非未读信号，否则标读会误清邀请/待提交红点。尤其是待提交：
-                    // 看过 ≠ 已提交（owner 2026-08-26），红点应留到真的 /submit。
-                    needs_attention: detail.needsAttention
-                        ?? (Boolean(item.has_pending_invitation) || Boolean(item.has_pending_submission)),
-                }
-                : item),
+                    // 非未读信号，否则标读会误清邀请/待提交红点。
+                    // ⚠️ 旧后端的 needs_attention 不含待提交，会返回 false 并赢过 ??，
+                    // 所以这里额外 OR 一次：只要确实欠着提交，红点就不该掉。
+                    needs_attention: (detail.needsAttention
+                        ?? (Boolean(item.has_pending_invitation) || Boolean(pendingSubmission)))
+                        || Boolean(pendingSubmission),
+                };
+            }),
         }));
     };
 

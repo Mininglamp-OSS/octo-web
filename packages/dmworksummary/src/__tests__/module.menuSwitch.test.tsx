@@ -157,7 +157,7 @@ describe("SummaryModule guarded menu switching", () => {
     expect(state.replaceToRoot).toHaveBeenCalledTimes(1);
   });
 
-  it("refreshes the invitation badge once when the initial Space becomes ready", () => {
+  it("refreshes the attention badge once when the initial Space becomes ready", () => {
     registeredHandler("space-ready")();
 
     expect(refreshSummaryAttentionBadge).toHaveBeenCalledTimes(1);

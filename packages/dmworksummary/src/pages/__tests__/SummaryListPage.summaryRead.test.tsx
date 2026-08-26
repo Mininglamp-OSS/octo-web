@@ -108,6 +108,41 @@ describe('SummaryListPage summary-read synchronization', () => {
         expect((page.state as any).items[1]).toMatchObject({ is_unread: false, needs_attention: true });
     });
 
+    // The branch that actually runs against a backend without the paired change:
+    // it returns needs_attention=false (its formula excludes pending submission),
+    // which wins the ?? and would clear a dot the user still owes. The forwarded
+    // hasPendingSubmission from the mark-read response has to override it.
+    it('holds the dot when an older backend reports needs_attention=false but a submit is owed', () => {
+        const page = makePage([
+            { task_id: 1, is_unread: true, has_pending_invitation: false, has_pending_submission: true, needs_attention: true },
+        ]);
+
+        (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
+            detail: { taskId: 1, isUnread: false, needsAttention: false, hasPendingSubmission: true },
+        }));
+
+        expect((page.state as any).items[0]).toMatchObject({
+            is_unread: false, has_pending_submission: true, needs_attention: true,
+        });
+    });
+
+    // The mirror case: the server says the submission landed (another tab, or the
+    // system back-fill on a scheduled task), so the stale list flag must not
+    // resurrect the dot.
+    it('clears the dot when the server reports the submission is no longer pending', () => {
+        const page = makePage([
+            { task_id: 1, is_unread: true, has_pending_invitation: false, has_pending_submission: true, needs_attention: true },
+        ]);
+
+        (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
+            detail: { taskId: 1, isUnread: false, needsAttention: false, hasPendingSubmission: false },
+        }));
+
+        expect((page.state as any).items[0]).toMatchObject({
+            is_unread: false, has_pending_submission: false, needs_attention: false,
+        });
+    });
+
     it('ignores events without a taskId', () => {
         const page = makePage([{ task_id: 1, is_unread: true, needs_attention: true }]);
 
