@@ -760,6 +760,28 @@ export default class McpMarketListPage extends Component<
               </button>
             ))}
           </div>
+          {this.props.variant !== "mine" && (
+            // Sort pinned to the top-right of the category row; reuses the expert
+            // market's sort styling (same package) so the markets read alike.
+            <div className="wk-mcp-expert-sort" aria-label={t("mcp.list.sortAriaLabel")}>
+              <div className="wk-mcp-expert-sort__options">
+                {([
+                  ["latest", "mcp.list.sortLatest"],
+                  ["hottest", "mcp.list.sortHottest"],
+                ] as Array<[McpSort, string]>).map(([value, labelKey]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={this.state.sort === value ? "is-active" : ""}
+                    aria-pressed={this.state.sort === value}
+                    onClick={() => this.handleSortChange(value)}
+                  >
+                    <span>{t(labelKey)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div
@@ -781,33 +803,6 @@ export default class McpMarketListPage extends Component<
               </div>
             ) : (
               <>
-                {this.props.variant !== "mine" && (
-                  // Reuses the expert market's sort styling (same package) so the
-                  // three markets read alike. 最新 → newest, 最热 → install popularity.
-                  <div className="wk-mcp-expert-result-summary">
-                    <div
-                      className="wk-mcp-expert-sort"
-                      aria-label={t("mcp.list.sortAriaLabel")}
-                    >
-                      <div className="wk-mcp-expert-sort__options">
-                        {([
-                          ["latest", "mcp.list.sortLatest"],
-                          ["hottest", "mcp.list.sortHottest"],
-                        ] as Array<[McpSort, string]>).map(([value, labelKey]) => (
-                          <button
-                            key={value}
-                            type="button"
-                            className={this.state.sort === value ? "is-active" : ""}
-                            aria-pressed={this.state.sort === value}
-                            onClick={() => this.handleSortChange(value)}
-                          >
-                            <span>{t(labelKey)}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
                 {items.length === 0 ? (
                   <div className="wk-mcp__state">{t("mcp.list.empty")}</div>
                 ) : (

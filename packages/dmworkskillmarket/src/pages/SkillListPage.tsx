@@ -258,41 +258,37 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         }
       >
         {!mine && (
-          <CategoryChips
-            categories={list.categories}
-            activeId={list.categoryId}
-            onChange={list.setCategoryId}
-          />
-        )}
-      </section>
-
-      <main className="skill-market-content">
-        {!list.loading && !list.error && !mine && (
-          <div className="skill-market-result-summary">
+          <>
+            <CategoryChips
+              categories={list.categories}
+              activeId={list.categoryId}
+              onChange={list.setCategoryId}
+            />
             <div
               className="skill-market-sort"
               aria-label={t("skillMarket.sort.ariaLabel")}
             >
-                <div className="skill-market-sort__options">
-                  {SORT_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      data-testid="skill-sort-option"
-                      className={
-                        sort === option.value ? "is-active" : undefined
-                      }
-                      aria-pressed={sort === option.value}
-                      onClick={() => handleSortChange(option.value)}
-                    >
-                      <span>{t(option.labelKey)}</span>
-                      {option.descending && <ArrowDown size={12} aria-hidden="true" />}
-                    </button>
-                  ))}
-                </div>
+              <div className="skill-market-sort__options">
+                {SORT_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    data-testid="skill-sort-option"
+                    className={sort === option.value ? "is-active" : undefined}
+                    aria-pressed={sort === option.value}
+                    onClick={() => handleSortChange(option.value)}
+                  >
+                    <span>{t(option.labelKey)}</span>
+                    {option.descending && <ArrowDown size={12} aria-hidden="true" />}
+                  </button>
+                ))}
               </div>
-          </div>
+            </div>
+          </>
         )}
+      </section>
+
+      <main className="skill-market-content">
         {list.loading && (
           <div
             className="skill-market-grid"

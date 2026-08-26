@@ -222,8 +222,8 @@
   display: flex;
   align-items: flex-start;
   justify-content: flex-start;
-  gap: var(--wk-sp-2);
-  flex-wrap: wrap;
+  gap: var(--wk-sp-4);
+  flex-wrap: nowrap;
   padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
 }

@@ -655,6 +655,22 @@ export default function ExpertMarketListPage({
               </button>
             ))}
           </div>
+          <div className="wk-mcp-expert-sort" aria-label={t("mcp.expert.sortAriaLabel")}>
+            <div className="wk-mcp-expert-sort__options">
+              {SORT_OPTIONS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={sort === option.value ? "is-active" : ""}
+                  aria-pressed={sort === option.value}
+                  onClick={() => setSort(option.value)}
+                >
+                  <span>{t(option.labelKey)}</span>
+                  {option.descending && <ArrowDown size={12} aria-hidden="true" />}
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
       )}
 
@@ -746,25 +762,6 @@ export default function ExpertMarketListPage({
           </div>
         ) : (
           <>
-            <div className="wk-mcp-expert-result-summary">
-              <div className="wk-mcp-expert-sort" aria-label={t("mcp.expert.sortAriaLabel")}>
-                <div className="wk-mcp-expert-sort__options">
-                  {SORT_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={sort === option.value ? "is-active" : ""}
-                      aria-pressed={sort === option.value}
-                      onClick={() => setSort(option.value)}
-                    >
-                      <span>{t(option.labelKey)}</span>
-                      {option.descending && <ArrowDown size={12} aria-hidden="true" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
             {isTruncated && (
               <p className="wk-mcp-expert-truncated" role="note">
                 {t("mcp.expert.truncatedNotice", {

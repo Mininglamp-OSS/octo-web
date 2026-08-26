@@ -282,9 +282,9 @@
   padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-subtle);
   display: flex;
-  align-items: center;
-  gap: var(--wk-sp-3);
-  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--wk-sp-4);
+  flex-wrap: nowrap;
 }
 
 /* 结果摘要行 — 与 dmworkskillmarket 的 .skill-market-result-summary
@@ -2599,18 +2599,19 @@
 
 .wk-mcp-expert-filter-bar {
   display: flex;
-  align-items: center;
-  min-height: 48px;
-  padding: 0 var(--wk-sp-6);
+  align-items: flex-start;
+  gap: var(--wk-sp-4);
+  padding: var(--wk-sp-3) var(--wk-sp-6);
   border-bottom: 1px solid var(--wk-border-default);
 }
 
 .wk-mcp-expert-categories {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--wk-sp-2);
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 
 .wk-mcp-expert-categories::-webkit-scrollbar {
