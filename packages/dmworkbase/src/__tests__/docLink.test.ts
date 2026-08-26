@@ -1,56 +1,122 @@
-import { describe, it, expect } from 'vitest'
-import { buildDocLink } from '../Utils/docLink'
+import { describe, it, expect, vi } from 'vitest'
+import {
+  buildDocLink,
+  resolveDocLinkForExternalOpen,
+} from '../Utils/docLink'
+import { isHttpOrigin, resolveWebOrigin } from '../Utils/webOrigin'
+import APIClient from '../Service/APIClient'
 
-describe('buildDocLink — standalone `/d/:docId` share form (bypasses the host query-wipe, XIN-450)', () => {
+const apiConfig = APIClient.shared.config as unknown as { apiURL: string }
+
+describe('buildDocLink — standalone `/d/:docId` share form (Phase-1 no-sp reader)', () => {
   it('points at the standalone `/d/<docId>` page, not the in-shell `/docs?doc=` route', () => {
     const link = buildDocLink({ docId: 'd_1', space: 'demo', folder: 'f_default' })
     expect(link).toContain('/d/d_1')
-    // The doc no longer rides on a wipeable query param.
     expect(link).not.toContain('/docs?')
     expect(link).not.toContain('doc=d_1')
-    // The legacy `space=`/`folder=` in-shell params are gone; the doc's real space rides on the
-    // dedicated `?sp=` param instead (XIN-501), so the recipient's preflight can address the doc's
-    // own space.
     expect(link).not.toContain('space=')
     expect(link).not.toContain('folder=')
   })
 
-  it('embeds the doc real space as `?sp=` so the recipient preflight addresses the doc space (XIN-501)', () => {
+  it('never emits `?sp=` even when a document space is supplied', () => {
     const link = buildDocLink({ docId: 'd_1', space: '105d4a60d0fc4d55a5cfc3c2d0501361' })
-    expect(link).toContain('sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+    expect(link).toBe('http://localhost:3000/d/d_1')
+    expect(link).not.toContain('sp=')
   })
 
-  it('never carries the token-bucket `?sid`, even when a currentSpaceId is persisted (XIN-513)', () => {
-    // The link no longer mints `?sid` — an already-logged-in recipient's session is recovered from
-    // storage independently of the URL. Only the doc's real space rides along, on `?sp`.
+  it('never carries the token-bucket `?sid`, even when currentSpaceId is persisted', () => {
     try {
       window.localStorage.setItem('currentSpaceId', 'sp_current')
-      const link = buildDocLink({ docId: 'd_1', space: '105d4a60d0fc4d55a5cfc3c2d0501361' })
+      const link = buildDocLink({ docId: 'd_1', space: 'space_doc' })
+      expect(link).toBe('http://localhost:3000/d/d_1')
       expect(link).not.toContain('sid=')
-      expect(link).toContain('sp=105d4a60d0fc4d55a5cfc3c2d0501361')
+      expect(link).not.toContain('sp=')
     } finally {
       window.localStorage.removeItem('currentSpaceId')
     }
   })
 
-  it('omits `?sp` when no space is provided', () => {
-    expect(buildDocLink({ docId: 'd_1b' })).not.toContain('sp=')
+  it('works with only a docId and URL-encodes it', () => {
+    expect(buildDocLink({ docId: 'd_2' })).toBe('http://localhost:3000/d/d_2')
+    expect(buildDocLink({ docId: 'a b' })).toBe('http://localhost:3000/d/a%20b')
   })
 
-  it('works with only a docId', () => {
-    expect(buildDocLink({ docId: 'd_2' })).toContain('/d/d_2')
-  })
-
-  it('never appends `?sid`, so a sid-less link works with only a docId (XIN-513)', () => {
+  it('falls back to the API origin when the shell origin is "null" or "file://" (packaged build)', () => {
+    // Packaged Electron shells load over file:// where window.location.origin
+    // is a literal non-origin string ("file://" on Electron 26, "null" on
+    // older specs/jsdom). Concatenating it produced file:///d/<docId> or
+    // null/d/<docId>; the shared allowlist helper must fall back to the API
+    // origin so the outgoing link is a real web URL.
+    const originalApiURL = apiConfig.apiURL
+    apiConfig.apiURL = 'https://im-test.deepminer.com.cn/api/v1/'
     try {
-      window.localStorage.setItem('currentSpaceId', 'sp_current')
-      expect(buildDocLink({ docId: 'd_3' })).not.toContain('sid=')
+      for (const badOrigin of ['null', 'file://']) {
+        vi.stubGlobal('location', { protocol: 'file:', origin: badOrigin, href: 'file:///app/index.html' })
+        expect(buildDocLink({ docId: 'd_1' })).toBe('https://im-test.deepminer.com.cn/d/d_1')
+        vi.unstubAllGlobals()
+      }
     } finally {
-      window.localStorage.removeItem('currentSpaceId')
+      apiConfig.apiURL = originalApiURL
     }
   })
 
-  it('omits sid when neither the URL nor currentSpaceId provides one', () => {
-    expect(buildDocLink({ docId: 'd_4' })).not.toContain('sid=')
+  it('degrades to a root-relative /d/<docId> when neither origin resolves', () => {
+    const originalApiURL = apiConfig.apiURL
+    apiConfig.apiURL = ''
+    try {
+      vi.stubGlobal('location', { protocol: 'file:', origin: 'null', href: 'file:///app/index.html' })
+      expect(buildDocLink({ docId: 'd_1' })).toBe('/d/d_1')
+      vi.unstubAllGlobals()
+    } finally {
+      apiConfig.apiURL = originalApiURL
+    }
+  })
+})
+
+describe('resolveDocLinkForExternalOpen (desktop bridge normalization)', () => {
+  it('passes absolute http(s) links through untouched', () => {
+    expect(
+      resolveDocLinkForExternalOpen('https://im-test.example.com/d/d_1', 'https://api.example.com')
+    ).toBe('https://im-test.example.com/d/d_1')
+  })
+
+  it('resolves root-relative links against the API origin (file:// shell case)', () => {
+    expect(
+      resolveDocLinkForExternalOpen('/d/doc_1', 'https://im-test.example.com')
+    ).toBe('https://im-test.example.com/d/doc_1')
+  })
+
+  it('degrades to the input when no API origin is available', () => {
+    expect(resolveDocLinkForExternalOpen('/d/doc_1', '')).toBe('/d/doc_1')
+  })
+})
+
+describe('resolveWebOrigin / isHttpOrigin (pure)', () => {
+  it('accepts http(s) document origins as-is', () => {
+    expect(resolveWebOrigin('https://app.example.com', 'https://api.example.com/v1/')).toBe('https://app.example.com')
+    expect(resolveWebOrigin('http://localhost:3000', undefined)).toBe('http://localhost:3000')
+  })
+
+  it('falls back to the API origin for every non-http(s) document origin', () => {
+    // "file://" is what Electron 26 actually reports; "null" is the older
+    // spec/jsdom value. Both are truthy strings — a denylist of one misses
+    // the other, which is exactly the round-7/round-8 bug.
+    for (const bad of ['file://', 'null', 'about://', 'weird', '']) {
+      expect(resolveWebOrigin(bad, 'https://api.example.com/v1/')).toBe('https://api.example.com')
+    }
+  })
+
+  it('returns "" when neither side resolves', () => {
+    expect(resolveWebOrigin(undefined, undefined)).toBe('')
+    expect(resolveWebOrigin('file://', 'not-a-url')).toBe('')
+  })
+
+  it('isHttpOrigin is an http(s) allowlist', () => {
+    expect(isHttpOrigin('https://a.com')).toBe(true)
+    expect(isHttpOrigin('http://a.com:8080')).toBe(true)
+    expect(isHttpOrigin('file://')).toBe(false)
+    expect(isHttpOrigin('null')).toBe(false)
+    expect(isHttpOrigin(undefined)).toBe(false)
+    expect(isHttpOrigin('')).toBe(false)
   })
 })

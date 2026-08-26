@@ -1,12 +1,16 @@
 import React, { Component } from "react";
-import { I18nContext, t, WKApp } from "@octo/base";
+import { I18nContext, t, WKApp, Dap } from "@octo/base";
 import { SkillListPage } from "@dmwork/skillmarket";
 import McpMarketListPage from "../pages/McpMarketListPage";
+import ExpertMarketListPage from "../pages/ExpertMarketListPage";
 
 interface MarketItem {
   id: string;
   routePath: string;
   label: () => string;
+  /** Optional pill shown to the right of the label (e.g. "回路" on experts,
+   *  signalling the catalog feeds the Loop module). */
+  badge?: () => string;
   render: () => React.ReactElement;
 }
 
@@ -27,6 +31,13 @@ const MARKET_ITEMS: MarketItem[] = [
     routePath: "/mcp-market/skills",
     label: () => t("mcp.sidebar.skills"),
     render: () => <SkillListPage />,
+  },
+  {
+    id: "experts",
+    routePath: "/mcp-market/experts",
+    label: () => t("mcp.sidebar.experts"),
+    badge: () => t("mcp.sidebar.expertsBadge"),
+    render: () => <ExpertMarketListPage />,
   },
 ];
 
@@ -60,9 +71,22 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
       MARKET_ITEMS[0].id,
   };
 
+  private configUnsubscribers: Array<() => void> = [];
+
   componentDidMount() {
     WKApp.mittBus.on("space-changed", this.handleSpaceChanged);
     WKApp.mittBus.on("wk:nav-menu-activated", this.handleNavMenuActivated);
+    // appconfig is fetched asynchronously, so at mount dmloopOn is usually
+    // still its default false. Re-render when the first load resolves
+    // (addListener) and on any later ops flip (addConfigChangeListener) so
+    // the 回路 badge appears or disappears the moment the flag does.
+    // Mirrors DriveModule / DocsModule.
+    const rc = WKApp.remoteConfig;
+    if (rc) {
+      const rerender = () => this.forceUpdate();
+      if (!rc.requestSuccess) this.configUnsubscribers.push(rc.addListener(rerender));
+      this.configUnsubscribers.push(rc.addConfigChangeListener(rerender));
+    }
     if (WKApp.currentMenuId === "mcp-market") {
       this.replaceRightPane(this.currentItem());
     }
@@ -71,6 +95,8 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
   componentWillUnmount() {
     WKApp.mittBus.off("space-changed", this.handleSpaceChanged);
     WKApp.mittBus.off("wk:nav-menu-activated", this.handleNavMenuActivated);
+    for (const unsub of this.configUnsubscribers) unsub();
+    this.configUnsubscribers = [];
   }
 
   private currentItem = () => {
@@ -98,6 +124,9 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
 
   private handleClick = (item: MarketItem) => {
     if (item.id !== this.state.activeId) {
+      // market_tab_switched:仅在真正切到不同 tab 时计一次。原 TrackRules 的 market-sidebar-item
+      // 点击规则对「重复点当前 tab」也会触发 → 虚增(见 review P2-7)。已移除该规则,改此处 gate。
+      Dap.shared.track("market_tab_switched", {});
       this.setState({ activeId: item.id });
     }
     this.replaceRightPane(item);
@@ -145,7 +174,10 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
                 }
                 onClick={() => this.handleClick(item)}
               >
-                {item.label()}
+                <span className="wk-mcp-sidebar__item-label">{item.label()}</span>
+                {item.badge && WKApp.remoteConfig?.dmloopOn && (
+                  <span className="wk-mcp-sidebar__badge">{item.badge()}</span>
+                )}
               </button>
             </li>
           ))}

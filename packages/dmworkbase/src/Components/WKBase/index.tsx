@@ -6,6 +6,7 @@ import ConversationSelect from "../ConversationSelect";
 import type { ConversationSelectGrant } from "../ConversationSelect";
 import type { DocForwardOpen, ForwardGrant } from "../ForwardModal/grant";
 import { buildForwardMessageText } from "../ForwardModal/forwardMessageText";
+import { DocumentShareCardContent } from "../../Messages/DocumentShareCard/DocumentShareCardContent";
 import { isConversationDisbanded } from "../../Utils/groupDisband";
 import { ForwardService } from "../../Service/ForwardService";
 import { interpretForwardResult } from "../../Service/forwardResultToast";
@@ -257,6 +258,7 @@ export default class WKBase
             canGrant: forward.canGrant,
             disabledReason: forward.disabledReason,
             defaultRole: forward.defaultRole ?? "reader",
+            spaceId: forward.spaceId,
           }
         : undefined,
       // 每次打开递增 key，强制 ConversationSelect 重新挂载，
@@ -272,6 +274,8 @@ export default class WKBase
    * Expand the selected target channels into a de-duplicated uid snapshot at forward time
    * (contract 2): a group → its current subscriber uids (syncSubscribes → getSubscribes),
    * a person channel → the peer uid (channelID). Failures on one channel are skipped, never fatal.
+   * Bots are NOT attached here — the forwarder picks them explicitly in the 授权区 Bot expander and
+   * they arrive via `grant.botUids`, so nothing is granted silently.
    */
   private async collectForwardUids(channels: Channel[]): Promise<string[]> {
     const uids = new Set<string>();
@@ -301,23 +305,28 @@ export default class WKBase
   ): Promise<void> {
     const { t } = this.context;
     let grantFailures: string[] | undefined;
+    let grantRejections: string[] | undefined;
 
     // 0) disband guard 提前一次，仅为 grant 阶段决定是否有可授权目标。真正的 send 阶段
     // disband 计入交给 ForwardService（它同样过滤 disband 并计入 failedTargets）。
     const sendable = channels.filter((ch) => !isConversationDisbanded(ch));
     if (sendable.length === 0) {
       Toast.error(t("base.forwardModal.grant.sendFailed"));
-      forward.onResult?.({ sent: 0, failed: channels.length, grantFailures: undefined });
+      forward.onResult?.({ sent: 0, failed: channels.length, grantFailures: undefined, grantRejections: undefined });
       return;
     }
 
     // 1) grant first (先授权后发). Only when the switch is on AND docs injected an executor.
     if (grant && forward.grantAccess) {
       try {
-        const uids = await this.collectForwardUids(sendable);
+        const humanUids = await this.collectForwardUids(sendable);
+        // Merge the explicitly-kept Bot uids from the 授权区 expander onto the human snapshot.
+        // Bots the forwarder cancelled are absent from grant.botUids, so nothing is granted silently.
+        const uids = [...new Set([...humanUids, ...(grant.botUids ?? [])])];
         if (uids.length > 0) {
           const res = await forward.grantAccess(uids, grant.role);
           if (res.failed > 0) grantFailures = res.failures;
+          if (res.rejected && res.rejected.length > 0) grantRejections = res.rejected;
         }
       } catch {
         // A grant failure must not block sending the message — the receiver can still
@@ -329,10 +338,30 @@ export default class WKBase
     // 2) send the message to each target via ForwardService (统一 disband 守卫、
     // space_id / mention 注入、错误隔离)。原先手写的 encodeJSON monkey-patch
     // 由 wrapSendContentForInjection + opts.spaceId 代替。
-    const text = buildForwardMessageText(forward.messageTitle, forward.link);
+    //
+    // 只有**文档分享转发**（startDocForward，显式 shareAsCard=true）才发文档卡片
+    // （DocumentShareCardContent=18）。其它复用同一转发通道但语义不同的流程——尤其
+    // html-doc「让 AI 处理」的**指令转发**（带 docId + 专属锚点链接）——绝不能因带 docId
+    // 被误转成卡片而丢失指令链接/锚点，一律回退纯文本 markdown（Jerry-Xin blocker）。
+    const contentFactory = forward.shareAsCard
+      ? () => {
+          const card = new DocumentShareCardContent();
+          card.docId = forward.docId ?? "";
+          // 严格用文档自身 space：绝不回退到发送者当前 space（文档可能不在该 space），
+          // 否则接收端预览会带错 X-Space-Id 触发 ACL/403。缺失时留空，让后端按 docId 解析。
+          card.spaceId = forward.spaceId ?? "";
+          card.kind = forward.kind ?? "doc";
+          card.title = forward.messageTitle;
+          card.ownerName = forward.ownerName ?? "";
+          card.updatedAt = forward.updatedAt ?? "";
+          card.url = forward.link;
+          card.permission = grant?.role ?? forward.defaultRole ?? "reader";
+          return card;
+        }
+      : () => new MessageText(buildForwardMessageText(forward.messageTitle, forward.link));
     const result = await ForwardService.send(
       channels,
-      () => new MessageText(text),
+      contentFactory,
       { spaceId: WKApp.shared.currentSpaceId },
     );
 
@@ -347,6 +376,12 @@ export default class WKBase
           values: { failed: state.failed, total: state.total },
         })
       );
+    } else if (grantRejections && grantRejections.length > 0) {
+      Toast.warning(
+        t("base.forwardModal.grant.grantRejected", {
+          values: { failed: grantRejections.length },
+        })
+      );
     } else if (grantFailures && grantFailures.length > 0) {
       Toast.warning(
         t("base.forwardModal.grant.partialGrantFailed", {
@@ -358,7 +393,7 @@ export default class WKBase
     }
 
     const sent = state.total - state.failed;
-    forward.onResult?.({ sent, failed: state.failed, grantFailures });
+    forward.onResult?.({ sent, failed: state.failed, grantFailures, grantRejections });
   }
 
   hideUserInfo() {

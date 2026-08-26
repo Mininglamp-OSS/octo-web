@@ -162,3 +162,5 @@ See [NOTICE](NOTICE) for the full attribution list and third-party component lic
 <p align="center">
   <sub>Made with 🐙 by <b>OCTO Contributors</b> · <a href="https://github.com/Mininglamp-OSS">Mininglamp-OSS</a></sub>
 </p>
+
+<!-- e2e-p0 required-check verification: docs-only change, e2e-p0 should be SKIPPED and not block merge (GH#1539) -->

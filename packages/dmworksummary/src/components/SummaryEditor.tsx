@@ -1,26 +1,18 @@
 import React, { Component } from "react";
-import { Button, Toast } from "@douyinfe/semi-ui";
+import { Toast } from "@douyinfe/semi-ui";
 import { I18nContext, t } from "@octo/base";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
+import { summaryTestIds } from "../utils/testIds";
 
 interface SummaryEditorProps {
     taskId: number;
     baseResultId: number;
     initialContent: string;
     onSave: () => void;
-    onCancel: () => void;
-    /**
-     * 编辑目标：
-     *  - "team"（默认）：编辑团队/个人总结结果，走 PUT /summaries/:id/edit（editSummary）。
-     *  - "personal"（need3/6）：编辑「自己的个人报告」，走 PUT /summaries/:id/personal-edit
-     *    （personalEditSummary），成功后后端自动触发团队重算。
-     *  - "personal_draft"（OCT-21）：提交前编辑「自己的个人报告」草稿，走
-     *    PUT /summaries/:id/personal-draft（personalDraftSummary）。**不**触发团队
-     *    重算、**不**写 edited_at。仅当 worker_status===2 && submitted_at IS NULL 时允许。
-     */
     mode?: "team" | "personal" | "personal_draft";
+    exposeSave?: (fn: (() => void) | null) => void;
 }
 
 interface SummaryEditorState {
@@ -42,10 +34,18 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
     componentDidMount() {
         window.addEventListener("beforeunload", this.handleBeforeUnload);
         this.adjustHeight();
+        if (this.props.exposeSave) {
+            this.props.exposeSave(this.handleSave);
+        }
     }
 
     componentWillUnmount() {
         window.removeEventListener("beforeunload", this.handleBeforeUnload);
+        // 清除父组件持有的 save 闭包，避免卸载后仍能通过陈旧引用写入
+        // （切换任务后点保存可能覆盖上一个任务内容）。
+        if (this.props.exposeSave) {
+            this.props.exposeSave(null);
+        }
     }
 
     private handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -109,7 +109,6 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
     };
 
     render() {
-        const { onCancel } = this.props;
         const { content, saving } = this.state;
         const { t: translate } = this.context;
 
@@ -118,6 +117,7 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
                 <div style={{ position: "relative" }}>
                     <textarea
                         ref={this.textareaRef}
+                        data-testid={summaryTestIds.editorTextarea}
                         className="summary-editor-textarea"
                         value={content}
                         onChange={this.handleChange}
@@ -148,19 +148,6 @@ export default class SummaryEditor extends Component<SummaryEditorProps, Summary
                             className="wk-vib--textarea-corner"
                         />
                     )}
-                </div>
-                <div className="summary-editor-actions">
-                    <Button onClick={onCancel} disabled={saving}>
-                        {translate("summary.common.cancel")}
-                    </Button>
-                    <Button
-                        theme="solid"
-                        onClick={this.handleSave}
-                        disabled={!this.hasChanges || saving}
-                        loading={saving}
-                    >
-                        {translate("summary.common.save")}
-                    </Button>
                 </div>
             </div>
         );

@@ -1,5 +1,5 @@
 {
-  "exclude": ["node_modules", "src"],
+  "exclude": ["node_modules", "src", "src-election/**/__tests__/**"],
   "include": ["src-election/**/*"],
   "compilerOptions": {
     "outDir": "./out-election",

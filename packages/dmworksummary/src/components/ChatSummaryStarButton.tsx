@@ -5,6 +5,8 @@ import { WKApp, I18nContext } from '@octo/base';
 import { Sparkle } from 'lucide-react';
 import * as summaryApi from '../api/summaryApi';
 
+import { summaryTestIds } from '../utils/testIds';
+
 interface ChatSummaryStarButtonProps {
     channel: { channelID: string; channelType: number };
 }
@@ -115,24 +117,18 @@ export default class ChatSummaryStarButton extends Component<
 
     private emitForHasSummaries(hasSummaries: boolean) {
         const { channel } = this.props;
-        if (hasSummaries) {
-            WKApp.mittBus.emit('wk:toggle-summary-panel', {
-                channelId: channel.channelID,
-                channelType: channel.channelType,
-                summaryPanelView: 'history',
-            });
-        } else {
-            WKApp.mittBus.emit('wk:open-summary-modal', {
-                channelId: channel.channelID,
-                channelType: channel.channelType,
-            });
-        }
+        WKApp.mittBus.emit('wk:toggle-summary-panel', {
+            channelId: channel.channelID,
+            channelType: channel.channelType,
+            summaryPanelView: hasSummaries ? 'history' : 'new',
+        });
     }
 
     render() {
         const { t } = this.context;
         return (
             <div
+                data-testid={summaryTestIds.chatPanelHeaderBtn}
                 onClick={(e) => {
                     e.stopPropagation();
                     void this.handleClick();

@@ -1,0 +1,282 @@
+import { Tag, Toast } from "@douyinfe/semi-ui";
+import { QrCode } from "lucide-react";
+import React from "react";
+import type { ChannelInfo } from "wukongimjssdk";
+
+import WKApp from "../../App";
+import { ChannelAvatar } from "../../Components/ChannelAvatar";
+import ChannelQRCode from "../../Components/ChannelQRCode";
+import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context";
+import { GroupRole } from "../../Service/Const";
+import RouteContext, { RouteContextConfig } from "../../Service/Context";
+import { ChannelField } from "../../Service/DataSource/DataSource";
+import { Dap } from "../../Service/Dap";
+import { GROUP_NAME_MAX_LENGTH } from "../../Service/nameLimits";
+import { Row } from "../../Service/Section";
+import { updateChannelSettingField } from "../../bridge/channelSetting/channelSettingActions";
+import { t } from "../../i18n";
+import { fetchCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
+import {
+  ChannelSettingIconRow,
+  ChannelSettingIconRowProps,
+  ChannelSettingInlineEditRow,
+} from "../../ui/ChannelSettingRows";
+import { parseAvatarColorIndex } from "./channelSettingAvatarColor";
+import { ChannelSettingInputEditPush } from "./types";
+
+interface BuildGroupProfileRowsOptions {
+  context: RouteContext<ChannelSettingRouteData>;
+  data: ChannelSettingRouteData;
+  inputEditPush: ChannelSettingInputEditPush;
+  disbanded: boolean;
+}
+
+interface GroupAvatarSettingRowProps extends ChannelSettingIconRowProps {
+  channel: ChannelSettingRouteData["channel"];
+  canEdit: boolean;
+  showUpload?: boolean;
+  groupName?: string;
+  isNamedGroup?: boolean;
+  initialAvatarText?: string;
+  initialColorIndex?: number;
+  isUploadedAvatar?: boolean;
+  canClearUploadedAvatar?: boolean;
+}
+
+interface GroupAvatarEditorValues {
+  groupName: string;
+  isNamedGroup: boolean;
+  initialAvatarText: string;
+  initialColorIndex?: number;
+  isUploadedAvatar: boolean;
+}
+
+function groupAvatarEditorValuesFromInfo(
+  channelInfo: ChannelInfo | undefined,
+  fallback: GroupAvatarEditorValues
+): GroupAvatarEditorValues {
+  if (!channelInfo) return fallback;
+
+  const orgData = channelInfo.orgData;
+  return {
+    groupName: channelInfo.title || fallback.groupName,
+    isNamedGroup:
+      orgData?.is_named === undefined
+        ? fallback.isNamedGroup
+        : orgData.is_named === 1,
+    initialAvatarText:
+      typeof orgData?.avatar_text === "string"
+        ? orgData.avatar_text
+        : fallback.initialAvatarText,
+    initialColorIndex:
+      orgData?.avatar_color === undefined
+        ? fallback.initialColorIndex
+        : parseAvatarColorIndex(orgData.avatar_color),
+    isUploadedAvatar:
+      orgData?.is_upload_avatar === undefined
+        ? fallback.isUploadedAvatar
+        : orgData.is_upload_avatar === 1,
+  };
+}
+
+export function GroupAvatarSettingRow({
+  channel,
+  canEdit,
+  showUpload,
+  groupName,
+  isNamedGroup,
+  initialAvatarText,
+  initialColorIndex,
+  isUploadedAvatar,
+  canClearUploadedAvatar,
+  ...rowProps
+}: GroupAvatarSettingRowProps) {
+  const [visible, setVisible] = React.useState(false);
+  const [opening, setOpening] = React.useState(false);
+  const fallbackValues: GroupAvatarEditorValues = {
+    groupName: groupName || "",
+    isNamedGroup: isNamedGroup === true,
+    initialAvatarText: initialAvatarText || "",
+    initialColorIndex,
+    isUploadedAvatar: isUploadedAvatar === true,
+  };
+  const [editorValues, setEditorValues] =
+    React.useState<GroupAvatarEditorValues>(fallbackValues);
+
+  const openAvatarEditor = async () => {
+    if (opening) return;
+
+    // 命令式上报:过了重入门(opening)才计一次,在途重复点击不再灌水
+    // (行需先 await 网络刷新才弹编辑器,见 PR #1390 review P1-2)。
+    Dap.shared.track("group_avatar_edit_opened");
+    setOpening(true);
+    try {
+      const latestChannelInfo = await fetchCurrentImChannelInfo<
+        typeof channel,
+        ChannelInfo
+      >(channel);
+      setEditorValues(
+        groupAvatarEditorValuesFromInfo(latestChannelInfo, fallbackValues)
+      );
+    } catch (error) {
+      console.error("Refresh group avatar info failed:", error);
+      setEditorValues(fallbackValues);
+    } finally {
+      setOpening(false);
+      setVisible(true);
+    }
+  };
+
+  return (
+    <>
+      <ChannelSettingIconRow
+        {...rowProps}
+        onClick={() => {
+          if (!canEdit) {
+            Toast.warning(
+              t("base.module.channelSettings.groupAvatarOnlyManager")
+            );
+            return;
+          }
+          void openAvatarEditor();
+        }}
+      />
+      <ChannelAvatar
+        visible={visible}
+        onClose={() => setVisible(false)}
+        showUpload={showUpload}
+        channel={channel}
+        groupName={editorValues.groupName}
+        isNamedGroup={editorValues.isNamedGroup}
+        initialAvatarText={editorValues.initialAvatarText}
+        initialColorIndex={editorValues.initialColorIndex}
+        isUploadedAvatar={editorValues.isUploadedAvatar}
+        canClearUploadedAvatar={canClearUploadedAvatar}
+      />
+    </>
+  );
+}
+
+export function buildGroupProfileRows({
+  context,
+  data,
+  disbanded,
+}: BuildGroupProfileRowsOptions): Row[] {
+  if (disbanded) return [];
+
+  const { channel, channelInfo } = data;
+  const isExternalGroup = channelInfo?.orgData?.is_external_group === 1;
+  const isNamedGroup = channelInfo?.orgData?.is_named === 1;
+  const isUploadedAvatar = channelInfo?.orgData?.is_upload_avatar === 1;
+  const canClearUploadedAvatar = data.subscriberOfMe?.role === GroupRole.owner;
+  const canEditAvatar = data.isManagerOrCreatorOfMe;
+  const avatarColor = parseAvatarColorIndex(channelInfo?.orgData?.avatar_color);
+  const groupName = isExternalGroup ? (
+    <span>
+      {channelInfo?.title}
+      <Tag color="orange" size="small" style={{ marginLeft: 6 }}>
+        {t("base.module.channelSettings.externalGroup")}
+      </Tag>
+    </span>
+  ) : (
+    channelInfo?.title
+  );
+
+  return [
+    new Row({
+      cell: ChannelSettingInlineEditRow,
+      properties: {
+        title: t("base.module.channelSettings.groupName"),
+        value: channelInfo?.title || "",
+        displayValue: groupName,
+        placeholder: t("base.module.channelSettings.groupNamePlaceholder"),
+        trackEvent: "group_name_edit_opened",
+        maxCount: GROUP_NAME_MAX_LENGTH,
+        // 改名走「服务端为唯一权威」（WS-23）：前端不再前置判定谁能改群名——客户端只持有
+        // 部分 roster（超级群父群仅缓存首页），任何本地 gate 都会对不在缓存里的合法成员误判。
+        // 名字行对成员一律可编辑，龙虾/黑名单/外部成员由服务端拒绝并经下方 Toast.error 呈现。
+        onSave: (value: string) =>
+          updateChannelSettingField({
+            channel,
+            field: ChannelField.channelName,
+            value,
+          }).catch((error) => {
+            Toast.error(error.msg);
+            return false;
+          }),
+      },
+    }),
+    new Row({
+      cell: GroupAvatarSettingRow,
+      properties: {
+        title: t("base.module.channelSettings.groupAvatar"),
+        icon: (
+          <img
+            style={{
+              width: "24px",
+              height: "24px",
+              borderRadius: "var(--wk-avatar-radius, 50%)",
+            }}
+            src={WKApp.shared.avatarChannel(channel)}
+            alt=""
+          />
+        ),
+        showUpload: canEditAvatar,
+        canEdit: canEditAvatar,
+        channel,
+        groupName: channelInfo?.title || "",
+        isNamedGroup,
+        initialAvatarText: channelInfo?.orgData?.avatar_text || "",
+        initialColorIndex: avatarColor,
+        isUploadedAvatar,
+        canClearUploadedAvatar,
+      },
+    }),
+    new Row({
+      cell: ChannelSettingIconRow,
+      trackEvent: "group_qrcode_viewed",
+      properties: {
+        title: t("base.module.channelSettings.groupQrCode"),
+        icon: <QrCode className="wk-channelsetting-qrcode-icon" aria-hidden />,
+        onClick: () => {
+          context.push(
+            <ChannelQRCode channel={channel} />,
+            new RouteContextConfig({
+              title: t("base.module.channelSettings.groupQrCard"),
+            })
+          );
+        },
+      },
+    }),
+    new Row({
+      cell: ChannelSettingInlineEditRow,
+      properties: {
+        title: t("base.module.channelSettings.groupNotice"),
+        value: channelInfo?.orgData?.notice,
+        multiline: true,
+        placeholder: t("base.module.channelSettings.groupNotice"),
+        trackEvent: "group_announcement_edit_opened",
+        maxCount: 400,
+        allowEmpty: true,
+        onStartEdit: () => {
+          if (!data.isManagerOrCreatorOfMe) {
+            Toast.warning(
+              t("base.module.channelSettings.groupNoticeOnlyManager")
+            );
+            return false;
+          }
+          return true;
+        },
+        onSave: (value: string) =>
+          updateChannelSettingField({
+            channel,
+            field: ChannelField.notice,
+            value,
+          }).catch((error) => {
+            Toast.error(error.msg);
+            return false;
+          }),
+      },
+    }),
+  ];
+}

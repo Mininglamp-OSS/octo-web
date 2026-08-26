@@ -17,6 +17,9 @@ import ProfileDetailShell, {
   ProfileDetailFooter,
   ProfileDetailHeader,
 } from "../ProfileDetailShell";
+import ProfileOnlineStatus, {
+  type ProfileOnlineStatusChannelInfo,
+} from "../ProfileOnlineStatus";
 import "./index.css";
 
 export interface BotDetailViewCommand {
@@ -66,6 +69,7 @@ export interface BotDetailViewProps {
   isOwner: boolean;
   isFriend: boolean;
   reported: boolean | null;
+  channelInfo?: ProfileOnlineStatusChannelInfo;
   uploadingAvatar: boolean;
   editingRemark: boolean;
   remarkDraft: string;
@@ -124,6 +128,7 @@ export function BotDetailView({
   isOwner,
   isFriend,
   reported,
+  channelInfo,
   uploadingAvatar,
   editingRemark,
   remarkDraft,
@@ -265,37 +270,40 @@ export function BotDetailView({
         badges={<AiBadge />}
         subtitle={`@${username}`}
         status={
-          isOwner && reported !== null ? (
-            <div
-              className={`wk-bot-detail-octopush-chip ${
-                reported
-                  ? "wk-bot-detail-octopush-chip--reported"
-                  : "wk-bot-detail-octopush-chip--unmanaged"
-              }`}
-            >
-              <span className="wk-bot-detail-octopush-status">
-                <span className="wk-bot-detail-octopush-chip-icon">
-                  {reported ? <IconTickCircle /> : <IconAlertCircle />}
+          <>
+            <ProfileOnlineStatus channelInfo={channelInfo} />
+            {isOwner && reported !== null ? (
+              <div
+                className={`wk-bot-detail-octopush-chip ${
+                  reported
+                    ? "wk-bot-detail-octopush-chip--reported"
+                    : "wk-bot-detail-octopush-chip--unmanaged"
+                }`}
+              >
+                <span className="wk-bot-detail-octopush-status">
+                  <span className="wk-bot-detail-octopush-chip-icon">
+                    {reported ? <IconTickCircle /> : <IconAlertCircle />}
+                  </span>
+                  <span className="wk-bot-detail-octopush-chip-text">
+                    {reported ? labels.reported : labels.notReported}
+                  </span>
+                  {!reported && (
+                    <button
+                      type="button"
+                      className="wk-bot-detail-help-btn"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                      }}
+                      title={labels.reportHelp}
+                      aria-label={labels.help}
+                    >
+                      ?
+                    </button>
+                  )}
                 </span>
-                <span className="wk-bot-detail-octopush-chip-text">
-                  {reported ? labels.reported : labels.notReported}
-                </span>
-                {!reported && (
-                  <button
-                    type="button"
-                    className="wk-bot-detail-help-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                    }}
-                    title={labels.reportHelp}
-                    aria-label={labels.help}
-                  >
-                    ?
-                  </button>
-                )}
-              </span>
-            </div>
-          ) : undefined
+              </div>
+            ) : null}
+          </>
         }
       />
 

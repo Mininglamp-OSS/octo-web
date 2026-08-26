@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fetchHttpClient, OidcBindHttpError } from '../http'
+import { createFetchHttpClient, fetchHttpClient, OidcBindHttpError } from '../http'
 
 describe('fetchHttpClient', () => {
   const realFetch = globalThis.fetch
@@ -71,5 +71,16 @@ describe('fetchHttpClient', () => {
       status: 410,
       msg: 'expired',
     })
+  })
+
+  it('resolves relative OIDC paths against an Electron API origin', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true }),
+    })
+    globalThis.fetch = fetchMock as never
+    await createFetchHttpClient('https://api.example.com/v1/').get('/v1/user/thirdlogin/authcode')
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.example.com/v1/user/thirdlogin/authcode')
   })
 })

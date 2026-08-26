@@ -128,13 +128,13 @@ beforeAll(async () => {
     t: (k: string) => k,
     toSimplized: (s: string) => s,
     getPinyin: () => "#",
-    addImChannelInfoListener: (_sdk: any, listener: any) => {
+    addCurrentImChannelInfoListener: (listener: any) => {
       channelManager.addListener(listener);
       return () => channelManager.removeListener(listener);
     },
-    fetchImChannelInfo: (_sdk: any, channel: any) =>
+    fetchCurrentImChannelInfo: (channel: any) =>
       channelManager.fetchChannelInfo(channel),
-    getImChannelInfo: (_sdk: any, channel: any) =>
+    getCurrentImChannelInfo: (channel: any) =>
       channelManager.getChannelInfo(channel),
   }));
 

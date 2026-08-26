@@ -1,0 +1,65 @@
+.mention-list {
+  position: relative;
+  background-color: var(--wk-color-item);
+  box-shadow: var(--wk-shadow-md);
+  border-radius: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-anchor: none;
+  padding: 5px 0;
+  min-width: 420px;
+}
+
+.mention-list-item {
+  display: flex;
+  align-items: center;
+  padding: 5px 16px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  margin-bottom: 10px;
+}
+
+.mention-list.mention-list--mouse .mention-list-item:hover,
+.mention-list.mention-list--keyboard .mention-list-item.is-selected {
+  background-color: var(--wk-color-theme);
+  color: var(--wk-text-inverse);
+}
+
+.mention-list-item .wk-messageinput-iconbox {
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.mention-list-item .wk-messageinput-icon {
+  object-fit: cover;
+}
+
+.mention-list-item-content {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.mention-list-item-ai-badge {
+  margin-left: 4px;
+  align-self: center;
+}
+
+/* @ 提醒选人弹窗「@SpaceName」后缀（企微风格），小字次要色 */
+.mention-list-item-space {
+  margin-left: 6px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--wk-text-secondary, var(--semi-color-text-2));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 12rem;
+  vertical-align: middle;
+}
+
+.mention-list.mention-list--keyboard .mention-list-item.is-selected .mention-list-item-space,
+.mention-list.mention-list--mouse .mention-list-item:hover .mention-list-item-space {
+  color: var(--wk-text-inverse);
+  opacity: 0.8;
+}

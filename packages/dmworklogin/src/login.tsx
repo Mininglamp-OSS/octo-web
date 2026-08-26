@@ -4,7 +4,7 @@ import { Button, Select, Spin, Toast } from '@douyinfe/semi-ui';
 // 主按钮纯文字, 避免锁定到任意一种登录方式让用户产生 "我没邮箱不能登" 的误判.
 import './login.css'
 import { QRCodeSVG } from 'qrcode.react';
-import { WKApp, Provider, useI18n } from "@octo/base"
+import { WKApp, Provider, useI18n, isElectronPowered } from "@octo/base"
 import type { Locale } from "@octo/base"
 import { LoginStatus, LoginType, LoginVM } from "./login_vm";
 import classNames from "classnames";
@@ -20,6 +20,14 @@ import loginLogo from "./assets/login-logo.png";
 
 const ENTERPRISE_SSO_ENABLED =
     import.meta.env.VITE_ENABLE_ENTERPRISE_SSO === 'true'
+// Local Electron development keeps the password-login workflow, while plain
+// web development should still exercise the enterprise SSO entry point.
+const isElectronRuntime = typeof window !== 'undefined' && (
+    isElectronPowered() ||
+    Boolean((window as any).__TAURI_IPC__) ||
+    import.meta.env.VITE_ELECTRON_BUILD === 'true'
+)
+const OIDC_ENABLED = ENTERPRISE_SSO_ENABLED && (!import.meta.env.DEV || !isElectronRuntime)
 // Register URL 从当前 provider 的 accountUrl 派生，避免把 test/prod 用户带到
 // 错误的 IdP 环境。若后续接入新的 OIDC provider 或非 Aegis 登录方式，入口配置
 // 应改为由 appconfig 下发。
@@ -103,6 +111,8 @@ const OidcResumeEffect: React.FC<{ vm: LoginVM }> = ({ vm }) => {
             try {
                 const url = new URL(window.location.href)
                 url.searchParams.delete('oidc_error')
+                url.searchParams.delete('error')
+                url.searchParams.delete('error_description')
                 window.history.replaceState({}, '', url.toString())
             } catch {
                 /* noop */
@@ -205,7 +215,6 @@ const SsoLoginPanel: React.FC<{
         </div>
     )
 }
-
 
 // 本地密码登录区域. SSO 启用时这一段默认折叠 (P0 反馈): 外部用户大多
 // 没有 Octo 本地账号, 默认显示 SSO 主按钮 + 一行"使用密码登录"链接, 比
@@ -380,16 +389,19 @@ class Login extends Component<any, LoginState> {
     private _unsubscribeRemoteConfig?: () => void
     private _unsubscribeRemoteConfigChange?: () => void
 
+    private forceRender = () => {
+        // 仓库里 React class 组件的 @types 解析有历史问题, this.forceUpdate / setState
+        // 都识别不到 (NavSettingsPanel 等处同样如此)。这里同样走 cast 跟既有写法一致。
+        ; (this as unknown as { forceUpdate(): void }).forceUpdate()
+    }
+
     componentDidMount() {
-        const forceUpdate = () => {
-            // 仓库里 React class 组件的 @types 解析有历史问题, this.forceUpdate / setState
-            // 都识别不到 (NavSettingsPanel 等处同样如此)。这里同样走 cast 跟既有写法一致。
-            ; (this as unknown as { forceUpdate(): void }).forceUpdate()
+        if (!WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed) {
+            this._unsubscribeRemoteConfig = WKApp.remoteConfig.addListener(this.forceRender)
+        } else {
+            this.forceRender()
         }
-        if (!WKApp.remoteConfig.requestSuccess) {
-            this._unsubscribeRemoteConfig = WKApp.remoteConfig.addListener(forceUpdate)
-        }
-        this._unsubscribeRemoteConfigChange = WKApp.remoteConfig.addConfigChangeListener(forceUpdate)
+        this._unsubscribeRemoteConfigChange = WKApp.remoteConfig.addConfigChangeListener(this.forceRender)
     }
 
     componentWillUnmount() {
@@ -438,6 +450,48 @@ class Login extends Component<any, LoginState> {
             // 按 loginInfo.loginProvider 路由各自的 reset URL, 同步检查 login.tsx:513。
             const ssoProvider = getSSOProviders()[0]
             const hasSsoProvider = !!ssoProvider
+            const ssoConfigPending = OIDC_ENABLED && !WKApp.remoteConfig.requestSuccess && !WKApp.remoteConfig.requestFailed
+            const ssoConfigFallback = OIDC_ENABLED && WKApp.remoteConfig.requestFailed
+            const showSsoLogin = OIDC_ENABLED && !ssoConfigPending && !ssoConfigFallback && hasSsoProvider
+            const showDefaultSloganSub = !showSsoLogin
+            const renderLocalPasswordLogin = () => (
+                <div className="wk-login-content-form">
+                    <input type="text" name="username" autoComplete="username" placeholder={t('form.email')} onChange={(v) => {
+                        vm.username = v.target.value
+                    }} onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}></input>
+                    <input type="password" name="password" autoComplete="current-password" placeholder={t('form.password')} onChange={(v) => {
+                        vm.password = v.target.value
+                    }} onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}></input>
+                    <div className="wk-login-content-form-buttons">
+                        <Button loading={vm.loginLoading} className="wk-login-content-form-ok" type='primary' theme='solid'
+                            onMouseDown={(e: React.MouseEvent) => { e.preventDefault() }}
+                            onClick={handleLogin}>{t('login.button')}</Button>
+                    </div>
+                    <div className="wk-login-content-form-others">
+                        <div className="wk-login-content-form-scanlogin" onClick={() => {
+                            vm.loginType = LoginType.qrcode
+                        }}>
+                            {t('login.scanLogin')}
+                        </div>
+                        <div className="wk-login-content-form-switch" onClick={() => {
+                            vm.loginType = LoginType.register
+                        }}>
+                            {t('login.noAccountRegister')}
+                        </div>
+                        <div className="wk-login-content-form-switch" onClick={() => {
+                            vm.loginType = LoginType.forgetPassword
+                        }}>
+                            {t('login.forgotPassword')}
+                        </div>
+                    </div>
+                    {/* 与 SSO 分支一致，保留无文案分隔线。 */}
+                    <div className="wk-login-content-download-divider" aria-hidden="true" />
+                    <div className="wk-login-content-download">
+                        <AndroidDownloadButton />
+                        <IOSDownloadButton />
+                    </div>
+                </div>
+            )
 
             const startSsoLogin = () => {
                 if (!ssoProvider) return
@@ -507,8 +561,8 @@ class Login extends Component<any, LoginState> {
 
                 {/* Right form panel */}
                 <div className="wk-login-panel">
-                    {ENTERPRISE_SSO_ENABLED && <OidcResumeEffect vm={vm} />}
-                    {ENTERPRISE_SSO_ENABLED && <OidcResumingOverlay vm={vm} />}
+                    {OIDC_ENABLED && <OidcResumeEffect vm={vm} />}
+                    {OIDC_ENABLED && <OidcResumingOverlay vm={vm} />}
                     {/* 顶部小面包屑: 紫色圆点 + 当前登录目标. 给到达 /login 的人一个
                         "我在哪 / 这个表单会把我送去哪" 的轻确认, 不抢主标题视觉权重. */}
                     <div className="wk-login-panel-breadcrumb">
@@ -527,57 +581,41 @@ class Login extends Component<any, LoginState> {
                                     : t('login.memberCount', { values: { count: vm.inviteInfo.member_count } })}</div>
                             </div>
                         )}
-                        <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.phone ? "block" : "none" }}>
-                            <div className="wk-login-content-slogan">{t('login.welcome')}</div>
-                            {(!ENTERPRISE_SSO_ENABLED || !hasSsoProvider) && (
-                                <div className="wk-login-content-slogan-sub">{t('login.defaultSub')}</div>
-                            )}
-                            {ENTERPRISE_SSO_ENABLED && hasSsoProvider ? (
-                                // SSO 启用：统一认证作为主 CTA，注册入口和流程提示保持次级。
-                                <SsoLoginPanel
-                                    vm={vm}
-                                    ssoProvider={ssoProvider!}
-                                    startSsoLogin={startSsoLogin}
-                                    handleLogin={handleLogin}
-                                />
-                            ) : (
-                                // 未启用 SSO：保持原有布局（含本地注册入口）
-                                <div className="wk-login-content-form">
-                                    <input type="text" name="username" autoComplete="username" placeholder={t('form.email')} onChange={(v) => {
-                                        vm.username = v.target.value
-                                    }} onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}></input>
-                                    <input type="password" name="password" autoComplete="current-password" placeholder={t('form.password')} onChange={(v) => {
-                                        vm.password = v.target.value
-                                    }} onKeyDown={(e) => { if (e.key === 'Enter') handleLogin() }}></input>
-                                    <div className="wk-login-content-form-buttons">
-                                        <Button loading={vm.loginLoading} className="wk-login-content-form-ok" type='primary' theme='solid'
-                                            onMouseDown={(e: React.MouseEvent) => { e.preventDefault() }}
-                                            onClick={handleLogin}>{t('login.button')}</Button>
-                                    </div>
-                                    <div className="wk-login-content-form-others">
-                                        <div className="wk-login-content-form-scanlogin" onClick={() => {
-                                            vm.loginType = LoginType.qrcode
-                                        }}>
-                                            {t('login.scanLogin')}
-                                        </div>
-                                        <div className="wk-login-content-form-switch" onClick={() => {
-                                            vm.loginType = LoginType.register
-                                        }}>
-                                            {t('login.noAccountRegister')}
-                                        </div>
-                                        <div className="wk-login-content-form-switch" onClick={() => {
-                                            vm.loginType = LoginType.forgetPassword
-                                        }}>
-                                            {t('login.forgotPassword')}
-                                        </div>
-                                    </div>
-                                    {/* 与 SSO 分支一致，保留无文案分隔线。 */}
-                                    <div className="wk-login-content-download-divider" aria-hidden="true" />
-                                    <div className="wk-login-content-download">
-                                        <AndroidDownloadButton />
-                                        <IOSDownloadButton />
-                                    </div>
+                        <div
+                            className="wk-login-content-phonelogin wk-login-content-phonelogin--primary"
+                            style={{ "display": vm.loginType === LoginType.phone ? "block" : "none" }}
+                            aria-busy={ssoConfigPending}
+                        >
+                            {ssoConfigPending ? (
+                                <div className="wk-login-content-config-status" role="status" aria-live="polite">
+                                    <Spin />
+                                    <div className="wk-login-content-config-status-title">{t('login.ssoConfigLoadingTitle')}</div>
+                                    <div className="wk-login-content-config-status-sub">{t('login.ssoConfigLoadingSub')}</div>
                                 </div>
+                            ) : (
+                                <>
+                                    <div className="wk-login-content-slogan">{t('login.welcome')}</div>
+                                    {showDefaultSloganSub && (
+                                        <div className="wk-login-content-slogan-sub">{t('login.defaultSub')}</div>
+                                    )}
+                                    {ssoConfigFallback && (
+                                        <div className="wk-login-content-sso-config-fallback" role="alert">
+                                            {t('login.ssoConfigFallback')}
+                                        </div>
+                                    )}
+                                    {showSsoLogin ? (
+                                        // SSO 启用：统一认证作为主 CTA，注册入口和流程提示保持次级。
+                                        <SsoLoginPanel
+                                            vm={vm}
+                                            ssoProvider={ssoProvider!}
+                                            startSsoLogin={startSsoLogin}
+                                            handleLogin={handleLogin}
+                                        />
+                                    ) : (
+                                        // 未启用 SSO：保持原有布局（含本地注册入口）
+                                        renderLocalPasswordLogin()
+                                    )}
+                                </>
                             )}
                         </div>
                         <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.register ? "block" : "none" }}>
@@ -670,7 +708,7 @@ class Login extends Component<any, LoginState> {
                         <div className="wk-login-content-phonelogin" style={{ "display": vm.loginType === LoginType.forgetPassword ? "block" : "none" }}>
                             <div className="wk-login-content-slogan">{t('reset.title')}</div>
                             <div className="wk-login-content-slogan-sub">{t('reset.sub')}</div>
-                            {ENTERPRISE_SSO_ENABLED && ssoProvider?.resetPasswordUrl && (
+                            {OIDC_ENABLED && ssoProvider?.resetPasswordUrl && (
                                 <div className="wk-login-content-form-oidc-hint">
                                     {t('reset.oidcHintPrefix')}
                                     <a

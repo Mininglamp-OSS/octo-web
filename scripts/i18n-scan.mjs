@@ -21,7 +21,6 @@ const namespaceByDir = {
   dmworkdatasource: "datasource",
   dmworklogin: "login",
   dmworksummary: "summary",
-  dmworktodo: "todo",
 };
 
 const knownNamespaces = new Set(["app", ...Object.values(namespaceByDir)]);

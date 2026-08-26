@@ -1,6 +1,26 @@
-import { WKApp, Menus, ProviderListener, normalizeRoutePath, startVersionCheck, t } from "@octo/base";
+import {
+  WKApp,
+  Menus,
+  ProviderListener,
+  normalizeRoutePath,
+  startVersionCheck,
+  t,
+  getElectronIpcBridge,
+  isElectronPowered,
+  sendElectronInstallUpdate,
+  sendElectronUpdateApp,
+} from "@octo/base";
 import { Toast } from "@douyinfe/semi-ui";
+import { requestMailWorkspaceSwitch } from "@octo/mail";
+import { requestGuardedBrowserRouteChange } from "./menuChange";
 import { reconcileMenuState, resolvePendingRouteActivation } from "./menuReconcile";
+import {
+  IPC_UPDATE_AVAILABLE,
+  IPC_UPDATE_DOWNLOADED,
+  IPC_UPDATE_DOWNLOAD_PROGRESS,
+  IPC_UPDATE_ERROR,
+  IPC_UPDATE_NOT_AVAILABLE,
+} from "../../../src-election/shared/ipc-channels";
 
 export default class MainVM extends ProviderListener {
   private _currentMenus?: Menus;
@@ -8,22 +28,11 @@ export default class MainVM extends ProviderListener {
 
   private _historyRoutePaths: string[] = [];
 
-  private _showNewVersion!: boolean;
-
   private _hasNewVersion!: boolean; // 是否有新版本
 
   lastVersionInfo?: VersionInfo; // 最新版本信息
 
   private _showMeInfo: boolean; // 是否显示我的信息
-
-  set showNewVersion(v: boolean) {
-    this._showNewVersion = v;
-    this.notifyListener();
-  }
-
-  get showNewVersion() {
-    return this._showNewVersion;
-  }
 
   set hasNewVersion(v: boolean) {
     this._hasNewVersion = v;
@@ -64,6 +73,28 @@ export default class MainVM extends ProviderListener {
   // first appconfig load, then cleared. Any explicit user navigation also clears it (see the
   // currentMenus setter) so a late toggle never yanks the user off a view they chose.
   private _pendingRouteActivation?: string;
+  private _allowNextBrowserRouteChange = false;
+  private _onBrowserRouteGuard = (event: PopStateEvent) => {
+    if (this._allowNextBrowserRouteChange) {
+      this._allowNextBrowserRouteChange = false;
+      return;
+    }
+    const currentRoute = this._currentMenus?.routePath;
+    const targetRoute = normalizeRoutePath(window.location.pathname);
+    const targetMenu = this.findMenuForRoute(targetRoute);
+    if (!currentRoute || !targetMenu || targetMenu.id === this._currentMenus?.id) {
+      return;
+    }
+    requestGuardedBrowserRouteChange(
+      event,
+      requestMailWorkspaceSwitch,
+      () => window.history.pushState({}, "title", currentRoute),
+      () => {
+        this._allowNextBrowserRouteChange = true;
+        window.history.back();
+      }
+    );
+  };
   private _onBrowserRouteChange = () => {
     this.syncMenuFromBrowserPath();
   };
@@ -115,9 +146,10 @@ export default class MainVM extends ProviderListener {
         this.notifyListener();
       }
     });
+    window.addEventListener("popstate", this._onBrowserRouteGuard, true);
     window.addEventListener("popstate", this._onBrowserRouteChange);
 
-    if ((window as any).__POWERED_ELECTRON__) {
+    if (isElectronPowered()) {
       this.appUpdateInit();
     } else {
       // 轮询 /version.json 检测 Web 端新版本，有新版本时亮设置按钮气泡
@@ -143,17 +175,19 @@ export default class MainVM extends ProviderListener {
   }
 
   private addIpcListener(event: string, handler: (...args: any[]) => void) {
-    (window as any).ipc.on(event, handler);
+    const ipc = getElectronIpcBridge();
+    if (!ipc) return;
+    ipc.on(event, handler);
     this.ipcListeners.push({ event, handler });
   }
 
   appUpdateInit() {
     // 监听升级失败事件
-    this.addIpcListener("update-error", (event, message) => {
+    this.addIpcListener(IPC_UPDATE_ERROR, (event, message) => {
     });
     // 发现可用更新事件
-    this.addIpcListener("update-available", (event, message) => {
-      (window as any).ipc.send("update-app");
+    this.addIpcListener(IPC_UPDATE_AVAILABLE, (event, message) => {
+      sendElectronUpdateApp();
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
@@ -162,21 +196,21 @@ export default class MainVM extends ProviderListener {
       this.notifyListener();
     });
     // 没有可用更新事件
-    this.addIpcListener("update-not-available", (event, message) => {
+    this.addIpcListener(IPC_UPDATE_NOT_AVAILABLE, (event, message) => {
       this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
       this.showAppUpdateOperation = false;
       Toast.success(t("app.main.updateAlreadyLatest"));
     });
     // 更新下载进度事件
-    this.addIpcListener("download-progress", (event, message) => {
+    this.addIpcListener(IPC_UPDATE_DOWNLOAD_PROGRESS, (event, message) => {
       this.showAppUpdate = true;
       this.showAppUpdateOperation = false;
       this.appUpdateProgress = message;
       this.notifyListener();
     });
     // 监听下载完成事件
-    this.addIpcListener("update-downloaded", (event, message) => {
+    this.addIpcListener(IPC_UPDATE_DOWNLOADED, (event, message) => {
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
@@ -191,11 +225,12 @@ export default class MainVM extends ProviderListener {
   didUnMount(): void {
     // Clean up IPC listeners to prevent memory leaks
     for (const { event, handler } of this.ipcListeners) {
-      (window as any).ipc?.removeListener(event, handler);
+      getElectronIpcBridge()?.removeListener(event, handler);
     }
     this.ipcListeners = [];
     this.stopVersionCheck?.();
     this._unsubscribeMenuReconcile?.();
+    window.removeEventListener("popstate", this._onBrowserRouteGuard, true);
     window.removeEventListener("popstate", this._onBrowserRouteChange);
   }
 
@@ -218,6 +253,7 @@ export default class MainVM extends ProviderListener {
     WKApp.currentMenuId = target.id;
     this._pendingRouteActivation = undefined;
     this.notifyListener();
+    WKApp.mittBus.emit("wk:active-menu-changed", { menuId: target.id });
     WKApp.mittBus.emit("wk:nav-menu-activated", { menuId: target.id });
     return true;
   }
@@ -259,6 +295,9 @@ export default class MainVM extends ProviderListener {
     this._currentMenus = result.currentMenu;
     this._historyRoutePaths = result.historyRoutePaths;
     WKApp.currentMenuId = result.currentMenu?.id;
+    WKApp.mittBus.emit("wk:active-menu-changed", {
+      menuId: result.currentMenu?.id,
+    });
     if (result.activeMenuVanished) {
       WKApp.routeRight.popToRoot();
     }
@@ -292,6 +331,9 @@ export default class MainVM extends ProviderListener {
     this._currentMenus = result.currentMenu;
     this._historyRoutePaths = result.historyRoutePaths;
     WKApp.currentMenuId = result.currentMenu?.id;
+    WKApp.mittBus.emit("wk:active-menu-changed", {
+      menuId: result.currentMenu?.id,
+    });
     // NB: unlike onMenuClick we deliberately do NOT WKApp.routeRight.popToRoot() here. The route
     // being activated (e.g. /docs) mounts fresh and populates the right pane itself via
     // replaceToRoot on mount; popping first would empty the shared queue and briefly flash the
@@ -310,7 +352,7 @@ export default class MainVM extends ProviderListener {
 
   // 安装更新
   installUpdate() {
-    (window as any).ipc.send("install-update");
+    sendElectronInstallUpdate();
   }
 
   get menusList() {
@@ -338,6 +380,7 @@ export default class MainVM extends ProviderListener {
     // componentDidMount to decide whether to mount the right-pane page (see MarketSidebar.tsx:66),
     // so a missing id here is exactly why refreshing /mcp-market/mcp lands on an empty right pane.
     WKApp.currentMenuId = menus?.id;
+    WKApp.mittBus.emit("wk:active-menu-changed", { menuId: menus?.id });
     // An explicit menu selection (user click via onMenuClick, or switchToMenuById) cancels any
     // pending boot-route activation: the user has chosen a view, so a config-gated menu that
     // resolves later must not yank them off it. didMount sets _pendingRouteActivation only AFTER

@@ -67,6 +67,27 @@ describe("APIClient backend i18n contract", () => {
         expect(logout).toHaveBeenCalledTimes(1)
     })
 
+    it("lets a standalone request own expired-session recovery", async () => {
+        const logout = vi.fn()
+        client.logoutCallback = logout
+        axios.defaults.adapter = async (config) => {
+            const err: any = new Error("Request failed with status code 401")
+            err.config = config
+            err.response = {
+                status: 401,
+                data: { msg: "login expired", status: 401 },
+                headers: {},
+                config,
+            }
+            throw err
+        }
+
+        await expect(
+            client.get("/standalone", { suppressAuthExpiredLogout: true }),
+        ).rejects.toMatchObject({ status: 401 })
+        expect(logout).not.toHaveBeenCalled()
+    })
+
     it("does not logout for forbidden v2 errors", async () => {
         const logout = vi.fn()
         client.logoutCallback = logout

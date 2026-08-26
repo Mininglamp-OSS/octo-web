@@ -1,7 +1,6 @@
-import React, { useState, useEffect } from "react";
-import ReactDOM from "react-dom/client";
+import React from "react";
 import type { IModule } from "@octo/base";
-import { i18n, I18nProvider, WKApp, Menus, t as translate } from "@octo/base";
+import { i18n, WKApp, Menus, t as translate, Dap } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
 import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
@@ -9,81 +8,45 @@ import SummaryShareDetailPage from "./pages/SummaryShareDetailPage";
 import SummarySharePreviewFeature from "./features/summaryShare/SummarySharePreviewFeature";
 import SummaryConfirmPage from "./pages/SummaryConfirmPage";
 import ScheduleListPage from "./pages/ScheduleListPage";
-import { getChatCandidates, getSummaryShare, listSummaries } from "./api/summaryApi";
+import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
 import { getOriginalSummaryTaskId, shouldOpenOriginalSummary } from "./features/summaryShare/navigation";
 import { notifyChatSummaryCreated } from "./utils/chatSummaryActions";
+import { getPendingInvitationBadge, refreshPendingInvitationBadge } from "./utils/summaryMenuBadge";
 import { isSupportedChannelType } from "./utils/channelType";
+import { SMALL_SCREEN_WIDTH } from "@octo/base/src/Components/WKLayout/layoutWidth";
 import ChatSummaryStarButton from "./components/ChatSummaryStarButton";
 import ChatSummaryPanel from "./components/ChatSummaryPanel";
-import ChatSummaryNewModal from "./components/ChatSummaryNewModal";
 import enUS from "./i18n/en-US.json";
 import zhCN from "./i18n/zh-CN.json";
 import "./index.css";
 
 let _spaceChangedHandler: (() => void) | null = null;
+let _spaceReadyHandler: (() => void) | null = null;
 const openingSummaryShares = new Set<string>();
-let _attentionRefreshTimer: ReturnType<typeof setInterval> | null = null;
-let _attentionFocusHandler: (() => void) | null = null;
-let _attentionRefreshRequestHandler: (() => void) | null = null;
-let _attentionBootstrapTimer: ReturnType<typeof setTimeout> | null = null;
-let _attentionRequest: Promise<boolean> | null = null;
+// NavRail 每次进入的序号：并入默认创建页元素的 key。key 若固定，重复点菜单时
+// React 会复用旧实例（WKViewQueue 按数组下标渲染），「重置回默认创建页」不生效。
+let summaryHomeEntrySeq = 0;
 
-async function refreshSummaryAttentionCount(): Promise<boolean> {
-    if (!WKApp.loginInfo.isLogined() || !WKApp.shared.currentSpaceId) return false;
-    if (_attentionRequest) return _attentionRequest;
-    _attentionRequest = (async () => {
-      try {
-        const response = await listSummaries({ page: 1, page_size: 1 });
-        WKApp.mittBus.emit("summary-badge-update" as any, {
-            count: response.attention_count ?? 0,
-        });
-        WKApp.mittBus.emit("summary-attention-count-refreshed" as any, {
-            count: response.attention_count ?? 0,
-        });
-        return true;
-      } catch {
-        // Navigation badge is best-effort and must not block application startup.
-        return false;
-      } finally {
-        _attentionRequest = null;
-      }
-    })();
-    return _attentionRequest;
-}
-
-function bootstrapSummaryAttentionCount(attempt = 0) {
-    void refreshSummaryAttentionCount().then((loaded) => {
-        if (loaded || attempt >= 50) return;
-        // Module initialization can precede login/Space restoration on a cold
-        // page load. Retry quickly until both are ready instead of waiting for
-        // the five-second background poll.
-        _attentionBootstrapTimer = setTimeout(() => {
-            bootstrapSummaryAttentionCount(attempt + 1);
-        }, 100);
-    });
+function afterSummaryMenuSwitch(action: () => void) {
+    if (WKApp.switchToMenuById && WKApp.currentMenuId !== "summary") {
+        WKApp.switchToMenuById("summary", action);
+        return;
+    }
+    action();
 }
 
 /**
- * NavRail 顶层菜单图标（智能总结）。与 dmworktodo / dmworkappbot 的菜单图标同构：
+ * NavRail 顶层菜单图标（智能总结）。与 dmworkappbot 的菜单图标同构：
  * 纯 SVG、随 active 变色，不引入额外依赖。
  */
-function SummaryMenuIcon({ active }: { active?: boolean }) {
-    const color = active ? "var(--wk-brand-primary, #7C5CFC)" : "currentColor";
+function SummaryMenuIcon(_props: { active?: boolean }) {
     return (
-        <svg
-            width="22"
-            height="22"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={color}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        >
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-            <path d="M14 2v6h6" />
-            <path d="M8 13h8" />
-            <path d="M8 17h6" />
+        <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+            <g transform="translate(0 1.66665)" fill="currentColor">
+                <path d="M9.58333 0C8.89298 0 8.33333 0.559644 8.33333 1.25C8.33333 1.79426 8.68117 2.25727 9.16667 2.42887V4.16667H4.58333C3.66286 4.16667 2.91667 4.91286 2.91667 5.83333V15C2.91667 15.9205 3.66286 16.6667 4.58333 16.6667H15.4167C16.3371 16.6667 17.0833 15.9205 17.0833 15V5.83333C17.0833 4.91286 16.3371 4.16667 15.4167 4.16667H10.8333V2.42887C11.3188 2.25727 11.6667 1.79426 11.6667 1.25C11.6667 0.559644 11.107 0 10.4167 0H9.58333ZM5.83333 10.4167C5.83333 9.72631 6.39298 9.16667 7.08333 9.16667C7.77369 9.16667 8.33333 9.72631 8.33333 10.4167C8.33333 11.107 7.77369 11.6667 7.08333 11.6667C6.39298 11.6667 5.83333 11.107 5.83333 10.4167ZM12.9167 9.16667C13.607 9.16667 14.1667 9.72631 14.1667 10.4167C14.1667 11.107 13.607 11.6667 12.9167 11.6667C12.2263 11.6667 11.6667 11.107 11.6667 10.4167C11.6667 9.72631 12.2263 9.16667 12.9167 9.16667Z" />
+                <path d="M1.66667 9.16667C1.66667 8.70643 1.29357 8.33333 0.833333 8.33333C0.373096 8.33333 0 8.70643 0 9.16667V11.6667C0 12.1269 0.373096 12.5 0.833333 12.5C1.29357 12.5 1.66667 12.1269 1.66667 11.6667V9.16667Z" />
+                <path d="M19.1667 8.33333C18.7064 8.33333 18.3333 8.70643 18.3333 9.16667V11.6667C18.3333 12.1269 18.7064 12.5 19.1667 12.5C19.6269 12.5 20 12.1269 20 11.6667V9.16667C20 8.70643 19.6269 8.33333 19.1667 8.33333Z" />
+            </g>
         </svg>
     );
 }
@@ -100,13 +63,14 @@ export class SummaryModule implements IModule {
         });
 
         WKApp.openSummaryDetail = (taskId: number | string, spaceId, originChannel) => {
-            // 卡片深链带的空间可能≠当前空间，路由前先切目标空间，与浏览器路由 applyStandaloneSummarySpaceFromQuery 对称。
-            if (spaceId) WKApp.shared.currentSpaceId = spaceId;
-            WKApp.switchToMenuById?.("summary");
-            WKApp.routeLeft.popToRoot();
-            WKApp.routeRight.replaceToRoot(
-                <SummaryDetailPage taskId={taskId} originChannel={originChannel} emitSelection />
-            );
+            afterSummaryMenuSwitch(() => {
+                // 卡片深链带的空间可能≠当前空间，路由前先切目标空间，与浏览器路由 applyStandaloneSummarySpaceFromQuery 对称。
+                if (spaceId) WKApp.shared.currentSpaceId = spaceId;
+                WKApp.routeLeft.popToRoot();
+                WKApp.routeRight.replaceToRoot(
+                    <SummaryDetailPage taskId={taskId} originChannel={originChannel} emitSelection />
+                );
+            });
         };
 
         WKApp.openSummarySharePreview = (shareId, spaceId, originChannel) => {
@@ -131,9 +95,8 @@ export class SummaryModule implements IModule {
         WKApp.openSummaryShareDetail = async (shareId, spaceId, originChannel) => {
             if (openingSummaryShares.has(shareId)) return;
             openingSummaryShares.add(shareId);
-            if (spaceId) WKApp.shared.currentSpaceId = spaceId;
             try {
-                const share = await getSummaryShare(shareId);
+                const share = await getSummaryShare(shareId, spaceId);
                 if (shouldOpenOriginalSummary(share) && WKApp.openSummaryDetail) {
                     WKApp.openSummaryDetail(
                         getOriginalSummaryTaskId(share),
@@ -148,13 +111,15 @@ export class SummaryModule implements IModule {
                 openingSummaryShares.delete(shareId);
             }
 
-            const query = spaceId ? `?sp=${encodeURIComponent(spaceId)}` : "";
-            window.history.pushState({}, "", `/s/share/${encodeURIComponent(shareId)}${query}`);
-            WKApp.switchToMenuById?.("summary");
-            WKApp.routeLeft.popToRoot();
-            WKApp.routeRight.replaceToRoot(
-                <SummaryShareDetailPage shareId={shareId} originChannel={originChannel} />
-            );
+            afterSummaryMenuSwitch(() => {
+                if (spaceId) WKApp.shared.currentSpaceId = spaceId;
+                const query = spaceId ? `?sp=${encodeURIComponent(spaceId)}` : "";
+                window.history.pushState({}, "", `/s/share/${encodeURIComponent(shareId)}${query}`);
+                WKApp.routeLeft.popToRoot();
+                WKApp.routeRight.replaceToRoot(
+                    <SummaryShareDetailPage shareId={shareId} originChannel={originChannel} />
+                );
+            });
         };
 
         WKApp.route.register("/summary", () => {
@@ -162,7 +127,7 @@ export class SummaryModule implements IModule {
         });
 
         WKApp.route.register("/summary/create", () => {
-            return <SummaryCreatePage />;
+            return <SummaryCreatePage source="summary_home" />;
         });
 
         // 详情页「继续优化」按钮 → 打开新的 chat + 预填引用。
@@ -172,11 +137,11 @@ export class SummaryModule implements IModule {
         window.addEventListener('summary-open-chat-with-reference', ((e: CustomEvent) => {
             const task = e.detail;
             if (!task || !task.task_id) return;
-            WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} />);
+            WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} source="detail_optimize" />);
         }) as EventListener);
 
         WKApp.route.register("/summary/detail", (param: any) => {
-            return <SummaryDetailPage taskId={param?.taskId} />;
+            return <SummaryDetailPage taskId={param?.taskId} emitSelection />;
         });
 
         WKApp.route.register("/summary/share", (param: any) => {
@@ -191,51 +156,77 @@ export class SummaryModule implements IModule {
             return <ScheduleListPage />;
         });
 
-        // 顶层 NavRail 菜单入口（sort=4002，紧跟在 contacts=4000 / matter=4001 之后）。
+        // 顶层 NavRail 菜单入口（sort=4002，紧跟在 contacts=4000 之后）。
         // 背景：之前 summary 只挂了路由 + 聊天窗口星标按钮，没有顶层可见菜单，
         // 导致「多人协作 / 多人定时」入口在主导航上找不到。菜单 id 须为 "summary"，
         // 与 WKApp.switchToMenuById("summary") 及 SummaryListPage 监听的 wk:nav-menu-activated
-        // (menuId === "summary") 保持一致；路由指向 /summary 列表页（列表页内「新建」
-        // 进入创建页，可选参与者 + 定时）。
+        // (menuId === "summary") 保持一致；路由指向 /summary 列表页（列表页内「+」下拉选择
+        // 总结方式：快速总结 / Agent 总结，进入对应创建页，可选参与者 + 定时）。
         WKApp.menus.register(
             "summary",
             () => {
-                return new Menus(
+                const menu = new Menus(
                     "summary",
                     "/summary",
                     translate("summary.menu.title"),
                     <SummaryMenuIcon />,
                     <SummaryMenuIcon active />,
                 );
+                // #1359 未处理邀请红点：badge 字段与 NavRail 渲染已存在，
+                // 此处每次 render 读最新计数即可（宿主 forceUpdate 驱动重绘）。
+                menu.badge = getPendingInvitationBadge();
+                // 点击「总结」：主区 SummaryListPage 已由 MainContentLeft 按
+                // currentMenus.routePath(/summary) 渲染（Menu 激活即挂载唯一实例）。
+                // 右栏默认展示新建总结页（取代原先的欢迎占位页）——产品要求进入
+                // 智能总结即落在创建页。注意只 replaceToRoot 创建页：列表页由
+                // MainContentLeft 持有，往 routeRight 再推一份 /summary 会造成列表页
+                // 双实例（#1461 e2e S1/S9/S11 strict mode violation 的教训）。
+                menu.onPress = (reentry?: boolean) => {
+                    // 埋点 290:从 NavRail「总结」顶层入口进入模块（隐私 props 恒空）。
+                    // 重复点击已激活的总结菜单不计（reentry），宿主按 prevMenuId===id 传入（见二审 P2-4）。
+                    if (!reentry) {
+                        Dap.shared.track("smart_summary_module_entered", {});
+                    }
+                    WKApp.routeLeft.popToRoot();
+                    if (window.innerWidth <= SMALL_SCREEN_WIDTH) {
+                        // 小屏（≤640px）：WKLayout 把右栏渲染为盖住 NavRail 的 fixed 覆盖层
+                        // （z-index 20 > 10），而创建页非面板模式没有返回控件——推入创建页
+                        // 会困住用户。小屏保持原行为：落在列表，创建走「+」下拉。
+                        WKApp.routeRight.popToRoot();
+                        return;
+                    }
+                    WKApp.routeRight.replaceToRoot(
+                        <SummaryCreatePage
+                            source="summary_home"
+                            key={`home-normal-${++summaryHomeEntrySeq}`}
+                            initialMode="normal"
+                        />
+                    );
+                };
+                return menu;
             },
             4002,
         );
 
+        let initialSpaceReady = false;
         _spaceChangedHandler = () => {
             WKApp.mittBus.emit('summary-space-changed');
-            void refreshSummaryAttentionCount();
+            // Main 冷启动若修正了缓存 Space，会先发 space-changed 再发
+            // space-ready；首刷统一交给 space-ready，避免同一次启动请求两次。
+            if (!initialSpaceReady) return;
+            refreshPendingInvitationBadge();
+        };
+        _spaceReadyHandler = () => {
+            initialSpaceReady = true;
+            // 此时登录态与 X-Space-Id 已就绪，安全执行一次冷启动首刷。
+            refreshPendingInvitationBadge();
         };
         WKApp.mittBus.on('space-changed', _spaceChangedHandler);
-
-        // SummaryListPage is mounted only after the menu is opened. Keep the
-        // global navigation badge fresh independently so invitations are
-        // visible before the invitee enters Smart Summary.
-        bootstrapSummaryAttentionCount();
-        _attentionRefreshTimer = setInterval(() => {
-            if (document.visibilityState === "visible") {
-                void refreshSummaryAttentionCount();
-            }
-        }, 5000);
-        _attentionFocusHandler = () => void refreshSummaryAttentionCount();
-        window.addEventListener("focus", _attentionFocusHandler);
-        _attentionRefreshRequestHandler = () => void refreshSummaryAttentionCount();
-        WKApp.mittBus.on("summary-attention-refresh-requested" as any, _attentionRefreshRequestHandler);
+        WKApp.mittBus.on('space-ready', _spaceReadyHandler);
 
         WKApp.searchChatCandidates = async (params) => {
             return getChatCandidates(params);
         };
-
-        mountGlobalSummaryModal();
 
         // ═══ Chat window integration ═══
 
@@ -250,11 +241,12 @@ export class SummaryModule implements IModule {
 
         WKApp.endpoints.registerChatSummaryPanel(
             "chatsummarypanel",
-            ({ channel, onClose }) => (
+            ({ channel, onClose, summaryPanelView }) => (
                 <ChatSummaryPanel
                     visible={true}
                     channel={channel}
                     onClose={onClose}
+                    summaryPanelView={summaryPanelView}
                 />
             ),
         );
@@ -267,81 +259,14 @@ if (import.meta.hot) {
             WKApp.mittBus.off('space-changed', _spaceChangedHandler);
             _spaceChangedHandler = null;
         }
-        if (_attentionRefreshTimer) {
-            clearInterval(_attentionRefreshTimer);
-            _attentionRefreshTimer = null;
+        if (_spaceReadyHandler) {
+            WKApp.mittBus.off('space-ready', _spaceReadyHandler);
+            _spaceReadyHandler = null;
         }
-        if (_attentionFocusHandler) {
-            window.removeEventListener("focus", _attentionFocusHandler);
-            _attentionFocusHandler = null;
-        }
-        if (_attentionRefreshRequestHandler) {
-            WKApp.mittBus.off("summary-attention-refresh-requested" as any, _attentionRefreshRequestHandler);
-            _attentionRefreshRequestHandler = null;
-        }
-        if (_attentionBootstrapTimer) {
-            clearTimeout(_attentionBootstrapTimer);
-            _attentionBootstrapTimer = null;
-        }
-        _globalSummaryModalRoot?.unmount();
-        _globalSummaryModalRoot = null;
-        const el = document.getElementById("summary-global-modal-root");
-        if (el) el.remove();
-        _globalSummaryModalMounted = false;
     });
-}
-
-let _globalSummaryModalMounted = false;
-let _globalSummaryModalRoot: ReturnType<typeof ReactDOM.createRoot> | null = null;
-
-function mountGlobalSummaryModal() {
-    if (_globalSummaryModalMounted) return;
-    _globalSummaryModalMounted = true;
-    const container = document.createElement("div");
-    container.id = "summary-global-modal-root";
-    document.body.appendChild(container);
-    _globalSummaryModalRoot = ReactDOM.createRoot(container);
-    // 独立 root 不在主应用 <I18nProvider> 子树内，须自行包裹，
-    // 否则全局弹窗运行时切语言不会刷新（拿到的是 I18nContext 默认值）。
-    _globalSummaryModalRoot.render(
-        <I18nProvider>
-            <GlobalSummaryModal />
-        </I18nProvider>,
-    );
 }
 
 /**
  * 聊天上下文里创建总结成功后的收尾动作（实现见 utils/chatSummaryActions，
  * 拆分到独立文件以便单测不必经过引入 react-dom/client 的本模块）。
  */
-function GlobalSummaryModal() {
-    const [open, setOpen] = useState(false);
-    const [channel, setChannel] = useState<{ channelID: string; channelType: number } | null>(null);
-
-    useEffect(() => {
-        const handler = (data: { channelId: string; channelType: number }) => {
-            setChannel({ channelID: data.channelId, channelType: data.channelType });
-            setOpen(true);
-        };
-        WKApp.mittBus.on("wk:open-summary-modal", handler);
-        return () => {
-            WKApp.mittBus.off("wk:open-summary-modal", handler);
-        };
-    }, []);
-
-    if (!open || !channel) return null;
-
-    return (
-        <ChatSummaryNewModal
-            visible={open}
-            channel={channel}
-            onClose={() => setOpen(false)}
-            onSubmit={() => {
-                setOpen(false);
-                // 聊天上下文：不切换主 Tab（不调用 openSummaryDetail），
-                // 改为在聊天侧栏内打开/刷新「智能总结」面板展示新建的总结。
-                notifyChatSummaryCreated(channel);
-            }}
-        />
-    );
-}

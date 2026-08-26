@@ -1,6 +1,13 @@
 import React, { useCallback, useRef, useState } from "react"
-import { Channel, ChannelInfo, ChannelTypePerson, WKSDK } from "wukongimjssdk"
-import { Conversation, WKApp } from "@octo/base"
+import { Channel, ChannelInfo, ChannelTypePerson } from "wukongimjssdk"
+import {
+  Conversation,
+  Dap,
+  WKApp,
+  createCurrentEmptyImConversation,
+  findCurrentImConversation,
+  setCurrentImChannelInfoCache,
+} from "@octo/base"
 import AppBotService from "../Service/AppBotService"
 import type { AppBotViewItem } from "../bridge/types"
 import AppBotAvatar from "./AppBotAvatar"
@@ -47,12 +54,9 @@ function renderAppBotConversation(bot: AppBotViewItem, channel: Channel) {
 function defaultOpenConversationDeps(): OpenAppBotConversationDeps {
   return {
     applyBot: AppBotService.applyBot,
-    setChannelInfo: (info) => WKSDK.shared().channelManager.setChannleInfoForCache(info),
-    findConversation: (channel) => WKSDK.shared().conversationManager.findConversation(channel),
-    createEmptyConversation: (channel) => {
-      const convMgr = WKSDK.shared().conversationManager
-      return convMgr.createEmptyConversation?.(channel)
-    },
+    setChannelInfo: (info) => setCurrentImChannelInfoCache(info),
+    findConversation: (channel) => findCurrentImConversation(channel),
+    createEmptyConversation: (channel) => createCurrentEmptyImConversation(channel),
     replaceToRoot: (element) => WKApp.routeRight.replaceToRoot(element),
   }
 }
@@ -64,6 +68,19 @@ export async function openAppBotConversation(
 ) {
   await deps.applyBot(bot.uid)
   callbacks.onApplied?.()
+
+  // 埋点：判别是否为 Octo Assistant（octo-dap S3 / YUJ-277）
+  const isOctoAssistant = WKApp.remoteConfig.octoAssistantUids.includes(bot.uid)
+  if (isOctoAssistant) {
+    Dap.shared.track("octo_assistant_opened", {
+      source: "app_bot_list",
+    })
+  } else {
+    Dap.shared.track("app_opened", {
+      app_name: bot.displayName,
+      app_category: bot.scope,
+    })
+  }
 
   const channel = createAppBotChannel(bot)
   const info = createAppBotChannelInfo(bot, channel)

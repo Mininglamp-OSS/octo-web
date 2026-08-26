@@ -5,7 +5,11 @@ import { formatGroupLabel, RANGE_THRESHOLD, buildDisplayIndexMap } from '../cita
 //   len=1  -> handled by CitationBadge (single [N]), not tested here
 //   len=2  -> comma joined:  [37,38]
 //   len=3  -> comma joined:  [37,38,39]      (threshold)
-//   len>3  -> range:         [30-35]         (first-last)
+//   len>3  -> segmented collapse: each run of >=3 consecutive indices folds to
+//            `first-last`, runs are comma joined:  [27,31-35]
+// The former rule only folded a >3 group when EVERY index was contiguous, so a
+// partially-gapped cluster listed all of its indices while a fully contiguous
+// one collapsed — inconsistent for the same kind of citation cluster.
 describe('formatGroupLabel', () => {
     it('joins 2 indices with a comma', () => {
         expect(formatGroupLabel([37, 38])).toBe('37,38');
@@ -19,16 +23,43 @@ describe('formatGroupLabel', () => {
         expect(formatGroupLabel([30, 31, 32, 33, 34, 35])).toBe('30-35');
     });
 
-    it('falls back to comma list when a >3 display list is non-contiguous', () => {
-        // After reading-order renumbering a group's display indices can be
-        // gapped; range form would imply members that aren't there (#1003 P2).
+    it('does not imply that a non-contiguous display list is a full range', () => {
         expect(formatGroupLabel([2, 5, 9, 14])).toBe('2,5,9,14');
     });
 
-    it('falls back to comma list when a >3 display list is not ascending', () => {
-        // e.g. same-channel group whose later members were numbered earlier —
-        // range would render backwards ("4-3") which is nonsense (#1003 P2).
-        expect(formatGroupLabel([4, 1, 2, 3])).toBe('4,1,2,3');
+    it('uses stable ascending bounds when a >3 display list is reordered', () => {
+        expect(formatGroupLabel([4, 1, 2, 3])).toBe('1-4');
+    });
+
+    it('does not render duplicate indices as a misleading range', () => {
+        expect(formatGroupLabel([1, 1, 1, 1])).toBe('1');
+    });
+
+    it('folds the consecutive run of a partially gapped group', () => {
+        // The reported case: was rendered in full as 27,31,32,33,34,35.
+        expect(formatGroupLabel([27, 31, 32, 33, 34, 35])).toBe('27,31-35');
+    });
+
+    it('folds a trailing run after a leading singleton', () => {
+        expect(formatGroupLabel([1, 6, 7, 8])).toBe('1,6-8');
+    });
+
+    it('folds every run when a group has several of them', () => {
+        expect(formatGroupLabel([1, 2, 3, 7, 8, 9, 20])).toBe('1-3,7-9,20');
+    });
+
+    it('leaves a 2-long run listed (a range would not be shorter)', () => {
+        expect(formatGroupLabel([1, 5, 6, 10])).toBe('1,5,6,10');
+    });
+
+    it('folds runs after deduplicating and sorting a messy input', () => {
+        expect(formatGroupLabel([33, 31, 35, 27, 32, 34, 31])).toBe('27,31-35');
+    });
+
+    it('lists a duplicate-heavy group whose deduped run is only 2 long', () => {
+        // Dedup happens after the threshold check, so this reaches the run
+        // logic with [5,6]; the old all-or-nothing rule folded it to 5-6.
+        expect(formatGroupLabel([5, 5, 5, 5, 6])).toBe('5,6');
     });
 
     it('RANGE_THRESHOLD is the documented value (guards against silent regressions)', () => {

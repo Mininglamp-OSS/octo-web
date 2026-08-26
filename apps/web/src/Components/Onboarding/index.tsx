@@ -8,6 +8,7 @@ import {
   X,
 } from "lucide-react";
 import { useI18n } from "@octo/base";
+import { Dap } from "@octo/base";
 import {
   defaultOnboardingConfig,
   markOnboardingSeen,
@@ -167,7 +168,7 @@ function ImageVisual({ section }: { section: ResolvedOnboardingSection }) {
         section.imageFit === "contain" ? " is-contain" : ""
       }`}
       src={section.image}
-      alt={section.visualTitle}
+      alt={section.imageAlt}
       decoding="async"
     />
   );
@@ -186,6 +187,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     [config, t]
   );
   const [activeId, setActiveId] = useState<OnboardingSectionId>("workspace");
+  // 逐章埋点:记录进入当前章的时刻与上一章 id,用于算停留时长并在切章时结算上一章
+  const chapterEnterAtRef = useRef<number>(0);
+  const prevChapterRef = useRef<string | null>(null);
+  // onboarding_started:首挂 once 守卫,intro↔章节切换不重复发
+  const startedRef = useRef(false);
+  // onboarding_all_viewed:累计已浏览的不同章 id + 达标 once 守卫
+  const viewedChaptersRef = useRef<Set<string>>(new Set());
+  const allViewedEmittedRef = useRef(false);
   const [completionOrigin, setCompletionOrigin] = useState<{
     x: number;
     y: number;
@@ -235,6 +244,14 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     };
   }, []);
 
+  // onboarding_started:visible 首次为 true 时 once emit。两条入口(登录自动弹 /
+  // 设置重开 forceVisible)都经本组件挂载;startedRef 守卫防 intro↔章节切换重复。
+  useEffect(() => {
+    if (!visible || startedRef.current) return;
+    startedRef.current = true;
+    Dap.shared.track("onboarding_started", {});
+  }, [visible]);
+
   useEffect(() => {
     if (!visible || forceVisible) return;
     try {
@@ -253,6 +270,50 @@ export const Onboarding: React.FC<OnboardingProps> = ({
 
     return () => window.clearTimeout(preloadTimer);
   }, [activeSection, onboardingSections, showIntro, visible]);
+
+  // 逐章事件:进入章节视图后,activeId 变化时给上一章 emit completed(带停留时长)。
+  // 组件全程不 remount,用 ref 记进入时刻;同 id 不触发,天然去重。
+  useEffect(() => {
+    // 仍在 intro 或不可见:不处于「章节视图」,不处理
+    if (!visible || showIntro || !activeSection) return;
+
+    // 八审 P2:统一用 activeSection.id(实际显示的章)而非原始 activeId 计数。
+    //   activeSection = find(id===activeId) || sections[0],当 activeId 落不到任何章时回退到首章;
+    //   若仍按 activeId 累计,viewedChapters 会混入一个不在 sections 里的 id → 集齐前 size 就先到
+    //   length,all_viewed 提前一章 emit(off-by-one)。锚定到显示章 id 后 chapter_id 与 UI 一致,
+    //   size 的 gate 也改为 >= 作防御(集合永不应超出章数,但即便超出也仍会补发)。
+    const chapterId = activeSection.id;
+    const emitChapterViewed = () => {
+      Dap.shared.track("onboarding_chapter_viewed", { chapter_id: chapterId });
+      viewedChaptersRef.current.add(chapterId);
+      if (
+        !allViewedEmittedRef.current &&
+        viewedChaptersRef.current.size >= onboardingSections.length
+      ) {
+        allViewedEmittedRef.current = true;
+        Dap.shared.track("onboarding_all_viewed", {});
+      }
+    };
+
+    // 首次进入章节视图:记录进入时刻与当前章,不 emit completed,但首进也算 viewed
+    if (prevChapterRef.current === null) {
+      prevChapterRef.current = chapterId;
+      chapterEnterAtRef.current = Date.now();
+      emitChapterViewed();
+      return;
+    }
+    // activeId 变了:给上一章 emit completed,再翻到当前章并 emit viewed
+    if (prevChapterRef.current !== chapterId) {
+      Dap.shared.track("onboarding_chapter", {
+        chapter_id: prevChapterRef.current,
+        outcome: "completed",
+        duration_ms: Date.now() - chapterEnterAtRef.current,
+      });
+      prevChapterRef.current = chapterId;
+      chapterEnterAtRef.current = Date.now();
+      emitChapterViewed();
+    }
+  }, [activeId, activeSection, showIntro, visible, onboardingSections.length]);
 
   const persistDismissed = () => {
     try {
@@ -275,6 +336,21 @@ export const Onboarding: React.FC<OnboardingProps> = ({
       return;
     }
 
+    // 非 final 分支关闭:当前章视为「退出」。
+    // 仅当已真正进入章节视图(chapterEnterAtRef 已初始化)才 emit——否则从 intro 屏直接
+    // 关闭时 chapterEnterAtRef 仍为 0,会算出跨年的假 duration_ms(见 PR #1320 review)。
+    // 九审 🔴:chapter_id 用 prevChapterRef.current(effect 里与 activeSection.id 同步)而非原始
+    //   activeId —— activeId 初值 "workspace" 可能被 resolveOnboardingSections 过滤掉,那时 activeSection
+    //   回退到首章,若仍报 activeId 会与 _viewed 报的真实章 id 不一致(正是八审要修的错报类)。
+    if (prevChapterRef.current !== null) {
+      Dap.shared.track("onboarding_chapter", {
+        chapter_id: prevChapterRef.current,
+        outcome: "exited",
+        duration_ms: Date.now() - chapterEnterAtRef.current,
+      });
+    }
+    // 非 final 分支的 × 是纯「关闭」(final 分支已转调 handleFinish 走完成)。
+    Dap.shared.track("onboarding_closed", {});
     persistDismissed();
     hideOnboarding();
   };
@@ -283,6 +359,16 @@ export const Onboarding: React.FC<OnboardingProps> = ({
     if (completionStartedRef.current) return;
 
     completionStartedRef.current = true;
+    // 完成:当前(最后一)章视为 completed。与 handleClose 对齐——仅在已真正进入章节视图
+    // (prevChapterRef 已初始化)才 emit,防两条路径漂移出跨年假 duration_ms(见 review)。
+    // 九审 🔴:chapter_id 同样用 prevChapterRef.current(= 实际显示章 id),不用会漂到 "workspace" 的 activeId。
+    if (prevChapterRef.current !== null) {
+      Dap.shared.track("onboarding_chapter", {
+        chapter_id: prevChapterRef.current,
+        outcome: "completed",
+        duration_ms: Date.now() - chapterEnterAtRef.current,
+      });
+    }
     setCompletionOrigin(getCompletionOrigin(event, finishButtonRef.current));
     persistDismissed();
     setIsCompleting(true);
@@ -523,6 +609,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
           <div className="wk-onboarding-resource-links">
             <a
               className="wk-onboarding-open-source"
+              data-testid="onboarding-opensource-link"
               href={config.links.openSourceUrl}
               target="_blank"
               rel="noreferrer"
@@ -532,6 +619,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
             </a>
             <a
               className="wk-onboarding-open-source"
+              data-testid="onboarding-about-link"
               href={
                 locale === "en-US"
                   ? config.links.aboutMininglampUrl.enUS
@@ -560,10 +648,7 @@ export const Onboarding: React.FC<OnboardingProps> = ({
             {activeSection.title}
           </h1>
 
-          <div
-            className="wk-onboarding-media-frame"
-            aria-label={activeSection.visualTitle}
-          >
+          <div className="wk-onboarding-media-frame">
             <ImageVisual section={activeSection} />
           </div>
 

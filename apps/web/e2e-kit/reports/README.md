@@ -8,7 +8,7 @@ kit **不碰**本目录. 本 README (由 sync 首次生成) 可以留作占位, 
 reports/<feature-slug>-<TS>/
 ├── aggregate.md            # 顶层汇总: 所有 case 一张表 + coverage 矩阵 + notes
 ├── aggregate.csv           # 机读格式(供 CI / 跨 run 对比)
-├── C7-test-report.md       # per-case 详情: 10x 稳定性 / trace / keyframes / 失败截图
+├── C7-test-report.md       # per-case 详情: 3x 稳定性 / trace / keyframes / 失败截图
 ├── C8-test-report.md
 ├── keyframes/
 │   ├── C7/*.png

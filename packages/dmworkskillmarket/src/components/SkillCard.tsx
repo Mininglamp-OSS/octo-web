@@ -1,9 +1,10 @@
 import React, { useLayoutEffect, useRef, useState } from "react";
-import { Bot, Download, Eye, Pencil, Trash2, UserRound } from "lucide-react";
+import { Bot, Download, Eye, Pencil, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { t, useI18n } from "@octo/base";
 import type { Category, Skill } from "../types/skill";
 import { formatCount } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
+import { isPlatformPublishedSkill } from "../utils/publisher";
 
 interface SkillCardProps {
   skill: Skill;
@@ -87,6 +88,8 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
   const isOwnerCard = Boolean(onEdit || onDelete);
   const descriptionTooltipId = `skill-card-desc-${skill.id}`;
   const displayName = skill.displayName || skill.name;
+  const isPlatformPublished = isPlatformPublishedSkill(skill);
+  const platformPublisherName = t("skillMarket.card.platformPublisher");
   const creatorName = skill.creatorName || skill.ownerName;
   // Catalog responses intentionally omit owner_id. Compare the stable names as
   // a fallback only when both stable IDs are not available. Equal IDs must win
@@ -100,10 +103,12 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
     ),
   );
   const singlePublisherName = creatorName || skill.ownerName;
-  const ownerLabel = hasSeparateCreator
+  const ownerLabel = isPlatformPublished
+    ? platformPublisherName
+    : hasSeparateCreator
     ? `${creatorName} · ${skill.ownerName}`
     : singlePublisherName;
-  const showOwner = Boolean(singlePublisherName);
+  const showOwner = isPlatformPublished || Boolean(singlePublisherName);
   const ariaLabel = showOwner ? `${skill.name} ${ownerLabel}` : skill.name;
   const rawViewCount = skill.viewCount ?? 0;
   const rawDownloadCount = skill.downloadCount ?? 0;
@@ -166,12 +171,19 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
 
   return (
     <article
-      className={isOwnerCard ? "skill-market-card skill-market-card--owner" : "skill-market-card"}
+      className={[
+        "skill-market-card",
+        isOwnerCard ? "skill-market-card--owner" : "",
+        isPlatformPublished ? "skill-market-card--official" : "",
+      ].filter(Boolean).join(" ")}
       role="button"
       tabIndex={0}
       aria-label={ariaLabel}
       onClick={() => onOpen(skill)}
       onKeyDown={handleKeyDown}
+      data-track="market_card_opened"
+      data-object-id={skill.id}
+      data-track-item-type="skill"
     >
       <div className="skill-market-card__top">
         <span className="skill-market-card__icon">
@@ -201,7 +213,12 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
             </span>
             {showOwner && (
               <span className="skill-market-card__owner" title={ownerLabel}>
-                {hasSeparateCreator ? (
+                {isPlatformPublished ? (
+                  <>
+                    <ShieldCheck className="skill-market-card__owner-platform-icon" size={13} aria-hidden="true" />
+                    <span className="skill-market-card__owner-name">{platformPublisherName}</span>
+                  </>
+                ) : hasSeparateCreator ? (
                   <>
                     <Bot className="skill-market-card__owner-bot-icon" size={13} aria-hidden="true" />
                     <span className="skill-market-card__owner-name">{creatorName}</span>
@@ -252,7 +269,18 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
           </span>
         )}
       </div>
-      <div className="skill-market-card__footer" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="skill-market-card__footer"
+        onClick={(event) => event.stopPropagation()}
+        // The <article> root carries data-track="market_card_opened"; the global
+        // click delegate runs in capture phase, BEFORE this stopPropagation, so an
+        // owner edit/delete click here would still resolve closest('[data-track]')
+        // to the card and emit a false view. data-track-ignore makes the delegate
+        // skip clicks inside the footer. The install button keeps its own
+        // data-track="market_skill_install_clicked" — closest() stops at the button, so
+        // it is unaffected by an ancestor's ignore marker.
+        data-track-ignore=""
+      >
         <div className="skill-market-card__stats" aria-label={t("skillMarket.card.statsAriaLabel")}>
           <span
             className="skill-market-card__stat"
@@ -280,6 +308,9 @@ export default function SkillCard({ skill, categories: _categories, onOpen, onEd
                 hideDescriptionTooltip();
                 onInstall(skill);
               }}
+              data-track="market_skill_install_clicked"
+              data-object-id={skill.id}
+              data-track-item-type="skill"
             >
               {t("skillMarket.card.install")}
             </button>

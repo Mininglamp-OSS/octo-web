@@ -1,14 +1,9 @@
-import { MediaMessageContent, WKSDK, Task, TaskStatus, MessageStatus } from "wukongimjssdk"
+import { WKSDK, Task, TaskStatus, MessageStatus } from "wukongimjssdk"
 import React from "react"
 import WKApp from "../../App"
-import { MessageContentTypeConst } from "../../Service/Const"
 import MessageBase from "../Base"
 import { MessageCell } from "../MessageCell"
-import Lightbox from "yet-another-react-lightbox"
-import Download from "yet-another-react-lightbox/plugins/download"
-import "yet-another-react-lightbox/styles.css"
 import { Toast } from "@douyinfe/semi-ui"
-import { downloadFile } from "../../Utils/download"
 import MessageRow from "../../ui/message/MessageRow"
 import SingleImage from "../../ui/message/ImageContent/SingleImage"
 import MultiImage from "../../ui/message/ImageContent/MultiImage"
@@ -16,63 +11,17 @@ import type { ImageTransferState } from "../../ui/message/ImageContent/SingleIma
 import { getImageMessageUI } from "../../bridge/message/useImageMessageUI"
 import { isMessageSelectable } from "../../Service/messageSelection"
 import { t } from "../../i18n"
+import { ImagePreviewLightbox } from "./ImagePreview"
+import { ImageContent } from "./ImageContent"
+
+export { ImagePreviewLightbox, ImagePreviewToolbar } from "./ImagePreview"
+export { ImageContent } from "./ImageContent"
 
 const SMALL_FILE_THRESHOLD = 1024 * 1024 // 1MB 以下不显示进度覆盖层
 
-
-export class ImageContent extends MediaMessageContent {
-    width!: number
-    height!: number
-    url!: string
-    imgData?: string
-    caption?: string
-    mentionUids?: string[]
-    name?: string
-    constructor(file?: File, imgData?: string, width?: number, height?: number, caption?: string, mentionUids?: string[]) {
-        super()
-        this.file = file
-        this.imgData = imgData
-        this.width = width || 0
-        this.height = height || 0
-        this.caption = caption
-        this.mentionUids = mentionUids
-        if (file) {
-            this.name = file.name
-        }
-    }
-    decodeJSON(content: any) {
-        this.width = content["width"] || 0
-        this.height = content["height"] || 0
-        this.url = content["url"] || ''
-        this.caption = content["caption"] || ''
-        this.mentionUids = content["mention_uids"] || []
-        this.name = content["name"] || undefined
-        this.remoteUrl = this.url
-    }
-    encodeJSON() {
-        const json: Record<string, unknown> = { "width": this.width || 0, "height": this.height || 0, "url": this.remoteUrl || "" }
-        if (this.caption) {
-            json["caption"] = this.caption
-        }
-        if (this.mentionUids && this.mentionUids.length > 0) {
-            json["mention_uids"] = this.mentionUids
-        }
-        if (this.name) {
-            json["name"] = this.name
-        }
-        return json
-    }
-    get contentType() {
-        return MessageContentTypeConst.image
-    }
-    get conversationDigest() {
-        return t("base.message.digest.image")
-    }
-}
-
-
 interface ImageCellState {
     showPreview: boolean
+    previewIndex: number
     uploadProgress: number
     uploadStatus: TaskStatus | null
 }
@@ -147,6 +96,7 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
         super(props)
         this.state = {
             showPreview: false,
+            previewIndex: 0,
             uploadProgress: 0,
             uploadStatus: null,
         }
@@ -217,14 +167,16 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
 
     render() {
         const { message, context } = this.props
-        const { showPreview, uploadProgress, uploadStatus } = this.state
+        const { showPreview, previewIndex, uploadProgress, uploadStatus } = this.state
         const content = message.content as ImageContent
 
         // 新 UI 实现
         const useNewUI = true
         if (useNewUI) {
             const uiProps = getImageMessageUI(message)
-            const hasRemoteUrl = !!(content.url || (content as any).remoteUrl)
+            const hasRemoteUrl = uiProps.isMulti
+                ? uiProps.images.some(image => !!image.src)
+                : !!(content.url || (content as any).remoteUrl)
             const fileSize = (content as any).file?.size ?? 0
             const transferState = getImageTransferState({
                 hasLocalFile: !!(content as any).file,
@@ -258,7 +210,9 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                                 images={uiProps.images}
                                 transferState={transferState}
                                 onImageClick={canOpenPreview ? (index) => {
-                                    // TODO: 多图预览
+                                    if (uiProps.images[index]?.src) {
+                                        this.setState({ showPreview: true, previewIndex: index })
+                                    }
                                 } : undefined}
                               />
                             : uiProps.singleImage
@@ -270,25 +224,16 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                                 : null
                         }
                     </MessageRow>
-                    <Lightbox
+                    <ImagePreviewLightbox
                         open={showPreview}
                         close={() => this.setState({ showPreview: false })}
+                        index={previewIndex}
                         slides={uiProps.isMulti
                             ? uiProps.images.map(img => ({ src: img.src, alt: '' }))
                             : [{ src: uiProps.singleImage?.src || '', alt: '' }]
                         }
-                        plugins={[Download]}
-                        download={{ download: ({ slide }) => {
-                            if (slide?.src) {
-                                downloadFile(slide.src, content.name || 'image.png')
-                            }
-                        }}}
-                        carousel={{ finite: true }}
-                        controller={{ closeOnBackdropClick: true }}
-                        render={{
-                            buttonPrev: uiProps.isMulti ? undefined : () => null,
-                            buttonNext: uiProps.isMulti ? undefined : () => null,
-                        }}
+                        filename={content.name}
+                        isMulti={uiProps.isMulti}
                     />
                 </>
             )
@@ -358,22 +303,11 @@ export class ImageCell extends MessageCell<any, ImageCellState> {
                     </div>
                 )}
             </div>
-            <Lightbox
+            <ImagePreviewLightbox
                 open={showPreview}
                 close={() => this.setState({ showPreview: false })}
                 slides={[{ src: imageURL, alt: '' }]}
-                plugins={[Download]}
-                download={{ download: ({ slide }) => {
-                    if (slide?.src) {
-                        downloadFile(slide.src, content.name || 'image.png')
-                    }
-                }}}
-                carousel={{ finite: true }}
-                controller={{ closeOnBackdropClick: true }}
-                render={{
-                    buttonPrev: () => null,
-                    buttonNext: () => null,
-                }}
+                filename={content.name}
             />
         </MessageBase>
     }

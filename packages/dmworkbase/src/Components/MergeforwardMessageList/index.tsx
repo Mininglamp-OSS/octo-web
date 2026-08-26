@@ -21,9 +21,11 @@ import WKApp from "../../App";
 import { downloadFile } from "../../Utils/download";
 import { isSafeUrl } from "../../Utils/security";
 import { getExtension } from "../FilePreviewPanel/types";
-import MarkdownContent from "../../Messages/Text/MarkdownContent";
 import { RichTextContent } from "../../Messages/RichText/RichTextContent";
 import { getRichTextBlocksUI } from "../../bridge/message/useRichTextMessageUI";
+import { buildTextMessageMentions } from "../../bridge/message/textMessageMentions";
+import { PartType } from "../../Service/Model";
+import TextContent from "../../ui/message/TextContent";
 import MixedContent from "../../ui/message/MixedContent";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
@@ -38,6 +40,11 @@ import "./index.css";
 /** 嵌套合并转发最大导航深度 */
 const MAX_NESTED_DEPTH = 10;
 
+function getTextMessageText(content: MessageText): string {
+  const contentObjText = (content as any).contentObj?.content;
+  return content.text ?? (typeof contentObjText === "string" ? contentObjText : "");
+}
+
 export interface MergeforwardMessageListProps {
   mergeforwardContent: MergeforwardContent;
   onClose?: () => void;
@@ -47,6 +54,8 @@ export interface MergeforwardMessageListProps {
   onNavigateChange?: (info: { title: string; canGoBack: boolean }) => void;
   /** 外部触发返回（由父组件的返回按钮调用） */
   goBackRef?: React.MutableRefObject<(() => void) | null>;
+  /** 点击普通成员 @mention 时打开资料卡；未传时详情保持只读但保留语义样式 */
+  onMentionClick?: (uid: string) => void;
 }
 
 interface MergeforwardMessageListState {
@@ -257,8 +266,19 @@ export default class MergeforwardMessageList extends Component<
 
   getMsgContent(msg: Message) {
     if (msg.contentType === MessageContentType.text) {
-      const text = (msg.content as MessageText).text ?? "";
-      return <MarkdownContent content={text} isSend={false} />;
+      const text = getTextMessageText(msg.content as MessageText);
+      const mentions = buildTextMessageMentions({
+        parts: ((msg as any).parts ?? []) as any,
+        content: msg.content,
+        partMentionType: PartType.mention as unknown as number,
+      });
+      return (
+        <TextContent
+          content={text}
+          mentions={mentions}
+          onMentionClick={this.props.onMentionClick}
+        />
+      );
     }
     if (msg.contentType === MessageContentType.image) {
       const imageContent = msg.content as ImageContent;
@@ -288,6 +308,7 @@ export default class MergeforwardMessageList extends Component<
       return (
         <MixedContent
           blocks={getRichTextBlocksUI(richTextContent.content || [])}
+          onMentionClick={this.props.onMentionClick}
           onFileDownload={(block) => {
             if (block.url) {
               downloadFile(block.url, block.name);

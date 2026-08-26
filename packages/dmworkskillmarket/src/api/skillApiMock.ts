@@ -90,15 +90,18 @@ function pageSkills(items: Skill[], query: SkillListQuery): PagedResult<Skill> {
   };
 }
 
-export function getCategories(_opts?: {
+export function getCategories(opts?: {
   signal?: AbortSignal;
+  q?: string;
+  tags?: string[];
 }): Promise<Category[]> {
+  const filtered = applySkillQuery({ q: opts?.q, tags: opts?.tags });
   const counted = CATEGORY_SEEDS.map((category) => ({
     ...category,
     skillCount:
       category.id === "all"
-        ? skills.length
-        : skills.filter((skill) => skill.categoryId === category.id).length,
+        ? filtered.length
+        : filtered.filter((skill) => skill.categoryId === category.id).length,
   }));
   return withDelay(counted);
 }

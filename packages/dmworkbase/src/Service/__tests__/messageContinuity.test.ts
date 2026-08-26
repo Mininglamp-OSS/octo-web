@@ -61,4 +61,16 @@ describe("isMessageContinuation", () => {
             msg("u1", 1_030, { contentType: MessageContentTypeConst.screenshot }),
         )).toBe(false)
     })
+
+    it("breaks on summary notification system messages", () => {
+        expect(isMessageContinuation(
+            msg("u1", 1_000, { contentType: MessageContentTypeConst.summaryNotify }),
+            msg("u1", 1_030),
+        )).toBe(false)
+
+        expect(isMessageContinuation(
+            msg("u1", 1_000),
+            msg("u1", 1_030, { contentType: MessageContentTypeConst.summaryNotify }),
+        )).toBe(false)
+    })
 })

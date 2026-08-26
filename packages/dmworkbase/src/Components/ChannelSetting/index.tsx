@@ -10,7 +10,7 @@ import "./index.css"
 import { ChannelSettingVM } from "./vm";
 import RoutePage from "../RoutePage";
 import ConversationContext from "../Conversation/context";
-import { ChannelTypeCustomerService } from "../../Service/Const";
+import { ChannelTypeCommunityTopic, ChannelTypeCustomerService } from "../../Service/Const";
 import { I18nContext } from "../../i18n";
 import { getCurrentImChannelInfo } from "../../im-runtime/currentChannelRuntime";
 
@@ -54,11 +54,14 @@ export default class ChannelSetting extends Component<ChannelSettingProps> {
             if(channelInfo?.orgData?.member_count) {
                 memberCount = channelInfo.orgData.member_count
             }
+
+            const title = vm.channel.channelType === ChannelTypeCommunityTopic
+                ? this.context.t("base.channelSetting.threadTitle")
+                : vm.channel.channelType === ChannelTypeCustomerService
+                    ? this.context.t("base.channelSetting.title")
+                    : this.context.t("base.channelSetting.titleWithCount", { values: { count: memberCount } })
            
-            return <RoutePage title={ vm.channel.channelType === ChannelTypeCustomerService
-                ? this.context.t("base.channelSetting.title")
-                : this.context.t("base.channelSetting.titleWithCount", { values: { count: memberCount } })
-            } onClose={() => {
+            return <RoutePage className="wk-channelsetting" title={title} onClose={() => {
                 if (onClose) {
                     onClose()
                 }

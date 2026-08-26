@@ -18,8 +18,22 @@ import type { McpQuickStart } from "../types/mcp";
 //     token, never pre-filled)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** The visible token placeholder. Never pre-fill a real token. */
-export const TOKEN_PLACEHOLDER = "<把这里换成你的 Token>";
+/** The visible placeholder shape. Interpolates the actual header/env key so
+ *  a user-supplied field named `Authorization` reads `<把这里换成你的
+ *  Authorization>` and one named `12` reads `<把这里换成你的 12>` — never
+ *  the misleading "Token" literal when the field isn't a token. */
+export function formatTokenPlaceholder(key: string): string {
+  return `<把这里换成你的 ${key}>`;
+}
+
+/** Global regex that matches any interpolated placeholder produced by
+ *  formatTokenPlaceholder. Consumers use this to split rendered content and
+ *  wrap each occurrence in a highlight `<mark>`. `[^>]+` covers any key
+ *  shape the create flow allows through: env keys are `[A-Z0-9_]+` and
+ *  headers are conventional HTTP tokens — neither can contain `>`, so the
+ *  match is unambiguous. Global flag so `.split()` returns every occurrence.
+ */
+export const TOKEN_PLACEHOLDER_RE = /<把这里换成你的 [^>]+>/g;
 
 export type QuickStartTabKey = "prompt" | "json";
 
@@ -99,7 +113,7 @@ function applyUserSuppliedPlaceholder(
   const supplied = new Set(userSupplied ?? []);
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(m)) {
-    out[k] = supplied.has(k) ? TOKEN_PLACEHOLDER : v;
+    out[k] = supplied.has(k) ? formatTokenPlaceholder(k) : v;
   }
   return out;
 }
@@ -184,7 +198,7 @@ function buildPrompt(qs: McpQuickStart): string {
           Object.entries(qs.headers)
             .map(([k, v]) =>
               headerSupplied.has(k)
-                ? `${k}: ${TOKEN_PLACEHOLDER}`
+                ? `${k}: ${formatTokenPlaceholder(k)}`
                 : `${k}: ${v}`
             )
             .join(", ")
@@ -211,7 +225,7 @@ function buildPrompt(qs: McpQuickStart): string {
       ? texts.envLabel +
         Object.entries(qs.env)
           .map(([k, v]) =>
-            envSupplied.has(k) ? `${k}=${TOKEN_PLACEHOLDER}` : `${k}=${v}`
+            envSupplied.has(k) ? `${k}=${formatTokenPlaceholder(k)}` : `${k}=${v}`
           )
           .join(", ")
       : "";

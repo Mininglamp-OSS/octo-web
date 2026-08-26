@@ -49,8 +49,8 @@ describe("SkillCard", () => {
     expect(screen.getByLabelText("下载次数：0")).toHaveTextContent("0");
   });
 
-  it("shows publisher metadata for public skills", () => {
-    render(
+  it("renders public skills as platform-published", () => {
+    const { container } = render(
       <SkillCard
         skill={{ ...skill, visibility: "public" }}
         categories={categories}
@@ -58,8 +58,11 @@ describe("SkillCard", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "ci-helper 我" })).toBeInTheDocument();
-    expect(screen.getByText("我")).toBeInTheDocument();
+    expect(screen.getByText("官方发布")).toBeInTheDocument();
+    expect(screen.queryByText("我")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "ci-helper 官方发布" })).toBeInTheDocument();
+    expect(container.querySelector(".skill-market-card__owner-platform-icon")).toBeInTheDocument();
+    expect(container.querySelector(".skill-market-card--official")).toBeInTheDocument();
   });
 
   it("shows creator and owner when they are different", () => {

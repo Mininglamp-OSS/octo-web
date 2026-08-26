@@ -45,7 +45,6 @@ packages/
   dmworkdatasource/ — Data layer
   dmworklogin/      — Authentication
   dmworksummary/    — Summary/notes feature
-  dmworktodo/       — Todo/task feature
   dmworkappbot/     — App bot integration
   eslint-config-custom/  — Shared ESLint config
   tsconfig/         — Shared TS config
@@ -97,7 +96,7 @@ Plain CSS files (no CSS Modules, no Tailwind). Styles co-located with components
 - ViewModels: `vm.ts` or `vm.tsx` in component directory
 - Tests: `__tests__/` directory or `*.test.ts` co-located
 - Imports: use workspace package names for cross-package imports:
-  - `@octo/base`, `@octo/contacts`, `@octo/datasource`, `@octo/login`, `@octo/todo`
+  - `@octo/base`, `@octo/contacts`, `@octo/datasource`, `@octo/login`
   - `@dmwork/summary`, `@dmwork/appbot`
 - Type safety: avoid `any` — use proper types or `unknown` with type guards
 - API calls: go through `WKApp.apiClient`, do NOT create separate axios/fetch instances

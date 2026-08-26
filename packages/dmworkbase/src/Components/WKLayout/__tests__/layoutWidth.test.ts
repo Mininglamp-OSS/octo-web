@@ -15,10 +15,19 @@ import {
     SUMMARY_MAX_WIDTH,
     SUMMARY_DEFAULT_WIDTH,
     SUMMARY_STORAGE_KEY,
+    NAV_RAIL_MIN_WIDTH,
+    NAV_RAIL_MAX_WIDTH,
+    NAV_RAIL_EXPANDED_WIDTH,
+    NAV_RAIL_DEFAULT_WIDTH,
+    NAV_RAIL_STORAGE_KEY,
     getMaxLeftWidth,
     clampWidth,
     restoreWidth,
     persistWidth,
+    clampNavRailWidth,
+    getNavRailDragWidth,
+    restoreNavRailWidth,
+    persistNavRailWidth,
     clampThreadWidth,
     restoreThreadWidth,
     persistThreadWidth,
@@ -82,6 +91,52 @@ describe('layoutWidth', () => {
         it('returns default for non-numeric stored values', () => {
             localStorage.setItem(SPLITTER_STORAGE_KEY, 'abc')
             expect(restoreWidth()).toBe(SPLITTER_DEFAULT_WIDTH)
+        })
+    })
+
+    describe('nav rail', () => {
+        describe('clampNavRailWidth', () => {
+            it('snaps below threshold to collapsed width', () => {
+                expect(clampNavRailWidth(40, 1200)).toBe(NAV_RAIL_MIN_WIDTH)
+            })
+
+            it('snaps above threshold to expanded width', () => {
+                expect(clampNavRailWidth(400, 1200)).toBe(NAV_RAIL_MAX_WIDTH)
+            })
+
+            it('does not return intermediate widths', () => {
+                expect(clampNavRailWidth(120, 1200)).toBe(NAV_RAIL_EXPANDED_WIDTH)
+            })
+        })
+
+        describe('getNavRailDragWidth', () => {
+            it('expands when dragging right', () => {
+                expect(getNavRailDragWidth(NAV_RAIL_MIN_WIDTH, 1)).toBe(NAV_RAIL_EXPANDED_WIDTH)
+            })
+
+            it('collapses when dragging left', () => {
+                expect(getNavRailDragWidth(NAV_RAIL_EXPANDED_WIDTH, -1)).toBe(NAV_RAIL_MIN_WIDTH)
+            })
+        })
+
+        describe('restoreNavRailWidth / persistNavRailWidth', () => {
+            beforeEach(() => {
+                localStorage.clear()
+            })
+
+            it('returns default when nothing stored', () => {
+                expect(restoreNavRailWidth()).toBe(NAV_RAIL_DEFAULT_WIDTH)
+            })
+
+            it('restores a previously persisted value', () => {
+                persistNavRailWidth(NAV_RAIL_EXPANDED_WIDTH)
+                expect(restoreNavRailWidth()).toBe(NAV_RAIL_EXPANDED_WIDTH)
+            })
+
+            it('returns default for out-of-range stored values', () => {
+                localStorage.setItem(NAV_RAIL_STORAGE_KEY, '9999')
+                expect(restoreNavRailWidth()).toBe(NAV_RAIL_DEFAULT_WIDTH)
+            })
         })
     })
 

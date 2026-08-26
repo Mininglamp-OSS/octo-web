@@ -1,0 +1,101 @@
+.wk-image-preview .yarl__container {
+  background-color: color-mix(in srgb, var(--wk-brand-primary) 58%, transparent);
+}
+
+.wk-image-preview .yarl__slide {
+  container-type: size;
+  padding: var(--wk-sp-6) var(--wk-sp-6) 88px;
+}
+
+.wk-image-preview .yarl__slide_image {
+  rotate: var(--yarl__image_preview_rotation, 0deg);
+  transition: rotate var(--wk-dur-fast) ease;
+}
+
+.wk-image-preview .yarl__toolbar {
+  inset: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
+.wk-image-preview .yarl__toolbar > * {
+  pointer-events: auto;
+}
+
+.wk-image-preview .yarl__toolbar > .yarl__button {
+  position: absolute;
+  top: var(--wk-sp-4);
+  right: var(--wk-sp-4);
+  display: flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--wk-r-circle);
+  background: color-mix(in srgb, var(--wk-brand-primary) 78%, transparent);
+  color: var(--wk-color-white);
+  filter: none;
+}
+
+.wk-image-preview .yarl__toolbar > .yarl__button:hover {
+  background: var(--wk-brand-primary);
+}
+
+.wk-image-preview-toolbar {
+  position: absolute;
+  bottom: var(--wk-sp-4);
+  left: 50%;
+  display: flex;
+  height: 48px;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  border-radius: var(--wk-r-md);
+  background: color-mix(in srgb, var(--wk-brand-primary) 94%, transparent);
+  box-shadow: var(--wk-shadow-lg);
+  color: var(--wk-color-white);
+  transform: translateX(-50%);
+}
+
+.wk-image-preview-toolbar button {
+  display: flex;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.wk-image-preview-toolbar button:hover {
+  background: color-mix(in srgb, var(--wk-color-white) 15%, transparent);
+}
+
+.wk-image-preview-toolbar button:focus-visible {
+  outline: 2px solid var(--wk-color-white);
+  outline-offset: -2px;
+}
+
+.wk-image-preview-toolbar button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.wk-image-preview-toolbar .wk-image-preview-toolbar-reset {
+  width: auto;
+  min-width: 40px;
+  padding: 0 var(--wk-sp-2);
+  font: var(--wk-text-body-medium);
+}
+
+.wk-image-preview-toolbar-divider {
+  width: 1px;
+  height: 28px;
+  margin: 0 var(--wk-sp-1);
+  background: color-mix(in srgb, var(--wk-color-white) 25%, transparent);
+}

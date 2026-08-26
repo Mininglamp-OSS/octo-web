@@ -4,10 +4,21 @@ import { describe, expect, it, vi } from "vitest"
 vi.mock("@octo/base", () => ({
   Conversation: ({ channel }: { channel: { channelID: string } }) =>
     React.createElement("div", { "data-channel": channel.channelID }),
+  createCurrentEmptyImConversation: vi.fn(),
+  findCurrentImConversation: vi.fn(),
+  setCurrentImChannelInfoCache: vi.fn(),
   WKApp: {
     routeRight: {
       popToRoot: vi.fn(),
       replaceToRoot: vi.fn(),
+    },
+    remoteConfig: {
+      octoAssistantUids: [],
+    },
+  },
+  Dap: {
+    shared: {
+      track: vi.fn(),
     },
   },
 }))
@@ -55,6 +66,15 @@ vi.mock("../Service/AppBotService", () => ({
 }))
 
 import { openAppBotConversation } from "../features/appBotConversation"
+import { WKApp, Dap } from "@octo/base"
+
+const noopDeps = () => ({
+  applyBot: async () => {},
+  setChannelInfo: vi.fn(),
+  findConversation: () => undefined,
+  createEmptyConversation: () => {},
+  replaceToRoot: vi.fn(),
+})
 
 describe("openAppBotConversation", () => {
   it("keeps apply, SDK cache, empty conversation, and route rendering in order", async () => {
@@ -95,5 +115,34 @@ describe("openAppBotConversation", () => {
     expect(calls).toEqual(["apply:robot_1", "cache", "create", "route"])
     expect(setChannelInfo).toHaveBeenCalledTimes(1)
     expect(replaceToRoot).toHaveBeenCalledTimes(1)
+  })
+
+  it("tracks octo_assistant_opened when the bot uid is an Octo assistant", async () => {
+    vi.mocked(Dap.shared.track).mockClear()
+    WKApp.remoteConfig.octoAssistantUids = ["assistant_1"]
+
+    await openAppBotConversation(
+      { id: "b", uid: "assistant_1", displayName: "Octo", description: "", scope: "platform" },
+      noopDeps(),
+    )
+
+    expect(Dap.shared.track).toHaveBeenCalledWith("octo_assistant_opened", { source: "app_bot_list" })
+    expect(Dap.shared.track).not.toHaveBeenCalledWith("app_opened", expect.anything())
+  })
+
+  it("tracks app_opened with app_name/app_category when the bot is not an Octo assistant", async () => {
+    vi.mocked(Dap.shared.track).mockClear()
+    WKApp.remoteConfig.octoAssistantUids = ["assistant_1"]
+
+    await openAppBotConversation(
+      { id: "b", uid: "robot_9", displayName: "Docs Bot", description: "", scope: "platform" },
+      noopDeps(),
+    )
+
+    expect(Dap.shared.track).toHaveBeenCalledWith("app_opened", {
+      app_name: "Docs Bot",
+      app_category: "platform",
+    })
+    expect(Dap.shared.track).not.toHaveBeenCalledWith("octo_assistant_opened", expect.anything())
   })
 })

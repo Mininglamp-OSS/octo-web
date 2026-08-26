@@ -28,7 +28,7 @@ describe("collapsedThreadUnread", () => {
     expect(collapsedThreadUnread([thread(3), thread(2, 1)], false, true)).toBe(3)
   })
 
-  it("inherits parent mute only when the thread has no explicit setting", () => {
-    expect(collapsedThreadUnread([thread(3), thread(2, 0)], true, true)).toBe(2)
+  it("keeps all Threads muted when their parent is muted", () => {
+    expect(collapsedThreadUnread([thread(3), thread(2, 0)], true, true)).toBe(0)
   })
 })

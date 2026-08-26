@@ -5,6 +5,8 @@ import "./index.css";
 export interface BotManageViewLabels {
   mentionFree: string;
   mentionFreeHint: string;
+  cardSettings: string;
+  cardSettingsHint: string;
   autoApprove: string;
   autoApproveHint: string;
   profileCommands: string;
@@ -17,6 +19,7 @@ export interface BotManageViewLabels {
   reload: string;
   searchPlaceholder: string;
   noSearchResult: string;
+  searchFailed: string;
   empty: string;
   sectionEnabled: (count: number) => string;
   sectionOthers: string;
@@ -35,13 +38,16 @@ export interface BotManageGroupItem {
 export interface BotManageViewProps {
   labels: BotManageViewLabels;
   onOpenMentionFree: () => void;
+  onOpenCardSettings: () => void;
 }
 
 export interface MentionFreeListViewProps {
   labels: BotManageViewLabels;
   loading: boolean;
+  searching: boolean;
   backendMissing: boolean;
   loadError: boolean;
+  searchError: boolean;
   searchKeyword: string;
   enabledGroups: BotManageGroupItem[];
   otherGroups: BotManageGroupItem[];
@@ -59,6 +65,7 @@ export interface MentionFreeListViewProps {
 export default function BotManageView({
   labels,
   onOpenMentionFree,
+  onOpenCardSettings,
 }: BotManageViewProps) {
   return (
     <div className="wk-bot-manage-page">
@@ -68,6 +75,12 @@ export default function BotManageView({
           title={labels.mentionFree}
           description={labels.mentionFreeHint}
           onClick={onOpenMentionFree}
+        />
+        <BotManageMenuItem
+          icon="▣"
+          title={labels.cardSettings}
+          description={labels.cardSettingsHint}
+          onClick={onOpenCardSettings}
         />
         <BotManageMenuItem
           icon="✓"
@@ -136,8 +149,10 @@ function BotManageMenuItem({
 export function MentionFreeListView({
   labels,
   loading,
+  searching,
   backendMissing,
   loadError,
+  searchError,
   searchKeyword,
   enabledGroups,
   otherGroups,
@@ -183,9 +198,14 @@ export function MentionFreeListView({
       <div className="wk-bot-manage-mention">
         <div className="wk-bot-manage-error">
           {labels.loadFailed}
-          <div className="wk-bot-manage-error-retry" onClick={onReload}>
+          {/* 用 button 而不是 div onClick：div 无法用键盘触达，也不进 tab 序。 */}
+          <button
+            type="button"
+            className="wk-bot-manage-error-retry"
+            onClick={onReload}
+          >
             {labels.reload}
-          </div>
+          </button>
         </div>
       </div>
     );
@@ -204,6 +224,13 @@ export function MentionFreeListView({
           onChange={(e) => onSearchKeywordChange(e.target.value)}
           data-testid="bot-manage-mention-search"
         />
+        {searching && (
+          <span
+            className="wk-bot-manage-search-spinner"
+            data-testid="bot-manage-mention-searching"
+            aria-hidden="true"
+          />
+        )}
       </div>
       <div
         className="wk-bot-manage-list"
@@ -211,7 +238,17 @@ export function MentionFreeListView({
         onScroll={handleScroll}
         data-testid="bot-manage-mention-list"
       >
-        {isEmpty && (
+        {searchError && !searching && (
+          <div
+            className="wk-bot-manage-search-error"
+            role="alert"
+            data-testid="bot-manage-mention-search-error"
+          >
+            {labels.searchFailed}
+          </div>
+        )}
+
+        {isEmpty && !searching && !searchError && (
           <div className="wk-bot-manage-empty">
             {searchKeyword.trim() ? labels.noSearchResult : labels.empty}
           </div>
@@ -322,3 +359,8 @@ function MentionFreeRow({
 }
 
 export { BotManageView };
+export {
+  CardSettingsView,
+  type BotCardSettingsLabels,
+  type CardSettingsViewProps,
+} from "./CardSettings";

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 
+import { buildPostLoginRedirectUrl } from '../Layout/postLoginRedirect'
+
 /**
  * Unit tests for the InviteLanding redirect basePath logic (fix for #1006).
  *
@@ -23,7 +25,15 @@ function getAppBasePath(pathname: string): string {
 
 function buildRedirect(pathname: string): string {
   const basePath = getAppBasePath(pathname)
-  return `https://host${basePath}/`
+  // Exercise the shipped redirect helper. This used to re-implement
+  // `https://host${basePath}/` locally, which drifted from production once
+  // InviteLanding moved to buildPostLoginRedirectUrl.
+  return buildPostLoginRedirectUrl(
+    `https://host${pathname}`,
+    'https://host',
+    basePath,
+    ''
+  )
 }
 
 describe('InviteLanding redirect basePath (#1006)', () => {
@@ -60,5 +70,22 @@ describe('InviteLanding redirect basePath (#1006)', () => {
   it('"/apiary/" is NOT stripped (only matches exact /api segment)', () => {
     // Regex uses boundary `(?=\/|$)` so /apiary is left alone.
     expect(buildRedirect('/apiary/')).toBe('https://host/apiary/')
+  })
+})
+
+describe('InviteLanding redirect under file:// (Electron desktop)', () => {
+  const basePath = '/Applications/OCTO.app/Contents/Resources/app.asar/build'
+  const href = `file://${basePath}/index.html`
+
+  it('handleJoin (query="") stays on the packaged index.html', () => {
+    expect(buildPostLoginRedirectUrl(href, 'null', basePath, '')).toBe(
+      `file://${basePath}/index.html`
+    )
+  })
+
+  it('handleGoLogin appends the invite query on the packaged index.html', () => {
+    expect(
+      buildPostLoginRedirectUrl(href, 'null', basePath, '?invite=abc&action=login')
+    ).toBe(`file://${basePath}/index.html?invite=abc&action=login`)
   })
 })

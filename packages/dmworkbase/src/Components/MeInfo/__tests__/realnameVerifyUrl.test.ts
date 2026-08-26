@@ -19,14 +19,14 @@ const idpProdProvider: OidcProviderConfig = {
   id: "xming",
   name: "xming",
   authorizePath: "/auth/oidc/xming/authorize",
-  accountUrl: "https://accounts.xming.ai",
+  accountUrl: "https://accounts.example.com",
 }
 
 const idpTestProvider: OidcProviderConfig = {
   id: "xming",
   name: "xming",
   authorizePath: "/auth/oidc/xming/authorize",
-  accountUrl: "https://accounts-test.imocto.cn",
+  accountUrl: "https://accounts-test.example.com",
 }
 
 const octoProvider: OidcProviderConfig = {
@@ -39,7 +39,7 @@ const octoProvider: OidcProviderConfig = {
 // 和 MeInfoVM.startRealnameVerify() 实际会传的形态一致 —— 典型的
 // `${window.location.origin}${window.location.pathname}?verified=1`
 // 做 test fixture。
-const SAMPLE_RETURN_TO = "https://web-test.imocto.cn/me?verified=1"
+const SAMPLE_RETURN_TO = "https://web-test.example.com/me?verified=1"
 const EXPECTED_ENCODED_RETURN_TO = encodeURIComponent(SAMPLE_RETURN_TO)
 
 describe("resolveRealnameVerifyUrl", () => {
@@ -47,7 +47,7 @@ describe("resolveRealnameVerifyUrl", () => {
     const res = resolveRealnameVerifyUrl("xming", [idpProdProvider], SAMPLE_RETURN_TO)
     expect(res).toEqual({
       ok: true,
-      url: `https://accounts.xming.ai/profile/info?anchor=verification&return_to=${EXPECTED_ENCODED_RETURN_TO}`,
+      url: `https://accounts.example.com/profile/info?anchor=verification&return_to=${EXPECTED_ENCODED_RETURN_TO}`,
     })
   })
 
@@ -55,7 +55,7 @@ describe("resolveRealnameVerifyUrl", () => {
     const res = resolveRealnameVerifyUrl("xming", [idpTestProvider], SAMPLE_RETURN_TO)
     expect(res).toEqual({
       ok: true,
-      url: `https://accounts-test.imocto.cn/profile/info?anchor=verification&return_to=${EXPECTED_ENCODED_RETURN_TO}`,
+      url: `https://accounts-test.example.com/profile/info?anchor=verification&return_to=${EXPECTED_ENCODED_RETURN_TO}`,
     })
   })
 
@@ -70,7 +70,7 @@ describe("resolveRealnameVerifyUrl", () => {
   it("encodeURIComponent escapes reserved chars in return_to (防 query pollution)", () => {
     // 模拟真实场景:return_to 里带 &、=、? —— 不 encode 直接拼会让 IdP 把下游
     // state 参数切断,302 回来时 ?verified=1 丢失。encodeURIComponent 必须生效。
-    const malicious = "https://web-test.imocto.cn/me?verified=1&next=/friends&evil=1"
+    const malicious = "https://web-test.example.com/me?verified=1&next=/friends&evil=1"
     const res = resolveRealnameVerifyUrl("xming", [idpProdProvider], malicious)
     expect(res.ok).toBe(true)
     if (!res.ok) return

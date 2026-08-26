@@ -281,6 +281,9 @@ export class DefaultEmojiService implements EmojiService {
     // 启动时拉取 manifest（fire-and-forget）。成功则刷新清单并落地缓存；失败保持兜底，
     // 保证首屏与降级。token 仍是 [xxx]，不变。
     async load(): Promise<void> {
+        if (import.meta.env.VITE_E2E_MOCK === "1") {
+            return
+        }
         try {
             const manifest = (await APIClient.shared.get("common/emojis")) as EmojiManifest
             // 只要 list 是数组就应用(允许服务端下发空列表 = 清空自定义表情);非数组/缺失则保留兜底。
@@ -374,7 +377,11 @@ export class DefaultEmojiService implements EmojiService {
     }
 
     private localImage(base: string): string {
-        return `./emoji/${base}.png`
+        // 用 BASE_URL 拼接而非写死相对路径 "./"：web 构建 base="/"（绝对路径，
+        // 页面 URL 带任意路径段都正确解析），electron 构建 base="./"（file:// 下
+        // 相对 index.html 不变）。写死 "./" 在页面 URL 带路径段（如 /chat/、/xxx/）
+        // 时会被解析到 /xxx/emoji/...，SPA fallback 返回 HTML → <img> 破图不显示。
+        return `${import.meta.env.BASE_URL}emoji/${base}.png`
     }
 
     // 自定义表情最终图片地址：优先 manifest 下发的 url（绝对 url 原样用，相对 url 拼到 API
@@ -399,6 +406,30 @@ export class DefaultEmojiService implements EmojiService {
         }
         if (/^data:image\//i.test(url)) {
             return url
+        }
+        // Sticker/emoji files are exposed by the public object-storage route.
+        // A packaged Electron page has a file:// origin, so resolving this
+        // against window.location.origin would produce null/file/... (or a
+        // local file path). Prefer the absolute API origin in that shell.
+        const previewMatch = url.match(/^\/?file\/preview\/(.+)$/)
+        if (previewMatch) {
+            let apiBase = ""
+            try {
+                apiBase = (APIClient.shared?.config?.apiURL as string) || ""
+            } catch {
+                apiBase = ""
+            }
+            const locationHref = typeof window !== "undefined" ? window.location.href : ""
+            for (const candidate of [apiBase, locationHref]) {
+                try {
+                    const resolved = new URL(candidate, locationHref || undefined)
+                    if (resolved.protocol === "http:" || resolved.protocol === "https:") {
+                        return `${resolved.origin}/file/${previewMatch[1]}`
+                    }
+                } catch {
+                    // Try the next candidate.
+                }
+            }
         }
         // 相对 url 拼到 API v1 base（如 "/api/v1/" 或 "https://host/v1/"）。
         let base = ""

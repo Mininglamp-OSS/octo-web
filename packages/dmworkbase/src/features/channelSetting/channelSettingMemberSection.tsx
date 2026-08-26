@@ -1,27 +1,27 @@
-import { Toast } from "@douyinfe/semi-ui";
-import {
-  ChannelTypePerson,
-  Subscriber,
-} from "wukongimjssdk";
+import { Subscriber } from "wukongimjssdk";
+import React from "react";
 
 import { ChannelSettingRouteData } from "../../Components/ChannelSetting/context";
-import { IndexTableItem } from "../../Components/IndexTable";
 import { Subscribers } from "../../Components/Subscribers";
 import { SubscriberList } from "../../Components/Subscribers/list";
-import { ContactsSelect } from "../../Components/UserSelect";
 import {
   ChannelTypeCommunityTopic,
   ChannelTypeCustomerService,
 } from "../../Service/Const";
-import RouteContext, { FinishButtonContext } from "../../Service/Context";
+import RouteContext from "../../Service/Context";
 import { Row, Section } from "../../Service/Section";
 import { isGroupDisbanded } from "../../Utils/groupDisband";
 import { t } from "../../i18n";
-import {
-  addChannelSettingSubscribers,
-  createGroupFromChannelSettingPrivateChat,
-  removeChannelSettingSubscribers,
-} from "../../bridge/channelSetting/channelSettingActions";
+import { removeChannelSettingSubscribers } from "../../bridge/channelSetting/channelSettingActions";
+import { canRemoveChannelSettingSubscriber as canRemoveSubscriber } from "./memberRemovalPermission";
+import WKApp from "../../App";
+
+// 判定逻辑住在零依赖的叶子模块里，好让 Components/Subscribers/vm.ts 也能复用
+// （直接互相 import 会成环）。此处 re-export 保持既有引用路径不变。
+export {
+  canRemoveChannelSettingSubscriber,
+  isBotOwnedByViewer,
+} from "./memberRemovalPermission";
 
 export function buildChannelMembersSection(
   context: RouteContext<ChannelSettingRouteData>
@@ -40,13 +40,24 @@ export function buildChannelMembersSection(
     return undefined;
   }
 
-  let addFinishButtonContext: FinishButtonContext;
-  let removeFinishButtonContext: FinishButtonContext;
-  let addSelectItems: IndexTableItem[] = [];
-  let removeSelectItems: Subscriber[] = [];
-  const disableSelectList = data.subscribers.map((subscriber) => {
-    return subscriber.uid;
-  });
+  // 同一个 removeAction 同时供两条进入成员列表的路径使用：
+  //   1. 群主/管理员点「移除成员」图标（下面的 onRemove）
+  //   2. 任何成员点「查看全部」（Subscribers 内部，见 Components/Subscribers/index.tsx）
+  // 路径 2 以前不带 removeAction，导致普通成员即使拥有某个 bot 也看不到任何移除入口
+  // （octo-web#1511）。逐行是否显示由 canRemove 判定，故对无 bot 的普通成员是无变化的。
+  const removeAction = {
+    canRemove: (subscriber: Subscriber) =>
+      canRemoveSubscriber({
+        viewerUid: data.subscriberOfMe?.uid || WKApp.loginInfo.uid,
+        viewerRole: data.subscriberOfMe?.role,
+        subscriber,
+      }),
+    onRemove: (subscriber: Subscriber) =>
+      removeChannelSettingSubscribers({
+        channel,
+        uids: [subscriber.uid],
+      }),
+  };
 
   return new Section({
     rows: [
@@ -57,75 +68,33 @@ export function buildChannelMembersSection(
           channel,
           key: channel.getChannelKey(),
           canManageBotAdmin: !!data.channelInfo?.orgData?.can_manage_bot_admin,
-          onAdd: () => {
-            context.push(
-              <ContactsSelect
-                onSelect={(items) => {
-                  addSelectItems = items;
-                  addFinishButtonContext.disable(items.length === 0);
-                }}
-                disableSelectList={disableSelectList}
-              />,
-              {
-                title: t("base.module.channelSettings.contactSelect"),
-                showFinishButton: true,
-                onFinish: async () => {
-                  addFinishButtonContext.loading(true);
-
-                  if (channel.channelType === ChannelTypePerson) {
-                    await createGroupFromChannelSettingPrivateChat({
-                      channel,
-                      selectedUids: addSelectItems.map((item) => item.id),
-                    }).catch((err) => {
-                      Toast.error(err.msg);
-                    });
-                  } else {
-                    await addChannelSettingSubscribers({
-                      channel,
-                      uids: addSelectItems.map((item) => item.id),
-                    });
-                    context.pop();
-                  }
-                  addFinishButtonContext.loading(false);
-                },
-                onFinishContext: (finishButtonContext) => {
-                  addFinishButtonContext = finishButtonContext;
-                  addFinishButtonContext.disable(true);
-                },
-              }
-            );
-          },
+          removeAction,
           onRemove: () => {
             context.push(
-              <SubscriberList
-                channel={channel}
-                onSelect={(items) => {
-                  removeSelectItems = items;
-                  removeFinishButtonContext.disable(items.length === 0);
-                }}
-                canSelect={true}
-              />,
+              <SubscriberList channel={channel} removeAction={removeAction} />,
               {
-                title: t("base.module.channelSettings.removeMembers"),
-                showFinishButton: true,
-                onFinish: async () => {
-                  removeFinishButtonContext.loading(true);
-                  removeChannelSettingSubscribers({
-                    channel,
-                    uids: removeSelectItems.map((item) => item.uid),
-                  })
-                    .then(() => {
-                      removeFinishButtonContext.loading(false);
-                      context.pop();
-                    })
-                    .catch((err) => {
-                      Toast.error(err.msg);
-                    });
-                },
-                onFinishContext: (finishButtonContext) => {
-                  removeFinishButtonContext = finishButtonContext;
-                  removeFinishButtonContext.disable(true);
-                },
+                title: (
+                  <span className="wk-subscrierlist-title-inline">
+                    <span className="wk-subscrierlist-title-label">
+                      {t("base.subscribers.groupMembersWithCount", {
+                        values: {
+                          count:
+                            data.channelInfo?.orgData?.member_count ||
+                            data.subscribers.length,
+                        },
+                      })}
+                    </span>
+                    {WKApp.endpoints.organizationalTool(
+                      channel,
+                      <button
+                        type="button"
+                        className="wk-subscrierlist-title-add"
+                      >
+                        {t("base.subscribers.addMember")}
+                      </button>
+                    )}
+                  </span>
+                ),
               }
             );
           },

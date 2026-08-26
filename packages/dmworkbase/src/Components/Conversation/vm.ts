@@ -20,6 +20,9 @@ import {
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
+import { isBotfatherChannelID } from "../../Service/botfatherChannel";
+import { isReplyAuthorAi } from "./replyAiIdentity";
+import { rememberSendIntent, trackMessageRevoked } from "../../Service/trackMessage";
 import { SuperGroup } from "../../Utils/const";
 import { SystemContent } from "wukongimjssdk";
 import { getFoldSessionExpandedMessages } from "./foldSessionSummary";
@@ -54,6 +57,8 @@ import {
     isNonTerminalProgressCard,
     isProgressCardIdleEnough,
 } from "../../Messages/InteractiveCard/agentProgressFallback";
+import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
+import { isOwnedConversationSingleton } from "../../features/notifications/messageAttention";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -99,11 +104,58 @@ export interface ConversationRenderFoldSessionItem {
 
 export type ConversationRenderItem = ConversationRenderMessageItem | ConversationRenderFoldSessionItem
 
+export interface ConversationVMOptions {
+    registerAsOpenConversation?: boolean
+}
+
 const PendingMessageOrderBase = Number.MAX_SAFE_INTEGER / 2
+
+/**
+ * botfather 命令前缀 → 事件名映射(§B)。仅当 channelID==="botfather" 时用于匹配
+ * content.text 的前缀选出事件名;绝不把正文存进 intent 或 props。
+ * /newbot 走既有 botCreateEntry 路径(bot_create_started),故不在此表。
+ * 各前缀互不为对方前缀,匹配顺序无关。
+ */
+const BOTFATHER_COMMAND_EVENTS: Array<[string, string]> = [
+    ["/quickstart", "botfather_quickstart_viewed"],
+    ["/setname", "bot_profile_edited"],
+    ["/setdescription", "bot_profile_edited"],
+    ["/mybots", "bot_list_viewed"],
+    ["/token", "bot_token_managed"],
+    ["/revoke", "bot_token_managed"],
+    ["/deletebot", "bot_deleted"],
+    ["/connect", "bot_connect_prompt_got"],
+    ["/disconnect", "bot_agent_disconnected"],
+    ["/pending", "bot_friend_request_handled"],
+    ["/approve", "bot_friend_request_handled"],
+    ["/reject", "bot_friend_request_handled"],
+    ["/help", "botfather_help_viewed"],
+    ["/cancel", "botfather_command_cancelled"],
+    ["/install", "chrome_plugin_install_triggered"],
+]
+
+/**
+ * 命令前缀边界:裸前缀,或 prefix 后紧跟任意空白(空格/换行/CRLF/制表符)才算命中,否则
+ * /installation 会误命中 /install、/newbotany 误命中 /newbot。用 \s 覆盖整类空白。
+ * (见 review P2-10 / 二审 P2-8 / 三审 nit:/newbot 分支也复用此边界。)
+ */
+function matchesCommandPrefix(text: string, prefix: string): boolean {
+    return text === prefix || (text.startsWith(prefix) && /\s/.test(text.charAt(prefix.length)))
+}
+
+/** 只判前缀选事件名。命中具体命令返回其事件,未命中但以 "/" 开头归兜底 botfather_command_sent。 */
+function matchBotfatherCommandEvent(text: string): string | undefined {
+    if (!text.startsWith("/")) return undefined
+    for (const [prefix, event] of BOTFATHER_COMMAND_EVENTS) {
+        if (matchesCommandPrefix(text, prefix)) return event
+    }
+    return "botfather_command_sent"
+}
 
 export default class ConversationVM extends ProviderListener {
 
     private static nextMessageContainerSeq = 0
+    private static openConversationOwner?: symbol
 
     loading: boolean = false // 消息是否加载中
     channel: Channel
@@ -149,6 +201,9 @@ export default class ConversationVM extends ProviderListener {
     afterFoldSessionClientMsgNos: Set<string> = new Set() // 紧跟在折叠卡片后的消息，需强制独立显示
     private foldSessionActiveTimer: ReturnType<typeof setTimeout> | null = null // 协作态超时自动结束
     private reactionSyncController: ReturnType<typeof createMessageReactionSyncController>
+    private readonly registerAsOpenConversation: boolean
+    private readonly openConversationOwner = Symbol("openConversationOwner")
+    private ownedOpenConversation?: Conversation
 
     fileDragEnter?: boolean // 文件拖拽上传（拖进来了）
     fileDragLeave?: boolean // 文件拖拽上传（拖离开了）
@@ -171,9 +226,14 @@ export default class ConversationVM extends ProviderListener {
     private _subscribersResolved: boolean = false
     subscribersReady: Promise<void>
 
-    constructor(channel: Channel, initLocateMessageSeq?: number) {
+    constructor(
+        channel: Channel,
+        initLocateMessageSeq?: number,
+        options: ConversationVMOptions = {},
+    ) {
         super()
         this.channel = channel
+        this.registerAsOpenConversation = options.registerAsOpenConversation !== false
         this.reactionSyncController = createMessageReactionSyncController({
             channel,
             // messagesOfOrigin 是已加载消息的权威集合；pullupHasMore 期间新消息先进入
@@ -707,7 +767,9 @@ export default class ConversationVM extends ProviderListener {
     // 撤回消息
     async revokeMessage(message: Message): Promise<void> {
 
-        return WKApp.conversationProvider.revokeMessage(message)
+        await WKApp.conversationProvider.revokeMessage(message)
+        // 破例2:撤回成功后补点(ui_action,§5.2)
+        trackMessageRevoked(message.clientSeq, message.channel?.channelType ?? 0)
 
     }
 
@@ -843,6 +905,31 @@ export default class ConversationVM extends ProviderListener {
         if (hasChange) {
             this.notifyListener()
         }
+    }
+
+    private claimOpenConversation(conversation: Conversation): void {
+        if (!this.registerAsOpenConversation) {
+            return
+        }
+        WKSDK.shared().conversationManager.openConversation = conversation
+        this.ownedOpenConversation = conversation
+        ConversationVM.openConversationOwner = this.openConversationOwner
+    }
+
+    releaseOpenConversationOwnership(): void {
+        const conversationManager = WKSDK.shared().conversationManager
+        if (ConversationVM.openConversationOwner === this.openConversationOwner) {
+            if (
+                isOwnedConversationSingleton(
+                    conversationManager.openConversation,
+                    this.ownedOpenConversation,
+                )
+            ) {
+                conversationManager.openConversation = undefined
+            }
+            ConversationVM.openConversationOwner = undefined
+        }
+        this.ownedOpenConversation = undefined
     }
 
     didMount(): void {
@@ -1088,15 +1175,13 @@ export default class ConversationVM extends ProviderListener {
                 this.updateLastMessageIfNeed(new MessageWrap(conversation.lastMessage))
             }
 
-            WKSDK.shared().conversationManager.openConversation = conversation
+            this.claimOpenConversation(conversation)
         }
 
         this.requestMessagesOfFirstPage(this.initLocateMessageSeq, () => {
             if (this.onFirstMessagesLoaded) {
                 this.onFirstMessagesLoaded()
             }
-            // 进入会话即标记 reminders 已读，避免折叠分组后 @ 角标残留
-            this.markReminderDones()
         })
 
         // 订阅 task 上传失败事件（module.tsx 全局触发，这里仅处理当前 channel）
@@ -1124,7 +1209,7 @@ export default class ConversationVM extends ProviderListener {
     }
 
     didUnMount(): void {
-        this.markReminderDones()
+        this.releaseOpenConversationOwnership()
         WKSDK.shared().chatManager.removeMessageListener(this.messageListener)
         WKSDK.shared().chatManager.removeMessageStatusListener(this.messageStatusListener)
         WKApp.endpointManager.removeMethod(EndpointID.clearChannelMessages)
@@ -1231,35 +1316,18 @@ export default class ConversationVM extends ProviderListener {
         })
     }
 
-    // 标记提醒已完成
-    markReminderDones() {
-        const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
-        if (conversation && conversation.reminders && conversation.reminders.length > 0) {
-            const ids = new Array<number>()
-            for (const reminder of conversation.reminders) {
-                if (!reminder.done) {
-                    ids.push(reminder.reminderID)
-                }
-            }
-            if (ids.length > 0) {
-                WKSDK.shared().reminderManager.done(ids)
-            }
-        }
-        // 进场兜底：清 SDK 本地的 isMentionMe，与 reminders done 保持一致
-        const conv = WKSDK.shared().conversationManager.findConversation(this.channel)
-        if (conv) {
-            conv.isMentionMe = false
-        }
-
-    }
-
     async onDownArrow() {
         const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
         let onlyScroll = false
+        let latestLoadedMessage: MessageWrap | undefined
         if (conversation && conversation.lastMessage) {
             if (this.messagesOfOrigin && this.messagesOfOrigin.length > 0) {
-                const lastMessage = this.messagesOfOrigin[this.messagesOfOrigin.length - 1]
-                if (lastMessage.messageSeq >= conversation.lastMessage.messageSeq) {
+                latestLoadedMessage = this.messagesOfOrigin[this.messagesOfOrigin.length - 1]
+                const latestKnownMessageSeq = Math.max(
+                    conversation.lastMessage.messageSeq,
+                    this.lastMessage?.messageSeq || 0
+                )
+                if (latestLoadedMessage.messageSeq >= latestKnownMessageSeq) {
                     onlyScroll = true
                 }
             }
@@ -1267,6 +1335,12 @@ export default class ConversationVM extends ProviderListener {
 
         if (onlyScroll) {
             this.scrollToBottom(true)
+            this.browseToMessageSeq = Math.max(
+                this.browseToMessageSeq,
+                latestLoadedMessage?.messageSeq || 0
+            )
+            this.showScrollToBottomBtn = false
+            await this.refreshNewMsgCount()
         } else {
             return this.requestMessagesOfFirstPage(0)
         }
@@ -1431,6 +1505,9 @@ export default class ConversationVM extends ProviderListener {
                 this.removeSendingMessageIfNeed(ackPacket.clientSeq, this.channel)
                 this.messagesOfOrigin = ConversationVM.deduplicateMessages(this.sortMessages(this.messagesOfOrigin))
                 this.refreshMessages(this.messagesOfOrigin)
+                // message_sent 等的 sendack 补点已搬到 trackMessage.ts 的常驻全局监听
+                // (按 clientSeq 消费,与本 VM 生命周期无关),避免切频道致发送 VM 卸载后
+                // 事件被静默丢弃(见 PR #1320 review P1-3)。此处不再补点。
                 return
             }
         }
@@ -1707,9 +1784,7 @@ export default class ConversationVM extends ProviderListener {
     async refreshNewMsgCount() {
 
         const oldUnreadCount = this.unreadCount
-        if (this.browseToMessageSeq == 0) {
-            this.unreadCount = 0
-        } else if (!this.lastMessage) { // 没有给定最新的消息 没办法算未读数量
+        if (!this.lastMessage) { // 没有给定最新的消息 没办法算未读数量
             this.unreadCount = 0
         } else if (this.lastMessage.send) { // // 如果最后一条消息是自己发的 则新消息数量为0
             this.browseToMessageSeq = this.lastMessage.messageSeq
@@ -1725,6 +1800,20 @@ export default class ConversationVM extends ProviderListener {
             const conversation = WKSDK.shared().conversationManager.findConversation(this.channel)
             if (conversation) {
                 conversation.unread = this.unreadCount
+                if (
+                    WKApp.shared.currentSpaceId &&
+                    conversation.channel.channelType === ChannelTypePerson &&
+                    conversation.extra?.spaceUnread !== undefined
+                ) {
+                    conversation.extra.spaceUnread = this.unreadCount
+                }
+                getBrowserUnreadConversationSync().publish({
+                    accountId: WKApp.loginInfo.uid,
+                    spaceId: WKApp.shared.currentSpaceId || "",
+                    channelId: conversation.channel.channelID,
+                    channelType: conversation.channel.channelType,
+                    unread: this.unreadCount,
+                })
             }
             // 未读清零时：先持久化到服务端，成功后再通知监听者 + 刷新 sidebar 快照（#203）。
             // markConversationUnread 是异步 HTTP PUT，必须 await 确保 /sidebar/sync 读到
@@ -1871,7 +1960,11 @@ export default class ConversationVM extends ProviderListener {
                 opts.pullMode = PullMode.Up
             }
         }
-        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
 
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
@@ -1955,7 +2048,11 @@ export default class ConversationVM extends ProviderListener {
         const [olderRemoteMessages, newerRemoteMessages] = await Promise.all([
             WKApp.conversationProvider.syncMessages(this.channel, olderOpts),
             WKApp.conversationProvider.syncMessages(this.channel, newerOpts),
-        ])
+        ]).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const toAvailableMessageWraps = (remoteMessages?: Message[]) => {
             const messages = new Array<Message>()
             if (remoteMessages && remoteMessages.length > 0) {
@@ -2152,6 +2249,9 @@ export default class ConversationVM extends ProviderListener {
 
     // 向下拉取消息
     async pulldownMessages() {
+        if (this.loading) {
+            return
+        }
 
         const minMessage = this.getMessageMin();
         if (minMessage?.messageSeq === 1) { // 如果最小messageSeq=1 说明下拉没消息了直接return
@@ -2171,7 +2271,11 @@ export default class ConversationVM extends ProviderListener {
         opts.pullMode = PullMode.Down
         opts.startMessageSeq = minMessage.messageSeq - 1
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {
@@ -2201,18 +2305,26 @@ export default class ConversationVM extends ProviderListener {
 
     // 向上拉取消息
     async pullupMessages() {
-        this.loading = true
+        if (this.loading) {
+            return
+        }
+
         const maxMessage = this.getMessageMax()
         if (maxMessage == null || maxMessage.messageSeq <= 0) { // 没有消息直接return
             return
         }
 
+        this.loading = true
         const opts = new SyncMessageOptions()
         opts.limit = WKApp.config.pageSizeOfMessage
         opts.pullMode = PullMode.Up
         opts.startMessageSeq = maxMessage.messageSeq
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {
@@ -2492,6 +2604,61 @@ export default class ConversationVM extends ProviderListener {
         // wire 不携带 from_home_space_* 等字段；在业务层收尾统一补一次，避免自发送
         // bubble 丢外部来源标识。已有值不覆盖、失败静默。
         applyMsgLevelExternalFieldsWithFallback(message, undefined)
+        // 破例2(octo-dap §5 / §5.4):记发送意图,sendack Normal 时消费补点。
+        // /newbot 只测前缀识别已知命令,不采集正文;意图里不含任何正文。
+        {
+            let botCreateEntry: string | undefined
+            let botCommandEvent: string | undefined
+            // botfather 命令(/newbot、/help…)是 botfather 专属;门用 isBotfatherChannelID 后缀匹配,
+            // 与 BOTFATHER_COMMAND_EVENTS 注释(§B)及 botfather_opened 分母门**共用同一 helper** → 图两侧
+            // 同步。Space 部署下 channelID = s{spaceId}_botfather(spaceId 任意串),裸 "botfather" 只在无
+            // Space 时出现;不能用 stripSpacePrefix(正则只认 32-hex spaceId)。详见 Service/botfatherChannel.ts。
+            // 不用 SYSTEM_BOTS.has():该集合未来加入其它系统 bot 时会让别的 bot 的 /command 文本误命中
+            // botfather 事件(见二审 nit)。
+            if (isBotfatherChannelID(channel.channelID) && content instanceof MessageText) {
+                const text = (content.text || "").trim()
+                if (matchesCommandPrefix(text, "/newbot")) {
+                    botCreateEntry = "botfather_im"
+                } else {
+                    // 泛化:命令前缀→事件名(只判前缀选事件名,绝不把 content.text 存进 intent/props)
+                    botCommandEvent = matchBotfatherCommandEvent(text)
+                }
+            }
+            // 被 @ 的 AI bot 列表(供 ai_mentioned 补 bot_id/bot_type;system 判据仅 SYSTEM_BOTS,余为 custom)
+            let mentionedBots: Array<{ id: string; type: string }> | undefined
+            const mentionUids: string[] = Array.isArray(mentionAny && mentionAny.uids) ? mentionAny.uids : []
+            if (mentionUids.length > 0) {
+                const bots: Array<{ id: string; type: string }> = []
+                for (const uid of mentionUids) {
+                    const sub = this.subscribers?.find((s: any) => s.uid === uid)
+                    if (sub && sub.orgData && sub.orgData.robot === 1) {
+                        bots.push({ id: uid, type: SYSTEM_BOTS.has(uid) ? "system" : "custom" })
+                    }
+                }
+                if (bots.length > 0) mentionedBots = bots
+            }
+            // message_replied 的 is_ai_msg:被回复消息作者(content.reply.fromUID)是否 AI/bot。
+            // 走 isReplyAuthorAi(按 uid 查 person channelInfo 的 robot 标记),DM/群统一 ——
+            // 不再查 this.subscribers(仅群/子区填充,DM 恒空会把 human↔AI DM 回复误判 false;见 #1452 review P1)。
+            const replyFromUid = content.reply?.fromUID
+            const isReplyToAi: boolean | undefined = content.reply ? isReplyAuthorAi(replyFromUid) : undefined
+            rememberSendIntent(message.clientSeq, {
+                channelId: channel.channelID,
+                channelType: channel.channelType,
+                mentionAis: !!(mentionAny && mentionAny.ais),
+                botCreateEntry,
+                botCommandEvent,
+                isReply: !!content.reply,
+                // message_replied 的 message_id = 被回复消息的 ID(content.reply.messageID,
+                // 发送时即可得;server 侧新消息 id 此刻尚未分配)。无 reply 时 undefined,
+                // 但此时 isReply=false,message_replied 根本不发。
+                messageId: content.reply?.messageID,
+                isReplyToAi,
+                // ai_mentioned 的 user_id 由生产者注入,避免 leaf service trackMessage 静态 import App
+                userId: WKApp.loginInfo.uid || null,
+                mentionedBots,
+            })
+        }
         const messageWrap = new MessageWrap(message)
         this.fillOrder(messageWrap)
 

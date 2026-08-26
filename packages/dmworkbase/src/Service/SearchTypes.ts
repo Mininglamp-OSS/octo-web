@@ -196,6 +196,56 @@ export interface GlobalSearchDataSource {
   getSelfUid: () => string;
   searchMessages: (query: GlobalSearchQuery) => Promise<GlobalSearchResponse>;
   getFileTypeCategories: () => Promise<GlobalSearchFileTypeCategory[]>;
+  // Cloud-docs full-text search (octo-docs-backend POST /api/v1/docs/search).
+  // Optional so existing DataSource fakes/tests stay valid; the docs tab is
+  // only rendered where a real API data source provides it.
+  searchDocs?: (query: DocSearchQuery) => Promise<DocSearchResponse>;
+}
+
+// --- Cloud-docs search (octo-docs-backend) -------------------------------
+// doc_type enum as returned/accepted by the backend search endpoint.
+export type DocSearchDocType = "doc" | "sheet" | "board" | "html";
+
+export interface DocSearchItem {
+  docId: string;
+  title: string;
+  docType: DocSearchDocType;
+  /**
+   * updated_at as epoch millis, or null (backend `updatedAt` is
+   * `number | null` — doc_meta.updated_at NOW(3), null when unset).
+   * SearchService coerces stray values to positive-millis-or-null.
+   */
+  updatedAt: number | null;
+  /**
+   * The doc's home Space id (backend `spaceId`). Search remains Space-scoped,
+   * but buildDocLink intentionally ignores this field and emits bare `/d/:docId`;
+   * authenticated open-context resolves canonical addressing. Optional only so
+   * DataSource fakes/tests may omit it.
+   */
+  spaceId?: string;
+  /**
+   * OpenSearch-generated highlight fragment (may contain <em></em>).
+   * MUST be rendered with an <em>-only allowlist (escape everything else)
+   * to avoid XSS — never dangerouslySetInnerHTML the raw value.
+   */
+  highlight?: string;
+}
+
+export interface DocSearchQuery {
+  keyword: string;
+  // Opaque keyset cursor (backend search_after token). Omitted on the first
+  // page; set to the previous response's nextCursor to fetch the next page.
+  cursor?: string;
+  pageSize: number;
+}
+
+export interface DocSearchResponse {
+  total: number;
+  items: DocSearchItem[];
+  // Opaque keyset cursor for the NEXT page (backend `nextCursor`). Present only
+  // while a further page exists; absent => no more results, so the pager stops
+  // on `!nextCursor` rather than any offset/total arithmetic.
+  nextCursor?: string;
 }
 
 export interface GlobalSearchChannelOption {

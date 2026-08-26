@@ -1,9 +1,10 @@
 import React, { Component, createRef } from 'react';
 import { Button, Modal, Input, Toast } from '@douyinfe/semi-ui';
-import { I18nContext } from '@octo/base';
+import { I18nContext, Dap } from '@octo/base';
 import type { ChatMessage, ChatCandidate, AgentProgressEvent, AgentDoneEvent, AgentErrorEvent } from '../types/summary';
 import { agentChatStream, agentChat } from '../api/summaryApi';
-import { genSessionId } from '../utils/summaryHelpers';
+import { genSessionId, genRequestId } from '../utils/summaryHelpers';
+import { summaryTestIds } from '../utils/testIds';
 import './AgentChatPanel.css';
 
 interface AgentChatPanelProps {
@@ -11,13 +12,13 @@ interface AgentChatPanelProps {
     onSend: (text: string) => void;
     sending: boolean;
     welcome?: string;
-    onSaveAsSummary?: (title: string) => Promise<boolean>;
+    onSaveAsSummary?: (title: string, requestId?: string) => Promise<boolean>;
     savingSummary?: boolean;
     onNewSession?: () => void;
     useStream?: boolean;
     sessionId?: string;
     profile?: string;
-    onAssistantMessage?: (text: string, sessionId?: string) => void;
+    onAssistantMessage?: (text: string, sessionId?: string, requestId?: string) => void;
     onUserMessage?: (text: string, sessionId?: string) => void;
     /**
      * 引用的已有总结 task_id 列表。仅在**首轮**(messages.length===0)时随
@@ -71,6 +72,9 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
 
     private listRef = createRef<HTMLDivElement>();
     private streamCloseHandle: (() => void) | null = null;
+    // request_id for the most recent successful agent generation. Save uses it
+    // to bind the summary to the frozen v2 Run manifest for that turn.
+    private lastRequestId: string | null = null;
 
     state: AgentChatPanelState = { 
         input: '', 
@@ -113,9 +117,15 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         const text = this.state.input.trim();
         if (!text || this.props.sending || this.state.isStreaming) return;
 
+        // P1-4:单通道计一次「发消息」。此处覆盖点击(onClick)与 Enter(handleKeyDown)两条入口,
+        // 已移除 TrackRules 的 summary-agent-send-btn 点击规则(漏 Enter)与 FetchRules 的
+        // POST /agent/chat 2xx 规则(SSE 失败回退时会二次计数)。
+        // 六审 P2:发点须落在**确有一次发送**之后 —— SSE 路径的 !profile 守卫会拦掉发送并只弹错,
+        //   故 track 下沉到 startSSEStream 过守卫之后;非流式路径(onSend 无守卫)则在此就地发。
         if (this.props.useStream) {
             this.startSSEStream(text);
         } else {
+            Dap.shared.track("smart_summary_agent_message_sent", {});
             this.props.onSend(text);
             this.setState({ input: '' });
         }
@@ -129,6 +139,8 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
             Toast.error(t('summary.common.agentChat.errorMessage.sseNeedsProfile'));
             return;
         }
+        // 过 !profile 守卫 = 确有一次发送,在此命令式补点(见 handleSend 注释)。
+        Dap.shared.track("smart_summary_agent_message_sent", {});
 
         // Bug fix: props.sessionId 可能是空字符串(父组件的 setState 是异步的,
         // 首次交互时父组件从 onUserMessage 生成的新 sessionId 在同一 render
@@ -136,6 +148,11 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         // onAssistantMessage 的 sessionId 参数上抛让父组件同步持久化。
         // 见 CHAT-REFERENCE-BASED-DESIGN-v1: chat session 生命周期。
         const sessionId = propsSessionId || genSessionId();
+        // WEB-03: one idempotency key per logical submit. Reused across
+        // stream→fallback so a transient retry does NOT create a second Run
+        // (SS-03 dedupes on uid+session_id+request_id). Without it the whole v2
+        // pipeline (Run/Spec/finish_status/gaps) stays inert.
+        const requestId = genRequestId();
 
         this.setState({
             input: '',
@@ -148,18 +165,22 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         // 先本地追加 user 消息(纯 UI,不发请求)
         onUserMessage?.(text, sessionId);
 
+        let refIds: number[] | undefined;
+        let selectedChannels: ReturnType<AgentChatPanel['requestSelectedChannels']>;
+
         try {
             // 每轮都把引用传给后端(和 CHAT-REFERENCE-BASED-DESIGN-v1 多轮上下文修复对齐)。
-            // 后端每轮重新拼进 system prompt,让 agent 在多轮追问/迭代中始终能看到引用材料。
-            const refIds = this.props.referencedTaskIds && this.props.referencedTaskIds.length > 0
-                ? this.props.referencedTaskIds
+            // 在 try 内冻结本次 submit 的 scope，fallback 复用同一份，避免同一
+            // request_id 下前后两次请求的 scope 发生漂移；scope 构造异常也能解锁。
+            refIds = this.props.referencedTaskIds && this.props.referencedTaskIds.length > 0
+                ? [...this.props.referencedTaskIds]
                 : undefined;
-            const selectedChannels = this.requestSelectedChannels();
-
+            selectedChannels = this.requestSelectedChannels();
             const { close } = agentChatStream({
                 session_id: sessionId,
                 message: text,
                 profile,
+                request_id: requestId,
                 referenced_task_ids: refIds,
                 selected_channels: selectedChannels,
             }, {
@@ -194,9 +215,10 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 onDone: (evt: AgentDoneEvent) => {
                     const { t } = this.context;
                     const reply = evt.reply || t('summary.common.agentPanel.noReply');
+                    this.lastRequestId = requestId;
                     // 优先用后端回传的 session_id(它可能对老 session 做过 canonicalize);
                     // 兜底用我们本地生成的 sessionId(和请求时发出去的一致,父组件据此持久化)。
-                    onAssistantMessage?.(reply, evt.session_id || sessionId);
+                    onAssistantMessage?.(reply, evt.session_id || sessionId, requestId);
                     this.setState({
                         isStreaming: false,
                         processExpanded: false,
@@ -206,12 +228,14 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 onError: (evt: AgentErrorEvent) => {
                     const { t } = this.context;
                     Toast.error(`${t('summary.common.agentChat.error')}: ${evt.message}`);
-                    this.setState({ isStreaming: false });
                     this.streamCloseHandle = null;
-                    // 仅传输层失败(transient: true)才重试,后端真实 error 不重试
+                    // 仅传输层失败(transient: true)才重试；summaryApi 会在收到
+                    // 后端 error frame 后抑制 close-without-done 的二次 transient。
                     if (evt.transient) {
-                        this.fallbackToNormalChat(text, sessionId, profile);
+                        this.fallbackToNormalChat(text, sessionId, profile, requestId, refIds, selectedChannels);
+                        return;
                     }
+                    this.setState({ isStreaming: false });
                 },
             });
 
@@ -221,29 +245,33 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
             const { t } = this.context;
             console.error('[AgentChatPanel] SSE stream failed:', err);
             Toast.warning(t('summary.common.agentChat.streamInterrupted'));
-            this.fallbackToNormalChat(text, sessionId, profile);
+            this.fallbackToNormalChat(text, sessionId, profile, requestId, refIds, selectedChannels);
         }
     };
 
-    private fallbackToNormalChat = async (text: string, sessionId: string, profile: string) => {
+    private fallbackToNormalChat = async (
+        text: string,
+        sessionId: string,
+        profile: string,
+        requestId: string,
+        refIds?: number[],
+        selectedChannels?: ReturnType<AgentChatPanel['requestSelectedChannels']>,
+    ) => {
         const { t } = this.context;
         const { onAssistantMessage } = this.props;
         try {
-            // Fallback 也每轮带引用(和 SSE 主链一致)
-            const refIds = this.props.referencedTaskIds && this.props.referencedTaskIds.length > 0
-                ? this.props.referencedTaskIds
-                : undefined;
-
             const result = await agentChat({
                 session_id: sessionId,
                 message: text,
                 profile,
+                request_id: requestId,
                 referenced_task_ids: refIds,
-                selected_channels: this.requestSelectedChannels(),
+                selected_channels: selectedChannels,
             });
             const reply = result.reply || t('summary.common.agentPanel.noReply');
+            this.lastRequestId = requestId;
             // 上抛 sessionId 让父组件持久化(和 SSE onDone 一致)
-            onAssistantMessage?.(reply, result.session_id || sessionId);
+            onAssistantMessage?.(reply, result.session_id || sessionId, requestId);
         } catch (err: any) {
             Toast.error(t('summary.common.createFailed'));
             console.error('[AgentChatPanel] Fallback agentChat failed:', err);
@@ -293,7 +321,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         }
         if (!this.props.onSaveAsSummary) return;
         
-        const success = await this.props.onSaveAsSummary(title);
+        const success = await this.props.onSaveAsSummary(title, this.lastRequestId || undefined);
         if (success) {
             this.setState({ showSaveDialog: false, summaryTitle: '' });
         }
@@ -356,12 +384,13 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
         const isBusy = sending || isStreaming;
 
         return (
-            <div className="agent-chat-panel">
+            <div data-testid={summaryTestIds.agentPanel} className="agent-chat-panel">
                 {(onNewSession || referenceHeader) && (
                     <div className="agent-chat-panel-header">
                         {referenceHeader}
                         {onNewSession && (
                             <Button
+                                data-testid={summaryTestIds.agentNewSessionBtn}
                                 theme="borderless"
                                 size="small"
                                 disabled={isBusy}
@@ -401,6 +430,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                 </div>
                 <div className="agent-chat-panel-input">
                     <textarea
+                        data-testid={summaryTestIds.agentInput}
                         className="agent-chat-textarea"
                         value={input}
                         placeholder={t('summary.create.agentChatPlaceholder')}
@@ -410,6 +440,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                         onKeyDown={this.handleKeyDown}
                     />
                     <Button
+                        data-testid={summaryTestIds.agentSendBtn}
                         theme="solid"
                         size="default"
                         loading={isBusy}
@@ -420,6 +451,7 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     </Button>
                     {canSave && (
                         <Button
+                            data-testid={summaryTestIds.agentSaveBtn}
                             size="default"
                             disabled={!this.hasAssistantOutput() || savingSummary}
                             loading={savingSummary}
@@ -439,8 +471,13 @@ export default class AgentChatPanel extends Component<AgentChatPanelProps, Agent
                     okText={t('summary.common.confirm')}
                     cancelText={t('summary.common.cancel')}
                     confirmLoading={savingSummary}
+                    okButtonProps={{ 'data-testid': summaryTestIds.agentSaveConfirmBtn } as any}
+                    modalRender={(node) => (
+                        <div data-testid={summaryTestIds.agentSaveDialog}>{node}</div>
+                    )}
                 >
                     <Input
+                        data-testid={summaryTestIds.agentSaveTitleInput}
                         placeholder={t('summary.create.titlePlaceholder')}
                         value={summaryTitle}
                         onChange={v => this.setState({ summaryTitle: v })}

@@ -1,44 +1,16 @@
-// AC-13b truncation helpers for forwarded doc messages (feature #511 §3.2, contract 5).
+// AC-13b title-clamp helper for forwarded doc messages (feature #511 §3.2, contract 5).
 //
 // A forwarded doc message is a plain Text/Markdown message `**title**\n[title](link)` — there is
 // NO contentType or side-channel to single it out, so any render-layer change must be safe for ALL
-// markdown messages. These two helpers keep that safety:
+// markdown messages. This helper keeps that safety:
 //
-//   1) middleEllipsizeUrl — shortens ONLY link text that is itself a long URL (visible text ===
-//      href). For a normal `[title](link)` the visible text is the title (≠ href) so this is a
-//      no-op; it only ever improves bare-URL / degraded rendering. The href is never touched.
-//   2) title clamp is done in CSS (2 lines + ellipsis); these helpers detect the exact forward
-//      structure (strong + line-break + link) so the clamp class is applied ONLY to that shape,
-//      never to arbitrary bold text (structure heuristic, contract 5 — no字符数 assertion).
-
-/** URL display text longer than this is middle-ellipsized (contract 5: head 30 … tail 20). */
-export const URL_ELLIPSIS_THRESHOLD = 64
-const URL_HEAD = 30
-const URL_TAIL = 20
+//   title clamp is done in CSS (2 lines + ellipsis); this helper detects the exact forward
+//   structure (strong + line-break + link) so the clamp class is applied ONLY to that shape,
+//   never to arbitrary bold text (structure heuristic, contract 5 — no字符数 assertion).
 
 /** Whether a string looks like an http(s) URL (used to decide if link text is a bare URL). */
 export function isUrlLike(text: string): boolean {
   return /^https?:\/\/\S+$/i.test(text.trim())
-}
-
-/**
- * Middle-ellipsize a long URL's DISPLAY text: `head30…tail20`. Leaves anything at or below the
- * threshold untouched. Never applied to the href — only the visible text (contract 5, E-15).
- */
-export function middleEllipsizeUrl(text: string): string {
-  if (text.length <= URL_ELLIPSIS_THRESHOLD) return text
-  return `${text.slice(0, URL_HEAD)}…${text.slice(text.length - URL_TAIL)}`
-}
-
-/**
- * True when a link's visible text is a long bare URL that should be middle-ellipsized (the text
- * equals the href AND it is a long URL). For a `[title](link)` link the text is the title, so this
- * is false and the link renders unchanged.
- */
-export function shouldEllipsizeLinkText(displayText: string, href: string | undefined): boolean {
-  if (!href) return false
-  const text = displayText.trim()
-  return text === href.trim() && isUrlLike(text) && text.length > URL_ELLIPSIS_THRESHOLD
 }
 
 /** Lightweight, framework-agnostic descriptor of a paragraph child (for structure detection/tests). */
@@ -89,4 +61,3 @@ export function isForwardDocCard(children: ParagraphChildKind[]): boolean {
   // differing label (a bare word, prose) is NOT a forward card and stays a plain paragraph.
   return label === title || isUrlLike(label)
 }
-

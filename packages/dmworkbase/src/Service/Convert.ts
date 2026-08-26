@@ -363,6 +363,7 @@ export class Convert {
 
         channelInfo.orgData = data.extra || {};
         channelInfo.orgData = { ...channelInfo.orgData, ...data }
+        channelInfo.orgData.online = data.online;
         channelInfo.orgData.remark = data.remark ?? "";
         // GH #1121: 展示名解析接入 OCTO 实名认证。
         // 优先级：real_name（已实名时）> remark（本地备注）> name（昵称）。
@@ -407,6 +408,7 @@ export class Convert {
 
         channelInfo.orgData = data.extra || {};
         channelInfo.orgData = { ...channelInfo.orgData, ...data }
+        channelInfo.orgData.online = data.online;
         channelInfo.orgData.remark = data.remark ?? "";
         channelInfo.orgData.displayName = data.remark && data.remark !== "" ? data.remark : channelInfo.title;
         channelInfo.orgData.forbidden = data.forbidden;

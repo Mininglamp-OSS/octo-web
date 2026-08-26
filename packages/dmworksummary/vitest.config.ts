@@ -22,18 +22,28 @@ export default defineConfig({
     globals: true,
     setupFiles: ['src/__tests__/setup.ts'],
     css: false,
+    server: {
+      deps: {
+        inline: [/@tiptap\/react/, /@douyinfe\/semi-ui/, /@douyinfe\/semi-icons/],
+      },
+    },
   },
   resolve: {
     dedupe: ['react', 'react-dom'],
     alias: [
       { find: /^@octo\/base\/src\/Components\/VoiceInputButton$/, replacement: path.resolve(__dirname, 'src/__mocks__/VoiceInputButton.tsx') },
       { find: /^@octo\/base\/src\/Components\/AiBadge$/, replacement: path.resolve(__dirname, 'src/__mocks__/AiBadge.tsx') },
+      { find: /^@octo\/base\/src\/Components\/WKAvatar$/, replacement: path.resolve(__dirname, 'src/__mocks__/WKAvatar.tsx') },
       { find: /^@octo\/base\/src\/EndpointCommon$/, replacement: path.resolve(__dirname, 'src/__mocks__/EndpointCommon.ts') },
       { find: /^@octo\/base\/src\/Service\/Const$/, replacement: path.resolve(__dirname, 'src/__mocks__/Const.ts') },
       { find: /^@octo\/base\/src\/Service\/SidebarService$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Service/SidebarService.ts') },
+      { find: /^@octo\/base\/src\/Service\/SpaceService$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Service/SpaceService.tsx') },
       { find: /^@octo\/base\/src\/App$/, replacement: path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts') },
       { find: /^@octo\/base\/src\/Components\/WKLayout\/layoutWidth$/, replacement: path.resolve(root, 'packages/dmworkbase/src/Components/WKLayout/layoutWidth.ts') },
+      { find: /^@octo\/base\/src\/Components\/Subscribers\/list$/, replacement: path.resolve(__dirname, 'src/__mocks__/SubscriberList.tsx') },
+      { find: /^@octo\/base\/src\/Components\/RoutePage$/, replacement: path.resolve(__dirname, 'src/__mocks__/RoutePage.tsx') },
       { find: '@octo/base', replacement: path.resolve(__dirname, 'src/__mocks__/dmworkBase.ts') },
+      { find: 'react-virtuoso', replacement: path.resolve(__dirname, 'src/__mocks__/react-virtuoso.tsx') },
       { find: /^@testing-library\/react$/, replacement: testingLibraryReact },
       { find: /^react-dom\/(.*)/, replacement: reactDom18 + '/$1' },
       { find: /^react-dom$/, replacement: reactDom18 },

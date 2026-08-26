@@ -3,6 +3,7 @@ import WKSDK from "wukongimjssdk";
 import {
   addImCommandListener,
   addImMessageListener,
+  removeImCommandListener,
   type ImChatListener,
   type ImChatRuntimeSdk,
 } from "./chatRuntime";
@@ -25,4 +26,10 @@ export function addCurrentImMessageListener<TMessage>(
   listener: ImChatListener<TMessage>
 ) {
   addImMessageListener(currentImChatRuntime<TMessage>(), listener);
+}
+
+export function removeCurrentImCommandListener<TMessage>(
+  listener: ImChatListener<TMessage>
+) {
+  removeImCommandListener(currentImChatRuntime<TMessage>(), listener);
 }

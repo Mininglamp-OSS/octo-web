@@ -3,12 +3,13 @@ import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
-import { Download, Eye, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { Bot, Download, Eye, Pencil, RefreshCw, ShieldCheck, Trash2, UserRound } from "lucide-react";
 import { t, useI18n, WKApp, WKButton, WKModal } from "@octo/base";
 import type { Category, Skill, SkillVersion } from "../types/skill";
 import { getSkill, getSkillMd, listVersions, trackSkillView } from "../api/skillApi";
 import { formatCount, formatFullDateTime, formatRecentOrDate } from "../utils/format";
 import { getSkillAvatarColor, getSkillAvatarText } from "../utils/skillAvatar";
+import { isPlatformPublishedSkill } from "../utils/publisher";
 
 interface SkillDetailModalProps {
   skillId: string | null;
@@ -220,9 +221,24 @@ export default function SkillDetailModal({
   const parsedMarkdown = skill ? parseFrontmatter(mdContent ?? skill.readmeContent) : { rows: [], body: "" };
   const frontmatterRows = skill ? (parsedMarkdown.rows.length > 0 ? parsedMarkdown.rows : fallbackFrontmatterRows(skill)) : [];
   const readmeBody = skill ? (parsedMarkdown.body || t("skillMarket.detail.noDetail")) : "";
+  const isPlatformPublished = Boolean(skill && isPlatformPublishedSkill(skill));
+  const platformPublisherName = t("skillMarket.card.platformPublisher");
   const creatorName = skill ? (skill.creatorName || skill.ownerName) : "";
-  const ownerLabel = skill ? `@${creatorName}` : "";
-  const showOwner = Boolean(skill && skill.visibility !== "public");
+  const hasComparablePublisherIds = Boolean(skill?.creatorId && skill?.ownerId);
+  const hasSeparateCreator = Boolean(
+    skill && creatorName && skill.ownerName && (
+      hasComparablePublisherIds
+        ? skill.creatorId !== skill.ownerId
+        : creatorName !== skill.ownerName
+    ),
+  );
+  const singlePublisherName = creatorName || skill?.ownerName || "";
+  const ownerLabel = isPlatformPublished
+    ? platformPublisherName
+    : hasSeparateCreator
+    ? `${creatorName} · ${skill?.ownerName}`
+    : singlePublisherName;
+  const showOwner = isPlatformPublished || Boolean(singlePublisherName);
   const displayName = skill ? (skill.displayName || skill.name) : t("skillMarket.detail.title");
   const versionLabel = skill?.version ? `v${skill.version}` : "";
   const viewCountLabel = formatCount(skill?.viewCount ?? 0);
@@ -295,7 +311,27 @@ export default function SkillDetailModal({
                 {showOwner && (
                   <>
                     <span className="skill-market-detail-header__separator">·</span>
-                    <span className="skill-market-detail-header__owner" title={ownerLabel}>{ownerLabel}</span>
+                    <span className="skill-market-detail-header__owner" title={ownerLabel}>
+                      {isPlatformPublished ? (
+                        <>
+                          <ShieldCheck className="skill-market-detail-header__platform-icon" size={13} aria-hidden="true" />
+                          <span>{platformPublisherName}</span>
+                        </>
+                      ) : hasSeparateCreator ? (
+                        <>
+                          <Bot size={13} aria-hidden="true" />
+                          <span>{creatorName}</span>
+                          <span className="skill-market-detail-header__publisher-separator">·</span>
+                          <UserRound size={13} aria-hidden="true" />
+                          <span>{skill.ownerName}</span>
+                        </>
+                      ) : (
+                        <>
+                          <UserRound size={13} aria-hidden="true" />
+                          <span>{singlePublisherName}</span>
+                        </>
+                      )}
+                    </span>
                   </>
                 )}
                 <span className="skill-market-detail-header__separator">·</span>

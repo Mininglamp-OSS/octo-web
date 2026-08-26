@@ -30,7 +30,8 @@ export function sanitizeHttpUrl(value: unknown): string | undefined {
 }
 
 /**
- * isSafeAuthorizePath 限定 authorize_path 必须是站内相对路径(以单个 / 开头, 不以 // 开头)。
+ * isSafeAuthorizePath 限定 authorize_path 必须是站内相对路径(以单个 / 开头, 不以 // 开头),
+ * 且不能包含 URL 解析器会规范化的控制字符或查询/片段分隔符。
  *
  * 安全:authorize_path 会被前端拼进 window.location.href 触发跳转。
  * 浏览器对 location.href 赋 'javascript:' / 'data:' URL 会执行内容,赋 '//evil.com'
@@ -42,7 +43,11 @@ function isSafeAuthorizePath(value: unknown): value is string {
     typeof value === "string" &&
     value.length >= 2 &&
     value.startsWith("/") &&
-    !value.startsWith("//")
+    !value.startsWith("//") &&
+    !value.includes("\\") &&
+    !/[\u0000-\u001f\u007f]/.test(value) &&
+    !value.includes("?") &&
+    !value.includes("#")
   );
 }
 

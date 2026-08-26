@@ -122,6 +122,14 @@ export const i18n = {
   registerNamespace: () => undefined,
 };
 
+// 埋点单例 mock:组件在选择/搜索时命令式 Dap.shared.track。测试只需 track 是无副作用可断言的 no-op
+// (真实 Dap 在 @octo/base 里;此 alias mock 需补齐,否则去掉可选链后 Dap.shared 会 undefined 崩)。
+export const Dap = {
+  shared: {
+    track: (_event: string, _props?: Record<string, unknown>) => undefined,
+  },
+};
+
 export function t(key: string, opts?: { values?: Record<string, string | number> }) {
   let text = messages[key] ?? key;
   if (opts?.values) {

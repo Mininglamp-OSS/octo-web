@@ -1,0 +1,365 @@
+.octo-mail-records {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  font-family: var(--wk-font-sans);
+}
+
+.octo-mail-records button,
+.octo-mail-records input {
+  font: inherit;
+}
+
+.octo-mail-records__header {
+  min-height: var(--wk-sp-12);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.octo-mail-records__heading {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: var(--wk-sp-2);
+}
+
+.octo-mail-records__heading strong {
+  overflow: hidden;
+  font: var(--wk-text-h3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-mail-records__heading small {
+  flex: 0 0 auto;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-record-icon-button,
+.octo-mail-record-pagination button {
+  min-height: var(--wk-sp-8);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wk-text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-record-icon-button {
+  width: var(--wk-sp-8);
+}
+
+.octo-mail-record-icon-button:hover,
+.octo-mail-record-pagination button:hover:not(:disabled) {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-record-tools {
+  padding: var(--wk-sp-3);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.octo-mail-record-search {
+  min-height: var(--wk-sp-9);
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+  background: var(--wk-bg-base);
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-sm);
+}
+
+.octo-mail-record-search:focus-within {
+  background: var(--wk-bg-surface);
+  border-color: var(--wk-border-strong);
+}
+
+.octo-mail-record-search input {
+  min-width: 0;
+  flex: 1;
+  color: var(--wk-text-primary);
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.octo-mail-record-bulkbar {
+  min-height: var(--wk-sp-9);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+  background: var(--wk-bg-surface);
+  border-bottom: 1px solid var(--wk-border-subtle);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-record-bulkbar button {
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  color: var(--wk-text-tertiary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-record-bulkbar button:hover,
+.octo-mail-record-bulkbar button.is-active {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-record-list {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.octo-mail-record-row {
+  width: 100%;
+  min-height: calc(var(--wk-sp-10) * 2 + var(--wk-sp-2));
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: var(--wk-sp-5) minmax(0, 1fr);
+  gap: var(--wk-sp-1);
+  padding: var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  text-align: left;
+  background: var(--wk-bg-surface);
+  border: 0;
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.octo-mail-record-row:hover {
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-record-row.is-selected {
+  background: var(--wk-bg-selected);
+  box-shadow: inset var(--wk-sp-1) 0 0 var(--wk-brand-primary);
+}
+
+.octo-mail-record-row__star {
+  width: var(--wk-sp-5);
+  height: var(--wk-sp-5);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--wk-text-tertiary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-record-row__star:hover:not(:disabled) {
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-active);
+}
+
+.octo-mail-record-row__star.is-starred {
+  color: var(--wk-color-warning);
+}
+
+.octo-mail-record-row__star:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.octo-mail-record-row__button {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--wk-sp-1);
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.octo-mail-record-row__topline {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
+}
+
+.octo-mail-record-row__topline strong,
+.octo-mail-record-row__subject,
+.octo-mail-record-row__preview {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.octo-mail-record-row__topline strong {
+  min-width: 0;
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+}
+
+.octo-mail-record-row.is-unread .octo-mail-record-row__topline strong,
+.octo-mail-record-row.is-unread .octo-mail-record-row__subject {
+  color: var(--wk-text-primary);
+  font-weight: var(--wk-font-semibold);
+}
+
+.octo-mail-record-row__time {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: var(--wk-sp-1);
+}
+
+.octo-mail-record-row__time > i {
+  width: var(--wk-sp-2);
+  height: var(--wk-sp-2);
+  flex: 0 0 auto;
+  background: var(--wk-color-danger);
+  border-radius: var(--wk-r-circle);
+}
+
+.octo-mail-record-row__topline time {
+  flex: 0 0 auto;
+  color: var(--wk-text-tertiary);
+  font: var(--wk-text-mono-sm);
+}
+
+.octo-mail-record-row__subject {
+  color: var(--wk-text-primary);
+  font-size: var(--wk-text-size-sm);
+  font-weight: var(--wk-font-medium);
+}
+
+.octo-mail-record-row__preview {
+  min-width: 0;
+  flex: 1;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-record-row__meta-line {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+}
+
+.octo-mail-record-status {
+  width: max-content;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  flex: 0 0 auto;
+  padding: var(--wk-sp-1) var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  font-size: var(--wk-text-size-tiny);
+  white-space: nowrap;
+  line-height: var(--wk-leading-normal);
+}
+
+.octo-mail-record-status.is-sending {
+  color: var(--wk-color-info);
+  background: var(--wk-color-info-bg);
+}
+
+.octo-mail-record-status.is-delivered {
+  color: var(--wk-color-success);
+  background: var(--wk-color-success-bg);
+}
+
+.octo-mail-record-status.is-partially_delivered {
+  color: var(--wk-color-warning);
+  background: var(--wk-color-warning-bg);
+}
+
+.octo-mail-record-status.is-not_delivered {
+  color: var(--wk-color-danger);
+  background: var(--wk-color-danger-light);
+}
+
+.octo-mail-record-state {
+  min-height: calc(var(--wk-sp-10) * 6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--wk-sp-2);
+  padding: var(--wk-sp-6);
+  color: var(--wk-text-tertiary);
+  text-align: center;
+}
+
+.octo-mail-record-state strong {
+  color: var(--wk-text-primary);
+}
+
+.octo-mail-record-state.is-error svg {
+  color: var(--wk-color-danger);
+}
+
+.octo-mail-record-state button {
+  margin-top: var(--wk-sp-2);
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-record-pagination {
+  min-height: var(--wk-sp-10);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-2);
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-tertiary);
+  border-top: 1px solid var(--wk-border-subtle);
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-record-pagination > div {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+}
+
+.octo-mail-record-pagination button {
+  width: var(--wk-sp-7);
+  min-height: var(--wk-sp-7);
+}
+
+.octo-mail-record-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}

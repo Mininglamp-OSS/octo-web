@@ -8,16 +8,21 @@
  * 不传 → 行为与之前完全一致。
  */
 import React from "react"
-import WKSDK, { Channel, ChannelTypePerson } from "wukongimjssdk"
 import { ForwardModal } from "../ForwardModal/ForwardModal"
 import { useForwardModal } from "../ForwardModal/useForwardModal"
+import {
+  useForwardTargetMemberCount,
+  useForwardBotSnapshot,
+  useForwardBotPreview,
+} from "../ForwardModal/hooks"
 import type { ForwardFinished, ForwardGrantConfig, ForwardGrantRole } from "../ForwardModal/grant"
-import { getImChannelSubscribers, syncImChannelSubscribers } from "../../im-runtime/channelRuntime"
 
 export interface ConversationSelectGrant {
   canGrant: boolean
   disabledReason?: string
   defaultRole?: ForwardGrantRole
+  /** Document Space used for authoritative Bot discovery. */
+  spaceId?: string
 }
 
 interface ConversationSelectProps {
@@ -45,61 +50,54 @@ export default function ConversationSelect({
     setActiveTab,
     setInputValue,
     toggleSelect,
-    confirm,
+    confirm: confirmForward,
     requestChannelInfoIfNeeded,
     grantEnabled,
     grantRole,
     setGrantEnabled,
     setGrantRole,
+    setGrantBotUids,
   } = useForwardModal(
     onFinished,
     grant ? { canGrant: grant.canGrant, defaultRole: grant.defaultRole } : undefined
   )
 
-  // "将授权给群当前 N 名成员" 提示：取真实群成员数，而非选中目标数。
-  // 与 host 侧 collectForwardUids 一致地把选中目标展开成去重 uid 快照
-  // （群 → syncSubscribes/getSubscribes 成员，个人 → 对端 uid），使提示数
-  // 与实际会被授权的成员数吻合；无群目标时不提示（个人转发不显示）。
-  const selectedKey = selectedIDs.join(",")
-  const [targetMemberCount, setTargetMemberCount] = React.useState<number | undefined>(undefined)
+  // 授权区「将授权给群当前 N 名成员」提示：取真实群成员数（去重 uid），
+  // 无群目标时为 undefined（个人转发不显示）。
+  const targetMemberCount = useForwardTargetMemberCount(selectedIDs, selectedChannels)
 
-  React.useEffect(() => {
-    const groups = selectedChannels.filter((ch) => ch.channelType !== ChannelTypePerson)
-    if (groups.length === 0) {
-      setTargetMemberCount(undefined)
-      return
-    }
-    const persons = selectedChannels.filter((ch) => ch.channelType === ChannelTypePerson)
-    // stale guard：选中项在异步 syncSubscribes 期间变化时，丢弃过期结果，
-    // 避免旧一批成员数覆盖当前选择的计数。
-    let cancelled = false
-    const compute = async () => {
-      const uids = new Set<string>()
-      for (const ch of persons) {
-        if (ch.channelID) uids.add(ch.channelID)
-      }
-      for (const ch of groups) {
-        try {
-          await syncImChannelSubscribers(WKSDK.shared(), ch)
-        } catch {
-          // best-effort：拉取失败时退回已缓存的成员快照。
-        }
-        if (cancelled) return
-        const subs = getImChannelSubscribers(WKSDK.shared(), ch) as { uid?: string }[]
-        for (const s of subs) {
-          if (s?.uid) uids.add(s.uid)
-        }
-      }
-      if (!cancelled) setTargetMemberCount(uids.size > 0 ? uids.size : undefined)
-    }
-    void compute()
-    return () => {
-      cancelled = true
-    }
-    // selectedKey 是 selectedIDs 的稳定字符串键（selectedChannels 每次渲染重建，
-    // 不能直接做依赖，否则会无限触发）。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey])
+  // 授权区 Bot 展开器（feature: user+Bot grants）：把选中人员创建的 Bot 按人归组，
+  // 默认全选、逐个可取消；仅当授权开关开启且确有 Bot 时渲染。失败/无 Bot 时为空快照。
+  const resolveName = React.useCallback(
+    (uid: string) => allItems.find((it) => it.channelID === uid)?.displayName || "",
+    [allItems],
+  )
+  // The hook owns the confirm-time getter: readLatestSelectedBotUids() reads the freshest selected
+  // Bot set (ref-backed, no render-phase write, no passive-effect race). confirm() layers it into
+  // the grant payload before delegating.
+  const { snapshot: botSnapshot, readLatestSelectedBotUids } = useForwardBotSnapshot(
+    selectedIDs,
+    selectedChannels,
+    grant?.spaceId,
+    !!grant && grantEnabled,
+    resolveName,
+  )
+
+  const confirm = React.useCallback(() => {
+    if (grantEnabled && botSnapshot && !botSnapshot.ready) return
+    setGrantBotUids(readLatestSelectedBotUids())
+    confirmForward()
+  }, [grantEnabled, botSnapshot, setGrantBotUids, readLatestSelectedBotUids, confirmForward])
+
+  // Person-row Bot preview (UX #4): lets an UNSELECTED person candidate be expanded to inspect the
+  // Bots they created, drawing from the SAME shared catalog the 授权区 snapshot uses. Opt-in with
+  // grant only; display-only — it never selects a target and never contributes to the grant payload
+  // (GrantArea stays authoritative). Absent grant → no preview (既有转发路径零回归).
+  const { botsFor } = useForwardBotPreview(grant ? grant.spaceId : undefined)
+  const botPreview = React.useMemo(
+    () => (grant ? { botsFor } : undefined),
+    [grant, botsFor],
+  )
 
   const grantConfig: ForwardGrantConfig | undefined = grant
     ? {
@@ -110,6 +108,7 @@ export default function ConversationSelect({
         onEnabledChange: setGrantEnabled,
         onRoleChange: setGrantRole,
         targetMemberCount,
+        bots: botSnapshot,
       }
     : undefined
 
@@ -129,6 +128,7 @@ export default function ConversationSelect({
       onTabChange={setActiveTab}
       onItemVisible={requestChannelInfoIfNeeded}
       grant={grantConfig}
+      botPreview={botPreview}
     />
   )
 }

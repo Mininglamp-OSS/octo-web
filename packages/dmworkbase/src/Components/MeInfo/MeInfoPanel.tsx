@@ -18,6 +18,7 @@ interface MeInfoNavRowProps {
 }
 
 export interface MeInfoPanelProps {
+    embedded?: boolean;
     avatar: React.ReactNode;
     avatarMini?: React.ReactNode;
     displayName: React.ReactNode;
@@ -86,6 +87,7 @@ function MeInfoNavRow({ title, value, right, showChevron = true, onClick }: MeIn
 }
 
 export default function MeInfoPanel({
+    embedded = false,
     avatar,
     avatarMini,
     displayName,
@@ -209,11 +211,12 @@ export default function MeInfoPanel({
             </div>
             <MeInfoNavRow title={shortNoLabel} value={shortNo || notSetLabel} onClick={onShortNoTap} />
             <MeInfoNavRow title={qrcodeLabel} right={<QrCode size={16} aria-hidden="true" />} onClick={onShowQrCode} />
+            {embedded && <MeInfoNavRow title={genderLabel} value={genderValue} onClick={onShowGender} />}
         </MeInfoSection>
 
-        <MeInfoSection title={preferencesTitle}>
+        {!embedded && <MeInfoSection title={preferencesTitle}>
             <MeInfoNavRow title={genderLabel} value={genderValue} onClick={onShowGender} />
-        </MeInfoSection>
+        </MeInfoSection>}
 
         <MeInfoSection title={securityTitle}>
             <MeInfoNavRow

@@ -2,10 +2,22 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { autoUpdater } from "electron-updater";
 import logger from "electron-log";
 import path from "path";
-import DMWORK_CONFIG from "./config";
-const feedUrl = `${DMWORK_CONFIG.updateUrl}v1/common/pcupdater/`;
+import OCTO_CONFIG from "./config";
+import {
+  IPC_UPDATE_AVAILABLE,
+  IPC_UPDATE_CHECK,
+  IPC_UPDATE_DOWNLOADED,
+  IPC_UPDATE_DOWNLOAD,
+  IPC_UPDATE_DOWNLOAD_PROGRESS,
+  IPC_UPDATE_ERROR,
+  IPC_UPDATE_INSTALL,
+  IPC_UPDATE_NOT_AVAILABLE,
+} from "../shared/ipc-channels";
+const feedUrl = `${OCTO_CONFIG.updateUrl}v1/common/pcupdater/`;
 
 let mainWindow: BrowserWindow;
+const isMainWindowSender = (event: Electron.IpcMainEvent): boolean =>
+  Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
 // 封装更新相关的进程通信方法
 const sendUpdateMessage = (opt: { cmd: string; data: any }) => {
   mainWindow.webContents.send(opt.cmd, opt.data);
@@ -35,7 +47,7 @@ function checkUpdate(win: BrowserWindow) {
   autoUpdater.on("error", (error) => {
     logger.info(error);
     sendUpdateMessage({
-      cmd: "update-error",
+      cmd: IPC_UPDATE_ERROR,
       data: error,
     });
   });
@@ -45,7 +57,7 @@ function checkUpdate(win: BrowserWindow) {
     logger.info('检查到有更新');
     logger.info(message);
     sendUpdateMessage({
-      cmd: "update-available",
+      cmd: IPC_UPDATE_AVAILABLE,
       data: message,
     });
   });
@@ -53,7 +65,7 @@ function checkUpdate(win: BrowserWindow) {
   // 监听没有可用更新事件
   autoUpdater.on("update-not-available", (message) => {
     sendUpdateMessage({
-      cmd: "update-not-available",
+      cmd: IPC_UPDATE_NOT_AVAILABLE,
       data: message,
     });
   });
@@ -64,7 +76,7 @@ function checkUpdate(win: BrowserWindow) {
     // 计算下载百分比
     const downloadPercent = parseInt(`${progress.percent}`);
     sendUpdateMessage({
-      cmd: "download-progress",
+      cmd: IPC_UPDATE_DOWNLOAD_PROGRESS,
       data: downloadPercent,
     });
   });
@@ -73,24 +85,27 @@ function checkUpdate(win: BrowserWindow) {
   autoUpdater.on("update-downloaded", (releaseObj) => {
     logger.info('下载完毕！提示安装更新');
     sendUpdateMessage({
-      cmd: "update-downloaded",
+      cmd: IPC_UPDATE_DOWNLOADED,
       data: releaseObj,
     });
   });
 
   // 接收渲染进程消息，开始检查更新
-  ipcMain.on("check-update", () => {
+  ipcMain.on(IPC_UPDATE_CHECK, (event) => {
+    if (!isMainWindowSender(event)) return;
     //执行自动更新检查
     logger.info("开始检查更新");
     autoUpdater.checkForUpdates();
   });
 
   // 触发更新
-  ipcMain.on("update-app", () => {
+  ipcMain.on(IPC_UPDATE_DOWNLOAD, (event) => {
+    if (!isMainWindowSender(event)) return;
     autoUpdater.downloadUpdate();
   });
   // 退出并安装更新包
-  ipcMain.on("install-update", () => {
+  ipcMain.on(IPC_UPDATE_INSTALL, (event) => {
+    if (!isMainWindowSender(event)) return;
     autoUpdater.quitAndInstall();
   });
 }

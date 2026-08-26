@@ -31,9 +31,9 @@ beforeEach(() => {
 describe("EmojiService 内置兜底（未拉取 manifest）", () => {
   it("getImage 对内置自定义表情返回本地 PNG，对 Unicode 返回本地 PNG", () => {
     const svc = freshService()
-    expect(svc.getImage("[使命必达]")).toBe("./emoji/custom_mission.png")
-    expect(svc.getImage("[尚方宝剑]")).toBe("./emoji/custom_shangfang.png")
-    expect(svc.getImage("😀")).toBe("./emoji/0_0.png")
+    expect(svc.getImage("[使命必达]")).toBe("/emoji/custom_mission.png")
+    expect(svc.getImage("[尚方宝剑]")).toBe("/emoji/custom_shangfang.png")
+    expect(svc.getImage("😀")).toBe("/emoji/0_0.png")
     expect(svc.getImage("不存在")).toBe("")
   })
 
@@ -52,7 +52,7 @@ describe("EmojiService 内置兜底（未拉取 manifest）", () => {
     expect(firstFour).toEqual(["[使命必达]", "[崇尚行动]", "[有品位]", "[尚方宝剑]"])
     // name 为人类可读标签，image 为本地图
     expect(all[0].name).toBe("使命必达")
-    expect(all[0].image).toBe("./emoji/custom_mission.png")
+    expect(all[0].image).toBe("/emoji/custom_mission.png")
   })
 
   it("emojiRegExp 匹配自定义 token 与 Unicode，且缓存同一实例", () => {
@@ -84,7 +84,7 @@ describe("EmojiService load() 拉取服务端 manifest", () => {
     // 调用路径为相对 base 路径（apiClient 会拼 apiURL）
     expect(apiGet).toHaveBeenCalledWith("common/emojis")
 
-    expect(svc.getImage("[使命必达]")).toBe("./emoji/custom_mission.png") // 空 url → 本地兜底
+    expect(svc.getImage("[使命必达]")).toBe("/emoji/custom_mission.png") // 空 url → 本地兜底
     expect(svc.getImage("[新表情]")).toBe("/api/v1/emoji/custom_new.png") // 相对 url 拼 base
     expect(svc.getImage("[绝对图]")).toBe("https://cdn.example.com/a.png") // 绝对 url 原样
     expect(svc.isCustomEmoji?.("[新表情]")).toBe(true)
@@ -94,6 +94,23 @@ describe("EmojiService load() 拉取服务端 manifest", () => {
     const cached = JSON.parse(localStorage.getItem("emoji_manifest_v1") || "{}")
     expect(cached.version).toBe(7)
     expect(cached.list).toHaveLength(3)
+  })
+
+  it("file/preview 表情路径在桌面包中使用 API origin，不拼成 file:// 路径", async () => {
+    const originalApiURL = APIClient.shared.config.apiURL
+    APIClient.shared.config.apiURL = "https://im.deepminer.com.cn/v1/"
+    apiGet.mockResolvedValueOnce({
+      version: 8,
+      list: [{ key: "[服务端贴图]", name: "服务端贴图", url: "file/preview/emoji/u/x.png" }],
+    })
+
+    try {
+      const svc = freshService()
+      await svc.load?.()
+      expect(svc.getImage("[服务端贴图]")).toBe("https://im.deepminer.com.cn/file/emoji/u/x.png")
+    } finally {
+      APIClient.shared.config.apiURL = originalApiURL
+    }
   })
 
   it("过滤空/非法 key：空分支绝不进正则（防零宽匹配渲染死循环）", async () => {
@@ -123,14 +140,14 @@ describe("EmojiService load() 拉取服务端 manifest", () => {
     await svc.load?.()
     expect(svc.isCustomEmoji?.("[使命必达]")).toBe(false)
     // Unicode 仍在
-    expect(svc.getImage("😀")).toBe("./emoji/0_0.png")
+    expect(svc.getImage("😀")).toBe("/emoji/0_0.png")
   })
 
   it("失败：保持内置兜底，不抛错", async () => {
     apiGet.mockRejectedValueOnce(new Error("network down"))
     const svc = freshService()
     await expect(svc.load?.()).resolves.toBeUndefined()
-    expect(svc.getImage("[使命必达]")).toBe("./emoji/custom_mission.png")
+    expect(svc.getImage("[使命必达]")).toBe("/emoji/custom_mission.png")
     expect(svc.getAllEmoji().length).toBe(4 + 152)
   })
 

@@ -8,7 +8,7 @@ import path from "node:path";
 
 /**
  * CI-only playwright config (adapted from e2e-kit v0.4). 差异 vs playwright.config.ts:
- *  - webServer.command: pnpm preview:e2e (build 产物, 冷启快)
+ *  - webServer.command: vite preview (build 产物, 冷启快)
  *  - reuseExistingServer: false (CI 每次都新)
  *  - PW_PREVIEW_PORT env: 各 job 用不同 port 隔离
  *  - 硬约束 TARGET=local: CI 只跑 mock 模式, 真后端走另一条 pipeline
@@ -23,6 +23,7 @@ const REPORT_DIR = path.resolve(__dirname, "playwright-report", REPORT_STAMP);
 
 export default defineConfig({
   testDir: "./tests",
+  forbidOnly: Boolean(process.env.CI),
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -53,7 +54,7 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
 
   webServer: {
-    command: "pnpm preview:e2e",
+    command: `node node_modules/vite/bin/vite.js preview --outDir build-e2e --port ${PREVIEW_PORT} --strictPort`,
     cwd: path.resolve(__dirname, ".."),
     url: `http://localhost:${PREVIEW_PORT}`,
     reuseExistingServer: false,
@@ -62,6 +63,9 @@ export default defineConfig({
     timeout: 60_000,
     stdout: "pipe",
     stderr: "pipe",
-    env: { PW_PREVIEW_PORT: PREVIEW_PORT },
+    env: {
+      PW_PREVIEW_PORT: PREVIEW_PORT,
+      VITE_API_URL: "http://127.0.0.1:9",
+    },
   },
 });

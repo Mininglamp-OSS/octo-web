@@ -1,0 +1,67 @@
+.octo-mail-workbench {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: calc(var(--wk-sp-12) * 7 + var(--wk-sp-6)) minmax(
+      0,
+      1fr
+    );
+  overflow: hidden;
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+}
+
+.octo-mail-workbench__list,
+.octo-mail-workbench__reader {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.octo-mail-workbench__list {
+  border-right: 1px solid var(--wk-border-subtle);
+}
+
+.octo-mail-composer-layer {
+  position: fixed;
+  inset: 0;
+  z-index: var(--wk-z-modal);
+  display: grid;
+  place-items: center;
+  padding: var(--wk-sp-6);
+  background: var(--wk-brand-tint-35);
+}
+
+.octo-mail-composer-dialog {
+  width: min(calc(var(--wk-sp-10) * 23), 100%);
+  height: min(calc(var(--wk-sp-10) * 19), 100%);
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-lg);
+  box-shadow: var(--wk-shadow-lg);
+}
+
+@media (max-width: 1080px) {
+  .octo-mail-workbench {
+    grid-template-columns: calc(var(--wk-sp-10) * 8) minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 760px) {
+  .octo-mail-workbench {
+    grid-template-columns: minmax(280px, 42%) minmax(0, 1fr);
+  }
+
+  .octo-mail-composer-layer {
+    padding: var(--wk-sp-2);
+  }
+
+  .octo-mail-composer-dialog {
+    height: 100%;
+  }
+}

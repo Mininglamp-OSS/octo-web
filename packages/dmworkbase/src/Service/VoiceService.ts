@@ -104,6 +104,24 @@ export default class VoiceService {
     return APIClient.shared.post("/voice/transcribe", formData);
   }
 
+  /** @deprecated Local voice settings are now migrated to voiceSettingsStore. */
+  async putLocalConfig(config: { enabled: boolean; timeout_ms?: number; probe_url?: string; transcribe_url?: string }): Promise<void> {
+    await APIClient.shared.put("/voice/local-config", config);
+  }
+
+  /** @deprecated Local voice settings are now migrated to voiceSettingsStore. */
+  async getLocalConfig(): Promise<{ status: number; enabled: boolean; timeout_ms: number | null; probe_url: string | null; transcribe_url: string | null }> {
+    return APIClient.shared.get("/voice/local-config");
+  }
+
+  /** @deprecated Local voice settings are now migrated to voiceSettingsStore. */
+  async deleteLocalConfig(): Promise<void> { await APIClient.shared.delete("/voice/local-config"); }
+
+  /** @deprecated Local voice settings are now migrated to voiceSettingsStore. */
+  async resetLocalConfig(config: { enabled: boolean }): Promise<void> {
+    await APIClient.shared.post("/voice/local-config/reset", config);
+  }
+
   async getVoiceContext(spaceId: string): Promise<VoiceContextResponse> {
     const cached = this._voiceContextCache.get(spaceId);
     if (cached && Date.now() - cached.timestamp < VOICE_CONTEXT_CACHE_TTL) {
@@ -146,33 +164,6 @@ export default class VoiceService {
 
     this._voiceContextInflight.set(spaceId, request);
     return request;
-  }
-
-  async putLocalConfig(config: {
-    enabled: boolean;
-    timeout_ms?: number;
-    probe_url?: string;
-    transcribe_url?: string;
-  }): Promise<void> {
-    await APIClient.shared.put("/voice/local-config", config);
-  }
-
-  async getLocalConfig(): Promise<{
-    status: number;
-    enabled: boolean;
-    timeout_ms: number | null;
-    probe_url: string | null;
-    transcribe_url: string | null;
-  }> {
-    return APIClient.shared.get("/voice/local-config");
-  }
-
-  async deleteLocalConfig(): Promise<void> {
-    await APIClient.shared.delete("/voice/local-config");
-  }
-
-  async resetLocalConfig(config: { enabled: boolean }): Promise<void> {
-    await APIClient.shared.post("/voice/local-config/reset", config);
   }
 
   clearVoiceContextCache(spaceId?: string): void {

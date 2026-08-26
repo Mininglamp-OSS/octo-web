@@ -1,28 +1,31 @@
+import { Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
     Toast,
     Typography,
     Tag,
-    Avatar,
+    Tooltip,
     Modal,
-    Dropdown,
-    SplitButtonGroup,
 } from "@douyinfe/semi-ui";
-import { IconPlus, IconClock, IconUserGroup, IconChevronDown } from "@douyinfe/semi-icons";
-import { I18nContext, t } from "@octo/base";
+import { I18nContext, t, Dap } from "@octo/base";
 import WKApp from "@octo/base/src/App";
+import WKAvatar from "@octo/base/src/Components/WKAvatar";
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";
 import type { ReplaceMode, SelectionRange } from "@octo/base/src/Components/VoiceInputButton";
 import * as api from "../api/summaryApi";
 import { getTopicTemplatesConfig, getTopicTemplates } from "../api/summaryApi";
-import { chatTypeToOriginChannelType } from "../utils/channelType";
+import { chatTypeToOriginChannelType, getOriginChannelType } from "../utils/channelType";
+import { markAgentSummaryNotificationEligible } from "../utils/groupSummaryNotify";
+import { channelToChatCandidate } from "../utils/channelConvert";
 import SummaryDetailPage from "./SummaryDetailPage";
 import ChatSelectorModal from "../components/ChatSelectorModal";
-import MemberSelectorModal from "../components/MemberSelectorModal";
 import ScheduleConfigModal from "../components/ScheduleConfigModal";
 import TemplateCard from "../components/TemplateCard";
 import AgentChatPanel from "../components/AgentChatPanel";
+import RouteContext, { RouteContextConfig } from "@octo/base/src/Service/Context";
+import { SubscriberList } from "@octo/base/src/Components/Subscribers/list";
+import RoutePage from "@octo/base/src/Components/RoutePage";
 import SummaryReferencePicker from "../components/SummaryReferencePicker";
 import SummaryPreviewModal from "../components/SummaryPreviewModal";
 import SummaryReferenceSidePanel from "../components/SummaryReferenceSidePanel";
@@ -38,9 +41,25 @@ import type {
     SummaryListItem,
     CreateAgentSummaryParams,
 } from "../types/summary";
-import { SummaryMode } from "../types/summary";
-import { describeSchedule, scheduleToParams, genSessionId, readAgentChatSession, writeAgentChatSession, clearAgentChatSession, readAgentChatReferenced, writeAgentChatReferenced, clearAgentChatReferenced } from "../utils/summaryHelpers";
+import { SummaryMode, SourceType } from "../types/summary";
+import { Channel, WKSDK } from "wukongimjssdk";
+import {
+    describeSchedule,
+    scheduleToParams,
+    genSessionId,
+    genRequestId,
+    readAgentChatSession,
+    writeAgentChatSession,
+    clearAgentChatSession,
+    readAgentChatReferenced,
+    writeAgentChatReferenced,
+    clearAgentChatReferenced,
+    readAgentChatRequestId,
+    writeAgentChatRequestId,
+    clearAgentChatRequestId,
+} from "../utils/summaryHelpers";
 import { resolveTemplate, computeTemplateSelection, getTemplateEditableFields, deriveSummaryTitle, limitTemplateSummaryContent, type ResolvableTemplate } from "../utils/templateResolver";
+import { summaryTestIds } from "../utils/testIds";
 
 const { Text } = Typography;
 
@@ -53,6 +72,22 @@ interface SummaryCreatePageProps {
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1。
      */
     derivedFromTask?: SummaryListItem;
+    /** 当前聊天会话（面板模式）。传入后自动预选该会话。 */
+    channel?: { channelID: string; channelType: number };
+    /** 面板内嵌模式：不使用 routeRight 导航，改用回调。 */
+    embedded?: boolean;
+    /** 面板模式关闭回调。 */
+    onClose?: () => void;
+    /** 面板模式创建成功回调（替代 routeRight.push 详情页）。 */
+    onSubmit?: (taskId: number) => void;
+    /** 打开总结创建的来源入口(埋点 source/entry_point,枚举值,非正文)。 */
+    source?: string;
+    /**
+     * 初始总结方式。列表页「+」下拉选择后传入：
+     * "normal"=快速总结（默认），"agent"=Agent 总结。
+     * mount 时若为 agent 会自动进入 agent 模式（恢复历史 session）。
+     */
+    initialMode?: "normal" | "agent";
 }
 
 interface SummaryCreatePageState {
@@ -67,6 +102,10 @@ interface SummaryCreatePageState {
     scheduleConfig: ScheduleConfig | null;
     showChatSelector: boolean;
     showMemberSelector: boolean;
+    memberSelectorChannel: Channel | null;
+    memberSelectorExcluded: string[];
+    memberSelectorSelectedItems: (() => any[]) | null;
+    memberSelectorOnSelect: ((items: any[]) => void) | null;
     showScheduleConfig: boolean;
     submitting: boolean;
     agentSubmitting: boolean;
@@ -74,6 +113,7 @@ interface SummaryCreatePageState {
     // Agent 多轮问答：气泡 UI + session_id。后端按 session_id 持久化记忆，同一会话复用即可续上下文。
     messages: ChatMessage[];
     sessionId: string;
+    agentRequestId: string;
     /**
      * chat 引用的已有总结(单选,v1)。仅首轮生效,选中后随 first message 发给后端。
      * 见 CHAT-REFERENCE-BASED-DESIGN-v1。
@@ -101,6 +141,8 @@ interface SummaryCreatePageState {
     editingTemplateLabel: string;
     editingTemplateDescription: string;
     savingTemplate: boolean;
+    visibleChipCount: number;
+    visibleMemberChipCount: number;
 }
 
 export default class SummaryCreatePage extends Component<SummaryCreatePageProps, SummaryCreatePageState> {
@@ -108,25 +150,36 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     declare context: React.ContextType<typeof I18nContext>;
 
     private textareaRef = createRef<HTMLTextAreaElement>();
+    /** 埋点 295:主题输入去抖计时器，只记「发生了主题输入」，绝不采输入内容。 */
+    private themeTrackTimer: ReturnType<typeof setTimeout> | null = null;
 
     state: SummaryCreatePageState = {
         topic: "",
         appliedTemplateLabel: "",
         customTemplateLimit: 30,
-        mode: 'normal',
+        mode: this.props.initialMode === "agent" ? "agent" : "normal",
         templates: TOPIC_TEMPLATES,
         templatePlaceholderRange: null,
-        selectedChats: [],
+        selectedChats: (() => {
+            const ch = this.props.channel;
+            if (!ch) return [];
+            return [channelToChatCandidate(ch)];
+        })(),
         selectedMembers: [],
         scheduleConfig: null,
         showChatSelector: false,
         showMemberSelector: false,
+        memberSelectorChannel: null,
+        memberSelectorExcluded: [],
+        memberSelectorSelectedItems: null,
+        memberSelectorOnSelect: null,
         showScheduleConfig: false,
         submitting: false,
         agentSubmitting: false,
         savingSummary: false,
         messages: [],
         sessionId: '',
+        agentRequestId: '',
         referencedTask: null,
         showReferencePicker: false,
         previewTaskId: null,
@@ -137,6 +190,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         editingTemplateLabel: "",
         editingTemplateDescription: "",
         savingTemplate: false,
+        visibleChipCount: 999,
+        visibleMemberChipCount: 999,
     };
 
     // 同步实例锁：防快速双击/回车的竞态（React state 未刷新时仍能拦住第二次）。
@@ -145,14 +200,124 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     // 完整创建页无频道上下文：session_id 落到统一兜底 key（见 summaryHelpers）。
     // 单独抽成方法便于与 ChatSummaryNewModal（按 channelID 隔离）保持对称。
     private agentChannelId(): string | undefined {
-        return undefined;
+        return this.props.channel?.channelID;
     }
 
     // 拉历史的竞态守卫：每次新的 hydrate 自增，异步返回时比对，丢弃过期请求。
     private historyLoadToken = 0;
 
+    private chipsContainerRef = createRef<HTMLDivElement>();
+    private memberChipsContainerRef = createRef<HTMLDivElement>();
+    private selectChatRef = createRef<HTMLDivElement>();
+    private chipResizeObserver: ResizeObserver | null = null;
+
+    private updateSelectChatWidth = () => {
+        const selectChat = this.selectChatRef.current;
+        if (!selectChat) return;
+        // 面板模式：actions 是竖向堆叠，不需要 JS 计算宽度
+        if (this.props.embedded) {
+            selectChat.style.width = '';
+            selectChat.style.flex = '';
+            selectChat.style.maxWidth = '';
+            return;
+        }
+        const actions = selectChat.parentElement;
+        if (!actions) return;
+        // 创建页右下角从「SplitButtonGroup(开始总结下拉)」收敛为单个 createSubmit 按钮，
+        // 宽度预留即减该按钮宽度（原逻辑减 .chat-summary-modal-split，已随下拉删除）。
+        const submitBtn = actions.querySelector('[data-testid="summary-create-submit"]');
+        const actionsWidth = actions.clientWidth;
+        const groupWidth = submitBtn ? (submitBtn as HTMLElement).offsetWidth : 0;
+        const gap = 24;
+        const width = actionsWidth - groupWidth - gap;
+        selectChat.style.width = width + 'px';
+        selectChat.style.flex = 'none';
+        selectChat.style.maxWidth = width + 'px';
+    };
+
+    private applyChipOverflow = (
+        container: HTMLDivElement | null,
+        setCount: (n: number) => void,
+    ) => {
+        if (!container) return;
+        const chips = container.querySelectorAll('.summary-workbench-chat-chip');
+        if (chips.length === 0) return;
+
+        // 临时显示所有芯片来测量真实宽度
+        chips.forEach(c => c.classList.remove('summary-workbench-chat-chip--hidden'));
+
+        const containerWidth = container.clientWidth;
+        // 预留 overflow 指示器空间（约 50px）
+        const overflowReserve = 50;
+        const maxWidth = containerWidth - overflowReserve;
+
+        let visible = 0;
+        let totalWidth = 0;
+        for (let i = 0; i < chips.length; i++) {
+            const chipWidth = chips[i].getBoundingClientRect().width + 8;
+            if (totalWidth + chipWidth > maxWidth) break;
+            totalWidth += chipWidth;
+            visible++;
+        }
+
+        // 没有溢出时不预留空间
+        if (visible >= chips.length) {
+            // 全部能放下，不隐藏
+            setCount(999);
+            return;
+        }
+
+        // 有溢出：检查加上 overflow 指示器后能否多放一个
+        const overflowWidth = 37; // "...+N" 约 37px
+        // 重新计算，不预留 overflow 空间，看能放多少
+        let visible2 = 0;
+        let totalWidth2 = 0;
+        for (let i = 0; i < chips.length; i++) {
+            const chipWidth = chips[i].getBoundingClientRect().width + 8;
+            const remaining = containerWidth - overflowWidth - totalWidth2;
+            if (chipWidth > remaining) break;
+            totalWidth2 += chipWidth;
+            visible2++;
+        }
+
+        // 先恢复隐藏状态
+        chips.forEach((c, i) => {
+            if (i >= visible2) {
+                c.classList.add('summary-workbench-chat-chip--hidden');
+            }
+        });
+
+        setCount(visible2);
+    };
+
+    private updateVisibleChipCount = () => {
+        this.updateSelectChatWidth();
+        this.applyChipOverflow(this.chipsContainerRef.current, (n) =>
+            this.setState({ visibleChipCount: n }),
+        );
+    };
+
+    private updateVisibleMemberChipCount = () => {
+        this.applyChipOverflow(this.memberChipsContainerRef.current, (n) =>
+            this.setState({ visibleMemberChipCount: n }),
+        );
+    };
+
     componentDidMount() {
         void this.loadTemplates();
+        // select-chat 宽度计算 + 芯片溢出检测
+        this.updateSelectChatWidth();
+        this.updateVisibleChipCount();
+        this.updateVisibleMemberChipCount();
+        const observeEl = this.selectChatRef.current?.parentElement;
+        if (observeEl) {
+            this.chipResizeObserver = new ResizeObserver(() => {
+                this.updateSelectChatWidth();
+                this.updateVisibleChipCount();
+                this.updateVisibleMemberChipCount();
+            });
+            this.chipResizeObserver.observe(observeEl);
+        }
         // 从详情页「继续优化」打开时:自动切 agent 模式 + 预填引用。
         // 见 CHAT-REFERENCE-BASED-DESIGN-v1 决策 1B(详情页显眼按钮入口)。
         if (this.props.derivedFromTask) {
@@ -165,10 +330,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             // 保存时血统被污染。所以进入时先原子清一遍 session · 再 write
             // 新 reference · 保证 storage 里的两条永远一致。
             clearAgentChatSession(this.agentChannelId());
+            clearAgentChatRequestId(this.agentChannelId());
             this.setState({
                 mode: 'agent',
                 referencedTask: this.props.derivedFromTask,
                 sessionId: '',
+                agentRequestId: '',
                 messages: [],
             });
             // 与 session_id 同生命周期持久化引用总结，避免 refresh/重进后
@@ -177,6 +344,34 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 task_id: this.props.derivedFromTask.task_id,
                 title: this.props.derivedFromTask.title ?? '',
             });
+        } else if (this.props.initialMode === "agent") {
+            // 列表页「+」下拉选择 Agent 总结进入：恢复历史 session 并回显。
+            this.enterAgentMode();
+        }
+    }
+
+    componentWillUnmount() {
+        this.chipResizeObserver?.disconnect();
+        // 防抖计时器若不清，卸载后仍可能补发 smart_summary_theme_input（用户已离开页面）。
+        if (this.themeTrackTimer) {
+            clearTimeout(this.themeTrackTimer);
+            this.themeTrackTimer = null;
+        }
+    }
+
+    componentDidUpdate(prevProps: SummaryCreatePageProps, prevState: SummaryCreatePageState) {
+        // selectedChats 或 mode 变化都会改变 start-group 宽度（mode=agent 时主按钮隐藏），
+        // 需要重算 select-chat 宽度与芯片溢出，避免残留上一次计算的宽度。
+        if (prevState.selectedChats !== this.state.selectedChats || prevState.mode !== this.state.mode) {
+            this.updateSelectChatWidth();
+            this.setState({ visibleChipCount: 999 }, () => this.updateVisibleChipCount());
+            // Agent→Normal 往返后 textarea 重新挂载（无内联高度），恢复按内容自动增高；
+            // 参与者 chip 区同样重新挂载，需按新宽度重算溢出。
+            this.autoResizeTextarea();
+            this.updateVisibleMemberChipCount();
+        }
+        if (prevState.selectedMembers !== this.state.selectedMembers) {
+            this.setState({ visibleMemberChipCount: 999 }, () => this.updateVisibleMemberChipCount());
         }
     }
 
@@ -264,6 +459,12 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             if (creatingCustomTemplate) {
                 const template = await api.createCustomTopicTemplate({ label, description });
                 this.appendTemplateToState(template);
+                // 真创建成功后才 emit(§started-vs-created):挂在 Save 按钮点击上会把
+                // 被服务端拒绝/取消的尝试也计一次创建,虚高成功率。带 object_id 供归因。
+                Dap.shared.track("template_created", {
+                    object_id: template.id,
+                    template_type: "summary_topic",
+                });
                 Toast.success(t("summary.templates.custom.createSuccess"));
             } else if (editingTemplate?.is_custom) {
                 const template = await api.updateCustomTopicTemplate(editingTemplate.id, { label, description });
@@ -332,6 +533,8 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     private handleTemplateClick = (template: TopicTemplate) => {
+        // 埋点 296:套用主题模板（内置卡片与自定义卡片都汇流到此，隐私 props 恒空）。
+        Dap.shared.track("smart_summary_template_applied", {});
         const { t: translate } = this.context;
         const { text, range } = computeTemplateSelection(template, {
             topic: translate("summary.templates.custom.promptTopic"),
@@ -377,6 +580,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     autoResizeTextarea = () => {
         const el = this.textareaRef.current;
         if (!el) return;
+        // 输入框按内容自动撑开（CSS min/max-height 约束边界，见 index.css）。
         el.style.height = "auto";
         el.style.height = `${el.scrollHeight}px`;
     };
@@ -422,7 +626,26 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     handleSubmit = async () => {
         const { topic, selectedChats, selectedMembers, scheduleConfig } = this.state;
         if (!this.canSubmit()) return;
+        // 八审 P2:提交即取消未触发的主题输入去抖 —— 用户已从「填主题」进到「生成」,
+        // 600ms 后再补发 smart_summary_theme_input 会把一次已转化的输入多计一次。
+        if (this.themeTrackTimer) {
+            clearTimeout(this.themeTrackTimer);
+            this.themeTrackTimer = null;
+        }
         const summaryTitle = deriveSummaryTitle(topic);
+
+        // smart_summary_started 收口在 api 层(summaryApi.createSummary → envelope code===0 gate),
+        // 不在此页面/按钮发 —— 因为 HTTP200+code≠0 是逻辑失败,只有 api 层看得到 code,且多入口
+        // (本页 normal / ChatSummaryNewModal / agent 模式)共用一个收口点才能计数与 props 一致
+        // (见二审 P1「smart_summary_started 双发」)。此处只把维度 props 透传给 createSummary。
+        // trigger_mode 恒为 'normal'(agent 分支走 handleAgentSubmit,永不到此)。
+        const startedProps = {
+            object_id: this.props.channel?.channelID,
+            source: this.props.source,
+            entry_point: this.props.source,
+            entry_source: this.props.source,
+            trigger_mode: this.state.mode,
+        };
 
         this.setState({ submitting: true, error: null });
         try {
@@ -431,6 +654,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 title: summaryTitle,
                 summary_mode: SummaryMode.BY_PERSON,
             };
+
+            // 面板模式下传入 origin_channel_id，后端据此关联来源聊天
+            if (this.props.channel) {
+                const ch = this.props.channel;
+                params.origin_channel_id = ch.channelID;
+                // origin_channel_type 与 SourceType 一致: 1=群聊, 2=子区, 3=私聊
+                params.origin_channel_type = getOriginChannelType(ch);
+            }
 
             if (selectedChats.length > 0) {
                 // 不传 source_name：让后端按 source_id 现查 IM 库最新群名（带类型后缀）。
@@ -446,7 +677,13 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 params.summary_mode = SummaryMode.BY_PERSON;
             }
 
-            const result = await api.createSummary(params);
+            const result = await api.createSummary(params, startedProps);
+            // 首次完成通知来源群(#1379):手动创建的任务也登记 eligibility。
+            // 完成快于首次 detail 轮询时,页面第一次看到的就是 COMPLETED
+            // (previousStatus === undefined),靠 transition 抓不到跳变;
+            // 登记后首次观察到 COMPLETED 即补发,标记只在创建时写入,
+            // 不会让历史任务追溯群发。
+            markAgentSummaryNotificationEligible(result.task_id);
 
             // If schedule is configured, create it in ONE step bound to the new task.
             // 后端 create 接口在 scope='task' + task_id 下已在一个事务里原子完成
@@ -481,8 +718,23 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             }
 
             Toast.success(t("summary.create.success"));
-            WKApp.routeRight.popToRoot();
-            WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+
+            // 派发创建事件，通知 ChatSummaryStarButton 刷新计数
+            const channelId = this.props.channel?.channelID ?? '';
+            window.dispatchEvent(new CustomEvent('chat-summary-created', {
+                detail: { taskId: result.task_id, channelId },
+            }));
+
+            if (this.props.embedded) {
+                this.props.onSubmit?.(result.task_id);
+            } else {
+                // 非面板路径（NavRail 默认创建页 / /summary/create / 列表「+」）创建成功后
+                // 通知左侧列表刷新：新总结应立即出现在列表，而不是等切模块重进才可见。
+                // 面板路径由宿主 ChatSummaryPanel 自行派发，这里不重复。
+                WKApp.mittBus.emit("summary-list-refresh-requested" as any);
+                WKApp.routeRight.popToRoot();
+                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
+            }
             this.props.onCreated?.();
         } catch (err: any) {
             this.setState({ error: err.message || t("summary.common.createFailed") });
@@ -508,6 +760,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
 
         // 惰性生成 session_id，整会话复用。
         const sessionId = this.state.sessionId || genSessionId();
+        const requestId = genRequestId();
         // 持久化到 localStorage：关闭/刷新后再进来可按 session_id 拉回历史（「退出不丢」）。
         writeAgentChatSession(this.agentChannelId(), sessionId);
 
@@ -519,13 +772,20 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }));
 
         try {
-            const res = await api.agentChat({ message: trimmed, session_id: sessionId, profile: 'summary' });
+            const res = await api.agentChat({
+                message: trimmed,
+                session_id: sessionId,
+                profile: 'summary',
+                request_id: requestId,
+            });
             // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）。
             const nextSessionId = res.session_id || sessionId;
             writeAgentChatSession(this.agentChannelId(), nextSessionId);
+            writeAgentChatRequestId(this.agentChannelId(), requestId);
             this.setState((prev) => ({
                 messages: [...prev.messages, { role: 'assistant', content: res.reply }],
                 sessionId: nextSessionId,
+                agentRequestId: requestId,
             }));
         } catch (err: any) {
             // 失败：Toast + 追一条 assistant 错误气泡（让失败在对话流里可见）。
@@ -558,19 +818,35 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     /** SSE 模式：追加 assistant 消息(仅 UI,不发请求)。 */
-    handleAgentAssistantMessage = (text: string, sessionId?: string) => {
-        // 后端回传 session_id 非空则回填并持久化（与后端持久化的会话保持一致）
-        if (sessionId && sessionId !== this.state.sessionId) {
-            writeAgentChatSession(this.agentChannelId(), sessionId);
-            this.setState((prev) => ({
+    handleAgentAssistantMessage = (text: string, sessionId?: string, requestId?: string) => {
+        let sessionChanged = false;
+        this.setState((prev) => {
+            const nextState: Pick<SummaryCreatePageState, 'messages'> & Partial<SummaryCreatePageState> = {
                 messages: [...prev.messages, { role: 'assistant', content: text }],
-                sessionId,
-            }));
-        } else {
-            this.setState((prev) => ({
-                messages: [...prev.messages, { role: 'assistant', content: text }],
-            }));
-        }
+            };
+            if (sessionId && sessionId !== prev.sessionId) {
+                sessionChanged = true;
+                nextState.sessionId = sessionId;
+            }
+            if (requestId) {
+                nextState.agentRequestId = requestId;
+            }
+            return nextState;
+        }, () => {
+            const channelId = this.agentChannelId();
+            const pairedSessionId = sessionId || this.state.sessionId;
+            // Persist the successful session/request pair after state commits.
+            // If two tabs still interleave these separate localStorage keys,
+            // the backend's full tuple lookup safely falls back to legacy mode.
+            if (sessionChanged && sessionId) {
+                writeAgentChatSession(channelId, sessionId);
+            } else if (requestId && pairedSessionId) {
+                writeAgentChatSession(channelId, pairedSessionId);
+            }
+            if (requestId) {
+                writeAgentChatRequestId(channelId, requestId);
+            }
+        });
     };
     handlePrimaryClick = () => {
         if (this.state.mode !== 'agent') {
@@ -578,29 +854,44 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
     };
 
-    /** 下拉菜单选择模式：切到 agent 时从 localStorage 恢复 session_id 并回显历史。 */
-    handleSelectMode = (mode: 'normal' | 'agent') => {
-        // 已在目标模式则短路，避免重复进入 agent 触发多余的历史拉取/状态重置。
-        if (mode === this.state.mode) return;
-        if (mode === 'agent') {
-            this.enterAgentMode();
-        } else {
-            this.setState({ mode });
-        }
+    handleOpenMemberSelector = () => {
+        const { selectedChats } = this.state;
+        const chat = selectedChats[0];
+        const channel = chat
+            ? new Channel(chat.chat_id, chat.chat_type === "thread" ? 5 : chat.chat_type === "direct" ? 1 : 2)
+            : null;
+        this.setState({
+            showMemberSelector: true,
+            memberSelectorChannel: channel,
+        });
+    };
+
+    handleMemberSelectorConfirm = () => {
+        const items = this.state.memberSelectorSelectedItems?.() ?? [];
+        const members: MemberCandidate[] = items.map((s: any) => ({
+            user_id: s.uid,
+            name: s.name || s.uid,
+        }));
+        this.setState({ selectedMembers: members, showMemberSelector: false });
     };
 
     /**
      * 进入 agent 模式：读 localStorage 拿 session_id → 拉历史回显。
      * 无历史（新会话）则照旧空白开场；session_id 仍惰性生成于首次发送。
+     * 注意：不再清空 selectedMembers —— 静默销毁用户已选的参与者是不可逆的
+     * 数据丢失。participants 泄漏在 payload 边界拦截（handleSaveAsSummary 在
+     * agent 模式下不提交 participants），切回「开始总结」时选择仍然保留。
      */
     private enterAgentMode() {
         const stored = readAgentChatSession(this.agentChannelId());
+        const storedRequestId = readAgentChatRequestId(this.agentChannelId());
         // 恢复引用总结与 session 同生命周期：storage 里有 → 自动回填。
         // 无 → 保持 state 现值（可能是 mount 时 derivedFromTask 塞进来的）。
         const storedRef = readAgentChatReferenced(this.agentChannelId());
         this.setState((prev) => ({
             mode: 'agent',
             sessionId: stored || prev.sessionId,
+            agentRequestId: storedRequestId || prev.agentRequestId,
             referencedTask: storedRef
                 ? { task_id: storedRef.task_id, title: storedRef.title } as SummaryListItem
                 : prev.referencedTask,
@@ -629,6 +920,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     /** 「新会话」：清 localStorage 的 session_id、清空消息，下次发送重新生成新 session_id。 */
     handleNewSession = () => {
         clearAgentChatSession(this.agentChannelId());
+        clearAgentChatRequestId(this.agentChannelId());
         // 引用总结跟 session 同生命周期 → 一起清。
         clearAgentChatReferenced(this.agentChannelId());
         // 作废在途历史拉取，避免旧会话历史回灌到新会话。
@@ -636,6 +928,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         this.setState({
             messages: [],
             sessionId: '',
+            agentRequestId: '',
             referencedTask: null,
             showReferencePicker: false,
             error: null,
@@ -656,6 +949,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         if (referencedTask) {
             return (
                 <div
+                    data-testid={summaryTestIds.agentRefCard}
                     className="summary-workbench-ref-card"
                     onClick={() => this.setState((prev) => ({ sidePanelOpen: !prev.sidePanelOpen }))}
                     style={{ cursor: 'pointer' }}
@@ -668,6 +962,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         {referencedTask.title || `task_id=${referencedTask.task_id}`}
                     </span>
                     <span
+                        data-testid={summaryTestIds.agentRefRemoveBtn}
                         className="summary-workbench-ref-card-remove"
                         onClick={(e) => {
                             // 阻止事件冒泡触发卡片 onClick (toggle SidePanel)
@@ -686,6 +981,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         }
         return (
             <span
+                data-testid={summaryTestIds.agentRefEntry}
                 className="summary-workbench-ref-btn"
                 onClick={() => this.setState({ showReferencePicker: true })}
                 title={translate('summary.chatReference.buttonTip')}
@@ -696,9 +992,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
     };
 
     /** 保存为总结（agent 模式）。将当前 session 的产出落库为可检索的交付物。返回成功/失败。 */
-    handleSaveAsSummary = async (title: string): Promise<boolean> => {
+    handleSaveAsSummary = async (title: string, requestId?: string): Promise<boolean> => {
         const { sessionId, selectedChats, selectedMembers } = this.state;
         const { t } = this.context;
+        const agentRequestId = requestId || this.state.agentRequestId;
         
         if (!sessionId) {
             Toast.warning(t('summary.create.noOutputToSave'));
@@ -716,6 +1013,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 session_id: sessionId,
                 title,
             };
+            if (agentRequestId) {
+                params.request_id = agentRequestId;
+            }
 
             if (selectedChats.length > 0) {
                 const origin = selectedChats[0];
@@ -727,7 +1027,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 }));
             }
 
-            if (selectedMembers.length > 0) {
+            // Agent 模式无参与者入口，selectedMembers 只会残留自 normal 模式的选择，
+            // 不应随 agent 保存提交给后端（P1 回归）。泄漏在 payload 边界拦截，
+            // 而不是销毁表单状态——切回 normal 时选择仍然保留。
+            if (this.state.mode !== 'agent' && selectedMembers.length > 0) {
                 params.participants = selectedMembers.map((m) => ({ 
                     user_id: m.user_id,
                     user_name: m.name,
@@ -741,7 +1044,16 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 params.referenced_task_ids = [this.state.referencedTask.task_id];
             }
 
-            const result = await api.createAgentSummary(params);
+            // smart_summary_started 由 createAgentSummary 在 envelope code===0 后补发(见二审 P1/P2-2),
+            // 与 normal 模式同一收口口径;trigger_mode 固定 'agent'。
+            const result = await api.createAgentSummary(params, {
+                object_id: this.props.channel?.channelID,
+                source: this.props.source,
+                entry_point: this.props.source,
+                entry_source: this.props.source,
+                trigger_mode: 'agent',
+            });
+            markAgentSummaryNotificationEligible(result.task_id);
 
             Toast.success(t('summary.create.agentSummaryCreated'));
 
@@ -750,12 +1062,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             //   2. 重置组件内 state(messages/sessionId/referencedTask)
             //   3. 后端会在保存事务里 DELETE agent_message 表对应行
             clearAgentChatSession(this.agentChannelId());
+            clearAgentChatRequestId(this.agentChannelId());
             // 引用总结跟 session 同生命周期 → 一起清。
             clearAgentChatReferenced(this.agentChannelId());
             this.historyLoadToken++;
             this.setState({
                 messages: [],
                 sessionId: '',
+                agentRequestId: '',
                 referencedTask: null,
                 showReferencePicker: false,
             });
@@ -769,8 +1083,14 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             window.dispatchEvent(event);
             
             // 跳转到详情页
-            WKApp.routeRight.popToRoot();
-            WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} />);
+            if (this.props.embedded) {
+                this.props.onSubmit?.(result.task_id);
+            } else {
+                // 非面板路径：保存为总结成功后通知左侧列表刷新（同 handleSubmit）。
+                WKApp.mittBus.emit("summary-list-refresh-requested" as any);
+                WKApp.routeRight.popToRoot();
+                WKApp.routeRight.push(<SummaryDetailPage taskId={result.task_id} emitSelection />);
+            }
             this.props.onCreated?.();
             return true;
         } catch (err: unknown) {
@@ -783,12 +1103,24 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     Toast.error(t('summary.create.noOutputToSave'));
                     return false;
                 }
-                // 40001: origin_channel_id 反查失败(通常是引用总结退出重进后
-                // referencedTask 丢失,前端没发 referenced_task_ids,后端 fallback
-                // 借 origin 无路可走)。给友好文案指导用户下一步动作。
+                // 40001: origin_channel_id 反查失败。拆两个子因给不同文案
+                // （R4 ms P2-1）：
+                //   (a) referencedTask 还在：前端已把 referenced_task_ids 发过去，
+                //       后端继承兜底也失败 = 被引用总结本身没有 origin（老 agent
+                //       任务 / bot 创建的 owner-scoped 总结）。「重新选择 / 新会话」
+                //       文案对该子因无效——且前端不能显式传 origin：后端在
+                //       origin_channel_id 非 nil 时跳过 session trace 解析，会把
+                //       新总结归错频道（见 octo-smart-summary agent_summary.go
+                //       CreateAgentSummary 的 nil 分支优先级）。
+                //   (b) referencedTask 已丢（退出重进后前端没发 referenced_task_ids，
+                //       后端 fallback 无路可走）→ 沿用原「引用丢失」文案。
                 // 见 SUM-161 fast-follow · CHAT-REFERENCE-BASED-DESIGN-v1。
                 if (code === 40001) {
-                    Toast.error(t('summary.create.savedReferenceLostRetry'));
+                    if (this.state.referencedTask) {
+                        Toast.error(t('summary.create.savedNoOriginRetry'));
+                    } else {
+                        Toast.error(t('summary.create.savedReferenceLostRetry'));
+                    }
                     return false;
                 }
             }
@@ -811,6 +1143,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
             templates,
             selectedChats, selectedMembers, scheduleConfig,
             showChatSelector, showMemberSelector, showScheduleConfig,
+            memberSelectorChannel, memberSelectorExcluded, memberSelectorOnSelect,
             submitting, agentSubmitting, error, editingTemplate, creatingCustomTemplate,
             editingTemplateLabel, editingTemplateDescription, savingTemplate,
             messages,
@@ -825,29 +1158,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         const templateEditorVisible = creatingCustomTemplate || !!editingTemplate;
 
         return (
-            <div className="summary-workbench">
+            <div data-testid={summaryTestIds.create} className={`summary-workbench${this.props.embedded ? " summary-workbench--panel" : ""}`}>
                 {/* Header */}
                 <div className="summary-workbench-header">
-                    <div className="summary-workbench-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M12 8V4H8" />
-                            <rect width="16" height="12" x="4" y="8" rx="2" />
-                            <path d="M2 14h2" />
-                            <path d="M20 14h2" />
-                            <path d="M15 13v2" />
-                            <path d="M9 13v2" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div className="summary-workbench-title">{translate("summary.create.title")}</div>
-                        <div className="summary-workbench-desc">
-                            {translate("summary.create.desc")}
-                        </div>
-                    </div>
+                    <span className="summary-workbench-header-emoji">🚀</span>
+                    <span className="summary-workbench-title">{translate("summary.create.title")}</span>
                 </div>
 
-                {/* Main input */}
-                <div className="summary-workbench-input-area">
+                {/* Content card */}
+                <div className="summary-workbench-card">
                     {mode === 'agent' ? (
                         // Agent 交互式问答：面板自带输入框，隐藏顶部大 textarea + 4 模板卡片。
                         // SidePanel 打开时: 加 --with-side class → flex 左右分栏
@@ -915,8 +1234,9 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         </div>
                     ) : (
                         <>
-                    <div style={{ position: "relative" }}>
+                    <div className="summary-workbench-input-wrap">
                         <textarea
+                            data-testid={summaryTestIds.createTopic}
                             ref={this.textareaRef}
                             className="summary-workbench-textarea"
                             value={topic}
@@ -926,31 +1246,33 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     : e.target.value.slice(0, SUMMARY_INPUT_MAX_LENGTH);
                                 this.setState({ topic: nextTopic, templatePlaceholderRange: null });
                                 this.autoResizeTextarea();
+                                // 埋点 295:主题输入去抖 600ms 后发一次，仅在非空时发，不采内容。
+                                if (this.themeTrackTimer) clearTimeout(this.themeTrackTimer);
+                                this.themeTrackTimer = setTimeout(() => {
+                                    if (nextTopic.trim()) Dap.shared.track("smart_summary_theme_input", {});
+                                }, 600);
                             }}
                             onFocus={this.handleInputFocus}
-                            placeholder={mode === 'agent'
-                                ? translate("summary.create.agentTopicPlaceholder")
-                                : translate("summary.create.topicPlaceholder")}
+                            placeholder={translate("summary.create.topicPlaceholder")}
                             rows={3}
                             maxLength={appliedTemplateLabel ? undefined : SUMMARY_INPUT_MAX_LENGTH}
                         />
-                        <VoiceInputButton
-                            inputRef={this.textareaRef}
-                            onTranscribed={this.handleVoiceTranscribed}
-                            getCurrentText={() => this.state.topic}
-                            showModeMenu
-                            size="sm"
-                            className="wk-vib--textarea-corner"
-                        />
-                    </div>
-                    <div className="summary-workbench-char-count">
-                        {topic.length}/{SUMMARY_INPUT_MAX_LENGTH}
-                    </div>
-                    {topic.length >= SUMMARY_INPUT_MAX_LENGTH && (
-                        <div style={{ color: "var(--semi-color-warning)", fontSize: 12, marginTop: 4, padding: "0 16px 8px" }}>
-                            {translate("summary.common.charLimitReached", { values: { count: SUMMARY_INPUT_MAX_LENGTH } })}
+                        <div className="summary-workbench-char-count">
+                            <span>{topic.length}/{SUMMARY_INPUT_MAX_LENGTH}</span>
+                            <VoiceInputButton
+                                inputRef={this.textareaRef}
+                                onTranscribed={this.handleVoiceTranscribed}
+                                getCurrentText={() => this.state.topic}
+                                showModeMenu
+                                size="sm"
+                            />
                         </div>
-                    )}
+                        {topic.length >= SUMMARY_INPUT_MAX_LENGTH && (
+                            <div className="summary-workbench-char-limit-warn">
+                                {translate("summary.common.charLimitReached", { values: { count: SUMMARY_INPUT_MAX_LENGTH } })}
+                            </div>
+                        )}
+                    </div>
                     {topic.trim() && appliedTemplateLabel && (
                         <div className="summary-template-applied-bar">
                             <span className="summary-template-applied-text">
@@ -966,12 +1288,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                         </div>
                     )}
 
-                    {/* Templates (nested inside the input panel, like the modal) */}
+                    {/* Templates */}
                     {!topic.trim() && (
-                        <>
-                            <div className="summary-template-section-header summary-workbench-templates-heading">
-                                <div className="summary-workbench-templates-label">{translate("summary.create.templatesTitle")}</div>
-                            </div>
+                        <div className="summary-workbench-templates-section">
+                            <div className="summary-workbench-templates-label">{translate("summary.create.templatesTitle")}</div>
                             <div className="summary-workbench-templates">
                                 {builtinTemplates.map((tpl) => (
                                     <TemplateCard
@@ -989,9 +1309,10 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                         {translate("summary.templates.custom.myTemplatesTitleWithCount", { values: { count: customTemplates.length, limit: customTemplateLimit } })}
                                     </div>
                                     <Button
+                                        className="summary-template-create-btn"
                                         theme="borderless"
                                         size="small"
-                                        icon={<IconPlus />}
+                                        icon={<Plus size={14} />}
                                         disabled={!canCreateCustomTemplate}
                                         onClick={this.handleCustomTemplateCreate}
                                     >
@@ -1033,143 +1354,146 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                     </button>
                                 )}
                             </div>
-                        </>
+                        </div>
                     )}
+
+                    {/* Divider */}
+                    <div className="summary-workbench-divider" />
                         </>
                     )}
 
                     {/* Action bar */}
                     <div className="summary-workbench-actions">
-                        <div className="summary-workbench-actions-left">
-                            {/* 「选择聊天」两种模式都需要:normal 用来 pick 目标聊天做总结;agent
-                                模式下用户也可能想在开始对话前先明确指定聊天(尤其归档子区依赖前端
-                                selected_channel_ids 桥接才能访问)。所以移出 mode !== 'agent' gate。
-                                参与者 / 定时是传统 workflow 特有的产品能力,保持仅 normal 显示。 */}
-                            <Button
-                                theme="borderless"
-                                icon={<IconPlus />}
-                                size="small"
-                                onClick={() => this.setState({ showChatSelector: true })}
-                                style={{ color: selectedChats.length > 0 ? "var(--semi-color-primary)" : undefined }}
-                            >
-                                {selectedChats.length > 0
-                                    ? translate("summary.create.selectedChats", { values: { count: selectedChats.length } })
-                                    : translate("summary.create.selectChat")}
-                            </Button>
-                            {mode !== 'agent' && (
-                                <>
-                                {/* 选择参与者:多人协作入口。打开 MemberSelectorModal 选 participants,
-                                    与「选择聊天 / 定时」并列在创建页操作栏,确保多人入口在 UI 上可达。 */}
-                                <Button
-                                    theme="borderless"
-                                    icon={<IconUserGroup />}
-                                    size="small"
-                                    onClick={() => this.setState({ showMemberSelector: true })}
-                                    style={{ color: selectedMembers.length > 0 ? "var(--semi-color-primary)" : undefined }}
+                        <div className="summary-workbench-select-chat" ref={this.selectChatRef}>
+                            <div className="summary-workbench-select-chat-header">
+                                <span className="summary-workbench-select-chat-title">
+                                    {translate("summary.create.selectChat")}
+                                    <i className="summary-workbench-required-asterisk">*</i>
+                                </span>
+                                <span className="summary-workbench-select-chat-hint">
+                                    （{translate("summary.create.archivedNotice")}）
+                                </span>
+                            </div>
+                            {selectedChats.length > 0 ? (
+                                <div className="summary-workbench-chat-row">
+                                    <div className="summary-workbench-chat-chips" ref={this.chipsContainerRef}>
+                                        {selectedChats.map((c, idx) => (
+                                            <div
+                                                key={c.chat_id}
+                                                className={`summary-workbench-chat-chip${idx >= this.state.visibleChipCount ? " summary-workbench-chat-chip--hidden" : ""}`}
+                                            >
+                                                <WKAvatar
+                                                    channel={new Channel(c.chat_id, c.chat_type === 'thread' ? 5 : c.chat_type === 'group' ? 2 : 1)}
+                                                    style={{ width: 16, height: 16, borderRadius: "50%" }}
+                                                />
+                                                <span className="summary-workbench-chat-chip-name">{c.name}</span>
+                                                <button
+                                                    type="button"
+                                                    className="summary-workbench-chat-chip-close"
+                                                    onClick={() => this.setState({
+                                                        selectedChats: selectedChats.filter((x) => x.chat_id !== c.chat_id)
+                                                    })}
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {selectedChats.length > this.state.visibleChipCount && (
+                                            <Tooltip
+                                                content={selectedChats.map((c) => c.name).join("、")}
+                                                position="top"
+                                            >
+                                                <span className="summary-workbench-chat-chip-overflow">
+                                                    ...+{selectedChats.length - this.state.visibleChipCount}
+                                                </span>
+                                            </Tooltip>
+                                        )}
+                                    </div>
+                                    <button
+                                        type="button"
+                                        className="summary-workbench-add-chat"
+                                        onClick={() => this.setState({ showChatSelector: true })}
+                                    >
+                                        <Plus size={16} />
+                                        <span>{translate("summary.create.selectChat")}</span>
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    data-testid={summaryTestIds.createSelectChat}
+                                    type="button"
+                                    className="summary-workbench-add-chat"
+                                    onClick={() => this.setState({ showChatSelector: true })}
                                 >
-                                    {selectedMembers.length > 0
-                                        ? translate("summary.create.selectedMembers", { values: { count: selectedMembers.length } })
-                                        : translate("summary.create.selectMembers")}
-                                </Button>
-                                <Button
-                                    theme="borderless"
-                                    icon={<IconClock />}
-                                    size="small"
-                                    onClick={() => this.setState({ showScheduleConfig: true })}
-                                    style={{ color: scheduleConfig ? "var(--semi-color-primary)" : undefined }}
-                                >
-                                    {scheduleConfig
-                                        ? this.getScheduleLabel(scheduleConfig)
-                                        : translate("summary.schedule.config.title")}
-                                </Button>
-                                </>
+                                    <Plus size={16} />
+                                    <span>{translate("summary.create.selectChat")}</span>
+                                </button>
                             )}
-                            <span style={{ marginLeft: 8, fontSize: 12, color: "var(--semi-color-text-2)" }}>
-                                {translate("summary.create.archivedNotice")}
-                            </span>
-                        </div>
-
-                        <SplitButtonGroup className="chat-summary-modal-split">
-                            {/* agent 模式下输入走面板底部输入框，隐藏主「开始」按钮；normal 保持不变。 */}
+                            {/* 选择参与者（仅普通模式；Agent 模式不提供多人协作入口） */}
                             {mode !== 'agent' && (
-                                <Button
-                                    theme="solid"
-                                    size="default"
-                                    loading={submitting || agentSubmitting}
-                                    disabled={!this.canSubmit() || submitting || agentSubmitting}
-                                    onClick={this.handlePrimaryClick}
-                                >
-                                    {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
-                                </Button>
-                            )}
-                            <Dropdown
-                                trigger="click"
-                                position="bottomRight"
-                                render={(
-                                    <Dropdown.Menu>
-                                        <Dropdown.Item
-                                            active={mode !== 'agent'}
-                                            onClick={() => this.handleSelectMode('normal')}
-                                        >
-                                            {translate("summary.create.start")}
-                                        </Dropdown.Item>
-                                        <Dropdown.Item
-                                            active={mode === 'agent'}
-                                            onClick={() => this.handleSelectMode('agent')}
-                                        >
-                                            {translate("summary.create.agentStart")}
-                                        </Dropdown.Item>
-                                    </Dropdown.Menu>
+                            <div className="summary-workbench-chat-row">
+                                {selectedMembers.length > 0 && (
+                                    <div className="summary-workbench-chat-chips" ref={this.memberChipsContainerRef}>
+                                        {selectedMembers.map((m, idx) => (
+                                            <div
+                                                key={m.user_id}
+                                                className={`summary-workbench-chat-chip${idx >= this.state.visibleMemberChipCount ? " summary-workbench-chat-chip--hidden" : ""}`}
+                                            >
+                                                <WKAvatar
+                                                    channel={new Channel(m.user_id, 1)}
+                                                    style={{ width: 16, height: 16, borderRadius: "50%" }}
+                                                />
+                                                <span className="summary-workbench-chat-chip-name">{m.name}</span>
+                                                <button
+                                                    type="button"
+                                                    className="summary-workbench-chat-chip-close"
+                                                    onClick={() => this.setState({
+                                                        selectedMembers: selectedMembers.filter((x) => x.user_id !== m.user_id)
+                                                    })}
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </div>
+                                        ))}
+                                        {selectedMembers.length > this.state.visibleMemberChipCount && (
+                                            <Tooltip
+                                                content={selectedMembers.map((m) => m.name).join("、")}
+                                                position="top"
+                                            >
+                                                <span className="summary-workbench-chat-chip-overflow">
+                                                    ...+{selectedMembers.length - this.state.visibleMemberChipCount}
+                                                </span>
+                                            </Tooltip>
+                                        )}
+                                    </div>
                                 )}
+                                <button
+                                    data-testid={summaryTestIds.createSelectMembers}
+                                    type="button"
+                                    className="summary-workbench-add-chat"
+                                    onClick={this.handleOpenMemberSelector}
+                                >
+                                    <Plus size={16} />
+                                    <span>{translate("summary.create.selectMembers")}</span>
+                                </button>
+                            </div>
+                            )}
+                        </div>
+                        {/* 右下角：主提交按钮。总结方式选择已上移到列表页「+」下拉，此处不再提供切换。 */}
+                        {mode !== 'agent' && (
+                            <Button
+                                data-testid={summaryTestIds.createSubmit}
+                                theme="solid"
+                                loading={submitting}
+                                disabled={!this.canSubmit() || submitting}
+                                onClick={this.handlePrimaryClick}
                             >
-                                <Button
-                                    theme="solid"
-                                    size="default"
-                                    disabled={submitting || agentSubmitting}
-                                    icon={<IconChevronDown />}
-                                    aria-label={translate("summary.create.switchMode")}
-                                />
-                            </Dropdown>
-                        </SplitButtonGroup>
+                                <Sparkles size={16} />
+                                {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                            </Button>
+                        )}
                     </div>
                 </div>
-
-                {/* Selected chats summary */}
-                {selectedChats.length > 0 && (
-                    <div className="summary-workbench-selected-chats">
-                        {selectedChats.map((c) => (
-                            <Tag
-                                key={c.chat_id}
-                                closable
-                                onClose={() => this.setState({
-                                    selectedChats: selectedChats.filter((x) => x.chat_id !== c.chat_id)
-                                })}
-                                style={{ marginRight: 6, marginBottom: 4 }}
-                            >
-                                {c.name}
-                            </Tag>
-                        ))}
-                    </div>
-                )}
-
-                {/* Selected members summary */}
-                {selectedMembers.length > 0 && (
-                    <div className="summary-workbench-selected-members">
-                        {selectedMembers.map((m) => (
-                            <Avatar
-                                key={m.user_id}
-                                size="extra-small"
-                                style={{ marginRight: 4, background: "var(--semi-color-primary)", cursor: "pointer" }}
-                                title={m.name}
-                                onClick={() => this.setState({
-                                    selectedMembers: selectedMembers.filter((x) => x.user_id !== m.user_id)
-                                })}
-                            >
-                                {m.name.slice(0, 1)}
-                            </Avatar>
-                        ))}
-                    </div>
-                )}
 
                 {error && (
                     <Text type="danger" style={{ display: "block", marginTop: 8 }}>
@@ -1185,18 +1509,26 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                     onConfirm={(chats) => this.setState({ selectedChats: chats, showChatSelector: false })}
                     onCancel={() => this.setState({ showChatSelector: false })}
                 />
-                <MemberSelectorModal
-                    visible={showMemberSelector}
-                    selected={selectedMembers}
-                    onConfirm={(members) => this.setState({ selectedMembers: members, showMemberSelector: false })}
-                    onCancel={() => this.setState({ showMemberSelector: false })}
-                />
                 <ScheduleConfigModal
                     visible={showScheduleConfig}
                     value={scheduleConfig ?? { unit: "week", every: 1, time: "09:00" }}
                     onConfirm={(cfg) => this.setState({ scheduleConfig: cfg, showScheduleConfig: false })}
                     onCancel={() => this.setState({ showScheduleConfig: false })}
                     showGenerationInstruction={false}
+                />
+                <ChatSelectorModal
+                    visible={showMemberSelector}
+                    mode="members"
+                    channel={memberSelectorChannel}
+                    selected={[]}
+                    selectedMembers={selectedMembers.map(m => ({ uid: m.user_id, name: m.name }))}
+                    onConfirmMembers={(members) => {
+                        this.setState({
+                            selectedMembers: members.map(m => ({ user_id: m.uid, name: m.name })),
+                            showMemberSelector: false,
+                        });
+                    }}
+                    onCancel={() => this.setState({ showMemberSelector: false })}
                 />
                 <Modal
                     visible={templateEditorVisible}

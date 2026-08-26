@@ -1,30 +1,22 @@
 import React, { useContext, useMemo, useRef, useState, useCallback, useEffect } from 'react';
-import { Popover } from '@douyinfe/semi-ui';
-import { i18n, useI18n } from '@octo/base';
-import { Channel, ChannelTypeGroup, ChannelTypePerson } from 'wukongimjssdk';
-import WKApp from '@octo/base/src/App';
-import { ShowConversationOptions } from '@octo/base/src/EndpointCommon';
-import { ChannelTypeCommunityTopic } from '@octo/base/src/Service/Const';
+import { Popover } from "@douyinfe/semi-ui";
+import { i18n, useI18n } from "@octo/base";
+import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
+import WKApp from "@octo/base/src/App";
+import WKAvatar from "@octo/base/src/Components/WKAvatar";
+import { ShowConversationOptions } from "@octo/base/src/EndpointCommon";
+import { ChannelTypeCommunityTopic } from "@octo/base/src/Service/Const";
 import CitationText, { CitationContext } from './CitationText';
 import { CitationItem, CitationContextMessage, TeamCitationItem, MemberStatus } from '../types/summary';
 import { formatGroupLabel } from './citationFormat';
 import './CitationBadge.css';
 
-/** Hover-preview delay (ms) tuned to match Perplexity/Kimi: long enough that
- * casual mouse traversal does not fire, short enough to feel instant when the
- * reader stops to look. */
+/** Hover-preview delay (ms) tuned to match Perplexity/Kimi */
 const HOVER_OPEN_DELAY_MS = 400;
 const HOVER_CLOSE_DELAY_MS = 200;
 
 interface CitationBadgeProps {
     index: number;
-    /**
-     * Display index rendered inside the [n] label. When omitted, falls back
-     * to `index`. Callers pass a re-numbered value (starting at 1 in reading
-     * order) so users don't see raw pool positions like [37]. The internal
-     * `index` still keys into the citations array — see remarkCitation in
-     * CitationText for the mapping construction.
-     */
     displayIndex?: number;
     citations: CitationItem[];
     badgeKey: string;
@@ -32,7 +24,6 @@ interface CitationBadgeProps {
 
 interface CitationGroupBadgeProps {
     indices: number[];
-    /** Display indices, one per original index (same length as `indices`). */
     displayIndices?: number[];
     citations: CitationItem[];
     badgeKey: string;
@@ -52,43 +43,106 @@ function resolveChannelType(channelType?: number) {
     return ChannelTypeGroup;
 }
 
+const badgeStyle: React.CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    background: 'rgba(127, 59, 245, 0.08)',
+    color: '#7F3BF5',
+    borderRadius: 99,
+    padding: '2px 6px',
+    fontSize: 12,
+    fontWeight: 500,
+    cursor: 'pointer',
+    marginLeft: 2,
+    lineHeight: '18px',
+    verticalAlign: 'baseline',
+};
+
+const contextMsgStyle: React.CSSProperties = {
+    background: 'rgba(28, 28, 35, 0.04)',
+    borderRadius: 8,
+    padding: 8,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    fontSize: 14,
+    lineHeight: '20px',
+    color: '#1C1C23',
+    wordBreak: 'break-word',
+};
+
+const citedMsgStyle: React.CSSProperties = {
+    background: 'rgba(127, 59, 245, 0.04)',
+    borderLeft: '2px solid #7F3BF5',
+    borderRadius: '0 8px 8px 0',
+    padding: 8,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+    fontSize: 14,
+    lineHeight: '20px',
+    color: '#1C1C23',
+    wordBreak: 'break-word',
+};
+
 interface MergedMessage {
     sender: string;
+    sender_uid?: string;
     content: string;
     sent_at: string;
     message_seq?: number;
+    channel_id?: string;
+    source?: string;
     cited: boolean;
     citation_index?: number;
 }
 
 function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
+    // 频道在阅读序里首次出现的次序，用于把消息按「频道段」排列（P1-2）：
+    // 段之间保持引用出现的阅读序，段内再按消息序，避免 localeCompare 打乱阅读序。
+    const sourceFirstSeen = new Map<string, number>();
+    for (const c of groupCitations) {
+        const sourceIdentity = `${c.channel_id ?? ""}\0${c.source ?? ""}`;
+        if (!sourceFirstSeen.has(sourceIdentity)) sourceFirstSeen.set(sourceIdentity, sourceFirstSeen.size);
+    }
     const all: MergedMessage[] = [];
     for (const c of groupCitations) {
         if (c.context_before) {
             for (const msg of c.context_before) {
-                all.push({ sender: msg.sender, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, cited: false });
+                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, channel_id: c.channel_id, source: c.source, cited: false });
             }
         }
         all.push({
             sender: c.sender,
+            sender_uid: c.sender_uid,
             content: c.content,
             sent_at: c.sent_at,
             message_seq: c.message_seq,
+            channel_id: c.channel_id,
+            source: c.source,
             cited: true,
             citation_index: c.index,
         });
         if (c.context_after) {
             for (const msg of c.context_after) {
-                all.push({ sender: msg.sender, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, cited: false });
+                all.push({ sender: msg.sender, sender_uid: msg.sender_uid, content: msg.content, sent_at: msg.sent_at, message_seq: msg.message_seq, channel_id: c.channel_id, source: c.source, cited: false });
             }
         }
     }
 
     const seen = new Map<string, MergedMessage>();
     for (const msg of all) {
+        // Include BOTH channel_id and source in the identity so it agrees
+        // with spansMultipleSources at :438 (which keys on the same pair).
+        // Falling back to just channel_id was the round-9 regression: when
+        // two citations from different sources both omitted channel_id and
+        // shared a message_seq, they collided on `seq::N` and one was
+        // silently dropped from the popover while the header still claimed
+        // "multiple sources".
+        const identity = `${msg.channel_id ?? ""}\0${msg.source ?? ""}`;
         const key = msg.message_seq != null
-            ? `seq:${msg.message_seq}`
-            : `${msg.sender}\0${msg.content}\0${msg.sent_at}`;
+            ? `seq:${identity}:${msg.message_seq}`
+            : `${identity}\0${msg.sender}\0${msg.content}\0${msg.sent_at}`;
         const existing = seen.get(key);
         if (!existing || (msg.cited && !existing.cited)) {
             seen.set(key, msg);
@@ -97,10 +151,71 @@ function mergeGroupMessages(groupCitations: CitationItem[]): MergedMessage[] {
 
     const result = Array.from(seen.values());
     result.sort((a, b) => {
+        // 先按频道段的阅读序（首次出现次序），再在段内按消息序/时间。
+        const ca = sourceFirstSeen.get(`${a.channel_id ?? ""}\0${a.source ?? ""}`) ?? 0;
+        const cb = sourceFirstSeen.get(`${b.channel_id ?? ""}\0${b.source ?? ""}`) ?? 0;
+        if (ca !== cb) return ca - cb;
         if (a.message_seq != null && b.message_seq != null) return a.message_seq - b.message_seq;
         return new Date(a.sent_at).getTime() - new Date(b.sent_at).getTime();
     });
     return result;
+}
+
+function MessageAvatar({ name, uid }: { name: string; uid?: string }) {
+    if (uid) {
+        return (
+            <WKAvatar
+                channel={new Channel(uid, ChannelTypePerson)}
+                style={{ width: 20, height: 20, borderRadius: '50%', flexShrink: 0 }}
+            />
+        );
+    }
+    const initials = name.slice(0, 1);
+    return (
+        <span style={{
+            width: 20,
+            height: 20,
+            borderRadius: '50%',
+            background: '#FF8800',
+            color: '#FFFFFF',
+            fontSize: 12,
+            fontWeight: 600,
+            lineHeight: '20px',
+            textAlign: 'center',
+            flexShrink: 0,
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+        }}>
+            {initials}
+        </span>
+    );
+}
+
+function MessageHeader({ sender, sentAt, uid, referenceLabel, jumpLink }: {
+    sender: string;
+    sentAt: string;
+    uid?: string;
+    referenceLabel?: number;
+    jumpLink?: React.ReactNode;
+}) {
+    const { t } = useI18n();
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <MessageAvatar name={sender} uid={uid} />
+                <span style={{ fontSize: 14, fontWeight: 500, lineHeight: '20px', color: '#1C1C23' }}>{sender}</span>
+                {referenceLabel != null && (
+                    <span className="citation-reference-tag">
+                        {t("summary.citation.referenceTag", { values: { index: referenceLabel } })}
+                    </span>
+                )}
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)', fontFamily: 'Inter, sans-serif', letterSpacing: '-0.01em' }}>{formatTime(sentAt)}</span>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>：</span>
+            </div>
+            {jumpLink}
+        </div>
+    );
 }
 
 function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) {
@@ -108,12 +223,11 @@ function ContextMessages({ messages }: { messages?: CitationContextMessage[] }) 
     return (
         <>
             {messages.map((msg, i) => (
-                <div key={i} className="citation-context-msg">
-                    <div className="citation-msg-header">
-                        <span className="citation-msg-sender--context">{msg.sender}</span>
-                        <span className="citation-msg-time--context">{formatTime(msg.sent_at)}</span>
+                <div key={i} style={{ ...contextMsgStyle, opacity: 0.5 }}>
+                    <MessageHeader sender={msg.sender} sentAt={msg.sent_at} uid={msg.sender_uid} />
+                    <div style={{ paddingLeft: 24, color: '#1C1C23', fontSize: 14, fontWeight: 400, lineHeight: '20px' }}>
+                        {msg.content}
                     </div>
-                    <div className="citation-msg-body--context">{msg.content}</div>
                 </div>
             ))}
         </>
@@ -124,9 +238,12 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
     const { t } = useI18n();
     if (!citation.channel_id || !citation.message_seq || citation.channel_type == null) return null;
     return (
-        <div className="citation-jumplink">
-            <span
-                className="citation-jumplink-btn"
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }}>
+            <svg width={12} height={12} viewBox="0 0 24 24" fill="none" stroke="rgba(28, 28, 35, 0.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14" />
+                <path d="m12 5 7 7-7 7" />
+            </svg>
+            <span style={{ fontSize: 12, fontWeight: 400, lineHeight: '20px', color: 'rgba(28, 28, 35, 0.4)', cursor: 'pointer' }}
                 onClick={(e) => {
                     e.stopPropagation();
                     closeKey(badgeKey);
@@ -150,11 +267,8 @@ function JumpLink({ citation, badgeKey, closeKey }: { citation: CitationItem; ba
 
 /**
  * Custom hook: delayed hover with an "always visible when pinned" override.
- *
  * Click pins the popover (survives mouseleave), click again unpins. Hover
- * shows a temporary preview that fades on mouseleave. Combines both modes into
- * a single `visible` boolean the caller passes to Semi Popover in `custom`
- * trigger mode.
+ * shows a temporary preview that fades on mouseleave.
  */
 function useHoverPin(pinned: boolean) {
     const [hovering, setHovering] = useState(false);
@@ -179,11 +293,7 @@ function useHoverPin(pinned: boolean) {
     }, [pinned]);
 
     useEffect(() => () => clearTimers(), [clearTimers]);
-
-    // When pinned externally, drop the hover state so it doesn't fight the pin.
-    useEffect(() => {
-        if (pinned && hovering) setHovering(false);
-    }, [pinned, hovering]);
+    useEffect(() => { if (pinned && hovering) setHovering(false); }, [pinned, hovering]);
 
     const visible = pinned || hovering;
     return { visible, onMouseEnter, onMouseLeave };
@@ -198,12 +308,22 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
     const pinned = activeKey === badgeKey;
     const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
 
+    // Document-level Escape: works regardless of focus (e.g. after clicking jump link)
+    useEffect(() => {
+        if (!pinned) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') { e.preventDefault(); closeKey(badgeKey); }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [pinned, closeKey, badgeKey]);
+
     if (!citation) {
         return <sup className="citation-badge">[{shownIndex}]</sup>;
     }
 
-    // Hover preview: compact 3-line card, no jump button. Pinned view: full
-    // context (context_before + main + context_after + jump link).
+    // Hover preview: compact card with sender + source + content snippet.
+    // Pinned view: full context (context_before + main + context_after + jump link).
     const previewContent = !pinned ? (
         <div className="citation-mini-preview">
             <div className="citation-cited-msg">
@@ -221,21 +341,31 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
         </div>
     ) : (
         <div className="citation-popover">
-            <ContextMessages messages={citation.context_before} />
-            <div className="citation-cited-msg">
-                <div className="citation-msg-header">
-                    <span className="citation-msg-sender">{citation.sender}</span>
-                    <span className="citation-msg-time">{formatTime(citation.sent_at)}</span>
-                </div>
-                {citation.source && (
-                    <div className="citation-msg-source">
-                        {t("summary.citation.source", { values: { source: citation.source } })}
-                    </div>
-                )}
-                <div className="citation-msg-body">{citation.content}</div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: '#1C1C23', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    {citation.source || t("summary.citation.sourceDefault")}
+                </span>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: 'rgba(28, 28, 35, 0.6)', flexShrink: 0 }}>
+                    {formatTime(citation.sent_at)}
+                </span>
             </div>
-            <ContextMessages messages={citation.context_after} />
-            <JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />
+            <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <ContextMessages messages={citation.context_before} />
+                <div style={citedMsgStyle}>
+                    <MessageHeader
+                        sender={citation.sender}
+                        sentAt={citation.sent_at}
+                        uid={citation.sender_uid}
+                        referenceLabel={shownIndex}
+                        jumpLink={<JumpLink citation={citation} badgeKey={badgeKey} closeKey={closeKey} />}
+                    />
+                    <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
+                        {citation.content}
+                    </div>
+                </div>
+                <ContextMessages messages={citation.context_after} />
+            </div>
         </div>
     );
 
@@ -251,6 +381,8 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
             <sup
                 className="citation-badge"
                 tabIndex={0}
+                role="button"
+                aria-expanded={visible}
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
                 onClick={() => onBadgeClick(badgeKey)}
@@ -264,13 +396,10 @@ const CitationBadge: React.FC<CitationBadgeProps> = ({ index, displayIndex, cita
 };
 
 export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices, displayIndices, citations, badgeKey }) => {
+    const { t } = useI18n();
     const { activeKey, onBadgeClick, closeKey } = useContext(CitationContext);
 
-    // Label uses the display indices (post-renumbering) so what the user sees
-    // matches the [n] tokens in the body. Original `indices` still key the
-    // citation lookup below.
-    const shownList = displayIndices && displayIndices.length === indices.length ? displayIndices : indices;
-    const label = formatGroupLabel(shownList);
+    const label = formatGroupLabel(displayIndices ?? indices);
 
     const indicesKey = indices.join(',');
     const groupCitations = useMemo(
@@ -278,9 +407,24 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
         [indicesKey, citations]
     );
     const mergedMessages = useMemo(() => mergeGroupMessages(groupCitations), [groupCitations]);
+    const displayIndexByRawIndex = useMemo(() => {
+        const map = new Map<number, number>();
+        indices.forEach((rawIndex, i) => map.set(rawIndex, displayIndices?.[i] ?? rawIndex));
+        return map;
+    }, [indicesKey, displayIndices?.join(',')]);
 
     const pinned = activeKey === badgeKey;
     const { visible, onMouseEnter, onMouseLeave } = useHoverPin(pinned);
+
+    // Document-level Escape: works regardless of focus (e.g. after clicking jump link)
+    useEffect(() => {
+        if (!pinned) return;
+        const handler = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') { e.preventDefault(); closeKey(badgeKey); }
+        };
+        document.addEventListener('keydown', handler);
+        return () => document.removeEventListener('keydown', handler);
+    }, [pinned, closeKey, badgeKey]);
 
     if (groupCitations.length === 0) {
         return <sup className="citation-badge">[{label}]</sup>;
@@ -288,32 +432,75 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
 
     const firstCitation = groupCitations[0];
 
-    // Hover preview: show first up-to-3 cited messages (compact, no context),
-    // no jump link. Pinned view: full merged timeline + jump link.
+    // P1-2：一个分组可能跨多个频道（相邻角标合并时不再限定同频道）。此时钉住视图
+    // 不能只用第一个频道的 source 作总标题，否则会把其它频道的消息挂到错误来源名下。
+    const spansMultipleSources = new Set(
+        groupCitations.map((c) => `${c.channel_id ?? ""}\0${c.source ?? ""}`)
+    ).size > 1;
+
+    // Hover preview: first up-to-3 cited messages compact. Pinned: full timeline + jump.
     const previewContent = !pinned ? (
         <div className="citation-mini-preview">
             {groupCitations.slice(0, 3).map((c, i) => (
-                <div key={c.message_seq ?? i} className="citation-cited-msg">
+                <div key={c.message_seq != null ? `${c.channel_id ?? ""}\0${c.source ?? ""}:${c.message_seq}` : i} className="citation-cited-msg">
                     <div className="citation-msg-header">
                         <span className="citation-msg-sender">{c.sender}</span>
                         <span className="citation-msg-time">{formatTime(c.sent_at)}</span>
                     </div>
+                    {c.source && (
+                        <div className="citation-msg-source">
+                            {t("summary.citation.source", { values: { source: c.source } })}
+                        </div>
+                    )}
                     <div className="citation-msg-body">{c.content}</div>
                 </div>
             ))}
         </div>
     ) : (
-        <div className="citation-popover citation-popover--wide">
-            {mergedMessages.map((msg, i) => (
-                <div key={msg.message_seq ?? i} className={msg.cited ? 'citation-cited-msg' : 'citation-context-msg'}>
-                    <div className="citation-msg-header">
-                        <span className={msg.cited ? 'citation-msg-sender' : 'citation-msg-sender--context'}>{msg.sender}</span>
-                        <span className={msg.cited ? 'citation-msg-time' : 'citation-msg-time--context'}>{formatTime(msg.sent_at)}</span>
-                    </div>
-                    <div className={msg.cited ? 'citation-msg-body' : 'citation-msg-body--context'}>{msg.content}</div>
-                </div>
-            ))}
-            <JumpLink citation={firstCitation} badgeKey={badgeKey} closeKey={closeKey} />
+        <div className="citation-popover">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <span style={{ fontSize: 14, fontWeight: 400, lineHeight: '18px', color: '#1C1C23', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                    {spansMultipleSources
+                        ? t("summary.citation.multipleSources")
+                        : (firstCitation.source || t("summary.citation.sourceDefault"))}
+                </span>
+            </div>
+            <div style={{ height: 1, background: 'rgba(28, 28, 35, 0.15)' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                {mergedMessages.map((msg, i) => {
+                    const cit = groupCitations.find(c => c.index === msg.citation_index);
+                    return (
+                        <div key={msg.message_seq != null ? `${msg.channel_id ?? ""}\0${msg.source ?? ""}:${msg.message_seq}` : i} style={{ ...msg.cited ? citedMsgStyle : { ...contextMsgStyle, opacity: 0.5 } }}>
+                            <MessageHeader
+                                sender={msg.sender}
+                                sentAt={msg.sent_at}
+                                uid={msg.sender_uid}
+                                referenceLabel={msg.cited && msg.citation_index != null
+                                    ? displayIndexByRawIndex.get(msg.citation_index)
+                                    : undefined}
+                                jumpLink={msg.cited && cit ? <JumpLink citation={cit} badgeKey={badgeKey} closeKey={closeKey} /> : undefined}
+                            />
+                            {spansMultipleSources && (
+                                // When the group spans multiple sources,
+                                // every message needs an attribution line —
+                                // an empty `source` must fall back to
+                                // `sourceDefault` so a reader does not
+                                // visually inherit the previous message's
+                                // label. Without this, the popover header
+                                // "Multiple sources" contradicts a message
+                                // that carries no attribution and sits
+                                // directly under an explicit source line.
+                                <div className="citation-msg-source" style={{ paddingLeft: 24 }}>
+                                    {t("summary.citation.source", { values: { source: msg.source || t("summary.citation.sourceDefault") } })}
+                                </div>
+                            )}
+                            <div style={{ paddingLeft: 24, fontSize: 14, fontWeight: 400, lineHeight: '20px', color: '#1C1C23' }}>
+                                {msg.content}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
         </div>
     );
 
@@ -329,6 +516,8 @@ export const CitationGroupBadge: React.FC<CitationGroupBadgeProps> = ({ indices,
             <sup
                 className="citation-badge"
                 tabIndex={0}
+                role="button"
+                aria-expanded={visible}
                 onMouseEnter={onMouseEnter}
                 onMouseLeave={onMouseLeave}
                 onClick={() => onBadgeClick(badgeKey)}
@@ -354,6 +543,17 @@ interface TeamCitationBadgeProps {
     disableMemberPreview?: boolean;
 }
 
+const memberRowStyle: React.CSSProperties = {
+    background: 'rgba(127, 59, 245, 0.04)',
+    borderLeft: '2px solid #7F3BF5',
+    borderRadius: '0 8px 8px 0',
+    padding: 8,
+    fontSize: 14,
+    lineHeight: '20px',
+    color: '#1C1C23',
+    wordBreak: 'break-word',
+};
+
 // TeamCitationBadge renders a clickable [Pn] reference (V5/§6.2). A team
 // citation points to a PERSON (participant). On click we match that person in
 // the already-fetched members list and surface their single-person report
@@ -373,7 +573,7 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
     const citation = teamCitations.find(c => c.index === index);
 
     if (!citation) {
-        return <sup className="citation-badge">[P{index}]</sup>;
+        return <sup style={badgeStyle}>[P{index}]</sup>;
     }
 
     // 优先用 user_id 在 members 里匹配同一成员（§6.2/Q4）。
@@ -392,10 +592,13 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
             showArrow
             onClickOutSide={() => closeKey(badgeKey)}
             content={
-                <div className="citation-popover citation-popover--wide">
-                    <div className="citation-cited-msg">
-                        <div className="citation-msg-sender" style={{ marginBottom: memberContent ? 4 : 0 }}>
-                            {t("summary.citation.member", { values: { name: citation.user_name } })}
+                <div style={{ width: 480, padding: 12, display: 'flex', flexDirection: 'column', gap: 12, maxHeight: 400, overflowY: 'auto' }}>
+                    <div style={memberRowStyle}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <MessageAvatar name={citation.user_name} uid={citation.user_id} />
+                            <span style={{ fontWeight: 600, fontSize: 14, color: '#1C1C23', marginBottom: memberContent ? 4 : 0 }}>
+                                {t("summary.citation.member", { values: { name: citation.user_name } })}
+                            </span>
                         </div>
                         {!disableMemberPreview && memberContent ? (
                             <CitationText
@@ -407,13 +610,13 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
                             // OCT-15 / upstream #495：纵深防御。正常流程里 declined 成员不会被
                             // 后端写进 team_citations（GLM 评审结论），但若数据漂移让 popover
                             // 拿到一个 declined 的 [Pn]，不再误显示「等待提交」。
-                            // 复用已有 i18n key summary.confirmPage.declined（"已拒绝参与" /
-                            // "Participation declined"），不新增翻译。
-                            <div className="citation-msg-source">
+                            // 复用已有 i18n key summary.confirmPage.declined（“已拒绝参与” /
+                            // “Participation declined”），不新增翻译。
+                            <div style={{ fontSize: 12, color: '#999' }}>
                                 {t("summary.confirmPage.declined")}
                             </div>
                         ) : !disableMemberPreview ? (
-                            <div className="citation-msg-source">
+                            <div style={{ fontSize: 12, color: '#999' }}>
                                 {t("summary.detail.waitingSubmit", { values: { name: citation.user_name } })}
                             </div>
                         ) : null}
@@ -421,7 +624,7 @@ export const TeamCitationBadge: React.FC<TeamCitationBadgeProps> = ({
                 </div>
             }
         >
-            <sup className="citation-badge" onClick={() => onBadgeClick(badgeKey)}>[P{index}]</sup>
+            <sup className="citation-badge" style={badgeStyle} onClick={() => onBadgeClick(badgeKey)}>[P{index}]</sup>
         </Popover>
     );
 };

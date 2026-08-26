@@ -366,13 +366,23 @@
 .wk-chat-conversation-header-channel {
   display: flex;
   align-items: center;
+  gap: var(--wk-sp-2);
   min-width: 0;
   overflow: hidden;
+}
+
+.wk-chat-conversation-header-channel-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  line-height: 0;
 }
 
 .wk-chat-conversation-header-channel-avatar img {
   width: 28px;
   height: 28px;
+  display: block;
   border-radius: var(--wk-avatar-radius, 50%);
 }
 
@@ -397,13 +407,16 @@
 }
 
 .wk-chat-conversation-header-channel-info-name {
-  margin-left: 4px; /* Figma: gap=4 */
   font-size: 14px; /* Figma: 14px */
   font-weight: 500; /* Figma: 500 */
   color: var(--wk-brand-primary); /* Figma */
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.wk-chat-conversation-header-channel-info-name--thread {
+  gap: var(--wk-sp-1-5);
 }
 
 /* 面包屑容器 */
@@ -420,15 +433,12 @@
 .wk-chat-conversation-header-parent-group {
   display: block;
   color: var(--wk-text-tertiary, #9498a8);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 400;
   cursor: pointer;
   transition: color 150ms;
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  flex-shrink: 1;
+  flex-shrink: 0;
 }
 
 .wk-chat-conversation-header-parent-group:hover {
@@ -442,19 +452,22 @@
 
 /* 分隔符 › */
 .wk-chat-conversation-header-separator {
-  color: var(--wk-text-quaternary, #c4c7d0);
-  font-size: 11px;
-  font-weight: 300;
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--wk-text-tertiary, #9498a8);
   flex-shrink: 0;
+  transform: translateY(1px);
   user-select: none;
-  margin: 0 1px;
 }
 
 /* 子区名称（当前频道）：🧵 icon + 名称，加粗 */
 .wk-chat-conversation-header-thread-name {
   display: block;
   color: var(--wk-text-primary, #1a1c24);
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -626,16 +639,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
    侧边面板布局（子区 + 文件预览共用）
    ============================================ */
 
-/* 子区打开时，设置面板贴在子区左侧（overlay 在消息区上，不占子区空间） */
-.wk-chat-content-right.wk-chat-threadpanel-open.wk-chat-channelsetting-open
-  .wk-chat-channelsetting {
-  right: var(--wk-width-thread-panel);
-}
-
-/* 设置面板为 overlay，子区+设置同时打开时消息区宽度只减去子区宽度 */
-
-/* 只有侧边面板打开时 */
-/* 子区打开时（无论设置是否开着），消息区宽度减去子区宽度 */
+/* 子区/文件预览打开时，消息区宽度减去右侧面板宽度 */
 .wk-chat-content-right.wk-chat-threadpanel-open .wk-chat-content-chat {
   width: calc(100% - var(--wk-width-thread-panel));
 }
@@ -644,9 +648,7 @@ body[theme-mode="dark"] .wk-chat-channelsetting {
   width: calc(100% - var(--wk-width-resizable-right-panel));
 }
 
-.wk-chat-content-right.wk-chat-webhook-preview-open[
-    data-resizable-right-panel-layout="overlay"
-  ]
+.wk-chat-content-right.wk-chat-webhook-preview-open[data-resizable-right-panel-layout="overlay"]
   .wk-chat-content-chat {
   visibility: hidden;
   width: 0;
@@ -858,67 +860,6 @@ body[theme-mode="dark"] .wk-chat-popover {
 }
 
 /* ============================================
-   Matter 详情面板 (v0.7)
-   - 贴在最右侧，宽度 480px
-   - 跟子区/文件预览/任务列表可并存
-   - 当和 thread-panel-open 同时出现时，thread panel 贴在 matter panel 左边
-   ============================================ */
-:root {
-  --wk-width-matter-detail-panel: 480px;
-}
-
-.wk-matter-detail-panel {
-  pointer-events: auto;
-  width: var(--wk-width-matter-detail-panel);
-  height: 100%;
-  position: absolute;
-  z-index: 100;
-  top: 0;
-  right: 0;
-  border-left: 1px solid var(--wk-border-default);
-  background-color: var(--wk-bg-surface);
-  box-shadow: var(--wk-shadow-md);
-  display: flex;
-  flex-direction: column;
-}
-
-/* 打开时挤压消息区宽度 */
-.wk-chat-content-right.wk-chat-matter-detail-panel-open .wk-chat-content-chat {
-  width: calc(100% - var(--wk-width-matter-detail-panel));
-}
-
-/* 跟 thread/file-preview 同时打开时，两个宽度累加，thread 面板让出位置到 matter 面板左侧 */
-.wk-chat-content-right.wk-chat-matter-detail-panel-open.wk-chat-threadpanel-open
-  .wk-chat-content-chat {
-  width: calc(
-    100% - var(--wk-width-thread-panel) - var(--wk-width-matter-detail-panel)
-  );
-}
-
-.wk-chat-content-right.wk-chat-matter-detail-panel-open.wk-chat-threadpanel-open
-  .wk-thread-panel {
-  margin-right: var(--wk-width-matter-detail-panel);
-}
-
-.wk-chat-content-right.wk-chat-matter-detail-panel-open.wk-chat-threadpanel-open
-  .wk-file-preview-panel {
-  margin-right: var(--wk-width-matter-detail-panel);
-}
-
-/* Setting 面板同时开时，setting 贴在 matter panel 左边 */
-.wk-chat-content-right.wk-chat-matter-detail-panel-open.wk-chat-channelsetting-open
-  .wk-chat-channelsetting {
-  right: var(--wk-width-matter-detail-panel);
-}
-
-.wk-chat-content-right.wk-chat-matter-detail-panel-open.wk-chat-threadpanel-open.wk-chat-channelsetting-open
-  .wk-chat-channelsetting {
-  right: calc(
-    var(--wk-width-matter-detail-panel) + var(--wk-width-thread-panel)
-  );
-}
-
-/* ============================================
    智能总结面板
    ============================================ */
 :root {
@@ -946,10 +887,4 @@ body[theme-mode="dark"] .wk-chat-popover {
 
 .wk-chat-content-right.wk-chat-summary-panel-open .wk-chat-content-chat {
   width: calc(100% - var(--wk-width-summary-panel));
-}
-
-/* 总结面板打开时，设置面板贴在总结面板左侧（对齐子区/事项让位行为，避免被遮挡） */
-.wk-chat-content-right.wk-chat-summary-panel-open.wk-chat-channelsetting-open
-  .wk-chat-channelsetting {
-  right: var(--wk-width-summary-panel);
 }

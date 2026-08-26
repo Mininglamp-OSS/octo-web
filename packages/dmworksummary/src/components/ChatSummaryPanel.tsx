@@ -7,19 +7,25 @@ import {
     persistSummaryWidth,
 } from '@octo/base/src/Components/WKLayout/layoutWidth';
 import { X, ChevronLeft } from 'lucide-react';
-import ChatSummaryHistory from './ChatSummaryHistory';
+import SummaryListPage from '../pages/SummaryListPage';
+import SummaryCreatePage from '../pages/SummaryCreatePage';
 import SummaryDetailPage from '../pages/SummaryDetailPage';
+import { summaryTestIds } from '../utils/testIds';
 
 interface ChatSummaryPanelProps {
     visible: boolean;
     channel: { channelID: string; channelType: number };
     onClose: () => void;
+    /** Initial view: 'history' shows the list, 'new' shows the create form. */
+    summaryPanelView?: 'history' | 'new';
 }
 
 interface ChatSummaryPanelState {
-    view: 'list' | 'detail';
+    view: 'list' | 'detail' | 'create';
     selectedTaskId: number | null;
     isDragging: boolean;
+    /** 面板内创建页的初始总结方式：由列表页「+」下拉选择后透传。 */
+    createMode: 'normal' | 'agent';
 }
 
 export default class ChatSummaryPanel extends Component<
@@ -36,7 +42,8 @@ export default class ChatSummaryPanel extends Component<
 
     constructor(props: ChatSummaryPanelProps) {
         super(props);
-        this.state = { view: 'list', selectedTaskId: null, isDragging: false };
+        const initialView = props.summaryPanelView === 'new' ? 'create' : 'list';
+        this.state = { view: initialView, selectedTaskId: null, isDragging: false, createMode: 'normal' };
     }
 
     componentDidMount() {
@@ -57,10 +64,12 @@ export default class ChatSummaryPanel extends Component<
         const next = this.props.channel;
         if (
             prev.channelID !== next.channelID ||
-            prev.channelType !== next.channelType
+            prev.channelType !== next.channelType ||
+            prevProps.summaryPanelView !== this.props.summaryPanelView
         ) {
-            // 切换会话时回到列表视图，避免残留上个会话的详情
-            this.setState({ view: 'list', selectedTaskId: null });
+            // 切换会话或面板视图请求变化时，重置到对应初始视图
+            const initialView = this.props.summaryPanelView === 'new' ? 'create' : 'list';
+            this.setState({ view: initialView, selectedTaskId: null });
         }
     }
 
@@ -115,12 +124,8 @@ export default class ChatSummaryPanel extends Component<
         persistSummaryWidth(SUMMARY_DEFAULT_WIDTH);
     };
 
-    private handleCreateNew = () => {
-        const { channel } = this.props;
-        WKApp.mittBus.emit('wk:open-summary-modal', {
-            channelId: channel.channelID,
-            channelType: channel.channelType,
-        });
+    private handleCreateNew = (mode?: 'normal' | 'agent') => {
+        this.setState({ view: 'create', selectedTaskId: null, createMode: mode ?? 'normal' });
     };
 
     private handleViewDetail = (taskId: number) => {
@@ -131,14 +136,26 @@ export default class ChatSummaryPanel extends Component<
         this.setState({ view: 'list' });
     };
 
+    private handleBackToList = () => {
+        this.setState({ view: 'list' });
+    };
+
+    private handleCreateSubmit = (taskId: number) => {
+        this.setState({ view: 'list' });
+        setTimeout(() => {
+            WKApp.mittBus.emit("summary-list-refresh-requested" as any);
+        }, 800);
+    };
+
     render() {
         const { channel, onClose } = this.props;
         const { view, selectedTaskId, isDragging } = this.state;
         const { t } = this.context;
         const isDetail = view === 'detail' && selectedTaskId != null;
+        const isCreate = view === 'create';
 
         return (
-            <div ref={this.rootRef} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div ref={this.rootRef} data-testid={summaryTestIds.chatPanel} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
                 {/* 左边缘分隔条：拖动调宽，双击重置默认宽度（复用 thread 面板样式） */}
                 <div
                     className={`wk-thread-panel-splitter${isDragging ? ' wk-thread-panel-splitter-active' : ''}`}
@@ -148,50 +165,57 @@ export default class ChatSummaryPanel extends Component<
                     <div className="wk-thread-panel-splitter-line" />
                 </div>
 
-                {/* 列表视图：常驻挂载，详情时隐藏以保留滚动位置 */}
+                {/* 列表视图：复用 SummaryListPage（传 channelId 过滤当前聊天） */}
                 <div
                     style={{
-                        display: isDetail ? 'none' : 'flex',
+                        display: isDetail || isCreate ? 'none' : 'flex',
                         flex: 1,
                         minHeight: 0,
                         flexDirection: 'column',
                     }}
                 >
-                    <div style={{
-                        display: 'flex',
-                        justifyContent: 'flex-end',
-                        padding: '8px 8px 0',
-                    }}>
-                        <button
-                            onClick={onClose}
-                            style={{
-                                background: 'none',
-                                border: 'none',
-                                cursor: 'pointer',
-                                padding: 4,
-                                color: 'var(--wk-text-secondary, #646A73)',
-                                display: 'flex',
-                                alignItems: 'center',
-                            }}
-                        >
-                            <X size={18} />
-                        </button>
-                    </div>
-
-                    <ChatSummaryHistory
-                        channel={channel}
+                    <SummaryListPage
+                        channelId={channel.channelID}
+                        onClose={onClose}
                         onCreateNew={this.handleCreateNew}
                         onViewDetail={this.handleViewDetail}
-                        paused={isDetail}
                     />
                 </div>
 
-                {/* 详情视图：复用整页 SummaryDetailPage，外层加面板级返回栏 */}
-                {isDetail && (
-                    <div className="wk-summary-panel-detail">
+                {/* 创建视图：返回按钮 + 内嵌创建表单（复用 SummaryCreatePage embedded） */}
+                {isCreate && (
+                    <div data-testid={summaryTestIds.chatPanelDetailInPanel} className="wk-summary-panel-detail">
                         <div className="wk-summary-panel-detail-back">
                             <button
                                 type="button"
+                                data-testid={summaryTestIds.chatPanelBackBtn}
+                                className="wk-summary-panel-detail-back-btn"
+                                onClick={this.handleBackToList}
+                            >
+                                <ChevronLeft size={18} />
+                                <span>{t('summary.chatSummary.back')}</span>
+                            </button>
+                        </div>
+                        <div className="wk-summary-panel-detail-body" style={{ overflow: 'auto', flex: 1 }}>
+                            <SummaryCreatePage
+                                channel={channel}
+                                embedded={true}
+                                onClose={this.handleBackToList}
+                                onSubmit={this.handleCreateSubmit}
+                                source="chat_aside"
+                                initialMode={this.state.createMode}
+                            />
+                        </div>
+                    </div>
+                )}
+
+                {/* 详情视图：复用整页 SummaryDetailPage，外层加面板级返回栏 */}
+                {isDetail && (
+                    <div data-testid={summaryTestIds.chatPanelDetailInPanel} className="wk-summary-panel-detail">
+                        <div className="wk-summary-panel-detail-back">
+                            <button
+                                type="button"
+                                data-testid={summaryTestIds.chatPanelBackBtn}
                                 className="wk-summary-panel-detail-back-btn"
                                 onClick={this.handleBack}
                             >
@@ -200,7 +224,7 @@ export default class ChatSummaryPanel extends Component<
                             </button>
                         </div>
                         <div className="wk-summary-panel-detail-body">
-                            <SummaryDetailPage taskId={selectedTaskId} />
+                            <SummaryDetailPage taskId={selectedTaskId} onAfterMutate={() => this.setState({ view: 'list', selectedTaskId: null })} />
                         </div>
                     </div>
                 )}

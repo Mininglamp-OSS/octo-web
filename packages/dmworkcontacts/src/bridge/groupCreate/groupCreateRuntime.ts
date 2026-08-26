@@ -1,9 +1,16 @@
 import { Channel, ChannelTypeGroup, ChannelTypePerson } from "wukongimjssdk";
 
 import {
+  clearCurrentImChannelSubscribersLocallyRemoved,
+  fetchCurrentImChannelInfo,
   getCurrentImChannelInfo,
+  getCurrentImChannelLocallyRemovedSubscriberUids,
   getCurrentImChannelSubscribers,
+  notifyCurrentImSubscriberChangeListeners,
+  setCurrentImChannelSubscribersCache,
+  SubscriberStatus,
   syncCurrentImChannelSubscribers,
+  uploadGroupAvatar as uploadGroupAvatarApi,
   WKApp,
 } from "@octo/base";
 import { SuperGroup } from "@octo/base/src/Utils/const";
@@ -31,6 +38,13 @@ function createDefaultGroupCreateRuntime(): GroupCreateRuntime {
     createChannel(uids, options) {
       return WKApp.dataSource.channelDataSource.createChannel(uids, options);
     },
+    uploadGroupAvatar(groupNo, file) {
+      return uploadGroupAvatarApi(groupNo, file).then(() => {
+        WKApp.shared.changeChannelAvatarTag(
+          new Channel(groupNo, ChannelTypeGroup)
+        );
+      });
+    },
     getAvatarUser(uid) {
       return WKApp.shared.avatarUser(uid);
     },
@@ -45,6 +59,12 @@ function createDefaultGroupCreateRuntime(): GroupCreateRuntime {
     },
     getCurrentSpaceId() {
       return WKApp.shared.currentSpaceId;
+    },
+    fetchCurrentChannelInfo(channel) {
+      return fetchCurrentImChannelInfo(channel);
+    },
+    fetchChannelSubscriber(channel, uid) {
+      return WKApp.dataSource.channelDataSource.subscriber(channel, uid);
     },
     getLoginUid() {
       return WKApp.loginInfo.uid;
@@ -63,6 +83,18 @@ function createDefaultGroupCreateRuntime(): GroupCreateRuntime {
     },
     showConversation(channel, options) {
       WKApp.endpoints.showConversation(channel, options);
+    },
+    clearRemovedChannelSubscribers(channel, uids) {
+      clearCurrentImChannelSubscribersLocallyRemoved(channel, uids);
+    },
+    getRemovedChannelSubscriberUids(channel) {
+      return getCurrentImChannelLocallyRemovedSubscriberUids(channel);
+    },
+    notifyCurrentChannelSubscribers(channel) {
+      notifyCurrentImSubscriberChangeListeners(channel);
+    },
+    setCurrentChannelSubscribers(channel, subscribers) {
+      setCurrentImChannelSubscribersCache(channel, subscribers);
     },
     syncCurrentChannelSubscribers(channel) {
       return syncCurrentImChannelSubscribers(channel);
@@ -146,9 +178,16 @@ async function loadExcludedSubscriberUids(
       : await runtime
           .syncCurrentChannelSubscribers(channel)
           .then(() => runtime.getCurrentChannelSubscribers(channel));
+  const locallyRemovedUids = new Set(
+    runtime.getRemovedChannelSubscriberUids(channel)
+  );
 
   return Array.from(
-    new Set((subscribers || []).map((subscriber) => subscriber.uid))
+    new Set(
+      (subscribers || [])
+        .map((subscriber) => subscriber.uid)
+        .filter((uid): uid is string => !!uid && !locallyRemovedUids.has(uid))
+    )
   );
 }
 
@@ -191,11 +230,128 @@ export async function loadGroupCreateCandidates(params: {
   });
 }
 
+async function refreshGroupMemberStateAfterMutation(
+  runtime: GroupCreateRuntime,
+  channel: Channel,
+  addedUids: string[]
+) {
+  let shouldNotifySubscribers = false;
+
+  try {
+    await runtime.syncCurrentChannelSubscribers(channel);
+    shouldNotifySubscribers = true;
+  } catch (err) {
+    console.warn("[addMember] syncSubscribes failed", err);
+  }
+
+  const cachePatched = await patchSubscriberCacheAfterAdd(
+    runtime,
+    channel,
+    addedUids
+  );
+
+  if (cachePatched) {
+    shouldNotifySubscribers = true;
+  }
+
+  if (shouldNotifySubscribers) {
+    runtime.notifyCurrentChannelSubscribers(channel);
+  }
+
+  await runtime.fetchCurrentChannelInfo(channel).catch((err) => {
+    console.warn("[addMember] fetchChannelInfo failed", err);
+  });
+}
+
+function activeSubscriber(subscriber: any) {
+  return (
+    subscriber &&
+    !subscriber.isDeleted &&
+    subscriber.status === SubscriberStatus.normal
+  );
+}
+
+function normalizeFetchedSubscriber(
+  subscriber: any | undefined,
+  channel: Channel
+) {
+  if (!subscriber || subscriber.isDeleted) {
+    return undefined;
+  }
+  if (subscriber.status === undefined) {
+    subscriber.status = SubscriberStatus.normal;
+  }
+  if (subscriber.status !== SubscriberStatus.normal) {
+    return undefined;
+  }
+  subscriber.channel = channel;
+  return subscriber;
+}
+
+async function patchSubscriberCacheAfterAdd(
+  runtime: GroupCreateRuntime,
+  channel: Channel,
+  addedUids: string[]
+) {
+  const targetUids = new Set(addedUids.filter(Boolean));
+  if (targetUids.size === 0) {
+    return false;
+  }
+
+  const currentSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+  const uidsToFetch = Array.from(targetUids).filter((uid) => {
+    const index = currentSubscribers.findIndex(
+      (subscriber) => subscriber?.uid === uid
+    );
+    return index < 0 || !activeSubscriber(currentSubscribers[index]);
+  });
+
+  const fetchedSubscribers = (
+    await Promise.all(
+      uidsToFetch.map((uid) =>
+        runtime.fetchChannelSubscriber(channel, uid).catch(() => undefined)
+      )
+    )
+  )
+    .map((subscriber) => normalizeFetchedSubscriber(subscriber, channel))
+    .filter(Boolean);
+
+  if (fetchedSubscribers.length === 0) {
+    return false;
+  }
+
+  const latestSubscribers = runtime.getCurrentChannelSubscribers(channel) || [];
+  const nextSubscribers = [...latestSubscribers];
+  let changed = false;
+
+  for (const subscriber of fetchedSubscribers) {
+    const index = nextSubscribers.findIndex(
+      (item) => item?.uid === subscriber.uid
+    );
+    if (index >= 0 && activeSubscriber(nextSubscribers[index])) {
+      continue;
+    }
+    if (index >= 0) {
+      nextSubscribers[index] = subscriber;
+    } else {
+      nextSubscribers.push(subscriber);
+    }
+    changed = true;
+  }
+
+  if (changed) {
+    runtime.setCurrentChannelSubscribers(channel, nextSubscribers);
+  }
+  return changed;
+}
+
 export async function submitGroupCreateAction(params: {
   action: GroupCreateSubmitAction;
   channel: GroupCreateChannelInput;
   selectedUids: string[];
   createOptions?: GroupCreateSubmitOptions;
+  avatarFile?: File;
+  onAvatarUploadFailed?: () => void;
   keepSidebarTab?: boolean;
   runtime?: GroupCreateRuntime;
 }) {
@@ -207,10 +363,21 @@ export async function submitGroupCreateAction(params: {
       params.createOptions
     );
     if (result?.group_no) {
+      let avatarUploadFailed = false;
+      if (params.avatarFile) {
+        try {
+          await runtime.uploadGroupAvatar(result.group_no, params.avatarFile);
+        } catch {
+          avatarUploadFailed = true;
+        }
+      }
       runtime.showConversation(
         new Channel(result.group_no, ChannelTypeGroup),
         params.keepSidebarTab ? { fromSidebarList: true } : undefined
       );
+      if (avatarUploadFailed) {
+        params.onAvatarUploadFailed?.();
+      }
     }
     return result;
   }
@@ -233,5 +400,11 @@ export async function submitGroupCreateAction(params: {
   }
 
   await runtime.addSubscribers(channel, params.selectedUids);
+  runtime.clearRemovedChannelSubscribers(channel, params.selectedUids);
+  await refreshGroupMemberStateAfterMutation(
+    runtime,
+    channel,
+    params.selectedUids
+  );
   return undefined;
 }
