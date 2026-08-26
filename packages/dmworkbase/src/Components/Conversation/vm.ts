@@ -1681,15 +1681,26 @@ export default class ConversationVM extends ProviderListener {
 
     // 通过messageID获取消息对象
     findMessageWithMessageID(messageID: string): MessageWrap | undefined {
-        if (!this.messages || this.messages.length <= 0) {
-            return
-        }
-        for (let i = this.messages.length - 1; i >= 0; i--) {
-            const message = this.messages[i]
-            if (message.messageID === messageID) {
-                return message
+        // 对齐 findMessageWithClientSeq：除 this.messages 外，还要查 messagesOfOrigin 与
+        // pendingMessages。pullup/history loading 期间实时到达的卡片先缓冲在 pendingMessages，
+        // 若这里只查 this.messages，buffered window 内的权威 edit frame（走
+        // updateMessageByMessageExtras）会被丢掉，卡片 progressUpdatedAtSec 冻结在初始到达时刻，
+        // 导致 final text 到达时空闲判定误判、给仍在活跃推进的卡片错挂兜底 banner（评审 finding E）。
+        const findIn = (messages?: MessageWrap[]) => {
+            if (!messages || messages.length <= 0) {
+                return
+            }
+            for (let i = messages.length - 1; i >= 0; i--) {
+                const message = messages[i]
+                if (message.messageID === messageID) {
+                    return message
+                }
             }
         }
+
+        return findIn(this.messages)
+            || findIn(this.messagesOfOrigin)
+            || findIn(this.pendingMessages)
     }
 
     // 通过streamNo查找流式消息

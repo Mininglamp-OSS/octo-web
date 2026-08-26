@@ -268,6 +268,30 @@ describe("WS-99 client fallback finalize race", () => {
         expect(cardWrap.localFallbackApplied).toBe(true)
     })
 
+    it("buffered 卡片（仅在 pendingMessages）的权威 edit frame 能被应用，到达时刻不冻结（finding E）", () => {
+        const vm: any = new ConversationVM(channel)
+        const cardWrap = makeCardWrap("🤖 正在处理…")
+        cardWrap.progressUpdatedAtSec = 0 // 初始到达（很久以前）
+        // pullup/history loading 期间卡片只在缓冲区，未进 this.messages。
+        vm.pendingMessages.push(cardWrap)
+        // 权威内容编辑帧到达：findMessageWithMessageID 现在会查 pendingMessages，能命中并刷新到达时刻。
+        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
+        expect(cardWrap.progressUpdatedAtSec).toBeGreaterThan(0)
+    })
+
+    it("buffered 卡片收到 edit frame 保持活跃后，紧接的 final text 不误挂兜底（finding E 端到端）", () => {
+        const vm: any = new ConversationVM(channel)
+        const cardWrap = makeCardWrap("🤖 正在处理…")
+        cardWrap.progressUpdatedAtSec = 0 // 初始到达很久以前；若 edit frame 丢失则会被误判为空闲
+        vm.pendingMessages.push(cardWrap)
+        // buffered window 内权威 edit frame 到达 → 应用到 pendingMessages 里的卡、刷新到达时刻。
+        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("🤖 处理中 · 第 2 步"))])
+        // 紧接着 final text 到达：卡片刚更新过（idle < 3s），不应误触发兜底。修复前 edit frame 被
+        // 丢弃、到达时刻冻结在 0，会误判空闲并挂上 banner。
+        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        expect(cardWrap.localFallbackApplied).toBeFalsy()
+    })
+
     it("只读扩展（read receipt）不刷新 progressUpdatedAtSec（空闲判定不被重置）", () => {
         const { vm, cardWrap } = primeFallback()
         // 兜底后收到只读扩展；stampProgressCardArrival 不应被调用，progressUpdatedAtSec 保持原值。
