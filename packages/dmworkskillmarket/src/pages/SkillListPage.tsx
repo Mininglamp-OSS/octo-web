@@ -184,7 +184,6 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
         {variant !== "mine" && (
           <div className="skill-market-hero-title">
             <h1>{t("skillMarket.list.pageTitle")}</h1>
-            <p className="skill-market-hero-subtitle">{t("skillMarket.list.pageSubtitle")}</p>
           </div>
         )}
         <div className="skill-market-topbar__actions">

@@ -464,9 +464,39 @@ export default function ExpertMarketListPage({
     <div className="wk-mcp-expert-page">
       <header className="wk-mcp-expert-topbar">
         {variant !== "mine" && (
-          <div className="wk-mcp-expert-hero-title">
-            <h1>{t("mcp.expert.pageTitle")}</h1>
-            <p className="wk-mcp-expert-hero-subtitle">{t("mcp.expert.pageSubtitle")}</p>
+          <div className="wk-mcp-expert-topbar__left">
+            <nav className="wk-mcp-expert-tabs" aria-label={t("mcp.expert.navAriaLabel")}>
+              <button
+                type="button"
+                className={kind === "agent" ? "is-active" : ""}
+                onClick={() => setKind("agent")}
+              >
+                {t("mcp.expert.typeAgent")}
+              </button>
+              <button
+                type="button"
+                className={kind === "squad" ? "is-active" : ""}
+                onClick={() => setKind("squad")}
+              >
+                {t("mcp.expert.typeSquad")}
+              </button>
+            </nav>
+            {loopOn && (
+              <Tooltip
+                content={t("mcp.expert.loopIntro")}
+                className="wk-mcp-tooltip-light"
+                mouseEnterDelay={100}
+                position="bottomLeft"
+              >
+                <button
+                  type="button"
+                  className="wk-mcp-expert-help"
+                  aria-label={t("mcp.expert.loopIntro")}
+                >
+                  <HelpCircle size={16} aria-hidden="true" />
+                </button>
+              </Tooltip>
+            )}
           </div>
         )}
         <div className="wk-mcp-expert-topbar__actions">
@@ -599,43 +629,6 @@ export default function ExpertMarketListPage({
           )}
         </div>
       </header>
-
-      {variant !== "mine" && (
-        <div className="wk-mcp-expert-topbar__left">
-          <nav className="wk-mcp-expert-tabs" aria-label={t("mcp.expert.navAriaLabel")}>
-            <button
-              type="button"
-              className={kind === "agent" ? "is-active" : ""}
-              onClick={() => setKind("agent")}
-            >
-              {t("mcp.expert.typeAgent")}
-            </button>
-            <button
-              type="button"
-              className={kind === "squad" ? "is-active" : ""}
-              onClick={() => setKind("squad")}
-            >
-              {t("mcp.expert.typeSquad")}
-            </button>
-          </nav>
-          {loopOn && (
-            <Tooltip
-              content={t("mcp.expert.loopIntro")}
-              className="wk-mcp-tooltip-light"
-              mouseEnterDelay={100}
-              position="bottomLeft"
-            >
-              <button
-                type="button"
-                className="wk-mcp-expert-help"
-                aria-label={t("mcp.expert.loopIntro")}
-              >
-                <HelpCircle size={16} aria-hidden="true" />
-              </button>
-            </Tooltip>
-          )}
-        </div>
-      )}
 
       {kind !== "mine" && (
         <section className="wk-mcp-expert-filter-bar">

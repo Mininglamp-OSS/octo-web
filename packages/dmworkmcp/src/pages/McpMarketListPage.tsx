@@ -570,7 +570,6 @@ export default class McpMarketListPage extends Component<
           {this.props.variant !== "mine" && (
             <div className="wk-mcp__hero-title">
               <h1>{t("mcp.list.pageTitle")}</h1>
-              <p className="wk-mcp__hero-subtitle">{t("mcp.list.pageSubtitle")}</p>
             </div>
           )}
           <div className="wk-mcp__topbar-actions">

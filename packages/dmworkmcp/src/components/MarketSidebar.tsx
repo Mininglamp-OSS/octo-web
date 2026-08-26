@@ -26,19 +26,19 @@ interface MarketItem {
 // fallback.
 const MARKET_ITEMS: MarketItem[] = [
   {
+    id: "skills",
+    routePath: "/mcp-market/skills",
+    label: () => t("mcp.sidebar.skills"),
+    icon: <Sparkles size={16} aria-hidden="true" />,
+    render: () => <SkillListPage />,
+  },
+  {
     id: "experts",
     routePath: "/mcp-market/experts",
     label: () => t("mcp.sidebar.experts"),
     icon: <Users size={16} aria-hidden="true" />,
     badge: () => t("mcp.sidebar.expertsBadge"),
     render: () => <ExpertMarketListPage />,
-  },
-  {
-    id: "skills",
-    routePath: "/mcp-market/skills",
-    label: () => t("mcp.sidebar.skills"),
-    icon: <Sparkles size={16} aria-hidden="true" />,
-    render: () => <SkillListPage />,
   },
   {
     id: "mcp",

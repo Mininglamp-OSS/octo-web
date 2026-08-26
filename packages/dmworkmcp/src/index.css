@@ -2266,6 +2266,7 @@
   gap: var(--wk-sp-4);
   min-height: 64px;
   padding: var(--wk-sp-5) var(--wk-sp-6) var(--wk-sp-4);
+  border-bottom: 1px solid var(--wk-border-default);
 }
 
 .wk-mcp-expert-hero-title {
@@ -2549,8 +2550,6 @@
   display: flex;
   align-items: center;
   gap: var(--wk-sp-3);
-  padding: 0 var(--wk-sp-6);
-  border-bottom: 1px solid var(--wk-border-default);
 }
 
 .wk-mcp-expert-help {
