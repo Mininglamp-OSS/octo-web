@@ -186,80 +186,87 @@ describe("useMailWorkspace read state", () => {
     unmount();
   });
 
-  it("retries a state refresh when the matching workspace request was superseded", async () => {
+  it("does not restart a slow refresh while the server state is unchanged", async () => {
     const { result, unmount } = renderHook(() => useMailWorkspace("fallback"));
     await waitFor(() => expect(result.current.messages).toHaveLength(1));
 
-    let resolveSupersededMailboxes!: (value: never[]) => void;
-    let resolveSupersededMessages!: (value: {
+    let resolveMessages!: (value: {
       messages: never[];
       total: number;
       offset: number;
       limit: number;
     }) => void;
-    const supersededMailboxes = new Promise<never[]>((resolve) => {
-      resolveSupersededMailboxes = resolve;
-    });
-    const supersededMessages = new Promise<{
+    const pendingMessages = new Promise<{
       messages: never[];
       total: number;
       offset: number;
       limit: number;
     }>((resolve) => {
-      resolveSupersededMessages = resolve;
+      resolveMessages = resolve;
+    });
+    let requestSignal: AbortSignal | undefined;
+    testState.getState.mockResolvedValue("2");
+    testState.listMessages.mockImplementationOnce((request) => {
+      requestSignal = request.signal;
+      return pendingMessages;
     });
 
-    testState.getState.mockResolvedValue("2");
-    testState.listMailboxes.mockImplementationOnce(() => supersededMailboxes);
-    testState.listMessages.mockImplementationOnce(() => supersededMessages);
     act(() => document.dispatchEvent(new Event("visibilitychange")));
-
-    await waitFor(() =>
-      expect(testState.listMailboxes).toHaveBeenCalledTimes(2)
-    );
     await waitFor(() =>
       expect(testState.listMessages).toHaveBeenCalledTimes(2)
     );
+    const mailboxCalls = testState.listMailboxes.mock.calls.length;
+    const messageCalls = testState.listMessages.mock.calls.length;
 
-    act(() => result.current.reload());
-    await waitFor(() =>
-      expect(testState.listMailboxes).toHaveBeenCalledTimes(3)
-    );
-    await waitFor(() =>
-      expect(testState.listMessages).toHaveBeenCalledTimes(3)
-    );
-
-    testState.listMailboxes.mockResolvedValue([
-      { id: "inbox", name: "Inbox", total: 2, unread: 2 },
-      { id: "junk", name: "Junk", total: 1, unread: 1 },
-    ]);
-    testState.listMessages.mockResolvedValue({
-      messages: [
-        {
-          id: "E2",
-          mailbox: "Inbox",
-          subject: "New message",
-          from: "new@example.test",
-          to: ["agent@example.test"],
-          preview: "new body",
-          receivedAt: "2026-08-10T00:01:00Z",
-          size: 8,
-          keywords: [],
-          unread: true,
-        },
-      ],
-      total: 1,
-      offset: 0,
-      limit: 30,
-    });
     act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(testState.getState).toHaveBeenCalledTimes(2));
 
-    await waitFor(() => expect(result.current.messages[0]?.id).toBe("E2"));
-    expect(result.current.mailboxes[0]?.unread).toBe(2);
-    expect(result.current.mailboxes[1]?.unread).toBe(1);
+    expect(testState.listMailboxes).toHaveBeenCalledTimes(mailboxCalls);
+    expect(testState.listMessages).toHaveBeenCalledTimes(messageCalls);
+    expect(requestSignal?.aborted).toBe(false);
 
-    resolveSupersededMailboxes([]);
-    resolveSupersededMessages({ messages: [], total: 0, offset: 0, limit: 30 });
+    resolveMessages({ messages: [], total: 0, offset: 0, limit: 30 });
+    await waitFor(() => expect(result.current.messages).toEqual([]));
+    unmount();
+  });
+
+  it("does not repeatedly refresh a failed state", async () => {
+    const { result, unmount } = renderHook(() => useMailWorkspace("fallback"));
+    await waitFor(() => expect(result.current.messages).toHaveLength(1));
+
+    testState.getState.mockResolvedValue("2");
+    testState.listMessages.mockRejectedValue(new Error("network down"));
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() =>
+      expect(testState.listMessages).toHaveBeenCalledTimes(2)
+    );
+    const mailboxCalls = testState.listMailboxes.mock.calls.length;
+    const messageCalls = testState.listMessages.mock.calls.length;
+
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(testState.getState).toHaveBeenCalledTimes(2));
+
+    expect(testState.listMailboxes).toHaveBeenCalledTimes(mailboxCalls);
+    expect(testState.listMessages).toHaveBeenCalledTimes(messageCalls);
+    unmount();
+  });
+
+  it("does not repeatedly refresh an unchanged state without mailboxes", async () => {
+    testState.listMailboxes.mockResolvedValue([]);
+    const { result, unmount } = renderHook(() => useMailWorkspace("fallback"));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    testState.getState.mockResolvedValue("2");
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() =>
+      expect(testState.listMailboxes).toHaveBeenCalledTimes(2)
+    );
+
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(testState.getState).toHaveBeenCalledTimes(2));
+
+    expect(testState.listMailboxes).toHaveBeenCalledTimes(2);
+    expect(testState.listMessages).not.toHaveBeenCalled();
     unmount();
   });
 

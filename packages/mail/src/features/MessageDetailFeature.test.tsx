@@ -2,6 +2,7 @@
 
 import React from "react";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -124,6 +125,7 @@ describe("MessageDetailFeature action errors", () => {
         mailboxAddress="bot@mail.imocto.cn"
         messageId="E1"
         mailboxRole="junk"
+        embedded
         onRestoredFromJunk={onRestoredFromJunk}
       />
     );
@@ -141,6 +143,45 @@ describe("MessageDetailFeature action errors", () => {
     expect(state.restoreNotJunk).toHaveBeenCalledWith("42", "E1");
     expect(onRestoredFromJunk).toHaveBeenCalledTimes(1);
     expect(state.emit).toHaveBeenCalledWith("mail-refresh");
+  });
+
+  it("keeps the Junk message when restoring it fails", async () => {
+    const failure = { msg: "restore failed" };
+    state.getMessage.mockResolvedValue({
+      ...draft,
+      mailbox: "Junk",
+      from: "sender@example.com",
+      agentDraft: undefined,
+    });
+    state.restoreNotJunk.mockRejectedValue(failure);
+    const onRestoredFromJunk = vi.fn();
+
+    render(
+      <MessageDetailFeature
+        mailboxContextId="42"
+        mailboxAddress="bot@mail.imocto.cn"
+        messageId="E1"
+        mailboxRole="junk"
+        embedded
+        onRestoredFromJunk={onRestoredFromJunk}
+      />
+    );
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "mail.actions.notJunk" })
+    );
+    const confirmation = state.wkConfirm.mock.calls[0][0];
+
+    await act(async () => {
+      await expect(confirmation.onOk()).rejects.toBe(failure);
+    });
+
+    expect(await screen.findByText("Owner review")).toBeTruthy();
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "restore failed"
+    );
+    expect(onRestoredFromJunk).not.toHaveBeenCalled();
+    expect(state.emit).not.toHaveBeenCalledWith("mail-refresh");
   });
 
   it("does not show the restore action outside Junk", async () => {

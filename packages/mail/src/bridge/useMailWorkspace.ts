@@ -12,17 +12,9 @@ const FULL_REFRESH_FALLBACK_INTERVAL_MS = 5 * 60_000;
 interface RefreshRequest {
   revision: number;
   silent: boolean;
-  state: string | null;
 }
 
 type WorkspaceErrorSource = "resources" | "messages" | "mutation";
-type StateRefreshPart = "resources" | "messages";
-
-interface StateRefreshProgress {
-  state: string;
-  resources: boolean;
-  messages: boolean;
-}
 
 function useSilentRefreshFlag(
   request: RefreshRequest,
@@ -95,7 +87,6 @@ export default function useMailWorkspace(
   const [refreshRequest, setRefreshRequest] = useState<RefreshRequest>({
     revision: 0,
     silent: false,
-    state: null,
   });
   const context = useAgentMailboxContext();
   const mailboxContextId = context?.mailbox.id || "";
@@ -106,10 +97,6 @@ export default function useMailWorkspace(
   const foregroundRequestCountRef = useRef(0);
   const pendingForegroundRefreshRef = useRef(false);
   const errorSourceRef = useRef<WorkspaceErrorSource | null>(null);
-  const appliedStateRef = useRef<string | null>(null);
-  const stateRefreshProgressRef = useRef(
-    new Map<number, StateRefreshProgress>()
-  );
 
   const clearWorkspaceError = useCallback((source?: WorkspaceErrorSource) => {
     if (source && errorSourceRef.current !== source) return;
@@ -129,40 +116,17 @@ export default function useMailWorkspace(
     setRefreshRequest((current) => ({
       revision: current.revision + 1,
       silent: false,
-      state: null,
     }));
   }, []);
-  const refreshSilently = useCallback((state: string | null = null) => {
+  const refreshSilently = useCallback(() => {
     const silent =
       foregroundRequestCountRef.current === 0 &&
       !pendingForegroundRefreshRef.current;
     setRefreshRequest((current) => ({
       revision: current.revision + 1,
       silent,
-      state,
     }));
   }, []);
-  const recordStateRefreshPart = useCallback(
-    (revision: number, state: string | null, part: StateRefreshPart) => {
-      if (state === null) return;
-      const progress = stateRefreshProgressRef.current.get(revision) ?? {
-        state,
-        resources: false,
-        messages: false,
-      };
-      progress[part] = true;
-      stateRefreshProgressRef.current.set(revision, progress);
-      for (const candidate of stateRefreshProgressRef.current.keys()) {
-        if (candidate < revision)
-          stateRefreshProgressRef.current.delete(candidate);
-      }
-      if (progress.resources && progress.messages) {
-        appliedStateRef.current = progress.state;
-        stateRefreshProgressRef.current.clear();
-      }
-    },
-    []
-  );
   const selectMailbox = useCallback((name: string) => {
     foregroundInteractionRef.current += 1;
     setSelectedMailbox(name);
@@ -300,8 +264,6 @@ export default function useMailWorkspace(
     setSearchState("");
     setUnreadOnlyState(false);
     starringMessageIdsRef.current.clear();
-    appliedStateRef.current = null;
-    stateRefreshProgressRef.current.clear();
     setStarringMessageIds([]);
     clearWorkspaceError();
   }, [clearWorkspaceError, mailboxContextId]);
@@ -336,14 +298,6 @@ export default function useMailWorkspace(
       .then((nextMailboxes) => {
         if (!active || request !== resourcesRequestRef.current) return;
         setMailboxes(nextMailboxes);
-        recordStateRefreshPart(
-          refreshRequest.revision,
-          refreshRequest.state,
-          "resources"
-        );
-        if (refreshRequest.state !== null) {
-          WKApp.mittBus.emit("mail-navigation-refresh" as never);
-        }
         if (resourcesRefreshSilent) clearWorkspaceError("resources");
         setSelectedMailbox((current) => {
           if (
@@ -381,9 +335,7 @@ export default function useMailWorkspace(
     clearWorkspaceError,
     context?.mailbox.address,
     mailboxContextId,
-    recordStateRefreshPart,
     refreshRequest.revision,
-    refreshRequest.state,
     resourcesRefreshSilent,
     setWorkspaceError,
   ]);
@@ -431,11 +383,6 @@ export default function useMailWorkspace(
             const responseMessages = response.messages ?? [];
             setMessages(responseMessages);
             setTotal(response.total ?? 0);
-            recordStateRefreshPart(
-              refreshRequest.revision,
-              refreshRequest.state,
-              "messages"
-            );
             if (messagesRefreshSilent) clearWorkspaceError("messages");
             setSelectedMessageId((current) =>
               messagesRefreshSilent ||
@@ -470,9 +417,7 @@ export default function useMailWorkspace(
     mailboxContextId,
     messagesRefreshSilent,
     page,
-    recordStateRefreshPart,
     refreshRequest.revision,
-    refreshRequest.state,
     search,
     selectedMailbox,
     setWorkspaceError,
@@ -485,6 +430,7 @@ export default function useMailWorkspace(
     let active = true;
     let polling = false;
     let pollWhenSettled = false;
+    let knownState: string | null = null;
     let stateController: AbortController | null = null;
 
     const pollState = () => {
@@ -496,8 +442,11 @@ export default function useMailWorkspace(
       void MailService.getState(mailboxContextId, stateController.signal)
         .then((nextState) => {
           if (!active || document.visibilityState === "hidden") return;
-          if (appliedStateRef.current !== nextState) {
-            refreshSilently(nextState);
+          const changed = knownState === null || knownState !== nextState;
+          knownState = nextState;
+          if (changed) {
+            refreshSilently();
+            WKApp.mittBus.emit("mail-navigation-refresh" as never);
           }
         })
         .catch(() => {
