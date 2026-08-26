@@ -266,3 +266,43 @@ describe("ContextMenus Lucide icons", () => {
         expect(container.querySelector(".wk-contextmenus li")?.textContent).toBe("Follow")
     })
 })
+
+describe("ContextMenus keyboard navigation", () => {
+    it("moves focus, executes the focused action, and restores trigger focus", () => {
+        const first = vi.fn()
+        const second = vi.fn()
+        const { context } = renderContextMenus(vi.fn(), [
+            { title: "Reply", actionKey: "reply", onClick: first },
+            { separator: true } as ContextMenusData,
+            { title: "Copy", actionKey: "copy", onClick: second },
+        ])
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
+
+        const items = container.querySelectorAll<HTMLElement>('[role="menuitem"]')
+        expect(document.activeElement).toBe(items[0])
+        act(() => items[0].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })))
+        expect(document.activeElement).toBe(items[1])
+        act(() => items[1].dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })))
+        expect(second).toHaveBeenCalledTimes(1)
+        expect(document.activeElement).toBe(trigger)
+    })
+
+    it("closes on Escape and restores focus", () => {
+        const { context } = renderContextMenus()
+        const trigger = container.querySelector<HTMLButtonElement>(".trigger")!
+        act(() => {
+            context?.hide()
+            trigger.focus()
+        })
+        dispatchContextMenu(trigger)
+        const item = container.querySelector<HTMLElement>('[role="menuitem"]')!
+        act(() => item.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })))
+        expect(context?.isShow()).toBe(false)
+        expect(document.activeElement).toBe(trigger)
+    })
+})

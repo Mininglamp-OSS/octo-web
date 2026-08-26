@@ -124,6 +124,7 @@ import { downloadFile } from "../../Utils/download";
 import Lightbox from "yet-another-react-lightbox";
 import Download from "yet-another-react-lightbox/plugins/download";
 import { buildChatContext, ChatContextChannelInfo } from "./chatContext";
+import { buildGroupedMessageContextMenus } from "../../features/messageContextMenu/menuModel";
 import {
   resolveDraftAfterSend,
   resolveDraftToPersist,
@@ -3467,19 +3468,9 @@ export class Conversation
                 }}
                 menus={
                   vm.selectMessage
-                    ? WKApp.endpoints
-                        .messageContextMenus(vm.selectMessage, this)
-                        .map((menus) => {
-                          return {
-                            title: menus.title,
-                            testid: menus.testid,
-                            onClick: () => {
-                              if (menus.onClick) {
-                                menus.onClick();
-                              }
-                            },
-                          };
-                        })
+                    ? buildGroupedMessageContextMenus(
+                        WKApp.endpoints.messageContextMenus(vm.selectMessage, this),
+                      )
                     : []
                 }
               ></ContextMenus>

@@ -735,7 +735,7 @@
   "module.channelSettings.transferOwnerSelectOne": "Please select one member",
   "module.channelSettings.transferOwnerSuccess": "Owner transferred",
   "module.chatMenus.startGroup": "Start group chat",
-  "module.contextMenus.addSticker": "Add to my stickers",
+  "module.contextMenus.addSticker": "Add to Stickers",
   "module.contextMenus.copy": "Copy",
   "module.contextMenus.copyFailed": "Copy failed",
   "module.contextMenus.copyImage": "Copy image",

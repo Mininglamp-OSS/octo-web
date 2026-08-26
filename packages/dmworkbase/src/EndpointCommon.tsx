@@ -6,9 +6,17 @@ import { EndpointCategory, EndpointID } from "./Service/Const";
 import { EndpointManager } from "./Service/Module";
 import ConversationContext from "./Components/Conversation/context";
 import { isChannelSearchEnabled } from "./features/channelSearch/feature";
+import type { LucideIcon } from "lucide-react";
+
+export type MessageContextMenuGroup = "processing" | "control" | "derived";
 
 export class MessageContextMenus {
+  actionKey!: string;
+  /** New registrations should declare a group; legacy extensions fall back to processing. */
+  group?: MessageContextMenuGroup;
   title!: string;
+  icon?: LucideIcon;
+  danger?: boolean;
   onClick?: () => void;
   /** 测试锚点（kebab-case），透传到菜单项 <li> 的 data-testid，供埋点规则命中 */
   testid?: string;
@@ -190,7 +198,8 @@ export class EndpointCommon {
     EndpointManager.shared.setMethod(
       sid,
       (param: any) => {
-        return handle(param.message, param.context);
+        const item = handle(param.message, param.context);
+        return item ? { ...item, actionKey: item.actionKey || sid } : null;
       },
       {
         category: EndpointCategory.messageContextMenus,

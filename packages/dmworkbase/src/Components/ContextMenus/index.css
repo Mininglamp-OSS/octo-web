@@ -55,6 +55,12 @@ body[theme-mode=dark] .wk-contextmenus {
     background: #F2F3F5;
 }
 
+.wk-contextmenus li:focus-visible {
+    background: var(--wk-bg-hover);
+    outline: 2px solid var(--wk-brand-primary);
+    outline-offset: -2px;
+}
+
 .wk-contextmenus ul > li:first-of-type {
     border-top-left-radius: var(--wk-r-md);
     border-top-right-radius: var(--wk-r-md);

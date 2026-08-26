@@ -167,7 +167,7 @@ describe("MessageRow — selection mode interactions", () => {
         dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "click")
         expect(onSenderNameClick).toHaveBeenCalledTimes(1)
 
-        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-body")!, "contextmenu")
         expect(onContextMenu).toHaveBeenCalledTimes(1)
     })
 
@@ -188,7 +188,7 @@ describe("MessageRow — selection mode interactions", () => {
         expect(onContextMenu).not.toHaveBeenCalled()
     })
 
-    it("keeps the row context menu available from a continuation placeholder", () => {
+    it("does not open the message menu from a continuation placeholder", () => {
         const onContextMenu = vi.fn()
         const root = renderRow(
             <MessageRow
@@ -203,10 +203,10 @@ describe("MessageRow — selection mode interactions", () => {
 
         const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar-placeholder")!, "contextmenu")
         expect(event.defaultPrevented).toBe(false)
-        expect(onContextMenu).toHaveBeenCalledTimes(1)
+        expect(onContextMenu).not.toHaveBeenCalled()
     })
 
-    it("keeps the row context menu available from a non-actionable avatar", () => {
+    it("does not open the message menu from a non-actionable avatar", () => {
         const onContextMenu = vi.fn()
         const root = renderRow(
             <MessageRow
@@ -221,6 +221,28 @@ describe("MessageRow — selection mode interactions", () => {
 
         const event = dispatchMouseEvent(root.querySelector(".wk-msg-row-avatar")!, "contextmenu")
         expect(event.defaultPrevented).toBe(false)
+        expect(onContextMenu).not.toHaveBeenCalled()
+    })
+
+    it("opens the message menu from the focused body with Shift+F10 only", () => {
+        const onContextMenu = vi.fn()
+        const root = renderRow(
+            <MessageRow {...baseProps} onContextMenu={onContextMenu}>
+                <div>message</div>
+            </MessageRow>
+        )
+        const body = root.querySelector<HTMLElement>(".wk-msg-row-body")!
+
+        act(() => body.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "F10",
+            shiftKey: true,
+            bubbles: true,
+            cancelable: true,
+        })))
+        expect(onContextMenu).toHaveBeenCalledTimes(1)
+
+        dispatchMouseEvent(root.querySelector(".wk-msg-row-sender")!, "contextmenu")
+        dispatchMouseEvent(root.querySelector(".wk-msg-row")!, "contextmenu")
         expect(onContextMenu).toHaveBeenCalledTimes(1)
     })
 
