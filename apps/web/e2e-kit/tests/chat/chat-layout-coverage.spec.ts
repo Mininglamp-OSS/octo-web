@@ -175,32 +175,62 @@ test(
       .last();
     await expect(scrollButton).toHaveClass(/wk-reveale/);
 
-    await authedPage.getByTestId("chat-channel-setting-entry").click();
+    const channelSettingEntry = authedPage.getByTestId(
+      "chat-channel-setting-entry",
+    );
+    await channelSettingEntry.click();
     const mask = authedPage.getByTestId("chat-channel-setting-mask");
     const panel = authedPage.locator(".wk-chat-channelsetting");
     await expect(mask).toBeVisible();
     await expect(panel).toBeVisible();
+    await expect(panel).toBeFocused();
+    await expect(panel).toHaveAttribute("aria-modal", "true");
+    await expect(authedPage.locator(".wk-chat-content-chat")).toHaveAttribute(
+      "inert",
+      "",
+    );
+    await authedPage.keyboard.press("Shift+Tab");
+    await expect
+      .poll(() =>
+        panel.evaluate((element) => element.contains(document.activeElement)),
+      )
+      .toBe(true);
+    await authedPage.keyboard.press("Tab");
+    await expect
+      .poll(() =>
+        panel.evaluate((element) => element.contains(document.activeElement)),
+      )
+      .toBe(true);
 
-    const [scrollZIndex, maskZIndex, panelZIndex] = await Promise.all([
-      scrollPositionView.evaluate((element) =>
-        Number(getComputedStyle(element).zIndex),
-      ),
-      mask.evaluate((element) => Number(getComputedStyle(element).zIndex)),
-      panel.evaluate((element) => Number(getComputedStyle(element).zIndex)),
-    ]);
-    expect(scrollZIndex).toBeLessThan(maskZIndex);
-    expect(maskZIndex).toBeLessThan(panelZIndex);
+    const scrollButtonBox = await scrollButton.boundingBox();
+    if (!scrollButtonBox) throw new Error("滚动到底部按钮没有可验证的布局位置");
+    const panelCoversScrollButton = await panel.evaluate(
+      (element, point) =>
+        element.contains(document.elementFromPoint(point.x, point.y)),
+      {
+        x: scrollButtonBox.x + scrollButtonBox.width / 2,
+        y: scrollButtonBox.y + scrollButtonBox.height / 2,
+      },
+    );
+    expect(panelCoversScrollButton).toBe(true);
 
+    await authedPage.keyboard.press("Escape");
+    await expect(mask).toHaveCount(0);
+    await expect(channelSettingEntry).toBeFocused();
+
+    await channelSettingEntry.click();
     await mask.click({ position: { x: 8, y: 8 } });
     await expect(mask).toHaveCount(0);
     await expect(
       authedPage.locator(".wk-chat-content-right"),
     ).not.toHaveClass(/wk-chat-channelsetting-open/);
 
-    await authedPage.getByTestId("chat-thread-panel-entry").click();
+    await channelSettingEntry.click();
+    await authedPage.getByTestId("chat-thread-panel-entry").dispatchEvent("click");
     await expect(
       authedPage.getByTestId("chat-channel-setting-mask"),
     ).toHaveCount(0);
+    await expect(authedPage.getByText("子区", { exact: true })).toBeVisible();
   },
 );
 
