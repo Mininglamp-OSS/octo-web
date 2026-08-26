@@ -2729,12 +2729,12 @@
 .wk-mcp-expert-sort button:focus-visible {
   outline: none;
   background: var(--wk-bg-hover);
-  color: var(--wk-color-accent);
+  color: var(--wk-text-strong);
 }
 
 .wk-mcp-expert-sort button.is-active {
   background: var(--wk-bg-surface);
-  color: var(--wk-color-accent);
+  color: var(--wk-text-strong);
   box-shadow: var(--wk-shadow-sm);
   font-weight: var(--wk-font-semibold);
 }

@@ -139,7 +139,8 @@
     "instructionTitle": "Instruction",
     "mcpTitle": "MCP",
     "skillsTitle": "Skills",
-    "selfCreator": "Me"
+    "selfCreator": "Me",
+    "sortHottest": "Hottest"
   },
   "common": {
     "loadFailed": "Failed to load"

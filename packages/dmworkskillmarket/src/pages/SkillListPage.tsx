@@ -37,10 +37,8 @@ interface SkillListPageProps {
 
 const TOAST_DURATION = 3000;
 const SORT_OPTIONS: Array<{ value: SkillSort; labelKey: string; descending?: boolean }> = [
-  { value: "comprehensive", labelKey: "skillMarket.sort.comprehensive" },
   { value: "latest", labelKey: "skillMarket.sort.latest" },
-  { value: "downloads", labelKey: "skillMarket.sort.downloads", descending: true },
-  { value: "views", labelKey: "skillMarket.sort.views", descending: true },
+  { value: "downloads", labelKey: "skillMarket.sort.hottest" },
 ];
 
 export default function SkillListPage({ variant = "market" }: SkillListPageProps = {}) {
@@ -48,7 +46,7 @@ export default function SkillListPage({ variant = "market" }: SkillListPageProps
   const [tab] = useState<TabId>(variant === "mine" ? "mine" : "skills");
   const mine = tab === "mine";
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [sort, setSort] = useState<SkillSort>("comprehensive");
+  const [sort, setSort] = useState<SkillSort>("downloads");
   const list = useSkills({ mine, selectedTags, sort });
   const refreshRef = useRef(list.refresh);
   const [createVisible, setCreateVisible] = useState(false);

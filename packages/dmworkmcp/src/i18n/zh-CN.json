@@ -139,7 +139,8 @@
     "instructionTitle": "指令",
     "mcpTitle": "MCP",
     "skillsTitle": "Skills",
-    "selfCreator": "我"
+    "selfCreator": "我",
+    "sortHottest": "最热"
   },
   "common": {
     "loadFailed": "加载失败"

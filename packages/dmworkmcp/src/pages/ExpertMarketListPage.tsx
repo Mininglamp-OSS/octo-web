@@ -40,10 +40,8 @@ const LIST_PAGE_SIZE = 100;
 // the list (metric-backed modes rank by resource_metrics counters), the client
 // only filters. `descending` adds the ↓ affordance on the count-based modes.
 const SORT_OPTIONS: Array<{ value: ExpertCatalogSort; labelKey: string; descending?: boolean }> = [
-  { value: "comprehensive", labelKey: "mcp.expert.sortComprehensive" },
   { value: "latest", labelKey: "mcp.expert.sortLatest" },
-  { value: "installs", labelKey: "mcp.expert.sortInstalls", descending: true },
-  { value: "views", labelKey: "mcp.expert.sortViews", descending: true },
+  { value: "installs", labelKey: "mcp.expert.sortHottest" },
 ];
 
 /** Keyword match against name / summary / tags (all lower-cased upstream). */
@@ -112,7 +110,7 @@ export default function ExpertMarketListPage({
   );
   const [category, setCategory] = useState<string>(ALL_CATEGORY);
   const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<ExpertCatalogSort>("comprehensive");
+  const [sort, setSort] = useState<ExpertCatalogSort>("installs");
   const [selected, setSelected] = useState<ExpertItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ExpertItem | null>(null);
