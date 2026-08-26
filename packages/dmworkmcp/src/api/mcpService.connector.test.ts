@@ -195,42 +195,71 @@ describe("createMcpReal — atomic-ish create (P1-3) + fail-closed category (P1-
     );
     expect(upsertCalls).toHaveLength(0);
   });
+
+  it("rejects an empty category up front — no refetch, no upsert (P1-3)", async () => {
+    // A blank category (the modal's degraded '' when category_id is unresolved)
+    // must fail closed immediately rather than falling into the refetch path.
+    mock.instance.get.mockResolvedValue(categoriesOk());
+    mock.instance.post.mockRejectedValue(new Error("should not be called"));
+
+    await expect(createMcp(baseParams({ category: "" }))).rejects.toThrow();
+
+    const upsertCalls = mock.instance.post.mock.calls.filter((c) =>
+      (c[0] as string).endsWith("/plugins/upsert")
+    );
+    expect(upsertCalls).toHaveLength(0);
+    // The category GET fires at most once (initial load); no second refetch.
+    const categoryGets = mock.instance.get.mock.calls.filter((c) =>
+      (c[0] as string).includes("/plugin_categories")
+    );
+    expect(categoryGets.length).toBeLessThanOrEqual(1);
+  });
 });
 
-describe("updateMcpReal — echoes the write-canonical icon (P1-1)", () => {
-  it("writes back current.plugin.icon when the form icon is the unchanged display URL", async () => {
+describe("updateMcpReal — icon write intent uses an undefined sentinel (P1-1 / P1-2)", () => {
+  function seedGets() {
     mock.instance.get.mockImplementation((url: string) => {
       if (url.includes("/plugin_categories")) return Promise.resolve(categoriesOk());
       if (url.includes("/plugins/detail")) return Promise.resolve({ data: { data: detailPlugin() } });
       throw new Error(`unexpected GET ${url}`);
     });
     mock.instance.post.mockResolvedValue({ data: { data: detailPlugin() } });
+  }
 
-    // The form seeds icon from mapDetail = icon_url || icon (the presigned URL).
-    await updateMcp(
-      "p-1",
-      baseParams({ icon: "https://cdn.example.com/presigned/obj-key.png?exp=1" })
-    );
-
+  function upsertIcon(): string {
     const upsertCall = mock.instance.post.mock.calls.find((c) =>
       (c[0] as string).endsWith("/plugins/upsert")
     ) as [string, { plugin: { icon: string } }];
-    expect(upsertCall[1].plugin.icon).toBe("icons/obj-key.png");
+    return upsertCall[1].plugin.icon;
+  }
+
+  it("echoes the write-canonical current.plugin.icon when the icon is untouched (undefined)", async () => {
+    seedGets();
+
+    // Untouched edit: the modal sends `icon: undefined` (NOT the seeded display
+    // value). The service must echo the canonical object key.
+    await updateMcp("p-1", baseParams({ icon: undefined }));
+
+    // Must be the canonical `icon` column, NOT the expiring presigned
+    // `icon_url` (https://cdn.example.com/presigned/obj-key.png?exp=1). A
+    // regression that echoed the display value would fail this exact assertion.
+    expect(upsertIcon()).toBe("icons/obj-key.png");
   });
 
-  it("writes a freshly-picked icon through unchanged", async () => {
-    mock.instance.get.mockImplementation((url: string) => {
-      if (url.includes("/plugin_categories")) return Promise.resolve(categoriesOk());
-      if (url.includes("/plugins/detail")) return Promise.resolve({ data: { data: detailPlugin() } });
-      throw new Error(`unexpected GET ${url}`);
-    });
-    mock.instance.post.mockResolvedValue({ data: { data: detailPlugin() } });
+  it("writes an empty string through when the icon is cleared", async () => {
+    seedGets();
+
+    // handleIconRemove → the modal sends `icon: ""`.
+    await updateMcp("p-1", baseParams({ icon: "" }));
+
+    expect(upsertIcon()).toBe("");
+  });
+
+  it("writes a freshly-picked icon key through unchanged", async () => {
+    seedGets();
 
     await updateMcp("p-1", baseParams({ icon: "icons/fresh-upload.png" }));
 
-    const upsertCall = mock.instance.post.mock.calls.find((c) =>
-      (c[0] as string).endsWith("/plugins/upsert")
-    ) as [string, { plugin: { icon: string } }];
-    expect(upsertCall[1].plugin.icon).toBe("icons/fresh-upload.png");
+    expect(upsertIcon()).toBe("icons/fresh-upload.png");
   });
 });

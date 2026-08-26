@@ -528,6 +528,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
   // edit) so the create → detail round-trip renders without a blank.
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState("");
+  // Icon write intent tracking. The edit form seeds `form.icon` from the
+  // DISPLAY value (mapDetail = icon_url || icon) — a presigned, expiring URL we
+  // must never persist back. So we do NOT derive the payload icon from
+  // `form.icon`; instead we send an explicit `undefined` sentinel unless the
+  // user touched the icon: a fresh upload sends the new object key, an explicit
+  // remove sends `""`. `iconRemoved` records that the user cleared the icon.
+  const [iconRemoved, setIconRemoved] = useState(false);
 
   // Once the user hand-edits the slug we stop auto-deriving it from the name.
   const [slugTouched, setSlugTouched] = useState(false);
@@ -572,6 +579,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     }
     setIconFile(null);
     setIconPreview("");
+    setIconRemoved(false);
     setStep(0);
     // JSON import mode + textarea reset. Edit sessions never enter JSON mode.
     setCreateMode("manual");
@@ -609,6 +617,7 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     setStep(0);
     setCreateMode("manual");
     setJsonRaw("");
+    setIconRemoved(false);
   };
 
   /** Name edit also seeds the slug while the user hasn't hand-edited it, so the
@@ -673,11 +682,14 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
       return;
     }
     setIconFile(file);
+    // A fresh pick supersedes any prior removal.
+    setIconRemoved(false);
   };
 
   const handleIconRemove = (e: React.MouseEvent) => {
     e.stopPropagation();
     setIconFile(null);
+    setIconRemoved(true);
     update("icon", "");
   };
 
@@ -760,6 +772,12 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
     values?: Record<string, number>;
   } | null => {
     if (!form.name.trim()) return { key: "mcp.create.nameRequired" };
+    // Category can arrive empty when the record's stored category_id no longer
+    // resolves in the taxonomy map (mcpService degrades it to ""), leaving the
+    // Select blank. Surface a legible required-field error here rather than
+    // letting resolveWriteCategory throw a generic invalidRequest on submit.
+    if (!(form.category ?? "").trim())
+      return { key: "mcp.create.categoryRequired" };
     if (isRemote(form.transport)) {
       if (!(form.url ?? "").trim()) return { key: "mcp.create.urlRequired" };
       // Per-row key / value length. The KV editor caps typed input via
@@ -819,8 +837,13 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         t(err.key, err.values ? { values: err.values } : undefined)
       );
       // Connection fields live on step 1; jump there so the user sees the gap.
-      if (err.key !== "mcp.create.nameRequired") setStep(1);
-      else setStep(0);
+      // Name + category live on step 0.
+      if (
+        err.key === "mcp.create.nameRequired" ||
+        err.key === "mcp.create.categoryRequired"
+      )
+        setStep(0);
+      else setStep(1);
       return;
     }
 
@@ -853,9 +876,17 @@ const McpCreateModal: React.FC<McpCreateModalProps> = ({
         // blocking the whole create/edit on a transient upload failure.
       }
     }
+    // Icon write intent as an explicit sentinel (never seeded from the display
+    // `form.icon`, which on edit is the expiring presigned icon_url):
+    //   - a freshly-uploaded object key → set it,
+    //   - an explicit remove → "" (removal),
+    //   - otherwise untouched → undefined (leave the stored icon unchanged;
+    //     the create path defaults undefined → "" in toPluginUpsert).
+    const iconIntent: string | undefined =
+      iconOverride !== undefined ? iconOverride : iconRemoved ? "" : undefined;
     const payload: CreateMcpParams = {
       ...form,
-      icon: iconOverride ?? form.icon,
+      icon: iconIntent,
       // Slug is the JSON `mcpServers` key; a manual override is run through the
       // same slugify as the auto value so Chinese / uppercase / spaces /
       // underscores can never leak into the key. Falls back to the safe default.

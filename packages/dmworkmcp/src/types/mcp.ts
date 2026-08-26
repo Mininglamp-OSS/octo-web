@@ -212,8 +212,15 @@ export interface CreateMcpParams {
    *  Falls back to a safe default when slugifying yields an empty string. */
   slug?: string;
   category: string;
-  /** Icon: single emoji/char OR uploaded image (data URL). */
-  icon: string;
+  /**
+   * Icon write intent, using an explicit `undefined` sentinel end-to-end
+   * (mirrors the skill path's `form.iconUrl` sentinel):
+   *   - `undefined` = leave the stored icon unchanged (edit path only).
+   *   - `""` = remove the stored icon.
+   *   - a non-empty string = set it (object key / URL, or a legacy emoji/char).
+   * The create path defaults `undefined` → `""` in toPluginUpsert.
+   */
+  icon?: string | undefined;
   /** Card + detail tag chips, e.g. ["官方", "热门"]. */
   tags: string[];
   slogan: string;

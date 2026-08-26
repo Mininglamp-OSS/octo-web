@@ -311,6 +311,7 @@
     "name": "名称",
     "namePlaceholder": "例如 GitHub MCP",
     "nameRequired": "请填写名称",
+    "categoryRequired": "请选择分类",
     "slug": "服务标识 (slug)",
     "slugHint": "生成 mcpServers JSON 时用作 key，仅限英文小写、数字、连字符；留空自动根据名称生成",
     "slugPlaceholder": "例如 github-mcp",
