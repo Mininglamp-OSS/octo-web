@@ -1479,6 +1479,14 @@
   background: var(--wk-bg-surface);
 }
 
+/* 我的发布:卡片改为一行一个(单列),控制在可读宽度内、左对齐,像一列清单。
+   覆盖三种市场卡片网格(技能/专家/连接器)在 mine 变体下的多列布局。 */
+.wk-mcp-mine .skill-market-grid,
+.wk-mcp-mine .wk-mcp-expert-grid,
+.wk-mcp-mine .wk-mcp__grid {
+  grid-template-columns: min(100%, 760px);
+}
+
 .wk-mcp-mine__hero {
   flex: none;
   min-height: 64px;
