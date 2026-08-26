@@ -4797,6 +4797,105 @@
   text-align: center;
 }
 
+.wk-mcp-expert-editor__member-list {
+  display: grid;
+  gap: var(--wk-sp-2);
+}
+
+.wk-mcp-expert-editor__member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--wk-sp-3);
+  min-height: 56px;
+  padding: var(--wk-sp-2) var(--wk-sp-3);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-md);
+  background: var(--wk-bg-surface);
+}
+
+.wk-mcp-expert-editor__member-main {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-3);
+  min-width: 0;
+}
+
+.wk-mcp-expert-editor__member-avatar {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--wk-r-md);
+  background: var(--wk-brand-tint-12);
+  color: var(--wk-brand-primary);
+  font-weight: var(--wk-font-semibold);
+}
+
+.wk-mcp-expert-editor__member-title {
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-2);
+  color: var(--wk-text-strong);
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-mcp-expert-editor__member-leader-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 var(--wk-sp-2);
+  border-radius: var(--wk-r-full);
+  background: var(--wk-brand-tint-12);
+  color: var(--wk-brand-primary);
+  font-size: 12px;
+  font-weight: var(--wk-font-medium);
+}
+
+.wk-mcp-expert-editor__member-meta {
+  margin-top: 2px;
+  color: var(--wk-text-tertiary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wk-mcp-expert-editor__member-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+}
+
+.wk-mcp-expert-editor__member-leader,
+.wk-mcp-expert-editor__member-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 var(--wk-sp-2);
+  border: none;
+  border-radius: var(--wk-r-sm);
+  background: none;
+  color: var(--wk-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.wk-mcp-expert-editor__member-leader:hover,
+.wk-mcp-expert-editor__member-link:hover {
+  background: var(--wk-bg-item-hover);
+  color: var(--wk-text-primary);
+}
+
+.wk-mcp-expert-editor__member-leader.is-active {
+  color: var(--wk-brand-primary);
+}
+
 .wk-mcp-expert-editor__toast {
   position: fixed;
   left: 50%;

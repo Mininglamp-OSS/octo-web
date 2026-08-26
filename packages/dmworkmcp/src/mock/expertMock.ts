@@ -29,6 +29,10 @@ export interface ExpertSkill {
 export interface ExpertMember {
   /** Stable key used to bind memberKey -> agentId during install. */
   key?: string;
+  /** The member expert's own plugin id (relation target). Needed to open the
+   *  member in the expert editor and to rebuild expert_team_expert relations
+   *  on squad save. */
+  pluginId?: string;
   /** Expert template this member is created from. */
   templateId?: string;
   name: string;

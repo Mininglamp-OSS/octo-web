@@ -15,6 +15,13 @@ interface ExpertEditorPageProps {
   mode: "create" | "edit";
   /** Required when mode === "edit". */
   expertId?: string;
+  /** When set, this editor is a CHILD of another editor (e.g. the squad editor
+   *  creating a member). On a successful save the id+name are handed back and
+   *  the page pops itself, instead of the standalone edit-in-place behavior. */
+  onCommitted?: (result: { id: string; name: string }) => void;
+  /** Forwarded to createExpert — squad members pass false so the member expert
+   *  is not scene-published (kept out of the expert discovery lists). */
+  publishToScene?: boolean;
 }
 
 const TOAST_MS = 2600;
@@ -26,7 +33,7 @@ const TOAST_MS = 2600;
  * content: name/summary/category/tags + 指令 (AGENTS.md) + mcp 配置 (mcp.json).
  * Bound skills are shown here; creating/editing them opens the skill editor.
  */
-export default function ExpertEditorPage({ mode, expertId }: ExpertEditorPageProps) {
+export default function ExpertEditorPage({ mode, expertId, onCommitted, publishToScene }: ExpertEditorPageProps) {
   useI18n();
   const isEdit = mode === "edit";
 
@@ -172,8 +179,19 @@ export default function ExpertEditorPage({ mode, expertId }: ExpertEditorPagePro
       if (isEditing && editingId) {
         const updated = await updateExpert(editingId, form);
         setExpert(updated);
+        if (onCommitted) {
+          onCommitted({ id: editingId, name: form.name });
+          WKApp.routeRight.pop();
+          return;
+        }
       } else {
-        const { id } = await createExpert(form);
+        const { id } = await createExpert(form, { publishToScene });
+        if (onCommitted) {
+          // Hand the new member back to the parent (squad) editor and return.
+          onCommitted({ id, name: form.name });
+          WKApp.routeRight.pop();
+          return;
+        }
         // Flip to edit-in-place (no route change) so the next save updates.
         setCreatedId(id);
       }

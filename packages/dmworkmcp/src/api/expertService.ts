@@ -463,6 +463,7 @@ async function getSquadReal(id: string): Promise<ExpertSquad> {
     ...mapPluginSquadListItem(plugin, categoryName),
     members,
     memberCount: members.length,
+    instruction: rawAttachment(plugin.plugin_json, "AGENTS.md") ?? "",
     leader: agents.leader || members.find((m) => m.leader)?.name || "",
     strategies: agents.strategies,
     dependencies: agents.dependencies,
@@ -488,6 +489,7 @@ async function loadSquadMember(
   skillIndex.set(memberKey, pluginIds);
   return {
     key: memberKey,
+    pluginId: rel.target_plugin_id,
     templateId: context.template_id,
     name: plugin.plugin_name ?? "",
     role: wiring.role ?? context.role ?? "",
@@ -640,7 +642,12 @@ function expertUpsertBody(
     categoryId?: string;
     icon: string;
     visibility: string;
-    relations: Array<{ relation_type: string; target_plugin_id: string; sort_order: number }>;
+    relations: Array<{
+      relation_type: string;
+      target_plugin_id: string;
+      sort_order: number;
+      data?: Record<string, unknown>;
+    }>;
   }
 ) {
   const manifest = {
@@ -680,27 +687,19 @@ function expertSkillRelations(skillIds: string[]) {
   }));
 }
 
-async function resolveExpertCategoryId(name?: string): Promise<string | undefined> {
+async function resolveExpertCategoryId(
+  name?: string,
+  pluginType: "expert" | "expert_team" = "expert"
+): Promise<string | undefined> {
   if (!name) return undefined;
-  const maps = await getExpertCategoryMaps("expert");
+  const maps = await getExpertCategoryMaps(pluginType);
   return maps.nameToId.get(name) ?? undefined;
 }
 
-/** Create a new expert. Upsert then publish the default-scene placement (an
- *  unplaced plugin is invisible to every scene-scoped list, incl. "mine"); a
- *  failed publish is rolled back so a retry starts clean (mirrors createMcpReal). */
-async function createExpertReal(form: ExpertWriteForm): Promise<{ id: string }> {
-  const categoryId = await resolveExpertCategoryId(form.category);
-  const detail = await postWrite<PluginDetailWire>(
-    "/plugins/upsert",
-    expertUpsertBody(form, {
-      categoryId,
-      icon: form.icon ?? "",
-      visibility: "space",
-      relations: expertSkillRelations(form.skillIds ?? []),
-    })
-  );
-  const pluginId = detail.plugin.plugin_id;
+/** Publish the default-scene placement for a freshly-upserted plugin; on
+ *  failure delete the orphan so a retry starts clean. Squad members pass no
+ *  placement (publishToScene:false) so they stay out of discovery lists. */
+async function publishSceneOrRollback(pluginId: string, categoryId?: string): Promise<void> {
   try {
     await postWrite("/plugins/publish", {
       plugin_id: pluginId,
@@ -720,6 +719,30 @@ async function createExpertReal(form: ExpertWriteForm): Promise<{ id: string }> 
       /* best-effort cleanup — surface the publish failure regardless */
     }
     throw err;
+  }
+}
+
+/** Create a new expert. Upsert then (by default) publish the default-scene
+ *  placement (an unplaced plugin is invisible to every scene-scoped list, incl.
+ *  "mine"). `publishToScene:false` skips placement — used for squad members,
+ *  which are reached by relation id and must not appear in discovery. */
+async function createExpertReal(
+  form: ExpertWriteForm,
+  opts?: { publishToScene?: boolean }
+): Promise<{ id: string }> {
+  const categoryId = await resolveExpertCategoryId(form.category);
+  const detail = await postWrite<PluginDetailWire>(
+    "/plugins/upsert",
+    expertUpsertBody(form, {
+      categoryId,
+      icon: form.icon ?? "",
+      visibility: "space",
+      relations: expertSkillRelations(form.skillIds ?? []),
+    })
+  );
+  const pluginId = detail.plugin.plugin_id;
+  if (opts?.publishToScene !== false) {
+    await publishSceneOrRollback(pluginId, categoryId);
   }
   return { id: pluginId };
 }
@@ -752,6 +775,143 @@ async function updateExpertReal(id: string, form: ExpertWriteForm): Promise<Expe
     })
   );
   return getExpertReal(id);
+}
+
+// ─── Squad (专家团) write layer ──────────────────────────────────────────────
+// A squad is a plugin_type:"expert_team" whose package carries the team
+// instruction as a single AGENTS.md attachment (written verbatim; the reader
+// parseTeamAgentsMarkdown tolerates the absence of the structured ## 协作方式
+// section) plus expert_team_expert relations to its member expert plugins. The
+// relation `data` carries member_key / role / is_leader.
+
+/** A squad member row managed by the editor. `pluginId` is the member expert's
+ *  own plugin id (relation target). */
+export interface SquadMemberInput {
+  pluginId: string;
+  name: string;
+  memberKey?: string;
+  role?: string;
+  isLeader?: boolean;
+}
+
+/** Fields the full-page squad editor writes. `instruction` is the raw team
+ *  AGENTS.md; `members` are the expert_team_expert relation targets in order. */
+export interface SquadWriteForm {
+  name: string;
+  summary: string;
+  category?: string;
+  tags: string[];
+  icon?: string;
+  instruction: string;
+  members: SquadMemberInput[];
+}
+
+function squadAttachments(form: SquadWriteForm): PluginAttachmentWire[] {
+  return [
+    {
+      path: "AGENTS.md",
+      content_type: "raw",
+      mime_type: "text/markdown",
+      raw_content: form.instruction ?? "",
+    },
+  ];
+}
+
+/** Build expert_team_expert relation rows carrying member wiring in `data`. */
+function squadMemberRelations(members: SquadMemberInput[]) {
+  return members.map((m, index) => ({
+    relation_type: "expert_team_expert",
+    target_plugin_id: m.pluginId,
+    sort_order: index,
+    data: {
+      member_key: m.memberKey ?? m.pluginId,
+      role: m.role ?? "",
+      is_leader: !!m.isLeader,
+    },
+  }));
+}
+
+function squadUpsertBody(
+  form: SquadWriteForm,
+  opts: {
+    pluginId?: string;
+    categoryId?: string;
+    icon: string;
+    visibility: string;
+    relations: Array<{
+      relation_type: string;
+      target_plugin_id: string;
+      sort_order: number;
+      data?: Record<string, unknown>;
+    }>;
+  }
+) {
+  const manifest = {
+    $schema: "cowork-plugin-manifest-1.0.json",
+    plugin_name: form.name,
+    plugin_type: "expert_team",
+    name: form.name,
+    description: form.summary,
+    labels: form.tags,
+    examples: [],
+  };
+  return {
+    plugin: {
+      ...(opts.pluginId ? { plugin_id: opts.pluginId } : {}),
+      plugin_name: form.name,
+      plugin_type: "expert_team",
+      ...(opts.categoryId ? { category_id: opts.categoryId } : {}),
+      tags: form.tags,
+      icon: opts.icon,
+      visibility: opts.visibility,
+      manifest_json: manifest,
+      plugin_json: {
+        $schema: "cowork-plugin-package-1.0.json",
+        attachments: squadAttachments(form),
+      },
+    },
+    relations: opts.relations,
+  };
+}
+
+/** Create a new squad. Upsert (plugin_type expert_team) then publish the
+ *  default-scene placement + rollback on failure (mirrors createExpertReal). */
+async function createSquadReal(form: SquadWriteForm): Promise<{ id: string }> {
+  const categoryId = await resolveExpertCategoryId(form.category, "expert_team");
+  const detail = await postWrite<PluginDetailWire>(
+    "/plugins/upsert",
+    squadUpsertBody(form, {
+      categoryId,
+      icon: form.icon ?? "",
+      visibility: "space",
+      relations: squadMemberRelations(form.members),
+    })
+  );
+  const pluginId = detail.plugin.plugin_id;
+  await publishSceneOrRollback(pluginId, categoryId);
+  return { id: pluginId };
+}
+
+/** Full-replace update of a squad. The editor always owns the member list, so
+ *  relations are rebuilt from form.members; icon/visibility are preserved. */
+async function updateSquadReal(id: string, form: SquadWriteForm): Promise<ExpertSquad> {
+  const current = await get<PluginDetailWire>("/plugins/detail", {
+    plugin_id: id,
+    include_relations: true,
+  });
+  const categoryId = await resolveExpertCategoryId(form.category, "expert_team");
+  const icon = form.icon !== undefined ? form.icon : current.plugin.icon ?? "";
+  await postWrite<PluginDetailWire>(
+    "/plugins/upsert",
+    squadUpsertBody(form, {
+      pluginId: id,
+      categoryId,
+      icon,
+      visibility: current.plugin.visibility,
+      relations: squadMemberRelations(form.members),
+    })
+  );
+  return getSquadReal(id);
 }
 
 
@@ -942,12 +1102,24 @@ export function deleteSquad(id: string): Promise<void> {
 }
 
 /** Create / update an expert via the unified upsert. Real-backend only (the
- *  expert mock has no write surface — mirrors the skill upload pipeline). */
-export function createExpert(form: ExpertWriteForm): Promise<{ id: string }> {
-  return createExpertReal(form);
+ *  expert mock has no write surface — mirrors the skill upload pipeline).
+ *  `opts.publishToScene:false` keeps the expert out of discovery (squad member). */
+export function createExpert(
+  form: ExpertWriteForm,
+  opts?: { publishToScene?: boolean }
+): Promise<{ id: string }> {
+  return createExpertReal(form, opts);
 }
 export function updateExpert(id: string, form: ExpertWriteForm): Promise<ExpertAgent> {
   return updateExpertReal(id, form);
+}
+
+/** Create / update a squad (专家团) via the unified upsert. */
+export function createSquad(form: SquadWriteForm): Promise<{ id: string }> {
+  return createSquadReal(form);
+}
+export function updateSquad(id: string, form: SquadWriteForm): Promise<ExpertSquad> {
+  return updateSquadReal(id, form);
 }
 
 /** Record one detail view for an expert ("agent") or squad. Fire-and-forget:
