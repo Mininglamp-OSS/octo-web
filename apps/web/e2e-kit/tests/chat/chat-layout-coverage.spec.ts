@@ -146,6 +146,64 @@ test("@CH23 @p1 @chat @conversation 详情顶部显示标题并打开群详情",
   await expect(authedPage.locator(".wk-chat-content-right")).toHaveClass(/wk-chat-channelsetting-open/);
 });
 
+test(
+  "@CH43 @p1 @chat @conversation 群详情遮罩覆盖聊天浮动按钮",
+  async ({ authedPage }) => {
+    await installMockImRuntime(authedPage, seed());
+    await openChat(authedPage);
+    await authedPage
+      .getByRole("button", { name: "最近", exact: true })
+      .click();
+    await authedPage.getByText(GROUP_NAME, { exact: true }).click();
+
+    const messages = authedPage.locator(".wk-conversation-messages");
+    await expect(messages).toBeVisible({ timeout: 15_000 });
+    await messages.evaluate((element) => {
+      Object.defineProperties(element, {
+        scrollHeight: { configurable: true, value: 2_000 },
+        clientHeight: { configurable: true, value: 600 },
+      });
+      element.scrollTop = 0;
+      element.dispatchEvent(new Event("scroll", { bubbles: true }));
+    });
+
+    const scrollPositionView = authedPage.locator(
+      ".wk-conversationpositionview",
+    );
+    const scrollButton = scrollPositionView
+      .locator(".wk-conversationpositionview-item")
+      .last();
+    await expect(scrollButton).toHaveClass(/wk-reveale/);
+
+    await authedPage.getByTestId("chat-channel-setting-entry").click();
+    const mask = authedPage.getByTestId("chat-channel-setting-mask");
+    const panel = authedPage.locator(".wk-chat-channelsetting");
+    await expect(mask).toBeVisible();
+    await expect(panel).toBeVisible();
+
+    const [scrollZIndex, maskZIndex, panelZIndex] = await Promise.all([
+      scrollPositionView.evaluate((element) =>
+        Number(getComputedStyle(element).zIndex),
+      ),
+      mask.evaluate((element) => Number(getComputedStyle(element).zIndex)),
+      panel.evaluate((element) => Number(getComputedStyle(element).zIndex)),
+    ]);
+    expect(scrollZIndex).toBeLessThan(maskZIndex);
+    expect(maskZIndex).toBeLessThan(panelZIndex);
+
+    await mask.click({ position: { x: 8, y: 8 } });
+    await expect(mask).toHaveCount(0);
+    await expect(
+      authedPage.locator(".wk-chat-content-right"),
+    ).not.toHaveClass(/wk-chat-channelsetting-open/);
+
+    await authedPage.getByTestId("chat-thread-panel-entry").click();
+    await expect(
+      authedPage.getByTestId("chat-channel-setting-mask"),
+    ).toHaveCount(0);
+  },
+);
+
 test("@CH24 @p1 @chat @thread 群详情顶部打开子区列表", async ({ authedPage }) => {
   await openConversation(authedPage); await authedPage.getByTestId("chat-thread-panel-entry").click();
   await expect(authedPage.getByText("子区", { exact: true })).toBeVisible({ timeout: 15_000 });

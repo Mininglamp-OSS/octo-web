@@ -548,13 +548,34 @@
   align-items: center;
 }
 
+.wk-chat-channelsetting-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  padding: 0;
+  border: 0;
+  background: var(--wk-overlay-scrim);
+  cursor: default;
+  animation: wk-chat-channelsetting-mask-in 150ms ease-out;
+}
+
+@keyframes wk-chat-channelsetting-mask-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
 .wk-chat-channelsetting {
   pointer-events: auto;
   width: var(--wk-wdith-chat-channelsetting);
   height: 100%;
   transition: margin-right 150ms ease-in-out 0s;
   position: absolute;
-  z-index: 99;
+  z-index: 301;
   top: 0;
   right: 0;
   border-left: var(--wk-line);

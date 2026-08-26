@@ -1332,6 +1332,18 @@ export class ChatContentPage extends Component<
           </div>
         </div>
 
+        {showChannelSetting && (
+          <button
+            type="button"
+            className="wk-chat-channelsetting-mask"
+            data-testid="chat-channel-setting-mask"
+            aria-label={t("base.common.close")}
+            onClick={() => {
+              this.setState({ showChannelSetting: false });
+            }}
+          />
+        )}
+
         <div className={classNames("wk-chat-channelsetting")}>
           <ErrorBoundary moduleName={t("base.chatPage.channelSettings")}>
             <ChannelSetting
