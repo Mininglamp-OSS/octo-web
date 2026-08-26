@@ -84,14 +84,14 @@ describe('SummaryListPage summary-read synchronization', () => {
         expect((page.state as any).items[1]).toMatchObject({ is_unread: false, needs_attention: false });
     });
 
-    // Reading is not submitting (owner decision 2026-08-26). A server that
-    // returns needsAttention keeps the dot; the legacy fallback path must not
-    // undo it either, or opening the detail page silently drops the "your turn
-    // to submit" signal for every multi-person summary.
-    it('keeps the dot for a pending submission, both from the server flag and the fallback', () => {
+    // Reading is not submitting (owner decision 2026-08-26). A server that returns
+    // needsAttention keeps the dot. The omitted-field path is covered separately
+    // below — it deliberately does NOT synthesize a submission dot the backend's
+    // own count cannot represent.
+    it('keeps the dot for a pending submission the server still reports', () => {
         const page = makePage([
             { task_id: 1, is_unread: true, has_pending_invitation: false, has_pending_submission: true, needs_attention: true },
-            { task_id: 2, is_unread: true, has_pending_invitation: false, has_pending_submission: true, needs_attention: true },
+            { task_id: 2, is_unread: true, has_pending_invitation: true, has_pending_submission: true, needs_attention: true },
         ]);
 
         // Server-provided needsAttention (MarkSummaryRead re-derives it including
@@ -99,7 +99,8 @@ describe('SummaryListPage summary-read synchronization', () => {
         (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
             detail: { taskId: 1, isUnread: false, needsAttention: true },
         }));
-        // Legacy/omitted needsAttention: the fallback must consider both signals.
+        // Legacy/omitted needsAttention: falls back to the card's invitation flag,
+        // which task 2 has — so its dot survives on the invitation signal alone.
         (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
             detail: { taskId: 2, isUnread: false },
         }));
@@ -108,11 +109,37 @@ describe('SummaryListPage summary-read synchronization', () => {
         expect((page.state as any).items[1]).toMatchObject({ is_unread: false, needs_attention: true });
     });
 
-    // The branch that actually runs against a backend without the paired change:
-    // it returns needs_attention=false (its formula excludes pending submission),
-    // which wins the ?? and would clear a dot the user still owes. The forwarded
-    // hasPendingSubmission from the mark-read response has to override it.
-    it('holds the dot when an older backend reports needs_attention=false but a submit is owed', () => {
+    // Against a backend that omits the field, the read clears the dot. That is the
+    // current production semantic and it is deliberate (CR round-6, raised
+    // independently by three reviewers and reproduced locally against both backend
+    // generations side by side).
+    //
+    // The tempting alternative — falling back to the list's own
+    // item.has_pending_submission — looks safer and is strictly worse:
+    //  · that backend's attention_count excludes pending submissions, so the card
+    //    would keep a dot the rail cannot count: rail 0, dot on screen. That is the
+    //    rail-vs-dot disagreement this PR exists to remove, inverted.
+    //  · that backend's item flag has no terminal-status guard, so a Failed or
+    //    Cancelled task would get a permanent dot nobody can clear (regenerate and
+    //    delete are creator-only). #229's pendingSubmitStatusGuard exists for
+    //    exactly that case and the fallback bypasses it.
+    it('clears the dot on a backend that omits the field, rather than inventing one the count cannot represent', () => {
+        const page = makePage([
+            { task_id: 1, is_unread: true, has_pending_invitation: false, has_pending_submission: true, needs_attention: true },
+        ]);
+
+        (page as any).handleSummaryRead_(new CustomEvent('summary-read', {
+            detail: { taskId: 1, isUnread: false, needsAttention: false },
+        }));
+
+        expect((page.state as any).items[0]).toMatchObject({
+            is_unread: false, needs_attention: false,
+        });
+    });
+
+    // Once the paired backend lands the field is authoritative, and "reading is not
+    // submitting" activates together with a count that agrees with it.
+    it('holds the dot when the server itself reports a submission is still owed', () => {
         const page = makePage([
             { task_id: 1, is_unread: true, has_pending_invitation: false, has_pending_submission: true, needs_attention: true },
         ]);

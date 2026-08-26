@@ -21,7 +21,7 @@
  * 邀请场景**没有** IM 推送可依赖（产品决定邀请不发 IM，internal/notify 只有
  * completed/failed），所以它靠的是前两条——用户回到标签页时就会看到。
  *
- * 所有触发共用一个去抖窗口，避免"切回标签页"同时触发 visibility + focus 时
+ * 所有触发共用一个固定窗口，避免“切回标签页”同时触发 visibility + focus 时
  * 打两枪。
  */
 
@@ -56,10 +56,13 @@ export function shouldRefreshForMessage(message: unknown): boolean {
 }
 
 /**
- * 去抖调度器。返回的 `trigger` 可以被任意触发源调用。
+ * 固定窗口节流调度器。返回的 `trigger` 可以被任意触发源调用。
  *
- * 用尾部触发而非首次触发：外部事件常常成簇到达（visibilitychange 紧跟
- * focus、重连后连收几条消息），我们要的是"尘埃落定后拉一次最新值"。
+ * 语义是【固定窗口】而非尾部去抖（CR round-6 术语纠正）：第一个 trigger 排一个
+ * `debounceMs` 后执行的任务，窗口内后续的 trigger 被【丢弃】而不是重置计时器。
+ * 选固定窗口是有意的：真去抖下，持续不断的事件流（例如重连后持续涌入的消息）
+ * 会把刷新无限期往后推；固定窗口保证“最晚 `debounceMs` 后一定会刷一次”，
+ * 同时仍然把成簇事件压成一个请求。
  */
 export function createAttentionSync(deps: AttentionSyncDeps) {
     const debounceMs = deps.debounceMs ?? 800;

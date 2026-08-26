@@ -1058,6 +1058,10 @@ export default class SummaryDetailPage extends Component<SummaryDetailPageProps,
                 WKApp.routeRight.popToRoot();
             }
             WKApp.mittBus.emit("summary-list-refresh-requested" as any);
+            // 删除未读/待提交的总结会降低后端计数，但上面的事件只能叫醒【已挂载】
+            // 的全局列表。聊天侧栏/深链下列表未挂载时无人回写，角标会过计。
+            // submit / 邀请应答 / 标读 都已有触点，delete 是最后一个缺口（CR round-6 P2）。
+            refreshSummaryAttentionBadge();
         } catch (err: any) {
             if (this.taskId !== requestTaskId) return;
             Toast.error(err.message || t("summary.common.deleteFailed"));
