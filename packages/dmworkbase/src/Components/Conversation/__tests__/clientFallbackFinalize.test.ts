@@ -186,12 +186,14 @@ function makeNonStringTextMessage(rawText: unknown): Message {
 
 /** 建 VM，塞入一张卡 + 触发 final text 兜底，返回卡的 wrap（已 localFallbackApplied=true）。 */
 function primeFallback(header = "🤖 正在处理…"): { vm: any; cardWrap: MessageWrap } {
+    vi.useFakeTimers()
     const vm: any = new ConversationVM(channel)
     const cardWrap = makeCardWrap(header)
     cardWrap.progressUpdatedAtSec = 0 // 远早于 now → 空闲足够
     vm.messages.push(cardWrap)
     vm.messagesOfOrigin.push(cardWrap)
     vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+    vi.advanceTimersByTime(3000)
     return { vm, cardWrap }
 }
 
@@ -212,7 +214,7 @@ afterEach(() => {
 })
 
 describe("WS-99 client fallback finalize race", () => {
-    it("final text 到达后把未终态卡标记为兜底", () => {
+    it("final text 到达并经过 grace period 后把未终态卡标记为兜底", () => {
         const { cardWrap } = primeFallback()
         expect(cardWrap.localFallbackApplied).toBe(true)
     })
@@ -258,16 +260,19 @@ describe("WS-99 client fallback finalize race", () => {
         // 再次陷入卡死（把到达时刻推回过去），新的 final text 应重新触发兜底。
         cardWrap.progressUpdatedAtSec = 0
         vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        vi.advanceTimersByTime(3000)
         expect(cardWrap.localFallbackApplied).toBe(true)
     })
 
     it("卡片在 pendingMessages（历史加载期间实时到达）时 final text 兜底仍生效", () => {
+        vi.useFakeTimers()
         const vm: any = new ConversationVM(channel)
         const cardWrap = makeCardWrap("🤖 正在处理…")
         cardWrap.progressUpdatedAtSec = 0 // 远早于 now → 空闲足够
         // 模拟 pullupHasMore 期间：卡片进缓冲区而非 messagesOfOrigin，messagesOfOrigin 为空。
         vm.pendingMessages.push(cardWrap)
         vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        vi.advanceTimersByTime(3000)
         expect(cardWrap.localFallbackApplied).toBe(true)
     })
 
@@ -311,6 +316,23 @@ describe("WS-99 client fallback finalize race", () => {
         expect(cardWrap.localFallbackApplied).toBeFalsy()
         vi.advanceTimersByTime(1)
         expect(cardWrap.localFallbackApplied).toBe(true)
+    })
+
+    it("健康时序中 final text 后到达终态帧，不会短暂显示兜底", () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
+        const vm: any = new ConversationVM(channel)
+        const cardWrap = makeCardWrap("🤖 Answering")
+        cardWrap.progressUpdatedAtSec = 0 // 模拟答案生成超过 3s，旧逻辑会在 final text 到达时立即误触发
+        vm.messagesOfOrigin.push(cardWrap)
+
+        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        expect(cardWrap.localFallbackApplied).toBeFalsy()
+        vi.advanceTimersByTime(1000)
+        vm.updateMessageByMessageExtras([makeExtra(makeCardContent("✅ 已完成 · 3 步"))])
+        vi.advanceTimersByTime(2000)
+
+        expect(cardWrap.localFallbackApplied).toBeFalsy()
     })
 
     it("延迟复检前收到权威新帧会取消旧复检", () => {

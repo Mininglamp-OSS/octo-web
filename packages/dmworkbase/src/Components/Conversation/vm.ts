@@ -1561,18 +1561,15 @@ export default class ConversationVM extends ProviderListener {
     }
 
     /**
-     * final text 早于 3s 空闲门槛时只安排一次到期复检。回调必须重新核对原卡仍是该 sender 的
-     * 最近卡、期间没有新帧、且仍为未终态；权威 edit frame 与 VM 卸载都会主动取消定时器。
+     * final text 到达后等待完整 grace period 再复检，给生产端随后异步发送的终态帧留出时间。
+     * 回调必须重新核对原卡仍是该 sender 的最近卡、期间没有新帧、且仍为未终态；权威 edit
+     * frame 与 VM 卸载都会主动取消定时器。
      */
-    private scheduleProgressCardFallback(messageWrap: MessageWrap, senderId: string, nowSec: number) {
+    private scheduleProgressCardFallback(messageWrap: MessageWrap, senderId: string) {
         const updatedAtSec = messageWrap.progressUpdatedAtSec
         if (typeof updatedAtSec !== "number") return
 
         this.cancelProgressCardFallback(messageWrap)
-        const remainingMs = Math.max(
-            0,
-            Math.ceil((updatedAtSec + CARD_FALLBACK_MIN_IDLE_SEC - nowSec) * 1000)
-        )
         const timer = setTimeout(() => {
             this.progressFallbackTimers.delete(messageWrap)
             if (this.findLatestSenderCard(senderId) !== messageWrap) return
@@ -1586,7 +1583,7 @@ export default class ConversationVM extends ProviderListener {
                 !isProgressCardIdleEnough(messageWrap.progressUpdatedAtSec, recheckAtSec)
             ) return
             this.applyProgressCardFallback(messageWrap, senderId, recheckAtSec)
-        }, remainingMs)
+        }, CARD_FALLBACK_MIN_IDLE_SEC * 1000)
         this.progressFallbackTimers.set(messageWrap, timer)
     }
 
@@ -1615,13 +1612,10 @@ export default class ConversationVM extends ProviderListener {
         if (m.localFallbackApplied) return // 幂等
         const card = this.resolveProgressCard(m)
         if (!card) return
-        const finalAtSec = Date.now() / 1000
         if (!isNonTerminalProgressCard(card)) return
-        if (isProgressCardIdleEnough(m.progressUpdatedAtSec, finalAtSec)) {
-            this.applyProgressCardFallback(m, senderId, finalAtSec)
-            return
-        }
-        this.scheduleProgressCardFallback(m, senderId, finalAtSec)
+        // 生产端正常时序是 final text 先到、终态 edit frame 后台异步到达。无论此前卡片已空闲
+        // 多久，都先给终态帧完整 grace period；否则长回答会在健康路径短暂闪出「未收到终态」。
+        this.scheduleProgressCardFallback(m, senderId)
     }
 
     /**
