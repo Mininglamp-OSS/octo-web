@@ -1764,6 +1764,35 @@ export default class ChatPage extends Component<any, ChatPageState> {
                       }
                       opened.location.href = url;
                     }}
+                    onOpenDriveHit={(hit) => {
+                      // Open the clicked drive hit in the standalone `/drive`
+                      // page, which the drive module locates via the fileId /
+                      // spaceId query params (see drive-module patch). Same new-tab
+                      // pattern as onOpenDoc: `/drive` is intercepted by apps/web
+                      // Layout outside the app shell, so it can't be reached by an
+                      // in-shell soft push. The about:blank-first dance avoids the
+                      // noopener null-return popup-blocker false positive. The
+                      // search modal stays open so several results can be opened
+                      // in a row.
+                      const url = `/drive?fileId=${hit.file_id}&spaceId=${encodeURIComponent(
+                        hit.space_id
+                      )}`;
+                      const opened = window.open("about:blank", "_blank");
+                      if (!opened) {
+                        Toast.warning(
+                          t("base.globalSearch.drive.popupBlocked")
+                        );
+                        return;
+                      }
+                      try {
+                        opened.opener = null;
+                      } catch {
+                        // Some sandboxes freeze the opener setter; continue
+                        // navigating. about:blank is same-origin so the residual
+                        // risk is already contained.
+                      }
+                      opened.location.href = url;
+                    }}
                     hideModal={() => {
                       vm.showGlobalSearch = false;
                     }}
