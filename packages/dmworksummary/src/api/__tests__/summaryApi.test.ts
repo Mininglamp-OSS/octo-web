@@ -489,7 +489,10 @@ describe('summaryApi', () => {
             });
 
             expect(mockGet).toHaveBeenNthCalledWith(1, '/summary/api/v1/summary-workbench/capabilities', { signal: undefined });
-            expect(mockGet).toHaveBeenNthCalledWith(2, '/summary/api/v1/agent/chat/history', { params: { session_id: 'session/1' }, signal: undefined });
+            expect(mockGet).toHaveBeenNthCalledWith(2, '/summary/api/v1/agent/chat/history', {
+                params: { session_id: 'session/1', profile: 'summary_workspace' },
+                signal: undefined,
+            });
         });
 
         it('sends proposal confirmation and preview save with idempotency headers', async () => {
@@ -519,7 +522,7 @@ describe('summaryApi', () => {
                 {
                     session_id: 'session/1',
                     agent_message_id: 18,
-                    snapshot_version: 7,
+                    snapshot_version: 1,
                     scope_version: 2,
                     expected_artifact_version: 3,
                 },
@@ -542,7 +545,7 @@ describe('summaryApi', () => {
                 {
                     session_id: 'session/1',
                     agent_message_id: 18,
-                    snapshot_version: 7,
+                    snapshot_version: 1,
                     scope_version: 2,
                     expected_artifact_version: 3,
                 },
@@ -596,6 +599,56 @@ describe('summaryApi', () => {
                 taskId: 89,
                 recoveryAction: 'open_existing_summary',
                 retryable: false,
+            });
+        });
+
+        it('accepts existing_task_id from idempotency conflict metadata', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(
+                Object.assign(new Error('conflict'), {
+                    response: {
+                        status: 409,
+                        data: {
+                            code: 40009,
+                            message: 'idempotency key conflict',
+                            data: {
+                                existing_task_id: 91,
+                                recovery_action: 'open_existing_summary',
+                            },
+                        },
+                    },
+                }),
+            );
+
+            await expect(postSummaryWorkspaceTurn(request)).rejects.toMatchObject({
+                kind: 'business',
+                code: 40009,
+                httpStatus: 409,
+                taskId: 91,
+                recoveryAction: 'open_existing_summary',
+                retryable: false,
+            });
+        });
+
+        it('classifies HTTP 40902 as retryable transport like SSE', async () => {
+            const { postSummaryWorkspaceTurn } = await import('../summaryApi');
+            mockPost.mockRejectedValueOnce(
+                Object.assign(new Error('in progress'), {
+                    response: {
+                        status: 409,
+                        data: {
+                            code: 40902,
+                            message: 'request still in progress',
+                        },
+                    },
+                }),
+            );
+
+            await expect(postSummaryWorkspaceTurn(request)).rejects.toMatchObject({
+                kind: 'transport',
+                code: 40902,
+                httpStatus: 409,
+                retryable: true,
             });
         });
 

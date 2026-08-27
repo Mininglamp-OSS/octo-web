@@ -255,7 +255,7 @@ describe("SummaryWorkbenchService", () => {
       service.savePreview({
         sessionId: "session-1",
         messageId: "18",
-        snapshotVersion: 7,
+        snapshotVersion: 1,
         scopeVersion: 1,
         artifactVersion: 3,
         idempotencyKey: "save-key",
@@ -275,7 +275,7 @@ describe("SummaryWorkbenchService", () => {
       {
         session_id: "session-1",
         agent_message_id: 18,
-        snapshot_version: 7,
+        snapshot_version: 1,
         scope_version: 1,
         expected_artifact_version: 3,
         title: "风险总结",
@@ -296,6 +296,23 @@ describe("SummaryWorkbenchService", () => {
         idempotencyKey: "save-key",
       })
     ).rejects.toBeInstanceOf(SummaryWorkspaceApiError);
+    expect(savePreview).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unsupported preview snapshot version before issuing a request", async () => {
+    await expect(
+      service.savePreview({
+        sessionId: "session-1",
+        messageId: "18",
+        snapshotVersion: 2,
+        scopeVersion: 1,
+        artifactVersion: 1,
+        idempotencyKey: "save-key",
+      })
+    ).rejects.toMatchObject({
+      kind: "protocol",
+      retryable: false,
+    });
     expect(savePreview).not.toHaveBeenCalled();
   });
 

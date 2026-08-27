@@ -246,7 +246,8 @@
         },
         "notice": {
             "participantsCleared": "The participant source chat changed. Select participants again.",
-            "selectSingleChatForParticipants": "Select one group chat before adding participants."
+            "selectSingleChatForParticipants": "Select one group chat before adding participants.",
+            "savedWithQualityGap": "Summary saved with a quality warning: {{detail}}"
         },
         "errors": {
             "network": "Network error. Try again later.",

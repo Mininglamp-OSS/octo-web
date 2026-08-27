@@ -23,6 +23,7 @@ import {
 import type { SummaryWorkbenchResponse } from "../bridge/summaryWorkbench/model";
 import {
   SUMMARY_WORKSPACE_PROFILE,
+  SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
   SummaryWorkspaceApiError,
   serializeSummaryWorkbenchScope,
   type SummaryWorkbenchScope,
@@ -196,10 +197,16 @@ export class SummaryWorkbenchService {
         kind: "protocol",
       });
     }
+    if (input.snapshotVersion !== SUMMARY_WORKSPACE_SNAPSHOT_VERSION) {
+      throw new SummaryWorkspaceApiError({
+        message: "Preview snapshot version is unsupported",
+        kind: "protocol",
+      });
+    }
     const request: SummaryWorkspaceSavePreviewRequestDTO = {
       session_id: input.sessionId,
       agent_message_id: messageId,
-      snapshot_version: input.snapshotVersion,
+      snapshot_version: SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
       scope_version: input.scopeVersion,
       expected_artifact_version: input.artifactVersion,
       ...(input.title ? { title: input.title } : {}),

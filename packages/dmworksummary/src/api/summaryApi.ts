@@ -44,6 +44,7 @@ import type {
 export type { SummaryAttentionCounts };
 import { SummaryMode } from '../types/summary';
 import {
+    SUMMARY_WORKSPACE_PROFILE,
     SummaryWorkspaceApiError,
     type SummaryWorkspaceChatRequestDTO,
     type SummaryWorkspaceConfirmRequestDTO,
@@ -458,7 +459,7 @@ export function streamSummaryWorkspaceTurn(request: SummaryWorkspaceChatRequestD
 export async function getSummaryWorkspaceHistory(sessionId: string, options: SummaryWorkspaceRequestOptions = {}): Promise<unknown> {
     return requestSummaryWorkspace(() =>
         summaryAxios.get(`${BASE}/agent/chat/history`, {
-            params: { session_id: sessionId },
+            params: { session_id: sessionId, profile: SUMMARY_WORKSPACE_PROFILE },
             signal: options.signal,
         }),
     );
@@ -550,14 +551,15 @@ function unwrapSummaryWorkspaceEnvelope(payload: unknown): unknown {
     }
     if (code !== 0) {
         const data = readRecordProperty(payload, 'data');
+        const retryable = isRetryableSummaryWorkspaceCode(code);
         throw new SummaryWorkspaceApiError({
             message: readStringProperty(payload, 'message') ?? 'Summary workspace request failed',
-            kind: 'business',
+            kind: retryable ? 'transport' : 'business',
             code,
             detail: readStringProperty(payload, 'detail'),
             recoveryAction: readStringProperty(data, 'recovery_action'),
-            taskId: readNumberProperty(data, 'task_id'),
-            retryable: false,
+            taskId: readSummaryWorkspaceTaskId(data),
+            retryable,
         });
     }
     if (payload.data === undefined || payload.data === null) {
@@ -581,19 +583,28 @@ function createSummaryWorkspaceBusinessError(
     const effectiveHttpStatus = readNumberProperty(source, 'http_status') ?? httpStatus;
     if (effectiveHttpStatus !== undefined && effectiveHttpStatus >= 500) return undefined;
     const data = readRecordProperty(payload, 'data');
+    const retryable = isRetryableSummaryWorkspaceCode(code);
     return new SummaryWorkspaceApiError({
         message:
             readStringProperty(source, 'message') ??
             readStringProperty(payload, 'message') ??
             'Summary workspace request failed',
-        kind: 'business',
+        kind: retryable ? 'transport' : 'business',
         code,
         httpStatus: effectiveHttpStatus,
         detail: readStringProperty(source, 'detail') ?? readStringProperty(source, 'details'),
         recoveryAction: readStringProperty(data, 'recovery_action'),
-        taskId: readNumberProperty(data, 'task_id'),
-        retryable: false,
+        taskId: readSummaryWorkspaceTaskId(data),
+        retryable,
     });
+}
+
+function isRetryableSummaryWorkspaceCode(code: number | string): boolean {
+    return code === 40902 || code === '40902';
+}
+
+function readSummaryWorkspaceTaskId(data: Record<string, unknown> | undefined): number | undefined {
+    return readNumberProperty(data, 'task_id') ?? readNumberProperty(data, 'existing_task_id');
 }
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {

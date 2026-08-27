@@ -967,14 +967,24 @@ export default function useSummaryWorkbench(
             composer: current.model.composer,
           });
           const hydratedWorkflow = hydratedModel.workflow;
-          if (!hydratedWorkflow || hydratedWorkflow.taskId !== taskId) {
+          const latestHydratedMessage =
+            hydratedModel.messages[hydratedModel.messages.length - 1];
+          const hasTerminalWorkflowError =
+            !hydratedWorkflow && latestHydratedMessage?.resultType === "error";
+          if (!hydratedWorkflow && !hasTerminalWorkflowError) {
+            continuePolling = true;
+            return current;
+          }
+          if (hydratedWorkflow && hydratedWorkflow.taskId !== taskId) {
             continuePolling = true;
             return current;
           }
 
-          continuePolling =
-            hydratedWorkflow.resultType === "workflow_started" &&
-            hydratedWorkflow.scopeVersion === hydratedModel.scopeVersion;
+          continuePolling = Boolean(
+            hydratedWorkflow &&
+              hydratedWorkflow.resultType === "workflow_started" &&
+              hydratedWorkflow.scopeVersion === hydratedModel.scopeVersion
+          );
           return {
             ...current,
             sessionId: hydration.sessionId,

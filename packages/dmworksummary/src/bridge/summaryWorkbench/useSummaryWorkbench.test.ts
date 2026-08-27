@@ -80,7 +80,7 @@ function previewResponse(
     resultType: "agent_preview" as const,
     scopeVersion,
     version: 3,
-    snapshotVersion: 7,
+    snapshotVersion: 1,
     content: "# 风险总结",
     assumptions: [],
     availableActions: ["save_preview", "continue_chat"] as const,
@@ -246,6 +246,37 @@ function workflowHydration(
         },
       ],
       workflow: response.authoritativeState.workflow,
+    },
+  };
+}
+
+function workflowErrorHydration() {
+  return {
+    sessionId: "session-1",
+    contractVersion: "1",
+    scope: initialScope,
+    modelOptions: {
+      scopeVersion: 1,
+      contextItems: contextItemsFromScope(initialScope),
+      messages: [
+        {
+          id: "31",
+          role: "assistant" as const,
+          content: "协作总结已发起。",
+          resultType: "workflow_started" as const,
+          scopeVersion: 1,
+          availableActions: ["view_progress" as const],
+        },
+        {
+          id: "32",
+          role: "assistant" as const,
+          content: "总结任务失败，请调整后重试。",
+          resultType: "error" as const,
+          scopeVersion: 1,
+          availableActions: ["continue_chat" as const],
+        },
+      ],
+      workflow: null,
     },
   };
 }
@@ -878,6 +909,50 @@ describe("useSummaryWorkbench", () => {
     }
   });
 
+  it("applies a terminal workflow error from History and stops polling", async () => {
+    vi.useFakeTimers();
+    try {
+      loadSession.mockResolvedValue(workflowErrorHydration());
+      const { result, unmount } = renderHook(() =>
+        useSummaryWorkbench({
+          initialSessionId: "session-1",
+          initialScope,
+          autoHydrate: false,
+          service,
+          createRequestId: () => "request-workflow",
+          workflowPollIntervalMs: 10,
+        })
+      );
+
+      let request!: Promise<SummaryWorkbenchResponse | undefined>;
+      act(() => {
+        request = result.current.send("发起多人总结");
+        streamCallbacks.onDone?.(workflowResponse("workflow_started"));
+      });
+      await act(async () => {
+        await request;
+        await vi.advanceTimersByTimeAsync(10);
+      });
+
+      expect(loadSession).toHaveBeenCalledTimes(1);
+      expect(result.current.model.workflow).toBeNull();
+      expect(
+        result.current.model.messages[result.current.model.messages.length - 1]
+      ).toMatchObject({
+        id: "32",
+        resultType: "error",
+      });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(100);
+      });
+      expect(loadSession).toHaveBeenCalledTimes(1);
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("continues the same session after a completed workflow without duplicating or dropping its card", async () => {
     const requestIds = ["request-workflow", "request-follow-up"];
     const { result, unmount } = renderHook(() =>
@@ -1059,7 +1134,7 @@ describe("useSummaryWorkbench", () => {
     expect(savePreview).toHaveBeenCalledTimes(1);
     expect(savePreview.mock.calls[0]?.[0]).toMatchObject({
       messageId: "18",
-      snapshotVersion: 7,
+      snapshotVersion: 1,
       artifactVersion: 3,
       scopeVersion: 1,
       title: "风险总结",
@@ -1072,10 +1147,16 @@ describe("useSummaryWorkbench", () => {
         task_no: "SUM-92",
         status: 3,
         created_at: "2026-08-27T08:00:00Z",
+        finish_status: "FAILED",
+        gaps: [{ kind: "citation", detail: "引用完整性校验失败" }],
       });
       await first;
     });
-    expect(result.current.savedSummary?.task_id).toBe(92);
+    expect(result.current.savedSummary).toMatchObject({
+      task_id: 92,
+      finish_status: "FAILED",
+      gaps: [{ kind: "citation", detail: "引用完整性校验失败" }],
+    });
     expect(canSaveCurrentPreview(result.current.model)).toBe(false);
     await expect(
       result.current.savePreview("风险总结")

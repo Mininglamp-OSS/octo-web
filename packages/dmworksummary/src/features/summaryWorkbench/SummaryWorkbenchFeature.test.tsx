@@ -13,18 +13,26 @@ const mocks = vi.hoisted(() => ({
   routePush: vi.fn(),
   busEmit: vi.fn(),
   toastInfo: vi.fn(),
+  toastWarning: vi.fn(),
+  toastSuccess: vi.fn(),
 }));
 
 vi.mock("@octo/base", () => ({
   Dap: { shared: { track: mocks.track } },
   useI18n: () => ({
-    t: (key: string) =>
-      ({
-        "summary.workbench.intent.personal": "personal-intent",
-        "summary.workbench.intent.team": "team-intent",
-        "summary.common.confirm": "confirm",
-        "summary.common.cancel": "cancel",
-      }[key] ?? key),
+    t: (key: string, options?: { values?: Record<string, unknown> }) => {
+      if (key === "summary.workbench.notice.savedWithQualityGap") {
+        return `quality-warning:${String(options?.values?.detail ?? "")}`;
+      }
+      return (
+        {
+          "summary.workbench.intent.personal": "personal-intent",
+          "summary.workbench.intent.team": "team-intent",
+          "summary.common.confirm": "confirm",
+          "summary.common.cancel": "cancel",
+        }[key] ?? key
+      );
+    },
     format: { date: (value: unknown) => String(value) },
   }),
   default: {
@@ -39,13 +47,19 @@ vi.mock("@octo/base", () => ({
 vi.mock("@octo/base/src/App", () => ({
   Dap: { shared: { track: mocks.track } },
   useI18n: () => ({
-    t: (key: string) =>
-      ({
-        "summary.workbench.intent.personal": "personal-intent",
-        "summary.workbench.intent.team": "team-intent",
-        "summary.common.confirm": "confirm",
-        "summary.common.cancel": "cancel",
-      }[key] ?? key),
+    t: (key: string, options?: { values?: Record<string, unknown> }) => {
+      if (key === "summary.workbench.notice.savedWithQualityGap") {
+        return `quality-warning:${String(options?.values?.detail ?? "")}`;
+      }
+      return (
+        {
+          "summary.workbench.intent.personal": "personal-intent",
+          "summary.workbench.intent.team": "team-intent",
+          "summary.common.confirm": "confirm",
+          "summary.common.cancel": "cancel",
+        }[key] ?? key
+      );
+    },
     format: { date: (value: unknown) => String(value) },
   }),
   default: {
@@ -77,8 +91,8 @@ vi.mock("@douyinfe/semi-ui", () => ({
   Spin: () => <div data-testid="spin" />,
   Toast: {
     info: mocks.toastInfo,
-    warning: vi.fn(),
-    success: vi.fn(),
+    warning: mocks.toastWarning,
+    success: mocks.toastSuccess,
   },
 }));
 
@@ -464,8 +478,89 @@ describe("SummaryWorkbenchFeature", () => {
     fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
     fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
     await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "summary.create.agentSummaryCreated"
+    );
+    expect(mocks.toastWarning).not.toHaveBeenCalled();
     expect(mocks.markNotificationEligible).toHaveBeenCalledWith(303);
     expect(onOpenTask).toHaveBeenCalledWith(303);
+  });
+
+  it.each(["PARTIAL", "FAILED"] as const)(
+    "warns about the first quality gap after a %s save without blocking creation",
+    async (finishStatus) => {
+      const savePreview = vi.fn().mockResolvedValue({
+        task_id: 304,
+        title: "Draft",
+        finish_status: finishStatus,
+        gaps: [
+          { kind: "citation", detail: "引用完整性校验失败" },
+          { kind: "coverage", detail: "一个频道未覆盖" },
+        ],
+      });
+      const onOpenTask = vi.fn();
+      mocks.useSummaryWorkbench.mockReturnValue(
+        controller({
+          model: {
+            currentPreview: { content: "# Draft\nBody" },
+            pendingProposal: null,
+            workflow: null,
+          },
+          savePreview,
+        })
+      );
+
+      render(
+        <SummaryWorkbenchFeature
+          spaceId="space-a"
+          embedded
+          onOpenTask={onOpenTask}
+        />,
+        { legacyRoot: true }
+      );
+      fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+      fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+
+      await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+      expect(mocks.toastWarning).toHaveBeenCalledWith(
+        "quality-warning:引用完整性校验失败"
+      );
+      expect(mocks.toastSuccess).not.toHaveBeenCalled();
+      expect(screen.queryByTestId("modal")).not.toBeInTheDocument();
+      expect(mocks.markNotificationEligible).toHaveBeenCalledWith(304);
+      expect(onOpenTask).toHaveBeenCalledWith(304);
+    }
+  );
+
+  it("keeps the ordinary success feedback for a COMPLETE save", async () => {
+    const savePreview = vi.fn().mockResolvedValue({
+      task_id: 305,
+      title: "Draft",
+      finish_status: "COMPLETE",
+      gaps: [],
+    });
+    mocks.useSummaryWorkbench.mockReturnValue(
+      controller({
+        model: {
+          currentPreview: { content: "# Draft\nBody" },
+          pendingProposal: null,
+          workflow: null,
+        },
+        savePreview,
+      })
+    );
+
+    render(<SummaryWorkbenchFeature spaceId="space-a" />, {
+      legacyRoot: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "save-preview" }));
+    fireEvent.click(screen.getByRole("button", { name: "modal-ok" }));
+
+    await waitFor(() => expect(savePreview).toHaveBeenCalledWith("# Draft"));
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      "summary.create.agentSummaryCreated"
+    );
+    expect(mocks.toastWarning).not.toHaveBeenCalled();
   });
 
   it("opens a completed Workflow task through the embedded detail callback", () => {

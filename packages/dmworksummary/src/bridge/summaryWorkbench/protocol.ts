@@ -2,6 +2,7 @@ import type { AgentProgressEvent } from "../../types/summary";
 
 export const SUMMARY_WORKSPACE_CONTRACT_VERSION = "1";
 export const SUMMARY_WORKSPACE_PROFILE = "summary_workspace";
+export const SUMMARY_WORKSPACE_SNAPSHOT_VERSION = 1 as const;
 
 export type SummaryWorkspaceResultType =
   | "clarification"
@@ -107,7 +108,7 @@ export interface SummaryWorkspaceConfirmRequestDTO {
 export interface SummaryWorkspaceSavePreviewRequestDTO {
   session_id: string;
   agent_message_id: number;
-  snapshot_version: number;
+  snapshot_version: typeof SUMMARY_WORKSPACE_SNAPSHOT_VERSION;
   scope_version: number;
   expected_artifact_version: number;
   title?: string;
@@ -124,7 +125,7 @@ export interface SummaryWorkspacePreviewDTO {
   result_type: "agent_preview" | "agent_revision";
   scope_version: number;
   artifact_version: number;
-  snapshot_version: number;
+  snapshot_version: typeof SUMMARY_WORKSPACE_SNAPSHOT_VERSION;
   content: string;
   assumptions: string[];
   available_actions: SummaryWorkspaceAction[];

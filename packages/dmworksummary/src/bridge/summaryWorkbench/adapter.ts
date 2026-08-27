@@ -16,6 +16,7 @@ import type {
 } from "../../ui/SummaryWorkbench/types";
 import {
   SUMMARY_WORKSPACE_CONTRACT_VERSION,
+  SUMMARY_WORKSPACE_SNAPSHOT_VERSION,
   SummaryWorkspaceApiError,
   type SummaryWorkbenchScope,
   type SummaryWorkspaceAction,
@@ -532,7 +533,7 @@ function decodePreview(
       record.artifact_version,
       `${path}.artifact_version`
     ),
-    snapshot_version: requirePositiveInteger(
+    snapshot_version: requireSnapshotVersion(
       record.snapshot_version,
       `${path}.snapshot_version`
     ),
@@ -862,7 +863,7 @@ function decodeStringArray(value: unknown, path: string): string[] {
 
 function decodeFinishStatus(value: unknown): FinishStatus | undefined {
   if (value === undefined || value === null) return undefined;
-  if (value !== "COMPLETE" && value !== "PARTIAL") {
+  if (value !== "COMPLETE" && value !== "PARTIAL" && value !== "FAILED") {
     throw protocolError("save_result.finish_status is invalid");
   }
   return value;
@@ -893,6 +894,18 @@ function requireContractVersion(value: unknown, path: string): string {
     );
   }
   return version;
+}
+
+function requireSnapshotVersion(
+  value: unknown,
+  path: string
+): typeof SUMMARY_WORKSPACE_SNAPSHOT_VERSION {
+  if (value !== SUMMARY_WORKSPACE_SNAPSHOT_VERSION) {
+    throw protocolError(
+      `${path} must be ${SUMMARY_WORKSPACE_SNAPSHOT_VERSION}`
+    );
+  }
+  return SUMMARY_WORKSPACE_SNAPSHOT_VERSION;
 }
 
 function requireResultType(

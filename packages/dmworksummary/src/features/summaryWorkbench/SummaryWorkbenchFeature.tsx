@@ -386,7 +386,19 @@ export default function SummaryWorkbenchFeature({
     const result = await workbench.savePreview(title);
     if (!result) return;
     setSaveDialogOpen(false);
-    Toast.success(t("summary.create.agentSummaryCreated"));
+    const firstGapDetail =
+      (result.finish_status === "PARTIAL" ||
+        result.finish_status === "FAILED") &&
+      result.gaps?.[0]?.detail;
+    if (firstGapDetail) {
+      Toast.warning(
+        t("summary.workbench.notice.savedWithQualityGap", {
+          values: { detail: firstGapDetail },
+        })
+      );
+    } else {
+      Toast.success(t("summary.create.agentSummaryCreated"));
+    }
     notifyCreated(result.task_id, "agent");
     openTask(result.task_id);
   };

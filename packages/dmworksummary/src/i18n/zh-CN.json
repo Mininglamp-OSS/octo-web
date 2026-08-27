@@ -246,7 +246,8 @@
         },
         "notice": {
             "participantsCleared": "参与者来源会话已变化，请重新选择参与者",
-            "selectSingleChatForParticipants": "请先只选择一个群聊，再添加参与者"
+            "selectSingleChatForParticipants": "请先只选择一个群聊，再添加参与者",
+            "savedWithQualityGap": "总结已保存，但存在质量缺口：{{detail}}"
         },
         "errors": {
             "network": "网络连接异常，请稍后重试",

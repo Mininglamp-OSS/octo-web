@@ -62,7 +62,7 @@ describe("summary workspace adapter", () => {
           result_type: "agent_preview",
           scope_version: 2,
           artifact_version: 3,
-          snapshot_version: 7,
+          snapshot_version: 1,
           content: "# 风险总结",
           assumptions: ["最近 7 天"],
           available_actions: ["save_preview", "continue_chat"],
@@ -79,7 +79,7 @@ describe("summary workspace adapter", () => {
       availableActions: ["save_preview", "continue_chat"],
       preview: {
         version: 3,
-        snapshotVersion: 7,
+        snapshotVersion: 1,
         content: "# 风险总结",
         assumptions: ["最近 7 天"],
       },
@@ -106,6 +106,34 @@ describe("summary workspace adapter", () => {
         },
       },
     });
+  });
+
+  it("rejects preview snapshot versions other than the v1 literal", () => {
+    expect(() =>
+      adaptSummaryWorkspaceTurn({
+        contract_version: "1",
+        session_id: "session-1",
+        message_id: 18,
+        result_type: "agent_preview",
+        reply: "已生成一版预览。",
+        scope_version: 2,
+        artifact_version: 3,
+        available_actions: ["save_preview"],
+        state: {
+          ...emptyState(2),
+          current_preview: {
+            message_id: 18,
+            result_type: "agent_preview",
+            scope_version: 2,
+            artifact_version: 3,
+            snapshot_version: 2,
+            content: "# 风险总结",
+            assumptions: [],
+            available_actions: ["save_preview"],
+          },
+        },
+      })
+    ).toThrow("turn.state.current_preview.snapshot_version must be 1");
   });
 
   it("preserves server-authoritative context and state for conversational turns", () => {
@@ -229,7 +257,7 @@ describe("summary workspace adapter", () => {
           result_type: "agent_preview",
           scope_version: 2,
           artifact_version: 3,
-          snapshot_version: 7,
+          snapshot_version: 1,
           content: "# 风险总结",
           assumptions: [],
           available_actions: ["save_preview", "continue_chat"],
@@ -243,7 +271,7 @@ describe("summary workspace adapter", () => {
     expect(model.currentPreview).toMatchObject({
       messageId: "18",
       version: 3,
-      snapshotVersion: 7,
+      snapshotVersion: 1,
     });
     expect(canSaveCurrentPreview(model)).toBe(true);
   });
@@ -287,7 +315,7 @@ describe("summary workspace adapter", () => {
       result_type: "agent_preview",
       scope_version: 2,
       artifact_version: 3,
-      snapshot_version: 7,
+      snapshot_version: 1,
       content: "# 风险总结",
       assumptions: [],
       available_actions: ["save_preview"],
@@ -414,6 +442,26 @@ describe("summary workspace adapter", () => {
       created_at: "2026-08-26T10:00:00Z",
       finish_status: "PARTIAL",
       gaps: [{ kind: "coverage", detail: "一个频道未覆盖" }],
+    });
+  });
+
+  it("keeps a FAILED finish verdict as successful-save metadata", () => {
+    expect(
+      decodeSummaryWorkspaceSaveResult({
+        task_id: 90,
+        task_no: "SUM-90",
+        status: 3,
+        created_at: "2026-08-26T10:01:00Z",
+        finish_status: "FAILED",
+        gaps: [{ kind: "citation", detail: "引用完整性校验失败" }],
+      })
+    ).toEqual({
+      task_id: 90,
+      task_no: "SUM-90",
+      status: 3,
+      created_at: "2026-08-26T10:01:00Z",
+      finish_status: "FAILED",
+      gaps: [{ kind: "citation", detail: "引用完整性校验失败" }],
     });
   });
 });
