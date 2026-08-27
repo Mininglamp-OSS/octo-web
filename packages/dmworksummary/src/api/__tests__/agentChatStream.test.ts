@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { agentChatStream } from '../summaryApi';
+import { agentChatStream, streamSummaryWorkspaceTurn } from '../summaryApi';
 
 // Mock WKApp
 global.WKApp = {
@@ -188,6 +188,71 @@ data: {"reply":"r","session_id":"s1","run_id":"run-abc"}
         close();
     });
 
+    it('preserves the structured summary workspace done payload', async () => {
+        const onDone = vi.fn();
+        const payload = {
+            contract_version: '1',
+            reply: '需要确认协作要求。',
+            session_id: 'session-1',
+            message_id: 22,
+            result_type: 'workflow_confirmation',
+            scope_version: 2,
+            available_actions: ['confirm_workflow'],
+            state: {
+                scope_version: 2,
+                summary_context: {
+                    selected_channels: [],
+                    participants: [],
+                    template: null,
+                    time_range: null,
+                    referenced_task_ids: [],
+                },
+                current_preview: null,
+                pending_proposal: null,
+                workflow: null,
+            },
+        };
+        const sseData = `event: done\ndata: ${JSON.stringify(payload)}\n\n`;
+        const mockReader = {
+            read: vi
+                .fn()
+                .mockResolvedValueOnce({
+                    done: false,
+                    value: new TextEncoder().encode(sseData),
+                })
+                .mockResolvedValueOnce({ done: true, value: undefined }),
+            cancel: vi.fn(),
+            releaseLock: vi.fn(),
+        };
+        fetchMock.mockResolvedValueOnce({
+            ok: true,
+            body: { getReader: () => mockReader },
+        });
+
+        const { close } = streamSummaryWorkspaceTurn(
+            {
+                session_id: 'session-1',
+                profile: 'summary_workspace',
+                action: 'chat',
+                message: '开始总结',
+                request_id: 'request-1',
+                scope_version: 2,
+                summary_context: {
+                    selected_channels: [],
+                    participants: [],
+                    template: null,
+                    time_range: null,
+                    referenced_task_ids: [],
+                },
+            },
+            { onDone },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        expect(onDone).toHaveBeenCalledWith(payload);
+        close();
+    });
+
     it('sends request_id and run_id in the request body when provided (SS-11)', async () => {
         const mockReader = {
             read: vi.fn().mockResolvedValueOnce({ done: true, value: undefined }),
@@ -293,6 +358,42 @@ data: {"code":50001
         expect(onDone).not.toHaveBeenCalled();
         expect(onError).toHaveBeenCalledTimes(1);
         expect(onError).toHaveBeenCalledWith(expect.objectContaining({ transient: true }));
+        close();
+    });
+
+    it('preserves a pre-stream HTTP 400 business envelope', async () => {
+        const onError = vi.fn();
+        fetchMock.mockResolvedValueOnce({
+            ok: false,
+            status: 400,
+            text: vi.fn().mockResolvedValue(JSON.stringify({ code: 40000, message: 'invalid summary context' })),
+        });
+
+        const { close } = streamSummaryWorkspaceTurn(
+            {
+                session_id: 'session-1',
+                profile: 'summary_workspace',
+                action: 'chat',
+                message: '开始总结',
+                request_id: 'request-1',
+                scope_version: 1,
+                summary_context: {
+                    selected_channels: [],
+                    participants: [],
+                    template: null,
+                    time_range: null,
+                    referenced_task_ids: [],
+                },
+            },
+            { onError },
+        );
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        expect(onError).toHaveBeenCalledWith({
+            code: 40000,
+            message: 'invalid summary context',
+            transient: false,
+        });
         close();
     });
 

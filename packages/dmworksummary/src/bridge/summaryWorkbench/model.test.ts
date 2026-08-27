@@ -77,6 +77,7 @@ describe("summary workbench model", () => {
       availableActions: ["save_preview", "continue_chat"],
       preview: {
         version: 1,
+        snapshotVersion: 1,
         content: "# 风险总结",
         assumptions: ["最近 7 天"],
       },
@@ -112,7 +113,7 @@ describe("summary workbench model", () => {
         reply: "已生成第一版。",
         resultType: "agent_preview",
         availableActions: ["continue_chat"],
-        preview: { version: 1, content: "draft" },
+        preview: { version: 1, snapshotVersion: 1, content: "draft" },
       }
     );
     expect(canSaveCurrentPreview(withoutAction)).toBe(false);
@@ -122,7 +123,11 @@ describe("summary workbench model", () => {
       reply: "已按反馈修改。",
       resultType: "agent_revision",
       availableActions: ["save_preview", "confirm_workflow"],
-      preview: { version: 2, content: "revised draft" },
+      preview: {
+        version: 2,
+        snapshotVersion: 1,
+        content: "revised draft",
+      },
     });
     expect(canSaveCurrentPreview(revision)).toBe(true);
     expect(deriveSummaryWorkbenchView(revision).card).toMatchObject({
@@ -159,7 +164,7 @@ describe("summary workbench model", () => {
       reply: "已生成第一版。",
       resultType: "agent_preview",
       availableActions: ["save_preview", "continue_chat"],
-      preview: { version: 1, content: "draft" },
+      preview: { version: 1, snapshotVersion: 1, content: "draft" },
     });
     const changed = updateSummaryScope(preview, {
       contextItems: [chatContext, templateContext],
@@ -192,6 +197,7 @@ describe("summary workbench model", () => {
       availableActions: ["confirm_workflow", "save_preview", "continue_chat"],
       confirmation: {
         proposalVersion: 3,
+        proposalToken: "proposal-token-3",
         participantNames: ["张三"],
         requirement: "提交本周进展和风险",
         timeRangeLabel: "最近 7 天",
@@ -225,6 +231,7 @@ describe("summary workbench model", () => {
         availableActions: ["confirm_workflow"],
         confirmation: {
           proposalVersion: 1,
+          proposalToken: "proposal-token-1",
           participantNames: ["张三", "李四"],
           requirement: "分别提交进展与阻塞",
         },

@@ -52,3 +52,54 @@ Impact is limited to new module-owned UI/bridge files, Storybook fixtures, tests
 - i18n, CSS lint, Prettier, and `git diff --check` passed.
 - Package-wide TypeScript remains blocked by the repository's existing React 17/18/19 and Semi declaration conflicts; filtered output contains no new workbench semantic error beyond the same missing React and Storybook declarations.
 - Storybook static build transformed 10,265 modules before the process exited with code 139; browser-mode verification could not bind its local port inside the sandbox. Visual review therefore remains a pre-submit check.
+
+## FE1 Contract Adapter Extension
+
+### Behavior List
+
+- Entry: no new user-visible entry; production pages continue using the legacy flow.
+- Primary path: a future feature container can send one `summary_workspace` request and receive a typed clarification, proposal, Workflow, or Agent preview result.
+- Recovery: History is normalized into the existing workbench model without letting unknown result types or actions become executable UI state.
+- Side effects: team confirmation and preview saving use deterministic endpoints with idempotency keys; preview saving decodes the existing task result instead of pretending it is another Agent turn.
+- Compatibility: existing `summary` Agent chat and save callers keep their current request and response contracts.
+
+### File Map
+
+- `packages/dmworksummary/src/bridge/summaryWorkbench/protocol.ts`: wire DTOs, shared constants, scope serialization, and structured API errors.
+- `packages/dmworksummary/src/bridge/summaryWorkbench/adapter.ts`: fail-closed runtime validation plus turn and History normalization.
+- `packages/dmworksummary/src/bridge/summaryWorkbench/adapter.test.ts`: malformed contract, action filtering, and History hydration coverage.
+- `packages/dmworksummary/src/Service/SummaryWorkbenchService.ts`: semantic Chat, stream, History, confirm, and save facade.
+- `packages/dmworksummary/src/Service/SummaryWorkbenchService.test.ts`: Service request construction, idempotency, and response normalization.
+- `packages/dmworksummary/src/api/summaryApi.ts`: authenticated raw transport functions that reuse the existing Summary API and SSE infrastructure.
+- `packages/dmworksummary/src/api/__tests__/*`: endpoint, body, header, and structured SSE regression tests.
+
+### PR Scope
+
+This FE1 extension does:
+
+- freeze the frontend-facing `summary_workspace` protocol;
+- add transport and Service boundaries behind the existing isolated workbench;
+- reject malformed or unknown structured results before they reach UI state;
+- preserve the legacy production entry and Agent behavior.
+
+This FE1 extension does not:
+
+- connect selectors or create the feature hook/container;
+- replace `SummaryCreatePage`, `SummaryListPage`, `ChatSummaryPanel`, or `module.tsx`;
+- expose the unified entry in production;
+- assume that pending backend endpoints are available in a deployed environment.
+
+### Verification Plan
+
+- Contract and Service tests: run the new protocol and Service suites.
+- Transport regression: run `summaryApi.test.ts` and `agentChatStream.test.ts`.
+- State regression: run `summaryWorkbench/model.test.ts` after adapting structured results.
+- Formatting and integrity: run Prettier on changed files and `git diff --check`.
+- Package regression before commit: run the complete `@dmwork/summary` Vitest suite.
+
+### Verification Result (2026-08-26)
+
+- FE1 contract, Adapter, Service, transport, and state suites: 89 tests passed.
+- Complete `@dmwork/summary` regression: 56 test files and 761 tests passed.
+- `git diff --check` passed.
+- Package-wide TypeScript still reports the repository's existing React/Semi declaration conflicts; filtered output contains no FE1 file errors.

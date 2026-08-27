@@ -17,6 +17,7 @@ export interface SummaryWorkbenchPreview {
   resultType: "agent_preview" | "agent_revision";
   scopeVersion: number;
   version: number;
+  snapshotVersion: number;
   content: string;
   assumptions: string[];
   availableActions: SummaryWorkbenchAction[];
@@ -27,6 +28,7 @@ export interface SummaryWorkbenchProposal {
   resultType: "workflow_confirmation";
   scopeVersion: number;
   proposalVersion: number;
+  proposalToken: string;
   participantNames: string[];
   requirement: string;
   templateLabel?: string;
@@ -41,6 +43,9 @@ export interface SummaryWorkbenchWorkflow {
   taskId: number;
   taskTitle: string;
   participantCount?: number;
+  status?: number;
+  scope?: "personal" | "team";
+  saved?: boolean;
   availableActions: SummaryWorkbenchAction[];
 }
 
@@ -92,6 +97,7 @@ interface PreviewSummaryResponse extends SummaryResponseBase {
   resultType: "agent_preview" | "agent_revision";
   preview: {
     version: number;
+    snapshotVersion: number;
     content: string;
     assumptions?: string[];
   };
@@ -101,6 +107,7 @@ interface TeamConfirmationSummaryResponse extends SummaryResponseBase {
   resultType: "workflow_confirmation";
   confirmation: {
     proposalVersion: number;
+    proposalToken: string;
     participantNames: string[];
     requirement: string;
     templateLabel?: string;
@@ -114,6 +121,9 @@ interface WorkflowSummaryResponse extends SummaryResponseBase {
     taskId: number;
     taskTitle: string;
     participantCount?: number;
+    status?: number;
+    scope?: "personal" | "team";
+    saved?: boolean;
   };
 }
 
@@ -221,6 +231,7 @@ export function applySummaryResponse(
           resultType: response.resultType,
           scopeVersion: responseScopeVersion,
           version: response.preview.version,
+          snapshotVersion: response.preview.snapshotVersion,
           content: response.preview.content,
           assumptions: [...(response.preview.assumptions ?? [])],
           availableActions,
@@ -234,6 +245,7 @@ export function applySummaryResponse(
           resultType: response.resultType,
           scopeVersion: responseScopeVersion,
           proposalVersion: response.confirmation.proposalVersion,
+          proposalToken: response.confirmation.proposalToken,
           participantNames: [...response.confirmation.participantNames],
           requirement: response.confirmation.requirement,
           templateLabel: response.confirmation.templateLabel,
@@ -253,6 +265,9 @@ export function applySummaryResponse(
           taskId: response.workflow.taskId,
           taskTitle: response.workflow.taskTitle,
           participantCount: response.workflow.participantCount,
+          status: response.workflow.status,
+          scope: response.workflow.scope,
+          saved: response.workflow.saved,
           availableActions,
         },
       };
@@ -312,6 +327,7 @@ export function canSaveCurrentPreview(model: SummaryWorkbenchModel): boolean {
         latestArtifactMessage.resultType as SummaryWorkbenchResultType
       ) &&
       PREVIEW_TYPES.has(preview.resultType) &&
+      preview.snapshotVersion > 0 &&
       preview.scopeVersion === model.scopeVersion &&
       preview.availableActions.includes("save_preview")
   );
@@ -327,6 +343,7 @@ export function isTeamProposalConfirmable(
       latestArtifactMessage?.id === proposal.messageId &&
       latestArtifactMessage.resultType === "workflow_confirmation" &&
       proposal.resultType === "workflow_confirmation" &&
+      proposal.proposalToken.trim().length > 0 &&
       proposal.scopeVersion === model.scopeVersion &&
       proposal.availableActions.includes("confirm_workflow")
   );

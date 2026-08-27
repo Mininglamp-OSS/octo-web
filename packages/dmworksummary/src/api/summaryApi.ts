@@ -43,6 +43,13 @@ import type {
 // api 层打交道，不必再去 types/summary 里找一个只服务于这条路径的类型。
 export type { SummaryAttentionCounts };
 import { SummaryMode } from '../types/summary';
+import {
+    SummaryWorkspaceApiError,
+    type SummaryWorkspaceChatRequestDTO,
+    type SummaryWorkspaceConfirmRequestDTO,
+    type SummaryWorkspaceSavePreviewRequestDTO,
+    type SummaryWorkspaceStreamHandlers,
+} from '../bridge/summaryWorkbench/protocol';
 
 const summaryAxios = axios.create({ baseURL: '' });
 
@@ -414,6 +421,209 @@ export async function createAgentSummary(
     return data;
 }
 
+export interface SummaryWorkspaceRequestOptions {
+    signal?: AbortSignal;
+}
+
+export interface SummaryWorkspaceIdempotentOptions extends SummaryWorkspaceRequestOptions {
+    idempotencyKey: string;
+}
+
+/** Raw transport for the new summary workspace. Runtime DTO validation lives in the Service adapter. */
+export async function getSummaryWorkspaceCapabilities(options: SummaryWorkspaceRequestOptions = {}): Promise<unknown> {
+    return requestSummaryWorkspace(() =>
+        summaryAxios.get(`${BASE}/summary-workbench/capabilities`, {
+            signal: options.signal,
+        }),
+    );
+}
+
+export async function postSummaryWorkspaceTurn(request: SummaryWorkspaceChatRequestDTO, options: SummaryWorkspaceRequestOptions = {}): Promise<unknown> {
+    return requestSummaryWorkspace(() =>
+        summaryAxios.post(`${BASE}/agent/chat`, request, {
+            signal: options.signal,
+            timeout: 120000,
+        }),
+    );
+}
+
+export function streamSummaryWorkspaceTurn(request: SummaryWorkspaceChatRequestDTO, handlers: SummaryWorkspaceStreamHandlers): { close: () => void } {
+    return agentChatStream(request, {
+        onProgress: handlers.onProgress,
+        onDone: (event) => handlers.onDone?.(event),
+        onError: handlers.onError,
+    });
+}
+
+export async function getSummaryWorkspaceHistory(sessionId: string, options: SummaryWorkspaceRequestOptions = {}): Promise<unknown> {
+    return requestSummaryWorkspace(() =>
+        summaryAxios.get(`${BASE}/agent/chat/history`, {
+            params: { session_id: sessionId },
+            signal: options.signal,
+        }),
+    );
+}
+
+export async function confirmSummaryWorkspaceProposal(
+    request: SummaryWorkspaceConfirmRequestDTO,
+    options: SummaryWorkspaceIdempotentOptions,
+): Promise<unknown> {
+    const sessionId = encodeURIComponent(request.session_id);
+    const proposalVersion = encodeURIComponent(String(request.proposal_version));
+    return requestSummaryWorkspace(() =>
+        summaryAxios.post(
+            `${BASE}/agent/summary-sessions/${sessionId}/proposals/${proposalVersion}/confirm`,
+            {
+                proposal_token: request.proposal_token,
+                scope_version: request.scope_version,
+                summary_context: request.summary_context,
+            },
+            {
+                headers: { 'Idempotency-Key': options.idempotencyKey },
+                signal: options.signal,
+            },
+        ),
+    );
+}
+
+export async function saveSummaryWorkspacePreview(
+    request: SummaryWorkspaceSavePreviewRequestDTO,
+    options: SummaryWorkspaceIdempotentOptions,
+): Promise<unknown> {
+    return requestSummaryWorkspace(() =>
+        summaryAxios.post(`${BASE}/summaries/agent`, request, {
+            headers: { 'Idempotency-Key': options.idempotencyKey },
+            signal: options.signal,
+        }),
+    );
+}
+
+async function requestSummaryWorkspace(request: () => Promise<{ data?: unknown }>): Promise<unknown> {
+    try {
+        const response = await request();
+        return unwrapSummaryWorkspaceEnvelope(response.data);
+    } catch (error) {
+        if (error instanceof SummaryWorkspaceApiError) throw error;
+        if (axios.isCancel(error)) {
+            throw new SummaryWorkspaceApiError({
+                message: 'Summary workspace request was cancelled',
+                kind: 'abort',
+                retryable: false,
+            });
+        }
+
+        const response = readRecordProperty(error, 'response');
+        const responseData = response ? readRecordProperty(response, 'data') : undefined;
+        const httpStatus = response ? readNumberProperty(response, 'status') : undefined;
+        const businessError = createSummaryWorkspaceBusinessError(responseData, httpStatus);
+        if (businessError) throw businessError;
+        const errorSource = responseData ? readRecordProperty(responseData, 'error') ?? responseData : undefined;
+        const effectiveHttpStatus = readNumberProperty(errorSource, 'http_status') ?? httpStatus;
+        const message =
+            readStringProperty(errorSource, 'message') ??
+            readStringProperty(responseData, 'msg') ??
+            (error instanceof Error ? error.message : 'Summary workspace request failed');
+        throw new SummaryWorkspaceApiError({
+            message,
+            kind: 'transport',
+            code: readStringOrNumberProperty(errorSource, 'code'),
+            httpStatus: effectiveHttpStatus,
+            detail: readStringProperty(errorSource, 'detail') ?? readStringProperty(errorSource, 'details'),
+            retryable: effectiveHttpStatus === undefined || effectiveHttpStatus >= 500,
+        });
+    }
+}
+
+function unwrapSummaryWorkspaceEnvelope(payload: unknown): unknown {
+    if (!isUnknownRecord(payload)) {
+        throw new SummaryWorkspaceApiError({
+            message: 'Invalid summary workspace response envelope',
+            kind: 'protocol',
+        });
+    }
+    const code = payload.code;
+    if (typeof code !== 'number') {
+        throw new SummaryWorkspaceApiError({
+            message: 'Invalid summary workspace response envelope',
+            kind: 'protocol',
+        });
+    }
+    if (code !== 0) {
+        const data = readRecordProperty(payload, 'data');
+        throw new SummaryWorkspaceApiError({
+            message: readStringProperty(payload, 'message') ?? 'Summary workspace request failed',
+            kind: 'business',
+            code,
+            detail: readStringProperty(payload, 'detail'),
+            recoveryAction: readStringProperty(data, 'recovery_action'),
+            taskId: readNumberProperty(data, 'task_id'),
+            retryable: false,
+        });
+    }
+    if (payload.data === undefined || payload.data === null) {
+        throw new SummaryWorkspaceApiError({
+            message: 'Summary workspace response has no data',
+            kind: 'protocol',
+        });
+    }
+    return payload.data;
+}
+
+function createSummaryWorkspaceBusinessError(
+    payload: Record<string, unknown> | undefined,
+    httpStatus: number | undefined,
+): SummaryWorkspaceApiError | undefined {
+    if (!payload) return undefined;
+    const nestedError = readRecordProperty(payload, 'error');
+    const source = nestedError ?? payload;
+    const code = readStringOrNumberProperty(source, 'code');
+    if (code === undefined || code === 0) return undefined;
+    const effectiveHttpStatus = readNumberProperty(source, 'http_status') ?? httpStatus;
+    if (effectiveHttpStatus !== undefined && effectiveHttpStatus >= 500) return undefined;
+    const data = readRecordProperty(payload, 'data');
+    return new SummaryWorkspaceApiError({
+        message:
+            readStringProperty(source, 'message') ??
+            readStringProperty(payload, 'message') ??
+            'Summary workspace request failed',
+        kind: 'business',
+        code,
+        httpStatus: effectiveHttpStatus,
+        detail: readStringProperty(source, 'detail') ?? readStringProperty(source, 'details'),
+        recoveryAction: readStringProperty(data, 'recovery_action'),
+        taskId: readNumberProperty(data, 'task_id'),
+        retryable: false,
+    });
+}
+
+function isUnknownRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readRecordProperty(value: unknown, property: string): Record<string, unknown> | undefined {
+    if (!isUnknownRecord(value)) return undefined;
+    const candidate = value[property];
+    return isUnknownRecord(candidate) ? candidate : undefined;
+}
+
+function readStringProperty(value: unknown, property: string): string | undefined {
+    if (!isUnknownRecord(value)) return undefined;
+    const candidate = value[property];
+    return typeof candidate === 'string' ? candidate : undefined;
+}
+
+function readNumberProperty(value: unknown, property: string): number | undefined {
+    if (!isUnknownRecord(value)) return undefined;
+    const candidate = value[property];
+    return typeof candidate === 'number' ? candidate : undefined;
+}
+
+function readStringOrNumberProperty(value: unknown, property: string): string | number | undefined {
+    if (!isUnknownRecord(value)) return undefined;
+    const candidate = value[property];
+    return typeof candidate === 'string' || typeof candidate === 'number' ? candidate : undefined;
+}
+
 // Agent 交互式问答（非流式一问一答）。POST /summary/api/v1/agent/chat。
 // 不复用公共 post()：post() 只 `data?.data ?? data`，不校验业务 code，
 // HTTP200 + {code:非0,data:null} 会被当成功、undefined 追进气泡。这里自行
@@ -494,14 +704,8 @@ export function agentChatStream(
             }
             if (!resp.ok) {
                 const text = await resp.text();
-                let errMsg = `HTTP ${resp.status}`;
-                try {
-                    const json = JSON.parse(text);
-                    errMsg = json?.message || errMsg;
-                } catch {
-                    // text 不是 JSON,用 HTTP status
-                }
-                throw new Error(errMsg);
+                handlers.onError?.(decodeAgentStreamHttpError(resp.status, text));
+                return;
             }
 
             if (!resp.body) {
@@ -593,6 +797,30 @@ export function agentChatStream(
             aborted = true;
             reader?.cancel();
         },
+    };
+}
+
+function decodeAgentStreamHttpError(status: number, body: string): AgentErrorEvent {
+    let payload: unknown;
+    try {
+        payload = JSON.parse(body);
+    } catch {
+        return { code: status, message: `HTTP ${status}`, transient: status >= 500 };
+    }
+    const envelope = isUnknownRecord(payload) ? payload : undefined;
+    const nestedError = envelope ? readRecordProperty(envelope, 'error') : undefined;
+    const source = nestedError ?? envelope;
+    const code = readNumberProperty(source, 'code') ?? status;
+    const effectiveStatus = readNumberProperty(source, 'http_status') ?? status;
+    const message =
+        readStringProperty(source, 'message') ??
+        readStringProperty(envelope, 'message') ??
+        readStringProperty(envelope, 'error') ??
+        `HTTP ${status}`;
+    return {
+        code,
+        message,
+        transient: effectiveStatus >= 500,
     };
 }
 
