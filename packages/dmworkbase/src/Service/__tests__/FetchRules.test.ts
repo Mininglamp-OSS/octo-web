@@ -210,10 +210,11 @@ describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负
         expect(matchFetchEvent(idx, 'GET', '/market/api/v1/plugins/versions')).toBe('market_skill_version_history_viewed')
     })
 
-    it('统一插件写端点:import/publish 计发布提交,upsert(新建/编辑同端点)刻意不映射', () => {
+    it('统一插件写端点:import 计发布提交,upsert(新建/编辑同端点)刻意不映射', () => {
         expect(matchFetchEvent(idx, 'POST', '/market/api/v1/plugins/import')).toBe('market_manual_publish_submitted')
-        expect(matchFetchEvent(idx, 'POST', '/market/api/v1/plugins/publish')).toBe('market_manual_publish_submitted')
         expect(matchFetchEvent(idx, 'POST', '/market/api/v1/plugins/upsert')).toBeUndefined()
+        // 正式发布端点已下线(保存即快照),不应再命中任何事件。
+        expect(matchFetchEvent(idx, 'POST', '/market/api/v1/plugins/publish')).toBeUndefined()
         expect(matchFetchEvent(idx, 'GET', '/market/api/v1/plugin_tags')).toBeUndefined()
     })
 })

@@ -685,25 +685,9 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
       relations: [],
     }),
   });
-  // A version bump on a metadata edit publishes a fresh immutable snapshot
-  // (and rebuilds the default-scene placement, which follows the category).
-  if (form.version !== undefined && form.version !== plugin.current_version) {
-    await request<unknown>("/plugins/publish", {
-      method: "POST",
-      body: JSON.stringify({
-        plugin_id: id,
-        version: form.version,
-        changelog: form.changelog,
-        placements: [
-          {
-            placement_code: SCENE_CODE,
-            ...(categoryId ? { category_id: categoryId } : {}),
-            is_visible: true,
-          },
-        ],
-      }),
-    });
-  }
+  // A save IS a version snapshot server-side (the backend appends a
+  // plugin_versions row and keeps the default-scene placement's category in
+  // sync on every upsert), so there is no separate publish step.
   return mapSkillDetail(detail.plugin);
 }
 

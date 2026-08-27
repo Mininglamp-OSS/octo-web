@@ -134,50 +134,30 @@ describe("fetchMcpListPath — category resolution fails closed (P1-2)", () => {
   });
 });
 
-describe("createMcpReal — atomic-ish create (P1-3) + fail-closed category (P1-9)", () => {
-  it("compensates by deleting the just-created plugin when publish fails", async () => {
-    mock.instance.get.mockResolvedValue(categoriesOk());
-    mock.instance.post.mockImplementation((url: string) => {
-      if (url.endsWith("/plugins/upsert")) {
-        return Promise.resolve({ data: { data: { plugin: { plugin_id: "new-1" } } } });
-      }
-      if (url.endsWith("/plugins/publish")) {
-        return Promise.reject(new Error("publish boom"));
-      }
-      if (url.endsWith("/plugins/delete")) {
-        return Promise.resolve({ data: { data: {} } });
-      }
-      throw new Error(`unexpected POST ${url}`);
-    });
-
-    await expect(createMcp(baseParams())).rejects.toThrow();
-
-    const deleteCall = mock.instance.post.mock.calls.find((c) =>
-      (c[0] as string).endsWith("/plugins/delete")
-    ) as [string, unknown];
-    expect(deleteCall).toBeTruthy();
-    expect(deleteCall[1]).toEqual({ plugin_id: "new-1" });
-  });
-
-  it("publishes the placement with the resolved category_id on success", async () => {
+describe("createMcpReal — fail-closed category (P1-9), placement is server-side", () => {
+  it("upserts with the resolved category and never calls a separate publish", async () => {
     mock.instance.get.mockResolvedValue(categoriesOk());
     mock.instance.post.mockImplementation((url: string) => {
       if (url.endsWith("/plugins/upsert")) {
         return Promise.resolve({ data: { data: { plugin: { plugin_id: "new-2" } } } });
       }
-      if (url.endsWith("/plugins/publish")) {
-        return Promise.resolve({ data: { data: {} } });
-      }
+      // The create flow is a single upsert now — the backend attaches the
+      // default placement and snapshots the version in the same write. Any
+      // /plugins/publish call would be a regression.
       throw new Error(`unexpected POST ${url}`);
     });
 
     const res = await createMcp(baseParams());
 
     expect(res.id).toBe("new-2");
-    const publishCall = mock.instance.post.mock.calls.find((c) =>
+    const upsertCall = mock.instance.post.mock.calls.find((c) =>
+      (c[0] as string).endsWith("/plugins/upsert")
+    ) as [string, { plugin: { category_id?: string } }];
+    expect(upsertCall[1].plugin.category_id).toBe("c-dev");
+    const publishCalls = mock.instance.post.mock.calls.filter((c) =>
       (c[0] as string).endsWith("/plugins/publish")
-    ) as [string, { placements: Array<{ category_id?: string }> }];
-    expect(publishCall[1].placements[0].category_id).toBe("c-dev");
+    );
+    expect(publishCalls).toHaveLength(0);
   });
 
   it("throws (and never upserts) when the category cannot be resolved even after a refetch", async () => {

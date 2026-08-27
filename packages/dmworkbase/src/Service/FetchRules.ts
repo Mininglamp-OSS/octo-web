@@ -275,10 +275,9 @@ export const FETCH_RULES: FetchRule[] = [
     //   新路径全部是字面段(无 :id 通配),不存在误吞,故旧的 mine/tags/:id IGNORE 钉子不再需要;
     //   列表 GET /plugins、详情 GET /plugins/detail、标签 GET /plugin_tags 依旧不挂事件(同旧决策:
     //   请求成功 ≠ 用户意图,卡片打开走 data-track="market_card_opened")。
-    //   market_manual_publish_submitted 的新映射:skill 新建/重传 = POST /plugins/import;MCP 新建
-    //   在 upsert 后必发 POST /plugins/publish。两者都是「发布提交」;副作用是 skill 版本 bump 的
-    //   publish 也会计入(语义上仍是发布提交,可接受)。纯元数据编辑只走 POST /plugins/upsert,
-    //   刻意不映射 —— upsert 新建/编辑同端点,fetch 层分不出意图(同 mcps/:id 看/编不可分的老问题)。
+    //   market_manual_publish_submitted 的映射:skill 新建/重传 = POST /plugins/import。
+    //   连接器新建走 POST /plugins/upsert(与元数据编辑同端点),fetch 层分不出「新建 vs 编辑」
+    //   意图,故刻意不映射 —— 正式发布端点已下线(保存即版本快照),不再有 /plugins/publish。
     // NOTE: /plugins/versions is type-agnostic, but this rule maps it to the
     // SKILL history event. FetchRules matches on path only (no plugin_type), and
     // today the sole caller is skillApiReal (skill version history). If a
@@ -286,5 +285,4 @@ export const FETCH_RULES: FetchRule[] = [
     // emit market_skill_version_history_viewed — split the metric by type then.
     { method: 'GET', path: '/market/api/v1/plugins/versions', event: 'market_skill_version_history_viewed' },
     { method: 'POST', path: '/market/api/v1/plugins/import', event: 'market_manual_publish_submitted' },
-    { method: 'POST', path: '/market/api/v1/plugins/publish', event: 'market_manual_publish_submitted' },
 ]

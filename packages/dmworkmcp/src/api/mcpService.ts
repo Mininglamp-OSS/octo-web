@@ -797,9 +797,10 @@ async function probeMcpToolsReal(
 }
 
 async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
-  // POST /plugins/upsert creates the plugin, then publish registers
-  // its default-scene placement — without a placement row the new connector
-  // would be invisible to every scene-scoped list (including "mine").
+  // POST /plugins/upsert creates the plugin and the backend attaches its
+  // default-scene placement in the same write, so the new connector is
+  // immediately visible in scene-scoped lists (including "mine"). There is no
+  // separate publish step — a save IS a version snapshot server-side.
   const maps = await getConnectorCategoryMaps();
   // Fail closed on an unresolved category so the plugin and its placement never
   // split-brain on a NULL category_id.
@@ -808,32 +809,7 @@ async function createMcpReal(params: CreateMcpParams): Promise<{ id: string }> {
     "/plugins/upsert",
     toPluginUpsert(params, { categoryId, visibility: "space" })
   );
-  const pluginId = detail.plugin.plugin_id;
-  try {
-    await post("/plugins/publish", {
-      plugin_id: pluginId,
-      version: "1.0.0",
-      placements: [
-        {
-          placement_code: SCENE_CODE,
-          category_id: categoryId,
-          is_visible: true,
-        },
-      ],
-    });
-  } catch (err) {
-    // Compensating delete: the upsert already inserted the plugin row, but with
-    // no placement it is invisible to every scene-scoped list AND a retry (which
-    // sends no plugin_id) would insert a DUPLICATE. Delete the just-created
-    // plugin so a retry starts clean, then surface the original publish error.
-    try {
-      await post("/plugins/delete", { plugin_id: pluginId });
-    } catch {
-      // Best-effort cleanup — surface the publish failure regardless.
-    }
-    throw err;
-  }
-  return { id: pluginId };
+  return { id: detail.plugin.plugin_id };
 }
 
 /** Full-replace update via upsert. The current visibility is fetched first so
