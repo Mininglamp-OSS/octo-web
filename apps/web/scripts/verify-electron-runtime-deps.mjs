@@ -7,13 +7,10 @@ const packageJsonPath = path.resolve(scriptDir, "../package.json");
 const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
 
 const criticalTransitiveRuntimeDeps = [
-  "builder-util-runtime",
   "debug",
   "fs-extra",
-  "js-yaml",
   "node-screenshots",
   "react-screenshots",
-  "semver",
 ];
 
 const requiredRuntimeDeps = [

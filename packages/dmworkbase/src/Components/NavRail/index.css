@@ -135,6 +135,184 @@
 .wk-navrail__quick-mute-error { padding: 6px 4px 2px; color: var(--wk-color-danger, #d14343); font-size: 12px; }
 .wk-navrail__quick-mute-error button { padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; text-decoration: underline; }
 
+/* ── Update modal ── */
+.wk-update-modal .wk-modal-shell {
+    padding: var(--wk-sp-6);
+}
+
+.wk-update-modal .wk-modal-title {
+    margin: 0;
+    padding-right: var(--wk-sp-8);
+    font-size: var(--wk-text-size-xl);
+    line-height: var(--wk-leading-tight);
+}
+
+.wk-update-modal .wk-modal-footer {
+    justify-content: flex-end;
+    margin-top: var(--wk-sp-4);
+    padding-top: var(--wk-sp-2);
+    border-top: none;
+    gap: var(--wk-sp-2);
+}
+
+.wk-update-modal__body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--wk-sp-4);
+    padding-top: var(--wk-sp-4);
+    color: var(--wk-text-secondary);
+    text-align: center;
+}
+
+.wk-update-modal__illustration {
+    display: block;
+    width: 160px;
+    height: 160px;
+    margin: 0 auto;
+}
+
+.wk-update-modal__summary {
+    width: 100%;
+    padding: 0;
+    color: var(--wk-text-primary);
+    text-align: center;
+}
+
+.wk-update-modal__progress-circle + .wk-update-modal__summary,
+.wk-update-modal__illustration + .wk-update-modal__summary {
+    margin-top: calc(var(--wk-sp-2) * -1);
+}
+
+.wk-update-modal__content {
+    color: var(--wk-text-primary);
+    line-height: var(--wk-leading-snug);
+    overflow-wrap: anywhere;
+}
+
+.wk-update-modal__content-title {
+    margin-bottom: var(--wk-sp-2);
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-semibold);
+    line-height: var(--wk-leading-normal);
+    text-align: left;
+}
+
+.wk-update-modal__content .wk-navrail__changelog-markdown {
+    max-height: min(240px, 35vh);
+    overflow-y: auto;
+    padding-right: var(--wk-sp-2);
+    font-size: var(--wk-text-size-md);
+    line-height: var(--wk-leading-normal);
+    text-align: left;
+    scrollbar-color: var(--wk-border-default) transparent;
+    scrollbar-width: thin;
+}
+
+.wk-update-modal__content .wk-navrail__changelog-markdown::-webkit-scrollbar {
+    width: 6px;
+}
+
+.wk-update-modal__content .wk-navrail__changelog-markdown::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.wk-update-modal__content .wk-navrail__changelog-markdown::-webkit-scrollbar-thumb {
+    border-radius: var(--wk-r-full);
+    background: var(--wk-border-default);
+}
+
+.wk-update-modal__versions {
+    margin-top: var(--wk-sp-1);
+    color: var(--wk-text-tertiary, var(--wk-text-secondary));
+    font-size: var(--wk-text-size-md);
+    line-height: var(--wk-leading-normal);
+}
+
+.wk-update-modal__force-update {
+    margin-top: var(--wk-sp-3);
+    color: var(--wk-color-danger);
+}
+
+.wk-update-modal__progress-circle {
+    position: relative;
+    width: 144px;
+    height: 144px;
+}
+
+.wk-update-modal__progress-circle svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.wk-update-modal__progress-circle-track,
+.wk-update-modal__progress-circle-value {
+    fill: none;
+    stroke-width: 16;
+}
+
+.wk-update-modal__progress-circle-track {
+    stroke: var(--wk-bg-elevated);
+}
+
+.wk-update-modal__progress-circle-value {
+    stroke-linecap: round;
+    will-change: stroke-dashoffset;
+    transition: stroke-dashoffset var(--wk-dur-slow) var(--wk-ease);
+}
+
+.wk-update-modal__progress-circle-label {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.wk-update-modal__progress-circle-label strong {
+    color: var(--wk-color-accent);
+    font-size: var(--wk-text-size-xl);
+    font-weight: var(--wk-font-semibold);
+    line-height: var(--wk-leading-tight);
+}
+
+.wk-update-modal__progress-circle-label span {
+    margin-top: var(--wk-sp-1);
+    color: var(--wk-text-secondary);
+    font-size: var(--wk-text-size-sm);
+    line-height: var(--wk-leading-normal);
+}
+
+.wk-update-modal .wk-modal-footer .wk-btn {
+    min-width: 64px;
+    height: 36px;
+    padding: 0 var(--wk-sp-4);
+    border-radius: var(--wk-r-full);
+    font-size: var(--wk-text-size-md);
+    font-weight: var(--wk-font-semibold);
+}
+
+.wk-update-modal .wk-modal-footer .wk-btn--secondary {
+    background: var(--wk-bg-base);
+}
+
+.wk-update-modal .wk-modal-footer .wk-btn--secondary:hover:not(:disabled) {
+    background: var(--wk-bg-hover);
+}
+
+@media (max-width: 520px) {
+    .wk-update-modal .wk-modal-shell {
+        width: min(480px, calc(100vw - 32px));
+        padding: var(--wk-sp-6);
+    }
+
+    .wk-update-modal__versions {
+        font-size: var(--wk-text-size-md);
+    }
+}
+
 .wk-layout-tab-expanded .wk-navrail__sep {
     width: auto;
     margin: var(--wk-sp-2, 8px) var(--wk-sp-3, 12px);

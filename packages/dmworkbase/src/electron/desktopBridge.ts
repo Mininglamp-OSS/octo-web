@@ -64,6 +64,7 @@ declare global {
 }
 
 const IPC_CONVERSATION_UNREAD_COUNT = "conversation-manager-unread-count";
+const IPC_UPDATE_CHECK = "check-update";
 const IPC_UPDATE_DOWNLOAD = "update-app";
 const IPC_UPDATE_INSTALL = "install-update";
 const IPC_SCREENSHOTS_START = "screenshots-start";
@@ -123,6 +124,13 @@ export function sendElectronConversationUnreadCount(count: number): void {
     return;
   }
   getElectronIpcBridge()?.send(IPC_CONVERSATION_UNREAD_COUNT, count);
+}
+
+export function sendElectronCheckUpdate(options?: { silent?: boolean }): void {
+  const ipc = getElectronIpcBridge();
+  if (!ipc) return;
+  if (options) ipc.send(IPC_UPDATE_CHECK, options);
+  else ipc.send(IPC_UPDATE_CHECK);
 }
 
 export function sendElectronUpdateApp(): void {

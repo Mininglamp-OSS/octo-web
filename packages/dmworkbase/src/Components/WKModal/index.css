@@ -111,6 +111,16 @@
   color: var(--wk-icon-hover);
 }
 
+.wk-modal-custom-close-btn:focus {
+  outline: none;
+}
+
+.wk-modal-custom-close-btn:focus-visible {
+  outline: 2px solid var(--wk-border-default);
+  outline-offset: 2px;
+  background: var(--wk-bg-item-hover);
+}
+
 .wk-modal-custom-close-btn:active {
   background: var(--wk-brand-tint-10);
 }

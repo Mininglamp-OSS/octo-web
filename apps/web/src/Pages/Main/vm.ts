@@ -7,6 +7,7 @@ import {
   t,
   getElectronIpcBridge,
   isElectronPowered,
+  sendElectronCheckUpdate,
   sendElectronInstallUpdate,
   sendElectronUpdateApp,
 } from "@octo/base";
@@ -52,10 +53,11 @@ export default class MainVM extends ProviderListener {
     this.notifyListener();
   }
 
-  showAppVersion: boolean;
-  showAppUpdate: boolean;
-  showAppUpdateOperation: boolean;
-  appUpdateProgress: number;
+  showAppVersion = false;
+  showAppUpdate = false;
+  showAppUpdateOperation = false;
+  appUpdateProgress = 0;
+  appUpdateDownloaded = false;
 
   private static VERSION_READ_KEY_PREFIX = "dmwork_last_read_version_";
 
@@ -151,6 +153,7 @@ export default class MainVM extends ProviderListener {
 
     if (isElectronPowered()) {
       this.appUpdateInit();
+      sendElectronCheckUpdate({ silent: true });
     } else {
       // 轮询 /version.json 检测 Web 端新版本，有新版本时亮设置按钮气泡
       this.stopVersionCheck = startVersionCheck({
@@ -184,22 +187,36 @@ export default class MainVM extends ProviderListener {
   appUpdateInit() {
     // 监听升级失败事件
     this.addIpcListener(IPC_UPDATE_ERROR, (event, message) => {
+      this.showAppVersion = Boolean(this.lastVersionInfo);
+      this.showAppUpdate = false;
+      this.showAppUpdateOperation = Boolean(this.lastVersionInfo);
+      this.appUpdateProgress = 0;
+      this.appUpdateDownloaded = false;
+      this.notifyListener();
+      Toast.error(typeof message === "string" ? message : t("base.navRail.settingsCenter.value.updateCheckFailed"));
     });
     // 发现可用更新事件
     this.addIpcListener(IPC_UPDATE_AVAILABLE, (event, message) => {
-      sendElectronUpdateApp();
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
+        forceUpdate: Boolean(message.forceUpdate),
       };
       this.showAppVersion = true;
+      this.showAppUpdate = false;
+      this.showAppUpdateOperation = true;
+      this.appUpdateProgress = 0;
+      this.appUpdateDownloaded = false;
       this.notifyListener();
     });
     // 没有可用更新事件
     this.addIpcListener(IPC_UPDATE_NOT_AVAILABLE, (event, message) => {
+      this.showAppVersion = false;
       this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
-      this.showAppUpdateOperation = false;
+      this.appUpdateProgress = 0;
+      this.appUpdateDownloaded = false;
+      this.notifyListener();
       Toast.success(t("app.main.updateAlreadyLatest"));
     });
     // 更新下载进度事件
@@ -207,6 +224,7 @@ export default class MainVM extends ProviderListener {
       this.showAppUpdate = true;
       this.showAppUpdateOperation = false;
       this.appUpdateProgress = message;
+      this.appUpdateDownloaded = false;
       this.notifyListener();
     });
     // 监听下载完成事件
@@ -214,10 +232,16 @@ export default class MainVM extends ProviderListener {
       this.lastVersionInfo = {
         appVersion: message.version,
         updateDesc: message.releaseNotes,
+        forceUpdate: Boolean(message.forceUpdate),
       };
       this.appUpdateProgress = 100;
+      // The main process opens the downloaded package immediately, so the UI should not
+      // return to a second confirmation state after download completes.
+      this.showAppVersion = false;
+      this.showAppUpdate = false;
       this.showAppUpdateOperation = false;
-      this.showAppUpdateOperation = true;
+      this.appUpdateDownloaded = true;
+      this.markVersionRead();
       this.notifyListener();
     });
   }
@@ -352,7 +376,11 @@ export default class MainVM extends ProviderListener {
 
   // 安装更新
   installUpdate() {
-    sendElectronInstallUpdate();
+    if (this.appUpdateDownloaded) {
+      sendElectronInstallUpdate();
+      return;
+    }
+    sendElectronUpdateApp();
   }
 
   get menusList() {
@@ -401,4 +429,5 @@ export default class MainVM extends ProviderListener {
 export class VersionInfo {
   appVersion!: string; // 版本信息
   updateDesc!: string; // 更新描述
+  forceUpdate?: boolean; // 是否强制更新
 }

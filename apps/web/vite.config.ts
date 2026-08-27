@@ -18,8 +18,29 @@ import {
   readEnterpriseHtmlHead,
 } from "./vite.enterpriseHtml";
 
+function normalizeHttpDirectoryUrl(value: string, name: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("unsupported protocol");
+    }
+    if (url.search || url.hash) {
+      throw new Error("query and hash are not supported");
+    }
+    return url.toString().endsWith("/") ? url.toString() : `${url.toString()}/`;
+  } catch {
+    throw new Error(`[vite] ${name} format is invalid: "${value}". Please use an absolute http(s) URL.`);
+  }
+}
+
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const loadedEnv = loadEnv(mode, process.cwd(), "VITE_");
+  const env = {
+    ...loadedEnv,
+    ...Object.fromEntries(
+      Object.entries(process.env).filter(([key]) => key.startsWith("VITE_"))
+    ),
+  };
   const apiUrl = env.VITE_API_URL;
   const mailApiUrl = env.VITE_MAIL_API_URL || apiUrl || "http://127.0.0.1:8080";
   const agentMailApiUrl =
@@ -62,6 +83,13 @@ export default defineConfig(({ mode }) => {
       );
     }
   }
+  const electronUpdaterApiUrl = (() => {
+    const explicit = env.VITE_ELECTRON_UPDATER_API_URL;
+    if (explicit) {
+      return normalizeHttpDirectoryUrl(explicit, "VITE_ELECTRON_UPDATER_API_URL");
+    }
+    return new URL("/api/v1/common/updater/", apiOrigin).toString();
+  })();
 
   return {
     // Electron loads the production entry through file://, so its assets must
@@ -117,6 +145,7 @@ export default defineConfig(({ mode }) => {
                       // accepting an origin nominated by the renderer.
                       oidcApiOrigin: apiOrigin,
                       oidcEndSessionOrigins: [apiOrigin, ...oidcTrustedOrigins],
+                      electronUpdaterApiUrl,
                     },
                     null,
                     2

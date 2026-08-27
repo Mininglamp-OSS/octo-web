@@ -9,6 +9,7 @@ import {
   isElectronPowered,
   isElectronShellBridgeAvailable,
   restartElectronApp,
+  sendElectronCheckUpdate,
   sendElectronConversationUnreadCount,
   sendElectronInstallUpdate,
   sendElectronUpdateApp,
@@ -68,6 +69,7 @@ describe("desktopBridge", () => {
     window.ipc = { send, invoke, on: vi.fn(), once: vi.fn(), removeListener: vi.fn() };
 
     sendElectronConversationUnreadCount(7);
+    sendElectronCheckUpdate();
     sendElectronUpdateApp();
     sendElectronInstallUpdate();
     startElectronScreenshot({ silent: true });
@@ -75,10 +77,11 @@ describe("desktopBridge", () => {
     restartElectronApp();
 
     expect(send).toHaveBeenNthCalledWith(1, "conversation-manager-unread-count", 7);
-    expect(send).toHaveBeenNthCalledWith(2, "update-app");
-    expect(send).toHaveBeenNthCalledWith(3, "install-update");
-    expect(send).toHaveBeenNthCalledWith(4, "screenshots-start", { silent: true });
-    expect(send).toHaveBeenNthCalledWith(5, "restart-app");
+    expect(send).toHaveBeenNthCalledWith(2, "check-update");
+    expect(send).toHaveBeenNthCalledWith(3, "update-app");
+    expect(send).toHaveBeenNthCalledWith(4, "install-update");
+    expect(send).toHaveBeenNthCalledWith(5, "screenshots-start", { silent: true });
+    expect(send).toHaveBeenNthCalledWith(6, "restart-app");
     expect(invoke).toHaveBeenCalledWith("get-media-access-status", "camera");
   });
 

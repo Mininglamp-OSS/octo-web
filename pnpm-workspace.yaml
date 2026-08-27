@@ -7,6 +7,17 @@ packages:
 onlyBuiltDependencies:
   - esbuild
 
+supportedArchitectures:
+  os:
+    - current
+    - darwin
+  cpu:
+    - current
+    - x64
+    - arm64
+  libc:
+    - current
+
 overrides:
   '@tiptap/core': 3.22.2
   '@tiptap/suggestion': 3.22.2

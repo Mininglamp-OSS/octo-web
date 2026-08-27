@@ -109,8 +109,13 @@ if (process.platform === "win32") {
 }
 
 const electronBuilderBin = require.resolve("electron-builder/out/cli/cli.js");
+const builderArgs = process.argv.slice(2);
+const hasPublishArg = builderArgs.some((arg) => arg === "--publish" || arg.startsWith("--publish=") || arg === "-p");
+if (!hasPublishArg) {
+  builderArgs.push("--publish", "never");
+}
 
-const child = childProcess.spawn(process.execPath, [electronBuilderBin, ...process.argv.slice(2)], {
+const child = childProcess.spawn(process.execPath, [electronBuilderBin, ...builderArgs], {
   cwd: appDir,
   env: {
     ...childEnv,
