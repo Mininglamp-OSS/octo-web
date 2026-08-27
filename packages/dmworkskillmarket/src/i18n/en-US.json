@@ -102,7 +102,7 @@
     "viewsTitle": "Views: {{count}}",
     "downloadsLabel": "Downloads",
     "downloadsTitle": "Downloads: {{count}}",
-    "install": "Add"
+    "install": "Add to Bot"
   },
   "category": {
     "ariaLabel": "Skill categories",
