@@ -142,7 +142,7 @@ function guardMathFencePlugin() {
   return (tree: any, file: any) => {
     // 与 scanner 共享同一 per-render 尝试计数（file.data 在 remark→rehype 同一 VFile 上贯通），
     // 让 ```math 围栏与 $ / $$ route 一起受 MAX_FORMULAS_PER_MESSAGE 约束。
-    const ctx = ((file.data ||= {}).mathCtx ||= { attempts: 0 });
+    const ctx = getMathContext(file);
     const visit = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
       for (const child of node.children) {
@@ -162,7 +162,7 @@ function guardMathFencePlugin() {
             const canAttempt =
               candidate && ctx.attempts < MAX_FORMULAS_PER_MESSAGE;
             if (canAttempt) ctx.attempts += 1;
-            const ok = canAttempt && katexAccepts(tex, true);
+            const ok = canAttempt && tryAcceptMath(ctx, tex, true);
             if (!ok) {
               child.properties = child.properties || {};
               child.properties.className = classes.filter(
@@ -194,10 +194,45 @@ function hastNodeText(node: any): string {
  */
 function guardRemarkMathPlugin() {
   return (tree: any, file: any) => {
-    const ctx = ((file.data ||= {}).mathCtx ||= { attempts: 0 });
+    const source =
+      typeof file?.value === "string" ? file.value : String(file ?? "");
+    const ctx = getMathContext(file);
     const literalFallback = (node: any): any => {
-      const delimiter = node.type === "math" ? "$$" : "$";
-      return { type: "text", value: `${delimiter}${node.value}${delimiter}` };
+      const start = node.position?.start?.offset;
+      const end = node.position?.end?.offset;
+      const raw =
+        typeof start === "number" &&
+        typeof end === "number" &&
+        start >= 0 &&
+        end >= start &&
+        end <= source.length
+          ? source.slice(start, end)
+          : "";
+      if (node.type === "inlineMath") {
+        // inlineMath 不跨行，position slice 不含容器续行前缀，并能保留原始 `$` / `$$` 数量。
+        return {
+          type: "text",
+          value: raw || `$${typeof node.value === "string" ? node.value : ""}$`,
+        };
+      }
+
+      const firstLineEnd = raw.search(/[\r\n]/);
+      const openerLine = firstLineEnd >= 0 ? raw.slice(0, firstLineEnd) : raw;
+      // remark-math 把 opener 同行正文放进 meta；直接使用 node.value 会吞掉这些字节。
+      if (firstLineEnd < 0) {
+        return {
+          type: "text",
+          value: raw || `$$${typeof node.meta === "string" ? node.meta : ""}`,
+        };
+      }
+      const value = typeof node.value === "string" ? node.value : "";
+      const hasClosingFence = raw.trimEnd().endsWith("$$");
+      return {
+        type: "text",
+        // 保留 opener 同行 meta、公式正文和 closing fence；不重新插入结构换行，避免
+        // blockquote/list 的段落渲染把一次回退放大成多组空行。
+        value: `${openerLine}${value}${hasClosingFence ? "$$" : ""}`,
+      };
     };
     const visit = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
@@ -211,7 +246,7 @@ function guardRemarkMathPlugin() {
             tex.length <= maxLength &&
             ctx.attempts < MAX_FORMULAS_PER_MESSAGE;
           if (canAttempt) ctx.attempts += 1;
-          if (canAttempt && katexAccepts(tex, display)) return child;
+          if (canAttempt && tryAcceptMath(ctx, tex, display)) return child;
           return literalFallback(child);
         }
         visit(child);
@@ -305,6 +340,9 @@ const TEX_SUPERSCRIPT = /\^(\{|[A-Za-z0-9]|\\)/;
 /** 单字符底的下标：底字符前是非字母数字（排除 snake_case 的多字母段），`_` 后接 group / 字母数字 / 命令。 */
 const TEX_SINGLE_CHAR_SUBSCRIPT =
   /(^|[^A-Za-z0-9])[A-Za-z0-9]_(\{|[A-Za-z0-9]|\\)/;
+/** trust:false 下会被 KaTeX 作为 unsupported command 渲染并吞参数，必须整体回退源码。 */
+const TRUST_GATED_TEX_CMD =
+  /\\(?:href|url|includegraphics|htmlClass|htmlId|htmlStyle|htmlData)\b/;
 /** 块级 display 公式长度上限：过长（如 4.8KB）KaTeX 渲染耗时明显，超限按文本处理。 */
 const MAX_BLOCK_MATH_LEN = 4096;
 /** KaTeX 预校验 / 渲染选项（与 rehype-katex 一致，仅 throwOnError 打开用于判定）。 */
@@ -357,22 +395,98 @@ function isAcceptableInlineMath(inner: string, isDouble: boolean): boolean {
 
 /** 单条公式渲染后 HTML 长度上限（约 3.8KB 输入可膨胀到 >1MB / 3 万 DOM 节点）。 */
 const MAX_RENDERED_MATH_LEN = 60000;
+/** 单条消息累计 KaTeX HTML 预算，避免多个「各自合法」公式共同构造超大 DOM。 */
+const MAX_RENDERED_MATH_PER_MESSAGE = 120000;
 /** 单条消息公式尝试次数上限：解析失败也计数，避免恶意失败候选反复调用 KaTeX。 */
 const MAX_FORMULAS_PER_MESSAGE = 32;
+/** KaTeX 前置复杂度预算：在真正渲染前挡住宽矩阵 / 大量命令与分组。 */
+const MAX_MATH_COMPLEXITY_SCORE = 512;
+const KATEX_LENGTH_CACHE_LIMIT = 256;
 
-/** KaTeX 能否解析该公式（预校验：失败则整体按字面文本保留，不产生红字、不丢定界符）。 */
-function katexAccepts(inner: string, displayMode: boolean): boolean {
+interface MathContext {
+  attempts: number;
+  renderedLength: number;
+  budgetExhausted?: boolean;
+  escapeMap?: Record<string, string>;
+}
+
+const katexLengthCache = new Map<string, number>();
+
+function getMathContext(file: any): MathContext {
+  const data = (file.data ||= {});
+  const ctx: MathContext = (data.mathCtx ||= {
+    attempts: 0,
+    renderedLength: 0,
+  });
+  if (typeof ctx.renderedLength !== "number") ctx.renderedLength = 0;
+  return ctx;
+}
+
+function exceedsMathComplexity(inner: string): boolean {
+  let score = Math.ceil(inner.length / 6);
+  for (
+    let i = 0;
+    i < inner.length && score <= MAX_MATH_COMPLEXITY_SCORE;
+    i += 1
+  ) {
+    const char = inner[i];
+    if (char === "\\" || char === "&") score += 3;
+    else if (char === "{" || char === "}") score += 2;
+    else if (char === "^" || char === "_") score += 1;
+  }
+  return score > MAX_MATH_COMPLEXITY_SCORE;
+}
+
+function getKatexRenderedLength(inner: string, displayMode: boolean): number {
+  const key = `${displayMode ? "d" : "i"}\0${inner}`;
+  const cached = katexLengthCache.get(key);
+  if (cached !== undefined) {
+    katexLengthCache.delete(key);
+    katexLengthCache.set(key, cached);
+    return cached;
+  }
+  let renderedLength = -1;
   try {
-    const html = katex.renderToString(inner, {
+    renderedLength = katex.renderToString(inner, {
       ...KATEX_VALIDATE_OPTS,
       displayMode,
-    });
-    // 渲染后 HTML 长度上限：接收端保护，挡住病态公式放大成 MB 级 HTML / 数万 DOM 节点。
-    if (html.length > MAX_RENDERED_MATH_LEN) return false;
-    return true;
+    }).length;
   } catch {
+    renderedLength = -1;
+  }
+  katexLengthCache.set(key, renderedLength);
+  if (katexLengthCache.size > KATEX_LENGTH_CACHE_LIMIT) {
+    const oldest = katexLengthCache.keys().next().value;
+    if (oldest !== undefined) katexLengthCache.delete(oldest);
+  }
+  return renderedLength;
+}
+
+/** KaTeX 预校验并扣减整条消息的累计渲染预算。 */
+function tryAcceptMath(
+  ctx: MathContext,
+  inner: string,
+  displayMode: boolean
+): boolean {
+  if (
+    ctx.budgetExhausted ||
+    exceedsMathComplexity(inner) ||
+    TRUST_GATED_TEX_CMD.test(inner)
+  ) {
     return false;
   }
+  const renderedLength = getKatexRenderedLength(inner, displayMode);
+  if (renderedLength < 0) return false;
+  if (renderedLength > MAX_RENDERED_MATH_LEN) {
+    ctx.budgetExhausted = true;
+    return false;
+  }
+  if (ctx.renderedLength + renderedLength > MAX_RENDERED_MATH_PER_MESSAGE) {
+    ctx.budgetExhausted = true;
+    return false;
+  }
+  ctx.renderedLength += renderedLength;
+  return true;
 }
 
 /**
@@ -426,7 +540,7 @@ function isStandaloneDisplayOpener(source: string, openIdx: number): boolean {
 
 function collectSentinelCollisions(node: any, present: Set<string>): void {
   if (!node) return;
-  for (const key of ["value", "url", "title", "alt"]) {
+  for (const key of ["value", "url", "title", "alt", "identifier", "label"]) {
     const value = node[key];
     if (typeof value === "string") {
       for (const ch of value) present.add(ch);
@@ -453,9 +567,11 @@ function pickMathSentinels(
   // 字符引用在 markdown parse 后才解码；碰撞检查必须覆盖解码后的 AST 字符。
   collectSentinelCollisions(tree, present);
   const sentinels: string[] = [];
-  for (let cp = 0xe000; cp <= 0xf8ff; cp += 1) {
+  // 使用非 ASCII 的 Unicode 标点作为占位符，保持 CommonMark delimiter flanking 的
+  // punctuation 分类不变，避免 `*\!*a` 一类正文被重分类成 emphasis。
+  for (let cp = 0x00a1; cp <= 0x2e7f; cp += 1) {
     const ch = String.fromCharCode(cp);
-    if (!present.has(ch)) {
+    if (/\p{P}/u.test(ch) && !isAsciiPunctuation(ch) && !present.has(ch)) {
       sentinels.push(ch);
       if (sentinels.length === count) return sentinels;
     }
@@ -463,25 +579,102 @@ function pickMathSentinels(
   return null;
 }
 
-/** 收集代码与原始 HTML 的源码区间；这些节点里的反斜杠不走 CommonMark 转义。 */
+/** 收集代码、原始 HTML 与自动链接区间；这些位置不应参与数学转义遮罩。 */
 function collectLiteralRanges(
   node: any,
-  ranges: Array<[number, number]>
+  ranges: Array<[number, number]>,
+  source: string
 ): void {
   if (!node) return;
+  const s = node.position?.start?.offset;
+  const e = node.position?.end?.offset;
+  const raw =
+    typeof s === "number" && typeof e === "number" ? source.slice(s, e) : "";
+  const isAutoLink =
+    node.type === "link" &&
+    (raw.startsWith("<") || /^(?:https?:\/\/|www\.)/i.test(raw));
   if (
     node.type === "code" ||
     node.type === "inlineCode" ||
-    node.type === "html"
+    node.type === "html" ||
+    isAutoLink
   ) {
-    const s = node.position?.start?.offset;
-    const e = node.position?.end?.offset;
     if (typeof s === "number" && typeof e === "number") ranges.push([s, e]);
     return;
   }
   if (Array.isArray(node.children)) {
-    for (const c of node.children) collectLiteralRanges(c, ranges);
+    for (const c of node.children) collectLiteralRanges(c, ranges, source);
   }
+}
+
+function isOffsetInRanges(
+  offset: number,
+  ranges: Array<[number, number]>
+): boolean {
+  let low = 0;
+  let high = ranges.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const [start, end] = ranges[mid];
+    if (offset < start) high = mid - 1;
+    else if (offset >= end) low = mid + 1;
+    else return true;
+  }
+  return false;
+}
+
+function isEscapedAt(source: string, offset: number): boolean {
+  let slashes = 0;
+  for (let i = offset - 1; i >= 0 && source[i] === "\\"; i -= 1) {
+    slashes += 1;
+  }
+  return slashes % 2 === 1;
+}
+
+/** 找出原始源码中可能由 scanner 处理的 `$...$` / `$$...$$` 内部区间。 */
+function collectPotentialMathRanges(
+  source: string,
+  excludedRanges: Array<[number, number]>
+): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  let i = 0;
+  while (i < source.length) {
+    if (
+      source[i] !== "$" ||
+      isOffsetInRanges(i, excludedRanges) ||
+      isEscapedAt(source, i)
+    ) {
+      i += 1;
+      continue;
+    }
+    const openLen = source[i + 1] === "$" ? 2 : 1;
+    let close = -1;
+    for (let j = i + openLen; j < source.length; j += 1) {
+      if (isOffsetInRanges(j, excludedRanges)) continue;
+      if (openLen === 1 && (source[j] === "\n" || source[j] === "\r")) break;
+      if (
+        openLen === 2 &&
+        (source.startsWith("\n\n", j) || source.startsWith("\r\n\r\n", j))
+      ) {
+        break;
+      }
+      if (
+        source[j] === "$" &&
+        !isEscapedAt(source, j) &&
+        (openLen === 1 || source[j + 1] === "$")
+      ) {
+        close = j;
+        break;
+      }
+    }
+    if (close >= 0) {
+      ranges.push([i + openLen, close]);
+      i = close + openLen;
+    } else {
+      i += openLen;
+    }
+  }
+  return ranges;
 }
 
 function isAsciiPunctuation(char: string | undefined): boolean {
@@ -502,10 +695,10 @@ function isAsciiPunctuation(char: string | undefined): boolean {
 function maskMarkdownEscapes(
   source: string,
   ranges: Array<[number, number]>,
+  mathRanges: Array<[number, number]>,
   sentinels: string[]
 ): { masked: string; escapeMap: Record<string, string> } | null {
-  const inLiteral = (off: number) =>
-    ranges.some(([s, e]) => off >= s && off < e);
+  const inLiteral = (off: number) => isOffsetInRanges(off, ranges);
   const escapedChars = new Map<string, string>();
   let nextSentinel = 0;
   const sentinelFor = (char: string): string | null => {
@@ -525,6 +718,15 @@ function maskMarkdownEscapes(
       let k = i;
       while (k < n && source[k] === "\\") k += 1;
       const runLen = k - i;
+      const protectsDelimiter =
+        runLen % 2 === 1 && source[k] === "$" && !inLiteral(k);
+      const insideMath = isOffsetInRanges(i, mathRanges);
+      if (!insideMath && !protectsDelimiter) {
+        // 公式候选外完全交给 CommonMark 原生解析，避免改变 emphasis / link 等正文结构。
+        out += source.slice(i, k);
+        i = k;
+        continue;
+      }
       const escapedSlash = sentinelFor("\\");
       if (!escapedSlash) return null;
       out += escapedSlash.repeat(Math.floor(runLen / 2));
@@ -559,7 +761,7 @@ function escapeMaskPlugin(this: any) {
     if (source.indexOf("\\") === -1 || typeof processor?.parse !== "function") {
       return;
     }
-    // ASCII 标点至多 32 种；为每种转义字符分配一个源码 / AST 中都不存在的哨兵。
+    // ASCII 标点至多 32 种；为每种转义字符分配一个源码 / AST 中都不存在的标点哨兵。
     const sentinels = pickMathSentinels(source, tree, 32);
     if (!sentinels) {
       // 没有足够安全哨兵时 fail closed，保留首次 parse 的 CommonMark 文本并禁用公式扫描。
@@ -567,8 +769,10 @@ function escapeMaskPlugin(this: any) {
       return;
     }
     const ranges: Array<[number, number]> = [];
-    collectLiteralRanges(tree, ranges);
-    const result = maskMarkdownEscapes(source, ranges, sentinels);
+    collectLiteralRanges(tree, ranges, source);
+    ranges.sort((a, b) => a[0] - b[0]);
+    const mathRanges = collectPotentialMathRanges(source, ranges);
+    const result = maskMarkdownEscapes(source, ranges, mathRanges, sentinels);
     if (!result || result.masked === source) return;
     // 经 file.data 传递哨兵映射；其存在与否即「是否 mask 过」的 out-of-band 标记。
     (file.data ||= {}).mathEscapeMap = result.escapeMap;
@@ -580,8 +784,9 @@ function escapeMaskPlugin(this: any) {
 
 /**
  * 把哨兵还原成 CommonMark 解码后的字面字符。仅在 {@link escapeMaskPlugin} 确实注入过哨兵时运行，
- * 避免无条件改写用户原文里的 Private Use Area 字符。还原覆盖所有可能承载哨兵的字符串
- * 字段：text / inlineMath / math 的 `value`，以及 link / image / definition 的 `url` / `title` / `alt`
+ * 避免无条件改写用户原文里的字符。还原覆盖所有可能承载哨兵的字符串字段：text /
+ * inlineMath / math 的 `value`，以及 link / image / definition 的 `url` / `title` / `alt` /
+ * `identifier` / `label`
  * （否则 `[go](…/a\$b)` 会把哨兵泄漏进 href）。
  */
 function restoreSentinelPlugin() {
@@ -597,7 +802,14 @@ function restoreSentinelPlugin() {
       );
     const visit = (node: any) => {
       if (!node) return;
-      for (const key of ["value", "url", "title", "alt"]) {
+      for (const key of [
+        "value",
+        "url",
+        "title",
+        "alt",
+        "identifier",
+        "label",
+      ]) {
         const v = node[key];
         if (
           typeof v === "string" &&
@@ -649,7 +861,7 @@ function makeMathNode(inner: string, display: boolean): any {
  */
 function scanTextForMath(
   text: string,
-  ctx: { attempts: number; escapeMap?: Record<string, string> },
+  ctx: MathContext,
   source: string,
   sourceStart?: number,
   sourceEnd?: number
@@ -735,7 +947,6 @@ function scanTextForMath(
       }
       const display =
         isDouble &&
-        hasNewline &&
         sourceOpen >= 0 &&
         sourceClose >= 0 &&
         isAnchoredDisplay(source, sourceOpen, sourceClose); // 用源码偏移判断，不能把 text-node 边界当行首/行尾
@@ -747,10 +958,7 @@ function scanTextForMath(
         isStandaloneDisplayOpener(source, sourceClose);
       let accept: boolean;
       if (display) {
-        accept =
-          inner.trim().length > 0 &&
-          MATH_ISH_CHAR.test(inner) &&
-          inner.length <= MAX_BLOCK_MATH_LEN;
+        accept = inner.trim().length > 0 && inner.length <= MAX_BLOCK_MATH_LEN;
       } else {
         // 行内：定界符不能紧贴单词字符（挡 shell 多变量 `echo $X_1,$Y_2`——闭定界符后紧跟
         // 标识符，说明它其实是下一个 $var 的开定界符，而非公式收尾）。
@@ -758,11 +966,22 @@ function scanTextForMath(
         const after = close + openLen < n ? text[close + openLen] : "";
         const wordAdjacent =
           /[A-Za-z0-9]/.test(before) || /[A-Za-z0-9_]/.test(after);
-        accept = !wordAdjacent && isAcceptableInlineMath(inner, isDouble);
+        const trimmedText = text.trim();
+        const jsonShaped =
+          (trimmedText.startsWith("{") && trimmedText.endsWith("}")) ||
+          (trimmedText.startsWith("[") && trimmedText.endsWith("]"));
+        const quotedString =
+          jsonShaped &&
+          ((before === '"' && after === '"') ||
+            (before === "'" && after === "'"));
+        accept =
+          !wordAdjacent &&
+          !quotedString &&
+          isAcceptableInlineMath(inner, isDouble);
       }
       if (accept && ctx.attempts < MAX_FORMULAS_PER_MESSAGE) {
         ctx.attempts += 1;
-        if (katexAccepts(inner, display)) {
+        if (tryAcceptMath(ctx, inner, display)) {
           flush();
           out.push(makeMathNode(inner, display));
           i = close + openLen;
@@ -816,7 +1035,7 @@ function mathScanPlugin() {
         ? file.value
         : String(file ?? "");
     // 与 ```math 围栏共享同一 per-render 尝试计数（见 guardMathFencePlugin）。
-    const ctx = ((file.data ||= {}).mathCtx ||= { attempts: 0 });
+    const ctx = getMathContext(file);
     ctx.escapeMap = file.data.mathEscapeMap;
     const visit = (node: any) => {
       if (!node || !Array.isArray(node.children)) return;
@@ -1394,5 +1613,28 @@ const MarkdownContent: React.FC<MarkdownContentProps> = ({
   );
 };
 
+function areMarkdownContentPropsEqual(
+  previous: Readonly<MarkdownContentProps>,
+  next: Readonly<MarkdownContentProps>
+): boolean {
+  return (
+    previous.content === next.content &&
+    previous.isSend === next.isSend &&
+    previous.isStreaming === next.isStreaming &&
+    previous.onMentionClick === next.onMentionClick &&
+    previous.enableMath === next.enableMath &&
+    previous.allowSingleDollarMath === next.allowSingleDollarMath &&
+    previous.enableMarkdown === next.enableMarkdown &&
+    JSON.stringify(previous.mentions ?? []) ===
+      JSON.stringify(next.mentions ?? []) &&
+    JSON.stringify(previous.emojis ?? []) === JSON.stringify(next.emojis ?? [])
+  );
+}
+
+const MemoizedMarkdownContent = React.memo(
+  MarkdownContent,
+  areMarkdownContentPropsEqual
+);
+
 export { MarkdownImage };
-export default MarkdownContent;
+export default MemoizedMarkdownContent;

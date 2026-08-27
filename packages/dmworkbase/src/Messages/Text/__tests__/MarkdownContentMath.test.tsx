@@ -8,10 +8,10 @@
 // $$、```math 围栏）统一过同一套 guard 与上限：
 //   1. 正向 TeX 白名单（多字母命令 / 上标 / 单字符底下标）+ 负向 shell/path/prose 信号
 //      （${…}、/ :、单字母反斜杠、定界符紧贴单词字符、跨软换行非锚定 $$、无命令的 CJK / ≥2 词形 token）。
-//   2. 转义在解析前稳定保存：escapeMaskPlugin 用「源码中不存在的动态 PUA 哨兵」遮罩 CommonMark
-//      会解码的反斜杠转义；公式候选恢复原始 TeX，普通文本恢复解码字符，且不与用户 PUA 冲突。
-//   3. KaTeX 预校验 + 接收端上限：解析失败整条按字面保留（含定界符、无红字）；渲染后 HTML >60KB
-//      或单条消息公式数 >32 拒绝（$ / $$ / ```math 共享同一 per-render 计数）。
+//   2. 转义在解析前稳定保存：escapeMaskPlugin 用「源码/AST 中不存在且保持 CommonMark 标点分类的
+//      动态 Unicode 哨兵」遮罩公式候选内会被解码的反斜杠转义；公式恢复原始 TeX，正文保持原生结构。
+//   3. KaTeX 预校验 + 接收端上限：解析失败整条按字面保留（含定界符、无红字）；渲染后 HTML >60KB、
+//      单条消息累计 HTML >120KB 或公式数 >32 拒绝（$ / $$ / ```math 共享同一 per-render 上下文）。
 //   4. 依赖对齐 remark-math ^6→^5（仅 allowSingleDollarMath 文档/编辑器路径使用）；渲染顺序
 //      highlight → sanitize → fence-guard → katex；trust:false / maxSize:10 / maxExpand:100。
 // 文档/编辑器等要「无守卫、简单 $a+b$ 也渲染」的场景可显式传 allowSingleDollarMath。
@@ -153,6 +153,28 @@ describe("MarkdownContent — block/flow 公式不再崩 + display 模式 (revie
       if (content.includes("tail")) expect(visibleText(root)).toContain("tail");
     });
   }
+
+  it("独占一行的 $$\\frac{a}{b}$$ 使用 display 模式", () => {
+    const root = renderContent(
+      <MarkdownContent content={"$$\\frac{a}{b}$$"} />
+    );
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+  });
+
+  it("显式 display 即使没有 math-ish 字符也渲染", () => {
+    const root = renderContent(
+      <MarkdownContent content={"$$\na + b = c\n$$"} />
+    );
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+  });
+
+  it("正文中的 $$E=mc^2$$ 仍保持 inline 模式", () => {
+    const root = renderContent(
+      <MarkdownContent content={"text $$E=mc^2$$ text"} />
+    );
+    expect(root.querySelectorAll(".katex")).toHaveLength(1);
+    expect(root.querySelector(".katex-display")).toBeNull();
+  });
 
   it("源码行内 markup 后的 $$ 不把 text-node 边界误判为行首", () => {
     const input = "**Prefix**$$\nx^2\n$$";
@@ -356,14 +378,14 @@ describe("MarkdownContent — 公式内部不被 mention/emoji 分段污染 (rev
 
 describe("MarkdownContent — 被守卫拒绝的 $$ block 在容器内不泄漏容器标记 (Jerry-Xin blocker)", () => {
   it("blockquote 内被拒绝的 $$ block 还原时不带 `> ` continuation marker", () => {
-    // 内部 "plain" 无数学字符 → 守卫拒绝。旧实现用 source.slice 还原会把 `> ` 一起切出来，
-    // 显示成 `$$ / > plain / > $$`；修复后用 node.value 重拼，应还原用户原本的 `$$ / plain / $$`。
+    // 无效命令被 KaTeX 拒绝。旧实现用 source.slice 还原会把 `> ` 一起切出来；
+    // 修复后按节点语义重拼，应还原用户原本的 `$$ / \bad / $$`。
     const root = renderContent(
-      <MarkdownContent content={"> $$\n> plain\n> $$"} />
+      <MarkdownContent content={"> $$\n> \\bad\n> $$"} />
     );
     expect(root.querySelector(".katex")).toBeNull();
     const vt = visibleText(root);
-    expect(vt).toContain("plain");
+    expect(vt).toContain("\\bad");
     expect(vt).toContain("$$");
     // 关键断言：不得把 blockquote 的 `>` 容器标记泄漏进正文
     expect(vt).not.toContain(">");
@@ -371,12 +393,12 @@ describe("MarkdownContent — 被守卫拒绝的 $$ block 在容器内不泄漏�
 
   it("blockquote 内被拒绝的多行 $$ block 也不带容器标记", () => {
     const root = renderContent(
-      <MarkdownContent content={"> $$\n> line one\n> line two\n> $$"} />
+      <MarkdownContent content={"> $$\n> \\bad\n> \\worse\n> $$"} />
     );
     expect(root.querySelector(".katex")).toBeNull();
     const vt = visibleText(root);
-    expect(vt).toContain("line one");
-    expect(vt).toContain("line two");
+    expect(vt).toContain("\\bad");
+    expect(vt).toContain("\\worse");
     expect(vt).not.toContain(">");
   });
 
@@ -389,9 +411,9 @@ describe("MarkdownContent — 被守卫拒绝的 $$ block 在容器内不泄漏�
   });
 
   it("顶层被拒绝的 $$ block 还原成文本、不渲染公式", () => {
-    const root = renderContent(<MarkdownContent content={"$$\nplain\n$$"} />);
+    const root = renderContent(<MarkdownContent content={"$$\n\\bad\n$$"} />);
     expect(root.querySelector(".katex")).toBeNull();
-    expect(visibleText(root)).toContain("plain");
+    expect(visibleText(root)).toContain("\\bad");
   });
 });
 
@@ -744,7 +766,7 @@ describe("MarkdownContent — 多个 $$ 候选的源码映射保持同步 (revie
   it("被拒绝的 inline $$ 后续跨行正文不误渲染为 display", () => {
     const input = "$$x$$\nthe config_x value $$100 and\nmore$$";
     const root = renderContent(<MarkdownContent content={input} />);
-    expect(root.querySelector(".katex")).toBeNull();
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
     expect(visibleText(root)).toContain("the config_x value");
     expect(visibleText(root)).toContain("$$100 and");
   });
@@ -752,7 +774,7 @@ describe("MarkdownContent — 多个 $$ 候选的源码映射保持同步 (revie
   it("被拒绝的 inline $$ 后续中文正文不误渲染为 display", () => {
     const input = "$$x$$\n这里 m_0 是质量 $$100 and\nmore$$";
     const root = renderContent(<MarkdownContent content={input} />);
-    expect(root.querySelector(".katex")).toBeNull();
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
     expect(visibleText(root)).toContain("这里 m_0 是质量");
   });
 
@@ -967,6 +989,29 @@ describe("MarkdownContent — 接收端保护：每条消息公式数量上限 (
     expect(root.querySelector(".katex")).toBeNull();
   });
 
+  it("多公式共享累计渲染预算，不能叠加成超大 DOM", () => {
+    const row = Array.from({ length: 20 }, () => "x").join(" & ");
+    const matrix = `\\begin{pmatrix}${row}\\\\${row}\\\\${row}\\end{pmatrix}`;
+    const input = Array.from({ length: 8 }, () => `$$\n${matrix}\n$$`).join(
+      "\n\n"
+    );
+    const root = renderContent(<MarkdownContent content={input} />);
+    const rendered = root.querySelectorAll(".katex-display").length;
+    expect(rendered).toBeGreaterThan(0);
+    expect(rendered).toBeLessThan(8);
+  });
+
+  it("高复杂度公式在调用 KaTeX 前快速拒绝", () => {
+    const matrix = `\\begin{matrix}${"1 & ".repeat(900)}1\\end{matrix}`;
+    const input = Array.from({ length: 32 }, () => `$$\n${matrix}\n$$`).join(
+      "\n\n"
+    );
+    const startedAt = performance.now();
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(performance.now() - startedAt).toBeLessThan(1000);
+  });
+
   it("公式 attempt 达到 32 后停止预校验，失败候选也计入上限", () => {
     const invalid = Array.from({ length: 32 }, () => "$\\frac{a}$").join(" ");
     const root = renderContent(
@@ -975,6 +1020,75 @@ describe("MarkdownContent — 接收端保护：每条消息公式数量上限 (
     expect(root.querySelector(".katex")).toBeNull();
     expect(visibleText(root)).toContain("$x^2$");
   });
+});
+
+describe("MarkdownContent — 转义保护不改变公式外 Markdown 结构", () => {
+  const emphasisCases = ["*\\!*a", "a*\\_*b", "**\\!**a"];
+  for (const input of emphasisCases) {
+    it(`强调结构与关闭数学时一致：${input}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      const mathHtml = root.innerHTML;
+      act(() => {
+        ReactDOM.render(
+          <MarkdownContent content={input} enableMath={false} />,
+          root
+        );
+      });
+      expect(mathHtml).toBe(root.innerHTML);
+    });
+  }
+
+  const linkCases = [
+    "see https://e.com/a\\_b\\_c now",
+    "见 https://e.com/q?a=1\\&b=2 完",
+    "<https://example.com/a\\-b>",
+  ];
+  for (const input of linkCases) {
+    it(`自动链接地址与关闭数学时一致：${input}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      const mathHref = root.querySelector("a")?.getAttribute("href");
+      act(() => {
+        ReactDOM.render(
+          <MarkdownContent content={input} enableMath={false} />,
+          root
+        );
+      });
+      expect(mathHref).toBe(root.querySelector("a")?.getAttribute("href"));
+    });
+  }
+});
+
+describe("MarkdownContent — JSON quoted values 不误判为公式", () => {
+  const cases = ['{"key":"$x_1$"}', '{"a":"$x^2$","b":2}'];
+  for (const input of cases) {
+    it(`保持字面 JSON：${input}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(visibleText(root)).toBe(input);
+    });
+  }
+
+  it("普通引号中的显式公式仍可渲染", () => {
+    const root = renderContent(
+      <MarkdownContent content={'the formula is "$x^2$"'} />
+    );
+    expect(root.querySelectorAll(".katex")).toHaveLength(1);
+  });
+});
+
+describe("MarkdownContent — trust-gated KaTeX 命令整体回退", () => {
+  const cases = [
+    "$\\href{javascript:alert(1)}{click}$",
+    "$\\htmlClass{foo}{click}$",
+    "$\\htmlData{key=value}{click}$",
+  ];
+  for (const input of cases) {
+    it(`保留命令及全部参数：${input}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(visibleText(root)).toBe(input);
+    });
+  }
 });
 
 describe("MarkdownContent — 转义 \\$ 在容器/实体等场景仍保持 literal (reviewer P0-2 收口)", () => {
@@ -1100,7 +1214,7 @@ describe("MarkdownContent — 用户原文里的 U+E000 不被无条件改写 (r
     expect(vt).toContain("$x^2$");
   });
 
-  it("所有 PUA 哨兵都碰撞时 fail closed，不重新激活转义公式", () => {
+  it("完整 PUA 区段不影响动态 Unicode 标点哨兵，也不重新激活转义公式", () => {
     const allPua = Array.from({ length: 0xf8ff - 0xe000 + 1 }, (_, i) =>
       String.fromCharCode(0xe000 + i)
     ).join("");
@@ -1113,6 +1227,24 @@ describe("MarkdownContent — 用户原文里的 U+E000 不被无条件改写 (r
 });
 
 describe("MarkdownContent — allowSingleDollarMath 放宽启发式但保留资源上限", () => {
+  const losslessFallbackCases: string[] = [
+    "$$100 too expensive",
+    "$$ TODO: discuss tomorrow",
+    "$$meta words\n\\frac{a}\n$$",
+    "$$\\bad$$",
+    "a $$\\bad$$ b",
+  ];
+
+  for (const input of losslessFallbackCases) {
+    it(`拒绝后保留 meta、正文与原始定界符：${JSON.stringify(input)}`, () => {
+      const root = renderContent(
+        <MarkdownContent content={input} allowSingleDollarMath />
+      );
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(visibleText(root)).toContain(input.replace(/\n/g, ""));
+    });
+  }
+
   it("开启后无数学字符的简单公式 $a+b$ 也渲染成 KaTeX", () => {
     // 默认路径下 $a+b$ 内部无 \\ ^ _ { }，会被守卫还原；文档场景显式关守卫应渲染。
     const root = renderContent(
