@@ -16,6 +16,9 @@ interface MarketItem {
   /** Optional pill shown to the right of the label (e.g. "回路" on experts,
    *  signalling the catalog feeds the Loop module). */
   badge?: () => string;
+  /** Render a horizontal divider above this row — separates the personal
+   *  "我的发布" entry from the discovery markets (技能 / 连接器 / 专家). */
+  dividerBefore?: boolean;
   render: () => React.ReactElement;
 }
 
@@ -52,6 +55,7 @@ const MARKET_ITEMS: MarketItem[] = [
     routePath: "/mcp-market/mine",
     label: () => t("mcp.sidebar.mine"),
     icon: <UserRound size={16} aria-hidden="true" />,
+    dividerBefore: true,
     render: () => <MyAssetsPage />,
   },
 ];
@@ -185,25 +189,30 @@ export default class MarketSidebar extends Component<{}, MarketSidebarState> {
         </div>
         <ul className="wk-mcp-sidebar__list">
           {MARKET_ITEMS.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                className={
-                  item.id === activeId
-                    ? "wk-mcp-sidebar__item wk-mcp-sidebar__item--active"
-                    : "wk-mcp-sidebar__item"
-                }
-                onClick={() => this.handleClick(item)}
-              >
-                <span className="wk-mcp-sidebar__item-left">
-                  <span className="wk-mcp-sidebar__item-icon">{item.icon}</span>
-                  <span className="wk-mcp-sidebar__item-label">{item.label()}</span>
-                </span>
-                {item.badge && WKApp.remoteConfig?.dmloopOn && (
-                  <span className="wk-mcp-sidebar__badge">{item.badge()}</span>
-                )}
-              </button>
-            </li>
+            <React.Fragment key={item.id}>
+              {item.dividerBefore && (
+                <li className="wk-mcp-sidebar__divider" role="separator" aria-hidden="true" />
+              )}
+              <li>
+                <button
+                  type="button"
+                  className={
+                    item.id === activeId
+                      ? "wk-mcp-sidebar__item wk-mcp-sidebar__item--active"
+                      : "wk-mcp-sidebar__item"
+                  }
+                  onClick={() => this.handleClick(item)}
+                >
+                  <span className="wk-mcp-sidebar__item-left">
+                    <span className="wk-mcp-sidebar__item-icon">{item.icon}</span>
+                    <span className="wk-mcp-sidebar__item-label">{item.label()}</span>
+                  </span>
+                  {item.badge && WKApp.remoteConfig?.dmloopOn && (
+                    <span className="wk-mcp-sidebar__badge">{item.badge()}</span>
+                  )}
+                </button>
+              </li>
+            </React.Fragment>
           ))}
         </ul>
         <div className="wk-mcp-sidebar__footnote">{t("mcp.sidebar.footnote")}</div>

@@ -1395,6 +1395,13 @@
   overflow-y: auto;
 }
 
+/* Separates the personal 我的发布 entry from the discovery markets above it. */
+.wk-mcp-sidebar__divider {
+  height: 1px;
+  margin: var(--wk-sp-2) var(--wk-sp-2);
+  background: var(--wk-border-default);
+}
+
 .wk-mcp-sidebar__item {
   width: 100%;
   display: flex;
