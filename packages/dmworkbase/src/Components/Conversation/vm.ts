@@ -1566,8 +1566,11 @@ export default class ConversationVM extends ProviderListener {
      * frame 与 VM 卸载都会主动取消定时器。
      */
     private scheduleProgressCardFallback(messageWrap: MessageWrap, senderId: string) {
-        const updatedAtSec = messageWrap.progressUpdatedAtSec
-        if (typeof updatedAtSec !== "number") return
+        // 历史/同步路径通过 toMessageWraps 构造，不经过实时 listener 的 arrival stamp。
+        // 首次在 final text 路径观察到这类卡时从当前时刻开始计 grace，既不立即误判，
+        // 也不会因缺失时间戳让兜底永久失效。
+        const updatedAtSec = messageWrap.progressUpdatedAtSec ?? Date.now() / 1000
+        messageWrap.progressUpdatedAtSec = updatedAtSec
 
         this.cancelProgressCardFallback(messageWrap)
         const timer = setTimeout(() => {

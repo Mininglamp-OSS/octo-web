@@ -318,6 +318,22 @@ describe("WS-99 client fallback finalize race", () => {
         expect(cardWrap.localFallbackApplied).toBe(true)
     })
 
+    it("同步加载且未打时间戳的卡，会从 final text 到达时开始 grace 后兜底", () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))
+        const vm: any = new ConversationVM(channel)
+        const cardWrap = makeCardWrap("🤖 正在处理…")
+        vm.messagesOfOrigin.push(cardWrap)
+        expect(cardWrap.progressUpdatedAtSec).toBeUndefined()
+
+        vm.maybeFinalizeStuckProgressCard(makeFinalTextWrap())
+        expect(cardWrap.progressUpdatedAtSec).toBe(Date.now() / 1000)
+        expect(cardWrap.localFallbackApplied).toBeFalsy()
+
+        vi.advanceTimersByTime(3000)
+        expect(cardWrap.localFallbackApplied).toBe(true)
+    })
+
     it("健康时序中 final text 后到达终态帧，不会短暂显示兜底", () => {
         vi.useFakeTimers()
         vi.setSystemTime(new Date("2026-08-27T00:00:00.000Z"))

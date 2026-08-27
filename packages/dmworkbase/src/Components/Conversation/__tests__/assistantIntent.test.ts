@@ -938,6 +938,10 @@ describe("Conversation attachment and viewport helpers", () => {
     vi.spyOn(conversation, "getMessageElement").mockReturnValue({ clientHeight: 40 } as any)
     conversation.handleScroll({ target: { scrollTop: 700, scrollHeight: 1000, clientHeight: 200 } })
     conversation.handleWheel({ currentTarget: { scrollTop: 100, scrollHeight: 100, clientHeight: 100 }, deltaY: 10 })
+    // handleScroll 会启动 500ms 的 scroll-end timer；测试结束前清理，避免 jsdom teardown
+    // 后回调访问 document 造成全量套件偶发红灯。
+    window.clearTimeout(conversation.scrollTimer!)
+    conversation.scrollTimer = null
   })
 
   it("updates browse position and reminder completion only for visible messages", () => {
