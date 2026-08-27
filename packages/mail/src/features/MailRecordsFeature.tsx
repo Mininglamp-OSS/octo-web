@@ -116,16 +116,8 @@ export default function MailRecordsFeature({
     const first = workspace.messages.find(
       (message) => message.id !== removedMessageId
     );
-    if (!first) {
-      if (workspace.selectedMessageId) workspace.selectMessage("");
-      return;
-    }
-    if (
-      !workspace.selectedMessageId ||
-      !workspace.messages.some(
-        (message) => message.id === workspace.selectedMessageId
-      )
-    ) {
+    if (!first) return;
+    if (!workspace.selectedMessageId) {
       workspace.selectMessage(first.id);
     }
   }, [
@@ -141,11 +133,25 @@ export default function MailRecordsFeature({
     workspace.markMessageRead(message);
   };
 
-  const selectedMessage = workspace.messages.find(
+  const selectedMessageInList = workspace.messages.find(
     (message) =>
       message.id === workspace.selectedMessageId &&
       message.id !== removedMessageId
   );
+  const [selectedMessageCache, setSelectedMessageCache] =
+    useState<MessageSummary | null>(null);
+  useEffect(() => {
+    if (selectedMessageInList) {
+      setSelectedMessageCache(selectedMessageInList);
+    } else if (!workspace.selectedMessageId) {
+      setSelectedMessageCache(null);
+    }
+  }, [selectedMessageInList, workspace.selectedMessageId]);
+  const selectedMessage =
+    selectedMessageInList ||
+    (selectedMessageCache?.id === workspace.selectedMessageId
+      ? selectedMessageCache
+      : undefined);
   const selectedMailbox = workspace.mailboxes.find(
     (mailbox) => mailbox.name === workspace.selectedMailbox
   );
@@ -185,6 +191,14 @@ export default function MailRecordsFeature({
             mailboxRole={selectedMailboxRole}
             onCompose={openComposer}
             onDeleted={() => {
+              setRemovedMessageId(selectedMessage.id);
+              const nextMessage = workspace.messages.find(
+                (message) => message.id !== selectedMessage.id
+              );
+              workspace.selectMessage(nextMessage?.id || "");
+              workspace.reload();
+            }}
+            onRestoredFromJunk={() => {
               setRemovedMessageId(selectedMessage.id);
               const nextMessage = workspace.messages.find(
                 (message) => message.id !== selectedMessage.id

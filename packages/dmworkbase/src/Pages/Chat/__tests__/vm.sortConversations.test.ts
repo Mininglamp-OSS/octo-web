@@ -1,7 +1,9 @@
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const hoisted = vi.hoisted(() => ({
     emit: vi.fn(),
+    pinnedList: vi.fn(() => Promise.resolve([])),
+    sync: vi.fn(() => Promise.resolve([])),
 }))
 
 vi.mock("wukongimjssdk", () => ({
@@ -11,7 +13,7 @@ vi.mock("wukongimjssdk", () => ({
                 conversations: [],
                 addConversationListener: () => {},
                 removeConversationListener: () => {},
-                sync: () => Promise.resolve([]),
+                sync: hoisted.sync,
             },
             connectManager: {
                 status: 0,
@@ -107,6 +109,10 @@ vi.mock("../../../Service/ProhibitwordsService", () => ({
     ProhibitwordsService: { shared: { filter: (text: string) => text } },
 }))
 
+vi.mock("../../../Service/PinnedService", () => ({
+    default: { list: hoisted.pinnedList },
+}))
+
 vi.mock("../../../Service/SpaceService", () => ({
     SpaceService: { shared: { getMembers: () => Promise.resolve([]) } },
     shouldSkipChannelForSpace: () => false,
@@ -132,6 +138,14 @@ vi.mock("../../../Utils/download", () => ({
 
 import { ChatVM } from "../vm"
 import { ConversationWrap } from "../../../Service/Model"
+import WKApp from "../../../App"
+
+beforeEach(() => {
+    vi.clearAllMocks()
+    hoisted.sync.mockResolvedValue([])
+    hoisted.pinnedList.mockResolvedValue([])
+    ;(WKApp.shared as any).currentSpaceId = ""
+})
 
 function makeConversation(id: string, timestamp: number, top = 0): ConversationWrap {
     return new ConversationWrap({
@@ -144,6 +158,14 @@ function makeConversation(id: string, timestamp: number, top = 0): ConversationW
         timestamp,
         extra: { top },
     } as any)
+}
+
+function deferred<T>() {
+    let resolve!: (value: T) => void
+    const promise = new Promise<T>((resolvePromise) => {
+        resolve = resolvePromise
+    })
+    return { promise, resolve }
 }
 
 describe("ChatVM.sortConversations", () => {
@@ -181,9 +203,161 @@ describe("ChatVM.reloadRequestConversationList", () => {
     it("announces initial conversation hydration so unread title consumers recalculate", async () => {
         const vm = new ChatVM()
         hoisted.emit.mockClear()
+        hoisted.sync.mockResolvedValueOnce([])
 
+        expect(vm.loading).toBe(true)
         await vm.reloadRequestConversationList()
 
+        expect(vm.loading).toBe(false)
         expect(hoisted.emit).toHaveBeenCalledWith("conversation-list-refreshed")
+    })
+
+    it("leaves the initial loading state when conversation hydration fails", async () => {
+        const vm = new ChatVM()
+        const notifyListener = vi.spyOn(vm, "notifyListener")
+        const error = new Error("sync failed")
+        hoisted.sync.mockRejectedValueOnce(error)
+
+        await expect(vm.reloadRequestConversationList()).rejects.toBe(error)
+
+        expect(vm.loading).toBe(false)
+        expect(notifyListener).toHaveBeenCalled()
+    })
+
+    it("does not let a stale Space sync overwrite the active Space", async () => {
+        const vm = new ChatVM()
+        const spaceASync = deferred<any[]>()
+        const spaceAPins = deferred<any[]>()
+        const spaceAConversation = makeConversation("space-a", 100)
+        const spaceBConversation = makeConversation("space-b", 200)
+        ;(WKApp.shared as any).currentSpaceId = "space-a"
+        hoisted.sync
+            .mockReturnValueOnce(spaceASync.promise)
+            .mockResolvedValueOnce([spaceBConversation.conversation])
+        hoisted.pinnedList
+            .mockReturnValueOnce(spaceAPins.promise)
+            .mockResolvedValueOnce([])
+
+        const spaceARequest = vm.reloadRequestConversationList()
+        let spaceARequestSettled = false
+        void spaceARequest.then(() => {
+            spaceARequestSettled = true
+        })
+        ;(WKApp.shared as any).currentSpaceId = "space-b"
+        await vm.reloadRequestConversationList()
+
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
+
+        spaceASync.resolve([spaceAConversation.conversation])
+        await Promise.resolve()
+        await Promise.resolve()
+
+        expect(spaceARequestSettled).toBe(true)
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
+    })
+
+    it("does not let a stale Space pinned snapshot overwrite the active Space", async () => {
+        const vm = new ChatVM()
+        const spaceAPins = deferred<any[]>()
+        const spaceAConversation = makeConversation("space-a", 100)
+        const spaceBConversation = makeConversation("space-b", 200)
+        ;(WKApp.shared as any).currentSpaceId = "space-a"
+        hoisted.sync
+            .mockResolvedValueOnce([spaceAConversation.conversation])
+            .mockResolvedValueOnce([spaceBConversation.conversation])
+        hoisted.pinnedList
+            .mockReturnValueOnce(spaceAPins.promise)
+            .mockResolvedValueOnce([])
+
+        const spaceARequest = vm.reloadRequestConversationList()
+        await Promise.resolve()
+        ;(WKApp.shared as any).currentSpaceId = "space-b"
+        await vm.reloadRequestConversationList()
+
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
+
+        spaceAPins.resolve([])
+        await spaceARequest
+
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual(["space-b"])
+    })
+})
+
+describe("ChatVM.requestConversationList", () => {
+    it("leaves loading and handles an active Space sync failure", async () => {
+        const vm = new ChatVM()
+        const notifyListener = vi.spyOn(vm, "notifyListener")
+        const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+        hoisted.sync.mockRejectedValueOnce(new Error("sync failed"))
+
+        await vm.requestConversationList()
+
+        expect(vm.loading).toBe(false)
+        expect(notifyListener).toHaveBeenCalled()
+        expect(consoleError).toHaveBeenCalledWith(
+            "[ChatVM] failed to sync conversations",
+            expect.any(Error)
+        )
+        consoleError.mockRestore()
+    })
+
+    it("restores persisted child-thread pin state before sorting the recent list", async () => {
+        const vm = new ChatVM()
+        const thread = {
+            channel: {
+                channelID: "group-1____thread-1",
+                channelType: 5,
+                getChannelKey: () => "group-1____thread-1-5",
+            },
+            timestamp: 100,
+            extra: { top: 0 },
+        }
+        const newer = {
+            channel: {
+                channelID: "alice",
+                channelType: 1,
+                getChannelKey: () => "alice-1",
+            },
+            timestamp: 300,
+            extra: { top: 0 },
+        }
+        ;(WKApp.shared as any).currentSpaceId = "space-1"
+        hoisted.sync.mockResolvedValueOnce([newer, thread] as any)
+        hoisted.pinnedList.mockResolvedValueOnce([
+            {
+                channel_id: "group-1____thread-1",
+                channel_type: 5,
+                sort_order: 1,
+            },
+        ])
+
+        await vm.requestConversationList()
+
+        expect(hoisted.pinnedList).toHaveBeenCalledTimes(1)
+        expect(thread.extra.top).toBe(1)
+        expect(vm.conversations.map((item) => item.channel.channelID)).toEqual([
+            "group-1____thread-1",
+            "alice",
+        ])
+    })
+
+    it("clears stale child-thread pin state when the persisted snapshot is empty", async () => {
+        const vm = new ChatVM()
+        const thread = {
+            channel: {
+                channelID: "group-1____thread-1",
+                channelType: 5,
+                getChannelKey: () => "group-1____thread-1-5",
+            },
+            timestamp: 100,
+            extra: { top: 1 },
+        }
+        ;(WKApp.shared as any).currentSpaceId = "space-1"
+        hoisted.sync.mockResolvedValueOnce([thread] as any)
+        hoisted.pinnedList.mockResolvedValueOnce([])
+
+        await vm.requestConversationList()
+
+        expect(thread.extra.top).toBe(0)
     })
 })

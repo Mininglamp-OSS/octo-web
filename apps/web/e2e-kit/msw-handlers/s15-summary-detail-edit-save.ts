@@ -111,7 +111,10 @@ export async function registerS15SummaryDetailEditSave(page: Page): Promise<void
           ? "S15 已保存正文内容"
           : String(body.content || "");
         return env({ edited_at: "2026-08-06T15:18:00Z" });
-      })
+      }),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
+      )
     );
   });
 }

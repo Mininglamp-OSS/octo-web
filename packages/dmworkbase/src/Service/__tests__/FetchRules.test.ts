@@ -189,7 +189,7 @@ describe('FETCH_RULES — 「请求成功 ≠ 用户动作」的语义边界(负
             'space_join_new',                      // POST /space/join 对审批态返回 2xx(未加入)→ 业务码门控后命令式
             'group_avatar_edited',                 // POST /groups/:id/avatar 建群上传也命中 → ChannelAvatar 编辑分支命令式
             'settings_secrets_opened',             // GET /manager/secrets 列表加载(删除/保存/重试重拉)→ 面板挂载命令式
-            'settings_voice_toggled',              // PUT /voice/local-config 被保存 URL 配置共用 → 真实开关 handleLocalToggle 命令式
+            'settings_voice_toggled',              // settings center voice toggle/consent handlers
         ])
         const leaked = FETCH_RULES.filter((r) => uiOnly.has(r.event)).map((r) => `${r.method} ${r.path} → ${r.event}`)
         expect(leaked, leaked.join('\n')).toEqual([])

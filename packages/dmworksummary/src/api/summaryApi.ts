@@ -1,5 +1,5 @@
 import axios, { AxiosRequestConfig } from 'axios';
-import { WKApp, buildAcceptLanguage, Dap } from '@octo/base';
+import { WKApp, buildAcceptLanguage, Dap, convertMarkdownToDoc } from '@octo/base';
 import type {
     AgentChatHistory,
     AgentChatParams,
@@ -10,6 +10,7 @@ import type {
     ChatCandidate,
     CreateSummaryParams,
     CreateAgentSummaryParams,
+    CreateAgentSummaryResult,
     CreateScheduleParams,
     CustomTopicTemplatePayload,
     InferResult,
@@ -339,7 +340,7 @@ export async function createSummary(
 export async function createAgentSummary(
     params: CreateAgentSummaryParams,
     trackProps: Record<string, unknown> = {},
-): Promise<{ task_id: number; task_no: string; status: number; created_at: string }> {
+): Promise<CreateAgentSummaryResult> {
     const resp = await summaryAxios.post(`${BASE}/summaries/agent`, params);
     const envelopeCode = resp.data?.code;
     // 七审 P1:与 trackOnEnvelopeSuccess 同口径,严格 code===0 才算成功。
@@ -359,9 +360,7 @@ export async function createAgentSummary(
     // 故只从 data 取;此前的 `?? resp.data` 回退是给「无信封裸响应」用的,而那正是 code===undefined 的情形,
     // 已在上面 :350 rejected —— 回退再也走不到(裸响应没有 task_id,反而会在下面 :361 抛),留着只会
     // 误导「仍支持裸响应」。去掉,语义与实际行为一致。
-    const data = resp.data?.data as {
-        task_id: number; task_no: string; status: number; created_at: string;
-    } | undefined;
+    const data = resp.data?.data as CreateAgentSummaryResult | undefined;
     if (!data || typeof data.task_id !== 'number' || data.task_id <= 0) {
         // 后端返成功但 task_id 缺失/非法 —— 视为保存失败,不能清 chat
         throw new Error(resp.data?.message || 'create agent summary returned no task_id');
@@ -389,7 +388,8 @@ export async function agentChat(params: AgentChatParams): Promise<AgentChatResul
         if (!data?.reply) {
             throw new Error(resp.data?.message || 'agent chat failed');
         }
-        return { reply: data.reply, session_id: data.session_id };
+        // SS-11: surface run_id when present (V2 on); omitted by legacy backend.
+        return { reply: data.reply, session_id: data.session_id, run_id: data.run_id };
     } catch (err) {
         if (axios.isCancel(err)) throw err;
         if (err instanceof Error) throw err;
@@ -473,6 +473,7 @@ export function agentChatStream(
             let pendingEvent = '';
             let pendingData = '';
             let receivedDone = false;
+            let receivedError = false;
             while (!aborted) {
                 const { done, value } = await reader.read();
                 if (done) break;
@@ -494,10 +495,14 @@ export function agentChatStream(
                     } else if (line === '') {
                         // 空行是帧边界,解析并分发
                         if (pendingEvent && pendingData) {
-                            if (pendingEvent === 'done') {
-                                receivedDone = true;
+                            const dispatched = parseAndDispatch(pendingEvent, pendingData, handlers);
+                            if (dispatched) {
+                                if (pendingEvent === 'done') {
+                                    receivedDone = true;
+                                } else if (pendingEvent === 'error') {
+                                    receivedError = true;
+                                }
                             }
-                            parseAndDispatch(pendingEvent, pendingData, handlers);
                         }
                         pendingEvent = '';
                         pendingData = '';
@@ -518,14 +523,18 @@ export function agentChatStream(
                     buffer = '';
                 }
                 if (pendingEvent && pendingData) {
-                    if (pendingEvent === 'done') {
-                        receivedDone = true;
+                    const dispatched = parseAndDispatch(pendingEvent, pendingData, handlers);
+                    if (dispatched) {
+                        if (pendingEvent === 'done') {
+                            receivedDone = true;
+                        } else if (pendingEvent === 'error') {
+                            receivedError = true;
+                        }
                     }
-                    parseAndDispatch(pendingEvent, pendingData, handlers);
                 }
             }
             // 流已关闭,但如果没收到 done 事件,触发错误让 UI 解锁
-            if (!aborted && !receivedDone) {
+            if (!aborted && !receivedDone && !receivedError) {
                 handlers.onError?.({ code: 50000, message: 'stream closed without done', transient: true });
             }
         } catch (err: unknown) {
@@ -545,27 +554,28 @@ export function agentChatStream(
     };
 }
 
-/** 解析 SSE data 并分发到对应 handler */
-function parseAndDispatch(event: string, data: string, handlers: AgentStreamHandlers): void {
+/** 解析 SSE data 并分发；仅成功处理已知事件时返回 true。 */
+function parseAndDispatch(event: string, data: string, handlers: AgentStreamHandlers): boolean {
     try {
         const parsed = JSON.parse(data);
         switch (event) {
             case 'progress':
                 handlers.onProgress?.(parsed as AgentProgressEvent);
-                break;
+                return true;
             case 'done':
                 handlers.onDone?.(parsed as AgentDoneEvent);
-                break;
+                return true;
             case 'error':
                 handlers.onError?.(parsed as AgentErrorEvent);
-                break;
+                return true;
             default:
                 // 未知事件忽略
-                break;
+                return false;
         }
     } catch (err) {
         // JSON 解析失败,忽略该帧
         console.warn('Failed to parse SSE data:', data, err);
+        return false;
     }
 }
 
@@ -1016,4 +1026,22 @@ export async function getChatCandidates(params?: { keyword?: string; chat_type?:
 export async function getMemberCandidates(params?: { keyword?: string }): Promise<MemberCandidate[]> {
     const data = await get<MemberCandidate[]>('/summary-member-candidates', params as Record<string, unknown>);
     return data || [];
+}
+// ─── Copy & Convert to Document (octo-smart-summary#195) ────────────────
+
+/**
+ * 转为在线文档。
+ *
+ * 注意这里**不含任何 docs-backend REST 调用**：`packages/docs` 已在
+ * `#1363 feat: detach docs module from oss host` 之后从本仓库移除并被 oss-module-guard
+ * 禁止加回，OSS 侧直连它的 REST 端点会在没有部署 docs-backend 的形态下必然失败。
+ * 实际的「建文档 → 导入 markdown →（失败时）回滚」全部由闭源 docs 模块在
+ * `EndpointID.docsConvertMarkdown` 端口后面实现，跳转链接也由它用 buildDocLink 生成。
+ *
+ * 端口未接线（docsOn 关闭或 docs 模块不在当前 bundle 里）时抛
+ * DocsCapabilityUnavailableError —— 但调用方本就该用 isDocsConvertAvailable() 提前
+ * 隐藏入口，正常路径上不会走到这个分支。
+ */
+export async function convertSummaryToDoc(title: string, markdown: string): Promise<{ docId: string; url: string }> {
+    return convertMarkdownToDoc({ title, markdown });
 }

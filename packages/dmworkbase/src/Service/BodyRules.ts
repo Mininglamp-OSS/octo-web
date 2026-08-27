@@ -221,17 +221,17 @@ export const BODY_RULES: BodyRule[] = [
     },
 
     // PUT /api/v1/groups/:id/setting —— 会话/群设置单键部分更新(updateChannelSetting 发单键对象):
-    // mute→免打扰,top→置顶,remark→备注,save→存到通讯录,allow_no_mention→机器人免@。
+    // remark→备注,save→存到通讯录。
+    // (mute→免打扰 / top→置顶 已改为在 channelSettingActions.ts 成功回调里命令式 Dap 补点;
+    //  allow_no_mention→机器人免@ 同理改到 groupManagementActions.ts 收口点命令式补点,带 channel_id+enabled
+    //  ——body 通道按隐私边界只能发事件名、拿不到 enabled/channel_id,故此处不再声明式命中,避免双计。见 review M3/B。)
     // (bridge/channelSetting/channelSettingActions.ts & groupManagementActions.ts)
     {
         method: 'PUT',
         path: '/api/v1/groups/:id/setting',
         discriminators: [
-            { event: 'conversation_muted', equals: { key: 'mute', values: [1] } },
-            { event: 'conversation_pinned', equals: { key: 'top', values: [1] } },
             { event: 'conversation_remark_edited', hasKeys: ['remark'] },
             { event: 'conversation_saved_to_contacts', equals: { key: 'save', values: [1] } },
-            { event: 'group_bot_free_mention_toggled', hasKeys: ['allow_no_mention'] },
         ],
     },
 
@@ -243,8 +243,6 @@ export const BODY_RULES: BodyRule[] = [
         method: 'PUT',
         path: '/api/v1/users/:id/setting',
         discriminators: [
-            { event: 'conversation_muted', equals: { key: 'mute', values: [1] } },
-            { event: 'conversation_pinned', equals: { key: 'top', values: [1] } },
             { event: 'conversation_remark_edited', hasKeys: ['remark'] },
             { event: 'conversation_saved_to_contacts', equals: { key: 'save', values: [1] } },
         ],
@@ -255,8 +253,6 @@ export const BODY_RULES: BodyRule[] = [
         method: 'PUT',
         path: '/api/v1/groups/:id/threads/:seg/setting',
         discriminators: [
-            { event: 'conversation_muted', equals: { key: 'mute', values: [1] } },
-            { event: 'conversation_pinned', equals: { key: 'top', values: [1] } },
             { event: 'conversation_remark_edited', hasKeys: ['remark'] },
             { event: 'conversation_saved_to_contacts', equals: { key: 'save', values: [1] } },
         ],

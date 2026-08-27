@@ -80,6 +80,7 @@ function createRuntime(
     markRemovedChannelSubscribers: vi.fn(),
     notifyCurrentChannelSubscribers: vi.fn(),
     notifyCurrentChannelInfo: vi.fn(),
+    setPinnedChannel: vi.fn(() => Promise.resolve()),
     setCurrentChannelSubscribers: vi.fn(),
     setCurrentChannelInfo: vi.fn(),
     syncCurrentChannelSubscribers: vi.fn(() => Promise.resolve()),
@@ -451,6 +452,54 @@ describe("channel setting actions", () => {
     expect(runtime.topChannel).toHaveBeenCalledWith(channel, true);
     expect(runtime.saveChannel).toHaveBeenCalledWith(channel, false);
     expect(runtime.remarkChannel).toHaveBeenCalledWith(channel, "remark");
+  });
+
+  it("uses the dedicated pinned contract for child threads", async () => {
+    const runtime = createRuntime();
+    const channel = new Channel(
+      "group-1____thread-1",
+      ChannelTypeCommunityTopic
+    );
+
+    await topChannelSetting({ channel, top: true, runtime });
+    await topChannelSetting({ channel, top: false, runtime });
+
+    expect(runtime.setPinnedChannel).toHaveBeenNthCalledWith(1, channel, true);
+    expect(runtime.setPinnedChannel).toHaveBeenNthCalledWith(2, channel, false);
+    expect(runtime.topChannel).not.toHaveBeenCalled();
+  });
+
+  it("emits imperative conversation_muted/pinned with the direction action (M3 收口点)", async () => {
+    // mute/pin 已从 BodyRules body 通道迁到本 funnel(覆盖列表右键 + 设置面板 + 子区设置,
+    // 单通道不双计)。此测钉死:成功后各发一次、action 方向随开关翻转。若有人把规则塞回
+    // BODY_RULES,channelUniqueness 的 self-check 会红;此处再钉命令式落点与 action 值。
+    vi.mocked(Dap.shared.track).mockClear();
+    const runtime = createRuntime();
+    const channel = new Channel("group-1", ChannelTypeGroup);
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+    await muteChannelSetting({ channel, mute: false, runtime });
+    await topChannelSetting({ channel, top: true, runtime });
+    await topChannelSetting({ channel, top: false, runtime });
+
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "mute", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_muted", { action: "unmute", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "pin", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledWith("conversation_pinned", { action: "unpin", channel_id: "group-1" });
+    expect(Dap.shared.track).toHaveBeenCalledTimes(4);
+  });
+
+  it("畸形子区 channelID(parseThreadChannelId 失败,updateChannelSetting 静默 no-op)→ 不发 mute/pin(#1452 P2)", async () => {
+    // ChannelTypeCommunityTopic 但 channelID 无法解析出 thread → updateChannelSetting 直接 return,
+    // 不发请求;埋点必须与之对齐,否则一次静默 no-op 也会计成一次 mute/pin(过计数)。
+    vi.mocked(Dap.shared.track).mockClear();
+    const runtime = createRuntime();
+    const channel = new Channel("not-a-thread-id", ChannelTypeCommunityTopic);
+
+    await muteChannelSetting({ channel, mute: true, runtime });
+    await topChannelSetting({ channel, top: true, runtime });
+
+    expect(Dap.shared.track).not.toHaveBeenCalled();
   });
 
   it("reapplies the latest saved thread mute after an older fetch resolves last", async () => {

@@ -47,4 +47,21 @@ describe("submitBotAdmins", () => {
     expect(result.succeeded).toEqual([]);
     expect(result.failed.map((f) => f.uid)).toEqual(["bot-a", "bot-b"]);
   });
+
+  it("keeps result order stable when requests finish out of order", async () => {
+    const resolvers = new Map<string, (value?: unknown) => void>();
+    const setBotAdmin = vi.fn((uid: string) =>
+      new Promise<void>((resolve) => resolvers.set(uid, resolve))
+    );
+    const pending = submitBotAdmins(["bot-a", "bot-b", "bot-c"], setBotAdmin);
+
+    resolvers.get("bot-c")?.();
+    resolvers.get("bot-a")?.();
+    resolvers.get("bot-b")?.();
+
+    await expect(pending).resolves.toEqual({
+      succeeded: ["bot-a", "bot-b", "bot-c"],
+      failed: [],
+    });
+  });
 });

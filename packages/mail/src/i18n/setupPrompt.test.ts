@@ -10,7 +10,7 @@ describe("Agent Mail setup prompt", () => {
       expect(prompt).toContain("{{address}}");
       expect(prompt).toContain("{{spaceId}}");
       expect(prompt).toContain(
-        "openclaw plugins install clawhub:openclaw-octo-mail-plugin",
+        "openclaw plugins install clawhub:openclaw-octo-mail-plugin"
       );
       expect(prompt).toContain("openclaw octo-mail setup");
       expect(prompt).toContain("openclaw octo-mail bind");
@@ -26,6 +26,28 @@ describe("Agent Mail setup prompt", () => {
       expect(prompt).not.toContain("--api-url");
       expect(prompt).toMatch(/请帮我把邮箱|Please connect mailbox/);
       expect(prompt).toContain("/install");
+    }
+  );
+
+  it.each([zhCN, enUS])(
+    "provides the official CLI installation, identity check, and mailbox authorization prompt",
+    (messages) => {
+      const prompt = messages["mail.agentMailboxes.cliSetupPrompt"];
+      expect(prompt).toContain("{{address}}");
+      expect(prompt).toContain("{{spaceId}}");
+      expect(prompt).toContain(
+        "npm install -g @mininglamp-oss/octo-cli@latest"
+      );
+      expect(prompt).toContain("octo-cli skills octo-mail");
+      expect(prompt).toContain("octo-cli mail auth status");
+      expect(prompt).toMatch(
+        /octo-cli --space \{\{spaceId\}\} mail auth login --mailbox \{\{address\}\}/
+      );
+      expect(prompt).not.toContain("--bot-id");
+      expect(prompt).not.toContain("openclaw plugins install");
+      expect(messages["mail.agentMailboxes.cliSkillGuide"]).toMatch(
+        /octo-mail Skill/
+      );
     }
   );
 

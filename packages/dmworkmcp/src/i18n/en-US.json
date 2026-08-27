@@ -107,7 +107,7 @@
   },
   "errors": {
     "nameTaken": "This name is already taken",
-    "slugTaken": "This service slug is already taken in the current Space",
+    "slugTaken": "This service slug is already taken in the current organization",
     "slugInvalid": "Slug must match ^[a-z0-9-]{1,64}$",
     "forbidden": "You are not allowed to modify this MCP",
     "notFound": "MCP not found or has been removed",
@@ -116,7 +116,7 @@
     "invalidRequest": "Request payload is invalid",
     "probeUnsupported": "Server cannot probe this transport (stdio must run in the desktop client)",
     "unauthorized": "Session expired, please sign in again",
-    "forbiddenSpace": "You are not a member of this space",
+    "forbiddenSpace": "You are not a member of this organization",
     "internal": "Server is busy, please try again later"
   },
   "category": {

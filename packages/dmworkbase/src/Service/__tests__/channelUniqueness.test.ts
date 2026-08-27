@@ -149,11 +149,17 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
         // 十二审:五类移出 path 通道、改命令式的事件必须被扫描抓到 —— 否则下面的「命令式 ⊥ 规则表」
         // 互斥断言对它们形同虚设(有人把它们再塞回 FETCH_RULES 时不会红)。逐一钉死扫描确有覆盖。
         expect(imperativeEvents.has('conversation_cleared')).toBe(true)      // channelSettingActions + Chat/vm
+        // mute/pin 从 BODY_RULES 迁到 channelSettingActions 命令式(M3/B4)。钉死扫描抓到,
+        // 使下面「命令式 ⊥ 规则表」互斥断言对它们生效 —— 有人把它们塞回 BODY_RULES 即红。
+        expect(imperativeEvents.has('conversation_muted')).toBe(true)        // channelSettingActions.muteChannelSetting
+        expect(imperativeEvents.has('conversation_pinned')).toBe(true)       // channelSettingActions.topChannelSetting
+        // allow_no_mention 从 BODY_RULES 迁到 groupManagementActions 命令式收口(带 channel_id+enabled;见 review B)。
+        expect(imperativeEvents.has('group_bot_free_mention_toggled')).toBe(true) // groupManagementActions.setGroupManagementAllowNoMention
         expect(imperativeEvents.has('apps_module_entered')).toBe(true)       // Main/index + tab_low_screen(apps/web)
         expect(imperativeEvents.has('space_join_new')).toBe(true)           // SpaceService + Layout + InviteLanding
         expect(imperativeEvents.has('group_avatar_edited')).toBe(true)       // ChannelAvatar 两个编辑分支
         expect(imperativeEvents.has('settings_secrets_opened')).toBe(true)   // SecretsSettingsPanel 挂载
-        expect(imperativeEvents.has('settings_voice_toggled')).toBe(true)    // VoiceSettingsPanel handleLocalToggle
+        expect(imperativeEvents.has('settings_voice_toggled')).toBe(true)    // settings center voice toggle/consent handlers
     })
 
     it('命令式站点事件名不得再出现在任何一张声明式规则表(否则跨通道双计)', () => {
@@ -205,7 +211,8 @@ describe('中央映射通道 —— 命令式 / data-track 站点也与规则表
  *
  * 白名单语义 = 该事件的多条规则是**同一次用户手势的不同作用域/入口**,产品上就该记同一事件:
  *   - 群/子区滚入(subchannel-inclusion policy,见 FetchRules 头):webhook_* / group_md_edited / group_name_edited
- *   - 会话设置跨群/DM/子区三作用域同构:conversation_muted / _pinned / _remark_edited / _saved_to_contacts
+ *   - 会话设置跨群/DM/子区三作用域同构:conversation_remark_edited / _saved_to_contacts
+ *     (mute/pin 已改命令式补点、退出 BODY 表,故不在此列;见 review M3/B4)
  *   - 登录双入口(账号 / 邮箱)同为一次登录:user_login
  *   - 密钥「配置」= 新建(POST)或更新(PUT)同一动作:settings_secrets_configured
  *   - 市场「发布」跨 mcp / skill 两个目录同一手势:market_manual_publish_submitted
@@ -258,8 +265,6 @@ describe('中央映射通道 —— 表内「一手势一事件」守卫(重复�
             ),
             allow: new Set([
                 'group_name_edited',
-                'conversation_muted',
-                'conversation_pinned',
                 'conversation_remark_edited',
                 'conversation_saved_to_contacts',
                 'webhook_enabled_toggled',

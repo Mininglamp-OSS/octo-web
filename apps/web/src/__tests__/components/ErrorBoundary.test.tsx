@@ -43,7 +43,7 @@ describe("ErrorBoundary", () => {
             </ErrorBoundary>
         );
 
-        expect(container.textContent).toContain("测试模块加载出错");
+        expect(container.textContent).toContain("测试模块 failed to load");
         expect(container.textContent).toContain("Test error message");
         expect(container.querySelector(".wk-error-boundary-retry")).not.toBeNull();
     });
@@ -55,7 +55,7 @@ describe("ErrorBoundary", () => {
             </ErrorBoundary>
         );
 
-        expect(container.textContent).toContain("模块加载出错");
+        expect(container.textContent).toContain("Module failed to load");
     });
 
     it("renders custom fallback when provided", () => {
@@ -105,7 +105,7 @@ describe("ErrorBoundary", () => {
         );
 
         // Error state should be shown
-        expect(container.textContent).toContain("模块加载出错");
+        expect(container.textContent).toContain("Module failed to load");
 
         // Fix the error and click retry
         shouldThrow = false;
@@ -150,7 +150,7 @@ describe("ErrorFallback", () => {
             />
         );
 
-        expect(container.textContent).toContain("测试加载出错");
+        expect(container.textContent).toContain("测试 failed to load");
         expect(container.textContent).toContain("Something went wrong");
 
         const retryButton = container.querySelector(".wk-error-boundary-retry");
@@ -163,7 +163,7 @@ describe("ErrorFallback", () => {
     it("shows default error message when error is undefined", () => {
         const { container } = render(<ErrorFallback moduleName="模块" onRetry={() => {}} />);
 
-        expect(container.textContent).toContain("发生了未知错误");
+        expect(container.textContent).toContain("An unknown error occurred");
     });
 
     it("does not render retry button when onRetry is not provided", () => {

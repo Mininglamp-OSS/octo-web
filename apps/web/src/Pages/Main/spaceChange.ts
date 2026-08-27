@@ -34,14 +34,3 @@ export function requestGuardedSpaceChange(
   }
   return requestSwitch(() => apply(nextSpaceId));
 }
-
-export function resolveInitialSpace<T extends { space_id: string }>(
-  spaces: T[],
-  savedSpaceId: string | null
-): T | undefined {
-  return (
-    (savedSpaceId
-      ? spaces.find((space) => space.space_id === savedSpaceId)
-      : undefined) ?? spaces[0]
-  );
-}

@@ -1,6 +1,5 @@
 import React, {
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   useCallback,
@@ -15,12 +14,8 @@ import type {
   ChatComposerVoiceHost,
 } from "../../ports";
 import { VoiceMode } from "../../../../Service/VoiceService";
-import VoiceFeedbackNotice from "../../../voice-input/VoiceFeedbackNotice";
-import useSpaceFeedbackSetting, {
-  getSharedSpaceFeedbackState,
-  acceptVoiceInput,
-} from "../../../voice-input/useSpaceFeedbackSetting";
 import { useI18n } from "../../../../i18n";
+import { getVoiceShortcut, voiceSettingsStore, voiceShortcutMatches } from "../../../../Service/VoiceSettingsStore";
 
 type ReplaceMode = "all" | "selection" | "insert";
 
@@ -87,10 +82,10 @@ export default function VoiceInputIndicator({
   checkIsInputActive,
 }: VoiceInputIndicatorProps) {
   const { t } = useI18n();
+  const [voiceSettings, setVoiceSettings] = useState(() => voiceSettingsStore.get());
+  useEffect(() => voiceSettingsStore.subscribe(setVoiceSettings), []);
   // Voice mode menu state (不保存选中的模式，每次都是临时选择)
   const [showModeMenu, setShowModeMenu] = useState(false);
-  const [showFeedbackNotice, setShowFeedbackNotice] = useState(false);
-  const { spaceSetting, loaded, voiceConfig } = useSpaceFeedbackSetting();
 
   // Long-press ShiftLeft state
   const shiftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -107,64 +102,6 @@ export default function VoiceInputIndicator({
   const savedSelectionRangeRef = useRef<SelectionRange | undefined>(undefined);
   // 记录当前录音使用的模式（用于 onTranscribed 回调）
   const recordingModeRef = useRef<VoiceMode>("append_only");
-  const pendingModeRef = useRef<VoiceMode>("append_only");
-  const mountedRef = useRef(true);
-  const consentEpochRef = useRef(0);
-  const consentGenerationRef = useRef(0);
-  const consentPendingRef = useRef(false);
-  const consentHostRef = useRef(voiceHost);
-  const pendingConsentRef = useRef<{
-    host: ChatComposerVoiceHost;
-    spaceId: string;
-    epoch: number;
-    generation: number;
-    mode: VoiceMode;
-  } | null>(null);
-  consentHostRef.current = voiceHost;
-
-  const openConsent = useCallback((mode: VoiceMode) => {
-    if (consentPendingRef.current) return;
-    const spaceId = voiceHost.getSpaceId();
-    if (!spaceId) return;
-    const generation = ++consentGenerationRef.current;
-    pendingModeRef.current = mode;
-    pendingConsentRef.current = {
-      host: voiceHost,
-      spaceId,
-      epoch: consentEpochRef.current,
-      generation,
-      mode,
-    };
-    setShowFeedbackNotice(true);
-  }, [voiceHost]);
-
-  useEffect(() => {
-    const invalidateConsent = () => {
-      consentEpochRef.current += 1;
-      consentGenerationRef.current += 1;
-      consentPendingRef.current = false;
-      pendingConsentRef.current = null;
-      pendingModeRef.current = "append_only";
-      setShowFeedbackNotice(false);
-    };
-    invalidateConsent();
-    const unsubscribe = voiceHost.subscribeSpaceChange(invalidateConsent);
-    return () => {
-      consentEpochRef.current += 1;
-      consentGenerationRef.current += 1;
-      unsubscribe();
-    };
-  }, [voiceHost]);
-
-  useLayoutEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      consentEpochRef.current += 1;
-      consentGenerationRef.current += 1;
-    };
-  }, []);
-
   const {
     isRecording,
     isTranscribing,
@@ -226,6 +163,11 @@ export default function VoiceInputIndicator({
       setIsPreparing(false);
     },
   });
+  useEffect(() => {
+    if (!voiceSettings.enabled && (isRecording || isTranscribing)) {
+      cancelRecording();
+    }
+  }, [voiceSettings.enabled, isRecording, isTranscribing, cancelRecording]);
 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const isOnlineRef = useRef(isOnline);
@@ -339,9 +281,16 @@ export default function VoiceInputIndicator({
     };
   }, [isRecording, isTranscribing, updateFloatingPosition]);
 
-  // Keyboard shortcut: Shift + Cmd/Ctrl + Space, and long-press ShiftLeft
+  // Keyboard shortcut follows the settings-center configuration.
   useEffect(() => {
-    if (!isVoiceEnabled) return;
+    if (!isVoiceEnabled || !voiceSettings.enabled) return;
+
+    const os = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? "macos" : "windows" as const;
+    const configuredShortcut = getVoiceShortcut(voiceSettings, os);
+    if (configuredShortcut === "disabled") return;
+    const modifiersValid = (event: KeyboardEvent) => configuredShortcut === "alt-right"
+      ? !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.getModifierState("AltGraph")
+      : !event.altKey && !event.ctrlKey && !event.metaKey;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // 只处理当前活动输入框的快捷键（避免多个输入框同时响应）
@@ -356,42 +305,32 @@ export default function VoiceInputIndicator({
         return;
       }
 
-      // Existing shortcut: Shift+Cmd/Ctrl+Space
-      if (e.shiftKey && (e.metaKey || e.ctrlKey) && e.code === "Space") {
-        if (!isRecordingRef.current && !isTranscribingRef.current) {
+      if (voiceShortcutMatches(e, configuredShortcut) && !e.repeat && modifiersValid(e)) {
+        if (voiceSettings.speakingMode === "toggle") {
           e.preventDefault();
-          // Check network status before starting
-          if (!isOnlineRef.current && !localAvailableRef.current) {
-            Toast.warning(t("base.voiceInput.error.networkUnavailable"));
-            return;
+          if (isRecordingRef.current) stopRecordingRef.current();
+          else if (!isTranscribingRef.current) {
+            if (!isOnlineRef.current && !localAvailableRef.current) {
+              Toast.warning(t("base.voiceInput.error.networkUnavailable"));
+              return;
+            }
+            const selectedText = getSelectedText?.();
+            const selectionRange = getSelectionRange?.();
+            hadSelectionRef.current = !!selectedText;
+            savedSelectedTextRef.current = selectedText;
+            savedSelectionRangeRef.current = selectionRange;
+            recordingModeRef.current = "append_only";
+            startRecordingRef.current("append_only");
           }
-          const feedbackState = getSharedSpaceFeedbackState();
-          if (!feedbackState.loaded) {
-            return;
-          }
-          if (feedbackState.spaceSetting?.voice_input_enabled !== 1) {
-            openConsent("append_only");
-            return;
-          }
-          // 记录选中文本和位置
-          const selectedText = getSelectedText?.();
-          const selectionRange = getSelectionRange?.();
-          hadSelectionRef.current = !!selectedText;
-          savedSelectedTextRef.current = selectedText;
-          savedSelectionRangeRef.current = selectionRange;
-          recordingModeRef.current = "append_only";
-          startRecordingRef.current("append_only");
+          return;
         }
-        return;
       }
 
-      // Long-press ShiftLeft: start 500ms timer
+      // Long-press configured shortcut: start after 500ms.
       if (
-        e.code === "ShiftLeft" &&
+        voiceShortcutMatches(e, configuredShortcut) &&
         !e.repeat &&
-        !e.metaKey &&
-        !e.ctrlKey &&
-        !e.altKey
+        modifiersValid(e)
       ) {
         if (
           !isRecordingRef.current &&
@@ -411,16 +350,6 @@ export default function VoiceInputIndicator({
               setIsPreparing(false);
               return;
             }
-            const feedbackState = getSharedSpaceFeedbackState();
-            if (!feedbackState.loaded) {
-              setIsPreparing(false);
-              return;
-            }
-            if (feedbackState.spaceSetting?.voice_input_enabled !== 1) {
-              setIsPreparing(false);
-              openConsent("append_only");
-              return;
-            }
             shiftRecordingRef.current = true;
             // 记录选中文本和位置
             const selectedText = getSelectedText?.();
@@ -435,7 +364,7 @@ export default function VoiceInputIndicator({
         return;
       }
 
-      if (shiftTimerRef.current !== null && e.code !== "ShiftLeft") {
+      if (shiftTimerRef.current !== null && !voiceShortcutMatches(e, configuredShortcut)) {
         // Modifier chord (Ctrl/Meta/Alt pressed): cancel voice intent
         if (
           e.code.startsWith("Control") ||
@@ -447,7 +376,7 @@ export default function VoiceInputIndicator({
         }
         // IME-related events: do not cancel timer
         const isIME =
-          e.code.startsWith("Shift") ||
+          e.key === "Shift" ||
           e.key === "Process" ||
           e.key === "Unidentified" ||
           e.isComposing;
@@ -469,14 +398,14 @@ export default function VoiceInputIndicator({
       }
 
       // ShiftLeft released while timer is pending: cancel (normal Shift press)
-      if (e.code === "ShiftLeft" && shiftTimerRef.current !== null) {
+      if (voiceShortcutMatches(e, configuredShortcut) && shiftTimerRef.current !== null) {
         clearShiftTimer();
         return;
       }
 
       // ShiftLeft released while waiting for getUserMedia (recording not yet started)
       if (
-        e.code === "ShiftLeft" &&
+        voiceShortcutMatches(e, configuredShortcut) &&
         shiftRecordingRef.current &&
         !isRecordingRef.current
       ) {
@@ -487,7 +416,7 @@ export default function VoiceInputIndicator({
 
       // ShiftLeft released after long-press recording started: stop recording
       if (
-        e.code === "ShiftLeft" &&
+        voiceShortcutMatches(e, configuredShortcut) &&
         shiftRecordingRef.current &&
         isRecordingRef.current
       ) {
@@ -503,6 +432,7 @@ export default function VoiceInputIndicator({
       }
 
       if (!isRecordingRef.current) return;
+      if (voiceSettings.speakingMode !== "hold") return;
       // Stop recording when any modifier key is released (existing Shift+Cmd+Space flow)
       if (e.key === "Shift" || e.key === "Meta" || e.key === "Control") {
         // Don't stop if this was a long-press ShiftLeft release handled above
@@ -535,9 +465,10 @@ export default function VoiceInputIndicator({
     isVoiceEnabled,
     getCurrentText,
     getSelectedText,
+    getSelectionRange,
     cancelRecording,
-    openConsent,
     t,
+    voiceSettings,
   ]);
 
   // Window blur: auto-stop recording
@@ -561,11 +492,12 @@ export default function VoiceInputIndicator({
   const handleModeSelect = (selectedMode: VoiceMode) => {
     setShowModeMenu(false);
 
-    if (!loaded) {
+    if (!voiceSettings.enabled) {
+      Toast.warning(t("base.voiceInput.error.disabled"));
       return;
     }
-    if (spaceSetting?.voice_input_enabled !== 1) {
-      openConsent(selectedMode);
+    if (!isVoiceEnabled) {
+      Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
     }
 
@@ -579,6 +511,8 @@ export default function VoiceInputIndicator({
       savedSelectionRangeRef.current = selectionRange;
       recordingModeRef.current = selectedMode;
       startRecording(selectedMode);
+    } else {
+      Toast.warning(t("base.voiceInput.error.networkUnavailable"));
     }
   };
 
@@ -590,11 +524,12 @@ export default function VoiceInputIndicator({
       Toast.warning(t("base.voiceInput.error.networkUnavailable"));
       return;
     }
-    if (!loaded) {
+    if (!voiceSettings.enabled) {
+      Toast.warning(t("base.voiceInput.error.disabled"));
       return;
     }
-    if (spaceSetting?.voice_input_enabled !== 1) {
-      openConsent("append_only");
+    if (!isVoiceEnabled) {
+      Toast.warning(t("base.voiceInput.error.unavailable"));
       return;
     }
     // 点击麦克风 icon 固定使用语音输入模式
@@ -882,58 +817,6 @@ export default function VoiceInputIndicator({
           </div>
         </div>
       </Dropdown>
-      {showFeedbackNotice && (
-        <VoiceFeedbackNotice
-          onAccept={async (feedbackOn) => {
-            if (consentPendingRef.current) return;
-            const consent = pendingConsentRef.current;
-            if (!consent) return;
-            const isConsentCurrent = () =>
-              mountedRef.current &&
-              pendingConsentRef.current === consent &&
-              consentEpochRef.current === consent.epoch &&
-              consentGenerationRef.current === consent.generation &&
-              consentHostRef.current === consent.host &&
-              consent.host.getSpaceId() === consent.spaceId;
-            if (!isConsentCurrent()) return;
-            consentPendingRef.current = true;
-            setShowFeedbackNotice(false);
-            try {
-              await acceptVoiceInput(
-                consent.spaceId,
-                feedbackOn,
-                isConsentCurrent
-              );
-            } catch {
-              if (isConsentCurrent()) {
-                Toast.error(t("base.voiceInput.error.operationFailed"));
-              }
-              return;
-            } finally {
-              if (consentGenerationRef.current === consent.generation) {
-                consentPendingRef.current = false;
-              }
-            }
-            if (!isConsentCurrent()) return;
-            pendingConsentRef.current = null;
-            const selectedText = getSelectedText?.();
-            const selectionRange = getSelectionRange?.();
-            hadSelectionRef.current = !!selectedText;
-            savedSelectedTextRef.current = selectedText;
-            savedSelectionRangeRef.current = selectionRange;
-            recordingModeRef.current = consent.mode;
-            startRecording(consent.mode);
-          }}
-          onCancel={() => {
-            consentGenerationRef.current += 1;
-            pendingConsentRef.current = null;
-            pendingModeRef.current = "append_only";
-            setShowFeedbackNotice(false);
-          }}
-          feedbackPrivacyUrl={voiceConfig?.feedback_privacy_url}
-          feedbackUserAgreementUrl={voiceConfig?.feedback_user_agreement_url}
-        />
-      )}
     </>
   );
 }

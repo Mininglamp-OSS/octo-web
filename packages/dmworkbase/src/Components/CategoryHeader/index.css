@@ -201,6 +201,45 @@
     cursor: grabbing;
 }
 
+/* 自定义分组的显式管理入口：常驻但保持低强调，避免抢占标题视觉层级。 */
+.wk-category-header__more {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: var(--wk-sp-6);
+    height: var(--wk-sp-6);
+    padding: 0;
+    border: 0;
+    border-radius: var(--wk-r-xs);
+    background: transparent;
+    color: var(--wk-icon-muted);
+    cursor: pointer;
+    transition: background var(--wk-dur-fast) var(--wk-ease),
+                color var(--wk-dur-fast) var(--wk-ease);
+}
+
+.wk-category-header:hover .wk-category-header__more,
+.wk-category-header--active .wk-category-header__more,
+.wk-category-header__more:hover,
+.wk-category-header__more:focus-visible {
+    color: var(--wk-icon-hover);
+}
+
+.wk-category-header__more:hover,
+.wk-category-header__more:focus-visible {
+    background: var(--wk-bg-hover);
+}
+
+.wk-category-header__more:focus-visible {
+    outline: var(--wk-sp-0-5) solid var(--wk-border-glow);
+    outline-offset: var(--wk-sp-0-5);
+}
+
+.wk-category-header__more:active {
+    background: var(--wk-bg-active);
+}
+
 /* drop-over 高亮 */
 .wk-category-section--drop-over > .wk-category-header {
     background: var(--wk-brand-tint-08);

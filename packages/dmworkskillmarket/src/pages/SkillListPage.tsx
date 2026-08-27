@@ -141,7 +141,7 @@ export default function SkillListPage() {
     //   (选择型控件的过计),且所有项事件相同、区分不出选了哪种排序。改为按「实际变化」gate 后命令式 track,
     //   并带 props.sort 记录排序值。
     if (next === sort) return;
-    Dap.shared.track("market_skill_sorted", { sort: next });
+    Dap.shared.track("market_skill_sorted", { sort_by: next });
     setSort(next);
   }
 
@@ -246,6 +246,7 @@ export default function SkillListPage() {
                   role="menuitem"
                   data-testid="skill-publish-method-manual"
                   onClick={() => {
+                    Dap.shared.track("market_manual_publish_dialog_opened", {});
                     setPublishMenuOpen(false);
                     setCreateVisible(true);
                   }}

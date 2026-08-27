@@ -105,7 +105,6 @@ import type {
   ChatComposerViewHost,
   ChatComposerVoiceContext,
 } from "../ports";
-
 import { MAX_MESSAGE_LENGTH } from "../domain/constants";
 
 function commonRecoveredTarget(
@@ -123,20 +122,11 @@ function commonRecoveredTarget(
     : undefined;
 }
 
-// placeholder 格式化所需的平台快捷键标识（模块级常量，避免重复计算）
-const ALT_KEY = /Mac|iPhone|iPad/i.test(navigator.userAgent) ? '⌥' : 'Alt';
-
-/** 根据频道类型和名称生成 placeholder 文本 */
-function buildPlaceholder(isDirect: boolean, name: string, t: typeof translate): string {
-  if (isDirect) {
-    return name
-      ? t("base.messageInput.placeholder.directWithName", { values: { name } })
-      : t("base.messageInput.placeholder.direct");
-  } else {
-    return name
-      ? t("base.messageInput.placeholder.replyWithName", { values: { name, shortcut: ALT_KEY } })
-      : t("base.messageInput.placeholder.reply", { values: { shortcut: ALT_KEY } });
-  }
+/** 根据会话名称生成 placeholder 文本。快捷键说明位于设置中心。 */
+function buildPlaceholder(name: string, t: typeof translate): string {
+  return name
+    ? t("base.messageInput.placeholder.directWithName", { values: { name } })
+    : t("base.messageInput.placeholder.direct");
 }
 
 // 从编辑器中提取附件节点（纯函数，避免闭包问题）
@@ -572,6 +562,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [isMultiLine, setIsMultiLine] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [editorIsEmpty, setEditorIsEmpty] = useState(true);
   const [attachmentStore] = useState(
     () => new ChatComposerAttachmentStore<TopAttachmentItem>(),
   );
@@ -587,7 +578,6 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   const [pendingPreEnqueueItems, setPendingPreEnqueueItems] = useState<
     PendingSendItem[]
   >([]);
-
   useEffect(() => {
     composerMountedRef.current = true;
     const unsubscribe = attachmentStore.subscribe((items) => {
@@ -610,11 +600,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
 
   // 动态生成 placeholder（channelInfo 异步加载后通过 listener 自动更新）
   const [placeholder, setPlaceholder] = useState(() => {
-    return buildPlaceholder(
-      channelSnapshot.isDirect,
-      props.host.getChannelTitle() || "",
-      t,
-    );
+    return buildPlaceholder(props.host.getChannelTitle() || "", t);
   });
 
   useEffect(() => {
@@ -624,7 +610,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
     const updateName = (name: string) => {
       if (aborted) return;
       if (props.host.getChannel().key !== channelKey) return;
-      setPlaceholder(buildPlaceholder(channelSnapshot.isDirect, name, t));
+      setPlaceholder(buildPlaceholder(name, t));
     };
 
     updateName(props.host.getChannelTitle() || "");
@@ -634,7 +620,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       aborted = true;
       unsubscribeChannelTitle();
     };
-  }, [channelSnapshot.isDirect, channelSnapshot.key, props.host, t]);
+  }, [channelSnapshot.key, props.host, t]);
 
   const memberInfos = useMemo<MemberInfo[]>(
     () => buildMemberInfos(props.members),
@@ -763,6 +749,7 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
       },
     },
     onUpdate: ({ editor }) => {
+      setEditorIsEmpty(editor.isEmpty);
       const text = stripInvisibleChars(editor.getText());
 
       // 检查 slash 命令
@@ -1585,10 +1572,9 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
   // 检查编辑器内是否有内容或附件
   const editorAttachments = editor ? extractAttachmentsFromEditor(editor) : [];
   const hasValue =
-    (editor?.getText().length || 0) > 0 ||
+    !editorIsEmpty ||
     editorAttachments.length > 0 ||
     topAttachments.length > 0;
-
   // 设置 inputRef
   useEffect(() => {
     if (onInputRef && editor) {
@@ -1758,8 +1744,13 @@ const ChatComposer: React.FC<ChatComposerProps> = (props) => {
                 /
               </div>
             )}
+            {!hasValue && (
+              <div className={`wk-messageinput-placeholder-overlay${botCommands && botCommands.length > 0 ? " has-menu" : ""}`} aria-hidden="true">
+                <span className="wk-messageinput-placeholder-base">{placeholder}</span>
+              </div>
+            )}
             <div className="wk-messageinput-editor">
-              <EditorContent editor={editor} />
+              <EditorContent editor={editor} aria-label={placeholder} />
             </div>
           </div>
 

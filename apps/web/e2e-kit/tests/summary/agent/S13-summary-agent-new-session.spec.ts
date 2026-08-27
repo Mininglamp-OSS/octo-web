@@ -22,11 +22,10 @@ test.describe("@S13 @p1 @summary @agent @summary-agent @summary-reference S13 �
 
     await authedPage.getByRole("button", { name: "智能总结" }).click();
     await expect(authedPage.getByText("暂无总结记录")).toBeVisible({ timeout: 15_000 });
-    await authedPage.getByTestId(T.createEntry).click();
 
-    await expect(authedPage.getByText("邀请同事一起总结信息")).toBeVisible({ timeout: 15_000 });
-    await authedPage.getByTestId(T.createModeSwitch).click();
-    await authedPage.getByTestId(T.createAgentTab).click();
+    // 总结方式选择已上移到列表页「+」下拉（创建页内不再提供切换）：直接以 Agent 总结进入。
+    await authedPage.getByTestId(T.listModeSwitch).click();
+    await authedPage.getByTestId(T.listAgentTab).click();
     await expect(
       authedPage.getByText("你好，我是总结助手，想总结什么尽管告诉我。")
     ).toBeVisible({ timeout: 15_000 });

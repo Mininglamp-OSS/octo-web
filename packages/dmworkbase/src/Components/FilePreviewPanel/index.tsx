@@ -1,6 +1,7 @@
 import React from "react";
 import { X, Download, ExternalLink } from "lucide-react";
 import { fileRendererRegistry } from "./registry";
+import { downloadFile } from "../../Utils/download";
 import { FilePreviewInfo, FilePreviewPanelProps, getExtension } from "./types";
 import { useI18n } from "../../i18n";
 import "./index.css";
@@ -22,13 +23,7 @@ const FilePreviewPanel: React.FC<FilePreviewPanelProps> = ({
   const { renderer: Renderer } = fileRendererRegistry.getRenderer(ext);
 
   const handleDownload = () => {
-    const a = document.createElement("a");
-    a.href = file.url;
-    a.download = file.name || "file";
-    a.target = "_blank";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    void downloadFile(file.url, file.name || "file");
   };
 
   const handleOpenExternal = () => {

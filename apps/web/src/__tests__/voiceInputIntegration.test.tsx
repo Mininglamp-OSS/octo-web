@@ -22,6 +22,29 @@ vi.mock("../../../../packages/dmworkbase/src/features/chat-composer/voice", () =
   },
 }));
 
+vi.mock("@octo/base/src/Components/VoiceInputButton/useTextareaVoice", () => ({
+  default: (opts: { onTranscribed?: (text: string) => void }) => {
+    capturedOnTranscribed = opts?.onTranscribed;
+    return {
+      isRecording: false,
+      isTranscribing: false,
+      startRecording: capturedStartRecording,
+      stopRecordingAndTranscribe: vi.fn(),
+      cancelRecording: vi.fn(),
+      isVoiceEnabled: true,
+      localAvailable: false,
+    };
+  },
+}));
+
+vi.mock("@octo/base/src/Service/VoiceSettingsStore", () => ({
+  getVoiceShortcut: () => "alt-right",
+  voiceSettingsStore: {
+    get: () => ({ enabled: true }),
+    subscribe: () => () => undefined,
+  },
+}));
+
 vi.mock("react-dom", async () => {
   const actual = await vi.importActual("react-dom");
   return {
@@ -36,6 +59,11 @@ vi.mock("@douyinfe/semi-ui", () => ({
     Menu: vi.fn(({ children }: any) => children),
     Item: vi.fn(({ children }: any) => children),
   }),
+}));
+
+vi.mock("react-virtuoso", () => ({
+  Virtuoso: () => null,
+  TableVirtuoso: () => null,
 }));
 
 import VoiceInputButton from "@octo/base/src/Components/VoiceInputButton";

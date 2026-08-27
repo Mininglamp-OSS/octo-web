@@ -22,6 +22,11 @@ export interface UseSearchPaginationOptions<T> {
   search: (cursor?: string) => Promise<SearchPage<T>>;
   errorMessage: string;
   debounceMs?: number;
+  /**
+   * 首页检索(非分页)真正执行时回调一次 —— 供调用方发 channel_search_query 埋点。
+   * 只在无 cursor 分支触发,与后端 _search_ 首页请求 1:1;翻页(带 cursor)不触发。绝不传关键词。
+   */
+  onQueryStart?: () => void;
 }
 
 export function useSearchPagination<T>({
@@ -29,6 +34,7 @@ export function useSearchPagination<T>({
   search,
   errorMessage,
   debounceMs = 300,
+  onQueryStart,
 }: UseSearchPaginationOptions<T>) {
   const [response, setResponse] = useState<SearchPage<T>>({
     items: [],
@@ -73,6 +79,7 @@ export function useSearchPagination<T>({
         setPaginationError(null);
         setLoadingMore(true);
       } else {
+        onQueryStart?.();
         setError(null);
         setPaginationError(null);
         setAutoPaginationPaused(false);
@@ -115,7 +122,7 @@ export function useSearchPagination<T>({
         }
       }
     },
-    [enabled, errorMessage, search]
+    [enabled, errorMessage, search, onQueryStart]
   );
 
   const loadNextPage = useCallback(

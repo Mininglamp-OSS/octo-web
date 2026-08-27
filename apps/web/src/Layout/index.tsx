@@ -30,6 +30,7 @@ import {
     resolveMailAuthorizeSearch,
 } from "@octo/mail";
 import { consumeStandaloneReturn, persistStandaloneReturn, clearStandaloneReturn } from "./standaloneReturn";
+import { persistActiveSpace, readLastSpaceId } from "../features/spacePreference";
 
 interface AppLayoutState {
     showJoinSpace: boolean;
@@ -246,7 +247,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                 // dmwork-web#1068 Round 2：
                 // 登录+邀请路径也要弹 join-success toast（与 InviteLanding 直连加入走同一 helper）。
                 // 在调用 /space/join 前先快照 prevCurrentSpaceId，并预取 invite 信息拿 space_name。
-                const prevCurrentSpaceId = localStorage.getItem("currentSpaceId") || "";
+                const prevCurrentSpaceId = WKApp.shared.currentSpaceId || readLastSpaceId(WKApp.loginInfo.uid) || "";
                 // 预取邀请信息以便 toast 显示「位于 xxx 空间」。失败时降级为空 spaceName
                 // （toast 也能显示常规「已加入」），不阻塞 auto-join 流程。
                 const fetchInviteInfo = WKApp.apiClient
@@ -276,7 +277,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                             // 与 InviteLanding 一致：跨 Space 时不自动切换 currentSpaceId —
                             // 等用户点 toast 里的「切换过去」按钮。
                             if (!notice.crossSpace && spaceId) {
-                                localStorage.setItem('currentSpaceId', spaceId);
+                                persistActiveSpace(WKApp.loginInfo.uid, spaceId);
                             }
                             // 十二审 🔴 P1-4:space_join_new 命令式,仅真加入时计(审批态已在上方 early-return)。
                             //   此为 auto-join(登录时用 pendingInviteCode 直发 POST /space/join)的成功分支。
@@ -290,7 +291,8 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
                                 import('@douyinfe/semi-ui').then(({ Toast }) => Toast.error(t("app.invite.spaceFullCannotJoin")));
                             } else if (msg.includes(t("app.joinSpace.serverTerms.alreadyMember", { locale: "zh-CN" })) || msg.includes('already')) {
                                 localStorage.removeItem("pendingInviteCode");
-                                if (e?.space_id) localStorage.setItem('currentSpaceId', e.space_id);
+                                const targetSpaceId = e?.space_id || inviteInfo?.space_id || "";
+                                if (targetSpaceId) persistActiveSpace(WKApp.loginInfo.uid, targetSpaceId);
                             } else {
                                 localStorage.removeItem("pendingInviteCode");
                                 console.warn('Auto-join space failed:', msg);
@@ -451,7 +453,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
             if (WKApp.loginInfo.token) {
                 if (!WKApp.shared.currentSpaceId) {
-                    const cachedSpaceId = localStorage.getItem("currentSpaceId") || "";
+                    const cachedSpaceId = readLastSpaceId(WKApp.loginInfo.uid) || "";
                     if (cachedSpaceId) WKApp.shared.currentSpaceId = cachedSpaceId;
                 }
                 const mailAuthorizeComponent = WKApp.route.get(MAIL_AUTHORIZE_PATH, {
@@ -474,7 +476,7 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             if (!WKApp.loginInfo.token) recoverOctoSessionFromStorage(true);
             if (WKApp.loginInfo.token) {
                 if (!WKApp.shared.currentSpaceId) {
-                    const cachedSpaceId = localStorage.getItem("currentSpaceId") || "";
+                    const cachedSpaceId = readLastSpaceId(WKApp.loginInfo.uid) || "";
                     if (cachedSpaceId) WKApp.shared.currentSpaceId = cachedSpaceId;
                 }
                 const enterpriseStandalonePage = enterpriseStandaloneHandler.render({
@@ -557,8 +559,8 @@ export default class AppLayout extends Component<{}, AppLayoutState> {
             }
             // Space 模式：检查用户是否属于至少一个 Space
             if (!WKApp.shared.currentSpaceId) {
-                // 尝试从 localStorage 恢复
-                const cached = localStorage.getItem("currentSpaceId");
+                // 仅恢复当前账号的设备偏好，避免全局 currentSpaceId 串号。
+                const cached = readLastSpaceId(WKApp.loginInfo.uid);
                 if (cached) {
                     WKApp.shared.currentSpaceId = cached;
                     WKApp.shared.spaceChecked = true;

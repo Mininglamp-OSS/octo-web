@@ -418,6 +418,21 @@ describe('summaryApi', () => {
             expect(res).toEqual({ reply: '总结如下…', session_id: 's-1' });
         });
 
+        it('surfaces run_id + passes request_id through (SS-11 v2 contract)', async () => {
+            const { agentChat } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                data: { code: 0, data: { reply: 'r', session_id: 's-1', run_id: 'run-xyz' } },
+            });
+            const res = await agentChat({ message: 'q', session_id: 's-1', request_id: 'req-9' });
+            // request_id flows through in the posted body (idempotency key).
+            expect(mockPost).toHaveBeenCalledWith(
+                '/summary/api/v1/agent/chat',
+                { message: 'q', session_id: 's-1', request_id: 'req-9' },
+                { timeout: 120000 },
+            );
+            expect(res).toEqual({ reply: 'r', session_id: 's-1', run_id: 'run-xyz' });
+        });
+
         it('throws on non-zero envelope code (no silent success)', async () => {
             const { agentChat } = await import('../summaryApi');
             mockPost.mockResolvedValueOnce({
@@ -492,6 +507,65 @@ describe('summaryApi', () => {
             track.mockRestore();
         });
 
+        it('passes request_id through on agent save so the backend can bind the Run manifest', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { code: 0, data: { task_id: 4, task_no: 'n', status: 1, created_at: 'x' } } });
+            await createAgentSummary({ session_id: 's1', title: 't', request_id: 'req-save-1' }, {});
+            expect(mockPost).toHaveBeenCalledWith(
+                expect.any(String),
+                expect.objectContaining({ session_id: 's1', title: 't', request_id: 'req-save-1' }),
+            );
+            track.mockRestore();
+        });
+
+        it('returns finish_status + gaps when the v2 backend provides them (SS-11)', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({
+                data: {
+                    code: 0,
+                    data: {
+                        task_id: 5, task_no: 'n5', status: 1, created_at: 'x',
+                        finish_status: 'PARTIAL',
+                        gaps: [{ kind: 'coverage', detail: '频道 X 未覆盖', error_code: 'COV_MISS' }],
+                    },
+                },
+            });
+            const res = await createAgentSummary({} as any, {});
+            expect(res.task_id).toBe(5);
+            expect(res.finish_status).toBe('PARTIAL');
+            expect(res.gaps).toEqual([{ kind: 'coverage', detail: '频道 X 未覆盖', error_code: 'COV_MISS' }]);
+            track.mockRestore();
+        });
+
+        it('omits finish_status/gaps for a legacy backend (SS-11 back-compat)', async () => {
+            const { Dap } = await import('@octo/base');
+            const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
+            const { createAgentSummary } = await import('../summaryApi');
+            mockPost.mockResolvedValueOnce({ data: { code: 0, data: { task_id: 6, task_no: 'n6', status: 1, created_at: 'x' } } });
+            const res = await createAgentSummary({} as any, {});
+            expect(res.task_id).toBe(6);
+            expect(res.finish_status).toBeUndefined();
+            expect(res.gaps).toBeUndefined();
+            track.mockRestore();
+        });
+
+        it('propagates 422/42200 FAILED with the code accessible (SS-07b/SS-11)', async () => {
+            const { createAgentSummary } = await import('../summaryApi');
+            // A FAILED verdict is HTTP 422 → axios rejects; the caller keeps the chat
+            // open and must be able to read err.response.data.code === 42200.
+            const axiosErr = Object.assign(new Error('failed'), {
+                response: { status: 422, data: { code: 42200, message: '总结未通过完成校验（FAILED），未保存' } },
+            });
+            mockPost.mockRejectedValueOnce(axiosErr);
+            await expect(createAgentSummary({} as any, {})).rejects.toMatchObject({
+                response: { data: { code: 42200 } },
+            });
+        });
+
         it('agent mode does NOT emit on business failure (code!==0)', async () => {
             const { Dap } = await import('@octo/base');
             const track = vi.spyOn(Dap.shared, 'track').mockImplementation(() => undefined);
@@ -512,6 +586,55 @@ describe('summaryApi', () => {
             await expect(createAgentSummary({} as any, { trigger_mode: 'agent' })).rejects.toBeTruthy();
             expect(track.mock.calls.some((c) => c[0] === 'smart_summary_started')).toBe(false);
             track.mockRestore();
+        });
+    });
+    describe('convertSummaryToDoc — 委托给 docs 能力端口 (octo-smart-summary#195)', () => {
+        // 回归钉死：packages/docs 已在 #1363 从 OSS host 拆走，本包**不得**再直连
+        // docs-backend 的 REST 端点。转文档必须整段走 @octo/base 的 docs 端口，
+        // 建文档 / 导入 markdown / 失败回滚全部是实现方职责。
+        it('把 title + markdown 原样交给端口，并回传端口给的 docId/url', async () => {
+            const base = await import('@octo/base');
+            const spy = vi
+                .spyOn(base, 'convertMarkdownToDoc')
+                .mockResolvedValueOnce({ docId: 'doc-9', url: '/d/doc-9' });
+
+            const { convertSummaryToDoc } = await import('../summaryApi');
+            const result = await convertSummaryToDoc('周报', '# 本周进展');
+
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect(spy).toHaveBeenCalledWith({ title: '周报', markdown: '# 本周进展' });
+            expect(result).toEqual({ docId: 'doc-9', url: '/d/doc-9' });
+            spy.mockRestore();
+        });
+
+        it('不发起任何 docs REST 请求（不 post /docs、不 delete /docs/:id）', async () => {
+            const base = await import('@octo/base');
+            const spy = vi
+                .spyOn(base, 'convertMarkdownToDoc')
+                .mockResolvedValueOnce({ docId: 'doc-9', url: '/d/doc-9' });
+
+            mockPost.mockClear();
+            mockDelete.mockClear();
+            const { convertSummaryToDoc } = await import('../summaryApi');
+            await convertSummaryToDoc('t', 'body');
+
+            expect(mockPost).not.toHaveBeenCalled();
+            expect(mockDelete).not.toHaveBeenCalled();
+            spy.mockRestore();
+        });
+
+        it('端口失败时错误原样抛出，本层不做回滚补偿', async () => {
+            const base = await import('@octo/base');
+            const boom = new Error('import failed');
+            const spy = vi.spyOn(base, 'convertMarkdownToDoc').mockRejectedValueOnce(boom);
+
+            mockDelete.mockClear();
+            const { convertSummaryToDoc } = await import('../summaryApi');
+            await expect(convertSummaryToDoc('t', 'body')).rejects.toBe(boom);
+            // 回滚（删孤儿文档）属于实现方职责 —— 只有它知道哪些错误是确定性 HTTP 拒绝、
+            // 哪些只是超时（超时不代表服务端没落盘，贸然删除会丢用户内容）。
+            expect(mockDelete).not.toHaveBeenCalled();
+            spy.mockRestore();
         });
     });
 });

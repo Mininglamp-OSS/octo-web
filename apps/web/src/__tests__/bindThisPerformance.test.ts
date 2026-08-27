@@ -30,7 +30,7 @@ describe('Performance: Arrow function properties vs .bind(this) in render', () =
     {
       name: 'WKAvatar',
       path: 'packages/dmworkbase/src/Components/WKAvatar/index.tsx',
-      methods: ['handleLoad', 'handleImgError'],
+      methods: ['handleImgError'],
     },
   ];
 

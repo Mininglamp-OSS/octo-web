@@ -65,7 +65,10 @@ export async function registerS20SummaryListRetryFailed(page: Page): Promise<voi
       http.post("*/summary/api/v1/summaries/batch-status", () => {
         const state = (window as unknown as { __s20State__: { retried: boolean } }).__s20State__;
         return env({ tasks: [{ id: taskId, status: state.retried ? 2 : 4 }] });
-      })
+      }),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
+      )
     );
   }, [S20_TASK_ID]);
 }

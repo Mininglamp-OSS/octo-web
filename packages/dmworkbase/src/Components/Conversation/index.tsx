@@ -26,6 +26,7 @@ import { interpretForwardResult, ForwardToastScope, ForwardToastKind } from "../
 import Provider from "../../Service/Provider";
 import { Dap } from "../../Service/Dap";
 import ConversationVM from "./vm";
+import { isMessageAuthorAi } from "./replyAiIdentity";
 import "./index.css";
 import { EmojiInfo, MentionInfo } from "../../Messages/Text/MarkdownContent";
 import MarkdownContent from "../../Messages/Text/MarkdownContent";
@@ -74,7 +75,7 @@ import {
   type InitialComposeState,
 } from "./initialCompose";
 import { BotCommand } from "../SlashCommandMenu";
-import ContextMenus, { ContextMenusContext } from "../ContextMenus";
+import ContextMenus, { ContextMenusContext, type ContextMenusTrigger } from "../ContextMenus";
 import classNames from "classnames";
 import WKAvatar from "../WKAvatar";
 import AiBadge from "../AiBadge";
@@ -82,6 +83,7 @@ import AITag from "../../ui/AITag";
 import { IconClose, IconEdit, IconReply } from "@douyinfe/semi-icons";
 import { Tooltip } from "@octo/ui";
 import { Toast, Spin } from "@douyinfe/semi-ui";
+import { AtSign, UserRound } from "lucide-react";
 import { wkConfirm } from "../WKModal";
 import { FlameMessageCell } from "../../Messages/Flame";
 import FoldSessionCard, { FoldSessionCardParticipant } from "./FoldSessionCard";
@@ -134,6 +136,7 @@ import {
   taskStatusWaitResult,
 } from "../../Utils/sendWaitResult";
 import { parseThreadChannelId } from "../../Service/Thread";
+import { stripSpacePrefix } from "../../Service/SpacePrefix";
 import FoldSessionExpandedList from "./FoldSessionExpandedList";
 import { captureSelectionWithinContainer } from "./copySelection";
 import VoiceFeedback from "../../Service/VoiceFeedback";
@@ -172,6 +175,35 @@ function forwardBlockedMessageKey(error: unknown): string | null {
     return "base.conversation.forward.cardBlocked";
   }
   return null;
+}
+
+export function classifyAssistantIntentText(text: string | undefined): string {
+  if (!text) return "other";
+  if (/总结|摘要|概括|summariz|summary/i.test(text)) return "summary";
+  if (/分析|解读|analyz|analysis/i.test(text)) return "analysis";
+  if (
+    text.includes("```") ||
+    /写(段|个|一)?代码|代码实现|生成代码|帮我(写|实现).*(函数|方法|代码|脚本)|报错|编译|\bdebug\b|\bfunction\b|\bclass\b|\bdef\b/i.test(text)
+  ) {
+    return "code_gen";
+  }
+  if (text.includes("?") || text.includes("？")) return "qa";
+  return "other";
+}
+
+export async function deleteSelectedConversationMessages(
+  vm: Pick<ConversationVM, "deleteMessages" | "unCheckAllMessages"> & { editOn: boolean },
+  messages: Message[],
+): Promise<void> {
+  if (messages.length === 0) return;
+  try {
+    await vm.deleteMessages(messages);
+    vm.editOn = false;
+    vm.unCheckAllMessages();
+  } catch (error) {
+    Toast.error(t("base.conversation.deleteConfirm.failed"));
+    throw error;
+  }
 }
 
 /**
@@ -654,7 +686,44 @@ export class Conversation
       return Promise.reject(new Error("group disbanded"));
     }
     const message = await vm.sendMessage(content, c);
+
+    // 埋点：octo_assistant_queried（octo-dap S3 / YUJ-277）
+    // 判别：当前会话是 1v1、bot.uid 在 octoAssistantUids 中,且本次发送是文本消息。
+    // 只计文本发送 —— 贴图/文件/转发媒体等经同一 sendMessage 漏斗但不是「提问」,
+    // 计进来会虚高 query 量并全部落 intent_tag=other(见 #1452 review P2)。
+    if (c.channelType === ChannelTypePerson && content instanceof MessageText) {
+      // Space 部署下 Person channelID 形如 s<32hex>_<uid>,而 octoAssistantUids 存的是裸 uid
+      // (兄弟事件 octo_assistant_opened 走 bot.uid 裸值)。不 strip 则 includes() 恒 false,
+      // 进会话列表打开的助手 DM 永远不发 query,造成 opened 有、queried 无的畸形漏斗(#1452 P1-2)。
+      // stripSpacePrefix 对非 Space 部署幂等。
+      const botUid = stripSpacePrefix(c.channelID);
+      if (WKApp.remoteConfig.octoAssistantUids.includes(botUid)) {
+        const intentTag = this.classifyAssistantIntent(content);
+        Dap.shared.track("octo_assistant_queried", { intent_tag: intentTag });
+      }
+    }
+
     return message;
+  }
+
+  /**
+   * 启发式分类用户向 Octo Assistant 发送的消息意图（octo-dap S3 / YUJ-277）。
+   * 不采原文，只返回分类标签：
+   * - summary：含"总结"/"摘要"/"概括"
+   * - analysis：含"分析"/"解读"
+   * - code_gen：含代码围栏(```)或明确的写码信号
+   * - qa：含问号
+   * - other：其他
+   *
+   * 顺序：显式意图动词(summary/analysis)先判,code_gen 收紧到「代码围栏或强代码信号」——
+   * 旧实现把 code_gen 排在最前且关键词含 code/let/const/var 等日常英文词,会把
+   * "总结一下这段 code" 误判 code_gen、把 "Let me know…" 误判 code_gen(见 #1452 review P2)。
+   */
+  private classifyAssistantIntent(content: MessageContent): string {
+    if (!(content instanceof MessageText)) {
+      return "other";
+    }
+    return classifyAssistantIntentText((content as MessageText).text);
   }
 
   // 统一上报转发结果。区分「全部失败」与「部分失败（带计数）」，全部成功不提示。
@@ -708,7 +777,13 @@ export class Conversation
         );
         const kind = this.showForwardResult(result, "targets");
         // 全部目标失败(如群已解散)不计转发,与 smart_summary_forwarded 同口径(见二审 P2-2)。
-        if (kind !== "all-failed") Dap.shared.track("message_forwarded", {});
+        if (kind !== "all-failed") Dap.shared.track("message_forwarded", {
+            object_id: message.messageID,
+            message_id: message.messageID,
+            // is_ai_msg:被转发消息的作者是否 AI/bot(与 message_replied 同源判据),
+            // 供区分 AI 消息转发漏斗(session.go ai_msg_forward)。见 #1452 review。
+            is_ai_msg: isMessageAuthorAi(message.fromUID),
+        });
       } catch (e) {
         console.error("[forward] build content failed", e);
         const blockedMessageKey = forwardBlockedMessageKey(e);
@@ -1341,7 +1416,17 @@ export class Conversation
       return;
     }
     this.vm.selectUID = uid;
-    this.avatarMenusContext.show(event);
+    let trigger: ContextMenusTrigger = event;
+    // Enter / Space 触发的原生 button click 没有指针坐标，改用按钮右下角定位。
+    if (event.detail === 0) {
+      const rect = event.currentTarget.getBoundingClientRect();
+      trigger = {
+        clientX: rect.right,
+        clientY: rect.bottom,
+        preventDefault: () => undefined,
+      };
+    }
+    this.avatarMenusContext.show(trigger);
   }
 
   // 定位消息
@@ -3189,17 +3274,7 @@ export class Conversation
                           const messages = checkedMessagewraps
                             .map((m) => m.message)
                             .filter(Boolean);
-                          if (messages.length === 0) return;
-                          try {
-                            await vm.deleteMessages(messages);
-                            vm.editOn = false;
-                            vm.unCheckAllMessages();
-                          } catch (e) {
-                            Toast.error(
-                              t("base.conversation.deleteConfirm.failed")
-                            );
-                            throw e;
-                          }
+                          await deleteSelectedConversationMessages(vm, messages);
                         },
                       });
                     }}
@@ -3422,7 +3497,8 @@ export class Conversation
                 }}
                 menus={[
                   {
-                    title: "@TA",
+                    title: t("base.conversation.avatarMenu.mention"),
+                    icon: AtSign,
                     onClick: () => {
                       if (!this.vm.selectUID) {
                         return;
@@ -3444,6 +3520,7 @@ export class Conversation
                   },
                   {
                     title: t("base.conversation.avatarMenu.viewUserInfo"),
+                    icon: UserRound,
                     onClick: () => {
                       if (!this.vm.selectUID) {
                         return;

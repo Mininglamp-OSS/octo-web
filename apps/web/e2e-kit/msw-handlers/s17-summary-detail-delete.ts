@@ -105,7 +105,10 @@ export async function registerS17SummaryDetailDelete(page: Page): Promise<void> 
         const state = (window as unknown as { __s17State__: { deleted: boolean } }).__s17State__;
         state.deleted = true;
         return env({});
-      })
+      }),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
+      )
     );
   });
 }

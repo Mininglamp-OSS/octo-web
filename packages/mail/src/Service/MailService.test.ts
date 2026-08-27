@@ -51,6 +51,28 @@ describe("MailService", () => {
     });
   });
 
+  it("reads the lightweight account state through the selected mailbox", async () => {
+    api.get.mockResolvedValue({ state: "128" });
+
+    await expect(MailService.getState("42")).resolves.toBe("128");
+    expect(api.get).toHaveBeenCalledWith("/mail-api/webapi/v0/state", {
+      headers: { "X-Octo-Mailbox-ID": "42" },
+      timeout: MAIL_REQUEST_TIMEOUT_MS,
+      signal: undefined,
+    });
+  });
+
+  it("rejects an invalid account state response", async () => {
+    api.get.mockResolvedValueOnce({ state: 128 }).mockResolvedValueOnce(null);
+
+    await expect(MailService.getState("42")).rejects.toThrow(
+      "Invalid mail state response"
+    );
+    await expect(MailService.getState("42")).rejects.toThrow(
+      "Invalid mail state response"
+    );
+  });
+
   it("loads the authenticated mailbox identity", async () => {
     api.get.mockResolvedValue({ address: "agent@example.com" });
 
@@ -212,6 +234,19 @@ describe("MailService", () => {
       name: "VIP mail",
       enabled: true,
       priority: 0,
+      matchMode: "all" as const,
+      conditions: [
+        {
+          field: "from" as const,
+          operator: "contains" as const,
+          value: "vip@example.com",
+        },
+        {
+          field: "subject" as const,
+          operator: "contains" as const,
+          value: "urgent",
+        },
+      ],
       matchFrom: "vip@example.com",
       matchSubject: "urgent",
       forwardTargets: ["owner@example.com"],
@@ -311,6 +346,24 @@ describe("MailService", () => {
     expect(api.patch).toHaveBeenCalledWith(
       "/mail-api/webapi/v0/messages/E%201",
       { addKeywords: ["\\Seen"], removeKeywords: [] },
+      {
+        headers: { "X-Octo-Mailbox-ID": "42" },
+        timeout: MAIL_REQUEST_TIMEOUT_MS,
+      }
+    );
+  });
+
+  it("restores a Junk message and trusts its sender in the selected mailbox", async () => {
+    api.post.mockResolvedValue({
+      updated: "E 1",
+      senderAddress: "sender@example.com",
+    });
+
+    await MailService.restoreNotJunk("42", "E 1");
+
+    expect(api.post).toHaveBeenCalledWith(
+      "/mail-api/webapi/v0/messages/E%201/not-junk",
+      {},
       {
         headers: { "X-Octo-Mailbox-ID": "42" },
         timeout: MAIL_REQUEST_TIMEOUT_MS,

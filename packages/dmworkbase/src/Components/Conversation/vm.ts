@@ -20,6 +20,8 @@ import {
 import { TypingListener, TypingManager } from "../../Service/TypingManager";
 import { ProhibitwordsService } from "../../Service/ProhibitwordsService";
 import { SYSTEM_BOTS } from "../../Service/SpaceService";
+import { isBotfatherChannelID } from "../../Service/botfatherChannel";
+import { isReplyAuthorAi } from "./replyAiIdentity";
 import { rememberSendIntent, trackMessageRevoked } from "../../Service/trackMessage";
 import { SuperGroup } from "../../Utils/const";
 import { SystemContent } from "wukongimjssdk";
@@ -51,6 +53,7 @@ import {
 } from "../../im-runtime/channelRuntime";
 import { getBrowserUnreadConversationSync } from "../../features/documentTitle";
 import { isOwnedConversationSingleton } from "../../features/notifications/messageAttention";
+import { isSummaryTipContent } from "../../Messages/SummaryNotify/protocol";
 
 export interface FoldSessionParticipant {
     uid: string
@@ -1863,7 +1866,11 @@ export default class ConversationVM extends ProviderListener {
                 opts.pullMode = PullMode.Up
             }
         }
-        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        const remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
 
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
@@ -1947,7 +1954,11 @@ export default class ConversationVM extends ProviderListener {
         const [olderRemoteMessages, newerRemoteMessages] = await Promise.all([
             WKApp.conversationProvider.syncMessages(this.channel, olderOpts),
             WKApp.conversationProvider.syncMessages(this.channel, newerOpts),
-        ])
+        ]).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const toAvailableMessageWraps = (remoteMessages?: Message[]) => {
             const messages = new Array<Message>()
             if (remoteMessages && remoteMessages.length > 0) {
@@ -2067,6 +2078,10 @@ export default class ConversationVM extends ProviderListener {
         return messages.filter((m) => {
             // Only process system messages (content_type 1000-2000)
             if (m.contentType < 1000 || m.contentType > 2000) return true
+            // Summary-completion tips represent distinct tasks. Their visible
+            // text can be identical within five minutes, so the generic
+            // security-warning dedup must not collapse them.
+            if (isSummaryTipContent(m.content)) return true
             const content = m.content as SystemContent
             const text = content?.displayText
             if (!text) return true
@@ -2144,6 +2159,9 @@ export default class ConversationVM extends ProviderListener {
 
     // 向下拉取消息
     async pulldownMessages() {
+        if (this.loading) {
+            return
+        }
 
         const minMessage = this.getMessageMin();
         if (minMessage?.messageSeq === 1) { // 如果最小messageSeq=1 说明下拉没消息了直接return
@@ -2163,7 +2181,11 @@ export default class ConversationVM extends ProviderListener {
         opts.pullMode = PullMode.Down
         opts.startMessageSeq = minMessage.messageSeq - 1
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {
@@ -2193,18 +2215,26 @@ export default class ConversationVM extends ProviderListener {
 
     // 向上拉取消息
     async pullupMessages() {
-        this.loading = true
+        if (this.loading) {
+            return
+        }
+
         const maxMessage = this.getMessageMax()
         if (maxMessage == null || maxMessage.messageSeq <= 0) { // 没有消息直接return
             return
         }
 
+        this.loading = true
         const opts = new SyncMessageOptions()
         opts.limit = WKApp.config.pageSizeOfMessage
         opts.pullMode = PullMode.Up
         opts.startMessageSeq = maxMessage.messageSeq
 
-        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts)
+        let remoteMessages = await WKApp.conversationProvider.syncMessages(this.channel, opts).catch((error) => {
+            this.loading = false
+            this.notifyListener()
+            throw error
+        })
         const newMessages = new Array<Message>()
         if (remoteMessages && remoteMessages.length > 0) {
             remoteMessages.forEach(msg => {
@@ -2489,10 +2519,13 @@ export default class ConversationVM extends ProviderListener {
         {
             let botCreateEntry: string | undefined
             let botCommandEvent: string | undefined
-            // botfather 命令(/newbot、/help…)是 botfather 专属;门按 channelID==="botfather" 判,
-            // 与 BOTFATHER_COMMAND_EVENTS 注释(§B)对齐。不用 SYSTEM_BOTS.has():该集合未来加入其它
-            // 系统 bot 时会让别的 bot 的 /command 文本误命中 botfather 事件(见二审 nit)。
-            if (channel.channelID === "botfather" && content instanceof MessageText) {
+            // botfather 命令(/newbot、/help…)是 botfather 专属;门用 isBotfatherChannelID 后缀匹配,
+            // 与 BOTFATHER_COMMAND_EVENTS 注释(§B)及 botfather_opened 分母门**共用同一 helper** → 图两侧
+            // 同步。Space 部署下 channelID = s{spaceId}_botfather(spaceId 任意串),裸 "botfather" 只在无
+            // Space 时出现;不能用 stripSpacePrefix(正则只认 32-hex spaceId)。详见 Service/botfatherChannel.ts。
+            // 不用 SYSTEM_BOTS.has():该集合未来加入其它系统 bot 时会让别的 bot 的 /command 文本误命中
+            // botfather 事件(见二审 nit)。
+            if (isBotfatherChannelID(channel.channelID) && content instanceof MessageText) {
                 const text = (content.text || "").trim()
                 if (matchesCommandPrefix(text, "/newbot")) {
                     botCreateEntry = "botfather_im"
@@ -2514,6 +2547,11 @@ export default class ConversationVM extends ProviderListener {
                 }
                 if (bots.length > 0) mentionedBots = bots
             }
+            // message_replied 的 is_ai_msg:被回复消息作者(content.reply.fromUID)是否 AI/bot。
+            // 走 isReplyAuthorAi(按 uid 查 person channelInfo 的 robot 标记),DM/群统一 ——
+            // 不再查 this.subscribers(仅群/子区填充,DM 恒空会把 human↔AI DM 回复误判 false;见 #1452 review P1)。
+            const replyFromUid = content.reply?.fromUID
+            const isReplyToAi: boolean | undefined = content.reply ? isReplyAuthorAi(replyFromUid) : undefined
             rememberSendIntent(message.clientSeq, {
                 channelId: channel.channelID,
                 channelType: channel.channelType,
@@ -2521,6 +2559,13 @@ export default class ConversationVM extends ProviderListener {
                 botCreateEntry,
                 botCommandEvent,
                 isReply: !!content.reply,
+                // message_replied 的 message_id = 被回复消息的 ID(content.reply.messageID,
+                // 发送时即可得;server 侧新消息 id 此刻尚未分配)。无 reply 时 undefined,
+                // 但此时 isReply=false,message_replied 根本不发。
+                messageId: content.reply?.messageID,
+                isReplyToAi,
+                // ai_mentioned 的 user_id 由生产者注入,避免 leaf service trackMessage 静态 import App
+                userId: WKApp.loginInfo.uid || null,
                 mentionedBots,
             })
         }

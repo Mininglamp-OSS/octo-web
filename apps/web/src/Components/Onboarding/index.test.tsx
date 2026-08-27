@@ -34,13 +34,13 @@ const { runOnboardingViewTransition, viewTransitionState } = vi.hoisted(() => {
 const translations: Record<string, string> = {
   "app.onboarding.dialog.introAria": "Octo onboarding introduction",
   "app.onboarding.intro.actions.skip": "Skip",
-  "app.onboarding.sections.workspace.description":
+  "app.onboarding.sections.organization.description":
     "Workspace lead\nShared context\nHuman and AI coordination",
   "app.onboarding.sections.createBot.label": "Create your Bot",
   "app.onboarding.sections.createBot.title": "Create your Bot",
   "app.onboarding.sections.createBot.description":
     "Create your first Bot in BotFather and start using Octo.",
-  "app.onboarding.sections.createBot.visualTitle":
+  "app.onboarding.sections.createBot.imageAlt":
     "Cursor hovering over the BotFather entry",
   "app.onboarding.actions.finish": "Finish",
   "app.onboarding.actions.completed": "Completed",
@@ -148,6 +148,11 @@ describe("Onboarding", () => {
     expect(screen.getByText("Human and AI coordination")).toHaveClass(
       "wk-onboarding-description-support-line"
     );
+
+    const decorativeImage = document.querySelector(".wk-onboarding-image");
+    const mediaFrame = document.querySelector(".wk-onboarding-media-frame");
+    expect(decorativeImage).toHaveAttribute("alt", "");
+    expect(mediaFrame).not.toHaveAttribute("aria-label");
   });
 
   it("preloads the remaining directory images after the first image renders", () => {
@@ -216,9 +221,7 @@ describe("Onboarding", () => {
     const config = {
       ...defaultOnboardingConfig,
       sections: defaultOnboardingConfig.sections.map((section) =>
-        section.id === "workspace"
-          ? { ...section, enabled: false }
-          : section
+        section.id === "workspace" ? { ...section, enabled: false } : section
       ),
     };
 
@@ -235,9 +238,7 @@ describe("Onboarding", () => {
     const config = {
       ...defaultOnboardingConfig,
       sections: defaultOnboardingConfig.sections.map((section) =>
-        section.id === "create-bot"
-          ? section
-          : { ...section, enabled: false }
+        section.id === "create-bot" ? section : { ...section, enabled: false }
       ),
     };
 

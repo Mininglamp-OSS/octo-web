@@ -1,4 +1,7 @@
 import { evaluatePasswordStrength, validatePassword } from '@octo/login/src/passwordStrength';
+import { i18n } from '@octo/base/src/i18n/instance';
+
+i18n.setLocale('zh-CN', { notify: false, persist: false });
 
 describe('evaluatePasswordStrength', () => {
     describe('empty password', () => {
@@ -11,15 +14,16 @@ describe('evaluatePasswordStrength', () => {
     });
 
     describe('short passwords', () => {
-        it('should mark password shorter than 8 characters as invalid', () => {
+        it('should accept a 6-character password when the score is weak', () => {
             const result = evaluatePasswordStrength('abc123');
-            expect(result.isValid).toBe(false);
-            expect(result.feedback).toContain('密码长度至少需要 8 位');
+            expect(result.isValid).toBe(true);
+            expect(result.feedback).not.toContain('密码长度至少需要 6 位');
         });
 
-        it('should mark 7-character password as invalid', () => {
-            const result = evaluatePasswordStrength('Aa1bcde');
+        it('should mark 5-character password as invalid', () => {
+            const result = evaluatePasswordStrength('Aa1bc');
             expect(result.isValid).toBe(false);
+            expect(result.feedback).toContain('密码长度至少需要 6 位');
         });
     });
 
@@ -33,7 +37,7 @@ describe('evaluatePasswordStrength', () => {
         it('should detect "12345678" as weak', () => {
             const result = evaluatePasswordStrength('12345678');
             expect(result.score).toBeLessThanOrEqual(1);
-            expect(result.isValid).toBe(false);
+            expect(result.isValid).toBe(true);
         });
 
         it('should detect "qwerty123" as weak', () => {
@@ -53,7 +57,7 @@ describe('evaluatePasswordStrength', () => {
             // zxcvbn correctly identifies "MyP4ssw0rd" as a common pattern
             const result = evaluatePasswordStrength('MyP4ssw0rd');
             expect(result.score).toBeLessThanOrEqual(1);
-            expect(result.isValid).toBe(false);
+            expect(result.isValid).toBe(true);
         });
     });
 
@@ -112,23 +116,20 @@ describe('validatePassword', () => {
     });
 
     describe('short password', () => {
-        it('should return error for password shorter than 8 characters', () => {
-            expect(validatePassword('short')).toBe('密码长度至少需要 8 位');
-            expect(validatePassword('1234567')).toBe('密码长度至少需要 8 位');
+        it('should return error for password shorter than 6 characters', () => {
+            expect(validatePassword('short')).toBe('密码长度至少需要 6 位');
+            expect(validatePassword('12345')).toBe('密码长度至少需要 6 位');
         });
 
-        it('should accept exactly 8 characters if strong enough', () => {
-            // This is a strong 8-char password
-            const result = validatePassword('Aa1!bcde');
-            // It might still fail if zxcvbn considers it weak, but length check should pass
-            expect(result).not.toBe('密码长度至少需要 8 位');
+        it('should accept exactly 6 characters regardless of advisory score', () => {
+            expect(validatePassword('123456')).toBeNull();
         });
     });
 
     describe('weak password', () => {
         it('should return error for weak password', () => {
-            expect(validatePassword('password')).toBe('密码强度太弱，请设置更安全的密码');
-            expect(validatePassword('12345678')).toBe('密码强度太弱，请设置更安全的密码');
+            expect(validatePassword('password')).toBeNull();
+            expect(validatePassword('12345678')).toBeNull();
         });
     });
 

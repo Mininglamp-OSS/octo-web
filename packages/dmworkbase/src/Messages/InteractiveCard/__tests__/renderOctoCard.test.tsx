@@ -73,6 +73,96 @@ describe("renderOctoCard", () => {
     target.remove();
   });
 
+  it("Forge 展开选项点击整张卡片即可切换 radio/checkbox", () => {
+    const target = mountTarget();
+    target.className = "wk-interactive-card-forge octo-card-profile";
+    renderOctoCard({
+      card: {
+        type: "AdaptiveCard",
+        version: "1.5",
+        body: [
+          {
+            type: "Input.ChoiceSet",
+            id: "single",
+            style: "expanded",
+            choices: [
+              { title: "A", value: "a" },
+              { title: "B", value: "b" },
+            ],
+          },
+          {
+            type: "Input.ChoiceSet",
+            id: "multiple",
+            isMultiSelect: true,
+            choices: [{ title: "C", value: "c" }],
+          },
+        ],
+      },
+      target,
+      renderProfile: "octo-chat/v1",
+      onAction: () => {},
+    });
+
+    const radioRows = target.querySelectorAll<HTMLElement>(
+      ".ac-choiceSetInput-expanded > div"
+    );
+    const secondRadio = radioRows[1].querySelector<HTMLInputElement>("input");
+    radioRows[1].click();
+    expect(secondRadio?.checked).toBe(true);
+
+    const checkboxRow = target.querySelector<HTMLElement>(
+      ".ac-choiceSetInput-multiSelect > div"
+    );
+    const checkbox = checkboxRow?.querySelector<HTMLInputElement>("input");
+    // Cell 更新后会重复执行增强；必须保持幂等，避免一次点击切换两次。
+    enhanceRenderedOctoCard({
+      card: {},
+      target,
+      renderProfile: "octo-chat/v1",
+      onAction: () => {},
+    });
+    checkboxRow?.click();
+    expect(checkbox?.checked).toBe(true);
+    target.remove();
+  });
+
+  it("Forge 选项保留 label 原生点击，且只读卡片不响应空白区域", () => {
+    const target = mountTarget();
+    target.className =
+      "wk-interactive-card-forge octo-card-profile wk-interactive-card-sdk--readonly";
+    renderOctoCard({
+      card: {
+        type: "AdaptiveCard",
+        version: "1.5",
+        body: [
+          {
+            type: "Input.ChoiceSet",
+            id: "multiple",
+            isMultiSelect: true,
+            choices: [{ title: "A", value: "a" }],
+          },
+        ],
+      },
+      target,
+      renderProfile: "octo-chat/v1",
+      onAction: () => {},
+    });
+
+    const row = target.querySelector<HTMLElement>(
+      ".ac-choiceSetInput-multiSelect > div"
+    );
+    const input = row?.querySelector<HTMLInputElement>("input");
+    row?.click();
+    expect(input?.checked).toBe(false);
+    row?.querySelector<HTMLLabelElement>("label")?.click();
+    expect(input?.checked).toBe(false);
+
+    target.classList.remove("wk-interactive-card-sdk--readonly");
+    row?.querySelector<HTMLLabelElement>("label")?.click();
+    expect(input?.checked).toBe(true);
+    target.remove();
+  });
+
   it("渲染 RichTextBlock/TextRun（服务端 manifest 展示元素）", () => {
     const target = mountTarget();
     renderOctoCard({

@@ -698,8 +698,10 @@ body[theme-mode="dark"] .wk-conversationlist:hover::-webkit-scrollbar-thumb {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
+  gap: var(--wk-sp-0-5);
+  width: auto;
   height: 20px;
+  padding: 0 var(--wk-sp-1);
   border-radius: var(--wk-r-xs);
   margin-left: var(--wk-sp-0-5);
   cursor: pointer;

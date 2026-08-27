@@ -12,6 +12,7 @@ import {
   buildThreadChannelId,
 } from "../../Service/Thread";
 import { ThreadPanelVM, ThreadPanelState } from "./vm";
+import { Dap } from "../../Service/Dap";
 import {
   X,
   Plus,
@@ -26,7 +27,11 @@ import ThreadIcon from "../Icons/ThreadIcon";
 import classNames from "classnames";
 import { Conversation } from "../Conversation";
 import { ChannelTypeCommunityTopic } from "../../Service/Const";
-import { canManageThread, isParentGroupManager } from "../../Service/threadPermission";
+import {
+  canManageThread,
+  isParentGroupManager,
+} from "../../Service/threadPermission";
+import { extractErrorMsg } from "../../Service/APIClient";
 import ChannelWebhookPanel from "../ChannelWebhook";
 import { ErrorBoundary } from "../ErrorBoundary";
 import WKApp from "../../App";
@@ -695,6 +700,9 @@ export default class ThreadPanel extends Component<
         thread.channel_id,
         ChannelTypeCommunityTopic
       );
+      // 该子区已在面板打开(didUpdate 已发过 subchannel_opened),打开完整视图仅是视图切换 →
+      // 置 sentinel,子区页挂载时跳过重复发点(R10 P1-1)。
+      WKApp.shared.pendingSubchannelOpenTracked = threadChannel.channelID;
       WKApp.endpoints.showConversation(threadChannel);
       this.props.onClose();
     } catch {
@@ -723,6 +731,11 @@ export default class ThreadPanel extends Component<
     opts.openChannelSearch = true;
     opts.fromSidebarList = true;
     this.setState({ showMoreMenu: false });
+    // 该子区已在面板打开(didUpdate 已发过 subchannel_opened),打开页内搜索会 remount 子区页,
+    // 手势是「开搜索」而非「开子区」→ 置 sentinel,挂载时跳过重复发点(R10 P1-1)。
+    if (threadChannel) {
+      WKApp.shared.pendingSubchannelOpenTracked = threadChannel.channelID;
+    }
     WKApp.endpoints.showConversation(threadChannel, opts);
     this.props.onClose();
   };
@@ -738,17 +751,32 @@ export default class ThreadPanel extends Component<
     this.setState({ showWebhookPanel: false });
   };
 
-  private canEditThread(thread: Thread): boolean {
+  // 父群解散后「更多菜单」写入口（改名 / 归档 / 取消归档）一律只读隐藏，与创建
+  // 子区按钮的 isChannelDisbanded guard 对齐。改名与归档两个 gate 共用这道
+  // ThreadPanel 本地前置。注：右侧设置页「子区名称」行现已与此对齐——父群解散后同样不可改
+  // （channelSettingThreadInfoSection 的 canEdit = !disbanded），两处一致，不再有
+  // 「一处可改一处不可改」的撕裂。
+  private isThreadMenuWritable(): boolean {
     if (!this.props.groupNo) return false;
-    // 父群解散后只读：更多菜单里的编辑名称 / 归档 / 取消归档全部隐藏（与创建子区
-    // 按钮的 isChannelDisbanded guard 对齐）。这三项都经 canEditThread 门控
-    // （渲染处 index.tsx ~1238、归档按钮 shouldShowArchiveButton ~1623），故在此
-    // 单点拦截即可覆盖全部写入口。注：改名能力本身在后端解散后仍解禁、右侧面板
-    // 「子区名称」行仍可改（企业微信式低风险写）；这里只是收敛 ThreadPanel 菜单入口。
-    if (isChannelDisbanded(new Channel(this.props.groupNo, ChannelTypeGroup))) {
-      return false;
-    }
-    return canManageThread(thread, this.props.groupNo);
+    return !isChannelDisbanded(
+      new Channel(this.props.groupNo, ChannelTypeGroup)
+    );
+  }
+
+  // 归档 / 取消归档 gate：创建者 / 父群群主 / 父群管理员（canManageThread），
+  // 与右侧设置页归档入口（module.tsx canArchiveThread）同口径。渲染处：更多菜单
+  // 的归档项（index.tsx ~1329）与行内归档按钮 shouldShowArchiveButton（~1740）。
+  private canEditThread(thread: Thread): boolean {
+    if (!this.isThreadMenuWritable()) return false;
+    return canManageThread(thread, this.props.groupNo!);
+  }
+
+  // 改名 gate：WS-23 改名走「服务端为唯一权威」——前端不做权限/状态前置判定。服务端
+  // UpdateName 在父群解散后仍允许改子区名（产品决策），故这里不再套 isThreadMenuWritable
+  // 的 disband gate（否则会与右侧设置页不一致、并回归 main）。有 groupNo 即显示「Edit name」，
+  // 保存失败由 handleEditThread 透传 error.msg 并保留弹窗。归档仍走 canManageThread（父群角色）。
+  private canRenameThreadInPanel(): boolean {
+    return !!this.props.groupNo;
   }
 
   private handleEditThread = () => {
@@ -777,11 +805,12 @@ export default class ThreadPanel extends Component<
           newName = inputRef.current?.value ?? thread.name;
           if (!newName || newName.trim() === "") {
             Toast.error(t("base.threadPanel.nameRequired"));
-            return;
+            // throw 让 wkConfirm 保留弹窗与用户草稿（其 onOk reject 分支不 destroy）
+            throw new Error("thread-name-empty");
           }
           if (newName.length > THREAD_NAME_MAX_LENGTH) {
             Toast.warning(t("base.threadCreate.nameMaxLength"));
-            return;
+            throw new Error("thread-name-too-long");
           }
           try {
             await WKApp.dataSource.channelDataSource.threadUpdate(
@@ -789,25 +818,30 @@ export default class ThreadPanel extends Component<
               thread.short_id,
               { name: newName.trim() }
             );
-            Toast.success(t("base.threadPanel.updateSuccess"));
-            // 刷新左侧列表
-            this.loadThreads();
-            // 更新详情页标题
-            this.setState({
-              vmState: {
-                ...this.state.vmState,
-                thread: { ...thread, name: newName.trim() },
-              },
-            });
-
-            // 清除 SDK 缓存，刷新 Chat header 展示的子区名称
-            this.refreshThreadChannelInfo({
-              ...thread,
-              name: newName.trim(),
-            });
-          } catch {
-            Toast.error(t("base.module.thread.saveFailedRetry"));
+          } catch (error) {
+            // 透传服务端拒绝原因，不吞错；rethrow 让 wkConfirm 保留弹窗与草稿，避免把
+            // 失败保存当成功关闭、丢失用户输入。
+            Toast.error(
+              extractErrorMsg(error) || t("base.module.thread.saveFailedRetry")
+            );
+            throw error;
           }
+          Toast.success(t("base.threadPanel.updateSuccess"));
+          // 刷新左侧列表
+          this.loadThreads();
+          // 更新详情页标题
+          this.setState({
+            vmState: {
+              ...this.state.vmState,
+              thread: { ...thread, name: newName.trim() },
+            },
+          });
+
+          // 清除 SDK 缓存，刷新 Chat header 展示的子区名称
+          this.refreshThreadChannelInfo({
+            ...thread,
+            name: newName.trim(),
+          });
         },
       });
     }, 100);
@@ -1061,11 +1095,15 @@ export default class ThreadPanel extends Component<
   private handleCreateThread = () => {
     const { groupNo, onCreateThread } = this.props;
     if (onCreateThread) {
+      // onCreateThread 分支把「打开创建弹窗 + dialog_opened 埋点」整体委托给父组件——
+      // 由父级自己的入口负责发 channel_subchannel_create_dialog_opened,这里不能再补发,
+      // 否则父级已发一次、此处再发一次会双计。当前无调用方传 onCreateThread(latent)(#1452 review P2-7)。
       onCreateThread();
       return;
     }
     if (!groupNo) return;
 
+    Dap.shared.track('channel_subchannel_create_dialog_opened', {})
     this.setState({ createDialogVisible: true, createError: null });
   };
 
@@ -1314,14 +1352,16 @@ export default class ThreadPanel extends Component<
                       {t("base.threadPanel.openFullView")}
                     </div>
                   )}
+                  {vmState.thread && this.canRenameThreadInPanel() && (
+                    <div
+                      className="wk-thread-more-menu-item"
+                      onClick={this.handleEditThread}
+                    >
+                      {t("base.threadPanel.editNameTitle")}
+                    </div>
+                  )}
                   {vmState.thread && this.canEditThread(vmState.thread) && (
                     <>
-                      <div
-                        className="wk-thread-more-menu-item"
-                        onClick={this.handleEditThread}
-                      >
-                        {t("base.threadPanel.editNameTitle")}
-                      </div>
                       {vmState.thread.status === ThreadStatus.Active && (
                         <div
                           className="wk-thread-more-menu-item"

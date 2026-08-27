@@ -12,13 +12,17 @@ import {
   Task,
   TaskStatus,
   MessageStatus,
+  WKSDK,
+  ConnectStatus,
 } from "wukongimjssdk";
 import React, { ElementType } from "react";
 import { Smile, Scissors, ImagePlus, Paperclip, AtSign } from "lucide-react";
 import { Howl, Howler } from "howler";
 import WKApp, { FriendApply, FriendApplyState, ThemeMode } from "./App";
 import { isChannelSearchEnabled } from "./features/channelSearch/feature";
+import { voiceSettingsStore } from "./Service/VoiceSettingsStore";
 import ChatSearchEntryButton from "./features/channelSearch/ChatSearchEntryButton";
+import { isElectronPowered } from "./electron/desktopBridge";
 import { ChannelSettingRouteData } from "./Components/ChannelSetting/context";
 import { InputEdit } from "./Components/InputEdit";
 import { ListItem, ListItemTip } from "./Components/ListItem";
@@ -77,6 +81,7 @@ import { isMessageReactionChannelSupported } from "./features/messageReaction/co
 import { LocationCell, LocationContent } from "./Messages/Location";
 import { Toast } from "@douyinfe/semi-ui";
 import { DefaultEmojiService } from "./Service/EmojiService";
+import { quickMuteStore } from "./Components/NavRail/QuickMuteStore";
 import IconClick from "./Components/IconClick";
 import EmojiToolbar from "./Components/EmojiToolbar";
 import MergeforwardContent, { MergeforwardCell } from "./Messages/Mergeforward";
@@ -113,6 +118,9 @@ import { shouldSkipMessageForSpace } from "./Service/SpaceService";
 import { t } from "./i18n";
 import { THREAD_NAME_MAX_LENGTH } from "./Service/nameLimits";
 import ThreadService from "./Service/ThreadService";
+import { trackSubchannelCreated, inferMsgType } from "./bridge/thread/createThread";
+import { Dap } from "./Service/Dap";
+import { isMessageAuthorAi } from "./Components/Conversation/replyAiIdentity";
 import {
   ThreadCreatedCell,
   ThreadCreatedContent,
@@ -262,6 +270,28 @@ export default class BaseModule implements IModule {
       WKApp.shared.logout();
     };
 
+    // 账号级快捷静音复用 WuKongIM CMD；回前台、网络恢复和重连时用 GET
+    // 校准，CMD 只作为低延迟更新，不承担最终一致性。
+    const refreshQuickMute = () => {
+      // The login page also receives foreground events. Do not call an
+      // authenticated endpoint without a session: its 401 is interpreted by
+      // APIClient as an expired login and reloads /login, discarding form input.
+      if (window.location.pathname.endsWith('/login') || !WKApp.loginInfo.isLogined()) return;
+      void quickMuteStore.refresh().catch(() => undefined);
+    };
+    voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
+    quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
+    WKApp.mittBus.on("wk:app-foreground", refreshQuickMute);
+    WKApp.mittBus.on("wk:auth-state-changed", () => {
+      quickMuteStore.reset();
+      voiceSettingsStore.setUserId(WKApp.loginInfo.uid || "");
+      quickMuteStore.setUserId(WKApp.loginInfo.uid || "");
+      refreshQuickMute();
+    });
+    if (typeof window !== "undefined") window.addEventListener("online", refreshQuickMute);
+    WKSDK.shared().connectManager.addConnectStatusListener((status) => {
+      if (status === ConnectStatus.Connected) refreshQuickMute();
+    });
     WKApp.endpointManager.setMethod(
       EndpointID.emojiService,
       () => DefaultEmojiService.shared
@@ -447,7 +477,9 @@ export default class BaseModule implements IModule {
       const cmdContent = message.content as CMDContent;
       const param = cmdContent.param;
 
-      if (cmdContent.cmd === "channelUpdate") {
+      if (cmdContent.cmd === "user.notification_pause.changed") {
+        quickMuteStore.applyRemoteCMD(param);
+      } else if (cmdContent.cmd === "channelUpdate") {
         // 频道信息更新——通用事件（改名/公告/头像/解散等都会触发）。
         // 使用 fetchChannelInfo 拉取最新状态：channelUpdate 无法区分是改名/公告/头像还是解散，
         // 不能盲目调用 syncGroupDisbandState（会把正常群标记为已解散）。
@@ -512,7 +544,12 @@ export default class BaseModule implements IModule {
         WKApp.shared.addFriendApply(friendApply);
         // 文档专注场景不播提示音（红点/未读仍会更新）；IM 场景不受影响。
         if (!isDocumentFocusScene()) {
-          this.tipsAudio();
+          void quickMuteStore.getState().then((quickMuteState) => {
+            if (!quickMuteState.active || quickMuteState.scope === "sound") {
+              return this.tipsAudio({ allowDuringQuickMute: true });
+            }
+            return undefined;
+          }).catch(() => this.tipsAudio({ allowDuringQuickMute: true }));
         }
       } else if (cmdContent.cmd === "friendAccept") {
         // 接受好友申请
@@ -698,7 +735,9 @@ export default class BaseModule implements IModule {
     );
   }
 
-  tipsAudio() {
+  async tipsAudio(options: { allowDuringQuickMute?: boolean } = {}) {
+    const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
+    if (quickMuteState?.active && !options.allowDuringQuickMute) return;
     Howler.autoUnlock = false;
     if (!this.messageTone) {
       this.messageTone = new Howl({
@@ -716,7 +755,7 @@ export default class BaseModule implements IModule {
    * processMessageAttention.
    */
   private isElectronEnvironment(): boolean {
-    return !!(window as any).__POWERED_ELECTRON__;
+    return isElectronPowered();
   }
 
   private scheduleMessageAttention(
@@ -769,7 +808,8 @@ export default class BaseModule implements IModule {
       await coordinator.claimOnly(claim);
       return;
     }
-    if (!this.allowNotify(message)) return;
+    const initialDecision = await this.getNotifyDecision(message);
+    if (!initialDecision.showPopup && !initialDecision.playSound) return;
 
     let from = "";
     if (message.channel.channelType === ChannelTypeGroup) {
@@ -793,17 +833,41 @@ export default class BaseModule implements IModule {
       },
       subscribeSuppressionChanges: (listener) =>
         this.subscribeMessageAttentionChanges(listener),
-      isStillEligible: () =>
-        this.isAttentionContextCurrent(context) && this.allowNotify(message),
-      alert: () => {
+      isStillEligible: async () => {
+        if (!this.isAttentionContextCurrent(context)) return false;
+        const decision = await this.getNotifyDecision(message);
+        return decision.showPopup || decision.playSound;
+      },
+      alert: async () => {
         if (!this.isAttentionContextCurrent(context)) return;
-        void this.sendNotification(
-          message,
-          `${from}${message.content.conversationDigest}`
-        );
-        this.tipsAudio();
+        const decision = await this.getNotifyDecision(message);
+        if (decision.showPopup) {
+          await this.sendNotification(
+            message,
+            `${from}${message.content.conversationDigest}`
+          );
+        }
+        if (decision.playSound) await this.tipsAudio({ allowDuringQuickMute: true });
       },
     });
+  }
+
+  /**
+   * The single notification decision for incoming messages and sound-only
+   * attention. Visibility and single-alert coordination remain separate
+   * concerns; this only combines account/device policy with channel policy.
+   */
+  private async getNotifyDecision(message: Message): Promise<{ playSound: boolean; showPopup: boolean }> {
+    if (!this.allowNotify(message)) return { playSound: false, showPopup: false };
+    const quickMuteState = await quickMuteStore.getState().catch(() => undefined);
+    if (quickMuteState?.active) {
+      // "sound" = keep sounds only (suppress the popup); the other scope
+      // mutes both sounds and popups.
+      return quickMuteState.scope === "sound"
+        ? { playSound: true, showPopup: false }
+        : { playSound: false, showPopup: false };
+    }
+    return { playSound: true, showPopup: true };
   }
 
   private isAttentionContextCurrent(
@@ -1010,6 +1074,14 @@ export default class BaseModule implements IModule {
           title: t("base.module.contextMenus.copy"),
           testid: "ctx-message-copy",
           onClick: () => {
+            // message_copied 由此命令式发,携 is_ai_msg(被复制消息作者是否 AI/bot,
+            // 与 message_replied/forwarded 同源判据)——DOM data-track 通道带不了消息上下文,
+            // 故从 TrackRules 迁出;区分 AI 消息复制漏斗(session.go ai_msg_copy)。见 #1452 review。
+            Dap.shared.track("message_copied", {
+              object_id: message.messageID,
+              message_id: message.messageID,
+              is_ai_msg: isMessageAuthorAi(message.fromUID),
+            });
             const selectedText = context.getCachedSelectedText?.();
             // RichText(=14)：取顶层 plain（server 权威纯文本），避免对 content
             // blocks 数组 stringify 丢字；text 消息走 content.text。
@@ -1297,6 +1369,11 @@ export default class BaseModule implements IModule {
           title: t("base.module.contextMenus.createThread"),
           testid: "ctx-message-create-thread",
           onClick: () => {
+            // 右键「创建子区」入口打开确认弹窗即计一次 dialog_opened,与 ThreadPanel 顶栏入口
+            // (ThreadPanel/index.tsx handleCreateThread)同一事件名——顶栏 + 右键统一到 channel_subchannel_create_dialog_opened。
+            // 同一 testid(ctx-message-create-thread)原有的 TrackRules DOM 规则(message_subchannel_create_dialog_opened)
+            // 已一并删除,避免同手势双记不同名(#1452 review P1)。
+            Dap.shared.track('channel_subchannel_create_dialog_opened', {});
             // 使用消息内容作为默认名称，截取前20个字符
             const defaultName = (
               message.content?.conversationDigest || ""
@@ -1361,6 +1438,13 @@ export default class BaseModule implements IModule {
                     sourceMessagePayload: sourcePayload,
                   });
                   Toast.success(t("base.module.createThread.success"));
+                  // 右键创建子区：带 from_msg_type（inferMsgType 映射）+ is_ai_msg（源消息作者是否 AI/bot）
+                  trackSubchannelCreated(resp, 'message_right_click', {
+                    fromMsgType: inferMsgType(message),
+                    title: threadName.trim(),
+                    channelId: message.channel.channelID,
+                    isAiMsg: isMessageAuthorAi(message.fromUID),
+                  });
                   if (resp && resp.channel_id) {
                     WKApp.mittBus.emit("wk:thread-created", {
                       groupNo: message.channel.channelID,

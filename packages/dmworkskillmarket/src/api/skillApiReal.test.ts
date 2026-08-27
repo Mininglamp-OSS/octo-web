@@ -27,6 +27,7 @@ beforeEach(() => {
   mockFetch.mockReset();
   vi.stubGlobal("fetch", mockFetch);
   localStorage.clear();
+  WKApp.apiClient.config.apiURL = "/api/v1/";
   WKApp.loginInfo.token = "test-token";
   WKApp.shared.currentSpaceId = "space-123";
 });
@@ -101,6 +102,18 @@ describe("skillApiReal", () => {
 
     const headers = mockFetch.mock.calls[0][1].headers;
     expect(headers).toEqual({ "Content-Type": "application/json" });
+  });
+
+  it("resolves marketplace requests against the API origin for desktop builds", async () => {
+    WKApp.apiClient.config.apiURL = "https://api.example.com/v1/";
+    mockFetch.mockReturnValueOnce(jsonResponse([]));
+
+    await getCategories();
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "https://api.example.com/market/api/v1/skill_categories",
+      expect.any(Object)
+    );
   });
 
   it("getCategories forwards search and tag filters", async () => {
@@ -524,7 +537,7 @@ describe("skillApiReal", () => {
     );
   });
 
-  it("uploadFile PUTs with presigned headers and reports progress", async () => {
+  it("uploadFile PUTs HTTP and HTTPS presigned URLs with headers and reports progress", async () => {
     const xhrInstances: MockXHR[] = [];
     class MockXHR {
       upload = new EventTarget();
@@ -583,6 +596,27 @@ describe("skillApiReal", () => {
       "x-amz-meta-id": "upload-1",
     });
     expect(onProgress).toHaveBeenCalledWith(50);
+
+    await uploadFile(
+      "http://storage.example/upload",
+      new File(["zip"], "skill.zip", { type: "application/zip" })
+    );
+
+    expect(xhrInstances[1].method).toBe("PUT");
+    expect(xhrInstances[1].url).toBe("http://storage.example/upload");
+  });
+
+  it("uploadFile rejects non-HTTP presigned URL schemes", async () => {
+    await expect(
+      uploadFile(
+        "file:///tmp/skill.zip",
+        new File(["zip"], "skill.zip", { type: "application/zip" })
+      )
+    ).rejects.toMatchObject({
+      name: "SkillMarketApiError",
+      code: "invalid_response",
+      message: "URL scheme 不允许",
+    });
   });
 
   it("triggerParse returns the backend task id", async () => {

@@ -90,8 +90,8 @@ describe('InviteLanding — dmworkim#1319 need_space handling', () => {
     it('shows the guidance copy and the "去输入邀请码" CTA', () => {
         const needBlock = extractNeedSpaceRenderBlock(sourceCode)!;
         // 文案与 iOS / Android 端对齐
-        expect(needBlock).toMatch(/请先加入一个\s*Space/);
-        expect(needBlock).toContain('去输入邀请码');
+        expect(needBlock).toContain('app.invite.needSpace.title');
+        expect(needBlock).toContain('app.invite.needSpace.cta');
     });
 
     // ── CTA 行为：触发 onNeedJoinSpace ───────────────────────────────

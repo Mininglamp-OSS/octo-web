@@ -10,6 +10,7 @@
 
 .octo-mail-rules button,
 .octo-mail-rules input,
+.octo-mail-rules select,
 .octo-mail-rules textarea {
   font: inherit;
 }
@@ -394,7 +395,6 @@
 
 .octo-mail-rule-dialog__panel > header {
   justify-content: space-between;
-  border-bottom: 1px solid var(--wk-border-subtle);
 }
 
 .octo-mail-rule-dialog__panel > header > span {
@@ -428,6 +428,7 @@
 
 .octo-mail-rule-field input,
 .octo-mail-rule-builder input,
+.octo-mail-rule-builder select,
 .octo-mail-rule-builder textarea {
   box-sizing: border-box;
   width: 100%;
@@ -439,7 +440,8 @@
 }
 
 .octo-mail-rule-field input,
-.octo-mail-rule-builder input {
+.octo-mail-rule-builder input,
+.octo-mail-rule-builder select {
   min-height: var(--wk-sp-10);
   padding: 0 var(--wk-sp-3);
 }
@@ -452,16 +454,19 @@
 
 .octo-mail-rule-field input:focus,
 .octo-mail-rule-builder input:focus,
+.octo-mail-rule-builder select:focus,
 .octo-mail-rule-builder textarea:focus {
   border-color: var(--wk-brand-primary);
   box-shadow: 0 0 0 2px var(--wk-brand-primary-ring);
 }
 
 .octo-mail-rule-builder {
-  padding: var(--wk-sp-4);
-  background: var(--wk-bg-base);
-  border: 1px solid var(--wk-border-subtle);
-  border-radius: var(--wk-r-md);
+  padding: 0 0 var(--wk-sp-5);
+  border-bottom: 1px solid var(--wk-border-subtle);
+}
+
+.octo-mail-rule-builder.is-action {
+  padding-top: var(--wk-sp-5);
 }
 
 .octo-mail-rule-builder > header {
@@ -471,7 +476,38 @@
 }
 
 .octo-mail-rule-builder > header strong {
+  flex: none;
+  white-space: nowrap;
   font: var(--wk-text-h4);
+}
+
+.octo-mail-rule-builder > header select {
+  width: auto;
+  flex: none;
+  min-height: var(--wk-sp-8);
+  padding: 0 var(--wk-sp-2);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-xs);
+  outline: 0;
+  font-size: var(--wk-text-size-xs);
+}
+
+.octo-mail-rule-builder > header button {
+  min-height: var(--wk-sp-8);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--wk-sp-1);
+  margin-left: auto;
+  padding: 0 var(--wk-sp-3);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-full);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: var(--wk-text-size-xs);
 }
 
 .octo-mail-rule-builder > header span {
@@ -483,7 +519,9 @@
 }
 
 .octo-mail-rule-builder > p {
-  margin-bottom: var(--wk-sp-3);
+  margin: var(--wk-sp-2) 0 0;
+  color: var(--wk-text-tertiary);
+  font-size: var(--wk-text-size-xs);
 }
 
 .octo-mail-rule-builder > p.is-invalid {
@@ -492,7 +530,9 @@
 
 .octo-mail-rule-builder__row {
   display: grid;
-  grid-template-columns: minmax(100px, 0.28fr) minmax(76px, 0.2fr) 1fr;
+  grid-template-columns: minmax(100px, 0.28fr) minmax(76px, 0.2fr) 1fr var(
+      --wk-sp-8
+    );
   align-items: center;
   gap: var(--wk-sp-2);
   margin-top: var(--wk-sp-2);
@@ -511,8 +551,31 @@
 }
 
 .octo-mail-rule-builder__row.is-action {
-  grid-template-columns: minmax(120px, 0.28fr) 1fr;
-  align-items: start;
+  grid-template-columns: minmax(120px, 0.28fr) 1fr var(--wk-sp-8);
+}
+
+.octo-mail-rule-builder__row > button {
+  width: var(--wk-sp-8);
+  height: var(--wk-sp-8);
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--wk-text-tertiary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+  justify-self: center;
+}
+
+.octo-mail-rule-builder__row > button:hover {
+  color: var(--wk-color-error);
+  background: var(--wk-color-error-bg);
+}
+
+.octo-mail-rule-builder__row > button:focus-visible {
+  outline: 2px solid var(--wk-border-glow);
+  outline-offset: 1px;
 }
 
 .octo-mail-rule-enabled {
@@ -542,6 +605,99 @@
 .octo-mail-rule-dialog__panel button:disabled {
   cursor: not-allowed;
   opacity: 0.48;
+}
+
+.octo-mail-rule-confirm {
+  position: fixed;
+  z-index: var(--wk-z-modal);
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--wk-sp-5);
+}
+
+.octo-mail-rule-confirm__backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  background: var(--wk-brand-tint-35);
+  border: 0;
+  cursor: default;
+}
+
+.octo-mail-rule-confirm__panel {
+  position: relative;
+  width: min(calc(var(--wk-sp-10) * 11), 100%);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--wk-sp-4);
+  padding: var(--wk-sp-6);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-subtle);
+  border-radius: var(--wk-r-lg);
+  box-shadow: var(--wk-shadow-lg);
+}
+
+.octo-mail-rule-confirm__icon {
+  width: var(--wk-sp-10);
+  height: var(--wk-sp-10);
+  display: grid;
+  place-items: center;
+  color: var(--wk-color-danger);
+  background: var(--wk-color-danger-light);
+  border-radius: var(--wk-r-full);
+}
+
+.octo-mail-rule-confirm__content h2,
+.octo-mail-rule-confirm__content p {
+  margin: 0;
+}
+
+.octo-mail-rule-confirm__content h2 {
+  font: var(--wk-text-h3);
+}
+
+.octo-mail-rule-confirm__content p {
+  margin-top: var(--wk-sp-2);
+  color: var(--wk-text-secondary);
+  font-size: var(--wk-text-size-sm);
+  line-height: var(--wk-leading-loose);
+}
+
+.octo-mail-rule-confirm footer {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+  margin-top: var(--wk-sp-2);
+}
+
+.octo-mail-rule-confirm footer button {
+  min-width: calc(var(--wk-sp-10) * 2);
+  min-height: var(--wk-sp-8);
+  padding: 0 var(--wk-sp-4);
+  color: var(--wk-text-primary);
+  background: var(--wk-bg-surface);
+  border: 1px solid var(--wk-border-default);
+  border-radius: var(--wk-r-sm);
+  cursor: pointer;
+}
+
+.octo-mail-rule-confirm footer button:hover {
+  background: var(--wk-bg-hover);
+}
+
+.octo-mail-rule-confirm footer button.is-danger {
+  color: var(--wk-text-on-brand);
+  background: var(--wk-color-danger);
+  border-color: var(--wk-color-danger);
+}
+
+.octo-mail-rule-confirm footer button.is-danger:hover {
+  background: var(--wk-color-danger-active);
 }
 
 @media (max-width: 760px) {
@@ -576,9 +732,24 @@
     padding-right: var(--wk-sp-4);
     padding-left: var(--wk-sp-4);
   }
+}
 
-  .octo-mail-rule-builder__row,
+@media (max-width: 520px) {
+  .octo-mail-rule-builder > header {
+    flex-wrap: wrap;
+  }
+
+  .octo-mail-rule-builder > header button {
+    margin-left: 0;
+  }
+
+  .octo-mail-rule-builder__row {
+    grid-template-columns: minmax(84px, 0.28fr) minmax(64px, 0.2fr) 1fr var(
+        --wk-sp-8
+      );
+  }
+
   .octo-mail-rule-builder__row.is-action {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(100px, 0.32fr) 1fr var(--wk-sp-8);
   }
 }

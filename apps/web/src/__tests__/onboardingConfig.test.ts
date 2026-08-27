@@ -74,7 +74,7 @@ describe("resolveOnboardingSections", () => {
           labelKey: "label.valid",
           titleKey: "title.valid",
           descriptionKey: "description.valid",
-          visualTitleKey: "visual.valid",
+          imageAltKey: "image-alt.valid",
         },
         {
           ...defaultOnboardingConfig.sections[1],
@@ -96,7 +96,7 @@ describe("resolveOnboardingSections", () => {
       "label.valid": "Label",
       "title.valid": "Title",
       "description.valid": "Description",
-      "visual.valid": "Visual title",
+      "image-alt.valid": "Image alternative text",
     };
 
     const sections = resolveOnboardingSections(
@@ -110,8 +110,18 @@ describe("resolveOnboardingSections", () => {
       label: "Label",
       title: "Title",
       description: "Description",
-      visualTitle: "Visual title",
+      imageAlt: "Image alternative text",
     });
+  });
+
+  it("keeps decorative-image sections with empty alternative text", () => {
+    const sections = resolveOnboardingSections(
+      makeConfig({ sections: [defaultOnboardingConfig.sections[0]] }),
+      () => "Translated"
+    );
+
+    expect(sections).toHaveLength(1);
+    expect(sections[0].imageAlt).toBe("");
   });
 
   it("keeps the white directory sections in their intended order", () => {

@@ -407,6 +407,30 @@ export class DefaultEmojiService implements EmojiService {
         if (/^data:image\//i.test(url)) {
             return url
         }
+        // Sticker/emoji files are exposed by the public object-storage route.
+        // A packaged Electron page has a file:// origin, so resolving this
+        // against window.location.origin would produce null/file/... (or a
+        // local file path). Prefer the absolute API origin in that shell.
+        const previewMatch = url.match(/^\/?file\/preview\/(.+)$/)
+        if (previewMatch) {
+            let apiBase = ""
+            try {
+                apiBase = (APIClient.shared?.config?.apiURL as string) || ""
+            } catch {
+                apiBase = ""
+            }
+            const locationHref = typeof window !== "undefined" ? window.location.href : ""
+            for (const candidate of [apiBase, locationHref]) {
+                try {
+                    const resolved = new URL(candidate, locationHref || undefined)
+                    if (resolved.protocol === "http:" || resolved.protocol === "https:") {
+                        return `${resolved.origin}/file/${previewMatch[1]}`
+                    }
+                } catch {
+                    // Try the next candidate.
+                }
+            }
+        }
         // 相对 url 拼到 API v1 base（如 "/api/v1/" 或 "https://host/v1/"）。
         let base = ""
         try {

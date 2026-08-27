@@ -8,10 +8,12 @@ vi.mock("wukongimjssdk", () => {
     constructor(public channelID: string, public channelType: number) {}
   }
   class MessageContent {}
+  class SystemContent extends MessageContent {}
   return {
     Channel,
     ChannelTypePerson: 1,
     MessageContent,
+    SystemContent,
     WKSDK: { shared: () => ({}) },
   };
 });

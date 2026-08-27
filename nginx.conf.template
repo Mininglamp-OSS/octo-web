@@ -131,6 +131,7 @@ server {
             resolver ${NGINX_RESOLVER} ipv6=off valid=30s;
             rewrite ^/mail-api/(.*)$ /v1/mail-gateway/$1 break;
             proxy_pass $mail_api_url;
+            proxy_http_version 1.1;
             proxy_set_header token $http_token;
             proxy_set_header X-Space-ID $http_x_space_id;
             proxy_set_header Authorization "";

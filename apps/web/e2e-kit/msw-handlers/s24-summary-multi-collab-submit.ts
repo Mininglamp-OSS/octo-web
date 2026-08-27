@@ -139,6 +139,9 @@ export async function registerS24SummaryMultiCollabSubmit(page: Page): Promise<v
         const state = (window as unknown as { __s24State__: { submitted: boolean } }).__s24State__;
         return env(makePersonal(state.submitted));
       }),
+      http.get(`*/summary/api/v1/summaries/${TASK_ID}/personal-versions`, () =>
+        env({ versions: [], keep_limit: 3 })
+      ),
       http.get(`*/summary/api/v1/summaries/${TASK_ID}/members`, () => {
         const state = (window as unknown as { __s24State__: { submitted: boolean } }).__s24State__;
         return env(makeMembers(state.submitted));
@@ -149,7 +152,10 @@ export async function registerS24SummaryMultiCollabSubmit(page: Page): Promise<v
         return env({});
       }),
       http.post(`*/summary/api/v1/summaries/${TASK_ID}/read`, () => env({ is_unread: false, has_pending_invitation: false, needs_attention: false })),
-      http.get(`*/summary/api/v1/summaries/${TASK_ID}/versions`, () => env({ versions: [], keep_limit: 3 }))
+      http.get(`*/summary/api/v1/summaries/${TASK_ID}/versions`, () => env({ versions: [], keep_limit: 3 })),
+      http.get("*/summary/api/v1/summary-templates", () =>
+        env({ templates: [], custom_template_limit: 30 })
+      )
     );
   }, [S24_TASK_ID, S24_MY_USER_ID, S24_OTHER_USER_ID]);
 }

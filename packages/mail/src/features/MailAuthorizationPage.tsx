@@ -54,21 +54,22 @@ export default function MailAuthorizationPage({
     () => mailAuthorizeSpaceId(initialSearch),
     [initialSearch]
   );
+  const currentSpaceId = (WKApp.shared.currentSpaceId || "").trim();
   const [authorization, setAuthorization] =
     useState<AgentAuthorizationView | null>(null);
   const authorizationRequestRef = useRef<
     AgentAuthorizationView["request"] | undefined
   >(undefined);
   const [mailboxId, setMailboxId] = useState("");
-  const [outboundMode, setOutboundMode] = useState<AgentOutboundMode>(
-    "manual_confirmation"
-  );
+  const [outboundMode, setOutboundMode] =
+    useState<AgentOutboundMode>("automatic_send");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [phase, setPhase] = useState<MailAuthorizationPhase>("approval");
   const [error, setError] = useState("");
   const [botDisplayName, setBotDisplayName] = useState("");
   const [targetSpaceName, setTargetSpaceName] = useState("");
+  const [currentSpaceName, setCurrentSpaceName] = useState("");
   const [spaceMismatchConfirmed, setSpaceMismatchConfirmed] = useState(false);
   const preserveForLoginRef = useRef(false);
   const sessionExpirationHandledRef = useRef(false);
@@ -104,6 +105,7 @@ export default function MailAuthorizationPage({
   useEffect(() => {
     if (!spaceId) {
       setTargetSpaceName("");
+      setCurrentSpaceName("");
       return;
     }
     let active = true;
@@ -112,15 +114,22 @@ export default function MailAuthorizationPage({
       .then((spaces) => {
         if (!active) return;
         const target = spaces.find((space) => space.space_id === spaceId);
+        const current = spaces.find(
+          (space) => space.space_id === currentSpaceId
+        );
         setTargetSpaceName((target?.name || "").trim());
+        setCurrentSpaceName((current?.name || "").trim());
       })
       .catch(() => {
-        if (active) setTargetSpaceName("");
+        if (active) {
+          setTargetSpaceName("");
+          setCurrentSpaceName("");
+        }
       });
     return () => {
       active = false;
     };
-  }, [spaceId]);
+  }, [currentSpaceId, spaceId]);
 
   useEffect(() => {
     const generation = ++unmountCleanupGenerationRef.current;
@@ -157,7 +166,6 @@ export default function MailAuthorizationPage({
         );
         authorizationRequestRef.current = result.request;
         setAuthorization(result);
-        setOutboundMode("manual_confirmation");
         if (isAuthorizationExpired(result.request)) {
           setPhase("failed");
           setError(t("mail.authorization.expired"));
@@ -363,7 +371,6 @@ export default function MailAuthorizationPage({
     : authorization?.mailboxes ?? [];
   const connected = phase === "connected";
   const connecting = phase === "connecting";
-  const currentSpaceId = (WKApp.shared.currentSpaceId || "").trim();
   const spaceMismatch = Boolean(
     currentSpaceId && spaceId && currentSpaceId !== spaceId
   );
@@ -418,7 +425,10 @@ export default function MailAuthorizationPage({
             />
             <span>
               {t("mail.authorization.spaceMismatchConfirmation", {
-                values: { currentSpaceId, targetSpaceId: spaceId },
+                values: {
+                  currentSpaceName: currentSpaceName || currentSpaceId,
+                  targetSpaceName: targetSpaceName || spaceId,
+                },
               })}
             </span>
           </label>
@@ -478,9 +488,9 @@ export default function MailAuthorizationPage({
             <legend>{t("mail.authorization.permissionLegend")}</legend>
             <p className="mail-auth-card__status">
               {t(
-                request?.outboundMode === "automatic_send"
-                  ? "mail.authorization.requestedAutomatic"
-                  : "mail.authorization.requestedManual"
+                outboundMode === "automatic_send"
+                  ? "mail.authorization.selectedAutomatic"
+                  : "mail.authorization.selectedManual"
               )}
             </p>
             <label
@@ -528,7 +538,7 @@ export default function MailAuthorizationPage({
             {selectedMailbox.address}
           </div>
         )}
-        {connected && outboundMode === "automatic_send" && (
+        {connected && request?.outboundMode === "automatic_send" && (
           <div className="mail-auth-card__status">
             {t("mail.authorization.automaticSendEnabled")}
           </div>

@@ -79,7 +79,7 @@ test.describe("@A1 @p1 @appbot", () => {
     await expect(
       authedPage.getByText("平台应用", { exact: true })
     ).toBeVisible();
-    await expect(authedPage.getByText(/空间应用/)).toBeVisible();
+    await expect(authedPage.getByText(/组织应用/)).toBeVisible();
     await expect(
       authedPage.getByText("文档助手", { exact: true })
     ).toBeVisible();

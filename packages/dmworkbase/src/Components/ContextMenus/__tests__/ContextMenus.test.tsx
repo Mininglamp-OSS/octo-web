@@ -6,6 +6,7 @@ import React from "react"
 import ReactDOM from "react-dom"
 import { act } from "react-dom/test-utils"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { Star } from "lucide-react"
 import ContextMenus, { ContextMenusContext, ContextMenusData } from "../index"
 
 let container: HTMLDivElement
@@ -83,7 +84,10 @@ function dispatchContextMenu(element: Element) {
     return event
 }
 
-function renderContextMenus(onHide = vi.fn()) {
+function renderContextMenus(
+    onHide = vi.fn(),
+    menus: ContextMenusData[] = [{ title: "Copy", onClick: vi.fn() }],
+) {
     let context: ContextMenusContext | null = null
 
     act(() => {
@@ -101,7 +105,7 @@ function renderContextMenus(onHide = vi.fn()) {
                         context = nextContext
                     }}
                     onHide={onHide}
-                    menus={[{ title: "Copy", onClick: vi.fn() }]}
+                    menus={menus}
                 />
             </div>,
             container
@@ -157,6 +161,23 @@ describe("ContextMenus native contextmenu suppression", () => {
 })
 
 describe("ContextMenus rounded hover boundaries", () => {
+    it("clears a previous submenu offset before each open cycle", () => {
+        const { context } = renderContextMenus(vi.fn(), [{
+            title: "Add to favorites",
+            children: [{ title: "Group 1" }],
+        }])
+        const trigger = container.querySelector(".trigger")!
+        const submenu = container.querySelector<HTMLElement>(".wk-ctx-submenu")!
+        submenu.style.top = "-320px"
+
+        act(() => {
+            context?.hide()
+        })
+        dispatchContextMenu(trigger)
+
+        expect(submenu.style.top).toBe("")
+    })
+
     it("keeps the first and last menu items selectable around separators at every level", () => {
         act(() => {
             ReactDOM.render(
@@ -186,7 +207,62 @@ describe("ContextMenus rounded hover boundaries", () => {
 
         expect(rootList.querySelector(":scope > li:first-of-type")?.textContent).toContain("Move to")
         expect(rootList.querySelector(":scope > li:last-of-type")?.textContent).toBe("Delete")
-        expect(submenu.querySelector(":scope > li:first-of-type")?.textContent).toBe("First group")
-        expect(submenu.querySelector(":scope > li:last-of-type")?.textContent).toBe("Last group")
+        expect(submenu.querySelector(":scope > .wk-ctx-submenu-list > li:first-of-type")?.textContent).toBe("First group")
+        expect(submenu.querySelector(":scope > .wk-ctx-submenu-list > li:last-of-type")?.textContent).toBe("Last group")
+    })
+
+    it("keeps a long submenu inside the viewport and makes its list scrollable", () => {
+        act(() => {
+            ReactDOM.render(
+                <ContextMenus
+                    onContext={() => undefined}
+                    menus={[{
+                        title: "Add to favorites",
+                        children: Array.from({ length: 30 }, (_, index) => ({ title: `Group ${index + 1}` })),
+                    }]}
+                />,
+                container
+            )
+        })
+
+        const parentItem = container.querySelector<HTMLElement>(".wk-contextmenus > ul > li")!
+        const submenu = container.querySelector<HTMLElement>(".wk-ctx-submenu")!
+        const submenuList = container.querySelector<HTMLElement>(".wk-ctx-submenu-list")!
+        Object.defineProperty(submenuList, "scrollHeight", { configurable: true, value: 1200 })
+        vi.spyOn(parentItem, "getBoundingClientRect").mockReturnValue({
+            top: 740,
+            bottom: 780,
+            left: 0,
+            right: 160,
+            width: 160,
+            height: 40,
+            x: 0,
+            y: 740,
+            toJSON: () => ({}),
+        })
+
+        act(() => {
+            parentItem.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }))
+        })
+
+        expect(submenu.style.top).toBe("-732px")
+        expect(submenuList.querySelectorAll(":scope > li")).toHaveLength(30)
+    })
+})
+
+describe("ContextMenus Lucide icons", () => {
+    it("renders a Lucide component without changing the existing menu structure", () => {
+        act(() => {
+            ReactDOM.render(
+                <ContextMenus
+                    onContext={() => undefined}
+                    menus={[{ title: "Follow", icon: Star }]}
+                />,
+                container
+            )
+        })
+
+        expect(container.querySelector(".wk-contextmenus li .lucide-star.ctx-icon")).not.toBeNull()
+        expect(container.querySelector(".wk-contextmenus li")?.textContent).toBe("Follow")
     })
 })

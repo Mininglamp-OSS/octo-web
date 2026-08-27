@@ -37,6 +37,18 @@ describe("hasGlobalSearchCriteria", () => {
     expect(hasGlobalSearchCriteria("files", "", fileFilters)).toBe(true);
     expect(hasGlobalSearchCriteria("messages", "", fileFilters)).toBe(false);
   });
+
+  it("ignores whitespace-only keywords and non-positive file ranges", () => {
+    const defaults = defaultGlobalSearchFilters();
+    expect(hasGlobalSearchCriteria("messages", "  \t", defaults)).toBe(false);
+    expect(
+      hasGlobalSearchCriteria(
+        "files",
+        "",
+        withOverrides({ fileSizeMin: 0, fileSizeMax: -1 })
+      )
+    ).toBe(false);
+  });
 });
 
 describe("activeGlobalSearchFilterCount", () => {
@@ -192,6 +204,14 @@ describe("selectedGlobalSearchFilterValueCount", () => {
     expect(
       selectedGlobalSearchFilterValueCount(
         withOverrides({ channelTypes: [2, 5] })
+      )
+    ).toBe(1);
+  });
+
+  it("counts a thread-only channel selection as one visible group option", () => {
+    expect(
+      selectedGlobalSearchFilterValueCount(
+        withOverrides({ channelTypes: [5] })
       )
     ).toBe(1);
   });

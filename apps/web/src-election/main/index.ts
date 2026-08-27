@@ -11,21 +11,49 @@ import {
   nativeImage,
   dialog,
   net,
+  powerSaveBlocker,
+  session,
+  shell,
 } from "electron";
 import fs from "fs";
 import tmp from 'tmp';
 import Screenshots from "electron-screenshots";
-import { join, dirname } from "path";
+import { join, dirname, basename, extname } from "path";
 import { pathToFileURL } from "url";
 
 import logo, { getNoMessageTrayIcon } from "./logo";
+import { decideWindowOpen } from "./externalLink";
+import { isFleetIssuePathShape } from "./fleetTrust";
+import { fleetTrustDialogCopy } from "./fleetTrustDialog";
 import {
   IPC_CONVERSATION_UNREAD_COUNT,
+  IPC_KEEP_AWAKE_GET,
+  IPC_KEEP_AWAKE_SET,
+  IPC_DESKTOP_SETTINGS_GET,
+  IPC_DESKTOP_SETTINGS_SET,
+  IPC_DOWNLOAD_SETTINGS_GET,
+  IPC_DOWNLOAD_SETTINGS_SET,
+  IPC_DOWNLOAD_DIRECTORY_CHOOSE,
+  IPC_DOWNLOAD_URL,
+  IPC_DOWNLOAD_STATUS,
+  IPC_OPEN_SYSTEM_SETTINGS,
+  IPC_DEEP_LINK,
   IPC_OIDC_AUTHORIZE_START,
   IPC_OIDC_AUTHORIZE_END,
   IPC_OIDC_HTTP_REQUEST,
   IPC_OIDC_OPEN_EXTERNAL,
   IPC_OIDC_CLEAR_AUTH_SESSION,
+  IPC_NOTIFICATION_TEST_ICON,
+  IPC_MEDIA_ACCESS_STATUS,
+  IPC_RESTART_APP,
+  IPC_SCREENSHOTS_OK,
+  IPC_SCREENSHOTS_START,
+  IPC_SHOW_CONVERSATIONS,
+  IPC_WINDOW_IS_FOCUSED,
+  IPC_TRUSTED_DOMAINS_GET,
+  IPC_TRUSTED_DOMAIN_REMOVE,
+  IPC_ASK_TRUST_FLEET_HOST,
+  IPC_OPEN_EXTERNAL_URL,
 } from "../shared/ipc-channels";
 import OCTO_CONFIG, { OIDC_API_ORIGIN, OIDC_END_SESSION_ORIGINS } from "./config";
 import {
@@ -46,6 +74,15 @@ import { INDEX_HTML, reloadShell } from "./reloadShell";
 import { attachLogoutWindowNavigationListeners, classifyOidcNavigation, extractEndSessionRedirect, isTrustedSenderUrl, OIDC_HTTP_MAX_RESPONSE_BYTES, parseHttpOrigin, parseOidcCallback, validateOidcHttpRequest, validateOpenExternalUrl, withTrustedSessionSid } from "./oidcRedirect";
 import { createTrustedShellDocumentTracker } from "./trustedShell";
 import { clearAuthSessionCookies } from "./clearAuthSession";
+import {
+  addFleetTrustedHost,
+  normalizeTrustedHost,
+  readFleetTrustedHosts as readTrustedHostsFile,
+  removeFleetTrustedHost,
+  writeFleetTrustedHosts as writeTrustedHostsFile,
+} from "./fleetTrustedHosts";
+import { DOWNLOAD_SETTINGS_VERSION, normalizeDownloadSettings, sanitizeDownloadFilename, type DownloadSettings } from "./downloadSettings";
+import { attachTrayPrimaryClick, attachTraySecondaryMenu } from "./trayBehavior";
 
 let forceQuit = false;
 let mainWindow: any;
@@ -53,13 +90,577 @@ let isMainWindowFocusedWhenStartScreenshot = false;
 let screenshots: any;
 let tray: any;
 let trayIcon: any;
-let settings: any = {};
+type DesktopSettings = {
+  zoomFactor: number;
+  launchAtLogin: boolean;
+  showOnTray: boolean;
+  closeBehavior: "background" | "quit";
+};
+type DownloadStatus = { id: string; state: "started" | "progress" | "completed" | "failed" | "cancelled" | "expired"; filename: string; receivedBytes?: number; totalBytes?: number };
+type PendingDownload = { id: string; sender: Electron.WebContents; filename: string };
+const pendingDownloads = new Map<string, PendingDownload[]>();
+const reservedDownloadPaths = new Set<string>();
+let settings: DesktopSettings = {
+  zoomFactor: 1,
+  launchAtLogin: false,
+  showOnTray: true,
+  closeBehavior: "background",
+};
 let screenShotWindowId = 0;
 let isFullScreen = false;
 
 let isOsx = process.platform === "darwin";
 let isWin = process.platform === "win32";
 let isWindowFocusHandlerRegistered = false;
+let keepAwakeBlockerId: number | null = null;
+let keepAwakeEnabled = false;
+
+const keepAwakeSettingsPath = () => join(app.getPath("userData"), "keep-awake.json");
+const legacyKeepAwakeSettingsPath = () => join(app.getPath("userData"), "settings.json");
+const desktopSettingsPath = () => join(app.getPath("userData"), "desktop-settings.json");
+const defaultDownloadDirectory = () => join(app.getPath("userData"), "Downloads", "Shared Files");
+let downloadSettings: DownloadSettings = { directory: defaultDownloadDirectory(), askBeforeSaving: false };
+const downloadSettingsPath = () => join(app.getPath("userData"), "download-settings.json");
+let userDataMigrationPending = false;
+
+function readDownloadSettings(): DownloadSettings {
+  try {
+    const raw = JSON.parse(fs.readFileSync(downloadSettingsPath(), "utf8"));
+    const legacyDefault = join(app.getPath("downloads"), "Shared Files");
+    const next = normalizeDownloadSettings(raw, defaultDownloadDirectory(), legacyDefault);
+    if (raw?.version !== DOWNLOAD_SETTINGS_VERSION && !userDataMigrationPending) {
+      try { writeDownloadSettings(next); } catch { /* preserve parsed settings if migration write is unavailable */ }
+    }
+    return next;
+  } catch { return { directory: defaultDownloadDirectory(), askBeforeSaving: false }; }
+}
+
+function writeDownloadSettings(next: DownloadSettings): void {
+  const path = downloadSettingsPath();
+  const tempPath = `${path}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify({ version: DOWNLOAD_SETTINGS_VERSION, ...next }, null, 2));
+  try { fs.renameSync(tempPath, path); } catch (error) { try { fs.unlinkSync(tempPath); } catch {} throw error; }
+}
+
+function readDesktopSettings(): DesktopSettings {
+  try {
+    const raw = JSON.parse(fs.readFileSync(desktopSettingsPath(), "utf8"));
+    return {
+      zoomFactor: [0.8, 0.9, 1, 1.1, 1.25].includes(raw?.zoomFactor) ? raw.zoomFactor : 1,
+      launchAtLogin: raw?.launchAtLogin === true,
+      showOnTray: raw?.showOnTray !== false,
+      closeBehavior: raw?.closeBehavior === "quit" ? "quit" : "background",
+    };
+  } catch {
+    let launchAtLogin = settings.launchAtLogin;
+    if (!fs.existsSync(desktopSettingsPath()) && process.platform !== "linux") {
+      try { launchAtLogin = app.getLoginItemSettings().openAtLogin; } catch { /* use the default */ }
+    }
+    return { ...settings, launchAtLogin };
+  }
+}
+
+function writeDesktopSettings(next: DesktopSettings): void {
+  const path = desktopSettingsPath();
+  const tempPath = `${path}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(next, null, 2));
+  try {
+    fs.renameSync(tempPath, path);
+  } catch (error) {
+    try { fs.unlinkSync(tempPath); } catch { /* best effort cleanup */ }
+    throw error;
+  }
+}
+
+function applyDesktopSettings(): void {
+  if (process.platform !== "linux" && app.getLoginItemSettings().openAtLogin !== settings.launchAtLogin) {
+    app.setLoginItemSettings({ openAtLogin: settings.launchAtLogin });
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.setZoomFactor(settings.zoomFactor);
+  }
+  updateTray();
+}
+
+function registerDesktopSettingsHandlers(): void {
+  ipcMain.handle(IPC_DESKTOP_SETTINGS_GET, (event) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    return settings;
+  });
+  ipcMain.handle(IPC_DESKTOP_SETTINGS_SET, (event, patch: unknown) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("invalid desktop settings");
+    const values = patch as Record<string, unknown>;
+    const candidate: DesktopSettings = {
+      zoomFactor: values.zoomFactor === undefined ? settings.zoomFactor : values.zoomFactor as number,
+      launchAtLogin: values.launchAtLogin === undefined ? settings.launchAtLogin : values.launchAtLogin as boolean,
+      showOnTray: values.showOnTray === undefined ? settings.showOnTray : values.showOnTray as boolean,
+      closeBehavior: values.closeBehavior === undefined ? settings.closeBehavior : values.closeBehavior as DesktopSettings["closeBehavior"],
+    };
+    if (![0.8, 0.9, 1, 1.1, 1.25].includes(candidate.zoomFactor)) throw new Error("invalid zoom factor");
+    if (typeof candidate.launchAtLogin !== "boolean" || typeof candidate.showOnTray !== "boolean") throw new Error("invalid desktop setting");
+    if (candidate.closeBehavior !== "background" && candidate.closeBehavior !== "quit") throw new Error("invalid close behavior");
+    const previous = settings;
+    try {
+      settings = candidate;
+      writeDesktopSettings(candidate);
+      applyDesktopSettings();
+    } catch (error) {
+      settings = previous;
+      try { writeDesktopSettings(previous); } catch { /* preserve original failure */ }
+      try { applyDesktopSettings(); } catch { /* best effort rollback of native effects */ }
+      throw error;
+    }
+    return settings;
+  });
+}
+
+function registerDownloadSettingsHandlers(): void {
+  ipcMain.handle(IPC_DOWNLOAD_SETTINGS_GET, (event) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    return downloadSettings;
+  });
+  ipcMain.handle(IPC_DOWNLOAD_SETTINGS_SET, (event, patch: unknown) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    if (!patch || typeof patch !== "object" || Array.isArray(patch)) throw new Error("invalid download settings");
+    if ("directory" in patch) throw new Error("download directory must be selected natively");
+    const values = patch as Record<string, unknown>;
+    const candidate: DownloadSettings = {
+      directory: downloadSettings.directory,
+      askBeforeSaving: values.askBeforeSaving === undefined ? downloadSettings.askBeforeSaving : values.askBeforeSaving as boolean,
+    };
+    if (typeof candidate.directory !== "string" || !candidate.directory || typeof candidate.askBeforeSaving !== "boolean") throw new Error("invalid download setting");
+    const previous = downloadSettings;
+    try {
+      writeDownloadSettings(candidate);
+      downloadSettings = candidate;
+    } catch (error) {
+      downloadSettings = previous;
+      throw error;
+    }
+    return downloadSettings;
+  });
+  ipcMain.handle(IPC_DOWNLOAD_DIRECTORY_CHOOSE, async (event) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory", "createDirectory"] });
+    if (result.canceled || !result.filePaths[0]) return downloadSettings;
+    const next = { ...downloadSettings, directory: result.filePaths[0] };
+    writeDownloadSettings(next);
+    downloadSettings = next;
+    return downloadSettings;
+  });
+}
+
+function registerDownloadHandler(): void {
+  session.defaultSession.on("will-download", (event, item) => {
+    const urls = [item.getURL(), ...(item.getURLChain?.() ?? [])];
+    let request: PendingDownload | undefined;
+    for (const url of urls) {
+      const pending = pendingDownloads.get(url);
+      if (!pending?.length) continue;
+      request = pending.shift();
+      if (pending.length === 0) pendingDownloads.delete(url);
+      break;
+    }
+    if (!request) {
+      item.setSaveDialogOptions({
+        defaultPath: join(downloadSettings.directory, sanitizeDownloadFilename(item.getFilename(), "download")),
+      });
+      return;
+    }
+    const id = request?.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const sender = request?.sender;
+    const requestedFilename = request?.filename || sanitizeDownloadFilename(item.getFilename(), "download");
+    const sendStatus = (status: Omit<DownloadStatus, "id" | "filename">, filename = requestedFilename) => {
+      if (!sender || sender.isDestroyed()) return;
+      sender.send(IPC_DOWNLOAD_STATUS, { id, filename, ...status } satisfies DownloadStatus);
+    };
+    let savePath: string | undefined;
+    let userCancelled = downloadSettings.askBeforeSaving;
+    item.on("updated", () => sendStatus({ state: "progress", receivedBytes: item.getReceivedBytes(), totalBytes: item.getTotalBytes() }));
+    item.once("done", (_event, state) => {
+      const nextState = state === "completed" ? "completed" : state === "cancelled" ? (userCancelled ? "cancelled" : "failed") : "failed";
+      sendStatus({ state: nextState }, savePath ? basename(savePath) : undefined);
+      if (savePath) reservedDownloadPaths.delete(savePath);
+    });
+    const path = downloadSettings.directory;
+    if (!downloadSettings.askBeforeSaving) {
+      try {
+        fs.mkdirSync(path, { recursive: true });
+        const original = join(path, requestedFilename);
+        savePath = original;
+        let index = 1;
+        while (fs.existsSync(savePath) || reservedDownloadPaths.has(savePath)) {
+          const name = basename(original, extname(original));
+          savePath = join(path, `${name} (${index++})${extname(original)}`);
+        }
+        reservedDownloadPaths.add(savePath);
+        item.setSavePath(savePath);
+        sendStatus({ state: "started" }, basename(savePath));
+      } catch {
+        item.cancel();
+      }
+      return;
+    }
+
+    try {
+      item.setSaveDialogOptions({ defaultPath: join(path, requestedFilename) });
+    } catch {
+      userCancelled = false;
+      item.cancel();
+    }
+  });
+}
+
+function registerDownloadUrlHandler(): void {
+  ipcMain.handle(IPC_DOWNLOAD_URL, (event, url: unknown, filename?: unknown, requestId?: unknown) => {
+    if (!isTrustedShellIpcSender(event) || typeof url !== "string") throw new Error("invalid download URL");
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("invalid download URL");
+    const requestedFilename = sanitizeDownloadFilename(filename, "download");
+    const generatedId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const id = typeof requestId === "string" && requestId ? requestId : generatedId;
+    const queue = pendingDownloads.get(parsed.href) || [];
+    const request = { id, sender: event.sender, filename: requestedFilename };
+    queue.push(request);
+    pendingDownloads.set(parsed.href, queue);
+    setTimeout(() => {
+      const current = pendingDownloads.get(parsed.href);
+      const index = current?.findIndex((entry) => entry.id === id) ?? -1;
+      if (current && index >= 0) {
+        const request = current[index];
+        current.splice(index, 1);
+        if (current.length === 0) pendingDownloads.delete(parsed.href);
+        if (!request.sender.isDestroyed()) {
+          request.sender.send(IPC_DOWNLOAD_STATUS, {
+            id,
+            state: "expired",
+            filename: "",
+          } satisfies DownloadStatus);
+        }
+      }
+    }, 60_000);
+    event.sender.downloadURL(parsed.href);
+    return id;
+  });
+}
+
+function registerSystemSettingsHandler(): void {
+  ipcMain.handle(IPC_OPEN_SYSTEM_SETTINGS, async (event, target: unknown) => {
+    if (!isTrustedShellIpcSender(event) || (target !== "microphone" && target !== "notifications")) return false;
+    const url = process.platform === "darwin"
+      ? target === "microphone" ? "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone" : "x-apple.systempreferences:com.apple.preference.notifications"
+      : process.platform === "win32"
+        ? target === "microphone" ? "ms-settings:privacy-microphone" : "ms-settings:notifications"
+        : null;
+    if (!url) return false;
+    try { await shell.openExternal(url); return true; } catch { return false; }
+  });
+}
+
+function readKeepAwakePreference(): boolean {
+  for (const path of [keepAwakeSettingsPath(), legacyKeepAwakeSettingsPath()]) {
+    try {
+      const raw = JSON.parse(fs.readFileSync(path, "utf8"));
+      if (typeof raw?.keepAwake === "boolean") return raw.keepAwake;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT" && !(error instanceof SyntaxError)) return false;
+    }
+  }
+  return false;
+}
+
+function writeKeepAwakePreference(enabled: boolean) {
+  const path = keepAwakeSettingsPath();
+  let settings: Record<string, unknown> = {};
+  try {
+    const raw = JSON.parse(fs.readFileSync(path, "utf8"));
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      throw new Error("Invalid keep-awake settings file");
+    }
+    settings = raw;
+  } catch (error) {
+    // A truncated/corrupt preference must not prevent the user from saving a
+    // new value; the next atomic write replaces it.
+  }
+  settings.keepAwake = enabled;
+  const tempPath = `${path}.${process.pid}.tmp`;
+  fs.writeFileSync(tempPath, JSON.stringify(settings, null, 2));
+  try {
+    fs.renameSync(tempPath, path);
+  } catch (error) {
+    try { fs.unlinkSync(tempPath); } catch { /* best effort cleanup */ }
+    throw error;
+  }
+}
+
+function applyKeepAwake(enabled: boolean): boolean {
+  if (enabled && keepAwakeBlockerId === null) {
+    keepAwakeBlockerId = powerSaveBlocker.start("prevent-app-suspension");
+  } else if (!enabled && keepAwakeBlockerId !== null) {
+    if (powerSaveBlocker.isStarted(keepAwakeBlockerId)) {
+      powerSaveBlocker.stop(keepAwakeBlockerId);
+    }
+    keepAwakeBlockerId = null;
+  }
+  keepAwakeEnabled = enabled;
+  return keepAwakeEnabled;
+}
+
+function registerKeepAwakeHandlers() {
+  ipcMain.handle(IPC_KEEP_AWAKE_GET, () => keepAwakeEnabled);
+  ipcMain.handle(IPC_KEEP_AWAKE_SET, (_event, enabled: unknown) => {
+    if (typeof enabled !== "boolean") throw new Error("keep-awake value must be boolean");
+    writeKeepAwakePreference(enabled);
+    const applied = applyKeepAwake(enabled);
+    return applied;
+  });
+}
+
+/* ---------- fleet preview trusted hosts ---------- */
+
+const fleetTrustedHostsPath = () => join(app.getPath("userData"), "fleet-trusted-hosts.json");
+
+function readFleetTrustedHosts(): string[] {
+  return readTrustedHostsFile(fleetTrustedHostsPath());
+}
+
+function writeFleetTrustedHosts(hosts: Iterable<unknown>): void {
+  writeTrustedHostsFile(fleetTrustedHostsPath(), hosts);
+}
+
+function rememberFleetTrustedHost(host: string): string {
+  const canonical = normalizeTrustedHost(host);
+  if (!canonical) throw new Error("invalid trusted host");
+  addFleetTrustedHost(fleetTrustedHostsPath(), canonical);
+  return canonical;
+}
+
+function removeFleetTrustedHostFromStore(host: string): string[] {
+  return removeFleetTrustedHost(fleetTrustedHostsPath(), host);
+}
+
+function registerTrustedDomainsSettingsHandlers(): void {
+  ipcMain.handle(IPC_TRUSTED_DOMAINS_GET, (event) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    // Built-in seeds are not shown: they cannot be revoked and would only
+    // confuse the user if a remove button were offered for them.
+    return readFleetTrustedHosts().filter((host) => !isBuiltInTrustSeed(host));
+  });
+  ipcMain.handle(IPC_TRUSTED_DOMAIN_REMOVE, (event, host: unknown) => {
+    if (!isTrustedShellIpcSender(event)) throw new Error("untrusted sender");
+    const normalizedHost = normalizeTrustedHost(host);
+    if (!normalizedHost) throw new Error("invalid trusted host");
+    // Provenance-aware: a host that is still covered by a built-in seed
+    // (static allowlist / API origin) is never revocable — neither from the
+    // persisted file nor from the live in-memory set.
+    if (isBuiltInTrustSeed(normalizedHost)) {
+      return readFleetTrustedHosts();
+    }
+    const hosts = removeFleetTrustedHostFromStore(normalizedHost);
+    trustedOrigins?.delete(normalizedHost);
+    return hosts;
+  });
+}
+
+/* ---------- external-link trust policy (confirm unknown origins) ---------- */
+
+/**
+ * In-memory union of every origin the client trusts without prompting.
+ *
+ * Seeded (lazily, first access — NOT at module top level) from main-side
+ * authority only:
+ *   - hosts persisted in fleet-trusted-hosts.json (user "trust this domain");
+ *   - the API origin, from OIDC_API_ORIGIN (build-time electron-config.json /
+ *     VITE_API_URL — the SAME source the renderer's APIClient resolves);
+ *   - the static fleet allowlist (im.deepminer.com.cn), mirroring the
+ *     renderer's FLEET_PREVIEW_HOSTS.
+ *
+ * There is deliberately NO IPC channel for the renderer to add origins:
+ * the main process is the trust authority and must never accept trust
+ * nominations over an IPC argument (regardless of sender validation).
+ *
+ * Keys are URL.host values (hostname + non-default port), matching the
+ * persisted file.
+ *
+ * Seeded lazily on first access — NOT at module top level: the persisted
+ * hosts file lives under app.getPath("userData"), which is only correct
+ * after app.setName/setPath runs in whenReady. Reading it earlier would
+ * seed from a stale/other-directory file and "trust this domain" would
+ * silently not survive a restart (dev + migration scenarios).
+ */
+const STATIC_FLEET_PREVIEW_HOSTS = new Set(["im.deepminer.com.cn"]);
+
+let trustedOrigins: Set<string> | null = null;
+
+function getTrustedOrigins(): Set<string> {
+  if (trustedOrigins === null) {
+    const seeds = new Set<string>();
+    // Persisted user trust.
+    readFleetTrustedHosts().forEach((host) => seeds.add(host));
+    // API origin (main-side authority — same build-time source as the
+    // renderer's apiURL).
+    if (OIDC_API_ORIGIN) {
+      try {
+        seeds.add(new URL(OIDC_API_ORIGIN).host);
+      } catch {
+        // ignore malformed origin
+      }
+    }
+    // Static fleet allowlist.
+    STATIC_FLEET_PREVIEW_HOSTS.forEach((host) => seeds.add(host));
+    trustedOrigins = seeds;
+  }
+  return trustedOrigins;
+}
+
+function isTrustedOrigin(host: string): boolean {
+  return getTrustedOrigins().has(host);
+}
+
+/**
+ * Built-in trust seeds (static allowlist / API origin) are not user-managed:
+ * they must never appear in the trusted-domains list, and a remove request
+ * must never be able to revoke them from the live set.
+ */
+function isBuiltInTrustSeed(host: string): boolean {
+  if (STATIC_FLEET_PREVIEW_HOSTS.has(host)) return true;
+  if (OIDC_API_ORIGIN) {
+    try {
+      if (new URL(OIDC_API_ORIGIN).host === host) return true;
+    } catch {
+      // ignore malformed origin
+    }
+  }
+  return false;
+}
+
+// One prompt per URL at a time: rapid clicks (or several unknown-host
+// links clicked in succession) would otherwise stack independent native
+// modals, and concurrent rememberFleetTrustedHost writes race on the same
+// temp/target path. Concurrent callers await the same in-flight result.
+// Keyed on the full href — two different URLs on the same host each get
+// their own prompt; the verdict is never reused across URLs the user has
+// not seen.
+const inflightExternalOpenConfirm = new Map<
+  string,
+  Promise<"open" | "cancel">
+>();
+
+/**
+ * Native confirm dialog for opening an unknown-origin URL in the system
+ * browser. Shared by the window-open router (plain external links) and the
+ * fleet link path (task links on untrusted hosts). Fail-closed: Esc/close =
+ * cancel = nothing opens. When the user ticks "trust this domain", the host
+ * is persisted and added to trustedOrigins — subsequent clicks on that host
+ * (task links → in-app preview, plain links → silent browser) skip the
+ * prompt. Per-host de-duplicated while in flight.
+ */
+async function confirmOpenExternalInBrowser(
+  win: Electron.BrowserWindow,
+  url: string,
+): Promise<"open" | "cancel"> {
+  let host = "";
+  try {
+    host = new URL(url).host;
+  } catch {
+    return Promise.resolve("cancel");
+  }
+  // Keyed on the full href (see inflightExternalOpenConfirm): the user must
+  // never have a verdict they did not see applied to a different URL on the
+  // same host.
+  const existing = inflightExternalOpenConfirm.get(url);
+  if (existing) return existing;
+  const copy = fleetTrustDialogCopy(app.getLocale(), host, url);
+  const prompt = (async (): Promise<"open" | "cancel"> => {
+    const { response, checkboxChecked } = await dialog.showMessageBox(win, {
+      type: "question",
+      title: copy.title,
+      message: copy.message,
+      detail: copy.detail,
+      buttons: copy.buttons,
+      defaultId: 1, // 默认拒绝 / default deny
+      cancelId: 1, // Esc / 关闭窗口也按"拒绝"处理，弹窗失败永远 fail-closed
+      noLink: true, // plain buttons, no command-link Enter mapping
+      // Allow-only semantics: the checkbox is persisted only when the user
+      // clicks 允许/Allow (rememberFleetTrustedHost runs for response === 0),
+      // so the label must not promise "never ask again" for the reject side.
+      checkboxLabel: copy.checkboxLabel,
+      checkboxChecked: false,
+    });
+    if (response === 0) {
+      if (checkboxChecked) {
+        try {
+          // Persist and seed the in-memory set with the SAME canonical key,
+          // otherwise the settings page lists one key while the live trust
+          // holds another, and removal silently fails for this session.
+          const canonical = rememberFleetTrustedHost(host);
+          trustedOrigins.add(canonical);
+        } catch {
+          // A storage failure must not convert the user's explicit 允许 into
+          // a reject: degrade to "trusted for this click, not remembered".
+        }
+      }
+      return "open";
+    }
+    return "cancel";
+  })();
+  inflightExternalOpenConfirm.set(url, prompt);
+  try {
+    return await prompt;
+  } finally {
+    inflightExternalOpenConfirm.delete(url);
+  }
+}
+
+function registerFleetTrustHostHandler() {
+  ipcMain.handle(
+    IPC_ASK_TRUST_FLEET_HOST,
+    async (
+      event,
+      rawUrl: unknown,
+    ): Promise<{ mode: "preview" | "open" | "cancel" }> => {
+      // Sender check + window resolution follow the OIDC handlers: the native
+      // prompt must be owned by the window that asked (not whatever window
+      // happens to be focused), and untrusted senders get a flat rejection.
+      const win = resolveTrustedOidcSender(event);
+      if (!win) return { mode: "cancel" };
+      // Validate the input instead of trusting the renderer blindly. The
+      // trust key is derived from the validated URL here, never taken from
+      // the renderer, so a caller cannot cache-trust one origin while
+      // displaying another. The key is `URL.host` (hostname + non-default
+      // port): remembering `x:8443` must not trust `x` or `x:9999`.
+      if (typeof rawUrl !== "string") return { mode: "cancel" };
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(rawUrl);
+        if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+          return { mode: "cancel" };
+        }
+      } catch {
+        return { mode: "cancel" };
+      }
+      const host = parsedUrl.host;
+      // Re-validate the fleet path shape AND the decoded segment values
+      // BEFORE the trust check (the renderer checked too, but the main
+      // process is the trust authority): a trusted host must not mint
+      // `preview` for a URL that was never a fleet deep link, and a
+      // percent-encoded separator must not pass the shape gate and decode
+      // into path traversal afterwards.
+      if (!isFleetIssuePathShape(parsedUrl.pathname)) return { mode: "cancel" };
+      // Trusted origin (persisted + renderer-reported) → in-app preview.
+      if (isTrustedOrigin(host)) return { mode: "preview" };
+      // Unknown origin → confirm opening in the browser (with optional
+      // "trust this domain" persistence). The main process opens the URL
+      // itself on confirmation.
+      const choice = await confirmOpenExternalInBrowser(win, parsedUrl.href);
+      if (choice === "open") void openUrlExternally(parsedUrl.href);
+      return choice === "open" ? { mode: "open" } : { mode: "cancel" };
+    },
+  );
+}
+
 type OidcFlow = {
   origin: string;
   authcode: string;
@@ -118,6 +719,134 @@ const TRUSTED_SHELL_DEV_ORIGIN = isDevelopment
   ? new URL(DEV_SERVER_URL).origin
   : undefined;
 const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
+
+/* ---------- external link router ---------- */
+
+/**
+ * Open an http(s) URL in the system browser from the main process, shared by
+ * the setWindowOpenHandler router and the IPC_OPEN_EXTERNAL_URL bridge.
+ * Logs origin/pathname only — a message-body URL can carry query tokens that
+ * must not end up in logs.
+ *
+ * The URL is parsed exactly once and openExternal receives `parsed.href`:
+ * WHATWG parsing strips embedded tabs/newlines and normalizes the form, so
+ * the OS handler never sees the raw renderer string.
+ */
+function openUrlExternally(rawUrl: string): Promise<boolean> {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    logExternalUrlRejection(rawUrl);
+    return Promise.resolve(false);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    logExternalUrlRejection(rawUrl);
+    return Promise.resolve(false);
+  }
+  return shell
+    .openExternal(parsed.href)
+    .then(() => true)
+    .catch((error) => {
+      console.warn(
+        `[external-link] openExternal failed (${safeUrlLabel(rawUrl)}):`,
+        error,
+      );
+      return false;
+    });
+}
+
+function logExternalUrlRejection(url: string): void {
+  console.warn(`[external-link] denied non-http(s) URL (${safeUrlLabel(url)})`);
+}
+
+/** Origin + pathname only; never log query or fragment (token leakage). */
+function safeUrlLabel(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.origin}${parsed.pathname}`;
+  } catch {
+    return "(unparseable)";
+  }
+}
+
+/**
+ * Route renderer-initiated window.open / target=_blank to the system browser.
+ *
+ * Message-body links render as `<a target="_blank" rel="noopener noreferrer">`
+ * anchors; Electron's default handling opens a raw BrowserWindow for them —
+ * no app chrome, a separate session/login state, and for deployment hosts
+ * other than the logged-in one a dead-end login page. Every desktop IM
+ * client instead hands such links to the user's browser. The in-app fleet
+ * preview panel is NOT affected: its clicks are preventDefault-ed in the
+ * renderer and never reach this handler; the explicit rejection fallback
+ * (openFleetLinkExternal → window.open) lands here and is routed to the
+ * browser, which is exactly the intended "open externally" outcome.
+ *
+ * Everything non-http(s) is denied without reaching the OS. The renderer
+ * features that used the web-era `window.open("about:blank")` dance
+ * (realname verification, global-search doc open) were migrated to the
+ * IPC_OPEN_EXTERNAL_URL bridge, so there is no legitimate about:blank
+ * popup left to exempt — and an allow branch would be a bypass surface
+ * (about:blank documents commit before any will-navigate listener can
+ * cancel them, and javascript:/hash navigations never fire will-navigate).
+ */
+function attachExternalLinkRouter(win: BrowserWindow): void {
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (decideWindowOpen(url) !== "open-external") {
+      logExternalUrlRejection(url);
+      return { action: "deny" };
+    }
+    let host = "";
+    try {
+      host = new URL(url).host;
+    } catch {
+      return { action: "deny" };
+    }
+    if (isTrustedOrigin(host)) {
+      void openUrlExternally(url);
+      return { action: "deny" };
+    }
+    // Unknown origin: confirm with the user before handing it to the
+    // browser (they may tick "trust this domain" to skip future prompts).
+    void confirmOpenExternalInBrowser(win, url)
+      .then((choice) => {
+        if (choice === "open") void openUrlExternally(url);
+      })
+      .catch((error) => {
+        // The dialog can reject when its window is destroyed mid-prompt;
+        // fail closed (nothing opens) and never leave an unhandled
+        // rejection.
+        console.warn(
+          `[external-link] confirm dialog failed (${safeUrlLabel(url)}):`,
+          error,
+        );
+      });
+    return { action: "deny" };
+  });
+}
+
+function registerOpenExternalUrlHandler(): void {
+  ipcMain.handle(
+    IPC_OPEN_EXTERNAL_URL,
+    async (
+      event,
+      url: unknown,
+    ): Promise<{ ok: boolean; reason?: string }> => {
+      const win = resolveTrustedOidcSender(event);
+      if (!win) return { ok: false, reason: "untrusted-sender" };
+      if (typeof url !== "string" || url === "") {
+        return { ok: false, reason: "invalid-url" };
+      }
+      if (decideWindowOpen(url) !== "open-external") {
+        logExternalUrlRejection(url);
+        return { ok: false, reason: "non-http-url" };
+      }
+      return { ok: await openUrlExternally(url) };
+    },
+  );
+}
+
 // A same-document history.pushState changes frame.url without creating a new
 // document. Track trust at document navigation time instead of re-evaluating
 // the current pathname for every IPC call, otherwise normal SPA routes such
@@ -125,6 +854,11 @@ const TRUSTED_SHELL_FILE_URL = pathToFileURL(INDEX_HTML).href;
 const trustedShellContents = new WeakSet<Electron.WebContents>();
 
 function trackTrustedShellDocument(win: BrowserWindow) {
+  // Keep the WebContents reference captured while the window is alive. During
+  // app.exit(), Electron can emit navigation/destruction events after the
+  // BrowserWindow has already been destroyed; reading `win.webContents` from
+  // those callbacks throws "Object has been destroyed".
+  const webContents = win.webContents;
   const isTrustedDocument = (url: string) =>
     isTrustedSenderUrl(url, TRUSTED_SHELL_DEV_ORIGIN, TRUSTED_SHELL_FILE_URL);
   const tracker = createTrustedShellDocumentTracker(isTrustedDocument);
@@ -137,17 +871,17 @@ function trackTrustedShellDocument(win: BrowserWindow) {
   ) => {
     tracker.update(url, isMainFrame);
     if (tracker.isTrusted()) {
-      trustedShellContents.add(win.webContents);
+      trustedShellContents.add(webContents);
     } else {
-      trustedShellContents.delete(win.webContents);
+      trustedShellContents.delete(webContents);
     }
   };
   // Trust follows committed main-frame documents only. A will-navigate or
   // will-redirect can be cancelled (for example by an external-protocol
   // link), in which case revoking here would permanently disable IPC for the
   // still-visible shell because no did-frame-navigate event restores it.
-  win.webContents.on("did-frame-navigate", updateTrust);
-  win.webContents.once("destroyed", () => trustedShellContents.delete(win.webContents));
+  webContents.on("did-frame-navigate", updateTrust);
+  webContents.once("destroyed", () => trustedShellContents.delete(webContents));
 }
 
 // Guards every OIDC IPC handler against callers that are not our own
@@ -176,6 +910,16 @@ function resolveTrustedOidcSender(
   const win = BrowserWindow.fromWebContents(event.sender);
   if (!win || win.isDestroyed()) return undefined;
   return win;
+}
+
+function isTrustedShellIpcSender(
+  event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent,
+): boolean {
+  const frame = "senderFrame" in event ? event.senderFrame : undefined;
+  if (frame && frame.top !== frame) return false;
+  if (!trustedShellContents.has(event.sender)) return false;
+  const win = BrowserWindow.fromWebContents(event.sender);
+  return Boolean(win && !win.isDestroyed());
 }
 
 
@@ -596,7 +1340,8 @@ function registerOidcReturnRedirect(win: BrowserWindow, webUrl: string, sid: str
 const registerWindowFocusHandler = () => {
   if (isWindowFocusHandlerRegistered) return;
 
-  ipcMain.handle("is-window-focused", (event) => {
+  ipcMain.handle(IPC_WINDOW_IS_FOCUSED, (event) => {
+    if (!isTrustedShellIpcSender(event)) return false;
     // Query the window that owns the renderer making the request. This also
     // keeps focus suppression correct for auxiliary windows.
     const senderWindow = BrowserWindow.fromWebContents(event.sender);
@@ -616,7 +1361,6 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
       {
         label: `关于OCTO`,
       },
-      { label: "服务", role: "services" },
       { type: "separator" },
       {
         label: "退出",
@@ -689,7 +1433,7 @@ let mainMenu: (Electron.MenuItemConstructorOptions | Electron.MenuItem)[] = [
         accelerator: "Shift+Cmd+M",
         click() {
           mainWindow.show();
-          mainWindow.webContents.send("show-conversations");
+          mainWindow.webContents.send(IPC_SHOW_CONVERSATIONS);
         },
       },
       {
@@ -793,6 +1537,7 @@ let trayMenu: Electron.MenuItemConstructorOptions[] = [
  * @returns
  */
 let flashTimer: any = null;
+let currentUnreadCount = 0;
 
 function createMacTrayIcon(iconPath: string) {
   const source = nativeImage.createFromPath(iconPath);
@@ -808,14 +1553,15 @@ function createMacTrayIcon(iconPath: string) {
   return trayImage;
 }
 
-function updateTray(unread = 0, isFlash= false): any {
-  settings.showOnTray = true;
-
+function updateTray(unread?: number, isFlash = false): any {
   // IPC arguments are untrusted renderer data. Normalize them here so a
   // transient undefined/string value cannot produce a malformed title.
-  const unreadCount = Number.isFinite(Number(unread))
-    ? Math.max(0, Math.floor(Number(unread)))
-    : 0;
+  const unreadCount = unread === undefined
+    ? currentUnreadCount
+    : Number.isFinite(Number(unread))
+      ? Math.max(0, Math.floor(Number(unread)))
+      : 0;
+  currentUnreadCount = unreadCount;
 
   // linux 系统不支持 tray
   if (process.platform === "linux") {
@@ -833,20 +1579,18 @@ function updateTray(unread = 0, isFlash= false): any {
     }
 
     setTimeout(() => {
+      if (!settings.showOnTray) return;
       if (!tray) {
         // Init tray icon
         tray = new Tray(trayIcon);
-        if (process.platform === "linux") {
-          tray.setContextMenu(contextmenu);
-        }
+        // A primary click on the tray icon always restores the main window.
+        // Windows exposes this menu on right-click via setContextMenu. On
+        // macOS, keep primary click for restoring and open it on right-click.
+        if (!isOsx) tray.setContextMenu(contextmenu);
+        else attachTraySecondaryMenu(tray, contextmenu);
+        tray.setToolTip(OCTO_CONFIG.name);
 
-        tray.on("right-click", () => {
-          tray.popUpContextMenu(contextmenu);
-        });
-
-        tray.on("click", () => {
-          mainWindow.show();
-        });
+        attachTrayPrimaryClick(tray, () => mainWindow);
       }
 
       if (isOsx) {
@@ -857,7 +1601,7 @@ function updateTray(unread = 0, isFlash= false): any {
         tray.setTitle(unreadCount > 0 ? ` ${unreadCount}` : "");
       }
 
-      mainWindow.flashFrame(isFlash);
+      if (mainWindow && !mainWindow.isDestroyed()) mainWindow.flashFrame(isFlash);
       //设置系统托盘闪烁
       if(isFlash){
         clearInterval(flashTimer)
@@ -880,6 +1624,7 @@ function updateTray(unread = 0, isFlash= false): any {
       }
     });
   } else {
+    clearInterval(flashTimer);
     if (!tray) return;
     tray.destroy();
     tray = null;
@@ -930,7 +1675,7 @@ const getWindowConfig = () => {
     // frame: true, // * app边框(包括关闭,全屏,最小化按钮的导航栏) @false: 隐藏
     // titleBarStyle: "hidden",
     // transparent: true, // * app 背景透明
-    hasShadow: false, // * app 边框阴影
+    hasShadow: true, // * app 边框阴影
     show: false, // 启动窗口时隐藏,直到渲染进程加载完成「ready-to-show 监听事件」 再显示窗口,防止加载时闪烁
     resizable: true, // 禁止手动修改窗口尺寸
     // Windows: 允许用户按 Alt 键显示/隐藏菜单栏
@@ -961,8 +1706,12 @@ const getWindowConfig = () => {
 const createNewWindow = () => {
   const newWindow = new BrowserWindow(getWindowConfig());
   trackTrustedShellDocument(newWindow);
+  attachExternalLinkRouter(newWindow);
 
   newWindow.center();
+  newWindow.webContents.on("did-finish-load", () => {
+    if (!newWindow.isDestroyed()) newWindow.webContents.setZoomFactor(settings.zoomFactor);
+  });
   newWindow.once("ready-to-show", () => {
     newWindow.show(); // 显示窗口
     newWindow.focus();
@@ -997,15 +1746,31 @@ const createNewWindow = () => {
 const createMainWindow = async () => {
   mainWindow = new BrowserWindow(getWindowConfig());
   trackTrustedShellDocument(mainWindow);
+  attachExternalLinkRouter(mainWindow);
   mainWindow.center();
+  mainWindow.webContents.on("did-finish-load", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.setZoomFactor(settings.zoomFactor);
+  });
   mainWindow.once("ready-to-show", () => {
     mainWindow.setTitle(OCTO_CONFIG.name);
     mainWindow.show(); // 显示窗口
     mainWindow.focus();
   });
 
+  let quitAfterClose = false;
   mainWindow.on("close", (e: any) => {
-    if (forceQuit || !tray) {
+    const canBackground = isOsx || (settings.showOnTray && Boolean(tray));
+    if (quitAfterClose) return;
+    if ((settings.closeBehavior === "quit" || !canBackground) && !forceQuit) {
+      e.preventDefault();
+      quitAfterClose = true;
+      mainWindow.once("closed", () => {
+        quitAfterClose = false;
+        mainWindow = null;
+        app.quit();
+      });
+      mainWindow.close();
+    } else if (forceQuit) {
       mainWindow = null;
     } else {
       e.preventDefault();
@@ -1028,13 +1793,15 @@ const createMainWindow = async () => {
     attachFileRootGuard(mainWindow, WEB_URL);
   }
 
-  ipcMain.on("screenshots-start", (event, args) => {
+  ipcMain.on(IPC_SCREENSHOTS_START, (event, args) => {
+    if (!isTrustedShellIpcSender(event)) return;
     console.log("main voip-message event", args);
     screenShotWindowId = event.sender.id;
     screenshots.startCapture();
   });
 
-  ipcMain.on("get-media-access-status", async (event, mediaType: 'camera' | 'microphone')=>{
+  ipcMain.handle(IPC_MEDIA_ACCESS_STATUS, async (event, mediaType: 'camera' | 'microphone')=>{
+    if (!isTrustedShellIpcSender(event)) return 'denied';
     console.log(mediaType)
     //检测麦克风权限是否开启
     const getMediaAccessStatus = systemPreferences.getMediaAccessStatus(mediaType);
@@ -1058,15 +1825,17 @@ const createMainWindow = async () => {
     }
 
     // const isFlag = num > 0 && isWin ? true : false;
-    updateTray(num, false); // 不需要闪烁，闪烁很消耗性能
+    updateTray(Number(num), false); // 不需要闪烁，闪烁很消耗性能
   });
 
-  ipcMain.on("restart-app",()=>{
+  ipcMain.on(IPC_RESTART_APP,(event)=>{
+    if (!isTrustedShellIpcSender(event)) return;
     restartApp()
   })
 
   // Test notification handler for debugging (development only)
-  ipcMain.handle("test-notification-icon", () => {
+  ipcMain.handle(IPC_NOTIFICATION_TEST_ICON, (event) => {
+    if (!isTrustedShellIpcSender(event)) return false;
     if (!isDevelopment) return false;
     // Show a test notification
     electronNotificationManager.showNotification({
@@ -1084,6 +1853,7 @@ const createMainWindow = async () => {
 
   // Set up notification manager with main window
   electronNotificationManager.setMainWindow(mainWindow);
+  electronNotificationManager.setSenderGuard(isTrustedShellIpcSender);
 
   // 检查更新
   checkUpdate(mainWindow)
@@ -1127,7 +1897,7 @@ function onDeepLink(url: string) {
     console.warn("Deep link dropped: main window not ready:", url);
     return;
   }
-  mainWindow.webContents.send("deep-link", url);
+  mainWindow.webContents.send(IPC_DEEP_LINK, url);
 }
 
 app.setName(OCTO_CONFIG.name);
@@ -1164,6 +1934,10 @@ const userDataPlan = planUserDataMigration(
 if (userDataPlan.action !== "none") {
   app.setPath("userData", userDataPlan.oldDir);
 }
+userDataMigrationPending = userDataPlan.action !== "none";
+keepAwakeEnabled = readKeepAwakePreference();
+settings = readDesktopSettings();
+downloadSettings = readDownloadSettings();
 
 // Migration dialogs. Round-6 P2-2: dialog.showErrorBox called before `ready`
 // degrades to stderr on Linux (documented in electron.d.ts), so every dialog
@@ -1415,9 +2189,20 @@ app.on("ready", () => {
     app.quit();
     return;
   }
+  registerKeepAwakeHandlers();
+  applyKeepAwake(keepAwakeEnabled);
+  registerTrustedDomainsSettingsHandlers();
+  registerFleetTrustHostHandler();
+  registerOpenExternalUrlHandler();
+  registerDesktopSettingsHandlers();
+  registerDownloadSettingsHandlers();
+  registerDownloadHandler();
+  registerDownloadUrlHandler();
+  registerSystemSettingsHandler();
   regShortcut();
   registerWindowFocusHandler();
   createMainWindow(); // 创建窗口
+  applyDesktopSettings();
 
   if (isWin) {
     app.setAppUserModelId(OCTO_CONFIG.appId);
@@ -1435,7 +2220,7 @@ app.on("ready", () => {
     );
     if (isMainWindowFocusedWhenStartScreenshot) {
       if (result) {
-        mainWindow.webContents.send("screenshots-ok", result);
+        mainWindow.webContents.send(IPC_SCREENSHOTS_OK, result);
       }
       mainWindow.show();
       isMainWindowFocusedWhenStartScreenshot = false;
@@ -1446,7 +2231,7 @@ app.on("ready", () => {
       );
       if (tms.length > 0) {
         if (result) {
-          tms[0].webContents.send("screenshots-ok", result);
+          tms[0].webContents.send(IPC_SCREENSHOTS_OK, result);
         }
         tms[0].show();
       }
@@ -1524,10 +2309,10 @@ app.on("before-quit", () => {
     flashTimer = null;
   }
 
-  if (!tray) return;
-
-  tray.destroy();
-  tray = null;
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
   globalShortcut.unregisterAll();
 });
 
