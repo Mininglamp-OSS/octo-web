@@ -102,17 +102,17 @@ import {
 // 实测立即 threadGet 可能仍返回 Archived，因此发送后用短轮询等后端状态落稳。
 const THREAD_REACTIVATE_REFRESH_DELAYS_MS = [0, 300, 800, 1500];
 
-function extensionFromUrl(url: string): string {
+export function extensionFromUrl(url: string): string {
   const path = url.split(/[?#]/)[0] || "";
   const fileName = path.substring(path.lastIndexOf("/") + 1);
   return getExtension("", fileName);
 }
 
-function fallbackSearchMediaExtension(kind: ChannelSearchItem["kind"]) {
+export function fallbackSearchMediaExtension(kind: ChannelSearchItem["kind"]) {
   return kind === "video" ? "mp4" : "jpg";
 }
 
-function searchMediaPreviewName(
+export function searchMediaPreviewName(
   item: ChannelSearchItem,
   extension: string
 ): string {

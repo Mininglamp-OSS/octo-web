@@ -7,6 +7,8 @@ import { Modal as OctoModal, modalConfirm } from "@octo/ui";
 
 let ConversationListGrouped: typeof import("../index").default
 let container: HTMLDivElement
+let lastDndProps: any
+let lastCategoryProps: any
 
 const ChannelTypeGroup = 2
 const ChannelTypePerson = 1
@@ -82,7 +84,7 @@ beforeAll(async () => {
         },
     }))
 
-    vi.doMock("../../../i18n", () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+    vi.doMock("../../../i18n", () => ({ t: (key: string) => key, useI18n: () => ({ t: (key: string) => key }) }))
 
     vi.doMock("../../OctoModal", () => ({ modalConfirm: vi.fn() }))
 
@@ -93,7 +95,7 @@ beforeAll(async () => {
 
     // DnD 包：直接 passthrough children，避免引入真实拖拽上下文
     vi.doMock("@dnd-kit/core", () => ({
-        DndContext: ({ children }: any) => <div>{children}</div>,
+        DndContext: (props: any) => { lastDndProps = props; return <div>{props.children}</div> },
         DragOverlay: ({ children }: any) => <div>{children}</div>,
         PointerSensor: class {},
         useSensor: () => ({}),
@@ -108,7 +110,10 @@ beforeAll(async () => {
     // ConversationListWithCategory：渲染每个分组的 conversations 节点即可
     vi.doMock("../../ConversationListWithCategory", () => ({
         __esModule: true,
-        default: ({ categories = [] }: { categories?: Array<any> }) => (
+        default: (props: any) => {
+            lastCategoryProps = props
+            const { categories = [] } = props
+            return (
             <div data-testid="cat-list">
                 {categories.map((cat) => (
                     <div key={cat.id} data-testid={`cat-${cat.id}`}>
@@ -116,7 +121,8 @@ beforeAll(async () => {
                     </div>
                 ))}
             </div>
-        ),
+            )
+        },
     }))
 
     // ConversationList：把传入的 conversations 的 channelID 平铺渲染，便于断言成员
@@ -257,5 +263,61 @@ describe("ConversationListGrouped — 归档子区过滤 (issue #345)", () => {
         })
 
         expect(container.textContent || "").toContain("grpA____tUnknown")
+    })
+
+    it("renders loading/error/empty fallbacks and accepts drag lifecycle events", () => {
+        const onRetry = vi.fn()
+        const onSortCategories = vi.fn()
+        renderGrouped({ isLoading: true, error: "failed", onRetry, onSortCategories, categories: categories as any })
+        expect(container).toBeTruthy()
+        onRetry()
+        lastDndProps.onDragStart({ active: { id: "cat::cat-a", data: { current: { type: "category", categoryId: "cat-a" } } } })
+        lastDndProps.onDragEnd({
+            active: { id: "cat::cat-a", data: { current: { type: "category", categoryId: "cat-a" } } },
+            over: { id: "cat::cat-a", data: { current: { type: "category" } } },
+        })
+        expect(onSortCategories).not.toHaveBeenCalled()
+        renderGrouped({ categories: [], conversations: [], isLoading: false, error: null })
+        expect(container).toBeTruthy()
+    })
+
+    it("synthesizes followed DM and thread items and routes item sorting", () => {
+        const onSortFollowItems = vi.fn()
+        const dm = { target_type: 1, target_id: "user-1", channel_type: ChannelTypePerson, category_id: "cat-a", follow_sort: 1 }
+        const thread = { target_type: 5, target_id: "grpA____tCold", channel_type: ChannelTypeCommunityTopic, category_id: "cat-a", follow_sort: 2 }
+        renderGrouped({
+            categories: categories as any,
+            itemsByCategory: new Map([["cat-a", [dm, thread]]]),
+            dmsByCategory: new Map([["cat-a", [dm]]]),
+            threadsByCategory: new Map([["cat-a", [thread]]]),
+            followedKeys: new Set(["1::user-1", "5::grpA____tCold"]),
+            followedGroupNos: new Set(["grpA"]),
+            onSortFollowItems,
+        })
+        expect(container.textContent).toContain("user-1")
+        lastDndProps.onDragEnd({ active: { id: "item::1::user-1", data: { current: { type: "item", channelType: 1, channelID: "user-1" } } }, over: { id: "item::5::grpA____tCold", data: { current: { type: "item" } } } })
+        expect(lastDndProps).toBeTruthy()
+    })
+
+    it("keeps categories with no follows visible and handles malformed drag data", () => {
+        renderGrouped({ categories: [{ ...categories[0], groups: [] }] as any, itemsByCategory: new Map() })
+        expect(container).toBeTruthy()
+        lastDndProps.onDragStart({ active: { id: "bad", data: { current: { type: "unknown" } } } })
+        lastDndProps.onDragEnd({ active: { id: "bad", data: { current: { type: "unknown" } } }, over: null })
+    })
+
+    it("opens category context menus and handles rename callbacks", async () => {
+        const rename = vi.fn().mockResolvedValue(undefined)
+        const start = vi.fn()
+        const remove = vi.fn()
+        renderGrouped({ categories: [{ ...categories[0], is_default: false }] as any, onRenameCategory: rename, onCreateGroupInCategory: start, onDeleteCategory: remove })
+        const event: any = { type: "contextmenu", preventDefault: vi.fn(), clientX: 1, clientY: 2 }
+        lastCategoryProps.onCategoryContextMenu("cat-a", event)
+        expect(event.preventDefault).toHaveBeenCalled()
+        await lastCategoryProps.onRenameConfirm("cat-a", "Renamed")
+        expect(rename).toHaveBeenCalledWith("cat-a", "Renamed")
+        lastCategoryProps.onRenameCancel()
+        const clickEvent: any = { type: "click", currentTarget: { getBoundingClientRect: () => ({ right: 3, bottom: 4 }) }, preventDefault: vi.fn() }
+        lastCategoryProps.onCategoryContextMenu("cat-a", clickEvent)
     })
 })

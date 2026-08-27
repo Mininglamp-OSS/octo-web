@@ -44,7 +44,10 @@ export async function registerS26SummaryStandaloneLinks(page: Page): Promise<voi
       msw.http.get("*/summary/api/v1/summaries/e2e-task-026", () => msw.HttpResponse.json(detail)),
       msw.http.post("*/summary/api/v1/summaries/2601/read", () => msw.HttpResponse.json({ code: 0, message: "ok", data: { is_unread: false, has_pending_invitation: false, needs_attention: false } })),
       msw.http.get("*/summary/api/v1/summaries/2601/versions", () => msw.HttpResponse.json({ code: 0, message: "ok", data: { versions: [], keep_limit: 3 } })),
+      // Preview and production proxy deployments expose the same endpoint
+      // with and without the `/summary` prefix.
       msw.http.get("*/summary/api/v1/summary-shares/e2e-share-026", () => msw.HttpResponse.json(share)),
+      msw.http.get("*/api/v1/summary-shares/e2e-share-026", () => msw.HttpResponse.json(share)),
     );
     win.__s26MswInstalled = true;
     return true;

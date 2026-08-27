@@ -39,7 +39,7 @@ vi.mock('yet-another-react-lightbox', () => ({
 vi.mock('yet-another-react-lightbox/plugins/zoom', () => ({ default: {} }))
 vi.mock('yet-another-react-lightbox/styles.css', () => ({}))
 vi.mock('@douyinfe/semi-ui', () => ({ Toast: { success: mocks.toastSuccess, warning: mocks.toastWarning } }))
-vi.mock('../../../App', () => ({ default: {} }))
+vi.mock('../../../App', () => ({ default: { dataSource: { commonDataSource: { getImageURL: (url: string) => url } } } }))
 vi.mock('../../../i18n', () => ({
   t: (key: string) => ({
     'base.filePreview.pdf.zoomOut': 'Zoom out',
@@ -52,12 +52,19 @@ vi.mock('../../../i18n', () => ({
 }))
 vi.mock('../../../Service/Const', () => ({ MessageContentTypeConst: { image: 3 } }))
 vi.mock('../../../Utils/clipboard', () => ({ copyImageToClipboard: mocks.copyImageToClipboard }))
+vi.mock('../../../bridge/message/useImageMessageUI', () => ({
+  getImageMessageUI: () => ({
+    isMulti: false,
+    singleImage: { src: 'https://cdn.example.com/image.png', width: 100, height: 80 },
+    row: {},
+  }),
+}))
 vi.mock('../../Base', () => ({ default: () => null }))
 vi.mock('../../MessageCell', () => ({
   MessageCell: class {},
 }))
 
-import { ImageContent, ImagePreviewLightbox, ImagePreviewToolbar, getImageTransferState } from '../index'
+import { ImageCell, ImageContent, ImagePreviewLightbox, ImagePreviewToolbar, getImageTransferState } from '../index'
 import { MessageStatus, TaskStatus } from 'wukongimjssdk'
 
 describe('ImagePreviewToolbar', () => {
@@ -265,5 +272,32 @@ describe('getImageTransferState', () => {
       uploadStatus: TaskStatus.success,
       uploadProgress: 100,
     })).toBeUndefined()
+  })
+})
+
+describe('ImageCell geometry', () => {
+  it('scales landscape, portrait and square images only when over bounds', () => {
+    const cell: any = new ImageCell({})
+    expect(cell.imageScale(100, 50)).toEqual({ width: 100, height: 50 })
+    expect(cell.imageScale(1320, 660)).toEqual({ width: 660, height: 330 })
+    expect(cell.imageScale(660, 744)).toEqual({ width: 330, height: 372 })
+    expect(cell.imageScale(1000, 1000)).toEqual({ width: 660, height: 660 })
+  })
+
+  it('renders a remote image row and opens the preview through the image callback', () => {
+    const message: any = {
+      clientMsgNo: 'image-1', messageID: 'server-1', status: MessageStatus.Normal,
+      checked: false, fromUID: 'u1', message: {},
+      content: { url: 'https://cdn.example.com/image.png', width: 100, height: 80, name: 'image.png' },
+    }
+    const context: any = {
+      editOn: () => false, showContextMenus: vi.fn(), isContextMenuOpen: () => false,
+      checkeMessage: vi.fn(), onTapAvatar: vi.fn(), showUser: vi.fn(), resendMessage: vi.fn(),
+    }
+    const cell: any = new ImageCell({ message, context })
+    cell.props = { message, context }
+    const tree: any = cell.render()
+    expect(tree).toBeTruthy()
+    expect(cell.getImageSrc(message.content)).toBeTruthy()
   })
 })

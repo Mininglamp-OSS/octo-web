@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { i18n } from "../../i18n/instance"
-import { formatMessageTimestamp } from "../time"
+import { formatMessageTimestamp, formatRelativeTime, getTimeStringAutoShort2, dateFormat } from "../time"
 
 describe("formatMessageTimestamp", () => {
     afterEach(() => {
@@ -53,5 +53,20 @@ describe("formatMessageTimestamp", () => {
         const timestamp = new Date(2025, 11, 31, 23, 59, 0).getTime()
 
         expect(formatMessageTimestamp(timestamp)).toBe("2025-12-31 23:59")
+    })
+
+    it("formats calendar tokens and relative time ranges", () => {
+        vi.useFakeTimers()
+        vi.setSystemTime(new Date(2026, 5, 8, 12, 0, 0))
+        expect(dateFormat(new Date(2026, 5, 8, 12, 3, 4), "yyyy-MM-dd hh:mm:ss q S")).toBe("2026-06-08 12:03:04 2 0")
+        expect(getTimeStringAutoShort2(Date.now() - 30_000, true)).toBe("刚刚")
+        expect(getTimeStringAutoShort2(Date.now() - 90_000, false)).toMatch(/^\d{2}:\d{2}$/)
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 7, 10, 0).getTime(), true)).toMatch(/^昨天 \d{2}:\d{2}$/)
+        expect(getTimeStringAutoShort2(new Date(2026, 5, 6, 10, 0).getTime(), true)).toMatch(/^前天 \d{2}:\d{2}$/)
+        expect(formatRelativeTime()).toBe("")
+        expect(formatRelativeTime(new Date(Date.now() - 30_000).toISOString())).toBe("刚刚")
+        expect(formatRelativeTime(new Date(Date.now() - 2 * 3600_000).toISOString())).toContain("2")
+        expect(formatRelativeTime(new Date(Date.now() - 2 * 86400_000).toISOString())).toBe("前天")
+        expect(formatRelativeTime(new Date(Date.now() - 10 * 86400_000).toISOString())).toMatch(/^2026\//)
     })
 })

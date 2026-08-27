@@ -45,20 +45,20 @@ interface Props {
 // The datePreset ("today" / "last_7_days" / "last_30_days") path uses the
 // CN-tz-aware `cnDatePresetRange` helper from apiAdapter.ts, since the
 // backend day boundaries are anchored to Asia/Shanghai (§11).
-function startOfDay(date: Date) {
+export function startOfDay(date: Date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d;
 }
-function endOfDay(date: Date) {
+export function endOfDay(date: Date) {
   const d = new Date(date);
   d.setHours(23, 59, 59, 999);
   return d;
 }
-function toSeconds(date: Date) {
+export function toSeconds(date: Date) {
   return Math.floor(date.getTime() / 1000);
 }
-function dateFromSeconds(seconds?: number) {
+export function dateFromSeconds(seconds?: number) {
   if (!seconds) return undefined;
   return new Date(seconds * 1000);
 }
@@ -66,7 +66,7 @@ function dateFromSeconds(seconds?: number) {
 // Mirror of ChannelSearch's date label ("2026/07/10 周四") so the global-search
 // date trigger reads identically to the in-conversation one. Copied verbatim
 // from ChannelSearch/index.tsx to keep the two surfaces visually in lock-step.
-function dateDisplayValue(seconds?: number, locale?: string) {
+export function dateDisplayValue(seconds?: number, locale?: string) {
   if (!seconds) return "";
   const date = new Date(seconds * 1000);
   const year = date.getFullYear();
@@ -77,7 +77,7 @@ function dateDisplayValue(seconds?: number, locale?: string) {
   }).format(date);
   return `${year}/${month}/${day} ${weekday}`;
 }
-function datePickerValueToDate(
+export function datePickerValueToDate(
   value?: Date | Date[] | string | string[] | null
 ) {
   if (!value) return undefined;
