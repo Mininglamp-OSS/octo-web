@@ -5,6 +5,7 @@ import type {
 } from "../../types/summary";
 import type {
   CreateSummaryWorkbenchModelOptions,
+  SummaryWorkbenchAuthoritativeState,
   SummaryWorkbenchMessage,
   SummaryWorkbenchResponse,
 } from "./model";
@@ -49,7 +50,13 @@ export function adaptSummaryWorkspaceTurn(
   const common = {
     messageId: String(turn.message_id),
     reply: turn.reply,
+    sessionId: turn.session_id,
+    runId: turn.run_id,
     scopeVersion: turn.state.scope_version,
+    authoritativeState: toAuthoritativeState(turn.state, {
+      messageId: turn.message_id,
+      actions,
+    }),
   };
 
   switch (turn.result_type) {
@@ -133,7 +140,8 @@ export function adaptSummaryWorkspaceHistory(
   value: unknown
 ): SummaryWorkbenchHistoryHydration {
   const history = decodeSummaryWorkspaceHistory(value);
-  const scope = toWorkbenchScope(history.state.summary_context);
+  const authoritativeState = toAuthoritativeState(history.state);
+  const scope = authoritativeState.scope;
   const currentPreview = history.state.current_preview;
   const pendingProposal = history.state.pending_proposal;
   const workflow = history.state.workflow;
@@ -211,55 +219,12 @@ export function adaptSummaryWorkspaceHistory(
     contractVersion: history.contract_version,
     scope,
     modelOptions: {
-      scopeVersion: history.state.scope_version,
-      contextItems: contextItemsFromScope(scope),
+      scopeVersion: authoritativeState.scopeVersion,
+      contextItems: authoritativeState.contextItems,
       messages,
-      currentPreview: currentPreview
-        ? {
-            messageId: String(currentPreview.message_id),
-            resultType: currentPreview.result_type,
-            scopeVersion: currentPreview.scope_version,
-            version: currentPreview.artifact_version,
-            snapshotVersion: currentPreview.snapshot_version,
-            content: currentPreview.content,
-            assumptions: [...currentPreview.assumptions],
-            availableActions: toWorkbenchActions(
-              currentPreview.available_actions
-            ),
-          }
-        : null,
-      pendingProposal: pendingProposal
-        ? {
-            messageId: String(pendingProposal.message_id),
-            resultType: "workflow_confirmation",
-            scopeVersion: pendingProposal.scope_version,
-            proposalVersion: pendingProposal.proposal_version,
-            proposalToken: pendingProposal.proposal_token,
-            participantNames: pendingProposal.participants.map(
-              (participant) => participant.user_name ?? participant.user_id
-            ),
-            requirement: pendingProposal.requirement,
-            templateLabel: pendingProposal.template_label,
-            timeRangeLabel: pendingProposal.time_range_label,
-            availableActions: toWorkbenchActions(
-              pendingProposal.available_actions
-            ),
-          }
-        : null,
-      workflow: workflow
-        ? {
-            messageId: String(workflow.message_id),
-            resultType: workflow.result_type,
-            scopeVersion: workflow.scope_version,
-            taskId: workflow.task_id,
-            taskTitle: workflow.task_title,
-            participantCount: workflow.participant_count,
-            status: workflow.status,
-            scope: workflow.scope,
-            saved: workflow.saved,
-            availableActions: toWorkbenchActions(workflow.available_actions),
-          }
-        : null,
+      currentPreview: authoritativeState.currentPreview,
+      pendingProposal: authoritativeState.pendingProposal,
+      workflow: authoritativeState.workflow,
     },
   };
 }
@@ -711,6 +676,77 @@ function requireWorkflow(
   return workflow;
 }
 
+function toAuthoritativeState(
+  state: SummaryWorkspaceStateDTO,
+  turn?: { messageId: number; actions: SummaryWorkbenchAction[] }
+): SummaryWorkbenchAuthoritativeState {
+  const scope = toWorkbenchScope(state.summary_context);
+  const constrainCurrentActions = (
+    messageId: number,
+    actions: SummaryWorkbenchAction[]
+  ) =>
+    turn?.messageId === messageId
+      ? intersectActions(turn.actions, actions)
+      : actions;
+
+  return {
+    scopeVersion: state.scope_version,
+    scope,
+    contextItems: contextItemsFromScope(scope),
+    currentPreview: state.current_preview
+      ? {
+          messageId: String(state.current_preview.message_id),
+          resultType: state.current_preview.result_type,
+          scopeVersion: state.current_preview.scope_version,
+          version: state.current_preview.artifact_version,
+          snapshotVersion: state.current_preview.snapshot_version,
+          content: state.current_preview.content,
+          assumptions: [...state.current_preview.assumptions],
+          availableActions: constrainCurrentActions(
+            state.current_preview.message_id,
+            toWorkbenchActions(state.current_preview.available_actions)
+          ),
+        }
+      : null,
+    pendingProposal: state.pending_proposal
+      ? {
+          messageId: String(state.pending_proposal.message_id),
+          resultType: "workflow_confirmation",
+          scopeVersion: state.pending_proposal.scope_version,
+          proposalVersion: state.pending_proposal.proposal_version,
+          proposalToken: state.pending_proposal.proposal_token,
+          participantNames: state.pending_proposal.participants.map(
+            (participant) => participant.user_name ?? participant.user_id
+          ),
+          requirement: state.pending_proposal.requirement,
+          templateLabel: state.pending_proposal.template_label,
+          timeRangeLabel: state.pending_proposal.time_range_label,
+          availableActions: constrainCurrentActions(
+            state.pending_proposal.message_id,
+            toWorkbenchActions(state.pending_proposal.available_actions)
+          ),
+        }
+      : null,
+    workflow: state.workflow
+      ? {
+          messageId: String(state.workflow.message_id),
+          resultType: state.workflow.result_type,
+          scopeVersion: state.workflow.scope_version,
+          taskId: state.workflow.task_id,
+          taskTitle: state.workflow.task_title,
+          participantCount: state.workflow.participant_count,
+          status: state.workflow.status,
+          scope: state.workflow.scope,
+          saved: state.workflow.saved,
+          availableActions: constrainCurrentActions(
+            state.workflow.message_id,
+            toWorkbenchActions(state.workflow.available_actions)
+          ),
+        }
+      : null,
+  };
+}
+
 function toWorkbenchScope(
   context: SummaryWorkspaceContextDTO
 ): SummaryWorkbenchScope {
@@ -748,7 +784,7 @@ function toWorkbenchScope(
   };
 }
 
-function contextItemsFromScope(
+export function contextItemsFromScope(
   scope: SummaryWorkbenchScope
 ): SummaryWorkbenchContextItem[] {
   const items: SummaryWorkbenchContextItem[] = [];
@@ -778,6 +814,13 @@ function contextItemsFromScope(
       id: `${scope.timeRange.start}:${scope.timeRange.end}`,
       kind: "time_range",
       label: scope.timeRange.label,
+    });
+  }
+  for (const taskId of scope.referencedTaskIds) {
+    items.push({
+      id: String(taskId),
+      kind: "reference",
+      label: `#${taskId}`,
     });
   }
   return items;

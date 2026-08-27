@@ -1,9 +1,11 @@
 import type {
   AgentProgressEvent,
   CreateAgentSummaryResult,
+  SummaryDetail,
 } from "../types/summary";
 import {
   confirmSummaryWorkspaceProposal,
+  getSummaryDetail,
   getSummaryWorkspaceCapabilities,
   getSummaryWorkspaceHistory,
   postSummaryWorkspaceTurn,
@@ -71,6 +73,7 @@ export interface SummaryWorkbenchStreamCallbacks {
 
 export interface SummaryWorkbenchTransport {
   getCapabilities(options?: SummaryWorkbenchRequestOptions): Promise<unknown>;
+  getSummaryDetail(taskId: number): Promise<SummaryDetail>;
   postTurn(
     request: SummaryWorkspaceChatRequestDTO,
     options?: SummaryWorkbenchRequestOptions
@@ -95,6 +98,7 @@ export interface SummaryWorkbenchTransport {
 
 const defaultTransport: SummaryWorkbenchTransport = {
   getCapabilities: getSummaryWorkspaceCapabilities,
+  getSummaryDetail,
   postTurn: postSummaryWorkspaceTurn,
   streamTurn: streamSummaryWorkspaceTurn,
   getHistory: getSummaryWorkspaceHistory,
@@ -112,6 +116,13 @@ export class SummaryWorkbenchService {
   ): Promise<SummaryWorkspaceCapabilitiesDTO> {
     const response = await this.transport.getCapabilities(options);
     return decodeSummaryWorkspaceCapabilities(response);
+  }
+
+  async loadReferenceSummary(
+    taskId: number
+  ): Promise<Pick<SummaryDetail, "task_id" | "title">> {
+    const detail = await this.transport.getSummaryDetail(taskId);
+    return { task_id: detail.task_id, title: detail.title };
   }
 
   async sendMessage(

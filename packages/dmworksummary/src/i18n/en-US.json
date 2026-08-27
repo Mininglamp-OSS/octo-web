@@ -181,6 +181,8 @@
         "selectMembers": "Select participants",
         "selectedMembers": "{{count}} participants selected",
         "start": "Quick summary",
+        "createScheduled": "Create scheduled summary",
+        "backToAssistant": "Back to summary assistant",
         "agentStart": "Agent Summary",
         "agentSubmitting": "Agent summarizing...",
         "agentTopicPlaceholder": "Describe what you need summarized",
@@ -214,17 +216,42 @@
             "participant": "Participants",
             "template": "Template",
             "timeRange": "Time range",
+            "reference": "Reference summary",
             "remove": "Remove {{label}}"
         },
         "composer": {
-            "send": "Send"
+            "send": "Send",
+            "generate": "Generate summary"
         },
         "actions": {
-            "confirmWorkflow": "Confirm and invite participants",
+            "confirmWorkflow": "Confirm and start collaboration",
             "savePreview": "Save as summary",
             "viewSummary": "View summary",
             "viewProgress": "View progress",
-            "continueChat": "Continue chat"
+            "continueChat": "Continue chat",
+            "newSession": "New session",
+            "scheduledSummary": "Scheduled summary"
+        },
+        "loadingHistory": "Restoring your previous summary session…",
+        "intent": {
+            "personal": "Generate a summary from the current selection",
+            "team": "Prepare a team summary task from the current selection"
+        },
+        "selector": {
+            "templateTitle": "Choose a summary template",
+            "timeRangeTitle": "Choose a summary time range",
+            "customTimeRange": "Custom time range",
+            "clearTemplate": "Use no template",
+            "clearTimeRange": "Use no time limit"
+        },
+        "notice": {
+            "participantsCleared": "The participant source chat changed. Select participants again.",
+            "selectSingleChatForParticipants": "Select one group chat before adding participants."
+        },
+        "errors": {
+            "network": "Network error. Try again later.",
+            "protocol": "The summary service version is incompatible. Refresh and try again.",
+            "serviceUnavailable": "The summary service is temporarily unavailable. Try again later."
         },
         "card": {
             "teamConfirmationTitle": "Confirm team summary task",
@@ -249,7 +276,7 @@
             "chatSelected": "Describe how to summarize the selected chats, and I'll create a preview you can refine",
             "participantsSelected": "Describe or refine the team summary request, and I'll prepare the task",
             "structuredReady": "Send now to generate the final summary, or add more instructions",
-            "teamConfirmation": "Add more instructions, or confirm and invite participants",
+            "teamConfirmation": "Add more instructions, or confirm and start the collaboration",
             "workflowRunning": "The task has started. You can ask a follow-up or view its progress",
             "workflowCompleted": "The summary is ready. You can ask a follow-up or start a new summary",
             "preview": "Request changes, or save the preview as a summary when you're satisfied",

@@ -19,7 +19,8 @@ export type SummaryWorkbenchContextKind =
   | "chat"
   | "participant"
   | "template"
-  | "time_range";
+  | "time_range"
+  | "reference";
 
 export interface SummaryWorkbenchContextItem {
   id: string;
@@ -32,6 +33,11 @@ export interface SummaryWorkbenchMessageView {
   role: "user" | "assistant";
   content: string;
   resultType?: SummaryWorkbenchResultType;
+}
+
+export interface SummaryWorkbenchProgressView {
+  phase: string;
+  count?: number;
 }
 
 interface SummaryWorkbenchCardBase {
@@ -75,6 +81,9 @@ export interface SummaryWorkbenchViewState {
   placeholderKey: string;
   isSending: boolean;
   canSend: boolean;
+  isHydrating?: boolean;
+  progressSteps?: SummaryWorkbenchProgressView[];
+  sendLabelKey?: string;
   errorMessage?: string;
 }
 
@@ -84,6 +93,8 @@ export interface SummaryWorkbenchActions {
   onOpenContext: (kind: SummaryWorkbenchContextKind) => void;
   onRemoveContext: (kind: SummaryWorkbenchContextKind, id: string) => void;
   onResultAction: (action: SummaryWorkbenchAction) => void;
+  onNewSession?: () => void;
+  onOpenScheduledSummary?: () => void;
 }
 
 export interface SummaryWorkbenchProps {

@@ -103,3 +103,61 @@ This FE1 extension does not:
 - Complete `@dmwork/summary` regression: 56 test files and 761 tests passed.
 - `git diff --check` passed.
 - Package-wide TypeScript still reports the repository's existing React/Semi declaration conflicts; filtered output contains no FE1 file errors.
+
+## FE2 Production Integration
+
+### Behavior List
+
+- Entry: NavRail, summary list create, chat side panel create, `/summary/create`, and detail-page refinement resolve through one capability-aware entry. When `summary_workspace` contract v1 is enabled, users see one assistant instead of the `normal | agent` mode choice.
+- Primary path: users select chats, participants, a template, a time range, or a referenced summary, then send one request. The UI renders only the actions authorized by the backend `result_type` and `available_actions`.
+- Default preview: selecting a chat is sufficient to execute. Without a template or typed request, the frontend sends the standard personal intent so the Agent can return a preview with explicit assumptions; it is never auto-saved.
+- Side effects: personal Workflow completion is already a formal summary; team Workflow requires proposal confirmation; only a current Agent preview or revision can be saved.
+- Recovery: workspace History restores the server-authoritative scope and artifacts. Scope changes make old previews and proposals stale. Transport failures remain in the workspace and never silently replay through Legacy.
+- Compatibility: capability disabled, unavailable, malformed, or version-mismatched uses the existing `SummaryCreatePage` implementation. Scheduled summaries remain on that Legacy flow.
+
+### File Map
+
+- `features/summaryWorkbench/Entry.tsx`: capability gate and sticky new/Legacy selection for a mounted entry.
+- `features/summaryWorkbench/SummaryWorkbenchFeature.tsx`: production business container connecting selectors, navigation, dialogs, bridge state, and the pure workbench UI.
+- `bridge/summaryWorkbench/useSummaryWorkbench.ts`: session lifecycle, History hydration, scope transitions, streaming, confirmation, saving, cancellation, and error recovery.
+- `components/TemplateSelectorModal.tsx` and `components/TimeRangeSelector.tsx`: controlled selectors that write structured scope rather than composer text.
+- `pages/SummaryCreatePage.tsx`, `pages/SummaryListPage.tsx`, `components/ChatSummaryPanel.tsx`, and `module.tsx`: thin entry wiring and capability-aware single-entry behavior.
+- `ui/SummaryWorkbench/*`, `bridge/summaryWorkbench/*`, `Service/SummaryWorkbenchService.ts`, and `api/summaryApi.ts`: reference context, progress, server-authoritative state hydration, and any contract gaps discovered during production wiring.
+- `i18n/*`, `utils/testIds.ts`, package tests, and `apps/web/e2e-kit/*`: copy, selectors, rollout, and end-to-end coverage.
+
+### PR Scope
+
+This PR does:
+
+- ship the unified summary assistant behind the backend capability contract;
+- wire existing chat, participant, template, time-range, and reference selectors into one authoritative scope;
+- complete personal Workflow, team confirmation, Agent preview/revision, refresh recovery, and navigation flows;
+- preserve Legacy as the fail-closed rollback path, including scheduled summaries.
+
+This PR does not:
+
+- add scheduled-summary fields to the `summary_workspace` contract;
+- delete the Legacy normal/Agent implementation or its endpoints;
+- let the frontend infer the execution route from selected fields;
+- change summary detail, participation, scheduling, or list semantics outside the new entry integration.
+
+Impact:
+
+- `@dmwork/summary` UI, bridge, Service, API transport, module entry wiring, analytics, and Web E2E fixtures.
+- Shared host behavior is limited to existing summary entry callbacks and Space lifecycle handling.
+
+### Verification Plan
+
+- Automated tests: Workbench model/adapter/Service/transport plus new hook, feature, capability gate, selector, and production entry tests.
+- Package regression: full `@dmwork/summary` Vitest suite, i18n check, CSS lint, formatting, and `git diff --check`.
+- E2E: personal Workflow, team proposal confirmation, Agent preview revision/save, clarification/explanation/stale scope, capability fallback, and History refresh.
+- Manual path: full and chat-panel layouts in zh-CN/en-US, light/dark, narrow width, long content, Space switching, refresh, back navigation, and detail refinement.
+- Legacy regression: capability off preserves quick/Agent mode selection and scheduled-summary creation without issuing workspace requests.
+
+### FE2 Verification Result (2026-08-27)
+
+- `pnpm --filter @dmwork/summary test`: 65 files, 843 tests passed.
+- `pnpm i18n:check`: passed with zero candidates outside the baseline.
+- `pnpm lint:css:ci`: passed; the four reported native Semi overrides are existing technical debt.
+- `git diff --check`: passed.
+- `pnpm --filter @dmwork/summary typecheck`: blocked by the existing repository baseline. Clean `9d473eea` reports 5,971 diagnostics and this worktree reports 6,000; the current-only diagnostics are React declaration, Storybook module-resolution, and resulting JSX cascades. No current-only product-code semantic error was found.

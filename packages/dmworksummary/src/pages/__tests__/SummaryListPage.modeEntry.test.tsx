@@ -36,11 +36,16 @@ vi.mock('lucide-react', () => ({
     ChevronDown: () => null,
 }));
 vi.mock('../../components/SummaryCard', () => ({ default: () => null }));
+vi.mock('../../features/summaryWorkbench/SummaryWorkbenchCreateEntry', () => ({
+    default: () => null,
+}));
 vi.mock('../SummaryCreatePage', () => ({ default: () => null }));
 vi.mock('../SummaryDetailPage', () => ({ default: () => null }));
 vi.mock('../../api/summaryApi');
 
 import { WKApp } from '@octo/base';
+import SummaryWorkbenchEntry from '../../features/summaryWorkbench/Entry';
+import SummaryWorkbenchCreateEntry from '../../features/summaryWorkbench/SummaryWorkbenchCreateEntry';
 import SummaryListPage from '../SummaryListPage';
 
 /** 递归遍历 React 元素树，收集满足条件的节点（不依赖 @testing-library）。 */
@@ -77,6 +82,39 @@ describe('SummaryListPage mode entry navigation', () => {
         const page = new SummaryListPage(props as any);
         (page as any).isMounted_ = true;
         return page;
+    }
+
+    function renderEntryBranch(
+        page: SummaryListPage,
+        mode: 'pending' | 'unified' | 'legacy',
+    ) {
+        const gate = (page as any).render() as React.ReactElement;
+        expect(gate.type).toBe(SummaryWorkbenchEntry);
+        expect(gate.props.spaceId).toBe('space-123');
+        if (mode === 'pending') {
+            return gate.props.renderPending({
+                status: 'loading',
+                enabled: false,
+                spaceId: 'space-123',
+            });
+        }
+        if (mode === 'unified') {
+            return gate.props.renderNew({
+                status: 'enabled',
+                enabled: true,
+                spaceId: 'space-123',
+                reason: 'supported',
+                contractVersion: '1',
+                checkedAt: 1,
+            });
+        }
+        return gate.props.renderLegacy({
+            status: 'disabled',
+            enabled: false,
+            spaceId: 'space-123',
+            reason: 'server_disabled',
+            checkedAt: 1,
+        });
     }
 
     it('pushes the create page keyed by mode so switching modes remounts instead of being silently reused', () => {
@@ -136,12 +174,50 @@ describe('SummaryListPage mode entry navigation', () => {
         expect(pushSpy).not.toHaveBeenCalled();
     });
 
-    it('the single "+" trigger has no instant-create handler; modes are only entered via dropdown items', () => {
+    it('capability-enabled entry pushes the unified workbench without exposing a mode choice', () => {
         const page = makePage();
         (page as any).context = { locale: 'zh-CN', t: (k: string) => k };
         const pushSpy = vi.spyOn(WKApp.routeRight, 'push');
 
-        const tree = (page as any).render();
+        const tree = renderEntryBranch(page, 'unified');
+        const trigger = findOne(
+            tree,
+            (n) => n?.props?.['data-testid'] === 'summary-list-mode-switch',
+        );
+        expect(trigger.props.disabled).toBe(false);
+        expect(trigger.props.onClick).toBe((page as any).handleUnifiedCreate);
+        expect(findInTree(
+            tree,
+            (n) => n?.props?.['data-testid'] === 'summary-list-normal-tab',
+        )).toHaveLength(0);
+        expect(findInTree(
+            tree,
+            (n) => n?.props?.['data-testid'] === 'summary-list-agent-tab',
+        )).toHaveLength(0);
+
+        trigger.props.onClick();
+        expect(pushSpy).toHaveBeenCalledTimes(1);
+        const entry = pushSpy.mock.calls[0][0] as React.ReactElement;
+        expect(entry.type).toBe(SummaryWorkbenchCreateEntry);
+        expect(String(entry.key).startsWith('unified-')).toBe(true);
+        expect(entry.props.source).toBe('summary_list');
+    });
+
+    it('panel mode forwards unified entry selection to its host', () => {
+        const onCreateNew = vi.fn();
+        const page = makePage({ onCreateNew });
+
+        (page as any).handleUnifiedCreate();
+
+        expect(onCreateNew).toHaveBeenCalledWith('unified');
+    });
+
+    it('fail-closed Legacy entry keeps normal and Agent choices in the original dropdown', () => {
+        const page = makePage();
+        (page as any).context = { locale: 'zh-CN', t: (k: string) => k };
+        const pushSpy = vi.spyOn(WKApp.routeRight, 'push');
+
+        const tree = renderEntryBranch(page, 'legacy');
 
         // 触发按钮：只有 data-testid/icon/aria-label，没有 onClick（点击只弹下拉）。
         const trigger = findOne(
@@ -171,5 +247,18 @@ describe('SummaryListPage mode entry navigation', () => {
         byTestId('summary-list-normal-tab').props.onClick();
         expect(pushSpy).toHaveBeenCalledTimes(2);
         expect((pushSpy.mock.calls[1][0] as React.ReactElement).props.initialMode).toBe('normal');
+    });
+
+    it('keeps create controls disabled while capability availability is pending', () => {
+        const page = makePage();
+        (page as any).context = { locale: 'zh-CN', t: (k: string) => k };
+
+        const tree = renderEntryBranch(page, 'pending');
+        const trigger = findOne(
+            tree,
+            (n) => n?.props?.['data-testid'] === 'summary-list-mode-switch',
+        );
+        expect(trigger.props.disabled).toBe(true);
+        expect(trigger.props.onClick).toBeUndefined();
     });
 });

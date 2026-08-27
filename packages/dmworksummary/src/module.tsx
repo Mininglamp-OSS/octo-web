@@ -3,10 +3,11 @@ import WKSDK, { ConnectStatus } from "wukongimjssdk";
 import type { IModule } from "@octo/base";
 import { i18n, WKApp, Menus, t as translate, Dap, getSessionSid } from "@octo/base";
 import SummaryListPage from "./pages/SummaryListPage";
-import SummaryCreatePage from "./pages/SummaryCreatePage";
 import SummaryDetailPage from "./pages/SummaryDetailPage";
 import SummaryShareDetailPage from "./pages/SummaryShareDetailPage";
 import SummarySharePreviewFeature from "./features/summaryShare/SummarySharePreviewFeature";
+import SummaryWorkbenchCreateEntry from "./features/summaryWorkbench/SummaryWorkbenchCreateEntry";
+import { summaryWorkbenchAvailability } from "./features/summaryWorkbench/availability";
 import SummaryConfirmPage from "./pages/SummaryConfirmPage";
 import ScheduleListPage from "./pages/ScheduleListPage";
 import { getChatCandidates, getSummaryShare } from "./api/summaryApi";
@@ -157,17 +158,28 @@ export class SummaryModule implements IModule {
         });
 
         WKApp.route.register("/summary/create", () => {
-            return <SummaryCreatePage source="summary_home" />;
+            return (
+                <SummaryWorkbenchCreateEntry
+                    source="summary_home"
+                    legacyInitialMode="normal"
+                />
+            );
         });
 
         // 详情页「继续优化」按钮 → 打开新的 chat + 预填引用。
         // 通过 window 事件与详情页解耦(避免循环导入),这里 addEventListener
-        // 后统一走 WKApp.routeRight.push 弹出新的 SummaryCreatePage 实例。
+        // 后统一走 WKApp.routeRight.push 弹出新的统一工作台实例。
         // 见 CHAT-REFERENCE-BASED-DESIGN-v1。
         window.addEventListener('summary-open-chat-with-reference', ((e: CustomEvent) => {
             const task = e.detail;
             if (!task || !task.task_id) return;
-            WKApp.routeRight.push(<SummaryCreatePage derivedFromTask={task} source="detail_optimize" />);
+            WKApp.routeRight.push(
+                <SummaryWorkbenchCreateEntry
+                    derivedFromTask={task}
+                    source="detail_optimize"
+                    legacyInitialMode="agent"
+                />
+            );
         }) as EventListener);
 
         WKApp.route.register("/summary/detail", (param: any) => {
@@ -226,10 +238,10 @@ export class SummaryModule implements IModule {
                         return;
                     }
                     WKApp.routeRight.replaceToRoot(
-                        <SummaryCreatePage
+                        <SummaryWorkbenchCreateEntry
                             source="summary_home"
-                            key={`home-normal-${++summaryHomeEntrySeq}`}
-                            initialMode="normal"
+                            key={`home-workbench-${++summaryHomeEntrySeq}`}
+                            legacyInitialMode="normal"
                         />
                     );
                 };
@@ -240,6 +252,7 @@ export class SummaryModule implements IModule {
 
         let initialSpaceReady = false;
         _spaceChangedHandler = () => {
+            summaryWorkbenchAvailability.invalidate();
             WKApp.mittBus.emit('summary-space-changed');
             // Main 冷启动若修正了缓存 Space，会先发 space-changed 再发
             // space-ready；首刷统一交给 space-ready，避免同一次启动请求两次。

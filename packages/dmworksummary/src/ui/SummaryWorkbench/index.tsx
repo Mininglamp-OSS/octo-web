@@ -13,6 +13,7 @@ const CONTEXT_KINDS: SummaryWorkbenchContextKind[] = [
   "participant",
   "template",
   "time_range",
+  "reference",
 ];
 
 const CONTEXT_LABEL_KEYS: Record<SummaryWorkbenchContextKind, string> = {
@@ -20,6 +21,16 @@ const CONTEXT_LABEL_KEYS: Record<SummaryWorkbenchContextKind, string> = {
   participant: "summary.workbench.context.participant",
   template: "summary.workbench.context.template",
   time_range: "summary.workbench.context.timeRange",
+  reference: "summary.workbench.context.reference",
+};
+
+const PROGRESS_LABEL_KEYS: Record<string, string> = {
+  understand: "summary.common.agentChat.progress.understand",
+  retrieve: "summary.common.agentChat.progress.retrieve",
+  filter: "summary.common.agentChat.progress.filter",
+  distill: "summary.common.agentChat.progress.distill",
+  compose: "summary.common.agentChat.progress.compose",
+  reply: "summary.common.agentChat.progress.reply",
 };
 
 const ACTION_LABEL_KEYS: Record<SummaryWorkbenchAction, string> = {
@@ -72,6 +83,7 @@ const SummaryWorkbench = ({
   className,
 }: SummaryWorkbenchProps) => {
   const { t } = useI18n();
+  const composerRef = React.useRef<HTMLTextAreaElement>(null);
   const rootClassName = [
     "wk-summary-workbench",
     `wk-summary-workbench--${state.layout}`,
@@ -203,7 +215,10 @@ const SummaryWorkbench = ({
                     ? "primary"
                     : "secondary"
                 }
-                onClick={() => actions.onResultAction(action)}
+                onClick={() => {
+                  actions.onResultAction(action);
+                  if (action === "continue_chat") composerRef.current?.focus();
+                }}
               >
                 {t(ACTION_LABEL_KEYS[action])}
               </WKButton>
@@ -230,8 +245,36 @@ const SummaryWorkbench = ({
   return (
     <section className={rootClassName} data-testid="summary-workbench">
       <header className="wk-summary-workbench__header">
-        <h1>{t("summary.workbench.title")}</h1>
-        <p>{t("summary.workbench.subtitle")}</p>
+        <div className="wk-summary-workbench__heading">
+          <div>
+            <h1>{t("summary.workbench.title")}</h1>
+            <p>{t("summary.workbench.subtitle")}</p>
+          </div>
+          <div className="wk-summary-workbench__header-actions">
+            {actions.onOpenScheduledSummary && (
+              <WKButton
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={state.isSending || state.isHydrating}
+                onClick={actions.onOpenScheduledSummary}
+              >
+                {t("summary.workbench.actions.scheduledSummary")}
+              </WKButton>
+            )}
+            {actions.onNewSession && (
+              <WKButton
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={state.isSending || state.isHydrating}
+                onClick={actions.onNewSession}
+              >
+                {t("summary.workbench.actions.newSession")}
+              </WKButton>
+            )}
+          </div>
+        </div>
       </header>
 
       <div className="wk-summary-workbench__contexts">
@@ -249,6 +292,7 @@ const SummaryWorkbench = ({
                     : undefined
                 }
                 aria-pressed={items.length > 0}
+                disabled={state.isSending || state.isHydrating}
                 onClick={() => actions.onOpenContext(kind)}
               >
                 {t(CONTEXT_LABEL_KEYS[kind])}
@@ -268,8 +312,11 @@ const SummaryWorkbench = ({
                         iconOnly
                         icon={<span aria-hidden="true">×</span>}
                         className="wk-summary-workbench-context__remove"
+                        disabled={state.isSending || state.isHydrating}
                         aria-label={t("summary.workbench.context.remove", {
-                          values: { label: item.label },
+                          values: {
+                            label: item.label,
+                          },
                         })}
                         onClick={() => actions.onRemoveContext(kind, item.id)}
                       />
@@ -287,7 +334,11 @@ const SummaryWorkbench = ({
         role="log"
         aria-live="polite"
       >
-        {state.messages.length === 0 ? (
+        {state.isHydrating ? (
+          <p className="wk-summary-workbench__empty">
+            {t("summary.workbench.loadingHistory")}
+          </p>
+        ) : state.messages.length === 0 ? (
           <p className="wk-summary-workbench__empty">
             {t("summary.workbench.empty")}
           </p>
@@ -302,6 +353,29 @@ const SummaryWorkbench = ({
             </div>
           ))
         )}
+        {(state.progressSteps?.length ?? 0) > 0 && (
+          <div
+            className="wk-summary-workbench__progress"
+            data-testid="summary-workbench-progress"
+          >
+            <span>{t("summary.common.agentChat.viewGenerationProcess")}</span>
+            <ul>
+              {state.progressSteps?.map((step, index) => (
+                <li key={`${step.phase}:${index}`}>
+                  {t(
+                    PROGRESS_LABEL_KEYS[step.phase] ??
+                      "summary.common.agentChat.progress.fallback"
+                  )}
+                  {step.count !== undefined
+                    ? ` · ${t("summary.common.agentPanel.processedCount", {
+                        values: { count: step.count },
+                      })}`
+                    : ""}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         {state.card && renderCard(state.card)}
       </div>
 
@@ -313,10 +387,11 @@ const SummaryWorkbench = ({
 
       <div className="wk-summary-workbench__composer">
         <textarea
+          ref={composerRef}
           value={state.inputValue}
           placeholder={t(state.placeholderKey)}
           aria-label={t(state.placeholderKey)}
-          disabled={state.isSending}
+          disabled={state.isSending || state.isHydrating}
           rows={2}
           onChange={(event) => actions.onInputChange(event.target.value)}
           onKeyDown={handleComposerKeyDown}
@@ -325,10 +400,10 @@ const SummaryWorkbench = ({
           type="button"
           variant="primary"
           loading={state.isSending}
-          disabled={!state.canSend || state.isSending}
+          disabled={!state.canSend || state.isSending || state.isHydrating}
           onClick={actions.onSend}
         >
-          {t("summary.workbench.composer.send")}
+          {t(state.sendLabelKey ?? "summary.workbench.composer.send")}
         </WKButton>
       </div>
     </section>

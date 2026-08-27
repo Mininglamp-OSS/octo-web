@@ -2347,6 +2347,10 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     color: var(--wk-text-primary);
 }
 
+.summary-workbench-back-to-assistant {
+    margin-left: auto;
+}
+
 /* Content card */
 .summary-workbench-card {
     display: flex;
@@ -2639,12 +2643,31 @@ body[theme-mode="dark"] .summary-list-status-trigger:hover {
     padding: 16px;
     border: 1px solid transparent;
     border-radius: 12px;
-    cursor: pointer;
     background-color: var(--wk-bg-legacy-card);
     transition: background-color 0.15s;
     overflow: hidden;
     position: relative;
     box-sizing: border-box;
+}
+
+.chat-summary-template-card-select {
+    width: 100%;
+    padding: 0;
+    border: 0;
+    color: inherit;
+    background: transparent;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.chat-summary-template-card-select:focus-visible {
+    outline: none;
+}
+
+.chat-summary-template-card:focus-within {
+    border-color: var(--wk-border-glow);
+    box-shadow: var(--wk-ring-primary);
 }
 
 body[theme-mode="dark"] .chat-summary-template-card {

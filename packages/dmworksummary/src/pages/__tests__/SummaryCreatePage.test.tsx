@@ -95,6 +95,23 @@ describe('SummaryCreatePage templates', () => {
         vi.clearAllMocks();
     });
 
+    it('keeps scheduled-summary creation available in the Legacy page', async () => {
+        const pageRef = React.createRef<SummaryCreatePage>();
+        await act(async () => {
+            render(<SummaryCreatePage ref={pageRef} initialScheduleOpen />);
+            await flushPromises();
+        });
+
+        expect((pageRef.current as any).state.showScheduleConfig).toBe(true);
+        expect(screen.getByTestId(summaryTestIds.createSchedule)).toBeInTheDocument();
+
+        await act(async () => {
+            (pageRef.current as any).setState({ showScheduleConfig: false });
+        });
+        fireEvent.click(screen.getByTestId(summaryTestIds.createSchedule));
+        expect((pageRef.current as any).state.showScheduleConfig).toBe(true);
+    });
+
     it('renders all builtin template cards when topic is empty', async () => {
         await act(async () => {
             render(<SummaryCreatePage />);

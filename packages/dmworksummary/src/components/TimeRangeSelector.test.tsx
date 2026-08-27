@@ -1,0 +1,124 @@
+import React from "react";
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import TimeRangeSelector, {
+    createCustomTimeRange,
+    createLastDaysTimeRange,
+    type TimeRangeSelectorLabels,
+} from "./TimeRangeSelector";
+
+let datePickerSelection: [Date, Date] = [
+    new Date(2026, 7, 1),
+    new Date(2026, 7, 3),
+];
+
+vi.mock("@douyinfe/semi-ui", () => ({
+    DatePicker: ({ onChange, placeholder }: any) => (
+        <button
+            type="button"
+            aria-label={placeholder.join(" ")}
+            onClick={() => onChange(datePickerSelection)}
+        >
+            pick-range
+        </button>
+    ),
+}));
+
+const labels: TimeRangeSelectorLabels = {
+    last7Days: "Last 7 days",
+    custom: "Custom",
+    clear: "Clear",
+    startPlaceholder: "Start",
+    endPlaceholder: "End",
+    customRangeAriaLabel: "Choose custom range",
+    invalidOrder: "Invalid order",
+    maxDaysExceeded: (maxDays) => `Maximum ${maxDays} days`,
+    formatCustomRange: (start, end) =>
+        `${start.getFullYear()}-${
+            start.getMonth() + 1
+        }-${start.getDate()} / ${end.getFullYear()}-${
+            end.getMonth() + 1
+        }-${end.getDate()}`,
+};
+
+describe("TimeRangeSelector", () => {
+    it("emits a full-day structured range for the last seven days", () => {
+        const onChange = vi.fn();
+        const now = new Date(2026, 7, 27, 10, 30);
+        const view = render(
+            <TimeRangeSelector
+                value={null}
+                onChange={onChange}
+                labels={labels}
+                now={now}
+            />,
+            { legacyRoot: true }
+        );
+
+        fireEvent.click(view.getByRole("button", { name: "Last 7 days" }));
+
+        const nextValue = onChange.mock.calls[0][0];
+        expect(new Date(nextValue.start).getDate()).toBe(21);
+        expect(new Date(nextValue.start).getHours()).toBe(0);
+        expect(new Date(nextValue.end).getDate()).toBe(27);
+        expect(new Date(nextValue.end).getHours()).toBe(23);
+        expect(nextValue.label).toBe("Last 7 days");
+    });
+
+    it("opens the custom picker and emits a stable caller-formatted label", () => {
+        const onChange = vi.fn();
+        datePickerSelection = [new Date(2026, 7, 1), new Date(2026, 7, 3)];
+        const view = render(
+            <TimeRangeSelector
+                value={null}
+                onChange={onChange}
+                labels={labels}
+                now={new Date(2026, 7, 27)}
+            />,
+            { legacyRoot: true }
+        );
+
+        fireEvent.click(view.getByRole("button", { name: "Custom" }));
+        fireEvent.click(view.getByRole("button", { name: "Start End" }));
+
+        expect(onChange.mock.calls[0][0].label).toBe("2026-8-1 / 2026-8-3");
+    });
+
+    it("rejects a custom range longer than maxDays", () => {
+        const onChange = vi.fn();
+        datePickerSelection = [new Date(2026, 6, 1), new Date(2026, 7, 27)];
+        const view = render(
+            <TimeRangeSelector
+                value={null}
+                onChange={onChange}
+                labels={labels}
+                maxDays={31}
+                now={new Date(2026, 7, 27)}
+            />,
+            { legacyRoot: true }
+        );
+
+        fireEvent.click(view.getByRole("button", { name: "Custom" }));
+        fireEvent.click(view.getByRole("button", { name: "Start End" }));
+
+        expect(onChange).not.toHaveBeenCalled();
+        expect(view.getByRole("alert")).toHaveTextContent("Maximum 31 days");
+    });
+
+    it("normalizes helper-created custom ranges to day boundaries", () => {
+        const range = createCustomTimeRange(
+            new Date(2026, 7, 1, 9),
+            new Date(2026, 7, 1, 10),
+            "One day"
+        );
+        const preset = createLastDaysTimeRange(
+            new Date(2026, 7, 27, 12),
+            7,
+            "Seven days"
+        );
+
+        expect(new Date(range.start).getHours()).toBe(0);
+        expect(new Date(range.end).getHours()).toBe(23);
+        expect(new Date(preset.start).getDate()).toBe(21);
+    });
+});

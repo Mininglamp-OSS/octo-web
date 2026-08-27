@@ -181,6 +181,8 @@
         "selectMembers": "选择参与者",
         "selectedMembers": "已选 {{count}} 位参与者",
         "start": "快速总结",
+        "createScheduled": "创建定时总结",
+        "backToAssistant": "返回总结助手",
         "agentStart": "Agent 总结",
         "agentSubmitting": "Agent 总结中...",
         "agentTopicPlaceholder": "输入需要总结的需求",
@@ -214,17 +216,42 @@
             "participant": "参与者",
             "template": "模板",
             "timeRange": "时间范围",
+            "reference": "引用总结",
             "remove": "移除 {{label}}"
         },
         "composer": {
-            "send": "发送"
+            "send": "发送",
+            "generate": "生成总结"
         },
         "actions": {
-            "confirmWorkflow": "确认并邀请参与者",
+            "confirmWorkflow": "确认并发起协作",
             "savePreview": "保存为总结",
             "viewSummary": "查看总结",
             "viewProgress": "查看进度",
-            "continueChat": "继续沟通"
+            "continueChat": "继续沟通",
+            "newSession": "新建会话",
+            "scheduledSummary": "定时总结"
+        },
+        "loadingHistory": "正在恢复上次的总结会话…",
+        "intent": {
+            "personal": "请根据当前选择生成总结",
+            "team": "请根据当前选择准备多人总结任务"
+        },
+        "selector": {
+            "templateTitle": "选择总结模板",
+            "timeRangeTitle": "选择总结时间范围",
+            "customTimeRange": "自定义时间范围",
+            "clearTemplate": "不使用模板",
+            "clearTimeRange": "不限制时间范围"
+        },
+        "notice": {
+            "participantsCleared": "参与者来源会话已变化，请重新选择参与者",
+            "selectSingleChatForParticipants": "请先只选择一个群聊，再添加参与者"
+        },
+        "errors": {
+            "network": "网络连接异常，请稍后重试",
+            "protocol": "总结服务版本不兼容，请刷新后重试",
+            "serviceUnavailable": "总结服务暂时不可用，请稍后重试"
         },
         "card": {
             "teamConfirmationTitle": "确认多人总结任务",
@@ -249,7 +276,7 @@
             "chatSelected": "描述你希望如何总结已选聊天，我会先生成预览供你调整",
             "participantsSelected": "描述或补充多人总结要求，我会据此准备任务",
             "structuredReady": "可直接发送生成正式总结，也可以继续补充要求",
-            "teamConfirmation": "可继续补充要求，或确认并邀请参与者",
+            "teamConfirmation": "可继续补充要求，或确认并发起协作",
             "workflowRunning": "任务已发起，你可以继续提问或查看进度",
             "workflowCompleted": "总结已生成，你可以继续提问或开始新的总结",
             "preview": "继续提出修改要求，满意后保存为总结",

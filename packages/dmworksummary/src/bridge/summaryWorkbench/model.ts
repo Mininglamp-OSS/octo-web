@@ -6,6 +6,7 @@ import type {
   SummaryWorkbenchResultType,
   SummaryWorkbenchViewState,
 } from "../../ui/SummaryWorkbench/types";
+import type { SummaryWorkbenchScope } from "./protocol";
 
 export interface SummaryWorkbenchMessage extends SummaryWorkbenchMessageView {
   scopeVersion: number;
@@ -49,6 +50,15 @@ export interface SummaryWorkbenchWorkflow {
   availableActions: SummaryWorkbenchAction[];
 }
 
+export interface SummaryWorkbenchAuthoritativeState {
+  scopeVersion: number;
+  scope: SummaryWorkbenchScope;
+  contextItems: SummaryWorkbenchContextItem[];
+  currentPreview: SummaryWorkbenchPreview | null;
+  pendingProposal: SummaryWorkbenchProposal | null;
+  workflow: SummaryWorkbenchWorkflow | null;
+}
+
 export interface SummaryWorkbenchComposer {
   value: string;
   isSending: boolean;
@@ -80,8 +90,11 @@ export interface CreateSummaryWorkbenchModelOptions {
 interface SummaryResponseBase {
   messageId: string;
   reply: string;
+  sessionId?: string;
+  runId?: string;
   scopeVersion?: number;
   availableActions?: SummaryWorkbenchAction[];
+  authoritativeState?: SummaryWorkbenchAuthoritativeState;
 }
 
 interface ConversationalSummaryResponse extends SummaryResponseBase {
@@ -221,10 +234,11 @@ export function applySummaryResponse(
     },
   };
 
+  let responseModel: SummaryWorkbenchModel;
   switch (response.resultType) {
     case "agent_preview":
     case "agent_revision":
-      return {
+      responseModel = {
         ...next,
         currentPreview: {
           messageId: response.messageId,
@@ -237,8 +251,9 @@ export function applySummaryResponse(
           availableActions,
         },
       };
+      break;
     case "workflow_confirmation":
-      return {
+      responseModel = {
         ...next,
         pendingProposal: {
           messageId: response.messageId,
@@ -253,9 +268,10 @@ export function applySummaryResponse(
           availableActions,
         },
       };
+      break;
     case "workflow_started":
     case "workflow_completed":
-      return {
+      responseModel = {
         ...next,
         pendingProposal: null,
         workflow: {
@@ -271,13 +287,62 @@ export function applySummaryResponse(
           availableActions,
         },
       };
+      break;
     case "clarification":
     case "explanation":
     case "error":
       // Conversational replies never become artifacts and therefore do not
       // replace the latest preview, proposal, or workflow references.
-      return next;
+      responseModel = next;
+      break;
   }
+
+  return response.authoritativeState
+    ? applySummaryAuthoritativeState(responseModel, response.authoritativeState)
+    : responseModel;
+}
+
+export function applySummaryAuthoritativeState(
+  model: SummaryWorkbenchModel,
+  state: SummaryWorkbenchAuthoritativeState
+): SummaryWorkbenchModel {
+  return {
+    ...model,
+    scopeVersion: state.scopeVersion,
+    contextItems: [...state.contextItems],
+    currentPreview: state.currentPreview
+      ? clonePreview(state.currentPreview)
+      : null,
+    pendingProposal: state.pendingProposal
+      ? cloneProposal(state.pendingProposal)
+      : null,
+    workflow: state.workflow ? cloneWorkflow(state.workflow) : null,
+  };
+}
+
+export function markCurrentSummaryPreviewSaved(
+  model: SummaryWorkbenchModel
+): SummaryWorkbenchModel {
+  const preview = model.currentPreview;
+  if (!preview) return model;
+
+  const withoutSave = (actions: SummaryWorkbenchAction[]) =>
+    actions.filter((action) => action !== "save_preview");
+  return {
+    ...model,
+    messages: model.messages.map((message) =>
+      message.id === preview.messageId
+        ? {
+            ...message,
+            availableActions: withoutSave(message.availableActions),
+          }
+        : message
+    ),
+    currentPreview: {
+      ...preview,
+      availableActions: withoutSave(preview.availableActions),
+    },
+  };
 }
 
 export function updateSummaryScope(

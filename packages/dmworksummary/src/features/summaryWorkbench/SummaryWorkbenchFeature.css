@@ -1,0 +1,50 @@
+.wk-summary-workbench-feature {
+    position: relative;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    background: var(--wk-bg-base);
+}
+
+.wk-summary-workbench-entry-host {
+    display: flex;
+    flex: 1;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+}
+
+.wk-summary-workbench-entry-host[hidden] {
+    display: none;
+}
+
+.wk-summary-workbench-feature__main {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+}
+
+.wk-summary-workbench-feature--with-reference
+    .wk-summary-workbench-feature__main {
+    min-width: 0;
+}
+
+.wk-summary-workbench-feature__loading {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    background: var(--wk-overlay-scrim);
+}
+
+.wk-summary-workbench-entry-loading {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-height: calc(var(--wk-sp-12) * 4);
+    place-items: center;
+    background: var(--wk-bg-base);
+}

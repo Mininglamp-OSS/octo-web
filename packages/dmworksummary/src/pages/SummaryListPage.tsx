@@ -20,15 +20,19 @@ import { TaskStatus } from "../types/summary";
 import { getStatusLabel, isTerminalStatus } from "../utils/summaryHelpers";
 import { summaryTestIds } from "../utils/testIds";
 import SummaryCard from "../components/SummaryCard";
+import SummaryWorkbenchEntry from "../features/summaryWorkbench/Entry";
+import SummaryWorkbenchCreateEntry from "../features/summaryWorkbench/SummaryWorkbenchCreateEntry";
 import SummaryCreatePage from "./SummaryCreatePage";
 import SummaryDetailPage from "./SummaryDetailPage";
+
+type SummaryCreateEntryMode = "pending" | "unified" | "legacy";
 
 interface SummaryListPageProps {
     channelId?: string;
     /** Called when the user clicks the close button (panel mode only). */
     onClose?: () => void;
     /** Called when the user clicks "new summary" in panel mode. */
-    onCreateNew?: (mode?: "normal" | "agent") => void;
+    onCreateNew?: (mode?: "normal" | "agent" | "unified") => void;
     /** Called when a card is clicked in panel mode (instead of routeRight.push). */
     onViewDetail?: (taskId: number) => void;
 }
@@ -534,14 +538,7 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
             });
         } else {
             this.setState({ items: [], total: 0, activeTaskId: null }, () => {
-                if (this.props.onCreateNew) {
-                    this.props.onCreateNew();
-                } else {
-                    WKApp.routeRight.popToRoot();
-                    WKApp.routeRight.push(
-                        <SummaryCreatePage source="summary_list" />
-                    );
-                }
+                this.openCapabilityGatedCreate();
             });
         }
     };
@@ -641,7 +638,38 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
         );
     };
 
+    private openCapabilityGatedCreate = () => {
+        if (this.props.onCreateNew) {
+            this.props.onCreateNew("unified");
+            return;
+        }
+        WKApp.routeRight.popToRoot();
+        WKApp.routeRight.push(
+            <SummaryWorkbenchCreateEntry
+                key={`unified-${++this.createEntrySeq}`}
+                source="summary_list"
+            />
+        );
+    };
+
+    handleUnifiedCreate = () => {
+        Dap.shared.track("smart_summary_create_clicked", {});
+        this.openCapabilityGatedCreate();
+    };
+
     render() {
+        const spaceId = String(WKApp.shared.currentSpaceId ?? "").trim();
+        return (
+            <SummaryWorkbenchEntry
+                spaceId={spaceId}
+                renderPending={() => this.renderList("pending")}
+                renderNew={() => this.renderList("unified")}
+                renderLegacy={() => this.renderList("legacy")}
+            />
+        );
+    }
+
+    private renderList(createEntryMode: SummaryCreateEntryMode) {
         const { items, total, pageSize, loading, loadingMore, hasMore, error, statusFilter, keyword, activeTaskId } = this.state;
         const { channelId, onClose } = this.props;
         const { locale, t: translate } = this.context;
@@ -655,40 +683,50 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                         {isPanel ? translate("summary.chatSummary.panelTitle") : translate("summary.list.title")}
                     </h2>
                     <div className="summary-list-header-actions">
-                        {/* 单一「+」入口：点击只弹下拉（快速总结 / Agent 总结），
-                            不再是「主按钮直接建 + 独立箭头下拉」的组合按钮。
-                            不用 Semi Tooltip 包 Dropdown——Semi Tooltip 把 hover 处理器
-                            注入到直接子节点，Dropdown 不会把事件转发给触发按钮，
-                            hover 提示会失效；用原生 title + aria-label 兜底。 */}
-                        <Dropdown
-                            trigger="click"
-                            position="bottomRight"
-                            render={(
-                                <Dropdown.Menu>
-                                    <Dropdown.Item
-                                        data-testid={summaryTestIds.listNormalTab}
-                                        onClick={() => this.handleCreate("normal")}
-                                    >
-                                        {translate("summary.create.start")}
-                                    </Dropdown.Item>
-                                    <Dropdown.Item
-                                        data-testid={summaryTestIds.listAgentTab}
-                                        onClick={() => this.handleCreate("agent")}
-                                    >
-                                        {translate("summary.create.agentStart")}
-                                    </Dropdown.Item>
-                                </Dropdown.Menu>
-                            )}
-                        >
+                        {createEntryMode === "legacy" ? (
+                            /* Legacy 保留原模式下拉。normal 创建页仍包含定时总结配置，
+                               统一工作台灰度期间不会丢失定时总结入口。 */
+                            <Dropdown
+                                trigger="click"
+                                position="bottomRight"
+                                render={(
+                                    <Dropdown.Menu>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.listNormalTab}
+                                            onClick={() => this.handleCreate("normal")}
+                                        >
+                                            {translate("summary.create.start")}
+                                        </Dropdown.Item>
+                                        <Dropdown.Item
+                                            data-testid={summaryTestIds.listAgentTab}
+                                            onClick={() => this.handleCreate("agent")}
+                                        >
+                                            {translate("summary.create.agentStart")}
+                                        </Dropdown.Item>
+                                    </Dropdown.Menu>
+                                )}
+                            >
+                                <Button
+                                    data-testid={summaryTestIds.listModeSwitch}
+                                    className="summary-list-create-icon-btn"
+                                    icon={<IconPlus />}
+                                    theme="borderless"
+                                    aria-label={translate("summary.list.createTooltip")}
+                                    title={translate("summary.list.createTooltip")}
+                                />
+                            </Dropdown>
+                        ) : (
                             <Button
                                 data-testid={summaryTestIds.listModeSwitch}
                                 className="summary-list-create-icon-btn"
                                 icon={<IconPlus />}
                                 theme="borderless"
+                                disabled={createEntryMode === "pending"}
+                                onClick={createEntryMode === "unified" ? this.handleUnifiedCreate : undefined}
                                 aria-label={translate("summary.list.createTooltip")}
                                 title={translate("summary.list.createTooltip")}
                             />
-                        </Dropdown>
+                        )}
                         {isPanel && onClose && (
                             <Button
                                 icon={<X size={18} />}
@@ -762,7 +800,17 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                             <>
                                 <div className="summary-list-empty-title">{translate("summary.list.emptyTitle")}</div>
                                 <div className="summary-list-empty-desc">{translate("summary.chatSummary.emptyDescription")}</div>
-                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={() => this.handleCreate("normal")} style={{ marginTop: 16 }}>
+                                <Button
+                                    data-testid={summaryTestIds.createEntry}
+                                    theme="solid"
+                                    disabled={createEntryMode === "pending"}
+                                    onClick={createEntryMode === "unified"
+                                        ? this.handleUnifiedCreate
+                                        : createEntryMode === "legacy"
+                                        ? () => this.handleCreate("normal")
+                                        : undefined}
+                                    style={{ marginTop: 16 }}
+                                >
                                     {translate("summary.chatSummary.createNew")}
                                 </Button>
                             </>
@@ -773,7 +821,17 @@ export default class SummaryListPage extends Component<SummaryListPageProps, Sum
                                 <div className="summary-list-empty-desc">
                                     {translate("summary.list.emptyDesc")}
                                 </div>
-                                <Button data-testid={summaryTestIds.createEntry} theme="solid" onClick={() => this.handleCreate("normal")} style={{ marginTop: 16 }}>
+                                <Button
+                                    data-testid={summaryTestIds.createEntry}
+                                    theme="solid"
+                                    disabled={createEntryMode === "pending"}
+                                    onClick={createEntryMode === "unified"
+                                        ? this.handleUnifiedCreate
+                                        : createEntryMode === "legacy"
+                                        ? () => this.handleCreate("normal")
+                                        : undefined}
+                                    style={{ marginTop: 16 }}
+                                >
                                     {translate("summary.list.createFirst")}
                                 </Button>
                             </>

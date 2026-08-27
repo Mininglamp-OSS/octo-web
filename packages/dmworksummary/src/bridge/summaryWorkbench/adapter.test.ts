@@ -70,9 +70,10 @@ describe("summary workspace adapter", () => {
       },
     });
 
-    expect(response).toEqual({
+    expect(response).toMatchObject({
       messageId: "18",
       reply: "已生成一版预览。",
+      sessionId: "session-1",
       resultType: "agent_preview",
       scopeVersion: 2,
       availableActions: ["save_preview", "continue_chat"],
@@ -81,6 +82,65 @@ describe("summary workspace adapter", () => {
         snapshotVersion: 7,
         content: "# 风险总结",
         assumptions: ["最近 7 天"],
+      },
+      authoritativeState: {
+        scopeVersion: 2,
+        scope: {
+          selectedChannels: [
+            {
+              chatId: "chat-1",
+              chatType: "group",
+              name: "产品研发群",
+              isArchived: false,
+            },
+          ],
+          timeRange: {
+            start: "2026-08-18T00:00:00+08:00",
+            end: "2026-08-26T23:59:59+08:00",
+            label: "最近 7 天",
+          },
+        },
+        currentPreview: {
+          messageId: "18",
+          availableActions: ["save_preview", "continue_chat"],
+        },
+      },
+    });
+  });
+
+  it("preserves server-authoritative context and state for conversational turns", () => {
+    const response = adaptSummaryWorkspaceTurn({
+      contract_version: "1",
+      session_id: "session-server",
+      message_id: 19,
+      result_type: "clarification",
+      reply: "我先按最近 7 天处理，可以吗？",
+      scope_version: 3,
+      run_id: "run-19",
+      available_actions: ["continue_chat"],
+      state: {
+        ...emptyState(3),
+        summary_context: {
+          ...summaryContext,
+          referenced_task_ids: [88],
+        },
+      },
+    });
+
+    expect(response).toMatchObject({
+      sessionId: "session-server",
+      runId: "run-19",
+      authoritativeState: {
+        scopeVersion: 3,
+        scope: { referencedTaskIds: [88] },
+        contextItems: [
+          expect.objectContaining({ kind: "chat", id: "chat-1" }),
+          expect.objectContaining({ kind: "time_range" }),
+          { id: "88", kind: "reference", label: "#88" },
+        ],
+        currentPreview: null,
+        pendingProposal: null,
+        workflow: null,
       },
     });
   });

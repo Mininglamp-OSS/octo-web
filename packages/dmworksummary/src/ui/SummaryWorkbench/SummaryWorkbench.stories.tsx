@@ -47,6 +47,12 @@ const selectedTimeRange: SummaryWorkbenchContextItem = {
   label: "本周一至今天",
 };
 
+const selectedReference: SummaryWorkbenchContextItem = {
+  id: "summary-42",
+  kind: "reference",
+  label: "上周项目复盘",
+};
+
 const selectedParticipants: SummaryWorkbenchContextItem[] = [
   {
     id: "participant-lin",
@@ -424,6 +430,7 @@ const contextSamples: Record<
   participant: selectedParticipants[0],
   template: selectedTemplate,
   time_range: selectedTimeRange,
+  reference: selectedReference,
 };
 
 function InteractiveWorkbench() {

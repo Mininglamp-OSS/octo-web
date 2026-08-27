@@ -12,43 +12,51 @@ const ICON_MAP: Record<string, React.FC<{ size?: number }>> = {
 interface TemplateCardProps {
     template: TopicTemplate;
     onClick: (template: TopicTemplate) => void;
+    selected?: boolean;
     onEdit?: (template: TopicTemplate) => void;
     onDelete?: (template: TopicTemplate) => void;
     editLabel?: string;
     deleteLabel?: string;
 }
 
-const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, onDelete, editLabel, deleteLabel }) => {
+const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, selected, onEdit, onDelete, editLabel, deleteLabel }) => {
     const IconComponent = ICON_MAP[template.icon] ?? FileText;
 
     return (
         <div
             className={`chat-summary-template-card${template.is_custom ? ' chat-summary-template-card-custom' : ''}`}
-            onClick={() => onClick(template)}
         >
-            <div className="chat-summary-template-card-content">
-                <div className="chat-summary-template-card-header">
-                    <span className="chat-summary-template-card-icon">
-                        <IconComponent size={16} />
+            <button
+                type="button"
+                className="chat-summary-template-card-select"
+                aria-label={template.label}
+                aria-pressed={selected}
+                onClick={() => onClick(template)}
+            >
+                <span className="chat-summary-template-card-content">
+                    <span className="chat-summary-template-card-header">
+                        <span
+                            className="chat-summary-template-card-icon"
+                            aria-hidden="true"
+                        >
+                            <IconComponent size={16} />
+                        </span>
+                        <span className="chat-summary-template-card-title">
+                            {template.label}
+                        </span>
                     </span>
-                    <span className="chat-summary-template-card-title">
-                        {template.label}
+                    <span className="chat-summary-template-card-desc">
+                        {template.description}
                     </span>
-                </div>
-                <div className="chat-summary-template-card-desc">
-                    {template.description}
-                </div>
-            </div>
+                </span>
+            </button>
             {(onEdit || onDelete) && (
                 <div className="chat-summary-template-actions">
                     {onEdit && (
                         <button
                             type="button"
                             className="chat-summary-template-edit"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onEdit(template);
-                            }}
+                            onClick={() => onEdit(template)}
                             aria-label={editLabel}
                         >
                             <Pencil size={14} />
@@ -58,10 +66,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({ template, onClick, onEdit, 
                         <button
                             type="button"
                             className="chat-summary-template-delete"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                onDelete(template);
-                            }}
+                            onClick={() => onDelete(template)}
                             aria-label={deleteLabel}
                         >
                             <Trash2 size={14} />

@@ -21,7 +21,7 @@ vi.mock('lucide-react', () => ({
 }));
 
 // SummaryListPage mock: exposes create/detail callbacks
-let createNewCb: (() => void) | null = null;
+let createNewCb: ((mode?: 'normal' | 'agent' | 'unified') => void) | null = null;
 let viewDetailCb: ((taskId: number) => void) | null = null;
 vi.mock('../../pages/SummaryListPage', () => ({
     default: (props: any) => {
@@ -41,15 +41,22 @@ vi.mock('../../pages/SummaryListPage', () => ({
     },
 }));
 
-// SummaryCreatePage mock
-vi.mock('../../pages/SummaryCreatePage', () => ({
+// Production create entry mock: the real component owns the capability gate and
+// only forwards legacyInitialMode when it falls back to SummaryCreatePage.
+vi.mock('../../features/summaryWorkbench/SummaryWorkbenchCreateEntry', () => ({
     default: (props: any) => (
         <div
-            data-testid="summary-create"
+            data-testid="summary-create-entry"
             data-channel={props.channel?.channelID}
-            data-initial-mode={props.initialMode ?? ''}
+            data-legacy-initial-mode={props.legacyInitialMode ?? ''}
+            data-has-create-mode={String(
+                Object.prototype.hasOwnProperty.call(props, 'createMode'),
+            )}
+            data-embedded={String(props.embedded)}
+            data-source={props.source}
         >
             <button onClick={() => props.onSubmit?.(99)}>submit-create</button>
+            <button onClick={() => props.onOpenTask?.(77)}>open-created-task</button>
             <button onClick={() => props.onClose?.()}>cancel-create</button>
         </div>
     ),
@@ -80,7 +87,7 @@ describe('ChatSummaryPanel', () => {
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
         expect(screen.getByTestId('summary-list')).toBeInTheDocument();
         expect(screen.queryByTestId('summary-detail')).not.toBeInTheDocument();
-        expect(screen.queryByTestId('summary-create')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('summary-create-entry')).not.toBeInTheDocument();
     });
 
     it('passes channelId to SummaryListPage for channel-scoped list', () => {
@@ -102,30 +109,34 @@ describe('ChatSummaryPanel', () => {
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
         fireEvent.click(screen.getByText('create-new'));
 
-        expect(screen.getByTestId('summary-create')).toBeInTheDocument();
+        expect(screen.getByTestId('summary-create-entry')).toBeInTheDocument();
         // List stays mounted but hidden (display:none) to preserve scroll
         expect(screen.queryByTestId('summary-list')).not.toBeVisible();
         // Must NOT emit wk:open-summary-modal — create is now in-panel
         expect(mockEmit).not.toHaveBeenCalledWith('wk:open-summary-modal', expect.anything());
     });
 
-    it('passes the selected mode via onCreateNew(mode) into the embedded create page', () => {
+    it('passes createMode only as the Legacy fallback mode', () => {
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
-        // 列表页「+」下拉选择 Agent 后 onCreateNew("agent")，create 视图应收到 initialMode="agent"。
+        // Capability 开启时统一 Workbench 忽略这个值；只有 fail-closed 的 Legacy 页面读取它。
         createNewCb?.('agent');
-        expect(screen.getByTestId('summary-create').dataset.initialMode).toBe('agent');
-        // 无参（normal 入口）→ initialMode 默认 normal。
-        createNewCb?.(undefined as never);
-        expect(screen.getByTestId('summary-create').dataset.initialMode).toBe('normal');
+        expect(screen.getByTestId('summary-create-entry').dataset.legacyInitialMode).toBe('agent');
+        expect(screen.getByTestId('summary-create-entry').dataset.hasCreateMode).toBe('false');
+
+        createNewCb?.();
+        expect(screen.getByTestId('summary-create-entry').dataset.legacyInitialMode).toBe('normal');
+
+        createNewCb?.('unified');
+        expect(screen.getByTestId('summary-create-entry').dataset.legacyInitialMode).toBe('normal');
     });
 
     it('returns from create to list via back button', () => {
         render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
         fireEvent.click(screen.getByText('create-new'));
-        expect(screen.getByTestId('summary-create')).toBeInTheDocument();
+        expect(screen.getByTestId('summary-create-entry')).toBeInTheDocument();
 
         fireEvent.click(screen.getByTestId('back-icon').closest('button')!);
-        expect(screen.queryByTestId('summary-create')).not.toBeInTheDocument();
+        expect(screen.queryByTestId('summary-create-entry')).not.toBeInTheDocument();
         expect(screen.getByTestId('summary-list')).toBeInTheDocument();
     });
 
@@ -167,7 +178,7 @@ describe('ChatSummaryPanel', () => {
                 summaryPanelView="new"
             />,
         );
-        expect(screen.getByTestId('summary-create')).toBeInTheDocument();
+        expect(screen.getByTestId('summary-create-entry')).toBeInTheDocument();
         // List stays mounted but hidden (display:none) to preserve scroll
         expect(screen.queryByTestId('summary-list')).not.toBeVisible();
     });
@@ -182,6 +193,18 @@ describe('ChatSummaryPanel', () => {
         vi.advanceTimersByTime(800);
         expect(mockEmit).toHaveBeenCalledWith('summary-list-refresh-requested');
         vi.useRealTimers();
+    });
+
+    it('opens a workbench result in the in-panel detail view', () => {
+        render(<ChatSummaryPanel visible channel={channel} onClose={onClose} />);
+        fireEvent.click(screen.getByText('create-new'));
+        fireEvent.click(screen.getByText('open-created-task'));
+
+        expect(screen.getByTestId('summary-detail')).toHaveAttribute(
+            'data-task-id',
+            '77',
+        );
+        expect(screen.queryByTestId('summary-create-entry')).not.toBeInTheDocument();
     });
 
     describe('resizable splitter', () => {

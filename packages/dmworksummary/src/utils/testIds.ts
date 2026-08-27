@@ -21,7 +21,11 @@ export const summaryTestIds = {
     createTopic: "summary-create-topic",
     createSelectChat: "summary-create-select-chat",
     createSelectMembers: "summary-create-select-members",
+    createSchedule: "summary-create-schedule",
     createSubmit: "summary-create-submit",
+
+    // ── Unified workbench ──
+    workbenchFeature: "summary-workbench-feature",
 
     // ── Chat selector modal ──
     chatSelectorModal: "summary-chat-selector-modal",

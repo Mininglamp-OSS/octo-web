@@ -24,7 +24,14 @@ vi.mock("@octo/base", async () => {
     "summary.workbench.context.participant": "Participants",
     "summary.workbench.context.template": "Template",
     "summary.workbench.context.timeRange": "Time range",
+    "summary.workbench.context.reference": "Reference summary",
     "summary.workbench.composer.send": "Send",
+    "summary.workbench.actions.newSession": "New session",
+    "summary.workbench.actions.scheduledSummary": "Scheduled summary",
+    "summary.workbench.loadingHistory": "Restoring session",
+    "summary.common.agentChat.viewGenerationProcess": "Generation progress",
+    "summary.common.agentChat.progress.retrieve": "Reading chats",
+    "summary.common.agentPanel.processedCount": "Processed 8 items",
     "summary.workbench.card.teamConfirmationTitle": "Confirm collaboration",
     "summary.workbench.card.teamConfirmationBadge": "Team workflow",
     "summary.workbench.card.workflowStartedTitle": "Summary is running",
@@ -54,6 +61,9 @@ vi.mock("@octo/base", async () => {
       t: (key: string, options?: { values?: Record<string, unknown> }) => {
         if (key === "summary.workbench.context.remove") {
           return `Remove ${String(options?.values?.label ?? "")}`;
+        }
+        if (key === "summary.common.agentPanel.processedCount") {
+          return `Processed ${String(options?.values?.count ?? "")} items`;
         }
         return labels[key] ?? key;
       },
@@ -99,7 +109,11 @@ function createState(
   return {
     layout: "full",
     messages: [
-      { id: "m1", role: "assistant", content: "What should I summarize?" },
+      {
+        id: "m1",
+        role: "assistant",
+        content: "What should I summarize?",
+      },
       { id: "m2", role: "user", content: "Create a weekly update." },
     ],
     contextItems: [
@@ -126,7 +140,7 @@ function renderWorkbench(card?: SummaryWorkbenchCardView) {
 }
 
 describe("SummaryWorkbench", () => {
-  it("renders one controlled composer and all four context controls", () => {
+  it("renders one controlled composer and all five context controls", () => {
     const { actions } = renderWorkbench();
 
     expect(screen.getAllByRole("textbox")).toHaveLength(1);
@@ -137,11 +151,13 @@ describe("SummaryWorkbench", () => {
     fireEvent.click(screen.getByRole("button", { name: "Participants" }));
     fireEvent.click(screen.getByRole("button", { name: "Template" }));
     fireEvent.click(screen.getByRole("button", { name: "Time range" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reference summary" }));
 
     expect(actions.onOpenContext).toHaveBeenNthCalledWith(1, "chat");
     expect(actions.onOpenContext).toHaveBeenNthCalledWith(2, "participant");
     expect(actions.onOpenContext).toHaveBeenNthCalledWith(3, "template");
     expect(actions.onOpenContext).toHaveBeenNthCalledWith(4, "time_range");
+    expect(actions.onOpenContext).toHaveBeenNthCalledWith(5, "reference");
   });
 
   it("forwards input, send, enter and context removal events", () => {
@@ -158,6 +174,77 @@ describe("SummaryWorkbench", () => {
     expect(actions.onInputChange).toHaveBeenCalledWith("Updated request");
     expect(actions.onSend).toHaveBeenCalledTimes(2);
     expect(actions.onRemoveContext).toHaveBeenCalledWith("chat", "chat-1");
+  });
+
+  it("renders session recovery and progress without exposing extra result actions", () => {
+    const actions = createActions();
+    actions.onNewSession = vi.fn();
+    const state = createState();
+    state.progressSteps = [{ phase: "retrieve", count: 8 }];
+
+    const { rerender } = rtlRender(
+      <SummaryWorkbench state={state} actions={actions} />,
+      { legacyRoot: true }
+    );
+
+    expect(screen.getByTestId("summary-workbench-progress")).toHaveTextContent(
+      "Reading chats"
+    );
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    expect(actions.onNewSession).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <SummaryWorkbench
+        state={{ ...state, isHydrating: true }}
+        actions={actions}
+      />
+    );
+    expect(screen.getByText("Restoring session")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+
+  it("locks scope controls while busy and renders a zero progress count", () => {
+    const actions = createActions();
+    const state = createState();
+    state.isSending = true;
+    state.progressSteps = [{ phase: "retrieve", count: 0 }];
+
+    rtlRender(<SummaryWorkbench state={state} actions={actions} />, {
+      legacyRoot: true,
+    });
+
+    for (const name of [
+      "Chats",
+      "Participants",
+      "Template",
+      "Time range",
+      "Reference summary",
+      "Remove Product chat",
+      "Remove Alex",
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Chats" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Remove Product chat" })
+    );
+    expect(actions.onOpenContext).not.toHaveBeenCalled();
+    expect(actions.onRemoveContext).not.toHaveBeenCalled();
+    expect(screen.getByTestId("summary-workbench-progress")).toHaveTextContent(
+      "Processed 0 items"
+    );
+  });
+
+  it("opens the explicit Legacy scheduled-summary path", () => {
+    const actions = createActions();
+    actions.onOpenScheduledSummary = vi.fn();
+
+    rtlRender(<SummaryWorkbench state={createState()} actions={actions} />, {
+      legacyRoot: true,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Scheduled summary" }));
+    expect(actions.onOpenScheduledSummary).toHaveBeenCalledTimes(1);
   });
 
   it("renders team confirmation details and only the supplied actions", () => {
@@ -186,7 +273,7 @@ describe("SummaryWorkbench", () => {
   });
 
   it("prevents a stale team proposal from being confirmed", () => {
-    renderWorkbench({
+    const { actions } = renderWorkbench({
       kind: "team_confirmation",
       isStale: true,
       participantNames: ["Alex", "Sam"],
@@ -201,6 +288,9 @@ describe("SummaryWorkbench", () => {
     expect(
       screen.getByRole("button", { name: "Continue chat" })
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Continue chat" }));
+    expect(screen.getByRole("textbox")).toHaveFocus();
+    expect(actions.onResultAction).toHaveBeenCalledWith("continue_chat");
   });
 
   it("renders workflow progress and enforces view-only completed cards", () => {

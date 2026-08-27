@@ -1,4 +1,4 @@
-import { Sparkles, X, Plus } from "lucide-react";
+import { Clock, Sparkles, X, Plus } from "lucide-react";
 import React, { Component, createRef } from "react";
 import {
     Button,
@@ -88,6 +88,10 @@ interface SummaryCreatePageProps {
      * mount 时若为 agent 会自动进入 agent 模式（恢复历史 session）。
      */
     initialMode?: "normal" | "agent";
+    /** Unified Workbench 中选择“定时总结”时，直接打开 Legacy 定时配置。 */
+    initialScheduleOpen?: boolean;
+    /** 从 Legacy 定时流返回统一 Workbench。 */
+    onBackToWorkbench?: () => void;
 }
 
 interface SummaryCreatePageState {
@@ -173,7 +177,7 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
         memberSelectorExcluded: [],
         memberSelectorSelectedItems: null,
         memberSelectorOnSelect: null,
-        showScheduleConfig: false,
+        showScheduleConfig: this.props.initialScheduleOpen === true,
         submitting: false,
         agentSubmitting: false,
         savingSummary: false,
@@ -1163,6 +1167,15 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                 <div className="summary-workbench-header">
                     <span className="summary-workbench-header-emoji">🚀</span>
                     <span className="summary-workbench-title">{translate("summary.create.title")}</span>
+                    {this.props.onBackToWorkbench && (
+                        <Button
+                            className="summary-workbench-back-to-assistant"
+                            theme="borderless"
+                            onClick={this.props.onBackToWorkbench}
+                        >
+                            {translate("summary.create.backToAssistant")}
+                        </Button>
+                    )}
                 </div>
 
                 {/* Content card */}
@@ -1478,6 +1491,23 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 </button>
                             </div>
                             )}
+                            {mode !== 'agent' && (
+                                <div className="summary-workbench-chat-row">
+                                    <button
+                                        data-testid={summaryTestIds.createSchedule}
+                                        type="button"
+                                        className="summary-workbench-add-chat"
+                                        onClick={() => this.setState({ showScheduleConfig: true })}
+                                    >
+                                        <Clock size={16} />
+                                        <span>
+                                            {scheduleConfig
+                                                ? this.getScheduleLabel(scheduleConfig)
+                                                : translate("summary.schedule.config.title")}
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
                         </div>
                         {/* 右下角：主提交按钮。总结方式选择已上移到列表页「+」下拉，此处不再提供切换。 */}
                         {mode !== 'agent' && (
@@ -1489,7 +1519,11 @@ export default class SummaryCreatePage extends Component<SummaryCreatePageProps,
                                 onClick={this.handlePrimaryClick}
                             >
                                 <Sparkles size={16} />
-                                {submitting ? translate("summary.create.submitting") : translate("summary.create.start")}
+                                {submitting
+                                    ? translate("summary.create.submitting")
+                                    : scheduleConfig
+                                    ? translate("summary.create.createScheduled")
+                                    : translate("summary.create.start")}
                             </Button>
                         )}
                     </div>

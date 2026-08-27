@@ -6,6 +6,7 @@ import {
   createInitialSummaryWorkbenchModel,
   deriveSummaryWorkbenchView,
   isTeamProposalConfirmable,
+  markCurrentSummaryPreviewSaved,
   updateSummaryComposer,
   updateSummaryScope,
 } from "./model";
@@ -105,6 +106,46 @@ describe("summary workbench model", () => {
     expect(canSaveCurrentPreview(clarified)).toBe(true);
   });
 
+  it("lets server-authoritative state replace local scope and artifacts", () => {
+    const preview = applySummaryResponse(createInitialSummaryWorkbenchModel(), {
+      messageId: "preview-1",
+      reply: "已生成第一版。",
+      resultType: "agent_preview",
+      availableActions: ["save_preview"],
+      preview: {
+        version: 1,
+        snapshotVersion: 1,
+        content: "old draft",
+      },
+    });
+    const synchronized = applySummaryResponse(preview, {
+      messageId: "explanation-1",
+      sessionId: "session-server",
+      reply: "服务端已经采用默认时间范围。",
+      resultType: "explanation",
+      availableActions: ["continue_chat"],
+      authoritativeState: {
+        scopeVersion: 4,
+        scope: {
+          selectedChannels: [],
+          participants: [],
+          template: null,
+          timeRange: null,
+          referencedTaskIds: [],
+        },
+        contextItems: [templateContext],
+        currentPreview: null,
+        pendingProposal: null,
+        workflow: null,
+      },
+    });
+
+    expect(synchronized.scopeVersion).toBe(4);
+    expect(synchronized.contextItems).toEqual([templateContext]);
+    expect(synchronized.currentPreview).toBeNull();
+    expect(deriveSummaryWorkbenchView(synchronized).card).toBeUndefined();
+  });
+
   it("allows saving only a current preview or revision with save_preview", () => {
     const withoutAction = applySummaryResponse(
       createInitialSummaryWorkbenchModel(),
@@ -152,6 +193,13 @@ describe("summary workbench model", () => {
     expect(deriveSummaryWorkbenchView(completed).card).toMatchObject({
       kind: "workflow_completed",
       actions: ["view_summary"],
+    });
+
+    const saved = markCurrentSummaryPreviewSaved(revision);
+    expect(canSaveCurrentPreview(saved)).toBe(false);
+    expect(deriveSummaryWorkbenchView(saved).card).toMatchObject({
+      kind: "agent_revision",
+      actions: [],
     });
   });
 

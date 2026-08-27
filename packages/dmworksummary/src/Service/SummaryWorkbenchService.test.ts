@@ -52,6 +52,8 @@ function clarificationTurn() {
 
 describe("SummaryWorkbenchService", () => {
   const getCapabilities = vi.fn<SummaryWorkbenchTransport["getCapabilities"]>();
+  const getSummaryDetail =
+    vi.fn<SummaryWorkbenchTransport["getSummaryDetail"]>();
   const postTurn = vi.fn<SummaryWorkbenchTransport["postTurn"]>();
   const streamTurn = vi.fn<SummaryWorkbenchTransport["streamTurn"]>();
   const getHistory = vi.fn<SummaryWorkbenchTransport["getHistory"]>();
@@ -59,6 +61,7 @@ describe("SummaryWorkbenchService", () => {
   const savePreview = vi.fn<SummaryWorkbenchTransport["savePreview"]>();
   const transport: SummaryWorkbenchTransport = {
     getCapabilities,
+    getSummaryDetail,
     postTurn,
     streamTurn,
     getHistory,
@@ -302,5 +305,18 @@ describe("SummaryWorkbenchService", () => {
       enabled: true,
       contract_version: "1",
     });
+  });
+
+  it("loads only the reference metadata needed by the workbench", async () => {
+    getSummaryDetail.mockResolvedValue({
+      task_id: 42,
+      title: "Previous summary",
+    } as never);
+
+    await expect(service.loadReferenceSummary(42)).resolves.toEqual({
+      task_id: 42,
+      title: "Previous summary",
+    });
+    expect(getSummaryDetail).toHaveBeenCalledWith(42);
   });
 });

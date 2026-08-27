@@ -29,6 +29,21 @@
   gap: var(--wk-sp-1);
 }
 
+.wk-summary-workbench__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--wk-sp-4);
+}
+
+.wk-summary-workbench__header-actions {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--wk-sp-2);
+}
+
 .wk-summary-workbench__header h1 {
   font: var(--wk-text-h2);
   color: var(--wk-text-primary);
@@ -40,7 +55,10 @@
 
 .wk-summary-workbench__contexts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(
+    auto-fit,
+    minmax(calc(var(--wk-sp-12) * 2), 1fr)
+  );
   gap: var(--wk-sp-2);
 }
 
@@ -111,6 +129,27 @@
   margin: auto;
   color: var(--wk-text-tertiary);
   text-align: center;
+}
+
+.wk-summary-workbench__progress {
+  align-self: stretch;
+  padding: var(--wk-sp-3) var(--wk-sp-4);
+  border-radius: var(--wk-r-md);
+  color: var(--wk-text-secondary);
+  background: var(--wk-bg-elevated);
+  font: var(--wk-text-caption);
+}
+
+.wk-summary-workbench__progress > span {
+  color: var(--wk-text-primary);
+  font: var(--wk-text-body-medium);
+}
+
+.wk-summary-workbench__progress ul {
+  display: grid;
+  gap: var(--wk-sp-1);
+  margin: var(--wk-sp-2) 0 0;
+  padding-left: var(--wk-sp-5);
 }
 
 .wk-summary-workbench-message {
