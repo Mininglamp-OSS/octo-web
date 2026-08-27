@@ -23,6 +23,9 @@ import type {
   DocSearchItem,
   DocSearchQuery,
   DocSearchResponse,
+  DriveSearchHit,
+  DriveSearchQuery,
+  DriveSearchResponse,
   GlobalContentTab,
   GlobalSearchFileTypeCategory,
   GlobalSearchFilters,
@@ -512,6 +515,52 @@ const SearchService = {
       total: typeof resp?.total === "number" ? resp.total : validItems.length,
       items: validItems,
       nextCursor,
+    };
+  },
+
+  // Drive full-text search: octo-drive backend `POST drive/search`. uid is
+  // injected by the gateway (not sent from the client); the backend applies
+  // permission down-push server-side, so the client renders items verbatim.
+  //
+  // Contract mirrors octo-drive-module src/bridge/types.ts (SearchParams /
+  // SearchResult). Request/response shape:
+  //   req:  { q, scope, space_id?, filters?, page_index, page_size }
+  //   resp: { total, truncated, items: SearchHit[] }
+  //   1. Pagination is OFFSET-based (page_index / page_size), NOT keyset. The
+  //      global-search drive tab only ever fetches the first page (page_index
+  //      0, page_size 20), so there is no pager arithmetic here.
+  //   2. `truncated` — true when the OpenSearch response was capped; the panel
+  //      renders a "results may be partial" note.
+  //   3. Highlight fragments already wrap hits in <mark> (name[]/body[]); the
+  //      panel renders them through a <mark>-only allowlist, never raw HTML.
+  // Boundary guard: drop items missing a usable numeric file_id / string
+  // space_id (both feed React key= and the /drive open URL), so a malformed
+  // row can't forge a key collision or a /drive?fileId=undefined jump.
+  async searchDrive(
+    query: DriveSearchQuery,
+    signal?: AbortSignal
+  ): Promise<DriveSearchResponse> {
+    const body: Record<string, unknown> = {
+      q: query.q,
+      scope: query.scope ?? "all",
+      page_index: query.page_index ?? 0,
+      page_size: query.page_size ?? 20,
+    };
+    if (query.space_id) body.space_id = query.space_id;
+    if (query.filters) body.filters = query.filters;
+    const resp = await APIClient.shared.post("drive/search", body, { signal });
+    const items = Array.isArray(resp?.items) ? resp.items : [];
+    const validItems = items.filter(
+      (it: unknown): it is DriveSearchHit =>
+        !!it &&
+        typeof (it as DriveSearchHit).file_id === "number" &&
+        typeof (it as DriveSearchHit).space_id === "string" &&
+        (it as DriveSearchHit).space_id !== ""
+    );
+    return {
+      total: typeof resp?.total === "number" ? resp.total : validItems.length,
+      truncated: resp?.truncated === true,
+      items: validItems,
     };
   },
 
