@@ -17,7 +17,6 @@ import type {
   ParseStatusResult,
   RawSkillTag,
   Skill,
-  SkillDraftForm,
   SkillFilesResult,
   SkillListQuery,
   SkillSort,
@@ -706,73 +705,6 @@ export async function updateSkill(id: string, form: UpdateSkillForm): Promise<Sk
     });
   }
   return mapSkillDetail(detail.plugin);
-}
-
-/** Create a skill from scratch via the unified upsert (no package upload/parse).
- *  Writes the manifest + the edited file tree directly. Created as a PRIVATE
- *  plugin; `publishToScene` defaults to false, so the skill is NOT placed in the
- *  discovery scene (used for expert-scoped skills, reachable only by id/relation).
- *  The backend forces upsert non-public, matching the private intent. */
-export function createSkillFromScratch(
-  form: SkillDraftForm,
-  opts?: { publishToScene?: boolean }
-): Promise<Skill> {
-  const tags = normalizeTags(form.tags);
-  const attachments: PluginAttachmentWire[] = form.attachments
-    .filter((a) => a.path !== "manifest.json" && isSafeAttachmentPath(a.path))
-    .map((a) => ({
-      path: a.path,
-      content_type: "raw",
-      raw_content: a.rawContent ?? "",
-      ...(a.mimeType ? { mime_type: a.mimeType } : {}),
-    }));
-  const manifest = {
-    $schema: "cowork-plugin-manifest-1.0.json",
-    plugin_name: form.displayName,
-    plugin_type: "skill",
-    name: form.name,
-    description: form.description,
-    labels: tags,
-    examples: [],
-  };
-  return request<PluginDetailWire>("/plugins/upsert", {
-    method: "POST",
-    body: JSON.stringify({
-      plugin: {
-        plugin_name: form.displayName,
-        plugin_type: "skill",
-        ...(form.categoryId ? { category_id: form.categoryId } : {}),
-        tags,
-        icon: "",
-        visibility: "private",
-        manifest_json: manifest,
-        plugin_json: {
-          $schema: "cowork-plugin-package-1.0.json",
-          attachments,
-        },
-      },
-      relations: [],
-    }),
-  }).then(async (detail) => {
-    if (opts?.publishToScene) {
-      const categoryId = form.categoryId;
-      await request<unknown>("/plugins/publish", {
-        method: "POST",
-        body: JSON.stringify({
-          plugin_id: detail.plugin.plugin_id,
-          version: "1.0.0",
-          placements: [
-            {
-              placement_code: SCENE_CODE,
-              ...(categoryId ? { category_id: categoryId } : {}),
-              is_visible: true,
-            },
-          ],
-        }),
-      });
-    }
-    return mapSkillDetail(detail.plugin);
-  });
 }
 
 export function deleteSkill(id: string): Promise<void> {

@@ -112,18 +112,6 @@ export interface EditableAttachment {
   readonly: boolean;
 }
 
-/** Payload for creating a skill from scratch (full-page editor, no upload). The
- *  editor writes the manifest + an edited file tree directly via /plugins/upsert
- *  (no package parse). Used for expert-scoped private skills. */
-export interface SkillDraftForm {
-  displayName: string;
-  name: string;
-  description: string;
-  categoryId?: string;
-  tags: string[];
-  attachments: EditableAttachment[];
-}
-
 /** Result of loading a skill's editable file tree for the full-page editor. */
 export interface SkillFilesResult {
   skill: Skill;
