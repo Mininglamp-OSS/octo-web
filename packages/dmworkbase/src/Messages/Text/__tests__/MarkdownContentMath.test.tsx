@@ -766,7 +766,7 @@ describe("MarkdownContent — 多个 $$ 候选的源码映射保持同步 (revie
   it("被拒绝的 inline $$ 后续跨行正文不误渲染为 display", () => {
     const input = "$$x$$\nthe config_x value $$100 and\nmore$$";
     const root = renderContent(<MarkdownContent content={input} />);
-    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+    expect(root.querySelector(".katex")).toBeNull();
     expect(visibleText(root)).toContain("the config_x value");
     expect(visibleText(root)).toContain("$$100 and");
   });
@@ -774,7 +774,7 @@ describe("MarkdownContent — 多个 $$ 候选的源码映射保持同步 (revie
   it("被拒绝的 inline $$ 后续中文正文不误渲染为 display", () => {
     const input = "$$x$$\n这里 m_0 是质量 $$100 and\nmore$$";
     const root = renderContent(<MarkdownContent content={input} />);
-    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+    expect(root.querySelector(".katex")).toBeNull();
     expect(visibleText(root)).toContain("这里 m_0 是质量");
   });
 
@@ -1012,6 +1012,24 @@ describe("MarkdownContent — 接收端保护：每条消息公式数量上限 (
     expect(performance.now() - startedAt).toBeLessThan(1000);
   });
 
+  it("宏定义膨胀在调用 KaTeX 前快速拒绝", () => {
+    const macroBody = "x".repeat(1400);
+    const body = `\\def\\a{${macroBody}}${"\\a".repeat(78)}`;
+    const startedAt = performance.now();
+    const root = renderContent(<MarkdownContent content={`$$\n${body}\n$$`} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(visibleText(root)).toContain("\\def\\a");
+    expect(performance.now() - startedAt).toBeLessThan(200);
+  });
+
+  it("单条公式超出输出上限时，后续小公式仍可渲染", () => {
+    const oversized = "+".repeat(1400);
+    const input = `$$\n${oversized}\n$$\n\n$$\\frac{a}{b}$$\n\n$$\\frac{c}{d}$$`;
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(2);
+    expect(visibleText(root)).toContain(oversized);
+  });
+
   it("公式 attempt 达到 32 后停止预校验，失败候选也计入上限", () => {
     const invalid = Array.from({ length: 32 }, () => "$\\frac{a}$").join(" ");
     const root = renderContent(
@@ -1056,10 +1074,32 @@ describe("MarkdownContent — 转义保护不改变公式外 Markdown 结构", (
       expect(mathHref).toBe(root.querySelector("a")?.getAttribute("href"));
     });
   }
+
+  it("潜在公式跨过 reference link 时，不破坏转义 identifier 的链接解析", () => {
+    const input = "$foo [text][a\\!b] x^2$\n\n[a\\!b]: https://example.com";
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelector(".katex")).toBeNull();
+    expect(root.querySelector("a")?.getAttribute("href")).toBe(
+      "https://example.com"
+    );
+    expect(root.querySelector("a")?.textContent).toBe("text");
+  });
+
+  it("字符实体美元不借用后续真实 $$ 的源码位置", () => {
+    const input = "&#36;&#36;x^2&#36;&#36;\n$$\ny^2\n$$";
+    const root = renderContent(<MarkdownContent content={input} />);
+    expect(root.querySelectorAll(".katex-display")).toHaveLength(1);
+    expect(texAnnotations(root)).toContain("y^2\n");
+    expect(visibleText(root)).toContain("$$x^2$$");
+  });
 });
 
 describe("MarkdownContent — JSON quoted values 不误判为公式", () => {
-  const cases = ['{"key":"$x_1$"}', '{"a":"$x^2$","b":2}'];
+  const cases = [
+    '{"key":"$x_1$"}',
+    '{"a":"$x^2$","b":2}',
+    'JSON: {"key":"$x_1$"}',
+  ];
   for (const input of cases) {
     it(`保持字面 JSON：${input}`, () => {
       const root = renderContent(<MarkdownContent content={input} />);
@@ -1074,6 +1114,21 @@ describe("MarkdownContent — JSON quoted values 不误判为公式", () => {
     );
     expect(root.querySelectorAll(".katex")).toHaveLength(1);
   });
+});
+
+describe("MarkdownContent — 显式 display 仍拒绝纯 prose", () => {
+  const cases = [
+    "$$ not math $$",
+    "$$\nTODO: 明天讨论\n$$",
+    "$$\n这是我的报价\n$$",
+  ];
+  for (const input of cases) {
+    it(`不把正文压成数学文本：${JSON.stringify(input)}`, () => {
+      const root = renderContent(<MarkdownContent content={input} />);
+      expect(root.querySelector(".katex")).toBeNull();
+      expect(visibleText(root)).toBe(input);
+    });
+  }
 });
 
 describe("MarkdownContent — trust-gated KaTeX 命令整体回退", () => {

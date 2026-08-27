@@ -45,7 +45,8 @@ interface MarkdownContentProps {
    * 过滤 IM 正文误匹配（金额/变量/JSON/路径）。为保证正文零腐蚀，行内候选比 iOS 更严：
    * 含 `/`、`:`、单字母反斜杠、或多个词形 token 的片段按正文处理；纯 CJK 且不含真正 TeX 命令
    * 的 `$金额_x$` 不渲染，但含命令的 `$v_{\text{平均}}$` 照常渲染。需要放宽（如无特殊字符的
-   * 简单 `$a+b$`）见 {@link allowSingleDollarMath}。明确不需要公式时可传 false。
+   * 简单 `$a+b$`）见 {@link allowSingleDollarMath}。独占的 `$$...$$` 仍需含 TeX 构造或运算符，
+   * 避免把纯 prose 静默压成数学文本。明确不需要公式时可传 false。
    */
   enableMath?: boolean;
   /**
@@ -111,9 +112,8 @@ const remarkGfmOptions = { singleTilde: false };
  *
  * Resource bounds (both below KaTeX defaults on purpose, since this renders untrusted chat text):
  *  - `maxSize: 10`  — clamps `\rule` / strut width+height so a single formula can't blow up layout.
- *  - `maxExpand: 100` — caps macro expansion against `\newcommand` bombs. Real formulas
- *    (`aligned`, `pmatrix`, chained arrows, ~40-term user-macro expansions) stay well under 100;
- *    raise it only if a legitimate formula is observed hitting the cap.
+ *  - `maxExpand: 100` — second-line expansion cap; user-defined macros are rejected before KaTeX
+ *    because short definitions can otherwise expand into megabytes before this count is reached.
  */
 const mathRehypePlugins: any[] = [
   [rehypeHighlight, { aliases: { json5: "json" }, ignoreMissing: true }],
@@ -343,6 +343,9 @@ const TEX_SINGLE_CHAR_SUBSCRIPT =
 /** trust:false 下会被 KaTeX 作为 unsupported command 渲染并吞参数，必须整体回退源码。 */
 const TRUST_GATED_TEX_CMD =
   /\\(?:href|url|includegraphics|htmlClass|htmlId|htmlStyle|htmlData)\b/;
+/** 禁止用户公式定义/别名宏；否则很短的源码也能在 maxExpand 内膨胀成 MB 级同步渲染。 */
+const MACRO_DEFINITION_TEX_CMD =
+  /\\(?:def|gdef|edef|xdef|let|futurelet|newcommand|renewcommand|providecommand|global)\b/;
 /** 块级 display 公式长度上限：过长（如 4.8KB）KaTeX 渲染耗时明显，超限按文本处理。 */
 const MAX_BLOCK_MATH_LEN = 4096;
 /** KaTeX 预校验 / 渲染选项（与 rehype-katex 一致，仅 throwOnError 打开用于判定）。 */
@@ -391,6 +394,16 @@ function isAcceptableInlineMath(inner: string, isDouble: boolean): boolean {
     if (proseWords && proseWords.length >= 2) return false;
   }
   return true;
+}
+
+/** 独占 display fence 意图更强，但纯 prose 仍按字面保留，避免 KaTeX 静默吞掉空格。 */
+function isAcceptableDisplayMath(inner: string): boolean {
+  const core = inner.trim();
+  return (
+    core.length > 0 &&
+    inner.length <= MAX_BLOCK_MATH_LEN &&
+    (MATH_ISH_CHAR.test(core) || /[=+\-*/<>]/.test(core))
+  );
 }
 
 /** 单条公式渲染后 HTML 长度上限（约 3.8KB 输入可膨胀到 >1MB / 3 万 DOM 节点）。 */
@@ -471,14 +484,14 @@ function tryAcceptMath(
   if (
     ctx.budgetExhausted ||
     exceedsMathComplexity(inner) ||
-    TRUST_GATED_TEX_CMD.test(inner)
+    TRUST_GATED_TEX_CMD.test(inner) ||
+    MACRO_DEFINITION_TEX_CMD.test(inner)
   ) {
     return false;
   }
   const renderedLength = getKatexRenderedLength(inner, displayMode);
   if (renderedLength < 0) return false;
   if (renderedLength > MAX_RENDERED_MATH_LEN) {
-    ctx.budgetExhausted = true;
     return false;
   }
   if (ctx.renderedLength + renderedLength > MAX_RENDERED_MATH_PER_MESSAGE) {
@@ -607,6 +620,29 @@ function collectLiteralRanges(
   }
 }
 
+/** reference usage/definition 的反斜杠必须交给 CommonMark 一致解码，不能只遮罩 usage 一侧。 */
+function collectReferenceRanges(
+  node: any,
+  ranges: Array<[number, number]>
+): void {
+  if (!node) return;
+  if (
+    node.type === "linkReference" ||
+    node.type === "imageReference" ||
+    node.type === "definition"
+  ) {
+    const start = node.position?.start?.offset;
+    const end = node.position?.end?.offset;
+    if (typeof start === "number" && typeof end === "number") {
+      ranges.push([start, end]);
+    }
+    return;
+  }
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) collectReferenceRanges(child, ranges);
+  }
+}
+
 function isOffsetInRanges(
   offset: number,
   ranges: Array<[number, number]>
@@ -629,6 +665,28 @@ function isEscapedAt(source: string, offset: number): boolean {
     slashes += 1;
   }
   return slashes % 2 === 1;
+}
+
+function isQuotedJsonValue(
+  text: string,
+  openOffset: number,
+  closeOffset: number,
+  delimiterLength: number
+): boolean {
+  const before = openOffset > 0 ? text[openOffset - 1] : "";
+  const after = text[closeOffset + delimiterLength] ?? "";
+  if (
+    !((before === '"' && after === '"') || (before === "'" && after === "'"))
+  ) {
+    return false;
+  }
+  const hasObjectContainer =
+    text.lastIndexOf("{", openOffset) > text.lastIndexOf("}", openOffset) &&
+    text.indexOf("}", closeOffset + delimiterLength) >= 0;
+  const hasArrayContainer =
+    text.lastIndexOf("[", openOffset) > text.lastIndexOf("]", openOffset) &&
+    text.indexOf("]", closeOffset + delimiterLength) >= 0;
+  return hasObjectContainer || hasArrayContainer;
 }
 
 /** 找出原始源码中可能由 scanner 处理的 `$...$` / `$$...$$` 内部区间。 */
@@ -695,10 +753,12 @@ function isAsciiPunctuation(char: string | undefined): boolean {
 function maskMarkdownEscapes(
   source: string,
   ranges: Array<[number, number]>,
+  referenceRanges: Array<[number, number]>,
   mathRanges: Array<[number, number]>,
   sentinels: string[]
 ): { masked: string; escapeMap: Record<string, string> } | null {
   const inLiteral = (off: number) => isOffsetInRanges(off, ranges);
+  const inReference = (off: number) => isOffsetInRanges(off, referenceRanges);
   const escapedChars = new Map<string, string>();
   let nextSentinel = 0;
   const sentinelFor = (char: string): string | null => {
@@ -714,6 +774,18 @@ function maskMarkdownEscapes(
   let out = "";
   let i = 0;
   while (i < n) {
+    const dollarReference =
+      source[i] === "&"
+        ? source.slice(i, i + 16).match(/^&(?:#0*36|#x0*24|dollar);/i)?.[0]
+        : undefined;
+    if (dollarReference && !inLiteral(i)) {
+      // 实体 `$` 只应恢复为字面字符，绝不能参与 scanner 的定界符配对。
+      const dollarSentinel = sentinelFor("$");
+      if (!dollarSentinel) return null;
+      out += dollarSentinel;
+      i += dollarReference.length;
+      continue;
+    }
     if (source[i] === "\\" && !inLiteral(i)) {
       let k = i;
       while (k < n && source[k] === "\\") k += 1;
@@ -721,7 +793,7 @@ function maskMarkdownEscapes(
       const protectsDelimiter =
         runLen % 2 === 1 && source[k] === "$" && !inLiteral(k);
       const insideMath = isOffsetInRanges(i, mathRanges);
-      if (!insideMath && !protectsDelimiter) {
+      if (inReference(i) || (!insideMath && !protectsDelimiter)) {
         // 公式候选外完全交给 CommonMark 原生解析，避免改变 emphasis / link 等正文结构。
         out += source.slice(i, k);
         i = k;
@@ -758,7 +830,11 @@ function escapeMaskPlugin(this: any) {
   return (tree: any, file: any) => {
     const source: string =
       typeof file?.value === "string" ? file.value : String(file ?? "");
-    if (source.indexOf("\\") === -1 || typeof processor?.parse !== "function") {
+    const hasDollarReference = /&(?:#0*36|#x0*24|dollar);/i.test(source);
+    if (
+      (source.indexOf("\\") === -1 && !hasDollarReference) ||
+      typeof processor?.parse !== "function"
+    ) {
       return;
     }
     // ASCII 标点至多 32 种；为每种转义字符分配一个源码 / AST 中都不存在的标点哨兵。
@@ -771,8 +847,17 @@ function escapeMaskPlugin(this: any) {
     const ranges: Array<[number, number]> = [];
     collectLiteralRanges(tree, ranges, source);
     ranges.sort((a, b) => a[0] - b[0]);
+    const referenceRanges: Array<[number, number]> = [];
+    collectReferenceRanges(tree, referenceRanges);
+    referenceRanges.sort((a, b) => a[0] - b[0]);
     const mathRanges = collectPotentialMathRanges(source, ranges);
-    const result = maskMarkdownEscapes(source, ranges, mathRanges, sentinels);
+    const result = maskMarkdownEscapes(
+      source,
+      ranges,
+      referenceRanges,
+      mathRanges,
+      sentinels
+    );
     if (!result || result.masked === source) return;
     // 经 file.data 传递哨兵映射；其存在与否即「是否 mask 过」的 out-of-band 标记。
     (file.data ||= {}).mathEscapeMap = result.escapeMap;
@@ -958,7 +1043,7 @@ function scanTextForMath(
         isStandaloneDisplayOpener(source, sourceClose);
       let accept: boolean;
       if (display) {
-        accept = inner.trim().length > 0 && inner.length <= MAX_BLOCK_MATH_LEN;
+        accept = isAcceptableDisplayMath(inner);
       } else {
         // 行内：定界符不能紧贴单词字符（挡 shell 多变量 `echo $X_1,$Y_2`——闭定界符后紧跟
         // 标识符，说明它其实是下一个 $var 的开定界符，而非公式收尾）。
@@ -966,14 +1051,7 @@ function scanTextForMath(
         const after = close + openLen < n ? text[close + openLen] : "";
         const wordAdjacent =
           /[A-Za-z0-9]/.test(before) || /[A-Za-z0-9_]/.test(after);
-        const trimmedText = text.trim();
-        const jsonShaped =
-          (trimmedText.startsWith("{") && trimmedText.endsWith("}")) ||
-          (trimmedText.startsWith("[") && trimmedText.endsWith("]"));
-        const quotedString =
-          jsonShaped &&
-          ((before === '"' && after === '"') ||
-            (before === "'" && after === "'"));
+        const quotedString = isQuotedJsonValue(text, i, close, openLen);
         accept =
           !wordAdjacent &&
           !quotedString &&

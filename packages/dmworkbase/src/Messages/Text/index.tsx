@@ -56,6 +56,8 @@ export class TextCell extends MessageCell {
         super(props)
     }
 
+    private handleMentionClick = (uid: string) => this.props.context.showUser(uid)
+
     getCommonText(k: number, part: Part) {
         const texts = part.text.split("\n")
         const { message } = this.props
@@ -110,7 +112,7 @@ export class TextCell extends MessageCell {
     }
 
     getRenderMessageText() {
-        const { message, context } = this.props
+        const { message } = this.props
 
         // 流式消息：Markdown 渲染流式内容（带光标）
         if (message.streamOn) {
@@ -171,7 +173,7 @@ export class TextCell extends MessageCell {
                 content={plainText}
                 isSend={message.send}
                 mentions={mentions}
-                onMentionClick={(uid) => context.showUser(uid)}
+                onMentionClick={this.handleMentionClick}
                 emojis={emojis}
             />
         )
@@ -221,7 +223,7 @@ export class TextCell extends MessageCell {
                         )}
                         <TextContent
                             {...uiProps.content}
-                            onMentionClick={(uid) => context.showUser(uid)}
+                            onMentionClick={this.handleMentionClick}
                         />
                         {isMessageReactionChannelSupported(message.channel.channelType) &&
                             message.messageID && (
