@@ -335,3 +335,30 @@ describe("DriveSearchPanel — offset pagination", () => {
     expect(searchDrive.mock.calls[1]![0].page_index).toBe(1);
   });
 });
+
+describe("DriveSearchPanel — folder exclusion (filters.types)", () => {
+  it("requests only blob+doc so folder hits never reach the panel — on every page", async () => {
+    const { ds, searchDrive } = makeDataSource(async (query) => ({
+      total: 40,
+      truncated: false,
+      items: makeHits(20, query.page_index === 0 ? 0 : 20),
+    }));
+    const { container } = render(
+      <DriveSearchPanel keyword="评审" dataSource={ds} isActive />
+    );
+    await screen.findByText("file-0");
+    expect(searchDrive.mock.calls[0]![0].filters).toEqual({
+      types: ["blob", "doc"],
+    });
+
+    await waitFor(() => {
+      fireEvent.scroll(listEl(container));
+      expect(searchDrive.mock.calls.length).toBe(2);
+    });
+    // The next-page request must carry the same filter, or folders would leak
+    // back in as the user scrolls.
+    expect(searchDrive.mock.calls[1]![0].filters).toEqual({
+      types: ["blob", "doc"],
+    });
+  });
+});

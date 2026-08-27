@@ -149,7 +149,14 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
     const timer = window.setTimeout(() => {
       dataSource
         .searchDrive!(
-          { q: trimmed, scope: "all", page_index: 0, page_size: PAGE_SIZE },
+          {
+            q: trimmed,
+            scope: "all",
+            // Exclude folder hits — this panel only opens file previews.
+            filters: { types: ["blob", "doc"] },
+            page_index: 0,
+            page_size: PAGE_SIZE,
+          },
           controller.signal
         )
         .then((resp) => {
@@ -191,6 +198,8 @@ const DriveSearchPanel: React.FC<DriveSearchPanelProps> = ({
         {
           q: trimmed,
           scope: "all",
+          // Keep the folder-exclusion filter consistent across pages.
+          filters: { types: ["blob", "doc"] },
           page_index: nextIndex,
           page_size: PAGE_SIZE,
         },
